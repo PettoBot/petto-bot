@@ -1,0 +1,10 @@
+node_modules/
+.env
+.env.local
+.claude.env
+npm-debug.log*
+logs/
+*.log
+.DS_Store
+.cloudflared/
+*.tar.gz

@@ -1,0 +1,127 @@
+const { Events, MessageFlags } = require('discord.js');
+const { getRemainingCooldown } = require('../utils/cooldown');
+const { handleButton: handleEmbedPanelButton, handleModal: handleEmbedPanelModal } = require('../interactions/embedPanel');
+const { handleModal: handleReportModal } = require('../interactions/reportModal');
+const { handleButton: handleTicketPanelButton, handleSelect: handleTicketPanelSelect } = require('../interactions/ticketPanel');
+const { handleButton: handleTicketControlButton, handleCloseModal: handleTicketCloseModal, handleUserSelect: handleTicketUserSelect } = require('../interactions/ticketControls');
+const { handleButton: handleGiveawayButton } = require('../interactions/giveawayButton');
+const logger = require('../utils/logger');
+
+const DEFAULT_COOLDOWN_MS = 3000;
+
+module.exports = {
+  name: Events.InteractionCreate,
+  async execute(interaction, client) {
+    if (interaction.isButton() && interaction.customId.startsWith('eb_')) {
+      try {
+        await handleEmbedPanelButton(interaction);
+      } catch (err) {
+        logger.error('Error handling embed panel button:', err);
+      }
+      return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('em_')) {
+      try {
+        await handleEmbedPanelModal(interaction);
+      } catch (err) {
+        logger.error('Error handling embed panel modal:', err);
+      }
+      return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('rp_msg::')) {
+      try {
+        await handleReportModal(interaction);
+      } catch (err) {
+        logger.error('Error handling report modal:', err);
+      }
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('tk_open::')) {
+      try {
+        await handleTicketPanelButton(interaction);
+      } catch (err) {
+        logger.error('Error handling ticket panel button:', err);
+      }
+      return;
+    }
+
+    if (interaction.isStringSelectMenu() && interaction.customId === 'tk_open_select') {
+      try {
+        await handleTicketPanelSelect(interaction);
+      } catch (err) {
+        logger.error('Error handling ticket panel select:', err);
+      }
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('tk_')) {
+      try {
+        await handleTicketControlButton(interaction);
+      } catch (err) {
+        logger.error('Error handling ticket control button:', err);
+      }
+      return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('tk_closemodal::')) {
+      try {
+        await handleTicketCloseModal(interaction);
+      } catch (err) {
+        logger.error('Error handling ticket close modal:', err);
+      }
+      return;
+    }
+
+    if (interaction.isUserSelectMenu() && interaction.customId.startsWith('tk_')) {
+      try {
+        await handleTicketUserSelect(interaction);
+      } catch (err) {
+        logger.error('Error handling ticket user select:', err);
+      }
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('gw_')) {
+      try {
+        await handleGiveawayButton(interaction);
+      } catch (err) {
+        logger.error('Error handling giveaway button:', err);
+      }
+      return;
+    }
+
+    if (!interaction.isChatInputCommand() && !interaction.isMessageContextMenuCommand()) return;
+
+    const command = client.commands.get(interaction.commandName);
+    if (!command) {
+      logger.warn(`Received unknown command: /${interaction.commandName}`);
+      return;
+    }
+
+    const cooldownMs = command.cooldownMs ?? DEFAULT_COOLDOWN_MS;
+    const remaining = getRemainingCooldown(command.data.name, interaction.user.id, cooldownMs);
+    if (remaining > 0) {
+      await interaction.reply({
+        content: `Please wait ${(remaining / 1000).toFixed(1)}s before using /${command.data.name} again.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    try {
+      await command.execute(interaction, client);
+    } catch (err) {
+      logger.error(`Error executing /${interaction.commandName}:`, err);
+
+      const errorReply = { content: 'Something went wrong while running that command.', flags: MessageFlags.Ephemeral };
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply(errorReply).catch(() => {});
+      } else {
+        await interaction.reply(errorReply).catch(() => {});
+      }
+    }
+  },
+};

@@ -1,0 +1,127 @@
+const { MessageFlags, EmbedBuilder } = require('discord.js');
+const levelUsersDb = require('../db/levelUsers');
+const levelRewardsDb = require('../db/levelRewards');
+const levelMultipliersDb = require('../db/levelMultipliers');
+const { levelForXp, xpNeeded } = require('./levelCurve');
+const { resolve } = require('./embedVariables');
+const { textCard } = require('./caseCard');
+const { EMOJI } = require('./emojis');
+const logger = require('./logger');
+
+/** Combined multiplier for a message/voice-minute: the largest matching role multiplier, multiplied by a matching channel multiplier (both default to 1 if unset). */
+async function getMultiplier(guildId, channelId, member) {
+  const multipliers = await levelMultipliersDb.listMultipliers(guildId);
+  if (!multipliers.length) return 1;
+
+  let roleMult = 1;
+  let channelMult = 1;
+
+  for (const m of multipliers) {
+    if (m.target_type === 'channel' && m.target_id === channelId) channelMult = Number(m.multiplier);
+    if (m.target_type === 'role' && member?.roles.cache.has(m.target_id)) roleMult = Math.max(roleMult, Number(m.multiplier));
+  }
+
+  return roleMult * channelMult;
+}
+
+/** Grants/revokes level_rewards roles for a member who just reached `level`, per config.role_mode ('highest' keeps only the top earned role, 'all' keeps every earned one). Returns true if a new role was actually added. */
+async function checkRewards(guild, member, level, config) {
+  const rewards = await levelRewardsDb.listRewards(guild.id);
+  const earned = rewards.filter((r) => r.level <= level);
+  if (!earned.length) return false;
+
+  const me = guild.members.me;
+  let gainedNew = false;
+
+  if (config.role_mode === 'highest') {
+    const best = earned.reduce((a, b) => (b.level > a.level ? b : a));
+    for (const r of earned) {
+      const role = guild.roles.cache.get(r.role_id);
+      if (!role || role.position >= me.roles.highest.position) continue;
+      if (r.role_id === best.role_id) {
+        if (!member.roles.cache.has(role.id)) {
+          await member.roles.add(role).catch(() => {});
+          gainedNew = true;
+        }
+      } else if (member.roles.cache.has(role.id)) {
+        await member.roles.remove(role).catch(() => {});
+      }
+    }
+  } else {
+    for (const r of earned) {
+      const role = guild.roles.cache.get(r.role_id);
+      if (!role || role.position >= me.roles.highest.position) continue;
+      if (!member.roles.cache.has(role.id)) {
+        await member.roles.add(role).catch(() => {});
+        gainedNew = true;
+      }
+    }
+  }
+
+  return gainedNew;
+}
+
+/** Removes every level-reward role a member currently holds (used by /level reset). */
+async function stripRewardRoles(guild, member) {
+  const rewards = await levelRewardsDb.listRewards(guild.id);
+  const toRemove = rewards.map((r) => guild.roles.cache.get(r.role_id)).filter((role) => role && member.roles.cache.has(role.id));
+  if (toRemove.length) await member.roles.remove(toRemove).catch(() => {});
+}
+
+async function notifyLevelUp({ client, guild, member, config, level, channel }) {
+  if (config.notify_mode === 'off') return;
+  if (config.notify_every > 1 && level % config.notify_every !== 0) return;
+
+  const userData = await levelUsersDb.getUser(guild.id, member.id);
+  const rank = await levelUsersDb.getRank(guild.id, userData?.xp ?? 0);
+
+  const ctx = {
+    member,
+    guild,
+    channel,
+    user: member.user,
+    levelData: { level, xp: userData?.xp ?? 0, xpNeeded: xpNeeded(level, config), rank },
+  };
+
+  const text = await resolve(config.notify_message.replace(/\{EMOJI\}/g, EMOJI.STAR), ctx);
+  const payload = config.notify_embed
+    ? { embeds: [new EmbedBuilder().setColor(0x8399ff).setDescription(text)] }
+    : { components: [textCard(text, 0x8399ff)], flags: MessageFlags.IsComponentsV2 };
+
+  try {
+    if (config.notify_mode === 'dm') {
+      await member.send(payload);
+    } else if (config.notify_mode === 'channel' && config.notify_channel_id) {
+      const target = await guild.channels.fetch(config.notify_channel_id).catch(() => null);
+      if (target) await target.send(payload);
+    } else if (channel) {
+      await channel.send(payload);
+    }
+  } catch (err) {
+    logger.warn(`Level-up notification failed for ${member.id} in guild ${guild.id}:`, err.message);
+  }
+}
+
+/**
+ * The single entry point for granting XP (from a message or a voice-minute tick): adds XP,
+ * recomputes the level under the guild's curve, and — if it went up — applies reward roles
+ * and sends the level-up notification. Shared by both XP sources so neither can drift.
+ */
+async function grantXp({ client, guild, member, config, xpGain, messageInc = 0, vcInc = 0, channel = null }) {
+  const before = await levelUsersDb.ensureUser(guild.id, member.id);
+  const oldLevel = before.level;
+
+  const updated = await levelUsersDb.addXp(guild.id, member.id, { xpGain, messageInc, vcInc });
+  const newLevel = Math.min(levelForXp(updated.xp, config), config.max_level);
+
+  if (newLevel !== updated.level) await levelUsersDb.setLevel(guild.id, member.id, newLevel);
+
+  if (newLevel > oldLevel) {
+    await checkRewards(guild, member, newLevel, config).catch((err) => logger.error('Level reward grant failed:', err));
+    await notifyLevelUp({ client, guild, member, config, level: newLevel, channel }).catch((err) => logger.error('Level notify failed:', err));
+  }
+
+  return { ...updated, level: newLevel, leveledUp: newLevel > oldLevel };
+}
+
+module.exports = { getMultiplier, checkRewards, stripRewardRoles, notifyLevelUp, grantXp };
