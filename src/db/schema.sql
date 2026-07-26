@@ -682,6 +682,27 @@ create table if not exists sticky_messages (
 
 alter table sticky_messages enable row level security;
 
+create table if not exists sticky_roles_config (
+  guild_id text primary key references guilds(guild_id) on delete cascade,
+  enabled  boolean not null default false
+);
+
+alter table sticky_roles_config enable row level security;
+
+-- One row per member who's left while sticky roles was on, consumed (deleted) the moment
+-- they rejoin and their roles are restored, or ignored/dropped once stale (see MAX_AGE_MS
+-- in guildMemberAddStickyRoles.js) so a years-old snapshot can't hand back a role setup
+-- nobody remembers granting.
+create table if not exists sticky_role_snapshots (
+  guild_id text not null references guilds(guild_id) on delete cascade,
+  user_id  text not null,
+  role_ids text[] not null default '{}',
+  left_at  timestamptz not null default now(),
+  primary key (guild_id, user_id)
+);
+
+alter table sticky_role_snapshots enable row level security;
+
 create table if not exists poj_config (
   guild_id text primary key references guilds(guild_id) on delete cascade,
   enabled  boolean not null default true
