@@ -203,6 +203,7 @@ module.exports = {
     .setDescription('Browse commands, or look one up directly.')
     .addStringOption((o) => o.setName('query').setDescription('A command (and optionally subcommand) to look up, e.g. "ticket category add"').setRequired(false)),
   aliases: ['h', 'hlp'],
+  interactive: true,
 
   async execute(interaction) {
     const client = interaction.client;
