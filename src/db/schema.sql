@@ -978,3 +978,34 @@ begin
         voice_seconds = activity_stats.voice_seconds + excluded.voice_seconds;
 end;
 $$;
+
+-- Mass role assign/remove across every member matching a set of filters, run once in the
+-- background by the bot (not instant, potentially thousands of Discord API calls). Only one
+-- pending/running job per guild is enforced in application code, not here.
+create table if not exists bulk_role_jobs (
+  id                 bigserial primary key,
+  guild_id           text not null references guilds(guild_id) on delete cascade,
+  action             text not null check (action in ('add', 'remove')),
+  target_role_id     text not null,
+  member_type        text not null default 'all' check (member_type in ('all', 'bots', 'humans')),
+  filter_role_ids    text[] not null default '{}',
+  filter_mode        text not null default 'any' check (filter_mode in ('any', 'all')),
+  filter_exclude     boolean not null default false,
+  joined_before      timestamptz,
+  joined_after       timestamptz,
+  notify_channel_id  text,
+  status             text not null default 'pending' check (status in ('pending', 'running', 'completed', 'cancelled', 'failed')),
+  total_members      integer not null default 0,
+  processed_members  integer not null default 0,
+  success_count      integer not null default 0,
+  error_count        integer not null default 0,
+  error_message      text,
+  started_by         text not null,
+  created_at         timestamptz not null default now(),
+  finished_at        timestamptz
+);
+
+create index if not exists idx_bulk_role_jobs_guild on bulk_role_jobs(guild_id);
+create index if not exists idx_bulk_role_jobs_active on bulk_role_jobs(guild_id) where status in ('pending', 'running');
+
+alter table bulk_role_jobs enable row level security;

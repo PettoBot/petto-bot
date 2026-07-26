@@ -35,6 +35,7 @@ function checkDefaultPermission(json, member) {
 async function runCustomCommand(message, commandName) {
   const row = await customCommandsDb.getCommand(message.guild.id, commandName).catch(() => null);
   if (!row) return;
+  message.channel.sendTyping().catch(() => {});
 
   const ctx = { member: message.member, guild: message.guild, channel: message.channel, message };
 
@@ -89,8 +90,14 @@ module.exports = {
     }
 
     // Silent ignore, matching bli — a disabled command shouldn't even hint that it exists there.
-    const disabled = await disabledDb.find(message.guild.id, canonicalName, message.channel.id).catch(() => null);
+    const disabled = await disabledDb.findCached(message.guild.id, canonicalName, message.channel.id).catch(() => null);
     if (disabled) return;
+
+    // Real command, actually going to run now — the "Bot is typing..." indicator is the only
+    // feedback a message-based command can give before its reply lands, so fire it as early as
+    // possible instead of leaving the channel silent through cooldown/permission/arg-parsing
+    // checks and the command's own DB/Discord API calls.
+    message.channel.sendTyping().catch(() => {});
 
     const cooldownMs = command.cooldownMs ?? DEFAULT_COOLDOWN_MS;
     const remaining = getRemainingCooldown(canonicalName, message.author.id, cooldownMs);

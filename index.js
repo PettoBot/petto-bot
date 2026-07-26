@@ -11,6 +11,7 @@ const { startActivityStatsJob } = require('./src/jobs/activityStatsJob');
 const { startGiveawayJob } = require('./src/jobs/giveawayJob');
 const { startReminderJob } = require('./src/jobs/reminderJob');
 const { startStatusHeartbeatJob } = require('./src/jobs/statusHeartbeatJob');
+const { startBulkRoleJob } = require('./src/jobs/bulkRoleJob');
 const { startServer } = require('./src/web/server');
 const { startCloudflareTunnel } = require('./src/web/cloudflareTunnel');
 const logger = require('./src/utils/logger');
@@ -51,6 +52,7 @@ async function main() {
   startGiveawayJob(client);
   startReminderJob(client);
   startStatusHeartbeatJob(client);
+  startBulkRoleJob(client);
   startServer(client);
   startCloudflareTunnel(config.cloudflareTunnelToken);
 }
