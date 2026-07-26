@@ -1,8 +1,7 @@
-const { ContainerBuilder, TextDisplayBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
+const { ContainerBuilder, TextDisplayBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { getTemplate } = require('../db/giveawayTemplates');
 const { build } = require('./embedBuilder');
 const { resolve } = require('./embedVariables');
-const { textCard } = require('./caseCard');
 const { EMOJI } = require('./emojis');
 const logger = require('./logger');
 
@@ -57,7 +56,7 @@ async function sendGiveawayResponse({ target, guildId, messageText, embedTemplat
     const text = messageText ?? fallback;
     if (text) {
       const resolved = await resolve(text, ctx);
-      await target.send({ components: [textCard(resolved, GIVEAWAY_COLOR)], flags: MessageFlags.IsComponentsV2 });
+      await target.send({ content: resolved });
     }
   } catch (err) {
     logger.error(`Failed to send giveaway response in guild ${guildId}:`, err);

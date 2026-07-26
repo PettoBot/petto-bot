@@ -1,7 +1,6 @@
-const { Events, EmbedBuilder, MessageFlags } = require('discord.js');
+const { Events, EmbedBuilder } = require('discord.js');
 const arDb = require('../db/autoResponders');
 const { resolve } = require('../utils/embedVariables');
-const { textCard } = require('../utils/caseCard');
 const logger = require('../utils/logger');
 
 function matches(ar, content) {
@@ -49,7 +48,7 @@ module.exports = {
           if (ar.embed_footer) embed.setFooter({ text: await resolve(ar.embed_footer, ctx) });
           payload = { embeds: [embed] };
         } else {
-          payload = { components: [textCard(text, 0x8399ff)], flags: MessageFlags.IsComponentsV2 };
+          payload = { content: text };
         }
 
         await message.channel.send(payload).catch((err) => logger.warn(`Autoresponder ${ar.ar_id} send failed:`, err.message));
