@@ -1,10 +1,9 @@
-const { MessageFlags, EmbedBuilder } = require('discord.js');
+const { EmbedBuilder } = require('discord.js');
 const levelUsersDb = require('../db/levelUsers');
 const levelRewardsDb = require('../db/levelRewards');
 const levelMultipliersDb = require('../db/levelMultipliers');
 const { levelForXp, xpNeeded } = require('./levelCurve');
 const { resolve } = require('./embedVariables');
-const { textCard } = require('./caseCard');
 const { EMOJI } = require('./emojis');
 const logger = require('./logger');
 
@@ -86,7 +85,7 @@ async function notifyLevelUp({ client, guild, member, config, level, channel }) 
   const text = await resolve(config.notify_message.replace(/\{EMOJI\}/g, EMOJI.STAR), ctx);
   const payload = config.notify_embed
     ? { embeds: [new EmbedBuilder().setColor(0x8399ff).setDescription(text)] }
-    : { components: [textCard(text, 0x8399ff)], flags: MessageFlags.IsComponentsV2 };
+    : { content: text };
 
   try {
     if (config.notify_mode === 'dm') {

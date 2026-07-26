@@ -1,7 +1,5 @@
-const { MessageFlags } = require('discord.js');
 const { upsertConfig, getConfigByChannel, getDueReminders } = require('../db/bumpReminders');
 const { resolve } = require('./embedVariables');
-const { textCard } = require('./caseCard');
 const { EMOJI } = require('./emojis');
 const logger = require('./logger');
 
@@ -36,7 +34,7 @@ async function handleBumpMessage(message) {
   if (config.thankyou) {
     const text = await applyBumpVars(config.thankyou, { guild: message.guild, channel: message.channel, bumper, nextBumpAt });
     await message.channel
-      .send({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: ['users', 'roles'] } })
+      .send({ content: text, allowedMentions: { parse: ['users', 'roles'] } })
       .catch((err) => logger.error('Bump thank-you send failed:', err));
   }
 
@@ -59,7 +57,7 @@ async function checkBumpReminders(client) {
       const text = await applyBumpVars(config.message, { guild, channel, bumper, nextBumpAt: null });
 
       await channel
-        .send({ components: [textCard(`${EMOJI.ALERT}  ${text}`, 0xfed53c)], flags: MessageFlags.IsComponentsV2, allowedMentions: config.pingable ? { parse: ['users', 'roles'] } : { parse: [] } })
+        .send({ content: `${EMOJI.ALERT}  ${text}`, allowedMentions: config.pingable ? { parse: ['users', 'roles'] } : { parse: [] } })
         .catch((err) => logger.error('Bump reminder send failed:', err));
 
       if (config.autolock) {
