@@ -1,5 +1,7 @@
 const { Events, EmbedBuilder } = require('discord.js');
 const arDb = require('../db/autoResponders');
+const { getTemplate } = require('../db/embedTemplates');
+const { build } = require('../utils/embedBuilder');
 const { resolve } = require('../utils/embedVariables');
 const logger = require('../utils/logger');
 
@@ -40,15 +42,23 @@ module.exports = {
         if (ar.channel_ids.length && !ar.channel_ids.includes(message.channel.id)) continue;
         if (!matches(ar, message.content)) continue;
 
-        const text = await resolve(ar.reply, ctx);
         let payload;
-        if (ar.reply_type === 'embed') {
+        if (ar.embed_template) {
+          const doc = await getTemplate(message.guild.id, ar.embed_template);
+          if (doc) {
+            payload = await build(doc.data, ctx);
+          } else {
+            logger.warn(`Autoresponder ${ar.ar_id}: embed template "${ar.embed_template}" not found, falling back to plain text.`);
+            payload = { content: await resolve(ar.reply, ctx) };
+          }
+        } else if (ar.reply_type === 'embed') {
+          const text = await resolve(ar.reply, ctx);
           const embed = new EmbedBuilder().setColor(ar.embed_color ?? 0x8399ff).setDescription(text);
           if (ar.embed_title) embed.setTitle(await resolve(ar.embed_title, ctx));
           if (ar.embed_footer) embed.setFooter({ text: await resolve(ar.embed_footer, ctx) });
           payload = { embeds: [embed] };
         } else {
-          payload = { content: text };
+          payload = { content: await resolve(ar.reply, ctx) };
         }
 
         await message.channel.send(payload).catch((err) => logger.warn(`Autoresponder ${ar.ar_id} send failed:`, err.message));

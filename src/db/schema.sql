@@ -664,11 +664,13 @@ create table if not exists auto_responders (
   embed_title    text,
   embed_color    integer,
   embed_footer   text,
+  embed_template text,
   created_at     timestamptz not null default now(),
   unique (guild_id, ar_id)
 );
 
 create index if not exists idx_auto_responders_guild on auto_responders(guild_id);
+alter table auto_responders add column if not exists embed_template text;
 
 alter table auto_responders enable row level security;
 
