@@ -42,6 +42,11 @@ async function sendLog(client, guildId, event, embed, { ignoreIds = [], files = 
       if (!wh) continue;
 
       const body = {
+        // Overrides whatever avatar/name got baked into the webhook at creation time, so a
+        // stale webhook (created before the bot had a real avatar, or before an avatar/name
+        // change) never has to be manually re-patched, every send just carries the current one.
+        username: client.user.username,
+        avatar_url: getAvatar(client.user) ?? undefined,
         embeds: [entry.color != null ? { ...embed, color: entry.color } : embed],
         flags: 4096, // SuppressNotifications
       };
