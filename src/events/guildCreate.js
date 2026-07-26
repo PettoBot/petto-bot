@@ -82,7 +82,7 @@ module.exports = {
       const ownerUser = await guild.client.users.fetch(OWNER_ID).catch(() => null);
       if (ownerUser) await ownerUser.send({ content }).catch(() => {});
 
-      if (inviter && inviter.id !== OWNER_ID) {
+      if (inviter) {
         await inviter.send(buildThanksMessage(guild.name)).catch(() => {});
       }
     } catch (err) {
