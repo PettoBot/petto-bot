@@ -1,4 +1,5 @@
-const { Events, AuditLogEvent } = require('discord.js');
+const { Events, AuditLogEvent, ContainerBuilder, TextDisplayBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
+const { EMOJI } = require('../utils/emojis');
 const logger = require('../utils/logger');
 
 // Where join notifications go. Hardcoded on purpose (same convention as the team
@@ -6,6 +7,25 @@ const logger = require('../utils/logger');
 // something that should need its own env var on every host.
 const LOG_CHANNEL_ID = '1480736317787607090';
 const OWNER_ID = '293504726505357312';
+
+/** Public-facing thank-you sent to whoever added the bot, no internal server data in it. */
+function buildThanksMessage(guildName) {
+  const container = new ContainerBuilder()
+    .setAccentColor(0x8399ff)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`${EMOJI.STAR} **Thanks for adding Petto to ${guildName}!**`),
+      new TextDisplayBuilder().setContent(
+        "Run `/help` in the server to see every command, or set everything up from a browser instead with the dashboard.",
+      ),
+    );
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setLabel('Website').setStyle(ButtonStyle.Link).setURL('https://petto.sbs'),
+    new ButtonBuilder().setLabel('Dashboard').setStyle(ButtonStyle.Link).setURL('https://petto.sbs/dash'),
+    new ButtonBuilder().setLabel('Docs').setStyle(ButtonStyle.Link).setURL('https://wiki.petto.sbs'),
+    new ButtonBuilder().setLabel('Support server').setStyle(ButtonStyle.Link).setURL('https://petto.sbs/support'),
+  );
+  return { components: [container, row], flags: MessageFlags.IsComponentsV2 };
+}
 
 async function findInviter(guild) {
   try {
@@ -63,7 +83,7 @@ module.exports = {
       if (ownerUser) await ownerUser.send({ content }).catch(() => {});
 
       if (inviter && inviter.id !== OWNER_ID) {
-        await inviter.send({ content }).catch(() => {});
+        await inviter.send(buildThanksMessage(guild.name)).catch(() => {});
       }
     } catch (err) {
       logger.error(`guildCreate join notification failed for guild ${guild.id}:`, err);
