@@ -3,6 +3,7 @@ const { ensureGuild } = require('../db/guilds');
 const { buildInteractionFromMessage } = require('../handlers/prefixInteraction');
 const { getRemainingCooldown } = require('../utils/cooldown');
 const disabledDb = require('../db/disabledCommands');
+const permissionsDb = require('../db/permissions');
 const customCommandsDb = require('../db/customCommands');
 const { getTemplate } = require('../db/embedTemplates');
 const { build } = require('../utils/embedBuilder');
@@ -109,6 +110,16 @@ module.exports = {
     if (!checkDefaultPermission(command.data.toJSON(), message.member)) {
       await message.reply("You don't have permission to use that command.").catch(() => {});
       return;
+    }
+
+    try {
+      const allowed = await permissionsDb.hasCommandPermission(message.guild.id, canonicalName, message.member);
+      if (!allowed) {
+        await message.reply("You don't have the required permission level to use this command.").catch(() => {});
+        return;
+      }
+    } catch (err) {
+      logger.error('Error checking custom command permission level:', err);
     }
 
     let interaction;

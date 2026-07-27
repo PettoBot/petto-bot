@@ -1076,3 +1076,57 @@ create index if not exists idx_bulk_role_jobs_guild on bulk_role_jobs(guild_id);
 create index if not exists idx_bulk_role_jobs_active on bulk_role_jobs(guild_id) where status in ('pending', 'running');
 
 alter table bulk_role_jobs enable row level security;
+
+-- Custom numeric authorization system (0-100), layered on top of Discord's own permissions,
+-- not a replacement for them. A "group" is a named bucket of users and/or roles sharing one
+-- level. A member's effective level is the highest level among every group they belong to
+-- (directly as a user, or via any of their roles), falling back to the guild's base/@everyone
+-- group. Server owner and anyone with Administrator always bypass this entirely (checked in
+-- code, not stored here) so a misconfigured level can never lock out the people who can fix it.
+create table if not exists permission_groups (
+  id         bigserial primary key,
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  name       text not null,
+  level      integer not null default 0 check (level between 0 and 100),
+  is_base    boolean not null default false,
+  created_at timestamptz not null default now(),
+  unique (guild_id, name)
+);
+create index if not exists idx_permission_groups_guild on permission_groups(guild_id);
+alter table permission_groups enable row level security;
+
+create table if not exists permission_group_members (
+  id           bigserial primary key,
+  group_id     bigint not null references permission_groups(id) on delete cascade,
+  subject_type text not null check (subject_type in ('user', 'role')),
+  subject_id   text not null,
+  unique (group_id, subject_type, subject_id)
+);
+create index if not exists idx_permission_group_members_group on permission_group_members(group_id);
+alter table permission_group_members enable row level security;
+
+-- Required level to run a command, per guild. Commands with no row here default to level 0
+-- (open to everyone, same as today, this feature is purely opt-in).
+create table if not exists command_permission_levels (
+  guild_id       text not null references guilds(guild_id) on delete cascade,
+  command_name   text not null,
+  required_level integer not null default 0 check (required_level between 0 and 100),
+  updated_at     timestamptz not null default now(),
+  primary key (guild_id, command_name)
+);
+alter table command_permission_levels enable row level security;
+
+-- Who changed what in the custom permission system, and when. Nothing enforces anything off
+-- this table, it's pure accountability so multiple staff editing levels can see each other's
+-- history instead of silently overwriting one another.
+create table if not exists permission_audit_log (
+  id          bigserial primary key,
+  guild_id    text not null references guilds(guild_id) on delete cascade,
+  actor_id    text not null,
+  actor_name  text not null,
+  action      text not null,
+  summary     text not null,
+  created_at  timestamptz not null default now()
+);
+create index if not exists idx_permission_audit_log_guild on permission_audit_log(guild_id, created_at desc);
+alter table permission_audit_log enable row level security;
