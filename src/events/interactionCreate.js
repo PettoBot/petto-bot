@@ -10,6 +10,7 @@ const {
   handleRatingButton: handleTicketRatingButton,
 } = require('../interactions/ticketControls');
 const { handleButton: handleGiveawayButton } = require('../interactions/giveawayButton');
+const permissionsDb = require('../db/permissions');
 const logger = require('../utils/logger');
 
 const DEFAULT_COOLDOWN_MS = 3000;
@@ -125,6 +126,20 @@ module.exports = {
         flags: MessageFlags.Ephemeral,
       });
       return;
+    }
+
+    if (interaction.guildId && interaction.member) {
+      try {
+        const allowed = await permissionsDb.hasCommandPermission(interaction.guildId, command.data.name, interaction.member);
+        if (!allowed) {
+          await interaction.reply({ content: "You don't have the required permission level to use this command.", flags: MessageFlags.Ephemeral });
+          return;
+        }
+      } catch (err) {
+        // Custom permission levels are opt-in on top of Discord's own permissions, if the check
+        // itself fails (DB hiccup) let the command through rather than break it for everyone.
+        logger.error('Error checking custom command permission level:', err);
+      }
     }
 
     try {
