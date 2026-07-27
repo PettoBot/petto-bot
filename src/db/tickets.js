@@ -36,6 +36,19 @@ async function deletePanel(guildId, panelId) {
   return data.length > 0;
 }
 
+/** Moving a panel to a new channel clears message_id, the old message isn't followed, a fresh one gets posted there. */
+async function movePanel(guildId, panelId, channelId) {
+  const { data, error } = await supabase.from('ticket_panels').update({ channel_id: channelId, message_id: null }).eq('guild_id', guildId).eq('id', panelId).select('*').single();
+  if (error) throw error;
+  return data;
+}
+
+async function updatePanel(guildId, panelId, patch) {
+  const { data, error } = await supabase.from('ticket_panels').update(patch).eq('guild_id', guildId).eq('id', panelId).select('*').single();
+  if (error) throw error;
+  return data;
+}
+
 // ── Categories ────────────────────────────────────────────────────────────
 
 function normalizeKey(key) {
@@ -178,6 +191,30 @@ async function reopenTicket(ticketId) {
   return data;
 }
 
+/** Bumps last_activity_at on every message in a ticket channel (used by the inactivity autoclose job), optionally also counting a staff reply. */
+async function touchActivity(ticketId, { staffMessage = false } = {}) {
+  const patch = { last_activity_at: new Date().toISOString() };
+  if (staffMessage) {
+    const { data: current, error: readError } = await supabase.from('tickets').select('staff_message_count').eq('id', ticketId).maybeSingle();
+    if (readError) throw readError;
+    patch.staff_message_count = (current?.staff_message_count ?? 0) + 1;
+  }
+  const { error } = await supabase.from('tickets').update(patch).eq('id', ticketId);
+  if (error) throw error;
+}
+
+async function listOpenTicketsByOpener(guildId, openerId) {
+  const { data, error } = await supabase.from('tickets').select('*').eq('guild_id', guildId).eq('opener_id', openerId).eq('status', 'open');
+  if (error) throw error;
+  return data;
+}
+
+async function listOpenTicketsForGuild(guildId) {
+  const { data, error } = await supabase.from('tickets').select('*').eq('guild_id', guildId).eq('status', 'open');
+  if (error) throw error;
+  return data;
+}
+
 module.exports = {
   normalizeKey,
   createPanel,
@@ -185,6 +222,8 @@ module.exports = {
   getPanel,
   listPanels,
   deletePanel,
+  movePanel,
+  updatePanel,
   createCategory,
   getCategoryByKey,
   getCategoryById,
@@ -202,4 +241,7 @@ module.exports = {
   setClaim,
   closeTicket,
   reopenTicket,
+  touchActivity,
+  listOpenTicketsByOpener,
+  listOpenTicketsForGuild,
 };

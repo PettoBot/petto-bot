@@ -67,12 +67,12 @@ function buildTicketMemberRow(ticketId) {
   );
 }
 
-/** Components V2 DM card sent to the ticket opener when their ticket is closed — server/closer/reason/channel fields plus the closer's avatar as a large thumbnail. */
-function buildTicketClosedCard({ ticket, guild, actor, reason, channel }) {
+/** Components V2 DM card sent to the ticket opener when their ticket is closed — server/closer/reason/channel fields plus the closer's avatar as a large thumbnail. `hideCloser` drops the "Closed by" line and swaps the thumbnail for the server icon, for servers that don't want individual staff called out. */
+function buildTicketClosedCard({ ticket, guild, actor, reason, channel, hideCloser = false }) {
   const lines = [
     `### ${EMOJI.DENY} Your ticket #${String(ticket.ticket_number).padStart(4, '0')} was closed`,
     `**Server:** ${guild.name}`,
-    `**Closed by:** ${actor}`,
+    ...(hideCloser ? [] : [`**Closed by:** ${actor}`]),
     `**Reason:** ${reason || 'No reason provided.'}`,
     `**Channel:** ${channel ? `<#${channel.id}>` : 'Unknown'}`,
     '',
@@ -80,11 +80,24 @@ function buildTicketClosedCard({ ticket, guild, actor, reason, channel }) {
   ];
 
   const text = new TextDisplayBuilder().setContent(lines.join('\n'));
-  const avatar = actor.displayAvatarURL({ extension: 'png', size: 256 });
+  const avatar = hideCloser ? guild.iconURL({ extension: 'png', size: 256 }) : actor.displayAvatarURL({ extension: 'png', size: 256 });
 
-  return new ContainerBuilder()
-    .setAccentColor(0xfe6465)
-    .addSectionComponents(new SectionBuilder().addTextDisplayComponents(text).setThumbnailAccessory(new ThumbnailBuilder().setURL(avatar)));
+  const container = new ContainerBuilder().setAccentColor(0xfe6465);
+  if (avatar) {
+    container.addSectionComponents(new SectionBuilder().addTextDisplayComponents(text).setThumbnailAccessory(new ThumbnailBuilder().setURL(avatar)));
+  } else {
+    container.addTextDisplayComponents(text);
+  }
+  return container;
+}
+
+/** Five star-rating buttons, sent alongside the closed-ticket DM when rating is enabled. */
+function buildRatingRow(ticketId) {
+  const row = new ActionRowBuilder();
+  for (let n = 1; n <= 5; n++) {
+    row.addComponents(new ButtonBuilder().setCustomId(`tk_rate::${ticketId}::${n}`).setLabel(`${n}⭐`).setStyle(ButtonStyle.Secondary));
+  }
+  return row;
 }
 
 /** A single Link-style button pointing at the web transcript viewer, or null if no link is available (web server not configured). Link buttons need no customId — clicking just navigates, no interaction fires. */
@@ -112,4 +125,5 @@ module.exports = {
   buildClosedControlRow,
   buildTranscriptLinkRow,
   buildTicketClosedCard,
+  buildRatingRow,
 };

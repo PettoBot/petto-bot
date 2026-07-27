@@ -2,6 +2,7 @@ const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = 
 const { ensureGuild } = require('../../db/guilds');
 const { getTemplate } = require('../../db/embedTemplates');
 const db = require('../../db/tickets');
+const settingsDb = require('../../db/ticketSettings');
 const actions = require('../../utils/ticketActions');
 const { buildPanelRows, buildPanelFallbackCard, buildTranscriptLinkRow } = require('../../utils/ticketCards');
 const { build } = require('../../utils/embedBuilder');
@@ -426,6 +427,13 @@ async function ticketActionCmd(interaction, sub) {
     await interaction.reply({ content: 'Only the ticket opener or staff can do that.', flags: MessageFlags.Ephemeral });
     return;
   }
+  if (sub === 'close' && !isStaff) {
+    const settings = await settingsDb.getSettings(interaction.guild.id);
+    if (settings.close_requires_support_role) {
+      await interaction.reply({ content: 'Only staff for this ticket can close it.', flags: MessageFlags.Ephemeral });
+      return;
+    }
+  }
 
   if (sub === 'close' && ticket.status === 'closed') {
     await interaction.reply({ content: 'This ticket is already closed.', flags: MessageFlags.Ephemeral });
@@ -494,6 +502,10 @@ async function ticketActionCmd(interaction, sub) {
       }
     }
   } catch (err) {
+    if (err.userFacing) {
+      await interaction.editReply({ content: err.message });
+      return;
+    }
     logger.error(`Ticket action "${sub}" failed:`, err);
     await interaction.editReply({ content: 'Something went wrong performing that action.' });
   }

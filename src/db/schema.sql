@@ -391,8 +391,52 @@ create index if not exists idx_tickets_guild_opener on tickets(guild_id, opener_
 
 -- `create table if not exists` above is a no-op against an already-migrated database.
 alter table tickets add column if not exists transcript_html text;
+alter table tickets add column if not exists staff_message_count integer not null default 0;
+alter table tickets add column if not exists last_activity_at timestamptz not null default now();
 
 alter table tickets enable row level security;
+
+-- Guild-wide ticket behavior (one row per guild), separate from per-category config in
+-- ticket_categories: claim rules, close rules, autoclose, and post-close ratings.
+create table if not exists ticket_settings (
+  guild_id                      text primary key references guilds(guild_id) on delete cascade,
+  claim_mode                    text not null default 'shared' check (claim_mode in ('shared', 'exclusive')),
+  ping_on_claim                 boolean not null default false,
+  roles_to_add_on_claim         text[] not null default '{}',
+  close_requires_support_role   boolean not null default false,
+  close_requires_reason         boolean not null default false,
+  hide_closing_user             boolean not null default false,
+  dm_user_on_close              boolean not null default true,
+  default_close_reason          text,
+  log_staff_message_counts      boolean not null default false,
+  autoclose_leave               boolean not null default false,
+  autoclose_inactivity_enabled  boolean not null default false,
+  autoclose_inactivity_hours    integer not null default 168,
+  rating_enabled                boolean not null default false,
+  rating_mode                   text not null default 'rating_only' check (rating_mode in ('rating_only', 'rating_comment')),
+  rating_log_channel_id         text,
+  opened_log_channel_id         text,
+  closed_log_channel_id         text,
+  blocked_role_ids              text[] not null default '{}',
+  updated_at                    timestamptz not null default now()
+);
+
+alter table ticket_settings enable row level security;
+
+create table if not exists ticket_ratings (
+  id         bigserial primary key,
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  ticket_id  bigint not null references tickets(id) on delete cascade,
+  user_id    text not null,
+  rating     integer not null check (rating between 1 and 5),
+  comment    text,
+  created_at timestamptz not null default now(),
+  unique (ticket_id)
+);
+
+create index if not exists idx_ticket_ratings_guild on ticket_ratings(guild_id);
+
+alter table ticket_ratings enable row level security;
 
 -- ---------------------------------------------------------------------------
 -- member_events_config: welcome / leave / boost announcement messages.

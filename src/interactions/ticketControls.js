@@ -1,5 +1,6 @@
 const { MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, UserSelectMenuBuilder } = require('discord.js');
 const db = require('../db/tickets');
+const settingsDb = require('../db/ticketSettings');
 const actions = require('../utils/ticketActions');
 const { buildTranscriptLinkRow } = require('../utils/ticketCards');
 const { EMOJI } = require('../utils/emojis');
@@ -23,6 +24,22 @@ async function requireStaff(interaction, category) {
 
 async function requireOpenerOrStaff(interaction, ticket, category) {
   if (interaction.user.id === ticket.opener_id || actions.isStaffForCategory(interaction.member, category)) return true;
+  await interaction.reply({ content: 'Only the ticket opener or staff can do that.', flags: MessageFlags.Ephemeral });
+  return false;
+}
+
+/** Same as requireOpenerOrStaff, except when the server's "close requires support role" setting is on, in which case the opener alone isn't enough. */
+async function requireCloseAllowed(interaction, ticket, category) {
+  const isStaff = actions.isStaffForCategory(interaction.member, category);
+  if (isStaff) return true;
+
+  const settings = await settingsDb.getSettings(interaction.guild.id);
+  if (settings.close_requires_support_role) {
+    await interaction.reply({ content: 'Only staff for this ticket can close it.', flags: MessageFlags.Ephemeral });
+    return false;
+  }
+  if (interaction.user.id === ticket.opener_id) return true;
+
   await interaction.reply({ content: 'Only the ticket opener or staff can do that.', flags: MessageFlags.Ephemeral });
   return false;
 }
@@ -62,16 +79,24 @@ async function handleButton(interaction) {
       }
 
       case 'tk_close': {
-        if (!(await requireOpenerOrStaff(interaction, ticket, category))) return;
+        if (!(await requireCloseAllowed(interaction, ticket, category))) return;
         if (ticket.status === 'closed') {
           await interaction.reply({ content: 'This ticket is already closed.', flags: MessageFlags.Ephemeral });
           return;
         }
+        const settings = await settingsDb.getSettings(interaction.guild.id);
         const modal = new ModalBuilder()
           .setCustomId(`tk_closemodal::${ticket.id}`)
           .setTitle('Close Ticket')
           .addComponents(
-            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('reason').setLabel('Reason (optional)').setStyle(TextInputStyle.Paragraph).setRequired(false).setMaxLength(500)),
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder()
+                .setCustomId('reason')
+                .setLabel(settings.close_requires_reason ? 'Reason (required)' : 'Reason (optional)')
+                .setStyle(TextInputStyle.Paragraph)
+                .setRequired(settings.close_requires_reason)
+                .setMaxLength(500),
+            ),
           );
         await interaction.showModal(modal);
         return;
@@ -133,7 +158,7 @@ async function handleCloseModal(interaction) {
   if (!ctxData) return;
   const { ticket, category } = ctxData;
   if (String(ticket.id) !== ticketId) return;
-  if (!(await requireOpenerOrStaff(interaction, ticket, category))) return;
+  if (!(await requireCloseAllowed(interaction, ticket, category))) return;
 
   const reason = interaction.fields.getTextInputValue('reason');
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -142,8 +167,43 @@ async function handleCloseModal(interaction) {
     await actions.closeTicket({ guild: interaction.guild, client: interaction.client, channel: interaction.channel, ticket, actor: interaction.user, reason });
     await interaction.editReply({ content: `${EMOJI.DENY} Ticket closed.` });
   } catch (err) {
+    if (err.userFacing) {
+      await interaction.editReply({ content: err.message });
+      return;
+    }
     logger.error('Ticket close (modal) failed:', err);
     await interaction.editReply({ content: 'Something went wrong closing this ticket.' });
+  }
+}
+
+/** Rating-button click on the closed-ticket DM — customId `tk_rate::<ticketId>::<1-5>`. Only the ticket's own opener can rate it. */
+async function handleRatingButton(interaction) {
+  const [, ticketId, ratingRaw] = interaction.customId.split('::');
+  const rating = Number(ratingRaw);
+  const ticket = await db.getTicketById(Number(ticketId));
+  if (!ticket) {
+    await interaction.reply({ content: 'This ticket no longer exists.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (interaction.user.id !== ticket.opener_id) {
+    await interaction.reply({ content: "Only this ticket's opener can rate it.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  const guild = await interaction.client.guilds.fetch(ticket.guild_id).catch(() => null);
+  if (!guild) {
+    await interaction.reply({ content: 'Something went wrong recording your rating.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  try {
+    await actions.rateTicket({ guild, client: interaction.client, ticket, user: interaction.user, rating });
+    // Not interaction.update(): the original DM is Components V2 (card + this row), which can't mix
+    // with a plain `content` reply, easier to just send a fresh reply than rebuild the V2 tree minus this row.
+    await interaction.reply({ content: `${'⭐'.repeat(rating)} Thanks for the feedback!`, flags: MessageFlags.Ephemeral });
+  } catch (err) {
+    logger.error('Ticket rating failed:', err);
+    await interaction.reply({ content: 'Something went wrong recording your rating.', flags: MessageFlags.Ephemeral }).catch(() => {});
   }
 }
 
@@ -173,4 +233,4 @@ async function handleUserSelect(interaction) {
   }
 }
 
-module.exports = { handleButton, handleCloseModal, handleUserSelect };
+module.exports = { handleButton, handleCloseModal, handleUserSelect, handleRatingButton };

@@ -3,7 +3,12 @@ const { getRemainingCooldown } = require('../utils/cooldown');
 const { handleButton: handleEmbedPanelButton, handleModal: handleEmbedPanelModal } = require('../interactions/embedPanel');
 const { handleModal: handleReportModal } = require('../interactions/reportModal');
 const { handleButton: handleTicketPanelButton, handleSelect: handleTicketPanelSelect } = require('../interactions/ticketPanel');
-const { handleButton: handleTicketControlButton, handleCloseModal: handleTicketCloseModal, handleUserSelect: handleTicketUserSelect } = require('../interactions/ticketControls');
+const {
+  handleButton: handleTicketControlButton,
+  handleCloseModal: handleTicketCloseModal,
+  handleUserSelect: handleTicketUserSelect,
+  handleRatingButton: handleTicketRatingButton,
+} = require('../interactions/ticketControls');
 const { handleButton: handleGiveawayButton } = require('../interactions/giveawayButton');
 const logger = require('../utils/logger');
 
@@ -53,6 +58,17 @@ module.exports = {
         await handleTicketPanelSelect(interaction);
       } catch (err) {
         logger.error('Error handling ticket panel select:', err);
+      }
+      return;
+    }
+
+    // Rated from the closed-ticket DM, not the ticket channel itself, so it can't go through the
+    // generic tk_* handler below (that one resolves the ticket by interaction.channel.id).
+    if (interaction.isButton() && interaction.customId.startsWith('tk_rate::')) {
+      try {
+        await handleTicketRatingButton(interaction);
+      } catch (err) {
+        logger.error('Error handling ticket rating button:', err);
       }
       return;
     }

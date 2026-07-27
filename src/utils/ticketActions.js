@@ -1,11 +1,13 @@
 const { ChannelType, PermissionFlagsBits, MessageFlags, AttachmentBuilder } = require('discord.js');
 const db = require('../db/tickets');
+const settingsDb = require('../db/ticketSettings');
+const ratingsDb = require('../db/ticketRatings');
 const { getTemplate } = require('../db/embedTemplates');
 const { build } = require('./embedBuilder');
 const { formatTicketChannelName, sanitizeChannelName } = require('./ticketName');
 const { buildTranscript } = require('./ticketTranscript');
 const { createTranscriptToken } = require('./transcriptToken');
-const { buildTicketControlRow, buildTicketMemberRow, buildClosedControlRow, buildWelcomeFallbackCard, buildTranscriptLinkRow, buildTicketClosedCard } = require('./ticketCards');
+const { buildTicketControlRow, buildTicketMemberRow, buildClosedControlRow, buildWelcomeFallbackCard, buildTranscriptLinkRow, buildTicketClosedCard, buildRatingRow } = require('./ticketCards');
 const { textCard } = require('./caseCard');
 const { sendLog } = require('../logging/engine');
 const { EMOJI } = require('./emojis');
@@ -65,6 +67,16 @@ async function buildWelcomePayload({ category, guild, channel, opener, ticketId,
 
 /** Creates the ticket's private channel, DB row, and welcome message. Throws on failure (caller replies with the error). */
 async function openTicket({ guild, client, category, opener }) {
+  const settings = await settingsDb.getSettings(guild.id);
+  if (settings.blocked_role_ids.length > 0) {
+    const member = await guild.members.fetch(opener.id).catch(() => null);
+    if (member && settings.blocked_role_ids.some((id) => member.roles.cache.has(id))) {
+      const err = new Error("You're not allowed to open tickets in this server.");
+      err.userFacing = true;
+      throw err;
+    }
+  }
+
   const openCount = await db.countOpenTickets(guild.id, category.id, opener.id);
   if (openCount >= category.max_open_per_user) {
     const err = new Error(`You already have ${openCount} open ticket(s) in this category (limit ${category.max_open_per_user}). Close one before opening another.`);
@@ -106,11 +118,33 @@ async function openTicket({ guild, client, category, opener }) {
     timestamp: new Date().toISOString(),
   }).catch((err) => logger.error('Ticket log (open) failed:', err));
 
+  if (settings.opened_log_channel_id) {
+    const logChannel = await guild.channels.fetch(settings.opened_log_channel_id).catch(() => null);
+    if (logChannel) {
+      await logChannel
+        .send({ components: [textCard(`${EMOJI.APPROVE} Ticket #${ticket.ticket_number} (**${category.label}**) opened by <@${opener.id}>: <#${channel.id}>`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 })
+        .catch(() => {});
+    }
+  }
+
   return { ticket: { ...ticket, channel_id: channel.id }, channel };
 }
 
-async function claimTicket({ guild, client, ticket, actor }) {
+async function claimTicket({ guild, client, channel, ticket, actor }) {
+  const settings = await settingsDb.getSettings(guild.id);
   const updated = await db.setClaim(ticket.id, actor.id);
+
+  if (channel && settings.roles_to_add_on_claim.length > 0) {
+    for (const roleId of settings.roles_to_add_on_claim) {
+      await channel.permissionOverwrites.edit(roleId, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }).catch(() => {});
+    }
+  }
+  if (channel && settings.ping_on_claim) {
+    await channel
+      .send({ content: `<@${ticket.opener_id}> your ticket was claimed by <@${actor.id}>.`, allowedMentions: { users: [ticket.opener_id] } })
+      .catch(() => {});
+  }
+
   await sendLog(client, guild.id, 'tickets', {
     description: `${EMOJI.STAR} Ticket #${ticket.ticket_number} claimed by <@${actor.id}>.`,
     color: 0x8399ff,
@@ -168,6 +202,15 @@ async function postTranscript({ guild, client, channel, ticket }) {
 
 /** Closes (locks) a ticket: removes send access from the opener/added members, posts + delivers a transcript, marks it closed in the DB. */
 async function closeTicket({ guild, client, channel, ticket, actor, reason }) {
+  const settings = await settingsDb.getSettings(guild.id);
+
+  if (settings.close_requires_reason && !reason?.trim()) {
+    const err = new Error('A close reason is required in this server.');
+    err.userFacing = true;
+    throw err;
+  }
+  const finalReason = reason?.trim() || settings.default_close_reason || 'No reason provided.';
+
   const opener = await client.users.fetch(ticket.opener_id).catch(() => null);
 
   // Lock the channel — keep read access for everyone who had it, drop send access from non-staff.
@@ -178,11 +221,14 @@ async function closeTicket({ guild, client, channel, ticket, actor, reason }) {
     }
   }
 
-  const closed = await db.closeTicket(ticket.id, { closedBy: actor.id, reason });
+  const closed = await db.closeTicket(ticket.id, { closedBy: actor.id, reason: finalReason });
 
   const { html, messageCount, link } = await generateAndStoreTranscript({ guild, channel, ticket, opener });
   const fileBuffer = Buffer.from(html, 'utf8');
   const fileName = `ticket-${ticket.ticket_number}-transcript.html`;
+
+  const closedByLine = settings.hide_closing_user ? 'Closed by staff.' : `Closed by <@${actor.id}>.`;
+  const staffCountLine = settings.log_staff_message_counts ? `\n**Staff replies:** ${ticket.staff_message_count ?? 0}` : '';
 
   await sendLog(
     client,
@@ -190,7 +236,7 @@ async function closeTicket({ guild, client, channel, ticket, actor, reason }) {
     'tickets',
     {
       author: { name: `Ticket #${ticket.ticket_number} closed` },
-      description: `${EMOJI.DENY} Closed by <@${actor.id}>.\n**Reason:** ${reason || 'No reason provided.'}\n**Messages:** ${messageCount}${link ? `\n[View transcript online](${link})` : ''}`,
+      description: `${EMOJI.DENY} ${closedByLine}\n**Reason:** ${finalReason}\n**Messages:** ${messageCount}${staffCountLine}${link ? `\n[View transcript online](${link})` : ''}`,
       color: 0xfe6465,
       footer: { text: `Opened by ${opener?.username ?? ticket.opener_id}` },
       timestamp: new Date().toISOString(),
@@ -198,10 +244,22 @@ async function closeTicket({ guild, client, channel, ticket, actor, reason }) {
     { files: [{ data: fileBuffer, name: fileName }] },
   ).catch((err) => logger.error('Ticket log (close) failed:', err));
 
-  if (opener) {
+  if (settings.closed_log_channel_id) {
+    const logChannel = await guild.channels.fetch(settings.closed_log_channel_id).catch(() => null);
+    if (logChannel) {
+      const desc = `${EMOJI.DENY} Ticket #${ticket.ticket_number} closed. ${closedByLine}\n**Reason:** ${finalReason}\n**Messages:** ${messageCount}${staffCountLine}${link ? `\n[View transcript online](${link})` : ''}`;
+      await logChannel
+        .send({ components: [textCard(desc, 0xfe6465)], flags: MessageFlags.IsComponentsV2, files: [{ attachment: fileBuffer, name: fileName }] })
+        .catch(() => {});
+    }
+  }
+
+  if (opener && settings.dm_user_on_close) {
     const linkRow = buildTranscriptLinkRow(link);
-    const card = buildTicketClosedCard({ ticket, guild, actor, reason, channel });
-    const rows = linkRow ? [card, linkRow] : [card];
+    const card = buildTicketClosedCard({ ticket, guild, actor, reason: finalReason, channel, hideCloser: settings.hide_closing_user });
+    const rows = [card];
+    if (settings.rating_enabled) rows.push(buildRatingRow(ticket.id));
+    if (linkRow) rows.push(linkRow);
 
     // With a web link available, skip the raw .html attachment in the DM — Discord auto-previews
     // small text attachments as a syntax-highlighted code block, which looks noisy for an end user.
@@ -212,12 +270,31 @@ async function closeTicket({ guild, client, channel, ticket, actor, reason }) {
   }
 
   const closeCard = textCard(
-    [`${EMOJI.DENY}  **Ticket closed** by <@${actor.id}>.`, `**Reason:** ${reason || 'No reason provided.'}`, 'Staff can reopen or permanently delete this channel below.'].join('\n'),
+    [`${EMOJI.DENY}  **Ticket closed.** ${closedByLine}`, `**Reason:** ${finalReason}`, 'Staff can reopen or permanently delete this channel below.'].join('\n'),
     0xfe6465,
   );
   await channel.send({ components: [closeCard, buildClosedControlRow(ticket.id, link)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
 
   return closed;
+}
+
+/** Records a member's 1-5 star rating for a closed ticket (from the DM rating buttons), and best-effort logs it if a rating log channel is configured. */
+async function rateTicket({ guild, client, ticket, user, rating, comment }) {
+  await ratingsDb.addRating(guild.id, ticket.id, user.id, rating, comment);
+
+  const settings = await settingsDb.getSettings(guild.id);
+  if (settings.rating_log_channel_id) {
+    const logChannel = await guild.channels.fetch(settings.rating_log_channel_id).catch(() => null);
+    if (logChannel) {
+      const stars = '⭐'.repeat(rating) + '☆'.repeat(5 - rating);
+      await logChannel
+        .send({
+          components: [textCard(`Ticket #${ticket.ticket_number} rated ${stars} by <@${user.id}>.${comment ? `\n**Comment:** ${comment}` : ''}`, 0xfed53c)],
+          flags: MessageFlags.IsComponentsV2,
+        })
+        .catch(() => {});
+    }
+  }
 }
 
 async function reopenTicket({ guild, client, channel, ticket, actor }) {
@@ -301,6 +378,7 @@ module.exports = {
   claimTicket,
   unclaimTicket,
   closeTicket,
+  rateTicket,
   reopenTicket,
   deleteTicketChannel,
   addMember,
