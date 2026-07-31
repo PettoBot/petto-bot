@@ -75,11 +75,20 @@ module.exports = {
         // including any @role/@user typed straight into the reply text (e.g. "@staff").
         // Note: mentions inside an embed's description/title/footer never ping on Discord's side
         // regardless of allowedMentions — this only rescues plain-text content.
-        if (ar.ping_user) payload.content = `${message.author} ${payload.content ?? ''}`.trim();
         const { users, roles } = extractMentions(payload.content);
         const allowedMentions = { repliedUser: false, users, roles };
 
-        if (ar.reply_to_trigger && !ar.delete_trigger) {
+        // ping_user notifies via Discord's native reply indicator ("replying to @user") instead
+        // of stuffing an ugly "@name" in front of the reply text. That needs an actual reply,
+        // which is impossible once the trigger gets deleted — fall back to a plain mention then.
+        const canReply = !ar.delete_trigger;
+        if (ar.ping_user && !canReply) {
+          payload.content = `${message.author} ${payload.content ?? ''}`.trim();
+          allowedMentions.users = [...new Set([...allowedMentions.users, message.author.id])];
+        }
+
+        if ((ar.reply_to_trigger || (ar.ping_user && canReply)) && canReply) {
+          allowedMentions.repliedUser = ar.ping_user;
           await message.reply({ ...payload, allowedMentions }).catch((err) => logger.warn(`Autoresponder ${ar.ar_id} send failed:`, err.message));
         } else {
           await message.channel.send({ ...payload, allowedMentions }).catch((err) => logger.warn(`Autoresponder ${ar.ar_id} send failed:`, err.message));

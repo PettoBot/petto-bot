@@ -31,7 +31,7 @@ module.exports = {
         .addBooleanOption((o) => o.setName('embed').setDescription('Send the reply as an embed instead of plain text').setRequired(false))
         .addBooleanOption((o) => o.setName('delete_trigger').setDescription('Delete the triggering message').setRequired(false))
         .addBooleanOption((o) => o.setName('reply_to_message').setDescription('Reply directly to (quote) the triggering message instead of sending a new one').setRequired(false))
-        .addBooleanOption((o) => o.setName('ping_user').setDescription('Mention/ping the triggering user in the response').setRequired(false))
+        .addBooleanOption((o) => o.setName('ping_user').setDescription('Notify the triggering user (as a reply, no ugly @mention text stuffed in)').setRequired(false))
         .addStringOption((o) => o.setName('channels').setDescription('Restrict to these channels (space-separated mentions; default: all channels)').setRequired(false))
         .addStringOption((o) => o.setName('roles').setDescription('Only trigger for members with one of these roles (space-separated mentions; default: everyone)').setRequired(false)),
     )
