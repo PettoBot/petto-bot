@@ -5,6 +5,14 @@ const { build } = require('../utils/embedBuilder');
 const { resolve } = require('../utils/embedVariables');
 const logger = require('../utils/logger');
 
+/** Pulls role/user mentions typed into a resolved reply (e.g. "@staff") so they can be allow-listed. */
+function extractMentions(text) {
+  if (!text) return { users: [], roles: [] };
+  const users = [...new Set([...text.matchAll(/<@!?(\d+)>/g)].map((m) => m[1]))];
+  const roles = [...new Set([...text.matchAll(/<@&(\d+)>/g)].map((m) => m[1]))];
+  return { users, roles };
+}
+
 function matches(ar, content) {
   const lower = content.toLowerCase();
   const trigger = ar.trigger.toLowerCase();
@@ -63,12 +71,13 @@ module.exports = {
         }
 
         // A ping only actually notifies if the mention text is present AND allowedMentions opts
-        // the user back in — the bot's global default (allowedMentions.parse=[]) suppresses it.
-        const allowedMentions = { repliedUser: false };
-        if (ar.ping_user) {
-          payload.content = `${message.author} ${payload.content ?? ''}`.trim();
-          allowedMentions.users = [message.author.id];
-        }
+        // it back in — the bot's global default (allowedMentions.parse=[]) suppresses everything,
+        // including any @role/@user typed straight into the reply text (e.g. "@staff").
+        // Note: mentions inside an embed's description/title/footer never ping on Discord's side
+        // regardless of allowedMentions — this only rescues plain-text content.
+        if (ar.ping_user) payload.content = `${message.author} ${payload.content ?? ''}`.trim();
+        const { users, roles } = extractMentions(payload.content);
+        const allowedMentions = { repliedUser: false, users, roles };
 
         if (ar.reply_to_trigger && !ar.delete_trigger) {
           await message.reply({ ...payload, allowedMentions }).catch((err) => logger.warn(`Autoresponder ${ar.ar_id} send failed:`, err.message));
