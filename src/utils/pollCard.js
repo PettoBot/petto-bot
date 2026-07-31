@@ -1,4 +1,4 @@
-const { ContainerBuilder, TextDisplayBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { ContainerBuilder, TextDisplayBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MediaGalleryBuilder, MediaGalleryItemBuilder } = require('discord.js');
 
 const LETTERS = ['🇦', '🇧', '🇨', '🇩', '🇪', '🇫', '🇬', '🇭', '🇮', '🇯'];
 const BAR_LENGTH = 12;
@@ -23,6 +23,10 @@ function buildPollCard(poll, results) {
 
   const container = new ContainerBuilder().setAccentColor(poll.closed ? 0x8b8fa3 : 0x8399ff).addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
 
+  if (poll.image) {
+    container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(poll.image)));
+  }
+
   if (poll.closed) return { components: [container], rows: [] };
 
   const rows = [];
@@ -30,11 +34,11 @@ function buildPollCard(poll, results) {
     const row = new ActionRowBuilder();
     poll.options.slice(i, i + 5).forEach((opt, j) => {
       const idx = i + j;
-      row.addComponents(new ButtonBuilder().setCustomId(`pl_vote::${poll.id}::${idx}`).setLabel(`${idx + 1}`).setEmoji(LETTERS[idx]).setStyle(ButtonStyle.Secondary));
+      row.addComponents(new ButtonBuilder().setCustomId(`plv_vote::${poll.id}::${idx}`).setLabel(`${idx + 1}`).setEmoji(LETTERS[idx]).setStyle(ButtonStyle.Secondary));
     });
     rows.push(row);
   }
-  const closeRow = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`pl_close::${poll.id}`).setLabel('End poll').setStyle(ButtonStyle.Danger));
+  const closeRow = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`plv_close::${poll.id}`).setLabel('End poll').setStyle(ButtonStyle.Danger));
   rows.push(closeRow);
 
   return { components: [container], rows };

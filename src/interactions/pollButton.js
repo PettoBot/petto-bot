@@ -56,8 +56,8 @@ async function handleClose(interaction) {
 }
 
 async function handleButton(interaction) {
-  if (interaction.customId.startsWith('pl_vote::')) return handleVote(interaction);
-  if (interaction.customId.startsWith('pl_close::')) return handleClose(interaction);
+  if (interaction.customId.startsWith('plv_vote::')) return handleVote(interaction);
+  if (interaction.customId.startsWith('plv_close::')) return handleClose(interaction);
 }
 
 module.exports = { handleButton };

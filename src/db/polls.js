@@ -1,9 +1,9 @@
 const supabase = require('./supabase');
 
-async function createPoll({ guildId, channelId, messageId, creatorId, question, options, multi = false, endsAt = null }) {
+async function createPoll({ guildId, channelId, messageId, creatorId, question, options, image = null, multi = false, endsAt = null }) {
   const { data, error } = await supabase
     .from('polls')
-    .insert({ guild_id: guildId, channel_id: channelId, message_id: messageId, creator_id: creatorId, question, options, multi, ends_at: endsAt })
+    .insert({ guild_id: guildId, channel_id: channelId, message_id: messageId, creator_id: creatorId, question, options, image, multi, ends_at: endsAt })
     .select('*')
     .single();
   if (error) throw error;
