@@ -14,6 +14,7 @@ const {
 const { ensureGuild } = require('../db/guilds');
 const pollsDb = require('../db/polls');
 const { buildPollCard } = require('../utils/pollCard');
+const { textCard } = require('../utils/caseCard');
 const { ensureDraft, setDraft, deleteDraft } = require('../utils/pollDrafts');
 const { parseDuration, formatDuration } = require('../utils/duration');
 const { EMOJI } = require('../utils/emojis');
@@ -44,9 +45,12 @@ function buildRows(uid, draft) {
 
 /** Renders the panel message: a live preview of the poll-in-progress + edit buttons. */
 function renderPanel(uid, draft) {
-  const content = `${EMOJI.STAR} Building your poll. Click a button below to set that part, then **Start Poll** when ready.`;
-
-  const lines = [`### 📊 ${draft.question ?? '*No question set yet*'}`, ''];
+  const lines = [
+    `${EMOJI.STAR} Building your poll. Click a button below to set that part, then **Start Poll** when ready.`,
+    '',
+    `### 📊 ${draft.question ?? '*No question set yet*'}`,
+    '',
+  ];
   if (draft.options.length) {
     draft.options.forEach((opt, i) => lines.push(`${i + 1}. ${opt}`));
   } else {
@@ -59,7 +63,7 @@ function renderPanel(uid, draft) {
     container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(draft.image)));
   }
 
-  return { content, components: [container, ...buildRows(uid, draft)], flags: MessageFlags.IsComponentsV2 };
+  return { components: [container, ...buildRows(uid, draft)], flags: MessageFlags.IsComponentsV2 };
 }
 
 async function handleButton(interaction) {
@@ -80,7 +84,7 @@ async function handleButton(interaction) {
 
   if (type === 'pl_cancel') {
     deleteDraft(uid);
-    await interaction.update({ content: `${EMOJI.DENY} Poll cancelled.`, components: [], flags: MessageFlags.IsComponentsV2 });
+    await interaction.update({ components: [textCard(`${EMOJI.DENY} Poll cancelled.`, 0x8b8fa3)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -118,7 +122,7 @@ async function handleButton(interaction) {
     await message.edit({ components: [...final.components, ...final.rows], flags: MessageFlags.IsComponentsV2 });
 
     deleteDraft(uid);
-    await interaction.editReply({ content: `${EMOJI.APPROVE} Poll started!`, components: [], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE} Poll started!`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
