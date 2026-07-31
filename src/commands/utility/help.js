@@ -21,6 +21,7 @@ const CATEGORY_META = {
   config: { label: 'Configuration', icon: '⚙️' },
   utility: { label: 'Utility', icon: '🧰' },
   tickets: { label: 'Tickets', icon: '🎫' },
+  misc: { label: 'Misc', icon: '🧩' },
   other: { label: 'Other', icon: '📄' },
 };
 
