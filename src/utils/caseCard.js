@@ -4,6 +4,7 @@ const { TYPE_EMOJI } = require('./emojis');
 const COLORS = {
   ban: 0xfe6465,
   tempban: 0xfe6465,
+  softban: 0xfe6465,
   unban: 0xa5ea7a,
   kick: 0xfed53c,
   mute: 0xfed53c,

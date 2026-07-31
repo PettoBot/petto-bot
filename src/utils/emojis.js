@@ -22,6 +22,7 @@ const EMOJI = {
 const TYPE_EMOJI = {
   ban: EMOJI.HAMMER,
   tempban: EMOJI.HAMMER,
+  softban: EMOJI.HAMMER,
   unban: EMOJI.APPROVE,
   kick: EMOJI.HAMMER,
   mute: EMOJI.ALERT,

@@ -10,6 +10,7 @@ const {
   handleRatingButton: handleTicketRatingButton,
 } = require('../interactions/ticketControls');
 const { handleButton: handleGiveawayButton } = require('../interactions/giveawayButton');
+const { handleButton: handlePollButton } = require('../interactions/pollButton');
 const permissionsDb = require('../db/permissions');
 const logger = require('../utils/logger');
 
@@ -106,6 +107,15 @@ module.exports = {
         await handleGiveawayButton(interaction);
       } catch (err) {
         logger.error('Error handling giveaway button:', err);
+      }
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('pl_')) {
+      try {
+        await handlePollButton(interaction);
+      } catch (err) {
+        logger.error('Error handling poll button:', err);
       }
       return;
     }

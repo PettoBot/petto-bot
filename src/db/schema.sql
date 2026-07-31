@@ -41,7 +41,7 @@ create table if not exists mod_actions (
   case_number   integer not null,
   user_id       text not null,
   moderator_id  text not null,
-  type          text not null check (type in ('ban', 'unban', 'kick', 'mute', 'unmute', 'tempban', 'tempmute', 'warn')),
+  type          text not null check (type in ('ban', 'unban', 'kick', 'mute', 'unmute', 'tempban', 'tempmute', 'warn', 'softban')),
   reason        text,
   created_at    timestamptz not null default now(),
   expires_at    timestamptz,
@@ -50,10 +50,10 @@ create table if not exists mod_actions (
 );
 
 -- `create table if not exists` above is a no-op against an already-migrated database, so the
--- CHECK constraint (added here for tempban/tempmute) needs its own idempotent migration step.
+-- CHECK constraint (added here for tempban/tempmute/softban) needs its own idempotent migration step.
 alter table mod_actions drop constraint if exists mod_actions_type_check;
 alter table mod_actions add constraint mod_actions_type_check
-  check (type in ('ban', 'unban', 'kick', 'mute', 'unmute', 'tempban', 'tempmute', 'warn'));
+  check (type in ('ban', 'unban', 'kick', 'mute', 'unmute', 'tempban', 'tempmute', 'warn', 'softban'));
 
 create index if not exists idx_mod_actions_guild_user on mod_actions(guild_id, user_id);
 create index if not exists idx_mod_actions_guild_created on mod_actions(guild_id, created_at desc);
@@ -1151,3 +1151,31 @@ create table if not exists reputation (
 );
 create index if not exists idx_reputation_guild_points on reputation(guild_id, points desc);
 alter table reputation enable row level security;
+
+-- /poll: a button-voted poll. `options` is the ordered list of choice labels; a user's vote is
+-- their chosen index into that array. One row in poll_votes per (poll, user) so re-voting just
+-- changes their choice instead of stacking votes.
+create table if not exists polls (
+  id           bigserial primary key,
+  guild_id     text not null references guilds(guild_id) on delete cascade,
+  channel_id   text not null,
+  message_id   text not null,
+  creator_id   text not null,
+  question     text not null,
+  options      jsonb not null,
+  multi        boolean not null default false,
+  ends_at      timestamptz,
+  closed       boolean not null default false,
+  created_at   timestamptz not null default now()
+);
+create index if not exists idx_polls_message on polls(message_id);
+alter table polls enable row level security;
+
+create table if not exists poll_votes (
+  poll_id  bigint not null references polls(id) on delete cascade,
+  user_id  text not null,
+  choices  integer[] not null,
+  voted_at timestamptz not null default now(),
+  primary key (poll_id, user_id)
+);
+alter table poll_votes enable row level security;
