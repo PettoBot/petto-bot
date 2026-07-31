@@ -13,7 +13,7 @@ module.exports = {
     .setDescription('Start a poll members can vote on with buttons.')
     .setDMPermission(false)
     .addStringOption((opt) => opt.setName('question').setDescription('What are you asking?').setRequired(true))
-    .addStringOption((opt) => opt.setName('options').setDescription('Choices, separated by commas (2-10)').setRequired(true))
+    .addStringOption((opt) => opt.setName('options').setDescription('2-10 choices, separated by COMMAS. e.g: Pizza, Sushi, Tacos').setRequired(true))
     .addBooleanOption((opt) => opt.setName('multiple').setDescription('Allow voting for more than one option').setRequired(false))
     .addStringOption((opt) => opt.setName('duration').setDescription('Auto-close after this long, e.g. 1h, 30m, 1d').setRequired(false)),
   interactive: true,
@@ -26,7 +26,7 @@ module.exports = {
 
     const options = rawOptions.split(',').map((o) => o.trim()).filter(Boolean).slice(0, MAX_OPTIONS);
     if (options.length < 2) {
-      await interaction.reply({ content: 'Give at least 2 comma-separated options.', flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: "Separate your options with commas, e.g. `Pizza, Sushi, Tacos` — you gave me only 1.", flags: MessageFlags.Ephemeral });
       return;
     }
 
