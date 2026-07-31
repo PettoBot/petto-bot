@@ -11,6 +11,7 @@ const {
 } = require('../interactions/ticketControls');
 const { handleButton: handleGiveawayButton } = require('../interactions/giveawayButton');
 const { handleButton: handlePollButton } = require('../interactions/pollButton');
+const { handleButton: handlePollPanelButton, handleModal: handlePollPanelModal } = require('../interactions/pollPanel');
 const permissionsDb = require('../db/permissions');
 const logger = require('../utils/logger');
 
@@ -111,11 +112,29 @@ module.exports = {
       return;
     }
 
-    if (interaction.isButton() && interaction.customId.startsWith('pl_')) {
+    if (interaction.isButton() && interaction.customId.startsWith('plv_')) {
       try {
         await handlePollButton(interaction);
       } catch (err) {
         logger.error('Error handling poll button:', err);
+      }
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('pl_')) {
+      try {
+        await handlePollPanelButton(interaction);
+      } catch (err) {
+        logger.error('Error handling poll panel button:', err);
+      }
+      return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('plm_')) {
+      try {
+        await handlePollPanelModal(interaction);
+      } catch (err) {
+        logger.error('Error handling poll panel modal:', err);
       }
       return;
     }

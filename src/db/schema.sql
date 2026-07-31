@@ -1163,6 +1163,7 @@ create table if not exists polls (
   creator_id   text not null,
   question     text not null,
   options      jsonb not null,
+  image        text,
   multi        boolean not null default false,
   ends_at      timestamptz,
   closed       boolean not null default false,
@@ -1170,6 +1171,7 @@ create table if not exists polls (
 );
 create index if not exists idx_polls_message on polls(message_id);
 alter table polls enable row level security;
+alter table polls add column if not exists image text;
 
 create table if not exists poll_votes (
   poll_id  bigint not null references polls(id) on delete cascade,
