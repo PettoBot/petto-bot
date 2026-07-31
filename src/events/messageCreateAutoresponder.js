@@ -40,6 +40,7 @@ module.exports = {
 
       for (const ar of list) {
         if (ar.channel_ids.length && !ar.channel_ids.includes(message.channel.id)) continue;
+        if (ar.role_ids?.length && !ar.role_ids.some((roleId) => message.member.roles.cache.has(roleId))) continue;
         if (!matches(ar, message.content)) continue;
 
         let payload;
@@ -61,10 +62,18 @@ module.exports = {
           payload = { content: await resolve(ar.reply, ctx) };
         }
 
+        // A ping only actually notifies if the mention text is present AND allowedMentions opts
+        // the user back in — the bot's global default (allowedMentions.parse=[]) suppresses it.
+        const allowedMentions = { repliedUser: false };
+        if (ar.ping_user) {
+          payload.content = `${message.author} ${payload.content ?? ''}`.trim();
+          allowedMentions.users = [message.author.id];
+        }
+
         if (ar.reply_to_trigger && !ar.delete_trigger) {
-          await message.reply({ ...payload, allowedMentions: { repliedUser: false } }).catch((err) => logger.warn(`Autoresponder ${ar.ar_id} send failed:`, err.message));
+          await message.reply({ ...payload, allowedMentions }).catch((err) => logger.warn(`Autoresponder ${ar.ar_id} send failed:`, err.message));
         } else {
-          await message.channel.send(payload).catch((err) => logger.warn(`Autoresponder ${ar.ar_id} send failed:`, err.message));
+          await message.channel.send({ ...payload, allowedMentions }).catch((err) => logger.warn(`Autoresponder ${ar.ar_id} send failed:`, err.message));
         }
         if (ar.delete_trigger) await message.delete().catch(() => {});
       }
