@@ -61,7 +61,11 @@ module.exports = {
           payload = { content: await resolve(ar.reply, ctx) };
         }
 
-        await message.channel.send(payload).catch((err) => logger.warn(`Autoresponder ${ar.ar_id} send failed:`, err.message));
+        if (ar.reply_to_trigger && !ar.delete_trigger) {
+          await message.reply({ ...payload, allowedMentions: { repliedUser: false } }).catch((err) => logger.warn(`Autoresponder ${ar.ar_id} send failed:`, err.message));
+        } else {
+          await message.channel.send(payload).catch((err) => logger.warn(`Autoresponder ${ar.ar_id} send failed:`, err.message));
+        }
         if (ar.delete_trigger) await message.delete().catch(() => {});
       }
     } catch (err) {

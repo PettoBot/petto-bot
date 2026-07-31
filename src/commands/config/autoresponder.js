@@ -29,6 +29,7 @@ module.exports = {
         .addStringOption((o) => o.setName('mode').setDescription('Match mode (default contains)').setRequired(false).addChoices(...MODE_CHOICES))
         .addBooleanOption((o) => o.setName('embed').setDescription('Send the reply as an embed instead of plain text').setRequired(false))
         .addBooleanOption((o) => o.setName('delete_trigger').setDescription('Delete the triggering message').setRequired(false))
+        .addBooleanOption((o) => o.setName('reply_to_message').setDescription('Reply directly to (quote) the triggering message instead of sending a new one').setRequired(false))
         .addStringOption((o) => o.setName('channels').setDescription('Restrict to these channels (space-separated mentions; default: all channels)').setRequired(false)),
     )
     .addSubcommand((s) => s.setName('remove').setDescription('Remove an autoresponder by its trigger text.').addStringOption((o) => o.setName('trigger').setDescription('Trigger text').setRequired(true)))
@@ -40,6 +41,7 @@ module.exports = {
         .addStringOption((o) => o.setName('mode').setDescription('New match mode').setRequired(false).addChoices(...MODE_CHOICES))
         .addBooleanOption((o) => o.setName('embed').setDescription('New reply type').setRequired(false))
         .addBooleanOption((o) => o.setName('delete_trigger').setDescription('New delete-trigger setting').setRequired(false))
+        .addBooleanOption((o) => o.setName('reply_to_message').setDescription('New reply-to-trigger setting').setRequired(false))
         .addStringOption((o) => o.setName('reply').setDescription('New reply text').setRequired(false)),
     )
     .addSubcommand((s) => s.setName('list').setDescription('List all autoresponders.'))
@@ -90,6 +92,7 @@ async function addCmd(interaction) {
   const mode = interaction.options.getString('mode') ?? 'contains';
   const embed = interaction.options.getBoolean('embed') ?? false;
   const deleteTrigger = interaction.options.getBoolean('delete_trigger') ?? false;
+  const replyToMessage = interaction.options.getBoolean('reply_to_message') ?? false;
   const channelsInput = interaction.options.getString('channels');
 
   if (mode === 'regex') {
@@ -112,7 +115,7 @@ async function addCmd(interaction) {
 
   let ar;
   try {
-    ar = await arDb.create(interaction.guild.id, { trigger, reply, match_mode: mode, reply_type: embed ? 'embed' : 'text', delete_trigger: deleteTrigger, channel_ids: channelIds });
+    ar = await arDb.create(interaction.guild.id, { trigger, reply, match_mode: mode, reply_type: embed ? 'embed' : 'text', delete_trigger: deleteTrigger, reply_to_trigger: replyToMessage, channel_ids: channelIds });
   } catch (err) {
     await interaction.editReply({ components: [textCard(err.userFacing ? err.message : 'Failed to create autoresponder.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
@@ -120,7 +123,7 @@ async function addCmd(interaction) {
 
   const lines = [
     `${EMOJI.APPROVE}  Autoresponder \`${ar.ar_id}\` added.`,
-    `**Match:** ${modeTag(mode)}  ·  **Type:** ${embed ? 'Embed' : 'Text'}  ·  **Delete trigger:** ${deleteTrigger ? 'Yes' : 'No'}`,
+    `**Match:** ${modeTag(mode)}  ·  **Type:** ${embed ? 'Embed' : 'Text'}  ·  **Delete trigger:** ${deleteTrigger ? 'Yes' : 'No'}  ·  **Reply to message:** ${replyToMessage ? 'Yes' : 'No'}`,
     `**Channels:** ${channelIds.length ? channelIds.map((id) => `<#${id}>`).join(' ') : 'All channels'}`,
     `**Trigger:** ${trigger}`,
     `**Reply:** ${reply.length > 300 ? `${reply.slice(0, 300)}…` : reply}`,
@@ -141,9 +144,10 @@ async function editCmd(interaction) {
   const mode = interaction.options.getString('mode');
   const embed = interaction.options.getBoolean('embed');
   const deleteTrigger = interaction.options.getBoolean('delete_trigger');
+  const replyToMessage = interaction.options.getBoolean('reply_to_message');
   const reply = interaction.options.getString('reply');
 
-  if (!mode && embed == null && deleteTrigger == null && !reply) {
+  if (!mode && embed == null && deleteTrigger == null && replyToMessage == null && !reply) {
     await interaction.reply({ content: 'Provide at least one field to change.', flags: MessageFlags.Ephemeral });
     return;
   }
@@ -152,6 +156,7 @@ async function editCmd(interaction) {
   if (mode) patch.match_mode = mode;
   if (embed != null) patch.reply_type = embed ? 'embed' : 'text';
   if (deleteTrigger != null) patch.delete_trigger = deleteTrigger;
+  if (replyToMessage != null) patch.reply_to_trigger = replyToMessage;
   if (reply) patch.reply = reply;
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
@@ -184,7 +189,7 @@ async function showCmd(interaction) {
 
   const lines = [
     `### Autoresponder \`${ar.ar_id}\``,
-    `**Match:** ${modeTag(ar.match_mode)}  ·  **Type:** ${ar.reply_type === 'embed' ? 'Embed' : 'Text'}  ·  **Delete trigger:** ${ar.delete_trigger ? 'Yes' : 'No'}`,
+    `**Match:** ${modeTag(ar.match_mode)}  ·  **Type:** ${ar.reply_type === 'embed' ? 'Embed' : 'Text'}  ·  **Delete trigger:** ${ar.delete_trigger ? 'Yes' : 'No'}  ·  **Reply to message:** ${ar.reply_to_trigger ? 'Yes' : 'No'}`,
     `**Channels:** ${ar.channel_ids.length ? ar.channel_ids.map((id2) => `<#${id2}>`).join(' ') : 'All channels'}`,
     `**Trigger:** ${ar.trigger}`,
     `**Reply:** ${ar.reply}`,
