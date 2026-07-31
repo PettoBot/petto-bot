@@ -715,6 +715,7 @@ create table if not exists auto_responders (
 
 create index if not exists idx_auto_responders_guild on auto_responders(guild_id);
 alter table auto_responders add column if not exists embed_template text;
+alter table auto_responders add column if not exists reply_to_trigger boolean not null default false;
 
 alter table auto_responders enable row level security;
 
