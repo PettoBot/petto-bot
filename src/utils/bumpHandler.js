@@ -1,6 +1,5 @@
 const { upsertConfig, getConfigByChannel, getDueReminders } = require('../db/bumpReminders');
 const { resolve } = require('./embedVariables');
-const { EMOJI } = require('./emojis');
 const logger = require('./logger');
 
 const DISBOARD_ID = '302050872383242240';
@@ -57,7 +56,7 @@ async function checkBumpReminders(client) {
       const text = await applyBumpVars(config.message, { guild, channel, bumper, nextBumpAt: null });
 
       await channel
-        .send({ content: `${EMOJI.ALERT}  ${text}`, allowedMentions: config.pingable ? { parse: ['users', 'roles'] } : { parse: [] } })
+        .send({ content: text, allowedMentions: config.pingable ? { parse: ['users', 'roles'] } : { parse: [] } })
         .catch((err) => logger.error('Bump reminder send failed:', err));
 
       if (config.autolock) {
