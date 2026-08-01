@@ -11,6 +11,7 @@ function fmtTime(ms) {
 }
 
 module.exports = {
+  aliases: ['sp'],
   data: new SlashCommandBuilder()
     .setName('spotify')
     .setDescription('Spotify commands.')
@@ -24,7 +25,12 @@ module.exports = {
 
   async execute(interaction) {
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
-    const target = interaction.options.getMember('user') ?? interaction.member;
+    const targetUser = interaction.options.getUser('user') ?? interaction.user;
+    const target = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
+    if (!target) {
+      await interaction.editReply({ components: [textCard('That user is not a member of this server.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      return;
+    }
 
     const activity = target.presence?.activities?.find((a) => a.name === 'Spotify' && a.syncId);
     if (!activity) {
