@@ -79,7 +79,9 @@ function flattenEntries(json) {
 // Discord's ```ansi code blocks support a subset of ANSI SGR color codes — used to match bli's
 // syntax highlighting: green labels, cyan command path, pink parameters, orange defaults.
 const ESC = String.fromCharCode(27);
-const ANSI = { green: `${ESC}[32m`, cyan: `${ESC}[36m`, pink: `${ESC}[35m`, yellow: `${ESC}[33m`, reset: `${ESC}[0m` };
+// The bold ("1;") variants render noticeably brighter/more saturated in Discord's client than
+// the plain color codes, which come out muddy and low-contrast on the dark theme.
+const ANSI = { green: `${ESC}[1;32m`, cyan: `${ESC}[1;36m`, pink: `${ESC}[1;35m`, yellow: `${ESC}[1;33m`, reset: `${ESC}[0m` };
 
 function buildSyntax(prefix, name, entry) {
   const parts = [`${prefix}${name}`, ...entry.path];
