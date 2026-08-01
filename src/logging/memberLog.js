@@ -1,5 +1,11 @@
 const { sendLog, getAvatar, fetchMod, AuditLogEvent } = require('./engine');
 
+// Discord's gateway sometimes fires USER_UPDATE twice in a row for the same real change (the
+// CDN avatar hash and the user's `avatar` field don't always land in the same event) — this
+// dedupes against that so the "Avatar Changed"/"Username Changed" log doesn't get double-sent.
+const recentUserUpdates = new Map(); // userId -> `${avatarURL}:${username}`
+const RECENT_UPDATE_TTL_MS = 10_000;
+
 // Note: the legacy bot enriched this with "invited by X" via a separate invite-tracking
 // subsystem (handlers/inviteTracker.js + InviteStat model). That's a distinct feature from
 // logging and wasn't ported — this keeps the core join log (account age, member count).
@@ -110,6 +116,13 @@ async function handleUserUpdate(oldUser, newUser, client) {
   const avatarChanged = oldUser.displayAvatarURL() !== newUser.displayAvatarURL();
   const usernameChanged = oldUser.username !== newUser.username;
   if (!avatarChanged && !usernameChanged) return;
+
+  const fingerprint = `${newUser.displayAvatarURL()}:${newUser.username}`;
+  if (recentUserUpdates.get(newUser.id) === fingerprint) return;
+  recentUserUpdates.set(newUser.id, fingerprint);
+  setTimeout(() => {
+    if (recentUserUpdates.get(newUser.id) === fingerprint) recentUserUpdates.delete(newUser.id);
+  }, RECENT_UPDATE_TTL_MS);
 
   for (const guild of client.guilds.cache.values()) {
     const inGuild = guild.members.cache.has(newUser.id) || (await guild.members.fetch(newUser.id).then(() => true).catch(() => false));
