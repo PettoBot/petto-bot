@@ -147,8 +147,9 @@ function mainView(client, prefix) {
 
   const container = new ContainerBuilder()
     .addSectionComponents(section)
-    .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(new TextDisplayBuilder().setContent('You can also select a category below.'))
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent('Select a category to browse commands.'))
     .addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('help_cat').setPlaceholder('Select a category').addOptions(options)));
 
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
@@ -158,31 +159,49 @@ function categoryView(client, categoryId) {
   const meta = CATEGORY_META[categoryId] ?? CATEGORY_META.other;
   const commands = (groupByCategory(getChatInputCommands(client)).get(categoryId) ?? []).sort((a, b) => a.data.name.localeCompare(b.data.name));
 
-  const text = `### ${meta.icon} ${meta.label}\nSelect a command to see its usage.`;
+  const section = new SectionBuilder()
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`### ${meta.icon} ${meta.label}`),
+      new TextDisplayBuilder().setContent('> Browse commands in this category.'),
+    )
+    .setThumbnailAccessory(new ThumbnailBuilder().setURL(client.user.displayAvatarURL({ size: 256 })));
+
   const options = commands.slice(0, 25).map((cmd) => new StringSelectMenuOptionBuilder().setLabel(cmd.data.name).setValue(cmd.data.name).setDescription((cmd.data.description ?? 'No description.').slice(0, 100)));
 
   const container = new ContainerBuilder()
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(text))
+    .addSectionComponents(section)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent('-# Press Return to Help Menu to go back.'))
     .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('help_back').setLabel('Return to Help Menu').setStyle(ButtonStyle.Secondary)))
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent('Select a command to view details.'))
     .addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('help_cmd').setPlaceholder('Select a command').addOptions(options)));
 
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
-function subcommandView(command, categoryId) {
+function subcommandView(client, command, categoryId) {
   const json = command.data.toJSON();
   const entries = flattenEntries(json);
   const meta = CATEGORY_META[categoryId] ?? CATEGORY_META.other;
 
-  const text = `### ${json.name}\n> ${json.description || 'No description.'}\n\n-# Select a subcommand to view details.`;
+  const section = new SectionBuilder()
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`### ${json.name}`),
+      new TextDisplayBuilder().setContent(`> ${json.description || 'No description.'}`),
+    )
+    .setThumbnailAccessory(new ThumbnailBuilder().setURL(client.user.displayAvatarURL({ size: 256 })));
+
   const options = entries.slice(0, 25).map((e) => {
     const label = e.path.join(' ') || json.name;
     return new StringSelectMenuOptionBuilder().setLabel(label).setValue(e.path.join(' ')).setDescription((e.description ?? 'No description.').slice(0, 100));
   });
 
   const container = new ContainerBuilder()
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(text))
+    .addSectionComponents(section)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# Press Return to ${meta.label} to go back.`))
     .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`help_cmdback:${categoryId}`).setLabel(`Return to ${meta.label}`).setStyle(ButtonStyle.Secondary)))
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent('Select a subcommand to view details.'))
     .addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('help_sub').setPlaceholder('Select a subcommand').addOptions(options)));
 
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
@@ -284,7 +303,7 @@ module.exports = {
         if (entries.length === 1 && !entries[0].path.length) {
           await i.update(detailView(prefix, command, entries[0], currentCategory));
         } else {
-          await i.update(subcommandView(command, currentCategory));
+          await i.update(subcommandView(client, command, currentCategory));
         }
         return;
       }
@@ -317,7 +336,7 @@ module.exports = {
           return;
         }
         currentCategory = i.customId.split(':')[1];
-        await i.update(subcommandView(currentCommand, currentCategory));
+        await i.update(subcommandView(client, currentCommand, currentCategory));
       }
     });
 
