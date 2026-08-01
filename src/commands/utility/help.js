@@ -276,7 +276,7 @@ module.exports = {
       const { command, entries } = findEntries(client, tokens);
 
       if (!command || !entries.length) {
-        await interaction.reply({ components: [textCard(`${EMOJI.DENY}  No command named \`${tokens[0]}\` found. Use \`${prefix}help\` to browse.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+        await interaction.reply({ components: [textCard(`${EMOJI.WARNING}  No command named \`${tokens[0]}\` found. Use \`${prefix}help\` to browse.`, 0xfed53c)], flags: MessageFlags.IsComponentsV2 });
         return;
       }
 
