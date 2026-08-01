@@ -37,14 +37,24 @@ module.exports = {
         .setDescription('Bulk delete recent messages from this channel.')
         .addIntegerOption((opt) => opt.setName('amount').setDescription('How many messages to delete (1-100)').setRequired(true).setMinValue(1).setMaxValue(100))
         .addUserOption((opt) => opt.setName('user').setDescription('Only delete messages from this user').setRequired(false)),
-    ),
+    )
+    .addSubcommand((sub) => sub.setName('lock_all').setDescription('Lock every text channel the bot can manage.'))
+    .addSubcommand((sub) => sub.setName('unlock_all').setDescription('Unlock every text channel the bot can manage.'))
+    .addSubcommand((sub) => sub.setName('hide').setDescription('Hide a channel from @everyone (deny View Channel).').addChannelOption((opt) => opt.setName('channel').setDescription('Channel to hide (defaults to this one)').setRequired(false)))
+    .addSubcommand((sub) => sub.setName('unhide').setDescription('Restore visibility for a hidden channel.').addChannelOption((opt) => opt.setName('channel').setDescription('Channel to unhide (defaults to this one)').setRequired(false)))
+    .addSubcommand((sub) => sub.setName('moveall').setDescription('Move everyone from your voice channel to another.').addChannelOption((opt) => opt.setName('destination').setDescription('Destination voice channel').addChannelTypes(ChannelType.GuildVoice, ChannelType.GuildStageVoice).setRequired(true))),
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
     if (sub === 'lock') return lock(interaction);
     if (sub === 'unlock') return unlock(interaction);
     if (sub === 'slowmode') return slowmode(interaction);
-    return clear(interaction);
+    if (sub === 'clear') return clear(interaction);
+    if (sub === 'lock_all') return lockAll(interaction, true);
+    if (sub === 'unlock_all') return lockAll(interaction, false);
+    if (sub === 'hide') return hide(interaction, true);
+    if (sub === 'unhide') return hide(interaction, false);
+    return moveAll(interaction);
   },
 };
 
@@ -150,4 +160,86 @@ async function clear(interaction) {
     logger.error('Failed to bulk delete:', err);
     await interaction.editReply({ components: [textCard('I was unable to delete messages in this channel.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
   }
+}
+
+const LOCKABLE_TYPES = [ChannelType.GuildText, ChannelType.GuildAnnouncement, ChannelType.GuildForum];
+
+async function lockAll(interaction, locking) {
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+
+  const everyone = interaction.guild.roles.everyone;
+  const channels = interaction.guild.channels.cache.filter(
+    (c) => LOCKABLE_TYPES.includes(c.type) && c.permissionsFor(interaction.guild.members.me)?.has(PermissionFlagsBits.ManageChannels),
+  );
+
+  let count = 0;
+  for (const channel of channels.values()) {
+    try {
+      await channel.permissionOverwrites.edit(
+        everyone,
+        { SendMessages: locking ? false : null, SendMessagesInThreads: locking ? false : null },
+        { reason: `${locking ? 'Locked' : 'Unlocked'} all by ${interaction.user.tag}` },
+      );
+      count += 1;
+    } catch (err) {
+      logger.warn(`channel ${locking ? 'lock_all' : 'unlock_all'}: failed on ${channel.id}:`, err.message);
+    }
+  }
+
+  const verb = locking ? 'Locked' : 'Unlocked';
+  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  ${verb} **${count}** channel(s).`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+}
+
+async function hide(interaction, hiding) {
+  const channel = interaction.options.getChannel('channel') ?? interaction.channel;
+
+  if (!channel.permissionsFor(interaction.guild.members.me)?.has(PermissionFlagsBits.ManageChannels)) {
+    await interaction.reply({ content: 'I need the **Manage Channels** permission in that channel.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+
+  try {
+    await channel.permissionOverwrites.edit(
+      interaction.guild.roles.everyone,
+      { ViewChannel: hiding ? false : null },
+      { reason: `${hiding ? 'Hidden' : 'Unhidden'} by ${interaction.user.tag}` },
+    );
+  } catch (err) {
+    logger.error(`Failed to ${hiding ? 'hide' : 'unhide'} channel:`, err);
+    await interaction.editReply({ components: [textCard('I was unable to update permissions in that channel.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+
+  const text = hiding ? `${EMOJI.APPROVE}  ${channel} is now hidden from @everyone.` : `${EMOJI.APPROVE}  ${channel} is visible again.`;
+  await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+}
+
+async function moveAll(interaction) {
+  const destination = interaction.options.getChannel('destination', true);
+  const source = interaction.member.voice.channel;
+
+  if (!source) {
+    await interaction.reply({ content: "You're not in a voice channel.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (!destination.permissionsFor(interaction.guild.members.me)?.has(PermissionFlagsBits.MoveMembers)) {
+    await interaction.reply({ content: 'I need the **Move Members** permission.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+
+  let count = 0;
+  for (const member of source.members.values()) {
+    try {
+      await member.voice.setChannel(destination, `Moved by ${interaction.user.tag}`);
+      count += 1;
+    } catch (err) {
+      logger.warn(`channel moveall: failed to move ${member.id}:`, err.message);
+    }
+  }
+
+  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Moved **${count}** member(s) to ${destination}.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
