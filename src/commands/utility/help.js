@@ -76,25 +76,13 @@ function flattenEntries(json) {
   return entries;
 }
 
-// Discord's ```ansi code blocks support a subset of ANSI SGR color codes — used to match bli's
-// syntax highlighting: green labels, cyan command path, pink parameters, orange defaults.
-const ESC = String.fromCharCode(27);
-// The bold ("1;") variants render noticeably brighter/more saturated in Discord's client than
-// the plain color codes, which come out muddy and low-contrast on the dark theme.
-const ANSI = { green: `${ESC}[1;32m`, cyan: `${ESC}[1;36m`, pink: `${ESC}[1;35m`, yellow: `${ESC}[1;33m`, reset: `${ESC}[0m` };
-
+// bli doesn't hand-color the syntax block with ansi escapes — it just tags the code block
+// "Ruby" (and "lua" for the main menu's usage line) and lets Discord's own built-in syntax
+// highlighter do the coloring, same mechanism as any other language-tagged code block.
 function buildSyntax(prefix, name, entry) {
   const parts = [`${prefix}${name}`, ...entry.path];
   for (const opt of entry.options) parts.push(opt.required ? `<${opt.name}>` : `[${opt.name}]`);
   return parts.join(' ');
-}
-
-/** Same shape as buildSyntax, but colored to match bli's ansi-highlighted Syntax/Example lines. */
-function buildColoredSyntax(label, prefix, name, entry) {
-  const commandPart = [`${prefix}${name}`, ...entry.path].join(' ');
-  const paramParts = entry.options.map((opt) => (opt.required ? `<${opt.name}>` : `[${opt.name}]`));
-  const params = paramParts.map((p) => `${ANSI.pink}${p}${ANSI.reset}`).join(' ');
-  return `${ANSI.green}${label}:${ANSI.reset} ${ANSI.cyan}${commandPart}${ANSI.reset}${params ? ` ${params}` : ''}`;
 }
 
 function buildParams(entry) {
@@ -126,31 +114,25 @@ function findEntries(client, tokens) {
 function entryDetailCard(client, guild, prefix, command, entry) {
   const json = command.data.toJSON();
   const aliases = command.aliases?.length ? command.aliases.map((a) => `\`${prefix}${a}\``).join(', ') : 'No Aliases';
-  const syntaxLine = buildColoredSyntax('Syntax', prefix, json.name, entry);
-  const exampleLine = `${buildColoredSyntax('Example', prefix, json.name, entry)} (defaults: ${ANSI.yellow}None${ANSI.reset})`;
+  const syntax = buildSyntax(prefix, json.name, entry);
   const title = [json.name, ...entry.path].join(' ');
   const moduleLabel = (CATEGORY_META[command.category] ?? CATEGORY_META.other).label;
 
-  const section = new SectionBuilder()
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`**Command: ${title}**`),
-      new TextDisplayBuilder().setContent(`> ${entry.description || json.description || 'No description.'}`),
-    )
-    .setThumbnailAccessory(new ThumbnailBuilder().setURL(botAvatarURL(client, guild)));
-
-  const lines = [
+  const text = [
+    `### Command: ${title}`,
+    `> ${entry.description || json.description || 'No description.'}`,
+    '',
     `**Aliases:** ${aliases}  ·  **Parameters:** ${buildParams(entry)}  ·  **Extras:** ${describePermissions(json.default_member_permissions)}`,
     '',
-    '```ansi',
-    syntaxLine,
-    exampleLine,
-    '```',
+    `\`\`\`Ruby\nSyntax: ${syntax}\nExample: ${syntax} (defaults: None)\n\`\`\``,
     `-# Module: ${moduleLabel}  ·  Press Return to go back.`,
-  ];
+  ].join('\n');
 
-  return new ContainerBuilder()
-    .addSectionComponents(section)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
+  const section = new SectionBuilder()
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(text))
+    .setThumbnailAccessory(new ThumbnailBuilder().setURL(botAvatarURL(client, guild)));
+
+  return new ContainerBuilder().addSectionComponents(section);
 }
 
 function navRow(page, total, disabled = false) {
@@ -170,8 +152,11 @@ function mainView(client, guild, prefix) {
 
   const section = new SectionBuilder()
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`Use the command below to look up **${commands.length}** commands`),
-      new TextDisplayBuilder().setContent(`\`${prefix}help [category | command]\``),
+      new TextDisplayBuilder().setContent(
+        `**Use** the command below to look up **${commands.length}** commands\n` +
+          `\`\`\`lua\n${prefix}help [category | command]\n\`\`\`` +
+          `\n-# You can also select a category below.`,
+      ),
     )
     .setThumbnailAccessory(new ThumbnailBuilder().setURL(botAvatarURL(client, guild)));
 
@@ -182,9 +167,8 @@ function mainView(client, guild, prefix) {
 
   const container = new ContainerBuilder()
     .addSectionComponents(section)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent('You can also select a category below.'))
     .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent('Select a category to browse commands.'))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent('-# Select a category to browse commands.'))
     .addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('help_cat').setPlaceholder('Select a category').addOptions(options)));
 
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
@@ -196,8 +180,9 @@ function categoryView(client, guild, categoryId) {
 
   const section = new SectionBuilder()
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`### ${meta.icon} ${meta.label}`),
-      new TextDisplayBuilder().setContent('> Browse commands in this category.'),
+      new TextDisplayBuilder().setContent(
+        `### ${meta.icon} ${meta.label}\n> Browse commands in this category.\n\n-# Press **Return to Help Menu** to go back.`,
+      ),
     )
     .setThumbnailAccessory(new ThumbnailBuilder().setURL(botAvatarURL(client, guild)));
 
@@ -205,10 +190,9 @@ function categoryView(client, guild, categoryId) {
 
   const container = new ContainerBuilder()
     .addSectionComponents(section)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent('-# Press Return to Help Menu to go back.'))
     .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('help_back').setLabel('Return to Help Menu').setStyle(ButtonStyle.Secondary)))
     .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent('Select a command to view details.'))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent('-# Select a command to view details.'))
     .addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('help_cmd').setPlaceholder('Select a command').addOptions(options)));
 
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
@@ -221,8 +205,9 @@ function subcommandView(client, guild, command, categoryId) {
 
   const section = new SectionBuilder()
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`### ${json.name}`),
-      new TextDisplayBuilder().setContent(`> ${json.description || 'No description.'}`),
+      new TextDisplayBuilder().setContent(
+        `### ${json.name}\n> ${json.description || 'No description.'}\n\n-# Press **Return to ${meta.label}** to go back.`,
+      ),
     )
     .setThumbnailAccessory(new ThumbnailBuilder().setURL(botAvatarURL(client, guild)));
 
@@ -233,10 +218,9 @@ function subcommandView(client, guild, command, categoryId) {
 
   const container = new ContainerBuilder()
     .addSectionComponents(section)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# Press Return to ${meta.label} to go back.`))
     .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`help_cmdback:${categoryId}`).setLabel(`Return to ${meta.label}`).setStyle(ButtonStyle.Secondary)))
     .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent('Select a subcommand to view details.'))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent('-# Select a subcommand to view details.'))
     .addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('help_sub').setPlaceholder('Select a subcommand').addOptions(options)));
 
   return { components: [container], flags: MessageFlags.IsComponentsV2 };

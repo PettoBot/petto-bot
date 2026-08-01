@@ -13,6 +13,7 @@ const { EMOJI } = require('../utils/emojis');
 const logger = require('../utils/logger');
 
 const DEFAULT_COOLDOWN_MS = 3000;
+const UNKNOWN_COMMAND_DELETE_MS = 10_000;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const prefixCache = new Map(); // guildId -> { prefix, expiresAt }
 
@@ -91,9 +92,11 @@ module.exports = {
     if (!command || !command.data || (command.data.toJSON().type ?? 1) !== 1) {
       const handled = await runCustomCommand(message, canonicalName);
       if (!handled) {
-        await message
+        const warning = await message
           .reply({ components: [textCard(`${EMOJI.WARNING}  Unknown command \`${canonicalName}\`. Use \`${prefix}help\` to see all commands.`, 0xfed53c)], flags: MessageFlags.IsComponentsV2 })
-          .catch(() => {});
+          .catch(() => null);
+        // Matches bli: the "unknown command" nudge clears itself out instead of cluttering chat.
+        if (warning) setTimeout(() => warning.delete().catch(() => {}), UNKNOWN_COMMAND_DELETE_MS);
       }
       return;
     }
