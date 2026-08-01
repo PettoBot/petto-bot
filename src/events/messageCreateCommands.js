@@ -92,7 +92,7 @@ module.exports = {
       const handled = await runCustomCommand(message, canonicalName);
       if (!handled) {
         await message
-          .reply({ components: [textCard(`${EMOJI.DENY}  Unknown command \`${canonicalName}\`. Use \`${prefix}help\` to see all commands.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 })
+          .reply({ components: [textCard(`${EMOJI.WARNING}  Unknown command \`${canonicalName}\`. Use \`${prefix}help\` to see all commands.`, 0xfed53c)], flags: MessageFlags.IsComponentsV2 })
           .catch(() => {});
       }
       return;
