@@ -20,16 +20,18 @@ const { EMOJI } = require('../../utils/emojis');
 const TIMEOUT_MS = 120_000;
 
 const CATEGORY_META = {
-  moderation: { label: 'Moderation', icon: '🔨' },
-  info: { label: 'Info', icon: 'ℹ️' },
-  welcome: { label: 'Welcome', icon: '👋' },
-  automation: { label: 'Automation', icon: '🤖' },
-  leveling: { label: 'Leveling', icon: '📈' },
-  giveaways: { label: 'Giveaways', icon: '🎁' },
-  tickets: { label: 'Tickets', icon: '🎫' },
-  config: { label: 'Configuration', icon: '⚙️' },
-  utility: { label: 'Utility', icon: '🧰' },
-  misc: { label: 'Misc', icon: '🧩' },
+  moderation: { label: 'Moderation', icon: '<:pe_mod:1533209776862003313>' },
+  info: { label: 'Info', icon: '<:pe_info:1533209774370328800>' },
+  welcome: { label: 'Welcome', icon: '<:pe_welcome:1533211251705118875>' },
+  automation: { label: 'Automation', icon: '<:pe_auto:1533211330734194810>' },
+  leveling: { label: 'Leveling', icon: '<:pe_le:1533211745584156934>' },
+  giveaways: { label: 'Giveaways', icon: '<:pe_give:1533211659911303358>' },
+  tickets: { label: 'Tickets', icon: '<:pe_tickets:1533209775699922974>' },
+  config: { label: 'Configuration', icon: '<:pe_config:1533209778438934609>' },
+  // Placeholder mapping: this code was labeled "pe_info" again (likely a copy-paste rename
+  // slip when uploading) but the wrench glyph reads as utility — flagged for confirmation.
+  utility: { label: 'Utility', icon: '<:pe_info:1533209779751616676>' },
+  misc: { label: 'Misc', icon: '<:pe_misc:1533209781345587374>' },
   other: { label: 'Other', icon: '📄' },
 };
 
