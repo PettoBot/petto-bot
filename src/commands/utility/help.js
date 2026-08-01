@@ -333,7 +333,7 @@ module.exports = {
           await i.deferUpdate();
           return;
         }
-        await i.update(detailView(prefix, currentCommand, entry, currentCategory));
+        await i.update(detailView(client, prefix, currentCommand, entry, currentCategory));
         return;
       }
 
