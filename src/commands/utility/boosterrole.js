@@ -31,7 +31,7 @@ module.exports = {
         .addStringOption((o) => o.setName('hex2').setDescription('Second #RRGGBB for a gradient').setRequired(false)),
     )
     .addSubcommand((s) => s.setName('rename').setDescription('Rename your booster role. Requires boosting.').addStringOption((o) => o.setName('name').setDescription('New name').setRequired(true)))
-    .addSubcommand((s) => s.setName('icon').setDescription('Set your booster role icon. Requires boosting.').addStringOption((o) => o.setName('input').setDescription('Image URL, custom emoji, or sticker ID').setRequired(true)))
+    .addSubcommand((s) => s.setName('icon').setDescription('Set your booster role icon. Requires boosting.').addStringOption((o) => o.setName('input').setDescription('Image URL, custom emoji, or sticker ID (or just attach an image)').setRequired(false)))
     .addSubcommand((s) => s.setName('random').setDescription('Set your booster role to a random color. Requires boosting.'))
     .addSubcommand((s) => s.setName('remove').setDescription('Delete your booster role.'))
     .addSubcommand((s) => s.setName('share').setDescription('Share your booster role with another member.').addUserOption((o) => o.setName('user').setDescription('Member to share with').setRequired(true)))
@@ -52,7 +52,7 @@ module.exports = {
             .addStringOption((o) => o.setName('name').setDescription('Role name').setRequired(false)),
         )
         .addSubcommand((s) => s.setName('rename').setDescription('Rename a member\'s booster role.').addUserOption((o) => o.setName('user').setDescription('Member').setRequired(true)).addStringOption((o) => o.setName('name').setDescription('New name').setRequired(true)))
-        .addSubcommand((s) => s.setName('icon').setDescription('Set a member\'s booster role icon.').addUserOption((o) => o.setName('user').setDescription('Member').setRequired(true)).addStringOption((o) => o.setName('input').setDescription('Image URL, custom emoji, or sticker ID').setRequired(true)))
+        .addSubcommand((s) => s.setName('icon').setDescription('Set a member\'s booster role icon.').addUserOption((o) => o.setName('user').setDescription('Member').setRequired(true)).addStringOption((o) => o.setName('input').setDescription('Image URL, custom emoji, or sticker ID (or just attach an image)').setRequired(false)))
         .addSubcommand((s) => s.setName('remove').setDescription('Delete a member\'s booster role.').addUserOption((o) => o.setName('user').setDescription('Member').setRequired(true)))
         .addSubcommand((s) => s.setName('list').setDescription('List every booster role in this server.'))
         .addSubcommand((s) => s.setName('link').setDescription('Associate an existing role with a member as their booster role.').addUserOption((o) => o.setName('user').setDescription('Member').setRequired(true)).addRoleOption((o) => o.setName('role').setDescription('Role').setRequired(true)))
@@ -253,7 +253,11 @@ async function selfIcon(interaction) {
     return;
   }
 
-  const input = interaction.options.getString('input', true);
+  const input = interaction.options.getString('input') ?? interaction.rawMessage?.attachments?.first()?.url;
+  if (!input) {
+    await interaction.reply({ content: 'Provide a URL, custom emoji, sticker ID — or just attach an image to your message.', flags: MessageFlags.Ephemeral });
+    return;
+  }
   const resolved = actions.resolveIconInput(input);
   if (resolved.error) {
     await interaction.reply({ content: resolved.error, flags: MessageFlags.Ephemeral });
@@ -502,7 +506,12 @@ async function adminRename(interaction) {
 
 async function adminIcon(interaction) {
   const targetUser = interaction.options.getUser('user', true);
-  const resolved = actions.resolveIconInput(interaction.options.getString('input', true));
+  const input = interaction.options.getString('input') ?? interaction.rawMessage?.attachments?.first()?.url;
+  if (!input) {
+    await interaction.reply({ content: 'Provide a URL, custom emoji, sticker ID — or just attach an image to your message.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const resolved = actions.resolveIconInput(input);
   if (resolved.error) {
     await interaction.reply({ content: resolved.error, flags: MessageFlags.Ephemeral });
     return;
