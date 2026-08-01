@@ -6,6 +6,9 @@ const {
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
   ContainerBuilder,
+  SectionBuilder,
+  ThumbnailBuilder,
+  SeparatorBuilder,
   TextDisplayBuilder,
   MessageFlags,
 } = require('discord.js');
@@ -112,7 +115,7 @@ function entryDetailCard(prefix, command, entry) {
     `-# Category: ${(CATEGORY_META[command.category] ?? CATEGORY_META.other).label}`,
   ];
 
-  return new ContainerBuilder().setAccentColor(0x8399ff).addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
+  return new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
 }
 
 function navRow(page, total, disabled = false) {
@@ -130,11 +133,12 @@ function mainView(client, prefix) {
   const commands = getChatInputCommands(client);
   const categories = groupByCategory(commands);
 
-  const text = [
-    `### ${EMOJI.QUESTION} Petto Help`,
-    `**${commands.length}** commands across **${categories.size}** categories.`,
-    `Use the dropdown below, or \`${prefix}help <command>\` to look one up directly.`,
-  ].join('\n');
+  const section = new SectionBuilder()
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`Use the command below to look up **${commands.length}** commands`),
+      new TextDisplayBuilder().setContent(`\`${prefix}help [category | command]\``),
+    )
+    .setThumbnailAccessory(new ThumbnailBuilder().setURL(client.user.displayAvatarURL({ size: 256 })));
 
   const options = [...categories.entries()].map(([id, cmds]) => {
     const meta = CATEGORY_META[id] ?? CATEGORY_META.other;
@@ -142,8 +146,9 @@ function mainView(client, prefix) {
   });
 
   const container = new ContainerBuilder()
-    .setAccentColor(0x8399ff)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(text))
+    .addSectionComponents(section)
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent('You can also select a category below.'))
     .addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('help_cat').setPlaceholder('Select a category').addOptions(options)));
 
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
@@ -157,7 +162,6 @@ function categoryView(client, categoryId) {
   const options = commands.slice(0, 25).map((cmd) => new StringSelectMenuOptionBuilder().setLabel(cmd.data.name).setValue(cmd.data.name).setDescription((cmd.data.description ?? 'No description.').slice(0, 100)));
 
   const container = new ContainerBuilder()
-    .setAccentColor(0x8399ff)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(text))
     .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('help_back').setLabel('Return to Help Menu').setStyle(ButtonStyle.Secondary)))
     .addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('help_cmd').setPlaceholder('Select a command').addOptions(options)));
@@ -177,7 +181,6 @@ function subcommandView(command, categoryId) {
   });
 
   const container = new ContainerBuilder()
-    .setAccentColor(0x8399ff)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(text))
     .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`help_cmdback:${categoryId}`).setLabel(`Return to ${meta.label}`).setStyle(ButtonStyle.Secondary)))
     .addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('help_sub').setPlaceholder('Select a subcommand').addOptions(options)));

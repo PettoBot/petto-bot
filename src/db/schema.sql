@@ -25,6 +25,7 @@ alter table guilds add column if not exists bot_nickname text;
 alter table guilds add column if not exists bot_avatar_url text;
 alter table guilds add column if not exists bot_banner_url text;
 alter table guilds add column if not exists bot_description text;
+alter table guilds add column if not exists invites_paused_until timestamptz;
 
 -- Sanctions are logged via the 'sanctions' category of the /logs system (log_entries/log_webhooks)
 -- instead of a single fixed channel, so this column from an earlier design is no longer used.
