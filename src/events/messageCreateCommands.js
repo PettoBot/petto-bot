@@ -1,4 +1,4 @@
-const { Events } = require('discord.js');
+const { Events, MessageFlags } = require('discord.js');
 const { ensureGuild } = require('../db/guilds');
 const { buildInteractionFromMessage } = require('../handlers/prefixInteraction');
 const { getRemainingCooldown } = require('../utils/cooldown');
@@ -8,6 +8,8 @@ const customCommandsDb = require('../db/customCommands');
 const { getTemplate } = require('../db/embedTemplates');
 const { build } = require('../utils/embedBuilder');
 const { resolve } = require('../utils/embedVariables');
+const { textCard } = require('../utils/caseCard');
+const { EMOJI } = require('../utils/emojis');
 const logger = require('../utils/logger');
 
 const DEFAULT_COOLDOWN_MS = 3000;
@@ -35,7 +37,7 @@ function checkDefaultPermission(json, member) {
 /** Falls back here whenever `commandName` doesn't match a real command — tries a guild's admin-defined custom commands before giving up silently. */
 async function runCustomCommand(message, commandName) {
   const row = await customCommandsDb.getCommand(message.guild.id, commandName).catch(() => null);
-  if (!row) return;
+  if (!row) return false;
   message.channel.sendTyping().catch(() => {});
 
   const ctx = { member: message.member, guild: message.guild, channel: message.channel, message };
@@ -46,7 +48,7 @@ async function runCustomCommand(message, commandName) {
       if (doc) {
         const payload = await build(doc.data, ctx);
         await message.reply({ content: payload.content, embeds: payload.embeds, components: payload.components }).catch(() => {});
-        return;
+        return true;
       }
     }
     if (row.response) {
@@ -56,6 +58,7 @@ async function runCustomCommand(message, commandName) {
   } catch (err) {
     logger.error(`Failed to run custom command "${commandName}" in guild ${message.guild.id}:`, err);
   }
+  return true;
 }
 
 module.exports = {
@@ -86,7 +89,12 @@ module.exports = {
     const canonicalName = message.client.commandAliases.get(commandName) ?? commandName;
     const command = message.client.commands.get(canonicalName);
     if (!command || !command.data || (command.data.toJSON().type ?? 1) !== 1) {
-      await runCustomCommand(message, canonicalName);
+      const handled = await runCustomCommand(message, canonicalName);
+      if (!handled) {
+        await message
+          .reply({ components: [textCard(`${EMOJI.DENY}  Unknown command \`${canonicalName}\`. Use \`${prefix}help\` to see all commands.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 })
+          .catch(() => {});
+      }
       return;
     }
 
