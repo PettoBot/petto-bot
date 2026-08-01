@@ -76,10 +76,23 @@ function flattenEntries(json) {
   return entries;
 }
 
+// Discord's ```ansi code blocks support a subset of ANSI SGR color codes — used to match bli's
+// syntax highlighting: green labels, cyan command path, pink parameters, orange defaults.
+const ESC = String.fromCharCode(27);
+const ANSI = { green: `${ESC}[32m`, cyan: `${ESC}[36m`, pink: `${ESC}[35m`, yellow: `${ESC}[33m`, reset: `${ESC}[0m` };
+
 function buildSyntax(prefix, name, entry) {
   const parts = [`${prefix}${name}`, ...entry.path];
   for (const opt of entry.options) parts.push(opt.required ? `<${opt.name}>` : `[${opt.name}]`);
   return parts.join(' ');
+}
+
+/** Same shape as buildSyntax, but colored to match bli's ansi-highlighted Syntax/Example lines. */
+function buildColoredSyntax(label, prefix, name, entry) {
+  const commandPart = [`${prefix}${name}`, ...entry.path].join(' ');
+  const paramParts = entry.options.map((opt) => (opt.required ? `<${opt.name}>` : `[${opt.name}]`));
+  const params = paramParts.map((p) => `${ANSI.pink}${p}${ANSI.reset}`).join(' ');
+  return `${ANSI.green}${label}:${ANSI.reset} ${ANSI.cyan}${commandPart}${ANSI.reset}${params ? ` ${params}` : ''}`;
 }
 
 function buildParams(entry) {
@@ -111,7 +124,8 @@ function findEntries(client, tokens) {
 function entryDetailCard(client, guild, prefix, command, entry) {
   const json = command.data.toJSON();
   const aliases = command.aliases?.length ? command.aliases.map((a) => `\`${prefix}${a}\``).join(', ') : 'No Aliases';
-  const syntax = buildSyntax(prefix, json.name, entry);
+  const syntaxLine = buildColoredSyntax('Syntax', prefix, json.name, entry);
+  const exampleLine = `${buildColoredSyntax('Example', prefix, json.name, entry)} (defaults: ${ANSI.yellow}None${ANSI.reset})`;
   const title = [json.name, ...entry.path].join(' ');
   const moduleLabel = (CATEGORY_META[command.category] ?? CATEGORY_META.other).label;
 
@@ -126,8 +140,8 @@ function entryDetailCard(client, guild, prefix, command, entry) {
     `**Aliases:** ${aliases}  ·  **Parameters:** ${buildParams(entry)}  ·  **Extras:** ${describePermissions(json.default_member_permissions)}`,
     '',
     '```ansi',
-    `Syntax: ${syntax}`,
-    `Example: ${syntax} (defaults: [1;33mNone[0m)`,
+    syntaxLine,
+    exampleLine,
     '```',
     `-# Module: ${moduleLabel}  ·  Press Return to go back.`,
   ];
