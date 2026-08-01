@@ -21,9 +21,14 @@ const TIMEOUT_MS = 120_000;
 
 const CATEGORY_META = {
   moderation: { label: 'Moderation', icon: '🔨' },
+  info: { label: 'Info', icon: 'ℹ️' },
+  welcome: { label: 'Welcome', icon: '👋' },
+  automation: { label: 'Automation', icon: '🤖' },
+  leveling: { label: 'Leveling', icon: '📈' },
+  giveaways: { label: 'Giveaways', icon: '🎁' },
+  tickets: { label: 'Tickets', icon: '🎫' },
   config: { label: 'Configuration', icon: '⚙️' },
   utility: { label: 'Utility', icon: '🧰' },
-  tickets: { label: 'Tickets', icon: '🎫' },
   misc: { label: 'Misc', icon: '🧩' },
   other: { label: 'Other', icon: '📄' },
 };
@@ -96,26 +101,33 @@ function findEntries(client, tokens) {
 
 // ── The per-(sub)command info card — the unit both pagination and drill-down bottom out at ──
 
-function entryDetailCard(prefix, command, entry) {
+function entryDetailCard(client, prefix, command, entry) {
   const json = command.data.toJSON();
-  const aliases = command.aliases?.length ? command.aliases.map((a) => `\`${prefix}${a}\``).join(', ') : 'None';
+  const aliases = command.aliases?.length ? command.aliases.map((a) => `\`${prefix}${a}\``).join(', ') : 'No Aliases';
   const syntax = buildSyntax(prefix, json.name, entry);
   const title = [json.name, ...entry.path].join(' ');
+  const moduleLabel = (CATEGORY_META[command.category] ?? CATEGORY_META.other).label;
+
+  const section = new SectionBuilder()
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`**Command: ${title}**`),
+      new TextDisplayBuilder().setContent(`> ${entry.description || json.description || 'No description.'}`),
+    )
+    .setThumbnailAccessory(new ThumbnailBuilder().setURL(client.user.displayAvatarURL({ size: 256 })));
 
   const lines = [
-    `### Command: ${title}`,
-    `> ${entry.description || json.description || 'No description.'}`,
+    `**Aliases:** ${aliases}  ·  **Parameters:** ${buildParams(entry)}  ·  **Extras:** ${describePermissions(json.default_member_permissions)}`,
     '',
-    `**Aliases:** ${aliases}  ·  **Parameters:** ${buildParams(entry)}  ·  **Permission:** ${describePermissions(json.default_member_permissions)}`,
-    '',
-    '```',
+    '```ansi',
     `Syntax: ${syntax}`,
-    `Example: ${syntax} (defaults: None)`,
+    `Example: ${syntax} (defaults: [1;33mNone[0m)`,
     '```',
-    `-# Category: ${(CATEGORY_META[command.category] ?? CATEGORY_META.other).label}`,
+    `-# Module: ${moduleLabel}  ·  Press Return to go back.`,
   ];
 
-  return new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
+  return new ContainerBuilder()
+    .addSectionComponents(section)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
 }
 
 function navRow(page, total, disabled = false) {
@@ -207,7 +219,7 @@ function subcommandView(client, command, categoryId) {
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
-function detailView(prefix, command, entry, categoryId) {
+function detailView(client, prefix, command, entry, categoryId) {
   const meta = CATEGORY_META[categoryId] ?? CATEGORY_META.other;
   const entries = flattenEntries(command.data.toJSON());
   const hasSubs = entries.length > 1 || entries[0].path.length > 0;
@@ -216,7 +228,7 @@ function detailView(prefix, command, entry, categoryId) {
   if (hasSubs) buttons.push(new ButtonBuilder().setCustomId(`help_subback:${categoryId}`).setLabel(`Return to ${command.data.name}`).setStyle(ButtonStyle.Secondary));
   buttons.push(new ButtonBuilder().setCustomId(`help_cmdback:${categoryId}`).setLabel(`Return to ${meta.label}`).setStyle(ButtonStyle.Secondary));
 
-  const card = entryDetailCard(prefix, command, entry).addActionRowComponents(new ActionRowBuilder().addComponents(...buttons));
+  const card = entryDetailCard(client, prefix, command, entry).addActionRowComponents(new ActionRowBuilder().addComponents(...buttons));
   return { components: [card], flags: MessageFlags.IsComponentsV2 };
 }
 
@@ -246,27 +258,27 @@ module.exports = {
       }
 
       if (entries.length === 1) {
-        await interaction.reply({ components: [entryDetailCard(prefix, command, entries[0])], flags: MessageFlags.IsComponentsV2 });
+        await interaction.reply({ components: [entryDetailCard(client, prefix, command, entries[0])], flags: MessageFlags.IsComponentsV2 });
         return;
       }
 
       let page = 0;
-      const msg = await interaction.reply({ components: [entryDetailCard(prefix, command, entries[0]), navRow(0, entries.length)], flags: MessageFlags.IsComponentsV2 });
+      const msg = await interaction.reply({ components: [entryDetailCard(client, prefix, command, entries[0]), navRow(0, entries.length)], flags: MessageFlags.IsComponentsV2 });
       const collector = msg.createMessageComponentCollector({ filter: (i) => i.user.id === interaction.user.id, time: TIMEOUT_MS });
 
       collector.on('collect', async (i) => {
         if (i.customId === 'help_close') {
           collector.stop('closed');
-          await i.update({ components: [entryDetailCard(prefix, command, entries[page]), navRow(page, entries.length, true)], flags: MessageFlags.IsComponentsV2 });
+          await i.update({ components: [entryDetailCard(client, prefix, command, entries[page]), navRow(page, entries.length, true)], flags: MessageFlags.IsComponentsV2 });
           return;
         }
         if (i.customId === 'help_prev') page = Math.max(0, page - 1);
         if (i.customId === 'help_next') page = Math.min(entries.length - 1, page + 1);
-        await i.update({ components: [entryDetailCard(prefix, command, entries[page]), navRow(page, entries.length)], flags: MessageFlags.IsComponentsV2 });
+        await i.update({ components: [entryDetailCard(client, prefix, command, entries[page]), navRow(page, entries.length)], flags: MessageFlags.IsComponentsV2 });
       });
       collector.on('end', (_c, reason) => {
         if (reason === 'closed' || reason === 'messageDelete') return;
-        msg.edit({ components: [entryDetailCard(prefix, command, entries[page]), navRow(page, entries.length, true)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+        msg.edit({ components: [entryDetailCard(client, prefix, command, entries[page]), navRow(page, entries.length, true)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
       });
       return;
     }
@@ -301,7 +313,7 @@ module.exports = {
         currentCommand = command;
         const entries = flattenEntries(command.data.toJSON());
         if (entries.length === 1 && !entries[0].path.length) {
-          await i.update(detailView(prefix, command, entries[0], currentCategory));
+          await i.update(detailView(client, prefix, command, entries[0], currentCategory));
         } else {
           await i.update(subcommandView(client, command, currentCategory));
         }
@@ -342,7 +354,8 @@ module.exports = {
 
     collector.on('end', (_collected, reason) => {
       if (reason === 'messageDelete') return;
-      msg.edit({ components: [textCard('Help menu closed (timed out). Run the command again to reopen it.', 0x8399ff)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+      const closedCard = new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent('Help menu closed (timed out). Run the command again to reopen it.'));
+      msg.edit({ components: [closedCard], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
     });
   },
 };
