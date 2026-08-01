@@ -1,4 +1,5 @@
 const { sendLog, getAvatar, fetchMod, AuditLogEvent } = require('./engine');
+const { resolveJoinInvite } = require('../utils/inviteResolve');
 
 // Discord's gateway sometimes fires USER_UPDATE twice in a row for the same real change (the
 // CDN avatar hash and the user's `avatar` field don't always land in the same event) — this
@@ -6,14 +7,17 @@ const { sendLog, getAvatar, fetchMod, AuditLogEvent } = require('./engine');
 const recentUserUpdates = new Map(); // userId -> `${avatarURL}:${username}`
 const RECENT_UPDATE_TTL_MS = 10_000;
 
-// Note: the legacy bot enriched this with "invited by X" via a separate invite-tracking
-// subsystem (handlers/inviteTracker.js + InviteStat model). That's a distinct feature from
-// logging and wasn't ported — this keeps the core join log (account age, member count).
 async function handleMemberJoin(member, client) {
   const fields = [
     { name: 'Account Created', value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`, inline: true },
     { name: 'Members', value: String(member.guild.memberCount), inline: true },
   ];
+
+  const usedInvite = await resolveJoinInvite(member).catch(() => null);
+  if (usedInvite) {
+    fields.push({ name: 'Invited by', value: usedInvite.inviter ? `<@${usedInvite.inviter.id}> (**${usedInvite.inviter.username}**)` : 'Unknown', inline: true });
+    fields.push({ name: 'Invite', value: `\`${usedInvite.code}\` · ${usedInvite.uses ?? 0} uses`, inline: true });
+  }
 
   await sendLog(
     client,
