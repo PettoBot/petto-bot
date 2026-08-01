@@ -17,6 +17,14 @@ module.exports = {
 
     .addSubcommand((s) =>
       s
+        .setName('create')
+        .setDescription('Create your booster role. Requires boosting.')
+        .addStringOption((o) => o.setName('name').setDescription('Role name').setRequired(true))
+        .addStringOption((o) => o.setName('hex').setDescription('#RRGGBB').setRequired(false))
+        .addStringOption((o) => o.setName('hex2').setDescription('Second #RRGGBB for a gradient').setRequired(false)),
+    )
+    .addSubcommand((s) =>
+      s
         .setName('color')
         .setDescription('Create/update your booster role color. Requires boosting.')
         .addStringOption((o) => o.setName('hex').setDescription('#RRGGBB').setRequired(true))
@@ -80,6 +88,8 @@ module.exports = {
     if (group === 'filter') return filterCmd(interaction, sub);
 
     switch (sub) {
+      case 'create':
+        return selfCreate(interaction);
       case 'color':
         return selfColor(interaction);
       case 'rename':
@@ -111,6 +121,49 @@ async function requireBotCanManageRoles(interaction) {
 }
 
 // ── Self-service (booster-only) ─────────────────────────────────────────────
+
+async function selfCreate(interaction) {
+  if (!isBoosting(interaction.member)) {
+    await interaction.reply({ content: 'You must be a Nitro booster to use this.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (!(await requireBotCanManageRoles(interaction))) return;
+
+  const name = interaction.options.getString('name', true);
+  const hex1Raw = interaction.options.getString('hex');
+  const hex2Raw = interaction.options.getString('hex2');
+
+  const hex1 = hex1Raw ? actions.parseHex(hex1Raw) : null;
+  if (hex1Raw && !hex1) {
+    await interaction.reply({ content: 'Invalid hex color — use `#RRGGBB` format.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const hex2 = hex2Raw ? actions.parseHex(hex2Raw) : null;
+  if (hex2Raw && !hex2) {
+    await interaction.reply({ content: 'Invalid second hex color — use `#RRGGBB` format.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  await ensureGuild(interaction.guild.id);
+
+  const existing = await db.getBoosterRole(interaction.guild.id, interaction.user.id);
+  if (existing && interaction.guild.roles.cache.has(existing.role_id)) {
+    await interaction.editReply({ components: [textCard("You already have a booster role. Use `/boosterrole rename` or `/boosterrole color` to change it.", 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+
+  const result = await actions.applyRole({ guild: interaction.guild, member: interaction.member, colorInt: hex1?.int, color2Int: hex2?.int, name });
+  if (result.error) {
+    await interaction.editReply({ components: [textCard(`${EMOJI.DENY}  ${result.error}`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+
+  if (hex1) await db.upsertBoosterRole(interaction.guild.id, interaction.user.id, { role_id: result.role.id, color: hex1.hex, color2: hex2?.hex ?? null });
+
+  const text = `${EMOJI.APPROVE}  Booster role created: ${result.role}`;
+  await interaction.editReply({ components: [textCard(text, hex1?.int ?? 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+}
 
 async function selfColor(interaction) {
   if (!isBoosting(interaction.member)) {
