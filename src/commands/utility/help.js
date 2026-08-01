@@ -41,6 +41,11 @@ function getChatInputCommands(client) {
   return [...client.commands.values()].filter((c) => (c.data.toJSON().type ?? 1) === 1);
 }
 
+/** Prefers this server's own bot avatar (server-specific pfp) over the bot's global one. */
+function botAvatarURL(client, guild) {
+  return guild?.members?.me?.displayAvatarURL({ size: 256 }) ?? client.user.displayAvatarURL({ size: 256 });
+}
+
 function groupByCategory(commands) {
   const map = new Map();
   for (const cmd of commands) {
@@ -103,7 +108,7 @@ function findEntries(client, tokens) {
 
 // ── The per-(sub)command info card — the unit both pagination and drill-down bottom out at ──
 
-function entryDetailCard(client, prefix, command, entry) {
+function entryDetailCard(client, guild, prefix, command, entry) {
   const json = command.data.toJSON();
   const aliases = command.aliases?.length ? command.aliases.map((a) => `\`${prefix}${a}\``).join(', ') : 'No Aliases';
   const syntax = buildSyntax(prefix, json.name, entry);
@@ -115,7 +120,7 @@ function entryDetailCard(client, prefix, command, entry) {
       new TextDisplayBuilder().setContent(`**Command: ${title}**`),
       new TextDisplayBuilder().setContent(`> ${entry.description || json.description || 'No description.'}`),
     )
-    .setThumbnailAccessory(new ThumbnailBuilder().setURL(client.user.displayAvatarURL({ size: 256 })));
+    .setThumbnailAccessory(new ThumbnailBuilder().setURL(botAvatarURL(client, guild)));
 
   const lines = [
     `**Aliases:** ${aliases}  ·  **Parameters:** ${buildParams(entry)}  ·  **Extras:** ${describePermissions(json.default_member_permissions)}`,
@@ -143,7 +148,7 @@ function navRow(page, total, disabled = false) {
 
 // ── Interactive browse views (category -> command -> subcommand -> detail) ──
 
-function mainView(client, prefix) {
+function mainView(client, guild, prefix) {
   const commands = getChatInputCommands(client);
   const categories = groupByCategory(commands);
 
@@ -152,7 +157,7 @@ function mainView(client, prefix) {
       new TextDisplayBuilder().setContent(`Use the command below to look up **${commands.length}** commands`),
       new TextDisplayBuilder().setContent(`\`${prefix}help [category | command]\``),
     )
-    .setThumbnailAccessory(new ThumbnailBuilder().setURL(client.user.displayAvatarURL({ size: 256 })));
+    .setThumbnailAccessory(new ThumbnailBuilder().setURL(botAvatarURL(client, guild)));
 
   const options = [...categories.entries()].map(([id, cmds]) => {
     const meta = CATEGORY_META[id] ?? CATEGORY_META.other;
@@ -169,7 +174,7 @@ function mainView(client, prefix) {
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
-function categoryView(client, categoryId) {
+function categoryView(client, guild, categoryId) {
   const meta = CATEGORY_META[categoryId] ?? CATEGORY_META.other;
   const commands = (groupByCategory(getChatInputCommands(client)).get(categoryId) ?? []).sort((a, b) => a.data.name.localeCompare(b.data.name));
 
@@ -178,7 +183,7 @@ function categoryView(client, categoryId) {
       new TextDisplayBuilder().setContent(`### ${meta.icon} ${meta.label}`),
       new TextDisplayBuilder().setContent('> Browse commands in this category.'),
     )
-    .setThumbnailAccessory(new ThumbnailBuilder().setURL(client.user.displayAvatarURL({ size: 256 })));
+    .setThumbnailAccessory(new ThumbnailBuilder().setURL(botAvatarURL(client, guild)));
 
   const options = commands.slice(0, 25).map((cmd) => new StringSelectMenuOptionBuilder().setLabel(cmd.data.name).setValue(cmd.data.name).setDescription((cmd.data.description ?? 'No description.').slice(0, 100)));
 
@@ -193,7 +198,7 @@ function categoryView(client, categoryId) {
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
-function subcommandView(client, command, categoryId) {
+function subcommandView(client, guild, command, categoryId) {
   const json = command.data.toJSON();
   const entries = flattenEntries(json);
   const meta = CATEGORY_META[categoryId] ?? CATEGORY_META.other;
@@ -203,7 +208,7 @@ function subcommandView(client, command, categoryId) {
       new TextDisplayBuilder().setContent(`### ${json.name}`),
       new TextDisplayBuilder().setContent(`> ${json.description || 'No description.'}`),
     )
-    .setThumbnailAccessory(new ThumbnailBuilder().setURL(client.user.displayAvatarURL({ size: 256 })));
+    .setThumbnailAccessory(new ThumbnailBuilder().setURL(botAvatarURL(client, guild)));
 
   const options = entries.slice(0, 25).map((e) => {
     const label = e.path.join(' ') || json.name;
@@ -221,7 +226,7 @@ function subcommandView(client, command, categoryId) {
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
-function detailView(client, prefix, command, entry, categoryId) {
+function detailView(client, guild, prefix, command, entry, categoryId) {
   const meta = CATEGORY_META[categoryId] ?? CATEGORY_META.other;
   const entries = flattenEntries(command.data.toJSON());
   const hasSubs = entries.length > 1 || entries[0].path.length > 0;
@@ -230,7 +235,7 @@ function detailView(client, prefix, command, entry, categoryId) {
   if (hasSubs) buttons.push(new ButtonBuilder().setCustomId(`help_subback:${categoryId}`).setLabel(`Return to ${command.data.name}`).setStyle(ButtonStyle.Secondary));
   buttons.push(new ButtonBuilder().setCustomId(`help_cmdback:${categoryId}`).setLabel(`Return to ${meta.label}`).setStyle(ButtonStyle.Secondary));
 
-  const card = entryDetailCard(client, prefix, command, entry).addActionRowComponents(new ActionRowBuilder().addComponents(...buttons));
+  const card = entryDetailCard(client, guild, prefix, command, entry).addActionRowComponents(new ActionRowBuilder().addComponents(...buttons));
   return { components: [card], flags: MessageFlags.IsComponentsV2 };
 }
 
@@ -260,33 +265,33 @@ module.exports = {
       }
 
       if (entries.length === 1) {
-        await interaction.reply({ components: [entryDetailCard(client, prefix, command, entries[0])], flags: MessageFlags.IsComponentsV2 });
+        await interaction.reply({ components: [entryDetailCard(client, interaction.guild, prefix, command, entries[0])], flags: MessageFlags.IsComponentsV2 });
         return;
       }
 
       let page = 0;
-      const msg = await interaction.reply({ components: [entryDetailCard(client, prefix, command, entries[0]), navRow(0, entries.length)], flags: MessageFlags.IsComponentsV2 });
+      const msg = await interaction.reply({ components: [entryDetailCard(client, interaction.guild, prefix, command, entries[0]), navRow(0, entries.length)], flags: MessageFlags.IsComponentsV2 });
       const collector = msg.createMessageComponentCollector({ filter: (i) => i.user.id === interaction.user.id, time: TIMEOUT_MS });
 
       collector.on('collect', async (i) => {
         if (i.customId === 'help_close') {
           collector.stop('closed');
-          await i.update({ components: [entryDetailCard(client, prefix, command, entries[page]), navRow(page, entries.length, true)], flags: MessageFlags.IsComponentsV2 });
+          await i.update({ components: [entryDetailCard(client, interaction.guild, prefix, command, entries[page]), navRow(page, entries.length, true)], flags: MessageFlags.IsComponentsV2 });
           return;
         }
         if (i.customId === 'help_prev') page = Math.max(0, page - 1);
         if (i.customId === 'help_next') page = Math.min(entries.length - 1, page + 1);
-        await i.update({ components: [entryDetailCard(client, prefix, command, entries[page]), navRow(page, entries.length)], flags: MessageFlags.IsComponentsV2 });
+        await i.update({ components: [entryDetailCard(client, interaction.guild, prefix, command, entries[page]), navRow(page, entries.length)], flags: MessageFlags.IsComponentsV2 });
       });
       collector.on('end', (_c, reason) => {
         if (reason === 'closed' || reason === 'messageDelete') return;
-        msg.edit({ components: [entryDetailCard(client, prefix, command, entries[page]), navRow(page, entries.length, true)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+        msg.edit({ components: [entryDetailCard(client, interaction.guild, prefix, command, entries[page]), navRow(page, entries.length, true)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
       });
       return;
     }
 
     // ── Interactive browse: category -> command -> subcommand (if any) -> detail ──
-    const msg = await interaction.reply(mainView(client, prefix));
+    const msg = await interaction.reply(mainView(client, interaction.guild, prefix));
     let currentCategory = null;
     let currentCommand = null;
 
@@ -295,14 +300,14 @@ module.exports = {
     collector.on('collect', async (i) => {
       if (i.customId === 'help_cat') {
         currentCategory = i.values[0];
-        await i.update(categoryView(client, currentCategory));
+        await i.update(categoryView(client, interaction.guild, currentCategory));
         return;
       }
 
       if (i.customId === 'help_back') {
         currentCategory = null;
         currentCommand = null;
-        await i.update(mainView(client, prefix));
+        await i.update(mainView(client, interaction.guild, prefix));
         return;
       }
 
@@ -315,9 +320,9 @@ module.exports = {
         currentCommand = command;
         const entries = flattenEntries(command.data.toJSON());
         if (entries.length === 1 && !entries[0].path.length) {
-          await i.update(detailView(client, prefix, command, entries[0], currentCategory));
+          await i.update(detailView(client, interaction.guild, prefix, command, entries[0], currentCategory));
         } else {
-          await i.update(subcommandView(client, command, currentCategory));
+          await i.update(subcommandView(client, interaction.guild, command, currentCategory));
         }
         return;
       }
@@ -333,14 +338,14 @@ module.exports = {
           await i.deferUpdate();
           return;
         }
-        await i.update(detailView(client, prefix, currentCommand, entry, currentCategory));
+        await i.update(detailView(client, interaction.guild, prefix, currentCommand, entry, currentCategory));
         return;
       }
 
       if (i.customId.startsWith('help_cmdback:')) {
         currentCommand = null;
         currentCategory = i.customId.split(':')[1];
-        await i.update(categoryView(client, currentCategory));
+        await i.update(categoryView(client, interaction.guild, currentCategory));
         return;
       }
 
@@ -350,7 +355,7 @@ module.exports = {
           return;
         }
         currentCategory = i.customId.split(':')[1];
-        await i.update(subcommandView(client, currentCommand, currentCategory));
+        await i.update(subcommandView(client, interaction.guild, currentCommand, currentCategory));
       }
     });
 
