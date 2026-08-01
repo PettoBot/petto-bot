@@ -148,7 +148,7 @@ async function selfColor(interaction) {
     return;
   }
 
-  await db.upsertBoosterRole(interaction.guild.id, interaction.user.id, { color: hex1.hex, color2: hex2?.hex ?? null, color_cooldown_at: new Date().toISOString() });
+  await db.upsertBoosterRole(interaction.guild.id, interaction.user.id, { role_id: result.role.id, color: hex1.hex, color2: hex2?.hex ?? null, color_cooldown_at: new Date().toISOString() });
 
   const colorText = hex2 ? `\`${hex1.hex}\` + \`${hex2.hex}\`` : `\`${hex1.hex}\``;
   const text = `${EMOJI.APPROVE}  Booster role ${result.updated ? 'updated' : 'created'}: ${result.role}\n**Color:** ${colorText}`;
@@ -257,7 +257,7 @@ async function selfRandom(interaction) {
   }
 
   const hex = `#${colorInt.toString(16).padStart(6, '0').toUpperCase()}`;
-  await db.upsertBoosterRole(interaction.guild.id, interaction.user.id, { color: hex, color_cooldown_at: new Date().toISOString() });
+  await db.upsertBoosterRole(interaction.guild.id, interaction.user.id, { role_id: result.role.id, color: hex, color_cooldown_at: new Date().toISOString() });
 
   await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Booster role color set to \`${hex}\`.`, colorInt)], flags: MessageFlags.IsComponentsV2 });
 }
@@ -421,7 +421,7 @@ async function adminSet(interaction) {
   const patch = {};
   if (hex1) patch.color = hex1.hex;
   if (hex2) patch.color2 = hex2.hex;
-  if (Object.keys(patch).length) await db.upsertBoosterRole(interaction.guild.id, targetUser.id, patch);
+  if (Object.keys(patch).length) await db.upsertBoosterRole(interaction.guild.id, targetUser.id, { role_id: result.role.id, ...patch });
 
   await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Booster role ${result.updated ? 'updated' : 'created'} for ${targetUser}: ${result.role}`, hex1?.int ?? 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
