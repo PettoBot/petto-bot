@@ -13,6 +13,7 @@
     "deploy-commands": "node deploy-commands.js"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^1.0.3",
     "@supabase/supabase-js": "^2.45.4",
     "cloudflared": "^0.7.1",
     "discord.js": "^14.15.3",

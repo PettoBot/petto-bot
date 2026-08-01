@@ -30,6 +30,10 @@ const client = new Client({
     GatewayIntentBits.GuildExpressions, // emoji create/delete/update logs
     GatewayIntentBits.GuildWebhooks, // webhook creation tracking (anti-nuke)
     GatewayIntentBits.GuildMessageReactions, // reaction-mode giveaway entries
+    // Privileged — must also be toggled on for this bot application in the Discord Developer
+    // Portal (Bot page -> Privileged Gateway Intents -> Presence Intent), or every member's
+    // `.presence` stays null and /spotify + /activity can never see what anyone is doing.
+    GatewayIntentBits.GuildPresences,
   ],
   partials: [Partials.GuildMember, Partials.User, Partials.Message, Partials.Reaction],
   // Case cards/logs render `@user` mentions as text/reference, not as pings —
