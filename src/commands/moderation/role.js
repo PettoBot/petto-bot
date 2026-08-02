@@ -451,7 +451,7 @@ async function runMassOp(interaction, role, members, adding) {
   activeMassOps.set(guildId, task);
 
   const verb = adding ? 'Adding' : 'Removing';
-  await interaction.editReply({ components: [textCard(`${EMOJI.WARNING}  ${verb} ${role} for **${members.length}** member(s)... use \`/role cancel\` to stop.`, 0xfed53c)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(`${EMOJI.WARNING}  ${verb} ${role} for **${members.length}** member(s)... use \`!role cancel\` to stop.`, 0xfed53c)], flags: MessageFlags.IsComponentsV2 });
 
   let done = 0;
   for (const member of members) {
@@ -483,7 +483,7 @@ async function hasRole(interaction) {
     return;
   }
   if (activeMassOps.has(interaction.guild.id)) {
-    await interaction.reply({ content: 'A mass role operation is already running in this server. Use `/role cancel` first.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: 'A mass role operation is already running in this server. Use `!role cancel` first.', flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -508,7 +508,7 @@ async function humansRole(interaction) {
     return;
   }
   if (activeMassOps.has(interaction.guild.id)) {
-    await interaction.reply({ content: 'A mass role operation is already running in this server. Use `/role cancel` first.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: 'A mass role operation is already running in this server. Use `!role cancel` first.', flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -590,7 +590,7 @@ async function groupList(interaction) {
 
   const groups = await roleGroupsDb.listGroups(interaction.guild.id);
   if (!groups.length) {
-    await interaction.editReply({ components: [textCard('No role groups configured. Create one with `/role group create`.', 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard('No role groups configured. Create one with `!role group create`.', 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
