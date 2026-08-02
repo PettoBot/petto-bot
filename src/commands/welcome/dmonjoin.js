@@ -38,7 +38,7 @@ async function setup(interaction) {
   const embed = interaction.options.getString('embed');
 
   if (embed && !(await getTemplate(interaction.guild.id, embed))) {
-    await interaction.reply({ content: `No embed named \`${embed}\` found. Create it with \`/embed create\` first.`, flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: `No embed named \`${embed}\` found. Create it with \`!embed create\` first.`, flags: MessageFlags.Ephemeral });
     return;
   }
   if (!message && !embed) {
@@ -68,7 +68,7 @@ async function status(interaction) {
 async function test(interaction) {
   const config = await getConfig(interaction.guild.id);
   if (!config?.dm_join_message && !config?.dm_join_embed_template) {
-    await interaction.reply({ content: 'The join DM is not configured. Use `/dmonjoin setup` first.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: 'The join DM is not configured. Use `!dmonjoin setup` first.', flags: MessageFlags.Ephemeral });
     return;
   }
 

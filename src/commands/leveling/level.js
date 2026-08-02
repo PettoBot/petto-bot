@@ -292,7 +292,7 @@ async function syncJoinCmd(interaction) {
   const config = await levelConfigDb.getConfig(interaction.guild.id);
 
   if (!config.join_xp && !config.join_level) {
-    await reply(interaction, `${EMOJI.ALERT}  No join bonus configured. Set one with \`/level join\` first.`, 0xfe6465);
+    await reply(interaction, `${EMOJI.ALERT}  No join bonus configured. Set one with \`!level join\` first.`, 0xfe6465);
     return;
   }
 

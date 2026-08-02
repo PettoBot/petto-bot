@@ -36,7 +36,7 @@ module.exports = {
         const count = await afkDb.countRecentMentions(message.guild.id, message.author.id);
         await message
           .reply({
-            content: `Welcome back, **${message.author.username}**! You're no longer AFK.${count ? ` You have **${count}** mention(s) — use \`/afk mentions\` to view them.` : ''}`,
+            content: `Welcome back, **${message.author.username}**! You're no longer AFK.${count ? ` You have **${count}** mention(s) — use \`!afk mentions\` to view them.` : ''}`,
             allowedMentions: { repliedUser: false },
           })
           .catch(() => {});

@@ -144,7 +144,7 @@ function varsNavRow(page) {
 async function getOrFail(interaction, name) {
   const doc = await getTemplate(interaction.guild.id, name);
   if (!doc) {
-    await interaction.editReply(`No embed named \`${name}\` found. Create it first with \`/embed create name:${name}\`.`);
+    await interaction.editReply(`No embed named \`${name}\` found. Create it first with \`!embed create name:${name}\`.`);
     return null;
   }
   return doc;
@@ -353,7 +353,7 @@ module.exports = {
           const name = normalizeName(interaction.options.getString('name'));
           const existing = await getTemplate(guildId, name);
           if (existing) {
-            await interaction.editReply(`An embed named \`${name}\` already exists. Use \`/embed edit\` to modify it.`);
+            await interaction.editReply(`An embed named \`${name}\` already exists. Use \`!embed edit\` to modify it.`);
             return;
           }
           await upsertTemplate(guildId, name, { fields: [] });
@@ -373,7 +373,7 @@ module.exports = {
         case 'list': {
           const templates = await listTemplates(guildId);
           if (!templates.length) {
-            await interaction.editReply('No saved embeds in this server. Create one with `/embed create name:my_embed`.');
+            await interaction.editReply('No saved embeds in this server. Create one with `!embed create name:my_embed`.');
             return;
           }
           const lines = templates.map((t, i) => `\`${i + 1}.\` **${t.name}**`);

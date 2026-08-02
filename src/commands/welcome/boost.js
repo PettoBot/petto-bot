@@ -45,7 +45,7 @@ module.exports = {
 async function validateEmbed(interaction, embed) {
   if (!embed) return true;
   if (await getTemplate(interaction.guild.id, embed)) return true;
-  await interaction.reply({ content: `No embed named \`${embed}\` found. Create it with \`/embed create\` first.`, flags: MessageFlags.Ephemeral });
+  await interaction.reply({ content: `No embed named \`${embed}\` found. Create it with \`!embed create\` first.`, flags: MessageFlags.Ephemeral });
   return false;
 }
 
@@ -70,7 +70,7 @@ async function levelUp(interaction) {
 
   const existing = await getConfig(interaction.guild.id);
   if (!existing?.boost_channel_id) {
-    await interaction.reply({ content: 'Set a boost channel first with `/boost setup`.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: 'Set a boost channel first with `!boost setup`.', flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -98,7 +98,7 @@ async function status(interaction) {
 async function test(interaction) {
   const config = await getConfig(interaction.guild.id);
   if (!config?.boost_channel_id || (!config.boost_message && !config.boost_embed_template)) {
-    await interaction.reply({ content: 'Boost messages are not fully configured. Use `/boost setup` first.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: 'Boost messages are not fully configured. Use `!boost setup` first.', flags: MessageFlags.Ephemeral });
     return;
   }
 

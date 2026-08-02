@@ -40,7 +40,7 @@ async function setup(interaction) {
   const embed = interaction.options.getString('embed');
 
   if (embed && !(await getTemplate(interaction.guild.id, embed))) {
-    await interaction.reply({ content: `No embed named \`${embed}\` found. Create it with \`/embed create\` first.`, flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: `No embed named \`${embed}\` found. Create it with \`!embed create\` first.`, flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -67,7 +67,7 @@ async function status(interaction) {
 async function test(interaction) {
   const config = await getConfig(interaction.guild.id);
   if (!config?.leave_channel_id || (!config.leave_message && !config.leave_embed_template)) {
-    await interaction.reply({ content: 'Leave messages are not fully configured. Use `/leave setup` first.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: 'Leave messages are not fully configured. Use `!leave setup` first.', flags: MessageFlags.Ephemeral });
     return;
   }
 

@@ -142,7 +142,7 @@ async function panelCmd(interaction, sub) {
   if (sub === 'list') {
     const panels = await db.listPanels(interaction.guild.id);
     if (!panels.length) {
-      await interaction.editReply({ components: [textCard('No panels yet. Create one with `/ticket panel create`.', 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard('No panels yet. Create one with `!ticket panel create`.', 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
     const lines = await Promise.all(
@@ -181,7 +181,7 @@ async function panelCmd(interaction, sub) {
 
   if (embedTemplate && !(await getTemplate(interaction.guild.id, embedTemplate))) {
     await interaction.editReply({
-      components: [textCard(`${EMOJI.ALERT}  No embed named \`${embedTemplate}\` found. Create it with \`/embed create\` first — the panel was not created.`, 0xfe6465)],
+      components: [textCard(`${EMOJI.ALERT}  No embed named \`${embedTemplate}\` found. Create it with \`!embed create\` first — the panel was not created.`, 0xfe6465)],
       flags: MessageFlags.IsComponentsV2,
     });
     return;
@@ -203,7 +203,7 @@ async function panelCmd(interaction, sub) {
 
   await db.setPanelMessageId(panel.id, message.id);
   await interaction.editReply({
-    components: [textCard(`${EMOJI.APPROVE}  Panel **#${panel.id}** posted in ${channel}. Add categories with \`/ticket category add panel_id:${panel.id}\`.`, 0xa5ea7a)],
+    components: [textCard(`${EMOJI.APPROVE}  Panel **#${panel.id}** posted in ${channel}. Add categories with \`!ticket category add panel_id:${panel.id}\`.`, 0xa5ea7a)],
     flags: MessageFlags.IsComponentsV2,
   });
 }
@@ -233,7 +233,7 @@ async function categoryCmd(interaction, sub) {
   if (sub === 'list') {
     const categories = await db.listCategories(interaction.guild.id);
     if (!categories.length) {
-      await interaction.editReply({ components: [textCard('No categories yet. Create a panel first, then `/ticket category add`.', 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard('No categories yet. Create a panel first, then `!ticket category add`.', 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
     const lines = categories.map((c) => `**${c.key}** — ${c.label} · panel #${c.panel_id ?? 'none'} · parent <#${c.parent_channel_id}> · ${c.support_role_ids.length} support role(s)`);
@@ -298,7 +298,7 @@ async function categoryCmd(interaction, sub) {
 
   const welcomeEmbed = interaction.options.getString('welcome_embed');
   if (welcomeEmbed && !(await getTemplate(interaction.guild.id, welcomeEmbed))) {
-    await interaction.editReply({ components: [textCard(`${EMOJI.ALERT}  No embed named \`${welcomeEmbed}\` found. Create it with \`/embed create\` first.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(`${EMOJI.ALERT}  No embed named \`${welcomeEmbed}\` found. Create it with \`!embed create\` first.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 

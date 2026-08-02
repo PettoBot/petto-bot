@@ -204,7 +204,7 @@ async function listCmd(interaction) {
 
   const list = await arDb.listForGuild(interaction.guild.id);
   if (!list.length) {
-    await interaction.editReply({ components: [textCard(`No autoresponders configured. Use \`/autoresponder add\`.`, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(`No autoresponders configured. Use \`!autoresponder add\`.`, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
