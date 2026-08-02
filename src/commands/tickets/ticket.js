@@ -39,6 +39,7 @@ module.exports = {
             .addStringOption((o) => o.setName('style').setDescription('Buttons (max 5 categories) or a dropdown (max 25)').addChoices({ name: 'buttons', value: 'button' }, { name: 'dropdown', value: 'select' }).setRequired(false)),
         )
         .addSubcommand((s) => s.setName('delete').setDescription('Delete a panel (and its message, if still present).').addIntegerOption((o) => o.setName('panel_id').setDescription('Panel ID (see /ticket panel list)').setRequired(true)))
+        .addSubcommand((s) => s.setName('resend').setDescription('Delete and repost a panel with its current categories.').addIntegerOption((o) => o.setName('panel_id').setDescription('Panel ID (see /ticket panel list)').setRequired(true)))
         .addSubcommand((s) => s.setName('list').setDescription('List panels in this server.')),
     )
 
@@ -169,6 +170,58 @@ async function panelCmd(interaction, sub) {
     }
     await db.deletePanel(interaction.guild.id, panelId);
     await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Panel #${panelId} deleted.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+
+  if (sub === 'resend') {
+    const panelId = interaction.options.getInteger('panel_id', true);
+    const panel = await db.getPanel(interaction.guild.id, panelId);
+    if (!panel) {
+      await interaction.editReply({ components: [textCard(`No panel with id \`${panelId}\`.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      return;
+    }
+
+    const channel = await interaction.guild.channels.fetch(panel.channel_id).catch(() => null);
+    if (!channel || !channel.isTextBased()) {
+      await interaction.editReply({ components: [textCard('The panel channel no longer exists or I cannot access it.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      return;
+    }
+
+    if (panel.message_id) {
+      let oldMessage = null;
+      try {
+        oldMessage = await channel.messages.fetch(panel.message_id);
+      } catch (err) {
+        // Discord 10008 means the old message is already gone; any other error is a real permission/API failure.
+        if (err?.code !== 10008) {
+          logger.error(`Failed to fetch panel #${panelId} before resend:`, err);
+          await interaction.editReply({ components: [textCard('I could not access the old panel message, so I did not resend it.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+          return;
+        }
+      }
+      if (oldMessage) {
+        try {
+          await oldMessage.delete();
+        } catch (err) {
+          logger.error(`Failed to delete panel #${panelId} before resend:`, err);
+          await interaction.editReply({ components: [textCard('I could not delete the old panel message, so I did not resend it.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+          return;
+        }
+      }
+    }
+
+    await db.updatePanel(interaction.guild.id, panelId, { message_id: null });
+    const categories = await db.listCategories(interaction.guild.id, panel.id);
+    const message = await channel.send(await renderPanelMessage(interaction.guild, panel, categories)).catch((err) => {
+      logger.error(`Failed to resend panel #${panelId}:`, err);
+      return null;
+    });
+    if (!message) {
+      await interaction.editReply({ components: [textCard('The old panel was removed, but I could not post the replacement. Check my permissions in that channel.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      return;
+    }
+    await db.setPanelMessageId(panel.id, message.id);
+    await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE} Panel **#${panelId}** resent in ${channel}.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -413,13 +466,19 @@ async function ticketActionCmd(interaction, sub) {
   }
 
   const category = await db.getCategoryById(ticket.category_id);
+  const settings = await settingsDb.getSettings(interaction.guild.id);
   const isStaff = actions.isStaffForCategory(interaction.member, category ?? { support_role_ids: [] });
+  const isStaffAllowed = actions.isStaffAllowedForTicket(interaction.member, category ?? { support_role_ids: [] }, ticket, settings);
   const isOpener = interaction.user.id === ticket.opener_id;
 
   const staffOnly = ['reopen', 'delete', 'claim', 'unclaim', 'rename', 'transcript'];
   const openerOrStaff = ['close', 'add', 'remove'];
 
-  if (staffOnly.includes(sub) && !isStaff) {
+  if (staffOnly.includes(sub) && !isStaffAllowed) {
+    if (isStaff && settings.claim_mode === 'exclusive' && ticket.claimed_by && ticket.claimed_by !== interaction.user.id && !interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
+      await interaction.reply({ content: `This ticket is exclusively claimed by <@${ticket.claimed_by}>.`, flags: MessageFlags.Ephemeral });
+      return;
+    }
     await interaction.reply({ content: 'Only staff for this ticket\'s category can do that.', flags: MessageFlags.Ephemeral });
     return;
   }

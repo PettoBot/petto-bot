@@ -8,6 +8,7 @@ const {
   handleCloseModal: handleTicketCloseModal,
   handleUserSelect: handleTicketUserSelect,
   handleRatingButton: handleTicketRatingButton,
+  handleRatingModal: handleTicketRatingModal,
 } = require('../interactions/ticketControls');
 const { handleButton: handleGiveawayButton } = require('../interactions/giveawayButton');
 const { handleButton: handlePollButton } = require('../interactions/pollButton');
@@ -72,6 +73,15 @@ module.exports = {
         await handleTicketRatingButton(interaction);
       } catch (err) {
         logger.error('Error handling ticket rating button:', err);
+      }
+      return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('tk_ratemodal::')) {
+      try {
+        await handleTicketRatingModal(interaction);
+      } catch (err) {
+        logger.error('Error handling ticket rating modal:', err);
       }
       return;
     }

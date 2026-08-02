@@ -42,6 +42,12 @@ function isStaffForCategory(member, category) {
   return (category.support_role_ids ?? []).some((id) => member.roles.cache.has(id));
 }
 
+function isStaffAllowedForTicket(member, category, ticket, settings) {
+  if (!isStaffForCategory(member, category)) return false;
+  if (settings?.claim_mode !== 'exclusive' || !ticket?.claimed_by) return true;
+  return ticket.claimed_by === member.id || member.permissions.has(PermissionFlagsBits.ManageGuild);
+}
+
 /**
  * Resolves a category's welcome message: a saved /embed template (rendered with variables) if
  * set, otherwise a plain fallback card. `pingText` (support-role mentions) has to be threaded in
@@ -373,6 +379,7 @@ async function openTicketInteractive(interaction, category) {
 
 module.exports = {
   isStaffForCategory,
+  isStaffAllowedForTicket,
   openTicket,
   openTicketInteractive,
   claimTicket,
