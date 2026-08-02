@@ -3,14 +3,27 @@
  * resolved guild Role objects. Used by /darol and /quitarol, which take multiple roles
  * in a single string option since Discord slash commands have no native "list of roles" type.
  */
+function resolveRole(guild, query) {
+  if (!query) return null;
+  const token = String(query).trim();
+  const id = token.replace(/[<@&>]/g, '');
+  if (/^\d{15,25}$/.test(id)) return guild.roles.cache.get(id) ?? null;
+
+  const q = token.toLowerCase();
+  const roles = [...guild.roles.cache.values()];
+  return roles.find((r) => r.name.toLowerCase() === q)
+    ?? roles.find((r) => r.name.toLowerCase().startsWith(q))
+    ?? roles.find((r) => r.name.toLowerCase().includes(q))
+    ?? null;
+}
+
 function resolveRoles(guild, input) {
   const tokens = input.split(/[\s,]+/).filter(Boolean);
   const resolved = [];
   const unresolved = [];
 
   for (const token of tokens) {
-    const id = token.replace(/[<@&>]/g, '');
-    const role = guild.roles.cache.get(id) ?? guild.roles.cache.find((r) => r.name.toLowerCase() === token.toLowerCase());
+    const role = resolveRole(guild, token);
     if (role) resolved.push(role);
     else unresolved.push(token);
   }
@@ -45,4 +58,4 @@ function filterAssignableRoles(interaction, roles) {
   return { assignable, blocked };
 }
 
-module.exports = { resolveRoles, filterAssignableRoles };
+module.exports = { resolveRole, resolveRoles, filterAssignableRoles };
