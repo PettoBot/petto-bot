@@ -7,7 +7,7 @@ async function handleButton(interaction) {
   if (action === 'rename') {
     return interaction.showModal(new ModalBuilder().setCustomId('vm_modal_rename').setTitle('Rename voice channel').addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('name').setLabel('New channel name').setStyle(TextInputStyle.Short).setMaxLength(100).setRequired(true))));
   }
-  if (['permit', 'reject', 'transfer'].includes(action)) {
+  if (['permit', 'reject', 'transfer', 'disconnect'].includes(action)) {
     return interaction.reply({ content: 'Select a member:', components: [new ActionRowBuilder().addComponents(new UserSelectMenuBuilder().setCustomId(`vm_select:${action}`).setPlaceholder('Select a member'))], flags: MessageFlags.Ephemeral });
   }
   if (action === 'limit_up' || action === 'limit_down') {

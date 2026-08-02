@@ -1,8 +1,8 @@
-const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, SeparatorSpacingSize, InviteTargetType } = require('discord.js');
 const voiceDb = require('../../db/voiceMaster');
 const { textCard } = require('../../utils/caseCard');
 
-const USER_ACTIONS = ['lock', 'unlock', 'ghost', 'reveal', 'claim', 'delete', 'rename', 'transfer', 'limit', 'permit', 'reject'];
+const USER_ACTIONS = ['lock', 'unlock', 'ghost', 'reveal', 'claim', 'delete', 'rename', 'transfer', 'limit', 'permit', 'reject', 'disconnect', 'activity'];
 
 module.exports = {
   aliases: ['vc'],
@@ -24,7 +24,9 @@ module.exports = {
     .addSubcommand((s) => s.setName('transfer').setDescription('Transfer ownership.').addUserOption((o) => o.setName('user').setDescription('New owner.').setRequired(true)))
     .addSubcommand((s) => s.setName('limit').setDescription('Set the user limit.').addIntegerOption((o) => o.setName('limit').setDescription('0 to 99.').setMinValue(0).setMaxValue(99).setRequired(true)))
     .addSubcommand((s) => s.setName('permit').setDescription('Allow a member to join.').addUserOption((o) => o.setName('user').setDescription('Member.').setRequired(true)))
-    .addSubcommand((s) => s.setName('reject').setDescription('Block a member from joining.').addUserOption((o) => o.setName('user').setDescription('Member.').setRequired(true))),
+    .addSubcommand((s) => s.setName('reject').setDescription('Block a member from joining.').addUserOption((o) => o.setName('user').setDescription('Member.').setRequired(true)))
+    .addSubcommand((s) => s.setName('disconnect').setDescription('Disconnect a member from your channel.').addUserOption((o) => o.setName('user').setDescription('Member.').setRequired(true)))
+    .addSubcommand((s) => s.setName('activity').setDescription('Create a Watch Together activity invite.')),
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
@@ -76,7 +78,7 @@ async function resendPanel(interaction) {
 async function executeAction(interaction, action, overrides = {}) {
   const temp = await voiceDb.getTemp(interaction.member.voice?.channelId);
   if (!temp) return interaction.reply({ content: 'You must be inside a VoiceMaster temporary channel.', flags: MessageFlags.Ephemeral });
-  if (['lock', 'unlock', 'ghost', 'reveal', 'rename', 'transfer', 'limit', 'permit', 'reject', 'delete'].includes(action) && temp.owner_id !== interaction.user.id) return interaction.reply({ content: 'Only the channel owner can do that.', flags: MessageFlags.Ephemeral });
+  if (['lock', 'unlock', 'ghost', 'reveal', 'rename', 'transfer', 'limit', 'permit', 'reject', 'disconnect', 'delete'].includes(action) && temp.owner_id !== interaction.user.id) return interaction.reply({ content: 'Only the channel owner can do that.', flags: MessageFlags.Ephemeral });
   const channel = interaction.guild.channels.cache.get(temp.channel_id);
   if (!channel) return interaction.reply({ content: 'That temporary channel no longer exists.', flags: MessageFlags.Ephemeral });
   if (action === 'claim') {
@@ -90,6 +92,18 @@ async function executeAction(interaction, action, overrides = {}) {
   if (action === 'transfer') { const targetId = overrides.userId ?? interaction.options.getUser('user', true).id; await voiceDb.updateTemp(temp.channel_id, { owner_id: targetId }); return interaction.reply({ content: `Ownership transferred to <@${targetId}>.`, flags: MessageFlags.Ephemeral }); }
   if (action === 'limit') { const limit = overrides.limit ?? interaction.options.getInteger('limit', true); await channel.setUserLimit(limit); await voiceDb.updateTemp(temp.channel_id, { user_limit: limit }); return interaction.reply({ content: `User limit set to **${limit || 'unlimited'}**.`, flags: MessageFlags.Ephemeral }); }
   if (action === 'permit' || action === 'reject') { const targetId = overrides.userId ?? interaction.options.getUser('user', true).id; return permissionAction(interaction, temp, channel, action, targetId); }
+  if (action === 'disconnect') {
+    const targetId = overrides.userId ?? interaction.options.getUser('user', true).id;
+    if (targetId === temp.owner_id) return interaction.reply({ content: 'You cannot disconnect yourself as the owner.', flags: MessageFlags.Ephemeral });
+    const member = await interaction.guild.members.fetch(targetId).catch(() => null);
+    if (!member?.voice?.channelId || member.voice.channelId !== channel.id) return interaction.reply({ content: 'That member is not in your temporary channel.', flags: MessageFlags.Ephemeral });
+    await member.voice.disconnect().catch(() => {});
+    return interaction.reply({ content: `<@${targetId}> was disconnected.`, flags: MessageFlags.Ephemeral });
+  }
+  if (action === 'activity') {
+    const invite = await channel.createInvite({ maxAge: 86400, targetType: InviteTargetType.EmbeddedApplication, targetApplication: '880218394199220334' }).catch(() => null);
+    return interaction.reply({ content: invite ? `Watch Together: ${invite.url}` : 'Could not create an activity invite.', flags: MessageFlags.Ephemeral });
+  }
   if (action === 'lock' || action === 'unlock') { await channel.permissionOverwrites.edit(interaction.guild.roles.everyone, { Connect: action === 'lock' ? false : null }); await voiceDb.updateTemp(temp.channel_id, { is_locked: action === 'lock' }); return interaction.reply({ content: `Channel ${action === 'lock' ? 'locked' : 'unlocked'}.`, flags: MessageFlags.Ephemeral }); }
   if (action === 'ghost' || action === 'reveal') { await channel.permissionOverwrites.edit(interaction.guild.roles.everyone, { ViewChannel: action === 'ghost' ? false : null }); await voiceDb.updateTemp(temp.channel_id, { is_ghosted: action === 'ghost' }); return interaction.reply({ content: `Channel ${action === 'ghost' ? 'hidden' : 'visible'}.`, flags: MessageFlags.Ephemeral }); }
 }
@@ -104,12 +118,20 @@ async function permissionAction(interaction, temp, channel, action, userId) {
 }
 
 async function sendPanel(channel) {
-  const rows = [
-    new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('vm:lock').setLabel('Lock').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('vm:unlock').setLabel('Unlock').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('vm:ghost').setLabel('Ghost').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('vm:reveal').setLabel('Reveal').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('vm:claim').setLabel('Claim').setStyle(ButtonStyle.Secondary)),
-    new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('vm:permit').setLabel('Permit').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('vm:reject').setLabel('Reject').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('vm:rename').setLabel('Rename').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('vm:transfer').setLabel('Transfer').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('vm:delete').setLabel('Delete').setStyle(ButtonStyle.Danger)),
-    new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('vm:limit_up').setLabel('Limit +').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('vm:limit_down').setLabel('Limit -').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('vm:info').setLabel('Info').setStyle(ButtonStyle.Secondary)),
-  ];
-  return channel.send({ embeds: [new EmbedBuilder().setColor(0xf9c8d9).setTitle('Voice Channel Panel').setDescription('Use the buttons to manage your temporary voice channel.')], components: rows });
+  const button = (customId, emoji, style = ButtonStyle.Secondary) => new ButtonBuilder().setCustomId(customId).setStyle(style).setEmoji(emoji);
+  const container = new ContainerBuilder().setAccentColor(0xf9c8d9);
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(['## 🎙️ Voice Channel Panel', '-# Use the buttons below to manage your temporary voice channel.'].join('\n')));
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent([
+      '>>> 🔒 · **Lock** the voice channel', '🔓 · **Unlock** the voice channel', '👻 · **Ghost** (hide) the voice channel', '👁️ · **Reveal** the voice channel', '👑 · **Claim** an unowned channel',
+      '✅ · **Permit** a member to join', '🚫 · **Reject** a member from the channel', '✏️ · **Rename** the voice channel', '🔄 · **Transfer** channel ownership', '🗑️ · **Delete** your channel',
+      '🔨 · **Disconnect** a member', '💻 · **Start** an activity', 'ℹ️ · **View** channel info', '➕ · **Increase** the user limit', '➖ · **Decrease** the user limit',
+    ].join('\n')));
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(false).setSpacing(SeparatorSpacingSize.Small));
+  container.addActionRowComponents(new ActionRowBuilder().addComponents(button('vm:lock', '🔒'), button('vm:unlock', '🔓'), button('vm:ghost', '👻'), button('vm:reveal', '👁️'), button('vm:claim', '👑')));
+  container.addActionRowComponents(new ActionRowBuilder().addComponents(button('vm:permit', '✅'), button('vm:reject', '🚫'), button('vm:rename', '✏️'), button('vm:transfer', '🔄'), button('vm:delete', '🗑️', ButtonStyle.Danger)));
+  container.addActionRowComponents(new ActionRowBuilder().addComponents(button('vm:disconnect', '🔨'), button('vm:activity', '💻'), button('vm:info', 'ℹ️'), button('vm:limit_up', '➕'), button('vm:limit_down', '➖')));
+  return channel.send({ components: [container], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function deletePanel(guild, channelId, messageId) { const channel = await guild.channels.fetch(channelId).catch(() => null); const message = await channel?.messages.fetch(messageId).catch(() => null); await message?.delete().catch(() => {}); }
