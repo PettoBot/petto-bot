@@ -1,6 +1,7 @@
 const { Events, MessageFlags } = require('discord.js');
 const { ensureGuild } = require('../db/guilds');
-const { buildInteractionFromMessage } = require('../handlers/prefixInteraction');
+const { buildInteractionFromMessage, tokenize } = require('../handlers/prefixInteraction');
+const commandAliasesDb = require('../db/commandAliases');
 const { getRemainingCooldown } = require('../utils/cooldown');
 const disabledDb = require('../db/disabledCommands');
 const permissionsDb = require('../db/permissions');
@@ -84,8 +85,25 @@ module.exports = {
     if (!withoutPrefix) return;
 
     const spaceIdx = withoutPrefix.indexOf(' ');
-    const commandName = (spaceIdx === -1 ? withoutPrefix : withoutPrefix.slice(0, spaceIdx)).toLowerCase();
-    const argText = spaceIdx === -1 ? '' : withoutPrefix.slice(spaceIdx + 1);
+    let commandName = (spaceIdx === -1 ? withoutPrefix : withoutPrefix.slice(0, spaceIdx)).toLowerCase();
+    let argText = spaceIdx === -1 ? '' : withoutPrefix.slice(spaceIdx + 1);
+
+    // Server-defined aliases are prefix-only, matching the rest of Petto's configurable
+    // command surface. `{0}`, `{1}`, ... refer to arguments supplied after the alias.
+    if (!message.client.commands.has(commandName) && !message.client.commandAliases.has(commandName)) {
+      const configuredAlias = await commandAliasesDb.get(message.guild.id, commandName).catch(() => null);
+      if (configuredAlias) {
+        const targetTokens = tokenize(configuredAlias.command);
+        const inputTokens = tokenize(argText);
+        const expanded = targetTokens.flatMap((token) => {
+          const match = /^\{(\d+)\}$/.exec(token);
+          if (match) return inputTokens[Number(match[1])] === undefined ? [] : [inputTokens[Number(match[1])]];
+          return [token.replace(/\{(\d+)\}/g, (_, index) => inputTokens[Number(index)] ?? '')];
+        });
+        commandName = (expanded.shift() ?? '').toLowerCase();
+        argText = expanded.join(' ');
+      }
+    }
 
     const canonicalName = message.client.commandAliases.get(commandName) ?? commandName;
     const command = message.client.commands.get(canonicalName);
