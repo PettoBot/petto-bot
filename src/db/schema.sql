@@ -27,6 +27,17 @@ alter table guilds add column if not exists bot_banner_url text;
 alter table guilds add column if not exists bot_description text;
 alter table guilds add column if not exists invites_paused_until timestamptz;
 
+-- Named sets of roles for /role group give|take <name> <member> — bulk-assign/remove several
+-- roles at once instead of listing them out every time.
+create table if not exists role_groups (
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  name       text not null,
+  role_ids   text[] not null default '{}',
+  created_at timestamptz not null default now(),
+  primary key (guild_id, name)
+);
+alter table role_groups enable row level security;
+
 -- Sanctions are logged via the 'sanctions' category of the /logs system (log_entries/log_webhooks)
 -- instead of a single fixed channel, so this column from an earlier design is no longer used.
 alter table guilds drop column if exists mod_log_channel_id;
