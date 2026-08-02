@@ -38,6 +38,18 @@ create table if not exists role_groups (
 );
 alter table role_groups enable row level security;
 
+-- Roles automatically given to new members on join. `target` lets a row apply to everyone,
+-- humans only, or bots only, so one server can have e.g. a human-only "Member" role and a
+-- separate bot-only "Bots" role without needing two different features.
+create table if not exists join_roles (
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  role_id    text not null,
+  target     text not null default 'all' check (target in ('all', 'humans', 'bots')),
+  created_at timestamptz not null default now(),
+  primary key (guild_id, role_id)
+);
+alter table join_roles enable row level security;
+
 -- Sanctions are logged via the 'sanctions' category of the /logs system (log_entries/log_webhooks)
 -- instead of a single fixed channel, so this column from an earlier design is no longer used.
 alter table guilds drop column if exists mod_log_channel_id;
