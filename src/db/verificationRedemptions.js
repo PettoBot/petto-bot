@@ -6,8 +6,20 @@ async function isRedeemed(jti) {
   return Boolean(data);
 }
 
-async function markRedeemed({ jti, guildId, userId }) {
+/**
+ * Atomically claims a verification token. The unique jti primary key makes this
+ * safe when a member submits the same link twice at the same time.
+ */
+async function claimRedemption({ jti, guildId, userId }) {
   const { error } = await supabase.from('verification_redemptions').insert({ jti, guild_id: guildId, user_id: userId });
+  if (!error) return true;
+  if (error.code === '23505') return false;
+  throw error;
+}
+
+/** Releases a claim when applying Discord roles failed, allowing a retry. */
+async function releaseRedemption(jti) {
+  const { error } = await supabase.from('verification_redemptions').delete().eq('jti', jti);
   if (error) throw error;
 }
 
@@ -18,4 +30,4 @@ async function hasEverVerified(guildId, userId) {
   return Boolean(data);
 }
 
-module.exports = { isRedeemed, markRedeemed, hasEverVerified };
+module.exports = { isRedeemed, claimRedemption, releaseRedemption, hasEverVerified };

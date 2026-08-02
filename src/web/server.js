@@ -5,7 +5,7 @@ const config = require('../config');
 const { verifyToken } = require('../utils/verifyToken');
 const { verifyTranscriptToken } = require('../utils/transcriptToken');
 const { getConfig } = require('../db/verificationConfig');
-const { isRedeemed, markRedeemed } = require('../db/verificationRedemptions');
+const { isRedeemed, claimRedemption, releaseRedemption } = require('../db/verificationRedemptions');
 const { getTicketById } = require('../db/tickets');
 const { logVerification } = require('../utils/verificationLog');
 const { buildVerifiedDM } = require('../utils/verifyMessage');
@@ -95,18 +95,31 @@ function startServer(client) {
       const member = await guild.members.fetch(payload.userId);
       const verifyConfig = await getConfig(payload.guildId);
 
-      if (verifyConfig?.unverified_role_id && member.roles.cache.has(verifyConfig.unverified_role_id)) {
-        await member.roles.remove(verifyConfig.unverified_role_id, 'Passed Turnstile verification');
+      // The initial read above is only a fast path. Claim immediately before
+      // mutating Discord so two concurrent submissions cannot both verify the
+      // same token.
+      const claimed = await claimRedemption({ jti: payload.jti, guildId: payload.guildId, userId: payload.userId });
+      if (!claimed) {
+        res.status(400).json({ ok: false, error: "You've already verified with this link. You should already have access, if not, contact a moderator." });
+        return;
       }
-      if (verifyConfig?.verified_role_id) {
-        await member.roles.add(verifyConfig.verified_role_id, 'Passed Turnstile verification');
+
+      try {
+        if (verifyConfig?.unverified_role_id && member.roles.cache.has(verifyConfig.unverified_role_id)) {
+          await member.roles.remove(verifyConfig.unverified_role_id, 'Passed Turnstile verification');
+        }
+        if (verifyConfig?.verified_role_id) {
+          await member.roles.add(verifyConfig.verified_role_id, 'Passed Turnstile verification');
+        }
+      } catch (err) {
+        await releaseRedemption(payload.jti).catch((releaseErr) => logger.error('Failed to release verification claim after role failure:', releaseErr));
+        throw err;
       }
 
       res.json({ ok: true });
 
       // Best-effort follow-up work, the member's already verified at this point,
       // so none of this should turn a real success into an error response.
-      await markRedeemed({ jti: payload.jti, guildId: payload.guildId, userId: payload.userId }).catch((err) => logger.error('Failed to mark token as redeemed:', err));
       await logVerification(client, guild, member.user).catch((err) => logger.error('Failed to log verification:', err));
       await member
         .send({ components: [buildVerifiedDM({ guild })], flags: MessageFlags.IsComponentsV2 })

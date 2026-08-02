@@ -42,7 +42,7 @@ module.exports = {
     if (message.author.bot || !message.guild || !message.member) return;
 
     try {
-      const list = await arDb.listForGuild(message.guild.id);
+      const list = await arDb.listForGuildCached(message.guild.id);
       if (!list.length) return;
 
       const ctx = { member: message.member, guild: message.guild, channel: message.channel, message };
