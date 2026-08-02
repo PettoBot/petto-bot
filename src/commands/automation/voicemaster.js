@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, SeparatorSpacingSize, InviteTargetType } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, InviteTargetType } = require('discord.js');
 const voiceDb = require('../../db/voiceMaster');
 const { textCard } = require('../../utils/caseCard');
 
@@ -69,10 +69,23 @@ async function resendPanel(interaction) {
   if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) return interaction.reply({ content: 'You need Manage Server to resend the panel.', flags: MessageFlags.Ephemeral });
   const row = await voiceDb.getConfig(interaction.guild.id);
   if (!row?.panel_channel_id) return interaction.reply({ content: 'Configure VoiceMaster first.', flags: MessageFlags.Ephemeral });
-  if (row.panel_message_id) await deletePanel(interaction.guild, row.panel_channel_id, row.panel_message_id);
-  const message = await sendPanel(await interaction.guild.channels.fetch(row.panel_channel_id));
+
+  const panelChannel = await interaction.guild.channels.fetch(row.panel_channel_id).catch(() => null);
+  if (!panelChannel?.isTextBased?.()) {
+    const error = new Error('The configured VoiceMaster panel channel no longer exists or is not accessible.');
+    error.userFacing = true;
+    throw error;
+  }
+
+  // Post first. If Discord rejects the new message, the existing panel remains usable.
+  const message = await sendPanel(panelChannel);
   await voiceDb.upsertConfig(interaction.guild.id, { panel_message_id: message.id });
-  return interaction.reply({ components: [textCard('VoiceMaster panel resent.', 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  if (row.panel_message_id && row.panel_message_id !== message.id) {
+    await deletePanel(interaction.guild, row.panel_channel_id, row.panel_message_id);
+  }
+  // Keep this confirmation as a normal message so the prefix path does not depend on
+  // Components V2 for a simple status response.
+  return interaction.reply('VoiceMaster panel resent.');
 }
 
 async function executeAction(interaction, action, overrides = {}) {
@@ -118,20 +131,13 @@ async function permissionAction(interaction, temp, channel, action, userId) {
 }
 
 async function sendPanel(channel) {
-  const button = (customId, emoji, style = ButtonStyle.Secondary) => new ButtonBuilder().setCustomId(customId).setStyle(style).setEmoji(emoji);
-  const container = new ContainerBuilder().setAccentColor(0xf9c8d9);
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(['## 🎙️ Voice Channel Panel', '-# Use the buttons below to manage your temporary voice channel.'].join('\n')));
-  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent([
-      '>>> 🔒 · **Lock** the voice channel', '🔓 · **Unlock** the voice channel', '👻 · **Ghost** (hide) the voice channel', '👁️ · **Reveal** the voice channel', '👑 · **Claim** an unowned channel',
-      '✅ · **Permit** a member to join', '🚫 · **Reject** a member from the channel', '✏️ · **Rename** the voice channel', '🔄 · **Transfer** channel ownership', '🗑️ · **Delete** your channel',
-      '🔨 · **Disconnect** a member', '💻 · **Start** an activity', 'ℹ️ · **View** channel info', '➕ · **Increase** the user limit', '➖ · **Decrease** the user limit',
-    ].join('\n')));
-  container.addSeparatorComponents(new SeparatorBuilder().setDivider(false).setSpacing(SeparatorSpacingSize.Small));
-  container.addActionRowComponents(new ActionRowBuilder().addComponents(button('vm:lock', '🔒'), button('vm:unlock', '🔓'), button('vm:ghost', '👻'), button('vm:reveal', '👁️'), button('vm:claim', '👑')));
-  container.addActionRowComponents(new ActionRowBuilder().addComponents(button('vm:permit', '✅'), button('vm:reject', '🚫'), button('vm:rename', '✏️'), button('vm:transfer', '🔄'), button('vm:delete', '🗑️', ButtonStyle.Danger)));
-  container.addActionRowComponents(new ActionRowBuilder().addComponents(button('vm:disconnect', '🔨'), button('vm:activity', '💻'), button('vm:info', 'ℹ️'), button('vm:limit_up', '➕'), button('vm:limit_down', '➖')));
-  return channel.send({ components: [container], flags: MessageFlags.IsComponentsV2 });
+  const button = (customId, label, style = ButtonStyle.Secondary) => new ButtonBuilder().setCustomId(customId).setLabel(label).setStyle(style);
+  const rows = [
+    new ActionRowBuilder().addComponents(button('vm:lock', 'Lock'), button('vm:unlock', 'Unlock'), button('vm:ghost', 'Ghost'), button('vm:reveal', 'Reveal'), button('vm:claim', 'Claim')),
+    new ActionRowBuilder().addComponents(button('vm:permit', 'Permit'), button('vm:reject', 'Reject'), button('vm:rename', 'Rename'), button('vm:transfer', 'Transfer'), button('vm:delete', 'Delete', ButtonStyle.Danger)),
+    new ActionRowBuilder().addComponents(button('vm:disconnect', 'Disconnect'), button('vm:activity', 'Activity'), button('vm:info', 'Info'), button('vm:limit_up', 'Limit +'), button('vm:limit_down', 'Limit -')),
+  ];
+  return channel.send({ embeds: [new EmbedBuilder().setColor(0xf9c8d9).setTitle('Voice Channel Panel').setDescription('Use the buttons below to manage your temporary voice channel.')], components: rows });
 }
 
 async function deletePanel(guild, channelId, messageId) { const channel = await guild.channels.fetch(channelId).catch(() => null); const message = await channel?.messages.fetch(messageId).catch(() => null); await message?.delete().catch(() => {}); }
