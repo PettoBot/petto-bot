@@ -22,17 +22,17 @@ const DEFAULT_COOLDOWN_MS = 3000;
 module.exports = {
   name: Events.InteractionCreate,
   async execute(interaction, client) {
-    if (interaction.isButton() && interaction.customId.startsWith('vm:')) {
+    if (interaction.isButton() && (interaction.customId.startsWith('vm:') || interaction.customId.startsWith('vc:'))) {
       try { await handleVoiceMasterButton(interaction); } catch (err) { logger.error('Error handling VoiceMaster button:', err); }
       return;
     }
 
-    if (interaction.isModalSubmit() && interaction.customId.startsWith('vm_modal_')) {
+    if (interaction.isModalSubmit() && (interaction.customId.startsWith('vm_modal_') || interaction.customId.startsWith('vcm:'))) {
       try { await handleVoiceMasterModal(interaction); } catch (err) { logger.error('Error handling VoiceMaster modal:', err); }
       return;
     }
 
-    if (interaction.isUserSelectMenu() && interaction.customId.startsWith('vm_select:')) {
+    if (interaction.isUserSelectMenu() && (interaction.customId.startsWith('vm_select:') || interaction.customId.startsWith('vc:do_'))) {
       try { await handleVoiceMasterSelect(interaction); } catch (err) { logger.error('Error handling VoiceMaster select:', err); }
       return;
     }
