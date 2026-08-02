@@ -3,6 +3,7 @@ const starboardDb = require('../../db/starboard');
 const { textCard } = require('../../utils/caseCard');
 
 module.exports = {
+  aliases: ['stb'],
   data: new SlashCommandBuilder()
     .setName('starboard')
     .setDescription('Configure the reaction-based starboard.')

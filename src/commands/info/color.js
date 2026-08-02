@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 
 module.exports = {
+  aliases: ['clr', 'hex'],
   data: new SlashCommandBuilder()
     .setName('color')
     .setDescription('Previews a hex color.')

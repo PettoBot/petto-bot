@@ -17,6 +17,7 @@ const ACTION_CHOICES = [
 ];
 
 module.exports = {
+  aliases: ['xp'],
   data: new SlashCommandBuilder()
     .setName('level')
     .setDescription('Configure the XP/leveling system.')

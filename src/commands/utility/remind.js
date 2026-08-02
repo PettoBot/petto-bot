@@ -7,6 +7,7 @@ const { EMOJI } = require('../../utils/emojis');
 const { COLORS } = require('../../utils/colors');
 
 module.exports = {
+  aliases: ['rem'],
   data: new SlashCommandBuilder()
     .setName('remind')
     .setDescription('Set a personal reminder.')

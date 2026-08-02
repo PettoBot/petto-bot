@@ -7,6 +7,7 @@ function timestampFromSnowflake(id) {
 }
 
 module.exports = {
+  aliases: ['sf', 'id'],
   data: new SlashCommandBuilder()
     .setName('snowflake')
     .setDescription('Decodes the creation timestamp embedded in any Discord ID.')

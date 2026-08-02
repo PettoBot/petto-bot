@@ -16,6 +16,7 @@ function stickerUrl(sticker) {
 }
 
 module.exports = {
+  aliases: ['stl'],
   data: new SlashCommandBuilder()
     .setName('steal')
     .setDescription('Add an emoji or sticker from elsewhere to this server.')

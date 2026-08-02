@@ -3,6 +3,7 @@ const inviteTrackingDb = require('../../db/inviteTracking');
 const { COLORS } = require('../../utils/colors');
 
 module.exports = {
+  aliases: ['invs'],
   data: new SlashCommandBuilder()
     .setName('invites')
     .setDescription('Shows how many members someone has invited.')

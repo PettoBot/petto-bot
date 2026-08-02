@@ -5,6 +5,7 @@ const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
 
 module.exports = {
+  aliases: ['ac'],
   data: new SlashCommandBuilder()
     .setName('activity')
     .setDescription('Activity commands.')

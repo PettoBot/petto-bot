@@ -5,6 +5,7 @@ const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 
 module.exports = {
+  aliases: ['sr'],
   data: new SlashCommandBuilder()
     .setName('stickyroles')
     .setDescription('Automatically restore a member\'s roles if they leave and rejoin.')

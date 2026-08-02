@@ -14,6 +14,7 @@ const logger = require('../../utils/logger');
 const MAX_TIMEOUT_MS = 28 * 24 * 60 * 60 * 1000; // Discord's native timeout hard limit
 
 module.exports = {
+  aliases: ['m'],
   data: new SlashCommandBuilder()
     .setName('mute')
     .setDescription('Mute members.')

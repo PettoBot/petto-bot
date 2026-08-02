@@ -2,6 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { COLORS } = require('../../utils/colors');
 
 module.exports = {
+  aliases: ['ri'],
   data: new SlashCommandBuilder()
     .setName('roleinfo')
     .setDescription('Shows information about a role.')

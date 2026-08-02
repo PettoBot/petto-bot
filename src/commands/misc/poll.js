@@ -3,6 +3,7 @@ const { setDraft } = require('../../utils/pollDrafts');
 const { renderPanel } = require('../../interactions/pollPanel');
 
 module.exports = {
+  aliases: ['pl'],
   data: new SlashCommandBuilder().setName('poll').setDescription('Build a poll members can vote on with buttons.').setDMPermission(false),
   interactive: true,
 

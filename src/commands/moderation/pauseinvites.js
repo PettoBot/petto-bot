@@ -6,6 +6,7 @@ const { parseDuration, formatDuration } = require('../../utils/duration');
 const logger = require('../../utils/logger');
 
 module.exports = {
+  aliases: ['pi'],
   data: new SlashCommandBuilder()
     .setName('pauseinvites')
     .setDescription('Delete all server invites and block new ones for a set duration.')

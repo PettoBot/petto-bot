@@ -3,6 +3,7 @@ const aliasesDb = require('../../db/commandAliases');
 const { textCard } = require('../../utils/caseCard');
 
 module.exports = {
+  aliases: ['aliases'],
   data: new SlashCommandBuilder()
     .setName('alias')
     .setDescription('Create shortcuts for prefix commands.')

@@ -4,6 +4,7 @@ const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 
 module.exports = {
+  aliases: ['away'],
   data: new SlashCommandBuilder()
     .setName('afk')
     .setDescription('Set an AFK status, or view mentions you got while away.')

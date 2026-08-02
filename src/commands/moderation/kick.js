@@ -10,6 +10,7 @@ const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
 
 module.exports = {
+  aliases: ['k'],
   data: new SlashCommandBuilder()
     .setName('kick')
     .setDescription('Kick members from the server.')

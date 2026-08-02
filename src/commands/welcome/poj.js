@@ -8,6 +8,7 @@ const { EMOJI } = require('../../utils/emojis');
 const DEFAULT_DELETE_MS = 5000;
 
 module.exports = {
+  aliases: ['j'],
   data: new SlashCommandBuilder()
     .setName('poj')
     .setDescription('Ping on Join — mentions a new member in specific channels, then deletes the ping.')

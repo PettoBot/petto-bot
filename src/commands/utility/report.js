@@ -7,6 +7,7 @@ const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
 
 module.exports = {
+  aliases: ['rpt'],
   data: new SlashCommandBuilder()
     .setName('report')
     .setDescription('Report a member to the staff team.')
