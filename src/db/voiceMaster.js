@@ -7,7 +7,16 @@ async function getConfig(guildId) {
 }
 
 async function upsertConfig(guildId, changes) {
-  const { data, error } = await supabase.from('voice_configs').upsert({ guild_id: guildId, ...changes, updated_at: new Date().toISOString() }, { onConflict: 'guild_id' }).select('*').single();
+  // PostgREST upsert can attempt an INSERT when only a partial patch is sent.
+  // That breaks this table because creator_channel_id and panel_channel_id are
+  // required. Update an existing guild row explicitly, and only insert complete
+  // setup data for a new guild.
+  const existing = await getConfig(guildId);
+  const payload = { ...changes, updated_at: new Date().toISOString() };
+  const query = existing
+    ? supabase.from('voice_configs').update(payload).eq('guild_id', guildId)
+    : supabase.from('voice_configs').insert({ guild_id: guildId, ...payload });
+  const { data, error } = await query.select('*').single();
   if (error) throw error;
   return data;
 }
