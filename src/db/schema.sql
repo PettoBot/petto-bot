@@ -954,6 +954,102 @@ create index if not exists idx_custom_commands_guild on custom_commands(guild_id
 
 alter table custom_commands enable row level security;
 
+-- ── Configurable command aliases ─────────────────────────────────────────
+
+create table if not exists command_aliases (
+  id         bigserial primary key,
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  name       text not null,
+  command    text not null,
+  created_at timestamptz not null default now(),
+  unique (guild_id, name)
+);
+
+create index if not exists idx_command_aliases_guild on command_aliases(guild_id);
+
+alter table command_aliases enable row level security;
+
+-- ── Repeating timers ──────────────────────────────────────────────────────
+
+create table if not exists auto_messages (
+  id          bigserial primary key,
+  guild_id    text not null references guilds(guild_id) on delete cascade,
+  channel_id  text not null,
+  interval_ms bigint not null check (interval_ms >= 600000),
+  message     text not null,
+  next_run_at timestamptz not null,
+  created_at  timestamptz not null default now(),
+  unique (guild_id, channel_id)
+);
+
+create index if not exists idx_auto_messages_due on auto_messages(next_run_at);
+
+alter table auto_messages enable row level security;
+
+-- ── Starboard ─────────────────────────────────────────────────────────────
+
+create table if not exists starboards (
+  guild_id            text primary key references guilds(guild_id) on delete cascade,
+  channel_id          text,
+  threshold           integer not null default 3 check (threshold between 1 and 100),
+  emoji               text not null default '⭐',
+  selfstar            boolean not null default false,
+  color               integer not null default 16760839,
+  timestamp           boolean not null default true,
+  jumpurl             boolean not null default true,
+  attachments         boolean not null default true,
+  ignored_channel_ids text[] not null default '{}',
+  ignored_role_ids    text[] not null default '{}',
+  ignored_user_ids    text[] not null default '{}',
+  created_at          timestamptz not null default now(),
+  updated_at          timestamptz not null default now()
+);
+
+create table if not exists starboard_entries (
+  guild_id            text not null references guilds(guild_id) on delete cascade,
+  source_message_id   text not null,
+  starboard_message_id text not null,
+  count               integer not null default 0,
+  updated_at          timestamptz not null default now(),
+  primary key (guild_id, source_message_id)
+);
+
+create index if not exists idx_starboard_entries_guild on starboard_entries(guild_id);
+
+alter table starboards enable row level security;
+alter table starboard_entries enable row level security;
+
+-- ── VoiceMaster temporary channels ───────────────────────────────────────
+
+create table if not exists voice_configs (
+  guild_id          text primary key references guilds(guild_id) on delete cascade,
+  creator_channel_id text not null,
+  panel_channel_id   text not null,
+  panel_message_id   text,
+  category_id        text,
+  default_limit      integer not null default 0 check (default_limit between 0 and 99),
+  default_name       text not null default '{user.name}',
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now()
+);
+
+create table if not exists voice_temp_channels (
+  guild_id         text not null references guilds(guild_id) on delete cascade,
+  channel_id       text primary key,
+  owner_id         text not null,
+  trusted_user_ids text[] not null default '{}',
+  banned_user_ids  text[] not null default '{}',
+  is_locked        boolean not null default false,
+  is_ghosted       boolean not null default false,
+  user_limit       integer not null default 0 check (user_limit between 0 and 99),
+  created_at       timestamptz not null default now()
+);
+
+create index if not exists idx_voice_temp_guild on voice_temp_channels(guild_id);
+
+alter table voice_configs enable row level security;
+alter table voice_temp_channels enable row level security;
+
 -- ── Reminders ────────────────────────────────────────────────────────────
 
 create table if not exists reminders (

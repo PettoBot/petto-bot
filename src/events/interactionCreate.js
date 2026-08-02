@@ -13,6 +13,7 @@ const {
 const { handleButton: handleGiveawayButton } = require('../interactions/giveawayButton');
 const { handleButton: handlePollButton } = require('../interactions/pollButton');
 const { handleButton: handlePollPanelButton, handleModal: handlePollPanelModal } = require('../interactions/pollPanel');
+const { handleButton: handleVoiceMasterButton, handleModal: handleVoiceMasterModal, handleSelect: handleVoiceMasterSelect } = require('../interactions/voiceMaster');
 const permissionsDb = require('../db/permissions');
 const logger = require('../utils/logger');
 
@@ -21,6 +22,21 @@ const DEFAULT_COOLDOWN_MS = 3000;
 module.exports = {
   name: Events.InteractionCreate,
   async execute(interaction, client) {
+    if (interaction.isButton() && interaction.customId.startsWith('vm:')) {
+      try { await handleVoiceMasterButton(interaction); } catch (err) { logger.error('Error handling VoiceMaster button:', err); }
+      return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('vm_modal_')) {
+      try { await handleVoiceMasterModal(interaction); } catch (err) { logger.error('Error handling VoiceMaster modal:', err); }
+      return;
+    }
+
+    if (interaction.isUserSelectMenu() && interaction.customId.startsWith('vm_select:')) {
+      try { await handleVoiceMasterSelect(interaction); } catch (err) { logger.error('Error handling VoiceMaster select:', err); }
+      return;
+    }
+
     if (interaction.isButton() && interaction.customId.startsWith('eb_')) {
       try {
         await handleEmbedPanelButton(interaction);

@@ -10,6 +10,7 @@ const { startVoiceXpJob } = require('./src/jobs/voiceXpJob');
 const { startActivityStatsJob } = require('./src/jobs/activityStatsJob');
 const { startGiveawayJob } = require('./src/jobs/giveawayJob');
 const { startReminderJob } = require('./src/jobs/reminderJob');
+const { startAutoMessageJob } = require('./src/jobs/autoMessageJob');
 const { startStatusHeartbeatJob } = require('./src/jobs/statusHeartbeatJob');
 const { startBulkRoleJob } = require('./src/jobs/bulkRoleJob');
 const { startTicketAutocloseJob } = require('./src/jobs/ticketAutocloseJob');
@@ -62,6 +63,7 @@ async function main() {
   startActivityStatsJob(client);
   startGiveawayJob(client);
   startReminderJob(client);
+  startAutoMessageJob(client);
   startStatusHeartbeatJob(client);
   startBulkRoleJob(client);
   startTicketAutocloseJob(client);
