@@ -77,7 +77,7 @@ async function status(interaction) {
 
   const verifyConfig = await getConfig(interaction.guild.id);
   if (!verifyConfig) {
-    await interaction.editReply({ components: [textCard('Verification has never been configured in this server. Use `/verify setup enabled:true`.', 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard('Verification has never been configured in this server. Use `!verify setup enabled:true`.', 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -95,7 +95,7 @@ async function send(interaction) {
   const targetUser = interaction.options.getUser('user', true);
 
   if (!ENV_CONFIGURED()) {
-    await interaction.reply({ content: 'Verification env vars are not fully set. See `/verify status`.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: 'Verification env vars are not fully set. See `!verify status`.', flags: MessageFlags.Ephemeral });
     return;
   }
 

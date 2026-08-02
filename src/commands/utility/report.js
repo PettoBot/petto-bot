@@ -54,7 +54,7 @@ async function send(interaction) {
 
   const channel = await interaction.guild.channels.fetch(reportConfig.channel_id).catch(() => null);
   if (!channel) {
-    await interaction.editReply({ content: 'The configured report channel no longer exists. Ask staff to run `/report config` again.' });
+    await interaction.editReply({ content: 'The configured report channel no longer exists. Ask staff to run `!report config` again.' });
     return;
   }
 
@@ -82,6 +82,6 @@ async function configure(interaction) {
   await ensureGuild(interaction.guild.id);
   await upsertConfig(interaction.guild.id, { channel_id: channel.id, enabled });
 
-  const text = `${EMOJI.APPROVE}  Reports ${enabled ? 'enabled' : 'disabled'}. ${enabled ? `New reports (via \`/report send\` and the "Report Message" app command) will be sent to ${channel}.` : ''}`;
+  const text = `${EMOJI.APPROVE}  Reports ${enabled ? 'enabled' : 'disabled'}. ${enabled ? `New reports (via \`!report send\` and the "Report Message" app command) will be sent to ${channel}.` : ''}`;
   await interaction.editReply({ components: [textCard(text, enabled ? 0xa5ea7a : 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
 }

@@ -149,7 +149,7 @@ async function selfCreate(interaction) {
 
   const existing = await db.getBoosterRole(interaction.guild.id, interaction.user.id);
   if (existing && interaction.guild.roles.cache.has(existing.role_id)) {
-    await interaction.editReply({ components: [textCard("You already have a booster role. Use `/boosterrole rename` or `/boosterrole color` to change it.", 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard("You already have a booster role. Use `!boosterrole rename` or `!boosterrole color` to change it.", 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -226,7 +226,7 @@ async function selfRename(interaction) {
 
   const existing = await db.getBoosterRole(interaction.guild.id, interaction.user.id);
   if (!existing) {
-    await interaction.editReply({ components: [textCard("You don't have a booster role yet. Use `/boosterrole color` first.", 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard("You don't have a booster role yet. Use `!boosterrole color` first.", 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
   const remaining = actions.getRemainingCooldown(existing.rename_cooldown_at, config.rename_cooldown_ms);
@@ -270,7 +270,7 @@ async function selfIcon(interaction) {
   const config = await db.ensureConfig(interaction.guild.id);
   const existing = await db.getBoosterRole(interaction.guild.id, interaction.user.id);
   if (!existing) {
-    await interaction.editReply({ components: [textCard("You don't have a booster role yet. Use `/boosterrole color` first.", 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard("You don't have a booster role yet. Use `!boosterrole color` first.", 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
   const remaining = actions.getRemainingCooldown(existing.icon_cooldown_at, config.icon_cooldown_ms);

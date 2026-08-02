@@ -135,7 +135,7 @@ module.exports = {
 
       if (!config.entries.length) {
         await interaction.reply({
-          embeds: [okEmbed(`No log channels configured.\nUse \`/logs add\` to get started.\nEvents: ${EVENTS.join(', ')}`)],
+          embeds: [okEmbed(`No log channels configured.\nUse \`!logs add\` to get started.\nEvents: ${EVENTS.join(', ')}`)],
           flags: MessageFlags.Ephemeral,
         });
         return;

@@ -194,7 +194,7 @@ async function tempMute(interaction) {
     return;
   }
   if (durationMs > MAX_TIMEOUT_MS) {
-    await interaction.reply({ content: 'Discord timeouts cap at 28 days. Use `/mute user` for an indefinite mute instead.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: 'Discord timeouts cap at 28 days. Use `!mute user` for an indefinite mute instead.', flags: MessageFlags.Ephemeral });
     return;
   }
 
