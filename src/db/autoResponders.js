@@ -2,6 +2,8 @@ const crypto = require('crypto');
 const supabase = require('./supabase');
 
 const MAX_PER_GUILD = 100;
+const CACHE_TTL_MS = 15_000;
+const listCache = new Map();
 
 function generateArId() {
   return crypto.randomBytes(4).toString('hex'); // 8 hex chars, same shape as bli's short ids
@@ -17,6 +19,18 @@ async function listForGuild(guildId) {
   const { data, error } = await supabase.from('auto_responders').select('*').eq('guild_id', guildId).order('created_at', { ascending: true });
   if (error) throw error;
   return data;
+}
+
+async function listForGuildCached(guildId) {
+  const cached = listCache.get(guildId);
+  if (cached && cached.expiresAt > Date.now()) return cached.rows;
+  const rows = await listForGuild(guildId);
+  listCache.set(guildId, { rows, expiresAt: Date.now() + CACHE_TTL_MS });
+  return rows;
+}
+
+function invalidateGuildCache(guildId) {
+  listCache.delete(guildId);
 }
 
 async function getById(guildId, arId) {
@@ -41,25 +55,29 @@ async function create(guildId, patch) {
 
   const { data, error } = await supabase.from('auto_responders').insert({ guild_id: guildId, ar_id: generateArId(), ...patch }).select('*').single();
   if (error) throw error;
+  invalidateGuildCache(guildId);
   return data;
 }
 
 async function update(guildId, arId, patch) {
   const { data, error } = await supabase.from('auto_responders').update(patch).eq('guild_id', guildId).eq('ar_id', arId).select('*').maybeSingle();
   if (error) throw error;
+  invalidateGuildCache(guildId);
   return data;
 }
 
 async function removeByTrigger(guildId, trigger) {
   const { data, error } = await supabase.from('auto_responders').delete().eq('guild_id', guildId).ilike('trigger', trigger).select('id');
   if (error) throw error;
+  invalidateGuildCache(guildId);
   return data.length > 0;
 }
 
 async function removeAllForGuild(guildId) {
   const { data, error } = await supabase.from('auto_responders').delete().eq('guild_id', guildId).select('id');
   if (error) throw error;
+  invalidateGuildCache(guildId);
   return data.length;
 }
 
-module.exports = { MAX_PER_GUILD, listForGuild, getById, getByTrigger, create, update, removeByTrigger, removeAllForGuild };
+module.exports = { MAX_PER_GUILD, listForGuild, listForGuildCached, invalidateGuildCache, getById, getByTrigger, create, update, removeByTrigger, removeAllForGuild };

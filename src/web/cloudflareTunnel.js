@@ -5,6 +5,8 @@ const { install } = require('cloudflared');
 const logger = require('../utils/logger');
 
 const BIN_PATH = path.join(__dirname, '..', '..', '.cloudflared', process.platform === 'win32' ? 'cloudflared.exe' : 'cloudflared');
+const INITIAL_RESTART_DELAY_MS = 5_000;
+const MAX_RESTART_DELAY_MS = 60_000;
 
 /**
  * Starts a Cloudflare Tunnel (`cloudflared tunnel run --token ...`) as a child process, so
@@ -25,12 +27,21 @@ async function startCloudflareTunnel(token) {
       await install(BIN_PATH);
     }
 
-    const proc = spawn(BIN_PATH, ['tunnel', 'run', '--token', token], { stdio: ['ignore', 'pipe', 'pipe'] });
-    proc.stdout.on('data', (chunk) => logger.info(`[cloudflared] ${chunk.toString().trim()}`));
-    proc.stderr.on('data', (chunk) => logger.info(`[cloudflared] ${chunk.toString().trim()}`));
-    proc.on('exit', (code) => logger.warn(`Cloudflare Tunnel exited (code ${code}) — verification/transcript links won't work until the bot restarts.`));
-
-    logger.info('Cloudflare Tunnel started.');
+    let restartDelay = INITIAL_RESTART_DELAY_MS;
+    const spawnTunnel = () => {
+      const proc = spawn(BIN_PATH, ['tunnel', 'run', '--token', token], { stdio: ['ignore', 'pipe', 'pipe'] });
+      proc.stdout.on('data', (chunk) => logger.info(`[cloudflared] ${chunk.toString().trim()}`));
+      proc.stderr.on('data', (chunk) => logger.info(`[cloudflared] ${chunk.toString().trim()}`));
+      proc.on('error', (err) => logger.error('Cloudflare Tunnel process error:', err));
+      proc.on('exit', (code, signal) => {
+        logger.warn(`Cloudflare Tunnel exited (code ${code}, signal ${signal ?? 'none'}); restarting in ${restartDelay / 1000}s.`);
+        const delay = restartDelay;
+        restartDelay = Math.min(restartDelay * 2, MAX_RESTART_DELAY_MS);
+        setTimeout(spawnTunnel, delay);
+      });
+      logger.info('Cloudflare Tunnel started.');
+    };
+    spawnTunnel();
   } catch (err) {
     logger.error('Failed to start Cloudflare Tunnel:', err);
   }
