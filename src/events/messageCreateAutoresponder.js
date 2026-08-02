@@ -3,6 +3,7 @@ const arDb = require('../db/autoResponders');
 const { getTemplate } = require('../db/embedTemplates');
 const { build } = require('../utils/embedBuilder');
 const { resolve } = require('../utils/embedVariables');
+const { extractReactReplies, applyReactReplies } = require('../utils/messageFlags');
 const logger = require('../utils/logger');
 
 /** Pulls role/user mentions typed into a resolved reply (e.g. "@staff") so they can be allow-listed. */
@@ -51,6 +52,17 @@ module.exports = {
         if (ar.role_ids?.length && !ar.role_ids.some((roleId) => message.member.roles.cache.has(roleId))) continue;
         if (!matches(ar, message.content)) continue;
 
+        const { text: cleanedReply, emojis: reactReplies } = extractReactReplies(ar.reply ?? '');
+
+        // A reply that's nothing but {reactreply:...} tags (no text, no embed) is a pure
+        // "react to the trigger" autoresponder — react to the trigger itself instead of
+        // sending an empty message just to react to.
+        if (!cleanedReply && !ar.embed_template && reactReplies.length) {
+          await applyReactReplies(message, reactReplies);
+          if (ar.delete_trigger) await message.delete().catch(() => {});
+          continue;
+        }
+
         let payload;
         if (ar.embed_template) {
           const doc = await getTemplate(message.guild.id, ar.embed_template);
@@ -58,16 +70,16 @@ module.exports = {
             payload = await build(doc.data, ctx);
           } else {
             logger.warn(`Autoresponder ${ar.ar_id}: embed template "${ar.embed_template}" not found, falling back to plain text.`);
-            payload = { content: await resolve(ar.reply, ctx) };
+            payload = { content: await resolve(cleanedReply, ctx) };
           }
         } else if (ar.reply_type === 'embed') {
-          const text = await resolve(ar.reply, ctx);
+          const text = await resolve(cleanedReply, ctx);
           const embed = new EmbedBuilder().setColor(ar.embed_color ?? 0x8399ff).setDescription(text);
           if (ar.embed_title) embed.setTitle(await resolve(ar.embed_title, ctx));
           if (ar.embed_footer) embed.setFooter({ text: await resolve(ar.embed_footer, ctx) });
           payload = { embeds: [embed] };
         } else {
-          payload = { content: await resolve(ar.reply, ctx) };
+          payload = { content: await resolve(cleanedReply, ctx) };
         }
 
         // A ping only actually notifies if the mention text is present AND allowedMentions opts
@@ -87,12 +99,14 @@ module.exports = {
           allowedMentions.users = [...new Set([...allowedMentions.users, message.author.id])];
         }
 
+        let sent;
         if ((ar.reply_to_trigger || (ar.ping_user && canReply)) && canReply) {
           allowedMentions.repliedUser = ar.ping_user;
-          await message.reply({ ...payload, allowedMentions }).catch((err) => logger.warn(`Autoresponder ${ar.ar_id} send failed:`, err.message));
+          sent = await message.reply({ ...payload, allowedMentions }).catch((err) => logger.warn(`Autoresponder ${ar.ar_id} send failed:`, err.message));
         } else {
-          await message.channel.send({ ...payload, allowedMentions }).catch((err) => logger.warn(`Autoresponder ${ar.ar_id} send failed:`, err.message));
+          sent = await message.channel.send({ ...payload, allowedMentions }).catch((err) => logger.warn(`Autoresponder ${ar.ar_id} send failed:`, err.message));
         }
+        if (sent && reactReplies.length) await applyReactReplies(sent, reactReplies);
         if (ar.delete_trigger) await message.delete().catch(() => {});
       }
     } catch (err) {

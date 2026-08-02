@@ -50,6 +50,20 @@ create table if not exists join_roles (
 );
 alter table join_roles enable row level security;
 
+-- Auto-creates a thread off every new message in a configured channel, optionally posting a
+-- starter message inside it (same {variable}/{reactreply:} text as welcome/leave/boost).
+create table if not exists auto_threads (
+  guild_id       text not null references guilds(guild_id) on delete cascade,
+  channel_id     text not null,
+  name_template  text not null default '{user_name}',
+  message_text   text,
+  embed_template text,
+  archive_minutes integer not null default 60 check (archive_minutes in (60, 1440, 4320, 10080)),
+  created_at     timestamptz not null default now(),
+  primary key (guild_id, channel_id)
+);
+alter table auto_threads enable row level security;
+
 -- Sanctions are logged via the 'sanctions' category of the /logs system (log_entries/log_webhooks)
 -- instead of a single fixed channel, so this column from an earlier design is no longer used.
 alter table guilds drop column if exists mod_log_channel_id;
