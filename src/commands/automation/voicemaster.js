@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, InviteTargetType } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags, EmbedBuilder, InviteTargetType } = require('discord.js');
 const voiceDb = require('../../db/voiceMaster');
 const { textCard } = require('../../utils/caseCard');
 
@@ -131,13 +131,61 @@ async function permissionAction(interaction, temp, channel, action, userId) {
 }
 
 async function sendPanel(channel) {
-  const button = (customId, label, style = ButtonStyle.Secondary) => new ButtonBuilder().setCustomId(customId).setLabel(label).setStyle(style);
-  const rows = [
-    new ActionRowBuilder().addComponents(button('vm:lock', 'Lock'), button('vm:unlock', 'Unlock'), button('vm:ghost', 'Ghost'), button('vm:reveal', 'Reveal'), button('vm:claim', 'Claim')),
-    new ActionRowBuilder().addComponents(button('vm:permit', 'Permit'), button('vm:reject', 'Reject'), button('vm:rename', 'Rename'), button('vm:transfer', 'Transfer'), button('vm:delete', 'Delete', ButtonStyle.Danger)),
-    new ActionRowBuilder().addComponents(button('vm:disconnect', 'Disconnect'), button('vm:activity', 'Activity'), button('vm:info', 'Info'), button('vm:limit_up', 'Limit +'), button('vm:limit_down', 'Limit -')),
-  ];
-  return channel.send({ embeds: [new EmbedBuilder().setColor(0xf9c8d9).setTitle('Voice Channel Panel').setDescription('Use the buttons below to manage your temporary voice channel.')], components: rows });
+  // Keep this payload in sync with Bli's fixed panel: Components V2, emoji-only
+  // buttons, and the vc:* custom-id namespace used by its interaction handler.
+  return channel.send({
+    flags: MessageFlags.IsComponentsV2,
+    components: [{
+      type: 17,
+      accent_color: 0xf9c8d9,
+      components: [
+        { type: 10, content: [
+          '## \u{1f399}\ufe0f Voice Channel Panel',
+          '-# Use the buttons below to manage your temporary voice channel.',
+        ].join('\n') },
+        { type: 14, divider: true, spacing: 1 },
+        { type: 10, content: [
+          '>>> \u{1f512} · **Lock** the voice channel',
+          '\u{1f513} · **Unlock** the voice channel',
+          '\u{1f47b} · **Ghost** (hide) the voice channel',
+          '\u{1f441}\ufe0f · **Reveal** the voice channel',
+          '\u{1f451} · **Claim** an unowned channel',
+          '\u2705 · **Permit** a member to join',
+          '\u{1f6ab} · **Reject** a member from the channel',
+          '\u270f\ufe0f · **Rename** the voice channel',
+          '\u{1f504} · **Transfer** channel ownership',
+          '\u{1f5d1}\ufe0f · **Delete** your channel',
+          '\u{1f528} · **Disconnect** a member',
+          '\u{1f4bb} · **Start** an activity',
+          '\u2139\ufe0f · **View** channel info',
+          '\u2795 · **Increase** the user limit',
+          '\u2796 · **Decrease** the user limit',
+        ].join('\n') },
+        { type: 14, divider: false, spacing: 1 },
+        { type: 1, components: [
+          { type: 2, custom_id: 'vc:lock', style: 2, emoji: { name: '\u{1f512}' } },
+          { type: 2, custom_id: 'vc:unlock', style: 2, emoji: { name: '\u{1f513}' } },
+          { type: 2, custom_id: 'vc:ghost', style: 2, emoji: { name: '\u{1f47b}' } },
+          { type: 2, custom_id: 'vc:reveal', style: 2, emoji: { name: '\u{1f441}\ufe0f' } },
+          { type: 2, custom_id: 'vc:claim', style: 2, emoji: { name: '\u{1f451}' } },
+        ] },
+        { type: 1, components: [
+          { type: 2, custom_id: 'vc:permit', style: 2, emoji: { name: '\u2705' } },
+          { type: 2, custom_id: 'vc:reject', style: 2, emoji: { name: '\u{1f6ab}' } },
+          { type: 2, custom_id: 'vc:rename', style: 2, emoji: { name: '\u270f\ufe0f' } },
+          { type: 2, custom_id: 'vc:transfer', style: 2, emoji: { name: '\u{1f504}' } },
+          { type: 2, custom_id: 'vc:delete', style: 4, emoji: { name: '\u{1f5d1}\ufe0f' } },
+        ] },
+        { type: 1, components: [
+          { type: 2, custom_id: 'vc:disconnect', style: 2, emoji: { name: '\u{1f528}' } },
+          { type: 2, custom_id: 'vc:activity', style: 2, emoji: { name: '\u{1f4bb}' } },
+          { type: 2, custom_id: 'vc:info', style: 2, emoji: { name: '\u2139\ufe0f' } },
+          { type: 2, custom_id: 'vc:limit_up', style: 2, emoji: { name: '\u2795' } },
+          { type: 2, custom_id: 'vc:limit_down', style: 2, emoji: { name: '\u2796' } },
+        ] },
+      ],
+    }],
+  });
 }
 
 async function deletePanel(guild, channelId, messageId) { const channel = await guild.channels.fetch(channelId).catch(() => null); const message = await channel?.messages.fetch(messageId).catch(() => null); await message?.delete().catch(() => {}); }

@@ -3,12 +3,19 @@ const voiceDb = require('../db/voiceMaster');
 const voiceMaster = require('../commands/automation/voicemaster');
 
 async function handleButton(interaction) {
-  const action = interaction.customId.slice('vm:'.length);
+  const isBliPanel = interaction.customId.startsWith('vc:');
+  const action = interaction.customId.slice(3);
   if (action === 'rename') {
-    return interaction.showModal(new ModalBuilder().setCustomId('vm_modal_rename').setTitle('Rename voice channel').addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('name').setLabel('New channel name').setStyle(TextInputStyle.Short).setMaxLength(100).setRequired(true))));
+    const channelId = interaction.member?.voice?.channelId ?? '';
+    const customId = isBliPanel ? `vcm:rename::${channelId}` : 'vm_modal_rename';
+    return interaction.showModal(new ModalBuilder().setCustomId(customId).setTitle('Rename voice channel').addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('name').setLabel('New channel name').setStyle(TextInputStyle.Short).setMaxLength(100).setRequired(true))));
   }
   if (['permit', 'reject', 'transfer', 'disconnect'].includes(action)) {
-    return interaction.reply({ content: 'Select a member:', components: [new ActionRowBuilder().addComponents(new UserSelectMenuBuilder().setCustomId(`vm_select:${action}`).setPlaceholder('Select a member'))], flags: MessageFlags.Ephemeral });
+    const prompt = { permit: '✅ Who do you want to **permit**?', reject: '🚫 Who do you want to **reject**?', transfer: '🔄 Who do you want to **transfer** ownership to?', disconnect: '🔨 Who do you want to **disconnect**?' }[action];
+    const customId = isBliPanel
+      ? `vc:do_${action}::${interaction.member?.voice?.channelId ?? ''}`
+      : `vm_select:${action}`;
+    return interaction.reply({ content: isBliPanel ? prompt : 'Select a member:', components: [new ActionRowBuilder().addComponents(new UserSelectMenuBuilder().setCustomId(customId).setPlaceholder('Select a member'))], flags: MessageFlags.Ephemeral });
   }
   if (action === 'limit_up' || action === 'limit_down') {
     const temp = await voiceDb.getTemp(interaction.member.voice?.channelId);
@@ -24,13 +31,17 @@ async function handleButton(interaction) {
 }
 
 async function handleModal(interaction) {
-  if (interaction.customId !== 'vm_modal_rename') return;
+  if (interaction.customId !== 'vm_modal_rename' && !interaction.customId.startsWith('vcm:rename::')) return;
   return voiceMaster.executeAction(interaction, 'rename', { name: interaction.fields.getTextInputValue('name') });
 }
 
 async function handleSelect(interaction) {
-  if (!interaction.customId.startsWith('vm_select:')) return;
-  return voiceMaster.executeAction(interaction, interaction.customId.slice('vm_select:'.length), { userId: interaction.values[0] });
+  if (interaction.customId.startsWith('vm_select:')) {
+    return voiceMaster.executeAction(interaction, interaction.customId.slice('vm_select:'.length), { userId: interaction.values[0] });
+  }
+  if (!interaction.customId.startsWith('vc:do_')) return;
+  const action = interaction.customId.slice('vc:do_').split('::', 1)[0];
+  return voiceMaster.executeAction(interaction, action, { userId: interaction.values[0] });
 }
 
 module.exports = { handleButton, handleModal, handleSelect };
