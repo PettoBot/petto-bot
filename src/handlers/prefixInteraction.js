@@ -1,5 +1,6 @@
 const { ApplicationCommandOptionType, MessageFlags } = require('discord.js');
 const ms = require('ms');
+const { resolveRole } = require('../utils/roleResolve');
 
 // ── Tokenizing ───────────────────────────────────────────────────────────────
 
@@ -64,10 +65,7 @@ async function resolveUserToken(message, token) {
 }
 
 function resolveRoleToken(guild, token) {
-  if (!token) return null;
-  const id = token.replace(/[<@&>]/g, '');
-  if (SNOWFLAKE_RE.test(id)) return guild.roles.cache.get(id) ?? null;
-  return guild.roles.cache.find((r) => r.name.toLowerCase() === token.toLowerCase()) ?? null;
+  return resolveRole(guild, token);
 }
 
 function resolveChannelToken(guild, token) {
