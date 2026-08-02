@@ -1,6 +1,7 @@
 const { SlashCommandBuilder } = require('discord.js');
 
 module.exports = {
+  aliases: ['p'],
   data: new SlashCommandBuilder().setName('ping').setDescription("Shows Petto's latency."),
 
   async execute(interaction) {

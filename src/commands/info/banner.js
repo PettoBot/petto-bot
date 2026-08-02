@@ -2,6 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { COLORS } = require('../../utils/colors');
 
 module.exports = {
+  aliases: ['bn'],
   data: new SlashCommandBuilder()
     .setName('banner')
     .setDescription("Shows a member's profile banner.")

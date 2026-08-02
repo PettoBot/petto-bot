@@ -19,6 +19,7 @@ const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
 
 module.exports = {
+  aliases: ['b'],
   data: new SlashCommandBuilder()
     .setName('ban')
     .setDescription('Ban members from the server.')

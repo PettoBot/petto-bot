@@ -4,6 +4,7 @@ const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
 
 module.exports = {
+  aliases: ['n'],
   data: new SlashCommandBuilder()
     .setName('nuke')
     .setDescription('Clone this channel (same settings, empty) and delete the original, to instantly clear all messages.')

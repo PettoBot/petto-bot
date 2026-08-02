@@ -17,6 +17,7 @@ const logger = require('../../utils/logger');
 const WARN_PERMISSION = PermissionFlagsBits.ModerateMembers;
 
 module.exports = {
+  aliases: ['w'],
   data: new SlashCommandBuilder()
     .setName('warn')
     .setDescription('Warn members. Warnings are recorded in their history.')

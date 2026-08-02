@@ -4,6 +4,7 @@ const { parseDuration, formatDuration } = require('../../utils/duration');
 const { textCard } = require('../../utils/caseCard');
 
 module.exports = {
+  aliases: ['tm'],
   data: new SlashCommandBuilder()
     .setName('timer')
     .setDescription('Send a repeating message in a channel.')

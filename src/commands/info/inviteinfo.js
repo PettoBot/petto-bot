@@ -2,6 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { COLORS } = require('../../utils/colors');
 
 module.exports = {
+  aliases: ['ii'],
   data: new SlashCommandBuilder()
     .setName('inviteinfo')
     .setDescription('Shows information about an invite code.')

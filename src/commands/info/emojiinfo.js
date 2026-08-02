@@ -4,6 +4,7 @@ const { COLORS } = require('../../utils/colors');
 const EMOJI_RE = /<(a?):(\w+):(\d+)>/;
 
 module.exports = {
+  aliases: ['ei'],
   data: new SlashCommandBuilder()
     .setName('emojiinfo')
     .setDescription('Shows information about a custom emoji.')
