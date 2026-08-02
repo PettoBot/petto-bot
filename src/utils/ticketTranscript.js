@@ -4,6 +4,16 @@ function escapeHtml(str) {
   return String(str ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+function safeUrl(raw) {
+  try {
+    const url = new URL(String(raw ?? ''));
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return '';
+    return escapeHtml(url.toString());
+  } catch {
+    return '';
+  }
+}
+
 async function fetchAllMessages(channel) {
   const messages = [];
   let before;
@@ -21,9 +31,11 @@ async function fetchAllMessages(channel) {
 
 function renderAttachment(a) {
   const type = a.contentType ?? '';
-  if (type.startsWith('image/')) return `<div class="media"><img src="${a.url}" alt="${escapeHtml(a.name)}" loading="lazy"></div>`;
-  if (type.startsWith('video/')) return `<div class="media"><video src="${a.url}" controls preload="metadata"></video></div>`;
-  return `<div class="attachment"><a href="${a.url}" target="_blank" rel="noopener">${escapeHtml(a.name)}</a></div>`;
+  const url = safeUrl(a.url);
+  if (!url) return `<div class="attachment">${escapeHtml(a.name)}</div>`;
+  if (type.startsWith('image/')) return `<div class="media"><img src="${url}" alt="${escapeHtml(a.name)}" loading="lazy"></div>`;
+  if (type.startsWith('video/')) return `<div class="media"><video src="${url}" controls preload="metadata"></video></div>`;
+  return `<div class="attachment"><a href="${url}" target="_blank" rel="noopener">${escapeHtml(a.name)}</a></div>`;
 }
 
 const TOKEN_RE = /<a?:(\w+):(\d+)>|<@!?(\d+)>|<@&(\d+)>|<#(\d+)>/g;
@@ -85,20 +97,37 @@ function renderEmbedText(raw, guild) {
 
 function renderEmbed(e, guild) {
   const color = e.color != null ? `#${e.color.toString(16).padStart(6, '0')}` : '#5865f2';
-  const author = e.author?.name ? `<div class="embed-author">${e.author.iconURL ? `<img src="${e.author.iconURL}">` : ''}${escapeHtml(e.author.name)}</div>` : '';
-  const title = e.title ? `<div class="embed-title">${escapeHtml(e.title)}</div>` : '';
+  const authorIcon = safeUrl(e.author?.iconURL);
+  const embedUrl = safeUrl(e.url);
+  const author = e.author?.name ? `<div class="embed-author">${authorIcon ? `<img src="${authorIcon}" alt="">` : ''}${escapeHtml(e.author.name)}</div>` : '';
+  const titleText = e.title ? renderEmbedText(e.title, guild) : '';
+  const title = titleText ? `<div class="embed-title">${embedUrl ? `<a href="${embedUrl}" target="_blank" rel="noopener">${titleText}</a>` : titleText}</div>` : '';
   const desc = e.description ? `<div class="embed-desc">${renderEmbedText(e.description, guild)}</div>` : '';
   const fields = (e.fields ?? [])
     .map((f) => `<div class="embed-field ${f.inline ? 'inline' : ''}"><div class="embed-field-name">${escapeHtml(f.name)}</div><div>${renderEmbedText(f.value, guild)}</div></div>`)
     .join('');
-  const thumb = e.thumbnail?.url ? `<img class="embed-thumb" src="${e.thumbnail.url}">` : '';
-  const image = e.image?.url ? `<img class="embed-image" src="${e.image.url}">` : '';
-  const footer = e.footer?.text ? `<div class="embed-footer">${e.footer.iconURL ? `<img src="${e.footer.iconURL}">` : ''}${escapeHtml(e.footer.text)}</div>` : '';
+  const thumbUrl = safeUrl(e.thumbnail?.url);
+  const imageUrl = safeUrl(e.image?.url);
+  const footerIcon = safeUrl(e.footer?.iconURL);
+  const thumb = thumbUrl ? `<img class="embed-thumb" src="${thumbUrl}" alt="" loading="lazy">` : '';
+  const image = imageUrl ? `<img class="embed-image" src="${imageUrl}" alt="" loading="lazy">` : '';
+  const footer = e.footer?.text ? `<div class="embed-footer">${footerIcon ? `<img src="${footerIcon}" alt="">` : ''}${escapeHtml(e.footer.text)}</div>` : '';
 
   return `<div class="embed" style="border-left-color:${color}">
     ${thumb}
     <div class="embed-body">${author}${title}${desc}${fields ? `<div class="embed-fields">${fields}</div>` : ''}${image}${footer}</div>
   </div>`;
+}
+
+function renderSticker(sticker) {
+  const url = safeUrl(sticker.url || `https://cdn.discordapp.com/stickers/${sticker.id}.png`);
+  const name = escapeHtml(sticker.name || 'Sticker');
+  if (!url) return '';
+  const format = String(sticker.format ?? '').toLowerCase();
+  if (format.includes('lottie') || url.endsWith('.json')) {
+    return `<div class="sticker-link"><a href="${url}" target="_blank" rel="noopener">Sticker: ${name}</a></div>`;
+  }
+  return `<div class="sticker"><img src="${url}" alt="${name}" loading="lazy"><span>${name}</span></div>`;
 }
 
 // Petto sends most of its own messages as Components V2 (ContainerBuilder/TextDisplayBuilder)
@@ -119,7 +148,7 @@ function extractV2Text(components) {
 /** Avatar URL that keeps animated (GIF) avatars animated instead of forcing a static frame. */
 function avatarUrl(user, size = 64) {
   const animated = user.avatar?.startsWith('a_');
-  return user.displayAvatarURL({ extension: animated ? 'gif' : 'png', size });
+  return safeUrl(user.displayAvatarURL({ extension: animated ? 'gif' : 'png', size }));
 }
 
 function renderMessage(msg) {
@@ -130,13 +159,14 @@ function renderMessage(msg) {
   const content = renderMarkdown(renderMentionsAndEmoji(rawText, msg.guild));
   const attachments = [...msg.attachments.values()].map(renderAttachment).join('');
   const embeds = msg.embeds.map((e) => renderEmbed(e, msg.guild)).join('');
+  const stickers = msg.stickers ? [...msg.stickers.values()].map(renderSticker).join('') : '';
 
   return `<div class="message">
-    <img class="avatar" src="${avatar}" alt="">
+    ${avatar ? `<img class="avatar" src="${avatar}" alt="" loading="lazy">` : '<div class="avatar avatar-fallback" aria-hidden="true"></div>'}
     <div class="body">
       <div class="meta"><span class="author">${escapeHtml(displayName)}</span><span class="time">${time} UTC</span></div>
-      <div class="content">${content || (attachments || embeds ? '' : '<i>(no text content)</i>')}</div>
-      ${attachments}${embeds}
+      <div class="content">${content || (attachments || embeds || stickers ? '' : '<i>(no text content)</i>')}</div>
+      ${attachments}${embeds}${stickers}
     </div>
   </div>`;
 }
@@ -150,13 +180,17 @@ async function buildTranscript(channel, { ticketNumber, openerTag } = {}) {
 <html>
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Transcript - Ticket #${ticketNumber ?? ''}</title>
 <style>
-  body { background:#1e1d1b; color:#e8e6e3; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; margin:0; padding:24px; }
+  body { background:#1e1d1b; color:#e8e6e3; font-family: -apple-system, "Segoe UI", "Segoe UI Emoji", "Noto Color Emoji", Roboto, sans-serif; margin:0; padding:24px; }
+  a { color:#83a7ff; text-decoration:none; }
+  a:hover { text-decoration:underline; }
   h1 { font-size:18px; color:#f5f5f4; margin:0 0 4px; }
   .sub { color:#9c9891; font-size:13px; margin-bottom:24px; }
   .message { display:flex; gap:12px; padding:10px 0; border-bottom:1px solid #2c2a27; }
   .avatar { width:40px; height:40px; border-radius:50%; flex-shrink:0; }
+  .avatar-fallback { background:#4b4033; }
   .meta { display:flex; gap:8px; align-items:baseline; }
   .author { font-weight:600; color:#7797f0; }
   .time { font-size:11px; color:#7a766f; }
@@ -171,7 +205,7 @@ async function buildTranscript(channel, { ticketNumber, openerTag } = {}) {
   .md-h2 { font-size:1.25em; }
   .md-h3 { font-size:1.1em; }
   blockquote { border-left:3px solid #4a4741; margin:4px 0; padding:2px 10px; color:#c9c6c0; }
-  .attachment { font-size:12px; color:#9c9891; margin-top:4px; }
+  .attachment, .sticker-link { font-size:12px; color:#9c9891; margin-top:6px; }
   .attachment a { color:#7797f0; }
   .media { margin-top:6px; }
   .media img, .media video { max-width:400px; max-height:300px; border-radius:8px; display:block; }
@@ -180,6 +214,7 @@ async function buildTranscript(channel, { ticketNumber, openerTag } = {}) {
   .embed-author { display:flex; align-items:center; gap:6px; font-size:13px; font-weight:600; margin-bottom:4px; }
   .embed-author img { width:20px; height:20px; border-radius:50%; }
   .embed-title { font-weight:700; color:#f5f5f4; margin-bottom:4px; }
+  .embed-title a { color:inherit; }
   .embed-desc { font-size:13px; white-space:pre-wrap; word-break:break-word; }
   .embed-fields { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
   .embed-field { font-size:13px; white-space:pre-wrap; word-break:break-word; }
@@ -189,6 +224,9 @@ async function buildTranscript(channel, { ticketNumber, openerTag } = {}) {
   .embed-thumb { width:64px; height:64px; border-radius:4px; object-fit:cover; flex-shrink:0; }
   .embed-footer { display:flex; align-items:center; gap:6px; font-size:11px; color:#9c9891; margin-top:8px; }
   .embed-footer img { width:16px; height:16px; border-radius:50%; }
+  .sticker { display:flex; flex-direction:column; align-items:flex-start; gap:3px; margin-top:8px; color:#9c9891; font-size:11px; }
+  .sticker img { max-width:180px; max-height:180px; object-fit:contain; }
+  @media (max-width: 640px) { body { padding:14px; } .embed { max-width:none; } .media img, .media video { max-width:100%; } }
 </style>
 </head>
 <body>

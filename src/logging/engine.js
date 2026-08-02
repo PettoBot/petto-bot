@@ -29,7 +29,7 @@ async function fetchMod(guild, action, targetId) {
  * from under us (Discord error 10015), the dead webhook and the failing
  * entry are pruned so future events don't keep retrying it.
  */
-async function sendLog(client, guildId, event, embed, { ignoreIds = [], files = [] } = {}) {
+async function sendLog(client, guildId, event, embed, { ignoreIds = [], files = [], components = [] } = {}) {
   try {
     const config = await getLogConfig(guildId);
     if (ignoreIds.length && ignoreIds.some((id) => id && config.ignored.includes(id))) return;
@@ -50,6 +50,11 @@ async function sendLog(client, guildId, event, embed, { ignoreIds = [], files = 
         embeds: [entry.color != null ? { ...embed, color: entry.color } : embed],
         flags: 4096, // SuppressNotifications
       };
+      if (components.length) {
+        body.components = components.map((component) => (
+          typeof component?.toJSON === 'function' ? component.toJSON() : component
+        ));
+      }
 
       try {
         await client.rest.post(Routes.webhook(wh.webhook_id, wh.webhook_token), { body, files: files.length ? files : undefined });

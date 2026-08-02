@@ -190,6 +190,7 @@ async function postTranscript({ guild, client, channel, ticket }) {
   const opener = await client.users.fetch(ticket.opener_id).catch(() => null);
   const { html, messageCount, link } = await generateAndStoreTranscript({ guild, channel, ticket, opener });
   const fileName = `ticket-${ticket.ticket_number}-transcript.html`;
+  const linkRow = buildTranscriptLinkRow(link);
 
   await sendLog(
     client,
@@ -200,7 +201,9 @@ async function postTranscript({ guild, client, channel, ticket }) {
       color: 0x8399ff,
       timestamp: new Date().toISOString(),
     },
-    { files: [{ data: Buffer.from(html, 'utf8'), name: fileName }] },
+    linkRow
+      ? { components: [linkRow] }
+      : { files: [{ data: Buffer.from(html, 'utf8'), name: fileName }] },
   ).catch((err) => logger.error('Ticket log (transcript) failed:', err));
 
   return { link };
@@ -235,6 +238,7 @@ async function closeTicket({ guild, client, channel, ticket, actor, reason }) {
 
   const closedByLine = settings.hide_closing_user ? 'Closed by staff.' : `Closed by <@${actor.id}>.`;
   const staffCountLine = settings.log_staff_message_counts ? `\n**Staff replies:** ${ticket.staff_message_count ?? 0}` : '';
+  const logLinkRow = buildTranscriptLinkRow(link);
 
   await sendLog(
     client,
@@ -247,15 +251,23 @@ async function closeTicket({ guild, client, channel, ticket, actor, reason }) {
       footer: { text: `Opened by ${opener?.username ?? ticket.opener_id}` },
       timestamp: new Date().toISOString(),
     },
-    { files: [{ data: fileBuffer, name: fileName }] },
+    logLinkRow
+      ? { components: [logLinkRow] }
+      : { files: [{ data: fileBuffer, name: fileName }] },
   ).catch((err) => logger.error('Ticket log (close) failed:', err));
 
   if (settings.closed_log_channel_id) {
     const logChannel = await guild.channels.fetch(settings.closed_log_channel_id).catch(() => null);
     if (logChannel) {
       const desc = `${EMOJI.DENY} Ticket #${ticket.ticket_number} closed. ${closedByLine}\n**Reason:** ${finalReason}\n**Messages:** ${messageCount}${staffCountLine}${link ? `\n[View transcript online](${link})` : ''}`;
+      const dedicatedLinkRow = buildTranscriptLinkRow(link);
+      const payload = {
+        components: [textCard(desc, 0xfe6465), ...(dedicatedLinkRow ? [dedicatedLinkRow] : [])],
+        flags: MessageFlags.IsComponentsV2,
+        ...(dedicatedLinkRow ? {} : { files: [{ attachment: fileBuffer, name: fileName }] }),
+      };
       await logChannel
-        .send({ components: [textCard(desc, 0xfe6465)], flags: MessageFlags.IsComponentsV2, files: [{ attachment: fileBuffer, name: fileName }] })
+        .send(payload)
         .catch(() => {});
     }
   }
