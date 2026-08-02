@@ -42,6 +42,11 @@ const client = new Client({
   allowedMentions: { parse: [] },
 });
 
+// Several independent listeners legitimately hang off the same event (guildMemberAdd alone has
+// join logging, invite tracking, welcome messages, join roles, level join-bonus, etc.) — that's
+// normal fan-out, not a leak, so raise the default cap instead of Node warning on every restart.
+client.setMaxListeners(30);
+
 process.on('unhandledRejection', (err) => logger.error('Unhandled promise rejection:', err));
 
 async function main() {
