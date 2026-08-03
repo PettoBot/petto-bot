@@ -55,6 +55,73 @@ async function setCommandLevel(guildId, commandName, requiredLevel) {
   return data;
 }
 
+async function createGroup(guildId, name, level = 0) {
+  const { data, error } = await supabase
+    .from('permission_groups')
+    .insert({ guild_id: guildId, name: String(name).trim(), level: Math.max(0, Math.min(100, Number(level) || 0)) })
+    .select('*')
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+async function deleteGroup(guildId, groupId) {
+  const { data, error } = await supabase
+    .from('permission_groups')
+    .delete()
+    .eq('guild_id', guildId)
+    .eq('id', groupId)
+    .eq('is_base', false)
+    .select('id');
+  if (error) throw error;
+  return data.length > 0;
+}
+
+async function updateGroupLevel(guildId, groupId, level) {
+  const { data, error } = await supabase
+    .from('permission_groups')
+    .update({ level: Math.max(0, Math.min(100, Number(level) || 0)) })
+    .eq('guild_id', guildId)
+    .eq('id', groupId)
+    .select('*')
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+async function addGroupMember(groupId, subjectType, subjectId) {
+  const { data, error } = await supabase
+    .from('permission_group_members')
+    .upsert({ group_id: groupId, subject_type: subjectType, subject_id: subjectId }, { onConflict: 'group_id,subject_type,subject_id' })
+    .select('*')
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+async function removeGroupMember(groupId, subjectType, subjectId) {
+  const { data, error } = await supabase
+    .from('permission_group_members')
+    .delete()
+    .eq('group_id', groupId)
+    .eq('subject_type', subjectType)
+    .eq('subject_id', subjectId)
+    .select('id');
+  if (error) throw error;
+  return data.length > 0;
+}
+
+async function recordAudit(guildId, actor, action, summary) {
+  const { error } = await supabase.from('permission_audit_log').insert({
+    guild_id: guildId,
+    actor_id: actor.id,
+    actor_name: actor.username ?? actor.tag ?? actor.id,
+    action,
+    summary,
+  });
+  if (error) throw error;
+}
+
 // Highest level among every group the member belongs to, directly (user id) or via any of
 // their roles, falling back to the guild's base/@everyone group (0 if that's never been touched).
 async function getEffectiveLevel(guildId, member) {
@@ -84,4 +151,18 @@ async function hasCommandPermission(guildId, commandName, member) {
   return level >= required;
 }
 
-module.exports = { listGroups, getOrCreateBaseGroup, getCommandLevel, listCommandLevels, setCommandLevel, getEffectiveLevel, hasCommandPermission };
+module.exports = {
+  listGroups,
+  getOrCreateBaseGroup,
+  getCommandLevel,
+  listCommandLevels,
+  setCommandLevel,
+  createGroup,
+  deleteGroup,
+  updateGroupLevel,
+  addGroupMember,
+  removeGroupMember,
+  recordAudit,
+  getEffectiveLevel,
+  hasCommandPermission,
+};

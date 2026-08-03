@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { Collection } = require('discord.js');
 const logger = require('../utils/logger');
+const { aliasesFor } = require('../utils/defaultCommandAliases');
 
 const COMMANDS_DIR = path.join(__dirname, '..', 'commands');
 
@@ -59,6 +60,8 @@ function loadCommands(client) {
     }
 
     command.category = categoryFromPath(filePath);
+    // Merge curated aliases here so prefix parsing and !help stay in sync.
+    command.aliases = [...new Set([...(command.aliases ?? []), ...aliasesFor(command.data.name)])];
     client.commands.set(command.data.name, command);
 
     for (const alias of command.aliases ?? []) {
