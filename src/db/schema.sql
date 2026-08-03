@@ -380,6 +380,23 @@ create index if not exists idx_ticket_panels_guild on ticket_panels(guild_id);
 
 alter table ticket_panels enable row level security;
 
+-- Reusable ticket intake forms. Discord modals support up to five text inputs;
+-- the field schema is kept as JSONB so the form can evolve without another table.
+create table if not exists ticket_forms (
+  id                 bigserial primary key,
+  guild_id           text not null references guilds(guild_id) on delete cascade,
+  name               text not null,
+  title              text not null default 'Ticket details',
+  fields             jsonb not null default '[]'::jsonb,
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now(),
+  unique (guild_id, name)
+);
+
+create index if not exists idx_ticket_forms_guild on ticket_forms(guild_id);
+
+alter table ticket_forms enable row level security;
+
 create table if not exists ticket_categories (
   id                     bigserial primary key,
   guild_id               text not null references guilds(guild_id) on delete cascade,
@@ -395,6 +412,8 @@ create table if not exists ticket_categories (
   welcome_embed_template text,
   naming_pattern         text not null default 'ticket-{number}',
   max_open_per_user      integer not null default 1,
+  form_id                bigint references ticket_forms(id) on delete set null,
+  required_role_ids      text[] not null default '{}',
   created_at             timestamptz not null default now(),
   unique (guild_id, key)
 );
@@ -403,6 +422,9 @@ create index if not exists idx_ticket_categories_guild on ticket_categories(guil
 create index if not exists idx_ticket_categories_panel on ticket_categories(panel_id);
 
 alter table ticket_categories enable row level security;
+
+alter table ticket_categories add column if not exists form_id bigint references ticket_forms(id) on delete set null;
+alter table ticket_categories add column if not exists required_role_ids text[] not null default '{}';
 
 create table if not exists tickets (
   id            bigserial primary key,
@@ -417,6 +439,8 @@ create table if not exists tickets (
   closed_by     text,
   created_at    timestamptz not null default now(),
   closed_at     timestamptz,
+  form_id       bigint references ticket_forms(id) on delete set null,
+  form_answers  jsonb not null default '{}'::jsonb,
   -- Full rendered transcript HTML (see utils/ticketTranscript.js), persisted so the web transcript
   -- viewer can serve it even after the ticket channel itself has been deleted.
   transcript_html text,
@@ -431,6 +455,8 @@ create index if not exists idx_tickets_guild_opener on tickets(guild_id, opener_
 alter table tickets add column if not exists transcript_html text;
 alter table tickets add column if not exists staff_message_count integer not null default 0;
 alter table tickets add column if not exists last_activity_at timestamptz not null default now();
+alter table tickets add column if not exists form_id bigint references ticket_forms(id) on delete set null;
+alter table tickets add column if not exists form_answers jsonb not null default '{}'::jsonb;
 
 alter table tickets enable row level security;
 
@@ -460,6 +486,22 @@ create table if not exists ticket_settings (
 );
 
 alter table ticket_settings enable row level security;
+
+-- Per-server ticket access blacklist, separate from the existing blocked-role
+-- shortcut in ticket_settings so staff can block individual users as well.
+create table if not exists ticket_blacklist (
+  id          bigserial primary key,
+  guild_id    text not null references guilds(guild_id) on delete cascade,
+  target_type text not null check (target_type in ('user', 'role')),
+  target_id   text not null,
+  reason      text,
+  created_at  timestamptz not null default now(),
+  unique (guild_id, target_type, target_id)
+);
+
+create index if not exists idx_ticket_blacklist_guild on ticket_blacklist(guild_id);
+
+alter table ticket_blacklist enable row level security;
 
 create table if not exists ticket_ratings (
   id         bigserial primary key,

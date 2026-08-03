@@ -55,7 +55,7 @@ function normalizeKey(key) {
   return key.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
 }
 
-async function createCategory({ guildId, panelId, key, label, emoji, buttonStyle, description, parentChannelId, supportRoleIds, pingRoleIds, welcomeEmbedTemplate, namingPattern, maxOpenPerUser }) {
+async function createCategory({ guildId, panelId, key, label, emoji, buttonStyle, description, parentChannelId, supportRoleIds, pingRoleIds, welcomeEmbedTemplate, namingPattern, maxOpenPerUser, formId, requiredRoleIds }) {
   const { data, error } = await supabase
     .from('ticket_categories')
     .insert({
@@ -72,6 +72,8 @@ async function createCategory({ guildId, panelId, key, label, emoji, buttonStyle
       welcome_embed_template: welcomeEmbedTemplate ?? null,
       naming_pattern: namingPattern ?? 'ticket-{number}',
       max_open_per_user: maxOpenPerUser ?? 1,
+      form_id: formId ?? null,
+      required_role_ids: requiredRoleIds ?? [],
     })
     .select('*')
     .single();
@@ -122,6 +124,12 @@ async function createTicket({ guildId, categoryId, openerId }) {
 
 async function setTicketChannel(ticketId, channelId) {
   const { data, error } = await supabase.from('tickets').update({ channel_id: channelId }).eq('id', ticketId).select('*').single();
+  if (error) throw error;
+  return data;
+}
+
+async function setTicketFormData(ticketId, { formId, answers }) {
+  const { data, error } = await supabase.from('tickets').update({ form_id: formId ?? null, form_answers: answers ?? {} }).eq('id', ticketId).select('*').single();
   if (error) throw error;
   return data;
 }
@@ -232,6 +240,7 @@ module.exports = {
   deleteCategory,
   createTicket,
   setTicketChannel,
+  setTicketFormData,
   deleteTicketRow,
   getTicketById,
   saveTranscriptHtml,

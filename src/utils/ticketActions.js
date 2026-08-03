@@ -1,5 +1,7 @@
 const { ChannelType, PermissionFlagsBits, MessageFlags, AttachmentBuilder } = require('discord.js');
 const db = require('../db/tickets');
+const formsDb = require('../db/ticketForms');
+const accessDb = require('../db/ticketAccess');
 const settingsDb = require('../db/ticketSettings');
 const ratingsDb = require('../db/ticketRatings');
 const { getTemplate } = require('../db/embedTemplates');
@@ -72,15 +74,30 @@ async function buildWelcomePayload({ category, guild, channel, opener, ticketId,
 }
 
 /** Creates the ticket's private channel, DB row, and welcome message. Throws on failure (caller replies with the error). */
-async function openTicket({ guild, client, category, opener }) {
+async function openTicket({ guild, client, category, opener, formAnswers = null }) {
   const settings = await settingsDb.getSettings(guild.id);
+  const member = await guild.members.fetch(opener.id).catch(() => null);
+  const roleIds = member ? [...member.roles.cache.keys()] : [];
   if (settings.blocked_role_ids.length > 0) {
-    const member = await guild.members.fetch(opener.id).catch(() => null);
     if (member && settings.blocked_role_ids.some((id) => member.roles.cache.has(id))) {
       const err = new Error("You're not allowed to open tickets in this server.");
       err.userFacing = true;
       throw err;
     }
+  }
+
+  const blacklistEntry = await accessDb.isBlacklisted(guild.id, opener.id, roleIds);
+  if (blacklistEntry) {
+    const err = new Error("You're not allowed to open tickets in this server.");
+    err.userFacing = true;
+    throw err;
+  }
+
+  const requiredRoleIds = category.required_role_ids ?? [];
+  if (requiredRoleIds.length && (!member || !requiredRoleIds.every((id) => member.roles.cache.has(id)))) {
+    const err = new Error(`You need ${requiredRoleIds.map((id) => `<@&${id}>`).join(', ')} to open this ticket.`);
+    err.userFacing = true;
+    throw err;
   }
 
   const openCount = await db.countOpenTickets(guild.id, category.id, opener.id);
@@ -94,6 +111,7 @@ async function openTicket({ guild, client, category, opener }) {
 
   let channel;
   try {
+    if (category.form_id && formAnswers) await db.setTicketFormData(ticket.id, { formId: category.form_id, answers: formAnswers });
     channel = await guild.channels.create({
       name: formatTicketChannelName(category.naming_pattern, { number: ticket.ticket_number, username: opener.username }),
       type: ChannelType.GuildText,
@@ -115,6 +133,11 @@ async function openTicket({ guild, client, category, opener }) {
   // The bot's client-level default suppresses all mentions (see index.js) — this is the one ticket
   // message that's actually meant to notify people, so it opts back in for just the configured roles.
   await channel.send({ ...welcome, allowedMentions: { roles: pingRoleIds } }).catch((err) => logger.warn(`Ticket #${ticket.ticket_number}: failed to send welcome message:`, err.message));
+
+  if (formAnswers && Object.keys(formAnswers).length) {
+    const answerLines = Object.entries(formAnswers).map(([label, answer]) => `**${label}:** ${String(answer).slice(0, 1000)}`);
+    await channel.send({ components: [textCard(`### Submitted form\n${answerLines.join('\n')}`, 0x8399ff)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+  }
 
   await sendLog(client, guild.id, 'tickets', {
     author: { name: `Ticket #${ticket.ticket_number} opened` },
@@ -379,6 +402,26 @@ async function renameTicket({ guild, client, channel, ticket, actor, newName }) 
 
 /** Shared "open a ticket from an interaction" flow — used by both the /ticket open slash command and panel buttons/select menus. */
 async function openTicketInteractive(interaction, category) {
+  if (category.form_id && (interaction.isButton?.() || interaction.isStringSelectMenu?.())) {
+    const form = await formsDb.getFormById(category.form_id);
+    if (!form) {
+      await interaction.reply({ content: 'This ticket form is missing. Ask a server administrator to fix the category.', flags: MessageFlags.Ephemeral });
+      return;
+    }
+    const { ModalBuilder, ActionRowBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+    const modal = new ModalBuilder().setCustomId(`tk_form::${category.id}::${form.id}`).setTitle(form.title || 'Ticket details');
+    for (const field of form.fields ?? []) {
+      const input = new TextInputBuilder().setCustomId(`field::${field.id}`).setLabel(field.label).setStyle(field.type === 'long_text' ? TextInputStyle.Paragraph : TextInputStyle.Short).setRequired(field.required !== false);
+      if (field.placeholder) input.setPlaceholder(field.placeholder);
+      modal.addComponents(new ActionRowBuilder().addComponents(input));
+    }
+    await interaction.showModal(modal);
+    return;
+  }
+  if (category.form_id) {
+    await interaction.reply({ content: 'This category requires a form. Open it from the ticket panel so the form can be completed.', flags: MessageFlags.Ephemeral });
+    return;
+  }
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   try {
     const { channel } = await openTicket({ guild: interaction.guild, client: interaction.client, category, opener: interaction.user });
