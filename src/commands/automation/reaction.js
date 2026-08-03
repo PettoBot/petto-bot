@@ -3,6 +3,13 @@ const reactionDb = require('../../db/reactionTriggers');
 const { ensureGuild } = require('../../db/guilds');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { resolveChannels } = require('../../utils/channelResolve');
+const { resolveRoles } = require('../../utils/roleResolve');
+
+const MODE_CHOICES = [
+  { name: 'contains', value: 'contains' }, { name: 'starts with', value: 'startsWith' },
+  { name: 'ends with', value: 'endsWith' }, { name: 'exact', value: 'exact' },
+];
 
 module.exports = {
   aliases: ['react'],
@@ -12,7 +19,8 @@ module.exports = {
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false)
     .addSubcommand((s) => s.setName('react').setDescription('React to a message from its Discord link.').addStringOption((o) => o.setName('message_link').setDescription('Message link').setRequired(true)).addStringOption((o) => o.setName('emoji').setDescription('Emoji').setRequired(true)))
-    .addSubcommand((s) => s.setName('add').setDescription('Create a reaction trigger.').addStringOption((o) => o.setName('emoji').setDescription('Emoji to add').setRequired(true)).addStringOption((o) => o.setName('trigger').setDescription('Word or phrase to match').setRequired(true)))
+    .addSubcommand((s) => s.setName('add').setDescription('Create a reaction trigger.').addStringOption((o) => o.setName('emoji').setDescription('Emoji to add').setRequired(true)).addStringOption((o) => o.setName('trigger').setDescription('Word or phrase to match').setRequired(true)).addStringOption((o) => o.setName('mode').setDescription('Match mode').addChoices(...MODE_CHOICES).setRequired(false)).addBooleanOption((o) => o.setName('case_sensitive').setDescription('Respect uppercase/lowercase').setRequired(false)).addStringOption((o) => o.setName('channels').setDescription('Channel mentions or IDs, empty means all').setRequired(false)).addStringOption((o) => o.setName('roles').setDescription('Role mentions or IDs, empty means everyone').setRequired(false)).addIntegerOption((o) => o.setName('cooldown_seconds').setDescription('Per-member cooldown, 0 disables').setMinValue(0).setMaxValue(86400).setRequired(false)))
+    .addSubcommand((s) => s.setName('edit').setDescription('Edit a reaction trigger.').addStringOption((o) => o.setName('id').setDescription('Trigger ID from !reaction list').setRequired(true)).addStringOption((o) => o.setName('mode').setDescription('Match mode').addChoices(...MODE_CHOICES).setRequired(false)).addBooleanOption((o) => o.setName('case_sensitive').setDescription('Respect uppercase/lowercase').setRequired(false)).addStringOption((o) => o.setName('channels').setDescription('Channel mentions or IDs').setRequired(false)).addStringOption((o) => o.setName('roles').setDescription('Role mentions or IDs').setRequired(false)).addIntegerOption((o) => o.setName('cooldown_seconds').setDescription('Per-member cooldown').setMinValue(0).setMaxValue(86400).setRequired(false)).addBooleanOption((o) => o.setName('enabled').setDescription('Enable this trigger').setRequired(false)))
     .addSubcommand((s) => s.setName('owner').setDescription('View who created a trigger.').addStringOption((o) => o.setName('trigger').setDescription('Trigger phrase').setRequired(true)))
     .addSubcommand((s) => s.setName('remove').setDescription('Remove one reaction trigger.').addStringOption((o) => o.setName('emoji').setDescription('Emoji').setRequired(true)).addStringOption((o) => o.setName('trigger').setDescription('Trigger phrase').setRequired(true)))
     .addSubcommand((s) => s.setName('removeall').setDescription('Remove every emoji for a trigger.').addStringOption((o) => o.setName('trigger').setDescription('Trigger phrase').setRequired(true)))
@@ -25,6 +33,7 @@ module.exports = {
     const sub = interaction.options.getSubcommand();
     if (sub === 'react') return reactToMessage(interaction);
     if (sub === 'add') return addTrigger(interaction);
+    if (sub === 'edit') return editTrigger(interaction);
     if (sub === 'owner') return owner(interaction);
     if (sub === 'remove') return removeTrigger(interaction);
     if (sub === 'removeall') return removeAll(interaction);
@@ -42,11 +51,35 @@ function reply(interaction, content, color = 0x8399ff) {
 async function addTrigger(interaction) {
   await ensureGuild(interaction.guild.id);
   try {
-    const row = await reactionDb.addTrigger({ guildId: interaction.guild.id, emoji: interaction.options.getString('emoji', true), trigger: interaction.options.getString('trigger', true), ownerId: interaction.user.id });
-    return reply(interaction, `${EMOJI.APPROVE}  Trigger added: ${row.emoji} reacts when a message matches **${row.trigger}**.` , 0xa5ea7a);
+    const channelInput = interaction.options.getString('channels');
+    const roleInput = interaction.options.getString('roles');
+    const channelIds = channelInput ? resolveChannels(interaction.guild, channelInput).resolved.map((channel) => channel.id) : [];
+    const roleIds = roleInput ? resolveRoles(interaction.guild, roleInput).resolved.map((role) => role.id) : [];
+    const row = await reactionDb.addTrigger({ guildId: interaction.guild.id, emoji: interaction.options.getString('emoji', true), trigger: interaction.options.getString('trigger', true), ownerId: interaction.user.id, matchMode: interaction.options.getString('mode') ?? 'contains', channelIds, roleIds, caseSensitive: interaction.options.getBoolean('case_sensitive') ?? false, cooldownSeconds: interaction.options.getInteger('cooldown_seconds') ?? 0 });
+    return reply(interaction, `${EMOJI.APPROVE}  Trigger **#${row.id}** added: ${row.emoji} reacts when a message matches **${row.trigger}**.`, 0xa5ea7a);
   } catch (err) {
     return reply(interaction, err.message ?? 'Could not create that trigger.', 0xfe6465);
   }
+}
+
+async function editTrigger(interaction) {
+  const id = interaction.options.getString('id', true);
+  const patch = {};
+  const mode = interaction.options.getString('mode');
+  const channels = interaction.options.getString('channels');
+  const roles = interaction.options.getString('roles');
+  const caseSensitive = interaction.options.getBoolean('case_sensitive');
+  const cooldown = interaction.options.getInteger('cooldown_seconds');
+  const enabled = interaction.options.getBoolean('enabled');
+  if (mode) patch.match_mode = mode;
+  if (channels != null) patch.channel_ids = resolveChannels(interaction.guild, channels).resolved.map((channel) => channel.id);
+  if (roles != null) patch.role_ids = resolveRoles(interaction.guild, roles).resolved.map((role) => role.id);
+  if (caseSensitive != null) patch.case_sensitive = caseSensitive;
+  if (cooldown != null) patch.cooldown_seconds = cooldown;
+  if (enabled != null) patch.enabled = enabled;
+  if (!Object.keys(patch).length) return reply(interaction, 'Provide at least one setting to edit.', 0xfe6465);
+  const row = await reactionDb.updateTrigger(interaction.guild.id, id, patch);
+  return reply(interaction, row ? `${EMOJI.APPROVE}  Trigger **#${id}** updated.` : 'That trigger does not exist.', row ? 0xa5ea7a : 0xfe6465);
 }
 
 async function owner(interaction) {
@@ -66,7 +99,7 @@ async function removeAll(interaction) {
 
 async function list(interaction) {
   const rows = await reactionDb.listTriggers(interaction.guild.id);
-  const body = rows.length ? rows.map((row) => `${row.emoji}  **${row.trigger}** · <@${row.owner_id}>`).join('\n') : 'No reaction triggers configured.';
+  const body = rows.length ? rows.map((row) => `${row.emoji}  **${row.trigger}** · #${row.id} · ${row.match_mode ?? 'contains'}${row.enabled === false ? ' · disabled' : ''}`).join('\n') : 'No reaction triggers configured.';
   return reply(interaction, `**Reaction triggers (${rows.length})**\n${body}`);
 }
 

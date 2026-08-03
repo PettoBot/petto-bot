@@ -6,6 +6,12 @@ async function add(row) {
   return data;
 }
 
+async function update(guildId, localId, patch) {
+  const { data, error } = await supabase.from('managed_webhooks').update(patch).eq('guild_id', guildId).eq('id', localId).select('*').maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
 async function list(guildId) {
   const { data, error } = await supabase.from('managed_webhooks').select('id,guild_id,channel_id,webhook_id,name,created_by,created_at').eq('guild_id', guildId).order('id');
   if (error) throw error;
@@ -40,4 +46,4 @@ async function remove(guildId, webhookId) {
   return (data ?? []).length > 0;
 }
 
-module.exports = { add, list, listWithTokens, get, getByChannel, remove };
+module.exports = { add, update, list, listWithTokens, get, getByChannel, remove };

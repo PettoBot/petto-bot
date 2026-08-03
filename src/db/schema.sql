@@ -946,9 +946,22 @@ create table if not exists reaction_triggers (
   emoji      text not null,
   trigger    text not null,
   owner_id   text not null,
+  match_mode text not null default 'contains' check (match_mode in ('contains', 'startsWith', 'endsWith', 'exact')),
+  channel_ids text[] not null default '{}',
+  role_ids    text[] not null default '{}',
+  case_sensitive boolean not null default false,
+  cooldown_seconds integer not null default 0 check (cooldown_seconds between 0 and 86400),
+  enabled    boolean not null default true,
   created_at timestamptz not null default now(),
   unique (guild_id, emoji, trigger)
 );
+
+alter table reaction_triggers add column if not exists match_mode text not null default 'contains';
+alter table reaction_triggers add column if not exists channel_ids text[] not null default '{}';
+alter table reaction_triggers add column if not exists role_ids text[] not null default '{}';
+alter table reaction_triggers add column if not exists case_sensitive boolean not null default false;
+alter table reaction_triggers add column if not exists cooldown_seconds integer not null default 0;
+alter table reaction_triggers add column if not exists enabled boolean not null default true;
 
 create index if not exists idx_reaction_triggers_guild on reaction_triggers(guild_id);
 create index if not exists idx_reaction_triggers_match on reaction_triggers(guild_id, trigger);
@@ -978,8 +991,19 @@ create table if not exists managed_webhooks (
   webhook_token text not null,
   name         text not null,
   created_by   text not null,
+  default_username text,
+  default_avatar_url text,
+  default_message text,
+  default_embed jsonb,
+  enabled      boolean not null default true,
   created_at   timestamptz not null default now()
 );
+
+alter table managed_webhooks add column if not exists default_username text;
+alter table managed_webhooks add column if not exists default_avatar_url text;
+alter table managed_webhooks add column if not exists default_message text;
+alter table managed_webhooks add column if not exists default_embed jsonb;
+alter table managed_webhooks add column if not exists enabled boolean not null default true;
 
 create index if not exists idx_managed_webhooks_guild on managed_webhooks(guild_id);
 
@@ -994,9 +1018,24 @@ create table if not exists server_counters (
   counter_option  text not null,
   channel_type    text not null check (channel_type in ('voice', 'text', 'category', 'announce', 'stage')),
   created_by      text not null,
+  name_template  text not null default '{option}: {value}',
+  prefix         text not null default '',
+  suffix         text not null default '',
+  parent_id      text,
+  interval_seconds integer not null default 60 check (interval_seconds between 60 and 86400),
+  enabled        boolean not null default true,
+  last_updated_at timestamptz,
   created_at      timestamptz not null default now(),
   unique (guild_id, channel_id)
 );
+
+alter table server_counters add column if not exists name_template text not null default '{option}: {value}';
+alter table server_counters add column if not exists prefix text not null default '';
+alter table server_counters add column if not exists suffix text not null default '';
+alter table server_counters add column if not exists parent_id text;
+alter table server_counters add column if not exists interval_seconds integer not null default 60;
+alter table server_counters add column if not exists enabled boolean not null default true;
+alter table server_counters add column if not exists last_updated_at timestamptz;
 
 create index if not exists idx_server_counters_guild on server_counters(guild_id);
 
