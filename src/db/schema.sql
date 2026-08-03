@@ -968,6 +968,40 @@ create index if not exists idx_reaction_message_configs_guild on reaction_messag
 
 alter table reaction_message_configs enable row level security;
 
+-- ── Managed webhooks ─────────────────────────────────────────────────────────
+
+create table if not exists managed_webhooks (
+  id           bigserial primary key,
+  guild_id     text not null references guilds(guild_id) on delete cascade,
+  channel_id   text not null,
+  webhook_id   text not null unique,
+  webhook_token text not null,
+  name         text not null,
+  created_by   text not null,
+  created_at   timestamptz not null default now()
+);
+
+create index if not exists idx_managed_webhooks_guild on managed_webhooks(guild_id);
+
+alter table managed_webhooks enable row level security;
+
+-- ── Live counters ────────────────────────────────────────────────────────────
+
+create table if not exists server_counters (
+  id              bigserial primary key,
+  guild_id        text not null references guilds(guild_id) on delete cascade,
+  channel_id      text not null,
+  counter_option  text not null,
+  channel_type    text not null check (channel_type in ('voice', 'text', 'category', 'announce', 'stage')),
+  created_by      text not null,
+  created_at      timestamptz not null default now(),
+  unique (guild_id, channel_id)
+);
+
+create index if not exists idx_server_counters_guild on server_counters(guild_id);
+
+alter table server_counters enable row level security;
+
 -- ── Custom commands ──────────────────────────────────────────────────────
 
 create table if not exists custom_commands (
