@@ -99,6 +99,25 @@ function buildExample(prefix, name, entry) {
   return parts.join(' ');
 }
 
+function buildMetadata(aliases, params, information) {
+  // A spaced three-column row is compact, but Discord wraps it unpredictably once
+  // the parameter syntax gets long. Stack the fields before that happens so the
+  // warning emoji and permission label always stay together.
+  if (aliases.length > 18 || params.length > 28 || information.length > 24) {
+    return [
+      '**Aliases**', aliases,
+      '',
+      '**Parameters**', `\`${params}\``,
+      '',
+      '**Information**', information,
+    ].join('\n');
+  }
+  return [
+    '**Aliases**                 **Parameters**                 **Information**',
+    `${aliases}                 ${params}                 ${information}`,
+  ].join('\n');
+}
+
 /** Finds every entry matching a typed lookup — an exact path match returns just that one entry; a bare command name (or partial path) returns every entry under it, for pagination, same as bli's findGroup(). */
 function findEntries(client, tokens) {
   const canonicalName = client.commandAliases.get(tokens[0]) ?? tokens[0];
@@ -125,6 +144,8 @@ function entryDetailCard(client, guild, prefix, command, entry, page = 0, total 
   const aliases = command.aliases?.length ? command.aliases.map((a) => `\`${prefix}${a}\``).join(', ') : 'No Aliases';
   const syntax = buildSyntax(prefix, json.name, entry);
   const example = buildExample(prefix, json.name, entry);
+  const params = buildParams(entry);
+  const information = json.default_member_permissions == null ? 'n/a' : `${EMOJI.WARNING} ${describePermissions(json.default_member_permissions)}`;
   const title = [json.name, ...entry.path].join(' ');
   const moduleLabel = (CATEGORY_META[command.category] ?? CATEGORY_META.other).label;
 
@@ -132,8 +153,7 @@ function entryDetailCard(client, guild, prefix, command, entry, page = 0, total 
     `### Command: ${title}`,
     `> ${entry.description || json.description || 'No description.'}`,
     '',
-    '**Aliases**                 **Parameters**                 **Information**',
-    `${aliases}                 ${buildParams(entry)}                 ${json.default_member_permissions == null ? 'n/a' : `${EMOJI.WARNING} ${describePermissions(json.default_member_permissions)}`}`,
+    buildMetadata(aliases, params, information),
     '',
     '**Usage**',
     `\`\`\`Ruby\nSyntax: ${syntax}\nExample: ${example}\n\`\`\``,
