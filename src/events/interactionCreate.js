@@ -14,6 +14,7 @@ const { handleButton: handleGiveawayButton } = require('../interactions/giveaway
 const { handleButton: handlePollButton } = require('../interactions/pollButton');
 const { handleButton: handlePollPanelButton, handleModal: handlePollPanelModal } = require('../interactions/pollPanel');
 const { handleButton: handleVoiceMasterButton, handleModal: handleVoiceMasterModal, handleSelect: handleVoiceMasterSelect } = require('../interactions/voiceMaster');
+const { BUTTON_PREFIX, handleButton: handleReactionRoleButton } = require('../interactions/reactionRoleButton');
 const permissionsDb = require('../db/permissions');
 const logger = require('../utils/logger');
 
@@ -134,6 +135,18 @@ module.exports = {
         await handleGiveawayButton(interaction);
       } catch (err) {
         logger.error('Error handling giveaway button:', err);
+      }
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith(BUTTON_PREFIX)) {
+      try {
+        await handleReactionRoleButton(interaction);
+      } catch (err) {
+        logger.error('Error handling reaction role button:', err);
+        if (!interaction.replied && !interaction.deferred) {
+          await interaction.reply({ content: 'Something went wrong while updating that role.', flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } }).catch(() => {});
+        }
       }
       return;
     }

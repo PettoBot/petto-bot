@@ -930,8 +930,13 @@ create table if not exists reaction_roles (
   emoji      text not null,
   role_id    text not null,
   mode       text not null default 'toggle' check (mode in ('toggle', 'add', 'remove')),
+  interaction_type text not null default 'reaction',
+  button_label text,
   unique (message_id, emoji)
 );
+
+alter table reaction_roles add column if not exists interaction_type text not null default 'reaction';
+alter table reaction_roles add column if not exists button_label text;
 
 create index if not exists idx_reaction_roles_message on reaction_roles(message_id);
 create index if not exists idx_reaction_roles_guild on reaction_roles(guild_id);

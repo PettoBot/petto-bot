@@ -10,7 +10,7 @@ module.exports = {
     try {
       if (reaction.partial) await reaction.fetch().catch(() => null);
       const row = await rrDb.getReactionRole(reaction.message.id, reaction.emoji.toString());
-      if (!row) return;
+      if (!row || (row.interaction_type && row.interaction_type !== 'reaction')) return;
 
       const member = await reaction.message.guild.members.fetch(user.id).catch(() => null);
       if (!member) return;
