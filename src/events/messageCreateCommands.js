@@ -32,7 +32,7 @@ function warningPayload(message, text) {
   return {
     components: [textCard(`${EMOJI.WARNING} ${message.author}: ${text}`, 0xfed53c)],
     flags: MessageFlags.IsComponentsV2,
-    allowedMentions: { repliedUser: false, users: [message.author.id] },
+    allowedMentions: { repliedUser: false, parse: [] },
   };
 }
 
