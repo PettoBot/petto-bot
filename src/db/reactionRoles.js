@@ -12,8 +12,20 @@ async function getReactionRole(messageId, emoji) {
   return data;
 }
 
+async function getReactionRoleById(id) {
+  const { data, error } = await supabase.from('reaction_roles').select('*').eq('id', id).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
 async function removeReactionRole(messageId, emoji) {
   const { data, error } = await supabase.from('reaction_roles').delete().eq('message_id', messageId).eq('emoji', emoji).select('id');
+  if (error) throw error;
+  return data.length > 0;
+}
+
+async function removeReactionRoleById(id) {
+  const { data, error } = await supabase.from('reaction_roles').delete().eq('id', id).select('id');
   if (error) throw error;
   return data.length > 0;
 }
@@ -36,4 +48,4 @@ async function clearForMessage(messageId) {
   return data.length;
 }
 
-module.exports = { addReactionRole, getReactionRole, removeReactionRole, listForMessage, listForGuild, clearForMessage };
+module.exports = { addReactionRole, getReactionRole, getReactionRoleById, removeReactionRole, removeReactionRoleById, listForMessage, listForGuild, clearForMessage };
