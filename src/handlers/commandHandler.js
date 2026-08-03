@@ -82,18 +82,16 @@ function loadCommands(client) {
  * Reads every command's `data` (used by deploy-commands.js), without needing a client.
  * Most commands are prefix-only now (see src/events/messageCreateCommands.js) — their
  * `data` sticks around purely so the prefix parser can introspect subcommands/options,
- * it's not meant to reach Discord's slash command API. Only context-menu commands (no
- * prefix equivalent exists) and anything explicitly opted in via `command.interactive =
- * true` (reserved for future game/interactive-style commands) actually get deployed.
+ * it is never sent to Discord's chat-input/slash command API. Context-menu commands
+ * remain deployable when there is no meaningful prefix equivalent.
  */
 function collectCommandData() {
   return findCommandFiles(COMMANDS_DIR)
     .map((filePath) => require(filePath))
     .filter((command) => command?.data)
-    .filter((command) => {
-      const isChatInput = (command.data.toJSON().type ?? 1) === 1;
-      return !isChatInput || command.interactive === true;
-    })
+    // Chat-input data is retained for prefix parsing only. Keep deploying
+    // context-menu actions, which have no useful prefix equivalent.
+    .filter((command) => (command.data.toJSON().type ?? 1) !== 1)
     .map((command) => command.data.toJSON());
 }
 
