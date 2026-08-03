@@ -32,20 +32,27 @@ function normalizeEmoji(emoji) {
   return String(emoji ?? '').trim().slice(0, 100);
 }
 
-async function addTrigger({ guildId, emoji, trigger, ownerId }) {
+async function addTrigger({ guildId, emoji, trigger, ownerId, matchMode = 'contains', channelIds = [], roleIds = [], caseSensitive = false, cooldownSeconds = 0 }) {
   const normalizedTrigger = validateTrigger(trigger);
   const normalizedEmoji = normalizeEmoji(emoji);
   if (!normalizedEmoji) throw new Error('Provide an emoji.');
 
   const { data, error } = await supabase
     .from('reaction_triggers')
-    .insert({ guild_id: guildId, emoji: normalizedEmoji, trigger: normalizedTrigger, owner_id: ownerId })
+    .insert({ guild_id: guildId, emoji: normalizedEmoji, trigger: normalizedTrigger, owner_id: ownerId, match_mode: matchMode, channel_ids: channelIds, role_ids: roleIds, case_sensitive: caseSensitive, cooldown_seconds: cooldownSeconds })
     .select('*')
     .single();
   if (error) {
     if (error.code === '23505') throw new Error('That emoji and trigger are already configured.');
     throw error;
   }
+  triggerCache.delete(guildId);
+  return data;
+}
+
+async function updateTrigger(guildId, id, patch) {
+  const { data, error } = await supabase.from('reaction_triggers').update(patch).eq('guild_id', guildId).eq('id', id).select('*').maybeSingle();
+  if (error) throw error;
   triggerCache.delete(guildId);
   return data;
 }
@@ -88,10 +95,22 @@ async function listTriggersCached(guildId) {
   return rows;
 }
 
-async function listMatchingTriggers(guildId, content) {
+async function listMatchingTriggers(guildId, { content, channelId, roleIds = [], userId } = {}) {
   const rows = await listTriggersCached(guildId);
-  const text = String(content ?? '').toLowerCase();
-  return rows.filter((row) => text.includes(row.trigger));
+  const rawText = String(content ?? '');
+  return rows.filter((row) => {
+    if (row.enabled === false) return false;
+    if (row.channel_ids?.length && !row.channel_ids.includes(channelId)) return false;
+    if (row.role_ids?.length && !row.role_ids.some((id) => roleIds.includes(id))) return false;
+    const text = row.case_sensitive ? rawText : rawText.toLowerCase();
+    const trigger = row.case_sensitive ? row.trigger : row.trigger.toLowerCase();
+    switch (row.match_mode ?? 'contains') {
+      case 'startsWith': return text.startsWith(trigger);
+      case 'endsWith': return text.endsWith(trigger);
+      case 'exact': return text === trigger;
+      default: return text.includes(trigger);
+    }
+  });
 }
 
 async function removeTrigger(guildId, emoji, trigger) {
@@ -169,6 +188,7 @@ module.exports = {
   validateTrigger,
   normalizeEmoji,
   addTrigger,
+  updateTrigger,
   getTrigger,
   getOwner,
   listTriggers,

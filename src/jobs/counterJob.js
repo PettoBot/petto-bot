@@ -1,4 +1,5 @@
 const countersDb = require('../db/counters');
+const supabase = require('../db/supabase');
 const logger = require('../utils/logger');
 
 const INTERVAL_MS = 60_000;
@@ -48,10 +49,15 @@ async function updateCounters(client) {
     const guild = client.guilds.cache.get(guildId);
     if (!guild) continue;
     for (const row of guildRows) {
+      if (!row.enabled) continue;
+      if (row.last_updated_at && Date.now() - Date.parse(row.last_updated_at) < (row.interval_seconds ?? 60) * 1000) continue;
       const channel = guild.channels.cache.get(row.channel_id);
       if (!channel) { await countersDb.remove(guildId, row.channel_id).catch(() => {}); continue; }
-      const name = `${row.counter_option}: ${countGuild(guild, row.counter_option)}`.slice(0, 100);
+      const rawValue = countGuild(guild, row.counter_option);
+      const nameTemplate = row.name_template || '{option}: {value}';
+      const name = `${row.prefix ?? ''}${nameTemplate.replaceAll('{option}', row.counter_option).replaceAll('{value}', String(rawValue)).replaceAll('{remaining}', String(rawValue))}${row.suffix ?? ''}`.slice(0, 100);
       if (channel.name !== name) await channel.setName(name, 'Update Petto counter').catch(() => {});
+      await supabase.from('server_counters').update({ last_updated_at: new Date().toISOString() }).eq('id', row.id).catch(() => {});
     }
   }
 }

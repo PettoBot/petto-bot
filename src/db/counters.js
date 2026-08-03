@@ -18,10 +18,22 @@ async function listAll() {
   return data ?? [];
 }
 
+async function get(guildId, channelId) {
+  const { data, error } = await supabase.from('server_counters').select('*').eq('guild_id', guildId).eq('channel_id', channelId).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+async function update(guildId, channelId, patch) {
+  const { data, error } = await supabase.from('server_counters').update(patch).eq('guild_id', guildId).eq('channel_id', channelId).select('*').maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
 async function remove(guildId, channelId) {
   const { data, error } = await supabase.from('server_counters').delete().eq('guild_id', guildId).eq('channel_id', channelId).select('id');
   if (error) throw error;
   return (data ?? []).length > 0;
 }
 
-module.exports = { add, list, listAll, remove };
+module.exports = { add, get, update, list, listAll, remove };
