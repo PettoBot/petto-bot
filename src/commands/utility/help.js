@@ -90,6 +90,15 @@ function buildParams(entry) {
   return entry.options.map((opt) => (opt.required ? `<${opt.name}>` : `[${opt.name}]`)).join(' ');
 }
 
+function buildExample(prefix, name, entry) {
+  const parts = [`${prefix}${name}`, ...entry.path];
+  for (const opt of entry.options) {
+    const sample = opt.type === 6 ? '@member' : opt.type === 8 ? '@role' : opt.type === 7 ? '#channel' : opt.type === 5 ? 'true' : opt.type === 4 ? '1' : opt.name === 'message' || opt.name === 'reason' ? '"hello world"' : opt.name;
+    if (opt.required) parts.push(sample);
+  }
+  return parts.join(' ');
+}
+
 /** Finds every entry matching a typed lookup — an exact path match returns just that one entry; a bare command name (or partial path) returns every entry under it, for pagination, same as bli's findGroup(). */
 function findEntries(client, tokens) {
   const canonicalName = client.commandAliases.get(tokens[0]) ?? tokens[0];
@@ -111,10 +120,11 @@ function findEntries(client, tokens) {
 
 // ── The per-(sub)command info card — the unit both pagination and drill-down bottom out at ──
 
-function entryDetailCard(client, guild, prefix, command, entry) {
+function entryDetailCard(client, guild, prefix, command, entry, page = 0, total = 1) {
   const json = command.data.toJSON();
   const aliases = command.aliases?.length ? command.aliases.map((a) => `\`${prefix}${a}\``).join(', ') : 'No Aliases';
   const syntax = buildSyntax(prefix, json.name, entry);
+  const example = buildExample(prefix, json.name, entry);
   const title = [json.name, ...entry.path].join(' ');
   const moduleLabel = (CATEGORY_META[command.category] ?? CATEGORY_META.other).label;
 
@@ -122,10 +132,12 @@ function entryDetailCard(client, guild, prefix, command, entry) {
     `### Command: ${title}`,
     `> ${entry.description || json.description || 'No description.'}`,
     '',
-    `**Aliases:** ${aliases}  ·  **Parameters:** ${buildParams(entry)}  ·  **Extras:** ${describePermissions(json.default_member_permissions)}`,
+    '**Aliases**                 **Parameters**                 **Information**',
+    `${aliases}                 ${buildParams(entry)}                 ${json.default_member_permissions == null ? 'n/a' : `${EMOJI.WARNING} ${describePermissions(json.default_member_permissions)}`}`,
     '',
-    `\`\`\`Ruby\nSyntax: ${syntax}\nExample: ${syntax} (defaults: None)\n\`\`\``,
-    `-# Module: ${moduleLabel}  ·  Press Return to go back.`,
+    '**Usage**',
+    `\`\`\`Ruby\nSyntax: ${syntax}\nExample: ${example}\n\`\`\``,
+    `-# Page ${page + 1}/${total} (${total} ${total === 1 ? 'entry' : 'entries'}) · Module: ${moduleLabel}`,
   ].join('\n');
 
   const section = new SectionBuilder()
@@ -235,7 +247,7 @@ function detailView(client, guild, prefix, command, entry, categoryId) {
   if (hasSubs) buttons.push(new ButtonBuilder().setCustomId(`help_subback:${categoryId}`).setLabel(`Return to ${command.data.name}`).setStyle(ButtonStyle.Secondary));
   buttons.push(new ButtonBuilder().setCustomId(`help_cmdback:${categoryId}`).setLabel(`Return to ${meta.label}`).setStyle(ButtonStyle.Secondary));
 
-  const card = entryDetailCard(client, guild, prefix, command, entry).addActionRowComponents(new ActionRowBuilder().addComponents(...buttons));
+  const card = entryDetailCard(client, guild, prefix, command, entry, 0, entries.length).addActionRowComponents(new ActionRowBuilder().addComponents(...buttons));
   return { components: [card], flags: MessageFlags.IsComponentsV2 };
 }
 
@@ -270,22 +282,22 @@ module.exports = {
       }
 
       let page = 0;
-      const msg = await interaction.reply({ components: [entryDetailCard(client, interaction.guild, prefix, command, entries[0]), navRow(0, entries.length)], flags: MessageFlags.IsComponentsV2 });
+      const msg = await interaction.reply({ components: [entryDetailCard(client, interaction.guild, prefix, command, entries[0], 0, entries.length), navRow(0, entries.length)], flags: MessageFlags.IsComponentsV2 });
       const collector = msg.createMessageComponentCollector({ filter: (i) => i.user.id === interaction.user.id, time: TIMEOUT_MS });
 
       collector.on('collect', async (i) => {
         if (i.customId === 'help_close') {
           collector.stop('closed');
-          await i.update({ components: [entryDetailCard(client, interaction.guild, prefix, command, entries[page]), navRow(page, entries.length, true)], flags: MessageFlags.IsComponentsV2 });
+          await i.update({ components: [entryDetailCard(client, interaction.guild, prefix, command, entries[page], page, entries.length), navRow(page, entries.length, true)], flags: MessageFlags.IsComponentsV2 });
           return;
         }
         if (i.customId === 'help_prev') page = Math.max(0, page - 1);
         if (i.customId === 'help_next') page = Math.min(entries.length - 1, page + 1);
-        await i.update({ components: [entryDetailCard(client, interaction.guild, prefix, command, entries[page]), navRow(page, entries.length)], flags: MessageFlags.IsComponentsV2 });
+        await i.update({ components: [entryDetailCard(client, interaction.guild, prefix, command, entries[page], page, entries.length), navRow(page, entries.length)], flags: MessageFlags.IsComponentsV2 });
       });
       collector.on('end', (_c, reason) => {
         if (reason === 'closed' || reason === 'messageDelete') return;
-        msg.edit({ components: [entryDetailCard(client, interaction.guild, prefix, command, entries[page]), navRow(page, entries.length, true)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+        msg.edit({ components: [entryDetailCard(client, interaction.guild, prefix, command, entries[page], page, entries.length), navRow(page, entries.length, true)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
       });
       return;
     }

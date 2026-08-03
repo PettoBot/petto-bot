@@ -1,4 +1,4 @@
-const { Events, MessageFlags } = require('discord.js');
+const { Events, MessageFlags, PermissionsBitField } = require('discord.js');
 const { ensureGuild } = require('../db/guilds');
 const { buildInteractionFromMessage, tokenize } = require('../handlers/prefixInteraction');
 const commandAliasesDb = require('../db/commandAliases');
@@ -17,6 +17,33 @@ const DEFAULT_COOLDOWN_MS = 3000;
 const UNKNOWN_COMMAND_DELETE_MS = 10_000;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const prefixCache = new Map(); // guildId -> { prefix, expiresAt }
+
+function permissionKey(json) {
+  const raw = json.default_member_permissions;
+  if (raw == null) return 'n/a';
+  const bits = BigInt(raw);
+  const names = Object.entries(PermissionsBitField.Flags)
+    .filter(([, flag]) => flag !== 0n && (bits & flag) === flag)
+    .map(([name]) => name.replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase());
+  return names.join(', ') || 'n/a';
+}
+
+function warningPayload(message, text) {
+  return {
+    components: [textCard(`${EMOJI.WARNING} ${message.author}: ${text}`, 0xfed53c)],
+    flags: MessageFlags.IsComponentsV2,
+    allowedMentions: { users: [message.author.id] },
+  };
+}
+
+function commandUsage(command, prefix) {
+  const json = command.data.toJSON();
+  const options = json.options ?? [];
+  const subcommands = options
+    .filter((option) => option.type === 1 || option.type === 2)
+    .map((option) => option.type === 2 ? `${option.name} ${option.options?.filter((child) => child.type === 1).map((child) => child.name).join(' | ') || '<subcommand>'}` : option.name);
+  return subcommands.length ? `${prefix}${json.name} ${subcommands.join(' | ')}` : `${prefix}${json.name}`;
+}
 
 async function getPrefix(guildId) {
   const cached = prefixCache.get(guildId);
@@ -119,9 +146,12 @@ module.exports = {
       return;
     }
 
-    // Silent ignore, matching bli — a disabled command shouldn't even hint that it exists there.
     const disabled = await disabledDb.findCached(message.guild.id, canonicalName, message.channel.id).catch(() => null);
-    if (disabled) return;
+    if (disabled) {
+      const scope = disabled.channel_id ? `in <#${disabled.channel_id}>` : 'on this server';
+      await message.reply(warningPayload(message, `Command \`${canonicalName}\` is disabled ${scope}.`)).catch(() => {});
+      return;
+    }
 
     // Real command, actually going to run now — the "Bot is typing..." indicator is the only
     // feedback a message-based command can give before its reply lands, so fire it as early as
@@ -132,19 +162,19 @@ module.exports = {
     const cooldownMs = command.cooldownMs ?? DEFAULT_COOLDOWN_MS;
     const remaining = getRemainingCooldown(canonicalName, message.author.id, cooldownMs);
     if (remaining > 0) {
-      await message.reply(`Please wait ${(remaining / 1000).toFixed(1)}s before using \`${prefix}${canonicalName}\` again.`).catch(() => {});
+      await message.reply(warningPayload(message, `Please wait ${(remaining / 1000).toFixed(1)}s before using \`${prefix}${canonicalName}\` again.`)).catch(() => {});
       return;
     }
 
     if (!checkDefaultPermission(command.data.toJSON(), message.member)) {
-      await message.reply("You don't have permission to use that command.").catch(() => {});
+      await message.reply(warningPayload(message, `You're missing permission: \`${permissionKey(command.data.toJSON())}\`.`)).catch(() => {});
       return;
     }
 
     try {
       const allowed = await permissionsDb.hasCommandPermission(message.guild.id, canonicalName, message.member);
       if (!allowed) {
-        await message.reply("You don't have the required permission level to use this command.").catch(() => {});
+        await message.reply(warningPayload(message, `You're missing the permission level required for \`${prefix}${canonicalName}\`.`)).catch(() => {});
         return;
       }
     } catch (err) {
@@ -155,12 +185,12 @@ module.exports = {
     try {
       interaction = await buildInteractionFromMessage(message, command, argText);
     } catch (err) {
-      await message.reply(err.userFacing ? err.message : 'Invalid command usage.').catch(() => {});
+      await message.reply(warningPayload(message, err.userFacing ? err.message : `Invalid usage. Try \`${commandUsage(command, prefix)}\` or \`${prefix}help ${canonicalName}\`.`)).catch(() => {});
       return;
     }
 
     if (!interaction) {
-      await message.reply(`Unknown subcommand. Usage: \`${prefix}${canonicalName} <subcommand> ...\``).catch(() => {});
+      await message.reply(warningPayload(message, `Unknown subcommand for \`${canonicalName}\`. Valid options: \`${commandUsage(command, prefix)}\`. Use \`${prefix}help ${canonicalName}\` for details.`)).catch(() => {});
       return;
     }
 
@@ -168,7 +198,7 @@ module.exports = {
       await command.execute(interaction, message.client);
     } catch (err) {
       logger.error(`Error executing ${prefix}${canonicalName}:`, err);
-      const errorReply = { content: err.userFacing ? err.message : 'Something went wrong while running that command.' };
+      const errorReply = warningPayload(message, err.userFacing ? err.message : 'Something went wrong while running that command.');
       if (interaction.deferred || interaction.replied) await interaction.editReply(errorReply).catch(() => {});
       else await interaction.reply(errorReply).catch(() => {});
     }
