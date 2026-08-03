@@ -477,6 +477,14 @@ Modeled on Ticket Tool / Tickets: panels members click to open a private channel
 
 Not built: auto-close on inactivity, a ticket rating/feedback prompt after close, and thread-based tickets (channels only, matching Ticket Tool's classic model — simpler permissioning than private threads, no boost-level cap on count).
 
+### Ticket parity update
+
+Petto now also includes reusable ticket forms (`/ticket form create` with 1–5 `short_text`/`long_text` fields), required roles per category, and a per-server user/role ticket blacklist (`/ticket blacklist add/remove/list`). Form answers are stored with the ticket and posted for staff after opening. Form-backed categories must be opened through their panel so Discord can show the modal. Vanity roles remain intentionally out of scope because they belong to another bot.
+
+The existing inactivity auto-close job and post-close rating flow are implemented as well; older notes elsewhere in this README that list them as pending are stale.
+
+The SQL migration adds `ticket_forms`, `ticket_blacklist`, category form/required-role columns, and ticket form-answer columns. It is idempotent and can be run together with the existing [`src/db/schema.sql`](src/db/schema.sql).
+
 ## Welcome / leave / boost / bump reminder
 
 Ported from "bli" (`WelcomeSettings`, `bumpreminder`/`bumpHandler`) and "urubot" (`bienvenidas.js`'s boost-system-message approach), merged into Petto's own conventions — same `/embed`-template-or-plain-text pattern as ticket welcome messages, same `{user}`/`{server_name}`/... variable engine `/embed` already uses (`utils/embedVariables.js`), Components V2 cards for the plain-text fallback.

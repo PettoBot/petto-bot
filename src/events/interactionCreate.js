@@ -3,6 +3,7 @@ const { getRemainingCooldown } = require('../utils/cooldown');
 const { handleButton: handleEmbedPanelButton, handleModal: handleEmbedPanelModal } = require('../interactions/embedPanel');
 const { handleModal: handleReportModal } = require('../interactions/reportModal');
 const { handleButton: handleTicketPanelButton, handleSelect: handleTicketPanelSelect } = require('../interactions/ticketPanel');
+const { handleModal: handleTicketFormModal } = require('../interactions/ticketForm');
 const {
   handleButton: handleTicketControlButton,
   handleCloseModal: handleTicketCloseModal,
@@ -79,6 +80,15 @@ module.exports = {
         await handleTicketPanelSelect(interaction);
       } catch (err) {
         logger.error('Error handling ticket panel select:', err);
+      }
+      return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('tk_form::')) {
+      try {
+        await handleTicketFormModal(interaction);
+      } catch (err) {
+        logger.error('Error handling ticket form modal:', err);
       }
       return;
     }

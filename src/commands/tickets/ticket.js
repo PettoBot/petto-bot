@@ -2,6 +2,8 @@ const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = 
 const { ensureGuild } = require('../../db/guilds');
 const { getTemplate } = require('../../db/embedTemplates');
 const db = require('../../db/tickets');
+const formsDb = require('../../db/ticketForms');
+const accessDb = require('../../db/ticketAccess');
 const settingsDb = require('../../db/ticketSettings');
 const actions = require('../../utils/ticketActions');
 const { buildPanelRows, buildPanelFallbackCard, buildTranscriptLinkRow } = require('../../utils/ticketCards');
@@ -61,6 +63,8 @@ module.exports = {
             .addStringOption((o) => o.setName('description').setDescription('Shown under the option (dropdown-style panels only)').setRequired(false))
             .addStringOption((o) => o.setName('welcome_embed').setDescription('Saved /embed template to use as the ticket welcome message').setRequired(false))
             .addIntegerOption((o) => o.setName('max_open').setDescription('Max open tickets per user in this category (default 1)').setMinValue(1).setRequired(false))
+            .addStringOption((o) => o.setName('form').setDescription('Reusable form name (see !ticket form list)').setRequired(false))
+            .addRoleOption((o) => o.setName('required_role').setDescription('Role required to open this category').setRequired(false))
             .addStringOption((o) => o.setName('naming').setDescription('Channel naming pattern: {number}, {username} (default "ticket-{number}")').setRequired(false)),
         )
         .addSubcommand((s) =>
@@ -75,6 +79,8 @@ module.exports = {
             .addStringOption((o) => o.setName('description').setDescription('New description').setRequired(false))
             .addStringOption((o) => o.setName('welcome_embed').setDescription('New saved /embed template for the welcome message').setRequired(false))
             .addIntegerOption((o) => o.setName('max_open').setDescription('New max open tickets per user').setMinValue(1).setRequired(false))
+            .addStringOption((o) => o.setName('form').setDescription('Form name, or "none" to remove').setRequired(false))
+            .addRoleOption((o) => o.setName('required_role').setDescription('Required role to add').setRequired(false))
             .addStringOption((o) => o.setName('naming').setDescription('New channel naming pattern').setRequired(false)),
         )
         .addSubcommand((s) => s.setName('remove').setDescription('Remove a category.').addStringOption((o) => o.setName('key').setDescription('Category key').setRequired(true)))
@@ -99,6 +105,34 @@ module.exports = {
         .addSubcommand((s) => s.setName('list').setDescription('List a category\'s ping roles.').addStringOption((o) => o.setName('key').setDescription('Category key').setRequired(true))),
     )
 
+    .addSubcommandGroup((g) =>
+      g
+        .setName('required-role')
+        .setDescription('(Staff) Roles required to open a category.')
+        .addSubcommand((s) => s.setName('add').setDescription('Require a role for a category.').addStringOption((o) => o.setName('key').setDescription('Category key').setRequired(true)).addRoleOption((o) => o.setName('role').setDescription('Required role').setRequired(true)))
+        .addSubcommand((s) => s.setName('remove').setDescription('Remove a required role.').addStringOption((o) => o.setName('key').setDescription('Category key').setRequired(true)).addRoleOption((o) => o.setName('role').setDescription('Required role').setRequired(true)))
+        .addSubcommand((s) => s.setName('list').setDescription('List required roles.').addStringOption((o) => o.setName('key').setDescription('Category key').setRequired(true))),
+    )
+
+    .addSubcommandGroup((g) =>
+      g
+        .setName('form')
+        .setDescription('(Staff) Manage reusable ticket intake forms.')
+        .addSubcommand((s) => s.setName('create').setDescription('Create a form. Fields: type|id|label|placeholder|required;...').addStringOption((o) => o.setName('name').setDescription('Form name').setRequired(true)).addStringOption((o) => o.setName('fields').setDescription('1-5 fields, separated by ;').setRequired(true)).addStringOption((o) => o.setName('title').setDescription('Modal title').setRequired(false)))
+        .addSubcommand((s) => s.setName('edit').setDescription('Edit a form.').addStringOption((o) => o.setName('name').setDescription('Form name').setRequired(true)).addStringOption((o) => o.setName('fields').setDescription('Replacement fields, separated by ;').setRequired(false)).addStringOption((o) => o.setName('title').setDescription('New modal title').setRequired(false)))
+        .addSubcommand((s) => s.setName('delete').setDescription('Delete a form.').addStringOption((o) => o.setName('name').setDescription('Form name').setRequired(true)))
+        .addSubcommand((s) => s.setName('list').setDescription('List ticket forms.')),
+    )
+
+    .addSubcommandGroup((g) =>
+      g
+        .setName('blacklist')
+        .setDescription('(Staff) Block users or roles from opening tickets.')
+        .addSubcommand((s) => s.setName('add').setDescription('Add a user or role to the ticket blacklist.').addUserOption((o) => o.setName('user').setDescription('User to block').setRequired(false)).addRoleOption((o) => o.setName('role').setDescription('Role to block').setRequired(false)).addStringOption((o) => o.setName('reason').setDescription('Optional reason').setRequired(false)))
+        .addSubcommand((s) => s.setName('remove').setDescription('Remove a user or role from the ticket blacklist.').addUserOption((o) => o.setName('user').setDescription('User to unblock').setRequired(false)).addRoleOption((o) => o.setName('role').setDescription('Role to unblock').setRequired(false)))
+        .addSubcommand((s) => s.setName('list').setDescription('List blocked users and roles.')),
+    )
+
     .addSubcommand((s) => s.setName('open').setDescription('Open a ticket without using a panel.').addStringOption((o) => o.setName('category').setDescription('Category key').setRequired(true)))
     .addSubcommand((s) => s.setName('close').setDescription('Close this ticket.').addStringOption((o) => o.setName('reason').setDescription('Reason').setRequired(false)))
     .addSubcommand((s) => s.setName('reopen').setDescription('(Staff) Reopen this closed ticket.'))
@@ -119,6 +153,9 @@ module.exports = {
     if (group === 'category') return categoryCmd(interaction, sub);
     if (group === 'support-role') return roleListCmd(interaction, sub, 'support_role_ids');
     if (group === 'ping-role') return roleListCmd(interaction, sub, 'ping_role_ids');
+    if (group === 'required-role') return roleListCmd(interaction, sub, 'required_role_ids');
+    if (group === 'form') return formCmd(interaction, sub);
+    if (group === 'blacklist') return blacklistCmd(interaction, sub);
 
     if (sub === 'open') return openCmd(interaction);
     if (sub === 'info') return infoCmd(interaction);
@@ -318,6 +355,8 @@ async function categoryCmd(interaction, sub) {
     const description = interaction.options.getString('description');
     const welcomeEmbed = interaction.options.getString('welcome_embed');
     const maxOpen = interaction.options.getInteger('max_open');
+    const formName = interaction.options.getString('form');
+    const requiredRole = interaction.options.getRole('required_role');
     const naming = interaction.options.getString('naming');
 
     if (label) patch.label = label;
@@ -327,6 +366,18 @@ async function categoryCmd(interaction, sub) {
     if (description) patch.description = description;
     if (welcomeEmbed) patch.welcome_embed_template = welcomeEmbed;
     if (maxOpen) patch.max_open_per_user = maxOpen;
+    if (formName) {
+      if (formName.toLowerCase() === 'none') patch.form_id = null;
+      else {
+        const form = await formsDb.getFormByName(interaction.guild.id, formName);
+        if (!form) {
+          await interaction.editReply({ components: [textCard(`No form named \`${formName}\` found.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+          return;
+        }
+        patch.form_id = form.id;
+      }
+    }
+    if (requiredRole) patch.required_role_ids = [...new Set([...(existing.required_role_ids ?? []), requiredRole.id])];
     if (naming) patch.naming_pattern = naming;
 
     const updated = await db.updateCategory(interaction.guild.id, key, patch);
@@ -355,6 +406,14 @@ async function categoryCmd(interaction, sub) {
     return;
   }
 
+  const formName = interaction.options.getString('form');
+  const form = formName ? await formsDb.getFormByName(interaction.guild.id, formName) : null;
+  if (formName && !form) {
+    await interaction.editReply({ components: [textCard(`No form named \`${formName}\` found.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+  const requiredRole = interaction.options.getRole('required_role');
+
   const category = await db.createCategory({
     guildId: interaction.guild.id,
     panelId,
@@ -367,6 +426,8 @@ async function categoryCmd(interaction, sub) {
     description: interaction.options.getString('description'),
     welcomeEmbedTemplate: welcomeEmbed,
     maxOpenPerUser: interaction.options.getInteger('max_open'),
+    formId: form?.id,
+    requiredRoleIds: requiredRole ? [requiredRole.id] : [],
     namingPattern: interaction.options.getString('naming'),
   });
 
@@ -392,6 +453,82 @@ async function resyncPanelsForCategoryChange(guild, categoryKey) {
   } catch (err) {
     logger.warn('Failed to resync ticket panel message:', err.message);
   }
+}
+
+function parseFormFields(spec) {
+  const fields = String(spec ?? '')
+    .split(';')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part, index) => {
+      const [type, id, label, placeholder, required] = part.split('|').map((value) => value?.trim());
+      return { type: type || 'short_text', id: id || `field_${index + 1}`, label, placeholder, required: required !== 'optional' && required !== 'false' };
+    });
+  return formsDb.normalizeFields(fields);
+}
+
+async function formCmd(interaction, sub) {
+  if (!(await requireManageGuild(interaction))) return;
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+
+  try {
+    if (sub === 'list') {
+      const forms = await formsDb.listForms(interaction.guild.id);
+      const text = forms.length ? forms.map((form) => `**${form.name}** — ${form.fields.length} field(s) · ${form.title}`).join('\n') : 'No forms yet.';
+      await interaction.editReply({ components: [textCard(text, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+      return;
+    }
+
+    const name = interaction.options.getString('name', true);
+    if (sub === 'delete') {
+      const deleted = await formsDb.deleteForm(interaction.guild.id, name);
+      await interaction.editReply({ components: [textCard(deleted ? `${EMOJI.APPROVE} Form \`${name}\` deleted.` : `No form named \`${name}\` found.`, deleted ? 0xa5ea7a : 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      return;
+    }
+
+    const fieldsSpec = interaction.options.getString('fields');
+    const title = interaction.options.getString('title');
+    if (sub === 'create') {
+      const form = await formsDb.createForm({ guildId: interaction.guild.id, name, title, fields: parseFormFields(fieldsSpec) });
+      await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE} Form \`${form.name}\` created. Assign it with !ticket category edit key:<key> form:${form.name}.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+      return;
+    }
+
+    const patch = {};
+    if (fieldsSpec) patch.fields = parseFormFields(fieldsSpec);
+    if (title) patch.title = title;
+    if (!Object.keys(patch).length) throw new Error('Provide a new title or fields definition.');
+    const form = await formsDb.updateForm(interaction.guild.id, name, patch);
+    await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE} Form \`${form.name}\` updated.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  } catch (err) {
+    await interaction.editReply({ components: [textCard(err.message || 'Unable to update that form.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+  }
+}
+
+async function blacklistCmd(interaction, sub) {
+  if (!(await requireManageGuild(interaction))) return;
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+
+  if (sub === 'list') {
+    const entries = await accessDb.listBlacklist(interaction.guild.id);
+    const text = entries.length
+      ? entries.map((entry) => `${entry.target_type === 'user' ? `<@${entry.target_id}>` : `<@&${entry.target_id}>`}${entry.reason ? ` — ${entry.reason}` : ''}`).join('\n')
+      : 'Ticket blacklist is empty.';
+    await interaction.editReply({ components: [textCard(text, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+
+  const user = interaction.options.getUser('user');
+  const role = interaction.options.getRole('role');
+  const target = user ? { type: 'user', id: user.id, mention: user.toString() } : role ? { type: 'role', id: role.id, mention: role.toString() } : null;
+  if (!target) {
+    await interaction.editReply({ components: [textCard('Choose either a user or a role.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+
+  const removed = sub === 'remove' ? await accessDb.removeBlacklist(interaction.guild.id, target.type, target.id) : false;
+  if (sub === 'add') await accessDb.addBlacklist({ guildId: interaction.guild.id, targetType: target.type, targetId: target.id, reason: interaction.options.getString('reason') });
+  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE} ${target.mention} ${sub === 'add' ? 'added to' : removed ? 'removed from' : 'was not in'} the ticket blacklist.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function roleListCmd(interaction, sub, column) {
