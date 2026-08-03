@@ -938,6 +938,36 @@ create index if not exists idx_reaction_roles_guild on reaction_roles(guild_id);
 
 alter table reaction_roles enable row level security;
 
+-- ── Reaction triggers ────────────────────────────────────────────────────────
+
+create table if not exists reaction_triggers (
+  id         bigserial primary key,
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  emoji      text not null,
+  trigger    text not null,
+  owner_id   text not null,
+  created_at timestamptz not null default now(),
+  unique (guild_id, emoji, trigger)
+);
+
+create index if not exists idx_reaction_triggers_guild on reaction_triggers(guild_id);
+create index if not exists idx_reaction_triggers_match on reaction_triggers(guild_id, trigger);
+
+alter table reaction_triggers enable row level security;
+
+create table if not exists reaction_message_configs (
+  id         bigserial primary key,
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  channel_id text not null,
+  emojis     text[] not null default '{}',
+  created_at timestamptz not null default now(),
+  unique (guild_id, channel_id)
+);
+
+create index if not exists idx_reaction_message_configs_guild on reaction_message_configs(guild_id);
+
+alter table reaction_message_configs enable row level security;
+
 -- ── Custom commands ──────────────────────────────────────────────────────
 
 create table if not exists custom_commands (
