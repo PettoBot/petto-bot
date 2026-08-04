@@ -1,5 +1,6 @@
 const { upsertConfig, getConfigByChannel, getDueReminders } = require('../db/bumpReminders');
 const { resolve } = require('./embedVariables');
+const { extractReactReplies, applyReactReplies } = require('./messageFlags');
 const logger = require('./logger');
 
 const DISBOARD_ID = '302050872383242240';
@@ -31,10 +32,16 @@ async function handleBumpMessage(message) {
   await upsertConfig(message.guild.id, { next_bump_at: nextBumpAt.toISOString(), last_bumper_id: bumper?.id ?? null });
 
   if (config.thankyou) {
-    const text = await applyBumpVars(config.thankyou, { guild: message.guild, channel: message.channel, bumper, nextBumpAt });
-    await message.channel
-      .send({ content: text, allowedMentions: { parse: ['users', 'roles'] } })
-      .catch((err) => logger.error('Bump thank-you send failed:', err));
+    const { text: cleanedText, emojis: reactReplies } = extractReactReplies(config.thankyou);
+    const text = await applyBumpVars(cleanedText, { guild: message.guild, channel: message.channel, bumper, nextBumpAt });
+    if (text) {
+      const sent = await message.channel
+        .send({ content: text, allowedMentions: { parse: ['users', 'roles'] } })
+        .catch((err) => { logger.error('Bump thank-you send failed:', err); return null; });
+      if (sent && reactReplies.length) await applyReactReplies(sent, reactReplies);
+    } else if (reactReplies.length) {
+      await applyReactReplies(message, reactReplies);
+    }
   }
 
   if (config.autolock) {
@@ -53,11 +60,15 @@ async function checkBumpReminders(client) {
       if (!guild || !channel) continue;
 
       const bumper = config.last_bumper_id ? await client.users.fetch(config.last_bumper_id).catch(() => null) : null;
-      const text = await applyBumpVars(config.message, { guild, channel, bumper, nextBumpAt: null });
+      const { text: cleanedText, emojis: reactReplies } = extractReactReplies(config.message);
+      const text = await applyBumpVars(cleanedText, { guild, channel, bumper, nextBumpAt: null });
 
-      await channel
-        .send({ content: text, allowedMentions: config.pingable ? { parse: ['users', 'roles'] } : { parse: [] } })
-        .catch((err) => logger.error('Bump reminder send failed:', err));
+      if (text) {
+        const sent = await channel
+          .send({ content: text, allowedMentions: config.pingable ? { parse: ['users', 'roles'] } : { parse: [] } })
+          .catch((err) => { logger.error('Bump reminder send failed:', err); return null; });
+        if (sent && reactReplies.length) await applyReactReplies(sent, reactReplies);
+      }
 
       if (config.autolock) {
         await channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: null }).catch(() => {});

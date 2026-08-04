@@ -249,7 +249,7 @@ async function panelCmd(interaction, sub) {
 
     await db.updatePanel(interaction.guild.id, panelId, { message_id: null });
     const categories = await db.listCategories(interaction.guild.id, panel.id);
-    const message = await channel.send(await renderPanelMessage(interaction.guild, panel, categories)).catch((err) => {
+    const message = await channel.send(await renderPanelMessage(interaction.guild, panel, categories, channel)).catch((err) => {
       logger.error(`Failed to resend panel #${panelId}:`, err);
       return null;
     });
@@ -279,7 +279,7 @@ async function panelCmd(interaction, sub) {
 
   const panel = await db.createPanel({ guildId: interaction.guild.id, channelId: channel.id, title, description, embedTemplate, style });
 
-  const payload = await renderPanelMessage(interaction.guild, panel, []);
+  const payload = await renderPanelMessage(interaction.guild, panel, [], channel);
   const message = await channel.send(payload).catch((err) => {
     logger.error('Failed to post ticket panel:', err);
     return null;
@@ -299,13 +299,14 @@ async function panelCmd(interaction, sub) {
 }
 
 /** Renders (or re-renders) a panel's message payload: embed-template-or-fallback + its categories' button/select row. */
-async function renderPanelMessage(guild, panel, categories) {
+async function renderPanelMessage(guild, panel, categories, channel) {
   const rows = buildPanelRows(panel.style, categories);
 
   if (panel.embed_template) {
     const doc = await getTemplate(guild.id, panel.embed_template);
     if (doc) {
-      const payload = await build(doc.data, { guild });
+      const guildConfig = await ensureGuild(guild.id);
+      const payload = await build(doc.data, { guild, channel, prefix: guildConfig.prefix });
       return { content: payload.content, embeds: payload.embeds, components: [...(payload.components ?? []), ...rows] };
     }
   }
@@ -448,7 +449,7 @@ async function resyncPanelsForCategoryChange(guild, categoryKey) {
     if (!message) return;
 
     const categories = await db.listCategories(guild.id, panel.id);
-    const payload = await renderPanelMessage(guild, panel, categories);
+    const payload = await renderPanelMessage(guild, panel, categories, channel);
     await message.edit(payload);
   } catch (err) {
     logger.warn('Failed to resync ticket panel message:', err.message);

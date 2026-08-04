@@ -4,6 +4,7 @@ const levelRewardsDb = require('../db/levelRewards');
 const levelMultipliersDb = require('../db/levelMultipliers');
 const { levelForXp, xpNeeded } = require('./levelCurve');
 const { resolve } = require('./embedVariables');
+const { extractReactReplies, applyReactReplies } = require('./messageFlags');
 const { EMOJI } = require('./emojis');
 const logger = require('./logger');
 
@@ -67,7 +68,7 @@ async function stripRewardRoles(guild, member) {
   if (toRemove.length) await member.roles.remove(toRemove).catch(() => {});
 }
 
-async function notifyLevelUp({ client, guild, member, config, level, channel }) {
+async function notifyLevelUp({ client, guild, member, config, level, channel, message = null }) {
   if (config.notify_mode === 'off') return;
   if (config.notify_every > 1 && level % config.notify_every !== 0) return;
 
@@ -82,19 +83,31 @@ async function notifyLevelUp({ client, guild, member, config, level, channel }) 
     levelData: { level, xp: userData?.xp ?? 0, xpNeeded: xpNeeded(level, config), rank },
   };
 
-  const text = await resolve(config.notify_message.replace(/\{EMOJI\}/g, EMOJI.STAR), ctx);
+  const rawText = config.notify_message.replace(/\{EMOJI\}/g, EMOJI.STAR);
+  const { text: cleanedText, emojis: reactReplies } = extractReactReplies(rawText);
+  const text = await resolve(cleanedText, ctx);
+  if (!text && reactReplies.length) {
+    if (message) await applyReactReplies(message, reactReplies);
+    return;
+  }
+  if (!text) return;
   const payload = config.notify_embed
     ? { embeds: [new EmbedBuilder().setColor(0x8399ff).setDescription(text)] }
     : { content: text };
 
   try {
     if (config.notify_mode === 'dm') {
-      await member.send(payload);
+      const sent = await member.send(payload);
+      if (reactReplies.length) await applyReactReplies(sent, reactReplies);
     } else if (config.notify_mode === 'channel' && config.notify_channel_id) {
       const target = await guild.channels.fetch(config.notify_channel_id).catch(() => null);
-      if (target) await target.send(payload);
+      if (target) {
+        const sent = await target.send(payload);
+        if (reactReplies.length) await applyReactReplies(sent, reactReplies);
+      }
     } else if (channel) {
-      await channel.send(payload);
+      const sent = await channel.send(payload);
+      if (reactReplies.length) await applyReactReplies(sent, reactReplies);
     }
   } catch (err) {
     logger.warn(`Level-up notification failed for ${member.id} in guild ${guild.id}:`, err.message);
@@ -106,7 +119,7 @@ async function notifyLevelUp({ client, guild, member, config, level, channel }) 
  * recomputes the level under the guild's curve, and — if it went up — applies reward roles
  * and sends the level-up notification. Shared by both XP sources so neither can drift.
  */
-async function grantXp({ client, guild, member, config, xpGain, messageInc = 0, vcInc = 0, channel = null }) {
+async function grantXp({ client, guild, member, config, xpGain, messageInc = 0, vcInc = 0, channel = null, message = null }) {
   const before = await levelUsersDb.ensureUser(guild.id, member.id);
   const oldLevel = before.level;
 
@@ -117,7 +130,7 @@ async function grantXp({ client, guild, member, config, xpGain, messageInc = 0, 
 
   if (newLevel > oldLevel) {
     await checkRewards(guild, member, newLevel, config).catch((err) => logger.error('Level reward grant failed:', err));
-    await notifyLevelUp({ client, guild, member, config, level: newLevel, channel }).catch((err) => logger.error('Level notify failed:', err));
+    await notifyLevelUp({ client, guild, member, config, level: newLevel, channel, message }).catch((err) => logger.error('Level notify failed:', err));
   }
 
   return { ...updated, level: newLevel, leveledUp: newLevel > oldLevel };

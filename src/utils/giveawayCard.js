@@ -2,6 +2,7 @@ const { ContainerBuilder, TextDisplayBuilder, ActionRowBuilder, ButtonBuilder, B
 const { getTemplate } = require('../db/giveawayTemplates');
 const { build } = require('./embedBuilder');
 const { resolve } = require('./embedVariables');
+const { extractReactReplies, applyReactReplies } = require('./messageFlags');
 const { EMOJI } = require('./emojis');
 const logger = require('./logger');
 
@@ -41,22 +42,25 @@ function buildClaimRow(winnerId) {
  */
 async function sendGiveawayResponse({ target, guildId, messageText, embedTemplateName, ctx, fallback }) {
   if (!messageText && !embedTemplateName && !fallback) return;
+  const { text: cleanedText, emojis: reactReplies } = messageText ? extractReactReplies(messageText) : { text: '', emojis: [] };
 
   try {
     if (embedTemplateName) {
       const doc = await getTemplate(guildId, embedTemplateName);
       if (doc) {
         const payload = await build(doc.data, ctx);
-        await target.send({ content: payload.content, embeds: payload.embeds, components: payload.components });
+        const sent = await target.send({ content: payload.content, embeds: payload.embeds, components: payload.components });
+        if (reactReplies.length) await applyReactReplies(sent, reactReplies);
         return;
       }
       logger.warn(`Giveaway response template "${embedTemplateName}" not found in guild ${guildId}, falling back.`);
     }
 
-    const text = messageText ?? fallback;
+    const text = cleanedText || fallback;
     if (text) {
       const resolved = await resolve(text, ctx);
-      await target.send({ content: resolved });
+      const sent = await target.send({ content: resolved });
+      if (reactReplies.length) await applyReactReplies(sent, reactReplies);
     }
   } catch (err) {
     logger.error(`Failed to send giveaway response in guild ${guildId}:`, err);

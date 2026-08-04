@@ -26,7 +26,7 @@ module.exports = {
       const base = Math.floor(Math.random() * (config.xp_max - config.xp_min + 1)) + config.xp_min;
       const xpGain = Math.round(base * multi);
 
-      await grantXp({ client: message.client, guild: message.guild, member: message.member, config, xpGain, messageInc: 1, channel: message.channel });
+      await grantXp({ client: message.client, guild: message.guild, member: message.member, config, xpGain, messageInc: 1, channel: message.channel, message });
     } catch (err) {
       logger.error(`Level XP grant failed for message ${message.id}:`, err);
     }
