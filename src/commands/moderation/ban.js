@@ -17,9 +17,11 @@ const { resolveUsers } = require('../../utils/userResolve');
 const { parseDuration, formatDuration } = require('../../utils/duration');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
+const { confirmBulkAction } = require('../../utils/moderationCommand');
 
 module.exports = {
   aliases: ['b'],
+  prefixDefaultSubcommand: 'user',
   data: new SlashCommandBuilder()
     .setName('ban')
     .setDescription('Ban members from the server.')
@@ -119,6 +121,8 @@ async function banUsers(interaction) {
   }
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+
+  if (!(await confirmBulkAction(interaction, 'ban', usersInput))) return;
 
   const { users, failed: notFound } = await resolveUsers(interaction.client, usersInput);
   await ensureGuild(interaction.guild.id);

@@ -310,7 +310,11 @@ async function buildInteractionFromMessage(message, command, argText) {
   const tokens = tokenize(argText);
   const json = command.data.toJSON();
 
-  const resolved = resolveSubcommandOptions(json, tokens);
+  const resolved = resolveSubcommandOptions(json, tokens) ?? (
+    command.prefixDefaultSubcommand
+      ? resolveSubcommandOptions(json, [command.prefixDefaultSubcommand, ...tokens])
+      : null
+  );
   if (!resolved) return null;
 
   const values = await parseOptions(message, resolved.optionDefs, resolved.remainingTokens);

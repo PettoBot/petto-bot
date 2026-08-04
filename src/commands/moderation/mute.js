@@ -10,11 +10,13 @@ const { resolveUsers } = require('../../utils/userResolve');
 const { parseDuration, formatDuration } = require('../../utils/duration');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
+const { confirmBulkAction } = require('../../utils/moderationCommand');
 
 const MAX_TIMEOUT_MS = 28 * 24 * 60 * 60 * 1000; // Discord's native timeout hard limit
 
 module.exports = {
   aliases: ['m'],
+  prefixDefaultSubcommand: 'user',
   data: new SlashCommandBuilder()
     .setName('mute')
     .setDescription('Mute members.')
@@ -133,6 +135,8 @@ async function muteUsers(interaction) {
   }
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+
+  if (!(await confirmBulkAction(interaction, 'mute', usersInput))) return;
 
   const guildConfig = await ensureGuild(interaction.guild.id);
 
@@ -293,6 +297,8 @@ async function unmuteUsers(interaction) {
   const reason = interaction.options.getString('reason');
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+
+  if (!(await confirmBulkAction(interaction, 'unmute', usersInput))) return;
 
   const { users, failed: notFound } = await resolveUsers(interaction.client, usersInput);
   const guildConfig = await ensureGuild(interaction.guild.id);

@@ -11,6 +11,7 @@ const { checkAndApplyEscalation } = require('../../utils/escalation');
 const { parseDuration } = require('../../utils/duration');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
+const { confirmBulkAction } = require('../../utils/moderationCommand');
 
 // Discord has no native "warn" permission; Moderate Members (used for timeouts)
 // is the closest built-in stand-in for "this person is server staff".
@@ -18,6 +19,7 @@ const WARN_PERMISSION = PermissionFlagsBits.ModerateMembers;
 
 module.exports = {
   aliases: ['w'],
+  prefixDefaultSubcommand: 'user',
   data: new SlashCommandBuilder()
     .setName('warn')
     .setDescription('Warn members. Warnings are recorded in their history.')
@@ -106,6 +108,8 @@ async function warnUsers(interaction) {
   const reason = interaction.options.getString('reason', true);
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+
+  if (!(await confirmBulkAction(interaction, 'warn', usersInput))) return;
 
   const { users, failed: notFound } = await resolveUsers(interaction.client, usersInput);
   await ensureGuild(interaction.guild.id);

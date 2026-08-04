@@ -9,7 +9,7 @@ const DEFAULT_COMMAND_ALIASES = {
   roleinfo: ['ri'], roles: ['rolelist'], serverinfo: ['si'], snowflake: ['sf'], spotify: ['sp'], uptime: ['up'], userinfo: ['ui'],
   autothread: ['at'], reaction: ['react'], reactionrole: ['rr'], stickymessage: ['sticky'], stickyroles: ['sr'], timer: ['tmr'], voicemaster: ['vm'],
   bumpreminder: ['bump'], embed: ['emb'], logs: ['log'], prefix: ['pfx'], giveaway: ['gw'], giveawaypreset: ['gwp'], counter: ['cnt'],
-  ban: ['banish'], channel: ['ch'], kick: ['k'], mute: ['timeout'], note: ['notes'], nuke: ['nuk'], pauseinvites: ['pause'], softban: ['sban'], voice: ['vcmod'], afk: ['away'],
+  ban: ['banish'], channel: ['ch'], kick: ['k'], mute: [], note: ['notes'], nuke: ['nuk'], pauseinvites: ['pause'], softban: ['sban'], voice: ['vcmod'], afk: ['away'],
 };
 
 function aliasesFor(commandName) {
