@@ -15,13 +15,21 @@ function linkOrText(url) {
 }
 
 function premiumTierLabel(tier) {
-  if (typeof tier === 'number') return tier === 0 ? 'No level' : 'Level ' + tier;
+  const level = premiumTierNumber(tier);
+  return level === 0 ? 'No level' : 'Level ' + level;
+}
 
+function premiumTierNumber(tier) {
+  if (typeof tier === 'number') return Math.max(0, Math.min(3, tier));
   const normalized = String(tier ?? '').toUpperCase();
-  if (!normalized || normalized === 'NONE' || normalized === '0') return 'No level';
-  if (normalized.startsWith('TIER_')) return 'Level ' + normalized.slice(5);
-  if (/^\d+$/.test(normalized)) return 'Level ' + normalized;
-  return 'No level';
+  if (!normalized || normalized === 'NONE') return 0;
+  if (normalized.startsWith('TIER_')) return premiumTierNumber(normalized.slice(5));
+  if (/^\d+$/.test(normalized)) return Math.max(0, Math.min(3, Number(normalized)));
+  return 0;
+}
+
+function emojiLimit(tier) {
+  return [100, 200, 300, 500][premiumTierNumber(tier)];
 }
 
 module.exports = {
@@ -42,7 +50,7 @@ module.exports = {
     const createdAt = Math.floor(guild.createdTimestamp / 1000);
     const shardCount = interaction.client.ws?.shards?.size ?? 1;
     const verification = VERIFICATION_LEVELS[guild.verificationLevel] ?? 'Unknown';
-    const maxEmojis = guild.maximumEmojis ?? 'Not available';
+    const maxEmojis = emojiLimit(guild.premiumTier);
     const totalChannels = textChannels + voiceChannels + categories;
 
     const embed = new EmbedBuilder()
