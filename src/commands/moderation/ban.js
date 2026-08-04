@@ -17,7 +17,7 @@ const { resolveUsers } = require('../../utils/userResolve');
 const { parseDuration, formatDuration } = require('../../utils/duration');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
-const { confirmBulkAction } = require('../../utils/moderationCommand');
+const { confirmBulkAction, requireAdministrator } = require('../../utils/moderationCommand');
 
 module.exports = {
   aliases: ['b'],
@@ -112,6 +112,7 @@ async function banUser(interaction) {
 }
 
 async function banUsers(interaction) {
+  if (!(await requireAdministrator(interaction))) return;
   const usersInput = interaction.options.getString('users', true);
   const reason = interaction.options.getString('reason');
 

@@ -12,6 +12,7 @@ const { resolve } = require('../utils/embedVariables');
 const { extractReactReplies, applyReactReplies } = require('../utils/messageFlags');
 const { textCard } = require('../utils/caseCard');
 const { EMOJI } = require('../utils/emojis');
+const moderationPermissions = require('../utils/moderationPermissions');
 const logger = require('../utils/logger');
 
 const DEFAULT_COOLDOWN_MS = 3000;
@@ -172,13 +173,21 @@ module.exports = {
       return;
     }
 
-    if (!checkDefaultPermission(command.data.toJSON(), message.member)) {
+    let moderationRoleOverride = false;
+    if (command.category === 'moderation') {
+      moderationRoleOverride = await moderationPermissions.hasConfiguredRole(message.guild.id, canonicalName, message.member).catch((err) => {
+        logger.error('Error checking configured moderation role:', err);
+        return false;
+      });
+    }
+
+    if (!moderationRoleOverride && !checkDefaultPermission(command.data.toJSON(), message.member)) {
       await message.reply(warningPayload(message, `You're missing permission: \`${permissionKey(command.data.toJSON())}\`.`)).catch(() => {});
       return;
     }
 
     try {
-      const allowed = await permissionsDb.hasCommandPermission(message.guild.id, canonicalName, message.member);
+      const allowed = moderationRoleOverride || await permissionsDb.hasCommandPermission(message.guild.id, canonicalName, message.member);
       if (!allowed) {
         await message.reply(warningPayload(message, `You're missing the permission level required for \`${prefix}${canonicalName}\`.`)).catch(() => {});
         return;
@@ -199,6 +208,8 @@ module.exports = {
       await message.reply(warningPayload(message, `Unknown subcommand for \`${canonicalName}\`. Valid options: \`${commandUsage(command, prefix)}\`. Use \`${prefix}help ${canonicalName}\` for details.`)).catch(() => {});
       return;
     }
+
+    interaction.pettoModerationRoleAllowed = moderationRoleOverride;
 
     try {
       await command.execute(interaction, message.client);

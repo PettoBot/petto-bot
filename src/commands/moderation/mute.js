@@ -10,7 +10,7 @@ const { resolveUsers } = require('../../utils/userResolve');
 const { parseDuration, formatDuration } = require('../../utils/duration');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
-const { confirmBulkAction } = require('../../utils/moderationCommand');
+const { confirmBulkAction, requireAdministrator } = require('../../utils/moderationCommand');
 
 const MAX_TIMEOUT_MS = 28 * 24 * 60 * 60 * 1000; // Discord's native timeout hard limit
 
@@ -126,6 +126,7 @@ async function muteUser(interaction) {
 }
 
 async function muteUsers(interaction) {
+  if (!(await requireAdministrator(interaction))) return;
   const usersInput = interaction.options.getString('users', true);
   const reason = interaction.options.getString('reason');
 
@@ -293,6 +294,7 @@ async function unmuteUser(interaction) {
 }
 
 async function unmuteUsers(interaction) {
+  if (!(await requireAdministrator(interaction))) return;
   const usersInput = interaction.options.getString('users', true);
   const reason = interaction.options.getString('reason');
 

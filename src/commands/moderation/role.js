@@ -3,6 +3,7 @@ const { resolveRoles, filterAssignableRoles } = require('../../utils/roleResolve
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const roleGroupsDb = require('../../db/roleGroups');
+const { requireAdministrator } = require('../../utils/moderationCommand');
 const logger = require('../../utils/logger');
 
 const HEX_RE = /^#?[0-9a-f]{6}$/i;
@@ -342,6 +343,7 @@ async function hoistRole(interaction) {
 }
 
 async function botsRole(interaction, add) {
+  if (!(await requireAdministrator(interaction))) return;
   const role = interaction.options.getRole('role', true);
   const guard = guardRole(interaction, role);
   if (!guard.ok) {
@@ -473,6 +475,7 @@ async function runMassOp(interaction, role, members, adding) {
 }
 
 async function hasRole(interaction) {
+  if (!(await requireAdministrator(interaction))) return;
   const filterRole = interaction.options.getRole('filter_role', true);
   const targetRole = interaction.options.getRole('target_role', true);
   const removing = interaction.options.getBoolean('remove') ?? false;
@@ -499,6 +502,7 @@ async function hasRole(interaction) {
 }
 
 async function humansRole(interaction) {
+  if (!(await requireAdministrator(interaction))) return;
   const role = interaction.options.getRole('role', true);
   const removing = interaction.options.getBoolean('remove') ?? false;
 
@@ -524,6 +528,7 @@ async function humansRole(interaction) {
 }
 
 async function cancelMassOp(interaction) {
+  if (!(await requireAdministrator(interaction))) return;
   const task = activeMassOps.get(interaction.guild.id);
   if (!task) {
     await interaction.reply({ content: 'No mass role operation is running.', flags: MessageFlags.Ephemeral });

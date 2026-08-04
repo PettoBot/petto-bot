@@ -4,17 +4,19 @@ const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { parseDuration, formatDuration } = require('../../utils/duration');
 const logger = require('../../utils/logger');
+const { requireAdministrator } = require('../../utils/moderationCommand');
 
 module.exports = {
   aliases: ['pi'],
   data: new SlashCommandBuilder()
     .setName('pauseinvites')
     .setDescription('Delete all server invites and block new ones for a set duration.')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .setDMPermission(false)
     .addStringOption((opt) => opt.setName('duration').setDescription('e.g. 1h, 30m, 1d').setRequired(true)),
 
   async execute(interaction) {
+    if (!(await requireAdministrator(interaction))) return;
     const durationMs = parseDuration(interaction.options.getString('duration', true));
     if (!durationMs) {
       await interaction.reply({ content: 'Invalid duration. Use something like `1h`, `30m`, or `1d`.', flags: MessageFlags.Ephemeral });
