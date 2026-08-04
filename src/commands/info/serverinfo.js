@@ -15,8 +15,13 @@ function linkOrText(url) {
 }
 
 function premiumTierLabel(tier) {
-  if (tier === 'NONE') return 'No level';
-  return tier?.replace('TIER_', 'Level ') ?? 'No level';
+  if (typeof tier === 'number') return tier === 0 ? 'No level' : 'Level ' + tier;
+
+  const normalized = String(tier ?? '').toUpperCase();
+  if (!normalized || normalized === 'NONE' || normalized === '0') return 'No level';
+  if (normalized.startsWith('TIER_')) return 'Level ' + normalized.slice(5);
+  if (/^\d+$/.test(normalized)) return 'Level ' + normalized;
+  return 'No level';
 }
 
 module.exports = {
