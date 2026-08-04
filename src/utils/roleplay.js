@@ -1,12 +1,11 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { COLORS } = require('./colors');
 
-const API_ACTIONS = {
+const WAIFU_ACTIONS = {
   airkiss: 'kiss',
   bite: 'bite',
   blush: 'blush',
   boop: 'boop',
-  brother: 'brother',
   cuddle: 'cuddle',
   cry: 'cry',
   dance: 'dance',
@@ -31,24 +30,82 @@ const API_ACTIONS = {
   yeet: 'yeet',
 };
 
+const NEKOS_ACTIONS = {
+  airkiss: 'blowkiss',
+  angrystare: 'stare',
+  bite: 'bite',
+  bleh: 'bleh',
+  blush: 'blush',
+  brofist: 'highfive',
+  cuddle: 'cuddle',
+  cry: 'cry',
+  dance: 'dance',
+  handhold: 'handhold',
+  happy: 'happy',
+  highfive: 'highfive',
+  hug: 'hug',
+  kick: 'kick',
+  kiss: 'kiss',
+  nom: 'nom',
+  pat: 'pat',
+  poke: 'poke',
+  punch: 'punch',
+  slap: 'slap',
+  smile: 'smile',
+  smug: 'smug',
+  tickle: 'tickle',
+  wave: 'wave',
+  wink: 'wink',
+  yeet: 'yeet',
+};
+
 const API_TIMEOUT_MS = 5_000;
 
-async function fetchActionImage(action) {
-  const endpointAction = API_ACTIONS[action];
-  if (!endpointAction) return null;
-
+async function requestJson(url) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
 
   try {
-    const response = await fetch(`https://api.waifu.pics/sfw/${endpointAction}`, { signal: controller.signal });
-    if (!response.ok) return null;
-    const payload = await response.json();
-    return typeof payload.url === 'string' ? payload.url : null;
-  } catch {
-    return null;
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'Petto Discord Bot/0.1' },
+    });
+    if (!response.ok) throw new Error('Image provider returned HTTP ' + response.status);
+    return response.json();
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+async function fetchActionImage(action) {
+  const requests = [];
+  const waifuAction = WAIFU_ACTIONS[action];
+  const nekosAction = NEKOS_ACTIONS[action];
+
+  if (waifuAction) {
+    requests.push(
+      requestJson('https://api.waifu.pics/sfw/' + waifuAction).then((payload) => {
+        if (typeof payload.url !== 'string') throw new Error('Invalid waifu.pics response');
+        return payload.url;
+      }),
+    );
+  }
+
+  if (nekosAction) {
+    requests.push(
+      requestJson('https://nekos.best/api/v2/' + nekosAction).then((payload) => {
+        const url = payload.results?.[0]?.url;
+        if (typeof url !== 'string') throw new Error('Invalid nekos.best response');
+        return url;
+      }),
+    );
+  }
+
+  if (!requests.length) return null;
+  try {
+    return await Promise.any(requests);
+  } catch {
+    return null;
   }
 }
 
@@ -77,14 +134,14 @@ function createRoleplayCommand(name, config) {
       const targetLabel = actorName(target);
       const isSelf = actor.id === target.id;
       const sentence = isSelf
-        ? (config.self ?? `**${actorLabel}** ${config.verb} themselves.`).replaceAll('{actor}', `**${actorLabel}**`)
-        : `**${actorLabel}** ${config.verb} **${targetLabel}**.`;
+        ? (config.self ?? '**' + actorLabel + '** ' + config.verb + ' themselves.').replaceAll('{actor}', '**' + actorLabel + '**')
+        : '**' + actorLabel + '** ' + config.verb + ' **' + targetLabel + '**.';
 
       await interaction.deferReply();
       const imageUrl = await fetchActionImage(name);
       const embed = new EmbedBuilder()
         .setColor(COLORS.BLUE)
-        .setAuthor({ name: `${actorLabel} · ${config.label}`, iconURL: actor.displayAvatarURL({ size: 128 }) })
+        .setAuthor({ name: actorLabel + ' · ' + config.label, iconURL: actor.displayAvatarURL({ size: 128 }) })
         .setDescription(sentence)
         .setFooter({ text: 'Roleplay interaction · Petto' });
 
