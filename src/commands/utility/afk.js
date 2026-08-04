@@ -5,6 +5,8 @@ const { EMOJI } = require('../../utils/emojis');
 
 module.exports = {
   aliases: ['away'],
+  // Prefix usage can be `!afk <reason>`; `!afk set <reason>` remains valid.
+  prefixDefaultSubcommand: 'set',
   data: new SlashCommandBuilder()
     .setName('afk')
     .setDescription('Set an AFK status, or view mentions you got while away.')
