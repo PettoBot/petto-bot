@@ -180,7 +180,7 @@ async function panelCmd(interaction, sub) {
   if (sub === 'list') {
     const panels = await db.listPanels(interaction.guild.id);
     if (!panels.length) {
-      await interaction.editReply({ components: [textCard('No panels yet. Create one with `!ticket panel create`.', 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard('No panels yet. Create one with `!ticket panel create`.', 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
     const lines = await Promise.all(
@@ -189,7 +189,7 @@ async function panelCmd(interaction, sub) {
         return `**#${p.id}** in <#${p.channel_id}> (${p.style}) — ${cats.length} categor${cats.length === 1 ? 'y' : 'ies'}`;
       }),
     );
-    await interaction.editReply({ components: [textCard(lines.join('\n'), 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -324,18 +324,18 @@ async function categoryCmd(interaction, sub) {
   if (sub === 'list') {
     const categories = await db.listCategories(interaction.guild.id);
     if (!categories.length) {
-      await interaction.editReply({ components: [textCard('No categories yet. Create a panel first, then `!ticket category add`.', 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard('No categories yet. Create a panel first, then `!ticket category add`.', 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
     const lines = categories.map((c) => `**${c.key}** — ${c.label} · panel #${c.panel_id ?? 'none'} · parent <#${c.parent_channel_id}> · ${c.support_role_ids.length} support role(s)`);
-    await interaction.editReply({ components: [textCard(lines.join('\n'), 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   if (sub === 'remove') {
     const key = interaction.options.getString('key', true);
     const removed = await db.deleteCategory(interaction.guild.id, key);
-    await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  Category \`${key}\` removed.` : `No category \`${key}\` found.`, removed ? 0xa5ea7a : 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  Category \`${key}\` removed.` : `No category \`${key}\` found.`, removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     if (removed) await resyncPanelsForCategoryChange(interaction.guild, key);
     return;
   }
@@ -476,7 +476,7 @@ async function formCmd(interaction, sub) {
     if (sub === 'list') {
       const forms = await formsDb.listForms(interaction.guild.id);
       const text = forms.length ? forms.map((form) => `**${form.name}** — ${form.fields.length} field(s) · ${form.title}`).join('\n') : 'No forms yet.';
-      await interaction.editReply({ components: [textCard(text, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
 
@@ -515,7 +515,7 @@ async function blacklistCmd(interaction, sub) {
     const text = entries.length
       ? entries.map((entry) => `${entry.target_type === 'user' ? `<@${entry.target_id}>` : `<@&${entry.target_id}>`}${entry.reason ? ` — ${entry.reason}` : ''}`).join('\n')
       : 'Ticket blacklist is empty.';
-    await interaction.editReply({ components: [textCard(text, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -546,7 +546,7 @@ async function roleListCmd(interaction, sub, column) {
   if (sub === 'list') {
     const ids = category[column] ?? [];
     const text = ids.length ? ids.map((id) => `<@&${id}>`).join(' ') : 'None configured.';
-    await interaction.editReply({ components: [textCard(text, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -592,7 +592,7 @@ async function infoCmd(interaction) {
     lines.push(`**Closed by:** <@${ticket.closed_by}>`, `**Close reason:** ${ticket.close_reason || 'No reason provided.'}`);
   }
 
-  await interaction.reply({ components: [textCard(lines.join('\n'), 0x8399ff)], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
+  await interaction.reply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
 }
 
 /** Shared entry point for close/reopen/delete/claim/unclaim/add/remove/rename/transcript — all operate on "the ticket in this channel". */

@@ -225,7 +225,7 @@ async function unban(interaction) {
     await interaction.guild.members.unban(targetUser.id, reason ?? undefined);
   } catch (err) {
     if (err.code === 10026) {
-      await interaction.editReply({ components: [textCard('That user is not banned.', 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard('That user is not banned.', 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     } else {
       logger.error('Failed to unban member:', err);
       await interaction.editReply({ components: [textCard('I was unable to unban that user.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
@@ -264,7 +264,7 @@ async function unbanAll(interaction) {
     return;
   }
   if (!bans.size) {
-    await interaction.editReply({ components: [statusCard('There are no banned users to unban.', 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [statusCard('There are no banned users to unban.', 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -280,16 +280,16 @@ async function unbanAll(interaction) {
   try {
     click = await promptMessage.awaitMessageComponent({ filter: (i) => i.user.id === interaction.user.id, time: 30_000 });
   } catch {
-    await interaction.editReply({ components: [statusCard(`${EMOJI.DENY}  Timed out. No users were unbanned.`, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [statusCard(`${EMOJI.DENY}  Timed out. No users were unbanned.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   if (click.customId === 'unbanall_cancel') {
-    await click.update({ components: [statusCard(`${EMOJI.DENY}  Cancelled. No users were unbanned.`, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await click.update({ components: [statusCard(`${EMOJI.DENY}  Cancelled. No users were unbanned.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
-  await click.update({ components: [statusCard(`${EMOJI.LOAD}  Unbanning ${bans.size} user(s)...`, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await click.update({ components: [statusCard(`${EMOJI.LOAD}  Unbanning ${bans.size} user(s)...`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 
   let succeeded = 0;
   let failed = 0;

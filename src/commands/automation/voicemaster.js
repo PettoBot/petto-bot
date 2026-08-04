@@ -62,7 +62,7 @@ async function info(interaction) {
   const row = await voiceDb.getConfig(interaction.guild.id);
   if (!row) return interaction.reply({ components: [textCard('VoiceMaster is not configured.', 0xff6b6b)], flags: MessageFlags.IsComponentsV2 });
   const count = await voiceDb.countTemps(interaction.guild.id);
-  return interaction.reply({ embeds: [new EmbedBuilder().setColor(0x8399ff).setTitle('VoiceMaster').addFields({ name: 'Creator', value: `<#${row.creator_channel_id}>`, inline: true }, { name: 'Panel', value: `<#${row.panel_channel_id}>`, inline: true }, { name: 'Active channels', value: String(count), inline: true }, { name: 'Name template', value: `\`${row.default_name}\`` })] });
+  return interaction.reply({ embeds: [new EmbedBuilder().setColor(0x4b4f59).setTitle('VoiceMaster').addFields({ name: 'Creator', value: `<#${row.creator_channel_id}>`, inline: true }, { name: 'Panel', value: `<#${row.panel_channel_id}>`, inline: true }, { name: 'Active channels', value: String(count), inline: true }, { name: 'Name template', value: `\`${row.default_name}\`` })] });
 }
 
 async function resendPanel(interaction) {

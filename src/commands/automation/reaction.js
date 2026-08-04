@@ -44,7 +44,7 @@ module.exports = {
   },
 };
 
-function reply(interaction, content, color = 0x8399ff) {
+function reply(interaction, content, color = 0x4b4f59) {
   return interaction.reply({ components: [textCard(content, color)], flags: MessageFlags.IsComponentsV2 });
 }
 
@@ -94,7 +94,7 @@ async function removeTrigger(interaction) {
 
 async function removeAll(interaction) {
   const count = await reactionDb.removeAllForTrigger(interaction.guild.id, interaction.options.getString('trigger', true));
-  return reply(interaction, count ? `${EMOJI.APPROVE}  Removed **${count}** reaction trigger(s).` : 'No reaction triggers match that phrase.', count ? 0xa5ea7a : 0x8399ff);
+  return reply(interaction, count ? `${EMOJI.APPROVE}  Removed **${count}** reaction trigger(s).` : 'No reaction triggers match that phrase.', count ? 0xa5ea7a : 0x4b4f59);
 }
 
 async function list(interaction) {
@@ -105,7 +105,7 @@ async function list(interaction) {
 
 async function reset(interaction) {
   const count = await reactionDb.resetTriggers(interaction.guild.id);
-  return reply(interaction, count ? `${EMOJI.APPROVE}  Removed **${count}** reaction trigger(s).` : 'No reaction triggers to remove.', count ? 0xa5ea7a : 0x8399ff);
+  return reply(interaction, count ? `${EMOJI.APPROVE}  Removed **${count}** reaction trigger(s).` : 'No reaction triggers to remove.', count ? 0xa5ea7a : 0x4b4f59);
 }
 
 async function configureMessages(interaction) {

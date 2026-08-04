@@ -140,7 +140,7 @@ function createRoleplayCommand(name, config) {
       await interaction.deferReply();
       const imageUrl = await fetchActionImage(name);
       const embed = new EmbedBuilder()
-        .setColor(COLORS.BLUE)
+        .setColor(COLORS.DEFAULT)
         .setAuthor({ name: actorLabel + ' · ' + config.label, iconURL: actor.displayAvatarURL({ size: 128 }) })
         .setDescription(sentence)
         .setFooter({ text: 'Roleplay interaction · Petto' });

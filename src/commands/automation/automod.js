@@ -184,7 +184,7 @@ async function spam(interaction) {
   const saved = await upsertConfig(interaction.guild.id, patch);
 
   const text = `${EMOJI.APPROVE}  Anti-spam ${enabled ? 'enabled' : 'disabled'}.\n**Max mentions:** ${saved.max_mentions}\nCovers repeat-message flooding, mass mentions, excessive caps, and unauthorized invite links — all checked locally, no external API calls per message.`;
-  await interaction.editReply({ components: [textCard(text, enabled ? 0xa5ea7a : 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(text, enabled ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function raid(interaction) {
@@ -203,7 +203,7 @@ async function raid(interaction) {
   const saved = await upsertConfig(interaction.guild.id, patch);
 
   const text = `${EMOJI.APPROVE}  Anti-raid ${enabled ? 'enabled' : 'disabled'}.\n**Threshold:** ${saved.raid_join_threshold} joins in ${saved.raid_window_seconds}s\n**Action:** ${saved.raid_action}`;
-  await interaction.editReply({ components: [textCard(text, enabled ? 0xa5ea7a : 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(text, enabled ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function wordFilter(interaction, sub) {
@@ -219,7 +219,7 @@ async function wordFilter(interaction, sub) {
     const saved = await upsertConfig(interaction.guild.id, patch);
 
     const actionLabel = { warn: 'warn', mute: 'mute (10m)', kick: 'kick', delete: 'delete only, no sanction' }[saved.word_filter_action] ?? saved.word_filter_action;
-    await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Word filter ${enabled ? 'enabled' : 'disabled'}.\n**Action:** ${actionLabel}`, enabled ? 0xa5ea7a : 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Word filter ${enabled ? 'enabled' : 'disabled'}.\n**Action:** ${actionLabel}`, enabled ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -242,7 +242,7 @@ async function wordFilter(interaction, sub) {
   const words = config?.banned_words ?? [];
   const actionLabel = { warn: 'warn', mute: 'mute (10m)', kick: 'kick', delete: 'delete only, no sanction' }[config?.word_filter_action] ?? 'warn';
   const lines = [`**Action on hit:** ${actionLabel}`, words.length ? `**Banned words (${words.length}):** ${words.map((w) => `\`${w}\``).join(', ')}` : 'No banned words configured.'];
-  await interaction.editReply({ components: [textCard(lines.join('\n'), 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function invites(interaction, sub) {
@@ -253,7 +253,7 @@ async function invites(interaction, sub) {
     const config = await getConfig(interaction.guild.id);
     const codes = config?.allowed_invite_codes ?? [];
     const text = codes.length ? `**Allowed invite codes (${codes.length}):** ${codes.map((c) => `\`${c}\``).join(', ')}` : 'No invite codes allow-listed — every Discord invite link will be treated as unauthorized when anti-spam is on.';
-    await interaction.editReply({ components: [textCard(text, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -288,14 +288,14 @@ async function silentChannel(interaction, sub) {
   if (sub === 'remove') {
     const channel = interaction.options.getChannel('channel', true);
     const removed = await removeSilentChannel(interaction.guild.id, channel.id);
-    await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  ${channel} is no longer silent.` : `${channel} wasn't marked as silent.`, removed ? 0xa5ea7a : 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  ${channel} is no longer silent.` : `${channel} wasn't marked as silent.`, removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   // list
   const channels = await listSilentChannels(interaction.guild.id);
   const text = channels.length ? channels.map((c) => `<#${c.channel_id}> · ${c.action}`).join('\n') : 'No silent channels configured.';
-  await interaction.editReply({ components: [textCard(text, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function antiAlt(interaction) {
@@ -312,7 +312,7 @@ async function antiAlt(interaction) {
   const saved = await upsertConfig(interaction.guild.id, patch);
 
   const text = `${EMOJI.APPROVE}  Anti-alt ${enabled ? 'enabled' : 'disabled'}.\n**Minimum account age:** ${saved.anti_alt_min_age_days}d\n**Action:** ${saved.anti_alt_action}`;
-  await interaction.editReply({ components: [textCard(text, enabled ? 0xa5ea7a : 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(text, enabled ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function antinuke(interaction) {
@@ -334,7 +334,7 @@ async function antinuke(interaction) {
   const saved = await upsertAntinukeConfig(interaction.guild.id, patch);
 
   const text = `${EMOJI.APPROVE}  Anti-nuke ${enabled ? 'enabled' : 'disabled'}.\n**Threshold:** ${saved.action_threshold} destructive actions in ${saved.window_seconds}s\nResponds by banning a bot executor, or stripping all roles from a human executor. The server owner is never auto-actioned.`;
-  await interaction.editReply({ components: [textCard(text, enabled ? 0xa5ea7a : 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(text, enabled ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function immune(interaction, sub) {
@@ -345,7 +345,7 @@ async function immune(interaction, sub) {
     const config = await getConfig(interaction.guild.id);
     const ids = config?.immune_role_ids ?? [];
     const text = ids.length ? ids.map((id) => `<@&${id}>`).join(' ') : 'No immune roles configured.';
-    await interaction.editReply({ components: [textCard(text, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -367,7 +367,7 @@ async function antinukeWhitelist(interaction, sub) {
     const config = await getAntinukeConfig(interaction.guild.id);
     const ids = config?.whitelist_ids ?? [];
     const text = ids.length ? ids.map((id) => `<@${id}>`).join(' ') : 'No whitelisted users/bots.';
-    await interaction.editReply({ components: [textCard(text, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 

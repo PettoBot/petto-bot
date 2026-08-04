@@ -38,7 +38,7 @@ async function confirmBulkAction(interaction, action, targets) {
     });
   } catch {
     await interaction.editReply({
-      components: [textCard(EMOJI.DENY + '  Timed out. No members were changed.', 0x8399ff)],
+      components: [textCard(EMOJI.DENY + '  Timed out. No members were changed.', 0x4b4f59)],
       flags: MessageFlags.IsComponentsV2,
     }).catch(() => {});
     return false;
@@ -46,7 +46,7 @@ async function confirmBulkAction(interaction, action, targets) {
 
   if (click.customId !== 'modbulk_confirm') {
     await click.update({
-      components: [textCard(EMOJI.DENY + '  Cancelled. No members were changed.', 0x8399ff)],
+      components: [textCard(EMOJI.DENY + '  Cancelled. No members were changed.', 0x4b4f59)],
       flags: MessageFlags.IsComponentsV2,
     });
     return false;

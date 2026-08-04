@@ -6,7 +6,7 @@ const { buildProgressBar } = require('../../utils/levelProgressBar');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 
-const COLOR = 0x8399ff;
+const COLOR = 0x4b4f59;
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -27,7 +27,7 @@ module.exports = {
 
     const data = await levelUsersDb.getUser(interaction.guild.id, target.id);
     if (!data || data.xp <= 0) {
-      await interaction.reply({ components: [textCard(`${target} doesn't have any XP recorded yet.`, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.reply({ components: [textCard(`${target} doesn't have any XP recorded yet.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
 

@@ -139,7 +139,7 @@ async function listCmd(interaction) {
   const text = rows.length
     ? rows.map((r) => `${r.interaction_type === 'button' ? '[button]' : r.emoji} -> <@&${r.role_id}> (${r.mode})`).join('\n')
     : 'No reaction or button roles on that message.';
-  await interaction.editReply({ components: [textCard(text, COLORS.BLUE)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
+  await interaction.editReply({ components: [textCard(text, COLORS.DEFAULT)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
 }
 
 async function clearCmd(interaction) {

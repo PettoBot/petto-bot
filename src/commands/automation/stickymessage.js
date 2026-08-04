@@ -67,7 +67,7 @@ async function removeCmd(interaction) {
 
   const existing = await stickyDb.getSticky(interaction.guild.id, channel.id);
   if (!existing) {
-    await interaction.editReply({ components: [textCard(`No sticky message in ${channel}.`, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(`No sticky message in ${channel}.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -85,5 +85,5 @@ async function listCmd(interaction) {
 
   const list = await stickyDb.listForGuild(interaction.guild.id);
   const text = list.length ? list.map((s) => `<#${s.channel_id}> — ${s.content.slice(0, 60)}${s.content.length > 60 ? '…' : ''}`).join('\n') : 'No sticky messages configured.';
-  await interaction.editReply({ components: [textCard(text, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }

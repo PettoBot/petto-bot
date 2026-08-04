@@ -23,7 +23,7 @@ module.exports = {
     const url = `https://cdn.discordapp.com/emojis/${id}.${animated ? 'gif' : 'png'}?size=512`;
 
     const embed = new EmbedBuilder()
-      .setColor(COLORS.BLUE)
+      .setColor(COLORS.DEFAULT)
       .setTitle(`:${name}:`)
       .setThumbnail(url)
       .addFields({ name: 'ID', value: id, inline: true }, { name: 'Animated', value: animated ? 'Yes' : 'No', inline: true }, { name: 'URL', value: `[Link](${url})`, inline: true });

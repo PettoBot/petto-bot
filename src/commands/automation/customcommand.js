@@ -94,7 +94,7 @@ async function listCmd(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const rows = await ccDb.listCommands(interaction.guild.id);
   const text = rows.length ? rows.map((r) => `\`${r.name}\``).join(', ') : 'No custom commands yet.';
-  await interaction.editReply({ components: [textCard(`**Custom commands (${rows.length}/${MAX_PER_GUILD}):**\n${text}`, COLORS.BLUE)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(`**Custom commands (${rows.length}/${MAX_PER_GUILD}):**\n${text}`, COLORS.DEFAULT)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function showCmd(interaction) {
@@ -106,5 +106,5 @@ async function showCmd(interaction) {
     return;
   }
   const text = `**\`${row.name}\`**\n${row.embed_template ? `Embed template: \`${row.embed_template}\`` : ''}${row.response ? `\nResponse: ${row.response}` : ''}`;
-  await interaction.editReply({ components: [textCard(text, COLORS.BLUE)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(text, COLORS.DEFAULT)], flags: MessageFlags.IsComponentsV2 });
 }

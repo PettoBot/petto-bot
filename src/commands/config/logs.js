@@ -12,7 +12,7 @@ const {
 } = require('../../db/logConfig');
 const logger = require('../../utils/logger');
 
-const COLOR = 0x8399ff;
+const COLOR = 0x4b4f59;
 const OK = 0xa5ea7a;
 const ERR = 0xfe6465;
 

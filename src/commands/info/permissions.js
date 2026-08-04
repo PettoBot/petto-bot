@@ -36,7 +36,7 @@ module.exports = {
     const granted = perms.toArray().map((p) => READABLE[p] ?? p);
 
     const embed = new EmbedBuilder()
-      .setColor(COLORS.BLUE)
+      .setColor(COLORS.DEFAULT)
       .setTitle(`${user.username}'s permissions in #${channel.name}`)
       .setDescription(granted.length ? granted.map((p) => `\`${p}\``).join(', ') : 'No permissions.');
 

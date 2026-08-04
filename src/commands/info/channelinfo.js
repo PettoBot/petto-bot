@@ -23,7 +23,7 @@ module.exports = {
     const channel = interaction.options.getChannel('channel') ?? interaction.channel;
 
     const embed = new EmbedBuilder()
-      .setColor(COLORS.BLUE)
+      .setColor(COLORS.DEFAULT)
       .setTitle(`#${channel.name}`)
       .addFields(
         { name: 'ID', value: channel.id, inline: true },

@@ -92,7 +92,7 @@ async function notifyLevelUp({ client, guild, member, config, level, channel, me
   }
   if (!text) return;
   const payload = config.notify_embed
-    ? { embeds: [new EmbedBuilder().setColor(0x8399ff).setDescription(text)] }
+    ? { embeds: [new EmbedBuilder().setColor(0x4b4f59).setDescription(text)] }
     : { content: text };
 
   try {

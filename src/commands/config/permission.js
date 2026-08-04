@@ -45,7 +45,7 @@ module.exports = {
   },
 };
 
-async function respond(interaction, message, color = COLORS.BLUE) {
+async function respond(interaction, message, color = COLORS.DEFAULT) {
   return interaction.reply({ components: [textCard(message, color)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [], users: [], roles: [], repliedUser: false } });
 }
 

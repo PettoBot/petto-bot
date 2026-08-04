@@ -23,7 +23,7 @@ async function userCmd(interaction) {
   const net = stats.joins - stats.leaves;
 
   const embed = new EmbedBuilder()
-    .setColor(COLORS.BLUE)
+    .setColor(COLORS.DEFAULT)
     .setAuthor({ name: user.username, iconURL: user.displayAvatarURL() })
     .addFields({ name: 'Invites', value: `**${net}** net (${stats.joins} joined, ${stats.leaves} left)`, inline: false });
 
@@ -36,6 +36,6 @@ async function topCmd(interaction) {
     ? rows.map((r, i) => `**${i + 1}.** <@${r.inviter_id}> — **${r.joins - r.leaves}** net (${r.joins} joined, ${r.leaves} left)`).join('\n')
     : 'No tracked invites yet.';
 
-  const embed = new EmbedBuilder().setColor(COLORS.BLUE).setTitle(`Invite leaderboard — ${interaction.guild.name}`).setDescription(lines);
+  const embed = new EmbedBuilder().setColor(COLORS.DEFAULT).setTitle(`Invite leaderboard — ${interaction.guild.name}`).setDescription(lines);
   await interaction.reply({ embeds: [embed] });
 }

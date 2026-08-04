@@ -84,5 +84,5 @@ async function configure(interaction) {
   await upsertConfig(interaction.guild.id, { channel_id: channel.id, enabled });
 
   const text = `${EMOJI.APPROVE}  Reports ${enabled ? 'enabled' : 'disabled'}. ${enabled ? `New reports (via \`!report send\` and the "Report Message" app command) will be sent to ${channel}.` : ''}`;
-  await interaction.editReply({ components: [textCard(text, enabled ? 0xa5ea7a : 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(text, enabled ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }

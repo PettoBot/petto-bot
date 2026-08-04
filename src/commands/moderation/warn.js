@@ -154,18 +154,18 @@ async function escalation(interaction, sub) {
   if (sub === 'list') {
     const rules = await getRules(interaction.guild.id);
     if (!rules.length) {
-      await interaction.editReply({ components: [textCard('No escalation rules configured.', 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard('No escalation rules configured.', 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
     const lines = rules.map((r) => `**${r.warn_count}** warning(s) → ${r.action}${r.duration_ms ? ` (${Math.round(r.duration_ms / 60000)}m)` : ''}`);
-    await interaction.editReply({ components: [textCard(lines.join('\n'), 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   if (sub === 'remove') {
     const threshold = interaction.options.getInteger('threshold', true);
     const removed = await removeRule(interaction.guild.id, threshold);
-    await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  Removed the rule for ${threshold} warning(s).` : `No rule found for ${threshold} warning(s).`, removed ? 0xa5ea7a : 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  Removed the rule for ${threshold} warning(s).` : `No rule found for ${threshold} warning(s).`, removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 

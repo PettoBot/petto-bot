@@ -1,7 +1,7 @@
 const { ContainerBuilder, TextDisplayBuilder, SectionBuilder, ThumbnailBuilder } = require('discord.js');
 const config = require('../config');
 
-const ACCENT_COLOR = 0x8399ff; // matches the verification page's accent
+const ACCENT_COLOR = 0x4b4f59; // matches the verification page's accent
 const SUCCESS_COLOR = 0xa5ea7a;
 
 /** Public URL for a file in src/web/public, or null if the web server has no public base URL configured. */

@@ -74,7 +74,7 @@ module.exports = {
           }
         } else if (ar.reply_type === 'embed') {
           const text = await resolve(cleanedReply, ctx);
-          const embed = new EmbedBuilder().setColor(ar.embed_color ?? 0x8399ff).setDescription(text);
+          const embed = new EmbedBuilder().setColor(ar.embed_color ?? 0x4b4f59).setDescription(text);
           if (ar.embed_title) embed.setTitle(await resolve(ar.embed_title, ctx));
           if (ar.embed_footer) embed.setFooter({ text: await resolve(ar.embed_footer, ctx) });
           payload = { embeds: [embed] };

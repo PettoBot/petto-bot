@@ -408,7 +408,7 @@ async function listRoles(interaction) {
 
   const roles = [...interaction.guild.roles.cache.filter((r) => r.id !== interaction.guild.id).values()].sort((a, b) => b.position - a.position);
   if (!roles.length) {
-    await interaction.editReply({ components: [textCard('This server has no roles besides @everyone.', 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard('This server has no roles besides @everyone.', 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -418,7 +418,7 @@ async function listRoles(interaction) {
   const header = `**Roles (${roles.length}):**\n`;
   const text = header + lines.join('\n') + (extra > 0 ? `\n-# +${extra} more` : '');
 
-  await interaction.editReply({ components: [textCard(text.slice(0, 3900), 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(text.slice(0, 3900), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function inRole(interaction) {
@@ -427,7 +427,7 @@ async function inRole(interaction) {
 
   const members = [...role.members.values()].sort((a, b) => a.displayName.localeCompare(b.displayName));
   if (!members.length) {
-    await interaction.editReply({ components: [textCard(`No members have ${role}.`, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(`No members have ${role}.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -437,7 +437,7 @@ async function inRole(interaction) {
   const header = `**Members with ${role} (${members.length}):**\n`;
   const text = header + lines.join('\n') + (extra > 0 ? `\n-# +${extra} more` : '');
 
-  await interaction.editReply({ components: [textCard(text.slice(0, 3900), 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(text.slice(0, 3900), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 function delay(ms) {
@@ -491,7 +491,7 @@ async function hasRole(interaction) {
 
   const members = [...interaction.guild.members.cache.filter((m) => m.roles.cache.has(filterRole.id) && (removing ? m.roles.cache.has(targetRole.id) : !m.roles.cache.has(targetRole.id))).values()];
   if (!members.length) {
-    await interaction.editReply({ components: [textCard(`No members with ${filterRole} need ${targetRole} ${removing ? 'removed' : 'added'}.`, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(`No members with ${filterRole} need ${targetRole} ${removing ? 'removed' : 'added'}.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -516,7 +516,7 @@ async function humansRole(interaction) {
 
   const members = [...interaction.guild.members.cache.filter((m) => !m.user.bot && (removing ? m.roles.cache.has(role.id) : !m.roles.cache.has(role.id))).values()];
   if (!members.length) {
-    await interaction.editReply({ components: [textCard(`No humans need ${role} ${removing ? 'removed' : 'added'}.`, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(`No humans need ${role} ${removing ? 'removed' : 'added'}.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -582,7 +582,7 @@ async function groupView(interaction) {
   }
 
   const text = group.role_ids.length ? group.role_ids.map((id, i) => `${i + 1}. <@&${id}>`).join('\n') : '*No roles in this group.*';
-  await interaction.editReply({ components: [textCard(`**Group: ${group.name}**\n${text}`, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(`**Group: ${group.name}**\n${text}`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function groupList(interaction) {
@@ -590,12 +590,12 @@ async function groupList(interaction) {
 
   const groups = await roleGroupsDb.listGroups(interaction.guild.id);
   if (!groups.length) {
-    await interaction.editReply({ components: [textCard('No role groups configured. Create one with `!role group create`.', 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard('No role groups configured. Create one with `!role group create`.', 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const lines = groups.map((g) => `**${g.name}** (${g.role_ids.length}) — ${g.role_ids.length ? g.role_ids.map((id) => `<@&${id}>`).join(', ') : '*none*'}`);
-  await interaction.editReply({ components: [textCard(lines.join('\n').slice(0, 3900), 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(lines.join('\n').slice(0, 3900), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function groupGive(interaction) {
@@ -645,7 +645,7 @@ async function groupTake(interaction) {
 
   const roles = group.role_ids.map((id) => interaction.guild.roles.cache.get(id)).filter(Boolean).filter((r) => targetMember.roles.cache.has(r.id));
   if (!roles.length) {
-    await interaction.editReply({ components: [textCard(`${targetUser} doesn't have any roles from group **${name}**.`, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(`${targetUser} doesn't have any roles from group **${name}**.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 

@@ -11,7 +11,7 @@ const OWNER_ID = '293504726505357312';
 /** Public-facing thank-you sent to whoever added the bot, no internal server data in it. */
 function buildThanksMessage(guildName) {
   const container = new ContainerBuilder()
-    .setAccentColor(0x8399ff)
+    .setAccentColor(0x4b4f59)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(`${EMOJI.STAR} **Thanks for adding Petto to ${guildName}!**`),
       new TextDisplayBuilder().setContent(

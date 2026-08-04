@@ -17,7 +17,7 @@ module.exports = {
       return;
     }
 
-    const embed = new EmbedBuilder().setColor(COLORS.BLUE).setTitle(`${user.username}'s banner`).setImage(user.bannerURL({ size: 1024 }));
+    const embed = new EmbedBuilder().setColor(COLORS.DEFAULT).setTitle(`${user.username}'s banner`).setImage(user.bannerURL({ size: 1024 }));
     await interaction.reply({ embeds: [embed] });
   },
 };

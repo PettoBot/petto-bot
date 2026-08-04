@@ -54,7 +54,7 @@ module.exports = {
     const totalChannels = textChannels + voiceChannels + categories;
 
     const embed = new EmbedBuilder()
-      .setColor(COLORS.BLUE)
+      .setColor(COLORS.DEFAULT)
       .setAuthor({ name: 'Server overview · ' + guild.name, iconURL: guild.iconURL() ?? undefined })
       .setTitle(guild.name)
       .setDescription(

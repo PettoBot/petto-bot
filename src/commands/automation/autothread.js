@@ -64,7 +64,7 @@ async function removeCmd(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const removed = await db.removeThread(interaction.guild.id, channel.id);
-  await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  Auto-threading turned off for ${channel}.` : `Auto-threading isn't on for ${channel}.`, removed ? 0xa5ea7a : 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  Auto-threading turned off for ${channel}.` : `Auto-threading isn't on for ${channel}.`, removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function listCmd(interaction) {
@@ -72,10 +72,10 @@ async function listCmd(interaction) {
 
   const threads = await db.listThreads(interaction.guild.id);
   if (!threads.length) {
-    await interaction.editReply({ components: [textCard('No channels have auto-threading on. Use `!autothread add`.', 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard('No channels have auto-threading on. Use `!autothread add`.', 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const lines = threads.map((t) => `<#${t.channel_id}> — name: \`${t.name_template}\`${t.message_text || t.embed_template ? ', with a starter message' : ''}`);
-  await interaction.editReply({ components: [textCard(`**Auto-threading (${threads.length}):**\n${lines.join('\n')}`, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(`**Auto-threading (${threads.length}):**\n${lines.join('\n')}`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }

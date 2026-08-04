@@ -136,7 +136,7 @@ async function openTicket({ guild, client, category, opener, formAnswers = null 
 
   if (formAnswers && Object.keys(formAnswers).length) {
     const answerLines = Object.entries(formAnswers).map(([label, answer]) => `**${label}:** ${String(answer).slice(0, 1000)}`);
-    await channel.send({ components: [textCard(`### Submitted form\n${answerLines.join('\n')}`, 0x8399ff)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+    await channel.send({ components: [textCard(`### Submitted form\n${answerLines.join('\n')}`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
   }
 
   await sendLog(client, guild.id, 'tickets', {
@@ -176,7 +176,7 @@ async function claimTicket({ guild, client, channel, ticket, actor }) {
 
   await sendLog(client, guild.id, 'tickets', {
     description: `${EMOJI.STAR} Ticket #${ticket.ticket_number} claimed by <@${actor.id}>.`,
-    color: 0x8399ff,
+    color: 0x4b4f59,
     timestamp: new Date().toISOString(),
   }).catch(() => {});
   return updated;
@@ -186,7 +186,7 @@ async function unclaimTicket({ guild, client, ticket, actor }) {
   const updated = await db.setClaim(ticket.id, null);
   await sendLog(client, guild.id, 'tickets', {
     description: `Ticket #${ticket.ticket_number} unclaimed by <@${actor.id}>.`,
-    color: 0x8399ff,
+    color: 0x4b4f59,
     timestamp: new Date().toISOString(),
   }).catch(() => {});
   return updated;
@@ -221,7 +221,7 @@ async function postTranscript({ guild, client, channel, ticket }) {
     'tickets',
     {
       description: `${EMOJI.STAR} Transcript for ticket #${ticket.ticket_number} (${messageCount} message(s)).${link ? `\n[View online](${link})` : ''}`,
-      color: 0x8399ff,
+      color: 0x4b4f59,
       timestamp: new Date().toISOString(),
     },
     linkRow
@@ -394,7 +394,7 @@ async function renameTicket({ guild, client, channel, ticket, actor, newName }) 
   await channel.setName(sanitized, `Ticket #${ticket.ticket_number} renamed by ${actor.tag ?? actor.username}`);
   await sendLog(client, guild.id, 'tickets', {
     description: `Ticket #${ticket.ticket_number} renamed to \`${sanitized}\` by <@${actor.id}>.`,
-    color: 0x8399ff,
+    color: 0x4b4f59,
     timestamp: new Date().toISOString(),
   }).catch(() => {});
   return sanitized;

@@ -12,7 +12,7 @@ module.exports = {
     const user = interaction.options.getUser('user') ?? interaction.user;
     const member = interaction.guild?.members.cache.get(user.id);
 
-    const embed = new EmbedBuilder().setColor(COLORS.BLUE).setTitle(`${user.username}'s avatar`).setImage(user.displayAvatarURL({ size: 1024 }));
+    const embed = new EmbedBuilder().setColor(COLORS.DEFAULT).setTitle(`${user.username}'s avatar`).setImage(user.displayAvatarURL({ size: 1024 }));
 
     if (member?.avatar && member.displayAvatarURL() !== user.displayAvatarURL()) {
       embed.setDescription(`[Global avatar](${user.displayAvatarURL({ size: 1024 })}) · [Server avatar](${member.displayAvatarURL({ size: 1024 })})`);

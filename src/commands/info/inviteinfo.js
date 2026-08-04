@@ -19,7 +19,7 @@ module.exports = {
     }
 
     const embed = new EmbedBuilder()
-      .setColor(COLORS.BLUE)
+      .setColor(COLORS.DEFAULT)
       .setTitle(`Invite: ${invite.code}`)
       .addFields(
         { name: 'Server', value: invite.guild?.name ?? 'Unknown', inline: true },
