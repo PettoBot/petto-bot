@@ -5,6 +5,7 @@ const { textCard } = require('../../utils/caseCard');
 const { resolveUsers } = require('../../utils/userResolve');
 const { parseDuration } = require('../../utils/duration');
 const { EMOJI } = require('../../utils/emojis');
+const { requireAdministrator } = require('../../utils/moderationCommand');
 
 module.exports = {
   aliases: ['cases'],
@@ -147,6 +148,7 @@ async function edit(interaction) {
 }
 
 async function editMany(interaction) {
+  if (!(await requireAdministrator(interaction))) return;
   const casesInput = interaction.options.getString('cases', true);
   const reason = interaction.options.getString('reason');
   const durationStr = interaction.options.getString('duration');
@@ -215,6 +217,7 @@ async function del(interaction) {
 }
 
 async function deleteAll(interaction) {
+  if (!(await requireAdministrator(interaction))) return;
   const targetUser = interaction.options.getUser('user', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 

@@ -10,7 +10,10 @@ function canModerate(interaction, targetMember, requiredPermission) {
   const { member: moderator, guild } = interaction;
   const me = guild.members.me;
 
-  if (!moderator.permissions.has(requiredPermission)) {
+  // A server administrator can explicitly authorize a role through !moderation.
+  // That role-based access only replaces the caller's Discord permission; the
+  // bot permission and the normal role hierarchy checks below still apply.
+  if (!moderator.permissions.has(requiredPermission) && !interaction.pettoModerationRoleAllowed) {
     return { ok: false, message: `You need the **${permissionLabel(requiredPermission)}** permission to do that.` };
   }
 

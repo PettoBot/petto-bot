@@ -1,4 +1,4 @@
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, PermissionFlagsBits } = require('discord.js');
 const { textCard } = require('./caseCard');
 const { EMOJI } = require('./emojis');
 
@@ -7,6 +7,15 @@ function asSubcommand(interaction, subcommand) {
   proxy.options = Object.create(interaction.options);
   proxy.options.getSubcommand = () => subcommand;
   return proxy;
+}
+
+async function requireAdministrator(interaction) {
+  if (interaction.member?.permissions?.has(PermissionFlagsBits.Administrator)) return true;
+  await interaction.reply({
+    content: 'Mass moderation actions require the **Administrator** permission.',
+    flags: MessageFlags.Ephemeral,
+  });
+  return false;
 }
 
 async function confirmBulkAction(interaction, action, targets) {
@@ -59,4 +68,4 @@ async function confirmBulkAction(interaction, action, targets) {
   return true;
 }
 
-module.exports = { asSubcommand, confirmBulkAction };
+module.exports = { asSubcommand, confirmBulkAction, requireAdministrator };

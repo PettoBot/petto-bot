@@ -11,7 +11,7 @@ const { checkAndApplyEscalation } = require('../../utils/escalation');
 const { parseDuration } = require('../../utils/duration');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
-const { confirmBulkAction } = require('../../utils/moderationCommand');
+const { confirmBulkAction, requireAdministrator } = require('../../utils/moderationCommand');
 
 // Discord has no native "warn" permission; Moderate Members (used for timeouts)
 // is the closest built-in stand-in for "this person is server staff".
@@ -104,6 +104,7 @@ async function warnUser(interaction) {
 }
 
 async function warnUsers(interaction) {
+  if (!(await requireAdministrator(interaction))) return;
   const usersInput = interaction.options.getString('users', true);
   const reason = interaction.options.getString('reason', true);
 

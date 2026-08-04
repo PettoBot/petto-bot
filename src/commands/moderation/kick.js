@@ -8,7 +8,7 @@ const { buildSanctionDM } = require('../../utils/sanctionMessage');
 const { resolveUsers } = require('../../utils/userResolve');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
-const { confirmBulkAction } = require('../../utils/moderationCommand');
+const { confirmBulkAction, requireAdministrator } = require('../../utils/moderationCommand');
 
 module.exports = {
   aliases: ['k'],
@@ -79,6 +79,7 @@ async function kickUser(interaction) {
 }
 
 async function kickUsers(interaction) {
+  if (!(await requireAdministrator(interaction))) return;
   const usersInput = interaction.options.getString('users', true);
   const reason = interaction.options.getString('reason');
 
