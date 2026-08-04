@@ -59,6 +59,43 @@ const NEKOS_ACTIONS = {
   yeet: 'yeet',
 };
 
+// nekos.best does not expose every action name (notably `lick`). OtakuGIFs
+// fills those gaps and gives us a second independent fallback when waifu.pics
+// is unavailable. The aliases keep every command visual instead of silently
+// returning a text-only embed when a provider has a narrower catalogue.
+const OTAKUGIFS_ACTIONS = {
+  airkiss: 'kiss',
+  angrystare: 'stare',
+  bite: 'bite',
+  bleh: 'bleh',
+  blush: 'blush',
+  boop: 'poke',
+  brofist: 'brofist',
+  cuddle: 'cuddle',
+  cry: 'cry',
+  dance: 'dance',
+  glomp: 'hug',
+  handhold: 'handhold',
+  happy: 'happy',
+  highfive: 'brofist',
+  hug: 'hug',
+  kick: 'slap',
+  kill: 'punch',
+  kiss: 'kiss',
+  lick: 'lick',
+  nom: 'nom',
+  pat: 'pat',
+  poke: 'poke',
+  punch: 'punch',
+  slap: 'slap',
+  smile: 'smile',
+  smug: 'smug',
+  tickle: 'tickle',
+  wave: 'wave',
+  wink: 'wink',
+  yeet: 'punch',
+};
+
 const API_TIMEOUT_MS = 5_000;
 
 async function requestJson(url) {
@@ -97,6 +134,16 @@ async function fetchActionImage(action) {
         const url = payload.results?.[0]?.url;
         if (typeof url !== 'string') throw new Error('Invalid nekos.best response');
         return url;
+      }),
+    );
+  }
+
+  const otakuGifsAction = OTAKUGIFS_ACTIONS[action];
+  if (otakuGifsAction) {
+    requests.push(
+      requestJson('https://api.otakugifs.xyz/gif?reaction=' + otakuGifsAction).then((payload) => {
+        if (typeof payload.url !== 'string') throw new Error('Invalid OtakuGIFs response');
+        return payload.url;
       }),
     );
   }
