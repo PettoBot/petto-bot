@@ -39,7 +39,7 @@ function buildPanelFallbackCard({ title, description }) {
   const lines = [];
   if (title) lines.push(`### ${title}`);
   lines.push(description || 'Click a button below to open a ticket.');
-  return new ContainerBuilder().setAccentColor(0x8399ff).addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
+  return new ContainerBuilder().setAccentColor(0x4b4f59).addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
 }
 
 /** Fallback plain-text welcome card (Components V2) when a category has no linked welcome embed template. */
@@ -47,7 +47,7 @@ function buildWelcomeFallbackCard({ opener, categoryLabel, pingText }) {
   const lines = [];
   if (pingText) lines.push(pingText);
   lines.push(`### ${EMOJI.STAR} ${categoryLabel}`, `Welcome ${opener}! Support will be with you shortly. Describe your issue below and a staff member will assist you.`);
-  return new ContainerBuilder().setAccentColor(0x8399ff).addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
+  return new ContainerBuilder().setAccentColor(0x4b4f59).addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
 }
 
 /** Control row for an open ticket: claim, close, on-demand transcript. */

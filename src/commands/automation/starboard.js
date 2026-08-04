@@ -64,5 +64,5 @@ async function view(interaction) {
   const row = await starboardDb.getConfig(interaction.guild.id);
   if (!row) return interaction.reply({ components: [textCard('Starboard is disabled.', 0xff6b6b)], flags: MessageFlags.IsComponentsV2 });
   const text = `**Channel:** ${row.channel_id ? `<#${row.channel_id}>` : 'not set'}\n**Threshold:** ${row.threshold}\n**Emoji:** ${row.emoji}\n**Self-star:** ${row.selfstar ? 'enabled' : 'disabled'}\n**Ignored channels:** ${row.ignored_channel_ids?.length ?? 0}\n**Ignored roles:** ${row.ignored_role_ids?.length ?? 0}\n**Ignored members:** ${row.ignored_user_ids?.length ?? 0}`;
-  return interaction.reply({ components: [textCard(text, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  return interaction.reply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }

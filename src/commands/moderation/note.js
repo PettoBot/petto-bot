@@ -58,7 +58,7 @@ async function view(interaction) {
     `**When:** <t:${ts}:F> (<t:${ts}:R>)`,
     `**Note:** ${note.note}`,
   ].join('\n');
-  await interaction.editReply({ components: [textCard(text, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function list(interaction) {
@@ -67,7 +67,7 @@ async function list(interaction) {
 
   const notes = await getNotesForUser(interaction.guild.id, targetUser.id);
   if (!notes.length) {
-    await interaction.editReply({ components: [textCard(`No notes on record for ${targetUser}.`, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(`No notes on record for ${targetUser}.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -77,5 +77,5 @@ async function list(interaction) {
     lines.push(`\`#${note.id}\` <@${note.moderator_id}> · <t:${ts}:R>\n> ${note.note}`);
   }
 
-  await interaction.editReply({ components: [textCard(lines.join('\n\n'), 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(lines.join('\n\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }

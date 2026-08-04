@@ -60,7 +60,7 @@ async function removeCmd(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const removed = await db.removeRole(interaction.guild.id, role.id);
-  await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  ${role} is no longer given on join.` : `${role} isn't a configured join role.`, removed ? 0xa5ea7a : 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  ${role} is no longer given on join.` : `${role} isn't a configured join role.`, removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function listCmd(interaction) {
@@ -68,16 +68,16 @@ async function listCmd(interaction) {
 
   const roles = await db.listRoles(interaction.guild.id);
   if (!roles.length) {
-    await interaction.editReply({ components: [textCard('No join roles configured. Use `!joinrole add` to set one up.', 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard('No join roles configured. Use `!joinrole add` to set one up.', 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const lines = roles.map((r) => `<@&${r.role_id}> — ${targetLabel(r.target)}`);
-  await interaction.editReply({ components: [textCard(`**Join roles (${roles.length}):**\n${lines.join('\n')}`, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(`**Join roles (${roles.length}):**\n${lines.join('\n')}`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function clearCmd(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const removed = await db.clearRoles(interaction.guild.id);
-  await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  Removed all **${removed}** join role(s).` : 'No join roles to remove.', removed ? 0xa5ea7a : 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  Removed all **${removed}** join role(s).` : 'No join roles to remove.', removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }

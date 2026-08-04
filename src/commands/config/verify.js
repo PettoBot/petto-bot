@@ -69,7 +69,7 @@ async function setup(interaction) {
   const envLine = ENV_CONFIGURED() ? '' : `\n${EMOJI.ALERT}  \`VERIFY_BASE_URL\`/\`TURNSTILE_*\`/\`VERIFY_TOKEN_SECRET\` aren't fully set in \`.env\`. Links won't work until they are.`;
 
   const text = `${EMOJI.APPROVE}  Verification ${enabled ? 'enabled' : 'disabled'}.${roleLine}${verifiedRole ? `\n**Bonus role on success:** ${verifiedRole}` : ''}${envLine}`;
-  await interaction.editReply({ components: [textCard(text, enabled ? 0xa5ea7a : 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(text, enabled ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function status(interaction) {
@@ -77,7 +77,7 @@ async function status(interaction) {
 
   const verifyConfig = await getConfig(interaction.guild.id);
   if (!verifyConfig) {
-    await interaction.editReply({ components: [textCard('Verification has never been configured in this server. Use `!verify setup enabled:true`.', 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard('Verification has never been configured in this server. Use `!verify setup enabled:true`.', 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -88,7 +88,7 @@ async function status(interaction) {
     `**Bonus role on success:** ${verifyConfig.verified_role_id ? `<@&${verifyConfig.verified_role_id}>` : 'None'}`,
     `**Web server env vars:** ${ENV_CONFIGURED() ? `${EMOJI.APPROVE} Configured` : `${EMOJI.DENY} Missing (links won't work)`}`,
   ];
-  await interaction.editReply({ components: [textCard(lines.join('\n'), 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function send(interaction) {

@@ -22,7 +22,7 @@ async function logSanction(client, guild, { modCase, target, moderator, reason, 
       `**Duration:** ${duration ?? 'Permanent'}`,
       `**Reason:** ${reason || 'No reason provided.'}`,
     ].join('\n'),
-    color: COLORS[modCase.type] ?? 0x8399ff,
+    color: COLORS[modCase.type] ?? 0x4b4f59,
     footer: { text: guild.name, icon_url: guild.iconURL({ extension: 'png', size: 128 }) ?? undefined },
     timestamp: new Date().toISOString(),
   };

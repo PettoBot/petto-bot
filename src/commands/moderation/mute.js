@@ -277,7 +277,7 @@ async function unmuteUser(interaction) {
   }
 
   if (!didSomething) {
-    await interaction.editReply({ components: [textCard('That user is not currently muted.', 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard('That user is not currently muted.', 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 

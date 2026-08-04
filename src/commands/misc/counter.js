@@ -31,7 +31,7 @@ module.exports = {
 
 const OPTIONS = new Set(['members', 'users_only', 'bots_only', 'pending_members', 'all_channels', 'text_channels', 'voice_channels', 'categories', 'announcement_channels', 'staging_channels', 'boosts', 'booster_count']);
 
-function card(interaction, content, color = 0x8399ff) { return interaction.reply({ components: [textCard(content, color)], flags: MessageFlags.IsComponentsV2 }); }
+function card(interaction, content, color = 0x4b4f59) { return interaction.reply({ components: [textCard(content, color)], flags: MessageFlags.IsComponentsV2 }); }
 
 async function add(interaction) {
   const option = interaction.options.getString('option', true).trim().toLowerCase();

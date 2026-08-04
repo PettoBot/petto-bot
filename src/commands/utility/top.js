@@ -6,7 +6,7 @@ const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 
 const PER_PAGE = 10;
-const COLOR = 0x8399ff;
+const COLOR = 0x4b4f59;
 const TIMEOUT_MS = 120_000;
 
 function navRow(page, totalPages, disabled = false) {
@@ -58,7 +58,7 @@ module.exports = {
 
     const total = await levelUsersDb.countRanked(interaction.guild.id);
     if (!total) {
-      await interaction.editReply({ components: [textCard('Nobody has ranked yet.', 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard('Nobody has ranked yet.', 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
 

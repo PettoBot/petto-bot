@@ -97,7 +97,7 @@ async function build(data, ctx = {}) {
 function buildRawPreview(data) {
   const { embeds } = normalize(data);
   const e = embeds[0] ?? {};
-  const embed = new EmbedBuilder().setColor(e.color ?? 0x8399ff);
+  const embed = new EmbedBuilder().setColor(e.color ?? 0x4b4f59);
   if (e.title) embed.setTitle(e.title);
   if (e.description) embed.setDescription(e.description);
   if (e.url) embed.setURL(e.url);

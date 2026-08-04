@@ -38,7 +38,7 @@ module.exports = {
     const joinPos = member ? joinPosition(interaction.guild, member) : null;
 
     const embed = new EmbedBuilder()
-      .setColor(member?.displayColor || COLORS.BLUE)
+      .setColor(member?.displayColor || COLORS.DEFAULT)
       .setAuthor({ name: `${user.username}`, iconURL: user.displayAvatarURL() })
       .setThumbnail(user.displayAvatarURL({ size: 512 }))
       .addFields(

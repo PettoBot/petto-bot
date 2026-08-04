@@ -172,7 +172,7 @@ async function enableCmd(interaction) {
   const enabled = interaction.options.getBoolean('enabled', true);
   await defer(interaction);
   await levelConfigDb.upsertConfig(interaction.guild.id, { enabled });
-  await reply(interaction, `${EMOJI.APPROVE}  Leveling ${enabled ? 'enabled' : 'disabled'}.`, enabled ? 0xa5ea7a : 0x8399ff);
+  await reply(interaction, `${EMOJI.APPROVE}  Leveling ${enabled ? 'enabled' : 'disabled'}.`, enabled ? 0xa5ea7a : 0x4b4f59);
 }
 
 async function xpRangeCmd(interaction) {
@@ -352,7 +352,7 @@ async function statusCmd(interaction) {
     `**Multipliers:** ${multipliers.length ? multipliers.map((m) => `${m.target_type === 'role' ? `<@&${m.target_id}>` : `<#${m.target_id}>`} ×${m.multiplier}`).join(', ') : 'None'}`,
   ];
 
-  await interaction.editReply({ components: [textCard(lines.join('\n'), 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 // ── reward group ─────────────────────────────────────────────────────────────
@@ -363,7 +363,7 @@ async function rewardCmd(interaction, sub) {
   if (sub === 'list') {
     const rewards = await levelRewardsDb.listRewards(interaction.guild.id);
     const text = rewards.length ? rewards.map((r) => `**Level ${r.level}** → <@&${r.role_id}>`).join('\n') : 'No level rewards configured.';
-    await reply(interaction, text, 0x8399ff);
+    await reply(interaction, text, 0x4b4f59);
     return;
   }
 
@@ -371,7 +371,7 @@ async function rewardCmd(interaction, sub) {
 
   if (sub === 'remove') {
     const removed = await levelRewardsDb.removeReward(interaction.guild.id, level);
-    await reply(interaction, removed ? `${EMOJI.APPROVE}  Removed the level ${level} reward.` : `No reward configured for level ${level}.`, removed ? 0xa5ea7a : 0x8399ff);
+    await reply(interaction, removed ? `${EMOJI.APPROVE}  Removed the level ${level} reward.` : `No reward configured for level ${level}.`, removed ? 0xa5ea7a : 0x4b4f59);
     return;
   }
 
@@ -388,7 +388,7 @@ async function multiplierCmd(interaction, sub) {
   if (sub === 'list') {
     const multipliers = await levelMultipliersDb.listMultipliers(interaction.guild.id);
     const text = multipliers.length ? multipliers.map((m) => `${m.target_type === 'role' ? `<@&${m.target_id}>` : `<#${m.target_id}>`} → ×${m.multiplier}`).join('\n') : 'No multipliers configured.';
-    await reply(interaction, text, 0x8399ff);
+    await reply(interaction, text, 0x4b4f59);
     return;
   }
 
@@ -404,7 +404,7 @@ async function multiplierCmd(interaction, sub) {
 
   if (sub === 'remove') {
     const removed = await levelMultipliersDb.removeMultiplier(interaction.guild.id, targetId);
-    await reply(interaction, removed ? `${EMOJI.APPROVE}  Removed the multiplier for ${targetMention}.` : `No multiplier configured for ${targetMention}.`, removed ? 0xa5ea7a : 0x8399ff);
+    await reply(interaction, removed ? `${EMOJI.APPROVE}  Removed the multiplier for ${targetMention}.` : `No multiplier configured for ${targetMention}.`, removed ? 0xa5ea7a : 0x4b4f59);
     return;
   }
 

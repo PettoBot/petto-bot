@@ -55,7 +55,7 @@ async function listCmd(interaction) {
   const text = rows.length
     ? rows.map((r) => `**#${r.id}** — <t:${Math.floor(new Date(r.remind_at).getTime() / 1000)}:R> — ${r.message}`).join('\n')
     : "You don't have any active reminders.";
-  await interaction.editReply({ components: [textCard(text, COLORS.BLUE)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(text, COLORS.DEFAULT)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function cancelCmd(interaction) {

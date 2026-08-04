@@ -5,7 +5,7 @@ const { EMOJI } = require('../utils/emojis');
 
 function placeholderEmbed(embedName) {
   return new EmbedBuilder()
-    .setColor(0x8399ff)
+    .setColor(0x4b4f59)
     .setDescription(`${EMOJI.STAR} **Embed \`${embedName}\` created.**\nUse the buttons below to fill in your embed fields.`);
 }
 

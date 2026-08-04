@@ -22,7 +22,7 @@ module.exports = {
     if (sub === 'view') return viewTimer(interaction);
     const rows = await autoMessagesDb.list(interaction.guild.id);
     const body = rows.length ? rows.map(formatRow).join('\n') : 'No timers configured.';
-    return interaction.reply({ components: [textCard(body, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    return interaction.reply({ components: [textCard(body, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
   },
 };
 
@@ -48,5 +48,5 @@ async function removeTimer(interaction) {
 
 async function viewTimer(interaction) {
   const row = await autoMessagesDb.get(interaction.guild.id, interaction.options.getInteger('id', true));
-  return interaction.reply({ components: [textCard(row ? formatRow(row) : 'That timer does not exist.', row ? 0x8399ff : 0xff6b6b)], flags: MessageFlags.IsComponentsV2 });
+  return interaction.reply({ components: [textCard(row ? formatRow(row) : 'That timer does not exist.', row ? 0x4b4f59 : 0xff6b6b)], flags: MessageFlags.IsComponentsV2 });
 }

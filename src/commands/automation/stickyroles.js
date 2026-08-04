@@ -22,7 +22,7 @@ module.exports = {
     if (sub === 'status') {
       const config = await stickyRolesDb.getConfig(interaction.guild.id);
       const text = `**Sticky roles:** ${config?.enabled ? 'On' : 'Off'}\nSnapshots older than 90 days are never restored.`;
-      await interaction.editReply({ components: [textCard(text, config?.enabled ? 0xa5ea7a : 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(text, config?.enabled ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
 
@@ -33,6 +33,6 @@ module.exports = {
     const text = enabled
       ? `${EMOJI.APPROVE}  Sticky roles enabled. A member's roles (except managed ones) are saved when they leave, and restored if they rejoin within 90 days.`
       : `${EMOJI.APPROVE}  Sticky roles disabled.`;
-    await interaction.editReply({ components: [textCard(text, enabled ? 0xa5ea7a : 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(text, enabled ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
   },
 };

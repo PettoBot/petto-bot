@@ -11,7 +11,7 @@ module.exports = {
     const memoryMb = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(1);
 
     const embed = new EmbedBuilder()
-      .setColor(COLORS.BLUE)
+      .setColor(COLORS.DEFAULT)
       .setAuthor({ name: client.user.username, iconURL: client.user.displayAvatarURL() })
       .addFields(
         { name: 'Servers', value: `${client.guilds.cache.size}`, inline: true },

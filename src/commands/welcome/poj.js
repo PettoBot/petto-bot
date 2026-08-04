@@ -65,7 +65,7 @@ async function removeCmd(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const removed = await pojDb.removeChannel(interaction.guild.id, channel.id);
-  await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  Removed ${channel}.` : `${channel} wasn't in the ping-on-join list.`, removed ? 0xa5ea7a : 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  Removed ${channel}.` : `${channel} wasn't in the ping-on-join list.`, removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function listCmd(interaction) {
@@ -75,7 +75,7 @@ async function listCmd(interaction) {
 
   const lines = [`**Status:** ${config.enabled ? `${EMOJI.APPROVE} Enabled` : `${EMOJI.DENY} Disabled`}`];
   lines.push(channels.length ? channels.map((c) => `<#${c.channel_id}> — deletes after **${ms(c.delete_after_ms, { long: true })}**`).join('\n') : 'No channels configured.');
-  await interaction.editReply({ components: [textCard(lines.join('\n'), 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function enableCmd(interaction) {
@@ -83,7 +83,7 @@ async function enableCmd(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
   await pojDb.setEnabled(interaction.guild.id, enabled);
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Ping-on-join ${enabled ? 'enabled' : 'disabled'}.`, enabled ? 0xa5ea7a : 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Ping-on-join ${enabled ? 'enabled' : 'disabled'}.`, enabled ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function clearCmd(interaction) {

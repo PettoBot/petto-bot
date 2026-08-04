@@ -57,12 +57,12 @@ async function list(interaction) {
 
   const history = await getUserHistory(interaction.guild.id, targetUser.id, { limit: 15 });
   if (!history.length) {
-    await interaction.editReply({ components: [textCard(`${targetUser} has no infractions on record.`, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(`${targetUser} has no infractions on record.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const lines = [`### Infractions for ${targetUser}`, ...history.map(formatCaseLine)];
-  await interaction.editReply({ components: [textCard(lines.join('\n\n'), 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(lines.join('\n\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function last(interaction) {
@@ -71,11 +71,11 @@ async function last(interaction) {
 
   const row = await getLastCase(interaction.guild.id, targetUser.id);
   if (!row) {
-    await interaction.editReply({ components: [textCard(`${targetUser} has no infractions on record.`, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(`${targetUser} has no infractions on record.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
-  await interaction.editReply({ components: [textCard(formatCaseDetail(row), 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(formatCaseDetail(row), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function lastMany(interaction) {
@@ -91,7 +91,7 @@ async function lastMany(interaction) {
   }
   if (notFound.length) lines.push(`Not found: ${notFound.map((id) => `\`${id}\``).join(', ')}`);
 
-  await interaction.editReply({ components: [textCard(lines.join('\n\n'), 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(lines.join('\n\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function view(interaction) {
@@ -104,7 +104,7 @@ async function view(interaction) {
     return;
   }
 
-  await interaction.editReply({ components: [textCard(formatCaseDetail(row), 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(formatCaseDetail(row), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function edit(interaction) {
@@ -220,7 +220,7 @@ async function deleteAll(interaction) {
 
   const history = await getUserHistory(interaction.guild.id, targetUser.id, { limit: 1000 });
   if (!history.length) {
-    await interaction.editReply({ components: [textCard(`${targetUser} has no infractions on record.`, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(`${targetUser} has no infractions on record.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -236,12 +236,12 @@ async function deleteAll(interaction) {
   try {
     click = await promptMessage.awaitMessageComponent({ filter: (i) => i.user.id === interaction.user.id, time: 30_000 });
   } catch {
-    await interaction.editReply({ components: [textCard(`${EMOJI.DENY}  Timed out. Nothing was deleted.`, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(`${EMOJI.DENY}  Timed out. Nothing was deleted.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   if (click.customId === 'case_deleteall_cancel') {
-    await click.update({ components: [textCard(`${EMOJI.DENY}  Cancelled. Nothing was deleted.`, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await click.update({ components: [textCard(`${EMOJI.DENY}  Cancelled. Nothing was deleted.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 

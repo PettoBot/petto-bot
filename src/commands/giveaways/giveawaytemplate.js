@@ -44,7 +44,7 @@ async function listCmd(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const templates = await templatesDb.listTemplates(interaction.guild.id);
   const text = templates.length ? templates.map((t) => `\`${t.name}\` — **${t.data.prize}**, ${t.data.winners} winner(s)`).join('\n') : 'No giveaway templates saved.';
-  await interaction.editReply({ components: [textCard(text, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function saveCmd(interaction, isEdit) {

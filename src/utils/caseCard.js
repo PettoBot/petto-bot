@@ -29,12 +29,12 @@ function buildCaseCard({ caseNumber, type, target, moderator, reason, duration }
   lines.push(`**Reason:** ${reason || 'No reason provided.'}`);
 
   return new ContainerBuilder()
-    .setAccentColor(COLORS[type] ?? 0x8399ff)
+    .setAccentColor(COLORS[type] ?? 0x4b4f59)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
 }
 
 /** A single-block Components V2 card for plain status text (errors, confirmations) once a reply is already in V2 mode. */
-function textCard(text, color = 0x8399ff) {
+function textCard(text, color = 0x4b4f59) {
   return new ContainerBuilder().setAccentColor(color).addTextDisplayComponents(new TextDisplayBuilder().setContent(text));
 }
 

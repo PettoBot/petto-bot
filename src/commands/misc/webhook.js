@@ -26,7 +26,7 @@ module.exports = {
   },
 };
 
-function card(interaction, content, color = 0x8399ff) {
+function card(interaction, content, color = 0x4b4f59) {
   return interaction.reply({ components: [textCard(content, color)], flags: MessageFlags.IsComponentsV2 });
 }
 

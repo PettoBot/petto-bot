@@ -169,7 +169,7 @@ async function removeCmd(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const removed = await arDb.removeByTrigger(interaction.guild.id, trigger);
-  await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  Removed the autoresponder for \`${trigger}\`.` : `No autoresponder with trigger \`${trigger}\` found.`, removed ? 0xa5ea7a : 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  Removed the autoresponder for \`${trigger}\`.` : `No autoresponder with trigger \`${trigger}\` found.`, removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function editCmd(interaction) {
@@ -204,12 +204,12 @@ async function listCmd(interaction) {
 
   const list = await arDb.listForGuild(interaction.guild.id);
   if (!list.length) {
-    await interaction.editReply({ components: [textCard(`No autoresponders configured. Use \`!autoresponder add\`.`, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(`No autoresponders configured. Use \`!autoresponder add\`.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const lines = list.map((a) => `\`${a.ar_id}\` ${modeTag(a.match_mode)}${a.reply_type === 'embed' ? ' 🖼️' : ''}${a.delete_trigger ? ' 🗑️' : ''}${a.role_ids?.length ? ' 🎭' : ''}${a.ping_user ? ' 🔔' : ''} · **${a.trigger}** → ${a.reply.length > 60 ? `${a.reply.slice(0, 60)}…` : a.reply}`);
-  await interaction.editReply({ components: [textCard(`**Autoresponders (${list.length}/${arDb.MAX_PER_GUILD}):**\n${lines.join('\n')}`.slice(0, 3900), 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(`**Autoresponders (${list.length}/${arDb.MAX_PER_GUILD}):**\n${lines.join('\n')}`.slice(0, 3900), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function showCmd(interaction) {
@@ -230,13 +230,13 @@ async function showCmd(interaction) {
     `**Trigger:** ${ar.trigger}`,
     `**Reply:** ${ar.reply}`,
   ];
-  await interaction.editReply({ components: [textCard(lines.join('\n'), 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function resetCmd(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const removed = await arDb.removeAllForGuild(interaction.guild.id);
-  await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  Removed all **${removed}** autoresponder(s).` : 'No autoresponders to remove.', removed ? 0xa5ea7a : 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  Removed all **${removed}** autoresponder(s).` : 'No autoresponders to remove.', removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 // ── channel group ────────────────────────────────────────────────────────────

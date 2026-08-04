@@ -32,7 +32,7 @@ async function disableCmd(interaction) {
 
   const existing = await disabledDb.find(interaction.guild.id, command, channel?.id);
   if (existing) {
-    await interaction.editReply({ components: [textCard('Already disabled.', 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard('Already disabled.', 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -53,5 +53,5 @@ async function listCmd(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const rules = await disabledDb.listForGuild(interaction.guild.id);
   const text = rules.length ? rules.map((r) => `\`${r.command}\` — ${r.channel_id ? `<#${r.channel_id}>` : 'server-wide'}`).join('\n') : 'No disabled commands.';
-  await interaction.editReply({ components: [textCard(text, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }

@@ -22,7 +22,7 @@ module.exports = {
 async function setCmd(interaction) {
   const reason = interaction.options.getString('reason') || 'AFK';
   await afkDb.setStatus(interaction.guild.id, interaction.user.id, reason);
-  await interaction.reply({ components: [textCard(`${EMOJI.STAR}  ${interaction.user} is now AFK: **${reason}**`, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.reply({ components: [textCard(`${EMOJI.STAR}  ${interaction.user} is now AFK: **${reason}**`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function mentionsCmd(interaction) {

@@ -12,7 +12,7 @@ module.exports = {
     const role = interaction.options.getRole('role', true);
 
     const embed = new EmbedBuilder()
-      .setColor(role.color || COLORS.BLUE)
+      .setColor(role.color || COLORS.DEFAULT)
       .setTitle(role.name)
       .addFields(
         { name: 'ID', value: role.id, inline: true },

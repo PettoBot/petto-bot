@@ -21,7 +21,7 @@ module.exports = {
     if (sub === 'view') return viewAlias(interaction);
     const rows = await aliasesDb.list(interaction.guild.id);
     const body = rows.length ? rows.map((row) => `\`${row.name}\` → \`${row.command}\``).join('\n') : 'No aliases configured.';
-    return interaction.reply({ components: [textCard(body, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    return interaction.reply({ components: [textCard(body, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
   },
 };
 
@@ -42,5 +42,5 @@ async function removeAlias(interaction) {
 
 async function viewAlias(interaction) {
   const row = await aliasesDb.get(interaction.guild.id, interaction.options.getString('name', true));
-  return interaction.reply({ components: [textCard(row ? `\`${row.name}\` → \`${row.command}\`` : 'That alias does not exist.', row ? 0x8399ff : 0xff6b6b)], flags: MessageFlags.IsComponentsV2 });
+  return interaction.reply({ components: [textCard(row ? `\`${row.name}\` → \`${row.command}\`` : 'That alias does not exist.', row ? 0x4b4f59 : 0xff6b6b)], flags: MessageFlags.IsComponentsV2 });
 }

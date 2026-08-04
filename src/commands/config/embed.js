@@ -144,7 +144,7 @@ const VAR_PAGES = [
 
 function buildVarsEmbed(page) {
   const p = VAR_PAGES[page];
-  return new EmbedBuilder().setTitle(p.title).setDescription(p.fields.map(([k, v]) => `${k}: ${v}`).join('\n')).setColor(0x8399ff).setFooter({ text: `Page ${page + 1}/${VAR_PAGES.length}` });
+  return new EmbedBuilder().setTitle(p.title).setDescription(p.fields.map(([k, v]) => `${k}: ${v}`).join('\n')).setColor(0x4b4f59).setFooter({ text: `Page ${page + 1}/${VAR_PAGES.length}` });
 }
 
 function varsNavRow(page) {

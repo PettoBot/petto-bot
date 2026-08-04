@@ -37,7 +37,7 @@ module.exports = {
     );
 
     if (!activity) {
-      await interaction.editReply({ components: [textCard(`**${target.displayName}** has no active activity right now.`, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(`**${target.displayName}** has no active activity right now.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
 

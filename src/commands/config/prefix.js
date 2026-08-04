@@ -19,7 +19,7 @@ module.exports = {
 
     if (!newPrefix) {
       const text = `**Current prefix:** \`${guildConfig.prefix}\`\nYou can always use ${interaction.client.user} as a prefix too, even if you forget this one.`;
-      await interaction.reply({ components: [textCard(text, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.reply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
 

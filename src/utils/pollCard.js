@@ -21,7 +21,7 @@ function buildPollCard(poll, results) {
 
   lines.push(`-# ${total} vote${total === 1 ? '' : 's'} · ${poll.multi ? 'multiple choice' : 'single choice'}${poll.closed ? ' · closed' : ''}`);
 
-  const container = new ContainerBuilder().setAccentColor(poll.closed ? 0x8b8fa3 : 0x8399ff).addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
+  const container = new ContainerBuilder().setAccentColor(poll.closed ? 0x8b8fa3 : 0x4b4f59).addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
 
   if (poll.image) {
     container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(poll.image)));

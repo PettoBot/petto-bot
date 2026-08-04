@@ -58,7 +58,7 @@ function renderPanel(uid, draft) {
   }
   lines.push('', `-# ${draft.multi ? 'Multiple choice' : 'Single choice'}${draft.duration ? ` · closes in ${formatDuration(draft.duration)}` : ''}`);
 
-  const container = new ContainerBuilder().setAccentColor(0x8399ff).addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
+  const container = new ContainerBuilder().setAccentColor(0x4b4f59).addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
   if (draft.image) {
     container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(draft.image)));
   }

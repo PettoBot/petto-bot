@@ -47,7 +47,7 @@ async function giveCmd(interaction) {
 
   const config = await db.getConfig(interaction.guild.id);
   if (!config.enabled) {
-    await interaction.editReply({ components: [textCard('Reputation is turned off in this server.', 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard('Reputation is turned off in this server.', 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -76,7 +76,7 @@ async function viewCmd(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const row = await db.getUser(interaction.guild.id, target.id);
-  await interaction.editReply({ components: [textCard(`${target} has **${row.points}** reputation point${row.points === 1 ? '' : 's'}.`, 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(`${target} has **${row.points}** reputation point${row.points === 1 ? '' : 's'}.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function leaderboardCmd(interaction) {
@@ -84,7 +84,7 @@ async function leaderboardCmd(interaction) {
 
   const top = await db.getLeaderboard(interaction.guild.id, 10);
   if (!top.length) {
-    await interaction.editReply({ components: [textCard('No reputation given yet.', 0x8399ff)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard('No reputation given yet.', 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 

@@ -4,7 +4,7 @@ const COLORS = {
   GREEN: 0xa5ea7a, // success / approved / positive status
   YELLOW: 0xfed53c, // warning / caution / pending
   RED: 0xfe6465, // error / denied / destructive
-  BLUE: 0x8399ff, // neutral / informational / default accent
+  DEFAULT: 0x4b4f59, // neutral / informational / default accent
 };
 
 module.exports = { COLORS };
