@@ -80,19 +80,19 @@ function loadCommands(client) {
 
 /**
  * Reads every command's `data` (used by deploy-commands.js), without needing a client.
- * Most commands are prefix-only now (see src/events/messageCreateCommands.js) — their
- * `data` sticks around purely so the prefix parser can introspect subcommands/options,
- * it is never sent to Discord's chat-input/slash command API. Context-menu commands
- * remain deployable when there is no meaningful prefix equivalent.
+ * Roleplay chat-input commands are available through both slash commands and the
+ * configured message prefix. Other chat-input builders stay available to the prefix
+ * parser but are not registered as slash commands unless they are context menus.
  */
 function collectCommandData() {
   return findCommandFiles(COMMANDS_DIR)
-    .map((filePath) => require(filePath))
-    .filter((command) => command?.data)
-    // Chat-input data is retained for prefix parsing only. Keep deploying
-    // context-menu actions, which have no useful prefix equivalent.
-    .filter((command) => (command.data.toJSON().type ?? 1) !== 1)
-    .map((command) => command.data.toJSON());
+    .map((filePath) => ({ filePath, command: require(filePath) }))
+    .filter(({ command }) => command?.data)
+    .filter(({ filePath, command }) => {
+      const type = command.data.toJSON().type ?? 1;
+      return type !== 1 || categoryFromPath(filePath) === 'roleplay';
+    })
+    .map(({ command }) => command.data.toJSON());
 }
 
 module.exports = { loadCommands, collectCommandData, findCommandFiles, COMMANDS_DIR };
