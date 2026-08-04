@@ -9,6 +9,7 @@ const customCommandsDb = require('../db/customCommands');
 const { getTemplate } = require('../db/embedTemplates');
 const { build } = require('../utils/embedBuilder');
 const { resolve } = require('../utils/embedVariables');
+const { extractReactReplies, applyReactReplies } = require('../utils/messageFlags');
 const { textCard } = require('../utils/caseCard');
 const { EMOJI } = require('../utils/emojis');
 const logger = require('../utils/logger');
@@ -70,19 +71,24 @@ async function runCustomCommand(message, commandName) {
   message.channel.sendTyping().catch(() => {});
 
   const ctx = { member: message.member, guild: message.guild, channel: message.channel, message };
+  const { text: cleanedResponse, emojis: reactReplies } = extractReactReplies(row.response ?? '');
 
   try {
     if (row.embed_template) {
       const doc = await getTemplate(message.guild.id, row.embed_template);
       if (doc) {
         const payload = await build(doc.data, ctx);
-        await message.reply({ content: payload.content, embeds: payload.embeds, components: payload.components }).catch(() => {});
+        const sent = await message.reply({ content: payload.content, embeds: payload.embeds, components: payload.components }).catch(() => null);
+        if (sent && reactReplies.length) await applyReactReplies(sent, reactReplies);
         return true;
       }
     }
-    if (row.response) {
-      const resolved = await resolve(row.response, ctx);
-      await message.reply(resolved).catch(() => {});
+    if (cleanedResponse) {
+      const resolved = await resolve(cleanedResponse, ctx);
+      const sent = await message.reply(resolved).catch(() => null);
+      if (sent && reactReplies.length) await applyReactReplies(sent, reactReplies);
+    } else if (reactReplies.length) {
+      await applyReactReplies(message, reactReplies);
     }
   } catch (err) {
     logger.error(`Failed to run custom command "${commandName}" in guild ${message.guild.id}:`, err);

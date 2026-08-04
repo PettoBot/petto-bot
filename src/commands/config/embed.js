@@ -118,6 +118,20 @@ const VAR_PAGES = [
     ],
   },
   {
+    title: 'Variables · Giveaway',
+    fields: [
+      ['`{gw.prize}`', 'The prize'],
+      ['`{gw.winners}`', 'Number of winners'],
+      ['`{gw.host}`', 'Mentions whoever started it'],
+      ['`{gw.duration}`', 'End time as a Unix timestamp'],
+      ['`{gw.timestamp}`', 'End time as a relative Discord timestamp'],
+      ['`{gw.claim_time}`', 'How long winners have to claim'],
+      ['`{gw.reaction}`', 'Entry emoji when using reaction mode'],
+      ['`{gw.entry_mode}`', 'Whether members react or click to enter'],
+      ['`{gw.preset}`', 'Bonus-entry roles list, when a preset is used'],
+    ],
+  },
+  {
     title: 'Variables · Level (level-up notifications only)',
     fields: [
       ['`{level}`', 'The level just reached'],
