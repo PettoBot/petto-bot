@@ -60,6 +60,12 @@ function loadCommands(client) {
     }
 
     command.category = categoryFromPath(filePath);
+    if (client.commands.has(command.data.name)) {
+      const existing = client.commands.get(command.data.name);
+      logger.warn(`Skipping duplicate command name "${command.data.name}" from ${filePath}; already loaded from ${existing.filePath ?? 'another command file'}.`);
+      continue;
+    }
+    command.filePath = filePath;
     // Merge curated aliases here so prefix parsing and !help stay in sync.
     command.aliases = [...new Set([...(command.aliases ?? []), ...aliasesFor(command.data.name)])];
     client.commands.set(command.data.name, command);

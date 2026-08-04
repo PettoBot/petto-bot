@@ -8,7 +8,7 @@ const { buildSanctionDM } = require('../../utils/sanctionMessage');
 const logger = require('../../utils/logger');
 
 module.exports = {
-  aliases: ['sb'],
+  aliases: ['sb', 'sofban'],
   data: new SlashCommandBuilder()
     .setName('softban')
     .setDescription("Ban and immediately unban a member, to wipe their recent messages without a lasting ban.")

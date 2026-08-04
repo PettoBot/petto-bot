@@ -8,9 +8,11 @@ const { buildSanctionDM } = require('../../utils/sanctionMessage');
 const { resolveUsers } = require('../../utils/userResolve');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
+const { confirmBulkAction } = require('../../utils/moderationCommand');
 
 module.exports = {
   aliases: ['k'],
+  prefixDefaultSubcommand: 'user',
   data: new SlashCommandBuilder()
     .setName('kick')
     .setDescription('Kick members from the server.')
@@ -86,6 +88,8 @@ async function kickUsers(interaction) {
   }
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+
+  if (!(await confirmBulkAction(interaction, 'kick', usersInput))) return;
 
   const { users, failed: notFound } = await resolveUsers(interaction.client, usersInput);
   await ensureGuild(interaction.guild.id);
