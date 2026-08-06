@@ -1,6 +1,6 @@
 const express = require('express');
 const path = require('path');
-const { MessageFlags } = require('discord.js');
+const { MessageFlags, PermissionFlagsBits } = require('discord.js');
 const config = require('../config');
 const { verifyToken } = require('../utils/verifyToken');
 const { verifyTranscriptToken } = require('../utils/transcriptToken');
@@ -9,6 +9,8 @@ const { isRedeemed, claimRedemption, releaseRedemption } = require('../db/verifi
 const { getTicketById } = require('../db/tickets');
 const { logVerification } = require('../utils/verificationLog');
 const { buildVerifiedDM } = require('../utils/verifyMessage');
+const { createBackup, listBackups, getBackup, recordAudit, vault } = require('../db/backups');
+const { buildSnapshot } = require('../commands/config/backup');
 const { renderVerifyPage } = require('./verifyPage');
 const { renderHomePage } = require('./homePage');
 const logger = require('../utils/logger');
@@ -29,8 +31,10 @@ async function checkTurnstile(responseToken, remoteIp) {
  * /verify's slash command still works for config, it just can't send working links.
  */
 function startServer(client) {
-  if (!config.verifyBaseUrl || !config.turnstileSiteKey || !config.turnstileSecretKey || !config.verifyTokenSecret) {
-    logger.warn('Verification env vars not fully set, web server not started. /verify links will not work until they are.');
+  const verificationEnabled = Boolean(config.verifyBaseUrl && config.turnstileSiteKey && config.turnstileSecretKey && config.verifyTokenSecret);
+  const dashboardEnabled = Boolean(config.dashboardApiSecret);
+  if (!verificationEnabled && !dashboardEnabled) {
+    logger.warn('Verification and dashboard API env vars are not fully set, web server not started.');
     return null;
   }
 
@@ -40,6 +44,112 @@ function startServer(client) {
   // Petto's brand icons (approve/deny/alert/favicon), also referenced by public URL
   // from the Components V2 verification DM, since Discord needs a real image URL.
   app.use('/assets', express.static(path.join(__dirname, 'public'), { maxAge: '7d' }));
+
+  function dashboardAuthorized(req) {
+    return Boolean(config.dashboardApiSecret && req.get('x-petto-dashboard-key') === config.dashboardApiSecret);
+  }
+
+  async function dashboardGuild(req, res) {
+    if (!dashboardAuthorized(req)) {
+      res.status(401).json({ ok: false, error: 'unauthorized' });
+      return null;
+    }
+    const userId = String(req.query.user_id || req.body?.user_id || '');
+    if (!userId || !req.params.guildId) {
+      res.status(400).json({ ok: false, error: 'missing_identity' });
+      return null;
+    }
+    if (!vault.isConfigured()) {
+      res.status(503).json({ ok: false, error: 'vault_not_configured' });
+      return null;
+    }
+    try {
+      const guild = await client.guilds.fetch(req.params.guildId);
+      const member = await guild.members.fetch(userId);
+      const canManage = member.permissions.has(PermissionFlagsBits.ManageGuild) || member.permissions.has(PermissionFlagsBits.Administrator);
+      if (!canManage) {
+        res.status(403).json({ ok: false, error: 'no_access' });
+        return null;
+      }
+      return { guild, userId };
+    } catch (err) {
+      logger.error(`Dashboard could not authorize guild ${req.params.guildId}:`, err);
+      res.status(404).json({ ok: false, error: 'guild_unavailable' });
+      return null;
+    }
+  }
+
+  async function dashboardVaultData(guildId) {
+    const [backups, schedule, audit] = await Promise.all([
+      listBackups(guildId, 20),
+      vault.getSchedule(guildId),
+      vault.listAudit(guildId, 20),
+    ]);
+    return { backups, schedule, audit };
+  }
+
+  if (dashboardEnabled) {
+    app.get('/api/dashboard/vault/:guildId', async (req, res) => {
+      const authorized = await dashboardGuild(req, res);
+      if (!authorized) return;
+      try {
+        res.json({ ok: true, ...(await dashboardVaultData(req.params.guildId)) });
+      } catch (err) {
+        logger.error('Dashboard failed to load Vault data:', err);
+        res.status(500).json({ ok: false, error: 'vault_unavailable' });
+      }
+    });
+
+    app.post('/api/dashboard/vault/:guildId', async (req, res) => {
+      const authorized = await dashboardGuild(req, res);
+      if (!authorized) return;
+      const { guild, userId } = authorized;
+      const action = String(req.body?.action || '');
+      try {
+        if (action === 'create') {
+          await Promise.all([guild.roles.fetch(), guild.channels.fetch(), guild.emojis.fetch()]);
+          const snapshot = buildSnapshot(guild);
+          const saved = await createBackup(guild.id, userId, String(req.body?.label || '').trim() || null, snapshot);
+          await recordAudit(guild.id, userId, 'backup_created', saved.id, { source: saved.source || 'manual', label: saved.label });
+        } else if (action === 'schedule') {
+          const hours = Number(req.body?.hours);
+          const retention = Number(req.body?.retention || 7);
+          if (!Number.isInteger(hours) || hours < 1 || hours > 168 || !Number.isInteger(retention) || retention < 1 || retention > 30) {
+            res.status(400).json({ ok: false, error: 'invalid_schedule' });
+            return;
+          }
+          await vault.upsertSchedule(guild.id, hours, retention, userId);
+          await vault.recordAudit(guild.id, userId, 'schedule_updated', null, { intervalHours: hours, retentionCount: retention });
+        } else if (action === 'unschedule') {
+          if (await vault.removeSchedule(guild.id)) await vault.recordAudit(guild.id, userId, 'schedule_disabled');
+        } else {
+          res.status(400).json({ ok: false, error: 'unknown_action' });
+          return;
+        }
+        res.json({ ok: true, ...(await dashboardVaultData(guild.id)) });
+      } catch (err) {
+        logger.error(`Dashboard Vault action failed for guild ${guild.id}:`, err);
+        res.status(500).json({ ok: false, error: 'vault_action_failed' });
+      }
+    });
+
+    app.get('/api/dashboard/vault/:guildId/export/:backupId', async (req, res) => {
+      const authorized = await dashboardGuild(req, res);
+      if (!authorized) return;
+      try {
+        const backup = await getBackup(req.params.guildId, req.params.backupId);
+        if (!backup) {
+          res.status(404).json({ ok: false, error: 'backup_not_found' });
+          return;
+        }
+        res.set('Content-Disposition', `attachment; filename="petto-backup-${req.params.guildId}-${req.params.backupId}.json"`);
+        res.json(backup.snapshot);
+      } catch (err) {
+        logger.error('Dashboard failed to export Vault backup:', err);
+        res.status(500).json({ ok: false, error: 'backup_export_failed' });
+      }
+    });
+  }
 
   app.get('/', (req, res) => {
     res.set('Content-Type', 'text/html; charset=utf-8').send(renderHomePage({ guildCount: client.guilds.cache.size }));
