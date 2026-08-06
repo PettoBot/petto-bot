@@ -30,4 +30,17 @@ async function incrementActivity(guildId, channelId, { messages = 0, reactions =
   throw error;
 }
 
-module.exports = { incrementActivity };
+async function getActivitySummary(guildId, days = 7) {
+  const start = new Date();
+  start.setUTCDate(start.getUTCDate() - Math.max(0, days - 1));
+  const { data, error } = await supabase
+    .from('activity_stats')
+    .select('channel_id, day, messages, reactions, voice_seconds')
+    .eq('guild_id', guildId)
+    .gte('day', start.toISOString().slice(0, 10))
+    .order('day', { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+module.exports = { incrementActivity, getActivitySummary };

@@ -329,6 +329,20 @@ create table if not exists antinuke_config (
 
 alter table antinuke_config enable row level security;
 
+-- Server configuration snapshots. The JSON is deliberately limited to Discord
+-- configuration and never contains bot credentials, access tokens, or message content.
+create table if not exists guild_backups (
+  id          bigserial primary key,
+  guild_id    text not null references guilds(guild_id) on delete cascade,
+  created_by  text not null,
+  label       text not null default 'Manual backup',
+  snapshot    jsonb not null,
+  created_at  timestamptz not null default now()
+);
+
+create index if not exists idx_guild_backups_guild_created on guild_backups(guild_id, created_at desc);
+alter table guild_backups enable row level security;
+
 -- ---------------------------------------------------------------------------
 -- warn_escalation_rules: "at warning #N, do X automatically" — checked against
 -- the user's live active-warn count every time a warn is added (manual or automod).
