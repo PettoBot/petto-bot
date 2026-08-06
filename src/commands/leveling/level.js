@@ -8,6 +8,7 @@ const { stripRewardRoles } = require('../../utils/levelActions');
 const { totalXpForLevel, levelForXp } = require('../../utils/levelCurve');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { getTemplate } = require('../../db/embedTemplates');
 
 const ACTION_CHOICES = [
   { name: 'add', value: 'add' },
@@ -52,6 +53,7 @@ module.exports = {
         .addStringOption((o) => o.setName('mode').setDescription('Where it posts').setRequired(true).addChoices({ name: 'off', value: 'off' }, { name: 'reply (in the channel they leveled up in)', value: 'reply' }, { name: 'fixed channel', value: 'channel' }, { name: 'DM', value: 'dm' }))
         .addChannelOption((o) => o.setName('channel').setDescription('Channel to use with mode:channel').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement).setRequired(false))
         .addBooleanOption((o) => o.setName('embed').setDescription('Wrap the message in an embed instead of a plain Components V2 card').setRequired(false))
+        .addStringOption((o) => o.setName('embed_template').setDescription('Saved /embed template to use for the announcement').setRequired(false))
         .addIntegerOption((o) => o.setName('every').setDescription('Only announce every N levels (default 1 = every level)').setRequired(false).setMinValue(1))
         .addStringOption((o) => o.setName('message').setDescription('Supports {user}, {level}, {level_xp}, {level_rank}, and every /embed variable').setRequired(false)),
     )
@@ -236,6 +238,7 @@ async function notifyCmd(interaction) {
   const mode = interaction.options.getString('mode', true);
   const channel = interaction.options.getChannel('channel');
   const embed = interaction.options.getBoolean('embed');
+  const embedTemplate = interaction.options.getString('embed_template');
   const every = interaction.options.getInteger('every');
   const message = interaction.options.getString('message');
 
@@ -247,6 +250,14 @@ async function notifyCmd(interaction) {
   const patch = { notify_mode: mode };
   if (channel) patch.notify_channel_id = channel.id;
   if (embed != null) patch.notify_embed = embed;
+  if (embedTemplate) {
+    const template = await getTemplate(interaction.guild.id, embedTemplate).catch(() => null);
+    if (!template) {
+      await interaction.reply({ content: `No saved embed template named \`${embedTemplate}\` was found.`, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    patch.notify_embed_template = embedTemplate;
+  }
   if (every != null) patch.notify_every = every;
   if (message) patch.notify_message = message;
 

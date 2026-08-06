@@ -6,6 +6,8 @@ const { levelForXp, xpNeeded } = require('./levelCurve');
 const { resolve } = require('./embedVariables');
 const { extractReactReplies, applyReactReplies } = require('./messageFlags');
 const { EMOJI } = require('./emojis');
+const { getTemplate } = require('../db/embedTemplates');
+const { build: buildEmbedTemplate } = require('./embedBuilder');
 const logger = require('./logger');
 
 /** Combined multiplier for a message/voice-minute: the largest matching role multiplier, multiplied by a matching channel multiplier (both default to 1 if unset). */
@@ -91,9 +93,25 @@ async function notifyLevelUp({ client, guild, member, config, level, channel, me
     return;
   }
   if (!text) return;
-  const payload = config.notify_embed
-    ? { embeds: [new EmbedBuilder().setColor(0x4b4f59).setDescription(text)] }
-    : { content: text };
+  let payload = null;
+  if (config.notify_embed_template) {
+    try {
+      const template = await getTemplate(guild.id, config.notify_embed_template);
+      if (template?.data) {
+        const built = await buildEmbedTemplate(template.data, ctx);
+        if (built.content || built.embeds?.length || built.components?.length) {
+          payload = { content: built.content || undefined, embeds: built.embeds, components: built.components };
+        }
+      }
+    } catch (err) {
+      logger.warn(`Level-up embed template failed for ${guild.id}:`, err.message);
+    }
+  }
+  if (!payload) {
+    payload = config.notify_embed
+      ? { embeds: [new EmbedBuilder().setColor(0x4b4f59).setDescription(text)] }
+      : { content: text };
+  }
 
   try {
     if (config.notify_mode === 'dm') {

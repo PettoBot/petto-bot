@@ -4,7 +4,6 @@ const levelUsersDb = require('../../db/levelUsers');
 const { totalXpForLevel, xpNeeded } = require('../../utils/levelCurve');
 const { buildProgressBar } = require('../../utils/levelProgressBar');
 const { textCard } = require('../../utils/caseCard');
-const { EMOJI } = require('../../utils/emojis');
 
 const COLOR = 0x4b4f59;
 
@@ -41,17 +40,18 @@ module.exports = {
     const needed = xpNeeded(data.level, config);
     const progress = needed > 0 ? Math.min(100, Math.round((currLevelXp / needed) * 100)) : 0;
 
+    const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const embed = new EmbedBuilder()
       .setColor(COLOR)
       .setAuthor({ name: targetMember?.displayName ?? target.username, iconURL: (targetMember ?? target).displayAvatarURL({ size: 256, extension: 'png' }) })
       .setThumbnail((targetMember ?? target).displayAvatarURL({ size: 256, extension: 'png' }))
       .addFields(
-        { name: 'Level', value: `${data.level}`, inline: true },
-        { name: 'Server Rank', value: `#${rank} out of ${total}`, inline: true },
-        { name: 'Experience', value: `${currLevelXp.toLocaleString()}/${needed.toLocaleString()} XP`, inline: true },
-        { name: `Progress (${progress}%)`, value: buildProgressBar(progress), inline: false },
+        { name: '**Level**', value: `${data.level}`, inline: true },
+        { name: '**Server Rank**', value: `#${rank} out of ${total}`, inline: true },
+        { name: '**Experience**', value: `${currLevelXp.toLocaleString()}/${needed.toLocaleString()} XP`, inline: true },
+        { name: `**Progress (${progress}%)**`, value: buildProgressBar(progress), inline: true },
       )
-      .setFooter({ text: `${EMOJI.STAR} Total Experience: ${data.xp.toLocaleString()}` });
+      .setFooter({ text: `Total Experience: ${data.xp.toLocaleString()} • ${dateStr}` });
 
     await interaction.editReply({ embeds: [embed] });
   },
