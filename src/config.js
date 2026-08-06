@@ -2,6 +2,25 @@ require('dotenv').config();
 
 const required = ['DISCORD_TOKEN', 'DISCORD_CLIENT_ID', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'];
 
+function resolveVaultDatabaseUrl() {
+  const rawUrl = process.env.PETTO_VAULT_DATABASE_URL || null;
+  if (!rawUrl) return null;
+
+  const configuredHost = process.env.PETTO_VAULT_DATABASE_HOST?.trim() || null;
+
+  try {
+    const url = new URL(rawUrl);
+    const host = configuredHost || (url.hostname === 'tailscale-discloud' ? 'lian636' : null);
+    if (!host) return rawUrl;
+
+    url.hostname = host;
+    return url.toString();
+  } catch {
+    // Keep the original value so pg can return its normal, useful connection error.
+    return rawUrl;
+  }
+}
+
 for (const key of required) {
   if (!process.env[key]) {
     throw new Error(`Missing required environment variable: ${key}. Copy .env.example to .env and fill it in.`);
@@ -19,7 +38,8 @@ module.exports = {
   // and the schema must be applied manually in the Supabase SQL editor.
   databaseUrl: process.env.DATABASE_URL || null,
   // Optional dedicated PostgreSQL database for Petto Vault backups and audit history.
-  vaultDatabaseUrl: process.env.PETTO_VAULT_DATABASE_URL || null,
+  // Discloud's private VLAN hostname can override an older Tailscale URL safely.
+  vaultDatabaseUrl: resolveVaultDatabaseUrl(),
   // Shared secret for server-side dashboard requests. Keep this identical to the
   // web worker secret, but never send it to the browser.
   dashboardApiSecret: process.env.PETTO_DASHBOARD_API_SECRET || null,
