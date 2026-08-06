@@ -5,6 +5,66 @@
 -- or write this data if one is ever created for a future dashboard.
 
 -- ---------------------------------------------------------------------------
+-- premium_entitlements / premium_slot_assignments: account-level Premium
+-- ---------------------------------------------------------------------------
+-- Premium belongs to the Discord user who owns the subscription. A user can
+-- spend the slots included in that entitlement on the servers they manage.
+-- There is deliberately no free-plan row: absence of an active entitlement
+-- means Free, so a billing outage can never accidentally unlock Premium.
+create table if not exists premium_entitlements (
+  id                       bigserial primary key,
+  user_id                  text not null,
+  provider                 text not null default 'discord',
+  provider_subscription_id text unique,
+  plan_key                 text not null default 'premium-1',
+  status                   text not null default 'pending' check (status in ('pending', 'active', 'past_due', 'canceled', 'expired')),
+  slot_limit               integer not null default 0 check (slot_limit >= 0 and slot_limit <= 1000),
+  current_period_end       timestamptz,
+  metadata                 jsonb not null default '{}'::jsonb,
+  created_at               timestamptz not null default now(),
+  updated_at               timestamptz not null default now()
+);
+
+create index if not exists idx_premium_entitlements_user on premium_entitlements(user_id);
+create index if not exists idx_premium_entitlements_active on premium_entitlements(user_id, status) where status = 'active';
+alter table premium_entitlements enable row level security;
+
+-- A guild can only have one active Premium owner at a time. Reassigning a
+-- slot is an explicit dashboard action and keeps the old row as history.
+create table if not exists premium_slot_assignments (
+  id             bigserial primary key,
+  entitlement_id bigint not null references premium_entitlements(id) on delete cascade,
+  user_id        text not null,
+  guild_id       text not null,
+  status         text not null default 'active' check (status in ('active', 'released')),
+  assigned_at    timestamptz not null default now(),
+  released_at    timestamptz,
+  unique (entitlement_id, guild_id)
+);
+
+create unique index if not exists idx_premium_one_active_owner_per_guild
+  on premium_slot_assignments(guild_id) where status = 'active';
+create index if not exists idx_premium_assignments_user on premium_slot_assignments(user_id, status);
+create index if not exists idx_premium_assignments_guild on premium_slot_assignments(guild_id, status);
+alter table premium_slot_assignments enable row level security;
+
+-- Before billing is connected, this table lets a user select the servers they
+-- want Premium on without pretending that a payment happened. Requests are
+-- harmless and can be removed once Discord entitlements are live.
+create table if not exists premium_slot_requests (
+  id           bigserial primary key,
+  user_id      text not null,
+  guild_id     text not null,
+  status       text not null default 'pending' check (status in ('pending', 'approved', 'declined', 'canceled')),
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now(),
+  unique (user_id, guild_id)
+);
+
+create index if not exists idx_premium_requests_user on premium_slot_requests(user_id, status);
+alter table premium_slot_requests enable row level security;
+
+-- ---------------------------------------------------------------------------
 -- guilds: per-server configuration
 -- ---------------------------------------------------------------------------
 create table if not exists guilds (
