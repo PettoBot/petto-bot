@@ -1,5 +1,6 @@
 const MAX_MESSAGES = 2000;
 const PLACEHOLDER = '\u0000';
+const MARKDOWN_PLACEHOLDER = '\u0001';
 
 function escapeHtml(str) {
   return String(str ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -75,8 +76,8 @@ const TOKEN_RE = /<a?:([\w-]+):(\d+)>|<@!?(\d+)>|<@&(\d+)>|<#(\d+)>|@(everyone|h
 function renderMentionToken(full, emojiName, emojiId, userId, roleId, channelId, broadcast, guild) {
   if (emojiId) {
     const extension = full.startsWith('<a:') ? 'gif' : 'png';
-    const url = `https://cdn.discordapp.com/emojis/${emojiId}.${extension}`;
-    return `<img class="emoji" src="${url}" alt=":${escapeHtml(emojiName)}:" title=":${escapeHtml(emojiName)}:" loading="lazy">`;
+    const url = `https://media.discordapp.net/emojis/${emojiId}.${extension}?size=44&quality=lossless`;
+    return `<img class="emoji" src="${url}" alt=":${escapeHtml(emojiName)}:" title=":${escapeHtml(emojiName)}:" loading="lazy" onerror="this.replaceWith(document.createTextNode(this.alt))">`;
   }
   if (userId) {
     const member = guild?.members?.cache?.get(userId);
@@ -90,9 +91,19 @@ function renderMentionToken(full, emojiName, emojiId, userId, roleId, channelId,
   return escapeHtml(full);
 }
 
+const UNICODE_EMOJI_RE = /(?:[#*0-9]\uFE0F?\u20E3|\p{Regional_Indicator}{2}|\p{Extended_Pictographic}(?:\uFE0F|\p{Emoji_Modifier})?(?:\u200D\p{Extended_Pictographic}(?:\uFE0F|\p{Emoji_Modifier})?)*)/gu;
+
+function renderUnicodeEmojis(html) {
+  return html.replace(UNICODE_EMOJI_RE, (emoji) => {
+    const codepoints = [...emoji].map((character) => character.codePointAt(0).toString(16)).join('-');
+    const url = `https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/${codepoints}.svg`;
+    return `<img class="emoji native-emoji" src="${url}" alt="${escapeHtml(emoji)}" title="${escapeHtml(emoji)}" loading="lazy" onerror="this.replaceWith(document.createTextNode(this.alt))">`;
+  });
+}
+
 function renderMarkdown(escapedText) {
   const preserved = [];
-  const hold = (html) => `${PLACEHOLDER}${preserved.push(html) - 1}${PLACEHOLDER}`;
+  const hold = (html) => `${MARKDOWN_PLACEHOLDER}${preserved.push(html) - 1}${MARKDOWN_PLACEHOLDER}`;
 
   let html = escapedText
     .replace(/```(?:([\w+-]+)\n)?([\s\S]*?)```/g, (_, language, code) => hold(`<pre><code${language ? ` data-language="${escapeHtml(language)}"` : ''}>${code}</code></pre>`))
@@ -114,7 +125,7 @@ function renderMarkdown(escapedText) {
       return `<a href="${safeUrl(clean)}" target="_blank" rel="noopener">${clean}</a>${trailing}`;
     });
 
-  return html.replace(new RegExp(`${PLACEHOLDER}(\\d+)${PLACEHOLDER}`, 'g'), (_, index) => preserved[Number(index)] ?? '');
+  return html.replace(new RegExp(`${MARKDOWN_PLACEHOLDER}(\\d+)${MARKDOWN_PLACEHOLDER}`, 'g'), (_, index) => preserved[Number(index)] ?? '');
 }
 
 function renderRichText(raw, guild) {
@@ -132,7 +143,7 @@ function renderRichText(raw, guild) {
   }
   result += escapeHtml(String(raw ?? '').slice(lastIndex));
 
-  return renderMarkdown(result).replace(new RegExp(`${PLACEHOLDER}(\\d+)${PLACEHOLDER}`, 'g'), (_, index) => placeholders[Number(index)] ?? '');
+  return renderUnicodeEmojis(renderMarkdown(result)).replace(new RegExp(`${PLACEHOLDER}(\\d+)${PLACEHOLDER}`, 'g'), (_, index) => placeholders[Number(index)] ?? '');
 }
 
 function renderEmbed(embed, guild) {
@@ -201,7 +212,7 @@ function renderReaction(reaction) {
   const emoji = reaction.emoji;
   const id = emoji?.id;
   const emojiHtml = id
-    ? `<img class="reaction-emoji" src="https://cdn.discordapp.com/emojis/${id}.${emoji.animated ? 'gif' : 'png'}" alt="${escapeHtml(emoji.name || 'emoji')}" loading="lazy">`
+    ? `<img class="reaction-emoji" src="https://media.discordapp.net/emojis/${id}.${emoji.animated ? 'gif' : 'png'}?size=44&quality=lossless" alt="${escapeHtml(emoji.name || 'emoji')}" loading="lazy" onerror="this.replaceWith(document.createTextNode(this.alt))">`
     : escapeHtml(emoji?.name || '•');
   return `<span class="reaction">${emojiHtml}<b>${Number(reaction.count ?? 0)}</b></span>`;
 }
@@ -267,7 +278,7 @@ async function buildTranscript(channel, { ticketNumber, openerTag } = {}) {
 <title>${escapeHtml(title)} · Petto</title>
 <link rel="icon" type="image/png" href="/assets/favicon.png">
 <style>
-  :root { color-scheme: dark; --bg:#111214; --surface:#15171b; --surface-2:#191b20; --border:#2a2d35; --border-soft:#202228; --text:#f3f1ea; --muted:#9c968a; --dim:#6f6a62; --accent:#8399ff; --accent-soft:rgba(131,153,255,.14); --green:#a5ea7a; --font:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif; --mono:ui-monospace,"SFMono-Regular",Consolas,monospace; }
+  :root { color-scheme: dark; --bg:#111214; --surface:#15171b; --surface-2:#191b20; --border:#2a2d35; --border-soft:#202228; --text:#f3f1ea; --muted:#9c968a; --dim:#6f6a62; --accent:#8399ff; --accent-soft:rgba(131,153,255,.14); --green:#a5ea7a; --font:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif; --mono:ui-monospace,"SFMono-Regular",Consolas,monospace; }
   * { box-sizing:border-box; }
   html { scroll-behavior:smooth; }
   body { margin:0; min-height:100vh; background:var(--bg); color:var(--text); font:15px/1.55 var(--font); -webkit-font-smoothing:antialiased; }
