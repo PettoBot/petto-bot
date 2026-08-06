@@ -86,7 +86,11 @@ async function notifyLevelUp({ client, guild, member, config, level, channel, me
     levelData: { level, xp, xpNeeded: xpNeeded(level, config), rank, source },
   };
 
-  const rawText = config.notify_message.replace(/\{EMOJI\}/g, EMOJI.STAR);
+  // Keep old databases compatible, but do not inject the old star into the default.
+  const configuredText = config.notify_message === '{EMOJI} {user} just leveled up to **{level}**!'
+    ? '{user} just leveled up to **{level}**!'
+    : config.notify_message;
+  const rawText = configuredText.replace(/\{EMOJI\}/g, EMOJI.STAR);
   const { text: cleanedText, emojis: reactReplies } = extractReactReplies(rawText);
   const text = await resolve(cleanedText, ctx);
   if (!text && reactReplies.length) {
