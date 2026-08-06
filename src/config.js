@@ -18,6 +18,8 @@ module.exports = {
   // When set, index.js runs schema.sql on every boot. When unset, migrations are skipped
   // and the schema must be applied manually in the Supabase SQL editor.
   databaseUrl: process.env.DATABASE_URL || null,
+  // Optional dedicated PostgreSQL database for Petto Vault backups and audit history.
+  vaultDatabaseUrl: process.env.PETTO_VAULT_DATABASE_URL || null,
   // Optional: powers /automod link (Google Safe Browsing URL scanning).
   googleSafeBrowsingKey: process.env.GOOGLE_SAFE_BROWSING_API_KEY || null,
   // Optional: verification system (Cloudflare Turnstile). All four must be set for /verify to work.

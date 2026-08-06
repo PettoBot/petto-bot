@@ -16,6 +16,7 @@ const { startBulkRoleJob } = require('./src/jobs/bulkRoleJob');
 const { startTicketAutocloseJob } = require('./src/jobs/ticketAutocloseJob');
 const { startPollAutocloseJob } = require('./src/jobs/pollAutocloseJob');
 const { startCounterJob } = require('./src/jobs/counterJob');
+const { startBackupVaultJob } = require('./src/jobs/backupVaultJob');
 const { startServer } = require('./src/web/server');
 const { startCloudflareTunnel } = require('./src/web/cloudflareTunnel');
 const logger = require('./src/utils/logger');
@@ -70,6 +71,7 @@ async function main() {
   startTicketAutocloseJob(client);
   startPollAutocloseJob(client);
   startCounterJob(client);
+  startBackupVaultJob(client);
   startServer(client);
   startCloudflareTunnel(config.cloudflareTunnelToken);
 }
