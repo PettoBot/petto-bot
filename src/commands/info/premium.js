@@ -9,6 +9,7 @@ const {
 } = require('../../db/premium');
 const { COLORS } = require('../../utils/colors');
 const logger = require('../../utils/logger');
+const { syncPremiumRoleForUser } = require('../../jobs/premiumRoleJob');
 
 const STATUS_LABELS = {
   active: 'Active',
@@ -93,6 +94,7 @@ async function grant(interaction) {
   const result = await grantManualPremium(user.id, slots, interaction.user.id, guildId);
 
   if (!result.ok) return replyError(interaction, grantError(result));
+  await syncPremiumRoleForUser(interaction.client, user.id).catch((error) => logger.warn('Immediate Premium role sync failed:', error.message));
   const assigned = result.assignment ? ` It is active on server **${guildId}**.` : '';
   return replySuccess(interaction, `Permanent Premium granted to <@${user.id}> with **${slots}** server slot${slots === 1 ? '' : 's'}.${assigned}`);
 }
@@ -120,6 +122,7 @@ async function revoke(interaction) {
     if (result.code === 'no_manual') return replyError(interaction, `No manual Premium grant was found for <@${user.id}>. Paid Polar subscriptions are managed from the billing portal.`);
     return replyError(interaction, 'The Premium grant could not be revoked.');
   }
+  await syncPremiumRoleForUser(interaction.client, user.id).catch((error) => logger.warn('Immediate Premium role sync failed:', error.message));
   return replySuccess(interaction, `Manual Premium revoked for <@${user.id}>. Released **${result.releasedGuildIds.length}** server slot${result.releasedGuildIds.length === 1 ? '' : 's'}.`);
 }
 

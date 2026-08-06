@@ -31,6 +31,11 @@ module.exports = {
   token: process.env.DISCORD_TOKEN,
   clientId: process.env.DISCORD_CLIENT_ID,
   ownerId: process.env.PETTO_OWNER_ID || '293504726505357312',
+  premiumRoleIds: {
+    1: process.env.PETTO_PREMIUM_ROLE_1_ID || '1535057178094735371',
+    3: process.env.PETTO_PREMIUM_ROLE_3_ID || '1535057189570478214',
+    5: process.env.PETTO_PREMIUM_ROLE_5_ID || '1535057199574032384',
+  },
   devGuildId: process.env.DISCORD_DEV_GUILD_ID || null,
   supabaseUrl: process.env.SUPABASE_URL,
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
