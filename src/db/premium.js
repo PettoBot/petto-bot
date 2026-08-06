@@ -45,9 +45,9 @@ async function getGuildPremium(guildId) {
 
     const entitlement = entitlements[0];
     const notExpired = !entitlement.current_period_end || new Date(entitlement.current_period_end).getTime() > Date.now();
-    // A canceled subscription can remain paid through the current billing
-    // period. Keep its slots usable until Polar sends/indicates the period end.
-    const active = ['active', 'past_due', 'canceled'].includes(entitlement.status) && notExpired;
+    // Premium is fail-closed: only an active entitlement with a valid period
+    // unlocks paid limits. Past-due and canceled subscriptions use Free limits.
+    const active = entitlement.status === 'active' && notExpired;
     return {
       active,
       userId: active ? entitlement.user_id : null,
