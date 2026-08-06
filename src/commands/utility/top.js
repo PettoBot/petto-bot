@@ -4,6 +4,7 @@ const levelUsersDb = require('../../db/levelUsers');
 const { totalXpForLevel, xpNeeded } = require('../../utils/levelCurve');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { getVoiceConfig } = require('../../utils/levelSource');
 
 const PER_PAGE = 10;
 const COLOR = 0x4b4f59;
@@ -18,22 +19,26 @@ function navRow(page, totalPages, disabled = false) {
   );
 }
 
-async function buildPage(guild, page, config) {
+async function buildPage(guild, page, config, source = 'messages') {
   const offset = (page - 1) * PER_PAGE;
-  const rows = await levelUsersDb.getLeaderboardPage(guild.id, { offset, limit: PER_PAGE });
+  const rows = source === 'voice'
+    ? await levelUsersDb.getVoiceLeaderboardPage(guild.id, { offset, limit: PER_PAGE })
+    : await levelUsersDb.getLeaderboardPage(guild.id, { offset, limit: PER_PAGE });
 
   const lines = rows.map((row, i) => {
     const num = String(offset + i + 1).padStart(2, '0');
     const member = guild.members.cache.get(row.user_id);
     const name = member?.displayName ?? `<@${row.user_id}>`;
-    const currXp = row.xp - totalXpForLevel(row.level, config);
-    const needed = xpNeeded(row.level, config);
-    return `**\`${num}.\`** ${name}\n**»** Lv. **${row.level}** (${currXp.toLocaleString()}/${needed.toLocaleString()} XP)`;
+    const xp = source === 'voice' ? Number(row.voice_xp ?? 0) : Number(row.xp ?? 0);
+    const level = source === 'voice' ? Number(row.voice_level ?? 0) : Number(row.level ?? 0);
+    const currXp = xp - totalXpForLevel(level, config);
+    const needed = xpNeeded(level, config);
+    return `**\`${num}.\`** ${name}\n**»** Lv. **${level}** (${currXp.toLocaleString()}/${needed.toLocaleString()} XP)`;
   });
 
   return new EmbedBuilder()
     .setColor(COLOR)
-    .setTitle(`${guild.name} — Leaderboard`)
+    .setTitle(source === 'voice' ? `${guild.name} • Voice leaderboard` : `${guild.name} • Leaderboard`)
     .setThumbnail(guild.iconURL())
     .setDescription(lines.join('\n\n') || 'No data.');
 }
@@ -43,20 +48,23 @@ module.exports = {
     .setName('top')
     .setDescription('Server XP leaderboard.')
     .setDMPermission(false)
-    .addIntegerOption((o) => o.setName('page').setDescription('Page number').setRequired(false).setMinValue(1)),
+    .addIntegerOption((o) => o.setName('page').setDescription('Page number').setRequired(false).setMinValue(1))
+    .addStringOption((o) => o.setName('type').setDescription('Which leveling system to view').addChoices({ name: 'Messages', value: 'messages' }, { name: 'Voice', value: 'voice' }).setRequired(false)),
   aliases: ['leaderboard', 'lb', 'ranking'],
 
   async execute(interaction) {
     const config = await getConfig(interaction.guild.id);
-    if (!config?.enabled) {
-      await interaction.reply({ components: [textCard('The leveling system is not enabled in this server.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    const source = interaction.options.getString('type') ?? 'messages';
+    const sourceConfig = source === 'voice' ? getVoiceConfig(config ?? {}) : config;
+    if (!sourceConfig?.enabled) {
+      await interaction.reply({ components: [textCard(`${source === 'voice' ? 'Voice' : 'Message'} leveling is not enabled in this server.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
 
     await interaction.deferReply();
     await interaction.guild.members.fetch().catch(() => {});
 
-    const total = await levelUsersDb.countRanked(interaction.guild.id);
+    const total = source === 'voice' ? await levelUsersDb.countVoiceRanked(interaction.guild.id) : await levelUsersDb.countRanked(interaction.guild.id);
     if (!total) {
       await interaction.editReply({ components: [textCard('Nobody has ranked yet.', 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
       return;
@@ -65,7 +73,7 @@ module.exports = {
     const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
     let page = Math.min(Math.max(1, interaction.options.getInteger('page') ?? 1), totalPages);
 
-    const embed = await buildPage(interaction.guild, page, config);
+    const embed = await buildPage(interaction.guild, page, sourceConfig, source);
     embed.setFooter({ text: `${total} member(s) · Page ${page}/${totalPages}` });
 
     if (totalPages === 1) {
@@ -86,7 +94,7 @@ module.exports = {
       if (i.customId === 'top_prev') page = Math.max(1, page - 1);
       if (i.customId === 'top_next') page = Math.min(totalPages, page + 1);
 
-      const nextEmbed = await buildPage(interaction.guild, page, config);
+      const nextEmbed = await buildPage(interaction.guild, page, sourceConfig, source);
       nextEmbed.setFooter({ text: `${total} member(s) · Page ${page}/${totalPages}` });
       await i.update({ embeds: [nextEmbed], components: [navRow(page, totalPages)] });
     });

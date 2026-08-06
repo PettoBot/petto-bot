@@ -21,6 +21,12 @@ async function addXp(guildId, userId, { xpGain = 0, messageInc = 0, vcInc = 0 })
   return data;
 }
 
+async function addVoiceXp(guildId, userId, { xpGain = 0, vcInc = 0 }) {
+  const { data, error } = await supabase.rpc('add_voice_xp', { p_guild_id: guildId, p_user_id: userId, p_voice_xp_gain: xpGain, p_vc_inc: vcInc });
+  if (error) throw error;
+  return data;
+}
+
 async function setLevel(guildId, userId, level) {
   const { data, error } = await supabase.from('level_users').update({ level, updated_at: new Date().toISOString() }).eq('guild_id', guildId).eq('user_id', userId).select('*').single();
   if (error) throw error;
@@ -39,7 +45,7 @@ async function setXpAndLevel(guildId, userId, xp, level) {
 }
 
 async function resetUser(guildId, userId) {
-  const { error } = await supabase.from('level_users').upsert({ guild_id: guildId, user_id: userId, xp: 0, level: 0, messages: 0, vc_minutes: 0, updated_at: new Date().toISOString() }, { onConflict: 'guild_id,user_id' });
+  const { error } = await supabase.from('level_users').upsert({ guild_id: guildId, user_id: userId, xp: 0, level: 0, voice_xp: 0, voice_level: 0, messages: 0, vc_minutes: 0, updated_at: new Date().toISOString() }, { onConflict: 'guild_id,user_id' });
   if (error) throw error;
 }
 
@@ -62,4 +68,28 @@ async function getLeaderboardPage(guildId, { offset, limit }) {
   return data;
 }
 
-module.exports = { getUser, ensureUser, addXp, setLevel, setXpAndLevel, resetUser, getRank, countRanked, getLeaderboardPage };
+async function getVoiceRank(guildId, voiceXp) {
+  const { count, error } = await supabase.from('level_users').select('user_id', { count: 'exact', head: true }).eq('guild_id', guildId).gt('voice_xp', voiceXp);
+  if (error) throw error;
+  return (count ?? 0) + 1;
+}
+
+async function countVoiceRanked(guildId) {
+  const { count, error } = await supabase.from('level_users').select('user_id', { count: 'exact', head: true }).eq('guild_id', guildId).gt('voice_xp', 0);
+  if (error) throw error;
+  return count ?? 0;
+}
+
+async function getVoiceLeaderboardPage(guildId, { offset, limit }) {
+  const { data, error } = await supabase.from('level_users').select('*').eq('guild_id', guildId).gt('voice_xp', 0).order('voice_xp', { ascending: false }).range(offset, offset + limit - 1);
+  if (error) throw error;
+  return data;
+}
+
+async function setVoiceLevel(guildId, userId, level) {
+  const { data, error } = await supabase.from('level_users').update({ voice_level: level, updated_at: new Date().toISOString() }).eq('guild_id', guildId).eq('user_id', userId).select('*').single();
+  if (error) throw error;
+  return data;
+}
+
+module.exports = { getUser, ensureUser, addXp, addVoiceXp, setLevel, setVoiceLevel, setXpAndLevel, resetUser, getRank, countRanked, getLeaderboardPage, getVoiceRank, countVoiceRanked, getVoiceLeaderboardPage };
