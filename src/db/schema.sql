@@ -679,7 +679,7 @@ create table if not exists level_config (
   max_level          integer not null default 1000,
   notify_mode        text not null default 'reply' check (notify_mode in ('off', 'reply', 'channel', 'dm')),
   notify_channel_id  text,
-  notify_message     text not null default '{EMOJI} {user} just leveled up to **{level}**!',
+  notify_message     text not null default '{user} just leveled up to **{level}**!',
   notify_embed       boolean not null default false,
   notify_embed_template text,
   notify_every       integer not null default 1,
@@ -700,12 +700,22 @@ alter table level_config add column if not exists voice_rounding integer not nul
 alter table level_config add column if not exists voice_max_level integer not null default 1000;
 alter table level_config add column if not exists voice_notify_mode text not null default 'off';
 alter table level_config add column if not exists voice_notify_channel_id text;
-alter table level_config add column if not exists voice_notify_message text not null default '{EMOJI} {user} reached voice level **{level}**!';
+alter table level_config add column if not exists voice_notify_message text not null default '{user} reached voice level **{level}**!';
 alter table level_config add column if not exists voice_notify_embed boolean not null default false;
 alter table level_config add column if not exists voice_notify_embed_template text;
 alter table level_config add column if not exists voice_notify_every integer not null default 1;
 alter table level_config add column if not exists voice_role_mode text not null default 'highest';
 alter table level_config add column if not exists voice_ignored_channel_ids text[] not null default '{}';
+
+-- Remove Petto's old star from untouched default level-up messages while preserving
+-- custom messages configured by server administrators.
+update level_config
+set notify_message = '{user} just leveled up to **{level}**!'
+where notify_message = '{EMOJI} {user} just leveled up to **{level}**!';
+
+update level_config
+set voice_notify_message = '{user} reached voice level **{level}**!'
+where voice_notify_message = '{EMOJI} {user} reached voice level **{level}**!';
 
 alter table level_config enable row level security;
 
