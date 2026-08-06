@@ -1,16 +1,18 @@
 const { getConfig } = require('../db/levelConfig');
-const { getMultiplier, grantXp } = require('../utils/levelActions');
+const { getMultiplier, grantVoiceXp } = require('../utils/levelActions');
+const { getVoiceConfig } = require('../utils/levelSource');
 const logger = require('../utils/logger');
 
 const POLL_INTERVAL_MS = 60_000;
 
 async function processGuild(client, guild) {
   const config = await getConfig(guild.id);
-  if (!config?.enabled || !config.xp_per_vc_minute) return;
+  const voiceConfig = getVoiceConfig(config ?? {});
+  if (!voiceConfig.enabled || !config?.xp_per_vc_minute) return;
 
   for (const channel of guild.channels.cache.values()) {
     if (!channel.isVoiceBased?.() || channel.id === guild.afkChannelId) continue;
-    if (config.ignored_channel_ids.includes(channel.id)) continue;
+    if (voiceConfig.ignored_channel_ids.includes(channel.id)) continue;
 
     for (const member of channel.members.values()) {
       if (member.user.bot) continue;
@@ -19,7 +21,7 @@ async function processGuild(client, guild) {
       const multi = await getMultiplier(guild.id, channel.id, member);
       const xpGain = Math.round(config.xp_per_vc_minute * multi);
 
-      await grantXp({ client, guild, member, config, xpGain, vcInc: 1 }).catch((err) => logger.error(`Voice XP grant failed for ${member.id} in guild ${guild.id}:`, err));
+      await grantVoiceXp({ client, guild, member, config: voiceConfig, xpGain, vcInc: 1 }).catch((err) => logger.error(`Voice XP grant failed for ${member.id} in guild ${guild.id}:`, err));
     }
   }
 }

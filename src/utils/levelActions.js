@@ -70,19 +70,20 @@ async function stripRewardRoles(guild, member) {
   if (toRemove.length) await member.roles.remove(toRemove).catch(() => {});
 }
 
-async function notifyLevelUp({ client, guild, member, config, level, channel, message = null }) {
+async function notifyLevelUp({ client, guild, member, config, level, channel, message = null, source = 'text' }) {
   if (config.notify_mode === 'off') return;
   if (config.notify_every > 1 && level % config.notify_every !== 0) return;
 
   const userData = await levelUsersDb.getUser(guild.id, member.id);
-  const rank = await levelUsersDb.getRank(guild.id, userData?.xp ?? 0);
+  const xp = source === 'voice' ? userData?.voice_xp ?? 0 : userData?.xp ?? 0;
+  const rank = source === 'voice' ? await levelUsersDb.getVoiceRank(guild.id, xp) : await levelUsersDb.getRank(guild.id, xp);
 
   const ctx = {
     member,
     guild,
     channel,
     user: member.user,
-    levelData: { level, xp: userData?.xp ?? 0, xpNeeded: xpNeeded(level, config), rank },
+    levelData: { level, xp, xpNeeded: xpNeeded(level, config), rank, source },
   };
 
   const rawText = config.notify_message.replace(/\{EMOJI\}/g, EMOJI.STAR);
@@ -154,4 +155,21 @@ async function grantXp({ client, guild, member, config, xpGain, messageInc = 0, 
   return { ...updated, level: newLevel, leveledUp: newLevel > oldLevel };
 }
 
-module.exports = { getMultiplier, checkRewards, stripRewardRoles, notifyLevelUp, grantXp };
+async function grantVoiceXp({ client, guild, member, config, xpGain, vcInc = 1, channel = null, message = null }) {
+  const before = await levelUsersDb.ensureUser(guild.id, member.id);
+  const oldLevel = before.voice_level ?? 0;
+
+  const updated = await levelUsersDb.addVoiceXp(guild.id, member.id, { xpGain, vcInc });
+  const newLevel = Math.min(levelForXp(updated.voice_xp ?? 0, config), config.max_level);
+
+  if (newLevel !== oldLevel) await levelUsersDb.setVoiceLevel(guild.id, member.id, newLevel);
+
+  if (newLevel > oldLevel) {
+    await checkRewards(guild, member, newLevel, config).catch((err) => logger.error('Voice level reward grant failed:', err));
+    await notifyLevelUp({ client, guild, member, config, level: newLevel, channel, message, source: 'voice' }).catch((err) => logger.error('Voice level notify failed:', err));
+  }
+
+  return { ...updated, level: newLevel, leveledUp: newLevel > oldLevel };
+}
+
+module.exports = { getMultiplier, checkRewards, stripRewardRoles, notifyLevelUp, grantXp, grantVoiceXp };

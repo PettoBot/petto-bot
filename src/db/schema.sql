@@ -677,6 +677,21 @@ create table if not exists level_config (
 );
 
 alter table level_config add column if not exists notify_embed_template text;
+alter table level_config add column if not exists voice_enabled boolean not null default true;
+alter table level_config add column if not exists voice_curve_a numeric not null default 1;
+alter table level_config add column if not exists voice_curve_b numeric not null default 50;
+alter table level_config add column if not exists voice_curve_c numeric not null default 100;
+alter table level_config add column if not exists voice_difficulty numeric not null default 2.5;
+alter table level_config add column if not exists voice_rounding integer not null default 50;
+alter table level_config add column if not exists voice_max_level integer not null default 1000;
+alter table level_config add column if not exists voice_notify_mode text not null default 'off';
+alter table level_config add column if not exists voice_notify_channel_id text;
+alter table level_config add column if not exists voice_notify_message text not null default '{EMOJI} {user} reached voice level **{level}**!';
+alter table level_config add column if not exists voice_notify_embed boolean not null default false;
+alter table level_config add column if not exists voice_notify_embed_template text;
+alter table level_config add column if not exists voice_notify_every integer not null default 1;
+alter table level_config add column if not exists voice_role_mode text not null default 'highest';
+alter table level_config add column if not exists voice_ignored_channel_ids text[] not null default '{}';
 
 alter table level_config enable row level security;
 
@@ -692,8 +707,10 @@ create table if not exists level_users (
 );
 
 create index if not exists idx_level_users_leaderboard on level_users(guild_id, xp desc);
-
 alter table level_users enable row level security;
+alter table level_users add column if not exists voice_xp bigint not null default 0;
+alter table level_users add column if not exists voice_level integer not null default 0;
+create index if not exists idx_level_users_voice_leaderboard on level_users(guild_id, voice_xp desc);
 
 create table if not exists level_rewards (
   guild_id text not null references guilds(guild_id) on delete cascade,
@@ -734,6 +751,31 @@ begin
   on conflict (guild_id, user_id) do update
     set xp = level_users.xp + excluded.xp,
         messages = level_users.messages + excluded.messages,
+        vc_minutes = level_users.vc_minutes + excluded.vc_minutes,
+        updated_at = now()
+  returning * into v_row;
+
+  return v_row;
+end;
+$$;
+
+-- Voice XP has its own total and level so /rank voice and /top voice do not mix
+-- time spent in voice with message XP.
+create or replace function add_voice_xp(
+  p_guild_id      text,
+  p_user_id       text,
+  p_voice_xp_gain bigint,
+  p_vc_inc        bigint default 0
+) returns level_users
+language plpgsql
+as $$
+declare
+  v_row level_users;
+begin
+  insert into level_users (guild_id, user_id, voice_xp, vc_minutes)
+  values (p_guild_id, p_user_id, greatest(p_voice_xp_gain, 0), greatest(p_vc_inc, 0))
+  on conflict (guild_id, user_id) do update
+    set voice_xp = level_users.voice_xp + excluded.voice_xp,
         vc_minutes = level_users.vc_minutes + excluded.vc_minutes,
         updated_at = now()
   returning * into v_row;

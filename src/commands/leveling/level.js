@@ -9,6 +9,7 @@ const { totalXpForLevel, levelForXp } = require('../../utils/levelCurve');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { getTemplate } = require('../../db/embedTemplates');
+const { getVoiceConfig } = require('../../utils/levelSource');
 
 const ACTION_CHOICES = [
   { name: 'add', value: 'add' },
@@ -34,6 +35,8 @@ module.exports = {
         .addIntegerOption((o) => o.setName('max').setDescription('Maximum XP per message').setRequired(true).setMinValue(0)),
     )
     .addSubcommand((s) => s.setName('voice-xp').setDescription('XP awarded per minute in voice.').addIntegerOption((o) => o.setName('amount').setDescription('XP per minute').setRequired(true).setMinValue(0)))
+    .addSubcommand((s) => s.setName('voice-enable').setDescription('Turn voice leveling on/off.').addBooleanOption((o) => o.setName('enabled').setDescription('Enable?').setRequired(true)))
+    .addSubcommand((s) => s.setName('voice-curve').setDescription('Tune the voice XP-per-level formula.').addNumberOption((o) => o.setName('a').setDescription('Cubic coefficient').setRequired(false)).addNumberOption((o) => o.setName('b').setDescription('Square coefficient').setRequired(false)).addNumberOption((o) => o.setName('c').setDescription('Linear coefficient').setRequired(false)).addNumberOption((o) => o.setName('difficulty').setDescription('Overall multiplier').setRequired(false)).addIntegerOption((o) => o.setName('rounding').setDescription('Round totals to nearest N').setRequired(false).setMinValue(0)))
     .addSubcommand((s) => s.setName('cooldown').setDescription('Seconds between message-XP awards, per member.').addIntegerOption((o) => o.setName('seconds').setDescription('Cooldown').setRequired(true).setMinValue(0)))
     .addSubcommand((s) =>
       s
@@ -46,6 +49,7 @@ module.exports = {
         .addIntegerOption((o) => o.setName('rounding').setDescription('Round totals to the nearest N (default 50, 0 = off)').setRequired(false).setMinValue(0)),
     )
     .addSubcommand((s) => s.setName('max-level').setDescription('Level cap.').addIntegerOption((o) => o.setName('count').setDescription('Max level').setRequired(true).setMinValue(1)))
+    .addSubcommand((s) => s.setName('voice-max-level').setDescription('Voice leveling cap.').addIntegerOption((o) => o.setName('count').setDescription('Max voice level').setRequired(true).setMinValue(1)))
     .addSubcommand((s) =>
       s
         .setName('notify')
@@ -57,8 +61,11 @@ module.exports = {
         .addIntegerOption((o) => o.setName('every').setDescription('Only announce every N levels (default 1 = every level)').setRequired(false).setMinValue(1))
         .addStringOption((o) => o.setName('message').setDescription('Supports {user}, {level}, {level_xp}, {level_rank}, and every /embed variable').setRequired(false)),
     )
+    .addSubcommand((s) => s.setName('voice-notify').setDescription('Configure voice level-up announcements.').addStringOption((o) => o.setName('mode').setDescription('Where it posts').setRequired(true).addChoices({ name: 'off', value: 'off' }, { name: 'fixed channel', value: 'channel' }, { name: 'DM', value: 'dm' })).addChannelOption((o) => o.setName('channel').setDescription('Channel to use with mode:channel').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement).setRequired(false)).addBooleanOption((o) => o.setName('embed').setDescription('Use an embed').setRequired(false)).addStringOption((o) => o.setName('embed_template').setDescription('Saved /embed template').setRequired(false)).addIntegerOption((o) => o.setName('every').setDescription('Only announce every N levels').setRequired(false).setMinValue(1)).addStringOption((o) => o.setName('message').setDescription('Voice level-up message').setRequired(false)))
     .addSubcommand((s) => s.setName('role-mode').setDescription('Whether members keep every earned reward role, or just the highest.').addStringOption((o) => o.setName('mode').setDescription('Mode').setRequired(true).addChoices({ name: 'highest only', value: 'highest' }, { name: 'all earned', value: 'all' })))
+    .addSubcommand((s) => s.setName('voice-role-mode').setDescription('Voice reward role mode.').addStringOption((o) => o.setName('mode').setDescription('Mode').setRequired(true).addChoices({ name: 'highest only', value: 'highest' }, { name: 'all earned', value: 'all' })))
     .addSubcommand((s) => s.setName('ignore').setDescription('Toggle a channel out of/into XP tracking.').addChannelOption((o) => o.setName('channel').setDescription('Channel').setRequired(true)))
+    .addSubcommand((s) => s.setName('voice-ignore').setDescription('Toggle a voice channel out of/into voice XP tracking.').addChannelOption((o) => o.setName('channel').setDescription('Voice channel').addChannelTypes(ChannelType.GuildVoice, ChannelType.GuildStageVoice).setRequired(true)))
     .addSubcommand((s) =>
       s
         .setName('join')
@@ -137,18 +144,30 @@ module.exports = {
         return xpRangeCmd(interaction);
       case 'voice-xp':
         return voiceXpCmd(interaction);
+      case 'voice-enable':
+        return voiceEnableCmd(interaction);
+      case 'voice-curve':
+        return voiceCurveCmd(interaction);
       case 'cooldown':
         return cooldownCmd(interaction);
       case 'curve':
         return curveCmd(interaction);
       case 'max-level':
         return maxLevelCmd(interaction);
+      case 'voice-max-level':
+        return voiceMaxLevelCmd(interaction);
       case 'notify':
         return notifyCmd(interaction);
+      case 'voice-notify':
+        return voiceNotifyCmd(interaction);
       case 'role-mode':
         return roleModeCmd(interaction);
+      case 'voice-role-mode':
+        return voiceRoleModeCmd(interaction);
       case 'ignore':
         return ignoreCmd(interaction);
+      case 'voice-ignore':
+        return voiceIgnoreCmd(interaction);
       case 'join':
         return joinCmd(interaction);
       case 'sync-join':
@@ -196,6 +215,36 @@ async function voiceXpCmd(interaction) {
   await reply(interaction, `${EMOJI.APPROVE}  Voice XP set to **${amount}** per minute.`);
 }
 
+async function voiceEnableCmd(interaction) {
+  const enabled = interaction.options.getBoolean('enabled', true);
+  await defer(interaction);
+  await levelConfigDb.upsertConfig(interaction.guild.id, { voice_enabled: enabled });
+  await reply(interaction, `${EMOJI.APPROVE}  Voice leveling ${enabled ? 'enabled' : 'disabled'}.`, enabled ? 0xa5ea7a : 0x4b4f59);
+}
+
+async function voiceCurveCmd(interaction) {
+  const patch = {};
+  const a = interaction.options.getNumber('a');
+  const b = interaction.options.getNumber('b');
+  const c = interaction.options.getNumber('c');
+  const difficulty = interaction.options.getNumber('difficulty');
+  const rounding = interaction.options.getInteger('rounding');
+  if (a != null) patch.voice_curve_a = a;
+  if (b != null) patch.voice_curve_b = b;
+  if (c != null) patch.voice_curve_c = c;
+  if (difficulty != null) patch.voice_difficulty = difficulty;
+  if (rounding != null) patch.voice_rounding = rounding;
+  if (!Object.keys(patch).length) {
+    await interaction.reply({ content: 'Provide at least one voice curve value.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+  await defer(interaction);
+  const saved = await levelConfigDb.upsertConfig(interaction.guild.id, patch);
+  const voiceConfig = getVoiceConfig(saved);
+  const preview = [10, 25, 50].map((l) => `Lv.${l}: ${totalXpForLevel(l, voiceConfig).toLocaleString()} XP`).join(' • ');
+  await reply(interaction, `${EMOJI.APPROVE}  Voice XP curve updated.\n${preview}`);
+}
+
 async function cooldownCmd(interaction) {
   const seconds = interaction.options.getInteger('seconds', true);
   await defer(interaction);
@@ -234,6 +283,13 @@ async function maxLevelCmd(interaction) {
   await reply(interaction, `${EMOJI.APPROVE}  Max level set to **${count}**.`);
 }
 
+async function voiceMaxLevelCmd(interaction) {
+  const count = interaction.options.getInteger('count', true);
+  await defer(interaction);
+  await levelConfigDb.upsertConfig(interaction.guild.id, { voice_max_level: count });
+  await reply(interaction, `${EMOJI.APPROVE}  Max voice level set to **${count}**.`);
+}
+
 async function notifyCmd(interaction) {
   const mode = interaction.options.getString('mode', true);
   const channel = interaction.options.getChannel('channel');
@@ -266,11 +322,50 @@ async function notifyCmd(interaction) {
   await reply(interaction, `${EMOJI.APPROVE}  Level-up notifications: **${mode}**.`);
 }
 
+async function voiceNotifyCmd(interaction) {
+  const mode = interaction.options.getString('mode', true);
+  const channel = interaction.options.getChannel('channel');
+  const embed = interaction.options.getBoolean('embed');
+  const embedTemplate = interaction.options.getString('embed_template');
+  const every = interaction.options.getInteger('every');
+  const message = interaction.options.getString('message');
+
+  if (mode === 'channel' && !channel) {
+    await interaction.reply({ content: 'Provide `channel` when `mode` is `channel`.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  const patch = { voice_notify_mode: mode };
+  if (channel) patch.voice_notify_channel_id = channel.id;
+  if (embed != null) patch.voice_notify_embed = embed;
+  if (embedTemplate) {
+    const template = await getTemplate(interaction.guild.id, embedTemplate).catch(() => null);
+    if (!template) {
+      await interaction.reply({ content: `No saved embed template named \`${embedTemplate}\` was found.`, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    patch.voice_notify_embed_template = embedTemplate;
+  }
+  if (every != null) patch.voice_notify_every = every;
+  if (message) patch.voice_notify_message = message;
+
+  await defer(interaction);
+  await levelConfigDb.upsertConfig(interaction.guild.id, patch);
+  await reply(interaction, `${EMOJI.APPROVE}  Voice level-up notifications: **${mode}**.`);
+}
+
 async function roleModeCmd(interaction) {
   const mode = interaction.options.getString('mode', true);
   await defer(interaction);
   await levelConfigDb.upsertConfig(interaction.guild.id, { role_mode: mode });
   await reply(interaction, `${EMOJI.APPROVE}  Reward role mode: **${mode === 'highest' ? 'highest earned only' : 'all earned'}**.`);
+}
+
+async function voiceRoleModeCmd(interaction) {
+  const mode = interaction.options.getString('mode', true);
+  await defer(interaction);
+  await levelConfigDb.upsertConfig(interaction.guild.id, { voice_role_mode: mode });
+  await reply(interaction, `${EMOJI.APPROVE}  Voice reward role mode: **${mode === 'highest' ? 'highest earned only' : 'all earned'}**.`);
 }
 
 async function ignoreCmd(interaction) {
@@ -282,6 +377,17 @@ async function ignoreCmd(interaction) {
   wasIgnored ? ignored.delete(channel.id) : ignored.add(channel.id);
   await levelConfigDb.upsertConfig(interaction.guild.id, { ignored_channel_ids: [...ignored] });
   await reply(interaction, `${EMOJI.APPROVE}  ${channel} ${wasIgnored ? 'removed from' : 'added to'} ignored channels.`);
+}
+
+async function voiceIgnoreCmd(interaction) {
+  const channel = interaction.options.getChannel('channel', true);
+  await defer(interaction);
+  const config = await levelConfigDb.ensureConfig(interaction.guild.id);
+  const ignored = new Set(config.voice_ignored_channel_ids ?? []);
+  const wasIgnored = ignored.has(channel.id);
+  wasIgnored ? ignored.delete(channel.id) : ignored.add(channel.id);
+  await levelConfigDb.upsertConfig(interaction.guild.id, { voice_ignored_channel_ids: [...ignored] });
+  await reply(interaction, `${EMOJI.APPROVE}  ${channel} ${wasIgnored ? 'removed from' : 'added to'} ignored voice channels.`);
 }
 
 async function joinCmd(interaction) {
@@ -352,13 +458,16 @@ async function statusCmd(interaction) {
   const lines = [
     `**Enabled:** ${config.enabled ? `${EMOJI.APPROVE} Yes` : `${EMOJI.DENY} No`}`,
     `**Message XP:** ${config.xp_min}-${config.xp_max} every ${config.cooldown_seconds}s`,
-    `**Voice XP:** ${config.xp_per_vc_minute}/min`,
+    `**Voice leveling:** ${config.voice_enabled === false ? `${EMOJI.DENY} Disabled` : `${EMOJI.APPROVE} Enabled`} · ${config.xp_per_vc_minute}/min`,
+    `**Voice curve:** a=${config.voice_curve_a ?? config.curve_a} b=${config.voice_curve_b ?? config.curve_b} c=${config.voice_curve_c ?? config.curve_c} difficulty=${config.voice_difficulty ?? config.difficulty} rounding=${config.voice_rounding ?? config.rounding}`,
+    `**Voice max level:** ${config.voice_max_level ?? config.max_level}`,
     `**Curve:** a=${config.curve_a} b=${config.curve_b} c=${config.curve_c} difficulty=${config.difficulty} rounding=${config.rounding}`,
     `**Max level:** ${config.max_level}`,
     `**Role mode:** ${config.role_mode}`,
     `**Notify:** ${config.notify_mode}${config.notify_channel_id ? ` (<#${config.notify_channel_id}>)` : ''}${config.notify_every > 1 ? `, every ${config.notify_every} levels` : ''}`,
     `**Join bonus:** ${config.join_level ? `level ${config.join_level}` : config.join_xp ? `${config.join_xp} XP` : 'None'}`,
     `**Ignored channels:** ${config.ignored_channel_ids.length ? config.ignored_channel_ids.map((id) => `<#${id}>`).join(', ') : 'None'}`,
+    `**Ignored voice channels:** ${(config.voice_ignored_channel_ids ?? []).length ? config.voice_ignored_channel_ids.map((id) => `<#${id}>`).join(', ') : 'None'}`,
     `**Rewards:** ${rewards.length ? rewards.map((r) => `Lv.${r.level} → <@&${r.role_id}>`).join(', ') : 'None'}`,
     `**Multipliers:** ${multipliers.length ? multipliers.map((m) => `${m.target_type === 'role' ? `<@&${m.target_id}>` : `<#${m.target_id}>`} ×${m.multiplier}`).join(', ') : 'None'}`,
   ];
