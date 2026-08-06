@@ -1,8 +1,7 @@
 const { EMOJI } = require('./emojis');
 
-// A 10-segment bar built from 9 custom emojis (start/middle/end × full/half/empty), same
-// structure as bli's — falls back to a plain text bar until those are added to emojis.js
-// (see README's "Leveling / rank / leaderboard" section for exactly which 9 to make).
+// A 10-segment bar built from Petto's 9 custom emojis (start/middle/end × full/half/empty),
+// matching Bli's geometry without reusing Bli's emoji set.
 const HAS_CUSTOM_BAR = Boolean(EMOJI.BAR_START_FULL);
 
 function buildProgressBarEmoji(progress) {

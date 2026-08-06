@@ -667,6 +667,7 @@ create table if not exists level_config (
   notify_channel_id  text,
   notify_message     text not null default '{EMOJI} {user} just leveled up to **{level}**!',
   notify_embed       boolean not null default false,
+  notify_embed_template text,
   notify_every       integer not null default 1,
   role_mode          text not null default 'highest' check (role_mode in ('highest', 'all')),
   ignored_channel_ids text[] not null default '{}',
@@ -674,6 +675,8 @@ create table if not exists level_config (
   join_level         integer not null default 0,
   updated_at         timestamptz not null default now()
 );
+
+alter table level_config add column if not exists notify_embed_template text;
 
 alter table level_config enable row level security;
 
