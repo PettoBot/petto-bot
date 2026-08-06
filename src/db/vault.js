@@ -93,6 +93,12 @@ async function listAudit(guildId, limit = 10) {
   return rows;
 }
 
+async function getSchedule(guildId) {
+  await ensureSchema();
+  const { rows } = await pool.query('select * from petto_vault_schedules where guild_id = $1 limit 1', [guildId]);
+  return rows[0] ?? null;
+}
+
 async function upsertSchedule(guildId, intervalHours, retentionCount, updatedBy) {
   await ensureSchema();
   const { rows } = await pool.query(
@@ -131,4 +137,4 @@ async function pruneScheduledBackups(guildId, retentionCount) {
   )`, [guildId, retentionCount]);
 }
 
-module.exports = { isConfigured, ensureSchema, createBackup, listBackups, getBackup, recordAudit, listAudit, upsertSchedule, removeSchedule, listDueSchedules, advanceSchedule, pruneScheduledBackups };
+module.exports = { isConfigured, ensureSchema, createBackup, listBackups, getBackup, recordAudit, listAudit, getSchedule, upsertSchedule, removeSchedule, listDueSchedules, advanceSchedule, pruneScheduledBackups };

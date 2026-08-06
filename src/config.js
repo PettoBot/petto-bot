@@ -20,6 +20,9 @@ module.exports = {
   databaseUrl: process.env.DATABASE_URL || null,
   // Optional dedicated PostgreSQL database for Petto Vault backups and audit history.
   vaultDatabaseUrl: process.env.PETTO_VAULT_DATABASE_URL || null,
+  // Shared secret for server-side dashboard requests. Keep this identical to the
+  // web worker secret, but never send it to the browser.
+  dashboardApiSecret: process.env.PETTO_DASHBOARD_API_SECRET || null,
   // Optional: powers /automod link (Google Safe Browsing URL scanning).
   googleSafeBrowsingKey: process.env.GOOGLE_SAFE_BROWSING_API_KEY || null,
   // Optional: verification system (Cloudflare Turnstile). All four must be set for /verify to work.
