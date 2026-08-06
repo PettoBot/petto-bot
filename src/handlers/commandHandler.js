@@ -94,6 +94,9 @@ function collectCommandData() {
   return findCommandFiles(COMMANDS_DIR)
     .map((filePath) => ({ filePath, command: require(filePath) }))
     .filter(({ command }) => command?.data)
+    // Prefix-only commands keep a SlashCommandBuilder for the shared parser,
+    // but must never be registered as Discord slash commands.
+    .filter(({ command }) => !command.prefixOnly)
     .filter(({ filePath, command }) => {
       const type = command.data.toJSON().type ?? 1;
       return type !== 1 || categoryFromPath(filePath) === 'roleplay';

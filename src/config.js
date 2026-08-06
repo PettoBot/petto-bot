@@ -30,6 +30,7 @@ for (const key of required) {
 module.exports = {
   token: process.env.DISCORD_TOKEN,
   clientId: process.env.DISCORD_CLIENT_ID,
+  ownerId: process.env.PETTO_OWNER_ID || '293504726505357312',
   devGuildId: process.env.DISCORD_DEV_GUILD_ID || null,
   supabaseUrl: process.env.SUPABASE_URL,
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
