@@ -20,6 +20,9 @@ module.exports = {
   databaseUrl: process.env.DATABASE_URL || null,
   // Optional: powers /automod link (Google Safe Browsing URL scanning).
   googleSafeBrowsingKey: process.env.GOOGLE_SAFE_BROWSING_API_KEY || null,
+  // Optional: /search result previews. Without these, the command still returns a Google link.
+  googleSearchApiKey: process.env.GOOGLE_SEARCH_API_KEY || null,
+  googleSearchCx: process.env.GOOGLE_SEARCH_CX || null,
   // Optional: verification system (Cloudflare Turnstile). All four must be set for /verify to work.
   verifyBaseUrl: process.env.VERIFY_BASE_URL || null,
   turnstileSiteKey: process.env.TURNSTILE_SITE_KEY || null,

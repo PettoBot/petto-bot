@@ -3,6 +3,8 @@ const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 const deleted = new Map();
 const edited = new Map();
+const known = new Map();
+const MAX_KNOWN_MESSAGES = 5000;
 
 function trim(list) {
   const cutoff = Date.now() - MAX_AGE_MS;
@@ -38,8 +40,29 @@ function snapshotMessage(message) {
 
 function remember(map, message, extra = {}) {
   if (!message?.guild || !message.channelId) return;
-  const entry = { ...extra, message: snapshotMessage(message), capturedAt: Date.now() };
+  const entry = { ...extra, message: snapshotFor(message), capturedAt: Date.now() };
   map.set(message.channelId, trim([entry, ...(map.get(message.channelId) ?? [])]));
+}
+
+function rememberKnown(message) {
+  if (!message?.guild || !message.channelId || !message.id) return;
+  known.set(message.id, { message: snapshotMessage(message), capturedAt: Date.now() });
+  while (known.size > MAX_KNOWN_MESSAGES) known.delete(known.keys().next().value);
+}
+
+function snapshotFor(message) {
+  const current = snapshotMessage(message);
+  const previous = known.get(message.id)?.message;
+  if (!previous) return current;
+
+  return {
+    ...previous,
+    ...current,
+    content: current.content || previous.content,
+    attachments: current.attachments.length ? current.attachments : previous.attachments,
+    embeds: current.embeds.length ? current.embeds : previous.embeds,
+    author: { ...previous.author, ...current.author, name: current.author.name === 'Unknown user' ? previous.author.name : current.author.name },
+  };
 }
 
 function rememberDeleted(message) {
@@ -48,7 +71,8 @@ function rememberDeleted(message) {
 
 function rememberEdited(oldMessage, newMessage) {
   if (!oldMessage?.guild || !newMessage?.guild || oldMessage.content === newMessage.content) return;
-  remember(edited, newMessage, { before: oldMessage.content ?? '', after: newMessage.content ?? '' });
+  rememberKnown(newMessage);
+  remember(edited, newMessage, { before: snapshotFor(oldMessage).content ?? '', after: newMessage.content ?? '' });
 }
 
 function get(map, channelId, index = 1) {
@@ -65,4 +89,4 @@ function getEdited(channelId, index) {
   return get(edited, channelId, index);
 }
 
-module.exports = { rememberDeleted, rememberEdited, getDeleted, getEdited, snapshotMessage, MAX_ENTRIES_PER_CHANNEL };
+module.exports = { rememberKnown, rememberDeleted, rememberEdited, getDeleted, getEdited, snapshotMessage, MAX_ENTRIES_PER_CHANNEL };
