@@ -1,6 +1,7 @@
 const { Events, ActivityType } = require('discord.js');
 const { warmGuild } = require('../utils/inviteCache');
 const logger = require('../utils/logger');
+const { attachDiscordLogger, startDiscordStatusJob } = require('../utils/discordOps');
 
 module.exports = {
   name: Events.ClientReady,
@@ -12,6 +13,8 @@ module.exports = {
     });
 
     logger.info(`Petto is online as ${client.user.tag}, serving ${client.guilds.cache.size} guild(s).`);
+    attachDiscordLogger(client);
+    startDiscordStatusJob(client);
 
     // Warms the invite-tracking cache for every guild so the first join after startup can already
     // be attributed correctly, instead of only starting to work after the first InviteCreate/Delete.

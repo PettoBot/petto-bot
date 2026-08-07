@@ -1,11 +1,10 @@
 const { Events, AuditLogEvent, ContainerBuilder, TextDisplayBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
 const { EMOJI } = require('../utils/emojis');
 const logger = require('../utils/logger');
+const { sendGuildLifecycleLog } = require('../utils/discordOps');
 
-// Where join notifications go. Hardcoded on purpose (same convention as the team
-// roster in petto-web): this is an operational detail for the bot owner, not
-// something that should need its own env var on every host.
-const LOG_CHANNEL_ID = '1480736317787607090';
+// The configured operations channel receives the join event; the shared lifecycle
+// helper also mirrors it to the general operations channel.
 const OWNER_ID = '293504726505357312';
 
 /** Public-facing thank-you sent to whoever added the bot, no internal server data in it. */
@@ -76,8 +75,7 @@ module.exports = {
         `Invite: ${inviteUrl ?? "couldn't create one, missing permission"}`,
       ].join('\n');
 
-      const logChannel = await guild.client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
-      if (logChannel) await logChannel.send({ content }).catch((err) => logger.warn('Join log channel send failed:', err.message));
+      await sendGuildLifecycleLog(guild.client, { kind: 'join', guild, ownerId: owner?.id, inviter, inviteUrl });
 
       const ownerUser = await guild.client.users.fetch(OWNER_ID).catch(() => null);
       if (ownerUser) await ownerUser.send({ content }).catch(() => {});
