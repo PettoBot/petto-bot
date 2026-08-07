@@ -147,7 +147,6 @@ function publicStatusEmbed(client) {
     .addFields(
       { name: 'Status', value: 'Online', inline: true },
       { name: 'Servers', value: String(guildCount(client)), inline: true },
-      { name: 'Members', value: String(memberCount(client)), inline: true },
       { name: 'Latency', value: `${Math.max(0, Math.round(client.ws.ping))} ms`, inline: true },
       { name: 'Uptime', value: `<t:${Math.floor((Date.now() - process.uptime() * 1000) / 1000)}:R>`, inline: true },
     )
@@ -214,7 +213,7 @@ async function reportDiscordStatus(client) {
 
 function startDiscordStatusJob(client) {
   registerGatewayStatusEvents(client);
-  announceStatusHistory(client, 'online', `Petto is online with **${guildCount(client)}** servers and **${memberCount(client)}** cached members.`, { force: true }).catch(() => {});
+  announceStatusHistory(client, 'online', `Petto is online and serving **${guildCount(client)}** servers.`, { force: true }).catch(() => {});
   reportDiscordStatus(client).catch(() => {});
   const timer = setInterval(() => {
     reportDiscordStatus(client).catch(() => {});
