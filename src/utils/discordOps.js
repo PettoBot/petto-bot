@@ -1,10 +1,19 @@
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder, Events, Status } = require('discord.js');
 const config = require('../config');
 const logger = require('./logger');
 
 const STATUS_MARKER = 'Petto operational status';
 const STATUS_INTERVAL_MS = 60_000;
 const statusMessages = new Map();
+const STATUS_ROLE_ID = '1535350543973748837';
+const STATUS_ALERT = '<a:campana:1531389377949859870>';
+const STATUS_EMOJIS = {
+  online: '<:online:1535353909751709768>',
+  outage: '<:outage:1535353911488159825>',
+  idle: '<:idle:1535353913258151957>',
+  offline: '<:offline:1535353908027986040>',
+};
+let lastHistoryState = null;
 let loggerAttached = false;
 
 function channelIdFor(kind) {
@@ -63,6 +72,7 @@ async function sendGuildLifecycleLog(client, options) {
   const embed = lifecycleEmbed(options);
   const specific = options.kind === 'join' ? channelIdFor('joinLog') : channelIdFor('leaves');
   const ids = [...new Set([specific, channelIdFor('general')].filter(Boolean))];
+  logger.info(`Guild lifecycle: ${options.kind === 'join' ? 'joined' : 'left'} guild=${options.guild.id} name=${options.guild.name} members=${options.guild.memberCount ?? 'unknown'}`);
   await Promise.all(ids.map((id) => sendToChannel(client, id, { embeds: [embed] })));
 }
 
@@ -72,6 +82,61 @@ function guildCount(client) {
 
 function memberCount(client) {
   return [...client.guilds.cache.values()].reduce((total, guild) => total + (guild.memberCount || 0), 0);
+}
+
+function aggregateGatewayState(client) {
+  const shards = [...client.ws.shards.values()];
+  if (!shards.length || shards.every((shard) => shard.status === Status.Ready)) return 'online';
+  if (shards.every((shard) => shard.status === Status.Disconnected)) return 'offline';
+  if (shards.some((shard) => [Status.Disconnected, Status.Reconnecting].includes(shard.status))) return 'outage';
+  return 'idle';
+}
+
+function statusHistoryText(state, details) {
+  const labels = { online: 'All services operational', idle: 'Service degradation detected', outage: 'Partial outage detected', offline: 'Petto is offline' };
+  const emoji = STATUS_EMOJIS[state] || STATUS_EMOJIS.idle;
+  const alert = state === 'online' ? '' : `${STATUS_ALERT} | <@&${STATUS_ROLE_ID}>\n`;
+  return `${emoji} **${labels[state] || 'Status update'}**\n${alert}${details}`;
+}
+
+async function announceStatusHistory(client, state, details, { force = false } = {}) {
+  if (!force && state === lastHistoryState) return;
+  const channelId = channelIdFor('statusHistory');
+  const channel = await getTextChannel(client, channelId);
+  if (!channel) return;
+
+  logger.info(`Status event: state=${state} channel=${channelId} details=${details}`);
+
+  const sent = await channel.send({
+    content: statusHistoryText(state, details),
+    allowedMentions: { roles: state === 'online' ? [] : [STATUS_ROLE_ID] },
+  }).catch(() => null);
+  if (sent) lastHistoryState = state;
+}
+
+function registerGatewayStatusEvents(client) {
+  const announce = (state, details) => announceStatusHistory(client, state, details).catch(() => {});
+  client.on(Events.ShardReconnecting, (shardId) => {
+    announce('idle', `Shard **${shardId}** is reconnecting. Some servers may respond slowly while Discord restores the connection.`);
+  });
+  client.on(Events.ShardDisconnect, (closeEvent, shardId) => {
+    announce('outage', `Shard **${shardId}** disconnected (code \`${closeEvent?.code ?? 'unknown'}\`). Petto is attempting to recover automatically.`);
+  });
+  client.on(Events.ShardError, (error, shardId) => {
+    announce('outage', `Shard **${shardId}** reported an error: \`${redact(error?.message || error)}\``);
+  });
+  client.on(Events.ShardReady, (shardId) => {
+    const state = aggregateGatewayState(client);
+    announce(state, state === 'online'
+      ? `Shard **${shardId}** recovered. **All services are restored.**`
+      : `Shard **${shardId}** is ready, but another shard is still recovering.`);
+  });
+  client.on(Events.ShardResume, (shardId, replayedEvents) => {
+    const state = aggregateGatewayState(client);
+    announce(state, state === 'online'
+      ? `Shard **${shardId}** resumed successfully. **All services are restored.**`
+      : `Shard **${shardId}** resumed with ${replayedEvents ?? 0} replayed events.`);
+  });
 }
 
 function publicStatusEmbed(client) {
@@ -133,6 +198,14 @@ async function upsertStatusMessage(client, kind, embed) {
 
 async function reportDiscordStatus(client) {
   if (!client.user) return;
+  const shards = [...client.ws.shards.values()]
+    .map((shard) => `${shard.id}:${Status[shard.status] || shard.status}/${Math.round(shard.ping)}ms`)
+    .join(' ');
+  logger.info(
+    `Discord health snapshot: state=${aggregateGatewayState(client)} guilds=${guildCount(client)} members=${memberCount(client)} ` +
+    `ping=${Math.max(0, Math.round(client.ws.ping))}ms uptime=${Math.floor(process.uptime())}s ` +
+    `rss=${Math.round(process.memoryUsage().rss / 1024 / 1024)}MB shards=[${shards || 'none'}]`,
+  );
   await Promise.all([
     upsertStatusMessage(client, 'publicStatus', publicStatusEmbed(client)),
     upsertStatusMessage(client, 'internalStatus', internalStatusEmbed(client)),
@@ -140,8 +213,16 @@ async function reportDiscordStatus(client) {
 }
 
 function startDiscordStatusJob(client) {
+  registerGatewayStatusEvents(client);
+  announceStatusHistory(client, 'online', `Petto is online with **${guildCount(client)}** servers and **${memberCount(client)}** cached members.`, { force: true }).catch(() => {});
   reportDiscordStatus(client).catch(() => {});
-  const timer = setInterval(() => reportDiscordStatus(client).catch(() => {}), STATUS_INTERVAL_MS);
+  const timer = setInterval(() => {
+    reportDiscordStatus(client).catch(() => {});
+    const state = aggregateGatewayState(client);
+    announceStatusHistory(client, state, state === 'online'
+      ? `Petto is healthy with **${guildCount(client)}** servers.`
+      : 'Discord connectivity is not fully healthy. Petto is attempting to recover automatically.').catch(() => {});
+  }, STATUS_INTERVAL_MS);
   timer.unref?.();
 }
 

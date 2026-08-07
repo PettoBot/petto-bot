@@ -37,6 +37,7 @@ module.exports = {
     joinLog: process.env.PETTO_JOIN_LOG_CHANNEL_ID || '1480736317787607090',
     publicStatus: process.env.PETTO_STATUS_PUBLIC_CHANNEL_ID || '1535351018836070480',
     internalStatus: process.env.PETTO_STATUS_INTERNAL_CHANNEL_ID || '1535350977333305374',
+    statusHistory: process.env.PETTO_STATUS_HISTORY_CHANNEL_ID || '1535354406986580129',
     leaves: process.env.PETTO_LEAVE_LOG_CHANNEL_ID || '1535350937059729498',
     general: process.env.PETTO_GENERAL_LOG_CHANNEL_ID || '1535351181990166620',
   },
