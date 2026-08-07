@@ -5,7 +5,7 @@ const logger = require('./logger');
 const STATUS_MARKER = 'Petto operational status';
 const STATUS_INTERVAL_MS = 60_000;
 const statusMessages = new Map();
-const STATUS_ROLE_ID = '1535350543973748837';
+const STATUS_ROLE_ID = '1535390039780098200';
 const STATUS_ALERT = '<a:campana:1531389377949859870>';
 const STATUS_EMOJIS = {
   online: '<:online:1535353909751709768>',
