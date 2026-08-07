@@ -1,17 +1,19 @@
 const { SlashCommandBuilder, PermissionFlagsBits, AttachmentBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 const { createBackup, listBackups, getBackup, recordAudit, vault } = require('../../db/backups');
+const { restoreBackup } = require('../../utils/backupRestore');
 const { COLORS } = require('../../utils/colors');
 
 module.exports = {
   aliases: ['backups', 'serverbackup'],
   data: new SlashCommandBuilder()
     .setName('backup')
-    .setDescription('Create and export a safe snapshot of this server configuration.')
+    .setDescription('Create, export and restore a safe snapshot of this server configuration.')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false)
     .addSubcommand((sub) => sub.setName('create').setDescription('Save roles, channels, permissions, emojis and server settings.').addStringOption((opt) => opt.setName('label').setDescription('Optional name for this backup').setMaxLength(80).setRequired(false)))
     .addSubcommand((sub) => sub.setName('list').setDescription('List the latest saved backups.'))
     .addSubcommand((sub) => sub.setName('export').setDescription('Download a backup as a JSON file.').addIntegerOption((opt) => opt.setName('id').setDescription('Backup ID, or omit it for the latest one').setMinValue(1).setRequired(false)))
+    .addSubcommand((sub) => sub.setName('restore').setDescription('Restore a snapshot. Administrator and confirmation required.').addIntegerOption((opt) => opt.setName('id').setDescription('Backup ID to restore').setMinValue(1).setRequired(true)).addBooleanOption((opt) => opt.setName('confirm').setDescription('Confirm the restore and create a safety backup first').setRequired(true)).addStringOption((opt) => opt.setName('mode').setDescription('Merge without deleting, or replace extra resources').addChoices({ name: 'Merge (safe)', value: 'merge' }, { name: 'Replace (deletes extras)', value: 'replace' }).setRequired(false)))
     .addSubcommand((sub) => sub.setName('schedule').setDescription('Create automatic backups.').addIntegerOption((opt) => opt.setName('hours').setDescription('Hours between backups').setMinValue(1).setMaxValue(168).setRequired(true)).addIntegerOption((opt) => opt.setName('retention').setDescription('Scheduled backups to keep').setMinValue(1).setMaxValue(30).setRequired(false)))
     .addSubcommand((sub) => sub.setName('unschedule').setDescription('Disable automatic backups.'))
     .addSubcommand((sub) => sub.setName('audit').setDescription('Show the backup activity history.').addIntegerOption((opt) => opt.setName('limit').setDescription('Entries to show').setMinValue(1).setMaxValue(20).setRequired(false))),
@@ -20,6 +22,7 @@ module.exports = {
     const sub = interaction.options.getSubcommand();
     if (sub === 'create') return create(interaction);
     if (sub === 'export') return exportBackup(interaction);
+    if (sub === 'restore') return restore(interaction);
     if (sub === 'schedule') return schedule(interaction);
     if (sub === 'unschedule') return unschedule(interaction);
     if (sub === 'audit') return audit(interaction);
@@ -72,6 +75,41 @@ async function exportBackup(interaction) {
   await interaction.editReply({ content: `Backup **#${backup.id}** · ${backup.label || 'Manual backup'}`, files: [file] });
 }
 
+async function restore(interaction) {
+  if (!interaction.member?.permissions?.has?.('Administrator')) {
+    await interaction.reply({ content: 'Only server administrators can restore a backup.' });
+    return;
+  }
+
+  const id = interaction.options.getInteger('id', true);
+  const mode = interaction.options.getString('mode') || 'merge';
+  const confirmed = interaction.options.getBoolean('confirm', true);
+  const backup = await getBackup(interaction.guild.id, id);
+  if (!backup) {
+    await interaction.reply({ content: `Backup #${id} was not found.` });
+    return;
+  }
+
+  const snapshot = backup.snapshot;
+  if (!confirmed) {
+    await interaction.reply({
+      content: `Restore **#${id}** is ready in **${mode}** mode. It contains **${snapshot.roles?.length ?? 0} roles**, **${snapshot.channels?.length ?? 0} channels** and **${snapshot.emojis?.length ?? 0} emojis**. A safety backup is created first. Run '!backup restore ${id} true ${mode}' to confirm. Replace mode deletes channels and roles that are not in this snapshot.`,
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const safety = await createBackup(interaction.guild.id, interaction.user.id, `Before restoring backup #${id}`, buildSnapshot(interaction.guild), 'manual');
+  const result = await restoreBackup(interaction.guild, snapshot, { mode, reason: `Petto backup #${id} restored by ${interaction.user.tag}` });
+  await recordAudit(interaction.guild.id, interaction.user.id, 'backup_restored', id, { mode, safetyBackupId: safety.id, result }).catch(() => {});
+  const failed = result.roles.failed + result.channels.failed + result.emojis.failed + result.errors.length;
+  const status = failed ? 'Restore finished with warnings' : 'Backup restored';
+  const details = `Roles: **${result.roles.created} created**, **${result.roles.updated} updated** · Channels: **${result.channels.created} created**, **${result.channels.updated} updated** · Emojis: **${result.emojis.created} created**, **${result.emojis.updated} updated**${mode === 'replace' ? ` · Deleted: **${result.deleted.channels} channels**, **${result.deleted.roles} roles**` : ''}`;
+  await interaction.editReply({
+    embeds: [new EmbedBuilder().setColor(failed ? COLORS.YELLOW : COLORS.GREEN).setTitle(status).setDescription(`Backup **#${id}** restored in **${mode}** mode. Safety backup: **#${safety.id}**.\n\n${details}${failed ? `\n\n${result.errors.slice(0, 5).map((error) => `• ${error}`).join('\n')}` : ''}`)],
+  });
+}
+
 async function schedule(interaction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   if (!vault.isConfigured()) {
@@ -117,6 +155,8 @@ function buildSnapshot(guild) {
     guild: {
       id: guild.id,
       name: guild.name,
+      iconURL: guild.iconURL({ extension: 'png', size: 1024 }),
+      bannerURL: guild.bannerURL({ extension: 'png', size: 1024 }),
       verificationLevel: guild.verificationLevel,
       defaultMessageNotifications: guild.defaultMessageNotifications,
       explicitContentFilter: guild.explicitContentFilter,
@@ -137,6 +177,7 @@ function buildSnapshot(guild) {
         permissions: role.permissions.bitfield.toString(),
       })),
     channels: [...guild.channels.cache.values()]
+      .filter((channel) => !channel.isThread?.())
       .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
       .map((channel) => ({
         id: channel.id,
@@ -149,9 +190,13 @@ function buildSnapshot(guild) {
         rateLimitPerUser: 'rateLimitPerUser' in channel ? channel.rateLimitPerUser : 0,
         bitrate: 'bitrate' in channel ? channel.bitrate : null,
         userLimit: 'userLimit' in channel ? channel.userLimit : null,
+        rtcRegion: 'rtcRegion' in channel ? channel.rtcRegion : null,
+        videoQualityMode: 'videoQualityMode' in channel ? channel.videoQualityMode : null,
+        defaultAutoArchiveDuration: 'defaultAutoArchiveDuration' in channel ? channel.defaultAutoArchiveDuration : null,
+        defaultThreadRateLimitPerUser: 'defaultThreadRateLimitPerUser' in channel ? channel.defaultThreadRateLimitPerUser : null,
         permissionOverwrites: channel.permissionOverwrites?.cache.map((overwrite) => ({ id: overwrite.id, type: overwrite.type, allow: overwrite.allow.bitfield.toString(), deny: overwrite.deny.bitfield.toString() })) ?? [],
       })),
-    emojis: [...guild.emojis.cache.values()].map((emoji) => ({ id: emoji.id, name: emoji.name, animated: emoji.animated })),
+    emojis: [...guild.emojis.cache.values()].map((emoji) => ({ id: emoji.id, name: emoji.name, animated: emoji.animated, url: emoji.imageURL({ extension: emoji.animated ? 'gif' : 'png', size: 256 }) })),
   };
 }
 

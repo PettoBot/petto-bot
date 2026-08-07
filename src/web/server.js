@@ -10,6 +10,7 @@ const { getTicketById } = require('../db/tickets');
 const { logVerification } = require('../utils/verificationLog');
 const { buildVerifiedDM } = require('../utils/verifyMessage');
 const { createBackup, listBackups, getBackup, recordAudit, vault } = require('../db/backups');
+const { restoreBackup } = require('../utils/backupRestore');
 const { buildSnapshot } = require('../commands/config/backup');
 const { renderVerifyPage } = require('./verifyPage');
 const { renderHomePage } = require('./homePage');
@@ -71,7 +72,7 @@ function startServer(client) {
         res.status(403).json({ ok: false, error: 'no_access' });
         return null;
       }
-      return { guild, userId };
+      return { guild, userId, isAdministrator: member.permissions.has(PermissionFlagsBits.Administrator) };
     } catch (err) {
       logger.error(`Dashboard could not authorize guild ${req.params.guildId}:`, err);
       res.status(404).json({ ok: false, error: 'guild_unavailable' });
@@ -111,6 +112,25 @@ function startServer(client) {
           const snapshot = buildSnapshot(guild);
           const saved = await createBackup(guild.id, userId, String(req.body?.label || '').trim() || null, snapshot);
           await recordAudit(guild.id, userId, 'backup_created', saved.id, { source: saved.source || 'manual', label: saved.label });
+        } else if (action === 'restore') {
+          if (!authorized.isAdministrator) {
+            res.status(403).json({ ok: false, error: 'administrator_required' });
+            return;
+          }
+          const backupId = Number(req.body?.backup_id);
+          const mode = String(req.body?.mode || 'merge');
+          if (!Number.isInteger(backupId) || backupId < 1 || !['merge', 'replace'].includes(mode) || req.body?.confirm !== true) {
+            res.status(400).json({ ok: false, error: 'restore_confirmation_required' });
+            return;
+          }
+          const backup = await getBackup(guild.id, backupId);
+          if (!backup) {
+            res.status(404).json({ ok: false, error: 'backup_not_found' });
+            return;
+          }
+          const safety = await createBackup(guild.id, userId, `Before restoring backup #${backupId}`, buildSnapshot(guild), 'manual');
+          const restoreResult = await restoreBackup(guild, backup.snapshot, { mode, reason: `Petto dashboard restore #${backupId}` });
+          await recordAudit(guild.id, userId, 'backup_restored', backupId, { mode, safetyBackupId: safety.id, result: restoreResult });
         } else if (action === 'schedule') {
           const hours = Number(req.body?.hours);
           const retention = Number(req.body?.retention || 7);
