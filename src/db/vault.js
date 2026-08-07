@@ -10,8 +10,13 @@ function getPool() {
     // Aiven requires TLS for managed PostgreSQL. Keep the Vault connection
     // aligned with the primary migration client so pg accepts its certificate
     // chain in the Discloud runtime.
+    const connectionUrl = new URL(config.vaultDatabaseUrl);
+    // pg's connection-string parser can override the explicit ssl object when
+    // sslmode is present in the URI. Remove only that option and configure the
+    // TLS behavior below so Aiven works consistently across host runtimes.
+    connectionUrl.searchParams.delete('sslmode');
     pool = new Pool({
-      connectionString: config.vaultDatabaseUrl,
+      connectionString: connectionUrl.toString(),
       ssl: { rejectUnauthorized: false },
       max: 4,
       connectionTimeoutMillis: 8000,
