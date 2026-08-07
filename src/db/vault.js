@@ -7,7 +7,16 @@ let schemaPromise;
 function getPool() {
   if (!config.vaultDatabaseUrl) return null;
   if (!pool) {
-    pool = new Pool({ connectionString: config.vaultDatabaseUrl, max: 4, connectionTimeoutMillis: 8000, idleTimeoutMillis: 30_000 });
+    // Aiven requires TLS for managed PostgreSQL. Keep the Vault connection
+    // aligned with the primary migration client so pg accepts its certificate
+    // chain in the Discloud runtime.
+    pool = new Pool({
+      connectionString: config.vaultDatabaseUrl,
+      ssl: { rejectUnauthorized: false },
+      max: 4,
+      connectionTimeoutMillis: 8000,
+      idleTimeoutMillis: 30_000,
+    });
     pool.on('error', () => {});
   }
   return pool;
