@@ -1,4 +1,6 @@
+const { Routes } = require('discord.js');
 const supabase = require('./supabase');
+const logger = require('../utils/logger');
 
 const FREE_LIMITS = Object.freeze({
   customCommands: 25,
@@ -243,16 +245,28 @@ async function assignPremiumSlot(userId, guildId, entitlementId = null) {
   return { ok: true, assignment };
 }
 
-async function resetGuildPremiumProfile(guildId) {
+async function resetGuildPremiumProfile(guildId, client = null) {
   if (!isDiscordId(guildId)) return;
   const { error } = await supabase
     .from('guilds')
     .update({ bot_nickname: null, bot_avatar_url: null, bot_banner_url: null, bot_description: null, updated_at: new Date().toISOString() })
     .eq('guild_id', String(guildId));
   if (error) throw error;
+
+  // Clear the live per-server Discord profile as well as the saved dashboard
+  // values. The database reset must remain successful even if Discord rejects
+  // a stale guild, missing permission, or a temporary API request.
+  if (!client?.rest?.patch) return;
+  try {
+    await client.rest.patch(Routes.guildMember(String(guildId), '@me'), {
+      body: { nick: null, avatar: null, banner: null, bio: null },
+    });
+  } catch (discordError) {
+    logger.warn(`Premium profile reset could not be applied in Discord for guild ${guildId}:`, discordError?.message || discordError);
+  }
 }
 
-async function unassignPremiumSlot(userId, guildId) {
+async function unassignPremiumSlot(userId, guildId, client = null) {
   if (!isDiscordId(userId)) return { ok: false, code: 'invalid_user' };
   if (!isDiscordId(guildId)) return { ok: false, code: 'invalid_guild' };
   const { data, error } = await supabase
@@ -264,11 +278,11 @@ async function unassignPremiumSlot(userId, guildId) {
     .select(ASSIGNMENT_COLUMNS);
   if (error) throw error;
   if (!data?.length) return { ok: false, code: 'no_assignment' };
-  await resetGuildPremiumProfile(guildId);
+  await resetGuildPremiumProfile(guildId, client);
   return { ok: true, assignments: data };
 }
 
-async function revokeManualPremium(userId, revokedBy) {
+async function revokeManualPremium(userId, revokedBy, client = null) {
   if (!isDiscordId(userId)) return { ok: false, code: 'invalid_user' };
   const entitlements = (await listUserPremium(userId)).filter((entitlement) => entitlement.provider === 'manual' && entitlement.status !== 'expired');
   if (!entitlements.length) return { ok: false, code: 'no_manual' };
@@ -301,7 +315,7 @@ async function revokeManualPremium(userId, revokedBy) {
     if (releaseError) throw releaseError;
   }
 
-  for (const guildId of releasedGuildIds) await resetGuildPremiumProfile(guildId);
+  for (const guildId of releasedGuildIds) await resetGuildPremiumProfile(guildId, client);
   return { ok: true, releasedGuildIds: [...releasedGuildIds], count: entitlements.length };
 }
 
