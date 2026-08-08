@@ -30,7 +30,7 @@ async function addAlias(interaction) {
   const command = interaction.options.getString('command', true).trim();
   if (!/^[a-z0-9_-]{1,32}$/.test(name)) return interaction.reply({ content: 'Alias names may only contain letters, numbers, `_` and `-`.', flags: MessageFlags.Ephemeral });
   if (!command || command.startsWith('alias ')) return interaction.reply({ content: 'Provide a valid target command.', flags: MessageFlags.Ephemeral });
-  if (interaction.client.commands.has(name) || interaction.client.commandAliases.has(name)) return interaction.reply({ content: 'That name is already used by a built-in command.', flags: MessageFlags.Ephemeral });
+  if (interaction.client.commands.has(name) || interaction.client.commandAliases.has(name) || interaction.client.commandRoutes?.has(name)) return interaction.reply({ content: 'That name is already used by a built-in command or shortcut.', flags: MessageFlags.Ephemeral });
   const row = await aliasesDb.add(interaction.guild.id, name, command);
   return interaction.reply({ components: [textCard(`Alias \`${row.name}\` now runs \`${row.command}\`. Use placeholders such as \`{0}\` for arguments.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }

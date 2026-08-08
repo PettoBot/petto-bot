@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { Collection } = require('discord.js');
 const logger = require('../utils/logger');
-const { aliasesFor } = require('../utils/defaultCommandAliases');
+const { aliasesFor, DEFAULT_PREFIX_ROUTES } = require('../utils/defaultCommandAliases');
 
 const COMMANDS_DIR = path.join(__dirname, '..', 'commands');
 
@@ -44,13 +44,25 @@ function categoryFromPath(filePath) {
 function loadCommands(client) {
   client.commands = new Collection();
   client.commandAliases = new Collection();
+  client.commandRoutes = new Collection();
 
   if (!fs.existsSync(COMMANDS_DIR)) {
     logger.warn(`Commands directory not found: ${COMMANDS_DIR}`);
     return client.commands;
   }
 
-  for (const filePath of findCommandFiles(COMMANDS_DIR)) {
+  const commandFiles = findCommandFiles(COMMANDS_DIR);
+  const commandNames = new Set();
+
+  // Reserve every canonical command name before aliases are registered. This
+  // prevents an alias from an earlier file taking the name of a later command.
+  for (const filePath of commandFiles) {
+    delete require.cache[require.resolve(filePath)];
+    const command = require(filePath);
+    if (command?.data?.name) commandNames.add(command.data.name.toLowerCase());
+  }
+
+  for (const filePath of commandFiles) {
     delete require.cache[require.resolve(filePath)];
     const command = require(filePath);
 
@@ -67,20 +79,39 @@ function loadCommands(client) {
     }
     command.filePath = filePath;
     // Merge curated aliases here so prefix parsing and !help stay in sync.
-    command.aliases = [...new Set([...(command.aliases ?? []), ...aliasesFor(command.data.name)])];
+    const requestedAliases = [...new Set([...(command.aliases ?? []), ...aliasesFor(command.data.name)])]
+      .map((alias) => String(alias).toLowerCase());
+    const acceptedAliases = [];
     client.commands.set(command.data.name, command);
 
-    for (const alias of command.aliases ?? []) {
+    for (const alias of requestedAliases) {
       const key = alias.toLowerCase();
-      if (client.commands.has(key) || client.commandAliases.has(key)) {
+      if (commandNames.has(key) || client.commands.has(key) || client.commandAliases.has(key)) {
         logger.warn(`Skipping alias "${key}" for /${command.data.name}: already used by another command/alias.`);
         continue;
       }
       client.commandAliases.set(key, command.data.name);
+      acceptedAliases.push(key);
     }
+    command.aliases = acceptedAliases;
   }
 
-  logger.info(`Loaded ${client.commands.size} command(s), ${client.commandAliases.size} alias(es).`);
+  for (const route of DEFAULT_PREFIX_ROUTES) {
+    const key = route.alias.toLowerCase();
+    if (!client.commands.has(route.command)) {
+      logger.warn(`Skipping prefix route "${key}": target command "${route.command}" was not loaded.`);
+      continue;
+    }
+    if (client.commands.has(key) || client.commandAliases.has(key) || client.commandRoutes.has(key)) {
+      logger.warn(`Skipping prefix route "${key}" for ${route.command}: already used by another command/alias/route.`);
+      continue;
+    }
+    client.commandRoutes.set(key, route);
+    const target = client.commands.get(route.command);
+    target.prefixRoutes = [...(target.prefixRoutes ?? []), route];
+  }
+
+  logger.info(`Loaded ${client.commands.size} command(s), ${client.commandAliases.size} alias(es), ${client.commandRoutes.size} prefix route(s).`);
   return client.commands;
 }
 

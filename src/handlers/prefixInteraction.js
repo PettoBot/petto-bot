@@ -309,10 +309,15 @@ function buildPseudoInteraction(message, { commandName, subcommand, subcommandGr
 async function buildInteractionFromMessage(message, command, argText) {
   const tokens = tokenize(argText);
   const json = command.data.toJSON();
+  const subcommandAliases = command.prefixSubcommandAliases ?? {};
+  const normalizedTokens = [...tokens];
+  if (normalizedTokens[0]) {
+    normalizedTokens[0] = subcommandAliases[normalizedTokens[0].toLowerCase()] ?? normalizedTokens[0];
+  }
 
-  const resolved = resolveSubcommandOptions(json, tokens) ?? (
+  const resolved = resolveSubcommandOptions(json, normalizedTokens) ?? (
     command.prefixDefaultSubcommand
-      ? resolveSubcommandOptions(json, [command.prefixDefaultSubcommand, ...tokens])
+      ? resolveSubcommandOptions(json, [command.prefixDefaultSubcommand, ...normalizedTokens])
       : null
   );
   if (!resolved) return null;

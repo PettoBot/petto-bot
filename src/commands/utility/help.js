@@ -121,13 +121,14 @@ function buildMetadata(aliases, params, information) {
 
 /** Finds every entry matching a typed lookup — an exact path match returns just that one entry; a bare command name (or partial path) returns every entry under it, for pagination, same as bli's findGroup(). */
 function findEntries(client, tokens) {
-  const canonicalName = client.commandAliases.get(tokens[0]) ?? tokens[0];
+  const route = client.commandRoutes?.get(tokens[0]);
+  const canonicalName = client.commandAliases.get(tokens[0]) ?? route?.command ?? tokens[0];
   const command = client.commands.get(canonicalName);
   if (!command || (command.data.toJSON().type ?? 1) !== 1) return { command: null, entries: [] };
 
   const json = command.data.toJSON();
   const all = flattenEntries(json);
-  const wantedPath = tokens.slice(1).join(' ');
+  const wantedPath = [...(route?.args ?? []), ...tokens.slice(1)].join(' ');
 
   if (!wantedPath) return { command, entries: all };
 
@@ -142,7 +143,12 @@ function findEntries(client, tokens) {
 
 function entryDetailCard(client, guild, prefix, command, entry, page = 0, total = 1) {
   const json = command.data.toJSON();
-  const aliases = command.aliases?.length ? command.aliases.map((a) => `\`${prefix}${a}\``).join(', ') : 'No Aliases';
+  const entryPath = entry.path.join(' ');
+  const routeAliases = (command.prefixRoutes ?? [])
+    .filter((route) => route.subcommand === entryPath)
+    .map((route) => route.alias);
+  const aliasesList = [...new Set([...(command.aliases ?? []), ...routeAliases])];
+  const aliases = aliasesList.length ? aliasesList.map((a) => `\`${prefix}${a}\``).join(', ') : 'No Aliases';
   const syntax = buildSyntax(prefix, json.name, entry);
   const example = buildExample(prefix, json.name, entry);
   const params = buildParams(entry);
