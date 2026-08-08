@@ -110,14 +110,14 @@ async function assign(interaction) {
 async function unassign(interaction) {
   const user = interaction.options.getUser('user', true);
   const guildId = interaction.options.getString('guild_id', true).trim();
-  const result = await unassignPremiumSlot(user.id, guildId);
+  const result = await unassignPremiumSlot(user.id, guildId, interaction.client);
   if (!result.ok) return replyError(interaction, result.code === 'no_assignment' ? 'That user has no active Premium slot on this server.' : 'The server ID is invalid.');
   return replySuccess(interaction, `Premium released from server **${guildId}**. Its Premium-only customization has been restored to the free defaults.`);
 }
 
 async function revoke(interaction) {
   const user = interaction.options.getUser('user', true);
-  const result = await revokeManualPremium(user.id, interaction.user.id);
+  const result = await revokeManualPremium(user.id, interaction.user.id, interaction.client);
   if (!result.ok) {
     if (result.code === 'no_manual') return replyError(interaction, `No manual Premium grant was found for <@${user.id}>. Paid Polar subscriptions are managed from the billing portal.`);
     return replyError(interaction, 'The Premium grant could not be revoked.');
