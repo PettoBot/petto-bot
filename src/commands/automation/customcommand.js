@@ -50,7 +50,7 @@ async function addCmd(interaction, isEdit) {
   const response = interaction.options.getString('response', true);
   const embedTemplate = interaction.options.getString('embed_template');
 
-  if (interaction.client.commands.has(name) || interaction.client.commandAliases.has(name)) {
+  if (interaction.client.commands.has(name) || interaction.client.commandAliases.has(name) || interaction.client.commandRoutes?.has(name)) {
     await interaction.reply({ content: `\`${name}\` is already a real command — pick a different name.`, flags: MessageFlags.Ephemeral });
     return;
   }

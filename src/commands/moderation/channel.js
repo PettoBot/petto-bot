@@ -5,6 +5,21 @@ const logger = require('../../utils/logger');
 
 module.exports = {
   aliases: ['ch'],
+  prefixPermissionOverrides: {
+    clear: PermissionFlagsBits.ManageMessages,
+    'move-all': PermissionFlagsBits.MoveMembers,
+    moveall: PermissionFlagsBits.MoveMembers,
+    move_all: PermissionFlagsBits.MoveMembers,
+  },
+  prefixSubcommandAliases: {
+    lockdown: 'lock',
+    lock_all: 'lock-all',
+    lockall: 'lock-all',
+    unlock_all: 'unlock-all',
+    unlockall: 'unlock-all',
+    moveall: 'move-all',
+    move_all: 'move-all',
+  },
   data: new SlashCommandBuilder()
     .setName('channel')
     .setDescription('Channel management: lock, unlock, slowmode, bulk-delete.')
@@ -38,11 +53,11 @@ module.exports = {
         .addIntegerOption((opt) => opt.setName('amount').setDescription('How many messages to delete (1-100)').setRequired(true).setMinValue(1).setMaxValue(100))
         .addUserOption((opt) => opt.setName('user').setDescription('Only delete messages from this user').setRequired(false)),
     )
-    .addSubcommand((sub) => sub.setName('lock_all').setDescription('Lock every text channel the bot can manage.'))
-    .addSubcommand((sub) => sub.setName('unlock_all').setDescription('Unlock every text channel the bot can manage.'))
+    .addSubcommand((sub) => sub.setName('lock-all').setDescription('Lock every text channel the bot can manage.'))
+    .addSubcommand((sub) => sub.setName('unlock-all').setDescription('Unlock every text channel the bot can manage.'))
     .addSubcommand((sub) => sub.setName('hide').setDescription('Hide a channel from @everyone (deny View Channel).').addChannelOption((opt) => opt.setName('channel').setDescription('Channel to hide (defaults to this one)').setRequired(false)))
     .addSubcommand((sub) => sub.setName('unhide').setDescription('Restore visibility for a hidden channel.').addChannelOption((opt) => opt.setName('channel').setDescription('Channel to unhide (defaults to this one)').setRequired(false)))
-    .addSubcommand((sub) => sub.setName('moveall').setDescription('Move everyone from your voice channel to another.').addChannelOption((opt) => opt.setName('destination').setDescription('Destination voice channel').addChannelTypes(ChannelType.GuildVoice, ChannelType.GuildStageVoice).setRequired(true))),
+    .addSubcommand((sub) => sub.setName('move-all').setDescription('Move everyone from your voice channel to another.').addChannelOption((opt) => opt.setName('destination').setDescription('Destination voice channel').addChannelTypes(ChannelType.GuildVoice, ChannelType.GuildStageVoice).setRequired(true))),
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
@@ -50,8 +65,8 @@ module.exports = {
     if (sub === 'unlock') return unlock(interaction);
     if (sub === 'slowmode') return slowmode(interaction);
     if (sub === 'clear') return clear(interaction);
-    if (sub === 'lock_all') return lockAll(interaction, true);
-    if (sub === 'unlock_all') return lockAll(interaction, false);
+    if (sub === 'lock-all') return lockAll(interaction, true);
+    if (sub === 'unlock-all') return lockAll(interaction, false);
     if (sub === 'hide') return hide(interaction, true);
     if (sub === 'unhide') return hide(interaction, false);
     return moveAll(interaction);
@@ -182,7 +197,7 @@ async function lockAll(interaction, locking) {
       );
       count += 1;
     } catch (err) {
-      logger.warn(`channel ${locking ? 'lock_all' : 'unlock_all'}: failed on ${channel.id}:`, err.message);
+      logger.warn(`channel ${locking ? 'lock-all' : 'unlock-all'}: failed on ${channel.id}:`, err.message);
     }
   }
 

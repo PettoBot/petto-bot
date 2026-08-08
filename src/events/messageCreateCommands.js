@@ -65,6 +65,14 @@ function checkDefaultPermission(json, member) {
   return member.permissions.has(BigInt(json.default_member_permissions));
 }
 
+function effectiveCommandData(command, argText) {
+  const json = command.data.toJSON();
+  const firstToken = tokenize(argText)[0]?.toLowerCase();
+  const override = command.prefixPermissionOverrides?.[firstToken];
+  if (override === undefined) return json;
+  return { ...json, default_member_permissions: String(override) };
+}
+
 /** Falls back here whenever `commandName` doesn't match a real command — tries a guild's admin-defined custom commands before giving up silently. */
 async function runCustomCommand(message, commandName) {
   const row = await customCommandsDb.getCommand(message.guild.id, commandName).catch(() => null);
@@ -124,7 +132,7 @@ module.exports = {
 
     // Server-defined aliases are prefix-only, matching the rest of Petto's configurable
     // command surface. `{0}`, `{1}`, ... refer to arguments supplied after the alias.
-    if (!message.client.commands.has(commandName) && !message.client.commandAliases.has(commandName)) {
+    if (!message.client.commands.has(commandName) && !message.client.commandAliases.has(commandName) && !message.client.commandRoutes?.has(commandName)) {
       const configuredAlias = await commandAliasesDb.get(message.guild.id, commandName).catch(() => null);
       if (configuredAlias) {
         const targetTokens = tokenize(configuredAlias.command);
@@ -137,6 +145,12 @@ module.exports = {
         commandName = (expanded.shift() ?? '').toLowerCase();
         argText = expanded.join(' ');
       }
+    }
+
+    const prefixRoute = message.client.commandRoutes?.get(commandName);
+    if (prefixRoute) {
+      commandName = prefixRoute.command;
+      argText = [...prefixRoute.args, argText].filter(Boolean).join(' ');
     }
 
     const canonicalName = message.client.commandAliases.get(commandName) ?? commandName;
@@ -181,8 +195,9 @@ module.exports = {
       });
     }
 
-    if (!moderationRoleOverride && !checkDefaultPermission(command.data.toJSON(), message.member)) {
-      await message.reply(warningPayload(message, `You're missing permission: \`${permissionKey(command.data.toJSON())}\`.`)).catch(() => {});
+    const permissionData = effectiveCommandData(command, argText);
+    if (!moderationRoleOverride && !checkDefaultPermission(permissionData, message.member)) {
+      await message.reply(warningPayload(message, `You're missing permission: \`${permissionKey(permissionData)}\`.`)).catch(() => {});
       return;
     }
 

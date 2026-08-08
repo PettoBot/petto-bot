@@ -41,7 +41,6 @@ function findPages(pages, query) {
 }
 
 module.exports = {
-  aliases: ['w'],
   data: new SlashCommandBuilder()
     .setName('wiki')
     .setDescription('Find something in the Petto wiki.')

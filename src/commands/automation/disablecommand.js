@@ -24,7 +24,7 @@ module.exports = {
 };
 
 async function disableCmd(interaction) {
-  const command = interaction.options.getString('command', true).toLowerCase();
+  const command = canonicalCommandName(interaction, interaction.options.getString('command', true));
   const channel = interaction.options.getChannel('channel');
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
@@ -41,12 +41,19 @@ async function disableCmd(interaction) {
 }
 
 async function enableCmd(interaction) {
-  const command = interaction.options.getString('command', true).toLowerCase();
+  const command = canonicalCommandName(interaction, interaction.options.getString('command', true));
   const channel = interaction.options.getChannel('channel');
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const removed = await disabledDb.enable(interaction.guild.id, command, channel?.id);
   await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  \`${command}\` re-enabled${channel ? ` in ${channel}` : ' server-wide'}.` : "That rule doesn't exist.", removed ? 0xa5ea7a : 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+}
+
+function canonicalCommandName(interaction, rawName) {
+  const name = rawName.trim().toLowerCase();
+  return interaction.client.commandAliases.get(name)
+    ?? interaction.client.commandRoutes?.get(name)?.command
+    ?? name;
 }
 
 async function listCmd(interaction) {
