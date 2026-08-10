@@ -10,7 +10,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "deploy-commands": "node deploy-commands.js"
+    "deploy-commands": "node deploy-commands.js",
+    "check": "node scripts/check-syntax.js"
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.3",
