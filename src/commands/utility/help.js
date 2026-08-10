@@ -39,7 +39,7 @@ const CATEGORY_META = {
 // ── Introspection — built live from client.commands, never a hand-kept list ──
 
 function getChatInputCommands(client) {
-  return [...client.commands.values()].filter((c) => (c.data.toJSON().type ?? 1) === 1);
+  return [...client.commands.values()].filter((c) => (c.data.toJSON().type ?? 1) === 1 && !c.slashOnly);
 }
 
 /** Prefers this server's own bot avatar (server-specific pfp) over the bot's global one. */
@@ -124,7 +124,7 @@ function findEntries(client, tokens) {
   const route = client.commandRoutes?.get(tokens[0]);
   const canonicalName = client.commandAliases.get(tokens[0]) ?? route?.command ?? tokens[0];
   const command = client.commands.get(canonicalName);
-  if (!command || (command.data.toJSON().type ?? 1) !== 1) return { command: null, entries: [] };
+  if (!command || command.slashOnly || (command.data.toJSON().type ?? 1) !== 1) return { command: null, entries: [] };
 
   const json = command.data.toJSON();
   const all = flattenEntries(json);

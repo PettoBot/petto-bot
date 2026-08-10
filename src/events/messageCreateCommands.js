@@ -155,6 +155,9 @@ module.exports = {
 
     const canonicalName = message.client.commandAliases.get(commandName) ?? commandName;
     const command = message.client.commands.get(canonicalName);
+    // Slash-only commands can open native Discord modals and must not be
+    // executed through the pseudo-interaction used by prefix commands.
+    if (command?.slashOnly) return;
     if (!command || !command.data || (command.data.toJSON().type ?? 1) !== 1) {
       const handled = await runCustomCommand(message, canonicalName);
       if (!handled) {

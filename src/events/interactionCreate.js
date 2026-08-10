@@ -15,6 +15,7 @@ const { handleButton: handleGiveawayButton } = require('../interactions/giveaway
 const { handleButton: handlePollButton } = require('../interactions/pollButton');
 const { handleButton: handlePollPanelButton, handleModal: handlePollPanelModal } = require('../interactions/pollPanel');
 const { handleButton: handleVoiceMasterButton, handleModal: handleVoiceMasterModal, handleSelect: handleVoiceMasterSelect } = require('../interactions/voiceMaster');
+const { handleSetupModal } = require('../interactions/setup');
 const { BUTTON_PREFIX, handleButton: handleReactionRoleButton } = require('../interactions/reactionRoleButton');
 const permissionsDb = require('../db/permissions');
 const logger = require('../utils/logger');
@@ -24,6 +25,11 @@ const DEFAULT_COOLDOWN_MS = 3000;
 module.exports = {
   name: Events.InteractionCreate,
   async execute(interaction, client) {
+    if (interaction.isModalSubmit() && interaction.customId === 'petto_setup_modal') {
+      try { await handleSetupModal(interaction); } catch (err) { logger.error('Error handling Petto setup modal:', err); }
+      return;
+    }
+
     if (interaction.isButton() && (interaction.customId.startsWith('vm:') || interaction.customId.startsWith('vc:'))) {
       try { await handleVoiceMasterButton(interaction); } catch (err) { logger.error('Error handling VoiceMaster button:', err); }
       return;
