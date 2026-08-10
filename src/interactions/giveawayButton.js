@@ -1,25 +1,28 @@
 const { MessageFlags } = require('discord.js');
 const giveawaysDb = require('../db/giveaways');
-const { handleForfeit, handleAccept } = require('../utils/giveawayEngine');
+const { handleForfeit, handleAccept, refreshGiveawayMessage } = require('../utils/giveawayEngine');
 
 async function handleEnter(interaction) {
   const giveawayId = Number(interaction.customId.split('::')[1]);
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const giveaway = await giveawaysDb.getGiveaway(giveawayId);
 
   if (!giveaway || giveaway.ended) {
-    await interaction.reply({ content: 'This giveaway has ended.', flags: MessageFlags.Ephemeral });
+    await interaction.editReply({ content: 'This giveaway has ended.' });
     return;
   }
 
   const already = await giveawaysDb.hasEntry(giveawayId, interaction.user.id);
   if (already) {
     await giveawaysDb.removeEntry(giveawayId, interaction.user.id);
-    await interaction.reply({ content: 'You left the giveaway.', flags: MessageFlags.Ephemeral });
+    await refreshGiveawayMessage(interaction.channel, giveaway).catch(() => {});
+    await interaction.editReply({ content: 'You left the giveaway.' });
     return;
   }
 
   await giveawaysDb.addEntry(giveawayId, interaction.user.id, 1);
-  await interaction.reply({ content: '🎉 You entered the giveaway! Click the button again to leave.', flags: MessageFlags.Ephemeral });
+  await refreshGiveawayMessage(interaction.channel, giveaway).catch(() => {});
+  await interaction.editReply({ content: 'You entered the giveaway. Click the button again to leave.' });
 }
 
 async function handleAcceptClick(interaction) {

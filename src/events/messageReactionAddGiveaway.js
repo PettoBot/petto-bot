@@ -1,5 +1,6 @@
 const { Events } = require('discord.js');
 const giveawaysDb = require('../db/giveaways');
+const { refreshGiveawayMessage } = require('../utils/giveawayEngine');
 
 module.exports = {
   name: Events.MessageReactionAdd,
@@ -13,6 +14,7 @@ module.exports = {
       if (reaction.emoji.toString() !== giveaway.reaction) return;
 
       await giveawaysDb.addEntry(giveaway.id, user.id, 1);
+      await refreshGiveawayMessage(reaction.message.channel, giveaway);
     } catch {
       // Best-effort — a failed lookup shouldn't crash the reaction handler.
     }

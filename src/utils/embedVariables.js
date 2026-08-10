@@ -156,6 +156,7 @@ async function resolve(text, ctx = {}) {
     // ── Giveaway (only populated where ctx.giveaway is set) ──────
     '{gw.prize}': ctx.giveaway?.prize ?? '',
     '{gw.winners}': ctx.giveaway?.winnersCount != null ? String(ctx.giveaway.winnersCount) : '',
+    '{gw.entries}': ctx.giveaway?.entriesCount != null ? String(ctx.giveaway.entriesCount) : '',
     '{gw.host}': ctx.giveaway?.hostId ? `<@${ctx.giveaway.hostId}>` : '',
     '{gw.duration}': ctx.giveaway?.endsAtUnix != null ? String(ctx.giveaway.endsAtUnix) : '',
     '{gw.timestamp}': ctx.giveaway?.endsAtUnix != null ? `<t:${ctx.giveaway.endsAtUnix}:R>` : '',

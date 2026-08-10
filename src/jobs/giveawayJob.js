@@ -1,5 +1,5 @@
 const giveawaysDb = require('../db/giveaways');
-const { endGiveaway, handleForfeit } = require('../utils/giveawayEngine');
+const { endGiveaway, handleForfeit, refreshGiveawayMessage } = require('../utils/giveawayEngine');
 const logger = require('../utils/logger');
 
 // Giveaway timing matters more to users than most background jobs (an "ends in 5s" giveaway
@@ -29,7 +29,24 @@ async function processExpiredClaims(client) {
   }
 }
 
+/** Repairs active giveaway panels once after startup, including counters from entries made before a restart. */
+async function refreshActiveGiveaways(client) {
+  for (const guild of client.guilds.cache.values()) {
+    const active = await giveawaysDb.listActiveForGuild(guild.id).catch((err) => {
+      logger.error(`Failed to load active giveaways for ${guild.id}:`, err);
+      return [];
+    });
+
+    for (const giveaway of active) {
+      const channel = await guild.channels.fetch(giveaway.channel_id).catch(() => null);
+      if (!channel) continue;
+      await refreshGiveawayMessage(channel, giveaway).catch((err) => logger.error(`Failed to refresh giveaway #${giveaway.id}:`, err));
+    }
+  }
+}
+
 function startGiveawayJob(client) {
+  refreshActiveGiveaways(client).catch((err) => logger.error('Giveaway panel repair error:', err));
   setInterval(() => {
     processDueGiveaways(client).catch((err) => logger.error('Giveaway end job error:', err));
     processExpiredClaims(client).catch((err) => logger.error('Giveaway claim expiry job error:', err));
@@ -37,4 +54,4 @@ function startGiveawayJob(client) {
   logger.info('Giveaway job started (checking every 15s).');
 }
 
-module.exports = { startGiveawayJob, processDueGiveaways, processExpiredClaims };
+module.exports = { startGiveawayJob, processDueGiveaways, processExpiredClaims, refreshActiveGiveaways };
