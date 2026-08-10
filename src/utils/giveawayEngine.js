@@ -13,6 +13,7 @@ const DEFAULT_DENY_TEXT = '{user} denied their win for **{gw.prize}**. Redrawing
 const DEFAULT_CLAIM_OVER_TEXT = '{user} did not claim **{gw.prize}** in time. Redrawing a new winner...';
 const DEFAULT_ACCEPT_TEXT = '{user} accepted their win for **{gw.prize}**! 🎉';
 const DEFAULT_NO_ENTRIES_TEXT = 'The giveaway for **{gw.prize}** ended with no valid entries.';
+const refreshQueues = new Map();
 
 /** Bonus entries / claim time a member earns from a preset's roles. Stacking roles sum; non-stacking roles contribute only their single best value. */
 function computePresetBonus(member, presetRoles) {
@@ -71,6 +72,7 @@ function giveawayCtx(giveaway, presetText, extra = {}) {
     giveaway: {
       prize: giveaway.prize,
       winnersCount: giveaway.winners_count,
+      entriesCount: extra.entriesCount ?? 0,
       hostId: giveaway.host_id,
       endsAtUnix: Math.floor(new Date(giveaway.ends_at).getTime() / 1000),
       claimTimeText: extra.claimTimeMs ? formatDuration(extra.claimTimeMs) : '',
@@ -83,19 +85,19 @@ function giveawayCtx(giveaway, presetText, extra = {}) {
 }
 
 /** If the giveaway (or its guild default) has a saved embed template, resolves it against giveaway ctx. Returns null otherwise. */
-async function resolveCustomEmbed(guild, channel, giveaway, presetText) {
+async function resolveCustomEmbed(guild, channel, giveaway, presetText, entriesCount = 0) {
   if (!giveaway.embed_template) return null;
   const templatesDb = require('../db/giveawayTemplates');
   const doc = await templatesDb.getTemplate(giveaway.guild_id, giveaway.embed_template);
   if (!doc) return null;
   const { build } = require('./embedBuilder');
-  const ctx = giveawayCtx(giveaway, presetText, { ctx: { guild, channel } });
+  const ctx = giveawayCtx(giveaway, presetText, { entriesCount, ctx: { guild, channel } });
   return build(doc.data, ctx);
 }
 
 /** Posts (or re-posts, for edit) the live giveaway message. Uses a saved embed template if the giveaway has one, otherwise a default Components V2 card. */
 async function postGiveawayMessage(channel, giveaway, entriesCount, presetText = '') {
-  const customPayload = await resolveCustomEmbed(channel.guild, channel, giveaway, presetText);
+  const customPayload = await resolveCustomEmbed(channel.guild, channel, giveaway, presetText, entriesCount);
   const enterRow = giveaway.entry_mode === 'button' ? buildEnterRow(giveaway.id) : null;
 
   let message;
@@ -122,13 +124,14 @@ async function postGiveawayMessage(channel, giveaway, entriesCount, presetText =
 }
 
 /** Re-renders a still-active giveaway's message in place (used by `giveaway edit`). */
-async function refreshGiveawayMessage(channel, giveaway) {
+async function refreshGiveawayMessageNow(channel, giveaway) {
   const message = await channel.messages.fetch(giveaway.message_id).catch(() => null);
   if (!message) return;
 
   const presetRoles = giveaway.preset_id ? await presetsDb.listRoles(giveaway.preset_id) : [];
   const presetText = buildPresetText(presetRoles);
-  const customPayload = await resolveCustomEmbed(channel.guild, channel, giveaway, presetText);
+  const entriesCount = await giveawaysDb.countEntries(giveaway.id);
+  const customPayload = await resolveCustomEmbed(channel.guild, channel, giveaway, presetText, entriesCount);
   const enterRow = giveaway.entry_mode === 'button' ? buildEnterRow(giveaway.id) : null;
 
   if (customPayload) {
@@ -137,7 +140,6 @@ async function refreshGiveawayMessage(channel, giveaway) {
     return;
   }
 
-  const entriesCount = await giveawaysDb.countEntries(giveaway.id);
   const card = buildEntryCard({
     prize: giveaway.prize,
     hostId: giveaway.host_id,
@@ -149,6 +151,20 @@ async function refreshGiveawayMessage(channel, giveaway) {
     ended: false,
   });
   await message.edit({ components: enterRow ? [card, enterRow] : [card], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+}
+
+/** Serializes edits for the same giveaway so concurrent entries cannot overwrite a newer count. */
+async function refreshGiveawayMessage(channel, giveaway) {
+  const key = `${channel.guild.id}:${giveaway.id}`;
+  const previous = refreshQueues.get(key) ?? Promise.resolve();
+  const current = previous
+    .catch(() => {})
+    .then(() => refreshGiveawayMessageNow(channel, giveaway))
+    .finally(() => {
+      if (refreshQueues.get(key) === current) refreshQueues.delete(key);
+    });
+  refreshQueues.set(key, current);
+  return current;
 }
 
 /** Creates a giveaway row, posts its message, and stores the message id. */
@@ -173,13 +189,13 @@ async function startGiveaway({ guild, channel, hostId, prize, winnersCount, ends
   return { ...giveaway, message_id: message.id };
 }
 
-async function editEndedMessage(channel, giveaway, winnerIds, presetText = '') {
+async function editEndedMessage(channel, giveaway, winnerIds, presetText = '', entriesCount = 0) {
   const message = await channel.messages.fetch(giveaway.message_id).catch(() => null);
   if (!message) return;
 
   const summaryText = winnerIds.length ? `${EMOJI.APPROVE}  Winner(s): ${winnerIds.map((id) => `<@${id}>`).join(', ')}` : `${EMOJI.DENY}  No valid entries.`;
 
-  const customEmbed = await resolveCustomEmbed(channel.guild, channel, giveaway, presetText);
+  const customEmbed = await resolveCustomEmbed(channel.guild, channel, giveaway, presetText, entriesCount);
   if (customEmbed) {
     await message.edit({ embeds: [customEmbed.setFooter({ text: summaryText })], components: [] }).catch(() => {});
     return;
@@ -192,6 +208,7 @@ async function editEndedMessage(channel, giveaway, winnerIds, presetText = '') {
     endsAtUnix: Math.floor(new Date(giveaway.ends_at).getTime() / 1000),
     entryMode: giveaway.entry_mode,
     reaction: giveaway.reaction,
+    entriesCount,
     ended: true,
   });
   const summary = textCard(summaryText, GIVEAWAY_COLOR);
@@ -255,7 +272,7 @@ async function endGiveaway(client, giveaway) {
     if (channel) {
       const ctx = giveawayCtx(giveaway, presetText, { ctx: { guild, channel } });
       await sendGiveawayResponse({ target: channel, guildId: giveaway.guild_id, messageText: config.no_entries_message, embedTemplateName: null, ctx, fallback: DEFAULT_NO_ENTRIES_TEXT });
-      await editEndedMessage(channel, giveaway, [], presetText);
+      await editEndedMessage(channel, giveaway, [], presetText, entries.length);
     }
     return;
   }
@@ -268,7 +285,7 @@ async function endGiveaway(client, giveaway) {
       const claimTimeMs = await claimTimeForWinner(guild, presetRoles, giveaway, winnerId);
       await announceWinner(channel, config, giveaway, presetText, winnerId, claimTimeMs).catch((err) => logger.error(`Failed to announce giveaway winner ${winnerId}:`, err));
     }
-    await editEndedMessage(channel, giveaway, winnerIds, presetText);
+    await editEndedMessage(channel, giveaway, winnerIds, presetText, entries.length);
   }
 }
 

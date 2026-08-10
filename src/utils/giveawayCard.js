@@ -3,7 +3,6 @@ const { getTemplate } = require('../db/giveawayTemplates');
 const { build } = require('./embedBuilder');
 const { resolve } = require('./embedVariables');
 const { extractReactReplies, applyReactReplies } = require('./messageFlags');
-const { EMOJI } = require('./emojis');
 const logger = require('./logger');
 
 const GIVEAWAY_COLOR = 0xfed53c;
@@ -11,20 +10,23 @@ const GIVEAWAY_COLOR = 0xfed53c;
 /** Default Components V2 announcement card, used when the guild hasn't set a custom giveaway_config.embed_template. */
 function buildEntryCard({ prize, hostId, winnersCount, endsAtUnix, entryMode, reaction, entriesCount, ended }) {
   const lines = [
-    `## ${EMOJI.STAR} ${prize}`,
-    `**Hosted by:** <@${hostId}>`,
-    `**Winners:** ${winnersCount}`,
-    ended ? '**Status:** Ended' : `**Ends:** <t:${endsAtUnix}:R>`,
-    `**Entries:** ${entriesCount}`,
+    `## ${prize}`,
+    '',
+    `**Host** <@${hostId}>`,
+    `**Winners** ${winnersCount}`,
+    ended ? '**Status** Ended' : `**Ends** <t:${endsAtUnix}:R>`,
+    `**Entries** ${entriesCount}`,
   ];
-  if (!ended) lines.push(entryMode === 'reaction' ? `React with ${reaction} to enter!` : 'Click the button below to enter!');
+  if (!ended) {
+    lines.push('', entryMode === 'reaction' ? `React with ${reaction} to enter.` : 'Use the button below to enter or leave.');
+  }
 
   return new ContainerBuilder().setAccentColor(GIVEAWAY_COLOR).addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
 }
 
 function buildEnterRow(giveawayId, { disabled = false } = {}) {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`gw_enter::${giveawayId}`).setLabel('Enter Giveaway').setEmoji('🎉').setStyle(ButtonStyle.Primary).setDisabled(disabled),
+    new ButtonBuilder().setCustomId(`gw_enter::${giveawayId}`).setLabel('Enter Giveaway').setStyle(ButtonStyle.Primary).setDisabled(disabled),
   );
 }
 

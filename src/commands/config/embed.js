@@ -122,6 +122,7 @@ const VAR_PAGES = [
     fields: [
       ['`{gw.prize}`', 'The prize'],
       ['`{gw.winners}`', 'Number of winners'],
+      ['`{gw.entries}`', 'Current number of entries'],
       ['`{gw.host}`', 'Mentions whoever started it'],
       ['`{gw.duration}`', 'End time as a Unix timestamp'],
       ['`{gw.timestamp}`', 'End time as a relative Discord timestamp'],
