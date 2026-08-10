@@ -76,6 +76,7 @@ create table if not exists guilds (
   bot_avatar_url    text,
   bot_banner_url    text,
   bot_description   text,
+  setup_channel_id  text,
   created_at        timestamptz not null default now(),
   updated_at        timestamptz not null default now()
 );
@@ -85,6 +86,7 @@ alter table guilds add column if not exists bot_nickname text;
 alter table guilds add column if not exists bot_avatar_url text;
 alter table guilds add column if not exists bot_banner_url text;
 alter table guilds add column if not exists bot_description text;
+alter table guilds add column if not exists setup_channel_id text;
 alter table guilds add column if not exists invites_paused_until timestamptz;
 
 -- Named sets of roles for /role group give|take <name> <member> — bulk-assign/remove several

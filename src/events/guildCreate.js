@@ -2,19 +2,27 @@ const { Events, AuditLogEvent, ContainerBuilder, TextDisplayBuilder, ActionRowBu
 const { EMOJI } = require('../utils/emojis');
 const logger = require('../utils/logger');
 const { sendGuildLifecycleLog } = require('../utils/discordOps');
+const { ensureGuild } = require('../db/guilds');
+const {
+  commandMention,
+  ensureAdminSetupChannel,
+  buildAdminSetupMessage,
+  buildOwnerGuide,
+  sendExpiringSetupMessage,
+} = require('../utils/onboarding');
 
 // The configured operations channel receives the join event; the shared lifecycle
 // helper also mirrors it to the general operations channel.
 const OWNER_ID = '293504726505357312';
 
 /** Public-facing thank-you sent to whoever added the bot, no internal server data in it. */
-function buildThanksMessage(guildName) {
+function buildThanksMessage(guildName, setupMention, prefix) {
   const container = new ContainerBuilder()
     .setAccentColor(0x4b4f59)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(`${EMOJI.STAR} **Thanks for adding Petto to ${guildName}!**`),
       new TextDisplayBuilder().setContent(
-        "Run `/help` in the server to see every command, or set everything up from a browser instead with the dashboard.",
+        `Run ${setupMention} in the server to open the visual setup, or use \`${prefix}help\` to browse the prefix commands.`,
       ),
     );
   const row = new ActionRowBuilder().addComponents(
@@ -77,11 +85,28 @@ module.exports = {
 
       await sendGuildLifecycleLog(guild.client, { kind: 'join', guild, ownerId: owner?.id, inviter, inviteUrl });
 
+      const guildConfig = await ensureGuild(guild.id).catch(() => ({ prefix: '!' }));
+      const setupChannel = await ensureAdminSetupChannel(guild).catch((err) => {
+        logger.error(`Could not create private setup channel in guild ${guild.id}:`, err);
+        return null;
+      });
+      const setupMention = await commandMention(guild.client, 'setup', guild);
+
+      if (setupChannel) {
+        await sendExpiringSetupMessage(setupChannel, buildAdminSetupMessage({ setupMention, prefix: guildConfig.prefix || '!' })).catch((err) => {
+          logger.error(`Could not send setup welcome message in guild ${guild.id}:`, err);
+        });
+      }
+
       const ownerUser = await guild.client.users.fetch(OWNER_ID).catch(() => null);
       if (ownerUser) await ownerUser.send({ content }).catch(() => {});
 
-      if (inviter) {
-        await inviter.send(buildThanksMessage(guild.name)).catch(() => {});
+      if (owner?.user && setupChannel) {
+        await owner.user.send(buildOwnerGuide({ guild, setupChannel, setupMention, prefix: guildConfig.prefix || '!' })).catch(() => {});
+      }
+
+      if (inviter && inviter.id !== owner?.id) {
+        await inviter.send(buildThanksMessage(guild.name, setupMention, guildConfig.prefix || '!')).catch(() => {});
       }
     } catch (err) {
       logger.error(`guildCreate join notification failed for guild ${guild.id}:`, err);

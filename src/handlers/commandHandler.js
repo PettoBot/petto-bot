@@ -117,9 +117,9 @@ function loadCommands(client) {
 
 /**
  * Reads every command's `data` (used by deploy-commands.js), without needing a client.
- * Roleplay chat-input commands are available through both slash commands and the
- * configured message prefix. Other chat-input builders stay available to the prefix
- * parser but are not registered as slash commands unless they are context menus.
+ * Roleplay chat-input commands and explicitly marked slash-only commands are
+ * registered with Discord. Other chat-input builders stay available only to the
+ * configured message-prefix parser.
  */
 function collectCommandData() {
   return findCommandFiles(COMMANDS_DIR)
@@ -130,7 +130,7 @@ function collectCommandData() {
     .filter(({ command }) => !command.prefixOnly)
     .filter(({ filePath, command }) => {
       const type = command.data.toJSON().type ?? 1;
-      return type !== 1 || categoryFromPath(filePath) === 'roleplay';
+      return type !== 1 || command.slashOnly || categoryFromPath(filePath) === 'roleplay';
     })
     .map(({ command }) => command.data.toJSON());
 }
