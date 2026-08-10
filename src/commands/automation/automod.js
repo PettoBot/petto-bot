@@ -2,7 +2,7 @@ const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = 
 const { ensureGuild } = require('../../db/guilds');
 const { getConfig, upsertConfig, addBannedWord, removeBannedWord, addImmuneRole, removeImmuneRole, listSilentChannels, addSilentChannel, removeSilentChannel } = require('../../db/automod');
 const { getConfig: getAntinukeConfig, upsertConfig: upsertAntinukeConfig, addWhitelist, removeWhitelist } = require('../../db/antinuke');
-const { checkUrl, normalizeUrl, isSafeBrowsingConfigured } = require('../../utils/safeBrowsing');
+const { checkUrl, normalizeUrl } = require('../../utils/safeBrowsing');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
@@ -18,19 +18,11 @@ module.exports = {
   aliases: ['am'],
   data: new SlashCommandBuilder()
     .setName('automod')
-    .setDescription('Server protection tools: link scanning, word filter, anti-spam, anti-raid.')
+    .setDescription('Server protection tools: manual link checks, word filter, anti-spam, anti-raid.')
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
     .setDMPermission(false)
 
     .addSubcommand((sub) => sub.setName('link').setDescription('Check a URL for phishing/malware via Google Safe Browsing.').addStringOption((opt) => opt.setName('url').setDescription('The URL to check').setRequired(true)))
-
-    .addSubcommand((sub) =>
-      sub
-        .setName('link-scan')
-        .setDescription('Automatically scan the first URL in each message via Google Safe Browsing.')
-        .addBooleanOption((opt) => opt.setName('enabled').setDescription('Turn automatic link scanning on/off').setRequired(true))
-        .addStringOption((opt) => opt.setName('action').setDescription('What happens when a threat is found (default delete)').addChoices({ name: 'delete only', value: 'delete' }, { name: 'warn', value: 'warn' }, { name: 'mute (10m)', value: 'mute' }, { name: 'kick', value: 'kick' }).setRequired(false)),
-    )
 
     .addSubcommand((sub) =>
       sub
@@ -137,7 +129,6 @@ module.exports = {
     const group = interaction.options.getSubcommandGroup(false);
 
     if (!group && sub === 'link') return link(interaction);
-    if (!group && sub === 'link-scan') return linkScan(interaction);
     if (!group && sub === 'spam') return spam(interaction);
     if (!group && sub === 'raid') return raid(interaction);
     if (!group && sub === 'anti-alt') return antiAlt(interaction);
@@ -149,25 +140,6 @@ module.exports = {
     if (group === 'antinuke-whitelist') return antinukeWhitelist(interaction, sub);
   },
 };
-
-async function linkScan(interaction) {
-  const enabled = interaction.options.getBoolean('enabled', true);
-  const action = interaction.options.getString('action');
-
-  if (enabled && !isSafeBrowsingConfigured()) {
-    await interaction.reply({ content: 'Automatic link scanning needs `GOOGLE_SAFE_BROWSING_API_KEY` configured on the bot first.', flags: MessageFlags.Ephemeral });
-    return;
-  }
-
-  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
-  await ensureGuild(interaction.guild.id);
-  const patch = { link_scan_enabled: enabled };
-  if (action) patch.link_scan_action = action;
-  const saved = await upsertConfig(interaction.guild.id, patch);
-  const actionLabel = { delete: 'delete only', warn: 'warn', mute: 'mute (10m)', kick: 'kick' }[saved.link_scan_action] ?? saved.link_scan_action;
-  const text = [`${EMOJI.APPROVE}  Automatic link scanning ${enabled ? 'enabled' : 'disabled'}.`, `**Action:** ${actionLabel}`, '**Limit:** first URL per message, cached results, maximum 30 external checks per minute.'].join('\n');
-  await interaction.editReply({ components: [textCard(text, enabled ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
-}
 
 async function link(interaction) {
   const raw = interaction.options.getString('url', true);

@@ -2,8 +2,6 @@ const { Events, PermissionFlagsBits } = require('discord.js');
 const { getConfig, getSilentChannel } = require('../db/automod');
 const { findBannedWord, isExcessiveCaps, hasMassMentions, hasUnauthorizedInvite, isRepeatFlood } = require('../utils/automodChecks');
 const { applyAutomodAction } = require('../utils/automodAction');
-const { checkFirstMessageUrl } = require('../utils/automodLinkScan');
-const { isSafeBrowsingConfigured } = require('../utils/safeBrowsing');
 const logger = require('../utils/logger');
 
 module.exports = {
@@ -26,21 +24,6 @@ module.exports = {
       }
 
       if (!config) return;
-
-      if (config.link_scan_enabled && isSafeBrowsingConfigured()) {
-        const scan = await checkFirstMessageUrl(message.content).catch((err) => {
-          logger.warn(`Automod link scan failed for message ${message.id}:`, err.message);
-          return null;
-        });
-        if (scan?.threats?.length) {
-          await applyAutomodAction(message, {
-            violationType: 'malicious-link',
-            reason: `Google Safe Browsing flagged \`${scan.url}\` (${scan.threats.join(', ')}).`,
-            action: config.link_scan_action === 'mute' ? 'tempmute' : config.link_scan_action ?? 'delete',
-          });
-          return;
-        }
-      }
 
       if (config.word_filter_enabled) {
         const hit = findBannedWord(message.content, config.banned_words);
