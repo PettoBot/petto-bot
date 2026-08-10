@@ -9,7 +9,6 @@ const {
   StringSelectMenuBuilder,
   TextInputBuilder,
   TextInputStyle,
-  TextDisplayBuilder,
 } = require('discord.js');
 const { ensureGuild } = require('../../db/guilds');
 
@@ -28,10 +27,6 @@ module.exports = {
     const modal = new ModalBuilder()
       .setCustomId('petto_setup_modal')
       .setTitle('Petto Setup')
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent('Configure the main Petto features for this server.'),
-        new TextDisplayBuilder().setContent('Optional fields can be left empty. You can fine-tune each module later with the normal prefix commands.'),
-      )
       .addLabelComponents(
         new LabelBuilder()
           .setLabel('Log Channel')
