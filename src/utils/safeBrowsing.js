@@ -42,4 +42,8 @@ async function checkUrl(url) {
   return (data.matches ?? []).map((match) => match.threatType);
 }
 
-module.exports = { checkUrl, normalizeUrl };
+function isSafeBrowsingConfigured() {
+  return Boolean(config.googleSafeBrowsingKey);
+}
+
+module.exports = { checkUrl, normalizeUrl, isSafeBrowsingConfigured };

@@ -16,6 +16,7 @@ const { confirmBulkAction, requireAdministrator } = require('../../utils/moderat
 // Discord has no native "warn" permission; Moderate Members (used for timeouts)
 // is the closest built-in stand-in for "this person is server staff".
 const WARN_PERMISSION = PermissionFlagsBits.ModerateMembers;
+const MAX_TIMEOUT_MS = 28 * 24 * 60 * 60 * 1000;
 
 module.exports = {
   aliases: ['w'],
@@ -180,6 +181,10 @@ async function escalation(interaction, sub) {
     durationMs = parseDuration(durationStr ?? '');
     if (!durationMs) {
       await interaction.editReply({ components: [textCard('`tempmute` needs a valid `duration`, e.g. `1h`, `12h`, `1d`.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      return;
+    }
+    if (durationMs > MAX_TIMEOUT_MS) {
+      await interaction.editReply({ components: [textCard('Discord timeouts cannot exceed 28 days.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
   }

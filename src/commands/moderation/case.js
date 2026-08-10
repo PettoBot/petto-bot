@@ -6,6 +6,9 @@ const { resolveUsers } = require('../../utils/userResolve');
 const { parseDuration } = require('../../utils/duration');
 const { EMOJI } = require('../../utils/emojis');
 const { requireAdministrator } = require('../../utils/moderationCommand');
+const logger = require('../../utils/logger');
+
+const MAX_TIMEOUT_MS = 28 * 24 * 60 * 60 * 1000;
 
 module.exports = {
   aliases: ['cases'],
@@ -139,6 +142,26 @@ async function edit(interaction) {
       await interaction.editReply({ components: [textCard('Invalid duration. Use something like `10m`, `2h`, or `7d`.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
+    if (row.type === 'tempmute' && durationMs > MAX_TIMEOUT_MS) {
+      await interaction.editReply({ components: [textCard('Discord timeouts cap at 28 days.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      return;
+    }
+
+    // Keep Discord's live timeout aligned with the edited database expiry.
+    // If the member has left, the database still drives the expiry record and
+    // there is no Discord timeout to update.
+    if (row.type === 'tempmute') {
+      const targetMember = await interaction.guild.members.fetch(row.user_id).catch(() => null);
+      if (targetMember) {
+        try {
+          await targetMember.timeout(durationMs, `Case #${caseNumber} duration updated by ${interaction.user.tag}`);
+        } catch (err) {
+          logger.error(`Failed to update timeout for case #${caseNumber}:`, err);
+          await interaction.editReply({ components: [textCard('I could not update the member\'s live timeout, so the case was not changed.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+          return;
+        }
+      }
+    }
     patch.expiresAt = new Date(Date.now() + durationMs).toISOString();
   }
 
@@ -184,6 +207,22 @@ async function editMany(interaction) {
       if (!['tempban', 'tempmute'].includes(row.type)) {
         skipped.push(`#${caseNumber} (no duration to change)`);
         continue;
+      }
+      if (row.type === 'tempmute' && durationMs > MAX_TIMEOUT_MS) {
+        skipped.push(`#${caseNumber} (timeout limit is 28 days)`);
+        continue;
+      }
+      if (row.type === 'tempmute') {
+        const targetMember = await interaction.guild.members.fetch(row.user_id).catch(() => null);
+        if (targetMember) {
+          try {
+            await targetMember.timeout(durationMs, `Case #${caseNumber} duration updated by ${interaction.user.tag}`);
+          } catch (err) {
+            logger.error(`Failed to update timeout for case #${caseNumber}:`, err);
+            skipped.push(`#${caseNumber} (live timeout could not be updated)`);
+            continue;
+          }
+        }
       }
       patch.expiresAt = new Date(Date.now() + durationMs).toISOString();
     }

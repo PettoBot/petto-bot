@@ -48,7 +48,12 @@ async function applyAutomodAction(message, { violationType, reason, action }) {
 
     if (action === 'tempmute') {
       const durationMs = violationType === 'silent-channel' ? SILENT_CHANNEL_MUTE_MS : FLOOD_MUTE_MS;
-      await member.timeout(durationMs, fullReason).catch((err) => logger.warn('Automod: timeout failed:', err.message));
+      try {
+        await member.timeout(durationMs, fullReason);
+      } catch (err) {
+        logger.warn('Automod: timeout failed:', err.message);
+        return;
+      }
       const expiresAt = new Date(Date.now() + durationMs).toISOString();
       const duration = formatDuration(durationMs);
       const modCase = await createCase({ guildId: guild.id, userId: author.id, moderatorId: client.user.id, type: 'tempmute', reason: fullReason, expiresAt });
@@ -58,7 +63,12 @@ async function applyAutomodAction(message, { violationType, reason, action }) {
     }
 
     if (action === 'kick') {
-      await member.kick(fullReason).catch((err) => logger.warn('Automod: kick failed:', err.message));
+      try {
+        await member.kick(fullReason);
+      } catch (err) {
+        logger.warn('Automod: kick failed:', err.message);
+        return;
+      }
       const modCase = await createCase({ guildId: guild.id, userId: author.id, moderatorId: client.user.id, type: 'kick', reason: fullReason });
       await logSanction(client, guild, { modCase, target: author, moderator: client.user, reason: fullReason });
       await author.send(buildSanctionDM({ type: 'kick', guild, client, reason: fullReason })).catch(() => {});

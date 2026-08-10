@@ -2,7 +2,7 @@ const { Events } = require('discord.js');
 const { getConfig } = require('../db/automod');
 const { sendLog } = require('../logging/engine');
 const { EMOJI } = require('../utils/emojis');
-const logger = require('../utils/logger');
+const { applyAutomatedKick } = require('../utils/automodMemberAction');
 
 module.exports = {
   name: Events.GuildMemberAdd,
@@ -28,7 +28,7 @@ module.exports = {
       });
 
       if (willKick) {
-        await member.kick('Automod: account below minimum age (anti-alt)').catch((err) => logger.warn('Anti-alt kick failed:', err.message));
+        await applyAutomatedKick(member, 'Automod: account below minimum age (anti-alt)');
       }
     } catch (err) {
       logger.error(`Anti-alt check failed for guild ${member.guild.id}:`, err);

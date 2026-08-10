@@ -8,6 +8,7 @@ const { formatDuration } = require('./duration');
 const logger = require('./logger');
 
 const DEFAULT_TEMPMUTE_MS = 60 * 60 * 1000; // 1h, used if a rule somehow has no duration set
+const MAX_TIMEOUT_MS = 28 * 24 * 60 * 60 * 1000;
 
 /**
  * Called after every warn (manual or automod) with the user's current active
@@ -38,6 +39,10 @@ async function checkAndApplyEscalation(client, guild, member, warnCount) {
 
     if (rule.action === 'tempmute') {
       const durationMs = Number(rule.duration_ms) || DEFAULT_TEMPMUTE_MS;
+      if (durationMs > MAX_TIMEOUT_MS) {
+        logger.error(`Escalation tempmute duration exceeds Discord's 28-day limit for guild ${guild.id}.`);
+        return;
+      }
       await member.timeout(durationMs, reason);
       const expiresAt = new Date(Date.now() + durationMs).toISOString();
       const duration = formatDuration(durationMs);

@@ -96,7 +96,7 @@ async function scan(interaction) {
     .setTitle(`Security scan · ${guild.name}`)
     .setDescription(`**Score:** \`${score}/100\` · **${status}**\n\n${recommendations}`)
     .addFields(
-      { name: 'Protection', value: `Anti-nuke: ${yesNo(antinuke?.enabled)}\nAnti-spam: ${yesNo(automod?.anti_spam_enabled)}\nAnti-raid: ${yesNo(automod?.anti_raid_enabled)}\nVerification: ${yesNo(verification?.enabled)}`, inline: true },
+      { name: 'Protection', value: `Anti-nuke: ${yesNo(antinuke?.enabled)}\nAnti-spam: ${yesNo(automod?.anti_spam_enabled)}\nAnti-raid: ${yesNo(automod?.anti_raid_enabled)}\nLink scan: ${yesNo(automod?.link_scan_enabled)}\nVerification: ${yesNo(verification?.enabled)}`, inline: true },
       { name: 'Coverage', value: `Log routes: ${logs?.entries?.length ?? 0}\nAdmin roles: ${adminRoles.size}\nDangerous @everyone perms: ${dangerousEveryone.length}\nAudit access: ${yesNo(botMember?.permissions.has(PermissionFlagsBits.ViewAuditLog))}`, inline: true },
     )
     .setFooter({ text: 'Read-only scan. Petto did not change any server setting.' });

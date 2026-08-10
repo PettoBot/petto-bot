@@ -21,10 +21,16 @@ async function processExpiredSanctions(client) {
       }
 
       if (sanction.type === 'tempban') {
-        await guild.members.unban(sanction.user_id, 'Temporary ban expired').catch(() => {});
+        try {
+          await guild.members.unban(sanction.user_id, 'Temporary ban expired');
+        } catch (err) {
+          // Already unbanned is a successful final state. Other errors must
+          // leave the case active so the next poll can retry it.
+          if (err.code !== 10026) throw err;
+        }
       } else if (sanction.type === 'tempmute') {
         const member = await guild.members.fetch(sanction.user_id).catch(() => null);
-        if (member) await member.timeout(null, 'Temporary mute expired').catch(() => {});
+        if (member) await member.timeout(null, 'Temporary mute expired');
       }
 
       await deactivateCase(sanction.guild_id, sanction.case_number);
