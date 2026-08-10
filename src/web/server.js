@@ -25,6 +25,39 @@ async function checkTurnstile(responseToken, remoteIp) {
   return res.json();
 }
 
+function createRateLimiter({ windowMs, max }) {
+  const buckets = new Map();
+  let lastCleanup = Date.now();
+
+  return (req, res, next) => {
+    const now = Date.now();
+    if (now - lastCleanup >= windowMs) {
+      for (const [key, bucket] of buckets) {
+        if (bucket.resetAt <= now) buckets.delete(key);
+      }
+      lastCleanup = now;
+    }
+
+    const key = req.ip || req.socket.remoteAddress || 'unknown';
+    const current = buckets.get(key);
+    const bucket = current && current.resetAt > now
+      ? current
+      : { count: 0, resetAt: now + windowMs };
+    bucket.count += 1;
+    buckets.set(key, bucket);
+
+    const retryAfter = Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
+    res.set('RateLimit-Limit', String(max));
+    res.set('RateLimit-Remaining', String(Math.max(0, max - bucket.count)));
+    res.set('RateLimit-Reset', String(retryAfter));
+    if (bucket.count > max) {
+      res.set('Retry-After', String(retryAfter)).status(429).json({ ok: false, error: 'rate_limited' });
+      return;
+    }
+    next();
+  };
+}
+
 /**
  * Starts the verification web server (serves the Turnstile page and applies role
  * changes on success). Needs the live discord.js client to fetch guilds/members.
@@ -40,8 +73,16 @@ function startServer(client) {
   }
 
   const app = express();
-  app.set('trust proxy', true);
-  app.use(express.json());
+  const proxyHops = Number(process.env.TRUST_PROXY_HOPS ?? 1);
+  app.disable('x-powered-by');
+  app.set('trust proxy', Number.isInteger(proxyHops) && proxyHops >= 0 ? proxyHops : 1);
+  app.use((req, res, next) => {
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.set('X-Frame-Options', 'SAMEORIGIN');
+    next();
+  });
+  app.use(express.json({ limit: '100kb' }));
   // Petto's brand icons (approve/deny/alert/favicon), also referenced by public URL
   // from the Components V2 verification DM, since Discord needs a real image URL.
   app.use('/assets', express.static(path.join(__dirname, 'public'), { maxAge: '7d' }));
@@ -179,7 +220,7 @@ function startServer(client) {
     res.set('Content-Type', 'text/html; charset=utf-8').send(renderVerifyPage({ token: req.params.token, siteKey: config.turnstileSiteKey }));
   });
 
-  app.post('/api/verify', async (req, res) => {
+  app.post('/api/verify', createRateLimiter({ windowMs: 60_000, max: 20 }), async (req, res) => {
     const { token, turnstileToken } = req.body ?? {};
 
     const payload = verifyToken(token);
