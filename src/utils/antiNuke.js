@@ -5,6 +5,7 @@ const logger = require('./logger');
 
 // In-memory sliding window of destructive-action timestamps, per guild per executor.
 const actionsByGuild = new Map(); // guildId -> Map<executorId, timestamp[]>
+const triggeredByGuild = new Map(); // guildId -> Map<executorId, expiresAt>
 
 function recordAction(guildId, executorId, windowSeconds) {
   const guildMap = actionsByGuild.get(guildId) ?? new Map();
@@ -60,6 +61,19 @@ async function handleExecutor(client, guild, executor, config, actionLabel) {
 
   const count = recordAction(guild.id, executor.id, config.window_seconds);
   if (count < config.action_threshold) return;
+
+  // Several Discord events can arrive concurrently after the threshold is
+  // crossed. Trigger once per window so anti-nuke does not repeatedly ban the
+  // same bot or spam role-removal requests for the same human.
+  const now = Date.now();
+  const triggered = triggeredByGuild.get(guild.id) ?? new Map();
+  const triggeredUntil = triggered.get(executor.id) ?? 0;
+  if (triggeredUntil > now) return;
+  triggered.set(executor.id, now + config.window_seconds * 1000);
+  for (const [id, expiresAt] of triggered) {
+    if (expiresAt <= now) triggered.delete(id);
+  }
+  triggeredByGuild.set(guild.id, triggered);
 
   await sendLog(client, guild.id, 'automod', {
     author: { name: executor.username, icon_url: executor.displayAvatarURL?.({ extension: 'png', size: 128 }) ?? undefined },

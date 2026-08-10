@@ -80,6 +80,16 @@ async function updateCase(guildId, caseNumber, { reason, expiresAt } = {}) {
 
 /** Deletes a single case by number (used by /delinf). Returns true if a row was deleted. */
 async function deleteCase(guildId, caseNumber) {
+  // A warning has a dedicated row as well as its numbered case. Keep the
+  // warning inactive before deleting the visible case, otherwise escalation
+  // counts would continue to include a warning that staff can no longer see.
+  const { error: warnError } = await supabase
+    .from('warns')
+    .update({ active: false })
+    .eq('guild_id', guildId)
+    .eq('case_number', caseNumber);
+  if (warnError) throw warnError;
+
   const { data, error } = await supabase
     .from('mod_actions')
     .delete()
@@ -93,6 +103,13 @@ async function deleteCase(guildId, caseNumber) {
 
 /** Deletes every case for a user in a guild (used by /delinfs). Returns how many were deleted. */
 async function deleteAllForUser(guildId, userId) {
+  const { error: warnError } = await supabase
+    .from('warns')
+    .update({ active: false })
+    .eq('guild_id', guildId)
+    .eq('user_id', userId);
+  if (warnError) throw warnError;
+
   const { data, error } = await supabase
     .from('mod_actions')
     .delete()

@@ -327,6 +327,8 @@ alter table verification_redemptions enable row level security;
 -- ---------------------------------------------------------------------------
 create table if not exists automod_config (
   guild_id              text primary key references guilds(guild_id) on delete cascade,
+  link_scan_enabled     boolean not null default false,
+  link_scan_action      text not null default 'delete' check (link_scan_action in ('warn', 'mute', 'kick', 'delete')),
   word_filter_enabled   boolean not null default false,
   word_filter_action    text not null default 'warn' check (word_filter_action in ('warn', 'mute', 'kick', 'delete')),
   banned_words          text[] not null default '{}',
@@ -348,6 +350,10 @@ create table if not exists automod_config (
 
 -- `create table if not exists` is a no-op against an already-migrated database, so columns
 -- added after the first release of this table need their own idempotent migration step.
+alter table automod_config add column if not exists link_scan_enabled boolean not null default false;
+alter table automod_config add column if not exists link_scan_action text not null default 'delete';
+alter table automod_config drop constraint if exists automod_config_link_scan_action_check;
+alter table automod_config add constraint automod_config_link_scan_action_check check (link_scan_action in ('warn', 'mute', 'kick', 'delete'));
 alter table automod_config add column if not exists word_filter_action text not null default 'warn';
 alter table automod_config drop constraint if exists automod_config_word_filter_action_check;
 alter table automod_config add constraint automod_config_word_filter_action_check check (word_filter_action in ('warn', 'mute', 'kick', 'delete'));

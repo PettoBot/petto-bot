@@ -294,18 +294,30 @@ async function unbanAll(interaction) {
 
   let succeeded = 0;
   let failed = 0;
+  const caseNumbers = [];
   for (const userId of bans.keys()) {
+    let target;
     try {
       await interaction.guild.members.unban(userId, reason ?? 'Mass unban');
       succeeded += 1;
+      target = bans.get(userId)?.user ?? { id: userId, username: userId };
     } catch (err) {
       failed += 1;
       logger.warn(`unban remove-all: failed to unban ${userId} in ${interaction.guild.id}:`, err.message);
+      continue;
+    }
+
+    try {
+      const modCase = await createCase({ guildId: interaction.guild.id, userId, moderatorId: interaction.user.id, type: 'unban', reason });
+      caseNumbers.push(modCase.case_number);
+      await logSanction(interaction.client, interaction.guild, { modCase, target, moderator: interaction.user, reason });
+    } catch (err) {
+      logger.error(`unban remove-all: unban succeeded but case logging failed for ${userId}:`, err);
     }
   }
 
   const resultLines = [
-    `${EMOJI.APPROVE}  Unbanned **${succeeded}** user(s)${failed ? ` (${failed} failed)` : ''}.`,
+    `${EMOJI.APPROVE}  Unbanned **${succeeded}** user(s)${failed ? ` (${failed} failed)` : ''}${caseNumbers.length ? ` · Cases #${caseNumbers.join(', #')}` : ''}.`,
     `**Moderator:** ${interaction.user}`,
     `**Reason:** ${reason || 'No reason provided.'}`,
   ];
