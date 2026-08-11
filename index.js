@@ -40,7 +40,7 @@ const client = new Client({
     GatewayIntentBits.GuildPresences,
   ],
   partials: [Partials.GuildMember, Partials.User, Partials.Message, Partials.Reaction],
-  // Case cards/logs render `@user` mentions as text/reference, not as pings —
+  // Case cards/logs render `@user` mentions as text/reference, not as pings 
   // this is the default for every message the bot sends unless a specific
   // send call opts back in with its own `allowedMentions`.
   allowedMentions: { parse: [] },
