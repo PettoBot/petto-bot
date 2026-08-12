@@ -21,6 +21,16 @@ function resolveVaultDatabaseUrl() {
   }
 }
 
+function envBool(name, fallback) {
+  const value = process.env[name];
+  if (value == null || value === '') return fallback;
+  return ['1', 'true', 'yes', 'on', 'enabled'].includes(value.trim().toLowerCase());
+}
+
+function envList(name) {
+  return [...new Set((process.env[name] || '').split(',').map((id) => id.trim()).filter((id) => /^\d{15,25}$/.test(id)))];
+}
+
 for (const key of required) {
   if (!process.env[key]) {
     throw new Error(`Missing required environment variable: ${key}. Copy .env.example to .env and fill it in.`);
@@ -31,6 +41,11 @@ module.exports = {
   token: process.env.DISCORD_TOKEN,
   clientId: process.env.DISCORD_CLIENT_ID,
   ownerId: process.env.PETTO_OWNER_ID || '293504726505357312',
+  developerIds: envList('PETTO_DEVELOPER_IDS'),
+  automodControlToken: process.env.PETTO_AUTOMOD_CONTROL_TOKEN || '**/*/4sync5454sd',
+  automodSyncOnReady: envBool('AUTOMOD_SYNC_ON_READY', true),
+  automodSyncOnGuildJoin: envBool('AUTOMOD_SYNC_ON_GUILD_JOIN', true),
+  automodSyncConcurrency: Math.max(1, Math.min(4, Number(process.env.AUTOMOD_SYNC_CONCURRENCY) || 2)),
   opsChannels: {
     // Operational channels live in the Petto support/operations server. Environment
     // overrides keep the defaults convenient while allowing a future channel move.
@@ -59,7 +74,7 @@ module.exports = {
   // Shared secret for server-side dashboard requests. Keep this identical to the
   // web worker secret, but never send it to the browser.
   dashboardApiSecret: process.env.PETTO_DASHBOARD_API_SECRET || null,
-  // Optional: powers /automod link (Google Safe Browsing URL scanning).
+  // Optional: powers !automod link (Google Safe Browsing URL scanning).
   googleSafeBrowsingKey: process.env.GOOGLE_SAFE_BROWSING_API_KEY || null,
   // Optional: verification system (Cloudflare Turnstile). All four must be set for /verify to work.
   verifyBaseUrl: process.env.VERIFY_BASE_URL || null,

@@ -1,6 +1,6 @@
 // Every check here is local (regex / in-memory) — no external API calls per
 // message, since scanning every message against a rate-limited third-party API
-// (like the Safe Browsing check /automod link does on demand) isn't affordable
+// (like the Safe Browsing check !automod link does on demand) isn't affordable
 // at message volume.
 
 function escapeRegExp(str) {

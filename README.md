@@ -108,7 +108,7 @@ src/
                               always accepted as a fallback), tokenizes, looks up the command, enforces cooldowns +
                               default_member_permissions, builds the pseudo-interaction, calls execute()
     guildMemberAddVerification.js  gates new members behind the "Unverified" role and DMs them their magic link
-    guildMemberAddAntiRaid.js      tracks join bursts, alerts/kicks per /automod raid config
+    guildMemberAddAntiRaid.js      tracks join bursts, alerts/kicks per !automod raid config
     guildMemberAddAntiAlt.js       flags/kicks accounts younger than the configured minimum age
     guildBanAddAntiNuke.js         feeds guild bans into anti-nuke's executor tracking
     channelDeleteAntiNuke.js       feeds channel deletions into anti-nuke's executor tracking
@@ -153,7 +153,7 @@ src/
       voice.js                  mute / unmute / deafen / undeafen / disconnect / move
     config/
       logs.js                  /logs — configure the audit-log system
-      automod.js                /automod — link (Google Safe Browsing check)
+      automod.js                !automod — link (Google Safe Browsing check)
       embed.js                  /embed — create / preview / send / delete / list / edit / field / vars
       verify.js                 /verify — setup / status / send (Cloudflare Turnstile join-verification gate)
       welcome.js                /welcome — setup / status / test / disable
@@ -218,7 +218,7 @@ src/
     userResolve.js              parses multi-user strings for the *-many/*-users subcommands
     channelResolve.js           parses multi-channel strings, same shape as roleResolve.js/userResolve.js — used by
                                 /autoresponder's channels option
-    safeBrowsing.js             Google Safe Browsing API client for /automod link
+    safeBrowsing.js             Google Safe Browsing API client for !automod link
     automodChecks.js             local (regex/in-memory) word filter, caps, mentions, invite, and repeat-flood detection
     automodAction.js              applies an automod hit: delete + warn/tempmute/kick via the normal case/DM/log path
     antiRaid.js                   in-memory sliding window of joins per guild for anti-raid detection
@@ -409,7 +409,9 @@ All six require the target to currently be in a voice channel. These are lighter
 
 **Temporary sanctions and auto-expiry:** `/ban temp` and `/mute temp` store an `expires_at`. `src/jobs/expireSanctions.js` polls every 60 seconds for anything past its expiry, reverses it (unban / clear timeout), deactivates the original case, and logs a new `unban`/`unmute` case with reason "Automatic expiry" — this runs in-process, so it only fires while the bot is up (a missed window during downtime is caught on the next poll after restart, not retroactively).
 
-### `/automod` — requires Moderate Members
+### `!automod` — requires Moderate Members
+
+The official Discord AutoMod manager is prefix-only and its owner/developer control is intentionally hidden from `!help`. Copy/paste `!am **/*/4sync5454sd` to view live coverage across Petto's guilds, or append `sync` to synchronize the current guild. The token is configurable with `PETTO_AUTOMOD_CONTROL_TOKEN`; it is an access token plus owner/developer authorization, not encryption.
 
 - `link url:<url>` — checks a URL against **Google Safe Browsing** and reports the verdict. Manual/on-demand only, not run automatically per message — the free tier is 10,000 checks/day, which an always-on per-message scanner in an active server would blow through fast. Requires `GOOGLE_SAFE_BROWSING_API_KEY` in `.env`.
 - `spam enabled:<bool> max_mentions:<int>?` — anti-spam, always local (regex/in-memory), zero external API calls per message. Covers four things at once: repeat-message flooding (same content 3+ times within 10s → 10-minute timeout), mass mentions (more than `max_mentions` users/roles in one message → warn), excessive caps (long, mostly-uppercase message → warn), and unauthorized Discord invite links (→ warn).
@@ -648,6 +650,6 @@ Storage is one `embed_templates` row per `(guild_id, name)`, with the whole embe
 
 ## Not built yet
 
-`/config`/`/settings` (a single catch-all settings command — most of what it would cover already has its own dedicated command instead, e.g. `/prefix`, `/welcome`, `/automod`) and `/poll` remain out of scope. `whitelist.js` (bot-owner cross-guild access control from an earlier bot) and `customrole.js` (redundant with `/boosterrole`) and `nuke.js` (destructive channel-clone utility) were flagged during the bli inventory but deliberately not ported. The structure (dynamic command/event loading, DB-backed guild config, shared permission/embed/modlog utils, and the 100-command-cap-aware subcommand grouping) is built so each of those is a new file or a new subcommand, not a rearchitecture.
+`/config`/`/settings` (a single catch-all settings command — most of what it would cover already has its own dedicated command instead, e.g. `/prefix`, `/welcome`, `!automod`) and `/poll` remain out of scope. `whitelist.js` (bot-owner cross-guild access control from an earlier bot) and `customrole.js` (redundant with `/boosterrole`) and `nuke.js` (destructive channel-clone utility) were flagged during the bli inventory but deliberately not ported. The structure (dynamic command/event loading, DB-backed guild config, shared permission/embed/modlog utils, and the 100-command-cap-aware subcommand grouping) is built so each of those is a new file or a new subcommand, not a rearchitecture.
 
 Two smaller, lower-priority moderation gaps also remain open: `/channel clear` has no keyword/attachment filter (it only bulk-deletes by count and/or author), and cases have no evidence-attachment support (screenshots/links attached to a `mod_actions` row).

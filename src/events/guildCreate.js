@@ -3,6 +3,8 @@ const { EMOJI } = require('../utils/emojis');
 const logger = require('../utils/logger');
 const { sendGuildLifecycleLog } = require('../utils/discordOps');
 const { ensureGuild } = require('../db/guilds');
+const config = require('../config');
+const { syncGuildAutoMod } = require('../utils/autoModManager');
 const {
   commandMention,
   ensureAdminSetupChannel,
@@ -86,6 +88,9 @@ module.exports = {
       await sendGuildLifecycleLog(guild.client, { kind: 'join', guild, ownerId: owner?.id, inviter, inviteUrl });
 
       const guildConfig = await ensureGuild(guild.id).catch(() => ({ prefix: '!' }));
+      if (config.automodSyncOnGuildJoin) {
+        await syncGuildAutoMod(guild).catch((err) => logger.error(`[AutoMod] Join synchronization failed for guild ${guild.id}:`, err));
+      }
       const setupChannel = await ensureAdminSetupChannel(guild).catch((err) => {
         logger.error(`Could not create private setup channel in guild ${guild.id}:`, err);
         return null;

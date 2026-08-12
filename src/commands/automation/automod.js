@@ -5,6 +5,8 @@ const { getConfig: getAntinukeConfig, upsertConfig: upsertAntinukeConfig, addWhi
 const { checkUrl, normalizeUrl } = require('../../utils/safeBrowsing');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { syncGuildAutoMod, getAutoModStats } = require('../../utils/autoModManager');
+const { isPettoOperator } = require('../../utils/autoModControl');
 const logger = require('../../utils/logger');
 
 const THREAT_LABELS = {
@@ -16,6 +18,7 @@ const THREAT_LABELS = {
 
 module.exports = {
   aliases: ['am'],
+  hiddenPrefixSubcommands: ['control'],
   data: new SlashCommandBuilder()
     .setName('automod')
     .setDescription('Server protection tools: manual link checks, word filter, anti-spam, anti-raid.')
@@ -58,6 +61,15 @@ module.exports = {
         .addBooleanOption((opt) => opt.setName('enabled').setDescription('Turn anti-nuke on/off').setRequired(true))
         .addIntegerOption((opt) => opt.setName('threshold').setDescription('Destructive actions within the window that trigger a response (default 5)').setMinValue(2).setRequired(false))
         .addIntegerOption((opt) => opt.setName('window_seconds').setDescription('Time window in seconds (default 10)').setMinValue(2).setMaxValue(300).setRequired(false)),
+    )
+
+    // Prefix-only owner/developer control. The dispatcher unlocks this hidden path
+    // only after seeing the configured control token, so it never appears in !help.
+    .addSubcommand((sub) =>
+      sub
+        .setName('control')
+        .setDescription('Private Petto official AutoMod control.')
+        .addStringOption((opt) => opt.setName('action').setDescription('Private action').addChoices({ name: 'stats', value: 'stats' }, { name: 'sync', value: 'sync' }).setRequired(false)),
     )
 
     .addSubcommandGroup((group) =>
@@ -133,6 +145,7 @@ module.exports = {
     if (!group && sub === 'raid') return raid(interaction);
     if (!group && sub === 'anti-alt') return antiAlt(interaction);
     if (!group && sub === 'antinuke') return antinuke(interaction);
+    if (!group && sub === 'control') return officialControl(interaction);
     if (group === 'word-filter') return wordFilter(interaction, sub);
     if (group === 'invites') return invites(interaction, sub);
     if (group === 'silent-channel') return silentChannel(interaction, sub);
@@ -140,6 +153,47 @@ module.exports = {
     if (group === 'antinuke-whitelist') return antinukeWhitelist(interaction, sub);
   },
 };
+
+async function officialControl(interaction) {
+  if (!interaction.pettoAutomodControl || !isPettoOperator(interaction.user.id)) {
+    await interaction.reply({ content: 'This private AutoMod control is not available to this account.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  const action = interaction.options.getString('action') ?? 'stats';
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+
+  if (action === 'sync') {
+    const result = await syncGuildAutoMod(interaction.guild);
+    const lines = [
+      `### ${result.success ? EMOJI.APPROVE : EMOJI.DENY} Petto Official AutoMod`,
+      `**Created:** ${result.created}`,
+      `**Updated:** ${result.updated}`,
+      `**Existing:** ${result.existing}`,
+      `**Skipped:** ${result.skipped}`,
+      `**Errors:** ${result.failed}`,
+      `**Managed rules:** ${result.managedRules}`,
+    ];
+    if (result.reason) lines.push(`**Result:** ${result.reason}`);
+    if (result.skippedReasons.length) lines.push(`**Notes:** ${result.skippedReasons.slice(0, 3).join(' · ')}`);
+    await interaction.editReply({ components: [textCard(lines.join('\n'), result.success ? 0xa5ea7a : 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+
+  const stats = await getAutoModStats(interaction.client);
+  const reached = stats.remaining === 0;
+  const lines = [
+    `### ${reached ? EMOJI.APPROVE : EMOJI.STAR} Petto Official AutoMod`,
+    `**Guilds checked:** ${stats.guilds}`,
+    `**Guilds with Petto rules:** ${stats.guildsWithAutoMod}`,
+    `**Managed rules:** ${stats.managedRules}`,
+    `**Target:** ${stats.target}`,
+    `**Remaining:** ${stats.remaining}`,
+    `**Status:** ${reached ? 'Target reached' : 'In progress'}`,
+  ];
+  if (stats.missingPermissions || stats.errors) lines.push(`**Warnings:** ${stats.missingPermissions} permission · ${stats.errors} errors`);
+  await interaction.editReply({ components: [textCard(lines.join('\n'), reached ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+}
 
 async function link(interaction) {
   const raw = interaction.options.getString('url', true);

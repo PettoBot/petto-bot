@@ -39,7 +39,7 @@ const CATEGORY_META = {
 // ── Introspection — built live from client.commands, never a hand-kept list ──
 
 function getChatInputCommands(client) {
-  return [...client.commands.values()].filter((c) => (c.data.toJSON().type ?? 1) === 1 && !c.slashOnly);
+  return [...client.commands.values()].filter((c) => (c.data.toJSON().type ?? 1) === 1 && !c.slashOnly && !c.hiddenFromHelp);
 }
 
 /** Prefers this server's own bot avatar (server-specific pfp) over the bot's global one. */
@@ -75,6 +75,11 @@ function flattenEntries(json) {
     }
   }
   return entries;
+}
+
+function visibleEntries(command) {
+  const hidden = new Set(command.hiddenPrefixSubcommands ?? []);
+  return flattenEntries(command.data.toJSON()).filter((entry) => !hidden.has(entry.path.join(' ')));
 }
 
 // bli doesn't hand-color the syntax block with ansi escapes — it just tags the code block
@@ -124,10 +129,10 @@ function findEntries(client, tokens) {
   const route = client.commandRoutes?.get(tokens[0]);
   const canonicalName = client.commandAliases.get(tokens[0]) ?? route?.command ?? tokens[0];
   const command = client.commands.get(canonicalName);
-  if (!command || command.slashOnly || (command.data.toJSON().type ?? 1) !== 1) return { command: null, entries: [] };
+  if (!command || command.slashOnly || command.hiddenFromHelp || (command.data.toJSON().type ?? 1) !== 1) return { command: null, entries: [] };
 
   const json = command.data.toJSON();
-  const all = flattenEntries(json);
+  const all = visibleEntries(command);
   const wantedPath = [...(route?.args ?? []), ...tokens.slice(1)].join(' ');
 
   if (!wantedPath) return { command, entries: all };
@@ -239,7 +244,7 @@ function categoryView(client, guild, categoryId) {
 
 function subcommandView(client, guild, command, categoryId) {
   const json = command.data.toJSON();
-  const entries = flattenEntries(json);
+  const entries = visibleEntries(command);
   const meta = CATEGORY_META[categoryId] ?? CATEGORY_META.other;
 
   const section = new SectionBuilder()
@@ -267,7 +272,7 @@ function subcommandView(client, guild, command, categoryId) {
 
 function detailView(client, guild, prefix, command, entry, categoryId) {
   const meta = CATEGORY_META[categoryId] ?? CATEGORY_META.other;
-  const entries = flattenEntries(command.data.toJSON());
+  const entries = visibleEntries(command);
   const hasSubs = entries.length > 1 || entries[0].path.length > 0;
 
   const buttons = [];
@@ -357,7 +362,7 @@ module.exports = {
           return;
         }
         currentCommand = command;
-        const entries = flattenEntries(command.data.toJSON());
+        const entries = visibleEntries(command);
         if (entries.length === 1 && !entries[0].path.length) {
           await i.update(detailView(client, interaction.guild, prefix, command, entries[0], currentCategory));
         } else {
@@ -371,7 +376,7 @@ module.exports = {
           await i.deferUpdate();
           return;
         }
-        const entries = flattenEntries(currentCommand.data.toJSON());
+        const entries = visibleEntries(currentCommand);
         const entry = entries.find((e) => e.path.join(' ') === i.values[0]);
         if (!entry) {
           await i.deferUpdate();
