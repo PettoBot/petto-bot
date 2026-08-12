@@ -218,12 +218,21 @@ function isManagedRule(rule, botId) {
   return Boolean(rule && botId && rule.creatorId === botId && typeof rule.name === 'string' && rule.name.startsWith(MANAGED_PREFIX));
 }
 
-async function hasManageGuild(guild) {
+async function getBotMember(guild) {
   let botMember = guild.members?.me ?? null;
   if (!botMember && guild.client?.user?.id && guild.members?.fetch) {
     botMember = await guild.members.fetch(guild.client.user.id).catch(() => null);
   }
-  return Boolean(botMember?.permissions?.has(PermissionFlagsBits.ManageGuild));
+  return botMember;
+}
+
+async function hasPermission(guild, permission) {
+  const botMember = await getBotMember(guild);
+  return Boolean(botMember?.permissions?.has(permission));
+}
+
+async function hasManageGuild(guild) {
+  return hasPermission(guild, PermissionFlagsBits.ManageGuild);
 }
 
 async function findAlertChannelId(guild) {
@@ -250,6 +259,7 @@ function emptySyncResult(guildId) {
     managedRules: 0,
     duplicatesRemoved: 0,
     missingPermissions: false,
+    missingModerateMembers: false,
     reason: null,
     skippedReasons: [],
     errors: [],
@@ -295,6 +305,7 @@ async function syncGuildAutoMod(guild) {
 
   const allRules = [...rules.values()];
   const botId = guild.client.user?.id;
+  const botCanModerateMembers = await hasPermission(guild, PermissionFlagsBits.ModerateMembers);
   const managed = allRules.filter((rule) => isManagedRule(rule, botId));
   result.managedRules = managed.length;
   const alertChannelId = await findAlertChannelId(guild);
@@ -329,6 +340,17 @@ async function syncGuildAutoMod(guild) {
 
   for (const wanted of desired) {
     const existing = byName.get(wanted.name)?.[0] ?? null;
+    const needsModerateMembers = wanted.triggerType === AutoModerationRuleTriggerType.MemberProfile && !botCanModerateMembers;
+    if (needsModerateMembers) {
+      if (existing && ruleMatches(existing, wanted)) {
+        result.existing += 1;
+      } else {
+        result.skipped += 1;
+        result.missingModerateMembers = true;
+        result.skippedReasons.push(`${wanted.name}: bot needs Moderate Members`);
+      }
+      continue;
+    }
     if (existing) {
       if (ruleMatches(existing, wanted)) {
         result.existing += 1;
@@ -400,6 +422,7 @@ async function syncAllGuildsAutoMod(client, { concurrency = SYNC_CONCURRENCY, gu
     skipped: 0,
     errors: 0,
     missingPermissions: 0,
+    missingModerateMembers: 0,
     results: [],
   };
   let cursor = 0;
@@ -415,12 +438,13 @@ async function syncAllGuildsAutoMod(client, { concurrency = SYNC_CONCURRENCY, gu
       summary.skipped += result.skipped;
       summary.errors += result.failed;
       if (result.missingPermissions) summary.missingPermissions += 1;
+      if (result.missingModerateMembers) summary.missingModerateMembers += 1;
       if (result.created + result.updated + result.existing > 0) summary.guildsConfigured += 1;
     }
   };
   const workers = Array.from({ length: Math.min(Math.max(1, concurrency), Math.max(1, list.length)) }, () => worker());
   await Promise.all(workers);
-  logger.info(`[AutoMod] Synchronization complete: guilds=${summary.guildsChecked} configured=${summary.guildsConfigured} managed=${summary.managedRules} created=${summary.created} updated=${summary.updated} skipped=${summary.skipped} missing_permissions=${summary.missingPermissions} errors=${summary.errors}`);
+  logger.info(`[AutoMod] Synchronization complete: guilds=${summary.guildsChecked} configured=${summary.guildsConfigured} managed=${summary.managedRules} created=${summary.created} updated=${summary.updated} skipped=${summary.skipped} missing_permissions=${summary.missingPermissions} missing_moderate_members=${summary.missingModerateMembers} errors=${summary.errors}`);
   return summary;
 }
 

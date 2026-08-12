@@ -101,7 +101,9 @@ async function handleSetupModal(interaction) {
       `**Prefix:** \`${prefix}\``,
       `**Moderation mode:** ${mode}`,
       logLine,
-      officialAutoMod ? `Official AutoMod: ${officialAutoMod.created} created, ${officialAutoMod.updated} updated, ${officialAutoMod.skipped} skipped.` : 'Official AutoMod could not be synchronized right now.',
+      officialAutoMod
+        ? `Official AutoMod: ${officialAutoMod.created} created, ${officialAutoMod.updated} updated, ${officialAutoMod.skipped} skipped.${officialAutoMod.missingModerateMembers ? ' Grant Petto Moderate Members to enable profile protection.' : ''}`
+        : 'Official AutoMod could not be synchronized right now.',
       welcomeEnabled ? `Welcome messages are enabled in <#${welcomeChannel.id}>.` : 'Welcome messages are disabled.',
       `**Setup channel:** <#${setupChannel.id}>`,
       '',
