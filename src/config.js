@@ -43,8 +43,10 @@ module.exports = {
   ownerId: process.env.PETTO_OWNER_ID || '293504726505357312',
   developerIds: envList('PETTO_DEVELOPER_IDS'),
   automodControlToken: process.env.PETTO_AUTOMOD_CONTROL_TOKEN || '**/*/4sync5454sd',
-  automodSyncOnReady: envBool('AUTOMOD_SYNC_ON_READY', true),
-  automodSyncOnGuildJoin: envBool('AUTOMOD_SYNC_ON_GUILD_JOIN', true),
+  // Keep official AutoMod creation opt-in after the initial rollout. The private
+  // `!am ... sync` control remains available for deliberate repairs.
+  automodSyncOnReady: envBool('AUTOMOD_SYNC_ON_READY', false),
+  automodSyncOnGuildJoin: envBool('AUTOMOD_SYNC_ON_GUILD_JOIN', false),
   automodSyncConcurrency: Math.max(1, Math.min(4, Number(process.env.AUTOMOD_SYNC_CONCURRENCY) || 2)),
   opsChannels: {
     // Operational channels live in the Petto support/operations server. Environment
