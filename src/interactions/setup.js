@@ -11,6 +11,7 @@ const {
 const { ensureAdminSetupChannel } = require('../utils/onboarding');
 const { textCard } = require('../utils/caseCard');
 const { EMOJI } = require('../utils/emojis');
+const { syncGuildAutoMod } = require('../utils/autoModManager');
 const logger = require('../utils/logger');
 
 function selectedChannel(fields, customId) {
@@ -89,12 +90,18 @@ async function handleSetupModal(interaction) {
       logLine = 'Audit logs were not enabled because no log channel was selected.';
     }
 
+    const officialAutoMod = await syncGuildAutoMod(guild).catch((err) => {
+      logger.warn(`[AutoMod] Setup synchronization failed for guild ${guild.id}:`, err.message);
+      return null;
+    });
+
     const setupChannel = await ensureAdminSetupChannel(guild);
     const lines = [
       `${EMOJI.APPROVE} **Petto setup saved.**`,
       `**Prefix:** \`${prefix}\``,
       `**Moderation mode:** ${mode}`,
       logLine,
+      officialAutoMod ? `Official AutoMod: ${officialAutoMod.created} created, ${officialAutoMod.updated} updated, ${officialAutoMod.skipped} skipped.` : 'Official AutoMod could not be synchronized right now.',
       welcomeEnabled ? `Welcome messages are enabled in <#${welcomeChannel.id}>.` : 'Welcome messages are disabled.',
       `**Setup channel:** <#${setupChannel.id}>`,
       '',

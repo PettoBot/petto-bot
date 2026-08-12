@@ -7,6 +7,7 @@ const {
 } = require('discord.js');
 const { ensureGuild, updateGuild } = require('../db/guilds');
 const { EMOJI } = require('./emojis');
+const { controlCommand } = require('./autoModControl');
 const logger = require('./logger');
 
 const SETUP_CHANNEL_NAME = 'petto-setup';
@@ -105,6 +106,8 @@ async function commandMention(client, commandName, guild = null) {
 }
 
 function buildAdminSetupMessage({ setupMention, prefix }) {
+  const automodStatsCommand = controlCommand(prefix);
+  const automodSyncCommand = controlCommand(prefix, 'sync');
   const container = new ContainerBuilder()
     .setAccentColor(0x5865f2)
     .addTextDisplayComponents(
@@ -115,6 +118,8 @@ function buildAdminSetupMessage({ setupMention, prefix }) {
         `• Open ${setupMention} to configure the server in one form.`,
         `• Use \`${prefix}help\` to browse Petto's prefix commands.`,
         `• Use \`${prefix}logs\`, \`${prefix}automod\`, and \`${prefix}welcome\` for detailed settings.`,
+        `• Official AutoMod status: \`${automodStatsCommand}\``,
+        `• Repair official AutoMod rules: \`${automodSyncCommand}\``,
         '• Do not share this channel with regular members or other bots.',
       ].join('\n')),
     );
@@ -123,6 +128,8 @@ function buildAdminSetupMessage({ setupMention, prefix }) {
 }
 
 function buildOwnerGuide({ guild, setupChannel, setupMention, prefix }) {
+  const automodStatsCommand = controlCommand(prefix);
+  const automodSyncCommand = controlCommand(prefix, 'sync');
   const container = new ContainerBuilder()
     .setAccentColor(0x5865f2)
     .addTextDisplayComponents(
@@ -136,6 +143,8 @@ function buildOwnerGuide({ guild, setupChannel, setupMention, prefix }) {
         `• \`${prefix}help\` to browse every command`,
         `• \`${prefix}logs\` to configure audit logs`,
         `• \`${prefix}automod\` to configure anti-spam, anti-raid and filters`,
+        `• Official AutoMod status: \`${automodStatsCommand}\``,
+        `• Repair official AutoMod rules: \`${automodSyncCommand}\``,
         `• \`${prefix}welcome\` to configure join messages`,
         `• \`${prefix}lock\` and \`${prefix}unlock\` for channel lockdowns`,
         '',

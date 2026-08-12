@@ -13,6 +13,7 @@ const { extractReactReplies, applyReactReplies } = require('../utils/messageFlag
 const { textCard } = require('../utils/caseCard');
 const { EMOJI } = require('../utils/emojis');
 const moderationPermissions = require('../utils/moderationPermissions');
+const { controlAction } = require('../utils/autoModControl');
 const logger = require('../utils/logger');
 
 const DEFAULT_COOLDOWN_MS = 3000;
@@ -40,10 +41,16 @@ function warningPayload(message, text) {
 
 function commandUsage(command, prefix) {
   const json = command.data.toJSON();
+  const hidden = new Set(command.hiddenPrefixSubcommands ?? []);
   const options = json.options ?? [];
   const subcommands = options
-    .filter((option) => option.type === 1 || option.type === 2)
-    .map((option) => option.type === 2 ? `${option.name} ${option.options?.filter((child) => child.type === 1).map((child) => child.name).join(' | ') || '<subcommand>'}` : option.name);
+    .map((option) => {
+      if (option.type === 1) return hidden.has(option.name) ? null : option.name;
+      if (option.type !== 2) return null;
+      const children = option.options?.filter((child) => child.type === 1 && !hidden.has(`${option.name} ${child.name}`)).map((child) => child.name) ?? [];
+      return children.length ? `${option.name} ${children.join(' | ')}` : null;
+    })
+    .filter(Boolean);
   return subcommands.length ? `${prefix}${json.name} ${subcommands.join(' | ')}` : `${prefix}${json.name}`;
 }
 
@@ -155,6 +162,9 @@ module.exports = {
 
     const canonicalName = message.client.commandAliases.get(commandName) ?? commandName;
     const command = message.client.commands.get(canonicalName);
+    const automodControlAction = canonicalName === 'automod' ? controlAction(argText) : null;
+    const hiddenAutomodControl = Boolean(automodControlAction && automodControlAction !== 'invalid');
+    if (hiddenAutomodControl) argText = `control ${automodControlAction}`;
     // Slash-only commands can open native Discord modals and must not be
     // executed through the pseudo-interaction used by prefix commands.
     if (command?.slashOnly) return;
@@ -170,7 +180,7 @@ module.exports = {
       return;
     }
 
-    const disabled = await disabledDb.findCached(message.guild.id, canonicalName, message.channel.id).catch(() => null);
+    const disabled = hiddenAutomodControl ? null : await disabledDb.findCached(message.guild.id, canonicalName, message.channel.id).catch(() => null);
     if (disabled) {
       const scope = disabled.channel_id ? `in <#${disabled.channel_id}>` : 'on this server';
       await message.reply(warningPayload(message, `Command \`${canonicalName}\` is disabled ${scope}.`)).catch(() => {});
@@ -199,13 +209,13 @@ module.exports = {
     }
 
     const permissionData = effectiveCommandData(command, argText);
-    if (!moderationRoleOverride && !checkDefaultPermission(permissionData, message.member)) {
+    if (!hiddenAutomodControl && !moderationRoleOverride && !checkDefaultPermission(permissionData, message.member)) {
       await message.reply(warningPayload(message, `You're missing permission: \`${permissionKey(permissionData)}\`.`)).catch(() => {});
       return;
     }
 
     try {
-      const allowed = moderationRoleOverride || await permissionsDb.hasCommandPermission(message.guild.id, canonicalName, message.member);
+      const allowed = hiddenAutomodControl || moderationRoleOverride || await permissionsDb.hasCommandPermission(message.guild.id, canonicalName, message.member);
       if (!allowed) {
         await message.reply(warningPayload(message, `You're missing the permission level required for \`${prefix}${canonicalName}\`.`)).catch(() => {});
         return;
@@ -228,6 +238,7 @@ module.exports = {
     }
 
     interaction.pettoModerationRoleAllowed = moderationRoleOverride;
+    interaction.pettoAutomodControl = hiddenAutomodControl;
 
     try {
       await command.execute(interaction, message.client);
