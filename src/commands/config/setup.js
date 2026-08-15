@@ -71,7 +71,7 @@ module.exports = {
               .setCustomId('setup_features')
               .setPlaceholder('Select features to enable')
               .setMinValues(0)
-              .setMaxValues(5)
+              .setMaxValues(6)
               .setRequired(false)
               .addOptions(
                 { label: 'Audit logs', value: 'logs', description: 'Route Petto event logs to the selected log channel.' },
@@ -79,6 +79,7 @@ module.exports = {
                 { label: 'Anti-spam', value: 'anti-spam', description: 'Detect flooding, mass mentions and invite spam.' },
                 { label: 'Anti-raid', value: 'anti-raid', description: 'Detect bursts of new members joining.' },
                 { label: 'Anti-alt', value: 'anti-alt', description: 'Flag or kick very new accounts.' },
+                { label: 'Official Discord AutoMod', value: 'official-automod', description: 'Create Petto rules in Discord AutoMod; Manage Server is required.' },
               ),
           ),
         new LabelBuilder()

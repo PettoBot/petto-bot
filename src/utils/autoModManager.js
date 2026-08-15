@@ -219,11 +219,16 @@ function isManagedRule(rule, botId) {
 }
 
 async function getBotMember(guild) {
-  let botMember = guild.members?.me ?? null;
-  if (!botMember && guild.client?.user?.id && guild.members?.fetch) {
-    botMember = await guild.members.fetch(guild.client.user.id).catch(() => null);
+  if (guild.members?.fetchMe) {
+    try {
+      return await guild.members.fetchMe();
+    } catch (error) {
+      if (isPermissionError(error)) return null;
+    }
   }
-  return botMember;
+  if (guild.members?.me) return guild.members.me;
+  if (guild.client?.user?.id && guild.members?.fetch) return guild.members.fetch(guild.client.user.id).catch(() => null);
+  return null;
 }
 
 async function hasPermission(guild, permission) {
@@ -259,7 +264,6 @@ function emptySyncResult(guildId) {
     managedRules: 0,
     duplicatesRemoved: 0,
     missingPermissions: false,
-    missingModerateMembers: false,
     reason: null,
     skippedReasons: [],
     errors: [],
@@ -272,6 +276,34 @@ function reasonForError(error) {
   if (code === 10004) return 'unknown_guild';
   if (code === 50035) return 'invalid_automod_configuration';
   return error?.message || 'discord_api_error';
+}
+
+function isPermissionError(error) {
+  return [50001, 50013].includes(errorCode(error));
+}
+
+function permissionSkipReason(definition) {
+  if (definition?.triggerType === AutoModerationRuleTriggerType.MemberProfile) {
+    return `${definition.name}: grant Petto Manage Server and ensure AutoMod is available in this server`;
+  }
+  return `${definition?.name ?? 'Petto AutoMod rule'}: Petto cannot access or manage AutoMod rules in this server`;
+}
+
+function recordPermissionSkip(result, definition) {
+  result.skipped += 1;
+  result.missingPermissions = true;
+  result.skippedReasons.push(permissionSkipReason(definition));
+}
+
+function logSyncIssue(action, definition, guild, error) {
+  const reason = reasonForError(error);
+  const code = errorCode(error);
+  const suffix = code ? ` (Discord ${code})` : '';
+  if (isPermissionError(error)) {
+    logger.warn(`[AutoMod] Skipped ${definition?.name ?? action} in guild ${guild.id}: ${reason}${suffix}`);
+    return;
+  }
+  logger.warn(`[AutoMod] Could not ${action} ${definition?.name ?? 'AutoMod rule'} in guild ${guild.id}: ${reason}${suffix}`);
 }
 
 async function fetchRules(guild) {
@@ -305,7 +337,6 @@ async function syncGuildAutoMod(guild) {
 
   const allRules = [...rules.values()];
   const botId = guild.client.user?.id;
-  const botCanModerateMembers = await hasPermission(guild, PermissionFlagsBits.ModerateMembers);
   const managed = allRules.filter((rule) => isManagedRule(rule, botId));
   result.managedRules = managed.length;
   const alertChannelId = await findAlertChannelId(guild);
@@ -325,8 +356,13 @@ async function syncGuildAutoMod(guild) {
         result.duplicatesRemoved += 1;
         removedByTrigger.set(duplicate.triggerType, (removedByTrigger.get(duplicate.triggerType) ?? 0) + 1);
       } catch (error) {
-        result.failed += 1;
-        result.errors.push(`${name}: ${reasonForError(error)}`);
+        if (isPermissionError(error)) {
+          recordPermissionSkip(result, { name });
+        } else {
+          result.failed += 1;
+          result.errors.push(`${name}: ${reasonForError(error)}`);
+        }
+        logSyncIssue('delete', { name }, guild, error);
       }
     }
   }
@@ -340,17 +376,6 @@ async function syncGuildAutoMod(guild) {
 
   for (const wanted of desired) {
     const existing = byName.get(wanted.name)?.[0] ?? null;
-    const needsModerateMembers = wanted.triggerType === AutoModerationRuleTriggerType.MemberProfile && !botCanModerateMembers;
-    if (needsModerateMembers) {
-      if (existing && ruleMatches(existing, wanted)) {
-        result.existing += 1;
-      } else {
-        result.skipped += 1;
-        result.missingModerateMembers = true;
-        result.skippedReasons.push(`${wanted.name}: bot needs Moderate Members`);
-      }
-      continue;
-    }
     if (existing) {
       if (ruleMatches(existing, wanted)) {
         result.existing += 1;
@@ -366,9 +391,12 @@ async function syncGuildAutoMod(guild) {
         }));
         result.updated += 1;
       } catch (error) {
-        result.failed += 1;
-        result.errors.push(`${wanted.name}: ${reasonForError(error)}`);
-        logger.error(`[AutoMod] Could not update ${wanted.name} in guild ${guild.id}:`, error);
+        if (isPermissionError(error)) recordPermissionSkip(result, wanted);
+        else {
+          result.failed += 1;
+          result.errors.push(`${wanted.name}: ${reasonForError(error)}`);
+        }
+        logSyncIssue('update', wanted, guild, error);
       }
       continue;
     }
@@ -394,14 +422,18 @@ async function syncGuildAutoMod(guild) {
       result.created += 1;
     } catch (error) {
       const reason = reasonForError(error);
-      if (reason === 'invalid_automod_configuration' || errorCode(error) === 40060) {
+      if (isPermissionError(error)) {
+        recordPermissionSkip(result, wanted);
+        logSyncIssue('create', wanted, guild, error);
+      } else if (reason === 'invalid_automod_configuration' || errorCode(error) === 40060) {
         result.skipped += 1;
         result.skippedReasons.push(`${wanted.name}: unsupported trigger or configuration`);
+        logSyncIssue('create', wanted, guild, error);
       } else {
         result.failed += 1;
         result.errors.push(`${wanted.name}: ${reason}`);
+        logSyncIssue('create', wanted, guild, error);
       }
-      logger.warn(`[AutoMod] Could not create ${wanted.name} in guild ${guild.id}:`, error);
     }
   }
 
@@ -422,7 +454,6 @@ async function syncAllGuildsAutoMod(client, { concurrency = SYNC_CONCURRENCY, gu
     skipped: 0,
     errors: 0,
     missingPermissions: 0,
-    missingModerateMembers: 0,
     results: [],
   };
   let cursor = 0;
@@ -438,13 +469,12 @@ async function syncAllGuildsAutoMod(client, { concurrency = SYNC_CONCURRENCY, gu
       summary.skipped += result.skipped;
       summary.errors += result.failed;
       if (result.missingPermissions) summary.missingPermissions += 1;
-      if (result.missingModerateMembers) summary.missingModerateMembers += 1;
       if (result.created + result.updated + result.existing > 0) summary.guildsConfigured += 1;
     }
   };
   const workers = Array.from({ length: Math.min(Math.max(1, concurrency), Math.max(1, list.length)) }, () => worker());
   await Promise.all(workers);
-  logger.info(`[AutoMod] Synchronization complete: guilds=${summary.guildsChecked} configured=${summary.guildsConfigured} managed=${summary.managedRules} created=${summary.created} updated=${summary.updated} skipped=${summary.skipped} missing_permissions=${summary.missingPermissions} missing_moderate_members=${summary.missingModerateMembers} errors=${summary.errors}`);
+  logger.info(`[AutoMod] Synchronization complete: guilds=${summary.guildsChecked} configured=${summary.guildsConfigured} managed=${summary.managedRules} created=${summary.created} updated=${summary.updated} skipped=${summary.skipped} missing_permissions=${summary.missingPermissions} errors=${summary.errors}`);
   return summary;
 }
 
