@@ -163,10 +163,11 @@ async function officialControl(interaction) {
   const action = interaction.options.getString('action') ?? 'stats';
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
-  if (action === 'sync') {
+    if (action === 'sync') {
     const result = await syncGuildAutoMod(interaction.guild);
+    const clean = result.success && !result.missingPermissions && result.failed === 0;
     const lines = [
-      `### ${result.success ? EMOJI.APPROVE : EMOJI.DENY} Petto Official AutoMod`,
+      `### ${clean ? EMOJI.APPROVE : EMOJI.ALERT} Petto Official AutoMod`,
       `**Created:** ${result.created}`,
       `**Updated:** ${result.updated}`,
       `**Existing:** ${result.existing}`,
@@ -176,7 +177,7 @@ async function officialControl(interaction) {
     ];
     if (result.reason) lines.push(`**Result:** ${result.reason}`);
     if (result.skippedReasons.length) lines.push(`**Notes:** ${result.skippedReasons.slice(0, 3).join(' · ')}`);
-    await interaction.editReply({ components: [textCard(lines.join('\n'), result.success ? 0xa5ea7a : 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(lines.join('\n'), clean ? 0xa5ea7a : 0xf5c451)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 

@@ -18,6 +18,25 @@ function selectedChannel(fields, customId) {
   return fields.getSelectedChannels(customId)?.first?.() ?? null;
 }
 
+function moderationModeLabel(mode) {
+  return { balanced: 'Balanced', strict: 'Strict', disabled: 'Disabled' }[mode] ?? mode;
+}
+
+function autoModSummary(result) {
+  if (!result) return `${EMOJI.ALERT} Official AutoMod could not be checked. The rest of setup was saved.`;
+  if (result.reason === 'disabled_by_setup') return 'Official AutoMod was not changed because moderation mode is Disabled.';
+  if (result.reason === 'not_selected') return 'Official Discord AutoMod was not changed. Select **Official Discord AutoMod** in setup when you want Petto to create or repair those rules.';
+
+  const details = result.skippedReasons?.slice(0, 2) ?? [];
+  if (result.missingPermissions) {
+    return `${EMOJI.ALERT} Official AutoMod is partial: Petto could not access AutoMod in this server. Grant **Manage Server** and run setup again.${details.length ? `\n> ${details.join('\n> ')}` : ''}`;
+  }
+  if (result.failed > 0) {
+    return `${EMOJI.ALERT} Official AutoMod is partial: ${result.created} created, ${result.updated} updated, ${result.skipped} skipped, ${result.failed} failed. Check Petto's permissions and run setup again.`;
+  }
+  return `Official AutoMod: ${result.created} created, ${result.updated} updated, ${result.existing} already configured, ${result.skipped} skipped.`;
+}
+
 async function configureLogChannel(client, guild, channel) {
   const me = guild.members.me;
   const permissions = channel.permissionsFor(me);
@@ -90,22 +109,32 @@ async function handleSetupModal(interaction) {
       logLine = 'Audit logs were not enabled because no log channel was selected.';
     }
 
-    const officialAutoMod = await syncGuildAutoMod(guild).catch((err) => {
-      logger.warn(`[AutoMod] Setup synchronization failed for guild ${guild.id}:`, err.message);
+    let officialAutoMod;
+    if (disabled) {
+      officialAutoMod = { reason: 'disabled_by_setup' };
+    } else if (!features.includes('official-automod')) {
+      officialAutoMod = { reason: 'not_selected' };
+    } else {
+      officialAutoMod = await syncGuildAutoMod(guild).catch((err) => {
+        logger.warn(`[AutoMod] Setup synchronization failed for guild ${guild.id}: ${err.message}`);
+        return null;
+      });
+    }
+
+    const setupChannel = await ensureAdminSetupChannel(guild).catch((err) => {
+      logger.warn(`Could not create private setup channel in guild ${guild.id}: ${err.message}`);
       return null;
     });
-
-    const setupChannel = await ensureAdminSetupChannel(guild);
     const lines = [
       `${EMOJI.APPROVE} **Petto setup saved.**`,
       `**Prefix:** \`${prefix}\``,
-      `**Moderation mode:** ${mode}`,
+      `**Moderation mode:** ${moderationModeLabel(mode)}`,
       logLine,
-      officialAutoMod
-        ? `Official AutoMod: ${officialAutoMod.created} created, ${officialAutoMod.updated} updated, ${officialAutoMod.skipped} skipped.${officialAutoMod.missingModerateMembers ? ' Grant Petto Moderate Members to enable profile protection.' : ''}`
-        : 'Official AutoMod could not be synchronized right now.',
+      autoModSummary(officialAutoMod),
       welcomeEnabled ? `Welcome messages are enabled in <#${welcomeChannel.id}>.` : 'Welcome messages are disabled.',
-      `**Setup channel:** <#${setupChannel.id}>`,
+      setupChannel
+        ? `**Setup channel:** <#${setupChannel.id}>`
+        : `${EMOJI.ALERT} Private setup channel was not created. Grant Petto **Manage Channels** and run setup again if you want one.`,
       '',
       `Use \`${prefix}help\` for the rest of Petto's prefix commands.`,
     ];
