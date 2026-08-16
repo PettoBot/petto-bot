@@ -48,6 +48,9 @@ module.exports = {
   automodSyncOnReady: envBool('AUTOMOD_SYNC_ON_READY', false),
   automodSyncOnGuildJoin: envBool('AUTOMOD_SYNC_ON_GUILD_JOIN', false),
   automodSyncConcurrency: Math.max(1, Math.min(4, Number(process.env.AUTOMOD_SYNC_CONCURRENCY) || 2)),
+  // Optional explicit official support guild. When empty, the private join-log
+  // channel is used as the fail-closed source of truth for support-only controls.
+  supportGuildId: /^\d{15,25}$/.test(process.env.PETTO_SUPPORT_GUILD_ID || '') ? process.env.PETTO_SUPPORT_GUILD_ID : null,
   opsChannels: {
     // Operational channels live in the Petto support/operations server. Environment
     // overrides keep the defaults convenient while allowing a future channel move.

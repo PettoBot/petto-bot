@@ -45,7 +45,7 @@ function redact(text) {
     .slice(0, 1800);
 }
 
-function lifecycleEmbed({ kind, guild, ownerId, inviter, inviteUrl }) {
+function lifecycleEmbed({ kind, guild, ownerId, inviter }) {
   const joined = kind === 'join';
   const fields = [
     { name: 'Server', value: `${guild.name}\n\`${guild.id}\``, inline: true },
@@ -54,7 +54,6 @@ function lifecycleEmbed({ kind, guild, ownerId, inviter, inviteUrl }) {
 
   if (ownerId) fields.push({ name: 'Owner', value: `<@${ownerId}>\n\`${ownerId}\``, inline: true });
   if (inviter) fields.push({ name: 'Added by', value: `<@${inviter.id}>\n\`${inviter.id}\``, inline: true });
-  if (inviteUrl) fields.push({ name: 'Invite', value: inviteUrl, inline: false });
   if (!joined) fields.push({ name: 'Note', value: 'Discord does not expose whether Petto left voluntarily or was removed.', inline: false });
 
   const embed = new EmbedBuilder()
