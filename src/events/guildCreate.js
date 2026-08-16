@@ -46,32 +46,13 @@ async function findInviter(guild) {
   }
 }
 
-/** A never-expiring invite, so the join log stays useful even days later when checking whether a server is legit. */
-async function createPermanentInvite(guild) {
-  const me = guild.members.me;
-  if (!me) return null;
-
-  const channel = guild.channels.cache.find(
-    (c) => c.type === 0 && c.permissionsFor(me)?.has(['ViewChannel', 'CreateInstantInvite']),
-  );
-  if (!channel) return null;
-
-  try {
-    const invite = await channel.createInvite({ maxAge: 0, maxUses: 0, unique: true, reason: 'Join log' });
-    return invite.url;
-  } catch {
-    return null;
-  }
-}
-
 module.exports = {
   name: Events.GuildCreate,
   async execute(guild) {
     try {
-      const [owner, inviter, inviteUrl] = await Promise.all([
+      const [owner, inviter] = await Promise.all([
         guild.fetchOwner().catch(() => null),
         findInviter(guild),
-        createPermanentInvite(guild),
       ]);
 
       const content = [
@@ -82,10 +63,10 @@ module.exports = {
         `Owner: ${owner ? `${owner.user.tag} (${owner.id})` : 'unknown'}`,
         `Added by: ${inviter ? `${inviter.tag} (${inviter.id})` : 'unknown'}`,
         `Server created: <t:${Math.floor(guild.createdTimestamp / 1000)}:R>`,
-        `Invite: ${inviteUrl ?? "couldn't create one, missing permission"}`,
+        'Invite: not created automatically (privacy-safe join handling)',
       ].join('\n');
 
-      await sendGuildLifecycleLog(guild.client, { kind: 'join', guild, ownerId: owner?.id, inviter, inviteUrl });
+      await sendGuildLifecycleLog(guild.client, { kind: 'join', guild, ownerId: owner?.id, inviter });
 
       const guildConfig = await ensureGuild(guild.id).catch(() => ({ prefix: '!' }));
       if (config.automodSyncOnGuildJoin) {
