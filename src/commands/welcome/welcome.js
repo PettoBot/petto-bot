@@ -28,7 +28,7 @@ module.exports = {
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
     if (sub === 'setup') return setup(interaction);
-    if (sub === 'status') return status(interaction);
+    if (sub === 'status') return status(interaction); 
     if (sub === 'test') return test(interaction);
     return disable(interaction);
   },
