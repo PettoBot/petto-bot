@@ -11,7 +11,7 @@ module.exports = {
   aliases: ['j'],
   data: new SlashCommandBuilder()
     .setName('poj')
-    .setDescription('Ping on Join — mentions a new member in specific channels, then deletes the ping.')
+    .setDescription('Ping on Join, mentions a new member in specific channels, then deletes the ping.')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false)
     .addSubcommand((s) =>
