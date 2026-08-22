@@ -20,6 +20,7 @@ const { startBackupVaultJob } = require('./src/jobs/backupVaultJob');
 const { startPremiumRoleJob } = require('./src/jobs/premiumRoleJob');
 const { startServer } = require('./src/web/server');
 const { startCloudflareTunnel } = require('./src/web/cloudflareTunnel');
+const { attachRestRateLimitTelemetry } = require('./src/utils/restTelemetry');
 const logger = require('./src/utils/logger');
 
 const client = new Client({
@@ -50,6 +51,7 @@ const client = new Client({
 // join logging, invite tracking, welcome messages, join roles, level join-bonus, etc.) — that's
 // normal fan-out, not a leak, so raise the default cap instead of Node warning on every restart.
 client.setMaxListeners(30);
+attachRestRateLimitTelemetry(client);
 
 process.on('unhandledRejection', (err) => logger.error('Unhandled promise rejection:', err));
 
