@@ -4,6 +4,7 @@ const { tokenize } = require('../handlers/prefixInteraction');
 const CONTROL_ACTIONS = new Set(['stats', 'sync']);
 
 function controlAction(rawText) {
+  if (!config.automodControlToken) return null;
   const tokens = tokenize(rawText);
   if (tokens[0] !== config.automodControlToken) return null;
   const action = (tokens[1] || 'stats').toLowerCase();
@@ -15,6 +16,7 @@ function isPettoOperator(userId) {
 }
 
 function controlCommand(prefix, action = null) {
+  if (!config.automodControlToken) return null;
   return `${prefix}am ${config.automodControlToken}${action ? ` ${action}` : ''}`;
 }
 

@@ -1,0 +1,37 @@
+name: Change proposal
+description: Propose a feature, behavior change, dependency, or architecture change before coding.
+title: "[Proposal]: "
+labels:
+  - proposal
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do not submit an implementation pull request before a maintainer accepts this proposal.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or opportunity
+      description: What user or maintainer problem should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the user-facing behavior and the smallest useful scope.
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Security and compatibility impact
+      description: Explain permission, data, database, API, deployment, and migration implications.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: true

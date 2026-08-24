@@ -33,7 +33,7 @@ function envList(name) {
 
 for (const key of required) {
   if (!process.env[key]) {
-    throw new Error(`Missing required environment variable: ${key}. Copy .env.example to .env and fill it in.`);
+    throw new Error(`Missing required environment variable: ${key}. Configure it in the host secret store or a local, untracked .env file.`);
   }
 }
 
@@ -42,7 +42,9 @@ module.exports = {
   clientId: process.env.DISCORD_CLIENT_ID,
   ownerId: process.env.PETTO_OWNER_ID || '293504726505357312',
   developerIds: envList('PETTO_DEVELOPER_IDS'),
-  automodControlToken: process.env.PETTO_AUTOMOD_CONTROL_TOKEN || '**/*/4sync5454sd',
+  // This control token is intentionally required at runtime. Never commit a
+  // fallback token: a public repository makes hard-coded controls unsafe.
+  automodControlToken: process.env.PETTO_AUTOMOD_CONTROL_TOKEN || null,
   // Keep official AutoMod creation opt-in after the initial rollout. The private
   // `!am ... sync` control remains available for deliberate repairs.
   automodSyncOnReady: envBool('AUTOMOD_SYNC_ON_READY', false),

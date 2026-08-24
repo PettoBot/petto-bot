@@ -1,11 +1,49 @@
+# Dependencies and generated output
 node_modules/
-.env
-.env.local
-.claude.env
-npm-debug.log*
+coverage/
+dist/
+build/
+.cache/
+
+# Environment files and local secret stores
+.env*
+.claude.env*
+.discloud.env*
+secrets/
+private/
+*.secret
+*.secrets
+
+# Keys, certificates, tokens, and database exports
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.crt
+*.csr
+*.der
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+*.sql.gz
+
+# Logs, local state, and archives
 logs/
 *.log
-.DS_Store
-.cloudflared/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
 *.tar.gz
-.codex
+*.zip
+
+# Local tooling and OS files
+.DS_Store
+Thumbs.db
+.cloudflared/
+.codex/
+.claude/
+.vscode/settings.json
+.idea/

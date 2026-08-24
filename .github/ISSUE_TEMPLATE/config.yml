@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/PettoBot/petto-bot/security/policy
+    about: Do not report vulnerabilities publicly. Follow the private process.
+  - name: Project discussions
+    url: https://github.com/PettoBot/petto-bot/discussions
+    about: Discuss proposals and questions before implementing changes.

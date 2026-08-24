@@ -23,6 +23,7 @@ from the same tables. Free servers keep the normal limits and features.
 `transcript.petto.sbs` remains for ticket transcripts. Neither is a Premium
 webhook endpoint.
 
-The six Polar product IDs and the public fallback checkout link are already in
-`.env.example`; the access token and webhook secret are the only sensitive
-values you must copy from Polar.
+The six Polar product IDs and the public fallback checkout link belong in the
+host's configuration, while the access token and webhook secret must remain in
+the encrypted production secret store. Do not create or commit an environment
+template containing real deployment values.
