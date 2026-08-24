@@ -1703,7 +1703,6 @@ create table if not exists permission_audit_log (
 create index if not exists idx_permission_audit_log_guild on permission_audit_log(guild_id, created_at desc);
 alter table permission_audit_log enable row level security;
 
--- Simple reputation/karma system (YAGPDB-style /rep): members give each other a point, once
 -- per cooldown period, no external infra needed. `last_given_at` tracks when THIS user last
 -- gave a point to someone else (their own giving cooldown), separate from `points` (what
 -- others have given them) — the same row serves both roles.
