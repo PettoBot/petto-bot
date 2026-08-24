@@ -14,9 +14,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 20
           cache: npm
@@ -34,3 +34,10 @@ jobs:
           fi
       - name: Check JavaScript syntax
         run: npm run check
+      - name: Check TypeScript and generated output
+        run: |
+          npm run types:check
+          npm run build:ts
+          git diff --exit-code -- src
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
