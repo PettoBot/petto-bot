@@ -28,7 +28,7 @@ function buildHoneypotPanel({ punishment = 'softban', caughtCount, caught_count 
   const section = new SectionBuilder()
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `## DO NOT SEND MESSAGES IN THIS CHANNEL\n\nThis channel is used to catch spam bots. Any messages sent here will result in **${punishmentText(punishment)}**. Each member is actioned once while they remain in the server; later messages are removed without creating duplicate cases.`,
+        `## DO NOT SEND MESSAGES IN THIS CHANNEL\n\nThis channel is used to catch spam bots. Any messages sent here will result in **${punishmentText(punishment)}**.`,
       ),
     )
     .setThumbnailAccessory(new ThumbnailBuilder().setURL(HONEYPOT_IMAGE_URL));
@@ -36,7 +36,7 @@ function buildHoneypotPanel({ punishment = 'softban', caughtCount, caught_count 
   const countButton = new ButtonBuilder()
     .setCustomId(HONEYPOT_COUNT_BUTTON_ID)
     .setStyle(ButtonStyle.Secondary)
-    .setLabel(`Members caught: ${count}`)
+    .setLabel(`Kicks: ${count}`)
     .setEmoji(HONEYPOT_BUTTON_EMOJI);
 
   return new ContainerBuilder()
@@ -50,7 +50,7 @@ function buildHoneypotStatsPanel({ punishment = 'softban', caughtCount, caught_c
   const section = new SectionBuilder()
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `## <:petto_honeypot:1541493688054841405> Honeypot Statistics\n\n${channelLine}**Members caught:** ${count}\n**Configured action:** ${punishmentText(punishment)}\n\nEach member is actioned once while they remain in the server. Later messages are deleted without duplicate cases or repeated actions.`,
+        `## <:petto_honeypot:1541493688054841405> Honeypot Statistics\n\n${channelLine}**Kicks:** ${count}\n**Configured action:** ${punishmentText(punishment)}\n\nEach member is actioned once while they remain in the server. Later messages are deleted without duplicate cases or repeated actions.`,
       ),
     )
     .setThumbnailAccessory(new ThumbnailBuilder().setURL(HONEYPOT_IMAGE_URL));
