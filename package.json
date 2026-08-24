@@ -14,7 +14,7 @@
     "check": "node scripts/check-syntax.js"
   },
   "dependencies": {
-    "@napi-rs/canvas": "^1.0.3",
+    "@napi-rs/canvas": "^1.0.7",
     "@polar-sh/sdk": "^0.49.0",
     "@supabase/supabase-js": "^2.45.4",
     "cloudflared": "^0.7.1",
