@@ -44,6 +44,22 @@ function buildHoneypotPanel({ punishment = 'softban', caughtCount, caught_count 
     .addActionRowComponents(new ActionRowBuilder().addComponents(countButton));
 }
 
+function buildHoneypotStatsPanel({ punishment = 'softban', caughtCount, caught_count, channelId } = {}) {
+  const count = Math.max(0, Number(caughtCount ?? caught_count) || 0);
+  const channelLine = channelId ? `**Channel:** <#${channelId}>\n` : '';
+  const section = new SectionBuilder()
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `## <:petto_honeypot:1541493688054841405> Honeypot Statistics\n\n${channelLine}**Members caught:** ${count}\n**Configured action:** ${punishmentText(punishment)}\n\nEach member is actioned once while they remain in the server. Later messages are deleted without duplicate cases or repeated actions.`,
+      ),
+    )
+    .setThumbnailAccessory(new ThumbnailBuilder().setURL(HONEYPOT_IMAGE_URL));
+
+  return new ContainerBuilder()
+    .setAccentColor(0xd99a3d)
+    .addSectionComponents(section);
+}
+
 function buildHoneypotImageAttachment() {
   return new AttachmentBuilder(HONEYPOT_IMAGE_PATH, { name: 'petto-honeypot.png' });
 }
@@ -55,5 +71,6 @@ module.exports = {
   HONEYPOT_BUTTON_EMOJI,
   punishmentText,
   buildHoneypotPanel,
+  buildHoneypotStatsPanel,
   buildHoneypotImageAttachment,
 };
