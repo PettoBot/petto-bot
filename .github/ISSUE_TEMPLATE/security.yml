@@ -1,0 +1,17 @@
+name: Security report redirect
+description: This form explains how to report a vulnerability privately.
+title: "[Security]: use private reporting"
+labels:
+  - security
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please stop here. Do not describe a vulnerability in this public issue. Follow [SECURITY.md](https://github.com/PettoBot/petto-bot/blob/main/SECURITY.md) and use GitHub's private vulnerability reporting or a private security advisory.
+  - type: checkboxes
+    id: acknowledged
+    attributes:
+      label: Acknowledgement
+      options:
+        - label: I will not include vulnerability details, credentials, or private data in this public issue.
+          required: true

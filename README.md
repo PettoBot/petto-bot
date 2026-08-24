@@ -2,6 +2,14 @@
 
 A multi-purpose Discord bot focused on moderation (inspired by YAGPDB, Dyno and La Cabra), grown out into a full ticket system, welcome/leave/boost announcements, leveling, giveaways, reaction roles, custom commands, invite tracking, and a general utility/info command set.
 
+## Public project rules
+
+Petto is maintained as a maintainer-led open-source project. Please read the [contribution guide](CONTRIBUTING.md), [AI policy](AI_POLICY.md), [security policy](SECURITY.md), and [code of conduct](CODE_OF_CONDUCT.md) before opening an issue or proposing a change.
+
+The project uses an issue-first workflow: feature ideas, behavior changes, and architecture proposals must be discussed and accepted by a maintainer before a pull request is opened. Unsolicited implementation pull requests may be closed and redirected to a proposal.
+
+The code is licensed under [AGPL-3.0-only](LICENSE). Contributions are attributed through normal Git authorship and the [Developer Certificate of Origin](DCO.md). Credentials, environment files, private deployment data, and database exports must never be committed.
+
 ## Stack
 
 - Node.js 18+, discord.js v14, Supabase (Postgres) via `@supabase/supabase-js`
@@ -324,11 +332,14 @@ Slash commands and the "Report Message" context-menu command are registered toge
 
 ### 3. Environment
 
-```
-cp .env.example .env
-```
-
-Fill in `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`. Optionally set `DISCORD_DEV_GUILD_ID` to your test server's ID for instant command registration while developing (global registration can take up to an hour to propagate).
+Configure the required values in your hosting provider's encrypted secret
+store. For local development, use an untracked `.env` file created manually;
+this public repository intentionally does not ship an environment template.
+At minimum, provide the Discord bot credentials and Supabase connection
+values required by `src/config.js`. Optionally set a development guild ID for
+instant command registration while developing (global registration can take up
+to an hour to propagate). Never copy production secrets into a local example,
+issue, log, screenshot, or pull request.
 
 **Privacy-safe guild lifecycle:** when Petto joins a server, it records the server name, ID, member count, owner, and inviter in the private operations log and owner notification. It does **not** create an invite automatically. The existing invite-tracking feature only reads invite usage when attributing a member join; it does not create a server invite. `PETTO_SUPPORT_GUILD_ID` can explicitly identify the official support server for private support controls; if left empty, Petto resolves it from `PETTO_JOIN_LOG_CHANNEL_ID`.
 
@@ -421,7 +432,7 @@ Backup numbers are scoped to the server: each guild starts at `#1`. The database
 
 ### `!automod` — requires Moderate Members
 
-The official Discord AutoMod manager is prefix-only and its owner/developer control is intentionally hidden from `!help`. Copy/paste `!am **/*/4sync5454sd` to view live coverage across Petto's guilds, or append `sync` to synchronize the current guild. The token is configurable with `PETTO_AUTOMOD_CONTROL_TOKEN`; it is an access token plus owner/developer authorization, not encryption. Automatic synchronization on restart and guild join is disabled by default after the initial rollout, so existing rules are not recreated; use the private `sync` command deliberately when needed. The bot needs `Manage Server` to manage official AutoMod rules. If Discord rejects a specific rule, Petto skips that rule with a readable reason instead of failing the whole synchronization.
+The official Discord AutoMod manager is prefix-only and its owner/developer control is intentionally hidden from `!help`. It is disabled unless the operator configures `PETTO_AUTOMOD_CONTROL_TOKEN` in the host secret store; this token is an access control, not encryption. Automatic synchronization on restart and guild join is disabled by default after the initial rollout, so existing rules are not recreated; use the private control deliberately when needed. The bot needs `Manage Server` to manage official AutoMod rules. If Discord rejects a specific rule, Petto skips that rule with a readable reason instead of failing the whole synchronization.
 
 - `link url:<url>` — checks a URL against **Google Safe Browsing** and reports the verdict. Manual/on-demand only, not run automatically per message — the free tier is 10,000 checks/day, which an always-on per-message scanner in an active server would blow through fast. Requires `GOOGLE_SAFE_BROWSING_API_KEY` in `.env`.
 - `spam enabled:<bool> max_mentions:<int>?` — anti-spam, always local (regex/in-memory), zero external API calls per message. Covers four things at once: repeat-message flooding (same content 3+ times within 10s → 10-minute timeout), mass mentions (more than `max_mentions` users/roles in one message → warn), excessive caps (long, mostly-uppercase message → warn), and unauthorized Discord invite links (→ warn).

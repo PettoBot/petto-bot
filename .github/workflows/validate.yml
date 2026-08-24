@@ -22,5 +22,15 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Check repository hygiene
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          forbidden='(^|/)(\.env($|\.)|\.claude\.env|\.discloud\.env|secrets|private)(/|$)|\.(pem|key|p12|pfx|jks|keystore|sqlite|sqlite3|db|dump)$'
+          if git ls-files | grep -E "$forbidden"; then
+            echo "Secret-like files must not be tracked."
+            exit 1
+          fi
       - name: Check JavaScript syntax
         run: npm run check
