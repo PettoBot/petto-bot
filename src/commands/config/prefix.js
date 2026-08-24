@@ -14,17 +14,18 @@ module.exports = {
     .addStringOption((o) => o.setName('new_prefix').setDescription('New prefix, up to 5 characters').setRequired(false)),
 
   async execute(interaction) {
-    const newPrefix = interaction.options.getString('new_prefix');
+    const requestedPrefix = interaction.options.getString('new_prefix');
     const guildConfig = await ensureGuild(interaction.guild.id);
 
-    if (!newPrefix) {
+    if (requestedPrefix == null) {
       const text = `**Current prefix:** \`${guildConfig.prefix}\`\nYou can always use ${interaction.client.user} as a prefix too, even if you forget this one.`;
       await interaction.reply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
 
-    if (newPrefix.length > 5) {
-      await interaction.reply({ content: 'Prefix must be 5 characters or fewer.', flags: MessageFlags.Ephemeral });
+    const newPrefix = requestedPrefix.trim();
+    if (!newPrefix || newPrefix.length > 5 || /\s/.test(newPrefix)) {
+      await interaction.reply({ content: 'Prefix must be 1 to 5 characters and cannot contain spaces.', flags: MessageFlags.Ephemeral });
       return;
     }
 

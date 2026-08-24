@@ -21,6 +21,34 @@ const UNKNOWN_COMMAND_DELETE_MS = 10_000;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const prefixCache = new Map(); // guildId -> { prefix, expiresAt }
 
+function normalizePrefix(prefix) {
+  const value = typeof prefix === 'string' ? prefix.trim() : '';
+  return value || '!';
+}
+
+function prefixMatches(content, prefix) {
+  if (typeof content !== 'string' || !prefix || content.length < prefix.length) return false;
+  return content.slice(0, prefix.length).toLocaleLowerCase() === prefix.toLocaleLowerCase();
+}
+
+function parsePrefixCommand(content, prefix) {
+  if (!prefixMatches(content, prefix)) return null;
+
+  const withoutPrefix = content.slice(prefix.length).trim();
+  if (!withoutPrefix) return null;
+
+  // Accept `p!help`, `p! help`, tabs, and repeated whitespace while keeping
+  // the rest of the argument text intact for the existing tokenizer.
+  const match = /^(\S+)(?:\s+([\s\S]*))?$/.exec(withoutPrefix);
+  if (!match) return null;
+
+  return {
+    typedPrefix: content.slice(0, prefix.length),
+    commandName: match[1].toLowerCase(),
+    argText: match[2] ?? '',
+  };
+}
+
 function permissionKey(json) {
   const raw = json.default_member_permissions;
   if (raw == null) return 'n/a';
@@ -58,13 +86,14 @@ async function getPrefix(guildId) {
   const cached = prefixCache.get(guildId);
   if (cached && cached.expiresAt > Date.now()) return cached.prefix;
   const guild = await ensureGuild(guildId);
-  prefixCache.set(guildId, { prefix: guild.prefix, expiresAt: Date.now() + CACHE_TTL_MS });
-  return guild.prefix;
+  const prefix = normalizePrefix(guild.prefix);
+  prefixCache.set(guildId, { prefix, expiresAt: Date.now() + CACHE_TTL_MS });
+  return prefix;
 }
 
 /** Called by /prefix right after a successful change, so the new prefix takes effect immediately instead of waiting out the cache TTL. */
 function setCachedPrefix(guildId, prefix) {
-  prefixCache.set(guildId, { prefix, expiresAt: Date.now() + CACHE_TTL_MS });
+  prefixCache.set(guildId, { prefix: normalizePrefix(prefix), expiresAt: Date.now() + CACHE_TTL_MS });
 }
 
 function checkDefaultPermission(json, member) {
@@ -115,6 +144,9 @@ async function runCustomCommand(message, commandName) {
 module.exports = {
   name: Events.MessageCreate,
   setCachedPrefix,
+  normalizePrefix,
+  prefixMatches,
+  parsePrefixCommand,
   async execute(message) {
     if (message.author.bot || !message.guild) return;
 
@@ -123,19 +155,13 @@ module.exports = {
     const mentionPrefixes = [`<@${message.client.user.id}>`, `<@!${message.client.user.id}>`];
     const mentionMatch = mentionPrefixes.find((p) => message.content.startsWith(p));
 
-    let prefix = mentionMatch;
-    if (!prefix) {
-      const configuredPrefix = await getPrefix(message.guild.id).catch(() => '!');
-      if (!message.content.startsWith(configuredPrefix)) return;
-      prefix = configuredPrefix;
-    }
+    const configuredPrefix = mentionMatch || await getPrefix(message.guild.id).catch(() => '!');
+    const parsed = parsePrefixCommand(message.content, configuredPrefix);
+    if (!parsed) return;
 
-    const withoutPrefix = message.content.slice(prefix.length).trim();
-    if (!withoutPrefix) return;
-
-    const spaceIdx = withoutPrefix.indexOf(' ');
-    let commandName = (spaceIdx === -1 ? withoutPrefix : withoutPrefix.slice(0, spaceIdx)).toLowerCase();
-    let argText = spaceIdx === -1 ? '' : withoutPrefix.slice(spaceIdx + 1);
+    const prefix = parsed.typedPrefix;
+    let commandName = parsed.commandName;
+    let argText = parsed.argText;
 
     // Server-defined aliases are prefix-only, matching the rest of Petto's configurable
     // command surface. `{0}`, `{1}`, ... refer to arguments supplied after the alias.
