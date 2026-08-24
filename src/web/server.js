@@ -152,26 +152,31 @@ function startServer(client) {
           await Promise.all([guild.roles.fetch(), guild.channels.fetch(), guild.emojis.fetch()]);
           const snapshot = buildSnapshot(guild);
           const saved = await createBackup(guild.id, userId, String(req.body?.label || '').trim() || null, snapshot);
-          await recordAudit(guild.id, userId, 'backup_created', saved.id, { source: saved.source || 'manual', label: saved.label });
+          await recordAudit(guild.id, userId, 'backup_created', saved.backup_number, { source: saved.source || 'manual', label: saved.label });
         } else if (action === 'restore') {
           if (!authorized.isAdministrator) {
             res.status(403).json({ ok: false, error: 'administrator_required' });
             return;
           }
-          const backupId = Number(req.body?.backup_id);
+          const backupNumber = Number(req.body?.backup_id);
           const mode = String(req.body?.mode || 'merge');
-          if (!Number.isInteger(backupId) || backupId < 1 || !['merge', 'replace'].includes(mode) || req.body?.confirm !== true) {
+          if (!Number.isInteger(backupNumber) || backupNumber < 1 || !['merge', 'replace'].includes(mode) || req.body?.confirm !== true) {
             res.status(400).json({ ok: false, error: 'restore_confirmation_required' });
             return;
           }
-          const backup = await getBackup(guild.id, backupId);
+          const backup = await getBackup(guild.id, backupNumber);
           if (!backup) {
             res.status(404).json({ ok: false, error: 'backup_not_found' });
             return;
           }
-          const safety = await createBackup(guild.id, userId, `Before restoring backup #${backupId}`, buildSnapshot(guild), 'manual');
-          const restoreResult = await restoreBackup(guild, backup.snapshot, { mode, reason: `Petto dashboard restore #${backupId}` });
-          await recordAudit(guild.id, userId, 'backup_restored', backupId, { mode, safetyBackupId: safety.id, result: restoreResult });
+          const safety = await createBackup(guild.id, userId, `Before restoring backup #${backupNumber}`, buildSnapshot(guild), 'manual');
+          await recordAudit(guild.id, userId, 'backup_created', safety.backup_number, {
+            source: 'manual',
+            purpose: 'restore_safety',
+            beforeBackupNumber: backupNumber,
+          });
+          const restoreResult = await restoreBackup(guild, backup.snapshot, { mode, reason: `Petto dashboard restore #${backupNumber}` });
+          await recordAudit(guild.id, userId, 'backup_restored', backupNumber, { mode, safetyBackupNumber: safety.backup_number, result: restoreResult });
         } else if (action === 'schedule') {
           const hours = Number(req.body?.hours);
           const retention = Number(req.body?.retention || 7);
@@ -203,7 +208,8 @@ function startServer(client) {
           res.status(404).json({ ok: false, error: 'backup_not_found' });
           return;
         }
-        res.set('Content-Disposition', `attachment; filename="petto-backup-${req.params.guildId}-${req.params.backupId}.json"`);
+        await recordAudit(req.params.guildId, authorized.userId, 'backup_exported', backup.backup_number, { source: backup.source || 'manual' });
+        res.set('Content-Disposition', `attachment; filename="petto-backup-${req.params.guildId}-${backup.backup_number}.json"`);
         res.json(backup.snapshot);
       } catch (err) {
         logger.error('Dashboard failed to export Vault backup:', err);

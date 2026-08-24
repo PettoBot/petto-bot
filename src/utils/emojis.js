@@ -1,6 +1,7 @@
 // Petto's custom application emojis. IDs are fixed — these render in any
 // message/embed the bot sends regardless of which server it's posted in.
 const EMOJI = {
+  LOADING: '<a:petto_loading:1541481906468814880>',
   LOAD: '<a:peto_load:1527894241290883152>',
   STAR: '<:peto_star:1527894282135146516>',
   ALERT: '<:petto_alert:1527894204926267483>',

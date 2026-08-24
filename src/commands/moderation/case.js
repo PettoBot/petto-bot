@@ -20,7 +20,7 @@ module.exports = {
     .addSubcommand((sub) => sub.setName('list').setDescription("Show a user's infraction history.").addUserOption((opt) => opt.setName('user').setDescription('The user to check').setRequired(true)))
     .addSubcommand((sub) => sub.setName('last').setDescription("Show a user's most recent infraction.").addUserOption((opt) => opt.setName('user').setDescription('The user to check').setRequired(true)))
     .addSubcommand((sub) =>
-      sub.setName('last-many').setDescription('Show the most recent infraction for multiple users.').addStringOption((opt) => opt.setName('users').setDescription('User mentions/IDs, space or comma separated').setRequired(true)),
+      sub.setName('last-many').setDescription('Show the most recent infraction for multiple users.').addStringOption((opt) => opt.setName('users').setDescription('Mentions, IDs, or exact usernames; separate with spaces or commas').setRequired(true)),
     )
     .addSubcommand((sub) => sub.setName('view').setDescription('Look up a case by its number.').addIntegerOption((opt) => opt.setName('case').setDescription('Case number').setRequired(true).setMinValue(1)))
     .addSubcommand((sub) =>
@@ -86,7 +86,7 @@ async function lastMany(interaction) {
   const usersInput = interaction.options.getString('users', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
-  const { users, failed: notFound } = await resolveUsers(interaction.client, usersInput);
+  const { users, failed: notFound } = await resolveUsers(interaction.client, usersInput, interaction.guild);
 
   const lines = ['### Most recent infractions'];
   for (const user of users) {

@@ -14,6 +14,8 @@ const {
 const { handleButton: handleGiveawayButton } = require('../interactions/giveawayButton');
 const { handleButton: handlePollButton } = require('../interactions/pollButton');
 const { handleButton: handlePollPanelButton, handleModal: handlePollPanelModal } = require('../interactions/pollPanel');
+const { HONEYPOT_COUNT_BUTTON_ID, handleButton: handleHoneypotButton } = require('../interactions/honeypot');
+const { handleSelect: handleBackupSelect, handleScheduleModal, handleRestoreModal } = require('../interactions/backup');
 const { handleButton: handleVoiceMasterButton, handleModal: handleVoiceMasterModal, handleSelect: handleVoiceMasterSelect } = require('../interactions/voiceMaster');
 const { handleSetupModal } = require('../interactions/setup');
 const { BUTTON_PREFIX, handleButton: handleReactionRoleButton } = require('../interactions/reactionRoleButton');
@@ -32,6 +34,26 @@ module.exports = {
 
     if (interaction.isButton() && (interaction.customId.startsWith('vm:') || interaction.customId.startsWith('vc:'))) {
       try { await handleVoiceMasterButton(interaction); } catch (err) { logger.error('Error handling VoiceMaster button:', err); }
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId === HONEYPOT_COUNT_BUTTON_ID) {
+      try { await handleHoneypotButton(interaction); } catch (err) { logger.error('Error handling honeypot count button:', err); }
+      return;
+    }
+
+    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('backup_menu:')) {
+      try { await handleBackupSelect(interaction); } catch (err) { logger.error('Error handling backup menu:', err); }
+      return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('backup_schedule_modal:')) {
+      try { await handleScheduleModal(interaction); } catch (err) { logger.error('Error handling backup schedule modal:', err); }
+      return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('backup_restore_modal:')) {
+      try { await handleRestoreModal(interaction); } catch (err) { logger.error('Error handling backup restore modal:', err); }
       return;
     }
 

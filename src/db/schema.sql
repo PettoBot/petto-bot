@@ -374,6 +374,41 @@ create table if not exists automod_silent_channels (
 
 alter table automod_silent_channels enable row level security;
 
+-- Honeypot bait channels. A message in one of these channels is treated as a
+-- security violation and the configured punishment is applied automatically.
+create table if not exists honeypots (
+  guild_id       text not null references guilds(guild_id) on delete cascade,
+  channel_id     text not null,
+  punishment     text not null default 'softban' check (punishment in ('ban', 'softban', 'kick')),
+  panel_message_id text,
+  trigger_count  integer not null default 0 check (trigger_count >= 0),
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now(),
+  primary key (guild_id, channel_id)
+);
+
+alter table honeypots enable row level security;
+
+-- Keep the counter atomic when multiple spam messages arrive at once.
+create or replace function increment_honeypot_trigger(
+  p_guild_id text,
+  p_channel_id text
+) returns honeypots
+language plpgsql
+as $$
+declare
+  v_row honeypots;
+begin
+  update honeypots
+    set trigger_count = trigger_count + 1,
+        updated_at = now()
+    where guild_id = p_guild_id and channel_id = p_channel_id
+    returning * into v_row;
+
+  return v_row;
+end;
+$$;
+
 -- ---------------------------------------------------------------------------
 -- Anti-nuke: detects a single executor (compromised staff account or malicious
 -- bot) performing a burst of destructive actions (bans, channel deletes, role
@@ -394,16 +429,84 @@ alter table antinuke_config enable row level security;
 -- Server configuration snapshots. The JSON is deliberately limited to Discord
 -- configuration and never contains bot credentials, access tokens, or message content.
 create table if not exists guild_backups (
-  id          bigserial primary key,
-  guild_id    text not null references guilds(guild_id) on delete cascade,
-  created_by  text not null,
-  label       text not null default 'Manual backup',
-  snapshot    jsonb not null,
-  created_at  timestamptz not null default now()
+  id             bigserial primary key,
+  guild_id       text not null references guilds(guild_id) on delete cascade,
+  backup_number  bigint,
+  created_by     text not null,
+  label          text not null default 'Manual backup',
+  source         text not null default 'manual' check (source in ('manual', 'scheduled')),
+  snapshot      jsonb not null,
+  created_at    timestamptz not null default now()
 );
 
+-- `id` is an internal database key. `backup_number` is the number shown to
+-- server staff and must start at 1 independently inside each guild.
+alter table guild_backups add column if not exists backup_number bigint;
+alter table guild_backups add column if not exists source text not null default 'manual';
+alter table guild_backups drop constraint if exists guild_backups_source_check;
+alter table guild_backups add constraint guild_backups_source_check check (source in ('manual', 'scheduled'));
+
+with numbered as (
+  select backups.id,
+    coalesce(existing.max_number, 0)
+      + row_number() over (partition by backups.guild_id order by backups.created_at asc, backups.id asc) as number
+  from guild_backups as backups
+  left join (
+    select guild_id, max(backup_number) as max_number
+    from guild_backups
+    group by guild_id
+  ) as existing on existing.guild_id = backups.guild_id
+  where backups.backup_number is null
+)
+update guild_backups as backups
+set backup_number = numbered.number
+from numbered
+where backups.id = numbered.id;
+
+alter table guild_backups alter column backup_number set not null;
+create unique index if not exists idx_guild_backups_guild_number on guild_backups(guild_id, backup_number);
 create index if not exists idx_guild_backups_guild_created on guild_backups(guild_id, created_at desc);
 alter table guild_backups enable row level security;
+
+-- Supabase fallback path: allocate the visible number atomically per guild.
+create or replace function create_guild_backup(
+  p_guild_id text,
+  p_created_by text,
+  p_label text,
+  p_source text,
+  p_snapshot jsonb
+) returns guild_backups
+language plpgsql
+as $$
+declare
+  v_row guild_backups;
+  v_number bigint;
+begin
+  perform pg_advisory_xact_lock(hashtextextended(p_guild_id, 0));
+  select coalesce(max(backup_number), 0) + 1 into v_number
+  from guild_backups
+  where guild_id = p_guild_id;
+
+  insert into guild_backups (guild_id, backup_number, created_by, label, source, snapshot)
+  values (p_guild_id, v_number, p_created_by, coalesce(nullif(p_label, ''), case when p_source = 'scheduled' then 'Scheduled backup' else 'Manual backup' end), p_source, p_snapshot)
+  returning * into v_row;
+
+  return v_row;
+end;
+$$;
+
+create table if not exists guild_backup_audit (
+  id             bigserial primary key,
+  guild_id       text not null references guilds(guild_id) on delete cascade,
+  actor_id       text not null,
+  action         text not null,
+  backup_number  bigint,
+  metadata       jsonb not null default '{}'::jsonb,
+  created_at     timestamptz not null default now()
+);
+
+create index if not exists idx_guild_backup_audit_guild_created on guild_backup_audit(guild_id, created_at desc);
+alter table guild_backup_audit enable row level security;
 
 -- ---------------------------------------------------------------------------
 -- warn_escalation_rules: "at warning #N, do X automatically" — checked against

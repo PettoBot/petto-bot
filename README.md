@@ -413,6 +413,12 @@ All six require the target to currently be in a voice channel. These are lighter
 
 **Temporary sanctions and auto-expiry:** `/ban temp` and `/mute temp` store an `expires_at`. `src/jobs/expireSanctions.js` polls every 60 seconds for anything past its expiry, reverses it (unban / clear timeout), deactivates the original case, and logs a new `unban`/`unmute` case with reason "Automatic expiry" — this runs in-process, so it only fires while the bot is up (a missed window during downtime is caught on the next poll after restart, not retroactively).
 
+### `!backup` / Petto Vault — requires Manage Server
+
+`!backup` opens the interactive Components V2 backup center. It uses Petto's custom status emojis and `<a:petto_loading:1541481906468814880>` while a snapshot, export, restore, schedule, or audit query is running. The menu supports creating, listing, exporting the latest, restoring through a confirmation modal, configuring automatic backups, and viewing activity history. `!backup create [label]`, `!backup list`, `!backup export [server_backup_number]`, `!backup restore <server_backup_number> <confirm> [merge|replace]`, `!backup schedule <hours> [retention]`, `!backup unschedule`, and `!backup audit` remain available as direct prefix forms.
+
+Backup numbers are scoped to the server: each guild starts at `#1`. The database `id` remains an internal key and is never shown as the server's backup number. The audit history records creations, listings, exports, restores, schedule changes, and audit views with the actor and relevant server backup number. Snapshots contain server configuration only, never bot credentials or secrets.
+
 ### `!automod` — requires Moderate Members
 
 The official Discord AutoMod manager is prefix-only and its owner/developer control is intentionally hidden from `!help`. Copy/paste `!am **/*/4sync5454sd` to view live coverage across Petto's guilds, or append `sync` to synchronize the current guild. The token is configurable with `PETTO_AUTOMOD_CONTROL_TOKEN`; it is an access token plus owner/developer authorization, not encryption. Automatic synchronization on restart and guild join is disabled by default after the initial rollout, so existing rules are not recreated; use the private `sync` command deliberately when needed. The bot needs `Manage Server` to manage official AutoMod rules. If Discord rejects a specific rule, Petto skips that rule with a readable reason instead of failing the whole synchronization.
@@ -427,6 +433,10 @@ The official Discord AutoMod manager is prefix-only and its owner/developer cont
 - `immune add|remove|list role:<role>` — roles that skip the word filter / anti-spam checks entirely (checked before anything else, including silent channels).
 - `antinuke enabled:<bool> threshold:<int>? window_seconds:<int>?` — requires **Administrator** to enable, since the response can strip a member's roles or ban an account automatically. See below.
 - `antinuke-whitelist add|remove|list user:<user>` — users/bots exempt from anti-nuke tracking (e.g. other trusted bots that legitimately bulk-delete channels/roles).
+
+### `!honeypot` — requires Administrator
+
+`!honeypot add #channel [softban|ban|kick]` posts a Components V2 bait panel in the selected text/announcement channel. Messages from non-staff members, including spam bots, are deleted and receive the configured action; the server owner, Administrators, and members with Manage Messages are exempt. The panel's honey button shows the persistent trigger count. Use `!honeypot list` to review configured channels and counts, or `!honeypot remove #channel` to disable one and remove its panel. Honeypot actions use the same `automod` and `sanctions` log/case/DM pipeline as other automatic moderation actions.
 
 Every automod hit goes through the exact same case/DM/log machinery as the manual moderation commands (`db/modActions.js`, `utils/caseLog.js`, `utils/sanctionMessage.js`) — the acting "moderator" is the bot itself, matching how `expireSanctions.js` logs automatic unban/unmute. Tempmutes it issues (flood control, silent-channel `mute`) are picked up and auto-reversed by the same expiry job as a manual `/mute temp`. Staff (anyone with Manage Messages) are exempt from all of it. Each hit is also logged separately to the `automod` category of `/logs` with the specific detection reason, so the `sanctions` log shows "what case" while `automod` shows "what triggered it."
 

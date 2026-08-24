@@ -1,6 +1,7 @@
 const { ApplicationCommandOptionType, MessageFlags } = require('discord.js');
 const ms = require('ms');
 const { resolveRole } = require('../utils/roleResolve');
+const { resolveUser } = require('../utils/userResolve');
 
 // ── Tokenizing ───────────────────────────────────────────────────────────────
 
@@ -57,22 +58,16 @@ const MENTION_OR_ID_RE = /^(<@!?\d+>|<@&\d+>|<#\d+>|\d{15,25})$/;
 const LIST_TOKEN_RE = /^(<@!?\d+>|<@&\d+>|<#\d+>|\d+)$/;
 const LIST_OPTION_NAMES = new Set(['users', 'roles', 'cases', 'channels']);
 
-async function resolveUserToken(message, token) {
-  if (!token) return null;
-  const id = token.replace(/[<@!>]/g, '');
-  if (!SNOWFLAKE_RE.test(id)) return null;
-  return message.client.users.fetch(id).catch(() => null);
-}
-
 function resolveRoleToken(guild, token) {
   return resolveRole(guild, token);
 }
 
 function resolveChannelToken(guild, token) {
   if (!token) return null;
-  const id = token.replace(/[<#>]/g, '');
+  const channelName = token.startsWith('#') ? token.slice(1) : token;
+  const id = channelName.replace(/[<#>]/g, '');
   if (SNOWFLAKE_RE.test(id)) return guild.channels.cache.get(id) ?? null;
-  return guild.channels.cache.find((c) => c.name.toLowerCase() === token.toLowerCase()) ?? null;
+  return guild.channels.cache.find((c) => c.name.toLowerCase() === channelName.toLowerCase()) ?? null;
 }
 
 function parseBoolToken(token) {
@@ -84,11 +79,11 @@ function parseBoolToken(token) {
 }
 
 /** Converts one raw token into the value type a given option definition expects, or null if it doesn't fit. */
-async function convertToken(message, def, token) {
+async function convertToken(message, def, token, resolveContext = {}) {
   if (token === undefined) return null;
   switch (def.type) {
     case ApplicationCommandOptionType.User:
-      return resolveUserToken(message, token);
+      return resolveUser(message.client, token, message.guild, resolveContext);
     case ApplicationCommandOptionType.Role:
       return resolveRoleToken(message.guild, token);
     case ApplicationCommandOptionType.Channel:
@@ -110,7 +105,7 @@ async function convertToken(message, def, token) {
 
 const FLAG_RE = /^--([a-z_]+)$/i;
 
-async function extractFlags(message, tokens, optionDefs) {
+async function extractFlags(message, tokens, optionDefs, resolveContext) {
   const defByName = new Map(optionDefs.map((d) => [d.name, d]));
   const remaining = [];
   const flagValues = {};
@@ -119,7 +114,7 @@ async function extractFlags(message, tokens, optionDefs) {
     const match = FLAG_RE.exec(tokens[i]);
     const def = match && defByName.get(match[1].toLowerCase());
     if (def && tokens[i + 1] !== undefined) {
-      const value = await convertToken(message, def, tokens[i + 1]);
+      const value = await convertToken(message, def, tokens[i + 1], resolveContext);
       if (value !== null) {
         flagValues[def.name] = value;
         i++;
@@ -144,7 +139,7 @@ async function extractFlags(message, tokens, optionDefs) {
  * for the next option instead of being force-consumed, so skipping an optional works
  * as long as what follows unambiguously resolves to a different type.
  */
-async function parsePositional(message, optionDefs, tokens) {
+async function parsePositional(message, optionDefs, tokens, resolveContext) {
   const values = {};
   let i = 0;
 
@@ -188,7 +183,7 @@ async function parsePositional(message, optionDefs, tokens) {
       continue;
     }
 
-    const value = await convertToken(message, def, tokens[i]);
+    const value = await convertToken(message, def, tokens[i], resolveContext);
     if (value !== null) {
       values[def.name] = value;
       i++;
@@ -198,10 +193,10 @@ async function parsePositional(message, optionDefs, tokens) {
   return values;
 }
 
-async function parseOptions(message, optionDefs, tokens) {
-  const { remaining, flagValues } = await extractFlags(message, tokens, optionDefs);
+async function parseOptions(message, optionDefs, tokens, resolveContext) {
+  const { remaining, flagValues } = await extractFlags(message, tokens, optionDefs, resolveContext);
   const unfilledDefs = optionDefs.filter((d) => !(d.name in flagValues));
-  const positionalValues = await parsePositional(message, unfilledDefs, remaining);
+  const positionalValues = await parsePositional(message, unfilledDefs, remaining, resolveContext);
   return { ...flagValues, ...positionalValues };
 }
 
@@ -322,7 +317,9 @@ async function buildInteractionFromMessage(message, command, argText) {
   );
   if (!resolved) return null;
 
-  const values = await parseOptions(message, resolved.optionDefs, resolved.remainingTokens);
+  const values = await parseOptions(message, resolved.optionDefs, resolved.remainingTokens, {
+    includeBans: json.name === 'unban' || (json.name === 'ban' && resolved.subcommand === 'remove'),
+  });
   return buildPseudoInteraction(message, { commandName: json.name, subcommand: resolved.subcommand, subcommandGroup: resolved.subcommandGroup, values });
 }
 

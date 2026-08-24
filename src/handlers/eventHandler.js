@@ -20,7 +20,7 @@ function loadEvents(client) {
 
   for (const file of files) {
     const filePath = path.join(EVENTS_DIR, file);
-    delete require.cache[require.resolve(filePath)];
+
     const event = require(filePath);
 
     if (!event?.name || typeof event.execute !== 'function') {

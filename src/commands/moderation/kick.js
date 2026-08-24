@@ -29,7 +29,7 @@ module.exports = {
       sub
         .setName('users')
         .setDescription('Kick multiple members with the same reason.')
-        .addStringOption((opt) => opt.setName('users').setDescription('User mentions/IDs, space or comma separated').setRequired(true))
+        .addStringOption((opt) => opt.setName('users').setDescription('Mentions, IDs, or exact usernames; separate with spaces or commas').setRequired(true))
         .addStringOption((opt) => opt.setName('reason').setDescription('Reason for the kicks').setRequired(false)),
     ),
 
@@ -92,7 +92,7 @@ async function kickUsers(interaction) {
 
   if (!(await confirmBulkAction(interaction, 'kick', usersInput))) return;
 
-  const { users, failed: notFound } = await resolveUsers(interaction.client, usersInput);
+  const { users, failed: notFound } = await resolveUsers(interaction.client, usersInput, interaction.guild);
   await ensureGuild(interaction.guild.id);
 
   const succeeded = [];

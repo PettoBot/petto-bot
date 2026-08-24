@@ -2,12 +2,23 @@ const { Events, PermissionFlagsBits } = require('discord.js');
 const { getConfig, getSilentChannel } = require('../db/automod');
 const { findBannedWord, isExcessiveCaps, hasMassMentions, hasUnauthorizedInvite, isRepeatFlood } = require('../utils/automodChecks');
 const { applyAutomodAction } = require('../utils/automodAction');
+const { handleHoneypotMessage } = require('../utils/honeypot');
 const logger = require('../utils/logger');
 
 module.exports = {
   name: Events.MessageCreate,
   async execute(message) {
-    if (message.author.bot || !message.guild || !message.member) return;
+    if (!message.guild) return;
+
+    // Honeypots intentionally inspect bot messages too: compromised accounts and spam bots
+    // are the bait's primary target. Petto's own messages are excluded by the helper.
+    try {
+      if (await handleHoneypotMessage(message)) return;
+    } catch (err) {
+      logger.error(`Honeypot scan failed for message ${message.id} in guild ${message.guild.id}:`, err);
+    }
+
+    if (message.author.bot || !message.member) return;
     // Staff are exempt — automod shouldn't punish the people configuring it.
     if (message.member.permissions.has(PermissionFlagsBits.ManageMessages)) return;
 
