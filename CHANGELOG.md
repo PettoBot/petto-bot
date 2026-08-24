@@ -19,6 +19,17 @@ All notable changes to Petto are documented here.
 ### Validation
 
 - `npm run check` passes across the complete JavaScript source tree.
+- CI now runs JavaScript syntax checks, TypeScript checks, generated-source
+  consistency checks, and a production dependency audit.
+
+### Security and deployment
+
+- GitHub Actions now use immutable commit-pinned releases for checkout,
+  CodeQL, and Node.js setup.
+- Updated the vulnerable `undici` transitive dependency to `6.28.0`, removing
+  the three moderate Dependabot findings reported for the previous lockfile.
+- Discloud builds the checked-in TypeScript module before starting the bot,
+  keeping GitHub-based deployments aligned with the repository source.
 
 ## [0.3.0-2] — 2026-08-22
 
