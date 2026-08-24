@@ -1,6 +1,6 @@
 # Petto
 
-A multi-purpose Discord bot focused on moderation (inspired by YAGPDB, Dyno and La Cabra), grown out into a full ticket system, welcome/leave/boost announcements, leveling, giveaways, reaction roles, custom commands, invite tracking, and a general utility/info command set.
+A multi-purpose Discord bot focused on moderation, grown out into a full ticket system, welcome/leave/boost announcements, leveling, giveaways, reaction roles, custom commands, invite tracking, and a general utility/info command set.
 
 ## Public project rules
 
