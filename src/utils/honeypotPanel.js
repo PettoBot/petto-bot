@@ -1,5 +1,6 @@
 const {
   ActionRowBuilder,
+  AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
   ContainerBuilder,
@@ -7,9 +8,12 @@ const {
   TextDisplayBuilder,
   ThumbnailBuilder,
 } = require('discord.js');
+const path = require('node:path');
 
-const HONEYPOT_IMAGE_URL = 'https://honeypot.riskymh.dev/honeypot.png';
+const HONEYPOT_IMAGE_PATH = path.join(__dirname, '..', 'assets', 'petto-honeypot.png');
+const HONEYPOT_IMAGE_URL = 'attachment://petto-honeypot.png';
 const HONEYPOT_COUNT_BUTTON_ID = 'moderated_count_button';
+const HONEYPOT_BUTTON_EMOJI = '<:petto_honeypot:1541493688054841405>';
 
 function punishmentText(punishment) {
   if (punishment === 'ban') return 'a ban';
@@ -33,16 +37,23 @@ function buildHoneypotPanel({ punishment = 'softban', triggerCount, trigger_coun
     .setCustomId(HONEYPOT_COUNT_BUTTON_ID)
     .setStyle(ButtonStyle.Secondary)
     .setLabel(`Kicks: ${count}`)
-    .setEmoji('🍯');
+    .setEmoji(HONEYPOT_BUTTON_EMOJI);
 
   return new ContainerBuilder()
     .addSectionComponents(section)
     .addActionRowComponents(new ActionRowBuilder().addComponents(countButton));
 }
 
+function buildHoneypotImageAttachment() {
+  return new AttachmentBuilder(HONEYPOT_IMAGE_PATH, { name: 'petto-honeypot.png' });
+}
+
 module.exports = {
+  HONEYPOT_IMAGE_PATH,
   HONEYPOT_IMAGE_URL,
   HONEYPOT_COUNT_BUTTON_ID,
+  HONEYPOT_BUTTON_EMOJI,
   punishmentText,
   buildHoneypotPanel,
+  buildHoneypotImageAttachment,
 };

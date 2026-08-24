@@ -5,7 +5,7 @@ const { createCase } = require('../db/modActions');
 const { logSanction } = require('./caseLog');
 const { buildSanctionDM } = require('./sanctionMessage');
 const { sendLog } = require('../logging/engine');
-const { buildHoneypotPanel } = require('./honeypotPanel');
+const { buildHoneypotPanel, buildHoneypotImageAttachment } = require('./honeypotPanel');
 const { EMOJI } = require('./emojis');
 const logger = require('./logger');
 
@@ -60,6 +60,7 @@ function schedulePanelUpdate(client, row) {
 
       await panel.edit({
         components: [buildHoneypotPanel(current.row)],
+        files: [buildHoneypotImageAttachment()],
         flags: MessageFlags.IsComponentsV2,
       });
     } catch (err) {
@@ -80,6 +81,7 @@ async function createOrUpdatePanel(client, channel, row) {
 
   const payload = {
     components: [buildHoneypotPanel(row)],
+    files: [buildHoneypotImageAttachment()],
     flags: MessageFlags.IsComponentsV2,
   };
 
