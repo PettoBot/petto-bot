@@ -1,6 +1,6 @@
 const { PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { ensureGuild } = require('../db/guilds');
-const { getHoneypot, listHoneypots, setPanelMessage, incrementTrigger } = require('../db/honeypot');
+const { getHoneypot, listHoneypots, setPanelMessage, claimHoneypotUser } = require('../db/honeypot');
 const { createCase } = require('../db/modActions');
 const { logSanction } = require('./caseLog');
 const { buildSanctionDM } = require('./sanctionMessage');
@@ -13,6 +13,7 @@ const CONFIG_CACHE_MS = 15_000;
 const PANEL_UPDATE_DELAY_MS = 750;
 const configCache = new Map();
 const panelUpdates = new Map();
+const activeUsers = new Set();
 
 function isStaffExempt(message) {
   const member = message.member;
@@ -112,11 +113,26 @@ async function applyHoneypotAction(message, config) {
 
   await message.delete().catch((err) => logger.warn(`Honeypot: failed to delete message ${message.id}:`, err.message));
 
-  const updated = await incrementTrigger(guild.id, message.channel.id).catch((err) => {
-    logger.error(`Honeypot counter update failed in ${guild.id}/${message.channel.id}:`, err.message);
-    return { ...config, trigger_count: (config.trigger_count ?? 0) + 1 };
+  let claimed;
+  try {
+    claimed = await claimHoneypotUser(guild.id, message.channel.id, author.id, message.id, punishment);
+  } catch (err) {
+    // Do not apply a punishment when the durable claim cannot be recorded: a
+    // retrying message could otherwise create duplicate cases after a DB hiccup.
+    logger.error(`Honeypot claim failed in ${guild.id}/${message.channel.id} for ${author.id}:`, err.message);
+    return false;
+  }
+
+  if (!claimed) return false;
+
+  const updated = await getHoneypot(guild.id, message.channel.id).catch((err) => {
+    logger.warn(`Honeypot count reload failed in ${guild.id}/${message.channel.id}:`, err.message);
+    return null;
   });
-  schedulePanelUpdate(client, updated ?? { ...config, trigger_count: (config.trigger_count ?? 0) + 1 });
+  schedulePanelUpdate(client, updated ?? {
+    ...config,
+    caught_count: (config.caught_count ?? 0) + 1,
+  });
 
   await sendLog(client, guild.id, 'automod', {
     author: { name: author.username, icon_url: author.displayAvatarURL?.() ?? undefined },
@@ -152,6 +168,8 @@ async function applyHoneypotAction(message, config) {
   } catch (err) {
     logger.warn(`Honeypot: failed to apply ${punishment} to ${author.id} in ${guild.id}:`, err.message);
   }
+
+  return true;
 }
 
 async function handleHoneypotMessage(message) {
@@ -161,7 +179,18 @@ async function handleHoneypotMessage(message) {
   if (!config) return false;
   if (isStaffExempt(message)) return true;
 
-  await applyHoneypotAction(message, config);
+  const userKey = `${message.guild.id}:${message.channel.id}:${message.author.id}`;
+  if (activeUsers.has(userKey)) {
+    await message.delete().catch((err) => logger.warn(`Honeypot: failed to delete duplicate message ${message.id}:`, err.message));
+    return true;
+  }
+
+  activeUsers.add(userKey);
+  try {
+    await applyHoneypotAction(message, config);
+  } finally {
+    activeUsers.delete(userKey);
+  }
   return true;
 }
 

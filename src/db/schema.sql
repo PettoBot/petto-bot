@@ -381,13 +381,64 @@ create table if not exists honeypots (
   channel_id     text not null,
   punishment     text not null default 'softban' check (punishment in ('ban', 'softban', 'kick')),
   panel_message_id text,
+  -- Number of unique members whose first Honeypot message was claimed.
+  caught_count   integer not null default 0 check (caught_count >= 0),
+  -- Legacy message-hit counter retained for existing databases and tooling.
   trigger_count  integer not null default 0 check (trigger_count >= 0),
   created_at     timestamptz not null default now(),
   updated_at     timestamptz not null default now(),
   primary key (guild_id, channel_id)
 );
 
+alter table honeypots add column if not exists caught_count integer not null default 0;
+
 alter table honeypots enable row level security;
+
+-- One durable claim per member and Honeypot. This prevents a burst of messages
+-- from creating repeated sanctions, even across concurrent workers/restarts.
+create table if not exists honeypot_user_triggers (
+  guild_id   text not null,
+  channel_id text not null,
+  user_id    text not null,
+  message_id text,
+  punishment text not null check (punishment in ('ban', 'softban', 'kick')),
+  created_at timestamptz not null default now(),
+  primary key (guild_id, channel_id, user_id),
+  foreign key (guild_id, channel_id)
+    references honeypots(guild_id, channel_id) on delete cascade
+);
+
+create index if not exists idx_honeypot_user_triggers_guild
+  on honeypot_user_triggers(guild_id, created_at desc);
+
+alter table honeypot_user_triggers enable row level security;
+
+create or replace function claim_honeypot_user(
+  p_guild_id text,
+  p_channel_id text,
+  p_user_id text,
+  p_message_id text,
+  p_punishment text
+) returns boolean
+language plpgsql
+as $$
+begin
+  insert into honeypot_user_triggers (guild_id, channel_id, user_id, message_id, punishment)
+    values (p_guild_id, p_channel_id, p_user_id, p_message_id, p_punishment)
+    on conflict (guild_id, channel_id, user_id) do nothing;
+
+  if not found then
+    return false;
+  end if;
+
+  update honeypots
+    set caught_count = caught_count + 1,
+        updated_at = now()
+    where guild_id = p_guild_id and channel_id = p_channel_id;
+
+  return true;
+end;
+$$;
 
 -- Keep the counter atomic when multiple spam messages arrive at once.
 create or replace function increment_honeypot_trigger(

@@ -61,6 +61,33 @@ async function incrementTrigger(guildId, channelId) {
   return Array.isArray(data) ? data[0] ?? null : data;
 }
 
+/**
+ * Atomically claims the first message from a user in a Honeypot. The unique
+ * database key makes this safe across concurrent messages and bot instances.
+ */
+async function claimHoneypotUser(guildId, channelId, userId, messageId, punishment) {
+  const { data, error } = await supabase.rpc('claim_honeypot_user', {
+    p_guild_id: guildId,
+    p_channel_id: channelId,
+    p_user_id: userId,
+    p_message_id: messageId,
+    p_punishment: punishment,
+  });
+
+  if (error) throw error;
+  return Boolean(data);
+}
+
+async function clearHoneypotUser(guildId, userId) {
+  const { error } = await supabase
+    .from('honeypot_user_triggers')
+    .delete()
+    .eq('guild_id', guildId)
+    .eq('user_id', userId);
+
+  if (error) throw error;
+}
+
 async function removeHoneypot(guildId, channelId) {
   const { data, error } = await supabase
     .from('honeypots')
@@ -80,5 +107,7 @@ module.exports = {
   upsertHoneypot,
   setPanelMessage,
   incrementTrigger,
+  claimHoneypotUser,
+  clearHoneypotUser,
   removeHoneypot,
 };

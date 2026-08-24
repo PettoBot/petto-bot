@@ -95,6 +95,7 @@ async function addHoneypot(interaction) {
       components: [textCard([
         `${EMOJI.APPROVE} Honeypot enabled in ${channel}.`,
         `**Action:** ${action} for non-staff members who post there.`,
+        '**Repeat protection:** each member is actioned once while they remain in the server; later messages are removed without duplicate cases.',
         '**Staff exemption:** the server owner, Administrators, and members with Manage Messages.',
         'The warning panel is now posted in that channel. Use `!honeypot list` to view the trigger count.',
       ].join('\n'), 0xa5ea7a)],
@@ -148,7 +149,7 @@ async function listConfiguredHoneypots(interaction) {
     const content = rows.length
       ? [
         '### Honeypot channels',
-        ...rows.map((row) => `• <#${row.channel_id}> · **${punishmentText(row.punishment)}** · **${row.trigger_count ?? 0}** trigger${row.trigger_count === 1 ? '' : 's'}`),
+        ...rows.map((row) => `• <#${row.channel_id}> · **${punishmentText(row.punishment)}** · **${row.caught_count ?? 0}** member${row.caught_count === 1 ? '' : 's'} caught`),
         '',
         'The server owner, Administrators, and members with Manage Messages are exempt.',
       ].join('\n')
