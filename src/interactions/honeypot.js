@@ -15,9 +15,9 @@ async function handleButton(interaction) {
     return;
   }
 
-  const count = Number(config.trigger_count) || 0;
+  const count = Number(config.caught_count) || 0;
   await interaction.reply({
-    content: `This honeypot has triggered **${count}** time${count === 1 ? '' : 's'}. The configured action is **${punishmentText(config.punishment)}**.`,
+    content: `This honeypot has caught **${count}** unique member${count === 1 ? '' : 's'}. The configured action is **${punishmentText(config.punishment)}**. Only the first message from each member while they remain in the server creates a moderation case; later messages are removed silently.`,
     flags: MessageFlags.Ephemeral,
     allowedMentions: { parse: [] },
   });

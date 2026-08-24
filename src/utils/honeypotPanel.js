@@ -21,14 +21,14 @@ function punishmentText(punishment) {
   return 'a softban';
 }
 
-function buildHoneypotPanel({ punishment = 'softban', triggerCount, trigger_count } = {}) {
+function buildHoneypotPanel({ punishment = 'softban', caughtCount, caught_count } = {}) {
   // Database rows use snake_case; accepting camelCase as well keeps this builder
   // convenient for tests and other Discord-facing callers.
-  const count = Math.max(0, Number(triggerCount ?? trigger_count) || 0);
+  const count = Math.max(0, Number(caughtCount ?? caught_count) || 0);
   const section = new SectionBuilder()
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `## DO NOT SEND MESSAGES IN THIS CHANNEL\n\nThis channel is used to catch spam bots. Any messages sent here will result in **${punishmentText(punishment)}**.`,
+        `## DO NOT SEND MESSAGES IN THIS CHANNEL\n\nThis channel is used to catch spam bots. Any messages sent here will result in **${punishmentText(punishment)}**. Each member is actioned once while they remain in the server; later messages are removed without creating duplicate cases.`,
       ),
     )
     .setThumbnailAccessory(new ThumbnailBuilder().setURL(HONEYPOT_IMAGE_URL));
@@ -36,7 +36,7 @@ function buildHoneypotPanel({ punishment = 'softban', triggerCount, trigger_coun
   const countButton = new ButtonBuilder()
     .setCustomId(HONEYPOT_COUNT_BUTTON_ID)
     .setStyle(ButtonStyle.Secondary)
-    .setLabel(`Kicks: ${count}`)
+    .setLabel(`Members caught: ${count}`)
     .setEmoji(HONEYPOT_BUTTON_EMOJI);
 
   return new ContainerBuilder()
