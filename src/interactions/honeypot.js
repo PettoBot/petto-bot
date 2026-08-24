@@ -1,7 +1,10 @@
 const { MessageFlags } = require('discord.js');
 const { getHoneypot } = require('../db/honeypot');
-const { HONEYPOT_COUNT_BUTTON_ID } = require('../utils/honeypotPanel');
-const { punishmentText } = require('../utils/honeypotPanel');
+const {
+  HONEYPOT_COUNT_BUTTON_ID,
+  buildHoneypotStatsPanel,
+  buildHoneypotImageAttachment,
+} = require('../utils/honeypotPanel');
 
 async function handleButton(interaction) {
   const config = await getHoneypot(interaction.guildId, interaction.channelId);
@@ -15,10 +18,14 @@ async function handleButton(interaction) {
     return;
   }
 
-  const count = Number(config.caught_count) || 0;
   await interaction.reply({
-    content: `This honeypot has caught **${count}** unique member${count === 1 ? '' : 's'}. The configured action is **${punishmentText(config.punishment)}**. Only the first message from each member while they remain in the server creates a moderation case; later messages are removed silently.`,
-    flags: MessageFlags.Ephemeral,
+    components: [buildHoneypotStatsPanel({
+      punishment: config.punishment,
+      caught_count: config.caught_count,
+      channelId: interaction.channelId,
+    })],
+    files: [buildHoneypotImageAttachment()],
+    flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
     allowedMentions: { parse: [] },
   });
 }
