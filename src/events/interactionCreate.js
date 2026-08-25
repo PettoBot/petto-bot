@@ -2,6 +2,7 @@ const { Events, MessageFlags } = require('discord.js');
 const { getRemainingCooldown } = require('../utils/cooldown');
 const { handleButton: handleEmbedPanelButton, handleModal: handleEmbedPanelModal } = require('../interactions/embedPanel');
 const { handleModal: handleReportModal } = require('../interactions/reportModal');
+const { handleModal: handleReportConfigModal } = require('../interactions/reportConfigModal');
 const { handleButton: handleTicketPanelButton, handleSelect: handleTicketPanelSelect } = require('../interactions/ticketPanel');
 const { handleModal: handleTicketFormModal } = require('../interactions/ticketForm');
 const {
@@ -90,6 +91,15 @@ module.exports = {
         await handleReportModal(interaction);
       } catch (err) {
         logger.error('Error handling report modal:', err);
+      }
+      return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId === 'petto_report_config_modal') {
+      try {
+        await handleReportConfigModal(interaction);
+      } catch (err) {
+        logger.error('Error handling report config modal:', err);
       }
       return;
     }

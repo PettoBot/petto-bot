@@ -130,7 +130,7 @@ function collectCommandData() {
     .filter(({ command }) => !command.prefixOnly)
     .filter(({ filePath, command }) => {
       const type = command.data.toJSON().type ?? 1;
-      return type !== 1 || command.slashOnly || categoryFromPath(filePath) === 'roleplay';
+      return type !== 1 || command.slashOnly || command.registerSlash || categoryFromPath(filePath) === 'roleplay';
     })
     .map(({ command }) => command.data.toJSON());
 }
