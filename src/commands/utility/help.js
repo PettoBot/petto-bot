@@ -1,3 +1,4 @@
+// Builds the interactive help browser from the loaded command catalog.
 const {
   SlashCommandBuilder,
   ActionRowBuilder,
@@ -35,8 +36,6 @@ const CATEGORY_META = {
   roleplay: { label: 'Roleplay', icon: '💞' },
   other: { label: 'Other', icon: '📄' },
 };
-
-// ── Introspection — built live from client.commands, never a hand-kept list ──
 
 function getChatInputCommands(client) {
   return [...client.commands.values()].filter((c) => (c.data.toJSON().type ?? 1) === 1 && !c.slashOnly && !c.hiddenFromHelp);
@@ -144,8 +143,6 @@ function findEntries(client, tokens) {
   return { command, entries: partial };
 }
 
-// ── The per-(sub)command info card — the unit both pagination and drill-down bottom out at ──
-
 function entryDetailCard(client, guild, prefix, command, entry, page = 0, total = 1) {
   const json = command.data.toJSON();
   const entryPath = entry.path.join(' ');
@@ -187,8 +184,6 @@ function navRow(page, total, disabled = false) {
     new ButtonBuilder().setCustomId('help_close').setEmoji(EMOJI.CLOSE).setStyle(ButtonStyle.Secondary).setDisabled(disabled),
   );
 }
-
-// ── Interactive browse views (category -> command -> subcommand -> detail) ──
 
 function mainView(client, guild, prefix) {
   const commands = getChatInputCommands(client);
@@ -297,8 +292,6 @@ module.exports = {
     const prefix = guildConfig.prefix;
 
     const input = interaction.options.getString('query')?.trim();
-
-    // ── Direct lookup: `!help <command>` (paginates every subcommand) or `!help <command> <sub...>` (single page) ──
     if (input) {
       const tokens = input.toLowerCase().split(/\s+/);
       const { command, entries } = findEntries(client, tokens);
@@ -333,8 +326,6 @@ module.exports = {
       });
       return;
     }
-
-    // ── Interactive browse: category -> command -> subcommand (if any) -> detail ──
     const msg = await interaction.reply(mainView(client, interaction.guild, prefix));
     let currentCategory = null;
     let currentCommand = null;

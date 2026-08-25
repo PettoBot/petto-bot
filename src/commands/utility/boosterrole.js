@@ -1,3 +1,4 @@
+// Booster-role self-service and administrator configuration.
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const ms = require('ms');
 const { ensureGuild } = require('../../db/guilds');
@@ -119,8 +120,6 @@ async function requireBotCanManageRoles(interaction) {
   await interaction.reply({ content: 'I need the **Manage Roles** permission to do that.', flags: MessageFlags.Ephemeral });
   return false;
 }
-
-// ── Self-service (booster-only) ─────────────────────────────────────────────
 
 async function selfCreate(interaction) {
   if (!isBoosting(interaction.member)) {
@@ -413,8 +412,6 @@ async function selfShared(interaction) {
   await interaction.editReply({ components: [textCard(`**Your booster role:** <@&${existing.role_id}>\n**Shared with:** ${shared}`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
-// ── Admin ────────────────────────────────────────────────────────────────────
-
 async function requireManageGuild(interaction) {
   if (interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) return true;
   await interaction.reply({ content: 'You need the **Manage Server** permission to do that.', flags: MessageFlags.Ephemeral });
@@ -645,8 +642,6 @@ async function adminShareLimit(interaction) {
   await db.upsertConfig(interaction.guild.id, { share_max: count });
   await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Share limit set to **${count === 0 ? 'unlimited' : count}**.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
-
-// ── Filter ───────────────────────────────────────────────────────────────────
 
 async function filterCmd(interaction, sub) {
   if (!(await requireManageGuild(interaction))) return;

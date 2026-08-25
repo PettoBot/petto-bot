@@ -1,6 +1,5 @@
+// Persistence helpers for ticket panels, categories, and ticket records.
 const supabase = require('./supabase');
-
-// ── Panels ────────────────────────────────────────────────────────────────
 
 async function createPanel({ guildId, channelId, title, description, embedTemplate, style }) {
   const { data, error } = await supabase
@@ -48,8 +47,6 @@ async function updatePanel(guildId, panelId, patch) {
   if (error) throw error;
   return data;
 }
-
-// ── Categories ────────────────────────────────────────────────────────────
 
 function normalizeKey(key) {
   return key.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
@@ -113,8 +110,6 @@ async function deleteCategory(guildId, key) {
   if (error) throw error;
   return data.length > 0;
 }
-
-// ── Tickets ───────────────────────────────────────────────────────────────
 
 async function createTicket({ guildId, categoryId, openerId }) {
   const { data, error } = await supabase.rpc('create_ticket', { p_guild_id: guildId, p_category_id: categoryId, p_opener_id: openerId });

@@ -1,3 +1,4 @@
+// Role management commands, including guarded bulk operations.
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { resolveRoles, filterAssignableRoles } = require('../../utils/roleResolve');
 const { textCard } = require('../../utils/caseCard');
@@ -537,8 +538,6 @@ async function cancelMassOp(interaction) {
   task.abort = true;
   await interaction.reply({ content: `${EMOJI.APPROVE}  Cancelling — in-flight member will finish, then it stops.`, flags: MessageFlags.Ephemeral });
 }
-
-// ── Role groups ──────────────────────────────────────────────────────────────
 
 async function groupCmd(interaction) {
   const sub = interaction.options.getSubcommand();

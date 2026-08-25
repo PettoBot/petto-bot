@@ -1,6 +1,5 @@
+// Persistence helpers for booster-role settings and member assignments.
 const supabase = require('./supabase');
-
-// ── Per-guild config ─────────────────────────────────────────────────────────
 
 async function getConfig(guildId) {
   const { data, error } = await supabase.from('booster_role_config').select('*').eq('guild_id', guildId).maybeSingle();
@@ -27,8 +26,6 @@ async function upsertConfig(guildId, patch) {
   if (error) throw error;
   return data;
 }
-
-// ── Per-member booster role ─────────────────────────────────────────────────
 
 async function getBoosterRole(guildId, userId) {
   const { data, error } = await supabase.from('booster_roles').select('*').eq('guild_id', guildId).eq('user_id', userId).maybeSingle();

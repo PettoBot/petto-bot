@@ -1,3 +1,4 @@
+// Handles the interactive poll panel and its vote-management actions.
 const {
   ModalBuilder,
   TextInputBuilder,
@@ -125,8 +126,6 @@ async function handleButton(interaction) {
     await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE} Poll started!`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
-
-  // ── Modal-based actions ───────────────────────────────────────────────────
   const modals = {
     pl_q: new ModalBuilder()
       .setCustomId(`plm_q::${uid}`)

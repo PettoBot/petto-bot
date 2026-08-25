@@ -3,6 +3,7 @@ node_modules/
 coverage/
 dist/
 build/
+.ts-build/
 .cache/
 
 # Environment files and local secret stores

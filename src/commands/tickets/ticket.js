@@ -1,3 +1,4 @@
+// Ticket panel setup, access rules, and ticket lifecycle actions.
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = require('discord.js');
 const { ensureGuild } = require('../../db/guilds');
 const { getTemplate } = require('../../db/embedTemplates');
@@ -170,8 +171,6 @@ async function requireManageGuild(interaction) {
   return false;
 }
 
-// ── Panel admin ─────────────────────────────────────────────────────────────
-
 async function panelCmd(interaction, sub) {
   if (!(await requireManageGuild(interaction))) return;
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
@@ -313,8 +312,6 @@ async function renderPanelMessage(guild, panel, categories, channel) {
 
   return { components: [buildPanelFallbackCard({ title: panel.title, description: panel.description }), ...rows], flags: MessageFlags.IsComponentsV2 };
 }
-
-// ── Category admin ──────────────────────────────────────────────────────────
 
 async function categoryCmd(interaction, sub) {
   if (!(await requireManageGuild(interaction))) return;
@@ -558,8 +555,6 @@ async function roleListCmd(interaction, sub, column) {
   await db.updateCategory(interaction.guild.id, key, { [column]: [...ids] });
   await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  ${role} ${sub === 'add' ? 'added to' : 'removed from'} \`${key}\`.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
-
-// ── Ticket actions ───────────────────────────────────────────────────────────
 
 async function openCmd(interaction) {
   const key = interaction.options.getString('category', true);

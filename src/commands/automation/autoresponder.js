@@ -1,3 +1,4 @@
+// Prefix command and configuration flow for per-guild autoresponders.
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { ensureGuild } = require('../../db/guilds');
 const arDb = require('../../db/autoResponders');
@@ -239,8 +240,6 @@ async function resetCmd(interaction) {
   await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  Removed all **${removed}** autoresponder(s).` : 'No autoresponders to remove.', removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
-// ── channel group ────────────────────────────────────────────────────────────
-
 async function channelCmd(interaction, sub) {
   const id = interaction.options.getString('id', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
@@ -271,8 +270,6 @@ async function channelCmd(interaction, sub) {
   const text = `${EMOJI.APPROVE}  \`${id}\` is now active in: ${updated.channel_ids.length ? updated.channel_ids.map((cid) => `<#${cid}>`).join(' ') : 'all channels'}`;
   await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
-
-// ── role group ───────────────────────────────────────────────────────────────
 
 async function roleCmd(interaction, sub) {
   const id = interaction.options.getString('id', true);

@@ -1,6 +1,5 @@
+// Persistence helpers for giveaways, entries, and winners.
 const supabase = require('./supabase');
-
-// ── Giveaways ────────────────────────────────────────────────────────────
 
 async function createGiveaway(row) {
   const { data, error } = await supabase.from('giveaways').insert(row).select('*').single();
@@ -48,8 +47,6 @@ async function listActiveForGuild(guildId) {
   return data;
 }
 
-// ── Entries ──────────────────────────────────────────────────────────────
-
 async function addEntry(giveawayId, userId, weight) {
   const { error } = await supabase.from('giveaway_entries').upsert({ giveaway_id: giveawayId, user_id: userId, weight }, { onConflict: 'giveaway_id,user_id' });
   if (error) throw error;
@@ -77,8 +74,6 @@ async function countEntries(giveawayId) {
   if (error) throw error;
   return count ?? 0;
 }
-
-// ── Winners ──────────────────────────────────────────────────────────────
 
 async function addWinner(giveawayId, userId, claimExpiresAt) {
   const { data, error } = await supabase

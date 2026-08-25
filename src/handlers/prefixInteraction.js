@@ -1,9 +1,8 @@
+// Converts prefix messages into the interaction shape used by command modules.
 const { ApplicationCommandOptionType, MessageFlags } = require('discord.js');
 const ms = require('ms');
 const { resolveRole } = require('../utils/roleResolve');
 const { resolveUser } = require('../utils/userResolve');
-
-// ── Tokenizing ───────────────────────────────────────────────────────────────
 
 /** Splits a command's argument text into tokens, treating "quoted strings" and 'single-quoted' as one token each. */
 function tokenize(content) {
@@ -13,8 +12,6 @@ function tokenize(content) {
   while ((m = re.exec(content))) tokens.push(m[1] ?? m[2] ?? m[3]);
   return tokens;
 }
-
-// ── Resolving the subcommand/group + its option definitions ────────────────
 
 /**
  * Walks a command's `.data.toJSON()` shape to find which (sub)command the first
@@ -48,8 +45,6 @@ function resolveSubcommandOptions(json, tokens) {
 
   return null;
 }
-
-// ── Token -> typed value conversion ─────────────────────────────────────────
 
 const SNOWFLAKE_RE = /^\d{15,25}$/;
 const MENTION_OR_ID_RE = /^(<@!?\d+>|<@&\d+>|<#\d+>|\d{15,25})$/;
@@ -101,8 +96,6 @@ async function convertToken(message, def, token, resolveContext = {}) {
   }
 }
 
-// ── `--flag value` extraction (escape hatch for commands with several adjacent optional strings, e.g. /ticket category add) ──
-
 const FLAG_RE = /^--([a-z_]+)$/i;
 
 async function extractFlags(message, tokens, optionDefs, resolveContext) {
@@ -126,8 +119,6 @@ async function extractFlags(message, tokens, optionDefs, resolveContext) {
 
   return { remaining, flagValues };
 }
-
-// ── Positional parsing of whatever's left after flags are pulled out ───────
 
 /**
  * Fills option values positionally, in the order Discord already requires (required
@@ -199,8 +190,6 @@ async function parseOptions(message, optionDefs, tokens, resolveContext) {
   const positionalValues = await parsePositional(message, unfilledDefs, remaining, resolveContext);
   return { ...flagValues, ...positionalValues };
 }
-
-// ── Pseudo-interaction: lets existing command execute(interaction) functions run unchanged ──
 
 function missingArgError(name) {
   const err = new Error(`Missing required argument: \`${name}\`. Check the command's usage.`);
