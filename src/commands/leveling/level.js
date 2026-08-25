@@ -1,3 +1,4 @@
+// Leveling configuration, rewards, multipliers, and member progress commands.
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = require('discord.js');
 const { ensureGuild } = require('../../db/guilds');
 const levelConfigDb = require('../../db/levelConfig');
@@ -475,8 +476,6 @@ async function statusCmd(interaction) {
   await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
-// ── reward group ─────────────────────────────────────────────────────────────
-
 async function rewardCmd(interaction, sub) {
   await defer(interaction);
 
@@ -499,8 +498,6 @@ async function rewardCmd(interaction, sub) {
   await levelRewardsDb.setReward(interaction.guild.id, level, role.id);
   await reply(interaction, `${EMOJI.APPROVE}  Members will now get ${role} at level **${level}**.`);
 }
-
-// ── multiplier group ─────────────────────────────────────────────────────────
 
 async function multiplierCmd(interaction, sub) {
   await defer(interaction);
@@ -532,8 +529,6 @@ async function multiplierCmd(interaction, sub) {
   await levelMultipliersDb.setMultiplier(interaction.guild.id, targetId, targetType, value);
   await reply(interaction, `${EMOJI.APPROVE}  ${targetMention} now gives **×${value}** XP.`);
 }
-
-// ── manage group ─────────────────────────────────────────────────────────────
 
 async function manageCmd(interaction, sub) {
   if (sub === 'xp') return manageXp(interaction);

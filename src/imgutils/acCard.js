@@ -1,3 +1,4 @@
+// Renders the activity card used by the activity commands.
 const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
 const { ActivityType } = require('discord.js');
 const path = require('path');
@@ -88,12 +89,8 @@ async function buildAcCard({ activity, member }) {
 
   roundRect(ctx, 0, 0, W, H, RADIUS);
   ctx.clip();
-
-  // ── Background ────────────────────────────────────────────────
   const bg = await loadImage(path.join(__dirname, 'fondoac.png'));
   ctx.drawImage(bg, 0, 0, W, H);
-
-  // ── Activity image (fallback: member avatar) ──────────────────
   let art = await getActivityImage(activity);
   if (!art && member) {
     try {
@@ -110,22 +107,16 @@ async function buildAcCard({ activity, member }) {
   const maxW = MAX_X - TEXT_X;
 
   ctx.textBaseline = 'top';
-
-  // ── Type label ────────────────────────────────────────────────
   const typeLabel = TYPE_LABEL[activity.type] ?? 'Activity';
   ctx.font = `16px Chewy, sans-serif`;
   ctx.fillStyle = 'rgba(255,255,255,0.45)';
   ctx.fillText(typeLabel.toUpperCase(), TEXT_X, 22);
-
-  // ── Game / activity name ──────────────────────────────────────
   ctx.font = `bold 58px Chewy, sans-serif`;
   ctx.fillStyle = '#ffffff';
   let name = activity.name ?? 'Unknown';
   while (ctx.measureText(name).width > maxW && name.length > 1) name = name.slice(0, -1);
   if (name !== activity.name) name = name.slice(0, -2) + '…';
   ctx.fillText(name, TEXT_X, 42);
-
-  // ── Details ───────────────────────────────────────────────────
   const detailStr = activity.details || activity.assets?.largeText || null;
   if (detailStr) {
     ctx.font = `20px Chewy, sans-serif`;
@@ -135,8 +126,6 @@ async function buildAcCard({ activity, member }) {
     if (det !== detailStr) det = det.slice(0, -2) + '…';
     ctx.fillText(det, TEXT_X, 116);
   }
-
-  // ── State ─────────────────────────────────────────────────────
   if (activity.state) {
     ctx.font = `17px Chewy, sans-serif`;
     ctx.fillStyle = 'rgba(255,255,255,0.60)';
@@ -145,8 +134,6 @@ async function buildAcCard({ activity, member }) {
     if (st !== activity.state) st = st.slice(0, -2) + '…';
     ctx.fillText(st, TEXT_X, 142);
   }
-
-  // ── Party info ────────────────────────────────────────────────
   const party = activity.party;
   if (party?.size) {
     const [cur, max] = party.size;
@@ -154,16 +141,12 @@ async function buildAcCard({ activity, member }) {
     ctx.fillStyle = 'rgba(255,255,255,0.45)';
     ctx.fillText(`${cur} / ${max} players`, TEXT_X, 165);
   }
-
-  // ── Small image + text ────────────────────────────────────────
   const smallText = activity.assets?.smallText;
   if (smallText) {
     ctx.font = `14px Chewy, sans-serif`;
     ctx.fillStyle = 'rgba(255,255,255,0.40)';
     ctx.fillText(smallText, TEXT_X, party?.size ? 184 : 165);
   }
-
-  // ── Elapsed bar ───────────────────────────────────────────────
   const barX = 423.1;
   const barW = 458.1;
   const barH = 5;

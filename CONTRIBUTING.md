@@ -34,6 +34,16 @@ After a proposal is accepted:
    proposal and explain the behavior, tests, migration impact, and rollback
    considerations.
 
+### JavaScript type checks
+
+The bot remains JavaScript/CommonJS. New modules and focused rewrites may opt
+into TypeScript's JavaScript checking by placing `// @ts-check` at the top of
+the file and running `pnpm run types:check`. A real TypeScript module belongs
+alongside the JavaScript modules under `src/`; run `pnpm run build:ts` to
+generate its CommonJS companion file there before testing or packaging. Do not
+edit generated files by hand.
+Existing modules are not required to migrate before they are touched.
+
 ## Pull request requirements
 
 Every pull request must:

@@ -1,3 +1,4 @@
+// Handles the interactive embed editor buttons and modals.
 const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags } = require('discord.js');
 const { getTemplate, upsertTemplate } = require('../db/embedTemplates');
 const { parseColor, buildRawPreview, hasContent } = require('../utils/embedBuilder');
@@ -93,8 +94,6 @@ async function handleButton(interaction) {
     await interaction.editReply({ components: [] });
     return;
   }
-
-  // ── Modal-based actions ───────────────────────────────────────────────────
   const colorHex = data.color != null ? `#${data.color.toString(16).padStart(6, '0')}` : '';
 
   const modals = {

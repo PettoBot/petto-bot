@@ -1,3 +1,4 @@
+// Formats role, channel, invite, and guild changes for the audit-log engine.
 const { sendLog, getAvatar, fetchMod, AuditLogEvent } = require('./engine');
 
 const CHANNEL_TYPES = {
@@ -5,8 +6,6 @@ const CHANNEL_TYPES = {
   10: 'Announcement Thread', 11: 'Public Thread', 12: 'Private Thread',
   13: 'Stage', 15: 'Forum', 16: 'Media',
 };
-
-// ── Roles ──────────────────────────────────────────────────────────────────
 
 async function handleRoleCreate(role, client) {
   const mod = await fetchMod(role.guild, AuditLogEvent.RoleCreate, role.id);
@@ -59,8 +58,6 @@ async function handleRoleUpdate(oldRole, newRole, client) {
     timestamp: new Date().toISOString(),
   });
 }
-
-// ── Channels ───────────────────────────────────────────────────────────────
 
 async function handleChannelCreate(channel, client) {
   if (!channel.guild) return;
@@ -131,8 +128,6 @@ async function handleChannelUpdate(oldChannel, newChannel, client) {
   );
 }
 
-// ── Invites ────────────────────────────────────────────────────────────────
-
 async function handleInviteCreate(invite, client) {
   if (!invite.guild) return;
   const inviter = invite.inviter;
@@ -164,8 +159,6 @@ async function handleInviteDelete(invite, client) {
     timestamp: new Date().toISOString(),
   });
 }
-
-// ── Guild ──────────────────────────────────────────────────────────────────
 
 async function handleGuildUpdate(oldGuild, newGuild, client) {
   const fields = [];

@@ -1,3 +1,4 @@
+// Audit-log configuration and webhook management for a guild.
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, EmbedBuilder, MessageFlags } = require('discord.js');
 const { ensureGuild } = require('../../db/guilds');
 const {
@@ -128,8 +129,6 @@ module.exports = {
 
     const group = interaction.options.getSubcommandGroup(false);
     const sub = interaction.options.getSubcommand();
-
-    // ── /logs view ─────────────────────────────────────────────────────────
     if (!group && sub === 'view') {
       const config = await getLogConfig(guildId);
 
@@ -159,8 +158,6 @@ module.exports = {
       await interaction.reply({ embeds: [embed] });
       return;
     }
-
-    // ── /logs add ──────────────────────────────────────────────────────────
     if (!group && sub === 'add') {
       const channel = interaction.options.getChannel('channel', true);
       const event = interaction.options.getString('event', true);
@@ -198,8 +195,6 @@ module.exports = {
       await interaction.editReply({ embeds: [okEmbed(`\`${event}\` logs will now be sent to <#${channel.id}>.`)] });
       return;
     }
-
-    // ── /logs remove ───────────────────────────────────────────────────────
     if (!group && sub === 'remove') {
       const channel = interaction.options.getChannel('channel', true);
       const event = interaction.options.getString('event');
@@ -217,8 +212,6 @@ module.exports = {
       });
       return;
     }
-
-    // ── /logs color set|list ───────────────────────────────────────────────
     if (group === 'color') {
       const channel = interaction.options.getChannel('channel', true);
 
@@ -253,8 +246,6 @@ module.exports = {
       await interaction.reply({ embeds: [okEmbed(`Color for \`${event}\` in <#${channel.id}> set to \`#${color.toString(16).padStart(6, '0')}\`.`)] });
       return;
     }
-
-    // ── /logs ignore toggle|list ───────────────────────────────────────────
     if (group === 'ignore') {
       if (sub === 'list') {
         const config = await getLogConfig(guildId);

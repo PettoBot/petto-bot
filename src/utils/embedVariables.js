@@ -16,21 +16,15 @@ const BOOST_THRESHOLDS = [0, 2, 7, 14];
 async function resolve(text, ctx = {}) {
   const { member, guild, channel, message } = ctx;
   const user = member?.user ?? ctx.user ?? message?.author;
-
-  // ── Boost helpers ─────────────────────────────────────────────
   const currentLevel = guild?.premiumTier ?? 0;
   const nextLevel = Math.min(currentLevel + 1, 3);
   const boostRequired = BOOST_THRESHOLDS[nextLevel] ?? BOOST_THRESHOLDS[3];
   const boostCurrent = guild?.premiumSubscriptionCount ?? 0;
   const boostUntil = Math.max(0, boostRequired - boostCurrent);
-
-  // ── Random member helpers ─────────────────────────────────────
   const allMembers = guild ? [...guild.members.cache.values()] : [];
   const humanMembers = allMembers.filter((m) => !m.user.bot);
   const randAll = allMembers[Math.floor(Math.random() * allMembers.length)];
   const randHuman = humanMembers[Math.floor(Math.random() * humanMembers.length)];
-
-  // ── Join position ─────────────────────────────────────────────
   const joinPos = (() => {
     if (!guild || !member?.joinedTimestamp) return '';
     const sorted = [...guild.members.cache.values()].filter((m) => m.joinedTimestamp).sort((a, b) => a.joinedTimestamp - b.joinedTimestamp);
@@ -39,14 +33,10 @@ async function resolve(text, ctx = {}) {
   })();
 
   let result = text;
-
-  // ── {choose:a|b|c} → random choice ───────────────────────────
   result = result.replace(/\{choose\d*:([^}]+)\}/gi, (_, opts) => {
     const choices = opts.split('|').map((s) => s.trim()).filter(Boolean);
     return choices[Math.floor(Math.random() * choices.length)] ?? '';
   });
-
-  // ── {range:N-M} → random integer ─────────────────────────────
   result = result.replace(/\{range:(\d+)-(\d+)\}/gi, (_, min, max) => {
     const lo = parseInt(min, 10);
     const hi = parseInt(max, 10);
@@ -54,7 +44,6 @@ async function resolve(text, ctx = {}) {
   });
 
   const map = {
-    // ── User (original) ───────────────────────────────────────
     '{user}': user ? `<@${user.id}>` : '',
     '{user_tag}': user?.username ?? '',
     '{user_name}': user?.username ?? '',
@@ -66,8 +55,6 @@ async function resolve(text, ctx = {}) {
     '{user_createdate}': user?.createdAt?.toLocaleDateString('en-US') ?? '',
     '{user_displaycolor}': member?.displayHexColor ?? '#000000',
     '{user_boostsince}': member?.premiumSince?.toLocaleDateString('en-US') ?? 'Not boosting',
-
-    // ── User (dot-notation) ───────────────────────────────────
     '{user.mention}': user ? `<@${user.id}>` : '',
     '{user.name}': user?.username ?? '',
     '{user.id}': user?.id ?? '',
@@ -87,8 +74,6 @@ async function resolve(text, ctx = {}) {
     '{user.bot}': user?.bot ? 'Yes' : 'No',
     '{user.join_position}': joinPos,
     '{user.join_position_suffix}': joinPos ? ordinal(parseInt(joinPos, 10)) : '',
-
-    // ── Server (original) ─────────────────────────────────────
     '{server_prefix}': ctx.prefix ?? '/',
     '{server_name}': guild?.name ?? '',
     '{server_id}': guild?.id ?? '',
@@ -112,8 +97,6 @@ async function resolve(text, ctx = {}) {
     '{server_nextboostlevel}': nextLevel.toString(),
     '{server_nextboostlevel_required}': boostRequired.toString(),
     '{server_nextboostlevel_until_required}': boostUntil.toString(),
-
-    // ── Guild (dot-notation) ──────────────────────────────────
     '{guild.name}': guild?.name ?? '',
     '{guild.id}': guild?.id ?? '',
     '{guild.count}': (guild?.memberCount ?? 0).toString(),
@@ -130,30 +113,20 @@ async function resolve(text, ctx = {}) {
     '{guild.vanity}': guild?.vanityURLCode ? `discord.gg/${guild.vanityURLCode}` : 'N/A',
     '{guild.region}': guild?.preferredLocale ?? 'N/A',
     '{guild.max_members}': (guild?.maximumMembers ?? 0).toString(),
-
-    // ── Channel (original) ────────────────────────────────────
     '{channel}': channel ? `<#${channel.id}>` : '',
     '{channel_name}': channel?.name ?? '',
     '{channel_createdate}': channel?.createdAt?.toLocaleDateString('en-US') ?? '',
-
-    // ── Channel (dot-notation) ────────────────────────────────
     '{channel.name}': channel?.name ?? '',
     '{channel.id}': channel?.id ?? '',
     '{channel.mention}': channel ? `<#${channel.id}>` : '',
     '{channel.topic}': channel?.topic ?? 'N/A',
-
-    // ── Message (only populated where a triggering message exists) ────────
     '{message_link}': message && guild && channel ? `https://discord.com/channels/${guild.id}/${channel.id}/${message.id}` : '',
     '{message_id}': message?.id ?? '',
     '{message_content}': message?.content ?? '',
-
-    // ── Level (only populated where ctx.levelData is set, e.g. the level-up notification) ──
     '{level}': ctx.levelData?.level != null ? String(ctx.levelData.level) : '',
     '{level_xp}': ctx.levelData?.xp != null ? ctx.levelData.xp.toLocaleString() : '',
     '{level_xp_needed}': ctx.levelData?.xpNeeded != null ? ctx.levelData.xpNeeded.toLocaleString() : '',
     '{level_rank}': ctx.levelData?.rank != null ? String(ctx.levelData.rank) : '',
-
-    // ── Giveaway (only populated where ctx.giveaway is set) ──────
     '{gw.prize}': ctx.giveaway?.prize ?? '',
     '{gw.winners}': ctx.giveaway?.winnersCount != null ? String(ctx.giveaway.winnersCount) : '',
     '{gw.entries}': ctx.giveaway?.entriesCount != null ? String(ctx.giveaway.entriesCount) : '',
@@ -167,8 +140,6 @@ async function resolve(text, ctx = {}) {
     // lines (using {role.mention}/{role.entries}/{role.claim_time}/{role.id}) are built by
     // the caller (see utils/giveawayEngine.js) and passed in pre-joined as ctx.giveaway.presetText.
     '{gw.preset}': ctx.giveaway?.presetText ?? '',
-
-    // ── Date ────────────────────────────────────────────────────
     '{date}': new Date().toLocaleDateString('en-US'),
     '{date.now}': new Date().toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles' }),
     '{date.utc_timestamp}': String(Math.floor(Date.now() / 1000)),

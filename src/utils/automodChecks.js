@@ -38,8 +38,6 @@ function hasUnauthorizedInvite(content, allowedCodes) {
   const allowed = new Set((allowedCodes ?? []).map((c) => c.toLowerCase()));
   return matches.some((m) => !allowed.has(m[1].toLowerCase()));
 }
-
-// ── Repeated-message (flood) detection — short-lived in-memory state ─────────
 const RECENT_WINDOW_MS = 10_000;
 const REPEAT_THRESHOLD = 3;
 const recentByUser = new Map(); // `${guildId}:${userId}` -> [{ content, ts }]

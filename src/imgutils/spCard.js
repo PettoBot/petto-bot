@@ -1,3 +1,4 @@
+// Renders the Spotify-style playback card used by the music status command.
 const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
 const path = require('path');
 
@@ -29,24 +30,16 @@ function roundRect(ctx, x, y, w, h, r) {
 async function buildSpCard({ albumArtUrl, songName, artistName, elapsed, total, progressRatio }) {
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext('2d');
-
-  // ── Clip card to rounded rect ─────────────────────────────────
   roundRect(ctx, 0, 0, W, H, RADIUS);
   ctx.clip();
-
-  // ── Background ────────────────────────────────────────────────
   const bg = await loadImage(path.join(__dirname, 'fondosp.png'));
   ctx.drawImage(bg, 0, 0, W, H);
-
-  // ── Album art (0,0 → 313.8×315) ──────────────────────────────
   try {
     const art = await loadImage(albumArtUrl);
     ctx.drawImage(art, 0, 0, 313.8, 315);
   } catch {
     // No album art URL, or it failed to load — leave the background showing through.
   }
-
-  // ── Song name ─────────────────────────────────────────────────
   ctx.fillStyle = '#ffffff';
   ctx.textBaseline = 'top';
   ctx.font = `bold 62px Chewy, sans-serif`;
@@ -56,8 +49,6 @@ async function buildSpCard({ albumArtUrl, songName, artistName, elapsed, total, 
   while (ctx.measureText(song).width > maxTitleW && song.length > 1) song = song.slice(0, -1);
   if (song !== songName) song = song.slice(0, -2) + '…';
   ctx.fillText(song, TEXT_X, 31.5);
-
-  // ── Artist name ───────────────────────────────────────────────
   ctx.font = `21px Chewy, sans-serif`;
   ctx.fillStyle = 'rgba(255,255,255,0.75)';
 
@@ -66,8 +57,6 @@ async function buildSpCard({ albumArtUrl, songName, artistName, elapsed, total, 
   while (ctx.measureText(artist).width > maxArtistW && artist.length > 1) artist = artist.slice(0, -1);
   if (artist !== artistName) artist = artist.slice(0, -2) + '…';
   ctx.fillText(artist, TEXT_X, 111.2);
-
-  // ── Shared vertical center for times + bar ───────────────────
   const barX = 423.1;
   const barW = 458.1;
   const barH = 5;
@@ -75,8 +64,6 @@ async function buildSpCard({ albumArtUrl, songName, artistName, elapsed, total, 
   const barY = centerY - barH / 2; // 184.5
   const fontSize = 13;
   const timeY = centerY - fontSize / 2; // 180.5
-
-  // ── Times (tight against bar edges) ──────────────────────────
   const gap = 8;
   ctx.font = `${fontSize}px Chewy, sans-serif`;
   ctx.fillStyle = 'rgba(255,255,255,0.6)';
@@ -91,15 +78,11 @@ async function buildSpCard({ albumArtUrl, songName, artistName, elapsed, total, 
   ctx.fillStyle = 'rgba(255,255,255,0.3)';
   roundRect(ctx, barX, barY, barW, barH, barH / 2);
   ctx.fill();
-
-  // ── Progress bar fill ─────────────────────────────────────────
   const ratio = Math.min(Math.max(progressRatio, 0), 1);
   const fillW = Math.max(barH, barW * ratio); // minimum = pill width
   ctx.fillStyle = '#ffffff';
   roundRect(ctx, barX, barY, fillW, barH, barH / 2);
   ctx.fill();
-
-  // ── Thumb dot ─────────────────────────────────────────────────
   const thumbR = 6;
   const thumbX = Math.min(barX + fillW, barX + barW); // clamp to bar end
   const thumbY = barY + barH / 2;

@@ -1,6 +1,5 @@
+// Shared validation and mutation helpers for booster-role commands.
 const db = require('../db/boosterRole');
-
-// ── Color parsing ────────────────────────────────────────────────────────────
 
 function parseHex(str) {
   if (!str) return null;
@@ -13,14 +12,10 @@ function randomColorInt() {
   return Math.floor(Math.random() * 0xffffff);
 }
 
-// ── Name filter ──────────────────────────────────────────────────────────────
-
 function filterCheck(name, words) {
   const lower = name.toLowerCase();
   return (words ?? []).some((w) => lower.includes(w.toLowerCase()));
 }
-
-// ── Icon input (URL / custom emoji / sticker id) -> a real image URL ────────
 
 function resolveIconInput(input) {
   if (!input) return { error: 'Provide a URL, custom emoji `<:name:id>`, or sticker ID.' };
@@ -33,8 +28,6 @@ function resolveIconInput(input) {
 
   return { error: 'Provide a valid URL, custom emoji `<:name:id>`, or sticker ID.' };
 }
-
-// ── Cooldowns ────────────────────────────────────────────────────────────────
 
 /** Returns remaining ms on a cooldown (0 if elapsed, not set, or the cooldown itself is disabled). */
 function getRemainingCooldown(cooldownAt, cooldownMs) {
@@ -50,8 +43,6 @@ function formatDuration(ms) {
   const m = Math.floor((ms % 3_600_000) / 60_000);
   return `${h}h ${m}m`;
 }
-
-// ── Role positioning: new booster roles sit above the base role (or Discord's ──
 // auto-managed "Server Booster" tag role if no base is set) and above every
 // other existing booster role, newest on top.
 async function getTargetPosition(guild, config) {

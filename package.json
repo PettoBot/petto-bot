@@ -11,7 +11,9 @@
     "start": "node index.js",
     "dev": "node --watch index.js",
     "deploy-commands": "node deploy-commands.js",
-    "check": "node scripts/check-syntax.js"
+    "check": "node scripts/check-syntax.js",
+    "types:check": "tsc --project jsconfig.json --noEmit",
+    "build:ts": "node scripts/build-types.js"
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.3",
@@ -23,5 +25,9 @@
     "express": "^4.19.2",
     "ms": "^2.1.3",
     "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "typescript": "^7.0.2"
   }
 }
