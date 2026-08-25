@@ -10,13 +10,17 @@
   </p>
 </div>
 
-![Petto overview](docs/assets/petto-banner-blue.png)
+<div align="left">
+  <img src="docs/assets/petto-banner-blue.png" alt="Petto overview" width="680">
+</div>
 
 ## Overview
 
-Petto is an English-first Discord bot focused on practical moderation and community management. It combines a configurable prefix command system with Discord's interactive panels, buttons, selects, and modals where they make configuration easier.
+Petto is an English-first Discord bot focused on practical moderation and community management. It combines a configurable prefix command system with Discord's interactive panels, buttons, selects, and modals where they make configuration easier. Spanish support is planned for a future release.
 
-![Petto features](docs/assets/petto-banner-green.png)
+<div align="left">
+  <img src="docs/assets/petto-banner-green.png" alt="Petto features" width="680">
+</div>
 
 ## What Petto includes
 
@@ -35,7 +39,9 @@ Petto is an English-first Discord bot focused on practical moderation and commun
 
 Most everyday commands use the server prefix. Discord interactions are reserved for setup flows and interactive UI such as panels, buttons, selects, and modals.
 
-![Petto configuration](docs/assets/petto-banner-yellow.png)
+<div align="left">
+  <img src="docs/assets/petto-banner-yellow.png" alt="Petto configuration" width="680">
+</div>
 
 ## Quick examples
 
