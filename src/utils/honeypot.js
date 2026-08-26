@@ -147,9 +147,9 @@ async function applyHoneypotAction(message, config) {
     await author.send(buildSanctionDM({ type: punishment, guild, client, reason: fullReason })).catch(() => {});
 
     if (punishment === 'ban') {
-      await guild.members.ban(author.id, { reason: fullReason, deleteMessageSeconds: 604800 });
+      await guild.members.ban(author.id, { reason: fullReason, deleteMessageSeconds: 86400 });
     } else if (punishment === 'softban') {
-      await guild.members.ban(author.id, { reason: fullReason, deleteMessageSeconds: 604800 });
+      await guild.members.ban(author.id, { reason: fullReason, deleteMessageSeconds: 86400 });
       await guild.members.unban(author.id, 'Honeypot softban completed.');
     } else {
       const member = message.member ?? await guild.members.fetch(author.id).catch(() => null);
