@@ -36,12 +36,45 @@ function attachmentFields(message) {
 }
 
 function firstImage(message) {
-  if (!message.attachments?.size) return null;
-  const img = [...message.attachments.values()].find((a) => a.contentType?.startsWith('image/'));
-  return img?.url ?? null;
+  const attachment = [...(message.attachments?.values?.() ?? [])]
+    .find((a) => a.contentType?.startsWith('image/') || /\.(?:png|jpe?g|gif|webp)(?:\?|$)/i.test(a.url ?? ''));
+  if (attachment?.url) return attachment.url;
+
+  const embed = message.embeds?.find((item) => item.image?.url || item.thumbnail?.url);
+  return embed?.image?.url ?? embed?.thumbnail?.url ?? null;
+}
+
+async function hydrateMessage(message) {
+  if (!message?.partial || typeof message.fetch !== 'function') return message;
+  return message.fetch().catch(() => message);
+}
+
+function authorLabel(message) {
+  if (message.author?.id) return `<@${message.author.id}>`;
+  if (message.authorId) return `<@${message.authorId}>`;
+  return 'Unknown user';
+}
+
+function mediaFingerprint(message) {
+  const attachments = [...(message.attachments?.values?.() ?? [])].map((a) => [a.id, a.name, a.url]);
+  const embeds = (message.embeds ?? []).map((embed) => ({
+    title: embed.title,
+    description: embed.description,
+    url: embed.url,
+    image: embed.image?.url,
+    thumbnail: embed.thumbnail?.url,
+  }));
+  return JSON.stringify({ attachments, embeds, stickers: [...(message.stickers?.keys?.() ?? [])] });
+}
+
+function mediaDescription(message) {
+  const attachments = [...(message.attachments?.values?.() ?? [])].map((a) => a.url ? `[${a.name || 'file'}](${a.url})` : a.name || 'file');
+  const embeds = (message.embeds ?? []).map((embed, index) => `Embed ${index + 1}${embed.url ? `: ${embed.url}` : ''}`);
+  return [...attachments, ...embeds].join('\n').slice(0, 1024) || '*None*';
 }
 
 async function handleMessageDelete(message, client) {
+  message = await hydrateMessage(message);
   if (!message.guild) return;
   const isBot = message.author?.bot;
   if (isBot && !message.attachments?.size && !message.embeds?.length && !message.stickers?.size) return;
@@ -56,26 +89,38 @@ async function handleMessageDelete(message, client) {
 
   const embed = {
     author: { name: isBot ? 'Bot Message Deleted' : 'Message Deleted', icon_url: getAvatar(message.author) ?? undefined },
-    description: `Message by <@${message.author?.id}>${isBot ? ' (**bot**)' : ''} deleted in <#${message.channel.id}>`,
+    description: `Message by ${authorLabel(message)}${isBot ? ' (**bot**)' : ''} deleted in <#${message.channel.id}>`,
     fields: fields.length ? fields : [{ name: 'Content', value: '*[no content]*', inline: false }],
-    footer: { text: `User ID: ${message.author?.id}` },
+    footer: { text: `Message ID: ${message.id}${message.author?.id ? ` · User ID: ${message.author.id}` : ''}` },
     timestamp: new Date().toISOString(),
   };
   if (img) embed.image = { url: img };
 
-  await sendLog(client, message.guild.id, 'messages', embed, { ignoreIds: [message.author?.id] });
+  await sendLog(client, message.guild.id, 'messages', embed, { ignoreIds: [message.author?.id, message.channel.id].filter(Boolean) });
 }
 
 async function handleMessageUpdate(oldMessage, newMessage, client) {
+  oldMessage = await hydrateMessage(oldMessage);
+  newMessage = await hydrateMessage(newMessage);
   if (!oldMessage.author || oldMessage.author.bot || !oldMessage.guild) return;
-  if (oldMessage.content === newMessage.content) return;
+  const contentChanged = oldMessage.content !== newMessage.content;
+  const mediaChanged = mediaFingerprint(oldMessage) !== mediaFingerprint(newMessage);
+  if (!contentChanged && !mediaChanged) return;
 
-  const fields = [
-    { name: 'Before', value: truncate(oldMessage.content, 512) || '*[empty]*', inline: false },
-    { name: 'After', value: truncate(newMessage.content, 512) || '*[empty]*', inline: false },
-  ];
+  const fields = [];
+  if (contentChanged) {
+    fields.push(
+      { name: 'Before', value: truncate(oldMessage.content, 512) || '*[empty]*', inline: false },
+      { name: 'After', value: truncate(newMessage.content, 512) || '*[empty]*', inline: false },
+    );
+  }
 
-  fields.push(...attachmentFields(oldMessage));
+  if (mediaChanged) {
+    fields.push(
+      { name: 'Media before', value: mediaDescription(oldMessage), inline: false },
+      { name: 'Media after', value: mediaDescription(newMessage), inline: false },
+    );
+  }
 
   await sendLog(
     client,
@@ -88,7 +133,7 @@ async function handleMessageUpdate(oldMessage, newMessage, client) {
       footer: { text: `User ID: ${oldMessage.author.id}` },
       timestamp: new Date().toISOString(),
     },
-    { ignoreIds: [oldMessage.author.id] },
+    { ignoreIds: [oldMessage.author.id, oldMessage.channel.id].filter(Boolean) },
   );
 }
 
@@ -108,7 +153,7 @@ async function handleMessageBulkDelete(messages, channel, client) {
     fields: [{ name: 'Cached Messages', value: lines.join('\n').slice(0, 1024) || '*None*', inline: false }],
     footer: { text: `${cached.length} recovered from cache` },
     timestamp: new Date().toISOString(),
-  });
+  }, { ignoreIds: [channel.id] });
 }
 
 module.exports = { handleMessageDelete, handleMessageUpdate, handleMessageBulkDelete };
