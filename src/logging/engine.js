@@ -1,6 +1,8 @@
 const { Routes, AuditLogEvent } = require('discord.js');
 const { EVENTS, getLogConfig, deleteWebhookById, removeEntries } = require('../db/logConfig');
 const logger = require('../utils/logger');
+const missingWebhookWarnings = new Map();
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function getAvatar(user) {
   if (!user) return null;
@@ -39,7 +41,15 @@ async function sendLog(client, guildId, event, embed, { ignoreIds = [], files = 
 
     for (const entry of entries) {
       const wh = config.webhooks.find((w) => w.channel_id === entry.channel_id);
-      if (!wh) continue;
+      if (!wh) {
+        const warningKey = `${guildId}:${entry.channel_id}`;
+        const lastWarning = missingWebhookWarnings.get(warningKey) ?? 0;
+        if (Date.now() - lastWarning >= 60_000) {
+          missingWebhookWarnings.set(warningKey, Date.now());
+          logger.warn(`[logEngine] No webhook found for configured log channel ${entry.channel_id} in guild ${guildId}. Re-add this log target with !logs add if it persists.`);
+        }
+        continue;
+      }
 
       const body = {
         // Overrides whatever avatar/name got baked into the webhook at creation time, so a
@@ -56,16 +66,30 @@ async function sendLog(client, guildId, event, embed, { ignoreIds = [], files = 
         ));
       }
 
-      try {
-        await client.rest.post(Routes.webhook(wh.webhook_id, wh.webhook_token), { body, files: files.length ? files : undefined });
-      } catch (err) {
+      let deliveryError = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          await client.rest.post(Routes.webhook(wh.webhook_id, wh.webhook_token), { body, files: files.length ? files : undefined });
+          deliveryError = null;
+          break;
+        } catch (err) {
+          deliveryError = err;
+          const retryable = err.status === 429 || err.status >= 500 || err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT';
+          if (!retryable || attempt === 2) break;
+          const retryAfter = Math.min(2_000, Math.max(150, Number(err.retryAfter) || (attempt + 1) * 300));
+          await sleep(retryAfter);
+        }
+      }
+
+      if (deliveryError) {
+        const err = deliveryError;
         if (err.code === 10015) {
           await Promise.all([
             deleteWebhookById(guildId, wh.webhook_id).catch(() => {}),
             removeEntries(guildId, entry.channel_id, entry.event).catch(() => {}),
           ]);
         } else if (err.status !== 403 && err.code !== 10003) {
-          logger.error(`[logEngine] ${event} -> ${entry.channel_id}:`, err.message);
+          logger.error(`[logEngine] ${event} -> ${entry.channel_id} delivery failed after retries:`, err.message);
         }
       }
     }
