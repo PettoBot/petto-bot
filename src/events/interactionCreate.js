@@ -17,6 +17,7 @@ const { handleButton: handlePollButton } = require('../interactions/pollButton')
 const { handleButton: handlePollPanelButton, handleModal: handlePollPanelModal } = require('../interactions/pollPanel');
 const { HONEYPOT_COUNT_BUTTON_ID, handleButton: handleHoneypotButton } = require('../interactions/honeypot');
 const { handleSelect: handleBackupSelect, handleScheduleModal, handleRestoreModal } = require('../interactions/backup');
+const { VERSION_SELECT_ID, handleButton: handleVersionButton, handleSelect: handleVersionSelect } = require('../interactions/version');
 const { handleButton: handleVoiceMasterButton, handleModal: handleVoiceMasterModal, handleSelect: handleVoiceMasterSelect } = require('../interactions/voiceMaster');
 const { handleSetupModal } = require('../interactions/setup');
 const { BUTTON_PREFIX, handleButton: handleReactionRoleButton } = require('../interactions/reactionRoleButton');
@@ -45,6 +46,16 @@ module.exports = {
 
     if (interaction.isStringSelectMenu() && interaction.customId.startsWith('backup_menu:')) {
       try { await handleBackupSelect(interaction); } catch (err) { logger.error('Error handling backup menu:', err); }
+      return;
+    }
+
+    if (interaction.isStringSelectMenu() && interaction.customId === VERSION_SELECT_ID) {
+      try { await handleVersionSelect(interaction); } catch (err) { logger.error('Error handling version select:', err); }
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('version:')) {
+      try { await handleVersionButton(interaction); } catch (err) { logger.error('Error handling version button:', err); }
       return;
     }
 

@@ -2,6 +2,23 @@
 
 All notable changes to Petto are documented here.
 
+## [0.4.1] — 2026-08-26
+
+### Added
+
+- Added the prefix-only `!version` release center with a Components V2 version selector, navigation buttons, public changelog links, and the published `v0.4.1` entry.
+- Added `/report config` improvements for the new report destination, urgent moderator role, anonymous reporting, and report-panel settings.
+
+### Changed
+
+- Improved report cards so message links, content, and image attachments remain available to moderators.
+- Improved `!ui` and `!userinfo` with fresh profile data, banners, avatars, roles, badges, timestamps, and profile links.
+- Improved audit-log caching, retries, stale fallbacks, partial-message handling, media-change detection, and central event error handling.
+
+### Fixed
+
+- Fixed the Premium issue that could block changing the active server or hide an existing Premium assignment.
+
 ## [0.4.0] — 2026-08-24
 
 ### Added
@@ -19,6 +36,13 @@ All notable changes to Petto are documented here.
 ### Validation
 
 - `npm run check` passes across the complete JavaScript source tree.
+
+## [0.3.0-1] — 2026-08-13
+
+### Added
+
+- Added the Vanity system and documented its first public release entry.
+- Full notes are available in the [Petto changelog](https://petto.sbs/changelog/).
 - CI now runs JavaScript syntax checks, TypeScript checks, generated-source
   consistency checks, and a production dependency audit.
 
