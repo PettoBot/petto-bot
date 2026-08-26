@@ -247,9 +247,11 @@ async function assignPremiumSlot(userId, guildId, entitlementId = null) {
 
 async function resetGuildPremiumProfile(guildId, client = null) {
   if (!isDiscordId(guildId)) return;
+  // Nicknames are free per-server identifiers; only Premium avatar, banner,
+  // and bio overrides are cleared when a slot is released.
   const { error } = await supabase
     .from('guilds')
-    .update({ bot_nickname: null, bot_avatar_url: null, bot_banner_url: null, bot_description: null, updated_at: new Date().toISOString() })
+    .update({ bot_avatar_url: null, bot_banner_url: null, bot_description: null, updated_at: new Date().toISOString() })
     .eq('guild_id', String(guildId));
   if (error) throw error;
 
@@ -259,7 +261,7 @@ async function resetGuildPremiumProfile(guildId, client = null) {
   if (!client?.rest?.patch) return;
   try {
     await client.rest.patch(Routes.guildMember(String(guildId), '@me'), {
-      body: { nick: null, avatar: null, banner: null, bio: null },
+      body: { avatar: null, banner: null, bio: null },
     });
   } catch (discordError) {
     logger.warn(`Premium profile reset could not be applied in Discord for guild ${guildId}:`, discordError?.message || discordError);
