@@ -10,6 +10,8 @@ const EMOJI = {
   HAMMER: '<:petto_hammer:1527894325432815817>',
   QUESTION: '<:petto_question:1527894162542825546>',
   WARNING: '<:petto_warning:1527894476616630433>',
+  REPORT: '<:pe_report:1541889748526694531>',
+  REPORT_IMPORTANT: '<:pe_reportimportan:1541889795285061652>',
   // Level progress bar: start/middle/end × full/half/empty.
   BAR_START_FULL: '<:petto_iniciolleno:1534705766370381885>',
   BAR_START_HALF: '<:petto_iniciomediolleno:1534705752692883486>',

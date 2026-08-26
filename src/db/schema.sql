@@ -578,11 +578,16 @@ alter table warn_escalation_rules enable row level security;
 -- /report slash command and the "Report Message" context-menu command).
 -- ---------------------------------------------------------------------------
 create table if not exists report_config (
-  guild_id   text primary key references guilds(guild_id) on delete cascade,
-  channel_id text,
-  enabled    boolean not null default false,
-  updated_at timestamptz not null default now()
+  guild_id                     text primary key references guilds(guild_id) on delete cascade,
+  channel_id                   text,
+  enabled                      boolean not null default false,
+  anonymous_reporting_enabled  boolean not null default false,
+  urgent_role_id               text,
+  updated_at                   timestamptz not null default now()
 );
+
+alter table report_config add column if not exists anonymous_reporting_enabled boolean not null default false;
+alter table report_config add column if not exists urgent_role_id text;
 
 alter table report_config enable row level security;
 
