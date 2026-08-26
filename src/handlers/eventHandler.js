@@ -28,11 +28,14 @@ function loadEvents(client) {
       continue;
     }
 
-    if (event.once) {
-      client.once(event.name, (...args) => event.execute(...args, client));
-    } else {
-      client.on(event.name, (...args) => event.execute(...args, client));
-    }
+    const invoke = (...args) => {
+      Promise.resolve()
+        .then(() => event.execute(...args, client))
+        .catch((err) => logger.error(`[event:${event.name}] Handler failed (${file}):`, err));
+    };
+
+    if (event.once) client.once(event.name, invoke);
+    else client.on(event.name, invoke);
 
     count += 1;
   }

@@ -1,6 +1,25 @@
 const supabase = require('./supabase');
+const logger = require('../utils/logger');
 
 const EVENTS = ['messages', 'members', 'roles', 'channels', 'invites', 'emojis', 'voice', 'server', 'sanctions', 'verification', 'automod'];
+const CONFIG_CACHE_TTL_MS = 5_000;
+const configCache = new Map();
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function invalidateLogConfig(guildId) {
+  configCache.delete(String(guildId));
+}
+
+async function readRows(queryFactory, label) {
+  let lastError = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const { data, error } = await queryFactory();
+    if (!error) return data ?? [];
+    lastError = error;
+    if (attempt === 0) await sleep(150);
+  }
+  throw new Error(`${label}: ${lastError?.message ?? lastError}`);
+}
 
 /**
  * Loads everything sendLog() needs for a guild in one shot: which channels
@@ -8,28 +27,47 @@ const EVENTS = ['messages', 'members', 'roles', 'channels', 'invites', 'emojis',
  * post through for each of those channels, and the ignore list. Mirrors the
  * shape of the old bot's single embedded LogConfig Mongo document.
  */
-async function getLogConfig(guildId) {
-  const [{ data: entries, error: entriesError }, { data: webhooks, error: webhooksError }, { data: ignored, error: ignoredError }] =
-    await Promise.all([
-      supabase.from('log_entries').select('*').eq('guild_id', guildId),
-      supabase.from('log_webhooks').select('*').eq('guild_id', guildId),
-      supabase.from('log_ignored').select('target_id').eq('guild_id', guildId),
-    ]);
+async function getLogConfig(guildId, { force = false } = {}) {
+  const key = String(guildId);
+  const cached = configCache.get(key);
+  if (!force && cached && cached.expiresAt > Date.now()) return cached.value;
 
-  if (entriesError) throw entriesError;
-  if (webhooksError) throw webhooksError;
-  if (ignoredError) throw ignoredError;
+  const [entriesResult, webhooksResult, ignoredResult] = await Promise.allSettled([
+    readRows(() => supabase.from('log_entries').select('*').eq('guild_id', guildId), 'log entries'),
+    readRows(() => supabase.from('log_webhooks').select('*').eq('guild_id', guildId), 'log webhooks'),
+    readRows(() => supabase.from('log_ignored').select('target_id').eq('guild_id', guildId), 'ignored log targets'),
+  ]);
 
-  return {
-    entries: entries ?? [],
-    webhooks: webhooks ?? [],
-    ignored: (ignored ?? []).map((row) => row.target_id),
+  if (entriesResult.status === 'rejected' || webhooksResult.status === 'rejected') {
+    if (cached?.value) {
+      logger.warn(`[logConfig] Using cached configuration for guild ${guildId}: ${entriesResult.reason?.message ?? webhooksResult.reason?.message ?? 'database read failed'}`);
+      cached.expiresAt = Date.now() + 1_000;
+      return cached.value;
+    }
+
+    throw entriesResult.reason ?? webhooksResult.reason;
+  }
+
+  const config = {
+    entries: entriesResult.value,
+    webhooks: webhooksResult.value,
+    // An ignored target is optional. A temporary failure here must not stop all
+    // configured event logs from being delivered.
+    ignored: ignoredResult.status === 'fulfilled' ? ignoredResult.value.map((row) => row.target_id) : [],
   };
+
+  if (ignoredResult.status === 'rejected') {
+    logger.warn(`[logConfig] Could not read ignored targets for guild ${guildId}: ${ignoredResult.reason?.message ?? ignoredResult.reason}`);
+  }
+
+  configCache.set(key, { value: config, expiresAt: Date.now() + CONFIG_CACHE_TTL_MS });
+  return config;
 }
 
 async function addEntry(guildId, channelId, event) {
   const { error } = await supabase.from('log_entries').insert({ guild_id: guildId, channel_id: channelId, event });
   if (error) throw error;
+  invalidateLogConfig(guildId);
 }
 
 async function removeEntries(guildId, channelId, event = null) {
@@ -37,6 +75,7 @@ async function removeEntries(guildId, channelId, event = null) {
   if (event) query = query.eq('event', event);
   const { error } = await query;
   if (error) throw error;
+  invalidateLogConfig(guildId);
 }
 
 async function setEntryColor(guildId, channelId, event, color) {
@@ -49,6 +88,7 @@ async function setEntryColor(guildId, channelId, event, color) {
     .select('*');
 
   if (error) throw error;
+  invalidateLogConfig(guildId);
   return data.length > 0;
 }
 
@@ -57,16 +97,19 @@ async function upsertWebhook(guildId, channelId, webhookId, webhookToken) {
     .from('log_webhooks')
     .upsert({ guild_id: guildId, channel_id: channelId, webhook_id: webhookId, webhook_token: webhookToken });
   if (error) throw error;
+  invalidateLogConfig(guildId);
 }
 
 async function deleteWebhookByChannel(guildId, channelId) {
   const { error } = await supabase.from('log_webhooks').delete().eq('guild_id', guildId).eq('channel_id', channelId);
   if (error) throw error;
+  invalidateLogConfig(guildId);
 }
 
 async function deleteWebhookById(guildId, webhookId) {
   const { error } = await supabase.from('log_webhooks').delete().eq('guild_id', guildId).eq('webhook_id', webhookId);
   if (error) throw error;
+  invalidateLogConfig(guildId);
 }
 
 async function toggleIgnored(guildId, targetId) {
@@ -82,11 +125,13 @@ async function toggleIgnored(guildId, targetId) {
   if (existing) {
     const { error } = await supabase.from('log_ignored').delete().eq('guild_id', guildId).eq('target_id', targetId);
     if (error) throw error;
+    invalidateLogConfig(guildId);
     return false;
   }
 
   const { error } = await supabase.from('log_ignored').insert({ guild_id: guildId, target_id: targetId });
   if (error) throw error;
+  invalidateLogConfig(guildId);
   return true;
 }
 
@@ -100,4 +145,5 @@ module.exports = {
   deleteWebhookByChannel,
   deleteWebhookById,
   toggleIgnored,
+  invalidateLogConfig,
 };
