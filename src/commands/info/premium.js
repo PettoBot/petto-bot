@@ -112,7 +112,7 @@ async function unassign(interaction) {
   const guildId = interaction.options.getString('guild_id', true).trim();
   const result = await unassignPremiumSlot(user.id, guildId, interaction.client);
   if (!result.ok) return replyError(interaction, result.code === 'no_assignment' ? 'That user has no active Premium slot on this server.' : 'The server ID is invalid.');
-  return replySuccess(interaction, `Premium released from server **${guildId}**. Its Premium-only customization has been restored to the free defaults.`);
+  return replySuccess(interaction, `Premium released from server **${guildId}**. Its avatar, banner, and bio were restored to the free defaults; the server nickname was kept.`);
 }
 
 async function revoke(interaction) {
