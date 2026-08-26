@@ -94,6 +94,8 @@ async function send(interaction) {
 }
 
 async function showConfig(interaction) {
+  if (interaction.replied || interaction.deferred) return;
+
   if (interaction.rawMessage) {
     await interaction.reply({ content: 'Report configuration is available from the `/report config` interaction only.', flags: MessageFlags.Ephemeral });
     return;
@@ -119,6 +121,8 @@ async function showConfig(interaction) {
     .setMaxValues(1)
     .setRequired(false);
   if (reportConfig?.urgent_role_id) urgentRoleSelect.setDefaultRoles(reportConfig.urgent_role_id);
+
+  if (interaction.replied || interaction.deferred) return;
 
   const modal = new ModalBuilder()
     .setCustomId(REPORT_CONFIG_MODAL_ID)

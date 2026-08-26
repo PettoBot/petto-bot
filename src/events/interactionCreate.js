@@ -261,6 +261,10 @@ module.exports = {
     try {
       await command.execute(interaction, client);
     } catch (err) {
+      if (err?.code === 40060) {
+        logger.warn(`Ignored duplicate acknowledgement for /${interaction.commandName}. Another handler or bot instance already responded.`);
+        return;
+      }
       logger.error(`Error executing /${interaction.commandName}:`, err);
 
       const errorReply = { content: 'Something went wrong while running that command.', flags: MessageFlags.Ephemeral };
