@@ -51,7 +51,11 @@ async function applyAutomodAction(message, { violationType, reason, action }) {
       try {
         await member.timeout(durationMs, fullReason);
       } catch (err) {
-        logger.warn('Automod: timeout failed:', err.message);
+        logger.warn(
+          { guildId: guild.id, channelId: message.channel.id, userId: author.id, action: 'timeout', source: violationType },
+          'Automod: timeout failed:',
+          err,
+        );
         return;
       }
       const expiresAt = new Date(Date.now() + durationMs).toISOString();
@@ -66,7 +70,11 @@ async function applyAutomodAction(message, { violationType, reason, action }) {
       try {
         await member.kick(fullReason);
       } catch (err) {
-        logger.warn('Automod: kick failed:', err.message);
+        logger.warn(
+          { guildId: guild.id, channelId: message.channel.id, userId: author.id, action: 'kick', source: violationType },
+          'Automod: kick failed:',
+          err,
+        );
         return;
       }
       const modCase = await createCase({ guildId: guild.id, userId: author.id, moderatorId: client.user.id, type: 'kick', reason: fullReason });
