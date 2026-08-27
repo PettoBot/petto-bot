@@ -2,6 +2,8 @@ const {
   ChannelType,
   PermissionFlagsBits,
   ContainerBuilder,
+  SectionBuilder,
+  ThumbnailBuilder,
   TextDisplayBuilder,
   ActionRowBuilder,
   ButtonBuilder,
@@ -14,7 +16,7 @@ const logger = require('./logger');
 
 const SETUP_CHANNEL_NAME = 'petto-setup';
 const SETUP_CHANNEL_TOPIC = 'Petto private administrator setup channel';
-const SETUP_DELETE_AFTER_MS = 120_000;
+const PETTO_IMAGE_URL = 'https://i.imgur.com/WUwcYwM.png';
 
 function adminRoleOverwrites(guild) {
   return guild.roles.cache
@@ -107,22 +109,59 @@ async function commandMention(client, commandName, guild = null) {
   }
 }
 
-function buildAdminSetupMessage({ setupMention, prefix }) {
-  const container = new ContainerBuilder()
-    .setAccentColor(0x5865f2)
+async function commandSubcommandMention(client, commandName, subcommandName, guild = null) {
+  const mention = await commandMention(client, commandName, guild);
+  const commandPrefix = `</${commandName}:`;
+  if (!mention.startsWith(commandPrefix)) return `/${commandName} ${subcommandName}`;
+  return `</${commandName} ${subcommandName}:${mention.slice(commandPrefix.length)}`;
+}
+
+function buildAdminSetupMessage({ botId, setupMention, reportConfigMention, prefix }) {
+  const inviteUrl = `https://discord.com/oauth2/authorize?client_id=${botId}&permissions=8&scope=bot%20applications.commands`;
+  const intro = new ContainerBuilder()
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`${EMOJI.STAR} **Welcome to Petto's admin setup channel!**`),
       new TextDisplayBuilder().setContent([
-        'This private channel is visible to server administrators and Petto.',
+        '## What is Petto?',
         '',
-        `• Open ${setupMention} to configure the server in one form.`,
-        `• Use \`${prefix}help\` to browse Petto's prefix commands.`,
-        `• Use \`${prefix}logs\`, \`${prefix}automod\`, and \`${prefix}welcome\` for detailed settings.`,
-        '• Do not share this channel with regular members or other bots.',
+        'Petto is a multipurpose Discord bot designed to help communities manage, protect, and improve their servers.',
+        '',
+        'Petto provides tools for moderation, security, tickets, automation, utilities, and community management, all configurable for different types of servers.',
+        '',
+        'Server administrators can use Petto to automate repetitive tasks, manage members, protect their community from unwanted activity, and provide a smoother experience for both staff and users.',
       ].join('\n')),
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setLabel('Invite bot')
+          .setEmoji({ name: 'petto', id: '1542559402983428368' })
+          .setStyle(ButtonStyle.Link)
+          .setURL(inviteUrl),
+        new ButtonBuilder().setLabel('Documentation').setStyle(ButtonStyle.Link).setURL('https://wiki.petto.sbs/overview/introduction'),
+        new ButtonBuilder().setLabel('Web').setStyle(ButtonStyle.Link).setURL('https://petto.sbs/'),
+      ),
     );
 
-  return { components: [container], flags: MessageFlags.IsComponentsV2 };
+  const setup = new ContainerBuilder().addSectionComponents(
+    new SectionBuilder()
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent([
+          '## Petto setup',
+          '',
+          `${EMOJI.RELEASE_MAGIC} Welcome to Petto's admin setup channel!`,
+          'This private channel is visible to server administrators and Petto.',
+          '',
+          `- Open ${setupMention} to configure the server in one form.`,
+          `- Use \`${prefix}help\` to browse Petto's prefix commands.`,
+          `- Use \`${prefix}logs\`, \`${prefix}automod\`, and \`${prefix}welcome\` for detailed settings.`,
+          '- Do not share this channel with regular members or other bots.',
+          `- Use ${reportConfigMention} to configure the reporting system.`,
+        ].join('\n')),
+      )
+      .setThumbnailAccessory(new ThumbnailBuilder().setURL(PETTO_IMAGE_URL)),
+  );
+
+  return { components: [intro, setup], flags: MessageFlags.IsComponentsV2 };
 }
 
 function buildOwnerGuide({ guild, setupChannel, setupMention, prefix }) {
@@ -145,17 +184,16 @@ function buildOwnerGuide({ guild, setupChannel, setupMention, prefix }) {
   return { components: [container, row], flags: MessageFlags.IsComponentsV2 };
 }
 
-async function sendExpiringSetupMessage(channel, payload) {
-  const message = await channel.send(payload);
-  setTimeout(() => message.delete().catch(() => {}), SETUP_DELETE_AFTER_MS);
-  return message;
+async function sendSetupMessage(channel, payload) {
+  return channel.send(payload);
 }
 
 module.exports = {
   SETUP_CHANNEL_TOPIC,
   ensureAdminSetupChannel,
   commandMention,
+  commandSubcommandMention,
   buildAdminSetupMessage,
   buildOwnerGuide,
-  sendExpiringSetupMessage,
+  sendSetupMessage,
 };
