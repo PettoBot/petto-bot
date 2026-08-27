@@ -227,9 +227,9 @@ function startDiscordStatusJob(client) {
 function attachDiscordLogger(client) {
   if (loggerAttached) return;
   loggerAttached = true;
-  logger.setDiscordSink((level, args, stamp) => {
-    // Status heartbeats are persisted in Supabase every ten seconds; forwarding those
-    // routine success messages would drown the operational channel.
+  logger.addDiscordSink((level, args, stamp) => {
+    // Keep the original operational log stream in the general channel. The separate
+    // diagnostics sink handles WARN/ERROR embeds in its own channel as well.
     const text = redact(args.map(safeText).join(' '));
     if (!text || /Status heartbeat job started|Failed to report status/i.test(text)) return;
     return sendToChannel(client, channelIdFor('general'), {
