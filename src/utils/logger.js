@@ -3,7 +3,7 @@ const { AsyncLocalStorage } = require('node:async_hooks');
 const LEVELS = { info: 'INFO', warn: 'WARN', error: 'ERROR' };
 const CONTEXT_KEYS = new Set(['guildId', 'serverId', 'channelId', 'userId', 'memberId', 'action', 'command', 'source']);
 const contextStorage = new AsyncLocalStorage();
-let discordSink = null;
+let discordSinks = [];
 
 function isContext(value) {
   return value && typeof value === 'object' && !(value instanceof Error) && Object.keys(value).some((key) => CONTEXT_KEYS.has(key));
@@ -33,7 +33,7 @@ function log(level, ...args) {
   const context = { ...(contextStorage.getStore() ?? {}), ...(explicitContext ?? {}) };
   const label = contextLabel(context);
   method(`[${stamp}] [${LEVELS[level]}]`, ...(label ? [label, ...logArgs] : logArgs));
-  if (discordSink && level !== 'info') {
+  for (const discordSink of discordSinks) {
     Promise.resolve(discordSink(level, logArgs, stamp, context)).catch(() => {});
   }
 }
@@ -42,6 +42,9 @@ module.exports = {
   info: (...args) => log('info', ...args),
   warn: (...args) => log('warn', ...args),
   error: (...args) => log('error', ...args),
-  setDiscordSink: (sink) => { discordSink = typeof sink === 'function' ? sink : null; },
+  setDiscordSink: (sink) => { discordSinks = typeof sink === 'function' ? [sink] : []; },
+  addDiscordSink: (sink) => {
+    if (typeof sink === 'function' && !discordSinks.includes(sink)) discordSinks.push(sink);
+  },
   runWithContext: (context, callback) => contextStorage.run(context ?? {}, callback),
 };
