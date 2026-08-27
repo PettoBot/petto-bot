@@ -7,10 +7,11 @@ const config = require('../config');
 const { syncGuildAutoMod } = require('../utils/autoModManager');
 const {
   commandMention,
+  commandSubcommandMention,
   ensureAdminSetupChannel,
   buildAdminSetupMessage,
   buildOwnerGuide,
-  sendExpiringSetupMessage,
+  sendSetupMessage,
 } = require('../utils/onboarding');
 
 // The configured operations channel receives the join event; the shared lifecycle
@@ -77,9 +78,15 @@ module.exports = {
         return null;
       });
       const setupMention = await commandMention(guild.client, 'setup', guild);
+      const reportConfigMention = await commandSubcommandMention(guild.client, 'report', 'config', guild);
 
       if (setupChannel) {
-        await sendExpiringSetupMessage(setupChannel, buildAdminSetupMessage({ setupMention, prefix: guildConfig.prefix || '!' })).catch((err) => {
+        await sendSetupMessage(setupChannel, buildAdminSetupMessage({
+          botId: guild.client.user.id,
+          setupMention,
+          reportConfigMention,
+          prefix: guildConfig.prefix || '!',
+        })).catch((err) => {
           logger.error(`Could not send setup welcome message in guild ${guild.id}:`, err);
         });
       }
