@@ -63,6 +63,7 @@ module.exports = {
     leaves: process.env.PETTO_LEAVE_LOG_CHANNEL_ID || '1535350937059729498',
     general: process.env.PETTO_GENERAL_LOG_CHANNEL_ID || '1535351181990166620',
   },
+  errorLogChannelId: /^\d{15,25}$/.test(process.env.PETTO_ERROR_LOG_CHANNEL_ID || '') ? process.env.PETTO_ERROR_LOG_CHANNEL_ID : null,
   premiumRoleIds: {
     1: process.env.PETTO_PREMIUM_ROLE_1_ID || '1535057178094735371',
     3: process.env.PETTO_PREMIUM_ROLE_3_ID || '1535057189570478214',

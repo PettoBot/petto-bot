@@ -21,6 +21,7 @@ const { startPremiumRoleJob } = require('./src/jobs/premiumRoleJob');
 const { startServer } = require('./src/web/server');
 const { startCloudflareTunnel } = require('./src/web/cloudflareTunnel');
 const { attachRestRateLimitTelemetry } = require('./src/utils/restTelemetry');
+const { createDiscordErrorLogSink } = require('./src/utils/discordErrorLog');
 const logger = require('./src/utils/logger');
 
 const client = new Client({
@@ -52,6 +53,7 @@ const client = new Client({
 // normal fan-out, not a leak, so raise the default cap instead of Node warning on every restart.
 client.setMaxListeners(30);
 attachRestRateLimitTelemetry(client);
+logger.setDiscordSink(createDiscordErrorLogSink(client, config.errorLogChannelId));
 
 process.on('unhandledRejection', (err) => logger.error('Unhandled promise rejection:', err));
 
