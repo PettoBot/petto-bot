@@ -4,6 +4,22 @@ const logger = require('../utils/logger');
 
 const EVENTS_DIR = path.join(__dirname, '..', 'events');
 
+function eventContext(eventName, args) {
+  const objects = args.filter((value) => value && typeof value === 'object');
+  const guildId = objects.map((value) => value.guildId ?? value.guild?.id ?? value.channel?.guild?.id).find(Boolean);
+  const channelId = objects.map((value) => value.channelId ?? value.channel?.id).find(Boolean);
+  const userId = objects.map((value) => value.user?.id ?? value.author?.id ?? value.member?.user?.id ?? value.member?.id).find(Boolean);
+  const commandName = objects.map((value) => value.commandName).find(Boolean);
+
+  return {
+    guildId,
+    channelId,
+    userId,
+    command: commandName ? `/${commandName}` : null,
+    source: eventName,
+  };
+}
+
 /**
  * Loads every event module and registers it on the client.
  * Each event file must export { name: string, once?: boolean, execute(...args) }.
@@ -29,9 +45,10 @@ function loadEvents(client) {
     }
 
     const invoke = (...args) => {
-      Promise.resolve()
+      const context = eventContext(event.name, args);
+      logger.runWithContext(context, () => Promise.resolve()
         .then(() => event.execute(...args, client))
-        .catch((err) => logger.error(`[event:${event.name}] Handler failed (${file}):`, err));
+        .catch((err) => logger.error(`[event:${event.name}] Handler failed (${file}):`, err)));
     };
 
     if (event.once) client.once(event.name, invoke);
