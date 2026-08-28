@@ -1,6 +1,7 @@
 const { EmbedBuilder, Events, Status } = require('discord.js');
 const config = require('../config');
 const logger = require('./logger');
+const { exclusiveTask } = require('./concurrency');
 
 const STATUS_MARKER = 'Petto operational status';
 const STATUS_INTERVAL_MS = 60_000;
@@ -213,9 +214,10 @@ async function reportDiscordStatus(client) {
 function startDiscordStatusJob(client) {
   registerGatewayStatusEvents(client);
   announceStatusHistory(client, 'online', `Petto is online and serving **${guildCount(client)}** servers.`, { force: true }).catch(() => {});
-  reportDiscordStatus(client).catch(() => {});
+  const report = exclusiveTask(() => reportDiscordStatus(client));
+  report().catch(() => {});
   const timer = setInterval(() => {
-    reportDiscordStatus(client).catch(() => {});
+    report().catch(() => {});
     const state = aggregateGatewayState(client);
     announceStatusHistory(client, state, state === 'online'
       ? `Petto is healthy with **${guildCount(client)}** servers.`

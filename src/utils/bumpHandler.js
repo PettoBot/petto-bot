@@ -2,6 +2,8 @@ const { upsertConfig, getConfigByChannel, getDueReminders } = require('../db/bum
 const { resolve } = require('./embedVariables');
 const { extractReactReplies, applyReactReplies } = require('./messageFlags');
 const logger = require('./logger');
+const config = require('../config');
+const { forEachWithConcurrency } = require('./concurrency');
 
 const DISBOARD_ID = '302050872383242240';
 const BUMP_COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2 hours — DISBOARD's own cooldown between bumps
@@ -53,32 +55,32 @@ async function handleBumpMessage(message) {
 async function checkBumpReminders(client) {
   const due = await getDueReminders();
 
-  for (const config of due) {
+  await forEachWithConcurrency(due, async (reminder) => {
     try {
-      const guild = await client.guilds.fetch(config.guild_id).catch(() => null);
-      const channel = guild ? await guild.channels.fetch(config.channel_id).catch(() => null) : null;
-      if (!guild || !channel) continue;
+      const guild = await client.guilds.fetch(reminder.guild_id).catch(() => null);
+      const channel = guild ? await guild.channels.fetch(reminder.channel_id).catch(() => null) : null;
+      if (!guild || !channel) return;
 
-      const bumper = config.last_bumper_id ? await client.users.fetch(config.last_bumper_id).catch(() => null) : null;
-      const { text: cleanedText, emojis: reactReplies } = extractReactReplies(config.message);
+      const bumper = reminder.last_bumper_id ? await client.users.fetch(reminder.last_bumper_id).catch(() => null) : null;
+      const { text: cleanedText, emojis: reactReplies } = extractReactReplies(reminder.message);
       const text = await applyBumpVars(cleanedText, { guild, channel, bumper, nextBumpAt: null });
 
       if (text) {
         const sent = await channel
-          .send({ content: text, allowedMentions: config.pingable ? { parse: ['users', 'roles'] } : { parse: [] } })
+          .send({ content: text, allowedMentions: reminder.pingable ? { parse: ['users', 'roles'] } : { parse: [] } })
           .catch((err) => { logger.error('Bump reminder send failed:', err); return null; });
         if (sent && reactReplies.length) await applyReactReplies(sent, reactReplies);
       }
 
-      if (config.autolock) {
+      if (reminder.autolock) {
         await channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: null }).catch(() => {});
       }
 
-      await upsertConfig(config.guild_id, { next_bump_at: null });
+      await upsertConfig(reminder.guild_id, { next_bump_at: null });
     } catch (err) {
-      logger.error(`Bump reminder check failed for guild ${config.guild_id}:`, err);
+      logger.error(`Bump reminder check failed for guild ${reminder.guild_id}:`, err);
     }
-  }
+  }, config.jobConcurrency);
 }
 
 /** Deletes non-bot chatter in a bump channel that has autoclean on — keeps it a pure bump-command channel. */

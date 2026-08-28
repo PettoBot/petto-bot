@@ -1,6 +1,7 @@
 const bulkRoleJobsDb = require('../db/bulkRoleJobs');
 const { processBulkRoleJob } = require('../utils/bulkRoleEngine');
 const logger = require('../utils/logger');
+const { exclusiveTask } = require('../utils/concurrency');
 
 const POLL_INTERVAL_MS = 10_000;
 
@@ -21,9 +22,8 @@ async function pickUpPendingJobs(client) {
 }
 
 function startBulkRoleJob(client) {
-  setInterval(() => {
-    pickUpPendingJobs(client).catch((err) => logger.error('Bulk role job poll error:', err));
-  }, POLL_INTERVAL_MS);
+  const run = exclusiveTask(() => pickUpPendingJobs(client));
+  setInterval(() => run().catch((err) => logger.error('Bulk role job poll error:', err)), POLL_INTERVAL_MS).unref?.();
   logger.info('Bulk role job started (checking every 10s).');
 }
 

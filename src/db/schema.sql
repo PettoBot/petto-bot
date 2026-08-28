@@ -27,6 +27,7 @@ create table if not exists premium_entitlements (
 
 create index if not exists idx_premium_entitlements_user on premium_entitlements(user_id);
 create index if not exists idx_premium_entitlements_active on premium_entitlements(user_id, status) where status = 'active';
+create index if not exists idx_premium_entitlements_updated_id on premium_entitlements(updated_at desc, id desc) where user_id is not null;
 alter table premium_entitlements enable row level security;
 
 -- A guild can only have one active Premium owner at a time. Reassigning a
@@ -720,6 +721,9 @@ create table if not exists ticket_settings (
   updated_at                    timestamptz not null default now()
 );
 
+create index if not exists idx_ticket_settings_autoclose_enabled
+  on ticket_settings(guild_id) where autoclose_inactivity_enabled;
+
 alter table ticket_settings enable row level security;
 
 -- Per-server ticket access blacklist, separate from the existing blocked-role
@@ -801,6 +805,9 @@ create table if not exists bump_reminders (
   last_bumper_id text,
   updated_at    timestamptz not null default now()
 );
+
+create index if not exists idx_bump_reminders_due
+  on bump_reminders(next_bump_at) where channel_id is not null and next_bump_at is not null;
 
 alter table bump_reminders enable row level security;
 
@@ -1746,6 +1753,7 @@ create table if not exists polls (
   created_at   timestamptz not null default now()
 );
 create index if not exists idx_polls_message on polls(message_id);
+create index if not exists idx_polls_due on polls(ends_at) where not closed and ends_at is not null;
 alter table polls enable row level security;
 alter table polls add column if not exists image text;
 

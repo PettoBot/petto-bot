@@ -1,30 +1,29 @@
-const { incrementActivity } = require('../db/activityStats');
+const { queueActivity } = require('../db/activityStats');
 const logger = require('../utils/logger');
+const config = require('../config');
+const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency');
 
 const POLL_INTERVAL_MS = 60_000;
 const SECONDS_PER_TICK = 60;
 
 function processGuild(guild) {
-  const increments = [];
-
   for (const channel of guild.channels.cache.values()) {
     if (!channel.isVoiceBased?.() || channel.id === guild.afkChannelId) continue;
 
     const humanCount = [...channel.members.values()].filter((m) => !m.user.bot).length;
     if (humanCount === 0) continue;
 
-    increments.push(incrementActivity(guild.id, channel.id, { voiceSeconds: SECONDS_PER_TICK * humanCount }));
+    queueActivity(guild.id, channel.id, { voiceSeconds: SECONDS_PER_TICK * humanCount });
   }
 
-  return Promise.all(increments);
+  return undefined;
 }
 
 function startActivityStatsJob(client) {
-  setInterval(() => {
-    for (const guild of client.guilds.cache.values()) {
-      processGuild(guild).catch((err) => logger.error(`Activity stats job failed for guild ${guild.id}:`, err));
-    }
-  }, POLL_INTERVAL_MS);
+  const run = exclusiveTask(() => forEachWithConcurrency(client.guilds.cache.values(), (guild) => (
+    processGuild(guild).catch((err) => logger.error(`Activity stats job failed for guild ${guild.id}:`, err))
+  ), config.jobConcurrency));
+  setInterval(() => run().catch((err) => logger.error('Activity stats job error:', err)), POLL_INTERVAL_MS).unref?.();
   logger.info('Activity stats job started (checking every 60s).');
 }
 
