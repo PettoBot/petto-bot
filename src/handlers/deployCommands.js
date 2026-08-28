@@ -1,6 +1,6 @@
 const { REST, Routes } = require('discord.js');
 const config = require('../config');
-const { collectCommandData } = require('./commandHandler');
+const { collectCommandData, collectPrivateGuildCommandData } = require('./commandHandler');
 const logger = require('../utils/logger');
 
 /**
@@ -23,6 +23,23 @@ async function deployCommands() {
       ? `Registered ${result.length} command(s) to dev guild ${config.devGuildId}.`
       : `Registered ${result.length} command(s) globally (can take up to 1 hour to propagate).`,
   );
+
+  const privateCommandsByGuild = new Map();
+  for (const registration of collectPrivateGuildCommandData()) {
+    const commands = privateCommandsByGuild.get(registration.guildId) ?? [];
+    commands.push(registration.data);
+    privateCommandsByGuild.set(registration.guildId, commands);
+  }
+
+  for (const [guildId, privateCommands] of privateCommandsByGuild) {
+    const privateRoute = Routes.applicationGuildCommands(config.clientId, guildId);
+    const existing = await rest.get(privateRoute);
+    const privateNames = new Set(privateCommands.map((command) => command.name));
+    const merged = existing.filter((command) => !privateNames.has(command.name));
+    const privateResult = await rest.put(privateRoute, { body: [...merged, ...privateCommands] });
+
+    logger.info(`Registered ${privateCommands.length} private command(s) to guild ${guildId}; guild now has ${privateResult.length} command(s).`);
+  }
 
   return result;
 }
