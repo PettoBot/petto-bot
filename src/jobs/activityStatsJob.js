@@ -6,7 +6,7 @@ const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency'
 const POLL_INTERVAL_MS = 60_000;
 const SECONDS_PER_TICK = 60;
 
-function processGuild(guild) {
+async function processGuild(guild) {
   for (const channel of guild.channels.cache.values()) {
     if (!channel.isVoiceBased?.() || channel.id === guild.afkChannelId) continue;
 
