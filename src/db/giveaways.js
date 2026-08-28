@@ -36,15 +36,33 @@ async function markEnded(id) {
 }
 
 async function listDueGiveaways() {
-  const { data, error } = await supabase.from('giveaways').select('*').eq('ended', false).lte('ends_at', new Date().toISOString());
+  const { data, error } = await supabase.from('giveaways').select('*').eq('ended', false).lte('ends_at', new Date().toISOString()).order('ends_at', { ascending: true }).limit(100);
   if (error) throw error;
-  return data;
+  return data ?? [];
 }
 
 async function listActiveForGuild(guildId) {
   const { data, error } = await supabase.from('giveaways').select('*').eq('guild_id', guildId).eq('ended', false).order('ends_at', { ascending: true });
   if (error) throw error;
   return data;
+}
+
+async function listActive() {
+  const pageSize = 1_000;
+  const rows = [];
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabase
+      .from('giveaways')
+      .select('*')
+      .eq('ended', false)
+      .order('guild_id')
+      .order('ends_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(offset, offset + pageSize - 1);
+    if (error) throw error;
+    rows.push(...(data ?? []));
+    if (!data || data.length < pageSize) return rows;
+  }
 }
 
 async function addEntry(giveawayId, userId, weight) {
@@ -104,9 +122,9 @@ async function setWinnerStatus(id, status) {
 }
 
 async function listExpiredClaims() {
-  const { data, error } = await supabase.from('giveaway_winners').select('*').eq('status', 'pending').not('claim_expires_at', 'is', null).lte('claim_expires_at', new Date().toISOString());
+  const { data, error } = await supabase.from('giveaway_winners').select('*').eq('status', 'pending').not('claim_expires_at', 'is', null).lte('claim_expires_at', new Date().toISOString()).order('claim_expires_at', { ascending: true }).limit(100);
   if (error) throw error;
-  return data;
+  return data ?? [];
 }
 
 module.exports = {
@@ -118,6 +136,7 @@ module.exports = {
   markEnded,
   listDueGiveaways,
   listActiveForGuild,
+  listActive,
   addEntry,
   removeEntry,
   hasEntry,

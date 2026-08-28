@@ -1,4 +1,7 @@
 const supabase = require('./supabase');
+const { createExpiringCache } = require('../utils/expiringCache');
+
+const settingsCache = createExpiringCache(15_000);
 
 const DEFAULTS = {
   claim_mode: 'shared',
@@ -22,9 +25,11 @@ const DEFAULTS = {
 };
 
 async function getSettings(guildId) {
-  const { data, error } = await supabase.from('ticket_settings').select('*').eq('guild_id', guildId).maybeSingle();
-  if (error) throw error;
-  return { ...DEFAULTS, ...data, guild_id: guildId };
+  return settingsCache.get(guildId, async () => {
+    const { data, error } = await supabase.from('ticket_settings').select('*').eq('guild_id', guildId).maybeSingle();
+    if (error) throw error;
+    return { ...DEFAULTS, ...data, guild_id: guildId };
+  });
 }
 
 async function upsertSettings(guildId, patch) {
@@ -34,7 +39,24 @@ async function upsertSettings(guildId, patch) {
     .select('*')
     .single();
   if (error) throw error;
+  settingsCache.set(guildId, { ...DEFAULTS, ...data, guild_id: guildId });
   return data;
 }
 
-module.exports = { DEFAULTS, getSettings, upsertSettings };
+async function listAutocloseEnabled() {
+  const pageSize = 1_000;
+  const rows = [];
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabase
+      .from('ticket_settings')
+      .select('guild_id,autoclose_inactivity_hours')
+      .eq('autoclose_inactivity_enabled', true)
+      .order('guild_id')
+      .range(offset, offset + pageSize - 1);
+    if (error) throw error;
+    rows.push(...(data ?? []));
+    if (!data || data.length < pageSize) return rows;
+  }
+}
+
+module.exports = { DEFAULTS, getSettings, upsertSettings, listAutocloseEnabled };

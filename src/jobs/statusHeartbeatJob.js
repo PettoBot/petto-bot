@@ -2,6 +2,7 @@ const { Status } = require('discord.js');
 const botStatusDb = require('../db/botStatus');
 const botHostDb = require('../db/botHost');
 const logger = require('../utils/logger');
+const { exclusiveTask } = require('../utils/concurrency');
 
 const HEARTBEAT_INTERVAL_MS = 10_000;
 
@@ -27,10 +28,9 @@ async function reportStatus(client) {
 }
 
 function startStatusHeartbeatJob(client) {
-  reportStatus(client).catch((err) => logger.error('Status heartbeat job error:', err));
-  setInterval(() => {
-    reportStatus(client).catch((err) => logger.error('Status heartbeat job error:', err));
-  }, HEARTBEAT_INTERVAL_MS);
+  const run = exclusiveTask(() => reportStatus(client));
+  run().catch((err) => logger.error('Status heartbeat job error:', err));
+  setInterval(() => run().catch((err) => logger.error('Status heartbeat job error:', err)), HEARTBEAT_INTERVAL_MS).unref?.();
   logger.info('Status heartbeat job started (reporting every 10s).');
 }
 

@@ -1,6 +1,8 @@
 const { getExpiredSanctions, deactivateCase, createCase } = require('../db/modActions');
 const { logSanction } = require('../utils/caseLog');
 const logger = require('../utils/logger');
+const config = require('../config');
+const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency');
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -12,12 +14,12 @@ function userMention(userId) {
 async function processExpiredSanctions(client) {
   const expired = await getExpiredSanctions();
 
-  for (const sanction of expired) {
+  await forEachWithConcurrency(expired, async (sanction) => {
     try {
       const guild = await client.guilds.fetch(sanction.guild_id).catch(() => null);
       if (!guild) {
         await deactivateCase(sanction.guild_id, sanction.case_number);
-        continue;
+        return;
       }
 
       if (sanction.type === 'tempban') {
@@ -48,13 +50,12 @@ async function processExpiredSanctions(client) {
     } catch (err) {
       logger.error(`Failed to process expired sanction (case #${sanction.case_number}, guild ${sanction.guild_id}):`, err);
     }
-  }
+  }, config.jobConcurrency);
 }
 
 function startExpiryJob(client) {
-  setInterval(() => {
-    processExpiredSanctions(client).catch((err) => logger.error('Expiry job error:', err));
-  }, POLL_INTERVAL_MS);
+  const run = exclusiveTask(() => processExpiredSanctions(client));
+  setInterval(() => run().catch((err) => logger.error('Expiry job error:', err)), POLL_INTERVAL_MS).unref?.();
   logger.info('Sanction expiry job started (checking every 60s).');
 }
 

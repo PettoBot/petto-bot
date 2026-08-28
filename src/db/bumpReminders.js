@@ -29,9 +29,9 @@ async function upsertConfig(guildId, patch) {
 
 /** All guilds with a due (or never-set) reminder and a configured channel — polled by the bump reminder job. */
 async function getDueReminders() {
-  const { data, error } = await supabase.from('bump_reminders').select('*').not('channel_id', 'is', null).lte('next_bump_at', new Date().toISOString());
+  const { data, error } = await supabase.from('bump_reminders').select('*').not('channel_id', 'is', null).lte('next_bump_at', new Date().toISOString()).order('next_bump_at', { ascending: true }).limit(100);
   if (error) throw error;
-  return data;
+  return data ?? [];
 }
 
 async function getConfigByChannel(guildId, channelId) {

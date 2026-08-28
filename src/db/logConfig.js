@@ -4,10 +4,15 @@ const logger = require('../utils/logger');
 const EVENTS = ['messages', 'members', 'roles', 'channels', 'invites', 'emojis', 'voice', 'server', 'sanctions', 'verification', 'automod'];
 const CONFIG_CACHE_TTL_MS = 5_000;
 const configCache = new Map();
+const configRequests = new Map();
+const configVersions = new Map();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function invalidateLogConfig(guildId) {
-  configCache.delete(String(guildId));
+  const key = String(guildId);
+  configVersions.set(key, (configVersions.get(key) ?? 0) + 1);
+  configCache.delete(key);
+  configRequests.delete(key);
 }
 
 async function readRows(queryFactory, label) {
@@ -31,37 +36,51 @@ async function getLogConfig(guildId, { force = false } = {}) {
   const key = String(guildId);
   const cached = configCache.get(key);
   if (!force && cached && cached.expiresAt > Date.now()) return cached.value;
+  const pending = configRequests.get(key);
+  if (pending) return pending;
+  const version = configVersions.get(key) ?? 0;
 
-  const [entriesResult, webhooksResult, ignoredResult] = await Promise.allSettled([
-    readRows(() => supabase.from('log_entries').select('*').eq('guild_id', guildId), 'log entries'),
-    readRows(() => supabase.from('log_webhooks').select('*').eq('guild_id', guildId), 'log webhooks'),
-    readRows(() => supabase.from('log_ignored').select('target_id').eq('guild_id', guildId), 'ignored log targets'),
-  ]);
+  const request = (async () => {
+    const [entriesResult, webhooksResult, ignoredResult] = await Promise.allSettled([
+      readRows(() => supabase.from('log_entries').select('*').eq('guild_id', guildId), 'log entries'),
+      readRows(() => supabase.from('log_webhooks').select('*').eq('guild_id', guildId), 'log webhooks'),
+      readRows(() => supabase.from('log_ignored').select('target_id').eq('guild_id', guildId), 'ignored log targets'),
+    ]);
 
-  if (entriesResult.status === 'rejected' || webhooksResult.status === 'rejected') {
-    if (cached?.value) {
-      logger.warn(`[logConfig] Using cached configuration for guild ${guildId}: ${entriesResult.reason?.message ?? webhooksResult.reason?.message ?? 'database read failed'}`);
-      cached.expiresAt = Date.now() + 1_000;
-      return cached.value;
+    if (entriesResult.status === 'rejected' || webhooksResult.status === 'rejected') {
+      if (cached?.value) {
+        logger.warn(`[logConfig] Using cached configuration for guild ${guildId}: ${entriesResult.reason?.message ?? webhooksResult.reason?.message ?? 'database read failed'}`);
+        cached.expiresAt = Date.now() + 1_000;
+        return cached.value;
+      }
+
+      throw entriesResult.reason ?? webhooksResult.reason;
     }
 
-    throw entriesResult.reason ?? webhooksResult.reason;
+    const config = {
+      entries: entriesResult.value,
+      webhooks: webhooksResult.value,
+      // An ignored target is optional. A temporary failure here must not stop all
+      // configured event logs from being delivered.
+      ignored: ignoredResult.status === 'fulfilled' ? ignoredResult.value.map((row) => row.target_id) : [],
+    };
+
+    if (ignoredResult.status === 'rejected') {
+      logger.warn(`[logConfig] Could not read ignored targets for guild ${guildId}: ${ignoredResult.reason?.message ?? ignoredResult.reason}`);
+    }
+
+    if ((configVersions.get(key) ?? 0) === version) {
+      configCache.set(key, { value: config, expiresAt: Date.now() + CONFIG_CACHE_TTL_MS });
+    }
+    return config;
+  })();
+
+  configRequests.set(key, request);
+  try {
+    return await request;
+  } finally {
+    if (configRequests.get(key) === request) configRequests.delete(key);
   }
-
-  const config = {
-    entries: entriesResult.value,
-    webhooks: webhooksResult.value,
-    // An ignored target is optional. A temporary failure here must not stop all
-    // configured event logs from being delivered.
-    ignored: ignoredResult.status === 'fulfilled' ? ignoredResult.value.map((row) => row.target_id) : [],
-  };
-
-  if (ignoredResult.status === 'rejected') {
-    logger.warn(`[logConfig] Could not read ignored targets for guild ${guildId}: ${ignoredResult.reason?.message ?? ignoredResult.reason}`);
-  }
-
-  configCache.set(key, { value: config, expiresAt: Date.now() + CONFIG_CACHE_TTL_MS });
-  return config;
 }
 
 async function addEntry(guildId, channelId, event) {

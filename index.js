@@ -22,9 +22,12 @@ const { startServer } = require('./src/web/server');
 const { startCloudflareTunnel } = require('./src/web/cloudflareTunnel');
 const { attachRestRateLimitTelemetry } = require('./src/utils/restTelemetry');
 const { createDiscordErrorLogSink } = require('./src/utils/discordErrorLog');
+const { flushActivity } = require('./src/db/activityStats');
 const logger = require('./src/utils/logger');
 
 const client = new Client({
+  ...(config.shards ? { shards: config.shards } : {}),
+  ...(config.shardCount && config.shards !== 'auto' ? { shardCount: config.shardCount } : {}),
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
@@ -56,6 +59,25 @@ attachRestRateLimitTelemetry(client);
 logger.setDiscordSink(createDiscordErrorLogSink(client, config.errorLogChannelId));
 
 process.on('unhandledRejection', (err) => logger.error('Unhandled promise rejection:', err));
+
+let shuttingDown = false;
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  logger.info(`Received ${signal}; flushing buffered activity before shutdown.`);
+  await Promise.race([
+    flushActivity().catch((err) => logger.error('Activity flush during shutdown failed:', err)),
+    new Promise((resolve) => setTimeout(() => {
+      logger.warn('Activity flush did not finish before shutdown timeout; continuing to close the client.');
+      resolve();
+    }, 10_000)),
+  ]);
+  client.destroy();
+  process.exit(0);
+}
+
+process.once('SIGTERM', () => { shutdown('SIGTERM').catch(() => process.exit(1)); });
+process.once('SIGINT', () => { shutdown('SIGINT').catch(() => process.exit(1)); });
 
 async function main() {
   loadCommands(client);

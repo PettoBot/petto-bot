@@ -1,18 +1,20 @@
 const { createBackup, recordAudit, vault } = require('../db/backups');
 const { buildSnapshot } = require('../commands/config/backup');
 const logger = require('../utils/logger');
+const config = require('../config');
+const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency');
 
 const POLL_INTERVAL_MS = 60_000;
 
 async function processDueBackups(client) {
   if (!vault.isConfigured()) return;
   const schedules = await vault.listDueSchedules();
-  for (const schedule of schedules) {
+  await forEachWithConcurrency(schedules, async (schedule) => {
     try {
       const guild = client.guilds.cache.get(schedule.guild_id);
       if (!guild) {
         await vault.advanceSchedule(schedule.guild_id, schedule.interval_hours);
-        continue;
+        return;
       }
       const snapshot = buildSnapshot(guild);
       const saved = await createBackup(guild.id, client.user.id, 'Scheduled backup', snapshot, 'scheduled');
@@ -30,7 +32,7 @@ async function processDueBackups(client) {
       await vault.advanceSchedule(schedule.guild_id, schedule.interval_hours).catch(() => {});
       logger.error(`Scheduled Vault backup failed for guild ${schedule.guild_id}:`, err);
     }
-  }
+  }, config.jobConcurrency);
 }
 
 function startBackupVaultJob(client) {
@@ -38,8 +40,9 @@ function startBackupVaultJob(client) {
     logger.info('Petto Vault is disabled; scheduled backups are not running.');
     return;
   }
-  processDueBackups(client).catch((err) => logger.error('Vault backup job error:', err));
-  setInterval(() => processDueBackups(client).catch((err) => logger.error('Vault backup job error:', err)), POLL_INTERVAL_MS);
+  const run = exclusiveTask(() => processDueBackups(client));
+  run().catch((err) => logger.error('Vault backup job error:', err));
+  setInterval(() => run().catch((err) => logger.error('Vault backup job error:', err)), POLL_INTERVAL_MS).unref?.();
   logger.info('Petto Vault scheduled backup job started.');
 }
 

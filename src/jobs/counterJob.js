@@ -1,6 +1,8 @@
 const countersDb = require('../db/counters');
 const supabase = require('../db/supabase');
 const logger = require('../utils/logger');
+const config = require('../config');
+const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency');
 
 const INTERVAL_MS = 60_000;
 
@@ -45,9 +47,9 @@ async function updateCounters(client) {
     if (!grouped.has(row.guild_id)) grouped.set(row.guild_id, []);
     grouped.get(row.guild_id).push(row);
   }
-  for (const [guildId, guildRows] of grouped) {
+  await forEachWithConcurrency(grouped, async ([guildId, guildRows]) => {
     const guild = client.guilds.cache.get(guildId);
-    if (!guild) continue;
+    if (!guild) return;
     for (const row of guildRows) {
       if (!row.enabled) continue;
       if (row.last_updated_at && Date.now() - Date.parse(row.last_updated_at) < (row.interval_seconds ?? 60) * 1000) continue;
@@ -59,12 +61,13 @@ async function updateCounters(client) {
       if (channel.name !== name) await channel.setName(name, 'Update Petto counter').catch(() => {});
       await supabase.from('server_counters').update({ last_updated_at: new Date().toISOString() }).eq('id', row.id).catch(() => {});
     }
-  }
+  }, config.jobConcurrency);
 }
 
 function startCounterJob(client) {
-  updateCounters(client).catch((err) => logger.error('Initial counter update failed:', err));
-  setInterval(() => updateCounters(client).catch((err) => logger.error('Counter job error:', err)), INTERVAL_MS);
+  const run = exclusiveTask(() => updateCounters(client));
+  run().catch((err) => logger.error('Initial counter update failed:', err));
+  setInterval(() => run().catch((err) => logger.error('Counter job error:', err)), INTERVAL_MS).unref?.();
   logger.info('Counter job started (checking every 60s).');
 }
 

@@ -1,5 +1,5 @@
 const { Events } = require('discord.js');
-const { incrementActivity } = require('../db/activityStats');
+const { queueActivity } = require('../db/activityStats');
 const logger = require('../utils/logger');
 
 module.exports = {
@@ -9,7 +9,7 @@ module.exports = {
 
     try {
       if (reaction.partial) await reaction.fetch().catch(() => null);
-      await incrementActivity(reaction.message.guild.id, reaction.message.channelId, { reactions: 1 });
+      queueActivity(reaction.message.guild.id, reaction.message.channelId, { reactions: 1 });
     } catch (err) {
       logger.error('Activity stats reaction increment failed:', err);
     }

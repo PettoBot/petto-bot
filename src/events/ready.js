@@ -4,6 +4,7 @@ const logger = require('../utils/logger');
 const { attachDiscordLogger, startDiscordStatusJob } = require('../utils/discordOps');
 const config = require('../config');
 const { syncAllGuildsAutoMod } = require('../utils/autoModManager');
+const { forEachWithConcurrency } = require('../utils/concurrency');
 
 module.exports = {
   name: Events.ClientReady,
@@ -18,10 +19,11 @@ module.exports = {
     attachDiscordLogger(client);
     startDiscordStatusJob(client);
 
-    // Warms the invite-tracking cache for every guild so the first join after startup can already
-    // be attributed correctly, instead of only starting to work after the first InviteCreate/Delete.
-    for (const guild of client.guilds.cache.values()) {
-      await warmGuild(guild);
+    // Keep the existing warmup available, but never issue one invite request per guild at once.
+    // At very large scale it can be disabled with INVITE_CACHE_WARM_ON_READY=false; joins still
+    // use the normal lazy diff path when they happen.
+    if (config.inviteCacheWarmOnReady) {
+      await forEachWithConcurrency(client.guilds.cache.values(), (guild) => warmGuild(guild), config.inviteCacheWarmConcurrency);
     }
 
     if (config.automodSyncOnReady) {

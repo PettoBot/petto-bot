@@ -1,9 +1,15 @@
 const supabase = require('./supabase');
+const { createExpiringCache } = require('../utils/expiringCache');
+
+const configCache = createExpiringCache(15_000);
+const silentChannelCache = createExpiringCache(15_000);
 
 async function getConfig(guildId) {
-  const { data, error } = await supabase.from('automod_config').select('*').eq('guild_id', guildId).maybeSingle();
-  if (error) throw error;
-  return data;
+  return configCache.get(guildId, async () => {
+    const { data, error } = await supabase.from('automod_config').select('*').eq('guild_id', guildId).maybeSingle();
+    if (error) throw error;
+    return data;
+  });
 }
 
 async function upsertConfig(guildId, patch) {
@@ -14,6 +20,7 @@ async function upsertConfig(guildId, patch) {
     .single();
 
   if (error) throw error;
+  configCache.set(guildId, data);
   return data;
 }
 
@@ -44,9 +51,8 @@ async function removeImmuneRole(guildId, roleId) {
 }
 
 async function getSilentChannel(guildId, channelId) {
-  const { data, error } = await supabase.from('automod_silent_channels').select('*').eq('guild_id', guildId).eq('channel_id', channelId).maybeSingle();
-  if (error) throw error;
-  return data;
+  const rows = await listSilentChannelsCached(guildId);
+  return rows.find((row) => row.channel_id === channelId) ?? null;
 }
 
 async function listSilentChannels(guildId) {
@@ -55,14 +61,20 @@ async function listSilentChannels(guildId) {
   return data;
 }
 
+async function listSilentChannelsCached(guildId) {
+  return silentChannelCache.get(guildId, () => listSilentChannels(guildId));
+}
+
 async function addSilentChannel(guildId, channelId, action = 'warn') {
   const { error } = await supabase.from('automod_silent_channels').upsert({ guild_id: guildId, channel_id: channelId, action }, { onConflict: 'guild_id,channel_id' });
   if (error) throw error;
+  silentChannelCache.delete(guildId);
 }
 
 async function removeSilentChannel(guildId, channelId) {
   const { data, error } = await supabase.from('automod_silent_channels').delete().eq('guild_id', guildId).eq('channel_id', channelId).select('channel_id');
   if (error) throw error;
+  silentChannelCache.delete(guildId);
   return data.length > 0;
 }
 
@@ -75,6 +87,7 @@ module.exports = {
   removeImmuneRole,
   getSilentChannel,
   listSilentChannels,
+  listSilentChannelsCached,
   addSilentChannel,
   removeSilentChannel,
 };
