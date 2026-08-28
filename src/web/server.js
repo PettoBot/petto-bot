@@ -1,4 +1,5 @@
 const express = require('express');
+const { rateLimit } = require('express-rate-limit');
 const path = require('path');
 const { MessageFlags, PermissionFlagsBits } = require('discord.js');
 const config = require('../config');
@@ -14,6 +15,7 @@ const { restoreBackup } = require('../utils/backupRestore');
 const { buildSnapshot } = require('../commands/config/backup');
 const { renderVerifyPage } = require('./verifyPage');
 const { renderHomePage } = require('./homePage');
+const { setCachedPrefix } = require('../events/messageCreateCommands');
 const logger = require('../utils/logger');
 
 async function checkTurnstile(responseToken, remoteIp) {
@@ -57,6 +59,16 @@ function createRateLimiter({ windowMs, max }) {
     next();
   };
 }
+
+const dashboardPrefixRateLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 30,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).json({ ok: false, error: 'rate_limited' });
+  },
+});
 
 /**
  * Starts the verification web server (serves the Turnstile page and applies role
@@ -131,6 +143,30 @@ function startServer(client) {
   }
 
   if (dashboardEnabled) {
+    app.post('/api/dashboard/guild/:guildId/prefix', dashboardPrefixRateLimiter, async (req, res) => {
+      if (!dashboardAuthorized(req)) {
+        res.status(401).json({ ok: false, error: 'unauthorized' });
+        return;
+      }
+
+      const guildId = String(req.params.guildId || '');
+      const rawPrefix = req.body?.prefix;
+      if (!/^\d{15,25}$/.test(guildId) || typeof rawPrefix !== 'string') {
+        res.status(400).json({ ok: false, error: 'invalid_prefix_request' });
+        return;
+      }
+
+      const prefix = rawPrefix.trim().slice(0, 5) || '!';
+      try {
+        await client.guilds.fetch(guildId);
+        setCachedPrefix(guildId, prefix);
+        res.json({ ok: true, prefix });
+      } catch (err) {
+        logger.error(`Dashboard could not sync prefix for guild ${guildId}:`, err);
+        res.status(404).json({ ok: false, error: 'guild_unavailable' });
+      }
+    });
+
     app.get('/api/dashboard/vault/:guildId', async (req, res) => {
       const authorized = await dashboardGuild(req, res);
       if (!authorized) return;
