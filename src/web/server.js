@@ -1,4 +1,5 @@
 const express = require('express');
+const { rateLimit } = require('express-rate-limit');
 const path = require('path');
 const { MessageFlags, PermissionFlagsBits } = require('discord.js');
 const config = require('../config');
@@ -58,6 +59,16 @@ function createRateLimiter({ windowMs, max }) {
     next();
   };
 }
+
+const dashboardPrefixRateLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 30,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).json({ ok: false, error: 'rate_limited' });
+  },
+});
 
 /**
  * Starts the verification web server (serves the Turnstile page and applies role
@@ -132,7 +143,7 @@ function startServer(client) {
   }
 
   if (dashboardEnabled) {
-    app.post('/api/dashboard/guild/:guildId/prefix', createRateLimiter({ windowMs: 60_000, max: 30 }), async (req, res) => {
+    app.post('/api/dashboard/guild/:guildId/prefix', dashboardPrefixRateLimiter, async (req, res) => {
       if (!dashboardAuthorized(req)) {
         res.status(401).json({ ok: false, error: 'unauthorized' });
         return;
