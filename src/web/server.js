@@ -14,6 +14,7 @@ const { restoreBackup } = require('../utils/backupRestore');
 const { buildSnapshot } = require('../commands/config/backup');
 const { renderVerifyPage } = require('./verifyPage');
 const { renderHomePage } = require('./homePage');
+const { setCachedPrefix } = require('../events/messageCreateCommands');
 const logger = require('../utils/logger');
 
 async function checkTurnstile(responseToken, remoteIp) {
@@ -131,6 +132,30 @@ function startServer(client) {
   }
 
   if (dashboardEnabled) {
+    app.post('/api/dashboard/guild/:guildId/prefix', async (req, res) => {
+      if (!dashboardAuthorized(req)) {
+        res.status(401).json({ ok: false, error: 'unauthorized' });
+        return;
+      }
+
+      const guildId = String(req.params.guildId || '');
+      const rawPrefix = req.body?.prefix;
+      if (!/^\d{15,25}$/.test(guildId) || typeof rawPrefix !== 'string') {
+        res.status(400).json({ ok: false, error: 'invalid_prefix_request' });
+        return;
+      }
+
+      const prefix = rawPrefix.trim().slice(0, 5) || '!';
+      try {
+        await client.guilds.fetch(guildId);
+        setCachedPrefix(guildId, prefix);
+        res.json({ ok: true, prefix });
+      } catch (err) {
+        logger.error(`Dashboard could not sync prefix for guild ${guildId}:`, err);
+        res.status(404).json({ ok: false, error: 'guild_unavailable' });
+      }
+    });
+
     app.get('/api/dashboard/vault/:guildId', async (req, res) => {
       const authorized = await dashboardGuild(req, res);
       if (!authorized) return;
