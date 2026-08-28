@@ -30,9 +30,9 @@ async function cancelReminder(guildId, userId, id) {
 }
 
 async function listDue() {
-  const { data, error } = await supabase.from('reminders').select('*').eq('sent', false).lte('remind_at', new Date().toISOString());
+  const { data, error } = await supabase.from('reminders').select('*').eq('sent', false).lte('remind_at', new Date().toISOString()).order('remind_at', { ascending: true }).limit(100);
   if (error) throw error;
-  return data;
+  return data ?? [];
 }
 
 async function markSent(id) {

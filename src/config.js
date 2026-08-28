@@ -31,6 +31,23 @@ function envList(name) {
   return [...new Set((process.env[name] || '').split(',').map((id) => id.trim()).filter((id) => /^\d{15,25}$/.test(id)))];
 }
 
+function envInt(name, fallback, minimum, maximum) {
+  const value = Number(process.env[name]);
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(minimum, Math.min(maximum, Math.floor(value)));
+}
+
+function resolveShards() {
+  const raw = process.env.DISCORD_SHARDS?.trim().toLowerCase();
+  if (!raw) return undefined;
+  if (raw === 'auto') return 'auto';
+
+  const ids = raw.split(',')
+    .map((value) => Number(value.trim()))
+    .filter((value) => Number.isInteger(value) && value >= 0);
+  return ids.length ? [...new Set(ids)] : undefined;
+}
+
 for (const key of required) {
   if (!process.env[key]) {
     throw new Error(`Missing required environment variable: ${key}. Configure it in the host secret store or a local, untracked .env file.`);
@@ -50,6 +67,15 @@ module.exports = {
   automodSyncOnReady: envBool('AUTOMOD_SYNC_ON_READY', false),
   automodSyncOnGuildJoin: envBool('AUTOMOD_SYNC_ON_GUILD_JOIN', false),
   automodSyncConcurrency: Math.max(1, Math.min(4, Number(process.env.AUTOMOD_SYNC_CONCURRENCY) || 2)),
+  // Leave sharding disabled for existing deployments. Large deployments can
+  // set DISCORD_SHARDS=auto; discord.js then uses Discord's recommended count.
+  shards: resolveShards(),
+  shardCount: process.env.DISCORD_SHARD_COUNT ? envInt('DISCORD_SHARD_COUNT', 1, 1, 1_000) : undefined,
+  // Invite tracking remains enabled at startup by default for compatibility.
+  // Large deployments can disable the all-guild warmup and resolve invites lazily.
+  inviteCacheWarmOnReady: envBool('INVITE_CACHE_WARM_ON_READY', true),
+  inviteCacheWarmConcurrency: envInt('INVITE_CACHE_WARM_CONCURRENCY', 2, 1, 16),
+  jobConcurrency: envInt('PETTO_JOB_CONCURRENCY', 4, 1, 16),
   // Optional explicit official support guild. When empty, the private join-log
   // channel is used as the fail-closed source of truth for support-only controls.
   supportGuildId: /^\d{15,25}$/.test(process.env.PETTO_SUPPORT_GUILD_ID || '') ? process.env.PETTO_SUPPORT_GUILD_ID : null,
@@ -69,6 +95,7 @@ module.exports = {
     3: process.env.PETTO_PREMIUM_ROLE_3_ID || '1535057189570478214',
     5: process.env.PETTO_PREMIUM_ROLE_5_ID || '1535057199574032384',
   },
+  premiumGuildId: /^\d{15,25}$/.test(process.env.PETTO_PREMIUM_GUILD_ID || '') ? process.env.PETTO_PREMIUM_GUILD_ID : null,
   devGuildId: process.env.DISCORD_DEV_GUILD_ID || null,
   supabaseUrl: process.env.SUPABASE_URL,
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,

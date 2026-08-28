@@ -1,5 +1,5 @@
 const { Events, PermissionFlagsBits } = require('discord.js');
-const { getConfig, getSilentChannel } = require('../db/automod');
+const { getConfig, listSilentChannelsCached } = require('../db/automod');
 const { findBannedWord, isExcessiveCaps, hasMassMentions, hasUnauthorizedInvite, isRepeatFlood } = require('../utils/automodChecks');
 const { applyAutomodAction } = require('../utils/automodAction');
 const { handleHoneypotMessage } = require('../utils/honeypot');
@@ -28,7 +28,8 @@ module.exports = {
       // Immune roles bypass every automod check below, including silent channels.
       if (config?.immune_role_ids?.some((id) => message.member.roles.cache.has(id))) return;
 
-      const silent = await getSilentChannel(message.guild.id, message.channel.id);
+      const silentChannels = await listSilentChannelsCached(message.guild.id);
+      const silent = silentChannels.find((row) => row.channel_id === message.channel.id) ?? null;
       if (silent) {
         await applyAutomodAction(message, { violationType: 'silent-channel', reason: 'This channel does not allow messages.', action: silent.action === 'mute' ? 'tempmute' : silent.action });
         return;
