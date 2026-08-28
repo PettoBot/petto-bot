@@ -125,6 +125,9 @@ function collectCommandData() {
   return findCommandFiles(COMMANDS_DIR)
     .map((filePath) => ({ filePath, command: require(filePath) }))
     .filter(({ command }) => command?.data)
+    // Private operator tools are registered separately in their declared guild.
+    // They must never leak into the global command set or another dev guild.
+    .filter(({ command }) => !command.privateGuildId)
     // Prefix-only commands keep a SlashCommandBuilder for the shared parser,
     // but must never be registered as Discord slash commands.
     .filter(({ command }) => !command.prefixOnly)
@@ -135,4 +138,16 @@ function collectCommandData() {
     .map(({ command }) => command.data.toJSON());
 }
 
-module.exports = { loadCommands, collectCommandData, findCommandFiles, COMMANDS_DIR };
+/**
+ * Returns commands that intentionally belong to one guild only. The deployer
+ * merges these into that guild's existing command set instead of replacing
+ * the guild's other commands.
+ */
+function collectPrivateGuildCommandData() {
+  return findCommandFiles(COMMANDS_DIR)
+    .map((filePath) => ({ filePath, command: require(filePath) }))
+    .filter(({ command }) => command?.data && command.privateGuildId && !command.prefixOnly)
+    .map(({ command }) => ({ guildId: String(command.privateGuildId), data: command.data.toJSON() }));
+}
+
+module.exports = { loadCommands, collectCommandData, collectPrivateGuildCommandData, findCommandFiles, COMMANDS_DIR };
