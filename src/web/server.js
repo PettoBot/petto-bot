@@ -132,7 +132,7 @@ function startServer(client) {
   }
 
   if (dashboardEnabled) {
-    app.post('/api/dashboard/guild/:guildId/prefix', async (req, res) => {
+    app.post('/api/dashboard/guild/:guildId/prefix', createRateLimiter({ windowMs: 60_000, max: 30 }), async (req, res) => {
       if (!dashboardAuthorized(req)) {
         res.status(401).json({ ok: false, error: 'unauthorized' });
         return;
