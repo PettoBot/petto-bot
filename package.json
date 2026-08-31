@@ -21,7 +21,7 @@
     "@supabase/supabase-js": "^2.45.4",
     "cloudflared": "^0.7.1",
     "discord.js": "^14.15.3",
-    "dotenv": "^16.4.5",
+    "dotenv": "^17.4.2",
     "express": "^4.19.2",
     "express-rate-limit": "8.6.2",
     "ms": "^2.1.3",
