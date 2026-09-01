@@ -13,7 +13,7 @@ const COOLDOWN_CONFIG_FIELD = { color: 'color_cooldown_ms', icon: 'icon_cooldown
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('boosterrole')
-    .setDescription('Custom colored role for Nitro boosters — create your own, or share it with friends.')
+    .setDescription('Custom colored role for server boosters — create your own, or share it with friends.')
     .setDMPermission(false)
 
     .addSubcommand((s) =>
@@ -123,7 +123,7 @@ async function requireBotCanManageRoles(interaction) {
 
 async function selfCreate(interaction) {
   if (!isBoosting(interaction.member)) {
-    await interaction.reply({ content: 'You must be a Nitro booster to use this.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: 'You must be a server booster to use this.', flags: MessageFlags.Ephemeral });
     return;
   }
   if (!(await requireBotCanManageRoles(interaction))) return;
@@ -166,7 +166,7 @@ async function selfCreate(interaction) {
 
 async function selfColor(interaction) {
   if (!isBoosting(interaction.member)) {
-    await interaction.reply({ content: 'You must be a Nitro booster to use this.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: 'You must be a server booster to use this.', flags: MessageFlags.Ephemeral });
     return;
   }
   if (!(await requireBotCanManageRoles(interaction))) return;
@@ -209,7 +209,7 @@ async function selfColor(interaction) {
 
 async function selfRename(interaction) {
   if (!isBoosting(interaction.member)) {
-    await interaction.reply({ content: 'You must be a Nitro booster to use this.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: 'You must be a server booster to use this.', flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -248,7 +248,7 @@ async function selfRename(interaction) {
 
 async function selfIcon(interaction) {
   if (!isBoosting(interaction.member)) {
-    await interaction.reply({ content: 'You must be a Nitro booster to use this.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: 'You must be a server booster to use this.', flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -297,7 +297,7 @@ async function selfIcon(interaction) {
 
 async function selfRandom(interaction) {
   if (!isBoosting(interaction.member)) {
-    await interaction.reply({ content: 'You must be a Nitro booster to use this.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: 'You must be a server booster to use this.', flags: MessageFlags.Ephemeral });
     return;
   }
   if (!(await requireBotCanManageRoles(interaction))) return;
@@ -336,7 +336,7 @@ async function selfRemove(interaction) {
 
 async function selfShare(interaction) {
   if (!isBoosting(interaction.member)) {
-    await interaction.reply({ content: 'You must be a Nitro booster to use this.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: 'You must be a server booster to use this.', flags: MessageFlags.Ephemeral });
     return;
   }
 

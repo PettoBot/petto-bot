@@ -842,7 +842,7 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
--- Booster roles: a custom, self-colored role each Nitro booster can create for
+-- Booster roles: a custom, self-colored role each server booster can create for
 -- themselves (color/name/icon, optionally shared with other members) — ported
 -- from "bli"'s boosterrole.js/BoosterRole/BoosterRoleConfig, with one addition
 -- the user asked for: admins can directly create/edit/remove ANY member's
@@ -1765,3 +1765,87 @@ create table if not exists poll_votes (
   primary key (poll_id, user_id)
 );
 alter table poll_votes enable row level security;
+
+-- Roleplay response controls and counters. A response is claimed by request_id
+-- so two fast button clicks cannot double-count the same interaction.
+create table if not exists roleplay_counters (
+  guild_id  text not null references guilds(guild_id) on delete cascade,
+  user_id   text not null,
+  action    text not null,
+  count     integer not null default 0 check (count >= 0),
+  primary key (guild_id, user_id, action)
+);
+create index if not exists idx_roleplay_counters_user on roleplay_counters(guild_id, user_id);
+alter table roleplay_counters enable row level security;
+
+create table if not exists roleplay_responses (
+  request_id  text primary key,
+  guild_id    text not null references guilds(guild_id) on delete cascade,
+  message_id  text not null,
+  channel_id  text not null,
+  actor_id    text not null,
+  target_id   text not null,
+  action      text not null,
+  response    text not null check (response in ('accepted', 'rejected')),
+  created_at  timestamptz not null default now()
+);
+create unique index if not exists idx_roleplay_responses_message on roleplay_responses(message_id);
+create index if not exists idx_roleplay_responses_guild on roleplay_responses(guild_id, created_at desc);
+alter table roleplay_responses enable row level security;
+
+create or replace function record_roleplay_response(
+  p_request_id text,
+  p_guild_id text,
+  p_message_id text,
+  p_channel_id text,
+  p_actor_id text,
+  p_target_id text,
+  p_action text,
+  p_response text
+)
+returns table (claimed boolean, counter_value integer)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  next_count integer;
+begin
+  if p_response not in ('accepted', 'rejected') then
+    raise exception 'Invalid roleplay response type';
+  end if;
+  if p_action !~ '^[a-z][a-z0-9_-]{0,31}$' then
+    raise exception 'Invalid roleplay action';
+  end if;
+
+  insert into roleplay_responses (request_id, guild_id, message_id, channel_id, actor_id, target_id, action, response)
+  values (p_request_id, p_guild_id, p_message_id, p_channel_id, p_actor_id, p_target_id, p_action, p_response)
+  on conflict (request_id) do nothing;
+
+  if not found then
+    return query select false, 0;
+    return;
+  end if;
+
+  if p_response = 'accepted' then
+    insert into roleplay_counters (guild_id, user_id, action, count)
+    values (p_guild_id, p_target_id, p_action, 1)
+    on conflict (guild_id, user_id, action)
+    do update set count = roleplay_counters.count + 1
+    returning roleplay_counters.count into next_count;
+
+    insert into roleplay_counters (guild_id, user_id, action, count)
+    values (p_guild_id, p_actor_id, p_action, 1)
+    on conflict (guild_id, user_id, action)
+    do update set count = roleplay_counters.count + 1;
+  else
+    insert into roleplay_counters (guild_id, user_id, action, count)
+    values (p_guild_id, p_actor_id, 'slap', 1)
+    on conflict (guild_id, user_id, action)
+    do update set count = roleplay_counters.count + 1
+    returning roleplay_counters.count into next_count;
+  end if;
+
+  return query select true, next_count;
+end;
+$$;

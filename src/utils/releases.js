@@ -2,11 +2,46 @@ const { EMOJI } = require('./emojis');
 
 const RELEASES = [
   {
+    version: 'v0.5.0',
+    label: 'v0.5.0 · Connected roles & activity',
+    date: '2026-08-31',
+    accent: 0x5eead4,
+    status: `${EMOJI.RELEASE_APPROVED} Latest`,
+    summary: 'A connected release for linked roles, instant prefix sync, richer activity summaries, and social roleplay.',
+    sections: [
+      {
+        title: `${EMOJI.RELEASE_LINK} Connected roles & dashboard`,
+        items: [
+          'Added the linked-roles connection flow so members can connect Petto to Discord and receive the Petto Verified role in participating servers.',
+          'The web stores the server prefix in Supabase and notifies the bot through the internal API.',
+          'The bot refreshes its prefix cache immediately, and resetting the prefix synchronizes the default `!` prefix again.',
+          'Server nicknames remain free; Premium continues to cover the other server profile customization fields.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_ROCKET} Activity & roleplay`,
+        items: [
+          'Added the `!summary`, `!weekly`, and `!digest` activity chart with dark Overview styling, daily green/orange series, and a text-only fallback when Canvas is unavailable.',
+          'Added Respond/Reject controls to targeted roleplay commands. The mentioned member can respond once with the same action or reject with a slap.',
+          'Added persistent per-server, per-user, per-action roleplay counters and new commands: `!hi`, `!bye`, `!yes`, `!no`, `!laugh`, `!sad`, and `!angry`.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_BUG} Fixes & safety`,
+        items: [
+          'Fixed the statistics job\'s `.catch()` handling and updated setup/removal messages for clearer server configuration.',
+          'Added rate limiting to the internal prefix API to reduce abuse and satisfy the security checks.',
+          'Changed booster eligibility copy to use Discord\'s `server booster` terminology.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'v0.4.1',
     label: 'v0.4.1 · Reports & reliability',
     date: '2026-08-26',
     accent: 0xfe6465,
-    status: `${EMOJI.RELEASE_APPROVED} Latest`,
+    status: `${EMOJI.RELEASE_APPROVED} Published`,
     summary: 'A focused update for reports, Premium server changes, profile details, and operational logs.',
     sections: [
       {

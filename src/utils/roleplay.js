@@ -1,11 +1,15 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { COLORS } = require('./colors');
+const { getRoleplayCounter } = require('../db/roleplayStats');
+const { buildRoleplayButtonRow, buildRoleplayCounterField } = require('./roleplayButtons');
+const logger = require('./logger');
 
 const WAIFU_ACTIONS = {
   airkiss: 'kiss',
   bite: 'bite',
   blush: 'blush',
   boop: 'boop',
+  bye: 'wave',
   cuddle: 'cuddle',
   cry: 'cry',
   dance: 'dance',
@@ -14,14 +18,18 @@ const WAIFU_ACTIONS = {
   happy: 'happy',
   highfive: 'highfive',
   hug: 'hug',
+  hi: 'wave',
+  yes: 'happy',
   kick: 'kick',
   kill: 'kill',
   kiss: 'kiss',
   lick: 'lick',
+  laugh: 'happy',
   nom: 'nom',
   pat: 'pat',
   poke: 'poke',
   punch: 'punch',
+  sad: 'cry',
   slap: 'slap',
   smile: 'smile',
   smug: 'smug',
@@ -32,11 +40,13 @@ const WAIFU_ACTIONS = {
 
 const NEKOS_ACTIONS = {
   airkiss: 'blowkiss',
+  angry: 'stare',
   angrystare: 'stare',
   bite: 'bite',
   bleh: 'bleh',
   blush: 'blush',
   brofist: 'highfive',
+  bye: 'wave',
   cuddle: 'cuddle',
   cry: 'cry',
   dance: 'dance',
@@ -44,12 +54,16 @@ const NEKOS_ACTIONS = {
   happy: 'happy',
   highfive: 'highfive',
   hug: 'hug',
+  hi: 'wave',
   kick: 'kick',
   kiss: 'kiss',
+  laugh: 'happy',
+  no: 'bleh',
   nom: 'nom',
   pat: 'pat',
   poke: 'poke',
   punch: 'punch',
+  sad: 'cry',
   slap: 'slap',
   smile: 'smile',
   smug: 'smug',
@@ -57,6 +71,7 @@ const NEKOS_ACTIONS = {
   wave: 'wave',
   wink: 'wink',
   yeet: 'yeet',
+  yes: 'happy',
 };
 
 // nekos.best does not expose every action name (notably `lick`). OtakuGIFs
@@ -65,12 +80,14 @@ const NEKOS_ACTIONS = {
 // returning a text-only embed when a provider has a narrower catalogue.
 const OTAKUGIFS_ACTIONS = {
   airkiss: 'kiss',
+  angry: 'stare',
   angrystare: 'stare',
   bite: 'bite',
   bleh: 'bleh',
   blush: 'blush',
   boop: 'poke',
   brofist: 'brofist',
+  bye: 'wave',
   cuddle: 'cuddle',
   cry: 'cry',
   dance: 'dance',
@@ -79,14 +96,18 @@ const OTAKUGIFS_ACTIONS = {
   happy: 'happy',
   highfive: 'brofist',
   hug: 'hug',
+  hi: 'wave',
   kick: 'slap',
   kill: 'punch',
   kiss: 'kiss',
+  laugh: 'happy',
   lick: 'lick',
+  no: 'bleh',
   nom: 'nom',
   pat: 'pat',
   poke: 'poke',
   punch: 'punch',
+  sad: 'cry',
   slap: 'slap',
   smile: 'smile',
   smug: 'smug',
@@ -94,6 +115,7 @@ const OTAKUGIFS_ACTIONS = {
   wave: 'wave',
   wink: 'wink',
   yeet: 'punch',
+  yes: 'happy',
 };
 
 const API_TIMEOUT_MS = 5_000;
@@ -180,22 +202,37 @@ function createRoleplayCommand(name, config) {
       const actorLabel = actorName(actor);
       const targetLabel = actorName(target);
       const isSelf = actor.id === target.id;
+      const requestId = interaction.id ?? interaction.rawMessage?.id ?? `${actor.id}${Date.now()}`;
       const sentence = isSelf
         ? (config.self ?? '**' + actorLabel + '** ' + config.verb + ' themselves.').replaceAll('{actor}', '**' + actorLabel + '**')
         : '**' + actorLabel + '** ' + config.verb + ' **' + targetLabel + '**.';
 
       await interaction.deferReply();
       const imageUrl = await fetchActionImage(name);
+      let components;
+      let counterField;
+      if (!isSelf) {
+        try {
+          const count = await getRoleplayCounter(interaction.guild.id, target.id, name);
+          counterField = buildRoleplayCounterField(name, count);
+          components = buildRoleplayButtonRow({ requestId, action: name, actorId: actor.id, targetId: target.id });
+        } catch (error) {
+          logger.warn({ guildId: interaction.guild.id, command: name, source: 'roleplay' }, 'Roleplay response controls could not be loaded; sending the interaction without buttons.', error);
+        }
+      }
       const embed = new EmbedBuilder()
         .setColor(COLORS.DEFAULT)
         .setAuthor({ name: actorLabel + ' · ' + config.label, iconURL: actor.displayAvatarURL({ size: 128 }) })
         .setDescription(sentence)
         .setFooter({ text: 'Roleplay interaction · Petto' });
 
+      if (counterField) embed.addFields(counterField);
       if (imageUrl) embed.setImage(imageUrl);
-      await interaction.editReply({ embeds: [embed], allowedMentions: { parse: [] } });
+      const payload = { embeds: [embed], allowedMentions: { parse: [] } };
+      if (components) payload.components = [components];
+      await interaction.editReply(payload);
     },
   };
 }
 
-module.exports = { createRoleplayCommand };
+module.exports = { createRoleplayCommand, fetchActionImage };
