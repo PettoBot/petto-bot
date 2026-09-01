@@ -7,6 +7,8 @@ import {
   ROLEPLAY_BUTTON_PREFIX,
 } from '../utils/roleplayButtons';
 
+export { ROLEPLAY_BUTTON_PREFIX };
+
 const { fetchActionImage } = require('../utils/roleplay') as {
   fetchActionImage: (action: string) => Promise<string | null>;
 };

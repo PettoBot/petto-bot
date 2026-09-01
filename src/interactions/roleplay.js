@@ -1,9 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.ROLEPLAY_BUTTON_PREFIX = void 0;
 exports.handleButton = handleButton;
 const discord_js_1 = require("discord.js");
 const roleplayStats_1 = require("../db/roleplayStats");
 const roleplayButtons_1 = require("../utils/roleplayButtons");
+Object.defineProperty(exports, "ROLEPLAY_BUTTON_PREFIX", { enumerable: true, get: function () { return roleplayButtons_1.ROLEPLAY_BUTTON_PREFIX; } });
 const { fetchActionImage } = require('../utils/roleplay');
 const { COLORS } = require('../utils/colors');
 function parseButton(customId) {
