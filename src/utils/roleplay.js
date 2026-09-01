@@ -1,8 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { COLORS } = require('./colors');
 const { getRoleplayCounter } = require('../db/roleplayStats');
-const { buildRoleplayButtonRow, buildRoleplayCounterField } = require('./roleplayButtons');
-const logger = require('./logger');
+const { COLORS } = require('./colors');
+const { buildRoleplayButtonRow, getRoleplayCounterMessage } = require('./roleplayButtons');
 
 const WAIFU_ACTIONS = {
   airkiss: 'kiss',
@@ -202,7 +201,7 @@ function createRoleplayCommand(name, config) {
       const actorLabel = actorName(actor);
       const targetLabel = actorName(target);
       const isSelf = actor.id === target.id;
-      const requestId = interaction.id ?? interaction.rawMessage?.id ?? `${actor.id}${Date.now()}`;
+      const requestId = interaction.id ?? interaction.rawMessage?.id ?? `rp-${actor.id}-${Date.now()}`;
       const sentence = isSelf
         ? (config.self ?? '**' + actorLabel + '** ' + config.verb + ' themselves.').replaceAll('{actor}', '**' + actorLabel + '**')
         : '**' + actorLabel + '** ' + config.verb + ' **' + targetLabel + '**.';
@@ -210,23 +209,18 @@ function createRoleplayCommand(name, config) {
       await interaction.deferReply();
       const imageUrl = await fetchActionImage(name);
       let components;
-      let counterField;
+      let counterMessage;
       if (!isSelf) {
-        try {
-          const count = await getRoleplayCounter(interaction.guild.id, target.id, name);
-          counterField = buildRoleplayCounterField(name, count);
-          components = buildRoleplayButtonRow({ requestId, action: name, actorId: actor.id, targetId: target.id });
-        } catch (error) {
-          logger.warn({ guildId: interaction.guild.id, command: name, source: 'roleplay' }, 'Roleplay response controls could not be loaded; sending the interaction without buttons.', error);
-        }
+        const count = await getRoleplayCounter(interaction.guild.id, target.id, name).catch(() => null);
+        if (count !== null) counterMessage = getRoleplayCounterMessage(name, count, targetLabel);
+        components = buildRoleplayButtonRow({ requestId, action: name, actorId: actor.id, targetId: target.id });
       }
       const embed = new EmbedBuilder()
         .setColor(COLORS.DEFAULT)
         .setAuthor({ name: actorLabel + ' · ' + config.label, iconURL: actor.displayAvatarURL({ size: 128 }) })
-        .setDescription(sentence)
+        .setDescription(counterMessage ? sentence + '\n*' + counterMessage + '*' : sentence)
         .setFooter({ text: 'Roleplay interaction · Petto' });
 
-      if (counterField) embed.addFields(counterField);
       if (imageUrl) embed.setImage(imageUrl);
       const payload = { embeds: [embed], allowedMentions: { parse: [] } };
       if (components) payload.components = [components];

@@ -2,7 +2,7 @@ import { EmbedBuilder, MessageFlags, type ButtonInteraction } from 'discord.js';
 import { recordRoleplayResponse, type RoleplayResponseKind } from '../db/roleplayStats';
 import {
   buildRoleplayButtonRow,
-  getRoleplayCounterLabel,
+  getRoleplayCounterMessage,
   getRoleplayLabel,
   ROLEPLAY_BUTTON_PREFIX,
 } from '../utils/roleplayButtons';
@@ -26,7 +26,7 @@ function parseButton(customId: string): ParsedRoleplayButton | null {
   const [prefix, response, action, actorId, targetId, requestId] = parts;
   if (prefix !== ROLEPLAY_BUTTON_PREFIX.slice(0, -1)) return null;
   if (response !== 'accept' && response !== 'reject') return null;
-  if (!/^[a-z][a-z0-9_-]{0,31}$/.test(action) || !/^\d{15,25}$/.test(actorId) || !/^\d{15,25}$/.test(targetId) || !/^\d{15,25}$/.test(requestId)) return null;
+  if (!/^[a-z][a-z0-9_-]{0,31}$/.test(action) || !/^\d{15,25}$/.test(actorId) || !/^\d{15,25}$/.test(targetId) || !/^[a-z0-9_-]{15,64}$/.test(requestId)) return null;
   return {
     response: response === 'accept' ? 'accepted' : 'rejected',
     action,
@@ -42,7 +42,14 @@ function displayName(user: { globalName?: string | null; username: string }): st
 
 export async function handleButton(interaction: ButtonInteraction): Promise<boolean> {
   const parsed = parseButton(interaction.customId);
-  if (!parsed) return false;
+  if (!parsed) {
+    await interaction.reply({
+      content: 'This roleplay interaction is no longer valid. Please send the command again.',
+      flags: MessageFlags.Ephemeral,
+      allowedMentions: { parse: [] },
+    }).catch(() => {});
+    return true;
+  }
 
   if (interaction.user.id !== parsed.targetId) {
     await interaction.reply({
@@ -104,21 +111,18 @@ export async function handleButton(interaction: ButtonInteraction): Promise<bool
     ? `**${targetLabel}** responds to **${actorLabel}** with a ${actionLabel}.`
     : `**${targetLabel}** rejects the ${actionLabel} from **${actorLabel}** and gives them a slap.`;
   const counterAction = parsed.response === 'accepted' ? parsed.action : 'slap';
+  const counterRecipient = parsed.response === 'accepted' ? `**${targetLabel}**` : `**${actorLabel}**`;
+  const counterMessage = getRoleplayCounterMessage(counterAction, result.counterValue, counterRecipient);
 
   const embed = new EmbedBuilder()
     .setColor(parsed.response === 'accepted' ? COLORS.GREEN : COLORS.RED)
     .setAuthor({ name: `${targetLabel} · response`, iconURL: interaction.user.displayAvatarURL({ size: 128 }) })
-    .setDescription(description)
-    .addFields({
-      name: 'Roleplay stats',
-      value: `Times ${getRoleplayCounterLabel(counterAction)}: ${result.counterValue.toLocaleString('en-US')}`,
-      inline: true,
-    })
+    .setDescription(`${description}\n\n*${counterMessage}*`)
     .setFooter({ text: 'Roleplay response · Petto' });
 
   if (imageUrl) embed.setImage(imageUrl);
 
-  await interaction.message.edit({
+  const updatedMessage = await interaction.message.edit({
     embeds: [embed],
     components: [buildRoleplayButtonRow({
       requestId: parsed.requestId,
@@ -127,7 +131,15 @@ export async function handleButton(interaction: ButtonInteraction): Promise<bool
       targetId: parsed.targetId,
     }, true)],
     allowedMentions: { parse: [] },
-  }).catch(() => {});
+  }).catch(() => null);
+
+  if (!updatedMessage) {
+    await interaction.followUp({
+      content: 'Your response was saved, but Petto could not update the roleplay message.',
+      flags: MessageFlags.Ephemeral,
+      allowedMentions: { parse: [] },
+    }).catch(() => {});
+  }
 
   return true;
 }
