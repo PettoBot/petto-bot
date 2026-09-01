@@ -1,6 +1,6 @@
 {
   "name": "petto",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Petto - a multi-purpose Discord bot focused on moderation, with leveling, welcome messages, reaction roles and utility commands.",
   "main": "index.js",
   "type": "commonjs",
