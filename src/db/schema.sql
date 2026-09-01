@@ -842,7 +842,7 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
--- Booster roles: a custom, self-colored role each Nitro booster can create for
+-- Booster roles: a custom, self-colored role each server booster can create for
 -- themselves (color/name/icon, optionally shared with other members) — ported
 -- from "bli"'s boosterrole.js/BoosterRole/BoosterRoleConfig, with one addition
 -- the user asked for: admins can directly create/edit/remove ANY member's
