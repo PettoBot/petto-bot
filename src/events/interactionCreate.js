@@ -16,6 +16,7 @@ const { handleButton: handleGiveawayButton } = require('../interactions/giveaway
 const { handleButton: handlePollButton } = require('../interactions/pollButton');
 const { handleButton: handlePollPanelButton, handleModal: handlePollPanelModal } = require('../interactions/pollPanel');
 const { HONEYPOT_COUNT_BUTTON_ID, handleButton: handleHoneypotButton } = require('../interactions/honeypot');
+const { ROLEPLAY_BUTTON_PREFIX, handleButton: handleRoleplayButton } = require('../interactions/roleplay');
 const { handleSelect: handleBackupSelect, handleScheduleModal, handleRestoreModal } = require('../interactions/backup');
 const { VERSION_SELECT_ID, handleButton: handleVersionButton, handleSelect: handleVersionSelect } = require('../interactions/version');
 const { handleButton: handleVoiceMasterButton, handleModal: handleVoiceMasterModal, handleSelect: handleVoiceMasterSelect } = require('../interactions/voiceMaster');
@@ -41,6 +42,11 @@ module.exports = {
 
     if (interaction.isButton() && interaction.customId === HONEYPOT_COUNT_BUTTON_ID) {
       try { await handleHoneypotButton(interaction); } catch (err) { logger.error('Error handling honeypot count button:', err); }
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith(ROLEPLAY_BUTTON_PREFIX)) {
+      try { await handleRoleplayButton(interaction); } catch (err) { logger.error('Error handling roleplay response button:', err); }
       return;
     }
 

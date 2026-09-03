@@ -1,6 +1,7 @@
 const supabase = require('../db/supabase');
 const config = require('../config');
 const logger = require('../utils/logger');
+const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency');
 
 const SYNC_INTERVAL_MS = 2 * 60 * 1000;
 let premiumGuildId = null;
@@ -32,6 +33,17 @@ async function findPremiumGuild(client) {
     const cached = client.guilds.cache.get(premiumGuildId);
     if (cached && roleIds.every((roleId) => cached.roles.cache.has(roleId))) return cached;
     premiumGuildId = null;
+  }
+
+  const configuredGuildIds = [...new Set([config.premiumGuildId, config.supportGuildId].filter(Boolean))];
+  for (const guildId of configuredGuildIds) {
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) continue;
+    if (!roleIds.every((roleId) => guild.roles.cache.has(roleId))) await guild.roles.fetch().catch(() => null);
+    if (roleIds.every((roleId) => guild.roles.cache.has(roleId))) {
+      premiumGuildId = guild.id;
+      return guild;
+    }
   }
 
   for (const guild of client.guilds.cache.values()) {
@@ -98,34 +110,43 @@ async function syncAllPremiumRoles(client) {
     return;
   }
 
-  const { data, error } = await supabase
-    .from('premium_entitlements')
-    .select('user_id,status,slot_limit,current_period_end,updated_at')
-    .not('user_id', 'is', null)
-    .order('updated_at', { ascending: false });
-  if (error) throw error;
+  const entitlements = [];
+  const pageSize = 1_000;
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabase
+      .from('premium_entitlements')
+      .select('id,user_id,status,slot_limit,current_period_end,updated_at')
+      .not('user_id', 'is', null)
+      .order('updated_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(offset, offset + pageSize - 1);
+    if (error) throw error;
+    entitlements.push(...(data ?? []));
+    if (!data || data.length < pageSize) break;
+  }
 
   const slotsByUser = new Map();
-  for (const entitlement of data ?? []) {
+  for (const entitlement of entitlements) {
     const userId = String(entitlement.user_id);
     const current = slotsByUser.get(userId) ?? 0;
     const slots = isActive(entitlement) ? Number(entitlement.slot_limit) || 0 : 0;
     slotsByUser.set(userId, Math.max(current, slots));
   }
 
-  for (const [userId, slots] of slotsByUser) {
+  await forEachWithConcurrency(slotsByUser, async ([userId, slots]) => {
     const member = await guild.members.fetch(userId).catch(() => null);
-    if (!member) continue;
+    if (!member) return;
     await syncMemberRoles(member, slots).catch((error) => {
       logger.warn(`Premium role sync failed for ${userId}:`, error.message);
     });
-  }
+  }, config.jobConcurrency);
 }
 
 function startPremiumRoleJob(client) {
-  const run = () => syncAllPremiumRoles(client).catch((error) => logger.error('Premium role sync job failed:', error));
-  const initial = setTimeout(run, 5_000);
-  const interval = setInterval(run, SYNC_INTERVAL_MS);
+  const run = exclusiveTask(() => syncAllPremiumRoles(client));
+  const runLogged = () => run().catch((error) => logger.error('Premium role sync job failed:', error));
+  const initial = setTimeout(runLogged, 5_000);
+  const interval = setInterval(runLogged, SYNC_INTERVAL_MS);
   initial.unref?.();
   interval.unref?.();
 }

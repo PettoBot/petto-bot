@@ -2,6 +2,8 @@ const { getConfig } = require('../db/levelConfig');
 const { getMultiplier, grantVoiceXp } = require('../utils/levelActions');
 const { getVoiceConfig } = require('../utils/levelSource');
 const logger = require('../utils/logger');
+const config = require('../config');
+const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency');
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -18,20 +20,34 @@ async function processGuild(client, guild) {
       if (member.user.bot) continue;
       if (member.voice.selfDeaf || member.voice.serverDeaf) continue;
 
-      const multi = await getMultiplier(guild.id, channel.id, member);
-      const xpGain = Math.round(config.xp_per_vc_minute * multi);
+      try {
+        const multi = await getMultiplier(guild.id, channel.id, member);
+        const xpGain = Math.round(config.xp_per_vc_minute * multi);
 
-      await grantVoiceXp({ client, guild, member, config: voiceConfig, xpGain, vcInc: 1 }).catch((err) => logger.error(`Voice XP grant failed for ${member.id} in guild ${guild.id}:`, err));
+        await grantVoiceXp({ client, guild, member, config: voiceConfig, xpGain, vcInc: 1 });
+      } catch (err) {
+        // Keep one failed member from aborting the rest of this guild's tick.
+        // The structured context also makes the Discord diagnostics card useful
+        // when the console is not available.
+        logger.error(
+          { guildId: guild.id, channelId: channel.id, userId: member.id, action: 'voice-xp-grant', source: 'voiceXpJob' },
+          `Voice XP grant failed for ${member.id} in guild ${guild.id}:`,
+          err,
+        );
+      }
     }
   }
 }
 
 function startVoiceXpJob(client) {
-  setInterval(() => {
-    for (const guild of client.guilds.cache.values()) {
-      processGuild(client, guild).catch((err) => logger.error(`Voice XP job failed for guild ${guild.id}:`, err));
-    }
-  }, POLL_INTERVAL_MS);
+  const run = exclusiveTask(() => forEachWithConcurrency(client.guilds.cache.values(), (guild) => (
+    processGuild(client, guild).catch((err) => logger.error(
+      { guildId: guild.id, action: 'voice-xp-guild-tick', source: 'voiceXpJob' },
+      `Voice XP job failed for guild ${guild.id}:`,
+      err,
+    ))
+  ), config.jobConcurrency));
+  setInterval(() => run().catch((err) => logger.error('Voice XP job error:', err)), POLL_INTERVAL_MS).unref?.();
   logger.info('Voice XP job started (checking every 60s).');
 }
 
