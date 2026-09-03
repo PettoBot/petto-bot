@@ -1321,30 +1321,120 @@ alter table reaction_message_configs enable row level security;
 -- ── Managed webhooks ─────────────────────────────────────────────────────────
 
 create table if not exists managed_webhooks (
-  id           bigserial primary key,
-  guild_id     text not null references guilds(guild_id) on delete cascade,
-  channel_id   text not null,
-  webhook_id   text not null unique,
-  webhook_token text not null,
-  name         text not null,
-  created_by   text not null,
+  id             bigserial primary key,
+  local_id       bigint,
+  guild_id       text not null references guilds(guild_id) on delete cascade,
+  channel_id     text not null,
+  webhook_id     text not null unique,
+  webhook_token  text not null,
+  name            text not null,
+  created_by      text not null,
   default_username text,
   default_avatar_url text,
   default_message text,
-  default_embed jsonb,
-  enabled      boolean not null default true,
-  created_at   timestamptz not null default now()
+  default_embed   jsonb,
+  enabled         boolean not null default true,
+  created_at      timestamptz not null default now()
 );
 
-alter table managed_webhooks add column if not exists default_username text;
-alter table managed_webhooks add column if not exists default_avatar_url text;
-alter table managed_webhooks add column if not exists default_message text;
-alter table managed_webhooks add column if not exists default_embed jsonb;
-alter table managed_webhooks add column if not exists enabled boolean not null default true;
+alter table managed_webhooks
+  add column if not exists local_id bigint;
 
-create index if not exists idx_managed_webhooks_guild on managed_webhooks(guild_id);
+alter table managed_webhooks
+  add column if not exists default_username text;
 
-alter table managed_webhooks enable row level security;
+alter table managed_webhooks
+  add column if not exists default_avatar_url text;
+
+alter table managed_webhooks
+  add column if not exists default_message text;
+
+alter table managed_webhooks
+  add column if not exists default_embed jsonb;
+
+alter table managed_webhooks
+  add column if not exists enabled boolean not null default true;
+
+with existing_max as (
+  select
+    guild_id,
+    coalesce(max(local_id), 0) as max_local_id
+  from managed_webhooks
+  group by guild_id
+),
+numbered as (
+  select
+    id,
+    guild_id,
+    row_number() over (
+      partition by guild_id
+      order by id
+    ) as guild_row_number
+  from managed_webhooks
+  where local_id is null
+)
+update managed_webhooks as target
+set local_id =
+  existing_max.max_local_id +
+  numbered.guild_row_number
+from numbered
+join existing_max
+  on existing_max.guild_id =
+     numbered.guild_id
+where target.id = numbered.id;
+
+create or replace function assign_managed_webhook_local_id()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.local_id is null then
+    perform pg_advisory_xact_lock(
+      hashtextextended(
+        new.guild_id,
+        0
+      )
+    );
+
+    select
+      coalesce(max(local_id), 0) + 1
+    into new.local_id
+    from managed_webhooks
+    where guild_id = new.guild_id;
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists
+  trg_managed_webhooks_local_id
+  on managed_webhooks;
+
+create trigger
+  trg_managed_webhooks_local_id
+before insert
+on managed_webhooks
+for each row
+execute function
+  assign_managed_webhook_local_id();
+
+alter table managed_webhooks
+  alter column local_id set not null;
+
+create index if not exists
+  idx_managed_webhooks_guild
+  on managed_webhooks(guild_id);
+
+create unique index if not exists
+  idx_managed_webhooks_guild_local_id
+  on managed_webhooks(
+    guild_id,
+    local_id
+  );
+
+alter table managed_webhooks
+  enable row level security;
 
 -- ── Live counters ────────────────────────────────────────────────────────────
 
