@@ -88,12 +88,28 @@ async function resendPanel(interaction) {
   return interaction.reply('VoiceMaster panel resent.');
 }
 
+function getVoiceChannelId(interaction) {
+  return interaction.guild?.voiceStates?.cache.get(interaction.user.id)?.channelId
+    ?? interaction.member?.voice?.channelId
+    ?? null;
+}
+
 async function executeAction(interaction, action, overrides = {}) {
-  const temp = await voiceDb.getTemp(interaction.member.voice?.channelId);
+  const liveChannelId = getVoiceChannelId(interaction);
+  const channelId = overrides.channelId ?? liveChannelId;
+
+  if (!liveChannelId || !channelId || liveChannelId !== channelId) {
+    return interaction.reply({ content: 'You must be inside a VoiceMaster temporary channel.', flags: MessageFlags.Ephemeral });
+  }
+
+  const temp = await voiceDb.getTemp(channelId);
   if (!temp) return interaction.reply({ content: 'You must be inside a VoiceMaster temporary channel.', flags: MessageFlags.Ephemeral });
   if (['lock', 'unlock', 'ghost', 'reveal', 'rename', 'transfer', 'limit', 'permit', 'reject', 'disconnect', 'delete'].includes(action) && temp.owner_id !== interaction.user.id) return interaction.reply({ content: 'Only the channel owner can do that.', flags: MessageFlags.Ephemeral });
-  const channel = interaction.guild.channels.cache.get(temp.channel_id);
+
+  const channel = interaction.guild.channels.cache.get(temp.channel_id)
+    ?? await interaction.guild.channels.fetch(temp.channel_id).catch(() => null);
   if (!channel) return interaction.reply({ content: 'That temporary channel no longer exists.', flags: MessageFlags.Ephemeral });
+
   if (action === 'claim') {
     const owner = await interaction.guild.members.fetch(temp.owner_id).catch(() => null);
     if (owner?.voice?.channelId === temp.channel_id) return interaction.reply({ content: 'The current owner is still in the channel.', flags: MessageFlags.Ephemeral });
@@ -122,10 +138,23 @@ async function executeAction(interaction, action, overrides = {}) {
 }
 
 async function permissionAction(interaction, temp, channel, action, userId) {
+  const member = await interaction.guild.members.fetch(userId).catch(() => null);
+  if (!member) return interaction.reply({ content: 'That member is no longer in this server.', flags: MessageFlags.Ephemeral });
+
   const trusted = new Set(temp.trusted_user_ids ?? []);
   const banned = new Set(temp.banned_user_ids ?? []);
-  if (action === 'permit') { trusted.add(userId); banned.delete(userId); await channel.permissionOverwrites.edit(userId, { Connect: true, ViewChannel: true }); }
-  else { trusted.delete(userId); banned.add(userId); await channel.permissionOverwrites.edit(userId, { Connect: false }); const member = await interaction.guild.members.fetch(userId).catch(() => null); if (member?.voice?.channelId === channel.id) await member.voice.disconnect().catch(() => {}); }
+
+  if (action === 'permit') {
+    trusted.add(userId);
+    banned.delete(userId);
+    await channel.permissionOverwrites.edit(member, { Connect: true, ViewChannel: true });
+  } else {
+    trusted.delete(userId);
+    banned.add(userId);
+    await channel.permissionOverwrites.edit(member, { Connect: false });
+    if (member.voice?.channelId === channel.id) await member.voice.disconnect().catch(() => {});
+  }
+
   await voiceDb.updateTemp(channel.id, { trusted_user_ids: [...trusted], banned_user_ids: [...banned] });
   return interaction.reply({ content: `<@${userId}> ${action === 'permit' ? 'can now join' : 'is blocked from'} this channel.`, flags: MessageFlags.Ephemeral });
 }
