@@ -111,6 +111,11 @@ module.exports = {
   dashboardApiSecret: process.env.PETTO_DASHBOARD_API_SECRET || null,
   // Optional: powers !automod link (Google Safe Browsing URL scanning).
   googleSafeBrowsingKey: process.env.GOOGLE_SAFE_BROWSING_API_KEY || null,
+  // Dedicated destination for newly discovered malicious URLs. Falls back to
+  // the general Petto operations channel so alerts still have a destination.
+  maliciousLinkAlertChannelId: /^\d{15,25}$/.test(process.env.PETTO_MALICIOUS_LINK_ALERT_CHANNEL_ID || '')
+    ? process.env.PETTO_MALICIOUS_LINK_ALERT_CHANNEL_ID
+    : (process.env.PETTO_GENERAL_LOG_CHANNEL_ID || '1535351181990166620'),
   // Optional: verification system (Cloudflare Turnstile). All four must be set for /verify to work.
   verifyBaseUrl: process.env.VERIFY_BASE_URL || null,
   turnstileSiteKey: process.env.TURNSTILE_SITE_KEY || null,

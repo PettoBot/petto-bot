@@ -2,7 +2,9 @@ const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = 
 const { ensureGuild } = require('../../db/guilds');
 const { getConfig, upsertConfig, addBannedWord, removeBannedWord, addImmuneRole, removeImmuneRole, listSilentChannels, addSilentChannel, removeSilentChannel } = require('../../db/automod');
 const { getConfig: getAntinukeConfig, upsertConfig: upsertAntinukeConfig, addWhitelist, removeWhitelist } = require('../../db/antinuke');
-const { checkUrl, normalizeUrl } = require('../../utils/safeBrowsing');
+const { checkUrl, normalizeUrl, defangUrl } = require('../../utils/safeBrowsing');
+const { getKnownMalicious, recordMaliciousLink, markDeveloperAlerted } = require('../../db/maliciousLinks');
+const { notifyMaliciousLink } = require('../../utils/maliciousLinkAlerts');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { syncGuildAutoMod, getAutoModStats } = require('../../utils/autoModManager');
@@ -207,6 +209,37 @@ async function link(interaction) {
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
+  // First consult Petto's own threat DB. Known malicious URLs never consume a
+  // Google Safe Browsing request again.
+  let known = null;
+  try {
+    known = await getKnownMalicious(url);
+  } catch (err) {
+    // A DB outage should not make the manual checker useless; fall back to the
+    // external lookup, but log that the cache/database path was unavailable.
+    logger.error('Malicious-link DB lookup failed:', err);
+  }
+
+  if (known) {
+    const threats = known.threat_types ?? [];
+    const labels = threats.map((t) => THREAT_LABELS[t] ?? t);
+    const text = [`${EMOJI.DENY}  This URL was flagged as dangerous:`, `\`${defangUrl(url)}\``, `**Threats:** ${labels.join(', ') || 'Unknown'}`].join('\n');
+    await interaction.editReply({ components: [textCard(text, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+
+    // Retry the developer alert only if a previous attempt never succeeded.
+    if (!known.dev_alerted_at) {
+      const sent = await notifyMaliciousLink(interaction.client, {
+        url,
+        threatTypes: threats,
+        reporterId: interaction.user?.id,
+        guild: interaction.guild,
+        channel: interaction.channel,
+      });
+      if (sent) await markDeveloperAlerted(url).catch((err) => logger.error('Failed to mark malicious-link alert as sent:', err));
+    }
+    return;
+  }
+
   let threats;
   try {
     threats = await checkUrl(url);
@@ -222,9 +255,33 @@ async function link(interaction) {
     return;
   }
 
+  let stored = null;
+  try {
+    stored = await recordMaliciousLink({
+      url,
+      threatTypes: threats,
+      reportedBy: interaction.user?.id,
+      guildId: interaction.guildId,
+      channelId: interaction.channelId,
+    });
+  } catch (err) {
+    logger.error('Failed to save malicious URL:', err);
+  }
+
   const labels = threats.map((t) => THREAT_LABELS[t] ?? t);
-  const text = [`${EMOJI.DENY}  This URL was flagged as dangerous:`, `\`${url}\``, `**Threats:** ${labels.join(', ')}`].join('\n');
+  const text = [`${EMOJI.DENY}  This URL was flagged as dangerous:`, `\`${defangUrl(url)}\``, `**Threats:** ${labels.join(', ')}`].join('\n');
   await interaction.editReply({ components: [textCard(text, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+
+  if (!stored?.dev_alerted_at) {
+    const sent = await notifyMaliciousLink(interaction.client, {
+      url,
+      threatTypes: threats,
+      reporterId: interaction.user?.id,
+      guild: interaction.guild,
+      channel: interaction.channel,
+    });
+    if (sent && stored) await markDeveloperAlerted(url).catch((err) => logger.error('Failed to mark malicious-link alert as sent:', err));
+  }
 }
 
 async function spam(interaction) {
