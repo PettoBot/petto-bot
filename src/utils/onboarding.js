@@ -18,9 +18,22 @@ const SETUP_CHANNEL_NAME = 'petto-setup';
 const SETUP_CHANNEL_TOPIC = 'Petto private administrator setup channel';
 const PETTO_IMAGE_URL = 'https://i.imgur.com/WUwcYwM.png';
 
+const MAX_CHANNEL_PERMISSION_OVERWRITES = 100;
+// @everyone + owner + Petto are always included. Keep a little headroom so a
+// future managed overwrite cannot push channel creation over Discord's limit.
+const MAX_SETUP_MANAGE_GUILD_ROLES = MAX_CHANNEL_PERMISSION_OVERWRITES - 5;
+
 function adminRoleOverwrites(guild) {
-  return guild.roles.cache
-    .filter((role) => role.id !== guild.id && (role.permissions.has(PermissionFlagsBits.Administrator) || role.permissions.has(PermissionFlagsBits.ManageGuild)))
+  // Roles with Administrator already bypass channel permission overwrites, so
+  // adding one overwrite per admin role only wastes Discord's 100-overwrite
+  // limit. Explicit access is only needed for Manage Server roles that do not
+  // also have Administrator. Highest roles win when a huge server has >95.
+  return [...guild.roles.cache.values()]
+    .filter((role) => role.id !== guild.id
+      && !role.permissions.has(PermissionFlagsBits.Administrator)
+      && role.permissions.has(PermissionFlagsBits.ManageGuild))
+    .sort((a, b) => b.position - a.position)
+    .slice(0, MAX_SETUP_MANAGE_GUILD_ROLES)
     .map((role) => ({
       id: role.id,
       allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
@@ -66,24 +79,13 @@ async function ensureAdminSetupChannel(guild) {
       reason: 'Petto private administrator onboarding channel',
     });
   } else {
-    await channel.permissionOverwrites.edit(guild.roles.everyone, {
-      ViewChannel: false,
-      SendMessages: false,
-      ReadMessageHistory: false,
-    }).catch((err) => logger.warn(`Could not refresh setup channel privacy in ${guild.id}:`, err.message));
-    await channel.permissionOverwrites.edit(botId, {
-      ViewChannel: true,
-      SendMessages: true,
-      ReadMessageHistory: true,
-      ManageMessages: true,
-    }).catch((err) => logger.warn(`Could not refresh bot access to setup channel in ${guild.id}:`, err.message));
-    for (const overwrite of adminRoleOverwrites(guild)) {
-      await channel.permissionOverwrites.edit(overwrite.id, {
-        ViewChannel: true,
-        SendMessages: true,
-        ReadMessageHistory: true,
-      }).catch((err) => logger.warn(`Could not refresh admin role access to setup channel in ${guild.id}:`, err.message));
-    }
+    // This is a Petto-managed private channel. Replacing the managed overwrite
+    // set prevents stale role entries from accumulating until Discord rejects
+    // the channel with BASE_TYPE_MAX_LENGTH (>100 overwrites).
+    await channel.permissionOverwrites.set(
+      setupChannelOverwrites(guild, botId),
+      'Refresh Petto private administrator onboarding permissions',
+    ).catch((err) => logger.warn(`Could not refresh setup channel permissions in ${guild.id}:`, err.message));
   }
 
   if (guildConfig.setup_channel_id !== channel.id) {

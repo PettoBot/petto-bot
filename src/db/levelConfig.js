@@ -8,7 +8,7 @@ async function getConfig(guildId, { force = false } = {}) {
     const { data, error } = await supabase.from('level_config').select('*').eq('guild_id', guildId).maybeSingle();
     if (error) throw error;
     return data;
-  }, { force });
+  }, { force, staleIfError: !force });
 }
 
 /** Fetches (creating with defaults if needed) — most callers need the row to exist so its default rates/curve are available. */

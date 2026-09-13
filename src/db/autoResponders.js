@@ -24,9 +24,20 @@ async function listForGuild(guildId) {
 async function listForGuildCached(guildId) {
   const cached = listCache.get(guildId);
   if (cached && cached.expiresAt > Date.now()) return cached.rows;
-  const rows = await listForGuild(guildId);
-  listCache.set(guildId, { rows, expiresAt: Date.now() + CACHE_TTL_MS });
-  return rows;
+
+  try {
+    const rows = await listForGuild(guildId);
+    listCache.set(guildId, { rows, expiresAt: Date.now() + CACHE_TTL_MS });
+    return rows;
+  } catch (error) {
+    // A short Supabase outage should not disable already-known autoresponders.
+    // Reuse the last successful snapshot briefly and try the DB again later.
+    if (cached) {
+      cached.expiresAt = Date.now() + Math.min(CACHE_TTL_MS, 5_000);
+      return cached.rows;
+    }
+    throw error;
+  }
 }
 
 function invalidateGuildCache(guildId) {
