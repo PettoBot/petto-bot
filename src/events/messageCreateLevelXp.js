@@ -22,11 +22,19 @@ module.exports = {
       if (now - last < config.cooldown_seconds * COOLDOWN_MS_PER_SECOND) return;
       cooldowns.set(key, now);
 
-      const multi = await getMultiplier(message.guild.id, message.channel.id, message.member);
-      const base = Math.floor(Math.random() * (config.xp_max - config.xp_min + 1)) + config.xp_min;
-      const xpGain = Math.round(base * multi);
+      try {
+        const multi = await getMultiplier(message.guild.id, message.channel.id, message.member);
+        const base = Math.floor(Math.random() * (config.xp_max - config.xp_min + 1)) + config.xp_min;
+        const xpGain = Math.round(base * multi);
 
-      await grantXp({ client: message.client, guild: message.guild, member: message.member, config, xpGain, messageInc: 1, channel: message.channel, message });
+        await grantXp({ client: message.client, guild: message.guild, member: message.member, config, xpGain, messageInc: 1, channel: message.channel, message });
+      } catch (error) {
+        // Do not punish the member with a full cooldown when the DB request failed.
+        // Only clear our own provisional timestamp; a newer message may already
+        // have replaced it.
+        if (cooldowns.get(key) === now) cooldowns.delete(key);
+        throw error;
+      }
     } catch (err) {
       logger.error(`Level XP grant failed for message ${message.id}:`, err);
     }

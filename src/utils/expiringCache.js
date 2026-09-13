@@ -8,7 +8,7 @@ function createExpiringCache(ttlMs) {
   const pending = new Map();
   const versions = new Map();
 
-  async function get(key, loader, { force = false } = {}) {
+  async function get(key, loader, { force = false, staleIfError = false } = {}) {
     const cacheKey = String(key);
     const now = Date.now();
     const cached = values.get(cacheKey);
@@ -26,6 +26,16 @@ function createExpiringCache(ttlMs) {
           values.set(cacheKey, { value, expiresAt: Date.now() + ttlMs });
         }
         return value;
+      })
+      .catch((error) => {
+        // During a short database outage, an expired configuration is much safer
+        // than making every message/voice tick fail. Force reads still surface
+        // the error because callers explicitly asked for fresh data.
+        if (!force && staleIfError && cached) {
+          cached.expiresAt = Date.now() + Math.min(ttlMs, 5_000);
+          return cached.value;
+        }
+        throw error;
       })
       .finally(() => {
         if (pending.get(cacheKey) === request) pending.delete(cacheKey);

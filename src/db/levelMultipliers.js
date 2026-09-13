@@ -8,7 +8,7 @@ async function listMultipliers(guildId) {
     const { data, error } = await supabase.from('level_multipliers').select('*').eq('guild_id', guildId);
     if (error) throw error;
     return data ?? [];
-  });
+  }, { staleIfError: true });
 }
 
 async function setMultiplier(guildId, targetId, targetType, multiplier) {
