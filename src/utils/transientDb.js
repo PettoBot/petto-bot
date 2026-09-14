@@ -18,7 +18,7 @@ function isTransientDbError(error) {
   if (status && TRANSIENT_STATUS_CODES.has(status)) return true;
 
   const message = errorMessage(error).toLowerCase();
-  return /gateway timeout|bad gateway|service unavailable|temporar(?:y|ily) unavailable|timeout|timed out|fetch failed|network error|econnreset|etimedout|socket hang up|connection reset/.test(message);
+  return /gateway timeout|bad gateway|service unavailable|temporar(?:y|ily) unavailable|failed to get project config|project config unavailable|timeout|timed out|fetch failed|network error|network request failed|econnreset|etimedout|socket hang up|connection reset|connection terminated/.test(message);
 }
 
 function retryDelayMs(attempt) {
