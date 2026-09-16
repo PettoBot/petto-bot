@@ -7,6 +7,10 @@ const {
 } = require('discord.js');
 const config = require('../config');
 const { isPettoOperator } = require('../utils/autoModControl');
+const { sendGuildNotice, TEMPLATES } = require('../utils/guildOpsAlerts');
+const logger = require('../utils/logger');
+
+const NOTICE_PREFIX = 'gops_notice:';
 const PREPARE_PREFIX = 'gops_leave_prepare:';
 const CONFIRM_PREFIX = 'gops_leave_confirm:';
 const CANCEL_PREFIX = 'gops_leave_cancel:';
@@ -17,6 +21,11 @@ module.exports = {
   async execute(interaction) {
     if (!interaction.isButton()) return;
     const customId = interaction.customId;
+    const isGuildOpsButton = customId.startsWith(NOTICE_PREFIX)
+      || customId.startsWith(PREPARE_PREFIX)
+      || customId.startsWith(CONFIRM_PREFIX)
+      || customId.startsWith(CANCEL_PREFIX);
+    if (!isGuildOpsButton) return;
 
     if (!isPettoOperator(interaction.user?.id)) {
       await interaction.reply({ content: 'This private support control is not available to this account.', flags: MessageFlags.Ephemeral }).catch(() => {});
@@ -29,6 +38,46 @@ module.exports = {
       return;
     }
 
+    if (customId.startsWith(NOTICE_PREFIX)) {
+      const payload = customId.slice(NOTICE_PREFIX.length);
+      const separator = payload.indexOf(':');
+      const kind = separator === -1 ? '' : payload.slice(0, separator);
+      const guildId = separator === -1 ? '' : payload.slice(separator + 1);
+      if (!TEMPLATES[kind] || !SNOWFLAKE_RE.test(guildId) || guildId === supportGuildId) {
+        await interaction.reply({ content: 'Invalid review-notice target.', flags: MessageFlags.Ephemeral }).catch(() => {});
+        return;
+      }
+
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => {});
+      const result = await sendGuildNotice(interaction.client, {
+        guildId,
+        kind,
+        details: 'The Petto team requested a manual review after an automated guild signal.',
+        source: 'team review button',
+        requestedBy: interaction.user.id,
+        force: true,
+        teamAlert: false,
+      });
+
+      if (!result.guild) {
+        await interaction.editReply({ content: 'Petto is no longer in that server.' }).catch(() => {});
+        return;
+      }
+      if (!result.ok) {
+        await interaction.editReply({ content: 'Petto could not find a channel where it can deliver the review notice.' }).catch(() => {});
+        return;
+      }
+
+      logger.info({ guildId, action: 'guildops-review-notice', userId: interaction.user.id }, `Review notice delivered in channel ${result.channel.id}.`);
+      await interaction.editReply({ content: `Review notice delivered to **${result.guild.name}** in <#${result.channel.id}>.` }).catch(() => {});
+      return;
+    }
+
+    const prefix = customId.startsWith(PREPARE_PREFIX)
+      ? PREPARE_PREFIX
+      : customId.startsWith(CONFIRM_PREFIX)
+        ? CONFIRM_PREFIX
+        : CANCEL_PREFIX;
     const guildId = customId.slice(prefix.length);
     if (!SNOWFLAKE_RE.test(guildId) || guildId === supportGuildId) {
       await interaction.reply({ content: 'Invalid or protected server target.', flags: MessageFlags.Ephemeral }).catch(() => {});
