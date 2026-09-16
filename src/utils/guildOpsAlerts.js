@@ -14,8 +14,6 @@ const TEAM_COOLDOWN_MS = Math.max(60_000, Number(process.env.PETTO_GUILD_TEAM_AL
 
 const SPECIAL = {
   announcement: '<a:Anouncements_Animated:1385677878259355733>',
-  side: '<:barralateral:1450677533719662654>',
-  bottom: '<:barrabaja:1450677536848609430>',
   idle: '<:idle:1485744880654487552>',
   online: '<:online:1485744828422819880>',
   outage: '<:outage:1485744863101321467>',
@@ -26,8 +24,6 @@ const SPECIAL = {
 
 const FALLBACK = {
   announcement: '📣',
-  side: '│',
-  bottom: '└',
   idle: '🟡',
   online: '🟢',
   outage: '🟠',
@@ -43,32 +39,32 @@ const TEMPLATES = {
   diagnostic: {
     severity: 'warning',
     title: 'Petto diagnostic notice',
-    body: 'Our diagnostic system detected a configuration problem that may prevent some Petto features from working correctly.',
-    action: 'Please review Petto\'s permissions and the affected feature configuration. If the issue continues, contact the Petto team.',
+    body: 'Petto detected a configuration issue that may affect one or more features on this server.',
+    action: 'Review the affected feature and Petto\'s permissions. If the issue continues, contact the Petto team.',
   },
   permissions: {
     severity: 'warning',
     title: 'Petto permissions need attention',
-    body: 'Our team has detected errors on this server caused by missing or insufficient permissions for Petto. Some features may not work properly until the necessary permissions are restored.',
-    action: 'Make sure Petto can **View Channel**, **Send Messages**, **Embed Links**, and **Read Message History** where it is expected to work. Features that create or repair log webhooks also require **Manage Webhooks** in the configured log channel.',
+    body: 'Petto detected missing or insufficient permissions. Some features may be unavailable until access is restored.',
+    action: 'Restore **View Channel**, **Send Messages**, **Embed Links**, and **Read Message History** where needed. Logging features may also require **Manage Webhooks** in the configured log channel.',
   },
   logs: {
     severity: 'warning',
     title: 'Petto logging configuration needs attention',
-    body: 'Petto detected a logging configuration problem. A configured log destination or webhook is missing, inaccessible, or no longer valid, so some log events may not be delivered.',
-    action: 'Check the configured log channel, restore Petto\'s channel permissions, and reconfigure the logging system if its webhook was deleted or replaced.',
+    body: 'A configured log destination or webhook is missing, inaccessible, or no longer valid.',
+    action: 'Check the log channel and its permissions. Reconfigure logging if the webhook was deleted or replaced.',
   },
   policy: {
     severity: 'critical',
     title: 'Petto server review required',
-    body: 'Petto received a high-severity compliance signal for this server. This notice does **not** by itself determine that a violation occurred; the server should be reviewed by its administrators and the Petto team.',
-    action: 'Review the affected activity and Discord\'s applicable rules. If you believe this alert is incorrect, contact the Petto team before changing or removing evidence needed for review.',
+    body: 'Petto detected a high-severity signal that requires manual review. This automated notice is **not** a final determination that a violation occurred.',
+    action: 'Review the affected activity and Discord\'s applicable rules. Contact the Petto team if you believe the alert is incorrect.',
   },
   shop: {
     severity: 'critical',
-    title: 'Petto commerce usage review required',
-    body: 'Petto received a signal that this server may be using Petto in a shop or commerce workflow that requires manual review. This automated notice is not a final policy determination.',
-    action: 'Review how Petto is being used and make sure the server and its workflows comply with Discord rules and Petto\'s supported-use requirements. Contact the Petto team if clarification is needed.',
+    title: 'Petto commerce review required',
+    body: 'Petto detected multiple signals associated with a shop or commerce workflow that requires review. This automated notice is **not** a final policy determination.',
+    action: 'Review how Petto is being used and verify that the server and its workflows follow Discord rules and Petto\'s supported-use requirements.',
   },
   maintenance: {
     severity: 'info',
@@ -142,25 +138,36 @@ function renderNotice({ kind, details, externalEmojis = true }) {
 
   return [
     `${e.announcement} **${template.title}**`,
-    `${e.side} ${e[style.key]} **${style.label}**`,
+    `${e[style.key]} **${style.label}**`,
     '',
     template.body + detailBlock,
     '',
-    `${e.auto} **What to do**`,
+    `${e.auto} **Recommended action**`,
     template.action,
     '',
-    `${e.bottom} This is an automated message from **Petto's diagnostic system**.`,
+    '**Automated notice** • Petto Diagnostics',
     `Need help? <${SUPPORT_URL}>`,
   ].join('\n').slice(0, 1_990);
 }
 
-function leaveReviewRow(guildId) {
-  return new ActionRowBuilder().addComponents(
+function teamActionRow(guildId, kind, severity) {
+  const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`gops_leave_prepare:${guildId}`)
-      .setLabel('Leave server')
-      .setStyle(ButtonStyle.Danger),
+      .setCustomId(`gops_notice:${kind}:${guildId}`)
+      .setLabel('Send review notice')
+      .setStyle(ButtonStyle.Primary),
   );
+
+  if (severity === 'critical') {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`gops_leave_prepare:${guildId}`)
+        .setLabel('Leave server')
+        .setStyle(ButtonStyle.Danger),
+    );
+  }
+
+  return row;
 }
 
 async function getTeamChannel(client) {
@@ -211,7 +218,7 @@ async function sendTeamAlert(client, {
   const sent = await channel.send({
     content: mentionOwner || undefined,
     embeds: [embed],
-    components: [leaveReviewRow(guild.id)],
+    components: [teamActionRow(guild.id, kind, effectiveSeverity)],
     allowedMentions: { users: mentionOwner ? [config.ownerId] : [] },
   }).catch(() => null);
 
