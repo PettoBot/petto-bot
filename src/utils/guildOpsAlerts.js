@@ -2,10 +2,12 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ChannelType,
   EmbedBuilder,
   PermissionFlagsBits,
 } = require('discord.js');
 const config = require('../config');
+const { getLogConfig } = require('../db/logConfig');
 
 const SUPPORT_URL = 'https://petto.sbs/support';
 const DEFAULT_ALERT_CHANNEL_ID = process.env.PETTO_GUILD_ALERT_CHANNEL_ID || config.opsChannels?.general || config.errorLogChannelId || null;
@@ -63,8 +65,8 @@ const TEMPLATES = {
   shop: {
     severity: 'critical',
     title: 'Petto commerce review required',
-    body: 'Petto detected multiple signals associated with a shop or commerce workflow that requires review. This automated notice is **not** a final policy determination.',
-    action: 'Review how Petto is being used and verify that the server and its workflows follow Discord rules and Petto\'s supported-use requirements.',
+    body: 'Petto detected multiple independent signals associated with a commerce workflow that requires review. This automated notice is **not** a final policy determination.',
+    action: 'Review the affected activity and verify that the server and its workflows follow Discord rules and Petto\'s supported-use requirements.',
   },
   maintenance: {
     severity: 'info',
@@ -79,10 +81,6 @@ function truncate(value, max = 700) {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
-function safeCode(value) {
-  return truncate(value, 700).replace(/```/g, '`\u200b``');
-}
-
 function severityStyle(severity) {
   if (severity === 'critical') return { key: 'offline', label: 'Critical review', color: 0xfe6465 };
   if (severity === 'info') return { key: 'online', label: 'Information', color: 0xa5ea7a };
@@ -91,12 +89,43 @@ function severityStyle(severity) {
 
 function canSend(channel, me) {
   if (!channel?.isTextBased?.() || !channel.messages || !me) return false;
+  if (channel.isThread?.()) return false;
+  if (![ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(channel.type)) return false;
   const perms = channel.permissionsFor(me);
   return Boolean(perms?.has(PermissionFlagsBits.ViewChannel) && perms?.has(PermissionFlagsBits.SendMessages));
 }
 
 function canUseExternalEmojis(channel, me) {
   return Boolean(channel?.permissionsFor(me)?.has(PermissionFlagsBits.UseExternalEmojis));
+}
+
+function normalizeName(value) {
+  return String(value ?? '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[\-_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isHiddenFromEveryone(channel, guild) {
+  const everyone = guild?.roles?.everyone;
+  if (!everyone) return false;
+  const perms = channel.permissionsFor(everyone);
+  return Boolean(perms && !perms.has(PermissionFlagsBits.ViewChannel));
+}
+
+function staffChannelScore(channel, configuredIds) {
+  const name = normalizeName(channel.name);
+  const parentName = normalizeName(channel.parent?.name);
+  const staffPattern = /\b(?:staff|team|equipo|equipe|admin|admins|mod|mods|moderation|moderacion|moderacao|logs?|audit|auditoria|security|seguridad|seguranca|management|gestion|gestao|petto|bot config|bot logs?)\b/i;
+
+  let score = 0;
+  if (configuredIds.has(channel.id)) score += 100;
+  if (staffPattern.test(name)) score += 50;
+  if (staffPattern.test(parentName)) score += 20;
+  return score;
 }
 
 async function resolveGuild(client, guildId) {
@@ -109,25 +138,34 @@ async function resolveOwner(guild) {
   return guild.fetchOwner().catch(() => null);
 }
 
-async function findNoticeChannel(guild) {
+async function configuredLogChannelIds(guildId) {
+  const logConfig = await getLogConfig(guildId).catch(() => null);
+  if (!logConfig) return new Set();
+  return new Set([
+    ...(logConfig.entries || []).map((entry) => String(entry.channel_id)),
+    ...(logConfig.webhooks || []).map((entry) => String(entry.channel_id)),
+  ]);
+}
+
+async function findPrivateNoticeChannel(guild) {
   const me = guild.members.me ?? await guild.members.fetchMe().catch(() => null);
   if (!me) return null;
 
-  const preferred = [guild.systemChannel, guild.rulesChannel, guild.publicUpdatesChannel].filter(Boolean);
-  for (const channel of preferred) {
-    if (canSend(channel, me)) return channel;
-  }
+  const configuredIds = await configuredLogChannelIds(guild.id);
+  const scoreCandidates = (channels) => [...channels]
+    .filter((channel) => canSend(channel, me) && isHiddenFromEveryone(channel, guild))
+    .map((channel) => ({ channel, score: staffChannelScore(channel, configuredIds) }))
+    // Do not drop notices into arbitrary private tickets or personal channels.
+    // Require either a configured log target or a channel/category that looks staff-facing.
+    .filter((entry) => entry.score >= 20)
+    .sort((a, b) => b.score - a.score || (a.channel.rawPosition ?? a.channel.position ?? 0) - (b.channel.rawPosition ?? b.channel.position ?? 0));
 
-  const cached = [...guild.channels.cache.values()]
-    .filter((channel) => canSend(channel, me))
-    .sort((a, b) => (a.rawPosition ?? a.position ?? 0) - (b.rawPosition ?? b.position ?? 0));
-  if (cached.length) return cached[0];
+  const cached = scoreCandidates(guild.channels.cache.values());
+  if (cached.length) return cached[0].channel;
 
   const fetched = await guild.channels.fetch().catch(() => null);
   if (!fetched) return null;
-  return [...fetched.values()]
-    .filter((channel) => canSend(channel, me))
-    .sort((a, b) => (a.rawPosition ?? a.position ?? 0) - (b.rawPosition ?? b.position ?? 0))[0] ?? null;
+  return scoreCandidates(fetched.values())[0]?.channel ?? null;
 }
 
 function renderNotice({ kind, details, externalEmojis = true }) {
@@ -177,6 +215,16 @@ async function getTeamChannel(client) {
   return channel?.isTextBased?.() && channel.messages ? channel : null;
 }
 
+function describeDelivery({ deliveredChannel = null, deliveryType = null, deliveredRecipientId = null }) {
+  if (deliveryType === 'private_channel' && deliveredChannel) {
+    return `<#${deliveredChannel.id}>\n\`${deliveredChannel.id}\``;
+  }
+  if (deliveryType === 'owner_dm' && deliveredRecipientId) {
+    return `Owner DM <@${deliveredRecipientId}>\n\`${deliveredRecipientId}\``;
+  }
+  return 'Not delivered';
+}
+
 async function sendTeamAlert(client, {
   guild,
   kind = 'diagnostic',
@@ -184,13 +232,15 @@ async function sendTeamAlert(client, {
   details = null,
   source = 'Petto diagnostics',
   deliveredChannel = null,
+  deliveryType = null,
+  deliveredRecipientId = null,
   requestedBy = null,
   force = false,
 }) {
   if (!guild) return null;
   const template = TEMPLATES[kind] ?? TEMPLATES.diagnostic;
   const effectiveSeverity = severity ?? template.severity;
-  const key = `${guild.id}:${kind}:${truncate(details, 120)}`;
+  const key = `${guild.id}:${kind}:${effectiveSeverity}`;
   const now = Date.now();
   if (!force && now - (teamCooldowns.get(key) ?? 0) < TEAM_COOLDOWN_MS) return null;
 
@@ -208,7 +258,7 @@ async function sendTeamAlert(client, {
       { name: 'Members', value: String(guild.memberCount ?? 'unknown'), inline: true },
       { name: 'Severity', value: `\`${effectiveSeverity}\``, inline: true },
       { name: 'Owner', value: owner ? `<@${owner.id}>\n\`${owner.id}\`` : 'Unavailable', inline: true },
-      { name: 'Notice delivery', value: deliveredChannel ? `<#${deliveredChannel.id}>\n\`${deliveredChannel.id}\`` : 'Not delivered', inline: true },
+      { name: 'Notice delivery', value: describeDelivery({ deliveredChannel, deliveryType, deliveredRecipientId }), inline: true },
       { name: 'Source', value: `\`${truncate(source, 120)}\``, inline: true },
     )
     .setFooter({ text: requestedBy ? `Requested by ${requestedBy}` : 'Petto automated guild diagnostics' })
@@ -226,6 +276,17 @@ async function sendTeamAlert(client, {
   return sent;
 }
 
+async function sendOwnerDm(guild, content) {
+  const owner = await resolveOwner(guild);
+  if (!owner) return null;
+  const message = await owner.send({
+    content,
+    allowedMentions: { parse: [] },
+  }).catch(() => null);
+  if (!message) return null;
+  return { message, ownerId: owner.id };
+}
+
 async function sendGuildNotice(client, {
   guildId,
   kind = 'diagnostic',
@@ -236,23 +297,39 @@ async function sendGuildNotice(client, {
   teamAlert = null,
 }) {
   const guild = await resolveGuild(client, guildId);
-  if (!guild) return { ok: false, reason: 'guild_not_found', guild: null, channel: null };
+  if (!guild) return { ok: false, reason: 'guild_not_found', guild: null, channel: null, deliveryType: null };
 
   const template = TEMPLATES[kind] ?? TEMPLATES.diagnostic;
   const cooldownKey = `${guild.id}:${kind}`;
   const now = Date.now();
   if (!force && now - (noticeCooldowns.get(cooldownKey) ?? 0) < NOTICE_COOLDOWN_MS) {
-    return { ok: true, skipped: 'cooldown', guild, channel: null };
+    return { ok: true, skipped: 'cooldown', guild, channel: null, deliveryType: 'cooldown' };
   }
 
-  const channel = await findNoticeChannel(guild);
+  const channel = await findPrivateNoticeChannel(guild);
   let sent = null;
+  let deliveryType = null;
+  let recipientId = null;
+
   if (channel) {
     const me = guild.members.me ?? await guild.members.fetchMe().catch(() => null);
     sent = await channel.send({
       content: renderNotice({ kind, details, externalEmojis: canUseExternalEmojis(channel, me) }),
       allowedMentions: { parse: [] },
     }).catch(() => null);
+    if (sent) deliveryType = 'private_channel';
+  }
+
+  // Never fall back to a random public channel. If no suitable staff/log channel is
+  // private and writable, try the guild owner's DMs. If DMs are closed, the team
+  // alert remains the final fallback.
+  if (!sent) {
+    const dm = await sendOwnerDm(guild, renderNotice({ kind, details, externalEmojis: false }));
+    if (dm) {
+      sent = dm.message;
+      deliveryType = 'owner_dm';
+      recipientId = dm.ownerId;
+    }
   }
 
   if (sent) noticeCooldowns.set(cooldownKey, now);
@@ -263,15 +340,24 @@ async function sendGuildNotice(client, {
       guild,
       kind,
       severity: template.severity,
-      details: details || (sent ? null : 'Petto could not find a channel where it can deliver the server notice.'),
+      details: details || (sent ? null : 'Petto could not find a safe private delivery route. No public channel was used.'),
       source,
-      deliveredChannel: sent ? channel : null,
+      deliveredChannel: deliveryType === 'private_channel' ? channel : null,
+      deliveryType,
+      deliveredRecipientId: recipientId,
       requestedBy,
       force,
     });
   }
 
-  return { ok: Boolean(sent), guild, channel: sent ? channel : null, message: sent };
+  return {
+    ok: Boolean(sent),
+    guild,
+    channel: deliveryType === 'private_channel' ? channel : null,
+    message: sent,
+    deliveryType,
+    recipientId,
+  };
 }
 
 function compactLogText(args) {

@@ -74,8 +74,9 @@ module.exports = {
         components: [textCard(
           `${EMOJI.APPROVE} Scan complete for **${scan.guild.name}**.\n`
           + `Confidence: **${scan.confidence}** • Score: **${scan.score}**\n`
+          + `Actionable evidence: **${scan.actionable ? 'yes' : 'no'}**\n`
           + `Signals: ${labels}\n`
-          + `Team alert: **${scan.teamAlerted ? 'sent' : 'not needed'}** • Server notice: **${scan.noticeSent ? 'sent' : 'not sent'}**`,
+          + `Team alert: **${scan.teamAlerted ? 'sent' : 'not needed'}** • Server notice: **${scan.noticeSent ? 'sent' : 'not sent'}**${scan.noticeDelivery ? ` via **${scan.noticeDelivery === 'owner_dm' ? 'owner DM' : scan.noticeDelivery === 'private_channel' ? 'private channel' : scan.noticeDelivery}**` : ''}`,
           scan.score >= 8 ? 0xfe6465 : scan.score >= 5 ? 0xfed53c : 0xa5ea7a,
         )],
         flags: MessageFlags.IsComponentsV2,
@@ -105,16 +106,21 @@ module.exports = {
     }
 
     if (!result.ok) {
-      logger.warn({ guildId, action: 'guildsend', userId: interaction.user.id }, 'Guild notice could not be delivered; team alert fallback was attempted.');
+      logger.warn({ guildId, action: 'guildsend', userId: interaction.user.id }, 'Guild notice could not be delivered privately; team alert fallback was attempted.');
       return interaction.editReply({
-        components: [textCard(`${EMOJI.WARNING} Petto could not find a channel where it can send the notice. The team alert fallback was attempted.`, 0xfed53c)],
+        components: [textCard(`${EMOJI.WARNING} Petto could not find a safe private delivery route. No public channel was used; the team alert fallback was attempted.`, 0xfed53c)],
         flags: MessageFlags.IsComponentsV2,
       });
     }
 
-    logger.info({ guildId, action: 'guildsend', userId: interaction.user.id }, `Guild ${kind} notice delivered in channel ${result.channel.id}.`);
+    const destination = result.deliveryType === 'owner_dm'
+      ? 'by DM to the server owner'
+      : result.channel
+        ? `in <#${result.channel.id}>`
+        : 'through a private route';
+    logger.info({ guildId, action: 'guildsend', userId: interaction.user.id, deliveryType: result.deliveryType }, `Guild ${kind} notice delivered ${destination}.`);
     return interaction.editReply({
-      components: [textCard(`${EMOJI.APPROVE} Notice delivered to **${result.guild.name}** (\`${guildId}\`) in <#${result.channel.id}>.`, 0xa5ea7a)],
+      components: [textCard(`${EMOJI.APPROVE} Notice delivered to **${result.guild.name}** (\`${guildId}\`) ${destination}.`, 0xa5ea7a)],
       flags: MessageFlags.IsComponentsV2,
     });
   },
