@@ -4,11 +4,6 @@ const { isPettoOperator } = require('../../utils/autoModControl');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { sendGuildNotice, TEMPLATES } = require('../../utils/guildOpsAlerts');
-const { scanGuildForCompliance } = require('../../utils/guildComplianceDetector');
-const logger = require('../../utils/logger');
-
-const SNOWFLAKE_RE = /^\d{15,25}$/;
-const TYPES = [...Object.keys(TEMPLATES), 'scan'];
 
 module.exports = {
   prefixOnly: true,
@@ -46,42 +41,6 @@ module.exports = {
     if (!SNOWFLAKE_RE.test(guildId)) {
       return reply(interaction, `${EMOJI.WARNING} Use a valid Discord server ID.`, 0xfed53c);
     }
-    if (kind !== 'scan' && !TEMPLATES[kind]) {
-      return reply(interaction, `${EMOJI.WARNING} Unknown notice type. Use: \`${TYPES.join('`, `')}\`.`, 0xfed53c);
-    }
-
-    if (kind === 'scan') {
-      await interaction.reply({
-        components: [textCard(`${EMOJI.WARNING} Scanning \`${guildId}\` for guild-compliance signals…`, 0xfed53c)],
-        flags: MessageFlags.IsComponentsV2,
-      });
-
-      const scan = await scanGuildForCompliance(interaction.client, guildId, {
-        force: true,
-        source: '!guildsend scan',
-        requestedBy: interaction.user.id,
-      });
-
-      if (!scan.guild) {
-        return interaction.editReply({
-          components: [textCard(`${EMOJI.DENY} Petto is not currently in a server with ID \`${guildId}\`.`, 0xfe6465)],
-          flags: MessageFlags.IsComponentsV2,
-        });
-      }
-
-      const labels = scan.labels?.length ? scan.labels.slice(0, 6).join(', ') : 'No notable signals';
-      return interaction.editReply({
-        components: [textCard(
-          `${EMOJI.APPROVE} Scan complete for **${scan.guild.name}**.\n`
-          + `Confidence: **${scan.confidence}** • Score: **${scan.score}**\n`
-          + `Signals: ${labels}\n`
-          + `Team alert: **${scan.teamAlerted ? 'sent' : 'not needed'}** • Server notice: **${scan.noticeSent ? 'sent' : 'not sent'}**`,
-          scan.score >= 8 ? 0xfe6465 : scan.score >= 5 ? 0xfed53c : 0xa5ea7a,
-        )],
-        flags: MessageFlags.IsComponentsV2,
-      });
-    }
-
     await interaction.reply({
       components: [textCard(`${EMOJI.WARNING} Sending **${kind}** notice to \`${guildId}\`…`, 0xfed53c)],
       flags: MessageFlags.IsComponentsV2,

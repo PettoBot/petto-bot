@@ -39,32 +39,18 @@ const TEMPLATES = {
   diagnostic: {
     severity: 'warning',
     title: 'Petto diagnostic notice',
-    body: 'Petto detected a configuration issue that may affect one or more features on this server.',
-    action: 'Review the affected feature and Petto\'s permissions. If the issue continues, contact the Petto team.',
   },
   permissions: {
     severity: 'warning',
     title: 'Petto permissions need attention',
-    body: 'Petto detected missing or insufficient permissions. Some features may be unavailable until access is restored.',
-    action: 'Restore **View Channel**, **Send Messages**, **Embed Links**, and **Read Message History** where needed. Logging features may also require **Manage Webhooks** in the configured log channel.',
   },
   logs: {
     severity: 'warning',
     title: 'Petto logging configuration needs attention',
-    body: 'A configured log destination or webhook is missing, inaccessible, or no longer valid.',
-    action: 'Check the log channel and its permissions. Reconfigure logging if the webhook was deleted or replaced.',
   },
   policy: {
     severity: 'critical',
     title: 'Petto server review required',
-    body: 'Petto detected a high-severity signal that requires manual review. This automated notice is **not** a final determination that a violation occurred.',
-    action: 'Review the affected activity and Discord\'s applicable rules. Contact the Petto team if you believe the alert is incorrect.',
-  },
-  shop: {
-    severity: 'critical',
-    title: 'Petto commerce review required',
-    body: 'Petto detected multiple signals associated with a shop or commerce workflow that requires review. This automated notice is **not** a final policy determination.',
-    action: 'Review how Petto is being used and verify that the server and its workflows follow Discord rules and Petto\'s supported-use requirements.',
   },
   maintenance: {
     severity: 'info',
@@ -138,36 +124,10 @@ function renderNotice({ kind, details, externalEmojis = true }) {
 
   return [
     `${e.announcement} **${template.title}**`,
-    `${e[style.key]} **${style.label}**`,
-    '',
-    template.body + detailBlock,
-    '',
-    `${e.auto} **Recommended action**`,
-    template.action,
-    '',
-    '**Automated notice** • Petto Diagnostics',
     `Need help? <${SUPPORT_URL}>`,
   ].join('\n').slice(0, 1_990);
 }
 
-function teamActionRow(guildId, kind, severity) {
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`gops_notice:${kind}:${guildId}`)
-      .setLabel('Send review notice')
-      .setStyle(ButtonStyle.Primary),
-  );
-
-  if (severity === 'critical') {
-    row.addComponents(
-      new ButtonBuilder()
-        .setCustomId(`gops_leave_prepare:${guildId}`)
-        .setLabel('Leave server')
-        .setStyle(ButtonStyle.Danger),
-    );
-  }
-
-  return row;
 }
 
 async function getTeamChannel(client) {
@@ -218,7 +178,6 @@ async function sendTeamAlert(client, {
   const sent = await channel.send({
     content: mentionOwner || undefined,
     embeds: [embed],
-    components: [teamActionRow(guild.id, kind, effectiveSeverity)],
     allowedMentions: { users: mentionOwner ? [config.ownerId] : [] },
   }).catch(() => null);
 
