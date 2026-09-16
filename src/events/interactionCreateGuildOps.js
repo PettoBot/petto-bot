@@ -64,12 +64,17 @@ module.exports = {
         return;
       }
       if (!result.ok) {
-        await interaction.editReply({ content: 'Petto could not find a channel where it can deliver the review notice.' }).catch(() => {});
+        await interaction.editReply({ content: 'Petto could not find a safe private delivery route. No public channel was used.' }).catch(() => {});
         return;
       }
 
-      logger.info({ guildId, action: 'guildops-review-notice', userId: interaction.user.id }, `Review notice delivered in channel ${result.channel.id}.`);
-      await interaction.editReply({ content: `Review notice delivered to **${result.guild.name}** in <#${result.channel.id}>.` }).catch(() => {});
+      const destination = result.deliveryType === 'owner_dm'
+        ? 'by DM to the server owner'
+        : result.channel
+          ? `in <#${result.channel.id}>`
+          : 'through a private route';
+      logger.info({ guildId, action: 'guildops-review-notice', userId: interaction.user.id, deliveryType: result.deliveryType }, `Review notice delivered ${destination}.`);
+      await interaction.editReply({ content: `Review notice delivered to **${result.guild.name}** ${destination}.` }).catch(() => {});
       return;
     }
 
