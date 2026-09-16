@@ -23,6 +23,7 @@ const { startCloudflareTunnel } = require('./src/web/cloudflareTunnel');
 const { attachRestRateLimitTelemetry } = require('./src/utils/restTelemetry');
 const { createDiscordErrorLogSink } = require('./src/utils/discordErrorLog');
 const { createGuildDiagnosticSink } = require('./src/utils/guildOpsAlerts');
+const { attachGuildComplianceMonitor } = require('./src/utils/guildComplianceDetector');
 const { flushActivity } = require('./src/db/activityStats');
 const logger = require('./src/utils/logger');
 
@@ -59,6 +60,7 @@ client.setMaxListeners(30);
 attachRestRateLimitTelemetry(client);
 logger.setDiscordSink(createDiscordErrorLogSink(client, config.errorLogChannelId));
 logger.addDiscordSink(createGuildDiagnosticSink(client));
+attachGuildComplianceMonitor(client);
 
 process.on('unhandledRejection', (err) => logger.error('Unhandled promise rejection:', err));
 
