@@ -251,8 +251,13 @@ async function sendTeamAlert(client, {
   const style = severityStyle(effectiveSeverity);
   const embed = new EmbedBuilder()
     .setColor(style.color)
-    .setTitle(`${effectiveSeverity === 'critical' ? '🚨' : '⚠️'} Petto guild alert`)
-    .setDescription(`**${template.title}**\n${truncate(details || template.body, 1_200)}`)
+    .setTitle('Petto guild alert')
+    .setDescription([
+      `${SPECIAL.announcement} **${template.title}**`,
+      `${SPECIAL[style.key]} **${style.label}**`,
+      '',
+      truncate(details || template.body, 1_200),
+    ].join('\n'))
     .addFields(
       { name: 'Server', value: `${truncate(guild.name, 80)}\n\`${guild.id}\``, inline: true },
       { name: 'Members', value: String(guild.memberCount ?? 'unknown'), inline: true },
@@ -324,7 +329,10 @@ async function sendGuildNotice(client, {
   // private and writable, try the guild owner's DMs. If DMs are closed, the team
   // alert remains the final fallback.
   if (!sent) {
-    const dm = await sendOwnerDm(guild, renderNotice({ kind, details, externalEmojis: false }));
+    // In DMs there is no guild permission gate for external emoji usage. Use Petto's
+    // branded emoji IDs here too so owner notices keep the same visual language as
+    // private guild notices. Discord will render them when the bot has access to them.
+    const dm = await sendOwnerDm(guild, renderNotice({ kind, details, externalEmojis: true }));
     if (dm) {
       sent = dm.message;
       deliveryType = 'owner_dm';

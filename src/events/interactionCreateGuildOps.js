@@ -16,6 +16,58 @@ const CONFIRM_PREFIX = 'gops_leave_confirm:';
 const CANCEL_PREFIX = 'gops_leave_cancel:';
 const SNOWFLAKE_RE = /^\d{15,25}$/;
 
+const BUTTON_LOCK_TTL_MS = 24 * 60 * 60 * 1000;
+const usedButtonLocks = new Map();
+
+function actionLockKey(interaction, group = interaction.customId) {
+  return `${interaction.message?.id || 'no-message'}:${group}`;
+}
+
+function claimButton(interaction, group = interaction.customId) {
+  const now = Date.now();
+  if (usedButtonLocks.size > 2_000) {
+    for (const [key, createdAt] of usedButtonLocks) {
+      if (now - createdAt > BUTTON_LOCK_TTL_MS) usedButtonLocks.delete(key);
+    }
+  }
+
+  const key = actionLockKey(interaction, group);
+  const previous = usedButtonLocks.get(key);
+  if (previous && now - previous < BUTTON_LOCK_TTL_MS) return false;
+  usedButtonLocks.set(key, now);
+  return true;
+}
+
+async function disableSourceButton(interaction, replacementLabel = null) {
+  const message = interaction.message;
+  if (!message?.edit || !Array.isArray(message.components)) return false;
+
+  let changed = false;
+  const components = message.components.map((row) => ({
+    ...row.toJSON(),
+    components: row.components.map((component) => {
+      const json = component.toJSON();
+      if (json.custom_id !== interaction.customId) return json;
+      changed = true;
+      return {
+        ...json,
+        disabled: true,
+        ...(replacementLabel ? { label: replacementLabel.slice(0, 80) } : {}),
+      };
+    }),
+  }));
+
+  if (!changed) return false;
+  return Boolean(await message.edit({ components }).catch(() => null));
+}
+
+async function rejectAlreadyUsed(interaction) {
+  await interaction.reply({
+    content: 'This control was already used and is locked for safety.',
+    flags: MessageFlags.Ephemeral,
+  }).catch(() => {});
+}
+
 module.exports = {
   name: Events.InteractionCreate,
   async execute(interaction) {
@@ -48,7 +100,13 @@ module.exports = {
         return;
       }
 
+      if (!claimButton(interaction)) {
+        await rejectAlreadyUsed(interaction);
+        return;
+      }
+
       await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => {});
+      await disableSourceButton(interaction, 'Review notice used');
       const result = await sendGuildNotice(interaction.client, {
         guildId,
         kind,
@@ -90,7 +148,11 @@ module.exports = {
     }
 
     if (prefix === CANCEL_PREFIX) {
-      await interaction.update({ content: 'Leave action cancelled.', components: [] }).catch(() => {});
+      if (!claimButton(interaction, 'leave-confirmation')) {
+        await rejectAlreadyUsed(interaction);
+        return;
+      }
+      await interaction.update({ content: 'Leave action cancelled. This confirmation is now locked.', components: [] }).catch(() => {});
       return;
     }
 
@@ -102,26 +164,45 @@ module.exports = {
     }
 
     if (prefix === PREPARE_PREFIX) {
+      if (!claimButton(interaction)) {
+        await rejectAlreadyUsed(interaction);
+        return;
+      }
+
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => {});
+      await disableSourceButton(interaction, 'Leave action opened');
+
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId(`${CONFIRM_PREFIX}${guildId}`).setLabel('Confirm leave').setStyle(ButtonStyle.Danger),
         new ButtonBuilder().setCustomId(`${CANCEL_PREFIX}${guildId}`).setLabel('Cancel').setStyle(ButtonStyle.Secondary),
       );
-      await interaction.reply({
+      await interaction.editReply({
         content: `Confirm that Petto should leave **${target.name}** (\`${guildId}\`). This action immediately disconnects Petto from that server.`,
         components: [row],
-        flags: MessageFlags.Ephemeral,
       }).catch(() => {});
       return;
     }
 
+    if (!claimButton(interaction, 'leave-confirmation')) {
+      await rejectAlreadyUsed(interaction);
+      return;
+    }
+
     const targetName = target.name || 'Unknown server';
+    // Acknowledge and remove the confirmation controls before the destructive action
+    // so a second click cannot race the first one.
+    await interaction.update({
+      content: `Leaving **${targetName}** (\`${guildId}\`)…`,
+      components: [],
+    }).catch(() => {});
+
     try {
       await target.leave();
       logger.info({ guildId, action: 'guildops-leave', userId: interaction.user.id }, `Petto left ${targetName} after team confirmation.`);
-      await interaction.update({ content: `Petto left **${targetName}** (\`${guildId}\`).`, components: [] }).catch(() => {});
+      await interaction.editReply({ content: `Petto left **${targetName}** (\`${guildId}\`).`, components: [] }).catch(() => {});
     } catch (error) {
       logger.error({ guildId, action: 'guildops-leave', userId: interaction.user.id }, 'GuildOps leave button failed:', error);
-      await interaction.update({ content: `Petto could not leave **${targetName}** right now.`, components: [] }).catch(() => {});
+      await interaction.editReply({ content: `Petto could not leave **${targetName}** right now. The confirmation remains locked for safety.`, components: [] }).catch(() => {});
     }
   },
 };
