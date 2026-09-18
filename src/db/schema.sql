@@ -162,9 +162,18 @@ create index if not exists idx_mod_actions_expires on mod_actions(expires_at) wh
 
 alter table mod_actions enable row level security;
 
--- Atomically allocates the next per-guild case number and inserts the case.
--- Using an advisory lock avoids a race between the "select max()" and the
--- insert when two moderation actions happen in the same guild at once.
+-- Durable per-server case counters. The counter survives case deletion, so deleting
+-- the latest case never causes its number to be reused.
+create table if not exists guild_case_counters (
+  guild_id          text primary key references guilds(guild_id) on delete cascade,
+  last_case_number  integer not null default 0 check (last_case_number >= 0)
+);
+
+alter table guild_case_counters enable row level security;
+
+-- Atomically allocates the next case number for this guild and inserts the case.
+-- The MAX() guard only repairs a missing/stale counter; normal numbering comes
+-- from guild_case_counters and therefore never mixes numbers between servers.
 create or replace function create_mod_case(
   p_guild_id      text,
   p_user_id       text,
@@ -181,10 +190,17 @@ declare
 begin
   perform pg_advisory_xact_lock(hashtext(p_guild_id));
 
-  select coalesce(max(case_number), 0) + 1
-    into v_case_number
-    from mod_actions
-    where guild_id = p_guild_id;
+  insert into guild_case_counters (guild_id, last_case_number)
+  values (p_guild_id, 0)
+  on conflict (guild_id) do nothing;
+
+  update guild_case_counters
+     set last_case_number = greatest(
+       last_case_number,
+       coalesce((select max(case_number) from mod_actions where guild_id = p_guild_id), 0)
+     ) + 1
+   where guild_id = p_guild_id
+   returning last_case_number into v_case_number;
 
   insert into mod_actions (guild_id, case_number, user_id, moderator_id, type, reason, expires_at)
   values (p_guild_id, v_case_number, p_user_id, p_moderator_id, p_type, p_reason, p_expires_at)

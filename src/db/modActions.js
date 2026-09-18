@@ -44,6 +44,28 @@ async function getUserHistory(guildId, userId, { limit = 25 } = {}) {
   return data;
 }
 
+/**
+ * Returns one page of moderation cases for a guild. If userId is provided the
+ * page is filtered to that user; otherwise it is the complete server history.
+ */
+async function getCaseHistory(guildId, { userId = null, limit = 10, offset = 0 } = {}) {
+  const safeLimit = Math.min(50, Math.max(1, Number(limit) || 10));
+  const safeOffset = Math.max(0, Number(offset) || 0);
+
+  let query = supabase
+    .from('mod_actions')
+    .select('*', { count: 'exact' })
+    .eq('guild_id', guildId)
+    .order('case_number', { ascending: false })
+    .range(safeOffset, safeOffset + safeLimit - 1);
+
+  if (userId) query = query.eq('user_id', userId);
+
+  const { data, error, count } = await query;
+  if (error) throw error;
+  return { rows: data ?? [], count: count ?? 0 };
+}
+
 /** Most recent case for a user (used by /linfr). */
 async function getLastCase(guildId, userId) {
   const { data, error } = await supabase
@@ -161,6 +183,7 @@ module.exports = {
   createCase,
   getCase,
   getUserHistory,
+  getCaseHistory,
   getLastCase,
   updateCase,
   deleteCase,
