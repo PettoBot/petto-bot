@@ -141,6 +141,17 @@ const VAR_PAGES = [
       ['`{level_rank}`', 'Server rank position'],
     ],
   },
+  {
+    title: 'Variables · Custom Commands',
+    fields: [
+      ['`{args}` / `{arguments}` / `{args_raw}`', 'Everything typed after the custom command name'],
+      ['`{arg1}` … `{arg10}`', 'Individual arguments; quoted phrases stay together'],
+      ['`{args_from:N}`', 'Arguments from position N through the end, e.g. `{args_from:2}`'],
+      ['`{arg_count}`', 'Number of parsed arguments'],
+      ['`{command_name}`', 'Name of the custom command being executed'],
+      ['`{prefix}`', 'Prefix used to invoke the custom command'],
+    ],
+  },
 ];
 
 function buildVarsEmbed(page) {
