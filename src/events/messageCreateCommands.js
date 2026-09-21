@@ -109,28 +109,50 @@ function effectiveCommandData(command, argText) {
   return { ...json, default_member_permissions: String(override) };
 }
 
+function containsArgumentVariable(value) {
+  if (typeof value === 'string') return /\{(?:args(?:_raw)?|arguments|arg_count|arg\d{1,2}|args_from:\d{1,2})\}/i.test(value);
+  if (Array.isArray(value)) return value.some((item) => containsArgumentVariable(item));
+  if (value && typeof value === 'object') return Object.values(value).some((item) => containsArgumentVariable(item));
+  return false;
+}
+
 /** Falls back here whenever `commandName` doesn't match a real command — tries a guild's admin-defined custom commands before giving up silently. */
-async function runCustomCommand(message, commandName) {
+async function runCustomCommand(message, commandName, argText = '', prefix = '!') {
   const row = await customCommandsDb.getCommand(message.guild.id, commandName).catch(() => null);
   if (!row) return false;
   message.channel.sendTyping().catch(() => {});
 
-  const ctx = { member: message.member, guild: message.guild, channel: message.channel, message };
+  const argTokens = tokenize(argText);
+  const ctx = {
+    member: message.member,
+    guild: message.guild,
+    channel: message.channel,
+    message,
+    args: argText,
+    argTokens,
+    commandName,
+    prefix,
+  };
   const { text: cleanedResponse, emojis: reactReplies } = extractReactReplies(row.response ?? '');
+  const allowedMentions = { parse: [], users: [message.author.id], repliedUser: false };
 
   try {
-    if (row.embed_template) {
-      const doc = await getTemplate(message.guild.id, row.embed_template);
-      if (doc) {
-        const payload = await build(doc.data, ctx);
-        const sent = await message.reply({ content: payload.content, embeds: payload.embeds, components: payload.components }).catch(() => null);
-        if (sent && reactReplies.length) await applyReactReplies(sent, reactReplies);
-        return true;
-      }
+    const doc = row.embed_template ? await getTemplate(message.guild.id, row.embed_template) : null;
+    const needsArgs = containsArgumentVariable(row.response ?? '') || containsArgumentVariable(doc?.data);
+    if (needsArgs && !argText.trim()) {
+      await message.reply(warningPayload(message, `This custom command needs text after it. Try \`${prefix}${commandName} your request here\`.`)).catch(() => {});
+      return true;
+    }
+
+    if (doc) {
+      const payload = await build(doc.data, ctx);
+      const sent = await message.reply({ content: payload.content, embeds: payload.embeds, components: payload.components, allowedMentions }).catch(() => null);
+      if (sent && reactReplies.length) await applyReactReplies(sent, reactReplies);
+      return true;
     }
     if (cleanedResponse) {
       const resolved = await resolve(cleanedResponse, ctx);
-      const sent = await message.reply(resolved).catch(() => null);
+      const sent = await message.reply({ content: resolved, allowedMentions }).catch(() => null);
       if (sent && reactReplies.length) await applyReactReplies(sent, reactReplies);
     } else if (reactReplies.length) {
       await applyReactReplies(message, reactReplies);
@@ -195,7 +217,7 @@ module.exports = {
     // executed through the pseudo-interaction used by prefix commands.
     if (command?.slashOnly) return;
     if (!command || !command.data || (command.data.toJSON().type ?? 1) !== 1) {
-      const handled = await runCustomCommand(message, canonicalName);
+      const handled = await runCustomCommand(message, canonicalName, argText, prefix);
       if (!handled) {
         const warning = await message
           .reply({ components: [textCard(`${EMOJI.WARNING}  Unknown command \`${canonicalName}\`. Use \`${prefix}help\` to see all commands.`, 0xfed53c)], flags: MessageFlags.IsComponentsV2, allowedMentions: { repliedUser: false } })

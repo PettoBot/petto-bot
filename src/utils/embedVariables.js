@@ -15,6 +15,8 @@ const BOOST_THRESHOLDS = [0, 2, 7, 14];
 
 async function resolve(text, ctx = {}) {
   const { member, guild, channel, message } = ctx;
+  const argText = typeof ctx.args === 'string' ? ctx.args : '';
+  const argTokens = Array.isArray(ctx.argTokens) ? ctx.argTokens : [];
   const user = member?.user ?? ctx.user ?? message?.author;
   const currentLevel = guild?.premiumTier ?? 0;
   const nextLevel = Math.min(currentLevel + 1, 3);
@@ -41,6 +43,14 @@ async function resolve(text, ctx = {}) {
     const lo = parseInt(min, 10);
     const hi = parseInt(max, 10);
     return String(Math.floor(Math.random() * (hi - lo + 1)) + lo);
+  });
+  result = result.replace(/\{arg(\d{1,2})\}/gi, (_, rawIndex) => {
+    const index = Number(rawIndex) - 1;
+    return index >= 0 ? (argTokens[index] ?? '') : '';
+  });
+  result = result.replace(/\{args_from:(\d{1,2})\}/gi, (_, rawIndex) => {
+    const index = Math.max(0, Number(rawIndex) - 1);
+    return argTokens.slice(index).join(' ');
   });
 
   const map = {
@@ -74,6 +84,12 @@ async function resolve(text, ctx = {}) {
     '{user.bot}': user?.bot ? 'Yes' : 'No',
     '{user.join_position}': joinPos,
     '{user.join_position_suffix}': joinPos ? ordinal(parseInt(joinPos, 10)) : '',
+    '{args}': argText,
+    '{arguments}': argText,
+    '{args_raw}': argText,
+    '{arg_count}': String(argTokens.length),
+    '{command_name}': ctx.commandName ?? '',
+    '{prefix}': ctx.prefix ?? '',
     '{server_prefix}': ctx.prefix ?? '/',
     '{server_name}': guild?.name ?? '',
     '{server_id}': guild?.id ?? '',

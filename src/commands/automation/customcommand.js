@@ -19,7 +19,7 @@ module.exports = {
         .setName('add')
         .setDescription('Create a custom command.')
         .addStringOption((o) => o.setName('name').setDescription("The command's name (no prefix)").setRequired(true))
-        .addStringOption((o) => o.setName('response').setDescription('What it replies with (supports variables, e.g. {user})').setRequired(true))
+        .addStringOption((o) => o.setName('response').setDescription('Reply text/flags. Supports {args}, {arg1}, {user}, etc. Optional with embed_template.').setRequired(false))
         .addStringOption((o) => o.setName('embed_template').setDescription('A saved /embed template to send instead of plain text').setRequired(false)),
     )
     .addSubcommand((s) =>
@@ -27,11 +27,12 @@ module.exports = {
         .setName('edit')
         .setDescription('Edit an existing custom command.')
         .addStringOption((o) => o.setName('name').setDescription('Command name').setRequired(true))
-        .addStringOption((o) => o.setName('response').setDescription('New response text').setRequired(true))
-        .addStringOption((o) => o.setName('embed_template').setDescription('A saved /embed template to send instead of plain text').setRequired(false)),
+        .addStringOption((o) => o.setName('response').setDescription('New response text/flags; omit to keep the current response').setRequired(false))
+        .addStringOption((o) => o.setName('embed_template').setDescription('Saved /embed template; use clear to remove it').setRequired(false)),
     )
     .addSubcommand((s) => s.setName('remove').setDescription('Delete a custom command.').addStringOption((o) => o.setName('name').setDescription('Command name').setRequired(true)))
     .addSubcommand((s) => s.setName('list').setDescription('List every custom command.'))
+    .addSubcommand((s) => s.setName('vars').setDescription('Show custom-command arguments, variables, and reply flags.'))
     .addSubcommand((s) => s.setName('show').setDescription('Show a custom command without triggering it.').addStringOption((o) => o.setName('name').setDescription('Command name').setRequired(true))),
   aliases: ['cc'],
 
@@ -41,14 +42,16 @@ module.exports = {
     if (sub === 'edit') return addCmd(interaction, true);
     if (sub === 'remove') return removeCmd(interaction);
     if (sub === 'list') return listCmd(interaction);
+    if (sub === 'vars') return varsCmd(interaction);
     return showCmd(interaction);
   },
 };
 
 async function addCmd(interaction, isEdit) {
   const name = ccDb.normalizeName(interaction.options.getString('name', true));
-  const response = interaction.options.getString('response', true);
-  const embedTemplate = interaction.options.getString('embed_template');
+  const responseInput = interaction.options.getString('response');
+  const embedInput = interaction.options.getString('embed_template');
+  const requestedEmbedTemplate = embedInput?.trim().toLowerCase() === 'clear' ? null : embedInput;
 
   if (interaction.client.commands.has(name) || interaction.client.commandAliases.has(name) || interaction.client.commandRoutes?.has(name)) {
     await interaction.reply({ content: `\`${name}\` is already a real command — pick a different name.`, flags: MessageFlags.Ephemeral });
@@ -58,8 +61,19 @@ async function addCmd(interaction, isEdit) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
 
-  if (!isEdit) {
-    const existing = await ccDb.getCommand(interaction.guild.id, name);
+  let existing = null;
+  if (isEdit) {
+    existing = await ccDb.getCommand(interaction.guild.id, name);
+    if (!existing) {
+      await interaction.editReply({ components: [textCard(`\`${name}\` doesn't exist.`, COLORS.RED)], flags: MessageFlags.IsComponentsV2 });
+      return;
+    }
+    if (responseInput == null && embedInput == null) {
+      await interaction.editReply({ components: [textCard('Provide a new response or embed_template to edit.', COLORS.RED)], flags: MessageFlags.IsComponentsV2 });
+      return;
+    }
+  } else {
+    existing = await ccDb.getCommand(interaction.guild.id, name);
     if (existing) {
       await interaction.editReply({ components: [textCard(`\`${name}\` already exists — use \`customcommand edit\` instead.`, COLORS.RED)], flags: MessageFlags.IsComponentsV2 });
       return;
@@ -71,6 +85,16 @@ async function addCmd(interaction, isEdit) {
     }
   }
 
+  const response = isEdit ? (responseInput ?? existing.response) : responseInput;
+  const embedTemplate = isEdit
+    ? (embedInput == null ? existing.embed_template : requestedEmbedTemplate)
+    : requestedEmbedTemplate;
+
+  if (!response && !embedTemplate) {
+    await interaction.editReply({ components: [textCard('Add a response, an embed_template, or both.', COLORS.RED)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+
   if (embedTemplate) {
     const template = await getTemplate(interaction.guild.id, embedTemplate);
     if (!template) {
@@ -80,7 +104,8 @@ async function addCmd(interaction, isEdit) {
   }
 
   await ccDb.upsertCommand(interaction.guild.id, name, { response, embedTemplate });
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  \`${name}\` ${isEdit ? 'updated' : 'created'}. Try it with your prefix, e.g. \`!${name}\`.`, COLORS.GREEN)], flags: MessageFlags.IsComponentsV2 });
+  const hint = isEdit ? '' : ` Try \`!${name} your request here\`; use \`!customcommand vars\` for variables.`;
+  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  \`${name}\` ${isEdit ? 'updated' : 'created'}.${hint}`, COLORS.GREEN)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function removeCmd(interaction) {
@@ -95,6 +120,27 @@ async function listCmd(interaction) {
   const rows = await ccDb.listCommands(interaction.guild.id);
   const text = rows.length ? rows.map((r) => `\`${r.name}\``).join(', ') : 'No custom commands yet.';
   await interaction.editReply({ components: [textCard(`**Custom commands (${rows.length}/${MAX_PER_GUILD}):**\n${text}`, COLORS.DEFAULT)], flags: MessageFlags.IsComponentsV2 });
+}
+
+async function varsCmd(interaction) {
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  const text = [
+    '### Custom command variables',
+    '`{args}` / `{arguments}` — everything typed after the command.',
+    '`{arg1}` … `{arg10}` — individual arguments; quoted phrases stay together.',
+    '`{args_from:2}` — argument 2 through the end.',
+    '`{arg_count}` — number of arguments.',
+    '`{command_name}` — custom command name.',
+    '`{prefix}` — prefix used to invoke the command.',
+    'Every normal `/embed` variable such as `{user}` and `{server_name}` also works.',
+    '',
+    '### Reply flags',
+    "`{reactreply:💛}` — react to Petto's reply. Repeat it for multiple reactions.",
+    '',
+    '**Example:** `!req christmas gift banners` + an embed containing `Request: {args}`.',
+    'If a response/embed uses an argument variable and no text is supplied, Petto asks the user for input instead of sending an empty card.',
+  ].join('\n');
+  await interaction.editReply({ components: [textCard(text, COLORS.DEFAULT)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function showCmd(interaction) {
