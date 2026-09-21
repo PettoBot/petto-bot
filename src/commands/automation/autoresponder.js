@@ -2,6 +2,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { ensureGuild } = require('../../db/guilds');
 const arDb = require('../../db/autoResponders');
+const { getTemplate } = require('../../db/embedTemplates');
 const { resolveChannels } = require('../../utils/channelResolve');
 const { resolveRoles } = require('../../utils/roleResolve');
 const { textCard } = require('../../utils/caseCard');
@@ -27,9 +28,10 @@ module.exports = {
         .setName('add')
         .setDescription('Add an autoresponder.')
         .addStringOption((o) => o.setName('trigger').setDescription('Text to watch for').setRequired(true))
-        .addStringOption((o) => o.setName('reply').setDescription('What to reply with').setRequired(true))
+        .addStringOption((o) => o.setName('reply').setDescription('Reply text/flags, e.g. {reactreply:🌸}. Optional with embed_template.').setRequired(false))
         .addStringOption((o) => o.setName('mode').setDescription('Match mode (default contains)').setRequired(false).addChoices(...MODE_CHOICES))
-        .addBooleanOption((o) => o.setName('embed').setDescription('Send the reply as an embed instead of plain text').setRequired(false))
+        .addBooleanOption((o) => o.setName('embed').setDescription('Send the reply text as a simple embed').setRequired(false))
+        .addStringOption((o) => o.setName('embed_template').setDescription('Saved !embed template to send; supports {args}, {user}, etc.').setRequired(false))
         .addBooleanOption((o) => o.setName('delete_trigger').setDescription('Delete the triggering message').setRequired(false))
         .addBooleanOption((o) => o.setName('reply_to_message').setDescription('Reply directly to (quote) the triggering message instead of sending a new one').setRequired(false))
         .addBooleanOption((o) => o.setName('ping_user').setDescription('Notify the triggering user (as a reply, no ugly @mention text stuffed in)').setRequired(false))
@@ -47,7 +49,8 @@ module.exports = {
         .addBooleanOption((o) => o.setName('delete_trigger').setDescription('New delete-trigger setting').setRequired(false))
         .addBooleanOption((o) => o.setName('reply_to_message').setDescription('New reply-to-trigger setting').setRequired(false))
         .addBooleanOption((o) => o.setName('ping_user').setDescription('New ping-user setting').setRequired(false))
-        .addStringOption((o) => o.setName('reply').setDescription('New reply text').setRequired(false)),
+        .addStringOption((o) => o.setName('reply').setDescription('New reply text/flags; use clear to remove').setRequired(false))
+        .addStringOption((o) => o.setName('embed_template').setDescription('Saved !embed template; use clear to remove').setRequired(false)),
     )
     .addSubcommand((s) => s.setName('list').setDescription('List all autoresponders.'))
     .addSubcommand((s) => s.setName('show').setDescription('Show full details for one autoresponder.').addStringOption((o) => o.setName('id').setDescription('Autoresponder ID').setRequired(true)))
@@ -103,9 +106,10 @@ function modeTag(mode) {
 
 async function addCmd(interaction) {
   const trigger = interaction.options.getString('trigger', true);
-  const reply = interaction.options.getString('reply', true);
+  const reply = interaction.options.getString('reply');
   const mode = interaction.options.getString('mode') ?? 'contains';
   const embed = interaction.options.getBoolean('embed') ?? false;
+  const embedTemplate = interaction.options.getString('embed_template');
   const deleteTrigger = interaction.options.getBoolean('delete_trigger') ?? false;
   const replyToMessage = interaction.options.getBoolean('reply_to_message') ?? false;
   const pingUser = interaction.options.getBoolean('ping_user') ?? false;
@@ -136,11 +140,25 @@ async function addCmd(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
 
+  if (!reply && !embedTemplate) {
+    await interaction.editReply({ components: [textCard('Provide reply text/flags, an embed_template, or both.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+
+  if (embedTemplate) {
+    const template = await getTemplate(interaction.guild.id, embedTemplate);
+    if (!template) {
+      await interaction.editReply({ components: [textCard(`Embed template \`${embedTemplate}\` does not exist.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      return;
+    }
+  }
+
   let ar;
   try {
     ar = await arDb.create(interaction.guild.id, {
       trigger,
-      reply,
+      reply: reply ?? '',
+      embed_template: embedTemplate ?? null,
       match_mode: mode,
       reply_type: embed ? 'embed' : 'text',
       delete_trigger: deleteTrigger,
@@ -156,11 +174,11 @@ async function addCmd(interaction) {
 
   const lines = [
     `${EMOJI.APPROVE}  Autoresponder \`${ar.ar_id}\` added.`,
-    `**Match:** ${modeTag(mode)}  ·  **Type:** ${embed ? 'Embed' : 'Text'}  ·  **Delete trigger:** ${deleteTrigger ? 'Yes' : 'No'}  ·  **Reply to message:** ${replyToMessage ? 'Yes' : 'No'}  ·  **Ping user:** ${pingUser ? 'Yes' : 'No'}`,
+    `**Match:** ${modeTag(mode)}  ·  **Type:** ${embedTemplate ? `Saved embed \`${embedTemplate}\`` : (embed ? 'Embed' : 'Text')}  ·  **Delete trigger:** ${deleteTrigger ? 'Yes' : 'No'}  ·  **Reply to message:** ${replyToMessage ? 'Yes' : 'No'}  ·  **Ping user:** ${pingUser ? 'Yes' : 'No'}`,
     `**Channels:** ${channelIds.length ? channelIds.map((id) => `<#${id}>`).join(' ') : 'All channels'}`,
     `**Roles:** ${roleIds.length ? roleIds.map((id) => `<@&${id}>`).join(' ') : 'Everyone'}`,
     `**Trigger:** ${trigger}`,
-    `**Reply:** ${reply.length > 300 ? `${reply.slice(0, 300)}…` : reply}`,
+    `**Reply/flags:** ${reply ? (reply.length > 300 ? `${reply.slice(0, 300)}…` : reply) : 'None'}`,
   ];
   await interaction.editReply({ components: [textCard(lines.join('\n'), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
@@ -181,11 +199,14 @@ async function editCmd(interaction) {
   const replyToMessage = interaction.options.getBoolean('reply_to_message');
   const pingUser = interaction.options.getBoolean('ping_user');
   const reply = interaction.options.getString('reply');
+  const embedTemplateInput = interaction.options.getString('embed_template');
 
-  if (!mode && embed == null && deleteTrigger == null && replyToMessage == null && pingUser == null && !reply) {
+  if (!mode && embed == null && deleteTrigger == null && replyToMessage == null && pingUser == null && reply == null && embedTemplateInput == null) {
     await interaction.reply({ content: 'Provide at least one field to change.', flags: MessageFlags.Ephemeral });
     return;
   }
+
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const patch = {};
   if (mode) patch.match_mode = mode;
@@ -193,9 +214,21 @@ async function editCmd(interaction) {
   if (deleteTrigger != null) patch.delete_trigger = deleteTrigger;
   if (replyToMessage != null) patch.reply_to_trigger = replyToMessage;
   if (pingUser != null) patch.ping_user = pingUser;
-  if (reply) patch.reply = reply;
+  if (reply != null) patch.reply = reply.trim().toLowerCase() === 'clear' ? '' : reply;
 
-  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  if (embedTemplateInput != null) {
+    if (embedTemplateInput.trim().toLowerCase() === 'clear') {
+      patch.embed_template = null;
+    } else {
+      const template = await getTemplate(interaction.guild.id, embedTemplateInput);
+      if (!template) {
+        await interaction.editReply({ components: [textCard(`Embed template \`${embedTemplateInput}\` does not exist.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+        return;
+      }
+      patch.embed_template = embedTemplateInput;
+    }
+  }
+
   const updated = await arDb.update(interaction.guild.id, id, patch);
   await interaction.editReply({ components: [textCard(updated ? `${EMOJI.APPROVE}  Autoresponder \`${id}\` updated.` : `No autoresponder with ID \`${id}\` found.`, updated ? 0xa5ea7a : 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
 }
@@ -209,7 +242,11 @@ async function listCmd(interaction) {
     return;
   }
 
-  const lines = list.map((a) => `\`${a.ar_id}\` ${modeTag(a.match_mode)}${a.reply_type === 'embed' ? ' 🖼️' : ''}${a.delete_trigger ? ' 🗑️' : ''}${a.role_ids?.length ? ' 🎭' : ''}${a.ping_user ? ' 🔔' : ''} · **${a.trigger}** → ${a.reply.length > 60 ? `${a.reply.slice(0, 60)}…` : a.reply}`);
+  const lines = list.map((a) => {
+    const reply = a.reply ?? '';
+    const output = a.embed_template ? `embed:\`${a.embed_template}\`` : (reply.length > 60 ? `${reply.slice(0, 60)}…` : (reply || 'no text'));
+    return `\`${a.ar_id}\` ${modeTag(a.match_mode)}${(a.reply_type === 'embed' || a.embed_template) ? ' 🖼️' : ''}${a.delete_trigger ? ' 🗑️' : ''}${a.role_ids?.length ? ' 🎭' : ''}${a.ping_user ? ' 🔔' : ''} · **${a.trigger}** → ${output}`;
+  });
   await interaction.editReply({ components: [textCard(`**Autoresponders (${list.length}/${arDb.MAX_PER_GUILD}):**\n${lines.join('\n')}`.slice(0, 3900), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
@@ -229,7 +266,8 @@ async function showCmd(interaction) {
     `**Channels:** ${ar.channel_ids.length ? ar.channel_ids.map((id2) => `<#${id2}>`).join(' ') : 'All channels'}`,
     `**Roles:** ${ar.role_ids.length ? ar.role_ids.map((id2) => `<@&${id2}>`).join(' ') : 'Everyone'}`,
     `**Trigger:** ${ar.trigger}`,
-    `**Reply:** ${ar.reply}`,
+    `**Embed template:** ${ar.embed_template ? `\`${ar.embed_template}\`` : 'None'}`,
+    `**Reply/flags:** ${ar.reply || 'None'}`,
   ];
   await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
