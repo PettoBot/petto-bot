@@ -4,6 +4,7 @@ const { getTemplate } = require('../db/embedTemplates');
 const { build } = require('../utils/embedBuilder');
 const { resolve } = require('../utils/embedVariables');
 const { extractReactReplies, applyReactReplies } = require('../utils/messageFlags');
+const { tokenize } = require('../handlers/prefixInteraction');
 const logger = require('../utils/logger');
 
 /** Pulls role/user mentions typed into a resolved reply (e.g. "@staff") so they can be allow-listed. */
@@ -14,25 +15,39 @@ function extractMentions(text) {
   return { users, roles };
 }
 
-function matches(ar, content) {
+function matchDetails(ar, content) {
   const lower = content.toLowerCase();
   const trigger = ar.trigger.toLowerCase();
 
   switch (ar.match_mode) {
-    case 'startsWith':
-      return lower.startsWith(trigger);
-    case 'endsWith':
-      return lower.endsWith(trigger);
+    case 'startsWith': {
+      if (!lower.startsWith(trigger)) return null;
+      return { args: content.slice(ar.trigger.length).trim(), matched: content.slice(0, ar.trigger.length) };
+    }
+    case 'endsWith': {
+      if (!lower.endsWith(trigger)) return null;
+      const index = content.length - ar.trigger.length;
+      return { args: content.slice(0, index).trim(), matched: content.slice(index) };
+    }
     case 'exact':
-      return lower === trigger;
+      return lower === trigger ? { args: '', matched: content } : null;
     case 'regex':
       try {
-        return new RegExp(ar.trigger, 'i').test(content);
+        const match = new RegExp(ar.trigger, 'i').exec(content);
+        if (!match) return null;
+        const args = match[1] != null ? match[1].trim() : content.slice(match.index + match[0].length).trim();
+        return { args, matched: match[0] };
       } catch {
-        return false;
+        return null;
       }
-    default:
-      return lower.includes(trigger);
+    default: {
+      const index = lower.indexOf(trigger);
+      if (index < 0) return null;
+      return {
+        args: content.slice(index + ar.trigger.length).trim(),
+        matched: content.slice(index, index + ar.trigger.length),
+      };
+    }
   }
 }
 
@@ -45,12 +60,23 @@ module.exports = {
       const list = await arDb.listForGuildCached(message.guild.id);
       if (!list.length) return;
 
-      const ctx = { member: message.member, guild: message.guild, channel: message.channel, message };
-
       for (const ar of list) {
         if (ar.channel_ids.length && !ar.channel_ids.includes(message.channel.id)) continue;
         if (ar.role_ids?.length && !ar.role_ids.some((roleId) => message.member.roles.cache.has(roleId))) continue;
-        if (!matches(ar, message.content)) continue;
+
+        const match = matchDetails(ar, message.content);
+        if (!match) continue;
+
+        const ctx = {
+          member: message.member,
+          guild: message.guild,
+          channel: message.channel,
+          message,
+          args: match.args,
+          argTokens: tokenize(match.args),
+          commandName: ar.trigger,
+          prefix: '',
+        };
 
         const { text: cleanedReply, emojis: reactReplies } = extractReactReplies(ar.reply ?? '');
 
