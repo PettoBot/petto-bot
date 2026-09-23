@@ -196,6 +196,15 @@ function teamActionRow(guildId, kind, severity) {
       .setStyle(ButtonStyle.Primary),
   );
 
+  if (kind === 'shop') {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`gops_ignore_prepare:${guildId}`)
+        .setLabel('Ignore server')
+        .setStyle(ButtonStyle.Secondary),
+    );
+  }
+
   if (severity === 'critical') {
     row.addComponents(
       new ButtonBuilder()
@@ -225,6 +234,22 @@ function describeDelivery({ deliveredChannel = null, deliveryType = null, delive
   return 'Not delivered';
 }
 
+function formatEvidence(evidence) {
+  if (!evidence?.content) return null;
+
+  const snippet = truncate(evidence.content, 650)
+    .replace(/```/g, 'ˋˋˋ')
+    .replace(/\r?\n/g, ' ')
+    .replace(/@/g, '@\u200b');
+
+  const lines = [];
+  if (evidence.channelId) lines.push(`Channel: <#${evidence.channelId}>`);
+  if (evidence.authorId) lines.push(`Author: <@${evidence.authorId}> (\`${evidence.authorId}\`)`);
+  lines.push(`> ${snippet}`);
+  if (evidence.url) lines.push(`[Jump to message](${evidence.url})`);
+  return lines.join('\n').slice(0, 1_024);
+}
+
 async function sendTeamAlert(client, {
   guild,
   kind = 'diagnostic',
@@ -236,6 +261,7 @@ async function sendTeamAlert(client, {
   deliveredRecipientId = null,
   requestedBy = null,
   force = false,
+  evidence = null,
 }) {
   if (!guild) return null;
   const template = TEMPLATES[kind] ?? TEMPLATES.diagnostic;
@@ -268,6 +294,11 @@ async function sendTeamAlert(client, {
     )
     .setFooter({ text: requestedBy ? `Requested by ${requestedBy}` : 'Petto automated guild diagnostics' })
     .setTimestamp();
+
+  const evidenceValue = formatEvidence(evidence);
+  if (evidenceValue) {
+    embed.addFields({ name: 'Detected message', value: evidenceValue, inline: false });
+  }
 
   const mentionOwner = effectiveSeverity === 'critical' && config.ownerId ? `<@${config.ownerId}>` : null;
   const sent = await channel.send({

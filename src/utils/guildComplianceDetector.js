@@ -1,5 +1,6 @@
 const { Events } = require('discord.js');
-const { sendGuildNotice, sendTeamAlert } = require('./guildOpsAlerts');
+const { sendTeamAlert } = require('./guildOpsAlerts');
+const { isGuildComplianceIgnored } = require('../db/guildComplianceSettings');
 const logger = require('./logger');
 
 const ATTACHED = Symbol.for('petto.guildComplianceMonitor.attached');
@@ -7,9 +8,11 @@ const SWEEP_STARTED = Symbol.for('petto.guildComplianceMonitor.sweepStarted');
 const SCAN_COOLDOWN_MS = Math.max(60_000, Number(process.env.PETTO_GUILD_COMPLIANCE_SCAN_COOLDOWN_MS) || 10 * 60 * 1000);
 const SIGNAL_WINDOW_MS = Math.max(5 * 60_000, Number(process.env.PETTO_GUILD_COMPLIANCE_SIGNAL_WINDOW_MS) || 30 * 60 * 1000);
 const TEAM_ALERT_SCORE = Math.max(3, Number(process.env.PETTO_GUILD_COMPLIANCE_TEAM_SCORE) || 5);
-const AUTO_NOTICE_SCORE = Math.max(TEAM_ALERT_SCORE, Number(process.env.PETTO_GUILD_COMPLIANCE_NOTICE_SCORE) || 8);
-const CRITICAL_SCORE = Math.max(AUTO_NOTICE_SCORE, Number(process.env.PETTO_GUILD_COMPLIANCE_CRITICAL_SCORE) || 10);
-const AUTO_NOTICE_ENABLED = !/^(?:0|false|off|no)$/i.test(String(process.env.PETTO_GUILD_COMPLIANCE_AUTO_NOTICE ?? 'true'));
+const HIGH_CONFIDENCE_SCORE = Math.max(
+  TEAM_ALERT_SCORE,
+  Number(process.env.PETTO_GUILD_COMPLIANCE_HIGH_SCORE || process.env.PETTO_GUILD_COMPLIANCE_NOTICE_SCORE) || 8,
+);
+const CRITICAL_SCORE = Math.max(HIGH_CONFIDENCE_SCORE, Number(process.env.PETTO_GUILD_COMPLIANCE_CRITICAL_SCORE) || 10);
 const SWEEP_INTERVAL_MS = Math.max(30_000, Number(process.env.PETTO_GUILD_COMPLIANCE_SWEEP_INTERVAL_MS) || 60_000);
 const SWEEP_BATCH_SIZE = Math.max(1, Math.min(100, Number(process.env.PETTO_GUILD_COMPLIANCE_SWEEP_BATCH) || 20));
 
@@ -18,9 +21,6 @@ const recentSignals = new Map();
 const scheduledScans = new Map();
 let sweepCursor = 0;
 
-// Detection is intentionally multilingual and evidence-based. Bare words such as
-// "boost", "nitro", "shop" or "payment" are not enough by themselves to trigger
-// a server notice. We look for combinations that indicate an actual transaction.
 const PATTERNS = {
   commerce: /\b(?:shop|store|tienda|loja|market|marketplace|mercado|catalog|catalogo|catalogue|price|prices|precio|precios|preco|precos|order|orders|pedido|pedidos|sale|sales|venta|ventas|venda|vendas|selling|vendiendo|vendendo|vendo|vender|compra|compras|comprar|purchase|buy|sell|stock|estoque|vouch|vouches|comprovante|comprovantes)\b/i,
   payment: /\b(?:payment|payments|pay|pago|pagos|pagamento|pagamentos|paypal|cashapp|venmo|crypto|cripto|criptomoeda|bitcoin|btc|usdt|binance|wallet|wallets|carteira|carteiras|stripe|pix|boleto|mercadopago|mercado\s+pago|bizum|transferencia|transferencias|cartao|cartoes|tarjeta|tarjetas)\b/i,
@@ -39,6 +39,17 @@ function normalize(value) {
     .trim();
 }
 
+function looksLikeCommandMessage(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return false;
+
+  // Common prefix-command shapes such as %shop, !shop, p!shop are operational
+  // input, not evidence that a server is selling something.
+  if (/^[!%.$?;,~^&*+=|\\/#_\-]{1,4}[a-z][\w-]{0,31}(?:\s|$)/i.test(text)) return true;
+  if (/^[a-z0-9_-]{1,20}[!%.$?;,~^&*+=|\\/#_\-][a-z][\w-]{0,31}(?:\s|$)/i.test(text)) return true;
+  return /^<@!?\d+>\s*[a-z][\w-]{0,31}(?:\s|$)/i.test(text);
+}
+
 function scoreText(value, { metadata = false, channelName = false } = {}) {
   const text = normalize(value);
   if (!text) return { score: 0, labels: [], families: [], actionable: false };
@@ -48,7 +59,15 @@ function scoreText(value, { metadata = false, channelName = false } = {}) {
   const discordGoods = PATTERNS.discordGoods.test(text);
   const pricing = PATTERNS.pricing.test(text);
   const transaction = PATTERNS.transaction.test(text);
-  const trade = discordGoods && (commerce || pricing || transaction);
+
+  // Generic commerce is not a Petto compliance incident. The detector only
+  // becomes actionable when Discord-specific goods/services are paired with
+  // concrete transaction evidence.
+  const trade = discordGoods && (
+    transaction
+    || pricing
+    || (!metadata && commerce && payment)
+  );
 
   let score = 0;
   const labels = [];
@@ -74,9 +93,6 @@ function scoreText(value, { metadata = false, channelName = false } = {}) {
     labels.push('purchase/order call-to-action');
     families.push('transaction');
   }
-
-  // A bare "nitro", "boost" or "members" reference is intentionally worth 0.
-  // It only becomes meaningful when the same text also contains sale/payment context.
   if (trade) {
     score += channelName ? 3 : 4;
     labels.push('Discord goods/services with transaction context');
@@ -86,18 +102,11 @@ function scoreText(value, { metadata = false, channelName = false } = {}) {
   if (commerce && payment) score += 1;
   if (pricing && (commerce || payment)) score += 1;
 
-  const actionable = Boolean(
-    trade
-    || transaction
-    || (pricing && (commerce || payment))
-    || (!metadata && commerce && payment),
-  );
-
   return {
     score,
     labels: [...new Set(labels)],
     families: [...new Set(families)],
-    actionable,
+    actionable: trade,
   };
 }
 
@@ -107,8 +116,9 @@ function addRecentSignal(guildId, signal) {
   const withoutDuplicate = signal.messageId
     ? list.filter((item) => item.messageId !== signal.messageId)
     : list;
+
   withoutDuplicate.push({ ...signal, at: now });
-  const kept = withoutDuplicate.filter((item) => now - item.at <= SIGNAL_WINDOW_MS).slice(-30);
+  const kept = withoutDuplicate.filter((item) => now - item.at <= SIGNAL_WINDOW_MS).slice(-20);
   recentSignals.set(guildId, kept);
   return kept;
 }
@@ -119,6 +129,10 @@ function getRecentSignals(guildId) {
   if (list.length) recentSignals.set(guildId, list);
   else recentSignals.delete(guildId);
   return list;
+}
+
+function strongestRecentSignal(recent) {
+  return [...recent].sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || (b.at ?? 0) - (a.at ?? 0))[0] ?? null;
 }
 
 function inspectGuildMetadata(guild) {
@@ -142,9 +156,6 @@ function inspectGuildMetadata(guild) {
     if (channel.topic) absorb(scoreText(channel.topic, { metadata: true }), 'channel topic', channel.id);
   }
 
-  // Count each evidence family only once across the entire server. This prevents a
-  // large social server with repeated #boost/#payment-style utility channels from
-  // accumulating a high score just because it has many channels.
   let score = 0;
   if (familyHits.has('commerce')) score += 1;
   if (familyHits.has('payment')) score += 1;
@@ -167,24 +178,32 @@ function summarizeResult({ score, labels, channels, recent, actionable }) {
     ? 'low'
     : score >= CRITICAL_SCORE
       ? 'very high'
-      : score >= AUTO_NOTICE_SCORE
+      : score >= HIGH_CONFIDENCE_SCORE
         ? 'high'
         : score >= TEAM_ALERT_SCORE
           ? 'review'
           : 'low';
+
   const uniqueLabels = [...new Set(labels)].slice(0, 8);
   const recentChannels = [...new Set(recent.map((item) => item.channelId).filter(Boolean))].slice(0, 5);
   const channelIds = [...new Set([...(channels || []), ...recentChannels])].slice(0, 6);
 
   const parts = [
     `Confidence: **${confidence}** (score ${score})`,
-    `Actionable transaction evidence: **${actionable ? 'yes' : 'no'}**`,
+    `Actionable Discord transaction evidence: **${actionable ? 'yes' : 'no'}**`,
     uniqueLabels.length ? `Signals: ${uniqueLabels.join(', ')}` : 'Signals: none',
   ];
   if (channelIds.length) parts.push(`Observed channels: ${channelIds.map((id) => `<#${id}>`).join(', ')}`);
-  if (recent.length) parts.push(`Recent matching messages: ${recent.length} in the last ${Math.round(SIGNAL_WINDOW_MS / 60_000)} minutes.`);
-  parts.push('Petto does not store matching message content in this detector; only short-lived signal metadata is kept in memory.');
+  if (recent.length) parts.push(`Strong matching messages seen in the last ${Math.round(SIGNAL_WINDOW_MS / 60_000)} minutes: ${recent.length}.`);
+  parts.push("Message evidence is not written to Petto's database. Team alerts may include a short review snippet and a jump link.");
   return { confidence, text: parts.join('\n') };
+}
+
+async function ignoredStatus(guildId) {
+  return isGuildComplianceIgnored(guildId).catch((error) => {
+    logger.warn({ guildId, action: 'guild-compliance-ignore-check' }, 'Could not read compliance-ignore state:', error);
+    return false;
+  });
 }
 
 async function scanGuildForCompliance(client, guildId, {
@@ -192,56 +211,89 @@ async function scanGuildForCompliance(client, guildId, {
   bypassScanCooldown = false,
   source = 'guild compliance monitor',
   requestedBy = null,
+  report = true,
+  includeIgnored = false,
 } = {}) {
   const guild = client.guilds.cache.get(String(guildId))
     ?? await client.guilds.fetch(String(guildId)).catch(() => null);
-  if (!guild) return { ok: false, reason: 'guild_not_found', guild: null, score: 0, confidence: 'unknown', labels: [] };
+
+  if (!guild) {
+    return {
+      ok: false,
+      reason: 'guild_not_found',
+      guild: null,
+      score: 0,
+      confidence: 'unknown',
+      labels: [],
+      actionable: false,
+      ignored: false,
+    };
+  }
+
+  const ignored = await ignoredStatus(guild.id);
+  if (ignored && !includeIgnored) {
+    return {
+      ok: true,
+      skipped: 'ignored',
+      guild,
+      score: 0,
+      confidence: 'ignored',
+      labels: [],
+      actionable: false,
+      ignored: true,
+      teamAlerted: false,
+      noticeSent: false,
+      evidence: null,
+    };
+  }
 
   const now = Date.now();
   const last = scanState.get(guild.id) ?? 0;
   if (!force && !bypassScanCooldown && now - last < SCAN_COOLDOWN_MS) {
-    return { ok: true, skipped: 'cooldown', guild, score: 0, confidence: 'cooldown', labels: [], actionable: false };
+    return {
+      ok: true,
+      skipped: 'cooldown',
+      guild,
+      score: 0,
+      confidence: 'cooldown',
+      labels: [],
+      actionable: false,
+      ignored,
+      teamAlerted: false,
+      noticeSent: false,
+      evidence: null,
+    };
   }
   scanState.set(guild.id, now);
 
   const metadata = inspectGuildMetadata(guild);
   const recent = getRecentSignals(guild.id);
-  const recentScores = recent.map((item) => Math.min(item.score || 0, 6)).sort((a, b) => b - a).slice(0, 2);
-  const recentScore = Math.min(8, recentScores.reduce((sum, value) => sum + value, 0));
-  const recentLabels = recent.flatMap((item) => item.labels || []);
+  const strongest = strongestRecentSignal(recent);
+
+  // Do not combine several weak messages into one strong incident.
+  const recentScore = Math.min(8, strongest?.score ?? 0);
+  const recentLabels = strongest?.labels ?? [];
   const score = Math.min(16, metadata.score + recentScore);
   const labels = [...new Set([...metadata.labels, ...recentLabels])];
-  const actionable = metadata.actionable || recent.some((item) => item.actionable);
+  const actionable = metadata.actionable || Boolean(strongest?.actionable);
   const summary = summarizeResult({ score, labels, channels: metadata.channels, recent, actionable });
+  const evidence = strongest?.evidence ?? null;
 
-  // Do not alert on generic words alone. A social/community server can legitimately
-  // have channels such as #boost, #payments, #shop or #prices without being a shop.
-  if (!actionable || score < TEAM_ALERT_SCORE) {
-    return {
-      ok: true,
-      guild,
-      score,
-      confidence: summary.confidence,
-      labels,
-      actionable,
-      teamAlerted: false,
-      noticeSent: false,
-      noticeDelivery: null,
-    };
-  }
+  const result = {
+    ok: true,
+    guild,
+    score,
+    confidence: summary.confidence,
+    labels,
+    actionable,
+    ignored,
+    teamAlerted: false,
+    noticeSent: false,
+    noticeDelivery: null,
+    evidence,
+  };
 
-  let notice = null;
-  if (AUTO_NOTICE_ENABLED && score >= AUTO_NOTICE_SCORE) {
-    notice = await sendGuildNotice(client, {
-      guildId: guild.id,
-      kind: 'shop',
-      details: 'Petto detected multiple independent commerce signals that include transaction context and require administrator review. This automated review notice is not a final policy determination.',
-      source,
-      requestedBy,
-      force,
-      teamAlert: false,
-    });
-  }
+  if (!actionable || score < TEAM_ALERT_SCORE || !report) return result;
 
   const severity = score >= CRITICAL_SCORE ? 'critical' : 'warning';
   const teamMessage = await sendTeamAlert(client, {
@@ -250,11 +302,9 @@ async function scanGuildForCompliance(client, guildId, {
     severity,
     details: summary.text,
     source,
-    deliveredChannel: notice?.channel ?? null,
-    deliveryType: notice?.deliveryType ?? null,
-    deliveredRecipientId: notice?.recipientId ?? null,
     requestedBy,
     force,
+    evidence,
   });
 
   logger.warn(
@@ -263,44 +313,39 @@ async function scanGuildForCompliance(client, guildId, {
   );
 
   return {
-    ok: true,
-    guild,
-    score,
-    confidence: summary.confidence,
-    labels,
-    actionable,
+    ...result,
     teamAlerted: Boolean(teamMessage),
-    noticeSent: Boolean(notice?.ok),
-    noticeChannel: notice?.channel ?? null,
-    noticeDelivery: notice?.deliveryType ?? null,
   };
 }
 
 async function inspectMessage(message) {
   if (!message?.guild || message.author?.bot || message.system) return;
-  const content = String(message.content ?? '').slice(0, 2_000);
-  const result = scoreText(content, { metadata: false });
-  if (result.score < 3 || !result.actionable) return;
 
-  const signals = addRecentSignal(message.guild.id, {
-    score: Math.min(result.score, 6),
+  const content = String(message.content ?? '').slice(0, 2_000);
+  if (!content.trim() || looksLikeCommandMessage(content)) return;
+  if (await ignoredStatus(message.guild.id)) return;
+
+  const result = scoreText(content, { metadata: false });
+  if (result.score < TEAM_ALERT_SCORE || !result.actionable) return;
+
+  addRecentSignal(message.guild.id, {
+    score: Math.min(result.score, 8),
     labels: result.labels.map((label) => `message ${label}`),
     families: result.families,
-    actionable: result.actionable,
+    actionable: true,
     channelId: message.channelId,
     messageId: message.id,
+    evidence: {
+      content: content.replace(/\s+/g, ' ').trim().slice(0, 650),
+      authorId: message.author?.id ?? null,
+      channelId: message.channelId,
+      messageId: message.id,
+      url: message.url || (message.guildId && message.channelId
+        ? `https://discord.com/channels/${message.guildId}/${message.channelId}/${message.id}`
+        : null),
+    },
   });
 
-  const rollingScore = signals
-    .map((item) => Math.min(item.score || 0, 6))
-    .sort((a, b) => b - a)
-    .slice(0, 2)
-    .reduce((sum, value) => sum + value, 0);
-  if (rollingScore < TEAM_ALERT_SCORE) return;
-
-  // Re-evaluate immediately after a live signal, but do not bypass notice/team
-  // cooldowns. This fixes the old behaviour where the 10-minute scan cooldown made
-  // the automatic detector appear to work only when !guildsend scan was used.
   await scanGuildForCompliance(message.client, message.guild.id, {
     bypassScanCooldown: true,
     source: 'guild compliance live monitor',
@@ -323,8 +368,18 @@ function scheduleScan(client, guildId, source, delayMs = 2_500) {
       logger.warn({ guildId, action: 'guild-compliance-scheduled' }, 'Scheduled guild compliance scan failed:', error);
     });
   }, delayMs);
+
   timer.unref?.();
   scheduledScans.set(key, timer);
+}
+
+function clearGuildComplianceRuntimeState(guildId) {
+  const key = String(guildId);
+  scanState.delete(key);
+  recentSignals.delete(key);
+  const timer = scheduledScans.get(key);
+  if (timer) clearTimeout(timer);
+  scheduledScans.delete(key);
 }
 
 function startBackgroundSweep(client) {
@@ -378,6 +433,8 @@ function attachGuildComplianceMonitor(client) {
 
 module.exports = {
   attachGuildComplianceMonitor,
+  clearGuildComplianceRuntimeState,
+  looksLikeCommandMessage,
   scanGuildForCompliance,
   scoreText,
 };
