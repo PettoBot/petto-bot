@@ -89,6 +89,10 @@ alter table guilds add column if not exists bot_banner_url text;
 alter table guilds add column if not exists bot_description text;
 alter table guilds add column if not exists setup_channel_id text;
 alter table guilds add column if not exists invites_paused_until timestamptz;
+alter table guilds add column if not exists compliance_ignored boolean not null default false;
+alter table guilds add column if not exists compliance_ignored_by text;
+alter table guilds add column if not exists compliance_ignored_at timestamptz;
+alter table guilds add column if not exists compliance_ignore_reason text;
 
 -- Named sets of roles for /role group give|take <name> <member> — bulk-assign/remove several
 -- roles at once instead of listing them out every time.
