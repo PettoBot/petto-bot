@@ -4,18 +4,26 @@ const { isPettoOperator } = require('../../utils/autoModControl');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { sendGuildNotice, TEMPLATES } = require('../../utils/guildOpsAlerts');
-const { scanGuildForCompliance } = require('../../utils/guildComplianceDetector');
+const {
+  clearGuildComplianceRuntimeState,
+  scanGuildForCompliance,
+} = require('../../utils/guildComplianceDetector');
+const {
+  getGuildComplianceSettings,
+  setGuildComplianceIgnored,
+} = require('../../db/guildComplianceSettings');
 const logger = require('../../utils/logger');
 
 const SNOWFLAKE_RE = /^\d{15,25}$/;
-const TYPES = [...Object.keys(TEMPLATES), 'scan'];
+const CONTROL_TYPES = ['scan', 'ignore', 'unignore', 'status'];
+const TYPES = [...Object.keys(TEMPLATES), ...CONTROL_TYPES];
 
 module.exports = {
   prefixOnly: true,
   hiddenFromHelp: true,
   data: new SlashCommandBuilder()
     .setName('guildsend')
-    .setDescription('Private support control: send an operational notice to one Petto server.')
+    .setDescription('Private support control: send notices and manage guild diagnostics.')
     .setDMPermission(false)
     .addStringOption((option) => option
       .setName('guild_id')
@@ -23,11 +31,11 @@ module.exports = {
       .setRequired(true))
     .addStringOption((option) => option
       .setName('type')
-      .setDescription(`Notice type: ${TYPES.join(', ')}`)
+      .setDescription(`Type: ${TYPES.join(', ')}`)
       .setRequired(true))
     .addStringOption((option) => option
       .setName('details')
-      .setDescription('Optional extra context shown in the notice.')),
+      .setDescription('Optional notice context or ignore reason.')),
 
   async execute(interaction) {
     if (!isPettoOperator(interaction.user?.id)) {
@@ -46,38 +54,80 @@ module.exports = {
     if (!SNOWFLAKE_RE.test(guildId)) {
       return reply(interaction, `${EMOJI.WARNING} Use a valid Discord server ID.`, 0xfed53c);
     }
-    if (kind !== 'scan' && !TEMPLATES[kind]) {
-      return reply(interaction, `${EMOJI.WARNING} Unknown notice type. Use: \`${TYPES.join('`, `')}\`.`, 0xfed53c);
+    if (!TYPES.includes(kind)) {
+      return reply(interaction, `${EMOJI.WARNING} Unknown type. Use: \`${TYPES.join('`, `')}\`.`, 0xfed53c);
+    }
+
+    const guild = await resolveGuild(interaction.client, guildId);
+    if (!guild) {
+      return reply(interaction, `${EMOJI.DENY} Petto is not currently in a server with ID \`${guildId}\`.`, 0xfe6465);
+    }
+
+    if (kind === 'ignore' || kind === 'unignore') {
+      const ignored = kind === 'ignore';
+      const settings = await setGuildComplianceIgnored(guildId, ignored, {
+        userId: interaction.user.id,
+        reason: ignored ? details : null,
+      });
+      clearGuildComplianceRuntimeState(guildId);
+
+      logger.info(
+        { guildId, action: `guild-compliance-${kind}`, userId: interaction.user.id },
+        `Guild compliance monitor ${ignored ? 'ignored' : 're-enabled'} for ${guild.name}.`,
+      );
+
+      return reply(
+        interaction,
+        ignored
+          ? `${EMOJI.APPROVE} Automatic compliance alerts are now **ignored** for **${guild.name}** (\`${guildId}\`).${settings.reason ? `\nReason: ${settings.reason}` : ''}`
+          : `${EMOJI.APPROVE} Automatic compliance alerts are **enabled again** for **${guild.name}** (\`${guildId}\`).`,
+        0xa5ea7a,
+      );
+    }
+
+    if (kind === 'status') {
+      const settings = await getGuildComplianceSettings(guildId, { refresh: true });
+      const lines = [
+        `${EMOJI.APPROVE} Compliance-monitor status for **${guild.name}**`,
+        `Server: \`${guildId}\``,
+        `Automatic alerts: **${settings.ignored ? 'ignored' : 'enabled'}**`,
+      ];
+      if (settings.ignoredBy) lines.push(`Ignored by: <@${settings.ignoredBy}> (\`${settings.ignoredBy}\`)`);
+      if (settings.ignoredAt) lines.push(`Ignored at: ${settings.ignoredAt}`);
+      if (settings.reason) lines.push(`Reason: ${settings.reason}`);
+      return reply(interaction, lines.join('\n'), settings.ignored ? 0xfed53c : 0xa5ea7a);
     }
 
     if (kind === 'scan') {
       await interaction.reply({
-        components: [textCard(`${EMOJI.WARNING} Scanning \`${guildId}\` for guild-compliance signals…`, 0xfed53c)],
+        components: [textCard(`${EMOJI.WARNING} Running a **read-only** compliance scan for \`${guildId}\`…`, 0xfed53c)],
         flags: MessageFlags.IsComponentsV2,
       });
 
-      const scan = await scanGuildForCompliance(interaction.client, guildId, {
-        force: true,
-        source: '!guildsend scan',
-        requestedBy: interaction.user.id,
-      });
-
-      if (!scan.guild) {
-        return interaction.editReply({
-          components: [textCard(`${EMOJI.DENY} Petto is not currently in a server with ID \`${guildId}\`.`, 0xfe6465)],
-          flags: MessageFlags.IsComponentsV2,
-        });
-      }
+      const [scan, settings] = await Promise.all([
+        scanGuildForCompliance(interaction.client, guildId, {
+          force: true,
+          source: '!guildsend scan',
+          requestedBy: interaction.user.id,
+          report: false,
+          includeIgnored: true,
+        }),
+        getGuildComplianceSettings(guildId),
+      ]);
 
       const labels = scan.labels?.length ? scan.labels.slice(0, 6).join(', ') : 'No notable signals';
+      const evidence = formatEvidence(scan.evidence);
+
       return interaction.editReply({
         components: [textCard(
-          `${EMOJI.APPROVE} Scan complete for **${scan.guild.name}**.\n`
+          `${EMOJI.APPROVE} Scan complete for **${guild.name}**.\n`
+          + `Monitor: **${settings.ignored ? 'ignored' : 'enabled'}**\n`
           + `Confidence: **${scan.confidence}** • Score: **${scan.score}**\n`
           + `Actionable evidence: **${scan.actionable ? 'yes' : 'no'}**\n`
           + `Signals: ${labels}\n`
-          + `Team alert: **${scan.teamAlerted ? 'sent' : 'not needed'}** • Server notice: **${scan.noticeSent ? 'sent' : 'not sent'}**${scan.noticeDelivery ? ` via **${scan.noticeDelivery === 'owner_dm' ? 'owner DM' : scan.noticeDelivery === 'private_channel' ? 'private channel' : scan.noticeDelivery}**` : ''}`,
-          scan.score >= 8 ? 0xfe6465 : scan.score >= 5 ? 0xfed53c : 0xa5ea7a,
+          + `${evidence ? `${evidence}\n` : ''}`
+          + 'This manual scan is **read-only**: no team alert and no server notice were sent.',
+          scan.score >= 10 ? 0xfe6465 : scan.score >= 5 ? 0xfed53c : 0xa5ea7a,
         )],
         flags: MessageFlags.IsComponentsV2,
       });
@@ -98,13 +148,6 @@ module.exports = {
       teamAlert: TEMPLATES[kind].severity === 'critical',
     });
 
-    if (!result.guild) {
-      return interaction.editReply({
-        components: [textCard(`${EMOJI.DENY} Petto is not currently in a server with ID \`${guildId}\`.`, 0xfe6465)],
-        flags: MessageFlags.IsComponentsV2,
-      });
-    }
-
     if (!result.ok) {
       logger.warn({ guildId, action: 'guildsend', userId: interaction.user.id }, 'Guild notice could not be delivered privately; team alert fallback was attempted.');
       return interaction.editReply({
@@ -118,13 +161,19 @@ module.exports = {
       : result.channel
         ? `in <#${result.channel.id}>`
         : 'through a private route';
+
     logger.info({ guildId, action: 'guildsend', userId: interaction.user.id, deliveryType: result.deliveryType }, `Guild ${kind} notice delivered ${destination}.`);
     return interaction.editReply({
-      components: [textCard(`${EMOJI.APPROVE} Notice delivered to **${result.guild.name}** (\`${guildId}\`) ${destination}.`, 0xa5ea7a)],
+      components: [textCard(`${EMOJI.APPROVE} Notice delivered to **${guild.name}** (\`${guildId}\`) ${destination}.`, 0xa5ea7a)],
       flags: MessageFlags.IsComponentsV2,
     });
   },
 };
+
+async function resolveGuild(client, guildId) {
+  return client.guilds.cache.get(String(guildId))
+    ?? client.guilds.fetch(String(guildId)).catch(() => null);
+}
 
 async function resolveSupportGuildId(client) {
   if (config.supportGuildId) return config.supportGuildId;
@@ -132,9 +181,25 @@ async function resolveSupportGuildId(client) {
   return joinLog?.guildId ?? null;
 }
 
+function formatEvidence(evidence) {
+  if (!evidence?.content) return null;
+  const safe = String(evidence.content)
+    .replace(/@/g, '@\u200b')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 350);
+  const parts = ['Detected message:'];
+  if (evidence.channelId) parts.push(`Channel: <#${evidence.channelId}>`);
+  if (evidence.authorId) parts.push(`Author: <@${evidence.authorId}>`);
+  parts.push(`> ${safe}`);
+  if (evidence.url) parts.push(`Jump: ${evidence.url}`);
+  return parts.join('\n');
+}
+
 async function reply(interaction, content, color) {
   return interaction.reply({
     components: [textCard(content, color)],
     flags: MessageFlags.IsComponentsV2,
+    allowedMentions: { parse: [] },
   });
 }
