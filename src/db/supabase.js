@@ -1,6 +1,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const config = require('../config');
 const { TRANSIENT_STATUS_CODES, sleep, retryDelayMs } = require('../utils/transientDb');
+const { createPostgresClient, getPrimaryPool } = require('./postgres');
 
 const READ_ATTEMPTS = 3;
 
@@ -48,14 +49,26 @@ async function resilientFetch(input, init = {}) {
   throw lastError;
 }
 
-const supabase = createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {
-  auth: {
-    persistSession: false,
-    autoRefreshToken: false,
-  },
-  global: {
-    fetch: resilientFetch,
-  },
-});
+const supabaseRest = config.supabaseUrl && config.supabaseServiceRoleKey
+  ? createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+    global: {
+      fetch: resilientFetch,
+    },
+  })
+  : null;
+
+// Keep the existing module contract so the many feature-specific DB modules do
+// not need to change their query code. In migration mode, all runtime reads and
+// writes go directly to Discloud PostgreSQL; the Supabase REST client remains
+// available only for the legacy single-Supabase mode.
+const supabase = config.primaryDatabaseUrl
+  ? createPostgresClient(getPrimaryPool())
+  : supabaseRest;
+
+if (!supabase) throw new Error('No database client is configured. Set SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY or DISCLOUD_DATABASE_URL.');
 
 module.exports = supabase;

@@ -1,6 +1,6 @@
 require('dotenv').config();
 
-const required = ['DISCORD_TOKEN', 'DISCORD_CLIENT_ID', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'];
+const required = ['DISCORD_TOKEN', 'DISCORD_CLIENT_ID'];
 
 function resolveVaultDatabaseUrl() {
   const rawUrl = process.env.PETTO_VAULT_DATABASE_URL || null;
@@ -37,6 +37,15 @@ function envInt(name, fallback, minimum, maximum) {
   return Math.max(minimum, Math.min(maximum, Math.floor(value)));
 }
 
+const legacyDatabaseUrl = process.env.DATABASE_URL?.trim() || null;
+const primaryDatabaseUrl = process.env.DISCLOUD_DATABASE_URL?.trim()
+  || process.env.PETTO_PRIMARY_DATABASE_URL?.trim()
+  || null;
+// During the migration window, DATABASE_URL can remain the old direct Supabase
+// URI while DISCLOUD_DATABASE_URL becomes the new primary connection.
+const supabaseDatabaseUrl = process.env.SUPABASE_DATABASE_URL?.trim()
+  || (primaryDatabaseUrl ? legacyDatabaseUrl : null);
+
 function resolveShards() {
   const raw = process.env.DISCORD_SHARDS?.trim().toLowerCase();
   if (!raw) return undefined;
@@ -52,6 +61,14 @@ for (const key of required) {
   if (!process.env[key]) {
     throw new Error(`Missing required environment variable: ${key}. Configure it in the host secret store or a local, untracked .env file.`);
   }
+}
+
+if (primaryDatabaseUrl && !supabaseDatabaseUrl) {
+  throw new Error('SUPABASE_DATABASE_URL is required when DISCLOUD_DATABASE_URL is configured so the startup database mirror can be maintained.');
+}
+
+if (!primaryDatabaseUrl && (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY)) {
+  throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required in legacy Supabase REST mode.');
 }
 
 module.exports = {
@@ -99,10 +116,22 @@ module.exports = {
   devGuildId: process.env.DISCORD_DEV_GUILD_ID || null,
   supabaseUrl: process.env.SUPABASE_URL,
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
-  // Optional: direct Postgres connection string (Settings -> Database -> Connection string).
-  // When set, index.js runs schema.sql on every boot. When unset, migrations are skipped
-  // and the schema must be applied manually in the Supabase SQL editor.
-  databaseUrl: process.env.DATABASE_URL || null,
+  databaseMode: primaryDatabaseUrl ? 'discloud-postgres' : 'supabase-rest',
+  // The Discloud PostgreSQL instance is the runtime source of truth. Its
+  // template is internal/private, so do not force TLS on this connection.
+  primaryDatabaseUrl,
+  primaryDatabaseSsl: envBool('DISCLOUD_DATABASE_SSL', false),
+  // Direct PostgreSQL URI for the Supabase mirror. Keep TLS enabled there by
+  // default because Supabase's managed database normally requires it.
+  supabaseDatabaseUrl,
+  supabaseDatabaseSsl: envBool('SUPABASE_DATABASE_SSL', true),
+  databasePoolMax: envInt('PETTO_DATABASE_POOL_MAX', 10, 1, 50),
+  databaseConnectTimeoutMs: envInt('PETTO_DATABASE_CONNECT_TIMEOUT_MS', 10_000, 1_000, 60_000),
+  databaseSyncOnBoot: envBool('PETTO_DATABASE_SYNC_ON_BOOT', true),
+  databaseSyncRequired: envBool('PETTO_DATABASE_SYNC_REQUIRED', false),
+  // Backwards-compatible migration URI. In the new mode this points at the
+  // Discloud primary; in the old mode it keeps the existing DATABASE_URL flow.
+  databaseUrl: primaryDatabaseUrl || legacyDatabaseUrl,
   // Optional dedicated PostgreSQL database for Petto Vault backups and audit history.
   // Discloud's private VLAN hostname can override an older Tailscale URL safely.
   vaultDatabaseUrl: resolveVaultDatabaseUrl(),
