@@ -3,11 +3,19 @@ const { endGiveaway, handleForfeit, refreshGiveawayMessage } = require('../utils
 const logger = require('../utils/logger');
 const config = require('../config');
 const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency');
+const { isTransientDbError } = require('../utils/transientDb');
 
 // Giveaway timing matters more to users than most background jobs (an "ends in 5s" giveaway
 // shouldn't actually end 55s late), so this polls tighter than Petto's other 60s jobs — matching
 // bli's own 15s giveaway poll interval.
 const POLL_INTERVAL_MS = 15_000;
+const MAX_TRANSIENT_BACKOFF_MS = 60_000;
+const TRANSIENT_ERROR_LOG_INTERVAL_MS = 60_000;
+
+let started = false;
+let transientFailureStreak = 0;
+let lastTransientErrorLogAt = 0;
+let suppressedTransientErrors = 0;
 
 async function processDueGiveaways(client) {
   const due = await giveawaysDb.listDueGiveaways();
@@ -43,14 +51,65 @@ async function refreshActiveGiveaways(client) {
   }, config.jobConcurrency);
 }
 
+function transientBackoffMs() {
+  return Math.min(POLL_INTERVAL_MS * (2 ** Math.min(transientFailureStreak, 2)), MAX_TRANSIENT_BACKOFF_MS);
+}
+
+function logJobError(error) {
+  if (!isTransientDbError(error)) {
+    logger.error('Giveaway job error:', error);
+    return;
+  }
+
+  const now = Date.now();
+  if (now - lastTransientErrorLogAt < TRANSIENT_ERROR_LOG_INTERVAL_MS) {
+    suppressedTransientErrors += 1;
+    return;
+  }
+
+  const suffix = suppressedTransientErrors ? ` (${suppressedTransientErrors} similar errors suppressed)` : '';
+  suppressedTransientErrors = 0;
+  lastTransientErrorLogAt = now;
+  logger.error(`Giveaway job temporarily unavailable; backing off${suffix}:`, error);
+}
+
 function startGiveawayJob(client) {
-  refreshActiveGiveaways(client).catch((err) => logger.error('Giveaway panel repair error:', err));
+  // Defensive guard: startup should call this once, but accidentally registering the
+  // scheduler twice would make every outage appear as duplicate error bursts.
+  if (started) {
+    logger.warn('Giveaway job start ignored because it is already running.');
+    return;
+  }
+  started = true;
+
+  refreshActiveGiveaways(client).catch((err) => {
+    if (isTransientDbError(err)) logJobError(err);
+    else logger.error('Giveaway panel repair error:', err);
+  });
+
   const run = exclusiveTask(async () => {
     await processDueGiveaways(client);
     await processExpiredClaims(client);
   });
-  setInterval(() => run().catch((err) => logger.error('Giveaway job error:', err)), POLL_INTERVAL_MS).unref?.();
-  logger.info('Giveaway job started (checking every 15s).');
+
+  const tick = async () => {
+    let nextDelay = POLL_INTERVAL_MS;
+    try {
+      await run();
+      transientFailureStreak = 0;
+    } catch (err) {
+      if (isTransientDbError(err)) {
+        transientFailureStreak += 1;
+        nextDelay = transientBackoffMs();
+      }
+      logJobError(err);
+    } finally {
+      setTimeout(tick, nextDelay).unref?.();
+    }
+  };
+
+  setTimeout(tick, POLL_INTERVAL_MS).unref?.();
+  logger.info('Giveaway job started (checking every 15s, with transient DB backoff).');
 }
 
 module.exports = { startGiveawayJob, processDueGiveaways, processExpiredClaims, refreshActiveGiveaways };

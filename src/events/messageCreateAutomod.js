@@ -4,6 +4,8 @@ const { findBannedWord, isExcessiveCaps, hasMassMentions, hasUnauthorizedInvite,
 const { applyAutomodAction } = require('../utils/automodAction');
 const { handleHoneypotMessage } = require('../utils/honeypot');
 const logger = require('../utils/logger');
+const { extractUrls } = require('../utils/safeBrowsing');
+const { findKnownMalicious } = require('../db/maliciousLinks');
 
 module.exports = {
   name: Events.MessageCreate,
@@ -19,7 +21,40 @@ module.exports = {
     }
 
     if (message.author.bot || !message.member) return;
-    // Staff are exempt — automod shouldn't punish the people configuring it.
+
+    // Global known-malicious URL guard. This performs DB/cache lookups only — it
+    // never calls Google Safe Browsing for ordinary messages. Staff are checked
+    // too because a compromised staff account should not bypass link blocking.
+    try {
+      const urls = extractUrls(message.content);
+      if (urls.length) {
+        const hits = await findKnownMalicious(urls);
+        if (hits.length) {
+          const deleted = await message.delete().then(() => true).catch((err) => {
+            logger.warn(`Could not delete malicious-link message ${message.id}: ${err.message}`);
+            return false;
+          });
+
+          const notice = await message.channel.send({
+            content: deleted
+              ? `<@${message.author.id}> your message was removed because it contained a URL in Petto's malicious-link database.`
+              : `<@${message.author.id}> that message contains a URL Petto has identified as malicious. Do not open it.`,
+            allowedMentions: { users: [message.author.id] },
+          }).catch(() => null);
+
+          if (notice) setTimeout(() => notice.delete().catch(() => {}), 12_000);
+          logger.warn(`Blocked known malicious URL in guild=${message.guild.id} channel=${message.channel.id} user=${message.author.id}`);
+          return;
+        }
+      }
+    } catch (err) {
+      // Fail open on DB/cache errors: ordinary messages must never fall back to
+      // an external Safe Browsing request per URL.
+      logger.error(`Malicious-link DB scan failed for message ${message.id}:`, err);
+    }
+
+    // Staff are exempt from configurable automod rules below, but not from the
+    // known-malicious URL guard above.
     if (message.member.permissions.has(PermissionFlagsBits.ManageMessages)) return;
 
     try {

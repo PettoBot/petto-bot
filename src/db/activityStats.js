@@ -5,11 +5,16 @@ const { forEachWithConcurrency } = require('../utils/concurrency');
 
 const FLUSH_INTERVAL_MS = 1_000;
 const FLUSH_CONCURRENCY = 8;
+const MAX_FLUSH_BACKOFF_MS = 60_000;
+const FLUSH_ERROR_LOG_INTERVAL_MS = 30_000;
 const MAX_PENDING_KEYS = 200_000;
 const pending = new Map();
 let flushTimer = null;
 let flushInFlight = null;
 let overflowWarningAt = 0;
+let flushFailureStreak = 0;
+let lastFlushErrorLogAt = 0;
+let suppressedFlushErrors = 0;
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -52,13 +57,31 @@ function mergePending(key, guildId, channelId, values) {
   pending.set(key, current);
 }
 
-function scheduleFlush() {
+function nextFlushDelayMs() {
+  if (!flushFailureStreak) return FLUSH_INTERVAL_MS;
+  return Math.min(FLUSH_INTERVAL_MS * (2 ** Math.min(flushFailureStreak, 6)), MAX_FLUSH_BACKOFF_MS);
+}
+
+function scheduleFlush(delayMs = nextFlushDelayMs()) {
   if (flushTimer || flushInFlight) return;
   flushTimer = setTimeout(() => {
     flushTimer = null;
     flushActivity().catch((error) => logger.error('[Activity stats] Batch flush failed:', error));
-  }, FLUSH_INTERVAL_MS);
+  }, delayMs);
   flushTimer.unref?.();
+}
+
+function logFlushFailure(failedRows, batchSize, error) {
+  const now = Date.now();
+  if (now - lastFlushErrorLogAt < FLUSH_ERROR_LOG_INTERVAL_MS) {
+    suppressedFlushErrors += 1;
+    return;
+  }
+
+  const suffix = suppressedFlushErrors ? ` (${suppressedFlushErrors} similar errors suppressed)` : '';
+  suppressedFlushErrors = 0;
+  lastFlushErrorLogAt = now;
+  logger.error(`[Activity stats] Failed to flush ${failedRows}/${batchSize} buckets; counters were kept for retry${suffix}:`, error);
 }
 
 /**
@@ -109,7 +132,11 @@ async function flushActivity() {
       }
     }, FLUSH_CONCURRENCY);
     if (failedRows) {
-      logger.error(`[Activity stats] Failed to flush ${failedRows}/${batch.size} buckets; counters were kept for retry:`, firstError);
+      flushFailureStreak = Math.min(flushFailureStreak + 1, 6);
+      logFlushFailure(failedRows, batch.size, firstError);
+    } else {
+      flushFailureStreak = 0;
+      suppressedFlushErrors = 0;
     }
   })().finally(() => {
     flushInFlight = null;

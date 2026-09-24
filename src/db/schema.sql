@@ -89,6 +89,10 @@ alter table guilds add column if not exists bot_banner_url text;
 alter table guilds add column if not exists bot_description text;
 alter table guilds add column if not exists setup_channel_id text;
 alter table guilds add column if not exists invites_paused_until timestamptz;
+alter table guilds add column if not exists compliance_ignored boolean not null default false;
+alter table guilds add column if not exists compliance_ignored_by text;
+alter table guilds add column if not exists compliance_ignored_at timestamptz;
+alter table guilds add column if not exists compliance_ignore_reason text;
 
 -- Named sets of roles for /role group give|take <name> <member> — bulk-assign/remove several
 -- roles at once instead of listing them out every time.
@@ -162,9 +166,18 @@ create index if not exists idx_mod_actions_expires on mod_actions(expires_at) wh
 
 alter table mod_actions enable row level security;
 
--- Atomically allocates the next per-guild case number and inserts the case.
--- Using an advisory lock avoids a race between the "select max()" and the
--- insert when two moderation actions happen in the same guild at once.
+-- Durable per-server case counters. The counter survives case deletion, so deleting
+-- the latest case never causes its number to be reused.
+create table if not exists guild_case_counters (
+  guild_id          text primary key references guilds(guild_id) on delete cascade,
+  last_case_number  integer not null default 0 check (last_case_number >= 0)
+);
+
+alter table guild_case_counters enable row level security;
+
+-- Atomically allocates the next case number for this guild and inserts the case.
+-- The MAX() guard only repairs a missing/stale counter; normal numbering comes
+-- from guild_case_counters and therefore never mixes numbers between servers.
 create or replace function create_mod_case(
   p_guild_id      text,
   p_user_id       text,
@@ -181,10 +194,17 @@ declare
 begin
   perform pg_advisory_xact_lock(hashtext(p_guild_id));
 
-  select coalesce(max(case_number), 0) + 1
-    into v_case_number
-    from mod_actions
-    where guild_id = p_guild_id;
+  insert into guild_case_counters (guild_id, last_case_number)
+  values (p_guild_id, 0)
+  on conflict (guild_id) do nothing;
+
+  update guild_case_counters
+     set last_case_number = greatest(
+       last_case_number,
+       coalesce((select max(case_number) from mod_actions where guild_id = p_guild_id), 0)
+     ) + 1
+   where guild_id = p_guild_id
+   returning last_case_number into v_case_number;
 
   insert into mod_actions (guild_id, case_number, user_id, moderator_id, type, reason, expires_at)
   values (p_guild_id, v_case_number, p_user_id, p_moderator_id, p_type, p_reason, p_expires_at)
@@ -374,6 +394,24 @@ create table if not exists automod_silent_channels (
 );
 
 alter table automod_silent_channels enable row level security;
+
+-- Global malicious-link cache populated only by explicit !am link checks.
+-- Ordinary messages query this local table/cache and never call Safe Browsing.
+create table if not exists malicious_links (
+  normalized_url       text primary key,
+  hostname             text not null,
+  threat_types         text[] not null default '{}',
+  source               text not null default 'google_safe_browsing',
+  reported_by          text,
+  first_seen_guild_id  text,
+  first_seen_channel_id text,
+  first_seen_at        timestamptz not null default now(),
+  last_checked_at      timestamptz not null default now(),
+  dev_alerted_at       timestamptz
+);
+
+create index if not exists malicious_links_hostname_idx on malicious_links (hostname);
+alter table malicious_links enable row level security;
 
 -- Honeypot bait channels. A message in one of these channels is treated as a
 -- security violation and the configured punishment is applied automatically.
@@ -842,7 +880,7 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
--- Booster roles: a custom, self-colored role each Nitro booster can create for
+-- Booster roles: a custom, self-colored role each server booster can create for
 -- themselves (color/name/icon, optionally shared with other members) — ported
 -- from "bli"'s boosterrole.js/BoosterRole/BoosterRoleConfig, with one addition
 -- the user asked for: admins can directly create/edit/remove ANY member's
@@ -1765,3 +1803,87 @@ create table if not exists poll_votes (
   primary key (poll_id, user_id)
 );
 alter table poll_votes enable row level security;
+
+-- Roleplay response controls and counters. A response is claimed by request_id
+-- so two fast button clicks cannot double-count the same interaction.
+create table if not exists roleplay_counters (
+  guild_id  text not null references guilds(guild_id) on delete cascade,
+  user_id   text not null,
+  action    text not null,
+  count     integer not null default 0 check (count >= 0),
+  primary key (guild_id, user_id, action)
+);
+create index if not exists idx_roleplay_counters_user on roleplay_counters(guild_id, user_id);
+alter table roleplay_counters enable row level security;
+
+create table if not exists roleplay_responses (
+  request_id  text primary key,
+  guild_id    text not null references guilds(guild_id) on delete cascade,
+  message_id  text not null,
+  channel_id  text not null,
+  actor_id    text not null,
+  target_id   text not null,
+  action      text not null,
+  response    text not null check (response in ('accepted', 'rejected')),
+  created_at  timestamptz not null default now()
+);
+create unique index if not exists idx_roleplay_responses_message on roleplay_responses(message_id);
+create index if not exists idx_roleplay_responses_guild on roleplay_responses(guild_id, created_at desc);
+alter table roleplay_responses enable row level security;
+
+create or replace function record_roleplay_response(
+  p_request_id text,
+  p_guild_id text,
+  p_message_id text,
+  p_channel_id text,
+  p_actor_id text,
+  p_target_id text,
+  p_action text,
+  p_response text
+)
+returns table (claimed boolean, counter_value integer)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  next_count integer;
+begin
+  if p_response not in ('accepted', 'rejected') then
+    raise exception 'Invalid roleplay response type';
+  end if;
+  if p_action !~ '^[a-z][a-z0-9_-]{0,31}$' then
+    raise exception 'Invalid roleplay action';
+  end if;
+
+  insert into roleplay_responses (request_id, guild_id, message_id, channel_id, actor_id, target_id, action, response)
+  values (p_request_id, p_guild_id, p_message_id, p_channel_id, p_actor_id, p_target_id, p_action, p_response)
+  on conflict (request_id) do nothing;
+
+  if not found then
+    return query select false, 0;
+    return;
+  end if;
+
+  if p_response = 'accepted' then
+    insert into roleplay_counters (guild_id, user_id, action, count)
+    values (p_guild_id, p_target_id, p_action, 1)
+    on conflict (guild_id, user_id, action)
+    do update set count = roleplay_counters.count + 1
+    returning roleplay_counters.count into next_count;
+
+    insert into roleplay_counters (guild_id, user_id, action, count)
+    values (p_guild_id, p_actor_id, p_action, 1)
+    on conflict (guild_id, user_id, action)
+    do update set count = roleplay_counters.count + 1;
+  else
+    insert into roleplay_counters (guild_id, user_id, action, count)
+    values (p_guild_id, p_actor_id, 'slap', 1)
+    on conflict (guild_id, user_id, action)
+    do update set count = roleplay_counters.count + 1
+    returning roleplay_counters.count into next_count;
+  end if;
+
+  return query select true, next_count;
+end;
+$$;

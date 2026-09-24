@@ -2,6 +2,28 @@
 
 All notable changes to Petto are documented here.
 
+## [0.5.0] — 2026-08-31
+
+### Added
+
+- Added the linked-roles connection flow so members can connect Petto to Discord and receive the Petto Verified role in participating servers.
+- Added the `!summary`, `!weekly`, and `!digest` activity chart with daily green/orange series, dark Overview styling, and a text-only fallback when Canvas is unavailable.
+- Added Respond/Reject controls to targeted roleplay commands. The mentioned member can respond once with the same action or reject with a slap.
+- Added persistent per-server, per-user, per-action roleplay counters and new commands: `!hi`, `!bye`, `!yes`, `!no`, `!laugh`, `!sad`, and `!angry`.
+
+### Changed
+
+- Prefixes saved by the web dashboard now notify the bot through the internal API, refreshing its cache immediately instead of waiting for the five-minute interval.
+- Resetting the prefix now synchronizes the default `!` prefix again.
+- Server nicknames remain available without Premium; Premium continues to cover the other server profile customization fields.
+- Updated setup and removal messages to make server configuration clearer.
+- Changed booster eligibility copy to use Discord's `server booster` terminology.
+
+### Fixed
+
+- Fixed the statistics job's `.catch()` handling.
+- Added rate limiting to the internal prefix API to prevent abusive requests and satisfy the security checks.
+
 ## [0.4.1] — 2026-08-26
 
 ### Added

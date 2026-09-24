@@ -195,7 +195,7 @@ src/
                                  plus direct lookup with bli-style pagination through a command's subcommands when no
                                  specific one is given (see "Command system" below); aliases `h`/`hlp`
       report.js                 /report — send (any member) / config (staff, Manage Server)
-      boosterrole.js             /boosterrole (alias `br`) — self-service custom colored role for Nitro boosters, plus
+      boosterrole.js             /boosterrole (alias `br`) — self-service custom colored role for server boosters, plus
                                  an admin group that can directly manage anyone's (ported from "bli", which only ever
                                  let the booster themselves touch it) — see "Booster roles" below
       reportMessage.js          "Report Message" — message context-menu command (right-click → Apps), opens a reason
@@ -332,7 +332,7 @@ Slash commands and the "Report Message" context-menu command are registered toge
 
 1. Create a project at [supabase.com](https://supabase.com).
 2. Copy the **Project URL** and the **service_role** (a.k.a. "secret") key (Settings → API) into `.env`. This key bypasses RLS — keep it server-side only, never in a frontend/dashboard.
-3. Schema: either let the bot apply it automatically (see `DATABASE_URL` below), or open the SQL editor and run [`src/db/schema.sql`](../src/db/schema.sql) by hand — it creates `guilds`, `mod_actions`, `warns`, `notes`, `log_webhooks`, `log_entries`, `log_ignored`, `embed_templates`, `verification_config`, `verification_redemptions`, `automod_config`, `automod_silent_channels`, `antinuke_config`, `warn_escalation_rules`, `report_config`, `ticket_panels`, `ticket_categories`, `tickets`, `member_events_config`, `bump_reminders`, `booster_roles`, `booster_role_config`, `level_config`, `level_users`, `level_rewards`, `level_multipliers`, `afk_status`, `afk_mentions`, `auto_responders`, `sticky_messages`, `poj_config`, `poj_channels`, `disabled_commands`, and the `create_mod_case`/`create_ticket`/`add_level_xp` functions, with RLS enabled on every table.
+3. Schema: either let the bot apply it automatically (see `DATABASE_URL` below), or open the SQL editor and run [`src/db/schema.sql`](../src/db/schema.sql) by hand — it creates `guilds`, `mod_actions`, `warns`, `notes`, `log_webhooks`, `log_entries`, `log_ignored`, `embed_templates`, `verification_config`, `verification_redemptions`, `automod_config`, `automod_silent_channels`, `antinuke_config`, `warn_escalation_rules`, `report_config`, `ticket_panels`, `ticket_categories`, `tickets`, `member_events_config`, `bump_reminders`, `booster_roles`, `booster_role_config`, `roleplay_counters`, `roleplay_responses`, `level_config`, `level_users`, `level_rewards`, `level_multipliers`, `afk_status`, `afk_mentions`, `auto_responders`, `sticky_messages`, `poj_config`, `poj_channels`, `disabled_commands`, and the `create_mod_case`/`create_ticket`/`add_level_xp`/`record_roleplay_response` functions, with RLS enabled on every table.
 
 ### 3. Environment
 
@@ -528,7 +528,7 @@ Ported from "bli" (`WelcomeSettings`, `bumpreminder`/`bumpHandler`) and "urubot"
 
 ## Booster roles (`/boosterrole`, alias `br`)
 
-Ported from "bli"'s `boosterrole.js`/`BoosterRole`/`BoosterRoleConfig` — a custom, self-colored (optionally gradient, optionally iconed) role each Nitro booster can create for themselves, with one deliberate change from the source: bli only ever let the booster themselves touch their own role: Petto adds a full **`admin` subcommand group** that can create/edit/remove *any* member's booster role directly, bypassing their cooldowns and the per-member limit — same DB row and the same `utils/boosterRoleActions.js` `applyRole()` function underneath either way, so self-service and admin-directed creation can never drift into two different code paths.
+Ported from "bli"'s `boosterrole.js`/`BoosterRole`/`BoosterRoleConfig` — a custom, self-colored (optionally gradient, optionally iconed) role each server booster can create for themselves, with one deliberate change from the source: bli only ever let the booster themselves touch their own role: Petto adds a full **`admin` subcommand group** that can create/edit/remove *any* member's booster role directly, bypassing their cooldowns and the per-member limit — same DB row and the same `utils/boosterRoleActions.js` `applyRole()` function underneath either way, so self-service and admin-directed creation can never drift into two different code paths.
 
 **Self-service** *(requires actively boosting, except `remove`)*:
 - `color hex:<#RRGGBB> hex2:<#RRGGBB>?` — create or update your role's color (a second hex makes it a gradient)

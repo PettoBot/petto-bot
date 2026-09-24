@@ -1,6 +1,8 @@
-const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder, MessageFlags } = require('discord.js');
 const { getActivitySummary } = require('../../db/activityStats');
 const { COLORS } = require('../../utils/colors');
+const logger = require('../../utils/logger');
+const { buildActivitySummaryCard } = require('../../imgutils/activitySummaryCard');
 
 module.exports = {
   aliases: ['digest', 'weekly'],
@@ -54,7 +56,23 @@ module.exports = {
       )
       .setFooter({ text: 'Petto only uses aggregated activity counters for this summary.' });
 
-    await interaction.editReply({ embeds: [embed] });
+    let files;
+    try {
+      const chart = buildActivitySummaryCard({
+        guildName: interaction.guild.name,
+        days,
+        rows,
+        totals,
+        activeChannels: byChannel.size,
+      });
+      const attachment = new AttachmentBuilder(chart, { name: 'activity-summary.png' });
+      embed.setImage('attachment://activity-summary.png');
+      files = [attachment];
+    } catch (error) {
+      logger.warn({ guildId: interaction.guild.id, command: 'summary', source: 'summary' }, 'Activity summary chart could not be rendered; sending the text summary only.', error);
+    }
+
+    await interaction.editReply({ embeds: [embed], ...(files ? { files } : {}) });
   },
 };
 

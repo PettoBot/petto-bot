@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { getUserHistory, getLastCase, getCase, updateCase, deleteCase, deleteAllForUser } = require('../../db/modActions');
+const { getUserHistory, getCaseHistory, getLastCase, getCase, updateCase, deleteCase, deleteAllForUser } = require('../../db/modActions');
 const { formatCaseLine, formatCaseDetail } = require('../../utils/caseFormat');
 const { textCard } = require('../../utils/caseCard');
 const { resolveUsers } = require('../../utils/userResolve');
@@ -9,15 +9,17 @@ const { requireAdministrator } = require('../../utils/moderationCommand');
 const logger = require('../../utils/logger');
 
 const MAX_TIMEOUT_MS = 28 * 24 * 60 * 60 * 1000;
+const CASES_PER_PAGE = 10;
 
 module.exports = {
   aliases: ['cases'],
+  prefixDefaultSubcommand: 'list',
   data: new SlashCommandBuilder()
     .setName('case')
     .setDescription('Look up, edit, or delete moderation case history.')
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
     .setDMPermission(false)
-    .addSubcommand((sub) => sub.setName('list').setDescription("Show a user's infraction history.").addUserOption((opt) => opt.setName('user').setDescription('The user to check').setRequired(true)))
+    .addSubcommand((sub) => sub.setName('list').setDescription('Show moderation cases, optionally filtered by user.').addUserOption((opt) => opt.setName('user').setDescription('Optional user filter').setRequired(false)))
     .addSubcommand((sub) => sub.setName('last').setDescription("Show a user's most recent infraction.").addUserOption((opt) => opt.setName('user').setDescription('The user to check').setRequired(true)))
     .addSubcommand((sub) =>
       sub.setName('last-many').setDescription('Show the most recent infraction for multiple users.').addStringOption((opt) => opt.setName('users').setDescription('Mentions, IDs, or exact usernames; separate with spaces or commas').setRequired(true)),
@@ -56,17 +58,85 @@ module.exports = {
 };
 
 async function list(interaction) {
-  const targetUser = interaction.options.getUser('user', true);
+  const targetUser = interaction.options.getUser('user', false);
+  const targetUserId = targetUser?.id ?? null;
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
-  const history = await getUserHistory(interaction.guild.id, targetUser.id, { limit: 15 });
-  if (!history.length) {
-    await interaction.editReply({ components: [textCard(`${targetUser} has no infractions on record.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  let page = 0;
+  let result = await getCaseHistory(interaction.guild.id, {
+    userId: targetUserId,
+    limit: CASES_PER_PAGE,
+    offset: 0,
+  });
+
+  if (!result.count) {
+    const emptyText = targetUser
+      ? `${targetUser} has no infractions on record.`
+      : 'This server has no moderation cases on record.';
+    await interaction.editReply({ components: [textCard(emptyText, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
-  const lines = [`### Infractions for ${targetUser}`, ...history.map(formatCaseLine)];
-  await interaction.editReply({ components: [textCard(lines.join('\n\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  const scopeId = String(interaction.rawMessage?.id ?? interaction.id ?? interaction.user.id);
+  const previousId = `case_list_prev:${scopeId}`;
+  const nextId = `case_list_next:${scopeId}`;
+
+  function renderPage(rows, count, currentPage, includeControls = true) {
+    const totalPages = Math.max(1, Math.ceil(count / CASES_PER_PAGE));
+    const heading = targetUser
+      ? `### Infractions for ${targetUser}`
+      : `### Moderation cases · ${interaction.guild.name}`;
+    const lines = [
+      heading,
+      `**Total:** ${count} · **Page:** ${currentPage + 1}/${totalPages}`,
+      ...rows.map(formatCaseLine),
+    ];
+
+    const components = [textCard(lines.join('\n\n'), 0x4b4f59)];
+    if (includeControls && totalPages > 1) {
+      components.push(
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(previousId).setLabel('Previous').setStyle(ButtonStyle.Secondary).setDisabled(currentPage <= 0),
+          new ButtonBuilder().setCustomId(nextId).setLabel('Next').setStyle(ButtonStyle.Secondary).setDisabled(currentPage >= totalPages - 1),
+        ),
+      );
+    }
+
+    return { components, flags: MessageFlags.IsComponentsV2 };
+  }
+
+  let payload = renderPage(result.rows, result.count, page);
+  const message = await interaction.editReply(payload);
+
+  if (result.count <= CASES_PER_PAGE) return;
+
+  while (true) {
+    let click;
+    try {
+      click = await message.awaitMessageComponent({
+        filter: (component) => component.user.id === interaction.user.id && (component.customId === previousId || component.customId === nextId),
+        time: 60_000,
+      });
+    } catch {
+      await interaction.editReply(renderPage(result.rows, result.count, page, false)).catch(() => {});
+      return;
+    }
+
+    const totalPages = Math.max(1, Math.ceil(result.count / CASES_PER_PAGE));
+    if (click.customId === previousId) page = Math.max(0, page - 1);
+    if (click.customId === nextId) page = Math.min(totalPages - 1, page + 1);
+
+    result = await getCaseHistory(interaction.guild.id, {
+      userId: targetUserId,
+      limit: CASES_PER_PAGE,
+      offset: page * CASES_PER_PAGE,
+    });
+
+    const refreshedTotalPages = Math.max(1, Math.ceil(result.count / CASES_PER_PAGE));
+    page = Math.min(page, refreshedTotalPages - 1);
+    payload = renderPage(result.rows, result.count, page);
+    await click.update(payload);
+  }
 }
 
 async function last(interaction) {
