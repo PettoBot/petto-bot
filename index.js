@@ -4,6 +4,7 @@ const { loadCommands } = require('./src/handlers/commandHandler');
 const { loadEvents } = require('./src/handlers/eventHandler');
 const { deployCommands } = require('./src/handlers/deployCommands');
 const { runMigrations } = require('./src/db/migrate');
+const { syncDatabasesOnBoot } = require('./src/db/databaseSync');
 const { startExpiryJob } = require('./src/jobs/expireSanctions');
 const { startBumpReminderJob } = require('./src/jobs/bumpReminderJob');
 const { startVoiceXpJob } = require('./src/jobs/voiceXpJob');
@@ -88,6 +89,7 @@ async function main() {
   loadEvents(client);
 
   await runMigrations();
+  await syncDatabasesOnBoot();
   await deployCommands();
   await client.login(config.token);
   startExpiryJob(client);

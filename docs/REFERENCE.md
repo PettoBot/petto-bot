@@ -339,8 +339,8 @@ Slash commands and the "Report Message" context-menu command are registered toge
 Configure the required values in your hosting provider's encrypted secret
 store. For local development, use an untracked `.env` file created manually;
 this public repository intentionally does not ship an environment template.
-At minimum, provide the Discord bot credentials and Supabase connection
-values required by `src/config.js`. Optionally set a development guild ID for
+At minimum, provide the Discord bot credentials and one of the database modes
+described below. Optionally set a development guild ID for
 instant command registration while developing (global registration can take up
 to an hour to propagate). Never copy production secrets into a local example,
 issue, log, screenshot, or pull request.
@@ -351,6 +351,8 @@ The hidden prefix-only `!leaveguild <guild_id>` control is restricted to Petto o
 
 **`DATABASE_URL` (optional, auto-migrations):** the service_role key only reaches Supabase's REST API, which can't run `CREATE TABLE`. To have the bot apply `schema.sql` automatically on every boot, grab a **direct Postgres connection string** from Settings → Database → Connection string → URI, and set it as `DATABASE_URL`. This is a different, more sensitive secret than the service_role key (raw DB access, bypasses PostgREST entirely) — leave it empty if you'd rather keep applying `schema.sql` by hand. It's safe to re-run on every boot either way: every statement is `create table if not exists` / `create or replace function`.
 
+**Discloud PostgreSQL primary (migration mode):** the current schema is PostgreSQL, so the Discloud template must also be PostgreSQL. Set `DISCLOUD_DATABASE_URL` to the Discloud connection URI and `SUPABASE_DATABASE_URL` to Supabase's direct PostgreSQL URI. The bot uses Discloud for all runtime reads/writes. `DISCLOUD_DATABASE_SSL=false` is the default so the private Discloud connection is not forced through TLS; `SUPABASE_DATABASE_SSL=true` remains the default for the Supabase mirror. During the first boot, if Discloud has no guild rows and Supabase has data, the bot imports Supabase into Discloud. On later boots it upserts Discloud's data into Supabase as a backup mirror. The mirror sync never deletes rows automatically. `PETTO_DATABASE_SYNC_ON_BOOT=false` disables the sync, and `PETTO_DATABASE_SYNC_REQUIRED=true` makes a mirror failure stop startup instead of continuing with Discloud.
+
 **Verification (optional, powers `/verify`):** see "Join verification (Cloudflare Turnstile)" below for the full flow. Needs `VERIFY_BASE_URL` (the public domain the verification page will be served at, e.g. `https://captcha.example.com` — pointed at this process's `WEB_PORT` via reverse proxy/port-forward), `TURNSTILE_SITE_KEY` + `TURNSTILE_SECRET_KEY` (Cloudflare dashboard → Turnstile → your widget), and `VERIFY_TOKEN_SECRET` (a random secret that signs the magic-link tokens — generate one with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`). Leave any of these empty and the web server simply doesn't start; `/verify setup`/`/verify status` still work for configuring the gate ahead of time.
 
 ### 4. Install and run
@@ -360,7 +362,7 @@ npm install
 npm start
 ```
 
-On every boot the bot applies pending migrations (if `DATABASE_URL` is set), re-registers slash commands, then logs in — no separate deploy step needed. `npm run deploy-commands` still exists standalone if you just want to (re-)register commands without starting the bot.
+On every boot the bot applies pending migrations (to the configured direct PostgreSQL endpoints), synchronizes the configured Discloud/Supabase pair, re-registers slash commands, then logs in — no separate deploy step needed. `npm run deploy-commands` still exists standalone if you just want to (re-)register commands without starting the bot.
 
 For production on a VPS, run it under pm2 so it survives crashes and reboots:
 
