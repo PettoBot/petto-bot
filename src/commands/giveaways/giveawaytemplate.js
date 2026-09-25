@@ -3,6 +3,7 @@ const ms = require('ms');
 const { ensureGuild } = require('../../db/guilds');
 const templatesDb = require('../../db/giveawayTemplates');
 const presetsDb = require('../../db/giveawayPresets');
+const embedTemplatesDb = require('../../db/embedTemplates');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 
@@ -86,6 +87,17 @@ async function saveCmd(interaction, isEdit) {
       return;
     }
     presetId = preset.id;
+  }
+
+  if (embedTemplate) {
+    const embedDoc = await embedTemplatesDb.getTemplate(interaction.guild.id, embedTemplate);
+    if (!embedDoc) {
+      await interaction.editReply({
+        components: [textCard(`Saved embed \`${embedTemplate}\` doesn't exist. Create it first with \`!embed create ${embedTemplate}\`.`, 0xfe6465)],
+        flags: MessageFlags.IsComponentsV2,
+      });
+      return;
+    }
   }
 
   const data = {
