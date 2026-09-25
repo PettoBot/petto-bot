@@ -1,6 +1,7 @@
 const config = require('../config');
 const { createPostgresClient, getPrimaryPool, getMirrorPool } = require('../db/postgres');
 const logger = require('../utils/logger');
+const rateLimit = require('express-rate-limit');
 
 const IDENTIFIER = /^[a-z_][a-z0-9_]*$/i;
 const FILTER_OPERATORS = new Set(['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'like', 'ilike', 'in', 'is']);
@@ -8,6 +9,12 @@ const RESERVED_QUERY_KEYS = new Set(['select', 'order', 'limit', 'offset', 'on_c
 const DASHBOARD_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const DASHBOARD_RATE_LIMIT_MAX = 120;
 const dashboardRateLimitBuckets = new Map();
+const defaultDashboardRateLimiter = rateLimit({
+  windowMs: DASHBOARD_RATE_LIMIT_WINDOW_MS,
+  max: DASHBOARD_RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false
+});
 
 function fallbackDashboardRateLimiter(req, res, next) {
   const now = Date.now();
@@ -350,7 +357,10 @@ async function handleDashboardRest(req, res) {
 }
 
 function registerDashboardRestRoutes(app, rateLimiter) {
-  const effectiveLimiter = typeof rateLimiter === 'function' ? rateLimiter : fallbackDashboardRateLimiter;
+  const effectiveLimiter =
+    typeof rateLimiter === 'function'
+      ? rateLimiter
+      : (defaultDashboardRateLimiter || fallbackDashboardRateLimiter);
   app.all('/rest/v1/:table', effectiveLimiter, handleDashboardRest);
 }
 
