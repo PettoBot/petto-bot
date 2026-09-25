@@ -2,6 +2,57 @@ const { EMOJI } = require('./emojis');
 
 const RELEASES = [
   {
+    version: 'v5.0.1-46',
+    label: 'v5.0.1-46 · Reliability, safety & automation',
+    date: '2026-09-24',
+    accent: 0x8c7cff,
+    status: `${EMOJI.RELEASE_APPROVED} Latest`,
+    summary: 'A reliability and safety release with persistent malicious-link detection, stronger guild operations, independent moderation cases, and argument-aware custom commands.',
+    sections: [
+      {
+        title: `${EMOJI.RELEASE_BUG} Reliability & onboarding`,
+        items: [
+          'Fixed webhook counters and mention handling when sending webhook notifications.',
+          'Fixed VoiceMaster interaction handling and improved resilience against transient Supabase/PostgREST gateway timeouts.',
+          'Added safe retries for transient database reads and stale-cache fallbacks for known configuration.',
+          'Reduced database pressure from sticky messages and autoresponders, while preventing unsafe XP write retries.',
+          'Fixed excessive permission overwrites and improved onboarding channel creation for large guilds.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_LOCKED} AutoMod & malicious links`,
+        items: [
+          'Added persistent malicious-URL detection for links discovered through `!am`.',
+          'Known malicious URLs are reused from storage instead of being checked with Safe Browsing on every message.',
+          'Known malicious links are removed automatically, and the development team is alerted when a new URL is detected.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_SETTINGS} Guild operations & compliance`,
+        items: [
+          'Added the `guildsend` team command and automated guild diagnostics and compliance monitoring.',
+          'Added shop/store/compliance detection, team review alerts, manual scans, leave confirmation controls, and clearer guild notices.',
+        ],
+      },
+      {
+        title: `${EMOJI.HAMMER} Moderation cases`,
+        items: [
+          'Case numbers are now independent per guild and stored through persistent guild counters.',
+          'All moderation sanctions and automated actions share one per-guild sequence, with a migration for existing case history.',
+          '`case list` no longer requires a user and now supports optional user filtering and pagination.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_MAGIC} Custom command arguments`,
+        items: [
+          'Added `{args}`, `{arg1}` through `{arg10}`, `{args_from:N}`, `{arg_count}`, `{command_name}`, and `{prefix}`.',
+          'Quoted text stays together as one argument, saved embed templates support the new variables, and user-provided arguments cannot create mass mentions.',
+          'Custom commands can now use embed-only templates, editing preserves unchanged fields, and the command editor includes a variables reference.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'v0.5.0',
     label: 'v0.5.0 · Connected roles & activity',
     date: '2026-08-31',
