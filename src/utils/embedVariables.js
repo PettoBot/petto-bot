@@ -147,11 +147,17 @@ async function resolve(text, ctx = {}) {
     '{gw.winners}': ctx.giveaway?.winnersCount != null ? String(ctx.giveaway.winnersCount) : '',
     '{gw.entries}': ctx.giveaway?.entriesCount != null ? String(ctx.giveaway.entriesCount) : '',
     '{gw.host}': ctx.giveaway?.hostId ? `<@${ctx.giveaway.hostId}>` : '',
+    '{gw.host_name}': ctx.giveaway?.hostName ?? '',
+    '{gw.host_avatar}': ctx.giveaway?.hostAvatar ?? '',
     '{gw.duration}': ctx.giveaway?.endsAtUnix != null ? String(ctx.giveaway.endsAtUnix) : '',
     '{gw.timestamp}': ctx.giveaway?.endsAtUnix != null ? `<t:${ctx.giveaway.endsAtUnix}:R>` : '',
+    '{gw.ends}': ctx.giveaway?.endsAtUnix != null ? `<t:${ctx.giveaway.endsAtUnix}:R>` : '',
     '{gw.claim_time}': ctx.giveaway?.claimTimeText ?? '',
     '{gw.reaction}': ctx.giveaway?.reaction ?? '',
     '{gw.entry_mode}': ctx.giveaway?.entryMode === 'reaction' ? 'react with' : 'click on',
+    '{gw.entry_text}': ctx.giveaway?.entryText ?? '',
+    '{gw.winner_text}': ctx.giveaway?.winnerText ?? '',
+    '{gw.status}': ctx.giveaway?.status ?? '',
     // {gw.preset}: the templating engine has no loop/conditional syntax, so the per-role
     // lines (using {role.mention}/{role.entries}/{role.claim_time}/{role.id}) are built by
     // the caller (see utils/giveawayEngine.js) and passed in pre-joined as ctx.giveaway.presetText.

@@ -1,9 +1,7 @@
-const { MessageFlags } = require('discord.js');
 const giveawaysDb = require('../db/giveaways');
 const presetsDb = require('../db/giveawayPresets');
 const { formatDuration } = require('./duration');
-const { buildEntryCard, buildEnterRow, buildClaimRow, sendGiveawayResponse, GIVEAWAY_COLOR } = require('./giveawayCard');
-const { textCard } = require('./caseCard');
+const { buildEntryCard, buildEnterRow, buildClaimRow, sendGiveawayResponse } = require('./giveawayCard');
 const { EMOJI } = require('./emojis');
 const logger = require('./logger');
 
@@ -68,16 +66,33 @@ async function buildEntryPool(guild, entries, presetRoles) {
 }
 
 function giveawayCtx(giveaway, presetText, extra = {}) {
+  const guild = extra.ctx?.guild;
+  const hostUser = guild?.members?.cache?.get(giveaway.host_id)?.user
+    ?? guild?.client?.users?.cache?.get(giveaway.host_id)
+    ?? null;
+  const endsAtUnix = Math.floor(new Date(giveaway.ends_at).getTime() / 1000);
+  const ended = Boolean(giveaway.ended);
+  const entryText = ended
+    ? 'Giveaway ended'
+    : giveaway.entry_mode === 'reaction'
+      ? `React with ${giveaway.reaction} to enter!`
+      : 'Click the button below to enter!';
+
   return {
     giveaway: {
       prize: giveaway.prize,
       winnersCount: giveaway.winners_count,
       entriesCount: extra.entriesCount ?? 0,
       hostId: giveaway.host_id,
-      endsAtUnix: Math.floor(new Date(giveaway.ends_at).getTime() / 1000),
+      hostName: hostUser?.username ?? '',
+      hostAvatar: hostUser?.displayAvatarURL?.({ size: 512 }) ?? '',
+      endsAtUnix,
       claimTimeText: extra.claimTimeMs ? formatDuration(extra.claimTimeMs) : '',
       reaction: giveaway.reaction,
       entryMode: giveaway.entry_mode,
+      entryText,
+      winnerText: `${giveaway.winners_count} lucky winner${giveaway.winners_count === 1 ? '' : 's'}!`,
+      status: ended ? 'Ended' : 'Active',
       presetText,
     },
     ...extra.ctx,
@@ -87,22 +102,33 @@ function giveawayCtx(giveaway, presetText, extra = {}) {
 /** If the giveaway (or its guild default) has a saved embed template, resolves it against giveaway ctx. Returns null otherwise. */
 async function resolveCustomEmbed(guild, channel, giveaway, presetText, entriesCount = 0) {
   if (!giveaway.embed_template) return null;
-  const templatesDb = require('../db/giveawayTemplates');
-  const doc = await templatesDb.getTemplate(giveaway.guild_id, giveaway.embed_template);
+  const embedTemplatesDb = require('../db/embedTemplates');
+  const doc = await embedTemplatesDb.getTemplate(giveaway.guild_id, giveaway.embed_template);
   if (!doc) return null;
   const { build } = require('./embedBuilder');
   const ctx = giveawayCtx(giveaway, presetText, { entriesCount, ctx: { guild, channel } });
   return build(doc.data, ctx);
 }
 
-/** Posts (or re-posts, for edit) the live giveaway message. Uses a saved embed template if the giveaway has one, otherwise a default Components V2 card. */
+function hostPresentation(guild, hostId) {
+  const user = guild?.members?.cache?.get(hostId)?.user
+    ?? guild?.client?.users?.cache?.get(hostId)
+    ?? null;
+  return {
+    hostName: user?.username ?? 'Giveaway host',
+    hostAvatar: user?.displayAvatarURL?.({ size: 512 }) ?? null,
+  };
+}
+
+/** Posts (or re-posts, for edit) the live giveaway message. Uses a saved embed template if the giveaway has one, otherwise Petto's built-in Discord embed. */
 async function postGiveawayMessage(channel, giveaway, entriesCount, presetText = '') {
   const customPayload = await resolveCustomEmbed(channel.guild, channel, giveaway, presetText, entriesCount);
   const enterRow = giveaway.entry_mode === 'button' ? buildEnterRow(giveaway.id) : null;
 
   let message;
   if (customPayload) {
-    const components = [...(customPayload.components ?? []), ...(enterRow ? [enterRow] : [])];
+    const templateRows = (customPayload.components ?? []).slice(0, enterRow ? 4 : 5);
+    const components = [...templateRows, ...(enterRow ? [enterRow] : [])];
     message = await channel.send({ content: customPayload.content, embeds: customPayload.embeds, components });
   } else {
     const card = buildEntryCard({
@@ -114,9 +140,10 @@ async function postGiveawayMessage(channel, giveaway, entriesCount, presetText =
       reaction: giveaway.reaction,
       entriesCount,
       ended: false,
+      presetText,
+      ...hostPresentation(channel.guild, giveaway.host_id),
     });
-    const components = enterRow ? [card, enterRow] : [card];
-    message = await channel.send({ components, flags: MessageFlags.IsComponentsV2 });
+    message = await channel.send({ embeds: [card], components: enterRow ? [enterRow] : [] });
   }
 
   if (giveaway.entry_mode === 'reaction') await message.react(giveaway.reaction).catch(() => {});
@@ -135,7 +162,8 @@ async function refreshGiveawayMessageNow(channel, giveaway) {
   const enterRow = giveaway.entry_mode === 'button' ? buildEnterRow(giveaway.id) : null;
 
   if (customPayload) {
-    const components = [...(customPayload.components ?? []), ...(enterRow ? [enterRow] : [])];
+    const templateRows = (customPayload.components ?? []).slice(0, enterRow ? 4 : 5);
+    const components = [...templateRows, ...(enterRow ? [enterRow] : [])];
     await message.edit({ content: customPayload.content, embeds: customPayload.embeds, components }).catch(() => {});
     return;
   }
@@ -149,8 +177,10 @@ async function refreshGiveawayMessageNow(channel, giveaway) {
     reaction: giveaway.reaction,
     entriesCount,
     ended: false,
+    presetText,
+    ...hostPresentation(channel.guild, giveaway.host_id),
   });
-  await message.edit({ components: enterRow ? [card, enterRow] : [card], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+  await message.edit({ content: null, embeds: [card], components: enterRow ? [enterRow] : [] }).catch(() => {});
 }
 
 /** Serializes edits for the same giveaway so concurrent entries cannot overwrite a newer count. */
@@ -195,9 +225,15 @@ async function editEndedMessage(channel, giveaway, winnerIds, presetText = '', e
 
   const summaryText = winnerIds.length ? `${EMOJI.APPROVE}  Winner(s): ${winnerIds.map((id) => `<@${id}>`).join(', ')}` : `${EMOJI.DENY}  No valid entries.`;
 
-  const customEmbed = await resolveCustomEmbed(channel.guild, channel, giveaway, presetText, entriesCount);
+  const endedGiveaway = { ...giveaway, ended: true };
+  const customEmbed = await resolveCustomEmbed(channel.guild, channel, endedGiveaway, presetText, entriesCount);
   if (customEmbed) {
-    await message.edit({ embeds: [customEmbed.setFooter({ text: summaryText })], components: [] }).catch(() => {});
+    const content = [customEmbed.content, summaryText].filter(Boolean).join('\n');
+    await message.edit({
+      content: content || null,
+      embeds: customEmbed.embeds,
+      components: [],
+    }).catch(() => {});
     return;
   }
 
@@ -210,9 +246,10 @@ async function editEndedMessage(channel, giveaway, winnerIds, presetText = '', e
     reaction: giveaway.reaction,
     entriesCount,
     ended: true,
+    presetText,
+    ...hostPresentation(channel.guild, giveaway.host_id),
   });
-  const summary = textCard(summaryText, GIVEAWAY_COLOR);
-  await message.edit({ components: [card, summary], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+  await message.edit({ content: summaryText, embeds: [card], components: [] }).catch(() => {});
 }
 
 /** Draws one replacement winner from the pool, excluding everyone already a winner. Used both for the initial draw and for deny/expiry redraws. */

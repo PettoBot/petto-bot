@@ -1,27 +1,54 @@
-const { ContainerBuilder, TextDisplayBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { getTemplate } = require('../db/giveawayTemplates');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { getTemplate } = require('../db/embedTemplates');
 const { build } = require('./embedBuilder');
 const { resolve } = require('./embedVariables');
 const { extractReactReplies, applyReactReplies } = require('./messageFlags');
 const logger = require('./logger');
 
-const GIVEAWAY_COLOR = 0xfed53c;
+const GIVEAWAY_COLOR = 0xf4a6d7;
 
-/** Default Components V2 announcement card, used when the guild hasn't set a custom giveaway_config.embed_template. */
-function buildEntryCard({ prize, hostId, winnersCount, endsAtUnix, entryMode, reaction, entriesCount, ended }) {
+/** Default giveaway announcement embed, used when the guild hasn't selected a saved !embed template. */
+function buildEntryCard({
+  prize,
+  hostId,
+  hostName,
+  hostAvatar,
+  winnersCount,
+  endsAtUnix,
+  entryMode,
+  reaction,
+  entriesCount,
+  ended,
+  presetText = '',
+}) {
+  const enterText = entryMode === 'reaction'
+    ? `React with ${reaction} to **enter!**`
+    : 'Click **Enter Giveaway** below to enter!';
+
   const lines = [
-    `## ${prize}`,
-    '',
-    `**Host** <@${hostId}>`,
-    `**Winners** ${winnersCount}`,
-    ended ? '**Status** Ended' : `**Ends** <t:${endsAtUnix}:R>`,
-    `**Entries** ${entriesCount}`,
+    ended ? '• **This giveaway has ended.**' : `• ${enterText}`,
+    ended ? `• Ended <t:${endsAtUnix}:R>` : `• Ends <t:${endsAtUnix}:R>`,
+    `• Hosted by <@${hostId}>`,
   ];
-  if (!ended) {
-    lines.push('', entryMode === 'reaction' ? `React with ${reaction} to enter.` : 'Use the button below to enter or leave.');
+
+  if (presetText) {
+    lines.push('', '**Extra entries**', presetText);
   }
 
-  return new ContainerBuilder().setAccentColor(GIVEAWAY_COLOR).addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
+  const embed = new EmbedBuilder()
+    .setColor(GIVEAWAY_COLOR)
+    .setTitle('🎉 Giveaway')
+    .setDescription(lines.join('\n'))
+    .setAuthor({
+      name: String(prize).slice(0, 256),
+      ...(hostAvatar ? { iconURL: hostAvatar } : {}),
+    })
+    .setFooter({
+      text: `${winnersCount} lucky winner${winnersCount === 1 ? '' : 's'}! • ${entriesCount} ${entriesCount === 1 ? 'entry' : 'entries'}`,
+    });
+
+  if (hostName) embed.setTimestamp();
+  return embed;
 }
 
 function buildEnterRow(giveawayId, { disabled = false } = {}) {
@@ -39,7 +66,7 @@ function buildClaimRow(winnerId) {
 
 /**
  * Sends one of giveaway_config's configurable messages (winner/deny/claim-time/accept/no-entries),
- * each either a saved giveaway_templates embed or plain resolved text — same convention as
+ * each either a saved embed_templates design or plain resolved text — same convention as
  * utils/memberEventMessage.js's sendMemberEvent for welcome/leave/boost.
  */
 async function sendGiveawayResponse({ target, guildId, messageText, embedTemplateName, ctx, fallback }) {
