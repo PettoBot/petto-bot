@@ -383,7 +383,15 @@ function startServer(client) {
     }
   });
 
-  app.use((req, res) => res.status(404).send('Not found.'));
+  app.use((req, res) => {
+    // Keep machine-facing endpoints JSON even when a route is unavailable. The
+    // dashboard expects JSON and should never receive Express's plain-text 404.
+    if (req.path.startsWith('/api/') || req.path.startsWith('/rest/v1/')) {
+      res.status(404).json({ ok: false, error: 'not_found' });
+      return;
+    }
+    res.status(404).send('Not found.');
+  });
 
   app.listen(config.webPort, () => {
     logger.info(`Verification web server listening on port ${config.webPort} (public: ${config.verifyBaseUrl}).`);

@@ -77,6 +77,9 @@ function formatDay(day) {
         timeZone: 'UTC',
     });
 }
+function normalizeDay(value) {
+    return value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
+}
 function dateRange(days) {
     const count = Math.max(1, Math.min(31, Math.floor(days) || 7));
     const end = new Date();
@@ -93,7 +96,7 @@ function buildDailyPoints(rows, days) {
     const points = dateRange(days);
     const byDay = new Map(points.map((point) => [point.day, point]));
     for (const row of rows) {
-        const point = byDay.get(row.day);
+        const point = byDay.get(normalizeDay(row.day));
         if (!point)
             continue;
         point.messages += number(row.messages);
