@@ -230,7 +230,7 @@ async function mirrorMutation({ method, table, body, queryParameters, onConflict
     return;
   }
 
-  applyFilters(query, queryParameters);
+  if (method !== 'POST') applyFilters(query, queryParameters);
   const result = await query.select('*');
   if (result.error) throw result.error;
 }
@@ -295,7 +295,7 @@ async function handleDashboardRest(req, res) {
       query.select('*');
     }
 
-    applyFilters(query, req.query);
+    if (method !== 'POST') applyFilters(query, req.query);
     if (range) query.range(range.from, range.to);
     else if (first(req.query.limit) !== undefined) query.limit(Math.min(1000, Math.max(0, Number(first(req.query.limit)) || 0)));
 
