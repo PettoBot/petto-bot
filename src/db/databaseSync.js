@@ -1,7 +1,6 @@
 const config = require('../config');
 const logger = require('../utils/logger');
 const { getPrimaryPool, getMirrorPool } = require('./postgres');
-const { forEachWithConcurrency } = require('../utils/concurrency');
 
 const PUBLIC_SCHEMA = 'public';
 const BATCH_SIZE = 250;
@@ -95,11 +94,6 @@ async function getTableMeta(pool, table) {
   };
 }
 
-async function countRows(pool, table) {
-  const { rows } = await pool.query(`SELECT COUNT(*)::bigint AS count FROM ${qualifiedTable(table)}`);
-  return Number(rows[0]?.count || 0);
-}
-
 function buildInsert(table, meta, rows, { preserveTarget = false } = {}) {
   const values = [];
   const columns = meta.columns;
@@ -173,23 +167,13 @@ async function copyDatabase(source, target, direction, sourceTables, targetTable
   return { copiedTables, totalRows, tables: tables.length };
 }
 
-async function findTablesNeedingBackfill(source, target, sourceTables, targetTables) {
-  const commonTables = sourceTables.filter((table) => targetTables.has(table));
-  const missingData = [];
-
-  await forEachWithConcurrency(commonTables, async (table) => {
-    const [sourceCount, targetCount] = await Promise.all([countRows(source, table), countRows(target, table)]);
-    if (sourceCount > targetCount) missingData.push({ table, sourceCount, targetCount });
-  }, 4);
-
-  return missingData;
-}
-
 /**
- * Discloud is the source of truth after the migration. Before mirroring it
- * back, missing rows are backfilled from Supabase without overwriting rows that
- * already exist in Discloud. This matters when guilds were created on the new
- * database before the rest of the old database had been copied.
+ * Discloud is the runtime source of truth after the migration. The first pass
+ * merges every row from Supabase into Discloud without overwriting an existing
+ * Discloud primary-key row. The second pass mirrors the resulting Discloud
+ * state back to Supabase. Comparing only row counts is not sufficient: two
+ * databases can have the same number of rows while containing different guilds
+ * or configuration records.
  */
 async function syncDatabasesOnBoot() {
   if (!config.primaryDatabaseUrl || !config.supabaseDatabaseUrl || !config.databaseSyncOnBoot) return;
@@ -201,14 +185,15 @@ async function syncDatabasesOnBoot() {
   const mirrorTableSet = new Set(mirrorTables);
 
   try {
-    const tablesToBackfill = await findTablesNeedingBackfill(mirror, primary, mirrorTables, primaryTableSet);
-    if (tablesToBackfill.length) {
-      const tableNames = tablesToBackfill.map(({ table }) => table);
-      const imported = await copyDatabase(mirror, primary, 'Supabase -> Discloud', tableNames, primaryTableSet, { preserveTarget: true });
-      logger.info(`Database sync complete: backfilled ${imported.totalRows} rows from Supabase to Discloud across ${tablesToBackfill.length} table(s).`);
-    } else {
-      logger.info('Database sync: Discloud already contains all Supabase table row counts.');
-    }
+    const imported = await copyDatabase(
+      mirror,
+      primary,
+      'Supabase -> Discloud (missing rows only)',
+      mirrorTables,
+      primaryTableSet,
+      { preserveTarget: true },
+    );
+    logger.info(`Database sync complete: reconciled ${imported.totalRows} Supabase row(s) across ${imported.tables} shared table(s).`);
 
     const mirrored = await copyDatabase(primary, mirror, 'Discloud -> Supabase', primaryTables, mirrorTableSet);
     logger.info(`Database sync complete: mirrored ${mirrored.totalRows} rows from Discloud to Supabase.`);
