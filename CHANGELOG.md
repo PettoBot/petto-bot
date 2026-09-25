@@ -2,31 +2,6 @@
 
 All notable changes to Petto are documented here.
 
-## [5.0.1-46] — 2026-09-24
-
-### Fixed
-
-- Fixed webhook counters and mention handling when sending webhook notifications.
-- Fixed VoiceMaster interaction handling.
-- Improved resilience against transient Supabase/PostgREST gateway timeouts with safe retries for transient reads and stale-cache fallbacks.
-- Reduced database pressure from sticky messages and autoresponders while preventing unsafe XP write retries.
-- Fixed excessive permission overwrites and improved onboarding channel creation for large guilds.
-
-### Added
-
-- Added persistent malicious-URL detection for links discovered through `!am`.
-- Known malicious URLs are reused from storage instead of being checked with Safe Browsing on every message, removed automatically, and reported to the development team when newly detected.
-- Added the `guildsend` team command and automated guild diagnostics and compliance monitoring, including shop/store detection, team review alerts, manual scans, leave confirmations, and clearer guild notices.
-- Added independent per-guild moderation case numbers with persistent counters and one sequence shared by sanctions and automated actions.
-- Added a migration for existing case history; `case list` now works without a user and supports optional user filtering and pagination.
-- Added argument variables for custom commands: `{args}`, `{arg1}` through `{arg10}`, `{args_from:N}`, `{arg_count}`, `{command_name}`, and `{prefix}`.
-
-### Changed
-
-- Custom command arguments preserve quoted text as one argument and support the new variables inside saved embed templates.
-- User-provided custom command arguments cannot create mass mentions.
-- Custom commands can use embed-only templates, editing preserves unchanged fields, and the editor now includes a variables reference.
-
 ## [0.5.0] — 2026-08-31
 
 ### Added
