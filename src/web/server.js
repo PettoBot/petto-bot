@@ -16,6 +16,7 @@ const { buildSnapshot } = require('../commands/config/backup');
 const { renderVerifyPage } = require('./verifyPage');
 const { renderHomePage } = require('./homePage');
 const { setCachedPrefix } = require('../events/messageCreateCommands');
+const { registerDashboardRestRoutes } = require('./dashboardDatabase');
 const logger = require('../utils/logger');
 
 async function checkTurnstile(responseToken, remoteIp) {
@@ -63,6 +64,16 @@ function createRateLimiter({ windowMs, max }) {
 const dashboardPrefixRateLimiter = rateLimit({
   windowMs: 60_000,
   limit: 30,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).json({ ok: false, error: 'rate_limited' });
+  },
+});
+
+const dashboardDatabaseRateLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 300,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   handler: (_req, res) => {
@@ -143,6 +154,8 @@ function startServer(client) {
   }
 
   if (dashboardEnabled) {
+    registerDashboardRestRoutes(app, dashboardDatabaseRateLimiter);
+
     app.post('/api/dashboard/guild/:guildId/prefix', dashboardPrefixRateLimiter, async (req, res) => {
       if (!dashboardAuthorized(req)) {
         res.status(401).json({ ok: false, error: 'unauthorized' });
