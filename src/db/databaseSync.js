@@ -1,6 +1,7 @@
 const config = require('../config');
 const logger = require('../utils/logger');
 const { getPrimaryPool, getMirrorPool } = require('./postgres');
+const { forEachWithConcurrency } = require('../utils/concurrency');
 
 const PUBLIC_SCHEMA = 'public';
 const BATCH_SIZE = 250;
@@ -99,7 +100,7 @@ async function countRows(pool, table) {
   return Number(rows[0]?.count || 0);
 }
 
-function buildInsert(table, meta, rows) {
+function buildInsert(table, meta, rows, { preserveTarget = false } = {}) {
   const values = [];
   const columns = meta.columns;
   const placeholders = rows.map((row) => `(${columns.map((column) => {
@@ -111,9 +112,9 @@ function buildInsert(table, meta, rows) {
   if (meta.primaryKey.length) {
     const key = meta.primaryKey.map((column) => quoteIdentifier(column, 'primary-key column')).join(', ');
     const updates = columns.filter((column) => !meta.primaryKey.includes(column));
-    text += updates.length
-      ? ` ON CONFLICT (${key}) DO UPDATE SET ${updates.map((column) => `${quoteIdentifier(column)} = EXCLUDED.${quoteIdentifier(column)}`).join(', ')}`
-      : ` ON CONFLICT (${key}) DO NOTHING`;
+    text += preserveTarget || !updates.length
+      ? ` ON CONFLICT (${key}) DO NOTHING`
+      : ` ON CONFLICT (${key}) DO UPDATE SET ${updates.map((column) => `${quoteIdentifier(column)} = EXCLUDED.${quoteIdentifier(column)}`).join(', ')}`;
   } else {
     text += ' ON CONFLICT DO NOTHING';
   }
@@ -133,7 +134,7 @@ async function resetSequences(pool, table, meta) {
   }
 }
 
-async function copyTable(source, target, table) {
+async function copyTable(source, target, table, options = {}) {
   const meta = await getTableMeta(source, table);
   if (!meta.columns.length) return 0;
 
@@ -148,7 +149,7 @@ async function copyTable(source, target, table) {
       [BATCH_SIZE, offset],
     );
     if (!rows.length) break;
-    const insert = buildInsert(table, meta, rows);
+    const insert = buildInsert(table, meta, rows, options);
     await target.query(insert.text, insert.values);
     copied += rows.length;
     offset += rows.length;
@@ -159,12 +160,12 @@ async function copyTable(source, target, table) {
   return copied;
 }
 
-async function copyDatabase(source, target, direction, sourceTables, targetTables) {
+async function copyDatabase(source, target, direction, sourceTables, targetTables, options = {}) {
   const tables = orderTables(sourceTables.filter((table) => targetTables.has(table)), await listDependencies(source));
   let totalRows = 0;
   let copiedTables = 0;
   for (const table of tables) {
-    const copied = await copyTable(source, target, table);
+    const copied = await copyTable(source, target, table, options);
     if (copied) copiedTables += 1;
     totalRows += copied;
     logger.info(`Database sync ${direction}: ${table} (${copied} rows).`);
@@ -172,11 +173,23 @@ async function copyDatabase(source, target, direction, sourceTables, targetTable
   return { copiedTables, totalRows, tables: tables.length };
 }
 
+async function findTablesNeedingBackfill(source, target, sourceTables, targetTables) {
+  const commonTables = sourceTables.filter((table) => targetTables.has(table));
+  const missingData = [];
+
+  await forEachWithConcurrency(commonTables, async (table) => {
+    const [sourceCount, targetCount] = await Promise.all([countRows(source, table), countRows(target, table)]);
+    if (sourceCount > targetCount) missingData.push({ table, sourceCount, targetCount });
+  }, 4);
+
+  return missingData;
+}
+
 /**
- * Discloud is the source of truth after the first import. If its guild table
- * is empty while Supabase contains data, the first boot imports Supabase into
- * Discloud. Every later boot mirrors Discloud back to Supabase with primary-key
- * upserts. Rows are never deleted from the mirror automatically.
+ * Discloud is the source of truth after the migration. Before mirroring it
+ * back, missing rows are backfilled from Supabase without overwriting rows that
+ * already exist in Discloud. This matters when guilds were created on the new
+ * database before the rest of the old database had been copied.
  */
 async function syncDatabasesOnBoot() {
   if (!config.primaryDatabaseUrl || !config.supabaseDatabaseUrl || !config.databaseSyncOnBoot) return;
@@ -184,17 +197,19 @@ async function syncDatabasesOnBoot() {
   const primary = getPrimaryPool();
   const mirror = getMirrorPool();
   const [primaryTables, mirrorTables] = await Promise.all([listTables(primary), listTables(mirror)]);
+  const primaryTableSet = new Set(primaryTables);
   const mirrorTableSet = new Set(mirrorTables);
-  const primaryGuilds = primaryTables.includes('guilds') ? await countRows(primary, 'guilds') : 0;
-  const mirrorGuilds = mirrorTables.includes('guilds') ? await countRows(mirror, 'guilds') : 0;
-
-  if (primaryGuilds === 0 && mirrorGuilds > 0) {
-    logger.warn(`Database sync: Discloud is empty, importing ${mirrorGuilds} guilds from Supabase.`);
-    const imported = await copyDatabase(mirror, primary, 'Supabase -> Discloud', mirrorTables, new Set(primaryTables));
-    logger.info(`Database sync complete: imported ${imported.totalRows} rows from Supabase to Discloud.`);
-  }
 
   try {
+    const tablesToBackfill = await findTablesNeedingBackfill(mirror, primary, mirrorTables, primaryTableSet);
+    if (tablesToBackfill.length) {
+      const tableNames = tablesToBackfill.map(({ table }) => table);
+      const imported = await copyDatabase(mirror, primary, 'Supabase -> Discloud', tableNames, primaryTableSet, { preserveTarget: true });
+      logger.info(`Database sync complete: backfilled ${imported.totalRows} rows from Supabase to Discloud across ${tablesToBackfill.length} table(s).`);
+    } else {
+      logger.info('Database sync: Discloud already contains all Supabase table row counts.');
+    }
+
     const mirrored = await copyDatabase(primary, mirror, 'Discloud -> Supabase', primaryTables, mirrorTableSet);
     logger.info(`Database sync complete: mirrored ${mirrored.totalRows} rows from Discloud to Supabase.`);
   } catch (error) {

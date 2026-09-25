@@ -2,6 +2,7 @@ const supabase = require('./supabase');
 const { ensureGuild } = require('./guilds');
 const logger = require('../utils/logger');
 const { forEachWithConcurrency } = require('../utils/concurrency');
+const { mirrorActivity, hasMirror } = require('./statusMirror');
 
 const FLUSH_INTERVAL_MS = 1_000;
 const FLUSH_CONCURRENCY = 8;
@@ -35,7 +36,10 @@ async function incrementActivityNow(guildId, channelId, { messages = 0, reaction
   };
 
   const { error } = await supabase.rpc('increment_activity_stat', params);
-  if (!error) return;
+  if (!error) {
+    await mirrorActivityFromPrimary(guildId, channelId, day);
+    return;
+  }
 
   // Brand new guild: this can fire before anything else has created its guilds row yet
   // (activity tracking has no other reason to touch that table). Create it and retry once.
@@ -43,10 +47,31 @@ async function incrementActivityNow(guildId, channelId, { messages = 0, reaction
     await ensureGuild(guildId);
     const { error: retryError } = await supabase.rpc('increment_activity_stat', params);
     if (retryError) throw retryError;
+    await mirrorActivityFromPrimary(guildId, channelId, day);
     return;
   }
 
   throw error;
+}
+
+async function mirrorActivityFromPrimary(guildId, channelId, day) {
+  if (!hasMirror()) return;
+
+  try {
+    const { data, error } = await supabase
+      .from('activity_stats')
+      .select('guild_id, channel_id, day, messages, reactions, voice_seconds')
+      .eq('guild_id', guildId)
+      .eq('channel_id', channelId)
+      .eq('day', day)
+      .maybeSingle();
+    if (error) throw error;
+    if (data) await mirrorActivity(data);
+  } catch (error) {
+    // Activity is already committed on the primary. Startup backfill repairs
+    // the mirror if this best-effort live update is unavailable.
+    logger.warn('Activity mirror update failed:', error);
+  }
 }
 
 function mergePending(key, guildId, channelId, values) {
