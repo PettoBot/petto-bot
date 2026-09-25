@@ -240,15 +240,6 @@ class PostgresQuery {
     const state = { values: [] };
     const where = this.buildWhere(state);
     if (this.action === 'select') {
-      if (this.countMode === 'exact' && this.head) {
-        return { text: `SELECT COUNT(*)::int AS count FROM ${this.table}${where}`, values: state.values, countOnly: true, head: this.head };
-      }
-      let selectedColumns = parseColumns(this.returningColumns);
-      if (this.countMode === 'exact') selectedColumns += ', COUNT(*) OVER()::int AS "__petto_total_count"';
-      let text = `SELECT ${selectedColumns} FROM ${this.table}${where}${this.buildOrder()}`;
-      if (this.limitValue != null) text += ` LIMIT ${this.limitValue}`;
-      if (this.offsetValue != null) text += ` OFFSET ${this.offsetValue}`;
-      return { text, values: state.values, countWindow: this.countMode === 'exact' };
     }
 
     if (this.action === 'insert' || this.action === 'upsert') {
@@ -282,18 +273,10 @@ class PostgresQuery {
       if (built.countOnly) return { data: built.head ? null : [{ count: Number(result.rows[0]?.count || 0) }], count: Number(result.rows[0]?.count || 0), error: null };
 
       let data = this.returning ? result.rows : null;
-      let count = null;
-      if (built.countWindow) {
-        count = Number(result.rows[0]?.__petto_total_count || 0);
-        data = result.rows.map(({ __petto_total_count: _count, ...row }) => row);
-      }
       if (this.cardinality) {
         if (result.rows.length > 1 || (this.cardinality === 'single' && result.rows.length === 0)) {
           return { data: null, count: null, error: Object.assign(new Error('Expected exactly one row.'), { code: 'PGRST116' }) };
         }
-        data = data?.[0] ?? null;
-      }
-      return { data, count, error: null };
     } catch (error) {
       return { data: null, count: null, error };
     }
