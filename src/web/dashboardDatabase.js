@@ -350,7 +350,8 @@ async function handleDashboardRest(req, res) {
 }
 
 function registerDashboardRestRoutes(app, rateLimiter) {
-
+  const effectiveLimiter = typeof rateLimiter === 'function' ? rateLimiter : fallbackDashboardRateLimiter;
+  app.all('/rest/v1/:table', effectiveLimiter, handleDashboardRest);
 }
 
 module.exports = { registerDashboardRestRoutes };
