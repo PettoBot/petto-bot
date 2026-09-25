@@ -3,7 +3,8 @@ const ms = require('ms');
 const { ensureGuild } = require('../../db/guilds');
 const giveawaysDb = require('../../db/giveaways');
 const presetsDb = require('../../db/giveawayPresets');
-const templatesDb = require('../../db/giveawayTemplates');
+const giveawayTemplatesDb = require('../../db/giveawayTemplates');
+const embedTemplatesDb = require('../../db/embedTemplates');
 const configDb = require('../../db/giveawayConfig');
 const engine = require('../../utils/giveawayEngine');
 const { formatDuration } = require('../../utils/duration');
@@ -64,7 +65,7 @@ module.exports = {
         .addIntegerOption((o) => o.setName('winners').setDescription('New winner count').setRequired(false).setMinValue(1))
         .addStringOption((o) => o.setName('duration').setDescription('New total duration from now, e.g. 10m').setRequired(false)),
     )
-    .addSubcommand((s) => s.setName('embed').setDescription('Set the default saved embed used for new giveaways.').addStringOption((o) => o.setName('template').setDescription('Giveaway embed template name').setRequired(true)))
+    .addSubcommand((s) => s.setName('embed').setDescription('Set the default saved !embed design used for new giveaways.').addStringOption((o) => o.setName('template').setDescription('Saved !embed name, or clear').setRequired(true)))
     .addSubcommand((s) => s.setName('reaction').setDescription('Set the default entry reaction emoji.').addStringOption((o) => o.setName('emoji').setDescription('An emoji').setRequired(true)))
     .addSubcommand((s) => s.setName('entry-mode').setDescription('Set the default entry mode.').addStringOption((o) => o.setName('mode').setDescription('button or reaction').setRequired(true).addChoices(...ENTRY_MODE_CHOICES)))
     .addSubcommand((s) => s.setName('winner-message').setDescription('Set the message sent when winners are chosen.').addStringOption((o) => o.setName('message').setDescription('Supports {gw.*} and {user} variables').setRequired(true)))
@@ -74,6 +75,10 @@ module.exports = {
     .addSubcommand((s) => s.setName('accept-message').setDescription('Set the message sent when a winner accepts.').addStringOption((o) => o.setName('message').setDescription('Supports {gw.*} and {user} variables').setRequired(true)))
     .addSubcommand((s) => s.setName('no-entries-message').setDescription('Set the message sent when a giveaway ends with no entries.').addStringOption((o) => o.setName('message').setDescription('Supports {gw.*} variables').setRequired(true))),
   aliases: ['gw'],
+  prefixGreedyStringOptions: {
+    quick: 'prize',
+    start: 'prize',
+  },
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
@@ -83,7 +88,7 @@ module.exports = {
     if (sub === 'reroll') return rerollCmd(interaction);
     if (sub === 'end') return endCmd(interaction);
     if (sub === 'edit') return editCmd(interaction);
-    if (sub === 'embed') return configCmd(interaction, 'embed_template', interaction.options.getString('template', true), `Default giveaway embed template set.`);
+    if (sub === 'embed') return setEmbedCmd(interaction);
     if (sub === 'reaction') return configCmd(interaction, 'reaction', interaction.options.getString('emoji', true), 'Default entry reaction set.');
     if (sub === 'entry-mode') return configCmd(interaction, 'entry_mode', interaction.options.getString('mode', true), 'Default entry mode set.');
     if (sub === 'winner-message') return configCmd(interaction, 'winner_message', interaction.options.getString('message', true), 'Winner message set.');
@@ -166,9 +171,12 @@ async function startCmd(interaction) {
   }
 
   if (embedTemplate) {
-    const template = await templatesDb.getTemplate(interaction.guild.id, embedTemplate);
+    const template = await embedTemplatesDb.getTemplate(interaction.guild.id, embedTemplate);
     if (!template) {
-      await interaction.editReply({ components: [textCard(`Giveaway embed template \`${embedTemplate}\` doesn't exist.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({
+        components: [textCard(`Saved embed \`${embedTemplate}\` doesn't exist. Create it first with \`!embed create ${embedTemplate}\`.`, 0xfe6465)],
+        flags: MessageFlags.IsComponentsV2,
+      });
       return;
     }
   }
@@ -197,7 +205,7 @@ async function templateCmd(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
 
-  const doc = await templatesDb.getTemplate(interaction.guild.id, name);
+  const doc = await giveawayTemplatesDb.getTemplate(interaction.guild.id, name);
   if (!doc) {
     await interaction.editReply({ components: [textCard("That giveaway template doesn't exist.", 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
@@ -310,6 +318,37 @@ async function editCmd(interaction) {
   if (channel) await engine.refreshGiveawayMessage(channel, updated);
 
   await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Giveaway updated.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+}
+
+async function setEmbedCmd(interaction) {
+  const rawName = interaction.options.getString('template', true).trim();
+
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  await ensureGuild(interaction.guild.id);
+
+  if (['clear', 'none'].includes(rawName.toLowerCase())) {
+    await configDb.updateConfig(interaction.guild.id, { embed_template: null });
+    await interaction.editReply({
+      components: [textCard(`${EMOJI.APPROVE}  Default giveaway embed cleared. New giveaways will use Petto's built-in design.`, 0xa5ea7a)],
+      flags: MessageFlags.IsComponentsV2,
+    });
+    return;
+  }
+
+  const doc = await embedTemplatesDb.getTemplate(interaction.guild.id, rawName);
+  if (!doc) {
+    await interaction.editReply({
+      components: [textCard(`No saved embed named \`${rawName}\` exists. Create one with \`!embed create ${rawName}\` first.`, 0xfe6465)],
+      flags: MessageFlags.IsComponentsV2,
+    });
+    return;
+  }
+
+  await configDb.updateConfig(interaction.guild.id, { embed_template: doc.name });
+  await interaction.editReply({
+    components: [textCard(`${EMOJI.APPROVE}  Default giveaway design set to saved embed **${doc.name}**.`, 0xa5ea7a)],
+    flags: MessageFlags.IsComponentsV2,
+  });
 }
 
 async function configCmd(interaction, field, value, successText) {

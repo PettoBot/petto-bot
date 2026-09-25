@@ -96,7 +96,7 @@ async function convertToken(message, def, token, resolveContext = {}) {
   }
 }
 
-const FLAG_RE = /^--([a-z_]+)$/i;
+const FLAG_RE = /^--([a-z_-]+)$/i;
 
 async function extractFlags(message, tokens, optionDefs, resolveContext) {
   const defByName = new Map(optionDefs.map((d) => [d.name, d]));
@@ -105,7 +105,8 @@ async function extractFlags(message, tokens, optionDefs, resolveContext) {
 
   for (let i = 0; i < tokens.length; i++) {
     const match = FLAG_RE.exec(tokens[i]);
-    const def = match && defByName.get(match[1].toLowerCase());
+    const flagName = match ? match[1].toLowerCase().replace(/-/g, '_') : null;
+    const def = flagName ? defByName.get(flagName) : null;
     if (def && tokens[i + 1] !== undefined) {
       const value = await convertToken(message, def, tokens[i + 1], resolveContext);
       if (value !== null) {
@@ -130,7 +131,7 @@ async function extractFlags(message, tokens, optionDefs, resolveContext) {
  * for the next option instead of being force-consumed, so skipping an optional works
  * as long as what follows unambiguously resolves to a different type.
  */
-async function parsePositional(message, optionDefs, tokens, resolveContext) {
+async function parsePositional(message, optionDefs, tokens, resolveContext, { greedyStringOption = null } = {}) {
   const values = {};
   let i = 0;
 
@@ -143,6 +144,15 @@ async function parsePositional(message, optionDefs, tokens, resolveContext) {
     if (i >= tokens.length) continue;
 
     if (def.type === ApplicationCommandOptionType.String) {
+      if (def.name === greedyStringOption) {
+        const takeUntil = Math.max(i, tokens.length - defsAfter);
+        if (takeUntil > i) {
+          values[def.name] = tokens.slice(i, takeUntil).join(' ');
+          i = takeUntil;
+        }
+        continue;
+      }
+
       if (isLast) {
         values[def.name] = tokens.slice(i).join(' ');
         i = tokens.length;
@@ -184,10 +194,10 @@ async function parsePositional(message, optionDefs, tokens, resolveContext) {
   return values;
 }
 
-async function parseOptions(message, optionDefs, tokens, resolveContext) {
+async function parseOptions(message, optionDefs, tokens, resolveContext, parseConfig = {}) {
   const { remaining, flagValues } = await extractFlags(message, tokens, optionDefs, resolveContext);
   const unfilledDefs = optionDefs.filter((d) => !(d.name in flagValues));
-  const positionalValues = await parsePositional(message, unfilledDefs, remaining, resolveContext);
+  const positionalValues = await parsePositional(message, unfilledDefs, remaining, resolveContext, parseConfig);
   return { ...flagValues, ...positionalValues };
 }
 
@@ -306,9 +316,17 @@ async function buildInteractionFromMessage(message, command, argText) {
   );
   if (!resolved) return null;
 
-  const values = await parseOptions(message, resolved.optionDefs, resolved.remainingTokens, {
-    includeBans: json.name === 'unban' || (json.name === 'ban' && resolved.subcommand === 'remove'),
-  });
+  const values = await parseOptions(
+    message,
+    resolved.optionDefs,
+    resolved.remainingTokens,
+    {
+      includeBans: json.name === 'unban' || (json.name === 'ban' && resolved.subcommand === 'remove'),
+    },
+    {
+      greedyStringOption: command.prefixGreedyStringOptions?.[resolved.subcommand] ?? null,
+    },
+  );
   return buildPseudoInteraction(message, { commandName: json.name, subcommand: resolved.subcommand, subcommandGroup: resolved.subcommandGroup, values });
 }
 
