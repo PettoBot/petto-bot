@@ -5,6 +5,29 @@ const logger = require('../utils/logger');
 const IDENTIFIER = /^[a-z_][a-z0-9_]*$/i;
 const FILTER_OPERATORS = new Set(['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'like', 'ilike', 'in', 'is']);
 const RESERVED_QUERY_KEYS = new Set(['select', 'order', 'limit', 'offset', 'on_conflict', 'columns']);
+const DASHBOARD_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const DASHBOARD_RATE_LIMIT_MAX = 120;
+const dashboardRateLimitBuckets = new Map();
+
+function fallbackDashboardRateLimiter(req, res, next) {
+  const now = Date.now();
+  const key = String(req.ip || req.connection?.remoteAddress || 'unknown');
+  const bucket = dashboardRateLimitBuckets.get(key);
+
+  if (!bucket || now - bucket.startedAt >= DASHBOARD_RATE_LIMIT_WINDOW_MS) {
+    dashboardRateLimitBuckets.set(key, { startedAt: now, count: 1 });
+    next();
+    return;
+  }
+
+  if (bucket.count >= DASHBOARD_RATE_LIMIT_MAX) {
+    res.status(429).json({ code: 'PGRST429', message: 'Too many requests.' });
+    return;
+  }
+
+  bucket.count += 1;
+  next();
+}
 
 function first(value) {
   return Array.isArray(value) ? value[0] : value;
@@ -327,7 +350,8 @@ async function handleDashboardRest(req, res) {
 }
 
 function registerDashboardRestRoutes(app, rateLimiter) {
-  app.all('/rest/v1/:table', rateLimiter, handleDashboardRest);
+  const effectiveLimiter = typeof rateLimiter === 'function' ? rateLimiter : fallbackDashboardRateLimiter;
+  app.all('/rest/v1/:table', effectiveLimiter, handleDashboardRest);
 }
 
 module.exports = { registerDashboardRestRoutes };
