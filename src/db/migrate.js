@@ -43,37 +43,14 @@ async function applySchema({ connectionString, sslEnabled, label, isSupabase }) 
 }
 
 /**
- * Applies the schema to every configured direct PostgreSQL endpoint. In the
- * new migration mode Discloud is the runtime primary and Supabase is the
- * mirror. The old DATABASE_URL-only flow remains supported for compatibility.
+ * Applies schema.sql only to Petto's Discloud PostgreSQL database.
  */
 async function runMigrations() {
-  if (config.primaryDatabaseUrl) {
-    await applySchema({
-      connectionString: config.primaryDatabaseUrl,
-      sslEnabled: config.primaryDatabaseSsl,
-      label: 'Discloud primary',
-      isSupabase: false,
-    });
-    await applySchema({
-      connectionString: config.supabaseDatabaseUrl,
-      sslEnabled: config.supabaseDatabaseSsl,
-      label: 'Supabase mirror',
-      isSupabase: true,
-    });
-    return;
-  }
-
-  if (!config.databaseUrl) {
-    logger.warn('DATABASE_URL not set — skipping automatic migrations. Apply src/db/schema.sql manually in the Supabase SQL editor.');
-    return;
-  }
-
   await applySchema({
-    connectionString: config.databaseUrl,
-    sslEnabled: true,
-    label: 'legacy database',
-    isSupabase: true,
+    connectionString: config.primaryDatabaseUrl,
+    sslEnabled: config.primaryDatabaseSsl,
+    label: 'Discloud primary',
+    isSupabase: false,
   });
 }
 
