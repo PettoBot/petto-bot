@@ -55,18 +55,11 @@ function createPool(connectionString, sslEnabled) {
 }
 
 let primaryPool;
-let mirrorPool;
 
 function getPrimaryPool() {
   if (!config.primaryDatabaseUrl) throw new Error('DISCLOUD_DATABASE_URL is not configured.');
   if (!primaryPool) primaryPool = createPool(config.primaryDatabaseUrl, config.primaryDatabaseSsl);
   return primaryPool;
-}
-
-function getMirrorPool() {
-  if (!config.supabaseDatabaseUrl) throw new Error('SUPABASE_DATABASE_URL is not configured.');
-  if (!mirrorPool) mirrorPool = createPool(config.supabaseDatabaseUrl, config.supabaseDatabaseSsl);
-  return mirrorPool;
 }
 
 function addValue(state, value) {
@@ -342,12 +335,11 @@ function createPostgresClient(pool) {
 }
 
 function closePools() {
-  return Promise.all([primaryPool?.end(), mirrorPool?.end()].filter(Boolean));
+  return primaryPool?.end();
 }
 
 module.exports = {
   createPostgresClient,
   getPrimaryPool,
-  getMirrorPool,
   closePools,
 };

@@ -1,5 +1,5 @@
 const config = require('../config');
-const { createPostgresClient, getPrimaryPool, getMirrorPool } = require('../db/postgres');
+const { createPostgresClient, getPrimaryPool } = require('../db/postgres');
 const logger = require('../utils/logger');
 const rateLimit = require('express-rate-limit');
 
@@ -198,50 +198,6 @@ async function attachTicketCategoryEmbed(pool, rows, selection) {
   for (const row of rows) row.ticket_categories = categories.get(String(row.category_id)) || null;
 }
 
-async function primaryKeyColumns(pool, table) {
-  const result = await pool.query(
-    `SELECT kcu.column_name
-       FROM information_schema.table_constraints tc
-       JOIN information_schema.key_column_usage kcu
-         ON kcu.constraint_schema = tc.constraint_schema
-        AND kcu.constraint_name = tc.constraint_name
-        AND kcu.table_name = tc.table_name
-      WHERE tc.constraint_schema = 'public'
-        AND tc.table_schema = 'public'
-        AND tc.table_name = $1
-        AND tc.constraint_type = 'PRIMARY KEY'
-      ORDER BY kcu.ordinal_position`,
-    [table],
-  );
-  return result.rows.map((row) => row.column_name);
-}
-
-async function mirrorMutation({ method, table, body, queryParameters, onConflict, primaryRows }) {
-  const mirror = getMirrorPool();
-  const client = createPostgresClient(mirror);
-  const query = client.from(table);
-
-  if (method === 'POST') {
-    if (!primaryRows.length) return;
-    const conflict = onConflict.length ? onConflict : await primaryKeyColumns(mirror, table);
-    if (!conflict.length) {
-      logger.warn(`Dashboard write to ${table} was not mirrored because the table has no primary key.`);
-      return;
-    }
-    query.upsert(primaryRows, { onConflict: conflict.join(',') });
-  } else if (method === 'PATCH') {
-    query.update(body);
-  } else if (method === 'DELETE') {
-    query.delete();
-  } else {
-    return;
-  }
-
-  if (method !== 'POST') applyFilters(query, queryParameters);
-  const result = await query.select('*');
-  if (result.error) throw result.error;
-}
-
 function responseError(res, error) {
   const status = error?.code === 'PGRST116' ? 406 : error?.code === '23505' ? 409 : 400;
   res.status(status).json({ code: error?.code || 'dashboard_database_error', message: 'Database request could not be completed.' });
@@ -298,7 +254,7 @@ async function handleDashboardRest(req, res) {
         query.delete();
       }
       // Always return full rows internally so generated IDs/defaults can be
-      // mirrored exactly. The Prefer header still controls the public response.
+      // included in the response. The Prefer header still controls the public response.
       query.select('*');
     }
 
@@ -315,17 +271,6 @@ async function handleDashboardRest(req, res) {
 
     const rows = Array.isArray(result.data) ? result.data : result.data ? [result.data] : [];
     if (!mutation && selection.embeds.length) await attachTicketCategoryEmbed(primaryPool, rows, selection);
-
-    if (mutation) {
-      try {
-        await mirrorMutation({ method, table, body: req.body, queryParameters: req.query, onConflict, primaryRows: rows });
-      } catch (mirrorError) {
-        // The primary write already succeeded. The next bot boot performs the
-        // complete primary-to-mirror repair, so a transient mirror failure must
-        // never make the dashboard repeat a committed write.
-        logger.error(`Dashboard database mirror failed for ${method} ${table}:`, mirrorError);
-      }
-    }
 
     const total = result.count == null ? '*' : String(result.count);
     if (method === 'GET' || method === 'HEAD') {

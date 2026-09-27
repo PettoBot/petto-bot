@@ -17,16 +17,8 @@ function normalizeConnectionString(connectionString, sslEnabled) {
   }
 }
 
-function schemaForTarget(sql, isSupabase) {
-  if (isSupabase) return sql;
-  // These policies are for Supabase's anon REST role. A standalone Discloud
-  // PostgreSQL instance does not define that role, so leaving them in would
-  // make an otherwise valid schema fail during startup.
-  return sql.split('\n').filter((line) => !/^\s*create policy\s+"bot_(status|host)_public_read"/i.test(line)).join('\n');
-}
-
-async function applySchema({ connectionString, sslEnabled, label, isSupabase }) {
-  const sql = schemaForTarget(fs.readFileSync(SCHEMA_PATH, 'utf8'), isSupabase);
+async function applySchema({ connectionString, sslEnabled, label }) {
+  const sql = fs.readFileSync(SCHEMA_PATH, 'utf8');
   const client = new Client({
     connectionString: normalizeConnectionString(connectionString, sslEnabled),
     ssl: sslEnabled ? { rejectUnauthorized: false } : false,
@@ -50,7 +42,6 @@ async function runMigrations() {
     connectionString: config.primaryDatabaseUrl,
     sslEnabled: config.primaryDatabaseSsl,
     label: 'Discloud primary',
-    isSupabase: false,
   });
 }
 

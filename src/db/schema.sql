@@ -1,8 +1,7 @@
 -- Petto bot schema
--- Run this in the Supabase SQL editor (or via `supabase db push` / psql).
--- The bot connects with the service_role key, which bypasses RLS entirely.
--- RLS is enabled anyway so that no other key (anon, authenticated) can read
--- or write this data if one is ever created for a future dashboard.
+-- Apply this schema to Petto's Discloud PostgreSQL database with psql.
+-- The bot uses its private database connection and the dashboard API applies
+-- its own request authentication and rate limiting.
 
 -- ---------------------------------------------------------------------------
 -- premium_entitlements / premium_slot_assignments: account-level Premium
@@ -558,7 +557,7 @@ create unique index if not exists idx_guild_backups_guild_number on guild_backup
 create index if not exists idx_guild_backups_guild_created on guild_backups(guild_id, created_at desc);
 alter table guild_backups enable row level security;
 
--- Supabase fallback path: allocate the visible number atomically per guild.
+-- Allocate the visible number atomically per guild.
 create or replace function create_guild_backup(
   p_guild_id text,
   p_created_by text,
@@ -1602,11 +1601,6 @@ create table if not exists bot_status (
 
 alter table bot_status enable row level security;
 
--- Public read-only: the status page polls this straight from the browser
--- with the anon key, no server round-trip. Nothing in this table is
--- sensitive (just shard health, guild counts, and ping).
-drop policy if exists "bot_status_public_read" on bot_status;
-create policy "bot_status_public_read" on bot_status for select to anon using (true);
 
 -- ---------------------------------------------------------------------------
 -- bot_host: one singleton row with process-level stats (uptime, memory),
@@ -1623,8 +1617,6 @@ create table if not exists bot_host (
 
 alter table bot_host enable row level security;
 
-drop policy if exists "bot_host_public_read" on bot_host;
-create policy "bot_host_public_read" on bot_host for select to anon using (true);
 
 -- ---------------------------------------------------------------------------
 -- activity_stats: per-guild, per-channel, per-day counters powering the

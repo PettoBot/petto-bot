@@ -1,5 +1,5 @@
 const { MessageFlags } = require('discord.js');
-const supabase = require('../db/supabase');
+const database = require('../db/database');
 const pollsDb = require('../db/polls');
 const { buildPollCard } = require('../utils/pollCard');
 const logger = require('../utils/logger');
@@ -9,7 +9,7 @@ const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency'
 const POLL_INTERVAL_MS = 60_000;
 
 async function getDuePolls() {
-  const { data, error } = await supabase.from('polls').select('*').eq('closed', false).not('ends_at', 'is', null).lte('ends_at', new Date().toISOString()).order('ends_at', { ascending: true }).limit(100);
+  const { data, error } = await database.from('polls').select('*').eq('closed', false).not('ends_at', 'is', null).lte('ends_at', new Date().toISOString()).order('ends_at', { ascending: true }).limit(100);
   if (error) throw error;
   return data ?? [];
 }

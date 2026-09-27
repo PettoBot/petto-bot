@@ -1,7 +1,7 @@
-const supabase = require('./supabase');
+const database = require('./database');
 
 async function isRedeemed(jti) {
-  const { data, error } = await supabase.from('verification_redemptions').select('jti').eq('jti', jti).maybeSingle();
+  const { data, error } = await database.from('verification_redemptions').select('jti').eq('jti', jti).maybeSingle();
   if (error) throw error;
   return Boolean(data);
 }
@@ -11,7 +11,7 @@ async function isRedeemed(jti) {
  * safe when a member submits the same link twice at the same time.
  */
 async function claimRedemption({ jti, guildId, userId }) {
-  const { error } = await supabase.from('verification_redemptions').insert({ jti, guild_id: guildId, user_id: userId });
+  const { error } = await database.from('verification_redemptions').insert({ jti, guild_id: guildId, user_id: userId });
   if (!error) return true;
   if (error.code === '23505') return false;
   throw error;
@@ -19,13 +19,13 @@ async function claimRedemption({ jti, guildId, userId }) {
 
 /** Releases a claim when applying Discord roles failed, allowing a retry. */
 async function releaseRedemption(jti) {
-  const { error } = await supabase.from('verification_redemptions').delete().eq('jti', jti);
+  const { error } = await database.from('verification_redemptions').delete().eq('jti', jti);
   if (error) throw error;
 }
 
 /** Whether this user has ever successfully redeemed a verification link in this guild before (used to skip re-gating on rejoin). */
 async function hasEverVerified(guildId, userId) {
-  const { data, error } = await supabase.from('verification_redemptions').select('jti').eq('guild_id', guildId).eq('user_id', userId).limit(1).maybeSingle();
+  const { data, error } = await database.from('verification_redemptions').select('jti').eq('guild_id', guildId).eq('user_id', userId).limit(1).maybeSingle();
   if (error) throw error;
   return Boolean(data);
 }

@@ -1,6 +1,5 @@
-const supabase = require('./supabase');
+const database = require('./database');
 const { retryIdempotent } = require('../utils/transientDb');
-const { mirrorStatus } = require('./statusMirror');
 
 async function upsertShardStatus(shardId, status, guildCount, pingMs) {
   const row = {
@@ -12,11 +11,9 @@ async function upsertShardStatus(shardId, status, guildCount, pingMs) {
   };
 
   await retryIdempotent(async () => {
-    const { error } = await supabase.from('bot_status').upsert(row, { onConflict: 'shard_id' });
+    const { error } = await database.from('bot_status').upsert(row, { onConflict: 'shard_id' });
     if (error) throw error;
   });
-
-  await mirrorStatus('bot_status', row);
 }
 
 module.exports = { upsertShardStatus };

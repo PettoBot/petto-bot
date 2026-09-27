@@ -1,12 +1,13 @@
 # Petto Premium
 
 Premium is account based. Polar tells the web which Discord user paid, the web
-stores the entitlement in Supabase, and the bot reads the selected server slots
-from the same tables. Free servers keep the normal limits and features.
+stores the entitlement through the private bot API, and the bot reads the
+selected server slots from Discloud PostgreSQL. Free servers keep the normal
+limits and features.
 
 ## One time setup
 
-1. Apply `src/db/schema.sql` to the primary Supabase database. It creates the
+1. Apply `src/db/schema.sql` to the Discloud PostgreSQL database. It creates the
    `premium_entitlements`, `premium_slot_assignments` and
    `premium_slot_requests` tables.
 2. In Polar, keep the webhook endpoint on the main site only:

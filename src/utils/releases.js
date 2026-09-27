@@ -13,7 +13,7 @@ const RELEASES = [
         title: `${EMOJI.RELEASE_BUG} Reliability & onboarding`,
         items: [
           'Fixed webhook counters and mention handling when sending webhook notifications.',
-          'Fixed VoiceMaster interaction handling and improved resilience against transient Supabase/PostgREST gateway timeouts.',
+          'Fixed VoiceMaster interaction handling and improved resilience against transient PostgreSQL gateway timeouts.',
           'Added safe retries for transient database reads and stale-cache fallbacks for known configuration.',
           'Reduced database pressure from sticky messages and autoresponders, while preventing unsafe XP write retries.',
           'Fixed excessive permission overwrites and improved onboarding channel creation for large guilds.',
@@ -64,7 +64,7 @@ const RELEASES = [
         title: `${EMOJI.RELEASE_LINK} Connected roles & dashboard`,
         items: [
           'Added the linked-roles connection flow so members can connect Petto to Discord and receive the Petto Verified role in participating servers.',
-          'The web stores the server prefix in Supabase and notifies the bot through the internal API.',
+          'The web stores the server prefix through the private bot API and notifies the bot immediately.',
           'The bot refreshes its prefix cache immediately, and resetting the prefix synchronizes the default `!` prefix again.',
           'Server nicknames remain free; Premium continues to cover the other server profile customization fields.',
         ],
