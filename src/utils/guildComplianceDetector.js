@@ -1,6 +1,7 @@
 const { Events } = require('discord.js');
 const { sendTeamAlert } = require('./guildOpsAlerts');
 const { isGuildComplianceIgnored } = require('../db/guildComplianceSettings');
+const { recordGuildComplianceSignal } = require('../db/guildComplianceScores');
 const logger = require('./logger');
 
 const ATTACHED = Symbol.for('petto.guildComplianceMonitor.attached');
@@ -156,13 +157,18 @@ function inspectGuildMetadata(guild) {
     if (channel.topic) absorb(scoreText(channel.topic, { metadata: true }), 'channel topic', channel.id);
   }
 
+  // A channel called "shop" or "store" is not enough to create a lasting
+  // score. Metadata contributes only after the guild contains a concrete,
+  // Discord-specific transaction signal (pricing, payment, or an order CTA).
   let score = 0;
-  if (familyHits.has('commerce')) score += 1;
-  if (familyHits.has('payment')) score += 1;
-  if (familyHits.has('pricing')) score += 1;
-  if (familyHits.has('transaction')) score += 2;
-  if (familyHits.has('discord-trade')) score += 4;
-  if (familyHits.has('discord-trade') && familyHits.has('pricing')) score += 1;
+  if (actionable) {
+    if (familyHits.has('commerce')) score += 1;
+    if (familyHits.has('payment')) score += 1;
+    if (familyHits.has('pricing')) score += 1;
+    if (familyHits.has('transaction')) score += 2;
+    if (familyHits.has('discord-trade')) score += 4;
+    if (familyHits.has('discord-trade') && familyHits.has('pricing')) score += 1;
+  }
 
   return {
     score: Math.min(score, 8),
@@ -213,6 +219,7 @@ async function scanGuildForCompliance(client, guildId, {
   requestedBy = null,
   report = true,
   includeIgnored = false,
+  persist = report,
 } = {}) {
   const guild = client.guilds.cache.get(String(guildId))
     ?? await client.guilds.fetch(String(guildId)).catch(() => null);
@@ -273,9 +280,10 @@ async function scanGuildForCompliance(client, guildId, {
   // Do not combine several weak messages into one strong incident.
   const recentScore = Math.min(8, strongest?.score ?? 0);
   const recentLabels = strongest?.labels ?? [];
-  const score = Math.min(16, metadata.score + recentScore);
   const labels = [...new Set([...metadata.labels, ...recentLabels])];
   const actionable = metadata.actionable || Boolean(strongest?.actionable);
+  const score = actionable ? Math.min(16, metadata.score + recentScore) : 0;
+  const families = [...new Set([...(metadata.families ?? []), ...(strongest?.families ?? [])])];
   const summary = summarizeResult({ score, labels, channels: metadata.channels, recent, actionable });
   const evidence = strongest?.evidence ?? null;
 
@@ -291,7 +299,21 @@ async function scanGuildForCompliance(client, guildId, {
     noticeSent: false,
     noticeDelivery: null,
     evidence,
+    persisted: false,
   };
+
+  if (persist && actionable && score >= TEAM_ALERT_SCORE) {
+    await recordGuildComplianceSignal(guild.id, {
+      score,
+      confidence: summary.confidence,
+      labels,
+      families,
+    }).then(() => {
+      result.persisted = true;
+    }).catch((error) => {
+      logger.warn({ guildId: guild.id, action: 'guild-compliance-persist' }, 'Could not persist guild compliance score:', error);
+    });
+  }
 
   if (!actionable || score < TEAM_ALERT_SCORE || !report) return result;
 

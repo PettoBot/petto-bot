@@ -37,8 +37,8 @@ module.exports = {
 
           const notice = await message.channel.send({
             content: deleted
-              ? `<@${message.author.id}> your message was removed because it contained a URL in Petto's malicious-link database.`
-              : `<@${message.author.id}> that message contains a URL Petto has identified as malicious. Do not open it.`,
+              ? `<@${message.author.id}> your message was removed because Petto identified one of its URLs as malicious or unsafe. Do not open it.`
+              : `<@${message.author.id}> that message contains a URL Petto identified as malicious or unsafe. Do not open it.`,
             allowedMentions: { users: [message.author.id] },
           }).catch(() => null);
 
