@@ -12,6 +12,7 @@ const {
   getGuildComplianceSettings,
   setGuildComplianceIgnored,
 } = require('../../db/guildComplianceSettings');
+const { getGuildComplianceScore } = require('../../db/guildComplianceScores');
 const logger = require('../../utils/logger');
 
 const SNOWFLAKE_RE = /^\d{15,25}$/;
@@ -86,12 +87,26 @@ module.exports = {
     }
 
     if (kind === 'status') {
-      const settings = await getGuildComplianceSettings(guildId, { refresh: true });
+      const [settings, score] = await Promise.all([
+        getGuildComplianceSettings(guildId, { refresh: true }),
+        getGuildComplianceScore(guildId),
+      ]);
       const lines = [
         `${EMOJI.APPROVE} Compliance-monitor status for **${guild.name}**`,
         `Server: \`${guildId}\``,
         `Automatic alerts: **${settings.ignored ? 'ignored' : 'enabled'}**`,
       ];
+      if (score) {
+        lines.push(`Persistent score: **${score.score}/16** • Confidence: **${score.confidence}**`);
+        const detectedAt = score.lastDetectedAt ? Date.parse(score.lastDetectedAt) : NaN;
+        const detectedLabel = Number.isFinite(detectedAt)
+          ? `<t:${Math.floor(detectedAt / 1000)}:R>`
+          : 'unknown';
+        lines.push(`Last actionable signal: ${detectedLabel}`);
+        if (score.labels.length) lines.push(`Signals: ${score.labels.slice(0, 6).join(', ')}`);
+      } else {
+        lines.push('Persistent score: **No actionable signal stored**.');
+      }
       if (settings.ignoredBy) lines.push(`Ignored by: <@${settings.ignoredBy}> (\`${settings.ignoredBy}\`)`);
       if (settings.ignoredAt) lines.push(`Ignored at: ${settings.ignoredAt}`);
       if (settings.reason) lines.push(`Reason: ${settings.reason}`);

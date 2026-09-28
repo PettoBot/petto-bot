@@ -93,6 +93,23 @@ alter table guilds add column if not exists compliance_ignored_by text;
 alter table guilds add column if not exists compliance_ignored_at timestamptz;
 alter table guilds add column if not exists compliance_ignore_reason text;
 
+-- Persistent compliance signal summary. This stores only the latest actionable
+-- server-level signal; raw message evidence remains transient and is never stored.
+create table if not exists guild_compliance_scores (
+  guild_id            text primary key references guilds(guild_id) on delete cascade,
+  score               integer not null default 0 check (score between 0 and 16),
+  confidence          text not null default 'low',
+  actionable          boolean not null default false,
+  labels              jsonb not null default '[]'::jsonb,
+  families            jsonb not null default '[]'::jsonb,
+  first_detected_at   timestamptz not null default now(),
+  last_detected_at    timestamptz not null default now(),
+  updated_at          timestamptz not null default now()
+);
+
+create index if not exists idx_guild_compliance_scores_score on guild_compliance_scores (score desc, last_detected_at desc);
+alter table guild_compliance_scores enable row level security;
+
 -- Named sets of roles for /role group give|take <name> <member> — bulk-assign/remove several
 -- roles at once instead of listing them out every time.
 create table if not exists role_groups (
