@@ -4,6 +4,59 @@ const logger = require('../utils/logger');
 const missingWebhookWarnings = new Map();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+function truncate(value, max) {
+  const text = String(value ?? '');
+  if (text.length <= max) return text;
+  if (max <= 1) return text.slice(0, max);
+  return `${text.slice(0, max - 1)}…`;
+}
+
+function embedLength(embed) {
+  return [
+    embed.title,
+    embed.description,
+    embed.author?.name,
+    embed.footer?.text,
+    ...(embed.fields ?? []).flatMap((field) => [field.name, field.value]),
+  ].reduce((total, value) => total + String(value ?? '').length, 0);
+}
+
+/**
+ * Discord rejects the entire webhook payload when one log field is too long.
+ * Logs are best-effort, so clamp every user/server-controlled embed value at
+ * the Discord limit and keep the total embed below its 6,000-character limit.
+ */
+function sanitizeEmbed(embed) {
+  if (!embed || typeof embed !== 'object') return null;
+
+  const safe = { ...embed };
+  if (safe.title != null) safe.title = truncate(safe.title, 256);
+  if (safe.description != null) safe.description = truncate(safe.description, 4096);
+  if (safe.author) safe.author = { ...safe.author, name: truncate(safe.author.name || 'Petto', 256) };
+  if (safe.footer) safe.footer = { ...safe.footer, text: truncate(safe.footer.text || 'Petto log', 2048) };
+  if (Array.isArray(safe.fields)) {
+    safe.fields = safe.fields.slice(0, 25).map((field) => ({
+      ...field,
+      name: truncate(field?.name || '\u200b', 256),
+      value: truncate(field?.value || '\u200b', 1024),
+      inline: Boolean(field?.inline),
+    }));
+  }
+
+  while (embedLength(safe) > 6000 && safe.fields?.length) safe.fields.pop();
+
+  if (embedLength(safe) > 6000 && safe.description) {
+    const excess = embedLength(safe) - 6000;
+    safe.description = truncate(safe.description, Math.max(1, safe.description.length - excess));
+  }
+  if (embedLength(safe) > 6000 && safe.footer?.text) {
+    const excess = embedLength(safe) - 6000;
+    safe.footer.text = truncate(safe.footer.text, Math.max(1, safe.footer.text.length - excess));
+  }
+
+  return safe;
+}
+
 function getAvatar(user) {
   if (!user) return null;
   try {
@@ -33,6 +86,12 @@ async function fetchMod(guild, action, targetId) {
  */
 async function sendLog(client, guildId, event, embed, { ignoreIds = [], files = [], components = [] } = {}) {
   try {
+    const safeEmbed = sanitizeEmbed(embed);
+    if (!safeEmbed) {
+      logger.warn({ guildId, event, action: 'log-embed-sanitize' }, '[logEngine] Skipping invalid log embed.');
+      return;
+    }
+
     const config = await getLogConfig(guildId);
     if (ignoreIds.length && ignoreIds.some((id) => id && config.ignored.includes(id))) return;
 
@@ -57,7 +116,7 @@ async function sendLog(client, guildId, event, embed, { ignoreIds = [], files = 
         // change) never has to be manually re-patched, every send just carries the current one.
         username: client.user.username,
         avatar_url: getAvatar(client.user) ?? undefined,
-        embeds: [entry.color != null ? { ...embed, color: entry.color } : embed],
+        embeds: [entry.color != null ? { ...safeEmbed, color: entry.color } : safeEmbed],
         flags: 4096, // SuppressNotifications
       };
       if (components.length) {
@@ -98,4 +157,4 @@ async function sendLog(client, guildId, event, embed, { ignoreIds = [], files = 
   }
 }
 
-module.exports = { sendLog, getAvatar, fetchMod, EVENTS, AuditLogEvent };
+module.exports = { sendLog, getAvatar, fetchMod, sanitizeEmbed, EVENTS, AuditLogEvent };

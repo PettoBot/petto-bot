@@ -2,7 +2,7 @@ const { sendLog, getAvatar } = require('./engine');
 
 function truncate(str, max) {
   if (!str) return '';
-  return str.length > max ? str.slice(0, max) + '...' : str;
+  return str.length > max ? `${str.slice(0, Math.max(0, max - 1))}…` : str;
 }
 
 function attachmentFields(message) {
