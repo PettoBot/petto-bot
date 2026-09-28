@@ -17,6 +17,7 @@ const { ensureGuild } = require('../../db/guilds');
 const { textCard } = require('../../utils/caseCard');
 const { describePermissions } = require('../../utils/permissionLabels');
 const { EMOJI } = require('../../utils/emojis');
+const { isPettoOperator } = require('../../utils/autoModControl');
 
 const TIMEOUT_MS = 120_000;
 
@@ -37,8 +38,12 @@ const CATEGORY_META = {
   other: { label: 'Other', icon: '📄' },
 };
 
-function getChatInputCommands(client) {
-  return [...client.commands.values()].filter((c) => (c.data.toJSON().type ?? 1) === 1 && !c.slashOnly && !c.hiddenFromHelp);
+function getChatInputCommands(client, includeHidden = false) {
+  return [...client.commands.values()].filter((c) => (
+    (c.data.toJSON().type ?? 1) === 1
+    && !c.slashOnly
+    && (includeHidden || !c.hiddenFromHelp)
+  ));
 }
 
 /** Prefers this server's own bot avatar (server-specific pfp) over the bot's global one. */
@@ -76,9 +81,9 @@ function flattenEntries(json) {
   return entries;
 }
 
-function visibleEntries(command) {
+function visibleEntries(command, includeHidden = false) {
   const hidden = new Set(command.hiddenPrefixSubcommands ?? []);
-  return flattenEntries(command.data.toJSON()).filter((entry) => !hidden.has(entry.path.join(' ')));
+  return flattenEntries(command.data.toJSON()).filter((entry) => includeHidden || !hidden.has(entry.path.join(' ')));
 }
 
 // bli doesn't hand-color the syntax block with ansi escapes — it just tags the code block
@@ -124,14 +129,14 @@ function buildMetadata(aliases, params, information) {
 }
 
 /** Finds every entry matching a typed lookup — an exact path match returns just that one entry; a bare command name (or partial path) returns every entry under it, for pagination, same as bli's findGroup(). */
-function findEntries(client, tokens) {
+function findEntries(client, tokens, includeHidden = false) {
   const route = client.commandRoutes?.get(tokens[0]);
   const canonicalName = client.commandAliases.get(tokens[0]) ?? route?.command ?? tokens[0];
   const command = client.commands.get(canonicalName);
-  if (!command || command.slashOnly || command.hiddenFromHelp || (command.data.toJSON().type ?? 1) !== 1) return { command: null, entries: [] };
+  if (!command || command.slashOnly || (!includeHidden && command.hiddenFromHelp) || (command.data.toJSON().type ?? 1) !== 1) return { command: null, entries: [] };
 
   const json = command.data.toJSON();
-  const all = visibleEntries(command);
+  const all = visibleEntries(command, includeHidden);
   const wantedPath = [...(route?.args ?? []), ...tokens.slice(1)].join(' ');
 
   if (!wantedPath) return { command, entries: all };
@@ -185,8 +190,8 @@ function navRow(page, total, disabled = false) {
   );
 }
 
-function mainView(client, guild, prefix) {
-  const commands = getChatInputCommands(client);
+function mainView(client, guild, prefix, includeHidden = false) {
+  const commands = getChatInputCommands(client, includeHidden);
   const categories = groupByCategory(commands);
 
   const section = new SectionBuilder()
@@ -213,9 +218,9 @@ function mainView(client, guild, prefix) {
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
-function categoryView(client, guild, categoryId) {
+function categoryView(client, guild, categoryId, includeHidden = false) {
   const meta = CATEGORY_META[categoryId] ?? CATEGORY_META.other;
-  const commands = (groupByCategory(getChatInputCommands(client)).get(categoryId) ?? []).sort((a, b) => a.data.name.localeCompare(b.data.name));
+  const commands = (groupByCategory(getChatInputCommands(client, includeHidden)).get(categoryId) ?? []).sort((a, b) => a.data.name.localeCompare(b.data.name));
 
   const section = new SectionBuilder()
     .addTextDisplayComponents(
@@ -237,9 +242,9 @@ function categoryView(client, guild, categoryId) {
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
-function subcommandView(client, guild, command, categoryId) {
+function subcommandView(client, guild, command, categoryId, includeHidden = false) {
   const json = command.data.toJSON();
-  const entries = visibleEntries(command);
+  const entries = visibleEntries(command, includeHidden);
   const meta = CATEGORY_META[categoryId] ?? CATEGORY_META.other;
 
   const section = new SectionBuilder()
@@ -265,9 +270,9 @@ function subcommandView(client, guild, command, categoryId) {
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
-function detailView(client, guild, prefix, command, entry, categoryId) {
+function detailView(client, guild, prefix, command, entry, categoryId, includeHidden = false) {
   const meta = CATEGORY_META[categoryId] ?? CATEGORY_META.other;
-  const entries = visibleEntries(command);
+  const entries = visibleEntries(command, includeHidden);
   const hasSubs = entries.length > 1 || entries[0].path.length > 0;
 
   const buttons = [];
@@ -290,11 +295,14 @@ module.exports = {
     const client = interaction.client;
     const guildConfig = await ensureGuild(interaction.guild.id);
     const prefix = guildConfig.prefix;
+    // Private/operator commands stay hidden for normal users, but developers
+    // configured through PETTO_DEVELOPER_IDS need to discover every tool.
+    const includeHidden = isPettoOperator(interaction.user?.id);
 
     const input = interaction.options.getString('query')?.trim();
     if (input) {
       const tokens = input.toLowerCase().split(/\s+/);
-      const { command, entries } = findEntries(client, tokens);
+      const { command, entries } = findEntries(client, tokens, includeHidden);
 
       if (!command || !entries.length) {
         await interaction.reply({ components: [textCard(`${EMOJI.WARNING}  No command named \`${tokens[0]}\` found. Use \`${prefix}help\` to browse.`, 0xfed53c)], flags: MessageFlags.IsComponentsV2 });
@@ -326,7 +334,7 @@ module.exports = {
       });
       return;
     }
-    const msg = await interaction.reply(mainView(client, interaction.guild, prefix));
+    const msg = await interaction.reply(mainView(client, interaction.guild, prefix, includeHidden));
     let currentCategory = null;
     let currentCommand = null;
 
@@ -335,14 +343,14 @@ module.exports = {
     collector.on('collect', async (i) => {
       if (i.customId === 'help_cat') {
         currentCategory = i.values[0];
-        await i.update(categoryView(client, interaction.guild, currentCategory));
+        await i.update(categoryView(client, interaction.guild, currentCategory, includeHidden));
         return;
       }
 
       if (i.customId === 'help_back') {
         currentCategory = null;
         currentCommand = null;
-        await i.update(mainView(client, interaction.guild, prefix));
+        await i.update(mainView(client, interaction.guild, prefix, includeHidden));
         return;
       }
 
@@ -353,11 +361,11 @@ module.exports = {
           return;
         }
         currentCommand = command;
-        const entries = visibleEntries(command);
+        const entries = visibleEntries(command, includeHidden);
         if (entries.length === 1 && !entries[0].path.length) {
-          await i.update(detailView(client, interaction.guild, prefix, command, entries[0], currentCategory));
+          await i.update(detailView(client, interaction.guild, prefix, command, entries[0], currentCategory, includeHidden));
         } else {
-          await i.update(subcommandView(client, interaction.guild, command, currentCategory));
+          await i.update(subcommandView(client, interaction.guild, command, currentCategory, includeHidden));
         }
         return;
       }
@@ -367,20 +375,20 @@ module.exports = {
           await i.deferUpdate();
           return;
         }
-        const entries = visibleEntries(currentCommand);
+        const entries = visibleEntries(currentCommand, includeHidden);
         const entry = entries.find((e) => e.path.join(' ') === i.values[0]);
         if (!entry) {
           await i.deferUpdate();
           return;
         }
-        await i.update(detailView(client, interaction.guild, prefix, currentCommand, entry, currentCategory));
+        await i.update(detailView(client, interaction.guild, prefix, currentCommand, entry, currentCategory, includeHidden));
         return;
       }
 
       if (i.customId.startsWith('help_cmdback:')) {
         currentCommand = null;
         currentCategory = i.customId.split(':')[1];
-        await i.update(categoryView(client, interaction.guild, currentCategory));
+        await i.update(categoryView(client, interaction.guild, currentCategory, includeHidden));
         return;
       }
 
@@ -390,7 +398,7 @@ module.exports = {
           return;
         }
         currentCategory = i.customId.split(':')[1];
-        await i.update(subcommandView(client, interaction.guild, currentCommand, currentCategory));
+        await i.update(subcommandView(client, interaction.guild, currentCommand, currentCategory, includeHidden));
       }
     });
 
