@@ -91,8 +91,14 @@ async function buildOneEmbed(e, ctx) {
   const author = normalizeAuthor(e.author);
   const footer = normalizeFooter(e.footer);
 
-  if (title) embed.setTitle(await resolve(title, ctx));
-  if (description) embed.setDescription(await resolve(description, ctx));
+  if (title) {
+    const resolvedTitle = await resolve(title, ctx);
+    if (resolvedTitle) embed.setTitle(resolvedTitle);
+  }
+  if (description) {
+    const resolvedDescription = await resolve(description, ctx);
+    if (resolvedDescription) embed.setDescription(resolvedDescription);
+  }
   if (e.color !== null && e.color !== undefined && e.color !== '') embed.setColor(e.color);
   if (url) {
     const u = validUrl(await resolve(url, ctx));
@@ -111,12 +117,14 @@ async function buildOneEmbed(e, ctx) {
   if (author) {
     const iconURL = author.icon ? validUrl(await resolve(author.icon, ctx)) : undefined;
     const authorUrl = author.url ? validUrl(await resolve(author.url, ctx)) : undefined;
-    embed.setAuthor({ name: await resolve(author.name, ctx), iconURL, url: authorUrl });
+    const authorName = await resolve(author.name, ctx);
+    if (authorName) embed.setAuthor({ name: authorName, iconURL, url: authorUrl });
   }
 
   if (footer) {
     const iconURL = footer.icon ? validUrl(await resolve(footer.icon, ctx)) : undefined;
-    embed.setFooter({ text: await resolve(footer.text, ctx), iconURL });
+    const footerText = await resolve(footer.text, ctx);
+    if (footerText) embed.setFooter({ text: footerText, iconURL });
   }
 
   for (const [index, f] of (Array.isArray(e.fields) ? e.fields : []).entries()) {
@@ -128,7 +136,10 @@ async function buildOneEmbed(e, ctx) {
     // failing the whole message with a generic CombinedPropertyError.
     if (!name || !value) continue;
     try {
-      embed.addFields({ name: await resolve(name, ctx), value: await resolve(value, ctx), inline: booleanValue(f.inline) });
+      const resolvedName = await resolve(name, ctx);
+      const resolvedValue = await resolve(value, ctx);
+      if (!resolvedName || !resolvedValue) continue;
+      embed.addFields({ name: resolvedName, value: resolvedValue, inline: booleanValue(f.inline) });
     } catch (error) {
       throw new Error(`Invalid field ${index + 1}: ${error.message}`, { cause: error });
     }
@@ -235,4 +246,8 @@ function hasContent(data) {
   return !!(content || e.title || e.description || e.author?.name || e.footer?.text || hasValidField || buttons.some((row) => Array.isArray(row) && row.length));
 }
 
-module.exports = { parseColor, validUrl, build, buildRawPreview, hasContent, formatEmbedError };
+function hasSendablePayload(payload) {
+  return Boolean(payload && (payload.content?.trim() || payload.embeds?.length || payload.components?.length));
+}
+
+module.exports = { parseColor, validUrl, build, buildRawPreview, hasContent, hasSendablePayload, formatEmbedError };

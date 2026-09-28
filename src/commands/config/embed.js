@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { getTemplate, upsertTemplate, deleteTemplate, listTemplates, normalizeName } = require('../../db/embedTemplates');
 const { ensureGuild } = require('../../db/guilds');
-const { parseColor, build, formatEmbedError } = require('../../utils/embedBuilder');
+const { parseColor, build, hasSendablePayload, formatEmbedError } = require('../../utils/embedBuilder');
 const { renderPanel } = require('../../interactions/embedPanel');
 const logger = require('../../utils/logger');
 
@@ -418,6 +418,10 @@ module.exports = {
           const doc = await getOrFail(interaction, name);
           if (!doc) return;
           const payload = await build(doc.data, ctx);
+          if (!hasSendablePayload(payload)) {
+            await interaction.editReply(`Embed \`${name}\` has no sendable content. Add a title, description, field, message content, or link button first.`);
+            return;
+          }
           await interaction.editReply({ content: `Preview of \`${name}\`:\n${payload.content ?? ''}`, embeds: payload.embeds, components: payload.components });
           return;
         }
@@ -428,6 +432,10 @@ module.exports = {
           const doc = await getOrFail(interaction, name);
           if (!doc) return;
           const payload = await build(doc.data, ctx);
+          if (!hasSendablePayload(payload)) {
+            await interaction.editReply(`Embed \`${name}\` has no sendable content. Add a title, description, field, message content, or link button first.`);
+            return;
+          }
           await target.send({ content: payload.content, embeds: payload.embeds, components: payload.components });
           await interaction.editReply(`Embed \`${name}\` sent to <#${target.id}>!`);
           return;
