@@ -3,7 +3,7 @@ const arDb = require('../db/autoResponders');
 const { getTemplate } = require('../db/embedTemplates');
 const { build } = require('../utils/embedBuilder');
 const { resolve } = require('../utils/embedVariables');
-const { extractReactReplies, applyReactReplies } = require('../utils/messageFlags');
+const { extractReactReplies, extractReactRepliesFromTemplate, applyReactReplies } = require('../utils/messageFlags');
 const { tokenize } = require('../handlers/prefixInteraction');
 const logger = require('../utils/logger');
 
@@ -90,10 +90,12 @@ module.exports = {
         }
 
         let payload;
+        let templateReactReplies = [];
         if (ar.embed_template) {
           const doc = await getTemplate(message.guild.id, ar.embed_template);
           if (doc) {
-            payload = await build(doc.data, ctx);
+            const templateData = extractReactRepliesFromTemplate(doc.data, templateReactReplies);
+            payload = await build(templateData, ctx);
           } else {
             logger.warn(`Autoresponder ${ar.ar_id}: embed template "${ar.embed_template}" not found, falling back to plain text.`);
             payload = { content: await resolve(cleanedReply, ctx) };
@@ -132,7 +134,7 @@ module.exports = {
         } else {
           sent = await message.channel.send({ ...payload, allowedMentions }).catch((err) => logger.warn(`Autoresponder ${ar.ar_id} send failed:`, err.message));
         }
-        if (sent && reactReplies.length) await applyReactReplies(sent, reactReplies);
+        if (sent && (reactReplies.length || templateReactReplies.length)) await applyReactReplies(sent, [...reactReplies, ...templateReactReplies]);
         if (ar.delete_trigger) await message.delete().catch(() => {});
       }
     } catch (err) {

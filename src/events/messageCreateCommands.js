@@ -9,7 +9,7 @@ const customCommandsDb = require('../db/customCommands');
 const { getTemplate } = require('../db/embedTemplates');
 const { build } = require('../utils/embedBuilder');
 const { resolve } = require('../utils/embedVariables');
-const { extractReactReplies, applyReactReplies } = require('../utils/messageFlags');
+const { extractReactReplies, extractReactRepliesFromTemplate, applyReactReplies } = require('../utils/messageFlags');
 const { textCard } = require('../utils/caseCard');
 const { EMOJI } = require('../utils/emojis');
 const moderationPermissions = require('../utils/moderationPermissions');
@@ -145,9 +145,11 @@ async function runCustomCommand(message, commandName, argText = '', prefix = '!'
     }
 
     if (doc) {
-      const payload = await build(doc.data, ctx);
+      const templateReactReplies = [];
+      const templateData = extractReactRepliesFromTemplate(doc.data, templateReactReplies);
+      const payload = await build(templateData, ctx);
       const sent = await message.reply({ content: payload.content, embeds: payload.embeds, components: payload.components, allowedMentions }).catch(() => null);
-      if (sent && reactReplies.length) await applyReactReplies(sent, reactReplies);
+      if (sent && (reactReplies.length || templateReactReplies.length)) await applyReactReplies(sent, [...reactReplies, ...templateReactReplies]);
       return true;
     }
     if (cleanedResponse) {

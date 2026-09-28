@@ -1,8 +1,9 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { getTemplate, upsertTemplate, deleteTemplate, listTemplates, normalizeName } = require('../../db/embedTemplates');
 const { ensureGuild } = require('../../db/guilds');
-const { parseColor, build } = require('../../utils/embedBuilder');
+const { parseColor, build, formatEmbedError } = require('../../utils/embedBuilder');
 const { renderPanel } = require('../../interactions/embedPanel');
+const logger = require('../../utils/logger');
 
 const VAR_PAGES = [
   {
@@ -433,7 +434,9 @@ module.exports = {
         }
       }
     } catch (err) {
-      await interaction.editReply(`Error: \`${err.message}\``);
+      const detail = formatEmbedError(err);
+      logger.error(`Embed ${sub}${group ? ` (${group})` : ''} failed in guild ${guildId}:`, err);
+      await interaction.editReply(`Error while processing embed: \`${detail}\``);
     }
   },
 };
