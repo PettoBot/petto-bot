@@ -1,4 +1,4 @@
-const supabase = require('./supabase');
+const database = require('./database');
 
 const POSITIVE_TTL_MS = 5 * 60_000;
 const NEGATIVE_TTL_MS = 30_000;
@@ -28,7 +28,7 @@ async function getKnownMalicious(url, { force = false } = {}) {
     if (cached !== undefined) return cached;
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('malicious_links')
     .select('*')
     .eq('normalized_url', url)
@@ -52,7 +52,7 @@ async function findKnownMalicious(urls) {
   }
 
   if (missing.length) {
-    const { data, error } = await supabase
+    const { data, error } = await database
       .from('malicious_links')
       .select('*')
       .in('normalized_url', missing);
@@ -84,7 +84,7 @@ async function recordMaliciousLink({ url, threatTypes, reportedBy, guildId, chan
     last_checked_at: now,
   };
 
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('malicious_links')
     .insert(payload)
     .select('*')
@@ -102,7 +102,7 @@ async function recordMaliciousLink({ url, threatTypes, reportedBy, guildId, chan
 
 async function markDeveloperAlerted(url) {
   const alertedAt = new Date().toISOString();
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('malicious_links')
     .update({ dev_alerted_at: alertedAt })
     .eq('normalized_url', url)

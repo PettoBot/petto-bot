@@ -1,4 +1,4 @@
-const supabase = require('../db/supabase');
+const database = require('../db/database');
 const config = require('../config');
 const logger = require('../utils/logger');
 const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency');
@@ -64,7 +64,7 @@ async function findPremiumGuild(client) {
 }
 
 async function activeSlotsForUser(userId) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('premium_entitlements')
     .select('status,slot_limit,current_period_end,updated_at')
     .eq('user_id', String(userId))
@@ -113,7 +113,7 @@ async function syncAllPremiumRoles(client) {
   const entitlements = [];
   const pageSize = 1_000;
   for (let offset = 0; ; offset += pageSize) {
-    const { data, error } = await supabase
+    const { data, error } = await database
       .from('premium_entitlements')
       .select('id,user_id,status,slot_limit,current_period_end,updated_at')
       .not('user_id', 'is', null)

@@ -1,7 +1,7 @@
-const supabase = require('./supabase');
+const database = require('./database');
 
 async function add(row) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('managed_webhooks')
     .insert(row)
     .select('*')
@@ -12,7 +12,7 @@ async function add(row) {
 }
 
 async function update(guildId, localId, patch) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('managed_webhooks')
     .update(patch)
     .eq('guild_id', guildId)
@@ -25,7 +25,7 @@ async function update(guildId, localId, patch) {
 }
 
 async function list(guildId) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('managed_webhooks')
     .select('id,local_id,guild_id,channel_id,webhook_id,name,created_by,created_at')
     .eq('guild_id', guildId)
@@ -36,7 +36,7 @@ async function list(guildId) {
 }
 
 async function listWithTokens(guildId) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('managed_webhooks')
     .select('*')
     .eq('guild_id', guildId)
@@ -60,7 +60,7 @@ async function get(guildId, identifier) {
     const localId = Number(value);
 
     if (Number.isSafeInteger(localId) && localId > 0) {
-      const { data: byLocalId, error: localError } = await supabase
+      const { data: byLocalId, error: localError } = await database
         .from('managed_webhooks')
         .select('*')
         .eq('guild_id', guildId)
@@ -71,7 +71,7 @@ async function get(guildId, identifier) {
       if (byLocalId) return byLocalId;
     }
 
-    const { data: byWebhookId, error: webhookError } = await supabase
+    const { data: byWebhookId, error: webhookError } = await database
       .from('managed_webhooks')
       .select('*')
       .eq('guild_id', guildId)
@@ -107,7 +107,7 @@ async function get(guildId, identifier) {
 }
 
 async function getByChannel(guildId, channelId) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('managed_webhooks')
     .select('*')
     .eq('guild_id', guildId)
@@ -119,7 +119,7 @@ async function getByChannel(guildId, channelId) {
 }
 
 async function remove(guildId, webhookId) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('managed_webhooks')
     .delete()
     .eq('guild_id', guildId)

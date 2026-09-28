@@ -1,9 +1,9 @@
-const supabase = require('./supabase');
+const database = require('./database');
 
 const PUNISHMENTS = ['ban', 'softban', 'kick'];
 
 async function getHoneypot(guildId, channelId) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('honeypots')
     .select('*')
     .eq('guild_id', guildId)
@@ -15,7 +15,7 @@ async function getHoneypot(guildId, channelId) {
 }
 
 async function listHoneypots(guildId) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('honeypots')
     .select('*')
     .eq('guild_id', guildId)
@@ -28,7 +28,7 @@ async function listHoneypots(guildId) {
 async function upsertHoneypot(guildId, channelId, punishment = 'softban') {
   if (!PUNISHMENTS.includes(punishment)) throw new Error(`Unsupported honeypot punishment: ${punishment}`);
 
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('honeypots')
     .upsert({ guild_id: guildId, channel_id: channelId, punishment, updated_at: new Date().toISOString() }, { onConflict: 'guild_id,channel_id' })
     .select('*')
@@ -39,7 +39,7 @@ async function upsertHoneypot(guildId, channelId, punishment = 'softban') {
 }
 
 async function setPanelMessage(guildId, channelId, panelMessageId) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('honeypots')
     .update({ panel_message_id: panelMessageId, updated_at: new Date().toISOString() })
     .eq('guild_id', guildId)
@@ -52,7 +52,7 @@ async function setPanelMessage(guildId, channelId, panelMessageId) {
 }
 
 async function incrementTrigger(guildId, channelId) {
-  const { data, error } = await supabase.rpc('increment_honeypot_trigger', {
+  const { data, error } = await database.rpc('increment_honeypot_trigger', {
     p_guild_id: guildId,
     p_channel_id: channelId,
   });
@@ -66,7 +66,7 @@ async function incrementTrigger(guildId, channelId) {
  * database key makes this safe across concurrent messages and bot instances.
  */
 async function claimHoneypotUser(guildId, channelId, userId, messageId, punishment) {
-  const { data, error } = await supabase.rpc('claim_honeypot_user', {
+  const { data, error } = await database.rpc('claim_honeypot_user', {
     p_guild_id: guildId,
     p_channel_id: channelId,
     p_user_id: userId,
@@ -79,7 +79,7 @@ async function claimHoneypotUser(guildId, channelId, userId, messageId, punishme
 }
 
 async function clearHoneypotUser(guildId, userId) {
-  const { error } = await supabase
+  const { error } = await database
     .from('honeypot_user_triggers')
     .delete()
     .eq('guild_id', guildId)
@@ -89,7 +89,7 @@ async function clearHoneypotUser(guildId, userId) {
 }
 
 async function removeHoneypot(guildId, channelId) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('honeypots')
     .delete()
     .eq('guild_id', guildId)

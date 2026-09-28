@@ -1,49 +1,49 @@
-const supabase = require('./supabase');
+const database = require('./database');
 
 async function addReactionRole(row) {
-  const { data, error } = await supabase.from('reaction_roles').insert(row).select('*').single();
+  const { data, error } = await database.from('reaction_roles').insert(row).select('*').single();
   if (error) throw error;
   return data;
 }
 
 async function getReactionRole(messageId, emoji) {
-  const { data, error } = await supabase.from('reaction_roles').select('*').eq('message_id', messageId).eq('emoji', emoji).maybeSingle();
+  const { data, error } = await database.from('reaction_roles').select('*').eq('message_id', messageId).eq('emoji', emoji).maybeSingle();
   if (error) throw error;
   return data;
 }
 
 async function getReactionRoleById(id) {
-  const { data, error } = await supabase.from('reaction_roles').select('*').eq('id', id).maybeSingle();
+  const { data, error } = await database.from('reaction_roles').select('*').eq('id', id).maybeSingle();
   if (error) throw error;
   return data;
 }
 
 async function removeReactionRole(messageId, emoji) {
-  const { data, error } = await supabase.from('reaction_roles').delete().eq('message_id', messageId).eq('emoji', emoji).select('id');
+  const { data, error } = await database.from('reaction_roles').delete().eq('message_id', messageId).eq('emoji', emoji).select('id');
   if (error) throw error;
   return data.length > 0;
 }
 
 async function removeReactionRoleById(id) {
-  const { data, error } = await supabase.from('reaction_roles').delete().eq('id', id).select('id');
+  const { data, error } = await database.from('reaction_roles').delete().eq('id', id).select('id');
   if (error) throw error;
   return data.length > 0;
 }
 
 async function listForMessage(messageId) {
-  const { data, error } = await supabase.from('reaction_roles').select('*').eq('message_id', messageId);
+  const { data, error } = await database.from('reaction_roles').select('*').eq('message_id', messageId);
   if (error) throw error;
   return data;
 }
 
 async function listForGuild(guildId) {
-  const { data, error } = await supabase.from('reaction_roles').select('*').eq('guild_id', guildId);
+  const { data, error } = await database.from('reaction_roles').select('*').eq('guild_id', guildId);
   if (error) throw error;
   return data;
 }
 
 async function clearForMessage(messageId) {
-  const { data, error } = await supabase.from('reaction_roles').delete().eq('message_id', messageId).select('id');
+  const { data, error } = await database.from('reaction_roles').delete().eq('message_id', messageId).select('id');
   if (error) throw error;
   return data.length;
 }

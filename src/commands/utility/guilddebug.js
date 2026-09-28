@@ -1,6 +1,6 @@
 const { MessageFlags, PermissionFlagsBits, SlashCommandBuilder } = require('discord.js');
 const config = require('../../config');
-const supabase = require('../../db/supabase');
+const database = require('../../db/database');
 const { getLogConfig } = require('../../db/logConfig');
 const { getConfig: getMemberEventsConfig } = require('../../db/memberEvents');
 const { textCard } = require('../../utils/caseCard');
@@ -70,7 +70,7 @@ async function fetchBotMember(guild, client) {
 
 async function getDatabaseSnapshot(guildId) {
   const [guildResult, welcomeResult, logsResult] = await Promise.all([
-    supabase
+    database
       .from('guilds')
       .select('guild_id,prefix,language,bot_nickname,setup_channel_id,updated_at')
       .eq('guild_id', guildId)

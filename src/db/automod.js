@@ -1,4 +1,4 @@
-const supabase = require('./supabase');
+const database = require('./database');
 const { createExpiringCache } = require('../utils/expiringCache');
 
 const configCache = createExpiringCache(15_000);
@@ -6,14 +6,14 @@ const silentChannelCache = createExpiringCache(15_000);
 
 async function getConfig(guildId) {
   return configCache.get(guildId, async () => {
-    const { data, error } = await supabase.from('automod_config').select('*').eq('guild_id', guildId).maybeSingle();
+    const { data, error } = await database.from('automod_config').select('*').eq('guild_id', guildId).maybeSingle();
     if (error) throw error;
     return data;
   });
 }
 
 async function upsertConfig(guildId, patch) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('automod_config')
     .upsert({ guild_id: guildId, ...patch, updated_at: new Date().toISOString() }, { onConflict: 'guild_id' })
     .select('*')
@@ -56,7 +56,7 @@ async function getSilentChannel(guildId, channelId) {
 }
 
 async function listSilentChannels(guildId) {
-  const { data, error } = await supabase.from('automod_silent_channels').select('*').eq('guild_id', guildId);
+  const { data, error } = await database.from('automod_silent_channels').select('*').eq('guild_id', guildId);
   if (error) throw error;
   return data;
 }
@@ -66,13 +66,13 @@ async function listSilentChannelsCached(guildId) {
 }
 
 async function addSilentChannel(guildId, channelId, action = 'warn') {
-  const { error } = await supabase.from('automod_silent_channels').upsert({ guild_id: guildId, channel_id: channelId, action }, { onConflict: 'guild_id,channel_id' });
+  const { error } = await database.from('automod_silent_channels').upsert({ guild_id: guildId, channel_id: channelId, action }, { onConflict: 'guild_id,channel_id' });
   if (error) throw error;
   silentChannelCache.delete(guildId);
 }
 
 async function removeSilentChannel(guildId, channelId) {
-  const { data, error } = await supabase.from('automod_silent_channels').delete().eq('guild_id', guildId).eq('channel_id', channelId).select('channel_id');
+  const { data, error } = await database.from('automod_silent_channels').delete().eq('guild_id', guildId).eq('channel_id', channelId).select('channel_id');
   if (error) throw error;
   silentChannelCache.delete(guildId);
   return data.length > 0;

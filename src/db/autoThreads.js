@@ -1,9 +1,9 @@
-const supabase = require('./supabase');
+const database = require('./database');
 const CACHE_TTL_MS = 15_000;
 const listCache = new Map();
 
 async function listThreads(guildId) {
-  const { data, error } = await supabase.from('auto_threads').select('*').eq('guild_id', guildId);
+  const { data, error } = await database.from('auto_threads').select('*').eq('guild_id', guildId);
   if (error) throw error;
   return data;
 }
@@ -26,7 +26,7 @@ async function getThread(guildId, channelId) {
 }
 
 async function upsertThread(guildId, channelId, patch) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('auto_threads')
     .upsert({ guild_id: guildId, channel_id: channelId, ...patch }, { onConflict: 'guild_id,channel_id' })
     .select('*')
@@ -37,7 +37,7 @@ async function upsertThread(guildId, channelId, patch) {
 }
 
 async function removeThread(guildId, channelId) {
-  const { data, error } = await supabase.from('auto_threads').delete().eq('guild_id', guildId).eq('channel_id', channelId).select('channel_id');
+  const { data, error } = await database.from('auto_threads').delete().eq('guild_id', guildId).eq('channel_id', channelId).select('channel_id');
   if (error) throw error;
   invalidateGuildCache(guildId);
   return data.length > 0;

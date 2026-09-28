@@ -1,4 +1,4 @@
-const supabase = require('./supabase');
+const database = require('./database');
 const { createCase } = require('./modActions');
 
 /**
@@ -9,7 +9,7 @@ const { createCase } = require('./modActions');
 async function addWarn({ guildId, userId, moderatorId, reason = null }) {
   const modCase = await createCase({ guildId, userId, moderatorId, type: 'warn', reason });
 
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('warns')
     .insert({
       guild_id: guildId,
@@ -23,7 +23,7 @@ async function addWarn({ guildId, userId, moderatorId, reason = null }) {
 
   if (error) throw error;
 
-  const { count, error: countError } = await supabase
+  const { count, error: countError } = await database
     .from('warns')
     .select('*', { count: 'exact', head: true })
     .eq('guild_id', guildId)
@@ -36,7 +36,7 @@ async function addWarn({ guildId, userId, moderatorId, reason = null }) {
 }
 
 async function getActiveWarns(guildId, userId) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('warns')
     .select('*')
     .eq('guild_id', guildId)

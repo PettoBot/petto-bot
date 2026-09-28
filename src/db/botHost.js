@@ -1,6 +1,5 @@
-const supabase = require('./supabase');
+const database = require('./database');
 const { retryIdempotent } = require('../utils/transientDb');
-const { mirrorStatus } = require('./statusMirror');
 
 async function upsertHost(uptimeSeconds, memoryMb, nodeVersion) {
   const row = {
@@ -12,11 +11,9 @@ async function upsertHost(uptimeSeconds, memoryMb, nodeVersion) {
   };
 
   await retryIdempotent(async () => {
-    const { error } = await supabase.from('bot_host').upsert(row, { onConflict: 'id' });
+    const { error } = await database.from('bot_host').upsert(row, { onConflict: 'id' });
     if (error) throw error;
   });
-
-  await mirrorStatus('bot_host', row);
 }
 
 module.exports = { upsertHost };

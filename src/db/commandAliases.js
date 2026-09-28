@@ -1,11 +1,11 @@
-const supabase = require('./supabase');
+const database = require('./database');
 
 function normalizeName(name) {
   return String(name ?? '').toLowerCase().trim().replace(/\s+/g, '');
 }
 
 async function get(guildId, name) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('command_aliases')
     .select('*')
     .eq('guild_id', guildId)
@@ -16,13 +16,13 @@ async function get(guildId, name) {
 }
 
 async function list(guildId) {
-  const { data, error } = await supabase.from('command_aliases').select('*').eq('guild_id', guildId).order('name');
+  const { data, error } = await database.from('command_aliases').select('*').eq('guild_id', guildId).order('name');
   if (error) throw error;
   return data;
 }
 
 async function add(guildId, name, command) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('command_aliases')
     .upsert({ guild_id: guildId, name: normalizeName(name), command: command.trim() }, { onConflict: 'guild_id,name' })
     .select('*')
@@ -32,7 +32,7 @@ async function add(guildId, name, command) {
 }
 
 async function remove(guildId, name) {
-  const { data, error } = await supabase.from('command_aliases').delete().eq('guild_id', guildId).eq('name', normalizeName(name)).select('id');
+  const { data, error } = await database.from('command_aliases').delete().eq('guild_id', guildId).eq('name', normalizeName(name)).select('id');
   if (error) throw error;
   return data.length > 0;
 }

@@ -8,7 +8,7 @@ All notable changes to Petto are documented here.
 
 - Fixed webhook counters and mention handling when sending webhook notifications.
 - Fixed VoiceMaster interaction handling.
-- Improved resilience against transient Supabase/PostgREST gateway timeouts with safe retries for transient reads and stale-cache fallbacks.
+- Improved resilience against transient PostgreSQL gateway timeouts with safe retries for transient reads and stale-cache fallbacks.
 - Reduced database pressure from sticky messages and autoresponders while preventing unsafe XP write retries.
 - Fixed excessive permission overwrites and improved onboarding channel creation for large guilds.
 

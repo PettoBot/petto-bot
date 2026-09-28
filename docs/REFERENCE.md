@@ -16,7 +16,7 @@ The code is licensed under [AGPL-3.0-only](../LICENSE). Contributions are attrib
 
 ## Stack
 
-- Node.js 18+, discord.js v14, Supabase (Postgres) via `@supabase/supabase-js`
+- Node.js 18+, discord.js v14, PostgreSQL on Discloud via `pg`
 - Prefix commands (default `!`, configurable per guild) — see "Command system" below for why, and how the same command files serve both without being rewritten. Slash is reserved for future interactive/game commands.
 - Dynamically loaded from `src/commands/**`
 - All per-guild config lives in the database — nothing is hardcoded
@@ -30,7 +30,7 @@ deploy-commands.js           standalone CLI to (re-)register slash commands with
 src/
   config.js                  loads and validates environment variables
   db/
-    supabase.js              Supabase client (service_role key, for normal queries at runtime)
+    database.js              Discloud PostgreSQL query client for normal runtime queries
     schema.sql                table definitions + create_mod_case() RPC
     migrate.js                 runs schema.sql via a direct Postgres connection on every boot
     guilds.js                 get/create per-guild config
@@ -328,19 +328,19 @@ Each detail card mirrors bli's own field layout: `### Command: <path>`, descript
 
 Slash commands and the "Report Message" context-menu command are registered together, so no separate step is needed for the app command.
 
-### 2. Supabase
+### 2. Discloud PostgreSQL
 
-1. Create a project at [supabase.com](https://supabase.com).
-2. Copy the **Project URL** and the **service_role** (a.k.a. "secret") key (Settings → API) into `.env`. This key bypasses RLS — keep it server-side only, never in a frontend/dashboard.
-3. Schema: either let the bot apply it automatically (see `DATABASE_URL` below), or open the SQL editor and run [`src/db/schema.sql`](../src/db/schema.sql) by hand — it creates `guilds`, `mod_actions`, `warns`, `notes`, `log_webhooks`, `log_entries`, `log_ignored`, `embed_templates`, `verification_config`, `verification_redemptions`, `automod_config`, `automod_silent_channels`, `antinuke_config`, `warn_escalation_rules`, `report_config`, `ticket_panels`, `ticket_categories`, `tickets`, `member_events_config`, `bump_reminders`, `booster_roles`, `booster_role_config`, `roleplay_counters`, `roleplay_responses`, `level_config`, `level_users`, `level_rewards`, `level_multipliers`, `afk_status`, `afk_mentions`, `auto_responders`, `sticky_messages`, `poj_config`, `poj_channels`, `disabled_commands`, and the `create_mod_case`/`create_ticket`/`add_level_xp`/`record_roleplay_response` functions, with RLS enabled on every table.
+1. Create or enable the PostgreSQL database provided by Discloud.
+2. Set `DISCLOUD_DATABASE_URL` to its private connection URI and keep `DISCLOUD_DATABASE_SSL=false` unless the provider requires TLS.
+3. The bot applies [`src/db/schema.sql`](../src/db/schema.sql) automatically on boot. It creates the guild configuration, moderation, logs, tickets, Premium, activity, leveling, automation, and backup tables plus their PostgreSQL functions.
 
 ### 3. Environment
 
 Configure the required values in your hosting provider's encrypted secret
 store. For local development, use an untracked `.env` file created manually;
 this public repository intentionally does not ship an environment template.
-At minimum, provide the Discord bot credentials and one of the database modes
-described below. Optionally set a development guild ID for
+At minimum, provide the Discord bot credentials and the Discloud PostgreSQL
+connection. Optionally set a development guild ID for
 instant command registration while developing (global registration can take up
 to an hour to propagate). Never copy production secrets into a local example,
 issue, log, screenshot, or pull request.
@@ -349,9 +349,7 @@ issue, log, screenshot, or pull request.
 
 The hidden prefix-only `!leaveguild <guild_id>` control is restricted to Petto operators (`PETTO_OWNER_ID` or `PETTO_DEVELOPER_IDS`) in the official support server. It makes Petto leave a server where Petto is installed; it cannot remove another bot from a server where Petto is not present, and it cannot leave the official support server itself.
 
-**`DATABASE_URL` (optional, auto-migrations):** the service_role key only reaches Supabase's REST API, which can't run `CREATE TABLE`. To have the bot apply `schema.sql` automatically on every boot, grab a **direct Postgres connection string** from Settings → Database → Connection string → URI, and set it as `DATABASE_URL`. This is a different, more sensitive secret than the service_role key (raw DB access, bypasses PostgREST entirely) — leave it empty if you'd rather keep applying `schema.sql` by hand. It's safe to re-run on every boot either way: every statement is `create table if not exists` / `create or replace function`.
-
-**Discloud PostgreSQL primary (migration mode):** the current schema is PostgreSQL, so the Discloud template must also be PostgreSQL. Set `DISCLOUD_DATABASE_URL` to the Discloud connection URI and `SUPABASE_DATABASE_URL` to Supabase's direct PostgreSQL URI. The bot uses Discloud for all runtime reads/writes. `DISCLOUD_DATABASE_SSL=false` is the default so the private Discloud connection is not forced through TLS; `SUPABASE_DATABASE_SSL=true` remains the default for the Supabase mirror. During the first boot, if Discloud has no guild rows and Supabase has data, the bot imports Supabase into Discloud. On later boots it upserts Discloud's data into Supabase as a backup mirror. The mirror sync never deletes rows automatically. `PETTO_DATABASE_SYNC_ON_BOOT=false` disables the sync, and `PETTO_DATABASE_SYNC_REQUIRED=true` makes a mirror failure stop startup instead of continuing with Discloud.
+**`DISCLOUD_DATABASE_URL` (required):** private PostgreSQL connection string used for all bot reads and writes. `DISCLOUD_DATABASE_SSL=false` is the default for Discloud's private connection; set it to `true` only when the provider requires TLS.
 
 **Verification (optional, powers `/verify`):** see "Join verification (Cloudflare Turnstile)" below for the full flow. Needs `VERIFY_BASE_URL` (the public domain the verification page will be served at, e.g. `https://captcha.example.com` — pointed at this process's `WEB_PORT` via reverse proxy/port-forward), `TURNSTILE_SITE_KEY` + `TURNSTILE_SECRET_KEY` (Cloudflare dashboard → Turnstile → your widget), and `VERIFY_TOKEN_SECRET` (a random secret that signs the magic-link tokens — generate one with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`). Leave any of these empty and the web server simply doesn't start; `/verify setup`/`/verify status` still work for configuring the gate ahead of time.
 
@@ -362,7 +360,7 @@ npm install
 npm start
 ```
 
-On every boot the bot applies pending migrations (to the configured direct PostgreSQL endpoints), synchronizes the configured Discloud/Supabase pair, re-registers slash commands, then logs in — no separate deploy step needed. `npm run deploy-commands` still exists standalone if you just want to (re-)register commands without starting the bot.
+On every boot the bot applies pending migrations to Discloud PostgreSQL, re-registers slash commands, then logs in — no separate deploy step needed. `npm run deploy-commands` still exists standalone if you just want to (re-)register commands without starting the bot.
 
 For production on a VPS, run it under pm2 so it survives crashes and reboots:
 
@@ -650,7 +648,7 @@ Not tracked: vanity-URL joins and joins via a temporary/expired invite that's al
 
 ## Audit logging system
 
-Ported from an earlier bot's `handlers/logs/*` + `/log` command (originally MongoDB + a prefix command) to Supabase/Postgres + a slash command. This is a full audit log: 9 independent event categories, each routed to its own channel through a dedicated webhook, with per-event color overrides and an ignore list. There's no separate single mod-log channel setting — sanctions log through this same system, under the `sanctions` category, alongside the other 8.
+Ported from an earlier bot's `handlers/logs/*` + `/log` command (originally MongoDB + a prefix command) to PostgreSQL + a slash command. This is a full audit log: 9 independent event categories, each routed to its own channel through a dedicated webhook, with per-event color overrides and an ignore list. There's no separate single mod-log channel setting — sanctions log through this same system, under the `sanctions` category, alongside the other 8.
 
 **`/logs add channel:<#channel> event:<category>`** — start logging a category to a channel (creates a webhook in that channel the first time it's used)
 **`/logs remove channel:<#channel> event:<category>?`** — stop logging one category, or all of them, in a channel (cleans up the webhook once nothing references it)

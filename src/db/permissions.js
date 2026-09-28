@@ -1,11 +1,11 @@
-const supabase = require('./supabase');
+const database = require('./database');
 
 async function listGroups(guildId) {
-  const { data: groups, error } = await supabase.from('permission_groups').select('*').eq('guild_id', guildId).order('id');
+  const { data: groups, error } = await database.from('permission_groups').select('*').eq('guild_id', guildId).order('id');
   if (error) throw error;
   if (!groups.length) return [];
 
-  const { data: members, error: memErr } = await supabase
+  const { data: members, error: memErr } = await database
     .from('permission_group_members')
     .select('*')
     .in('group_id', groups.map((g) => g.id));
@@ -15,11 +15,11 @@ async function listGroups(guildId) {
 }
 
 async function getOrCreateBaseGroup(guildId) {
-  const { data: existing, error } = await supabase.from('permission_groups').select('*').eq('guild_id', guildId).eq('is_base', true).maybeSingle();
+  const { data: existing, error } = await database.from('permission_groups').select('*').eq('guild_id', guildId).eq('is_base', true).maybeSingle();
   if (error) throw error;
   if (existing) return existing;
 
-  const { data: created, error: insErr } = await supabase
+  const { data: created, error: insErr } = await database
     .from('permission_groups')
     .upsert({ guild_id: guildId, name: '@everyone', level: 0, is_base: true }, { onConflict: 'guild_id,name' })
     .select('*')
@@ -29,7 +29,7 @@ async function getOrCreateBaseGroup(guildId) {
 }
 
 async function getCommandLevel(guildId, commandName) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('command_permission_levels')
     .select('required_level')
     .eq('guild_id', guildId)
@@ -40,13 +40,13 @@ async function getCommandLevel(guildId, commandName) {
 }
 
 async function listCommandLevels(guildId) {
-  const { data, error } = await supabase.from('command_permission_levels').select('*').eq('guild_id', guildId);
+  const { data, error } = await database.from('command_permission_levels').select('*').eq('guild_id', guildId);
   if (error) throw error;
   return data;
 }
 
 async function setCommandLevel(guildId, commandName, requiredLevel) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('command_permission_levels')
     .upsert({ guild_id: guildId, command_name: commandName, required_level: requiredLevel, updated_at: new Date().toISOString() }, { onConflict: 'guild_id,command_name' })
     .select('*')
@@ -56,7 +56,7 @@ async function setCommandLevel(guildId, commandName, requiredLevel) {
 }
 
 async function createGroup(guildId, name, level = 0) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('permission_groups')
     .insert({ guild_id: guildId, name: String(name).trim(), level: Math.max(0, Math.min(100, Number(level) || 0)) })
     .select('*')
@@ -66,7 +66,7 @@ async function createGroup(guildId, name, level = 0) {
 }
 
 async function deleteGroup(guildId, groupId) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('permission_groups')
     .delete()
     .eq('guild_id', guildId)
@@ -78,7 +78,7 @@ async function deleteGroup(guildId, groupId) {
 }
 
 async function updateGroupLevel(guildId, groupId, level) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('permission_groups')
     .update({ level: Math.max(0, Math.min(100, Number(level) || 0)) })
     .eq('guild_id', guildId)
@@ -90,7 +90,7 @@ async function updateGroupLevel(guildId, groupId, level) {
 }
 
 async function addGroupMember(groupId, subjectType, subjectId) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('permission_group_members')
     .upsert({ group_id: groupId, subject_type: subjectType, subject_id: subjectId }, { onConflict: 'group_id,subject_type,subject_id' })
     .select('*')
@@ -100,7 +100,7 @@ async function addGroupMember(groupId, subjectType, subjectId) {
 }
 
 async function removeGroupMember(groupId, subjectType, subjectId) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('permission_group_members')
     .delete()
     .eq('group_id', groupId)
@@ -112,7 +112,7 @@ async function removeGroupMember(groupId, subjectType, subjectId) {
 }
 
 async function recordAudit(guildId, actor, action, summary) {
-  const { error } = await supabase.from('permission_audit_log').insert({
+  const { error } = await database.from('permission_audit_log').insert({
     guild_id: guildId,
     actor_id: actor.id,
     actor_name: actor.username ?? actor.tag ?? actor.id,

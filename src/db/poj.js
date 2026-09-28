@@ -1,9 +1,9 @@
-const supabase = require('./supabase');
+const database = require('./database');
 
 const MAX_CHANNELS = 10;
 
 async function getConfig(guildId) {
-  const { data, error } = await supabase.from('poj_config').select('*').eq('guild_id', guildId).maybeSingle();
+  const { data, error } = await database.from('poj_config').select('*').eq('guild_id', guildId).maybeSingle();
   if (error) throw error;
   return data;
 }
@@ -11,19 +11,19 @@ async function getConfig(guildId) {
 async function ensureConfig(guildId) {
   const existing = await getConfig(guildId);
   if (existing) return existing;
-  const { data, error } = await supabase.from('poj_config').insert({ guild_id: guildId }).select('*').single();
+  const { data, error } = await database.from('poj_config').insert({ guild_id: guildId }).select('*').single();
   if (error) throw error;
   return data;
 }
 
 async function setEnabled(guildId, enabled) {
-  const { data, error } = await supabase.from('poj_config').upsert({ guild_id: guildId, enabled }, { onConflict: 'guild_id' }).select('*').single();
+  const { data, error } = await database.from('poj_config').upsert({ guild_id: guildId, enabled }, { onConflict: 'guild_id' }).select('*').single();
   if (error) throw error;
   return data;
 }
 
 async function listChannels(guildId) {
-  const { data, error } = await supabase.from('poj_channels').select('*').eq('guild_id', guildId);
+  const { data, error } = await database.from('poj_channels').select('*').eq('guild_id', guildId);
   if (error) throw error;
   return data;
 }
@@ -36,19 +36,19 @@ async function addChannel(guildId, channelId, deleteAfterMs) {
     throw err;
   }
 
-  const { data, error } = await supabase.from('poj_channels').upsert({ guild_id: guildId, channel_id: channelId, delete_after_ms: deleteAfterMs }, { onConflict: 'guild_id,channel_id' }).select('*').single();
+  const { data, error } = await database.from('poj_channels').upsert({ guild_id: guildId, channel_id: channelId, delete_after_ms: deleteAfterMs }, { onConflict: 'guild_id,channel_id' }).select('*').single();
   if (error) throw error;
   return data;
 }
 
 async function removeChannel(guildId, channelId) {
-  const { data, error } = await supabase.from('poj_channels').delete().eq('guild_id', guildId).eq('channel_id', channelId).select('channel_id');
+  const { data, error } = await database.from('poj_channels').delete().eq('guild_id', guildId).eq('channel_id', channelId).select('channel_id');
   if (error) throw error;
   return data.length > 0;
 }
 
 async function clearChannels(guildId) {
-  const { error } = await supabase.from('poj_channels').delete().eq('guild_id', guildId);
+  const { error } = await database.from('poj_channels').delete().eq('guild_id', guildId);
   if (error) throw error;
 }
 
