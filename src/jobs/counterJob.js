@@ -1,5 +1,5 @@
 const countersDb = require('../db/counters');
-const supabase = require('../db/supabase');
+const database = require('../db/database');
 const logger = require('../utils/logger');
 const config = require('../config');
 const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency');
@@ -59,7 +59,7 @@ async function updateCounters(client) {
       const nameTemplate = row.name_template || '{option}: {value}';
       const name = `${row.prefix ?? ''}${nameTemplate.replaceAll('{option}', row.counter_option).replaceAll('{value}', String(rawValue)).replaceAll('{remaining}', String(rawValue))}${row.suffix ?? ''}`.slice(0, 100);
       if (channel.name !== name) await channel.setName(name, 'Update Petto counter').catch(() => {});
-      await supabase.from('server_counters').update({ last_updated_at: new Date().toISOString() }).eq('id', row.id).catch(() => {});
+      await database.from('server_counters').update({ last_updated_at: new Date().toISOString() }).eq('id', row.id).catch(() => {});
     }
   }, config.jobConcurrency);
 }

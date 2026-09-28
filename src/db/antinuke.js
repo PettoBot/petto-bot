@@ -1,13 +1,13 @@
-const supabase = require('./supabase');
+const database = require('./database');
 
 async function getConfig(guildId) {
-  const { data, error } = await supabase.from('antinuke_config').select('*').eq('guild_id', guildId).maybeSingle();
+  const { data, error } = await database.from('antinuke_config').select('*').eq('guild_id', guildId).maybeSingle();
   if (error) throw error;
   return data;
 }
 
 async function upsertConfig(guildId, patch) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('antinuke_config')
     .upsert({ guild_id: guildId, ...patch, updated_at: new Date().toISOString() }, { onConflict: 'guild_id' })
     .select('*')

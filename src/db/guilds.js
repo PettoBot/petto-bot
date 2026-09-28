@@ -1,4 +1,4 @@
-const supabase = require('./supabase');
+const database = require('./database');
 
 /**
  * Fetches a guild's config row, creating it with defaults on first use.
@@ -6,7 +6,7 @@ const supabase = require('./supabase');
  * "no row yet" never has to be special-cased at the call site.
  */
 async function ensureGuild(guildId) {
-  const { data: existing, error: selectError } = await supabase
+  const { data: existing, error: selectError } = await database
     .from('guilds')
     .select('*')
     .eq('guild_id', guildId)
@@ -15,7 +15,7 @@ async function ensureGuild(guildId) {
   if (selectError) throw selectError;
   if (existing) return existing;
 
-  const { data: created, error: insertError } = await supabase
+  const { data: created, error: insertError } = await database
     .from('guilds')
     .insert({ guild_id: guildId })
     .select('*')
@@ -26,7 +26,7 @@ async function ensureGuild(guildId) {
 }
 
 async function updateGuild(guildId, patch) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('guilds')
     .update({ ...patch, updated_at: new Date().toISOString() })
     .eq('guild_id', guildId)

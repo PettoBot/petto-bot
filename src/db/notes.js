@@ -1,7 +1,7 @@
-const supabase = require('./supabase');
+const database = require('./database');
 
 async function addNote({ guildId, userId, moderatorId, note }) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('notes')
     .insert({ guild_id: guildId, user_id: userId, moderator_id: moderatorId, note })
     .select('*')
@@ -12,13 +12,13 @@ async function addNote({ guildId, userId, moderatorId, note }) {
 }
 
 async function getNote(guildId, noteId) {
-  const { data, error } = await supabase.from('notes').select('*').eq('guild_id', guildId).eq('id', noteId).maybeSingle();
+  const { data, error } = await database.from('notes').select('*').eq('guild_id', guildId).eq('id', noteId).maybeSingle();
   if (error) throw error;
   return data;
 }
 
 async function getNotesForUser(guildId, userId) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('notes')
     .select('*')
     .eq('guild_id', guildId)

@@ -1,4 +1,4 @@
-const supabase = require('./supabase');
+const database = require('./database');
 
 const MAX_TRIGGER_LENGTH = 80;
 const MAX_EMOJIS_PER_CHANNEL = 3;
@@ -37,7 +37,7 @@ async function addTrigger({ guildId, emoji, trigger, ownerId, matchMode = 'conta
   const normalizedEmoji = normalizeEmoji(emoji);
   if (!normalizedEmoji) throw new Error('Provide an emoji.');
 
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('reaction_triggers')
     .insert({ guild_id: guildId, emoji: normalizedEmoji, trigger: normalizedTrigger, owner_id: ownerId, match_mode: matchMode, channel_ids: channelIds, role_ids: roleIds, case_sensitive: caseSensitive, cooldown_seconds: cooldownSeconds })
     .select('*')
@@ -51,14 +51,14 @@ async function addTrigger({ guildId, emoji, trigger, ownerId, matchMode = 'conta
 }
 
 async function updateTrigger(guildId, id, patch) {
-  const { data, error } = await supabase.from('reaction_triggers').update(patch).eq('guild_id', guildId).eq('id', id).select('*').maybeSingle();
+  const { data, error } = await database.from('reaction_triggers').update(patch).eq('guild_id', guildId).eq('id', id).select('*').maybeSingle();
   if (error) throw error;
   triggerCache.delete(guildId);
   return data;
 }
 
 async function getTrigger(guildId, emoji, trigger) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('reaction_triggers')
     .select('*')
     .eq('guild_id', guildId)
@@ -70,7 +70,7 @@ async function getTrigger(guildId, emoji, trigger) {
 }
 
 async function getOwner(guildId, trigger) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('reaction_triggers')
     .select('owner_id')
     .eq('guild_id', guildId)
@@ -82,7 +82,7 @@ async function getOwner(guildId, trigger) {
 }
 
 async function listTriggers(guildId) {
-  const { data, error } = await supabase.from('reaction_triggers').select('*').eq('guild_id', guildId).order('trigger').order('emoji');
+  const { data, error } = await database.from('reaction_triggers').select('*').eq('guild_id', guildId).order('trigger').order('emoji');
   if (error) throw error;
   return data ?? [];
 }
@@ -114,7 +114,7 @@ async function listMatchingTriggers(guildId, { content, channelId, roleIds = [],
 }
 
 async function removeTrigger(guildId, emoji, trigger) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('reaction_triggers')
     .delete()
     .eq('guild_id', guildId)
@@ -127,14 +127,14 @@ async function removeTrigger(guildId, emoji, trigger) {
 }
 
 async function removeAllForTrigger(guildId, trigger) {
-  const { data, error } = await supabase.from('reaction_triggers').delete().eq('guild_id', guildId).eq('trigger', normalizeTrigger(trigger)).select('id');
+  const { data, error } = await database.from('reaction_triggers').delete().eq('guild_id', guildId).eq('trigger', normalizeTrigger(trigger)).select('id');
   if (error) throw error;
   triggerCache.delete(guildId);
   return (data ?? []).length;
 }
 
 async function resetTriggers(guildId) {
-  const { data, error } = await supabase.from('reaction_triggers').delete().eq('guild_id', guildId).select('id');
+  const { data, error } = await database.from('reaction_triggers').delete().eq('guild_id', guildId).select('id');
   if (error) throw error;
   triggerCache.delete(guildId);
   return (data ?? []).length;
@@ -146,7 +146,7 @@ async function listForMessage(message) {
 }
 
 async function listMessageConfigs(guildId) {
-  const { data, error } = await supabase.from('reaction_message_configs').select('*').eq('guild_id', guildId).order('channel_id');
+  const { data, error } = await database.from('reaction_message_configs').select('*').eq('guild_id', guildId).order('channel_id');
   if (error) throw error;
   return data ?? [];
 }
@@ -162,13 +162,13 @@ async function listMessageConfigsCached(guildId) {
 async function setMessageConfig({ guildId, channelId, emojis }) {
   const normalized = [...new Set((emojis ?? []).map(normalizeEmoji).filter(Boolean))].slice(0, MAX_EMOJIS_PER_CHANNEL);
   if (!normalized.length) {
-    const { data, error } = await supabase.from('reaction_message_configs').delete().eq('guild_id', guildId).eq('channel_id', channelId).select('id');
+    const { data, error } = await database.from('reaction_message_configs').delete().eq('guild_id', guildId).eq('channel_id', channelId).select('id');
     if (error) throw error;
     messageConfigCache.delete(guildId);
     return { removed: (data ?? []).length > 0 };
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('reaction_message_configs')
     .upsert({ guild_id: guildId, channel_id: channelId, emojis: normalized }, { onConflict: 'guild_id,channel_id' })
     .select('*')

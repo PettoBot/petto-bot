@@ -1,7 +1,7 @@
-const supabase = require('./supabase');
+const database = require('./database');
 
 async function getConfig(guildId) {
-  const { data, error } = await supabase.from('voice_configs').select('*').eq('guild_id', guildId).maybeSingle();
+  const { data, error } = await database.from('voice_configs').select('*').eq('guild_id', guildId).maybeSingle();
   if (error) throw error;
   return data;
 }
@@ -14,43 +14,43 @@ async function upsertConfig(guildId, changes) {
   const existing = await getConfig(guildId);
   const payload = { ...changes, updated_at: new Date().toISOString() };
   const query = existing
-    ? supabase.from('voice_configs').update(payload).eq('guild_id', guildId)
-    : supabase.from('voice_configs').insert({ guild_id: guildId, ...payload });
+    ? database.from('voice_configs').update(payload).eq('guild_id', guildId)
+    : database.from('voice_configs').insert({ guild_id: guildId, ...payload });
   const { data, error } = await query.select('*').single();
   if (error) throw error;
   return data;
 }
 
 async function removeConfig(guildId) {
-  const { error } = await supabase.from('voice_configs').delete().eq('guild_id', guildId);
+  const { error } = await database.from('voice_configs').delete().eq('guild_id', guildId);
   if (error) throw error;
 }
 
 async function getTemp(channelId) {
-  const { data, error } = await supabase.from('voice_temp_channels').select('*').eq('channel_id', channelId).maybeSingle();
+  const { data, error } = await database.from('voice_temp_channels').select('*').eq('channel_id', channelId).maybeSingle();
   if (error) throw error;
   return data;
 }
 
 async function createTemp(values) {
-  const { data, error } = await supabase.from('voice_temp_channels').insert(values).select('*').single();
+  const { data, error } = await database.from('voice_temp_channels').insert(values).select('*').single();
   if (error) throw error;
   return data;
 }
 
 async function updateTemp(channelId, changes) {
-  const { data, error } = await supabase.from('voice_temp_channels').update(changes).eq('channel_id', channelId).select('*').single();
+  const { data, error } = await database.from('voice_temp_channels').update(changes).eq('channel_id', channelId).select('*').single();
   if (error) throw error;
   return data;
 }
 
 async function removeTemp(channelId) {
-  const { error } = await supabase.from('voice_temp_channels').delete().eq('channel_id', channelId);
+  const { error } = await database.from('voice_temp_channels').delete().eq('channel_id', channelId);
   if (error) throw error;
 }
 
 async function countTemps(guildId) {
-  const { count, error } = await supabase.from('voice_temp_channels').select('channel_id', { count: 'exact', head: true }).eq('guild_id', guildId);
+  const { count, error } = await database.from('voice_temp_channels').select('channel_id', { count: 'exact', head: true }).eq('guild_id', guildId);
   if (error) throw error;
   return count ?? 0;
 }

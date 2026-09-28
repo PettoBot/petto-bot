@@ -1,4 +1,4 @@
-const supabase = require('./supabase');
+const database = require('./database');
 
 /**
  * Creates a numbered moderation case (ban/kick/mute/unmute/unban/tempban/tempmute/warn).
@@ -6,7 +6,7 @@ const supabase = require('./supabase');
  * schema.sql) so concurrent actions in the same guild never collide.
  */
 async function createCase({ guildId, userId, moderatorId, type, reason = null, expiresAt = null }) {
-  const { data, error } = await supabase.rpc('create_mod_case', {
+  const { data, error } = await database.rpc('create_mod_case', {
     p_guild_id: guildId,
     p_user_id: userId,
     p_moderator_id: moderatorId,
@@ -20,7 +20,7 @@ async function createCase({ guildId, userId, moderatorId, type, reason = null, e
 }
 
 async function getCase(guildId, caseNumber) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('mod_actions')
     .select('*')
     .eq('guild_id', guildId)
@@ -32,7 +32,7 @@ async function getCase(guildId, caseNumber) {
 }
 
 async function getUserHistory(guildId, userId, { limit = 25 } = {}) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('mod_actions')
     .select('*')
     .eq('guild_id', guildId)
@@ -52,7 +52,7 @@ async function getCaseHistory(guildId, { userId = null, limit = 10, offset = 0 }
   const safeLimit = Math.min(50, Math.max(1, Number(limit) || 10));
   const safeOffset = Math.max(0, Number(offset) || 0);
 
-  let query = supabase
+  let query = database
     .from('mod_actions')
     .select('*', { count: 'exact' })
     .eq('guild_id', guildId)
@@ -68,7 +68,7 @@ async function getCaseHistory(guildId, { userId = null, limit = 10, offset = 0 }
 
 /** Most recent case for a user (used by /linfr). */
 async function getLastCase(guildId, userId) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('mod_actions')
     .select('*')
     .eq('guild_id', guildId)
@@ -88,7 +88,7 @@ async function updateCase(guildId, caseNumber, { reason, expiresAt } = {}) {
   if (expiresAt !== undefined) patch.expires_at = expiresAt;
   if (!Object.keys(patch).length) return getCase(guildId, caseNumber);
 
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('mod_actions')
     .update(patch)
     .eq('guild_id', guildId)
@@ -105,14 +105,14 @@ async function deleteCase(guildId, caseNumber) {
   // A warning has a dedicated row as well as its numbered case. Keep the
   // warning inactive before deleting the visible case, otherwise escalation
   // counts would continue to include a warning that staff can no longer see.
-  const { error: warnError } = await supabase
+  const { error: warnError } = await database
     .from('warns')
     .update({ active: false })
     .eq('guild_id', guildId)
     .eq('case_number', caseNumber);
   if (warnError) throw warnError;
 
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('mod_actions')
     .delete()
     .eq('guild_id', guildId)
@@ -125,14 +125,14 @@ async function deleteCase(guildId, caseNumber) {
 
 /** Deletes every case for a user in a guild (used by /delinfs). Returns how many were deleted. */
 async function deleteAllForUser(guildId, userId) {
-  const { error: warnError } = await supabase
+  const { error: warnError } = await database
     .from('warns')
     .update({ active: false })
     .eq('guild_id', guildId)
     .eq('user_id', userId);
   if (warnError) throw warnError;
 
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('mod_actions')
     .delete()
     .eq('guild_id', guildId)
@@ -145,13 +145,13 @@ async function deleteAllForUser(guildId, userId) {
 
 /** Marks a case inactive — used when a mute/ban is reversed, so it stops counting as the user's current sanction. */
 async function deactivateCase(guildId, caseNumber) {
-  const { error } = await supabase.from('mod_actions').update({ active: false }).eq('guild_id', guildId).eq('case_number', caseNumber);
+  const { error } = await database.from('mod_actions').update({ active: false }).eq('guild_id', guildId).eq('case_number', caseNumber);
   if (error) throw error;
 }
 
 /** The user's current active sanction of any of `types` (e.g. an unexpired mute/tempmute), if any. */
 async function getActiveSanction(guildId, userId, types) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('mod_actions')
     .select('*')
     .eq('guild_id', guildId)
@@ -168,7 +168,7 @@ async function getActiveSanction(guildId, userId, types) {
 
 /** Every active tempban/tempmute across all guilds whose expiry has passed — polled by the expiry job. */
 async function getExpiredSanctions() {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('mod_actions')
     .select('*')
     .in('type', ['tempban', 'tempmute'])

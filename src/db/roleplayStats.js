@@ -2,10 +2,10 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getRoleplayCounter = getRoleplayCounter;
 exports.recordRoleplayResponse = recordRoleplayResponse;
-const supabase = require('./supabase');
+const database = require('./database');
 const { ensureGuild } = require('./guilds');
 async function getRoleplayCounter(guildId, userId, action) {
-    const { data, error } = await supabase
+    const { data, error } = await database
         .from('roleplay_counters')
         .select('count')
         .eq('guild_id', guildId)
@@ -17,7 +17,7 @@ async function getRoleplayCounter(guildId, userId, action) {
     return Number(data?.count ?? 0) || 0;
 }
 async function callRecordResponse(input) {
-    return supabase.rpc('record_roleplay_response', {
+    return database.rpc('record_roleplay_response', {
         p_request_id: input.requestId,
         p_guild_id: input.guildId,
         p_message_id: input.messageId,

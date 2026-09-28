@@ -1,19 +1,19 @@
-const supabase = require('./supabase');
+const database = require('./database');
 
 async function listGroups(guildId) {
-  const { data, error } = await supabase.from('role_groups').select('*').eq('guild_id', guildId).order('name');
+  const { data, error } = await database.from('role_groups').select('*').eq('guild_id', guildId).order('name');
   if (error) throw error;
   return data;
 }
 
 async function getGroup(guildId, name) {
-  const { data, error } = await supabase.from('role_groups').select('*').eq('guild_id', guildId).eq('name', name).maybeSingle();
+  const { data, error } = await database.from('role_groups').select('*').eq('guild_id', guildId).eq('name', name).maybeSingle();
   if (error) throw error;
   return data;
 }
 
 async function upsertGroup(guildId, name, roleIds) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('role_groups')
     .upsert({ guild_id: guildId, name, role_ids: roleIds }, { onConflict: 'guild_id,name' })
     .select('*')
@@ -23,7 +23,7 @@ async function upsertGroup(guildId, name, roleIds) {
 }
 
 async function deleteGroup(guildId, name) {
-  const { data, error } = await supabase.from('role_groups').delete().eq('guild_id', guildId).eq('name', name).select('name');
+  const { data, error } = await database.from('role_groups').delete().eq('guild_id', guildId).eq('name', name).select('name');
   if (error) throw error;
   return data.length > 0;
 }

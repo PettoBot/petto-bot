@@ -1,4 +1,4 @@
-const supabase = require('./supabase');
+const database = require('./database');
 const { createExpiringCache } = require('../utils/expiringCache');
 
 const settingsCache = createExpiringCache(15_000);
@@ -26,14 +26,14 @@ const DEFAULTS = {
 
 async function getSettings(guildId) {
   return settingsCache.get(guildId, async () => {
-    const { data, error } = await supabase.from('ticket_settings').select('*').eq('guild_id', guildId).maybeSingle();
+    const { data, error } = await database.from('ticket_settings').select('*').eq('guild_id', guildId).maybeSingle();
     if (error) throw error;
     return { ...DEFAULTS, ...data, guild_id: guildId };
   });
 }
 
 async function upsertSettings(guildId, patch) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('ticket_settings')
     .upsert({ guild_id: guildId, ...patch, updated_at: new Date().toISOString() }, { onConflict: 'guild_id' })
     .select('*')
@@ -47,7 +47,7 @@ async function listAutocloseEnabled() {
   const pageSize = 1_000;
   const rows = [];
   for (let offset = 0; ; offset += pageSize) {
-    const { data, error } = await supabase
+    const { data, error } = await database
       .from('ticket_settings')
       .select('guild_id,autoclose_inactivity_hours')
       .eq('autoclose_inactivity_enabled', true)

@@ -1,7 +1,7 @@
 -- One-time production migration: convert legacy/global-looking case numbers into
 -- stable per-guild sequences while preserving chronological order and warn links.
 --
--- Run this once in the Supabase SQL editor before deploying the matching bot code.
+-- Run this once in the Discloud PostgreSQL database before deploying the matching bot code.
 -- The schema_migrations marker makes repeated execution a no-op.
 
 begin;

@@ -1,6 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
-
-const supabase = require('./supabase') as SupabaseClient;
+const database = require('./database');
 const { ensureGuild } = require('./guilds') as {
   ensureGuild: (guildId: string) => Promise<unknown>;
 };
@@ -33,7 +31,7 @@ export interface RoleplayResponseResult {
 }
 
 export async function getRoleplayCounter(guildId: string, userId: string, action: string): Promise<number> {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('roleplay_counters')
     .select('count')
     .eq('guild_id', guildId)
@@ -45,7 +43,7 @@ export async function getRoleplayCounter(guildId: string, userId: string, action
 }
 
 async function callRecordResponse(input: RoleplayResponseInput) {
-  return supabase.rpc('record_roleplay_response', {
+  return database.rpc('record_roleplay_response', {
     p_request_id: input.requestId,
     p_guild_id: input.guildId,
     p_message_id: input.messageId,

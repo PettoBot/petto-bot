@@ -1,5 +1,5 @@
 const { Routes } = require('discord.js');
-const supabase = require('./supabase');
+const database = require('./database');
 const logger = require('../utils/logger');
 
 const FREE_LIMITS = Object.freeze({
@@ -29,7 +29,7 @@ async function getGuildPremium(guildId) {
   if (!guildId) return { active: false, userId: null, planKey: null, expiresAt: null };
 
   try {
-    const { data: assignments, error: assignmentError } = await supabase
+    const { data: assignments, error: assignmentError } = await database
       .from('premium_slot_assignments')
       .select('entitlement_id,user_id')
       .eq('guild_id', String(guildId))
@@ -38,7 +38,7 @@ async function getGuildPremium(guildId) {
     if (assignmentError || !assignments?.[0]) return { active: false, userId: null, planKey: null, expiresAt: null };
 
     const assignment = assignments[0];
-    const { data: entitlements, error: entitlementError } = await supabase
+    const { data: entitlements, error: entitlementError } = await database
       .from('premium_entitlements')
       .select('user_id,plan_key,status,current_period_end')
       .eq('id', assignment.entitlement_id)
@@ -81,7 +81,7 @@ function isActiveEntitlement(entitlement) {
 
 async function listUserPremium(userId) {
   if (!isDiscordId(userId)) throw new Error('Invalid Discord user ID.');
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('premium_entitlements')
     .select(ENTITLEMENT_COLUMNS)
     .eq('user_id', String(userId))
@@ -92,7 +92,7 @@ async function listUserPremium(userId) {
 }
 
 async function listUserAssignments(userId) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('premium_slot_assignments')
     .select(ASSIGNMENT_COLUMNS)
     .eq('user_id', String(userId))
@@ -126,7 +126,7 @@ async function getUserPremium(userId) {
 }
 
 async function activeAssignmentsForGuild(guildId) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('premium_slot_assignments')
     .select(ASSIGNMENT_COLUMNS)
     .eq('guild_id', String(guildId))
@@ -147,7 +147,7 @@ async function grantManualPremium(userId, slotLimit, grantedBy, guildId = null) 
 
   const existing = entitlements.find((entitlement) => entitlement.provider === 'manual' && entitlement.provider_subscription_id === `manual:user:${userId}`);
   if (existing) {
-    const { data: existingAssignments, error: assignmentError } = await supabase
+    const { data: existingAssignments, error: assignmentError } = await database
       .from('premium_slot_assignments')
       .select('id')
       .eq('entitlement_id', existing.id)
@@ -163,7 +163,7 @@ async function grantManualPremium(userId, slotLimit, grantedBy, guildId = null) 
     granted_at: existing?.metadata?.granted_at ?? new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('premium_entitlements')
     .upsert({
       user_id: String(userId),
@@ -209,13 +209,13 @@ async function assignPremiumSlot(userId, guildId, entitlementId = null) {
   // Moving a user's own server from an old entitlement should not hit the
   // one-active-owner index. Other users are rejected above.
   if (current?.user_id === String(userId)) {
-    await supabase
+    await database
       .from('premium_slot_assignments')
       .update({ status: 'released', released_at: new Date().toISOString() })
       .eq('id', current.id);
   }
 
-  const { data: usedAssignments, error: usedError } = await supabase
+  const { data: usedAssignments, error: usedError } = await database
     .from('premium_slot_assignments')
     .select('id')
     .eq('entitlement_id', entitlement.id)
@@ -223,7 +223,7 @@ async function assignPremiumSlot(userId, guildId, entitlementId = null) {
   if (usedError) throw usedError;
   if ((usedAssignments?.length ?? 0) >= entitlement.slot_limit) return { ok: false, code: 'no_slots', used: usedAssignments?.length ?? 0, limit: entitlement.slot_limit };
 
-  const { data: assignment, error } = await supabase
+  const { data: assignment, error } = await database
     .from('premium_slot_assignments')
     .upsert({
       entitlement_id: entitlement.id,
@@ -236,7 +236,7 @@ async function assignPremiumSlot(userId, guildId, entitlementId = null) {
     .single();
   if (error) throw error;
 
-  await supabase
+  await database
     .from('premium_slot_requests')
     .update({ status: 'approved', updated_at: new Date().toISOString() })
     .eq('user_id', String(userId))
@@ -249,7 +249,7 @@ async function resetGuildPremiumProfile(guildId, client = null) {
   if (!isDiscordId(guildId)) return;
   // Nicknames are free per-server identifiers; only Premium avatar, banner,
   // and bio overrides are cleared when a slot is released.
-  const { error } = await supabase
+  const { error } = await database
     .from('guilds')
     .update({ bot_avatar_url: null, bot_banner_url: null, bot_description: null, updated_at: new Date().toISOString() })
     .eq('guild_id', String(guildId));
@@ -271,7 +271,7 @@ async function resetGuildPremiumProfile(guildId, client = null) {
 async function unassignPremiumSlot(userId, guildId, client = null) {
   if (!isDiscordId(userId)) return { ok: false, code: 'invalid_user' };
   if (!isDiscordId(guildId)) return { ok: false, code: 'invalid_guild' };
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('premium_slot_assignments')
     .update({ status: 'released', released_at: new Date().toISOString() })
     .eq('user_id', String(userId))
@@ -291,7 +291,7 @@ async function revokeManualPremium(userId, revokedBy, client = null) {
 
   const releasedGuildIds = new Set();
   for (const entitlement of entitlements) {
-    const { data: assignments, error: assignmentError } = await supabase
+    const { data: assignments, error: assignmentError } = await database
       .from('premium_slot_assignments')
       .select('guild_id')
       .eq('entitlement_id', entitlement.id)
@@ -304,12 +304,12 @@ async function revokeManualPremium(userId, revokedBy, client = null) {
       revoked_by: String(revokedBy),
       revoked_at: new Date().toISOString(),
     };
-    const { error } = await supabase
+    const { error } = await database
       .from('premium_entitlements')
       .update({ status: 'expired', metadata, updated_at: new Date().toISOString() })
       .eq('id', entitlement.id);
     if (error) throw error;
-    const { error: releaseError } = await supabase
+    const { error: releaseError } = await database
       .from('premium_slot_assignments')
       .update({ status: 'released', released_at: new Date().toISOString() })
       .eq('entitlement_id', entitlement.id)

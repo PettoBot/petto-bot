@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const supabase = require('./supabase');
+const database = require('./database');
 
 const MAX_PER_GUILD = 100;
 const CACHE_TTL_MS = 15_000;
@@ -10,13 +10,13 @@ function generateArId() {
 }
 
 async function countForGuild(guildId) {
-  const { count, error } = await supabase.from('auto_responders').select('id', { count: 'exact', head: true }).eq('guild_id', guildId);
+  const { count, error } = await database.from('auto_responders').select('id', { count: 'exact', head: true }).eq('guild_id', guildId);
   if (error) throw error;
   return count ?? 0;
 }
 
 async function listForGuild(guildId) {
-  const { data, error } = await supabase.from('auto_responders').select('*').eq('guild_id', guildId).order('created_at', { ascending: true });
+  const { data, error } = await database.from('auto_responders').select('*').eq('guild_id', guildId).order('created_at', { ascending: true });
   if (error) throw error;
   return data;
 }
@@ -30,7 +30,7 @@ async function listForGuildCached(guildId) {
     listCache.set(guildId, { rows, expiresAt: Date.now() + CACHE_TTL_MS });
     return rows;
   } catch (error) {
-    // A short Supabase outage should not disable already-known autoresponders.
+    // A short database outage should not disable already-known autoresponders.
     // Reuse the last successful snapshot briefly and try the DB again later.
     if (cached) {
       cached.expiresAt = Date.now() + Math.min(CACHE_TTL_MS, 5_000);
@@ -45,13 +45,13 @@ function invalidateGuildCache(guildId) {
 }
 
 async function getById(guildId, arId) {
-  const { data, error } = await supabase.from('auto_responders').select('*').eq('guild_id', guildId).eq('ar_id', arId).maybeSingle();
+  const { data, error } = await database.from('auto_responders').select('*').eq('guild_id', guildId).eq('ar_id', arId).maybeSingle();
   if (error) throw error;
   return data;
 }
 
 async function getByTrigger(guildId, trigger) {
-  const { data, error } = await supabase.from('auto_responders').select('*').eq('guild_id', guildId).ilike('trigger', trigger).maybeSingle();
+  const { data, error } = await database.from('auto_responders').select('*').eq('guild_id', guildId).ilike('trigger', trigger).maybeSingle();
   if (error) throw error;
   return data;
 }
@@ -64,28 +64,28 @@ async function create(guildId, patch) {
     throw err;
   }
 
-  const { data, error } = await supabase.from('auto_responders').insert({ guild_id: guildId, ar_id: generateArId(), ...patch }).select('*').single();
+  const { data, error } = await database.from('auto_responders').insert({ guild_id: guildId, ar_id: generateArId(), ...patch }).select('*').single();
   if (error) throw error;
   invalidateGuildCache(guildId);
   return data;
 }
 
 async function update(guildId, arId, patch) {
-  const { data, error } = await supabase.from('auto_responders').update(patch).eq('guild_id', guildId).eq('ar_id', arId).select('*').maybeSingle();
+  const { data, error } = await database.from('auto_responders').update(patch).eq('guild_id', guildId).eq('ar_id', arId).select('*').maybeSingle();
   if (error) throw error;
   invalidateGuildCache(guildId);
   return data;
 }
 
 async function removeByTrigger(guildId, trigger) {
-  const { data, error } = await supabase.from('auto_responders').delete().eq('guild_id', guildId).ilike('trigger', trigger).select('id');
+  const { data, error } = await database.from('auto_responders').delete().eq('guild_id', guildId).ilike('trigger', trigger).select('id');
   if (error) throw error;
   invalidateGuildCache(guildId);
   return data.length > 0;
 }
 
 async function removeAllForGuild(guildId) {
-  const { data, error } = await supabase.from('auto_responders').delete().eq('guild_id', guildId).select('id');
+  const { data, error } = await database.from('auto_responders').delete().eq('guild_id', guildId).select('id');
   if (error) throw error;
   invalidateGuildCache(guildId);
   return data.length;

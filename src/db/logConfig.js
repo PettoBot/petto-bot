@@ -1,4 +1,4 @@
-const supabase = require('./supabase');
+const database = require('./database');
 const logger = require('../utils/logger');
 
 const EVENTS = ['messages', 'members', 'roles', 'channels', 'invites', 'emojis', 'voice', 'server', 'sanctions', 'verification', 'automod'];
@@ -42,9 +42,9 @@ async function getLogConfig(guildId, { force = false } = {}) {
 
   const request = (async () => {
     const [entriesResult, webhooksResult, ignoredResult] = await Promise.allSettled([
-      readRows(() => supabase.from('log_entries').select('*').eq('guild_id', guildId), 'log entries'),
-      readRows(() => supabase.from('log_webhooks').select('*').eq('guild_id', guildId), 'log webhooks'),
-      readRows(() => supabase.from('log_ignored').select('target_id').eq('guild_id', guildId), 'ignored log targets'),
+      readRows(() => database.from('log_entries').select('*').eq('guild_id', guildId), 'log entries'),
+      readRows(() => database.from('log_webhooks').select('*').eq('guild_id', guildId), 'log webhooks'),
+      readRows(() => database.from('log_ignored').select('target_id').eq('guild_id', guildId), 'ignored log targets'),
     ]);
 
     if (entriesResult.status === 'rejected' || webhooksResult.status === 'rejected') {
@@ -84,13 +84,13 @@ async function getLogConfig(guildId, { force = false } = {}) {
 }
 
 async function addEntry(guildId, channelId, event) {
-  const { error } = await supabase.from('log_entries').insert({ guild_id: guildId, channel_id: channelId, event });
+  const { error } = await database.from('log_entries').insert({ guild_id: guildId, channel_id: channelId, event });
   if (error) throw error;
   invalidateLogConfig(guildId);
 }
 
 async function removeEntries(guildId, channelId, event = null) {
-  let query = supabase.from('log_entries').delete().eq('guild_id', guildId).eq('channel_id', channelId);
+  let query = database.from('log_entries').delete().eq('guild_id', guildId).eq('channel_id', channelId);
   if (event) query = query.eq('event', event);
   const { error } = await query;
   if (error) throw error;
@@ -98,7 +98,7 @@ async function removeEntries(guildId, channelId, event = null) {
 }
 
 async function setEntryColor(guildId, channelId, event, color) {
-  const { data, error } = await supabase
+  const { data, error } = await database
     .from('log_entries')
     .update({ color })
     .eq('guild_id', guildId)
@@ -112,7 +112,7 @@ async function setEntryColor(guildId, channelId, event, color) {
 }
 
 async function upsertWebhook(guildId, channelId, webhookId, webhookToken) {
-  const { error } = await supabase
+  const { error } = await database
     .from('log_webhooks')
     .upsert({ guild_id: guildId, channel_id: channelId, webhook_id: webhookId, webhook_token: webhookToken });
   if (error) throw error;
@@ -120,19 +120,19 @@ async function upsertWebhook(guildId, channelId, webhookId, webhookToken) {
 }
 
 async function deleteWebhookByChannel(guildId, channelId) {
-  const { error } = await supabase.from('log_webhooks').delete().eq('guild_id', guildId).eq('channel_id', channelId);
+  const { error } = await database.from('log_webhooks').delete().eq('guild_id', guildId).eq('channel_id', channelId);
   if (error) throw error;
   invalidateLogConfig(guildId);
 }
 
 async function deleteWebhookById(guildId, webhookId) {
-  const { error } = await supabase.from('log_webhooks').delete().eq('guild_id', guildId).eq('webhook_id', webhookId);
+  const { error } = await database.from('log_webhooks').delete().eq('guild_id', guildId).eq('webhook_id', webhookId);
   if (error) throw error;
   invalidateLogConfig(guildId);
 }
 
 async function toggleIgnored(guildId, targetId) {
-  const { data: existing, error: selectError } = await supabase
+  const { data: existing, error: selectError } = await database
     .from('log_ignored')
     .select('target_id')
     .eq('guild_id', guildId)
@@ -142,13 +142,13 @@ async function toggleIgnored(guildId, targetId) {
   if (selectError) throw selectError;
 
   if (existing) {
-    const { error } = await supabase.from('log_ignored').delete().eq('guild_id', guildId).eq('target_id', targetId);
+    const { error } = await database.from('log_ignored').delete().eq('guild_id', guildId).eq('target_id', targetId);
     if (error) throw error;
     invalidateLogConfig(guildId);
     return false;
   }
 
-  const { error } = await supabase.from('log_ignored').insert({ guild_id: guildId, target_id: targetId });
+  const { error } = await database.from('log_ignored').insert({ guild_id: guildId, target_id: targetId });
   if (error) throw error;
   invalidateLogConfig(guildId);
   return true;
