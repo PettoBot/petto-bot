@@ -12,6 +12,22 @@ function extractReactReplies(text) {
   return { text: stripped.trim(), emojis };
 }
 
+/** Removes response flags from every string in a saved embed template while collecting them. */
+function extractReactRepliesFromTemplate(value, emojis = []) {
+  if (typeof value === 'string') {
+    const stripped = value.replace(/\{reactreply:([^}]+)\}/gi, (_, raw) => {
+      emojis.push(raw.trim());
+      return '';
+    });
+    return stripped.trim();
+  }
+  if (Array.isArray(value)) return value.map((item) => extractReactRepliesFromTemplate(item, emojis));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, extractReactRepliesFromTemplate(item, emojis)]));
+  }
+  return value;
+}
+
 /** Reacts to `message` with each emoji in order, best-effort (a bad/unknown emoji shouldn't block the rest). */
 async function applyReactReplies(message, emojis) {
   for (const emoji of emojis) {
@@ -19,4 +35,4 @@ async function applyReactReplies(message, emojis) {
   }
 }
 
-module.exports = { extractReactReplies, applyReactReplies };
+module.exports = { extractReactReplies, extractReactRepliesFromTemplate, applyReactReplies };

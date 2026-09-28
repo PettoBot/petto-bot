@@ -18,6 +18,55 @@ function validUrl(url) {
   }
 }
 
+function textValue(value) {
+  if (value == null) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') return String(value);
+  return '';
+}
+
+function booleanValue(value, fallback = false) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') {
+    if (value === 1) return true;
+    if (value === 0) return false;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', '1', 'yes', 'on', 'enabled'].includes(normalized)) return true;
+    if (['false', '0', 'no', 'off', 'disabled', ''].includes(normalized)) return false;
+  }
+  return fallback;
+}
+
+/** Accepts both the editor's URL string and Discord's serialized `{ url }` shape. */
+function urlValue(value) {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object') return textValue(value.url);
+  return '';
+}
+
+function normalizeAuthor(author) {
+  if (!author || typeof author !== 'object') return null;
+  const name = textValue(author.name);
+  if (!name) return null;
+  return {
+    name,
+    icon: textValue(author.icon ?? author.icon_url),
+    url: textValue(author.url),
+  };
+}
+
+function normalizeFooter(footer) {
+  if (!footer || typeof footer !== 'object') return null;
+  const text = textValue(footer.text);
+  if (!text) return null;
+  return {
+    text,
+    icon: textValue(footer.icon ?? footer.icon_url),
+  };
+}
+
 /**
  * Templates saved by the older /embed command (and anything not yet touched by the dashboard's
  * multi-embed builder) store one embed's fields directly at the top level of `data`. The
@@ -25,7 +74,8 @@ function validUrl(url) {
  * are read here so neither format ever breaks the other.
  */
 function normalize(data) {
-  if (Array.isArray(data.embeds)) return { content: data.content ?? '', embeds: data.embeds, buttons: data.buttons ?? [] };
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return { content: '', embeds: [], buttons: [] };
+  if (Array.isArray(data.embeds)) return { content: textValue(data.content), embeds: data.embeds.filter((embed) => embed && typeof embed === 'object'), buttons: Array.isArray(data.buttons) ? data.buttons : [] };
   const looksLikeEmbed = data.title || data.description || data.author?.name || data.footer?.text || data.fields?.length || data.image || data.thumbnail || data.color != null;
   return { content: '', embeds: looksLikeEmbed ? [data] : [], buttons: [] };
 }
@@ -33,35 +83,66 @@ function normalize(data) {
 async function buildOneEmbed(e, ctx) {
   const embed = new EmbedBuilder();
 
-  if (e.title) embed.setTitle(await resolve(e.title, ctx));
-  if (e.description) embed.setDescription(await resolve(e.description, ctx));
-  if (e.color != null) embed.setColor(e.color);
-  if (e.url) {
-    const u = validUrl(await resolve(e.url, ctx));
+  const title = textValue(e.title);
+  const description = textValue(e.description);
+  const url = urlValue(e.url);
+  const thumbnail = urlValue(e.thumbnail);
+  const image = urlValue(e.image);
+  const author = normalizeAuthor(e.author);
+  const footer = normalizeFooter(e.footer);
+
+  if (title) {
+    const resolvedTitle = await resolve(title, ctx);
+    if (resolvedTitle) embed.setTitle(resolvedTitle);
+  }
+  if (description) {
+    const resolvedDescription = await resolve(description, ctx);
+    if (resolvedDescription) embed.setDescription(resolvedDescription);
+  }
+  if (e.color !== null && e.color !== undefined && e.color !== '') embed.setColor(e.color);
+  if (url) {
+    const u = validUrl(await resolve(url, ctx));
     if (u) embed.setURL(u);
   }
-  if (e.thumbnail) {
-    const u = validUrl(await resolve(e.thumbnail, ctx));
+  if (thumbnail) {
+    const u = validUrl(await resolve(thumbnail, ctx));
     if (u) embed.setThumbnail(u);
   }
-  if (e.image) {
-    const u = validUrl(await resolve(e.image, ctx));
+  if (image) {
+    const u = validUrl(await resolve(image, ctx));
     if (u) embed.setImage(u);
   }
-  if (e.timestamp) embed.setTimestamp();
+  if (booleanValue(e.timestamp)) embed.setTimestamp();
 
-  if (e.author?.name) {
-    const iconURL = e.author.icon ? validUrl(await resolve(e.author.icon, ctx)) : undefined;
-    embed.setAuthor({ name: await resolve(e.author.name, ctx), iconURL, url: e.author.url ?? undefined });
+  if (author) {
+    const iconURL = author.icon ? validUrl(await resolve(author.icon, ctx)) : undefined;
+    const authorUrl = author.url ? validUrl(await resolve(author.url, ctx)) : undefined;
+    const authorName = await resolve(author.name, ctx);
+    if (authorName) embed.setAuthor({ name: authorName, iconURL, url: authorUrl });
   }
 
-  if (e.footer?.text) {
-    const iconURL = e.footer.icon ? validUrl(await resolve(e.footer.icon, ctx)) : undefined;
-    embed.setFooter({ text: await resolve(e.footer.text, ctx), iconURL });
+  if (footer) {
+    const iconURL = footer.icon ? validUrl(await resolve(footer.icon, ctx)) : undefined;
+    const footerText = await resolve(footer.text, ctx);
+    if (footerText) embed.setFooter({ text: footerText, iconURL });
   }
 
-  for (const f of e.fields ?? []) {
-    embed.addFields({ name: await resolve(f.name, ctx), value: await resolve(f.value, ctx), inline: f.inline ?? false });
+  for (const [index, f] of (Array.isArray(e.fields) ? e.fields : []).entries()) {
+    if (!f || typeof f !== 'object') continue;
+    const name = textValue(f.name);
+    const value = textValue(f.value);
+    // Discord rejects fields without both values. Old templates could contain an
+    // unfinished field from the editor, so ignore that invalid row instead of
+    // failing the whole message with a generic CombinedPropertyError.
+    if (!name || !value) continue;
+    try {
+      const resolvedName = await resolve(name, ctx);
+      const resolvedValue = await resolve(value, ctx);
+      if (!resolvedName || !resolvedValue) continue;
+      embed.addFields({ name: resolvedName, value: resolvedValue, inline: booleanValue(f.inline) });
+    } catch (error) {
+      throw new Error(`Invalid field ${index + 1}: ${error.message}`, { cause: error });
+    }
   }
 
   return embed;
@@ -70,13 +151,42 @@ async function buildOneEmbed(e, ctx) {
 function buildButtonRows(buttons) {
   return (buttons ?? [])
     .map((row) => {
-      const btns = (row ?? []).filter((b) => b.label?.trim() && validUrl(b.url));
+      const btns = (Array.isArray(row) ? row : []).filter((b) => b && textValue(b.label).trim() && validUrl(urlValue(b.url)));
       if (!btns.length) return null;
       return new ActionRowBuilder().addComponents(
-        btns.map((b) => new ButtonBuilder().setLabel(b.label).setURL(b.url).setStyle(ButtonStyle.Link).setDisabled(Boolean(b.disabled))),
+        btns.map((b) => {
+          const button = new ButtonBuilder()
+            .setLabel(textValue(b.label).trim())
+            .setURL(validUrl(urlValue(b.url)))
+            .setStyle(ButtonStyle.Link)
+            .setDisabled(booleanValue(b.disabled));
+          const emoji = textValue(b.emoji).trim();
+          if (emoji) button.setEmoji(emoji);
+          return button;
+        }),
       );
     })
     .filter(Boolean);
+}
+
+/** Turns Discord.js' nested validation errors into a short, useful message. */
+function formatEmbedError(error) {
+  const messages = [];
+  const seen = new Set();
+  const visit = (value) => {
+    if (!value || typeof value !== 'object' || seen.has(value)) return;
+    seen.add(value);
+    if (typeof value.message === 'string' && value.message !== 'Received one or more errors') messages.push(value.message);
+    if (Array.isArray(value.errors)) {
+      for (const entry of value.errors) {
+        if (Array.isArray(entry)) visit(entry[1]);
+        else visit(entry);
+      }
+    }
+    if (value.cause) visit(value.cause);
+  };
+  visit(error);
+  return [...new Set(messages)].slice(0, 3).join('; ') || error?.message || 'Unknown embed error';
 }
 
 /**
@@ -97,31 +207,47 @@ async function build(data, ctx = {}) {
 function buildRawPreview(data) {
   const { embeds } = normalize(data);
   const e = embeds[0] ?? {};
-  const embed = new EmbedBuilder().setColor(e.color ?? 0x4b4f59);
-  if (e.title) embed.setTitle(e.title);
-  if (e.description) embed.setDescription(e.description);
-  if (e.url) embed.setURL(e.url);
-  if (e.timestamp) embed.setTimestamp();
-  if (e.thumbnail && !e.thumbnail.includes('{')) embed.setThumbnail(e.thumbnail);
-  if (e.image && !e.image.includes('{')) embed.setImage(e.image);
-  if (e.author?.name) {
+  const title = textValue(e.title);
+  const description = textValue(e.description);
+  const url = urlValue(e.url);
+  const thumbnail = urlValue(e.thumbnail);
+  const image = urlValue(e.image);
+  const author = normalizeAuthor(e.author);
+  const footer = normalizeFooter(e.footer);
+  const color = e.color === null || e.color === undefined || e.color === '' ? 0x4b4f59 : e.color;
+  const embed = new EmbedBuilder().setColor(color);
+  if (title) embed.setTitle(title);
+  if (description) embed.setDescription(description);
+  if (validUrl(url)) embed.setURL(url);
+  if (booleanValue(e.timestamp)) embed.setTimestamp();
+  if (validUrl(thumbnail) && !thumbnail.includes('{')) embed.setThumbnail(thumbnail);
+  if (validUrl(image) && !image.includes('{')) embed.setImage(image);
+  if (author) {
     embed.setAuthor({
-      name: e.author.name,
-      iconURL: e.author.icon && !e.author.icon.includes('{') ? e.author.icon : undefined,
-      url: e.author.url ?? undefined,
+      name: author.name,
+      iconURL: validUrl(author.icon) && !author.icon.includes('{') ? author.icon : undefined,
+      url: validUrl(author.url) && !author.url.includes('{') ? author.url : undefined,
     });
   }
-  if (e.footer?.text) {
-    embed.setFooter({ text: e.footer.text, iconURL: e.footer.icon && !e.footer.icon.includes('{') ? e.footer.icon : undefined });
+  if (footer) {
+    embed.setFooter({ text: footer.text, iconURL: validUrl(footer.icon) && !footer.icon.includes('{') ? footer.icon : undefined });
   }
-  if (e.fields?.length) embed.addFields(e.fields.map((f) => ({ name: f.name, value: f.value, inline: f.inline ?? false })));
+  const fields = (Array.isArray(e.fields) ? e.fields : [])
+    .map((field) => ({ name: textValue(field?.name), value: textValue(field?.value), inline: booleanValue(field?.inline) }))
+    .filter((field) => field.name && field.value);
+  if (fields.length) embed.addFields(fields.slice(0, 25));
   return embed;
 }
 
 function hasContent(data) {
   const { content, embeds, buttons } = normalize(data);
   const e = embeds[0] ?? {};
-  return !!(content || e.title || e.description || e.author?.name || e.footer?.text || e.fields?.length || buttons.length);
+  const hasValidField = Array.isArray(e.fields) && e.fields.some((field) => textValue(field?.name) && textValue(field?.value));
+  return !!(content || e.title || e.description || e.author?.name || e.footer?.text || hasValidField || buttons.some((row) => Array.isArray(row) && row.length));
 }
 
-module.exports = { parseColor, validUrl, build, buildRawPreview, hasContent };
+function hasSendablePayload(payload) {
+  return Boolean(payload && (payload.content?.trim() || payload.embeds?.length || payload.components?.length));
+}
+
+module.exports = { parseColor, validUrl, build, buildRawPreview, hasContent, hasSendablePayload, formatEmbedError };
