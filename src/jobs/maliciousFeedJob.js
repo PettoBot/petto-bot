@@ -6,7 +6,7 @@ const logger = require('../utils/logger');
 const FETCH_TIMEOUT_MS = 5 * 60_000;
 const MAX_FEED_BYTES = 512 * 1024 * 1024;
 const OPENPHISH_SOURCE = 'openphish';
-const PHISHTANK_SOURCE = 'phishtank';
+const URLHAUS_SOURCE = 'urlhaus';
 const PHISHING_FILTER_SOURCE = 'phishing_filter_domains';
 
 // These are public, no-key downloads. They are intentionally static URLs so
@@ -18,9 +18,9 @@ const PUBLIC_FEEDS = [
     parser: (text) => parsePlainUrlList(text, OPENPHISH_SOURCE, ['SOCIAL_ENGINEERING']),
   },
   {
-    source: PHISHTANK_SOURCE,
-    url: 'https://data.phishtank.com/data/online-valid.json',
-    parser: parsePhishtankJson,
+    source: URLHAUS_SOURCE,
+    url: 'https://urlhaus.abuse.ch/downloads/text/',
+    parser: (text) => parsePlainUrlList(text, URLHAUS_SOURCE, ['MALWARE']),
   },
   {
     source: PHISHING_FILTER_SOURCE,
@@ -54,21 +54,6 @@ function parsePlainUrlList(text, source, threatTypes) {
     .map((line) => line.trim())
     .filter((line) => line && !line.startsWith('#') && /^https?:\/\//i.test(line))
     .map((line) => makeFeedRow(line, source, threatTypes))
-    .filter(Boolean);
-}
-
-function isPositiveFeedFlag(value) {
-  return value === true || String(value ?? '').trim().toLowerCase() === 'yes';
-}
-
-function parsePhishtankJson(text) {
-  const payload = JSON.parse(String(text ?? ''));
-  const entries = Array.isArray(payload) ? payload : payload?.results;
-  if (!Array.isArray(entries)) throw new Error('PhishTank returned an unexpected JSON shape.');
-
-  return entries
-    .filter((entry) => isPositiveFeedFlag(entry.verified) && isPositiveFeedFlag(entry.online))
-    .map((entry) => makeFeedRow(entry.url, PHISHTANK_SOURCE, ['SOCIAL_ENGINEERING']))
     .filter(Boolean);
 }
 
@@ -124,9 +109,7 @@ async function fetchText(url, { headers = {}, maxBytes = MAX_FEED_BYTES } = {}) 
 }
 
 async function syncFeed(feed) {
-  const text = await fetchText(feed.url, feed.source === PHISHTANK_SOURCE
-    ? { headers: { accept: 'application/json' } }
-    : {});
+  const text = await fetchText(feed.url);
   const count = await upsertMaliciousLinks(feed.parser(text));
   logger.info({ source: feed.source, count }, `Synchronized ${count} public malicious feed entry/entries from ${feed.source}.`);
   return count;
@@ -166,7 +149,6 @@ function startMaliciousFeedJob() {
 
 module.exports = {
   parseDomainList,
-  parsePhishtankJson,
   parsePlainUrlList,
   syncMaliciousFeeds,
   startMaliciousFeedJob,
