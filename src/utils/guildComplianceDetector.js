@@ -26,6 +26,7 @@ const PATTERNS = {
   commerce: /\b(?:shop|store|tienda|loja|market|marketplace|mercado|catalog|catalogo|catalogue|price|prices|precio|precios|preco|precos|order|orders|pedido|pedidos|sale|sales|venta|ventas|venda|vendas|selling|vendiendo|vendendo|vendo|vender|compra|compras|comprar|purchase|buy|sell|stock|estoque|vouch|vouches|comprovante|comprovantes)\b/i,
   payment: /\b(?:payment|payments|pay|pago|pagos|pagamento|pagamentos|paypal|cashapp|venmo|crypto|cripto|criptomoeda|bitcoin|btc|usdt|binance|wallet|wallets|carteira|carteiras|stripe|pix|boleto|mercadopago|mercado\s+pago|bizum|transferencia|transferencias|cartao|cartoes|tarjeta|tarjetas)\b/i,
   discordGoods: /\b(?:discord\s+accounts?|accounts?\s+discord|cuentas?\s+discord|contas?\s+discord|aged\s+accounts?|cuentas?\s+antiguas?|contas?\s+antigas?|nitro|server\s+boosts?|boosts?|impulsos?|members?|miembros?|membros?|discord\s+tokens?|tokens?\s+discord|vanity\s+urls?|vanity\s+url)\b/i,
+  giveaway: /\b(?:giveaways?|give[-\s]?away|raffles?|sorteos?|sorteo|sorteio|sorteios|contest(?:s)?|free\s+nitro|nitro\s+(?:gratis|free|gratuito)|win(?:ner)?s?|premios?|premio|regalos?|regalo|promo(?:tion)?s?)\b/i,
   pricing: /(?:[$€£]\s?\d+(?:[.,]\d{1,2})?|\b\d+(?:[.,]\d{1,2})?\s?(?:usd|eur|gbp|cop|mxn|ars|brl|usdt|reais?|dolares?|dollars?|euros?)\b)/i,
   transaction: /\b(?:dm\s+(?:me\s+)?to\s+(?:buy|order)|open\s+(?:a\s+)?ticket\s+to\s+(?:buy|order)|buy\s+now|order\s+now|payment\s+methods?|metodos?\s+de\s+pago|formas?\s+de\s+pago|abre\s+(?:un\s+)?ticket\s+para\s+comprar|abrir\s+(?:un\s+)?ticket\s+para\s+comprar|compra\s+ahora|comprar\s+ahora|manda\s+dm\s+para\s+comprar|metodos?\s+de\s+pagamento|formas?\s+de\s+pagamento|abra\s+(?:um\s+)?ticket\s+para\s+comprar|abrir\s+(?:um\s+)?ticket\s+para\s+comprar|compre\s+agora|comprar\s+agora|manda\s+dm\s+para\s+comprar|chama\s+na\s+dm\s+para\s+comprar)\b/i,
 };
@@ -58,13 +59,18 @@ function scoreText(value, { metadata = false, channelName = false } = {}) {
   const commerce = PATTERNS.commerce.test(text);
   const payment = PATTERNS.payment.test(text);
   const discordGoods = PATTERNS.discordGoods.test(text);
+  const giveaway = PATTERNS.giveaway.test(text);
   const pricing = PATTERNS.pricing.test(text);
   const transaction = PATTERNS.transaction.test(text);
 
   // Generic commerce is not a Petto compliance incident. The detector only
   // becomes actionable when Discord-specific goods/services are paired with
   // concrete transaction evidence.
-  const trade = discordGoods && (
+  // Giveaways and promotions mention Nitro/boosts/members frequently, but do
+  // not by themselves indicate a prohibited sale. Do not turn those messages
+  // into persistent compliance alerts unless a separate transaction signal is
+  // present and the text is not clearly promotional.
+  const trade = discordGoods && !giveaway && (
     transaction
     || pricing
     || (!metadata && commerce && payment)

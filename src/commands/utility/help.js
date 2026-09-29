@@ -41,8 +41,7 @@ const CATEGORY_META = {
 function getChatInputCommands(client, includeHidden = false) {
   return [...client.commands.values()].filter((c) => (
     (c.data.toJSON().type ?? 1) === 1
-    && !c.slashOnly
-    && (includeHidden || !c.hiddenFromHelp)
+    && (includeHidden || (!c.slashOnly && !c.hiddenFromHelp))
   ));
 }
 
@@ -133,7 +132,7 @@ function findEntries(client, tokens, includeHidden = false) {
   const route = client.commandRoutes?.get(tokens[0]);
   const canonicalName = client.commandAliases.get(tokens[0]) ?? route?.command ?? tokens[0];
   const command = client.commands.get(canonicalName);
-  if (!command || command.slashOnly || (!includeHidden && command.hiddenFromHelp) || (command.data.toJSON().type ?? 1) !== 1) return { command: null, entries: [] };
+  if (!command || (!includeHidden && (command.slashOnly || command.hiddenFromHelp)) || (command.data.toJSON().type ?? 1) !== 1) return { command: null, entries: [] };
 
   const json = command.data.toJSON();
   const all = visibleEntries(command, includeHidden);
@@ -150,14 +149,15 @@ function findEntries(client, tokens, includeHidden = false) {
 
 function entryDetailCard(client, guild, prefix, command, entry, page = 0, total = 1) {
   const json = command.data.toJSON();
+  const commandPrefix = command.slashOnly ? '/' : prefix;
   const entryPath = entry.path.join(' ');
   const routeAliases = (command.prefixRoutes ?? [])
     .filter((route) => route.subcommand === entryPath)
     .map((route) => route.alias);
   const aliasesList = [...new Set([...(command.aliases ?? []), ...routeAliases])];
   const aliases = aliasesList.length ? aliasesList.map((a) => `\`${prefix}${a}\``).join(', ') : 'No Aliases';
-  const syntax = buildSyntax(prefix, json.name, entry);
-  const example = buildExample(prefix, json.name, entry);
+  const syntax = buildSyntax(commandPrefix, json.name, entry);
+  const example = buildExample(commandPrefix, json.name, entry);
   const params = buildParams(entry);
   const information = json.default_member_permissions == null ? 'n/a' : `${EMOJI.WARNING} ${describePermissions(json.default_member_permissions)}`;
   const title = [json.name, ...entry.path].join(' ');

@@ -18,6 +18,7 @@ const { startPollAutocloseJob } = require('./src/jobs/pollAutocloseJob');
 const { startCounterJob } = require('./src/jobs/counterJob');
 const { startBackupVaultJob } = require('./src/jobs/backupVaultJob');
 const { startPremiumRoleJob } = require('./src/jobs/premiumRoleJob');
+const { startMaliciousFeedJob } = require('./src/jobs/maliciousFeedJob');
 const { startServer } = require('./src/web/server');
 const { startCloudflareTunnel } = require('./src/web/cloudflareTunnel');
 const { attachRestRateLimitTelemetry } = require('./src/utils/restTelemetry');
@@ -104,6 +105,7 @@ async function main() {
   startCounterJob(client);
   startBackupVaultJob(client);
   startPremiumRoleJob(client);
+  startMaliciousFeedJob();
   startServer(client);
   startCloudflareTunnel(config.cloudflareTunnelToken);
 }

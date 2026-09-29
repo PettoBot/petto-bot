@@ -23,7 +23,7 @@ const RELEASES = [
         title: `${EMOJI.RELEASE_LOCKED} AutoMod & malicious links`,
         items: [
           'Added persistent malicious-URL detection for links discovered through `!am`.',
-          'Known malicious URLs are reused from storage instead of being checked with Safe Browsing on every message.',
+          'Known malicious URLs are reused from storage instead of being checked with an external service on every message.',
           'Known malicious links are removed automatically, and the development team is alerted when a new URL is detected.',
         ],
       },

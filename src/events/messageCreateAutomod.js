@@ -23,7 +23,7 @@ module.exports = {
     if (message.author.bot || !message.member) return;
 
     // Global known-malicious URL guard. This performs DB/cache lookups only — it
-    // never calls Google Safe Browsing for ordinary messages. Staff are checked
+    // never calls an external reputation service for ordinary messages. Staff are checked
     // too because a compromised staff account should not bypass link blocking.
     try {
       const urls = extractUrls(message.content);
@@ -49,7 +49,7 @@ module.exports = {
       }
     } catch (err) {
       // Fail open on DB/cache errors: ordinary messages must never fall back to
-      // an external Safe Browsing request per URL.
+    // an external reputation request per URL.
       logger.error(`Malicious-link DB scan failed for message ${message.id}:`, err);
     }
 
