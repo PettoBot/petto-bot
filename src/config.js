@@ -120,7 +120,7 @@ module.exports = {
   dashboardApiSecret: process.env.PETTO_DASHBOARD_API_SECRET || null,
   // Public threat feeds are synchronized into the local malicious_links table;
   // no API account or key is required and ordinary messages never call them.
-  // The six-hour default stays below PhishTank's anonymous download limit.
+  // Six hours keeps public feed downloads infrequent while refreshing the local cache.
   maliciousFeedSyncIntervalMs: envInt('MALICIOUS_FEED_SYNC_INTERVAL_MS', 6 * 60 * 60_000, 60 * 60_000, 24 * 60 * 60_000),
   // Dedicated destination for newly discovered malicious URLs. Falls back to
   // the general Petto operations channel so alerts still have a destination.
