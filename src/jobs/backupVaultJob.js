@@ -41,8 +41,18 @@ function startBackupVaultJob(client) {
     return;
   }
   const run = exclusiveTask(() => processDueBackups(client));
-  run().catch((err) => logger.error('Vault backup job error:', err));
-  setInterval(() => run().catch((err) => logger.error('Vault backup job error:', err)), POLL_INTERVAL_MS).unref?.();
+  // The job polls every minute, so only report the first failure of an outage
+  // (and the recovery) instead of alerting on every retry.
+  let failing = false;
+  const tick = () => run().then(() => {
+    if (failing) logger.info('Vault backup job recovered.');
+    failing = false;
+  }).catch((err) => {
+    if (!failing) logger.error('Vault backup job error:', err);
+    failing = true;
+  });
+  tick();
+  setInterval(tick, POLL_INTERVAL_MS).unref?.();
   logger.info('Petto Vault scheduled backup job started.');
 }
 

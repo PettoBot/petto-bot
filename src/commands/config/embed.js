@@ -174,6 +174,10 @@ function varsNavRow(page) {
 }
 
 async function getOrFail(interaction, name) {
+  if (!name) {
+    await interaction.editReply('Please provide an embed name, e.g. `!embed preview embed:my_embed`. Use `!embed list` to see saved embeds.');
+    return null;
+  }
   const doc = await getTemplate(interaction.guild.id, name);
   if (!doc) {
     await interaction.editReply(`No embed named \`${name}\` found. Create it first with \`!embed create name:${name}\`.`);
@@ -383,6 +387,10 @@ module.exports = {
       switch (sub) {
         case 'create': {
           const name = normalizeName(interaction.options.getString('name'));
+          if (!name) {
+            await interaction.editReply('Please provide a name, e.g. `!embed create name:my_embed`.');
+            return;
+          }
           const existing = await getTemplate(guildId, name);
           if (existing) {
             await interaction.editReply(`An embed named \`${name}\` already exists. Use \`!embed edit\` to modify it.`);
