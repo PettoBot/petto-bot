@@ -2,8 +2,8 @@ const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = 
 const { ensureGuild } = require('../../db/guilds');
 const { getConfig, upsertConfig, addBannedWord, removeBannedWord, addImmuneRole, removeImmuneRole, listSilentChannels, addSilentChannel, removeSilentChannel } = require('../../db/automod');
 const { getConfig: getAntinukeConfig, upsertConfig: upsertAntinukeConfig, addWhitelist, removeWhitelist } = require('../../db/antinuke');
-const { checkUrl, normalizeUrl, defangUrl } = require('../../utils/safeBrowsing');
-const { getKnownMalicious, recordMaliciousLink, markDeveloperAlerted } = require('../../db/maliciousLinks');
+const { normalizeUrl, defangUrl } = require('../../utils/safeBrowsing');
+const { findKnownMalicious, markDeveloperAlerted } = require('../../db/maliciousLinks');
 const { notifyMaliciousLink } = require('../../utils/maliciousLinkAlerts');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
@@ -27,7 +27,7 @@ module.exports = {
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
     .setDMPermission(false)
 
-    .addSubcommand((sub) => sub.setName('link').setDescription('Check a URL for phishing/malware via Google Safe Browsing.').addStringOption((opt) => opt.setName('url').setDescription('The URL to check').setRequired(true)))
+    .addSubcommand((sub) => sub.setName('link').setDescription('Check a URL against Petto\'s synchronized public threat feeds.').addStringOption((opt) => opt.setName('url').setDescription('The URL to check').setRequired(true)))
 
     .addSubcommand((sub) =>
       sub
@@ -210,10 +210,10 @@ async function link(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   // First consult Petto's own threat DB. Known malicious URLs never consume a
-  // Google Safe Browsing request again.
+  // Public feed results are reused instead of making an external request again.
   let known = null;
   try {
-    known = await getKnownMalicious(url);
+    known = (await findKnownMalicious([url]))[0] ?? null;
   } catch (err) {
     // A DB outage should not make the manual checker useless; fall back to the
     // external lookup, but log that the cache/database path was unavailable.
@@ -240,48 +240,8 @@ async function link(interaction) {
     return;
   }
 
-  let threats;
-  try {
-    threats = await checkUrl(url);
-  } catch (err) {
-    logger.error('Safe Browsing check failed:', err);
-    await interaction.editReply({ components: [textCard('I was unable to check that URL right now. Try again shortly.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
-    return;
-  }
-
-  if (!threats.length) {
-    const text = `${EMOJI.APPROVE}  No known threats found for:\n\`${url}\``;
-    await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
-    return;
-  }
-
-  let stored = null;
-  try {
-    stored = await recordMaliciousLink({
-      url,
-      threatTypes: threats,
-      reportedBy: interaction.user?.id,
-      guildId: interaction.guildId,
-      channelId: interaction.channelId,
-    });
-  } catch (err) {
-    logger.error('Failed to save malicious URL:', err);
-  }
-
-  const labels = threats.map((t) => THREAT_LABELS[t] ?? t);
-  const text = [`${EMOJI.DENY}  This URL was flagged as dangerous:`, `\`${defangUrl(url)}\``, `**Threats:** ${labels.join(', ')}`].join('\n');
-  await interaction.editReply({ components: [textCard(text, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
-
-  if (!stored?.dev_alerted_at) {
-    const sent = await notifyMaliciousLink(interaction.client, {
-      url,
-      threatTypes: threats,
-      reporterId: interaction.user?.id,
-      guild: interaction.guild,
-      channel: interaction.channel,
-    });
-    if (sent && stored) await markDeveloperAlerted(url).catch((err) => logger.error('Failed to mark malicious-link alert as sent:', err));
-  }
+  const text = `${EMOJI.APPROVE}  No known threats found in Petto's synchronized public threat feeds for:\n\`${url}\``;
+  await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function spam(interaction) {
