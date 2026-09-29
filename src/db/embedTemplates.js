@@ -1,7 +1,7 @@
 const database = require('./database');
 
 function normalizeName(name) {
-  return name.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+  return String(name ?? '').toLowerCase().replace(/[^a-z0-9_-]/g, '_');
 }
 
 async function getTemplate(guildId, name) {
