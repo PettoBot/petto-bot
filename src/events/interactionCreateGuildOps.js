@@ -43,7 +43,7 @@ function claimButton(interaction, group = interaction.customId) {
   return true;
 }
 
-async function disableSourceButton(interaction, replacementLabel = null) {
+async function disableSourceButtons(interaction, replacementLabel = null) {
   const message = interaction.message;
   if (!message?.edit || !Array.isArray(message.components)) return false;
 
@@ -52,12 +52,14 @@ async function disableSourceButton(interaction, replacementLabel = null) {
     ...row.toJSON(),
     components: row.components.map((component) => {
       const json = component.toJSON();
-      if (json.custom_id !== interaction.customId) return json;
+      if (!json.custom_id) return json;
       changed = true;
       return {
         ...json,
         disabled: true,
-        ...(replacementLabel ? { label: replacementLabel.slice(0, 80) } : {}),
+        ...(json.custom_id === interaction.customId && replacementLabel
+          ? { label: replacementLabel.slice(0, 80) }
+          : {}),
       };
     }),
   }));
@@ -137,13 +139,13 @@ async function handleReviewNotice(interaction, supportGuildId) {
     return;
   }
 
-  if (!claimButton(interaction)) {
+  if (!claimButton(interaction, `alert-action:${guildId}`)) {
     await rejectAlreadyUsed(interaction);
     return;
   }
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => {});
-  await disableSourceButton(interaction, 'Review notice used');
+  await disableSourceButtons(interaction, 'Review notice used');
 
   const result = await sendGuildNotice(interaction.client, {
     guildId,
@@ -211,13 +213,13 @@ async function handleIgnoreControl(interaction, supportGuildId) {
   }
 
   if (prefix === IGNORE_PREPARE_PREFIX) {
-    if (!claimButton(interaction)) {
+    if (!claimButton(interaction, `alert-action:${guildId}`)) {
       await rejectAlreadyUsed(interaction);
       return;
     }
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => {});
-    await disableSourceButton(interaction, 'Ignore action opened');
+    await disableSourceButtons(interaction, 'Ignore action opened');
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -306,13 +308,13 @@ async function handleLeaveControl(interaction, supportGuildId) {
   }
 
   if (prefix === LEAVE_PREPARE_PREFIX) {
-    if (!claimButton(interaction)) {
+    if (!claimButton(interaction, `alert-action:${guildId}`)) {
       await rejectAlreadyUsed(interaction);
       return;
     }
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => {});
-    await disableSourceButton(interaction, 'Leave action opened');
+    await disableSourceButtons(interaction, 'Leave action opened');
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()

@@ -165,7 +165,7 @@ src/
       voice.js                  mute / unmute / deafen / undeafen / disconnect / move
     config/
       logs.js                  /logs — configure the audit-log system
-      automod.js                !automod — link (Google Safe Browsing check)
+      automod.js                !automod — link (public threat-feed check)
       embed.js                  /embed — create / preview / send / delete / list / edit / field / vars
       verify.js                 /verify — setup / status / send (Cloudflare Turnstile join-verification gate)
       welcome.js                /welcome — setup / status / test / disable
@@ -230,7 +230,7 @@ src/
     userResolve.js              parses multi-user strings for the *-many/*-users subcommands
     channelResolve.js           parses multi-channel strings, same shape as roleResolve.js/userResolve.js — used by
                                 /autoresponder's channels option
-    safeBrowsing.js             Google Safe Browsing API client for !automod link
+    safeBrowsing.js             URL normalization for !automod link and public feeds
     automodChecks.js             local (regex/in-memory) word filter, caps, mentions, invite, and repeat-flood detection
     automodAction.js              applies an automod hit: delete + warn/tempmute/kick via the normal case/DM/log path
     antiRaid.js                   in-memory sliding window of joins per guild for anti-raid detection
@@ -438,7 +438,7 @@ Backup numbers are scoped to the server: each guild starts at `#1`. The database
 
 The official Discord AutoMod manager is prefix-only and its owner/developer control is intentionally hidden from `!help`. It is disabled unless the operator configures `PETTO_AUTOMOD_CONTROL_TOKEN` in the host secret store; this token is an access control, not encryption. Automatic synchronization on restart and guild join is disabled by default after the initial rollout, so existing rules are not recreated; use the private control deliberately when needed. The bot needs `Manage Server` to manage official AutoMod rules. If Discord rejects a specific rule, Petto skips that rule with a readable reason instead of failing the whole synchronization.
 
-- `link url:<url>` — checks a URL against **Google Safe Browsing** and reports the verdict. Manual/on-demand only, not run automatically per message — the free tier is 10,000 checks/day, which an always-on per-message scanner in an active server would blow through fast. Requires `GOOGLE_SAFE_BROWSING_API_KEY` in `.env`.
+- `link url:<url>` — checks a URL against Petto's synchronized public threat feeds and reports the verdict. No account or API key is required; the feed job is local after synchronization and ordinary messages never call an external reputation service.
 - `spam enabled:<bool> max_mentions:<int>?` — anti-spam, always local (regex/in-memory), zero external API calls per message. Covers four things at once: repeat-message flooding (same content 3+ times within 10s → 10-minute timeout), mass mentions (more than `max_mentions` users/roles in one message → warn), excessive caps (long, mostly-uppercase message → warn), and unauthorized Discord invite links (→ warn).
 - `invites allow|disallow|list code:<code>` — the allow-list unauthorized-invite detection checks against (e.g. add your own server's invite code so people can post it).
 - `word-filter toggle enabled:<bool> action:<warn|mute|kick|delete>?` / `add|remove|list` — a per-guild banned-word list, whole-word case-insensitive match. `action` (default `warn`) picks what happens on a hit: `mute` is a 10-minute timeout, `kick` removes them, `delete` just removes the message with no sanction.
