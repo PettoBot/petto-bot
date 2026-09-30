@@ -4,10 +4,22 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-09-30
+
 ### Added
 
 - Added a registry of the embed variables (`src/utils/embedVariableRegistry.js`) and a check in `npm run check` that fails when it and the variable engine disagree.
 - Added `GET /api/dashboard/variables`, which returns that registry to the dashboard.
+- Added the 0.6.0 release notes to `/version`.
+
+### Fixed
+
+- Fixed embed commands crashing when no embed name is given.
+
+### Changed
+
+- The dashboard, released alongside, is translated to Spanish and Brazilian Portuguese, previews messages like the Embed Builder with the bot's own name and avatar, connects to the Embed Builder, loads faster, and now manages the separate Petto Vanity bot. These changes live in the `petto-web` repository.
+- The package version is now `0.6.0`. The previous `5.0.1-46` was a typo for `0.5.1-46`.
 
 ## [5.0.1-46] — 2026-09-24
 

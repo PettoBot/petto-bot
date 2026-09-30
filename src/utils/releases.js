@@ -2,11 +2,45 @@ const { EMOJI } = require('./emojis');
 
 const RELEASES = [
   {
+    version: 'v0.6.0',
+    label: 'v0.6.0 · Dashboard, embeds & Petto Vanity',
+    date: '2026-09-30',
+    accent: 0x8c7cff,
+    status: `${EMOJI.RELEASE_APPROVED} Latest`,
+    summary: 'A release focused on the dashboard: it speaks Spanish and Brazilian Portuguese, previews messages like Discord, connects to the Embed Builder, and now also manages the separate Petto Vanity bot.',
+    sections: [
+      {
+        title: `${EMOJI.RELEASE_MAGIC} Dashboard`,
+        items: [
+          'The whole dashboard is translated to Spanish and Brazilian Portuguese, with `/es/dash` and `/pt-br/dash` and a language menu that remembers the choice.',
+          'Message previews render like the Embed Builder, with markdown, links, mentions, emojis and timestamps, and show the bot\'s own name and avatar, including a custom one, also in the join gate.',
+          'Server lists are cached for a short time and Premium is read once per request, so pages load faster.',
+          'Fixed the dashboard not scrolling on small screens in the built site, and fixed preview freezes.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_LINK} Embeds & variables`,
+        items: [
+          'Dashboard messages can be sent to the Embed Builder with a share code, messages sent from it can be opened in the dashboard, and a test message can be sent to a channel.',
+          'Added a registry of the embed variables and `GET /api/dashboard/variables`, so the dashboard reads the list from the bot. `npm run check` now fails when the registry and the variable engine disagree.',
+          'Fixed a crash when an embed command was used without an embed name.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_SETTINGS} Petto Vanity`,
+        items: [
+          'The separate Petto Vanity bot can be managed from the dashboard: vanity rules, Server Tag rules, thank-you messages and the staff log.',
+          'Petto Vanity reports its state, servers, latency and uptime, with a public status page on the Petto site.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'v5.0.1-46',
     label: 'v5.0.1-46 · Reliability, safety & automation',
     date: '2026-09-24',
     accent: 0x8c7cff,
-    status: `${EMOJI.RELEASE_APPROVED} Latest`,
+    status: `${EMOJI.RELEASE_APPROVED} Published`,
     summary: 'A reliability and safety release with persistent malicious-link detection, stronger guild operations, independent moderation cases, and argument-aware custom commands.',
     sections: [
       {
