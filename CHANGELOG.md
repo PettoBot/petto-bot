@@ -4,6 +4,14 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- Redesigned the `!version` release center with a cleaner Components V2 layout: a header with the version, status and date, clearer section spacing, and no filler text.
+
+### Fixed
+
+- Fixed `v0.5.0` still being marked as the latest release in `!version`.
+
 ## [0.6.0] — 2026-09-30
 
 ### Added
