@@ -91,7 +91,7 @@ const RELEASES = [
     label: 'v0.5.0 · Connected roles & activity',
     date: '2026-08-31',
     accent: 0x5eead4,
-    status: `${EMOJI.RELEASE_APPROVED} Latest`,
+    status: `${EMOJI.RELEASE_APPROVED} Published`,
     summary: 'A connected release for linked roles, instant prefix sync, richer activity summaries, and social roleplay.',
     sections: [
       {

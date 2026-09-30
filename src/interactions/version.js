@@ -4,50 +4,55 @@ const {
   ButtonStyle,
   ContainerBuilder,
   MessageFlags,
+  SectionBuilder,
   SeparatorBuilder,
+  SeparatorSpacingSize,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
   TextDisplayBuilder,
+  ThumbnailBuilder,
 } = require('discord.js');
 const { EMOJI } = require('../utils/emojis');
 const { RELEASES, getLatestRelease, getRelease, getReleaseIndex } = require('../utils/releases');
 
 const VERSION_SELECT_ID = 'version:select';
+const PETTO_IMAGE_URL = 'https://i.imgur.com/WUwcYwM.png';
 
 function versionActionId(action, version) {
   return `version:${action}:${version}`;
 }
 
 function buildReleaseCard(release) {
-  const lines = [
-    `## ${EMOJI.RELEASE_SETTINGS} ${EMOJI.RELEASE_ROCKET} Petto Release Center`,
-    `### ${release.version} · ${release.status}`,
-    `> ${release.summary}`,
-    '',
-    `${EMOJI.RELEASE_NOTE} **Published:** ${release.date}  ·  ${EMOJI.RELEASE_MORE} **${RELEASES.length} releases available**`,
-  ];
+  const position = getReleaseIndex(release.version) + 1;
+
+  const header = new SectionBuilder()
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent([
+        `# ${EMOJI.RELEASE_ROCKET} Petto ${release.version}`,
+        `${release.status}  ·  ${EMOJI.RELEASE_NOTE} ${release.date}`,
+        `-# Release ${position} of ${RELEASES.length}`,
+      ].join('\n')),
+    )
+    .setThumbnailAccessory(new ThumbnailBuilder().setURL(PETTO_IMAGE_URL));
 
   const card = new ContainerBuilder()
     .setAccentColor(release.accent)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')))
-    .addSeparatorComponents(new SeparatorBuilder());
+    .addSectionComponents(header)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`> ${release.summary}`))
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Large));
 
-  for (const section of release.sections) {
+  release.sections.forEach((section, index) => {
+    if (index > 0) card.addSeparatorComponents(new SeparatorBuilder().setDivider(false).setSpacing(SeparatorSpacingSize.Small));
     card.addTextDisplayComponents(
       new TextDisplayBuilder().setContent([
         `### ${section.title}`,
         ...section.items.map((item) => `- ${item}`),
       ].join('\n')),
     );
-  }
+  });
 
   card
-    .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent([
-      `${EMOJI.RELEASE_PC} **Release center:** select a version, inspect its changes, or jump to the public notes.`,
-      `${EMOJI.RELEASE_MINUS} No database or server configuration is changed by this panel.`,
-      `${EMOJI.RELEASE_EXPERIENCE} ${EMOJI.RELEASE_DENIED} ${EMOJI.RELEASE_ALERT} ${EMOJI.REPORT} ${EMOJI.REPORT_IMPORTANT}`,
-    ].join('\n')))
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Large))
     .addActionRowComponents(buildVersionSelect(release.version))
     .addActionRowComponents(buildNavigationRow(release.version))
     .addActionRowComponents(buildLinksRow());
