@@ -194,8 +194,8 @@ const VARIABLE_GROUPS = [
     vars: [
       { tok: '{date.utc_now}', desc: 'Current date and time, UTC' },
       { tok: '{date.utc_timestamp}', desc: 'Current unix timestamp' },
-      { tok: '{date}', desc: 'Today as month/day/year' },
-      { tok: '{date.now}', desc: 'Today as month/day/year in Pacific time' },
+      { tok: '{date}', desc: 'Today\'s date' },
+      { tok: '{date.now}', desc: 'Today\'s date, Pacific time' },
     ],
   },
   {
