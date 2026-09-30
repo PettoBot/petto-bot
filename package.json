@@ -11,7 +11,7 @@
     "start": "node index.js",
     "dev": "node --watch index.js",
     "deploy-commands": "node deploy-commands.js",
-    "check": "node scripts/check-syntax.js",
+    "check": "node scripts/check-syntax.js && node scripts/check-embed-variables.js",
     "types:check": "tsc --project jsconfig.json --noEmit",
     "build:ts": "node scripts/build-types.js"
   },

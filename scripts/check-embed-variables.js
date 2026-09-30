@@ -1,0 +1,52 @@
+// Fails when the variable list shown to people and the engine that resolves variables disagree.
+const fs = require('node:fs');
+const path = require('node:path');
+const { VARIABLE_GROUPS } = require('../src/utils/embedVariableRegistry');
+
+const engineSource = fs.readFileSync(path.join(__dirname, '../src/utils/embedVariables.js'), 'utf8');
+const flagSource = fs.readFileSync(path.join(__dirname, '../src/utils/messageFlags.js'), 'utf8');
+
+const engineTokens = new Set([...engineSource.matchAll(/^\s*'(\{[^']+\})':/gm)].map((match) => match[1]));
+const listed = VARIABLE_GROUPS.flatMap((group) => group.vars);
+const listedTokens = new Set(listed.map((variable) => variable.tok));
+
+const problems = [];
+
+for (const token of engineTokens) {
+  if (!listedTokens.has(token)) problems.push(`${token} is resolved by the engine but missing from the registry`);
+}
+
+// Dynamic variables are matched by patterns, so each one is checked against the pattern's own name.
+const dynamicChecks = [
+  [/^\{choose/, /choose\\d\*:/, engineSource],
+  [/^\{range:/, /range:/, engineSource],
+  [/^\{arg\d+\}$/, /\{arg\(\\d\{1,2\}\)\\\}/, engineSource],
+  [/^\{args_from:/, /args_from:/, engineSource],
+  [/^\{reactreply/, /reactreply/, flagSource],
+];
+
+for (const variable of listed) {
+  if (engineTokens.has(variable.tok)) continue;
+  const check = dynamicChecks.find(([shape]) => shape.test(variable.tok));
+  if (!check) {
+    problems.push(`${variable.tok} is in the registry but the engine has no key or pattern for it`);
+  } else if (!variable.dynamic) {
+    problems.push(`${variable.tok} is handled by a pattern, mark it dynamic in the registry`);
+  } else if (!check[1].test(check[2])) {
+    problems.push(`${variable.tok} is marked dynamic but its pattern was not found in the engine`);
+  }
+}
+
+const seen = new Set();
+for (const variable of listed) {
+  if (seen.has(variable.tok)) problems.push(`${variable.tok} is listed more than once`);
+  seen.add(variable.tok);
+}
+
+if (problems.length) {
+  console.error('Embed variable registry is out of sync:');
+  for (const problem of problems) console.error(`- ${problem}`);
+  process.exit(1);
+}
+
+console.log(`Checked ${listed.length} embed variables against the engine.`);

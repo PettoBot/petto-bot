@@ -17,6 +17,7 @@ const { renderVerifyPage } = require('./verifyPage');
 const { renderHomePage } = require('./homePage');
 const { setCachedPrefix } = require('../events/messageCreateCommands');
 const { registerDashboardRestRoutes } = require('./dashboardDatabase');
+const { listVariables } = require('../utils/embedVariableRegistry');
 const logger = require('../utils/logger');
 
 async function checkTurnstile(responseToken, remoteIp) {
@@ -155,6 +156,17 @@ function startServer(client) {
 
   if (dashboardEnabled) {
     registerDashboardRestRoutes(app, dashboardDatabaseRateLimiter);
+
+    // The variables the message engine understands, so the dashboard and other tools do not keep
+    // their own copy of the list. The list changes only with a release, so callers may cache it.
+    app.get('/api/dashboard/variables', dashboardDatabaseRateLimiter, (req, res) => {
+      if (!dashboardAuthorized(req)) {
+        res.status(401).json({ ok: false, error: 'unauthorized' });
+        return;
+      }
+      res.set('Cache-Control', 'private, max-age=300');
+      res.json({ ok: true, groups: listVariables() });
+    });
 
     app.post('/api/dashboard/guild/:guildId/prefix', dashboardPrefixRateLimiter, async (req, res) => {
       if (!dashboardAuthorized(req)) {
