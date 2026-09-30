@@ -4,6 +4,10 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed the release name in `!version`: `v5.0.1-46` is now shown as `v0.5.1-46`.
+
 ### Changed
 
 - Redesigned the `!version` release center with a cleaner Components V2 layout: a header with the version, status and date, clearer section spacing, and no filler text.
