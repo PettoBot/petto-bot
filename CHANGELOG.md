@@ -2,6 +2,13 @@
 
 All notable changes to Petto are documented here.
 
+## [Unreleased]
+
+### Added
+
+- Added a registry of the embed variables (`src/utils/embedVariableRegistry.js`) and a check in `npm run check` that fails when it and the variable engine disagree.
+- Added `GET /api/dashboard/variables`, which returns that registry to the dashboard.
+
 ## [5.0.1-46] — 2026-09-24
 
 ### Fixed
