@@ -36,8 +36,8 @@ const RELEASES = [
     ],
   },
   {
-    version: 'v5.0.1-46',
-    label: 'v5.0.1-46 · Reliability, safety & automation',
+    version: 'v0.5.1-46',
+    label: 'v0.5.1-46 · Reliability, safety & automation',
     date: '2026-09-24',
     accent: 0x8c7cff,
     status: `${EMOJI.RELEASE_APPROVED} Published`,
