@@ -5,6 +5,7 @@ const { VARIABLE_GROUPS } = require('../src/utils/embedVariableRegistry');
 
 const engineSource = fs.readFileSync(path.join(__dirname, '../src/utils/embedVariables.js'), 'utf8');
 const flagSource = fs.readFileSync(path.join(__dirname, '../src/utils/messageFlags.js'), 'utf8');
+const bumpSource = fs.readFileSync(path.join(__dirname, '../src/utils/bumpHandler.js'), 'utf8');
 
 const engineTokens = new Set([...engineSource.matchAll(/^\s*'(\{[^']+\})':/gm)].map((match) => match[1]));
 const listed = VARIABLE_GROUPS.flatMap((group) => group.vars);
@@ -23,6 +24,7 @@ const dynamicChecks = [
   [/^\{arg\d+\}$/, /\{arg\(\\d\{1,2\}\)\\\}/, engineSource],
   [/^\{args_from:/, /args_from:/, engineSource],
   [/^\{reactreply/, /reactreply/, flagSource],
+  [/^\{nextBump\}$/, /nextBump/, bumpSource],
 ];
 
 for (const variable of listed) {
@@ -37,10 +39,13 @@ for (const variable of listed) {
   }
 }
 
-const seen = new Set();
-for (const variable of listed) {
-  if (seen.has(variable.tok)) problems.push(`${variable.tok} is listed more than once`);
-  seen.add(variable.tok);
+// A variable may appear in more than one group when it means something in each context, but not twice in one.
+for (const group of VARIABLE_GROUPS) {
+  const seen = new Set();
+  for (const variable of group.vars) {
+    if (seen.has(variable.tok)) problems.push(`${variable.tok} is listed more than once in ${group.label}`);
+    seen.add(variable.tok);
+  }
 }
 
 if (problems.length) {

@@ -3,8 +3,9 @@
 // in scripts/check-embed-variables.js fails when the two disagree, so this list cannot drift.
 //
 // availability says where a variable has a value. "always" works everywhere, the others only
-// resolve in the event that provides that data (a level-up, a giveaway, a triggering message, or
-// a custom command). Variables marked dynamic are handled by patterns, not by an exact key.
+// resolve in the event that provides that data (a level-up, a giveaway, a bump reminder, a
+// triggering message, or a custom command). Variables marked dynamic are handled by patterns or
+// by the feature that owns them, not by an exact key in the engine.
 
 const VARIABLE_GROUPS = [
   {
@@ -58,6 +59,7 @@ const VARIABLE_GROUPS = [
     vars: [
       { tok: '{server_name}', desc: 'Server name' },
       { tok: '{server_id}', desc: 'Server ID' },
+      { tok: '{server_prefix}', desc: 'The server\'s configured prefix' },
       { tok: '{server_membercount}', desc: 'Total member count' },
       { tok: '{server_membercount_ordinal}', desc: 'Member count with suffix (1st, 2nd...)' },
       { tok: '{server_membercount_nobots}', desc: 'Member count excluding bots' },
@@ -71,14 +73,13 @@ const VARIABLE_GROUPS = [
       { tok: '{server_randommember_tag}', desc: 'Username of a random member' },
       { tok: '{server_randommember_nobots}', desc: 'Mentions a random non-bot member' },
       { tok: '{server_owner}', desc: 'Mentions the server owner' },
+      { tok: '{server_owner_id}', desc: 'Server owner\'s user ID' },
       { tok: '{server_createdate}', desc: 'Date the server was created' },
       { tok: '{server_boostlevel}', desc: 'Current boost level (0-3)' },
       { tok: '{server_boostcount}', desc: 'Total boost count' },
       { tok: '{server_nextboostlevel}', desc: 'The next boost level (1-3)' },
       { tok: '{server_nextboostlevel_required}', desc: 'Boosts required to reach it' },
       { tok: '{server_nextboostlevel_until_required}', desc: 'Boosts still needed to reach it' },
-      { tok: '{server_prefix}', desc: 'Command prefix of this server, "/" by default' },
-      { tok: '{server_owner_id}', desc: 'Owner user ID' },
     ],
   },
   {
@@ -91,6 +92,7 @@ const VARIABLE_GROUPS = [
       { tok: '{guild.count}', desc: 'Total member count' },
       { tok: '{guild.icon}', desc: 'Server icon URL' },
       { tok: '{guild.banner}', desc: 'Server banner URL' },
+      { tok: '{guild.owner_id}', desc: 'Server owner\'s user ID' },
       { tok: '{guild.created_at}', desc: 'Date the server was created' },
       { tok: '{guild.created_at_timestamp}', desc: 'Unix timestamp of server creation' },
       { tok: '{guild.emoji_count}', desc: 'Number of custom emojis' },
@@ -99,9 +101,8 @@ const VARIABLE_GROUPS = [
       { tok: '{guild.boost_tier}', desc: 'Boost tier, e.g. "Level 2" or "No Level"' },
       { tok: '{guild.channels_count}', desc: 'Number of channels' },
       { tok: '{guild.vanity}', desc: 'Vanity invite URL, if the server has one' },
+      { tok: '{guild.region}', desc: 'Server\'s preferred locale' },
       { tok: '{guild.max_members}', desc: 'Max member capacity' },
-      { tok: '{guild.owner_id}', desc: 'Owner user ID' },
-      { tok: '{guild.region}', desc: 'Preferred locale of the server' },
     ],
   },
   {
@@ -148,6 +149,8 @@ const VARIABLE_GROUPS = [
       { tok: '{gw.winners}', desc: 'Number of winners' },
       { tok: '{gw.entries}', desc: 'Current number of entries' },
       { tok: '{gw.host}', desc: 'Mentions whoever started it' },
+      { tok: '{gw.host_name}', desc: 'The host\'s username' },
+      { tok: '{gw.host_avatar}', desc: 'The host\'s avatar image URL' },
       { tok: '{gw.duration}', desc: 'End time, as a raw unix timestamp' },
       { tok: '{gw.timestamp}', desc: 'End time, as a relative Discord timestamp' },
       { tok: '{gw.ends}', desc: 'End time as a relative Discord timestamp' },
@@ -158,8 +161,6 @@ const VARIABLE_GROUPS = [
       { tok: '{gw.winner_text}', desc: 'Winner-count text used by the giveaway' },
       { tok: '{gw.status}', desc: 'Active or Ended' },
       { tok: '{gw.preset}', desc: 'The bonus-entry roles list, if a preset is used' },
-      { tok: '{gw.host_name}', desc: 'Name of the host' },
-      { tok: '{gw.host_avatar}', desc: 'Avatar image URL of the host' },
     ],
   },
   {
@@ -188,14 +189,23 @@ const VARIABLE_GROUPS = [
     ],
   },
   {
+    id: 'bump',
+    label: 'Bump',
+    availability: 'bump',
+    vars: [
+      { tok: '{user.mention}', desc: 'Only in bump messages: mentions whoever bumped' },
+      { tok: '{nextBump}', desc: 'Only in bump messages: relative time until the next bump is allowed', dynamic: true },
+    ],
+  },
+  {
     id: 'date',
     label: 'Date',
     availability: 'always',
     vars: [
-      { tok: '{date.utc_now}', desc: 'Current date and time, UTC' },
-      { tok: '{date.utc_timestamp}', desc: 'Current unix timestamp' },
       { tok: '{date}', desc: 'Today\'s date' },
       { tok: '{date.now}', desc: 'Today\'s date, Pacific time' },
+      { tok: '{date.utc_now}', desc: 'Current date and time, UTC' },
+      { tok: '{date.utc_timestamp}', desc: 'Current unix timestamp' },
     ],
   },
   {
@@ -207,6 +217,14 @@ const VARIABLE_GROUPS = [
       { tok: '{range:1-100}', desc: 'A random whole number in that range', dynamic: true },
       { tok: '{newline}', desc: 'Forces a line break' },
       { tok: '{separator}', desc: 'A decorative divider line' },
+    ],
+  },
+  {
+    id: 'actions',
+    label: 'Actions',
+    availability: 'always',
+    vars: [
+      { tok: '{reactreply:emoji}', desc: 'Reacts to the sent message with this emoji. If the response contains only this flag, it reacts to the triggering message instead.', dynamic: true },
     ],
   },
 ];
