@@ -27,6 +27,7 @@ const { SETUP_BUTTON_PREFIX, handleSetupButton } = require('../interactions/setu
 const { BUTTON_PREFIX, handleButton: handleReactionRoleButton } = require('../interactions/reactionRoleButton');
 const permissionsDb = require('../db/permissions');
 const logger = require('../utils/logger');
+const { commandKey } = require('../handlers/commandHandler');
 
 const DEFAULT_COOLDOWN_MS = 3000;
 
@@ -278,7 +279,7 @@ module.exports = {
 
     if (!interaction.isChatInputCommand() && !interaction.isMessageContextMenuCommand() && !interaction.isUserContextMenuCommand()) return;
 
-    const command = client.commands.get(interaction.commandName);
+    const command = client.commands.get(commandKey(interaction.commandName, interaction.commandType));
     if (!command) {
       logger.warn(`Received unknown command: /${interaction.commandName}`);
       return;
