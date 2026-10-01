@@ -62,8 +62,9 @@ function snowflakeTime(id) {
  *   for long lists that the command already cuts on a whole entry.
  * @param {string} [options.footer]       Small text at the bottom.
  * @param {{label: string, url: string}[]} [options.buttons]  Link buttons.
+ * @param {ActionRowBuilder[]} [options.rows]  Extra action rows (buttons, selects) shown under the card text.
  */
-function buildInfoCard({ accent = INFO_ACCENT, title, subtitle = [], thumbnail = null, banner = null, sections = [], footer = null, buttons = [] }) {
+function buildInfoCard({ accent = INFO_ACCENT, title, subtitle = [], thumbnail = null, banner = null, sections = [], footer = null, buttons = [], rows = [] }) {
   let budget = TEXT_BUDGET;
   const take = (text, max = SECTION_LIMIT) => {
     const value = clip(text, Math.min(max, Math.max(0, budget)));
@@ -94,6 +95,8 @@ function buildInfoCard({ accent = INFO_ACCENT, title, subtitle = [], thumbnail =
     card.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
     card.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${clip(footer, 300)}`));
   }
+
+  for (const row of rows) card.addActionRowComponents(row);
 
   const links = buttons.filter((button) => button?.url).slice(0, MAX_BUTTONS);
   if (links.length) {
