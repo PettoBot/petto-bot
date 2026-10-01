@@ -89,6 +89,15 @@ async function addEntry(guildId, channelId, event) {
   invalidateLogConfig(guildId);
 }
 
+/** Routes several events to one channel in a single statement; events that are already routed are left alone. */
+async function addEntries(guildId, channelId, events) {
+  if (!events.length) return;
+  const rows = events.map((event) => ({ guild_id: guildId, channel_id: channelId, event }));
+  const { error } = await database.from('log_entries').upsert(rows, { onConflict: 'guild_id,channel_id,event' });
+  if (error) throw error;
+  invalidateLogConfig(guildId);
+}
+
 async function removeEntries(guildId, channelId, event = null) {
   let query = database.from('log_entries').delete().eq('guild_id', guildId).eq('channel_id', channelId);
   if (event) query = query.eq('event', event);
@@ -158,6 +167,7 @@ module.exports = {
   EVENTS,
   getLogConfig,
   addEntry,
+  addEntries,
   removeEntries,
   setEntryColor,
   upsertWebhook,

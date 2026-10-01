@@ -1,5 +1,5 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { COLORS } = require('../../utils/colors');
+const { SlashCommandBuilder } = require('discord.js');
+const { INFO_ACCENT, infoPayload, noticePayload } = require('../../utils/infoCard');
 
 module.exports = {
   aliases: ['bn'],
@@ -13,11 +13,17 @@ module.exports = {
     const user = await interaction.client.users.fetch(target.id, { force: true }).catch(() => target);
 
     if (!user.banner) {
-      await interaction.reply({ content: `${user.username} doesn't have a banner set.` });
+      await interaction.reply(noticePayload(`${user.username} doesn't have a banner set.`));
       return;
     }
 
-    const embed = new EmbedBuilder().setColor(COLORS.DEFAULT).setTitle(`${user.username}'s banner`).setImage(user.bannerURL({ size: 1024 }));
-    await interaction.reply({ embeds: [embed] });
+    const url = user.bannerURL({ size: 1024 });
+    await interaction.reply(infoPayload({
+      accent: user.accentColor || INFO_ACCENT,
+      title: `${user.globalName ?? user.username}'s banner`,
+      banner: url,
+      footer: `ID ${user.id}`,
+      buttons: [{ label: 'Open original', url }],
+    }));
   },
 };

@@ -1,71 +1,138 @@
-const { MessageFlags } = require('discord.js');
+const {
+  CheckboxBuilder,
+  LabelBuilder,
+  MessageFlags,
+  ModalBuilder,
+  StringSelectMenuBuilder,
+  TextDisplayBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+} = require('discord.js');
 const { getConfig } = require('../db/report');
-const { buildReportCard, buildReportPayload } = require('../utils/reportCard');
-const { EMOJI } = require('../utils/emojis');
-const logger = require('../utils/logger');
+const { REPORT_CATEGORIES, DEFAULT_CATEGORY } = require('../utils/reportCategories');
+const { submitReport } = require('../utils/reportService');
+const { infoPayload, noticePayload } = require('../utils/infoCard');
+const { categoryLabel } = require('../utils/reportCategories');
+const { COLORS } = require('../utils/colors');
 
-const IMAGE_URL_RE = /\.(?:avif|gif|jpe?g|png|webp)(?:[?#].*)?$/i;
+const MESSAGE_MODAL_PREFIX = 'rp_msg::';
+const USER_MODAL_PREFIX = 'rp_usr::';
 
-function collectImageUrls(message) {
-  const urls = [];
-  for (const attachment of message.attachments?.values?.() ?? []) {
-    if (attachment.contentType?.startsWith('image/') || IMAGE_URL_RE.test(attachment.url ?? '')) urls.push(attachment.url);
+/**
+ * The form shared by "Report Message" and "Report User": what kind of problem it is, optional context, and the
+ * ping and anonymous switches the server has turned on.
+ */
+function buildReportModal({ customId, title, intro, config }) {
+  const contextInput = new TextInputBuilder()
+    .setCustomId('context')
+    .setPlaceholder('Why are you reporting this?')
+    .setStyle(TextInputStyle.Paragraph)
+    .setRequired(config.require_reason === true)
+    .setMaxLength(500);
+
+  const modal = new ModalBuilder()
+    .setCustomId(customId)
+    .setTitle(title)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(intro))
+    .addLabelComponents(
+      new LabelBuilder()
+        .setLabel('What is happening?')
+        .setDescription('Pick the closest match so staff can act faster.')
+        .setStringSelectMenuComponent(
+          new StringSelectMenuBuilder()
+            .setCustomId('report_category')
+            .setPlaceholder('Choose a category')
+            .setMinValues(1)
+            .setMaxValues(1)
+            .addOptions(REPORT_CATEGORIES.map((category) => ({ label: category.label, value: category.value, description: category.description, default: category.value === DEFAULT_CATEGORY }))),
+        ),
+      new LabelBuilder()
+        .setLabel('Additional Context')
+        .setDescription(config.require_reason ? 'Required by this server' : 'Anything the moderators should know (optional)')
+        .setTextInputComponent(contextInput),
+    );
+
+  const extras = [];
+  if (config.urgent_role_id) {
+    extras.push(new LabelBuilder().setLabel('Ping Moderators').setDescription('Urgently notify the mod role (use wisely)').setCheckboxComponent(new CheckboxBuilder().setCustomId('report_ping')));
   }
-
-  for (const embed of message.embeds ?? []) {
-    if (embed.image?.url) urls.push(embed.image.url);
-    if (embed.thumbnail?.url) urls.push(embed.thumbnail.url);
+  if (config.anonymous_reporting_enabled) {
+    extras.push(new LabelBuilder().setLabel('Report Anonymously').setDescription('Your name won’t be shown in the report').setCheckboxComponent(new CheckboxBuilder().setCustomId('report_anonymous')));
   }
-
-  return [...new Set(urls)].slice(0, 10);
+  if (extras.length) modal.addLabelComponents(...extras);
+  return modal;
 }
 
-/** Handles the modal shown by the "Report Message" context menu command (customId `rp_msg::<messageId>`). */
+/** Confirmation shown only to the reporter. */
+function buildReceipt(result, config) {
+  const { report } = result;
+  return {
+    ...infoPayload({
+      accent: COLORS.GREEN,
+      title: `Report #${report.report_number} sent`,
+      subtitle: [`${categoryLabel(report.category)} · the staff team will review it.`],
+      sections: [
+        {
+          lines: [
+            config.notify_reporter === false ? null : 'You will get a DM when staff close this report, if your DMs are open.',
+            report.anonymous ? 'Your name is hidden from the report.' : null,
+          ],
+        },
+      ],
+      footer: 'Thank you for helping keep the server safe.',
+    }),
+    flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+  };
+}
+
+function refusal(message) {
+  return { ...noticePayload(message, COLORS.RED), flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral };
+}
+
+/** Handles the submitted form (customId `rp_msg::<messageId>` or `rp_usr::<userId>`). */
 async function handleModal(interaction) {
-  const [, messageId] = interaction.customId.split('::');
-  const reason = interaction.fields.getTextInputValue('context')?.trim() || '';
+  const isMessage = interaction.customId.startsWith(MESSAGE_MODAL_PREFIX);
+  const targetId = interaction.customId.slice((isMessage ? MESSAGE_MODAL_PREFIX : USER_MODAL_PREFIX).length);
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
 
-  const reportConfig = await getConfig(interaction.guild.id).catch(() => null);
-  if (!reportConfig?.enabled || !reportConfig.channel_id) {
-    await interaction.editReply({ content: 'Reports are not set up on this server yet.' });
+  const config = await getConfig(interaction.guild.id).catch(() => null);
+  if (!config?.enabled || !config.channel_id) {
+    await interaction.editReply(noticePayload('Reports are not set up on this server yet.', COLORS.RED));
     return;
   }
 
-  const channel = await interaction.guild.channels.fetch(reportConfig.channel_id).catch(() => null);
-  if (!channel) {
-    await interaction.editReply({ content: 'The configured report channel no longer exists. Ask staff to run `/report config` again.' });
-    return;
+  let message = null;
+  let reportedUser;
+  if (isMessage) {
+    message = await interaction.channel.messages.fetch(targetId).catch(() => null);
+    if (!message) {
+      await interaction.editReply(noticePayload('That message is no longer available to report.', COLORS.RED));
+      return;
+    }
+    reportedUser = message.author;
+  } else {
+    reportedUser = await interaction.client.users.fetch(targetId).catch(() => null);
+    if (!reportedUser) {
+      await interaction.editReply(noticePayload('That user could not be found.', COLORS.RED));
+      return;
+    }
   }
 
-  const message = await interaction.channel.messages.fetch(messageId).catch(() => null);
-  if (!message) {
-    await interaction.editReply({ content: 'That message is no longer available to report.' });
-    return;
-  }
-
-  const urgent = Boolean(reportConfig.urgent_role_id) && interaction.fields.getCheckbox('report_ping') === true;
-  const anonymous = reportConfig.anonymous_reporting_enabled === true && interaction.fields.getCheckbox('report_anonymous') === true;
-  const card = buildReportCard({
+  const category = interaction.fields.getStringSelectValues('report_category')?.[0] ?? DEFAULT_CATEGORY;
+  const result = await submitReport({
+    guild: interaction.guild,
     reporter: interaction.user,
-    reportedUser: message.author,
-    reason,
+    reportedUser,
+    category,
+    reason: interaction.fields.getTextInputValue('context'),
     sourceChannel: interaction.channel,
-    messageLink: message.url,
-    messageContent: message.content || undefined,
-    imageUrls: collectImageUrls(message),
-    anonymous,
-    urgent,
-    urgentRoleId: reportConfig.urgent_role_id,
+    message,
+    urgent: interaction.fields.getCheckbox('report_ping') === true,
+    anonymous: interaction.fields.getCheckbox('report_anonymous') === true,
   });
 
-  await channel.send(buildReportPayload({ card, urgentRoleId: urgent ? reportConfig.urgent_role_id : null })).catch((err) => {
-    logger.error('Failed to deliver message report:', err);
-    throw err;
-  });
-
-  await interaction.editReply({ content: `${EMOJI.APPROVE} Your report was sent to the staff team. Thank you.` });
+  await interaction.editReply(result.ok ? buildReceipt(result, config) : noticePayload(result.message, COLORS.RED));
 }
 
-module.exports = { handleModal };
+module.exports = { MESSAGE_MODAL_PREFIX, USER_MODAL_PREFIX, buildReportModal, buildReceipt, handleModal };

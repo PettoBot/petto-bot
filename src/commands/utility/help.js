@@ -35,6 +35,7 @@ const CATEGORY_META = {
   utility: { label: 'Utility', icon: '<:pe_info:1533209779751616676>' },
   misc: { label: 'Misc', icon: '<:pe_misc:1533209781345587374>' },
   roleplay: { label: 'Roleplay', icon: '💞' },
+  fun: { label: 'Fun', icon: '🎲' },
   other: { label: 'Other', icon: '📄' },
 };
 

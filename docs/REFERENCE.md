@@ -84,14 +84,18 @@ src/
     embedPanel.js               the interactive modal-based /embed builder — renderPanel()/handleButton()/handleModal(),
                                  dispatched from interactionCreate.js by customId prefix (eb_.../em_...) rather than a
                                  short-lived collector, since the panel message can be edited minutes or hours later
-    reportModal.js               handles the reason modal shown by the "Report Message" context-menu command (rp_msg::...)
+    reportModal.js               the report form shared by "Report Message" (rp_msg::...) and "Report User" (rp_usr::...), and its submit
+    reportActions.js              Claim / Resolve / Dismiss / Release / Reopen buttons of a report card (rpt:...) and the paging of /report list (rptl:...)
+    reportConfigPanel.js          the /report config settings panel (selects, switches, limits form, test report)
+    setupPanel.js                 /setup status panel (what is configured, missing bot permissions) and the pre-filled quick setup form
+    setup.js                      handles the quick setup form: steps run together and each one reports its own result
     ticketPanel.js                panel button (tk_open::key) / dropdown (tk_open_select) clicks -> opens a ticket
     ticketControls.js             every in-ticket button (tk_claim/unclaim/close/reopen/delete/transcript/addmember/
                                  removemember), the close-reason modal, and the add/remove-member user-select follow-up
     giveawayButton.js              Enter/Accept/Deny button clicks (gw_enter::/gw_accept::/gw_deny::), dispatched by
                                    customId prefix like every other component here
   jobs/
-    expireSanctions.js         polls every 60s for expired tempban/tempmute rows and reverses them
+    expireSanctions.js         polls every 60s for expired tempban/tempmute rows and jails and reverses them
     bumpReminderJob.js          polls every 60s for guilds whose bump cooldown has elapsed
     voiceXpJob.js                polls every 60s, granting voice XP to everyone currently connected (and not deafened)
                                 across every guild — no join/leave session-tracking needed, it just reads live voice state
@@ -153,7 +157,7 @@ src/
     etc. — to src/logging/*; note guildMemberAdd has three independent listener files: logging, the verification gate,
     and the welcome message)
   commands/
-    moderation/                see "Moderation commands" below — 9 top-level commands, each with subcommands
+    moderation/                see "Moderation commands" below — top-level commands, most with subcommands
       ban.js                    user / users / temp / remove / remove-all
       kick.js                   user / users
       mute.js                   user / users / temp / remove / remove-users
@@ -163,7 +167,13 @@ src/
       role.js                   add / remove
       channel.js                lock / unlock / slowmode / clear
       voice.js                  mute / unmute / deafen / undeafen / disconnect / move
+      jail.js / unjail.js       jail — user / remove / list / setup; `unjail` is the shortcut for `jail remove`
+      purge.js                  scan the last N messages and delete the ones matching a member / type / text filter
+      history.js                a member's whole moderation record in one card (status, totals, reports, notes, latest cases)
+    fun/                       small public games: 8ball / ship / rps
     config/
+      setup.js                  /setup — a status panel (what is configured, which bot permissions are missing) with a
+                                 pre-filled quick setup form; answers immediately and never waits on a slow database
       logs.js                  /logs — configure the audit-log system
       automod.js                !automod — link (public threat-feed check)
       embed.js                  /embed — create / preview / send / delete / list / edit / field / vars
@@ -194,12 +204,16 @@ src/
       help.js                    /help — modeled on bli's help command: category -> command -> subcommand browser,
                                  plus direct lookup with bli-style pagination through a command's subcommands when no
                                  specific one is given (see "Command system" below); aliases `h`/`hlp`
-      report.js                 /report — send (any member) / config (staff, Manage Server)
+      report.js                 /report — send (any member) / config, disable, list, view, stats, block, unblock,
+                                 blocklist (staff) — see "Report system" below
+      reportUser.js             "Report User" — user context-menu command, same form and pipeline as Report Message
+      roll.js                    /roll — dice notation (2d6+3, d20, 4d6kh3), see utils/dice.js
+      choose.js                  /choose — picks one of the comma / " or " separated options
       boosterrole.js             /boosterrole (alias `br`) — self-service custom colored role for server boosters, plus
                                  an admin group that can directly manage anyone's (ported from "bli", which only ever
                                  let the booster themselves touch it) — see "Booster roles" below
-      reportMessage.js          "Report Message" — message context-menu command (right-click → Apps), opens a reason
-                                 modal handled by interactions/reportModal.js
+      reportMessage.js          "Report Message" — message context-menu command (right-click → Apps), opens the report
+                                 form built by interactions/reportModal.js
       rank.js                    /rank (aliases `nivel`/`lvl`) — embed-style level/XP card (no image rank card), see
                                  "Leveling / rank / leaderboard" below
       top.js                     /top (aliases `leaderboard`/`lb`/`ranking`) — paginated XP leaderboard, embed style
@@ -210,7 +224,7 @@ src/
     tickets/
       ticket.js                 /ticket — see "Ticket system" below: panel/category/support-role/ping-role admin groups
                                  plus open/close/reopen/delete/claim/unclaim/add/remove/rename/transcript/info
-    info/                      see "Info / utility commands" below — all public, classic-embed replies
+    info/                      see "Info / utility commands" below — all public, Components V2 cards from utils/infoCard.js
       avatar.js / banner.js / userinfo.js / serverinfo.js / channelinfo.js / roleinfo.js / roles.js /
       emojiinfo.js / botinfo.js / ping.js / uptime.js / permissions.js / firstmessage.js / inviteinfo.js /
       color.js / snowflake.js
@@ -239,8 +253,19 @@ src/
                                     trackDestructiveActionByRecency() (no target id: webhook creation) both funnel
                                     into the same threshold/response logic
     escalation.js                  applies a warn-escalation rule once a user's warn count matches it
-    reportCard.js                  Components V2 card posted to the report channel, shared by /report send and the
-                                    "Report Message" context-menu command
+    reportCard.js                  Components V2 card of one report, rebuilt from its stored row every time staff change its status
+    reportService.js               submitReport(): the one place a report is validated (blocklist, cooldown, daily limit,
+                                    required reason), stored, numbered and delivered; shared by /report send and both context menus
+    reportViews.js                 staff views for /report list, view, stats and blocklist (stateless paging)
+    reportCategories.js            the categories a reporter can choose from
+    infoCard.js                    shared Components V2 layout of the info commands, plus small formatting helpers
+    withTimeout.js                 races a promise against a timer, so a slow database cannot hold a command past Discord's 3 seconds
+    jail.js                        jail / unjail logic: roles are saved before they are taken, restored on release, and the
+                                    jail role and channel are created and hidden from every other channel
+    jailGuard.js                   takes back a role handed to a jailed member by another bot, and keeps the role to return it on release
+    purgeFilters.js                which messages a purge selects (pure, unit-checked)
+    dice.js                        dice notation parser and roller for /roll (pure, unit-checked)
+    funGames.js                    choose / 8ball / ship / rps logic (pure, unit-checked)
     ticketActions.js               all ticket business logic (openTicket, claim/unclaim, closeTicket, reopenTicket,
                                     deleteTicketChannel, add/removeMember, renameTicket, postTranscript) — shared by
                                     both the /ticket slash command and the panel/control buttons, so the two paths
@@ -395,9 +420,23 @@ Every subcommand checks that **both** the moderator and the bot have the right p
 
 ### `/warn` — requires Moderate Members
 - `user <user> <reason>` · `users <users> <reason>`
-- `escalation add threshold:<int> action:<mute|tempmute|kick|ban> duration:<string>?` / `remove threshold:<int>` / `list` — automatic consequences once a user's **active** warning count reaches a threshold, checked after every warn regardless of source (manual `/warn`, or an automod-triggered warn). Fires exactly once per threshold crossing (checked against the live count, not "N or more"), applies through the same case/DM/log path as everything else, moderator is the bot itself. `duration` is required (and only used) for `tempmute`.
+- `escalation add threshold:<int> action:<mute|tempmute|jail|kick|ban> duration:<string>?` / `remove threshold:<int>` / `list` — automatic consequences once a user's **active** warning count reaches a threshold, checked after every warn regardless of source (manual `/warn`, or an automod-triggered warn). Fires exactly once per threshold crossing (checked against the live count, not "N or more"), applies through the same case/DM/log path as everything else, moderator is the bot itself. `duration` is required for `tempmute`, optional for `jail` (no duration = no end), and unused otherwise.
 
 (Discord has no native "warn" permission, so Moderate Members is the closest built-in stand-in for "server staff".)
+
+### `/jail` — requires Moderate Members (`setup` requires Manage Server)
+Jail takes a member out of the server's channels without banning them: they lose their roles and can only see one channel, where they can talk to staff.
+- `setup` — creates the **Jailed** role and a **#jail** channel (visible to the jail role, the bot and staff roles) and hides every other channel from the jail role. Safe to run again: it only repairs what is missing. New channels are hidden automatically (`events/channelCreateJail.js`).
+- `user <user> [duration] [reason]` — jails a member, for good or for a time (`30m`, `12h`, `7d`; up to 365 days). Their roles are written to `jailed_members` **before** anything changes, then replaced by the jail role; managed roles (boosters, integrations) and roles above the bot stay. They are disconnected from voice, get a case (`jail`) and the usual DM and sanction log.
+- `remove <user> [reason]` (or `unjail`) — releases them and gives the saved roles back. A member who left is released without touching roles.
+- `list` — who is in jail and until when.
+- A jail with a time is released by the expiry job (`jobs/expireSanctions.js`). A jailed member who leaves and rejoins gets the jail role again (`events/guildMemberAddJail.js`). A role handed to a jailed member by another bot (verification, join roles, reaction roles) is taken off again and saved for release (`utils/jailGuard.js`), because in Discord an allowing role would otherwise lift the jail.
+
+### `/purge` — requires Manage Messages
+- `purge <amount> [user] [filter] [text]` — scans the last `amount` (1-500) messages and deletes the ones that match **every** condition given: `user`, `filter` (`all`, `bots`, `humans`, `links`, `invites`, `attachments`, `images`, `embeds`, `mentions`) and `text`. Pinned messages are kept, messages older than 14 days cannot be bulk deleted and are reported, and the result is shown only briefly. Prefix use: `!purge 100 links`, `!purge 50 @user`.
+
+### `/history` — requires Moderate Members
+- `history [user]` — one card with everything moderation knows about a member: current status (banned, in jail, timed out, mute role), totals by kind, active warnings, staff notes, reports about them, the latest cases and the latest note.
 
 ### `/case` — infraction history management, requires Moderate Members, built on `mod_actions`
 - `list <user>` — infraction history (last 15)
@@ -476,14 +515,27 @@ Not built: an admin dashboard for the web side (it's a single-purpose captcha pa
 
 ## Report system
 
-Lets any member flag another member or a specific message for staff to review, two entry points into the same pipeline:
+Lets any member flag another member or a specific message for staff to review. Every report is **numbered per server**, stored in `reports`, and posted as a Components V2 card that staff handle with buttons.
 
-- **`/report send user:<user> reason:<string>`** — usable by everyone by default (no `setDefaultMemberPermissions` restriction; servers that want it locked down can still restrict it per-command via Discord's own Integrations settings).
-- **"Report Message"** — a message **context-menu (app) command**: right-click any message → Apps → Report Message. Since context-menu commands carry no options of their own, it opens a modal (`interactions/reportModal.js`, customId `rp_msg::<messageId>`) asking for a reason, then reports that specific message with a jump link and a content preview attached.
+**Entry points** (all go through `utils/reportService.js`, so the rules are the same everywhere):
+- **`/report send user [reason] [category] [ping] [anonymous]`** — open to everyone. With the prefix, `!report send @user reason text here --category scam`.
+- **"Report Message"** — message context menu (right-click → Apps). Keeps the jump link, the text and up to 10 images.
+- **"Report User"** — user context menu, same form.
+Both menus open a form (`interactions/reportModal.js`) with a **category** (spam, harassment, hate speech, NSFW, scam, threats, impersonation, other), optional context, and the *Ping Moderators* and *Report Anonymously* switches when the server enabled them.
 
-Both build the same Components V2 card (`utils/reportCard.js`) — reporter, reported user (when known), source channel, message link/content (for message reports), and the reason — and post it to the guild's configured report channel. Neither creates a `mod_actions` case or DM; a report is a heads-up for staff to act on manually (e.g. with `/warn`, `/mute`, `/ban`), not a sanction itself.
+**The card** (`utils/reportCard.js`) shows the number, category, who and where, and a status line, with buttons for staff (Manage Messages, Moderate Members or Manage Server): **Claim** → **Resolve** / **Dismiss** / **Release**, and **Reopen** once closed. A closed report can DM the reporter ("your report #N was resolved"), without naming the moderator. Two staff members pressing at once cannot overwrite each other: the update only applies if the status did not change in between.
 
-**`/report config channel:<#channel> enabled:<bool>?`** — sets the destination channel and turns the system on/off. Requires **Manage Server**, enforced in code (not via the command's Discord-level default, since `send` needs to stay open to everyone).
+**Rules** a server can set: a cooldown between reports (default 60s), a daily limit per member (default 10), a required reason, anonymous reports, a role pinged on every report, an urgent role reporters can ask for, a discussion thread under each report, and notifying the reporter. A member can be **blocked from reporting**. Anonymous reports never show the reporter, not even in `/report list` or `view`.
+
+**Staff commands** (all `/report`, any of Manage Messages / Moderate Members / Manage Server):
+- `config` — *(Manage Server)* opens the settings panel: channel and role selects, switches for every rule, a **Limits** form, and **Send test report**, which also verifies the bot can post in the channel. Slash only, shown privately.
+- `disable` — *(Manage Server)* turns reports off and keeps the settings.
+- `list [status] [user]` — open reports by default, paged with buttons that keep working after a restart.
+- `view <number>` — one report in full, with a link to its message.
+- `stats` — counts by status, the last 7 days and the most reported members.
+- `block <user> [reason]` / `unblock <user>` / `blocklist`.
+
+A report is a heads-up for staff to act on (with `/warn`, `/mute`, `/jail`, `/ban`), not a sanction: it creates no `mod_actions` case. `/history` shows how many reports a member has.
 
 ## Ticket system
 
@@ -606,7 +658,7 @@ Ending is handled by `jobs/giveawayJob.js`, polling every 15s (tighter than Pett
 
 ## Info / utility commands
 
-The original spec's plain lookup-command category, consolidated where several would've just repeated the same lookup: `created`/`joined`/`joinpos`/`userid`/`roles`/`badges` all live inside `userinfo` instead of being separate one-field commands, and `membercount`/`channelcount`/`rolecount` are fields on `serverinfo` rather than standalone. Everything here is public (no `default_member_permissions` restriction) since none of it is sensitive.
+The original spec's plain lookup-command category, consolidated where several would've just repeated the same lookup: `created`/`joined`/`joinpos`/`userid`/`roles`/`badges` all live inside `userinfo` instead of being separate one-field commands, and `membercount`/`channelcount`/`rolecount` are fields on `serverinfo` rather than standalone. Everything here is public (no `default_member_permissions` restriction) since none of it is sensitive. All of these reply with a Components V2 card from `utils/infoCard.js` (heading with a picture, optional banner, sections, an ID footer and link buttons); mentions inside them never ping. `scripts/check-info-cards.js` runs every one against fake data and checks Discord's component, text and button limits.
 
 **`/avatar user?`** (alias `av`/`pfp`) / **`/banner user?`** — global avatar/banner, plus a server-specific avatar link if the member has one set.
 **`/userinfo user?`** (alias `ui`/`whois`) — account age, server join date + join position, roles, boosting-since, and badges (Discord Staff, HypeSquad, Bug Hunter, etc., decoded from the user's flags).
@@ -614,11 +666,14 @@ The original spec's plain lookup-command category, consolidated where several wo
 **`/channelinfo channel?`** (alias `ci`) — type, topic, slowmode, NSFW, bitrate/user limit for voice.
 **`/roleinfo role`** / **`/roles`** — a single role's detail card, or every role in the server with member counts.
 **`/emojiinfo emoji`** — decodes a pasted custom emoji's ID/animated flag/CDN URL.
-**`/botinfo`** (alias `about`) / **`/ping`** / **`/uptime`** — Petto's own stats, latency, and uptime.
+**`/botinfo`** (alias `about`) / **`/ping`** / **`/uptime`** — Petto's own stats, latency, and uptime. `ping` and `uptime` stay plain text.
 **`/permissions user? channel?`** (alias `perms`) — a member's effective permissions in a channel (accounts for role + channel overwrites, via discord.js's own `permissionsFor()`).
 **`/firstmessage channel?`** (alias `fm`) — jump link to the oldest message in a channel.
+**`/roll dice`** (alias `dice`) — `2d6+3`, `d20`, `4d6kh3` (keep the highest 3), `2d20kl1`; several terms can be added and subtracted, up to 200 dice.
+**`/choose options`** (aliases `pick`, `decide`) — picks one of two to 25 options separated by commas or " or ".
+**`/8ball question`**, **`/ship first [second]`** (the same pair always gets the same score) and **`/rps choice`** are in the **Fun** category.
 **`/inviteinfo code`** — looks up any invite code's server/channel/inviter/expiry, even for servers Petto isn't in.
-**`/color hex`** — previews a hex color as the embed's accent color, plus its RGB breakdown.
+**`/color hex`** — previews a hex color as the card's accent bar, plus its RGB, HSL and decimal values.
 
 ## Reaction roles (`/reactionrole`, alias `rr`)
 

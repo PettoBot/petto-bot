@@ -124,8 +124,9 @@ export async function handleButton(interaction: ButtonInteraction): Promise<bool
 
   if (imageUrl) embed.setImage(imageUrl);
 
-  const updatedMessage = await interaction.message.edit({
-    embeds: [embed],
+  // An edit never notifies anyone, so the response goes out as a new message that replies to the original.
+  // The original keeps its text and only loses its buttons.
+  await interaction.message.edit({
     components: [buildRoleplayButtonRow({
       requestId: parsed.requestId,
       action: parsed.action,
@@ -133,11 +134,17 @@ export async function handleButton(interaction: ButtonInteraction): Promise<bool
       targetId: parsed.targetId,
     }, true)],
     allowedMentions: { parse: [] },
-  }).catch(() => null);
+  }).catch(() => {});
 
-  if (!updatedMessage) {
+  // The response is a reply to the message that holds the buttons. It never mentions anyone, whether the
+  // command was used as a slash command or with the prefix.
+  const sent = await interaction.message
+    .reply({ embeds: [embed], allowedMentions: { parse: [], repliedUser: false } })
+    .then(() => true, () => false);
+
+  if (!sent) {
     await interaction.followUp({
-      content: 'Your response was saved, but Petto could not update the roleplay message.',
+      content: 'Your response was saved, but Petto could not send the roleplay message.',
       flags: MessageFlags.Ephemeral,
       allowedMentions: { parse: [] },
     }).catch(() => {});

@@ -5,6 +5,7 @@ const { ensureMuteRole } = require('./muteRole');
 const { logSanction } = require('./caseLog');
 const { buildSanctionDM } = require('./sanctionMessage');
 const { formatDuration } = require('./duration');
+const { jailMember, JailError } = require('./jail');
 const logger = require('./logger');
 
 const DEFAULT_TEMPMUTE_MS = 60 * 60 * 1000; // 1h, used if a rule somehow has no duration set
@@ -49,6 +50,21 @@ async function checkAndApplyEscalation(client, guild, member, warnCount) {
       const modCase = await createCase({ guildId: guild.id, userId: member.id, moderatorId: client.user.id, type: 'tempmute', reason, expiresAt });
       await logSanction(client, guild, { modCase, target: member.user, moderator: client.user, reason, duration });
       await member.send(buildSanctionDM({ type: 'tempmute', guild, client, reason, duration })).catch(() => {});
+      return;
+    }
+
+    if (rule.action === 'jail') {
+      const durationMs = Number(rule.duration_ms) || null;
+      const duration = durationMs ? formatDuration(durationMs) : undefined;
+      try {
+        const { modCase } = await jailMember({ guild, member, moderator: client.user, reason, durationMs });
+        await logSanction(client, guild, { modCase, target: member.user, moderator: client.user, reason, duration });
+        await member.send(buildSanctionDM({ type: 'jail', guild, client, reason, duration })).catch(() => {});
+      } catch (err) {
+        // Most often jail was never set up, or the member is already in jail; either is worth a line in the log, not a crash.
+        if (err instanceof JailError) logger.warn(`Escalation jail skipped for ${member.id} in guild ${guild.id}: ${err.message}`);
+        else throw err;
+      }
       return;
     }
 
