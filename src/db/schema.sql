@@ -647,6 +647,112 @@ alter table report_config add column if not exists urgent_role_id text;
 
 alter table report_config enable row level security;
 
+-- Report system settings added after the first release.
+alter table report_config add column if not exists ping_role_id text;
+alter table report_config add column if not exists cooldown_seconds integer not null default 60;
+alter table report_config add column if not exists daily_limit integer not null default 10;
+alter table report_config add column if not exists require_reason boolean not null default false;
+alter table report_config add column if not exists notify_reporter boolean not null default true;
+alter table report_config add column if not exists auto_thread boolean not null default false;
+alter table report_config drop constraint if exists report_config_cooldown_check;
+alter table report_config add constraint report_config_cooldown_check check (cooldown_seconds between 0 and 86400);
+alter table report_config drop constraint if exists report_config_daily_limit_check;
+alter table report_config add constraint report_config_daily_limit_check check (daily_limit between 0 and 100);
+
+-- Members who may not submit reports (abuse of the report channel).
+create table if not exists report_blocked_users (
+  guild_id    text not null references guilds(guild_id) on delete cascade,
+  user_id     text not null,
+  blocked_by  text not null,
+  reason      text,
+  created_at  timestamptz not null default now(),
+  primary key (guild_id, user_id)
+);
+
+alter table report_blocked_users enable row level security;
+
+-- Every submitted report, numbered per server like moderation cases. The card in the report channel is
+-- rebuilt from this row whenever staff claim, resolve or dismiss it.
+create table if not exists guild_report_counters (
+  guild_id            text primary key references guilds(guild_id) on delete cascade,
+  last_report_number  integer not null default 0 check (last_report_number >= 0)
+);
+
+alter table guild_report_counters enable row level security;
+
+create table if not exists reports (
+  id                 bigserial primary key,
+  guild_id           text not null references guilds(guild_id) on delete cascade,
+  report_number      integer not null,
+  reporter_id        text not null,
+  reported_user_id   text not null,
+  category           text not null default 'other',
+  reason             text,
+  source_channel_id  text,
+  message_link       text,
+  message_content    text,
+  image_urls         text[] not null default '{}',
+  anonymous          boolean not null default false,
+  urgent             boolean not null default false,
+  status             text not null default 'open' check (status in ('open', 'claimed', 'resolved', 'dismissed')),
+  handled_by         text,
+  handled_at         timestamptz,
+  report_channel_id  text,
+  report_message_id  text,
+  created_at         timestamptz not null default now(),
+  unique (guild_id, report_number)
+);
+
+create index if not exists idx_reports_guild_status on reports(guild_id, status, report_number desc);
+create index if not exists idx_reports_guild_reporter on reports(guild_id, reporter_id, created_at desc);
+create index if not exists idx_reports_guild_reported on reports(guild_id, reported_user_id);
+
+alter table reports enable row level security;
+
+-- Allocates the next report number for the server and inserts the report in one step. The advisory lock keeps
+-- two simultaneous reports from receiving the same number, the same pattern create_mod_case() uses.
+create or replace function create_report(
+  p_guild_id          text,
+  p_reporter_id       text,
+  p_reported_user_id  text,
+  p_category          text,
+  p_reason            text,
+  p_source_channel_id text,
+  p_message_link      text,
+  p_message_content   text,
+  p_image_urls        text[],
+  p_anonymous         boolean,
+  p_urgent            boolean
+) returns reports
+language plpgsql
+as $$
+declare
+  v_number integer;
+  v_row reports;
+begin
+  perform pg_advisory_xact_lock(hashtext('report:' || p_guild_id));
+
+  insert into guild_report_counters (guild_id, last_report_number)
+  values (p_guild_id, 0)
+  on conflict (guild_id) do nothing;
+
+  update guild_report_counters
+     set last_report_number = greatest(
+       last_report_number,
+       coalesce((select max(report_number) from reports where guild_id = p_guild_id), 0)
+     ) + 1
+   where guild_id = p_guild_id
+   returning last_report_number into v_number;
+
+  insert into reports (guild_id, report_number, reporter_id, reported_user_id, category, reason, source_channel_id, message_link, message_content, image_urls, anonymous, urgent)
+  values (p_guild_id, v_number, p_reporter_id, p_reported_user_id, p_category, p_reason, p_source_channel_id, p_message_link, p_message_content, coalesce(p_image_urls, '{}'), p_anonymous, p_urgent)
+  returning * into v_row;
+
+  return v_row;
+end;
+$$;
+
+
 -- ---------------------------------------------------------------------------
 -- Ticket system: panels (the message members click), categories (a panel's
 -- buttons/options, each with its own support roles + parent channel category +
