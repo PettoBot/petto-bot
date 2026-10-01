@@ -44,14 +44,14 @@ async function getReport(guildId, reportNumber) {
   return data;
 }
 
-async function updateReport(guildId, reportNumber, patch) {
-  const { data, error } = await database
-    .from('reports')
-    .update(patch)
-    .eq('guild_id', guildId)
-    .eq('report_number', reportNumber)
-    .select('*')
-    .maybeSingle();
+/**
+ * Updates a report. With `onlyIfStatus` the change applies only while the report is still in that status, and
+ * the result is null when somebody else changed it first, so two staff members cannot overwrite each other.
+ */
+async function updateReport(guildId, reportNumber, patch, { onlyIfStatus = null } = {}) {
+  let query = database.from('reports').update(patch).eq('guild_id', guildId).eq('report_number', reportNumber);
+  if (onlyIfStatus) query = query.eq('status', onlyIfStatus);
+  const { data, error } = await query.select('*').maybeSingle();
   if (error) throw error;
   return data;
 }
