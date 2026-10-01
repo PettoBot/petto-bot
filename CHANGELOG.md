@@ -11,6 +11,10 @@ All notable changes to Petto are documented here.
 
 ### Fixed
 
+- Fixed live counters (`/counter`) that stopped updating. Text and announcement channels cannot keep capitals or spaces, so the stored name never matched and the same channel was renamed on every pass, past Discord's limit of about two renames every ten minutes. The renames waited in line and held up every other counter. A channel is now renamed only when its name really changes, with at least five minutes between renames, and a rename that waits too long no longer blocks the rest.
+- Fixed the counters for users, bots, pending members and boosters, which counted only the members the bot had seen. They now load the full member list, at most every ten minutes, and fall back to the cached members on very large servers or when the load fails.
+- A counter that cannot be renamed, for example without Manage Channels, is now logged instead of failing silently.
+- Added `scripts/check-counters.js` to `npm run check`. It runs the counter job against a fake server.
 - Fixed the release name in `!version`: `v5.0.1-46` is now shown as `v0.5.1-46`.
 - Fixed `v0.5.0` still being marked as the latest release in `!version`.
 - Fixed `!case list` showing an empty page when cases were deleted while the list was open.
