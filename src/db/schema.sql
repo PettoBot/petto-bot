@@ -654,6 +654,10 @@ create table if not exists warn_escalation_rules (
   primary key (guild_id, warn_count)
 );
 
+-- Jail was added as an escalation action after the first release.
+alter table warn_escalation_rules drop constraint if exists warn_escalation_rules_action_check;
+alter table warn_escalation_rules add constraint warn_escalation_rules_action_check check (action in ('mute', 'tempmute', 'kick', 'ban', 'jail'));
+
 alter table warn_escalation_rules enable row level security;
 
 -- ---------------------------------------------------------------------------
