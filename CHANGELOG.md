@@ -41,6 +41,8 @@ All notable changes to Petto are documented here.
 
 ### Fixed
 
+- The hints that name `embed create`, `embed edit`, `embed preview` and `embed list` (in the embed command, giveaways, `welcome` and `dmonjoin`) used a fixed `!`. They now show a slash when the command was run as a slash command and the typed prefix when it was run from a message.
+- A message that is a command for the bot (`!embed create ... hi ...`, an alias, or an @mention of the bot followed by a command) no longer sets off autoresponders, so a word inside the command text does not make the bot answer on top of the command. Added `scripts/check-command-messages.js` to `npm run check`.
 - Fixed live counters (`/counter`) that stopped updating. Text and announcement channels cannot keep capitals or spaces, so the stored name never matched and the same channel was renamed on every pass, past Discord's limit of about two renames every ten minutes. The renames waited in line and held up every other counter. A channel is now renamed only when its name really changes, with at least five minutes between renames, and a rename that waits too long no longer blocks the rest.
 - Fixed the counters for users, bots, pending members and boosters, which counted only the members the bot had seen. They now load the full member list, at most every ten minutes, and fall back to the cached members on very large servers or when the load fails.
 - A counter that cannot be renamed, for example without Manage Channels, is now logged instead of failing silently.

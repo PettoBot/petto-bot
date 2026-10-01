@@ -97,6 +97,12 @@ function interaction(options) {
 }
 const ctx = {};
 
+const { commandRef } = require('../src/utils/commandRef');
+assert.equal(commandRef({}, 'embed edit'), '/embed edit', 'a slash command is named with a slash');
+assert.equal(commandRef({ rawMessage: {}, typedPrefix: '?' }, 'embed edit'), '?embed edit');
+assert.equal(commandRef({ rawMessage: {}, typedPrefix: '<@1> ' }, 'embed edit', '.'), '.embed edit');
+assert.equal(commandRef({ rawMessage: {} }, 'embed edit'), '!embed edit', 'without a typed prefix the default one is used');
+
 (async () => {
   // A good code is saved and shown.
   let i = interaction({ name: 'rules', code: '{embed}&v{title: Rules}&v{description: Hi {user}}&v{color: #ff91c2}' });

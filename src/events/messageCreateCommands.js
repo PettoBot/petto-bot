@@ -165,8 +165,27 @@ async function runCustomCommand(message, commandName, argText = '', prefix = '!'
   return true;
 }
 
+/**
+ * True when the message is a command for the bot: it starts with the server prefix (or an @mention of the bot) and the
+ * first word is a command, an alias or a server alias. Other features use it to leave command messages alone, so a
+ * word inside the command text does not set off an autoresponder.
+ */
+async function isCommandMessage(message) {
+  if (!message.guild || typeof message.content !== 'string') return false;
+  const botId = message.client.user?.id;
+  const mention = botId ? [`<@${botId}>`, `<@!${botId}>`].find((p) => message.content.startsWith(p)) : null;
+  const prefix = mention || await getPrefix(message.guild.id).catch(() => '!');
+  const parsed = parsePrefixCommand(message.content, prefix);
+  if (!parsed) return false;
+  const name = parsed.commandName;
+  if (message.client.commands?.has(name) || message.client.commandAliases?.has(name) || message.client.commandRoutes?.has(name)) return true;
+  const alias = await commandAliasesDb.get(message.guild.id, name).catch(() => null);
+  return Boolean(alias);
+}
+
 module.exports = {
   name: Events.MessageCreate,
+  isCommandMessage,
   setCachedPrefix,
   normalizePrefix,
   prefixMatches,
