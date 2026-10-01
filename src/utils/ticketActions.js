@@ -64,7 +64,7 @@ async function buildWelcomePayload({ category, guild, channel, opener, ticketId,
       const content = [pingText, payload.content].filter(Boolean).join('\n') || undefined;
       const controlRows = [buildTicketControlRow(ticketId), buildTicketMemberRow(ticketId)];
       const templateRows = (payload.components ?? []).slice(0, 5 - controlRows.length);
-      return { content, embeds: payload.embeds, components: [...templateRows, ...controlRows] };
+      return { content, embeds: payload.embeds, files: payload.files, components: [...templateRows, ...controlRows] };
     }
   }
   return {

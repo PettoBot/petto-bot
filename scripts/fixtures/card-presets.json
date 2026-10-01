@@ -1,0 +1,384 @@
+{
+  "classic": [
+    {
+      "id": "title",
+      "type": "text",
+      "text": "Welcome",
+      "x": 512,
+      "y": 60,
+      "size": 40,
+      "font": "Poppins",
+      "weight": 700,
+      "color": "#ffffff",
+      "align": "center",
+      "w": 944,
+      "opacity": 1,
+      "spacing": 8,
+      "upper": true,
+      "shadow": {
+        "color": "#000000",
+        "blur": 8,
+        "x": 0,
+        "y": 2
+      }
+    },
+    {
+      "id": "avatar",
+      "type": "avatar",
+      "source": "user",
+      "x": 512,
+      "y": 210,
+      "size": 190,
+      "shape": "circle",
+      "border": {
+        "color": "#ffffff",
+        "width": 8
+      },
+      "shadow": {
+        "color": "#000000",
+        "blur": 24,
+        "x": 0,
+        "y": 6
+      }
+    },
+    {
+      "id": "name",
+      "type": "text",
+      "text": "{user.display_name}",
+      "x": 512,
+      "y": 360,
+      "size": 58,
+      "font": "Poppins",
+      "weight": 800,
+      "color": "#ffffff",
+      "align": "center",
+      "w": 944,
+      "opacity": 1,
+      "spacing": 0,
+      "upper": false,
+      "shadow": {
+        "color": "#000000",
+        "blur": 8,
+        "x": 0,
+        "y": 2
+      }
+    },
+    {
+      "id": "subtitle",
+      "type": "text",
+      "text": "We are now {server_membercount} members",
+      "x": 512,
+      "y": 430,
+      "size": 32,
+      "font": "Poppins",
+      "weight": 400,
+      "color": "#ffffff",
+      "align": "center",
+      "w": 944,
+      "opacity": 0.9,
+      "spacing": 0,
+      "upper": false,
+      "shadow": {
+        "color": "#000000",
+        "blur": 8,
+        "x": 0,
+        "y": 2
+      }
+    }
+  ],
+  "side": [
+    {
+      "id": "avatar",
+      "type": "avatar",
+      "source": "user",
+      "x": 260,
+      "y": 250,
+      "size": 260,
+      "shape": "circle",
+      "border": {
+        "color": "#ffffff",
+        "width": 8
+      },
+      "shadow": {
+        "color": "#000000",
+        "blur": 24,
+        "x": 0,
+        "y": 6
+      }
+    },
+    {
+      "id": "title",
+      "type": "text",
+      "text": "Welcome",
+      "x": 440,
+      "y": 170,
+      "size": 38,
+      "font": "Poppins",
+      "weight": 700,
+      "color": "#ffffff",
+      "align": "left",
+      "w": 544,
+      "opacity": 1,
+      "spacing": 6,
+      "upper": true,
+      "shadow": {
+        "color": "#000000",
+        "blur": 8,
+        "x": 0,
+        "y": 2
+      }
+    },
+    {
+      "id": "name",
+      "type": "text",
+      "text": "{user.display_name}",
+      "x": 440,
+      "y": 250,
+      "size": 66,
+      "font": "Poppins",
+      "weight": 800,
+      "color": "#ffffff",
+      "align": "left",
+      "w": 544,
+      "opacity": 1,
+      "spacing": 0,
+      "upper": false,
+      "shadow": {
+        "color": "#000000",
+        "blur": 8,
+        "x": 0,
+        "y": 2
+      }
+    },
+    {
+      "id": "subtitle",
+      "type": "text",
+      "text": "We are now {server_membercount} members",
+      "x": 440,
+      "y": 340,
+      "size": 34,
+      "font": "Poppins",
+      "weight": 400,
+      "color": "#ffffff",
+      "align": "left",
+      "w": 544,
+      "opacity": 0.9,
+      "spacing": 0,
+      "upper": false,
+      "shadow": {
+        "color": "#000000",
+        "blur": 8,
+        "x": 0,
+        "y": 2
+      }
+    }
+  ],
+  "bars": [
+    {
+      "id": "bar-top",
+      "type": "shape",
+      "shape": "rect",
+      "x": 512,
+      "y": 40,
+      "w": 1024,
+      "h": 80,
+      "fill": "#000000",
+      "opacity": 0.55
+    },
+    {
+      "id": "bar-bottom",
+      "type": "shape",
+      "shape": "rect",
+      "x": 512,
+      "y": 460,
+      "w": 1024,
+      "h": 80,
+      "fill": "#000000",
+      "opacity": 0.55
+    },
+    {
+      "id": "avatar",
+      "type": "avatar",
+      "source": "user",
+      "x": 512,
+      "y": 165,
+      "size": 200,
+      "shape": "circle",
+      "border": {
+        "color": "#ffffff",
+        "width": 8
+      },
+      "shadow": {
+        "color": "#000000",
+        "blur": 24,
+        "x": 0,
+        "y": 6
+      }
+    },
+    {
+      "id": "title",
+      "type": "text",
+      "text": "Welcome",
+      "x": 512,
+      "y": 320,
+      "size": 78,
+      "font": "Poppins",
+      "weight": 800,
+      "color": "#ffffff",
+      "align": "center",
+      "w": 944,
+      "opacity": 1,
+      "spacing": 0,
+      "upper": true,
+      "shadow": {
+        "color": "#000000",
+        "blur": 8,
+        "x": 0,
+        "y": 2
+      }
+    },
+    {
+      "id": "name",
+      "type": "text",
+      "text": "{user.display_name}",
+      "x": 512,
+      "y": 395,
+      "size": 38,
+      "font": "Poppins",
+      "weight": 700,
+      "color": "#ffffff",
+      "align": "center",
+      "w": 944,
+      "opacity": 1,
+      "spacing": 0,
+      "upper": false,
+      "shadow": {
+        "color": "#000000",
+        "blur": 8,
+        "x": 0,
+        "y": 2
+      }
+    },
+    {
+      "id": "subtitle",
+      "type": "text",
+      "text": "We are now {server_membercount} members",
+      "x": 512,
+      "y": 460,
+      "size": 30,
+      "font": "Poppins",
+      "weight": 700,
+      "color": "#ffffff",
+      "align": "center",
+      "w": 944,
+      "opacity": 1,
+      "spacing": 0,
+      "upper": true,
+      "shadow": {
+        "color": "#000000",
+        "blur": 8,
+        "x": 0,
+        "y": 2
+      }
+    }
+  ],
+  "panel": [
+    {
+      "id": "panel",
+      "type": "shape",
+      "shape": "rect",
+      "x": 512,
+      "y": 250,
+      "w": 924,
+      "h": 400,
+      "fill": "#000000",
+      "radius": 40,
+      "opacity": 0.5
+    },
+    {
+      "id": "avatar",
+      "type": "avatar",
+      "source": "user",
+      "x": 225.28,
+      "y": 250,
+      "size": 230,
+      "shape": "circle",
+      "border": {
+        "color": "#ffffff",
+        "width": 8
+      },
+      "shadow": {
+        "color": "#000000",
+        "blur": 24,
+        "x": 0,
+        "y": 6
+      }
+    },
+    {
+      "id": "title",
+      "type": "text",
+      "text": "Welcome",
+      "x": 390.28,
+      "y": 180,
+      "size": 34,
+      "font": "Poppins",
+      "weight": 700,
+      "color": "#ffffff",
+      "align": "left",
+      "w": 543.72,
+      "opacity": 1,
+      "spacing": 4,
+      "upper": true,
+      "shadow": {
+        "color": "#000000",
+        "blur": 8,
+        "x": 0,
+        "y": 2
+      }
+    },
+    {
+      "id": "name",
+      "type": "text",
+      "text": "{user.display_name}",
+      "x": 390.28,
+      "y": 250,
+      "size": 58,
+      "font": "Poppins",
+      "weight": 800,
+      "color": "#ffffff",
+      "align": "left",
+      "w": 543.72,
+      "opacity": 1,
+      "spacing": 0,
+      "upper": false,
+      "shadow": {
+        "color": "#000000",
+        "blur": 8,
+        "x": 0,
+        "y": 2
+      }
+    },
+    {
+      "id": "subtitle",
+      "type": "text",
+      "text": "We are now {server_membercount} members",
+      "x": 390.28,
+      "y": 325,
+      "size": 30,
+      "font": "Poppins",
+      "weight": 400,
+      "color": "#ffffff",
+      "align": "left",
+      "w": 543.72,
+      "opacity": 0.9,
+      "spacing": 0,
+      "upper": false,
+      "shadow": {
+        "color": "#000000",
+        "blur": 8,
+        "x": 0,
+        "y": 2
+      }
+    }
+  ]
+}
