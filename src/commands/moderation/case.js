@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { getUserHistory, getCaseHistory, getLastCase, getCase, updateCase, deleteCase, deleteAllForUser } = require('../../db/modActions');
 const { formatCaseLine, formatCaseDetail } = require('../../utils/caseFormat');
-const { textCard } = require('../../utils/caseCard');
+const { buildCaseListCard, textCard } = require('../../utils/caseCard');
 const { resolveUsers } = require('../../utils/userResolve');
 const { parseDuration } = require('../../utils/duration');
 const { EMOJI } = require('../../utils/emojis');
@@ -82,27 +82,20 @@ async function list(interaction) {
   const nextId = `case_list_next:${scopeId}`;
 
   function renderPage(rows, count, currentPage, includeControls = true) {
-    const totalPages = Math.max(1, Math.ceil(count / CASES_PER_PAGE));
-    const heading = targetUser
-      ? `### Infractions for ${targetUser}`
-      : `### Moderation cases · ${interaction.guild.name}`;
-    const lines = [
-      heading,
-      `**Total:** ${count} · **Page:** ${currentPage + 1}/${totalPages}`,
-      ...rows.map(formatCaseLine),
-    ];
-
-    const components = [textCard(lines.join('\n\n'), 0x4b4f59)];
-    if (includeControls && totalPages > 1) {
-      components.push(
-        new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId(previousId).setLabel('Previous').setStyle(ButtonStyle.Secondary).setDisabled(currentPage <= 0),
-          new ButtonBuilder().setCustomId(nextId).setLabel('Next').setStyle(ButtonStyle.Secondary).setDisabled(currentPage >= totalPages - 1),
-        ),
-      );
+    if (!rows.length) {
+      const emptyText = targetUser ? `${targetUser} has no infractions on record.` : 'This server has no moderation cases on record.';
+      return { components: [textCard(emptyText, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 };
     }
-
-    return { components, flags: MessageFlags.IsComponentsV2 };
+    const card = buildCaseListCard({
+      rows,
+      count,
+      page: currentPage,
+      perPage: CASES_PER_PAGE,
+      guild: interaction.guild,
+      user: targetUser,
+      ids: includeControls ? { previous: previousId, next: nextId } : null,
+    });
+    return { components: [card], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } };
   }
 
   let payload = renderPage(result.rows, result.count, page);
@@ -132,8 +125,16 @@ async function list(interaction) {
       offset: page * CASES_PER_PAGE,
     });
 
+    // Cases can be deleted while the list is open, so the page may no longer exist.
     const refreshedTotalPages = Math.max(1, Math.ceil(result.count / CASES_PER_PAGE));
-    page = Math.min(page, refreshedTotalPages - 1);
+    if (page > refreshedTotalPages - 1) {
+      page = refreshedTotalPages - 1;
+      result = await getCaseHistory(interaction.guild.id, {
+        userId: targetUserId,
+        limit: CASES_PER_PAGE,
+        offset: page * CASES_PER_PAGE,
+      });
+    }
     payload = renderPage(result.rows, result.count, page);
     await click.update(payload);
   }

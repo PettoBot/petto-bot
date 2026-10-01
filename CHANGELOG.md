@@ -4,17 +4,16 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
-### Fixed
-
-- Fixed the release name in `!version`: `v5.0.1-46` is now shown as `v0.5.1-46`.
-
 ### Changed
 
 - Redesigned the `!version` release center with a cleaner Components V2 layout: a header with the version, status and date, clearer section spacing, and no filler text.
+- Redesigned `!case list` as a Components V2 card: a header with the server or user picture and the case count, one block per case with its type, people, time and status (active or ended for timed sanctions), and page controls with the current page.
 
 ### Fixed
 
+- Fixed the release name in `!version`: `v5.0.1-46` is now shown as `v0.5.1-46`.
 - Fixed `v0.5.0` still being marked as the latest release in `!version`.
+- Fixed `!case list` showing an empty page when cases were deleted while the list was open.
 
 ## [0.6.0] — 2026-09-30
 
