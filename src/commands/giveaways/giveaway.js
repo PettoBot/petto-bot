@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
+const { commandRef } = require('../../utils/commandRef');
 const ms = require('ms');
 const { ensureGuild } = require('../../db/guilds');
 const giveawaysDb = require('../../db/giveaways');
@@ -174,7 +175,7 @@ async function startCmd(interaction) {
     const template = await embedTemplatesDb.getTemplate(interaction.guild.id, embedTemplate);
     if (!template) {
       await interaction.editReply({
-        components: [textCard(`Saved embed \`${embedTemplate}\` doesn't exist. Create it first with \`!embed create ${embedTemplate}\`.`, 0xfe6465)],
+        components: [textCard(`Saved embed \`${embedTemplate}\` doesn't exist. Create it first with \`${commandRef(interaction, `embed create ${embedTemplate}`)}\`.`, 0xfe6465)],
         flags: MessageFlags.IsComponentsV2,
       });
       return;
@@ -338,7 +339,7 @@ async function setEmbedCmd(interaction) {
   const doc = await embedTemplatesDb.getTemplate(interaction.guild.id, rawName);
   if (!doc) {
     await interaction.editReply({
-      components: [textCard(`No saved embed named \`${rawName}\` exists. Create one with \`!embed create ${rawName}\` first.`, 0xfe6465)],
+      components: [textCard(`No saved embed named \`${rawName}\` exists. Create one with \`${commandRef(interaction, `embed create ${rawName}`)}\` first.`, 0xfe6465)],
       flags: MessageFlags.IsComponentsV2,
     });
     return;

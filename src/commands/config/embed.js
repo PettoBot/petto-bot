@@ -199,12 +199,12 @@ function varsNavRow(page) {
 
 async function getOrFail(interaction, name) {
   if (!name) {
-    await interaction.editReply('Please provide an embed name, e.g. `!embed preview embed:my_embed`. Use `!embed list` to see saved embeds.');
+    await interaction.editReply(`Please provide an embed name, e.g. \`${commandRef(interaction, 'embed preview embed:my_embed')}\`. Use \`${commandRef(interaction, 'embed list')}\` to see saved embeds.`);
     return null;
   }
   const doc = await getTemplate(interaction.guild.id, name);
   if (!doc) {
-    await interaction.editReply(`No embed named \`${name}\` found. Create it first with \`!embed create name:${name}\`.`);
+    await interaction.editReply(`No embed named \`${name}\` found. Create it first with \`${commandRef(interaction, `embed create name:${name}`)}\`.`);
     return null;
   }
   return doc;
@@ -447,12 +447,12 @@ module.exports = {
         case 'create': {
           const name = normalizeName(interaction.options.getString('name'));
           if (!name) {
-            await interaction.editReply('Please provide a name, e.g. `!embed create name:my_embed`.');
+            await interaction.editReply(`Please provide a name, e.g. \`${commandRef(interaction, 'embed create name:my_embed', ctx.prefix)}\`.`);
             return;
           }
           const existing = await getTemplate(guildId, name);
           if (existing) {
-            await interaction.editReply(`An embed named \`${name}\` already exists. Use \`!embed edit\` to modify it.`);
+            await interaction.editReply(`An embed named \`${name}\` already exists. Use \`${commandRef(interaction, 'embed edit', ctx.prefix)}\` to modify it.`);
             return;
           }
           const code = interaction.options.getString('code');
@@ -477,7 +477,7 @@ module.exports = {
         case 'list': {
           const templates = await listTemplates(guildId);
           if (!templates.length) {
-            await interaction.editReply('No saved embeds in this server. Create one with `!embed create name:my_embed`.');
+            await interaction.editReply(`No saved embeds in this server. Create one with \`${commandRef(interaction, 'embed create name:my_embed', ctx.prefix)}\`.`);
             return;
           }
           const lines = templates.map((t, i) => `\`${i + 1}.\` **${t.name}**`);

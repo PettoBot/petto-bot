@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
+const { commandRef } = require('../../utils/commandRef');
 const ms = require('ms');
 const { ensureGuild } = require('../../db/guilds');
 const templatesDb = require('../../db/giveawayTemplates');
@@ -93,7 +94,7 @@ async function saveCmd(interaction, isEdit) {
     const embedDoc = await embedTemplatesDb.getTemplate(interaction.guild.id, embedTemplate);
     if (!embedDoc) {
       await interaction.editReply({
-        components: [textCard(`Saved embed \`${embedTemplate}\` doesn't exist. Create it first with \`!embed create ${embedTemplate}\`.`, 0xfe6465)],
+        components: [textCard(`Saved embed \`${embedTemplate}\` doesn't exist. Create it first with \`${commandRef(interaction, `embed create ${embedTemplate}`)}\`.`, 0xfe6465)],
         flags: MessageFlags.IsComponentsV2,
       });
       return;

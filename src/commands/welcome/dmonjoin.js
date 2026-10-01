@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
+const { commandRef } = require('../../utils/commandRef');
 const { ensureGuild } = require('../../db/guilds');
 const { getConfig, upsertConfig } = require('../../db/memberEvents');
 const { getTemplate } = require('../../db/embedTemplates');
@@ -38,7 +39,7 @@ async function setup(interaction) {
   const embed = interaction.options.getString('embed');
 
   if (embed && !(await getTemplate(interaction.guild.id, embed))) {
-    await interaction.reply({ content: `No embed named \`${embed}\` found. Create it with \`!embed create\` first.`, flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: `No embed named \`${embed}\` found. Create it with \`${commandRef(interaction, 'embed create')}\` first.`, flags: MessageFlags.Ephemeral });
     return;
   }
   if (!message && !embed) {
