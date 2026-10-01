@@ -62,4 +62,31 @@ for (const player of RPS_CHOICES) {
 }
 assert.throws(() => rpsOutcome('lizard', 'rock'), RangeError);
 
-console.log('Checked the fun command logic.');
+// The fun commands answer with plain text; /ship adds the picture. A card is a PNG even when the avatars cannot load.
+(async () => {
+  const { buildShipCard } = require('../src/imgutils/shipCard');
+  const card = await buildShipCard({ avatarA: '/missing-a.png', avatarB: '/missing-b.png', nameA: 'A', nameB: 'B'.repeat(80), score: 42 });
+  assert.deepEqual([...card.subarray(0, 4)], [0x89, 0x50, 0x4e, 0x47], 'the ship card is a PNG');
+
+  const replies = [];
+  const interaction = {
+    options: { getString: () => 'Will it work?\n\nreally', getUser: () => ({ id: '1', username: 'a', displayAvatarURL: () => '/missing.png' }) },
+    user: { id: '2', username: 'b', displayAvatarURL: () => '/missing.png' },
+    member: { displayName: 'B' },
+    guild: null,
+    deferReply: async () => {},
+    reply: async (payload) => replies.push(payload),
+    editReply: async (payload) => replies.push(payload),
+  };
+  for (const name of ['8ball', 'rps', 'ship']) {
+    replies.length = 0;
+    const command = require(`../src/commands/fun/${name}`);
+    await command.execute({ ...interaction, options: { getString: () => (name === 'rps' ? 'rock' : 'Will it work?\n\nreally'), getUser: interaction.options.getUser } });
+    const [payload] = replies;
+    assert.ok(typeof payload.content === 'string' && payload.content.length > 0, `${name} answers with plain text`);
+    assert.ok(!payload.flags && !payload.components && !payload.embeds, `${name} is not an embed or a container`);
+  }
+  assert.ok(replies[0].files?.length === 1 && replies[0].files[0].name === 'ship.png', '/ship attaches its picture');
+
+  console.log('Checked the fun command logic.');
+})().catch((err) => { console.error(err); process.exit(1); });

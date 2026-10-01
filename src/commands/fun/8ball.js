@@ -1,9 +1,6 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { EIGHT_BALL_ANSWERS, pickRandom } = require('../../utils/funGames');
-const { infoPayload, clip } = require('../../utils/infoCard');
-const { COLORS } = require('../../utils/colors');
-
-const TONE_COLOR = { yes: COLORS.GREEN, maybe: COLORS.YELLOW, no: COLORS.RED };
+const { clip } = require('../../utils/infoCard');
 
 module.exports = {
   aliases: ['eightball'],
@@ -17,11 +14,9 @@ module.exports = {
     const question = interaction.options.getString('question', true).trim();
     const answer = pickRandom(EIGHT_BALL_ANSWERS);
 
-    await interaction.reply(infoPayload({
-      accent: TONE_COLOR[answer.tone],
-      title: `🎱 ${answer.text}`,
-      subtitle: [`> ${clip(question, 200)}`],
-      footer: `Asked by ${interaction.member?.displayName ?? interaction.user.username}`,
-    }));
+    await interaction.reply({
+      content: `🎱 **${answer.text}**\n> ${clip(question.replace(/\s+/g, " "), 200)}`,
+      allowedMentions: { parse: [] },
+    });
   },
 };
