@@ -8,10 +8,11 @@ function refusal(text) {
   return { ...noticePayload(text, COLORS.RED), flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral };
 }
 
-// The same report as "Report User", reachable from the Apps list of a message. It reports the person who wrote the
-// message, not the message itself: "Report Message" is the one that attaches the text and the images.
+// "Report User" for the Apps list of a message (the user menu of the same name only shows on a profile). It reports
+// the person who wrote the message, not the message itself: "Report Message" is the one that attaches the text and
+// the images.
 module.exports = {
-  data: new ContextMenuCommandBuilder().setName('Report Author').setType(ApplicationCommandType.Message),
+  data: new ContextMenuCommandBuilder().setName('Report User').setType(ApplicationCommandType.Message),
 
   async execute(interaction) {
     const reportConfig = await getConfig(interaction.guild.id).catch(() => null);
@@ -28,7 +29,7 @@ module.exports = {
 
     await interaction.showModal(buildReportModal({
       customId: `${USER_MODAL_PREFIX}${author.id}`,
-      title: 'Report Author',
+      title: 'Report User',
       intro: `### Reporting ${author}\n**User:** ${author} (\`${author.id}\`)\n-# This reports the person. To report the message itself, use **Report Message**.`,
       config: reportConfig,
     }));

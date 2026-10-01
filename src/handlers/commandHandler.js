@@ -1,8 +1,16 @@
 const fs = require('fs');
 const path = require('path');
-const { Collection } = require('discord.js');
+const { ApplicationCommandType, Collection } = require('discord.js');
 const logger = require('../utils/logger');
 const { aliasesFor, DEFAULT_PREFIX_ROUTES } = require('../utils/defaultCommandAliases');
+
+/**
+ * The key a command is stored under in client.commands. Discord lets a user menu and a message menu share a name
+ * ("Report User" in both lists), so context menus are keyed by name and type.
+ */
+function commandKey(name, type) {
+  return type === ApplicationCommandType.User || type === ApplicationCommandType.Message ? `${name}#${type}` : name;
+}
 
 const COMMANDS_DIR = path.join(__dirname, '..', 'commands');
 
@@ -72,8 +80,9 @@ function loadCommands(client) {
     }
 
     command.category = categoryFromPath(filePath);
-    if (client.commands.has(command.data.name)) {
-      const existing = client.commands.get(command.data.name);
+    const key = commandKey(command.data.name, command.data.type);
+    if (client.commands.has(key)) {
+      const existing = client.commands.get(key);
       logger.warn(`Skipping duplicate command name "${command.data.name}" from ${filePath}; already loaded from ${existing.filePath ?? 'another command file'}.`);
       continue;
     }
@@ -82,7 +91,7 @@ function loadCommands(client) {
     const requestedAliases = [...new Set([...(command.aliases ?? []), ...aliasesFor(command.data.name)])]
       .map((alias) => String(alias).toLowerCase());
     const acceptedAliases = [];
-    client.commands.set(command.data.name, command);
+    client.commands.set(key, command);
 
     for (const alias of requestedAliases) {
       const key = alias.toLowerCase();
@@ -150,4 +159,4 @@ function collectPrivateGuildCommandData() {
     .map(({ command }) => ({ guildId: String(command.privateGuildId), data: command.data.toJSON() }));
 }
 
-module.exports = { loadCommands, collectCommandData, collectPrivateGuildCommandData, findCommandFiles, COMMANDS_DIR };
+module.exports = { loadCommands, commandKey, collectCommandData, collectPrivateGuildCommandData, findCommandFiles, COMMANDS_DIR };
