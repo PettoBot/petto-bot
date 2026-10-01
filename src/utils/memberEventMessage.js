@@ -28,7 +28,7 @@ async function sendMemberEvent({ guild, channel, kind, messageText, embedTemplat
       const doc = await getTemplate(guild.id, embedTemplateName);
       if (doc) {
         const payload = await build(doc.data, ctx);
-        const sent = await channel.send({ content: payload.content, embeds: payload.embeds, components: payload.components, allowedMentions: ANNOUNCEMENT_MENTIONS });
+        const sent = await channel.send({ content: payload.content, embeds: payload.embeds, components: payload.components, files: payload.files, allowedMentions: ANNOUNCEMENT_MENTIONS });
         if (emojis.length) await applyReactReplies(sent, emojis);
         return;
       }

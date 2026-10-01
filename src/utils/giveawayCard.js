@@ -78,7 +78,7 @@ async function sendGiveawayResponse({ target, guildId, messageText, embedTemplat
       const doc = await getTemplate(guildId, embedTemplateName);
       if (doc) {
         const payload = await build(doc.data, ctx);
-        const sent = await target.send({ content: payload.content, embeds: payload.embeds, components: payload.components });
+        const sent = await target.send({ content: payload.content, embeds: payload.embeds, components: payload.components, files: payload.files });
         if (reactReplies.length) await applyReactReplies(sent, reactReplies);
         return;
       }

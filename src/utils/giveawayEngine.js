@@ -129,7 +129,7 @@ async function postGiveawayMessage(channel, giveaway, entriesCount, presetText =
   if (customPayload) {
     const templateRows = (customPayload.components ?? []).slice(0, enterRow ? 4 : 5);
     const components = [...templateRows, ...(enterRow ? [enterRow] : [])];
-    message = await channel.send({ content: customPayload.content, embeds: customPayload.embeds, components });
+    message = await channel.send({ content: customPayload.content, embeds: customPayload.embeds, components, files: customPayload.files });
   } else {
     const card = buildEntryCard({
       prize: giveaway.prize,
@@ -164,7 +164,7 @@ async function refreshGiveawayMessageNow(channel, giveaway) {
   if (customPayload) {
     const templateRows = (customPayload.components ?? []).slice(0, enterRow ? 4 : 5);
     const components = [...templateRows, ...(enterRow ? [enterRow] : [])];
-    await message.edit({ content: customPayload.content, embeds: customPayload.embeds, components }).catch(() => {});
+    await message.edit({ content: customPayload.content, embeds: customPayload.embeds, components, files: customPayload.files ?? [], attachments: [] }).catch(() => {});
     return;
   }
 
@@ -233,6 +233,8 @@ async function editEndedMessage(channel, giveaway, winnerIds, presetText = '', e
       content: content || null,
       embeds: customEmbed.embeds,
       components: [],
+      files: customEmbed.files ?? [],
+      attachments: [],
     }).catch(() => {});
     return;
   }

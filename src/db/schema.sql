@@ -359,6 +359,44 @@ create index if not exists idx_embed_templates_guild on embed_templates(guild_id
 alter table embed_templates enable row level security;
 
 -- ---------------------------------------------------------------------------
+-- image_cards: pictures drawn for a message (welcome, tickets, ...). `data` is the card
+-- described in src/utils/cardSchema.js. A message template points at a card by name.
+-- card_assets: pictures uploaded for cards (backgrounds and layers), kept as bytes
+-- after being decoded and written again, so what is stored is always a clean PNG, JPEG or WebP.
+-- ---------------------------------------------------------------------------
+create table if not exists image_cards (
+  id         bigserial primary key,
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  name       text not null,
+  data       jsonb not null default '{}'::jsonb,
+  created_by text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (guild_id, name)
+);
+
+create index if not exists idx_image_cards_guild on image_cards(guild_id);
+
+alter table image_cards enable row level security;
+
+create table if not exists card_assets (
+  id         bigserial primary key,
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  name       text not null,
+  mime       text not null,
+  width      integer not null,
+  height     integer not null,
+  size       integer not null,
+  bytes      bytea not null,
+  created_by text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_card_assets_guild on card_assets(guild_id);
+
+alter table card_assets enable row level security;
+
+-- ---------------------------------------------------------------------------
 -- verification_config: Cloudflare Turnstile join-gate settings per guild.
 -- Verification tokens themselves are stateless (signed + expiring, see
 -- src/utils/verifyToken.js) — nothing about an in-flight verification is stored.

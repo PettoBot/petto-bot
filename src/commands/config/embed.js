@@ -489,7 +489,7 @@ module.exports = {
             await interaction.editReply(`Embed \`${name}\` has no sendable content. Add a title, description, field, message content, or link button first.`);
             return;
           }
-          await interaction.editReply({ content: `Preview of \`${name}\`:\n${payload.content ?? ''}`, embeds: payload.embeds, components: payload.components });
+          await interaction.editReply({ content: `Preview of \`${name}\`:\n${payload.content ?? ''}`, embeds: payload.embeds, components: payload.components, files: payload.files });
           return;
         }
 
@@ -503,7 +503,7 @@ module.exports = {
             await interaction.editReply(`Embed \`${name}\` has no sendable content. Add a title, description, field, message content, or link button first.`);
             return;
           }
-          await target.send({ content: payload.content, embeds: payload.embeds, components: payload.components });
+          await target.send({ content: payload.content, embeds: payload.embeds, components: payload.components, files: payload.files });
           await interaction.editReply(`Embed \`${name}\` sent to <#${target.id}>!`);
           return;
         }
