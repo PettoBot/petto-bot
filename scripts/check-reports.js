@@ -9,7 +9,7 @@ require.cache[databaseModule] = { id: databaseModule, filename: databaseModule, 
 
 const { REPORT_CATEGORIES, categoryLabel, isReportCategory, DEFAULT_CATEGORY } = require('../src/utils/reportCategories');
 const { buildReportCard, buildReportPayload, reportButtonId, REPORT_BUTTON_PREFIX } = require('../src/utils/reportCard');
-const { parseButton, TRANSITIONS } = require('../src/interactions/reportActions');
+const { parseButton, parseReasonModal, buildReasonModal, TRANSITIONS, NEEDS_REASON } = require('../src/interactions/reportActions');
 const { parseListButton } = require('../src/utils/reportViews');
 const { readOptionalCheckbox, buildReportModal } = require('../src/interactions/reportModal');
 
@@ -105,5 +105,45 @@ assert.deepEqual(checkboxIds({}), []);
 assert.deepEqual(checkboxIds({ urgent_role_id: '1' }), ['report_ping']);
 assert.deepEqual(checkboxIds({ anonymous_reporting_enabled: true }), ['report_anonymous']);
 assert.deepEqual(checkboxIds({ urgent_role_id: '1', anonymous_reporting_enabled: true }).sort(), ['report_anonymous', 'report_ping']);
+
+// Which buttons staff get: closing needs a reason, and inviting the reporter needs a thread and a named reporter.
+const labelsOf = (row) => {
+  const labels = [];
+  (function walk(node) {
+    if (Array.isArray(node)) return node.forEach(walk);
+    if (!node || typeof node !== 'object') return;
+    if (node.type === 2) labels.push(`${node.label}${node.disabled ? '(disabled)' : ''}`);
+    Object.values(node).forEach(walk);
+  })(buildReportCard(row).toJSON());
+  return labels;
+};
+const withThread = { ...base, thread_id: '777', reporter_invited_at: null, resolution_note: null };
+assert.deepEqual(labelsOf({ ...withThread, status: 'open' }), ['Claim', 'Resolve', 'Dismiss', 'Invite reporter']);
+assert.deepEqual(labelsOf({ ...withThread, status: 'claimed' }), ['Resolve', 'Dismiss', 'Release', 'Invite reporter']);
+assert.deepEqual(labelsOf({ ...withThread, status: 'open', thread_id: null }), ['Claim', 'Resolve', 'Dismiss'], 'no thread, no invite');
+assert.deepEqual(labelsOf({ ...withThread, status: 'open', anonymous: true }), ['Claim', 'Resolve', 'Dismiss'], 'an anonymous reporter is never invited');
+assert.deepEqual(labelsOf({ ...withThread, status: 'claimed', reporter_invited_at: new Date().toISOString() }), ['Resolve', 'Dismiss', 'Release', 'Reporter invited(disabled)']);
+assert.deepEqual(labelsOf({ ...withThread, status: 'resolved' }), ['Reopen'], 'a closed report can only be reopened');
+assert.deepEqual(labelsOf({ ...withThread, status: 'dismissed' }), ['Reopen']);
+
+// The reason of a closed report is on the card, and a very long one still fits.
+const note = 'because '.repeat(200);
+const resolved = inspect(buildReportCard({ ...withThread, status: 'resolved', resolution_note: note, reason: longText, message_content: longText }));
+assert.ok(resolved.text.includes('Reason:') && resolved.chars <= 4000 && resolved.components <= 40);
+assert.ok(!inspect(buildReportCard({ ...withThread, status: 'open', resolution_note: 'stale' })).text.includes('stale'), 'a note is only shown while the report is closed');
+
+// Only resolve and dismiss ask for a reason, in a required field.
+assert.deepEqual([...NEEDS_REASON].sort(), ['dismiss', 'resolve']);
+assert.deepEqual(parseButton('rpt:invite:12'), { action: 'invite', reportNumber: 12 });
+assert.deepEqual(parseReasonModal('rptr:resolve:5'), { action: 'resolve', reportNumber: 5 });
+assert.equal(parseReasonModal('rptr:claim:5'), null);
+assert.equal(parseReasonModal('rptr:resolve:five'), null);
+for (const action of NEEDS_REASON) {
+  const modal = buildReasonModal(action, 123456789).toJSON();
+  assert.ok(modal.title.length <= 45 && modal.custom_id.length <= 100);
+  const input = modal.components[0].component;
+  assert.equal(input.required, true);
+  assert.ok(input.min_length >= 1 && input.max_length <= 4000);
+}
 
 console.log('Checked the report cards, categories, forms and button ids.');
