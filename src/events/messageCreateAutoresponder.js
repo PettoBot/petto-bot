@@ -6,6 +6,7 @@ const { resolve } = require('../utils/embedVariables');
 const { extractReactReplies, extractReactRepliesFromTemplate, applyReactReplies } = require('../utils/messageFlags');
 const { tokenize } = require('../handlers/prefixInteraction');
 const logger = require('../utils/logger');
+const { isCommandMessage } = require('./messageCreateCommands');
 
 /** Pulls role/user mentions typed into a resolved reply (e.g. "@staff") so they can be allow-listed. */
 function extractMentions(text) {
@@ -59,6 +60,8 @@ module.exports = {
     try {
       const list = await arDb.listForGuildCached(message.guild.id);
       if (!list.length) return;
+      // A command is not chatter: `!embed create ... hi ...` must not set off an autoresponder for "hi".
+      if (await isCommandMessage(message)) return;
 
       for (const ar of list) {
         if (ar.channel_ids.length && !ar.channel_ids.includes(message.channel.id)) continue;
