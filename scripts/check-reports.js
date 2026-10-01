@@ -132,15 +132,24 @@ const resolved = inspect(buildReportCard({ ...withThread, status: 'resolved', re
 assert.ok(resolved.text.includes('Reason:') && resolved.chars <= 4000 && resolved.components <= 40);
 assert.ok(!inspect(buildReportCard({ ...withThread, status: 'open', resolution_note: 'stale' })).text.includes('stale'), 'a note is only shown while the report is closed');
 
-// Only resolve and dismiss ask for a reason, in a required field.
-assert.deepEqual([...NEEDS_REASON].sort(), ['dismiss', 'resolve']);
+// A reopened report shows who reopened it and why, until it is closed again.
+const reopened = inspect(buildReportCard({ ...withThread, status: 'open', reopened_by: '999999999999999999', reopen_note: 'new evidence' })).text;
+assert.ok(reopened.includes('reopened by <@999999999999999999>') && reopened.includes('new evidence'));
+assert.ok(!inspect(buildReportCard({ ...withThread, status: 'open' })).text.includes('reopened by'), 'a report that was never reopened says nothing about it');
+assert.ok(!inspect(buildReportCard({ ...withThread, status: 'resolved', reopened_by: '999999999999999999', reopen_note: 'new evidence' })).text.includes('new evidence'), 'the reopen reason is only shown while the report is open');
+assert.ok(inspect(buildReportCard({ ...withThread, status: 'open', reopened_by: '999999999999999999', reopen_note: longText })).chars <= 4000);
+
+// Resolve, dismiss and reopen ask for a reason, in a required field.
+assert.deepEqual([...NEEDS_REASON].sort(), ['dismiss', 'reopen', 'resolve']);
 assert.deepEqual(parseButton('rpt:invite:12'), { action: 'invite', reportNumber: 12 });
 assert.deepEqual(parseReasonModal('rptr:resolve:5'), { action: 'resolve', reportNumber: 5 });
+assert.deepEqual(parseReasonModal('rptr:reopen:5'), { action: 'reopen', reportNumber: 5 });
 assert.equal(parseReasonModal('rptr:claim:5'), null);
 assert.equal(parseReasonModal('rptr:resolve:five'), null);
 for (const action of NEEDS_REASON) {
   const modal = buildReasonModal(action, 123456789).toJSON();
   assert.ok(modal.title.length <= 45 && modal.custom_id.length <= 100);
+  assert.ok(modal.components[0].description.length <= 100, 'a field description holds at most 100 characters');
   const input = modal.components[0].component;
   assert.equal(input.required, true);
   assert.ok(input.min_length >= 1 && input.max_length <= 4000);

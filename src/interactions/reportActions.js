@@ -21,8 +21,10 @@ const TRANSITIONS = {
   reopen: [['resolved', 'dismissed'], 'open'],
 };
 
-// Closing a report needs a reason: it is shown on the card, written in the thread and sent to the reporter.
-const NEEDS_REASON = new Set(['resolve', 'dismiss']);
+// Closing a report needs a reason (shown on the card, written in the thread and sent to the reporter), and so does
+// reopening one. The form doubles as the confirmation: nothing changes until it is sent.
+const NEEDS_REASON = new Set(['resolve', 'dismiss', 'reopen']);
+const FORM_TITLES = { resolve: 'Resolve', dismiss: 'Dismiss', reopen: 'Reopen' };
 const ACTIONS = [...Object.keys(TRANSITIONS), 'invite'];
 
 const OUTCOME_WORDS = { resolved: 'resolved', dismissed: 'reviewed and closed' };
@@ -33,7 +35,7 @@ function parseButton(customId) {
   return { action, reportNumber: Number(number) };
 }
 
-/** `rptr:<resolve|dismiss>:<number>`, the id of the form that asks why a report is being closed. */
+/** `rptr:<resolve|dismiss|reopen>:<number>`, the id of the form that asks why a report is being closed or reopened. */
 function parseReasonModal(customId) {
   const [prefix, action, number] = customId.split(':');
   if (`${prefix}:` !== REASON_MODAL_PREFIX || !NEEDS_REASON.has(action) || !/^\d{1,9}$/.test(number ?? '')) return null;
@@ -45,18 +47,22 @@ function ephemeral(text, color = COLORS.RED) {
 }
 
 function buildReasonModal(action, reportNumber) {
+  const reopening = action === 'reopen';
+  const placeholder = { resolve: 'What was done about it?', dismiss: 'Why is there nothing to act on?', reopen: 'Why does this report need another look?' }[action];
   return new ModalBuilder()
     .setCustomId(`${REASON_MODAL_PREFIX}${action}:${reportNumber}`)
-    .setTitle(`${action === 'resolve' ? 'Resolve' : 'Dismiss'} report #${reportNumber}`.slice(0, 45))
+    .setTitle(`${FORM_TITLES[action]} report #${reportNumber}`.slice(0, 45))
     .addLabelComponents(
       new LabelBuilder()
         .setLabel('Reason')
-        .setDescription('Shown on the report and sent to the person who reported it.')
+        .setDescription(reopening
+          ? 'Sending this reopens the report and its thread. The reason is shown on the report.'
+          : 'Shown on the report and sent to the person who reported it.')
         .setTextInputComponent(
           new TextInputBuilder()
             .setCustomId('reason')
             .setStyle(TextInputStyle.Paragraph)
-            .setPlaceholder(action === 'resolve' ? 'What was done about it?' : 'Why is there nothing to act on?')
+            .setPlaceholder(placeholder)
             .setMinLength(REASON_MIN_LENGTH)
             .setMaxLength(REASON_MAX_LENGTH)
             .setRequired(true),
@@ -87,7 +93,7 @@ async function afterTransition(interaction, action, report) {
   }
 
   if (action === 'reopen') {
-    if (thread) await reopenReportThread(thread, { byId: interaction.user.id });
+    if (thread) await reopenReportThread(thread, { byId: interaction.user.id, note: report.reopen_note });
     return;
   }
 
@@ -104,6 +110,7 @@ async function afterTransition(interaction, action, report) {
 async function applyTransition(interaction, report, action, note = null) {
   const [, to] = TRANSITIONS[action];
   const closing = to === 'resolved' || to === 'dismissed';
+  const reopening = action === 'reopen';
   return reportDb.updateReport(
     interaction.guild.id,
     report.report_number,
@@ -112,6 +119,9 @@ async function applyTransition(interaction, report, action, note = null) {
       handled_by: to === 'open' ? null : interaction.user.id,
       handled_at: to === 'open' ? null : new Date().toISOString(),
       resolution_note: closing ? note : null,
+      // Who reopened it and why stays on the card until the report is closed again.
+      ...(reopening ? { reopened_by: interaction.user.id, reopen_note: note } : {}),
+      ...(closing ? { reopened_by: null, reopen_note: null } : {}),
     },
     { onlyIfStatus: report.status },
   );
@@ -180,7 +190,7 @@ async function handleButton(interaction) {
     return true;
   }
 
-  // Closing asks for the reason first; the change happens when the form is sent.
+  // Closing and reopening ask for a reason first; the change happens when the form is sent.
   if (NEEDS_REASON.has(parsed.action)) {
     await interaction.showModal(buildReasonModal(parsed.action, report.report_number));
     return true;
@@ -199,7 +209,7 @@ async function handleButton(interaction) {
   return true;
 }
 
-/** The form that asks why a report is being resolved or dismissed. */
+/** The form that asks why a report is being resolved, dismissed or reopened. */
 async function handleReasonModal(interaction) {
   const parsed = parseReasonModal(interaction.customId);
   if (!parsed || !interaction.guild) {
