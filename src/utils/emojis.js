@@ -62,6 +62,8 @@ const TYPE_EMOJI = {
   tempmute: EMOJI.ALERT,
   unmute: EMOJI.APPROVE,
   warn: EMOJI.WARNING,
+  jail: EMOJI.RELEASE_LOCKED,
+  unjail: EMOJI.APPROVE,
 };
 
 module.exports = { EMOJI, TYPE_EMOJI };

@@ -10,6 +10,8 @@ const VERB = {
   tempmute: 'temporarily muted in',
   unmute: 'unmuted in',
   warn: 'warned in',
+  jail: 'jailed in',
+  unjail: 'released from jail in',
 };
 
 /**

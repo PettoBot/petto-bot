@@ -21,6 +21,8 @@ const COLORS = {
   tempmute: 0xfed53c,
   unmute: 0xa5ea7a,
   warn: 0xfed53c,
+  jail: 0xfed53c,
+  unjail: 0xa5ea7a,
 };
 
 function capitalize(str) {

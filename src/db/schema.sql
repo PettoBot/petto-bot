@@ -162,7 +162,7 @@ create table if not exists mod_actions (
   case_number   integer not null,
   user_id       text not null,
   moderator_id  text not null,
-  type          text not null check (type in ('ban', 'unban', 'kick', 'mute', 'unmute', 'tempban', 'tempmute', 'warn', 'softban')),
+  type          text not null check (type in ('ban', 'unban', 'kick', 'mute', 'unmute', 'tempban', 'tempmute', 'warn', 'softban', 'jail', 'unjail')),
   reason        text,
   created_at    timestamptz not null default now(),
   expires_at    timestamptz,
@@ -174,13 +174,40 @@ create table if not exists mod_actions (
 -- CHECK constraint (added here for tempban/tempmute/softban) needs its own idempotent migration step.
 alter table mod_actions drop constraint if exists mod_actions_type_check;
 alter table mod_actions add constraint mod_actions_type_check
-  check (type in ('ban', 'unban', 'kick', 'mute', 'unmute', 'tempban', 'tempmute', 'warn', 'softban'));
+  check (type in ('ban', 'unban', 'kick', 'mute', 'unmute', 'tempban', 'tempmute', 'warn', 'softban', 'jail', 'unjail'));
 
 create index if not exists idx_mod_actions_guild_user on mod_actions(guild_id, user_id);
 create index if not exists idx_mod_actions_guild_created on mod_actions(guild_id, created_at desc);
 create index if not exists idx_mod_actions_expires on mod_actions(expires_at) where expires_at is not null and active;
 
 alter table mod_actions enable row level security;
+
+-- Jail: a restricted role plus a channel to talk to staff. Jailing saves the member's roles so they can be
+-- restored on release, and the row is written before any role changes so a crash never loses them.
+create table if not exists jail_config (
+  guild_id         text primary key references guilds(guild_id) on delete cascade,
+  jail_role_id     text,
+  jail_channel_id  text,
+  updated_at       timestamptz not null default now()
+);
+
+alter table jail_config enable row level security;
+
+create table if not exists jailed_members (
+  guild_id        text not null references guilds(guild_id) on delete cascade,
+  user_id         text not null,
+  case_number     integer,
+  saved_role_ids  text[] not null default '{}',
+  jailed_by       text not null,
+  reason          text,
+  jailed_at       timestamptz not null default now(),
+  expires_at      timestamptz,
+  primary key (guild_id, user_id)
+);
+
+create index if not exists idx_jailed_members_expires on jailed_members(expires_at) where expires_at is not null;
+
+alter table jailed_members enable row level security;
 
 -- Durable per-server case counters. The counter survives case deletion, so deleting
 -- the latest case never causes its number to be reused.
