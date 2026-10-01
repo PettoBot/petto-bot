@@ -23,6 +23,7 @@ All notable changes to Petto are documented here.
 
 ### Changed
 
+- `!8ball`, `!rps` and `!ship` now answer with a plain message instead of an embed. `!ship` attaches a picture with both avatars over a pink roses background, a heart with the score and a bar, drawn the same way for the same pair; if the picture cannot be drawn the result is still sent as text.
 - **Resolve**, **Dismiss** and **Reopen** on a report now ask for a required reason, and sending the form is the confirmation. A closing reason is shown on the report card, written in the report thread and sent to the reporter in the DM; a reopening reason is shown on the card ("reopened by …") and written in the thread.
 - The report thread now follows the report: it is locked and archived when the report is resolved or dismissed, and opened again when the report is reopened.
 - Added **Invite reporter** to the report card, which adds the reporter to the discussion thread (not offered for anonymous reports), and a **Notify on claim** setting that DMs the reporter when staff claim their report.
