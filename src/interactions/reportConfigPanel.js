@@ -32,6 +32,7 @@ const DEFAULTS = {
   anonymous_reporting_enabled: false,
   require_reason: false,
   notify_reporter: true,
+  notify_on_claim: false,
   auto_thread: false,
   cooldown_seconds: 60,
   daily_limit: 10,
@@ -44,6 +45,7 @@ const TOGGLES = {
   reason: { column: 'require_reason', label: 'Require reason' },
   notify: { column: 'notify_reporter', label: 'Notify reporter' },
   thread: { column: 'auto_thread', label: 'Thread' },
+  claim: { column: 'notify_on_claim', label: 'Notify on claim' },
 };
 
 const CHANNEL_NEEDS = [
@@ -104,6 +106,7 @@ function buildConfigPanel(guild, stored, { notice = null } = {}) {
     new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`${CONFIG_PREFIX}limits`).setLabel('Limits').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId(`${CONFIG_PREFIX}test`).setLabel('Send test report').setStyle(ButtonStyle.Secondary),
+      toggle('claim'),
     ),
   ];
 
@@ -127,7 +130,7 @@ function buildConfigPanel(guild, stored, { notice = null } = {}) {
           `**Channel** ${config.channel_id ? `<#${config.channel_id}>` : 'not set'}`,
           `**Urgent role** ${config.urgent_role_id ? `<@&${config.urgent_role_id}>` : 'none'}`,
           `**Always pinged** ${config.ping_role_id ? `<@&${config.ping_role_id}>` : 'none'}`,
-          `**Discussion thread** ${onOff(config.auto_thread)} · a thread under every report`,
+          `**Discussion thread** ${onOff(config.auto_thread)} · a thread under every report; it closes with the report and reopens with it`,
         ],
       },
       {
@@ -135,7 +138,8 @@ function buildConfigPanel(guild, stored, { notice = null } = {}) {
         lines: [
           `**Anonymous reports** ${onOff(config.anonymous_reporting_enabled)} · reporters can hide their name`,
           `**Reason required** ${onOff(config.require_reason)}`,
-          `**Notify reporter** ${onOff(config.notify_reporter)} · a DM when staff close the report`,
+          `**Notify reporter** ${onOff(config.notify_reporter)} · a DM with the reason when staff close the report`,
+          `**Notify on claim** ${onOff(config.notify_on_claim)} · a DM when staff start handling the report`,
           `**Cooldown** ${config.cooldown_seconds ? formatDuration(config.cooldown_seconds * 1000) : 'none'} between reports`,
           `**Daily limit** ${config.daily_limit ? `${config.daily_limit} per member` : 'none'}`,
         ],
