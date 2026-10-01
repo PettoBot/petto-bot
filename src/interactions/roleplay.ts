@@ -136,21 +136,11 @@ export async function handleButton(interaction: ButtonInteraction): Promise<bool
     allowedMentions: { parse: [] },
   }).catch(() => {});
 
-  // Commands used as a slash command mention the sender in the response; prefix commands never do.
-  const mentionsSender = interaction.message.interactionMetadata !== null;
-  const payload = {
-    ...(mentionsSender ? { content: `<@${parsed.actorId}>` } : {}),
-    embeds: [embed],
-    allowedMentions: mentionsSender ? { parse: [], users: [parsed.actorId], repliedUser: false } : { parse: [], repliedUser: false },
-  };
-  let sent = false;
-  try {
-    await interaction.message.reply(payload);
-    sent = true;
-  } catch {
-    // The original message may be gone; fall back to a plain message in the channel.
-    if (interaction.channel?.isSendable()) sent = await interaction.channel.send(payload).then(() => true, () => false);
-  }
+  // The response is a reply to the message that holds the buttons. It never mentions anyone, whether the
+  // command was used as a slash command or with the prefix.
+  const sent = await interaction.message
+    .reply({ embeds: [embed], allowedMentions: { parse: [], repliedUser: false } })
+    .then(() => true, () => false);
 
   if (!sent) {
     await interaction.followUp({
