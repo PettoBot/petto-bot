@@ -4,6 +4,7 @@ const { ensureGuild } = require('../../db/guilds');
 const { parseColor, build, hasSendablePayload, formatEmbedError } = require('../../utils/embedBuilder');
 const { renderPanel } = require('../../interactions/embedPanel');
 const { parseEmbedScript, toTemplateData } = require('../../utils/embedScript');
+const { commandRef } = require('../../utils/commandRef');
 const logger = require('../../utils/logger');
 
 const VAR_PAGES = [
@@ -161,6 +162,7 @@ const VAR_PAGES = [
   },
   {
     title: 'Embed code · /embed create code:',
+    ref: 'embed create code:',
     fields: [
       ['`{embed}`', 'Starts the embed. Text before it becomes the message text'],
       ['`&v`', 'Joins the blocks. `$v` also works, so codes from other bots can be pasted'],
@@ -181,9 +183,10 @@ const VAR_PAGES = [
   },
 ];
 
-function buildVarsEmbed(page) {
+function buildVarsEmbed(page, interaction, prefix) {
   const p = VAR_PAGES[page];
-  return new EmbedBuilder().setTitle(p.title).setDescription(p.fields.map(([k, v]) => `${k}: ${v}`).join('\n')).setColor(0x4b4f59).setFooter({ text: `Page ${page + 1}/${VAR_PAGES.length}` });
+  const title = p.ref ? p.title.replace(/\/embed create code:/, commandRef(interaction, p.ref, prefix)) : p.title;
+  return new EmbedBuilder().setTitle(title).setDescription(p.fields.map(([k, v]) => `${k}: ${v}`).join('\n')).setColor(0x4b4f59).setFooter({ text: `Page ${page + 1}/${VAR_PAGES.length}` });
 }
 
 function varsNavRow(page) {
@@ -233,7 +236,9 @@ async function createFromCode(interaction, guildId, name, code, ctx) {
   await upsertTemplate(guildId, name, data);
   const notes = [
     `Embed \`${name}\` created from the code.`,
-    editableInPanel ? 'Change it with `/embed edit`, or send it with `/embed send`.' : 'It has message text, buttons or several embeds, so change it in the dashboard. Send it with `/embed send`.',
+    editableInPanel
+      ? `Change it with \`${commandRef(interaction, 'embed edit', ctx.prefix)}\`, or send it with \`${commandRef(interaction, 'embed send', ctx.prefix)}\`.`
+      : `It has message text, buttons or several embeds, so change it in the dashboard. Send it with \`${commandRef(interaction, 'embed send', ctx.prefix)}\`.`,
     ...parsed.warnings.map((line) => `- ${line}`),
   ];
   await interaction.editReply({ content: `${notes.join('\n')}\n\n${payload.content ?? ''}`.slice(0, 2000), embeds: payload.embeds, components: payload.components });
@@ -357,13 +362,13 @@ module.exports = {
 
     if (!group && sub === 'vars') {
       let page = (interaction.options.getInteger('page') ?? 1) - 1;
-      await interaction.reply({ embeds: [buildVarsEmbed(page)], components: [varsNavRow(page)] });
+      await interaction.reply({ embeds: [buildVarsEmbed(page, interaction, ctx.prefix)], components: [varsNavRow(page)] });
       const msg = await interaction.fetchReply();
       const collector = msg.createMessageComponentCollector({ filter: (i) => i.user.id === interaction.user.id, time: 90_000 });
       collector.on('collect', async (i) => {
         if (i.customId === 'evars_prev') page = Math.max(0, page - 1);
         if (i.customId === 'evars_next') page = Math.min(VAR_PAGES.length - 1, page + 1);
-        await i.update({ embeds: [buildVarsEmbed(page)], components: [varsNavRow(page)] });
+        await i.update({ embeds: [buildVarsEmbed(page, interaction, ctx.prefix)], components: [varsNavRow(page)] });
       });
       collector.on('end', () => msg.edit({ components: [] }).catch(() => {}));
       return;
@@ -457,7 +462,7 @@ module.exports = {
           }
           await upsertTemplate(guildId, name, { fields: [] });
           const doc = await getTemplate(guildId, name);
-          const panel = await renderPanel(doc, name, interaction.user.id);
+          const panel = await renderPanel(doc, name, interaction.user.id, commandRef(interaction, 'embed preview', ctx.prefix));
           await interaction.editReply(panel);
           return;
         }

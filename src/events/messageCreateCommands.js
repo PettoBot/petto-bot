@@ -287,6 +287,7 @@ module.exports = {
       return;
     }
 
+    interaction.typedPrefix = prefix;
     interaction.pettoModerationRoleAllowed = moderationRoleOverride;
     interaction.pettoAutomodControl = hiddenAutomodControl;
 

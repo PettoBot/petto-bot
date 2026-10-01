@@ -106,6 +106,16 @@ const ctx = {};
   assert.ok(i.replies[0].embeds.length === 1, 'the result is shown right away');
   assert.ok(i.replies[0].content.includes('/embed edit'));
 
+  // Run from a message, the reply names the commands with the prefix that was typed, not with a slash.
+  i = interaction({ name: 'viaprefix', code: '{embed}&v{title: Rules}' });
+  i.rawMessage = {}; i.typedPrefix = '?';
+  await embedCommand.createFromCode(i, '9', 'viaprefix', i.options.getString('code'), { prefix: '!' });
+  assert.ok(i.replies[0].content.includes('`?embed edit`') && i.replies[0].content.includes('`?embed send`') && !i.replies[0].content.includes('/embed'));
+  i = interaction({ name: 'viamention', code: '{embed}&v{title: Rules}' });
+  i.rawMessage = {}; i.typedPrefix = '<@123> ';
+  await embedCommand.createFromCode(i, '9', 'viamention', i.options.getString('code'), { prefix: '!' });
+  assert.ok(i.replies[0].content.includes('`!embed edit`'), 'an @mention is not typed again, the server prefix is shown');
+
   // Message text and buttons use the dashboard shape and say where to edit.
   i = interaction({});
   await embedCommand.createFromCode(i, '9', 'withtext', 'hello {user.mention} {embed}&v{title: T}&v{button: link && Go && https://petto.sbs}', ctx);
