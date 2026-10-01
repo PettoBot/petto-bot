@@ -207,6 +207,7 @@ src/
       report.js                 /report — send (any member) / config, disable, list, view, stats, block, unblock,
                                  blocklist (staff) — see "Report system" below
       reportUser.js             "Report User" — user context-menu command, same form and pipeline as Report Message
+      reportUserFromMessage.js   "Report User" (message menu) — reports the message's author with the same form
       roll.js                    /roll — dice notation (2d6+3, d20, 4d6kh3), see utils/dice.js
       choose.js                  /choose — picks one of the comma / " or " separated options
       boosterrole.js             /boosterrole (alias `br`) — self-service custom colored role for server boosters, plus
@@ -521,7 +522,8 @@ Lets any member flag another member or a specific message for staff to review. E
 **Entry points** (all go through `utils/reportService.js`, so the rules are the same everywhere):
 - **`/report send user [reason] [category] [ping] [anonymous]`** — open to everyone. With the prefix, `!report send @user reason text here --category scam`.
 - **"Report Message"** — message context menu (right-click → Apps). Keeps the jump link, the text and up to 10 images.
-- **"Report User"** — user context menu, same form.
+- **"Report User"** — user context menu (open a member's profile → Apps), same form.
+- **"Report User"** also exists as a message context menu (long-press a message → Apps): the same form for the person who wrote the message. It reports the person only; **Report Message** is the one that attaches the text and images. Discord lists a context menu by what it targets, so the same name is registered once for users and once for messages.
 Both menus open a form (`interactions/reportModal.js`) with a **category** (spam, harassment, hate speech, NSFW, scam, threats, impersonation, other), optional context, and the *Ping Moderators* and *Report Anonymously* switches when the server enabled them.
 
 **The card** (`utils/reportCard.js`) shows the number, category, who and where, and a status line, with buttons for staff (Manage Messages, Moderate Members or Manage Server): **Claim** → **Resolve** / **Dismiss** / **Release**, and **Reopen** once closed. **Resolve**, **Dismiss** and **Reopen** open a form that asks for a **required reason** (3 to 500 characters), and sending the form is the confirmation: nothing changes before it. The reason of a closing is shown on the card, written in the report thread and sent to the reporter; the reason of a reopening is shown on the card ("reopened by …") and written in the thread. Each is cleared when the report changes status again. When the server has discussion threads on, **Invite reporter** adds the reporter to the thread (it is not offered for anonymous reports, and it changes to *Reporter invited* once used). The thread follows the report: it is locked and archived when the report is resolved or dismissed, and unlocked and unarchived when it is reopened. A closed report can DM the reporter ("your report #N was resolved", with the reason), and **Notify on claim** can also DM them when staff start handling it; neither names the moderator. Two staff members pressing at once cannot overwrite each other: the update only applies if the status did not change in between.
