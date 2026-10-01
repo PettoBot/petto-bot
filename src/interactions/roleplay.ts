@@ -124,8 +124,9 @@ export async function handleButton(interaction: ButtonInteraction): Promise<bool
 
   if (imageUrl) embed.setImage(imageUrl);
 
-  const updatedMessage = await interaction.message.edit({
-    embeds: [embed],
+  // An edit never notifies anyone, so the response goes out as a new message that replies to the original.
+  // The original keeps its text and only loses its buttons.
+  await interaction.message.edit({
     components: [buildRoleplayButtonRow({
       requestId: parsed.requestId,
       action: parsed.action,
@@ -133,11 +134,27 @@ export async function handleButton(interaction: ButtonInteraction): Promise<bool
       targetId: parsed.targetId,
     }, true)],
     allowedMentions: { parse: [] },
-  }).catch(() => null);
+  }).catch(() => {});
 
-  if (!updatedMessage) {
+  // Commands used as a slash command mention the sender in the response; prefix commands never do.
+  const mentionsSender = interaction.message.interactionMetadata !== null;
+  const payload = {
+    ...(mentionsSender ? { content: `<@${parsed.actorId}>` } : {}),
+    embeds: [embed],
+    allowedMentions: mentionsSender ? { parse: [], users: [parsed.actorId], repliedUser: false } : { parse: [], repliedUser: false },
+  };
+  let sent = false;
+  try {
+    await interaction.message.reply(payload);
+    sent = true;
+  } catch {
+    // The original message may be gone; fall back to a plain message in the channel.
+    if (interaction.channel?.isSendable()) sent = await interaction.channel.send(payload).then(() => true, () => false);
+  }
+
+  if (!sent) {
     await interaction.followUp({
-      content: 'Your response was saved, but Petto could not update the roleplay message.',
+      content: 'Your response was saved, but Petto could not send the roleplay message.',
       flags: MessageFlags.Ephemeral,
       allowedMentions: { parse: [] },
     }).catch(() => {});
