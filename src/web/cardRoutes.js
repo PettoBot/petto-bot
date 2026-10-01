@@ -2,6 +2,7 @@
 // server uploads. They sit behind the same dashboard key as the other dashboard routes, and every one checks that the
 // person can manage the server.
 const express = require('express');
+const { rateLimit } = require('express-rate-limit');
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const { normalizeCard } = require('../utils/cardSchema');
 const { drawCard } = require('../utils/cardService');
@@ -14,6 +15,21 @@ const { getGuildPremium, getGuildLimits } = require('../db/premium');
 const logger = require('../utils/logger');
 
 const UPLOAD = { bytes: 5 * 1024 * 1024, maxSide: 2048, storeFree: 15 * 1024 * 1024, storePremium: 120 * 1024 * 1024 };
+// The limiter is built here, in the same file as the routes, so it is plain that every route is limited.
+const cardLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 120,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler: (_req, res) => { res.status(429).json({ ok: false, error: 'rate_limited' }); },
+});
+const uploadLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 20,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler: (_req, res) => { res.status(429).json({ ok: false, error: 'rate_limited' }); },
+});
 const MIMES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 
 function describeLimits(premium) {
@@ -32,7 +48,7 @@ async function cleanUpload(buffer) {
   return { bytes: canvas.toBuffer('image/png'), width, height };
 }
 
-function registerCardRoutes(app, { authorize, limiter }) {
+function registerCardRoutes(app, { authorize }) {
   const route = (handler) => async (req, res) => {
     const access = await authorize(req, res);
     if (!access) return;
@@ -44,7 +60,7 @@ function registerCardRoutes(app, { authorize, limiter }) {
     }
   };
 
-  app.get('/api/dashboard/cards/:guildId', limiter, route(async (req, res) => {
+  app.get('/api/dashboard/cards/:guildId', cardLimiter, route(async (req, res) => {
     const guildId = req.params.guildId;
     const premium = (await getGuildPremium(guildId)).active;
     const [cards, assets, used] = await Promise.all([imageCards.listCards(guildId), cardAssets.listAssets(guildId), cardAssets.totalBytes(guildId)]);
@@ -60,7 +76,7 @@ function registerCardRoutes(app, { authorize, limiter }) {
     });
   }));
 
-  app.post('/api/dashboard/cards/:guildId', limiter, route(async (req, res, { userId }) => {
+  app.post('/api/dashboard/cards/:guildId', cardLimiter, route(async (req, res, { userId }) => {
     const guildId = req.params.guildId;
     const action = String(req.body?.action || '');
     const name = imageCards.normalizeName(String(req.body?.name || '').trim());
@@ -84,7 +100,7 @@ function registerCardRoutes(app, { authorize, limiter }) {
   }));
 
   // The preview is drawn for the person who asked, so {user.display_name} and the avatar are theirs.
-  app.post('/api/dashboard/cards/:guildId/preview', limiter, route(async (req, res, { guild, member }) => {
+  app.post('/api/dashboard/cards/:guildId/preview', cardLimiter, route(async (req, res, { guild, member }) => {
     const premium = (await getGuildPremium(guild.id)).active;
     const checked = normalizeCard(req.body?.data, { premium });
     const png = await drawCard(req.body?.data, { guild, member, user: member?.user }, { guildId: guild.id, premium });
@@ -94,20 +110,20 @@ function registerCardRoutes(app, { authorize, limiter }) {
   }));
 
   // What a card becomes once checked, including the layers a basic card builds. The advanced editor starts from it.
-  app.post('/api/dashboard/cards/:guildId/normalize', limiter, route(async (req, res) => {
+  app.post('/api/dashboard/cards/:guildId/normalize', cardLimiter, route(async (req, res) => {
     const premium = (await getGuildPremium(req.params.guildId)).active;
     const { card, problems } = normalizeCard(req.body?.data, { premium });
     res.json({ ok: true, card, problems });
   }));
 
-  app.get('/api/dashboard/cards/:guildId/assets/:id', limiter, route(async (req, res) => {
+  app.get('/api/dashboard/cards/:guildId/assets/:id', cardLimiter, route(async (req, res) => {
     const asset = await cardAssets.getAsset(req.params.guildId, req.params.id);
     if (!asset) return res.status(404).json({ ok: false, error: 'not_found' });
     res.set('Content-Type', 'image/png').set('Cache-Control', 'private, max-age=300');
     res.send(asset.bytes);
   }));
 
-  app.delete('/api/dashboard/cards/:guildId/assets/:id', limiter, route(async (req, res) => {
+  app.delete('/api/dashboard/cards/:guildId/assets/:id', cardLimiter, route(async (req, res) => {
     const removed = await cardAssets.deleteAsset(req.params.guildId, req.params.id);
     res.status(removed ? 200 : 404).json({ ok: removed });
   }));
@@ -117,7 +133,7 @@ function registerCardRoutes(app, { authorize, limiter }) {
     const access = await authorize(req, res);
     if (access) next();
   };
-  app.post('/api/dashboard/cards/:guildId/assets', limiter, checkAccess, express.raw({ type: () => true, limit: UPLOAD.bytes }), route(async (req, res, { userId }) => {
+  app.post('/api/dashboard/cards/:guildId/assets', uploadLimiter, checkAccess, express.raw({ type: () => true, limit: UPLOAD.bytes }), route(async (req, res, { userId }) => {
     const guildId = req.params.guildId;
     const premium = (await getGuildPremium(guildId)).active;
     const limits = describeLimits(premium);

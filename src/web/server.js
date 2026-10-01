@@ -196,7 +196,7 @@ function startServer(client) {
       res.json({ ok: true, groups: listVariables() });
     });
 
-    registerCardRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
+    registerCardRoutes(app, { authorize: dashboardCardAccess });
 
     app.post('/api/dashboard/guild/:guildId/prefix', dashboardPrefixRateLimiter, async (req, res) => {
       if (!dashboardAuthorized(req)) {

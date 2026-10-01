@@ -68,7 +68,6 @@ function call(port, method, url, { body, type } = {}) {
   let allowed = true;
   registerCardRoutes(app, {
     authorize: async (req, res) => { if (!allowed) { res.status(403).json({ ok: false, error: 'no_access' }); return null; } return { guild, member, userId: '1' }; },
-    limiter: (req, res, next) => next(),
   });
   app.use((error, req, res, next) => res.status(error.status || 500).json({ ok: false, error: 'failed' }));
   const server = app.listen(0);
