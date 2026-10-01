@@ -251,11 +251,13 @@ async function assignPremiumSlot(userId, guildId, entitlementId = null) {
 
 async function resetGuildPremiumProfile(guildId, client = null) {
   if (!isDiscordId(guildId)) return;
-  // Nicknames are free per-server identifiers; only Premium avatar, banner,
-  // and bio overrides are cleared when a slot is released.
+  // Nicknames are free per-server identifiers; only Premium avatar, banner, bio and
+  // name style overrides are cleared when a slot is released.
+  const { data: before } = await database.from('guilds').select('bot_name_style').eq('guild_id', String(guildId)).maybeSingle();
+  const hadNameStyle = Boolean(before?.bot_name_style);
   const { error } = await database
     .from('guilds')
-    .update({ bot_avatar_url: null, bot_banner_url: null, bot_description: null, updated_at: new Date().toISOString() })
+    .update({ bot_avatar_url: null, bot_banner_url: null, bot_description: null, bot_name_style: null, updated_at: new Date().toISOString() })
     .eq('guild_id', String(guildId));
   if (error) throw error;
 
@@ -269,6 +271,17 @@ async function resetGuildPremiumProfile(guildId, client = null) {
     });
   } catch (discordError) {
     logger.warn(`Premium profile reset could not be applied in Discord for guild ${guildId}:`, discordError?.message || discordError);
+  }
+
+  // The name style goes in its own call: its fields are not in Discord's documentation, so if Discord ever refuses
+  // them, the avatar, banner and bio above are already cleared.
+  if (!hadNameStyle) return;
+  try {
+    await client.rest.patch(Routes.guildMember(String(guildId), '@me'), {
+      body: { display_name_font_id: 0, display_name_effect_id: 0, display_name_colors: [] },
+    });
+  } catch (discordError) {
+    logger.warn(`Premium name style reset could not be applied in Discord for guild ${guildId}:`, discordError?.message || discordError);
   }
 }
 

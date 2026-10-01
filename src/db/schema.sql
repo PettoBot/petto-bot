@@ -86,6 +86,8 @@ alter table guilds add column if not exists bot_nickname text;
 alter table guilds add column if not exists bot_avatar_url text;
 alter table guilds add column if not exists bot_banner_url text;
 alter table guilds add column if not exists bot_description text;
+-- The Premium display name style of the bot in this server: { fontId, effectId, colors: [decimal, ...] }.
+alter table guilds add column if not exists bot_name_style jsonb;
 alter table guilds add column if not exists setup_channel_id text;
 alter table guilds add column if not exists invites_paused_until timestamptz;
 alter table guilds add column if not exists compliance_ignored boolean not null default false;
