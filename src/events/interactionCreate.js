@@ -3,6 +3,8 @@ const { getRemainingCooldown } = require('../utils/cooldown');
 const { handleButton: handleEmbedPanelButton, handleModal: handleEmbedPanelModal } = require('../interactions/embedPanel');
 const { handleModal: handleReportModal } = require('../interactions/reportModal');
 const { handleModal: handleReportConfigModal } = require('../interactions/reportConfigModal');
+const { handleButton: handleReportActionButton, handleListButton: handleReportListButton } = require('../interactions/reportActions');
+const { CONFIG_PREFIX: REPORT_CONFIG_PREFIX, LIMITS_MODAL_ID: REPORT_LIMITS_MODAL_ID, handleConfigComponent: handleReportConfigComponent, handleLimitsModal: handleReportLimitsModal } = require('../interactions/reportConfigPanel');
 const { handleButton: handleTicketPanelButton, handleSelect: handleTicketPanelSelect } = require('../interactions/ticketPanel');
 const { handleModal: handleTicketFormModal } = require('../interactions/ticketForm');
 const {
@@ -109,7 +111,27 @@ module.exports = {
       return;
     }
 
-    if (interaction.isModalSubmit() && interaction.customId.startsWith('rp_msg::')) {
+    if (interaction.isButton() && interaction.customId.startsWith('rpt:')) {
+      try { await handleReportActionButton(interaction); } catch (err) { logger.error('Error handling report action button:', err); }
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('rptl:')) {
+      try { await handleReportListButton(interaction); } catch (err) { logger.error('Error handling report list button:', err); }
+      return;
+    }
+
+    if ((interaction.isButton() || interaction.isChannelSelectMenu() || interaction.isRoleSelectMenu()) && interaction.customId.startsWith(REPORT_CONFIG_PREFIX)) {
+      try { await handleReportConfigComponent(interaction); } catch (err) { logger.error('Error handling report settings component:', err); }
+      return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId === REPORT_LIMITS_MODAL_ID) {
+      try { await handleReportLimitsModal(interaction); } catch (err) { logger.error('Error handling report limits modal:', err); }
+      return;
+    }
+
+    if (interaction.isModalSubmit() && (interaction.customId.startsWith('rp_msg::') || interaction.customId.startsWith('rp_usr::'))) {
       try {
         await handleReportModal(interaction);
       } catch (err) {
@@ -249,7 +271,7 @@ module.exports = {
       return;
     }
 
-    if (!interaction.isChatInputCommand() && !interaction.isMessageContextMenuCommand()) return;
+    if (!interaction.isChatInputCommand() && !interaction.isMessageContextMenuCommand() && !interaction.isUserContextMenuCommand()) return;
 
     const command = client.commands.get(interaction.commandName);
     if (!command) {
