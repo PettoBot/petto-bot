@@ -21,6 +21,7 @@ const { handleSelect: handleBackupSelect, handleScheduleModal, handleRestoreModa
 const { VERSION_SELECT_ID, handleButton: handleVersionButton, handleSelect: handleVersionSelect } = require('../interactions/version');
 const { handleButton: handleVoiceMasterButton, handleModal: handleVoiceMasterModal, handleSelect: handleVoiceMasterSelect } = require('../interactions/voiceMaster');
 const { handleSetupModal } = require('../interactions/setup');
+const { SETUP_BUTTON_PREFIX, handleSetupButton } = require('../interactions/setupPanel');
 const { BUTTON_PREFIX, handleButton: handleReactionRoleButton } = require('../interactions/reactionRoleButton');
 const permissionsDb = require('../db/permissions');
 const logger = require('../utils/logger');
@@ -32,6 +33,11 @@ module.exports = {
   async execute(interaction, client) {
     if (interaction.isModalSubmit() && interaction.customId === 'petto_setup_modal') {
       try { await handleSetupModal(interaction); } catch (err) { logger.error('Error handling Petto setup modal:', err); }
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith(SETUP_BUTTON_PREFIX)) {
+      try { await handleSetupButton(interaction); } catch (err) { logger.error('Error handling Petto setup button:', err); }
       return;
     }
 
