@@ -89,6 +89,18 @@ function refusal(message) {
   return { ...noticePayload(message, COLORS.RED), flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral };
 }
 
+/**
+ * The ping and anonymous checkboxes only exist in the form when the server has those options turned on, and fields
+ * reads throw for a field that is not there, so a missing checkbox means "not ticked".
+ */
+function readOptionalCheckbox(fields, customId) {
+  try {
+    return fields.getCheckbox(customId) === true;
+  } catch {
+    return false;
+  }
+}
+
 /** Handles the submitted form (customId `rp_msg::<messageId>` or `rp_usr::<userId>`). */
 async function handleModal(interaction) {
   const isMessage = interaction.customId.startsWith(MESSAGE_MODAL_PREFIX);
@@ -128,11 +140,11 @@ async function handleModal(interaction) {
     reason: interaction.fields.getTextInputValue('context'),
     sourceChannel: interaction.channel,
     message,
-    urgent: interaction.fields.getCheckbox('report_ping') === true,
-    anonymous: interaction.fields.getCheckbox('report_anonymous') === true,
+    urgent: readOptionalCheckbox(interaction.fields, 'report_ping'),
+    anonymous: readOptionalCheckbox(interaction.fields, 'report_anonymous'),
   });
 
   await interaction.editReply(result.ok ? buildReceipt(result, config) : noticePayload(result.message, COLORS.RED));
 }
 
-module.exports = { MESSAGE_MODAL_PREFIX, USER_MODAL_PREFIX, buildReportModal, buildReceipt, handleModal };
+module.exports = { MESSAGE_MODAL_PREFIX, USER_MODAL_PREFIX, buildReportModal, buildReceipt, handleModal, readOptionalCheckbox };

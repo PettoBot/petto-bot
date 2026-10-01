@@ -11,6 +11,7 @@ const { REPORT_CATEGORIES, categoryLabel, isReportCategory, DEFAULT_CATEGORY } =
 const { buildReportCard, buildReportPayload, reportButtonId, REPORT_BUTTON_PREFIX } = require('../src/utils/reportCard');
 const { parseButton, TRANSITIONS } = require('../src/interactions/reportActions');
 const { parseListButton } = require('../src/utils/reportViews');
+const { readOptionalCheckbox, buildReportModal } = require('../src/interactions/reportModal');
 
 assert.ok(isReportCategory(DEFAULT_CATEGORY));
 assert.equal(new Set(REPORT_CATEGORIES.map((category) => category.value)).size, REPORT_CATEGORIES.length, 'category values must be unique');
@@ -88,4 +89,21 @@ assert.deepEqual(parseListButton('rptl:open:2:0'), { status: 'open', page: 2, us
 assert.deepEqual(parseListButton('rptl:all:0:123456789012345678'), { status: 'all', page: 0, userId: '123456789012345678' });
 assert.equal(parseListButton('rptl:bogus:0:0'), null);
 
-console.log('Checked the report cards, categories and button ids.');
+// The form only has the ping and anonymous checkboxes when the server turned them on. Reading a field that is not
+// there throws in discord.js, which broke every report from a server without those options.
+const missingField = (customId) => Object.assign(new Error(`Required field with custom id "${customId}" not found.`), { code: 'ModalSubmitInteractionFieldNotFound' });
+const formWithout = { getCheckbox: (customId) => { throw missingField(customId); } };
+assert.equal(readOptionalCheckbox(formWithout, 'report_ping'), false, 'a checkbox that is not in the form is not ticked');
+assert.equal(readOptionalCheckbox(formWithout, 'report_anonymous'), false);
+assert.equal(readOptionalCheckbox({ getCheckbox: () => true }, 'report_ping'), true);
+assert.equal(readOptionalCheckbox({ getCheckbox: () => false }, 'report_ping'), false);
+assert.equal(readOptionalCheckbox({ getCheckbox: () => null }, 'report_ping'), false);
+
+// The form really leaves the checkboxes out unless the server enabled them.
+const checkboxIds = (config) => JSON.stringify(buildReportModal({ customId: 'rp_usr::1', title: 'Report', intro: 'x', config }).toJSON()).match(/report_(?:ping|anonymous)/g) ?? [];
+assert.deepEqual(checkboxIds({}), []);
+assert.deepEqual(checkboxIds({ urgent_role_id: '1' }), ['report_ping']);
+assert.deepEqual(checkboxIds({ anonymous_reporting_enabled: true }), ['report_anonymous']);
+assert.deepEqual(checkboxIds({ urgent_role_id: '1', anonymous_reporting_enabled: true }).sort(), ['report_anonymous', 'report_ping']);
+
+console.log('Checked the report cards, categories, forms and button ids.');
