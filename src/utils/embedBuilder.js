@@ -1,5 +1,6 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { resolve } = require('./embedVariables');
+const { renderCardForMessage, normalizeCardRef, CARD_FILE_NAME } = require('./cardService');
 
 function parseColor(input) {
   const hex = input.replace('#', '');
@@ -74,10 +75,11 @@ function normalizeFooter(footer) {
  * are read here so neither format ever breaks the other.
  */
 function normalize(data) {
-  if (!data || typeof data !== 'object' || Array.isArray(data)) return { content: '', embeds: [], buttons: [] };
-  if (Array.isArray(data.embeds)) return { content: textValue(data.content), embeds: data.embeds.filter((embed) => embed && typeof embed === 'object'), buttons: Array.isArray(data.buttons) ? data.buttons : [] };
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return { content: '', embeds: [], buttons: [], card: null };
+  const card = normalizeCardRef(data.card);
+  if (Array.isArray(data.embeds)) return { content: textValue(data.content), embeds: data.embeds.filter((embed) => embed && typeof embed === 'object'), buttons: Array.isArray(data.buttons) ? data.buttons : [], card };
   const looksLikeEmbed = data.title || data.description || data.author?.name || data.footer?.text || data.fields?.length || data.image || data.thumbnail || data.color != null;
-  return { content: '', embeds: looksLikeEmbed ? [data] : [], buttons: [] };
+  return { content: '', embeds: looksLikeEmbed ? [data] : [], buttons: [], card };
 }
 
 async function buildOneEmbed(e, ctx) {
@@ -193,13 +195,28 @@ function formatEmbedError(error) {
  * Builds a real send payload from a saved template's `data`, resolving variables against ctx.
  * Returns `{ content, embeds, components }`, ready to spread into a `.send()`/`.reply()` call.
  */
+/**
+ * Builds the message of a template: its text, embeds and link buttons, and the image card when the template points at
+ * one. A card is drawn for the member and the server in `ctx` and comes back in `files`. Whoever sends the payload has
+ * to send `files` with it. The card goes inside the first embed when there is one (`placement` of `default` or
+ * `embed`) and replaces its image, and it is attached on its own otherwise or when `placement` is `attachment`.
+ */
 async function build(data, ctx = {}) {
-  const { content, embeds, buttons } = normalize(data);
+  const { content, embeds, buttons, card } = normalize(data);
   const builtEmbeds = await Promise.all(embeds.slice(0, 10).map((e) => buildOneEmbed(e, ctx)));
+  const files = [];
+  if (card) {
+    const picture = await renderCardForMessage(card, ctx);
+    if (picture) {
+      files.push({ attachment: picture.buffer, name: picture.name });
+      if (card.placement !== 'attachment' && builtEmbeds.length) builtEmbeds[0].setImage(`attachment://${CARD_FILE_NAME}`);
+    }
+  }
   return {
     content: content ? await resolve(content, ctx) : undefined,
     embeds: builtEmbeds,
     components: buildButtonRows(buttons),
+    files,
   };
 }
 
@@ -240,14 +257,14 @@ function buildRawPreview(data) {
 }
 
 function hasContent(data) {
-  const { content, embeds, buttons } = normalize(data);
+  const { content, embeds, buttons, card } = normalize(data);
   const e = embeds[0] ?? {};
   const hasValidField = Array.isArray(e.fields) && e.fields.some((field) => textValue(field?.name) && textValue(field?.value));
-  return !!(content || e.title || e.description || e.author?.name || e.footer?.text || hasValidField || buttons.some((row) => Array.isArray(row) && row.length));
+  return !!(content || e.title || e.description || e.author?.name || e.footer?.text || hasValidField || card || buttons.some((row) => Array.isArray(row) && row.length));
 }
 
 function hasSendablePayload(payload) {
-  return Boolean(payload && (payload.content?.trim() || payload.embeds?.length || payload.components?.length));
+  return Boolean(payload && (payload.content?.trim() || payload.embeds?.length || payload.components?.length || payload.files?.length));
 }
 
 module.exports = { parseColor, validUrl, build, buildRawPreview, hasContent, hasSendablePayload, formatEmbedError };
