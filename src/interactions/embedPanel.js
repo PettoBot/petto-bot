@@ -30,12 +30,18 @@ function buildRows(sid, data) {
   ];
 }
 
+/** The way the panel's first message named the preview command, so a re-render from a button keeps it (`!embed preview` or `/embed preview`). */
+function previewRefFrom(interaction) {
+  const match = /use `([^`]+)` to see/.exec(interaction?.message?.content ?? '');
+  return match ? match[1] : '/embed preview';
+}
+
 /** Renders the panel message: a live (non-variable-resolved) preview + edit buttons. */
-async function renderPanel(doc, embedName, userId) {
+async function renderPanel(doc, embedName, userId, previewRef = '/embed preview') {
   const data = doc?.data ?? {};
   const sid = `${userId}::${embedName}`;
 
-  const content = `${EMOJI.STAR} Editing \`${embedName}\`. Click a button to edit that field, or use \`/embed preview\` to see it with variables resolved.`;
+  const content = `${EMOJI.STAR} Editing \`${embedName}\`. Click a button to edit that field, or use \`${previewRef}\` to see it with variables resolved.`;
 
   let embed;
   if (hasContent(data)) {
@@ -69,7 +75,7 @@ async function handleButton(interaction) {
     data.timestamp = !data.timestamp;
     await upsertTemplate(guildId, embedName, data);
     const updated = await getTemplate(guildId, embedName);
-    await interaction.editReply(await renderPanel(updated, embedName, userId));
+    await interaction.editReply(await renderPanel(updated, embedName, userId, previewRefFrom(interaction)));
     return;
   }
 
@@ -77,14 +83,14 @@ async function handleButton(interaction) {
     await interaction.deferUpdate();
     await upsertTemplate(guildId, embedName, { fields: [] });
     const updated = await getTemplate(guildId, embedName);
-    await interaction.editReply(await renderPanel(updated, embedName, userId));
+    await interaction.editReply(await renderPanel(updated, embedName, userId, previewRefFrom(interaction)));
     return;
   }
 
   if (type === 'eb_save') {
     await interaction.deferUpdate();
     const updated = await getTemplate(guildId, embedName);
-    const panel = await renderPanel(updated, embedName, userId);
+    const panel = await renderPanel(updated, embedName, userId, previewRefFrom(interaction));
     await interaction.editReply({ ...panel, components: [] });
     return;
   }
@@ -201,7 +207,7 @@ async function handleModal(interaction) {
 
     await upsertTemplate(guildId, embedName, data);
     const updated = await getTemplate(guildId, embedName);
-    await interaction.editReply(await renderPanel(updated, embedName, userId));
+    await interaction.editReply(await renderPanel(updated, embedName, userId, previewRefFrom(interaction)));
   } catch (err) {
     await interaction.followUp({ content: `${EMOJI.DENY} Error: ${err.message}`, flags: MessageFlags.Ephemeral });
   }
