@@ -93,6 +93,13 @@ function registerCardRoutes(app, { authorize, limiter }) {
     res.send(png);
   }));
 
+  // What a card becomes once checked, including the layers a basic card builds. The advanced editor starts from it.
+  app.post('/api/dashboard/cards/:guildId/normalize', limiter, route(async (req, res) => {
+    const premium = (await getGuildPremium(req.params.guildId)).active;
+    const { card, problems } = normalizeCard(req.body?.data, { premium });
+    res.json({ ok: true, card, problems });
+  }));
+
   app.get('/api/dashboard/cards/:guildId/assets/:id', limiter, route(async (req, res) => {
     const asset = await cardAssets.getAsset(req.params.guildId, req.params.id);
     if (!asset) return res.status(404).json({ ok: false, error: 'not_found' });
