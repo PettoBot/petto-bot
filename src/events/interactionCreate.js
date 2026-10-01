@@ -3,7 +3,7 @@ const { getRemainingCooldown } = require('../utils/cooldown');
 const { handleButton: handleEmbedPanelButton, handleModal: handleEmbedPanelModal } = require('../interactions/embedPanel');
 const { handleModal: handleReportModal } = require('../interactions/reportModal');
 const { handleModal: handleReportConfigModal } = require('../interactions/reportConfigModal');
-const { handleButton: handleReportActionButton, handleListButton: handleReportListButton } = require('../interactions/reportActions');
+const { handleButton: handleReportActionButton, handleReasonModal: handleReportReasonModal, handleListButton: handleReportListButton } = require('../interactions/reportActions');
 const { CONFIG_PREFIX: REPORT_CONFIG_PREFIX, LIMITS_MODAL_ID: REPORT_LIMITS_MODAL_ID, handleConfigComponent: handleReportConfigComponent, handleLimitsModal: handleReportLimitsModal } = require('../interactions/reportConfigPanel');
 const { handleButton: handleTicketPanelButton, handleSelect: handleTicketPanelSelect } = require('../interactions/ticketPanel');
 const { handleModal: handleTicketFormModal } = require('../interactions/ticketForm');
@@ -113,6 +113,11 @@ module.exports = {
 
     if (interaction.isButton() && interaction.customId.startsWith('rpt:')) {
       try { await handleReportActionButton(interaction); } catch (err) { logger.error('Error handling report action button:', err); }
+      return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('rptr:')) {
+      try { await handleReportReasonModal(interaction); } catch (err) { logger.error('Error handling report reason modal:', err); }
       return;
     }
 
