@@ -3,6 +3,7 @@ const { getTemplate, upsertTemplate, deleteTemplate, listTemplates, normalizeNam
 const { ensureGuild } = require('../../db/guilds');
 const { parseColor, build, hasSendablePayload, formatEmbedError } = require('../../utils/embedBuilder');
 const { renderPanel } = require('../../interactions/embedPanel');
+const { parseEmbedScript, toTemplateData } = require('../../utils/embedScript');
 const logger = require('../../utils/logger');
 
 const VAR_PAGES = [
@@ -158,6 +159,25 @@ const VAR_PAGES = [
       ['`{prefix}`', 'Prefix used to invoke the custom command'],
     ],
   },
+  {
+    title: 'Embed code · /embed create code:',
+    fields: [
+      ['`{embed}`', 'Starts the embed. Text before it becomes the message text'],
+      ['`&v`', 'Joins the blocks. `$v` also works, so codes from other bots can be pasted'],
+      ['`{title: text}` `{url: link}`', 'Title, and the link on the title'],
+      ['`{description: text}`', 'Description, line breaks are kept'],
+      ['`{color: #ff91c2}`', 'Embed color, hex'],
+      ['`{thumbnail: link}` `{image: link}`', 'Small image and large image'],
+      ['`{author: name && icon && link}`', 'Author, icon and link are optional'],
+      ['`{footer: text && icon}`', 'Footer, icon is optional'],
+      ['`{field: name && value && inline}`', 'A field, `inline` is optional'],
+      ['`{timestamp}`', 'Shows the current time in the footer'],
+      ['`{button: link && label && url}`', 'A link button, up to 5'],
+      ['`{message: text}`', 'Message text, the same as writing it before `{embed}`'],
+      ['Example', '`{embed}&v{title: Welcome {user}}&v{description: Read the rules}&v{color: #ff91c2}`'],
+      ['Build one with a preview', 'https://petto.sbs/embed-code'],
+    ],
+  },
 ];
 
 function buildVarsEmbed(page) {
@@ -186,7 +206,40 @@ async function getOrFail(interaction, name) {
   return doc;
 }
 
+/**
+ * `/embed create name code:...` saves an embed written as one code, so it does not need the editor. The code is checked
+ * the same way a send is, nothing is saved when Discord would refuse it, and the result is shown right away.
+ */
+async function createFromCode(interaction, guildId, name, code, ctx) {
+  const parsed = parseEmbedScript(code);
+  if (!parsed.embed && !parsed.content && !parsed.buttons.length) {
+    const problems = parsed.warnings.length ? `\n${parsed.warnings.map((line) => `- ${line}`).join('\n')}` : '';
+    await interaction.editReply(`I could not find anything to build in that code. Write it like \`{embed}&v{title: Hello}&v{description: Hi {user}}\`.${problems}`);
+    return;
+  }
+  const { data, editableInPanel } = toTemplateData(parsed);
+  let payload;
+  try {
+    payload = await build(data, ctx);
+  } catch (err) {
+    await interaction.editReply(`That code builds an embed Discord would refuse: ${formatEmbedError(err)}`);
+    return;
+  }
+  if (!hasSendablePayload(payload)) {
+    await interaction.editReply('That code has nothing to show. Add a title, description, field, message text, or link button.');
+    return;
+  }
+  await upsertTemplate(guildId, name, data);
+  const notes = [
+    `Embed \`${name}\` created from the code.`,
+    editableInPanel ? 'Change it with `/embed edit`, or send it with `/embed send`.' : 'It has message text or buttons, so change it in the dashboard. Send it with `/embed send`.',
+    ...parsed.warnings.map((line) => `- ${line}`),
+  ];
+  await interaction.editReply({ content: `${notes.join('\n')}\n\n${payload.content ?? ''}`.slice(0, 2000), embeds: payload.embeds, components: payload.components });
+}
+
 module.exports = {
+  createFromCode,
   aliases: ['em'],
   data: new SlashCommandBuilder()
     .setName('embed')
@@ -194,7 +247,7 @@ module.exports = {
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false)
 
-    .addSubcommand((s) => s.setName('create').setDescription('Create a new named embed.').addStringOption((o) => o.setName('name').setDescription('Embed name (e.g. rules_embed)').setRequired(true)))
+    .addSubcommand((s) => s.setName('create').setDescription('Create a new named embed, with the editor or from a code.').addStringOption((o) => o.setName('name').setDescription('Embed name (e.g. rules_embed)').setRequired(true)).addStringOption((o) => o.setName('code').setDescription('Optional: the whole embed as one code, e.g. {embed}&v{title: Hello}&v{description: Hi {user}}').setRequired(false).setMaxLength(6000)))
     .addSubcommand((s) => s.setName('preview').setDescription('Preview a saved embed with variables resolved.').addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true)))
     .addSubcommand((s) =>
       s
@@ -394,6 +447,11 @@ module.exports = {
           const existing = await getTemplate(guildId, name);
           if (existing) {
             await interaction.editReply(`An embed named \`${name}\` already exists. Use \`!embed edit\` to modify it.`);
+            return;
+          }
+          const code = interaction.options.getString('code');
+          if (code && code.trim()) {
+            await createFromCode(interaction, guildId, name, code, ctx);
             return;
           }
           await upsertTemplate(guildId, name, { fields: [] });
