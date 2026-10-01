@@ -67,9 +67,9 @@ function buildBasicLayers(rawBasic, width = 1024, height = 500) {
   } else if (b.preset === 'bars') {
     layers.push({ id: 'bar-top', type: 'shape', shape: 'rect', x: cx, y: height * 0.08, w: width, h: height * 0.16, fill: '#000000', opacity: 0.55 });
     layers.push({ id: 'bar-bottom', type: 'shape', shape: 'rect', x: cx, y: height * 0.92, w: width, h: height * 0.16, fill: '#000000', opacity: 0.55 });
-    avatar(cx, height * 0.36, height * 0.44);
-    line('title', b.showTitle, b.title, cx, height * 0.69, 84, { weight: 800, upper: true, color: b.accent, w: width - 80 });
-    line('name', b.showName, b.name, cx, height * 0.8, 40, { w: width - 80 });
+    avatar(cx, height * 0.33, height * 0.4);
+    line('title', b.showTitle, b.title, cx, height * 0.64, 78, { weight: 800, upper: true, color: b.accent, w: width - 80 });
+    line('name', b.showName, b.name, cx, height * 0.79, 38, { w: width - 80 });
     line('subtitle', b.showSubtitle, b.subtitle, cx, height * 0.92, 30, { weight: 700, upper: true, w: width - 80 });
   } else if (b.preset === 'panel') {
     layers.push({ id: 'panel', type: 'shape', shape: 'rect', x: cx, y: height / 2, w: width - 100, h: height - 100, fill: '#000000', radius: 40, opacity: 0.5 });
