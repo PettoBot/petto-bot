@@ -1,4 +1,5 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder } = require('discord.js');
+const { infoPayload, noticePayload, clip, line } = require('../../utils/infoCard');
 const { COLORS } = require('../../utils/colors');
 
 module.exports = {
@@ -14,22 +15,39 @@ module.exports = {
 
     const invite = await interaction.client.fetchInvite(code).catch(() => null);
     if (!invite) {
-      await interaction.reply({ content: "That invite doesn't exist or has expired." });
+      await interaction.reply(noticePayload("That invite doesn't exist or has expired.", COLORS.RED));
       return;
     }
 
-    const embed = new EmbedBuilder()
-      .setColor(COLORS.DEFAULT)
-      .setTitle(`Invite: ${invite.code}`)
-      .addFields(
-        { name: 'Server', value: invite.guild?.name ?? 'Unknown', inline: true },
-        { name: 'Channel', value: invite.channel ? `#${invite.channel.name}` : 'Unknown', inline: true },
-        { name: 'Inviter', value: invite.inviter ? `${invite.inviter.tag}` : 'Unknown', inline: true },
-        { name: 'Members', value: `${invite.memberCount ?? invite.guild?.memberCount ?? '?'}`, inline: true },
-        { name: 'Expires', value: invite.expiresTimestamp ? `<t:${Math.floor(invite.expiresTimestamp / 1000)}:R>` : 'Never', inline: true },
-      );
+    const members = invite.memberCount ?? invite.guild?.memberCount ?? null;
+    const online = invite.presenceCount ?? null;
+    const guild = invite.guild;
 
-    if (invite.guild?.iconURL()) embed.setThumbnail(invite.guild.iconURL({ size: 256 }));
-    await interaction.reply({ embeds: [embed] });
+    await interaction.reply(infoPayload({
+      title: guild?.name ?? `Invite ${invite.code}`,
+      thumbnail: guild?.iconURL?.({ size: 256 }) ?? null,
+      subtitle: [guild?.description ? `> ${clip(guild.description, 300)}` : null],
+      sections: [
+        {
+          title: 'Invite',
+          lines: [
+            line('Code', `\`${invite.code}\``),
+            line('Channel', invite.channel ? `#${invite.channel.name}` : null),
+            line('Inviter', invite.inviter ? invite.inviter.username : null),
+            line('Expires', invite.expiresTimestamp ? `<t:${Math.floor(invite.expiresTimestamp / 1000)}:R>` : 'Never'),
+          ],
+        },
+        {
+          title: 'Server',
+          lines: [
+            line('Members', members),
+            online !== null ? line('Online', online) : null,
+            guild?.id ? line('ID', `\`${guild.id}\``) : null,
+          ],
+        },
+      ],
+      footer: `Invite ${invite.code}`,
+      buttons: [{ label: 'Open invite', url: invite.url ?? `https://discord.gg/${invite.code}` }],
+    }));
   },
 };
