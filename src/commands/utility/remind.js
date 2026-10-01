@@ -8,6 +8,8 @@ const { COLORS } = require('../../utils/colors');
 
 module.exports = {
   aliases: ['rem'],
+  // `!remind 2h text` is shorthand for `!remind add 2h text`.
+  prefixDefaultSubcommand: 'add',
   data: new SlashCommandBuilder()
     .setName('remind')
     .setDescription('Set a personal reminder.')

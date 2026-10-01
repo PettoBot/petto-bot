@@ -1,23 +1,13 @@
-const { SlashCommandBuilder, EmbedBuilder, ChannelType } = require('discord.js');
-const { COLORS } = require('../../utils/colors');
+const { SlashCommandBuilder, ChannelType } = require('discord.js');
+const { infoPayload, clip, stamp, line } = require('../../utils/infoCard');
+const { EMOJI } = require('../../utils/emojis');
 
 const VERIFICATION_LEVELS = ['None', 'Low', 'Medium', 'High', 'Highest'];
-const TEXT_CHANNEL_TYPES = new Set([
-  ChannelType.GuildText,
-  ChannelType.GuildAnnouncement,
-  ChannelType.GuildForum,
-  ChannelType.GuildMedia,
-]);
+const TEXT_CHANNEL_TYPES = new Set([ChannelType.GuildText, ChannelType.GuildAnnouncement]);
+const FORUM_CHANNEL_TYPES = new Set([ChannelType.GuildForum, ChannelType.GuildMedia]);
 const VOICE_CHANNEL_TYPES = new Set([ChannelType.GuildVoice, ChannelType.GuildStageVoice]);
-
-function linkOrText(url) {
-  return url ? '[View](' + url + ')' : 'Not set';
-}
-
-function premiumTierLabel(tier) {
-  const level = premiumTierNumber(tier);
-  return level === 0 ? 'No level' : 'Level ' + level;
-}
+const STICKER_LIMITS = [5, 15, 30, 60];
+const EMOJI_LIMITS = [100, 200, 300, 500];
 
 function premiumTierNumber(tier) {
   if (typeof tier === 'number') return Math.max(0, Math.min(3, tier));
@@ -28,8 +18,9 @@ function premiumTierNumber(tier) {
   return 0;
 }
 
-function emojiLimit(tier) {
-  return [100, 200, 300, 500][premiumTierNumber(tier)];
+function premiumTierLabel(tier) {
+  const level = premiumTierNumber(tier);
+  return level === 0 ? 'No level' : `Level ${level}`;
 }
 
 module.exports = {
@@ -39,47 +30,73 @@ module.exports = {
   async execute(interaction) {
     const guild = interaction.guild;
     const owner = await guild.fetchOwner().catch(() => null);
-    const humans = guild.members.cache.filter((member) => !member.user.bot).size;
-    const bots = guild.members.cache.filter((member) => member.user.bot).size;
-    const textChannels = guild.channels.cache.filter((channel) => TEXT_CHANNEL_TYPES.has(channel.type)).size;
-    const voiceChannels = guild.channels.cache.filter((channel) => VOICE_CHANNEL_TYPES.has(channel.type)).size;
-    const categories = guild.channels.cache.filter((channel) => channel.type === ChannelType.GuildCategory).size;
-    const roleCount = Math.max(0, guild.roles.cache.size - 1);
-    const emojiCount = guild.emojis.cache.size;
-    const boosterCount = guild.members.cache.filter((member) => member.premiumSince).size;
-    const createdAt = Math.floor(guild.createdTimestamp / 1000);
-    const shardCount = interaction.client.ws?.shards?.size ?? 1;
-    const verification = VERIFICATION_LEVELS[guild.verificationLevel] ?? 'Unknown';
-    const maxEmojis = emojiLimit(guild.premiumTier);
-    const totalChannels = textChannels + voiceChannels + categories;
+    const tier = premiumTierNumber(guild.premiumTier);
+    const channels = [...guild.channels.cache.values()];
+    const count = (types) => channels.filter((channel) => types.has(channel.type)).length;
+    const textChannels = count(TEXT_CHANNEL_TYPES);
+    const forumChannels = count(FORUM_CHANNEL_TYPES);
+    const voiceChannels = count(VOICE_CHANNEL_TYPES);
+    const categories = channels.filter((channel) => channel.type === ChannelType.GuildCategory).length;
 
-    const embed = new EmbedBuilder()
-      .setColor(COLORS.DEFAULT)
-      .setAuthor({ name: 'Server overview · ' + guild.name, iconURL: guild.iconURL() ?? undefined })
-      .setTitle(guild.name)
-      .setDescription(
-        'Server created on <t:' + createdAt + ':D> (<t:' + createdAt + ':R>)\n' +
-        'Petto is running on shard ' + guild.shardId + '/' + Math.max(1, shardCount) + '.',
-      )
-      .setThumbnail(guild.iconURL({ size: 512 }) ?? null)
-      .addFields(
-        { name: 'Owner', value: owner?.user?.username ?? 'Unknown', inline: true },
-        { name: 'Members', value: 'Total: ' + guild.memberCount + '\nHumans: ' + humans + '\nBots: ' + bots, inline: true },
-        { name: 'Information', value: 'Verification: ' + verification + '\nBoosts: ' + (guild.premiumSubscriptionCount ?? 0) + ' (' + premiumTierLabel(guild.premiumTier) + ')', inline: true },
+    // Humans, bots and boosters come from the member cache, so they are only exact once every member is cached.
+    const cacheComplete = guild.members.cache.size >= guild.memberCount;
+    const humans = cacheComplete ? guild.members.cache.filter((member) => !member.user.bot).size : null;
+    const bots = cacheComplete ? guild.members.cache.filter((member) => member.user.bot).size : null;
+    const boosters = cacheComplete ? guild.members.cache.filter((member) => member.premiumSince).size : null;
+
+    const iconUrl = guild.iconURL({ size: 512 });
+    const shardCount = Math.max(1, interaction.client.ws?.shards?.size ?? 1);
+
+    await interaction.reply(infoPayload({
+      title: guild.name,
+      thumbnail: iconUrl,
+      banner: guild.bannerURL({ size: 1024 }),
+      subtitle: [
+        guild.description ? `> ${clip(guild.description, 300)}` : null,
+        `${EMOJI.RELEASE_NOTE} Created ${stamp(guild.createdTimestamp)}`,
+      ],
+      sections: [
         {
-          name: 'Design',
-          value: [
-            'Splash: ' + linkOrText(guild.splashURL({ size: 1024 })),
-            'Banner: ' + linkOrText(guild.bannerURL({ size: 1024 })),
-            'Icon: ' + linkOrText(guild.iconURL({ size: 1024 })),
-          ].join('\n'),
-          inline: true,
+          title: 'Overview',
+          lines: [
+            line('Owner', owner ? `<@${owner.id}>` : 'Unknown'),
+            line('Verification', VERIFICATION_LEVELS[guild.verificationLevel] ?? 'Unknown'),
+            line('Boosts', `${guild.premiumSubscriptionCount ?? 0} · ${premiumTierLabel(tier)}`),
+            line('Language', guild.preferredLocale),
+          ],
         },
-        { name: 'Channels (' + totalChannels + ')', value: 'Text: ' + textChannels + '\nVoice: ' + voiceChannels + '\nCategory: ' + categories, inline: true },
-        { name: 'Counts', value: ['Roles: ' + roleCount + '/250', 'Emojis: ' + emojiCount + '/' + maxEmojis, 'Boosters: ' + boosterCount].join('\n'), inline: true },
-      )
-      .setFooter({ text: 'Guild ID: ' + guild.id + ' · ' + interaction.client.user.username });
-
-    await interaction.reply({ embeds: [embed] });
+        {
+          title: 'Members',
+          lines: [
+            line('Total', guild.memberCount),
+            humans === null ? null : line('Humans', `${humans} · **Bots** ${bots}`),
+            boosters === null ? null : line('Boosters', boosters),
+          ],
+        },
+        {
+          title: `Channels (${textChannels + forumChannels + voiceChannels + categories})`,
+          lines: [
+            line('Text', textChannels),
+            forumChannels ? line('Forums', forumChannels) : null,
+            line('Voice', voiceChannels),
+            line('Categories', categories),
+          ],
+        },
+        {
+          title: 'Content',
+          lines: [
+            line('Roles', `${Math.max(0, guild.roles.cache.size - 1)}/250`),
+            line('Emojis', `${guild.emojis.cache.size}/${EMOJI_LIMITS[tier]}`),
+            line('Stickers', `${guild.stickers.cache.size}/${STICKER_LIMITS[tier]}`),
+          ],
+        },
+      ],
+      footer: `ID ${guild.id} · Shard ${guild.shardId + 1}/${shardCount}`,
+      buttons: [
+        { label: 'Icon', url: guild.iconURL({ size: 1024 }) },
+        { label: 'Banner', url: guild.bannerURL({ size: 1024 }) },
+        { label: 'Invite splash', url: guild.splashURL({ size: 1024 }) },
+      ],
+    }));
   },
 };

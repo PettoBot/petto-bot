@@ -1,6 +1,6 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder } = require('discord.js');
 const inviteTrackingDb = require('../../db/inviteTracking');
-const { COLORS } = require('../../utils/colors');
+const { INFO_ACCENT, infoPayload, noticePayload, line } = require('../../utils/infoCard');
 
 module.exports = {
   aliases: ['invs'],
@@ -22,20 +22,29 @@ async function userCmd(interaction) {
   const stats = await inviteTrackingDb.getStats(interaction.guild.id, user.id);
   const net = stats.joins - stats.leaves;
 
-  const embed = new EmbedBuilder()
-    .setColor(COLORS.DEFAULT)
-    .setAuthor({ name: user.username, iconURL: user.displayAvatarURL() })
-    .addFields({ name: 'Invites', value: `**${net}** net (${stats.joins} joined, ${stats.leaves} left)`, inline: false });
-
-  await interaction.reply({ embeds: [embed] });
+  await interaction.reply(infoPayload({
+    accent: interaction.guild.members.cache.get(user.id)?.displayColor || INFO_ACCENT,
+    title: `${user.globalName ?? user.username}'s invites`,
+    thumbnail: user.displayAvatarURL({ size: 256 }),
+    subtitle: [`**${net}** net invites`],
+    sections: [{ lines: [line('Joined', stats.joins), line('Left', stats.leaves)] }],
+    footer: `ID ${user.id}`,
+  }));
 }
 
 async function topCmd(interaction) {
   const rows = await inviteTrackingDb.getLeaderboard(interaction.guild.id, 10);
-  const lines = rows.length
-    ? rows.map((r, i) => `**${i + 1}.** <@${r.inviter_id}> — **${r.joins - r.leaves}** net (${r.joins} joined, ${r.leaves} left)`).join('\n')
-    : 'No tracked invites yet.';
+  if (!rows.length) {
+    await interaction.reply(noticePayload('No tracked invites yet.'));
+    return;
+  }
 
-  const embed = new EmbedBuilder().setColor(COLORS.DEFAULT).setTitle(`Invite leaderboard — ${interaction.guild.name}`).setDescription(lines);
-  await interaction.reply({ embeds: [embed] });
+  const lines = rows.map((r, i) => `**${i + 1}.** <@${r.inviter_id}> · **${r.joins - r.leaves}** net (${r.joins} joined, ${r.leaves} left)`);
+  await interaction.reply(infoPayload({
+    title: 'Invite leaderboard',
+    thumbnail: interaction.guild.iconURL({ size: 256 }),
+    subtitle: [interaction.guild.name],
+    sections: [{ lines }],
+    footer: 'Top 10 by net invites',
+  }));
 }

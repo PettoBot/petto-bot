@@ -1,4 +1,7 @@
 const { getExpiredSanctions, deactivateCase, createCase } = require('../db/modActions');
+const { getExpiredJails, removeJailed } = require('../db/jail');
+const { unjailMember, JailError } = require('../utils/jail');
+const { buildSanctionDM } = require('../utils/sanctionMessage');
 const { logSanction } = require('../utils/caseLog');
 const logger = require('../utils/logger');
 const config = require('../config');
@@ -53,10 +56,40 @@ async function processExpiredSanctions(client) {
   }, config.jobConcurrency);
 }
 
+/** Releases members whose jail timer has run out and gives their roles back. */
+async function processExpiredJails(client) {
+  const expired = await getExpiredJails();
+
+  await forEachWithConcurrency(expired, async (jail) => {
+    try {
+      const guild = await client.guilds.fetch(jail.guild_id).catch(() => null);
+      if (!guild) {
+        await removeJailed(jail.guild_id, jail.user_id);
+        return;
+      }
+
+      const result = await unjailMember({ guild, userId: jail.user_id, moderator: client.user, reason: 'Automatic expiry' });
+      if (!result.ok) return;
+
+      await logSanction(client, guild, { modCase: result.modCase, target: userMention(jail.user_id), moderator: client.user, reason: 'Automatic expiry' });
+      await result.member
+        ?.send(buildSanctionDM({ type: 'unjail', guild, client, reason: 'Automatic expiry' }))
+        .catch(() => {});
+    } catch (err) {
+      // A release that cannot restore roles stays recorded and is retried on the next poll.
+      if (err instanceof JailError) logger.warn(`Jail release postponed for ${jail.user_id} in guild ${jail.guild_id}: ${err.message}`);
+      else logger.error(`Failed to release expired jail (user ${jail.user_id}, guild ${jail.guild_id}):`, err);
+    }
+  }, config.jobConcurrency);
+}
+
 function startExpiryJob(client) {
-  const run = exclusiveTask(() => processExpiredSanctions(client));
+  const run = exclusiveTask(async () => {
+    await processExpiredSanctions(client);
+    await processExpiredJails(client);
+  });
   setInterval(() => run().catch((err) => logger.error('Expiry job error:', err)), POLL_INTERVAL_MS).unref?.();
   logger.info('Sanction expiry job started (checking every 60s).');
 }
 
-module.exports = { startExpiryJob, processExpiredSanctions };
+module.exports = { startExpiryJob, processExpiredSanctions, processExpiredJails };

@@ -1,5 +1,5 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { COLORS } = require('../../utils/colors');
+const { SlashCommandBuilder } = require('discord.js');
+const { INFO_ACCENT, infoPayload, clip, stamp, line } = require('../../utils/infoCard');
 
 const BADGE_NAMES = {
   Staff: 'Discord Staff',
@@ -15,12 +15,29 @@ const BADGE_NAMES = {
   CertifiedModerator: 'Certified Moderator',
   ActiveDeveloper: 'Active Developer',
 };
+const ROLE_LIST_LIMIT = 800;
 
 function joinPosition(guild, member) {
   if (!member?.joinedTimestamp) return null;
+  // The position is only right once every member is cached.
+  if (guild.members.cache.size < guild.memberCount) return null;
   const sorted = [...guild.members.cache.values()].filter((m) => m.joinedTimestamp).sort((a, b) => a.joinedTimestamp - b.joinedTimestamp);
   const pos = sorted.findIndex((m) => m.id === member.id) + 1;
   return pos > 0 ? pos : null;
+}
+
+/** Role mentions, highest first, cut at a whole mention with a "+N more" tail instead of mid-mention. */
+function roleList(roles) {
+  const shown = [];
+  let length = 0;
+  for (const role of roles) {
+    const mention = `<@&${role.id}>`;
+    if (length + mention.length + 1 > ROLE_LIST_LIMIT) break;
+    shown.push(mention);
+    length += mention.length + 1;
+  }
+  const hidden = roles.length - shown.length;
+  return shown.join(' ') + (hidden > 0 ? ` +${hidden} more` : '');
 }
 
 module.exports = {
@@ -38,38 +55,54 @@ module.exports = {
       : null;
 
     const badges = user.flags?.toArray().map((f) => BADGE_NAMES[f] ?? f).filter(Boolean) ?? [];
-    const joinPos = member ? joinPosition(interaction.guild, member) : null;
-    const avatar = member?.avatarURL({ size: 512 }) ?? user.displayAvatarURL({ size: 512 });
+    const globalAvatar = user.displayAvatarURL({ size: 1024 });
+    const serverAvatar = member?.avatar ? member.displayAvatarURL({ size: 1024 }) : null;
     const banner = user.bannerURL?.({ size: 1024 }) ?? null;
     const displayName = member?.displayName ?? user.globalName ?? user.username;
-    const profileLinks = [`[Avatar](${avatar})`];
 
-    const embed = new EmbedBuilder()
-      .setColor(member?.displayColor || user.accentColor || COLORS.DEFAULT)
-      .setAuthor({ name: displayName, iconURL: avatar })
-      .setThumbnail(avatar)
-      .setDescription(`<@${user.id}> · ${user.bot ? 'Bot account' : 'User account'}`)
-      .addFields(
-        { name: 'Username', value: `\`${user.username}\``, inline: true },
-        { name: 'ID', value: `\`${user.id}\``, inline: true },
-        { name: 'Links', value: profileLinks.join(' · '), inline: true },
-        { name: 'Banner', value: banner ? `[Open banner](${banner})` : 'None', inline: true },
-        { name: 'Account created', value: `<t:${Math.floor(user.createdTimestamp / 1000)}:F>\n(<t:${Math.floor(user.createdTimestamp / 1000)}:R>)`, inline: false },
-      );
+    const sections = [
+      {
+        title: 'Account',
+        lines: [
+          line('Username', `\`${user.username}\``),
+          line('Type', user.bot ? 'Bot account' : 'User account'),
+          line('Created', stamp(user.createdTimestamp)),
+          badges.length ? line('Badges', badges.join(', ')) : null,
+        ],
+      },
+    ];
 
     if (member) {
-      embed.addFields({ name: 'Joined server', value: `<t:${Math.floor(member.joinedTimestamp / 1000)}:F>\n(<t:${Math.floor(member.joinedTimestamp / 1000)}:R>)${joinPos ? ` — #${joinPos}` : ''}`, inline: false });
-      embed.addFields({ name: 'Display name', value: member.displayName, inline: true });
-      embed.addFields({ name: 'Nickname', value: member.nickname || 'None', inline: true });
-      if (member.premiumSinceTimestamp) embed.addFields({ name: 'Boosting since', value: `<t:${Math.floor(member.premiumSinceTimestamp / 1000)}:R>`, inline: true });
+      const joinPos = joinPosition(interaction.guild, member);
+      sections.push({
+        title: 'In this server',
+        lines: [
+          line('Joined', member.joinedTimestamp ? `${stamp(member.joinedTimestamp)}${joinPos ? ` · #${joinPos}` : ''}` : null),
+          line('Nickname', member.nickname ? clip(member.nickname, 64) : null),
+          member.premiumSinceTimestamp ? line('Boosting since', `<t:${Math.floor(member.premiumSinceTimestamp / 1000)}:R>`) : null,
+          member.communicationDisabledUntilTimestamp && member.communicationDisabledUntilTimestamp > Date.now()
+            ? line('Timed out until', `<t:${Math.floor(member.communicationDisabledUntilTimestamp / 1000)}:R>`)
+            : null,
+        ],
+      });
 
-      const roles = member.roles.cache.filter((r) => r.id !== interaction.guild.id).sort((a, b) => b.position - a.position);
-      embed.addFields({ name: `Roles (${roles.size})`, value: roles.size ? roles.map((r) => `${r}`).join(' ').slice(0, 1000) : 'None', inline: false });
+      const roles = [...member.roles.cache.filter((r) => r.id !== interaction.guild.id).values()].sort((a, b) => b.position - a.position);
+      sections.push({ title: `Roles (${roles.length})`, lines: [roles.length ? roleList(roles) : 'None'] });
     }
 
-    if (banner) embed.setImage(banner);
-    if (badges.length) embed.addFields({ name: 'Badges', value: badges.join(', '), inline: false });
-
-    await interaction.reply({ embeds: [embed] });
+    await interaction.reply(infoPayload({
+      accent: member?.displayColor || user.accentColor || INFO_ACCENT,
+      title: displayName,
+      thumbnail: serverAvatar ?? globalAvatar,
+      banner,
+      subtitle: [`<@${user.id}>${user.bot ? ' · Bot' : ''}`],
+      sections,
+      footer: `ID ${user.id}`,
+      buttons: [
+        { label: serverAvatar ? 'Global avatar' : 'Avatar', url: globalAvatar },
+        { label: 'Server avatar', url: serverAvatar },
+        { label: 'Banner', url: banner },
+      ],
+    }));
   },
 };

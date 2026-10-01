@@ -1,5 +1,5 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { COLORS } = require('../../utils/colors');
+const { SlashCommandBuilder } = require('discord.js');
+const { infoPayload, noticePayload, stamp, line, yesNo, snowflakeTime } = require('../../utils/infoCard');
 
 const EMOJI_RE = /<(a?):(\w+):(\d+)>/;
 
@@ -15,19 +15,28 @@ module.exports = {
     const match = input.match(EMOJI_RE);
 
     if (!match) {
-      await interaction.reply({ content: "That's not a custom emoji (default Discord emojis have no extra info to show)." });
+      await interaction.reply(noticePayload("That's not a custom emoji (default Discord emojis have no extra info to show)."));
       return;
     }
 
     const [, animated, name, id] = match;
     const url = `https://cdn.discordapp.com/emojis/${id}.${animated ? 'gif' : 'png'}?size=512`;
 
-    const embed = new EmbedBuilder()
-      .setColor(COLORS.DEFAULT)
-      .setTitle(`:${name}:`)
-      .setThumbnail(url)
-      .addFields({ name: 'ID', value: id, inline: true }, { name: 'Animated', value: animated ? 'Yes' : 'No', inline: true }, { name: 'URL', value: `[Link](${url})`, inline: true });
-
-    await interaction.reply({ embeds: [embed] });
+    await interaction.reply(infoPayload({
+      title: `:${name}:`,
+      thumbnail: url,
+      sections: [
+        {
+          title: 'Details',
+          lines: [
+            line('Name', `\`${name}\``),
+            line('Animated', yesNo(animated)),
+            line('Created', stamp(snowflakeTime(id))),
+          ],
+        },
+      ],
+      footer: `ID ${id}`,
+      buttons: [{ label: 'Open image', url }],
+    }));
   },
 };

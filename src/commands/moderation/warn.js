@@ -54,9 +54,9 @@ module.exports = {
                 .setName('action')
                 .setDescription('What to do')
                 .setRequired(true)
-                .addChoices({ name: 'mute (indefinite)', value: 'mute' }, { name: 'tempmute', value: 'tempmute' }, { name: 'kick', value: 'kick' }, { name: 'ban', value: 'ban' }),
+                .addChoices({ name: 'mute (indefinite)', value: 'mute' }, { name: 'tempmute', value: 'tempmute' }, { name: 'jail', value: 'jail' }, { name: 'kick', value: 'kick' }, { name: 'ban', value: 'ban' }),
             )
-            .addStringOption((opt) => opt.setName('duration').setDescription('Duration for tempmute, e.g. 1h, 12h, 1d (required if action is tempmute)').setRequired(false)),
+            .addStringOption((opt) => opt.setName('duration').setDescription('Duration for tempmute (required) or jail (optional), e.g. 1h, 12h, 1d').setRequired(false)),
         )
         .addSubcommand((sub) => sub.setName('remove').setDescription('Remove a threshold rule.').addIntegerOption((opt) => opt.setName('threshold').setDescription('Warning count').setRequired(true).setMinValue(1)))
         .addSubcommand((sub) => sub.setName('list').setDescription('List escalation rules.')),
@@ -185,6 +185,14 @@ async function escalation(interaction, sub) {
     }
     if (durationMs > MAX_TIMEOUT_MS) {
       await interaction.editReply({ components: [textCard('Discord timeouts cannot exceed 28 days.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      return;
+    }
+  }
+
+  if (action === 'jail' && durationStr) {
+    durationMs = parseDuration(durationStr);
+    if (!durationMs) {
+      await interaction.editReply({ components: [textCard('The jail `duration` is not valid. Use something like `1h`, `12h` or `1d`, or leave it empty for no end.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
   }

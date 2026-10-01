@@ -7,6 +7,7 @@ const RPC_SIGNATURES = {
   claim_honeypot_user: { args: ['p_guild_id', 'p_channel_id', 'p_user_id', 'p_message_id', 'p_punishment'] },
   create_guild_backup: { args: ['p_guild_id', 'p_created_by', 'p_label', 'p_source', 'p_snapshot'] },
   create_mod_case: { args: ['p_guild_id', 'p_user_id', 'p_moderator_id', 'p_type', 'p_reason', 'p_expires_at'] },
+  create_report: { args: ['p_guild_id', 'p_reporter_id', 'p_reported_user_id', 'p_category', 'p_reason', 'p_source_channel_id', 'p_message_link', 'p_message_content', 'p_image_urls', 'p_anonymous', 'p_urgent'] },
   create_ticket: { args: ['p_guild_id', 'p_category_id', 'p_opener_id'] },
   increment_activity_stat: { args: ['p_guild_id', 'p_channel_id', 'p_day', 'p_messages_inc', 'p_reactions_inc', 'p_voice_seconds_inc'], returnsVoid: true },
   increment_honeypot_trigger: { args: ['p_guild_id', 'p_channel_id'] },

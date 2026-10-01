@@ -1,5 +1,18 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { COLORS } = require('../../utils/colors');
+const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { INFO_ACCENT, infoPayload, stamp, line, yesNo } = require('../../utils/infoCard');
+
+// Permissions worth calling out on a role; the full list would not fit and mostly says nothing.
+const KEY_PERMISSIONS = [
+  ['Administrator', PermissionFlagsBits.Administrator],
+  ['Manage Server', PermissionFlagsBits.ManageGuild],
+  ['Manage Roles', PermissionFlagsBits.ManageRoles],
+  ['Manage Channels', PermissionFlagsBits.ManageChannels],
+  ['Manage Messages', PermissionFlagsBits.ManageMessages],
+  ['Kick Members', PermissionFlagsBits.KickMembers],
+  ['Ban Members', PermissionFlagsBits.BanMembers],
+  ['Timeout Members', PermissionFlagsBits.ModerateMembers],
+  ['Mention Everyone', PermissionFlagsBits.MentionEveryone],
+];
 
 module.exports = {
   aliases: ['ri'],
@@ -10,21 +23,35 @@ module.exports = {
 
   async execute(interaction) {
     const role = interaction.options.getRole('role', true);
+    const permissions = role.permissions;
+    const key = permissions ? KEY_PERMISSIONS.filter(([, flag]) => permissions.has(flag)).map(([name]) => `\`${name}\``) : [];
 
-    const embed = new EmbedBuilder()
-      .setColor(role.color || COLORS.DEFAULT)
-      .setTitle(role.name)
-      .addFields(
-        { name: 'ID', value: role.id, inline: true },
-        { name: 'Color', value: role.hexColor, inline: true },
-        { name: 'Position', value: `${role.position}`, inline: true },
-        { name: 'Members', value: `${role.members.size}`, inline: true },
-        { name: 'Mentionable', value: role.mentionable ? 'Yes' : 'No', inline: true },
-        { name: 'Hoisted', value: role.hoist ? 'Yes' : 'No', inline: true },
-        { name: 'Managed', value: role.managed ? 'Yes (bot/integration role)' : 'No', inline: true },
-        { name: 'Created', value: `<t:${Math.floor(role.createdTimestamp / 1000)}:R>`, inline: true },
-      );
-
-    await interaction.reply({ embeds: [embed] });
+    await interaction.reply(infoPayload({
+      accent: role.color || INFO_ACCENT,
+      title: role.name,
+      thumbnail: typeof role.iconURL === 'function' ? role.iconURL({ size: 256 }) : null,
+      subtitle: [`<@&${role.id}>`],
+      sections: [
+        {
+          title: 'Details',
+          lines: [
+            line('Color', role.color ? `\`${role.hexColor}\`` : 'Default'),
+            line('Position', role.position),
+            line('Members', role.members?.size ?? 0),
+            line('Created', stamp(role.createdTimestamp)),
+          ],
+        },
+        {
+          title: 'Settings',
+          lines: [
+            line('Mentionable', yesNo(role.mentionable)),
+            line('Shown separately', yesNo(role.hoist)),
+            line('Managed by an integration', yesNo(role.managed)),
+          ],
+        },
+        { title: 'Key permissions', lines: [key.length ? key.join(' · ') : 'None of the key permissions'] },
+      ],
+      footer: `ID ${role.id}`,
+    }));
   },
 };
