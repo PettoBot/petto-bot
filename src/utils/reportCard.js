@@ -34,20 +34,32 @@ function reportButtonId(action, reportNumber) {
 /** The buttons staff see depend on where the report is in its life. */
 function buildReportActions(row) {
   const button = (action, label, style) => new ButtonBuilder().setCustomId(reportButtonId(action, row.report_number)).setLabel(label).setStyle(style);
-  if (row.status === 'open') {
-    return new ActionRowBuilder().addComponents(button('claim', 'Claim', ButtonStyle.Primary), button('resolve', 'Resolve', ButtonStyle.Success), button('dismiss', 'Dismiss', ButtonStyle.Secondary));
+  const closed = row.status === 'resolved' || row.status === 'dismissed';
+  if (closed) return new ActionRowBuilder().addComponents(button('reopen', 'Reopen', ButtonStyle.Secondary));
+
+  const buttons = row.status === 'open'
+    ? [button('claim', 'Claim', ButtonStyle.Primary), button('resolve', 'Resolve', ButtonStyle.Success), button('dismiss', 'Dismiss', ButtonStyle.Secondary)]
+    : [button('resolve', 'Resolve', ButtonStyle.Success), button('dismiss', 'Dismiss', ButtonStyle.Secondary), button('release', 'Release', ButtonStyle.Secondary)];
+
+  // Inviting the reporter to the thread only makes sense when there is a thread and the reporter is not hidden.
+  if (row.thread_id && !row.anonymous) {
+    buttons.push(row.reporter_invited_at
+      ? button('invite', 'Reporter invited', ButtonStyle.Secondary).setDisabled(true)
+      : button('invite', 'Invite reporter', ButtonStyle.Secondary));
   }
-  if (row.status === 'claimed') {
-    return new ActionRowBuilder().addComponents(button('resolve', 'Resolve', ButtonStyle.Success), button('dismiss', 'Dismiss', ButtonStyle.Secondary), button('release', 'Release', ButtonStyle.Secondary));
-  }
-  return new ActionRowBuilder().addComponents(button('reopen', 'Reopen', ButtonStyle.Secondary));
+  return new ActionRowBuilder().addComponents(buttons);
 }
 
 function statusLine(row) {
   const style = STATUS_STYLE[row.status] ?? STATUS_STYLE.open;
-  if (row.status === 'open') return `**Status:** ${style.label}`;
+  if (row.status === 'open') {
+    const reopened = row.reopened_by ? ` · reopened by <@${row.reopened_by}>` : '';
+    const why = row.reopened_by && row.reopen_note ? `\n**Reason:** ${row.reopen_note.slice(0, 500)}` : '';
+    return `**Status:** ${style.label}${reopened}${why}`;
+  }
   const when = row.handled_at ? ` <t:${unix(row.handled_at)}:R>` : '';
-  return `**Status:** ${style.label}${row.handled_by ? ` by <@${row.handled_by}>` : ''}${when}`;
+  const note = row.resolution_note && (row.status === 'resolved' || row.status === 'dismissed') ? `\n**Reason:** ${row.resolution_note.slice(0, 500)}` : '';
+  return `**Status:** ${style.label}${row.handled_by ? ` by <@${row.handled_by}>` : ''}${when}${note}`;
 }
 
 /**

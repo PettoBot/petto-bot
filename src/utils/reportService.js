@@ -119,6 +119,13 @@ async function submitReport({ guild, reporter, reportedUser, category = DEFAULT_
         logger.warn(`Could not start a thread for report #${report.report_number} in guild ${guild.id}: ${err.message}`);
         return null;
       });
+    if (thread) {
+      report = (await reportDb.updateReport(guild.id, report.report_number, { thread_id: thread.id }).catch(() => null)) ?? report;
+      // The card was posted before the thread existed, so it gets edited to show the invite button. Editing never pings.
+      await Promise.resolve()
+        .then(() => sent.edit({ ...buildReportPayload(report, { pingRoleIds: pingRolesFor(config, useUrgent) }), allowedMentions: { parse: [] } }))
+        .catch((err) => logger.warn(`Could not add the thread button to report #${report.report_number}: ${err.message}`));
+    }
   }
 
   return { ok: true, report, thread };

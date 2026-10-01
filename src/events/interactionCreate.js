@@ -3,7 +3,7 @@ const { getRemainingCooldown } = require('../utils/cooldown');
 const { handleButton: handleEmbedPanelButton, handleModal: handleEmbedPanelModal } = require('../interactions/embedPanel');
 const { handleModal: handleReportModal } = require('../interactions/reportModal');
 const { handleModal: handleReportConfigModal } = require('../interactions/reportConfigModal');
-const { handleButton: handleReportActionButton, handleListButton: handleReportListButton } = require('../interactions/reportActions');
+const { handleButton: handleReportActionButton, handleReasonModal: handleReportReasonModal, handleListButton: handleReportListButton } = require('../interactions/reportActions');
 const { CONFIG_PREFIX: REPORT_CONFIG_PREFIX, LIMITS_MODAL_ID: REPORT_LIMITS_MODAL_ID, handleConfigComponent: handleReportConfigComponent, handleLimitsModal: handleReportLimitsModal } = require('../interactions/reportConfigPanel');
 const { handleButton: handleTicketPanelButton, handleSelect: handleTicketPanelSelect } = require('../interactions/ticketPanel');
 const { handleModal: handleTicketFormModal } = require('../interactions/ticketForm');
@@ -27,6 +27,7 @@ const { SETUP_BUTTON_PREFIX, handleSetupButton } = require('../interactions/setu
 const { BUTTON_PREFIX, handleButton: handleReactionRoleButton } = require('../interactions/reactionRoleButton');
 const permissionsDb = require('../db/permissions');
 const logger = require('../utils/logger');
+const { commandKey } = require('../handlers/commandHandler');
 
 const DEFAULT_COOLDOWN_MS = 3000;
 
@@ -113,6 +114,11 @@ module.exports = {
 
     if (interaction.isButton() && interaction.customId.startsWith('rpt:')) {
       try { await handleReportActionButton(interaction); } catch (err) { logger.error('Error handling report action button:', err); }
+      return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('rptr:')) {
+      try { await handleReportReasonModal(interaction); } catch (err) { logger.error('Error handling report reason modal:', err); }
       return;
     }
 
@@ -273,7 +279,7 @@ module.exports = {
 
     if (!interaction.isChatInputCommand() && !interaction.isMessageContextMenuCommand() && !interaction.isUserContextMenuCommand()) return;
 
-    const command = client.commands.get(interaction.commandName);
+    const command = client.commands.get(commandKey(interaction.commandName, interaction.commandType));
     if (!command) {
       logger.warn(`Received unknown command: /${interaction.commandName}`);
       return;

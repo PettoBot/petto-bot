@@ -85,7 +85,7 @@ src/
                                  dispatched from interactionCreate.js by customId prefix (eb_.../em_...) rather than a
                                  short-lived collector, since the panel message can be edited minutes or hours later
     reportModal.js               the report form shared by "Report Message" (rp_msg::...) and "Report User" (rp_usr::...), and its submit
-    reportActions.js              Claim / Resolve / Dismiss / Release / Reopen buttons of a report card (rpt:...) and the paging of /report list (rptl:...)
+    reportActions.js              Claim / Resolve / Dismiss / Release / Reopen / Invite buttons of a report card (rpt:...), the closing-reason form (rptr:...) and the paging of /report list (rptl:...)
     reportConfigPanel.js          the /report config settings panel (selects, switches, limits form, test report)
     setupPanel.js                 /setup status panel (what is configured, missing bot permissions) and the pre-filled quick setup form
     setup.js                      handles the quick setup form: steps run together and each one reports its own result
@@ -207,6 +207,7 @@ src/
       report.js                 /report — send (any member) / config, disable, list, view, stats, block, unblock,
                                  blocklist (staff) — see "Report system" below
       reportUser.js             "Report User" — user context-menu command, same form and pipeline as Report Message
+      reportUserFromMessage.js   "Report User" (message menu) — reports the message's author with the same form
       roll.js                    /roll — dice notation (2d6+3, d20, 4d6kh3), see utils/dice.js
       choose.js                  /choose — picks one of the comma / " or " separated options
       boosterrole.js             /boosterrole (alias `br`) — self-service custom colored role for server boosters, plus
@@ -257,6 +258,7 @@ src/
     reportService.js               submitReport(): the one place a report is validated (blocklist, cooldown, daily limit,
                                     required reason), stored, numbered and delivered; shared by /report send and both context menus
     reportViews.js                 staff views for /report list, view, stats and blocklist (stateless paging)
+    reportThreads.js               closes, reopens and finds the discussion thread of a report
     reportCategories.js            the categories a reporter can choose from
     infoCard.js                    shared Components V2 layout of the info commands, plus small formatting helpers
     withTimeout.js                 races a promise against a timer, so a slow database cannot hold a command past Discord's 3 seconds
@@ -520,12 +522,13 @@ Lets any member flag another member or a specific message for staff to review. E
 **Entry points** (all go through `utils/reportService.js`, so the rules are the same everywhere):
 - **`/report send user [reason] [category] [ping] [anonymous]`** — open to everyone. With the prefix, `!report send @user reason text here --category scam`.
 - **"Report Message"** — message context menu (right-click → Apps). Keeps the jump link, the text and up to 10 images.
-- **"Report User"** — user context menu, same form.
+- **"Report User"** — user context menu (open a member's profile → Apps), same form.
+- **"Report User"** also exists as a message context menu (long-press a message → Apps): the same form for the person who wrote the message. It reports the person only; **Report Message** is the one that attaches the text and images. Discord lists a context menu by what it targets, so the same name is registered once for users and once for messages.
 Both menus open a form (`interactions/reportModal.js`) with a **category** (spam, harassment, hate speech, NSFW, scam, threats, impersonation, other), optional context, and the *Ping Moderators* and *Report Anonymously* switches when the server enabled them.
 
-**The card** (`utils/reportCard.js`) shows the number, category, who and where, and a status line, with buttons for staff (Manage Messages, Moderate Members or Manage Server): **Claim** → **Resolve** / **Dismiss** / **Release**, and **Reopen** once closed. A closed report can DM the reporter ("your report #N was resolved"), without naming the moderator. Two staff members pressing at once cannot overwrite each other: the update only applies if the status did not change in between.
+**The card** (`utils/reportCard.js`) shows the number, category, who and where, and a status line, with buttons for staff (Manage Messages, Moderate Members or Manage Server): **Claim** → **Resolve** / **Dismiss** / **Release**, and **Reopen** once closed. **Resolve**, **Dismiss** and **Reopen** open a form that asks for a **required reason** (3 to 500 characters), and sending the form is the confirmation: nothing changes before it. The reason of a closing is shown on the card, written in the report thread and sent to the reporter; the reason of a reopening is shown on the card ("reopened by …") and written in the thread. Each is cleared when the report changes status again. When the server has discussion threads on, **Invite reporter** adds the reporter to the thread (it is not offered for anonymous reports, and it changes to *Reporter invited* once used). The thread follows the report: it is locked and archived when the report is resolved or dismissed, and unlocked and unarchived when it is reopened. A closed report can DM the reporter ("your report #N was resolved", with the reason), and **Notify on claim** can also DM them when staff start handling it; neither names the moderator. Two staff members pressing at once cannot overwrite each other: the update only applies if the status did not change in between.
 
-**Rules** a server can set: a cooldown between reports (default 60s), a daily limit per member (default 10), a required reason, anonymous reports, a role pinged on every report, an urgent role reporters can ask for, a discussion thread under each report, and notifying the reporter. A member can be **blocked from reporting**. Anonymous reports never show the reporter, not even in `/report list` or `view`.
+**Rules** a server can set: a cooldown between reports (default 60s), a daily limit per member (default 10), a required reason, anonymous reports, a role pinged on every report, an urgent role reporters can ask for, a discussion thread under each report, notifying the reporter when the report is closed, and notifying them when staff claim it. A member can be **blocked from reporting**. Anonymous reports never show the reporter, not even in `/report list` or `view`.
 
 **Staff commands** (all `/report`, any of Manage Messages / Moderate Members / Manage Server):
 - `config` — *(Manage Server)* opens the settings panel: channel and role selects, switches for every rule, a **Limits** form, and **Send test report**, which also verifies the bot can post in the channel. Slash only, shown privately.
