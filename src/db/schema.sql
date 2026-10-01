@@ -745,6 +745,9 @@ alter table reports add column if not exists thread_id text;
 alter table reports add column if not exists resolution_note text;
 alter table reports add column if not exists reporter_invited_at timestamptz;
 alter table report_config add column if not exists notify_on_claim boolean not null default false;
+-- Who reopened a closed report, and why.
+alter table reports add column if not exists reopened_by text;
+alter table reports add column if not exists reopen_note text;
 
 -- Allocates the next report number for the server and inserts the report in one step. The advisory lock keeps
 -- two simultaneous reports from receiving the same number, the same pattern create_mod_case() uses.

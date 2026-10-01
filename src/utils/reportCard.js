@@ -52,7 +52,11 @@ function buildReportActions(row) {
 
 function statusLine(row) {
   const style = STATUS_STYLE[row.status] ?? STATUS_STYLE.open;
-  if (row.status === 'open') return `**Status:** ${style.label}`;
+  if (row.status === 'open') {
+    const reopened = row.reopened_by ? ` · reopened by <@${row.reopened_by}>` : '';
+    const why = row.reopened_by && row.reopen_note ? `\n**Reason:** ${row.reopen_note.slice(0, 500)}` : '';
+    return `**Status:** ${style.label}${reopened}${why}`;
+  }
   const when = row.handled_at ? ` <t:${unix(row.handled_at)}:R>` : '';
   const note = row.resolution_note && (row.status === 'resolved' || row.status === 'dismissed') ? `\n**Reason:** ${row.resolution_note.slice(0, 500)}` : '';
   return `**Status:** ${style.label}${row.handled_by ? ` by <@${row.handled_by}>` : ''}${when}${note}`;

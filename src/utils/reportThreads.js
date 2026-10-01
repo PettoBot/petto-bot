@@ -28,11 +28,11 @@ async function closeReportThread(thread, { status, note, byId }) {
 }
 
 /** Opens the discussion again when a closed report is reopened. */
-async function reopenReportThread(thread, { byId }) {
+async function reopenReportThread(thread, { byId, note }) {
   await thread.setLocked(false, 'Report reopened').catch(() => {});
   await thread.setArchived(false, 'Report reopened').catch((err) => logger.warn(`Could not unarchive thread ${thread.id}: ${err.message}`));
   await thread
-    .send({ content: `**Report reopened** by <@${byId}>.`, allowedMentions: { parse: [] } })
+    .send({ content: `**Report reopened** by <@${byId}>.${noteQuote(note)}`, allowedMentions: { parse: [] } })
     .catch((err) => logger.warn(`Could not post the reopening note in thread ${thread.id}: ${err.message}`));
 }
 
