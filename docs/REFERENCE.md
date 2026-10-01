@@ -674,7 +674,7 @@ The original spec's plain lookup-command category, consolidated where several wo
 **`/firstmessage channel?`** (alias `fm`) — jump link to the oldest message in a channel.
 **`/roll dice`** (alias `dice`) — `2d6+3`, `d20`, `4d6kh3` (keep the highest 3), `2d20kl1`; several terms can be added and subtracted, up to 200 dice.
 **`/choose options`** (aliases `pick`, `decide`) — picks one of two to 25 options separated by commas or " or ".
-**`/8ball question`**, **`/ship first [second]`** (the same pair always gets the same score) and **`/rps choice`** are in the **Fun** category. They answer with plain messages, not embeds. `/ship` attaches an image drawn by `src/imgutils/shipCard.js` (both avatars, a heart with the score, a bar); if it cannot be drawn, the text result is sent alone.
+**`/8ball question`**, **`/ship first [second]`** (the same pair always gets the same score) and **`/rps choice`** are in the **Fun** category. They answer with plain messages, not embeds. `/ship` attaches an image drawn by `src/imgutils/shipCard.js` (both avatars on a rose picture, a heart with the score, a bar); if it cannot be drawn, the text result is sent alone.
 **`/inviteinfo code`** — looks up any invite code's server/channel/inviter/expiry, even for servers Petto isn't in.
 **`/color hex`** — previews a hex color as the card's accent bar, plus its RGB, HSL and decimal values.
 

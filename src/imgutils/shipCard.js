@@ -33,27 +33,34 @@ function heartPath(ctx, cx, cy, size) {
   ctx.closePath();
 }
 
-function drawBackground(ctx, score) {
-  const gradient = ctx.createLinearGradient(0, 0, W, H);
-  gradient.addColorStop(0, '#ffe3ef');
-  gradient.addColorStop(0.5, '#ffd0e4');
-  gradient.addColorStop(1, '#f4b6d2');
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, W, H);
+let backgroundPromise = null;
 
-  // Soft light spots, placed from the score so the same pair always gets the same picture.
-  for (let i = 0; i < 14; i += 1) {
-    const x = ((i * 137 + score * 11) % W);
-    const y = ((i * 71 + score * 5) % H);
-    const radius = 18 + ((i * 23 + score) % 46);
-    const spot = ctx.createRadialGradient(x, y, 0, x, y, radius);
-    spot.addColorStop(0, 'rgba(255,255,255,0.55)');
-    spot.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = spot;
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fill();
+function loadBackground() {
+  backgroundPromise ??= loadImage(path.join(__dirname, 'fondoship.jpg')).catch(() => null);
+  return backgroundPromise;
+}
+
+async function drawBackground(ctx) {
+  const image = await loadBackground();
+  if (!image) {
+    // The picture is missing: a plain pink gradient stands in for it.
+    const gradient = ctx.createLinearGradient(0, 0, W, H);
+    gradient.addColorStop(0, '#ffe3ef');
+    gradient.addColorStop(1, '#f4b6d2');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, W, H);
+    return;
   }
+
+  // Fill the card with the picture without stretching it.
+  const scale = Math.max(W / image.width, H / image.height);
+  const width = image.width * scale;
+  const height = image.height * scale;
+  ctx.drawImage(image, (W - width) / 2, (H - height) / 2, width, height);
+
+  // A light veil keeps the names and the bar readable over the roses.
+  ctx.fillStyle = 'rgba(255, 240, 247, 0.28)';
+  ctx.fillRect(0, 0, W, H);
 }
 
 async function drawAvatar(ctx, url, x, y) {
@@ -102,7 +109,7 @@ async function buildShipCard({ avatarA, avatarB, nameA, nameB, score }) {
   ctx.save();
   roundRect(ctx, 0, 0, W, H, 28);
   ctx.clip();
-  drawBackground(ctx, score);
+  await drawBackground(ctx);
 
   await drawAvatar(ctx, avatarA, LEFT_X, AVATAR_Y);
   await drawAvatar(ctx, avatarB, RIGHT_X, AVATAR_Y);
