@@ -34,6 +34,19 @@ assert.equal(parseEmbedScript('{embed}&v{button: Go && https://x.test}').buttons
 // Problems are described, nothing throws.
 assert.ok(parseEmbedScript('{embed}&v{title: x').warnings[0].includes('not closed'));
 assert.ok(parseEmbedScript('}').warnings[0].includes('closing brace'));
+// Several embeds, and two codes pasted one after the other (the first lost its closing brace).
+r = parseEmbedScript('{embed}&v{title: One}&v{color: #ff0000}&v{embed}&v{title: Two}&v{description: b}');
+assert.equal(r.embeds.length, 2); assert.equal(r.embeds[0].title, 'One'); assert.equal(r.embeds[0].color, 0xff0000); assert.equal(r.embeds[1].title, 'Two'); assert.equal(r.embeds[1].color, null);
+assert.equal(r.embed, r.embeds[0]);
+r = parseEmbedScript('{embed}&v{title: A}&v{description: first text {embed}$v{title: @ x}$v{description: second {newline}text}$v{color: #b0ffb9}}');
+assert.deepEqual(r.embeds.map((e) => e.title), ['A', '@ x']);
+assert.equal(r.embeds[0].description, 'first text'); assert.equal(r.embeds[1].description, 'second {newline}text'); assert.equal(r.embeds[1].color, 0xb0ffb9);
+assert.ok(r.warnings.some((line) => line.includes('not closed before the next {embed}')));
+assert.ok(r.warnings.some((line) => line.includes('closing brace')), 'the spare closing brace is reported, not fatal');
+assert.equal(parseEmbedScript('{embed}' + '&v{embed}&v{title: x}'.repeat(12)).embeds.length, 10);
+assert.equal(parseEmbedScript('{embed}{embed}&v{title: x}').embeds.length, 1, 'an empty {embed} before another does not leave a blank embed');
+assert.equal(toTemplateData(parseEmbedScript('{embed}&v{title: a}&v{embed}&v{title: b}')).editableInPanel, false);
+assert.equal(toTemplateData(parseEmbedScript('{embed}&v{title: a}&v{embed}&v{title: b}')).data.embeds.length, 2);
 assert.ok(parseEmbedScript('{embed}&v{color: nope}').warnings[0].includes('hex color'));
 assert.ok(parseEmbedScript('{embed}&v{nonsense: x}').warnings[0].includes('not supported'));
 assert.ok(parseEmbedScript('{embed}&v{field: only-a-name}').warnings[0].includes('field needs'));

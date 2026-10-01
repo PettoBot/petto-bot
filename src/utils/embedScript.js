@@ -15,11 +15,13 @@ const SEPARATORS = ['&v', '$v'];
 const KNOWN_KEYS = new Set(['embed', 'content', 'message', 'text', 'title', 'url', 'description', 'desc', 'thumbnail', 'image', 'timestamp', 'color', 'colour', 'author', 'footer', 'field', 'button']);
 // Words that start a variable of the bot, so a block such as {choose:a|b} is text and not a typo of a block name.
 const VARIABLE_WORDS = new Set(['choose', 'range', 'args', 'user', 'server', 'guild', 'channel', 'role', 'newline', 'prefix', 'reactreply', 'level', 'date', 'time']);
+const EMBED_START = /^\{embed\}\s*(?:&v|\$v|$)/i;
 const BUTTON_KINDS = new Set(['link', 'blurple', 'green', 'grey', 'gray', 'red', 'primary', 'success', 'secondary', 'danger']);
 
 /** Splits the code into text and top-level `{...}` blocks, in order. Braces inside a block nest. */
 function tokenize(code) {
   const items = [];
+  const warnings = [];
   let text = '';
   let depth = 0;
   let current = '';
@@ -30,8 +32,22 @@ function tokenize(code) {
       const separator = SEPARATORS.find((candidate) => code.startsWith(candidate, i));
       if (separator) { flush(); i += separator.length - 1; continue; }
       if (char === '{') { flush(); depth = 1; current = ''; continue; }
-      if (char === '}') return { items, error: 'There is a closing brace } with no opening one.' };
+      if (char === '}') {
+        // A spare closing brace is skipped, so the rest of the code is still read.
+        if (!warnings.some((line) => line.includes('closing brace'))) warnings.push('There is a closing brace } with no opening one, it was ignored.');
+        continue;
+      }
       text += char;
+      continue;
+    }
+    // A new {embed} inside a block means the block before it lost its closing brace, such as two codes pasted one
+    // after the other. The block is closed there and the new embed starts, instead of swallowing it as text.
+    if (char === '{' && EMBED_START.test(code.slice(i))) {
+      warnings.push('A block was not closed before the next {embed}, it was closed there.');
+      items.push({ block: true, value: current });
+      current = '';
+      depth = 0;
+      i--;
       continue;
     }
     if (char === '{') depth++;
@@ -42,8 +58,8 @@ function tokenize(code) {
     current += char;
   }
   flush();
-  if (depth !== 0) return { items, error: 'A block is not closed: there is an opening brace { with no closing one.' };
-  return { items, error: null };
+  if (depth !== 0) warnings.push('A block is not closed: there is an opening brace { with no closing one.');
+  return { items, warnings };
 }
 
 const parts = (value) => value.split('&&').map((part) => part.trim());
@@ -57,17 +73,25 @@ function parseColor(value) {
 
 /**
  * Reads a code. It never throws: what cannot be read is left out and described in `warnings`.
- * Returns the message text, one embed (or null when the code sets nothing for it), the link buttons, and the warnings.
+ * Returns the message text, the embeds (`embed` is the first one, or null when the code sets nothing for it), the link buttons, and the warnings.
  */
 function parseEmbedScript(code) {
   const warnings = [];
-  const embed = { title: '', description: '', color: null, url: '', thumbnail: '', image: '', timestamp: false, author: null, footer: null, fields: [] };
+  const newEmbed = () => ({ title: '', description: '', color: null, url: '', thumbnail: '', image: '', timestamp: false, author: null, footer: null, fields: [] });
+  const embeds = [];
+  let embed = null;
+  let touched = false;
   const buttons = [];
-  let hasEmbed = false;
   let loose = '';
+  // The embed the next block belongs to. Blocks that set a part of an embed start one when {embed} is missing.
+  const current = () => {
+    if (!embed) { embed = newEmbed(); embeds.push(embed); }
+    touched = true;
+    return embed;
+  };
 
   const tokens = tokenize(String(code ?? '').trim());
-  if (tokens.error) warnings.push(tokens.error);
+  warnings.push(...tokens.warnings);
 
   for (const item of tokens.items) {
     if (!item.block) { loose += item.value; continue; }
@@ -79,38 +103,37 @@ function parseEmbedScript(code) {
     if (!KNOWN_KEYS.has(key) && !looksLikeTypo) { loose += `{${block}}`; continue; }
 
     switch (key) {
-      case 'embed': hasEmbed = true; break;
+      case 'embed':
+        // {embed} opens an embed; one after an embed that already has parts opens the next one.
+        if (!embed || touched) { embed = newEmbed(); embeds.push(embed); touched = false; }
+        break;
       case 'content': case 'message': case 'text': loose += value; break;
-      case 'title': hasEmbed = true; embed.title = value; break;
-      case 'url': hasEmbed = true; embed.url = value; break;
-      case 'description': case 'desc': hasEmbed = true; embed.description = value; break;
-      case 'thumbnail': hasEmbed = true; embed.thumbnail = value; break;
-      case 'image': hasEmbed = true; embed.image = value; break;
-      case 'timestamp': hasEmbed = true; embed.timestamp = value === '' || !/^(false|no|0)$/i.test(value); break;
+      case 'title': current().title = value; break;
+      case 'url': current().url = value; break;
+      case 'description': case 'desc': current().description = value; break;
+      case 'thumbnail': current().thumbnail = value; break;
+      case 'image': current().image = value; break;
+      case 'timestamp': current().timestamp = value === '' || !/^(false|no|0)$/i.test(value); break;
       case 'color': case 'colour': {
-        hasEmbed = true;
         const color = parseColor(value);
         if (color === null) warnings.push(`The color "${value}" is not a hex color such as #8399ff.`);
-        else embed.color = color;
+        else current().color = color;
         break;
       }
       case 'author': {
-        hasEmbed = true;
         const [name, icon, url] = parts(value);
-        if (name) embed.author = { name, icon: icon ?? '', url: url ?? '' };
+        if (name) current().author = { name, icon: icon ?? '', url: url ?? '' };
         break;
       }
       case 'footer': {
-        hasEmbed = true;
         const [text, icon] = parts(value);
-        if (text) embed.footer = { text, icon: icon ?? '' };
+        if (text) current().footer = { text, icon: icon ?? '' };
         break;
       }
       case 'field': {
-        hasEmbed = true;
         const [name, fieldValue, inline] = parts(value);
         if (!name || !fieldValue) { warnings.push('A field needs a name and a value: {field: name && value && inline}.'); break; }
-        embed.fields.push({ name, value: fieldValue, inline: /^(true|yes|inline|1)$/i.test(inline ?? '') });
+        current().fields.push({ name, value: fieldValue, inline: /^(true|yes|inline|1)$/i.test(inline ?? '') });
         break;
       }
       case 'button': {
@@ -132,9 +155,12 @@ function parseEmbedScript(code) {
     }
   }
 
-  if (embed.fields.length > 25) { warnings.push('An embed holds at most 25 fields, the rest were left out.'); embed.fields.length = 25; }
+  for (const each of embeds) {
+    if (each.fields.length > 25) { warnings.push('An embed holds at most 25 fields, the rest were left out.'); each.fields.length = 25; }
+  }
+  if (embeds.length > 10) { warnings.push('A message holds at most 10 embeds, the rest were left out.'); embeds.length = 10; }
   if (buttons.length > 5) warnings.push('Only the first 5 buttons fit in one row.');
-  return { content: loose.trim(), embed: hasEmbed ? embed : null, buttons: buttons.slice(0, 5), warnings };
+  return { content: loose.trim(), embed: embeds[0] ?? null, embeds, buttons: buttons.slice(0, 5), warnings };
 }
 
 /**
@@ -142,10 +168,13 @@ function parseEmbedScript(code) {
  * keeps working on it. A message text or buttons need the dashboard's shape, which the panel cannot edit.
  */
 function toTemplateData(parsed) {
-  const embed = parsed.embed ? { ...parsed.embed } : null;
-  if (!parsed.content && !parsed.buttons.length) return { data: { ...(embed ?? {}), fields: embed?.fields ?? [] }, editableInPanel: true };
+  const embeds = (parsed.embeds ?? (parsed.embed ? [parsed.embed] : [])).map((each) => ({ ...each }));
+  if (!parsed.content && !parsed.buttons.length && embeds.length <= 1) {
+    const embed = embeds[0] ?? null;
+    return { data: { ...(embed ?? {}), fields: embed?.fields ?? [] }, editableInPanel: true };
+  }
   return {
-    data: { content: parsed.content, embeds: embed ? [embed] : [], buttons: parsed.buttons.length ? [parsed.buttons] : [] },
+    data: { content: parsed.content, embeds, buttons: parsed.buttons.length ? [parsed.buttons] : [] },
     editableInPanel: false,
   };
 }

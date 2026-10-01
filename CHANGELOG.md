@@ -23,6 +23,7 @@ All notable changes to Petto are documented here.
 
 ### Changed
 
+- An embed code can now hold several embeds (`{embed}&v{...}&v{embed}&v{...}`, up to 10). When two codes are pasted one after the other and the first lost its closing brace, the first block is closed where the next `{embed}` starts instead of swallowing it as text, and a spare closing brace is reported and skipped instead of stopping the reading.
 - `!8ball`, `!rps` and `!ship` now answer with a plain message instead of an embed. `!ship` attaches a picture with both avatars over a pink roses background, a heart with the score and a bar, drawn the same way for the same pair; if the picture cannot be drawn the result is still sent as text.
 - **Resolve**, **Dismiss** and **Reopen** on a report now ask for a required reason, and sending the form is the confirmation. A closing reason is shown on the report card, written in the report thread and sent to the reporter in the DM; a reopening reason is shown on the card ("reopened by …") and written in the thread.
 - The report thread now follows the report: it is locked and archived when the report is resolved or dismissed, and opened again when the report is reopened.

@@ -233,7 +233,7 @@ async function createFromCode(interaction, guildId, name, code, ctx) {
   await upsertTemplate(guildId, name, data);
   const notes = [
     `Embed \`${name}\` created from the code.`,
-    editableInPanel ? 'Change it with `/embed edit`, or send it with `/embed send`.' : 'It has message text or buttons, so change it in the dashboard. Send it with `/embed send`.',
+    editableInPanel ? 'Change it with `/embed edit`, or send it with `/embed send`.' : 'It has message text, buttons or several embeds, so change it in the dashboard. Send it with `/embed send`.',
     ...parsed.warnings.map((line) => `- ${line}`),
   ];
   await interaction.editReply({ content: `${notes.join('\n')}\n\n${payload.content ?? ''}`.slice(0, 2000), embeds: payload.embeds, components: payload.components });
