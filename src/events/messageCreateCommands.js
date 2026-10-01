@@ -148,7 +148,7 @@ async function runCustomCommand(message, commandName, argText = '', prefix = '!'
       const templateReactReplies = [];
       const templateData = extractReactRepliesFromTemplate(doc.data, templateReactReplies);
       const payload = await build(templateData, ctx);
-      const sent = await message.reply({ content: payload.content, embeds: payload.embeds, components: payload.components, allowedMentions }).catch(() => null);
+      const sent = await message.reply({ content: payload.content, embeds: payload.embeds, components: payload.components, files: payload.files, allowedMentions }).catch(() => null);
       if (sent && (reactReplies.length || templateReactReplies.length)) await applyReactReplies(sent, [...reactReplies, ...templateReactReplies]);
       return true;
     }

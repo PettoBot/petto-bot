@@ -68,6 +68,7 @@ stub('src/db/guilds.js', { ensureGuild: async () => ({ prefix: '!' }) });
 stub('src/interactions/embedPanel.js', { renderPanel: async () => ({ content: 'PANEL' }) });
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
 stub('src/utils/embedVariables.js', { resolve: async (text) => text.replaceAll('{user}', 'Liam').replaceAll('{user.mention}', '@Liam').replaceAll('{newline}', '\n') });
+stub('src/utils/cardService.js', { normalizeCardRef: (raw) => (raw && raw.name ? { name: String(raw.name), placement: 'default' } : null), renderCardForMessage: async () => null, CARD_FILE_NAME: 'card.png' });
 const embedCommand = require('../src/commands/config/embed');
 
 function interaction(options) {

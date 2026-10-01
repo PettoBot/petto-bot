@@ -9,6 +9,8 @@ const FREE_LIMITS = Object.freeze({
   levelRewards: 10,
   giveawayPresets: 3,
   logRoutes: 8,
+  imageCards: 3,
+  cardAssets: 5,
 });
 
 const PREMIUM_LIMITS = Object.freeze({
@@ -18,6 +20,8 @@ const PREMIUM_LIMITS = Object.freeze({
   levelRewards: 40,
   giveawayPresets: 15,
   logRoutes: Number.POSITIVE_INFINITY,
+  imageCards: 30,
+  cardAssets: 60,
 });
 
 /**

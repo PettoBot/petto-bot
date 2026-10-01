@@ -306,7 +306,7 @@ async function renderPanelMessage(guild, panel, categories, channel) {
     if (doc) {
       const guildConfig = await ensureGuild(guild.id);
       const payload = await build(doc.data, { guild, channel, prefix: guildConfig.prefix });
-      return { content: payload.content, embeds: payload.embeds, components: [...(payload.components ?? []), ...rows] };
+      return { content: payload.content, embeds: payload.embeds, files: payload.files, components: [...(payload.components ?? []), ...rows] };
     }
   }
 

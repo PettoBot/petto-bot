@@ -17,6 +17,7 @@ const { renderVerifyPage } = require('./verifyPage');
 const { renderHomePage } = require('./homePage');
 const { setCachedPrefix } = require('../events/messageCreateCommands');
 const { registerDashboardRestRoutes } = require('./dashboardDatabase');
+const { registerCardRoutes } = require('./cardRoutes');
 const { listVariables } = require('../utils/embedVariableRegistry');
 const logger = require('../utils/logger');
 
@@ -145,6 +146,33 @@ function startServer(client) {
     }
   }
 
+  // The same check as the Vault routes without needing the Vault: the person must manage the server.
+  async function dashboardCardAccess(req, res) {
+    if (!dashboardAuthorized(req)) {
+      res.status(401).json({ ok: false, error: 'unauthorized' });
+      return null;
+    }
+    const userId = String(req.query.user_id || req.body?.user_id || '');
+    if (!/^\d{15,25}$/.test(userId) || !/^\d{15,25}$/.test(String(req.params.guildId || ''))) {
+      res.status(400).json({ ok: false, error: 'missing_identity' });
+      return null;
+    }
+    try {
+      const guild = await client.guilds.fetch(req.params.guildId);
+      const member = await guild.members.fetch(userId);
+      const canManage = member.permissions.has(PermissionFlagsBits.ManageGuild) || member.permissions.has(PermissionFlagsBits.Administrator);
+      if (!canManage) {
+        res.status(403).json({ ok: false, error: 'no_access' });
+        return null;
+      }
+      return { guild, member, userId };
+    } catch (err) {
+      logger.error(`Dashboard could not authorize cards for guild ${req.params.guildId}:`, err);
+      res.status(404).json({ ok: false, error: 'guild_unavailable' });
+      return null;
+    }
+  }
+
   async function dashboardVaultData(guildId) {
     const [backups, schedule, audit] = await Promise.all([
       listBackups(guildId, 20),
@@ -167,6 +195,8 @@ function startServer(client) {
       res.set('Cache-Control', 'private, max-age=300');
       res.json({ ok: true, groups: listVariables() });
     });
+
+    registerCardRoutes(app, { authorize: dashboardCardAccess });
 
     app.post('/api/dashboard/guild/:guildId/prefix', dashboardPrefixRateLimiter, async (req, res) => {
       if (!dashboardAuthorized(req)) {

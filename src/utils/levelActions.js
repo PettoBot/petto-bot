@@ -104,8 +104,8 @@ async function notifyLevelUp({ client, guild, member, config, level, channel, me
       const template = await getTemplate(guild.id, config.notify_embed_template);
       if (template?.data) {
         const built = await buildEmbedTemplate(template.data, ctx);
-        if (built.content || built.embeds?.length || built.components?.length) {
-          payload = { content: built.content || undefined, embeds: built.embeds, components: built.components };
+        if (built.content || built.embeds?.length || built.components?.length || built.files?.length) {
+          payload = { content: built.content || undefined, embeds: built.embeds, components: built.components, files: built.files };
         }
       }
     } catch (err) {
