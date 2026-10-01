@@ -67,7 +67,7 @@ stub('src/db/embedTemplates.js', {
 stub('src/db/guilds.js', { ensureGuild: async () => ({ prefix: '!' }) });
 stub('src/interactions/embedPanel.js', { renderPanel: async () => ({ content: 'PANEL' }) });
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
-stub('src/utils/embedVariables.js', { resolve: async (text) => text.replaceAll('{user}', 'Liam').replaceAll('{user.mention}', '@Liam') });
+stub('src/utils/embedVariables.js', { resolve: async (text) => text.replaceAll('{user}', 'Liam').replaceAll('{user.mention}', '@Liam').replaceAll('{newline}', '\n') });
 const embedCommand = require('../src/commands/config/embed');
 
 function interaction(options) {
@@ -99,6 +99,15 @@ const ctx = {};
   assert.equal(store.get('withtext').data.buttons[0][0].url, 'https://petto.sbs');
   assert.ok(i.replies[0].content.includes('dashboard'));
   assert.ok(i.replies[0].components.length === 1);
+
+  // The code is one line, so line breaks are {newline}. Blocks glued together or spread over lines read the same.
+  i = interaction({});
+  await embedCommand.createFromCode(i, '9', 'oneline', '{message: Hi {user}{newline}Second line}&v{embed}&v{title: T}&v{description: one{newline}two}', ctx);
+  assert.equal(store.get('oneline').data.content, 'Hi {user}{newline}Second line', 'the variable stays in the saved text and is resolved when it is sent');
+  assert.equal(i.replies[0].embeds[0].data.description, 'one\ntwo', 'the shown message turns {newline} into a line break');
+  assert.ok(i.replies[0].content.endsWith('Hi Liam\nSecond line'));
+  r = parseEmbedScript('{embed}\n&v{title: a}\n  &v{description: b}\n');
+  assert.equal(r.embed.title, 'a'); assert.equal(r.embed.description, 'b'); assert.equal(r.content, '');
 
   // Plain text alone is a message with no embed, and a broken block is reported next to it.
   i = interaction({});

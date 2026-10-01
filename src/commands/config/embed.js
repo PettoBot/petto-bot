@@ -174,7 +174,8 @@ const VAR_PAGES = [
       ['`{timestamp}`', 'Shows the current time in the footer'],
       ['`{button: link && label && url}`', 'A link button, up to 5'],
       ['`{message: text}`', 'Message text, the same as writing it before `{embed}`'],
-      ['Example', '`{embed}&v{title: Welcome {user}}&v{description: Read the rules}&v{color: #ff91c2}`'],
+      ['`{newline}`', 'A line break. Discord does not allow real line breaks in a command, so write `{newline}` where one goes'],
+      ['Example', '`{message: Hi {user}}&v{embed}&v{title: Welcome}&v{description: Read the rules{newline}Have fun}&v{color: #ff91c2}`'],
       ['Build one with a preview', 'https://petto.sbs/embed-code'],
     ],
   },
@@ -214,7 +215,7 @@ async function createFromCode(interaction, guildId, name, code, ctx) {
   const parsed = parseEmbedScript(code);
   if (!parsed.embed && !parsed.content && !parsed.buttons.length) {
     const problems = parsed.warnings.length ? `\n${parsed.warnings.map((line) => `- ${line}`).join('\n')}` : '';
-    await interaction.editReply(`I could not find anything to build in that code. Write it like \`{embed}&v{title: Hello}&v{description: Hi {user}}\`.${problems}`);
+    await interaction.editReply(`I could not find anything to build in that code. Write it like \`{embed}&v{title: Hello}&v{description: Hi {user}{newline}Welcome}\`.${problems}`);
     return;
   }
   const { data, editableInPanel } = toTemplateData(parsed);
@@ -247,7 +248,7 @@ module.exports = {
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false)
 
-    .addSubcommand((s) => s.setName('create').setDescription('Create a new named embed, with the editor or from a code.').addStringOption((o) => o.setName('name').setDescription('Embed name (e.g. rules_embed)').setRequired(true)).addStringOption((o) => o.setName('code').setDescription('Optional: the whole embed as one code, e.g. {embed}&v{title: Hello}&v{description: Hi {user}}').setRequired(false).setMaxLength(6000)))
+    .addSubcommand((s) => s.setName('create').setDescription('Create a new named embed, with the editor or from a code.').addStringOption((o) => o.setName('name').setDescription('Embed name (e.g. rules_embed)').setRequired(true)).addStringOption((o) => o.setName('code').setDescription('Optional: the whole embed as one line, e.g. {embed}&v{title: Hi}&v{description: A{newline}B}').setRequired(false).setMaxLength(6000)))
     .addSubcommand((s) => s.setName('preview').setDescription('Preview a saved embed with variables resolved.').addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true)))
     .addSubcommand((s) =>
       s
