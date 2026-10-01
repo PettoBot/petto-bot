@@ -17,6 +17,9 @@ All notable changes to Petto are documented here.
 
 ### Changed
 
+- **Resolve** and **Dismiss** on a report now ask for a required reason, which is shown on the report card, written in the report thread and sent to the reporter in the DM.
+- The report thread now follows the report: it is locked and archived when the report is resolved or dismissed, and opened again when the report is reopened.
+- Added **Invite reporter** to the report card, which adds the reporter to the discussion thread (not offered for anonymous reports), and a **Notify on claim** setting that DMs the reporter when staff claim their report.
 - `/setup` now opens a status panel that answers immediately: what is configured, which permissions Petto is missing, and a **Quick setup** form that is pre-filled from the current settings, so running it again never resets anything. Submitting the form runs its steps together and reports each one separately, so one failing step no longer stops the rest. Audit log routes are saved in one statement instead of eleven.
 - Roleplay responses (**Respond** / **Reject**) are now a reply to the message that holds the buttons instead of an edit of it, so the original message keeps its text and only loses its buttons. The reply never mentions anyone.
 - `!report send` takes a multi-word reason without quotes; the category, ping and anonymous options go after it as `--category`, `--ping` and `--anonymous`.
