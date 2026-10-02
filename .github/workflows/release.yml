@@ -1,0 +1,37 @@
+name: Release
+
+# Creates the tag and the GitHub release of the version in package.json when it is not released yet, with the notes of
+# that version from CHANGELOG.md. It runs on every push to main and does nothing when the release already exists, so the
+# order of merging a version bump and this workflow does not matter. It can also be started by hand.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          tag="v${version}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists."
+            exit 0
+          fi
+          awk -v heading="## [${version}]" 'index($0, heading) == 1 { found = 1; next } found && /^## \[/ { exit } found { print }' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "No notes for ${version} in CHANGELOG.md, using a short note."
+            echo "Petto ${tag}. See CHANGELOG.md for the changes." > notes.md
+          fi
+          gh release create "$tag" --target "$GITHUB_SHA" --title "Petto ${tag}" --notes-file notes.md
