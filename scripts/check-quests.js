@@ -60,23 +60,35 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
   assert.equal(evil.link, null); assert.equal(evil.image, null); assert.equal(evil.name, 'Name with spaces', 'text is cleaned, links and pictures are checked');
   assert.equal(questApi.isActive(normalized[3]), false); assert.equal(questApi.isActive(normalized[4]), false); assert.equal(questApi.isActive(orbs), true);
 
-  // The ETag: the second call answers "not modified".
+  // The sources: both are read, joined by id, and one failing does not stop the other. ETags make the second call empty.
   const calls = [];
+  const trackerRows = [...api, rawQuest('1550000000000000009', { name: 'Only in the tracker' })];
+  let failTracker = false; let failCommunity = false;
   global.fetch = async (url, options = {}) => {
-    calls.push([String(url), options.headers?.['if-none-match'] ?? null]);
-    if (String(url).endsWith('/api/regions')) return new Response(JSON.stringify(regionRows), { status: 200 });
-    if (options.headers?.['if-none-match'] === '"v1"') return new Response(null, { status: 304 });
-    return new Response(JSON.stringify(api), { status: 200, headers: { etag: '"v1"', 'content-length': '5000' } });
+    const link = String(url);
+    calls.push([link, options.headers?.['if-none-match'] ?? null]);
+    if (link.endsWith('/api/regions')) return new Response(JSON.stringify(regionRows), { status: 200 });
+    const tracker = link.includes('githubusercontent');
+    if (tracker ? failTracker : failCommunity) return new Response('nope', { status: 503 });
+    const etag = tracker ? '"t1"' : '"v1"';
+    if (options.headers?.['if-none-match'] === etag) return new Response(null, { status: 304 });
+    return new Response(JSON.stringify(tracker ? trackerRows : api), { status: 200, headers: { etag, 'content-length': '5000' } });
   };
   let answer = await questApi.fetchQuests();
-  assert.equal(answer.notModified, false); assert.equal(answer.quests.length, 5); assert.equal(answer.quests[0].ageGate, true, 'regions are merged');
+  assert.equal(answer.notModified, false); assert.equal(answer.quests.length, 6, 'the quest only the tracker has is included');
+  assert.equal(answer.quests.find((quest) => quest.id === ids.orbs).ageGate, true, 'the community API wins, it knows the limits');
   answer = await questApi.fetchQuests();
-  assert.equal(answer.notModified, true); assert.equal(calls.at(-1)[1], '"v1"');
-  assert.equal(questApi.getStatus().ok, true);
-  global.fetch = async () => new Response('nope', { status: 503 });
-  await assert.rejects(() => questApi.fetchQuests({ force: true }), /503/); assert.equal(questApi.getStatus().ok, false);
+  assert.equal(answer.notModified, true); assert.ok(calls.some(([, tag]) => tag === '"t1"') && calls.some(([, tag]) => tag === '"v1"'));
+  assert.equal(questApi.getStatus().ok, true); assert.equal(questApi.getStatus().sources.length, 2);
+  questApi.resetCache(); failTracker = true;
+  answer = await questApi.fetchQuests();
+  assert.equal(answer.notModified, false); assert.equal(answer.quests.length, 6, 'one source failing is not a problem');
+  assert.equal(questApi.getStatus().sources[1].ok, false);
+  questApi.resetCache(); failCommunity = true;
+  await assert.rejects(() => questApi.fetchQuests({ force: true }), /could not be read/); assert.equal(questApi.getStatus().ok, false);
+  failTracker = false; failCommunity = false;
   global.fetch = async () => new Response(JSON.stringify({ not: 'a list' }), { status: 200 });
-  await assert.rejects(() => questApi.fetchQuests({ force: true }), /unexpected shape/);
+  await assert.rejects(() => questApi.fetchQuests({ force: true }), /could not be read/);
 
   // Filters.
   assert.equal(matchesFilters(orbs, { reward_kinds: [], task_kinds: [] }), true);
@@ -102,25 +114,33 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
     markSeen: async (list) => list.forEach((quest) => seen.add(quest.id)),
     hasPost: async (g, q, k) => posts.has(`${g}:${q}:${k}`), savePost: async (g, q, k) => { posts.add(`${g}:${q}:${k}`); },
   };
-  let current = [orbs, deco];
+  const future = questApi.normalizeQuest(api[4]);
+  let current = [orbs, deco, future];
   const fakeApi = { fetchQuests: async () => ({ notModified: false, quests: current }), isActive: questApi.isActive };
   let result = await checkQuests(client, { api: fakeApi, db, now });
-  assert.equal(result.baseline, true); assert.equal(sentMessages.length, 0, 'the first run only remembers'); assert.equal(seen.size, 2);
+  assert.equal(result.baseline, true); assert.equal(sentMessages.length, 0, 'the first run only remembers'); assert.equal(seen.size, 2); assert.equal(seen.has(future.id), false, 'a quest that has not started is not remembered, so it is announced when it starts');
   result = await checkQuests(client, { api: fakeApi, db, now });
   assert.equal(result.sent, 0, 'nothing new, nothing sent');
-  current = [orbs, deco, play];
+  current = [orbs, deco, play, future];
   result = await checkQuests(client, { api: fakeApi, db, now });
   assert.equal(result.newQuests, 1);
   assert.deepEqual(sentMessages.map((m) => m.guildId), ['g1'], 'g2 wants decorations only and g3 cannot be reached');
   assert.equal(posts.has('g1:' + ids.play + ':new'), true); assert.equal(posts.has('g3:' + ids.play + ':new'), false);
   result = await checkQuests(client, { api: fakeApi, db, now });
   assert.equal(sentMessages.length, 1, 'a quest is never announced twice');
+  result = await checkQuests(client, { api: fakeApi, db, now: now + 1.5 * day });
+  assert.equal(result.newQuests, 1, 'the quest that was not started yet is announced once it starts');
+  assert.equal(posts.has('g1:' + future.id + ':new'), true);
   // Ending soon: g2 asked for 72 hours and the decoration quest ends in 5 days, so wait until it is close.
   result = await checkQuests(client, { api: fakeApi, db, now: now + 3 * day });
-  assert.deepEqual(sentMessages.map((m) => m.guildId), ['g1', 'g2'], 'the ending-soon alert goes to g2 for the decoration quest only');
+  assert.deepEqual(sentMessages.map((m) => m.guildId), ['g1', 'g1', 'g2'], 'the ending-soon alert goes to g2 for the decoration quest only');
   assert.equal(posts.has('g2:' + ids.deco + ':expiring'), true);
   await checkQuests(client, { api: fakeApi, db, now: now + 3 * day });
-  assert.equal(sentMessages.length, 2, 'the ending-soon alert is sent once');
+  assert.equal(sentMessages.length, 3, 'the ending-soon alert is sent once');
+  let reset = 0; const breakingDb = { ...db, markSeen: async () => { throw new Error('db down'); } };
+  seen.clear(); seen.add('x');
+  await assert.rejects(() => checkQuests(client, { api: { ...fakeApi, resetCache: () => { reset += 1; } }, db: breakingDb, now: now + 2 * day }), /db down/);
+  assert.equal(reset, 1, 'a pass that could not finish makes the next one download again');
   configs = [];
   assert.equal((await checkQuests(client, { api: fakeApi, db, now })).skipped, true, 'with no server using it the API is not asked');
 

@@ -147,7 +147,7 @@ module.exports = {
       `**Rewards:** ${current.reward_kinds.length ? current.reward_kinds.join(', ') : 'all'} · **Tasks:** ${current.task_kinds.length ? current.task_kinds.join(', ') : 'all'}`,
       `**Card hides:** ${current.hide_sections.length ? current.hide_sections.join(', ') : 'nothing'}`,
       `**Before it ends:** ${current.expiring_hours ? `${current.expiring_hours} h` : 'off'}`,
-      `**Quests API:** ${status.ok === null ? 'not asked yet' : status.ok ? `working, ${status.count} quests` : `failing: ${status.error}`}`,
+      `**Quest sources:** ${status.ok === null ? 'not asked yet' : status.sources.filter((source) => source.ok !== null).map((source) => `${source.name} ${source.ok ? 'ok' : `failing (${source.error})`}`).join(', ')}${status.count ? `, ${status.count} quests` : ''}`,
     ];
     return reply(lines.join('\n'), 0x4b4f59);
   },

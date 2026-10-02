@@ -1,11 +1,11 @@
 // The messages of quest alerts: a Components V2 card that servers can style (color, sections), or one of their saved
 // embeds with the `{quest.*}` variables. A saved embed that is missing or broken falls back to the card.
 const { ContainerBuilder, TextDisplayBuilder, SectionBuilder, ThumbnailBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, SeparatorBuilder, SeparatorSpacingSize, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
-const { SOURCE_NAME, SOURCE_URL, REWARD_LABELS } = require('./questApi');
+const { SOURCE_NAME, SOURCE_URL, TRACKER_URL, REWARD_LABELS } = require('./questApi');
 const { templatePayload } = require('./templatedMessage');
 
 const SECTIONS = ['image', 'rewards', 'tasks', 'platforms', 'limits'];
-const CREDIT = `-# Data from [${SOURCE_NAME}](${SOURCE_URL})`;
+const CREDIT = `-# Data from [${SOURCE_NAME}](${SOURCE_URL}) and [discord-api-tracker](${TRACKER_URL})`;
 
 const unix = (date) => Math.floor(date.getTime() / 1000);
 const minutes = (seconds) => (seconds >= 120 ? `${Math.round(seconds / 60)} min` : seconds ? `${seconds} s` : '');
