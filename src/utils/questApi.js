@@ -8,6 +8,7 @@ const API_BASE = 'https://api.discordquest.com';
 const CDN_BASE = 'https://cdn.discordapp.com/';
 const SOURCE_NAME = 'discordquest.com';
 const SOURCE_URL = 'https://discordquest.com';
+const TRACKER_URL = 'https://github.com/xGustavvo/discord-api-tracker';
 const TIMEOUT_MS = 45_000;
 const MAX_BYTES = 12 * 1024 * 1024;
 
@@ -29,8 +30,13 @@ const TASKS = {
 const TASK_KINDS = ['video', 'play', 'stream', 'activity'];
 const REWARD_KIND_LIST = ['orbs', 'decoration', 'code', 'ingame', 'nitro'];
 
-let lastEtag = null;
-let lastStatus = { ok: null, at: null, error: null, count: 0 };
+// Two public copies of the same list of quests are read, so one being late or down does not stop the alerts: the
+// community API (which also knows the region and age limits) and the GitHub tracker, which follows Discord's own data.
+const SOURCES = [
+  { name: 'discordquest.com', url: `${API_BASE}/api/quests`, regions: true },
+  { name: 'discord-api-tracker', url: 'https://raw.githubusercontent.com/xGustavvo/discord-api-tracker/main/quests.json', regions: false },
+];
+const state = new Map(SOURCES.map((source) => [source.name, { etag: null, quests: null, ok: null, at: null, error: null }]));
 
 function clean(value, max) {
   return String(value ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -112,55 +118,80 @@ function isActive(quest, now = Date.now()) {
   return quest.startsAt.getTime() <= now && quest.expiresAt.getTime() > now;
 }
 
-async function getJson(path, headers = {}) {
+async function getJson(url, headers = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const response = await fetch(`${API_BASE}${path}`, { headers: { accept: 'application/json', 'user-agent': 'Petto-Quest-Alerts (+https://petto.sbs)', ...headers }, signal: controller.signal });
+    const response = await fetch(url, { headers: { accept: 'application/json', 'user-agent': 'Petto-Quest-Alerts (+https://petto.sbs)', ...headers }, signal: controller.signal });
     if (response.status === 304) return { notModified: true, etag: response.headers.get('etag') };
-    if (!response.ok) throw new Error(`The quests API answered ${response.status}.`);
+    if (!response.ok) throw new Error(`answered ${response.status}`);
     const length = Number(response.headers.get('content-length') ?? 0);
-    if (length > MAX_BYTES) throw new Error('The quests answer is too large.');
+    if (length > MAX_BYTES) throw new Error('the answer is too large');
     const text = await response.text();
-    if (text.length > MAX_BYTES) throw new Error('The quests answer is too large.');
+    if (text.length > MAX_BYTES) throw new Error('the answer is too large');
     return { data: JSON.parse(text), etag: response.headers.get('etag') };
   } finally {
     clearTimeout(timer);
   }
 }
 
-/**
- * The current list of quests, or `{ notModified: true }` when nothing changed since the last call. Errors are recorded for
- * `getStatus` and thrown, so the job can decide what to do.
- */
-async function fetchQuests({ force = false } = {}) {
+async function readRegions() {
   try {
-    const result = await getJson('/api/quests', !force && lastEtag ? { 'if-none-match': lastEtag } : {});
-    if (result.notModified) {
-      lastStatus = { ...lastStatus, ok: true, at: new Date(), error: null };
-      return { notModified: true, quests: [] };
-    }
-    if (!Array.isArray(result.data)) throw new Error('The quests answer has an unexpected shape.');
-    let regions = new Map();
-    try {
-      const regionData = (await getJson('/api/regions')).data;
-      regions = new Map((regionData?.quests ?? []).map((row) => [String(row.id), row]));
-    } catch (error) {
-      logger.warn(`The quest regions could not be read: ${error.message}`);
-    }
-    const quests = result.data.map((raw) => normalizeQuest(raw, regions.get(String(raw?.id)) ?? null)).filter(Boolean);
-    lastEtag = result.etag ?? null;
-    lastStatus = { ok: true, at: new Date(), error: null, count: quests.length };
-    return { notModified: false, quests };
+    const rows = (await getJson(`${API_BASE}/api/regions`)).data?.quests ?? [];
+    return new Map(rows.map((row) => [String(row.id), row]));
   } catch (error) {
-    lastStatus = { ...lastStatus, ok: false, at: new Date(), error: error.name === 'AbortError' ? 'The quests API took too long.' : error.message };
+    logger.warn(`The quest regions could not be read: ${error.message}`);
+    return new Map();
+  }
+}
+
+/** Reads one source. Returns true when it brought a new list, false when it had not changed. Throws when it failed. */
+async function readSource(source, force) {
+  const entry = state.get(source.name);
+  try {
+    const result = await getJson(source.url, !force && entry.etag && entry.quests ? { 'if-none-match': entry.etag } : {});
+    if (result.notModified) {
+      Object.assign(entry, { ok: true, at: new Date(), error: null });
+      return false;
+    }
+    if (!Array.isArray(result.data)) throw new Error('the answer has an unexpected shape');
+    const regions = source.regions ? await readRegions() : new Map();
+    entry.quests = result.data.map((raw) => normalizeQuest(raw, regions.get(String(raw?.id)) ?? null)).filter(Boolean);
+    Object.assign(entry, { etag: result.etag ?? null, ok: true, at: new Date(), error: null });
+    return true;
+  } catch (error) {
+    Object.assign(entry, { ok: false, at: new Date(), error: error.name === 'AbortError' ? 'it took too long' : error.message });
     throw error;
   }
 }
 
-const getStatus = () => ({ ...lastStatus });
+/**
+ * The current list of quests from every source that answers, joined by quest id (the community API wins, it has the
+ * limits), or `{ notModified: true }` when no source changed. It only fails when every source failed.
+ */
+async function fetchQuests({ force = false } = {}) {
+  const results = await Promise.allSettled(SOURCES.map((source) => readSource(source, force)));
+  const failed = results.filter((result) => result.status === 'rejected');
+  if (failed.length === SOURCES.length) throw new Error(`The quests could not be read: ${failed.map((result, i) => `${SOURCES[i].name} ${result.reason?.message}`).join('; ')}`);
+  if (!results.some((result) => result.status === 'fulfilled' && result.value)) return { notModified: true, quests: [] };
+  const merged = new Map();
+  for (const source of [...SOURCES].reverse()) for (const quest of state.get(source.name).quests ?? []) merged.set(quest.id, quest);
+  return { notModified: false, quests: [...merged.values()] };
+}
+
+/** Forgets the ETags, so the next pass downloads everything again (used when a pass could not finish). */
+function resetCache() {
+  for (const entry of state.values()) entry.etag = null;
+}
+
+/** How each source did the last time it was asked. */
+function getStatus() {
+  const sources = SOURCES.map((source) => ({ name: source.name, ...state.get(source.name) }));
+  const asked = sources.filter((source) => source.ok !== null);
+  return { ok: asked.length ? asked.some((source) => source.ok) : null, sources, count: Math.max(0, ...sources.map((source) => source.quests?.length ?? 0)) };
+}
 
 module.exports = {
-  API_BASE, SOURCE_NAME, SOURCE_URL, TASK_KINDS, REWARD_KIND_LIST, REWARD_LABELS,
-  fetchQuests, normalizeQuest, isActive, getStatus, cdnImage,
+  API_BASE, SOURCE_NAME, SOURCE_URL, TRACKER_URL, TASK_KINDS, REWARD_KIND_LIST, REWARD_LABELS,
+  fetchQuests, resetCache, normalizeQuest, isActive, getStatus, cdnImage,
 };

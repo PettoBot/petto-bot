@@ -48,15 +48,24 @@ async function checkQuests(client, deps = {}) {
   const configs = await db.listEnabledConfigs();
   const result = { sent: 0, newQuests: 0, baseline: false, skipped: false };
   if (!configs.length) { result.skipped = true; return result; }
-
   const answer = await api.fetchQuests();
   if (answer.notModified) return { ...result, skipped: true };
+  try {
+    return await runPass(client, { api, db, now, configs, answer, result });
+  } catch (error) {
+    api.resetCache?.();
+    throw error;
+  }
+}
+
+async function runPass(client, { api, db, now, configs, answer, result }) {
   const active = answer.quests.filter((quest) => api.isActive(quest, now));
   const seen = await db.listSeenIds();
   const fresh = active.filter((quest) => !seen.has(quest.id));
 
   if (!seen.size) {
-    await db.markSeen(answer.quests);
+    // Only the quests that have started: one that starts later is announced when it does.
+    await db.markSeen(answer.quests.filter((quest) => quest.startsAt.getTime() <= now));
     return { ...result, baseline: true };
   }
   result.newQuests = fresh.length;
