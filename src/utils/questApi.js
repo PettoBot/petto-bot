@@ -37,7 +37,7 @@ const SOURCES = [
   { name: 'discordquest.com', url: `${API_BASE}/api/quests`, regions: true },
   { name: 'discord-api-diff', url: 'https://raw.githubusercontent.com/aamiaa/discord-api-diff/main/quests.json', regions: false },
 ];
-const state = new Map(SOURCES.map((source) => [source.name, { etag: null, quests: null, ok: null, at: null, error: null }]));
+const state = new Map(SOURCES.map((source) => [source.name, { etag: null, quests: null, ok: null, at: null, error: null, pausedUntil: 0 }]));
 
 function clean(value, max) {
   return String(value ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -73,7 +73,7 @@ function normalizeRewards(config) {
     const expires = date(reward.expires_at);
     // Nitro members get 20% more Orbs; when the list does not say how many, that is what it is.
     const premiumOrbs = kind === 'orbs' ? (Number(reward.premium_orb_quantity) || Math.round(orbs * 1.2)) : 0;
-    return { kind, name, amount: kind === 'orbs' ? orbs : 0, premiumAmount: premiumOrbs > orbs ? premiumOrbs : 0, expiresAt: expires, image: cdnImage(reward.asset) };
+    return { kind, sku: String(reward.sku_id ?? ''), name, amount: kind === 'orbs' ? orbs : 0, premiumAmount: premiumOrbs > orbs ? premiumOrbs : 0, expiresAt: expires, image: cdnImage(reward.asset) };
   });
 }
 
@@ -128,6 +128,12 @@ async function getJson(url, headers = {}) {
   try {
     const response = await fetch(url, { headers: { accept: 'application/json', 'user-agent': 'Petto-Quest-Alerts (+https://petto.sbs)', ...headers }, signal: controller.signal });
     if (response.status === 304) return { notModified: true, etag: response.headers.get('etag') };
+    if (response.status === 429) {
+      const wait = Number(response.headers.get('retry-after'));
+      const error = new Error('answered 429, too many requests');
+      error.retryAfterMs = Math.min(3_600_000, Math.max(60_000, Number.isFinite(wait) && wait > 0 ? wait * 1000 : 10 * 60_000));
+      throw error;
+    }
     if (!response.ok) throw new Error(`answered ${response.status}`);
     const length = Number(response.headers.get('content-length') ?? 0);
     if (length > MAX_BYTES) throw new Error('the answer is too large');
@@ -152,6 +158,10 @@ async function readRegions() {
 /** Reads one source. Returns true when it brought a new list, false when it had not changed. Throws when it failed. */
 async function readSource(source, force) {
   const entry = state.get(source.name);
+  if (entry.pausedUntil > Date.now()) {
+    entry.error = `paused after a rate limit, until ${new Date(entry.pausedUntil).toISOString()}`;
+    throw new Error(entry.error);
+  }
   try {
     const result = await getJson(source.url, !force && entry.etag && entry.quests ? { 'if-none-match': entry.etag } : {});
     if (result.notModified) {
@@ -165,6 +175,7 @@ async function readSource(source, force) {
     return true;
   } catch (error) {
     Object.assign(entry, { ok: false, at: new Date(), error: error.name === 'AbortError' ? 'it took too long' : error.message });
+    if (error.retryAfterMs) entry.pausedUntil = Date.now() + error.retryAfterMs;
     throw error;
   }
 }
@@ -188,6 +199,15 @@ function resetCache() {
   for (const entry of state.values()) entry.etag = null;
 }
 
+/** The quests as the sources last said, joined, asking again only when the answer is older than `maxAgeMs`. */
+async function getQuests({ maxAgeMs = 5 * 60_000 } = {}) {
+  const fresh = SOURCES.some((source) => { const entry = state.get(source.name); return entry.quests && entry.at && Date.now() - entry.at.getTime() < maxAgeMs && entry.ok; });
+  if (!fresh) await fetchQuests();
+  const merged = new Map();
+  for (const source of [...SOURCES].reverse()) for (const quest of state.get(source.name).quests ?? []) merged.set(quest.id, quest);
+  return [...merged.values()];
+}
+
 /** How each source did the last time it was asked. */
 function getStatus() {
   const sources = SOURCES.map((source) => ({ name: source.name, ...state.get(source.name) }));
@@ -197,5 +217,5 @@ function getStatus() {
 
 module.exports = {
   API_BASE, SOURCE_NAME, SOURCE_URL, TRACKER_URL, TASK_KINDS, REWARD_KIND_LIST, REWARD_LABELS,
-  fetchQuests, resetCache, normalizeQuest, isActive, getStatus, cdnImage,
+  fetchQuests, getQuests, resetCache, normalizeQuest, isActive, getStatus, cdnImage,
 };

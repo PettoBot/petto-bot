@@ -6,19 +6,20 @@ const { getTemplate } = require('../db/embedTemplates');
 const { build, hasSendablePayload } = require('./embedBuilder');
 const logger = require('./logger');
 
-/** `{ content, embeds, components, files }` ready to send, or null when there is no usable template. */
-async function templatePayload(guildId, name, ctx) {
+/** `{ content, embeds, components, files }` (and `flags` for a Components V2 message) ready to send, or null when there is no usable template. */
+async function templatePayload(guildId, name, ctx, options = {}) {
   if (!guildId || !name) return null;
   try {
     const doc = await getTemplate(guildId, name);
     if (!doc?.data) return null;
-    const payload = await build(doc.data, ctx);
+    const payload = await build(doc.data, { ...ctx, allowV2: true, v2Extras: options.v2Extras });
     if (!hasSendablePayload(payload)) return null;
     return {
       content: payload.content || undefined,
       embeds: payload.embeds ?? [],
       components: payload.components ?? [],
       files: payload.files ?? [],
+      ...(payload.flags ? { flags: payload.flags } : {}),
     };
   } catch (error) {
     logger.warn({ guildId, action: 'template-message' }, `The template ${name} could not be built: ${error.message}`);

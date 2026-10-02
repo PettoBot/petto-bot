@@ -1,6 +1,7 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { resolve } = require('./embedVariables');
 const { renderCardForMessage, normalizeCardRef, CARD_FILE_NAME } = require('./cardService');
+const { isV2, buildV2, hasV2Content } = require('./embedV2');
 
 function parseColor(input) {
   const hex = input.replace('#', '');
@@ -202,6 +203,13 @@ function formatEmbedError(error) {
  * `embed`) and replaces its image, and it is attached on its own otherwise or when `placement` is `attachment`.
  */
 async function build(data, ctx = {}) {
+  // A Components V2 message cannot have text or embeds and needs its own flag, so only the senders that pass `allowV2`
+  // get it. Anywhere else it gives an empty message, and the sender goes on with its usual one.
+  if (isV2(data)) {
+    if (!ctx.allowV2) return { content: undefined, embeds: [], components: [], files: [] };
+    const { components, flags } = await buildV2(data.v2, ctx, ctx.v2Extras);
+    return { content: undefined, embeds: [], components, files: [], flags };
+  }
   const { content, embeds, buttons, card } = normalize(data);
   const builtEmbeds = await Promise.all(embeds.slice(0, 10).map((e) => buildOneEmbed(e, ctx)));
   const files = [];
@@ -257,6 +265,7 @@ function buildRawPreview(data) {
 }
 
 function hasContent(data) {
+  if (isV2(data)) return hasV2Content(data);
   const { content, embeds, buttons, card } = normalize(data);
   const e = embeds[0] ?? {};
   const hasValidField = Array.isArray(e.fields) && e.fields.some((field) => textValue(field?.name) && textValue(field?.value));
