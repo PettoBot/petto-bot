@@ -63,8 +63,7 @@ function questContext(quest, kind = 'new') {
 }
 
 function accentOf(quest, config) {
-  if (Number.isInteger(config.accent_color)) return config.accent_color;
-  return parseInt(quest.color.slice(1), 16);
+  return Number.isInteger(config.accent_color) ? config.accent_color : null;
 }
 
 const REWARD_TYPES = { orbs: 'Virtual currency', decoration: 'Collectible', code: 'Code', ingame: 'In-game item', nitro: 'Nitro' };
@@ -107,7 +106,9 @@ function buildQuestCard(quest, config = {}, { kind = 'new', rolePing = null } = 
   const hidden = new Set(config.hide_sections ?? []);
   const text = (content) => new TextDisplayBuilder().setContent(content);
   const divider = () => new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small);
-  const container = new ContainerBuilder().setAccentColor(accentOf(quest, config));
+  const container = new ContainerBuilder();
+  const accent = accentOf(quest, config);
+  if (accent !== null) container.setAccentColor(accent);
   const title = `# ${EMOJI.QUEST_BADGE} [${kind === 'expiring' ? 'Ending soon: ' : ''}${quest.name}](${quest.url})`;
   container.addTextDisplayComponents(text(`${rolePing ? `-# ${rolePing}\n` : ''}${title}`));
   if (quest.image && !hidden.has('image')) container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(quest.image)));
@@ -135,12 +136,13 @@ function buildQuestCard(quest, config = {}, { kind = 'new', rolePing = null } = 
   return { components: [container, new ActionRowBuilder().addComponents(buttons)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [], roles: config.role_id ? [config.role_id] : [] } };
 }
 
-const LIST_PAGE_SIZE = 25; // the options a select menu can hold
+const LIST_PAGE_SIZE = 10; // quests shown in a page, each with its details, so the text stays under Discord's limit
 const SELECT_ID = 'quests:view';
 const PAGE_ID = 'quests:page';
 
 // One icon for each kind of reward, for the options of the list.
 const customEmoji = (text) => { const match = /^<(a?):(\w+):(\d+)>$/.exec(text); return match ? { id: match[3], name: match[2], animated: Boolean(match[1]) } : text; };
+const REWARD_EMOJI = { decoration: '🎭', code: '🎟️', ingame: '🎮', nitro: '💎', other: '🎁' };
 const REWARD_ICON = { orbs: customEmoji(EMOJI.QUEST_NITRO), decoration: '🎭', code: '🎟️', ingame: '🎮', nitro: '💎', other: '🎁' };
 const TASK_WORD = { video: 'Video', play: 'Play', stream: 'Stream', activity: 'Activity' };
 const shortDate = (date) => date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
@@ -156,16 +158,30 @@ function listOption(quest) {
   };
 }
 
+/** One quest of the list as text: its name, reward, task, end and limits. */
+function listEntry(quest) {
+  const reward = quest.rewards.map((entry) => (entry.kind === 'orbs' ? `${entry.amount} Orbs` : entry.name)).join(', ') || 'No reward listed';
+  const icon = quest.rewards[0]?.kind === 'orbs' ? EMOJI.QUEST_NITRO : (REWARD_EMOJI[quest.rewards[0]?.kind] ?? REWARD_EMOJI.other);
+  const limits = limitLines(quest).join(' · ');
+  return [
+    `### ${icon} [${quest.name}](${quest.url})`,
+    `-# 🎁 ${reward} · ${TASK_WORD[quest.tasks[0]?.kind] ?? 'Task'} · ends <t:${unix(quest.expiresAt)}:R>`,
+    limits ? `-# ${EMOJI.QUEST_ALERT} ${limits.length > 150 ? `${limits.slice(0, 147)}...` : limits}` : null,
+  ].filter(Boolean).join('\n');
+}
+
 /** The list of active quests as a menu: pick one to see its card. Quests past the first page have page buttons. */
 function buildQuestList(quests, { page = 1 } = {}) {
   const pages = Math.max(1, Math.ceil(quests.length / LIST_PAGE_SIZE));
   const current = Math.min(Math.max(1, page), pages);
   const slice = quests.slice((current - 1) * LIST_PAGE_SIZE, current * LIST_PAGE_SIZE);
-  const container = new ContainerBuilder().setAccentColor(0x5865f2);
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${EMOJI.QUEST_BADGE} Active quests\n-# ${quests.length} quest${quests.length === 1 ? '' : 's'}${pages > 1 ? ` · page ${current} of ${pages}` : ''} · pick one to see it`));
+  const container = new ContainerBuilder();
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${EMOJI.QUEST_BADGE} Active quests\n-# ${quests.length} quest${quests.length === 1 ? '' : 's'}${pages > 1 ? ` · page ${current} of ${pages}` : ''} · pick one below to see its full card`));
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(slice.map(listEntry).join('\n')));
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
   container.addActionRowComponents(new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder().setCustomId(SELECT_ID).setPlaceholder('Choose a quest').addOptions(slice.map(listOption)),
+    new StringSelectMenuBuilder().setCustomId(SELECT_ID).setPlaceholder('See a quest in full').addOptions(slice.map(listOption)),
   ));
   if (pages > 1) {
     container.addActionRowComponents(new ActionRowBuilder().addComponents(

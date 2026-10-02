@@ -56,10 +56,10 @@ module.exports = {
     .addSubcommand((s) => s.setName('status').setDescription('Show the settings and the state of the quests API.')),
 
   async execute(interaction) {
-    const reply = (text, color = 0xa5ea7a) => interaction.editReply({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2 });
+    const reply = (text) => interaction.editReply({ components: [textCard(text, null)], flags: MessageFlags.IsComponentsV2 });
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
     if (!canUseQuests(interaction.user.id)) {
-      return reply(`${EMOJI.DENY}  Quest alerts are in testing and only available to Petto's team for now.`, 0xfe6465);
+      return reply(`${EMOJI.DENY}  Quest alerts are in testing and only available to Petto's team for now.`);
     }
     await ensureGuild(interaction.guild.id);
     const guildId = interaction.guild.id;
@@ -84,21 +84,21 @@ module.exports = {
     }
     if (sub === 'style') {
       const style = String(interaction.options.getString('style', true)).trim().toLowerCase();
-      if (!['card', 'template'].includes(style)) return reply('Choose `card` or `template`.', 0xfe6465);
+      if (!['card', 'template'].includes(style)) return reply('Choose `card` or `template`.');
       if (style === 'card') {
         await save({ style: 'card' });
         return reply(`${EMOJI.APPROVE}  Alerts use the card.`);
       }
       const name = String(interaction.options.getString('template') ?? current.embed_template ?? '').trim();
       const doc = name ? await getTemplate(guildId, name).catch(() => null) : null;
-      if (!doc) return reply(name ? `No saved embed named \`${name}\` was found. Make one in the dashboard, under Embeds. Its variables start with \`{quest.…}\`.` : 'Give the name of a saved embed: `quests style template <name>`.', 0xfe6465);
+      if (!doc) return reply(name ? `No saved embed named \`${name}\` was found. Make one in the dashboard, under Embeds. Its variables start with \`{quest.…}\`.` : 'Give the name of a saved embed: `quests style template <name>`.');
       await save({ style: 'template', embed_template: doc.name });
       return reply(`${EMOJI.APPROVE}  Alerts now use the saved embed \`${doc.name}\`. If it is missing or broken, the card is sent instead.`);
     }
     if (sub === 'rewards' || sub === 'tasks') {
       const allowed = sub === 'rewards' ? questApi.REWARD_KIND_LIST : questApi.TASK_KINDS;
       const values = readList(interaction.options.getString('kinds'), allowed);
-      if (values === null) return reply(`Choose from: ${allowed.map((v) => `\`${v}\``).join(', ')}, or \`all\`.`, 0xfe6465);
+      if (values === null) return reply(`Choose from: ${allowed.map((v) => `\`${v}\``).join(', ')}, or \`all\`.`);
       await save({ [sub === 'rewards' ? 'reward_kinds' : 'task_kinds']: values });
       return reply(`${EMOJI.APPROVE}  ${values.length ? `Only quests with ${sub === 'rewards' ? 'these rewards' : 'these tasks'}: ${values.join(', ')}.` : `Alerts for every kind of ${sub === 'rewards' ? 'reward' : 'task'}.`}`);
     }
@@ -109,7 +109,7 @@ module.exports = {
         await save({ hide_sections: [], accent_color: null });
         return reply(`${EMOJI.APPROVE}  The card shows everything again, with the color of each quest.`);
       }
-      if (!['hide', 'show'].includes(action) || !SECTIONS.includes(section)) return reply(`Use \`quests card hide|show <section>\` with one of: ${SECTIONS.map((v) => `\`${v}\``).join(', ')}.`, 0xfe6465);
+      if (!['hide', 'show'].includes(action) || !SECTIONS.includes(section)) return reply(`Use \`quests card hide|show <section>\` with one of: ${SECTIONS.map((v) => `\`${v}\``).join(', ')}.`);
       const hidden = new Set(current.hide_sections);
       if (action === 'hide') hidden.add(section); else hidden.delete(section);
       await save({ hide_sections: [...hidden] });
@@ -118,7 +118,7 @@ module.exports = {
     if (sub === 'color') {
       const hex = String(interaction.options.getString('hex') ?? '').trim().replace(/^#/, '');
       if (!hex) { await save({ accent_color: null }); return reply(`${EMOJI.APPROVE}  The card uses the color of each quest.`); }
-      if (!/^[0-9a-f]{6}$/i.test(hex)) return reply('Use a color like `#ff91c2`.', 0xfe6465);
+      if (!/^[0-9a-f]{6}$/i.test(hex)) return reply('Use a color like `#ff91c2`.');
       await save({ accent_color: parseInt(hex, 16) });
       return reply(`${EMOJI.APPROVE}  The card color is #${hex.toLowerCase()}.`);
     }
@@ -129,9 +129,9 @@ module.exports = {
     }
     if (sub === 'list' || sub === 'test') {
       let quests;
-      try { quests = (await questApi.fetchQuests({ force: true })).quests.filter((quest) => questApi.isActive(quest)); } catch (error) { return reply(`${EMOJI.DENY}  The quests could not be read: ${error.message}`, 0xfe6465); }
+      try { quests = (await questApi.fetchQuests({ force: true })).quests.filter((quest) => questApi.isActive(quest)); } catch (error) { return reply(`${EMOJI.DENY}  The quests could not be read: ${error.message}`); }
       quests.sort((a, b) => (b.startsAt - a.startsAt) || b.id.localeCompare(a.id));
-      if (!quests.length) return reply('There are no active quests right now.', 0x4b4f59);
+      if (!quests.length) return reply('There are no active quests right now.');
       if (sub === 'list') return interaction.editReply(buildQuestList(quests, { page: interaction.options.getInteger('page') ?? 1 }));
       const payload = await questMessage(interaction.guild, { ...current, role_id: null }, quests[0], 'new');
       await interaction.channel.send(payload).catch(() => null);
@@ -147,6 +147,6 @@ module.exports = {
       `**Before it ends:** ${current.expiring_hours ? `${current.expiring_hours} h` : 'off'}`,
       `**Quest sources:** ${status.ok === null ? 'not asked yet' : status.sources.filter((source) => source.ok !== null).map((source) => `${source.name} ${source.ok ? 'ok' : `failing (${source.error})`}`).join(', ')}${status.count ? `, ${status.count} quests` : ''}`,
     ];
-    return reply(lines.join('\n'), 0x4b4f59);
+    return reply(lines.join('\n'));
   },
 };
