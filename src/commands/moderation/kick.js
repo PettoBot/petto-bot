@@ -2,9 +2,9 @@ const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('disc
 const { ensureGuild } = require('../../db/guilds');
 const { createCase } = require('../../db/modActions');
 const { canModerate } = require('../../utils/permissions');
-const { buildCaseCard, textCard } = require('../../utils/caseCard');
+const { textCard } = require('../../utils/caseCard');
 const { logSanction } = require('../../utils/caseLog');
-const { buildSanctionDM } = require('../../utils/sanctionMessage');
+const { sanctionDM, sanctionReply } = require('../../utils/sanctionTemplates');
 const { resolveUsers } = require('../../utils/userResolve');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
@@ -59,7 +59,7 @@ async function kickUser(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   await targetMember
-    .send(buildSanctionDM({ type: 'kick', guild: interaction.guild, client: interaction.client, reason }))
+    .send(await sanctionDM({ type: 'kick', guild: interaction.guild, client: interaction.client, reason, member: targetMember, moderator: interaction.user }))
     .catch(() => logger.warn(`Could not DM kick notice to ${targetUser.id} in guild ${interaction.guild.id}.`));
 
   try {
@@ -73,8 +73,7 @@ async function kickUser(interaction) {
   await ensureGuild(interaction.guild.id);
   const modCase = await createCase({ guildId: interaction.guild.id, userId: targetUser.id, moderatorId: interaction.user.id, type: 'kick', reason });
 
-  const card = buildCaseCard({ caseNumber: modCase.case_number, type: 'kick', target: targetUser, moderator: interaction.user, reason });
-  await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });
+  await sanctionReply(interaction, { modCase, type: 'kick', target: targetUser, moderator: interaction.user, reason });
   await logSanction(interaction.client, interaction.guild, { modCase, target: targetUser, moderator: interaction.user, reason });
 }
 
@@ -109,7 +108,7 @@ async function kickUsers(interaction) {
 
     try {
       await member
-        .send(buildSanctionDM({ type: 'kick', guild: interaction.guild, client: interaction.client, reason }))
+        .send(await sanctionDM({ type: 'kick', guild: interaction.guild, client: interaction.client, reason, member: member, moderator: interaction.user }))
         .catch(() => logger.warn(`Could not DM kick notice to ${user.id} in guild ${interaction.guild.id}.`));
       await member.kick(reason ?? undefined);
       const modCase = await createCase({ guildId: interaction.guild.id, userId: user.id, moderatorId: interaction.user.id, type: 'kick', reason });

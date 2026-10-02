@@ -1,5 +1,8 @@
 const { ContainerBuilder, TextDisplayBuilder, SectionBuilder, ThumbnailBuilder } = require('discord.js');
 const config = require('../config');
+const { MessageFlags } = require('discord.js');
+const { templatePayload } = require('./templatedMessage');
+const { getConfig } = require('../db/verificationConfig');
 
 const ACCENT_COLOR = 0x4b4f59; // matches the verification page's accent
 const SUCCESS_COLOR = 0xa5ea7a;
@@ -43,4 +46,20 @@ function buildVerifiedDM({ guild }) {
   return container;
 }
 
-module.exports = { buildVerifyDM, buildVerifiedDM };
+/** DMs the verification link, with the server's saved embed when one is chosen. Rejects if the DM cannot be sent. */
+async function sendVerifyDM(member, { guild, link }) {
+  const settings = await getConfig(guild.id).catch(() => null);
+  const custom = await templatePayload(guild.id, settings?.prompt_embed_template, { guild, user: member.user ?? member, member, verify: { link } });
+  if (custom) return member.send({ ...custom, allowedMentions: { parse: [] } });
+  return member.send({ components: [buildVerifyDM({ guild, link })], flags: MessageFlags.IsComponentsV2 });
+}
+
+/** DMs the confirmation after a member verified, with the server's saved embed when one is chosen. */
+async function sendVerifiedDM(member, { guild }) {
+  const settings = await getConfig(guild.id).catch(() => null);
+  const custom = await templatePayload(guild.id, settings?.verified_embed_template, { guild, user: member.user ?? member, member });
+  if (custom) return member.send({ ...custom, allowedMentions: { parse: [] } });
+  return member.send({ components: [buildVerifiedDM({ guild })], flags: MessageFlags.IsComponentsV2 });
+}
+
+module.exports = { buildVerifyDM, buildVerifiedDM, sendVerifyDM, sendVerifiedDM };

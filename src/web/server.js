@@ -9,7 +9,7 @@ const { getConfig } = require('../db/verificationConfig');
 const { isRedeemed, claimRedemption, releaseRedemption } = require('../db/verificationRedemptions');
 const { getTicketById } = require('../db/tickets');
 const { logVerification } = require('../utils/verificationLog');
-const { buildVerifiedDM } = require('../utils/verifyMessage');
+const { sendVerifiedDM } = require('../utils/verifyMessage');
 const { createBackup, listBackups, getBackup, recordAudit, vault } = require('../db/backups');
 const { restoreBackup } = require('../utils/backupRestore');
 const { buildSnapshot } = require('../commands/config/backup');
@@ -389,8 +389,7 @@ function startServer(client) {
       // Best-effort follow-up work, the member's already verified at this point,
       // so none of this should turn a real success into an error response.
       await logVerification(client, guild, member.user).catch((err) => logger.error('Failed to log verification:', err));
-      await member
-        .send({ components: [buildVerifiedDM({ guild })], flags: MessageFlags.IsComponentsV2 })
+      await sendVerifiedDM(member, { guild })
         .catch(() => logger.warn(`Could not DM verified confirmation to ${member.id} in guild ${guild.id}.`));
     } catch (err) {
       logger.error('Failed to apply verification roles:', err);

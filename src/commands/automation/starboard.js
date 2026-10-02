@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const starboardDb = require('../../db/starboard');
+const { getTemplate } = require('../../db/embedTemplates');
 const { textCard } = require('../../utils/caseCard');
 
 module.exports = {
@@ -17,6 +18,7 @@ module.exports = {
     .addSubcommand((s) => s.setName('selfstar').setDescription('Allow the message author to count their own reaction.').addBooleanOption((o) => o.setName('enabled').setDescription('Enabled?').setRequired(true)))
     .addSubcommand((s) => s.setName('ignore').setDescription('Ignore a channel, role, or member.').addStringOption((o) => o.setName('type').setDescription('What to ignore.').setRequired(true).addChoices({ name: 'channel', value: 'channel' }, { name: 'role', value: 'role' }, { name: 'member', value: 'member' })).addStringOption((o) => o.setName('target').setDescription('Mention or ID.').setRequired(true)))
     .addSubcommand((s) => s.setName('unignore').setDescription('Remove an ignored channel, role, or member.').addStringOption((o) => o.setName('type').setDescription('What to unignore.').setRequired(true).addChoices({ name: 'channel', value: 'channel' }, { name: 'role', value: 'role' }, { name: 'member', value: 'member' })).addStringOption((o) => o.setName('target').setDescription('Mention or ID.').setRequired(true)))
+    .addSubcommand((s) => s.setName('message').setDescription('Use a saved embed for the reposts, or none to go back to the usual one.').addStringOption((o) => o.setName('template').setDescription('Name of a saved embed, or none.').setRequired(true)))
     .addSubcommand((s) => s.setName('view').setDescription('View starboard settings.')),
 
   async execute(interaction) {
@@ -27,6 +29,7 @@ module.exports = {
     if (sub === 'threshold') return update(interaction, { threshold: interaction.options.getInteger('count', true) });
     if (sub === 'emoji') return update(interaction, { emoji: interaction.options.getString('emoji', true).trim() });
     if (sub === 'selfstar') return update(interaction, { selfstar: interaction.options.getBoolean('enabled', true) });
+    if (sub === 'message') return setMessage(interaction);
     if (sub === 'ignore' || sub === 'unignore') return changeIgnore(interaction, sub === 'ignore');
     return view(interaction);
   },
@@ -47,6 +50,18 @@ async function update(interaction, changes) {
   return interaction.reply({ components: [textCard(`Starboard updated. Threshold: **${row.threshold}**, emoji: ${row.emoji}${row.channel_id ? `, channel: <#${row.channel_id}>` : ''}.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
+async function setMessage(interaction) {
+  const name = interaction.options.getString('template', true).trim();
+  if (name.toLowerCase() === 'none') {
+    await starboardDb.updateConfig(interaction.guild.id, { embed_template: null });
+    return interaction.reply({ components: [textCard('The starboard reposts use the usual message again.', 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  }
+  const doc = await getTemplate(interaction.guild.id, name).catch(() => null);
+  if (!doc) return interaction.reply({ components: [textCard(`No saved embed named \`${name}\` was found. Make one in the dashboard, under Embeds.`, 0xff6b6b)], flags: MessageFlags.IsComponentsV2 });
+  await starboardDb.updateConfig(interaction.guild.id, { embed_template: doc.name });
+  return interaction.reply({ components: [textCard(`The starboard reposts now use \`${doc.name}\`. Its variables start with \`{star.…}\`.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+}
+
 async function changeIgnore(interaction, add) {
   const row = await starboardDb.ensureConfig(interaction.guild.id);
   const type = interaction.options.getString('type', true);
@@ -63,6 +78,6 @@ async function changeIgnore(interaction, add) {
 async function view(interaction) {
   const row = await starboardDb.getConfig(interaction.guild.id);
   if (!row) return interaction.reply({ components: [textCard('Starboard is disabled.', 0xff6b6b)], flags: MessageFlags.IsComponentsV2 });
-  const text = `**Channel:** ${row.channel_id ? `<#${row.channel_id}>` : 'not set'}\n**Threshold:** ${row.threshold}\n**Emoji:** ${row.emoji}\n**Self-star:** ${row.selfstar ? 'enabled' : 'disabled'}\n**Ignored channels:** ${row.ignored_channel_ids?.length ?? 0}\n**Ignored roles:** ${row.ignored_role_ids?.length ?? 0}\n**Ignored members:** ${row.ignored_user_ids?.length ?? 0}`;
+  const text = `**Channel:** ${row.channel_id ? `<#${row.channel_id}>` : 'not set'}\n**Threshold:** ${row.threshold}\n**Emoji:** ${row.emoji}\n**Self-star:** ${row.selfstar ? 'enabled' : 'disabled'}\n**Message:** ${row.embed_template ? `\`${row.embed_template}\`` : 'usual'}\n**Ignored channels:** ${row.ignored_channel_ids?.length ?? 0}\n**Ignored roles:** ${row.ignored_role_ids?.length ?? 0}\n**Ignored members:** ${row.ignored_user_ids?.length ?? 0}`;
   return interaction.reply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }

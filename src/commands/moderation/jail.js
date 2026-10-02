@@ -2,9 +2,9 @@ const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('disc
 const { ensureGuild } = require('../../db/guilds');
 const { listJailed } = require('../../db/jail');
 const { canModerate } = require('../../utils/permissions');
-const { buildCaseCard, textCard } = require('../../utils/caseCard');
+const { textCard } = require('../../utils/caseCard');
 const { logSanction } = require('../../utils/caseLog');
-const { buildSanctionDM } = require('../../utils/sanctionMessage');
+const { sanctionDM, sanctionReply } = require('../../utils/sanctionTemplates');
 const { parseDuration, formatDuration } = require('../../utils/duration');
 const { JailError, jailMember, unjailMember, ensureJailSetup } = require('../../utils/jail');
 const { infoPayload, noticePayload } = require('../../utils/infoCard');
@@ -78,12 +78,11 @@ async function jailUser(interaction) {
   }
 
   const duration = durationMs ? formatDuration(durationMs) : undefined;
-  const card = buildCaseCard({ caseNumber: result.modCase.case_number, type: 'jail', target: targetUser, moderator: interaction.user, reason, duration });
-  await interaction.editReply({ components: [card], flags: V2 });
+  await sanctionReply(interaction, { modCase: result.modCase, type: 'jail', target: targetUser, moderator: interaction.user, reason, duration });
   await logSanction(interaction.client, interaction.guild, { modCase: result.modCase, target: targetUser, moderator: interaction.user, reason, duration });
 
   await targetMember
-    .send(buildSanctionDM({ type: 'jail', guild: interaction.guild, client: interaction.client, reason, duration }))
+    .send(await sanctionDM({ type: 'jail', guild: interaction.guild, client: interaction.client, reason, duration, member: targetMember, moderator: interaction.user, caseNumber: result.modCase.case_number }))
     .catch(() => logger.warn(`Could not DM jail notice to ${targetUser.id} in guild ${interaction.guild.id}.`));
 }
 
@@ -111,12 +110,11 @@ async function releaseUser(interaction) {
     return;
   }
 
-  const card = buildCaseCard({ caseNumber: result.modCase.case_number, type: 'unjail', target: targetUser, moderator: interaction.user, reason });
-  await interaction.editReply({ components: [card], flags: V2 });
+  await sanctionReply(interaction, { modCase: result.modCase, type: 'unjail', target: targetUser, moderator: interaction.user, reason });
   await logSanction(interaction.client, interaction.guild, { modCase: result.modCase, target: targetUser, moderator: interaction.user, reason });
 
   await result.member
-    ?.send(buildSanctionDM({ type: 'unjail', guild: interaction.guild, client: interaction.client, reason }))
+    ?.send(await sanctionDM({ type: 'unjail', guild: interaction.guild, client: interaction.client, reason, member: result.member, moderator: interaction.user, caseNumber: result.modCase.case_number }))
     .catch(() => logger.warn(`Could not DM unjail notice to ${targetUser.id} in guild ${interaction.guild.id}.`));
 }
 

@@ -1,6 +1,7 @@
 const { Events, EmbedBuilder } = require('discord.js');
 const starboardDb = require('../db/starboard');
 const logger = require('../utils/logger');
+const { templatePayload } = require('../utils/templatedMessage');
 
 const busy = new Set();
 
@@ -41,7 +42,7 @@ async function sync(reaction) {
       return;
     }
 
-    const payload = buildPayload(message, row, count);
+    const payload = await buildCustomPayload(message, row, count) ?? buildPayload(message, row, count);
     if (entry) {
       const repost = await destination.messages.fetch(entry.starboard_message_id).catch(() => null);
       if (repost) {
@@ -55,6 +56,29 @@ async function sync(reaction) {
   } finally {
     busy.delete(message.id);
   }
+}
+
+// A saved embed chosen in the dashboard replaces the usual repost; a missing or broken one falls back to it.
+async function buildCustomPayload(message, row, count) {
+  if (!row.embed_template) return null;
+  const files = [...message.attachments.values()];
+  const image = files.find((file) => file.contentType?.startsWith('image/'));
+  const links = files.filter((file) => file !== image).map((file) => `[${file.name}](${file.url})`);
+  const star = {
+    count,
+    emoji: row.emoji,
+    channelId: message.channel.id,
+    channelName: message.channel.name,
+    link: message.url,
+    messageId: message.id,
+    author: { id: message.author?.id, name: message.author?.username ?? 'Unknown user', avatar: message.author?.displayAvatarURL?.() },
+    content: message.content,
+    image: image?.url ?? '',
+    attachments: links.join('\n'),
+    unix: Math.floor((message.createdTimestamp ?? Date.now()) / 1000),
+  };
+  const payload = await templatePayload(message.guild.id, row.embed_template, { guild: message.guild, user: message.author, member: message.member, channel: message.channel, star });
+  return payload ? { ...payload, allowedMentions: { parse: [] } } : null;
 }
 
 function buildPayload(message, row, count) {
