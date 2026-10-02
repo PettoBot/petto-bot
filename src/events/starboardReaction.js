@@ -97,3 +97,4 @@ function buildPayload(message, row, count) {
 }
 
 module.exports.syncStarboard = sync;
+module.exports.buildCustomPayload = buildCustomPayload;
