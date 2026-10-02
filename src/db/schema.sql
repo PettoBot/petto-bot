@@ -2083,3 +2083,104 @@ begin
   return query select true, next_count;
 end;
 $$;
+
+-- Leveling v2: rank card, anti-abuse rules, XP events, daily bonus and streaks, weekly and monthly rankings.
+alter table level_config add column if not exists rank_style text not null default 'card' check (rank_style in ('card', 'embed', 'both'));
+alter table level_config add column if not exists rank_card text;
+alter table level_config add column if not exists notify_card text;
+alter table level_config add column if not exists voice_notify_card text;
+-- A message shorter than this many characters (after links, mentions and spaces are removed) gives no XP.
+alter table level_config add column if not exists min_message_chars integer not null default 3 check (min_message_chars between 0 and 200);
+-- The same text again within a minute gives no XP.
+alter table level_config add column if not exists anti_repeat boolean not null default true;
+-- Voice XP only while at least this many people (not bots) are in the channel, and optionally not while muted.
+alter table level_config add column if not exists voice_min_members integer not null default 2 check (voice_min_members between 1 and 20);
+alter table level_config add column if not exists voice_ignore_muted boolean not null default false;
+-- Bonus XP for the first activity of each day, and extra per consecutive day (up to streak_max_days).
+alter table level_config add column if not exists daily_bonus_xp integer not null default 0 check (daily_bonus_xp between 0 and 100000);
+alter table level_config add column if not exists streak_bonus_xp integer not null default 0 check (streak_bonus_xp between 0 and 10000);
+alter table level_config add column if not exists streak_max_days integer not null default 7 check (streak_max_days between 1 and 365);
+
+alter table level_users add column if not exists last_active_day date;
+alter table level_users add column if not exists streak integer not null default 0;
+alter table level_users add column if not exists best_streak integer not null default 0;
+
+-- Temporary XP multipliers with a start and an end, for all XP or only text or voice.
+create table if not exists xp_events (
+  id          bigserial primary key,
+  guild_id    text not null references guilds(guild_id) on delete cascade,
+  name        text not null,
+  multiplier  numeric not null check (multiplier > 0 and multiplier <= 20),
+  source      text not null default 'all' check (source in ('all', 'text', 'voice')),
+  starts_at   timestamptz not null,
+  ends_at     timestamptz not null check (ends_at > starts_at),
+  created_by  text,
+  created_at  timestamptz not null default now()
+);
+create index if not exists idx_xp_events_guild_time on xp_events(guild_id, ends_at);
+alter table xp_events enable row level security;
+
+-- XP earned in one week or month. The key changes with the period, so a new period starts empty by itself.
+create table if not exists level_period_xp (
+  guild_id    text not null references guilds(guild_id) on delete cascade,
+  user_id     text not null,
+  kind        text not null check (kind in ('week', 'month')),
+  period_key  text not null,
+  text_xp     bigint not null default 0,
+  voice_xp    bigint not null default 0,
+  primary key (guild_id, user_id, kind, period_key)
+);
+create index if not exists idx_level_period_board on level_period_xp(guild_id, kind, period_key, text_xp desc);
+create index if not exists idx_level_period_voice_board on level_period_xp(guild_id, kind, period_key, voice_xp desc);
+alter table level_period_xp enable row level security;
+
+-- Adds XP to the week and month rows of a member in one statement.
+create or replace function add_period_xp(
+  p_guild_id  text,
+  p_user_id   text,
+  p_week_key  text,
+  p_month_key text,
+  p_text_xp   bigint,
+  p_voice_xp  bigint
+) returns void
+language plpgsql
+as $$
+begin
+  insert into level_period_xp (guild_id, user_id, kind, period_key, text_xp, voice_xp)
+  values (p_guild_id, p_user_id, 'week', p_week_key, p_text_xp, p_voice_xp),
+         (p_guild_id, p_user_id, 'month', p_month_key, p_text_xp, p_voice_xp)
+  on conflict (guild_id, user_id, kind, period_key) do update
+    set text_xp = level_period_xp.text_xp + excluded.text_xp,
+        voice_xp = level_period_xp.voice_xp + excluded.voice_xp;
+end;
+$$;
+
+-- Marks a member active today. Returns whether it is the first activity of the day and the streak after it.
+create or replace function touch_level_streak(
+  p_guild_id text,
+  p_user_id  text,
+  p_today    date
+) returns table (new_day boolean, streak integer)
+language plpgsql
+as $$
+declare
+  v_last   date;
+  v_streak integer;
+begin
+  select last_active_day, level_users.streak into v_last, v_streak
+  from level_users where guild_id = p_guild_id and user_id = p_user_id for update;
+  if not found then
+    return query select false, 0;
+    return;
+  end if;
+  if v_last = p_today then
+    return query select false, v_streak;
+    return;
+  end if;
+  v_streak := case when v_last = p_today - 1 then v_streak + 1 else 1 end;
+  update level_users
+    set last_active_day = p_today, streak = v_streak, best_streak = greatest(best_streak, v_streak)
+    where guild_id = p_guild_id and user_id = p_user_id;
+  return query select true, v_streak;
+end;
+$$;

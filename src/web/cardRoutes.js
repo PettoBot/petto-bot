@@ -8,7 +8,7 @@ const { normalizeCard } = require('../utils/cardSchema');
 const { drawCard } = require('../utils/cardService');
 const { decode } = require('../utils/safeImage');
 const { CARD_FONTS } = require('../imgutils/cardFonts');
-const { PRESETS } = require('../utils/cardPresets');
+const { PRESETS, RANK_PRESETS } = require('../utils/cardPresets');
 const imageCards = require('../db/imageCards');
 const cardAssets = require('../db/cardAssets');
 const { getGuildPremium, getGuildLimits } = require('../db/premium');
@@ -30,6 +30,11 @@ const uploadLimiter = rateLimit({
   legacyHeaders: false,
   handler: (_req, res) => { res.status(429).json({ ok: false, error: 'rate_limited' }); },
 });
+// What the variables of a rank card show in the preview of the dashboard.
+const SAMPLE_LEVEL_DATA = {
+  source: 'text', level: 12, xp: 23450, xpNeeded: 2350, xpCurrent: 1420, xpToNext: 930, progress: 60, rank: 3, total: 120,
+  streak: 4, bestStreak: 9, messages: 3210, voiceMinutes: 540,
+};
 const MIMES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 
 function describeLimits(premium) {
@@ -70,6 +75,7 @@ function registerCardRoutes(app, { authorize }) {
       limits: describeLimits(premium),
       usage: { cards: cards.length, assets: assets.length, storageBytes: used },
       presets: PRESETS,
+      rankPresets: RANK_PRESETS,
       fonts: CARD_FONTS.map((font) => ({ family: font.family, weights: font.weights, premium: font.tier === 'premium' })),
       cards,
       assets: assets.map((asset) => ({ id: String(asset.id), name: asset.name, width: asset.width, height: asset.height, size: asset.size })),
@@ -103,7 +109,7 @@ function registerCardRoutes(app, { authorize }) {
   app.post('/api/dashboard/cards/:guildId/preview', cardLimiter, route(async (req, res, { guild, member }) => {
     const premium = (await getGuildPremium(guild.id)).active;
     const checked = normalizeCard(req.body?.data, { premium });
-    const png = await drawCard(req.body?.data, { guild, member, user: member?.user }, { guildId: guild.id, premium });
+    const png = await drawCard(req.body?.data, { guild, member, user: member?.user, levelData: SAMPLE_LEVEL_DATA }, { guildId: guild.id, premium });
     res.set('Content-Type', 'image/png').set('Cache-Control', 'no-store');
     res.set('X-Card-Problems', String(checked.problems.length));
     res.send(png);
