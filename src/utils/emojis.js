@@ -31,6 +31,9 @@ const EMOJI = {
   RELEASE_CHANGELOG: '<:pe_cl:1542054021416751174>',
   RELEASE_BUG: '<:pe_bug:1542055053764861992>',
   RELEASE_APPROVED: '<:pe_aproved:1542048556352016475>',
+  QUEST_BADGE: '<:pe_Quest_Badge1:1555687372430123018>',
+  QUEST_NITRO: '<:pe_Nitro1:1555687432509456485>',
+  QUEST_ALERT: '<:pe_Alert:1555688656876867726>',
   RELEASE_ALERT: '<:pe_alert:1542048558365286531>',
   // Level progress bar: start/middle/end × full/half/empty.
   BAR_START_FULL: '<:petto_iniciolleno:1534705766370381885>',

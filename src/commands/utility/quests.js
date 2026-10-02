@@ -6,7 +6,7 @@ const { ensureGuild } = require('../../db/guilds');
 const { getTemplate } = require('../../db/embedTemplates');
 const questsDb = require('../../db/quests');
 const questApi = require('../../utils/questApi');
-const { questMessage, SECTIONS } = require('../../utils/questMessages');
+const { questMessage, buildQuestList, SECTIONS } = require('../../utils/questMessages');
 const { canUseQuests } = require('../../utils/questAlerts');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
@@ -50,7 +50,8 @@ module.exports = {
       .addStringOption((o) => o.setName('hex').setDescription('For example #ff91c2').setRequired(false)))
     .addSubcommand((s) => s.setName('expiring').setDescription('Also alert when a quest is about to end, this many hours before. 0 turns it off.')
       .addIntegerOption((o) => o.setName('hours').setDescription('0 to 168').setMinValue(0).setMaxValue(168).setRequired(true)))
-    .addSubcommand((s) => s.setName('list').setDescription('Show the quests that are active now.'))
+    .addSubcommand((s) => s.setName('list').setDescription('Show the quests that are active now.')
+      .addIntegerOption((o) => o.setName('page').setDescription('Page of the list').setMinValue(1).setRequired(false)))
     .addSubcommand((s) => s.setName('test').setDescription('Send the newest active quest here, to see how the alert looks.'))
     .addSubcommand((s) => s.setName('status').setDescription('Show the settings and the state of the quests API.')),
 
@@ -131,10 +132,7 @@ module.exports = {
       try { quests = (await questApi.fetchQuests({ force: true })).quests.filter((quest) => questApi.isActive(quest)); } catch (error) { return reply(`${EMOJI.DENY}  The quests could not be read: ${error.message}`, 0xfe6465); }
       quests.sort((a, b) => (b.startsAt - a.startsAt) || b.id.localeCompare(a.id));
       if (!quests.length) return reply('There are no active quests right now.', 0x4b4f59);
-      if (sub === 'list') {
-        const lines = quests.slice(0, 12).map((quest) => `**${quest.name}** (${quest.game || 'Discord'}) · ${quest.rewards.map((reward) => reward.name).join(', ') || 'no reward listed'} · ends <t:${Math.floor(quest.expiresAt.getTime() / 1000)}:R>`);
-        return reply(`${quests.length} active quest${quests.length === 1 ? '' : 's'}${quests.length > 12 ? ', the newest 12:' : ':'}\n${lines.join('\n')}`, 0x4b4f59);
-      }
+      if (sub === 'list') return interaction.editReply(buildQuestList(quests, { page: interaction.options.getInteger('page') ?? 1 }));
       const payload = await questMessage(interaction.guild, { ...current, role_id: null }, quests[0], 'new');
       await interaction.channel.send(payload).catch(() => null);
       return reply(`${EMOJI.APPROVE}  Sent the newest quest here as a test.`);
