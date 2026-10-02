@@ -12,17 +12,17 @@ const RELEASES = [
       {
         title: `${EMOJI.RELEASE_EXPERIENCE} Leveling`,
         items: [
-          '`/rank` answers with a rank card, the improved embed, or both (`/level rank-style`). The embed shows the position, XP to the next level, messages, voice time, the streak and the week.',
-          'Anti-abuse rules (`/level rules`): minimum length, links and mentions, repeated text and voice minimums.',
-          'XP events with a multiplier (`/level event`), daily bonus and streaks, and `/top period:week` or `period:month`.',
+          '`!rank` answers with a rank card, the improved embed, or both (`!level rank-style`). The embed shows the position, XP to the next level, messages, voice time, the streak and the week.',
+          'Anti-abuse rules (`!level rules`): minimum length, links and mentions, repeated text and voice minimums.',
+          'XP events with a multiplier (`!level event`), daily bonus and streaks, and `!top 1 messages week` or `!top 1 messages month`.',
         ],
       },
       {
         title: `${EMOJI.RELEASE_MAGIC} Image cards & embeds`,
         items: [
           'Image cards: pictures drawn for welcome, leave, boost, tickets, giveaways, level-up and more. The basic editor is free, the layer editor is Premium.',
-          '`/embed create name code:` builds a whole embed (up to 10) from one code and saves it at once.',
-          'Saved embeds can now replace the usual message of sanctions (DM, reply and log, per type, with `/sanctionmessage`), the starboard, giveaway messages, verification DMs and bump messages. New variables: `{case.*}`, `{star.*}`, `{verify.link}`, `{nextBump}`.',
+          '`!embed create name code:` builds a whole embed (up to 10) from one code and saves it at once.',
+          'Saved embeds can now replace the usual message of sanctions (DM, reply and log, per type, with `!sanctionmessage`), the starboard, giveaway messages, verification DMs and bump messages. New variables: `{case.*}`, `{star.*}`, `{verify.link}`, `{nextBump}`.',
         ],
       },
       {
@@ -30,7 +30,7 @@ const RELEASES = [
         items: [
           'Jail (`!jail`, `!unjail`): the member loses their roles and only sees the jail channel. Timed jails end by themselves and roles come back on release. Also usable in `warn escalation`.',
           '`!purge` deletes recent messages by member, kind or text, and `!history` shows a member\'s whole moderation history in one card.',
-          'Reports are numbered with Claim, Resolve, Dismiss and Reopen buttons, categories, cooldown, daily limit, blocking, a reason on closing, a thread that follows the report and `/report config`.',
+          'Reports are numbered with Claim, Resolve, Dismiss and Reopen buttons, categories, cooldown, daily limit, blocking, a reason on closing, a thread that follows the report and a settings panel.',
           'Report User menus on users and messages.',
         ],
       },
@@ -38,13 +38,13 @@ const RELEASES = [
         title: `${EMOJI.RELEASE_ROCKET} Utility & fun`,
         items: [
           '`!roll` (`2d6+3`, `4d6kh3`), `!choose`, and the Fun category: `!8ball`, `!ship` (with a picture) and `!rps`.',
-          'Premium name style for the bot per server (gradient, neon, glow).',
+          'Customize (Premium): give Petto a name style in your server, a gradient, neon or glow, from the dashboard.',
         ],
       },
       {
         title: `${EMOJI.RELEASE_SETTINGS} Improvements`,
         items: [
-          '`/setup` opens a status panel at once, with a pre-filled quick setup.',
+          '`!setup` opens a status panel at once, with a pre-filled quick setup.',
           'Info commands (`serverinfo`, `userinfo`, `botinfo`, `roleinfo`...) and `!case list` redesigned as cards. Roleplay answers reply to the original message. `!remind 2h text` works without `add`.',
         ],
       },
