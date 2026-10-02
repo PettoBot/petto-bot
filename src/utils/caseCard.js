@@ -47,7 +47,8 @@ function buildCaseCard({ caseNumber, type, target, moderator, reason, duration }
 
 /** A single-block Components V2 card for plain status text (errors, confirmations) once a reply is already in V2 mode. */
 function textCard(text, color = 0x4b4f59) {
-  return new ContainerBuilder().setAccentColor(color).addTextDisplayComponents(new TextDisplayBuilder().setContent(text));
+  const container = new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(text));
+  return color === null ? container : container.setAccentColor(color); // null: a card with no color
 }
 
 const LIST_ACCENT = 0x8c7cff;

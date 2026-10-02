@@ -192,20 +192,25 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
   assert.equal(listOne.flags, MessageFlags.IsComponentsV2);
   const listNodes = flat(listOne.components[0].toJSON());
   const menu = listNodes.find((n) => n.type === 3);
-  assert.equal(menu.custom_id, 'quests:view'); assert.equal(menu.options.length, 25, 'a menu holds 25 quests');
+  assert.equal(menu.custom_id, 'quests:view'); assert.equal(menu.options.length, 10, 'a page holds 10 quests');
   assert.equal(menu.options[0].label, 'Quest number 1'); assert.equal(menu.options[0].value, many[0].id);
   assert.deepEqual(menu.options.slice(0, 5).map((o) => (o.emoji.id ? 'custom' : o.emoji.name)), ['custom', '🎭', '🎟️', '🎮', '💎'], 'each kind of reward has its own icon, Orbs the Orbs one');
   assert.ok(menu.options[0].description.startsWith('200 Orbs · Video · ends ') && menu.options.every((o) => o.description.length <= 100));
   const listText = texts(listOne);
-  assert.ok(listText.includes(`# ${EMOJI.QUEST_BADGE} Active quests`) && listText.includes('30 quests · page 1 of 2 · pick one to see it'));
+  assert.ok(listText.includes(`# ${EMOJI.QUEST_BADGE} Active quests`) && listText.includes('30 quests · page 1 of 3 · pick one below to see its full card'));
   const buttons = listNodes.filter((n) => n.type === 2);
   assert.deepEqual(buttons.map((b) => [b.custom_id, b.disabled ?? false]), [['quests:page:0', true], ['quests:page:none', true], ['quests:page:2', false]], 'previous is off on the first page');
   const listTwo = flat(buildQuestList(many, { page: 2 }).components[0].toJSON());
-  assert.equal(listTwo.find((n) => n.type === 3).options.length, 5); assert.equal(listTwo.find((n) => n.type === 3).options[0].label, 'Quest number 26');
-  assert.equal(flat(buildQuestList(many, { page: 99 }).components[0].toJSON()).find((n) => n.type === 3).options[0].label, 'Quest number 26', 'a page too far gives the last one');
+  assert.equal(listTwo.find((n) => n.type === 3).options.length, 10); assert.equal(listTwo.find((n) => n.type === 3).options[0].label, 'Quest number 11');
+  assert.equal(flat(buildQuestList(many, { page: 99 }).components[0].toJSON()).find((n) => n.type === 3).options[0].label, 'Quest number 21', 'a page too far gives the last one');
   const single = flat(buildQuestList([orbs], {}).components[0].toJSON());
   assert.equal(single.filter((n) => n.type === 2).length, 0, 'no page buttons for a short list'); assert.ok(texts(buildQuestList([orbs], {})).includes('1 quest'));
   assert.ok(listNodes.length <= 40 && listText.length < 4000);
+  assert.ok(listText.includes('### ') && listText.includes('Quest number 1](') && listText.includes('ends <t:'), 'the list shows each quest as text, not only in the menu');
+  const limited = texts(buildQuestList([{ ...orbs, regions: { include: ['US'], exclude: [] }, ageGate: true }], {}));
+  assert.ok(limited.includes('Users residing in United States') && limited.includes('Users over 18'), 'the list shows the limits of each quest');
+  assert.equal(listOne.components[0].toJSON().accent_color, undefined, 'no color on the list');
+  assert.equal(buildQuestCard(orbs, {}).components[0].toJSON().accent_color, undefined, 'no color on the card unless the server sets one');
 
   // The pictures of the rewards: the Orbs icon, and the decoration from Discord's own product endpoint.
   const images = require('../src/utils/questImages');
@@ -260,7 +265,8 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
   settingsOfConfig.questsPublic = true; assert.equal(canUseQuests('someone'), true); settingsOfConfig.questsPublic = false;
 
   // The command, typed with the prefix.
-  for (const file of ['src/db/guilds.js', 'src/db/quests.js', 'src/utils/caseCard.js']) stub(file, new Proxy({ DEFAULTS: {} }, { get: (t, k) => (k in t ? t[k] : () => {}) }));
+  stub('src/utils/caseCard.js', { textCard: (text) => ({ text }) });
+  for (const file of ['src/db/guilds.js', 'src/db/quests.js']) stub(file, new Proxy({ DEFAULTS: {} }, { get: (t, k) => (k in t ? t[k] : () => {}) }));
   stub('src/utils/emojis.js', { EMOJI: {} });
   const { buildInteractionFromMessage } = require('../src/handlers/prefixInteraction');
   const command = require('../src/commands/utility/quests.js');
@@ -272,5 +278,21 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
   i = await parse('card hide image'); assert.deepEqual([i.options.getSubcommand(), i.options.getString('action'), i.options.getString('section')], ['card', 'hide', 'image']);
   i = await parse('expiring 6'); assert.equal(i.options.getInteger('hours'), 6);
   assert.equal(command.data.toJSON().options.length <= 25, true);
+  assert.equal(command.data.toJSON().default_member_permissions ?? null, null, 'the command is open, the settings check the permission themselves');
+
+  // Anyone can list the quests; the settings need Manage Server.
+  const sent = [];
+  const as = async (text, manage) => {
+    const fake = await parse(text);
+    fake.guild = msg.guild; fake.user = { id: 'someone' }; fake.member = { permissions: { has: () => manage } };
+    fake.deferReply = async () => {}; fake.editReply = async (payload) => { sent.push(JSON.stringify(payload)); };
+    await command.execute(fake);
+    return sent.at(-1) ?? '';
+  };
+  settingsOfConfig.questsPublic = true;
+  assert.ok((await as('rewards orbs', false)).includes('Manage Server'), 'a member cannot change the settings');
+  assert.ok((await as('test', false)).includes('Manage Server'), 'a member cannot send the test');
+  assert.ok(!(await as('list', false)).includes('Manage Server'), 'a member can see the list');
+  settingsOfConfig.questsPublic = false;
   console.log('Checked the quest alerts: the API answer, the filters, who is told, the card, the saved embed and who can use it.');
 })().catch((error) => { console.error(error); process.exit(1); });
