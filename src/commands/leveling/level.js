@@ -63,10 +63,10 @@ module.exports = {
         .addBooleanOption((o) => o.setName('embed').setDescription('Wrap the message in an embed instead of a plain Components V2 card').setRequired(false))
         .addStringOption((o) => o.setName('embed_template').setDescription('Saved /embed template to use for the announcement').setRequired(false))
         .addIntegerOption((o) => o.setName('every').setDescription('Only announce every N levels (default 1 = every level)').setRequired(false).setMinValue(1))
-        .addStringOption((o) => o.setName('card').setDescription('Image card sent with the announcement, or "none"').setRequired(false))
-        .addStringOption((o) => o.setName('message').setDescription('Supports {user}, {level}, {level_xp}, {level_rank}, and every /embed variable').setRequired(false)),
+        .addStringOption((o) => o.setName('message').setDescription('Supports {user}, {level}, {level_xp}, {level_rank}, and every /embed variable').setRequired(false))
+        .addStringOption((o) => o.setName('card').setDescription('Image card sent with the announcement, or "none"').setRequired(false)),
     )
-    .addSubcommand((s) => s.setName('voice-notify').setDescription('Configure voice level-up announcements.').addStringOption((o) => o.setName('mode').setDescription('Where it posts').setRequired(true).addChoices({ name: 'off', value: 'off' }, { name: 'fixed channel', value: 'channel' }, { name: 'DM', value: 'dm' })).addChannelOption((o) => o.setName('channel').setDescription('Channel to use with mode:channel').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement).setRequired(false)).addBooleanOption((o) => o.setName('embed').setDescription('Use an embed').setRequired(false)).addStringOption((o) => o.setName('embed_template').setDescription('Saved /embed template').setRequired(false)).addIntegerOption((o) => o.setName('every').setDescription('Only announce every N levels').setRequired(false).setMinValue(1)).addStringOption((o) => o.setName('card').setDescription('Image card sent with the announcement, or "none"').setRequired(false)).addStringOption((o) => o.setName('message').setDescription('Voice level-up message').setRequired(false)))
+    .addSubcommand((s) => s.setName('voice-notify').setDescription('Configure voice level-up announcements.').addStringOption((o) => o.setName('mode').setDescription('Where it posts').setRequired(true).addChoices({ name: 'off', value: 'off' }, { name: 'fixed channel', value: 'channel' }, { name: 'DM', value: 'dm' })).addChannelOption((o) => o.setName('channel').setDescription('Channel to use with mode:channel').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement).setRequired(false)).addBooleanOption((o) => o.setName('embed').setDescription('Use an embed').setRequired(false)).addStringOption((o) => o.setName('embed_template').setDescription('Saved /embed template').setRequired(false)).addIntegerOption((o) => o.setName('every').setDescription('Only announce every N levels').setRequired(false).setMinValue(1)).addStringOption((o) => o.setName('message').setDescription('Voice level-up message').setRequired(false)).addStringOption((o) => o.setName('card').setDescription('Image card sent with the announcement, or "none"').setRequired(false)))
     .addSubcommand((s) => s.setName('role-mode').setDescription('Whether members keep every earned reward role, or just the highest.').addStringOption((o) => o.setName('mode').setDescription('Mode').setRequired(true).addChoices({ name: 'highest only', value: 'highest' }, { name: 'all earned', value: 'all' })))
     .addSubcommand((s) => s.setName('voice-role-mode').setDescription('Voice reward role mode.').addStringOption((o) => o.setName('mode').setDescription('Mode').setRequired(true).addChoices({ name: 'highest only', value: 'highest' }, { name: 'all earned', value: 'all' })))
     .addSubcommand((s) => s.setName('ignore').setDescription('Toggle a channel out of/into XP tracking.').addChannelOption((o) => o.setName('channel').setDescription('Channel').setRequired(true)))
@@ -81,17 +81,20 @@ module.exports = {
     .addSubcommand((s) => s.setName('sync-join').setDescription('Apply the current join bonus to every member who has zero XP right now.'))
     .addSubcommand((s) => s.setName('reset').setDescription('Wipe a member\'s XP/level and remove their reward roles.').addUserOption((o) => o.setName('user').setDescription('Member').setRequired(true)))
     .addSubcommand((s) => s.setName('rank-style').setDescription('How /rank answers: a card, an embed, or both.').addStringOption((o) => o.setName('style').setDescription('Card, embed or both').setRequired(true).addChoices({ name: 'card (image)', value: 'card' }, { name: 'embed', value: 'embed' }, { name: 'both', value: 'both' })).addStringOption((o) => o.setName('card').setDescription('Name of an image card for the rank, or "default"').setRequired(false)))
-    .addSubcommand((s) =>
-      s
+    .addSubcommand(
+      (s) => s
         .setName('rules')
-        .setDescription('Anti-abuse rules and the daily bonus. Run with no options to see the current values.')
-        .addIntegerOption((o) => o.setName('min_chars').setDescription('Messages with fewer characters earn no XP (0 = off)').setRequired(false).setMinValue(0).setMaxValue(200))
-        .addBooleanOption((o) => o.setName('anti_repeat').setDescription('The same text again within a minute earns no XP').setRequired(false))
-        .addIntegerOption((o) => o.setName('voice_min_members').setDescription('People needed in the voice channel to earn XP').setRequired(false).setMinValue(1).setMaxValue(20))
-        .addBooleanOption((o) => o.setName('voice_ignore_muted').setDescription('No voice XP while muted').setRequired(false))
-        .addIntegerOption((o) => o.setName('daily_bonus').setDescription('Bonus XP for the first activity of each day').setRequired(false).setMinValue(0).setMaxValue(100000))
-        .addIntegerOption((o) => o.setName('streak_bonus').setDescription('Extra XP for each earlier day in a row').setRequired(false).setMinValue(0).setMaxValue(10000))
-        .addIntegerOption((o) => o.setName('streak_max_days').setDescription('Days in a row after which the streak bonus stops growing').setRequired(false).setMinValue(1).setMaxValue(365)),
+        .setDescription('Anti-abuse rules and the daily bonus. With no options it shows the current values.')
+        .addStringOption((o) => o.setName('setting').setDescription('Which rule to change').setRequired(false).addChoices(
+          { name: 'min_chars (messages shorter than this earn no XP, 0 = off)', value: 'min_chars' },
+          { name: 'anti_repeat (the same text within a minute earns no XP)', value: 'anti_repeat' },
+          { name: 'voice_min_members (people needed in the voice channel)', value: 'voice_min_members' },
+          { name: 'voice_ignore_muted (no voice XP while muted)', value: 'voice_ignore_muted' },
+          { name: 'daily_bonus (XP for the first activity of each day)', value: 'daily_bonus' },
+          { name: 'streak_bonus (extra XP per earlier day in a row)', value: 'streak_bonus' },
+          { name: 'streak_max_days (days after which the streak bonus stops growing)', value: 'streak_max_days' },
+        ))
+        .addStringOption((o) => o.setName('value').setDescription('The new value: a number, or on/off').setRequired(false)),
     )
     .addSubcommand((s) => s.setName('status').setDescription('Show the full current configuration.'))
 
@@ -521,24 +524,50 @@ async function rankStyleCmd(interaction) {
   await reply(interaction, `${EMOJI.APPROVE}  /rank now answers with ${style === 'card' ? 'a **card**' : style === 'embed' ? 'an **embed**' : 'a **card and an embed**'}${config?.rank_card ? `, using the card \`${config.rank_card}\`` : ', using the default rank card'}.`);
 }
 
+// The rules a person can change with `/level rules setting value`, with the column, the kind of value and its range.
+const RULE_SETTINGS = {
+  min_chars: { column: 'min_message_chars', kind: 'number', min: 0, max: 200 },
+  anti_repeat: { column: 'anti_repeat', kind: 'flag' },
+  voice_min_members: { column: 'voice_min_members', kind: 'number', min: 1, max: 20 },
+  voice_ignore_muted: { column: 'voice_ignore_muted', kind: 'flag' },
+  daily_bonus: { column: 'daily_bonus_xp', kind: 'number', min: 0, max: 100000 },
+  streak_bonus: { column: 'streak_bonus_xp', kind: 'number', min: 0, max: 10000 },
+  streak_max_days: { column: 'streak_max_days', kind: 'number', min: 1, max: 365 },
+};
+
+/** The value of a rule from what was typed: a whole number in its range, or on/off. Null when it is not valid. */
+function readRuleValue(rule, text) {
+  const raw = String(text ?? '').trim().toLowerCase();
+  if (rule.kind === 'flag') {
+    if (/^(on|true|yes|1|enable|enabled)$/.test(raw)) return true;
+    if (/^(off|false|no|0|disable|disabled)$/.test(raw)) return false;
+    return null;
+  }
+  if (!/^\d{1,6}$/.test(raw)) return null;
+  const value = Number(raw);
+  return value >= rule.min && value <= rule.max ? value : null;
+}
+
 async function rulesCmd(interaction) {
-  const map = {
-    min_chars: ['min_message_chars', 'getInteger'],
-    anti_repeat: ['anti_repeat', 'getBoolean'],
-    voice_min_members: ['voice_min_members', 'getInteger'],
-    voice_ignore_muted: ['voice_ignore_muted', 'getBoolean'],
-    daily_bonus: ['daily_bonus_xp', 'getInteger'],
-    streak_bonus: ['streak_bonus_xp', 'getInteger'],
-    streak_max_days: ['streak_max_days', 'getInteger'],
-  };
-  const patch = {};
-  for (const [option, [column, getter]] of Object.entries(map)) {
-    const value = interaction.options[getter](option);
-    if (value != null) patch[column] = value;
+  const setting = interaction.options.getString('setting');
+  const text = interaction.options.getString('value');
+  let patch = null;
+  if (setting) {
+    const rule = RULE_SETTINGS[setting];
+    if (!rule) {
+      await interaction.reply({ content: `Unknown rule \`${setting}\`. Choose one of: ${Object.keys(RULE_SETTINGS).map((name) => `\`${name}\``).join(', ')}.`, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    const value = readRuleValue(rule, text);
+    if (value === null) {
+      await interaction.reply({ content: rule.kind === 'flag' ? `\`${setting}\` takes \`on\` or \`off\`.` : `\`${setting}\` takes a whole number from ${rule.min} to ${rule.max}.`, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    patch = { [rule.column]: value };
   }
   await defer(interaction);
-  const config = Object.keys(patch).length ? await levelConfigDb.upsertConfig(interaction.guild.id, patch) : await levelConfigDb.ensureConfig(interaction.guild.id);
-  await reply(interaction, `${Object.keys(patch).length ? `${EMOJI.APPROVE}  Updated.\n\n` : ''}${rulesSummary(config)}`, Object.keys(patch).length ? 0xa5ea7a : 0x4b4f59);
+  const config = patch ? await levelConfigDb.upsertConfig(interaction.guild.id, patch) : await levelConfigDb.ensureConfig(interaction.guild.id);
+  await reply(interaction, `${patch ? `${EMOJI.APPROVE}  Updated.\n\n` : ''}${rulesSummary(config)}`, patch ? 0xa5ea7a : 0x4b4f59);
 }
 
 function rulesSummary(config) {
@@ -740,3 +769,6 @@ async function manageLevel(interaction) {
   const verb = { add: 'Added', set: 'Set', remove: 'Removed' }[action];
   await reply(interaction, `${EMOJI.APPROVE}  ${verb} level for ${targetUser} — now **level ${newLevel}**.`);
 }
+
+module.exports.readRuleValue = readRuleValue;
+module.exports.RULE_SETTINGS = RULE_SETTINGS;
