@@ -265,7 +265,8 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
   settingsOfConfig.questsPublic = true; assert.equal(canUseQuests('someone'), true); settingsOfConfig.questsPublic = false;
 
   // The command, typed with the prefix.
-  for (const file of ['src/db/guilds.js', 'src/db/quests.js', 'src/utils/caseCard.js']) stub(file, new Proxy({ DEFAULTS: {} }, { get: (t, k) => (k in t ? t[k] : () => {}) }));
+  stub('src/utils/caseCard.js', { textCard: (text) => ({ text }) });
+  for (const file of ['src/db/guilds.js', 'src/db/quests.js']) stub(file, new Proxy({ DEFAULTS: {} }, { get: (t, k) => (k in t ? t[k] : () => {}) }));
   stub('src/utils/emojis.js', { EMOJI: {} });
   const { buildInteractionFromMessage } = require('../src/handlers/prefixInteraction');
   const command = require('../src/commands/utility/quests.js');
@@ -277,5 +278,21 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
   i = await parse('card hide image'); assert.deepEqual([i.options.getSubcommand(), i.options.getString('action'), i.options.getString('section')], ['card', 'hide', 'image']);
   i = await parse('expiring 6'); assert.equal(i.options.getInteger('hours'), 6);
   assert.equal(command.data.toJSON().options.length <= 25, true);
+  assert.equal(command.data.toJSON().default_member_permissions ?? null, null, 'the command is open, the settings check the permission themselves');
+
+  // Anyone can list the quests; the settings need Manage Server.
+  const sent = [];
+  const as = async (text, manage) => {
+    const fake = await parse(text);
+    fake.guild = msg.guild; fake.user = { id: 'someone' }; fake.member = { permissions: { has: () => manage } };
+    fake.deferReply = async () => {}; fake.editReply = async (payload) => { sent.push(JSON.stringify(payload)); };
+    await command.execute(fake);
+    return sent.at(-1) ?? '';
+  };
+  settingsOfConfig.questsPublic = true;
+  assert.ok((await as('rewards orbs', false)).includes('Manage Server'), 'a member cannot change the settings');
+  assert.ok((await as('test', false)).includes('Manage Server'), 'a member cannot send the test');
+  assert.ok(!(await as('list', false)).includes('Manage Server'), 'a member can see the list');
+  settingsOfConfig.questsPublic = false;
   console.log('Checked the quest alerts: the API answer, the filters, who is told, the card, the saved embed and who can use it.');
 })().catch((error) => { console.error(error); process.exit(1); });

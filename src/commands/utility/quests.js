@@ -28,7 +28,6 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('quests')
     .setDescription('Alerts when a new Discord Quest appears.')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false)
     .addSubcommand((s) => s.setName('enable').setDescription('Turn the alerts on in a channel.')
       .addChannelOption((o) => o.setName('channel').setDescription('Where the alerts go').addChannelTypes(...textChannels).setRequired(true))
@@ -61,9 +60,13 @@ module.exports = {
     if (!canUseQuests(interaction.user.id)) {
       return reply(`${EMOJI.DENY}  Quest alerts are in testing and only available to Petto's team for now.`);
     }
+    const sub = interaction.options.getSubcommand();
+    // Anyone can see the quests that are active; the settings and the test are for who manages the server.
+    if (sub !== 'list' && !interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
+      return reply(`${EMOJI.DENY}  You need the Manage Server permission to change the quest alerts. Anyone can use \`quests list\`.`);
+    }
     await ensureGuild(interaction.guild.id);
     const guildId = interaction.guild.id;
-    const sub = interaction.options.getSubcommand();
     const current = (await questsDb.getConfig(guildId)) ?? questsDb.DEFAULTS;
     const save = (changes) => questsDb.upsertConfig(guildId, changes);
 
