@@ -70,7 +70,10 @@ function normalizeRewards(config) {
     const kind = REWARD_KINDS[reward.type] ?? 'other';
     const orbs = Number(reward.orb_quantity) || 0;
     const name = clean(reward.messages?.name, 100) || (kind === 'orbs' && orbs ? `${orbs} Orbs` : REWARD_LABELS[kind]);
-    return { kind, name, amount: kind === 'orbs' ? orbs : 0, image: cdnImage(reward.asset) };
+    const expires = date(reward.expires_at);
+    // Nitro members get 20% more Orbs; when the list does not say how many, that is what it is.
+    const premiumOrbs = kind === 'orbs' ? (Number(reward.premium_orb_quantity) || Math.round(orbs * 1.2)) : 0;
+    return { kind, name, amount: kind === 'orbs' ? orbs : 0, premiumAmount: premiumOrbs > orbs ? premiumOrbs : 0, expiresAt: expires, image: cdnImage(reward.asset) };
   });
 }
 
@@ -102,7 +105,7 @@ function normalizeQuest(raw, region = null) {
     startsAt,
     expiresAt,
     url: `https://discord.com/quests/${id}`,
-    link: httpsUrl(config.application?.link),
+    link: httpsUrl(config.cta_config?.link) ?? httpsUrl(config.application?.link),
     color: /^#[0-9a-f]{6}$/i.test(config.colors?.primary ?? '') ? config.colors.primary : '#5865f2',
     image: cdnImage(assets.hero) ?? cdnImage(assets.quest_bar_hero),
     logo: cdnImage(assets.logotype_dark) ?? cdnImage(assets.game_tile_dark) ?? cdnImage(assets.logotype) ?? cdnImage(assets.game_tile),

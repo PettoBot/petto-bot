@@ -16,7 +16,8 @@ const templates = {};
 stub('src/db/embedTemplates.js', { getTemplate: async (guildId, name) => (templates[name] ? { name, data: templates[name] } : null) });
 stub('src/utils/cardService.js', { renderCardForMessage: async () => null, normalizeCardRef: () => null, CARD_FILE_NAME: 'card.png' });
 const questApi = require('../src/utils/questApi');
-const { questMessage, buildQuestCard, questContext } = require('../src/utils/questMessages');
+const { questMessage, buildQuestCard, buildQuestList, questContext } = require('../src/utils/questMessages');
+const { EMOJI } = require('../src/utils/emojis');
 const { canUseQuests, matchesFilters, checkQuests } = require('../src/utils/questAlerts');
 const { resolve } = require('../src/utils/embedVariables');
 
@@ -51,7 +52,7 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
   // Reading the answer.
   const normalized = api.map((raw) => questApi.normalizeQuest(raw, raw.id === ids.orbs ? regionRows.quests[0] : null));
   const [orbs, deco, play] = normalized;
-  assert.equal(orbs.name, 'Watch the trailer'); assert.equal(orbs.rewards[0].kind, 'orbs'); assert.equal(orbs.rewards[0].amount, 200);
+  assert.equal(orbs.name, 'Watch the trailer'); assert.equal(orbs.rewards[0].kind, 'orbs'); assert.equal(orbs.rewards[0].amount, 200); assert.equal(orbs.rewards[0].premiumAmount, 240, 'Nitro members get 20% more Orbs when the list does not say');
   assert.equal(orbs.image, `https://cdn.discordapp.com/quests/${ids.orbs}/111.jpg`); assert.equal(orbs.logo, `https://cdn.discordapp.com/quests/${ids.orbs}/222.png`);
   assert.equal(orbs.ageGate, true); assert.equal(orbs.global, false); assert.deepEqual(orbs.regions.include, ['US']);
   assert.equal(deco.rewards[0].kind, 'decoration'); assert.equal(play.platforms[0], 'PlayStation'); assert.equal(play.tasks[0].kind, 'play');
@@ -144,15 +145,44 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
   configs = [];
   assert.equal((await checkQuests(client, { api: fakeApi, db, now })).skipped, true, 'with no server using it the API is not asked');
 
-  // The card.
-  const card = buildQuestCard(orbs, { hide_sections: [], role_id: '999' }, { rolePing: '<@&999>' });
-  assert.equal(card.flags, MessageFlags.IsComponentsV2); assert.equal(card.components.length, 2);
-  const json = JSON.stringify(card.components.map((c) => c.toJSON()));
-  assert.ok(json.includes('Watch the trailer') && json.includes('Accept Quest') && json.includes(questApi.SOURCE_NAME) && json.includes(`https://discord.com/quests/${ids.orbs}`));
-  assert.ok(json.includes('Only in US') && json.includes('18+'));
-  const slim = JSON.stringify(buildQuestCard(orbs, { hide_sections: ['image', 'limits', 'tasks'], accent_color: 0xff91c2 }).components.map((c) => c.toJSON()));
-  assert.ok(!slim.includes('Only in US') && !slim.includes('**Task:**') && !slim.includes('111.jpg') && slim.includes(String(0xff91c2)), 'hidden sections and the color are respected');
+  // The card, in the style of Discord's own quest bots.
+  const flat = (node) => [node, ...(node.components ?? []).flatMap(flat), ...(node.accessory ? [node.accessory] : [])];
+  const texts = (card) => card.components.flatMap((c) => flat(c.toJSON())).filter((n) => typeof n.content === 'string').map((n) => n.content).join('\n');
+  const card = buildQuestCard({ ...orbs, rewards: [{ kind: 'orbs', name: '200 Orbs', amount: 200, premiumAmount: 240, image: null }] }, { hide_sections: [], role_id: '999' }, { rolePing: '<@&999>' });
+  assert.equal(card.flags, MessageFlags.IsComponentsV2); assert.equal(card.components.length, 2, 'the card and a row of link buttons');
+  const text = texts(card);
+  assert.ok(text.startsWith(`-# <@&999>\n# ${EMOJI.QUEST_BADGE} [Watch the trailer](https://discord.com/quests/${ids.orbs})`), 'the role ping and the linked title come first');
+  assert.ok(text.includes('**Starts:** <t:') && text.includes('**Ends:** <t:') && text.includes('**Platforms:** Desktop') && text.includes('**Task:** Watch a video (2:00)'));
+  assert.ok(text.includes('## 🎁 Rewards') && text.includes('**Type:** Virtual currency') && text.includes(`**Amount:** 200 Orbs | ${EMOJI.QUEST_NITRO} 240`));
+  assert.ok(text.includes(`## ${EMOJI.QUEST_ALERT} Limitations`) && text.includes('Users residing in United States 🇺🇸') && text.includes('Users over 18 🔞'));
+  assert.ok(text.includes(questApi.SOURCE_NAME), 'the credit is there');
+  const row = card.components[1].toJSON();
+  assert.deepEqual(row.components.map((button) => [button.label, button.url]), [['Accept Quest', `https://discord.com/quests/${ids.orbs}`], ['Game page', 'https://example.com/game']]);
+  const japan = questApi.normalizeQuest(rawQuest('1550000000000000007', { name: 'Japan only' }), { is_global: false, show_age_gate: false, regions: { include: ['JP'], exclude: ['KR'] } });
+  const japanText = texts(buildQuestCard(japan, {}));
+  assert.ok(japanText.includes('Users residing in Japan 🇯🇵') && japanText.includes('Not for users in South Korea 🇰🇷') && !japanText.includes('🔞'));
+  const decorationText = texts(buildQuestCard({ ...deco, rewards: [{ kind: 'decoration', name: 'Cool Helmet Avatar Decoration', amount: 0, expiresAt: new Date(now + 60 * day), image: null }] }, {}));
+  assert.ok(decorationText.includes('**Type:** Collectible') && decorationText.includes('**Name:** Cool Helmet Avatar Decoration') && decorationText.includes('**Expires:** <t:'));
+  const slim = texts(buildQuestCard(orbs, { hide_sections: ['image', 'limits', 'tasks', 'rewards'], accent_color: 0xff91c2 }));
+  assert.ok(!slim.includes('Limitations') && !slim.includes('**Task:**') && !slim.includes('Rewards'), 'hidden sections are left out');
+  assert.equal(buildQuestCard(orbs, { accent_color: 0xff91c2 }).components[0].toJSON().accent_color, 0xff91c2, 'the color is respected');
   assert.deepEqual(card.allowedMentions, { parse: [], roles: ['999'] });
+  const withPicture = buildQuestCard({ ...orbs, rewards: [{ ...orbs.rewards[0], image: 'https://cdn.discordapp.com/quests/1/2.png' }] }, {});
+  assert.ok(flat(withPicture.components[0].toJSON()).some((n) => n.type === 11), 'a reward picture becomes the thumbnail of the rewards block');
+  const clocks = texts(buildQuestCard({ ...play, tasks: [{ type: 'X', kind: 'play', label: 'Play the game', platform: 'Desktop', seconds: 900 }, { type: 'Y', kind: 'video', label: 'Watch', platform: 'Mobile', seconds: 3725 }] }, {}));
+  assert.ok(clocks.includes('Play the game (15:00)') && clocks.includes('Watch (1:02:05)'), 'times are shown as a clock');
+
+  // The list of active quests, in the same style, a page at a time.
+  const many = Array.from({ length: 14 }, (_, n) => ({ ...orbs, id: `16${String(n).padStart(17, '0')}`, name: `Quest number ${n + 1}` }));
+  const listOne = buildQuestList(many, { page: 1 });
+  assert.equal(listOne.flags, MessageFlags.IsComponentsV2);
+  const listText = texts(listOne);
+  assert.ok(listText.includes(`# ${EMOJI.QUEST_BADGE} Active quests`) && listText.includes('14 quests · page 1 of 3') && listText.includes('Quest number 1') && listText.includes('Quest number 6') && !listText.includes('Quest number 7'));
+  assert.ok(listText.includes('quests list 2'), 'it says how to reach the next page');
+  assert.ok(texts(buildQuestList(many, { page: 3 })).includes('Quest number 14') && texts(buildQuestList(many, { page: 99 })).includes('page 3 of 3'), 'a page that is too far gives the last one');
+  assert.ok(flat(listOne.components[0].toJSON()).length <= 40, 'within the 40 components of a message');
+  assert.ok(listText.length < 4000, 'within the text of a message');
+  assert.ok(texts(buildQuestList([orbs], {})).includes('1 quest · page 1 of 1'));
 
   // The saved embed, and its fallback.
   const guild = { id: '9', name: 'Test', memberCount: 5, ownerId: '1', premiumTier: 0, premiumSubscriptionCount: 0, createdAt: new Date('2020-01-01'), iconURL: () => null, bannerURL: () => null, members: { cache: new Collection() }, roles: { cache: new Collection() }, channels: { cache: new Collection() }, emojis: { cache: new Collection() } };
