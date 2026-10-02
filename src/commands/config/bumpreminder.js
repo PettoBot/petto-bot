@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = require('discord.js');
 const { ensureGuild } = require('../../db/guilds');
 const { ensureConfig, upsertConfig } = require('../../db/bumpReminders');
+const { getTemplate } = require('../../db/embedTemplates');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 
@@ -14,6 +15,9 @@ module.exports = {
     .addSubcommand((s) => s.setName('channel').setDescription('Set the DISBOARD bump channel.').addChannelOption((o) => o.setName('channel').setDescription('Bump channel').addChannelTypes(ChannelType.GuildText).setRequired(true)))
     .addSubcommand((s) => s.setName('message').setDescription('Set the reminder message (sent when the cooldown ends).').addStringOption((o) => o.setName('text').setDescription('Supports {user.mention} and other /embed variables').setRequired(true)))
     .addSubcommand((s) => s.setName('thankyou').setDescription('Set the thank-you message (sent right after a successful bump).').addStringOption((o) => o.setName('text').setDescription('Supports {user.mention}, {nextBump}, and other /embed variables').setRequired(true)))
+    .addSubcommand((s) => s.setName('template').setDescription('Use a saved embed for the reminder or the thank-you, or none to go back to the text.')
+      .addStringOption((o) => o.setName('which').setDescription('Which message').setRequired(true).addChoices({ name: 'reminder', value: 'reminder' }, { name: 'thankyou', value: 'thankyou' }))
+      .addStringOption((o) => o.setName('template').setDescription('Saved embed name, or none').setRequired(true)))
     .addSubcommand((s) => s.setName('pingable').setDescription('Whether the reminder message can actually ping.').addBooleanOption((o) => o.setName('enabled').setDescription('Enable?').setRequired(true)))
     .addSubcommand((s) => s.setName('autolock').setDescription('Lock the bump channel (deny Send Messages) between bumps.').addBooleanOption((o) => o.setName('enabled').setDescription('Enable?').setRequired(true)))
     .addSubcommand((s) => s.setName('autoclean').setDescription('Delete non-bump chatter in the bump channel.').addBooleanOption((o) => o.setName('enabled').setDescription('Enable?').setRequired(true)))
@@ -44,6 +48,19 @@ async function update(interaction, sub) {
   } else if (sub === 'thankyou') {
     patch.thankyou = interaction.options.getString('text', true);
     confirmLine = 'Thank-you message updated.';
+  } else if (sub === 'template') {
+    const which = interaction.options.getString('which', true);
+    const name = interaction.options.getString('template', true).trim();
+    const column = `${which}_embed_template`;
+    if (name.toLowerCase() === 'none') {
+      patch[column] = null;
+      confirmLine = `The ${which} message goes back to its text.`;
+    } else {
+      const doc = await getTemplate(interaction.guild.id, name).catch(() => null);
+      if (!doc) return interaction.editReply({ components: [textCard(`No saved embed named \`${name}\` was found. Make one in the dashboard, under Embeds.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      patch[column] = doc.name;
+      confirmLine = `The ${which} message now uses \`${doc.name}\`.`;
+    }
   } else if (sub === 'pingable') {
     patch.pingable = interaction.options.getBoolean('enabled', true);
     confirmLine = `Pingable **${patch.pingable ? 'on' : 'off'}**.`;

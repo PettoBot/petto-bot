@@ -3,7 +3,7 @@ const { ensureGuild } = require('../db/guilds');
 const { getHoneypot, listHoneypots, setPanelMessage, claimHoneypotUser } = require('../db/honeypot');
 const { createCase } = require('../db/modActions');
 const { logSanction } = require('./caseLog');
-const { buildSanctionDM } = require('./sanctionMessage');
+const { sanctionDM } = require('./sanctionTemplates');
 const { sendLog } = require('../logging/engine');
 const { buildHoneypotPanel, buildHoneypotImageAttachment } = require('./honeypotPanel');
 const { EMOJI } = require('./emojis');
@@ -144,7 +144,7 @@ async function applyHoneypotAction(message, config) {
 
   try {
     await ensureGuild(guild.id);
-    await author.send(buildSanctionDM({ type: punishment, guild, client, reason: fullReason })).catch(() => {});
+    await author.send(await sanctionDM({ type: punishment, guild, client, reason: fullReason, user: author, member: message.member, source: 'honeypot' })).catch(() => {});
 
     if (punishment === 'ban') {
       await guild.members.ban(author.id, { reason: fullReason, deleteMessageSeconds: 86400 });

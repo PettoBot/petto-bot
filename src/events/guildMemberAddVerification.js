@@ -4,7 +4,7 @@ const { getConfig } = require('../db/verificationConfig');
 const { hasEverVerified } = require('../db/verificationRedemptions');
 const { ensureUnverifiedRole } = require('../utils/verifyRole');
 const { createToken } = require('../utils/verifyToken');
-const { buildVerifyDM } = require('../utils/verifyMessage');
+const { sendVerifyDM } = require('../utils/verifyMessage');
 const config = require('../config');
 const logger = require('../utils/logger');
 
@@ -37,8 +37,7 @@ module.exports = {
       const token = createToken({ userId: member.id, guildId: member.guild.id });
       const link = `${config.verifyBaseUrl}/verify/${token}`;
 
-      await member
-        .send({ components: [buildVerifyDM({ guild: member.guild, link })], flags: MessageFlags.IsComponentsV2 })
+      await sendVerifyDM(member, { guild: member.guild, link })
         .catch(() => logger.warn(`Could not DM verification link to ${member.id} in guild ${member.guild.id} — they may have DMs closed.`));
     } catch (err) {
       logger.error(`Verification gate failed for ${member.id} in guild ${member.guild.id}:`, err);

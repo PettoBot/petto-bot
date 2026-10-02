@@ -1,9 +1,10 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { ensureGuild } = require('../../db/guilds');
 const { getConfig, upsertConfig } = require('../../db/verificationConfig');
+const { getTemplate } = require('../../db/embedTemplates');
 const { ensureUnverifiedRole } = require('../../utils/verifyRole');
 const { createToken } = require('../../utils/verifyToken');
-const { buildVerifyDM } = require('../../utils/verifyMessage');
+const { sendVerifyDM } = require('../../utils/verifyMessage');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const config = require('../../config');
@@ -25,6 +26,9 @@ module.exports = {
         .addBooleanOption((o) => o.setName('enabled').setDescription('Turn verification on/off').setRequired(true))
         .addRoleOption((o) => o.setName('verified_role').setDescription('Optional role to grant once someone passes verification').setRequired(false)),
     )
+    .addSubcommand((s) => s.setName('template').setDescription('Use a saved embed for the DMs of verification, or none to go back to the usual one.')
+      .addStringOption((o) => o.setName('which').setDescription('Which message').setRequired(true).addChoices({ name: 'prompt', value: 'prompt' }, { name: 'verified', value: 'verified' }))
+      .addStringOption((o) => o.setName('template').setDescription('Saved embed name, or none').setRequired(true)))
     .addSubcommand((s) => s.setName('status').setDescription('Show the current verification setup.'))
     .addSubcommand((s) => s.setName('send').setDescription('Manually (re)send a verification link to a member.').addUserOption((o) => o.setName('user').setDescription('The member to send a link to').setRequired(true))),
 
@@ -32,9 +36,27 @@ module.exports = {
     const sub = interaction.options.getSubcommand();
     if (sub === 'setup') return setup(interaction);
     if (sub === 'status') return status(interaction);
+    if (sub === 'template') return setTemplate(interaction);
     return send(interaction);
   },
 };
+
+async function setTemplate(interaction) {
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  await ensureGuild(interaction.guild.id);
+  const which = interaction.options.getString('which', true);
+  const name = interaction.options.getString('template', true).trim();
+  const column = `${which}_embed_template`;
+  const done = (text, color = 0xa5ea7a) => interaction.editReply({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2 });
+  if (name.toLowerCase() === 'none') {
+    await upsertConfig(interaction.guild.id, { [column]: null });
+    return done(`${EMOJI.APPROVE}  The ${which} DM goes back to the usual message.`);
+  }
+  const doc = await getTemplate(interaction.guild.id, name).catch(() => null);
+  if (!doc) return done(`No saved embed named \`${name}\` was found. Make one in the dashboard, under Embeds.`, 0xfe6465);
+  await upsertConfig(interaction.guild.id, { [column]: doc.name });
+  return done(`${EMOJI.APPROVE}  The ${which} DM now uses \`${doc.name}\`.${which === 'prompt' ? ' Put `{verify.link}` where the link goes.' : ''}`);
+}
 
 async function setup(interaction) {
   const enabled = interaction.options.getBoolean('enabled', true);
@@ -120,8 +142,7 @@ async function send(interaction) {
   const token = createToken({ userId: targetUser.id, guildId: interaction.guild.id });
   const link = `${config.verifyBaseUrl}/verify/${token}`;
 
-  const dmSent = await targetMember
-    .send({ components: [buildVerifyDM({ guild: interaction.guild, link })], flags: MessageFlags.IsComponentsV2 })
+  const dmSent = await sendVerifyDM(targetMember, { guild: interaction.guild, link })
     .then(() => true)
     .catch(() => false);
 

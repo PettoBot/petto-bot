@@ -3,9 +3,9 @@ const { ensureGuild } = require('../../db/guilds');
 const { addWarn } = require('../../db/warns');
 const { getRules, addRule, removeRule } = require('../../db/escalation');
 const { canModerate } = require('../../utils/permissions');
-const { buildCaseCard, textCard } = require('../../utils/caseCard');
+const { textCard } = require('../../utils/caseCard');
 const { logSanction } = require('../../utils/caseLog');
-const { buildSanctionDM } = require('../../utils/sanctionMessage');
+const { sanctionDM, sanctionReply } = require('../../utils/sanctionTemplates');
 const { resolveUsers } = require('../../utils/userResolve');
 const { checkAndApplyEscalation } = require('../../utils/escalation');
 const { parseDuration } = require('../../utils/duration');
@@ -93,12 +93,11 @@ async function warnUser(interaction) {
   await ensureGuild(interaction.guild.id);
   const { modCase, warnCount } = await addWarn({ guildId: interaction.guild.id, userId: targetUser.id, moderatorId: interaction.user.id, reason });
 
-  const card = buildCaseCard({ caseNumber: modCase.case_number, type: 'warn', target: targetUser, moderator: interaction.user, reason });
-  await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });
+  await sanctionReply(interaction, { modCase, type: 'warn', target: targetUser, moderator: interaction.user, reason });
   await logSanction(interaction.client, interaction.guild, { modCase, target: targetUser, moderator: interaction.user, reason });
 
   await targetMember
-    .send(buildSanctionDM({ type: 'warn', guild: interaction.guild, client: interaction.client, reason }))
+    .send(await sanctionDM({ type: 'warn', guild: interaction.guild, client: interaction.client, reason, member: targetMember, moderator: interaction.user, caseNumber: modCase.case_number }))
     .catch(() => logger.warn(`Could not DM warn notice to ${targetUser.id} in guild ${interaction.guild.id}.`));
 
   await checkAndApplyEscalation(interaction.client, interaction.guild, targetMember, warnCount).catch((err) => logger.error('Escalation check failed:', err));
@@ -133,7 +132,7 @@ async function warnUsers(interaction) {
     await logSanction(interaction.client, interaction.guild, { modCase, target: user, moderator: interaction.user, reason });
 
     await member
-      .send(buildSanctionDM({ type: 'warn', guild: interaction.guild, client: interaction.client, reason }))
+      .send(await sanctionDM({ type: 'warn', guild: interaction.guild, client: interaction.client, reason, member: member, moderator: interaction.user, caseNumber: modCase.case_number }))
       .catch(() => logger.warn(`Could not DM warn notice to ${user.id} in guild ${interaction.guild.id}.`));
 
     await checkAndApplyEscalation(interaction.client, interaction.guild, member, warnCount).catch((err) => logger.error('Escalation check failed:', err));

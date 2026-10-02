@@ -1,7 +1,7 @@
 const { getExpiredSanctions, deactivateCase, createCase } = require('../db/modActions');
 const { getExpiredJails, removeJailed } = require('../db/jail');
 const { unjailMember, JailError } = require('../utils/jail');
-const { buildSanctionDM } = require('../utils/sanctionMessage');
+const { sanctionDM } = require('../utils/sanctionTemplates');
 const { logSanction } = require('../utils/caseLog');
 const logger = require('../utils/logger');
 const config = require('../config');
@@ -49,7 +49,7 @@ async function processExpiredSanctions(client) {
         reason: 'Automatic expiry',
       });
 
-      await logSanction(client, guild, { modCase, target: userMention(sanction.user_id), moderator: client.user, reason: 'Automatic expiry' });
+      await logSanction(client, guild, { modCase, target: userMention(sanction.user_id), moderator: client.user, reason: 'Automatic expiry', source: 'expiry' });
     } catch (err) {
       logger.error(`Failed to process expired sanction (case #${sanction.case_number}, guild ${sanction.guild_id}):`, err);
     }
@@ -68,12 +68,12 @@ async function processExpiredJails(client) {
         return;
       }
 
-      const result = await unjailMember({ guild, userId: jail.user_id, moderator: client.user, reason: 'Automatic expiry' });
+      const result = await unjailMember({ guild, userId: jail.user_id, moderator: client.user, reason: 'Automatic expiry', source: 'expiry' });
       if (!result.ok) return;
 
-      await logSanction(client, guild, { modCase: result.modCase, target: userMention(jail.user_id), moderator: client.user, reason: 'Automatic expiry' });
+      await logSanction(client, guild, { modCase: result.modCase, target: userMention(jail.user_id), moderator: client.user, reason: 'Automatic expiry', source: 'expiry' });
       await result.member
-        ?.send(buildSanctionDM({ type: 'unjail', guild, client, reason: 'Automatic expiry' }))
+        ?.send(await sanctionDM({ type: 'unjail', guild, client, reason: 'Automatic expiry', member: result.member, caseNumber: result.modCase.case_number, source: 'expiry' }))
         .catch(() => {});
     } catch (err) {
       // A release that cannot restore roles stays recorded and is retried on the next poll.

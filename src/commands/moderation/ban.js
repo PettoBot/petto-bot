@@ -9,10 +9,10 @@ const {
 const { ensureGuild } = require('../../db/guilds');
 const { createCase, getActiveSanction, deactivateCase } = require('../../db/modActions');
 const { canModerate } = require('../../utils/permissions');
-const { buildCaseCard, textCard } = require('../../utils/caseCard');
+const { textCard } = require('../../utils/caseCard');
 const { logSanction } = require('../../utils/caseLog');
 const { sendLog } = require('../../logging/engine');
-const { buildSanctionDM } = require('../../utils/sanctionMessage');
+const { sanctionDM, sanctionReply } = require('../../utils/sanctionTemplates');
 const { resolveUsers } = require('../../utils/userResolve');
 const { parseDuration, formatDuration } = require('../../utils/duration');
 const { EMOJI } = require('../../utils/emojis');
@@ -88,7 +88,7 @@ async function banUser(interaction) {
   // Best-effort: DM before the ban, since the bot can't message someone it no longer shares a server with.
   if (targetMember) {
     await targetMember
-      .send(buildSanctionDM({ type: 'ban', guild: interaction.guild, client: interaction.client, reason }))
+      .send(await sanctionDM({ type: 'ban', guild: interaction.guild, client: interaction.client, reason, member: targetMember, moderator: interaction.user }))
       .catch(() => logger.warn(`Could not DM ban notice to ${targetUser.id} in guild ${interaction.guild.id}.`));
   }
 
@@ -106,8 +106,7 @@ async function banUser(interaction) {
   await ensureGuild(interaction.guild.id);
   const modCase = await createCase({ guildId: interaction.guild.id, userId: targetUser.id, moderatorId: interaction.user.id, type: 'ban', reason });
 
-  const card = buildCaseCard({ caseNumber: modCase.case_number, type: 'ban', target: targetUser, moderator: interaction.user, reason });
-  await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });
+  await sanctionReply(interaction, { modCase, type: 'ban', target: targetUser, moderator: interaction.user, reason });
   await logSanction(interaction.client, interaction.guild, { modCase, target: targetUser, moderator: interaction.user, reason });
 }
 
@@ -137,7 +136,7 @@ async function banUsers(interaction) {
       const member = await interaction.guild.members.fetch(user.id).catch(() => null);
       if (member) {
         await member
-          .send(buildSanctionDM({ type: 'ban', guild: interaction.guild, client: interaction.client, reason }))
+          .send(await sanctionDM({ type: 'ban', guild: interaction.guild, client: interaction.client, reason, member: member, moderator: interaction.user }))
           .catch(() => logger.warn(`Could not DM ban notice to ${user.id} in guild ${interaction.guild.id}.`));
       }
       await interaction.guild.members.ban(user.id, { reason: reason ?? undefined });
@@ -186,7 +185,7 @@ async function tempBan(interaction) {
 
   if (targetMember) {
     await targetMember
-      .send(buildSanctionDM({ type: 'tempban', guild: interaction.guild, client: interaction.client, reason, duration }))
+      .send(await sanctionDM({ type: 'tempban', guild: interaction.guild, client: interaction.client, reason, duration, member: targetMember, moderator: interaction.user }))
       .catch(() => logger.warn(`Could not DM tempban notice to ${targetUser.id} in guild ${interaction.guild.id}.`));
   }
 
@@ -205,8 +204,7 @@ async function tempBan(interaction) {
   await ensureGuild(interaction.guild.id);
   const modCase = await createCase({ guildId: interaction.guild.id, userId: targetUser.id, moderatorId: interaction.user.id, type: 'tempban', reason, expiresAt });
 
-  const card = buildCaseCard({ caseNumber: modCase.case_number, type: 'tempban', target: targetUser, moderator: interaction.user, reason, duration });
-  await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });
+  await sanctionReply(interaction, { modCase, type: 'tempban', target: targetUser, moderator: interaction.user, reason, duration });
   await logSanction(interaction.client, interaction.guild, { modCase, target: targetUser, moderator: interaction.user, reason, duration });
 }
 
@@ -240,8 +238,7 @@ async function unban(interaction) {
   await ensureGuild(interaction.guild.id);
   const modCase = await createCase({ guildId: interaction.guild.id, userId: targetUser.id, moderatorId: interaction.user.id, type: 'unban', reason });
 
-  const card = buildCaseCard({ caseNumber: modCase.case_number, type: 'unban', target: targetUser, moderator: interaction.user, reason });
-  await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });
+  await sanctionReply(interaction, { modCase, type: 'unban', target: targetUser, moderator: interaction.user, reason });
   await logSanction(interaction.client, interaction.guild, { modCase, target: targetUser, moderator: interaction.user, reason });
 }
 
