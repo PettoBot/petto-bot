@@ -8,6 +8,7 @@ All notable changes to Petto are documented here.
 
 ### Added
 
+- Added the Premium **name style** of the bot per server, set in the dashboard's Customize page (gradient, neon or glow, like the name styles of Nitro). It is stored with the server's settings and cleared, in Discord too, when Premium ends.
 - Added **custom embeds for every message of the bot**: a saved embed (with an image card if it has one) can now replace the usual message of sanctions, the starboard, giveaways, verification and bump reminders. Sanctions have three slots per type (`ban`, `kick`, `mute`, `warn`, `jail`...), the DM to the member, the reply where the command was used and the sanctions log entry, set with `!sanctionmessage set|clear|list`, with `default` covering every type that has no message of its own. The starboard uses `!starboard message`, giveaways `!giveaway message-template` (winner, deny, claim time, claim time over, accept, no entries), verification `!verify template` (the link DM and the verified DM) and bump `!bumpreminder template`. A template that is missing or broken never stops the action, the usual message is sent instead.
 - Added variables for them: `{case.id}`, `{case.type}`, `{case.action}`, `{case.reason}`, `{case.duration}`, `{case.expires}`, `{case.moderator}` and `{case.user}` families for sanctions, `{star.count}`, `{star.link}`, `{star.content}`, `{star.image}` and more for the starboard, `{verify.link}` for verification and `{nextBump}` for bump messages.
 - Added `scripts/check-sanction-templates.js` to `npm run check`.
