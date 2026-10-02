@@ -67,6 +67,10 @@ module.exports = {
   clientId: process.env.DISCORD_CLIENT_ID,
   ownerId: process.env.PETTO_OWNER_ID || '293504726505357312',
   developerIds: envList('PETTO_DEVELOPER_IDS'),
+  // Quest alerts use a community API that allowed Petto's team to try it. Until it is allowed for everyone, only the
+  // owner, the developers and these testers can set it up. Set QUESTS_PUBLIC=true once there is permission for all servers.
+  questsPublic: process.env.QUESTS_PUBLIC === 'true',
+  questTesterIds: envList('QUESTS_TESTER_IDS'),
   // This control token is intentionally required at runtime. Never commit a
   // fallback token: a public repository makes hard-coded controls unsafe.
   automodControlToken: process.env.PETTO_AUTOMOD_CONTROL_TOKEN || null,
