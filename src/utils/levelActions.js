@@ -8,7 +8,42 @@ const { extractReactReplies, applyReactReplies } = require('./messageFlags');
 const { EMOJI } = require('./emojis');
 const { getTemplate } = require('../db/embedTemplates');
 const { build: buildEmbedTemplate } = require('./embedBuilder');
+const { listEvents } = require('../db/xpEvents');
+const { addPeriodXp } = require('../db/levelPeriods');
+const { eventMultiplier, dailyBonus, utcDay } = require('./levelRules');
 const logger = require('./logger');
+
+// The day each member was last marked active, so a streak is touched in the database once a day and not on every message.
+const touchedDay = new Map();
+
+/**
+ * What an award of XP is worth once the server's rules are applied: a running XP event multiplies it, and the first
+ * activity of a day adds the daily and streak bonus. Neither can stop the award, a failure just leaves the plain XP.
+ */
+async function applyXpRules({ guild, member, config, xpGain, source }) {
+  let gain = xpGain;
+  try {
+    gain = Math.round(gain * eventMultiplier(await listEvents(guild.id), source));
+  } catch (err) {
+    logger.warn(`XP events could not be read for ${guild.id}: ${err.message}`);
+  }
+  let bonus = 0;
+  let streak = 0;
+  try {
+    const day = utcDay();
+    const key = `${guild.id}:${member.id}`;
+    if (touchedDay.get(key) !== day) {
+      const touched = await levelUsersDb.touchStreak(guild.id, member.id, day);
+      touchedDay.set(key, day);
+      streak = touched.streak;
+      if (touched.newDay) bonus = dailyBonus(config, touched.streak);
+      if (touchedDay.size > 20_000) touchedDay.clear();
+    }
+  } catch (err) {
+    logger.warn(`Streak could not be updated for ${member.id} in ${guild.id}: ${err.message}`);
+  }
+  return { xp: gain + bonus, bonus, streak };
+}
 
 /** Combined multiplier for a message/voice-minute: the largest matching role multiplier, multiplied by a matching channel multiplier (both default to 1 if unset). */
 async function getMultiplier(guildId, channelId, member) {
@@ -146,7 +181,9 @@ async function grantXp({ client, guild, member, config, xpGain, messageInc = 0, 
   const before = await levelUsersDb.ensureUser(guild.id, member.id);
   const oldLevel = before.level;
 
-  const updated = await levelUsersDb.addXp(guild.id, member.id, { xpGain, messageInc, vcInc });
+  const award = await applyXpRules({ guild, member, config, xpGain, source: 'text' });
+  const updated = await levelUsersDb.addXp(guild.id, member.id, { xpGain: award.xp, messageInc, vcInc });
+  addPeriodXp(guild.id, member.id, { textXp: award.xp }).catch((err) => logger.warn(`Weekly XP could not be saved for ${member.id}: ${err.message}`));
   const newLevel = Math.min(levelForXp(updated.xp, config), config.max_level);
 
   if (newLevel !== updated.level) await levelUsersDb.setLevel(guild.id, member.id, newLevel);
@@ -156,14 +193,16 @@ async function grantXp({ client, guild, member, config, xpGain, messageInc = 0, 
     await notifyLevelUp({ client, guild, member, config, level: newLevel, channel, message }).catch((err) => logger.error('Level notify failed:', err));
   }
 
-  return { ...updated, level: newLevel, leveledUp: newLevel > oldLevel };
+  return { ...updated, level: newLevel, leveledUp: newLevel > oldLevel, bonusXp: award.bonus, streak: award.streak };
 }
 
 async function grantVoiceXp({ client, guild, member, config, xpGain, vcInc = 1, channel = null, message = null }) {
   const before = await levelUsersDb.ensureUser(guild.id, member.id);
   const oldLevel = before.voice_level ?? 0;
 
-  const updated = await levelUsersDb.addVoiceXp(guild.id, member.id, { xpGain, vcInc });
+  const award = await applyXpRules({ guild, member, config, xpGain, source: 'voice' });
+  const updated = await levelUsersDb.addVoiceXp(guild.id, member.id, { xpGain: award.xp, vcInc });
+  addPeriodXp(guild.id, member.id, { voiceXp: award.xp }).catch((err) => logger.warn(`Weekly voice XP could not be saved for ${member.id}: ${err.message}`));
   const newLevel = Math.min(levelForXp(updated.voice_xp ?? 0, config), config.max_level);
 
   if (newLevel !== oldLevel) await levelUsersDb.setVoiceLevel(guild.id, member.id, newLevel);
@@ -173,7 +212,7 @@ async function grantVoiceXp({ client, guild, member, config, xpGain, vcInc = 1, 
     await notifyLevelUp({ client, guild, member, config, level: newLevel, channel, message, source: 'voice' }).catch((err) => logger.error('Voice level notify failed:', err));
   }
 
-  return { ...updated, level: newLevel, leveledUp: newLevel > oldLevel };
+  return { ...updated, level: newLevel, leveledUp: newLevel > oldLevel, bonusXp: award.bonus, streak: award.streak };
 }
 
 module.exports = { getMultiplier, checkRewards, stripRewardRoles, notifyLevelUp, grantXp, grantVoiceXp };

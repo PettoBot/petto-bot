@@ -1,6 +1,8 @@
 const { getConfig } = require('../db/levelConfig');
 const { getMultiplier, grantVoiceXp } = require('../utils/levelActions');
 const { getVoiceConfig } = require('../utils/levelSource');
+const { voiceEligible } = require('../utils/levelRules');
+const { pruneOldPeriods } = require('../db/levelPeriods');
 const logger = require('../utils/logger');
 const config = require('../config');
 const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency');
@@ -16,9 +18,15 @@ async function processGuild(client, guild) {
     if (!channel.isVoiceBased?.() || channel.id === guild.afkChannelId) continue;
     if (voiceConfig.ignored_channel_ids.includes(channel.id)) continue;
 
+    const humans = [...channel.members.values()].filter((member) => !member.user.bot).length;
     for (const member of channel.members.values()) {
       if (member.user.bot) continue;
-      if (member.voice.selfDeaf || member.voice.serverDeaf) continue;
+      const eligible = voiceEligible({
+        humans,
+        deaf: member.voice.selfDeaf || member.voice.serverDeaf,
+        muted: member.voice.selfMute || member.voice.serverMute,
+      }, voiceConfig);
+      if (!eligible) continue;
 
       try {
         const multi = await getMultiplier(guild.id, channel.id, member);
@@ -48,6 +56,8 @@ function startVoiceXpJob(client) {
     ))
   ), config.jobConcurrency));
   setInterval(() => run().catch((err) => logger.error('Voice XP job error:', err)), POLL_INTERVAL_MS).unref?.();
+  // Weekly and monthly rankings of periods that are over are dropped once an hour; the current ones are never touched.
+  setInterval(() => pruneOldPeriods().catch((err) => logger.warn(`Old ranking periods could not be pruned: ${err.message}`)), 60 * 60_000).unref?.();
   logger.info('Voice XP job started (checking every 60s).');
 }
 
