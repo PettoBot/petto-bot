@@ -2212,3 +2212,37 @@ begin
   return query select true, v_streak;
 end;
 $$;
+
+-- Quest alerts: a message in a channel when a new Discord Quest appears (data from api.discordquest.com).
+create table if not exists quest_config (
+  guild_id       text primary key references guilds(guild_id) on delete cascade,
+  enabled        boolean not null default false,
+  channel_id     text,
+  role_id        text,
+  style          text not null default 'card' check (style in ('card', 'template')),
+  embed_template text,
+  reward_kinds   text[] not null default '{}',
+  task_kinds     text[] not null default '{}',
+  hide_sections  text[] not null default '{}',
+  accent_color   integer,
+  expiring_hours integer not null default 0 check (expiring_hours between 0 and 168),
+  updated_at     timestamptz not null default now()
+);
+alter table quest_config enable row level security;
+
+create table if not exists quest_seen (
+  quest_id      text primary key,
+  first_seen_at timestamptz not null default now(),
+  expires_at    timestamptz
+);
+alter table quest_seen enable row level security;
+
+create table if not exists quest_posts (
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  quest_id   text not null,
+  kind       text not null check (kind in ('new', 'expiring')),
+  message_id text,
+  posted_at  timestamptz not null default now(),
+  primary key (guild_id, quest_id, kind)
+);
+alter table quest_posts enable row level security;
