@@ -4,6 +4,8 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-10-02
+
 ### Added
 
 - Added **custom embeds for every message of the bot**: a saved embed (with an image card if it has one) can now replace the usual message of sanctions, the starboard, giveaways, verification and bump reminders. Sanctions have three slots per type (`ban`, `kick`, `mute`, `warn`, `jail`...), the DM to the member, the reply where the command was used and the sanctions log entry, set with `/sanctionmessage set|clear|list`, with `default` covering every type that has no message of its own. The starboard uses `/starboard message`, giveaways `/giveaway message-template` (winner, deny, claim time, claim time over, accept, no entries), verification `/verify template` (the link DM and the verified DM) and bump `/bumpreminder template`. A template that is missing or broken never stops the action, the usual message is sent instead.
