@@ -11,7 +11,7 @@ function stub(relative, exports) {
 const settingsOfConfig = { ownerId: 'owner', developerIds: ['dev'], questTesterIds: ['tester'], questsPublic: false };
 stub('src/config.js', settingsOfConfig);
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
-stub('src/db/quests.js', { DEFAULTS: {} });
+stub('src/db/quests.js', { DEFAULTS: {}, getConfig: async () => null });
 const templates = {};
 stub('src/db/embedTemplates.js', { getTemplate: async (guildId, name) => (templates[name] ? { name, data: templates[name] } : null) });
 stub('src/utils/cardService.js', { renderCardForMessage: async () => null, normalizeCardRef: () => null, CARD_FILE_NAME: 'card.png' });
@@ -88,6 +88,18 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
   questApi.resetCache(); failCommunity = true;
   await assert.rejects(() => questApi.fetchQuests({ force: true }), /could not be read/); assert.equal(questApi.getStatus().ok, false);
   failTracker = false; failCommunity = false;
+  // A rate limit pauses that source for a while, and the other one keeps working.
+  questApi.resetCache(); let communityCalls = 0;
+  global.fetch = async (url) => {
+    if (new URL(String(url)).hostname === questApi.API_BASE.replace('https://', '')) { communityCalls += 1; return new Response('slow down', { status: 429, headers: { 'retry-after': '120' } }); }
+    return new Response(JSON.stringify(trackerRows), { status: 200, headers: { etag: '"t2"' } });
+  };
+  answer = await questApi.fetchQuests({ force: true });
+  assert.equal(answer.quests.length, 6, 'the other source answers'); assert.equal(communityCalls, 1);
+  questApi.resetCache();
+  await questApi.fetchQuests({ force: true });
+  assert.equal(communityCalls, 1, 'the limited source is not asked again while it is paused');
+  assert.ok(String(questApi.getStatus().sources[0].error).includes('paused'));
   global.fetch = async () => new Response(JSON.stringify({ not: 'a list' }), { status: 200 });
   await assert.rejects(() => questApi.fetchQuests({ force: true }), /could not be read/);
 
@@ -145,6 +157,7 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
   configs = [];
   assert.equal((await checkQuests(client, { api: fakeApi, db, now })).skipped, true, 'with no server using it the API is not asked');
 
+  const guild = { id: '9', name: 'Test', memberCount: 5, ownerId: '1', premiumTier: 0, premiumSubscriptionCount: 0, createdAt: new Date('2020-01-01'), iconURL: () => null, bannerURL: () => null, members: { cache: new Collection() }, roles: { cache: new Collection() }, channels: { cache: new Collection() }, emojis: { cache: new Collection() } };
   // The card, in the style of Discord's own quest bots.
   const flat = (node) => [node, ...(node.components ?? []).flatMap(flat), ...(node.accessory ? [node.accessory] : [])];
   const texts = (card) => card.components.flatMap((c) => flat(c.toJSON())).filter((n) => typeof n.content === 'string').map((n) => n.content).join('\n');
@@ -172,20 +185,67 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
   const clocks = texts(buildQuestCard({ ...play, tasks: [{ type: 'X', kind: 'play', label: 'Play the game', platform: 'Desktop', seconds: 900 }, { type: 'Y', kind: 'video', label: 'Watch', platform: 'Mobile', seconds: 3725 }] }, {}));
   assert.ok(clocks.includes('Play the game (15:00)') && clocks.includes('Watch (1:02:05)'), 'times are shown as a clock');
 
-  // The list of active quests, in the same style, a page at a time.
-  const many = Array.from({ length: 14 }, (_, n) => ({ ...orbs, id: `16${String(n).padStart(17, '0')}`, name: `Quest number ${n + 1}` }));
+  // The list of active quests: a menu with an icon for each kind of reward, and page buttons past 25 quests.
+  const kinds = ['orbs', 'decoration', 'code', 'ingame', 'nitro'];
+  const many = Array.from({ length: 30 }, (_, n) => ({ ...orbs, id: `16${String(n).padStart(17, '0')}`, name: `Quest number ${n + 1}`, rewards: [{ kind: kinds[n % 5], name: `Reward ${n + 1}`, amount: 200, premiumAmount: 240, image: null }], tasks: [{ type: 'WATCH_VIDEO', kind: 'video', label: 'Watch a video', platform: 'Desktop', seconds: 120 }] }));
   const listOne = buildQuestList(many, { page: 1 });
   assert.equal(listOne.flags, MessageFlags.IsComponentsV2);
+  const listNodes = flat(listOne.components[0].toJSON());
+  const menu = listNodes.find((n) => n.type === 3);
+  assert.equal(menu.custom_id, 'quests:view'); assert.equal(menu.options.length, 25, 'a menu holds 25 quests');
+  assert.equal(menu.options[0].label, 'Quest number 1'); assert.equal(menu.options[0].value, many[0].id);
+  assert.deepEqual(menu.options.slice(0, 5).map((o) => (o.emoji.id ? 'custom' : o.emoji.name)), ['custom', '🎭', '🎟️', '🎮', '💎'], 'each kind of reward has its own icon, Orbs the Orbs one');
+  assert.ok(menu.options[0].description.startsWith('200 Orbs · Video · ends ') && menu.options.every((o) => o.description.length <= 100));
   const listText = texts(listOne);
-  assert.ok(listText.includes(`# ${EMOJI.QUEST_BADGE} Active quests`) && listText.includes('14 quests · page 1 of 3') && listText.includes('Quest number 1') && listText.includes('Quest number 6') && !listText.includes('Quest number 7'));
-  assert.ok(listText.includes('quests list 2'), 'it says how to reach the next page');
-  assert.ok(texts(buildQuestList(many, { page: 3 })).includes('Quest number 14') && texts(buildQuestList(many, { page: 99 })).includes('page 3 of 3'), 'a page that is too far gives the last one');
-  assert.ok(flat(listOne.components[0].toJSON()).length <= 40, 'within the 40 components of a message');
-  assert.ok(listText.length < 4000, 'within the text of a message');
-  assert.ok(texts(buildQuestList([orbs], {})).includes('1 quest · page 1 of 1'));
+  assert.ok(listText.includes(`# ${EMOJI.QUEST_BADGE} Active quests`) && listText.includes('30 quests · page 1 of 2 · pick one to see it'));
+  const buttons = listNodes.filter((n) => n.type === 2);
+  assert.deepEqual(buttons.map((b) => [b.custom_id, b.disabled ?? false]), [['quests:page:0', true], ['quests:page:none', true], ['quests:page:2', false]], 'previous is off on the first page');
+  const listTwo = flat(buildQuestList(many, { page: 2 }).components[0].toJSON());
+  assert.equal(listTwo.find((n) => n.type === 3).options.length, 5); assert.equal(listTwo.find((n) => n.type === 3).options[0].label, 'Quest number 26');
+  assert.equal(flat(buildQuestList(many, { page: 99 }).components[0].toJSON()).find((n) => n.type === 3).options[0].label, 'Quest number 26', 'a page too far gives the last one');
+  const single = flat(buildQuestList([orbs], {}).components[0].toJSON());
+  assert.equal(single.filter((n) => n.type === 2).length, 0, 'no page buttons for a short list'); assert.ok(texts(buildQuestList([orbs], {})).includes('1 quest'));
+  assert.ok(listNodes.length <= 40 && listText.length < 4000);
+
+  // The pictures of the rewards: the Orbs icon, and the decoration from Discord's own product endpoint.
+  const images = require('../src/utils/questImages');
+  settingsOfConfig.verifyBaseUrl = 'https://bot.example';
+  assert.equal(images.orbsIcon(), 'https://bot.example/assets/quest-orbs.png');
+  const asked = [];
+  const productFetch = async (url) => { asked.push(url); return url.endsWith('/1554525949758804089') ? new Response(JSON.stringify({ items: [{ type: 0, sku_id: '1554525949758804089', asset: 'a_0755beb047355c0db919fc5eddc2322a' }] }), { status: 200 }) : url.endsWith('/1554525949758804090') ? new Response(JSON.stringify({ items: [{ type: 1, asset: 'effect' }] }), { status: 200 }) : new Response('no', { status: 404 }); };
+  assert.equal(await images.decorationImage('1554525949758804089', productFetch), 'https://cdn.discordapp.com/avatar-decoration-presets/a_0755beb047355c0db919fc5eddc2322a.png?size=256&passthrough=true');
+  assert.equal(await images.decorationImage('1554525949758804089', productFetch), 'https://cdn.discordapp.com/avatar-decoration-presets/a_0755beb047355c0db919fc5eddc2322a.png?size=256&passthrough=true');
+  assert.equal(asked.length, 1, 'a picture is asked for once and remembered');
+  assert.equal(await images.decorationImage('1554525949758804090', productFetch), null, 'a profile effect is not an avatar decoration');
+  assert.equal(await images.decorationImage('1554525949758804091', productFetch), null); assert.equal(await images.decorationImage('not a sku', productFetch), null);
+  assert.equal(await images.decorationImage('1554525949758804092', async () => { throw new Error('offline'); }), null, 'a failure is only a missing picture');
+  const withImages = await images.withRewardImages({ ...orbs, rewards: [{ kind: 'orbs', name: '200 Orbs', amount: 200, premiumAmount: 240, image: null }, { kind: 'decoration', sku: '1554525949758804089', name: 'Helmet', image: null }, { kind: 'code', name: 'Code', image: null }, { kind: 'ingame', name: 'Item', image: 'https://cdn.discordapp.com/quests/1/2.png' }] }, { fetcher: productFetch });
+  assert.deepEqual(withImages.rewards.map((r) => r.image), ['https://bot.example/assets/quest-orbs.png', 'https://cdn.discordapp.com/avatar-decoration-presets/a_0755beb047355c0db919fc5eddc2322a.png?size=256&passthrough=true', null, 'https://cdn.discordapp.com/quests/1/2.png']);
+  settingsOfConfig.verifyBaseUrl = null; images.clearCache();
+  assert.equal(images.orbsIcon(), null, 'without a public address there is no Orbs icon, and nothing breaks');
+  settingsOfConfig.verifyBaseUrl = 'https://bot.example';
+  const orbCard = await questMessage(guild, { style: 'card' }, orbs, 'new');
+  assert.ok(flat(orbCard.components[0].toJSON()).some((n) => n.type === 11 && n.media.url === 'https://bot.example/assets/quest-orbs.png'), 'the rewards block of an Orbs quest has the Orbs icon');
+
+  // The menu and the buttons of the list.
+  const interactions = require('../src/interactions/quests');
+  const replies = [];
+  questApi.getQuests = async () => [orbs, deco, ...normalized.slice(3)];
+  const call = (handler, extra) => handler({ user: { id: 'owner' }, guild, reply: async (p) => replies.push(['reply', p]), update: async (p) => replies.push(['update', p]), deferUpdate: async () => replies.push(['defer']), ...extra });
+  await call(interactions.handleSelect, { values: [orbs.id] });
+  assert.equal(replies.at(-1)[0], 'reply'); assert.equal(replies.at(-1)[1].flags, MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral, 'the card is only for who picked it');
+  assert.ok(texts({ components: replies.at(-1)[1].components }).includes('Watch the trailer'));
+  await call(interactions.handleSelect, { values: ['1550000000000099999'] });
+  assert.ok(String(replies.at(-1)[1].content).includes('not active anymore'));
+  await call(interactions.handleSelect, { values: [orbs.id], user: { id: 'someone' } });
+  assert.ok(String(replies.at(-1)[1].content).includes('testing'), 'only the team while it is in testing');
+  await call(interactions.handleButton, { customId: 'quests:page:2' });
+  assert.equal(replies.at(-1)[0], 'update'); assert.ok(flat(replies.at(-1)[1].components[0].toJSON()).some((n) => n.type === 3));
+  await call(interactions.handleButton, { customId: 'quests:page:none' });
+  assert.equal(replies.at(-1)[0], 'defer', 'the counter button does nothing');
+  questApi.getQuests = undefined;
 
   // The saved embed, and its fallback.
-  const guild = { id: '9', name: 'Test', memberCount: 5, ownerId: '1', premiumTier: 0, premiumSubscriptionCount: 0, createdAt: new Date('2020-01-01'), iconURL: () => null, bannerURL: () => null, members: { cache: new Collection() }, roles: { cache: new Collection() }, channels: { cache: new Collection() }, emojis: { cache: new Collection() } };
   templates.quest = { content: '{quest.status}: {quest.name} for {quest.reward} ({quest.reward_amount})', embeds: [{ title: '{quest.game}', description: '{quest.tasks}\n{quest.limits}', image: { url: '{quest.image}' } }] };
   let message = await questMessage(guild, { style: 'template', embed_template: 'quest', role_id: '999' }, orbs, 'new');
   assert.ok(message.content.startsWith('<@&999>\nNew quest: Watch the trailer for 200 Orbs (200)') && message.content.includes(questApi.SOURCE_NAME));

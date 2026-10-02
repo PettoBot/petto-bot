@@ -22,6 +22,7 @@ const { ROLEPLAY_BUTTON_PREFIX, handleButton: handleRoleplayButton } = require('
 const { handleSelect: handleBackupSelect, handleScheduleModal, handleRestoreModal } = require('../interactions/backup');
 const { VERSION_SELECT_ID, handleButton: handleVersionButton, handleSelect: handleVersionSelect } = require('../interactions/version');
 const { handleButton: handleVoiceMasterButton, handleModal: handleVoiceMasterModal, handleSelect: handleVoiceMasterSelect } = require('../interactions/voiceMaster');
+const { SELECT_ID: QUEST_SELECT_ID, PAGE_ID: QUEST_PAGE_ID, handleSelect: handleQuestSelect, handleButton: handleQuestButton } = require('../interactions/quests');
 const { handleSetupModal } = require('../interactions/setup');
 const { SETUP_BUTTON_PREFIX, handleSetupButton } = require('../interactions/setupPanel');
 const { BUTTON_PREFIX, handleButton: handleReactionRoleButton } = require('../interactions/reactionRoleButton');
@@ -61,6 +62,16 @@ module.exports = {
 
     if (interaction.isStringSelectMenu() && interaction.customId.startsWith('backup_menu:')) {
       try { await handleBackupSelect(interaction); } catch (err) { logger.error('Error handling backup menu:', err); }
+      return;
+    }
+
+    if (interaction.isStringSelectMenu() && interaction.customId === QUEST_SELECT_ID) {
+      try { await handleQuestSelect(interaction); } catch (err) { logger.error('Error handling quest menu:', err); }
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith(`${QUEST_PAGE_ID}:`)) {
+      try { await handleQuestButton(interaction); } catch (err) { logger.error('Error handling quest page button:', err); }
       return;
     }
 
