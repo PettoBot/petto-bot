@@ -48,8 +48,10 @@ module.exports = {
       return reply(lines.length ? lines.join('\n') : 'No custom sanction messages are set. Use `sanctionmessage set`.', 0x4b4f59);
     }
 
-    const type = interaction.options.getString('type', true);
-    const slot = interaction.options.getString('slot');
+    const type = interaction.options.getString('type', true).trim().toLowerCase();
+    const slot = interaction.options.getString('slot')?.trim().toLowerCase() || null;
+    if (!sanctionTemplates.TYPES.includes(type)) return reply(`Choose a type: ${sanctionTemplates.TYPES.map((t) => `\`${t}\``).join(', ')}.`, 0xfe6465);
+    if ((slot || sub === 'set') && !SLOT_LABELS[slot]) return reply(`Choose a message: ${Object.keys(SLOT_LABELS).map((s) => `\`${s}\``).join(', ')}.`, 0xfe6465);
 
     if (sub === 'clear') {
       await sanctionTemplates.setTemplates(interaction.guild.id, type, slot ? { [slot]: null } : { dm: null, reply: null, log: null });

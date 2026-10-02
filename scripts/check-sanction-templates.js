@@ -103,6 +103,8 @@ const moderator = { id: '222', username: 'mod', displayAvatarURL: () => 'https:/
   assert.equal(store.size, 0);
   assert.ok((await run('set', { type: 'ban', slot: 'dm', template: 'dmcard' })).includes('now uses'));
   assert.equal(store.get('ban').dm, 'dmcard');
+  assert.ok((await run('set', { type: 'BAN', slot: 'nope', template: 'dmcard' })).includes('Choose a message'), 'a wrong slot typed with the prefix is explained');
+  assert.ok((await run('set', { type: 'Ban', slot: 'DM', template: 'dmcard' })).includes('now uses'), 'the case typed with the prefix does not matter');
   assert.ok((await run('list', {})).includes('dmcard'));
   await run('clear', { type: 'ban', slot: 'dm' });
   assert.equal(store.get('ban').dm, null);

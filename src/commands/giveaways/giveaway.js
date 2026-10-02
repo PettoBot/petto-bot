@@ -370,7 +370,10 @@ async function setEmbedCmd(interaction) {
 async function messageTemplateCmd(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
-  const which = interaction.options.getString('message', true);
+  const which = interaction.options.getString('message', true).trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (!MESSAGE_CHOICES.some((choice) => choice.value === which)) {
+    return interaction.editReply({ components: [textCard(`Choose one of: ${MESSAGE_CHOICES.map((choice) => `\`${choice.value}\``).join(', ')}.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+  }
   const column = `${which}_embed_template`;
   const name = interaction.options.getString('template', true).trim();
   const label = MESSAGE_CHOICES.find((choice) => choice.value === which)?.name ?? which;

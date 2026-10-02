@@ -44,7 +44,8 @@ module.exports = {
 async function setTemplate(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
-  const which = interaction.options.getString('which', true);
+  const which = interaction.options.getString('which', true).trim().toLowerCase();
+  if (!['prompt', 'verified'].includes(which)) return interaction.editReply({ components: [textCard('Choose `prompt` or `verified`.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
   const name = interaction.options.getString('template', true).trim();
   const column = `${which}_embed_template`;
   const done = (text, color = 0xa5ea7a) => interaction.editReply({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2 });

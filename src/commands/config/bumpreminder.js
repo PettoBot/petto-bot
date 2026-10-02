@@ -49,7 +49,8 @@ async function update(interaction, sub) {
     patch.thankyou = interaction.options.getString('text', true);
     confirmLine = 'Thank-you message updated.';
   } else if (sub === 'template') {
-    const which = interaction.options.getString('which', true);
+    const which = interaction.options.getString('which', true).trim().toLowerCase();
+    if (!['reminder', 'thankyou'].includes(which)) return interaction.editReply({ components: [textCard('Choose `reminder` or `thankyou`.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     const name = interaction.options.getString('template', true).trim();
     const column = `${which}_embed_template`;
     if (name.toLowerCase() === 'none') {
