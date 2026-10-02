@@ -128,7 +128,7 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
   const card = buildQuestCard(orbs, { hide_sections: [], role_id: '999' }, { rolePing: '<@&999>' });
   assert.equal(card.flags, MessageFlags.IsComponentsV2); assert.equal(card.components.length, 2);
   const json = JSON.stringify(card.components.map((c) => c.toJSON()));
-  assert.ok(json.includes('Watch the trailer') && json.includes('Accept Quest') && json.includes('discordquest.com') && json.includes(`https://discord.com/quests/${ids.orbs}`));
+  assert.ok(json.includes('Watch the trailer') && json.includes('Accept Quest') && json.includes(questApi.SOURCE_NAME) && json.includes(`https://discord.com/quests/${ids.orbs}`));
   assert.ok(json.includes('Only in US') && json.includes('18+'));
   const slim = JSON.stringify(buildQuestCard(orbs, { hide_sections: ['image', 'limits', 'tasks'], accent_color: 0xff91c2 }).components.map((c) => c.toJSON()));
   assert.ok(!slim.includes('Only in US') && !slim.includes('**Task:**') && !slim.includes('111.jpg') && slim.includes(String(0xff91c2)), 'hidden sections and the color are respected');
@@ -138,7 +138,7 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
   const guild = { id: '9', name: 'Test', memberCount: 5, ownerId: '1', premiumTier: 0, premiumSubscriptionCount: 0, createdAt: new Date('2020-01-01'), iconURL: () => null, bannerURL: () => null, members: { cache: new Collection() }, roles: { cache: new Collection() }, channels: { cache: new Collection() }, emojis: { cache: new Collection() } };
   templates.quest = { content: '{quest.status}: {quest.name} for {quest.reward} ({quest.reward_amount})', embeds: [{ title: '{quest.game}', description: '{quest.tasks}\n{quest.limits}', image: { url: '{quest.image}' } }] };
   let message = await questMessage(guild, { style: 'template', embed_template: 'quest', role_id: '999' }, orbs, 'new');
-  assert.ok(message.content.startsWith('<@&999>\nNew quest: Watch the trailer for 200 Orbs (200)') && message.content.includes('discordquest.com'));
+  assert.ok(message.content.startsWith('<@&999>\nNew quest: Watch the trailer for 200 Orbs (200)') && message.content.includes(questApi.SOURCE_NAME));
   assert.equal(message.embeds[0].data.title, 'Some Game'); assert.ok(message.embeds[0].data.description.includes('Watch a video (2 min)'));
   message = await questMessage(guild, { style: 'template', embed_template: 'missing' }, orbs, 'expiring');
   assert.equal(message.flags, MessageFlags.IsComponentsV2, 'a missing saved embed sends the card');
