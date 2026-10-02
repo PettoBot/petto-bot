@@ -42,9 +42,7 @@ const author = { id: '111', username: 'starry', displayAvatarURL: () => 'https:/
   templates.star = { content: '{star.count} {star.emoji} in {star.channel_name} by {star.author_name}', embeds: [{ description: '{star.content}\n{star.link}\n{star.attachments}', image: { url: '{star.image}' } }] };
   const payload = await buildCustomPayload(message, row, 5);
   assert.equal(payload.content, '5 ⭐ in general by starry');
-  assert.ok(payload.embeds[0].data.description.includes('a great message'));
-  assert.ok(payload.embeds[0].data.description.includes('https://discord.com/channels/9/3/55'));
-  assert.ok(payload.embeds[0].data.description.includes('[doc.pdf](https://cdn.test/doc.pdf)'));
+  assert.deepEqual(payload.embeds[0].data.description.split('\n'), ['a great message', 'https://discord.com/channels/9/3/55', '[doc.pdf](https://cdn.test/doc.pdf)']);
   assert.equal(payload.embeds[0].data.image.url, 'https://cdn.test/pic.png');
   assert.deepEqual(payload.allowedMentions, { parse: [] });
   assert.equal(await buildCustomPayload(message, { ...row, embed_template: 'boom' }, 5), null, 'a broken template, the usual repost');
