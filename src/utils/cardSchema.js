@@ -10,7 +10,8 @@ const LIMITS = {
   coordinate: 4000, size: 4000, fontMin: 8, fontMax: 400,
 };
 const DEFAULT_SIZE = { width: 1024, height: 500 };
-const LAYER_TYPES = new Set(['text', 'image', 'avatar', 'shape']);
+const LAYER_TYPES = new Set(['text', 'image', 'avatar', 'shape', 'bar']);
+const RANK_SIZE = { width: 1024, height: 320 };
 const AVATAR_SOURCES = new Set(['user', 'server']);
 const AVATAR_SHAPES = new Set(['circle', 'rounded', 'square']);
 const FITS = new Set(['cover', 'contain', 'stretch']);
@@ -110,6 +111,22 @@ function normalizeLayer(raw, index, problems) {
       shadow: shadow(raw.shadow),
     };
   }
+  if (raw.type === 'bar') {
+    const h = num(raw.h, 2, 500, 30);
+    return {
+      ...base,
+      w: num(raw.w, 4, LIMITS.size, 500),
+      h,
+      radius: num(raw.radius, 0, 2000, h / 2),
+      fill: color(raw.fill, '#8399ff'),
+      fill2: raw.fill2 ? color(raw.fill2, '') : '',
+      track: color(raw.track, '#000000'),
+      trackOpacity: num(raw.trackOpacity, 0, 1, 0.45),
+      // A number, or a variable such as {level_progress} that the renderer turns into one, 0 to 100.
+      value: text(raw.value ?? '{level_progress}', 40),
+      shadow: shadow(raw.shadow),
+    };
+  }
   return {
     ...base,
     shape: raw.shape === 'circle' ? 'circle' : 'rect',
@@ -149,18 +166,22 @@ function normalizeCard(raw, { premium = false } = {}) {
   const problems = [];
   const input = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
   const mode = input.mode === 'advanced' ? 'advanced' : 'basic';
+  // A rank card shows the level and a progress bar; every other card is a welcome-style picture.
+  const kind = input.kind === 'rank' ? 'rank' : 'welcome';
+  const fallbackSize = kind === 'rank' ? RANK_SIZE : DEFAULT_SIZE;
   const card = {
     v: 1,
+    kind,
     mode,
-    width: Math.round(num(input.width, LIMITS.minWidth, LIMITS.maxWidth, DEFAULT_SIZE.width)),
-    height: Math.round(num(input.height, LIMITS.minHeight, LIMITS.maxHeight, DEFAULT_SIZE.height)),
+    width: Math.round(num(input.width, LIMITS.minWidth, LIMITS.maxWidth, fallbackSize.width)),
+    height: Math.round(num(input.height, LIMITS.minHeight, LIMITS.maxHeight, fallbackSize.height)),
     background: normalizeBackground(input.background, problems),
     layers: [],
   };
   const maxLayers = mode === 'advanced' ? LIMITS.layersAdvanced : LIMITS.layersBasic;
   // A basic card is its settings: the layers always come from the presets, never from what was sent.
-  if (mode === 'basic') card.basic = normalizeBasic(input.basic);
-  const rawLayers = mode === 'basic' ? buildBasicLayers(card.basic, card.width, card.height) : (Array.isArray(input.layers) ? input.layers : []);
+  if (mode === 'basic') card.basic = normalizeBasic(input.basic, kind);
+  const rawLayers = mode === 'basic' ? buildBasicLayers(card.basic, card.width, card.height, kind) : (Array.isArray(input.layers) ? input.layers : []);
   if (rawLayers.length > maxLayers) problems.push(`A card holds at most ${maxLayers} layers, the rest were left out.`);
   const seen = new Set();
   rawLayers.slice(0, maxLayers).forEach((layer, index) => {
@@ -176,4 +197,4 @@ function normalizeCard(raw, { premium = false } = {}) {
   return { card, problems, usesAdvanced, usesPremiumFont };
 }
 
-module.exports = { LIMITS, DEFAULT_SIZE, normalizeCard, color, source };
+module.exports = { LIMITS, DEFAULT_SIZE, RANK_SIZE, normalizeCard, color, source };

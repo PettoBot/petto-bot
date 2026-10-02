@@ -69,9 +69,39 @@ async function renderCardForMessage(cardRef, ctx) {
   }
 }
 
+/** The rank card a server has not designed: a basic rank card, with its own color for voice. */
+function defaultRankCard(source) {
+  const voice = source === 'voice';
+  return {
+    kind: 'rank',
+    mode: 'basic',
+    basic: { preset: 'rank', accent: voice ? '#3ddc97' : '#8399ff', title: voice ? 'VOICE LEVEL {level}' : 'LEVEL {level}' },
+    background: { color: '#1e1f22', gradient: voice ? { from: '#12372f', to: '#1e1f22', angle: 120 } : { from: '#2b2f6b', to: '#4a2b52', angle: 120 } },
+  };
+}
+
+/**
+ * The picture of the rank of one member. `cardName` is the card the server chose, or null for the default one. It never
+ * throws: when the picture cannot be had the caller shows the embed alone.
+ */
+async function renderRankCard(ctx, cardName, source = 'messages') {
+  const guildId = ctx.guild?.id;
+  if (!guildId) return null;
+  try {
+    let raw = null;
+    if (cardName) raw = (await imageCards.getCard(guildId, cardName))?.data ?? null;
+    const premium = (await getGuildPremium(guildId)).active;
+    const buffer = await drawCard(raw ?? defaultRankCard(source), ctx, { guildId, premium });
+    return { buffer, name: CARD_FILE_NAME };
+  } catch (error) {
+    logger.warn({ guildId, action: 'rank-card' }, `Could not draw the rank card: ${error.message}`);
+    return null;
+  }
+}
+
 function normalizeCardRef(raw) {
   if (!raw || typeof raw !== 'object' || typeof raw.name !== 'string' || !raw.name.trim()) return null;
   return { name: imageCards.normalizeName(raw.name), placement: PLACEMENTS.has(raw.placement) ? raw.placement : 'default' };
 }
 
-module.exports = { CARD_FILE_NAME, PLACEMENTS, drawCard, renderCardForMessage, normalizeCardRef };
+module.exports = { CARD_FILE_NAME, PLACEMENTS, drawCard, renderCardForMessage, renderRankCard, defaultRankCard, normalizeCardRef };

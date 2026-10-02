@@ -9,7 +9,7 @@ const { createCanvas, loadImage } = require('@napi-rs/canvas');
 
 const fixturePath = path.join(__dirname, 'fixtures', 'card-presets.json');
 const { normalizeCard, LIMITS } = require('../src/utils/cardSchema');
-const { PRESETS, BASIC_DEFAULTS, buildBasicLayers } = require('../src/utils/cardPresets');
+const { PRESETS, RANK_PRESETS, BASIC_DEFAULTS, RANK_DEFAULTS, buildBasicLayers } = require('../src/utils/cardPresets');
 const { renderCard, fitRect, wrapLines } = require('../src/imgutils/cardRenderer');
 const { registerCardFonts, CARD_FONTS, nearestWeight, canvasFont } = require('../src/imgutils/cardFonts');
 const safeImage = require('../src/utils/safeImage');
@@ -47,6 +47,11 @@ for (const preset of PRESETS) {
   pinned[preset] = buildBasicLayers({ ...BASIC_DEFAULTS, preset, font: 'Poppins' }, 1024, 500);
   assert.ok(pinned[preset].length >= 3 && pinned[preset].length <= LIMITS.layersBasic);
 }
+for (const preset of RANK_PRESETS) {
+  pinned[preset] = buildBasicLayers({ ...RANK_DEFAULTS, preset, font: 'Poppins' }, 1024, 320, 'rank');
+  assert.ok(pinned[preset].some((layer) => layer.type === 'bar'), `${preset} has a progress bar`);
+  assert.ok(pinned[preset].length <= LIMITS.layersBasic);
+}
 if (process.env.WRITE_CARD_FIXTURE === '1') fs.writeFileSync(fixturePath, `${JSON.stringify(pinned, null, 2)}\n`);
 assert.deepEqual(JSON.parse(fs.readFileSync(fixturePath, 'utf8')), pinned, 'the layouts changed: run with WRITE_CARD_FIXTURE=1 and copy the file to the dashboard');
 
@@ -80,6 +85,25 @@ async function pixel(buffer, x, y) {
 const near = (actual, expected, tolerance = 6) => actual.every((value, index) => Math.abs(value - expected[index]) <= tolerance);
 
 (async () => {
+  // A rank card: the kind sets its size and presets, and the bar is drawn as far as its value says.
+  const rank = normalizeCard({ kind: 'rank', mode: 'basic', basic: { preset: 'rank', accent: '#ff0000' }, background: { color: '#000000' } });
+  assert.equal(rank.card.kind, 'rank'); assert.equal(rank.card.width, 1024); assert.equal(rank.card.height, 320);
+  assert.equal(normalizeCard({ kind: 'nope' }).card.kind, 'welcome', 'an unknown kind is a welcome card');
+  assert.equal(normalizeCard({ kind: 'rank', basic: { preset: 'classic' } }).card.basic.preset, 'rank', 'a rank card only takes rank layouts');
+  const barLayer = rank.card.layers.find((layer) => layer.type === 'bar');
+  const drawRank = (progress) => renderCard(rank.card, { resolveText: async (text) => text.replace('{level_progress}', progress), avatar: async () => null, loadSource: async () => null });
+  const half = await drawRank('50');
+  const left = Math.round(barLayer.x - barLayer.w / 2);
+  assert.ok(near(await pixel(half, left + Math.round(barLayer.w * 0.25), barLayer.y), [255, 0, 0]), 'the left half of the bar is filled');
+  assert.ok(!near(await pixel(half, left + Math.round(barLayer.w * 0.75), barLayer.y), [255, 0, 0], 60), 'the right half is the track');
+  assert.ok(!near(await pixel(await drawRank('0'), left + Math.round(barLayer.w * 0.25), barLayer.y), [255, 0, 0], 60), '0 percent draws no fill');
+  assert.ok(near(await pixel(await drawRank('250'), left + Math.round(barLayer.w * 0.95), barLayer.y), [255, 0, 0]), 'more than 100 is a full bar');
+  assert.ok(!near(await pixel(await drawRank('abc'), left + Math.round(barLayer.w * 0.25), barLayer.y), [255, 0, 0], 60), 'a value that is not a number is an empty bar');
+  const gradientBar = normalizeCard({ mode: 'advanced', width: 800, height: 200, background: { color: '#000000' }, layers: [{ type: 'bar', x: 400, y: 100, w: 600, h: 40, fill: '#ff0000', fill2: '#0000ff', value: '100' }] }, { premium: true }).card;
+  const gradientPng = await renderCard(gradientBar, {});
+  assert.ok(near(await pixel(gradientPng, 120, 100), [255, 0, 0], 40) || (await pixel(gradientPng, 120, 100))[0] > 180, 'a gradient bar starts with its first color');
+  assert.ok((await pixel(gradientPng, 680, 100))[2] > 180, 'and ends with its second');
+
   const avatar = await loadImage(avatarImage());
   const seenText = [];
   const deps = { resolveText: async (text) => { seenText.push(text); return text.replace('{user.display_name}', 'Liam').replace('{server_membercount}', '1204'); }, avatar: async () => avatar, loadSource: async () => null };

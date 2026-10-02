@@ -380,5 +380,277 @@
         "y": 2
       }
     }
+  ],
+  "rank": [
+    {
+      "id": "panel",
+      "type": "shape",
+      "shape": "rect",
+      "x": 512,
+      "y": 160,
+      "w": 974,
+      "h": 270,
+      "fill": "#000000",
+      "radius": 34,
+      "opacity": 0.45
+    },
+    {
+      "id": "avatar",
+      "type": "avatar",
+      "source": "user",
+      "x": 159.60000000000002,
+      "y": 160,
+      "size": 179.20000000000002,
+      "shape": "circle",
+      "border": {
+        "color": "#8399ff",
+        "width": 7
+      },
+      "shadow": {
+        "color": "#000000",
+        "blur": 18,
+        "x": 0,
+        "y": 5
+      }
+    },
+    {
+      "id": "name",
+      "type": "text",
+      "text": "{user.display_name}",
+      "x": 295.20000000000005,
+      "y": 96,
+      "size": 46,
+      "font": "Poppins",
+      "weight": 800,
+      "color": "#ffffff",
+      "align": "left",
+      "w": 438.79999999999995,
+      "opacity": 1,
+      "spacing": 0,
+      "upper": false,
+      "shadow": {
+        "color": "#000000",
+        "blur": 8,
+        "x": 0,
+        "y": 2
+      }
+    },
+    {
+      "id": "extra",
+      "type": "text",
+      "text": "RANK #{level_rank}",
+      "x": 954,
+      "y": 96,
+      "size": 34,
+      "font": "Poppins",
+      "weight": 700,
+      "color": "#8399ff",
+      "align": "right",
+      "w": 260,
+      "opacity": 1,
+      "spacing": 3,
+      "upper": true,
+      "shadow": {
+        "color": "#000000",
+        "blur": 8,
+        "x": 0,
+        "y": 2
+      }
+    },
+    {
+      "id": "title",
+      "type": "text",
+      "text": "LEVEL {level}",
+      "x": 295.20000000000005,
+      "y": 160,
+      "size": 30,
+      "font": "Poppins",
+      "weight": 700,
+      "color": "#8399ff",
+      "align": "left",
+      "w": 658.8,
+      "opacity": 1,
+      "spacing": 3,
+      "upper": true,
+      "shadow": {
+        "color": "#000000",
+        "blur": 8,
+        "x": 0,
+        "y": 2
+      }
+    },
+    {
+      "id": "bar",
+      "type": "bar",
+      "x": 624.6,
+      "y": 217.60000000000002,
+      "w": 658.8,
+      "h": 32,
+      "radius": 16,
+      "fill": "#8399ff",
+      "fill2": "",
+      "track": "#000000",
+      "trackOpacity": 0.45,
+      "value": "{level_progress}",
+      "shadow": null
+    },
+    {
+      "id": "subtitle",
+      "type": "text",
+      "text": "{level_xp_current} / {level_xp_needed} XP",
+      "x": 954,
+      "y": 275.2,
+      "size": 24,
+      "font": "Poppins",
+      "weight": 400,
+      "color": "#ffffff",
+      "align": "right",
+      "w": 658.8,
+      "opacity": 0.9,
+      "spacing": 0,
+      "upper": false,
+      "shadow": {
+        "color": "#000000",
+        "blur": 8,
+        "x": 0,
+        "y": 2
+      }
+    }
+  ],
+  "rankBottom": [
+    {
+      "id": "panel",
+      "type": "shape",
+      "shape": "rect",
+      "x": 512,
+      "y": 160,
+      "w": 974,
+      "h": 270,
+      "fill": "#000000",
+      "radius": 34,
+      "opacity": 0.45
+    },
+    {
+      "id": "avatar",
+      "type": "avatar",
+      "source": "user",
+      "x": 150,
+      "y": 121.6,
+      "size": 160,
+      "shape": "circle",
+      "border": {
+        "color": "#8399ff",
+        "width": 7
+      },
+      "shadow": {
+        "color": "#000000",
+        "blur": 18,
+        "x": 0,
+        "y": 5
+      }
+    },
+    {
+      "id": "name",
+      "type": "text",
+      "text": "{user.display_name}",
+      "x": 270,
+      "y": 76.8,
+      "size": 46,
+      "font": "Poppins",
+      "weight": 800,
+      "color": "#ffffff",
+      "align": "left",
+      "w": 684,
+      "opacity": 1,
+      "spacing": 0,
+      "upper": false,
+      "shadow": {
+        "color": "#000000",
+        "blur": 8,
+        "x": 0,
+        "y": 2
+      }
+    },
+    {
+      "id": "title",
+      "type": "text",
+      "text": "LEVEL {level}",
+      "x": 270,
+      "y": 134.4,
+      "size": 32,
+      "font": "Poppins",
+      "weight": 700,
+      "color": "#8399ff",
+      "align": "left",
+      "w": 684,
+      "opacity": 1,
+      "spacing": 3,
+      "upper": true,
+      "shadow": {
+        "color": "#000000",
+        "blur": 8,
+        "x": 0,
+        "y": 2
+      }
+    },
+    {
+      "id": "extra",
+      "type": "text",
+      "text": "RANK #{level_rank}",
+      "x": 954,
+      "y": 134.4,
+      "size": 32,
+      "font": "Poppins",
+      "weight": 700,
+      "color": "#8399ff",
+      "align": "right",
+      "w": 300,
+      "opacity": 1,
+      "spacing": 3,
+      "upper": true,
+      "shadow": {
+        "color": "#000000",
+        "blur": 8,
+        "x": 0,
+        "y": 2
+      }
+    },
+    {
+      "id": "bar",
+      "type": "bar",
+      "x": 512,
+      "y": 227.2,
+      "w": 884,
+      "h": 34,
+      "radius": 17,
+      "fill": "#8399ff",
+      "fill2": "",
+      "track": "#000000",
+      "trackOpacity": 0.45,
+      "value": "{level_progress}",
+      "shadow": null
+    },
+    {
+      "id": "subtitle",
+      "type": "text",
+      "text": "{level_xp_current} / {level_xp_needed} XP",
+      "x": 512,
+      "y": 273.6,
+      "size": 24,
+      "font": "Poppins",
+      "weight": 400,
+      "color": "#ffffff",
+      "align": "center",
+      "w": 884,
+      "opacity": 0.9,
+      "spacing": 0,
+      "upper": false,
+      "shadow": {
+        "color": "#000000",
+        "blur": 8,
+        "x": 0,
+        "y": 2
+      }
+    }
   ]
 }

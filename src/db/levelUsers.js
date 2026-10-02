@@ -1,4 +1,5 @@
 const database = require('./database');
+const { getPrimaryPool } = require('./postgres');
 
 async function getUser(guildId, userId) {
   const { data, error } = await database.from('level_users').select('*').eq('guild_id', guildId).eq('user_id', userId).maybeSingle();
@@ -92,4 +93,10 @@ async function setVoiceLevel(guildId, userId, level) {
   return data;
 }
 
-module.exports = { getUser, ensureUser, addXp, addVoiceXp, setLevel, setVoiceLevel, setXpAndLevel, resetUser, getRank, countRanked, getLeaderboardPage, getVoiceRank, countVoiceRanked, getVoiceLeaderboardPage };
+/** Marks a member active on `day` (a `YYYY-MM-DD` string). Says whether it is their first activity that day and the streak now. */
+async function touchStreak(guildId, userId, day) {
+  const { rows } = await getPrimaryPool().query('select new_day, streak from touch_level_streak($1, $2, $3::date)', [String(guildId), String(userId), day]);
+  return { newDay: Boolean(rows[0]?.new_day), streak: Number(rows[0]?.streak ?? 0) };
+}
+
+module.exports = { touchStreak, getUser, ensureUser, addXp, addVoiceXp, setLevel, setVoiceLevel, setXpAndLevel, resetUser, getRank, countRanked, getLeaderboardPage, getVoiceRank, countVoiceRanked, getVoiceLeaderboardPage };
