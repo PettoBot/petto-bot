@@ -31,6 +31,7 @@ async function renderCard(card, deps = {}) {
       if (layer.type === 'shape') drawShape(ctx, layer);
       else if (layer.type === 'image') await drawImage(ctx, layer, resolveText, loadSource);
       else if (layer.type === 'avatar') drawAvatar(ctx, layer, await avatar(layer.source));
+      else if (layer.type === 'bar') await drawBar(ctx, layer, resolveText);
       else if (layer.type === 'text') await drawText(ctx, layer, resolveText);
     } finally {
       ctx.restore();
@@ -146,6 +147,39 @@ async function drawImage(ctx, layer, resolveText, loadSource) {
   ctx.clip();
   const box = fitRect(image.width, image.height, -layer.w / 2, -layer.h / 2, layer.w, layer.h, layer.fit);
   ctx.drawImage(image, box.x, box.y, box.w, box.h);
+  ctx.restore();
+}
+
+/** A progress bar: a track and a fill as wide as `value` percent of it. `value` is a number or a variable that gives one. */
+async function drawBar(ctx, layer, resolveText) {
+  const parsed = parseFloat(String(await resolveText(layer.value ?? '')).replace(',', '.'));
+  const percent = Number.isFinite(parsed) ? Math.max(0, Math.min(100, parsed)) : 0;
+  const left = -layer.w / 2;
+  const top = -layer.h / 2;
+  setShadow(ctx, layer.shadow);
+  ctx.save();
+  ctx.globalAlpha *= layer.trackOpacity;
+  ctx.fillStyle = layer.track;
+  roundedPath(ctx, left, top, layer.w, layer.h, layer.radius);
+  ctx.fill();
+  ctx.restore();
+  clearShadow(ctx);
+  const filled = (layer.w * percent) / 100;
+  if (filled <= 0) return;
+  ctx.save();
+  // The fill is clipped to the track, so a short fill keeps the round end of the track instead of a squashed one.
+  roundedPath(ctx, left, top, layer.w, layer.h, layer.radius);
+  ctx.clip();
+  if (layer.fill2) {
+    const gradient = ctx.createLinearGradient(left, 0, left + layer.w, 0);
+    gradient.addColorStop(0, layer.fill);
+    gradient.addColorStop(1, layer.fill2);
+    ctx.fillStyle = gradient;
+  } else {
+    ctx.fillStyle = layer.fill;
+  }
+  roundedPath(ctx, left, top, filled, layer.h, Math.min(layer.radius, filled / 2));
+  ctx.fill();
   ctx.restore();
 }
 

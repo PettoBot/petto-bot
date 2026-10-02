@@ -1,7 +1,10 @@
 const { Events } = require('discord.js');
 const { getConfig } = require('../db/levelConfig');
 const { getMultiplier, grantXp } = require('../utils/levelActions');
+const { longEnough, createRepeatGuard } = require('../utils/levelRules');
 const logger = require('../utils/logger');
+
+const isRepeat = createRepeatGuard();
 
 const COOLDOWN_MS_PER_SECOND = 1000;
 const cooldowns = new Map(); // `${guildId}:${userId}` -> last XP grant timestamp
@@ -16,7 +19,10 @@ module.exports = {
       if (!config?.enabled) return;
       if (config.ignored_channel_ids.includes(message.channel.id)) return;
 
+      // Messages that are not chat do not earn XP, and they do not start the cooldown either.
+      if (!longEnough(message.content, config)) return;
       const key = `${message.guild.id}:${message.author.id}`;
+      if (config.anti_repeat && isRepeat(key, message.content)) return;
       const now = Date.now();
       const last = cooldowns.get(key) ?? 0;
       if (now - last < config.cooldown_seconds * COOLDOWN_MS_PER_SECOND) return;
