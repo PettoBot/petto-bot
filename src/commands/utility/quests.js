@@ -129,7 +129,7 @@ module.exports = {
     if (sub === 'list' || sub === 'test') {
       let quests;
       try { quests = (await questApi.fetchQuests({ force: true })).quests.filter((quest) => questApi.isActive(quest)); } catch (error) { return reply(`${EMOJI.DENY}  The quests could not be read: ${error.message}`, 0xfe6465); }
-      quests.sort((a, b) => b.startsAt - a.startsAt);
+      quests.sort((a, b) => (b.startsAt - a.startsAt) || b.id.localeCompare(a.id));
       if (!quests.length) return reply('There are no active quests right now.', 0x4b4f59);
       if (sub === 'list') {
         const lines = quests.slice(0, 12).map((quest) => `**${quest.name}** (${quest.game || 'Discord'}) · ${quest.rewards.map((reward) => reward.name).join(', ') || 'no reward listed'} · ends <t:${Math.floor(quest.expiresAt.getTime() / 1000)}:R>`);

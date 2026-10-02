@@ -8,7 +8,7 @@ const API_BASE = 'https://api.discordquest.com';
 const CDN_BASE = 'https://cdn.discordapp.com/';
 const SOURCE_NAME = 'discordquest.com';
 const SOURCE_URL = 'https://discordquest.com';
-const TRACKER_URL = 'https://github.com/xGustavvo/discord-api-tracker';
+const TRACKER_URL = 'https://github.com/aamiaa/discord-api-diff';
 const TIMEOUT_MS = 45_000;
 const MAX_BYTES = 12 * 1024 * 1024;
 
@@ -30,11 +30,12 @@ const TASKS = {
 const TASK_KINDS = ['video', 'play', 'stream', 'activity'];
 const REWARD_KIND_LIST = ['orbs', 'decoration', 'code', 'ingame', 'nitro'];
 
-// Two public copies of the same list of quests are read, so one being late or down does not stop the alerts: the
-// community API (which also knows the region and age limits) and the GitHub tracker, which follows Discord's own data.
+// Two public copies of the list of quests are read, so one being late or down does not stop the alerts: the community
+// API (which also knows the region and age limits) and aamiaa/discord-api-diff, the repository that archives Discord's own
+// quest data and is the first to have a new quest (the other tracker sites and mirrors copy it, some hours later).
 const SOURCES = [
   { name: 'discordquest.com', url: `${API_BASE}/api/quests`, regions: true },
-  { name: 'discord-api-tracker', url: 'https://raw.githubusercontent.com/xGustavvo/discord-api-tracker/main/quests.json', regions: false },
+  { name: 'discord-api-diff', url: 'https://raw.githubusercontent.com/aamiaa/discord-api-diff/main/quests.json', regions: false },
 ];
 const state = new Map(SOURCES.map((source) => [source.name, { etag: null, quests: null, ok: null, at: null, error: null }]));
 
