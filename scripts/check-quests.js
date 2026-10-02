@@ -91,7 +91,7 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
   // A rate limit pauses that source for a while, and the other one keeps working.
   questApi.resetCache(); let communityCalls = 0;
   global.fetch = async (url) => {
-    if (String(url).includes('api.discordquest.com')) { communityCalls += 1; return new Response('slow down', { status: 429, headers: { 'retry-after': '120' } }); }
+    if (new URL(String(url)).hostname === questApi.API_BASE.replace('https://', '')) { communityCalls += 1; return new Response('slow down', { status: 429, headers: { 'retry-after': '120' } }); }
     return new Response(JSON.stringify(trackerRows), { status: 200, headers: { etag: '"t2"' } });
   };
   answer = await questApi.fetchQuests({ force: true });
