@@ -30,7 +30,7 @@ const RELEASES = [
         items: [
           'Jail (`!jail`, `!unjail`): the member loses their roles and only sees the jail channel. Timed jails end by themselves and roles come back on release. Also usable in `warn escalation`.',
           '`!purge` deletes recent messages by member, kind or text, and `!history` shows a member\'s whole moderation history in one card.',
-          'Reports are numbered with Claim, Resolve, Dismiss and Reopen buttons, categories, cooldown, daily limit, blocking, a reason on closing, a thread that follows the report and `report config`.',
+          'Reports are numbered with Claim, Resolve, Dismiss and Reopen buttons, categories, cooldown, daily limit, blocking, a reason on closing, a thread that follows the report and a settings panel.',
           'Report User menus on users and messages.',
         ],
       },
@@ -38,7 +38,7 @@ const RELEASES = [
         title: `${EMOJI.RELEASE_ROCKET} Utility & fun`,
         items: [
           '`!roll` (`2d6+3`, `4d6kh3`), `!choose`, and the Fun category: `!8ball`, `!ship` (with a picture) and `!rps`.',
-          'Premium name style for the bot per server (gradient, neon, glow).',
+          'Customize (Premium): give Petto a name style in your server, a gradient, neon or glow, from the dashboard.',
         ],
       },
       {
