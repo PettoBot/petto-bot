@@ -3,6 +3,7 @@
 const { ContainerBuilder, TextDisplayBuilder, SectionBuilder, ThumbnailBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, SeparatorBuilder, SeparatorSpacingSize, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
 const { SOURCE_NAME, SOURCE_URL, TRACKER_URL, REWARD_LABELS } = require('./questApi');
 const { templatePayload } = require('./templatedMessage');
+const { EMOJI } = require('./emojis');
 
 const SECTIONS = ['image', 'rewards', 'tasks', 'platforms', 'limits'];
 const CREDIT = `-# Data from [${SOURCE_NAME}](${SOURCE_URL}) and [discord-api-diff](${TRACKER_URL})`;
@@ -65,30 +66,99 @@ function accentOf(quest, config) {
   return parseInt(quest.color.slice(1), 16);
 }
 
-/** The default Components V2 card. */
+const REWARD_TYPES = { orbs: 'Virtual currency', decoration: 'Collectible', code: 'Code', ingame: 'In-game item', nitro: 'Nitro' };
+const flagOf = (code) => (/^[A-Za-z]{2}$/.test(code) ? String.fromCodePoint(...[...code.toUpperCase()].map((c) => 127397 + c.charCodeAt(0))) : '');
+let regionNames = null;
+function countryName(code) {
+  try {
+    regionNames ??= new Intl.DisplayNames(['en'], { type: 'region' });
+    return regionNames.of(code.toUpperCase()) || code;
+  } catch {
+    return code;
+  }
+}
+const clock = (seconds) => {
+  const total = Math.max(0, Math.round(seconds));
+  const h = Math.floor(total / 3600); const m = Math.floor((total % 3600) / 60); const sec = total % 60;
+  return h ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
+};
+
+/** The limits of a quest as lines for the card: the countries it is for, the ones it is not for, and the age. */
+function limitLines(quest) {
+  const lines = [];
+  if (quest.regions.include.length) lines.push(`Users residing in ${quest.regions.include.map((code) => `${countryName(code)} ${flagOf(code)}`.trim()).join(', ')}`);
+  else if (!quest.global && !quest.regions.exclude.length) lines.push('Users in some regions only');
+  if (quest.regions.exclude.length) lines.push(`Not for users in ${quest.regions.exclude.map((code) => `${countryName(code)} ${flagOf(code)}`.trim()).join(', ')}`);
+  if (quest.ageGate) lines.push('Users over 18 🔞');
+  return lines;
+}
+
+const rewardLines = (quest) => quest.rewards.flatMap((reward) => {
+  const lines = [`* \`🥇\` **Type:** ${REWARD_TYPES[reward.kind] ?? 'Reward'}`];
+  if (reward.kind === 'orbs') lines.push(`* \`💸\` **Amount:** ${reward.amount} Orbs${reward.premiumAmount ? ` | ${EMOJI.QUEST_NITRO} ${reward.premiumAmount}` : ''}`);
+  else lines.push(`* \`🔮\` **Name:** ${reward.name}`);
+  if (reward.expiresAt) lines.push(`* \`⏰\` **Expires:** <t:${unix(reward.expiresAt)}:R>`);
+  return lines;
+});
+
+/** The default Components V2 card: the quest as Discord's own quest bots show it, one block after another. */
 function buildQuestCard(quest, config = {}, { kind = 'new', rolePing = null } = {}) {
   const hidden = new Set(config.hide_sections ?? []);
+  const text = (content) => new TextDisplayBuilder().setContent(content);
+  const divider = () => new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small);
   const container = new ContainerBuilder().setAccentColor(accentOf(quest, config));
-  const head = new TextDisplayBuilder().setContent([`### ${kind === 'expiring' ? 'Ending soon: ' : ''}${quest.name}`, [quest.game, quest.publisher].filter(Boolean).join(' · ')].filter(Boolean).join('\n'));
-  if (quest.logo) container.addSectionComponents(new SectionBuilder().addTextDisplayComponents(head).setThumbnailAccessory(new ThumbnailBuilder().setURL(quest.logo)));
-  else container.addTextDisplayComponents(head);
+  const title = `# ${EMOJI.QUEST_BADGE} [${kind === 'expiring' ? 'Ending soon: ' : ''}${quest.name}](${quest.url})`;
+  container.addTextDisplayComponents(text(`${rolePing ? `-# ${rolePing}\n` : ''}${title}`));
   if (quest.image && !hidden.has('image')) container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(quest.image)));
-  container.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small));
-  const lines = [];
-  if (!hidden.has('rewards')) lines.push(`**Reward:** ${rewardText(quest)}`);
-  if (!hidden.has('tasks')) lines.push(`**Task:** ${taskText(quest)}`);
-  if (!hidden.has('platforms') && quest.platforms.length) lines.push(`**Platforms:** ${quest.platforms.join(', ')}`);
-  lines.push(`**Starts:** <t:${unix(quest.startsAt)}:R> · **Ends:** <t:${unix(quest.expiresAt)}:R>`);
-  if (!hidden.has('limits')) lines.push(`**Limits:** ${limitsText(quest)}`);
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
+  container.addSeparatorComponents(divider());
+  const info = [`- \`⏰\` **Starts:** <t:${unix(quest.startsAt)}:R> | **Ends:** <t:${unix(quest.expiresAt)}:R>`];
+  if (!hidden.has('platforms') && quest.platforms.length) info.push(`- \`💿\` **Platforms:** ${quest.platforms.join(', ')}`);
+  if (!hidden.has('tasks')) for (const task of quest.tasks.slice(0, 4)) info.push(`- \`🧫\` **Task:** ${task.label}${task.seconds ? ` (${clock(task.seconds)})` : ''}`);
+  container.addTextDisplayComponents(text(info.join('\n')));
+  if (!hidden.has('rewards') && quest.rewards.length) {
+    container.addSeparatorComponents(divider());
+    const reward = text(`## 🎁 Rewards\n${rewardLines(quest).join('\n')}`);
+    const picture = quest.rewards.find((entry) => entry.image)?.image;
+    if (picture) container.addSectionComponents(new SectionBuilder().addTextDisplayComponents(reward).setThumbnailAccessory(new ThumbnailBuilder().setURL(picture)));
+    else container.addTextDisplayComponents(reward);
+  }
+  const limits = limitLines(quest);
+  if (!hidden.has('limits') && limits.length) {
+    container.addSeparatorComponents(divider());
+    container.addTextDisplayComponents(text(`## ${EMOJI.QUEST_ALERT} Limitations\n${limits.map((line) => `* ${line}`).join('\n')}`));
+  }
+  container.addSeparatorComponents(divider());
+  container.addTextDisplayComponents(text(CREDIT));
   const buttons = [new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Accept Quest').setURL(quest.url)];
   if (quest.link) buttons.push(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Game page').setURL(quest.link));
-  container.addActionRowComponents(new ActionRowBuilder().addComponents(buttons));
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(CREDIT));
-  const components = [];
-  if (rolePing) components.push(new TextDisplayBuilder().setContent(rolePing));
-  components.push(container);
-  return { components, flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [], roles: config.role_id ? [config.role_id] : [] } };
+  return { components: [container, new ActionRowBuilder().addComponents(buttons)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [], roles: config.role_id ? [config.role_id] : [] } };
+}
+
+const LIST_PAGE_SIZE = 6;
+
+/** The list of active quests, in the same style, a page at a time. */
+function buildQuestList(quests, { page = 1 } = {}) {
+  const pages = Math.max(1, Math.ceil(quests.length / LIST_PAGE_SIZE));
+  const current = Math.min(Math.max(1, page), pages);
+  const slice = quests.slice((current - 1) * LIST_PAGE_SIZE, current * LIST_PAGE_SIZE);
+  const container = new ContainerBuilder().setAccentColor(0x5865f2);
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${EMOJI.QUEST_BADGE} Active quests\n-# ${quests.length} quest${quests.length === 1 ? '' : 's'} · page ${current} of ${pages}`));
+  for (const quest of slice) {
+    container.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
+    const reward = quest.rewards.map((entry) => (entry.kind === 'orbs' ? `${entry.amount} Orbs${entry.premiumAmount ? ` | ${EMOJI.QUEST_NITRO} ${entry.premiumAmount}` : ''}` : entry.name)).join(', ') || 'Not listed';
+    const flags = quest.regions.include.map(flagOf).filter(Boolean).join(' ');
+    const body = new TextDisplayBuilder().setContent([
+      `**[${quest.name}](${quest.url})**${quest.game && quest.game !== quest.name ? ` · ${quest.game}` : ''}`,
+      `- \`🎁\` ${reward}`,
+      `- \`🧫\` ${quest.tasks.map((task) => `${task.label}${task.seconds ? ` (${clock(task.seconds)})` : ''}`).join(' or ') || 'Not listed'}`,
+      `- \`⏰\` Ends <t:${unix(quest.expiresAt)}:R>${flags ? ` · ${flags}` : ''}${quest.ageGate ? ' · 🔞' : ''}`,
+    ].join('\n').slice(0, 900));
+    if (quest.logo) container.addSectionComponents(new SectionBuilder().addTextDisplayComponents(body).setThumbnailAccessory(new ThumbnailBuilder().setURL(quest.logo)));
+    else container.addTextDisplayComponents(body);
+  }
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${pages > 1 ? `-# Use \`quests list ${current < pages ? current + 1 : 1}\` for another page\n` : ''}${CREDIT}`));
+  return { components: [container], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } };
 }
 
 /** The message to send for a quest in a server: its saved embed when the style asks for one, else the card. */
@@ -104,4 +174,4 @@ async function questMessage(guild, config, quest, kind = 'new') {
   return buildQuestCard(quest, config, { kind, rolePing });
 }
 
-module.exports = { SECTIONS, CREDIT, questContext, buildQuestCard, questMessage, rewardText, taskText, limitsText };
+module.exports = { SECTIONS, CREDIT, LIST_PAGE_SIZE, questContext, buildQuestCard, buildQuestList, questMessage, rewardText, taskText, limitsText };
