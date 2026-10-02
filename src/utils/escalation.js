@@ -3,7 +3,7 @@ const { createCase } = require('../db/modActions');
 const { ensureGuild } = require('../db/guilds');
 const { ensureMuteRole } = require('./muteRole');
 const { logSanction } = require('./caseLog');
-const { buildSanctionDM } = require('./sanctionMessage');
+const { sanctionDM } = require('./sanctionTemplates');
 const { formatDuration } = require('./duration');
 const { jailMember, JailError } = require('./jail');
 const logger = require('./logger');
@@ -33,8 +33,8 @@ async function checkAndApplyEscalation(client, guild, member, warnCount) {
       const muteRole = await ensureMuteRole(guild, guildConfig);
       await member.roles.add(muteRole, reason);
       const modCase = await createCase({ guildId: guild.id, userId: member.id, moderatorId: client.user.id, type: 'mute', reason });
-      await logSanction(client, guild, { modCase, target: member.user, moderator: client.user, reason });
-      await member.send(buildSanctionDM({ type: 'mute', guild, client, reason })).catch(() => {});
+      await logSanction(client, guild, { modCase, target: member.user, moderator: client.user, reason, source: 'escalation' });
+      await member.send(await sanctionDM({ type: 'mute', guild, client, reason, member, source: 'escalation', caseNumber: modCase.case_number })).catch(() => {});
       return;
     }
 
@@ -48,8 +48,8 @@ async function checkAndApplyEscalation(client, guild, member, warnCount) {
       const expiresAt = new Date(Date.now() + durationMs).toISOString();
       const duration = formatDuration(durationMs);
       const modCase = await createCase({ guildId: guild.id, userId: member.id, moderatorId: client.user.id, type: 'tempmute', reason, expiresAt });
-      await logSanction(client, guild, { modCase, target: member.user, moderator: client.user, reason, duration });
-      await member.send(buildSanctionDM({ type: 'tempmute', guild, client, reason, duration })).catch(() => {});
+      await logSanction(client, guild, { modCase, target: member.user, moderator: client.user, reason, duration, source: 'escalation' });
+      await member.send(await sanctionDM({ type: 'tempmute', guild, client, reason, duration, member, source: 'escalation', caseNumber: modCase.case_number })).catch(() => {});
       return;
     }
 
@@ -58,8 +58,8 @@ async function checkAndApplyEscalation(client, guild, member, warnCount) {
       const duration = durationMs ? formatDuration(durationMs) : undefined;
       try {
         const { modCase } = await jailMember({ guild, member, moderator: client.user, reason, durationMs });
-        await logSanction(client, guild, { modCase, target: member.user, moderator: client.user, reason, duration });
-        await member.send(buildSanctionDM({ type: 'jail', guild, client, reason, duration })).catch(() => {});
+        await logSanction(client, guild, { modCase, target: member.user, moderator: client.user, reason, duration, source: 'escalation' });
+        await member.send(await sanctionDM({ type: 'jail', guild, client, reason, duration, member, source: 'escalation', caseNumber: modCase.case_number })).catch(() => {});
       } catch (err) {
         // Most often jail was never set up, or the member is already in jail; either is worth a line in the log, not a crash.
         if (err instanceof JailError) logger.warn(`Escalation jail skipped for ${member.id} in guild ${guild.id}: ${err.message}`);
@@ -69,18 +69,18 @@ async function checkAndApplyEscalation(client, guild, member, warnCount) {
     }
 
     if (rule.action === 'kick') {
-      await member.send(buildSanctionDM({ type: 'kick', guild, client, reason })).catch(() => {});
+      await member.send(await sanctionDM({ type: 'kick', guild, client, reason, member, source: 'escalation' })).catch(() => {});
       await member.kick(reason);
       const modCase = await createCase({ guildId: guild.id, userId: member.id, moderatorId: client.user.id, type: 'kick', reason });
-      await logSanction(client, guild, { modCase, target: member.user, moderator: client.user, reason });
+      await logSanction(client, guild, { modCase, target: member.user, moderator: client.user, reason, source: 'escalation' });
       return;
     }
 
     if (rule.action === 'ban') {
-      await member.send(buildSanctionDM({ type: 'ban', guild, client, reason })).catch(() => {});
+      await member.send(await sanctionDM({ type: 'ban', guild, client, reason, member, source: 'escalation' })).catch(() => {});
       await guild.members.ban(member.id, { reason });
       const modCase = await createCase({ guildId: guild.id, userId: member.id, moderatorId: client.user.id, type: 'ban', reason });
-      await logSanction(client, guild, { modCase, target: member.user, moderator: client.user, reason });
+      await logSanction(client, guild, { modCase, target: member.user, moderator: client.user, reason, source: 'escalation' });
     }
   } catch (err) {
     logger.error(`Escalation action "${rule.action}" failed for ${member.id} in guild ${guild.id}:`, err);

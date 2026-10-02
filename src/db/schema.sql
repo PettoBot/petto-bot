@@ -2084,6 +2084,34 @@ begin
 end;
 $$;
 
+-- Custom messages (saved embed templates) for moderation: what a sanctioned member receives in a DM, what is posted
+-- where the command was used, and what goes to the sanctions log. `type` is a sanction type, or `default` for the ones
+-- that have no template of their own.
+create table if not exists sanction_templates (
+  guild_id       text not null references guilds(guild_id) on delete cascade,
+  type           text not null check (type in ('default', 'ban', 'tempban', 'softban', 'unban', 'kick', 'mute', 'tempmute', 'unmute', 'warn', 'jail', 'unjail')),
+  dm_template    text,
+  reply_template text,
+  log_template   text,
+  updated_at     timestamptz not null default now(),
+  primary key (guild_id, type)
+);
+alter table sanction_templates enable row level security;
+
+-- Custom messages for the starboard repost, the giveaway announcements, verification and bump.
+alter table starboards add column if not exists embed_template text;
+alter table giveaway_config add column if not exists winner_embed_template text;
+alter table giveaway_config add column if not exists deny_embed_template text;
+alter table giveaway_config add column if not exists claim_time_embed_template text;
+alter table giveaway_config add column if not exists claim_time_over_embed_template text;
+alter table giveaway_config add column if not exists accept_embed_template text;
+alter table giveaway_config add column if not exists no_entries_embed_template text;
+
+-- Saved embeds (embed_templates names) for verification and bump messages.
+alter table verification_config add column if not exists prompt_embed_template text;
+alter table verification_config add column if not exists verified_embed_template text;
+alter table bump_reminders add column if not exists thankyou_embed_template text;
+alter table bump_reminders add column if not exists reminder_embed_template text;
 -- Leveling v2: rank card, anti-abuse rules, XP events, daily bonus and streaks, weekly and monthly rankings.
 alter table level_config add column if not exists rank_style text not null default 'card' check (rank_style in ('card', 'embed', 'both'));
 alter table level_config add column if not exists rank_card text;

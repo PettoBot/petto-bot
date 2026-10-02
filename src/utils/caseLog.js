@@ -1,6 +1,7 @@
 const { sendLog, getAvatar } = require('../logging/engine');
 const { TYPE_EMOJI } = require('./emojis');
 const { COLORS } = require('./caseCard');
+const { sanctionLogEmbed } = require('./sanctionTemplates');
 
 function capitalize(str) {
   return str.charAt(0).toUpperCase() + str.slice(1);
@@ -11,7 +12,7 @@ function capitalize(str) {
  * (per-channel webhooks, same as messages/members/roles/etc). This is the only
  * place sanction actions get logged — there's no separate mod-log channel setting.
  */
-async function logSanction(client, guild, { modCase, target, moderator, reason, duration }) {
+async function logSanction(client, guild, { modCase, target, moderator, reason, duration, source = 'moderator' }) {
   const emoji = TYPE_EMOJI[modCase.type] ?? '';
 
   const embed = {
@@ -27,7 +28,9 @@ async function logSanction(client, guild, { modCase, target, moderator, reason, 
     timestamp: new Date().toISOString(),
   };
 
-  await sendLog(client, guild.id, 'sanctions', embed);
+  // The server's own design for the entry, when it has one.
+  const custom = await sanctionLogEmbed({ modCase, guild, target, moderator, reason, duration, source });
+  await sendLog(client, guild.id, 'sanctions', custom ?? embed);
 }
 
 module.exports = { logSanction };

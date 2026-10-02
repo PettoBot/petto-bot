@@ -280,13 +280,13 @@ async function announceWinner(channel, config, giveaway, presetText, winnerId, c
   if (claimTimeMs) {
     const winnerRow = await giveawaysDb.addWinner(giveaway.id, winnerId, new Date(Date.now() + claimTimeMs).toISOString());
     const text = config.claim_time_message ? null : DEFAULT_CLAIM_TEXT;
-    await sendGiveawayResponse({ target: channel, guildId: giveaway.guild_id, messageText: config.claim_time_message, embedTemplateName: null, ctx, fallback: text });
+    await sendGiveawayResponse({ target: channel, guildId: giveaway.guild_id, messageText: config.claim_time_message, embedTemplateName: config.claim_time_embed_template, ctx, fallback: text });
     await channel.send({ content: `<@${winnerId}>`, components: [buildClaimRow(winnerRow.id)] }).catch(() => {});
     return winnerRow;
   }
 
   const winnerRow = await giveawaysDb.addWinner(giveaway.id, winnerId, null);
-  await sendGiveawayResponse({ target: channel, guildId: giveaway.guild_id, messageText: config.winner_message, embedTemplateName: null, ctx, fallback: DEFAULT_WINNER_TEXT });
+  await sendGiveawayResponse({ target: channel, guildId: giveaway.guild_id, messageText: config.winner_message, embedTemplateName: config.winner_embed_template, ctx, fallback: DEFAULT_WINNER_TEXT });
   return winnerRow;
 }
 
@@ -310,7 +310,7 @@ async function endGiveaway(client, giveaway) {
   if (!entries.length) {
     if (channel) {
       const ctx = giveawayCtx(giveaway, presetText, { ctx: { guild, channel } });
-      await sendGiveawayResponse({ target: channel, guildId: giveaway.guild_id, messageText: config.no_entries_message, embedTemplateName: null, ctx, fallback: DEFAULT_NO_ENTRIES_TEXT });
+      await sendGiveawayResponse({ target: channel, guildId: giveaway.guild_id, messageText: config.no_entries_message, embedTemplateName: config.no_entries_embed_template, ctx, fallback: DEFAULT_NO_ENTRIES_TEXT });
       await editEndedMessage(channel, giveaway, [], presetText, entries.length);
     }
     return;
@@ -347,7 +347,7 @@ async function handleForfeit(client, winnerRow, status) {
   const ctx = giveawayCtx(giveaway, presetText, { ctx: { guild, channel, member, user: member?.user } });
   const forfeitMessage = status === 'denied' ? config.deny_message : config.claim_time_over_message;
   const forfeitFallback = status === 'denied' ? DEFAULT_DENY_TEXT : DEFAULT_CLAIM_OVER_TEXT;
-  await sendGiveawayResponse({ target: channel, guildId: giveaway.guild_id, messageText: forfeitMessage, embedTemplateName: null, ctx, fallback: forfeitFallback });
+  await sendGiveawayResponse({ target: channel, guildId: giveaway.guild_id, messageText: forfeitMessage, embedTemplateName: status === 'denied' ? config.deny_embed_template : config.claim_time_over_embed_template, ctx, fallback: forfeitFallback });
 
   const allWinners = await giveawaysDb.listWinners(giveaway.id);
   const excludeIds = allWinners.map((w) => w.user_id);
@@ -373,7 +373,7 @@ async function handleAccept(client, winnerRow) {
   await giveawaysDb.setWinnerStatus(winnerRow.id, 'claimed');
   const member = await guild.members.fetch(winnerRow.user_id).catch(() => null);
   const ctx = giveawayCtx(giveaway, presetText, { ctx: { guild, channel, member, user: member?.user } });
-  await sendGiveawayResponse({ target: channel, guildId: giveaway.guild_id, messageText: config.accept_message, embedTemplateName: null, ctx, fallback: DEFAULT_ACCEPT_TEXT });
+  await sendGiveawayResponse({ target: channel, guildId: giveaway.guild_id, messageText: config.accept_message, embedTemplateName: config.accept_embed_template, ctx, fallback: DEFAULT_ACCEPT_TEXT });
 }
 
 /** Reroll — draws a fresh set of winners for an already-ended giveaway. Appends new giveaway_winners rows rather than deleting prior ones. */

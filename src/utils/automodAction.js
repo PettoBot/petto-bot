@@ -2,7 +2,7 @@ const { ensureGuild } = require('../db/guilds');
 const { createCase } = require('../db/modActions');
 const { addWarn } = require('../db/warns');
 const { logSanction } = require('./caseLog');
-const { buildSanctionDM } = require('./sanctionMessage');
+const { sanctionDM } = require('./sanctionTemplates');
 const { checkAndApplyEscalation } = require('./escalation');
 const { formatDuration } = require('./duration');
 const { sendLog } = require('../logging/engine');
@@ -40,8 +40,8 @@ async function applyAutomodAction(message, { violationType, reason, action }) {
 
     if (action === 'warn') {
       const { modCase, warnCount } = await addWarn({ guildId: guild.id, userId: author.id, moderatorId: client.user.id, reason: fullReason });
-      await logSanction(client, guild, { modCase, target: author, moderator: client.user, reason: fullReason });
-      await author.send(buildSanctionDM({ type: 'warn', guild, client, reason: fullReason })).catch(() => {});
+      await logSanction(client, guild, { modCase, target: author, moderator: client.user, reason: fullReason, source: 'automod' });
+      await author.send(await sanctionDM({ type: 'warn', guild, client, reason: fullReason, user: author, member, source: 'automod', caseNumber: modCase.case_number })).catch(() => {});
       await checkAndApplyEscalation(client, guild, member, warnCount).catch((err) => logger.error('Escalation check failed:', err));
       return;
     }
@@ -61,8 +61,8 @@ async function applyAutomodAction(message, { violationType, reason, action }) {
       const expiresAt = new Date(Date.now() + durationMs).toISOString();
       const duration = formatDuration(durationMs);
       const modCase = await createCase({ guildId: guild.id, userId: author.id, moderatorId: client.user.id, type: 'tempmute', reason: fullReason, expiresAt });
-      await logSanction(client, guild, { modCase, target: author, moderator: client.user, reason: fullReason, duration });
-      await author.send(buildSanctionDM({ type: 'tempmute', guild, client, reason: fullReason, duration })).catch(() => {});
+      await logSanction(client, guild, { modCase, target: author, moderator: client.user, reason: fullReason, duration, source: 'automod' });
+      await author.send(await sanctionDM({ type: 'tempmute', guild, client, reason: fullReason, duration, user: author, member, source: 'automod', caseNumber: modCase.case_number })).catch(() => {});
       return;
     }
 
@@ -78,8 +78,8 @@ async function applyAutomodAction(message, { violationType, reason, action }) {
         return;
       }
       const modCase = await createCase({ guildId: guild.id, userId: author.id, moderatorId: client.user.id, type: 'kick', reason: fullReason });
-      await logSanction(client, guild, { modCase, target: author, moderator: client.user, reason: fullReason });
-      await author.send(buildSanctionDM({ type: 'kick', guild, client, reason: fullReason })).catch(() => {});
+      await logSanction(client, guild, { modCase, target: author, moderator: client.user, reason: fullReason, source: 'automod' });
+      await author.send(await sanctionDM({ type: 'kick', guild, client, reason: fullReason, user: author, member, source: 'automod', caseNumber: modCase.case_number })).catch(() => {});
     }
   } catch (err) {
     logger.error(`Automod: failed to apply "${action}" to ${author.id} in guild ${guild.id}:`, err);

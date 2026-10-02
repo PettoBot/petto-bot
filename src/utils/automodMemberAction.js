@@ -1,7 +1,7 @@
 const { ensureGuild } = require('../db/guilds');
 const { createCase } = require('../db/modActions');
 const { logSanction } = require('./caseLog');
-const { buildSanctionDM } = require('./sanctionMessage');
+const { sanctionDM } = require('./sanctionTemplates');
 const logger = require('./logger');
 
 /**
@@ -13,7 +13,7 @@ async function applyAutomatedKick(member, reason) {
   const client = member.client;
 
   await user
-    .send(buildSanctionDM({ type: 'kick', guild, client, reason }))
+    .send(await sanctionDM({ type: 'kick', guild, client, reason, user, member, source: 'automod' }))
     .catch(() => {});
 
   try {
@@ -26,7 +26,7 @@ async function applyAutomatedKick(member, reason) {
   try {
     await ensureGuild(guild.id);
     const modCase = await createCase({ guildId: guild.id, userId: user.id, moderatorId: client.user.id, type: 'kick', reason });
-    await logSanction(client, guild, { modCase, target: user, moderator: client.user, reason });
+    await logSanction(client, guild, { modCase, target: user, moderator: client.user, reason, source: 'automod' });
   } catch (err) {
     // The Discord action already happened. Keep the process alive, but make the
     // missing audit record visible so it can be repaired from the logs.

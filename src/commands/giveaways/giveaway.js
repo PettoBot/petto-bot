@@ -14,6 +14,15 @@ const { EMOJI } = require('../../utils/emojis');
 
 const ENTRY_MODE_CHOICES = [{ name: 'button', value: 'button' }, { name: 'reaction', value: 'reaction' }];
 
+const MESSAGE_CHOICES = [
+  { name: 'winner', value: 'winner' },
+  { name: 'deny', value: 'deny' },
+  { name: 'claim time', value: 'claim_time' },
+  { name: 'claim time over', value: 'claim_time_over' },
+  { name: 'accept', value: 'accept' },
+  { name: 'no entries', value: 'no_entries' },
+];
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('giveaway')
@@ -74,6 +83,11 @@ module.exports = {
     .addSubcommand((s) => s.setName('claim-time-message').setDescription('Set the claim-time reminder message.').addStringOption((o) => o.setName('message').setDescription('Supports {gw.*} and {user} variables').setRequired(true)))
     .addSubcommand((s) => s.setName('claim-time-over-message').setDescription('Set the message sent when claim time expires.').addStringOption((o) => o.setName('message').setDescription('Supports {gw.*} and {user} variables').setRequired(true)))
     .addSubcommand((s) => s.setName('accept-message').setDescription('Set the message sent when a winner accepts.').addStringOption((o) => o.setName('message').setDescription('Supports {gw.*} and {user} variables').setRequired(true)))
+    .addSubcommand((s) => s
+      .setName('message-template')
+      .setDescription('Use a saved embed for one of the giveaway messages, or none to go back to its text.')
+      .addStringOption((o) => o.setName('message').setDescription('Which message').setRequired(true).addChoices(...MESSAGE_CHOICES))
+      .addStringOption((o) => o.setName('template').setDescription('Saved embed name, or none').setRequired(true)))
     .addSubcommand((s) => s.setName('no-entries-message').setDescription('Set the message sent when a giveaway ends with no entries.').addStringOption((o) => o.setName('message').setDescription('Supports {gw.*} variables').setRequired(true))),
   aliases: ['gw'],
   prefixGreedyStringOptions: {
@@ -97,6 +111,7 @@ module.exports = {
     if (sub === 'claim-time-message') return configCmd(interaction, 'claim_time_message', interaction.options.getString('message', true), 'Claim-time message set.');
     if (sub === 'claim-time-over-message') return configCmd(interaction, 'claim_time_over_message', interaction.options.getString('message', true), 'Claim-time-over message set.');
     if (sub === 'accept-message') return configCmd(interaction, 'accept_message', interaction.options.getString('message', true), 'Accept message set.');
+    if (sub === 'message-template') return messageTemplateCmd(interaction);
     return configCmd(interaction, 'no_entries_message', interaction.options.getString('message', true), 'No-entries message set.');
   },
 };
@@ -350,6 +365,27 @@ async function setEmbedCmd(interaction) {
     components: [textCard(`${EMOJI.APPROVE}  Default giveaway design set to saved embed **${doc.name}**.`, 0xa5ea7a)],
     flags: MessageFlags.IsComponentsV2,
   });
+}
+
+async function messageTemplateCmd(interaction) {
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  await ensureGuild(interaction.guild.id);
+  const which = interaction.options.getString('message', true).trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (!MESSAGE_CHOICES.some((choice) => choice.value === which)) {
+    return interaction.editReply({ components: [textCard(`Choose one of: ${MESSAGE_CHOICES.map((choice) => `\`${choice.value}\``).join(', ')}.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+  }
+  const column = `${which}_embed_template`;
+  const name = interaction.options.getString('template', true).trim();
+  const label = MESSAGE_CHOICES.find((choice) => choice.value === which)?.name ?? which;
+  const done = (text, color = 0xa5ea7a) => interaction.editReply({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2 });
+  if (['none', 'clear'].includes(name.toLowerCase())) {
+    await configDb.updateConfig(interaction.guild.id, { [column]: null });
+    return done(`${EMOJI.APPROVE}  The ${label} message goes back to its text.`);
+  }
+  const doc = await embedTemplatesDb.getTemplate(interaction.guild.id, name);
+  if (!doc) return done(`No saved embed named \`${name}\` exists. Create one with \`${commandRef(interaction, `embed create ${name}`)}\` first.`, 0xfe6465);
+  await configDb.updateConfig(interaction.guild.id, { [column]: doc.name });
+  return done(`${EMOJI.APPROVE}  The ${label} message now uses the saved embed **${doc.name}**.`);
 }
 
 async function configCmd(interaction, field, value, successText) {
