@@ -165,7 +165,9 @@ function buildQuestList(quests, { page = 1 } = {}) {
 async function questMessage(guild, config, quest, kind = 'new') {
   const rolePing = config.role_id ? `<@&${config.role_id}>` : null;
   if (config.style === 'template' && config.embed_template) {
-    const payload = await templatePayload(guild.id, config.embed_template, { guild, quest: questContext(quest, kind) });
+    const payload = await templatePayload(guild.id, config.embed_template, { guild, quest: questContext(quest, kind) }, { v2Extras: { prefixText: rolePing ? `-# ${rolePing}` : null, suffixText: CREDIT } });
+    // A Components V2 design has no text outside its components, so the ping and the credit were added inside.
+    if (payload?.flags) return { ...payload, allowedMentions: { parse: [], roles: config.role_id ? [config.role_id] : [] } };
     if (payload) {
       const content = [rolePing, payload.content, CREDIT].filter(Boolean).join('\n');
       return { ...payload, content, allowedMentions: { parse: [], roles: config.role_id ? [config.role_id] : [] } };

@@ -489,9 +489,13 @@ module.exports = {
           const name = normalizeName(interaction.options.getString('embed'));
           const doc = await getOrFail(interaction, name);
           if (!doc) return;
-          const payload = await build(doc.data, ctx);
+          const payload = await build(doc.data, { ...ctx, allowV2: true });
           if (!hasSendablePayload(payload)) {
             await interaction.editReply(`Embed \`${name}\` has no sendable content. Add a title, description, field, message content, or link button first.`);
+            return;
+          }
+          if (payload.flags) {
+            await interaction.editReply({ components: payload.components, flags: payload.flags, allowedMentions: { parse: [] } });
             return;
           }
           await interaction.editReply({ content: `Preview of \`${name}\`:\n${payload.content ?? ''}`, embeds: payload.embeds, components: payload.components, files: payload.files });
@@ -503,9 +507,14 @@ module.exports = {
           const target = interaction.options.getChannel('channel') ?? interaction.channel;
           const doc = await getOrFail(interaction, name);
           if (!doc) return;
-          const payload = await build(doc.data, ctx);
+          const payload = await build(doc.data, { ...ctx, allowV2: true });
           if (!hasSendablePayload(payload)) {
             await interaction.editReply(`Embed \`${name}\` has no sendable content. Add a title, description, field, message content, or link button first.`);
+            return;
+          }
+          if (payload.flags) {
+            await target.send({ components: payload.components, flags: payload.flags, allowedMentions: { parse: [] } });
+            await interaction.editReply(`Embed \`${name}\` sent to <#${target.id}>!`);
             return;
           }
           await target.send({ content: payload.content, embeds: payload.embeds, components: payload.components, files: payload.files });
