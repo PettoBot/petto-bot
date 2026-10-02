@@ -192,20 +192,25 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
   assert.equal(listOne.flags, MessageFlags.IsComponentsV2);
   const listNodes = flat(listOne.components[0].toJSON());
   const menu = listNodes.find((n) => n.type === 3);
-  assert.equal(menu.custom_id, 'quests:view'); assert.equal(menu.options.length, 25, 'a menu holds 25 quests');
+  assert.equal(menu.custom_id, 'quests:view'); assert.equal(menu.options.length, 10, 'a page holds 10 quests');
   assert.equal(menu.options[0].label, 'Quest number 1'); assert.equal(menu.options[0].value, many[0].id);
   assert.deepEqual(menu.options.slice(0, 5).map((o) => (o.emoji.id ? 'custom' : o.emoji.name)), ['custom', '🎭', '🎟️', '🎮', '💎'], 'each kind of reward has its own icon, Orbs the Orbs one');
   assert.ok(menu.options[0].description.startsWith('200 Orbs · Video · ends ') && menu.options.every((o) => o.description.length <= 100));
   const listText = texts(listOne);
-  assert.ok(listText.includes(`# ${EMOJI.QUEST_BADGE} Active quests`) && listText.includes('30 quests · page 1 of 2 · pick one to see it'));
+  assert.ok(listText.includes(`# ${EMOJI.QUEST_BADGE} Active quests`) && listText.includes('30 quests · page 1 of 3 · pick one below to see its full card'));
   const buttons = listNodes.filter((n) => n.type === 2);
   assert.deepEqual(buttons.map((b) => [b.custom_id, b.disabled ?? false]), [['quests:page:0', true], ['quests:page:none', true], ['quests:page:2', false]], 'previous is off on the first page');
   const listTwo = flat(buildQuestList(many, { page: 2 }).components[0].toJSON());
-  assert.equal(listTwo.find((n) => n.type === 3).options.length, 5); assert.equal(listTwo.find((n) => n.type === 3).options[0].label, 'Quest number 26');
-  assert.equal(flat(buildQuestList(many, { page: 99 }).components[0].toJSON()).find((n) => n.type === 3).options[0].label, 'Quest number 26', 'a page too far gives the last one');
+  assert.equal(listTwo.find((n) => n.type === 3).options.length, 10); assert.equal(listTwo.find((n) => n.type === 3).options[0].label, 'Quest number 11');
+  assert.equal(flat(buildQuestList(many, { page: 99 }).components[0].toJSON()).find((n) => n.type === 3).options[0].label, 'Quest number 21', 'a page too far gives the last one');
   const single = flat(buildQuestList([orbs], {}).components[0].toJSON());
   assert.equal(single.filter((n) => n.type === 2).length, 0, 'no page buttons for a short list'); assert.ok(texts(buildQuestList([orbs], {})).includes('1 quest'));
   assert.ok(listNodes.length <= 40 && listText.length < 4000);
+  assert.ok(listText.includes('### ') && listText.includes('Quest number 1](') && listText.includes('ends <t:'), 'the list shows each quest as text, not only in the menu');
+  const limited = texts(buildQuestList([{ ...orbs, regions: { include: ['US'], exclude: [] }, ageGate: true }], {}));
+  assert.ok(limited.includes('Users residing in United States') && limited.includes('Users over 18'), 'the list shows the limits of each quest');
+  assert.equal(listOne.components[0].toJSON().accent_color, undefined, 'no color on the list');
+  assert.equal(buildQuestCard(orbs, {}).components[0].toJSON().accent_color, undefined, 'no color on the card unless the server sets one');
 
   // The pictures of the rewards: the Orbs icon, and the decoration from Discord's own product endpoint.
   const images = require('../src/utils/questImages');
