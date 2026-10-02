@@ -11,7 +11,7 @@
     "start": "node index.js",
     "dev": "node --watch index.js",
     "deploy-commands": "node deploy-commands.js",
-    "check": "node scripts/check-syntax.js && node scripts/check-embed-variables.js && node scripts/check-counters.js && node scripts/check-info-cards.js && node scripts/check-reports.js && node scripts/check-jail.js && node scripts/check-purge.js && node scripts/check-dice.js && node scripts/check-fun.js && node scripts/check-embed-script.js && node scripts/check-cards.js && node scripts/check-card-routes.js && node scripts/check-command-messages.js && node scripts/check-leveling.js",
+    "check": "node scripts/check-syntax.js && node scripts/check-embed-variables.js && node scripts/check-counters.js && node scripts/check-info-cards.js && node scripts/check-reports.js && node scripts/check-jail.js && node scripts/check-purge.js && node scripts/check-dice.js && node scripts/check-fun.js && node scripts/check-embed-script.js && node scripts/check-cards.js && node scripts/check-card-routes.js && node scripts/check-command-messages.js && node scripts/check-leveling.js && node scripts/check-rank.js && node scripts/check-xp-grant.js",
     "types:check": "tsc --project jsconfig.json --noEmit",
     "build:ts": "node scripts/build-types.js"
   },

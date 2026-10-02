@@ -1,8 +1,10 @@
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const levelUsersDb = require('../db/levelUsers');
 const levelRewardsDb = require('../db/levelRewards');
 const levelMultipliersDb = require('../db/levelMultipliers');
-const { levelForXp, xpNeeded } = require('./levelCurve');
+const { levelForXp } = require('./levelCurve');
+const { buildLevelData } = require('./levelData');
+const { renderRankCard, CARD_FILE_NAME } = require('./cardService');
 const { resolve } = require('./embedVariables');
 const { extractReactReplies, applyReactReplies } = require('./messageFlags');
 const { EMOJI } = require('./emojis');
@@ -110,15 +112,16 @@ async function notifyLevelUp({ client, guild, member, config, level, channel, me
   if (config.notify_every > 1 && level % config.notify_every !== 0) return;
 
   const userData = await levelUsersDb.getUser(guild.id, member.id);
-  const xp = source === 'voice' ? userData?.voice_xp ?? 0 : userData?.xp ?? 0;
-  const rank = source === 'voice' ? await levelUsersDb.getVoiceRank(guild.id, xp) : await levelUsersDb.getRank(guild.id, xp);
+  const voice = source === 'voice';
+  const xp = voice ? userData?.voice_xp ?? 0 : userData?.xp ?? 0;
+  const rank = voice ? await levelUsersDb.getVoiceRank(guild.id, xp) : await levelUsersDb.getRank(guild.id, xp);
 
   const ctx = {
     member,
     guild,
     channel,
     user: member.user,
-    levelData: { level, xp, xpNeeded: xpNeeded(level, config), rank, source },
+    levelData: { ...buildLevelData({ config, userData, source: voice ? 'voice' : 'messages', rank }), level },
   };
 
   // Keep old databases compatible, but do not inject the old star into the default.
@@ -151,6 +154,16 @@ async function notifyLevelUp({ client, guild, member, config, level, channel, me
     payload = config.notify_embed
       ? { embeds: [new EmbedBuilder().setColor(0x4b4f59).setDescription(text)] }
       : { content: text };
+  }
+
+  // A card for the level-up: the picture goes inside the embed when there is one, and alone when there is not.
+  const cardName = voice ? config.voice_notify_card ?? config.notify_card : config.notify_card;
+  if (cardName && !payload.files?.length) {
+    const file = await renderRankCard(ctx, cardName, voice ? 'voice' : 'messages');
+    if (file) {
+      payload.files = [new AttachmentBuilder(file.buffer, { name: file.name })];
+      if (payload.embeds?.length) payload.embeds[0].setImage?.(`attachment://${CARD_FILE_NAME}`);
+    }
   }
 
   try {
