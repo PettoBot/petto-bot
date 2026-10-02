@@ -1,9 +1,10 @@
 // The messages of quest alerts: a Components V2 card that servers can style (color, sections), or one of their saved
 // embeds with the `{quest.*}` variables. A saved embed that is missing or broken falls back to the card.
-const { ContainerBuilder, TextDisplayBuilder, SectionBuilder, ThumbnailBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, SeparatorBuilder, SeparatorSpacingSize, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
+const { ContainerBuilder, TextDisplayBuilder, SectionBuilder, ThumbnailBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, SeparatorBuilder, SeparatorSpacingSize, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, MessageFlags } = require('discord.js');
 const { SOURCE_NAME, SOURCE_URL, TRACKER_URL, REWARD_LABELS } = require('./questApi');
 const { templatePayload } = require('./templatedMessage');
 const { EMOJI } = require('./emojis');
+const { withRewardImages } = require('./questImages');
 
 const SECTIONS = ['image', 'rewards', 'tasks', 'platforms', 'limits'];
 const CREDIT = `-# Data from [${SOURCE_NAME}](${SOURCE_URL}) and [discord-api-diff](${TRACKER_URL})`;
@@ -134,35 +135,53 @@ function buildQuestCard(quest, config = {}, { kind = 'new', rolePing = null } = 
   return { components: [container, new ActionRowBuilder().addComponents(buttons)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [], roles: config.role_id ? [config.role_id] : [] } };
 }
 
-const LIST_PAGE_SIZE = 6;
+const LIST_PAGE_SIZE = 25; // the options a select menu can hold
+const SELECT_ID = 'quests:view';
+const PAGE_ID = 'quests:page';
 
-/** The list of active quests, in the same style, a page at a time. */
+// One icon for each kind of reward, for the options of the list.
+const customEmoji = (text) => { const match = /^<(a?):(\w+):(\d+)>$/.exec(text); return match ? { id: match[3], name: match[2], animated: Boolean(match[1]) } : text; };
+const REWARD_ICON = { orbs: customEmoji(EMOJI.QUEST_NITRO), decoration: '🎭', code: '🎟️', ingame: '🎮', nitro: '💎', other: '🎁' };
+const TASK_WORD = { video: 'Video', play: 'Play', stream: 'Stream', activity: 'Activity' };
+const shortDate = (date) => date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+
+function listOption(quest) {
+  const reward = quest.rewards.map((entry) => (entry.kind === 'orbs' ? `${entry.amount} Orbs` : entry.name)).join(', ') || 'No reward listed';
+  const task = TASK_WORD[quest.tasks[0]?.kind] ?? 'Task';
+  return {
+    label: quest.name.slice(0, 100),
+    value: quest.id,
+    description: `${reward} · ${task} · ends ${shortDate(quest.expiresAt)}`.slice(0, 100),
+    emoji: REWARD_ICON[quest.rewards[0]?.kind] ?? REWARD_ICON.other,
+  };
+}
+
+/** The list of active quests as a menu: pick one to see its card. Quests past the first page have page buttons. */
 function buildQuestList(quests, { page = 1 } = {}) {
   const pages = Math.max(1, Math.ceil(quests.length / LIST_PAGE_SIZE));
   const current = Math.min(Math.max(1, page), pages);
   const slice = quests.slice((current - 1) * LIST_PAGE_SIZE, current * LIST_PAGE_SIZE);
   const container = new ContainerBuilder().setAccentColor(0x5865f2);
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${EMOJI.QUEST_BADGE} Active quests\n-# ${quests.length} quest${quests.length === 1 ? '' : 's'} · page ${current} of ${pages}`));
-  for (const quest of slice) {
-    container.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
-    const reward = quest.rewards.map((entry) => (entry.kind === 'orbs' ? `${entry.amount} Orbs${entry.premiumAmount ? ` | ${EMOJI.QUEST_NITRO} ${entry.premiumAmount}` : ''}` : entry.name)).join(', ') || 'Not listed';
-    const flags = quest.regions.include.map(flagOf).filter(Boolean).join(' ');
-    const body = new TextDisplayBuilder().setContent([
-      `**[${quest.name}](${quest.url})**${quest.game && quest.game !== quest.name ? ` · ${quest.game}` : ''}`,
-      `- \`🎁\` ${reward}`,
-      `- \`🧫\` ${quest.tasks.map((task) => `${task.label}${task.seconds ? ` (${clock(task.seconds)})` : ''}`).join(' or ') || 'Not listed'}`,
-      `- \`⏰\` Ends <t:${unix(quest.expiresAt)}:R>${flags ? ` · ${flags}` : ''}${quest.ageGate ? ' · 🔞' : ''}`,
-    ].join('\n').slice(0, 900));
-    if (quest.logo) container.addSectionComponents(new SectionBuilder().addTextDisplayComponents(body).setThumbnailAccessory(new ThumbnailBuilder().setURL(quest.logo)));
-    else container.addTextDisplayComponents(body);
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${EMOJI.QUEST_BADGE} Active quests\n-# ${quests.length} quest${quests.length === 1 ? '' : 's'}${pages > 1 ? ` · page ${current} of ${pages}` : ''} · pick one to see it`));
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
+  container.addActionRowComponents(new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder().setCustomId(SELECT_ID).setPlaceholder('Choose a quest').addOptions(slice.map(listOption)),
+  ));
+  if (pages > 1) {
+    container.addActionRowComponents(new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`${PAGE_ID}:${current - 1}`).setLabel('Previous').setStyle(ButtonStyle.Secondary).setDisabled(current <= 1),
+      new ButtonBuilder().setCustomId(`${PAGE_ID}:none`).setLabel(`${current} / ${pages}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
+      new ButtonBuilder().setCustomId(`${PAGE_ID}:${current + 1}`).setLabel('Next').setStyle(ButtonStyle.Secondary).setDisabled(current >= pages),
+    ));
   }
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${pages > 1 ? `-# Use \`quests list ${current < pages ? current + 1 : 1}\` for another page\n` : ''}${CREDIT}`));
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(CREDIT));
   return { components: [container], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } };
 }
 
 /** The message to send for a quest in a server: its saved embed when the style asks for one, else the card. */
-async function questMessage(guild, config, quest, kind = 'new') {
+async function questMessage(guild, config, rawQuest, kind = 'new') {
+  const quest = await withRewardImages(rawQuest);
   const rolePing = config.role_id ? `<@&${config.role_id}>` : null;
   if (config.style === 'template' && config.embed_template) {
     const payload = await templatePayload(guild.id, config.embed_template, { guild, quest: questContext(quest, kind) }, { v2Extras: { prefixText: rolePing ? `-# ${rolePing}` : null, suffixText: CREDIT } });
@@ -176,4 +195,4 @@ async function questMessage(guild, config, quest, kind = 'new') {
   return buildQuestCard(quest, config, { kind, rolePing });
 }
 
-module.exports = { SECTIONS, CREDIT, LIST_PAGE_SIZE, questContext, buildQuestCard, buildQuestList, questMessage, rewardText, taskText, limitsText };
+module.exports = { SECTIONS, CREDIT, LIST_PAGE_SIZE, SELECT_ID, PAGE_ID, REWARD_ICON, questContext, buildQuestCard, buildQuestList, questMessage, rewardText, taskText, limitsText };
