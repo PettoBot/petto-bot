@@ -21,6 +21,7 @@ const { startPremiumRoleJob } = require('./src/jobs/premiumRoleJob');
 const { startMaliciousFeedJob } = require('./src/jobs/maliciousFeedJob');
 const { startQuestAlertsJob } = require('./src/jobs/questAlertsJob');
 const { startGlobalStatsJob } = require('./src/jobs/globalStatsJob');
+const { startCommandDataJob } = require('./src/jobs/commandDataJob');
 const { startServer } = require('./src/web/server');
 const { startCloudflareTunnel } = require('./src/web/cloudflareTunnel');
 const { attachRestRateLimitTelemetry } = require('./src/utils/restTelemetry');
@@ -110,6 +111,7 @@ async function main() {
   startMaliciousFeedJob();
   startQuestAlertsJob(client);
   startGlobalStatsJob(client);
+  startCommandDataJob();
   startServer(client);
   startCloudflareTunnel(config.cloudflareTunnelToken);
 }
