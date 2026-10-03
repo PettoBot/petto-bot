@@ -7,6 +7,7 @@ const { getTemplate } = require('../../db/embedTemplates');
 const { getGuildPremium, getGuildLimits } = require('../../db/premium');
 const { normalizeName, MAX_ITEMS } = require('../../utils/responderEngine');
 const { panelPayload } = require('../../utils/panelMessage');
+const { applyReactReplies } = require('../../utils/messageFlags');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 
@@ -136,7 +137,10 @@ async function send(interaction, panel, done) {
     if (message) message = await message.edit(payload).catch(() => null);
   }
   const updated = Boolean(message);
-  if (!message) message = await target.send(payload).catch(() => null);
+  if (!message) {
+    message = await target.send(payload).catch(() => null);
+    if (message && payload.reactions?.length) await applyReactReplies(message, payload.reactions);
+  }
   if (!message) return done(note('I could not post the panel. Check my permissions in that channel.'));
   await respondersDb.savePanel(guild.id, panel.name, { ...strip(panel), channel_id: target.id, message_id: message.id });
   return done(ok(`${updated ? 'Updated' : 'Posted'} \`${panel.name}\` in ${target}.`));

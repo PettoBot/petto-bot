@@ -2468,3 +2468,16 @@ create table if not exists member_reviews (
 );
 create index if not exists idx_member_reviews_target on member_reviews (guild_id, target_id, updated_at desc);
 alter table member_reviews enable row level security;
+
+-- Partners, more settings: a cooldown that can be hours (`cooldown_minutes`, used instead of `cooldown_days` when set), the
+-- channel where a new Partner Manager is welcomed, and refusing NSFW servers or servers with some words in their profile.
+alter table partner_config add column if not exists cooldown_minutes integer not null default 0 check (cooldown_minutes between 0 and 525600);
+alter table partner_config add column if not exists welcome_channel_id text;
+alter table partner_config add column if not exists block_nsfw boolean not null default false;
+alter table partner_config add column if not exists blocked_keywords text[] not null default '{}';
+
+-- Honeypot: what is posted in the bait channel. `default` is the warning panel Petto makes, `custom` is the text and/or the
+-- saved embed below (with {honeypot.*} variables), `none` posts nothing.
+alter table honeypots add column if not exists panel_mode text not null default 'default' check (panel_mode in ('default', 'custom', 'none'));
+alter table honeypots add column if not exists panel_text text not null default '' check (char_length(panel_text) <= 2000);
+alter table honeypots add column if not exists panel_template text;
