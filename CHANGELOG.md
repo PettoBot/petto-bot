@@ -22,6 +22,7 @@ All notable changes to Petto are documented here.
 
 ### Fixed
 
+- The dashboard could not add or open custom commands: its database API did not understand a negated filter such as `code=not.is.null`, and answered `Invalid PostgreSQL filter.` It now reads `not.<operator>.<value>` for any operator.
 - The Cloudflare tunnel's output no longer puts its token in the logs: `cloudflared` printed the environment variables it could see, so the tunnel now starts without the token variables and every line is cleaned before it is logged. If an old log with the token was shared, create a new token in Cloudflare.
 
 ## [0.6.1] — 2026-10-02
