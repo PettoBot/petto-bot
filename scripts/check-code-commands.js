@@ -192,8 +192,8 @@ const row = (code, name = `c${Math.random().toString(16).slice(2, 8)}`) => ({ na
   const buttonIds = sentVote.components[0].components.map((button) => button.data.custom_id);
   assert.deepEqual(buttonIds, ['cc:vote:yes::', 'cc:vote:no::'], 'the buttons carry the command and the handler');
 
-  const click = async (customId, { user = '500000000000000001', values = null, embeds } = {}) => {
-    clock += 5000;
+  const click = async (customId, { user = '500000000000000001', values = null, embeds, advance = 5000 } = {}) => {
+    clock += advance;
     const made = makeMessage({ guildBits: bits });
     const log = { replies: [], updates: [], deferred: 0, followUps: [] };
     const interaction = {
@@ -218,10 +218,9 @@ const row = (code, name = `c${Math.random().toString(16).slice(2, 8)}`) => ({ na
   // A locked button is only for who it names.
   const locked = await click('cc:vote:yes::u500000000000000009');
   assert.ok(locked.replies[0].content.includes('not for you') && locked.updates.length === 0);
-  // A click twice in a row is held back, without an error.
-  clock -= 4000;
-  const quick = await click('cc:vote:yes::', { user: '500000000000000002' });
-  clock += 4000;
+  // A click right after another one of the same button is held back, without a message.
+  await click('cc:vote:yes::', { user: '500000000000000003' });
+  const quick = await click('cc:vote:yes::', { user: '500000000000000003', advance: 0 });
   assert.equal(quick.deferred, 1); assert.equal(quick.updates.length + quick.replies.length, 0, 'a click right after another is held back without a message');
   // Menus: the values reach the code, and respond can be private.
   const favoriteRow = { name: 'favorite', code: TEMPLATES.find((template) => template.id === 'favorite').code };
