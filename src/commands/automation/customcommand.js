@@ -9,6 +9,7 @@ const { AttachmentBuilder } = require('discord.js');
 const { run, check, PettoCodeError, MAX_SOURCE_LENGTH } = require('../../scripting');
 const { TEMPLATES, byId } = require('../../scripting/templates');
 const codeCommands = require('../../utils/codeCommands');
+const { TRIGGER_TYPES, MAX_TRIGGERS_PER_GUILD, validateTrigger, invalidateTriggers, triggersFor } = require('../../utils/codeTriggers');
 
 const MAX_PER_GUILD = 100;
 
@@ -37,6 +38,7 @@ module.exports = {
     .addSubcommand((s) => s.setName('remove').setDescription('Delete a custom command.').addStringOption((o) => o.setName('name').setDescription('Command name').setRequired(true)))
     .addSubcommand((s) => s.setName('list').setDescription('List every custom command.'))
     .addSubcommand((s) => s.setName('code').setDescription('Create or change a command written in code (Petto Code). Write the code after the name.').addStringOption((o) => o.setName('name').setDescription("The command's name (no prefix)").setRequired(true)).addStringOption((o) => o.setName('code').setDescription('The code, after the name, inside a code block if it has several lines').setRequired(false)))
+    .addSubcommand((s) => s.setName('trigger').setDescription('What starts a command: its own prefix, the start of a message, a whole message or words inside.').addStringOption((o) => o.setName('name').setDescription('Command name').setRequired(true)).addStringOption((o) => o.setName('type').setDescription(`One of: ${TRIGGER_TYPES.join(', ')}`).setRequired(false)).addStringOption((o) => o.setName('text').setDescription('The prefix or the words, for every type except command').setRequired(false)))
     .addSubcommand((s) => s.setName('codeshow').setDescription('Show the code of a command.').addStringOption((o) => o.setName('name').setDescription('Command name').setRequired(true)))
     .addSubcommand((s) => s.setName('codetest').setDescription('Run some code to see what it would do, without sending or changing anything.').addStringOption((o) => o.setName('code').setDescription('The code, inside a code block if it has several lines').setRequired(false)))
     .addSubcommand((s) => s.setName('template').setDescription('List the ready-made commands in code, or install one.').addStringOption((o) => o.setName('id').setDescription('The template to install; leave empty to list them').setRequired(false)).addStringOption((o) => o.setName('name').setDescription('The name for the command; leave empty to use the suggested one').setRequired(false)))
@@ -53,6 +55,7 @@ module.exports = {
     if (sub === 'remove') return removeCmd(interaction);
     if (sub === 'list') return listCmd(interaction);
     if (sub === 'vars') return varsCmd(interaction);
+    if (sub === 'trigger') return triggerCmd(interaction);
     if (['code', 'codeshow', 'codetest', 'template', 'export', 'import'].includes(sub)) return codeCmd(interaction, sub);
     return showCmd(interaction);
   },
@@ -119,17 +122,59 @@ async function addCmd(interaction, isEdit) {
   await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  \`${name}\` ${isEdit ? 'updated' : 'created'}.${hint}`, COLORS.GREEN)], flags: MessageFlags.IsComponentsV2 });
 }
 
+/** How a command starts, for the list: nothing for the prefix of Petto. */
+function triggerNote(row) {
+  if (!row.trigger_type || row.trigger_type === 'command') return '';
+  const text = row.trigger_text ?? '';
+  return ` [${row.trigger_type === 'prefix' ? `${text}${row.name}` : `${row.trigger_type}: ${text}`}]`;
+}
+
+async function triggerCmd(interaction) {
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  if (!codeCommands.canWriteCode(interaction.user.id)) {
+    return reply(interaction, `${EMOJI.DENY}  Triggers of your own are in testing and only available to Petto's team for now.`, COLORS.RED);
+  }
+  const name = ccDb.normalizeName(interaction.options.getString('name', true));
+  const row = await ccDb.getCommand(interaction.guild.id, name);
+  if (!row) return reply(interaction, `\`${name}\` does not exist.`, COLORS.RED);
+  const type = (interaction.options.getString('type') ?? '').trim().toLowerCase();
+  if (!type) {
+    return reply(interaction, `\`${name}\` starts with ${row.trigger_type && row.trigger_type !== 'command' ? `${row.trigger_type === 'prefix' ? `its own prefix \`${row.trigger_text}\`, so \`${row.trigger_text}${name}\`` : `${row.trigger_type} \`${row.trigger_text}\``}` : 'the prefix of Petto'}.\n\nChange it with \`!customcommand trigger ${name} <${TRIGGER_TYPES.join('|')}> [text]\`.`);
+  }
+  const checked = validateTrigger(type, raw3(interaction) ?? interaction.options.getString('text'));
+  if (checked.error) return reply(interaction, checked.error, COLORS.RED);
+  if (type !== 'command') {
+    const current = await triggersFor(interaction.guild.id);
+    if (!current.some((entry) => entry.name === name) && current.length >= MAX_TRIGGERS_PER_GUILD) {
+      return reply(interaction, `This server already has ${MAX_TRIGGERS_PER_GUILD} commands with a trigger of their own, the most it can.`, COLORS.RED);
+    }
+    if (type === 'prefix' && (interaction.client.commands.has(`${checked.text}${name}`) || interaction.client.commandAliases.has(`${checked.text}${name}`))) {
+      return reply(interaction, 'That would be the name of a real command.', COLORS.RED);
+    }
+  }
+  await ccDb.setTrigger(interaction.guild.id, name, type, checked.text);
+  invalidateTriggers(interaction.guild.id);
+  const how = type === 'command' ? 'the prefix of Petto again' : type === 'prefix' ? `its own prefix: \`${checked.text}${name}\`` : `${type}: \`${checked.text}\``;
+  return reply(interaction, `${EMOJI.APPROVE}  \`${name}\` now starts with ${how}.`, COLORS.GREEN);
+}
+
+/** The text of a trigger as it was typed, so spaces inside it are kept: the words after the type. */
+function raw3(interaction) {
+  return codeCommands.rawAfter(interaction.rawMessage?.content ?? '', 2) || null;
+}
+
 async function removeCmd(interaction) {
   const name = interaction.options.getString('name', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const removed = await ccDb.removeCommand(interaction.guild.id, name);
+  invalidateTriggers(interaction.guild.id);
   await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  Removed.` : "That custom command doesn't exist.", removed ? COLORS.GREEN : COLORS.RED)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function listCmd(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const rows = await ccDb.listCommands(interaction.guild.id);
-  const text = rows.length ? rows.map((r) => `\`${r.name}\`${r.code ? ' (code)' : ''}`).join(', ') : 'No custom commands yet.';
+  const text = rows.length ? rows.map((r) => `\`${r.name}\`${r.code ? ' (code)' : ''}${triggerNote(r)}`).join(', ') : 'No custom commands yet.';
   await interaction.editReply({ components: [textCard(`**Custom commands (${rows.length}/${MAX_PER_GUILD}):**\n${text}`, COLORS.DEFAULT)], flags: MessageFlags.IsComponentsV2 });
 }
 
