@@ -5,9 +5,14 @@ const logger = require('../utils/logger');
 const { exclusiveTask } = require('../utils/concurrency');
 
 const INTERVAL_MS = 60_000;
+const USERS_EVERY_MS = 10 * 60_000; // adding up every member is heavier than the rest, so it is not done every minute
+let usersAt = 0;
+let usersCache = [];
 
 async function refreshGlobalStats(client) {
-  const [totals, ranked, rankedUsers] = await Promise.all([globalStatsDb.readTotals(), globalStatsDb.readRankedServers(), globalStatsDb.readRankedUsers()]);
+  const [totals, ranked] = await Promise.all([globalStatsDb.readTotals(), globalStatsDb.readRankedServers()]);
+  if (Date.now() - usersAt >= USERS_EVERY_MS) { usersCache = await globalStatsDb.readRankedUsers(); usersAt = Date.now(); }
+  const rankedUsers = usersCache;
   const describe = (id) => {
     const guild = client.guilds.cache.get(id);
     return guild ? { name: guild.name, icon: guild.iconURL({ extension: 'png', size: 64 }) } : null;
@@ -36,4 +41,7 @@ function startGlobalStatsJob(client) {
   logger.info('Global stats job started (every 60s).');
 }
 
-module.exports = { startGlobalStatsJob, refreshGlobalStats };
+/** Forgets the saved member ranking so the next run reads it again (used by the checks). */
+function resetUsersCache() { usersAt = 0; usersCache = []; }
+
+module.exports = { startGlobalStatsJob, refreshGlobalStats, resetUsersCache };
