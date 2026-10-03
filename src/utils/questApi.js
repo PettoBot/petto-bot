@@ -183,7 +183,7 @@ async function readSource(source, force) {
     Object.assign(entry, { ok: false, at: new Date(), error: error.name === 'AbortError' ? 'it took too long' : error.message });
     if (error.retryAfterMs) {
       entry.strikes += 1;
-      entry.pausedUntil = Date.now() + Math.min(6 * 3_600_000, error.retryAfterMs * 2 ** (entry.strikes - 1));
+      entry.pausedUntil = Date.now() + Math.min(3_600_000, error.retryAfterMs * 2 ** (entry.strikes - 1));
     }
     throw error;
   }
