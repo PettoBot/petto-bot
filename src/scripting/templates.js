@@ -157,6 +157,7 @@ I choose **{{ index .Args (randInt (len .Args)) }}**.`,
   {{ sendMessage nil (complexMessage
        "embed" (cembed
          "author" (or .Member.DisplayName .User.Username)
+         "authorIcon" .User.Avatar
          "thumbnail" .Guild.Icon
          "description" (printf "%s asks for:\\n**%s**\\n\\nUse the buttons to claim it or to confirm the delivery." .User.Mention .RawArgs)
          "color" "#ff91c2")
@@ -168,11 +169,11 @@ I choose **{{ index .Args (randInt (len .Args)) }}**.`,
 
 {{ $embed := index .Message.Embeds 0 }}
 {{ if eq .Button.ID "claim" }}
-  {{ updateMessage (cembed "description" $embed.Description "footer" (print "Claimed by " (or .Member.DisplayName .User.Username)) "color" "#ffd166") }}
+  {{ updateMessage (cembed "author" $embed.Author "authorIcon" $embed.AuthorIcon "thumbnail" $embed.Thumbnail "description" $embed.Description "footer" (print "Claimed by " (or .Member.DisplayName .User.Username)) "color" "#ffd166") }}
   {{ return }}
 {{ end }}
 {{ if ne .User.ID .Button.Data }}{{ respond "Only who made the request can confirm the delivery." true }}{{ return }}{{ end }}
-{{ updateMessage (complexMessage "embed" (cembed "description" $embed.Description "footer" "Delivered" "color" "#57f287") "components" (cslice)) }}`,
+{{ updateMessage (complexMessage "embed" (cembed "author" $embed.Author "authorIcon" $embed.AuthorIcon "thumbnail" $embed.Thumbnail "description" $embed.Description "footer" "Delivered" "color" "#57f287") "components" (cslice)) }}`,
   },
   {
     id: 'suggest',
@@ -207,6 +208,7 @@ I choose **{{ index .Args (randInt (len .Args)) }}**.`,
   {{ sendMessage nil (complexMessage
        "embed" (cembed
          "author" (or .Member.DisplayName .User.Username)
+         "authorIcon" .User.Avatar
          "thumbnail" .Guild.Icon
          "description" (printf "%s asks for:\\n**%s**\\n\\nReact with 🦋 to claim it, or with 🎀 to confirm the delivery." .User.Mention .RawArgs)
          "color" "#ff91c2")
@@ -217,11 +219,94 @@ I choose **{{ index .Args (randInt (len .Args)) }}**.`,
 {{ $embed := index .Message.Embeds 0 }}
 {{ if eq $embed.Footer "Delivered" }}{{ return }}{{ end }}
 {{ if eq .Reaction.Emoji "🦋" }}
-  {{ updateMessage (cembed "description" $embed.Description "footer" (print "Claimed by " (or .Member.DisplayName .User.Username)) "color" "#ffd166") }}
+  {{ updateMessage (cembed "author" $embed.Author "authorIcon" $embed.AuthorIcon "thumbnail" $embed.Thumbnail "description" $embed.Description "footer" (print "Claimed by " (or .Member.DisplayName .User.Username)) "color" "#ffd166") }}
   {{ removeReaction }}
 {{ return }}{{ end }}
 {{ if not (contains $embed.Description (print "<@" .User.ID ">")) }}{{ removeReaction }}{{ return }}{{ end }}
-{{ updateMessage (cembed "description" $embed.Description "footer" "Delivered" "color" "#57f287") }}`,
+{{ updateMessage (cembed "author" $embed.Author "authorIcon" $embed.AuthorIcon "thumbnail" $embed.Thumbnail "description" $embed.Description "footer" "Delivered" "color" "#57f287") }}`,
+  },
+  {
+    id: 'profile',
+    name: 'Profile',
+    description: 'A card about a member with their avatar next to the name. `!profile`',
+    suggestedName: 'profile',
+    code: `{{ $name := or .Member.DisplayName .User.GlobalName .User.Username }}
+{{ sendMessage nil (cembed
+  "author" $name
+  "authorIcon" .User.Avatar
+  "thumbnail" .User.Avatar
+  "description" (printf "Welcome to **%s**!" .Guild.Name)
+  "fields" (cslice
+    (cslice "Member since" (printf "<t:%d:D>" .Member.JoinedAt) true)
+    (cslice "Roles" (str (len .Member.RoleIDs)) true))
+  "footer" .Guild.Name
+  "footerIcon" .Guild.Icon
+  "color" "#ff91c2") }}`,
+  },
+  {
+    id: 'rolebutton',
+    name: 'Role button',
+    description: 'A button that gives a role, and takes it away if the person already has it. `!rolebutton @Role`',
+    suggestedName: 'rolebutton',
+    code: `{{ if eq .Trigger "command" }}
+  {{ if lt (len .Args) 1 }}Use: {{ .Prefix }}{{ .Cmd }} @Role{{ return }}{{ end }}
+  {{ $id := replace (replace (replace (index .Args 0) "<@&" "") ">" "") " " "" }}
+  {{ sendMessage nil (complexMessage
+       "embed" (cembed "description" (printf "Press the button to get or leave %s." (index .Args 0)) "color" "#ff91c2")
+       "components" (cslice (crow (cbutton "label" "Get or leave the role" "emoji" "🎀" "id" "toggle" "data" $id "style" "primary")))) }}
+  {{ deleteTrigger }}
+{{ return }}{{ end }}
+
+{{ if hasRole .Button.Data }}
+  {{ removeRole .Button.Data }}
+  {{ respond (printf "You left %s." (mentionRole .Button.Data)) true }}
+{{ else }}
+  {{ addRole .Button.Data }}
+  {{ respond (printf "You got %s." (mentionRole .Button.Data)) true }}
+{{ end }}`,
+  },
+  {
+    id: 'reactrole',
+    name: 'Role by reaction',
+    description: 'React with 🎀 to get a role. `!reactrole @Role`. Reacting again takes it away',
+    suggestedName: 'reactrole',
+    code: `{{ if eq .Trigger "command" }}
+  {{ if lt (len .Args) 1 }}Use: {{ .Prefix }}{{ .Cmd }} @Role{{ return }}{{ end }}
+  {{ $id := replace (replace (replace (index .Args 0) "<@&" "") ">" "") " " "" }}
+  {{ sendMessage nil (complexMessage
+       "embed" (cembed "description" (printf "React with 🎀 to get %s. React again to leave it." (index .Args 0)) "footer" (print "role " $id) "color" "#ff91c2")
+       "reactions" (cslice "🎀")) }}
+  {{ deleteTrigger }}
+{{ return }}{{ end }}
+
+{{ $e := index .Message.Embeds 0 }}
+{{ $id := replace $e.Footer "role " "" }}
+{{ if hasRole $id }}{{ removeRole $id }}{{ else }}{{ addRole $id }}{{ end }}
+{{ removeReaction }}`,
+  },
+  {
+    id: 'report',
+    name: 'Report',
+    description: 'A button that opens a form to report something, posted in the channel. `!report`',
+    suggestedName: 'report',
+    code: `{{ if eq .Trigger "command" }}
+  {{ sendMessage nil (complexMessage "content" "Something wrong? Tell us in private." "components" (cslice (crow
+    (cbutton "emoji" "📢" "label" "Report" "id" "open" "style" "danger")))) }}
+{{ return }}{{ end }}
+
+{{ if eq .Trigger "button" }}
+  {{ showModal (cmodal "id" "send" "title" "New report" "fields" (cslice
+    (ctext "id" "who" "label" "Who or what" "max" 100)
+    (ctext "id" "why" "label" "What happened" "style" "paragraph" "max" 1000))) }}
+{{ return }}{{ end }}
+
+{{ sendMessage nil (cembed
+  "title" (print "📢 Report about " .Fields.who)
+  "description" .Fields.why
+  "author" (or .Member.DisplayName .User.Username)
+  "authorIcon" .User.Avatar
+  "color" "#ed4245") }}
+{{ respond "Thanks, the team will look at it." true }}`,
   },
 ];
 

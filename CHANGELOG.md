@@ -6,6 +6,8 @@ All notable changes to Petto are documented here.
 
 ### Added
 
+- `cembed` takes `"authorIcon"` (a link, such as `.User.Avatar`), `"authorUrl"` and `"footerIcon"`, so the avatar can go next to the author. `.Message.Embeds` also gives `AuthorIcon` and `FooterIcon`. Four new templates: `profile` (a member card with their avatar), `rolebutton` (a button that gives or takes a role), `reactrole` (react to get a role) and `report` (a button that opens a form). `request` and `claim` now show the avatar and keep it when the card changes.
+
 - `.Message.Embeds` also gives each embed's `Author`, `Thumbnail`, `Image` and `Color` (a number), so a button, a modal or a reaction can change the footer or the text of an embed and keep the rest of it.
 
 - Commands in code can **react to reactions**. A message sent with `complexMessage` and `"reactions" (cslice "🦋" "🎀")` gets those reactions (up to 5), and for a week, when someone reacts to it with one of them, the same command runs again with `.Trigger` set to `"reaction"`, `.Reaction.Emoji` (the emoji as the code wrote it) and the person who reacted as `.User` and `.Member`. There, `updateMessage` changes the message that was reacted to (an embed, the text, the buttons), `respond` sends a message in its channel, `removeReaction` takes that person's reaction away (so a reaction works like a button that can be used again), and `addRole`, `removeRole`, `sendMessage`, `addReaction`, `dbSet` and the rest work as always, with the same checks. The messages are remembered apart from the stored data (they do not count towards its limit, and the keys that start with `rx:` are reserved). Added the `claim` template (a request card claimed with 🦋 and confirmed by who asked with 🎀).
