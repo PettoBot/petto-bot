@@ -1864,6 +1864,18 @@ begin
 end;
 $$;
 
+-- Global stats page: the totals of every server, and a ranking of the servers that chose to be in it.
+-- A server is only named in the ranking when it turns this on in the dashboard; the totals never name anyone.
+alter table guilds add column if not exists global_stats_visible boolean not null default false;
+
+-- One row, `main`, rewritten every minute by the bot with what the public stats page shows.
+create table if not exists global_stats (
+  id         text primary key,
+  data       jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+alter table global_stats enable row level security;
+
 -- Mass role assign/remove across every member matching a set of filters, run once in the
 -- background by the bot (not instant, potentially thousands of Discord API calls). Only one
 -- pending/running job per guild is enforced in application code, not here.
