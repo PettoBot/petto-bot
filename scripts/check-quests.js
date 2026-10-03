@@ -79,7 +79,7 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
   assert.equal(answer.notModified, false); assert.equal(answer.quests.length, 6, 'the quest only the tracker has is included');
   assert.equal(answer.quests.find((quest) => quest.id === ids.orbs).ageGate, true, 'the community API wins, it knows the limits');
   answer = await questApi.fetchQuests();
-  assert.equal(answer.notModified, true); assert.ok(calls.some(([, tag]) => tag === '"t1"') && calls.some(([, tag]) => tag === '"v1"'));
+  assert.equal(answer.notModified, true); assert.equal(answer.quests.length, 6, 'when nothing changed the list is still given'); assert.ok(calls.some(([, tag]) => tag === '"t1"') && calls.some(([, tag]) => tag === '"v1"'));
   assert.equal(questApi.getStatus().ok, true); assert.equal(questApi.getStatus().sources.length, 2);
   questApi.resetCache(); failTracker = true;
   answer = await questApi.fetchQuests();
@@ -150,6 +150,19 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
   assert.equal(posts.has('g2:' + ids.deco + ':expiring'), true);
   await checkQuests(client, { api: fakeApi, db, now: now + 3 * day });
   assert.equal(sentMessages.length, 3, 'the ending-soon alert is sent once');
+  // The files did not change between two passes, but a quest that was published before it started is active now: it must be announced.
+  const configs0 = configs;
+  seen.clear(); posts.clear(); sentMessages.length = 0; configs = [configs0[0]];
+  const early = { ...play, id: '1999999999999999991', startsAt: new Date(now + 2 * 3_600_000), expiresAt: new Date(now + 5 * day) };
+  seen.add(orbs.id); seen.add(deco.id);
+  current = [orbs, deco, early];
+  const unchanged = { fetchQuests: async () => ({ notModified: true, quests: current }), isActive: questApi.isActive };
+  result = await checkQuests(client, { api: unchanged, db, now });
+  assert.equal(result.newQuests, 0, 'before it starts there is nothing to announce');
+  result = await checkQuests(client, { api: unchanged, db, now: now + 3 * 3_600_000 });
+  assert.equal(result.newQuests, 1, 'when it starts it is announced, even if the files did not change');
+  assert.equal(sentMessages.length, 1);
+  configs = configs0;
   let reset = 0; const breakingDb = { ...db, markSeen: async () => { throw new Error('db down'); } };
   seen.clear(); seen.add('x');
   await assert.rejects(() => checkQuests(client, { api: { ...fakeApi, resetCache: () => { reset += 1; } }, db: breakingDb, now: now + 2 * day }), /db down/);
