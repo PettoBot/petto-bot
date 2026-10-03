@@ -18,6 +18,7 @@ const { textCard } = require('../../utils/caseCard');
 const { describePermissions } = require('../../utils/permissionLabels');
 const { EMOJI } = require('../../utils/emojis');
 const { isPettoOperator } = require('../../utils/autoModControl');
+const { helpLinksLine } = require('../../utils/links');
 
 const TIMEOUT_MS = 120_000;
 
@@ -213,7 +214,7 @@ function mainView(client, guild, prefix, includeHidden = false) {
   const container = new ContainerBuilder()
     .addSectionComponents(section)
     .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent('-# Select a category to browse commands.'))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# Select a category to browse commands.\n${helpLinksLine()}`))
     .addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('help_cat').setPlaceholder('Select a category').addOptions(options)));
 
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
