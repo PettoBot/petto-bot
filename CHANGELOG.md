@@ -4,6 +4,10 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-10-03
+
+A big release: **Petto Code** (custom commands written in code, in testing) with buttons, forms and reactions, an editor in the dashboard, Quest alerts, Components V2 embeds and global stats.
+
 ### Added
 
 - `cembed` takes `"authorIcon"` (a link, such as `.User.Avatar`), `"authorUrl"` and `"footerIcon"`, so the avatar can go next to the author. `.Message.Embeds` also gives `AuthorIcon` and `FooterIcon`. Four new templates: `profile` (a member card with their avatar), `rolebutton` (a button that gives or takes a role), `reactrole` (react to get a role) and `report` (a button that opens a form). `request` and `claim` now show the avatar and keep it when the card changes.
