@@ -1642,6 +1642,10 @@ create index if not exists idx_custom_commands_guild on custom_commands(guild_id
 
 alter table custom_commands enable row level security;
 
+-- Commands written in code (Petto Code). When `code` is set it runs instead of the response and the embed.
+alter table custom_commands add column if not exists code text;
+alter table custom_commands add column if not exists created_by text;
+
 -- ── Configurable command aliases ─────────────────────────────────────────
 
 create table if not exists command_aliases (
