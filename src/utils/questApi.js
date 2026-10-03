@@ -188,10 +188,17 @@ async function fetchQuests({ force = false } = {}) {
   const results = await Promise.allSettled(SOURCES.map((source) => readSource(source, force)));
   const failed = results.filter((result) => result.status === 'rejected');
   if (failed.length === SOURCES.length) throw new Error(`The quests could not be read: ${failed.map((result, i) => `${SOURCES[i].name} ${result.reason?.message}`).join('; ')}`);
-  if (!results.some((result) => result.status === 'fulfilled' && result.value)) return { notModified: true, quests: [] };
+  // `notModified` says the sources did not change, but the list is still given: what is active depends on the time, so a quest
+  // that began (or is about to end) since the last pass must be looked at even when the files did not change.
+  const notModified = !results.some((result) => result.status === 'fulfilled' && result.value);
+  return { notModified, quests: cachedQuests() };
+}
+
+/** The last list of every source, joined by quest id (the community API wins), without asking anything. */
+function cachedQuests() {
   const merged = new Map();
   for (const source of [...SOURCES].reverse()) for (const quest of state.get(source.name).quests ?? []) merged.set(quest.id, quest);
-  return { notModified: false, quests: [...merged.values()] };
+  return [...merged.values()];
 }
 
 /** Forgets the ETags, so the next pass downloads everything again (used when a pass could not finish). */
@@ -203,9 +210,7 @@ function resetCache() {
 async function getQuests({ maxAgeMs = 5 * 60_000 } = {}) {
   const fresh = SOURCES.some((source) => { const entry = state.get(source.name); return entry.quests && entry.at && Date.now() - entry.at.getTime() < maxAgeMs && entry.ok; });
   if (!fresh) await fetchQuests();
-  const merged = new Map();
-  for (const source of [...SOURCES].reverse()) for (const quest of state.get(source.name).quests ?? []) merged.set(quest.id, quest);
-  return [...merged.values()];
+  return cachedQuests();
 }
 
 /** How each source did the last time it was asked. */
@@ -217,5 +222,5 @@ function getStatus() {
 
 module.exports = {
   API_BASE, SOURCE_NAME, SOURCE_URL, TRACKER_URL, TASK_KINDS, REWARD_KIND_LIST, REWARD_LABELS,
-  fetchQuests, getQuests, resetCache, normalizeQuest, isActive, getStatus, cdnImage,
+  fetchQuests, getQuests, cachedQuests, resetCache, normalizeQuest, isActive, getStatus, cdnImage,
 };

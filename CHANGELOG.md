@@ -4,6 +4,10 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Quest alerts missed quests that were published before they started. The sources (a file on GitHub and a community API) often list a quest hours before it begins, and when the file had not changed since the last check the whole pass was skipped, so the quest that had just started was not looked at until the file changed again (sometimes many hours later). The pass now always runs on the list it already has, so a quest is announced within 5 minutes of starting, and the ending-soon alerts no longer wait for the file to change either. A quest that started and was missed is announced at the first check after the update.
+
 ## [0.7.0] — 2026-10-03
 
 A big release: **Petto Code** (custom commands written in code, open to every server) with buttons, forms and reactions, an editor in the dashboard, Quest alerts, Components V2 embeds and global stats.

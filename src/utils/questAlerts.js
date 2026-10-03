@@ -49,7 +49,8 @@ async function checkQuests(client, deps = {}) {
   const result = { sent: 0, newQuests: 0, baseline: false, skipped: false };
   if (!configs.length) { result.skipped = true; return result; }
   const answer = await api.fetchQuests();
-  if (answer.notModified) return { ...result, skipped: true };
+  // Even when the sources did not change (`answer.notModified`) the pass runs on the list it already has: a quest that was
+  // published before it started becomes active by itself as time passes, and the ending-soon alerts depend on the time too.
   try {
     return await runPass(client, { api, db, now, configs, answer, result });
   } catch (error) {
