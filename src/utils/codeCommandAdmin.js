@@ -28,6 +28,7 @@ function describeEffect(effect) {
     case 'removeRole': return `take the role <@&${effect.roleId}>`;
     case 'reaction': return `react with ${effect.emoji}`;
     case 'deleteTrigger': return 'delete the message that used the command';
+    case 'modal': return `show the form "${effect.modal.title}"`;
     case 'respond': return `answer the click with ${what(effect)}${effect.ephemeral ? ' (only for who clicked)' : ''}`;
     case 'update': return `change the message the button is on to ${what(effect)}`;
     default: return effect.type;

@@ -36,7 +36,7 @@ const DEFAULT_COOLDOWN_MS = 3000;
 module.exports = {
   name: Events.InteractionCreate,
   async execute(interaction, client) {
-    if ((interaction.isButton() || interaction.isStringSelectMenu()) && interaction.customId.startsWith(CODE_COMMAND_PREFIX)) {
+    if ((interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) && interaction.customId.startsWith(CODE_COMMAND_PREFIX)) {
       try { await handleCodeCommandComponent(interaction); } catch (err) { logger.error('Error handling a custom command button or menu:', err); }
       return;
     }

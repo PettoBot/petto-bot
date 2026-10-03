@@ -223,5 +223,26 @@ await assert.rejects(run('x'.repeat(10_001)), (error) => error.kind === 'limit' 
 await fails('{{ (((((((((((((((((((((((add 1 2))))))))))))))))))))))) }}', 'syntax', 'parentheses');
 assert.ok(functionNames().length > 50 && functionNames().includes('cembed'));
 
+// Modals: the form of a button, its fields, and the mistakes.
+{
+  const click = { Trigger: 'button', Button: { ID: 'open', Data: '' } };
+  const shown = await run('{{ showModal (cmodal "id" "form" "title" "Hi" "fields" (cslice (ctext "id" "name" "label" "Name"))) }}', { ...data, ...click });
+  assert.equal(shown.effects[0].type, 'modal');
+  assert.equal(shown.effects[0].modal.fields[0].style, 1, 'a field is short by default');
+  assert.equal(shown.effects[0].modal.fields[0].required, true);
+  const submitted = { Trigger: 'modal', Modal: { ID: 'form', Data: '' }, Fields: { name: 'Santi' } };
+  assert.equal(await out('{{ .Fields.name }}', submitted), 'Santi', 'the fields of a modal are read with .Fields');
+  const bad = async (code, extra, part) => { try { await run(code, { ...data, ...extra }); assert.fail(`${code} should fail`); } catch (error) { assert.match(error.detail ?? error.message, part, code); } };
+  await bad('{{ showModal (cmodal "id" "f" "title" "T" "fields" (cslice (ctext "id" "a" "label" "A"))) }}', {}, /button or a menu/);
+  await bad('{{ showModal (cmodal "id" "f" "title" "T" "fields" (cslice (ctext "id" "a" "label" "A"))) }}', { Trigger: 'modal' }, /button or a menu/);
+  await bad('{{ cmodal "id" "f" "title" "T" "fields" (cslice) }}', click, /1 to 5/);
+  await bad('{{ cmodal "id" "f" "title" "T" "fields" (cslice 1) }}', click, /ctext/);
+  await bad('{{ ctext "id" "bad id" "label" "A" }}', click, /id of 1 to 20/);
+  await bad('{{ ctext "id" "a" "label" "A" "style" "huge" }}', click, /short or paragraph/);
+  await bad('{{ cmodal "id" "f" "title" "T" "fields" (cslice (ctext "id" "a" "label" "A") (ctext "id" "a" "label" "B")) }}', click, /two fields|Two fields/i);
+  const answered = await run('{{ respond "ok" true }}', { ...data, ...submitted });
+  assert.equal(answered.effects[0].type, 'respond', 'a modal can be answered');
+}
+
 console.log('Checked Petto Code: the syntax, the functions, the effects, the safety and the limits.');
 })().catch((error) => { console.error(error); process.exit(1); });
