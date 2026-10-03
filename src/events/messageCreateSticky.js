@@ -1,5 +1,6 @@
 const { Events } = require('discord.js');
 const stickyDb = require('../db/stickyMessages');
+const { stickyPayload } = require('../utils/stickyPayload');
 const logger = require('../utils/logger');
 
 module.exports = {
@@ -16,7 +17,9 @@ module.exports = {
         if (old) await old.delete().catch(() => {});
       }
 
-      const sent = await message.channel.send({ content: sticky.content }).catch(() => null);
+      const payload = await stickyPayload(sticky, message);
+      if (!payload) return;
+      const sent = await message.channel.send(payload).catch(() => null);
       if (sent) await stickyDb.setMessageId(message.guild.id, message.channel.id, sent.id);
     } catch (err) {
       logger.error(`Sticky message repost failed in channel ${message.channel.id}:`, err);

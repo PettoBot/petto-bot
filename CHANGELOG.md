@@ -6,6 +6,7 @@ All notable changes to Petto are documented here.
 
 ### Added
 
+- Sticky messages can be one of your saved embeds (a classic embed or a Components V2 design) instead of plain text, with the text as a fallback when the embed is missing: `!stickymessage set #channel - template-name`, or from the dashboard, where a sticky can now also be edited in place.
 - Partners: a partnership is counted when a Partner Manager posts the invite of another server in a partner channel and it passes the requirements of the server (minimum members, minimum age of the server, a cooldown with the same server, a blacklist, and not its own invite). `!partnerconfig` sets the channels, the Partner Manager role, the requirements, the blacklist and every reply (with text or one of your saved embeds, using the new `{partner.*}` variables); `!partner stats` and `!partner leaderboard` show today, this week and all time. Free servers can have 6 partner channels, Premium 25.
 - Quest sources: the bot now reads four public copies of the quest list and any of them can announce a quest. The first is the short list of recent quests of the discord-api-tracker repository, which its own job refreshes within minutes of a quest starting (the Where Winds Meet 700 Orbs quest was there about 10 minutes after it began, hours before the other files); then the community API, discord-api-diff and the tracker's big file. `!quests status` lists all four.
 - The region and age limits are read from the community API and, when it is down, from the tracker's own list, and are applied to every source.

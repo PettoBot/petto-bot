@@ -1347,6 +1347,9 @@ create table if not exists sticky_messages (
   primary key (guild_id, channel_id)
 );
 
+-- A sticky message can be a saved embed (also a Components V2 design) instead of text.
+alter table sticky_messages add column if not exists embed_template text;
+
 alter table sticky_messages enable row level security;
 
 create table if not exists sticky_roles_config (

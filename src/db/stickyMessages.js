@@ -20,9 +20,9 @@ async function listForGuild(guildId) {
   return data;
 }
 
-async function setSticky(guildId, channelId, content) {
+async function setSticky(guildId, channelId, content, embedTemplate = null) {
   const data = await retryIdempotent(async () => {
-    const { data: row, error } = await database.from('sticky_messages').upsert({ guild_id: guildId, channel_id: channelId, content, message_id: null }, { onConflict: 'guild_id,channel_id' }).select('*').single();
+    const { data: row, error } = await database.from('sticky_messages').upsert({ guild_id: guildId, channel_id: channelId, content, embed_template: embedTemplate || null, message_id: null }, { onConflict: 'guild_id,channel_id' }).select('*').single();
     if (error) throw error;
     return row;
   });
