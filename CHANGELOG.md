@@ -4,8 +4,18 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+## [0.7.1] — 2026-10-03
+
+Partners, uploads, requests, reviews and profiles, buttons and panels with no code, saved embeds for sticky messages, and quest alerts that no longer depend on one source.
+
 ### Added
 
+- Reviews and profiles: `!review give @member 4 "comment"` rates a member from 1 to 5 stars (one review per pair, sending it again changes it), `!review show` and `!review remove`; `!profile` shows when they joined, their rating and the numbers of the modules the server uses (uploads, requests and partnerships). `!profileconfig` turns reviews off or sets a channel where each new review is shown.
+- Requests: `!request make <text>` posts a card with Claim, Done, Unclaim and Cancel buttons for the staff, and `!request list` shows the open ones. `!requestconfig` sets the channel, the staff role (or who can manage messages), a role to ping, how many open requests a member can have, the answer to who asks (text or a saved embed with `{request.*}` variables), and, with Premium, the hours a claimed request has to be finished before it goes back to open by itself.
+- Uploads: the messages with files posted in the channels a server chose are counted per member. `!uploadconfig` sets the channels (Free 20, Premium 100), the uploader role and the welcome of a first upload (text or a saved embed); `!uploads stats` and `!uploads leaderboard` show today, this week and all time.
+- Button responders and panels, with no code: `!responder add` makes a button (or a choice of a menu) that answers with a private message (text or a saved embed) and gives, takes or toggles roles, with an optional required role; `!panel` makes the message that shows some of them as buttons or as one dropdown menu (an exclusive menu takes the other choices' roles back), posts it, and updates it in place. Free servers can have 20 responders and 10 panels, Premium 250 and 50.
+- Sticky messages can be one of your saved embeds (a classic embed or a Components V2 design) instead of plain text, with the text as a fallback when the embed is missing: `!stickymessage set #channel - template-name`, or from the dashboard, where a sticky can now also be edited in place.
+- Partners: a partnership is counted when a Partner Manager posts the invite of another server in a partner channel and it passes the requirements of the server (minimum members, minimum age of the server, a cooldown with the same server, a blacklist, and not its own invite). `!partnerconfig` sets the channels, the Partner Manager role, the requirements, the blacklist and every reply (with text or one of your saved embeds, using the new `{partner.*}` variables); `!partner stats` and `!partner leaderboard` show today, this week and all time. Free servers can have 6 partner channels, Premium 25.
 - Quest sources: the bot now reads four public copies of the quest list and any of them can announce a quest. The first is the short list of recent quests of the discord-api-tracker repository, which its own job refreshes within minutes of a quest starting (the Where Winds Meet 700 Orbs quest was there about 10 minutes after it began, hours before the other files); then the community API, discord-api-diff and the tracker's big file. `!quests status` lists all four.
 - The region and age limits are read from the community API and, when it is down, from the tracker's own list, and are applied to every source.
 - The community API (behind Cloudflare, with a daily limit of its own) is asked at most every 30 minutes, and each rate limit in a row doubles the pause up to 1 hour, so it comes back soon after its daily limit resets.

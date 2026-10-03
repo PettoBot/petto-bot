@@ -11,6 +11,10 @@ const FREE_LIMITS = Object.freeze({
   logRoutes: 8,
   imageCards: 3,
   cardAssets: 5,
+  partnerChannels: 6,
+  buttonResponders: 20,
+  uploadChannels: 20,
+  componentPanels: 10,
 });
 
 const PREMIUM_LIMITS = Object.freeze({
@@ -22,6 +26,10 @@ const PREMIUM_LIMITS = Object.freeze({
   logRoutes: Number.POSITIVE_INFINITY,
   imageCards: 30,
   cardAssets: 60,
+  partnerChannels: 25,
+  buttonResponders: 250,
+  uploadChannels: 100,
+  componentPanels: 50,
 });
 
 /**
