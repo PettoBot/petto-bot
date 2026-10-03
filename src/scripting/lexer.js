@@ -52,7 +52,7 @@ function splitActions(source) {
     if (close === -1) throw new PettoCodeError('syntax', 'An action is never closed, a }} is missing', locate(source, open));
     let body = source.slice(bodyStart, close);
     let trimAfter = false;
-    if (/\s-$/.test(body)) { trimAfter = true; body = body.slice(0, -1); }
+    if (body.length > 1 && body.endsWith('-') && /\s/.test(body[body.length - 2])) { trimAfter = true; body = body.slice(0, -1); }
     parts.push({ type: 'action', body, bodyOffset: bodyStart, trimBefore, trimAfter, offset: open });
     index = close + 2;
   }
@@ -60,8 +60,8 @@ function splitActions(source) {
   for (let i = 0; i < parts.length; i += 1) {
     const part = parts[i];
     if (part.type === 'text') continue;
-    if (part.trimBefore && parts[i - 1]?.type === 'text') parts[i - 1].value = parts[i - 1].value.replace(/\s+$/, '');
-    if (part.trimAfter && parts[i + 1]?.type === 'text') parts[i + 1].value = parts[i + 1].value.replace(/^\s+/, '');
+    if (part.trimBefore && parts[i - 1]?.type === 'text') parts[i - 1].value = parts[i - 1].value.trimEnd();
+    if (part.trimAfter && parts[i + 1]?.type === 'text') parts[i + 1].value = parts[i + 1].value.trimStart();
   }
   return parts.filter((part) => part.type === 'action' || (part.type === 'text' && part.value !== ''));
 }
