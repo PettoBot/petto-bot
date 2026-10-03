@@ -2382,3 +2382,29 @@ create table if not exists component_panels (
   unique (guild_id, name)
 );
 alter table component_panels enable row level security;
+
+-- Uploads: the messages with files posted in the channels a server chose are counted per member, for the numbers, the
+-- ranking and the welcome of a new uploader (a role and a message).
+create table if not exists upload_config (
+  guild_id         text primary key references guilds(guild_id) on delete cascade,
+  enabled          boolean not null default false,
+  channel_ids      text[] not null default '{}',
+  uploader_role_id text,
+  welcome          jsonb not null default '{}'::jsonb,
+  updated_at       timestamptz not null default now()
+);
+alter table upload_config enable row level security;
+
+create table if not exists upload_log (
+  id         bigserial primary key,
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  user_id    text not null,
+  channel_id text not null,
+  message_id text not null,
+  files      integer not null default 1,
+  created_at timestamptz not null default now(),
+  unique (guild_id, message_id)
+);
+create index if not exists idx_upload_log_guild_time on upload_log (guild_id, created_at desc);
+create index if not exists idx_upload_log_user on upload_log (guild_id, user_id, created_at desc);
+alter table upload_log enable row level security;
