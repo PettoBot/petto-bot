@@ -185,6 +185,30 @@ const slow = { ...memory(), async get() { clock += 1000; return 1; } };
 const waited = await run('{{ dbGet "k" }}{{ dbGet "k" }}done', data, { store: slow, now: () => clock });
 assert.equal(waited.output, '1' + '1' + 'done', 'two slow reads do not stop the code');
 
+// Buttons and menus.
+const rowCode = '{{ sendMessage nil (complexMessage "content" "Pick" "components" (cslice (crow (cbutton "label" "Yes" "id" "yes" "style" "success" "data" "a1") (cbutton "label" "Docs" "url" "https://petto.sbs") (cbutton "emoji" "👍" "id" "up" "disabled" true "user" "123456789012345678")))) }}';
+const rows = (await run(rowCode, data)).effects[0].components;
+assert.deepEqual(rows[0].items.map((item) => [item.label ?? item.emoji, item.handler ?? null, item.style, item.url ?? null]), [['Yes', 'yes', 3, null], ['Docs', null, 5, 'https://petto.sbs'], ['👍', 'up', 2, null]]);
+assert.equal(rows[0].items[0].data, 'a1'); assert.equal(rows[0].items[2].disabled, true); assert.equal(rows[0].items[2].userId, '123456789012345678');
+const menu = (await run('{{ sendMessage nil (complexMessage "components" (cslice (crow (cselect "id" "pick" "placeholder" "Choose" "min" 0 "max" 2 "options" (cslice (cslice "A" "a" "first") (cslice "B" "b")))))) }}', data)).effects[0].components[0].items[0];
+assert.deepEqual([menu.type, menu.handler, menu.placeholder, menu.min, menu.max, menu.options.length, menu.options[0].description], ['select', 'pick', 'Choose', 0, 2, 2, 'first']);
+for (const [code, text] of [
+  ['{{ cbutton "label" "x" }}', 'needs an id'], ['{{ cbutton "id" "x" }}', 'label or an emoji'], ['{{ cbutton "label" "x" "id" "bad id" }}', 'id of 1 to 20'],
+  ['{{ cbutton "label" "x" "id" "y" "style" "purple" }}', 'primary, secondary'], ['{{ cbutton "label" "x" "id" "y" "data" "has space" }}', 'data of a button'],
+  ['{{ cbutton "label" "x" "url" "javascript:1" }}', 'http'], ['{{ cbutton "label" "x" "url" "https://a.test" "id" "y" }}', 'cannot also have an id'],
+  ['{{ cbutton "label" "x" "id" "y" "nope" 1 }}', 'does not know'], ['{{ cbutton "label" (printf "%90s" "x") "id" "y" }}', '80'],
+  ['{{ crow }}', '1 to 5 arguments'], ['{{ crow "text" }}', 'buttons made with cbutton'], ['{{ crow (cselect "id" "a" "options" (cslice (cslice "A" "a"))) (cbutton "label" "x" "id" "y") }}', 'whole row'],
+  ['{{ cselect "id" "a" "options" (cslice) }}', '1 to 25'], ['{{ cselect "id" "a" "max" 3 "options" (cslice (cslice "A" "a")) }}', 'min is at least 0'],
+  ['{{ sendMessage nil (complexMessage "components" (cslice (dict "a" 1))) }}', 'made with crow'], ['{{ sendDM (complexMessage "components" (cslice (crow (cbutton "label" "x" "id" "y")))) }}', 'cannot have buttons'],
+  ['{{ respond "x" }}', 'button or a menu'], ['{{ updateMessage "x" }}', 'button or a menu'],
+]) await fails(code, 'runtime', text);
+await fails(`{{ sendMessage nil (complexMessage "components" (cslice ${'(crow (cbutton "label" "x" "id" "y")) '.repeat(6)})) }}`, 'runtime', 'at most 5 rows');
+const clicked = (code, extra = {}) => run(code, { ...data, Trigger: 'button', Button: { ID: 'yes', Data: '' }, Values: [], ...extra });
+let answer = await clicked('{{ respond "hi" true }}'); assert.deepEqual(answer.effects[0], { type: 'respond', content: 'hi', ephemeral: true });
+answer = await clicked('{{ updateMessage (cembed "title" "T") }}'); assert.equal(answer.effects[0].type, 'update'); assert.equal(answer.effects[0].embed.title, 'T');
+await assert.rejects(clicked('{{ respond "a" }}{{ respond "b" }}'), (error) => error.kind === 'limit');
+assert.equal((await run('{{ .Trigger }}|{{ .Button }}|{{ len .Values }}', { Trigger: 'command', Button: null, Values: [] })).output, 'command||0');
+
 // Limits.
 const tooLong = await fails('{{ range seq 0 1000 }}{{ range seq 0 1000 }}x{{ end }}{{ end }}', 'limit');
 assert.ok(/steps|turns|characters/.test(tooLong.message));

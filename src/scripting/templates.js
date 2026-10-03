@@ -97,6 +97,56 @@ I choose **{{ index .Args (randInt (len .Args)) }}**.`,
 {{ $left := sub $target (unix) }}
 {{ if gt $left 0 }}⏳ It happens {{ timestamp $target "R" }} (in {{ humanizeDuration $left }}).{{ else }}It already happened {{ timestamp $target "R" }}.{{ end }}`,
   },
+  {
+    id: 'vote',
+    name: 'Vote',
+    description: 'A yes or no vote with buttons that count. `!vote pizza tonight?`',
+    suggestedName: 'vote',
+    code: `{{ if eq .Trigger "command" }}
+{{ if not .Args }}Ask something: {{ .Prefix }}{{ .Cmd }} pizza tonight?{{ return }}{{ end }}
+{{ sendMessage nil (complexMessage
+  "embed" (cembed "title" "📊 Vote" "description" .RawArgs "footer" "Yes: 0 · No: 0" "color" "#8399ff")
+  "components" (cslice (crow
+    (cbutton "label" "Yes" "id" "yes" "style" "success")
+    (cbutton "label" "No" "id" "no" "style" "danger")))) }}
+{{ return }}{{ end }}
+{{ $poll := .Message.ID }}
+{{ $before := dbGet (print "vote:" $poll) .User.ID }}
+{{ if eq $before .Button.ID }}{{ respond "You already voted that." true }}{{ return }}{{ end }}
+{{ if $before }}{{ $x := dbIncr (print "votes:" $poll ":" $before) -1 }}{{ end }}
+{{ dbSet (print "vote:" $poll) .Button.ID .User.ID }}
+{{ $x := dbIncr (print "votes:" $poll ":" .Button.ID) 1 }}
+{{ $yes := or (dbGet (print "votes:" $poll ":yes")) 0 }}
+{{ $no := or (dbGet (print "votes:" $poll ":no")) 0 }}
+{{ $first := index .Message.Embeds 0 }}
+{{ updateMessage (cembed "title" "📊 Vote" "description" $first.Description "footer" (printf "Yes: %d · No: %d" $yes $no) "color" "#8399ff") }}`,
+  },
+  {
+    id: 'clicker',
+    name: 'Clicker',
+    description: 'A button that counts every click of the whole server. `!clicker`',
+    suggestedName: 'clicker',
+    code: `{{ if eq .Trigger "command" }}
+{{ sendMessage nil (complexMessage "content" "Clicks: **0**" "components" (cslice (crow (cbutton "label" "Click me!" "emoji" "👆" "id" "click" "style" "primary")))) }}
+{{ return }}{{ end }}
+{{ $total := dbIncr "clicks" 1 }}
+{{ $mine := dbIncr "clicks" 1 .User.ID }}
+{{ updateMessage (complexMessage "content" (printf "Clicks: **%d**\nLast click: %s (their %dth)" $total .User.Username $mine)) }}`,
+  },
+  {
+    id: 'favorite',
+    name: 'Favorite',
+    description: 'A menu to pick a favorite, answered in private. `!favorite`',
+    suggestedName: 'favorite',
+    code: `{{ if eq .Trigger "command" }}
+{{ sendMessage nil (complexMessage "content" "What is your favorite?" "components" (cslice (crow
+  (cselect "id" "pick" "placeholder" "Choose one" "options" (cslice
+    (cslice "Pizza 🍕" "pizza" "Cheesy and warm")
+    (cslice "Sushi 🍣" "sushi" "Fresh")
+    (cslice "Tacos 🌮" "tacos" "Crunchy")))))) }}
+{{ return }}{{ end }}
+{{ respond (printf "You chose **%s**!" (index .Values 0)) true }}`,
+  },
 ];
 
 const byId = (id) => TEMPLATES.find((template) => template.id === String(id ?? '').toLowerCase()) ?? null;
