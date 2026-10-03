@@ -37,7 +37,7 @@ async function readRankedServers() {
       coalesce(sum(a.reactions) filter (where a.day > d.today - 7), 0)::bigint as reactions_week,
       coalesce(sum(a.voice_seconds) filter (where a.day > d.today - 7), 0)::bigint as voice_week
     from activity_stats a join guilds g on g.guild_id = a.guild_id, d
-    where g.global_stats_visible
+    where not g.global_stats_hidden
     group by a.guild_id
   `);
   return rows.map((r) => ({
@@ -77,14 +77,21 @@ async function saveSnapshot(data) {
   if (error) throw error;
 }
 
-/** The members who chose to be ranked, with their messages and voice time added up over every server. */
+/** The members with the most messages and the most voice time over every server, leaving out who hid themselves. */
 async function readRankedUsers() {
-  const { rows } = await getPrimaryPool().query(`
-    select u.user_id, sum(l.messages)::bigint as messages, (sum(l.vc_minutes) * 60)::bigint as voice_seconds
-    from global_stats_users u join level_users l on l.user_id = u.user_id
-    group by u.user_id
+  const pool = getPrimaryPool();
+  const top = (column) => pool.query(`
+    select l.user_id, sum(l.messages)::bigint as messages, (sum(l.vc_minutes) * 60)::bigint as voice_seconds
+    from level_users l
+    where not exists (select 1 from global_stats_hidden_users h where h.user_id = l.user_id)
+    group by l.user_id
+    order by ${column} desc
+    limit ${USER_RANK_SIZE + 10}
   `);
-  return rows.map((r) => ({ id: r.user_id, messages: Number(r.messages), voiceSeconds: Number(r.voice_seconds) }));
+  const [byMessages, byVoice] = await Promise.all([top('messages'), top('voice_seconds')]);
+  const users = new Map();
+  for (const r of [...byMessages.rows, ...byVoice.rows]) users.set(r.user_id, { id: r.user_id, messages: Number(r.messages), voiceSeconds: Number(r.voice_seconds) });
+  return [...users.values()];
 }
 
 /** The top members for messages and for voice time; `describe(id)` gives the name and avatar, or null to leave one out. */
@@ -105,13 +112,13 @@ function buildUserRanking(users, describe) {
 
 async function setUserVisible(userId, visible) {
   const pool = getPrimaryPool();
-  if (visible) await pool.query('insert into global_stats_users (user_id) values ($1) on conflict do nothing', [String(userId)]);
-  else await pool.query('delete from global_stats_users where user_id = $1', [String(userId)]);
+  if (visible) await pool.query('delete from global_stats_hidden_users where user_id = $1', [String(userId)]);
+  else await pool.query('insert into global_stats_hidden_users (user_id) values ($1) on conflict do nothing', [String(userId)]);
 }
 
 async function isUserVisible(userId) {
-  const { rows } = await getPrimaryPool().query('select 1 from global_stats_users where user_id = $1', [String(userId)]);
-  return rows.length > 0;
+  const { rows } = await getPrimaryPool().query('select 1 from global_stats_hidden_users where user_id = $1', [String(userId)]);
+  return rows.length === 0;
 }
 
 module.exports = { SERVER_RANK_SIZE, USER_RANK_SIZE, readTotals, readRankedServers, buildRanking, readRankedUsers, buildUserRanking, setUserVisible, isUserVisible, buildRates, saveSnapshot };
