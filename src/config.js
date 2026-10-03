@@ -71,6 +71,10 @@ module.exports = {
   // again, so only the owner, the developers and these testers can set them up.
   questsPublic: process.env.QUESTS_PUBLIC !== 'false',
   questTesterIds: envList('QUESTS_TESTER_IDS'),
+  // Custom commands written in code (Petto Code) are in testing: only the owner, the developers and these testers can
+  // write them. Set CODE_COMMANDS_PUBLIC=true to open writing them to every server that can manage commands.
+  codeCommandsPublic: process.env.CODE_COMMANDS_PUBLIC === 'true',
+  codeCommandTesterIds: envList('CODE_COMMAND_TESTER_IDS'),
   // This control token is intentionally required at runtime. Never commit a
   // fallback token: a public repository makes hard-coded controls unsafe.
   automodControlToken: process.env.PETTO_AUTOMOD_CONTROL_TOKEN || null,

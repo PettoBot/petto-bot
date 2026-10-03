@@ -15,6 +15,7 @@ const { EMOJI } = require('../utils/emojis');
 const moderationPermissions = require('../utils/moderationPermissions');
 const { controlAction } = require('../utils/autoModControl');
 const logger = require('../utils/logger');
+const { runCodeCommand } = require('../utils/codeCommands');
 
 const DEFAULT_COOLDOWN_MS = 3000;
 const UNKNOWN_COMMAND_DELETE_MS = 10_000;
@@ -120,6 +121,7 @@ function containsArgumentVariable(value) {
 async function runCustomCommand(message, commandName, argText = '', prefix = '!') {
   const row = await customCommandsDb.getCommand(message.guild.id, commandName).catch(() => null);
   if (!row) return false;
+  if (row.code) return runCodeCommand(message, row, argText, prefix);
   message.channel.sendTyping().catch(() => {});
 
   const argTokens = tokenize(argText);

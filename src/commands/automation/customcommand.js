@@ -5,6 +5,10 @@ const { getTemplate } = require('../../db/embedTemplates');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { COLORS } = require('../../utils/colors');
+const { AttachmentBuilder } = require('discord.js');
+const { run, check, PettoCodeError, MAX_SOURCE_LENGTH } = require('../../scripting');
+const { TEMPLATES, byId } = require('../../scripting/templates');
+const codeCommands = require('../../utils/codeCommands');
 
 const MAX_PER_GUILD = 100;
 
@@ -32,6 +36,12 @@ module.exports = {
     )
     .addSubcommand((s) => s.setName('remove').setDescription('Delete a custom command.').addStringOption((o) => o.setName('name').setDescription('Command name').setRequired(true)))
     .addSubcommand((s) => s.setName('list').setDescription('List every custom command.'))
+    .addSubcommand((s) => s.setName('code').setDescription('Create or change a command written in code (Petto Code). Write the code after the name.').addStringOption((o) => o.setName('name').setDescription("The command's name (no prefix)").setRequired(true)).addStringOption((o) => o.setName('code').setDescription('The code, after the name, inside a code block if it has several lines').setRequired(false)))
+    .addSubcommand((s) => s.setName('codeshow').setDescription('Show the code of a command.').addStringOption((o) => o.setName('name').setDescription('Command name').setRequired(true)))
+    .addSubcommand((s) => s.setName('codetest').setDescription('Run some code to see what it would do, without sending or changing anything.').addStringOption((o) => o.setName('code').setDescription('The code, inside a code block if it has several lines').setRequired(false)))
+    .addSubcommand((s) => s.setName('template').setDescription('List the ready-made commands in code, or install one.').addStringOption((o) => o.setName('id').setDescription('The template to install; leave empty to list them').setRequired(false)).addStringOption((o) => o.setName('name').setDescription('The name for the command; leave empty to use the suggested one').setRequired(false)))
+    .addSubcommand((s) => s.setName('export').setDescription('Get a share code of a command in code, to share it or import it in another server.').addStringOption((o) => o.setName('name').setDescription('Command name').setRequired(true)))
+    .addSubcommand((s) => s.setName('import').setDescription('Create a command in code from a share code (it starts with pc1.).').addStringOption((o) => o.setName('share').setDescription('The share code').setRequired(true)).addStringOption((o) => o.setName('name').setDescription('The name for the command; leave empty to use the one in the code').setRequired(false)))
     .addSubcommand((s) => s.setName('vars').setDescription('Show custom-command arguments, variables, and reply flags.'))
     .addSubcommand((s) => s.setName('show').setDescription('Show a custom command without triggering it.').addStringOption((o) => o.setName('name').setDescription('Command name').setRequired(true))),
   aliases: ['cc'],
@@ -43,6 +53,7 @@ module.exports = {
     if (sub === 'remove') return removeCmd(interaction);
     if (sub === 'list') return listCmd(interaction);
     if (sub === 'vars') return varsCmd(interaction);
+    if (['code', 'codeshow', 'codetest', 'template', 'export', 'import'].includes(sub)) return codeCmd(interaction, sub);
     return showCmd(interaction);
   },
 };
@@ -118,7 +129,7 @@ async function removeCmd(interaction) {
 async function listCmd(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const rows = await ccDb.listCommands(interaction.guild.id);
-  const text = rows.length ? rows.map((r) => `\`${r.name}\``).join(', ') : 'No custom commands yet.';
+  const text = rows.length ? rows.map((r) => `\`${r.name}\`${r.code ? ' (code)' : ''}`).join(', ') : 'No custom commands yet.';
   await interaction.editReply({ components: [textCard(`**Custom commands (${rows.length}/${MAX_PER_GUILD}):**\n${text}`, COLORS.DEFAULT)], flags: MessageFlags.IsComponentsV2 });
 }
 
@@ -153,4 +164,119 @@ async function showCmd(interaction) {
   }
   const text = `**\`${row.name}\`**\n${row.embed_template ? `Embed template: \`${row.embed_template}\`` : ''}${row.response ? `\nResponse: ${row.response}` : ''}`;
   await interaction.editReply({ components: [textCard(text, COLORS.DEFAULT)], flags: MessageFlags.IsComponentsV2 });
+}
+
+// ── Commands written in code (Petto Code) ───────────────────────────────────
+
+const reply = (interaction, text, color = COLORS.DEFAULT) => interaction.editReply({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2 });
+/** A long text goes in a file, sent as a normal message because a card cannot hold files. */
+async function sendAsFile(interaction, content, fileName, text) {
+  await interaction.channel.send({ content, files: [new AttachmentBuilder(Buffer.from(text, 'utf8'), { name: fileName })], allowedMentions: { parse: [] } });
+  return reply(interaction, `${EMOJI.APPROVE}  Sent as a file below.`, COLORS.GREEN);
+}
+const clipText = (text, max = 1500) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
+
+/** What an action of some code would do, as one line. */
+function describeEffect(effect) {
+  const what = (e) => [e.content ? `"${clipText(e.content.replace(/\s+/g, ' '), 80)}"` : null, e.embed ? 'an embed' : null].filter(Boolean).join(' and ');
+  switch (effect.type) {
+    case 'message': return `send ${what(effect)} ${effect.channelId ? `to <#${effect.channelId}>` : 'here'}`;
+    case 'dm': return `send ${what(effect)} in a direct message`;
+    case 'addRole': return `give the role <@&${effect.roleId}>`;
+    case 'removeRole': return `take the role <@&${effect.roleId}>`;
+    case 'reaction': return `react with ${effect.emoji}`;
+    case 'deleteTrigger': return 'delete the message that used the command';
+    default: return effect.type;
+  }
+}
+
+function codeProblem(code) {
+  if (!code) return 'There is no code. Write it after the name, inside a code block if it has several lines.';
+  if (code.length > MAX_SOURCE_LENGTH) return `The code is too long (${code.length} of ${MAX_SOURCE_LENGTH} characters).`;
+  const problem = check(code);
+  return problem ? `The code has a mistake: ${problem.message}${problem.line ? ` (line ${problem.line}, column ${problem.column})` : ''}` : null;
+}
+
+async function saveCode(interaction, name, code, verb) {
+  if (interaction.client.commands.has(name) || interaction.client.commandAliases.has(name) || interaction.client.commandRoutes?.has(name)) {
+    return reply(interaction, `\`${name}\` is already a real command, pick a different name.`, COLORS.RED);
+  }
+  if (!/^[a-z0-9_-]{1,32}$/.test(name)) return reply(interaction, 'A name has 1 to 32 letters, numbers, - or _.', COLORS.RED);
+  const problem = codeProblem(code);
+  if (problem) return reply(interaction, problem, COLORS.RED);
+  await ensureGuild(interaction.guild.id);
+  const existing = await ccDb.getCommand(interaction.guild.id, name);
+  if (!existing) {
+    const current = await ccDb.listCommands(interaction.guild.id);
+    if (current.length >= MAX_PER_GUILD) return reply(interaction, `This server already has the maximum of ${MAX_PER_GUILD} custom commands.`, COLORS.RED);
+  }
+  await ccDb.upsertCommand(interaction.guild.id, name, { response: null, embedTemplate: null, code, createdBy: interaction.user.id });
+  return reply(interaction, `${EMOJI.APPROVE}  \`${name}\` ${existing ? 'updated' : verb}. Try \`!${name}\`. See it again with \`!customcommand codeshow ${name}\`.`, COLORS.GREEN);
+}
+
+async function codeCmd(interaction, sub) {
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  if (!codeCommands.canWriteCode(interaction.user.id)) {
+    return reply(interaction, `${EMOJI.DENY}  Custom commands in code are in testing and only available to Petto's team for now.`, COLORS.RED);
+  }
+  const raw = interaction.rawMessage?.content ?? '';
+
+  if (sub === 'template') {
+    const id = interaction.options.getString('id');
+    if (!id) {
+      const lines = TEMPLATES.map((template) => `\`${template.id}\` · **${template.name}**: ${template.description}`);
+      return reply(interaction, `### Commands in code you can install\n${lines.join('\n')}\n\nInstall one with \`!customcommand template <id> [name]\`. You can change it later with \`!customcommand code\`.`);
+    }
+    const template = byId(id);
+    if (!template) return reply(interaction, `There is no template called \`${id}\`. See them with \`!customcommand template\`.`, COLORS.RED);
+    const name = ccDb.normalizeName(interaction.options.getString('name') ?? template.suggestedName);
+    return saveCode(interaction, name, template.code, 'created from the template');
+  }
+
+  if (sub === 'code') {
+    const name = ccDb.normalizeName(interaction.options.getString('name', true));
+    const code = codeCommands.extractCode(codeCommands.rawAfter(raw, 1));
+    return saveCode(interaction, name, code, 'created');
+  }
+
+  if (sub === 'codetest') {
+    const code = codeCommands.extractCode(codeCommands.rawAfter(raw, 0));
+    const problem = codeProblem(code);
+    if (problem) return reply(interaction, problem, COLORS.RED);
+    try {
+      const data = codeCommands.buildData(interaction.rawMessage, 'test', '', '!');
+      const result = run(code, data);
+      const output = result.output.trim();
+      const actions = result.effects.map((effect) => `• ${describeEffect(effect)}`).join('\n');
+      return reply(interaction, [
+        '### Test run (nothing was sent or changed)',
+        `**It would print:** ${output ? `\n${clipText(output)}` : '_nothing_'}`,
+        `**It would do:** ${actions ? `\n${clipText(actions)}` : '_nothing else_'}`,
+        `-# ${result.steps} steps, ${result.millis} ms`,
+      ].join('\n'));
+    } catch (error) {
+      if (error instanceof PettoCodeError) return reply(interaction, `The code stopped: ${error.detail}${error.line ? ` (line ${error.line}, column ${error.column})` : ''}`, COLORS.RED);
+      throw error;
+    }
+  }
+
+  if (sub === 'import') {
+    let shared;
+    try { shared = codeCommands.decodeShare(interaction.options.getString('share', true)); } catch (error) { return reply(interaction, error.message, COLORS.RED); }
+    const name = ccDb.normalizeName(interaction.options.getString('name') ?? shared.name);
+    if (!name) return reply(interaction, 'That share code has no name, so give one: `!customcommand import <code> <name>`.', COLORS.RED);
+    return saveCode(interaction, name, shared.code, 'imported');
+  }
+
+  // codeshow and export
+  const name = ccDb.normalizeName(interaction.options.getString('name', true));
+  const row = await ccDb.getCommand(interaction.guild.id, name);
+  if (!row?.code) return reply(interaction, `\`${name}\` does not exist or it is not written in code.`, COLORS.RED);
+  if (sub === 'export') {
+    const share = codeCommands.encodeShare({ name: row.name, code: row.code });
+    if (share.length > 1800) return sendAsFile(interaction, `The share code of \`${row.name}\` is long, so it is in this file.`, `${row.name}.pc1.txt`, share);
+    return reply(interaction, `Share code of \`${row.name}\`. Import it with \`!customcommand import <code>\`:\n\`\`\`\n${share}\n\`\`\``);
+  }
+  if (row.code.length > 1700) return sendAsFile(interaction, `The code of \`${row.name}\` is long, so it is in this file.`, `${row.name}.txt`, row.code);
+  return reply(interaction, `**\`${row.name}\`**\n\`\`\`\n${row.code}\n\`\`\``);
 }
