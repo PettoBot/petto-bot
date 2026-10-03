@@ -1,7 +1,8 @@
 const database = require('./database');
 const { getPrimaryPool } = require('./postgres');
 
-const RANK_SIZE = 10;
+const SERVER_RANK_SIZE = 3;
+const USER_RANK_SIZE = 10;
 const METRICS = ['messages', 'reactions', 'voiceSeconds'];
 
 /** The messages, reactions and voice time of every server, all time, today (UTC) and in the last 7 days. */
@@ -57,7 +58,7 @@ function buildRanking(servers, describe) {
         .sort((a, b) => b[period][metric] - a[period][metric])
         .map((server) => ({ server, info: describe(server.id) }))
         .filter((entry) => entry.info)
-        .slice(0, RANK_SIZE)
+        .slice(0, SERVER_RANK_SIZE)
         .map(({ server, info }) => ({ id: server.id, name: info.name, icon: info.icon ?? null, value: server[period][metric] }));
     }
   }
@@ -76,4 +77,41 @@ async function saveSnapshot(data) {
   if (error) throw error;
 }
 
-module.exports = { RANK_SIZE, readTotals, readRankedServers, buildRanking, buildRates, saveSnapshot };
+/** The members who chose to be ranked, with their messages and voice time added up over every server. */
+async function readRankedUsers() {
+  const { rows } = await getPrimaryPool().query(`
+    select u.user_id, sum(l.messages)::bigint as messages, (sum(l.vc_minutes) * 60)::bigint as voice_seconds
+    from global_stats_users u join level_users l on l.user_id = u.user_id
+    group by u.user_id
+  `);
+  return rows.map((r) => ({ id: r.user_id, messages: Number(r.messages), voiceSeconds: Number(r.voice_seconds) }));
+}
+
+/** The top members for messages and for voice time; `describe(id)` gives the name and avatar, or null to leave one out. */
+function buildUserRanking(users, describe) {
+  const ranking = {};
+  for (const metric of ['messages', 'voiceSeconds']) {
+    ranking[metric] = users
+      .filter((user) => user[metric] > 0)
+      .sort((a, b) => b[metric] - a[metric])
+      .slice(0, USER_RANK_SIZE + 5) // a few more, in case some cannot be described
+      .map((user) => ({ user, info: describe(user.id) }))
+      .filter((entry) => entry.info)
+      .slice(0, USER_RANK_SIZE)
+      .map(({ user, info }) => ({ id: user.id, name: info.name, avatar: info.avatar ?? null, value: user[metric] }));
+  }
+  return ranking;
+}
+
+async function setUserVisible(userId, visible) {
+  const pool = getPrimaryPool();
+  if (visible) await pool.query('insert into global_stats_users (user_id) values ($1) on conflict do nothing', [String(userId)]);
+  else await pool.query('delete from global_stats_users where user_id = $1', [String(userId)]);
+}
+
+async function isUserVisible(userId) {
+  const { rows } = await getPrimaryPool().query('select 1 from global_stats_users where user_id = $1', [String(userId)]);
+  return rows.length > 0;
+}
+
+module.exports = { SERVER_RANK_SIZE, USER_RANK_SIZE, readTotals, readRankedServers, buildRanking, readRankedUsers, buildUserRanking, setUserVisible, isUserVisible, buildRates, saveSnapshot };
