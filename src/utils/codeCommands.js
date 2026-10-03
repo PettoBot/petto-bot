@@ -41,7 +41,7 @@ function buildData(message, commandName, argText, prefix) {
     Channel: { ID: channel.id, Name: channel.name ?? null, Mention: `<#${channel.id}>` },
     Message: {
       ID: message.id, Content: message.content ?? '', Link: message.url ?? null,
-      Embeds: (message.embeds ?? []).slice(0, 10).map((embed) => ({ Title: embed.title ?? null, Description: embed.description ?? null, Footer: embed.footer?.text ?? null })),
+      Embeds: (message.embeds ?? []).slice(0, 10).map((embed) => ({ Title: embed.title ?? null, Description: embed.description ?? null, Footer: embed.footer?.text ?? null, Author: embed.author?.name ?? null, Thumbnail: embed.thumbnail?.url ?? null, Image: embed.image?.url ?? null, Color: embed.color ?? null })),
     },
     Args: tokenize(argText ?? ''),
     RawArgs: argText ?? '',
