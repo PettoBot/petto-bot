@@ -2297,3 +2297,47 @@ create table if not exists quest_posts (
   primary key (guild_id, quest_id, kind)
 );
 alter table quest_posts enable row level security;
+
+-- Partners: a partnership is counted when a Partner Manager posts the invite of another server in a partner channel and
+-- it passes the requirements of the server. `partner_log` has one row per counted partnership (daily, weekly and total
+-- numbers are counted from it); `messages` holds the replies a server changed (key -> { text, template }).
+create table if not exists partner_config (
+  guild_id         text primary key references guilds(guild_id) on delete cascade,
+  enabled          boolean not null default false,
+  channel_ids      text[] not null default '{}',
+  manager_role_id  text,
+  min_members      integer not null default 0 check (min_members between 0 and 10000000),
+  min_age_days     integer not null default 0 check (min_age_days between 0 and 3650),
+  cooldown_days    integer not null default 0 check (cooldown_days between 0 and 365),
+  keep_original    boolean not null default true,
+  react_emoji      text,
+  messages         jsonb not null default '{}'::jsonb,
+  updated_at       timestamptz not null default now()
+);
+alter table partner_config enable row level security;
+
+create table if not exists partner_blacklist (
+  guild_id         text not null references guilds(guild_id) on delete cascade,
+  partner_guild_id text not null,
+  note             text,
+  created_at       timestamptz not null default now(),
+  primary key (guild_id, partner_guild_id)
+);
+alter table partner_blacklist enable row level security;
+
+create table if not exists partner_log (
+  id               bigserial primary key,
+  guild_id         text not null references guilds(guild_id) on delete cascade,
+  manager_id       text not null,
+  partner_guild_id text not null,
+  partner_name     text,
+  members          integer,
+  invite_code      text,
+  channel_id       text,
+  message_id       text,
+  created_at       timestamptz not null default now()
+);
+create index if not exists idx_partner_log_guild_time on partner_log (guild_id, created_at desc);
+create index if not exists idx_partner_log_manager on partner_log (guild_id, manager_id, created_at desc);
+create index if not exists idx_partner_log_partner on partner_log (guild_id, partner_guild_id, created_at desc);
+alter table partner_log enable row level security;
