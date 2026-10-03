@@ -244,6 +244,12 @@ async function resolve(text, ctx = {}) {
     '{partner.min_age_days}': ctx.partner?.min_age_days ?? '',
     '{partner.cooldown_days}': ctx.partner?.cooldown_days ?? '',
     '{partner.cooldown_ends}': ctx.partner?.cooldown_ends ?? '',
+    // Requests: ctx.request describes one request (see commands/automation/request.js).
+    '{request.number}': ctx.request?.number ?? '',
+    '{request.text}': ctx.request?.text ?? '',
+    '{request.link}': ctx.request?.link ?? '',
+    '{request.channel}': ctx.request?.channel ?? '',
+    '{request.status}': ctx.request?.status ?? '',
     '{nextBump}': ctx.bump?.nextUnix ? `<t:${ctx.bump.nextUnix}:R>` : '',
     '{date}': new Date().toLocaleDateString('en-US'),
     '{date.now}': new Date().toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles' }),

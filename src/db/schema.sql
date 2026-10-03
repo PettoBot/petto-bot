@@ -2408,3 +2408,38 @@ create table if not exists upload_log (
 create index if not exists idx_upload_log_guild_time on upload_log (guild_id, created_at desc);
 create index if not exists idx_upload_log_user on upload_log (guild_id, user_id, created_at desc);
 alter table upload_log enable row level security;
+
+-- Requests: members ask for something with `!request`, a card with buttons is posted for the staff to claim and finish.
+-- A claimed request that is not finished in `completion_hours` goes back to open by itself (Premium).
+create table if not exists request_config (
+  guild_id         text primary key references guilds(guild_id) on delete cascade,
+  enabled          boolean not null default false,
+  channel_id       text,
+  staff_role_id    text,
+  ping_role_id     text,
+  max_open         integer not null default 3 check (max_open between 1 and 25),
+  completion_hours integer not null default 0 check (completion_hours between 0 and 720),
+  messages         jsonb not null default '{}'::jsonb,
+  updated_at       timestamptz not null default now()
+);
+alter table request_config enable row level security;
+
+create table if not exists requests (
+  id           bigserial primary key,
+  guild_id     text not null references guilds(guild_id) on delete cascade,
+  number       integer not null,
+  user_id      text not null,
+  content      text not null check (char_length(content) <= 1000),
+  status       text not null default 'open' check (status in ('open', 'claimed', 'done', 'cancelled')),
+  claimed_by   text,
+  channel_id   text,
+  message_id   text,
+  created_at   timestamptz not null default now(),
+  claimed_at   timestamptz,
+  completed_at timestamptz,
+  unique (guild_id, number)
+);
+create index if not exists idx_requests_guild_status on requests (guild_id, status, created_at desc);
+create index if not exists idx_requests_user on requests (guild_id, user_id, status);
+create index if not exists idx_requests_claimed on requests (status, claimed_at) where status = 'claimed';
+alter table requests enable row level security;

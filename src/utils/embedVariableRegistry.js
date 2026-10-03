@@ -251,6 +251,18 @@ const VARIABLE_GROUPS = [
     ],
   },
   {
+    id: 'request',
+    label: 'Requests',
+    availability: 'request',
+    vars: [
+      { tok: '{request.number}', desc: 'Number of the request' },
+      { tok: '{request.text}', desc: 'What was asked for' },
+      { tok: '{request.link}', desc: 'Link to the card of the request' },
+      { tok: '{request.channel}', desc: 'Channel where the staff sees the request' },
+      { tok: '{request.status}', desc: 'State of the request' },
+    ],
+  },
+  {
     id: 'partner',
     label: 'Partners',
     availability: 'partner',
