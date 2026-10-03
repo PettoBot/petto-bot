@@ -6,10 +6,11 @@ const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { COLORS } = require('../../utils/colors');
 const { AttachmentBuilder } = require('discord.js');
-const { run, check, PettoCodeError, MAX_SOURCE_LENGTH } = require('../../scripting');
+const { run, PettoCodeError } = require('../../scripting');
 const { TEMPLATES, byId } = require('../../scripting/templates');
 const codeCommands = require('../../utils/codeCommands');
-const { TRIGGER_TYPES, MAX_TRIGGERS_PER_GUILD, validateTrigger, invalidateTriggers, triggersFor } = require('../../utils/codeTriggers');
+const { codeProblem, describeEffect, saveCodeCommand, setCommandTrigger } = require('../../utils/codeCommandAdmin');
+const { TRIGGER_TYPES, invalidateTriggers } = require('../../utils/codeTriggers');
 
 const MAX_PER_GUILD = 100;
 
@@ -141,20 +142,9 @@ async function triggerCmd(interaction) {
   if (!type) {
     return reply(interaction, `\`${name}\` starts with ${row.trigger_type && row.trigger_type !== 'command' ? `${row.trigger_type === 'prefix' ? `its own prefix \`${row.trigger_text}\`, so \`${row.trigger_text}${name}\`` : `${row.trigger_type} \`${row.trigger_text}\``}` : 'the prefix of Petto'}.\n\nChange it with \`!customcommand trigger ${name} <${TRIGGER_TYPES.join('|')}> [text]\`.`);
   }
-  const checked = validateTrigger(type, raw3(interaction) ?? interaction.options.getString('text'));
-  if (checked.error) return reply(interaction, checked.error, COLORS.RED);
-  if (type !== 'command') {
-    const current = await triggersFor(interaction.guild.id);
-    if (!current.some((entry) => entry.name === name) && current.length >= MAX_TRIGGERS_PER_GUILD) {
-      return reply(interaction, `This server already has ${MAX_TRIGGERS_PER_GUILD} commands with a trigger of their own, the most it can.`, COLORS.RED);
-    }
-    if (type === 'prefix' && (interaction.client.commands.has(`${checked.text}${name}`) || interaction.client.commandAliases.has(`${checked.text}${name}`))) {
-      return reply(interaction, 'That would be the name of a real command.', COLORS.RED);
-    }
-  }
-  await ccDb.setTrigger(interaction.guild.id, name, type, checked.text);
-  invalidateTriggers(interaction.guild.id);
-  const how = type === 'command' ? 'the prefix of Petto again' : type === 'prefix' ? `its own prefix: \`${checked.text}${name}\`` : `${type}: \`${checked.text}\``;
+  const changed = await setCommandTrigger({ guild: interaction.guild, client: interaction.client, name, type, text: raw3(interaction) ?? interaction.options.getString('text') });
+  if (!changed.ok) return reply(interaction, changed.message, COLORS.RED);
+  const how = type === 'command' ? 'the prefix of Petto again' : type === 'prefix' ? `its own prefix: \`${changed.text}${name}\`` : `${type}: \`${changed.text}\``;
   return reply(interaction, `${EMOJI.APPROVE}  \`${name}\` now starts with ${how}.`, COLORS.GREEN);
 }
 
@@ -221,42 +211,10 @@ async function sendAsFile(interaction, content, fileName, text) {
 }
 const clipText = (text, max = 1500) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
 
-/** What an action of some code would do, as one line. */
-function describeEffect(effect) {
-  const what = (e) => [e.content ? `"${clipText(e.content.replace(/\s+/g, ' '), 80)}"` : null, e.embed ? 'an embed' : null].filter(Boolean).join(' and ');
-  switch (effect.type) {
-    case 'message': return `send ${what(effect)} ${effect.channelId ? `to <#${effect.channelId}>` : 'here'}`;
-    case 'dm': return `send ${what(effect)} in a direct message`;
-    case 'addRole': return `give the role <@&${effect.roleId}>`;
-    case 'removeRole': return `take the role <@&${effect.roleId}>`;
-    case 'reaction': return `react with ${effect.emoji}`;
-    case 'deleteTrigger': return 'delete the message that used the command';
-    default: return effect.type;
-  }
-}
-
-function codeProblem(code) {
-  if (!code) return 'There is no code. Write it after the name, inside a code block if it has several lines.';
-  if (code.length > MAX_SOURCE_LENGTH) return `The code is too long (${code.length} of ${MAX_SOURCE_LENGTH} characters).`;
-  const problem = check(code);
-  return problem ? `The code has a mistake: ${problem.message}${problem.line ? ` (line ${problem.line}, column ${problem.column})` : ''}` : null;
-}
-
 async function saveCode(interaction, name, code, verb) {
-  if (interaction.client.commands.has(name) || interaction.client.commandAliases.has(name) || interaction.client.commandRoutes?.has(name)) {
-    return reply(interaction, `\`${name}\` is already a real command, pick a different name.`, COLORS.RED);
-  }
-  if (!/^[a-z0-9_-]{1,32}$/.test(name)) return reply(interaction, 'A name has 1 to 32 letters, numbers, - or _.', COLORS.RED);
-  const problem = codeProblem(code);
-  if (problem) return reply(interaction, problem, COLORS.RED);
-  await ensureGuild(interaction.guild.id);
-  const existing = await ccDb.getCommand(interaction.guild.id, name);
-  if (!existing) {
-    const current = await ccDb.listCommands(interaction.guild.id);
-    if (current.length >= MAX_PER_GUILD) return reply(interaction, `This server already has the maximum of ${MAX_PER_GUILD} custom commands.`, COLORS.RED);
-  }
-  await ccDb.upsertCommand(interaction.guild.id, name, { response: null, embedTemplate: null, code, createdBy: interaction.user.id });
-  return reply(interaction, `${EMOJI.APPROVE}  \`${name}\` ${existing ? 'updated' : verb}. Try \`!${name}\`. See it again with \`!customcommand codeshow ${name}\`.`, COLORS.GREEN);
+  const saved = await saveCodeCommand({ guild: interaction.guild, client: interaction.client, userId: interaction.user.id, name, code });
+  if (!saved.ok) return reply(interaction, saved.message, COLORS.RED);
+  return reply(interaction, `${EMOJI.APPROVE}  \`${name}\` ${saved.created ? verb : 'updated'}. Try \`!${name}\`. See it again with \`!customcommand codeshow ${name}\`.`, COLORS.GREEN);
 }
 
 async function codeCmd(interaction, sub) {
