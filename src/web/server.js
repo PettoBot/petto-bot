@@ -18,6 +18,7 @@ const { renderHomePage } = require('./homePage');
 const { setCachedPrefix } = require('../events/messageCreateCommands');
 const { registerDashboardRestRoutes } = require('./dashboardDatabase');
 const { registerCardRoutes } = require('./cardRoutes');
+const { registerCodeRoutes } = require('./codeRoutes');
 const { listVariables } = require('../utils/embedVariableRegistry');
 const logger = require('../utils/logger');
 
@@ -197,6 +198,7 @@ function startServer(client) {
     });
 
     registerCardRoutes(app, { authorize: dashboardCardAccess });
+    registerCodeRoutes(app, { authorize: dashboardCardAccess });
 
     app.post('/api/dashboard/guild/:guildId/prefix', dashboardPrefixRateLimiter, async (req, res) => {
       if (!dashboardAuthorized(req)) {
