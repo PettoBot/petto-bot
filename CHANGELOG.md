@@ -13,6 +13,10 @@ All notable changes to Petto are documented here.
 - The data comes from the community API `api.discordquest.com`, which allowed Petto's team to try it, and from the GitHub repository `aamiaa/discord-api-diff`, which archives Discord's own quest data and is the first to have a new quest, so one being late or down does not stop the alerts. The alerts are open to every server, and anyone can use `!quests list` to see the active quests, while the settings and the test need the Manage Server permission; set `QUESTS_PUBLIC=false` to limit `!quests` to the owner, the developers and the people in `QUESTS_TESTER_IDS`. Every alert credits both sources. They are asked every 5 minutes with an ETag, and only when a server uses the alerts. A quest that is listed before it starts is announced when it starts.
 - Added `scripts/check-quests.js` to `npm run check`.
 
+### Fixed
+
+- The Cloudflare tunnel's output no longer puts its token in the logs: `cloudflared` printed the environment variables it could see, so the tunnel now starts without the token variables and every line is cleaned before it is logged. If an old log with the token was shared, create a new token in Cloudflare.
+
 ## [0.6.1] — 2026-10-02
 
 ### Added
