@@ -2,11 +2,70 @@ const { EMOJI } = require('./emojis');
 
 const RELEASES = [
   {
+    version: 'v0.7.0',
+    label: 'v0.7.0 · Petto Code, Quests & Embeds V2',
+    date: '2026-10-03',
+    accent: 0xff91c2,
+    status: `${EMOJI.RELEASE_APPROVED} Latest`,
+    summary: 'A big release: custom commands written in code (in testing) with buttons, forms and reactions, an editor in the dashboard, Quest alerts, Components V2 embeds and global stats.',
+    sections: [
+      {
+        title: `${EMOJI.RELEASE_PC} Petto Code (in testing)`,
+        items: [
+          'Custom commands can now be written in **Petto Code**, a small language of text and `{{ }}` actions: variables, `if`, `range`, about 70 functions, embeds, mentions and time. `!customcommand code`, `codeshow`, `codetest` (runs it without sending anything), `template`, `export` and `import`.',
+          'Buttons and menus that run code (`cbutton`, `cselect`), forms that pop up (`cmodal`, `ctext`, `showModal`) and reactions that run code (`"reactions"` in `complexMessage`, `.Trigger "reaction"`, `removeReaction`). One command holds the whole system.',
+          'Commands can remember things: counters, points, rankings, cooldowns and lists, per server or per member (`dbSet`, `dbIncr`, `dbTop`...), even in their own database.',
+          'Commands can start on their own prefix or words (`!customcommand trigger`): `?hello`, `hey bot`, `good morning`.',
+          'Embeds take the avatar next to the author (`authorIcon`), and there are ready-made templates: vote, request, claim, suggest, report, profile, role button and role by reaction.',
+          'Everything runs with limits, and what the code asks for is checked with the permissions of the person who wrote it. Docs: https://code.petto.sbs',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_ROCKET} Quest alerts`,
+        items: [
+          '`!quests`: Petto posts in a channel when Discord has a new Quest, with the picture, the reward (Orbs or the avatar decoration), the tasks, the platforms, the dates and country or 18+ limits.',
+          'Add a role to ping, filter by reward (`orbs`, `decoration`, `code`, `ingame`, `nitro`) or task, and get a warning hours before it ends. `!quests list` is for everyone.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_MAGIC} Embeds V2`,
+        items: [
+          'A new **V2 editor** in Embeds: containers, text, pictures, sections, dividers and link buttons. Use the designs in Quest alerts, sanctions, the starboard, verification and bump messages, and with `!embed send` and `!embed preview`.',
+          'V2 designs are shared with the Embed Builder with a `p2.` code, and use the usual variables (and `{quest.*}`).',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_EXPERIENCE} Global stats`,
+        items: [
+          'A public **Stats** page (`petto.sbs/stats`): messages, voice hours and reactions of all servers, moving counters, a top 3 of servers and a top 10 of members.',
+          'Every server can hide itself in the dashboard (General) and every member with `!globalranking off`.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_SETTINGS} Dashboard & improvements`,
+        items: [
+          'New dashboard pages: **Commands in code** (a real editor that checks your code while you write, with templates, functions and a test button) and **Quests**.',
+          'The menu has every section in its own group (Moderation, Security, Leveling, Automation, Community...) and on a phone it is a drawer at the side.',
+          'The custom commands page shows the prefix of your server, and the web says Petto works with a prefix, not slash commands.',
+          '`!help` points to the dashboard, the support server and the Petto Code docs.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_BUG} Fixes`,
+        items: [
+          'The Cloudflare tunnel no longer writes its token in the logs.',
+          'Fixed dashboard errors that asked for data that does not exist, and the Premium texts that sounded unavailable.',
+          'The server count of the home page and the status page now match.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'v0.6.1',
     label: 'v0.6.1 · Leveling, cards & custom messages',
     date: '2026-10-02',
     accent: 0xff91c2,
-    status: `${EMOJI.RELEASE_APPROVED} Latest`,
+    status: `${EMOJI.RELEASE_APPROVED} Published`,
     summary: 'A big release: a new leveling system with rank cards, image cards for every message, saved embeds for sanctions, starboard, giveaways and more, plus jail, purge, history, reports management and new fun commands.',
     sections: [
       {
