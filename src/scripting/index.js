@@ -1,4 +1,4 @@
-// Petto Code: the template language of custom commands, in the style of YAGPDB's. `parse` checks the code, `run` runs it
+// Petto Code: the template language of custom commands. `parse` checks the code, `run` runs it
 // with the data it may see and gives back the text and the effects (what to do in Discord).
 const { parse, MAX_SOURCE_LENGTH } = require('./parser');
 const { run, DEFAULT_LIMITS } = require('./interpreter');
