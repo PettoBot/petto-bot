@@ -43,7 +43,10 @@ const SOURCES = [
   { name: 'discord-api-tracker', url: 'https://raw.githubusercontent.com/xGustavvo/discord-api-tracker/main/quests.json' },
 ];
 // Region and age limits: the community API knows them, and when it is down the tracker keeps a list of its own.
-const REGIONS_URLS = [`${API_BASE}/api/regions`, 'https://gist.githubusercontent.com/xGustavvo/3d08b7369eb34b50834815fd43176cae/raw'];
+const REGIONS_URLS = [
+  { url: `${API_BASE}/api/regions`, community: true },
+  { url: 'https://gist.githubusercontent.com/xGustavvo/3d08b7369eb34b50834815fd43176cae/raw', community: false },
+];
 const REGIONS_EVERY_MS = 30 * 60_000;
 let regionCache = { at: 0, map: new Map() };
 const state = new Map(SOURCES.map((source) => [source.name, { etag: null, quests: null, ok: null, at: null, error: null, pausedUntil: 0, askedAt: 0, strikes: 0 }]));
@@ -164,8 +167,8 @@ async function getJson(url, headers = {}) {
 async function readRegions(force = false) {
   if (!force && Date.now() - regionCache.at < REGIONS_EVERY_MS) return regionCache.map;
   regionCache.at = Date.now();
-  for (const url of REGIONS_URLS) {
-    if (url.startsWith(API_BASE) && state.get(COMMUNITY).pausedUntil > Date.now()) continue;
+  for (const { url, community } of REGIONS_URLS) {
+    if (community && state.get(COMMUNITY).pausedUntil > Date.now()) continue;
     try {
       const rows = (await getJson(url)).data?.quests ?? [];
       if (Array.isArray(rows) && rows.length) {
