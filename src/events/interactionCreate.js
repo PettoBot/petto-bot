@@ -24,6 +24,10 @@ const { VERSION_SELECT_ID, handleButton: handleVersionButton, handleSelect: hand
 const { handleButton: handleVoiceMasterButton, handleModal: handleVoiceMasterModal, handleSelect: handleVoiceMasterSelect } = require('../interactions/voiceMaster');
 const { SELECT_ID: QUEST_SELECT_ID, PAGE_ID: QUEST_PAGE_ID, handleSelect: handleQuestSelect, handleButton: handleQuestButton } = require('../interactions/quests');
 const { COMPONENT_PREFIX: CODE_COMMAND_PREFIX, handleComponent: handleCodeCommandComponent } = require('../interactions/codeCommands');
+const { BUTTON_PREFIX: RESPONDER_BUTTON_PREFIX, SELECT_PREFIX: RESPONDER_SELECT_PREFIX } = require('../utils/responderEngine');
+const { handleButton: handleResponderButton, handleSelect: handleResponderSelect } = require('../interactions/responders');
+const { PREFIX: REQUEST_PREFIX } = require('../utils/requestCards');
+const { handleButton: handleRequestButton } = require('../interactions/requests');
 const { handleSetupModal } = require('../interactions/setup');
 const { SETUP_BUTTON_PREFIX, handleSetupButton } = require('../interactions/setupPanel');
 const { BUTTON_PREFIX, handleButton: handleReactionRoleButton } = require('../interactions/reactionRoleButton');
@@ -38,6 +42,21 @@ module.exports = {
   async execute(interaction, client) {
     if ((interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) && interaction.customId.startsWith(CODE_COMMAND_PREFIX)) {
       try { await handleCodeCommandComponent(interaction); } catch (err) { logger.error('Error handling a custom command button or menu:', err); }
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith(REQUEST_PREFIX)) {
+      try { await handleRequestButton(interaction); } catch (err) { logger.error('Error handling a request button:', err); }
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith(RESPONDER_BUTTON_PREFIX)) {
+      try { await handleResponderButton(interaction); } catch (err) { logger.error('Error handling a button responder:', err); }
+      return;
+    }
+
+    if (interaction.isStringSelectMenu() && interaction.customId.startsWith(RESPONDER_SELECT_PREFIX)) {
+      try { await handleResponderSelect(interaction); } catch (err) { logger.error('Error handling a panel menu:', err); }
       return;
     }
 

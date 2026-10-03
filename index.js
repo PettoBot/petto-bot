@@ -20,6 +20,7 @@ const { startBackupVaultJob } = require('./src/jobs/backupVaultJob');
 const { startPremiumRoleJob } = require('./src/jobs/premiumRoleJob');
 const { startMaliciousFeedJob } = require('./src/jobs/maliciousFeedJob');
 const { startQuestAlertsJob } = require('./src/jobs/questAlertsJob');
+const { startRequestTimeoutJob } = require('./src/jobs/requestTimeoutJob');
 const { startGlobalStatsJob } = require('./src/jobs/globalStatsJob');
 const { startCommandDataJob } = require('./src/jobs/commandDataJob');
 const { startServer } = require('./src/web/server');
@@ -110,6 +111,7 @@ async function main() {
   startPremiumRoleJob(client);
   startMaliciousFeedJob();
   startQuestAlertsJob(client);
+  startRequestTimeoutJob(client);
   startGlobalStatsJob(client);
   startCommandDataJob();
   startServer(client);

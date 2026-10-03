@@ -1347,6 +1347,9 @@ create table if not exists sticky_messages (
   primary key (guild_id, channel_id)
 );
 
+-- A sticky message can be a saved embed (also a Components V2 design) instead of text.
+alter table sticky_messages add column if not exists embed_template text;
+
 alter table sticky_messages enable row level security;
 
 create table if not exists sticky_roles_config (
@@ -2297,3 +2300,171 @@ create table if not exists quest_posts (
   primary key (guild_id, quest_id, kind)
 );
 alter table quest_posts enable row level security;
+
+-- Partners: a partnership is counted when a Partner Manager posts the invite of another server in a partner channel and
+-- it passes the requirements of the server. `partner_log` has one row per counted partnership (daily, weekly and total
+-- numbers are counted from it); `messages` holds the replies a server changed (key -> { text, template }).
+create table if not exists partner_config (
+  guild_id         text primary key references guilds(guild_id) on delete cascade,
+  enabled          boolean not null default false,
+  channel_ids      text[] not null default '{}',
+  manager_role_id  text,
+  min_members      integer not null default 0 check (min_members between 0 and 10000000),
+  min_age_days     integer not null default 0 check (min_age_days between 0 and 3650),
+  cooldown_days    integer not null default 0 check (cooldown_days between 0 and 365),
+  keep_original    boolean not null default true,
+  react_emoji      text,
+  messages         jsonb not null default '{}'::jsonb,
+  updated_at       timestamptz not null default now()
+);
+alter table partner_config enable row level security;
+
+create table if not exists partner_blacklist (
+  guild_id         text not null references guilds(guild_id) on delete cascade,
+  partner_guild_id text not null,
+  note             text,
+  created_at       timestamptz not null default now(),
+  primary key (guild_id, partner_guild_id)
+);
+alter table partner_blacklist enable row level security;
+
+create table if not exists partner_log (
+  id               bigserial primary key,
+  guild_id         text not null references guilds(guild_id) on delete cascade,
+  manager_id       text not null,
+  partner_guild_id text not null,
+  partner_name     text,
+  members          integer,
+  invite_code      text,
+  channel_id       text,
+  message_id       text,
+  created_at       timestamptz not null default now()
+);
+create index if not exists idx_partner_log_guild_time on partner_log (guild_id, created_at desc);
+create index if not exists idx_partner_log_manager on partner_log (guild_id, manager_id, created_at desc);
+create index if not exists idx_partner_log_partner on partner_log (guild_id, partner_guild_id, created_at desc);
+alter table partner_log enable row level security;
+
+-- Button responders and panels: a responder is a button (or a choice of a menu) that answers with a private message and
+-- gives, takes or toggles roles; a panel is the message that shows some of them, as buttons or as one dropdown menu.
+create table if not exists button_responders (
+  id                bigserial primary key,
+  guild_id          text not null references guilds(guild_id) on delete cascade,
+  name              text not null check (name ~ '^[a-z0-9_-]{1,60}$'),
+  label             text not null default '' check (char_length(label) <= 80),
+  emoji             text,
+  style             text not null default 'secondary' check (style in ('primary', 'secondary', 'success', 'danger')),
+  reply             text not null default '' check (char_length(reply) <= 2000),
+  reply_template    text,
+  give_role_ids     text[] not null default '{}',
+  remove_role_ids   text[] not null default '{}',
+  required_role_ids text[] not null default '{}',
+  toggle            boolean not null default false,
+  created_by        text,
+  created_at        timestamptz not null default now(),
+  unique (guild_id, name)
+);
+alter table button_responders enable row level security;
+
+create table if not exists component_panels (
+  id             bigserial primary key,
+  guild_id       text not null references guilds(guild_id) on delete cascade,
+  name           text not null check (name ~ '^[a-z0-9_-]{1,60}$'),
+  kind           text not null default 'buttons' check (kind in ('buttons', 'select')),
+  content        text not null default '' check (char_length(content) <= 2000),
+  embed_template text,
+  responders     text[] not null default '{}',
+  placeholder    text not null default '' check (char_length(placeholder) <= 100),
+  exclusive      boolean not null default false,
+  channel_id     text,
+  message_id     text,
+  created_at     timestamptz not null default now(),
+  unique (guild_id, name)
+);
+alter table component_panels enable row level security;
+
+-- Uploads: the messages with files posted in the channels a server chose are counted per member, for the numbers, the
+-- ranking and the welcome of a new uploader (a role and a message).
+create table if not exists upload_config (
+  guild_id         text primary key references guilds(guild_id) on delete cascade,
+  enabled          boolean not null default false,
+  channel_ids      text[] not null default '{}',
+  uploader_role_id text,
+  welcome          jsonb not null default '{}'::jsonb,
+  updated_at       timestamptz not null default now()
+);
+alter table upload_config enable row level security;
+
+create table if not exists upload_log (
+  id         bigserial primary key,
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  user_id    text not null,
+  channel_id text not null,
+  message_id text not null,
+  files      integer not null default 1,
+  created_at timestamptz not null default now(),
+  unique (guild_id, message_id)
+);
+create index if not exists idx_upload_log_guild_time on upload_log (guild_id, created_at desc);
+create index if not exists idx_upload_log_user on upload_log (guild_id, user_id, created_at desc);
+alter table upload_log enable row level security;
+
+-- Requests: members ask for something with `!request`, a card with buttons is posted for the staff to claim and finish.
+-- A claimed request that is not finished in `completion_hours` goes back to open by itself (Premium).
+create table if not exists request_config (
+  guild_id         text primary key references guilds(guild_id) on delete cascade,
+  enabled          boolean not null default false,
+  channel_id       text,
+  staff_role_id    text,
+  ping_role_id     text,
+  max_open         integer not null default 3 check (max_open between 1 and 25),
+  completion_hours integer not null default 0 check (completion_hours between 0 and 720),
+  messages         jsonb not null default '{}'::jsonb,
+  updated_at       timestamptz not null default now()
+);
+alter table request_config enable row level security;
+
+create table if not exists requests (
+  id           bigserial primary key,
+  guild_id     text not null references guilds(guild_id) on delete cascade,
+  number       integer not null,
+  user_id      text not null,
+  content      text not null check (char_length(content) <= 1000),
+  status       text not null default 'open' check (status in ('open', 'claimed', 'done', 'cancelled')),
+  claimed_by   text,
+  channel_id   text,
+  message_id   text,
+  created_at   timestamptz not null default now(),
+  claimed_at   timestamptz,
+  completed_at timestamptz,
+  unique (guild_id, number)
+);
+create index if not exists idx_requests_guild_status on requests (guild_id, status, created_at desc);
+create index if not exists idx_requests_user on requests (guild_id, user_id, status);
+create index if not exists idx_requests_claimed on requests (status, claimed_at) where status = 'claimed';
+alter table requests enable row level security;
+
+-- Reviews and profiles: members rate each other from 1 to 5 stars (one review per pair, changed by sending it again), and
+-- `!profile` shows the numbers of the member: uploads, requests, partnerships and the average rating.
+create table if not exists profile_config (
+  guild_id          text primary key references guilds(guild_id) on delete cascade,
+  reviews_enabled   boolean not null default true,
+  review_channel_id text,
+  updated_at        timestamptz not null default now()
+);
+alter table profile_config enable row level security;
+
+create table if not exists member_reviews (
+  id          bigserial primary key,
+  guild_id    text not null references guilds(guild_id) on delete cascade,
+  target_id   text not null,
+  reviewer_id text not null,
+  stars       integer not null check (stars between 1 and 5),
+  comment     text not null default '' check (char_length(comment) <= 300),
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  unique (guild_id, target_id, reviewer_id),
+  check (target_id <> reviewer_id)
+);
+create index if not exists idx_member_reviews_target on member_reviews (guild_id, target_id, updated_at desc);
+alter table member_reviews enable row level security;
