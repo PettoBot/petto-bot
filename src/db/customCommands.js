@@ -10,10 +10,10 @@ async function getCommand(guildId, name) {
   return data;
 }
 
-async function upsertCommand(guildId, name, { response, embedTemplate }) {
+async function upsertCommand(guildId, name, { response, embedTemplate, code, createdBy }) {
   const { data, error } = await database
     .from('custom_commands')
-    .upsert({ guild_id: guildId, name: normalizeName(name), response: response ?? null, embed_template: embedTemplate ?? null }, { onConflict: 'guild_id,name' })
+    .upsert({ guild_id: guildId, name: normalizeName(name), response: response ?? null, embed_template: embedTemplate ?? null, ...(code !== undefined ? { code, created_by: createdBy ?? null } : {}) }, { onConflict: 'guild_id,name' })
     .select('*')
     .single();
   if (error) throw error;
@@ -27,7 +27,7 @@ async function removeCommand(guildId, name) {
 }
 
 async function listCommands(guildId) {
-  const { data, error } = await database.from('custom_commands').select('name, response, embed_template').eq('guild_id', guildId).order('name', { ascending: true });
+  const { data, error } = await database.from('custom_commands').select('name, response, embed_template, code').eq('guild_id', guildId).order('name', { ascending: true });
   if (error) throw error;
   return data;
 }
