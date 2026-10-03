@@ -5,7 +5,10 @@ const { createCase } = require('../db/modActions');
 const { logSanction } = require('./caseLog');
 const { sanctionDM } = require('./sanctionTemplates');
 const { sendLog } = require('../logging/engine');
-const { buildHoneypotPanel, buildHoneypotImageAttachment } = require('./honeypotPanel');
+const { buildHoneypotPanel, buildHoneypotImageAttachment, punishmentText } = require('./honeypotPanel');
+const { templatePayload } = require('./templatedMessage');
+const { resolve } = require('./embedVariables');
+const { applyReactReplies } = require('./messageFlags');
 const { EMOJI } = require('./emojis');
 const logger = require('./logger');
 
@@ -59,17 +62,37 @@ function schedulePanelUpdate(client, row) {
       const panel = await channel.messages.fetch(current.row.panel_message_id).catch(() => null);
       if (!panel || panel.author?.id !== client.user?.id) return;
 
-      await panel.edit({
-        components: [buildHoneypotPanel(current.row)],
-        files: [buildHoneypotImageAttachment()],
-        flags: MessageFlags.IsComponentsV2,
-      });
+      const payload = await renderPanel(channel, current.row);
+      if (payload) await panel.edit(payload);
     } catch (err) {
       logger.warn(`Honeypot panel update failed in ${row.guild_id}/${row.channel_id}:`, err.message);
     }
   }, PANEL_UPDATE_DELAY_MS);
 
   current.timer.unref?.();
+}
+
+/**
+ * What is posted in the bait channel: the warning panel Petto makes (`default`), the text and/or saved embed of the server
+ * (`custom`, with `{honeypot.*}` variables, and the panel when neither is usable), or nothing at all (`none`, null here).
+ */
+async function renderPanel(channel, row) {
+  const mode = row.panel_mode ?? 'default';
+  if (mode === 'none') return null;
+  if (mode === 'custom') {
+    const ctx = {
+      guild: channel.guild,
+      channel,
+      honeypot: { action: punishmentText(row.punishment), count: String(Math.max(0, Number(row.caught_count) || 0)), channel: `<#${channel.id}>` },
+    };
+    let payload = row.panel_template ? await templatePayload(channel.guild.id, row.panel_template, ctx) : null;
+    if (!payload && row.panel_text?.trim()) {
+      const content = (await resolve(row.panel_text, ctx)).slice(0, 2000).trim();
+      if (content) payload = { content };
+    }
+    if (payload) return { ...payload, allowedMentions: { parse: [] } };
+  }
+  return { components: [buildHoneypotPanel(row)], files: [buildHoneypotImageAttachment()], flags: MessageFlags.IsComponentsV2 };
 }
 
 async function createOrUpdatePanel(client, channel, row) {
@@ -80,16 +103,27 @@ async function createOrUpdatePanel(client, channel, row) {
     if (panel?.author?.id !== client.user?.id) panel = null;
   }
 
-  const payload = {
-    components: [buildHoneypotPanel(row)],
-    files: [buildHoneypotImageAttachment()],
-    flags: MessageFlags.IsComponentsV2,
-  };
+  const payload = await renderPanel(channel, row);
+  if (!payload) {
+    // Nothing is posted: the panel that was there goes away.
+    if (panel) await panel.delete().catch(() => {});
+    const cleared = row.panel_message_id ? await setPanelMessage(row.guild_id, row.channel_id, null) : row;
+    invalidateHoneypotCache(row.guild_id);
+    return cleared;
+  }
 
-  if (panel) await panel.edit(payload);
-  else panel = await channel.send(payload);
+  let posted = null;
+  if (panel) {
+    // A Components V2 message can not become a normal one (or the other way round), so then it is replaced.
+    posted = await panel.edit(payload).catch(() => null);
+    if (!posted) await panel.delete().catch(() => {});
+  }
+  if (!posted) {
+    posted = await channel.send(payload);
+    if (payload.reactions?.length) await applyReactReplies(posted, payload.reactions);
+  }
 
-  const updated = await setPanelMessage(row.guild_id, row.channel_id, panel.id);
+  const updated = await setPanelMessage(row.guild_id, row.channel_id, posted.id);
   invalidateHoneypotCache(row.guild_id);
   return updated;
 }
@@ -199,6 +233,7 @@ module.exports = {
   getConfiguredHoneypot,
   invalidateHoneypotCache,
   schedulePanelUpdate,
+  renderPanel,
   createOrUpdatePanel,
   deletePanel,
   applyHoneypotAction,

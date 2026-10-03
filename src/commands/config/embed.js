@@ -2,6 +2,7 @@ const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, EmbedBuilder, Ac
 const { getTemplate, upsertTemplate, deleteTemplate, listTemplates, normalizeName } = require('../../db/embedTemplates');
 const { ensureGuild } = require('../../db/guilds');
 const { parseColor, build, hasSendablePayload, formatEmbedError } = require('../../utils/embedBuilder');
+const { extractReactRepliesFromTemplate, applyReactReplies, uniqueReactions } = require('../../utils/messageFlags');
 const { renderPanel } = require('../../interactions/embedPanel');
 const { parseEmbedScript, toTemplateData } = require('../../utils/embedScript');
 const { commandRef } = require('../../utils/commandRef');
@@ -507,17 +508,21 @@ module.exports = {
           const target = interaction.options.getChannel('channel') ?? interaction.channel;
           const doc = await getOrFail(interaction, name);
           if (!doc) return;
-          const payload = await build(doc.data, { ...ctx, allowV2: true });
+          // The reactions of the embed (its `reactions` list and any {reactreply:emoji}) are put on the message once it is sent.
+          const reactions = [];
+          const payload = await build(extractReactRepliesFromTemplate(doc.data, reactions), { ...ctx, allowV2: true });
           if (!hasSendablePayload(payload)) {
             await interaction.editReply(`Embed \`${name}\` has no sendable content. Add a title, description, field, message content, or link button first.`);
             return;
           }
           if (payload.flags) {
-            await target.send({ components: payload.components, flags: payload.flags, allowedMentions: { parse: [] } });
+            const sentV2 = await target.send({ components: payload.components, flags: payload.flags, allowedMentions: { parse: [] } });
+            await applyReactReplies(sentV2, uniqueReactions(reactions));
             await interaction.editReply(`Embed \`${name}\` sent to <#${target.id}>!`);
             return;
           }
-          await target.send({ content: payload.content, embeds: payload.embeds, components: payload.components, files: payload.files });
+          const sentEmbed = await target.send({ content: payload.content, embeds: payload.embeds, components: payload.components, files: payload.files });
+          await applyReactReplies(sentEmbed, uniqueReactions(reactions));
           await interaction.editReply(`Embed \`${name}\` sent to <#${target.id}>!`);
           return;
         }

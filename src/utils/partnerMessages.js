@@ -1,9 +1,10 @@
 // The replies of the partner module. A server can change each one: with plain text (with variables) or with one of its
 // saved embeds. A missing or broken one gives the default text, so a bad setting never leaves the member without an answer.
 const { resolve } = require('./embedVariables');
+const { formatSpan, cooldownMinutes } = require('./partnerEngine');
 const { templatePayload } = require('./templatedMessage');
 
-const RESPONSE_KEYS = ['completed', 'cooldown', 'invalid_invite', 'member_requirement', 'blacklisted', 'self_partner', 'age_requirement', 'manager_welcome'];
+const RESPONSE_KEYS = ['completed', 'cooldown', 'invalid_invite', 'member_requirement', 'blacklisted', 'self_partner', 'age_requirement', 'nsfw_blocked', 'keyword_blocked', 'manager_welcome'];
 
 const LABELS = {
   completed: 'Partnership completed',
@@ -13,6 +14,8 @@ const LABELS = {
   blacklisted: 'Partner blacklist',
   self_partner: 'Self partner',
   age_requirement: 'Partner age requirement',
+  nsfw_blocked: 'NSFW server',
+  keyword_blocked: 'Blocked keyword',
   manager_welcome: 'Partner Manager welcome',
 };
 
@@ -24,6 +27,8 @@ const DEFAULTS = {
   blacklisted: '{user.mention} that server is not allowed as a partner.',
   self_partner: '{user.mention} that invite is for this same server.',
   age_requirement: '{user.mention} **{partner.name}** is too new: it has to be at least {partner.min_age_days} days old.',
+  nsfw_blocked: '{user.mention} **{partner.name}** is marked as an NSFW server, so it can not be a partner.',
+  keyword_blocked: '{user.mention} **{partner.name}** is not allowed as a partner: it has a word this server does not accept.',
   manager_welcome: 'Welcome to the team, {user.mention}! Post the invite of a partner server in a partner channel and I will count it.',
 };
 
@@ -36,9 +41,10 @@ function textOf(config, key) {
   return text ? text.slice(0, MAX_TEXT) : DEFAULTS[key];
 }
 
-/** What `{partner.*}` gives. `info` is `{ name, id, members, invite, managerId, managerName, counts, config, cooldownEndsUnix }`. */
+/** What `{partner.*}` gives. `info` is `{ name, id, members, invite, managerId, managerName, counts, standings, config, cooldownEndsUnix }`. */
 function partnerContext(info) {
   const counts = info.counts ?? {};
+  const stand = info.standings ?? {};
   return {
     name: info.name ?? '',
     id: info.id ?? '',
@@ -53,6 +59,16 @@ function partnerContext(info) {
     min_age_days: String(info.config?.min_age_days ?? 0),
     cooldown_days: String(info.config?.cooldown_days ?? 0),
     cooldown_ends: info.cooldownEndsUnix ? `<t:${info.cooldownEndsUnix}:R>` : '',
+    cooldown: info.config ? formatSpan(cooldownMinutes(info.config)) : '',
+    rank_week: stand.rankWeek != null ? String(stand.rankWeek) : '',
+    rank_total: stand.rankTotal != null ? String(stand.rankTotal) : '',
+    top_week: stand.topWeek ? `<@${stand.topWeek.managerId}>` : '',
+    top_week_count: stand.topWeek ? String(stand.topWeek.count) : '',
+    top_total: stand.topTotal ? `<@${stand.topTotal.managerId}>` : '',
+    top_total_count: stand.topTotal ? String(stand.topTotal.count) : '',
+    server_day: String(stand.serverDay ?? 0),
+    server_week: String(stand.serverWeek ?? 0),
+    server_total: String(stand.serverTotal ?? 0),
   };
 }
 

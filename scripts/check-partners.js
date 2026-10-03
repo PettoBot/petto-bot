@@ -25,10 +25,10 @@ const blacklist = new Set();
 let logRows = [];
 let nextId = 1;
 stub('src/db/partners.js', {
-  DEFAULTS: { enabled: false, channel_ids: [], manager_role_id: null, min_members: 0, min_age_days: 0, cooldown_days: 0, keep_original: true, react_emoji: null, messages: {} },
+  DEFAULTS: { enabled: false, channel_ids: [], manager_role_id: null, min_members: 0, min_age_days: 0, cooldown_days: 0, cooldown_minutes: 0, welcome_channel_id: null, block_nsfw: false, blocked_keywords: [], keep_original: true, react_emoji: null, messages: {} },
   getConfig: async () => config,
   getConfigCached: async () => config,
-  upsertConfig: async (guildId, changes) => { config = { ...(config ?? { enabled: false, channel_ids: [], manager_role_id: null, min_members: 0, min_age_days: 0, cooldown_days: 0, keep_original: true, react_emoji: null, messages: {} }), ...changes }; return config; },
+  upsertConfig: async (guildId, changes) => { config = { ...(config ?? { enabled: false, channel_ids: [], manager_role_id: null, min_members: 0, min_age_days: 0, cooldown_days: 0, cooldown_minutes: 0, welcome_channel_id: null, block_nsfw: false, blocked_keywords: [], keep_original: true, react_emoji: null, messages: {} }), ...changes }; return config; },
   isBlacklisted: async (guildId, partnerId) => blacklist.has(partnerId),
   listBlacklist: async () => [...blacklist].map((id) => ({ partner_guild_id: id, note: null })),
   addBlacklist: async (guildId, id) => { blacklist.add(id); },
@@ -71,6 +71,25 @@ const fakeGuild = (id, extra = {}) => ({ id, name: 'Mine', ownerId: 'owner', mem
   assert.equal(judge({}, { last: { created_at: '2026-09-20T00:00:00Z' } }), null, 'the cooldown ends');
   assert.equal(engine.judge({ invite: { ...good, members: 1, createdAt: null }, ownGuildId: 'mine', config: { min_members: 0, min_age_days: 0, cooldown_days: 0 }, now }), null, 'no requirements, no problem');
 
+  // NSFW servers, blocked words and a cooldown written in hours.
+  assert.equal(engine.judge({ invite: { ...good, nsfw: true }, ownGuildId: 'mine', config: { ...rules, block_nsfw: true }, now }), 'nsfw_blocked'); assert.equal(engine.judge({ invite: { ...good, nsfw: true }, ownGuildId: 'mine', config: { ...rules, block_nsfw: false }, now }), null, 'an NSFW server passes when the filter is off');
+  assert.equal(engine.judge({ invite: { ...good, text: 'Best GAMBLING hub' }, ownGuildId: 'mine', config: { ...rules, blocked_keywords: ['gambling'] }, now }), 'keyword_blocked', 'the words are matched without caring about capitals');
+  assert.equal(engine.judge({ invite: { ...good, text: 'A calm place' }, ownGuildId: 'mine', config: { ...rules, blocked_keywords: ['gambling'] }, now }), null);
+  const hours = { min_members: 0, min_age_days: 0, cooldown_days: 0, cooldown_minutes: 90 };
+  assert.equal(engine.judge({ invite: good, ownGuildId: 'mine', config: hours, last: { created_at: new Date(now - 30 * 60_000).toISOString() }, now }), 'cooldown'); assert.equal(engine.judge({ invite: good, ownGuildId: 'mine', config: hours, last: { created_at: new Date(now - 120 * 60_000).toISOString() }, now }), null, 'a cooldown of 90 minutes ends');
+  assert.equal(engine.cooldownMinutes({ cooldown_minutes: 0, cooldown_days: 2 }), 2880, 'the old setting in days still works'); assert.equal(engine.cooldownMinutes({ cooldown_minutes: 90, cooldown_days: 2 }), 90, 'the new one wins');
+  for (const [text, minutes] of [['3d 4h', 4560], ['90m', 90], ['1w', 10080], ['2d', 2880], ['0', 0], ['none', 0], ['x', null], ['', null], ['400d', null], ['3 d', 4320], ['1h30m', 90]]) assert.equal(engine.parseSpan(text), minutes, `span "${text}"`);
+  assert.equal(engine.formatSpan(4560), '3d 4h'); assert.equal(engine.formatSpan(0), 'none'); assert.equal(engine.formatSpan(90), '1h 30m');
+
+  // Where a manager stands.
+  const standingsRows = [
+    { manager_id: 'a', created_at: '2026-10-03T10:00:00Z' }, { manager_id: 'a', created_at: '2026-09-29T10:00:00Z' }, { manager_id: 'a', created_at: '2026-08-01T10:00:00Z' },
+    { manager_id: 'b', created_at: '2026-10-02T10:00:00Z' }, { manager_id: 'b', created_at: '2026-10-01T10:00:00Z' }, { manager_id: 'b', created_at: '2026-10-01T11:00:00Z' }, { manager_id: 'b', created_at: '2026-10-01T12:00:00Z' },
+  ];
+  const stand = engine.standings(standingsRows, 'a', new Date('2026-10-03T20:00:00Z'));
+  assert.deepEqual([stand.rankWeek, stand.rankTotal, stand.topWeek.managerId, stand.topWeek.count, stand.topTotal.managerId, stand.topTotal.count, stand.serverDay, stand.serverWeek, stand.serverTotal], [2, 2, 'b', 4, 'b', 4, 1, 6, 7]);
+  assert.equal(engine.standings(standingsRows, 'nobody', new Date('2026-10-03T20:00:00Z')).rankWeek, null, 'somebody with no partnerships has no place'); assert.equal(engine.standings([], 'a').topWeek, null);
+
   // Periods and numbers: Saturday 2026-10-03, the week started on Monday 2026-09-28.
   const saturday = new Date('2026-10-03T20:00:00Z');
   assert.equal(engine.periodStart('day', saturday).toISOString(), '2026-10-03T00:00:00.000Z');
@@ -104,6 +123,8 @@ const fakeGuild = (id, extra = {}) => ({ id, name: 'Mine', ownerId: 'owner', mem
     small: { code: 'small', memberCount: 10, guild: { id: '1100000000000000002', name: 'Small Server' } },
     mine: { code: 'mine', memberCount: 900, guild: { id: 'guild1', name: 'Mine' } },
     bad: { code: 'bad', memberCount: 900, guild: { id: '1100000000000000003', name: 'Black Server' } },
+    adult: { code: 'adult', memberCount: 900, guild: { id: '1100000000000000004', name: 'After Dark', nsfwLevel: 1 } },
+    casino: { code: 'casino', memberCount: 900, guild: { id: '1100000000000000005', name: 'Lucky Hub', description: 'The best GAMBLING tips' } },
   };
   const client = { fetchInvite: async (code) => { if (!invites[code]) throw new Error('Unknown Invite'); return invites[code]; } };
   const sent = [];
@@ -140,6 +161,15 @@ const fakeGuild = (id, extra = {}) => ({ id, name: 'Mine', ownerId: 'owner', mem
   out = await run('discord.gg/bad'); assert.match(out[0].content, /not allowed as a partner/);
   assert.equal(out.some((item) => item.kind === 'delete'), false, 'the post is kept by default');
 
+  // NSFW servers and blocked words, only when the server asked for them.
+  const beforeAdult = logRows.length; out = await run('discord.gg/adult'); assert.equal(logRows.length, beforeAdult + 1, 'an NSFW server counts while the filter is off');
+  config.block_nsfw = true; config.blocked_keywords = ['gambling']; config.cooldown_days = 0; config.cooldown_minutes = 0;
+  logRows = [];
+  out = await run('discord.gg/adult'); assert.match(out[0].content, /marked as an NSFW server/); assert.equal(logRows.length, 0);
+  out = await run('discord.gg/casino'); assert.match(out[0].content, /has a word this server does not accept/); assert.equal(logRows.length, 0);
+  out = await run('discord.gg/good1'); assert.match(out[0].content, /thanks for the partnership with \*\*Good Server\*\*/, 'a clean server still counts');
+  config.block_nsfw = false; config.blocked_keywords = []; config.cooldown_days = 7;
+
   // A refused post is deleted when the server asks for it.
   config.keep_original = false;
   out = await run('discord.gg/bad'); assert.equal(out.at(-1).kind, 'delete', 'the refused post is deleted when the server chose that');
@@ -171,8 +201,16 @@ const fakeGuild = (id, extra = {}) => ({ id, name: 'Mine', ownerId: 'owner', mem
   assert.match(await talk(partnerConfig, 'addchannel', { channel: { id: 'c7', toString: () => '#c7' } }), /is now a partner channel/); premiumActive = false;
   assert.match(await talk(partnerConfig, 'removechannel', { channel: { id: 'c7', toString: () => '#c7' } }), /not a partner channel anymore/);
   assert.match(await talk(partnerConfig, 'manager', { role: { id: 'pm', toString: () => '@PM' } }), /members with @PM/); assert.equal(config.manager_role_id, 'pm');
-  assert.match(await talk(partnerConfig, 'requirements', { members: 250, age_days: 14, cooldown_days: 3, reaction: '🤝' }), /Requirements saved/);
-  assert.deepEqual([config.min_members, config.min_age_days, config.cooldown_days, config.react_emoji], [250, 14, 3, '🤝']);
+  assert.match(await talk(partnerConfig, 'requirements', { members: 250, age_days: 14, cooldown: '3d 4h', reaction: '🤝' }), /Requirements saved/);
+  assert.deepEqual([config.min_members, config.min_age_days, config.cooldown_minutes, config.cooldown_days, config.react_emoji], [250, 14, 4560, 0, '🤝'], 'the cooldown is saved in minutes and replaces the days');
+  assert.match(await talk(partnerConfig, 'requirements', { cooldown: 'soon' }), /written like `3d 4h`/);
+  await talk(partnerConfig, 'requirements', { cooldown: 'none' }); assert.equal(config.cooldown_minutes, 0);
+  await talk(partnerConfig, 'requirements', { block_nsfw: true, keywords: ' Gambling, 18+ ,gambling' }); assert.equal(config.block_nsfw, true); assert.deepEqual(config.blocked_keywords, ['gambling', '18+'], 'the words are tidied and kept once');
+  assert.match(await talk(partnerConfig, 'requirements', { keywords: Array.from({ length: 11 }, (_, i) => `w${i}`).join(',') }), /Up to 10 words/);
+  assert.match(await talk(partnerConfig, 'view'), /Refuses: NSFW servers · words: gambling, 18\+[\s\S]*Welcome channel: where the command is used/);
+  await talk(partnerConfig, 'requirements', { block_nsfw: false, keywords: 'none' }); assert.deepEqual([config.block_nsfw, config.blocked_keywords], [false, []]);
+  assert.match(await talk(partnerConfig, 'welcomechannel', { channel: { id: 'welcome', toString: () => '#welcome' } }), /welcomed in #welcome/); assert.equal(config.welcome_channel_id, 'welcome');
+  await talk(partnerConfig, 'welcomechannel', {}); assert.equal(config.welcome_channel_id, null);
   assert.match(await talk(partnerConfig, 'requirements', { reaction: 'two words' }), /does not look like an emoji/);
   await talk(partnerConfig, 'requirements', { reaction: 'none' }); assert.equal(config.react_emoji, null);
   assert.match(await talk(partnerConfig, 'blacklist', { action: 'add', server: 'abc' }), /number of 17 to 20 digits/);
@@ -201,6 +239,19 @@ const fakeGuild = (id, extra = {}) => ({ id, name: 'Mine', ownerId: 'owner', mem
   assert.match(await talk(partnerConfig, 'response', { reply: 'nope' }), /Choose one of/);
   assert.match(await talk(partnerConfig, 'response', { reply: 'invalid-invite' }), /Invalid invite/, 'a name with dashes is read too');
   assert.doesNotMatch(await talk(partner, 'leaderboard', { period: 'week' }), /<@u2>/, 'old ones are not in this week');
+
+  // A new Partner Manager is welcomed in the welcome channel when they are given the role.
+  const memberUpdate = require('../src/events/guildMemberUpdatePartners');
+  const welcomed = [];
+  const welcomeChannel = { isTextBased: () => true, send: async (payload) => { welcomed.push(payload); return { id: 'w' }; } };
+  const updateGuild = fakeGuild('guild1', { channels: { cache: new Collection(), fetch: async (id) => (id === 'welcome' ? welcomeChannel : null) } });
+  const memberWith = (roleIds) => ({ id: 'u9', guild: updateGuild, user: fakeUser('u9', 'New'), partial: false, displayName: 'New', displayAvatarURL: () => 'https://cdn.example/a.png', joinedTimestamp: 1, roles: { cache: new Collection(roleIds.map((id) => [id, { id }])) } });
+  config = { ...config, enabled: true, manager_role_id: 'pm', welcome_channel_id: null, messages: {} };
+  await memberUpdate.execute(memberWith([]), memberWith(['pm'])); assert.equal(welcomed.length, 0, 'without a welcome channel nothing is sent when the role is given');
+  config.welcome_channel_id = 'welcome';
+  await memberUpdate.execute(memberWith([]), memberWith(['pm'])); assert.equal(welcomed.length, 1); assert.match(welcomed[0].content, /Welcome to the team, <@u9>/); assert.deepEqual(welcomed[0].allowedMentions, { users: ['u9'] });
+  await memberUpdate.execute(memberWith(['pm']), memberWith(['pm'])); await memberUpdate.execute(memberWith(['pm']), memberWith([])); await memberUpdate.execute(memberWith([]), memberWith(['other'])); assert.equal(welcomed.length, 1, 'only getting the role counts');
+  await memberUpdate.execute({ ...memberWith([]), partial: true }, memberWith(['pm'])); assert.equal(welcomed.length, 1, 'an unknown old state is skipped');
 
   // The commands are used with the prefix only, so no slash command is made for them.
   assert.equal(partner.prefixOnly, true); assert.equal(partnerConfig.prefixOnly, true);
