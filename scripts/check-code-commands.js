@@ -255,6 +255,38 @@ const row = (code, name = `c${Math.random().toString(16).slice(2, 8)}`) => ({ na
   const brokenClick = makeMessage({ guildBits: bits }); const brokenLog = { replies: [] }; clock += 5000;
   await codeCommands.runComponent({ guild: brokenClick.message.guild, guildId: brokenClick.message.guild.id, channel: brokenClick.message.channel, member: brokenClick.message.member, user: brokenClick.message.author, message: { id: '1', content: '', embeds: [] }, isStringSelectMenu: () => false, values: [], reply: async (p) => { brokenLog.replies.push(p); }, update: async () => {}, deferUpdate: async () => {}, followUp: async () => {} }, row('{{ nope }}', 'broken'), { command: 'broken', handler: 'h', data: '', userId: null });
   assert.ok(brokenLog.replies[0].content.includes('mistake') && brokenLog.replies[0].flags);
+  // Modals: a button opens a form, and sending it runs the command again with the fields.
+  const suggestRow = { name: 'suggest', code: TEMPLATES.find((template) => template.id === 'suggest').code };
+  const formClick = async () => {
+    clock += 5000;
+    const made = makeMessage({ guildBits: bits }); const log = { modals: [], replies: [] };
+    await codeCommands.runComponent({
+      customId: 'cc:suggest:open::', guild: made.message.guild, guildId: made.message.guild.id, channel: made.message.channel, member: made.message.member, user: made.message.author,
+      message: { id: '600000000000000002', content: '', embeds: [], url: 'x' }, isStringSelectMenu: () => false, isModalSubmit: () => false,
+      showModal: async (modal) => { log.modals.push(modal.toJSON()); }, reply: async (payload) => { log.replies.push(payload); }, deferUpdate: async () => {},
+    }, suggestRow, codeCommands.parseComponentId('cc:suggest:open::'));
+    return log;
+  };
+  const opened = await formClick();
+  assert.equal(opened.modals.length, 1, 'a button can open a modal');
+  assert.equal(opened.modals[0].custom_id, 'cc:suggest:send::', 'the modal carries the command and its handler');
+  assert.equal(opened.modals[0].title, 'Your suggestion');
+  assert.deepEqual(opened.modals[0].components.map((row) => row.components[0].custom_id), ['title', 'details']);
+  assert.equal(opened.modals[0].components[1].components[0].required, false);
+  clock += 5000;
+  const formBits = makeGuild();
+  const formMade = makeMessage({ guildBits: formBits });
+  const submitLog = { replies: [], updates: [] };
+  await codeCommands.runComponent({
+    customId: 'cc:suggest:send::', guild: formMade.message.guild, guildId: formMade.message.guild.id, channel: formMade.message.channel, member: formMade.message.member, user: formMade.message.author,
+    isStringSelectMenu: () => false, isModalSubmit: () => true, isFromMessage: () => false,
+    fields: { fields: new Collection([['title', { customId: 'title', value: 'More music' }], ['details', { customId: 'details', value: '' }]]) },
+    reply: async (payload) => { submitLog.replies.push(payload); }, update: async (payload) => { submitLog.updates.push(payload); }, deferUpdate: async () => {},
+  }, suggestRow, codeCommands.parseComponentId('cc:suggest:send::'));
+  assert.equal(submitLog.replies.length, 1, 'sending the modal is answered');
+  assert.ok(submitLog.replies[0].content.includes('Thank you') && submitLog.replies[0].flags, 'in private');
+  assert.equal(formBits.sent[0].payload.embeds[0].data.title, '💡 More music', 'the fields reach the code');
+
   Date.now = realNow;
 
   // Every template is valid and runs, alone and with no arguments.

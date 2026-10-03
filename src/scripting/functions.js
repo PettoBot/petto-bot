@@ -11,6 +11,8 @@ const COMPLEX = new WeakSet(); // the maps made by complexMessage
 const BUTTONS = new WeakSet(); // the maps made by cbutton
 const SELECTS = new WeakSet(); // the maps made by cselect
 const ROWS = new WeakSet(); // the maps made by crow
+const TEXT_INPUTS = new WeakSet(); // the maps made by ctext
+const MODALS = new WeakSet(); // the maps made by cmodal
 const SNOWFLAKE = /^\d{15,22}$/;
 const MAX_FIELD_NAME = 256;
 
@@ -297,6 +299,52 @@ def('crow', 1, 5, (env, ...items) => {
   return row;
 });
 
+const FIELD_ID_SHAPE = /^[A-Za-z0-9_]{1,20}$/;
+
+def('ctext', 2, 14, (env, ...pairs) => {
+  const map = flatPairs(pairs, 'ctext');
+  const known = ['id', 'label', 'style', 'placeholder', 'value', 'required', 'min', 'max'];
+  for (const key of map.keys()) if (!known.includes(key)) throw new Error(`ctext does not know "${key}". Use ${known.join(', ')}`);
+  const id = map.get('id');
+  if (typeof id !== 'string' || !FIELD_ID_SHAPE.test(id)) throw new Error('A field needs an id of 1 to 20 letters, numbers or _, such as "id" "reason"');
+  const label = limitText(map.get('label'), 45, 'The label of a field');
+  if (!label) throw new Error('A field needs a label of up to 45 characters');
+  const styleName = map.has('style') ? text(map.get('style')).toLowerCase() : 'short';
+  if (!['short', 'paragraph'].includes(styleName)) throw new Error('The style of a field is short or paragraph');
+  const field = { type: 'textInput', id, label, style: styleName === 'paragraph' ? 2 : 1, required: map.has('required') ? isTruthy(map.get('required')) : true };
+  if (map.get('placeholder') !== undefined && map.get('placeholder') !== null) field.placeholder = limitText(map.get('placeholder'), 100, 'The placeholder');
+  if (map.get('value') !== undefined && map.get('value') !== null) field.value = limitText(map.get('value'), 4000, 'The value');
+  const min = map.has('min') ? Math.trunc(num(map.get('min'))) : 0;
+  const max = map.has('max') ? Math.trunc(num(map.get('max'))) : 4000;
+  if (min < 0 || max < 1 || max > 4000 || min > max) throw new Error('A field min is from 0, and its max from 1 to 4000');
+  field.min = min; field.max = max;
+  TEXT_INPUTS.add(field);
+  return field;
+});
+
+def('cmodal', 3, 8, (env, ...pairs) => {
+  const map = flatPairs(pairs, 'cmodal');
+  const known = ['id', 'title', 'fields', 'data'];
+  for (const key of map.keys()) if (!known.includes(key)) throw new Error(`cmodal does not know "${key}". Use ${known.join(', ')}`);
+  const id = map.get('id');
+  if (typeof id !== 'string' || !HANDLER_SHAPE.test(id)) throw new Error('A modal needs an id of 1 to 20 letters, numbers, - or _');
+  const title = limitText(map.get('title'), 45, 'The title of a modal');
+  if (!title) throw new Error('A modal needs a title of up to 45 characters');
+  const fields = list(map.get('fields'), 'a list of fields made with ctext');
+  if (!fields.length || fields.length > 5) throw new Error('A modal holds from 1 to 5 fields');
+  const seen = new Set();
+  for (const field of fields) {
+    if (!TEXT_INPUTS.has(field)) throw new Error('The fields of a modal are made with ctext');
+    if (seen.has(field.id)) throw new Error(`Two fields of the modal have the id "${field.id}"`);
+    seen.add(field.id);
+  }
+  const data = map.has('data') && map.get('data') !== null ? text(map.get('data')) : '';
+  if (!DATA_SHAPE.test(data)) throw new Error('The data of a modal holds at most 20 letters, numbers, . - or _');
+  const modal = { type: 'modal', handler: id, title, fields, data };
+  MODALS.add(modal);
+  return modal;
+});
+
 const componentsOf = (value) => {
   const rows = list(value, 'a list of rows made with crow');
   if (rows.length > 5) throw new Error('A message holds at most 5 rows of buttons or menus');
@@ -350,8 +398,14 @@ def('addReaction', 1, 1, (env, emoji) => {
   return null;
 });
 const needComponent = (env, name) => {
-  if (!['button', 'select'].includes(env.data?.Trigger)) throw new Error(`${name} only works when the command runs because of a button or a menu`);
+  if (!['button', 'select', 'modal'].includes(env.data?.Trigger)) throw new Error(`${name} only works when the command runs because of a button or a menu (or a modal)`);
 };
+def('showModal', 1, 1, (env, modal) => {
+  if (!['button', 'select'].includes(env.data?.Trigger)) throw new Error('showModal only works when the command runs because of a button or a menu (a modal cannot answer a modal)');
+  if (!MODALS.has(modal)) throw new Error('showModal needs a modal made with cmodal');
+  env.effects.add('modal', { modal });
+  return null;
+});
 def('respond', 1, 2, (env, value, ephemeral) => {
   needComponent(env, 'respond');
   const message = messageOf(value);

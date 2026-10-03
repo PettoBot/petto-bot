@@ -1,6 +1,6 @@
 // Runs custom commands written in code (Petto Code). The code only says what it wants (see src/scripting); this file
 // is where the bot decides what it will really do, so a command can never do more than its member could.
-const { EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, StringSelectMenuBuilder, MessageFlags } = require('discord.js');
+const { EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, MessageFlags } = require('discord.js');
 const config = require('../config');
 const logger = require('./logger');
 const { run, check, PettoCodeError, MAX_SOURCE_LENGTH } = require('../scripting');
@@ -90,6 +90,19 @@ function buildComponents(rows, commandName) {
     }
     return builder;
   });
+}
+
+/** A modal (a form that pops up) as discord.js builds it. Sending it runs the same command again with .Trigger "modal". */
+function buildModal(modal, commandName) {
+  const built = new ModalBuilder().setCustomId(componentId(commandName, modal)).setTitle(modal.title);
+  for (const field of modal.fields) {
+    const input = new TextInputBuilder().setCustomId(field.id).setLabel(field.label).setStyle(field.style).setRequired(field.required)
+      .setMinLength(field.min).setMaxLength(field.max);
+    if (field.placeholder) input.setPlaceholder(field.placeholder);
+    if (field.value) input.setValue(field.value);
+    built.addComponents(new ActionRowBuilder().addComponents(input));
+  }
+  return built;
 }
 
 /** The ids a text mentions on purpose, so only those can be pinged. */
@@ -230,9 +243,12 @@ async function runCodeCommand(message, row, argText, prefix) {
  */
 async function runComponent(interaction, row, parsed) {
   const ephemeralReply = (content) => interaction.reply({ content: clip(content), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } }).catch(() => {});
+  const submitted = Boolean(interaction.isModalSubmit?.());
+  // Acknowledges a click without a visible answer; a modal that did not come from a message has nothing to update.
+  const acknowledge = () => (submitted && !interaction.isFromMessage?.() ? ephemeralReply('✅') : interaction.deferUpdate().catch(() => {}));
   if (parsed.userId && parsed.userId !== interaction.user.id) return ephemeralReply('This is not for you.');
   const key = `${interaction.guildId}:${interaction.user.id}:${row.name}:${parsed.handler}`;
-  if (Date.now() - (cooldowns.get(key) ?? 0) < COOLDOWN_MS / 2) return interaction.deferUpdate().catch(() => {});
+  if (Date.now() - (cooldowns.get(key) ?? 0) < COOLDOWN_MS / 2) return acknowledge();
   cooldowns.set(key, Date.now());
 
   const { guild, channel, user, member } = interaction;
@@ -244,9 +260,10 @@ async function runComponent(interaction, row, parsed) {
   };
   const data = {
     ...buildData(source, row.name, '', '!'),
-    Trigger: interaction.isStringSelectMenu?.() ? 'select' : 'button',
+    Trigger: submitted ? 'modal' : interaction.isStringSelectMenu?.() ? 'select' : 'button',
     Button: { ID: parsed.handler, Data: parsed.data },
     Values: interaction.isStringSelectMenu?.() ? [...interaction.values] : [],
+    ...(submitted ? { Modal: { ID: parsed.handler, Data: parsed.data }, Fields: Object.fromEntries([...interaction.fields.fields.values()].map((field) => [field.customId, String(field.value ?? '').slice(0, 4000)])) } : {}),
   };
 
   let result;
@@ -255,20 +272,26 @@ async function runComponent(interaction, row, parsed) {
   } catch (error) {
     if (error instanceof PettoCodeError) return ephemeralReply(mistakeText(error));
     logger.error(`Custom command "${row.name}" crashed on a component in guild ${guild.id}:`, error);
-    return interaction.deferUpdate().catch(() => {});
+    return acknowledge();
   }
 
   const update = result.effects.find((effect) => effect.type === 'update');
   const respond = result.effects.find((effect) => effect.type === 'respond');
+  const modal = result.effects.find((effect) => effect.type === 'modal');
   const text = result.output.trim();
-  const rest = result.effects.filter((effect) => effect.type !== 'update' && effect.type !== 'respond');
+  const rest = result.effects.filter((effect) => !['update', 'respond', 'modal'].includes(effect.type));
+  // A modal submitted from a command (not from a message) has no message to update, so it answers with a new one.
+  const canUpdate = !submitted || interaction.isFromMessage?.();
 
   // Answer first, Discord only waits three seconds, then do the rest.
   try {
-    if (update) await interaction.update(toPayload(update, guild, user.id, row.name));
+    if (modal) await interaction.showModal(buildModal(modal.modal, row.name));
+    else if (update && canUpdate) await interaction.update(toPayload(update, guild, user.id, row.name));
+    else if (update) await interaction.reply({ ...toPayload(update, guild, user.id, row.name), flags: MessageFlags.Ephemeral });
     else if (respond) await interaction.reply({ ...toPayload(respond, guild, user.id, row.name), ...(respond.ephemeral ? { flags: MessageFlags.Ephemeral } : {}) });
     else if (text) await interaction.reply({ content: clip(text), allowedMentions: allowedMentionsFor(text, guild, user.id) });
-    else await interaction.deferUpdate();
+    else if (canUpdate) await interaction.deferUpdate();
+    else await interaction.reply({ content: '✅', flags: MessageFlags.Ephemeral });
   } catch (error) {
     logger.warn(`Could not answer the component of "${row.name}" in guild ${guild.id}: ${error.message}`);
     return null;
@@ -325,4 +348,4 @@ function decodeShare(text) {
   return { name, description: typeof data.d === 'string' ? data.d.slice(0, 200) : '', code: data.c };
 }
 
-module.exports = { COMPONENT_PREFIX, parseComponentId, componentId, buildComponents, runComponent, memoryStore, canWriteCode, buildData, runCodeCommand, applyEffects, extractCode, rawAfter, encodeShare, decodeShare, allowedMentionsFor, check, COOLDOWN_MS, RISKY_PERMISSIONS };
+module.exports = { COMPONENT_PREFIX, parseComponentId, componentId, buildComponents, buildModal, runComponent, memoryStore, canWriteCode, buildData, runCodeCommand, applyEffects, extractCode, rawAfter, encodeShare, decodeShare, allowedMentionsFor, check, COOLDOWN_MS, RISKY_PERMISSIONS };

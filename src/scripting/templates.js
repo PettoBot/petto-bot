@@ -147,6 +147,56 @@ I choose **{{ index .Args (randInt (len .Args)) }}**.`,
 {{ return }}{{ end }}
 {{ respond (printf "You chose **%s**!" (index .Values 0)) true }}`,
   },
+  {
+    id: 'request',
+    name: 'Request',
+    description: 'A request card with two buttons: one to claim it and one for whoever asked to confirm the delivery. `!request a cake`',
+    suggestedName: 'request',
+    code: `{{ if eq .Trigger "command" }}
+  {{ if lt (len .Args) 1 }}Use: {{ .Prefix }}{{ .Cmd }} <what you ask for>{{ return }}{{ end }}
+  {{ sendMessage nil (complexMessage
+       "embed" (cembed
+         "author" (or .Member.DisplayName .User.Username)
+         "thumbnail" .Guild.Icon
+         "description" (printf "%s asks for:\\n**%s**\\n\\nUse the buttons to claim it or to confirm the delivery." .User.Mention .RawArgs)
+         "color" "#ff91c2")
+       "components" (cslice (crow
+         (cbutton "emoji" "🦋" "label" "Claim" "id" "claim" "data" .User.ID)
+         (cbutton "emoji" "🎀" "label" "Delivered" "id" "done" "data" .User.ID "style" "success")))) }}
+  {{ deleteTrigger }}
+{{ return }}{{ end }}
+
+{{ $embed := index .Message.Embeds 0 }}
+{{ if eq .Button.ID "claim" }}
+  {{ updateMessage (cembed "description" $embed.Description "footer" (print "Claimed by " (or .Member.DisplayName .User.Username)) "color" "#ffd166") }}
+  {{ return }}
+{{ end }}
+{{ if ne .User.ID .Button.Data }}{{ respond "Only who made the request can confirm the delivery." true }}{{ return }}{{ end }}
+{{ updateMessage (complexMessage "embed" (cembed "description" $embed.Description "footer" "Delivered" "color" "#57f287") "components" (cslice)) }}`,
+  },
+  {
+    id: 'suggest',
+    name: 'Suggest',
+    description: 'A button that opens a form (a modal) to write a suggestion, which is then posted in the channel. `!suggest`',
+    suggestedName: 'suggest',
+    code: `{{ if eq .Trigger "command" }}
+  {{ sendMessage nil (complexMessage "content" "Have an idea for the server?" "components" (cslice (crow
+    (cbutton "emoji" "💡" "label" "Suggest" "id" "open" "style" "primary")))) }}
+{{ return }}{{ end }}
+
+{{ if eq .Trigger "button" }}
+  {{ showModal (cmodal "id" "send" "title" "Your suggestion" "fields" (cslice
+    (ctext "id" "title" "label" "Title" "max" 80 "placeholder" "A short summary")
+    (ctext "id" "details" "label" "Details" "style" "paragraph" "max" 1000 "required" false))) }}
+{{ return }}{{ end }}
+
+{{ sendMessage nil (cembed
+  "title" (print "💡 " .Fields.title)
+  "description" (or .Fields.details "No more details.")
+  "footer" (print "Suggested by " (or .Member.DisplayName .User.Username))
+  "color" "#ff91c2") }}
+{{ respond "Thank you, your suggestion was posted." true }}`,
+  },
 ];
 
 const byId = (id) => TEMPLATES.find((template) => template.id === String(id ?? '').toLowerCase()) ?? null;
