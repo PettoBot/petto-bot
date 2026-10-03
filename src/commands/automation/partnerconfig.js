@@ -1,5 +1,5 @@
 // The settings of the partner module for admins: where partners are posted, who the Partner Managers are, the
-// requirements, the blacklist and the replies. The numbers are in `/partner`.
+// requirements, the blacklist and the replies. The numbers are in `!partner`.
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = require('discord.js');
 const { ensureGuild } = require('../../db/guilds');
 const partnersDb = require('../../db/partners');
@@ -15,6 +15,7 @@ const ok = (text) => textCard(`${EMOJI.APPROVE}  ${text}`, 0xa5ea7a);
 const note = (text) => textCard(text, 0x4b4f59);
 
 module.exports = {
+  prefixOnly: true,
   aliases: ['pconfig'],
   data: new SlashCommandBuilder()
     .setName('partnerconfig')
@@ -59,7 +60,7 @@ module.exports = {
     if (sub === 'enable') {
       const enabled = interaction.options.getBoolean('enabled', true);
       await save({ enabled });
-      return done(ok(enabled ? (config.channel_ids.length ? 'Partners are on.' : 'Partners are on. Add a channel with `/partnerconfig addchannel`.') : 'Partners are off.'));
+      return done(ok(enabled ? (config.channel_ids.length ? 'Partners are on.' : 'Partners are on. Add a channel with `!partnerconfig addchannel`.') : 'Partners are off.'));
     }
     if (sub === 'addchannel') {
       const channel = interaction.options.getChannel('channel', true);

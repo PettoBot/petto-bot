@@ -202,6 +202,9 @@ const fakeGuild = (id, extra = {}) => ({ id, name: 'Mine', ownerId: 'owner', mem
   assert.match(await talk(partnerConfig, 'response', { reply: 'invalid-invite' }), /Invalid invite/, 'a name with dashes is read too');
   assert.doesNotMatch(await talk(partner, 'leaderboard', { period: 'week' }), /<@u2>/, 'old ones are not in this week');
 
+  // The commands are used with the prefix only, so no slash command is made for them.
+  assert.equal(partner.prefixOnly, true); assert.equal(partnerConfig.prefixOnly, true);
+
   // The commands are built the way Discord needs.
   assert.deepEqual(partner.data.toJSON().options.map((option) => option.name), ['stats', 'leaderboard']);
   assert.ok(partnerConfig.data.toJSON().options.map((option) => option.name).includes('requirements'));

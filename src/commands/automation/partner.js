@@ -1,4 +1,4 @@
-// Partner numbers for everyone: how many partnerships a Partner Manager has, and the ranking. The settings are in `/partnerconfig`.
+// Partner numbers for everyone: how many partnerships a Partner Manager has, and the ranking. The settings are in `!partnerconfig`.
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const partnersDb = require('../../db/partners');
 const { periodStart, rank, counts } = require('../../utils/partnerEngine');
@@ -9,6 +9,7 @@ const PERIODS = { day: 'Today', week: 'This week', all: 'All time' };
 const PERIOD_WORDS = { day: 'day', today: 'day', daily: 'day', week: 'week', weekly: 'week', all: 'all', total: 'all', alltime: 'all' };
 
 module.exports = {
+  prefixOnly: true,
   aliases: ['partners', 'pm'],
   data: new SlashCommandBuilder()
     .setName('partner')
@@ -23,7 +24,7 @@ module.exports = {
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
     const config = await partnersDb.getConfig(interaction.guild.id);
     if (!config?.enabled) {
-      return interaction.editReply({ components: [textCard('Partners are not turned on in this server. An admin can turn them on with `/partnerconfig enable`.')], flags: MessageFlags.IsComponentsV2 });
+      return interaction.editReply({ components: [textCard('Partners are not turned on in this server. An admin can turn them on with `!partnerconfig enable`.')], flags: MessageFlags.IsComponentsV2 });
     }
     if (interaction.options.getSubcommand() === 'stats') return stats(interaction);
     return leaderboard(interaction);
