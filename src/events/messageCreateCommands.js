@@ -16,6 +16,7 @@ const moderationPermissions = require('../utils/moderationPermissions');
 const { controlAction } = require('../utils/autoModControl');
 const logger = require('../utils/logger');
 const { runCodeCommand } = require('../utils/codeCommands');
+const { findTrigger } = require('../utils/codeTriggers');
 
 const DEFAULT_COOLDOWN_MS = 3000;
 const UNKNOWN_COMMAND_DELETE_MS = 10_000;
@@ -120,7 +121,13 @@ function containsArgumentVariable(value) {
 /** Falls back here whenever `commandName` doesn't match a real command — tries a guild's admin-defined custom commands before giving up silently. */
 async function runCustomCommand(message, commandName, argText = '', prefix = '!') {
   const row = await customCommandsDb.getCommand(message.guild.id, commandName).catch(() => null);
-  if (!row) return false;
+  // A command that has its own trigger is only set off by that trigger, not by the prefix of Petto.
+  if (!row || (row.trigger_type && row.trigger_type !== 'command')) return false;
+  return runCustomCommandRow(message, row, commandName, argText, prefix);
+}
+
+/** Runs a custom command that was already found: its code, its saved embed or its text. */
+async function runCustomCommandRow(message, row, commandName, argText = '', prefix = '!') {
   if (row.code) return runCodeCommand(message, row, argText, prefix);
   message.channel.sendTyping().catch(() => {});
 
@@ -202,7 +209,12 @@ module.exports = {
 
     const configuredPrefix = mentionMatch || await getPrefix(message.guild.id).catch(() => '!');
     const parsed = parsePrefixCommand(message.content, configuredPrefix);
-    if (!parsed) return;
+    if (!parsed) {
+      // Not a command of Petto: it may still set off a custom command that has its own prefix or words.
+      const trigger = await findTrigger(message.guild.id, message.content).catch(() => null);
+      if (trigger) await runCustomCommandRow(message, trigger.row, trigger.row.name, trigger.args, trigger.prefix);
+      return;
+    }
 
     const prefix = parsed.typedPrefix;
     let commandName = parsed.commandName;
@@ -240,7 +252,12 @@ module.exports = {
     // executed through the pseudo-interaction used by prefix commands.
     if (command?.slashOnly) return;
     if (!command || !command.data || (command.data.toJSON().type ?? 1) !== 1) {
-      const handled = await runCustomCommand(message, canonicalName, argText, prefix);
+      let handled = await runCustomCommand(message, canonicalName, argText, prefix);
+      if (!handled) {
+        // A prefix of its own that starts like the prefix of Petto, such as !! next to !
+        const trigger = await findTrigger(message.guild.id, message.content).catch(() => null);
+        if (trigger) { await runCustomCommandRow(message, trigger.row, trigger.row.name, trigger.args, trigger.prefix); handled = true; }
+      }
       if (!handled) {
         const warning = await message
           .reply({ components: [textCard(`${EMOJI.WARNING}  Unknown command \`${canonicalName}\`. Use \`${prefix}help\` to see all commands.`, 0xfed53c)], flags: MessageFlags.IsComponentsV2, allowedMentions: { repliedUser: false } })

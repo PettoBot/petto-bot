@@ -20,6 +20,19 @@ async function upsertCommand(guildId, name, { response, embedTemplate, code, cre
   return data;
 }
 
+/** The commands of a server that start on something other than the prefix of Petto. */
+async function listTriggers(guildId) {
+  const { data, error } = await database.from('custom_commands').select('*').eq('guild_id', guildId).neq('trigger_type', 'command');
+  if (error) throw error;
+  return data;
+}
+
+async function setTrigger(guildId, name, type, text) {
+  const { data, error } = await database.from('custom_commands').update({ trigger_type: type, trigger_text: text ?? null }).eq('guild_id', guildId).eq('name', normalizeName(name)).select('name');
+  if (error) throw error;
+  return data.length > 0;
+}
+
 async function removeCommand(guildId, name) {
   const { data, error } = await database.from('custom_commands').delete().eq('guild_id', guildId).eq('name', normalizeName(name)).select('id');
   if (error) throw error;
@@ -27,9 +40,9 @@ async function removeCommand(guildId, name) {
 }
 
 async function listCommands(guildId) {
-  const { data, error } = await database.from('custom_commands').select('name, response, embed_template, code').eq('guild_id', guildId).order('name', { ascending: true });
+  const { data, error } = await database.from('custom_commands').select('name, response, embed_template, code, trigger_type, trigger_text').eq('guild_id', guildId).order('name', { ascending: true });
   if (error) throw error;
   return data;
 }
 
-module.exports = { normalizeName, getCommand, upsertCommand, removeCommand, listCommands };
+module.exports = { normalizeName, getCommand, upsertCommand, removeCommand, listCommands, listTriggers, setTrigger };

@@ -1659,6 +1659,11 @@ alter table custom_command_data enable row level security;
 -- Commands written in code (Petto Code). When `code` is set it runs instead of the response and the embed.
 alter table custom_commands add column if not exists code text;
 alter table custom_commands add column if not exists created_by text;
+-- What starts a command: the prefix of Petto ('command'), its own prefix, the start of a message, a whole message, or words inside.
+alter table custom_commands add column if not exists trigger_type text not null default 'command';
+alter table custom_commands add column if not exists trigger_text text;
+alter table custom_commands drop constraint if exists custom_commands_trigger_type_check;
+alter table custom_commands add constraint custom_commands_trigger_type_check check (trigger_type in ('command', 'prefix', 'startswith', 'exact', 'contains'));
 
 -- ── Configurable command aliases ─────────────────────────────────────────
 
