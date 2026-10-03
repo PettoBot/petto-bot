@@ -27,6 +27,12 @@ assert.equal(out('a  {{- "b" -}}  c'), 'abc', 'the trim markers take away the wh
 assert.equal(out('{{ .Args }} {{ index .Args 1 }} {{ len .Args }}'), '[5 three 7] three 3');
 assert.equal(out('{{ (dict "a" 1 "b" 2).b }} {{ index (dict "k" "v") "k" }}'), '2 v');
 
+// A path is one value only while its parts touch: .A.B is a path, .A .B are two values.
+assert.equal(out('{{ printf "%s/%s/%s" .Guild.Name .User.Username .Guild.MemberCount }}'), 'Petto HQ/Liam/90');
+assert.equal(out('{{ print .Guild.Name " " .Guild.ID }}'), 'Petto HQ 323456789012345678');
+assert.equal(out('{{ $g := .Guild }}{{ print $g.Name $g.MemberCount }}'), 'Petto HQ90');
+assert.equal(out('{{ print (dict "a" 1).a (dict "b" 2).b }}'), '12');
+
 // Variables, assignment and scope.
 assert.equal(out('{{ $x := 1 }}{{ $x = add $x 4 }}{{ $x }}'), '5');
 assert.equal(out('{{ $x := 1 }}{{ if true }}{{ $x = 2 }}{{ $y := 9 }}{{ end }}{{ $x }}'), '2', 'an inner block changes the outer variable');

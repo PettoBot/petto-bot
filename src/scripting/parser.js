@@ -40,7 +40,7 @@ function parse(source) {
       default: return fail(`Unexpected ${token.type === 'keyword' ? `"${token.value}"` : JSON.stringify(token.value)}`, token);
     }
     // A chain of fields after a variable, a dot or a ( ): $user.ID, (dict "a" 1).a
-    while (tokens[state.i]?.type === 'field') { operand.fields.push(tokens[state.i].value); state.i += 1; }
+    while (tokens[state.i]?.type === 'field' && tokens[state.i].adjacent) { operand.fields.push(tokens[state.i].value); state.i += 1; }
     return operand;
   }
 

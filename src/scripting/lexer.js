@@ -77,7 +77,8 @@ function tokenize(body, source, bodyOffset) {
     const char = body[i];
     if (/\s/.test(char)) { i += 1; continue; }
     const start = i;
-    const push = (type, value) => tokens.push({ type, value, ...at(start) });
+    // `adjacent`: nothing between this token and the one before, so `.A.B` is one path and `.A .B` are two values.
+    const push = (type, value) => tokens.push({ type, value, start, adjacent: tokens.length > 0 && tokens[tokens.length - 1].end === start, ...at(start) });
     if (char === '"') {
       let value = '';
       i += 1;
@@ -120,6 +121,7 @@ function tokenize(body, source, bodyOffset) {
     else if (char === '=') { push('assign', '='); i += 1; }
     else if (char === '(' || char === ')' || char === '|' || char === ',') { push(char === '(' ? 'lparen' : char === ')' ? 'rparen' : char === '|' ? 'pipe' : 'comma', char); i += 1; }
     else throw new PettoCodeError('syntax', `Unexpected character ${JSON.stringify(char)}`, at(i));
+    tokens[tokens.length - 1].end = i;
   }
   return tokens;
 }
