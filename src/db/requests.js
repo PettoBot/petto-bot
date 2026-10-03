@@ -46,10 +46,11 @@ async function update(guildId, number, changes) {
   return data ?? null;
 }
 
-/** The requests of a server, newest first. `statuses` narrows them, `userId` shows one member's. */
-async function list(guildId, { statuses = ['open', 'claimed'], userId = null, limit = 25 } = {}) {
+/** The requests of a server, newest first. `statuses` narrows them, `userId` shows one member's, `claimedBy` the ones a staff member took. */
+async function list(guildId, { statuses = ['open', 'claimed'], userId = null, claimedBy = null, limit = 25 } = {}) {
   let query = database.from('requests').select('*').eq('guild_id', String(guildId)).in('status', statuses);
   if (userId) query = query.eq('user_id', String(userId));
+  if (claimedBy) query = query.eq('claimed_by', String(claimedBy));
   const { data, error } = await query.order('number', { ascending: false }).limit(limit);
   if (error) throw error;
   return data ?? [];

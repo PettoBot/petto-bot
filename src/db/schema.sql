@@ -2443,3 +2443,28 @@ create index if not exists idx_requests_guild_status on requests (guild_id, stat
 create index if not exists idx_requests_user on requests (guild_id, user_id, status);
 create index if not exists idx_requests_claimed on requests (status, claimed_at) where status = 'claimed';
 alter table requests enable row level security;
+
+-- Reviews and profiles: members rate each other from 1 to 5 stars (one review per pair, changed by sending it again), and
+-- `!profile` shows the numbers of the member: uploads, requests, partnerships and the average rating.
+create table if not exists profile_config (
+  guild_id          text primary key references guilds(guild_id) on delete cascade,
+  reviews_enabled   boolean not null default true,
+  review_channel_id text,
+  updated_at        timestamptz not null default now()
+);
+alter table profile_config enable row level security;
+
+create table if not exists member_reviews (
+  id          bigserial primary key,
+  guild_id    text not null references guilds(guild_id) on delete cascade,
+  target_id   text not null,
+  reviewer_id text not null,
+  stars       integer not null check (stars between 1 and 5),
+  comment     text not null default '' check (char_length(comment) <= 300),
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  unique (guild_id, target_id, reviewer_id),
+  check (target_id <> reviewer_id)
+);
+create index if not exists idx_member_reviews_target on member_reviews (guild_id, target_id, updated_at desc);
+alter table member_reviews enable row level security;
