@@ -6,6 +6,8 @@ const partnersDb = require('../../db/partners');
 const { getTemplate } = require('../../db/embedTemplates');
 const { getGuildPremium, getGuildLimits } = require('../../db/premium');
 const { RESPONSE_KEYS, LABELS, MAX_TEXT, textOf } = require('../../utils/partnerMessages');
+const { parseSpan, formatSpan, cooldownMinutes } = require('../../utils/partnerEngine');
+const { sendManagerWelcome } = require('../../utils/partnerWelcome');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 
@@ -34,9 +36,11 @@ module.exports = {
     .addSubcommand((s) => s.setName('requirements').setDescription('What a partner server needs. Leave a value out to keep it.')
       .addIntegerOption((o) => o.setName('members').setDescription('Minimum members (0 for none)').setMinValue(0).setMaxValue(10_000_000).setRequired(false))
       .addIntegerOption((o) => o.setName('age_days').setDescription('Minimum age of the server in days (0 for none)').setMinValue(0).setMaxValue(3650).setRequired(false))
-      .addIntegerOption((o) => o.setName('cooldown_days').setDescription('Days before the same server can partner again (0 for none)').setMinValue(0).setMaxValue(365).setRequired(false))
+      .addStringOption((o) => o.setName('cooldown').setDescription('Time before the same server can partner again, like 3d 4h, or "none"').setRequired(false))
       .addBooleanOption((o) => o.setName('keep_original').setDescription('Keep the message when a partnership is refused').setRequired(false))
-      .addStringOption((o) => o.setName('reaction').setDescription('An emoji to react with when it counts, or "none"').setRequired(false)))
+      .addStringOption((o) => o.setName('reaction').setDescription('An emoji to react with when it counts, or "none"').setRequired(false))
+      .addBooleanOption((o) => o.setName('block_nsfw').setDescription('Refuse servers that Discord marks as NSFW').setRequired(false))
+      .addStringOption((o) => o.setName('keywords').setDescription('Blocked words in a server name or description, with commas (up to 10), or "none"').setRequired(false)))
     .addSubcommand((s) => s.setName('blacklist').setDescription('Servers that can never be a partner.')
       .addStringOption((o) => o.setName('action').setDescription('add, remove or list').setRequired(true).addChoices({ name: 'add', value: 'add' }, { name: 'remove', value: 'remove' }, { name: 'list', value: 'list' }))
       .addStringOption((o) => o.setName('server').setDescription('ID of the server (for add and remove)').setRequired(false))
@@ -45,6 +49,8 @@ module.exports = {
       .addStringOption((o) => o.setName('reply').setDescription('Which reply').setRequired(true).addChoices(...keyChoices))
       .addStringOption((o) => o.setName('text').setDescription('The text, with variables like {partner.name}. "reset" goes back to the default').setRequired(false).setMaxLength(MAX_TEXT))
       .addStringOption((o) => o.setName('template').setDescription('Name of a saved embed to send instead').setRequired(false)))
+    .addSubcommand((s) => s.setName('welcomechannel').setDescription('Where a new Partner Manager is welcomed. Empty: where the welcome command is used.')
+      .addChannelOption((o) => o.setName('channel').setDescription('The channel').addChannelTypes(...textChannels).setRequired(false)))
     .addSubcommand((s) => s.setName('welcome').setDescription('Welcome a new Partner Manager: gives the role and sends the welcome.')
       .addUserOption((o) => o.setName('user').setDescription('Who').setRequired(true))),
 
@@ -82,6 +88,11 @@ module.exports = {
       await save({ manager_role_id: role?.id ?? null });
       return done(ok(role ? `Partner Managers are the members with ${role}.` : 'Anyone who posts an invite in a partner channel counts.'));
     }
+    if (sub === 'welcomechannel') {
+      const channel = interaction.options.getChannel('channel');
+      await save({ welcome_channel_id: channel?.id ?? null });
+      return done(ok(channel ? `New Partner Managers are welcomed in ${channel}, also when they are given the role.` : 'New Partner Managers are welcomed where the welcome command is used.'));
+    }
     if (sub === 'requirements') return requirements(interaction, config, save, done);
     if (sub === 'blacklist') return blacklist(interaction, done);
     if (sub === 'response') return response(interaction, config, save, done);
@@ -97,7 +108,9 @@ function viewText(config) {
     `State: **${config.enabled ? 'on' : 'off'}**`,
     `Channels: ${channels}`,
     `Partner Managers: ${config.manager_role_id ? `<@&${config.manager_role_id}>` : 'anyone'}`,
-    `Needs: ${config.min_members ? `${config.min_members.toLocaleString('en-US')}+ members` : 'any size'} · ${config.min_age_days ? `${config.min_age_days}+ days old` : 'any age'} · cooldown ${config.cooldown_days ? `${config.cooldown_days} days` : 'none'}`,
+    `Needs: ${config.min_members ? `${config.min_members.toLocaleString('en-US')}+ members` : 'any size'} · ${config.min_age_days ? `${config.min_age_days}+ days old` : 'any age'} · cooldown ${formatSpan(cooldownMinutes(config))}`,
+    `Refuses: ${config.block_nsfw ? 'NSFW servers' : 'no NSFW filter'} · ${config.blocked_keywords?.length ? `words: ${config.blocked_keywords.join(', ')}` : 'no blocked words'}`,
+    `Welcome channel: ${config.welcome_channel_id ? `<#${config.welcome_channel_id}>` : 'where the command is used'}`,
     `Refused messages are ${config.keep_original ? 'kept' : 'deleted'} · reaction ${config.react_emoji ?? 'none'}`,
     `Changed replies: ${changed.length ? changed.join(', ') : 'none'}`,
   ].join('\n');
@@ -107,13 +120,27 @@ async function requirements(interaction, config, save, done) {
   const changes = {};
   const members = interaction.options.getInteger('members');
   const age = interaction.options.getInteger('age_days');
-  const cooldown = interaction.options.getInteger('cooldown_days');
+  const cooldown = interaction.options.getString('cooldown');
   const keep = interaction.options.getBoolean('keep_original');
   const reaction = interaction.options.getString('reaction');
+  const nsfw = interaction.options.getBoolean('block_nsfw');
+  const keywords = interaction.options.getString('keywords');
   if (members !== null) changes.min_members = members;
   if (age !== null) changes.min_age_days = age;
-  if (cooldown !== null) changes.cooldown_days = cooldown;
+  if (cooldown !== null) {
+    const minutes = parseSpan(cooldown);
+    if (minutes === null) return done(note('The cooldown is written like `3d 4h`, `12h` or `30m` (up to a year), or `none`.'));
+    // The new setting replaces the old one in days.
+    changes.cooldown_minutes = minutes;
+    changes.cooldown_days = 0;
+  }
   if (keep !== null) changes.keep_original = keep;
+  if (nsfw !== null) changes.block_nsfw = nsfw;
+  if (keywords !== null) {
+    const words = keywords.trim().toLowerCase() === 'none' ? [] : [...new Set(keywords.split(',').map((word) => word.trim().toLowerCase()).filter(Boolean))];
+    if (words.length > 10 || words.some((word) => word.length > 40)) return done(note('Up to 10 words, each up to 40 characters, separated by commas.'));
+    changes.blocked_keywords = words;
+  }
   if (reaction !== null) {
     const value = reaction.trim();
     if (value.toLowerCase() === 'none') changes.react_emoji = null;
@@ -122,7 +149,7 @@ async function requirements(interaction, config, save, done) {
   }
   if (!Object.keys(changes).length) return done(note(viewText(config)));
   const next = await save(changes);
-  return done(ok('Requirements saved.\n' + viewText(next).split('\n').slice(4, 6).join('\n')));
+  return done(ok(`Requirements saved.\n${viewText(next).split('\n').slice(4, 7).join('\n')}`));
 }
 
 async function blacklist(interaction, done) {
@@ -175,8 +202,6 @@ async function welcome(interaction, config, done) {
     if (role.position >= interaction.guild.members.me.roles.highest.position) return done(note('That role is above mine, so I can not give it.'));
     await member.roles.add(role, 'Partner Manager').catch(() => null);
   }
-  const { responsePayload } = require('../../utils/partnerMessages');
-  const payload = await responsePayload(interaction.guild.id, config, 'manager_welcome', { guild: interaction.guild, member, user, channel: interaction.channel, partner: {} });
-  await interaction.channel.send(payload).catch(() => null);
-  return done(ok(`${user} is a Partner Manager now.${role ? '' : ' (There is no manager role set, so nothing was given.)'}`));
+  const sent = await sendManagerWelcome({ guild: interaction.guild, member, config, fallbackChannel: interaction.channel });
+  return done(ok(`${user} is a Partner Manager now.${role ? '' : ' (There is no manager role set, so nothing was given.)'}${sent ? '' : ' I could not send the welcome.'}`));
 }

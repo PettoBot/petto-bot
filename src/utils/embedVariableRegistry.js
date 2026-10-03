@@ -251,6 +251,16 @@ const VARIABLE_GROUPS = [
     ],
   },
   {
+    id: 'honeypot',
+    label: 'Honeypot',
+    availability: 'honeypot',
+    vars: [
+      { tok: '{honeypot.action}', desc: 'What happens to who posts there, such as a softban' },
+      { tok: '{honeypot.count}', desc: 'Members caught so far' },
+      { tok: '{honeypot.channel}', desc: 'Mention of the bait channel' },
+    ],
+  },
+  {
     id: 'request',
     label: 'Requests',
     availability: 'request',
@@ -280,6 +290,16 @@ const VARIABLE_GROUPS = [
       { tok: '{partner.min_age_days}', desc: 'Days old a partner server needs to be' },
       { tok: '{partner.cooldown_days}', desc: 'Days before the same server can partner again' },
       { tok: '{partner.cooldown_ends}', desc: 'When the cooldown with that server ends' },
+      { tok: '{partner.cooldown}', desc: 'The cooldown as text, such as 3d 4h' },
+      { tok: '{partner.rank_week}', desc: 'Place of the manager this week' },
+      { tok: '{partner.rank_total}', desc: 'Place of the manager in total' },
+      { tok: '{partner.top_week}', desc: 'Mention of the best manager this week' },
+      { tok: '{partner.top_week_count}', desc: 'Partnerships of the best manager this week' },
+      { tok: '{partner.top_total}', desc: 'Mention of the best manager in total' },
+      { tok: '{partner.top_total_count}', desc: 'Partnerships of the best manager in total' },
+      { tok: '{partner.server_day}', desc: 'Partnerships of the whole server today' },
+      { tok: '{partner.server_week}', desc: 'Partnerships of the whole server this week' },
+      { tok: '{partner.server_total}', desc: 'Partnerships of the whole server in total' },
     ],
   },
   {
