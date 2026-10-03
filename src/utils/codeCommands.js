@@ -1,6 +1,6 @@
 // Runs custom commands written in code (Petto Code). The code only says what it wants (see src/scripting); this file
 // is where the bot decides what it will really do, so a command can never do more than its member could.
-const { EmbedBuilder, PermissionFlagsBits } = require('discord.js');
+const { EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, StringSelectMenuBuilder, MessageFlags } = require('discord.js');
 const config = require('../config');
 const logger = require('./logger');
 const { run, check, PettoCodeError, MAX_SOURCE_LENGTH } = require('../scripting');
@@ -39,12 +39,57 @@ function buildData(message, commandName, argText, prefix) {
     },
     Guild: { ID: guild.id, Name: guild.name, MemberCount: guild.memberCount ?? null, Icon: guild.iconURL?.({ extension: 'png', size: 256 }) ?? null },
     Channel: { ID: channel.id, Name: channel.name ?? null, Mention: `<#${channel.id}>` },
-    Message: { ID: message.id, Content: message.content ?? '', Link: message.url ?? null },
+    Message: {
+      ID: message.id, Content: message.content ?? '', Link: message.url ?? null,
+      Embeds: (message.embeds ?? []).slice(0, 10).map((embed) => ({ Title: embed.title ?? null, Description: embed.description ?? null, Footer: embed.footer?.text ?? null })),
+    },
     Args: tokenize(argText ?? ''),
     RawArgs: argText ?? '',
     Cmd: commandName,
     Prefix: prefix,
+    Trigger: 'command',
+    Button: null,
+    Values: [],
   };
+}
+
+// ── Buttons and menus ───────────────────────────────────────────────────────
+const COMPONENT_PREFIX = 'cc:';
+
+/** The id Discord keeps for a button or a menu: cc:<command>:<handler>:<data>:<u + user id, or nothing>. At most 97 characters. */
+function componentId(commandName, spec) {
+  return `${COMPONENT_PREFIX}${commandName}:${spec.handler}:${spec.data ?? ''}:${spec.userId ? `u${spec.userId}` : ''}`;
+}
+
+function parseComponentId(customId) {
+  const parts = String(customId).split(':');
+  if (parts[0] !== 'cc' || parts.length !== 5) return null;
+  const [, command, handler, data, lock] = parts;
+  if (!command || !handler) return null;
+  return { command, handler, data, userId: lock.startsWith('u') ? lock.slice(1) : null };
+}
+
+/** The rows of buttons and menus of a message, as discord.js builds them. */
+function buildComponents(rows, commandName) {
+  return rows.map((row) => {
+    const builder = new ActionRowBuilder();
+    for (const item of row.items) {
+      if (item.type === 'select') {
+        const menu = new StringSelectMenuBuilder().setCustomId(componentId(commandName, item)).setMinValues(item.min).setMaxValues(item.max)
+          .addOptions(item.options.map((option) => ({ label: option.label, value: option.value, ...(option.description ? { description: option.description } : {}) })));
+        if (item.placeholder) menu.setPlaceholder(item.placeholder);
+        builder.addComponents(menu);
+      } else {
+        const button = new ButtonBuilder().setStyle(item.style);
+        if (item.label) button.setLabel(item.label);
+        if (item.emoji) button.setEmoji(item.emoji);
+        if (item.disabled) button.setDisabled(true);
+        if (item.url) button.setURL(item.url); else button.setCustomId(componentId(commandName, item));
+        builder.addComponents(button);
+      }
+    }
+    return builder;
+  });
 }
 
 /** The ids a text mentions on purpose, so only those can be pinged. */
@@ -69,10 +114,11 @@ function allowedMentionsFor(content, guild, authorId) {
 const clip = (text) => (text.length > MAX_MESSAGE ? `${text.slice(0, MAX_MESSAGE - 1)}…` : text);
 
 /** What a message of the code looks like when sent: text, an embed, or both. */
-function toPayload(action, guild, authorId) {
+function toPayload(action, guild, authorId, commandName = null) {
   const payload = { allowedMentions: allowedMentionsFor(action.content, guild, authorId) };
   if (action.content) payload.content = clip(action.content);
   if (action.embed) payload.embeds = [new EmbedBuilder(action.embed)];
+  if (action.components?.length && commandName) payload.components = buildComponents(action.components, commandName);
   return payload;
 }
 
@@ -87,7 +133,7 @@ function canGiveRole(guild, role) {
 }
 
 /** Does what the code asked, as far as it is allowed. Returns the reasons for what was left undone. */
-async function applyEffects(message, effects) {
+async function applyEffects(message, effects, commandName = null) {
   const { guild, author, member } = message;
   const skipped = [];
   const me = guild.members.me;
@@ -100,7 +146,7 @@ async function applyEffects(message, effects) {
         const memberCan = channel.permissionsFor(member);
         if (!botCan?.has(PermissionFlagsBits.SendMessages) || !botCan.has(PermissionFlagsBits.ViewChannel)) { skipped.push(`a message to #${channel.name}, Petto cannot send there`); continue; }
         if (!memberCan?.has(PermissionFlagsBits.SendMessages)) { skipped.push(`a message to #${channel.name}, you cannot send there`); continue; }
-        await channel.send(toPayload(effect, guild, author.id));
+        await channel.send(toPayload(effect, guild, author.id, commandName));
       } else if (effect.type === 'dm') {
         await author.send({ ...toPayload(effect, guild, author.id), allowedMentions: { parse: [] } }).catch(() => skipped.push('a direct message, you have them closed'));
       } else if (effect.type === 'addRole' || effect.type === 'removeRole') {
@@ -171,11 +217,67 @@ async function runCodeCommand(message, row, argText, prefix) {
   }
   const text = result.output.trim();
   if (text) await message.reply({ content: clip(text), allowedMentions: allowedMentionsFor(text, message.guild, message.author.id) }).catch(() => {});
-  const skipped = await applyEffects(message, result.effects);
+  const skipped = await applyEffects(message, result.effects, row.name);
   if (skipped.length) {
     await message.reply({ content: clip(`⚠️ Some actions were not done: ${[...new Set(skipped)].join('; ')}.`), allowedMentions: { parse: [], repliedUser: false } }).catch(() => {});
   }
   return true;
+}
+
+/**
+ * Runs the code of a command because someone used one of its buttons or menus. The command runs again with `.Trigger` set to
+ * "button" or "select", `.Button.ID` and `.Button.Data` from the component, and `.Values` for a menu.
+ */
+async function runComponent(interaction, row, parsed) {
+  const ephemeralReply = (content) => interaction.reply({ content: clip(content), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } }).catch(() => {});
+  if (parsed.userId && parsed.userId !== interaction.user.id) return ephemeralReply('This is not for you.');
+  const key = `${interaction.guildId}:${interaction.user.id}:${row.name}:${parsed.handler}`;
+  if (Date.now() - (cooldowns.get(key) ?? 0) < COOLDOWN_MS / 2) return interaction.deferUpdate().catch(() => {});
+  cooldowns.set(key, Date.now());
+
+  const { guild, channel, user, member } = interaction;
+  // The pieces of a message that the data and the actions use, taken from the message the component is on.
+  const source = {
+    id: interaction.message?.id ?? interaction.id, content: interaction.message?.content ?? '', url: interaction.message?.url ?? null, embeds: interaction.message?.embeds ?? [],
+    guild, channel, member, author: user,
+    react: async () => { throw new Error('A reaction needs the message of a command'); }, delete: async () => {},
+  };
+  const data = {
+    ...buildData(source, row.name, '', '!'),
+    Trigger: interaction.isStringSelectMenu?.() ? 'select' : 'button',
+    Button: { ID: parsed.handler, Data: parsed.data },
+    Values: interaction.isStringSelectMenu?.() ? [...interaction.values] : [],
+  };
+
+  let result;
+  try {
+    result = await run(row.code, data, { store: commandData.forGuild(guild.id), limits: { maxMillis: 2000 } });
+  } catch (error) {
+    if (error instanceof PettoCodeError) return ephemeralReply(mistakeText(error));
+    logger.error(`Custom command "${row.name}" crashed on a component in guild ${guild.id}:`, error);
+    return interaction.deferUpdate().catch(() => {});
+  }
+
+  const update = result.effects.find((effect) => effect.type === 'update');
+  const respond = result.effects.find((effect) => effect.type === 'respond');
+  const text = result.output.trim();
+  const rest = result.effects.filter((effect) => effect.type !== 'update' && effect.type !== 'respond');
+
+  // Answer first, Discord only waits three seconds, then do the rest.
+  try {
+    if (update) await interaction.update(toPayload(update, guild, user.id, row.name));
+    else if (respond) await interaction.reply({ ...toPayload(respond, guild, user.id, row.name), ...(respond.ephemeral ? { flags: MessageFlags.Ephemeral } : {}) });
+    else if (text) await interaction.reply({ content: clip(text), allowedMentions: allowedMentionsFor(text, guild, user.id) });
+    else await interaction.deferUpdate();
+  } catch (error) {
+    logger.warn(`Could not answer the component of "${row.name}" in guild ${guild.id}: ${error.message}`);
+    return null;
+  }
+  const skipped = await applyEffects(source, rest, row.name);
+  if (skipped.length) {
+    await interaction.followUp({ content: clip(`⚠️ Some actions were not done: ${[...new Set(skipped)].join('; ')}.`), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } }).catch(() => {});
+  }
+  return null;
 }
 
 /** Takes the code out of what was typed: with or without a code block around it. */
@@ -217,4 +319,4 @@ function decodeShare(text) {
   return { name, description: typeof data.d === 'string' ? data.d.slice(0, 200) : '', code: data.c };
 }
 
-module.exports = { memoryStore, canWriteCode, buildData, runCodeCommand, applyEffects, extractCode, rawAfter, encodeShare, decodeShare, allowedMentionsFor, check, COOLDOWN_MS, RISKY_PERMISSIONS };
+module.exports = { COMPONENT_PREFIX, parseComponentId, componentId, buildComponents, runComponent, memoryStore, canWriteCode, buildData, runCodeCommand, applyEffects, extractCode, rawAfter, encodeShare, decodeShare, allowedMentionsFor, check, COOLDOWN_MS, RISKY_PERMISSIONS };

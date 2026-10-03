@@ -173,6 +173,91 @@ const row = (code, name = `c${Math.random().toString(16).slice(2, 8)}`) => ({ na
   await codeCommands.runCodeCommand(t.message, row('{{ add (index .Args 0) (index .Args 1) }}'), '4 5', '!');
   assert.equal(t.replies[0].content, '9');
 
+  // Buttons and menus: the id Discord keeps, and running a command because of a click.
+  const sample = { handler: 'yes', data: 'a1', userId: '123456789012345678' };
+  assert.equal(codeCommands.componentId('vote', sample), 'cc:vote:yes:a1:u123456789012345678');
+  assert.deepEqual(codeCommands.parseComponentId('cc:vote:yes:a1:u123456789012345678'), { command: 'vote', handler: 'yes', data: 'a1', userId: '123456789012345678' });
+  assert.deepEqual(codeCommands.parseComponentId('cc:vote:yes::'), { command: 'vote', handler: 'yes', data: '', userId: null });
+  assert.equal(codeCommands.parseComponentId('quests:view'), null); assert.equal(codeCommands.parseComponentId('cc:only:three'), null);
+  assert.ok(codeCommands.componentId('x'.repeat(32), { handler: 'h'.repeat(20), data: 'd'.repeat(20), userId: '123456789012345678' }).length <= 100, 'the longest id fits the 100 characters of Discord');
+
+  const realNow = Date.now; let clock = realNow(); Date.now = () => clock;
+  const voteTemplate = TEMPLATES.find((template) => template.id === 'vote');
+  const voteRow = { name: 'vote', code: voteTemplate.code };
+  const bits = makeGuild();
+  const asked = makeMessage({ guildBits: bits, content: '!vote pizza?' });
+  await codeCommands.runCodeCommand(asked.message, voteRow, 'pizza tonight?', '!');
+  const sentVote = bits.sent[0].payload;
+  assert.equal(sentVote.embeds[0].data.description, 'pizza tonight?');
+  const buttonIds = sentVote.components[0].components.map((button) => button.data.custom_id);
+  assert.deepEqual(buttonIds, ['cc:vote:yes::', 'cc:vote:no::'], 'the buttons carry the command and the handler');
+
+  const click = async (customId, { user = '500000000000000001', values = null, embeds } = {}) => {
+    clock += 5000;
+    const made = makeMessage({ guildBits: bits });
+    const log = { replies: [], updates: [], deferred: 0, followUps: [] };
+    const interaction = {
+      customId, guild: made.message.guild, guildId: made.message.guild.id, channel: made.message.channel, member: made.message.member, user: { ...made.message.author, id: user },
+      message: { id: '600000000000000001', content: '', embeds: embeds ?? [{ title: '📊 Vote', description: 'pizza tonight?', footer: { text: 'Yes: 0 · No: 0' } }], url: 'x' },
+      isStringSelectMenu: () => values !== null, values: values ?? [],
+      reply: async (payload) => { log.replies.push(payload); }, update: async (payload) => { log.updates.push(payload); }, deferUpdate: async () => { log.deferred += 1; }, followUp: async (payload) => { log.followUps.push(payload); },
+    };
+    await codeCommands.runComponent(interaction, voteRow.name === customId.split(':')[1] ? voteRow : row('x'), codeCommands.parseComponentId(customId));
+    return { ...log, made };
+  };
+  let vote = await click('cc:vote:yes::');
+  assert.equal(vote.updates[0].embeds[0].data.footer.text, 'Yes: 1 · No: 0', 'a click updates the message it is on');
+  assert.equal(vote.updates[0].embeds[0].data.description, 'pizza tonight?');
+  vote = await click('cc:vote:yes::');
+  assert.ok(vote.replies[0].content.includes('already voted') && vote.replies[0].flags, 'the same vote again is answered in private');
+  vote = await click('cc:vote:no::');
+  assert.equal(vote.updates[0].embeds[0].data.footer.text, 'Yes: 0 · No: 1', 'changing a vote moves it');
+  vote = await click('cc:vote:yes::', { user: '500000000000000002' });
+  assert.equal(vote.updates[0].embeds[0].data.footer.text, 'Yes: 1 · No: 1', 'another member adds a vote');
+
+  // A locked button is only for who it names.
+  const locked = await click('cc:vote:yes::u500000000000000009');
+  assert.ok(locked.replies[0].content.includes('not for you') && locked.updates.length === 0);
+  // A click twice in a row is held back, without an error.
+  clock -= 4000;
+  const quick = await click('cc:vote:yes::', { user: '500000000000000002' });
+  clock += 4000;
+  assert.equal(quick.deferred, 1); assert.equal(quick.updates.length + quick.replies.length, 0, 'a click right after another is held back without a message');
+  // Menus: the values reach the code, and respond can be private.
+  const favoriteRow = { name: 'favorite', code: TEMPLATES.find((template) => template.id === 'favorite').code };
+  const menuClick = async (values) => {
+    clock += 5000;
+    const made = makeMessage({ guildBits: bits }); const log = { replies: [], updates: [], deferred: 0 };
+    await codeCommands.runComponent({
+      guild: made.message.guild, guildId: made.message.guild.id, channel: made.message.channel, member: made.message.member, user: made.message.author, message: { id: '1', content: '', embeds: [] },
+      isStringSelectMenu: () => true, values, reply: async (payload) => { log.replies.push(payload); }, update: async (payload) => { log.updates.push(payload); }, deferUpdate: async () => { log.deferred += 1; }, followUp: async () => {},
+    }, favoriteRow, { command: 'favorite', handler: 'pick', data: '', userId: null });
+    return log;
+  };
+  const picked = await menuClick(['sushi']);
+  assert.ok(picked.replies[0].content.includes('**sushi**') && picked.replies[0].flags, 'a menu answers with what was chosen, in private');
+  // A click that does nothing is acknowledged without a message.
+  const quiet = await (async () => {
+    const made = makeMessage({ guildBits: bits }); const log = { deferred: 0, replies: [] }; clock += 5000;
+    await codeCommands.runComponent({ guild: made.message.guild, guildId: made.message.guild.id, channel: made.message.channel, member: made.message.member, user: made.message.author, message: { id: '1', content: '', embeds: [] }, isStringSelectMenu: () => false, values: [], reply: async (p) => { log.replies.push(p); }, update: async () => {}, deferUpdate: async () => { log.deferred += 1; }, followUp: async () => {} }, row('{{ $x := 1 }}', 'quiet'), { command: 'quiet', handler: 'h', data: '', userId: null });
+    return log;
+  })();
+  assert.equal(quiet.deferred, 1); assert.equal(quiet.replies.length, 0);
+  // The clicker counts for everyone, and what a click does besides answering is held to the same checks.
+  const clickerRow = { name: 'clicker', code: TEMPLATES.find((template) => template.id === 'clicker').code };
+  const clickerAsked = makeMessage({ guildBits: bits }); await codeCommands.runCodeCommand(clickerAsked.message, clickerRow, '', '!');
+  assert.ok(bits.sent.at(-1).payload.content.includes('Clicks: **0**') && bits.sent.at(-1).payload.components.length === 1);
+  const roleRow = { name: 'getrole', code: '{{ addRole "100000000000000002" }}{{ addRole "100000000000000001" }}{{ respond "ok" true }}' };
+  const roleClick = makeMessage({ guildBits: bits }); const roleLog = { replies: [], followUps: [] }; clock += 5000;
+  await codeCommands.runComponent({ guild: roleClick.message.guild, guildId: roleClick.message.guild.id, channel: roleClick.message.channel, member: roleClick.message.member, user: roleClick.message.author, message: { id: '1', content: '', embeds: [] }, isStringSelectMenu: () => false, values: [], reply: async (p) => { roleLog.replies.push(p); }, update: async () => {}, deferUpdate: async () => {}, followUp: async (p) => { roleLog.followUps.push(p); } }, roleRow, { command: 'getrole', handler: 'h', data: '', userId: null });
+  assert.deepEqual(roleClick.roleLog, [['add', '100000000000000001']], 'a button cannot give a role with moderation permissions either');
+  assert.ok(roleLog.followUps[0].content.includes('moderation or server permissions'), 'and says so in private');
+  // A mistake in the code is told in private.
+  const brokenClick = makeMessage({ guildBits: bits }); const brokenLog = { replies: [] }; clock += 5000;
+  await codeCommands.runComponent({ guild: brokenClick.message.guild, guildId: brokenClick.message.guild.id, channel: brokenClick.message.channel, member: brokenClick.message.member, user: brokenClick.message.author, message: { id: '1', content: '', embeds: [] }, isStringSelectMenu: () => false, values: [], reply: async (p) => { brokenLog.replies.push(p); }, update: async () => {}, deferUpdate: async () => {}, followUp: async () => {} }, row('{{ nope }}', 'broken'), { command: 'broken', handler: 'h', data: '', userId: null });
+  assert.ok(brokenLog.replies[0].content.includes('mistake') && brokenLog.replies[0].flags);
+  Date.now = realNow;
+
   // Every template is valid and runs, alone and with no arguments.
   const base = codeCommands.buildData(makeMessage().message, 'x', '', '!');
   assert.ok(TEMPLATES.length >= 8);

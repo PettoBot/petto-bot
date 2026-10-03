@@ -12,7 +12,7 @@ const DEFAULT_LIMITS = {
   maxOutput: 20_000, // characters printed while running; the bot cuts a message to Discord's limit later
   maxValueSize: 20_000, // the longest text a function may make
   maxListSize: 2_000,
-  effects: { message: 5, dm: 2, addRole: 5, removeRole: 5, reaction: 5, deleteTrigger: 1 },
+  effects: { message: 5, dm: 2, addRole: 5, removeRole: 5, reaction: 5, deleteTrigger: 1, respond: 1, update: 1 },
 };
 
 class Scope {
