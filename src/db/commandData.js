@@ -93,6 +93,18 @@ function forGuild(guildId) {
       );
       return rows.map((row) => ({ UserID: row.user_id, Value: row.value }));
     },
+    // The messages whose reactions run a command. They are kept apart from the values of the code and do not count towards its limit.
+    async watch(messageId, record, ttlSeconds) {
+      await (await db()).query(
+        `insert into custom_command_data (guild_id, user_id, key, value, expires_at) values ($1, '', $2, $3::jsonb, now() + ($4::int * interval '1 second'))
+         on conflict (guild_id, user_id, key) do update set value = excluded.value, expires_at = excluded.expires_at, updated_at = now()`,
+        [guild, `rx:${messageId}`, JSON.stringify(record), ttlSeconds],
+      );
+    },
+    async watched(messageId) {
+      const { rows } = await (await db()).query(`select value from custom_command_data where guild_id = $1 and user_id = '' and key = $2 and ${alive}`, [guild, `rx:${messageId}`]);
+      return rows[0] ? rows[0].value : null;
+    },
     async keys(prefix, user) {
       const { rows } = await (await db()).query(
         `select key from custom_command_data where guild_id = $1 and user_id = $2 and key like $3 and ${alive} order by key limit 100`,

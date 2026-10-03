@@ -352,7 +352,7 @@ const componentsOf = (value) => {
   return rows;
 };
 
-def('complexMessage', 0, 6, (env, ...pairs) => {
+def('complexMessage', 0, 8, (env, ...pairs) => {
   if (pairs.length % 2) throw new Error('complexMessage needs pairs of a name and a value, like "content" "Hi"');
   const message = {};
   for (let i = 0; i < pairs.length; i += 2) {
@@ -360,7 +360,11 @@ def('complexMessage', 0, 6, (env, ...pairs) => {
     if (key === 'content') message.content = limitText(pairs[i + 1], 2000, 'The content');
     else if (key === 'embed') { if (!EMBEDS.has(pairs[i + 1])) throw new Error('"embed" must be made with cembed'); message.embed = pairs[i + 1]; }
     else if (key === 'components') message.components = componentsOf(pairs[i + 1]);
-    else throw new Error(`complexMessage does not know "${key}". Use content, embed or components`);
+    else if (key === 'reactions') {
+      const emojis = list(pairs[i + 1], 'a list of emojis like cslice "🦋" "🎀"').map((emoji) => emojiOf(emoji));
+      if (!emojis.length || emojis.length > 5) throw new Error('A message gets from 1 to 5 reactions');
+      message.reactions = [...new Set(emojis)];
+    } else throw new Error(`complexMessage does not know "${key}". Use content, embed, components or reactions`);
   }
   COMPLEX.add(message);
   return message;
@@ -369,7 +373,7 @@ def('complexMessage', 0, 6, (env, ...pairs) => {
 // ── Effects: what the code asks the bot to do ───────────────────────────────
 function messageOf(value) {
   if (EMBEDS.has(value)) return { embed: value };
-  if (COMPLEX.has(value)) return Object.fromEntries(Object.entries({ content: value.content, embed: value.embed, components: value.components }).filter(([, part]) => part !== undefined));
+  if (COMPLEX.has(value)) return Object.fromEntries(Object.entries({ content: value.content, embed: value.embed, components: value.components, reactions: value.reactions }).filter(([, part]) => part !== undefined));
   if (typeof value === 'string' || typeof value === 'number') return { content: limitText(value, 2000, 'A message') };
   throw new Error('A message is a text, or something made with cembed or complexMessage');
 }
@@ -385,6 +389,7 @@ def('sendMessage', 2, 2, (env, channel, value) => {
 def('sendDM', 1, 1, (env, value) => {
   const message = messageOf(value);
   if (message.components) throw new Error('A direct message cannot have buttons or menus');
+  if (message.reactions) throw new Error('reactions only work in a message sent with sendMessage');
   if (!hasBody(message)) throw new Error('The message is empty');
   env.effects.add('dm', message);
   return null;
@@ -398,7 +403,7 @@ def('addReaction', 1, 1, (env, emoji) => {
   return null;
 });
 const needComponent = (env, name) => {
-  if (!['button', 'select', 'modal'].includes(env.data?.Trigger)) throw new Error(`${name} only works when the command runs because of a button or a menu (or a modal)`);
+  if (!['button', 'select', 'modal', 'reaction'].includes(env.data?.Trigger)) throw new Error(`${name} only works when the command runs because of a button or a menu (or a modal, or a reaction)`);
 };
 def('showModal', 1, 1, (env, modal) => {
   if (!['button', 'select'].includes(env.data?.Trigger)) throw new Error('showModal only works when the command runs because of a button or a menu (a modal cannot answer a modal)');
@@ -409,6 +414,7 @@ def('showModal', 1, 1, (env, modal) => {
 def('respond', 1, 2, (env, value, ephemeral) => {
   needComponent(env, 'respond');
   const message = messageOf(value);
+  if (message.reactions) throw new Error('reactions only work in a message sent with sendMessage');
   if (!hasBody(message)) throw new Error('The message is empty');
   env.effects.add('respond', { ...message, ephemeral: ephemeral === undefined ? false : isTruthy(ephemeral) });
   return null;
@@ -416,8 +422,14 @@ def('respond', 1, 2, (env, value, ephemeral) => {
 def('updateMessage', 1, 1, (env, value) => {
   needComponent(env, 'updateMessage');
   const message = messageOf(value);
+  if (message.reactions) throw new Error('reactions only work in a message sent with sendMessage');
   if (!hasBody(message)) throw new Error('The message is empty');
   env.effects.add('update', message);
+  return null;
+});
+def('removeReaction', 0, 0, (env) => {
+  if (env.data?.Trigger !== 'reaction') throw new Error('removeReaction only works when the command runs because someone reacted');
+  env.effects.add('removeReaction', {});
   return null;
 });
 def('deleteTrigger', 0, 0, (env) => { env.effects.add('deleteTrigger', {}); return null; });
@@ -428,6 +440,7 @@ const MAX_STORED_LENGTH = 4000;
 
 function storeKey(value) {
   if (typeof value !== 'string' || !KEY_SHAPE.test(value)) throw new Error('A key is a text of 1 to 100 letters, numbers, . _ : or -');
+  if (value.startsWith('rx:')) throw new Error('A key cannot start with rx:, Petto uses it');
   return value;
 }
 /** A user ID for data of one member, or '' for data of the whole server. */
