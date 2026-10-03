@@ -34,11 +34,11 @@ const REWARD_KIND_LIST = ['orbs', 'decoration', 'code', 'ingame', 'nitro'];
 // API (which also knows the region and age limits) and aamiaa/discord-api-diff, the repository that archives Discord's own
 // quest data and is the first to have a new quest (the other tracker sites and mirrors copy it, some hours later).
 const SOURCES = [
-  { name: 'discordquest.com', url: `${API_BASE}/api/quests`, regions: true },
+  { name: 'discordquest.com', url: `${API_BASE}/api/quests`, regions: true, minIntervalMs: 30 * 60_000 },
   { name: 'discord-api-diff', url: 'https://raw.githubusercontent.com/aamiaa/discord-api-diff/main/quests.json', regions: false },
   { name: 'discord-api-tracker', url: 'https://raw.githubusercontent.com/xGustavvo/discord-api-tracker/main/quests.json', regions: false },
 ];
-const state = new Map(SOURCES.map((source) => [source.name, { etag: null, quests: null, ok: null, at: null, error: null, pausedUntil: 0 }]));
+const state = new Map(SOURCES.map((source) => [source.name, { etag: null, quests: null, ok: null, at: null, error: null, pausedUntil: 0, askedAt: 0, strikes: 0 }]));
 
 function clean(value, max) {
   return String(value ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -163,20 +163,28 @@ async function readSource(source, force) {
     entry.error = `paused after a rate limit, until ${new Date(entry.pausedUntil).toISOString()}`;
     throw new Error(entry.error);
   }
+  // The community API is protected by Cloudflare and shared with everyone, so it is asked gently (the GitHub copies detect
+  // the quests, this one adds the region and age limits): never more often than `minIntervalMs`, and each rate limit in a
+  // row doubles the pause. Its last answer keeps being used in between.
+  if (!force && source.minIntervalMs && entry.quests && Date.now() - entry.askedAt < source.minIntervalMs) return false;
+  entry.askedAt = Date.now();
   try {
     const result = await getJson(source.url, !force && entry.etag && entry.quests ? { 'if-none-match': entry.etag } : {});
     if (result.notModified) {
-      Object.assign(entry, { ok: true, at: new Date(), error: null });
+      Object.assign(entry, { ok: true, at: new Date(), error: null, strikes: 0 });
       return false;
     }
     if (!Array.isArray(result.data)) throw new Error('the answer has an unexpected shape');
     const regions = source.regions ? await readRegions() : new Map();
     entry.quests = result.data.map((raw) => normalizeQuest(raw, regions.get(String(raw?.id)) ?? null)).filter(Boolean);
-    Object.assign(entry, { etag: result.etag ?? null, ok: true, at: new Date(), error: null });
+    Object.assign(entry, { etag: result.etag ?? null, ok: true, at: new Date(), error: null, strikes: 0 });
     return true;
   } catch (error) {
     Object.assign(entry, { ok: false, at: new Date(), error: error.name === 'AbortError' ? 'it took too long' : error.message });
-    if (error.retryAfterMs) entry.pausedUntil = Date.now() + error.retryAfterMs;
+    if (error.retryAfterMs) {
+      entry.strikes += 1;
+      entry.pausedUntil = Date.now() + Math.min(6 * 3_600_000, error.retryAfterMs * 2 ** (entry.strikes - 1));
+    }
     throw error;
   }
 }

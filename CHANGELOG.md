@@ -6,7 +6,7 @@ All notable changes to Petto are documented here.
 
 ### Added
 
-- A third quest source, a second independent copy of Discord's quest data on GitHub. discordquest.com sits behind a protection that sometimes answers the bot with a rate limit, and then only one file carried the alerts. Now two copies back each other up, and `!quests status` lists all three.
+- A third quest source, a second independent copy of Discord's quest data on GitHub. discordquest.com sits behind a protection that sometimes answers the bot with a rate limit, and then only one file carried the alerts. Now two copies back each other up, and `!quests status` lists all three. The community API is now asked gently, at most once every 30 minutes, and each rate limit in a row doubles the pause (up to 6 hours), so the bot stops hammering a protected site; the last answer keeps being used in between and the GitHub copies keep detecting new quests.
 
 ### Fixed
 

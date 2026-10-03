@@ -79,10 +79,12 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
   assert.equal(answer.notModified, false); assert.equal(answer.quests.length, 6, 'the quest only the tracker has is included');
   assert.equal(answer.quests.find((quest) => quest.id === ids.orbs).ageGate, true, 'the community API wins, it knows the limits');
   answer = await questApi.fetchQuests();
-  assert.equal(answer.notModified, true); assert.equal(answer.quests.length, 6, 'when nothing changed the list is still given'); assert.ok(calls.some(([, tag]) => tag === '"t1"') && calls.some(([, tag]) => tag === '"v1"'));
+  assert.equal(answer.notModified, true); assert.equal(answer.quests.length, 6, 'when nothing changed the list is still given'); assert.ok(calls.some(([, tag]) => tag === '"t1"'));
+  assert.equal(calls.filter(([link]) => link.endsWith('/api/quests')).length, 1, 'the community API is not asked again within half an hour');
+  await questApi.fetchQuests({ force: true }); assert.equal(calls.filter(([link]) => link.endsWith('/api/quests')).length, 2, 'a forced read asks anyway');
   assert.equal(questApi.getStatus().ok, true); assert.equal(questApi.getStatus().sources.length, 3);
   questApi.resetCache(); failTracker = true;
-  answer = await questApi.fetchQuests();
+  answer = await questApi.fetchQuests({ force: true });
   assert.equal(answer.notModified, false); assert.equal(answer.quests.length, 6, 'one source failing is not a problem');
   assert.equal(questApi.getStatus().sources[1].ok, false);
   questApi.resetCache(); failCommunity = true;
