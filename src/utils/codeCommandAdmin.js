@@ -3,10 +3,20 @@
 const { ensureGuild } = require('../db/guilds');
 const ccDb = require('../db/customCommands');
 const { check, MAX_SOURCE_LENGTH } = require('../scripting');
+const { getGuildPremium, getGuildLimits } = require('../db/premium');
 const { validateTrigger, invalidateTriggers, triggersFor, MAX_TRIGGERS_PER_GUILD } = require('./codeTriggers');
 
-const MAX_PER_GUILD = 100;
+const MAX_PER_GUILD = 100; // the most any server can have (Premium); a Free server has less, see commandLimit
 const NAME_SHAPE = /^[a-z0-9_-]{1,32}$/;
+
+/** How many custom commands a server can have: Free 50, Premium 100. */
+async function commandLimit(guildId) {
+  const premium = await getGuildPremium(guildId).catch(() => ({ active: false }));
+  return { limit: getGuildLimits(premium).customCommands, premium: Boolean(premium?.active) };
+}
+
+/** What to say when a server is full of custom commands. */
+const fullMessage = ({ limit, premium }) => `This server already has the maximum of ${limit} custom commands.${premium ? '' : ' Premium raises it to 100.'}`;
 
 const clip = (text, max) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
 
@@ -50,7 +60,8 @@ async function saveCodeCommand({ guild, client, userId, name, code }) {
   const existing = await ccDb.getCommand(guild.id, name);
   if (!existing) {
     const current = await ccDb.listCommands(guild.id);
-    if (current.length >= MAX_PER_GUILD) return { ok: false, field: 'name', message: `This server already has the maximum of ${MAX_PER_GUILD} custom commands.` };
+    const allowed = await commandLimit(guild.id);
+    if (current.length >= allowed.limit) return { ok: false, field: 'name', message: fullMessage(allowed) };
   }
   await ccDb.upsertCommand(guild.id, name, { response: null, embedTemplate: null, code, createdBy: userId });
   return { ok: true, created: !existing };
@@ -76,4 +87,4 @@ async function setCommandTrigger({ guild, client, name, type, text }) {
   return { ok: true, type, text: checked.text };
 }
 
-module.exports = { MAX_PER_GUILD, NAME_SHAPE, codeProblem, describeEffect, saveCodeCommand, setCommandTrigger, isRealCommand };
+module.exports = { MAX_PER_GUILD, commandLimit, fullMessage, NAME_SHAPE, codeProblem, describeEffect, saveCodeCommand, setCommandTrigger, isRealCommand };

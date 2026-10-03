@@ -30,20 +30,21 @@ function registerCodeRoutes(app, { authorize }) {
       if (!res.headersSent) res.status(500).json({ ok: false, error: 'code_unavailable' });
     }
   };
-  const needWrite = (res, userId) => {
-    if (codeCommands.canWriteCode(userId)) return true;
-    res.status(403).json({ ok: false, error: 'testing_only', message: "Commands in code are in testing and only available to Petto's team for now." });
+  const needWrite = (res) => {
+    if (codeCommands.canWriteCode()) return true;
+    res.status(403).json({ ok: false, error: 'turned_off', message: 'Commands in code are turned off for now.' });
     return false;
   };
 
-  app.get('/api/dashboard/guild/:guildId/code/meta', limiter, route(async (req, res, { userId }) => {
+  app.get('/api/dashboard/guild/:guildId/code/meta', limiter, route(async (req, res) => {
+    const allowed = await admin.commandLimit(req.params.guildId);
     res.json({
       ok: true,
-      canWrite: codeCommands.canWriteCode(userId),
+      canWrite: codeCommands.canWriteCode(),
       functions: [...functions.entries()].map(([name, entry]) => ({ name, min: entry.min, max: entry.max })).sort((a, b) => a.name.localeCompare(b.name)),
       templates: TEMPLATES.map(({ id, name, description, suggestedName, code }) => ({ id, name, description, suggestedName, code })),
       triggerTypes: TRIGGER_TYPES,
-      limits: { source: MAX_SOURCE_LENGTH, steps: DEFAULT_LIMITS.maxSteps, commands: admin.MAX_PER_GUILD, storeCalls: DEFAULT_LIMITS.maxStoreCalls },
+      limits: { source: MAX_SOURCE_LENGTH, steps: DEFAULT_LIMITS.maxSteps, commands: allowed.limit, premium: allowed.premium, storeCalls: DEFAULT_LIMITS.maxStoreCalls },
     });
   }));
 
@@ -56,7 +57,7 @@ function registerCodeRoutes(app, { authorize }) {
 
   // Runs the code as the person who is testing, with memory-only storage: nothing is sent, saved or changed.
   app.post('/api/dashboard/guild/:guildId/code/test', limiter, route(async (req, res, { guild, member, userId }) => {
-    if (!needWrite(res, userId)) return;
+    if (!needWrite(res)) return;
     const code = typeof req.body?.code === 'string' ? req.body.code : '';
     const args = typeof req.body?.args === 'string' ? req.body.args.slice(0, 500) : '';
     const trigger = ['button', 'select'].includes(req.body?.trigger) ? req.body.trigger : 'command';
@@ -78,7 +79,7 @@ function registerCodeRoutes(app, { authorize }) {
   }));
 
   app.post('/api/dashboard/guild/:guildId/code/save', limiter, route(async (req, res, { guild, userId }) => {
-    if (!needWrite(res, userId)) return;
+    if (!needWrite(res)) return;
     const name = String(req.body?.name ?? '').toLowerCase().trim().replace(/\s+/g, '');
     const code = typeof req.body?.code === 'string' ? req.body.code.replace(/\r\n/g, '\n') : '';
     const saved = await admin.saveCodeCommand({ guild, client: guild.client, userId, name, code });
@@ -86,7 +87,7 @@ function registerCodeRoutes(app, { authorize }) {
   }));
 
   app.post('/api/dashboard/guild/:guildId/code/trigger', limiter, route(async (req, res, { guild, userId }) => {
-    if (!needWrite(res, userId)) return;
+    if (!needWrite(res)) return;
     const name = String(req.body?.name ?? '').toLowerCase().trim();
     const changed = await admin.setCommandTrigger({ guild, client: guild.client, name, type: String(req.body?.type ?? ''), text: typeof req.body?.text === 'string' ? req.body.text : null });
     res.status(changed.ok ? 200 : 400).json(changed);

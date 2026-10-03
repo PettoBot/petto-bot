@@ -9,10 +9,9 @@ const { AttachmentBuilder } = require('discord.js');
 const { run, PettoCodeError } = require('../../scripting');
 const { TEMPLATES, byId } = require('../../scripting/templates');
 const codeCommands = require('../../utils/codeCommands');
-const { codeProblem, describeEffect, saveCodeCommand, setCommandTrigger } = require('../../utils/codeCommandAdmin');
+const { codeProblem, describeEffect, saveCodeCommand, setCommandTrigger, commandLimit, fullMessage } = require('../../utils/codeCommandAdmin');
 const { TRIGGER_TYPES, invalidateTriggers } = require('../../utils/codeTriggers');
 
-const MAX_PER_GUILD = 100;
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -94,8 +93,9 @@ async function addCmd(interaction, isEdit) {
       return;
     }
     const current = await ccDb.listCommands(interaction.guild.id);
-    if (current.length >= MAX_PER_GUILD) {
-      await interaction.editReply({ components: [textCard(`This server already has the maximum of ${MAX_PER_GUILD} custom commands.`, COLORS.RED)], flags: MessageFlags.IsComponentsV2 });
+    const allowed = await commandLimit(interaction.guild.id);
+    if (current.length >= allowed.limit) {
+      await interaction.editReply({ components: [textCard(fullMessage(allowed), COLORS.RED)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
   }
@@ -132,8 +132,8 @@ function triggerNote(row) {
 
 async function triggerCmd(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
-  if (!codeCommands.canWriteCode(interaction.user.id)) {
-    return reply(interaction, `${EMOJI.DENY}  Triggers of your own are in testing and only available to Petto's team for now.`, COLORS.RED);
+  if (!codeCommands.canWriteCode()) {
+    return reply(interaction, `${EMOJI.DENY}  Triggers of your own are turned off for now.`, COLORS.RED);
   }
   const name = ccDb.normalizeName(interaction.options.getString('name', true));
   const row = await ccDb.getCommand(interaction.guild.id, name);
@@ -165,7 +165,8 @@ async function listCmd(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const rows = await ccDb.listCommands(interaction.guild.id);
   const text = rows.length ? rows.map((r) => `\`${r.name}\`${r.code ? ' (code)' : ''}${triggerNote(r)}`).join(', ') : 'No custom commands yet.';
-  await interaction.editReply({ components: [textCard(`**Custom commands (${rows.length}/${MAX_PER_GUILD}):**\n${text}`, COLORS.DEFAULT)], flags: MessageFlags.IsComponentsV2 });
+  const { limit } = await commandLimit(interaction.guild.id);
+  await interaction.editReply({ components: [textCard(`**Custom commands (${rows.length}/${limit}):**\n${text}`, COLORS.DEFAULT)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function varsCmd(interaction) {
@@ -219,8 +220,8 @@ async function saveCode(interaction, name, code, verb) {
 
 async function codeCmd(interaction, sub) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
-  if (!codeCommands.canWriteCode(interaction.user.id)) {
-    return reply(interaction, `${EMOJI.DENY}  Custom commands in code are in testing and only available to Petto's team for now.`, COLORS.RED);
+  if (!codeCommands.canWriteCode()) {
+    return reply(interaction, `${EMOJI.DENY}  Custom commands in code are turned off for now.`, COLORS.RED);
   }
   const raw = interaction.rawMessage?.content ?? '';
 

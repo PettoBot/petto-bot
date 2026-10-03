@@ -9,7 +9,9 @@ function stub(relative, exports) {
 }
 const store = new Map();
 let listCalls = 0;
-stub('src/config.js', { ownerId: 'owner', developerIds: [], codeCommandTesterIds: ['tester'], codeCommandsPublic: false });
+stub('src/db/premium.js', { getGuildPremium: async () => ({ active: false }), getGuildLimits: () => ({ customCommands: 50 }) });
+const settings = { ownerId: 'owner', developerIds: [], codeCommandsDisabled: false };
+stub('src/config.js', settings);
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
 stub('src/handlers/prefixInteraction.js', { tokenize: (text) => String(text).match(/"[^"]*"|\S+/g)?.map((word) => word.replace(/^"|"$/g, '')) ?? [] });
 stub('src/db/commandData.js', { forGuild: () => ({}) });
@@ -96,7 +98,9 @@ for (const [type, text, message] of [['nope', 'x', 'one of'], ['exact', '', 'Wri
     await command.execute(interaction);
     return out.join('\n');
   };
-  assert.ok((await run({ name: 'plain' }, '!cc trigger plain', 'someone')).includes('only available to Petto'));
+  settings.codeCommandsDisabled = true;
+  assert.ok((await run({ name: 'plain' }, '!cc trigger plain', 'someone')).includes('turned off'));
+  settings.codeCommandsDisabled = false;
   assert.ok((await run({ name: 'plain' }, '!cc trigger plain')).includes('the prefix of Petto'));
   assert.ok((await run({ name: 'nope' }, '!cc trigger nope')).includes('does not exist'));
   assert.ok((await run({ name: 'plain', type: 'prefix', text: '?' }, '!cc trigger plain prefix ?')).includes('its own prefix: `?plain`'));
