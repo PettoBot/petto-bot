@@ -105,7 +105,15 @@ function parseSelect(rawValue) {
 }
 
 function parseFilter(value) {
-  const text = String(value);
+  let text = String(value);
+  // PostgREST writes a negated filter as not.<operator>.<value>, like code=not.is.null.
+  const negated = /^not\./i.test(text);
+  if (negated) text = text.slice(4);
+  const parsed = parseOperator(text);
+  return negated ? { ...parsed, negated } : parsed;
+}
+
+function parseOperator(text) {
   const match = /^([a-z]+)\.(.*)$/i.exec(text);
   if (!match || !FILTER_OPERATORS.has(match[1].toLowerCase())) throw new Error('Invalid PostgreSQL filter.');
   const operator = match[1].toLowerCase();
@@ -128,7 +136,8 @@ function applyFilters(query, queryParameters) {
     if (RESERVED_QUERY_KEYS.has(column) || column === 'or' || column === 'and' || column.startsWith('not.')) continue;
     if (Array.isArray(rawValue)) throw new Error('Duplicate query filters are not supported.');
     const parsed = parseFilter(rawValue);
-    if (parsed.operator === 'in') query.in(column, parsed.value);
+    if (parsed.negated) query.not(column, parsed.operator, parsed.value);
+    else if (parsed.operator === 'in') query.in(column, parsed.value);
     else if (parsed.operator === 'is') query.is(column, parsed.value);
     else query[parsed.operator](column, parsed.value);
   }
@@ -308,4 +317,4 @@ function registerDashboardRestRoutes(app, rateLimiter) {
   app.all('/rest/v1/:table', effectiveLimiter, handleDashboardRest);
 }
 
-module.exports = { registerDashboardRestRoutes };
+module.exports = { registerDashboardRestRoutes, parseFilter };
