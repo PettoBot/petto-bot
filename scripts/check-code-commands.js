@@ -8,12 +8,13 @@ function stub(relative, exports) {
   const resolved = require.resolve(path.join(__dirname, '..', relative));
   require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports };
 }
-const settings = { ownerId: 'owner', developerIds: ['dev'], codeCommandTesterIds: ['tester'], codeCommandsPublic: false };
+const settings = { ownerId: 'owner', developerIds: ['dev'], codeCommandsDisabled: false };
 stub('src/config.js', settings);
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
 stub('src/handlers/prefixInteraction.js', { tokenize: (text) => String(text).match(/"[^"]*"|\S+/g)?.map((word) => word.replace(/^"|"$/g, '')) ?? [] });
 const store = new Map();
 stub('src/db/guilds.js', { ensureGuild: async () => {} });
+stub('src/db/premium.js', { getGuildPremium: async () => ({ active: false }), getGuildLimits: (premium) => ({ customCommands: premium?.active ? 100 : 50 }) });
 stub('src/db/embedTemplates.js', { getTemplate: async () => null });
 stub('src/db/customCommands.js', {
   normalizeName: (name) => name.toLowerCase().trim().replace(/\s+/g, ''),
@@ -33,10 +34,9 @@ const codeCommands = require('../src/utils/codeCommands');
 const { TEMPLATES } = require('../src/scripting/templates');
 const { run, check } = require('../src/scripting');
 
-// Who can write code.
-assert.equal(codeCommands.canWriteCode('owner') && codeCommands.canWriteCode('dev') && codeCommands.canWriteCode('tester'), true);
-assert.equal(codeCommands.canWriteCode('someone'), false);
-settings.codeCommandsPublic = true; assert.equal(codeCommands.canWriteCode('someone'), true); settings.codeCommandsPublic = false;
+// Who can write code: everyone, until it is turned off.
+assert.equal(codeCommands.canWriteCode(), true);
+settings.codeCommandsDisabled = true; assert.equal(codeCommands.canWriteCode(), false); settings.codeCommandsDisabled = false;
 
 // Taking the code out of what was typed.
 assert.equal(codeCommands.extractCode('```\n{{ .User.ID }}\n```'), '{{ .User.ID }}');
@@ -360,7 +360,9 @@ const row = (code, name = `c${Math.random().toString(16).slice(2, 8)}`) => ({ na
   };
   const say = async (interaction) => { await command.execute(interaction); return interaction.out.map((o) => o.components?.[0]?.text ?? o.file?.content ?? '').join('\n'); };
 
-  assert.ok((await say(fakeInteraction('template', {}, '!cc template', 'someone'))).includes('only available to Petto'), 'someone who is not in the team is told it is in testing');
+  settings.codeCommandsDisabled = true;
+  assert.ok((await say(fakeInteraction('template', {}, '!cc template', 'someone'))).includes('turned off'), 'when it is turned off, people are told');
+  settings.codeCommandsDisabled = false;
   const listed = await say(fakeInteraction('template', {}, '!cc template'));
   assert.ok(TEMPLATES.every((template) => listed.includes(`\`${template.id}\``)), 'every template is listed');
   assert.ok((await say(fakeInteraction('template', { id: 'roll' }, '!cc template roll'))).includes('created from the template'));

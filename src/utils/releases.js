@@ -7,16 +7,17 @@ const RELEASES = [
     date: '2026-10-03',
     accent: 0xff91c2,
     status: `${EMOJI.RELEASE_APPROVED} Latest`,
-    summary: 'A big release: custom commands written in code (in testing) with buttons, forms and reactions, an editor in the dashboard, Quest alerts, Components V2 embeds and global stats.',
+    summary: 'A big release: custom commands written in code, open to every server (Free 50 commands, Premium 100), with buttons, forms and reactions, an editor in the dashboard, Quest alerts, Components V2 embeds and global stats.',
     sections: [
       {
-        title: `${EMOJI.RELEASE_PC} Petto Code (in testing)`,
+        title: `${EMOJI.RELEASE_PC} Petto Code`,
         items: [
           'Custom commands can now be written in **Petto Code**, a small language of text and `{{ }}` actions: variables, `if`, `range`, about 70 functions, embeds, mentions and time. `!customcommand code`, `codeshow`, `codetest` (runs it without sending anything), `template`, `export` and `import`.',
           'Buttons and menus that run code (`cbutton`, `cselect`), forms that pop up (`cmodal`, `ctext`, `showModal`) and reactions that run code (`"reactions"` in `complexMessage`, `.Trigger "reaction"`, `removeReaction`). One command holds the whole system.',
           'Commands can remember things: counters, points, rankings, cooldowns and lists, per server or per member (`dbSet`, `dbIncr`, `dbTop`...), even in their own database.',
           'Commands can start on their own prefix or words (`!customcommand trigger`): `?hello`, `hey bot`, `good morning`.',
           'Embeds take the avatar next to the author (`authorIcon`), and there are ready-made templates: vote, request, claim, suggest, report, profile, role button and role by reaction.',
+          'Open to every server that can manage commands: Free servers can have up to 50 custom commands and Premium servers up to 100.',
           'Everything runs with limits, and what the code asks for is checked with the permissions of the person who wrote it. Docs: https://code.petto.sbs',
         ],
       },

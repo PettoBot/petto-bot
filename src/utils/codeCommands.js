@@ -18,10 +18,9 @@ const RISKY_PERMISSIONS = [
   PermissionFlagsBits.ModerateMembers, PermissionFlagsBits.MentionEveryone,
 ];
 
-/** Who can write code commands: the owner, the developers and the testers, or everyone once it is open. */
-function canWriteCode(userId) {
-  if (config.codeCommandsPublic) return true;
-  return userId === config.ownerId || config.developerIds.includes(userId) || config.codeCommandTesterIds.includes(userId);
+/** Who can write code commands: everyone who can manage commands, unless it was turned off with CODE_COMMANDS_DISABLED. */
+function canWriteCode() {
+  return !config.codeCommandsDisabled;
 }
 
 /** The data the code can read (docs: data.md), taken from the message that used the command. */

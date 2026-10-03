@@ -3,7 +3,7 @@ const database = require('./database');
 const logger = require('../utils/logger');
 
 const FREE_LIMITS = Object.freeze({
-  customCommands: 25,
+  customCommands: 50,
   autoResponders: 15,
   ticketCategories: 5,
   levelRewards: 10,

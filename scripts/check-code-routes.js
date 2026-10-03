@@ -8,7 +8,8 @@ function stub(relative, exports) {
   const resolved = require.resolve(path.join(__dirname, '..', relative));
   require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports };
 }
-const settings = { ownerId: 'owner', developerIds: [], codeCommandTesterIds: ['tester'], codeCommandsPublic: false };
+const settings = { ownerId: 'owner', developerIds: [], codeCommandsDisabled: false };
+let premiumActive = false;
 const store = new Map();
 stub('src/config.js', settings);
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
@@ -22,6 +23,7 @@ stub('src/db/customCommands.js', {
   listTriggers: async (guildId) => [...store.entries()].filter(([key, value]) => key.startsWith(`${guildId}:`) && value.trigger_type !== 'command').map(([, value]) => value),
   setTrigger: async (guildId, name, type, text) => { const row = store.get(`${guildId}:${name}`); if (!row) return false; row.trigger_type = type; row.trigger_text = text; return true; },
 });
+stub('src/db/premium.js', { FREE_LIMITS: { customCommands: 50 }, PREMIUM_LIMITS: { customCommands: 100 }, getGuildPremium: async () => ({ active: premiumActive }), getGuildLimits: (premium) => (premium?.active ? { customCommands: 100 } : { customCommands: 50 }) });
 const { registerCodeRoutes } = require('../src/web/codeRoutes');
 
 (async () => {
@@ -48,7 +50,8 @@ const { registerCodeRoutes } = require('../src/web/codeRoutes');
   assert.ok(r.json.templates.some((template) => template.id === 'vote' && template.code.includes('cbutton')) && r.json.templates.length >= 12);
   assert.deepEqual(r.json.triggerTypes, ['command', 'prefix', 'startswith', 'exact', 'contains']);
   assert.equal(r.json.limits.source, 10_000);
-  r = await call('meta', null, 'someone'); assert.equal(r.json.canWrite, false, 'someone outside the team can see the editor is closed to them');
+  r = await call('meta', null, 'someone'); assert.equal(r.json.canWrite, true, 'anyone who manages the server can write');
+  settings.codeCommandsDisabled = true; r = await call('meta', null, 'someone'); assert.equal(r.json.canWrite, false, 'when it is turned off the editor says so'); settings.codeCommandsDisabled = false;
 
   // Checking while writing.
   r = await call('check', { code: 'Hello {{ .User.Username }}' }); assert.equal(r.json.problem, null);
@@ -85,14 +88,23 @@ const { registerCodeRoutes } = require('../src/web/codeRoutes');
   r = await call('trigger', { name: 'greet', type: 'nope', text: 'x' }); assert.equal(r.status, 400);
   r = await call('trigger', { name: 'missing', type: 'command' }); assert.equal(r.status, 400); assert.ok(r.json.message.includes('does not exist'));
 
-  // Only the team writes and tests.
+  // Everyone who manages the server writes and tests, until it is turned off.
+  r = await call('test', { code: 'ok' }, 'someone'); assert.equal(r.status, 200, 'anyone who manages the server can');
+  settings.codeCommandsDisabled = true;
   for (const [route, body] of [['test', { code: 'x' }], ['save', { name: 'x', code: 'x' }], ['trigger', { name: 'greet', type: 'command' }]]) {
     r = await call(route, body, 'someone');
-    assert.equal(r.status, 403, route); assert.equal(r.json.error, 'testing_only');
+    assert.equal(r.status, 403, route); assert.equal(r.json.error, 'turned_off');
   }
   assert.equal(store.has(`${guild.id}:x`), false);
-  settings.codeCommandsPublic = true;
-  r = await call('test', { code: 'ok' }, 'someone'); assert.equal(r.status, 200, 'once it is open, everyone who manages the server can');
+  settings.codeCommandsDisabled = false;
+
+  // The number of commands follows the plan: Free 50, Premium 100.
+  r = await call('meta'); assert.equal(r.json.limits.commands, 50); assert.equal(r.json.limits.premium, false);
+  for (let n = store.size; n < 50; n += 1) store.set(`${guild.id}:fill${n}`, { name: `fill${n}`, code: 'x', trigger_type: 'command' });
+  r = await call('save', { name: 'one-more', code: 'ok' }); assert.equal(r.status, 400); assert.ok(r.json.message.includes('maximum of 50') && r.json.message.includes('Premium raises it to 100'), 'a Free server is full at 50');
+  premiumActive = true;
+  r = await call('meta'); assert.equal(r.json.limits.commands, 100); assert.equal(r.json.limits.premium, true);
+  r = await call('save', { name: 'one-more', code: 'ok' }); assert.equal(r.status, 200, 'Premium has room up to 100');
 
   server.close();
   console.log('Checked the routes of commands in code for the dashboard: the editor pieces, checking, testing, saving, triggers and who may use them.');
