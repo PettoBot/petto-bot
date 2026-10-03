@@ -25,6 +25,7 @@ stub('src/db/customCommands.js', {
 stub('src/utils/caseCard.js', { textCard: (text) => ({ text }) });
 const memoryData = new Map();
 const watching = new Map();
+const reactionLog = [];
 stub('src/db/commandData.js', { forGuild: () => ({ async get(key, user) { return memoryData.get(`${user}|${key}`) ?? null; }, async set(key, value, user) { memoryData.set(`${user}|${key}`, value); }, async del() {}, async incr(key, amount, user) { const next = (memoryData.get(`${user}|${key}`) ?? 0) + amount; memoryData.set(`${user}|${key}`, next); return next; }, async top() { return []; }, async keys() { return []; }, async watch(id, record) { watching.set(id, record); }, async watched(id) { return watching.get(id) ?? null; } }) });
 stub('src/utils/emojis.js', { EMOJI: { APPROVE: 'OK', DENY: 'NO' } });
 stub('src/utils/colors.js', { COLORS: { DEFAULT: 1, RED: 2, GREEN: 3 } });
@@ -72,7 +73,7 @@ const makeGuild = () => {
   const makeChannel = (id, { botCan = 'all', memberCan = 'all' } = {}) => channels.set(id, {
     id, name: `chan${id.slice(-1)}`, isTextBased: () => true, isDMBased: () => false,
     permissionsFor: (who) => permissions(who === 'ME' ? botCan : memberCan),
-    send: async (payload) => { sent.push({ channel: id, payload }); return { id: `9000${sent.length}`, react: async () => {} }; },
+    send: async (payload) => { sent.push({ channel: id, payload }); return { id: `9000${sent.length}`, react: async (emoji) => { reactionLog.push({ emoji, watchedAlready: watching.size > 0 }); } }; },
   });
   makeChannel('200000000000000001');
   makeChannel('200000000000000002', { botCan: [PermissionFlagsBits.ViewChannel] }); // the bot cannot send
@@ -301,6 +302,12 @@ const row = (code, name = `c${Math.random().toString(16).slice(2, 8)}`) => ({ na
   await codeCommands.runCodeCommand(reactAsked.message, reactRow, '', '!');
   assert.equal(reactBits.sent.length, 1, 'the message is sent');
   assert.equal(watching.size, 1, 'the message is watched');
+  assert.deepEqual(reactionLog.map((entry) => entry.emoji), ['🦋', '🎀'], 'the reactions are put on the message');
+  assert.ok(reactionLog.every((entry) => entry.watchedAlready), 'the message is written down before its reactions go on, so a quick reaction is never missed');
+  // The same emoji spelled in different ways is the same emoji.
+  assert.equal(codeCommands.matchEmoji(['❤️', '<:lazo:1497795615923634408>'], '❤'), '❤️', 'a variation mark does not matter');
+  assert.equal(codeCommands.matchEmoji(['<:lazo:1497795615923634408>'], '<:renamed:1497795615923634408>'), '<:lazo:1497795615923634408>', 'a custom emoji is matched by its id');
+  assert.equal(codeCommands.matchEmoji(['🦋'], '🎀'), null);
   assert.ok([...watching.values()].some((record) => record.command === 'claim' && record.emojis.length === 2), 'the emojis and the command are remembered');
   const edits = []; const removed = []; const channelSends = []; const roleChanges = [];
   const reactionMessage = {
@@ -309,6 +316,7 @@ const row = (code, name = `c${Math.random().toString(16).slice(2, 8)}`) => ({ na
   };
   reactionMessage.guild.members.me ??= { id: 'bot', permissions: { has: () => true }, roles: { highest: { position: 10 } }, permissionsIn: () => ({ has: () => true }) };
   reactionMessage.author = { id: reactionMessage.guild.members.me.id };
+  reactionMessage.guild.members.cache = new Collection();
   reactionMessage.guild.members.fetch = async () => reactAsked.message.member;
   const fakeReaction = { message: reactionMessage, users: { remove: async (id) => { removed.push(id); } } };
   clock += 5000;

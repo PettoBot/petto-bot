@@ -30,6 +30,8 @@ All notable changes to Petto are documented here.
 
 ### Fixed
 
+- Reactions on commands in code failed now and then. A message was written down only after all its reactions were on, so a quick reaction found nothing and that message was skipped for five minutes; it is now written down first, a message that is new is never skipped, and a skipped one is looked at again after one minute. An emoji is compared by its id (custom ones) or without the invisible variation mark (`❤` and `❤️` are the same), the code gets the emoji as it wrote it in the list, a message the bot could not read is looked up instead of ignored, the lookup and the member are tried twice, a reaction that adds does not fail on a busy moment (each reaction is tried twice), a message answers for a month instead of a week, and when the code of a reaction stops or the member cannot be read the reason is logged.
+
 - The database of stored data (`PETTO_CODE_DATABASE_URL`) no longer asks for SSL unless `PETTO_CODE_DATABASE_SSL=true` (it follows `DISCLOUD_DATABASE_SSL` when not set), so a database that does not support it, like Discloud's, works instead of failing with `The server does not support SSL connections`.
 - The dashboard could not add or open custom commands: its database API did not understand a negated filter such as `code=not.is.null`, and answered `Invalid PostgreSQL filter.` It now reads `not.<operator>.<value>` for any operator.
 - The Cloudflare tunnel's output no longer puts its token in the logs: `cloudflared` printed the environment variables it could see, so the tunnel now starts without the token variables and every line is cleaned before it is logged. If an old log with the token was shared, create a new token in Cloudflare.
