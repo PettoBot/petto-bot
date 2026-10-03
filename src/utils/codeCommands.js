@@ -5,6 +5,7 @@ const config = require('../config');
 const logger = require('./logger');
 const { run, check, PettoCodeError, MAX_SOURCE_LENGTH } = require('../scripting');
 const { tokenize } = require('../handlers/prefixInteraction');
+const commandData = require('../db/commandData');
 
 const COOLDOWN_MS = 2000;
 const MAX_MESSAGE = 2000;
@@ -122,6 +123,31 @@ async function applyEffects(message, effects) {
   return skipped;
 }
 
+/**
+ * A store that lives only in memory, with the same functions as the real one. Test runs use it, so trying code that stores
+ * things never changes what the server has stored.
+ */
+function memoryStore() {
+  const data = new Map();
+  const id = (key, user) => `${user}\u0000${key}`;
+  return {
+    async get(key, user) { return data.has(id(key, user)) ? data.get(id(key, user)) : null; },
+    async set(key, value, user) { data.set(id(key, user), value); },
+    async del(key, user) { data.delete(id(key, user)); },
+    async incr(key, amount, user) {
+      const current = data.has(id(key, user)) ? data.get(id(key, user)) : 0;
+      if (typeof current !== 'number') throw new Error('That key does not hold a number');
+      data.set(id(key, user), current + amount);
+      return current + amount;
+    },
+    async top(key, limit) {
+      return [...data.entries()].map(([k, value]) => [k.split('\u0000'), value]).filter(([[user, name], value]) => user && name === key && typeof value === 'number')
+        .sort((a, b) => b[1] - a[1]).slice(0, limit).map(([[user], value]) => ({ UserID: user, Value: value }));
+    },
+    async keys(prefix, user) { return [...data.keys()].map((k) => k.split('\u0000')).filter(([u, name]) => u === user && name.startsWith(prefix)).map(([, name]) => name).sort().slice(0, 100); },
+  };
+}
+
 const mistakeText = (error) => `⚠️ The code of this command has a mistake: ${error.detail ?? error.message}\nA server admin can fix it.`;
 
 /** Runs the code of a custom command for the message that used it. Returns true when the message was handled. */
@@ -134,7 +160,7 @@ async function runCodeCommand(message, row, argText, prefix) {
 
   let result;
   try {
-    result = run(row.code, buildData(message, row.name, argText, prefix));
+    result = await run(row.code, buildData(message, row.name, argText, prefix), { store: commandData.forGuild(message.guild.id) });
   } catch (error) {
     if (error instanceof PettoCodeError) {
       await message.reply({ content: clip(mistakeText(error)), allowedMentions: { parse: [], repliedUser: false } }).catch(() => {});
@@ -197,4 +223,4 @@ function decodeShare(text) {
   return { name, description: typeof data.d === 'string' ? data.d.slice(0, 200) : '', code: data.c };
 }
 
-module.exports = { canWriteCode, buildData, runCodeCommand, applyEffects, extractCode, rawAfter, encodeShare, decodeShare, allowedMentionsFor, check, COOLDOWN_MS, RISKY_PERMISSIONS };
+module.exports = { memoryStore, canWriteCode, buildData, runCodeCommand, applyEffects, extractCode, rawAfter, encodeShare, decodeShare, allowedMentionsFor, check, COOLDOWN_MS, RISKY_PERMISSIONS };

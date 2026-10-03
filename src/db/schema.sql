@@ -1642,6 +1642,20 @@ create index if not exists idx_custom_commands_guild on custom_commands(guild_id
 
 alter table custom_commands enable row level security;
 
+-- What custom commands written in code remember (also created on demand, in the dedicated database when there is one).
+create table if not exists custom_command_data (
+  guild_id   text not null,
+  user_id    text not null default '',
+  key        text not null,
+  value      jsonb not null,
+  expires_at timestamptz,
+  updated_at timestamptz not null default now(),
+  primary key (guild_id, user_id, key)
+);
+create index if not exists idx_custom_command_data_top on custom_command_data(guild_id, key);
+create index if not exists idx_custom_command_data_expires on custom_command_data(expires_at) where expires_at is not null;
+alter table custom_command_data enable row level security;
+
 -- Commands written in code (Petto Code). When `code` is set it runs instead of the response and the embed.
 alter table custom_commands add column if not exists code text;
 alter table custom_commands add column if not exists created_by text;
