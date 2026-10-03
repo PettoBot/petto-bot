@@ -170,9 +170,10 @@ const httpUrl = (value, what) => {
 };
 const limitText = (value, max, what) => { const result = text(value); if ([...result].length > max) throw new Error(`${what} is longer than ${max} characters`); return result; };
 
-def('cembed', 0, 40, (env, ...pairs) => {
+def('cembed', 0, 50, (env, ...pairs) => {
   if (pairs.length % 2) throw new Error('cembed needs pairs of a name and a value, like "title" "Hi"');
   const embed = {};
+  let authorIcon; let authorUrl; let footerIcon;
   for (let i = 0; i < pairs.length; i += 2) {
     const key = text(pairs[i]).toLowerCase();
     const value = pairs[i + 1];
@@ -188,6 +189,9 @@ def('cembed', 0, 40, (env, ...pairs) => {
       }
       case 'footer': embed.footer = { text: limitText(value, 2048, 'The footer') }; break;
       case 'author': embed.author = { name: limitText(value, 256, 'The author') }; break;
+      case 'authoricon': authorIcon = httpUrl(value, 'The author icon'); break;
+      case 'authorurl': authorUrl = httpUrl(value, 'The author link'); break;
+      case 'footericon': footerIcon = httpUrl(value, 'The footer icon'); break;
       case 'thumbnail': embed.thumbnail = { url: httpUrl(value, 'The thumbnail') }; break;
       case 'image': embed.image = { url: httpUrl(value, 'The image') }; break;
       case 'timestamp': embed.timestamp = isTruthy(value) ? new Date(env.now()).toISOString() : undefined; break;
@@ -201,8 +205,17 @@ def('cembed', 0, 40, (env, ...pairs) => {
         });
         break;
       }
-      default: throw new Error(`cembed does not know "${key}". Use title, description, url, color, footer, author, thumbnail, image, timestamp or fields`);
+      default: throw new Error(`cembed does not know "${key}". Use title, description, url, color, footer, footerIcon, author, authorIcon, authorUrl, thumbnail, image, timestamp or fields`);
     }
+  }
+  if (authorIcon || authorUrl) {
+    if (!embed.author) throw new Error('authorIcon and authorUrl need an author, like "author" "Liam"');
+    if (authorIcon) embed.author.icon_url = authorIcon;
+    if (authorUrl) embed.author.url = authorUrl;
+  }
+  if (footerIcon) {
+    if (!embed.footer) throw new Error('footerIcon needs a footer, like "footer" "Petto"');
+    embed.footer.icon_url = footerIcon;
   }
   const size = (embed.title?.length ?? 0) + (embed.description?.length ?? 0) + (embed.footer?.text.length ?? 0) + (embed.author?.name.length ?? 0)
     + (embed.fields ?? []).reduce((total, field) => total + field.name.length + field.value.length, 0);

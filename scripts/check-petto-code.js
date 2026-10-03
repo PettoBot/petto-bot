@@ -240,6 +240,15 @@ assert.ok(functionNames().length > 50 && functionNames().includes('cembed'));
   await bad('{{ ctext "id" "bad id" "label" "A" }}', click, /id of 1 to 20/);
   await bad('{{ ctext "id" "a" "label" "A" "style" "huge" }}', click, /short or paragraph/);
   await bad('{{ cmodal "id" "f" "title" "T" "fields" (cslice (ctext "id" "a" "label" "A") (ctext "id" "a" "label" "B")) }}', click, /two fields|Two fields/i);
+  // The icons of the author and the footer of an embed.
+  const iconed = await run('{{ sendMessage nil (cembed "author" "Liam" "authorIcon" .User.Avatar "authorUrl" "https://petto.sbs" "footer" "Hi" "footerIcon" "https://x/f.png") }}', { ...data, User: { ...data.User, Avatar: 'https://x/a.png' } });
+  assert.deepEqual(iconed.effects[0].embed.author, { name: 'Liam', icon_url: 'https://x/a.png', url: 'https://petto.sbs' });
+  assert.deepEqual(iconed.effects[0].embed.footer, { text: 'Hi', icon_url: 'https://x/f.png' });
+  assert.equal((await run('{{ sendMessage nil (cembed "authorIcon" nil "author" "A") }}', data)).effects[0].embed.author.icon_url, undefined, 'nil leaves the icon out');
+  await bad('{{ cembed "authorIcon" "https://x/a.png" }}', {}, /need an author/);
+  await bad('{{ cembed "footerIcon" "https://x/a.png" }}', {}, /needs a footer/);
+  await bad('{{ cembed "authorIcon" "javascript:x" "author" "A" }}', {}, /http/);
+
   // Reactions.
   const reacted = { Trigger: 'reaction', Reaction: { Emoji: '🦋', Added: true } };
   assert.equal(await out('{{ .Reaction.Emoji }}', reacted), '🦋');

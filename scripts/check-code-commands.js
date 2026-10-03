@@ -289,8 +289,8 @@ const row = (code, name = `c${Math.random().toString(16).slice(2, 8)}`) => ({ na
   assert.equal(formBits.sent[0].payload.embeds[0].data.title, '💡 More music', 'the fields reach the code');
 
   // The embeds of a message give their author, thumbnail, image and color, so code can rebuild one.
-  const embedData = codeCommands.buildData({ ...makeMessage().message, embeds: [{ title: 'T', description: 'D', footer: { text: 'F' }, author: { name: 'A' }, thumbnail: { url: 'https://x/t.png' }, image: { url: 'https://x/i.png' }, color: 16764389 }] }, 'x', '', '!');
-  assert.deepEqual(embedData.Message.Embeds[0], { Title: 'T', Description: 'D', Footer: 'F', Author: 'A', Thumbnail: 'https://x/t.png', Image: 'https://x/i.png', Color: 16764389 });
+  const embedData = codeCommands.buildData({ ...makeMessage().message, embeds: [{ title: 'T', description: 'D', footer: { text: 'F' }, author: { name: 'A', iconURL: 'https://x/a.png' }, thumbnail: { url: 'https://x/t.png' }, image: { url: 'https://x/i.png' }, color: 16764389 }] }, 'x', '', '!');
+  assert.deepEqual(embedData.Message.Embeds[0], { Title: 'T', Description: 'D', Footer: 'F', Author: 'A', AuthorIcon: 'https://x/a.png', FooterIcon: null, Thumbnail: 'https://x/t.png', Image: 'https://x/i.png', Color: 16764389 });
 
   // Reactions: a message sent with "reactions" is watched, and reacting to it runs the command.
   const reactCode = `{{ if eq .Trigger "command" }}{{ sendMessage nil (complexMessage "embed" (cembed "description" "Claim it") "reactions" (cslice "🦋" "🎀")) }}{{ return }}{{ end }}
