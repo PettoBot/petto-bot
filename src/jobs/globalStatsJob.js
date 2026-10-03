@@ -7,15 +7,23 @@ const { exclusiveTask } = require('../utils/concurrency');
 const INTERVAL_MS = 60_000;
 
 async function refreshGlobalStats(client) {
-  const [totals, ranked] = await Promise.all([globalStatsDb.readTotals(), globalStatsDb.readRankedServers()]);
+  const [totals, ranked, rankedUsers] = await Promise.all([globalStatsDb.readTotals(), globalStatsDb.readRankedServers(), globalStatsDb.readRankedUsers()]);
   const describe = (id) => {
     const guild = client.guilds.cache.get(id);
     return guild ? { name: guild.name, icon: guild.iconURL({ extension: 'png', size: 64 }) } : null;
   };
+  // Only the people who would show are looked up, and the ones the bot has seen come from its cache.
+  const top = new Set(['messages', 'voiceSeconds'].flatMap((metric) => [...rankedUsers].sort((a, b) => b[metric] - a[metric]).slice(0, globalStatsDb.USER_RANK_SIZE + 5).map((user) => user.id)));
+  const people = new Map();
+  for (const id of top) {
+    const user = client.users.cache.get(id) ?? await client.users.fetch(id).catch(() => null);
+    if (user) people.set(id, { name: user.globalName || user.username, avatar: user.displayAvatarURL({ extension: 'png', size: 64 }) });
+  }
   await globalStatsDb.saveSnapshot({
     totals,
     rates: globalStatsDb.buildRates(totals.today),
     ranking: globalStatsDb.buildRanking(ranked, describe),
+    users: globalStatsDb.buildUserRanking(rankedUsers, (id) => people.get(id) ?? null),
     servers: client.guilds.cache.size,
   });
 }
