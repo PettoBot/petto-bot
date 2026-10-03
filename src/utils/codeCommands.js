@@ -145,6 +145,16 @@ function canGiveRole(guild, role) {
   return null;
 }
 
+const WATCH_SECONDS = 7 * 24 * 3600; // a message answers to reactions for a week
+
+/** Puts the reactions on a message and remembers it, so reacting to it runs the command. */
+async function watchReactions(sent, emojis, commandName, guild) {
+  const added = [];
+  for (const emoji of emojis) { if (await sent.react(emoji).then(() => true, () => false)) added.push(emoji); }
+  if (!added.length) return;
+  await commandData.forGuild(guild.id).watch(sent.id, { command: commandName, emojis: added }, WATCH_SECONDS).catch((error) => logger.warn(`Could not watch the reactions of a message in guild ${guild.id}: ${error.message}`));
+}
+
 /** Does what the code asked, as far as it is allowed. Returns the reasons for what was left undone. */
 async function applyEffects(message, effects, commandName = null) {
   const { guild, author, member } = message;
@@ -159,7 +169,8 @@ async function applyEffects(message, effects, commandName = null) {
         const memberCan = channel.permissionsFor(member);
         if (!botCan?.has(PermissionFlagsBits.SendMessages) || !botCan.has(PermissionFlagsBits.ViewChannel)) { skipped.push(`a message to #${channel.name}, Petto cannot send there`); continue; }
         if (!memberCan?.has(PermissionFlagsBits.SendMessages)) { skipped.push(`a message to #${channel.name}, you cannot send there`); continue; }
-        await channel.send(toPayload(effect, guild, author.id, commandName));
+        const sent = await channel.send(toPayload(effect, guild, author.id, commandName));
+        if (effect.reactions?.length && commandName && sent) await watchReactions(sent, effect.reactions, commandName, guild);
       } else if (effect.type === 'dm') {
         await author.send({ ...toPayload(effect, guild, author.id), allowedMentions: { parse: [] } }).catch(() => skipped.push('a direct message, you have them closed'));
       } else if (effect.type === 'addRole' || effect.type === 'removeRole') {
@@ -303,6 +314,50 @@ async function runComponent(interaction, row, parsed) {
   return null;
 }
 
+/**
+ * Runs a command because someone reacted to a message the command sent with "reactions". It runs with `.Trigger` set to
+ * "reaction", `.Reaction.Emoji` (the emoji as the code wrote it), and the person who reacted as `.User` and `.Member`.
+ * `updateMessage` changes that message, `respond` sends a message in its channel, and the other actions work as always.
+ */
+async function runReaction(reaction, user, row, emojiText) {
+  const message = reaction.message;
+  const { guild, channel } = message;
+  const member = await guild.members.fetch(user.id).catch(() => null);
+  if (!member) return null;
+  const key = `${guild.id}:${user.id}:${row.name}:reaction`;
+  if (Date.now() - (cooldowns.get(key) ?? 0) < COOLDOWN_MS / 2) return null;
+  cooldowns.set(key, Date.now());
+
+  const source = {
+    id: message.id, content: message.content ?? '', url: message.url ?? null, embeds: message.embeds ?? [],
+    guild, channel, member, author: user,
+    react: (emoji) => message.react(emoji), delete: async () => {},
+  };
+  const data = { ...buildData(source, row.name, '', '!'), Trigger: 'reaction', Reaction: { Emoji: emojiText, Added: true }, Button: { ID: '', Data: '' }, Values: [] };
+  let result;
+  try {
+    result = await run(row.code, data, { store: commandData.forGuild(guild.id), limits: { maxMillis: 2000 } });
+  } catch (error) {
+    if (!(error instanceof PettoCodeError)) logger.error(`Custom command "${row.name}" crashed on a reaction in guild ${guild.id}:`, error);
+    return null;
+  }
+  const update = result.effects.find((effect) => effect.type === 'update');
+  const respond = result.effects.find((effect) => effect.type === 'respond');
+  const text = result.output.trim();
+  const rest = result.effects.filter((effect) => !['update', 'respond'].includes(effect.type));
+  const me = guild.members.me;
+  if (update && message.author?.id === me?.id) {
+    await message.edit(toPayload(update, guild, user.id, row.name)).catch((error) => logger.warn(`Could not change the message of "${row.name}" in guild ${guild.id}: ${error.message}`));
+  }
+  const reply = respond ?? (text ? { content: text } : null);
+  if (reply && channel.permissionsFor(me)?.has(PermissionFlagsBits.SendMessages)) {
+    await channel.send(toPayload(reply, guild, user.id, row.name)).catch(() => {});
+  }
+  if (rest.some((effect) => effect.type === 'removeReaction')) await reaction.users.remove(user.id).catch(() => {});
+  await applyEffects(source, rest.filter((effect) => effect.type !== 'removeReaction'), row.name);
+  return null;
+}
+
 /** Takes the code out of what was typed: with or without a code block around it. */
 function extractCode(text) {
   const trimmed = String(text ?? '').trim();
@@ -348,4 +403,4 @@ function decodeShare(text) {
   return { name, description: typeof data.d === 'string' ? data.d.slice(0, 200) : '', code: data.c };
 }
 
-module.exports = { COMPONENT_PREFIX, parseComponentId, componentId, buildComponents, buildModal, runComponent, memoryStore, canWriteCode, buildData, runCodeCommand, applyEffects, extractCode, rawAfter, encodeShare, decodeShare, allowedMentionsFor, check, COOLDOWN_MS, RISKY_PERMISSIONS };
+module.exports = { COMPONENT_PREFIX, parseComponentId, componentId, buildComponents, buildModal, runComponent, runReaction, memoryStore, canWriteCode, buildData, runCodeCommand, applyEffects, extractCode, rawAfter, encodeShare, decodeShare, allowedMentionsFor, check, COOLDOWN_MS, RISKY_PERMISSIONS };

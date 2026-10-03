@@ -197,6 +197,32 @@ I choose **{{ index .Args (randInt (len .Args)) }}**.`,
   "color" "#ff91c2") }}
 {{ respond "Thank you, your suggestion was posted." true }}`,
   },
+  {
+    id: 'claim',
+    name: 'Claim by reaction',
+    description: 'A request card that works with reactions: 🦋 claims it and 🎀 (only by who asked) confirms the delivery. `!claim a cake`',
+    suggestedName: 'claim',
+    code: `{{ if eq .Trigger "command" }}
+  {{ if lt (len .Args) 1 }}Use: {{ .Prefix }}{{ .Cmd }} <what you ask for>{{ return }}{{ end }}
+  {{ sendMessage nil (complexMessage
+       "embed" (cembed
+         "author" (or .Member.DisplayName .User.Username)
+         "thumbnail" .Guild.Icon
+         "description" (printf "%s asks for:\\n**%s**\\n\\nReact with 🦋 to claim it, or with 🎀 to confirm the delivery." .User.Mention .RawArgs)
+         "color" "#ff91c2")
+       "reactions" (cslice "🦋" "🎀")) }}
+  {{ deleteTrigger }}
+{{ return }}{{ end }}
+
+{{ $embed := index .Message.Embeds 0 }}
+{{ if eq $embed.Footer "Delivered" }}{{ return }}{{ end }}
+{{ if eq .Reaction.Emoji "🦋" }}
+  {{ updateMessage (cembed "description" $embed.Description "footer" (print "Claimed by " (or .Member.DisplayName .User.Username)) "color" "#ffd166") }}
+  {{ removeReaction }}
+{{ return }}{{ end }}
+{{ if not (contains $embed.Description (print "<@" .User.ID ">")) }}{{ removeReaction }}{{ return }}{{ end }}
+{{ updateMessage (cembed "description" $embed.Description "footer" "Delivered" "color" "#57f287") }}`,
+  },
 ];
 
 const byId = (id) => TEMPLATES.find((template) => template.id === String(id ?? '').toLowerCase()) ?? null;

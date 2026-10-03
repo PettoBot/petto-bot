@@ -240,6 +240,16 @@ assert.ok(functionNames().length > 50 && functionNames().includes('cembed'));
   await bad('{{ ctext "id" "bad id" "label" "A" }}', click, /id of 1 to 20/);
   await bad('{{ ctext "id" "a" "label" "A" "style" "huge" }}', click, /short or paragraph/);
   await bad('{{ cmodal "id" "f" "title" "T" "fields" (cslice (ctext "id" "a" "label" "A") (ctext "id" "a" "label" "B")) }}', click, /two fields|Two fields/i);
+  // Reactions.
+  const reacted = { Trigger: 'reaction', Reaction: { Emoji: '🦋', Added: true } };
+  assert.equal(await out('{{ .Reaction.Emoji }}', reacted), '🦋');
+  const withReactions = await run('{{ sendMessage nil (complexMessage "content" "hi" "reactions" (cslice "🦋" "🎀" "🦋")) }}', data);
+  assert.deepEqual(withReactions.effects[0].reactions, ['🦋', '🎀'], 'reactions are listed once');
+  assert.equal((await run('{{ removeReaction }}{{ updateMessage "x" }}', { ...data, ...reacted })).effects.length, 2);
+  await bad('{{ removeReaction }}', {}, /someone reacted/);
+  await bad('{{ sendMessage nil (complexMessage "content" "hi" "reactions" (cslice)) }}', {}, /1 to 5/);
+  await bad('{{ sendDM (complexMessage "content" "hi" "reactions" (cslice "🦋")) }}', {}, /sendMessage/);
+  await assert.rejects(run('{{ dbSet "rx:1" 1 }}', data, { store: { set: async () => {} } }), /rx:/, 'the keys of the reactions are reserved');
   const answered = await run('{{ respond "ok" true }}', { ...data, ...submitted });
   assert.equal(answered.effects[0].type, 'respond', 'a modal can be answered');
 }
