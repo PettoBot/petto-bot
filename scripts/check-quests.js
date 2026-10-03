@@ -82,7 +82,7 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
   assert.equal(answer.notModified, true); assert.equal(answer.quests.length, 6, 'when nothing changed the list is still given'); assert.ok(calls.some(([, tag]) => tag === '"t1"'));
   assert.equal(calls.filter(([link]) => link.endsWith('/api/quests')).length, 1, 'the community API is not asked again within half an hour');
   await questApi.fetchQuests({ force: true }); assert.equal(calls.filter(([link]) => link.endsWith('/api/quests')).length, 2, 'a forced read asks anyway');
-  assert.equal(questApi.getStatus().ok, true); assert.equal(questApi.getStatus().sources.length, 3);
+  assert.equal(questApi.getStatus().ok, true); assert.equal(questApi.getStatus().sources.length, 4);
   questApi.resetCache(); failTracker = true;
   answer = await questApi.fetchQuests({ force: true });
   assert.equal(answer.notModified, false); assert.equal(answer.quests.length, 6, 'one source failing is not a problem');
@@ -97,13 +97,29 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
     return new Response(JSON.stringify(trackerRows), { status: 200, headers: { etag: '"t2"' } });
   };
   answer = await questApi.fetchQuests({ force: true });
-  assert.equal(answer.quests.length, 6, 'the other source answers'); assert.equal(communityCalls, 1);
+  assert.equal(answer.quests.length, 6, 'the other source answers'); assert.equal(communityCalls, 2, 'the regions and the quests were asked once each');
   questApi.resetCache();
   await questApi.fetchQuests({ force: true });
-  assert.equal(communityCalls, 1, 'the limited source is not asked again while it is paused');
+  assert.equal(communityCalls, 2, 'the limited source is not asked again while it is paused');
   assert.ok(String(questApi.getStatus().sources[0].error).includes('paused'));
   global.fetch = async () => new Response(JSON.stringify({ not: 'a list' }), { status: 200 });
   await assert.rejects(() => questApi.fetchQuests({ force: true }), /could not be read/);
+
+  // The short list of the tracker has the quests without the `config` wrapper, and the region list has a second place to come from.
+  questApi.resetCache();
+  const bare = api.map((row) => ({ id: row.id, ...row.config }));
+  global.fetch = async (url) => {
+    const link = String(url);
+    if (link.includes('/api/')) return new Response('slow down', { status: 429 });
+    if (link.includes('gist.githubusercontent')) return new Response(JSON.stringify({ quests: [{ id: ids.orbs, show_age_gate: true, is_global: false, regions: { include: ['JP'], exclude: [] } }] }), { status: 200 });
+    if (link.endsWith('/quest.json')) return new Response(JSON.stringify(bare), { status: 200 });
+    return new Response('nope', { status: 503 });
+  };
+  answer = await questApi.fetchQuests({ force: true });
+  assert.ok(answer.quests.length >= 5, 'the quests of the short list are read when only it answers');
+  const bareOrbs = answer.quests.find((quest) => quest.id === ids.orbs);
+  assert.equal(bareOrbs.name, 'Watch the trailer'); assert.deepEqual(bareOrbs.regions.include, ['JP'], 'the limits come from the tracker list when the community API is down');
+  assert.equal(bareOrbs.ageGate, true); assert.equal(bareOrbs.global, false);
 
   // Filters.
   assert.equal(matchesFilters(orbs, { reward_kinds: [], task_kinds: [] }), true);

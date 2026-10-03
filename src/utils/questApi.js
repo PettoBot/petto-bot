@@ -34,10 +34,16 @@ const REWARD_KIND_LIST = ['orbs', 'decoration', 'code', 'ingame', 'nitro'];
 // API (which also knows the region and age limits) and aamiaa/discord-api-diff, the repository that archives Discord's own
 // quest data and is the first to have a new quest (the other tracker sites and mirrors copy it, some hours later).
 const SOURCES = [
-  { name: 'discordquest.com', url: `${API_BASE}/api/quests`, regions: true, minIntervalMs: 30 * 60_000 },
-  { name: 'discord-api-diff', url: 'https://raw.githubusercontent.com/aamiaa/discord-api-diff/main/quests.json', regions: false },
-  { name: 'discord-api-tracker', url: 'https://raw.githubusercontent.com/xGustavvo/discord-api-tracker/main/quests.json', regions: false },
+  { name: 'discordquest.com', url: `${API_BASE}/api/quests`, minIntervalMs: 30 * 60_000 },
+  { name: 'discord-api-diff', url: 'https://raw.githubusercontent.com/aamiaa/discord-api-diff/main/quests.json' },
+  { name: 'discord-api-tracker', url: 'https://raw.githubusercontent.com/xGustavvo/discord-api-tracker/main/quests.json' },
+  // The same tracker's short list of recent quests: its own job refreshes it within minutes of a quest starting, well before the big files.
+  { name: 'discord-api-tracker (recent)', url: 'https://raw.githubusercontent.com/xGustavvo/discord-api-tracker/main/quest.json' },
 ];
+// Region and age limits: the community API knows them, and when it is down the tracker keeps a list of its own.
+const REGIONS_URLS = [`${API_BASE}/api/regions`, 'https://gist.githubusercontent.com/xGustavvo/3d08b7369eb34b50834815fd43176cae/raw'];
+const REGIONS_EVERY_MS = 30 * 60_000;
+let regionCache = { at: 0, map: new Map() };
 const state = new Map(SOURCES.map((source) => [source.name, { etag: null, quests: null, ok: null, at: null, error: null, pausedUntil: 0, askedAt: 0, strikes: 0 }]));
 
 function clean(value, max) {
@@ -87,6 +93,14 @@ function normalizeTasks(config) {
   });
 }
 
+function regionFields(region) {
+  return {
+    global: region ? Boolean(region.is_global) : true,
+    regions: region ? { include: (region.regions?.include ?? []).slice(0, 20).map((c) => clean(c, 4)), exclude: (region.regions?.exclude ?? []).slice(0, 20).map((c) => clean(c, 4)) } : { include: [], exclude: [] },
+    ageGate: Boolean(region?.show_age_gate),
+  };
+}
+
 /** One quest of the API as the plain object the bot works with, or null when it has no usable name or dates. */
 function normalizeQuest(raw, region = null) {
   const config = raw?.config;
@@ -113,9 +127,7 @@ function normalizeQuest(raw, region = null) {
     rewards: normalizeRewards(config),
     tasks,
     platforms: [...new Set(tasks.map((task) => task.platform))],
-    global: region ? Boolean(region.is_global) : true,
-    regions: region ? { include: (region.regions?.include ?? []).slice(0, 20).map((c) => clean(c, 4)), exclude: (region.regions?.exclude ?? []).slice(0, 20).map((c) => clean(c, 4)) } : { include: [], exclude: [] },
-    ageGate: Boolean(region?.show_age_gate),
+    ...regionFields(region),
   };
 }
 
@@ -146,14 +158,23 @@ async function getJson(url, headers = {}) {
   }
 }
 
-async function readRegions() {
-  try {
-    const rows = (await getJson(`${API_BASE}/api/regions`)).data?.quests ?? [];
-    return new Map(rows.map((row) => [String(row.id), row]));
-  } catch (error) {
-    logger.warn(`The quest regions could not be read: ${error.message}`);
-    return new Map();
+/** The region and age limits by quest id, asked at most every 30 minutes; the last list is kept when none answers. */
+async function readRegions(force = false) {
+  if (!force && Date.now() - regionCache.at < REGIONS_EVERY_MS) return regionCache.map;
+  regionCache.at = Date.now();
+  for (const url of REGIONS_URLS) {
+    if (url.startsWith(API_BASE) && state.get(SOURCES[0].name).pausedUntil > Date.now()) continue;
+    try {
+      const rows = (await getJson(url)).data?.quests ?? [];
+      if (Array.isArray(rows) && rows.length) {
+        regionCache = { at: Date.now(), map: new Map(rows.map((row) => [String(row.id), row])) };
+        break;
+      }
+    } catch (error) {
+      logger.warn(`The quest regions could not be read from ${new URL(url).hostname}: ${error.message}`);
+    }
   }
+  return regionCache.map;
 }
 
 /** Reads one source. Returns true when it brought a new list, false when it had not changed. Throws when it failed. */
@@ -175,8 +196,8 @@ async function readSource(source, force) {
       return false;
     }
     if (!Array.isArray(result.data)) throw new Error('the answer has an unexpected shape');
-    const regions = source.regions ? await readRegions() : new Map();
-    entry.quests = result.data.map((raw) => normalizeQuest(raw, regions.get(String(raw?.id)) ?? null)).filter(Boolean);
+    // The short list has the quests themselves, without the `config` wrapper the other files use.
+    entry.quests = result.data.map((raw) => normalizeQuest(raw?.config ? raw : { id: raw?.id, config: raw })).filter(Boolean);
     Object.assign(entry, { etag: result.etag ?? null, ok: true, at: new Date(), error: null, strikes: 0 });
     return true;
   } catch (error) {
@@ -194,6 +215,7 @@ async function readSource(source, force) {
  * limits), or `{ notModified: true }` when no source changed. It only fails when every source failed.
  */
 async function fetchQuests({ force = false } = {}) {
+  await readRegions(force);
   const results = await Promise.allSettled(SOURCES.map((source) => readSource(source, force)));
   const failed = results.filter((result) => result.status === 'rejected');
   if (failed.length === SOURCES.length) throw new Error(`The quests could not be read: ${failed.map((result, i) => `${SOURCES[i].name} ${result.reason?.message}`).join('; ')}`);
@@ -207,12 +229,13 @@ async function fetchQuests({ force = false } = {}) {
 function cachedQuests() {
   const merged = new Map();
   for (const source of [...SOURCES].reverse()) for (const quest of state.get(source.name).quests ?? []) merged.set(quest.id, quest);
-  return [...merged.values()];
+  return [...merged.values()].map((quest) => (regionCache.map.has(quest.id) ? { ...quest, ...regionFields(regionCache.map.get(quest.id)) } : quest));
 }
 
 /** Forgets the ETags, so the next pass downloads everything again (used when a pass could not finish). */
 function resetCache() {
   for (const entry of state.values()) entry.etag = null;
+  regionCache = { at: 0, map: new Map() };
 }
 
 /** The quests as the sources last said, joined, asking again only when the answer is older than `maxAgeMs`. */
