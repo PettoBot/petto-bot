@@ -2344,3 +2344,41 @@ create index if not exists idx_partner_log_guild_time on partner_log (guild_id, 
 create index if not exists idx_partner_log_manager on partner_log (guild_id, manager_id, created_at desc);
 create index if not exists idx_partner_log_partner on partner_log (guild_id, partner_guild_id, created_at desc);
 alter table partner_log enable row level security;
+
+-- Button responders and panels: a responder is a button (or a choice of a menu) that answers with a private message and
+-- gives, takes or toggles roles; a panel is the message that shows some of them, as buttons or as one dropdown menu.
+create table if not exists button_responders (
+  id                bigserial primary key,
+  guild_id          text not null references guilds(guild_id) on delete cascade,
+  name              text not null check (name ~ '^[a-z0-9_-]{1,60}$'),
+  label             text not null default '' check (char_length(label) <= 80),
+  emoji             text,
+  style             text not null default 'secondary' check (style in ('primary', 'secondary', 'success', 'danger')),
+  reply             text not null default '' check (char_length(reply) <= 2000),
+  reply_template    text,
+  give_role_ids     text[] not null default '{}',
+  remove_role_ids   text[] not null default '{}',
+  required_role_ids text[] not null default '{}',
+  toggle            boolean not null default false,
+  created_by        text,
+  created_at        timestamptz not null default now(),
+  unique (guild_id, name)
+);
+alter table button_responders enable row level security;
+
+create table if not exists component_panels (
+  id             bigserial primary key,
+  guild_id       text not null references guilds(guild_id) on delete cascade,
+  name           text not null check (name ~ '^[a-z0-9_-]{1,60}$'),
+  kind           text not null default 'buttons' check (kind in ('buttons', 'select')),
+  content        text not null default '' check (char_length(content) <= 2000),
+  embed_template text,
+  responders     text[] not null default '{}',
+  placeholder    text not null default '' check (char_length(placeholder) <= 100),
+  exclusive      boolean not null default false,
+  channel_id     text,
+  message_id     text,
+  created_at     timestamptz not null default now(),
+  unique (guild_id, name)
+);
+alter table component_panels enable row level security;
