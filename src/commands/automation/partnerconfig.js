@@ -125,7 +125,8 @@ async function requirements(interaction, config, save, done) {
 }
 
 async function blacklist(interaction, done) {
-  const action = interaction.options.getString('action', true);
+  const action = interaction.options.getString('action', true).toLowerCase();
+  if (!['add', 'remove', 'list'].includes(action)) return done(note('Choose `add`, `remove` or `list`.'));
   if (action === 'list') {
     const rows = await partnersDb.listBlacklist(interaction.guild.id);
     return done(note(rows.length ? ['### Partner blacklist', ...rows.slice(0, 40).map((row) => `\`${row.partner_guild_id}\`${row.note ? ` · ${row.note}` : ''}`)].join('\n') : 'The blacklist is empty.'));
@@ -141,7 +142,8 @@ async function blacklist(interaction, done) {
 }
 
 async function response(interaction, config, save, done) {
-  const key = interaction.options.getString('reply', true);
+  const key = interaction.options.getString('reply', true).toLowerCase().replace(/[\s-]/g, '_');
+  if (!RESPONSE_KEYS.includes(key)) return done(note(`Choose one of: ${RESPONSE_KEYS.map((name) => `\`${name}\``).join(', ')}.`));
   const text = interaction.options.getString('text');
   const template = (interaction.options.getString('template') ?? '').trim();
   const messages = { ...(config.messages ?? {}) };

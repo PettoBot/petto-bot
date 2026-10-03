@@ -5,6 +5,8 @@ const { periodStart, rank, counts } = require('../../utils/partnerEngine');
 const { textCard } = require('../../utils/caseCard');
 
 const PERIODS = { day: 'Today', week: 'This week', all: 'All time' };
+// With the prefix (`!partner leaderboard today`) the choices are not checked by Discord, so the usual words are read here.
+const PERIOD_WORDS = { day: 'day', today: 'day', daily: 'day', week: 'week', weekly: 'week', all: 'all', total: 'all', alltime: 'all' };
 
 module.exports = {
   aliases: ['partners', 'pm'],
@@ -42,7 +44,9 @@ async function stats(interaction) {
 }
 
 async function leaderboard(interaction) {
-  const period = interaction.options.getString('period') ?? 'week';
+  const word = (interaction.options.getString('period') ?? 'week').toLowerCase().replace(/[\s_-]/g, '');
+  const period = PERIOD_WORDS[word];
+  if (!period) return interaction.editReply({ components: [textCard('Choose `today`, `week` or `all`.')], flags: MessageFlags.IsComponentsV2 });
   const rows = await partnersDb.listLog(interaction.guild.id, { since: periodStart(period) });
   const top = rank(rows).slice(0, 10);
   const lines = top.length ? top.map((entry, index) => `${index + 1}. <@${entry.managerId}>  **${entry.count}**`) : ['Nobody has a partnership in this period.'];

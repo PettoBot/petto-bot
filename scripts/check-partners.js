@@ -195,6 +195,11 @@ const fakeGuild = (id, extra = {}) => ({ id, name: 'Mine', ownerId: 'owner', mem
   assert.match(await talk(partner, 'stats'), /Total: \*\*2\*\*/);
   const board = await talk(partner, 'leaderboard', { period: 'all' });
   assert.match(board, /1\. <@u1>  \*\*2\*\*[\s\S]*2\. <@u2>  \*\*1\*\*/);
+  assert.match(await talk(partner, 'leaderboard', { period: 'today' }), /Today/, 'with the prefix the words are read');
+  assert.match(await talk(partner, 'leaderboard', { period: 'nonsense' }), /Choose `today`/);
+  assert.match(await talk(partnerConfig, 'blacklist', { action: 'nope', server: '1100000000000000009' }), /Choose `add`/);
+  assert.match(await talk(partnerConfig, 'response', { reply: 'nope' }), /Choose one of/);
+  assert.match(await talk(partnerConfig, 'response', { reply: 'invalid-invite' }), /Invalid invite/, 'a name with dashes is read too');
   assert.doesNotMatch(await talk(partner, 'leaderboard', { period: 'week' }), /<@u2>/, 'old ones are not in this week');
 
   // The commands are built the way Discord needs.
