@@ -145,14 +145,31 @@ function canGiveRole(guild, role) {
   return null;
 }
 
-const WATCH_SECONDS = 7 * 24 * 3600; // a message answers to reactions for a week
+const WATCH_SECONDS = 30 * 24 * 3600; // a message answers to reactions for a month
 
-/** Puts the reactions on a message and remembers it, so reacting to it runs the command. */
+/** An emoji as something comparable: a custom one by its id, a standard one without the invisible variation mark Discord may add or drop. */
+function normalizeEmoji(text) {
+  const value = String(text ?? '').trim();
+  const custom = /^<a?:[^:>]+:(\d+)>$/.exec(value);
+  return custom ? `id:${custom[1]}` : value.replace(/\uFE0F/g, '');
+}
+
+/** The emoji of the list that is the same as the one used, or null. The list's own spelling is what the code compares with. */
+function matchEmoji(listed, used) {
+  const wanted = normalizeEmoji(used);
+  return (listed ?? []).find((emoji) => normalizeEmoji(emoji) === wanted) ?? null;
+}
+
+/**
+ * Remembers a message and puts its reactions on it, so reacting runs the command. It is remembered FIRST: adding the reactions
+ * takes a moment, and someone who is quick would otherwise react to a message nobody had written down yet.
+ */
 async function watchReactions(sent, emojis, commandName, guild) {
-  const added = [];
-  for (const emoji of emojis) { if (await sent.react(emoji).then(() => true, () => false)) added.push(emoji); }
-  if (!added.length) return;
-  await commandData.forGuild(guild.id).watch(sent.id, { command: commandName, emojis: added }, WATCH_SECONDS).catch((error) => logger.warn(`Could not watch the reactions of a message in guild ${guild.id}: ${error.message}`));
+  await commandData.forGuild(guild.id).watch(sent.id, { command: commandName, emojis }, WATCH_SECONDS).catch((error) => logger.warn(`Could not watch the reactions of a message in guild ${guild.id}: ${error.message}`));
+  for (const emoji of emojis) {
+    let done = false;
+    for (let attempt = 0; attempt < 2 && !done; attempt += 1) done = await sent.react(emoji).then(() => true, () => false);
+  }
 }
 
 /** Does what the code asked, as far as it is allowed. Returns the reasons for what was left undone. */
@@ -322,8 +339,8 @@ async function runComponent(interaction, row, parsed) {
 async function runReaction(reaction, user, row, emojiText) {
   const message = reaction.message;
   const { guild, channel } = message;
-  const member = await guild.members.fetch(user.id).catch(() => null);
-  if (!member) return null;
+  const member = guild.members.cache.get(user.id) ?? await guild.members.fetch(user.id).catch(() => guild.members.fetch(user.id).catch(() => null));
+  if (!member) { logger.warn(`A reaction on "${row.name}" in guild ${guild.id} was skipped: could not read the member ${user.id}`); return null; }
   const key = `${guild.id}:${user.id}:${row.name}:reaction`;
   if (Date.now() - (cooldowns.get(key) ?? 0) < COOLDOWN_MS / 2) return null;
   cooldowns.set(key, Date.now());
@@ -338,7 +355,8 @@ async function runReaction(reaction, user, row, emojiText) {
   try {
     result = await run(row.code, data, { store: commandData.forGuild(guild.id), limits: { maxMillis: 2000 } });
   } catch (error) {
-    if (!(error instanceof PettoCodeError)) logger.error(`Custom command "${row.name}" crashed on a reaction in guild ${guild.id}:`, error);
+    if (error instanceof PettoCodeError) logger.warn(`Custom command "${row.name}" stopped on a reaction in guild ${guild.id}: ${mistakeText(error)}`);
+    else logger.error(`Custom command "${row.name}" crashed on a reaction in guild ${guild.id}:`, error);
     return null;
   }
   const update = result.effects.find((effect) => effect.type === 'update');
@@ -403,4 +421,4 @@ function decodeShare(text) {
   return { name, description: typeof data.d === 'string' ? data.d.slice(0, 200) : '', code: data.c };
 }
 
-module.exports = { COMPONENT_PREFIX, parseComponentId, componentId, buildComponents, buildModal, runComponent, runReaction, memoryStore, canWriteCode, buildData, runCodeCommand, applyEffects, extractCode, rawAfter, encodeShare, decodeShare, allowedMentionsFor, check, COOLDOWN_MS, RISKY_PERMISSIONS };
+module.exports = { COMPONENT_PREFIX, parseComponentId, componentId, buildComponents, buildModal, runComponent, runReaction, normalizeEmoji, matchEmoji, memoryStore, canWriteCode, buildData, runCodeCommand, applyEffects, extractCode, rawAfter, encodeShare, decodeShare, allowedMentionsFor, check, COOLDOWN_MS, RISKY_PERMISSIONS };
