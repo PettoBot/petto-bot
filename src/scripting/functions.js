@@ -8,6 +8,9 @@ const def = (name, min, max, run) => functions.set(name, { min, max, run });
 
 const EMBEDS = new WeakSet(); // the maps made by cembed
 const COMPLEX = new WeakSet(); // the maps made by complexMessage
+const BUTTONS = new WeakSet(); // the maps made by cbutton
+const SELECTS = new WeakSet(); // the maps made by cselect
+const ROWS = new WeakSet(); // the maps made by crow
 const SNOWFLAKE = /^\d{15,22}$/;
 const MAX_FIELD_NAME = 256;
 
@@ -205,14 +208,111 @@ def('cembed', 0, 40, (env, ...pairs) => {
   EMBEDS.add(embed);
   return embed;
 });
-def('complexMessage', 0, 4, (env, ...pairs) => {
+// ── Buttons and menus ───────────────────────────────────────────────────────
+// A button or a menu says which handler it runs (a name the code chooses). When someone uses it, the same command runs
+// again with `.Trigger` set to "button" or "select", and `.Button.ID` is that name, so one command can hold everything.
+const HANDLER_SHAPE = /^[A-Za-z0-9_-]{1,20}$/;
+const DATA_SHAPE = /^[A-Za-z0-9_.-]{0,20}$/;
+const BUTTON_STYLES = { primary: 1, secondary: 2, success: 3, danger: 4 };
+
+const flatPairs = (pairs, what) => {
+  if (pairs.length % 2) throw new Error(`${what} needs pairs of a name and a value, like "label" "Yes"`);
+  const map = new Map();
+  for (let i = 0; i < pairs.length; i += 2) map.set(text(pairs[i]).toLowerCase(), pairs[i + 1]);
+  return map;
+};
+const emojiOf = (value) => {
+  const emoji = str(value, 'an emoji');
+  if (!emoji || emoji.length > 80) throw new Error('The emoji is empty or too long');
+  return emoji;
+};
+
+def('cbutton', 2, 20, (env, ...pairs) => {
+  const map = flatPairs(pairs, 'cbutton');
+  const known = ['label', 'id', 'data', 'style', 'emoji', 'disabled', 'url', 'user'];
+  for (const key of map.keys()) if (!known.includes(key)) throw new Error(`cbutton does not know "${key}". Use ${known.join(', ')}`);
+  const button = { type: 'button' };
+  if (map.has('label') && map.get('label') !== null) button.label = limitText(map.get('label'), 80, 'The label');
+  if (map.has('emoji') && map.get('emoji') !== null) button.emoji = emojiOf(map.get('emoji'));
+  if (!button.label && !button.emoji) throw new Error('A button needs a label or an emoji');
+  if (map.has('disabled')) button.disabled = isTruthy(map.get('disabled'));
+  if (map.has('url') && map.get('url') !== null) {
+    if (map.has('id')) throw new Error('A button with a url opens a link and cannot also have an id');
+    button.url = httpUrl(map.get('url'), 'The url');
+    button.style = 5;
+  } else {
+    const id = map.get('id');
+    if (typeof id !== 'string' || !HANDLER_SHAPE.test(id)) throw new Error('A button needs an id of 1 to 20 letters, numbers, - or _, such as "id" "yes"');
+    button.handler = id;
+    const styleName = map.has('style') ? text(map.get('style')).toLowerCase() : 'secondary';
+    if (!(styleName in BUTTON_STYLES)) throw new Error('The style of a button is primary, secondary, success or danger');
+    button.style = BUTTON_STYLES[styleName];
+    const data = map.has('data') && map.get('data') !== null ? text(map.get('data')) : '';
+    if (!DATA_SHAPE.test(data)) throw new Error('The data of a button holds at most 20 letters, numbers, . - or _');
+    button.data = data;
+    if (map.has('user') && map.get('user') !== null) button.userId = snowflake(map.get('user'), 'the user');
+  }
+  BUTTONS.add(button);
+  return button;
+});
+
+def('cselect', 3, 20, (env, ...pairs) => {
+  const map = flatPairs(pairs, 'cselect');
+  const known = ['id', 'placeholder', 'options', 'min', 'max', 'user'];
+  for (const key of map.keys()) if (!known.includes(key)) throw new Error(`cselect does not know "${key}". Use ${known.join(', ')}`);
+  const id = map.get('id');
+  if (typeof id !== 'string' || !HANDLER_SHAPE.test(id)) throw new Error('A menu needs an id of 1 to 20 letters, numbers, - or _');
+  const rows = list(map.get('options'), 'a list of options like cslice (cslice "label" "value")');
+  if (!rows.length || rows.length > 25) throw new Error('A menu holds from 1 to 25 options');
+  const options = rows.map((row, n) => {
+    const parts = list(row, `the option ${n + 1} as cslice "label" "value"`);
+    if (parts.length < 2) throw new Error(`The option ${n + 1} needs a label and a value`);
+    const option = { label: limitText(parts[0], 100, 'An option label') || '\u200b', value: limitText(parts[1], 100, 'An option value') };
+    if (!option.value) throw new Error(`The option ${n + 1} needs a value`);
+    if (parts[2] !== undefined && parts[2] !== null) option.description = limitText(parts[2], 100, 'An option description');
+    return option;
+  });
+  const select = { type: 'select', handler: id, options };
+  if (map.get('placeholder') !== undefined && map.get('placeholder') !== null) select.placeholder = limitText(map.get('placeholder'), 150, 'The placeholder');
+  const min = map.has('min') ? Math.trunc(num(map.get('min'))) : 1;
+  const max = map.has('max') ? Math.trunc(num(map.get('max'))) : 1;
+  if (min < 0 || max < 1 || max > options.length || min > max) throw new Error('A menu min is at least 0, and its max is from 1 to the number of options');
+  select.min = min; select.max = max;
+  if (map.get('user') !== undefined && map.get('user') !== null) select.userId = snowflake(map.get('user'), 'the user');
+  SELECTS.add(select);
+  return select;
+});
+
+def('crow', 1, 5, (env, ...items) => {
+  const first = items[0];
+  if (SELECTS.has(first)) {
+    if (items.length > 1) throw new Error('A menu takes a whole row by itself');
+    const row = { type: 'row', items: [first] };
+    ROWS.add(row);
+    return row;
+  }
+  for (const item of items) if (!BUTTONS.has(item)) throw new Error('A row holds buttons made with cbutton, or one menu made with cselect');
+  const row = { type: 'row', items };
+  ROWS.add(row);
+  return row;
+});
+
+const componentsOf = (value) => {
+  const rows = list(value, 'a list of rows made with crow');
+  if (rows.length > 5) throw new Error('A message holds at most 5 rows of buttons or menus');
+  for (const row of rows) if (!ROWS.has(row)) throw new Error('The rows of a message are made with crow');
+  return rows;
+};
+
+def('complexMessage', 0, 6, (env, ...pairs) => {
   if (pairs.length % 2) throw new Error('complexMessage needs pairs of a name and a value, like "content" "Hi"');
   const message = {};
   for (let i = 0; i < pairs.length; i += 2) {
     const key = text(pairs[i]).toLowerCase();
     if (key === 'content') message.content = limitText(pairs[i + 1], 2000, 'The content');
     else if (key === 'embed') { if (!EMBEDS.has(pairs[i + 1])) throw new Error('"embed" must be made with cembed'); message.embed = pairs[i + 1]; }
-    else throw new Error(`complexMessage does not know "${key}". Use content or embed`);
+    else if (key === 'components') message.components = componentsOf(pairs[i + 1]);
+    else throw new Error(`complexMessage does not know "${key}". Use content, embed or components`);
   }
   COMPLEX.add(message);
   return message;
@@ -221,11 +321,11 @@ def('complexMessage', 0, 4, (env, ...pairs) => {
 // ── Effects: what the code asks the bot to do ───────────────────────────────
 function messageOf(value) {
   if (EMBEDS.has(value)) return { embed: value };
-  if (COMPLEX.has(value)) return { content: value.content, embed: value.embed };
+  if (COMPLEX.has(value)) return Object.fromEntries(Object.entries({ content: value.content, embed: value.embed, components: value.components }).filter(([, part]) => part !== undefined));
   if (typeof value === 'string' || typeof value === 'number') return { content: limitText(value, 2000, 'A message') };
   throw new Error('A message is a text, or something made with cembed or complexMessage');
 }
-const hasBody = (message) => Boolean((message.content ?? '').trim() || message.embed);
+const hasBody = (message) => Boolean((message.content ?? '').trim() || message.embed || message.components?.length);
 
 def('sendMessage', 2, 2, (env, channel, value) => {
   const message = messageOf(value);
@@ -236,6 +336,7 @@ def('sendMessage', 2, 2, (env, channel, value) => {
 });
 def('sendDM', 1, 1, (env, value) => {
   const message = messageOf(value);
+  if (message.components) throw new Error('A direct message cannot have buttons or menus');
   if (!hasBody(message)) throw new Error('The message is empty');
   env.effects.add('dm', message);
   return null;
@@ -246,6 +347,23 @@ def('addReaction', 1, 1, (env, emoji) => {
   const value = str(emoji, 'an emoji');
   if (!value || value.length > 100) throw new Error('The emoji is empty or too long');
   env.effects.add('reaction', { emoji: value });
+  return null;
+});
+const needComponent = (env, name) => {
+  if (!['button', 'select'].includes(env.data?.Trigger)) throw new Error(`${name} only works when the command runs because of a button or a menu`);
+};
+def('respond', 1, 2, (env, value, ephemeral) => {
+  needComponent(env, 'respond');
+  const message = messageOf(value);
+  if (!hasBody(message)) throw new Error('The message is empty');
+  env.effects.add('respond', { ...message, ephemeral: ephemeral === undefined ? false : isTruthy(ephemeral) });
+  return null;
+});
+def('updateMessage', 1, 1, (env, value) => {
+  needComponent(env, 'updateMessage');
+  const message = messageOf(value);
+  if (!hasBody(message)) throw new Error('The message is empty');
+  env.effects.add('update', message);
   return null;
 });
 def('deleteTrigger', 0, 0, (env) => { env.effects.add('deleteTrigger', {}); return null; });
@@ -305,4 +423,4 @@ def('dbTop', 2, 2, async (env, key, count) => {
 });
 def('dbKeys', 0, 2, async (env, prefix, user) => needStore(env).call('keys', prefix === undefined || prefix === null ? '' : storeKey(prefix), storeUser(user)));
 
-module.exports = { functions, EMBEDS, COMPLEX };
+module.exports = { functions, EMBEDS, COMPLEX, BUTTONS, SELECTS, ROWS };

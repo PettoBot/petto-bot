@@ -23,6 +23,7 @@ const { handleSelect: handleBackupSelect, handleScheduleModal, handleRestoreModa
 const { VERSION_SELECT_ID, handleButton: handleVersionButton, handleSelect: handleVersionSelect } = require('../interactions/version');
 const { handleButton: handleVoiceMasterButton, handleModal: handleVoiceMasterModal, handleSelect: handleVoiceMasterSelect } = require('../interactions/voiceMaster');
 const { SELECT_ID: QUEST_SELECT_ID, PAGE_ID: QUEST_PAGE_ID, handleSelect: handleQuestSelect, handleButton: handleQuestButton } = require('../interactions/quests');
+const { COMPONENT_PREFIX: CODE_COMMAND_PREFIX, handleComponent: handleCodeCommandComponent } = require('../interactions/codeCommands');
 const { handleSetupModal } = require('../interactions/setup');
 const { SETUP_BUTTON_PREFIX, handleSetupButton } = require('../interactions/setupPanel');
 const { BUTTON_PREFIX, handleButton: handleReactionRoleButton } = require('../interactions/reactionRoleButton');
@@ -35,6 +36,11 @@ const DEFAULT_COOLDOWN_MS = 3000;
 module.exports = {
   name: Events.InteractionCreate,
   async execute(interaction, client) {
+    if ((interaction.isButton() || interaction.isStringSelectMenu()) && interaction.customId.startsWith(CODE_COMMAND_PREFIX)) {
+      try { await handleCodeCommandComponent(interaction); } catch (err) { logger.error('Error handling a custom command button or menu:', err); }
+      return;
+    }
+
     if (interaction.isModalSubmit() && interaction.customId === 'petto_setup_modal') {
       try { await handleSetupModal(interaction); } catch (err) { logger.error('Error handling Petto setup modal:', err); }
       return;
