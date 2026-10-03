@@ -126,6 +126,8 @@ module.exports = {
   // Optional dedicated PostgreSQL database for the data that custom commands written in code store. Without it the
   // main database is used.
   codeDatabaseUrl: process.env.PETTO_CODE_DATABASE_URL?.trim() || null,
+  // Like the main database: no SSL unless asked. Discloud's databases do not support it.
+  codeDatabaseSsl: envBool('PETTO_CODE_DATABASE_SSL', envBool('DISCLOUD_DATABASE_SSL', false)),
   // Shared secret for server-side dashboard requests. Keep this identical to the
   // web worker secret, but never send it to the browser.
   dashboardApiSecret: process.env.PETTO_DASHBOARD_API_SECRET || null,

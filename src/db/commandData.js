@@ -29,7 +29,7 @@ function getPool() {
   if (!dedicatedPool) {
     const url = new URL(config.codeDatabaseUrl);
     url.searchParams.delete('sslmode'); // pg would override the ssl option below with it
-    dedicatedPool = new Pool({ connectionString: url.toString(), ssl: { rejectUnauthorized: false }, max: 4, connectionTimeoutMillis: 8000, idleTimeoutMillis: 30_000 });
+    dedicatedPool = new Pool({ connectionString: url.toString(), ssl: config.codeDatabaseSsl ? { rejectUnauthorized: false } : false, max: 4, connectionTimeoutMillis: 8000, idleTimeoutMillis: 30_000 });
     dedicatedPool.on('error', () => {});
   }
   return dedicatedPool;
