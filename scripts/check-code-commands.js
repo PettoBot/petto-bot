@@ -24,7 +24,8 @@ stub('src/db/customCommands.js', {
 });
 stub('src/utils/caseCard.js', { textCard: (text) => ({ text }) });
 const memoryData = new Map();
-stub('src/db/commandData.js', { forGuild: () => ({ async get(key, user) { return memoryData.get(`${user}|${key}`) ?? null; }, async set(key, value, user) { memoryData.set(`${user}|${key}`, value); }, async del() {}, async incr(key, amount, user) { const next = (memoryData.get(`${user}|${key}`) ?? 0) + amount; memoryData.set(`${user}|${key}`, next); return next; }, async top() { return []; }, async keys() { return []; } }) });
+const watching = new Map();
+stub('src/db/commandData.js', { forGuild: () => ({ async get(key, user) { return memoryData.get(`${user}|${key}`) ?? null; }, async set(key, value, user) { memoryData.set(`${user}|${key}`, value); }, async del() {}, async incr(key, amount, user) { const next = (memoryData.get(`${user}|${key}`) ?? 0) + amount; memoryData.set(`${user}|${key}`, next); return next; }, async top() { return []; }, async keys() { return []; }, async watch(id, record) { watching.set(id, record); }, async watched(id) { return watching.get(id) ?? null; } }) });
 stub('src/utils/emojis.js', { EMOJI: { APPROVE: 'OK', DENY: 'NO' } });
 stub('src/utils/colors.js', { COLORS: { DEFAULT: 1, RED: 2, GREEN: 3 } });
 const codeCommands = require('../src/utils/codeCommands');
@@ -71,7 +72,7 @@ const makeGuild = () => {
   const makeChannel = (id, { botCan = 'all', memberCan = 'all' } = {}) => channels.set(id, {
     id, name: `chan${id.slice(-1)}`, isTextBased: () => true, isDMBased: () => false,
     permissionsFor: (who) => permissions(who === 'ME' ? botCan : memberCan),
-    send: async (payload) => { sent.push({ channel: id, payload }); },
+    send: async (payload) => { sent.push({ channel: id, payload }); return { id: `9000${sent.length}`, react: async () => {} }; },
   });
   makeChannel('200000000000000001');
   makeChannel('200000000000000002', { botCan: [PermissionFlagsBits.ViewChannel] }); // the bot cannot send
@@ -286,6 +287,35 @@ const row = (code, name = `c${Math.random().toString(16).slice(2, 8)}`) => ({ na
   assert.equal(submitLog.replies.length, 1, 'sending the modal is answered');
   assert.ok(submitLog.replies[0].content.includes('Thank you') && submitLog.replies[0].flags, 'in private');
   assert.equal(formBits.sent[0].payload.embeds[0].data.title, '💡 More music', 'the fields reach the code');
+
+  // Reactions: a message sent with "reactions" is watched, and reacting to it runs the command.
+  const reactCode = `{{ if eq .Trigger "command" }}{{ sendMessage nil (complexMessage "embed" (cembed "description" "Claim it") "reactions" (cslice "🦋" "🎀")) }}{{ return }}{{ end }}
+{{ if eq .Reaction.Emoji "🦋" }}{{ updateMessage (cembed "description" (print "Claimed by " .User.Username)) }}{{ addRole "223456789012345678" }}{{ removeReaction }}{{ else }}{{ respond (print "Thanks " .User.Username) }}{{ end }}`;
+  const reactRow = { name: 'claim', code: reactCode };
+  const reactBits = makeGuild();
+  const reactAsked = makeMessage({ guildBits: reactBits, content: '!claim' });
+  await codeCommands.runCodeCommand(reactAsked.message, reactRow, '', '!');
+  assert.equal(reactBits.sent.length, 1, 'the message is sent');
+  assert.equal(watching.size, 1, 'the message is watched');
+  assert.ok([...watching.values()].some((record) => record.command === 'claim' && record.emojis.length === 2), 'the emojis and the command are remembered');
+  const edits = []; const removed = []; const channelSends = []; const roleChanges = [];
+  const reactionMessage = {
+    id: 'm1', content: '', url: 'x', embeds: [], author: { id: 'bot' }, guild: reactAsked.message.guild, channel: { ...reactAsked.message.channel, send: async (payload) => { channelSends.push(payload); }, permissionsFor: () => ({ has: () => true }) },
+    edit: async (payload) => { edits.push(payload); }, react: async () => {}, delete: async () => {},
+  };
+  reactionMessage.guild.members.me ??= { id: 'bot', permissions: { has: () => true }, roles: { highest: { position: 10 } }, permissionsIn: () => ({ has: () => true }) };
+  reactionMessage.author = { id: reactionMessage.guild.members.me.id };
+  reactionMessage.guild.members.fetch = async () => reactAsked.message.member;
+  const fakeReaction = { message: reactionMessage, users: { remove: async (id) => { removed.push(id); } } };
+  clock += 5000;
+  await codeCommands.runReaction(fakeReaction, { id: reactAsked.message.author.id, username: 'Liam', bot: false }, reactRow, '🦋');
+  assert.equal(edits.length, 1, 'updateMessage changes the message that was reacted to');
+  assert.equal(edits[0].embeds[0].data.description, 'Claimed by Liam');
+  assert.deepEqual(removed, [reactAsked.message.author.id], 'removeReaction takes the reaction of the person away');
+  clock += 5000;
+  await codeCommands.runReaction(fakeReaction, { id: reactAsked.message.author.id, username: 'Liam', bot: false }, reactRow, '🎀');
+  assert.equal(channelSends.length, 1, 'respond sends a message in the channel');
+  assert.equal(channelSends[0].content, 'Thanks Liam');
 
   Date.now = realNow;
 
