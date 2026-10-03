@@ -250,4 +250,59 @@ def('addReaction', 1, 1, (env, emoji) => {
 });
 def('deleteTrigger', 0, 0, (env) => { env.effects.add('deleteTrigger', {}); return null; });
 
+// ── Stored data: what the commands of a server remember between uses ───────
+const KEY_SHAPE = /^[A-Za-z0-9_.:-]{1,100}$/;
+const MAX_STORED_LENGTH = 4000;
+
+function storeKey(value) {
+  if (typeof value !== 'string' || !KEY_SHAPE.test(value)) throw new Error('A key is a text of 1 to 100 letters, numbers, . _ : or -');
+  return value;
+}
+/** A user ID for data of one member, or '' for data of the whole server. */
+function storeUser(value) {
+  if (value === undefined || value === null || value === '') return '';
+  return snowflake(value, 'the user');
+}
+/** Only text, numbers, booleans, lists and maps can be stored, not too deep and not too big. */
+function storable(value, depth = 0) {
+  if (depth > 6) throw new Error('A stored value goes too deep');
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string' || typeof value === 'boolean') return value;
+  if (typeof value === 'number') { if (!Number.isFinite(value)) throw new Error('A stored number must be finite'); return value; }
+  if (Array.isArray(value)) return value.map((item) => storable(item, depth + 1));
+  if (typeof value === 'object') {
+    if (EMBEDS.has(value) || COMPLEX.has(value)) throw new Error('An embed or a message cannot be stored');
+    const copy = {};
+    for (const key of Object.keys(value)) { if (!FORBIDDEN_KEYS.has(key)) copy[key] = storable(value[key], depth + 1); }
+    return copy;
+  }
+  throw new Error('That value cannot be stored');
+}
+function needStore(env) {
+  if (!env.store) throw new Error('Stored data is not available here');
+  return env.store;
+}
+function toStore(value) {
+  const clean = storable(value);
+  if (JSON.stringify(clean).length > MAX_STORED_LENGTH) throw new Error(`A stored value holds at most ${MAX_STORED_LENGTH} characters`);
+  return clean;
+}
+
+def('dbSet', 2, 3, async (env, key, value, user) => { await needStore(env).call('set', storeKey(key), toStore(value), storeUser(user), null); return null; });
+def('dbSetExpire', 3, 4, async (env, key, value, seconds, user) => {
+  const ttl = Math.trunc(num(seconds));
+  if (ttl < 1 || ttl > 31_536_000) throw new Error('The time must be from 1 second to a year');
+  await needStore(env).call('set', storeKey(key), toStore(value), storeUser(user), ttl);
+  return null;
+});
+def('dbGet', 1, 2, async (env, key, user) => needStore(env).call('get', storeKey(key), storeUser(user)));
+def('dbDel', 1, 2, async (env, key, user) => { await needStore(env).call('del', storeKey(key), storeUser(user)); return null; });
+def('dbIncr', 2, 3, async (env, key, amount, user) => needStore(env).call('incr', storeKey(key), num(amount), storeUser(user)));
+def('dbTop', 2, 2, async (env, key, count) => {
+  const limit = Math.trunc(num(count));
+  if (limit < 1 || limit > 25) throw new Error('dbTop gives from 1 to 25 members');
+  return needStore(env).call('top', storeKey(key), limit);
+});
+def('dbKeys', 0, 2, async (env, prefix, user) => needStore(env).call('keys', prefix === undefined || prefix === null ? '' : storeKey(prefix), storeUser(user)));
+
 module.exports = { functions, EMBEDS, COMPLEX };

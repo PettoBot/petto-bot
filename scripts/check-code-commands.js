@@ -23,6 +23,8 @@ stub('src/db/customCommands.js', {
   listCommands: async (guildId) => [...store.entries()].filter(([key]) => key.startsWith(`${guildId}:`)).map(([, value]) => value),
 });
 stub('src/utils/caseCard.js', { textCard: (text) => ({ text }) });
+const memoryData = new Map();
+stub('src/db/commandData.js', { forGuild: () => ({ async get(key, user) { return memoryData.get(`${user}|${key}`) ?? null; }, async set(key, value, user) { memoryData.set(`${user}|${key}`, value); }, async del() {}, async incr(key, amount, user) { const next = (memoryData.get(`${user}|${key}`) ?? 0) + amount; memoryData.set(`${user}|${key}`, next); return next; }, async top() { return []; }, async keys() { return []; } }) });
 stub('src/utils/emojis.js', { EMOJI: { APPROVE: 'OK', DENY: 'NO' } });
 stub('src/utils/colors.js', { COLORS: { DEFAULT: 1, RED: 2, GREEN: 3 } });
 const codeCommands = require('../src/utils/codeCommands');
@@ -157,6 +159,15 @@ const row = (code, name = `c${Math.random().toString(16).slice(2, 8)}`) => ({ na
   await codeCommands.runCodeCommand(t.message, same, '', '!'); await codeCommands.runCodeCommand(t.message, same, '', '!');
   assert.equal(t.replies.length, 1, 'the second use inside the cooldown is ignored');
 
+  // Data stored by a command is kept between uses and between members; a test never keeps it.
+  t = makeMessage();
+  const counter = row('{{ dbIncr "uses" 1 }} uses', 'counter');
+  await codeCommands.runCodeCommand(t.message, counter, '', '!');
+  const t2 = makeMessage();
+  t2.message.author.id = '500000000000000002';
+  await codeCommands.runCodeCommand(t2.message, row('{{ dbIncr "uses" 1 }} uses', 'counter2'), '', '!');
+  assert.deepEqual([t.replies[0].content, t2.replies[0].content], ['1 uses', '2 uses'], 'what a command stores is kept for the next use');
+
   // The arguments reach the code.
   t = makeMessage();
   await codeCommands.runCodeCommand(t.message, row('{{ add (index .Args 0) (index .Args 1) }}'), '4 5', '!');
@@ -170,7 +181,7 @@ const row = (code, name = `c${Math.random().toString(16).slice(2, 8)}`) => ({ na
     assert.ok(!ids.has(template.id), `template id ${template.id} is not repeated`); ids.add(template.id);
     assert.equal(check(template.code), null, `${template.id} is valid`);
     for (const args of [[], ['20'], ['a', 'b', 'c']]) {
-      const result = run(template.code, { ...base, Args: args, RawArgs: args.join(' ') }, { random: () => 0.5 });
+      const result = await run(template.code, { ...base, Args: args, RawArgs: args.join(' ') }, { random: () => 0.5 });
       assert.ok(result.output.trim() || result.effects.length, `${template.id} does something with ${args.length} arguments`);
     }
     assert.match(template.suggestedName, /^[a-z0-9_-]{1,32}$/);
@@ -215,6 +226,10 @@ const row = (code, name = `c${Math.random().toString(16).slice(2, 8)}`) => ({ na
   assert.ok(tested.includes('It would print') && tested.includes('Hi Liam') && tested.includes('send "x" here') && tested.includes('give the role'), tested);
   assert.equal(test.m.sent.length, 0, 'a test sends nothing'); assert.equal(test.m.roleLog.length, 0, 'a test changes nothing');
   assert.ok((await say(fakeInteraction('codetest', {}, '!cc codetest {{ boom }}'))).includes('The code stopped'));
+  const first = await say(fakeInteraction('codetest', {}, '!cc codetest {{ dbIncr "t" 5 }}{{ dbIncr "t" 5 }}'));
+  assert.ok(first.includes('10'), 'inside a test, what is stored lasts the whole run');
+  assert.equal(memoryData.has('|t'), false, 'but a test never stores anything for real');
+  assert.ok((await say(fakeInteraction('codetest', {}, '!cc codetest {{ dbGet "t" }}'))).includes('_nothing_'), 'and the next test starts empty');
   assert.ok((await say(fakeInteraction('codetest', {}, '!cc codetest {{ add 1 "x" }}'))).includes('stopped'));
 
   const exported = await say(fakeInteraction('export', { name: 'greet' }, '!cc export greet'));
