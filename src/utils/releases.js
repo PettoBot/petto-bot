@@ -2,11 +2,58 @@ const { EMOJI } = require('./emojis');
 
 const RELEASES = [
   {
+    version: 'v0.7.1',
+    label: 'v0.7.1 · Partners, panels & more',
+    date: '2026-10-03',
+    accent: 0xff91c2,
+    status: `${EMOJI.RELEASE_APPROVED} Latest`,
+    summary: 'Tools for communities: partnerships with a ranking, uploads, requests, reviews and profiles, buttons and panels with no code, saved embeds for sticky messages, and quest alerts with four sources.',
+    sections: [
+      {
+        title: `${EMOJI.RELEASE_ROCKET} Partners`,
+        items: [
+          'A Partner Manager posts the invite of another server in a partner channel and, if it passes the requirements (minimum members, minimum age, a cooldown with the same server, a blacklist), it is counted and answered.',
+          '`!partnerconfig` sets the channels (Free 6, Premium 25), the manager role, the requirements and 8 replies, each with text or a saved embed. `!partner stats` and `!partner leaderboard` show today, this week and all time.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_MAGIC} Buttons and panels, with no code`,
+        items: [
+          '`!responder add` makes a button (or a choice of a menu) that answers in private and gives, takes or toggles roles, with an optional required role.',
+          '`!panel` shows them as buttons or as one menu, posts the message and updates it in place. Free servers can have 20 responders and 10 panels, Premium 250 and 50.',
+          'Sticky messages can be one of your saved embeds (a V2 design too) and can be edited in the dashboard.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_EXPERIENCE} Uploads, requests & reviews`,
+        items: [
+          'Uploads: files posted in the channels you choose are counted per member, with a role and a welcome at the first one (`!uploadconfig`, `!uploads`). Free 20 channels, Premium 100.',
+          'Requests: `!request make` posts a card with Claim, Done, Unclaim and Cancel buttons for the staff. With Premium, a claimed request goes back to open if it is not finished in time.',
+          'Reviews and profiles: `!review give @member 4` rates a member from 1 to 5 stars and `!profile` shows the rating with the uploads, requests and partnerships.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_SETTINGS} Dashboard & improvements`,
+        items: [
+          'New dashboard pages: Partners, Buttons and panels, Uploads, Requests, and Reviews and profiles.',
+          'Quest alerts read four sources (the short list of the discord-api-tracker repository first), so a new Quest is seen minutes after it starts even when the community API is down.',
+          'Omniplex joins the Partners page of the website.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_BUG} Fixes`,
+        items: [
+          'A Quest that was published before it started is announced when it starts, not hours later.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'v0.7.0',
     label: 'v0.7.0 · Petto Code, Quests & Embeds V2',
     date: '2026-10-03',
     accent: 0xff91c2,
-    status: `${EMOJI.RELEASE_APPROVED} Latest`,
+    status: `${EMOJI.RELEASE_APPROVED} Published`,
     summary: 'A big release: custom commands written in code, open to every server (Free 50 commands, Premium 100), with buttons, forms and reactions, an editor in the dashboard, Quest alerts, Components V2 embeds and global stats.',
     sections: [
       {

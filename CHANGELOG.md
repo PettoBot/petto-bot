@@ -4,6 +4,10 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+## [0.7.1] — 2026-10-03
+
+Partners, uploads, requests, reviews and profiles, buttons and panels with no code, saved embeds for sticky messages, and quest alerts that no longer depend on one source.
+
 ### Added
 
 - Reviews and profiles: `!review give @member 4 "comment"` rates a member from 1 to 5 stars (one review per pair, sending it again changes it), `!review show` and `!review remove`; `!profile` shows when they joined, their rating and the numbers of the modules the server uses (uploads, requests and partnerships). `!profileconfig` turns reviews off or sets a channel where each new review is shown.
