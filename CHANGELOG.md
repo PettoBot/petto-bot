@@ -6,8 +6,9 @@ All notable changes to Petto are documented here.
 
 ### Added
 
-- Two more quest sources from the discord-api-tracker repository: its big file, and its short list of recent quests, which its own job refreshes within minutes of a quest starting (the Where Winds Meet 700 Orbs quest was there about 10 minutes after it began, hours before the other files). The region and age limits now also come from that repository's list when the community API is down, and are applied to every source.
-- A second independent copy of Discord's quest data on GitHub. discordquest.com sits behind a protection that sometimes answers the bot with a rate limit, and then only one file carried the alerts. Now two copies back each other up, and `!quests status` lists all three. The community API is now asked gently, at most once every 30 minutes, and each rate limit in a row doubles the pause (up to 1 hour, so it comes back soon after its daily limit resets), so the bot stops hammering a protected site; the last answer keeps being used in between and the GitHub copies keep detecting new quests.
+- Quest sources: the bot now reads four public copies of the quest list and any of them can announce a quest. The first is the short list of recent quests of the discord-api-tracker repository, which its own job refreshes within minutes of a quest starting (the Where Winds Meet 700 Orbs quest was there about 10 minutes after it began, hours before the other files); then the community API, discord-api-diff and the tracker's big file. `!quests status` lists all four.
+- The region and age limits are read from the community API and, when it is down, from the tracker's own list, and are applied to every source.
+- The community API (behind Cloudflare, with a daily limit of its own) is asked at most every 30 minutes, and each rate limit in a row doubles the pause up to 1 hour, so it comes back soon after its daily limit resets.
 
 ### Fixed
 
