@@ -1868,6 +1868,13 @@ $$;
 -- A server is only named in the ranking when it turns this on in the dashboard; the totals never name anyone.
 alter table guilds add column if not exists global_stats_visible boolean not null default false;
 
+-- People who chose to appear in the user ranking (`!globalranking on`). Being here is the choice; nobody is added without it.
+create table if not exists global_stats_users (
+  user_id    text primary key,
+  created_at timestamptz not null default now()
+);
+alter table global_stats_users enable row level security;
+
 -- One row, `main`, rewritten every minute by the bot with what the public stats page shows.
 create table if not exists global_stats (
   id         text primary key,
