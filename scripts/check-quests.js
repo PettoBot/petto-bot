@@ -86,7 +86,7 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
   questApi.resetCache(); failTracker = true;
   answer = await questApi.fetchQuests({ force: true });
   assert.equal(answer.notModified, false); assert.equal(answer.quests.length, 6, 'one source failing is not a problem');
-  assert.equal(questApi.getStatus().sources[1].ok, false);
+  assert.equal(questApi.getStatus().sources.find((source) => source.name === 'discord-api-diff').ok, false);
   questApi.resetCache(); failCommunity = true;
   await assert.rejects(() => questApi.fetchQuests({ force: true }), /could not be read/); assert.equal(questApi.getStatus().ok, false);
   failTracker = false; failCommunity = false;
@@ -101,7 +101,7 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
   questApi.resetCache();
   await questApi.fetchQuests({ force: true });
   assert.equal(communityCalls, 2, 'the limited source is not asked again while it is paused');
-  assert.ok(String(questApi.getStatus().sources[0].error).includes('paused'));
+  assert.ok(String(questApi.getStatus().sources.find((source) => source.name === 'discordquest.com').error).includes('paused'));
   global.fetch = async () => new Response(JSON.stringify({ not: 'a list' }), { status: 200 });
   await assert.rejects(() => questApi.fetchQuests({ force: true }), /could not be read/);
 

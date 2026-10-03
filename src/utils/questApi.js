@@ -30,15 +30,17 @@ const TASKS = {
 const TASK_KINDS = ['video', 'play', 'stream', 'activity'];
 const REWARD_KIND_LIST = ['orbs', 'decoration', 'code', 'ingame', 'nitro'];
 
-// Two public copies of the list of quests are read, so one being late or down does not stop the alerts: the community
-// API (which also knows the region and age limits) and aamiaa/discord-api-diff, the repository that archives Discord's own
-// quest data and is the first to have a new quest (the other tracker sites and mirrors copy it, some hours later).
+// Four public copies of the list of quests are read, so one being late or down does not stop the alerts. The first one is
+// the short list of recent quests of the discord-api-tracker repository (the one that has a new quest within minutes), then
+// the community API, aamiaa/discord-api-diff (which archives Discord's own quest data, every few hours) and the tracker's
+// big file. A quest found by any of them is announced, and the earlier source wins when they differ.
+const COMMUNITY = 'discordquest.com';
 const SOURCES = [
-  { name: 'discordquest.com', url: `${API_BASE}/api/quests`, minIntervalMs: 30 * 60_000 },
-  { name: 'discord-api-diff', url: 'https://raw.githubusercontent.com/aamiaa/discord-api-diff/main/quests.json' },
-  { name: 'discord-api-tracker', url: 'https://raw.githubusercontent.com/xGustavvo/discord-api-tracker/main/quests.json' },
   // The same tracker's short list of recent quests: its own job refreshes it within minutes of a quest starting, well before the big files.
   { name: 'discord-api-tracker (recent)', url: 'https://raw.githubusercontent.com/xGustavvo/discord-api-tracker/main/quest.json' },
+  { name: COMMUNITY, url: `${API_BASE}/api/quests`, minIntervalMs: 30 * 60_000 },
+  { name: 'discord-api-diff', url: 'https://raw.githubusercontent.com/aamiaa/discord-api-diff/main/quests.json' },
+  { name: 'discord-api-tracker', url: 'https://raw.githubusercontent.com/xGustavvo/discord-api-tracker/main/quests.json' },
 ];
 // Region and age limits: the community API knows them, and when it is down the tracker keeps a list of its own.
 const REGIONS_URLS = [`${API_BASE}/api/regions`, 'https://gist.githubusercontent.com/xGustavvo/3d08b7369eb34b50834815fd43176cae/raw'];
@@ -163,7 +165,7 @@ async function readRegions(force = false) {
   if (!force && Date.now() - regionCache.at < REGIONS_EVERY_MS) return regionCache.map;
   regionCache.at = Date.now();
   for (const url of REGIONS_URLS) {
-    if (url.startsWith(API_BASE) && state.get(SOURCES[0].name).pausedUntil > Date.now()) continue;
+    if (url.startsWith(API_BASE) && state.get(COMMUNITY).pausedUntil > Date.now()) continue;
     try {
       const rows = (await getJson(url)).data?.quests ?? [];
       if (Array.isArray(rows) && rows.length) {
@@ -211,8 +213,8 @@ async function readSource(source, force) {
 }
 
 /**
- * The current list of quests from every source that answers, joined by quest id (the community API wins, it has the
- * limits), or `{ notModified: true }` when no source changed. It only fails when every source failed.
+ * The current list of quests from every source that answers, joined by quest id (the earlier source wins, the tracker's short list first; the region and
+ * age limits come from their own list), or `{ notModified: true }` when no source changed. It only fails when every source failed.
  */
 async function fetchQuests({ force = false } = {}) {
   await readRegions(force);
@@ -225,7 +227,7 @@ async function fetchQuests({ force = false } = {}) {
   return { notModified, quests: cachedQuests() };
 }
 
-/** The last list of every source, joined by quest id (the community API wins), without asking anything. */
+/** The last list of every source, joined by quest id (the earlier source wins), without asking anything. */
 function cachedQuests() {
   const merged = new Map();
   for (const source of [...SOURCES].reverse()) for (const quest of state.get(source.name).quests ?? []) merged.set(quest.id, quest);
