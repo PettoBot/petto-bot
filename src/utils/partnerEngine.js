@@ -24,16 +24,53 @@ function snowflakeDate(id) {
   }
 }
 
-/** Why a partnership does not count, or null when it does. `invite` is `{ guildId, name, members, createdAt }`. */
+const MINUTE_MS = 60_000;
+const MAX_SPAN_MINUTES = 365 * 24 * 60;
+const SPAN_UNITS = { w: 10_080, d: 1_440, h: 60, m: 1 };
+
+/** A span written as `3d 4h` (weeks, days, hours, minutes) in minutes; 0 for `0`, `none` or `off`; null when it is not one. */
+function parseSpan(text) {
+  const value = String(text ?? '').trim().toLowerCase();
+  if (/^(0|none|off|no)$/.test(value)) return 0;
+  if (!value || !/^(?:\d+\s*[wdhm]\s*)+$/.test(value)) return null;
+  let minutes = 0;
+  for (const match of value.matchAll(/(\d+)\s*([wdhm])/g)) minutes += Number(match[1]) * SPAN_UNITS[match[2]];
+  return minutes > 0 && minutes <= MAX_SPAN_MINUTES ? minutes : null;
+}
+
+/** Minutes as `3d 4h` (the two biggest units that are not zero), or `none`. */
+function formatSpan(minutes) {
+  if (!minutes) return 'none';
+  const parts = [];
+  let left = minutes;
+  for (const [unit, size] of [['w', 10_080], ['d', 1_440], ['h', 60], ['m', 1]]) {
+    const count = Math.floor(left / size);
+    if (count) { parts.push(`${count}${unit}`); left -= count * size; }
+  }
+  return parts.join(' ');
+}
+
+/** The cooldown of a server in minutes: the new setting, or the old one in days. */
+function cooldownMinutes(config) {
+  return config.cooldown_minutes > 0 ? config.cooldown_minutes : (config.cooldown_days ?? 0) * 1_440;
+}
+
+/** Why a partnership does not count, or null when it does. `invite` is `{ guildId, name, members, createdAt, nsfw, text }`. */
 function judge({ invite, ownGuildId, config, blacklisted = false, last = null, now = Date.now() }) {
   if (String(invite.guildId) === String(ownGuildId)) return 'self_partner';
   if (blacklisted) return 'blacklisted';
+  if (config.block_nsfw && invite.nsfw) return 'nsfw_blocked';
+  if (config.blocked_keywords?.length) {
+    const text = String(invite.text ?? '').toLowerCase();
+    if (config.blocked_keywords.some((word) => word && text.includes(String(word).toLowerCase()))) return 'keyword_blocked';
+  }
   if (config.min_members > 0 && !(invite.members >= config.min_members)) return 'member_requirement';
   if (config.min_age_days > 0) {
     const created = invite.createdAt instanceof Date ? invite.createdAt.getTime() : null;
     if (created === null || now - created < config.min_age_days * DAY_MS) return 'age_requirement';
   }
-  if (config.cooldown_days > 0 && last && now - new Date(last.created_at).getTime() < config.cooldown_days * DAY_MS) return 'cooldown';
+  const cooldown = cooldownMinutes(config);
+  if (cooldown > 0 && last && now - new Date(last.created_at).getTime() < cooldown * MINUTE_MS) return 'cooldown';
   return null;
 }
 
@@ -71,4 +108,25 @@ function counts(rows, now = new Date()) {
   return { day, week, total: rows.length };
 }
 
-module.exports = { extractInviteCodes, snowflakeDate, judge, periodStart, rank, counts };
+/**
+ * Where a Partner Manager stands, for the variables of the replies: their place and the best one this week and in total, and the
+ * numbers of the whole server. `rows` are every counted partnership of the server.
+ */
+function standings(rows, managerId, now = new Date()) {
+  const weekStart = periodStart('week', now).getTime();
+  const dayStart = periodStart('day', now).getTime();
+  const week = rank(rows.filter((row) => new Date(row.created_at).getTime() >= weekStart));
+  const total = rank(rows);
+  const place = (list) => { const index = list.findIndex((entry) => entry.managerId === String(managerId)); return index === -1 ? null : index + 1; };
+  return {
+    rankWeek: place(week),
+    rankTotal: place(total),
+    topWeek: week[0] ?? null,
+    topTotal: total[0] ?? null,
+    serverDay: rows.filter((row) => new Date(row.created_at).getTime() >= dayStart).length,
+    serverWeek: week.reduce((sum, entry) => sum + entry.count, 0),
+    serverTotal: rows.length,
+  };
+}
+
+module.exports = { extractInviteCodes, snowflakeDate, judge, periodStart, rank, counts, parseSpan, formatSpan, cooldownMinutes, standings };

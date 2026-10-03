@@ -23,9 +23,20 @@ function extractReactRepliesFromTemplate(value, emojis = []) {
   }
   if (Array.isArray(value)) return value.map((item) => extractReactRepliesFromTemplate(item, emojis));
   if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, extractReactRepliesFromTemplate(item, emojis)]));
+    // `reactions` is the field of the dashboard editor: a list of emojis, the same as writing {reactreply:emoji} for each one.
+    if (Array.isArray(value.reactions)) {
+      for (const emoji of value.reactions) if (typeof emoji === 'string' && emoji.trim()) emojis.push(emoji.trim());
+    }
+    return Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'reactions').map(([key, item]) => [key, extractReactRepliesFromTemplate(item, emojis)]));
   }
   return value;
+}
+
+const MAX_REACTIONS = 5;
+
+/** The emojis of a message to react with: no repeats, at most five. */
+function uniqueReactions(emojis) {
+  return [...new Set(emojis.map((emoji) => String(emoji).trim()).filter(Boolean))].slice(0, MAX_REACTIONS);
 }
 
 /** Reacts to `message` with each emoji in order, best-effort (a bad/unknown emoji shouldn't block the rest). */
@@ -35,4 +46,4 @@ async function applyReactReplies(message, emojis) {
   }
 }
 
-module.exports = { extractReactReplies, extractReactRepliesFromTemplate, applyReactReplies };
+module.exports = { extractReactReplies, extractReactRepliesFromTemplate, applyReactReplies, uniqueReactions, MAX_REACTIONS };

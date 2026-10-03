@@ -38,6 +38,24 @@ async function upsertHoneypot(guildId, channelId, punishment = 'softban') {
   return data;
 }
 
+/** Chooses what is posted in the bait channel: `{ panel_mode, panel_text, panel_template }`, whatever is given. */
+async function setPanelSettings(guildId, channelId, changes) {
+  const allowed = {};
+  if (['default', 'custom', 'none'].includes(changes.panel_mode)) allowed.panel_mode = changes.panel_mode;
+  if (typeof changes.panel_text === 'string') allowed.panel_text = changes.panel_text.slice(0, 2000);
+  if ('panel_template' in changes) allowed.panel_template = changes.panel_template || null;
+  const { data, error } = await database
+    .from('honeypots')
+    .update({ ...allowed, updated_at: new Date().toISOString() })
+    .eq('guild_id', guildId)
+    .eq('channel_id', channelId)
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
 async function setPanelMessage(guildId, channelId, panelMessageId) {
   const { data, error } = await database
     .from('honeypots')
@@ -105,6 +123,7 @@ module.exports = {
   getHoneypot,
   listHoneypots,
   upsertHoneypot,
+  setPanelSettings,
   setPanelMessage,
   incrementTrigger,
   claimHoneypotUser,

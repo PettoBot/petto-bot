@@ -9,6 +9,7 @@ function stub(relative, exports) {
   require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports };
 }
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
+const reacted = [];
 const templates = new Map();
 stub('src/utils/templatedMessage.js', { templatePayload: async (guildId, name) => templates.get(`${guildId}:${name}`) ?? null });
 let sticky = null;
@@ -25,7 +26,7 @@ const event = require('../src/events/messageCreateSticky');
   const source = { guild: { id: 'g' }, channel: { id: 'c' }, member: null, author: { id: 'u' } };
   assert.deepEqual(await stickyPayload({ content: 'Read the rules', embed_template: null }, source), { content: 'Read the rules' });
   assert.equal(await stickyPayload({ content: '', embed_template: null }, source), null, 'an empty sticky sends nothing');
-  templates.set('g:rules', { embeds: [{ title: 'Rules' }], components: [], files: [] });
+  templates.set('g:rules', { embeds: [{ title: 'Rules' }], components: [], files: [], reactions: ['🌸'] });
   assert.deepEqual((await stickyPayload({ content: 'text', embed_template: 'rules' }, source)).embeds, [{ title: 'Rules' }], 'the saved embed wins');
   templates.set('g:v2', { content: undefined, embeds: [], components: [{ type: 17 }], files: [], flags: 32768 });
   assert.equal((await stickyPayload({ content: '', embed_template: 'v2' }, source)).flags, 32768, 'a V2 design keeps its flag');
@@ -38,12 +39,12 @@ const event = require('../src/events/messageCreateSticky');
   const channel = {
     id: 'c', isTextBased: () => true,
     messages: { fetch: async (id) => ({ id, delete: async () => { deleted.push(id); } }) },
-    send: async (payload) => { sent.push(payload); return { id: `new${sent.length}` }; },
+    send: async (payload) => { sent.push(payload); return { id: `new${sent.length}`, react: async (emoji) => { reacted.push(emoji); } }; },
   };
   const post = (over = {}) => ({ id: 'm1', author: { id: 'u', bot: false }, guild: { id: 'g' }, channel, member: null, ...over });
   sticky = { message_id: 'old', content: 'Rules', embed_template: 'rules' };
   await event.execute(post());
-  assert.deepEqual(deleted, ['old']); assert.equal(sent.length, 1); assert.deepEqual(sent[0].embeds, [{ title: 'Rules' }]); assert.deepEqual(written, ['new1']);
+  assert.deepEqual(deleted, ['old']); assert.equal(sent.length, 1); assert.deepEqual(sent[0].embeds, [{ title: 'Rules' }]); assert.deepEqual(written, ['new1']); assert.deepEqual(reacted, ['🌸'], 'the reactions of the embed go on the sticky');
   await event.execute(post({ id: 'new1' })); assert.equal(sent.length, 1, 'the sticky itself does not make another');
   await event.execute(post({ author: { id: 'b', bot: true } })); assert.equal(sent.length, 1, 'bots do not make another');
   sticky = { message_id: null, content: '', embed_template: 'gone' };

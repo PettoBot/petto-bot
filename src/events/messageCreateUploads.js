@@ -5,6 +5,7 @@ const uploadsDb = require('../db/uploads');
 const { textOf, DEFAULT_WELCOME } = require('../utils/uploadMessages');
 const { templatePayload } = require('../utils/templatedMessage');
 const { resolve } = require('../utils/embedVariables');
+const { applyReactReplies } = require('../utils/messageFlags');
 const logger = require('../utils/logger');
 
 async function welcome(message, config) {
@@ -12,7 +13,8 @@ async function welcome(message, config) {
   const saved = config.welcome ?? {};
   const payload = saved.template ? await templatePayload(message.guild.id, saved.template, ctx) : null;
   const content = payload ? null : (await resolve(textOf(config.welcome, DEFAULT_WELCOME), ctx)).slice(0, 2000) || DEFAULT_WELCOME;
-  await message.channel.send({ ...(payload ?? { content }), allowedMentions: { users: [message.author.id] } }).catch(() => null);
+  const sent = await message.channel.send({ ...(payload ?? { content }), allowedMentions: { users: [message.author.id] } }).catch(() => null);
+  if (sent && payload?.reactions?.length) await applyReactReplies(sent, payload.reactions);
 }
 
 module.exports = {

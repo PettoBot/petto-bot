@@ -3,6 +3,7 @@ const { ensureGuild } = require('../../db/guilds');
 const stickyDb = require('../../db/stickyMessages');
 const { getTemplate } = require('../../db/embedTemplates');
 const { stickyPayload } = require('../../utils/stickyPayload');
+const { applyReactReplies } = require('../../utils/messageFlags');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
@@ -65,7 +66,10 @@ async function setCmd(interaction) {
     return null;
   });
 
-  if (sent) await stickyDb.setMessageId(interaction.guild.id, channel.id, sent.id);
+  if (sent) {
+    await stickyDb.setMessageId(interaction.guild.id, channel.id, sent.id);
+    if (payload?.reactions?.length) await applyReactReplies(sent, payload.reactions);
+  }
 
   await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Sticky message set in ${channel}.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
