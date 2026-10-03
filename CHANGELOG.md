@@ -4,6 +4,10 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- A third quest source, a second independent copy of Discord's quest data on GitHub. discordquest.com sits behind a protection that sometimes answers the bot with a rate limit, and then only one file carried the alerts. Now two copies back each other up, and `!quests status` lists all three.
+
 ### Fixed
 
 - Quest alerts missed quests that were published before they started. The sources (a file on GitHub and a community API) often list a quest hours before it begins, and when the file had not changed since the last check the whole pass was skipped, so the quest that had just started was not looked at until the file changed again (sometimes many hours later). The pass now always runs on the list it already has, so a quest is announced within 5 minutes of starting, and the ending-soon alerts no longer wait for the file to change either. A quest that started and was missed is announced at the first check after the update.

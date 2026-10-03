@@ -36,6 +36,7 @@ const REWARD_KIND_LIST = ['orbs', 'decoration', 'code', 'ingame', 'nitro'];
 const SOURCES = [
   { name: 'discordquest.com', url: `${API_BASE}/api/quests`, regions: true },
   { name: 'discord-api-diff', url: 'https://raw.githubusercontent.com/aamiaa/discord-api-diff/main/quests.json', regions: false },
+  { name: 'discord-api-tracker', url: 'https://raw.githubusercontent.com/xGustavvo/discord-api-tracker/main/quests.json', regions: false },
 ];
 const state = new Map(SOURCES.map((source) => [source.name, { etag: null, quests: null, ok: null, at: null, error: null, pausedUntil: 0 }]));
 
