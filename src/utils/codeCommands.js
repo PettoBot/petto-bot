@@ -155,10 +155,16 @@ async function runCodeCommand(message, row, argText, prefix) {
 /** Takes the code out of what was typed: with or without a code block around it. */
 function extractCode(text) {
   const trimmed = String(text ?? '').trim();
-  const fenced = /^```[a-z0-9_-]*\n?([\s\S]*?)\n?```$/i.exec(trimmed);
-  if (fenced) return fenced[1].trim();
-  const inline = /^`([^`]+)`$/.exec(trimmed);
-  return (inline ? inline[1] : trimmed).trim();
+  // A code block (with or without a language after the three backticks), read by hand so long input costs nothing extra.
+  if (trimmed.length >= 6 && trimmed.startsWith('```') && trimmed.endsWith('```')) {
+    const inside = trimmed.slice(3, -3);
+    const firstLineEnd = inside.indexOf('\n');
+    const language = firstLineEnd === -1 ? inside : inside.slice(0, firstLineEnd);
+    const hasLanguage = firstLineEnd !== -1 && language.length <= 20 && [...language].every((char) => /[A-Za-z0-9_-]/.test(char));
+    return (hasLanguage || firstLineEnd === 0 ? inside.slice(firstLineEnd + 1) : inside).trim();
+  }
+  const inline = trimmed.length > 2 && trimmed.startsWith('`') && trimmed.endsWith('`') && !trimmed.slice(1, -1).includes('`') ? trimmed.slice(1, -1) : null;
+  return (inline ?? trimmed).trim();
 }
 
 /**
