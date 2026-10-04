@@ -2481,3 +2481,16 @@ alter table partner_config add column if not exists blocked_keywords text[] not 
 alter table honeypots add column if not exists panel_mode text not null default 'default' check (panel_mode in ('default', 'custom', 'none'));
 alter table honeypots add column if not exists panel_text text not null default '' check (char_length(panel_text) <= 2000);
 alter table honeypots add column if not exists panel_template text;
+
+-- What the dashboard needs to know about each server Petto is in, kept up to date by the bot so the web reads it from here
+-- instead of asking Discord on every page. `channels` and `roles` have the shape of Discord's own API answers.
+create table if not exists discord_guild_snapshots (
+  guild_id     text primary key,
+  name         text not null,
+  icon         text,
+  owner_id     text,
+  member_count integer,
+  channels     jsonb not null default '[]'::jsonb,
+  roles        jsonb not null default '[]'::jsonb,
+  updated_at   timestamptz not null default now()
+);
