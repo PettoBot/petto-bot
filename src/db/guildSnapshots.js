@@ -1,7 +1,9 @@
 const database = require('./database');
 
 async function saveSnapshot(row) {
-  const { error } = await database.from('discord_guild_snapshots').upsert({ ...row, updated_at: new Date().toISOString() }, { onConflict: 'guild_id' });
+  // The PostgreSQL driver turns a JavaScript array into a PostgreSQL array, not into JSON, so the two lists go in as JSON text.
+  const values = { ...row, channels: JSON.stringify(row.channels ?? []), roles: JSON.stringify(row.roles ?? []), updated_at: new Date().toISOString() };
+  const { error } = await database.from('discord_guild_snapshots').upsert(values, { onConflict: 'guild_id' });
   if (error) throw error;
 }
 
