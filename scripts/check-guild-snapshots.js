@@ -29,7 +29,8 @@ const { buildSnapshot, saveGuildSnapshot, removeGuildSnapshot, syncAllGuildSnaps
 
 const channel = (id, name, type, extra = {}) => ({ id, name, type, rawPosition: Number(id) % 10, parentId: null, topic: null, nsfw: false, isThread: () => false, ...extra });
 const guild = (id, overrides = {}) => ({
-  id, name: `Server ${id}`, icon: 'abc123', ownerId: '99', memberCount: 42,
+  id, name: `Server ${id}`, icon: 'abc123', ownerId: '99', memberCount: 42, banner: 'ban1', premiumTier: 2, premiumSubscriptionCount: 9,
+  emojis: { cache: new Map([['e1', {}], ['e2', {}]]) }, members: { me: { nickname: 'Petto Pet', avatar: 'av1' } },
   channels: { cache: new Map([['1', channel('1', 'general', 0, { topic: 'hello', parentId: '5' })], ['2', channel('2', 'voice', 2)], ['3', { ...channel('3', 'a thread', 11), isThread: () => true }]]) },
   roles: { cache: new Map([['10', { id: '10', name: '@everyone', color: 0, rawPosition: 0, managed: false, permissions: { bitfield: 1024n }, icon: null, hoist: false, mentionable: false }], ['11', { id: '11', name: 'Mods', color: 255, rawPosition: 3, managed: false, permissions: { bitfield: 8n }, icon: 'x', hoist: true, mentionable: true }]]) },
   ...overrides,
@@ -39,6 +40,7 @@ const guild = (id, overrides = {}) => ({
   const row = buildSnapshot(guild('1000'));
   assert.equal(row.guild_id, '1000'); assert.equal(row.name, 'Server 1000'); assert.equal(row.icon, 'abc123'); assert.equal(row.member_count, 42); assert.equal(row.owner_id, '99');
   assert.equal(row.channels.length, 2, 'threads are not saved');
+  assert.deepEqual([row.banner, row.emoji_count, row.premium_tier, row.boost_count, row.bot_nick, row.bot_avatar], ['ban1', 2, 2, 9, 'Petto Pet', 'av1'], 'banner, emojis, boosts and how the bot looks in the server');
   assert.deepEqual(row.channels[0], { id: '1', name: 'general', type: 0, position: 1, parent_id: '5', topic: 'hello', nsfw: false }, 'channels have the shape of Discord answers');
   assert.equal(row.roles.length, 2);
   assert.equal(row.roles[1].permissions, '8', 'permissions are a string like Discord sends them');
