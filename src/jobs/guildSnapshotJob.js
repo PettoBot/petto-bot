@@ -16,6 +16,13 @@ function startGuildSnapshotJob(client) {
   for (const event of [Events.ChannelUpdate, Events.RoleUpdate]) {
     client.on(event, (_before, after) => scheduleGuildSnapshot(guildOf(after)));
   }
+  for (const event of [Events.GuildEmojiCreate, Events.GuildEmojiDelete]) {
+    client.on(event, (emoji) => scheduleGuildSnapshot(guildOf(emoji)));
+  }
+  // How the bot looks in a server (its nickname and server avatar) is part of the copy.
+  client.on(Events.GuildMemberUpdate, (_before, member) => {
+    if (member?.id && member.id === client.user?.id) scheduleGuildSnapshot(member.guild);
+  });
   client.on(Events.GuildCreate, (guild) => scheduleGuildSnapshot(guild));
   client.on(Events.GuildUpdate, (_before, guild) => scheduleGuildSnapshot(guild));
   client.on(Events.GuildDelete, (guild) => {

@@ -2494,3 +2494,12 @@ create table if not exists discord_guild_snapshots (
   roles        jsonb not null default '[]'::jsonb,
   updated_at   timestamptz not null default now()
 );
+
+-- The rest of what the dashboard asked Discord for on each page: the server banner, how many emojis and boosts it has, and how
+-- the bot looks in it (its server nickname and server avatar).
+alter table discord_guild_snapshots add column if not exists banner text;
+alter table discord_guild_snapshots add column if not exists emoji_count integer;
+alter table discord_guild_snapshots add column if not exists premium_tier integer;
+alter table discord_guild_snapshots add column if not exists boost_count integer;
+alter table discord_guild_snapshots add column if not exists bot_nick text;
+alter table discord_guild_snapshots add column if not exists bot_avatar text;

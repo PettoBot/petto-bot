@@ -37,6 +37,12 @@ function buildSnapshot(guild) {
     icon: guild.icon ?? null,
     owner_id: guild.ownerId ?? null,
     member_count: Number.isFinite(guild.memberCount) ? guild.memberCount : null,
+    banner: guild.banner ?? null,
+    emoji_count: guild.emojis?.cache?.size ?? 0,
+    premium_tier: Number(guild.premiumTier ?? 0),
+    boost_count: guild.premiumSubscriptionCount ?? 0,
+    bot_nick: guild.members?.me?.nickname ?? null,
+    bot_avatar: guild.members?.me?.avatar ?? null,
     channels,
     roles,
   };
