@@ -22,6 +22,7 @@ const { startMaliciousFeedJob } = require('./src/jobs/maliciousFeedJob');
 const { startQuestAlertsJob } = require('./src/jobs/questAlertsJob');
 const { startRequestTimeoutJob } = require('./src/jobs/requestTimeoutJob');
 const { startGlobalStatsJob } = require('./src/jobs/globalStatsJob');
+const { startGuildSnapshotJob } = require('./src/jobs/guildSnapshotJob');
 const { startCommandDataJob } = require('./src/jobs/commandDataJob');
 const { startServer } = require('./src/web/server');
 const { startCloudflareTunnel } = require('./src/web/cloudflareTunnel');
@@ -113,6 +114,7 @@ async function main() {
   startQuestAlertsJob(client);
   startRequestTimeoutJob(client);
   startGlobalStatsJob(client);
+  startGuildSnapshotJob(client);
   startCommandDataJob();
   startServer(client);
   startCloudflareTunnel(config.cloudflareTunnelToken);
