@@ -17,7 +17,13 @@ stub('src/db/database.js', {
   from(name) {
     assert.equal(name, 'discord_guild_snapshots');
     const query = {
-      upsert: async (row, options) => { assert.equal(options.onConflict, 'guild_id'); writes += 1; table.set(row.guild_id, row); return { error: null }; },
+      upsert: async (row, options) => {
+        assert.equal(options.onConflict, 'guild_id');
+        // The driver would turn an array into a PostgreSQL array and refuse it as JSON: the lists must arrive as JSON text.
+        assert.equal(typeof row.channels, 'string', 'channels go in as JSON text'); assert.equal(typeof row.roles, 'string', 'roles go in as JSON text');
+        assert.ok(Array.isArray(JSON.parse(row.channels)) && Array.isArray(JSON.parse(row.roles)));
+        writes += 1; table.set(row.guild_id, { ...row, channels: JSON.parse(row.channels), roles: JSON.parse(row.roles) }); return { error: null };
+      },
       select: () => Promise.resolve({ data: [...table.keys()].map((guild_id) => ({ guild_id })), error: null }),
       delete: () => ({ in: async (_column, ids) => { for (const id of ids) table.delete(id); return { error: null }; } }),
     };
