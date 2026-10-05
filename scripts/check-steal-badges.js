@@ -61,7 +61,7 @@ const repliedMessage = (extra = {}) => ({ content: '', embeds: [], stickers: new
   // The badges.
   const flags = (names) => new UserFlagsBitField(names);
   let badges = badgeList({ flags: flags(['HypeSquadOnlineHouse1', 'ActiveDeveloper']), avatar: 'abc', banner: null });
-  assert.deepEqual(badges, [`${BADGE_EMOJI.bravery} HypeSquad Bravery`, 'Active Developer']);
+  assert.deepEqual(badges, [`${BADGE_EMOJI.bravery} HypeSquad Bravery`, `${BADGE_EMOJI.activeDeveloper} Active Developer`]);
   // The other badges that have an icon, and the two that only have a name.
   const iconic = { Staff: 'staff', Partner: 'partner', BugHunterLevel1: 'bugHunter1', BugHunterLevel2: 'bugHunter2', PremiumEarlySupporter: 'earlySupporter', CertifiedModerator: 'moderatorAlumni', ActiveDeveloper: 'activeDeveloper', BotHTTPInteractions: 'supportsCommands' };
   for (const [flag, key] of Object.entries(iconic)) {
