@@ -123,10 +123,46 @@ function buildCondition(condition, state) {
   return `${column} ${sqlOperator} ${addValue(state, valueOrNull(value))}`;
 }
 
+// The PostgreSQL driver sends a JavaScript array as a PostgreSQL array ({"a","b"}), which a json or jsonb column refuses
+// (22P02 invalid input syntax for type json). Objects are sent as JSON by the driver, only arrays need help, and only for
+// the json columns: text[] and other array columns must keep going as arrays. The column types are read once per table.
+const COLUMN_TYPES_TTL_MS = 10 * 60_000;
+const columnTypeCache = new WeakMap();
+
+async function jsonColumnsOf(pool, schema, table) {
+  let tables = columnTypeCache.get(pool);
+  if (!tables) columnTypeCache.set(pool, (tables = new Map()));
+  const key = `${schema}.${table}`;
+  const hit = tables.get(key);
+  if (hit && hit.expiresAt > Date.now()) return hit.columns;
+  const result = await pool.query(
+    "SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 AND data_type IN ('json', 'jsonb')",
+    [schema, table],
+  );
+  const columns = new Set(result.rows.map((row) => row.column_name));
+  tables.set(key, { columns, expiresAt: Date.now() + COLUMN_TYPES_TTL_MS });
+  return columns;
+}
+
+function withJsonArrays(row, jsonColumns) {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return row;
+  let copy = null;
+  for (const key of Object.keys(row)) {
+    if (Array.isArray(row[key]) && jsonColumns.has(key)) {
+      if (!copy) copy = { ...row };
+      copy[key] = JSON.stringify(row[key]);
+    }
+  }
+  return copy ?? row;
+}
+
 class PostgresQuery {
   constructor(pool, table) {
     this.pool = pool;
     this.table = quoteTable(table);
+    const parts = String(table).split('.');
+    this.tableName = parts[parts.length - 1];
+    this.schemaName = parts.length === 2 ? parts[0] : 'public';
     this.action = null;
     this.payload = null;
     this.returning = false;
@@ -269,8 +305,21 @@ class PostgresQuery {
     throw new Error('PostgreSQL query has no operation.');
   }
 
+  async prepareJsonArrays() {
+    if (!['insert', 'upsert', 'update'].includes(this.action) || !this.payload) return;
+    let jsonColumns;
+    try {
+      jsonColumns = await jsonColumnsOf(this.pool, this.schemaName, this.tableName);
+    } catch {
+      return; // without the column types the values go as they are, as before
+    }
+    if (!jsonColumns.size) return;
+    this.payload = Array.isArray(this.payload) ? this.payload.map((row) => withJsonArrays(row, jsonColumns)) : withJsonArrays(this.payload, jsonColumns);
+  }
+
   async execute() {
     try {
+      await this.prepareJsonArrays();
       const built = this.build();
       const result = await this.pool.query(built.text, built.values);
       if (built.countOnly) return { data: built.head ? null : [{ count: Number(result.rows[0]?.count || 0) }], count: Number(result.rows[0]?.count || 0), error: null };
