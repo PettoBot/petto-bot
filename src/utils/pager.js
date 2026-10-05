@@ -4,7 +4,8 @@ const { infoPayload, noticePayload } = require('./infoCard');
 // Long lists (roles, emojis, channels...) shown a page at a time with buttons. Nothing is stored: the buttons carry what
 // the page needs (list, who asked, page, how it is sorted or filtered), and the list is built again from the server each
 // time, so the buttons keep working after a restart and always show fresh data.
-//   button  pg::<kind>::<userId>::<page>::<option>::<arg>
+//   button  pg::<kind>::<userId>::<page>::<option>::<arg>::<which>   (which: first, back, next, last, so that two buttons that
+//           go to the same page still have ids of their own, as Discord does not allow repeated ids)
 //   select  pgo::<kind>::<userId>::<arg>
 
 const PER_PAGE = 15;
@@ -25,8 +26,8 @@ function register(kind, definition) {
 
 const safePart = (value) => String(value ?? '').replace(/:/g, '').slice(0, 40);
 
-function buttonId(kind, userId, page, option, arg) {
-  return `pg::${kind}::${userId}::${page}::${safePart(option)}::${safePart(arg)}`;
+function buttonId(kind, userId, page, option, arg, which) {
+  return `pg::${kind}::${userId}::${page}::${safePart(option)}::${safePart(arg)}::${which}`;
 }
 
 /** Cuts the entries of one page so that they fit a text block of the card, never in the middle of an entry. */
@@ -68,13 +69,13 @@ async function buildPage(kind, { guild, userId, page = 0, option = '', arg = '' 
   }
 
   if (pages > 1) {
-    const go = (target) => buttonId(kind, userId, target, option, arg);
+    const go = (target, which) => buttonId(kind, userId, target, option, arg, which);
     rows.push(new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(go(0)).setEmoji('⏮️').setStyle(ButtonStyle.Secondary).setDisabled(current === 0),
-      new ButtonBuilder().setCustomId(go(current - 1)).setEmoji('◀️').setStyle(ButtonStyle.Primary).setDisabled(current === 0),
+      new ButtonBuilder().setCustomId(go(0, 'first')).setEmoji('⏮️').setStyle(ButtonStyle.Secondary).setDisabled(current === 0),
+      new ButtonBuilder().setCustomId(go(current - 1, 'back')).setEmoji('◀️').setStyle(ButtonStyle.Primary).setDisabled(current === 0),
       new ButtonBuilder().setCustomId('pg_label').setLabel(`${current + 1} / ${pages}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
-      new ButtonBuilder().setCustomId(go(current + 1)).setEmoji('▶️').setStyle(ButtonStyle.Primary).setDisabled(current >= pages - 1),
-      new ButtonBuilder().setCustomId(go(pages - 1)).setEmoji('⏭️').setStyle(ButtonStyle.Secondary).setDisabled(current >= pages - 1),
+      new ButtonBuilder().setCustomId(go(current + 1, 'next')).setEmoji('▶️').setStyle(ButtonStyle.Primary).setDisabled(current >= pages - 1),
+      new ButtonBuilder().setCustomId(go(pages - 1, 'last')).setEmoji('⏭️').setStyle(ButtonStyle.Secondary).setDisabled(current >= pages - 1),
     ));
   }
 
