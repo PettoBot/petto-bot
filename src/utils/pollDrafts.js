@@ -16,7 +16,7 @@ function setDraft(userId, data) {
 }
 
 function ensureDraft(userId) {
-  return getDraft(userId) ?? setDraft(userId, { question: null, options: [], image: null, multi: false, duration: null });
+  return getDraft(userId) ?? setDraft(userId, { question: null, options: [], image: null, multi: false, duration: null, template: null });
 }
 
 function deleteDraft(userId) {

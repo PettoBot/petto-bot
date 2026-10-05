@@ -1,11 +1,11 @@
 const { MessageFlags } = require('discord.js');
 const pollsDb = require('../db/polls');
-const { buildPollCard } = require('../utils/pollCard');
+const { buildPollMessage } = require('../utils/pollCard');
 
 async function refreshMessage(interaction, poll) {
   const results = await pollsDb.getResults(poll.id, poll.options.length);
-  const { components, rows } = buildPollCard(poll, results);
-  await interaction.message.edit({ components: [...components, ...rows], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+  const message = await buildPollMessage({ guild: interaction.guild, poll, results });
+  await interaction.message.edit(message).catch(() => {});
 }
 
 async function handleVote(interaction) {

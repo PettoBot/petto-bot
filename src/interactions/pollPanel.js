@@ -14,7 +14,7 @@ const {
 } = require('discord.js');
 const { ensureGuild } = require('../db/guilds');
 const pollsDb = require('../db/polls');
-const { buildPollCard } = require('../utils/pollCard');
+const { buildPollMessage, checkPollTemplate } = require('../utils/pollCard');
 const { textCard } = require('../utils/caseCard');
 const { ensureDraft, setDraft, deleteDraft } = require('../utils/pollDrafts');
 const { parseDuration, formatDuration } = require('../utils/duration');
@@ -38,6 +38,7 @@ function buildRows(uid, draft) {
       btn('pl_multi', draft.multi ? 'Multiple choice ✓' : 'Multiple choice'),
     ),
     new ActionRowBuilder().addComponents(
+      btn('pl_tpl', draft.template ? `Design: ${draft.template}`.slice(0, 80) : 'Design', ButtonStyle.Secondary, draft.template ? EMOJI.APPROVE : undefined),
       btn('pl_start', 'Start Poll', ButtonStyle.Success, EMOJI.APPROVE),
       btn('pl_cancel', 'Cancel', ButtonStyle.Secondary, EMOJI.DENY),
     ),
@@ -57,7 +58,7 @@ function renderPanel(uid, draft) {
   } else {
     lines.push('*No options yet — add at least 2.*');
   }
-  lines.push('', `-# ${draft.multi ? 'Multiple choice' : 'Single choice'}${draft.duration ? ` · closes in ${formatDuration(draft.duration)}` : ''}`);
+  lines.push('', `-# ${draft.multi ? 'Multiple choice' : 'Single choice'}${draft.duration ? ` · closes in ${formatDuration(draft.duration)}` : ''}${draft.template ? ` · design: ${draft.template}` : ''}`);
 
   const container = new ContainerBuilder().setAccentColor(0x4b4f59).addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
   if (draft.image) {
@@ -103,9 +104,9 @@ async function handleButton(interaction) {
     await ensureGuild(interaction.guild.id);
 
     const endsAt = draft.duration ? new Date(Date.now() + draft.duration).toISOString() : null;
-    const placeholder = { id: 0, question: draft.question, options: draft.options, image: draft.image, multi: draft.multi, closed: false };
-    const { components, rows } = buildPollCard(placeholder, { counts: new Array(draft.options.length).fill(0), voters: 0 });
-    const message = await interaction.channel.send({ components: [...components, ...rows], flags: MessageFlags.IsComponentsV2 });
+    const empty = { counts: new Array(draft.options.length).fill(0), voters: 0 };
+    const placeholder = { id: 0, question: draft.question, options: draft.options, image: draft.image, multi: draft.multi, closed: false, ends_at: endsAt, creator_id: interaction.user.id, embed_template: draft.template };
+    const message = await interaction.channel.send(await buildPollMessage({ guild: interaction.guild, poll: placeholder, results: empty }));
 
     const poll = await pollsDb.createPoll({
       guildId: interaction.guild.id,
@@ -117,10 +118,10 @@ async function handleButton(interaction) {
       image: draft.image,
       multi: draft.multi,
       endsAt,
+      embedTemplate: draft.template,
     });
 
-    const final = buildPollCard(poll, { counts: new Array(draft.options.length).fill(0), voters: 0 });
-    await message.edit({ components: [...final.components, ...final.rows], flags: MessageFlags.IsComponentsV2 });
+    await message.edit(await buildPollMessage({ guild: interaction.guild, poll, results: empty }));
 
     deleteDraft(uid);
     await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE} Poll started!`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
@@ -150,6 +151,11 @@ async function handleButton(interaction) {
       .setCustomId(`plm_img::${uid}`)
       .setTitle('Poll Image')
       .addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('image').setLabel('Image URL (leave blank to remove)').setStyle(TextInputStyle.Short).setRequired(false).setValue(draft.image ?? ''))),
+
+    pl_tpl: new ModalBuilder()
+      .setCustomId(`plm_tpl::${uid}`)
+      .setTitle('Poll Design')
+      .addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('template').setLabel('Saved V2 embed name (blank = default)').setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(60).setValue(draft.template ?? ''))),
 
     pl_dur: new ModalBuilder()
       .setCustomId(`plm_dur::${uid}`)
@@ -183,6 +189,18 @@ async function handleModal(interaction) {
     }
   }
 
+  if (type === 'plm_tpl') {
+    const raw = g('template');
+    if (raw) {
+      const status = await checkPollTemplate(interaction.guild.id, raw);
+      if (status !== 'ok') {
+        const why = status === 'missing' ? `There is no saved embed called \`${raw}\`.` : `\`${raw}\` is not a Components V2 design. A poll needs a V2 one.`;
+        await interaction.reply({ content: `${EMOJI.DENY} ${why}`, flags: MessageFlags.Ephemeral });
+        return;
+      }
+    }
+  }
+
   await interaction.deferUpdate();
 
   if (type === 'plm_q') {
@@ -198,6 +216,8 @@ async function handleModal(interaction) {
   } else if (type === 'plm_dur') {
     const raw = g('duration');
     draft.duration = raw ? parseDuration(raw) : null;
+  } else if (type === 'plm_tpl') {
+    draft.template = g('template') || null;
   }
 
   setDraft(uid, draft);

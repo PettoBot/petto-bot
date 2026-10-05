@@ -20,6 +20,7 @@ const { registerDashboardRestRoutes } = require('./dashboardDatabase');
 const { registerCardRoutes } = require('./cardRoutes');
 const { registerCodeRoutes } = require('./codeRoutes');
 const { listVariables } = require('../utils/embedVariableRegistry');
+const { renderPollRequest } = require('../utils/pollApi');
 const logger = require('../utils/logger');
 
 async function checkTurnstile(responseToken, remoteIp) {
@@ -195,6 +196,30 @@ function startServer(client) {
       }
       res.set('Cache-Control', 'private, max-age=300');
       res.json({ ok: true, groups: listVariables() });
+    });
+
+    // The message of a poll as the bot draws it (the default card or a saved V2 design), for the dashboard to post or update.
+    app.post('/api/dashboard/guild/:guildId/poll-message', dashboardDatabaseRateLimiter, async (req, res) => {
+      if (!dashboardAuthorized(req)) {
+        res.status(401).json({ ok: false, error: 'unauthorized' });
+        return;
+      }
+      const guildId = String(req.params.guildId || '');
+      if (!/^\d{15,25}$/.test(guildId)) {
+        res.status(400).json({ ok: false, error: 'invalid_guild' });
+        return;
+      }
+      try {
+        const payload = await renderPollRequest(client.guilds.cache.get(guildId) ?? null, req.body);
+        if (!payload) {
+          res.status(400).json({ ok: false, error: 'invalid_poll' });
+          return;
+        }
+        res.json({ ok: true, payload });
+      } catch (err) {
+        logger.error(`Dashboard poll message failed for guild ${guildId}:`, err);
+        res.status(500).json({ ok: false, error: 'render_failed' });
+      }
     });
 
     registerCardRoutes(app, { authorize: dashboardCardAccess });
