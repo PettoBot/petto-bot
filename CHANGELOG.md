@@ -4,6 +4,14 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+## [0.7.1-2] — 2026-10-05 · Boba
+
+A small release, shown as **0.7.1~2**, for the dashboard.
+
+### Added
+
+- The dashboard can start a giveaway, end it now and draw new winners, with the same engine as `/giveaway` (so the result is the same). The person must manage the server, and the duration is written in words (`1h`, `3d 4h`).
+
 ### Fixed
 
 - The page buttons of lists (`!roles`, `!emojis`...) failed with "Component custom id cannot be duplicated" on some pages, because two buttons went to the same page. Every button has an id of its own now.
