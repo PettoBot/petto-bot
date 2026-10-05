@@ -7,7 +7,7 @@ const { getTemplate } = require('../../db/embedTemplates');
 const questsDb = require('../../db/quests');
 const questApi = require('../../utils/questApi');
 const { questMessage, buildQuestList, SECTIONS } = require('../../utils/questMessages');
-const { canUseQuests } = require('../../utils/questAlerts');
+const { canUseQuests, resendMissing } = require('../../utils/questAlerts');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 
@@ -51,6 +51,7 @@ module.exports = {
       .addIntegerOption((o) => o.setName('hours').setDescription('0 to 168').setMinValue(0).setMaxValue(168).setRequired(true)))
     .addSubcommand((s) => s.setName('list').setDescription('Show the quests that are active now.')
       .addIntegerOption((o) => o.setName('page').setDescription('Page of the list').setMinValue(1).setRequired(false)))
+    .addSubcommand((s) => s.setName('resend').setDescription('Send the active quests that were not posted here yet, up to 10 at a time.'))
     .addSubcommand((s) => s.setName('test').setDescription('Send the newest active quest here, to see how the alert looks.'))
     .addSubcommand((s) => s.setName('status').setDescription('Show the settings and the state of the quests API.')),
 
@@ -129,6 +130,13 @@ module.exports = {
       const hours = interaction.options.getInteger('hours', true);
       await save({ expiring_hours: hours });
       return reply(`${EMOJI.APPROVE}  ${hours ? `Alerts also go out ${hours} hour${hours === 1 ? '' : 's'} before a quest ends.` : 'No alerts before a quest ends.'}`);
+    }
+    if (sub === 'resend') {
+      if (!current.enabled || !current.channel_id) return reply(`${EMOJI.DENY}  Turn the alerts on first with \`quests enable\`.`);
+      let result;
+      try { result = await resendMissing(interaction.client, { ...current, guild_id: guildId }); } catch (error) { return reply(`${EMOJI.DENY}  The quests could not be read: ${error.message}`); }
+      if (!result.missing) return reply(`${EMOJI.APPROVE}  Nothing is missing: every active quest that passes your filters was already posted.`);
+      return reply(`${result.sent ? EMOJI.APPROVE : EMOJI.DENY}  Sent ${result.sent} of ${result.missing} missing quest${result.missing === 1 ? '' : 's'} in <#${current.channel_id}>.${result.left ? ` ${result.left} more are left: run \`quests resend\` again.` : ''}${result.sent < Math.min(result.missing, 10) ? ' Some could not be sent, check that I can write in that channel.' : ''}`);
     }
     if (sub === 'list' || sub === 'test') {
       let quests;

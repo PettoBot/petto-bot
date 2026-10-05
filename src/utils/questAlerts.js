@@ -93,4 +93,27 @@ async function runPass(client, { api, db, now, configs, answer, result }) {
   return result;
 }
 
-module.exports = { canUseQuests, matchesFilters, checkQuests };
+/**
+ * Sends to a server the quests that are active now, pass its filters and were never posted there: the ones whose alert failed
+ * (a message Discord refused) and the ones that were already running when the alerts were turned on. Up to `limit` at a time,
+ * oldest first, with a pause between messages so the channel does not hit its rate limit.
+ * Returns how many were missing, how many were sent and how many are still left.
+ */
+async function resendMissing(client, settings, { api = questApi, db = questsDb, now = Date.now(), limit = 10, pause = 1500 } = {}) {
+  const answer = await api.fetchQuests({ force: true });
+  const missing = [];
+  for (const quest of answer.quests.filter((entry) => api.isActive(entry, now)).sort((a, b) => a.startsAt - b.startsAt)) {
+    if (!matchesFilters(quest, settings)) continue;
+    if (await db.hasPost(settings.guild_id, quest.id, 'new')) continue;
+    missing.push(quest);
+  }
+  const batch = missing.slice(0, limit);
+  let sent = 0;
+  for (const [index, quest] of batch.entries()) {
+    if (await post(client, settings, quest, 'new', db)) sent += 1;
+    if (pause && index < batch.length - 1) await new Promise((resolve) => setTimeout(resolve, pause));
+  }
+  return { missing: missing.length, sent, left: missing.length - batch.length };
+}
+
+module.exports = { canUseQuests, matchesFilters, checkQuests, resendMissing };
