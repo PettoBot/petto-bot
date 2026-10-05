@@ -34,8 +34,13 @@ const buttons = (payload) => payload.components[0].toJSON().components.filter((c
   assert.equal(row.filter((b) => b.type === 3).length, 1, 'the sort menu');
   const nav = row.filter((b) => b.type === 2);
   assert.equal(nav.length, 5); assert.equal(nav[0].disabled, true); assert.equal(nav[1].disabled, true); assert.equal(nav[3].disabled, false);
-  assert.equal(nav[3].custom_id, 'pg::roles::77::1::position::', 'the next button carries the page and who asked');
+  assert.equal(nav[3].custom_id, 'pg::roles::77::1::position::::next', 'the next button carries the page and who asked');
   assert.ok(nav.every((b) => b.custom_id.length <= 100));
+  // Discord refuses a message in which two components share an id, and on some pages two buttons go to the same page.
+  for (let page = 0; page < 3; page += 1) {
+    const ids = buttons(await buildPage('roles', { guild, userId: '77', page })).map((b) => b.custom_id);
+    assert.equal(new Set(ids).size, ids.length, `every id on page ${page + 1} is different`);
+  }
   const last = await buildPage('roles', { guild, userId: '77', page: 99 });
   assert.match(text(last), /Showing 31–40 of 40/, 'a page past the end is the last page');
   const members_ = await buildPage('roles', { guild, userId: '77', option: 'members' });
@@ -69,9 +74,9 @@ const buttons = (payload) => payload.components[0].toJSON().components.filter((c
   // Only the person who asked can use the buttons.
   const calls = [];
   const press = (customId, userId, values) => ({ customId, user: { id: userId }, guild, values, reply: async (x) => calls.push(['reply', x]), update: async (x) => calls.push(['update', x]) });
-  await handlePager(press('pg::roles::77::1::position::', '88'));
+  await handlePager(press('pg::roles::77::1::position::::next', '88'));
   assert.equal(calls[0][0], 'reply'); assert.match(calls[0][1].content, /Only <@77>/);
-  await handlePager(press('pg::roles::77::1::position::', '77'));
+  await handlePager(press('pg::roles::77::1::position::::next', '77'));
   assert.equal(calls[1][0], 'update'); assert.match(text(calls[1][1]), /Showing 16–30 of 40/);
   await handlePager(press('pgo::roles::77::', '77', ['members']));
   assert.equal(calls[2][0], 'update'); assert.match(text(calls[2][1]), /Showing 1–15 of 40/, 'changing the sort goes back to the first page');
