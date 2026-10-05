@@ -1,6 +1,7 @@
 const { Events, MessageFlags, PermissionsBitField } = require('discord.js');
 const { ensureGuild } = require('../db/guilds');
 const { buildInteractionFromMessage, tokenize } = require('../handlers/prefixInteraction');
+const { unknownSubcommandCard, missingOptionCard } = require('../utils/usageCard');
 const commandAliasesDb = require('../db/commandAliases');
 const { getRemainingCooldown } = require('../utils/cooldown');
 const disabledDb = require('../db/disabledCommands');
@@ -67,21 +68,6 @@ function warningPayload(message, text) {
     flags: MessageFlags.IsComponentsV2,
     allowedMentions: { repliedUser: false, parse: [] },
   };
-}
-
-function commandUsage(command, prefix) {
-  const json = command.data.toJSON();
-  const hidden = new Set(command.hiddenPrefixSubcommands ?? []);
-  const options = json.options ?? [];
-  const subcommands = options
-    .map((option) => {
-      if (option.type === 1) return hidden.has(option.name) ? null : option.name;
-      if (option.type !== 2) return null;
-      const children = option.options?.filter((child) => child.type === 1 && !hidden.has(`${option.name} ${child.name}`)).map((child) => child.name) ?? [];
-      return children.length ? `${option.name} ${children.join(' | ')}` : null;
-    })
-    .filter(Boolean);
-  return subcommands.length ? `${prefix}${json.name} ${subcommands.join(' | ')}` : `${prefix}${json.name}`;
 }
 
 async function getPrefix(guildId) {
@@ -316,12 +302,18 @@ module.exports = {
     try {
       interaction = await buildInteractionFromMessage(message, command, argText);
     } catch (err) {
-      await message.reply(warningPayload(message, err.userFacing ? err.message : `Invalid usage. Try \`${commandUsage(command, prefix)}\` or \`${prefix}help ${canonicalName}\`.`)).catch(() => {});
+      // Something specific that the parser said (a role that was not found...) is told as it is; a missing option, or a way of
+      // writing it that cannot be read, gets a card with how to write it.
+      if (err.userFacing && !err.missingOption) {
+        await message.reply(warningPayload(message, err.message)).catch(() => {});
+        return;
+      }
+      await message.reply(missingOptionCard({ command, prefix, name: canonicalName, argText, missing: err.missingOption ?? null })).catch(() => {});
       return;
     }
 
     if (!interaction) {
-      await message.reply(warningPayload(message, `Unknown subcommand for \`${canonicalName}\`. Valid options: \`${commandUsage(command, prefix)}\`. Use \`${prefix}help ${canonicalName}\` for details.`)).catch(() => {});
+      await message.reply(unknownSubcommandCard({ command, prefix, name: canonicalName, typed: tokenize(argText)[0] ?? '' })).catch(() => {});
       return;
     }
 
