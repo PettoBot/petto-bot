@@ -1,7 +1,6 @@
-const { MessageFlags } = require('discord.js');
 const database = require('../db/database');
 const pollsDb = require('../db/polls');
-const { buildPollCard } = require('../utils/pollCard');
+const { updatePollMessage } = require('../utils/pollCard');
 const logger = require('../utils/logger');
 const config = require('../config');
 const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency');
@@ -28,8 +27,7 @@ async function processDuePolls(client) {
       if (!message) return;
 
       const results = await pollsDb.getResults(poll.id, poll.options.length);
-      const { components } = buildPollCard(poll, results);
-      await message.edit({ components, flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+      await updatePollMessage(message, { guild: channel.guild, poll, results }).catch(() => {});
     } catch (err) {
       logger.error(`Failed to auto-close poll #${poll.id}:`, err);
     }
