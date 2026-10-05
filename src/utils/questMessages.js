@@ -101,6 +101,17 @@ const rewardLines = (quest) => quest.rewards.flatMap((reward) => {
   return lines;
 });
 
+const BUTTON_URL_MAX = 512;
+const MEDIA_URL_MAX = 2048;
+/** A web address a link button can carry: http(s) and at most 512 characters. */
+function buttonUrl(url) {
+  return typeof url === 'string' && /^https?:\/\//i.test(url) && url.length <= BUTTON_URL_MAX;
+}
+/** A web address a picture can use: http(s) and at most 2048 characters. */
+function mediaUrl(url) {
+  return typeof url === 'string' && /^https?:\/\//i.test(url) && url.length <= MEDIA_URL_MAX ? url : null;
+}
+
 /** The default Components V2 card: the quest as Discord's own quest bots show it, one block after another. */
 function buildQuestCard(quest, config = {}, { kind = 'new', rolePing = null } = {}) {
   const hidden = new Set(config.hide_sections ?? []);
@@ -111,7 +122,7 @@ function buildQuestCard(quest, config = {}, { kind = 'new', rolePing = null } = 
   if (accent !== null) container.setAccentColor(accent);
   const title = `# ${EMOJI.QUEST_BADGE} [${kind === 'expiring' ? 'Ending soon: ' : ''}${quest.name}](${quest.url})`;
   container.addTextDisplayComponents(text(`${rolePing ? `-# ${rolePing}\n` : ''}${title}`));
-  if (quest.image && !hidden.has('image')) container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(quest.image)));
+  if (mediaUrl(quest.image) && !hidden.has('image')) container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(quest.image)));
   container.addSeparatorComponents(divider());
   const info = [`- \`⏰\` **Starts:** <t:${unix(quest.startsAt)}:R> | **Ends:** <t:${unix(quest.expiresAt)}:R>`];
   if (!hidden.has('platforms') && quest.platforms.length) info.push(`- \`💿\` **Platforms:** ${quest.platforms.join(', ')}`);
@@ -120,7 +131,7 @@ function buildQuestCard(quest, config = {}, { kind = 'new', rolePing = null } = 
   if (!hidden.has('rewards') && quest.rewards.length) {
     container.addSeparatorComponents(divider());
     const reward = text(`## 🎁 Rewards\n${rewardLines(quest).join('\n')}`);
-    const picture = quest.rewards.find((entry) => entry.image)?.image;
+    const picture = mediaUrl(quest.rewards.find((entry) => mediaUrl(entry.image))?.image);
     if (picture) container.addSectionComponents(new SectionBuilder().addTextDisplayComponents(reward).setThumbnailAccessory(new ThumbnailBuilder().setURL(picture)));
     else container.addTextDisplayComponents(reward);
   }
@@ -131,9 +142,13 @@ function buildQuestCard(quest, config = {}, { kind = 'new', rolePing = null } = 
   }
   container.addSeparatorComponents(divider());
   container.addTextDisplayComponents(text(CREDIT));
-  const buttons = [new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Accept Quest').setURL(quest.url)];
-  if (quest.link) buttons.push(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Game page').setURL(quest.link));
-  return { components: [container, new ActionRowBuilder().addComponents(buttons)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [], roles: config.role_id ? [config.role_id] : [] } };
+  // Discord refuses a link button whose address is longer than 512 characters, and with it the whole message, so a button
+  // whose address does not fit is left out (the title of the card still links to the quest).
+  const buttons = [];
+  if (buttonUrl(quest.url)) buttons.push(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Accept Quest').setURL(quest.url));
+  if (buttonUrl(quest.link)) buttons.push(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Game page').setURL(quest.link));
+  const rows = buttons.length ? [new ActionRowBuilder().addComponents(buttons)] : [];
+  return { components: [container, ...rows], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [], roles: config.role_id ? [config.role_id] : [] } };
 }
 
 const LIST_PAGE_SIZE = 10; // quests shown in a page, each with its details, so the text stays under Discord's limit
