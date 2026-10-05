@@ -6,10 +6,12 @@ All notable changes to Petto are documented here.
 
 ### Added
 
+- `!channel create <name> [type] [category] [topic] [nsfw]` creates a channel: text, announcement, voice, stage, forum, **media** or category. For now only the owner and the developers of Petto can use it. Forum and media channels need Community to be enabled in the server, and the answer says so when it is not.
 - `!quests resend` sends the quests that are active now, pass your filters and were never posted in the server (the ones whose alert failed because of the long link, and the ones that were already running when the alerts were turned on), up to 10 at a time, oldest first, with a pause between messages. Run it again if it says more are left.
 
 ### Fixed
 
+- `!channels` showed every text channel as a giant heading, because its line started with `# `. Text channels start with 💬 now.
 - Quest alerts failed with "url: Must be 512 or fewer in length" when the game page of a quest had a very long address: that button (or a picture with an address over 2048 characters) is now left out instead of Discord refusing the whole message. A message that Discord refuses is no longer sent again in every pass, which filled the rate limit of the channel.
 
 ## [0.7.1-2] — 2026-10-05 · Boba

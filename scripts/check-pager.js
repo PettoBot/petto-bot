@@ -54,6 +54,10 @@ const buttons = (payload) => payload.components[0].toJSON().components.filter((c
   assert.match(text(await buildPage('emojis', { guild, userId: '1' })), /<:wave:9>/);
   const animated = text(await buildPage('emojis', { guild, userId: '1', option: 'animated' }));
   assert.ok(animated.includes('<a:dance:10>') && !animated.includes('<:wave:9>'));
+  // A line that starts with "# " is a big heading in Discord, so no channel line may start with it.
+  const everyChannel = JSON.parse(text(await buildPage('channels', { guild, userId: '1' }))).flatMap((card) => card.components).filter((node) => typeof node.content === 'string').flatMap((node) => node.content.split('\n'));
+  assert.ok(everyChannel.every((line) => !/^#{1,3}\s/.test(line) || line.startsWith('## Channels') || line.startsWith('### ')), 'no channel line is a heading');
+  assert.ok(everyChannel.some((line) => line.startsWith('💬 <#20>')), 'a text channel starts with its icon');
   const voice = text(await buildPage('channels', { guild, userId: '1', option: 'voice' }));
   assert.ok(voice.includes('<#21>') && !voice.includes('<#20>'));
   const boosters = text(await buildPage('boosters', { guild, userId: '1' }));
