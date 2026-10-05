@@ -15,7 +15,7 @@ module.exports = {
       activities: [{ name: 'Custom Status', type: ActivityType.Custom, state: 'Keeping the server safe', emoji: { name: '🦆' } }],
     });
 
-    logger.info(`Petto is online as ${client.user.tag}, serving ${client.guilds.cache.size} guild(s).`);
+    logger.info(`Petto v${require("../../package.json").version} is online as ${client.user.tag}, serving ${client.guilds.cache.size} guild(s).`);
     attachDiscordLogger(client);
     startDiscordStatusJob(client);
 
