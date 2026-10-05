@@ -28,7 +28,7 @@ function buildReleaseCard(release) {
   const header = new SectionBuilder()
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent([
-        `# ${EMOJI.RELEASE_ROCKET} Petto ${release.version}`,
+        `# ${EMOJI.RELEASE_ROCKET} Petto ${release.display ?? release.version}${release.name ? ` “${release.name}”` : ''}`,
         `${release.status}  ·  ${EMOJI.RELEASE_NOTE} ${release.date}`,
         `-# Release ${position} of ${RELEASES.length}`,
       ].join('\n')),

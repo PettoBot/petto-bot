@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = require('discord.js');
 const ms = require('ms');
+const { parseDuration: parseLength } = require('../../utils/duration');
 const { ensureGuild } = require('../../db/guilds');
 const pojDb = require('../../db/poj');
 const { textCard } = require('../../utils/caseCard');
@@ -39,7 +40,7 @@ module.exports = {
 async function addCmd(interaction) {
   const channel = interaction.options.getChannel('channel', true);
   const deleteAfterStr = interaction.options.getString('delete_after');
-  const deleteAfterMs = deleteAfterStr ? ms(deleteAfterStr) : DEFAULT_DELETE_MS;
+  const deleteAfterMs = deleteAfterStr ? parseLength(deleteAfterStr) : DEFAULT_DELETE_MS;
 
   if (typeof deleteAfterMs !== 'number' || Number.isNaN(deleteAfterMs) || deleteAfterMs <= 0) {
     await interaction.reply({ content: 'Provide a valid duration, e.g. `5s`, `10s`, `1m`.', flags: MessageFlags.Ephemeral });

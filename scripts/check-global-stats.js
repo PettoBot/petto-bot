@@ -30,8 +30,8 @@ const known = new Map(servers.map((entry, n) => [entry.id, { name: `Server ${n}`
 known.delete('g13');
 
 const ranking = buildRanking(servers, (id) => known.get(id) ?? null);
-assert.equal(SERVER_RANK_SIZE, 3); assert.equal(USER_RANK_SIZE, 10);
-assert.equal(ranking.all.messages.length, 3, 'the server ranking holds the top 3 only');
+assert.equal(SERVER_RANK_SIZE, 5); assert.equal(USER_RANK_SIZE, 10);
+assert.equal(ranking.all.messages.length, 5, 'the server ranking holds the top 5 only');
 assert.equal(ranking.all.messages[0].id, 'g12', 'a server the bot no longer has is left out, and the biggest one leads');
 assert.deepEqual(ranking.all.messages.map((entry) => entry.value), [...ranking.all.messages.map((entry) => entry.value)].sort((a, b) => b - a), 'sorted from most to least');
 assert.ok(ranking.week.messages.every((entry) => entry.value > 0), 'a server with no activity in the week is not in the weekly ranking');

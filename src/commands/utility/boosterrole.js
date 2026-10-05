@@ -1,6 +1,6 @@
 // Booster-role self-service and administrator configuration.
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
-const ms = require('ms');
+const { parseDuration: parseLength } = require('../../utils/duration');
 const { ensureGuild } = require('../../db/guilds');
 const db = require('../../db/boosterRole');
 const actions = require('../../utils/boosterRoleActions');
@@ -622,7 +622,7 @@ async function adminCooldown(interaction) {
   const type = interaction.options.getString('type', true);
   const durationStr = interaction.options.getString('duration', true);
 
-  const durationMs = durationStr === '0' ? 0 : ms(durationStr);
+  const durationMs = durationStr === '0' ? 0 : parseLength(durationStr);
   if (typeof durationMs !== 'number' || Number.isNaN(durationMs) || durationMs < 0) {
     await interaction.reply({ content: 'Provide a valid duration (`30s`, `5m`, `2h`, `24h`) or `0` to disable.', flags: MessageFlags.Ephemeral });
     return;
