@@ -6,7 +6,7 @@ All notable changes to Petto are documented here.
 
 ### Changed
 
-- In `!userinfo` a badge with an icon is shown as the icon only, with no label next to it, and Nitro is no longer shown for apps (an app can have an animated avatar or a banner without Nitro).
+- In `!userinfo` the HypeSquad Events and Early Verified Bot Developer badges have their icons, a badge with an icon is shown as the icon only, with no label next to it, and Nitro is no longer shown for apps (an app can have an animated avatar or a banner without Nitro).
 - `!userinfo` shows the badges with their icons: Staff, Partner, Bug Hunter (both levels), Early Supporter, Moderator Programs Alumni, Active Developer, Supports Commands, HypeSquad Bravery, Brilliance and Balance, Verified App, Nitro (when the account has an animated avatar or a banner, which only Nitro gives) and the server booster badge.
 - `!steal` also works when you reply to a message: it takes the custom emojis in its text, its embeds and its reactions (up to 20 at a time), besides a sticker. Emojis typed after the command still come first.
 - The help menu has its own icons for the Fun (a dice) and Roleplay (a heart) categories.

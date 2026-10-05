@@ -67,8 +67,9 @@ const repliedMessage = (extra = {}) => ({ content: '', embeds: [], stickers: new
   assert.equal(text({ flags: flags(['VerifiedBot']), avatar: 'x', bot: true }), BADGE_EMOJI.verifiedApp, 'a verified app is its icon, with no label');
   const iconic = { Staff: 'staff', Partner: 'partner', BugHunterLevel1: 'bugHunter1', BugHunterLevel2: 'bugHunter2', PremiumEarlySupporter: 'earlySupporter', CertifiedModerator: 'moderatorAlumni', ActiveDeveloper: 'activeDeveloper', BotHTTPInteractions: 'supportsCommands' };
   for (const [flag, key] of Object.entries(iconic)) assert.equal(text({ flags: flags([flag]), avatar: 'x' }), BADGE_EMOJI[key], `${flag} is its icon`);
-  // The ones with no icon yet show their name, after the icons.
-  assert.equal(text({ flags: flags(['Hypesquad', 'VerifiedDeveloper', 'Staff']), avatar: 'x' }), `${BADGE_EMOJI.staff}  HypeSquad Events · Early Verified Bot Developer`);
+  assert.equal(text({ flags: flags(['Hypesquad', 'VerifiedDeveloper', 'Staff']), avatar: 'x' }), `${BADGE_EMOJI.staff} ${BADGE_EMOJI.hypeSquadEvents} ${BADGE_EMOJI.earlyVerifiedDeveloper}`, 'every badge has an icon');
+  // A flag that Discord adds later and has no icon yet shows its name, after the icons.
+  assert.equal(text({ flags: { toArray: () => ['Staff', 'SomethingNew'] }, avatar: 'x' }), `${BADGE_EMOJI.staff}  SomethingNew`);
   // Nitro: a person with an animated avatar or a banner. An app can have both without Nitro, so it is not shown for apps.
   assert.equal(text({ flags: flags([]), avatar: 'a_1234' }), BADGE_EMOJI.nitro, 'an animated avatar only comes with Nitro for a person');
   assert.equal(text({ flags: flags([]), avatar: 'x', banner: 'b' }), BADGE_EMOJI.nitro, 'so does a banner');

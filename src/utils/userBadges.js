@@ -16,20 +16,22 @@ const BADGE_EMOJI = {
   moderatorAlumni: '<:Badge_Moderator_Programs_Alumni:1556778107036246126>',
   activeDeveloper: '<:Badge_Active_Developer:1556778110178041948>',
   supportsCommands: '<:Badge_Supports_Commands:1556778105543331911>',
+  hypeSquadEvents: '<:Badge_HypeSquad_Events:1556781528476942346>',
+  earlyVerifiedDeveloper: '<:Badge_Early_VerifiedBotDeveloper:1556781527159799909>',
 };
 
 // Account flags (the names discord.js gives) and how each one is shown. The ones without an emoji show their name only.
 const FLAG_BADGES = {
   Staff: { name: 'Discord Staff', emoji: BADGE_EMOJI.staff },
   Partner: { name: 'Partner', emoji: BADGE_EMOJI.partner },
-  Hypesquad: { name: 'HypeSquad Events' },
+  Hypesquad: { name: 'HypeSquad Events', emoji: BADGE_EMOJI.hypeSquadEvents },
   BugHunterLevel1: { name: 'Bug Hunter', emoji: BADGE_EMOJI.bugHunter1 },
   BugHunterLevel2: { name: 'Bug Hunter (Gold)', emoji: BADGE_EMOJI.bugHunter2 },
   HypeSquadOnlineHouse1: { name: 'HypeSquad Bravery', emoji: BADGE_EMOJI.bravery },
   HypeSquadOnlineHouse2: { name: 'HypeSquad Brilliance', emoji: BADGE_EMOJI.brilliance },
   HypeSquadOnlineHouse3: { name: 'HypeSquad Balance', emoji: BADGE_EMOJI.balance },
   PremiumEarlySupporter: { name: 'Early Supporter', emoji: BADGE_EMOJI.earlySupporter },
-  VerifiedDeveloper: { name: 'Early Verified Bot Developer' },
+  VerifiedDeveloper: { name: 'Early Verified Bot Developer', emoji: BADGE_EMOJI.earlyVerifiedDeveloper },
   VerifiedBot: { name: 'Verified App', emoji: BADGE_EMOJI.verifiedApp },
   CertifiedModerator: { name: 'Moderator Programs Alumni', emoji: BADGE_EMOJI.moderatorAlumni },
   ActiveDeveloper: { name: 'Active Developer', emoji: BADGE_EMOJI.activeDeveloper },
