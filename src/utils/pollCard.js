@@ -127,4 +127,12 @@ async function buildPollMessage({ guild, poll, results }) {
   return { components: [...card.components, ...card.rows], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } };
 }
 
-module.exports = { buildPollCard, buildPollMessage, pollContext, checkPollTemplate, voteRows };
+// Polls posted before the V2 card are classic messages, and Discord will not turn those into V2: they keep their
+// message while they are open and only lose their buttons when they close.
+async function updatePollMessage(message, { guild, poll, results }) {
+  if (message.flags?.has?.(MessageFlags.IsComponentsV2)) return message.edit(await buildPollMessage({ guild, poll, results }));
+  if (poll.closed) return message.edit({ components: [] });
+  return null;
+}
+
+module.exports = { updatePollMessage, buildPollCard, buildPollMessage, pollContext, checkPollTemplate, voteRows };

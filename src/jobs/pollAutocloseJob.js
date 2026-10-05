@@ -1,6 +1,6 @@
 const database = require('../db/database');
 const pollsDb = require('../db/polls');
-const { buildPollMessage } = require('../utils/pollCard');
+const { updatePollMessage } = require('../utils/pollCard');
 const logger = require('../utils/logger');
 const config = require('../config');
 const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency');
@@ -27,7 +27,7 @@ async function processDuePolls(client) {
       if (!message) return;
 
       const results = await pollsDb.getResults(poll.id, poll.options.length);
-      await message.edit(await buildPollMessage({ guild: channel.guild, poll, results })).catch(() => {});
+      await updatePollMessage(message, { guild: channel.guild, poll, results }).catch(() => {});
     } catch (err) {
       logger.error(`Failed to auto-close poll #${poll.id}:`, err);
     }

@@ -13,7 +13,7 @@ stub('src/config.js', {});
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
 stub('src/db/embedTemplates.js', { getTemplate: async (guildId, name) => (templates[name] ? { name, data: templates[name] } : null) });
 stub('src/utils/cardService.js', { renderCardForMessage: async () => null, normalizeCardRef: () => null, CARD_FILE_NAME: 'card.png' });
-const { buildPollCard, buildPollMessage, pollContext, checkPollTemplate } = require('../src/utils/pollCard');
+const { updatePollMessage, buildPollCard, buildPollMessage, pollContext, checkPollTemplate } = require('../src/utils/pollCard');
 const { readPollRequest, renderPollRequest } = require('../src/utils/pollApi');
 const { resolve } = require('../src/utils/embedVariables');
 
@@ -86,6 +86,16 @@ const text = (components) => JSON.stringify(components.map((c) => c.toJSON()));
   }
   const noGuild = await buildPollMessage({ guild: null, poll: { ...poll, embed_template: 'design' }, results });
   assert.match(JSON.stringify(noGuild.components.map((c) => c.toJSON())), /### 📊/);
+
+  // Old classic polls are not edited into V2.
+  const edits = [];
+  const fake = (v2) => ({ flags: { has: () => v2 }, edit: async (body) => { edits.push(body); } });
+  await updatePollMessage(fake(false), { guild, poll, results });
+  assert.equal(edits.length, 0, 'an open classic poll is left alone');
+  await updatePollMessage(fake(false), { guild, poll: { ...poll, closed: true }, results });
+  assert.deepEqual(edits.pop(), { components: [] }, 'a closed one only loses its buttons');
+  await updatePollMessage(fake(true), { guild, poll, results });
+  assert.equal(edits.pop().flags, MessageFlags.IsComponentsV2);
 
   // What the dashboard sends.
   assert.equal(readPollRequest(null), null);
