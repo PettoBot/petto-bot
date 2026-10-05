@@ -66,7 +66,10 @@ function run(userId, options, { canManage = true } = {}) {
 
   // Discord says no.
   failWith = Object.assign(new Error('Invalid Form Body type[CHANNEL_TYPE_INVALID]: Guild needs Community enabled'), { code: 50035 });
-  assert.match(await run('1', { name: 'art', type: 'media' }), /need \*\*Community\*\*/);
+  assert.match(await run('1', { name: 'art', type: 'media' }), /Media channels need \*\*Community\*\* and \*\*monetization\*\*/);
+  failWith = Object.assign(new Error('Guild needs Community enabled'), { code: 40000 });
+  assert.match(await run('1', { name: 'help', type: 'forum' }), /Forum channels need \*\*Community\*\*/);
+  failWith = Object.assign(new Error('Invalid Form Body type[CHANNEL_TYPE_INVALID]: Guild needs Community enabled'), { code: 50035 });
   failWith = Object.assign(new Error('Missing Permissions'), { code: 50013 });
   assert.match(await run('1', { name: 'art' }), /do not have permission/);
   failWith = Object.assign(new Error('Maximum number of channels reached'), { code: 30013 });

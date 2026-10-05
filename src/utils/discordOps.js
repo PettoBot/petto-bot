@@ -80,8 +80,22 @@ function guildCount(client) {
   return client.guilds.cache.size;
 }
 
+// Discord sometimes gives no member count for a server for a moment (it is unavailable, or its data is still arriving), and the
+// total then dropped by the whole server. The last count that was good is kept, so a missing one does not take members away.
+const lastMemberCounts = new Map();
+
 function memberCount(client) {
-  return [...client.guilds.cache.values()].reduce((total, guild) => total + (guild.memberCount || 0), 0);
+  const present = new Set();
+  let total = 0;
+  for (const guild of client.guilds.cache.values()) {
+    present.add(guild.id);
+    const current = Number(guild.memberCount);
+    if (Number.isFinite(current) && current > 0) lastMemberCounts.set(guild.id, current);
+    total += lastMemberCounts.get(guild.id) ?? 0;
+  }
+  // A server the bot left is forgotten, so it stops adding members.
+  for (const id of lastMemberCounts.keys()) if (!present.has(id)) lastMemberCounts.delete(id);
+  return total;
 }
 
 function aggregateGatewayState(client) {
@@ -242,6 +256,7 @@ function attachDiscordLogger(client) {
 }
 
 module.exports = {
+  memberCount,
   attachDiscordLogger,
   sendGuildLifecycleLog,
   startDiscordStatusJob,
