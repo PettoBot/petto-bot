@@ -2,6 +2,7 @@ const { MessageFlags } = require('discord.js');
 const db = require('../db/tickets');
 const formsDb = require('../db/ticketForms');
 const { openTicket } = require('../utils/ticketActions');
+const { describeTicketOpenError } = require('../utils/ticketErrors');
 const { EMOJI } = require('../utils/emojis');
 const logger = require('../utils/logger');
 
@@ -29,7 +30,7 @@ async function handleModal(interaction) {
     const { channel } = await openTicket({ guild: interaction.guild, client: interaction.client, category, opener: interaction.user, formAnswers: answers });
     await interaction.editReply({ content: `${EMOJI.APPROVE} Ticket opened: ${channel}` });
   } catch (err) {
-    await interaction.editReply({ content: err.userFacing ? err.message : 'I was unable to open a ticket. Check my permissions (Manage Channels) and try again.' });
+    await interaction.editReply({ content: describeTicketOpenError(err) });
     if (!err.userFacing) logger.error('Ticket form submit failed:', err);
   }
 }
