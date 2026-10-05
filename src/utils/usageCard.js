@@ -1,11 +1,10 @@
 // The card Petto answers with when a prefix command is typed wrong: a subcommand that does not exist, or an option that is
 // missing. It shows what went wrong in one line, the way to write it, what each option is, and what the person probably meant.
-const { ContainerBuilder, MessageFlags, SeparatorBuilder, SeparatorSpacingSize, TextDisplayBuilder } = require('discord.js');
+const { ContainerBuilder, MessageFlags, TextDisplayBuilder } = require('discord.js');
 const { EMOJI } = require('./emojis');
 const { resolveSubcommandOptions, tokenize } = require('../handlers/prefixInteraction');
 
 const ACCENT = 0xf5c26b;
-const MAX_LINES = 14;
 const SUBCOMMAND = 1;
 const GROUP = 2;
 // How a person is told what an option holds.
@@ -64,29 +63,32 @@ function syntaxOf(prefix, name, path, options) {
 
 function card(lines, accent = ACCENT) {
   const container = new ContainerBuilder().setAccentColor(accent);
-  lines.forEach((block, index) => {
-    if (block === '---') container.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
-    else container.addTextDisplayComponents(new TextDisplayBuilder().setContent(block));
-    return index;
-  });
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.filter(Boolean).join('\n')));
   return { components: [container], flags: MessageFlags.IsComponentsV2, allowedMentions: { repliedUser: false, parse: [] } };
 }
 
-/** The answer for a subcommand that does not exist. */
+/** The first word of each way to run the command, without repeats: `create`, `color`, `admin`... */
+function topWords(paths) {
+  return [...new Set(paths.map((entry) => entry.path.split(' ')[0]))];
+}
+
+/**
+ * The answer for a subcommand that does not exist. Small on purpose: what was typed, what was probably meant (or the first
+ * options), and where the full guide is.
+ */
 function unknownSubcommandCard({ command, prefix, name, typed }) {
   const paths = listPaths(command);
   const guesses = suggest(paths, typed);
-  const shown = paths.slice(0, MAX_LINES);
-  const blocks = [
-    `### ${EMOJI.WARNING} \`${clip(typed || '(nothing)', 40)}\` is not a way to use \`${prefix}${name}\``,
-  ];
+  const lines = [`${EMOJI.WARNING} \`${clip(typed || '(nothing)', 30)}\` is not part of \`${prefix}${name}\``];
   if (guesses.length) {
-    blocks.push(`**Did you mean**\n${guesses.map((entry) => `> \`${prefix}${name} ${entry.path}\` · ${clip(entry.description, 70)}`).join('\n')}`);
+    lines.push(`Did you mean ${guesses.map((entry) => `\`${prefix}${name} ${entry.path}\``).join(' or ')}?`);
+  } else {
+    const words = topWords(paths);
+    const shown = words.slice(0, 8).map((word) => `\`${word}\``).join(' ');
+    lines.push(`Try ${shown}${words.length > 8 ? ` and ${words.length - 8} more` : ''}`);
   }
-  blocks.push('---');
-  blocks.push(`**What \`${prefix}${name}\` can do**\n${shown.map((entry) => `\`${entry.path}\` · ${clip(entry.description, 70)}`).join('\n')}${paths.length > shown.length ? `\n-# …and ${paths.length - shown.length} more` : ''}`);
-  blocks.push(`-# Full guide with \`${prefix}help ${name}\``);
-  return card(blocks);
+  lines.push(`-# \`${prefix}help ${name}\` shows everything it can do`);
+  return card(lines);
 }
 
 /** What was typed, resolved to the way to run the command it was meant for (or the nearest one), to explain what it needs. */
@@ -100,21 +102,24 @@ function resolveTyped(command, argText) {
   return resolved ? { path: [resolved.subcommandGroup, resolved.subcommand].filter(Boolean).join(' '), options: resolved.optionDefs } : null;
 }
 
-/** The answer for a command that is missing an option, or was typed in a way that cannot be read. */
+/**
+ * The answer for a command that is missing an option, or was typed in a way that cannot be read. Small: the option that is
+ * missing, the way to write the command, and one line about what that option is.
+ */
 function missingOptionCard({ command, prefix, name, argText, missing = null }) {
   const way = resolveTyped(command, argText);
   const options = way?.options ?? command.data.toJSON().options?.filter((option) => option.type !== SUBCOMMAND && option.type !== GROUP) ?? [];
   const path = way?.path ?? '';
-  const lead = missing
-    ? `### ${EMOJI.WARNING} \`${missing}\` is missing`
-    : `### ${EMOJI.WARNING} That does not look right for \`${prefix}${name}${path ? ` ${path}` : ''}\``;
-  const blocks = [lead, `**How to write it**\n\`${syntaxOf(prefix, name, path, options)}\``];
-  if (options.length) {
-    const lines = options.map((option) => `\`${option.name}\` · ${option.required ? '**needed**' : 'optional'} · ${TYPE_HINT[option.type] ?? 'text'}${option.description ? ` — ${clip(option.description, 80)}` : ''}`);
-    blocks.push('---', `**Options**\n${lines.join('\n')}`);
-  }
-  blocks.push(`-# \`<needed>\` \`[optional]\` · full guide with \`${prefix}help ${name}\``);
-  return card(blocks);
+  const lines = [
+    missing
+      ? `${EMOJI.WARNING} \`${missing}\` is missing`
+      : `${EMOJI.WARNING} Check how you wrote \`${prefix}${name}${path ? ` ${path}` : ''}\``,
+    `\`${syntaxOf(prefix, name, path, options)}\``,
+  ];
+  const detail = options.find((option) => option.name === missing);
+  const hint = detail ? `\`${detail.name}\` is ${TYPE_HINT[detail.type] ?? 'text'}${detail.description ? `: ${clip(detail.description, 70)}` : ''}` : '';
+  lines.push(`-# ${hint ? `${hint} · ` : ''}\`<needed>\` \`[optional]\` · \`${prefix}help ${name}\``);
+  return card(lines);
 }
 
 module.exports = { unknownSubcommandCard, missingOptionCard, suggest, listPaths, syntaxOf, resolveTyped };

@@ -39,43 +39,48 @@ assert.deepEqual(suggest(listPaths(command), ''), []);
 
 let card = unknownSubcommandCard({ command, prefix: ',', name: 'boosterrole', typed: 'list' });
 let out = strip(card);
-assert.match(out, /`list` is not a way to use `,boosterrole`/);
-assert.match(out, /\*\*Did you mean\*\*\n> `,boosterrole admin list` · List every booster role\./);
-assert.match(out, /\*\*What `,boosterrole` can do\*\*\n`create` · Create your booster role\.\n`remove` · Remove your role\.\n`admin list`/);
-assert.match(out, /Full guide with `,help boosterrole`/);
+assert.match(out, /`list` is not part of `,boosterrole`/);
+assert.match(out, /Did you mean `,boosterrole admin list`\?/);
+assert.match(out, /`,help boosterrole` shows everything it can do/);
 assert.ok(!out.includes('admin set'), 'a hidden way is not shown');
+assert.ok(out.split('\n').length <= 3, 'the card is three lines at most');
+assert.ok(out.length < 220, 'and short');
 assert.equal(card.flags, 1 << 15); assert.deepEqual(card.allowedMentions, { repliedUser: false, parse: [] });
+assert.equal(card.components.length, 1, 'one block, with no extra dividers');
 card = unknownSubcommandCard({ command, prefix: '!', name: 'boosterrole', typed: 'zzzzz' });
-assert.ok(!strip(card).includes('Did you mean'), 'no guess when nothing is close');
+out = strip(card);
+assert.ok(!out.includes('Did you mean'), 'no guess when nothing is close');
+assert.match(out, /Try `create` `remove` `admin`/, 'the first words of the ways to use it, without repeats');
 card = unknownSubcommandCard({ command, prefix: '!', name: 'boosterrole', typed: '' });
-assert.match(strip(card), /`\(nothing\)` is not a way/);
+assert.match(strip(card), /`\(nothing\)` is not part of/);
+// Two guesses are told in one line.
+const two = { data: new SlashCommandBuilder().setName('two').setDescription('x').addSubcommandGroup((g) => g.setName('a').setDescription('x').addSubcommand((s) => s.setName('list').setDescription('x'))).addSubcommandGroup((g) => g.setName('b').setDescription('x').addSubcommand((s) => s.setName('list').setDescription('x'))) };
+assert.match(strip(unknownSubcommandCard({ command: two, prefix: ',', name: 'two', typed: 'list' })), /Did you mean `,two a list` or `,two b list`\?/);
 
-// A long command is cut, with a count of what is left.
+// A long command stays short: the first words and how many more.
 const big = { data: new SlashCommandBuilder().setName('big').setDescription('x') };
 for (let n = 0; n < 20; n += 1) big.data.addSubcommand((s) => s.setName(`sub${n}`).setDescription(`Does thing ${n}.`));
 out = strip(unknownSubcommandCard({ command: big, prefix: '!', name: 'big', typed: 'nothing' }));
-assert.match(out, /…and 6 more/); assert.ok(out.length < 3500);
+assert.match(out, /and 12 more/); assert.ok(out.length < 260);
 
 // A missing option.
 card = missingOptionCard({ command, prefix: ',', name: 'boosterrole', argText: 'create', missing: 'name' });
 out = strip(card);
 assert.match(out, /`name` is missing/);
-assert.match(out, /\*\*How to write it\*\*\n`,boosterrole create <name> \[color\]`/);
-assert.match(out, /`name` · \*\*needed\*\* · text — Name of the role/);
-assert.match(out, /`color` · optional · text — A hex color/);
-assert.match(out, /`<needed>` `\[optional\]` · full guide with `,help boosterrole`/);
+assert.match(out, /`,boosterrole create <name> \[color\]`/);
+assert.match(out, /`name` is text: Name of the role/);
+assert.match(out, /`<needed>` `\[optional\]` · `,help boosterrole`/);
+assert.ok(out.split('\n').length <= 3 && out.length < 260, 'three short lines');
 card = missingOptionCard({ command, prefix: ',', name: 'boosterrole', argText: 'admin set', missing: 'member' });
-assert.match(strip(card), /`,boosterrole admin set <member>`/); assert.match(strip(card), /a member — Who/);
+assert.match(strip(card), /`,boosterrole admin set <member>`/); assert.match(strip(card), /`member` is a member: Who/);
 // Written in a way that cannot be read, with no option named.
 card = missingOptionCard({ command, prefix: '!', name: 'boosterrole', argText: 'remove', missing: null });
-assert.match(strip(card), /That does not look right for `!boosterrole remove`/); assert.match(strip(card), /`!boosterrole remove`/);
+assert.match(strip(card), /Check how you wrote `!boosterrole remove`/); assert.match(strip(card), /\n`!boosterrole remove`/);
 // A command with no subcommands.
 const simple = { data: new SlashCommandBuilder().setName('avatar').setDescription('x').addUserOption((o) => o.setName('user').setDescription('Whose avatar').setRequired(true)) };
 assert.match(strip(missingOptionCard({ command: simple, prefix: '!', name: 'avatar', argText: '', missing: 'user' })), /`!avatar <user>`/);
 // The default subcommand (!remind 2h text is !remind add ...).
 const remind = { prefixDefaultSubcommand: 'add', data: new SlashCommandBuilder().setName('remind').setDescription('x').addSubcommand((s) => s.setName('add').setDescription('Add.').addStringOption((o) => o.setName('duration').setDescription('When').setRequired(true))).addSubcommand((s) => s.setName('list').setDescription('List.')) };
 assert.match(strip(missingOptionCard({ command: remind, prefix: '!', name: 'remind', argText: '', missing: 'duration' })), /`!remind add <duration>`/);
-// What goes out is Discord's own limit-safe: under 4000 characters of text.
-assert.ok(text(card).length < 6000);
 
 console.log('usage card ok');
