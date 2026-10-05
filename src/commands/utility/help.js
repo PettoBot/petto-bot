@@ -35,8 +35,8 @@ const CATEGORY_META = {
   // slip when uploading) but the wrench glyph reads as utility — flagged for confirmation.
   utility: { label: 'Utility', icon: '<:pe_info:1533209779751616676>' },
   misc: { label: 'Misc', icon: '<:pe_misc:1533209781345587374>' },
-  roleplay: { label: 'Roleplay', icon: '💞' },
-  fun: { label: 'Fun', icon: '🎲' },
+  roleplay: { label: 'Roleplay', icon: '<:011Heart:1556773944336580720>' },
+  fun: { label: 'Fun', icon: '<:Icon_Dice:1556773972442349568>' },
   other: { label: 'Other', icon: '📄' },
 };
 
