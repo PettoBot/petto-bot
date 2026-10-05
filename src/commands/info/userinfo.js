@@ -1,20 +1,7 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { INFO_ACCENT, infoPayload, clip, stamp, line } = require('../../utils/infoCard');
+const { badgeList } = require('../../utils/userBadges');
 
-const BADGE_NAMES = {
-  Staff: 'Discord Staff',
-  Partner: 'Partner',
-  Hypesquad: 'HypeSquad Events',
-  BugHunterLevel1: 'Bug Hunter',
-  BugHunterLevel2: 'Bug Hunter (Gold)',
-  HypeSquadOnlineHouse1: 'HypeSquad Bravery',
-  HypeSquadOnlineHouse2: 'HypeSquad Brilliance',
-  HypeSquadOnlineHouse3: 'HypeSquad Balance',
-  PremiumEarlySupporter: 'Early Supporter',
-  VerifiedDeveloper: 'Early Verified Bot Developer',
-  CertifiedModerator: 'Certified Moderator',
-  ActiveDeveloper: 'Active Developer',
-};
 const ROLE_LIST_LIMIT = 800;
 
 function joinPosition(guild, member) {
@@ -54,7 +41,7 @@ module.exports = {
       ? await interaction.guild.members.fetch(user.id).catch(() => interaction.guild.members.cache.get(user.id) ?? null)
       : null;
 
-    const badges = user.flags?.toArray().map((f) => BADGE_NAMES[f] ?? f).filter(Boolean) ?? [];
+    const badges = badgeList(user, member);
     const globalAvatar = user.displayAvatarURL({ size: 1024 });
     const serverAvatar = member?.avatar ? member.displayAvatarURL({ size: 1024 }) : null;
     const banner = user.bannerURL?.({ size: 1024 }) ?? null;
@@ -67,7 +54,7 @@ module.exports = {
           line('Username', `\`${user.username}\``),
           line('Type', user.bot ? 'Bot account' : 'User account'),
           line('Created', stamp(user.createdTimestamp)),
-          badges.length ? line('Badges', badges.join(', ')) : null,
+          badges.length ? line('Badges', badges.join(' · ')) : null,
         ],
       },
     ];
