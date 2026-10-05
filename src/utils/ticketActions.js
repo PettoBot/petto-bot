@@ -1,4 +1,5 @@
 const { ChannelType, PermissionFlagsBits, MessageFlags, AttachmentBuilder } = require('discord.js');
+const { describeTicketOpenError } = require('./ticketErrors');
 const db = require('../db/tickets');
 const formsDb = require('../db/ticketForms');
 const accessDb = require('../db/ticketAccess');
@@ -427,7 +428,7 @@ async function openTicketInteractive(interaction, category) {
     const { channel } = await openTicket({ guild: interaction.guild, client: interaction.client, category, opener: interaction.user });
     await interaction.editReply({ content: `${EMOJI.APPROVE} Ticket opened: ${channel}` });
   } catch (err) {
-    await interaction.editReply({ content: err.userFacing ? err.message : 'I was unable to open a ticket. Check my permissions (Manage Channels) and try again.' });
+    await interaction.editReply({ content: describeTicketOpenError(err) });
     if (!err.userFacing) logger.error('Ticket open failed:', err);
   }
 }
