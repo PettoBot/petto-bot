@@ -62,6 +62,13 @@ const repliedMessage = (extra = {}) => ({ content: '', embeds: [], stickers: new
   const flags = (names) => new UserFlagsBitField(names);
   let badges = badgeList({ flags: flags(['HypeSquadOnlineHouse1', 'ActiveDeveloper']), avatar: 'abc', banner: null });
   assert.deepEqual(badges, [`${BADGE_EMOJI.bravery} HypeSquad Bravery`, 'Active Developer']);
+  // The other badges that have an icon, and the two that only have a name.
+  const iconic = { Staff: 'staff', Partner: 'partner', BugHunterLevel1: 'bugHunter1', BugHunterLevel2: 'bugHunter2', PremiumEarlySupporter: 'earlySupporter', CertifiedModerator: 'moderatorAlumni', ActiveDeveloper: 'activeDeveloper', BotHTTPInteractions: 'supportsCommands' };
+  for (const [flag, key] of Object.entries(iconic)) {
+    const [shown] = badgeList({ flags: flags([flag]), avatar: 'x' });
+    assert.ok(shown.startsWith(BADGE_EMOJI[key]), `${flag} has its icon`);
+  }
+  assert.deepEqual(badgeList({ flags: flags(['Hypesquad', 'VerifiedDeveloper']), avatar: 'x' }), ['HypeSquad Events', 'Early Verified Bot Developer'], 'no icon yet, the name is shown');
   assert.deepEqual(badgeList({ flags: flags(['HypeSquadOnlineHouse2']), avatar: null }), [`${BADGE_EMOJI.brilliance} HypeSquad Brilliance`]);
   assert.deepEqual(badgeList({ flags: flags(['HypeSquadOnlineHouse3']), avatar: null }), [`${BADGE_EMOJI.balance} HypeSquad Balance`]);
   assert.deepEqual(badgeList({ flags: flags(['VerifiedBot']), avatar: 'x' }), [`${BADGE_EMOJI.verifiedApp} Verified App`]);
