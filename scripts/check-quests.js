@@ -18,7 +18,7 @@ stub('src/utils/cardService.js', { renderCardForMessage: async () => null, norma
 const questApi = require('../src/utils/questApi');
 const { questMessage, buildQuestCard, buildQuestList, questContext } = require('../src/utils/questMessages');
 const { EMOJI } = require('../src/utils/emojis');
-const { canUseQuests, matchesFilters, checkQuests } = require('../src/utils/questAlerts');
+const { canUseQuests, matchesFilters, checkQuests, resendMissing } = require('../src/utils/questAlerts');
 const { resolve } = require('../src/utils/embedVariables');
 
 const day = 86_400_000;
@@ -352,6 +352,32 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
     refusing.channels.fetch = async () => ({ isTextBased: () => true, send: async () => { attempts += 1; throw Object.assign(new Error('Missing Access'), { code: 50001 }); } });
     await checkQuests(client9, { api: api9, db: db9, now }); await checkQuests(client9, { api: api9, db: db9, now: now + 300_000 });
     assert.equal(attempts, 2, 'a permission problem is tried again, the owner may fix it');
+  }
+  // Sending again what is missing: the quests that are active, pass the filters and were never posted in the server.
+  {
+    const delivered = [];
+    const channel9 = { isTextBased: () => true, send: async (payload) => { delivered.push(payload); return { id: `m${delivered.length}` }; } };
+    const guild9 = { id: 'g8', channels: { fetch: async () => channel9 } };
+    const client8 = { guilds: { cache: { get: () => guild9 }, fetch: async () => guild9 } };
+    const old = { ...orbs, id: 'old-1', startsAt: new Date(now - 3 * day), expiresAt: new Date(now + 5 * day) };
+    const mid = { ...orbs, id: 'mid-2', startsAt: new Date(now - 2 * day), expiresAt: new Date(now + 5 * day) };
+    const done = { ...orbs, id: 'done-3', startsAt: new Date(now - 1 * day), expiresAt: new Date(now + 5 * day) };
+    const gone = { ...orbs, id: 'gone-4', startsAt: new Date(now - 9 * day), expiresAt: new Date(now - 1 * day) };
+    const posted8 = new Set(['g8:done-3:new']);
+    const db8 = { hasPost: async (g, q, k) => posted8.has(`${g}:${q}:${k}`), savePost: async (g, q, k) => { posted8.add(`${g}:${q}:${k}`); } };
+    const api8 = { fetchQuests: async () => ({ notModified: false, quests: [done, mid, gone, old] }), isActive: questApi.isActive };
+    const settings8 = { guild_id: 'g8', channel_id: 'c', role_id: null, style: 'card', reward_kinds: [], task_kinds: [], hide_sections: [], accent_color: null, expiring_hours: 0 };
+    let outcome = await resendMissing(client8, settings8, { api: api8, db: db8, now, pause: 0 });
+    assert.deepEqual(outcome, { missing: 2, sent: 2, left: 0 }, 'the ones that were not posted, and not the posted one or the one that ended');
+    assert.equal(delivered.length, 2); assert.ok(posted8.has('g8:old-1:new') && posted8.has('g8:mid-2:new'));
+    outcome = await resendMissing(client8, settings8, { api: api8, db: db8, now, pause: 0 });
+    assert.deepEqual(outcome, { missing: 0, sent: 0, left: 0 }, 'a second time there is nothing left to send');
+    posted8.clear();
+    outcome = await resendMissing(client8, { ...settings8 }, { api: api8, db: db8, now, pause: 0, limit: 2 });
+    assert.deepEqual(outcome, { missing: 3, sent: 2, left: 1 }, 'a batch has a limit');
+    posted8.clear();
+    outcome = await resendMissing(client8, { ...settings8, reward_kinds: ['decoration'] }, { api: api8, db: db8, now, pause: 0 });
+    assert.equal(outcome.missing, 0, 'the filters of the server apply');
   }
   console.log('Checked the quest alerts: the API answer, the filters, who is told, the card, the saved embed and who can use it.');
 })().catch((error) => { console.error(error); process.exit(1); });
