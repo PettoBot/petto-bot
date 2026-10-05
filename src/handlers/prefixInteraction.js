@@ -204,6 +204,7 @@ async function parseOptions(message, optionDefs, tokens, resolveContext, parseCo
 function missingArgError(name) {
   const err = new Error(`Missing required argument: \`${name}\`. Check the command's usage.`);
   err.userFacing = true;
+  err.missingOption = name;
   return err;
 }
 
