@@ -4,6 +4,10 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- The page buttons of lists (`!roles`, `!emojis`...) failed with "Component custom id cannot be duplicated" on some pages, because two buttons went to the same page. Every button has an id of its own now.
+
 ## [0.7.1-1] — 2026-10-05 · Mochi
 
 An improvement release, shown as **0.7.1~1**. From now on every version has a name.
