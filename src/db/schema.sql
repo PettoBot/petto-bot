@@ -2506,3 +2506,15 @@ alter table discord_guild_snapshots add column if not exists bot_avatar text;
 
 -- A poll can use one of the server's saved Components V2 embeds as its design (with the {poll.*} variables); empty is the default card.
 alter table polls add column if not exists embed_template text;
+
+-- The people shown on the public team page. The owner edits them from the dashboard; the page keeps its own
+-- list while this table is empty. Each position holds up to 100 people (the dashboard checks it).
+create table if not exists site_team (
+  id bigserial primary key,
+  position text not null,
+  user_id text not null,
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now(),
+  unique (position, user_id)
+);
+create index if not exists site_team_position_idx on site_team (position, sort_order);

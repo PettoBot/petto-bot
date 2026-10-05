@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const remindersDb = require('../../db/reminders');
 const { parseDuration, formatDuration } = require('../../utils/duration');
+const { parseWhen } = require('../../utils/when');
 const { ensureGuild } = require('../../db/guilds');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
@@ -18,7 +19,7 @@ module.exports = {
       s
         .setName('add')
         .setDescription('Set a reminder.')
-        .addStringOption((o) => o.setName('duration').setDescription('e.g. 10m, 2h, 1d').setRequired(true))
+        .addStringOption((o) => o.setName('duration').setDescription('A length or a moment: 10m, 3d 4h, tomorrow 8pm, 2026-10-12 18:00').setRequired(true))
         .addStringOption((o) => o.setName('message').setDescription('What to remind you about').setRequired(true)),
     )
     .addSubcommand((s) => s.setName('list').setDescription('List your active reminders.'))
@@ -33,9 +34,12 @@ module.exports = {
 };
 
 async function addCmd(interaction) {
-  const durationMs = parseDuration(interaction.options.getString('duration', true));
-  if (!durationMs) {
-    await interaction.reply({ content: 'Provide a valid duration, e.g. `10m`, `2h`, `1d`.', flags: MessageFlags.Ephemeral });
+  // A length of time ("2h", "3d 4h") or a moment ("tomorrow 8pm", "2026-10-12 18:00").
+  const when = interaction.options.getString('duration', true);
+  const moment = parseWhen(when);
+  const durationMs = moment === null ? null : moment - Date.now();
+  if (!durationMs || durationMs <= 0) {
+    await interaction.reply({ content: 'Provide a time in the future, e.g. `10m`, `3d 4h`, `tomorrow 8pm` or `2026-10-12 18:00`.', flags: MessageFlags.Ephemeral });
     return;
   }
   const message = interaction.options.getString('message', true);

@@ -15,6 +15,7 @@ const {
   handleRatingModal: handleTicketRatingModal,
 } = require('../interactions/ticketControls');
 const { handleButton: handleGiveawayButton } = require('../interactions/giveawayButton');
+const { handlePager, isPagerId } = require('../utils/pager');
 const { handleButton: handlePollButton } = require('../interactions/pollButton');
 const { handleButton: handlePollPanelButton, handleModal: handlePollPanelModal } = require('../interactions/pollPanel');
 const { HONEYPOT_COUNT_BUTTON_ID, handleButton: handleHoneypotButton } = require('../interactions/honeypot');
@@ -32,6 +33,7 @@ const { handleSetupModal } = require('../interactions/setup');
 const { SETUP_BUTTON_PREFIX, handleSetupButton } = require('../interactions/setupPanel');
 const { BUTTON_PREFIX, handleButton: handleReactionRoleButton } = require('../interactions/reactionRoleButton');
 const permissionsDb = require('../db/permissions');
+const disabledCommandsDb = require('../db/disabledCommands');
 const logger = require('../utils/logger');
 const { commandKey } = require('../handlers/commandHandler');
 
@@ -286,6 +288,16 @@ module.exports = {
       return;
     }
 
+    if ((interaction.isButton() || interaction.isStringSelectMenu()) && isPagerId(interaction.customId)) {
+      try {
+        await handlePager(interaction);
+      } catch (err) {
+        logger.error('Error handling list page:', err);
+        if (!interaction.replied && !interaction.deferred) await interaction.reply({ content: 'Something went wrong while changing the page.', flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+      return;
+    }
+
     if (interaction.isButton() && interaction.customId.startsWith('plv_')) {
       try {
         await handlePollButton(interaction);
@@ -342,6 +354,15 @@ module.exports = {
         // Custom permission levels are opt-in on top of Discord's own permissions, if the check
         // itself fails (DB hiccup) let the command through rather than break it for everyone.
         logger.error('Error checking custom command permission level:', err);
+      }
+    }
+
+    // The same rules as !disablecommand: a command switched off for the server or this channel does not run as a slash command either.
+    if (interaction.guildId && interaction.channelId) {
+      const disabled = await disabledCommandsDb.findCached(interaction.guildId, command.data.name, interaction.channelId).catch(() => null);
+      if (disabled) {
+        await interaction.reply({ content: `The command \`${command.data.name}\` is disabled ${disabled.channel_id ? `in <#${disabled.channel_id}>` : 'on this server'}.`, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+        return;
       }
     }
 

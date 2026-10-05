@@ -21,6 +21,7 @@ for (const token of engineTokens) {
 const dynamicChecks = [
   [/^\{choose/, /choose\\d\*:/, engineSource],
   [/^\{range:/, /range:/, engineSource],
+  [/^\{timestamp:/, /timestamp:/, engineSource],
   [/^\{arg\d+\}$/, /\{arg\(\\d\{1,2\}\)\\\}/, engineSource],
   [/^\{args_from:/, /args_from:/, engineSource],
   [/^\{reactreply/, /reactreply/, flagSource],

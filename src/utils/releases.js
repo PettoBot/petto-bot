@@ -2,11 +2,53 @@ const { EMOJI } = require('./emojis');
 
 const RELEASES = [
   {
+    version: 'v0.7.1-1',
+    display: 'v0.7.1~1',
+    name: 'Mochi',
+    label: 'v0.7.1~1 · Mochi: lists, times & team',
+    date: '2026-10-05',
+    accent: 0xffb3d1,
+    status: `${EMOJI.RELEASE_APPROVED} Latest`,
+    summary: 'An improvement release: long lists with buttons, new info commands, better command blocking, times written in words, and a team you can edit from the dashboard.',
+    sections: [
+      {
+        title: `${EMOJI.RELEASE_ROCKET} Lists with buttons`,
+        items: [
+          '`!roles` shows a page at a time with buttons and a menu to sort it (most members, newest, name) or filter it (with a color, empty).',
+          'New: `!emojis`, `!channels`, `!boosters` and `!inrole <role>` (also `!members`), all with pages, and a menu to filter them. Only whoever asked can turn the pages.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_SETTINGS} Blocking commands`,
+        items: [
+          '`!disablecommand disable roles emojis channels` blocks several commands at once, `enable all` clears every rule and `list` has pages. `disablecommand` and `help` cannot be blocked, so nobody is left locked out.',
+          'A blocked command is blocked as a slash command too, not only with the prefix.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_MAGIC} Times`,
+        items: [
+          'Every command that takes a length of time understands `3d 4h`, `1 hour 30 minutes`, `1h30m` and Spanish (`2 horas`). `!remind` also takes a moment: `tomorrow 8pm`, `2026-10-12 18:00`.',
+          'New variables: `{timestamp}`, `{timestamp.relative}`, `{timestamp.full_long}`, and `{timestamp:tomorrow 8pm|R}` for any moment written in words.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_EXPERIENCE} Others`,
+        items: [
+          'The public stats page ranks the top 5 servers.',
+          'The team page can be edited by the owner from the dashboard (up to 100 people per position).',
+          'Every version has a name. This one is Mochi.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'v0.7.1',
+    name: 'Pudding',
     label: 'v0.7.1 · Partners, panels & more',
     date: '2026-10-03',
     accent: 0xff91c2,
-    status: `${EMOJI.RELEASE_APPROVED} Latest`,
+    status: `${EMOJI.RELEASE_APPROVED} Published`,
     summary: 'Tools for communities: partnerships with a ranking, uploads, requests, reviews and profiles, buttons and panels with no code, saved embeds for sticky messages, and quest alerts with four sources.',
     sections: [
       {
@@ -50,6 +92,7 @@ const RELEASES = [
   },
   {
     version: 'v0.7.0',
+    name: 'Macaron',
     label: 'v0.7.0 · Petto Code, Quests & Embeds V2',
     date: '2026-10-03',
     accent: 0xff91c2,
@@ -110,6 +153,7 @@ const RELEASES = [
   },
   {
     version: 'v0.6.1',
+    name: 'Taiyaki',
     label: 'v0.6.1 · Leveling, cards & custom messages',
     date: '2026-10-02',
     accent: 0xff91c2,
@@ -166,6 +210,7 @@ const RELEASES = [
   },
   {
     version: 'v0.6.0',
+    name: 'Dango',
     label: 'v0.6.0 · Dashboard, embeds & Petto Vanity',
     date: '2026-09-30',
     accent: 0x8c7cff,
@@ -200,6 +245,7 @@ const RELEASES = [
   },
   {
     version: 'v0.5.1-46',
+    name: 'Cupcake',
     label: 'v0.5.1-46 · Reliability, safety & automation',
     date: '2026-09-24',
     accent: 0x8c7cff,
@@ -251,6 +297,7 @@ const RELEASES = [
   },
   {
     version: 'v0.5.0',
+    name: 'Churro',
     label: 'v0.5.0 · Connected roles & activity',
     date: '2026-08-31',
     accent: 0x5eead4,
@@ -286,6 +333,7 @@ const RELEASES = [
   },
   {
     version: 'v0.4.1',
+    name: 'Waffle',
     label: 'v0.4.1 · Reports & reliability',
     date: '2026-08-26',
     accent: 0xfe6465,
@@ -319,6 +367,7 @@ const RELEASES = [
   },
   {
     version: 'v0.4.0',
+    name: 'Crepe',
     label: 'v0.4.0 · Safety systems',
     date: '2026-08-24',
     accent: 0x8c7cff,
@@ -353,6 +402,7 @@ const RELEASES = [
   },
   {
     version: 'v0.3.0-2',
+    name: 'Biscuit',
     label: 'v0.3.0-2 · Operational visibility',
     date: '2026-08-22',
     accent: 0x4b4f59,
@@ -376,6 +426,7 @@ const RELEASES = [
   },
   {
     version: 'v0.3.0-1',
+    name: 'Cookie',
     label: 'v0.3.0-1 · Vanity system',
     date: '2026-08-13',
     accent: 0x5c8dff,
