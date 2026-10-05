@@ -29,8 +29,11 @@ async function post(client, settings, quest, kind, db) {
   if (!guild || !channel?.isTextBased?.()) return false;
   if (await db.hasPost(settings.guild_id, quest.id, kind)) return false;
   const payload = await questMessage(guild, settings, quest, kind);
-  const sent = await channel.send(payload).catch((error) => {
+  const sent = await channel.send(payload).catch(async (error) => {
     logger.warn({ guildId: guild.id, action: 'quest-alert' }, `A quest alert could not be sent: ${error.message}`);
+    // Discord refused the message itself (Invalid Form Body): sending it again would fail the same way every pass and fill
+    // the channel's rate limit, so it is remembered as handled. A permissions or network problem is tried again next pass.
+    if (error?.code === 50035) await db.savePost(settings.guild_id, quest.id, kind, null).catch(() => {});
     return null;
   });
   if (!sent) return false;

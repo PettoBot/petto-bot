@@ -213,6 +213,13 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
   assert.deepEqual(card.allowedMentions, { parse: [], roles: ['999'] });
   const withPicture = buildQuestCard({ ...orbs, rewards: [{ ...orbs.rewards[0], image: 'https://cdn.discordapp.com/quests/1/2.png' }] }, {});
   assert.ok(flat(withPicture.components[0].toJSON()).some((n) => n.type === 11), 'a reward picture becomes the thumbnail of the rewards block');
+  // A link button whose address is too long is left out, because Discord refuses the whole message for it (512 characters at most).
+  const longLink = `https://example.com/game?${'x'.repeat(520)}`;
+  const withLongLink = buildQuestCard({ ...orbs, link: longLink }, {});
+  assert.deepEqual(withLongLink.components[1].toJSON().components.map((button) => button.label), ['Accept Quest'], 'a game page address over 512 characters has no button');
+  const noButtons = buildQuestCard({ ...orbs, url: longLink, link: null }, {});
+  assert.equal(noButtons.components.length, 1, 'with no button that fits there is no empty row either');
+  assert.ok(flat(buildQuestCard({ ...orbs, image: `https://cdn.example/${'y'.repeat(2100)}.png` }, {}).components[0].toJSON()).every((n) => n.type !== 12), 'a picture with an address over 2048 characters is left out');
   const clocks = texts(buildQuestCard({ ...play, tasks: [{ type: 'X', kind: 'play', label: 'Play the game', platform: 'Desktop', seconds: 900 }, { type: 'Y', kind: 'video', label: 'Watch', platform: 'Mobile', seconds: 3725 }] }, {}));
   assert.ok(clocks.includes('Play the game (15:00)') && clocks.includes('Watch (1:02:05)'), 'times are shown as a clock');
 
@@ -325,5 +332,26 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
   assert.ok((await as('test', false)).includes('Manage Server'), 'a member cannot send the test');
   assert.ok(!(await as('list', false)).includes('Manage Server'), 'a member can see the list');
   settingsOfConfig.questsPublic = false;
+  // A message Discord refuses (Invalid Form Body) is not sent again in every pass: the ending-soon alert, which is not marked
+  // as seen, used to be tried again every five minutes and filled the rate limit of the channel.
+  {
+    let attempts = 0;
+    const refusing = { id: 'g9', channels: { fetch: async () => ({ isTextBased: () => true, send: async () => { attempts += 1; throw Object.assign(new Error('Invalid Form Body'), { code: 50035 }); } }) } };
+    const client9 = { guilds: { cache: { get: () => refusing }, fetch: async () => refusing } };
+    const ending = { ...orbs, id: 'ending-1', startsAt: new Date(now - 1000), expiresAt: new Date(now + 3_600_000) };
+    const posts9 = new Set();
+    const db9 = {
+      listEnabledConfigs: async () => [{ guild_id: 'g9', channel_id: 'c', role_id: null, style: 'card', reward_kinds: [], task_kinds: [], hide_sections: [], accent_color: null, expiring_hours: 6 }],
+      listSeenIds: async () => new Set(['ending-1']), markSeen: async () => {},
+      hasPost: async (g, q, k) => posts9.has(`${g}:${q}:${k}`), savePost: async (g, q, k) => { posts9.add(`${g}:${q}:${k}`); },
+    };
+    const api9 = { fetchQuests: async () => ({ notModified: false, quests: [ending] }), isActive: questApi.isActive };
+    await checkQuests(client9, { api: api9, db: db9, now }); await checkQuests(client9, { api: api9, db: db9, now: now + 300_000 });
+    assert.equal(attempts, 1, 'a message that Discord refuses is not tried again');
+    attempts = 0; posts9.clear();
+    refusing.channels.fetch = async () => ({ isTextBased: () => true, send: async () => { attempts += 1; throw Object.assign(new Error('Missing Access'), { code: 50001 }); } });
+    await checkQuests(client9, { api: api9, db: db9, now }); await checkQuests(client9, { api: api9, db: db9, now: now + 300_000 });
+    assert.equal(attempts, 2, 'a permission problem is tried again, the owner may fix it');
+  }
   console.log('Checked the quest alerts: the API answer, the filters, who is told, the card, the saved embed and who can use it.');
 })().catch((error) => { console.error(error); process.exit(1); });
