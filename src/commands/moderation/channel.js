@@ -129,10 +129,13 @@ async function create(interaction) {
     return reply(`${EMOJI.APPROVE}  Created the ${kind.label.toLowerCase()} channel <#${channel.id}>.`, 0xa5ea7a);
   } catch (err) {
     logger.warn(`channel create failed in ${interaction.guild.id}: ${err.message}`);
-    const community = (kind.type === ChannelType.GuildForum || kind.type === ChannelType.GuildMedia) && /community/i.test(err.message);
-    const text = community
-      ? 'Forum and media channels need **Community** to be enabled in Server Settings first.'
-      : err.code === 50013 ? 'I do not have permission to create channels here.'
+    const forumLike = kind.type === ChannelType.GuildForum || kind.type === ChannelType.GuildMedia;
+    // Discord refuses a media channel in a server that does not have monetization (Server Subscriptions) on, besides Community.
+    const text = kind.type === ChannelType.GuildMedia && (/monetiz/i.test(err.message) || err.code === 50035)
+      ? 'Media channels need **Community** and **monetization** to be enabled in the server (Server Settings → Monetization). Without them Discord does not let me create one.'
+      : forumLike && /community/i.test(err.message)
+        ? 'Forum channels need **Community** to be enabled in Server Settings first.'
+        : err.code === 50013 ? 'I do not have permission to create channels here.'
       : err.code === 30013 ? 'The server reached the limit of channels.'
       : `Discord did not create it: ${err.message}`;
     return reply(`${EMOJI.DENY}  ${text}`, 0xfe6465);

@@ -4,6 +4,10 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- When Discord does not let `!channel create` make a media channel, the answer says that the server needs Community and monetization turned on.
+
 ### Added
 
 - `!channel create <name> [type] [category] [topic] [nsfw]` creates a channel: text, announcement, voice, stage, forum, **media** or category. For now only the owner and the developers of Petto can use it. Forum and media channels need Community to be enabled in the server, and the answer says so when it is not.
