@@ -294,6 +294,8 @@ async function resolve(text, ctx = {}) {
     '{timestamp.long_date}': discordTimestamp(Date.now(), 'D'),
     '{timestamp.full}': discordTimestamp(Date.now(), 'f'),
     '{timestamp.full_long}': discordTimestamp(Date.now(), 'F'),
+    '{timestamp.short_datetime}': discordTimestamp(Date.now(), 's'),
+    '{timestamp.medium_datetime}': discordTimestamp(Date.now(), 'S'),
     '{timestamp.relative}': discordTimestamp(Date.now(), 'R'),
     '{date.utc_now}': new Date().toUTCString(),
     '{newline}': '\n',

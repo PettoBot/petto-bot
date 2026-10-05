@@ -21,6 +21,7 @@ const { registerCardRoutes } = require('./cardRoutes');
 const { registerCodeRoutes } = require('./codeRoutes');
 const { listVariables } = require('../utils/embedVariableRegistry');
 const { renderPollRequest } = require('../utils/pollApi');
+const { runGiveawayAction } = require('../utils/giveawayApi');
 const logger = require('../utils/logger');
 
 async function checkTurnstile(responseToken, remoteIp) {
@@ -196,6 +197,20 @@ function startServer(client) {
       }
       res.set('Cache-Control', 'private, max-age=300');
       res.json({ ok: true, groups: listVariables() });
+    });
+
+    // Start, end or reroll a giveaway from the dashboard. The person must manage the server; the host of a new giveaway is that person.
+    app.post('/api/dashboard/guild/:guildId/giveaway/:action', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await dashboardCardAccess(req, res);
+      if (!access) return;
+      try {
+        const result = await runGiveawayAction(client, access.guild.id, String(req.params.action), { ...req.body, host_id: access.userId });
+        const { status, ...body } = result;
+        res.status(result.ok ? 200 : status ?? 400).json(body);
+      } catch (err) {
+        logger.error(`Dashboard giveaway ${req.params.action} failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, error: 'giveaway_failed', message: 'The giveaway action failed. Try again.' });
+      }
     });
 
     // The message of a poll as the bot draws it (the default card or a saved V2 design), for the dashboard to post or update.
