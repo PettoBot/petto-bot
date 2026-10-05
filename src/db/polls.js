@@ -1,9 +1,9 @@
 const database = require('./database');
 
-async function createPoll({ guildId, channelId, messageId, creatorId, question, options, image = null, multi = false, endsAt = null }) {
+async function createPoll({ guildId, channelId, messageId, creatorId, question, options, image = null, multi = false, endsAt = null, embedTemplate = null }) {
   const { data, error } = await database
     .from('polls')
-    .insert({ guild_id: guildId, channel_id: channelId, message_id: messageId, creator_id: creatorId, question, options, image, multi, ends_at: endsAt })
+    .insert({ guild_id: guildId, channel_id: channelId, message_id: messageId, creator_id: creatorId, question, options, image, multi, ends_at: endsAt, embed_template: embedTemplate || null })
     .select('*')
     .single();
   if (error) throw error;
