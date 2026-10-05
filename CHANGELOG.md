@@ -4,9 +4,9 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
-### Fixed
+### Changed
 
-- The total of members in the status messages dropped by a whole server when Discord gave no member count for it for a moment. Each server keeps its last good count now.
+- When Discord does not let `!channel create` make a media channel, the answer says that the server needs Community and monetization turned on.
 
 ### Added
 
@@ -15,6 +15,7 @@ All notable changes to Petto are documented here.
 
 ### Fixed
 
+- The total of members in the status messages dropped by a whole server when Discord gave no member count for it for a moment. Each server keeps its last good count now.
 - `!channels` showed every text channel as a giant heading, because its line started with `# `. Text channels start with 💬 now.
 - Quest alerts failed with "url: Must be 512 or fewer in length" when the game page of a quest had a very long address: that button (or a picture with an address over 2048 characters) is now left out instead of Discord refusing the whole message. A message that Discord refuses is no longer sent again in every pass, which filled the rate limit of the channel.
 
