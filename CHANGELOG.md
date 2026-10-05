@@ -6,7 +6,10 @@ All notable changes to Petto are documented here.
 
 ### Changed
 
-- The answers for a command typed wrong are cards now. An unknown subcommand (`,br list`) says what was typed, suggests what was probably meant (`boosterrole admin list`) and lists what the command can do, each with a short description. A missing option names it, shows how to write the command (`<needed>` and `[optional]`) and what each option holds. A specific message from the parser (a role that was not found) is still told as it is. It works for every command.
+- `!userinfo` shows the badges with their icons: Staff, Partner, Bug Hunter (both levels), Early Supporter, Moderator Programs Alumni, Active Developer, Supports Commands, HypeSquad Bravery, Brilliance and Balance, Verified App, Nitro (when the account has an animated avatar or a banner, which only Nitro gives) and the server booster badge.
+- `!steal` also works when you reply to a message: it takes the custom emojis in its text, its embeds and its reactions (up to 20 at a time), besides a sticker. Emojis typed after the command still come first.
+- The help menu has its own icons for the Fun (a dice) and Roleplay (a heart) categories.
+- The answers for a command typed wrong are small cards now, three lines at most. An unknown subcommand (`,br list`) says what was typed and what was probably meant (`boosterrole admin list`), or the first options when nothing is close. A missing option names it, shows how to write the command (`<needed>` and `[optional]`) and what that option holds. A specific message from the parser (a role that was not found) is still told as it is. It works for every command.
 - When Discord does not let `!channel create` make a media channel, the answer says that the server needs Community and monetization turned on.
 
 ### Added
