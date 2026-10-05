@@ -6,8 +6,8 @@ const { parseDuration } = require('./duration');
 
 /** The Discord timestamp styles by the names people can write in a variable. */
 const TIMESTAMP_STYLES = {
-  short_time: 't', long_time: 'T', short_date: 'd', long_date: 'D', full: 'f', full_long: 'F', relative: 'R',
-  t: 't', T: 'T', d: 'd', D: 'D', f: 'f', F: 'F', R: 'R',
+  short_time: 't', long_time: 'T', short_date: 'd', long_date: 'D', full: 'f', full_long: 'F', short_datetime: 's', medium_datetime: 'S', relative: 'R',
+  t: 't', T: 'T', d: 'd', D: 'D', f: 'f', F: 'F', s: 's', S: 'S', R: 'R',
 };
 
 /** `<t:unix:style>` for a moment in milliseconds. An unknown style gives the default one. */

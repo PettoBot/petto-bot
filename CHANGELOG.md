@@ -10,6 +10,7 @@ A small release, shown as **0.7.1~2**, for the dashboard.
 
 ### Added
 
+- The newest Discord timestamp styles (short date with short time, and with seconds) work in `{timestamp:...|short_datetime}` and `{timestamp:...|medium_datetime}`, and have their own variables `{timestamp.short_datetime}` and `{timestamp.medium_datetime}`.
 - The dashboard can start a giveaway, end it now and draw new winners, with the same engine as `/giveaway` (so the result is the same). The person must manage the server, and the duration is written in words (`1h`, `3d 4h`).
 
 ### Fixed
