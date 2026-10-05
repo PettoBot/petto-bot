@@ -15,7 +15,7 @@ const MATCH = {
   category: [ChannelType.GuildCategory],
 };
 const ICON = {
-  [ChannelType.GuildText]: '#', [ChannelType.GuildAnnouncement]: '📢', [ChannelType.GuildVoice]: '🔊', [ChannelType.GuildStageVoice]: '🎙️',
+  [ChannelType.GuildText]: '💬', [ChannelType.GuildAnnouncement]: '📢', [ChannelType.GuildVoice]: '🔊', [ChannelType.GuildStageVoice]: '🎙️',
   [ChannelType.GuildForum]: '💬', [ChannelType.GuildMedia]: '🖼️', [ChannelType.GuildCategory]: '📁',
 };
 

@@ -2,6 +2,24 @@ const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, ChannelType } = 
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
+const config = require('../../config');
+
+// The kinds of channel `create` can make. Forum and media channels need the server to be a Community server.
+const CREATE_TYPES = [
+  { value: 'text', label: 'Text', type: ChannelType.GuildText },
+  { value: 'announcement', label: 'Announcement', type: ChannelType.GuildAnnouncement },
+  { value: 'voice', label: 'Voice', type: ChannelType.GuildVoice },
+  { value: 'stage', label: 'Stage', type: ChannelType.GuildStageVoice },
+  { value: 'forum', label: 'Forum', type: ChannelType.GuildForum },
+  { value: 'media', label: 'Media', type: ChannelType.GuildMedia },
+  { value: 'category', label: 'Category', type: ChannelType.GuildCategory },
+];
+const NEEDS_TOPIC_SUPPORT = new Set([ChannelType.GuildText, ChannelType.GuildAnnouncement, ChannelType.GuildForum, ChannelType.GuildMedia]);
+
+/** Who may create channels with the command for now: the owner and the developers of Petto. */
+function canCreateChannels(userId) {
+  return userId === config.ownerId || config.developerIds.includes(userId);
+}
 
 module.exports = {
   aliases: ['ch'],
@@ -22,7 +40,7 @@ module.exports = {
   },
   data: new SlashCommandBuilder()
     .setName('channel')
-    .setDescription('Channel management: lock, unlock, slowmode, bulk-delete.')
+    .setDescription('Channel management: create, lock, unlock, slowmode, bulk-delete.')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .setDMPermission(false)
     .addSubcommand((sub) =>
@@ -53,6 +71,16 @@ module.exports = {
         .addIntegerOption((opt) => opt.setName('amount').setDescription('How many messages to delete (1-100)').setRequired(true).setMinValue(1).setMaxValue(100))
         .addUserOption((opt) => opt.setName('user').setDescription('Only delete messages from this user').setRequired(false)),
     )
+    .addSubcommand((sub) =>
+      sub
+        .setName('create')
+        .setDescription('Create a channel, including a media channel (for now only for the team of Petto).')
+        .addStringOption((opt) => opt.setName('name').setDescription('Name of the channel').setRequired(true).setMaxLength(100))
+        .addStringOption((opt) => opt.setName('type').setDescription('Kind of channel (default: text)').setRequired(false).addChoices(...CREATE_TYPES.map((entry) => ({ name: entry.label, value: entry.value }))))
+        .addChannelOption((opt) => opt.setName('category').setDescription('Category to put it in').setRequired(false).addChannelTypes(ChannelType.GuildCategory))
+        .addStringOption((opt) => opt.setName('topic').setDescription('Topic or guidelines of the channel').setRequired(false).setMaxLength(1024))
+        .addBooleanOption((opt) => opt.setName('nsfw').setDescription('Mark it as age-restricted').setRequired(false)),
+    )
     .addSubcommand((sub) => sub.setName('lock-all').setDescription('Lock every text channel the bot can manage.'))
     .addSubcommand((sub) => sub.setName('unlock-all').setDescription('Unlock every text channel the bot can manage.'))
     .addSubcommand((sub) => sub.setName('hide').setDescription('Hide a channel from @everyone (deny View Channel).').addChannelOption((opt) => opt.setName('channel').setDescription('Channel to hide (defaults to this one)').setRequired(false)))
@@ -61,6 +89,7 @@ module.exports = {
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
+    if (sub === 'create') return create(interaction);
     if (sub === 'lock') return lock(interaction);
     if (sub === 'unlock') return unlock(interaction);
     if (sub === 'slowmode') return slowmode(interaction);
@@ -72,6 +101,43 @@ module.exports = {
     return moveAll(interaction);
   },
 };
+
+async function create(interaction) {
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  const reply = (text, color) => interaction.editReply({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2 });
+  if (!canCreateChannels(interaction.user.id)) return reply(`${EMOJI.DENY}  Creating channels with this command is only for Petto's team for now.`, 0xfe6465);
+  if (!interaction.guild.members.me?.permissions.has(PermissionFlagsBits.ManageChannels)) return reply(`${EMOJI.DENY}  I need the **Manage Channels** permission.`, 0xfe6465);
+
+  const kind = CREATE_TYPES.find((entry) => entry.value === (interaction.options.getString('type') ?? 'text')) ?? CREATE_TYPES[0];
+  const rawName = interaction.options.getString('name', true).trim();
+  // Text-like channels are written in lowercase with dashes, as Discord does it; voice channels and categories keep their name.
+  const name = (kind.value === 'voice' || kind.value === 'stage' || kind.value === 'category' ? rawName : rawName.toLowerCase().replace(/\s+/g, '-')).slice(0, 100);
+  if (!name) return reply(`${EMOJI.DENY}  Write a name for the channel.`, 0xfe6465);
+  const category = kind.type === ChannelType.GuildCategory ? null : interaction.options.getChannel('category');
+  const topic = interaction.options.getString('topic');
+  const nsfw = interaction.options.getBoolean('nsfw');
+
+  try {
+    const channel = await interaction.guild.channels.create({
+      name,
+      type: kind.type,
+      ...(category ? { parent: category.id } : {}),
+      ...(topic && NEEDS_TOPIC_SUPPORT.has(kind.type) ? { topic } : {}),
+      ...(nsfw !== null && kind.type !== ChannelType.GuildCategory ? { nsfw } : {}),
+      reason: `Created by ${interaction.user.tag} with the channel command`,
+    });
+    return reply(`${EMOJI.APPROVE}  Created the ${kind.label.toLowerCase()} channel <#${channel.id}>.`, 0xa5ea7a);
+  } catch (err) {
+    logger.warn(`channel create failed in ${interaction.guild.id}: ${err.message}`);
+    const community = (kind.type === ChannelType.GuildForum || kind.type === ChannelType.GuildMedia) && /community/i.test(err.message);
+    const text = community
+      ? 'Forum and media channels need **Community** to be enabled in Server Settings first.'
+      : err.code === 50013 ? 'I do not have permission to create channels here.'
+      : err.code === 30013 ? 'The server reached the limit of channels.'
+      : `Discord did not create it: ${err.message}`;
+    return reply(`${EMOJI.DENY}  ${text}`, 0xfe6465);
+  }
+}
 
 async function lock(interaction) {
   const channel = interaction.options.getChannel('channel') ?? interaction.channel;
