@@ -10,7 +10,7 @@ function stub(relative, exports) {
 }
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
 const steal = require('../src/commands/utility/steal');
-const { badgeList, BADGE_EMOJI } = require('../src/utils/userBadges');
+const { badgeList, badgeText, BADGE_EMOJI } = require('../src/utils/userBadges');
 
 const created = [];
 function run({ emoji = null, content = '', replied = null }) {
@@ -58,25 +58,26 @@ const repliedMessage = (extra = {}) => ({ content: '', embeds: [], stickers: new
   out = await run({ emoji: Array.from({ length: 25 }, (_, n) => `<:e${n}:${1000 + n}>`).join(' ') });
   assert.equal(created.length, 20); assert.match(out, /Only the first 20 were taken/);
 
-  // The badges.
+  // The badges: only the icon when there is one, the name when there is not.
   const flags = (names) => new UserFlagsBitField(names);
-  let badges = badgeList({ flags: flags(['HypeSquadOnlineHouse1', 'ActiveDeveloper']), avatar: 'abc', banner: null });
-  assert.deepEqual(badges, [`${BADGE_EMOJI.bravery} HypeSquad Bravery`, `${BADGE_EMOJI.activeDeveloper} Active Developer`]);
-  // The other badges that have an icon, and the two that only have a name.
+  const text = (user, member) => badgeText(badgeList(user, member));
+  assert.equal(text({ flags: flags(['HypeSquadOnlineHouse1', 'ActiveDeveloper']), avatar: 'abc', banner: null }), `${BADGE_EMOJI.bravery} ${BADGE_EMOJI.activeDeveloper}`, 'only the icons');
+  assert.equal(text({ flags: flags(['HypeSquadOnlineHouse2']), avatar: null }), BADGE_EMOJI.brilliance);
+  assert.equal(text({ flags: flags(['HypeSquadOnlineHouse3']), avatar: null }), BADGE_EMOJI.balance);
+  assert.equal(text({ flags: flags(['VerifiedBot']), avatar: 'x', bot: true }), BADGE_EMOJI.verifiedApp, 'a verified app is its icon, with no label');
   const iconic = { Staff: 'staff', Partner: 'partner', BugHunterLevel1: 'bugHunter1', BugHunterLevel2: 'bugHunter2', PremiumEarlySupporter: 'earlySupporter', CertifiedModerator: 'moderatorAlumni', ActiveDeveloper: 'activeDeveloper', BotHTTPInteractions: 'supportsCommands' };
-  for (const [flag, key] of Object.entries(iconic)) {
-    const [shown] = badgeList({ flags: flags([flag]), avatar: 'x' });
-    assert.ok(shown.startsWith(BADGE_EMOJI[key]), `${flag} has its icon`);
-  }
-  assert.deepEqual(badgeList({ flags: flags(['Hypesquad', 'VerifiedDeveloper']), avatar: 'x' }), ['HypeSquad Events', 'Early Verified Bot Developer'], 'no icon yet, the name is shown');
-  assert.deepEqual(badgeList({ flags: flags(['HypeSquadOnlineHouse2']), avatar: null }), [`${BADGE_EMOJI.brilliance} HypeSquad Brilliance`]);
-  assert.deepEqual(badgeList({ flags: flags(['HypeSquadOnlineHouse3']), avatar: null }), [`${BADGE_EMOJI.balance} HypeSquad Balance`]);
-  assert.deepEqual(badgeList({ flags: flags(['VerifiedBot']), avatar: 'x' }), [`${BADGE_EMOJI.verifiedApp} Verified App`]);
-  assert.deepEqual(badgeList({ flags: flags([]), avatar: 'a_1234' }), [`${BADGE_EMOJI.nitro} Nitro`], 'an animated avatar only comes with Nitro');
-  assert.deepEqual(badgeList({ flags: flags([]), avatar: 'x', banner: 'b' }), [`${BADGE_EMOJI.nitro} Nitro`], 'so does a banner');
-  assert.deepEqual(badgeList({ flags: flags([]), avatar: 'x' }, { premiumSinceTimestamp: 1700000000000 }), [`${BADGE_EMOJI.booster} Server Booster`]);
-  assert.deepEqual(badgeList({ flags: flags([]), avatar: 'x' }, { premiumSinceTimestamp: null }), [], 'no badge, nothing shown');
-  assert.deepEqual(badgeList({ avatar: null }), [], 'a user with no flags');
+  for (const [flag, key] of Object.entries(iconic)) assert.equal(text({ flags: flags([flag]), avatar: 'x' }), BADGE_EMOJI[key], `${flag} is its icon`);
+  // The ones with no icon yet show their name, after the icons.
+  assert.equal(text({ flags: flags(['Hypesquad', 'VerifiedDeveloper', 'Staff']), avatar: 'x' }), `${BADGE_EMOJI.staff}  HypeSquad Events · Early Verified Bot Developer`);
+  // Nitro: a person with an animated avatar or a banner. An app can have both without Nitro, so it is not shown for apps.
+  assert.equal(text({ flags: flags([]), avatar: 'a_1234' }), BADGE_EMOJI.nitro, 'an animated avatar only comes with Nitro for a person');
+  assert.equal(text({ flags: flags([]), avatar: 'x', banner: 'b' }), BADGE_EMOJI.nitro, 'so does a banner');
+  assert.equal(text({ flags: flags(['VerifiedBot']), avatar: 'a_1234', banner: 'b', bot: true }), BADGE_EMOJI.verifiedApp, 'an app with an animated avatar and a banner is not shown with Nitro');
+  assert.equal(text({ flags: flags([]), avatar: 'a_1', bot: true }), '', 'nor an unverified one');
+  assert.equal(text({ flags: flags([]), avatar: 'x' }, { premiumSinceTimestamp: 1700000000000 }), BADGE_EMOJI.booster);
+  assert.equal(text({ flags: flags([]), avatar: 'x' }, { premiumSinceTimestamp: null }), '', 'no badge, nothing shown');
+  assert.equal(text({ avatar: null }), '', 'a user with no flags');
+  assert.equal(text({ flags: flags(['HypeSquadOnlineHouse1']), avatar: 'a_9' }, { premiumSinceTimestamp: 1 }), `${BADGE_EMOJI.bravery} ${BADGE_EMOJI.nitro} ${BADGE_EMOJI.booster}`, 'all together, in a row');
   for (const emoji of Object.values(BADGE_EMOJI)) assert.match(emoji, /^<a?:\w+:\d{17,20}>$/);
 
   console.log('steal and badges ok');

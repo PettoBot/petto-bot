@@ -1,6 +1,6 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { INFO_ACCENT, infoPayload, clip, stamp, line } = require('../../utils/infoCard');
-const { badgeList } = require('../../utils/userBadges');
+const { badgeList, badgeText } = require('../../utils/userBadges');
 
 const ROLE_LIST_LIMIT = 800;
 
@@ -54,7 +54,7 @@ module.exports = {
           line('Username', `\`${user.username}\``),
           line('Type', user.bot ? 'Bot account' : 'User account'),
           line('Created', stamp(user.createdTimestamp)),
-          badges.length ? line('Badges', badges.join(' · ')) : null,
+          badges.length ? line('Badges', badgeText(badges)) : null,
         ],
       },
     ];

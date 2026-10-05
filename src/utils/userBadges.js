@@ -37,17 +37,25 @@ const FLAG_BADGES = {
 };
 
 /**
- * The badges of a person, as `emoji name` texts. Nitro is shown when the account has something only Nitro gives (an animated
- * avatar or a banner), and the booster badge when the person boosts this server.
+ * The badges of a person. A badge with an icon is only the icon (its name is what Discord shows when you hover it, and a bot
+ * cannot do that), and one without an icon is its name. Nitro is shown when a person (not an app) has something only Nitro
+ * gives, an animated avatar or a banner, because Discord does not tell bots who has Nitro; apps can have both without it.
  */
 function badgeList(user, member = null) {
   const out = [];
-  const show = (badge) => out.push(badge.emoji ? `${badge.emoji} ${badge.name}` : badge.name);
+  const show = (badge) => out.push({ icon: badge.emoji ?? null, name: badge.name });
   for (const flag of user?.flags?.toArray?.() ?? []) show(FLAG_BADGES[flag] ?? { name: flag });
   const animatedAvatar = typeof user?.avatar === 'string' && user.avatar.startsWith('a_');
-  if (animatedAvatar || user?.banner) show({ name: 'Nitro', emoji: BADGE_EMOJI.nitro });
+  if (!user?.bot && (animatedAvatar || user?.banner)) show({ name: 'Nitro', emoji: BADGE_EMOJI.nitro });
   if (member?.premiumSinceTimestamp) show({ name: 'Server Booster', emoji: BADGE_EMOJI.booster });
   return out;
 }
 
-module.exports = { badgeList, BADGE_EMOJI };
+/** The badges as one line: the icons together first, then the names of the ones that have no icon. */
+function badgeText(badges) {
+  const icons = badges.filter((badge) => badge.icon).map((badge) => badge.icon);
+  const names = badges.filter((badge) => !badge.icon).map((badge) => badge.name);
+  return [icons.join(' '), names.join(' · ')].filter(Boolean).join('  ');
+}
+
+module.exports = { badgeList, badgeText, BADGE_EMOJI };
