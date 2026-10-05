@@ -1,7 +1,7 @@
 const database = require('./database');
 const { getPrimaryPool } = require('./postgres');
 
-const SERVER_RANK_SIZE = 3;
+const SERVER_RANK_SIZE = 5;
 const USER_RANK_SIZE = 10;
 const METRICS = ['messages', 'reactions', 'voiceSeconds'];
 

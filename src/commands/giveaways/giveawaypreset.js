@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
-const ms = require('ms');
+const { parseDuration: parseLength } = require('../../utils/duration');
 const { ensureGuild } = require('../../db/guilds');
 const presetsDb = require('../../db/giveawayPresets');
 const { formatDuration } = require('../../utils/duration');
@@ -99,7 +99,7 @@ async function addRoleCmd(interaction) {
 
   let claimTimeMs = 0;
   if (claimTimeStr) {
-    claimTimeMs = ms(claimTimeStr);
+    claimTimeMs = parseLength(claimTimeStr);
     if (typeof claimTimeMs !== 'number' || Number.isNaN(claimTimeMs) || claimTimeMs <= 0) {
       await interaction.reply({ content: 'Provide a valid claim time, e.g. `5m`, `1h`.', flags: MessageFlags.Ephemeral });
       return;

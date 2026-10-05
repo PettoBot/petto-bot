@@ -5,6 +5,8 @@
 // a command — it exists for forward-compatibility, same as the DB column itself.
 // Message-scoped variables resolve empty when there's no triggering message in ctx.
 
+const { parseWhen, discordTimestamp } = require('./when');
+
 function ordinal(n) {
   const s = ['th', 'st', 'nd', 'rd'];
   const v = n % 100;
@@ -38,6 +40,11 @@ async function resolve(text, ctx = {}) {
   result = result.replace(/\{choose\d*:([^}]+)\}/gi, (_, opts) => {
     const choices = opts.split('|').map((s) => s.trim()).filter(Boolean);
     return choices[Math.floor(Math.random() * choices.length)] ?? '';
+  });
+  // {timestamp:tomorrow 8pm|F}: a moment written in words, shown the way the reader's Discord shows it.
+  result = result.replace(/\{timestamp:([^}|]+)(?:\|([^}]+))?\}/gi, (_, when, style) => {
+    const moment = parseWhen(when);
+    return moment === null ? '' : discordTimestamp(moment, (style ?? 'f').trim());
   });
   result = result.replace(/\{range:(\d+)-(\d+)\}/gi, (_, min, max) => {
     const lo = parseInt(min, 10);
@@ -279,6 +286,15 @@ async function resolve(text, ctx = {}) {
     '{date}': new Date().toLocaleDateString('en-US'),
     '{date.now}': new Date().toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles' }),
     '{date.utc_timestamp}': String(Math.floor(Date.now() / 1000)),
+    '{timestamp}': discordTimestamp(Date.now(), 'f'),
+    '{timestamp.unix}': String(Math.floor(Date.now() / 1000)),
+    '{timestamp.short_time}': discordTimestamp(Date.now(), 't'),
+    '{timestamp.long_time}': discordTimestamp(Date.now(), 'T'),
+    '{timestamp.short_date}': discordTimestamp(Date.now(), 'd'),
+    '{timestamp.long_date}': discordTimestamp(Date.now(), 'D'),
+    '{timestamp.full}': discordTimestamp(Date.now(), 'f'),
+    '{timestamp.full_long}': discordTimestamp(Date.now(), 'F'),
+    '{timestamp.relative}': discordTimestamp(Date.now(), 'R'),
     '{date.utc_now}': new Date().toUTCString(),
     '{newline}': '\n',
     '{separator}': '──────────────────────',

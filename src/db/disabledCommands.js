@@ -30,6 +30,14 @@ async function enable(guildId, command, channelId) {
   return data.length > 0;
 }
 
+/** Removes every rule of a server. Returns how many there were. */
+async function clear(guildId) {
+  const { data, error } = await database.from('disabled_commands').delete().eq('guild_id', guildId).select('id');
+  if (error) throw error;
+  invalidateCache(guildId);
+  return data.length;
+}
+
 // Every prefix command message checked `find()` uncached, a real database round trip on
 // every single message even though almost no guild has any disabled-command rules and they
 // change rarely. Cached the same way getPrefix() already caches guilds.prefix.
@@ -54,4 +62,4 @@ async function findCached(guildId, command, channelId) {
   return rows.find((r) => r.command === command && (r.channel_id === null || r.channel_id === channelId)) ?? null;
 }
 
-module.exports = { find, listForGuild, disable, enable, findCached, invalidateCache };
+module.exports = { find, listForGuild, disable, enable, clear, findCached, invalidateCache };

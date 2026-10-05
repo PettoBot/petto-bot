@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { commandRef } = require('../../utils/commandRef');
-const ms = require('ms');
+const { parseDuration: parseLength } = require('../../utils/duration');
 const { ensureGuild } = require('../../db/guilds');
 const templatesDb = require('../../db/giveawayTemplates');
 const presetsDb = require('../../db/giveawayPresets');
@@ -68,7 +68,7 @@ async function saveCmd(interaction, isEdit) {
   const prize = interaction.options.getString('prize') ?? base.prize;
   const winners = interaction.options.getInteger('winners') ?? base.winners;
   const durationStr = interaction.options.getString('duration');
-  const durationMs = durationStr ? ms(durationStr) : base.durationMs;
+  const durationMs = durationStr ? parseLength(durationStr) : base.durationMs;
   const channel = interaction.options.getChannel('channel');
   const claimTimeStr = interaction.options.getString('claim_time');
   const presetName = interaction.options.getString('preset');
@@ -106,7 +106,7 @@ async function saveCmd(interaction, isEdit) {
     winners,
     durationMs,
     channelId: channel?.id ?? (isEdit ? base.channelId : null),
-    claimTimeMs: claimTimeStr ? ms(claimTimeStr) : isEdit ? base.claimTimeMs : null,
+    claimTimeMs: claimTimeStr ? parseLength(claimTimeStr) : isEdit ? base.claimTimeMs : null,
     presetId,
     embedTemplate: embedTemplate ?? (isEdit ? base.embedTemplate : null),
     entryMode,

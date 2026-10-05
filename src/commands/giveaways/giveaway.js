@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { commandRef } = require('../../utils/commandRef');
-const ms = require('ms');
+const { parseDuration: parseLength } = require('../../utils/duration');
 const { ensureGuild } = require('../../db/guilds');
 const giveawaysDb = require('../../db/giveaways');
 const presetsDb = require('../../db/giveawayPresets');
@@ -116,10 +116,8 @@ module.exports = {
   },
 };
 
-function parseDuration(str) {
-  const value = ms(str);
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
-}
+// Lengths of time as people write them ("3d 4h", "1 hour 30 minutes"), shared with the other commands.
+const parseDuration = (str) => parseLength(str);
 
 async function quickCmd(interaction) {
   const durationMs = parseDuration(interaction.options.getString('duration', true));
