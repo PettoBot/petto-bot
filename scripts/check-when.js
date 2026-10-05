@@ -26,6 +26,7 @@ assert.equal(at('<t:1790000000:R>'), '2026-09-21T14:13:20.000Z');
 assert.equal(at('1790000000'), '2026-09-21T14:13:20.000Z');
 for (const bad of ['', 'banana', '2026-02-31', 'tomorrow', 'tomorrow 25:00', 'today 13pm']) assert.equal(at(bad), null, `not a moment: ${bad}`);
 assert.equal(discordTimestamp(now, 'relative'), '<t:1791201600:R>');
+assert.equal(discordTimestamp(now, 'short_datetime'), '<t:1791201600:s>'); assert.equal(discordTimestamp(now, 'S'), '<t:1791201600:S>', 'the newest styles');
 assert.equal(discordTimestamp(now, 'nonsense'), '<t:1791201600:f>', 'an unknown style gives the default');
 
 (async () => {

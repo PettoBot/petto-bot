@@ -2,13 +2,37 @@ const { EMOJI } = require('./emojis');
 
 const RELEASES = [
   {
+    version: 'v0.7.1-2',
+    display: 'v0.7.1~2',
+    name: 'Boba',
+    label: 'v0.7.1~2 · Boba: giveaways from the dashboard',
+    date: '2026-10-05',
+    accent: 0xe7c4ff,
+    status: `${EMOJI.RELEASE_APPROVED} Latest`,
+    summary: 'A small release for the dashboard: start, end and draw giveaways from the web, and a fix for the page buttons of the lists.',
+    sections: [
+      {
+        title: `${EMOJI.RELEASE_ROCKET} Dashboard`,
+        items: [
+          'Giveaways can be started from the dashboard, ended now, and drawn again, with the same engine as `/giveaway`.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_BUG} Fixes`,
+        items: [
+          'The page buttons of `!roles`, `!emojis` and the other lists no longer fail on some pages.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'v0.7.1-1',
     display: 'v0.7.1~1',
     name: 'Mochi',
     label: 'v0.7.1~1 · Mochi: lists, times & team',
     date: '2026-10-05',
     accent: 0xffb3d1,
-    status: `${EMOJI.RELEASE_APPROVED} Latest`,
+    status: `${EMOJI.RELEASE_APPROVED} Published`,
     summary: 'An improvement release: long lists with buttons, new info commands, better command blocking, times written in words, and a team you can edit from the dashboard.',
     sections: [
       {

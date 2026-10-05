@@ -378,8 +378,10 @@ const VARIABLE_GROUPS = [
       { tok: '{timestamp.long_date}', desc: 'Today: long date (20 April 2026)' },
       { tok: '{timestamp.full}', desc: 'Right now: date and time (20 April 2026 16:20)' },
       { tok: '{timestamp.full_long}', desc: 'Right now: weekday, date and time' },
+      { tok: '{timestamp.short_datetime}', desc: 'Right now: short date and short time (20/04/2026, 16:20)' },
+      { tok: '{timestamp.medium_datetime}', desc: 'Right now: short date and time with seconds (20/04/2026, 16:20:30)' },
       { tok: '{timestamp.relative}', desc: 'Right now, as "just now" that keeps counting' },
-      { tok: '{timestamp:in 2h|R}', desc: 'Any moment written in words: "in 2h", "3d 4h", "tomorrow 8pm", "2026-10-12 18:00". After | the style: short_time, long_time, short_date, long_date, full, full_long or relative', dynamic: true },
+      { tok: '{timestamp:in 2h|R}', desc: 'Any moment written in words: "in 2h", "3d 4h", "tomorrow 8pm", "2026-10-12 18:00". After | the style: short_time, long_time, short_date, long_date, full, full_long, short_datetime, medium_datetime or relative', dynamic: true },
     ],
   },
   {
