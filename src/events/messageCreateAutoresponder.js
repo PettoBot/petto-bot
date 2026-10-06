@@ -5,6 +5,8 @@ const { build } = require('../utils/embedBuilder');
 const { resolve } = require('../utils/embedVariables');
 const { extractReactReplies, extractReactRepliesFromTemplate, applyReactReplies } = require('../utils/messageFlags');
 const { tokenize } = require('../handlers/prefixInteraction');
+const { looksLikeScript } = require('../utils/embedScript');
+const { payloadFromCode } = require('../utils/embedCodeMessage');
 const logger = require('../utils/logger');
 const { isCommandMessage } = require('./messageCreateCommands');
 
@@ -103,6 +105,10 @@ module.exports = {
             logger.warn(`Autoresponder ${ar.ar_id}: embed template "${ar.embed_template}" not found, falling back to plain text.`);
             payload = { content: await resolve(cleanedReply, ctx) };
           }
+        } else if (looksLikeScript(cleanedReply)) {
+          // A reply written as an embed code: text before it, one or more embeds and link buttons.
+          const built = await payloadFromCode(cleanedReply, ctx);
+          payload = built.payload ?? { content: await resolve(cleanedReply, ctx) };
         } else if (ar.reply_type === 'embed') {
           const text = await resolve(cleanedReply, ctx);
           const embed = new EmbedBuilder().setColor(ar.embed_color ?? 0x4b4f59).setDescription(text);

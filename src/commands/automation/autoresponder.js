@@ -7,6 +7,9 @@ const { resolveChannels } = require('../../utils/channelResolve');
 const { resolveRoles } = require('../../utils/roleResolve');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { looksLikeScript } = require('../../utils/embedScript');
+const { payloadFromCode } = require('../../utils/embedCodeMessage');
+const { autoresponderAdd, autoresponderEdit } = require('../../utils/codeArgs');
 
 const MODE_CHOICES = [
   { name: 'contains', value: 'contains' },
@@ -74,6 +77,8 @@ module.exports = {
         .addSubcommand((s) => s.setName('clear').setDescription('Clear role restrictions (respond to everyone).').addStringOption((o) => o.setName('id').setDescription('Autoresponder ID').setRequired(true))),
     ),
   aliases: ['ar'],
+  // The reply can be an embed code, so these two read the raw text: `!ar add hi, {embed}$v{...} --reply --not_strict`.
+  prefixRawOptions: { add: autoresponderAdd, edit: autoresponderEdit },
 
   async execute(interaction) {
     const group = interaction.options.getSubcommandGroup(false);
@@ -98,6 +103,19 @@ module.exports = {
     }
   },
 };
+
+/**
+ * When a reply is written as an embed code, builds it once to be sure Discord would take it. Returns the problem to show,
+ * and the notes about parts that were left out.
+ */
+async function checkCode(interaction, trigger, reply) {
+  if (!reply || !looksLikeScript(reply)) return { problem: null, notes: [] };
+  const member = interaction.member;
+  const { payload, warnings, error } = await payloadFromCode(reply, { member, guild: interaction.guild, channel: interaction.channel, message: interaction.rawMessage, args: '', argTokens: [], commandName: trigger, prefix: '' });
+  if (error) return { problem: `That code builds an embed Discord would refuse: ${error}`, notes: [] };
+  if (!payload) return { problem: 'That code has nothing to show. Add a message, a title, a description, a field or a link button.', notes: [] };
+  return { problem: null, notes: warnings };
+}
 
 function modeTag(mode) {
   const icons = { contains: '🔍', startsWith: '▶️', endsWith: '◀️', exact: '🎯', regex: '🧩' };
@@ -153,6 +171,12 @@ async function addCmd(interaction) {
     }
   }
 
+  const code = await checkCode(interaction, trigger, reply);
+  if (code.problem) {
+    await interaction.editReply({ components: [textCard(code.problem, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+
   let ar;
   try {
     ar = await arDb.create(interaction.guild.id, {
@@ -174,11 +198,12 @@ async function addCmd(interaction) {
 
   const lines = [
     `${EMOJI.APPROVE}  Autoresponder \`${ar.ar_id}\` added.`,
-    `**Match:** ${modeTag(mode)}  ·  **Type:** ${embedTemplate ? `Saved embed \`${embedTemplate}\`` : (embed ? 'Embed' : 'Text')}  ·  **Delete trigger:** ${deleteTrigger ? 'Yes' : 'No'}  ·  **Reply to message:** ${replyToMessage ? 'Yes' : 'No'}  ·  **Ping user:** ${pingUser ? 'Yes' : 'No'}`,
+    `**Match:** ${modeTag(mode)}  ·  **Type:** ${embedTemplate ? `Saved embed \`${embedTemplate}\`` : (reply && looksLikeScript(reply) ? 'Embed code' : (embed ? 'Embed' : 'Text'))}  ·  **Delete trigger:** ${deleteTrigger ? 'Yes' : 'No'}  ·  **Reply to message:** ${replyToMessage ? 'Yes' : 'No'}  ·  **Ping user:** ${pingUser ? 'Yes' : 'No'}`,
     `**Channels:** ${channelIds.length ? channelIds.map((id) => `<#${id}>`).join(' ') : 'All channels'}`,
     `**Roles:** ${roleIds.length ? roleIds.map((id) => `<@&${id}>`).join(' ') : 'Everyone'}`,
     `**Trigger:** ${trigger}`,
     `**Reply/flags:** ${reply ? (reply.length > 300 ? `${reply.slice(0, 300)}…` : reply) : 'None'}`,
+    ...code.notes.map((line) => `- ${line}`),
   ];
   await interaction.editReply({ components: [textCard(lines.join('\n'), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
@@ -216,6 +241,16 @@ async function editCmd(interaction) {
   if (pingUser != null) patch.ping_user = pingUser;
   if (reply != null) patch.reply = reply.trim().toLowerCase() === 'clear' ? '' : reply;
 
+  let notes = [];
+  if (patch.reply) {
+    const code = await checkCode(interaction, id, patch.reply);
+    if (code.problem) {
+      await interaction.editReply({ components: [textCard(code.problem, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      return;
+    }
+    notes = code.notes;
+  }
+
   if (embedTemplateInput != null) {
     if (embedTemplateInput.trim().toLowerCase() === 'clear') {
       patch.embed_template = null;
@@ -230,7 +265,7 @@ async function editCmd(interaction) {
   }
 
   const updated = await arDb.update(interaction.guild.id, id, patch);
-  await interaction.editReply({ components: [textCard(updated ? `${EMOJI.APPROVE}  Autoresponder \`${id}\` updated.` : `No autoresponder with ID \`${id}\` found.`, updated ? 0xa5ea7a : 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(updated ? [`${EMOJI.APPROVE}  Autoresponder \`${id}\` updated.`, ...notes.map((line) => `- ${line}`)].join('\n') : `No autoresponder with ID \`${id}\` found.`, updated ? 0xa5ea7a : 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function listCmd(interaction) {
