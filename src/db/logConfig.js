@@ -1,7 +1,7 @@
 const database = require('./database');
 const logger = require('../utils/logger');
 
-const EVENTS = ['messages', 'members', 'roles', 'channels', 'invites', 'emojis', 'voice', 'server', 'sanctions', 'verification', 'automod'];
+const EVENTS = ['messages', 'members', 'roles', 'channels', 'invites', 'emojis', 'voice', 'server', 'sanctions', 'verification', 'automod', 'webhooks', 'threads'];
 const CONFIG_CACHE_TTL_MS = 5_000;
 const configCache = new Map();
 const configRequests = new Map();

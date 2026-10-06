@@ -45,7 +45,9 @@ const client = new Client({
     GatewayIntentBits.GuildInvites, // invite create/delete logs
     GatewayIntentBits.GuildVoiceStates, // voice connect/disconnect/mute logs
     GatewayIntentBits.GuildExpressions, // emoji create/delete/update logs
-    GatewayIntentBits.GuildWebhooks, // webhook creation tracking (anti-nuke)
+    GatewayIntentBits.GuildWebhooks, // webhook creation tracking (anti-nuke) and webhook logs
+    GatewayIntentBits.GuildScheduledEvents, // scheduled event logs
+    GatewayIntentBits.AutoModerationConfiguration, // AutoMod rule logs
     GatewayIntentBits.GuildMessageReactions, // reaction-mode giveaway entries
     // Privileged — must also be toggled on for this bot application in the Discord Developer
     // Portal (Bot page -> Privileged Gateway Intents -> Presence Intent), or every member's

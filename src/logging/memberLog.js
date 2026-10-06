@@ -1,4 +1,4 @@
-const { sendLog, getAvatar, fetchMod, AuditLogEvent } = require('./engine');
+const { sendLog, getAvatar, fetchMod, fetchEntry, AuditLogEvent } = require('./engine');
 const { resolveJoinInvite } = require('../utils/inviteResolve');
 
 // Discord's gateway sometimes fires USER_UPDATE twice in a row for the same real change (the
@@ -40,17 +40,23 @@ async function handleMemberLeave(member, client) {
     .map((r) => `<@&${r.id}>`)
     .join(' ') || 'None';
 
+  // A kick leaves the server like any other leave, so the audit log tells them apart.
+  const kick = await fetchEntry(member.guild, AuditLogEvent.MemberKick, member.id);
+  const fields = [
+    { name: 'Joined', value: member.joinedTimestamp ? `<t:${Math.floor(member.joinedTimestamp / 1000)}:R>` : 'Unknown', inline: true },
+    { name: 'Roles', value: roles.slice(0, 1024), inline: false },
+  ];
+  if (kick?.executor) fields.push({ name: 'By', value: `<@${kick.executor.id}>`, inline: true });
+  if (kick?.reason) fields.push({ name: 'Reason', value: kick.reason, inline: false });
+
   await sendLog(
     client,
     member.guild.id,
     'members',
     {
-      author: { name: 'Member Left', icon_url: getAvatar(member.user) ?? undefined },
-      description: `<@${member.id}> left the server`,
-      fields: [
-        { name: 'Joined', value: member.joinedTimestamp ? `<t:${Math.floor(member.joinedTimestamp / 1000)}:R>` : 'Unknown', inline: true },
-        { name: 'Roles', value: roles.slice(0, 1024), inline: false },
-      ],
+      author: { name: kick ? 'Member Kicked' : 'Member Left', icon_url: getAvatar(member.user) ?? undefined },
+      description: kick ? `<@${member.id}> was kicked from the server` : `<@${member.id}> left the server`,
+      fields,
       footer: { text: `User ID: ${member.id}` },
       timestamp: new Date().toISOString(),
     },
@@ -89,6 +95,36 @@ async function handleMemberUpdate(oldMember, newMember, client) {
         { ignoreIds: [newMember.id] },
       );
     }
+  }
+
+  // Timeout, boosting and the server avatar -> `members` event
+  const memberEmbed = (name, description, fields) => ({
+    author: { name, icon_url: getAvatar(newMember.user) ?? undefined },
+    description,
+    fields,
+    footer: { text: `User ID: ${newMember.id}` },
+    timestamp: new Date().toISOString(),
+  });
+  const oldUntil = oldMember.communicationDisabledUntilTimestamp ?? null;
+  const newUntil = newMember.communicationDisabledUntilTimestamp ?? null;
+  const activeNow = (until) => until !== null && until > Date.now();
+  if (activeNow(newUntil) && newUntil !== oldUntil) {
+    const entry = await fetchEntry(newMember.guild, AuditLogEvent.MemberUpdate, newMember.id);
+    const fields = [{ name: 'Until', value: `<t:${Math.floor(newUntil / 1000)}:F> (<t:${Math.floor(newUntil / 1000)}:R>)`, inline: false }];
+    if (entry?.executor) fields.push({ name: 'By', value: `<@${entry.executor.id}>`, inline: true });
+    if (entry?.reason) fields.push({ name: 'Reason', value: entry.reason, inline: false });
+    await sendLog(client, newMember.guild.id, 'members', memberEmbed('Member Timed Out', `<@${newMember.id}> (\`${newMember.user.username}\`) was timed out`, fields), { ignoreIds: [newMember.id] });
+  } else if (activeNow(oldUntil) && !activeNow(newUntil)) {
+    const mod = await fetchMod(newMember.guild, AuditLogEvent.MemberUpdate, newMember.id);
+    await sendLog(client, newMember.guild.id, 'members', memberEmbed('Timeout Removed', `The timeout of <@${newMember.id}> (\`${newMember.user.username}\`) was removed`, mod ? [{ name: 'By', value: mod, inline: true }] : []), { ignoreIds: [newMember.id] });
+  }
+  if (!oldMember.premiumSinceTimestamp && newMember.premiumSinceTimestamp) {
+    await sendLog(client, newMember.guild.id, 'members', memberEmbed('Started Boosting', `<@${newMember.id}> (\`${newMember.user.username}\`) boosted the server`, []), { ignoreIds: [newMember.id] });
+  } else if (oldMember.premiumSinceTimestamp && !newMember.premiumSinceTimestamp) {
+    await sendLog(client, newMember.guild.id, 'members', memberEmbed('Stopped Boosting', `<@${newMember.id}> (\`${newMember.user.username}\`) is no longer boosting the server`, []), { ignoreIds: [newMember.id] });
+  }
+  if ((oldMember.avatar ?? null) !== (newMember.avatar ?? null)) {
+    await sendLog(client, newMember.guild.id, 'members', memberEmbed('Server Avatar Changed', `<@${newMember.id}> (\`${newMember.user.username}\`) ${newMember.avatar ? 'changed' : 'removed'} their server avatar`, []), { ignoreIds: [newMember.id] });
   }
 
   // Nickname -> `members` event
