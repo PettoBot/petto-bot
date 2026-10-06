@@ -50,6 +50,20 @@ function tokenize(code) {
       i--;
       continue;
     }
+    // A block that lost its closing brace, such as `{message: {user.mention}$v{description: ...}`, ends where the next
+    // block starts: a separator followed by a block name, with the block still open at its first level.
+    if (depth === 1) {
+      const separator = SEPARATORS.find((candidate) => code.startsWith(`${candidate}{`, i));
+      const next = separator ? /^\{\s*([a-z]+)\s*[:}]/i.exec(code.slice(i + separator.length)) : null;
+      if (next && KNOWN_KEYS.has(next[1].toLowerCase())) {
+        if (!warnings.some((line) => line.includes('before the next block'))) warnings.push('A block was not closed before the next block, it was closed there.');
+        items.push({ block: true, value: current });
+        current = '';
+        depth = 0;
+        i--;
+        continue;
+      }
+    }
     if (char === '{') depth++;
     if (char === '}') {
       depth--;
@@ -179,4 +193,7 @@ function toTemplateData(parsed) {
   };
 }
 
-module.exports = { parseEmbedScript, toTemplateData };
+/** True when a text is written as an embed code (`{embed}$v{...}`, or only blocks such as `{description: ...}`), not as plain text. */
+const looksLikeScript = (text) => /\{\s*(?:embed\s*\}|(?:button|title|description|field|footer|author|thumbnail|image)\s*:)/i.test(String(text ?? ''));
+
+module.exports = { parseEmbedScript, toTemplateData, looksLikeScript };

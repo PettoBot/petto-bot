@@ -3,6 +3,7 @@ const { ApplicationCommandOptionType, MessageFlags } = require('discord.js');
 const ms = require('ms');
 const { resolveRole } = require('../utils/roleResolve');
 const { resolveUser } = require('../utils/userResolve');
+const { dropTokens } = require('../utils/codeArgs');
 
 /** Splits a command's argument text into tokens, treating "quoted strings" and 'single-quoted' as one token each. */
 function tokenize(content) {
@@ -316,6 +317,13 @@ async function buildInteractionFromMessage(message, command, argText) {
       : null
   );
   if (!resolved) return null;
+
+  // Commands that take an embed code read the raw text, the usual reader would drop its line breaks and quotes.
+  const raw = command.prefixRawOptions?.[resolved.subcommand ?? '_'];
+  if (raw) {
+    const consumed = normalizedTokens.length - resolved.remainingTokens.length;
+    return buildPseudoInteraction(message, { commandName: json.name, subcommand: resolved.subcommand, subcommandGroup: resolved.subcommandGroup, values: raw(dropTokens(argText, consumed)) });
+  }
 
   const values = await parseOptions(
     message,

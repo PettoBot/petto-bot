@@ -15,11 +15,14 @@ All notable changes to Petto are documented here.
 
 ### Added
 
+- `!editembed <message link> {embed}$v{description: ...}` changes a message that Petto already sent, with a new embed code: text, several embeds and link buttons. You can also reply to the message and write only the code, or use its ID. It needs Manage Messages in that channel and only works on messages Petto sent. What the new code does not set is cleared.
+- An autoresponder reply can be written as an embed code: `!autoresponder add test, {embed}$v{message: {user.mention}}$v{description: Hi}$v{thumbnail: {guild.icon}} --reply --not_strict`. The comma ends the trigger (it can have spaces, or be in "quotes"), and the flags go at the end: `--reply` (answer to the message), `--ping`, `--delete`, `--strict` (the whole message must match), `--not_strict` (the trigger can be anywhere, the default), `--mode <mode>` and `--embed_template <name>`. The code is checked when it is saved, and `!autoresponder edit <id> <code>` takes it too.
 - `!channel create <name> [type] [category] [topic] [nsfw]` creates a channel: text, announcement, voice, stage, forum, **media** or category. For now only the owner and the developers of Petto can use it. Forum and media channels need Community to be enabled in the server, and the answer says so when it is not.
 - `!quests resend` sends the quests that are active now, pass your filters and were never posted in the server (the ones whose alert failed because of the long link, and the ones that were already running when the alerts were turned on), up to 10 at a time, oldest first, with a pause between messages. Run it again if it says more are left.
 
 ### Fixed
 
+- An embed code with a block that lost its closing brace, such as `{message: {user.mention}$v{description: ...}`, now ends that block where the next one starts, and says so, instead of swallowing the rest of the code as text.
 - The total of members in the status messages dropped by a whole server when Discord gave no member count for it for a moment. Each server keeps its last good count now.
 - `!channels` showed every text channel as a giant heading, because its line started with `# `. Text channels start with 💬 now.
 - Quest alerts failed with "url: Must be 512 or fewer in length" when the game page of a quest had a very long address: that button (or a picture with an address over 2048 characters) is now left out instead of Discord refusing the whole message. A message that Discord refuses is no longer sent again in every pass, which filled the rate limit of the channel.
