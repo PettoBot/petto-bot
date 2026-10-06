@@ -203,6 +203,12 @@ async function handleInviteDelete(invite, client) {
   });
 }
 
+const LEVEL_NAMES = {
+  verification: { 0: 'None', 1: 'Low', 2: 'Medium', 3: 'High', 4: 'Very high' },
+  filter: { 0: 'Off', 1: 'Members without roles', 2: 'All members' },
+  notifications: { 0: 'All messages', 1: 'Only mentions' },
+};
+
 async function handleGuildUpdate(oldGuild, newGuild, client) {
   const fields = [];
   if (oldGuild.name !== newGuild.name) fields.push({ name: 'Name', value: `\`${oldGuild.name}\` -> \`${newGuild.name}\``, inline: false });
@@ -210,7 +216,22 @@ async function handleGuildUpdate(oldGuild, newGuild, client) {
   if (oldGuild.banner !== newGuild.banner) fields.push({ name: 'Banner', value: 'Server banner was changed', inline: false });
   if (oldGuild.description !== newGuild.description)
     fields.push({ name: 'Description', value: `${oldGuild.description || '*None*'} -> ${newGuild.description || '*None*'}`, inline: false });
+  if ((oldGuild.vanityURLCode ?? null) !== (newGuild.vanityURLCode ?? null)) fields.push({ name: 'Vanity URL', value: `${oldGuild.vanityURLCode ? `discord.gg/${oldGuild.vanityURLCode}` : '*None*'} -> ${newGuild.vanityURLCode ? `discord.gg/${newGuild.vanityURLCode}` : '*None*'}`, inline: false });
+  if (Boolean(oldGuild.widgetEnabled) !== Boolean(newGuild.widgetEnabled)) fields.push({ name: 'Widget', value: newGuild.widgetEnabled ? 'Enabled' : 'Disabled', inline: true });
+  if (oldGuild.premiumTier !== newGuild.premiumTier) fields.push({ name: 'Boost level', value: `${oldGuild.premiumTier} -> ${newGuild.premiumTier}`, inline: true });
+  if (oldGuild.verificationLevel !== newGuild.verificationLevel) fields.push({ name: 'Verification level', value: `${LEVEL_NAMES.verification[oldGuild.verificationLevel] ?? oldGuild.verificationLevel} -> ${LEVEL_NAMES.verification[newGuild.verificationLevel] ?? newGuild.verificationLevel}`, inline: false });
+  if (oldGuild.explicitContentFilter !== newGuild.explicitContentFilter) fields.push({ name: 'Explicit media filter', value: `${LEVEL_NAMES.filter[oldGuild.explicitContentFilter] ?? oldGuild.explicitContentFilter} -> ${LEVEL_NAMES.filter[newGuild.explicitContentFilter] ?? newGuild.explicitContentFilter}`, inline: false });
+  if (oldGuild.defaultMessageNotifications !== newGuild.defaultMessageNotifications) fields.push({ name: 'Default notifications', value: `${LEVEL_NAMES.notifications[oldGuild.defaultMessageNotifications] ?? oldGuild.defaultMessageNotifications} -> ${LEVEL_NAMES.notifications[newGuild.defaultMessageNotifications] ?? newGuild.defaultMessageNotifications}`, inline: false });
+  if (oldGuild.mfaLevel !== newGuild.mfaLevel) fields.push({ name: '2FA for moderators', value: newGuild.mfaLevel ? 'Required' : 'Not required', inline: true });
+  for (const [key, label] of [['systemChannelId', 'System messages channel'], ['rulesChannelId', 'Rules channel'], ['publicUpdatesChannelId', 'Community updates channel'], ['afkChannelId', 'AFK channel']]) {
+    if ((oldGuild[key] ?? null) !== (newGuild[key] ?? null)) fields.push({ name: label, value: `${oldGuild[key] ? `<#${oldGuild[key]}>` : '*None*'} -> ${newGuild[key] ? `<#${newGuild[key]}>` : '*None*'}`, inline: false });
+  }
+  if (oldGuild.afkTimeout !== newGuild.afkTimeout) fields.push({ name: 'AFK timeout', value: `${oldGuild.afkTimeout / 60} min -> ${newGuild.afkTimeout / 60} min`, inline: true });
+  if (oldGuild.preferredLocale !== newGuild.preferredLocale) fields.push({ name: 'Language', value: `${oldGuild.preferredLocale} -> ${newGuild.preferredLocale}`, inline: true });
   if (!fields.length) return;
+
+  const mod = await fetchMod(newGuild, AuditLogEvent.GuildUpdate, newGuild.id);
+  if (mod) fields.push({ name: 'By', value: mod, inline: true });
 
   const embed = {
     author: { name: 'Server Updated', icon_url: newGuild.iconURL({ extension: 'png', size: 256 }) ?? undefined },

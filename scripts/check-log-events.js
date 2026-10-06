@@ -30,15 +30,17 @@ const { handleStickerCreate, handleStickerUpdate, handleStickerDelete } = requir
 const { handleRuleCreate, handleRuleUpdate, handleRuleDelete } = require('../src/logging/automodRuleLog');
 const server = require('../src/logging/serverLog');
 const { handleMemberUpdate, handleMemberLeave } = require('../src/logging/memberLog');
+const extra = require('../src/logging/extraLog');
 const { EVENTS } = require('../src/db/logConfig');
 
 const client = { user: { id: 'bot' } };
 const last = () => sent.at(-1);
 const field = (name) => last().embed.fields.find((f) => f.name === name)?.value;
 const reset = () => { sent.length = 0; entriesByType.clear(); };
+const member2 = () => ({ id: 'b1', guild: { id: '1' }, roles: { cache: new Collection() }, joinedTimestamp: Date.now() - 1000 });
 
 (async () => {
-  assert.ok(EVENTS.includes('webhooks') && EVENTS.includes('threads'), 'the new categories can be chosen with !logs');
+  for (const category of ['webhooks', 'threads', 'integrations', 'commands']) assert.ok(EVENTS.includes(category), `${category} can be chosen with !logs`);
 
   // ---- webhooks: created, updated and deleted, each told once, and Petto's own ones left out
   const now = Date.now();
@@ -171,5 +173,84 @@ const reset = () => { sent.length = 0; entriesByType.clear(); };
   await handleMemberLeave(member(), client);
   assert.equal(last().embed.author.name, 'Member Left');
 
-  console.log('Checked the log handlers: webhooks, threads, stickers, events, AutoMod rules, permissions, timeouts, boosts and kicks.');
+
+  // ---- pins
+  reset();
+  const msg = { id: 'pm1', content: 'Rules here', author: { id: 'u5' } };
+  const pinChannel = { id: '10', messages: { fetch: async (id) => (id === 'pm1' ? msg : null) }, guild: { id: '1', fetchAuditLogs: async ({ type }) => ({ entries: new Collection((entriesByType.get(type) ?? []).map((e) => [e.id, e])) }) } };
+  entriesByType.set(AuditLogEvent.MessagePin, [{ id: 'p1', executor: { id: 'mod' }, createdTimestamp: Date.now() - 300, extra: { channel: { id: '10' }, messageId: 'pm1' } }]);
+  entriesByType.set(AuditLogEvent.MessageUnpin, [{ id: 'p2', executor: { id: 'mod' }, createdTimestamp: Date.now() - 300, extra: { channel: { id: '99' }, messageId: 'zz' } }]);
+  await extra.handleChannelPins(pinChannel, client);
+  assert.equal(sent.length, 1, 'the unpin in another channel is not this one');
+  assert.equal(last().event, 'messages'); assert.equal(last().embed.author.name, 'Message Pinned');
+  assert.equal(field('Message'), 'Rules here'); assert.ok(field('Link').includes('/1/10/pm1')); assert.equal(field('By'), '<@mod>');
+  await extra.handleChannelPins(pinChannel, client);
+  assert.equal(sent.length, 1, 'an entry is told once');
+
+  // ---- stage
+  reset();
+  const stage = { id: 'st1', topic: 'Q&A', channelId: '30', guild: { id: '1' } };
+  await extra.handleStage('create', stage, null, client);
+  assert.equal(last().event, 'voice'); assert.equal(last().embed.author.name, 'Stage Started');
+  await extra.handleStage('update', { ...stage, topic: 'AMA' }, stage, client);
+  assert.equal(field('Topic'), 'Q&A -> AMA');
+  const stageCount = sent.length;
+  await extra.handleStage('update', stage, { ...stage }, client);
+  assert.equal(sent.length, stageCount);
+  await extra.handleStage('delete', stage, null, client);
+  assert.equal(last().embed.author.name, 'Stage Ended');
+
+  // ---- soundboard
+  reset();
+  const sound = { soundId: 'sd1', name: 'airhorn', volume: 0.5, emoji: { name: '📣', id: null }, user: { id: 'u6' }, guild: { id: '1' } };
+  await extra.handleSound('create', sound, null, client);
+  assert.equal(last().event, 'emojis'); assert.equal(last().embed.author.name, 'Sound Added'); assert.equal(field('Volume'), '50%'); assert.equal(field('By'), '<@u6>');
+  await extra.handleSound('update', { ...sound, name: 'horn' }, sound, client);
+  assert.ok(field('Name').includes('horn'));
+  const soundCount = sent.length;
+  await extra.handleSound('update', sound, { ...sound }, client);
+  assert.equal(sent.length, soundCount);
+
+  // ---- integrations and bots
+  reset();
+  entriesByType.set(AuditLogEvent.IntegrationCreate, [{ id: 'i1', createdTimestamp: Date.now() - 200, executor: { id: 'u7' }, target: { name: 'YouTube', type: 'youtube' }, targetId: 'int1', changes: [] }]);
+  await extra.handleIntegrationsUpdate({ id: '1', fetchAuditLogs: async ({ type }) => ({ entries: new Collection((entriesByType.get(type) ?? []).map((e) => [e.id, e])) }) }, client);
+  assert.equal(last().event, 'integrations'); assert.equal(last().embed.author.name, 'Integration Added'); assert.equal(field('By'), '<@u7>');
+  reset();
+  entriesByType.set(AuditLogEvent.BotAdd, [{ targetId: 'b1', executor: { id: 'u7' } }]);
+  const bot = { id: 'b1', user: { id: 'b1', bot: true, username: 'otherbot', createdTimestamp: Date.now() - 1e9 }, guild: { id: '1' }, permissions: { has: () => true } };
+  await extra.handleBotAdded(bot, client);
+  assert.equal(last().embed.author.name, 'Bot Added'); assert.equal(field('Added by'), '<@u7>'); assert.ok(field('Warning').includes('Administrator'));
+  const botCount = sent.length;
+  await extra.handleBotAdded({ ...bot, user: { ...bot.user, bot: false } }, client);
+  assert.equal(sent.length, botCount, 'a person is not a bot');
+  await extra.handleBotRemoved(bot, client);
+  assert.equal(last().embed.author.name, 'Bot Removed');
+  await handleMemberLeave({ ...member2(), user: { id: 'b1', bot: true, username: 'otherbot' } }, client);
+  assert.ok(sent.some((s) => s.event === 'integrations' && s.embed.author.name === 'Bot Removed'), 'a bot that leaves goes to integrations too');
+
+  // ---- command use: only the name, never what was typed
+  reset();
+  await extra.handleCommandUsed({ guild: { id: '1' }, user: { id: 'u1', bot: false, displayAvatarURL: () => null }, channel: { id: '10' }, name: 'role', prefix: '!', subcommand: 'add' }, client);
+  assert.equal(last().event, 'commands'); assert.equal(field('Command'), '`!role add`'); assert.equal(field('How'), 'Message prefix');
+  assert.ok(!JSON.stringify(last().embed).includes('secret'));
+  await extra.handleCommandUsed({ guild: { id: '1' }, user: { id: 'u1', bot: false }, channel: { id: '10' }, name: 'ban', prefix: '/', subcommand: null }, client);
+  assert.equal(field('How'), 'Slash command');
+  const commandCount = sent.length;
+  await extra.handleCommandUsed({ guild: { id: '1' }, user: { id: 'u2', bot: true }, channel: { id: '10' }, name: 'ping', prefix: '!' }, client);
+  await extra.handleCommandUsed({ guild: null, user: { id: 'u1' }, name: 'ping', prefix: '!' }, client);
+  assert.equal(sent.length, commandCount, 'bots and direct messages are not logged');
+  assert.doesNotThrow(() => extra.logCommandUse({ guild: null }, client));
+
+  // ---- server settings
+  reset();
+  const guildState = (extra2 = {}) => ({ id: '1', name: 'Home', icon: null, banner: null, description: null, vanityURLCode: null, widgetEnabled: false, premiumTier: 1, verificationLevel: 1, explicitContentFilter: 0, defaultMessageNotifications: 1, mfaLevel: 0, systemChannelId: null, rulesChannelId: null, publicUpdatesChannelId: null, afkChannelId: null, afkTimeout: 300, preferredLocale: 'en-US', iconURL: () => null, ...extra2 });
+  await server.handleGuildUpdate(guildState(), guildState({ vanityURLCode: 'home', verificationLevel: 3, premiumTier: 2, widgetEnabled: true, systemChannelId: '40' }), client);
+  assert.equal(field('Vanity URL'), '*None* -> discord.gg/home'); assert.equal(field('Verification level'), 'Low -> High');
+  assert.equal(field('Boost level'), '1 -> 2'); assert.equal(field('Widget'), 'Enabled'); assert.equal(field('System messages channel'), '*None* -> <#40>');
+  const guildCount = sent.length;
+  await server.handleGuildUpdate(guildState(), guildState(), client);
+  assert.equal(sent.length, guildCount);
+
+  console.log('Checked the log handlers: webhooks, threads, stickers, events, AutoMod rules, permissions, timeouts, boosts, kicks, pins, stages, sounds, integrations, bots, command use and server settings.');
 })().catch((error) => { console.error(error); process.exit(1); });

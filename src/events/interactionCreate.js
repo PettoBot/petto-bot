@@ -35,6 +35,7 @@ const { BUTTON_PREFIX, handleButton: handleReactionRoleButton } = require('../in
 const permissionsDb = require('../db/permissions');
 const disabledCommandsDb = require('../db/disabledCommands');
 const logger = require('../utils/logger');
+const { logCommandUse } = require('../logging/extraLog');
 const { commandKey } = require('../handlers/commandHandler');
 
 const DEFAULT_COOLDOWN_MS = 3000;
@@ -365,6 +366,8 @@ module.exports = {
         return;
       }
     }
+
+    logCommandUse({ guild: interaction.guild, user: interaction.user, channel: interaction.channel, name: interaction.commandName, prefix: '/', subcommand: interaction.options?.getSubcommand?.(false) ?? null }, client);
 
     try {
       await command.execute(interaction, client);

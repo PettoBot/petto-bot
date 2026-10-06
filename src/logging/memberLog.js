@@ -1,5 +1,6 @@
 const { sendLog, getAvatar, fetchMod, fetchEntry, AuditLogEvent } = require('./engine');
 const { resolveJoinInvite } = require('../utils/inviteResolve');
+const { handleBotAdded, handleBotRemoved } = require('./extraLog');
 
 // Discord's gateway sometimes fires USER_UPDATE twice in a row for the same real change (the
 // CDN avatar hash and the user's `avatar` field don't always land in the same event) — this
@@ -8,6 +9,7 @@ const recentUserUpdates = new Map(); // userId -> `${avatarURL}:${username}`
 const RECENT_UPDATE_TTL_MS = 10_000;
 
 async function handleMemberJoin(member, client) {
+  if (member.user.bot) await handleBotAdded(member, client).catch(() => {});
   const fields = [
     { name: 'Account Created', value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`, inline: true },
     { name: 'Members', value: String(member.guild.memberCount), inline: true },
@@ -35,6 +37,7 @@ async function handleMemberJoin(member, client) {
 }
 
 async function handleMemberLeave(member, client) {
+  if (member.user?.bot) await handleBotRemoved(member, client).catch(() => {});
   const roles = member.roles.cache
     .filter((r) => r.id !== member.guild.id)
     .map((r) => `<@&${r.id}>`)
