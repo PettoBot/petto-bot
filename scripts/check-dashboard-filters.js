@@ -9,7 +9,7 @@ function stub(relative, exports) {
 stub('src/config.js', { dashboard: {}, web: {} });
 stub('src/utils/logger.js', { info() {}, error() {}, warn() {} });
 stub('src/db/postgres.js', { createPostgresClient() {}, getPrimaryPool() {} });
-const { parseFilter } = require('../src/web/dashboardDatabase');
+const { parseFilter, isExpectedConflict } = require('../src/web/dashboardDatabase');
 
 assert.deepEqual(parseFilter('eq.5'), { operator: 'eq', value: '5' });
 assert.deepEqual(parseFilter('is.null'), { operator: 'is', value: 'null' });
@@ -20,4 +20,10 @@ assert.throws(() => parseFilter('not.bogus.1'), /Invalid PostgreSQL filter/);
 assert.throws(() => parseFilter('bogus.1'), /Invalid PostgreSQL filter/);
 assert.throws(() => parseFilter('code'), /Invalid PostgreSQL filter/);
 
-console.log('Checked the dashboard filters: plain, negated and invalid.');
+// A name that is already taken is answered to the person, so it is not an error of Petto.
+assert.equal(isExpectedConflict({ code: '23505' }), true);
+assert.equal(isExpectedConflict({ code: '23503' }), false, 'a missing server is still an error');
+assert.equal(isExpectedConflict({ code: '42P01' }), false);
+assert.equal(isExpectedConflict(null), false);
+
+console.log('Checked the dashboard filters: plain, negated and invalid, and which errors are expected.');

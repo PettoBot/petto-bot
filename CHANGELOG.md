@@ -22,6 +22,8 @@ All notable changes to Petto are documented here.
 
 ### Fixed
 
+- Creating an embed in the dashboard with a name that already exists sent a "Petto error" to the error log channel (one per attempt), when the dashboard already tells the person that the name is taken. That answer is only logged as information now; any other database failure is still reported.
+
 - An embed code with a block that lost its closing brace, such as `{message: {user.mention}$v{description: ...}`, now ends that block where the next one starts, and says so, instead of swallowing the rest of the code as text.
 - The total of members in the status messages dropped by a whole server when Discord gave no member count for it for a moment. Each server keeps its last good count now.
 - `!channels` showed every text channel as a giant heading, because its line started with `# `. Text channels start with 💬 now.

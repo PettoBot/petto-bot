@@ -207,6 +207,14 @@ async function attachTicketCategoryEmbed(pool, rows, selection) {
   for (const row of rows) row.ticket_categories = categories.get(String(row.category_id)) || null;
 }
 
+/**
+ * A request the dashboard can answer by itself: a name that is already taken (23505) is told to the person as a 409,
+ * so it is not a failure of Petto and does not go to the error log channel.
+ */
+function isExpectedConflict(error) {
+  return error?.code === '23505';
+}
+
 function responseError(res, error) {
   const status = error?.code === 'PGRST116' ? 406 : error?.code === '23505' ? 409 : 400;
   res.status(status).json({ code: error?.code || 'dashboard_database_error', message: 'Database request could not be completed.' });
@@ -273,7 +281,8 @@ async function handleDashboardRest(req, res) {
 
     const result = await query;
     if (result.error) {
-      logger.error(`Dashboard database ${method} ${table} failed:`, result.error);
+      if (isExpectedConflict(result.error)) logger.info(`Dashboard database ${method} ${table}: the name or value is already taken (${result.error.constraint ?? result.error.code}).`);
+      else logger.error(`Dashboard database ${method} ${table} failed:`, result.error);
       responseError(res, result.error);
       return;
     }
@@ -317,4 +326,4 @@ function registerDashboardRestRoutes(app, rateLimiter) {
   app.all('/rest/v1/:table', effectiveLimiter, handleDashboardRest);
 }
 
-module.exports = { registerDashboardRestRoutes, parseFilter };
+module.exports = { registerDashboardRestRoutes, parseFilter, isExpectedConflict };
