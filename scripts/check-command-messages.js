@@ -10,6 +10,7 @@ function stub(relative, exports) {
 for (const file of ['src/utils/cooldown.js', 'src/db/disabledCommands.js', 'src/db/permissions.js', 'src/db/customCommands.js', 'src/db/embedTemplates.js', 'src/utils/embedBuilder.js', 'src/utils/embedVariables.js', 'src/utils/messageFlags.js', 'src/utils/caseCard.js', 'src/utils/emojis.js', 'src/utils/moderationPermissions.js', 'src/utils/autoModControl.js', 'src/handlers/prefixInteraction.js']) stub(file, {});
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
 stub('src/utils/codeCommands.js', { runCodeCommand: async () => true });
+stub('src/logging/extraLog.js', { logCommandUse() {} });
 stub('src/utils/messageFlags.js', { extractReactReplies: (text) => ({ text, emojis: [] }), extractReactRepliesFromTemplate: (data) => data, applyReactReplies: async () => {} });
 stub('src/utils/embedVariables.js', { resolve: async (text) => text.replaceAll('{user}', 'Liam') });
 stub('src/handlers/prefixInteraction.js', { tokenize: (text) => text.split(/\s+/).filter(Boolean), buildInteractionFromMessage: async () => null });
