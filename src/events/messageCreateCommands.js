@@ -16,6 +16,7 @@ const { EMOJI } = require('../utils/emojis');
 const moderationPermissions = require('../utils/moderationPermissions');
 const { controlAction } = require('../utils/autoModControl');
 const logger = require('../utils/logger');
+const { logCommandUse } = require('../logging/extraLog');
 const { runCodeCommand } = require('../utils/codeCommands');
 const { findTrigger } = require('../utils/codeTriggers');
 
@@ -320,6 +321,9 @@ module.exports = {
     interaction.typedPrefix = prefix;
     interaction.pettoModerationRoleAllowed = moderationRoleOverride;
     interaction.pettoAutomodControl = hiddenAutomodControl;
+
+    // The `commands` log category: the name of the command only, and only when a channel is set for it.
+    if (!hiddenAutomodControl) logCommandUse({ guild: message.guild, user: message.author, channel: message.channel, name: canonicalName, prefix, subcommand: interaction.options.getSubcommand(false) }, message.client);
 
     try {
       await command.execute(interaction, message.client);

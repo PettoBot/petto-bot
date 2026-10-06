@@ -78,6 +78,21 @@ async function fetchMod(guild, action, targetId) {
   return null;
 }
 
+/** The audit log entry behind an action (who did it and why), or null. Best effort like `fetchMod`. */
+async function fetchEntry(guild, action, targetId, { maxAgeMs = 6000 } = {}) {
+  try {
+    const logs = await guild.fetchAuditLogs({ type: action, limit: 5 });
+    return logs.entries.find((e) => (targetId == null || e.targetId === String(targetId)) && Date.now() - e.createdTimestamp < maxAgeMs) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** `ManageMessages` -> `Manage Messages`. */
+function prettyPermission(name) {
+  return String(name).replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^Use VAD$/i, 'Use Voice Activity');
+}
+
 /**
  * Delivers a log embed to every channel configured for `event` in this
  * guild, via that channel's dedicated webhook. If a webhook was deleted out
@@ -157,4 +172,4 @@ async function sendLog(client, guildId, event, embed, { ignoreIds = [], files = 
   }
 }
 
-module.exports = { sendLog, getAvatar, fetchMod, sanitizeEmbed, EVENTS, AuditLogEvent };
+module.exports = { sendLog, getAvatar, fetchMod, fetchEntry, prettyPermission, sanitizeEmbed, EVENTS, AuditLogEvent };
