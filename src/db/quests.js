@@ -21,6 +21,8 @@ const DEFAULTS = {
   method_target: 'thread',
   method_channel_id: null,
   method_ping: false,
+  type_templates: {},
+  method_type_templates: {},
 };
 
 async function getConfig(guildId) {

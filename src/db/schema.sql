@@ -2294,6 +2294,9 @@ alter table quest_config add column if not exists method_text text;
 alter table quest_config add column if not exists method_target text not null default 'thread';
 alter table quest_config add column if not exists method_channel_id text;
 alter table quest_config add column if not exists method_ping boolean not null default false;
+-- A saved embed for each kind of reward (orbs, decoration, code, ingame, nitro): for the alert and for the method.
+alter table quest_config add column if not exists type_templates jsonb not null default '{}'::jsonb;
+alter table quest_config add column if not exists method_type_templates jsonb not null default '{}'::jsonb;
 
 create table if not exists quest_seen (
   quest_id      text primary key,

@@ -17,7 +17,7 @@ stub('src/db/embedTemplates.js', { getTemplate: async (guildId, name) => (templa
 stub('src/utils/cardService.js', { renderCardForMessage: async () => null, normalizeCardRef: () => null, CARD_FILE_NAME: 'card.png' });
 const questApi = require('../src/utils/questApi');
 const { questExtras, relativeText, spanText, QUEST_EXTRA_KEYS } = require('../src/utils/questTime');
-const { questContext } = require('../src/utils/questMessages');
+const { questContext, templateForQuest, questMessage } = require('../src/utils/questMessages');
 const { fillQuest, threadName, startQuestThread, methodPayload, methodTarget, sendMethod, sendMethodNow } = require('../src/utils/questMethod');
 
 const day = 86_400_000;
@@ -75,6 +75,25 @@ const quest = { id: 'q1', name: 'Watch the trailer', game: 'Some Game', publishe
   assert.deepEqual(pinged.allowedMentions.roles, ['123456789012345678']);
   const noRole = await methodPayload(guild, { method_text: 'Hi', method_ping: true }, quest);
   assert.equal(noRole.content, 'Hi');
+
+  // An embed for each kind of reward: the kind of the quest picks it, the general one is the fallback.
+  templates.guide = { content: 'From the embed {quest.name}', embeds: [{ description: 'Steps for {quest.game}' }] };
+  templates.orbsGuide = { content: 'Orbs guide {quest.name}', embeds: [{ description: 'orbs' }] };
+  templates.frameGuide = { content: 'Frame guide', embeds: [{ description: 'frame' }] };
+  const kinds = { method_type_templates: { orbs: 'orbsGuide', decoration: 'frameGuide' }, method_template: 'guide' };
+  assert.ok((await methodPayload(guild, kinds, quest)).content.startsWith('Orbs guide Watch the trailer'));
+  const framed = { ...quest, rewards: [{ kind: 'decoration', name: 'Cool frame', amount: 0, premiumAmount: 0, expiresAt: null }] };
+  assert.equal((await methodPayload(guild, kinds, framed)).content, 'Frame guide');
+  const codeQuest = { ...quest, rewards: [{ kind: 'code', name: 'A code', amount: 0, premiumAmount: 0, expiresAt: null }] };
+  assert.ok((await methodPayload(guild, kinds, codeQuest)).embeds.length, 'a kind without an embed uses the general one');
+  assert.equal((await methodPayload(guild, { method_type_templates: { orbs: 'missing' }, method_text: 'T' }, quest)).content, 'T', 'a missing one falls back to the text');
+  assert.equal(templateForQuest({ orbs: 'a', nitro: 'b' }, { rewards: [{ kind: 'code' }, { kind: 'nitro' }, { kind: 'orbs' }] }), 'b', 'the first reward with an embed');
+  assert.equal(templateForQuest(null, quest), null);
+  assert.equal(templateForQuest({ orbs: '  ' }, quest), null);
+  const alert = await questMessage(guild, { style: 'card', type_templates: { orbs: 'orbsGuide' } }, quest, 'new');
+  assert.ok(alert.content.includes('Orbs guide Watch the trailer'), 'an embed for the reward is used even with the card style');
+  const fallbackAlert = await questMessage(guild, { style: 'template', embed_template: 'guide', type_templates: { orbs: 'missing' } }, quest, 'new');
+  assert.ok(fallbackAlert.embeds.length, 'a missing embed for the reward uses the general one');
 
   // A saved embed that is missing falls back to the text.
   const fallback = await methodPayload(guild, { method_template: 'gone', method_text: 'Text' }, quest);

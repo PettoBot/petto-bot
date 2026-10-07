@@ -52,6 +52,10 @@ module.exports = {
       .addStringOption((o) => o.setName('hex').setDescription('For example #ff91c2').setRequired(false)))
     .addSubcommand((s) => s.setName('expiring').setDescription('Also alert when a quest is about to end, this many hours before. 0 turns it off.')
       .addIntegerOption((o) => o.setName('hours').setDescription('0 to 168').setMinValue(0).setMaxValue(168).setRequired(true)))
+    .addSubcommand((s) => s.setName('type').setDescription('A different saved embed for each kind of reward (orbs, decoration, code, ingame, nitro).')
+      .addStringOption((o) => o.setName('kind').setDescription('The kind of reward').setRequired(true).addChoices(...questApi.REWARD_KIND_LIST.map((kind) => ({ name: kind, value: kind }))))
+      .addStringOption((o) => o.setName('target').setDescription('alert or method').setRequired(true).addChoices({ name: 'alert', value: 'alert' }, { name: 'method', value: 'method' }))
+      .addStringOption((o) => o.setName('template').setDescription('Name of a saved embed, or empty to remove it').setRequired(false)))
     .addSubcommand((s) => s.setName('thread').setDescription('Open a thread under each alert, to talk about that quest.')
       .addStringOption((o) => o.setName('action').setDescription('on, off, ping, noping, name or archive').setRequired(true).addChoices(
         { name: 'on', value: 'on' }, { name: 'off', value: 'off' }, { name: 'ping (add the role to the thread)', value: 'ping' }, { name: 'noping', value: 'noping' }, { name: 'name', value: 'name' }, { name: 'archive (minutes)', value: 'archive' }))
@@ -150,6 +154,24 @@ module.exports = {
       if (!result.missing) return reply(`${EMOJI.APPROVE}  Nothing is missing: every active quest that passes your filters was already posted.`);
       return reply(`${result.sent ? EMOJI.APPROVE : EMOJI.DENY}  Sent ${result.sent} of ${result.missing} missing quest${result.missing === 1 ? '' : 's'} in <#${current.channel_id}>.${result.left ? ` ${result.left} more are left: run \`quests resend\` again.` : ''}${result.sent < Math.min(result.missing, 10) ? ' Some could not be sent, check that I can write in that channel.' : ''}`);
     }
+    if (sub === 'type') {
+      const kind = String(interaction.options.getString('kind', true)).trim().toLowerCase();
+      const target = String(interaction.options.getString('target', true)).trim().toLowerCase();
+      const name = String(interaction.options.getString('template') ?? '').trim();
+      if (!questApi.REWARD_KIND_LIST.includes(kind) || !['alert', 'method'].includes(target)) return reply(`Use \`quests type <${questApi.REWARD_KIND_LIST.join('|')}> <alert|method> [saved embed]\`.`);
+      const column = target === 'alert' ? 'type_templates' : 'method_type_templates';
+      const map = { ...(current[column] ?? {}) };
+      if (!name) {
+        delete map[kind];
+        await save({ [column]: map });
+        return reply(`${EMOJI.APPROVE}  Quests with ${kind} rewards use the general ${target === 'alert' ? 'design' : 'method'} again.`);
+      }
+      const doc = await getTemplate(guildId, name).catch(() => null);
+      if (!doc) return reply(`No saved embed named \`${name}\` was found. Make one in the dashboard, under Embeds.`);
+      map[kind] = doc.name;
+      await save({ [column]: map });
+      return reply(`${EMOJI.APPROVE}  Quests with a ${kind} reward use the saved embed \`${doc.name}\` for the ${target}. If it is missing or broken, the general one is used.`);
+    }
     if (sub === 'thread') {
       const action = String(interaction.options.getString('action', true)).trim().toLowerCase();
       const value = String(interaction.options.getString('value') ?? '').trim();
@@ -243,6 +265,7 @@ module.exports = {
       `**Style:** ${current.style === 'template' && current.embed_template ? `saved embed \`${current.embed_template}\`` : 'card'}`,
       `**Rewards:** ${current.reward_kinds.length ? current.reward_kinds.join(', ') : 'all'} · **Tasks:** ${current.task_kinds.length ? current.task_kinds.join(', ') : 'all'}`,
       `**Card hides:** ${current.hide_sections.length ? current.hide_sections.join(', ') : 'nothing'}`,
+      `**By reward:** ${Object.entries(current.type_templates ?? {}).map(([k, v]) => `${k} → \`${v}\``).join(', ') || 'none'}${Object.keys(current.method_type_templates ?? {}).length ? ` · method: ${Object.entries(current.method_type_templates).map(([k, v]) => `${k} → \`${v}\``).join(', ')}` : ''}`,
       `**Thread:** ${current.auto_thread ? `on${current.thread_ping ? ', pings the role' : ''}` : 'off'} · **Method:** ${current.method_enabled ? (current.method_target === 'channel' ? 'on, in a channel' : 'on, in the thread') : 'off'}${current.method_ping ? ', pings' : ''}`,
       `**Before it ends:** ${current.expiring_hours ? `${current.expiring_hours} h` : 'off'}`,
       `**Quest sources:** ${status.ok === null ? 'not asked yet' : status.sources.filter((source) => source.ok !== null).map((source) => `${source.name} ${source.ok ? 'ok' : `failing (${source.error})`}`).join(', ')}${status.count ? `, ${status.count} quests` : ''}`,

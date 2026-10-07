@@ -4,7 +4,7 @@
 const questApi = require('./questApi');
 const questsDb = require('../db/quests');
 const { templatePayload } = require('./templatedMessage');
-const { questContext } = require('./questMessages');
+const { questContext, templateForQuest } = require('./questMessages');
 const logger = require('./logger');
 
 const ARCHIVE_MINUTES = [60, 1440, 4320, 10080];
@@ -42,8 +42,9 @@ async function startQuestThread(message, settings, quest) {
 async function methodPayload(guild, settings, quest) {
   const ping = settings.method_ping && settings.role_id ? `<@&${settings.role_id}>` : null;
   const mentions = { parse: [], roles: ping ? [settings.role_id] : [] };
-  if (settings.method_template) {
-    const payload = await templatePayload(guild.id, settings.method_template, { guild, quest: questContext(quest, 'new') }, { v2Extras: { prefixText: ping ? `-# ${ping}` : null } });
+  const names = [templateForQuest(settings.method_type_templates, quest), settings.method_template].filter((name, index, all) => name && all.indexOf(name) === index);
+  for (const name of names) {
+    const payload = await templatePayload(guild.id, name, { guild, quest: questContext(quest, 'new') }, { v2Extras: { prefixText: ping ? `-# ${ping}` : null } });
     if (payload?.flags) return { ...payload, allowedMentions: mentions };
     if (payload) return { ...payload, content: [ping, payload.content].filter(Boolean).join('\n') || undefined, allowedMentions: mentions };
   }
@@ -92,7 +93,7 @@ async function sendMethodNow(guild, settings, { questId = null, api = questApi }
   quests.sort((a, b) => (b.startsAt - a.startsAt) || b.id.localeCompare(a.id));
   const quest = questId ? quests.find((entry) => entry.id === questId) : quests[0];
   if (!quest) return { ok: false, message: questId ? 'That quest is not active.' : 'There are no active quests right now.' };
-  if (!settings.method_template && !String(settings.method_text ?? '').trim()) return { ok: false, message: 'There is no method yet: write a text or choose a saved embed first.' };
+  if (!settings.method_template && !templateForQuest(settings.method_type_templates, quest) && !String(settings.method_text ?? '').trim()) return { ok: false, message: 'There is no method yet: write a text or choose a saved embed first.' };
   const thread = settings.method_target === 'channel' ? null : await findAlertThread(guild, settings, quest.id);
   const target = await sendMethod(guild, settings, quest, thread);
   if (!target) return { ok: false, message: 'The method could not be sent. Check the channel and that I can write there.' };
