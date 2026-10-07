@@ -4,6 +4,7 @@ const { ensureGuild } = require('../../db/guilds');
 const { getTemplate } = require('../../db/embedTemplates');
 const db = require('../../db/tickets');
 const formsDb = require('../../db/ticketForms');
+const { renderWizard, startDraft: startSetupDraft } = require('../../interactions/ticketSetupWizard');
 const { renderPanel: renderFormPanel, startDraft } = require('../../interactions/ticketFormPanel');
 const accessDb = require('../../db/ticketAccess');
 const settingsDb = require('../../db/ticketSettings');
@@ -135,6 +136,7 @@ module.exports = {
         .addSubcommand((s) => s.setName('list').setDescription('List blocked users and roles.')),
     )
 
+    .addSubcommand((s) => s.setName('setup').setDescription('(Staff) Guided setup: pick the channel, support roles and ticket types with buttons and publish the panel.'))
     .addSubcommand((s) => s.setName('open').setDescription('Open a ticket without using a panel.').addStringOption((o) => o.setName('category').setDescription('Category key').setRequired(true)))
     .addSubcommand((s) => s.setName('close').setDescription('Close this ticket.').addStringOption((o) => o.setName('reason').setDescription('Reason').setRequired(false)))
     .addSubcommand((s) => s.setName('reopen').setDescription('(Staff) Reopen this closed ticket.'))
@@ -159,6 +161,7 @@ module.exports = {
     if (group === 'form') return formCmd(interaction, sub);
     if (group === 'blacklist') return blacklistCmd(interaction, sub);
 
+    if (sub === 'setup') return setupCmd(interaction);
     if (sub === 'open') return openCmd(interaction);
     if (sub === 'info') return infoCmd(interaction);
     return ticketActionCmd(interaction, sub);
@@ -170,6 +173,12 @@ async function requireManageGuild(interaction) {
   if (interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) return true;
   await interaction.reply({ content: 'You need the **Manage Server** permission to do that.', flags: MessageFlags.Ephemeral });
   return false;
+}
+
+async function setupCmd(interaction) {
+  if (!(await requireManageGuild(interaction))) return;
+  const draft = startSetupDraft(interaction.user.id, { guildId: interaction.guild.id, channelId: interaction.channel?.isTextBased() ? interaction.channel.id : null });
+  await interaction.reply({ ...renderWizard(interaction.user.id, draft), flags: [MessageFlags.IsComponentsV2, MessageFlags.Ephemeral] });
 }
 
 async function panelCmd(interaction, sub) {
