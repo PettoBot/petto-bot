@@ -112,7 +112,8 @@ async function handleChannelDelete(channel, client) {
   });
 }
 
-const who = (overwrite) => (overwrite.type === 0 ? `<@&${overwrite.id}>` : `<@${overwrite.id}>`);
+// The @everyone role is shown as plain text: Discord draws a mention of it as `@@everyone`.
+const who = (overwrite) => (overwrite.id === overwrite.channel?.guild?.id ? '`@everyone`' : overwrite.type === 0 ? `<@&${overwrite.id}>` : `<@${overwrite.id}>`);
 
 /** The permission overwrites of a channel that were added, removed or changed, one line each. */
 function overwriteChanges(oldChannel, newChannel) {
@@ -153,7 +154,13 @@ async function handleChannelUpdate(oldChannel, newChannel, client) {
   if (overwrites.length) fields.push({ name: 'Permissions', value: overwrites.join('\n').slice(0, 1000), inline: false });
   if (!fields.length) return;
 
-  const mod = await fetchMod(newChannel.guild, AuditLogEvent.ChannelUpdate, newChannel.id);
+  // Changing permissions is a different audit log action than changing the channel itself.
+  const actions = overwrites.length ? [AuditLogEvent.ChannelOverwriteUpdate, AuditLogEvent.ChannelOverwriteCreate, AuditLogEvent.ChannelOverwriteDelete, AuditLogEvent.ChannelUpdate] : [AuditLogEvent.ChannelUpdate];
+  let mod = null;
+  for (const action of actions) {
+    mod = await fetchMod(newChannel.guild, action, newChannel.id);
+    if (mod) break;
+  }
   if (mod) fields.push({ name: 'By', value: mod, inline: true });
 
   await sendLog(
