@@ -4,6 +4,10 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- Changing several permissions of a channel is told in one log message. Discord sends an update for each permission, a few moments apart, and the `channels` log had a message for each one. The updates of the same channel are held for about 2.5 seconds (at most 12 while it keeps changing) and told as one: what changed from the first to the last, with who did it. Different channels are never mixed.
+
 ### Fixed
 
 - The partner replies ("thanks for the partnership...") showed the manager as a name with an @ but did not really ping them, because every mention was turned off. The manager of the partnership is pinged now; the names in the top lists and anyone else stay plain text.

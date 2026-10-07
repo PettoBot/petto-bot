@@ -1,6 +1,7 @@
 // Formats role, channel, invite, and guild changes for the audit-log engine.
 const { PermissionsBitField } = require('discord.js');
 const { sendLog, getAvatar, fetchMod, prettyPermission, AuditLogEvent } = require('./engine');
+const logger = require('../utils/logger');
 
 /** The permissions in `a` that are not in `b`, by name. (`BitField#remove` changes the bitfield it is called on, so it is not used.) */
 const only = (a, b) => new PermissionsBitField(a.bitfield & ~b.bitfield).toArray().map(prettyPermission);
@@ -139,7 +140,7 @@ function overwriteChanges(oldChannel, newChannel) {
   return lines;
 }
 
-async function handleChannelUpdate(oldChannel, newChannel, client) {
+async function reportChannelUpdate(oldChannel, newChannel, client) {
   if (!oldChannel.guild) return;
   const fields = [];
   if (oldChannel.name !== newChannel.name) fields.push({ name: 'Name', value: `\`${oldChannel.name}\` -> \`${newChannel.name}\``, inline: false });
@@ -176,6 +177,35 @@ async function handleChannelUpdate(oldChannel, newChannel, client) {
     },
     { ignoreIds: [newChannel.id] },
   );
+}
+
+// Changing several permissions of a channel makes Discord send one update for each of them, a few moments apart. They are held for a short
+// time and told as one: the channel as it was before the first change against the channel as it is after the last one, so the log has one
+// message with everything that changed (and who did it) instead of one for each permission.
+const CHANNEL_UPDATE_WAIT_MS = 2500;
+const CHANNEL_UPDATE_MAX_MS = 12_000;
+const pendingChannelUpdates = new Map();
+
+function handleChannelUpdate(oldChannel, newChannel, client, { waitMs = CHANNEL_UPDATE_WAIT_MS, maxMs = CHANNEL_UPDATE_MAX_MS } = {}) {
+  if (!oldChannel.guild) return Promise.resolve();
+  if (waitMs <= 0) return reportChannelUpdate(oldChannel, newChannel, client);
+  return new Promise((resolve) => {
+    const key = newChannel.id;
+    const held = pendingChannelUpdates.get(key);
+    const entry = held ?? { before: oldChannel, startedAt: Date.now(), resolvers: [] };
+    entry.after = newChannel;
+    entry.client = client;
+    entry.resolvers.push(resolve);
+    clearTimeout(entry.timer);
+    const left = Math.max(0, maxMs - (Date.now() - entry.startedAt));
+    entry.timer = setTimeout(async () => {
+      pendingChannelUpdates.delete(key);
+      try { await reportChannelUpdate(entry.before, entry.after, entry.client); } catch (error) { logger.error('[channelUpdate]', error); }
+      for (const done of entry.resolvers) done();
+    }, Math.min(waitMs, left));
+    entry.timer.unref?.();
+    pendingChannelUpdates.set(key, entry);
+  });
 }
 
 async function handleInviteCreate(invite, client) {
