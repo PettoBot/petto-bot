@@ -11,6 +11,7 @@ const templates = {};
 const slots = {};
 let brokenName = null;
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
+stub('src/db/senderIdentities.js', { FEATURES: [], get: async () => null });
 stub('src/db/embedTemplates.js', { getTemplate: async (guildId, name) => { if (name === brokenName) throw new Error('db down'); return templates[name] ? { name, data: templates[name] } : null; } });
 stub('src/db/sanctionTemplates.js', { templateFor: async (guildId, type, slot) => slots[`${type}:${slot}`] ?? slots[`default:${slot}`] ?? null });
 stub('src/utils/cardService.js', { renderCardForMessage: async () => null, normalizeCardRef: () => null, CARD_FILE_NAME: 'card.png' });

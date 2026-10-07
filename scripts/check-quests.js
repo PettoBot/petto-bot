@@ -11,6 +11,7 @@ function stub(relative, exports) {
 const settingsOfConfig = { ownerId: 'owner', developerIds: ['dev'], questTesterIds: ['tester'], questsPublic: false };
 stub('src/config.js', settingsOfConfig);
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
+stub('src/db/senderIdentities.js', { FEATURES: [], get: async () => null });
 stub('src/db/quests.js', { DEFAULTS: {}, getConfig: async () => null });
 const templates = {};
 stub('src/db/embedTemplates.js', { getTemplate: async (guildId, name) => (templates[name] ? { name, data: templates[name] } : null) });

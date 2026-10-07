@@ -2,7 +2,9 @@
 // time zone), the same moments written in plain words ("2 days ago", "in 5 hours", "now") for the places where Discord does not draw
 // a timestamp (titles, footers, author names), and some more details of the rewards, the task and the countries.
 const { discordTimestamp, TIMESTAMP_STYLES } = require('./when');
+const { REWARD_KIND_LIST, REWARD_LABELS } = require('./questApi');
 
+const REWARD_SLOTS = 3;
 const DAY = 86_400_000;
 const HOUR = 3_600_000;
 const MINUTE = 60_000;
@@ -82,6 +84,18 @@ function questExtras(quest, now = Date.now()) {
     countries: quest.regions.include.join(', '),
     excluded_countries: quest.regions.exclude.join(', '),
   });
+  // The reward of each kind and the first three rewards, so a design for decorations can show the decoration even when the Orbs come first.
+  const rewardFields = (prefix, reward) => {
+    out[`${prefix}.name`] = reward?.name ?? '';
+    out[`${prefix}.type`] = reward ? (REWARD_LABELS[reward.kind] ?? 'Reward') : '';
+    out[`${prefix}.image`] = reward?.image ?? '';
+    out[`${prefix}.amount`] = reward?.kind === 'orbs' ? String(reward.amount) : '';
+    out[`${prefix}.nitro_amount`] = reward?.premiumAmount ? String(reward.premiumAmount) : '';
+    out[`${prefix}.expires`] = reward?.expiresAt ? discordTimestamp(reward.expiresAt.getTime(), 'R') : '';
+  };
+  for (const kind of REWARD_KIND_LIST) rewardFields(kind, quest.rewards.find((reward) => reward.kind === kind));
+  for (let n = 1; n <= REWARD_SLOTS; n += 1) rewardFields(`reward${n}`, quest.rewards[n - 1]);
+  out.reward_types = [...new Set(quest.rewards.map((reward) => REWARD_LABELS[reward.kind] ?? 'Reward'))].join(', ');
   return out;
 }
 
@@ -108,6 +122,10 @@ const QUEST_EXTRA_VARS = [
   { key: 'countries', desc: 'Country codes it is only for, empty if none' },
   { key: 'excluded_countries', desc: 'Country codes where it is not available, empty if none' },
 ];
+const FIELD_DESCRIPTIONS = { name: 'name', type: 'type (Virtual currency, Collectible, Code...)', image: 'picture, empty if none', amount: 'number of Orbs, empty if it is not Orbs', nitro_amount: 'Orbs a Nitro member gets, empty if none', expires: 'when it expires, as a relative time, empty if never' };
+for (const kind of REWARD_KIND_LIST) for (const [field, text] of Object.entries(FIELD_DESCRIPTIONS)) QUEST_EXTRA_VARS.push({ key: `${kind}.${field}`, desc: `The ${kind} reward of the quest: its ${text}. Empty when the quest has none` });
+for (let n = 1; n <= REWARD_SLOTS; n += 1) for (const [field, text] of Object.entries(FIELD_DESCRIPTIONS)) QUEST_EXTRA_VARS.push({ key: `reward${n}.${field}`, desc: `Reward number ${n}: its ${text}. Empty when there is none` });
+QUEST_EXTRA_VARS.push({ key: 'reward_types', desc: 'The kinds of reward of the quest, such as Virtual currency, Collectible' });
 const QUEST_EXTRA_KEYS = QUEST_EXTRA_VARS.map((entry) => entry.key);
 
 module.exports = { QUEST_EXTRA_KEYS, QUEST_EXTRA_VARS, questExtras, relativeText, spanText, TIMESTAMP_STYLES };

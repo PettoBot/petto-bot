@@ -2315,6 +2315,17 @@ create table if not exists quest_posts (
 );
 alter table quest_posts enable row level security;
 
+-- The look (name and picture) of the messages Petto sends in some places, sent through a webhook the bot makes in the channel.
+create table if not exists sender_identities (
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  feature    text not null check (feature in ('quests', 'welcome', 'leave', 'boost', 'sanctions')),
+  name       text,
+  avatar_url text,
+  updated_at timestamptz not null default now(),
+  primary key (guild_id, feature)
+);
+alter table sender_identities enable row level security;
+
 -- Partners: a partnership is counted when a Partner Manager posts the invite of another server in a partner channel and
 -- it passes the requirements of the server. `partner_log` has one row per counted partnership (daily, weekly and total
 -- numbers are counted from it); `messages` holds the replies a server changed (key -> { text, template }).
@@ -2379,6 +2390,10 @@ create table if not exists button_responders (
   unique (guild_id, name)
 );
 alter table button_responders enable row level security;
+-- What a button can do to the message it is on, and where its answer can go.
+alter table button_responders add column if not exists delete_message boolean not null default false;
+alter table button_responders add column if not exists react_emoji text;
+alter table button_responders add column if not exists send_channel_id text;
 
 create table if not exists component_panels (
   id             bigserial primary key,

@@ -6,6 +6,7 @@ const questsDb = require('../db/quests');
 const { templatePayload } = require('./templatedMessage');
 const { questContext, templateForQuest } = require('./questMessages');
 const logger = require('./logger');
+const { sendAs } = require('./senderIdentity');
 
 const ARCHIVE_MINUTES = [60, 1440, 4320, 10080];
 const DEFAULT_THREAD_NAME = '{quest.name}';
@@ -67,7 +68,7 @@ async function sendMethod(guild, settings, quest, thread = null) {
   if (!payload) return null;
   const target = await methodTarget(guild, settings, thread);
   if (!target) return null;
-  const sent = await target.send(payload).catch((error) => {
+  const sent = await sendAs(target, 'quests', payload).catch((error) => {
     logger.warn({ guildId: guild.id, action: 'quest-method' }, `The quest method could not be sent: ${error.message}`);
     return null;
   });

@@ -10,6 +10,7 @@ function stub(relative, exports) {
 }
 stub('src/config.js', { ownerId: 'owner', developerIds: [], questTesterIds: [], questsPublic: true });
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
+stub('src/db/senderIdentities.js', { FEATURES: [], get: async () => null });
 const posts = {};
 stub('src/db/quests.js', { DEFAULTS: {}, getConfig: async () => null, getPost: async (guildId, questId, kind) => posts[`${guildId}:${questId}:${kind}`] ?? null });
 const templates = {};
@@ -50,6 +51,17 @@ const quest = { id: 'q1', name: 'Watch the trailer', game: 'Some Game', publishe
   assert.equal(extras.countries, 'US, BR');
   assert.equal(extras.excluded_countries, 'DE');
   assert.match(extras.starts_datetime, /UTC$/);
+  assert.equal(extras['orbs.amount'], '200');
+  assert.equal(extras['orbs.nitro_amount'], '240');
+  assert.equal(extras['decoration.name'], 'Cool frame');
+  assert.ok(extras['decoration.expires'].endsWith(':R>'));
+  assert.equal(extras['decoration.amount'], '');
+  assert.equal(extras['code.name'], '', 'a kind the quest does not have is empty');
+  assert.equal(extras['reward2.name'], 'Cool frame');
+  assert.equal(extras['reward2.type'], 'Collectible');
+  assert.equal(extras['reward3.name'], '');
+  assert.equal(extras['reward1.amount'], '200');
+  assert.equal(extras.reward_types, 'Orbs, Collectible');
   assert.equal(relativeText(at + 10_000, at), 'now');
   assert.equal(relativeText(at - 90 * 60_000, at), '1 hour ago');
   assert.equal(relativeText(at + 3 * 60_000, at), 'in 3 minutes');

@@ -8,6 +8,7 @@ const logger = require('./logger');
 const config = require('../config');
 const { forEachWithConcurrency } = require('./concurrency');
 const { startQuestThread, sendMethod } = require('./questMethod');
+const { sendAs } = require('./senderIdentity');
 
 /** Who can set the alerts up: everyone once the API is allowed for all, otherwise the team and the testers. */
 function canUseQuests(userId) {
@@ -30,7 +31,7 @@ async function post(client, settings, quest, kind, db) {
   if (!guild || !channel?.isTextBased?.()) return false;
   if (await db.hasPost(settings.guild_id, quest.id, kind)) return false;
   const payload = await questMessage(guild, settings, quest, kind);
-  const sent = await channel.send(payload).catch(async (error) => {
+  const sent = await sendAs(channel, 'quests', payload).catch(async (error) => {
     logger.warn({ guildId: guild.id, action: 'quest-alert' }, `A quest alert could not be sent: ${error.message}`);
     // Discord refused the message itself (Invalid Form Body): sending it again would fail the same way every pass and fill
     // the channel's rate limit, so it is remembered as handled. A permissions or network problem is tried again next pass.

@@ -14,6 +14,8 @@ const RELEASES = [
       {
         title: `${EMOJI.RELEASE_ROCKET} Quest alerts`,
         items: [
+          'Messages with their own name and picture (`!sender`): quest alerts, welcome, leave, boost and sanction messages can go out through a webhook that looks like someone else.',
+          'A button responder can delete the message it is on, react to it, or send its answer in another channel.',
           'A different saved embed (normal or V2) for each kind of reward: Orbs, decorations, Nitro, codes and in-game items, for the alert and for the method (`!quests type`).',
           'Many more `{quest.*}` variables: every timestamp style for the start and the end (`{quest.starts.relative}`, `{quest.expires.full}`...) and the same moments in plain words for titles and footers (`{quest.starts_ago}`, `{quest.expires_in}`, `{quest.time_left}`).',
           '`!quests thread on` opens a thread under each alert, with its own name, an optional ping of the alert role inside it, and the time it hides itself.',

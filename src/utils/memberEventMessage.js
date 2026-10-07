@@ -3,6 +3,11 @@ const { build } = require('./embedBuilder');
 const { resolve } = require('./embedVariables');
 const { extractReactReplies, applyReactReplies } = require('./messageFlags');
 const logger = require('./logger');
+const { sendAs } = require('./senderIdentity');
+
+// Which look a kind of announcement takes (see db/senderIdentities.js). Other kinds are sent the normal way.
+const IDENTITY_FEATURE = { welcome: 'welcome', leave: 'leave', boost: 'boost', boost_level: 'boost' };
+const deliver = (channel, kind, payload) => (IDENTITY_FEATURE[kind] ? sendAs(channel, IDENTITY_FEATURE[kind], payload) : channel.send(payload));
 
 // Admin-authored announcement text (staff decided what it says, e.g. "{user} welcome!") —
 // unlike auto-generated content, it's fine (expected, even) for this to actually ping.
@@ -28,7 +33,7 @@ async function sendMemberEvent({ guild, channel, kind, messageText, embedTemplat
       const doc = await getTemplate(guild.id, embedTemplateName);
       if (doc) {
         const payload = await build(doc.data, ctx);
-        const sent = await channel.send({ content: payload.content, embeds: payload.embeds, components: payload.components, files: payload.files, allowedMentions: ANNOUNCEMENT_MENTIONS });
+        const sent = await deliver(channel, kind, { content: payload.content, embeds: payload.embeds, components: payload.components, files: payload.files, allowedMentions: ANNOUNCEMENT_MENTIONS });
         if (emojis.length) await applyReactReplies(sent, emojis);
         return;
       }
@@ -37,7 +42,7 @@ async function sendMemberEvent({ guild, channel, kind, messageText, embedTemplat
 
     if (cleanedText) {
       const resolved = await resolve(cleanedText, ctx);
-      const sent = await channel.send({ content: resolved, allowedMentions: ANNOUNCEMENT_MENTIONS });
+      const sent = await deliver(channel, kind, { content: resolved, allowedMentions: ANNOUNCEMENT_MENTIONS });
       if (emojis.length) await applyReactReplies(sent, emojis);
     } else if (emojis.length) {
       // Reactions were the only thing configured (no other text) — nothing to react to without
