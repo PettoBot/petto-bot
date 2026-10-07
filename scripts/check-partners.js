@@ -113,7 +113,8 @@ const fakeGuild = (id, extra = {}) => ({ id, name: 'Mine', ownerId: 'owner', mem
   assert.equal(payload.content, 'Too small: 1,234/100');
   payload = await messages.responsePayload('mine', { messages: { completed: { template: 'gone' } } }, 'completed', partnerCtx());
   assert.match(payload.content, /thanks for the partnership/, 'a missing saved embed gives the default text');
-  assert.deepEqual(payload.allowedMentions, { parse: [] });
+  assert.deepEqual(payload.allowedMentions, { parse: [], users: ['7'] }, 'the manager of the partnership is really pinged, nobody else');
+  assert.deepEqual((await messages.responsePayload('mine', { messages: {} }, 'completed', { guild: partnerCtx().guild, partner: partnerCtx().partner })).allowedMentions, { parse: [] }, 'without a manager nobody is pinged');
   assert.equal(messages.textOf({ messages: { completed: { text: '   ' } } }, 'completed'), messages.DEFAULTS.completed, 'an empty text gives the default');
   for (const key of messages.RESPONSE_KEYS) assert.ok(messages.DEFAULTS[key] && messages.LABELS[key], `${key} has a default and a name`);
 

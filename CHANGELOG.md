@@ -4,6 +4,10 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- The partner replies ("thanks for the partnership...") showed the manager as a name with an @ but did not really ping them, because every mention was turned off. The manager of the partnership is pinged now; the names in the top lists and anyone else stay plain text.
+
 ## [0.7.2] — 2026-10-07 · Churro
 
 A release for the logs, for embed codes in more places, and for the quest alerts: a thread under each alert and a message that tells how to complete the quest.
