@@ -2547,3 +2547,70 @@ create table if not exists site_team (
   unique (position, user_id)
 );
 create index if not exists site_team_position_idx on site_team (position, sort_order);
+
+-- The feedback board of the website (petto.sbs/feedback): ideas, feedback and bugs that people write and vote on. Each post is also
+-- published in the Petto server by the feedback bot (message ids below), and a vote with the like or dislike reaction there counts too.
+create table if not exists feedback_posts (
+  id                 bigserial primary key,
+  user_id            text not null,
+  username           text not null default '',
+  avatar             text,
+  kind               text not null default 'idea' check (kind in ('idea', 'feedback', 'bug')),
+  title              text not null check (char_length(title) between 3 and 120),
+  body               text not null default '' check (char_length(body) <= 4000),
+  tags               text[] not null default '{}',
+  status             text not null default 'open' check (status in ('open', 'planned', 'in_progress', 'done', 'declined')),
+  status_note        text not null default '' check (char_length(status_note) <= 500),
+  votes_up           integer not null default 0,
+  votes_down         integer not null default 0,
+  comments_count     integer not null default 0,
+  discord_channel_id text,
+  discord_message_id text,
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now()
+);
+create index if not exists feedback_posts_status_idx on feedback_posts (status, created_at desc);
+create index if not exists feedback_posts_votes_idx on feedback_posts ((votes_up - votes_down) desc);
+create index if not exists feedback_posts_user_idx on feedback_posts (user_id, created_at desc);
+alter table feedback_posts enable row level security;
+
+create table if not exists feedback_votes (
+  post_id    bigint not null references feedback_posts(id) on delete cascade,
+  user_id    text not null,
+  value      smallint not null check (value in (1, -1)),
+  created_at timestamptz not null default now(),
+  primary key (post_id, user_id)
+);
+alter table feedback_votes enable row level security;
+
+create table if not exists feedback_comments (
+  id         bigserial primary key,
+  post_id    bigint not null references feedback_posts(id) on delete cascade,
+  user_id    text not null,
+  username   text not null default '',
+  avatar     text,
+  body       text not null check (char_length(body) between 1 and 1000),
+  staff      boolean not null default false,
+  created_at timestamptz not null default now()
+);
+create index if not exists feedback_comments_post_idx on feedback_comments (post_id, created_at);
+alter table feedback_comments enable row level security;
+
+-- The counters of a post follow its votes and comments, so a list never has to count them.
+create or replace function feedback_refresh_counts() returns trigger language plpgsql as $$
+declare
+  v_post bigint := coalesce(new.post_id, old.post_id);
+begin
+  update feedback_posts set
+    votes_up = (select count(*) from feedback_votes where post_id = v_post and value = 1),
+    votes_down = (select count(*) from feedback_votes where post_id = v_post and value = -1),
+    comments_count = (select count(*) from feedback_comments where post_id = v_post),
+    updated_at = now()
+  where id = v_post;
+  return null;
+end;
+$$;
+drop trigger if exists feedback_votes_counts on feedback_votes;
+create trigger feedback_votes_counts after insert or update or delete on feedback_votes for each row execute function feedback_refresh_counts();
+drop trigger if exists feedback_comments_counts on feedback_comments;
+create trigger feedback_comments_counts after insert or delete on feedback_comments for each row execute function feedback_refresh_counts();
