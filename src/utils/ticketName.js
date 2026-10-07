@@ -12,10 +12,14 @@ function sanitizeChannelName(str) {
     .slice(0, 90);
 }
 
-/** Renders a category's naming_pattern (supports {number}, {username}) into a valid channel name. */
-function formatTicketChannelName(pattern, { number, username }) {
+/** Renders a category's naming_pattern ({number}, {username}, {userid}, {category}) into a valid channel name. */
+function formatTicketChannelName(pattern, { number, username, userId, category }) {
   const padded = String(number).padStart(4, '0');
-  const raw = (pattern || 'ticket-{number}').replace(/\{number\}/gi, padded).replace(/\{username\}/gi, username ?? 'user');
+  const raw = (pattern || 'ticket-{number}')
+    .replace(/\{number\}/gi, padded)
+    .replace(/\{username\}/gi, username ?? 'user')
+    .replace(/\{userid\}/gi, userId ?? '')
+    .replace(/\{category\}/gi, category ?? 'ticket');
   return sanitizeChannelName(raw) || `ticket-${padded}`;
 }
 

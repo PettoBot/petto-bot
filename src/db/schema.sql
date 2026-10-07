@@ -937,6 +937,21 @@ alter table tickets add column if not exists form_answers jsonb not null default
 
 alter table tickets enable row level security;
 
+-- Staff extras: the priority of a ticket, internal notes, and a plain welcome text per category (no saved embed needed).
+alter table tickets add column if not exists priority text not null default 'normal' check (priority in ('low', 'normal', 'high', 'urgent'));
+alter table ticket_categories add column if not exists welcome_message text;
+
+create table if not exists ticket_notes (
+  id         bigserial primary key,
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  ticket_id  bigint not null references tickets(id) on delete cascade,
+  author_id  text not null,
+  note       text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_ticket_notes_ticket on ticket_notes(ticket_id);
+alter table ticket_notes enable row level security;
+
 -- Guild-wide ticket behavior (one row per guild), separate from per-category config in
 -- ticket_categories: claim rules, close rules, autoclose, and post-close ratings.
 create table if not exists ticket_settings (

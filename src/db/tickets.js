@@ -52,7 +52,7 @@ function normalizeKey(key) {
   return key.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
 }
 
-async function createCategory({ guildId, panelId, key, label, emoji, buttonStyle, description, parentChannelId, supportRoleIds, pingRoleIds, welcomeEmbedTemplate, namingPattern, maxOpenPerUser, formId, requiredRoleIds }) {
+async function createCategory({ guildId, panelId, key, label, emoji, buttonStyle, description, parentChannelId, supportRoleIds, pingRoleIds, welcomeEmbedTemplate, namingPattern, maxOpenPerUser, formId, requiredRoleIds, welcomeMessage }) {
   const { data, error } = await database
     .from('ticket_categories')
     .insert({
@@ -71,6 +71,7 @@ async function createCategory({ guildId, panelId, key, label, emoji, buttonStyle
       max_open_per_user: maxOpenPerUser ?? 1,
       form_id: formId ?? null,
       required_role_ids: requiredRoleIds ?? [],
+      welcome_message: welcomeMessage ?? null,
     })
     .select('*')
     .single();
@@ -176,6 +177,27 @@ async function setClaim(ticketId, claimedBy) {
   return data;
 }
 
+const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
+
+async function setPriority(ticketId, priority) {
+  if (!PRIORITIES.includes(priority)) throw new Error('Priority must be low, normal, high or urgent.');
+  const { data, error } = await database.from('tickets').update({ priority }).eq('id', ticketId).select('*').single();
+  if (error) throw error;
+  return data;
+}
+
+async function addNote({ guildId, ticketId, authorId, note }) {
+  const { data, error } = await database.from('ticket_notes').insert({ guild_id: guildId, ticket_id: ticketId, author_id: authorId, note: String(note).slice(0, 1000) }).select('*').single();
+  if (error) throw error;
+  return data;
+}
+
+async function listNotes(ticketId) {
+  const { data, error } = await database.from('ticket_notes').select('*').eq('ticket_id', ticketId).order('id', { ascending: true }).limit(25);
+  if (error) throw error;
+  return data ?? [];
+}
+
 async function closeTicket(ticketId, { closedBy, reason }) {
   const { data, error } = await database
     .from('tickets')
@@ -243,6 +265,10 @@ module.exports = {
   getTicketByNumber,
   countOpenTickets,
   setClaim,
+  PRIORITIES,
+  setPriority,
+  addNote,
+  listNotes,
   closeTicket,
   reopenTicket,
   touchActivity,

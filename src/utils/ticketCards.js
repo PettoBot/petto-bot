@@ -42,11 +42,25 @@ function buildPanelFallbackCard({ title, description }) {
   return new ContainerBuilder().setAccentColor(0x4b4f59).addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
 }
 
+/** Fills {user}, {username}, {category}, {server} and {number} in a category's own welcome text. */
+function renderWelcomeText(template, { opener, categoryLabel, guildName, ticketNumber }) {
+  return String(template)
+    .replace(/\{user\}/gi, String(opener))
+    .replace(/\{username\}/gi, opener?.username ?? String(opener))
+    .replace(/\{category\}/gi, categoryLabel ?? '')
+    .replace(/\{server\}/gi, guildName ?? '')
+    .replace(/\{number\}/gi, String(ticketNumber ?? '').padStart(4, '0'))
+    .slice(0, 1800);
+}
+
 /** Fallback plain-text welcome card (Components V2) when a category has no linked welcome embed template. */
-function buildWelcomeFallbackCard({ opener, categoryLabel, pingText }) {
+function buildWelcomeFallbackCard({ opener, categoryLabel, pingText, welcomeMessage, guildName, ticketNumber }) {
   const lines = [];
   if (pingText) lines.push(pingText);
-  lines.push(`### ${EMOJI.STAR} ${categoryLabel}`, `Welcome ${opener}! Support will be with you shortly. Describe your issue below and a staff member will assist you.`);
+  const text = welcomeMessage
+    ? renderWelcomeText(welcomeMessage, { opener, categoryLabel, guildName, ticketNumber })
+    : `Welcome ${opener}! Support will be with you shortly. Describe your issue below and a staff member will assist you.`;
+  lines.push(`### ${EMOJI.STAR} ${categoryLabel}`, text);
   return new ContainerBuilder().setAccentColor(0x4b4f59).addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
 }
 
@@ -56,6 +70,14 @@ function buildTicketControlRow(ticketId) {
     new ButtonBuilder().setCustomId(`tk_claim::${ticketId}`).setLabel('Claim').setEmoji(EMOJI.STAR).setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`tk_close::${ticketId}`).setLabel('Close').setEmoji(EMOJI.DENY).setStyle(ButtonStyle.Danger),
     new ButtonBuilder().setCustomId(`tk_transcript::${ticketId}`).setLabel('Transcript').setStyle(ButtonStyle.Secondary),
+  );
+}
+
+/** Yes/no buttons under a staff member's request to close: only the person who opened the ticket can answer. */
+function buildCloseRequestRow(ticketId) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`tk_closeyes::${ticketId}`).setLabel('Yes, close it').setEmoji(EMOJI.APPROVE).setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`tk_closeno::${ticketId}`).setLabel('No, keep it open').setStyle(ButtonStyle.Secondary),
   );
 }
 
@@ -120,8 +142,10 @@ module.exports = {
   buildPanelRows,
   buildPanelFallbackCard,
   buildWelcomeFallbackCard,
+  renderWelcomeText,
   buildTicketControlRow,
   buildTicketMemberRow,
+  buildCloseRequestRow,
   buildClosedControlRow,
   buildTranscriptLinkRow,
   buildTicketClosedCard,

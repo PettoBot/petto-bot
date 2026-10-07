@@ -57,7 +57,7 @@ function isStaffAllowedForTicket(member, category, ticket, settings) {
  * here rather than sent as a separate top-level `content` field, since Components V2 messages
  * can't combine `content` with a V2 component tree — only the classic (embed-template) branch can.
  */
-async function buildWelcomePayload({ category, guild, channel, opener, ticketId, pingText }) {
+async function buildWelcomePayload({ category, guild, channel, opener, ticketId, ticketNumber, pingText }) {
   if (category.welcome_embed_template) {
     const doc = await getTemplate(guild.id, category.welcome_embed_template);
     if (doc) {
@@ -69,7 +69,7 @@ async function buildWelcomePayload({ category, guild, channel, opener, ticketId,
     }
   }
   return {
-    components: [buildWelcomeFallbackCard({ opener, categoryLabel: category.label, pingText }), buildTicketControlRow(ticketId), buildTicketMemberRow(ticketId)],
+    components: [buildWelcomeFallbackCard({ opener, categoryLabel: category.label, pingText, welcomeMessage: category.welcome_message, guildName: guild.name, ticketNumber }), buildTicketControlRow(ticketId), buildTicketMemberRow(ticketId)],
     flags: MessageFlags.IsComponentsV2,
   };
 }
@@ -114,7 +114,7 @@ async function openTicket({ guild, client, category, opener, formAnswers = null 
   try {
     if (category.form_id && formAnswers) await db.setTicketFormData(ticket.id, { formId: category.form_id, answers: formAnswers });
     channel = await guild.channels.create({
-      name: formatTicketChannelName(category.naming_pattern, { number: ticket.ticket_number, username: opener.username }),
+      name: formatTicketChannelName(category.naming_pattern, { number: ticket.ticket_number, username: opener.username, userId: opener.id, category: category.label }),
       type: ChannelType.GuildText,
       parent: category.parent_channel_id || undefined,
       permissionOverwrites: buildOpenOverwrites({ guild, opener, category }),
@@ -129,7 +129,7 @@ async function openTicket({ guild, client, category, opener, formAnswers = null 
 
   const pingRoleIds = category.ping_role_ids ?? [];
   const pingText = pingRoleIds.map((id) => `<@&${id}>`).join(' ');
-  const welcome = await buildWelcomePayload({ category, guild, channel, opener, ticketId: ticket.id, pingText });
+  const welcome = await buildWelcomePayload({ category, guild, channel, opener, ticketId: ticket.id, ticketNumber: ticket.ticket_number, pingText });
 
   // The bot's client-level default suppresses all mentions (see index.js) — this is the one ticket
   // message that's actually meant to notify people, so it opts back in for just the configured roles.

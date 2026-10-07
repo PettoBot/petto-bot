@@ -69,7 +69,7 @@ function interaction(customId, { fields: modalFields, ...extra } = {}) {
   assert.deepEqual(draft.supportRoleIds, ['r1', 'r2']);
 
   // Types, color and style.
-  await wizard.handleModal(interaction('tfwm_type::u1', { fields: { label: 'Report a player', emoji: '🚨', description: 'Break the rules' } }));
+  await wizard.handleModal(interaction('tfwm_type::u1', { fields: { label: 'Report a player', emoji: '🚨', description: 'Break the rules', welcome: 'Hi {user}, tell us who broke the rules.' } }));
   await wizard.handleModal(interaction('tfwm_type::u1', { fields: { label: 'Support', emoji: '', description: '' } }));
   assert.deepEqual(draft.types.map((t) => t.label), ['Support', 'Report a player', 'Support']);
   const badEmoji = interaction('tfwm_type::u1', { fields: { label: 'Bad', emoji: 'notanemoji' } });
@@ -94,6 +94,8 @@ function interaction(customId, { fields: modalFields, ...extra } = {}) {
   assert.equal(created.panels.length, 1);
   assert.deepEqual(created.categories.map((c) => c.key), ['support-2', 'report-a-player']);
   assert.ok(created.categories.every((c) => c.buttonStyle === 'secondary' && c.supportRoleIds.length === 2));
+  assert.equal(created.categories.find((c) => c.key === 'report-a-player').welcomeMessage, 'Hi {user}, tell us who broke the rules.');
+  assert.equal(created.categories.find((c) => c.key === 'support-2').welcomeMessage, null);
   assert.deepEqual(created.settings[0], { opened_log_channel_id: 'c2', closed_log_channel_id: 'c2' });
   assert.equal(ok.sent.length, 1);
   assert.ok(publish.calls.some((c) => c.edit));

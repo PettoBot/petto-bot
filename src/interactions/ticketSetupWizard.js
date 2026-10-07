@@ -86,7 +86,7 @@ function renderWizard(uid, draft) {
     '',
     ...draft.types.map((t) => `${COLOR_DOT[draft.buttonStyle]} ${t.emoji ? `${t.emoji} ` : ''}**${t.label}**${t.description ? ` — ${t.description}` : ''}`),
     '',
-    `-# ${draft.style === 'select' ? 'Dropdown menu' : 'Buttons'} · ${COLOR_NAME[draft.buttonStyle]} buttons · ${draft.types.length}/${maxTypes(draft)} ticket types`,
+    `-# ${draft.types.some((t) => t.welcome) ? 'Own welcome text set · ' : ''}${draft.style === 'select' ? 'Dropdown menu' : 'Buttons'} · ${COLOR_NAME[draft.buttonStyle]} buttons · ${draft.types.length}/${maxTypes(draft)} ticket types`,
   ];
 
   const channelSelect = (id, placeholder, current) => {
@@ -158,6 +158,9 @@ function typeModal(uid) {
       input('label', 'Name (button text)', true, 40, 'e.g. Report a player'),
       input('emoji', 'Emoji (optional)', false, 60, '🎫'),
       input('description', 'Short description (shown in the dropdown)', false, 100),
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder().setCustomId('welcome').setLabel('Welcome text in the ticket (optional)').setStyle(TextInputStyle.Paragraph).setRequired(false).setMaxLength(1000).setPlaceholder('Hi {user}! Tell us what you need and staff will answer soon.'),
+      ),
     );
 }
 
@@ -209,6 +212,7 @@ async function publish(interaction, uid, draft) {
         buttonStyle: draft.buttonStyle,
         description: type.description || null,
         supportRoleIds: draft.supportRoleIds,
+        welcomeMessage: type.welcome || null,
       });
       createdKeys.push(key);
       categories.push(category);
@@ -313,7 +317,7 @@ async function handleModal(interaction) {
       await interaction.reply({ content: `${EMOJI.ALERT} \`${emoji}\` is not an emoji I can use. Use a normal emoji like 🎫 or a custom one pasted as \`<:name:123456789012345678>\`, or leave it empty.`, flags: MessageFlags.Ephemeral });
       return;
     }
-    draft.types.push({ label, emoji: emoji || null, description: g('description') || null });
+    draft.types.push({ label, emoji: emoji || null, description: g('description') || null, welcome: g('welcome') || null });
   } else return;
 
   setDraft(uid, draft);

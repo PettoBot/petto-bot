@@ -76,6 +76,25 @@ async function handleButton(interaction) {
         return;
       }
 
+      case 'tk_closeyes':
+      case 'tk_closeno': {
+        if (interaction.user.id !== ticket.opener_id) {
+          await interaction.reply({ content: 'Only the person who opened this ticket can answer.', flags: MessageFlags.Ephemeral });
+          return;
+        }
+        if (ticket.status === 'closed') {
+          await interaction.update({ components: [] });
+          return;
+        }
+        if (action === 'tk_closeno') {
+          await interaction.update({ content: `${interaction.message.content}\n\n${EMOJI.DENY} <@${interaction.user.id}> wants to keep it open.`, components: [], allowedMentions: { parse: [] } });
+          return;
+        }
+        await interaction.update({ content: `${interaction.message.content}\n\n${EMOJI.APPROVE} <@${interaction.user.id}> agreed to close it.`, components: [], allowedMentions: { parse: [] } });
+        await actions.closeTicket({ ...ctx, reason: 'Closed after the member confirmed it was solved.' });
+        return;
+      }
+
       case 'tk_unclaim': {
         if (!(await requireStaff(interaction, category, ticket))) return;
         await actions.unclaimTicket(ctx);

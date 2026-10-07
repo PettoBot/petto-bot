@@ -8,6 +8,9 @@ All notable changes to Petto are documented here.
 
 - `!ticket setup` is a guided setup for tickets. A panel with menus and buttons lets you pick the channel for the ticket panel, the support roles and a log channel, write the title and text, add the ticket types (name, emoji and short description), choose the button color and whether members see buttons or a dropdown, and publish everything with one press. If the panel cannot be posted, nothing is kept. Each type can then be fine-tuned from the dashboard or with `!ticket category edit`.
 
+- Ticket types have their own welcome text, without needing a saved embed: `welcome:` in `!ticket category add` and `edit` (or in the setup panel), with `{user}`, `{username}`, `{category}`, `{server}` and `{number}`. The channel name of a ticket also accepts `{userid}` and `{category}`.
+- Staff tools inside a ticket: `!ticket priority` (low, normal, high, urgent, shown in `!ticket info`), `!ticket transfer` to hand the ticket to another staff member of the category, `!ticket note` for private notes (write one, or run it without text to read them) and `!ticket request-close`, which asks the member with Yes/No buttons whether the ticket can be closed. Run `schema.sql` to add the new column and the notes table.
+
 ### Changed
 
 - Ticket forms are built with buttons. `!ticket form create name:<name>` (and `!ticket form edit name:<name>`) opens a panel where you add short-answer or paragraph questions with a button, set a hint and whether each one is required, remove the last one, change the title and save. The old `fields:` text still works for anyone who prefers it.
