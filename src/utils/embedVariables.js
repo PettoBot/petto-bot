@@ -6,6 +6,7 @@
 // Message-scoped variables resolve empty when there's no triggering message in ctx.
 
 const { parseWhen, discordTimestamp } = require('./when');
+const { QUEST_EXTRA_KEYS } = require('./questTime');
 
 function ordinal(n) {
   const s = ['th', 'st', 'nd', 'rd'];
@@ -237,6 +238,7 @@ async function resolve(text, ctx = {}) {
     '{quest.age_gate}': ctx.quest?.age_gate ?? '',
     '{quest.status}': ctx.quest?.status ?? '',
     '{quest.source}': ctx.quest?.source ?? '',
+    ...Object.fromEntries(QUEST_EXTRA_KEYS.map((key) => [`{quest.${key}}`, ctx.quest?.[key] ?? ''])),
     // Partners: ctx.partner describes one partnership (see utils/partnerMessages.js).
     '{poll.question}': ctx.poll?.question ?? '',
     '{poll.options}': ctx.poll?.options ?? '',

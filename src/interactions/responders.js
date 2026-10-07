@@ -5,6 +5,7 @@ const respondersDb = require('../db/responders');
 const { planRoles, exclusiveRemovals, describe, BUTTON_PREFIX, SELECT_PREFIX } = require('../utils/responderEngine');
 const { templatePayload } = require('../utils/templatedMessage');
 const { resolve } = require('../utils/embedVariables');
+const { emojiOf } = require('../utils/responderEngine');
 
 const say = (interaction, content) => interaction.reply({ content, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
 
@@ -21,14 +22,45 @@ function manageable(guild, ids) {
   return { can, skipped };
 }
 
+/** The answer sent in another channel (the one the button was set up with), with a short private note to who clicked. */
+async function answerElsewhere(interaction, responder, text, ctx) {
+  const channel = await interaction.guild.channels.fetch(responder.send_channel_id).catch(() => null);
+  if (!channel?.isTextBased?.()) return false;
+  let payload = responder.reply_template ? await templatePayload(interaction.guild.id, responder.reply_template, ctx) : null;
+  if (!payload) payload = { content: (responder.reply ? (await resolve(responder.reply, ctx)).slice(0, 2000) : text) || 'Done.' };
+  try {
+    await channel.send({ ...payload, allowedMentions: { parse: [] } });
+  } catch {
+    await say(interaction, `I could not send it in <#${channel.id}>. Check that I can write there.`);
+    return true;
+  }
+  await say(interaction, `Sent in <#${channel.id}>.`);
+  return true;
+}
+
 async function answer(interaction, responder, text) {
   const ctx = { guild: interaction.guild, member: interaction.member, user: interaction.user, channel: interaction.channel };
+  if (responder.send_channel_id) {
+    // False when the channel is gone: the answer is then private, as without the setting.
+    if (await answerElsewhere(interaction, responder, text, ctx)) return undefined;
+  }
   if (responder.reply_template) {
     const payload = await templatePayload(interaction.guild.id, responder.reply_template, ctx);
     if (payload) return interaction.reply({ ...payload, flags: (payload.flags ?? 0) | MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
   }
   if (responder.reply) return say(interaction, (await resolve(responder.reply, ctx)).slice(0, 2000) || 'Done.');
   return say(interaction, text || 'Done.');
+}
+
+/** What a button can do to the message it is on: add a reaction to it, and delete it. The answer was already sent. */
+async function actOnHostMessage(interaction, responder) {
+  const message = interaction.message;
+  if (!message) return;
+  if (responder.react_emoji) {
+    const emoji = emojiOf(responder.react_emoji);
+    if (emoji) await message.react(typeof emoji === 'string' ? emoji : `${emoji.name}:${emoji.id}`).catch(() => null);
+  }
+  if (responder.delete_message) await message.delete().catch(() => null);
 }
 
 /** Runs one responder for the member who clicked. `alsoRemove` are extra roles to take (the other choices of an exclusive menu). */
@@ -52,7 +84,9 @@ async function run(interaction, responder, alsoRemove = []) {
   if (blocked && !touches && !responder.reply && !responder.reply_template) return say(interaction, 'I can not give those roles: they are above mine or managed by an integration.');
 
   const summary = describe(add.can, remove.can);
-  return answer(interaction, responder, `${summary || 'Nothing to change.'}${blocked && summary ? ' Some roles are above mine, so I left them.' : ''}`);
+  const result = await answer(interaction, responder, `${summary || 'Nothing to change.'}${blocked && summary ? ' Some roles are above mine, so I left them.' : ''}`);
+  await actOnHostMessage(interaction, responder);
+  return result;
 }
 
 async function handleButton(interaction) {

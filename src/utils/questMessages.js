@@ -5,6 +5,7 @@ const { SOURCE_NAME, SOURCE_URL, TRACKER_URL, REWARD_LABELS } = require('./quest
 const { templatePayload } = require('./templatedMessage');
 const { EMOJI } = require('./emojis');
 const { withRewardImages } = require('./questImages');
+const { questExtras } = require('./questTime');
 
 const SECTIONS = ['image', 'rewards', 'tasks', 'platforms', 'limits'];
 const CREDIT = `-# Data from [${SOURCE_NAME}](${SOURCE_URL}) and [discord-api-diff](${TRACKER_URL})`;
@@ -59,6 +60,7 @@ function questContext(quest, kind = 'new') {
     age_gate: quest.ageGate ? '18+' : '',
     status: kind === 'expiring' ? 'Ending soon' : 'New quest',
     source: SOURCE_NAME,
+    ...questExtras(quest),
   };
 }
 
@@ -211,11 +213,27 @@ function buildQuestList(quests, { page = 1 } = {}) {
 }
 
 /** The message to send for a quest in a server: its saved embed when the style asks for one, else the card. */
+/**
+ * The saved embed a server chose for the kind of reward of a quest (`{ orbs: 'orbs-alert' }`), or null. A quest with several
+ * rewards uses the first one that has an embed.
+ */
+function templateForQuest(map, quest) {
+  if (!map || typeof map !== 'object') return null;
+  for (const reward of quest.rewards ?? []) {
+    const name = map[reward.kind];
+    if (typeof name === 'string' && name.trim()) return name.trim();
+  }
+  return null;
+}
+
 async function questMessage(guild, config, rawQuest, kind = 'new') {
   const quest = await withRewardImages(rawQuest);
   const rolePing = config.role_id ? `<@&${config.role_id}>` : null;
-  if (config.style === 'template' && config.embed_template) {
-    const payload = await templatePayload(guild.id, config.embed_template, { guild, quest: questContext(quest, kind) }, { v2Extras: { prefixText: rolePing ? `-# ${rolePing}` : null, suffixText: CREDIT } });
+  // The embed of the kind of reward wins over the general one, even when the style is the card (choosing it is choosing to use it), and the
+  // general one is the fallback when it is missing or broken, then the card.
+  const names = [templateForQuest(config.type_templates, quest), config.style === 'template' ? config.embed_template : null].filter((name, index, all) => name && all.indexOf(name) === index);
+  for (const name of names) {
+    const payload = await templatePayload(guild.id, name, { guild, quest: questContext(quest, kind) }, { v2Extras: { prefixText: rolePing ? `-# ${rolePing}` : null, suffixText: CREDIT } });
     // A Components V2 design has no text outside its components, so the ping and the credit were added inside.
     if (payload?.flags) return { ...payload, allowedMentions: { parse: [], roles: config.role_id ? [config.role_id] : [] } };
     if (payload) {
@@ -226,4 +244,4 @@ async function questMessage(guild, config, rawQuest, kind = 'new') {
   return buildQuestCard(quest, config, { kind, rolePing });
 }
 
-module.exports = { SECTIONS, CREDIT, LIST_PAGE_SIZE, SELECT_ID, PAGE_ID, REWARD_ICON, questContext, buildQuestCard, buildQuestList, questMessage, rewardText, taskText, limitsText };
+module.exports = { templateForQuest, SECTIONS, CREDIT, LIST_PAGE_SIZE, SELECT_ID, PAGE_ID, REWARD_ICON, questContext, buildQuestCard, buildQuestList, questMessage, rewardText, taskText, limitsText };

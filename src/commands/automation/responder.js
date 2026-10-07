@@ -12,7 +12,7 @@ const { EMOJI } = require('../../utils/emojis');
 const ok = (text) => textCard(`${EMOJI.APPROVE}  ${text}`, 0xa5ea7a);
 const note = (text) => textCard(text, 0x4b4f59);
 const STYLE_CHOICES = Object.keys(STYLES).map((name) => ({ name, value: name }));
-const CLEARABLE = ['reply', 'template', 'emoji', 'give', 'take', 'require'];
+const CLEARABLE = ['reply', 'template', 'emoji', 'give', 'take', 'require', 'react', 'send_to'];
 
 function optionsFor(builder, { nameRequired }) {
   return builder
@@ -25,7 +25,10 @@ function optionsFor(builder, { nameRequired }) {
     .addStringOption((o) => o.setName('style').setDescription('The color of the button').addChoices(...STYLE_CHOICES))
     .addStringOption((o) => o.setName('emoji').setDescription('An emoji for the button'))
     .addStringOption((o) => o.setName('template').setDescription('Name of a saved embed to send as the reply'))
-    .addBooleanOption((o) => o.setName('toggle').setDescription('Take the role back when it is clicked again'));
+    .addBooleanOption((o) => o.setName('toggle').setDescription('Take the role back when it is clicked again'))
+    .addBooleanOption((o) => o.setName('delete_message').setDescription('Delete the message the button is on after it is used'))
+    .addStringOption((o) => o.setName('react').setDescription('An emoji to react to the message the button is on'))
+    .addChannelOption((o) => o.setName('send_to').setDescription('Send the answer in this channel instead of privately').addChannelTypes(0, 5, 11, 12));
 }
 
 const data = new SlashCommandBuilder()
@@ -87,6 +90,14 @@ async function save(interaction, name, editing, done) {
     values.reply_template = template;
   }
   if (toggle !== null) values.toggle = toggle;
+  const deleteMessage = interaction.options.getBoolean('delete_message');
+  const react = interaction.options.getString('react');
+  const sendTo = interaction.options.getChannel('send_to');
+  if (deleteMessage !== null) values.delete_message = deleteMessage;
+  if (react !== null) { if (!emojiOf(react)) return done(note('That does not look like an emoji.')); values.react_emoji = react.trim(); }
+  if (sendTo) values.send_channel_id = sendTo.id;
+  if (clear === 'react') values.react_emoji = null;
+  if (clear === 'send_to') values.send_channel_id = null;
   if (give) values.give_role_ids = [give.id];
   if (take) values.remove_role_ids = [take.id];
   if (need) values.required_role_ids = [need.id];

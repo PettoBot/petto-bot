@@ -2,13 +2,58 @@ const { EMOJI } = require('./emojis');
 
 const RELEASES = [
   {
+    version: 'v0.7.2',
+    display: 'v0.7.2',
+    name: 'Churro',
+    label: 'v0.7.2 · Churro: logs, embed codes & quest threads',
+    date: '2026-10-07',
+    accent: 0xffc58a,
+    status: `${EMOJI.RELEASE_APPROVED} Latest`,
+    summary: 'A thread and a "how to complete it" message for the quest alerts, embed codes in autoresponders and `!editembed`, and many more events in the server logs.',
+    sections: [
+      {
+        title: `${EMOJI.RELEASE_ROCKET} Quest alerts`,
+        items: [
+          'Messages with their own name and picture (`!sender`): quest alerts, welcome, leave, boost and sanction messages can go out through a webhook that looks like someone else.',
+          'A button responder can delete the message it is on, react to it, or send its answer in another channel.',
+          'A different saved embed (normal or V2) for each kind of reward: Orbs, decorations, Nitro, codes and in-game items, for the alert and for the method (`!quests type`).',
+          'Many more `{quest.*}` variables: every timestamp style for the start and the end (`{quest.starts.relative}`, `{quest.expires.full}`...) and the same moments in plain words for titles and footers (`{quest.starts_ago}`, `{quest.expires_in}`, `{quest.time_left}`).',
+          '`!quests thread on` opens a thread under each alert, with its own name, an optional ping of the alert role inside it, and the time it hides itself.',
+          'The quest method: a message that tells how to complete quests, written once (a text with the `{quest.*}` variables or a saved embed with several texts and pictures) and sent in the thread or in a channel, with a ping or without it. `!quests method send` sends it now, and the dashboard has the same settings.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_SETTINGS} Embed codes`,
+        items: [
+          'An autoresponder reply can be an embed code, with flags such as `--reply`, `--ping`, `--delete`, `--strict` and `--mode`.',
+          '`!editembed <message link> <code>` changes a message that Petto already sent.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_SETTINGS} Server logs`,
+        items: [
+          'New categories: `webhooks`, `threads`, `integrations` and `commands`. Stickers, soundboard sounds, scheduled events, AutoMod rules, pins, stages, timeouts, boosts, kicks and many server settings are logged too, with who did it.',
+          'In the channel log the @everyone role is written right and a change of permissions says who made it.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_BUG} Fixes`,
+        items: [
+          'A name that is already taken in the dashboard is no longer reported as a Petto error.',
+          'An embed code with a block that lost its closing brace ends that block where the next one starts.',
+          'The total of members in the status messages no longer drops by a whole server for a moment.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'v0.7.1-2',
     display: 'v0.7.1~2',
     name: 'Boba',
     label: 'v0.7.1~2 · Boba: giveaways from the dashboard',
     date: '2026-10-05',
     accent: 0xe7c4ff,
-    status: `${EMOJI.RELEASE_APPROVED} Latest`,
+    status: `${EMOJI.RELEASE_APPROVED} Published`,
     summary: 'A small release for the dashboard: start, end and draw giveaways from the web, and a fix for the page buttons of the lists.',
     sections: [
       {

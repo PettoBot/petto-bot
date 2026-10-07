@@ -2283,6 +2283,20 @@ create table if not exists quest_config (
   updated_at     timestamptz not null default now()
 );
 alter table quest_config enable row level security;
+-- A thread under each alert, and the "method" message (how to complete quests) that can go in it or in a channel.
+alter table quest_config add column if not exists auto_thread boolean not null default false;
+alter table quest_config add column if not exists thread_name text;
+alter table quest_config add column if not exists thread_ping boolean not null default false;
+alter table quest_config add column if not exists thread_archive integer not null default 1440;
+alter table quest_config add column if not exists method_enabled boolean not null default false;
+alter table quest_config add column if not exists method_template text;
+alter table quest_config add column if not exists method_text text;
+alter table quest_config add column if not exists method_target text not null default 'thread';
+alter table quest_config add column if not exists method_channel_id text;
+alter table quest_config add column if not exists method_ping boolean not null default false;
+-- A saved embed for each kind of reward (orbs, decoration, code, ingame, nitro): for the alert and for the method.
+alter table quest_config add column if not exists type_templates jsonb not null default '{}'::jsonb;
+alter table quest_config add column if not exists method_type_templates jsonb not null default '{}'::jsonb;
 
 create table if not exists quest_seen (
   quest_id      text primary key,
@@ -2300,6 +2314,17 @@ create table if not exists quest_posts (
   primary key (guild_id, quest_id, kind)
 );
 alter table quest_posts enable row level security;
+
+-- The look (name and picture) of the messages Petto sends in some places, sent through a webhook the bot makes in the channel.
+create table if not exists sender_identities (
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  feature    text not null check (feature in ('quests', 'welcome', 'leave', 'boost', 'sanctions')),
+  name       text,
+  avatar_url text,
+  updated_at timestamptz not null default now(),
+  primary key (guild_id, feature)
+);
+alter table sender_identities enable row level security;
 
 -- Partners: a partnership is counted when a Partner Manager posts the invite of another server in a partner channel and
 -- it passes the requirements of the server. `partner_log` has one row per counted partnership (daily, weekly and total
@@ -2365,6 +2390,10 @@ create table if not exists button_responders (
   unique (guild_id, name)
 );
 alter table button_responders enable row level security;
+-- What a button can do to the message it is on, and where its answer can go.
+alter table button_responders add column if not exists delete_message boolean not null default false;
+alter table button_responders add column if not exists react_emoji text;
+alter table button_responders add column if not exists send_channel_id text;
 
 create table if not exists component_panels (
   id             bigserial primary key,
@@ -2518,3 +2547,70 @@ create table if not exists site_team (
   unique (position, user_id)
 );
 create index if not exists site_team_position_idx on site_team (position, sort_order);
+
+-- The feedback board of the website (petto.sbs/feedback): ideas, feedback and bugs that people write and vote on. Each post is also
+-- published in the Petto server by the feedback bot (message ids below), and a vote with the like or dislike reaction there counts too.
+create table if not exists feedback_posts (
+  id                 bigserial primary key,
+  user_id            text not null,
+  username           text not null default '',
+  avatar             text,
+  kind               text not null default 'idea' check (kind in ('idea', 'feedback', 'bug')),
+  title              text not null check (char_length(title) between 3 and 120),
+  body               text not null default '' check (char_length(body) <= 4000),
+  tags               text[] not null default '{}',
+  status             text not null default 'open' check (status in ('open', 'planned', 'in_progress', 'done', 'declined')),
+  status_note        text not null default '' check (char_length(status_note) <= 500),
+  votes_up           integer not null default 0,
+  votes_down         integer not null default 0,
+  comments_count     integer not null default 0,
+  discord_channel_id text,
+  discord_message_id text,
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now()
+);
+create index if not exists feedback_posts_status_idx on feedback_posts (status, created_at desc);
+create index if not exists feedback_posts_votes_idx on feedback_posts ((votes_up - votes_down) desc);
+create index if not exists feedback_posts_user_idx on feedback_posts (user_id, created_at desc);
+alter table feedback_posts enable row level security;
+
+create table if not exists feedback_votes (
+  post_id    bigint not null references feedback_posts(id) on delete cascade,
+  user_id    text not null,
+  value      smallint not null check (value in (1, -1)),
+  created_at timestamptz not null default now(),
+  primary key (post_id, user_id)
+);
+alter table feedback_votes enable row level security;
+
+create table if not exists feedback_comments (
+  id         bigserial primary key,
+  post_id    bigint not null references feedback_posts(id) on delete cascade,
+  user_id    text not null,
+  username   text not null default '',
+  avatar     text,
+  body       text not null check (char_length(body) between 1 and 1000),
+  staff      boolean not null default false,
+  created_at timestamptz not null default now()
+);
+create index if not exists feedback_comments_post_idx on feedback_comments (post_id, created_at);
+alter table feedback_comments enable row level security;
+
+-- The counters of a post follow its votes and comments, so a list never has to count them.
+create or replace function feedback_refresh_counts() returns trigger language plpgsql as $$
+declare
+  v_post bigint := coalesce(new.post_id, old.post_id);
+begin
+  update feedback_posts set
+    votes_up = (select count(*) from feedback_votes where post_id = v_post and value = 1),
+    votes_down = (select count(*) from feedback_votes where post_id = v_post and value = -1),
+    comments_count = (select count(*) from feedback_comments where post_id = v_post),
+    updated_at = now()
+  where id = v_post;
+  return null;
+end;
+$$;
+drop trigger if exists feedback_votes_counts on feedback_votes;
+create trigger feedback_votes_counts after insert or update or delete on feedback_votes for each row execute function feedback_refresh_counts();
+drop trigger if exists feedback_comments_counts on feedback_comments;
+create trigger feedback_comments_counts after insert or delete on feedback_comments for each row execute function feedback_refresh_counts();

@@ -5,6 +5,8 @@ const { EMOJI, TYPE_EMOJI } = require('./emojis');
 const { buildSanctionDM } = require('./sanctionMessage');
 const { buildCaseCard } = require('./caseCard');
 const { templatePayload } = require('./templatedMessage');
+const { sendAs } = require('./senderIdentity');
+const senderIdentities = require('../db/senderIdentities');
 const { templateFor } = require('../db/sanctionTemplates');
 const { parseDuration } = require('./duration');
 const { MessageFlags } = require('discord.js');
@@ -106,11 +108,14 @@ async function sanctionReply(interaction, { type, modCase, target, moderator, re
   if (typeof interaction.deleteReply === 'function') {
     try {
       await interaction.deleteReply();
-      await interaction.followUp(payload);
+      // A server that gave its sanction messages their own name and picture gets them through its webhook instead of as a reply.
+      const identity = interaction.channel && interaction.guild ? await senderIdentities.get(interaction.guild.id, 'sanctions').catch(() => null) : null;
+      if (identity?.name || identity?.avatar_url) await sendAs(interaction.channel, 'sanctions', payload);
+      else await interaction.followUp(payload);
       return undefined;
     } catch (error) {
       logger.warn({ guildId: interaction.guild?.id, action: 'sanction-reply' }, `The custom sanction reply could not be sent as a follow-up: ${error.message}`);
-      try { await interaction.channel?.send(payload); return undefined; } catch { /* Fall through to nothing: the sanction itself is already done. */ }
+      try { if (interaction.channel) await sendAs(interaction.channel, 'sanctions', payload); return undefined; } catch { /* Fall through to nothing: the sanction itself is already done. */ }
       return undefined;
     }
   }

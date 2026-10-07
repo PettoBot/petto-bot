@@ -4,7 +4,7 @@ const { createExpiringCache } = require('../utils/expiringCache');
 // A click is looked up by id, so the responders are kept for a few seconds; saving or deleting one forgets it at once.
 const byIdCache = createExpiringCache(15_000);
 
-const RESPONDER_DEFAULTS = { label: '', emoji: null, style: 'secondary', reply: '', reply_template: null, give_role_ids: [], remove_role_ids: [], required_role_ids: [], toggle: false };
+const RESPONDER_DEFAULTS = { label: '', emoji: null, style: 'secondary', reply: '', reply_template: null, give_role_ids: [], remove_role_ids: [], required_role_ids: [], toggle: false, delete_message: false, react_emoji: null, send_channel_id: null };
 
 async function getById(id) {
   return byIdCache.get(String(id), async () => {

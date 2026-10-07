@@ -124,4 +124,11 @@ function editMessage(text) {
   return { code: body };
 }
 
-module.exports = { dropTokens, takeFlags, splitTrigger, autoresponderAdd, autoresponderEdit, messageTarget, editMessage };
+/** `action rest of the text`, keeping the line breaks of the rest (for `quests method text ...` and `quests thread name ...`). */
+function actionAndText(text) {
+  const match = /^(\S+)(?:\s+([\s\S]*))?$/.exec(String(text ?? '').trim());
+  if (!match) return {};
+  return match[2]?.trim() ? { action: match[1], value: match[2].trim() } : { action: match[1] };
+}
+
+module.exports = { actionAndText, dropTokens, takeFlags, splitTrigger, autoresponderAdd, autoresponderEdit, messageTarget, editMessage };

@@ -7,6 +7,8 @@
 // triggering message, or a custom command). Variables marked dynamic are handled by patterns or
 // by the feature that owns them, not by an exact key in the engine.
 
+const { QUEST_EXTRA_VARS } = require('./questTime');
+
 const VARIABLE_GROUPS = [
   {
     id: 'user',
@@ -350,6 +352,7 @@ const VARIABLE_GROUPS = [
       { tok: '{quest.age_gate}', desc: '18+ when it has an age limit, otherwise empty' },
       { tok: '{quest.status}', desc: 'New quest, or Ending soon' },
       { tok: '{quest.source}', desc: 'discordquest.com' },
+      ...QUEST_EXTRA_VARS.map((entry) => ({ tok: `{quest.${entry.key}}`, desc: entry.desc })),
     ],
   },
   {

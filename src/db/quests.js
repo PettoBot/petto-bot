@@ -11,6 +11,18 @@ const DEFAULTS = {
   hide_sections: [],
   accent_color: null,
   expiring_hours: 0,
+  auto_thread: false,
+  thread_name: null,
+  thread_ping: false,
+  thread_archive: 1440,
+  method_enabled: false,
+  method_template: null,
+  method_text: null,
+  method_target: 'thread',
+  method_channel_id: null,
+  method_ping: false,
+  type_templates: {},
+  method_type_templates: {},
 };
 
 async function getConfig(guildId) {
@@ -61,4 +73,11 @@ async function savePost(guildId, questId, kind, messageId) {
   if (error) throw error;
 }
 
-module.exports = { DEFAULTS, getConfig, upsertConfig, listEnabledConfigs, listSeenIds, markSeen, hasPost, savePost };
+/** The row of a posted alert (its message id), or null. */
+async function getPost(guildId, questId, kind) {
+  const { data, error } = await database.from('quest_posts').select('*').eq('guild_id', String(guildId)).eq('quest_id', questId).eq('kind', kind).maybeSingle();
+  if (error) throw error;
+  return data ?? null;
+}
+
+module.exports = { DEFAULTS, getPost, getConfig, upsertConfig, listEnabledConfigs, listSeenIds, markSeen, hasPost, savePost };

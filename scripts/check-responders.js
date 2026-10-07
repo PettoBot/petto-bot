@@ -105,6 +105,21 @@ const row = (over) => ({ give_role_ids: [], remove_role_ids: [], required_role_i
   templates.set('g1:card', true); interaction = click('br:6'); await handlers.handleButton(interaction);
   assert.deepEqual(replies.at(-1).embeds, [{ title: 'card' }]); assert.ok(replies.at(-1).flags & MessageFlags.Ephemeral, 'a saved embed is private too');
   interaction = click('br:7'); await handlers.handleButton(interaction); assert.match(replies.at(-1).content, /not set up anymore/, 'a responder of another server is not used');
+  // What a button does to the message it is on, and where its answer goes.
+  responders.push({ id: 8, guild_id: 'g1', name: 'close', label: 'Close', emoji: null, style: 'danger', reply: 'Bye {user.mention}', reply_template: null, give_role_ids: [], remove_role_ids: [], required_role_ids: [], toggle: false, delete_message: true, react_emoji: '👍', send_channel_id: null });
+  responders.push({ id: 9, guild_id: 'g1', name: 'tell', label: 'Tell', emoji: null, style: 'primary', reply: 'Hello {user.mention}', reply_template: null, give_role_ids: [], remove_role_ids: [], required_role_ids: [], toggle: false, delete_message: false, react_emoji: '<:like:123456789012345678>', send_channel_id: 'room' });
+  responders.push({ id: 10, guild_id: 'g1', name: 'staffclose', label: 'Staff close', emoji: null, style: 'danger', reply: '', reply_template: null, give_role_ids: [], remove_role_ids: [], required_role_ids: ['boss'], toggle: false, delete_message: true, react_emoji: null, send_channel_id: null });
+  const hostCalls = [];
+  const withHost = (id, over = {}) => Object.assign(click(id), { message: { react: async (emoji) => { hostCalls.push(['react', emoji]); }, delete: async () => { hostCalls.push(['delete']); } } }, over);
+  interaction = withHost('br:8'); await handlers.handleButton(interaction);
+  assert.match(replies.at(-1).content, /^Bye <@u1>/); assert.deepEqual(hostCalls, [['react', '👍'], ['delete']], 'it reacts and then deletes the message the button is on');
+  hostCalls.length = 0;
+  interaction = withHost('br:10'); await handlers.handleButton(interaction);
+  assert.deepEqual(hostCalls, [], 'a member who is not allowed does not delete anything');
+  const sentInRoom = [];
+  interaction = withHost('br:9', { guild: fakeGuild('g1', rolesList, { channels: { cache: new Collection(), fetch: async (id) => (id === 'room' ? { id: 'room', isTextBased: () => true, send: async (payload) => { sentInRoom.push(payload); } } : null) } }) });
+  await handlers.handleButton(interaction);
+  assert.equal(sentInRoom[0].content, 'Hello <@u1>', 'the answer goes to the other channel'); assert.match(replies.at(-1).content, /Sent in <#room>/); assert.deepEqual(hostCalls, [['react', 'like:123456789012345678']], 'a custom emoji is used as name:id');
   interaction = click('br:99'); await handlers.handleButton(interaction); assert.match(replies.at(-1).content, /not set up anymore/);
   const noPermission = fakeGuild('g1', rolesList); noPermission.members.me.permissions.has = () => false;
   interaction = click('br:2', { guild: noPermission }); await handlers.handleButton(interaction); assert.match(replies.at(-1).content, /Manage Roles/);
