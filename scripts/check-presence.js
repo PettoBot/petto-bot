@@ -24,15 +24,17 @@ process.env.PETTO_MOBILE_STATUS = 'false';
 assert.equal(freshConfig().mobileStatus, false);
 delete process.env.PETTO_MOBILE_STATUS;
 
-const { applyMobileIdentify, MOBILE_CLIENT } = require('../src/utils/mobilePresence');
+const { applyMobileIdentify, mobileClientName, CLIENTS } = require('../src/utils/mobilePresence');
+assert.equal(mobileClientName(), 'android', 'the Android app is the default');
+assert.equal(mobileClientName('IOS'), 'ios');
+assert.equal(mobileClientName('toaster'), 'android');
+applyMobileIdentify('ios');
 applyMobileIdentify();
 
 // The gateway manager that the library builds reads those defaults when it identifies.
 const { WebSocketManager } = require(require.resolve('@discordjs/ws', { paths: [require.resolve('discord.js')] }));
 const { REST } = require('discord.js');
 const manager = new WebSocketManager({ token: 'check-only', intents: 0, rest: new REST() });
-assert.equal(manager.options.identifyProperties.browser, MOBILE_CLIENT);
-assert.equal(manager.options.identifyProperties.device, MOBILE_CLIENT);
-assert.equal(manager.options.identifyProperties.os, process.platform, 'the system is not changed');
+assert.deepEqual({ ...manager.options.identifyProperties }, { ...CLIENTS.android });
 
 console.log('Checked the presence: idle by default, configurable, and the phone icon in the gateway identify.');

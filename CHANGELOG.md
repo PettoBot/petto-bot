@@ -20,6 +20,8 @@ All notable changes to Petto are documented here.
 
 ### Fixed
 
+- The phone icon next to Petto's status dot did not show. The bot now connects as the Android app naming the system too (`Android`, `Discord Android`), as the real app does; `PETTO_MOBILE_CLIENT=ios` uses the iPhone app instead. About 20 seconds after it starts, the bot writes in the log how Discord sees it (for example `{"mobile":"idle"}`), so the result can be checked without a screenshot.
+
 - The bot stopped at startup because the description of `!ticket setup` was longer than the 100 characters Discord allows. It is shorter now, and a new check builds every command so a description that is too long fails before it can reach the bot.
 - The partner replies ("thanks for the partnership...") showed the manager as a name with an @ but did not really ping them, because every mention was turned off. The manager of the partnership is pinged now; the names in the top lists and anyone else stay plain text.
 
