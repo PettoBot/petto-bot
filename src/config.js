@@ -89,6 +89,12 @@ module.exports = {
   // Invite tracking remains enabled at startup by default for compatibility.
   // Large deployments can disable the all-guild warmup and resolve invites lazily.
   inviteCacheWarmOnReady: envBool('INVITE_CACHE_WARM_ON_READY', true),
+  // How Petto shows in the member list: the status dot (online, idle, dnd or invisible) and whether it connects as the phone app, which
+  // adds the phone icon next to the dot.
+  presenceStatus: ['online', 'idle', 'dnd', 'invisible'].includes(String(process.env.PETTO_PRESENCE_STATUS || '').trim().toLowerCase())
+    ? String(process.env.PETTO_PRESENCE_STATUS).trim().toLowerCase()
+    : 'idle',
+  mobileStatus: envBool('PETTO_MOBILE_STATUS', true),
   inviteCacheWarmConcurrency: envInt('INVITE_CACHE_WARM_CONCURRENCY', 2, 1, 16),
   jobConcurrency: envInt('PETTO_JOB_CONCURRENCY', 4, 1, 16),
   // Optional explicit official support guild. When empty, the private join-log

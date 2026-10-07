@@ -13,6 +13,8 @@ All notable changes to Petto are documented here.
 
 ### Changed
 
+- Petto shows as **idle on the phone** in the member list: the yellow moon dot with the phone icon, like other bots that connect as the phone app. The bot connects naming the phone app (`Discord iOS`) and sets its status to idle. `PETTO_PRESENCE_STATUS` (`online`, `idle`, `dnd` or `invisible`) changes the dot, and `PETTO_MOBILE_STATUS=false` goes back to the plain desktop look.
+
 - Ticket forms are built with buttons. `!ticket form create name:<name>` (and `!ticket form edit name:<name>`) opens a panel where you add short-answer or paragraph questions with a button, set a hint and whether each one is required, remove the last one, change the title and save. The old `fields:` text still works for anyone who prefers it.
 - Changing several permissions of a channel is told in one log message. Discord sends an update for each permission, a few moments apart, and the `channels` log had a message for each one. The updates of the same channel are held for about 2.5 seconds (at most 12 while it keeps changing) and told as one: what changed from the first to the last, with who did it. Different channels are never mixed.
 

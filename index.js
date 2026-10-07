@@ -33,6 +33,9 @@ const { attachGuildComplianceMonitor } = require('./src/utils/guildComplianceDet
 const { flushActivity } = require('./src/db/activityStats');
 const logger = require('./src/utils/logger');
 
+// Before the client exists: the phone icon next to the status dot (PETTO_MOBILE_STATUS=false turns it off).
+if (config.mobileStatus) require('./src/utils/mobilePresence').applyMobileIdentify();
+
 const client = new Client({
   ...(config.shards ? { shards: config.shards } : {}),
   ...(config.shardCount && config.shards !== 'auto' ? { shardCount: config.shardCount } : {}),
