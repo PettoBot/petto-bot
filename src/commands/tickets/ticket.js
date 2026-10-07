@@ -4,11 +4,12 @@ const { ensureGuild } = require('../../db/guilds');
 const { getTemplate } = require('../../db/embedTemplates');
 const db = require('../../db/tickets');
 const formsDb = require('../../db/ticketForms');
+const { renderWizard, startDraft: startSetupDraft } = require('../../interactions/ticketSetupWizard');
 const { renderPanel: renderFormPanel, startDraft } = require('../../interactions/ticketFormPanel');
 const accessDb = require('../../db/ticketAccess');
 const settingsDb = require('../../db/ticketSettings');
 const actions = require('../../utils/ticketActions');
-const { buildPanelRows, buildPanelFallbackCard, buildTranscriptLinkRow } = require('../../utils/ticketCards');
+const { buildPanelRows, buildPanelFallbackCard, buildTranscriptLinkRow, buildCloseRequestRow } = require('../../utils/ticketCards');
 const { build } = require('../../utils/embedBuilder');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
@@ -67,7 +68,8 @@ module.exports = {
             .addIntegerOption((o) => o.setName('max_open').setDescription('Max open tickets per user in this category (default 1)').setMinValue(1).setRequired(false))
             .addStringOption((o) => o.setName('form').setDescription('Reusable form name (see !ticket form list)').setRequired(false))
             .addRoleOption((o) => o.setName('required_role').setDescription('Role required to open this category').setRequired(false))
-            .addStringOption((o) => o.setName('naming').setDescription('Channel naming pattern: {number}, {username} (default "ticket-{number}")').setRequired(false)),
+            .addStringOption((o) => o.setName('naming').setDescription('Channel name: {number}, {username}, {userid}, {category} (default "ticket-{number}")').setRequired(false))
+            .addStringOption((o) => o.setName('welcome').setDescription('Welcome text in the ticket: {user}, {username}, {category}, {server}, {number}').setMaxLength(1000).setRequired(false)),
         )
         .addSubcommand((s) =>
           s
@@ -83,7 +85,8 @@ module.exports = {
             .addIntegerOption((o) => o.setName('max_open').setDescription('New max open tickets per user').setMinValue(1).setRequired(false))
             .addStringOption((o) => o.setName('form').setDescription('Form name, or "none" to remove').setRequired(false))
             .addRoleOption((o) => o.setName('required_role').setDescription('Required role to add').setRequired(false))
-            .addStringOption((o) => o.setName('naming').setDescription('New channel naming pattern').setRequired(false)),
+            .addStringOption((o) => o.setName('naming').setDescription('New channel name: {number}, {username}, {userid}, {category}').setRequired(false))
+            .addStringOption((o) => o.setName('welcome').setDescription('New welcome text ({user}, {username}, {category}, {server}, {number}), or "none"').setMaxLength(1000).setRequired(false)),
         )
         .addSubcommand((s) => s.setName('remove').setDescription('Remove a category.').addStringOption((o) => o.setName('key').setDescription('Category key').setRequired(true)))
         .addSubcommand((s) => s.setName('list').setDescription('List categories in this server.')),
@@ -135,6 +138,11 @@ module.exports = {
         .addSubcommand((s) => s.setName('list').setDescription('List blocked users and roles.')),
     )
 
+    .addSubcommand((s) => s.setName('setup').setDescription('(Staff) Guided setup: pick the channel, support roles and ticket types with buttons and publish the panel.'))
+    .addSubcommand((s) => s.setName('priority').setDescription('(Staff) Set how urgent this ticket is.').addStringOption((o) => o.setName('level').setDescription('Priority').addChoices({ name: 'Low', value: 'low' }, { name: 'Normal', value: 'normal' }, { name: 'High', value: 'high' }, { name: 'Urgent', value: 'urgent' }).setRequired(true)))
+    .addSubcommand((s) => s.setName('transfer').setDescription('(Staff) Hand this ticket to another staff member.').addUserOption((o) => o.setName('user').setDescription('Staff member who takes over').setRequired(true)))
+    .addSubcommand((s) => s.setName('note').setDescription('(Staff) Add a private note to this ticket, or list the notes if you write none.').addStringOption((o) => o.setName('text').setDescription('The note').setMaxLength(1000).setRequired(false)))
+    .addSubcommand((s) => s.setName('request-close').setDescription('(Staff) Ask the member if the ticket can be closed.').addStringOption((o) => o.setName('reason').setDescription('Why you think it is solved').setMaxLength(300).setRequired(false)))
     .addSubcommand((s) => s.setName('open').setDescription('Open a ticket without using a panel.').addStringOption((o) => o.setName('category').setDescription('Category key').setRequired(true)))
     .addSubcommand((s) => s.setName('close').setDescription('Close this ticket.').addStringOption((o) => o.setName('reason').setDescription('Reason').setRequired(false)))
     .addSubcommand((s) => s.setName('reopen').setDescription('(Staff) Reopen this closed ticket.'))
@@ -159,6 +167,7 @@ module.exports = {
     if (group === 'form') return formCmd(interaction, sub);
     if (group === 'blacklist') return blacklistCmd(interaction, sub);
 
+    if (sub === 'setup') return setupCmd(interaction);
     if (sub === 'open') return openCmd(interaction);
     if (sub === 'info') return infoCmd(interaction);
     return ticketActionCmd(interaction, sub);
@@ -170,6 +179,12 @@ async function requireManageGuild(interaction) {
   if (interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) return true;
   await interaction.reply({ content: 'You need the **Manage Server** permission to do that.', flags: MessageFlags.Ephemeral });
   return false;
+}
+
+async function setupCmd(interaction) {
+  if (!(await requireManageGuild(interaction))) return;
+  const draft = startSetupDraft(interaction.user.id, { guildId: interaction.guild.id, channelId: interaction.channel?.isTextBased() ? interaction.channel.id : null });
+  await interaction.reply({ ...renderWizard(interaction.user.id, draft), flags: [MessageFlags.IsComponentsV2, MessageFlags.Ephemeral] });
 }
 
 async function panelCmd(interaction, sub) {
@@ -357,6 +372,7 @@ async function categoryCmd(interaction, sub) {
     const formName = interaction.options.getString('form');
     const requiredRole = interaction.options.getRole('required_role');
     const naming = interaction.options.getString('naming');
+    const welcome = interaction.options.getString('welcome');
 
     if (label) patch.label = label;
     if (parent) patch.parent_channel_id = parent.id;
@@ -378,6 +394,7 @@ async function categoryCmd(interaction, sub) {
     }
     if (requiredRole) patch.required_role_ids = [...new Set([...(existing.required_role_ids ?? []), requiredRole.id])];
     if (naming) patch.naming_pattern = naming;
+    if (welcome) patch.welcome_message = welcome.toLowerCase() === 'none' ? null : welcome;
 
     const updated = await db.updateCategory(interaction.guild.id, key, patch);
     await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Category \`${updated.key}\` updated.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
@@ -428,6 +445,7 @@ async function categoryCmd(interaction, sub) {
     formId: form?.id,
     requiredRoleIds: requiredRole ? [requiredRole.id] : [],
     namingPattern: interaction.options.getString('naming'),
+    welcomeMessage: interaction.options.getString('welcome'),
   });
 
   await resyncPanelsForCategoryChange(interaction.guild, category.key);
@@ -605,6 +623,7 @@ async function infoCmd(interaction) {
     `**Opened by:** <@${ticket.opener_id}>`,
     `**Status:** ${ticket.status}`,
     `**Claimed by:** ${ticket.claimed_by ? `<@${ticket.claimed_by}>` : 'Nobody yet'}`,
+    `**Priority:** ${PRIORITY_MARK[ticket.priority ?? 'normal']} ${ticket.priority ?? 'normal'}`,
     `**Opened:** <t:${Math.floor(new Date(ticket.created_at).getTime() / 1000)}:R>`,
   ];
   if (ticket.status === 'closed') {
@@ -615,6 +634,8 @@ async function infoCmd(interaction) {
 }
 
 /** Shared entry point for close/reopen/delete/claim/unclaim/add/remove/rename/transcript — all operate on "the ticket in this channel". */
+const PRIORITY_MARK = { low: '🟢', normal: '🔵', high: '🟠', urgent: '🔴' };
+
 async function ticketActionCmd(interaction, sub) {
   const ticket = await db.getTicketByChannel(interaction.channel.id);
   if (!ticket) {
@@ -628,7 +649,7 @@ async function ticketActionCmd(interaction, sub) {
   const isStaffAllowed = actions.isStaffAllowedForTicket(interaction.member, category ?? { support_role_ids: [] }, ticket, settings);
   const isOpener = interaction.user.id === ticket.opener_id;
 
-  const staffOnly = ['reopen', 'delete', 'claim', 'unclaim', 'rename', 'transcript'];
+  const staffOnly = ['reopen', 'delete', 'claim', 'unclaim', 'rename', 'transcript', 'priority', 'transfer', 'note', 'request-close'];
   const openerOrStaff = ['close', 'add', 'remove'];
 
   if (staffOnly.includes(sub) && !isStaffAllowed) {
@@ -653,6 +674,10 @@ async function ticketActionCmd(interaction, sub) {
 
   if (sub === 'close' && ticket.status === 'closed') {
     await interaction.reply({ content: 'This ticket is already closed.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (['priority', 'transfer', 'request-close'].includes(sub) && ticket.status === 'closed') {
+    await interaction.reply({ content: 'This ticket is closed.', flags: MessageFlags.Ephemeral });
     return;
   }
   if (sub === 'reopen' && ticket.status !== 'closed') {
@@ -708,6 +733,47 @@ async function ticketActionCmd(interaction, sub) {
         const newName = interaction.options.getString('name', true);
         const finalName = await actions.renameTicket({ ...ctx, newName });
         await interaction.editReply({ content: `${EMOJI.APPROVE} Renamed to \`${finalName}\`.` });
+        return;
+      }
+      case 'priority': {
+        const level = interaction.options.getString('level', true);
+        await db.setPriority(ticket.id, level);
+        await interaction.channel.send({ content: `${PRIORITY_MARK[level]} <@${interaction.user.id}> set the priority of this ticket to **${level}**.`, allowedMentions: { parse: [] } }).catch(() => {});
+        await interaction.editReply({ content: `${EMOJI.APPROVE} Priority is now **${level}**.` });
+        return;
+      }
+      case 'transfer': {
+        const target = interaction.options.getUser('user', true);
+        const targetMember = await interaction.guild.members.fetch(target.id).catch(() => null);
+        if (!targetMember || target.bot || !actions.isStaffForCategory(targetMember, category ?? { support_role_ids: [] })) {
+          await interaction.editReply({ content: `${target} is not staff for this ticket's category.` });
+          return;
+        }
+        await db.setClaim(ticket.id, target.id);
+        await interaction.channel.send({ content: `${EMOJI.STAR} <@${interaction.user.id}> handed this ticket to ${target}.`, allowedMentions: { users: [target.id] } }).catch(() => {});
+        await interaction.editReply({ content: `${EMOJI.APPROVE} ${target} has the ticket now.` });
+        return;
+      }
+      case 'note': {
+        const text = interaction.options.getString('text');
+        if (text) {
+          await db.addNote({ guildId: interaction.guild.id, ticketId: ticket.id, authorId: interaction.user.id, note: text });
+          await interaction.editReply({ content: `${EMOJI.APPROVE} Note saved. Only staff can see it with \`!ticket note\`.` });
+          return;
+        }
+        const notes = await db.listNotes(ticket.id);
+        const body = notes.length ? notes.map((n) => `<t:${Math.floor(new Date(n.created_at).getTime() / 1000)}:R> <@${n.author_id}>: ${n.note}`).join('\n') : 'No notes yet. Add one with `!ticket note text:<note>`.';
+        await interaction.editReply({ content: body.slice(0, 1900), allowedMentions: { parse: [] } });
+        return;
+      }
+      case 'request-close': {
+        const reason = interaction.options.getString('reason');
+        await interaction.channel.send({
+          content: `<@${ticket.opener_id}> ${interaction.user} thinks this ticket is solved${reason ? `: ${reason}` : '.'} Can we close it?`,
+          components: [buildCloseRequestRow(ticket.id)],
+          allowedMentions: { users: [ticket.opener_id] },
+        });
+        await interaction.editReply({ content: `${EMOJI.APPROVE} Asked <@${ticket.opener_id}> to confirm.` });
         return;
       }
       case 'transcript': {

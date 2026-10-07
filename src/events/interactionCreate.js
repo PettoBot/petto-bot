@@ -7,6 +7,7 @@ const { handleButton: handleReportActionButton, handleReasonModal: handleReportR
 const { CONFIG_PREFIX: REPORT_CONFIG_PREFIX, LIMITS_MODAL_ID: REPORT_LIMITS_MODAL_ID, handleConfigComponent: handleReportConfigComponent, handleLimitsModal: handleReportLimitsModal } = require('../interactions/reportConfigPanel');
 const { handleButton: handleTicketPanelButton, handleSelect: handleTicketPanelSelect } = require('../interactions/ticketPanel');
 const { handleModal: handleTicketFormModal } = require('../interactions/ticketForm');
+const { handleButton: handleTicketSetupButton, handleSelect: handleTicketSetupSelect, handleModal: handleTicketSetupModal } = require('../interactions/ticketSetupWizard');
 const { handleButton: handleTicketFormPanelButton, handleModal: handleTicketFormPanelModal } = require('../interactions/ticketFormPanel');
 const {
   handleButton: handleTicketControlButton,
@@ -191,6 +192,25 @@ module.exports = {
         await handleReportConfigModal(interaction);
       } catch (err) {
         logger.error('Error handling report config modal:', err);
+      }
+      return;
+    }
+
+    if ((interaction.isButton() || interaction.isChannelSelectMenu() || interaction.isRoleSelectMenu()) && interaction.customId.startsWith('tfw_')) {
+      try {
+        if (interaction.isButton()) await handleTicketSetupButton(interaction);
+        else await handleTicketSetupSelect(interaction);
+      } catch (err) {
+        logger.error('Error handling ticket setup:', err);
+      }
+      return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('tfwm_')) {
+      try {
+        await handleTicketSetupModal(interaction);
+      } catch (err) {
+        logger.error('Error handling ticket setup modal:', err);
       }
       return;
     }
