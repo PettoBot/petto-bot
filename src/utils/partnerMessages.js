@@ -74,13 +74,17 @@ function partnerContext(info) {
 
 /** `{ content, embeds, components, ... }` to send for one response, never empty. `ctx` has `member`/`user`/`guild` and `partner`. */
 async function responsePayload(guildId, config, key, ctx) {
+  // The partner manager that the message is about is really pinged (a mention with `{user.mention}`); nobody else is, so the names in a
+  // top list and anything else a message writes stay plain text.
+  const manager = ctx.user?.id ?? ctx.member?.id ?? null;
+  const allowedMentions = manager ? { parse: [], users: [manager] } : { parse: [] };
   const saved = config?.messages?.[key];
   if (saved?.template) {
     const payload = await templatePayload(guildId, saved.template, ctx);
-    if (payload) return { ...payload, allowedMentions: { parse: [] } };
+    if (payload) return { ...payload, allowedMentions };
   }
   const content = (await resolve(textOf(config, key), ctx)).slice(0, MAX_TEXT);
-  return { content: content || DEFAULTS[key], allowedMentions: { parse: [] } };
+  return { content: content || DEFAULTS[key], allowedMentions };
 }
 
 module.exports = { RESPONSE_KEYS, LABELS, DEFAULTS, MAX_TEXT, textOf, partnerContext, responsePayload };
