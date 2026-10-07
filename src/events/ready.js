@@ -11,7 +11,7 @@ module.exports = {
   once: true,
   async execute(client) {
     client.user.setPresence({
-      status: 'online',
+      status: config.presenceStatus,
       activities: [{ name: 'Custom Status', type: ActivityType.Custom, state: 'Keeping the server safe', emoji: { name: '🦆' } }],
     });
 
