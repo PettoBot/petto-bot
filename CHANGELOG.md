@@ -18,6 +18,7 @@ All notable changes to Petto are documented here.
 
 ### Fixed
 
+- The bot stopped at startup because the description of `!ticket setup` was longer than the 100 characters Discord allows. It is shorter now, and a new check builds every command so a description that is too long fails before it can reach the bot.
 - The partner replies ("thanks for the partnership...") showed the manager as a name with an @ but did not really ping them, because every mention was turned off. The manager of the partnership is pinged now; the names in the top lists and anyone else stay plain text.
 
 ## [0.7.2] — 2026-10-07 · Churro
