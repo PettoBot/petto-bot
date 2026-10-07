@@ -138,7 +138,7 @@ module.exports = {
         .addSubcommand((s) => s.setName('list').setDescription('List blocked users and roles.')),
     )
 
-    .addSubcommand((s) => s.setName('setup').setDescription('(Staff) Guided setup: pick the channel, support roles and ticket types with buttons and publish the panel.'))
+    .addSubcommand((s) => s.setName('setup').setDescription('(Staff) Guided ticket setup with menus and buttons.'))
     .addSubcommand((s) => s.setName('priority').setDescription('(Staff) Set how urgent this ticket is.').addStringOption((o) => o.setName('level').setDescription('Priority').addChoices({ name: 'Low', value: 'low' }, { name: 'Normal', value: 'normal' }, { name: 'High', value: 'high' }, { name: 'Urgent', value: 'urgent' }).setRequired(true)))
     .addSubcommand((s) => s.setName('transfer').setDescription('(Staff) Hand this ticket to another staff member.').addUserOption((o) => o.setName('user').setDescription('Staff member who takes over').setRequired(true)))
     .addSubcommand((s) => s.setName('note').setDescription('(Staff) Add a private note to this ticket, or list the notes if you write none.').addStringOption((o) => o.setName('text').setDescription('The note').setMaxLength(1000).setRequired(false)))
