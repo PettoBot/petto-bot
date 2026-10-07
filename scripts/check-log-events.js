@@ -135,17 +135,38 @@ const member2 = () => ({ id: 'b1', guild: { id: '1' }, roles: { cache: new Colle
   reset();
   const overwrite = (id, type, allow, deny) => ({ id, type, allow: new PermissionsBitField(allow), deny: new PermissionsBitField(deny) });
   const chan = (extra = {}, overwrites = []) => ({ id: 'c1', name: 'general', topic: null, parentId: null, nsfw: false, rateLimitPerUser: 0, guild: { id: '1' }, permissionOverwrites: { cache: new Collection(overwrites.map((o) => [o.id, o])) }, ...extra });
-  await server.handleChannelUpdate(chan(), chan({ nsfw: true, rateLimitPerUser: 30 }), client);
+  await server.handleChannelUpdate(chan(), chan({ nsfw: true, rateLimitPerUser: 30 }), client, { waitMs: 0 });
   assert.equal(field('Age-restricted'), '`false` -> `true`'); assert.equal(field('Slowmode'), '0s -> 30s');
-  await server.handleChannelUpdate(chan({}, [overwrite('r1', 0, [], [])]), chan({}, [overwrite('r1', 0, [PermissionFlagsBits.SendMessages], [PermissionFlagsBits.AddReactions]), overwrite('u2', 1, [], [PermissionFlagsBits.ViewChannel])]), client);
+  await server.handleChannelUpdate(chan({}, [overwrite('r1', 0, [], [])]), chan({}, [overwrite('r1', 0, [PermissionFlagsBits.SendMessages], [PermissionFlagsBits.AddReactions]), overwrite('u2', 1, [], [PermissionFlagsBits.ViewChannel])]), client, { waitMs: 0 });
   const lines = field('Permissions');
   assert.ok(lines.includes('<@&r1>: allowed Send Messages; denied Add Reactions'), lines);
   assert.ok(lines.includes('Added for <@u2>'));
-  await server.handleChannelUpdate(chan({}, [overwrite('r1', 0, [PermissionFlagsBits.SendMessages], [])]), chan(), client);
+  await server.handleChannelUpdate(chan({}, [overwrite('r1', 0, [PermissionFlagsBits.SendMessages], [])]), chan(), client, { waitMs: 0 });
   assert.ok(field('Permissions').includes('Removed for <@&r1>'));
   const before2 = sent.length;
-  await server.handleChannelUpdate(chan(), chan(), client);
+  await server.handleChannelUpdate(chan(), chan(), client, { waitMs: 0 });
   assert.equal(sent.length, before2, 'nothing changed, nothing told');
+
+  // Several permission changes a few moments apart are told as one message: the channel before the first and after the last.
+  const sentBefore = sent.length;
+  const step0 = chan({}, []);
+  const step1 = chan({}, [overwrite('everyone', 0, [], [PermissionFlagsBits.ManageChannels])]);
+  const step2 = chan({}, [overwrite('everyone', 0, [], [PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ManageRoles])]);
+  const step3 = chan({}, [overwrite('everyone', 0, [PermissionFlagsBits.ViewChannel], [PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ManageRoles, PermissionFlagsBits.ManageWebhooks])]);
+  await Promise.all([server.handleChannelUpdate(step0, step1, client, { waitMs: 30 }), server.handleChannelUpdate(step1, step2, client, { waitMs: 30 }), server.handleChannelUpdate(step2, step3, client, { waitMs: 30 })]);
+  assert.equal(sent.length, sentBefore + 1, 'three changes of the same channel, one message');
+  const merged = field('Permissions');
+  assert.ok(merged.includes('allowed View Channel') && merged.includes('denied Manage Channels, Manage Roles, Manage Webhooks'), merged);
+  // A channel that keeps changing is still told after the longest wait.
+  const sentBeforeMax = sent.length;
+  const slow = (async () => { for (let i = 0; i < 4; i += 1) { await server.handleChannelUpdate(chan(), chan({ topic: `t${i}` }), client, { waitMs: 40, maxMs: 90 }); } })();
+  await slow;
+  assert.ok(sent.length >= sentBeforeMax + 1, 'it is told');
+  // Two different channels are not mixed.
+  const sentBeforeTwo = sent.length;
+  const other = (extra, overwrites) => ({ ...chan(extra, overwrites), id: 'c2', name: 'other' });
+  await Promise.all([server.handleChannelUpdate(chan(), chan({ nsfw: true }), client, { waitMs: 20 }), server.handleChannelUpdate(other(), other({ topic: 'x' }), client, { waitMs: 20 })]);
+  assert.equal(sent.length, sentBeforeTwo + 2, 'one message for each channel');
 
   // ---- members: timeout, boost, server avatar, kick
   reset();
