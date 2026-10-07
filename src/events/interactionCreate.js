@@ -7,6 +7,7 @@ const { handleButton: handleReportActionButton, handleReasonModal: handleReportR
 const { CONFIG_PREFIX: REPORT_CONFIG_PREFIX, LIMITS_MODAL_ID: REPORT_LIMITS_MODAL_ID, handleConfigComponent: handleReportConfigComponent, handleLimitsModal: handleReportLimitsModal } = require('../interactions/reportConfigPanel');
 const { handleButton: handleTicketPanelButton, handleSelect: handleTicketPanelSelect } = require('../interactions/ticketPanel');
 const { handleModal: handleTicketFormModal } = require('../interactions/ticketForm');
+const { handleButton: handleTicketFormPanelButton, handleModal: handleTicketFormPanelModal } = require('../interactions/ticketFormPanel');
 const {
   handleButton: handleTicketControlButton,
   handleCloseModal: handleTicketCloseModal,
@@ -190,6 +191,24 @@ module.exports = {
         await handleReportConfigModal(interaction);
       } catch (err) {
         logger.error('Error handling report config modal:', err);
+      }
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('tf_')) {
+      try {
+        await handleTicketFormPanelButton(interaction);
+      } catch (err) {
+        logger.error('Error handling ticket form builder button:', err);
+      }
+      return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('tfm_')) {
+      try {
+        await handleTicketFormPanelModal(interaction);
+      } catch (err) {
+        logger.error('Error handling ticket form builder modal:', err);
       }
       return;
     }

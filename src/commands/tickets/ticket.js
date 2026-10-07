@@ -4,6 +4,7 @@ const { ensureGuild } = require('../../db/guilds');
 const { getTemplate } = require('../../db/embedTemplates');
 const db = require('../../db/tickets');
 const formsDb = require('../../db/ticketForms');
+const { renderPanel: renderFormPanel, startDraft } = require('../../interactions/ticketFormPanel');
 const accessDb = require('../../db/ticketAccess');
 const settingsDb = require('../../db/ticketSettings');
 const actions = require('../../utils/ticketActions');
@@ -119,8 +120,8 @@ module.exports = {
       g
         .setName('form')
         .setDescription('(Staff) Manage reusable ticket intake forms.')
-        .addSubcommand((s) => s.setName('create').setDescription('Create a form. Fields: type|id|label|placeholder|required;...').addStringOption((o) => o.setName('name').setDescription('Form name').setRequired(true)).addStringOption((o) => o.setName('fields').setDescription('1-5 fields, separated by ;').setRequired(true)).addStringOption((o) => o.setName('title').setDescription('Modal title').setRequired(false)))
-        .addSubcommand((s) => s.setName('edit').setDescription('Edit a form.').addStringOption((o) => o.setName('name').setDescription('Form name').setRequired(true)).addStringOption((o) => o.setName('fields').setDescription('Replacement fields, separated by ;').setRequired(false)).addStringOption((o) => o.setName('title').setDescription('New modal title').setRequired(false)))
+        .addSubcommand((s) => s.setName('create').setDescription('Create a form with buttons, or give the fields as type|id|label|placeholder|required;...').addStringOption((o) => o.setName('name').setDescription('Form name').setRequired(true)).addStringOption((o) => o.setName('fields').setDescription('Optional: 1-5 fields separated by ; (leave empty to use the buttons)').setRequired(false)).addStringOption((o) => o.setName('title').setDescription('Modal title').setRequired(false)))
+        .addSubcommand((s) => s.setName('edit').setDescription('Edit a form with buttons, or give the replacement fields.').addStringOption((o) => o.setName('name').setDescription('Form name').setRequired(true)).addStringOption((o) => o.setName('fields').setDescription('Optional: replacement fields separated by ;').setRequired(false)).addStringOption((o) => o.setName('title').setDescription('New modal title').setRequired(false)))
         .addSubcommand((s) => s.setName('delete').setDescription('Delete a form.').addStringOption((o) => o.setName('name').setDescription('Form name').setRequired(true)))
         .addSubcommand((s) => s.setName('list').setDescription('List ticket forms.')),
     )
@@ -467,6 +468,29 @@ function parseFormFields(spec) {
 
 async function formCmd(interaction, sub) {
   if (!(await requireManageGuild(interaction))) return;
+
+  if ((sub === 'create' || sub === 'edit') && !interaction.options.getString('fields') && !(sub === 'edit' && interaction.options.getString('title'))) {
+    const panelName = interaction.options.getString('name', true);
+    const title = interaction.options.getString('title') ?? undefined;
+    try {
+      let draft;
+      if (sub === 'edit') {
+        const existing = await formsDb.getFormByName(interaction.guild.id, panelName);
+        if (!existing) {
+          await interaction.reply({ content: `No form named \`${panelName}\` found.`, flags: MessageFlags.Ephemeral });
+          return;
+        }
+        draft = startDraft(interaction.user.id, { guildId: interaction.guild.id, mode: 'edit', name: existing.name, title: existing.title, fields: existing.fields ?? [] });
+      } else {
+        draft = startDraft(interaction.user.id, { guildId: interaction.guild.id, mode: 'create', name: panelName.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50) || 'form', title });
+      }
+      await interaction.reply({ ...renderFormPanel(interaction.user.id, draft), flags: [MessageFlags.IsComponentsV2, MessageFlags.Ephemeral] });
+    } catch (err) {
+      await interaction.reply({ content: err.message || 'Unable to open the form builder.', flags: MessageFlags.Ephemeral });
+    }
+    return;
+  }
+
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   try {
