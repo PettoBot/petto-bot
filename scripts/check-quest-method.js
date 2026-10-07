@@ -16,6 +16,8 @@ const templates = {};
 stub('src/db/embedTemplates.js', { getTemplate: async (guildId, name) => (templates[name] ? { name, data: templates[name] } : null) });
 stub('src/utils/cardService.js', { renderCardForMessage: async () => null, normalizeCardRef: () => null, CARD_FILE_NAME: 'card.png' });
 const questApi = require('../src/utils/questApi');
+const { questExtras, relativeText, spanText, QUEST_EXTRA_KEYS } = require('../src/utils/questTime');
+const { questContext } = require('../src/utils/questMessages');
 const { fillQuest, threadName, startQuestThread, methodPayload, methodTarget, sendMethod, sendMethodNow } = require('../src/utils/questMethod');
 
 const day = 86_400_000;
@@ -27,6 +29,38 @@ const quest = { id: 'q1', name: 'Watch the trailer', game: 'Some Game', publishe
   assert.equal(threadName({}, quest), 'Watch the trailer');
   assert.equal(threadName({ thread_name: 'Quest: {quest.name} ({quest.game})' }, quest), 'Quest: Watch the trailer (Some Game)');
   assert.equal(threadName({ thread_name: 'x'.repeat(300) }, quest).length, 100);
+
+  // The time variables: every style, plain words for titles and footers, and the details of rewards and tasks.
+  const at = Date.now();
+  const timed = { ...quest, startsAt: new Date(at - 2 * day), expiresAt: new Date(at + 5 * day + 3.5 * 3_600_000), regions: { include: ['US', 'BR'], exclude: ['DE'] }, rewards: [{ kind: 'orbs', name: '200 Orbs', amount: 200, premiumAmount: 240, expiresAt: null }, { kind: 'decoration', name: 'Cool frame', amount: 0, premiumAmount: 0, expiresAt: new Date(at + day) }] };
+  const extras = questExtras(timed, at);
+  assert.equal(extras.starts_ago, '2 days ago');
+  assert.equal(extras.expires_in, 'in 5 days');
+  assert.equal(extras.time_left, '5 days 3 hours');
+  assert.equal(extras.duration, '7 days 3 hours');
+  assert.equal(extras.days_left, '5');
+  assert.equal(extras.hours_left, '123');
+  assert.equal(extras['starts.unix'], String(Math.floor((at - 2 * day) / 1000)));
+  assert.ok(extras['starts.relative'].endsWith(':R>') && extras['expires.short_time'].endsWith(':t>') && extras['expires.full_long'].endsWith(':F>') && extras['starts.short_datetime'].endsWith(':s>'));
+  assert.equal(extras.reward_nitro_amount, '240');
+  assert.equal(extras.rewards_count, '2');
+  assert.ok(extras.reward_expires.endsWith(':R>'));
+  assert.equal(extras.task_type, 'video');
+  assert.equal(extras.task_time, '2 min');
+  assert.equal(extras.countries, 'US, BR');
+  assert.equal(extras.excluded_countries, 'DE');
+  assert.match(extras.starts_datetime, /UTC$/);
+  assert.equal(relativeText(at + 10_000, at), 'now');
+  assert.equal(relativeText(at - 90 * 60_000, at), '1 hour ago');
+  assert.equal(relativeText(at + 3 * 60_000, at), 'in 3 minutes');
+  assert.equal(extras.time_left && spanText(30_000), '');
+  const ended = questExtras({ ...timed, expiresAt: new Date(at - 3_600_000) }, at);
+  assert.equal(ended.time_left, 'Ended');
+  assert.equal(ended.expires_in, 'ended 1 hour ago');
+  assert.equal(ended.days_left, '0');
+  for (const key of QUEST_EXTRA_KEYS) assert.ok(key in extras, `${key} has a value`);
+  assert.ok(Object.keys(questContext(timed)).includes('starts.relative'), 'the quest context has them');
+  assert.equal(fillQuest('Ends {quest.expires_in}, left {quest.time_left}, {quest.starts.unix}', timed), `Ends in 5 days, left 5 days 3 hours, ${Math.floor(timed.startsAt.getTime() / 1000)}`);
 
   // The method text and its ping.
   const full = { name: 'Test', memberCount: 5, ownerId: '1', premiumTier: 0, premiumSubscriptionCount: 0, createdAt: new Date('2020-01-01'), iconURL: () => null, bannerURL: () => null, members: { cache: new Collection() }, roles: { cache: new Collection() }, emojis: { cache: new Collection() } };

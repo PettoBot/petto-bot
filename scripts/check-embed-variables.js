@@ -8,6 +8,8 @@ const flagSource = fs.readFileSync(path.join(__dirname, '../src/utils/messageFla
 const bumpSource = fs.readFileSync(path.join(__dirname, '../src/utils/bumpHandler.js'), 'utf8');
 
 const engineTokens = new Set([...engineSource.matchAll(/^\s*'(\{[^']+\})':/gm)].map((match) => match[1]));
+// The extra quest variables are added to the engine's map from a list, so they are read from that list.
+if (engineSource.includes('QUEST_EXTRA_KEYS')) for (const key of require('../src/utils/questTime').QUEST_EXTRA_KEYS) engineTokens.add(`{quest.${key}}`);
 const listed = VARIABLE_GROUPS.flatMap((group) => group.vars);
 const listedTokens = new Set(listed.map((variable) => variable.tok));
 

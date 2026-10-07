@@ -5,6 +5,7 @@ const { SOURCE_NAME, SOURCE_URL, TRACKER_URL, REWARD_LABELS } = require('./quest
 const { templatePayload } = require('./templatedMessage');
 const { EMOJI } = require('./emojis');
 const { withRewardImages } = require('./questImages');
+const { questExtras } = require('./questTime');
 
 const SECTIONS = ['image', 'rewards', 'tasks', 'platforms', 'limits'];
 const CREDIT = `-# Data from [${SOURCE_NAME}](${SOURCE_URL}) and [discord-api-diff](${TRACKER_URL})`;
@@ -59,6 +60,7 @@ function questContext(quest, kind = 'new') {
     age_gate: quest.ageGate ? '18+' : '',
     status: kind === 'expiring' ? 'Ending soon' : 'New quest',
     source: SOURCE_NAME,
+    ...questExtras(quest),
   };
 }
 

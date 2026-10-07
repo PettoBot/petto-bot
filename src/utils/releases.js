@@ -14,6 +14,7 @@ const RELEASES = [
       {
         title: `${EMOJI.RELEASE_ROCKET} Quest alerts`,
         items: [
+          'Many more `{quest.*}` variables: every timestamp style for the start and the end (`{quest.starts.relative}`, `{quest.expires.full}`...) and the same moments in plain words for titles and footers (`{quest.starts_ago}`, `{quest.expires_in}`, `{quest.time_left}`).',
           '`!quests thread on` opens a thread under each alert, with its own name, an optional ping of the alert role inside it, and the time it hides itself.',
           'The quest method: a message that tells how to complete quests, written once (a text with the `{quest.*}` variables or a saved embed with several texts and pictures) and sent in the thread or in a channel, with a ping or without it. `!quests method send` sends it now, and the dashboard has the same settings.',
         ],

@@ -14,7 +14,7 @@ const TEXT_LIMIT = 2000;
 /** `{quest.name}` and the other quest variables in a plain text. What is not a quest variable stays as it is. */
 function fillQuest(text, quest, kind = 'new') {
   const context = questContext(quest, kind);
-  return String(text ?? '').replace(/\{quest\.([a-z_]+)\}/gi, (whole, key) => (key.toLowerCase() in context ? String(context[key.toLowerCase()] ?? '') : whole));
+  return String(text ?? '').replace(/\{quest\.([a-z_.]+)\}/gi, (whole, key) => (key.toLowerCase() in context ? String(context[key.toLowerCase()] ?? '') : whole));
 }
 
 function threadName(settings, quest) {
