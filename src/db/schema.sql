@@ -2283,6 +2283,17 @@ create table if not exists quest_config (
   updated_at     timestamptz not null default now()
 );
 alter table quest_config enable row level security;
+-- A thread under each alert, and the "method" message (how to complete quests) that can go in it or in a channel.
+alter table quest_config add column if not exists auto_thread boolean not null default false;
+alter table quest_config add column if not exists thread_name text;
+alter table quest_config add column if not exists thread_ping boolean not null default false;
+alter table quest_config add column if not exists thread_archive integer not null default 1440;
+alter table quest_config add column if not exists method_enabled boolean not null default false;
+alter table quest_config add column if not exists method_template text;
+alter table quest_config add column if not exists method_text text;
+alter table quest_config add column if not exists method_target text not null default 'thread';
+alter table quest_config add column if not exists method_channel_id text;
+alter table quest_config add column if not exists method_ping boolean not null default false;
 
 create table if not exists quest_seen (
   quest_id      text primary key,

@@ -21,6 +21,9 @@ const { registerCardRoutes } = require('./cardRoutes');
 const { registerCodeRoutes } = require('./codeRoutes');
 const { listVariables } = require('../utils/embedVariableRegistry');
 const { renderPollRequest } = require('../utils/pollApi');
+const { sendMethodNow } = require('../utils/questMethod');
+const { canUseQuests } = require('../utils/questAlerts');
+const questsDb = require('../db/quests');
 const { runGiveawayAction } = require('../utils/giveawayApi');
 const logger = require('../utils/logger');
 
@@ -210,6 +213,22 @@ function startServer(client) {
       } catch (err) {
         logger.error(`Dashboard giveaway ${req.params.action} failed for guild ${req.params.guildId}:`, err);
         res.status(500).json({ ok: false, error: 'giveaway_failed', message: 'The giveaway action failed. Try again.' });
+      }
+    });
+
+    // Sends the quest method of a server now, from the dashboard (the newest active quest, or the one given), in its thread or channel.
+    app.post('/api/dashboard/guild/:guildId/quests/method', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await dashboardCardAccess(req, res);
+      if (!access) return;
+      if (!canUseQuests(access.userId)) { res.status(403).json({ ok: false, error: 'no_access', message: 'Quest alerts are in testing.' }); return; }
+      try {
+        const settings = (await questsDb.getConfig(access.guild.id)) ?? questsDb.DEFAULTS;
+        const questId = typeof req.body?.quest_id === 'string' && /^[\w-]{1,64}$/.test(req.body.quest_id) ? req.body.quest_id : null;
+        const result = await sendMethodNow(access.guild, { ...settings, guild_id: access.guild.id }, { questId });
+        res.status(result.ok ? 200 : 400).json({ ok: result.ok, message: result.message });
+      } catch (err) {
+        logger.error(`Dashboard quest method failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, error: 'method_failed', message: 'The method could not be sent. Try again.' });
       }
     });
 

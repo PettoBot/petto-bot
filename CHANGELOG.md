@@ -4,6 +4,10 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+## [0.7.2] — 2026-10-07 · Churro
+
+A release for the logs, for embed codes in more places, and for the quest alerts: a thread under each alert and a message that tells how to complete the quest.
+
 ### Changed
 
 - In the channel log, the @everyone role is written as `@everyone` (it showed as `@@everyone`), and a change of permissions says who made it (Discord keeps those changes under their own audit log actions).
@@ -13,11 +17,13 @@ All notable changes to Petto are documented here.
 - The help menu has its own icons for the Fun (a dice) and Roleplay (a heart) categories.
 - The answers for a command typed wrong are small cards now, three lines at most. An unknown subcommand (`,br list`) says what was typed and what was probably meant (`boosterrole admin list`), or the first options when nothing is close. A missing option names it, shows how to write the command (`<needed>` and `[optional]`) and what that option holds. A specific message from the parser (a role that was not found) is still told as it is. It works for every command.
 - When Discord does not let `!channel create` make a media channel, the answer says that the server needs Community and monetization turned on.
-
 - Two more log categories: `integrations` (a bot added to or removed from the server, with who added it and a warning when it can have Administrator, and apps or integrations added, changed or removed) and `commands` (which command of Petto was used, by whom and where; only the name of the command is logged, never what was typed after it, and nothing is done unless a channel is set for the category).
 - Also in the logs: `messages` tells when a message is pinned or unpinned (with who, its text and a link), `voice` tells the stages started, ended and with a new topic, `emojis` also covers the soundboard sounds (added, changed, removed), and `server` also tells the vanity URL, widget, boost level, verification level, explicit media filter, default notifications, 2FA, the system, rules, community updates and AFK channels, the AFK timeout and the language, with who changed it.
+
 ### Added
 
+- Quest alerts can open a thread under each alert, to talk about that quest: `!quests thread on`. The thread is named with the quest (`!quests thread name Quest: {quest.name}`), can ping the alert role inside it so its members are added (`!quests thread ping`), and hides itself after the time you choose (`!quests thread archive 1440`). Petto needs Create Public Threads in the alert channel.
+- The quest method: a message that tells how to complete the quests of the week, written once by the server and sent in the thread of each new quest or in a channel, with a ping or without it. Write it as a plain text (`!quests method text ...`, with the `{quest.*}` variables) or choose a saved embed (`!quests method template <name>`), which can have several texts, pictures and buttons. `!quests method on|off` sends it with every new alert, `!quests method thread` or `channel #how-to` chooses where, `ping` and `noping` choose the ping, and `!quests method send [quest id]` sends it now. The dashboard has the same settings and a button to send it now.
 - More in the server logs. Two new log categories, `webhooks` (a webhook was created, changed or deleted, with who did it and in which channel; the webhooks Petto makes for its own logs are left out) and `threads` (a thread was created, changed or deleted; threads that archive themselves and the ones Petto starts are not told). Pick them with `!logs add <channel> webhooks`.
 - The existing categories tell more: `emojis` also logs stickers (added, renamed, removed); `server` logs scheduled events (created, changed, canceled, deleted); `automod` logs the AutoMod rules of Discord (created, changed, deleted); `channels` shows the age-restriction, slowmode, bitrate, user limit and each permission change (added, allowed, denied, removed, for a role or a member); `roles` says which permissions were granted or removed and the role icon; `members` logs timeouts (with the reason and who), timeouts removed, started and stopped boosting, server avatar changes, and tells a kick from a member who left.
 - `!editembed <message link> {embed}$v{description: ...}` changes a message that Petto already sent, with a new embed code: text, several embeds and link buttons. You can also reply to the message and write only the code, or use its ID. It needs Manage Messages in that channel and only works on messages Petto sent. What the new code does not set is cleared.
@@ -28,7 +34,6 @@ All notable changes to Petto are documented here.
 ### Fixed
 
 - Creating an embed in the dashboard with a name that already exists sent a "Petto error" to the error log channel (one per attempt), when the dashboard already tells the person that the name is taken. That answer is only logged as information now; any other database failure is still reported.
-
 - An embed code with a block that lost its closing brace, such as `{message: {user.mention}$v{description: ...}`, now ends that block where the next one starts, and says so, instead of swallowing the rest of the code as text.
 - The total of members in the status messages dropped by a whole server when Discord gave no member count for it for a moment. Each server keeps its last good count now.
 - `!channels` showed every text channel as a giant heading, because its line started with `# `. Text channels start with 💬 now.

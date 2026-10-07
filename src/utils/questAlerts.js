@@ -7,6 +7,7 @@ const { questMessage } = require('./questMessages');
 const logger = require('./logger');
 const config = require('../config');
 const { forEachWithConcurrency } = require('./concurrency');
+const { startQuestThread, sendMethod } = require('./questMethod');
 
 /** Who can set the alerts up: everyone once the API is allowed for all, otherwise the team and the testers. */
 function canUseQuests(userId) {
@@ -38,6 +39,15 @@ async function post(client, settings, quest, kind, db) {
   });
   if (!sent) return false;
   await db.savePost(settings.guild_id, quest.id, kind, sent.id);
+  // The thread and the method go with the first alert of a quest, not with the one that says it is about to end. They never undo the alert.
+  if (kind === 'new' && (settings.auto_thread || settings.method_enabled)) {
+    try {
+      const thread = settings.auto_thread ? await startQuestThread(sent, settings, quest) : null;
+      if (settings.method_enabled) await sendMethod(guild, settings, quest, thread);
+    } catch (error) {
+      logger.warn({ guildId: guild.id, action: 'quest-extras' }, `The thread or the method of a quest alert failed: ${error.message}`);
+    }
+  }
   return true;
 }
 
