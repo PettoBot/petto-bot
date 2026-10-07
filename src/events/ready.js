@@ -12,7 +12,7 @@ module.exports = {
   async execute(client) {
     client.user.setPresence({
       status: 'online',
-      activities: [{ name: 'Custom Status', type: ActivityType.Custom, state: 'Keeping the server safe', emoji: { name: '🦆' } }],
+      activities: [{ name: 'Custom Status', type: ActivityType.Custom, state: 'Watching your feedback · petto.sbs/feedback', emoji: { name: '👀' } }],
     });
 
     logger.info(`Petto v${require("../../package.json").version} is online as ${client.user.tag}, serving ${client.guilds.cache.size} guild(s).`);

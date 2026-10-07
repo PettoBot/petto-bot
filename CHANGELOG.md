@@ -4,6 +4,10 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- The status of the bot says "Watching your feedback · petto.sbs/feedback" with an eyes emoji, to point to the feedback board of the website.
+
 ## [0.7.2] — 2026-10-07 · Churro
 
 A release for the logs, for embed codes in more places, and for the quest alerts: a thread under each alert and a message that tells how to complete the quest.
