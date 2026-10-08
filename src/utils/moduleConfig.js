@@ -20,7 +20,6 @@ const logger = require('./logger');
 const WIKI_URL = 'https://wiki.petto.sbs';
 const MAX_ROWS = 28;
 const MAX_LIST_ITEMS = 8;
-const MAX_USAGE_LINES = 16;
 const MAX_TEXT = 3800;
 
 const ALWAYS_SKIPPED = /^(guild_id|id|created_at|updated_at|created_by|last_updated_at|next_bump_at|last_bumper_id|panel_message_id|message_id)$/;
@@ -28,7 +27,7 @@ const SNOWFLAKE = /^\d{15,25}$/;
 
 /**
  * The modules. `command` is the command that changes the settings, `sources` where the settings live:
- * `show` keeps only the commands that configure (the ones that match, in that order). `{ table, only, skip, list }` reads a row of the server (or, with `list`, every row of the server) and shows the columns that match `only`
+ * `show` lists the commands that configure the module (shown first, in that order; the others come after). `{ table, only, skip, list }` reads a row of the server (or, with `list`, every row of the server) and shows the columns that match `only`
  * (a RegExp or a list of names) without the ones in `skip`.
  */
 const MODULES = {
@@ -188,27 +187,55 @@ function usagePaths(json) {
   return lines;
 }
 
-/** Keeps the commands that configure the module, in the order of `show` (every command when it is not given). The first word is the command. */
+/** Splits the commands of a module into the ones that configure it (the ones of `show`, in that order) and all the others. */
 function pickUsage(lines, show) {
-  if (!show) return lines;
+  if (!show) return { config: lines, rest: [] };
   const rank = (line) => show.findIndex((pattern) => pattern.test(line.split(' ').slice(1).join(' ')));
-  return lines.map((line) => ({ line, at: rank(line) })).filter((item) => item.at !== -1).sort((a, b) => a.at - b.at).map((item) => item.line);
+  const ranked = lines.map((line) => ({ line, at: rank(line) }));
+  return {
+    config: ranked.filter((item) => item.at !== -1).sort((a, b) => a.at - b.at).map((item) => item.line),
+    rest: ranked.filter((item) => item.at === -1).map((item) => item.line),
+  };
 }
 
-/** The text of the card for a server: the current settings and the commands that change them. */
+const withoutOptions = (line) => line.split(' ').filter((token) => !/^[<[]/.test(token)).join(' ');
+
+/** Commands that share everything but the last word go on one line: `ticket panel create`, `ticket panel delete` become `ticket panel create|delete`. */
+function grouped(lines) {
+  const groups = new Map();
+  for (const line of lines.map(withoutOptions)) {
+    const words = line.split(' ');
+    const parent = words.length > 2 ? words.slice(0, -1).join(' ') : line;
+    groups.set(parent, words.length > 2 ? [...(groups.get(parent) ?? []), words.at(-1)] : groups.get(parent) ?? []);
+  }
+  return [...groups.entries()].map(([parent, last]) => (last.length ? `${parent} ${last.join('|')}` : parent));
+}
+
+// From the most complete way of writing the commands to the shortest; the first one that fits is used.
+const WRITERS = [(lines) => lines, (lines) => lines.map(withoutOptions), grouped];
+
+const codeBlock = (lines, prefix) => `\`\`\`\n${lines.map((line) => `${prefix}${line}`).join('\n')}\n\`\`\``;
+
+/** The text of the card for a server: the current settings and every command of the module, shortened when they do not fit. */
 async function buildCardText(module, { guildId, prefix, commands }) {
   const command = commands?.get(module.command);
-  const usage = command ? pickUsage(usagePaths(command.data.toJSON()), module.show) : [];
-  const shown = usage.slice(0, MAX_USAGE_LINES).map((line) => `${prefix}${line}`);
-  const parts = [
-    `### ${module.title} config`,
-    await settingsText(module, guildId),
-    shown.length
-      ? `**Change it**\n\`\`\`\n${shown.join('\n')}\n\`\`\`${usage.length > shown.length ? `\n-# +${usage.length - shown.length} more, see \`${prefix}help ${module.command}\`` : ''}`
-      : `-# Change it with \`${prefix}help ${module.command}\`.`,
-  ];
-  const text = parts.join('\n');
-  return text.length > MAX_TEXT ? `${text.slice(0, MAX_TEXT - 20)}\n...` : text;
+  const { config, rest } = command ? pickUsage(usagePaths(command.data.toJSON()), module.show) : { config: [], rest: [] };
+  const head = [`### ${module.title} config`, await settingsText(module, guildId)].join('\n');
+  if (!config.length && !rest.length) return `${head}\n-# Change it with \`${prefix}help ${module.command}\`.`;
+
+  const render = (write) => {
+    const sections = [head];
+    if (config.length) sections.push(`**${rest.length ? 'Change it' : 'Commands'}**\n${codeBlock(write(config), prefix)}`);
+    if (rest.length) sections.push(`**${config.length ? 'More commands' : 'Commands'}**\n${codeBlock(write(rest), prefix)}`);
+    return sections.join('\n');
+  };
+  for (const write of WRITERS) {
+    const text = render(write);
+    if (text.length <= MAX_TEXT) return text;
+  }
+  // Even the shortest way does not fit: keep the start and point to !help.
+  const text = render(grouped);
+  return `${text.slice(0, MAX_TEXT - 120).replace(/\n[^\n]*$/, '')}\n\`\`\`\n-# More in \`${prefix}help ${module.command}\`.`;
 }
 
 function createConfigCommand(name) {
@@ -236,4 +263,4 @@ function createConfigCommand(name) {
   };
 }
 
-module.exports = { MODULES, createConfigCommand, buildCardText, formatValue, usagePaths, pickUsage };
+module.exports = { MODULES, createConfigCommand, buildCardText, formatValue, usagePaths, pickUsage, grouped };
