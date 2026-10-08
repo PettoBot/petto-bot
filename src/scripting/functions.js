@@ -627,7 +627,8 @@ def('formatTime', 1, 3, (env, seconds, layout, offset) => {
   };
   const format = layout === undefined ? 'YYYY-MM-DD HH:mm' : text(layout);
   if (format.length > 100) throw new Error('The layout holds at most 100 characters');
-  return format.replace(/YYYY|YY|MMMM|MMM|MM|M|DD|D|dddd|ddd|HH|H|hh|mm|ss|A/g, (token) => parts[token]);
+  // Only a whole word that is a code changes, so "Day D" keeps its word: "Day 8".
+  return format.replace(/\p{L}+/gu, (word) => (Object.prototype.hasOwnProperty.call(parts, word) ? parts[word] : word));
 });
 def('weekday', 1, 2, (env, seconds, offset) => shifted(seconds, offset).getUTCDay());
 

@@ -244,6 +244,7 @@ await fails('{{ sort (cslice 1 "a") }}', 'runtime', 'Cannot compare');
 await fails('{{ setKey (sdict) "__proto__" 1 }}', 'runtime', 'cannot be a key');
 await fails('{{ parseJson "{" }}', 'runtime', 'not valid JSON');
 await fails('{{ formatTime 0 "x" 20 }}', 'runtime', 'time zone');
+assert.equal(await out('{{ formatTime 1791493133 "Day D, at HH:mm" }}|{{ formatTime 1791493133 "Día D" }}'), 'Day 8, at 20:58|Día 8', 'only whole words that are codes change');
 // The new actions.
 const acted = await run('{{ addReactions "a" "b" }}{{ deleteTrigger 5 }}{{ deleteResponse 3 }}{{ sendMessage nil (complexMessage "content" "x" "silent" true "reply" true) }}', { ...data, Trigger: 'command' });
 assert.deepEqual(acted.effects.map((e) => e.type), ['reaction', 'reaction', 'deleteTrigger', 'deleteResponse', 'message']);
