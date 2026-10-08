@@ -78,6 +78,15 @@ logger.warn = () => {};
   for (const word of ['setup', 'transcript', 'unclaim', 'blacklist', 'form', 'ping-role']) assert.match(ticket, new RegExp(word), `ticket shows ${word}`);
   assert.doesNotMatch(ticket, /More in/, 'nothing had to be cut');
   assert.deepEqual(grouped(['ticket panel create <channel>', 'ticket panel delete <id>', 'ticket info', 'ticket form list']), ['ticket panel create|delete', 'ticket info', 'ticket form list'], 'long lists are grouped');
+  // Every other command gets a generated card, except the roleplay ones, the team's and the cards themselves
+  for (const name of ['ban', 'kick', 'purge', 'avatar', 'role', 'giveaway']) assert.ok(client.commands.get(`${name}config`), `${name}config is generated or made`);
+  const ban = client.commands.get('banconfig');
+  assert.ok(ban.generatedCard && ban.hiddenFromHelp, 'a generated card is not listed in !help');
+  const banText = await buildCardText(ban.configModule ?? { generated: true, title: 'Ban', command: 'ban', sources: [] }, { guildId: '1', prefix: '?', commands: client.commands });
+  assert.match(banText, /^### Ban\n-# /);
+  assert.match(banText, /\?ban /);
+  for (const name of ['hugconfig', 'questsconfig', 'setupconfig', 'banconfigconfig', 'partnerconfigconfig']) assert.equal(client.commands.has(name), false, `${name} is not generated`);
+  assert.equal([...client.commands.keys()].filter((key) => key.length > 32).length, 0, 'no name is longer than Discord allows');
   assert.equal(formatValue('enabled', false), '**Off**');
   assert.equal(formatValue('role_id', '222222222222222222'), '<@&222222222222222222>');
   assert.equal(formatValue('x_seconds', 10), '10s');
