@@ -35,6 +35,7 @@ function buildConfigText(prefix) {
     block(['logs add #logs sanctions', 'logs add #logs members', 'logs add #logs channels']),
     '**Tickets** (guided setup, with menus and buttons):',
     block(['ticket setup']),
+    '-# Every module also has its own card with its current settings and how to change them: `' + prefix + 'brconfig`, `' + prefix + 'welcomeconfig`, `' + prefix + 'levelconfig`, `' + prefix + 'ticketconfig`, `' + prefix + 'logsconfig`, `' + prefix + 'automodconfig`...',
   ].join('\n');
 }
 

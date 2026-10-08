@@ -15,7 +15,7 @@ async function thank(client, vote) {
   const double = vote.weight > 1 ? ` It counted as **${vote.weight}** votes.` : '';
   const text = [
     `<@${vote.userId}>`,
-    `### ${user?.username ?? 'Someone'} voted!`,
+    `### ${user?.displayName ?? user?.username ?? 'Someone'} voted!`,
     `- **Thank you!** You already voted **${mine}** time${mine === 1 ? '' : 's'}.${double}`,
     `- You can vote [here](${voteUrl}) every 12 hours.`,
   ].join('\n');
