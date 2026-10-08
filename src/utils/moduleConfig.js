@@ -311,7 +311,22 @@ function addGeneratedCards(client) {
     client.commands.set(card, generated);
     added += 1;
   }
+  addAliasCards(client);
   return added;
+}
+
+/** A command that answers to a short name has a card under it too: `!ar` is `!autoresponder`, so `!arconfig` is `!autoresponderconfig`. */
+function addAliasCards(client) {
+  for (const card of [...client.commands.values()]) {
+    if (!card.configModule) continue;
+    const target = client.commands.get(card.configModule.command);
+    for (const alias of (target?.aliases ?? []).filter((name) => !name.endsWith('config'))) {
+      const name = `${alias}config`;
+      if (name.length > 32 || client.commands.has(name) || client.commandAliases.has(name)) continue;
+      client.commandAliases.set(name, card.data.name);
+      card.aliases = [...(card.aliases ?? []), name];
+    }
+  }
 }
 
 module.exports = { addGeneratedCards, MODULES, createConfigCommand, buildCardText, formatValue, usagePaths, pickUsage, grouped };
