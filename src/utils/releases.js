@@ -2,13 +2,63 @@ const { EMOJI } = require('./emojis');
 
 const RELEASES = [
   {
+    version: 'v0.7.3',
+    display: 'v0.7.3',
+    name: 'Flan',
+    label: 'v0.7.3 · Flan: easier tickets, config cards & votes',
+    date: '2026-10-08',
+    accent: 0xffe3a3,
+    status: `${EMOJI.RELEASE_APPROVED} Latest`,
+    summary: 'A guided setup for tickets, a `!<command>config` card for every command, votes from top.gg with a voter role, and Petto online with the phone icon.',
+    sections: [
+      {
+        title: `${EMOJI.RELEASE_ROCKET} Tickets`,
+        items: [
+          '`!ticket setup` is a guided setup: pick the channel, the support roles and a log channel, write the title and text, add the ticket types and publish everything with one press.',
+          'Ticket forms are built with buttons (`!ticket form create name:<name>`), no need to type the field syntax.',
+          'Each ticket type has its own welcome text, and the channel name accepts `{userid}` and `{category}`.',
+          'Staff tools inside a ticket: `!ticket priority`, `!ticket transfer`, `!ticket note` and `!ticket request-close`.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_SETTINGS} Config cards`,
+        items: [
+          'Every module has a `!<module>config` card with what the server has set now and every command of the module: `!brconfig`, `!welcomeconfig`, `!levelconfig`, `!ticketconfig`, `!automodconfig`, `!logsconfig` and 36 more.',
+          'Every other command gets its own card when Petto starts (`!banconfig`, `!purgeconfig`...), and a command with a short name has its card under it too (`!arconfig`).',
+          '`!cmdconfig` shows the recommended Petto configuration with commands ready to copy.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_MAGIC} Votes`,
+        items: [
+          'Petto receives the votes from top.gg: each one is counted once, thanked in a channel with a card, and gives the voter a role that stays.',
+          '`!votes` shows the votes of Petto and of a member, and `!votes top` the members who voted the most.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_RELOAD} Giveaways & status`,
+        items: [
+          'A giveaway that is running can be changed from the dashboard (prize, winners and end), and `!giveaway edit` reads a prize with several words and no quotes.',
+          'Petto is online with the phone icon by default, and the team can change the dot with `!botstatus`.',
+          'Changing several permissions of a channel is told in one log message.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_BUG} Fixes`,
+        items: [
+          'The partner replies really ping the manager of the partnership.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'v0.7.2',
     display: 'v0.7.2',
     name: 'Churro',
     label: 'v0.7.2 · Churro: logs, embed codes & quest threads',
     date: '2026-10-07',
     accent: 0xffc58a,
-    status: `${EMOJI.RELEASE_APPROVED} Latest`,
+    status: `${EMOJI.RELEASE_APPROVED} Published`,
     summary: 'A thread and a "how to complete it" message for the quest alerts, embed codes in autoresponders and `!editembed`, and many more events in the server logs.',
     sections: [
       {
