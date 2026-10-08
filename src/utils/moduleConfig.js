@@ -200,37 +200,42 @@ function pickUsage(lines, show) {
 
 const withoutOptions = (line) => line.split(' ').filter((token) => !/^[<[]/.test(token)).join(' ');
 
-/** A block of command lines that fits in `budget` characters: with their options when there is room, then without, then cut. */
-function fitBlock(lines, prefix, budget) {
-  const render = (items) => `\`\`\`\n${items.map((line) => `${prefix}${line}`).join('\n')}\n\`\`\``;
-  for (const candidate of [lines, lines.map(withoutOptions)]) {
-    if (render(candidate).length <= budget) return { text: render(candidate), hidden: 0 };
+/** Commands that share everything but the last word go on one line: `ticket panel create`, `ticket panel delete` become `ticket panel create|delete`. */
+function grouped(lines) {
+  const groups = new Map();
+  for (const line of lines.map(withoutOptions)) {
+    const words = line.split(' ');
+    const parent = words.length > 2 ? words.slice(0, -1).join(' ') : line;
+    groups.set(parent, words.length > 2 ? [...(groups.get(parent) ?? []), words.at(-1)] : groups.get(parent) ?? []);
   }
-  const short = lines.map(withoutOptions);
-  let count = short.length;
-  while (count > 0 && render(short.slice(0, count)).length > budget) count -= 1;
-  return { text: count ? render(short.slice(0, count)) : '', hidden: short.length - count };
+  return [...groups.entries()].map(([parent, last]) => (last.length ? `${parent} ${last.join('|')}` : parent));
 }
 
-/** The text of the card for a server: the current settings and every command of the module. */
+// From the most complete way of writing the commands to the shortest; the first one that fits is used.
+const WRITERS = [(lines) => lines, (lines) => lines.map(withoutOptions), grouped];
+
+const codeBlock = (lines, prefix) => `\`\`\`\n${lines.map((line) => `${prefix}${line}`).join('\n')}\n\`\`\``;
+
+/** The text of the card for a server: the current settings and every command of the module, shortened when they do not fit. */
 async function buildCardText(module, { guildId, prefix, commands }) {
   const command = commands?.get(module.command);
   const { config, rest } = command ? pickUsage(usagePaths(command.data.toJSON()), module.show) : { config: [], rest: [] };
   const head = [`### ${module.title} config`, await settingsText(module, guildId)].join('\n');
   if (!config.length && !rest.length) return `${head}\n-# Change it with \`${prefix}help ${module.command}\`.`;
 
-  const room = MAX_TEXT - head.length - 120;
-  const main = fitBlock(config.length ? config : rest, prefix, config.length && rest.length ? Math.floor(room * 0.55) : room);
-  const sections = [head, `**${config.length ? 'Change it' : 'Commands'}**\n${main.text}`];
-  let hidden = main.hidden;
-  if (config.length && rest.length) {
-    const left = MAX_TEXT - sections.join('\n').length - 120;
-    const more = fitBlock(rest, prefix, left);
-    if (more.text) sections.push(`**More commands**\n${more.text}`);
-    hidden += more.hidden;
+  const render = (write) => {
+    const sections = [head];
+    if (config.length) sections.push(`**${rest.length ? 'Change it' : 'Commands'}**\n${codeBlock(write(config), prefix)}`);
+    if (rest.length) sections.push(`**${config.length ? 'More commands' : 'Commands'}**\n${codeBlock(write(rest), prefix)}`);
+    return sections.join('\n');
+  };
+  for (const write of WRITERS) {
+    const text = render(write);
+    if (text.length <= MAX_TEXT) return text;
   }
-  if (hidden) sections.push(`-# +${hidden} more, see \`${prefix}help ${module.command}\``);
-  return sections.join('\n');
+  // Even the shortest way does not fit: keep the start and point to !help.
+  const text = render(grouped);
+  return `${text.slice(0, MAX_TEXT - 120).replace(/\n[^\n]*$/, '')}\n\`\`\`\n-# More in \`${prefix}help ${module.command}\`.`;
 }
 
 function createConfigCommand(name) {
@@ -258,4 +263,4 @@ function createConfigCommand(name) {
   };
 }
 
-module.exports = { MODULES, createConfigCommand, buildCardText, formatValue, usagePaths, pickUsage };
+module.exports = { MODULES, createConfigCommand, buildCardText, formatValue, usagePaths, pickUsage, grouped };
