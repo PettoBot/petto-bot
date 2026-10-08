@@ -6,6 +6,9 @@ All notable changes to Petto are documented here.
 
 ### Added
 
+- `!cmdconfig` shows the recommended Petto configuration as a card, with commands ready to copy: anti-raid, new accounts, anti-nuke and anti-spam, how to whitelist a user from anti-nuke or make a role immune to AutoMod, the logs and the guided ticket setup, and a button to the documentation. The prefix in the commands is the one of the server.
+- Votes for the bot on top.gg. Petto receives the v1 webhook of top.gg at `/webhooks/topgg`: the signature (`x-topgg-signature`, HMAC SHA-256 of the timestamp and the raw body with the webhook secret) and its timestamp are checked, every vote is stored once (a vote that top.gg sends again after a timeout is not counted twice, and a weekend vote counts double), and the voter is thanked in a channel. `!votes` shows the votes of Petto and of a member, and `!votes top` the members who voted the most. Set `TOPGG_WEBHOOK_SECRET` (the `whs_...` value top.gg shows when the webhook URL is saved) and `VOTE_CHANNEL_ID`; run `schema.sql` to add the `bot_votes` table.
+
 - The dashboard can change a giveaway that is running: the prize, the number of winners and a new end (counted from now, as `!giveaway edit` does). What is left empty stays as it is, a wrong value changes nothing, and the giveaway message is drawn again. It is the `edit` action of the dashboard giveaway route.
 
 - `!ticket setup` is a guided setup for tickets. A panel with menus and buttons lets you pick the channel for the ticket panel, the support roles and a log channel, write the title and text, add the ticket types (name, emoji and short description), choose the button color and whether members see buttons or a dropdown, and publish everything with one press. If the panel cannot be posted, nothing is kept. Each type can then be fine-tuned from the dashboard or with `!ticket category edit`.

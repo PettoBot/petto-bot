@@ -1854,6 +1854,21 @@ create table if not exists bot_settings (
 );
 alter table bot_settings enable row level security;
 
+-- Votes for the bot on the lists that tell us about them (top.gg first). One row per vote; (source, vote_id) is unique so a vote that the list
+-- sends again after a timeout is not counted twice.
+create table if not exists bot_votes (
+  id         bigserial primary key,
+  source     text not null,
+  vote_id    text not null,
+  user_id    text not null,
+  weight     integer not null default 1,
+  voted_at   timestamptz not null default now(),
+  expires_at timestamptz,
+  unique (source, vote_id)
+);
+create index if not exists idx_bot_votes_user on bot_votes(user_id);
+alter table bot_votes enable row level security;
+
 
 -- ---------------------------------------------------------------------------
 -- bot_host: one singleton row with process-level stats (uptime, memory),
