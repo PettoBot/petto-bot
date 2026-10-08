@@ -10,7 +10,7 @@ async function thank(client, vote) {
   if (!config.voteChannelId) return;
   const channel = await client.channels.fetch(config.voteChannelId).catch(() => null);
   if (!channel?.isTextBased()) return;
-  const [{ mine }, user] = await Promise.all([votesDb.voteTotals(vote.userId), client.users.fetch(vote.userId).catch(() => null)]);
+  const [{ mine, total }, user] = await Promise.all([votesDb.voteTotals(vote.userId), client.users.fetch(vote.userId).catch(() => null)]);
   const voteUrl = `https://top.gg/bot/${client.user?.id ?? config.clientId}/vote`;
   const double = vote.weight > 1 ? ` It counted as **${vote.weight}** votes.` : '';
   const text = [
@@ -18,6 +18,7 @@ async function thank(client, vote) {
     `### ${user?.displayName ?? user?.username ?? 'Someone'} voted!`,
     `- **Thank you!** You already voted **${mine}** time${mine === 1 ? '' : 's'}.${double}`,
     `- You can vote [here](${voteUrl}) every 12 hours.`,
+    `- Petto has **${total}** vote${total === 1 ? '' : 's'} in total.`,
   ].join('\n');
   const body = new TextDisplayBuilder().setContent(text);
   const container = new ContainerBuilder().setAccentColor(0xa5ea7a);

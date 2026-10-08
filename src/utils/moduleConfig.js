@@ -20,7 +20,6 @@ const logger = require('./logger');
 const WIKI_URL = 'https://wiki.petto.sbs';
 const MAX_ROWS = 28;
 const MAX_LIST_ITEMS = 8;
-const MAX_USAGE_LINES = 16;
 const MAX_TEXT = 3800;
 
 const ALWAYS_SKIPPED = /^(guild_id|id|created_at|updated_at|created_by|last_updated_at|next_bump_at|last_bumper_id|panel_message_id|message_id)$/;
@@ -28,7 +27,7 @@ const SNOWFLAKE = /^\d{15,25}$/;
 
 /**
  * The modules. `command` is the command that changes the settings, `sources` where the settings live:
- * `show` keeps only the commands that configure (the ones that match, in that order). `{ table, only, skip, list }` reads a row of the server (or, with `list`, every row of the server) and shows the columns that match `only`
+ * `show` lists the commands that configure the module (shown first, in that order; the others come after). `{ table, only, skip, list }` reads a row of the server (or, with `list`, every row of the server) and shows the columns that match `only`
  * (a RegExp or a list of names) without the ones in `skip`.
  */
 const MODULES = {
@@ -188,27 +187,50 @@ function usagePaths(json) {
   return lines;
 }
 
-/** Keeps the commands that configure the module, in the order of `show` (every command when it is not given). The first word is the command. */
+/** Splits the commands of a module into the ones that configure it (the ones of `show`, in that order) and all the others. */
 function pickUsage(lines, show) {
-  if (!show) return lines;
+  if (!show) return { config: lines, rest: [] };
   const rank = (line) => show.findIndex((pattern) => pattern.test(line.split(' ').slice(1).join(' ')));
-  return lines.map((line) => ({ line, at: rank(line) })).filter((item) => item.at !== -1).sort((a, b) => a.at - b.at).map((item) => item.line);
+  const ranked = lines.map((line) => ({ line, at: rank(line) }));
+  return {
+    config: ranked.filter((item) => item.at !== -1).sort((a, b) => a.at - b.at).map((item) => item.line),
+    rest: ranked.filter((item) => item.at === -1).map((item) => item.line),
+  };
 }
 
-/** The text of the card for a server: the current settings and the commands that change them. */
+const withoutOptions = (line) => line.split(' ').filter((token) => !/^[<[]/.test(token)).join(' ');
+
+/** A block of command lines that fits in `budget` characters: with their options when there is room, then without, then cut. */
+function fitBlock(lines, prefix, budget) {
+  const render = (items) => `\`\`\`\n${items.map((line) => `${prefix}${line}`).join('\n')}\n\`\`\``;
+  for (const candidate of [lines, lines.map(withoutOptions)]) {
+    if (render(candidate).length <= budget) return { text: render(candidate), hidden: 0 };
+  }
+  const short = lines.map(withoutOptions);
+  let count = short.length;
+  while (count > 0 && render(short.slice(0, count)).length > budget) count -= 1;
+  return { text: count ? render(short.slice(0, count)) : '', hidden: short.length - count };
+}
+
+/** The text of the card for a server: the current settings and every command of the module. */
 async function buildCardText(module, { guildId, prefix, commands }) {
   const command = commands?.get(module.command);
-  const usage = command ? pickUsage(usagePaths(command.data.toJSON()), module.show) : [];
-  const shown = usage.slice(0, MAX_USAGE_LINES).map((line) => `${prefix}${line}`);
-  const parts = [
-    `### ${module.title} config`,
-    await settingsText(module, guildId),
-    shown.length
-      ? `**Change it**\n\`\`\`\n${shown.join('\n')}\n\`\`\`${usage.length > shown.length ? `\n-# +${usage.length - shown.length} more, see \`${prefix}help ${module.command}\`` : ''}`
-      : `-# Change it with \`${prefix}help ${module.command}\`.`,
-  ];
-  const text = parts.join('\n');
-  return text.length > MAX_TEXT ? `${text.slice(0, MAX_TEXT - 20)}\n...` : text;
+  const { config, rest } = command ? pickUsage(usagePaths(command.data.toJSON()), module.show) : { config: [], rest: [] };
+  const head = [`### ${module.title} config`, await settingsText(module, guildId)].join('\n');
+  if (!config.length && !rest.length) return `${head}\n-# Change it with \`${prefix}help ${module.command}\`.`;
+
+  const room = MAX_TEXT - head.length - 120;
+  const main = fitBlock(config.length ? config : rest, prefix, config.length && rest.length ? Math.floor(room * 0.55) : room);
+  const sections = [head, `**${config.length ? 'Change it' : 'Commands'}**\n${main.text}`];
+  let hidden = main.hidden;
+  if (config.length && rest.length) {
+    const left = MAX_TEXT - sections.join('\n').length - 120;
+    const more = fitBlock(rest, prefix, left);
+    if (more.text) sections.push(`**More commands**\n${more.text}`);
+    hidden += more.hidden;
+  }
+  if (hidden) sections.push(`-# +${hidden} more, see \`${prefix}help ${module.command}\``);
+  return sections.join('\n');
 }
 
 function createConfigCommand(name) {

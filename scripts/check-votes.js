@@ -69,6 +69,7 @@ function run(rawBody, header) {
   assert.doesNotMatch(card, /fa\.chu/, 'the display name is shown, not the username');
   assert.match(card, /Thank you!.*2.*time|already voted/);
   assert.match(card, /top\.gg\/bot\/1\/vote/);
+  assert.match(card, /Petto has \*\*10\*\* votes in total/, 'the total of votes is shown');
   assert.match(card, /ID: 293504726505357312 \| <t:/);
   assert.deepEqual(roleCalls, [['add', '222222222222222222']], 'the voter gets the role');
   assert.deepEqual(await run(body, sign(body, now)), { code: 200, data: { ok: true, duplicate: true } });
