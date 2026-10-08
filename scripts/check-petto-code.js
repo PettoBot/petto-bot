@@ -223,6 +223,53 @@ await assert.rejects(run('x'.repeat(10_001)), (error) => error.kind === 'limit' 
 await fails('{{ (((((((((((((((((((((((add 1 2))))))))))))))))))))))) }}', 'syntax', 'parentheses');
 assert.ok(functionNames().length > 50 && functionNames().includes('cembed'));
 
+// Functions with the names of YAGPDB, and more text, numbers, time, lists and maps.
+assert.equal(await out('{{ joinStr ", " "a" (cslice "b" "c") 4 }}|{{ trimPrefix "!hi" "!" }}|{{ trimSuffix "a.txt" ".txt" }}|{{ inFold "HeLLo" "ell" }}'), 'a, b, c, 4|hi|a|true');
+assert.equal(await out('{{ capitalize "élan" }}|{{ repeat "ab" 3 }}|{{ truncate "hello world" 8 }}|{{ padLeft "7" 3 "0" }}|{{ padRight "a" 3 "." }}'), 'Élan|ababab|hello w…|007|a..');
+assert.equal(await out('{{ count "banana" "a" }} {{ indexOf "héllo" "l" }} {{ indexOf (cslice 1 2 3) 2 }} {{ indexOf "abc" "z" }} {{ reverse "abc" }}'), '3 2 1 -1 cba');
+assert.equal(await out('{{ urlescape "a b&c" }} {{ urlunescape "a%20b" }} {{ escapeMarkdown "**x**" }}'), 'a%20b%26c a b \\*\\*x\\*\\*');
+assert.equal(await out('{{ formatNumber 1234567 }} {{ formatNumber 1234.5 }} {{ formatNumber -9876543.21 1 }}'), '1,234,567 1,234.50 -9,876,543.2');
+assert.equal(await out('{{ fdiv 9 2 }} {{ sqrt 16 }} {{ cbrt 27 }} {{ round (log 100 10) }} {{ roundEven 2.5 }} {{ clamp 15 0 10 }} {{ toLower "A" }}{{ toUpper "b" }}'), '4.5 4 3 2 2 10 aB');
+assert.equal(await out('{{ toDuration "1h30m" }} {{ toDuration "2d" }} {{ toDuration 90 }} {{ toDuration "nope" }}'), '5400 172800 90 0');
+assert.equal(await out('{{ snowflakeToTime "123456789012345678" }} {{ newDate 2026 10 8 }} {{ formatTime 1791493133 }} {{ formatTime 1791493133 "dddd D MMMM, hh:mm A" 2 }} {{ weekday 1791493133 }}'), '1449504792 1791417600 2026-10-08 20:58 Thursday 8 October, 10:58 PM 4');
+assert.equal(await out('{{ sort (cslice 3 1 2) }} {{ sort (cslice "b" "a" "c") "desc" }} {{ range sortBy (cslice (sdict "n" 2) (sdict "n" 1)) "n" }}{{ .n }}{{ end }}'), '[1 2 3] [c b a] 12');
+assert.equal(await out('{{ uniq (cslice 1 1 2) }} {{ first (cslice 1 2) }} {{ last (cslice) }} {{ sum (cslice 1 2 "3") }} {{ concat (cslice 1) (cslice 2) }}'), '[1 2] 1  6 [1 2]');
+assert.equal(await out('{{ $m := sdict "a" 1 }}{{ hasKey $m "a" }} {{ setKey $m "b" 2 }} {{ delKey $m "a" }} {{ merge $m (sdict "c" 3) }} {{ values (sdict "b" 2 "a" 1) }} {{ $m }}'), 'true map[a:1 b:2] map[] map[a:1 c:3] [1 2] map[a:1]', 'maps are never changed in place');
+assert.equal(await out('{{ kindOf "x" }} {{ kindOf 1 }} {{ kindOf (cslice) }} {{ kindOf nil }} {{ json (sdict "a" (cslice 1 2)) }} {{ (parseJson "{\\"a\\":{\\"b\\":5}}").a.b }}'), 'text number list nil {"a":[1,2]} 5');
+assert.equal(await out('{{ userID "<@!123456789012345678>" }} {{ roleID "<@&123456789012345678>" }} {{ channelID "<#123456789012345678>" }}[{{ userID "nope" }}]'), '123456789012345678 123456789012345678 123456789012345678[]');
+assert.equal(await out('{{ randItem (cslice "x") }}{{ randItem (cslice) }}'), 'x');
+assert.equal(await out('{{ (parseJson "{\\"__proto__\\":{\\"x\\":1},\\"ok\\":1}").ok }}{{ hasKey (parseJson "{\\"__proto__\\":1}") "__proto__" }}'), '1false', 'JSON cannot reach special keys');
+await fails('{{ repeat "x" 30000 }}', 'runtime', 'too long');
+await fails('{{ sort (cslice 1 "a") }}', 'runtime', 'Cannot compare');
+await fails('{{ setKey (sdict) "__proto__" 1 }}', 'runtime', 'cannot be a key');
+await fails('{{ parseJson "{" }}', 'runtime', 'not valid JSON');
+await fails('{{ formatTime 0 "x" 20 }}', 'runtime', 'time zone');
+assert.equal(await out('{{ formatTime 1791493133 "Day D, at HH:mm" }}|{{ formatTime 1791493133 "Día D" }}'), 'Day 8, at 20:58|Día 8', 'only whole words that are codes change');
+// The new actions.
+const acted = await run('{{ addReactions "a" "b" }}{{ deleteTrigger 5 }}{{ deleteResponse 3 }}{{ sendMessage nil (complexMessage "content" "x" "silent" true "reply" true) }}', { ...data, Trigger: 'command' });
+assert.deepEqual(acted.effects.map((e) => e.type), ['reaction', 'reaction', 'deleteTrigger', 'deleteResponse', 'message']);
+assert.equal(acted.effects[2].delay, 5); assert.equal(acted.effects[3].delay, 3);
+assert.equal(acted.effects[4].silent, true); assert.equal(acted.effects[4].reply, true);
+await fails('{{ deleteTrigger 900 }}', 'runtime', '0 to 300');
+await assert.rejects(run('{{ deleteResponse }}', { ...data, Trigger: 'button' }), /not in a button/);
+await fails('{{ addReactions "1" "2" "3" "4" "5" }}{{ addReaction "6" }}', 'limit');
+// Members, roles and channels: read through the lookup, at most 10 per run.
+const lookup = { member: async (id) => (id === '123456789012345678' ? { ID: id, RoleIDs: ['223456789012345678'], DisplayName: 'Liam' } : null), role: async (id) => ({ ID: id, Name: 'Staff' }), channel: async () => null };
+assert.equal((await run('{{ (getMember "<@123456789012345678>").DisplayName }} {{ getMember "999999999999999999" }} {{ (getRole "<@&223456789012345678>").Name }} {{ getChannel "1" }} {{ targetHasRole "123456789012345678" "223456789012345678" }}', data, { lookup })).output, 'Liam  Staff  true');
+await fails('{{ getRole "223456789012345678" }}', 'runtime', 'cannot be read here');
+await assert.rejects(run('{{ range seq 0 11 }}{{ getRole "223456789012345678" }}{{ end }}', data, { lookup }), (error) => error.kind === 'limit' && /at most 10/.test(error.message));
+// The new stored data functions, with a store in memory.
+{
+  const memory = new Map();
+  const store = {
+    get: async (k, u) => memory.get(`${u}|${k}`) ?? null, set: async (k, v, u) => { memory.set(`${u}|${k}`, v); },
+    incr: async (k, a, u) => { const v = (memory.get(`${u}|${k}`) ?? 0) + a; memory.set(`${u}|${k}`, v); return v; },
+    rank: async (k, u) => (u === '123456789012345678' ? 2 : null), bottom: async (k, n) => [{ UserID: '1', Value: 1 }].slice(0, n), count: async () => 3,
+  };
+  assert.equal((await run('{{ dbRank "coins" .User.ID }} {{ len (dbBottom "coins" 5) }} {{ dbCount }} {{ dbCount "a" .User.ID }}', data, { store })).output, '2 1 3 3');
+  await fails('{{ dbBottom "coins" 30 }}', 'runtime', '1 to 25', { store });
+}
+
 // Modals: the form of a button, its fields, and the mistakes.
 {
   const click = { Trigger: 'button', Button: { ID: 'open', Data: '' } };

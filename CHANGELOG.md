@@ -4,6 +4,16 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Petto Code has about 70 new functions, many with the names YAGPDB uses so code written for it is easier to bring over. Text: `joinStr`, `trimPrefix`, `trimSuffix`, `trimSpace`, `inFold`, `capitalize`, `repeat`, `truncate`, `padLeft`, `padRight`, `count`, `indexOf`, `reverse`, `urlescape`, `urlunescape`, `escapeMarkdown`, `formatNumber`, `toString`, `toLower`, `toUpper`. Numbers: `fdiv`, `sqrt`, `cbrt`, `log`, `roundCeil`, `roundFloor`, `roundEven`, `clamp`, `toInt64`. Time: `currentTime`, `toDuration` (`"1h30m"` in seconds), `humanizeTimeSince`, `snowflakeToTime`, `newDate`, `formatTime` (a layout and a time zone) and `weekday`. Lists and maps: `sort`, `sortBy`, `uniq`, `first`, `last`, `sum`, `randItem`, `concat`, `hasKey`, `setKey`, `delKey`, `merge`, `values`, `kindOf`, `json` and `parseJson`. IDs: `userID`, `roleID` and `channelID` take the ID out of a mention.
+- Petto Code can read members, roles and channels of the server: `getMember`, `getRole`, `getChannel` and `targetHasRole`, at most 10 per use. They only read, and only from the server where the command runs.
+- Stored data: `dbRank` (the place of a member in a ranking), `dbBottom` (the lowest numbers) and `dbCount` (how many keys).
+- Actions: `deleteTrigger` and the new `deleteResponse` take a delay of up to 5 minutes, `addReactions` adds several reactions, and `complexMessage` takes `"reply" true` (answer the message of the command) and `"silent" true` (no notification).
+- New data: `.Mentions` (the users mentioned, with their name and avatar), `.MentionedRoles`, `.MentionedChannels`, `.ServerPrefix`, `.Now`, `.User.CreatedAt`, more of `.Member` (`Avatar`, `Color`, `HighestRoleID`, `BoostingSince`, `IsOwner`), `.Guild` (`OwnerID`, `CreatedAt`, `BoostCount`, `BoostTier`, `Banner`, `Description`, `RoleCount`, `ChannelCount`, `EmojiCount`), `.Channel` (`Topic`, `NSFW`, `ParentID`, `Type`, `IsThread`) and `.Message` (`CreatedAt`, `Attachments`, `ReplyToID`).
+- Three templates: `whois` (a card of the member you mention), `roleinfo` and `rank` (your place in the coins ranking).
+- The Petto Code Generator (a website to build commands with forms and try them like in Discord) uses this same engine.
+
 ## [0.7.3] — 2026-10-08 · Flan
 
 A release for tickets that are easier to set up, a config card for every command, the votes from top.gg, and Petto online with the phone icon.

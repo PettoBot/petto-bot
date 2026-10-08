@@ -114,8 +114,8 @@ async function runCustomCommand(message, commandName, argText = '', prefix = '!'
 }
 
 /** Runs a custom command that was already found: its code, its saved embed or its text. */
-async function runCustomCommandRow(message, row, commandName, argText = '', prefix = '!') {
-  if (row.code) return runCodeCommand(message, row, argText, prefix);
+async function runCustomCommandRow(message, row, commandName, argText = '', prefix = '!', serverPrefix = prefix) {
+  if (row.code) return runCodeCommand(message, row, argText, prefix, serverPrefix);
   message.channel.sendTyping().catch(() => {});
 
   const argTokens = tokenize(argText);
@@ -199,7 +199,7 @@ module.exports = {
     if (!parsed) {
       // Not a command of Petto: it may still set off a custom command that has its own prefix or words.
       const trigger = await findTrigger(message.guild.id, message.content).catch(() => null);
-      if (trigger) await runCustomCommandRow(message, trigger.row, trigger.row.name, trigger.args, trigger.prefix);
+      if (trigger) await runCustomCommandRow(message, trigger.row, trigger.row.name, trigger.args, trigger.prefix, mentionMatch ? '!' : configuredPrefix);
       return;
     }
 
@@ -243,7 +243,7 @@ module.exports = {
       if (!handled) {
         // A prefix of its own that starts like the prefix of Petto, such as !! next to !
         const trigger = await findTrigger(message.guild.id, message.content).catch(() => null);
-        if (trigger) { await runCustomCommandRow(message, trigger.row, trigger.row.name, trigger.args, trigger.prefix); handled = true; }
+        if (trigger) { await runCustomCommandRow(message, trigger.row, trigger.row.name, trigger.args, trigger.prefix, mentionMatch ? '!' : configuredPrefix); handled = true; }
       }
       if (!handled) {
         const warning = await message

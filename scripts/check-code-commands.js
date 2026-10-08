@@ -2,7 +2,7 @@
 // channels, pings), the cooldown, mistakes in the code, extracting code from a message, share codes and the templates.
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const { PermissionFlagsBits, Collection } = require('discord.js');
+const { PermissionFlagsBits, Collection, MessageFlags } = require('discord.js');
 
 function stub(relative, exports) {
   const resolved = require.resolve(path.join(__dirname, '..', relative));
@@ -141,6 +141,35 @@ const row = (code, name = `c${Math.random().toString(16).slice(2, 8)}`) => ({ na
   await codeCommands.runCodeCommand(t.message, row('{{ sendDM "psst" }}{{ addReaction "👍" }}{{ deleteTrigger }}done'), '', '!');
   assert.equal(t.dms[0].content, 'psst'); assert.deepEqual(t.reactions, ['👍']); assert.equal(t.isDeleted(), true);
   assert.deepEqual(t.dms[0].allowedMentions, { parse: [] });
+
+  // A delay leaves the trigger for later, "reply" answers the message itself and "silent" sends without a notification.
+  t = makeMessage();
+  await codeCommands.runCodeCommand(t.message, row('{{ deleteTrigger 30 }}{{ sendMessage nil (complexMessage "content" "r" "reply" true) }}{{ sendMessage nil (complexMessage "content" "s" "silent" true) }}'), '', '!');
+  assert.equal(t.isDeleted(), false, 'deleting with a delay waits');
+  assert.equal(t.replies[0].content, 'r', 'reply answers the message that used the command');
+  assert.equal(t.sent[0].payload.content, 's');
+  assert.equal(t.sent[0].payload.flags, MessageFlags.SuppressNotifications, 'silent sends without a notification');
+
+  // The new data: who and what was mentioned, the server prefix, the time and more about the server, the member and the channel.
+  {
+    const m = makeMessage();
+    m.message.mentions = { users: new Collection([['600000000000000009', { id: '600000000000000009', username: 'Santi', globalName: 'Santi', bot: false, displayAvatarURL: () => 'https://cdn.example/s.png' }]]), members: new Collection(), roles: new Collection([['100000000000000005', {}]]), channels: new Collection() };
+    m.message.attachments = new Collection([['1', { url: 'https://cdn.example/f.png', name: 'f.png', size: 10, contentType: 'image/png' }]]);
+    m.message.guild.ownerId = '500000000000000001';
+    const d = codeCommands.buildData(m.message, 'x', '', '?', '!');
+    assert.equal(d.Mentions[0].Mention, '<@600000000000000009>');
+    assert.deepEqual(d.MentionedRoles, ['100000000000000005']);
+    assert.equal(d.Message.Attachments[0].Name, 'f.png');
+    assert.equal(d.Prefix, '?'); assert.equal(d.ServerPrefix, '!');
+    assert.equal(d.Member.IsOwner, true);
+    assert.ok(d.User.CreatedAt > 1_420_070_400 && d.Now > 1_700_000_000);
+    const lookup = codeCommands.lookupFor(m.message.guild);
+    assert.equal((await lookup.role('100000000000000005')).Mentionable, true);
+    assert.equal((await lookup.channel('200000000000000001')).Mention, '<#200000000000000001>');
+    assert.equal(await lookup.member('600000000000000009'), null, 'a member that cannot be read is nil');
+    const ran = await run('{{ (getRole "<@&100000000000000005>").ID }} {{ getChannel "999999999999999999" }}', d, { lookup });
+    assert.equal(ran.output, '100000000000000005 ');
+  }
 
   // A long text is cut to Discord's limit.
   t = makeMessage();
@@ -339,7 +368,7 @@ const row = (code, name = `c${Math.random().toString(16).slice(2, 8)}`) => ({ na
     assert.ok(!ids.has(template.id), `template id ${template.id} is not repeated`); ids.add(template.id);
     assert.equal(check(template.code), null, `${template.id} is valid`);
     for (const args of [[], ['20'], ['a', 'b', 'c']]) {
-      const result = await run(template.code, { ...base, Args: args, RawArgs: args.join(' ') }, { random: () => 0.5 });
+      const result = await run(template.code, { ...base, Args: args, RawArgs: args.join(' ') }, { random: () => 0.5, store: codeCommands.memoryStore(), lookup: codeCommands.lookupFor(makeMessage().message.guild) });
       assert.ok(result.output.trim() || result.effects.length, `${template.id} does something with ${args.length} arguments`);
     }
     assert.match(template.suggestedName, /^[a-z0-9_-]{1,32}$/);

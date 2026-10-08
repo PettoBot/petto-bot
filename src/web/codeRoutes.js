@@ -70,7 +70,7 @@ function registerCodeRoutes(app, { authorize }) {
       data.Values = trigger === 'select' ? [String(req.body?.value ?? '').slice(0, 100)].filter(Boolean) : [];
     }
     try {
-      const result = await run(code, data, { store: codeCommands.memoryStore() });
+      const result = await run(code, data, { store: codeCommands.memoryStore(), lookup: codeCommands.lookupFor(guild) });
       res.json({ ok: true, output: result.output, actions: result.effects.map(admin.describeEffect), steps: result.steps, millis: result.millis });
     } catch (error) {
       if (error instanceof PettoCodeError) { res.json({ ok: true, error: { kind: error.kind, message: error.detail, line: error.line, column: error.column } }); return; }
