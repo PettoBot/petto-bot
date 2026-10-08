@@ -25,6 +25,7 @@ const { sendMethodNow } = require('../utils/questMethod');
 const { canUseQuests } = require('../utils/questAlerts');
 const questsDb = require('../db/quests');
 const { runGiveawayAction } = require('../utils/giveawayApi');
+const { createTopggHandler } = require('../utils/voteWebhook');
 const logger = require('../utils/logger');
 
 async function checkTurnstile(responseToken, remoteIp) {
@@ -98,7 +99,8 @@ const dashboardDatabaseRateLimiter = rateLimit({
 function startServer(client) {
   const verificationEnabled = Boolean(config.verifyBaseUrl && config.turnstileSiteKey && config.turnstileSecretKey && config.verifyTokenSecret);
   const dashboardEnabled = Boolean(config.dashboardApiSecret);
-  if (!verificationEnabled && !dashboardEnabled) {
+  const votesEnabled = Boolean(config.topggWebhookSecret);
+  if (!verificationEnabled && !dashboardEnabled && !votesEnabled) {
     logger.warn('Verification and dashboard API env vars are not fully set, web server not started.');
     return null;
   }
@@ -113,7 +115,8 @@ function startServer(client) {
     res.set('X-Frame-Options', 'SAMEORIGIN');
     next();
   });
-  app.use(express.json({ limit: '100kb' }));
+  // The webhooks of the vote lists are signed over the exact bytes they send, so for those the raw body is kept next to the parsed one.
+  app.use(express.json({ limit: '100kb', verify: (req, res, buffer) => { if (req.originalUrl.startsWith('/webhooks/')) req.rawBody = buffer; } }));
   // Petto's brand icons (approve/deny/alert/favicon), also referenced by public URL
   // from the Components V2 verification DM, since Discord needs a real image URL.
   app.use('/assets', express.static(path.join(__dirname, 'public'), { maxAge: '7d' }));
@@ -368,6 +371,11 @@ function startServer(client) {
         res.status(500).json({ ok: false, error: 'backup_export_failed' });
       }
     });
+  }
+
+  if (votesEnabled) {
+    // Votes for the bot on top.gg (v1 webhook). The URL to save in top.gg is https://<this host>/webhooks/topgg.
+    app.post('/webhooks/topgg', createRateLimiter({ windowMs: 60_000, max: 120 }), createTopggHandler(client));
   }
 
   app.get('/', (req, res) => {
