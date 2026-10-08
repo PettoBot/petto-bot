@@ -13,6 +13,8 @@ All notable changes to Petto are documented here.
 
 ### Changed
 
+- Petto is **online with the phone icon** by default, like the Vanity bot: it connects as the Android app and its status is online. Discord only draws the phone icon in place of the dot while a status is online (with idle or do not disturb it shows the usual moon or red dot, even on a phone), so the status can be changed by the team with `!botstatus online`, `idle`, `dnd` or `invisible` (without a value it shows the current one). The choice is saved and survives a restart; without one, `PETTO_PRESENCE_STATUS` decides (online by default). Run `schema.sql` to add the small `bot_settings` table.
+
 - Petto shows as **idle on the phone** in the member list: the yellow moon dot with the phone icon, like other bots that connect as the phone app. The bot connects naming the phone app (`Discord iOS`) and sets its status to idle. `PETTO_PRESENCE_STATUS` (`online`, `idle`, `dnd` or `invisible`) changes the dot, and `PETTO_MOBILE_STATUS=false` goes back to the plain desktop look.
 
 - Ticket forms are built with buttons. `!ticket form create name:<name>` (and `!ticket form edit name:<name>`) opens a panel where you add short-answer or paragraph questions with a button, set a hint and whether each one is required, remove the last one, change the title and save. The old `fields:` text still works for anyone who prefers it.
