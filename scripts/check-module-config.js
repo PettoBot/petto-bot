@@ -87,6 +87,11 @@ logger.warn = () => {};
   assert.match(banText, /\?ban /);
   for (const name of ['hugconfig', 'questsconfig', 'setupconfig', 'banconfigconfig', 'partnerconfigconfig']) assert.equal(client.commands.has(name), false, `${name} is not generated`);
   assert.equal([...client.commands.keys()].filter((key) => key.length > 32).length, 0, 'no name is longer than Discord allows');
+  // The short name of a command has its card too: !ar is !autoresponder, so !arconfig is !autoresponderconfig
+  assert.equal(client.commandAliases.get('arconfig'), 'autoresponderconfig', '!arconfig works');
+  assert.equal(client.commandAliases.get('bumpconfig'), undefined, 'a name that is a card of its own is not an alias');
+  assert.equal(client.commands.get('bumpconfig').data.name, 'bumpconfig');
+  assert.equal(client.commandAliases.get('questconfig'), undefined, 'the team commands have no card');
   assert.equal(formatValue('enabled', false), '**Off**');
   assert.equal(formatValue('role_id', '222222222222222222'), '<@&222222222222222222>');
   assert.equal(formatValue('x_seconds', 10), '10s');
