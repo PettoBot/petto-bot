@@ -94,6 +94,9 @@ module.exports = {
     quick: 'prize',
     start: 'prize',
   },
+  // `!giveaway edit <message id> <prize, with or without quotes> [winners] [duration]`: the prize is everything between the id and the
+  // numbers at the end, so it does not need quotes. `--prize`, `--winners` and `--duration` also work.
+  prefixRawOptions: { edit: parseEditText },
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
@@ -289,6 +292,42 @@ async function endCmd(interaction) {
 
   await engine.endGiveaway(interaction.client, giveaway);
   await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Giveaway ended.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+}
+
+const DURATION_WORD = /^\d+(?:\.\d+)?\s*[smhdw]$/i;
+const WINNERS_WORD = /^\d{1,2}$/;
+
+/** Reads the text after `!giveaway edit` into the options of the command (see `prefixRawOptions`). */
+function parseEditText(text) {
+  const tokens = require('../../handlers/prefixInteraction').tokenize(text);
+  const values = {};
+  if (tokens.length) values.message_id = tokens.shift();
+
+  const flagged = tokens.some((token) => /^--(prize|winners|duration)$/i.test(token));
+  if (flagged) {
+    const words = [];
+    let current = null;
+    for (const token of tokens) {
+      const flag = /^--(prize|winners|duration)$/i.exec(token);
+      if (flag) { current = flag[1].toLowerCase(); words.push([current, []]); } else if (current) words[words.length - 1][1].push(token);
+    }
+    for (const [name, parts] of words) {
+      const value = parts.join(' ').trim();
+      if (!value) continue;
+      if (name === 'winners') values.winners = Number(value);
+      else values[name] = value;
+    }
+    return values;
+  }
+
+  // Without flags: the end of the text is the duration (3d 4h) and the number of winners, what is left is the prize.
+  const duration = [];
+  while (tokens.length && DURATION_WORD.test(tokens[tokens.length - 1])) duration.unshift(tokens.pop());
+  if (duration.length) values.duration = duration.join(' ');
+  if (tokens.length > 1 && WINNERS_WORD.test(tokens[tokens.length - 1])) values.winners = Number(tokens.pop());
+  const prize = tokens.join(' ').trim();
+  if (prize) values.prize = prize;
+  return values;
 }
 
 async function editCmd(interaction) {

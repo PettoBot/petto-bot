@@ -24,6 +24,8 @@ All notable changes to Petto are documented here.
 
 ### Fixed
 
+- `!giveaway edit` did not work when the prize had several words and no quotes (for example `!giveaway edit <id> $10 NITRO / 1x DECO 1 30d`): the first word was taken as the prize and everything else as the duration. Now the prize is everything between the message id and the numbers at the end: the last words that look like a duration (`30d`, `3d 4h`) are the new end, and a number before it is the number of winners. Quotes and `--prize`, `--winners` and `--duration` still work.
+
 - The phone icon next to Petto's status dot did not show. The bot now connects as the Android app naming the system too (`Android`, `Discord Android`), as the real app does; `PETTO_MOBILE_CLIENT=ios` uses the iPhone app instead. About 20 seconds after it starts, the bot writes in the log how Discord sees it (for example `{"mobile":"idle"}`), so the result can be checked without a screenshot.
 
 - The bot stopped at startup because the description of `!ticket setup` was longer than the 100 characters Discord allows. It is shorter now, and a new check builds every command so a description that is too long fails before it can reach the bot.
