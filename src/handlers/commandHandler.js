@@ -120,6 +120,9 @@ function loadCommands(client) {
     target.prefixRoutes = [...(target.prefixRoutes ?? []), route];
   }
 
+  // Every command without a card of its own gets a generated `!<command>config` one. Required here because it needs the database layer.
+  require('../utils/moduleConfig').addGeneratedCards(client);
+
   logger.info(`Loaded ${client.commands.size} command(s), ${client.commandAliases.size} alias(es), ${client.commandRoutes.size} prefix route(s).`);
   return client.commands;
 }

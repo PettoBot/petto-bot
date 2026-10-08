@@ -68,6 +68,32 @@ const MODULES = {
   autothreadconfig: { aliases: [], title: 'Auto threads', command: 'autothread', sources: [{ table: 'auto_threads', list: true, only: ['channel_id', 'name_template'] }] },
   autoresponderconfig: { aliases: [], title: 'Autoresponders', command: 'autoresponder', sources: [{ table: 'auto_responders', list: true, only: ['trigger', 'match_mode', 'reply_type'] }] },
   reactionroleconfig: { aliases: [], title: 'Reaction roles', command: 'reactionrole', sources: [{ table: 'reaction_roles', list: true, only: ['channel_id', 'emoji', 'role_id', 'mode'] }] },
+  customcommandconfig: { aliases: [], title: 'Custom commands', command: 'customcommand', sources: [{ table: 'custom_commands', list: true, only: ['name', 'embed_template'] }] },
+  disablecommandconfig: { aliases: [], title: 'Disabled commands', command: 'disablecommand', sources: [{ table: 'disabled_commands', list: true, only: ['command', 'channel_id'] }] },
+  reactionconfig: { aliases: ['reactreplyconfig'], title: 'Reaction triggers', command: 'reaction', sources: [{ table: 'reaction_triggers', list: true, only: ['emoji', 'trigger', 'enabled'] }] },
+  timerconfig: { aliases: [], title: 'Timers', command: 'timer', sources: [{ table: 'auto_messages', list: true, only: ['channel_id', 'interval_ms'] }] },
+  aliasconfig: { aliases: [], title: 'Command aliases', command: 'alias', sources: [{ table: 'command_aliases', list: true, only: ['name', 'command'] }] },
+  senderconfig: { aliases: [], title: 'Sender identities', command: 'sender', sources: [{ table: 'sender_identities', list: true, only: ['feature', 'name'] }] },
+  sanctionmessageconfig: { aliases: [], title: 'Sanction messages', command: 'sanctionmessage', sources: [{ table: 'sanction_templates', list: true, only: ['type'] }] },
+  giveawaypresetconfig: { aliases: [], title: 'Giveaway presets', command: 'giveawaypreset', sources: [{ table: 'giveaway_presets', list: true, only: ['name'] }] },
+  giveawaytemplateconfig: { aliases: [], title: 'Giveaway templates', command: 'giveawaytemplate', sources: [{ table: 'giveaway_templates', list: true, only: ['name'] }] },
+  prefixconfig: { aliases: [], title: 'Prefix and language', command: 'prefix', sources: [{ table: 'guilds', only: ['prefix', 'language', 'mute_role_id', 'setup_channel_id'] }] },
+  reportconfig: { aliases: [], title: 'Reports', command: 'report', sources: [{ table: 'report_config' }] },
+  permissionconfig: {
+    aliases: [],
+    title: 'Permissions',
+    command: 'permission',
+    sources: [
+      { table: 'permission_groups', list: true, label: 'Groups', only: ['name', 'level'] },
+      { table: 'command_permission_levels', list: true, label: 'Command levels', only: ['command_name', 'required_level'] },
+    ],
+  },
+  backupconfig: { aliases: [], title: 'Backups', command: 'backup', sources: [{ table: 'guild_backups', list: true, only: ['backup_number', 'label', 'source'] }] },
+  panelconfig: { aliases: [], title: 'Button and menu panels', command: 'panel', sources: [{ table: 'component_panels', list: true, only: ['name', 'kind', 'channel_id'] }] },
+  responderconfig: { aliases: [], title: 'Button responders', command: 'responder', sources: [{ table: 'button_responders', list: true, only: ['name', 'label'] }] },
+  warnconfig: { aliases: ['escalationconfig'], title: 'Warn escalation', command: 'warn', sources: [{ table: 'warn_escalation_rules', list: true, only: ['warn_count', 'action', 'duration_ms'] }] },
+  embedconfig: { aliases: ['embedsconfig'], title: 'Saved embeds', command: 'embed', sources: [{ table: 'embed_templates', list: true, only: ['name'] }] },
+  webhookconfig: { aliases: [], title: 'Webhooks', command: 'webhook', sources: [{ table: 'managed_webhooks', list: true, only: ['name', 'channel_id', 'enabled'] }] },
   stickymessageconfig: { aliases: [], title: 'Sticky messages', command: 'stickymessage', sources: [{ table: 'sticky_messages', list: true, only: ['channel_id'] }] },
 };
 
@@ -220,7 +246,9 @@ const codeBlock = (lines, prefix) => `\`\`\`\n${lines.map((line) => `${prefix}${
 async function buildCardText(module, { guildId, prefix, commands }) {
   const command = commands?.get(module.command);
   const { config, rest } = command ? pickUsage(usagePaths(command.data.toJSON()), module.show) : { config: [], rest: [] };
-  const head = [`### ${module.title} config`, await settingsText(module, guildId)].join('\n');
+  const head = module.generated
+    ? `### ${module.title}\n-# ${command?.data.toJSON().description ?? ''}`
+    : [`### ${module.title} config`, await settingsText(module, guildId)].join('\n');
   if (!config.length && !rest.length) return `${head}\n-# Change it with \`${prefix}help ${module.command}\`.`;
 
   const render = (write) => {
@@ -238,15 +266,14 @@ async function buildCardText(module, { guildId, prefix, commands }) {
   return `${text.slice(0, MAX_TEXT - 120).replace(/\n[^\n]*$/, '')}\n\`\`\`\n-# More in \`${prefix}help ${module.command}\`.`;
 }
 
-function createConfigCommand(name) {
-  const module = MODULES[name];
+function createConfigCommand(name, module = MODULES[name]) {
   return {
     prefixOnly: true,
     aliases: module.aliases,
     configModule: module,
     data: new SlashCommandBuilder()
       .setName(name)
-      .setDescription(`Show the ${module.title.toLowerCase()} settings and how to change them.`.slice(0, 100))
+      .setDescription((module.generated ? `Show how to use ${module.command} and all its commands.` : `Show the ${module.title.toLowerCase()} settings and how to change them.`).slice(0, 100))
       .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
       .setDMPermission(false),
 
@@ -263,4 +290,28 @@ function createConfigCommand(name) {
   };
 }
 
-module.exports = { MODULES, createConfigCommand, buildCardText, formatValue, usagePaths, pickUsage, grouped };
+/**
+ * A card for every command that has none of its own, made when the commands are loaded: it shows what the command does and every way of using it.
+ * Nothing has to be listed by hand, so a new command gets its `!<command>config` the day it is added.
+ */
+function addGeneratedCards(client) {
+  const taken = (name) => client.commands.has(name) || client.commandAliases.has(name);
+  let added = 0;
+  for (const command of [...client.commands.values()]) {
+    const json = command.data?.toJSON?.();
+    const name = json?.name;
+    const card = `${name}config`;
+    if (!json || (json.type ?? 1) !== 1 || command.category === 'roleplay' || command.configModule || command.generatedCard) continue;
+    if (command.hiddenFromHelp || command.slashOnly || command.privateGuildId) continue;
+    if (name.endsWith('config') || card.length > 32 || !/^[a-z0-9_-]+$/.test(name) || taken(card)) continue;
+    const generated = createConfigCommand(card, { aliases: [], title: name.charAt(0).toUpperCase() + name.slice(1), command: name, sources: [], generated: true });
+    generated.category = command.category;
+    generated.hiddenFromHelp = true;
+    generated.generatedCard = true;
+    client.commands.set(card, generated);
+    added += 1;
+  }
+  return added;
+}
+
+module.exports = { addGeneratedCards, MODULES, createConfigCommand, buildCardText, formatValue, usagePaths, pickUsage, grouped };
