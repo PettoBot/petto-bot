@@ -32,12 +32,14 @@ function codeProblem(code) {
 function describeEffect(effect) {
   const what = (e) => [e.content ? `"${clip(e.content.replace(/\s+/g, ' '), 80)}"` : null, e.embed ? 'an embed' : null, e.components?.length ? 'buttons or menus' : null].filter(Boolean).join(' and ');
   switch (effect.type) {
-    case 'message': return `send ${what(effect)} ${effect.channelId ? `to <#${effect.channelId}>` : 'here'}`;
+    case 'message': return `send ${what(effect)} ${effect.channelId ? `to <#${effect.channelId}>` : 'here'}${effect.reply ? ' as a reply' : ''}${effect.silent ? ' without a notification' : ''}`;
     case 'dm': return `send ${what(effect)} in a direct message`;
     case 'addRole': return `give the role <@&${effect.roleId}>`;
     case 'removeRole': return `take the role <@&${effect.roleId}>`;
     case 'reaction': return `react with ${effect.emoji}`;
-    case 'deleteTrigger': return 'delete the message that used the command';
+    case 'deleteTrigger': return `delete the message that used the command${effect.delay ? ` after ${effect.delay} seconds` : ''}`;
+    case 'deleteResponse': return `delete the answer of the command after ${effect.delay} seconds`;
+    case 'removeReaction': return 'take the reaction away';
     case 'modal': return `show the form "${effect.modal.title}"`;
     case 'respond': return `answer the click with ${what(effect)}${effect.ephemeral ? ' (only for who clicked)' : ''}`;
     case 'update': return `change the message the button is on to ${what(effect)}`;

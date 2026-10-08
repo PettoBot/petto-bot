@@ -8,11 +8,12 @@ const DEFAULT_LIMITS = {
   maxMillis: 3_000, // all the time, counting the time spent waiting for the data
   maxCpuMillis: 250, // the time spent running the code itself, without the waiting
   maxStoreCalls: 25, // reads and writes of the stored data
+  maxLookups: 10, // members, roles and channels read with getMember, getRole and getChannel
   maxLoopRuns: 1_000, // the turns of every range together
   maxOutput: 20_000, // characters printed while running; the bot cuts a message to Discord's limit later
   maxValueSize: 20_000, // the longest text a function may make
   maxListSize: 2_000,
-  effects: { message: 5, dm: 2, addRole: 5, removeRole: 5, reaction: 5, deleteTrigger: 1, respond: 1, update: 1, modal: 1, removeReaction: 1 },
+  effects: { message: 5, dm: 2, addRole: 5, removeRole: 5, reaction: 5, deleteTrigger: 1, deleteResponse: 1, respond: 1, update: 1, modal: 1, removeReaction: 1 },
 };
 
 class Scope {
@@ -33,6 +34,7 @@ async function run(codeOrTree, data = {}, options = {}) {
   let steps = 0;
   let waitedMillis = 0; // time spent waiting for something outside the code, that does not count as running it
   let storeCalls = 0;
+  let lookups = 0;
   let loopRuns = 0;
   let output = '';
   const effectList = [];
@@ -48,6 +50,15 @@ async function run(codeOrTree, data = {}, options = {}) {
         if (storeCalls > limits.maxStoreCalls) throw Object.assign(new Error(`Too many reads and writes of stored data: at most ${limits.maxStoreCalls} per run`), { limit: true });
         const before = now();
         try { return await options.store[operation](...args); } finally { waitedMillis += now() - before; }
+      },
+    } : null,
+    // Members, roles and channels of the server, read (never changed) through `options.lookup`, like the stored data.
+    lookup: options.lookup ? {
+      async call(kind, id) {
+        lookups += 1;
+        if (lookups > limits.maxLookups) throw Object.assign(new Error(`Too many members, roles or channels read: at most ${limits.maxLookups} per run`), { limit: true });
+        const before = now();
+        try { return await options.lookup[kind](id); } finally { waitedMillis += now() - before; }
       },
     } : null,
     effects: {

@@ -377,7 +377,9 @@ def('complexMessage', 0, 8, (env, ...pairs) => {
       const emojis = list(pairs[i + 1], 'a list of emojis like cslice "🦋" "🎀"').map((emoji) => emojiOf(emoji));
       if (!emojis.length || emojis.length > 5) throw new Error('A message gets from 1 to 5 reactions');
       message.reactions = [...new Set(emojis)];
-    } else throw new Error(`complexMessage does not know "${key}". Use content, embed, components or reactions`);
+    } else if (key === 'silent') { if (isTruthy(pairs[i + 1])) message.silent = true; }
+    else if (key === 'reply') { if (isTruthy(pairs[i + 1])) message.reply = true; }
+    else throw new Error(`complexMessage does not know "${key}". Use content, embed, components, reactions, silent or reply`);
   }
   COMPLEX.add(message);
   return message;
@@ -386,7 +388,7 @@ def('complexMessage', 0, 8, (env, ...pairs) => {
 // ── Effects: what the code asks the bot to do ───────────────────────────────
 function messageOf(value) {
   if (EMBEDS.has(value)) return { embed: value };
-  if (COMPLEX.has(value)) return Object.fromEntries(Object.entries({ content: value.content, embed: value.embed, components: value.components, reactions: value.reactions }).filter(([, part]) => part !== undefined));
+  if (COMPLEX.has(value)) return Object.fromEntries(Object.entries({ content: value.content, embed: value.embed, components: value.components, reactions: value.reactions, silent: value.silent, reply: value.reply }).filter(([, part]) => part !== undefined));
   if (typeof value === 'string' || typeof value === 'number') return { content: limitText(value, 2000, 'A message') };
   throw new Error('A message is a text, or something made with cembed or complexMessage');
 }
@@ -445,7 +447,19 @@ def('removeReaction', 0, 0, (env) => {
   env.effects.add('removeReaction', {});
   return null;
 });
-def('deleteTrigger', 0, 0, (env) => { env.effects.add('deleteTrigger', {}); return null; });
+// A delay (in seconds, up to 5 minutes) deletes the message a while later, like YAGPDB's deleteTrigger.
+const delayOf = (value) => {
+  if (value === undefined || value === null) return 0;
+  const seconds = Math.trunc(num(value));
+  if (seconds < 0 || seconds > 300) throw new Error('The delay is from 0 to 300 seconds');
+  return seconds;
+};
+def('deleteTrigger', 0, 1, (env, delay) => { env.effects.add('deleteTrigger', { delay: delayOf(delay) }); return null; });
+def('deleteResponse', 0, 1, (env, delay) => {
+  if (env.data?.Trigger !== undefined && env.data?.Trigger !== 'command') throw new Error('deleteResponse only works when the command is typed, not in a button, a menu, a form or a reaction');
+  env.effects.add('deleteResponse', { delay: delay === undefined || delay === null ? 10 : delayOf(delay) });
+  return null;
+});
 
 // ── Stored data: what the commands of a server remember between uses ───────
 const KEY_SHAPE = /^[A-Za-z0-9_.:-]{1,100}$/;
@@ -502,5 +516,205 @@ def('dbTop', 2, 2, async (env, key, count) => {
   return needStore(env).call('top', storeKey(key), limit);
 });
 def('dbKeys', 0, 2, async (env, prefix, user) => needStore(env).call('keys', prefix === undefined || prefix === null ? '' : storeKey(prefix), storeUser(user)));
+
+// ── More text ───────────────────────────────────────────────────────────────
+// Many of these have the names YAGPDB uses, so code written for it is easier to bring over.
+const codePoints = (value) => [...text(value)];
+def('toString', 1, 1, (env, value) => text(value));
+def('toLower', 1, 1, (env, value) => text(value).toLowerCase());
+def('toUpper', 1, 1, (env, value) => text(value).toUpperCase());
+def('trimSpace', 1, 1, (env, value) => text(value).trim());
+def('joinStr', 1, null, (env, separator, ...values) => values.flatMap((value) => (Array.isArray(value) ? value : [value])).map(text).join(text(separator)));
+def('trimPrefix', 2, 2, (env, value, prefix) => { const t = text(value); const p = text(prefix); return p && t.startsWith(p) ? t.slice(p.length) : t; });
+def('trimSuffix', 2, 2, (env, value, suffix) => { const t = text(value); const p = text(suffix); return p && t.endsWith(p) ? t.slice(0, -p.length) : t; });
+def('inFold', 2, 2, (env, haystack, needle) => text(haystack).toLowerCase().includes(text(needle).toLowerCase()));
+def('capitalize', 1, 1, (env, value) => { const chars = codePoints(value); return chars.length ? chars[0].toUpperCase() + chars.slice(1).join('') : ''; });
+def('repeat', 2, 2, (env, value, times) => {
+  const t = text(value); const n = Math.trunc(num(times));
+  if (n < 0) throw new Error('repeat needs 0 or more times');
+  if (t.length * n > 20_000) throw new Error('A text got too long');
+  return t.repeat(n);
+});
+def('truncate', 2, 3, (env, value, length, end) => {
+  const chars = codePoints(value); const n = Math.max(0, Math.trunc(num(length)));
+  if (chars.length <= n) return chars.join('');
+  const tail = end === undefined ? '…' : text(end);
+  return chars.slice(0, Math.max(0, n - [...tail].length)).join('') + tail;
+});
+const pad = (side) => (env, value, length, fill) => {
+  const t = text(value); const n = Math.trunc(num(length)); const f = fill === undefined ? ' ' : text(fill);
+  if (n > 1000) throw new Error('A padded text holds at most 1000 characters');
+  if (!f) return t;
+  const missing = n - [...t].length;
+  if (missing <= 0) return t;
+  const padding = f.repeat(Math.ceil(missing / [...f].length)).slice(0, missing);
+  return side === 'left' ? padding + t : t + padding;
+};
+def('padLeft', 2, 3, pad('left'));
+def('padRight', 2, 3, pad('right'));
+def('count', 2, 2, (env, haystack, needle) => { const n = text(needle); return n ? text(haystack).split(n).length - 1 : 0; });
+def('indexOf', 2, 2, (env, base, value) => {
+  if (Array.isArray(base)) return base.findIndex((item) => equals(item, value));
+  const t = text(base); const at = t.indexOf(text(value));
+  return at < 0 ? -1 : [...t.slice(0, at)].length;
+});
+def('reverse', 1, 1, (env, value) => (Array.isArray(value) ? [...value].reverse() : codePoints(value).reverse().join('')));
+def('urlescape', 1, 1, (env, value) => encodeURIComponent(text(value)));
+def('urlunescape', 1, 1, (env, value) => { try { return decodeURIComponent(text(value)); } catch { throw new Error('That text is not a valid escaped link'); } });
+def('escapeMarkdown', 1, 1, (env, value) => text(value).replace(/([\\*_~`|>#[\]()-])/g, '\\$1'));
+def('formatNumber', 1, 2, (env, value, decimals) => {
+  const n = num(value);
+  const places = decimals === undefined ? (Number.isInteger(n) ? 0 : 2) : Math.min(10, Math.max(0, Math.trunc(num(decimals))));
+  const [whole, part] = Math.abs(n).toFixed(places).split('.');
+  return `${n < 0 ? '-' : ''}${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}${part ? `.${part}` : ''}`;
+});
+
+// ── More numbers ────────────────────────────────────────────────────────────
+def('fdiv', 2, 2, (env, a, b) => { if (num(b) === 0) throw new Error('Cannot divide by zero'); return num(a) / num(b); });
+def('sqrt', 1, 1, (env, value) => { const n = num(value); if (n < 0) throw new Error('sqrt needs a number of 0 or more'); return Math.sqrt(n); });
+def('cbrt', 1, 1, (env, value) => Math.cbrt(num(value)));
+def('log', 1, 2, (env, value, base) => {
+  const n = num(value); if (n <= 0) throw new Error('log needs a number above 0');
+  if (base === undefined) return Math.log(n);
+  const b = num(base); if (b <= 0 || b === 1) throw new Error('The base of log is above 0 and not 1');
+  return Math.log(n) / Math.log(b);
+});
+def('roundCeil', 1, 1, (env, value) => Math.ceil(num(value)));
+def('roundFloor', 1, 1, (env, value) => Math.floor(num(value)));
+def('roundEven', 1, 1, (env, value) => { const n = num(value); const r = Math.round(n); return Math.abs(n % 1) === 0.5 && r % 2 !== 0 ? r - Math.sign(n) : r; });
+def('clamp', 3, 3, (env, value, low, high) => Math.min(Math.max(num(value), num(low)), num(high)));
+def('toInt64', 1, 1, (env, value) => { const n = typeof value === 'boolean' ? Number(value) : Number(String(value ?? '').trim()); return Number.isFinite(n) ? Math.trunc(n) : 0; });
+
+// ── Time ────────────────────────────────────────────────────────────────────
+const DISCORD_EPOCH = 1420070400000n;
+const UNITS = { w: 604800, d: 86400, h: 3600, m: 60, s: 1 };
+def('currentTime', 0, 0, (env) => Math.floor(env.now() / 1000));
+/** A duration such as "1h30m", "2d", "90s" or "1w" in seconds. A number is already seconds. 0 when it is not one. */
+def('toDuration', 1, 1, (env, value) => {
+  if (typeof value === 'number') return Math.max(0, Math.trunc(value));
+  const raw = text(value).trim().toLowerCase().replace(/\s+/g, '');
+  if (/^\d+$/.test(raw)) return Number(raw);
+  if (!/^(\d+(w|d|h|m|s))+$/.test(raw) || raw.length > 40) return 0;
+  let total = 0;
+  for (const [, amount, unit] of raw.matchAll(/(\d+)([wdhms])/g)) total += Number(amount) * UNITS[unit];
+  return Math.min(total, 315_360_000);
+});
+def('humanizeTimeSince', 1, 1, (env, seconds) => functions.get('humanizeDuration').run(env, Math.floor(env.now() / 1000) - Math.trunc(num(seconds))));
+/** When a Discord ID was made, in unix seconds. */
+def('snowflakeToTime', 1, 1, (env, id) => Number(((BigInt(snowflake(id, 'an ID')) >> 22n) + DISCORD_EPOCH) / 1000n));
+def('newDate', 3, 6, (env, year, month, day, hour = 0, minute = 0, second = 0) => {
+  const ms = Date.UTC(Math.trunc(num(year)), Math.trunc(num(month)) - 1, Math.trunc(num(day)), Math.trunc(num(hour)), Math.trunc(num(minute)), Math.trunc(num(second)));
+  if (!Number.isFinite(ms)) throw new Error('That date does not exist');
+  return Math.floor(ms / 1000);
+});
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const shifted = (seconds, offset) => {
+  const hours = offset === undefined ? 0 : num(offset);
+  if (hours < -14 || hours > 14) throw new Error('The time zone is from -14 to 14 hours');
+  return new Date((Math.trunc(num(seconds)) + Math.round(hours * 3600)) * 1000);
+};
+/** A date as text with a layout of YYYY, MM, DD, HH, mm, ss, MMMM (month) and dddd (day), in UTC or with an offset in hours. */
+def('formatTime', 1, 3, (env, seconds, layout, offset) => {
+  const date = shifted(seconds, offset);
+  if (Number.isNaN(date.getTime())) throw new Error('That time does not exist');
+  const two = (n) => String(n).padStart(2, '0');
+  const parts = {
+    YYYY: String(date.getUTCFullYear()), YY: String(date.getUTCFullYear()).slice(-2), MMMM: MONTHS[date.getUTCMonth()], MMM: MONTHS[date.getUTCMonth()].slice(0, 3),
+    MM: two(date.getUTCMonth() + 1), M: String(date.getUTCMonth() + 1), DD: two(date.getUTCDate()), D: String(date.getUTCDate()),
+    dddd: DAYS[date.getUTCDay()], ddd: DAYS[date.getUTCDay()].slice(0, 3), HH: two(date.getUTCHours()), H: String(date.getUTCHours()),
+    hh: two(date.getUTCHours() % 12 || 12), mm: two(date.getUTCMinutes()), ss: two(date.getUTCSeconds()), A: date.getUTCHours() < 12 ? 'AM' : 'PM',
+  };
+  const format = layout === undefined ? 'YYYY-MM-DD HH:mm' : text(layout);
+  if (format.length > 100) throw new Error('The layout holds at most 100 characters');
+  return format.replace(/YYYY|YY|MMMM|MMM|MM|M|DD|D|dddd|ddd|HH|H|hh|mm|ss|A/g, (token) => parts[token]);
+});
+def('weekday', 1, 2, (env, seconds, offset) => shifted(seconds, offset).getUTCDay());
+
+// ── More lists and maps ─────────────────────────────────────────────────────
+const plainMap = (value, what = 'a map') => { if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`Expected ${what}, got ${typeOf(value)}`); return value; };
+const compare = (a, b) => {
+  if (typeof a === 'number' && typeof b === 'number') return a - b;
+  if (typeof a === 'string' && typeof b === 'string') return a.localeCompare(b);
+  if ((a === null || a === undefined) && (b === null || b === undefined)) return 0;
+  if (a === null || a === undefined) return 1;
+  if (b === null || b === undefined) return -1;
+  throw new Error(`Cannot compare ${typeOf(a)} with ${typeOf(b)}`);
+};
+const direction = (order) => {
+  if (order === undefined || order === null) return 1;
+  const o = text(order).toLowerCase();
+  if (o === 'asc') return 1;
+  if (o === 'desc') return -1;
+  throw new Error('The order is "asc" or "desc"');
+};
+def('sort', 1, 2, (env, items, order) => { const d = direction(order); return [...list(items)].sort((a, b) => d * compare(a, b)); });
+def('sortBy', 2, 3, (env, items, key, order) => {
+  const d = direction(order); const k = text(key);
+  return [...list(items)].sort((a, b) => d * compare(a && typeof a === 'object' ? a[k] : null, b && typeof b === 'object' ? b[k] : null));
+});
+def('uniq', 1, 1, (env, items) => list(items).filter((item, i, all) => all.findIndex((other) => equals(other, item)) === i));
+def('first', 1, 1, (env, items) => { const l = list(items); return l.length ? l[0] : null; });
+def('last', 1, 1, (env, items) => { const l = list(items); return l.length ? l[l.length - 1] : null; });
+def('sum', 1, 1, (env, items) => list(items).reduce((total, value) => total + num(value), 0));
+def('randItem', 1, 1, (env, items) => { const l = list(items); return l.length ? l[Math.floor(env.rng() * l.length)] : null; });
+def('concat', 1, 20, (env, ...lists) => lists.flatMap((value) => list(value)));
+def('hasKey', 2, 2, (env, map, key) => { const k = text(key); return !FORBIDDEN_KEYS.has(k) && Object.prototype.hasOwnProperty.call(plainMap(map), k); });
+def('setKey', 3, 3, (env, map, key, value) => { const k = text(key); if (FORBIDDEN_KEYS.has(k)) throw new Error(`"${k}" cannot be a key`); return { ...plainMap(map), [k]: value }; });
+def('delKey', 2, 2, (env, map, key) => { const copy = { ...plainMap(map) }; delete copy[text(key)]; return copy; });
+def('merge', 1, 20, (env, ...maps) => Object.assign({}, ...maps.map((map) => plainMap(map))));
+def('values', 1, 1, (env, map) => { const m = plainMap(map); return Object.keys(m).sort().map((key) => m[key]); });
+def('kindOf', 1, 1, (env, value) => ({ string: 'text', number: 'number', boolean: 'bool' })[typeof value] ?? typeOf(value));
+def('json', 1, 1, (env, value) => { const out = JSON.stringify(value ?? null); if (out.length > 20_000) throw new Error('A text got too long'); return out; });
+/** Turns a JSON text back into values, with the same rules as stored data: not too deep, not too big, no special keys. */
+def('parseJson', 1, 1, (env, value) => {
+  const raw = text(value);
+  if (raw.length > 20_000) throw new Error('The JSON text is too long');
+  let parsed;
+  try { parsed = JSON.parse(raw); } catch { throw new Error('That text is not valid JSON'); }
+  const clean = (item, depth) => {
+    if (depth > 6) throw new Error('The JSON goes too deep');
+    if (Array.isArray(item)) return item.slice(0, 2000).map((x) => clean(x, depth + 1));
+    if (item && typeof item === 'object') { const out = {}; for (const key of Object.keys(item)) if (!FORBIDDEN_KEYS.has(key)) out[key] = clean(item[key], depth + 1); return out; }
+    return item;
+  };
+  return clean(parsed, 0);
+});
+
+// ── IDs from mentions ───────────────────────────────────────────────────────
+// What people type after a command is text: "<@123…>", "<@!123…>" or the ID. These give the ID, or nil when it is not one.
+const idFrom = (pattern) => (env, value) => { const m = pattern.exec(text(value).trim()); return m ? m[1] : null; };
+def('userID', 1, 1, idFrom(/^(?:<@!?)?(\d{15,22})>?$/));
+def('roleID', 1, 1, idFrom(/^(?:<@&)?(\d{15,22})>?$/));
+def('channelID', 1, 1, idFrom(/^(?:<#)?(\d{15,22})>?$/));
+
+// ── Members, roles and channels of the server (read only) ───────────────────
+function needLookup(env) {
+  if (!env.lookup) throw new Error('Members, roles and channels cannot be read here');
+  return env.lookup;
+}
+def('getMember', 1, 1, async (env, id) => { const value = idFrom(/^(?:<@!?)?(\d{15,22})>?$/)(env, id); return value ? needLookup(env).call('member', value) : null; });
+def('getRole', 1, 1, async (env, id) => { const value = idFrom(/^(?:<@&)?(\d{15,22})>?$/)(env, id); return value ? needLookup(env).call('role', value) : null; });
+def('getChannel', 1, 1, async (env, id) => { const value = idFrom(/^(?:<#)?(\d{15,22})>?$/)(env, id); return value ? needLookup(env).call('channel', value) : null; });
+def('targetHasRole', 2, 2, async (env, user, role) => {
+  const roleId = snowflake(idFrom(/^(?:<@&)?(\d{15,22})>?$/)(env, role) ?? '', 'a role');
+  const member = await functions.get('getMember').run(env, user);
+  return Boolean(member && (member.RoleIDs ?? []).includes(roleId));
+});
+
+// ── More actions ────────────────────────────────────────────────────────────
+def('addReactions', 1, 5, (env, ...emojis) => {
+  for (const emoji of emojis.flatMap((value) => (Array.isArray(value) ? value : [value]))) functions.get('addReaction').run(env, emoji);
+  return null;
+});
+
+// ── More stored data ────────────────────────────────────────────────────────
+def('dbCount', 0, 2, async (env, prefix, user) => needStore(env).call('count', prefix === undefined || prefix === null ? '' : storeKey(prefix), storeUser(user)));
+def('dbRank', 2, 2, async (env, key, user) => needStore(env).call('rank', storeKey(key), snowflake(user, 'the user')));
+def('dbBottom', 2, 2, async (env, key, count) => {
+  const limit = Math.trunc(num(count));
+  if (limit < 1 || limit > 25) throw new Error('dbBottom gives from 1 to 25 members');
+  return needStore(env).call('bottom', storeKey(key), limit);
+});
 
 module.exports = { functions, EMBEDS, COMPLEX, BUTTONS, SELECTS, ROWS };

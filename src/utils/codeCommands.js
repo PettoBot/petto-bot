@@ -23,29 +23,102 @@ function canWriteCode() {
   return !config.codeCommandsDisabled;
 }
 
-/** The data the code can read (docs: data.md), taken from the message that used the command. */
-function buildData(message, commandName, argText, prefix) {
-  const { guild, channel, author, member } = message;
+/** When a Discord ID was made, in unix seconds. */
+const createdAt = (id) => { try { return Number(((BigInt(id) >> 22n) + 1420070400000n) / 1000n); } catch { return null; } };
+const seconds = (ms) => (ms ? Math.floor(ms / 1000) : null);
+const CHANNEL_TYPES = { 0: 'text', 2: 'voice', 4: 'category', 5: 'announcement', 10: 'thread', 11: 'thread', 12: 'thread', 13: 'stage', 15: 'forum', 16: 'media' };
+
+/** A user (and their member, when there is one) the way the code reads it, in .User, .Mentions and getMember. */
+function userData(user, member) {
   return {
-    User: {
-      ID: author.id, Username: author.username, GlobalName: author.globalName ?? null, Mention: `<@${author.id}>`,
-      Avatar: author.displayAvatarURL?.({ extension: 'png', size: 256 }) ?? null, IsBot: Boolean(author.bot),
+    ID: user.id, Username: user.username, GlobalName: user.globalName ?? null, Mention: `<@${user.id}>`,
+    Avatar: user.displayAvatarURL?.({ extension: 'png', size: 256 }) ?? null, IsBot: Boolean(user.bot), CreatedAt: createdAt(user.id),
+    ...(member !== undefined ? { DisplayName: member?.displayName ?? user.globalName ?? user.username, Nick: member?.nickname ?? null } : {}),
+  };
+}
+
+/** A member the way getMember gives it. */
+function memberData(member) {
+  const { guild, user } = member;
+  return {
+    ...userData(user, member),
+    RoleIDs: [...member.roles.cache.keys()].filter((id) => id !== guild.id),
+    JoinedAt: seconds(member.joinedTimestamp),
+    Color: member.displayHexColor && member.displayHexColor !== '#000000' ? member.displayHexColor : null,
+    HighestRoleID: member.roles.highest && member.roles.highest.id !== guild.id ? member.roles.highest.id : null,
+    BoostingSince: seconds(member.premiumSinceTimestamp),
+    IsOwner: guild.ownerId === user.id,
+  };
+}
+
+function roleData(role) {
+  return {
+    ID: role.id, Name: role.name, Mention: `<@&${role.id}>`, Color: role.hexColor && role.hexColor !== '#000000' ? role.hexColor : null,
+    Position: role.position, Mentionable: Boolean(role.mentionable), Hoist: Boolean(role.hoist), Managed: Boolean(role.managed),
+    MemberCount: role.members?.size ?? null, CreatedAt: createdAt(role.id),
+  };
+}
+
+function channelData(channel) {
+  return {
+    ID: channel.id, Name: channel.name ?? null, Mention: `<#${channel.id}>`, Topic: channel.topic ?? null, NSFW: Boolean(channel.nsfw),
+    ParentID: channel.parentId ?? null, Type: CHANNEL_TYPES[channel.type] ?? 'other', IsThread: Boolean(channel.isThread?.()), CreatedAt: createdAt(channel.id),
+  };
+}
+
+/**
+ * What getMember, getRole and getChannel can read: members, roles and channels of this server only, never of another one.
+ * Members come from the cache first and are fetched when they are not there; nothing is ever changed.
+ */
+function lookupFor(guild) {
+  return {
+    async member(id) {
+      const member = guild.members?.cache?.get(id) ?? await guild.members?.fetch?.({ user: id, force: false }).catch(() => null) ?? null;
+      return member ? memberData(member) : null;
     },
+    async role(id) { const role = guild.roles?.cache?.get(id); return role && role.id !== guild.id ? roleData(role) : null; },
+    async channel(id) { const channel = guild.channels?.cache?.get(id); return channel ? channelData(channel) : null; },
+  };
+}
+
+/** The data the code can read (docs: data.md), taken from the message that used the command. */
+function buildData(message, commandName, argText, prefix, serverPrefix = prefix) {
+  const { guild, channel, author, member } = message;
+  const mentions = message.mentions ?? {};
+  return {
+    User: userData(author),
     Member: {
       Nick: member?.nickname ?? null, DisplayName: member?.displayName ?? author.username,
       RoleIDs: member ? [...member.roles.cache.keys()].filter((id) => id !== guild.id) : [],
       JoinedAt: member?.joinedTimestamp ? Math.floor(member.joinedTimestamp / 1000) : null,
+      Avatar: member?.displayAvatarURL?.({ extension: 'png', size: 256 }) ?? author.displayAvatarURL?.({ extension: 'png', size: 256 }) ?? null,
+      Color: member?.displayHexColor && member.displayHexColor !== '#000000' ? member.displayHexColor : null,
+      HighestRoleID: member?.roles?.highest && member.roles.highest.id !== guild.id ? member.roles.highest.id : null,
+      BoostingSince: seconds(member?.premiumSinceTimestamp),
+      IsOwner: guild.ownerId === author.id,
     },
-    Guild: { ID: guild.id, Name: guild.name, MemberCount: guild.memberCount ?? null, Icon: guild.iconURL?.({ extension: 'png', size: 256 }) ?? null },
-    Channel: { ID: channel.id, Name: channel.name ?? null, Mention: `<#${channel.id}>` },
+    Guild: {
+      ID: guild.id, Name: guild.name, MemberCount: guild.memberCount ?? null, Icon: guild.iconURL?.({ extension: 'png', size: 256 }) ?? null,
+      OwnerID: guild.ownerId ?? null, CreatedAt: createdAt(guild.id), BoostCount: guild.premiumSubscriptionCount ?? 0, BoostTier: guild.premiumTier ?? 0,
+      Banner: guild.bannerURL?.({ extension: 'png', size: 1024 }) ?? null, Description: guild.description ?? null,
+      RoleCount: guild.roles?.cache ? Math.max(0, guild.roles.cache.size - 1) : null, ChannelCount: guild.channels?.cache?.size ?? null, EmojiCount: guild.emojis?.cache?.size ?? null,
+    },
+    Channel: { ID: channel.id, Name: channel.name ?? null, Mention: `<#${channel.id}>`, Topic: channel.topic ?? null, NSFW: Boolean(channel.nsfw), ParentID: channel.parentId ?? null, Type: CHANNEL_TYPES[channel.type] ?? 'other', IsThread: Boolean(channel.isThread?.()) },
     Message: {
-      ID: message.id, Content: message.content ?? '', Link: message.url ?? null,
+      ID: message.id, Content: message.content ?? '', Link: message.url ?? null, CreatedAt: createdAt(message.id),
       Embeds: (message.embeds ?? []).slice(0, 10).map((embed) => ({ Title: embed.title ?? null, Description: embed.description ?? null, Footer: embed.footer?.text ?? null, Author: embed.author?.name ?? null, AuthorIcon: embed.author?.iconURL ?? embed.author?.icon_url ?? null, FooterIcon: embed.footer?.iconURL ?? embed.footer?.icon_url ?? null, Thumbnail: embed.thumbnail?.url ?? null, Image: embed.image?.url ?? null, Color: embed.color ?? null })),
+      Attachments: [...(message.attachments?.values?.() ?? [])].slice(0, 10).map((file) => ({ URL: file.url, Name: file.name ?? null, Size: file.size ?? null, ContentType: file.contentType ?? null })),
+      ReplyToID: message.reference?.messageId ?? null,
     },
+    Mentions: [...(mentions.users?.values?.() ?? [])].slice(0, 25).map((user) => userData(user, mentions.members?.get?.(user.id) ?? null)),
+    MentionedRoles: [...(mentions.roles?.keys?.() ?? [])].slice(0, 25),
+    MentionedChannels: [...(mentions.channels?.keys?.() ?? [])].slice(0, 25),
     Args: tokenize(argText ?? ''),
     RawArgs: argText ?? '',
     Cmd: commandName,
     Prefix: prefix,
+    ServerPrefix: serverPrefix || prefix,
+    Now: Math.floor(Date.now() / 1000),
     Trigger: 'command',
     Button: null,
     Values: [],
@@ -131,6 +204,7 @@ function toPayload(action, guild, authorId, commandName = null) {
   if (action.content) payload.content = clip(action.content);
   if (action.embed) payload.embeds = [new EmbedBuilder(action.embed)];
   if (action.components?.length && commandName) payload.components = buildComponents(action.components, commandName);
+  if (action.silent) payload.flags = MessageFlags.SuppressNotifications;
   return payload;
 }
 
@@ -185,7 +259,11 @@ async function applyEffects(message, effects, commandName = null) {
         const memberCan = channel.permissionsFor(member);
         if (!botCan?.has(PermissionFlagsBits.SendMessages) || !botCan.has(PermissionFlagsBits.ViewChannel)) { skipped.push(`a message to #${channel.name}, Petto cannot send there`); continue; }
         if (!memberCan?.has(PermissionFlagsBits.SendMessages)) { skipped.push(`a message to #${channel.name}, you cannot send there`); continue; }
-        const sent = await channel.send(toPayload(effect, guild, author.id, commandName));
+        const payload = toPayload(effect, guild, author.id, commandName);
+        // "reply" answers the message that used the command, when the message goes to the same channel.
+        const sent = effect.reply && channel.id === message.channel?.id && typeof message.reply === 'function' && message.id !== '0'
+          ? await message.reply(payload)
+          : await channel.send(payload);
         if (effect.reactions?.length && commandName && sent) await watchReactions(sent, effect.reactions, commandName, guild);
       } else if (effect.type === 'dm') {
         await author.send({ ...toPayload(effect, guild, author.id), allowedMentions: { parse: [] } }).catch(() => skipped.push('a direct message, you have them closed'));
@@ -202,9 +280,11 @@ async function applyEffects(message, effects, commandName = null) {
       skipped.push(effect.type);
     }
   }
-  // The trigger goes last, so the answer can still reply to it.
-  if (effects.some((effect) => effect.type === 'deleteTrigger') && guild.members.me?.permissionsIn(message.channel).has(PermissionFlagsBits.ManageMessages)) {
-    await message.delete().catch(() => {});
+  // The trigger goes last, so the answer can still reply to it. A delay deletes it a while later.
+  const deleteTrigger = effects.find((effect) => effect.type === 'deleteTrigger');
+  if (deleteTrigger && guild.members.me?.permissionsIn(message.channel).has(PermissionFlagsBits.ManageMessages)) {
+    if (deleteTrigger.delay) setTimeout(() => message.delete().catch(() => {}), deleteTrigger.delay * 1000).unref?.();
+    else await message.delete().catch(() => {});
   }
   return skipped;
 }
@@ -231,13 +311,23 @@ function memoryStore() {
         .sort((a, b) => b[1] - a[1]).slice(0, limit).map(([[user], value]) => ({ UserID: user, Value: value }));
     },
     async keys(prefix, user) { return [...data.keys()].map((k) => k.split('\u0000')).filter(([u, name]) => u === user && name.startsWith(prefix)).map(([, name]) => name).sort().slice(0, 100); },
+    async bottom(key, limit) {
+      return [...data.entries()].map(([k, value]) => [k.split('\u0000'), value]).filter(([[user, name], value]) => user && name === key && typeof value === 'number')
+        .sort((a, b) => a[1] - b[1]).slice(0, limit).map(([[user], value]) => ({ UserID: user, Value: value }));
+    },
+    async rank(key, user) {
+      const mine = data.get(id(key, user));
+      if (typeof mine !== 'number') return null;
+      return [...data.entries()].filter(([k, value]) => { const [u, name] = k.split('\u0000'); return u && name === key && typeof value === 'number' && value > mine; }).length + 1;
+    },
+    async count(prefix, user) { return [...data.keys()].map((k) => k.split('\u0000')).filter(([u, name]) => u === user && name.startsWith(prefix)).length; },
   };
 }
 
 const mistakeText = (error) => `⚠️ The code of this command has a mistake: ${error.detail ?? error.message}\nA server admin can fix it.`;
 
 /** Runs the code of a custom command for the message that used it. Returns true when the message was handled. */
-async function runCodeCommand(message, row, argText, prefix) {
+async function runCodeCommand(message, row, argText, prefix, serverPrefix = prefix) {
   const key = `${message.guild.id}:${message.author.id}:${row.name}`;
   const last = cooldowns.get(key) ?? 0;
   if (Date.now() - last < COOLDOWN_MS) return true;
@@ -246,7 +336,7 @@ async function runCodeCommand(message, row, argText, prefix) {
 
   let result;
   try {
-    result = await run(row.code, buildData(message, row.name, argText, prefix), { store: commandData.forGuild(message.guild.id) });
+    result = await run(row.code, buildData(message, row.name, argText, prefix, serverPrefix), { store: commandData.forGuild(message.guild.id), lookup: lookupFor(message.guild) });
   } catch (error) {
     if (error instanceof PettoCodeError) {
       await message.reply({ content: clip(mistakeText(error)), allowedMentions: { parse: [], repliedUser: false } }).catch(() => {});
@@ -256,7 +346,9 @@ async function runCodeCommand(message, row, argText, prefix) {
     return true;
   }
   const text = result.output.trim();
-  if (text) await message.reply({ content: clip(text), allowedMentions: allowedMentionsFor(text, message.guild, message.author.id) }).catch(() => {});
+  const answer = text ? await message.reply({ content: clip(text), allowedMentions: allowedMentionsFor(text, message.guild, message.author.id) }).catch(() => null) : null;
+  const deleteResponse = result.effects.find((effect) => effect.type === 'deleteResponse');
+  if (answer && deleteResponse) setTimeout(() => answer.delete().catch(() => {}), deleteResponse.delay * 1000).unref?.();
   const skipped = await applyEffects(message, result.effects, row.name);
   if (skipped.length) {
     await message.reply({ content: clip(`⚠️ Some actions were not done: ${[...new Set(skipped)].join('; ')}.`), allowedMentions: { parse: [], repliedUser: false } }).catch(() => {});
@@ -295,7 +387,7 @@ async function runComponent(interaction, row, parsed) {
 
   let result;
   try {
-    result = await run(row.code, data, { store: commandData.forGuild(guild.id), limits: { maxMillis: 2000 } });
+    result = await run(row.code, data, { store: commandData.forGuild(guild.id), lookup: lookupFor(guild), limits: { maxMillis: 2000 } });
   } catch (error) {
     if (error instanceof PettoCodeError) return ephemeralReply(mistakeText(error));
     logger.error(`Custom command "${row.name}" crashed on a component in guild ${guild.id}:`, error);
@@ -352,7 +444,7 @@ async function runReaction(reaction, user, row, emojiText) {
   const data = { ...buildData(source, row.name, '', '!'), Trigger: 'reaction', Reaction: { Emoji: emojiText, Added: true }, Button: { ID: '', Data: '' }, Values: [] };
   let result;
   try {
-    result = await run(row.code, data, { store: commandData.forGuild(guild.id), limits: { maxMillis: 2000 } });
+    result = await run(row.code, data, { store: commandData.forGuild(guild.id), lookup: lookupFor(guild), limits: { maxMillis: 2000 } });
   } catch (error) {
     if (error instanceof PettoCodeError) logger.warn(`Custom command "${row.name}" stopped on a reaction in guild ${guild.id}: ${mistakeText(error)}`);
     else logger.error(`Custom command "${row.name}" crashed on a reaction in guild ${guild.id}:`, error);
@@ -420,4 +512,4 @@ function decodeShare(text) {
   return { name, description: typeof data.d === 'string' ? data.d.slice(0, 200) : '', code: data.c };
 }
 
-module.exports = { COMPONENT_PREFIX, parseComponentId, componentId, buildComponents, buildModal, runComponent, runReaction, normalizeEmoji, matchEmoji, memoryStore, canWriteCode, buildData, runCodeCommand, applyEffects, extractCode, rawAfter, encodeShare, decodeShare, allowedMentionsFor, check, COOLDOWN_MS, RISKY_PERMISSIONS };
+module.exports = { lookupFor, userData, memberData, roleData, channelData, COMPONENT_PREFIX, parseComponentId, componentId, buildComponents, buildModal, runComponent, runReaction, normalizeEmoji, matchEmoji, memoryStore, canWriteCode, buildData, runCodeCommand, applyEffects, extractCode, rawAfter, encodeShare, decodeShare, allowedMentionsFor, check, COOLDOWN_MS, RISKY_PERMISSIONS };

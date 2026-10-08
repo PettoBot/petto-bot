@@ -308,6 +308,58 @@ I choose **{{ index .Args (randInt (len .Args)) }}**.`,
   "color" "#ed4245") }}
 {{ respond "Thanks, the team will look at it." true }}`,
   },
+  {
+    id: 'whois',
+    name: 'Who is',
+    description: 'Shows a card about the member you mention, or about you. `!whois @Liam`',
+    suggestedName: 'whois',
+    code: `{{ $id := .User.ID }}{{ with .Mentions }}{{ $id = (index . 0).ID }}{{ else }}{{ with .Args }}{{ with userID (index . 0) }}{{ $id = . }}{{ end }}{{ end }}{{ end }}
+{{ $m := getMember $id }}
+{{ if not $m }}I cannot find that member in this server.{{ return }}{{ end }}
+{{ $roles := cslice }}{{ range $m.RoleIDs }}{{ $roles = append $roles (mentionRole .) }}{{ end }}
+{{ sendMessage nil (cembed
+  "author" $m.DisplayName
+  "authorIcon" $m.Avatar
+  "thumbnail" $m.Avatar
+  "color" (or $m.Color "#ff91c2")
+  "fields" (cslice
+    (cslice "User" (print $m.Mention " · " $m.Username) true)
+    (cslice "ID" $m.ID true)
+    (cslice "Account made" (timestamp $m.CreatedAt "R") true)
+    (cslice "Joined" (or (and $m.JoinedAt (timestamp $m.JoinedAt "R")) "?") true)
+    (cslice (printf "Roles (%d)" (len $roles)) (or (truncate (joinStr " " $roles) 1000) "None")))
+) }}`,
+  },
+  {
+    id: 'roleinfo',
+    name: 'Role info',
+    description: 'Shows the color, members and creation date of a role. `!roleinfo @Role`',
+    suggestedName: 'roleinfo',
+    code: `{{ if not .Args }}Use: {{ .Prefix }}{{ .Cmd }} @Role{{ return }}{{ end }}
+{{ $r := getRole (index .Args 0) }}
+{{ if not $r }}I cannot find that role.{{ return }}{{ end }}
+{{ sendMessage nil (cembed
+  "title" $r.Name
+  "color" (or $r.Color "#99aab5")
+  "fields" (cslice
+    (cslice "Members" (str (or $r.MemberCount 0)) true)
+    (cslice "Color" (or $r.Color "none") true)
+    (cslice "Position" (str $r.Position) true)
+    (cslice "Mentionable" (str $r.Mentionable) true)
+    (cslice "Created" (timestamp $r.CreatedAt "D") true))
+  "footer" (print "ID " $r.ID)
+) }}`,
+  },
+  {
+    id: 'rank',
+    name: 'Rank',
+    description: 'Your place in the coins ranking, or of the member you mention. Uses the coins of `daily`-style commands.',
+    suggestedName: 'rank',
+    code: `{{ $id := .User.ID }}{{ with .Mentions }}{{ $id = (index . 0).ID }}{{ end }}
+{{ $coins := or (dbGet "coins" $id) 0 }}
+{{ $place := dbRank "coins" $id }}
+{{ if $place }}{{ mentionUser $id }} is **#{{ $place }}** with **{{ formatNumber $coins }}** coins.{{ else }}{{ mentionUser $id }} has no coins yet.{{ end }}`,
+  },
 ];
 
 const byId = (id) => TEMPLATES.find((template) => template.id === String(id ?? '').toLowerCase()) ?? null;

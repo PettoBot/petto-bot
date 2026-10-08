@@ -93,6 +93,32 @@ function forGuild(guildId) {
       );
       return rows.map((row) => ({ UserID: row.user_id, Value: row.value }));
     },
+    async bottom(key, limit) {
+      const { rows } = await (await db()).query(
+        `select user_id, value from custom_command_data where guild_id = $1 and key = $2 and user_id <> '' and jsonb_typeof(value) = 'number' and ${alive}
+         order by (value #>> '{}')::numeric asc limit $3`,
+        [guild, key, limit],
+      );
+      return rows.map((row) => ({ UserID: row.user_id, Value: row.value }));
+    },
+    /** The place of a member in the ranking of a key (1 is the highest), or null when they have no number there. */
+    async rank(key, user) {
+      const { rows } = await (await db()).query(
+        `select (select count(*)::int from custom_command_data o where o.guild_id = t.guild_id and o.key = t.key and o.user_id <> '' and jsonb_typeof(o.value) = 'number'
+                   and (o.expires_at is null or o.expires_at > now()) and (o.value #>> '{}')::numeric > (t.value #>> '{}')::numeric) + 1 as rank
+         from custom_command_data t where t.guild_id = $1 and t.key = $2 and t.user_id = $3 and jsonb_typeof(t.value) = 'number' and (t.expires_at is null or t.expires_at > now())`,
+        [guild, key, user],
+      );
+      return rows[0] ? rows[0].rank : null;
+    },
+    /** How many keys the server (or one member, with a user) has, of those that start with the prefix. */
+    async count(prefix, user) {
+      const { rows } = await (await db()).query(
+        `select count(*)::int as total from custom_command_data where guild_id = $1 and user_id = $2 and key like $3 and key not like 'rx:%' and ${alive}`,
+        [guild, user, `${prefix.replace(/[\\%_]/g, '\\$&')}%`],
+      );
+      return rows[0].total;
+    },
     // The messages whose reactions run a command. They are kept apart from the values of the code and do not count towards its limit.
     async watch(messageId, record, ttlSeconds) {
       await (await db()).query(

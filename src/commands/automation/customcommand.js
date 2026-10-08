@@ -249,7 +249,7 @@ async function codeCmd(interaction, sub) {
     if (problem) return reply(interaction, problem, COLORS.RED);
     try {
       const data = codeCommands.buildData(interaction.rawMessage, 'test', '', '!');
-      const result = await run(code, data, { store: codeCommands.memoryStore() });
+      const result = await run(code, data, { store: codeCommands.memoryStore(), lookup: codeCommands.lookupFor(interaction.guild) });
       const output = result.output.trim();
       const actions = result.effects.map((effect) => `• ${describeEffect(effect)}`).join('\n');
       return reply(interaction, [
