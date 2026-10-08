@@ -8,6 +8,7 @@ process.env.DISCORD_CLIENT_ID ||= '1';
 process.env.DISCLOUD_DATABASE_URL ||= 'postgres://check:check@127.0.0.1:1/check';
 process.env.TOPGG_WEBHOOK_SECRET = 'whs_check_secret';
 process.env.VOTE_CHANNEL_ID = '111111111111111111';
+process.env.VOTE_ROLE_ID = '222222222222222222';
 
 function stub(rel, exports) {
   const resolved = require.resolve(path.join(__dirname, '..', rel));
@@ -45,7 +46,10 @@ assert.equal(parseVote({ type: 'vote.create', data: { id: '1', weight: 99, user:
 
 // The route
 const sent = [];
-const client = { channels: { fetch: async () => ({ isTextBased: () => true, send: async (payload) => { sent.push(payload); } }) } };
+const roleCalls = [];
+const members = { '293504726505357312': { roles: { cache: new Map(), add: async (id) => roleCalls.push(['add', id]) } } };
+const guild = { members: { fetch: async (id) => members[id] ?? Promise.reject(new Error('unknown member')) } };
+const client = { user: { id: '1' }, users: { fetch: async () => ({ username: 'tester', displayAvatarURL: () => 'https://example.com/a.png' }) }, channels: { fetch: async () => ({ guild, isTextBased: () => true, send: async (payload) => { sent.push(payload); } }) } };
 const handler = createTopggHandler(client);
 function run(rawBody, header) {
   return new Promise((resolve) => {
@@ -59,6 +63,13 @@ function run(rawBody, header) {
   assert.deepEqual(await run(body, sign(body, now)), { code: 200, data: { ok: true, duplicate: false } });
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.equal(sent.length, 1, 'the voter is thanked');
+  const card = JSON.stringify(sent[0].components[0].toJSON());
+  assert.match(card, /<@293504726505357312>/, 'the voter is mentioned');
+  assert.match(card, /tester voted!/);
+  assert.match(card, /Thank you!.*2.*time|already voted/);
+  assert.match(card, /top\.gg\/bot\/1\/vote/);
+  assert.match(card, /ID: 293504726505357312 \| <t:/);
+  assert.deepEqual(roleCalls, [['add', '222222222222222222']], 'the voter gets the role');
   assert.deepEqual(await run(body, sign(body, now)), { code: 200, data: { ok: true, duplicate: true } });
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.equal(sent.length, 1, 'a vote sent again is not thanked twice');
