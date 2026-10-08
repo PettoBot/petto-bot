@@ -47,6 +47,22 @@ function describeEffect(effect) {
   }
 }
 
+const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * The prefix that the first comment of some code says the command is used with: a comment such as "req: .req <what you ask>" says `.`
+ * for the word `req`. Returns { prefix, word } or null, so a command saved without that prefix can be warned about.
+ */
+function prefixHint(name, code) {
+  const comment = /^\s*\{\{-?\s*\/\*([\s\S]*?)\*\/\s*-?\}\}/.exec(String(code ?? ''));
+  if (!comment) return null;
+  for (const word of new Set([name, name.replace(/\d+$/, '')].filter(Boolean))) {
+    const found = new RegExp(`(?:^|[\\s(])([^\\w\\s{}()\\[\\]<>*/"'\`:,;]{1,5})${escapeRegExp(word)}(?![\\w-])`).exec(comment[1]);
+    if (found) return { prefix: found[1], word };
+  }
+  return null;
+}
+
 const isRealCommand = (client, name) => client.commands.has(name) || client.commandAliases.has(name) || Boolean(client.commandRoutes?.has(name));
 
 /**
@@ -89,4 +105,4 @@ async function setCommandTrigger({ guild, client, name, type, text }) {
   return { ok: true, type, text: checked.text };
 }
 
-module.exports = { MAX_PER_GUILD, commandLimit, fullMessage, NAME_SHAPE, codeProblem, describeEffect, saveCodeCommand, setCommandTrigger, isRealCommand };
+module.exports = { MAX_PER_GUILD, commandLimit, fullMessage, NAME_SHAPE, codeProblem, describeEffect, saveCodeCommand, setCommandTrigger, isRealCommand, prefixHint };

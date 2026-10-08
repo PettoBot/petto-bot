@@ -6,6 +6,7 @@ All notable changes to Petto are documented here.
 
 ### Added
 
+- `!customcommand rename <name> <new name>` changes the name of a command and keeps its code, its trigger (its own prefix too, so `.req1` becomes `.req`) and its stored data. A name that is a real command of Petto or another custom command is refused. The messages the command sent before, with buttons or reactions, keep the old name and stop answering.
 - Petto Code has about 70 new functions, many with the names YAGPDB uses so code written for it is easier to bring over. Text: `joinStr`, `trimPrefix`, `trimSuffix`, `trimSpace`, `inFold`, `capitalize`, `repeat`, `truncate`, `padLeft`, `padRight`, `count`, `indexOf`, `reverse`, `urlescape`, `urlunescape`, `escapeMarkdown`, `formatNumber`, `toString`, `toLower`, `toUpper`. Numbers: `fdiv`, `sqrt`, `cbrt`, `log`, `roundCeil`, `roundFloor`, `roundEven`, `clamp`, `toInt64`. Time: `currentTime`, `toDuration` (`"1h30m"` in seconds), `humanizeTimeSince`, `snowflakeToTime`, `newDate`, `formatTime` (a layout and a time zone) and `weekday`. Lists and maps: `sort`, `sortBy`, `uniq`, `first`, `last`, `sum`, `randItem`, `concat`, `hasKey`, `setKey`, `delKey`, `merge`, `values`, `kindOf`, `json` and `parseJson`. IDs: `userID`, `roleID` and `channelID` take the ID out of a mention.
 - Petto Code can read members, roles and channels of the server: `getMember`, `getRole`, `getChannel` and `targetHasRole`, at most 10 per use. They only read, and only from the server where the command runs.
 - Stored data: `dbRank` (the place of a member in a ranking), `dbBottom` (the lowest numbers) and `dbCount` (how many keys).
@@ -13,6 +14,11 @@ All notable changes to Petto are documented here.
 - New data: `.Mentions` (the users mentioned, with their name and avatar), `.MentionedRoles`, `.MentionedChannels`, `.ServerPrefix`, `.Now`, `.User.CreatedAt`, more of `.Member` (`Avatar`, `Color`, `HighestRoleID`, `BoostingSince`, `IsOwner`), `.Guild` (`OwnerID`, `CreatedAt`, `BoostCount`, `BoostTier`, `Banner`, `Description`, `RoleCount`, `ChannelCount`, `EmojiCount`), `.Channel` (`Topic`, `NSFW`, `ParentID`, `Type`, `IsThread`) and `.Message` (`CreatedAt`, `Attachments`, `ReplyToID`).
 - Three templates: `whois` (a card of the member you mention), `roleinfo` and `rank` (your place in the coins ranking).
 - The Petto Code Generator (a website to build commands with forms and try them like in Discord) uses this same engine.
+
+### Changed
+
+- `!customcommand trigger` is clearer. Without a type it shows how the command starts and the commands to change it; `prefix` without a text says how to write it; it says when the command already starts like that or when the prefix is the one of the server; and when it changes a prefix it says what it was before.
+- Saving a command in code warns when its first comment says it is used with a prefix of its own (for example `{{/* req: .req <what you ask> */}}`) and the command does not have that prefix: it says the command that gives it (`!customcommand trigger req prefix .`) and, if the comment uses another name, how to rename it.
 
 ### Fixed
 

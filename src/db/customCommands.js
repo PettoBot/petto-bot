@@ -33,6 +33,13 @@ async function setTrigger(guildId, name, type, text) {
   return data.length > 0;
 }
 
+/** Changes the name of a command. Returns false when there is no command with the old name, and throws when the new name is taken. */
+async function renameCommand(guildId, oldName, newName) {
+  const { data, error } = await database.from('custom_commands').update({ name: normalizeName(newName) }).eq('guild_id', guildId).eq('name', normalizeName(oldName)).select('name');
+  if (error) throw error;
+  return data.length > 0;
+}
+
 async function removeCommand(guildId, name) {
   const { data, error } = await database.from('custom_commands').delete().eq('guild_id', guildId).eq('name', normalizeName(name)).select('id');
   if (error) throw error;
@@ -45,4 +52,4 @@ async function listCommands(guildId) {
   return data;
 }
 
-module.exports = { normalizeName, getCommand, upsertCommand, removeCommand, listCommands, listTriggers, setTrigger };
+module.exports = { normalizeName, getCommand, upsertCommand, renameCommand, removeCommand, listCommands, listTriggers, setTrigger };

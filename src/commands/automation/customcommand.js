@@ -9,7 +9,7 @@ const { AttachmentBuilder } = require('discord.js');
 const { run, PettoCodeError } = require('../../scripting');
 const { TEMPLATES, byId } = require('../../scripting/templates');
 const codeCommands = require('../../utils/codeCommands');
-const { codeProblem, describeEffect, saveCodeCommand, setCommandTrigger, commandLimit, fullMessage } = require('../../utils/codeCommandAdmin');
+const { codeProblem, describeEffect, saveCodeCommand, setCommandTrigger, commandLimit, fullMessage, NAME_SHAPE, isRealCommand, prefixHint } = require('../../utils/codeCommandAdmin');
 const { TRIGGER_TYPES, invalidateTriggers } = require('../../utils/codeTriggers');
 
 
@@ -38,6 +38,7 @@ module.exports = {
     .addSubcommand((s) => s.setName('remove').setDescription('Delete a custom command.').addStringOption((o) => o.setName('name').setDescription('Command name').setRequired(true)))
     .addSubcommand((s) => s.setName('list').setDescription('List every custom command.'))
     .addSubcommand((s) => s.setName('code').setDescription('Create or change a command written in code (Petto Code). Write the code after the name.').addStringOption((o) => o.setName('name').setDescription("The command's name (no prefix)").setRequired(true)).addStringOption((o) => o.setName('code').setDescription('The code, after the name, inside a code block if it has several lines').setRequired(false)))
+    .addSubcommand((s) => s.setName('rename').setDescription('Change the name of a command, keeping its code and its trigger.').addStringOption((o) => o.setName('name').setDescription('The current name').setRequired(true)).addStringOption((o) => o.setName('new_name').setDescription('The new name').setRequired(true)))
     .addSubcommand((s) => s.setName('trigger').setDescription('What starts a command: its own prefix, the start of a message, a whole message or words inside.').addStringOption((o) => o.setName('name').setDescription('Command name').setRequired(true)).addStringOption((o) => o.setName('type').setDescription(`One of: ${TRIGGER_TYPES.join(', ')}`).setRequired(false)).addStringOption((o) => o.setName('text').setDescription('The prefix or the words, for every type except command').setRequired(false)))
     .addSubcommand((s) => s.setName('codeshow').setDescription('Show the code of a command.').addStringOption((o) => o.setName('name').setDescription('Command name').setRequired(true)))
     .addSubcommand((s) => s.setName('codetest').setDescription('Run some code to see what it would do, without sending or changing anything.').addStringOption((o) => o.setName('code').setDescription('The code, inside a code block if it has several lines').setRequired(false)))
@@ -56,6 +57,7 @@ module.exports = {
     if (sub === 'list') return listCmd(interaction);
     if (sub === 'vars') return varsCmd(interaction);
     if (sub === 'trigger') return triggerCmd(interaction);
+    if (sub === 'rename') return renameCmd(interaction);
     if (['code', 'codeshow', 'codetest', 'template', 'export', 'import'].includes(sub)) return codeCmd(interaction, sub);
     return showCmd(interaction);
   },
@@ -139,19 +141,66 @@ async function triggerCmd(interaction) {
   const name = ccDb.normalizeName(interaction.options.getString('name', true));
   const row = await ccDb.getCommand(interaction.guild.id, name);
   if (!row) return reply(interaction, `\`${name}\` does not exist.`, COLORS.RED);
+  const serverPrefix = (await ensureGuild(interaction.guild.id).catch(() => null))?.prefix || '!';
+  const current = describeTrigger(row, name, serverPrefix);
   const type = (interaction.options.getString('type') ?? '').trim().toLowerCase();
   if (!type) {
-    return reply(interaction, `\`${name}\` starts with ${row.trigger_type && row.trigger_type !== 'command' ? `${row.trigger_type === 'prefix' ? `its own prefix \`${row.trigger_text}\`, so \`${row.trigger_text}${name}\`` : `${row.trigger_type} \`${row.trigger_text}\``}` : 'the prefix of Petto'}.\n\nChange it with \`!customcommand trigger ${name} <${TRIGGER_TYPES.join('|')}> [text]\`.`);
+    return reply(interaction, `\`${name}\` starts with ${current}.\n\nChange it:\n\`\`\`\n${serverPrefix}customcommand trigger ${name} prefix .\n${serverPrefix}customcommand trigger ${name} startswith hello\n${serverPrefix}customcommand trigger ${name} command\n\`\`\`\n-# Types: ${TRIGGER_TYPES.join(', ')}. \`prefix\` is a prefix of its own (up to 5 characters), \`command\` goes back to the prefix of the server.`);
   }
-  const changed = await setCommandTrigger({ guild: interaction.guild, client: interaction.client, name, type, text: raw3(interaction) ?? interaction.options.getString('text') });
+  const text = raw3(interaction) ?? interaction.options.getString('text');
+  if (type === 'prefix' && !String(text ?? '').trim()) {
+    return reply(interaction, `Write the prefix after \`prefix\`, for example \`${serverPrefix}customcommand trigger ${name} prefix .\`, so \`.${name}\` runs it.`, COLORS.RED);
+  }
+  if (type === 'prefix' && String(text).trim() === serverPrefix) {
+    return reply(interaction, `\`${serverPrefix}\` is the prefix of the server already. Use \`${serverPrefix}customcommand trigger ${name} command\` to start with it, or pick another prefix.`, COLORS.RED);
+  }
+  if (type !== 'command' && type === row.trigger_type && String(text ?? '').trim() === String(row.trigger_text ?? '')) {
+    return reply(interaction, `\`${name}\` already starts with ${current}. Nothing changed.`);
+  }
+  if (type === 'command' && (!row.trigger_type || row.trigger_type === 'command')) {
+    return reply(interaction, `\`${name}\` already starts with the prefix of the server (\`${serverPrefix}${name}\`). Nothing changed.`);
+  }
+  const changed = await setCommandTrigger({ guild: interaction.guild, client: interaction.client, name, type, text });
   if (!changed.ok) return reply(interaction, changed.message, COLORS.RED);
-  const how = type === 'command' ? 'the prefix of Petto again' : type === 'prefix' ? `its own prefix: \`${changed.text}${name}\`` : `${type}: \`${changed.text}\``;
-  return reply(interaction, `${EMOJI.APPROVE}  \`${name}\` now starts with ${how}.`, COLORS.GREEN);
+  const how = type === 'command' ? `the prefix of the server again (\`${serverPrefix}${name}\`)` : type === 'prefix' ? `its own prefix: \`${changed.text}${name}\`` : `${type}: \`${changed.text}\``;
+  const before = row.trigger_type && row.trigger_type !== 'command' ? ` It was ${current}.` : '';
+  return reply(interaction, `${EMOJI.APPROVE}  \`${name}\` now starts with ${how}.${before}`, COLORS.GREEN);
+}
+
+/** How a command starts, as words for a sentence. */
+function describeTrigger(row, name, serverPrefix) {
+  if (!row.trigger_type || row.trigger_type === 'command') return `the prefix of the server (\`${serverPrefix}${name}\`)`;
+  if (row.trigger_type === 'prefix') return `its own prefix \`${row.trigger_text}\` (\`${row.trigger_text}${name}\`)`;
+  return `${row.trigger_type} \`${row.trigger_text}\``;
 }
 
 /** The text of a trigger as it was typed, so spaces inside it are kept: the words after the type. */
 function raw3(interaction) {
   return codeCommands.rawAfter(interaction.rawMessage?.content ?? '', 2) || null;
+}
+
+/** `!cc rename req1 req`: the same command under another name. The code, the trigger and the data stay; the messages it sent before keep the old name. */
+async function renameCmd(interaction) {
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  const oldName = ccDb.normalizeName(interaction.options.getString('name', true));
+  const newName = ccDb.normalizeName(interaction.options.getString('new_name', true));
+  const fail = (text) => reply(interaction, text, COLORS.RED);
+  if (!NAME_SHAPE.test(newName)) return fail('A name has 1 to 32 letters, numbers, - or _.');
+  if (oldName === newName) return fail('That is the name it has already.');
+  const row = await ccDb.getCommand(interaction.guild.id, oldName);
+  if (!row) return fail(`\`${oldName}\` does not exist.`);
+  if (isRealCommand(interaction.client, newName)) return fail(`\`${newName}\` is already a real command, pick a different name.`);
+  if (await ccDb.getCommand(interaction.guild.id, newName)) return fail(`\`${newName}\` already exists. Remove it first with \`customcommand remove ${newName}\`.`);
+  try {
+    await ccDb.renameCommand(interaction.guild.id, oldName, newName);
+  } catch (err) {
+    if (err?.code === '23505') return fail(`\`${newName}\` already exists.`);
+    throw err;
+  }
+  invalidateTriggers(interaction.guild.id);
+  const prefix = (await ensureGuild(interaction.guild.id).catch(() => null))?.prefix || '!';
+  const own = row.trigger_type === 'prefix' && row.trigger_text ? ` It still starts with its own prefix: \`${row.trigger_text}${newName}\`.` : '';
+  return reply(interaction, `${EMOJI.APPROVE}  \`${oldName}\` is now \`${newName}\`. Try \`${prefix}${newName}\`.${own}\n-# Buttons and reactions on messages it sent before still point to the old name.`, COLORS.GREEN);
 }
 
 async function removeCmd(interaction) {
@@ -213,12 +262,23 @@ async function sendAsFile(interaction, content, fileName, text) {
 }
 const clipText = (text, max = 1500) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
 
+/** When the code says it is used with a prefix of its own (`.req`) and the command does not have it, tell how to give it. */
+async function missingPrefixWarning(interaction, name, code, serverPrefix) {
+  const hint = prefixHint(name, code);
+  if (!hint) return '';
+  const row = await ccDb.getCommand(interaction.guild.id, name).catch(() => null);
+  if (row?.trigger_type === 'prefix' && row.trigger_text === hint.prefix) return '';
+  const rename = hint.word !== name ? ` (it would be \`${hint.prefix}${name}\`; to call it \`${hint.prefix}${hint.word}\`, first \`${serverPrefix}customcommand rename ${name} ${hint.word}\`)` : '';
+  return `\n\n${EMOJI.WARNING}  The code says it is used as \`${hint.prefix}${hint.word}\`, but it starts with the prefix of the server, so only \`${serverPrefix}${name}\` runs it.\nGive it that prefix: \`${serverPrefix}customcommand trigger ${name} prefix ${hint.prefix}\`${rename}.`;
+}
+
 async function saveCode(interaction, name, code, verb) {
   const saved = await saveCodeCommand({ guild: interaction.guild, client: interaction.client, userId: interaction.user.id, name, code });
   if (!saved.ok) return reply(interaction, saved.message, COLORS.RED);
   // The commands are typed with the prefix of the server (`p!req1`), so the message says that one and not always `!`.
   const prefix = (await ensureGuild(interaction.guild.id).catch(() => null))?.prefix || '!';
-  return reply(interaction, `${EMOJI.APPROVE}  \`${name}\` ${saved.created ? verb : 'updated'}. Try \`${prefix}${name}\`. See it again with \`${prefix}customcommand codeshow ${name}\`.`, COLORS.GREEN);
+  const warning = await missingPrefixWarning(interaction, name, code, prefix);
+  return reply(interaction, `${EMOJI.APPROVE}  \`${name}\` ${saved.created ? verb : 'updated'}. Try \`${prefix}${name}\`. See it again with \`${prefix}customcommand codeshow ${name}\`.${warning}`, warning ? COLORS.YELLOW : COLORS.GREEN);
 }
 
 async function codeCmd(interaction, sub) {
@@ -287,3 +347,5 @@ async function codeCmd(interaction, sub) {
   if (row.code.length > 1700) return sendAsFile(interaction, `The code of \`${row.name}\` is long, so it is in this file.`, `${row.name}.txt`, row.code);
   return reply(interaction, `**\`${row.name}\`**\n\`\`\`\n${row.code}\n\`\`\``);
 }
+
+module.exports.missingPrefixWarning = missingPrefixWarning;
