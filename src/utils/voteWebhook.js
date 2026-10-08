@@ -2,7 +2,9 @@
 const config = require('../config');
 const votesDb = require('../db/votes');
 const { verifySignature, parseVote } = require('./topgg');
-const { EmbedBuilder } = require('discord.js');
+const { textCard } = require('./caseCard');
+const { EMOJI } = require('./emojis');
+const { MessageFlags } = require('discord.js');
 const { grantVoteRole } = require('./voteRole');
 const logger = require('./logger');
 
@@ -10,16 +12,13 @@ async function thank(client, vote) {
   if (!config.voteChannelId) return;
   const channel = await client.channels.fetch(config.voteChannelId).catch(() => null);
   if (!channel?.isTextBased()) return;
-  const [{ mine }, user] = await Promise.all([votesDb.voteTotals(vote.userId), client.users.fetch(vote.userId).catch(() => null)]);
-  const voteUrl = `https://top.gg/bot/${client.user?.id ?? config.clientId}/vote`;
+  const { mine, total } = await votesDb.voteTotals(vote.userId);
   const double = vote.weight > 1 ? ` It counted as **${vote.weight}** votes.` : '';
-  const embed = new EmbedBuilder()
-    .setColor(0x5865f2)
-    .setTitle(`${user?.username ?? 'Someone'} voted!`)
-    .setDescription(`- **Thank you!** You already voted **${mine}** time${mine === 1 ? '' : 's'}.${double}\n- You can vote [here](${voteUrl}) every 12 hours.`)
-    .setFooter({ text: `ID: ${vote.userId}`, iconURL: user?.displayAvatarURL?.() })
-    .setTimestamp(new Date(vote.votedAt));
-  await channel.send({ content: `<@${vote.userId}>`, embeds: [embed], allowedMentions: { users: [vote.userId] } }).catch((err) => logger.warn('Could not thank a voter:', err.message));
+  await channel.send({
+    components: [textCard(`${EMOJI.STAR} <@${vote.userId}> voted for Petto on top.gg, thank you!${double}\n-# ${mine} vote${mine === 1 ? '' : 's'} from them · ${total} in total`, 0xa5ea7a)],
+    flags: MessageFlags.IsComponentsV2,
+    allowedMentions: { parse: [] },
+  }).catch((err) => logger.warn('Could not thank a voter:', err.message));
 }
 
 function createTopggHandler(client) {

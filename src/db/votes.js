@@ -24,16 +24,4 @@ async function topVoters(limit = 10) {
   return result.rows;
 }
 
-/** Users whose votes ran out in the last days and who have no vote running now, so they should lose the voter role. */
-async function expiredVoters(days = 3) {
-  const result = await getPrimaryPool().query(
-    `SELECT user_id FROM bot_votes
-     GROUP BY user_id
-     HAVING MAX(COALESCE(expires_at, voted_at + interval '12 hours')) <= now()
-        AND MAX(COALESCE(expires_at, voted_at + interval '12 hours')) > now() - make_interval(days => $1)`,
-    [days],
-  );
-  return result.rows.map((row) => row.user_id);
-}
-
-module.exports = { recordVote, voteTotals, topVoters, expiredVoters };
+module.exports = { recordVote, voteTotals, topVoters };

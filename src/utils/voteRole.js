@@ -1,6 +1,5 @@
-// The voter role: given when a vote arrives and taken away when that vote runs out (top.gg lets a user vote again every 12 hours).
+// The voter role: given when a vote arrives and kept afterwards.
 const config = require('../config');
-const votesDb = require('../db/votes');
 const logger = require('./logger');
 
 /** The server that holds the voter role: the one of the vote channel, or any server where the role exists. */
@@ -22,14 +21,4 @@ async function grantVoteRole(client, userId) {
   return true;
 }
 
-async function removeExpiredVoteRoles(client) {
-  const guild = await roleGuild(client);
-  if (!guild) return;
-  for (const userId of await votesDb.expiredVoters()) {
-    const member = await guild.members.fetch(userId).catch(() => null);
-    if (!member?.roles.cache.has(config.voteRoleId)) continue;
-    await member.roles.remove(config.voteRoleId, 'The top.gg vote ran out').catch((err) => logger.warn('Could not remove the voter role:', err.message));
-  }
-}
-
-module.exports = { grantVoteRole, removeExpiredVoteRoles };
+module.exports = { grantVoteRole };

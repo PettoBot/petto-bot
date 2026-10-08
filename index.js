@@ -18,7 +18,6 @@ const { startPollAutocloseJob } = require('./src/jobs/pollAutocloseJob');
 const { startCounterJob } = require('./src/jobs/counterJob');
 const { startBackupVaultJob } = require('./src/jobs/backupVaultJob');
 const { startPremiumRoleJob } = require('./src/jobs/premiumRoleJob');
-const { startVoteRoleJob } = require('./src/jobs/voteRoleJob');
 const { startMaliciousFeedJob } = require('./src/jobs/maliciousFeedJob');
 const { startQuestAlertsJob } = require('./src/jobs/questAlertsJob');
 const { startRequestTimeoutJob } = require('./src/jobs/requestTimeoutJob');
@@ -116,7 +115,6 @@ async function main() {
   startCounterJob(client);
   startBackupVaultJob(client);
   startPremiumRoleJob(client);
-  startVoteRoleJob(client);
   startMaliciousFeedJob();
   startQuestAlertsJob(client);
   startRequestTimeoutJob(client);
