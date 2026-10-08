@@ -119,7 +119,8 @@ async function addCmd(interaction, isEdit) {
   }
 
   await ccDb.upsertCommand(interaction.guild.id, name, { response, embedTemplate });
-  const hint = isEdit ? '' : ` Try \`!${name} your request here\`; use \`!customcommand vars\` for variables.`;
+  const prefix = (await ensureGuild(interaction.guild.id).catch(() => null))?.prefix || '!';
+  const hint = isEdit ? '' : ` Try \`${prefix}${name} your request here\`; use \`${prefix}customcommand vars\` for variables.`;
   await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  \`${name}\` ${isEdit ? 'updated' : 'created'}.${hint}`, COLORS.GREEN)], flags: MessageFlags.IsComponentsV2 });
 }
 
@@ -215,7 +216,9 @@ const clipText = (text, max = 1500) => (text.length > max ? `${text.slice(0, max
 async function saveCode(interaction, name, code, verb) {
   const saved = await saveCodeCommand({ guild: interaction.guild, client: interaction.client, userId: interaction.user.id, name, code });
   if (!saved.ok) return reply(interaction, saved.message, COLORS.RED);
-  return reply(interaction, `${EMOJI.APPROVE}  \`${name}\` ${saved.created ? verb : 'updated'}. Try \`!${name}\`. See it again with \`!customcommand codeshow ${name}\`.`, COLORS.GREEN);
+  // The commands are typed with the prefix of the server (`p!req1`), so the message says that one and not always `!`.
+  const prefix = (await ensureGuild(interaction.guild.id).catch(() => null))?.prefix || '!';
+  return reply(interaction, `${EMOJI.APPROVE}  \`${name}\` ${saved.created ? verb : 'updated'}. Try \`${prefix}${name}\`. See it again with \`${prefix}customcommand codeshow ${name}\`.`, COLORS.GREEN);
 }
 
 async function codeCmd(interaction, sub) {

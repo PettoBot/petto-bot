@@ -14,6 +14,10 @@ All notable changes to Petto are documented here.
 - Three templates: `whois` (a card of the member you mention), `roleinfo` and `rank` (your place in the coins ranking).
 - The Petto Code Generator (a website to build commands with forms and try them like in Discord) uses this same engine.
 
+### Fixed
+
+- The message after creating a custom command (`!customcommand add` and `code`) always said to try it with `!`, even in a server with another prefix (`p!`), so people typed `!req1` and nothing happened. It says the prefix of the server now.
+
 ## [0.7.3] — 2026-10-08 · Flan
 
 A release for tickets that are easier to set up, a config card for every command, the votes from top.gg, and Petto online with the phone icon.
