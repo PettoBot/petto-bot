@@ -47,6 +47,7 @@ const RELEASES = [
         title: `${EMOJI.RELEASE_BUG} Fixes`,
         items: [
           'The partner replies really ping the manager of the partnership.',
+          'Pinned and unpinned messages are logged again (the log failed with an error each time).',
         ],
       },
     ],

@@ -28,6 +28,7 @@ A release for tickets that are easier to set up, a config card for every command
 ### Fixed
 
 - `!giveaway edit` did not work when the prize had several words and no quotes (for example `!giveaway edit <id> $10 NITRO / 1x DECO 1 30d`): the first word was taken as the prize and everything else as the duration. Now the prize is everything between the message id and the numbers at the end: the last words that look like a duration (`30d`, `3d 4h`) are the new end, and a number before it is the number of winners. Quotes and `--prize`, `--winners` and `--duration` still work.
+- The log of pinned messages failed with "Cannot read properties of undefined (reading 'username')" and wrote an error in the error channel each time someone pinned or unpinned a message. Discord sends the channel and the time of the last pin, and the event took the time as if it were the bot. Pins and unpins are logged again.
 - The partner replies ("thanks for the partnership...") showed the manager as a name with an @ but did not really ping them, because every mention was turned off. The manager of the partnership is pinged now; the names in the top lists and anyone else stay plain text.
 
 ## [0.7.2] — 2026-10-07 · Churro
