@@ -1,4 +1,5 @@
-const { Events, ActivityType } = require('discord.js');
+const { Events } = require('discord.js');
+const { applyStatus, currentStatus } = require('../utils/botPresence');
 const { warmGuild } = require('../utils/inviteCache');
 const logger = require('../utils/logger');
 const { attachDiscordLogger, startDiscordStatusJob } = require('../utils/discordOps');
@@ -26,10 +27,7 @@ module.exports = {
   name: Events.ClientReady,
   once: true,
   async execute(client) {
-    client.user.setPresence({
-      status: config.presenceStatus,
-      activities: [{ name: 'Custom Status', type: ActivityType.Custom, state: 'Keeping the server safe', emoji: { name: '🦆' } }],
-    });
+    applyStatus(client, await currentStatus());
 
     if (config.mobileStatus) reportMobileStatus(client);
 

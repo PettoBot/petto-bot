@@ -1846,6 +1846,14 @@ create table if not exists bot_status (
 
 alter table bot_status enable row level security;
 
+-- Small settings of the bot itself, changed from Discord by the team (for example the status dot), so they survive a restart.
+create table if not exists bot_settings (
+  key        text primary key,
+  value      text,
+  updated_at timestamptz not null default now()
+);
+alter table bot_settings enable row level security;
+
 
 -- ---------------------------------------------------------------------------
 -- bot_host: one singleton row with process-level stats (uptime, memory),
