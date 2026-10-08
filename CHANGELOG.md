@@ -6,7 +6,7 @@ All notable changes to Petto are documented here.
 
 ### Added
 
-- Voters get a role. With `VOTE_ROLE_ID` set, a member who votes for Petto on top.gg receives that role (in the server of the vote channel) and keeps it.
+- Voters get a role. With `VOTE_ROLE_ID` set, a member who votes for Petto on top.gg receives that role (in the server of the vote channel) and keeps it. The thanks in the vote channel is a V2 card that mentions the voter: "name voted!", how many times they voted, the link to vote again every 12 hours, their avatar, ID and the time.
 - `!cmdconfig` shows the recommended Petto configuration as a card, with commands ready to copy: anti-raid, new accounts, anti-nuke and anti-spam, how to whitelist a user from anti-nuke or make a role immune to AutoMod, the logs and the guided ticket setup, and a button to the documentation. The prefix in the commands is the one of the server.
 - Votes for the bot on top.gg. Petto receives the v1 webhook of top.gg at `/webhooks/topgg`: the signature (`x-topgg-signature`, HMAC SHA-256 of the timestamp and the raw body with the webhook secret) and its timestamp are checked, every vote is stored once (a vote that top.gg sends again after a timeout is not counted twice, and a weekend vote counts double), and the voter is thanked in a channel. `!votes` shows the votes of Petto and of a member, and `!votes top` the members who voted the most. Set `TOPGG_WEBHOOK_SECRET` (the `whs_...` value top.gg shows when the webhook URL is saved) and `VOTE_CHANNEL_ID`; run `schema.sql` to add the `bot_votes` table.
 
