@@ -6,6 +6,8 @@ All notable changes to Petto are documented here.
 
 ### Added
 
+- The dashboard can change a giveaway that is running: the prize, the number of winners and a new end (counted from now, as `!giveaway edit` does). What is left empty stays as it is, a wrong value changes nothing, and the giveaway message is drawn again. It is the `edit` action of the dashboard giveaway route.
+
 - `!ticket setup` is a guided setup for tickets. A panel with menus and buttons lets you pick the channel for the ticket panel, the support roles and a log channel, write the title and text, add the ticket types (name, emoji and short description), choose the button color and whether members see buttons or a dropdown, and publish everything with one press. If the panel cannot be posted, nothing is kept. Each type can then be fine-tuned from the dashboard or with `!ticket category edit`.
 
 - Ticket types have their own welcome text, without needing a saved embed: `welcome:` in `!ticket category add` and `edit` (or in the setup panel), with `{user}`, `{username}`, `{category}`, `{server}` and `{number}`. The channel name of a ticket also accepts `{userid}` and `{category}`.
@@ -21,6 +23,8 @@ All notable changes to Petto are documented here.
 - Changing several permissions of a channel is told in one log message. Discord sends an update for each permission, a few moments apart, and the `channels` log had a message for each one. The updates of the same channel are held for about 2.5 seconds (at most 12 while it keeps changing) and told as one: what changed from the first to the last, with who did it. Different channels are never mixed.
 
 ### Fixed
+
+- `!giveaway edit` did not work when the prize had several words and no quotes (for example `!giveaway edit <id> $10 NITRO / 1x DECO 1 30d`): the first word was taken as the prize and everything else as the duration. Now the prize is everything between the message id and the numbers at the end: the last words that look like a duration (`30d`, `3d 4h`) are the new end, and a number before it is the number of winners. Quotes and `--prize`, `--winners` and `--duration` still work.
 
 - The phone icon next to Petto's status dot did not show. The bot now connects as the Android app naming the system too (`Android`, `Discord Android`), as the real app does; `PETTO_MOBILE_CLIENT=ios` uses the iPhone app instead. About 20 seconds after it starts, the bot writes in the log how Discord sees it (for example `{"mobile":"idle"}`), so the result can be checked without a screenshot.
 

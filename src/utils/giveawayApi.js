@@ -1,4 +1,4 @@
-// What the dashboard can do with giveaways: start one, end one now, or draw new winners of one that ended.
+// What the dashboard can do with giveaways: start one, change one that is running, end one now, or draw new winners of one that ended.
 // It uses the same engine as /giveaway, so a giveaway started here is the same as one started from Discord.
 const { ChannelType, PermissionFlagsBits } = require('discord.js');
 const giveawaysDb = require('../db/giveaways');
@@ -64,6 +64,38 @@ async function findOwned(guildId, id) {
   return giveaway && giveaway.guild_id === guildId ? giveaway : null;
 }
 
+/** Changes the prize, the number of winners or the end of a giveaway that is still running; what is left empty stays as it is. */
+async function editGiveaway(client, guildId, body) {
+  const giveaway = await findOwned(guildId, Number(body.id));
+  if (!giveaway) return { ok: false, status: 404, error: 'not_found', message: 'That giveaway does not exist.' };
+  if (giveaway.ended) return fail('already_ended', 'That giveaway already ended.');
+
+  const patch = {};
+  const prize = String(body.prize ?? '').trim();
+  if (prize) patch.prize = prize.slice(0, MAX_PRIZE);
+
+  const winnersText = String(body.winners ?? '').trim();
+  if (winnersText) {
+    const winnersCount = Number(winnersText);
+    if (!Number.isInteger(winnersCount) || winnersCount < 1 || winnersCount > MAX_WINNERS) return fail('invalid_winners', `Winners must be from 1 to ${MAX_WINNERS}.`);
+    patch.winners_count = winnersCount;
+  }
+
+  const durationText = String(body.duration ?? '').trim();
+  if (durationText) {
+    const durationMs = parseDuration(durationText);
+    if (!durationMs) return fail('invalid_duration', 'Write a duration such as 10m, 1h or 3d 4h.');
+    patch.ends_at = new Date(Date.now() + durationMs).toISOString();
+  }
+
+  if (!Object.keys(patch).length) return fail('nothing_to_change', 'Change at least one field.');
+
+  const updated = await giveawaysDb.updateGiveaway(giveaway.id, patch);
+  const channel = client.guilds.cache.get(guildId)?.channels.cache.get(giveaway.channel_id) ?? await client.channels.fetch(giveaway.channel_id).catch(() => null);
+  if (channel) await engine.refreshGiveawayMessage(channel, updated);
+  return { ok: true };
+}
+
 async function endGiveaway(client, guildId, body) {
   const giveaway = await findOwned(guildId, Number(body.id));
   if (!giveaway) return { ok: false, status: 404, error: 'not_found', message: 'That giveaway does not exist.' };
@@ -90,6 +122,7 @@ async function rerollGiveaway(client, guildId, body) {
 /** Runs one action of the dashboard. Returns { ok, status?, error?, message?, ... }. */
 async function runGiveawayAction(client, guildId, action, body = {}) {
   if (action === 'start') return startGiveaway(client, guildId, body);
+  if (action === 'edit') return editGiveaway(client, guildId, body);
   if (action === 'end') return endGiveaway(client, guildId, body);
   if (action === 'reroll') return rerollGiveaway(client, guildId, body);
   return { ok: false, status: 404, error: 'unknown_action', message: 'That action does not exist.' };
