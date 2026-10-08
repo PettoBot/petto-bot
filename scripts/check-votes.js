@@ -49,7 +49,7 @@ const sent = [];
 const roleCalls = [];
 const members = { '293504726505357312': { roles: { cache: new Map(), add: async (id) => roleCalls.push(['add', id]) } } };
 const guild = { members: { fetch: async (id) => members[id] ?? Promise.reject(new Error('unknown member')) } };
-const client = { user: { id: '1' }, users: { fetch: async () => ({ username: 'tester', displayAvatarURL: () => 'https://example.com/a.png' }) }, channels: { fetch: async () => ({ guild, isTextBased: () => true, send: async (payload) => { sent.push(payload); } }) } };
+const client = { user: { id: '1' }, users: { fetch: async () => ({ username: 'fa.chu', displayName: 'chu', displayAvatarURL: () => 'https://example.com/a.png' }) }, channels: { fetch: async () => ({ guild, isTextBased: () => true, send: async (payload) => { sent.push(payload); } }) } };
 const handler = createTopggHandler(client);
 function run(rawBody, header) {
   return new Promise((resolve) => {
@@ -65,7 +65,8 @@ function run(rawBody, header) {
   assert.equal(sent.length, 1, 'the voter is thanked');
   const card = JSON.stringify(sent[0].components[0].toJSON());
   assert.match(card, /<@293504726505357312>/, 'the voter is mentioned');
-  assert.match(card, /tester voted!/);
+  assert.match(card, /chu voted!/);
+  assert.doesNotMatch(card, /fa\.chu/, 'the display name is shown, not the username');
   assert.match(card, /Thank you!.*2.*time|already voted/);
   assert.match(card, /top\.gg\/bot\/1\/vote/);
   assert.match(card, /ID: 293504726505357312 \| <t:/);
