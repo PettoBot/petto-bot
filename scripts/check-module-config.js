@@ -43,9 +43,9 @@ logger.warn = () => {};
     for (const alias of module.aliases) assert.equal(client.commandAliases.get(alias), name, `alias ${alias} of ${name} is accepted`);
     const text = await buildCardText(module, { guildId: '1', prefix: '?', commands: client.commands });
     assert.match(text, new RegExp(`^### ${module.title} config`));
-    assert.ok(text.length < 4000, `${name} fits in one message`);
-    const usage = pickUsage(usagePaths(client.commands.get(module.command).data.toJSON()), module.show);
-    assert.ok(usage.length > 0, `${name} shows how to change it`);
+    assert.ok(text.length < 4000, `${name} fits in one message (${text.length})`);
+    const picked = pickUsage(usagePaths(client.commands.get(module.command).data.toJSON()), module.show);
+    assert.ok(picked.config.length + picked.rest.length > 0, `${name} shows its commands`);
     assert.match(text, new RegExp(`\\?${module.command}\\b`), `${name} shows its commands with the server prefix`);
   }
   assert.deepEqual(warnings.filter((w) => /config/.test(w)), [], 'no config command or alias clashes with another');
@@ -69,7 +69,8 @@ logger.warn = () => {};
 
   const brUsage = await text('brconfig');
   assert.match(brUsage, /\?boosterrole admin base/);
-  assert.doesNotMatch(brUsage, /boosterrole create|boosterrole color/, 'only the commands that configure');
+  assert.match(brUsage, /\?boosterrole create/, 'every command of the module is shown');
+  assert.ok(brUsage.indexOf('boosterrole admin base') < brUsage.indexOf('boosterrole create'), 'the ones that configure come first');
   assert.match(await text('ticketconfig'), /\?ticket setup/);
   assert.equal(formatValue('enabled', false), '**Off**');
   assert.equal(formatValue('role_id', '222222222222222222'), '<@&222222222222222222>');
