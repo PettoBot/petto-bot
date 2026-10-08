@@ -80,6 +80,17 @@ const dashboardPrefixRateLimiter = rateLimit({
   },
 });
 
+// The vote webhook of top.gg: a few requests a minute are normal (one per vote, plus retries), so this only stops a flood of bad calls.
+const topggRateLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 120,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).json({ ok: false, error: 'rate_limited' });
+  },
+});
+
 const dashboardDatabaseRateLimiter = rateLimit({
   windowMs: 60_000,
   limit: 300,
@@ -375,7 +386,7 @@ function startServer(client) {
 
   if (votesEnabled) {
     // Votes for the bot on top.gg (v1 webhook). The URL to save in top.gg is https://<this host>/webhooks/topgg.
-    app.post('/webhooks/topgg', createRateLimiter({ windowMs: 60_000, max: 120 }), createTopggHandler(client));
+    app.post('/webhooks/topgg', topggRateLimiter, createTopggHandler(client));
   }
 
   app.get('/', (req, res) => {
