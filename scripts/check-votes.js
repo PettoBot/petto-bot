@@ -8,6 +8,7 @@ process.env.DISCORD_CLIENT_ID ||= '1';
 process.env.DISCLOUD_DATABASE_URL ||= 'postgres://check:check@127.0.0.1:1/check';
 process.env.TOPGG_WEBHOOK_SECRET = 'whs_check_secret';
 process.env.VOTE_CHANNEL_ID = '111111111111111111';
+process.env.VOTE_ROLE_ID = '222222222222222222';
 
 function stub(rel, exports) {
   const resolved = require.resolve(path.join(__dirname, '..', rel));
@@ -18,6 +19,7 @@ stub('src/db/votes.js', {
   recordVote: async (vote) => { const key = `${vote.source}:${vote.voteId}`; if (stored.has(key)) return false; stored.add(key); return true; },
   voteTotals: async () => ({ mine: 2, total: 10, voters: 4, last: null }),
   topVoters: async () => [],
+  expiredVoters: async () => ['293504726505357312', '5'],
 });
 
 const { verifySignature, parseVote } = require('../src/utils/topgg');
@@ -45,7 +47,10 @@ assert.equal(parseVote({ type: 'vote.create', data: { id: '1', weight: 99, user:
 
 // The route
 const sent = [];
-const client = { channels: { fetch: async () => ({ isTextBased: () => true, send: async (payload) => { sent.push(payload); } }) } };
+const roleCalls = [];
+const members = { '293504726505357312': { roles: { cache: new Map(), add: async (id) => roleCalls.push(['add', id]) } } };
+const guild = { members: { fetch: async (id) => members[id] ?? Promise.reject(new Error('unknown member')) } };
+const client = { user: { id: '1' }, users: { fetch: async () => ({ username: 'tester', displayAvatarURL: () => 'https://example.com/a.png' }) }, channels: { fetch: async () => ({ guild, isTextBased: () => true, send: async (payload) => { sent.push(payload); } }) } };
 const handler = createTopggHandler(client);
 function run(rawBody, header) {
   return new Promise((resolve) => {
@@ -59,11 +64,21 @@ function run(rawBody, header) {
   assert.deepEqual(await run(body, sign(body, now)), { code: 200, data: { ok: true, duplicate: false } });
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.equal(sent.length, 1, 'the voter is thanked');
+  assert.equal(sent[0].content, '<@293504726505357312>', 'the voter is mentioned');
+  assert.match(sent[0].embeds[0].toJSON().title, /tester voted!/);
+  assert.match(sent[0].embeds[0].toJSON().description, /vote\]\(https:\/\/top\.gg\/bot\/1\/vote\)|\[here\]\(https:\/\/top\.gg\/bot\/1\/vote\)/);
+  assert.deepEqual(roleCalls, [['add', '222222222222222222']], 'the voter gets the role');
   assert.deepEqual(await run(body, sign(body, now)), { code: 200, data: { ok: true, duplicate: true } });
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.equal(sent.length, 1, 'a vote sent again is not thanked twice');
   const test = Buffer.from(JSON.stringify({ type: 'webhook.test', data: {} }));
   assert.deepEqual(await run(test, sign(test, now)), { code: 200, data: { ok: true, test: true } });
+
+  // The role is taken away when the vote ran out
+  members['293504726505357312'].roles.cache.set('222222222222222222', true);
+  members['293504726505357312'].roles.remove = async (id) => roleCalls.push(['remove', id]);
+  await require('../src/utils/voteRole').removeExpiredVoteRoles(client);
+  assert.deepEqual(roleCalls.at(-1), ['remove', '222222222222222222'], 'an expired vote loses the role');
 
   // !cmdconfig
   const text = buildConfigText('?');

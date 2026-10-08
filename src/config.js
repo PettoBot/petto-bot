@@ -98,6 +98,8 @@ module.exports = {
   // Votes for the bot on top.gg: the secret (starts with whs_) that top.gg shows when the webhook URL is saved, and the channel where each vote is thanked.
   topggWebhookSecret: String(process.env.TOPGG_WEBHOOK_SECRET || '').trim() || null,
   voteChannelId: /^\d{15,25}$/.test(process.env.VOTE_CHANNEL_ID || '') ? process.env.VOTE_CHANNEL_ID : null,
+  // The role a voter gets until the vote runs out (12 hours). It lives in the server of the vote channel.
+  voteRoleId: /^\d{15,25}$/.test(process.env.VOTE_ROLE_ID || '') ? process.env.VOTE_ROLE_ID : null,
   inviteCacheWarmConcurrency: envInt('INVITE_CACHE_WARM_CONCURRENCY', 2, 1, 16),
   jobConcurrency: envInt('PETTO_JOB_CONCURRENCY', 4, 1, 16),
   // Optional explicit official support guild. When empty, the private join-log
