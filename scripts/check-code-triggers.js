@@ -101,7 +101,7 @@ for (const [type, text, message] of [['nope', 'x', 'one of'], ['exact', '', 'Wri
   settings.codeCommandsDisabled = true;
   assert.ok((await run({ name: 'plain' }, '!cc trigger plain', 'someone')).includes('turned off'));
   settings.codeCommandsDisabled = false;
-  assert.ok((await run({ name: 'plain' }, '!cc trigger plain')).includes('the prefix of Petto'));
+  assert.ok((await run({ name: 'plain' }, '!cc trigger plain')).includes('the prefix of the server'));
   assert.ok((await run({ name: 'nope' }, '!cc trigger nope')).includes('does not exist'));
   assert.ok((await run({ name: 'plain', type: 'prefix', text: '?' }, '!cc trigger plain prefix ?')).includes('its own prefix: `?plain`'));
   assert.equal(store.get(`${guild}:plain`).trigger_type, 'prefix');
@@ -109,7 +109,7 @@ for (const [type, text, message] of [['nope', 'x', 'one of'], ['exact', '', 'Wri
   assert.ok((await run({ name: 'plain', type: 'startswith', text: 'hey' }, '!cc trigger plain startswith hey there friend')).includes('startswith: `hey there friend`'), 'the words of a trigger keep their spaces');
   assert.equal(store.get(`${guild}:plain`).trigger_text, 'hey there friend');
   assert.equal((await triggers.findTrigger(guild, 'hey there friend, hi')).row.name, 'plain', 'the change is seen at once');
-  assert.ok((await run({ name: 'plain', type: 'command' }, '!cc trigger plain command')).includes('the prefix of Petto again'));
+  assert.ok((await run({ name: 'plain', type: 'command' }, '!cc trigger plain command')).includes('the prefix of the server again'));
   assert.equal(store.get(`${guild}:plain`).trigger_type, 'command');
   assert.ok((await run({ name: 'plain', type: 'prefix', text: 'a b' }, '!cc trigger plain prefix a b')).includes('no spaces'));
   assert.ok((await run({ name: 'plain', type: 'prefix', text: 'p' }, '!cc trigger plain prefix p')).includes('now starts with'));
