@@ -202,7 +202,7 @@ function startServer(client) {
       res.json({ ok: true, groups: listVariables() });
     });
 
-    // Start, end or reroll a giveaway from the dashboard. The person must manage the server; the host of a new giveaway is that person.
+    // Start, edit, end or reroll a giveaway from the dashboard. The person must manage the server; the host of a new giveaway is that person.
     app.post('/api/dashboard/guild/:guildId/giveaway/:action', dashboardDatabaseRateLimiter, async (req, res) => {
       const access = await dashboardCardAccess(req, res);
       if (!access) return;

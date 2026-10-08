@@ -6,6 +6,8 @@ All notable changes to Petto are documented here.
 
 ### Added
 
+- The dashboard can change a giveaway that is running: the prize, the number of winners and a new end (counted from now, as `!giveaway edit` does). What is left empty stays as it is, a wrong value changes nothing, and the giveaway message is drawn again. It is the `edit` action of the dashboard giveaway route.
+
 - `!ticket setup` is a guided setup for tickets. A panel with menus and buttons lets you pick the channel for the ticket panel, the support roles and a log channel, write the title and text, add the ticket types (name, emoji and short description), choose the button color and whether members see buttons or a dropdown, and publish everything with one press. If the panel cannot be posted, nothing is kept. Each type can then be fine-tuned from the dashboard or with `!ticket category edit`.
 
 - Ticket types have their own welcome text, without needing a saved embed: `welcome:` in `!ticket category add` and `edit` (or in the setup panel), with `{user}`, `{username}`, `{category}`, `{server}` and `{number}`. The channel name of a ticket also accepts `{userid}` and `{category}`.

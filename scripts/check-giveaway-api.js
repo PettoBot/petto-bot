@@ -7,11 +7,14 @@ function stub(relative, exports) {
   const resolved = require.resolve(path.join(__dirname, '..', relative));
   require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports };
 }
-const started = []; const ended = []; const rerolled = [];
+const started = []; const ended = []; const rerolled = []; const updated = []; const refreshed = [];
 const rows = new Map([[1, { id: 1, guild_id: '10', ended: false }], [2, { id: 2, guild_id: '10', ended: true }], [3, { id: 3, guild_id: '99', ended: false }]]);
 stub('src/config.js', {});
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
-stub('src/db/giveaways.js', { getGiveaway: async (id) => rows.get(id) ?? null });
+stub('src/db/giveaways.js', {
+  getGiveaway: async (id) => rows.get(id) ?? null,
+  updateGiveaway: async (id, patch) => { updated.push([id, patch]); return { ...rows.get(id), ...patch }; },
+});
 stub('src/db/giveawayPresets.js', { getPreset: async (g, name) => (name === 'boosters' ? { id: 5 } : null) });
 stub('src/db/giveawayConfig.js', { ensureConfig: async () => ({ entry_mode: 'button', reaction: '🎉', embed_template: 'default-design' }) });
 stub('src/db/embedTemplates.js', { getTemplate: async (g, name) => (name === 'fancy' ? { name } : null) });
@@ -19,6 +22,7 @@ stub('src/db/guilds.js', { ensureGuild: async () => {} });
 stub('src/utils/giveawayEngine.js', {
   startGiveaway: async (args) => { started.push(args); return { id: 77, message_id: '555' }; },
   endGiveaway: async (client, giveaway) => { ended.push(giveaway.id); },
+  refreshGiveawayMessage: async (channel, giveaway) => { refreshed.push([channel.id, giveaway.id, giveaway.prize]); },
   rerollGiveaway: async (client, giveaway, count) => { rerolled.push([giveaway.id, count]); if (count === 9) { const e = new Error('Not enough entries.'); e.userFacing = true; throw e; } return ['1', '2']; },
 });
 const { runGiveawayAction } = require('../src/utils/giveawayApi');
@@ -27,6 +31,7 @@ const channel = { id: '20', type: ChannelType.GuildText, permissionsFor: () => (
 const blocked = { id: '21', type: ChannelType.GuildText, permissionsFor: () => ({ has: () => false }) };
 const voice = { id: '22', type: ChannelType.GuildVoice, permissionsFor: () => ({ has: () => true }) };
 const guild = { id: '10', members: { me: {} }, channels: { cache: new Map([['20', channel], ['21', blocked], ['22', voice]]) } };
+rows.get(1).channel_id = '20'; rows.get(2).channel_id = '20';
 const client = { guilds: { cache: new Map([['10', guild]]) } };
 const base = { prize: ' A nitro ', winners: 2, duration: '3d 4h', channel_id: '20', host_id: '293504726505357312' };
 
@@ -52,6 +57,22 @@ const base = { prize: ' A nitro ', winners: 2, duration: '3d 4h', channel_id: '2
   }
   assert.equal(started.length, 2, 'nothing starts when a check fails');
   assert.equal((await runGiveawayAction(client, '404', 'start', base)).status, 404);
+
+  // Changing a giveaway that is running: only what is filled in, the message is drawn again, and bad values change nothing.
+  assert.deepEqual(await runGiveawayAction(client, '10', 'edit', { id: 1, prize: ' New prize ', winners: '3', duration: '2h' }), { ok: true });
+  assert.equal(updated[0][0], 1); assert.equal(updated[0][1].prize, 'New prize'); assert.equal(updated[0][1].winners_count, 3);
+  assert.ok(Math.abs(new Date(updated[0][1].ends_at).getTime() - (Date.now() + 2 * 3600_000)) < 5000, 'the end is counted from now');
+  assert.deepEqual(refreshed[0], ['20', 1, 'New prize'], 'the giveaway message is refreshed');
+  assert.deepEqual(await runGiveawayAction(client, '10', 'edit', { id: 1, prize: '', winners: '', duration: '', winners_count: 9 }), { ok: false, status: 400, error: 'nothing_to_change', message: 'Change at least one field.' });
+  await runGiveawayAction(client, '10', 'edit', { id: 1, winners: '2' });
+  assert.deepEqual(Object.keys(updated.at(-1)[1]), ['winners_count'], 'what is left empty is not touched');
+  for (const [patch, error] of [[{ winners: '0' }, 'invalid_winners'], [{ winners: '51' }, 'invalid_winners'], [{ winners: 'two' }, 'invalid_winners'], [{ duration: 'soon' }, 'invalid_duration']]) {
+    const before = updated.length;
+    const refused = await runGiveawayAction(client, '10', 'edit', { id: 1, prize: 'x', ...patch });
+    assert.equal(refused.error, error); assert.equal(updated.length, before, 'nothing is saved when a value is wrong');
+  }
+  assert.equal((await runGiveawayAction(client, '10', 'edit', { id: 2, prize: 'x' })).error, 'already_ended');
+  assert.equal((await runGiveawayAction(client, '10', 'edit', { id: 3, prize: 'x' })).error, 'not_found', 'a giveaway of another server');
 
   assert.deepEqual(await runGiveawayAction(client, '10', 'end', { id: 1 }), { ok: true }); assert.deepEqual(ended, [1]);
   assert.equal((await runGiveawayAction(client, '10', 'end', { id: 2 })).error, 'already_ended');
