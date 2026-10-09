@@ -2,6 +2,7 @@ const { SlashCommandBuilder } = require('discord.js');
 const { addSubcommands, execute, PERMISSION } = require('../../utils/identity/commands');
 
 module.exports = {
+  aliases: ['vy'],
   data: addSubcommands(
     new SlashCommandBuilder()
       .setName('vanity')

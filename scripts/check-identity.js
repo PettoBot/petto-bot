@@ -291,5 +291,10 @@ function roleClient(log) {
   assert.equal((await rules.removeRule(guild, 'vanity', 'rep')).ok, true);
   assert.equal((await rules.removeRule(guild, 'vanity', 'rep')).code, 'rule_not_found');
 
+  // ---- Short names for the commands
+  const source = (file) => require('node:fs').readFileSync(path.join(__dirname, '..', 'src/commands/automation', file), 'utf8');
+  assert.match(source('vanity.js'), /aliases: \['vy'\]/);
+  assert.match(source('guildtag.js'), /aliases: \['servertag', 'tag', 'gt'\]/);
+
   console.log('Checked the Vanity and Server Tag rules.');
 })().catch((error) => { console.error(error); process.exit(1); });

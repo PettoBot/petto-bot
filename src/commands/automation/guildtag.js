@@ -2,7 +2,7 @@ const { SlashCommandBuilder } = require('discord.js');
 const { addSubcommands, execute, PERMISSION } = require('../../utils/identity/commands');
 
 module.exports = {
-  aliases: ['servertag'],
+  aliases: ['servertag', 'tag', 'gt'],
   data: addSubcommands(
     new SlashCommandBuilder()
       .setName('guildtag')
