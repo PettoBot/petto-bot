@@ -26,6 +26,7 @@ All notable changes to Petto are documented here.
 
 ### Changed
 
+- The automatic reactions of a channel (`!reaction messages <channel> <emojis>`) take up to **five** emojis instead of three (`emoji_1` to `emoji_5`).
 - `!customcommand trigger` is clearer. Without a type it shows how the command starts and the commands to change it; `prefix` without a text says how to write it; it says when the command already starts like that or when the prefix is the one of the server; and when it changes a prefix it says what it was before.
 - `!customcommand codetest` shows each message like Discord would: its text, its embed (title, the start of the description, fields, footer), its buttons and menus, and its reactions, under the line that says what it does.
 - `!customcommand list` shows a page at a time, sorted by name, with what each command is (code or text), how it is typed and how big it is.
@@ -35,6 +36,7 @@ All notable changes to Petto are documented here.
 
 ### Fixed
 
+- The automatic reactions of a channel did not work in announcement channels: the posts there usually come from channels it follows or from webhooks, which count as bots, and bots were skipped. The emojis of the channel go on those posts now (and on messages of Petto itself); the trigger phrases still react only to what a person writes, and system messages get nothing.
 - `updateMessage` with an empty list of components (`"components" (cslice)`) did not take the buttons away: the message changed but the buttons stayed, so a request card kept its buttons after it was delivered. It removes them now. Without the list the buttons are left as they were.
 - A command can ping a role that is not mentionable when Petto may mention every role in that channel (it has Mention Everyone or Administrator) and the id of the role is written in the code of the command, so the member who uses it cannot choose which role gets pinged by typing it. Before, only roles with "Allow anyone to @mention this role" were pinged, even for a bot with Administrator. When a role is not pinged, the command now says so and what to do, instead of failing silently.
 - The message after creating a custom command (`!customcommand add` and `code`) always said to try it with `!`, even in a server with another prefix (`p!`), so people typed `!req1` and nothing happened. It says the prefix of the server now.
