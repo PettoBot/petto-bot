@@ -100,7 +100,8 @@ function makeMessage({ guildBits = makeGuild(), content = '!x', memberRoles = []
   };
   return { message, replies, dms, reactions, roleLog, sent, isDeleted: () => deleted };
 }
-const row = (code, name = `c${Math.random().toString(16).slice(2, 8)}`) => ({ name, code });
+let rowCount = 0;
+const row = (code, name = `c${(rowCount += 1)}`) => ({ name, code });
 
 (async () => {
   // Data the code reads.
