@@ -12,6 +12,9 @@ const MODE_CHOICES = [
   { name: 'add only (react adds, un-react does nothing)', value: 'add' },
   { name: 'remove only (react removes the role)', value: 'remove' },
 ];
+const STYLE_CHOICES = [
+  { name: 'blurple', value: '1' }, { name: 'gray', value: '2' }, { name: 'green', value: '3' }, { name: 'red', value: '4' },
+];
 const TYPE_CHOICES = [
   { name: 'reaction (emoji on the message)', value: 'reaction' },
   { name: 'button (clickable role menu)', value: 'button' },
@@ -33,7 +36,9 @@ module.exports = {
       .addStringOption((o) => o.setName('mode').setDescription('Default: toggle').setRequired(false).addChoices(...MODE_CHOICES))
       .addStringOption((o) => o.setName('type').setDescription('Default: reaction').setRequired(false).addChoices(...TYPE_CHOICES))
       .addStringOption((o) => o.setName('label').setDescription('Button text (button mode only)').setRequired(false).setMaxLength(80))
-      .addStringOption((o) => o.setName('embed').setDescription('With message_id new: the saved embed to post with the button').setRequired(false)))
+      .addStringOption((o) => o.setName('embed').setDescription('With message_id new: the saved embed to post with the button').setRequired(false))
+      .addStringOption((o) => o.setName('style').setDescription('Button color (default: by mode)').setRequired(false).addChoices(...STYLE_CHOICES))
+      .addIntegerOption((o) => o.setName('row').setDescription('Row of the buttons, 1 to 5 (default: in order)').setRequired(false).setMinValue(1).setMaxValue(5)))
     .addSubcommand((s) => s
       .setName('remove')
       .setDescription('Unbind a reaction or button from a message.')
@@ -77,6 +82,8 @@ async function addCmd(interaction) {
   let type = interaction.options.getString('type') ?? 'reaction';
   const label = interaction.options.getString('label')?.trim().slice(0, 80) || null;
   const embedName = interaction.options.getString('embed')?.trim() || null;
+  const style = Number(interaction.options.getString('style')) || null;
+  const rowOption = interaction.options.getInteger('row');
   const fail = (text) => interaction.editReply({ components: [textCard(text, COLORS.RED)], flags: MessageFlags.IsComponentsV2 });
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
@@ -124,6 +131,8 @@ async function addCmd(interaction) {
       mode,
       interaction_type: type,
       button_label: type === 'button' ? label : null,
+      ...(type === 'button' && style ? { button_style: style } : {}),
+      ...(type === 'button' && rowOption ? { button_row: rowOption - 1 } : {}),
     });
     if (type === 'button') await syncMessageButtons(message, await rrDb.listForMessage(messageId));
   } catch (error) {
