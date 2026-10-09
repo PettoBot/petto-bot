@@ -34,7 +34,7 @@ function interaction(values) {
   const channel = { id: '5', toString: () => '#roles', send: async (payload) => { const message = { id: `90${posted.length}`, url: 'https://discord.com/channels/1/5/90', channel, delete: async () => { deleted.push(message.id); } }; posted.push({ payload, message }); return message; } };
   return {
     guild: { id: '1' }, channel, user: { id: '2' }, member: {},
-    options: { getSubcommand: () => 'add', getString: (key) => values[key] ?? null, getRole: () => ({ id: '77', toString: () => '@Member' }), getChannel: () => null },
+    options: { getSubcommand: () => 'add', getString: (key) => values[key] ?? null, getRole: () => ({ id: '77', toString: () => '@Member' }), getChannel: () => null, getInteger: () => null },
     deferReply: async () => {},
     editReply: async (payload) => { replies.push(JSON.stringify(payload.components[0].toJSON())); },
   };

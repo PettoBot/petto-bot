@@ -6,6 +6,7 @@ All notable changes to Petto are documented here.
 
 ### Added
 
+- Role buttons can have a color, a row and only an emoji. `!reactionrole add` takes `--style` (blurple, gray, green or red; before it was green for add only, red for remove only and blurple for toggle) and `--row` (1 to 5); the buttons of a row keep their order, and a message holds up to 5 rows of 5. The dashboard builder uses the same: a button can have no text (only the emoji) or no emoji. Run `schema.sql` to add the three columns (`button_style`, `button_row`, `button_position`).
 - `!reactionrole add new <emoji> <role> --embed <saved embed>` posts a saved embed (a classic one, not a V2 design) as a message and puts the role button on it, so a role menu with an embed is made in one step. `--channel` says where to post it, and the answer has the link and how to add more buttons to that message. If something fails after the message was posted, the message is taken down. The dashboard has the same: in Reaction roles, pick a saved embed instead of typing a message ID.
 - `.Message.CommandUserID`: who used the command that sent the message. A reaction knows it (Petto remembers it with the message), a button or menu locked to a member knows it, and in a typed command it is the author. With it, "only who asked" works for reactions too.
 

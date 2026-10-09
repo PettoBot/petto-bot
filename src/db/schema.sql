@@ -1535,6 +1535,12 @@ create table if not exists reaction_roles (
 
 alter table reaction_roles add column if not exists interaction_type text not null default 'reaction';
 alter table reaction_roles add column if not exists button_label text;
+-- How a button looks and where it goes (the dashboard builder sets them): its color (1 blurple, 2 gray, 3 green, 4 red; empty = by mode),
+-- the row of the message (0 to 4; empty = filled in order) and its place in the row. A button label of '' means only the emoji.
+-- An emoji that starts with "label:" is a button with no emoji (it keeps the pair message + emoji unique).
+alter table reaction_roles add column if not exists button_style smallint check (button_style between 1 and 4);
+alter table reaction_roles add column if not exists button_row smallint check (button_row between 0 and 4);
+alter table reaction_roles add column if not exists button_position smallint;
 
 create index if not exists idx_reaction_roles_message on reaction_roles(message_id);
 create index if not exists idx_reaction_roles_guild on reaction_roles(guild_id);
