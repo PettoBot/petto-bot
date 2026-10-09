@@ -378,6 +378,36 @@ function roleClient(log) {
   await commandsModule.execute(run.interaction, 'vanity');
   assert.ok(run.replies.length, 'test with no member tests the person who typed it');
 
+  // ---- Members for a sync: the ones Petto has, and Discord's limit on asking for them
+  const { loadMembers, SyncError } = require('../src/utils/identity/sync');
+  const rateLimit = (seconds) => Object.assign(new Error(`Request with opcode 8 was rate limited. Retry after ${seconds} seconds.`), { data: { retry_after: seconds } });
+  const guildOf = (cached, memberCount, fetch) => ({ id: 'gm', memberCount, members: { cache: new Map(cached.map((id) => [id, { id }])), fetch } });
+  let asked = 0;
+  let loaded = await loadMembers(guildOf(['a', 'b', 'c', 'd'], 4, async () => { asked += 1; return new Map(); }));
+  assert.equal(asked, 0, 'when Petto already has the members it does not ask Discord');
+  assert.equal(loaded.from, 'cache');
+  assert.equal(loaded.complete, true);
+  const waits = [];
+  let tries = 0;
+  loaded = await loadMembers(guildOf(['a'], 10, async () => { tries += 1; if (tries === 1) throw rateLimit(2); return new Map([['a', { id: 'a' }], ['b', { id: 'b' }]]); }), { onWait: (seconds) => waits.push(seconds), wait: async () => {} });
+  assert.deepEqual(waits, [2], 'a short wait is waited and the request is repeated');
+  assert.equal(loaded.members.length, 2);
+  assert.equal(loaded.from, 'discord');
+  loaded = await loadMembers(guildOf(['a', 'b'], 10, async () => { throw rateLimit(9.7); }), { wait: async () => {} });
+  assert.equal(loaded.complete, false, 'a long wait: the members Petto knows are used, and it says so');
+  assert.equal(loaded.members.length, 2);
+  await assert.rejects(loadMembers(guildOf([], 10, async () => { throw rateLimit(95); }), { wait: async () => {} }), (error) => error instanceof SyncError && /about 95 seconds/.test(error.message), 'with no members known the error says when to try again');
+  await assert.rejects(loadMembers(guildOf([], 10, async () => { throw new Error('boom'); })), /boom/, 'another error is not hidden');
+  // What the command shows: a notice, not a crash
+  const limited = typed({}, 'sync');
+  limited.interaction.guild.memberCount = 50;
+  limited.interaction.guild.members.cache = new Map();
+  limited.interaction.guild.members.fetch = async () => { throw rateLimit(95); };
+  await commandsModule.execute(limited.interaction, 'guildtag');
+  assert.match(JSON.stringify(limited.replies.at(-1)), /try again in about 95 seconds|Try again in about 95 seconds/i, 'the command says it, it does not throw');
+  const partial = resultPayload('guildtag', { processed: 3, total: 3, added: 0, removed: 0, errors: 0, skipped: false, durationMs: 1000, from: 'cache', complete: false }, { iconURL: () => null });
+  assert.match(JSON.stringify(partial), /only the ones Petto already knew/);
+
   // ---- Short names for the commands
   const source = (file) => require('node:fs').readFileSync(path.join(__dirname, '..', 'src/commands/automation', file), 'utf8');
   assert.match(source('vanity.js'), /aliases: \['vy'\]/);

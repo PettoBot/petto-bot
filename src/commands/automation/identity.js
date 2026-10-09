@@ -6,8 +6,7 @@ const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { COLORS } = require('../../utils/colors');
 const { evaluateMember } = require('../../utils/identity/service');
-const { syncGuild } = require('../../utils/identity/sync');
-const { memberOption, progressPayload, resultPayload } = require('../../utils/identity/commands');
+const { memberOption, runSync } = require('../../utils/identity/commands');
 const { LOG_EVENTS, EVENT_LABELS } = require('../../utils/identity/emit');
 const { infoPayload } = require('../../utils/infoCard');
 
@@ -50,17 +49,7 @@ module.exports = {
         const changed = results.filter((result) => result.changed && !result.error).length;
         return ok(interaction, `Checked ${user}. ${changed ? `${changed} role change${changed === 1 ? '' : 's'}.` : 'Nothing to change.'}`);
       }
-      const startedAt = Date.now();
-      await interaction.editReply(progressPayload(null, { processed: 0, total: 0 }, startedAt));
-      let last = 0;
-      const result = await syncGuild(guild, {
-        onProgress: (state) => {
-          if (Date.now() - last < 3000) return;
-          last = Date.now();
-          interaction.editReply(progressPayload(null, state, startedAt)).catch(() => {});
-        },
-      });
-      return interaction.editReply(resultPayload(null, result, guild));
+      return runSync(interaction, null);
     }
 
     if (sub === 'status') {
