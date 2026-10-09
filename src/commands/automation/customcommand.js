@@ -6,11 +6,47 @@ const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { COLORS } = require('../../utils/colors');
 const { AttachmentBuilder } = require('discord.js');
-const { run, PettoCodeError } = require('../../scripting');
+const { run, PettoCodeError, closestName, MAX_SOURCE_LENGTH } = require('../../scripting');
 const { TEMPLATES, byId } = require('../../scripting/templates');
 const codeCommands = require('../../utils/codeCommands');
-const { codeProblem, describeEffect, saveCodeCommand, setCommandTrigger, commandLimit, fullMessage, NAME_SHAPE, isRealCommand, prefixHint } = require('../../utils/codeCommandAdmin');
+const { codeProblem, describeEffect, effectDetails, codeHintList, codeSummary, saveCodeCommand, setCommandTrigger, commandLimit, fullMessage, NAME_SHAPE, isRealCommand, prefixHint } = require('../../utils/codeCommandAdmin');
 const { TRIGGER_TYPES, invalidateTriggers } = require('../../utils/codeTriggers');
+const { register, sendPager } = require('../../utils/pager');
+
+/** How big a command is, for the list: its code, its text or its embed template. */
+function sizeNote(row) {
+  if (row.code) return `${row.code.length} characters`;
+  const parts = [row.response ? `${row.response.length} characters` : null, row.embed_template ? `embed \`${row.embed_template}\`` : null].filter(Boolean);
+  return parts.join(' + ') || 'empty';
+}
+
+/** How a command is typed, for the list: `!req`, `.req` or the words that start it. */
+function startsWith(row, serverPrefix) {
+  if (!row.trigger_type || row.trigger_type === 'command') return `\`${serverPrefix}${row.name}\``;
+  if (row.trigger_type === 'prefix') return `\`${row.trigger_text ?? ''}${row.name}\``;
+  return `${row.trigger_type} \`${row.trigger_text ?? ''}\``;
+}
+
+register('customcommands', {
+  async load(guild) {
+    const rows = [...await ccDb.listCommands(guild.id)].sort((a, b) => a.name.localeCompare(b.name));
+    const serverPrefix = (await ensureGuild(guild.id).catch(() => null))?.prefix || '!';
+    const { limit } = await commandLimit(guild.id);
+    return {
+      title: `Custom commands (${rows.length}/${limit})`,
+      subtitle: [`See one with \`${serverPrefix}customcommand info <name>\`.`],
+      items: rows.map((row) => `\`${row.name}\` · ${row.code ? 'code' : 'text'} · ${startsWith(row, serverPrefix)} · ${sizeNote(row)}`),
+      empty: `No custom commands yet. Create one with \`${serverPrefix}customcommand add\` or \`${serverPrefix}customcommand template\`.`,
+    };
+  },
+});
+
+/** ` Did you mean \`req\`?` when a command with a name close to `name` exists, or nothing. */
+async function didYouMean(guildId, name) {
+  const rows = await ccDb.listCommands(guildId).catch(() => []);
+  const meant = closestName(name, rows.map((row) => row.name));
+  return meant ? ` Did you mean \`${meant}\`?` : '';
+}
 
 
 module.exports = {
@@ -40,6 +76,7 @@ module.exports = {
     .addSubcommand((s) => s.setName('code').setDescription('Create or change a command written in code (Petto Code). Write the code after the name.').addStringOption((o) => o.setName('name').setDescription("The command's name (no prefix)").setRequired(true)).addStringOption((o) => o.setName('code').setDescription('The code, after the name, inside a code block if it has several lines').setRequired(false)))
     .addSubcommand((s) => s.setName('rename').setDescription('Change the name of a command, keeping its code and its trigger.').addStringOption((o) => o.setName('name').setDescription('The current name').setRequired(true)).addStringOption((o) => o.setName('new_name').setDescription('The new name').setRequired(true)))
     .addSubcommand((s) => s.setName('trigger').setDescription('What starts a command: its own prefix, the start of a message, a whole message or words inside.').addStringOption((o) => o.setName('name').setDescription('Command name').setRequired(true)).addStringOption((o) => o.setName('type').setDescription(`One of: ${TRIGGER_TYPES.join(', ')}`).setRequired(false)).addStringOption((o) => o.setName('text').setDescription('The prefix or the words, for every type except command').setRequired(false)))
+    .addSubcommand((s) => s.setName('info').setDescription('What a command is: its trigger, its size and what its code uses.').addStringOption((o) => o.setName('name').setDescription('Command name').setRequired(true)))
     .addSubcommand((s) => s.setName('codeshow').setDescription('Show the code of a command.').addStringOption((o) => o.setName('name').setDescription('Command name').setRequired(true)))
     .addSubcommand((s) => s.setName('codetest').setDescription('Run some code to see what it would do, without sending or changing anything.').addStringOption((o) => o.setName('code').setDescription('The code, inside a code block if it has several lines').setRequired(false)))
     .addSubcommand((s) => s.setName('template').setDescription('List the ready-made commands in code, or install one.').addStringOption((o) => o.setName('id').setDescription('The template to install; leave empty to list them').setRequired(false)).addStringOption((o) => o.setName('name').setDescription('The name for the command; leave empty to use the suggested one').setRequired(false)))
@@ -58,6 +95,7 @@ module.exports = {
     if (sub === 'vars') return varsCmd(interaction);
     if (sub === 'trigger') return triggerCmd(interaction);
     if (sub === 'rename') return renameCmd(interaction);
+    if (sub === 'info') return infoCmd(interaction);
     if (['code', 'codeshow', 'codetest', 'template', 'export', 'import'].includes(sub)) return codeCmd(interaction, sub);
     return showCmd(interaction);
   },
@@ -124,13 +162,6 @@ async function addCmd(interaction, isEdit) {
   const prefix = (await ensureGuild(interaction.guild.id).catch(() => null))?.prefix || '!';
   const hint = isEdit ? '' : ` Try \`${prefix}${name} your request here\`; use \`${prefix}customcommand vars\` for variables.`;
   await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  \`${name}\` ${isEdit ? 'updated' : 'created'}.${hint}`, COLORS.GREEN)], flags: MessageFlags.IsComponentsV2 });
-}
-
-/** How a command starts, for the list: nothing for the prefix of Petto. */
-function triggerNote(row) {
-  if (!row.trigger_type || row.trigger_type === 'command') return '';
-  const text = row.trigger_text ?? '';
-  return ` [${row.trigger_type === 'prefix' ? `${text}${row.name}` : `${row.trigger_type}: ${text}`}]`;
 }
 
 async function triggerCmd(interaction) {
@@ -211,12 +242,42 @@ async function removeCmd(interaction) {
   await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  Removed.` : "That custom command doesn't exist.", removed ? COLORS.GREEN : COLORS.RED)], flags: MessageFlags.IsComponentsV2 });
 }
 
+/** The commands of the server a page at a time, sorted by name: what each one is, how it starts and how big it is. */
 async function listCmd(interaction) {
+  return sendPager(interaction, 'customcommands');
+}
+
+/** `!cc info req`: what a command is, how it starts, how big it is and what its code uses. */
+async function infoCmd(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
-  const rows = await ccDb.listCommands(interaction.guild.id);
-  const text = rows.length ? rows.map((r) => `\`${r.name}\`${r.code ? ' (code)' : ''}${triggerNote(r)}`).join(', ') : 'No custom commands yet.';
-  const { limit } = await commandLimit(interaction.guild.id);
-  await interaction.editReply({ components: [textCard(`**Custom commands (${rows.length}/${limit}):**\n${text}`, COLORS.DEFAULT)], flags: MessageFlags.IsComponentsV2 });
+  const name = ccDb.normalizeName(interaction.options.getString('name', true));
+  const row = await ccDb.getCommand(interaction.guild.id, name);
+  if (!row) return reply(interaction, `\`${name}\` does not exist.${await didYouMean(interaction.guild.id, name)}`, COLORS.RED);
+  const serverPrefix = (await ensureGuild(interaction.guild.id).catch(() => null))?.prefix || '!';
+  const lines = [`### \`${row.name}\``, `**Kind:** ${row.code ? 'code (Petto Code)' : 'text'}`, `**Starts with:** ${describeTrigger(row, row.name, serverPrefix)}`];
+  if (!row.code) {
+    if (row.response) lines.push(`**Size:** ${row.response.length} characters`);
+    if (row.embed_template) lines.push(`**Embed template:** \`${row.embed_template}\``);
+    lines.push(`-# See it with \`${serverPrefix}customcommand show ${row.name}\`.`);
+    return reply(interaction, lines.join('\n'));
+  }
+  lines.push(`**Size:** ${row.code.length} of ${MAX_SOURCE_LENGTH} characters`);
+  const summary = codeSummary(row.code);
+  if (summary) {
+    const uses = [
+      summary.storedData && 'stored data', summary.buttons && 'buttons', summary.menus && 'menus', summary.reactions && 'reactions',
+      summary.forms && 'forms', summary.roles && 'roles', summary.directMessages && 'direct messages', summary.lookups && 'members, roles or channels of the server',
+    ].filter(Boolean);
+    lines.push(`**Uses:** ${uses.length ? uses.join(', ') : 'nothing special, it only answers'}`);
+    lines.push(`**Functions:** ${summary.functions.length ? clipText(summary.functions.map((fn) => `\`${fn}\``).join(', '), 1200) : 'none'}`);
+  } else {
+    lines.push(`${EMOJI.WARNING}  ${codeProblem(row.code) ?? 'The code has a mistake.'}`);
+  }
+  if (row.created_by) lines.push(`**Written by:** <@${row.created_by}>`);
+  const hints = codeHintList(row.code);
+  if (hints.length) lines.push('', ...hints.slice(0, 5).map((hint) => `-# Hint: ${hint.text}`));
+  lines.push(`-# See the code with \`${serverPrefix}customcommand codeshow ${row.name}\`, try it with \`${serverPrefix}customcommand codetest\`.`);
+  return reply(interaction, lines.join('\n'));
 }
 
 async function varsCmd(interaction) {
@@ -307,22 +368,29 @@ async function codeCmd(interaction, sub) {
   }
 
   if (sub === 'codetest') {
-    const code = codeCommands.extractCode(codeCommands.rawAfter(raw, 0));
+    // A code block can have arguments after it: `!cc codetest ```code``` a b` tries it as if `a b` were typed.
+    const { code, args } = codeCommands.splitCodeArgs(codeCommands.rawAfter(raw, 0));
     const problem = codeProblem(code);
     if (problem) return reply(interaction, problem, COLORS.RED);
+    const hints = codeHintList(code);
     try {
-      const data = codeCommands.buildData(interaction.rawMessage, 'test', '', '!');
+      const data = codeCommands.buildData(interaction.rawMessage, 'test', args, '!');
       const result = await run(code, data, { store: codeCommands.memoryStore(), lookup: codeCommands.lookupFor(interaction.guild) });
       const output = result.output.trim();
-      const actions = result.effects.map((effect) => `• ${describeEffect(effect)}`).join('\n');
+      const actions = result.effects.map((effect) => [`• ${describeEffect(effect)}`, ...effectDetails(effect).map((line) => `  ↳ ${line}`)].join('\n')).join('\n');
       return reply(interaction, [
-        '### Test run (nothing was sent or changed)',
+        `### Test run (nothing was sent or changed)${args ? `\n-# With the arguments: ${clipText(args, 200)}` : ''}`,
         `**It would print:** ${output ? `\n${clipText(output)}` : '_nothing_'}`,
-        `**It would do:** ${actions ? `\n${clipText(actions)}` : '_nothing else_'}`,
+        `**It would do:** ${actions ? `\n${clipText(actions, 1600)}` : '_nothing else_'}`,
+        ...hints.slice(0, 5).map((hint) => `-# Hint: ${hint.text}`),
         `-# ${result.steps} steps, ${result.millis} ms`,
       ].join('\n'));
     } catch (error) {
-      if (error instanceof PettoCodeError) return reply(interaction, `The code stopped: ${error.detail}${error.line ? ` (line ${error.line}, column ${error.column})` : ''}`, COLORS.RED);
+      if (error instanceof PettoCodeError) {
+        // The mistake already says the name it meant, so only the other hints are added.
+        const more = hints.filter((hint) => !(hint.kind === 'function' && String(error.detail).includes(`"${hint.name}"`)));
+        return reply(interaction, [`The code stopped: ${error.detail}${error.line ? ` (line ${error.line}, column ${error.column})` : ''}`, ...more.slice(0, 5).map((hint) => `-# Hint: ${hint.text}`)].join('\n'), COLORS.RED);
+      }
       throw error;
     }
   }
@@ -338,14 +406,15 @@ async function codeCmd(interaction, sub) {
   // codeshow and export
   const name = ccDb.normalizeName(interaction.options.getString('name', true));
   const row = await ccDb.getCommand(interaction.guild.id, name);
-  if (!row?.code) return reply(interaction, `\`${name}\` does not exist or it is not written in code.`, COLORS.RED);
+  if (!row?.code) return reply(interaction, `\`${name}\` does not exist or it is not written in code.${row ? '' : await didYouMean(interaction.guild.id, name)}`, COLORS.RED);
   if (sub === 'export') {
     const share = codeCommands.encodeShare({ name: row.name, code: row.code });
     if (share.length > 1800) return sendAsFile(interaction, `The share code of \`${row.name}\` is long, so it is in this file.`, `${row.name}.pc1.txt`, share);
     return reply(interaction, `Share code of \`${row.name}\`. Import it with \`!customcommand import <code>\`:\n\`\`\`\n${share}\n\`\`\``);
   }
   if (row.code.length > 1700) return sendAsFile(interaction, `The code of \`${row.name}\` is long, so it is in this file.`, `${row.name}.txt`, row.code);
-  return reply(interaction, `**\`${row.name}\`**\n\`\`\`\n${row.code}\n\`\`\``);
+  // handlebars is the language Discord colors `{{ }}` best with: the actions stand out from the text around them.
+  return reply(interaction, `**\`${row.name}\`**\n\`\`\`handlebars\n${row.code}\n\`\`\``);
 }
 
 module.exports.missingPrefixWarning = missingPrefixWarning;

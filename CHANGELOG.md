@@ -6,6 +6,8 @@ All notable changes to Petto are documented here.
 
 ### Added
 
+- `.Message.CommandUserID`: who used the command that sent the message. A reaction knows it (Petto remembers it with the message), a button or menu locked to a member knows it, and in a typed command it is the author. With it, "only who asked" works for reactions too.
+
 - `!customcommand rename <name> <new name>` changes the name of a command and keeps its code, its trigger (its own prefix too, so `.req1` becomes `.req`) and its stored data. A name that is a real command of Petto or another custom command is refused. The messages the command sent before, with buttons or reactions, keep the old name and stop answering.
 - Petto Code has about 70 new functions, many with the names YAGPDB uses so code written for it is easier to bring over. Text: `joinStr`, `trimPrefix`, `trimSuffix`, `trimSpace`, `inFold`, `capitalize`, `repeat`, `truncate`, `padLeft`, `padRight`, `count`, `indexOf`, `reverse`, `urlescape`, `urlunescape`, `escapeMarkdown`, `formatNumber`, `toString`, `toLower`, `toUpper`. Numbers: `fdiv`, `sqrt`, `cbrt`, `log`, `roundCeil`, `roundFloor`, `roundEven`, `clamp`, `toInt64`. Time: `currentTime`, `toDuration` (`"1h30m"` in seconds), `humanizeTimeSince`, `snowflakeToTime`, `newDate`, `formatTime` (a layout and a time zone) and `weekday`. Lists and maps: `sort`, `sortBy`, `uniq`, `first`, `last`, `sum`, `randItem`, `concat`, `hasKey`, `setKey`, `delKey`, `merge`, `values`, `kindOf`, `json` and `parseJson`. IDs: `userID`, `roleID` and `channelID` take the ID out of a mention.
 - Petto Code can read members, roles and channels of the server: `getMember`, `getRole`, `getChannel` and `targetHasRole`, at most 10 per use. They only read, and only from the server where the command runs.
@@ -14,10 +16,19 @@ All notable changes to Petto are documented here.
 - New data: `.Mentions` (the users mentioned, with their name and avatar), `.MentionedRoles`, `.MentionedChannels`, `.ServerPrefix`, `.Now`, `.User.CreatedAt`, more of `.Member` (`Avatar`, `Color`, `HighestRoleID`, `BoostingSince`, `IsOwner`), `.Guild` (`OwnerID`, `CreatedAt`, `BoostCount`, `BoostTier`, `Banner`, `Description`, `RoleCount`, `ChannelCount`, `EmojiCount`), `.Channel` (`Topic`, `NSFW`, `ParentID`, `Type`, `IsThread`) and `.Message` (`CreatedAt`, `Attachments`, `ReplyToID`).
 - Three templates: `whois` (a card of the member you mention), `roleinfo` and `rank` (your place in the coins ranking).
 - The Petto Code Generator (a website to build commands with forms and try them like in Discord) uses this same engine.
+- `!customcommand info <name>` says what a command is: text or code, how it starts, its size (of the 10000 characters of code), the functions it uses and whether it uses stored data, buttons, menus, reactions, forms, roles, direct messages or members of the server.
+- A function that does not exist says the one you most likely meant: `There is no function called "dbget". Did you mean dbGet?`.
+- `!customcommand codetest` and the check and test of the dashboard give hints: functions that do not exist and names that are not in the data (`.User.Usrname`), even in a part of the code that did not run. Reading a name that is not there still gives nothing.
+- `!customcommand codetest` takes arguments after the code block: a code block and then `red "big cat"` tries the code as if `red "big cat"` were typed after the command. Code without a block is all code, as before.
+- The test of the dashboard also gives `effects` (the messages, embeds, buttons and reactions themselves, for a preview like Discord's) and `hints`, and its check gives `hints`.
 
 ### Changed
 
 - `!customcommand trigger` is clearer. Without a type it shows how the command starts and the commands to change it; `prefix` without a text says how to write it; it says when the command already starts like that or when the prefix is the one of the server; and when it changes a prefix it says what it was before.
+- `!customcommand codetest` shows each message like Discord would: its text, its embed (title, the start of the description, fields, footer), its buttons and menus, and its reactions, under the line that says what it does.
+- `!customcommand list` shows a page at a time, sorted by name, with what each command is (code or text), how it is typed and how big it is.
+- `!customcommand codeshow` shows the code in a block that colors the `{{ }}` actions.
+- `codeshow`, `export` and `info` say the closest command when the name has a typo (`!cc codeshow gret` says "Did you mean greet?").
 - Saving a command in code warns when its first comment says it is used with a prefix of its own (for example `{{/* req: .req <what you ask> */}}`) and the command does not have that prefix: it says the command that gives it (`!customcommand trigger req prefix .`) and, if the comment uses another name, how to rename it.
 
 ### Fixed

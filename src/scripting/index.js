@@ -1,7 +1,7 @@
 // Petto Code: the template language of custom commands. `parse` checks the code, `run` runs it
 // with the data it may see and gives back the text and the effects (what to do in Discord).
 const { parse, MAX_SOURCE_LENGTH } = require('./parser');
-const { run, DEFAULT_LIMITS } = require('./interpreter');
+const { run, DEFAULT_LIMITS, closestName } = require('./interpreter');
 const { functions } = require('./functions');
 const { PettoCodeError } = require('./errors');
 
@@ -13,4 +13,4 @@ function check(source) {
   }
 }
 
-module.exports = { parse, run, check, PettoCodeError, DEFAULT_LIMITS, MAX_SOURCE_LENGTH, functionNames: () => [...functions.keys()].sort() };
+module.exports = { parse, run, check, closestName, PettoCodeError, DEFAULT_LIMITS, MAX_SOURCE_LENGTH, functionNames: () => [...functions.keys()].sort() };
