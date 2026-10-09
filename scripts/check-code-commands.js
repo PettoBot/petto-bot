@@ -255,6 +255,20 @@ const row = (code, name = `c${(rowCount += 1)}`) => ({ name, code });
   await click('cc:vote:yes::', { user: '500000000000000003' });
   const quick = await click('cc:vote:yes::', { user: '500000000000000003', advance: 0 });
   assert.equal(quick.deferred, 1); assert.equal(quick.updates.length + quick.replies.length, 0, 'a click right after another is held back without a message');
+  // A role that cannot be mentioned is not pinged, and the command says so.
+  const silent = makeMessage({ guildBits: bits }); clock += 5000;
+  await codeCommands.runCodeCommand(silent.message, row('{{ sendMessage nil (complexMessage "content" (print "New " (mentionRole "100000000000000001"))) }}'), '', '!');
+  assert.ok(silent.replies.some((reply) => String(reply.content ?? '').includes('was not pinged') && String(reply.content).includes('mention this role')), 'it says why the role was not pinged');
+  const loud = makeMessage({ guildBits: bits }); clock += 5000;
+  await codeCommands.runCodeCommand(loud.message, row('{{ sendMessage nil (complexMessage "content" (print "New " (mentionRole "100000000000000005"))) }}'), '', '!');
+  assert.ok(!loud.replies.some((reply) => String(reply.content ?? '').includes('was not pinged')), 'a role that can be mentioned has no warning');
+  // updateMessage with an empty list of components takes the buttons away (it used to leave them), and without the list it leaves them.
+  for (const [code, expected] of [['{{ updateMessage (complexMessage "embed" (cembed "description" "done") "components" (cslice)) }}', []], ['{{ updateMessage (complexMessage "embed" (cembed "description" "same buttons")) }}', undefined]]) {
+    const made = makeMessage({ guildBits: bits }); const log = { updates: [] }; clock += 5000;
+    await codeCommands.runComponent({ guild: made.message.guild, guildId: made.message.guild.id, channel: made.message.channel, member: made.message.member, user: made.message.author, message: { id: '1', content: '', embeds: [] }, isStringSelectMenu: () => false, values: [], reply: async () => {}, update: async (payload) => { log.updates.push(payload); }, deferUpdate: async () => {}, followUp: async () => {} }, row(code, 'closer'), { command: 'closer', handler: 'h', data: '', userId: null });
+    assert.equal(log.updates.length, 1);
+    assert.deepEqual(log.updates[0].components, expected, expected ? 'an empty list of components removes the buttons' : 'no list leaves the buttons');
+  }
   // Menus: the values reach the code, and respond can be private.
   const favoriteRow = { name: 'favorite', code: TEMPLATES.find((template) => template.id === 'favorite').code };
   const menuClick = async (values) => {

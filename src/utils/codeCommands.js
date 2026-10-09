@@ -238,11 +238,13 @@ function allowedMentionsFor(content, guild, authorId) {
 const clip = (text) => (text.length > MAX_MESSAGE ? `${text.slice(0, MAX_MESSAGE - 1)}…` : text);
 
 /** What a message of the code looks like when sent: text, an embed, or both. */
-function toPayload(action, guild, authorId, commandName = null) {
+function toPayload(action, guild, authorId, commandName = null, { clearComponents = false } = {}) {
   const payload = { allowedMentions: allowedMentionsFor(action.content, guild, authorId) };
   if (action.content) payload.content = clip(action.content);
   if (action.embed) payload.embeds = [new EmbedBuilder(action.embed)];
   if (action.components?.length && commandName) payload.components = buildComponents(action.components, commandName);
+  // Changing a message with an empty list of components takes its buttons away; without that, the old ones would stay.
+  else if (clearComponents && Array.isArray(action.components) && action.components.length === 0) payload.components = [];
   if (action.silent) payload.flags = MessageFlags.SuppressNotifications;
   return payload;
 }
@@ -300,6 +302,10 @@ async function applyEffects(message, effects, commandName = null) {
         if (!botCan?.has(PermissionFlagsBits.SendMessages) || !botCan.has(PermissionFlagsBits.ViewChannel)) { skipped.push(`a message to #${channel.name}, Petto cannot send there`); continue; }
         if (!memberCan?.has(PermissionFlagsBits.SendMessages)) { skipped.push(`a message to #${channel.name}, you cannot send there`); continue; }
         const payload = toPayload(effect, guild, author.id, commandName);
+        // A role that is not mentionable is shown but never pinged, so the command says why nobody was called.
+        for (const id of mentionedIds(effect.content).roles.filter((roleId) => !payload.allowedMentions.roles.includes(roleId))) {
+          skipped.push(`the role ${guild.roles.cache.get(id)?.name ?? id} was not pinged, turn on "Allow anyone to @mention this role" for it`);
+        }
         // "reply" answers the message that used the command, when the message goes to the same channel.
         const sent = effect.reply && channel.id === message.channel?.id && typeof message.reply === 'function' && message.id !== '0'
           ? await message.reply(payload)
@@ -516,7 +522,7 @@ async function runComponent(interaction, row, parsed) {
   // Answer first, Discord only waits three seconds, then do the rest.
   try {
     if (modal) await interaction.showModal(buildModal(modal.modal, row.name));
-    else if (update && canUpdate) await interaction.update(toPayload(update, guild, user.id, row.name));
+    else if (update && canUpdate) await interaction.update(toPayload(update, guild, user.id, row.name, { clearComponents: true }));
     else if (update) await interaction.reply({ ...toPayload(update, guild, user.id, row.name), flags: MessageFlags.Ephemeral });
     else if (respond) await interaction.reply({ ...toPayload(respond, guild, user.id, row.name), ...(respond.ephemeral ? { flags: MessageFlags.Ephemeral } : {}) });
     else if (text) await interaction.reply({ content: clip(text), allowedMentions: allowedMentionsFor(text, guild, user.id) });
@@ -576,7 +582,7 @@ async function runReaction(reaction, user, row, emojiText, watched = null) {
   const rest = result.effects.filter((effect) => !['update', 'respond'].includes(effect.type));
   const me = guild.members.me;
   if (update && message.author?.id === me?.id) {
-    await message.edit(toPayload(update, guild, user.id, row.name)).catch((error) => logger.warn(`Could not change the message of "${row.name}" in guild ${guild.id}: ${error.message}`));
+    await message.edit(toPayload(update, guild, user.id, row.name, { clearComponents: true })).catch((error) => logger.warn(`Could not change the message of "${row.name}" in guild ${guild.id}: ${error.message}`));
   }
   const reply = respond ?? (text ? { content: text } : null);
   if (reply && channel.permissionsFor(me)?.has(PermissionFlagsBits.SendMessages)) {
