@@ -82,6 +82,10 @@ const { registerCodeRoutes } = require('../src/web/codeRoutes');
   ]);
   assert.equal(r.json.actions.length, 2, 'actions is still there, one sentence for each effect');
   assert.deepEqual(r.json.hints, ['.User.Nme is not in the data, so it gives nothing.'], 'hints is a list of sentences');
+  // execCC in a test runs nothing: it is an effect like the others, with its name, its delay and its data.
+  r = await call('test', { code: '{{ execCC "shop" 10 (sdict "item" "rose") }}' });
+  assert.deepEqual(r.json.effects, [{ type: 'execCC', name: 'shop', delay: 10, data: { item: 'rose' } }]);
+  assert.deepEqual(r.json.actions, ['run the command `shop` after 10 seconds with data']);
   r = await call('test', { code: '{{ index .Args 1 }}', args: 'a b' }); assert.equal(r.json.output, 'b', 'the arguments of the test reach the code');
   r = await call('test', { code: '{{ nope }}' }); assert.equal(r.json.error.kind, 'runtime'); assert.ok(r.json.error.message.includes('nope') && r.json.error.line === 1);
   r = await call('test', { code: '{{ lowr "A" }}' }); assert.equal(r.json.error.message, 'There is no function called "lowr". Did you mean lower?');

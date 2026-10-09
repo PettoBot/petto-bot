@@ -1,3 +1,6 @@
+// Node 18 has Web Crypto only under require; Petto Code takes its random numbers from globalThis.crypto.
+if (!globalThis.crypto) globalThis.crypto = require('node:crypto').webcrypto;
+
 const { Client, GatewayIntentBits, Partials } = require('discord.js');
 const config = require('./src/config');
 const { loadCommands } = require('./src/handlers/commandHandler');

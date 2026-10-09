@@ -77,6 +77,7 @@ module.exports = {
     .addSubcommand((s) => s.setName('rename').setDescription('Change the name of a command, keeping its code and its trigger.').addStringOption((o) => o.setName('name').setDescription('The current name').setRequired(true)).addStringOption((o) => o.setName('new_name').setDescription('The new name').setRequired(true)))
     .addSubcommand((s) => s.setName('trigger').setDescription('What starts a command: its own prefix, the start of a message, a whole message or words inside.').addStringOption((o) => o.setName('name').setDescription('Command name').setRequired(true)).addStringOption((o) => o.setName('type').setDescription(`One of: ${TRIGGER_TYPES.join(', ')}`).setRequired(false)).addStringOption((o) => o.setName('text').setDescription('The prefix or the words, for every type except command').setRequired(false)))
     .addSubcommand((s) => s.setName('info').setDescription('What a command is: its trigger, its size and what its code uses.').addStringOption((o) => o.setName('name').setDescription('Command name').setRequired(true)))
+    .addSubcommand((s) => s.setName('logs').setDescription('The last problems of the commands in code: mistakes, crashes and actions not done.').addStringOption((o) => o.setName('name').setDescription('Only the problems of this command; leave empty for all').setRequired(false)))
     .addSubcommand((s) => s.setName('codeshow').setDescription('Show the code of a command.').addStringOption((o) => o.setName('name').setDescription('Command name').setRequired(true)))
     .addSubcommand((s) => s.setName('codetest').setDescription('Run some code to see what it would do, without sending or changing anything.').addStringOption((o) => o.setName('code').setDescription('The code, inside a code block if it has several lines').setRequired(false)))
     .addSubcommand((s) => s.setName('template').setDescription('List the ready-made commands in code, or install one.').addStringOption((o) => o.setName('id').setDescription('The template to install; leave empty to list them').setRequired(false)).addStringOption((o) => o.setName('name').setDescription('The name for the command; leave empty to use the suggested one').setRequired(false)))
@@ -96,6 +97,7 @@ module.exports = {
     if (sub === 'trigger') return triggerCmd(interaction);
     if (sub === 'rename') return renameCmd(interaction);
     if (sub === 'info') return infoCmd(interaction);
+    if (sub === 'logs') return logsCmd(interaction);
     if (['code', 'codeshow', 'codetest', 'template', 'export', 'import'].includes(sub)) return codeCmd(interaction, sub);
     return showCmd(interaction);
   },
@@ -267,6 +269,7 @@ async function infoCmd(interaction) {
     const uses = [
       summary.storedData && 'stored data', summary.buttons && 'buttons', summary.menus && 'menus', summary.reactions && 'reactions',
       summary.forms && 'forms', summary.roles && 'roles', summary.directMessages && 'direct messages', summary.lookups && 'members, roles or channels of the server',
+      summary.otherCommands && 'other commands (execCC)',
     ].filter(Boolean);
     lines.push(`**Uses:** ${uses.length ? uses.join(', ') : 'nothing special, it only answers'}`);
     lines.push(`**Functions:** ${summary.functions.length ? clipText(summary.functions.map((fn) => `\`${fn}\``).join(', '), 1200) : 'none'}`);
@@ -278,6 +281,23 @@ async function infoCmd(interaction) {
   if (hints.length) lines.push('', ...hints.slice(0, 5).map((hint) => `-# Hint: ${hint.text}`));
   lines.push(`-# See the code with \`${serverPrefix}customcommand codeshow ${row.name}\`, try it with \`${serverPrefix}customcommand codetest\`.`);
   return reply(interaction, lines.join('\n'));
+}
+
+/**
+ * `!cc logs [name]`: the last problems of the commands in code of the server (or of one command): mistakes in the code,
+ * crashes, actions that were not done and execCC calls that were refused. They are kept in memory, so a restart clears them.
+ */
+async function logsCmd(interaction) {
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  const typed = interaction.options.getString('name');
+  const name = typed ? ccDb.normalizeName(typed).replace(/^[^a-z0-9_-]+/, '') : null;
+  const entries = codeCommands.problemLog(interaction.guild.id, name);
+  if (!entries.length) {
+    const about = name ? `\`${name}\` has` : 'The commands in code have';
+    return reply(interaction, `${about} no problems written down.\n-# Petto keeps the last ${codeCommands.MAX_PROBLEMS} problems of the server until it restarts.`);
+  }
+  const lines = entries.map((entry) => `**\`${entry.command}\`** · ${entry.trigger}${entry.userId ? ` · <@${entry.userId}>` : ''} · <t:${entry.at}:R>\n${clipText(entry.text, 300)}`);
+  return reply(interaction, clipText([`### Problems of ${name ? `\`${name}\`` : 'the commands in code'}`, ...lines].join('\n'), 3800) + `\n-# The newest first. Petto keeps them until it restarts.`);
 }
 
 async function varsCmd(interaction) {

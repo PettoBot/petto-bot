@@ -13,7 +13,7 @@ const DEFAULT_LIMITS = {
   maxOutput: 20_000, // characters printed while running; the bot cuts a message to Discord's limit later
   maxValueSize: 20_000, // the longest text a function may make
   maxListSize: 2_000,
-  effects: { message: 5, dm: 2, addRole: 5, removeRole: 5, reaction: 5, deleteTrigger: 1, deleteResponse: 1, respond: 1, update: 1, modal: 1, removeReaction: 1 },
+  effects: { message: 5, dm: 2, addRole: 5, removeRole: 5, reaction: 5, deleteTrigger: 1, deleteResponse: 1, respond: 1, update: 1, modal: 1, removeReaction: 1, execCC: 2 },
 };
 
 /**
@@ -54,6 +54,15 @@ function closestName(name, candidates) {
   return best;
 }
 
+/**
+ * A number from 0 (included) to 1 (not included), like Math.random, but from the random numbers of the system (Web Crypto), the
+ * same in Node and in a browser. randInt, shuffle and randItem use it.
+ */
+function secureRandom() {
+  const [high, low] = globalThis.crypto.getRandomValues(new Uint32Array(2));
+  return (high * 2 ** 21 + (low >>> 11)) / 2 ** 53;
+}
+
 class Scope {
   constructor(parent = null, root = parent?.root) { this.parent = parent; this.root = root; this.values = new Map(); }
   find(name) { for (let scope = this; scope; scope = scope.parent) if (scope.values.has(name)) return scope; return null; }
@@ -80,7 +89,7 @@ async function run(codeOrTree, data = {}, options = {}) {
 
   const env = {
     data,
-    rng: options.random ?? Math.random,
+    rng: options.random ?? secureRandom,
     now,
     store: options.store ? {
       async call(operation, ...args) {
@@ -169,7 +178,8 @@ async function run(codeOrTree, data = {}, options = {}) {
       return guardValue(await entry.run(env, ...args), operand);
     } catch (error) {
       if (error instanceof PettoCodeError) throw error;
-      return fail(error.limit ? 'limit' : 'runtime', `${operand.name}: ${error.message}`, operand);
+      // A message that already names the function (`bare`) is said as it is.
+      return fail(error.limit ? 'limit' : 'runtime', error.bare ? error.message : `${operand.name}: ${error.message}`, operand);
     }
   }
 
