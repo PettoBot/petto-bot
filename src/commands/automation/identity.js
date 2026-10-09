@@ -17,6 +17,8 @@ const ok = (interaction, text) => reply(interaction, `${EMOJI.APPROVE}  ${text}`
 
 module.exports = {
   aliases: ['idlog'],
+  // Only with the prefix: no slash command is registered for it.
+  prefixOnly: true,
   data: new SlashCommandBuilder()
     .setName('identity')
     .setDescription('Vanity and Server Tag roles: apply everything, and the log of role changes.')
@@ -78,7 +80,7 @@ module.exports = {
           { title: 'Thank-you messages', lines: [`**Vanity** ${notify(notifyVanity)}`, `**Server Tag** ${notify(notifyTag)}`] },
           { title: 'Log', lines: log ? [`<#${log.channelId}>`, events] : ['off'] },
         ],
-        footer: '/vanity · /guildtag · /identity sync',
+        footer: '!vanity · !guildtag · !identity sync',
       }));
     }
 
@@ -87,14 +89,14 @@ module.exports = {
       const current = await db.getLogConfig(guild.id);
       const events = current?.events && Object.keys(current.events).length ? current.events : Object.fromEntries(LOG_EVENTS.map((event) => [event, true]));
       await db.setLogConfig(guild.id, { channelId: channel.id, events, embeds: current?.embeds ?? {} });
-      return ok(interaction, `Role changes made by the rules are logged in ${channel}. Use \`/identity log-event\` to choose which entries.`);
+      return ok(interaction, `Role changes made by the rules are logged in ${channel}. Use \`!identity log-event\` to choose which entries.`);
     }
 
     const current = await db.getLogConfig(guild.id);
     if (sub === 'logs-off') {
       return (await db.clearLogConfig(guild.id)) ? ok(interaction, 'The log is off.') : reply(interaction, 'There was no log set up.');
     }
-    if (!current) return reply(interaction, 'Set a log channel first with `/identity logs`.', COLORS.RED);
+    if (!current) return reply(interaction, 'Set a log channel first with `!identity logs`.', COLORS.RED);
     const event = interaction.options.getString('event', true);
     if (sub === 'log-event') {
       const enabled = interaction.options.getBoolean('enabled', true);

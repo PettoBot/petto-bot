@@ -1,5 +1,5 @@
-// The commands of Vanity and Server Tag rules. `/vanity` and `/guildtag` are the same set of subcommands for two kinds of
-// rule, built here once. They work with a slash and with the prefix (`!vanity add ...`).
+// The commands of Vanity and Server Tag rules. `!vanity` and `!guildtag` are the same set of subcommands for two kinds of
+// rule, built here once. They are prefix only (`!vanity add ...`).
 const { MessageFlags, PermissionFlagsBits, ChannelType } = require('discord.js');
 const db = require('../../db/identity');
 const { ensureGuild } = require('../../db/guilds');
@@ -97,10 +97,10 @@ async function listRules(interaction, kind) {
     subtitle: [all.length ? `${all.length} rule${all.length === 1 ? '' : 's'} · ${on} on` : 'No rules yet'],
     thumbnail: interaction.guild.iconURL?.({ extension: 'png', size: 128 }) ?? null,
     sections: [
-      { lines: all.length ? all.map((rule) => rules.describeRule(kind, rule)) : [`Create one with \`/${kind} add\`.`], limit: 2600 },
-      { title: 'Thank-you message', lines: [notify ? `<#${notify.channelId}>${notify.embedName ? ` · embed \`${notify.embedName}\`` : ''}${notify.ping === 'none' ? ' · no ping' : ''}` : `Off. Set it with \`/${kind} notify\`.`] },
+      { lines: all.length ? all.map((rule) => rules.describeRule(kind, rule)) : [`Create one with \`!${kind} add\`.`], limit: 2600 },
+      { title: 'Thank-you message', lines: [notify ? `<#${notify.channelId}>${notify.embedName ? ` · embed \`${notify.embedName}\`` : ''}${notify.ping === 'none' ? ' · no ping' : ''}` : `Off. Set it with \`!${kind} notify\`.`] },
     ],
-    footer: `/${kind} add · edit · remove · test · sync`,
+    footer: `!${kind} add · edit · remove · test · sync`,
   }));
 }
 
@@ -170,7 +170,7 @@ async function setNotify(interaction, kind) {
   await ok(interaction, `Members who start matching a ${kind === 'vanity' ? 'Vanity' : 'Server Tag'} rule will be thanked in ${channel}${embedName ? ` with the embed \`${embedName}\`` : ''}.`);
 }
 
-/** The handler of `/vanity` and `/guildtag`. */
+/** The handler of `!vanity` and `!guildtag`. */
 async function execute(interaction, kind) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const sub = interaction.options.getSubcommand();
@@ -196,7 +196,7 @@ async function execute(interaction, kind) {
   if (!result.ok) return bad(interaction, result.message);
   if (result.unchanged) return reply(interaction, 'Nothing to change: give at least one new value.');
   const done = { add: 'created', edit: 'updated', remove: 'deleted' }[sub];
-  await ok(interaction, `The rule \`${rules.cleanName(name)}\` was ${done}.${sub === 'remove' ? '' : ` Members are checked as they change; use \`/${kind} sync\` to apply it to everyone now.`}`);
+  await ok(interaction, `The rule \`${rules.cleanName(name)}\` was ${done}.${sub === 'remove' ? '' : ` Members are checked as they change; use \`!${kind} sync\` to apply it to everyone now.`}`);
 }
 
 const PERMISSION = PermissionFlagsBits.ManageGuild;
