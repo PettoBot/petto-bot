@@ -7,6 +7,7 @@ const { EMOJI } = require('../../utils/emojis');
 const { COLORS } = require('../../utils/colors');
 const { evaluateMember } = require('../../utils/identity/service');
 const { syncGuild } = require('../../utils/identity/sync');
+const { memberOption } = require('../../utils/identity/commands');
 const { LOG_EVENTS, EVENT_LABELS } = require('../../utils/identity/emit');
 const { infoPayload } = require('../../utils/infoCard');
 
@@ -43,7 +44,7 @@ module.exports = {
     const sub = interaction.options.getSubcommand();
 
     if (sub === 'sync') {
-      const user = interaction.options.getMember('user');
+      const user = await memberOption(interaction, 'user');
       if (user) {
         const results = await evaluateMember(user);
         const changed = results.filter((result) => result.changed && !result.error).length;

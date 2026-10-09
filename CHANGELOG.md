@@ -33,6 +33,7 @@ All notable changes to Petto are documented here.
 
 ### Fixed
 
+- `!vanity sync`, `!vanity test`, `!guildtag sync`, `!guildtag test` and `!identity sync` work with a typed command: they failed with `getMember is not a function` because a typed command gives the user, not the member.
 - The saved copy of each server marks the roles the bot has, so the dashboard knows which roles it can hand out (the Vanity page showed a role the bot could give as one it could not).
 - Vanity rules no longer take a role away from a member who goes offline or invisible: Discord hides their Custom Status then, which is not the same as having none, so the rule leaves their role as it is until they are online again.
 - The log of a role taken away says which rule made it go: the Server Tag that was taken off, instead of a Vanity rule that did not change.
