@@ -6,6 +6,8 @@ All notable changes to Petto are documented here.
 
 ### Added
 
+- `.Message.CommandUserID`: who used the command that sent the message. A reaction knows it (Petto remembers it with the message), a button or menu locked to a member knows it, and in a typed command it is the author. With it, "only who asked" works for reactions too.
+
 - `!customcommand rename <name> <new name>` changes the name of a command and keeps its code, its trigger (its own prefix too, so `.req1` becomes `.req`) and its stored data. A name that is a real command of Petto or another custom command is refused. The messages the command sent before, with buttons or reactions, keep the old name and stop answering.
 - Petto Code has about 70 new functions, many with the names YAGPDB uses so code written for it is easier to bring over. Text: `joinStr`, `trimPrefix`, `trimSuffix`, `trimSpace`, `inFold`, `capitalize`, `repeat`, `truncate`, `padLeft`, `padRight`, `count`, `indexOf`, `reverse`, `urlescape`, `urlunescape`, `escapeMarkdown`, `formatNumber`, `toString`, `toLower`, `toUpper`. Numbers: `fdiv`, `sqrt`, `cbrt`, `log`, `roundCeil`, `roundFloor`, `roundEven`, `clamp`, `toInt64`. Time: `currentTime`, `toDuration` (`"1h30m"` in seconds), `humanizeTimeSince`, `snowflakeToTime`, `newDate`, `formatTime` (a layout and a time zone) and `weekday`. Lists and maps: `sort`, `sortBy`, `uniq`, `first`, `last`, `sum`, `randItem`, `concat`, `hasKey`, `setKey`, `delKey`, `merge`, `values`, `kindOf`, `json` and `parseJson`. IDs: `userID`, `roleID` and `channelID` take the ID out of a mention.
 - Petto Code can read members, roles and channels of the server: `getMember`, `getRole`, `getChannel` and `targetHasRole`, at most 10 per use. They only read, and only from the server where the command runs.

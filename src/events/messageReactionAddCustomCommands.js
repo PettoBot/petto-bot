@@ -44,7 +44,7 @@ module.exports = {
       if (!emoji) return;
       const row = await ccDb.getCommand(message.guild.id, watched.command).catch(() => null);
       if (!row?.code) return;
-      await runReaction(reaction, user, row, emoji);
+      await runReaction(reaction, user, row, emoji, watched);
     } catch (error) {
       logger.error('Custom command reaction failed:', error);
     }

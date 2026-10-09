@@ -162,6 +162,7 @@ const row = (code, name = `c${Math.random().toString(16).slice(2, 8)}`) => ({ na
     assert.equal(d.Message.Attachments[0].Name, 'f.png');
     assert.equal(d.Prefix, '?'); assert.equal(d.ServerPrefix, '!');
     assert.equal(d.Member.IsOwner, true);
+    assert.equal(d.Message.CommandUserID, '500000000000000001', 'a typed command was used by its author');
     assert.ok(d.User.CreatedAt > 1_420_070_400 && d.Now > 1_700_000_000);
     const lookup = codeCommands.lookupFor(m.message.guild);
     assert.equal((await lookup.role('100000000000000005')).Mentionable, true);
@@ -337,7 +338,7 @@ const row = (code, name = `c${Math.random().toString(16).slice(2, 8)}`) => ({ na
   assert.equal(codeCommands.matchEmoji(['❤️', '<:lazo:1497795615923634408>'], '❤'), '❤️', 'a variation mark does not matter');
   assert.equal(codeCommands.matchEmoji(['<:lazo:1497795615923634408>'], '<:renamed:1497795615923634408>'), '<:lazo:1497795615923634408>', 'a custom emoji is matched by its id');
   assert.equal(codeCommands.matchEmoji(['🦋'], '🎀'), null);
-  assert.ok([...watching.values()].some((record) => record.command === 'claim' && record.emojis.length === 2), 'the emojis and the command are remembered');
+  assert.ok([...watching.values()].some((record) => record.command === 'claim' && record.emojis.length === 2 && record.user === '500000000000000001'), 'the emojis, the command and who used it are remembered');
   const edits = []; const removed = []; const channelSends = []; const roleChanges = [];
   const reactionMessage = {
     id: 'm1', content: '', url: 'x', embeds: [], author: { id: 'bot' }, guild: reactAsked.message.guild, channel: { ...reactAsked.message.channel, send: async (payload) => { channelSends.push(payload); }, permissionsFor: () => ({ has: () => true }) },

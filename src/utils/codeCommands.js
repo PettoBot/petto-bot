@@ -109,6 +109,8 @@ function buildData(message, commandName, argText, prefix, serverPrefix = prefix)
       Embeds: (message.embeds ?? []).slice(0, 10).map((embed) => ({ Title: embed.title ?? null, Description: embed.description ?? null, Footer: embed.footer?.text ?? null, Author: embed.author?.name ?? null, AuthorIcon: embed.author?.iconURL ?? embed.author?.icon_url ?? null, FooterIcon: embed.footer?.iconURL ?? embed.footer?.icon_url ?? null, Thumbnail: embed.thumbnail?.url ?? null, Image: embed.image?.url ?? null, Color: embed.color ?? null })),
       Attachments: [...(message.attachments?.values?.() ?? [])].slice(0, 10).map((file) => ({ URL: file.url, Name: file.name ?? null, Size: file.size ?? null, ContentType: file.contentType ?? null })),
       ReplyToID: message.reference?.messageId ?? null,
+      // Who used the command that sent this message: here, the person who typed it. Buttons locked to a member and reactions say who asked.
+      CommandUserID: author.id,
     },
     Mentions: [...(mentions.users?.values?.() ?? [])].slice(0, 25).map((user) => userData(user, mentions.members?.get?.(user.id) ?? null)),
     MentionedRoles: [...(mentions.roles?.keys?.() ?? [])].slice(0, 25),
@@ -254,8 +256,9 @@ function matchEmoji(listed, used) {
  * Remembers a message and puts its reactions on it, so reacting runs the command. It is remembered FIRST: adding the reactions
  * takes a moment, and someone who is quick would otherwise react to a message nobody had written down yet.
  */
-async function watchReactions(sent, emojis, commandName, guild) {
-  await commandData.forGuild(guild.id).watch(sent.id, { command: commandName, emojis }, WATCH_SECONDS).catch((error) => logger.warn(`Could not watch the reactions of a message in guild ${guild.id}: ${error.message}`));
+async function watchReactions(sent, emojis, commandName, guild, userId = null) {
+  // The user who used the command is remembered too, so the code can tell who asked (.Message.CommandUserID).
+  await commandData.forGuild(guild.id).watch(sent.id, { command: commandName, emojis, ...(userId ? { user: userId } : {}) }, WATCH_SECONDS).catch((error) => logger.warn(`Could not watch the reactions of a message in guild ${guild.id}: ${error.message}`));
   for (const emoji of emojis) {
     let done = false;
     for (let attempt = 0; attempt < 2 && !done; attempt += 1) done = await sent.react(emoji).then(() => true, () => false);
@@ -281,7 +284,7 @@ async function applyEffects(message, effects, commandName = null) {
         const sent = effect.reply && channel.id === message.channel?.id && typeof message.reply === 'function' && message.id !== '0'
           ? await message.reply(payload)
           : await channel.send(payload);
-        if (effect.reactions?.length && commandName && sent) await watchReactions(sent, effect.reactions, commandName, guild);
+        if (effect.reactions?.length && commandName && sent) await watchReactions(sent, effect.reactions, commandName, guild, author.id);
       } else if (effect.type === 'dm') {
         await author.send({ ...toPayload(effect, guild, author.id), allowedMentions: { parse: [] } }).catch(() => skipped.push('a direct message, you have them closed'));
       } else if (effect.type === 'addRole' || effect.type === 'removeRole') {
@@ -401,6 +404,8 @@ async function runComponent(interaction, row, parsed) {
     Values: interaction.isStringSelectMenu?.() ? [...interaction.values] : [],
     ...(submitted ? { Modal: { ID: parsed.handler, Data: parsed.data }, Fields: Object.fromEntries([...interaction.fields.fields.values()].map((field) => [field.customId, String(field.value ?? '').slice(0, 4000)])) } : {}),
   };
+  // A button or a menu locked to a member knows who it is for; otherwise who sent the command is not known here.
+  data.Message.CommandUserID = parsed.userId ?? null;
 
   let result;
   try {
@@ -444,7 +449,7 @@ async function runComponent(interaction, row, parsed) {
  * "reaction", `.Reaction.Emoji` (the emoji as the code wrote it), and the person who reacted as `.User` and `.Member`.
  * `updateMessage` changes that message, `respond` sends a message in its channel, and the other actions work as always.
  */
-async function runReaction(reaction, user, row, emojiText) {
+async function runReaction(reaction, user, row, emojiText, watched = null) {
   const message = reaction.message;
   const { guild, channel } = message;
   const member = guild.members.cache.get(user.id) ?? await guild.members.fetch(user.id).catch(() => guild.members.fetch(user.id).catch(() => null));
@@ -459,6 +464,7 @@ async function runReaction(reaction, user, row, emojiText) {
     react: (emoji) => message.react(emoji), delete: async () => {},
   };
   const data = { ...buildData(source, row.name, '', '!'), Trigger: 'reaction', Reaction: { Emoji: emojiText, Added: true }, Button: { ID: '', Data: '' }, Values: [] };
+  data.Message.CommandUserID = watched?.user ?? null;
   let result;
   try {
     result = await run(row.code, data, { store: commandData.forGuild(guild.id), lookup: lookupFor(guild), limits: { maxMillis: 2000 } });
