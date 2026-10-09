@@ -30,8 +30,9 @@ function customStatusOf(presence) {
 }
 
 /**
- * What the rules need to know about a guild member. `customStatus` is only known when Discord gave the bot a presence for
- * them: without one it is marked unknown (and the rules that read it leave their grants as they were) rather than empty.
+ * What the rules need to know about a guild member. `customStatus` is only known when Discord gave the bot a real presence for
+ * them. Without one, or when the member is offline or invisible (Discord sends no activities for them, so their Custom Status
+ * is not "empty", it is hidden), it is marked unknown and the rules that read it leave their grants as they were.
  */
 function memberIdentity(member, { primary } = {}) {
   const user = member.user;
@@ -49,7 +50,7 @@ function memberIdentity(member, { primary } = {}) {
     primaryGuild: primary !== undefined ? primary : primaryGuildOf(user),
     roleIds: new Set(member.roles.cache.keys()),
   };
-  if (member.presence) {
+  if (member.presence && member.presence.status !== 'offline') {
     identity.customStatus = customStatusOf(member.presence);
     identity.unknownSources.delete('custom_status');
   }

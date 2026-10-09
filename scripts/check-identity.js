@@ -76,6 +76,7 @@ stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
 stub('src/utils/templatedMessage.js', { templatePayload: async () => null });
 
 const { evaluate } = require('../src/utils/identity/engine');
+const { memberIdentity } = require('../src/utils/identity/service');
 const compare = require('../src/utils/identity/compare');
 const { toPettoTemplate, renameTokens, freeName } = require('../src/utils/identity/importVanity');
 const { identityContext, eventKey } = require('../src/utils/identity/emit');
@@ -188,6 +189,36 @@ function roleClient(log) {
   assert.equal(eventKey(errors[0]), 'error');
   assert.equal(results[0].error.message, 'Missing Permissions');
   assert.equal((await ledger.getRoleState('g', 'u', 'role1')).botAddedRole, false, 'a failed change is not remembered as done');
+
+  // ---- Offline members: a Custom Status nobody can see is not an empty one
+  const guildMember = (presence) => ({ id: 'u', guild: { id: 'g' }, user: { id: 'u', bot: false, username: 'liam', globalName: 'Liam', primaryGuild: null }, nickname: null, displayName: 'Liam', displayAvatarURL: () => '', roles: { cache: new Map() }, presence });
+  const online = memberIdentity(guildMember({ status: 'online', activities: [{ type: 4, state: 'cinnamochi' }] }));
+  assert.equal(online.customStatus, 'cinnamochi');
+  assert.equal(online.unknownSources.has('custom_status'), false);
+  assert.equal(memberIdentity(guildMember({ status: 'online', activities: [] })).unknownSources.has('custom_status'), false, 'online with no status: it is empty');
+  assert.equal(memberIdentity(guildMember({ status: 'offline', activities: [] })).unknownSources.has('custom_status'), true, 'offline: it is hidden, not empty');
+  assert.equal(memberIdentity(guildMember(null)).unknownSources.has('custom_status'), true, 'no presence at all: unknown');
+
+  // ---- The log says which rule made the role go: the Server Tag that was taken off, not a Vanity rule that never changed
+  reset(); calls = [];
+  const both2 = { vanity: [vrule({ id: 'v1', role_id: 'role9' })], guildtag: [frule({ id: 'g1', role_id: 'role9' })] };
+  await evaluate(person({ customStatus: 'cinnamochi', primaryGuild: { identityGuildId: '777', identityEnabled: true, tag: 'PET', badge: '' } }), both2, options(calls));
+  assert.ok(calls.includes('add:role9'));
+  // The Vanity rule stops matching but so does the tag: both are why. With only the tag gone and the status still matching, the role stays.
+  calls = [];
+  await evaluate(person({ customStatus: 'cinnamochi', primaryGuild: null, roleIds: new Set(['role9']) }), both2, options(calls));
+  assert.deepEqual(calls, [], 'the status still matches, so taking off the tag does not take the role');
+  calls = [];
+  const logged = [];
+  await evaluate(person({ customStatus: '', primaryGuild: null, roleIds: new Set(['role9']) }), both2, { roles: roleClient(calls), onAction: (a) => logged.push(a) });
+  assert.equal(logged[0].action, 'remove_role');
+  assert.equal(logged[0].source, 'vanity', 'the Vanity rule matched before and now it does not, so it is the reason');
+  reset(); calls = [];
+  await evaluate(person({ customStatus: 'cinnamochi', primaryGuild: { identityGuildId: '777', identityEnabled: true, tag: 'PET', badge: '' } }), { vanity: [vrule({ id: 'v1', role_id: 'role9' })], guildtag: [frule({ id: 'g1', role_id: 'role9' })] }, options(calls));
+  const logged2 = [];
+  // Only the Server Tag rule stops matching and the role goes because no other rule keeps it (the Vanity rule was turned off)
+  await evaluate(person({ customStatus: 'cinnamochi', primaryGuild: null, roleIds: new Set(['role9']) }), { vanity: [vrule({ id: 'v1', role_id: 'role9', enabled: false })], guildtag: [frule({ id: 'g1', role_id: 'role9' })] }, { roles: roleClient(calls), onAction: (a) => logged2.push(a) });
+  assert.equal(logged2[0].source, 'guildtag', 'the reason is the Server Tag that was taken off');
 
   // ---- Messages: the variables of a rule
   const context = identityContext({ source: 'vanity', action: 'add_role', roleId: 'role1', ruleName: 'rep', value: 'cinnamochi', matchField: 'custom_status', matchedValue: 'cinnamochi ♡', result: 'completed' });

@@ -31,6 +31,11 @@ All notable changes to Petto are documented here.
 - `!customcommand codetest` takes arguments after the code block: a code block and then `red "big cat"` tries the code as if `red "big cat"` were typed after the command. Code without a block is all code, as before.
 - The test of the dashboard also gives `effects` (the messages, embeds, buttons and reactions themselves, for a preview like Discord's) and `hints`, and its check gives `hints`.
 
+### Fixed
+
+- Vanity rules no longer take a role away from a member who goes offline or invisible: Discord hides their Custom Status then, which is not the same as having none, so the rule leaves their role as it is until they are online again.
+- The log of a role taken away says which rule made it go: the Server Tag that was taken off, instead of a Vanity rule that did not change.
+
 ### Changed
 
 - Sticky roles do not give back the roles of Vanity and Server Tag rules when someone rejoins: the rules give them again if the member still matches.
