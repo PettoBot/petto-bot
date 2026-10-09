@@ -54,6 +54,15 @@ function closestName(name, candidates) {
   return best;
 }
 
+/**
+ * A number from 0 (included) to 1 (not included), like Math.random, but from the random numbers of the system (Web Crypto), the
+ * same in Node and in a browser. randInt, shuffle and randItem use it.
+ */
+function secureRandom() {
+  const [high, low] = globalThis.crypto.getRandomValues(new Uint32Array(2));
+  return (high * 2 ** 21 + (low >>> 11)) / 2 ** 53;
+}
+
 class Scope {
   constructor(parent = null, root = parent?.root) { this.parent = parent; this.root = root; this.values = new Map(); }
   find(name) { for (let scope = this; scope; scope = scope.parent) if (scope.values.has(name)) return scope; return null; }
@@ -80,7 +89,7 @@ async function run(codeOrTree, data = {}, options = {}) {
 
   const env = {
     data,
-    rng: options.random ?? Math.random,
+    rng: options.random ?? secureRandom,
     now,
     store: options.store ? {
       async call(operation, ...args) {
