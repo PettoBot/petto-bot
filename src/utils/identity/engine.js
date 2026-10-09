@@ -21,6 +21,7 @@ async function evaluate(member, rules, { roles, onAction, onNotify } = {}) {
   const removeContexts = new Map();
   const matching = new Map();
   const pending = new Map();
+  const stopped = new Map(); // rules that matched before and do not now: what the log says when a role goes because of them
   const push = (map, roleId, value) => map.set(roleId, [...(map.get(roleId) ?? []), value]);
 
   const track = async (rule, source, matched, context, evaluationError) => {
@@ -34,6 +35,7 @@ async function evaluate(member, rules, { roles, onAction, onNotify } = {}) {
         metadata: { matched: String(matched), value: source === 'vanity' ? rule.word : rule.value, ...(evaluationError ? { evaluation_error: evaluationError } : {}) },
       },
     );
+    if (!matched && rule.action === 'add_role' && transition.hadPrevious && transition.previousMatched) push(stopped, rule.role_id, context);
     if (matched && rule.action === 'add_role') {
       push(matching, rule.role_id, context);
       if (!transition.hadPrevious || !transition.previousMatched) push(pending, rule.role_id, context);
@@ -116,7 +118,8 @@ async function evaluate(member, rules, { roles, onAction, onNotify } = {}) {
     } else if (!desired && present && state.botAddedRole && !state.manualMarked) {
       result.changed = true;
       await db.recordAudit(audit(roleId, 'remove_role', 'requested', 'role-remove'));
-      const context = activeRemovals > 0 ? contextFor(removeContexts, roleId, 'remove_role') : contextFor(roleContexts, roleId, 'remove_role');
+      // A remove rule that matches is the reason; otherwise it is the rule that just stopped matching (the Server Tag that was taken off, not a Vanity rule that never changed).
+      const context = activeRemovals > 0 ? contextFor(removeContexts, roleId, 'remove_role') : stopped.has(roleId) ? stopped.get(roleId)[0] : contextFor(roleContexts, roleId, 'remove_role');
       try {
         await roles.remove(member.guildId, member.userId, roleId);
       } catch (error) {
