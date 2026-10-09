@@ -255,6 +255,32 @@ const row = (code, name = `c${(rowCount += 1)}`) => ({ name, code });
   await click('cc:vote:yes::', { user: '500000000000000003' });
   const quick = await click('cc:vote:yes::', { user: '500000000000000003', advance: 0 });
   assert.equal(quick.deferred, 1); assert.equal(quick.updates.length + quick.replies.length, 0, 'a click right after another is held back without a message');
+  // A role that cannot be mentioned is pinged only if Petto may mention any role there and the id is written in the code itself.
+  const sayRole = async (code, args, botCan) => {
+    const made = makeMessage({ guildBits: bits }); clock += 5000;
+    if (botCan) made.message.channel.permissionsFor = (who) => (who === made.message.guild.members.me ? permissions(botCan) : permissions('all'));
+    await codeCommands.runCodeCommand(made.message, row(code), args, '!');
+    return { sent: bits.sent.at(-1)?.payload, replies: made.replies };
+  };
+  const literal = '{{ sendMessage nil (complexMessage "content" (print "New " (mentionRole "100000000000000001"))) }}';
+  let said = await sayRole(literal, '');
+  assert.deepEqual(said.sent.allowedMentions.roles, ['100000000000000001'], 'a role written in the code is pinged when the bot may mention any role');
+  assert.ok(!said.replies.some((reply) => String(reply.content ?? '').includes('was not pinged')));
+  said = await sayRole('{{ sendMessage nil (complexMessage "content" .RawArgs) }}', '<@&100000000000000001>');
+  assert.deepEqual(said.sent.allowedMentions.roles, [], 'a role typed by the member is not pinged');
+  assert.ok(said.replies.some((reply) => String(reply.content ?? '').includes('was not pinged')), 'it says why the role was not pinged');
+  said = await sayRole(literal, '', [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages]);
+  assert.deepEqual(said.sent.allowedMentions.roles, [], 'without Mention Everyone the role must be mentionable');
+  said = await sayRole('{{ sendMessage nil (complexMessage "content" (print "New " (mentionRole "100000000000000005"))) }}', '', [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages]);
+  assert.deepEqual(said.sent.allowedMentions.roles, ['100000000000000005'], 'a mentionable role is pinged as always');
+  assert.ok(!said.replies.some((reply) => String(reply.content ?? '').includes('was not pinged')));
+  // updateMessage with an empty list of components takes the buttons away (it used to leave them), and without the list it leaves them.
+  for (const [code, expected] of [['{{ updateMessage (complexMessage "embed" (cembed "description" "done") "components" (cslice)) }}', []], ['{{ updateMessage (complexMessage "embed" (cembed "description" "same buttons")) }}', undefined]]) {
+    const made = makeMessage({ guildBits: bits }); const log = { updates: [] }; clock += 5000;
+    await codeCommands.runComponent({ guild: made.message.guild, guildId: made.message.guild.id, channel: made.message.channel, member: made.message.member, user: made.message.author, message: { id: '1', content: '', embeds: [] }, isStringSelectMenu: () => false, values: [], reply: async () => {}, update: async (payload) => { log.updates.push(payload); }, deferUpdate: async () => {}, followUp: async () => {} }, row(code, 'closer'), { command: 'closer', handler: 'h', data: '', userId: null });
+    assert.equal(log.updates.length, 1);
+    assert.deepEqual(log.updates[0].components, expected, expected ? 'an empty list of components removes the buttons' : 'no list leaves the buttons');
+  }
   // Menus: the values reach the code, and respond can be private.
   const favoriteRow = { name: 'favorite', code: TEMPLATES.find((template) => template.id === 'favorite').code };
   const menuClick = async (values) => {
