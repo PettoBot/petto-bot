@@ -29,6 +29,15 @@ const CONDITION_CHOICES = [
   { name: 'Server Tag text equals', value: 'tag_equals' }, { name: 'Server Tag text is not', value: 'tag_not_equals' },
 ];
 
+/** The guild member an option points to. A typed command (the prefix) only gives the user, so the member is fetched from the server. */
+async function memberOption(interaction, name) {
+  const direct = interaction.options.getMember?.(name);
+  if (direct) return direct;
+  const user = interaction.options.getUser(name);
+  if (!user) return null;
+  return interaction.guild.members.cache.get(user.id) ?? interaction.guild.members.fetch(user.id).catch(() => null);
+}
+
 const reply = (interaction, text, color = COLORS.DEFAULT) => interaction.editReply({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
 const ok = (interaction, text) => reply(interaction, `${EMOJI.APPROVE}  ${text}`, COLORS.GREEN);
 const bad = (interaction, text) => reply(interaction, text, COLORS.RED);
@@ -106,7 +115,7 @@ async function listRules(interaction, kind) {
 
 /** What every rule says about a member right now, without touching roles. */
 async function testMember(interaction, kind) {
-  const target = interaction.options.getMember('user') ?? interaction.member;
+  const target = (await memberOption(interaction, 'user')) ?? interaction.member;
   if (!target?.user) return bad(interaction, 'That member is not in this server.');
   const identity = memberIdentity(target);
   const list = kind === 'vanity' ? await db.listVanityRules(interaction.guild.id, { all: true }) : await db.listGuildTagRules(interaction.guild.id, { all: true });
@@ -141,7 +150,7 @@ function progressCard(source, state) {
 }
 
 async function syncRules(interaction, kind) {
-  const user = interaction.options.getMember('user');
+  const user = await memberOption(interaction, 'user');
   if (user) {
     const { evaluateMember } = require('./service');
     const results = await evaluateMember(user, { source: kind });
@@ -201,4 +210,4 @@ async function execute(interaction, kind) {
 
 const PERMISSION = PermissionFlagsBits.ManageGuild;
 
-module.exports = { addSubcommands, execute, PERMISSION, SOURCE_CHOICES, ACTION_CHOICES, VANITY_SOURCES, CONDITIONS };
+module.exports = { addSubcommands, execute, memberOption, PERMISSION, SOURCE_CHOICES, ACTION_CHOICES, VANITY_SOURCES, CONDITIONS };

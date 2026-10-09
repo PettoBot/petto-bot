@@ -74,6 +74,8 @@ stub('src/db/identity.js', {
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
 // The messages are built by other modules that need the database; here only the variables they get are checked.
 stub('src/utils/templatedMessage.js', { templatePayload: async () => null });
+stub('src/db/embedTemplates.js', { getTemplate: async () => null });
+stub('src/db/guilds.js', { ensureGuild: async () => {} });
 
 const { evaluate } = require('../src/utils/identity/engine');
 const { memberIdentity } = require('../src/utils/identity/service');
@@ -290,6 +292,51 @@ function roleClient(log) {
   assert.equal(changed.ok, true, 'a rule can always be turned off, even when its role became unassignable');
   assert.equal((await rules.removeRule(guild, 'vanity', 'rep')).ok, true);
   assert.equal((await rules.removeRule(guild, 'vanity', 'rep')).code, 'rule_not_found');
+
+  // ---- A typed command (the prefix) gives only the user for an option, never the member
+  const commandsModule = require('../src/utils/identity/commands');
+  const typed = (values = {}, sub = 'sync') => {
+    const edits = [];
+    const guildObj = {
+      id: 'g', iconURL: () => null,
+      members: {
+        cache: new Map(),
+        fetch: async (arg) => {
+          if (typeof arg === 'string') return fakeMember(arg, arg === 'u1' ? 'cinnamochi' : 'other');
+          return new Map([['u1', fakeMember('u1', 'cinnamochi')], ['u2', fakeMember('u2', 'other')]]);
+        },
+        addRole: async ({ role }) => { edits.push(`add:${role}`); },
+        removeRole: async () => {},
+      },
+    };
+    function fakeMember(id, status = '') {
+      return { id, guild: guildObj, user: { id, bot: false, username: id, globalName: id, primaryGuild: null }, nickname: null, displayName: id, displayAvatarURL: () => '', roles: { cache: new Map() }, presence: { status: 'online', activities: status ? [{ type: 4, state: status }] : [] } };
+    }
+    const replies = [];
+    const interaction = {
+      guild: guildObj, member: fakeMember('me'), user: { id: 'me' },
+      options: { getSubcommand: () => sub, getUser: (name) => (values[name] ? { id: values[name] } : null), getString: () => null, getBoolean: () => null, getRole: () => null, getChannel: () => null },
+      deferReply: async () => {}, editReply: async (payload) => { replies.push(payload); },
+    };
+    return { interaction, replies, edits };
+  };
+  savedRules.vanity = [{ id: 'v9', name: 'rep', word: 'cinnamochi', source: 'custom_status', comparison: 'contains', role_id: 'role1', action: 'add_role', enabled: true }];
+  reset();
+  let run = typed({}, 'sync');
+  await commandsModule.execute(run.interaction, 'vanity');
+  assert.deepEqual(run.edits, ['add:role1'], 'sync with no member given checks everyone and gives the role to the one who matches');
+  assert.ok(run.replies.length >= 1);
+  reset();
+  run = typed({ user: 'u1' }, 'sync');
+  await commandsModule.execute(run.interaction, 'vanity');
+  assert.deepEqual(run.edits, ['add:role1'], 'sync of one member found from the user');
+  run = typed({ user: 'u2' }, 'test');
+  await commandsModule.execute(run.interaction, 'vanity');
+  assert.equal(run.edits.length, 0, 'test changes nothing');
+  assert.match(JSON.stringify(run.replies.at(-1)), /does not match/);
+  run = typed({}, 'test');
+  await commandsModule.execute(run.interaction, 'vanity');
+  assert.ok(run.replies.length, 'test with no member tests the person who typed it');
 
   // ---- Short names for the commands
   const source = (file) => require('node:fs').readFileSync(path.join(__dirname, '..', 'src/commands/automation', file), 'utf8');
