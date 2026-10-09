@@ -59,18 +59,38 @@ const { registerCodeRoutes } = require('../src/web/codeRoutes');
   r = await call('check', { code: 'x'.repeat(10_001) }); assert.equal(r.json.problem.kind, 'limit');
   r = await call('check', { code: 5 }); assert.equal(r.json.problem, null, 'no code is no problem');
   r = await call('check', { code: 'x'.repeat(20_000) }); assert.equal(r.json.problem.kind, 'limit');
+  // Hints: names that are most likely mistakes, which only a run would otherwise find (and only in the part that runs).
+  r = await call('check', { code: 'Hello {{ .User.Username }}' }); assert.deepEqual(r.json.hints, []);
+  r = await call('check', { code: '{{ .User.Usrname }}{{ if false }}{{ dbget "x" }}{{ end }}' });
+  assert.equal(r.json.problem, null);
+  assert.deepEqual(r.json.hints, ['.User.Usrname is not in the data, so it gives nothing. Did you mean .User.Username?', 'There is no function called "dbget". Did you mean dbGet?']);
+  r = await call('check', { code: '{{ if }}{{ .User.Usrname }}' }); assert.deepEqual(r.json.hints, [], 'code with a mistake has no hints');
+  r = await call('check', { code: 'x'.repeat(20_000) }); assert.deepEqual(r.json.hints, []);
 
   // A test run: it says what it would print and do, and sends and saves nothing.
   r = await call('test', { code: 'Hi {{ .User.Username }} in {{ .Guild.Name }}{{ sendMessage nil "x" }}{{ addRole "100000000000000001" }}{{ dbIncr "t" 2 }}{{ dbIncr "t" 3 }}' });
   assert.equal(r.json.ok, true); assert.equal(r.json.output, 'Hi Liam in HQ' + '25');
   assert.deepEqual(r.json.actions, ['send "x" here', 'give the role <@&100000000000000001>']);
   assert.ok(r.json.steps > 5 && r.json.millis >= 0);
+  // The effects themselves, for a preview like Discord's, next to the sentences of `actions`.
+  assert.deepEqual(r.json.effects, [{ type: 'message', channelId: null, content: 'x' }, { type: 'addRole', roleId: '100000000000000001' }]);
+  assert.deepEqual(r.json.hints, []);
+  r = await call('test', { code: '{{ sendMessage nil (complexMessage "content" "Hi" "embed" (cembed "title" "T" "color" "#ff91c2") "components" (cslice (crow (cbutton "label" "Yes" "id" "yes"))) "reactions" (cslice "🦋")) }}{{ deleteTrigger 5 }}{{ .User.Nme }}' });
+  assert.deepEqual(r.json.effects, [
+    { type: 'message', channelId: null, content: 'Hi', embed: { title: 'T', color: 0xff91c2 }, components: [{ type: 'row', items: [{ type: 'button', label: 'Yes', handler: 'yes', style: 2, data: '' }] }], reactions: ['🦋'] },
+    { type: 'deleteTrigger', delay: 5 },
+  ]);
+  assert.equal(r.json.actions.length, 2, 'actions is still there, one sentence for each effect');
+  assert.deepEqual(r.json.hints, ['.User.Nme is not in the data, so it gives nothing.'], 'hints is a list of sentences');
   r = await call('test', { code: '{{ index .Args 1 }}', args: 'a b' }); assert.equal(r.json.output, 'b', 'the arguments of the test reach the code');
   r = await call('test', { code: '{{ nope }}' }); assert.equal(r.json.error.kind, 'runtime'); assert.ok(r.json.error.message.includes('nope') && r.json.error.line === 1);
-  r = await call('test', { code: '{{ if }}' }); assert.equal(r.json.error.kind, 'syntax');
+  r = await call('test', { code: '{{ lowr "A" }}' }); assert.equal(r.json.error.message, 'There is no function called "lowr". Did you mean lower?');
+  assert.deepEqual(r.json.hints, ['There is no function called "lowr". Did you mean lower?'], 'a test that stops still has its hints');
+  r = await call('test', { code: '{{ if }}' }); assert.equal(r.json.error.kind, 'syntax'); assert.deepEqual(r.json.hints, []);
   r = await call('test', { code: '{{ range seq 0 1000 }}{{ range seq 0 1000 }}x{{ end }}{{ end }}' }); assert.equal(r.json.error.kind, 'limit');
   r = await call('test', { code: '{{ .Trigger }}|{{ .Button.ID }}|{{ index .Values 0 }}{{ respond "ok" true }}', trigger: 'select', handler: 'pick', value: 'sushi' });
   assert.equal(r.json.output, 'select|pick|sushi'); assert.deepEqual(r.json.actions, ['answer the click with "ok" (only for who clicked)']);
+  assert.deepEqual(r.json.effects, [{ type: 'respond', content: 'ok', ephemeral: true }]);
   r = await call('test', { code: '{{ respond "ok" }}' }); assert.ok(r.json.error.message.includes('button or a menu'), 'a click can only be answered in a click test');
   assert.equal(store.size, 0, 'a test saves nothing');
 

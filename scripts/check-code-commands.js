@@ -384,7 +384,7 @@ const row = (code, name = `c${Math.random().toString(16).slice(2, 8)}`) => ({ na
       out, m, guild: m.message.guild, user: { id: userId }, channel: { send: async (payload) => { out.push({ file: payload }); } }, rawMessage: m.message,
       client: { commands: new Map([['ping', {}]]), commandAliases: new Map(), commandRoutes: new Map() },
       options: { getSubcommand: () => sub, getString: (name, required) => { const value = options[name] ?? null; if (required && value === null) throw new Error(`missing ${name}`); return value; } },
-      deferReply: async () => {}, editReply: async (payload) => { out.push(payload); },
+      deferReply: async () => {}, editReply: async (payload) => { out.push(payload); }, reply: async (payload) => { out.push({ page: payload }); },
     };
   };
   const say = async (interaction) => { await command.execute(interaction); return interaction.out.map((o) => o.components?.[0]?.text ?? o.file?.content ?? '').join('\n'); };
@@ -421,17 +421,90 @@ const row = (code, name = `c${Math.random().toString(16).slice(2, 8)}`) => ({ na
   assert.ok((await say(fakeInteraction('codetest', {}, '!cc codetest {{ dbGet "t" }}'))).includes('_nothing_'), 'and the next test starts empty');
   assert.ok((await say(fakeInteraction('codetest', {}, '!cc codetest {{ add 1 "x" }}'))).includes('stopped'));
 
+  // The test shows each message like Discord would: its text, its embed, its buttons and menus and its reactions.
+  const rich = await say(fakeInteraction('codetest', {}, '!cc codetest ```\n{{ $e := cembed "title" "Rules" "description" "Be kind to everyone here" "fields" (cslice (cslice "a" "1") (cslice "b" "2")) "footer" "HQ" }}{{ $b := crow (cbutton "label" "Yes" "id" "yes" "style" "success") (cbutton "emoji" "🎀" "id" "no") }}{{ $m := crow (cselect "id" "pick" "placeholder" "Pick one" "options" (cslice (cslice "Sushi" "s") (cslice "Pizza" "p"))) }}{{ sendMessage nil (complexMessage "content" "Hello there" "embed" $e "components" (cslice $b $m) "reactions" (cslice "🦋" "🎀")) }}\n```'));
+  assert.ok(rich.includes('It would print') && rich.includes('It would do'), rich);
+  assert.ok(rich.includes('• send "Hello there" and an embed and buttons or menus here'), 'the one line of each action stays');
+  assert.ok(rich.includes('↳ Text: Hello there'), rich);
+  assert.ok(rich.includes('↳ Embed: **Rules** · "Be kind to everyone here" · 2 fields · footer "HQ"'), rich);
+  assert.ok(rich.includes('↳ Buttons: [Yes] [🎀]'), rich);
+  assert.ok(rich.includes('↳ Menu: "Pick one" (2 options: Sushi, Pizza)'), rich);
+  assert.ok(rich.includes('↳ Reactions: 🦋 🎀'), rich);
+  // Arguments after a code block are what the test types after the command; without a block it is all code, as before.
+  const withArgs = await say(fakeInteraction('codetest', {}, '!cc codetest ```\n{{ index .Args 1 }}|{{ .RawArgs }}\n``` red "big cat"'));
+  assert.ok(withArgs.includes('big cat|red "big cat"') && withArgs.includes('With the arguments: red "big cat"'), withArgs);
+  const noArgs = await say(fakeInteraction('codetest', {}, '!cc codetest {{ len .Args }} x'));
+  assert.ok(noArgs.includes('0 x') && !noArgs.includes('With the arguments'), noArgs);
+  // Hints: names that are most likely mistakes, even in a part of the code that did not run.
+  const hinted = await say(fakeInteraction('codetest', {}, '!cc codetest {{ .User.Usrname }}{{ if false }}{{ lowr "x" }}{{ end }}'));
+  assert.ok(hinted.includes('Hint: .User.Usrname is not in the data, so it gives nothing. Did you mean .User.Username?'), hinted);
+  assert.ok(hinted.includes('Hint: There is no function called "lowr". Did you mean lower?'), hinted);
+  const stoppedHint = await say(fakeInteraction('codetest', {}, '!cc codetest {{ .Guild.Nam }}{{ dbget "x" }}'));
+  assert.ok(stoppedHint.includes('The code stopped: There is no function called "dbget". Did you mean dbGet?'), stoppedHint);
+  assert.ok(stoppedHint.includes('Hint: .Guild.Nam') && stoppedHint.split('dbGet').length === 2, 'the hint of the function that stopped it is not said twice');
+
+  // !cc info: what a command is, how it starts, its size and what its code uses.
+  store.set('300000000000000001:vote', { name: 'vote', code: '{{ dbIncr "votes" 1 }}{{ sendMessage nil (complexMessage "content" "Vote" "components" (cslice (crow (cbutton "label" "Yes" "id" "yes"))) "reactions" (cslice "🦋")) }}{{ .User.Nam }}', trigger_type: 'prefix', trigger_text: '.', created_by: '111111111111111111' });
+  const info = await say(fakeInteraction('info', { name: 'vote' }, '!cc info vote'));
+  assert.ok(info.includes('**Kind:** code') && info.includes('`.vote`') && info.includes(`of 10000 characters`), info);
+  assert.ok(info.includes('**Uses:** stored data, buttons, reactions'), info);
+  assert.ok(info.includes('`complexMessage`') && info.includes('`dbIncr`') && info.includes('<@111111111111111111>'), info);
+  assert.ok(info.includes('Hint: .User.Nam is not in the data'), info);
+  store.set('300000000000000001:hello', { name: 'hello', code: null, response: 'Hi {user}', embed_template: 'card' });
+  const textInfo = await say(fakeInteraction('info', { name: 'hello' }, '!cc info hello'));
+  assert.ok(textInfo.includes('**Kind:** text') && textInfo.includes('9 characters') && textInfo.includes('`card`') && textInfo.includes('`!hello`'), textInfo);
+  assert.ok((await say(fakeInteraction('info', { name: 'vot' }, '!cc info vot'))).includes('does not exist. Did you mean `vote`?'));
+  assert.ok(command.data.toJSON().options.some((option) => option.name === 'info'), 'info is a subcommand');
+
+  // !cc list: a page at a time, sorted by name, with what each one is, how it starts and its size.
+  const listed2 = fakeInteraction('list', {}, '!cc list');
+  await command.execute(listed2);
+  const page = JSON.stringify(listed2.out[0].page.components.map((c) => c.toJSON()));
+  assert.ok(page.includes('`hello` · text · `!hello` · 9 characters + embed `card`'), page);
+  assert.ok(page.includes('`vote` · code · `.vote` ·'), page);
+  assert.ok(page.indexOf('`copy`') < page.indexOf('`greet`') && page.indexOf('`greet`') < page.indexOf('`vote`'), 'sorted by name');
+  for (let n = 0; n < 20; n += 1) store.set(`300000000000000001:z${String(n).padStart(2, '0')}`, { name: `z${String(n).padStart(2, '0')}`, code: 'x' });
+  const { buildPage } = require('../src/utils/pager');
+  const paged = JSON.stringify((await buildPage('customcommands', { guild: listed2.guild, userId: 'tester' })).components.map((c) => c.toJSON()));
+  assert.ok(paged.includes('Showing 1–15 of') && paged.includes('::next'), 'a long list has pages');
+  for (let n = 0; n < 20; n += 1) store.delete(`300000000000000001:z${String(n).padStart(2, '0')}`);
+
   const exported = await say(fakeInteraction('export', { name: 'greet' }, '!cc export greet'));
   const code = /pc1\.[A-Za-z0-9_-]+/.exec(exported)[0];
   assert.ok((await say(fakeInteraction('import', { share: code, name: 'copy' }, `!cc import ${code} copy`))).includes('imported'));
   assert.equal(store.get('300000000000000001:copy').code, store.get('300000000000000001:greet').code, 'an import gives the same code');
   assert.ok((await say(fakeInteraction('import', { share: 'pc1.zzz' }, '!cc import pc1.zzz'))).length > 0);
-  assert.ok((await say(fakeInteraction('codeshow', { name: 'greet' }, '!cc codeshow greet'))).includes('new {{ 1 }}'));
+  const shown = await say(fakeInteraction('codeshow', { name: 'greet' }, '!cc codeshow greet'));
+  assert.ok(shown.includes('new {{ 1 }}'));
+  assert.ok(shown.includes('```handlebars\nnew {{ 1 }}\n```'), 'the code is shown in a block that colors the {{ }}');
   assert.ok((await say(fakeInteraction('codeshow', { name: 'nope' }, '!cc codeshow nope'))).includes('does not exist'));
+  assert.ok((await say(fakeInteraction('codeshow', { name: 'gret' }, '!cc codeshow gret'))).includes('Did you mean `greet`?'), 'a name with a typo says the closest command');
+  assert.ok(!(await say(fakeInteraction('codeshow', { name: 'zzzzzz' }, '!cc codeshow zzzzzz'))).includes('Did you mean'));
   // A long code goes in a file.
   store.set('300000000000000001:long', { name: 'long', code: `{{/* ${'x'.repeat(2000)} */}}` });
   const longShown = fakeInteraction('codeshow', { name: 'long' }, '!cc codeshow long');
   assert.ok((await say(longShown)).includes('is long, so it is in this file'));
+
+  // The helpers behind the test and info.
+  const admin = require('../src/utils/codeCommandAdmin');
+  assert.deepEqual(admin.codeHints('{{ .User.Username }}{{ with .User }}{{ .Whatever }}{{ end }}{{ range .Args }}{{ .X }}{{ end }}{{ $.Member.Nick }}{{ .Button.ID }}{{ .Fields.reason }}'), [], 'known names, and the dot inside with and range, are not hints');
+  assert.deepEqual(admin.codeHints('{{ if }}'), [], 'code with a mistake has no hints');
+  assert.deepEqual(admin.codeHints('{{ .User.DisplayName }}{{ $.Usr }}{{ .Guild.Zzzzzzzz }}'), [
+    '.User.DisplayName is not in the data, so it gives nothing. Did you mean .Member.DisplayName?',
+    '.Usr is not in the data, so it gives nothing. Did you mean .User?',
+    '.Guild.Zzzzzzzz is not in the data, so it gives nothing.',
+  ]);
+  assert.ok(admin.codeHints('{{ .Usr.ID }}')[0].startsWith('.Usr is not in the data. Did you mean .User?'), 'a name in the middle of a path stops the code, it does not give nothing');
+  assert.deepEqual(admin.codeHints('{{ nope }}{{ nope }}'), ['There is no function called "nope".'], 'each name once');
+  for (const template of TEMPLATES) assert.deepEqual(admin.codeHints(template.code), [], `the template ${template.id} has no hints`);
+  const summary = admin.codeSummary('{{ getMember .User.ID }}{{ showModal (cmodal "id" "f" "title" "T" "fields" (cslice (ctext "id" "a" "label" "A"))) }}{{ sendDM "x" }}{{ addRole "1" }}');
+  assert.deepEqual(summary.functions, ['addRole', 'cmodal', 'cslice', 'ctext', 'getMember', 'sendDM', 'showModal']);
+  assert.ok(summary.forms && summary.directMessages && summary.roles && summary.lookups && !summary.storedData && !summary.buttons && !summary.menus && !summary.reactions);
+  assert.equal(admin.codeSummary('{{ if }}'), null);
+  assert.ok(admin.codeSummary('{{ if eq .Trigger "reaction" }}x{{ end }}').reactions, 'a command that answers reactions uses reactions');
+  assert.deepEqual(admin.effectDetails({ type: 'addRole', roleId: '1' }), [], 'an action that is not a message has no details');
+  assert.deepEqual(admin.effectDetails({ type: 'modal', modal: { title: 'T', fields: [{ label: 'Why', required: true }, { label: 'More', required: false }] } }), ['Fields: "Why", "More" (optional)']);
+  assert.deepEqual(admin.effectDetails({ type: 'dm', embed: {} }), ['Embed: empty']);
 
   console.log('Checked the custom commands in code: who writes them, what they may do, the limits of pings, roles and channels, share codes and the templates.');
 })().catch((error) => { console.error(error); process.exit(1); });

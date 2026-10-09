@@ -16,6 +16,44 @@ const DEFAULT_LIMITS = {
   effects: { message: 5, dm: 2, addRole: 5, removeRole: 5, reaction: 5, deleteTrigger: 1, deleteResponse: 1, respond: 1, update: 1, modal: 1, removeReaction: 1 },
 };
 
+/**
+ * How many single changes turn one word into another: a letter added, taken away, changed, or two letters next to each other
+ * swapped. Used to suggest the name someone meant.
+ */
+function editDistance(a, b) {
+  const rows = [];
+  for (let i = 0; i <= a.length; i += 1) rows.push([i]);
+  for (let j = 1; j <= b.length; j += 1) rows[0][j] = j;
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      rows[i][j] = Math.min(rows[i - 1][j] + 1, rows[i][j - 1] + 1, rows[i - 1][j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) rows[i][j] = Math.min(rows[i][j], rows[i - 2][j - 2] + 1);
+    }
+  }
+  return rows[a.length][b.length];
+}
+
+/**
+ * The name of the list that someone most likely meant when they wrote `name`, or null. The same name in other capitals wins;
+ * otherwise the closest one at most 2 changes away (1 for a name of up to 4 letters, so short names are not matched with
+ * anything).
+ */
+function closestName(name, candidates) {
+  const wanted = String(name ?? '').toLowerCase();
+  if (!wanted || wanted.length > 64) return null;
+  let best = null;
+  let bestDistance = Infinity;
+  for (const candidate of candidates) {
+    const lower = String(candidate).toLowerCase();
+    if (lower === wanted) { if (candidate !== name) return candidate; continue; }
+    if (Math.abs(lower.length - wanted.length) > 2) continue;
+    const distance = editDistance(wanted, lower);
+    if (distance <= (wanted.length <= 4 ? 1 : 2) && (distance < bestDistance || (distance === bestDistance && candidate < best))) { best = candidate; bestDistance = distance; }
+  }
+  return best;
+}
+
 class Scope {
   constructor(parent = null, root = parent?.root) { this.parent = parent; this.root = root; this.values = new Map(); }
   find(name) { for (let scope = this; scope; scope = scope.parent) if (scope.values.has(name)) return scope; return null; }
@@ -118,7 +156,10 @@ async function run(codeOrTree, data = {}, options = {}) {
 
   async function callFunction(operand, args, node) {
     const entry = functions.get(operand.name);
-    if (!entry) fail('runtime', `There is no function called "${operand.name}"`, operand);
+    if (!entry) {
+      const meant = closestName(operand.name, functions.keys());
+      fail('runtime', `There is no function called "${operand.name}"${meant ? `. Did you mean ${meant}?` : ''}`, operand);
+    }
     if (args.length < entry.min || (entry.max !== null && args.length > entry.max)) {
       const expected = entry.max === entry.min ? `${entry.min}` : entry.max === null ? `at least ${entry.min}` : `${entry.min} to ${entry.max}`;
       fail('runtime', `${operand.name} takes ${expected} argument${entry.min === 1 && entry.max === 1 ? '' : 's'}, got ${args.length}`, operand);
@@ -218,4 +259,4 @@ async function run(codeOrTree, data = {}, options = {}) {
   return { output, effects: effectList, steps, millis: now() - startedAt };
 }
 
-module.exports = { run, DEFAULT_LIMITS };
+module.exports = { run, DEFAULT_LIMITS, closestName };

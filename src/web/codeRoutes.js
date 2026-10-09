@@ -48,11 +48,13 @@ function registerCodeRoutes(app, { authorize }) {
     });
   }));
 
-  // The mistake in the code, for the editor to show while someone writes.
+  // The mistake in the code, for the editor to show while someone writes, and hints: names that are most likely mistakes
+  // (a function that does not exist, `.User.Usrname`), as sentences. Code with a mistake or too long has no hints.
   app.post('/api/dashboard/guild/:guildId/code/check', limiter, route(async (req, res) => {
     const code = typeof req.body?.code === 'string' ? req.body.code : '';
-    if (code.length > MAX_SOURCE_LENGTH + 1000) { res.json({ ok: true, problem: { kind: 'limit', message: `The code is too long (more than ${MAX_SOURCE_LENGTH} characters)`, line: null, column: null } }); return; }
-    res.json({ ok: true, problem: code.length > MAX_SOURCE_LENGTH ? { kind: 'limit', message: `The code is too long (${code.length} of ${MAX_SOURCE_LENGTH} characters)`, line: null, column: null } : check(code) });
+    if (code.length > MAX_SOURCE_LENGTH + 1000) { res.json({ ok: true, problem: { kind: 'limit', message: `The code is too long (more than ${MAX_SOURCE_LENGTH} characters)`, line: null, column: null }, hints: [] }); return; }
+    const problem = code.length > MAX_SOURCE_LENGTH ? { kind: 'limit', message: `The code is too long (${code.length} of ${MAX_SOURCE_LENGTH} characters)`, line: null, column: null } : check(code);
+    res.json({ ok: true, problem, hints: problem ? [] : admin.codeHints(code) });
   }));
 
   // Runs the code as the person who is testing, with memory-only storage: nothing is sent, saved or changed.
@@ -62,7 +64,8 @@ function registerCodeRoutes(app, { authorize }) {
     const args = typeof req.body?.args === 'string' ? req.body.args.slice(0, 500) : '';
     const trigger = ['button', 'select'].includes(req.body?.trigger) ? req.body.trigger : 'command';
     const problem = admin.codeProblem(code);
-    if (problem) { res.json({ ok: true, error: { kind: 'syntax', message: problem } }); return; }
+    if (problem) { res.json({ ok: true, error: { kind: 'syntax', message: problem }, hints: [] }); return; }
+    const hints = admin.codeHints(code);
     const data = sampleData(guild, member, args);
     if (trigger !== 'command') {
       data.Trigger = trigger;
@@ -71,9 +74,11 @@ function registerCodeRoutes(app, { authorize }) {
     }
     try {
       const result = await run(code, data, { store: codeCommands.memoryStore(), lookup: codeCommands.lookupFor(guild) });
-      res.json({ ok: true, output: result.output, actions: result.effects.map(admin.describeEffect), steps: result.steps, millis: result.millis });
+      // `actions` says each effect as a sentence; `effects` are the effects themselves (what run gives), for a preview that
+      // draws the messages like Discord does.
+      res.json({ ok: true, output: result.output, actions: result.effects.map(admin.describeEffect), effects: result.effects, hints, steps: result.steps, millis: result.millis });
     } catch (error) {
-      if (error instanceof PettoCodeError) { res.json({ ok: true, error: { kind: error.kind, message: error.detail, line: error.line, column: error.column } }); return; }
+      if (error instanceof PettoCodeError) { res.json({ ok: true, error: { kind: error.kind, message: error.detail, line: error.line, column: error.column }, hints }); return; }
       throw error;
     }
   }));

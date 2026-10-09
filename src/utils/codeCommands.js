@@ -125,6 +125,23 @@ function buildData(message, commandName, argText, prefix, serverPrefix = prefix)
   };
 }
 
+/**
+ * The names the data has, taken from buildData itself so they never fall behind it: the top names (`.User`, `.Args`...) and,
+ * for each map of the data, the names inside it (`.User.Username`). The extra top names are the ones buttons, forms and
+ * reactions add. Used to point out a name that is not in the data, such as `.User.Usrname`.
+ */
+let knownFields = null;
+function dataFields() {
+  if (knownFields) return knownFields;
+  const sample = buildData({ id: '0', content: '', guild: { id: '0' }, channel: { id: '0' }, author: { id: '0', username: '' }, member: null }, '', '', '!');
+  const maps = {};
+  for (const [key, value] of Object.entries(sample)) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) maps[key] = Object.keys(value);
+  }
+  knownFields = { top: [...Object.keys(sample), 'Modal', 'Fields', 'Reaction'], maps };
+  return knownFields;
+}
+
 // ── Buttons and menus ───────────────────────────────────────────────────────
 const COMPONENT_PREFIX = 'cc:';
 
@@ -467,6 +484,19 @@ async function runReaction(reaction, user, row, emojiText) {
   return null;
 }
 
+/**
+ * The code and the arguments of a test: `!cc codetest ```code``` a b` tries the code as if `a b` were typed after the command.
+ * Only a code block can have arguments after it; anything else is all code, as always.
+ */
+function splitCodeArgs(text) {
+  const trimmed = String(text ?? '').trim();
+  if (trimmed.startsWith('```')) {
+    const close = trimmed.lastIndexOf('```');
+    if (close > 3 && close + 3 < trimmed.length) return { code: extractCode(trimmed.slice(0, close + 3)), args: trimmed.slice(close + 3).trim() };
+  }
+  return { code: extractCode(trimmed), args: '' };
+}
+
 /** Takes the code out of what was typed: with or without a code block around it. */
 function extractCode(text) {
   const trimmed = String(text ?? '').trim();
@@ -512,4 +542,4 @@ function decodeShare(text) {
   return { name, description: typeof data.d === 'string' ? data.d.slice(0, 200) : '', code: data.c };
 }
 
-module.exports = { lookupFor, userData, memberData, roleData, channelData, COMPONENT_PREFIX, parseComponentId, componentId, buildComponents, buildModal, runComponent, runReaction, normalizeEmoji, matchEmoji, memoryStore, canWriteCode, buildData, runCodeCommand, applyEffects, extractCode, rawAfter, encodeShare, decodeShare, allowedMentionsFor, check, COOLDOWN_MS, RISKY_PERMISSIONS };
+module.exports = { dataFields, splitCodeArgs, lookupFor, userData, memberData, roleData, channelData, COMPONENT_PREFIX, parseComponentId, componentId, buildComponents, buildModal, runComponent, runReaction, normalizeEmoji, matchEmoji, memoryStore, canWriteCode, buildData, runCodeCommand, applyEffects, extractCode, rawAfter, encodeShare, decodeShare, allowedMentionsFor, check, COOLDOWN_MS, RISKY_PERMISSIONS };

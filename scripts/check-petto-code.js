@@ -1,6 +1,6 @@
 // Checks Petto Code, the template language of custom commands: the syntax, the functions, the effects, the safety, and the limits.
 const assert = require('node:assert/strict');
-const { run, check, PettoCodeError, functionNames } = require('../src/scripting');
+const { run, check, PettoCodeError, functionNames, closestName } = require('../src/scripting');
 
 const data = {
   User: { ID: '123456789012345678', Username: 'Liam', Mention: '<@123456789012345678>' },
@@ -134,6 +134,19 @@ for (const [code, text] of [
 assert.equal(check('Hello {{ .User.ID }}'), null);
 assert.equal(check('a\n  {{ @ }}').line, 2, 'a mistake says its line');
 await fails('{{ nope 1 }}', 'runtime', 'no function called "nope"');
+// A function that does not exist says the one that was most likely meant: the same name in other capitals first, then the
+// closest one (at most 2 changes, 1 for a short name), and nothing when no name is close.
+assert.equal((await fails('{{ dbget "x" }}', 'runtime')).detail, 'There is no function called "dbget". Did you mean dbGet?');
+assert.ok((await fails('{{ sendMesage nil "x" }}', 'runtime')).detail.endsWith('Did you mean sendMessage?'));
+assert.ok((await fails('{{ prnt 1 }}', 'runtime')).detail.endsWith('Did you mean print?'), 'a missing letter');
+assert.ok((await fails('{{ uppre "a" }}', 'runtime')).detail.endsWith('Did you mean upper?'), 'two letters swapped are one change');
+assert.equal((await fails('{{ nope 1 }}', 'runtime')).detail, 'There is no function called "nope"', 'no name is close enough');
+assert.equal((await fails('{{ zzzzzzzz }}', 'runtime')).detail, 'There is no function called "zzzzzzzz"');
+assert.equal(closestName('TOLOWER', functionNames()), 'toLower');
+assert.equal(closestName('x', functionNames()), null, 'a name of one letter is not matched with anything');
+assert.equal(closestName('lenn', ['len', 'lens']), 'len', 'the closest one wins, alphabetical when it is a tie');
+assert.equal(closestName('Usrname', ['ID', 'Username']), 'Username');
+assert.equal(closestName('', ['a']), null);
 await fails('{{ add 1 }}', 'runtime', 'at least 2');
 await fails('{{ add }}', 'runtime', 'at least 2');
 await fails('{{ len 1 2 }}', 'runtime', '1 argument');
