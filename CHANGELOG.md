@@ -6,7 +6,7 @@ All notable changes to Petto are documented here.
 
 ### Added
 
-- Vanity and Server Tag roles are now part of Petto (they used to be a separate bot). `!vanity` and `!guildtag` (also `/vanity`, `/guildtag`) create rules that add or remove a role from members by their Custom Status, username, global name, server nickname or display name, or by the Server Tag they wear: `add`, `edit`, `remove`, `list`, `test` (see what a member matches without changing anything), `sync` (apply to everyone, with live progress), `notify` and `notify-off` (the thank-you message, with a saved embed from Embeds if you like). Roles the bot did not add are never taken away, a remove rule wins over an add rule, and you can only use roles below your own highest role.
+- Vanity and Server Tag roles are now part of Petto (they used to be a separate bot). `!vanity` and `!guildtag` (prefix only, no slash commands) create rules that add or remove a role from members by their Custom Status, username, global name, server nickname or display name, or by the Server Tag they wear: `add`, `edit`, `remove`, `list`, `test` (see what a member matches without changing anything), `sync` (apply to everyone, with live progress), `notify` and `notify-off` (the thank-you message, with a saved embed from Embeds if you like). Roles the bot did not add are never taken away, a remove rule wins over an add rule, and you can only use roles below your own highest role.
 - `!identity` shows the status of all of it, applies every rule at once (`sync`) and keeps a log of the roles the rules add or remove (`logs`, `log-event`, `log-embed`, `logs-off`), with a Petto card or a saved embed for each kind of entry.
 - New variables for the thank-you and log messages: `{vanity.word}`, `{vanity.value}`, `{vanity.rule}`, `{vanity.source}`, `{vanity.role}`, `{tag}`, `{tag.guild_id}`, `{tag.enabled}`, `{tag.badge}`, `{tag.rule}`, `{tag.condition}`, `{tag.rule_value}`, `{tag.role}` and `{rule.name}`, `{rule.role}`, `{rule.reason}`, `{rule.action_text}` and more.
 - The dashboard has routes for the rules, thank-you messages and log (`/api/dashboard/guild/:id/identity`).
@@ -35,6 +35,9 @@ All notable changes to Petto are documented here.
 
 - Vanity rules no longer take a role away from a member who goes offline or invisible: Discord hides their Custom Status then, which is not the same as having none, so the rule leaves their role as it is until they are online again.
 - The log of a role taken away says which rule made it go: the Server Tag that was taken off, instead of a Vanity rule that did not change.
+- The log of the Vanity and Server Tag rules is the same green or red embed the Vanity bot sent (with Petto's approve and deny emoji, the role, the member and the word or reason). A saved embed is only used when you pick one with `!identity log-embed`; the old bot never used the ones it had saved for the log, so the import no longer brings them (`--reset-log-embeds` takes them off where an earlier import did).
+- The default thank-you message is a Components V2 card with the member's picture, what they now have and the word of the rule, and `!vanity list`, `!vanity test`, `!guildtag list`, `!guildtag test` and `!identity status` answer with V2 cards too.
+- Short names: `!vy` for `!vanity`, and `!tag` or `!gt` (and `!servertag`) for `!guildtag`, with every subcommand: `!vy add rep cinnamochi @Rep`, `!tag list`.
 
 ### Changed
 

@@ -1,5 +1,5 @@
-// The commands of Vanity and Server Tag rules. `/vanity` and `/guildtag` are the same set of subcommands for two kinds of
-// rule, built here once. They work with a slash and with the prefix (`!vanity add ...`).
+// The commands of Vanity and Server Tag rules. `!vanity` and `!guildtag` are the same set of subcommands for two kinds of
+// rule, built here once. They are prefix only (`!vanity add ...`).
 const { MessageFlags, PermissionFlagsBits, ChannelType } = require('discord.js');
 const db = require('../../db/identity');
 const { ensureGuild } = require('../../db/guilds');
@@ -11,6 +11,9 @@ const rules = require('./rules');
 const { memberIdentity } = require('./service');
 const { matchVanity, matchGuildTag, vanityValue, vanitySourceKnown, VANITY_SOURCES, COMPARISONS, CONDITIONS } = require('./compare');
 const { syncGuild } = require('./sync');
+const { infoPayload } = require('../infoCard');
+
+const PINK = 0xf0a9c4;
 
 const label = (value) => value.replace(/_/g, ' ');
 const choices = (list) => list.map((value) => ({ name: label(value), value }));
@@ -87,9 +90,18 @@ async function listRules(interaction, kind) {
   const all = kind === 'vanity' ? await db.listVanityRules(interaction.guild.id, { all: true }) : await db.listGuildTagRules(interaction.guild.id, { all: true });
   const notify = await db.getNotification(interaction.guild.id, kind);
   const title = kind === 'vanity' ? 'Vanity rules' : 'Server Tag rules';
-  const body = all.length ? all.map((rule) => rules.describeRule(kind, rule)).join('\n') : `No rules yet. Create one with \`/${kind} add\`.`;
-  const footer = notify ? `\nThank-you message: <#${notify.channelId}>${notify.embedName ? ` with the embed \`${notify.embedName}\`` : ''}.` : '';
-  await reply(interaction, `### ${title}\n${body}${footer}`.slice(0, 3900));
+  const on = all.filter((rule) => rule.enabled).length;
+  await interaction.editReply(infoPayload({
+    accent: PINK,
+    title,
+    subtitle: [all.length ? `${all.length} rule${all.length === 1 ? '' : 's'} · ${on} on` : 'No rules yet'],
+    thumbnail: interaction.guild.iconURL?.({ extension: 'png', size: 128 }) ?? null,
+    sections: [
+      { lines: all.length ? all.map((rule) => rules.describeRule(kind, rule)) : [`Create one with \`!${kind} add\`.`], limit: 2600 },
+      { title: 'Thank-you message', lines: [notify ? `<#${notify.channelId}>${notify.embedName ? ` · embed \`${notify.embedName}\`` : ''}${notify.ping === 'none' ? ' · no ping' : ''}` : `Off. Set it with \`!${kind} notify\`.`] },
+    ],
+    footer: `!${kind} add · edit · remove · test · sync`,
+  }));
 }
 
 /** What every rule says about a member right now, without touching roles. */
@@ -99,17 +111,27 @@ async function testMember(interaction, kind) {
   const identity = memberIdentity(target);
   const list = kind === 'vanity' ? await db.listVanityRules(interaction.guild.id, { all: true }) : await db.listGuildTagRules(interaction.guild.id, { all: true });
   if (!list.length) return reply(interaction, 'There are no rules to test yet.');
+  const hasRole = (rule) => (identity.roleIds.has(rule.role_id) ? 'has the role' : 'does not have the role');
   const lines = list.map((rule) => {
+    const off = rule.enabled ? '' : ' _(off)_';
     if (kind === 'vanity') {
-      if (!vanitySourceKnown(identity, rule.source)) return `${EMOJI.ALERT} **${rule.name}** · unknown (no presence for this member right now)`;
+      if (!vanitySourceKnown(identity, rule.source)) return `${EMOJI.ALERT} **${rule.name}**${off} · unknown: Discord shows no presence for this member (offline or invisible), so their role is left as it is`;
       let matched;
-      try { matched = matchVanity(rule, identity); } catch (error) { return `${EMOJI.DENY} **${rule.name}** · ${error.message}`; }
-      return `${matched ? EMOJI.APPROVE : EMOJI.DENY} **${rule.name}** · ${matched ? 'matches' : 'does not match'} (\`${vanityValue(identity, rule.source) || 'empty'}\`)${rule.enabled ? '' : ' _(off)_'}`;
+      try { matched = matchVanity(rule, identity); } catch (error) { return `${EMOJI.DENY} **${rule.name}**${off} · ${error.message}`; }
+      return `${matched ? EMOJI.APPROVE : EMOJI.DENY} **${rule.name}**${off} · ${matched ? 'matches' : 'does not match'} \`${(vanityValue(identity, rule.source) || 'empty').slice(0, 80)}\` · ${hasRole(rule)}`;
     }
     const matched = matchGuildTag(rule, identity.primaryGuild);
-    return `${matched ? EMOJI.APPROVE : EMOJI.DENY} **${rule.name}** · ${matched ? 'matches' : 'does not match'}${rule.enabled ? '' : ' _(off)_'}`;
+    return `${matched ? EMOJI.APPROVE : EMOJI.DENY} **${rule.name}**${off} · ${matched ? 'matches' : 'does not match'} · ${hasRole(rule)}`;
   });
-  await reply(interaction, `### Test for ${target.displayName}\n${lines.join('\n')}`.slice(0, 3900));
+  const tag = identity.primaryGuild?.tag;
+  await interaction.editReply(infoPayload({
+    accent: PINK,
+    title: `Test for ${target.displayName}`,
+    subtitle: [kind === 'vanity' ? (identity.unknownSources.has('custom_status') ? 'Custom Status: not visible right now' : `Custom Status: ${identity.customStatus ? `\`${identity.customStatus.slice(0, 100)}\`` : 'none'}`) : `Server Tag: ${tag ? `\`${tag}\`` : 'none'}`],
+    thumbnail: target.displayAvatarURL?.({ extension: 'png', size: 256 }) ?? null,
+    sections: [{ title: 'Rules', lines, limit: 2800 }],
+    footer: 'Nothing was changed. Use sync to apply the rules.',
+  }));
 }
 
 function progressCard(source, state) {
@@ -148,7 +170,7 @@ async function setNotify(interaction, kind) {
   await ok(interaction, `Members who start matching a ${kind === 'vanity' ? 'Vanity' : 'Server Tag'} rule will be thanked in ${channel}${embedName ? ` with the embed \`${embedName}\`` : ''}.`);
 }
 
-/** The handler of `/vanity` and `/guildtag`. */
+/** The handler of `!vanity` and `!guildtag`. */
 async function execute(interaction, kind) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const sub = interaction.options.getSubcommand();
@@ -174,7 +196,7 @@ async function execute(interaction, kind) {
   if (!result.ok) return bad(interaction, result.message);
   if (result.unchanged) return reply(interaction, 'Nothing to change: give at least one new value.');
   const done = { add: 'created', edit: 'updated', remove: 'deleted' }[sub];
-  await ok(interaction, `The rule \`${rules.cleanName(name)}\` was ${done}.${sub === 'remove' ? '' : ` Members are checked as they change; use \`/${kind} sync\` to apply it to everyone now.`}`);
+  await ok(interaction, `The rule \`${rules.cleanName(name)}\` was ${done}.${sub === 'remove' ? '' : ` Members are checked as they change; use \`!${kind} sync\` to apply it to everyone now.`}`);
 }
 
 const PERMISSION = PermissionFlagsBits.ManageGuild;

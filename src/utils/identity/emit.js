@@ -1,11 +1,10 @@
 // What the bot says about the roles it manages: the thank-you message when a member starts matching a rule, and the log of
 // every role it added or removed. Both can use a saved embed from Embeds; without one they use a plain Petto card.
-const { MessageFlags } = require('discord.js');
+const { MessageFlags, EmbedBuilder } = require('discord.js');
+const { buildInfoCard } = require('../infoCard');
 const db = require('../../db/identity');
 const { templatePayload } = require('../templatedMessage');
-const { textCard } = require('../caseCard');
 const { EMOJI } = require('../emojis');
-const { COLORS } = require('../colors');
 const logger = require('../logger');
 
 const LOG_EVENTS = ['vanity_add', 'vanity_remove', 'tag_add', 'tag_remove', 'error'];
@@ -56,10 +55,18 @@ async function channelOf(guild, channelId) {
   return channel?.isTextBased?.() ? channel : null;
 }
 
-function defaultThanks(action) {
-  return action.source === 'guildtag'
-    ? `gracias por usar el tag **${action.tag || action.matchedValue || action.value}**, <@${action.userId}> ♡`
-    : `gracias por usar el vanity **${action.value}**, <@${action.userId}> ♡`;
+/** The thank-you card when the server did not choose a saved embed: the member's picture, what they now have and why. */
+function thanksCard(action, member) {
+  const tag = action.source === 'guildtag';
+  const what = tag ? (action.tag || action.matchedValue || action.value) : action.value;
+  return buildInfoCard({
+    accent: THANKS_COLOR,
+    title: tag ? 'gracias por usar el tag ♡' : 'gracias por usar el vanity ♡',
+    subtitle: [`<@${action.userId}>${action.roleId ? `, ahora tienes <@&${action.roleId}>` : ''}`],
+    thumbnail: member?.displayAvatarURL?.({ extension: 'png', size: 256 }) || action.userAvatar || null,
+    sections: [{ lines: [`**${tag ? 'Server Tag' : 'Vanity'}** \`${String(what || '').slice(0, 100)}\``] }],
+    footer: action.ruleName ? `regla · ${action.ruleName}` : null,
+  });
 }
 
 /** The thank-you message of the source, when the server set one. */
@@ -78,7 +85,7 @@ async function emitNotification(guild, member, action) {
     await channel.send({ ...message, allowedMentions });
     return;
   }
-  await channel.send({ components: [textCard(defaultThanks(action), THANKS_COLOR)], flags: MessageFlags.IsComponentsV2, allowedMentions });
+  await channel.send({ components: [thanksCard(action, member)], flags: MessageFlags.IsComponentsV2, allowedMentions });
 }
 
 /** One line of the log of role changes. */
@@ -98,16 +105,30 @@ async function emitAction(guild, action) {
     await channel.send({ ...message, allowedMentions: { parse: [] } });
     return;
   }
-  const ok = key !== 'error';
-  const lines = [
-    `### ${ok ? EMOJI.APPROVE : EMOJI.DENY}  ${EVENT_LABELS[key]}`,
-    `**Member:** <@${action.userId}> (\`${action.userId}\`)`,
-    `**Role:** ${action.roleId ? `<@&${action.roleId}>` : 'unknown'}`,
-  ];
-  if (action.ruleName) lines.push(`**Rule:** ${action.ruleName}`);
-  if (action.reason) lines.push(`**Why:** ${action.reason}`);
-  if (action.error) lines.push(`**Error:** ${action.error.message ?? action.error}`);
-  await channel.send({ components: [textCard(lines.join('\n'), ok ? COLORS.GREEN : COLORS.RED)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
+  await channel.send({ embeds: [legacyLogEmbed(action)], allowedMentions: { parse: [] } });
 }
 
-module.exports = { emitAction, emitNotification, identityContext, eventKey, LOG_EVENTS, EVENT_LABELS };
+/**
+ * The log entry the Vanity bot always sent, with the same look: a green or red embed with the title, the Petto approve or
+ * deny emoji, the role and the member, and the word (Vanity) or the reason (Server Tag).
+ */
+function legacyLogEmbed(action) {
+  const remove = action.action === 'remove_role';
+  const failed = Boolean(action.error) || action.result === 'error';
+  const bad = remove || failed;
+  const icon = bad ? EMOJI.DENY : EMOJI.APPROVE;
+  const title = action.source === 'guildtag' ? 'Server Tag Action' : 'Vanity Action';
+  const word = remove ? 'Removed' : 'Added';
+  const to = remove ? 'from' : 'to';
+  let description = `### ${title}\n${icon} ${word} role <@&${action.roleId}> ${to} <@${action.userId}>`;
+  if (failed) {
+    description = `### ${title}\n${icon} Could not ${remove ? 'remove' : 'add'} role <@&${action.roleId}> ${to} <@${action.userId}>\nError: ${action.error?.message ?? action.error ?? 'unknown'}`;
+  } else if (action.source === 'guildtag') {
+    description += `\nReason: Matched \`${action.ruleCondition || 'tag'}\` condition for value \`${action.value || action.matchedValue}\``;
+  } else {
+    description += `\nWord: \`${action.value || action.matchedValue}\``;
+  }
+  return new EmbedBuilder().setDescription(description.slice(0, 4000)).setColor(bad ? 0xfe6465 : 0xa5ea7a);
+}
+
+module.exports = { emitAction, emitNotification, identityContext, eventKey, legacyLogEmbed, thanksCard, LOG_EVENTS, EVENT_LABELS };

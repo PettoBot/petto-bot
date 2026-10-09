@@ -8,6 +8,7 @@ const { COLORS } = require('../../utils/colors');
 const { evaluateMember } = require('../../utils/identity/service');
 const { syncGuild } = require('../../utils/identity/sync');
 const { LOG_EVENTS, EVENT_LABELS } = require('../../utils/identity/emit');
+const { infoPayload } = require('../../utils/infoCard');
 
 const EVENT_CHOICES = LOG_EVENTS.map((value) => ({ name: EVENT_LABELS[value], value }));
 
@@ -16,6 +17,8 @@ const ok = (interaction, text) => reply(interaction, `${EMOJI.APPROVE}  ${text}`
 
 module.exports = {
   aliases: ['idlog'],
+  // Only with the prefix: no slash command is registered for it.
+  prefixOnly: true,
   data: new SlashCommandBuilder()
     .setName('identity')
     .setDescription('Vanity and Server Tag roles: apply everything, and the log of role changes.')
@@ -64,16 +67,21 @@ module.exports = {
         db.listVanityRules(guild.id, { all: true }), db.listGuildTagRules(guild.id, { all: true }),
         db.getNotification(guild.id, 'vanity'), db.getNotification(guild.id, 'guildtag'), db.getLogConfig(guild.id),
       ]);
-      const notify = (entry) => (entry ? `<#${entry.channelId}>${entry.embedName ? ` · \`${entry.embedName}\`` : ''}` : 'off');
-      const events = log ? LOG_EVENTS.filter((event) => log.events?.[event]).join(', ') || 'none' : '';
-      return reply(interaction, [
-        '### Vanity and Server Tag',
-        `**Vanity rules:** ${vanity.length} (${vanity.filter((rule) => rule.enabled).length} on)`,
-        `**Server Tag rules:** ${tags.length} (${tags.filter((rule) => rule.enabled).length} on)`,
-        `**Vanity thank-you:** ${notify(notifyVanity)}`,
-        `**Server Tag thank-you:** ${notify(notifyTag)}`,
-        `**Log:** ${log ? `<#${log.channelId}> · ${events}` : 'off'}`,
-      ].join('\n'));
+      const notify = (entry) => (entry ? `<#${entry.channelId}>${entry.embedName ? ` · embed \`${entry.embedName}\`` : ''}${entry.ping === 'none' ? ' · no ping' : ''}` : 'off');
+      const count = (list) => `${list.length} (${list.filter((rule) => rule.enabled).length} on)`;
+      const events = log ? LOG_EVENTS.filter((event) => log.events?.[event]).map((event) => EVENT_LABELS[event]).join(', ') || 'none' : '';
+      return interaction.editReply(infoPayload({
+        accent: 0xf0a9c4,
+        title: 'Vanity and Server Tag',
+        subtitle: ['Roles by Custom Status, name or Server Tag'],
+        thumbnail: guild.iconURL?.({ extension: 'png', size: 128 }) ?? null,
+        sections: [
+          { title: 'Rules', lines: [`**Vanity** ${count(vanity)}`, `**Server Tag** ${count(tags)}`] },
+          { title: 'Thank-you messages', lines: [`**Vanity** ${notify(notifyVanity)}`, `**Server Tag** ${notify(notifyTag)}`] },
+          { title: 'Log', lines: log ? [`<#${log.channelId}>`, events] : ['off'] },
+        ],
+        footer: '!vanity · !guildtag · !identity sync',
+      }));
     }
 
     if (sub === 'logs') {
@@ -81,14 +89,14 @@ module.exports = {
       const current = await db.getLogConfig(guild.id);
       const events = current?.events && Object.keys(current.events).length ? current.events : Object.fromEntries(LOG_EVENTS.map((event) => [event, true]));
       await db.setLogConfig(guild.id, { channelId: channel.id, events, embeds: current?.embeds ?? {} });
-      return ok(interaction, `Role changes made by the rules are logged in ${channel}. Use \`/identity log-event\` to choose which entries.`);
+      return ok(interaction, `Role changes made by the rules are logged in ${channel}. Use \`!identity log-event\` to choose which entries.`);
     }
 
     const current = await db.getLogConfig(guild.id);
     if (sub === 'logs-off') {
       return (await db.clearLogConfig(guild.id)) ? ok(interaction, 'The log is off.') : reply(interaction, 'There was no log set up.');
     }
-    if (!current) return reply(interaction, 'Set a log channel first with `/identity logs`.', COLORS.RED);
+    if (!current) return reply(interaction, 'Set a log channel first with `!identity logs`.', COLORS.RED);
     const event = interaction.options.getString('event', true);
     if (sub === 'log-event') {
       const enabled = interaction.options.getBoolean('enabled', true);
