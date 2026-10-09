@@ -72,6 +72,8 @@ stub('src/db/identity.js', {
   deleteRule: async (source, guildId, name) => { const before = savedRules[source].length; savedRules[source] = savedRules[source].filter((rule) => rule.name !== name); return savedRules[source].length < before; },
 });
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
+// The messages are built by other modules that need the database; here only the variables they get are checked.
+stub('src/utils/templatedMessage.js', { templatePayload: async () => null });
 
 const { evaluate } = require('../src/utils/identity/engine');
 const compare = require('../src/utils/identity/compare');
