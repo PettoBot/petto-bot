@@ -6,6 +6,7 @@ All notable changes to Petto are documented here.
 
 ### Added
 
+- `!reactionrole add new <emoji> <role> --embed <saved embed>` posts a saved embed (a classic one, not a V2 design) as a message and puts the role button on it, so a role menu with an embed is made in one step. `--channel` says where to post it, and the answer has the link and how to add more buttons to that message. If something fails after the message was posted, the message is taken down. The dashboard has the same: in Reaction roles, pick a saved embed instead of typing a message ID.
 - `.Message.CommandUserID`: who used the command that sent the message. A reaction knows it (Petto remembers it with the message), a button or menu locked to a member knows it, and in a typed command it is the author. With it, "only who asked" works for reactions too.
 
 - `execCC`: a command in code runs another command in code of the server, once it is done or after a delay of up to 5 minutes: `{{ execCC "pay" }}`, `{{ execCC "pay" 30 }}` or `{{ execCC "pay" 0 (sdict "item" "rose" "price" 50) }}`. The other command runs as the same member in the same channel, with `.Trigger` `"exec"`, the data in `.ExecData` (at most 2000 characters as JSON) and the name of the command that ran it in `.ExecBy`; what it prints is sent as a normal message, not a reply, and `deleteResponse` works there too. A command can use it twice per use and a chain is at most 3 commands long (a command, the one it runs and the one that one runs). It works from typed commands, buttons, menus, forms and reactions. A delay is kept in memory, so a restart forgets it. A test (`!customcommand codetest` or the dashboard) never runs the other command: it says which one it would run, after how long and with what data, and `!customcommand info` says when a command runs other commands.
@@ -26,6 +27,7 @@ All notable changes to Petto are documented here.
 
 ### Changed
 
+- The automatic reactions of a channel (`!reaction messages <channel> <emojis>`) take up to **five** emojis instead of three (`emoji_1` to `emoji_5`).
 - `!customcommand trigger` is clearer. Without a type it shows how the command starts and the commands to change it; `prefix` without a text says how to write it; it says when the command already starts like that or when the prefix is the one of the server; and when it changes a prefix it says what it was before.
 - `!customcommand codetest` shows each message like Discord would: its text, its embed (title, the start of the description, fields, footer), its buttons and menus, and its reactions, under the line that says what it does.
 - `!customcommand list` shows a page at a time, sorted by name, with what each command is (code or text), how it is typed and how big it is.
@@ -35,6 +37,7 @@ All notable changes to Petto are documented here.
 
 ### Fixed
 
+- The automatic reactions of a channel did not work in announcement channels: the posts there usually come from channels it follows or from webhooks, which count as bots, and bots were skipped. The emojis of the channel go on those posts now (and on messages of Petto itself); the trigger phrases still react only to what a person writes, and system messages get nothing.
 - `updateMessage` with an empty list of components (`"components" (cslice)`) did not take the buttons away: the message changed but the buttons stayed, so a request card kept its buttons after it was delivered. It removes them now. Without the list the buttons are left as they were.
 - A command can ping a role that is not mentionable when Petto may mention every role in that channel (it has Mention Everyone or Administrator) and the id of the role is written in the code of the command, so the member who uses it cannot choose which role gets pinged by typing it. Before, only roles with "Allow anyone to @mention this role" were pinged, even for a bot with Administrator. When a role is not pinged, the command now says so and what to do, instead of failing silently.
 - The message after creating a custom command (`!customcommand add` and `code`) always said to try it with `!`, even in a server with another prefix (`p!`), so people typed `!req1` and nothing happened. It says the prefix of the server now.

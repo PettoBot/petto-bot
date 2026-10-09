@@ -1,7 +1,7 @@
 const database = require('./database');
 
 const MAX_TRIGGER_LENGTH = 80;
-const MAX_EMOJIS_PER_CHANNEL = 3;
+const MAX_EMOJIS_PER_CHANNEL = 5;
 const CACHE_TTL_MS = 30_000;
 const triggerCache = new Map();
 const messageConfigCache = new Map();

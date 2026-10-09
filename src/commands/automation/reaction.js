@@ -26,7 +26,7 @@ module.exports = {
     .addSubcommand((s) => s.setName('removeall').setDescription('Remove every emoji for a trigger.').addStringOption((o) => o.setName('trigger').setDescription('Trigger phrase').setRequired(true)))
     .addSubcommand((s) => s.setName('list').setDescription('List reaction triggers.'))
     .addSubcommand((s) => s.setName('reset').setDescription('Remove every reaction trigger.'))
-    .addSubcommand((s) => s.setName('messages').setDescription('React to every message in a channel; no emojis disables it.').addChannelOption((o) => o.setName('channel').setDescription('Text channel').setRequired(true)).addStringOption((o) => o.setName('emoji_1').setDescription('First emoji').setRequired(false)).addStringOption((o) => o.setName('emoji_2').setDescription('Second emoji').setRequired(false)).addStringOption((o) => o.setName('emoji_3').setDescription('Third emoji').setRequired(false)))
+    .addSubcommand((s) => s.setName('messages').setDescription('React to every message in a channel, announcements too; no emojis disables it.').addChannelOption((o) => o.setName('channel').setDescription('Text or announcement channel').setRequired(true)).addStringOption((o) => o.setName('emoji_1').setDescription('First emoji').setRequired(false)).addStringOption((o) => o.setName('emoji_2').setDescription('Second emoji').setRequired(false)).addStringOption((o) => o.setName('emoji_3').setDescription('Third emoji').setRequired(false)).addStringOption((o) => o.setName('emoji_4').setDescription('Fourth emoji').setRequired(false)).addStringOption((o) => o.setName('emoji_5').setDescription('Fifth emoji').setRequired(false)))
     .addSubcommand((s) => s.setName('messages_list').setDescription('List channels receiving automatic reactions.')),
 
   async execute(interaction) {
@@ -109,10 +109,10 @@ async function reset(interaction) {
 }
 
 async function configureMessages(interaction) {
-  const emojis = ['emoji_1', 'emoji_2', 'emoji_3'].map((name) => interaction.options.getString(name)).filter(Boolean);
+  const emojis = ['emoji_1', 'emoji_2', 'emoji_3', 'emoji_4', 'emoji_5'].map((name) => interaction.options.getString(name)).filter(Boolean);
   const channel = interaction.options.getChannel('channel', true);
   if (!channel.isTextBased()) return reply(interaction, 'Choose a text channel.', 0xfe6465);
-  if (emojis.length > reactionDb.MAX_EMOJIS_PER_CHANNEL) return reply(interaction, 'You can configure up to three emojis per channel.', 0xfe6465);
+  if (emojis.length > reactionDb.MAX_EMOJIS_PER_CHANNEL) return reply(interaction, `You can configure up to ${reactionDb.MAX_EMOJIS_PER_CHANNEL} emojis per channel.`, 0xfe6465);
   await reactionDb.setMessageConfig({ guildId: interaction.guild.id, channelId: channel.id, emojis });
   return reply(interaction, emojis.length ? `${EMOJI.APPROVE}  New messages in <#${channel.id}> will receive ${emojis.join(' ')}.` : `${EMOJI.APPROVE}  Automatic reactions disabled in <#${channel.id}>.`, 0xa5ea7a);
 }
