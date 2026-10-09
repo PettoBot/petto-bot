@@ -376,6 +376,67 @@ const row = (code, name = `c${Math.random().toString(16).slice(2, 8)}`) => ({ na
     assert.ok(template.description.length > 5);
   }
 
+  // execCC: a command runs another one once it is done, with the same member and channel, .Trigger "exec", .ExecData and .ExecBy.
+  const G = '300000000000000001';
+  const problemsOf = (name) => codeCommands.problemLog(G, name);
+  store.set(`${G}:shop`, { name: 'shop', code: '{{ .Trigger }} {{ .ExecBy }} {{ json .ExecData }} {{ .User.Username }} {{ len .Args }} {{ .Channel.ID }}{{ sendMessage nil "from shop" }}' });
+  t = makeMessage();
+  await codeCommands.runCodeCommand(t.message, row('first{{ execCC "!Shop" 0 (sdict "item" "rose") }}', 'buy'), 'x y', '!');
+  assert.deepEqual(t.replies.map((r) => r.content), ['first'], 'the command that asked answers first, and the other one does not reply');
+  assert.deepEqual(t.sent.map((e) => e.payload.content), ['exec buy {"item":"rose"} Liam 0 200000000000000001', 'from shop'], 'the other command runs after, as the same member in the same channel');
+  assert.deepEqual(t.sent[0].payload.allowedMentions.parse, [], 'what it prints pings nothing by itself');
+  // A delay runs it later (in memory).
+  const realTimeout = global.setTimeout; const timers = [];
+  global.setTimeout = (fn, ms) => { timers.push({ fn, ms }); return { unref() {} }; };
+  t = makeMessage();
+  try { await codeCommands.runCodeCommand(t.message, row('{{ execCC "shop" 30 }}', 'later')); } finally { global.setTimeout = realTimeout; }
+  assert.equal(t.sent.length, 0, 'nothing runs before the delay');
+  assert.equal(timers.length, 1); assert.equal(timers[0].ms, 30_000);
+  await timers[0].fn();
+  assert.equal(t.sent[0].payload.content, 'exec later null Liam 0 200000000000000001', 'after the delay it runs, without data');
+  // Chains: at most 3 commands, the fourth is refused and written down.
+  for (const n of [2, 3, 4]) store.set(`${G}:chain${n}`, { name: `chain${n}`, code: `chain${n}{{ execCC "chain${n + 1}" }}` });
+  t = makeMessage();
+  await codeCommands.runCodeCommand(t.message, row('chain1{{ execCC "chain2" }}', 'chain1'), '', '!');
+  assert.deepEqual(t.sent.map((e) => e.payload.content), ['chain2', 'chain3'], 'A runs B and B runs C, but C cannot run D');
+  assert.equal(problemsOf('chain3')[0].text, 'execCC: too many commands in a chain (at most 3)');
+  assert.equal(problemsOf('chain3')[0].trigger, 'exec');
+  // A command that does not exist, or that is not in code, is not a mistake of the one that asked: it is written down.
+  store.set(`${G}:plain`, { name: 'plain', code: null, response: 'hi' });
+  t = makeMessage();
+  await codeCommands.runCodeCommand(t.message, row('ok{{ execCC "ghost" }}{{ execCC "plain" }}', 'caller'), '', '!');
+  assert.deepEqual(t.replies.map((r) => r.content), ['ok'], 'the member sees no mistake');
+  assert.deepEqual(problemsOf('caller').map((p) => p.text), ['execCC: there is no command with code called plain', 'execCC: there is no command with code called ghost'], 'the newest first');
+  assert.deepEqual([problemsOf('caller')[0].trigger, problemsOf('caller')[0].userId], ['command', '500000000000000001']);
+  // A mistake in the command that was run, and actions that were not done, are written down under its name.
+  store.set(`${G}:oops`, { name: 'oops', code: '{{ nope }}' });
+  store.set(`${G}:risky`, { name: 'risky', code: '{{ addRole "100000000000000002" }}' });
+  t = makeMessage();
+  await codeCommands.runCodeCommand(t.message, row('{{ execCC "oops" }}{{ execCC "risky" }}', 'two'), '', '!');
+  assert.ok(problemsOf('oops')[0].text.includes('no function called "nope"') && problemsOf('oops')[0].trigger === 'exec', JSON.stringify(problemsOf('oops')));
+  assert.ok(problemsOf('risky')[0].text.startsWith('Some actions were not done: giving a role'));
+  assert.equal(t.roleLog.length, 0);
+  // The problems of commands that are typed are written down too.
+  t = makeMessage();
+  await codeCommands.runCodeCommand(t.message, row('{{ add 1 "x" }}', 'typedbad'), '', '!');
+  assert.equal(problemsOf('typedbad')[0].trigger, 'command');
+  // From a button: the other command runs in the channel of the button, as who clicked.
+  const execBits = makeGuild();
+  const execClick = makeMessage({ guildBits: execBits });
+  const execLog = { deferred: 0 };
+  await codeCommands.runComponent({ guild: execClick.message.guild, guildId: G, channel: execClick.message.channel, member: execClick.message.member, user: execClick.message.author, message: { id: '1', content: '', embeds: [] }, isStringSelectMenu: () => false, values: [], reply: async () => {}, update: async () => {}, deferUpdate: async () => { execLog.deferred += 1; }, followUp: async () => {} }, row('{{ execCC "shop" 0 "gift" }}', 'btn'), { command: 'btn', handler: 'h', data: '', userId: null });
+  assert.equal(execLog.deferred, 1, 'the click is answered first');
+  assert.deepEqual(execBits.sent.map((e) => e.payload.content), ['exec btn "gift" Liam 0 200000000000000001', 'from shop'], 'the data can be a text too');
+  // From a reaction.
+  channelSends.length = 0;
+  await codeCommands.runReaction(fakeReaction, { id: reactAsked.message.author.id, username: 'Liam', bot: false }, row('{{ execCC "shop" }}', 'reactexec'), '🦋');
+  assert.ok(channelSends.some((payload) => payload.content === 'exec reactexec null Liam 0 200000000000000001'), JSON.stringify(channelSends));
+  // A server keeps its last 50 problems.
+  for (let n = 0; n < 60; n += 1) codeCommands.logProblem('300000000000000009', { command: `p${n}`, trigger: 'command', text: 'x' });
+  assert.equal(codeCommands.problemLog('300000000000000009', null, 100).length, 50);
+  assert.equal(codeCommands.problemLog('300000000000000009')[0].command, 'p59');
+  assert.equal(codeCommands.problemLog('300000000000000009').length, 15, '15 at a time');
+
   // The command that writes them.
   const command = require('../src/commands/automation/customcommand');
   const fakeInteraction = (sub, options, content, userId = 'tester') => {
@@ -456,6 +517,25 @@ const row = (code, name = `c${Math.random().toString(16).slice(2, 8)}`) => ({ na
   assert.ok(textInfo.includes('**Kind:** text') && textInfo.includes('9 characters') && textInfo.includes('`card`') && textInfo.includes('`!hello`'), textInfo);
   assert.ok((await say(fakeInteraction('info', { name: 'vot' }, '!cc info vot'))).includes('does not exist. Did you mean `vote`?'));
   assert.ok(command.data.toJSON().options.some((option) => option.name === 'info'), 'info is a subcommand');
+  store.set('300000000000000001:runner', { name: 'runner', code: '{{ execCC "shop" 0 .ExecData }}{{ .ExecBy }}' });
+  const runnerInfo = await say(fakeInteraction('info', { name: 'runner' }, '!cc info runner'));
+  assert.ok(runnerInfo.includes('**Uses:** other commands (execCC)') && !runnerInfo.includes('Hint:'), '.ExecData and .ExecBy are in the data');
+
+  // A test never runs another command, it only says what it would run.
+  const execTest = fakeInteraction('codetest', {}, '!cc codetest {{ execCC "shop" 30 (sdict "item" "rose") }}{{ execCC "!other" }}');
+  const execTested = await say(execTest);
+  assert.ok(execTested.includes('• run the command `shop` after 30 seconds with data') && execTested.includes('↳ Data: {"item":"rose"}'), execTested);
+  assert.ok(execTested.includes('• run the command `other`\n') || execTested.endsWith('• run the command `other`'), execTested);
+  assert.equal(execTest.m.sent.length, 0, 'a test runs no other command');
+
+  // !cc logs: the last problems of the commands in code, all of them or of one command.
+  assert.ok(command.data.toJSON().options.some((option) => option.name === 'logs' && option.options[0].name === 'name' && !option.options[0].required), 'logs is a subcommand with an optional name');
+  const logs = await say(fakeInteraction('logs', {}, '!cc logs'));
+  assert.ok(logs.includes('### Problems of the commands in code') && logs.includes('**`caller`** · command · <@500000000000000001> · <t:') && logs.includes('execCC: there is no command with code called ghost'), logs);
+  assert.ok(logs.indexOf('`typedbad`') < logs.indexOf('`caller`'), 'the newest first');
+  const oneLog = await say(fakeInteraction('logs', { name: 'oops' }, '!cc logs oops'));
+  assert.ok(oneLog.includes('Problems of `oops`') && oneLog.includes('· exec ·') && !oneLog.includes('`caller`'), oneLog);
+  assert.ok((await say(fakeInteraction('logs', { name: 'greet' }, '!cc logs greet'))).includes('`greet` has no problems written down'));
 
   // !cc list: a page at a time, sorted by name, with what each one is, how it starts and its size.
   const listed2 = fakeInteraction('list', {}, '!cc list');

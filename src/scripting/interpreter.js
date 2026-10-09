@@ -13,7 +13,7 @@ const DEFAULT_LIMITS = {
   maxOutput: 20_000, // characters printed while running; the bot cuts a message to Discord's limit later
   maxValueSize: 20_000, // the longest text a function may make
   maxListSize: 2_000,
-  effects: { message: 5, dm: 2, addRole: 5, removeRole: 5, reaction: 5, deleteTrigger: 1, deleteResponse: 1, respond: 1, update: 1, modal: 1, removeReaction: 1 },
+  effects: { message: 5, dm: 2, addRole: 5, removeRole: 5, reaction: 5, deleteTrigger: 1, deleteResponse: 1, respond: 1, update: 1, modal: 1, removeReaction: 1, execCC: 2 },
 };
 
 /**
@@ -169,7 +169,8 @@ async function run(codeOrTree, data = {}, options = {}) {
       return guardValue(await entry.run(env, ...args), operand);
     } catch (error) {
       if (error instanceof PettoCodeError) throw error;
-      return fail(error.limit ? 'limit' : 'runtime', `${operand.name}: ${error.message}`, operand);
+      // A message that already names the function (`bare`) is said as it is.
+      return fail(error.limit ? 'limit' : 'runtime', error.bare ? error.message : `${operand.name}: ${error.message}`, operand);
     }
   }
 

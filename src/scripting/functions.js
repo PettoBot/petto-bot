@@ -456,8 +456,19 @@ const delayOf = (value) => {
 };
 def('deleteTrigger', 0, 1, (env, delay) => { env.effects.add('deleteTrigger', { delay: delayOf(delay) }); return null; });
 def('deleteResponse', 0, 1, (env, delay) => {
-  if (env.data?.Trigger !== undefined && env.data?.Trigger !== 'command') throw new Error('deleteResponse only works when the command is typed, not in a button, a menu, a form or a reaction');
+  if (env.data?.Trigger !== undefined && !['command', 'exec'].includes(env.data?.Trigger)) throw new Error('deleteResponse only works when the command is typed or run with execCC, not in a button, a menu, a form or a reaction');
   env.effects.add('deleteResponse', { delay: delay === undefined || delay === null ? 10 : delayOf(delay) });
+  return null;
+});
+// Runs another command with code of this server once this one is done (or after a delay), like YAGPDB's execCC. The data
+// goes as JSON, so the other command gets a copy (.ExecData) and never something this one can still change.
+const MAX_EXEC_DATA = 2000;
+def('execCC', 1, 3, (env, name, delay, value) => {
+  const wanted = str(name, 'the name of a command').trim().toLowerCase().replace(/^[^a-z0-9_-]+/, '');
+  if (!/^[a-z0-9_-]{1,32}$/.test(wanted)) throw new Error('The name of a command has 1 to 32 letters, numbers, - or _');
+  const json = JSON.stringify(value ?? null) ?? 'null';
+  if (json.length > MAX_EXEC_DATA) throw Object.assign(new Error(`The data of execCC is too big: at most ${MAX_EXEC_DATA} characters`), { limit: true, bare: true });
+  env.effects.add('execCC', { name: wanted, delay: delayOf(delay), data: JSON.parse(json) });
   return null;
 });
 

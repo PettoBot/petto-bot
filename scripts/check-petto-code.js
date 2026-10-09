@@ -266,6 +266,19 @@ assert.equal(acted.effects[4].silent, true); assert.equal(acted.effects[4].reply
 await fails('{{ deleteTrigger 900 }}', 'runtime', '0 to 300');
 await assert.rejects(run('{{ deleteResponse }}', { ...data, Trigger: 'button' }), /not in a button/);
 await fails('{{ addReactions "1" "2" "3" "4" "5" }}{{ addReaction "6" }}', 'limit');
+// execCC: runs another command later, so here it is only an effect: its name (without a prefix), a delay and a copy of the data.
+const exec = await run('{{ execCC "!Shop" }}{{ execCC "pay" 30 (sdict "item" "rose" "price" 50) }}', data);
+assert.deepEqual(exec.effects, [{ type: 'execCC', name: 'shop', delay: 0, data: null }, { type: 'execCC', name: 'pay', delay: 30, data: { item: 'rose', price: 50 } }]);
+assert.equal(exec.output, '', 'execCC gives nothing');
+await fails('{{ execCC "a" }}{{ execCC "b" }}{{ execCC "c" }}', 'limit', 'at most 2');
+await fails('{{ execCC "a" 301 }}', 'runtime', '0 to 300');
+await fails('{{ execCC "a b" }}', 'runtime', '1 to 32 letters');
+await fails('{{ execCC 5 }}', 'runtime', 'Expected the name of a command');
+const tooBig = await fails(`{{ execCC "a" 0 "${'x'.repeat(2001)}" }}`, 'limit', 'The data of execCC is too big: at most 2000 characters');
+assert.ok(!tooBig.detail.startsWith('execCC:'), 'the mistake is said once, without the name of the function before it');
+assert.equal((await run(`{{ execCC "a" 0 "${'x'.repeat(1990)}" }}`, data)).effects.length, 1, 'data up to 2000 characters as JSON goes');
+assert.equal((await run('{{ .ExecBy }}|{{ .ExecData.item }}|{{ .Trigger }}', { ...data, Trigger: 'exec', ExecBy: 'shop', ExecData: { item: 'rose' } })).output, 'shop|rose|exec');
+assert.equal((await run('{{ deleteResponse 5 }}', { ...data, Trigger: 'exec' })).effects[0].delay, 5, 'a command run with execCC can delete what it printed');
 // Members, roles and channels: read through the lookup, at most 10 per run.
 const lookup = { member: async (id) => (id === '123456789012345678' ? { ID: id, RoleIDs: ['223456789012345678'], DisplayName: 'Liam' } : null), role: async (id) => ({ ID: id, Name: 'Staff' }), channel: async () => null };
 assert.equal((await run('{{ (getMember "<@123456789012345678>").DisplayName }} {{ getMember "999999999999999999" }} {{ (getRole "<@&223456789012345678>").Name }} {{ getChannel "1" }} {{ targetHasRole "123456789012345678" "223456789012345678" }}', data, { lookup })).output, 'Liam  Staff  true');

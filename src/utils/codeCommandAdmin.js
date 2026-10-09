@@ -44,6 +44,7 @@ function describeEffect(effect) {
     case 'modal': return `show the form "${effect.modal.title}"`;
     case 'respond': return `answer the click with ${what(effect)}${effect.ephemeral ? ' (only for who clicked)' : ''}`;
     case 'update': return `change the message the button is on to ${what(effect)}`;
+    case 'execCC': return `run the command \`${effect.name}\`${effect.delay ? ` after ${effect.delay} seconds` : ''}${effect.data !== null && effect.data !== undefined ? ' with data' : ''}`;
     default: return effect.type;
   }
 }
@@ -69,6 +70,8 @@ function componentLines(rows) {
  */
 function effectDetails(effect) {
   if (effect.type === 'modal') return [`Fields: ${effect.modal.fields.map((field) => `"${snippet(field.label, 45)}"${field.required ? '' : ' (optional)'}`).join(', ')}`];
+  // A test never runs the other command: it only says what it would get in .ExecData.
+  if (effect.type === 'execCC') return effect.data !== null && effect.data !== undefined ? [`Data: ${snippet(JSON.stringify(effect.data), 200)}`] : [];
   if (!['message', 'dm', 'respond', 'update'].includes(effect.type)) return [];
   const lines = [];
   if (effect.content) lines.push(`Text: ${snippet(effect.content, 200)}`);
@@ -166,7 +169,7 @@ const LOOKUP_FUNCTIONS = new Set(['getMember', 'getRole', 'getChannel', 'targetH
 
 /**
  * What some code uses, read without running it: the functions it calls (sorted) and whether it uses stored data, buttons or
- * menus, reactions, forms, roles, direct messages, or reads members, roles and channels. Null when the code has a mistake.
+ * menus, reactions, forms, roles, direct messages, reads members, roles and channels, or runs other commands. Null when the code has a mistake.
  */
 function codeSummary(code) {
   const tree = parsed(code);
@@ -190,6 +193,7 @@ function codeSummary(code) {
     roles: has('addRole', 'removeRole'),
     directMessages: has('sendDM'),
     lookups: [...used].some((name) => LOOKUP_FUNCTIONS.has(name)),
+    otherCommands: has('execCC'),
   };
 }
 
