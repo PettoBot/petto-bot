@@ -2658,3 +2658,123 @@ drop trigger if exists feedback_votes_counts on feedback_votes;
 create trigger feedback_votes_counts after insert or update or delete on feedback_votes for each row execute function feedback_refresh_counts();
 drop trigger if exists feedback_comments_counts on feedback_comments;
 create trigger feedback_comments_counts after insert or delete on feedback_comments for each row execute function feedback_refresh_counts();
+
+-- Vanity and Server Tag roles (moved here from the separate Vanity bot). A rule adds or removes a role when a member's
+-- profile text (Custom Status, name, nickname) or their Server Tag matches. The grants say which rules justify a role right
+-- now, and the state says whether the bot or a person put it on the member, so a role someone was given by hand is never
+-- taken away.
+create table if not exists vanity_rules (
+  id          text primary key,
+  guild_id    text not null references guilds(guild_id) on delete cascade,
+  name        text not null,
+  word        text not null,
+  source      text not null check (source in ('username','global_name','guild_nickname','display_name','custom_status')),
+  comparison  text not null check (comparison in ('equals','contains','starts_with','ends_with','regex')),
+  role_id     text not null,
+  action      text not null check (action in ('add_role','remove_role')),
+  enabled     boolean not null default true,
+  priority    integer not null default 0,
+  normalization jsonb not null default '{"case_fold":true,"trim_space":true,"collapse_space":true}'::jsonb,
+  created_by  text not null default '',
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  deleted_at  timestamptz
+);
+create unique index if not exists vanity_rules_guild_name_unique on vanity_rules (guild_id, name) where deleted_at is null;
+create index if not exists vanity_rules_guild_enabled_idx on vanity_rules (guild_id, enabled);
+alter table vanity_rules enable row level security;
+
+create table if not exists guildtag_rules (
+  id          text primary key,
+  guild_id    text not null references guilds(guild_id) on delete cascade,
+  name        text not null,
+  condition   text not null check (condition in ('is_guild_id','is_not_guild_id','identity_enabled','identity_disabled','tag_equals','tag_not_equals')),
+  value       text not null default '',
+  role_id     text not null,
+  action      text not null check (action in ('add_role','remove_role')),
+  enabled     boolean not null default true,
+  priority    integer not null default 0,
+  created_by  text not null default '',
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  deleted_at  timestamptz
+);
+create unique index if not exists guildtag_rules_guild_name_unique on guildtag_rules (guild_id, name) where deleted_at is null;
+create index if not exists guildtag_rules_guild_enabled_idx on guildtag_rules (guild_id, enabled);
+alter table guildtag_rules enable row level security;
+
+-- No foreign keys to Discord entities here on purpose: when a role or a member disappears, the record of what the bot did stays.
+create table if not exists identity_role_grants (
+  guild_id          text not null,
+  user_id           text not null,
+  role_id           text not null,
+  rule_id           text not null,
+  source_type       text not null check (source_type in ('vanity','guildtag')),
+  action            text not null check (action in ('add_role','remove_role')),
+  matched           boolean not null default false,
+  bot_added_role    boolean not null default false,
+  last_evaluated_at timestamptz not null default now(),
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now(),
+  primary key (guild_id, user_id, role_id, rule_id)
+);
+create index if not exists identity_role_grants_guild_user_idx on identity_role_grants (guild_id, user_id);
+create index if not exists identity_role_grants_guild_role_idx on identity_role_grants (guild_id, role_id);
+alter table identity_role_grants enable row level security;
+
+create table if not exists identity_role_state (
+  guild_id           text not null,
+  user_id            text not null,
+  role_id            text not null,
+  bot_added_role     boolean not null default false,
+  manual_marked      boolean not null default false,
+  last_known_present boolean not null default false,
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now(),
+  primary key (guild_id, user_id, role_id)
+);
+create index if not exists identity_role_state_guild_user_idx on identity_role_state (guild_id, user_id);
+alter table identity_role_state enable row level security;
+
+create table if not exists identity_audit_events (
+  id          bigserial primary key,
+  event_type  text not null,
+  dedupe_key  text not null,
+  guild_id    text,
+  actor_id    text,
+  user_id     text,
+  role_id     text,
+  rule_id     text,
+  source_type text,
+  action      text,
+  result      text,
+  error       text,
+  metadata    jsonb not null default '{}'::jsonb,
+  created_at  timestamptz not null default now()
+);
+create unique index if not exists identity_audit_events_dedupe_unique on identity_audit_events (dedupe_key);
+create index if not exists identity_audit_events_guild_created_idx on identity_audit_events (guild_id, created_at desc);
+alter table identity_audit_events enable row level security;
+
+-- The thank-you message of each source: where it goes, which saved embed it uses (a name from Embeds, empty for the plain
+-- default) and whether it pings the member.
+create table if not exists identity_notifications (
+  guild_id    text not null references guilds(guild_id) on delete cascade,
+  source_type text not null check (source_type in ('vanity','guildtag')),
+  channel_id  text not null,
+  embed_name  text not null default '',
+  ping        text not null default 'user' check (ping in ('user','none')),
+  updated_at  timestamptz not null default now(),
+  primary key (guild_id, source_type)
+);
+alter table identity_notifications enable row level security;
+
+-- The log of what the bot did with roles: one channel, the events that are on and, per event, an optional saved embed.
+create table if not exists identity_logs (
+  guild_id   text primary key references guilds(guild_id) on delete cascade,
+  channel_id text not null,
+  events     jsonb not null default '{}'::jsonb,
+  embeds     jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+alter table identity_logs enable row level security;

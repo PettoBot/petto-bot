@@ -1,5 +1,6 @@
 const { Events } = require('discord.js');
 const stickyRolesDb = require('../db/stickyRoles');
+const identityDb = require('../db/identity');
 const logger = require('../utils/logger');
 
 const MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
@@ -18,7 +19,11 @@ module.exports = {
       const me = member.guild.members.me;
       if (!me) return;
 
+      // The roles of Vanity and Server Tag rules are not given back: they depend on what the member wears now, and the rules
+      // give them again when it still matches (a role given back here would be taken for one a person gave).
+      const ruleRoles = new Set(await identityDb.managedRoleIds(member.guild.id).catch(() => []));
       const assignable = snapshot.role_ids.filter((id) => {
+        if (ruleRoles.has(id)) return false;
         const role = member.guild.roles.cache.get(id);
         return role && role.position < me.roles.highest.position;
       });

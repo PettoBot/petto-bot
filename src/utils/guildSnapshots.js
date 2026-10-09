@@ -30,6 +30,8 @@ function buildSnapshot(guild) {
     icon: role.icon ?? null,
     hoist: Boolean(role.hoist),
     mentionable: Boolean(role.mentionable),
+    // The role Discord makes for a bot says which bot it is for, so the dashboard can tell which roles the bot is above.
+    tags: role.tags?.botId ? { bot_id: String(role.tags.botId) } : null,
   }));
   return {
     guild_id: String(guild.id),

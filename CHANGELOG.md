@@ -6,6 +6,11 @@ All notable changes to Petto are documented here.
 
 ### Added
 
+- Vanity and Server Tag roles are now part of Petto (they used to be a separate bot). `!vanity` and `!guildtag` (also `/vanity`, `/guildtag`) create rules that add or remove a role from members by their Custom Status, username, global name, server nickname or display name, or by the Server Tag they wear: `add`, `edit`, `remove`, `list`, `test` (see what a member matches without changing anything), `sync` (apply to everyone, with live progress), `notify` and `notify-off` (the thank-you message, with a saved embed from Embeds if you like). Roles the bot did not add are never taken away, a remove rule wins over an add rule, and you can only use roles below your own highest role.
+- `!identity` shows the status of all of it, applies every rule at once (`sync`) and keeps a log of the roles the rules add or remove (`logs`, `log-event`, `log-embed`, `logs-off`), with a Petto card or a saved embed for each kind of entry.
+- New variables for the thank-you and log messages: `{vanity.word}`, `{vanity.value}`, `{vanity.rule}`, `{vanity.source}`, `{vanity.role}`, `{tag}`, `{tag.guild_id}`, `{tag.enabled}`, `{tag.badge}`, `{tag.rule}`, `{tag.condition}`, `{tag.rule_value}`, `{tag.role}` and `{rule.name}`, `{rule.role}`, `{rule.reason}`, `{rule.action_text}` and more.
+- The dashboard has routes for the rules, thank-you messages and log (`/api/dashboard/guild/:id/identity`).
+- `scripts/import-vanity.js` copies the data of the old Vanity bot (rules, who got which role, thank-you messages, log settings and saved embeds, which become saved embeds of Petto) into Petto's database. It can be run again without making copies.
 - Role buttons can have a color, a row and only an emoji. `!reactionrole add` takes `--style` (blurple, gray, green or red; before it was green for add only, red for remove only and blurple for toggle) and `--row` (1 to 5); the buttons of a row keep their order, and a message holds up to 5 rows of 5. The dashboard builder uses the same: a button can have no text (only the emoji) or no emoji. Run `schema.sql` to add the three columns (`button_style`, `button_row`, `button_position`).
 - `!reactionrole add new <emoji> <role> --embed <saved embed>` posts a saved embed (a classic one, not a V2 design) as a message and puts the role button on it, so a role menu with an embed is made in one step. `--channel` says where to post it, and the answer has the link and how to add more buttons to that message. If something fails after the message was posted, the message is taken down. The dashboard has the same: in Reaction roles, pick a saved embed instead of typing a message ID.
 - `.Message.CommandUserID`: who used the command that sent the message. A reaction knows it (Petto remembers it with the message), a button or menu locked to a member knows it, and in a typed command it is the author. With it, "only who asked" works for reactions too.
@@ -28,6 +33,7 @@ All notable changes to Petto are documented here.
 
 ### Changed
 
+- Sticky roles do not give back the roles of Vanity and Server Tag rules when someone rejoins: the rules give them again if the member still matches.
 - The automatic reactions of a channel (`!reaction messages <channel> <emojis>`) take up to **five** emojis instead of three (`emoji_1` to `emoji_5`).
 - `!customcommand trigger` is clearer. Without a type it shows how the command starts and the commands to change it; `prefix` without a text says how to write it; it says when the command already starts like that or when the prefix is the one of the server; and when it changes a prefix it says what it was before.
 - `!customcommand codetest` shows each message like Discord would: its text, its embed (title, the start of the description, fields, footer), its buttons and menus, and its reactions, under the line that says what it does.
