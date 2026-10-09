@@ -35,6 +35,8 @@ All notable changes to Petto are documented here.
 
 - Vanity rules no longer take a role away from a member who goes offline or invisible: Discord hides their Custom Status then, which is not the same as having none, so the rule leaves their role as it is until they are online again.
 - The log of a role taken away says which rule made it go: the Server Tag that was taken off, instead of a Vanity rule that did not change.
+- The log of the Vanity and Server Tag rules is the same green or red embed the Vanity bot sent (with Petto's approve and deny emoji, the role, the member and the word or reason). A saved embed is only used when you pick one with `!identity log-embed`; the old bot never used the ones it had saved for the log, so the import no longer brings them (`--reset-log-embeds` takes them off where an earlier import did).
+- The default thank-you message is a Components V2 card with the member's picture, what they now have and the word of the rule, and `!vanity list`, `!vanity test`, `!guildtag list`, `!guildtag test` and `!identity status` answer with V2 cards too.
 
 ### Changed
 
