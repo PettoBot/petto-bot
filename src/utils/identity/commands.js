@@ -11,7 +11,7 @@ const rules = require('./rules');
 const { memberIdentity } = require('./service');
 const { matchVanity, matchGuildTag, vanityValue, vanitySourceKnown, VANITY_SOURCES, COMPARISONS, CONDITIONS } = require('./compare');
 const { syncGuild } = require('./sync');
-const { infoPayload } = require('../infoCard');
+const { infoPayload, noticePayload } = require('../infoCard');
 const { buildProgressBar } = require('../levelProgressBar');
 
 const PINK = 0xf0a9c4;
@@ -155,7 +155,7 @@ function progressPayload(source, state, startedAt) {
   return infoPayload({
     accent: PINK,
     title: `${EMOJI.LOADING} Syncing ${SOURCE_NAME[source] ?? 'rules'}`,
-    subtitle: [state.total ? 'Checking every member against the rules' : 'Reading the members of the server…'],
+    subtitle: [state.waiting ? `Discord asked to wait ${state.waiting}s before sending the members. Petto will try again by itself.` : state.total ? 'Checking every member against the rules' : 'Reading the members of the server…'],
     sections: state.total ? [{ lines: [
       `${buildProgressBar(percent)} **${percent}%**`,
       `**${state.processed.toLocaleString('en-US')}** of **${state.total.toLocaleString('en-US')}** members`,
@@ -186,6 +186,7 @@ function resultPayload(source, result, guild) {
         result.errors ? `${EMOJI.ALERT} **Could not change** ${result.errors.toLocaleString('en-US')} (check the log, or that Petto's role is above these roles)` : null,
       ] },
       result.skipped ? { lines: [`${EMOJI.WARNING} Only the first ${result.total.toLocaleString('en-US')} members were checked (limit).`] } : null,
+      result.complete === false ? { lines: [`${EMOJI.WARNING} Discord limits how often it sends all the members, so only the ones Petto already knew were checked. Run it again in a few minutes.`] } : null,
       !changed && !result.errors ? { lines: ['Everyone already had what the rules say. Nothing to change.'] } : null,
     ].filter(Boolean),
     footer: 'Members who are offline or invisible keep their role until they are online again.',
@@ -200,18 +201,29 @@ async function syncRules(interaction, kind) {
     const changed = results.filter((result) => result.changed && !result.error).length;
     return ok(interaction, `Checked ${user}. ${changed ? `${changed} role change${changed === 1 ? '' : 's'}.` : 'Nothing to change.'}`);
   }
+  return runSync(interaction, kind);
+}
+
+/** The sync of the whole server with its cards. A problem with a message of its own (Discord's limit, a sync already running) is told, not logged as a crash. */
+async function runSync(interaction, kind) {
   const startedAt = Date.now();
   await interaction.editReply(progressPayload(kind, { processed: 0, total: 0 }, startedAt));
   let last = 0;
-  const result = await syncGuild(interaction.guild, {
-    source: kind,
-    onProgress: (state) => {
-      if (Date.now() - last < 3000) return;
-      last = Date.now();
-      interaction.editReply(progressPayload(kind, state, startedAt)).catch(() => {});
-    },
-  });
-  await interaction.editReply(resultPayload(kind, result, interaction.guild));
+  try {
+    const result = await syncGuild(interaction.guild, {
+      source: kind,
+      onWait: (seconds) => interaction.editReply(progressPayload(kind, { processed: 0, total: 0, waiting: Math.ceil(seconds) }, startedAt)).catch(() => {}),
+      onProgress: (state) => {
+        if (Date.now() - last < 3000) return;
+        last = Date.now();
+        interaction.editReply(progressPayload(kind, state, startedAt)).catch(() => {});
+      },
+    });
+    await interaction.editReply(resultPayload(kind, result, interaction.guild));
+  } catch (error) {
+    if (!error?.friendly) throw error;
+    await interaction.editReply(noticePayload(`${EMOJI.ALERT}  ${error.message}`, COLORS.RED));
+  }
 }
 
 async function setNotify(interaction, kind) {
@@ -253,4 +265,4 @@ async function execute(interaction, kind) {
 
 const PERMISSION = PermissionFlagsBits.ManageGuild;
 
-module.exports = { addSubcommands, execute, memberOption, progressPayload, resultPayload, PERMISSION, SOURCE_CHOICES, ACTION_CHOICES, VANITY_SOURCES, CONDITIONS };
+module.exports = { addSubcommands, execute, memberOption, progressPayload, resultPayload, runSync, PERMISSION, SOURCE_CHOICES, ACTION_CHOICES, VANITY_SOURCES, CONDITIONS };
