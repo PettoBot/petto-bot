@@ -36,7 +36,7 @@ All notable changes to Petto are documented here.
 ### Fixed
 
 - `updateMessage` with an empty list of components (`"components" (cslice)`) did not take the buttons away: the message changed but the buttons stayed, so a request card kept its buttons after it was delivered. It removes them now. Without the list the buttons are left as they were.
-- When a command sends a message that mentions a role nobody can ping (the role is not mentionable), the command now says so ("the role X was not pinged, turn on Allow anyone to @mention this role for it") instead of failing silently.
+- A command can ping a role that is not mentionable when Petto may mention every role in that channel (it has Mention Everyone or Administrator) and the id of the role is written in the code of the command, so the member who uses it cannot choose which role gets pinged by typing it. Before, only roles with "Allow anyone to @mention this role" were pinged, even for a bot with Administrator. When a role is not pinged, the command now says so and what to do, instead of failing silently.
 - The message after creating a custom command (`!customcommand add` and `code`) always said to try it with `!`, even in a server with another prefix (`p!`), so people typed `!req1` and nothing happened. It says the prefix of the server now.
 
 ## [0.7.3] — 2026-10-08 · Flan

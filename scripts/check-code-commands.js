@@ -255,13 +255,25 @@ const row = (code, name = `c${(rowCount += 1)}`) => ({ name, code });
   await click('cc:vote:yes::', { user: '500000000000000003' });
   const quick = await click('cc:vote:yes::', { user: '500000000000000003', advance: 0 });
   assert.equal(quick.deferred, 1); assert.equal(quick.updates.length + quick.replies.length, 0, 'a click right after another is held back without a message');
-  // A role that cannot be mentioned is not pinged, and the command says so.
-  const silent = makeMessage({ guildBits: bits }); clock += 5000;
-  await codeCommands.runCodeCommand(silent.message, row('{{ sendMessage nil (complexMessage "content" (print "New " (mentionRole "100000000000000001"))) }}'), '', '!');
-  assert.ok(silent.replies.some((reply) => String(reply.content ?? '').includes('was not pinged') && String(reply.content).includes('mention this role')), 'it says why the role was not pinged');
-  const loud = makeMessage({ guildBits: bits }); clock += 5000;
-  await codeCommands.runCodeCommand(loud.message, row('{{ sendMessage nil (complexMessage "content" (print "New " (mentionRole "100000000000000005"))) }}'), '', '!');
-  assert.ok(!loud.replies.some((reply) => String(reply.content ?? '').includes('was not pinged')), 'a role that can be mentioned has no warning');
+  // A role that cannot be mentioned is pinged only if Petto may mention any role there and the id is written in the code itself.
+  const sayRole = async (code, args, botCan) => {
+    const made = makeMessage({ guildBits: bits }); clock += 5000;
+    if (botCan) made.message.channel.permissionsFor = (who) => (who === made.message.guild.members.me ? permissions(botCan) : permissions('all'));
+    await codeCommands.runCodeCommand(made.message, row(code), args, '!');
+    return { sent: bits.sent.at(-1)?.payload, replies: made.replies };
+  };
+  const literal = '{{ sendMessage nil (complexMessage "content" (print "New " (mentionRole "100000000000000001"))) }}';
+  let said = await sayRole(literal, '');
+  assert.deepEqual(said.sent.allowedMentions.roles, ['100000000000000001'], 'a role written in the code is pinged when the bot may mention any role');
+  assert.ok(!said.replies.some((reply) => String(reply.content ?? '').includes('was not pinged')));
+  said = await sayRole('{{ sendMessage nil (complexMessage "content" .RawArgs) }}', '<@&100000000000000001>');
+  assert.deepEqual(said.sent.allowedMentions.roles, [], 'a role typed by the member is not pinged');
+  assert.ok(said.replies.some((reply) => String(reply.content ?? '').includes('was not pinged')), 'it says why the role was not pinged');
+  said = await sayRole(literal, '', [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages]);
+  assert.deepEqual(said.sent.allowedMentions.roles, [], 'without Mention Everyone the role must be mentionable');
+  said = await sayRole('{{ sendMessage nil (complexMessage "content" (print "New " (mentionRole "100000000000000005"))) }}', '', [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages]);
+  assert.deepEqual(said.sent.allowedMentions.roles, ['100000000000000005'], 'a mentionable role is pinged as always');
+  assert.ok(!said.replies.some((reply) => String(reply.content ?? '').includes('was not pinged')));
   // updateMessage with an empty list of components takes the buttons away (it used to leave them), and without the list it leaves them.
   for (const [code, expected] of [['{{ updateMessage (complexMessage "embed" (cembed "description" "done") "components" (cslice)) }}', []], ['{{ updateMessage (complexMessage "embed" (cembed "description" "same buttons")) }}', undefined]]) {
     const made = makeMessage({ guildBits: bits }); const log = { updates: [] }; clock += 5000;
