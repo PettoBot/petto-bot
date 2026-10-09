@@ -2,7 +2,7 @@
 // nothing the bot gave is mistaken for a role someone added by hand), the audit trail, the thank-you messages, the log
 // settings and the saved embeds (they become saved embeds of Petto, usable in Embeds). It never deletes and can be run again.
 //
-//   VANITY_DATABASE_URL=postgres://... node scripts/import-vanity.js [--dry-run]
+//   VANITY_DATABASE_URL=postgres://... node scripts/import-vanity.js [--dry-run] [--reset-log-embeds]
 //
 // The target is Petto's own database (the same one the bot uses). Nothing is printed except counts.
 const { Pool } = require('pg');
@@ -10,6 +10,7 @@ const { getPrimaryPool, closePools } = require('../src/db/postgres');
 const { toPettoTemplate, freeName } = require('../src/utils/identity/importVanity');
 
 const dryRun = process.argv.includes('--dry-run');
+const resetLogEmbeds = process.argv.includes('--reset-log-embeds');
 const sourceUrl = process.env.VANITY_DATABASE_URL;
 if (!sourceUrl) {
   console.error('Set VANITY_DATABASE_URL to the connection string of the old Vanity bot database.');
@@ -115,17 +116,26 @@ async function copy(source, target, label, select, insert, map = (row) => row) {
       'insert into identity_notifications (guild_id, source_type, channel_id, embed_name, ping, updated_at) values ($1,$2,$3,$4,$5,now()) on conflict do nothing',
       (r) => [r.guild_id, r.source_type, r.channel_id, r.embed_id ? (nameOf.get(r.embed_id) ?? '') : '', r.ping]);
 
+    // The old bot kept a saved embed per log event but never used it (its log entries always had the same look), so they are not
+    // brought over as a choice: the log keeps the entry the old bot sent. `--reset-log-embeds` takes them off for a server where an
+    // earlier import did bring them.
     const bindings = await source.query('select guild_id, event_key, template_id from log_embed_bindings');
-    const embedsByGuild = new Map();
-    for (const binding of bindings.rows) {
-      const map = embedsByGuild.get(binding.guild_id) ?? {};
-      if (nameOf.get(binding.template_id)) map[binding.event_key] = nameOf.get(binding.template_id);
-      embedsByGuild.set(binding.guild_id, map);
+    if (resetLogEmbeds) {
+      let cleared = 0;
+      for (const binding of bindings.rows) {
+        const name = nameOf.get(binding.template_id);
+        if (!name) continue;
+        const result = await target.query(
+          "update identity_logs set embeds = embeds - $3, updated_at = now() where guild_id = $1 and embeds ->> $3 = $2",
+          [binding.guild_id, name, binding.event_key]);
+        cleared += result.rowCount;
+      }
+      console.log(`log embeds taken off: ${cleared}`);
     }
     await copy(source, target, 'log settings',
       'select guild_id, channel_id, events from log_configs',
       'insert into identity_logs (guild_id, channel_id, events, embeds, updated_at) values ($1,$2,$3,$4,now()) on conflict do nothing',
-      (r) => [r.guild_id, r.channel_id, JSON.stringify(r.events ?? {}), JSON.stringify(embedsByGuild.get(r.guild_id) ?? {})]);
+      (r) => [r.guild_id, r.channel_id, JSON.stringify(r.events ?? {}), '{}']);
 
     if (dryRun) { await target.query('rollback'); console.log('Dry run: nothing was written.'); } else { await target.query('commit'); console.log('Done.'); }
   } catch (error) {

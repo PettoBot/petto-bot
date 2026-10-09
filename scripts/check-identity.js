@@ -79,7 +79,7 @@ const { evaluate } = require('../src/utils/identity/engine');
 const { memberIdentity } = require('../src/utils/identity/service');
 const compare = require('../src/utils/identity/compare');
 const { toPettoTemplate, renameTokens, freeName } = require('../src/utils/identity/importVanity');
-const { identityContext, eventKey } = require('../src/utils/identity/emit');
+const { identityContext, eventKey, legacyLogEmbed, thanksCard } = require('../src/utils/identity/emit');
 const { VARIABLE_GROUPS } = require('../src/utils/embedVariableRegistry');
 
 const rules = require('../src/utils/identity/rules');
@@ -219,6 +219,19 @@ function roleClient(log) {
   // Only the Server Tag rule stops matching and the role goes because no other rule keeps it (the Vanity rule was turned off)
   await evaluate(person({ customStatus: 'cinnamochi', primaryGuild: null, roleIds: new Set(['role9']) }), { vanity: [vrule({ id: 'v1', role_id: 'role9', enabled: false })], guildtag: [frule({ id: 'g1', role_id: 'role9' })] }, { roles: roleClient(calls), onAction: (a) => logged2.push(a) });
   assert.equal(logged2[0].source, 'guildtag', 'the reason is the Server Tag that was taken off');
+
+  // ---- The log looks like the one of the Vanity bot, and the default thank-you is a V2 card
+  const added = legacyLogEmbed({ source: 'vanity', action: 'add_role', roleId: '5', userId: '9', value: 'cinnamochi' }).toJSON();
+  assert.equal(added.description, '### Vanity Action\n<:petto_approve:1527894552277549066> Added role <@&5> to <@9>\nWord: `cinnamochi`');
+  assert.equal(added.color, 0xa5ea7a);
+  const removed = legacyLogEmbed({ source: 'guildtag', action: 'remove_role', roleId: '5', userId: '9', ruleCondition: 'is_guild_id', value: '777' }).toJSON();
+  assert.equal(removed.description, '### Server Tag Action\n<:petto_deny:1527894509579665458> Removed role <@&5> from <@9>\nReason: Matched `is_guild_id` condition for value `777`');
+  assert.equal(removed.color, 0xfe6465);
+  const failed = legacyLogEmbed({ source: 'vanity', action: 'add_role', roleId: '5', userId: '9', error: new Error('Missing Permissions') }).toJSON();
+  assert.match(failed.description, /Could not add role <@&5> to <@9>\nError: Missing Permissions/);
+  const card = thanksCard({ source: 'vanity', userId: '9', roleId: '5', value: 'cinnamochi', ruleName: 'rep' }, null).toJSON();
+  assert.equal(card.type, 17, 'the thank-you is a container of Components V2');
+  assert.match(JSON.stringify(card), /gracias por usar el vanity/);
 
   // ---- Messages: the variables of a rule
   const context = identityContext({ source: 'vanity', action: 'add_role', roleId: 'role1', ruleName: 'rep', value: 'cinnamochi', matchField: 'custom_status', matchedValue: 'cinnamochi ♡', result: 'completed' });
