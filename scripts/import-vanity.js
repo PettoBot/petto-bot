@@ -2,15 +2,21 @@
 // nothing the bot gave is mistaken for a role someone added by hand), the audit trail, the thank-you messages, the log
 // settings and the saved embeds (they become saved embeds of Petto, usable in Embeds). It never deletes and can be run again.
 //
-//   VANITY_DATABASE_URL=postgres://... node scripts/import-vanity.js [--dry-run] [--reset-log-embeds]
+// The saved embeds come over as Components V2 designs (the old flat embed becomes a card with a header, sections and a footer;
+// the messages the old bot made by itself get Petto's own thank-you and log designs). `--upgrade-embeds` does that for the
+// ones an earlier run brought over as classic embeds.
+//
+//   VANITY_DATABASE_URL=postgres://... node scripts/import-vanity.js [--dry-run] [--reset-log-embeds] [--upgrade-embeds]
 //
 // The target is Petto's own database (the same one the bot uses). Nothing is printed except counts.
 const { Pool } = require('pg');
 const { getPrimaryPool, closePools } = require('../src/db/postgres');
 const { toPettoTemplate, freeName } = require('../src/utils/identity/importVanity');
+const { toV2 } = require('../src/utils/identity/v2Designs');
 
 const dryRun = process.argv.includes('--dry-run');
 const resetLogEmbeds = process.argv.includes('--reset-log-embeds');
+const upgradeEmbeds = process.argv.includes('--upgrade-embeds');
 const sourceUrl = process.env.VANITY_DATABASE_URL;
 if (!sourceUrl) {
   console.error('Set VANITY_DATABASE_URL to the connection string of the old Vanity bot database.');
@@ -94,10 +100,20 @@ async function copy(source, target, label, select, insert, map = (row) => row) {
       if (row.vanity_id) already.set(`${row.guild_id}:${row.vanity_id}`, row.name);
     }
     let embedsWritten = 0;
+    let upgraded = 0;
     for (const template of templates.rows) {
       // An embed that an earlier run brought over keeps its name, so running the import again does not make copies.
       const before = already.get(`${template.guild_id}:${template.id}`);
-      if (before) { nameOf.set(template.id, before); continue; }
+      if (before) {
+        nameOf.set(template.id, before);
+        if (upgradeEmbeds) {
+          const result = await target.query(
+            "update embed_templates set data = $3, updated_at = now() where guild_id = $1 and name = $2 and data ->> '_vanity_id' = $4 and not (data ? 'v2')",
+            [template.guild_id, before, JSON.stringify({ v2: toV2(template.name, toPettoTemplate(template.payload)), _vanity_id: template.id }), template.id]);
+          upgraded += result.rowCount;
+        }
+        continue;
+      }
       const names = taken.get(template.guild_id) ?? new Set();
       taken.set(template.guild_id, names);
       const name = freeName(template.name, names);
@@ -106,10 +122,10 @@ async function copy(source, target, label, select, insert, map = (row) => row) {
       await target.query('insert into guilds (guild_id) values ($1) on conflict do nothing', [template.guild_id]);
       const result = await target.query(
         'insert into embed_templates (guild_id, name, data, updated_at) values ($1,$2,$3,now()) on conflict (guild_id, name) do nothing',
-        [template.guild_id, name, JSON.stringify({ ...toPettoTemplate(template.payload), _vanity_id: template.id })]);
+        [template.guild_id, name, JSON.stringify({ v2: toV2(template.name, toPettoTemplate(template.payload)), _vanity_id: template.id })]);
       embedsWritten += result.rowCount;
     }
-    console.log(`embeds: ${templates.rows.length} read, ${embedsWritten} new (as saved embeds of Petto)`);
+    console.log(`embeds: ${templates.rows.length} read, ${embedsWritten} new (as V2 saved embeds of Petto)${upgradeEmbeds ? `, ${upgraded} upgraded to V2` : ''}`);
 
     await copy(source, target, 'thank-you messages',
       'select guild_id, source_type, channel_id, embed_id, ping from notification_configs',

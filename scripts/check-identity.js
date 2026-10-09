@@ -75,12 +75,15 @@ stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
 // The messages are built by other modules that need the database; here only the variables they get are checked.
 stub('src/utils/templatedMessage.js', { templatePayload: async () => null });
 stub('src/db/embedTemplates.js', { getTemplate: async () => null });
+stub('src/utils/embedBuilder.js', { build: async () => null });
 stub('src/db/guilds.js', { ensureGuild: async () => {} });
 
 const { evaluate } = require('../src/utils/identity/engine');
 const { memberIdentity } = require('../src/utils/identity/service');
 const compare = require('../src/utils/identity/compare');
 const { toPettoTemplate, renameTokens, freeName } = require('../src/utils/identity/importVanity');
+const { toV2, thanksDesign, logDesign } = require('../src/utils/identity/v2Designs');
+const { buildV2, hasV2Content: hasV2 } = require('../src/utils/embedV2');
 const { identityContext, eventKey, legacyLogEmbed, thanksCard } = require('../src/utils/identity/emit');
 const { VARIABLE_GROUPS } = require('../src/utils/embedVariableRegistry');
 
@@ -292,6 +295,43 @@ function roleClient(log) {
   assert.equal(changed.ok, true, 'a rule can always be turned off, even when its role became unassignable');
   assert.equal((await rules.removeRule(guild, 'vanity', 'rep')).ok, true);
   assert.equal((await rules.removeRule(guild, 'vanity', 'rep')).code, 'rule_not_found');
+
+  // ---- The messages of the old bot become V2 designs
+  const oldThanks = toPettoTemplate({ description: 'gracias por usar el vanity {vanity.word}, {user.mention} ♡', color: 0xf0a9c4 });
+  assert.deepEqual(toV2('vanity_notify', oldThanks), thanksDesign('vanity'), 'the default thank-you becomes the polished design');
+  assert.deepEqual(toV2('guildtag_notify', toPettoTemplate({ description: 'gracias por usar el tag {tag}, {user.mention} ♡' })), thanksDesign('guildtag'));
+  assert.deepEqual(toV2('notify_tag_remove', toPettoTemplate({ title: 'Server Tag Action', description: 'x', color: 1 })), logDesign('tag_remove'));
+  const custom = toV2('welcome-rep', toPettoTemplate({ content: 'hi', title: 'Thanks {user.name}', description: 'You are a rep', color: 0xff00aa, thumbnail: 'https://x.test/t.png', image: 'https://x.test/i.png', author: { name: 'Petto' }, footer: 'Rep team', fields: [{ name: 'Word', value: '{vanity.word}', inline: true }], buttons: [[{ label: 'Rules', url: 'https://x.test/rules' }]] }));
+  assert.equal(custom.components[0].type, 10, 'the text of the message goes first');
+  const customCard = custom.components[1];
+  assert.equal(customCard.type, 17);
+  assert.equal(customCard.accent_color, 0xff00aa, 'the color of the embed is the color of the card');
+  assert.ok(customCard.components.some((c) => c.type === 9 && c.accessory?.media?.url === 'https://x.test/t.png'), 'the thumbnail is the picture next to the title');
+  assert.ok(customCard.components.some((c) => c.type === 12), 'the image is a gallery');
+  assert.ok(customCard.components.some((c) => c.type === 10 && c.content.includes('**Word**')), 'fields become bold labels');
+  assert.ok(customCard.components.some((c) => c.type === 10 && c.content === '-# Rep team'), 'the footer is small text');
+  assert.ok(customCard.components.some((c) => c.type === 1), 'link buttons stay');
+  const sendable = (design) => hasV2({ v2: design });
+  for (const key of ['vanity_add', 'vanity_remove', 'tag_add', 'tag_remove', 'error']) assert.ok(sendable(logDesign(key)), `${key} has content`);
+  assert.ok(sendable(thanksDesign('vanity')) && sendable(thanksDesign('guildtag')) && sendable(custom));
+  // Every design builds, with the variables filled in
+  const ctx = { guild: { id: 'g', name: 'Test', iconURL: () => '', bannerURL: () => null, members: { cache: new Map() }, roles: { cache: new Map() }, channels: { cache: new Map() }, emojis: { cache: new Map() }, createdAt: new Date(0), createdTimestamp: 0 }, user: { id: '9', username: 'liam', displayAvatarURL: () => 'https://x.test/a.png' }, identity: identityContext({ source: 'vanity', action: 'add_role', roleId: '5', ruleName: 'rep', value: 'cinnamochi', matchedValue: 'join cinnamochi', result: 'completed' }) };
+  const built = await buildV2(thanksDesign('vanity'), ctx);
+  const dump = JSON.stringify(built.components);
+  assert.match(dump, /cinnamochi/);
+  assert.match(dump, /<@&5>/);
+  assert.ok(!dump.includes('{vanity.'), 'no variable is left unresolved');
+
+  // ---- The sync cards
+  const { progressPayload, resultPayload } = require('../src/utils/identity/commands');
+  const progress = progressPayload('vanity', { processed: 50, total: 200 }, Date.now() - 10000);
+  assert.equal(progress.flags, 1 << 15);
+  assert.match(JSON.stringify(progress), /25%/);
+  assert.match(JSON.stringify(progress), /of \*\*200\*\*/);
+  assert.match(JSON.stringify(progressPayload(null, { processed: 0, total: 0 }, Date.now())), /Reading the members/);
+  const done = resultPayload('guildtag', { processed: 200, total: 200, added: 3, removed: 1, errors: 0, skipped: false, durationMs: 4000 }, { iconURL: () => null });
+  assert.match(JSON.stringify(done), /Server Tag rules synced/);
+  assert.match(JSON.stringify(resultPayload(null, { processed: 5, total: 5, added: 0, removed: 0, errors: 2, skipped: false, durationMs: 1000 }, { iconURL: () => null })), /Could not change/);
 
   // ---- A typed command (the prefix) gives only the user for an option, never the member
   const commandsModule = require('../src/utils/identity/commands');

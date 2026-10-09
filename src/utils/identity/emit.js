@@ -2,6 +2,8 @@
 // every role it added or removed. Both can use a saved embed from Embeds; without one they use a plain Petto card.
 const { MessageFlags, EmbedBuilder } = require('discord.js');
 const { buildInfoCard } = require('../infoCard');
+const { build } = require('../embedBuilder');
+const { thanksDesign } = require('./v2Designs');
 const db = require('../../db/identity');
 const { templatePayload } = require('../templatedMessage');
 const { EMOJI } = require('../emojis');
@@ -83,6 +85,12 @@ async function emitNotification(guild, member, action) {
   if (payload) {
     const { reactions, ...message } = payload;
     await channel.send({ ...message, allowedMentions });
+    return;
+  }
+  // Without a saved embed the thank-you is the same V2 design the import gives to the old default message.
+  const designed = await build({ v2: thanksDesign(action.source) }, { guild, user: member.user, member, channel, identity: identityContext(action), allowV2: true }).catch(() => null);
+  if (designed?.components?.length) {
+    await channel.send({ components: designed.components, flags: designed.flags, allowedMentions });
     return;
   }
   await channel.send({ components: [thanksCard(action, member)], flags: MessageFlags.IsComponentsV2, allowedMentions });

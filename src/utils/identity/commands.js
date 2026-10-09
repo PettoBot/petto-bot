@@ -12,6 +12,7 @@ const { memberIdentity } = require('./service');
 const { matchVanity, matchGuildTag, vanityValue, vanitySourceKnown, VANITY_SOURCES, COMPARISONS, CONDITIONS } = require('./compare');
 const { syncGuild } = require('./sync');
 const { infoPayload } = require('../infoCard');
+const { buildProgressBar } = require('../levelProgressBar');
 
 const PINK = 0xf0a9c4;
 
@@ -143,10 +144,52 @@ async function testMember(interaction, kind) {
   }));
 }
 
-function progressCard(source, state) {
-  const percent = state.total ? Math.floor((state.processed / state.total) * 100) : 100;
-  const filled = Math.round(percent / 10);
-  return `### Syncing ${source ? (source === 'vanity' ? 'Vanity rules' : 'Server Tag rules') : 'rules'}\n${'▰'.repeat(filled)}${'▱'.repeat(10 - filled)} ${percent}%\n${state.processed} of ${state.total} members`;
+const SOURCE_NAME = { vanity: 'Vanity rules', guildtag: 'Server Tag rules' };
+
+/** The card shown while a sync runs: Petto's progress bar, the count, the speed and how long it should still take. */
+function progressPayload(source, state, startedAt) {
+  const percent = state.total ? Math.min(100, Math.floor((state.processed / state.total) * 100)) : 0;
+  const seconds = Math.max(1, (Date.now() - startedAt) / 1000);
+  const rate = state.processed / seconds;
+  const left = rate > 0 && state.total > state.processed ? Math.ceil((state.total - state.processed) / rate) : null;
+  return infoPayload({
+    accent: PINK,
+    title: `${EMOJI.LOADING} Syncing ${SOURCE_NAME[source] ?? 'rules'}`,
+    subtitle: [state.total ? 'Checking every member against the rules' : 'Reading the members of the server…'],
+    sections: state.total ? [{ lines: [
+      `${buildProgressBar(percent)} **${percent}%**`,
+      `**${state.processed.toLocaleString('en-US')}** of **${state.total.toLocaleString('en-US')}** members`,
+      rate > 0 ? `${rate >= 10 ? Math.round(rate) : rate.toFixed(1)} members per second${left !== null ? ` · about ${formatSeconds(left)} left` : ''}` : null,
+    ] }] : [],
+    footer: 'Roles are changed as members are checked. Nothing is lost if you stop here.',
+  });
+}
+
+function formatSeconds(total) {
+  if (total < 60) return `${total}s`;
+  const minutes = Math.floor(total / 60);
+  return minutes < 60 ? `${minutes}m ${total % 60}s` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
+/** The card when a sync is done: what was checked and what changed. */
+function resultPayload(source, result, guild) {
+  const changed = result.added + result.removed;
+  return infoPayload({
+    accent: result.errors ? 0xfed53c : 0xa5ea7a,
+    title: `${EMOJI.APPROVE} ${SOURCE_NAME[source] ?? 'Rules'} synced`,
+    subtitle: [`${result.processed.toLocaleString('en-US')} members checked in ${formatSeconds(Math.max(1, Math.round(result.durationMs / 1000)))}`],
+    thumbnail: guild.iconURL?.({ extension: 'png', size: 128 }) ?? null,
+    sections: [
+      { title: 'Roles', lines: [
+        `**Added** ${result.added.toLocaleString('en-US')}`,
+        `**Removed** ${result.removed.toLocaleString('en-US')}`,
+        result.errors ? `${EMOJI.ALERT} **Could not change** ${result.errors.toLocaleString('en-US')} (check the log, or that Petto's role is above these roles)` : null,
+      ] },
+      result.skipped ? { lines: [`${EMOJI.WARNING} Only the first ${result.total.toLocaleString('en-US')} members were checked (limit).`] } : null,
+      !changed && !result.errors ? { lines: ['Everyone already had what the rules say. Nothing to change.'] } : null,
+    ].filter(Boolean),
+    footer: 'Members who are offline or invisible keep their role until they are online again.',
+  });
 }
 
 async function syncRules(interaction, kind) {
@@ -157,18 +200,18 @@ async function syncRules(interaction, kind) {
     const changed = results.filter((result) => result.changed && !result.error).length;
     return ok(interaction, `Checked ${user}. ${changed ? `${changed} role change${changed === 1 ? '' : 's'}.` : 'Nothing to change.'}`);
   }
-  await reply(interaction, progressCard(kind, { processed: 0, total: 0 }));
+  const startedAt = Date.now();
+  await interaction.editReply(progressPayload(kind, { processed: 0, total: 0 }, startedAt));
   let last = 0;
   const result = await syncGuild(interaction.guild, {
     source: kind,
     onProgress: (state) => {
       if (Date.now() - last < 3000) return;
       last = Date.now();
-      reply(interaction, progressCard(kind, state)).catch(() => {});
+      interaction.editReply(progressPayload(kind, state, startedAt)).catch(() => {});
     },
   });
-  const seconds = Math.max(1, Math.round(result.durationMs / 1000));
-  await ok(interaction, `Done in ${seconds}s. ${result.processed} members checked · ${result.added} roles added · ${result.removed} removed${result.errors ? ` · ${result.errors} errors` : ''}.${result.skipped ? `\nOnly the first ${result.total} members were checked (limit).` : ''}`);
+  await interaction.editReply(resultPayload(kind, result, interaction.guild));
 }
 
 async function setNotify(interaction, kind) {
@@ -210,4 +253,4 @@ async function execute(interaction, kind) {
 
 const PERMISSION = PermissionFlagsBits.ManageGuild;
 
-module.exports = { addSubcommands, execute, memberOption, PERMISSION, SOURCE_CHOICES, ACTION_CHOICES, VANITY_SOURCES, CONDITIONS };
+module.exports = { addSubcommands, execute, memberOption, progressPayload, resultPayload, PERMISSION, SOURCE_CHOICES, ACTION_CHOICES, VANITY_SOURCES, CONDITIONS };

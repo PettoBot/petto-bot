@@ -7,7 +7,7 @@ const { EMOJI } = require('../../utils/emojis');
 const { COLORS } = require('../../utils/colors');
 const { evaluateMember } = require('../../utils/identity/service');
 const { syncGuild } = require('../../utils/identity/sync');
-const { memberOption } = require('../../utils/identity/commands');
+const { memberOption, progressPayload, resultPayload } = require('../../utils/identity/commands');
 const { LOG_EVENTS, EVENT_LABELS } = require('../../utils/identity/emit');
 const { infoPayload } = require('../../utils/infoCard');
 
@@ -50,17 +50,17 @@ module.exports = {
         const changed = results.filter((result) => result.changed && !result.error).length;
         return ok(interaction, `Checked ${user}. ${changed ? `${changed} role change${changed === 1 ? '' : 's'}.` : 'Nothing to change.'}`);
       }
-      await reply(interaction, '### Syncing rules\nReading the members…');
+      const startedAt = Date.now();
+      await interaction.editReply(progressPayload(null, { processed: 0, total: 0 }, startedAt));
       let last = 0;
       const result = await syncGuild(guild, {
-        onProgress: ({ processed, total }) => {
+        onProgress: (state) => {
           if (Date.now() - last < 3000) return;
           last = Date.now();
-          const percent = total ? Math.floor((processed / total) * 100) : 100;
-          reply(interaction, `### Syncing rules\n${'▰'.repeat(Math.round(percent / 10))}${'▱'.repeat(10 - Math.round(percent / 10))} ${percent}%\n${processed} of ${total} members`).catch(() => {});
+          interaction.editReply(progressPayload(null, state, startedAt)).catch(() => {});
         },
       });
-      return ok(interaction, `Done in ${Math.max(1, Math.round(result.durationMs / 1000))}s. ${result.processed} members checked · ${result.added} roles added · ${result.removed} removed${result.errors ? ` · ${result.errors} errors` : ''}.${result.skipped ? `\nOnly the first ${result.total} members were checked (limit).` : ''}`);
+      return interaction.editReply(resultPayload(null, result, guild));
     }
 
     if (sub === 'status') {

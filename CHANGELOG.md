@@ -6,6 +6,7 @@ All notable changes to Petto are documented here.
 
 ### Added
 
+- The saved embeds of the old Vanity bot come over as Components V2 cards instead of flat embeds: the title and text with the thumbnail next to them, the image as a picture, the fields as bold labels, the footer as small text and the link buttons. The messages the old bot made by itself (`vanity_notify`, `guildtag_notify`, `notify_*`) become Petto's own designs, with the member's picture and Petto's emoji. `node scripts/upgrade-vanity-embeds.js` turns the ones an earlier import brought over as classic embeds into V2 working only on Petto's database (the old Vanity database is not needed, so it works after it is gone). It only touches those that came from the import and are still classic, and it can be run again.
 - Vanity and Server Tag roles are now part of Petto (they used to be a separate bot). `!vanity` and `!guildtag` (prefix only, no slash commands) create rules that add or remove a role from members by their Custom Status, username, global name, server nickname or display name, or by the Server Tag they wear: `add`, `edit`, `remove`, `list`, `test` (see what a member matches without changing anything), `sync` (apply to everyone, with live progress), `notify` and `notify-off` (the thank-you message, with a saved embed from Embeds if you like). Roles the bot did not add are never taken away, a remove rule wins over an add rule, and you can only use roles below your own highest role.
 - `!identity` shows the status of all of it, applies every rule at once (`sync`) and keeps a log of the roles the rules add or remove (`logs`, `log-event`, `log-embed`, `logs-off`), with a Petto card or a saved embed for each kind of entry.
 - New variables for the thank-you and log messages: `{vanity.word}`, `{vanity.value}`, `{vanity.rule}`, `{vanity.source}`, `{vanity.role}`, `{tag}`, `{tag.guild_id}`, `{tag.enabled}`, `{tag.badge}`, `{tag.rule}`, `{tag.condition}`, `{tag.rule_value}`, `{tag.role}` and `{rule.name}`, `{rule.role}`, `{rule.reason}`, `{rule.action_text}` and more.
@@ -43,6 +44,7 @@ All notable changes to Petto are documented here.
 
 ### Changed
 
+- The thank-you message without a saved embed is the same V2 design, and `!vanity sync`, `!guildtag sync` and `!identity sync` show a V2 card with Petto's progress bar, the count, the speed and the time left, and at the end what was added, removed or could not be changed.
 - Sticky roles do not give back the roles of Vanity and Server Tag rules when someone rejoins: the rules give them again if the member still matches.
 - The automatic reactions of a channel (`!reaction messages <channel> <emojis>`) take up to **five** emojis instead of three (`emoji_1` to `emoji_5`).
 - `!customcommand trigger` is clearer. Without a type it shows how the command starts and the commands to change it; `prefix` without a text says how to write it; it says when the command already starts like that or when the prefix is the one of the server; and when it changes a prefix it says what it was before.
