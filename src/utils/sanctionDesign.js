@@ -73,10 +73,11 @@ function buildSanctionCard({ type, caseNumber = null, guild = null, target = nul
     ? `### ${emoji} You were ${VERB[type] ?? 'sanctioned in'} ${guild?.name ?? 'the server'}`
     : `### ${emoji} ${name}${caseNumber != null ? ` · Case #${caseNumber}` : ''}`;
 
-  const who = audience === 'staff' ? [`**${mention(target)}** · \`${target?.id ?? target}\``] : [];
-  const body = new TextDisplayBuilder().setContent([...who, ...detailLines({ type, moderator, duration, expiresAt, previous, audience })].join('\n'));
+  const who = audience === 'staff' ? [`**${mention(target)}** · \`${target?.id ?? target}\``, 'ㅤ'] : [];
+  const quoted = [...who, ...detailLines({ type, moderator, duration, expiresAt, previous, audience })].map((l) => `> ${l}`).join('\n');
+  const body = new TextDisplayBuilder().setContent(quoted);
   const picture = audience === 'member' ? guild?.iconURL?.({ extension: 'png', size: 256 }) : iconOf(target);
-  const divider = () => new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small);
+  const divider = () => new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Large);
 
   const container = new ContainerBuilder().setAccentColor(COLORS[type] ?? 0x4b4f59)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(heading))
@@ -85,7 +86,7 @@ function buildSanctionCard({ type, caseNumber = null, guild = null, target = nul
   else container.addTextDisplayComponents(body);
   container
     .addSeparatorComponents(divider())
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`${bar} ${EMOJI.FIELD_REASON} **REASON**\n${clip(reason || 'No reason provided.', REASON_LIMIT)}`));
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${bar} ${EMOJI.FIELD_REASON} **REASON** OF THE SANCTION\n> ${clip(reason || 'No reason provided.', REASON_LIMIT).replace(/\n/g, '\n> ')}`));
 
   const footer = audience === 'member'
     ? `-# ${caseNumber != null ? `Case #${caseNumber} · ` : ''}${guild?.name ?? ''}${guild?.memberCount ? ` · ${guild.memberCount} members` : ''}`
@@ -96,9 +97,31 @@ function buildSanctionCard({ type, caseNumber = null, guild = null, target = nul
   return container;
 }
 
+const DONE = {
+  ban: 'banned', hardban: 'permanently banned', tempban: 'temporarily banned', softban: 'softbanned', unban: 'unbanned',
+  kick: 'kicked', mute: 'muted', tempmute: 'temporarily muted', unmute: 'unmuted', warn: 'warned', jail: 'jailed', unjail: 'released from jail',
+};
+
+/**
+ * What the moderator sees right after using the command: short, one line about what was done and one about the case, with
+ * the member's picture. The full card (with the history and the reason in its own block) stays in the sanctions log.
+ */
+function buildSanctionConfirm({ type, caseNumber = null, target = null, moderator = null, reason = null, duration = null, expiresAt = null }) {
+  const emoji = TYPE_EMOJI[type] ?? EMOJI.ALERT;
+  const end = expiresAt ? unix(expiresAt) : null;
+  const meta = [caseNumber != null ? `Case #${caseNumber}` : null, moderator ? `by ${mention(moderator)}` : null, end ? `ends <t:${end}:R>` : duration ? duration : null].filter(Boolean).join(' · ');
+  const text = [`${emoji} **${mention(target)}** was **${DONE[type] ?? 'sanctioned'}**`, `-# ${meta}`, `> ${clip(reason || 'No reason provided.', 300).replace(/\n/g, '\n> ')}`].join('\n');
+  const body = new TextDisplayBuilder().setContent(text);
+  const picture = iconOf(target, 128);
+  const container = new ContainerBuilder().setAccentColor(COLORS[type] ?? 0x4b4f59);
+  if (picture) container.addSectionComponents(new SectionBuilder().addTextDisplayComponents(body).setThumbnailAccessory(new ThumbnailBuilder().setURL(picture)));
+  else container.addTextDisplayComponents(body);
+  return container;
+}
+
 /** The same card as something `.send()` or a webhook takes. */
 function sanctionPayload(options) {
   return { components: [buildSanctionCard(options)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } };
 }
 
-module.exports = { buildSanctionCard, sanctionPayload, COLORS, TITLE, VERB };
+module.exports = { buildSanctionCard, buildSanctionConfirm, sanctionPayload, COLORS, TITLE, VERB };
