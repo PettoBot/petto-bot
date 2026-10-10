@@ -3,6 +3,7 @@ const { resolveJoinInvite, wasVanityJoin } = require('../utils/inviteResolve');
 const inviteTrackingDb = require('../db/inviteTracking');
 const { queueFlow } = require('../db/activityDetail');
 const { ensureGuild } = require('../db/guilds');
+const { applyRewards } = require('../utils/inviteRewards');
 const logger = require('../utils/logger');
 
 module.exports = {
@@ -21,7 +22,10 @@ module.exports = {
         accountCreatedAt: member.user.createdTimestamp,
         source: vanity ? 'vanity' : null,
       });
-      if (usedInvite?.inviter?.id && !result.fake) queueFlow(guild.id, { invited: 1 });
+      if (usedInvite?.inviter?.id && !result.fake) {
+        queueFlow(guild.id, { invited: 1 });
+        await applyRewards(guild, usedInvite.inviter.id);
+      }
     } catch (err) {
       logger.error(`Invite tracking failed for join in guild ${guild.id}:`, err);
     }

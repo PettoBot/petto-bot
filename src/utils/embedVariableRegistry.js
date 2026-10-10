@@ -399,6 +399,18 @@ const VARIABLE_GROUPS = [
     ],
   },
   {
+    id: 'invites',
+    label: 'Invites',
+    availability: 'always',
+    vars: [
+      { tok: '{inviter}', desc: 'Welcome messages: mentions who invited the member, or Unknown' },
+      { tok: '{inviter.name}', desc: 'Welcome messages: the name of who invited the member' },
+      { tok: '{inviter.id}', desc: 'Welcome messages: the ID of who invited the member' },
+      { tok: '{inviter.invites}', desc: 'Welcome messages: how many invites that person has now' },
+      { tok: '{invite.code}', desc: 'Welcome messages: the code of the invite that was used' },
+    ],
+  },
+  {
     id: 'date',
     label: 'Date',
     availability: 'always',

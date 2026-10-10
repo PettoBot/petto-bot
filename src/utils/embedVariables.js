@@ -213,6 +213,12 @@ async function resolve(text, ctx = {}) {
     '{rule.matched_value}': ctx.identity?.rule?.matchedValue ?? '',
     '{rule.event}': ctx.identity?.rule?.event ?? '',
     '{rule.event_title}': ctx.identity?.rule?.eventTitle ?? '',
+    // The invite a member joined with (welcome messages): who made it, how many invites they have, and its code.
+    '{inviter}': ctx.invite?.inviterId ? `<@${ctx.invite.inviterId}>` : 'Unknown',
+    '{inviter.name}': ctx.invite?.inviterName || 'Unknown',
+    '{inviter.id}': ctx.invite?.inviterId ?? '',
+    '{inviter.invites}': String(ctx.invite?.invites ?? 0),
+    '{invite.code}': ctx.invite?.code ?? '',
     '{vanity.rule}': ctx.identity?.vanity?.rule ?? '',
     '{vanity.word}': ctx.identity?.vanity?.word ?? '',
     '{vanity.source}': ctx.identity?.vanity?.source ?? '',

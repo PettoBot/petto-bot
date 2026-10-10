@@ -30,7 +30,7 @@ const RELEASES = [
         title: `${EMOJI.RELEASE_EYES} Statistics`,
         items: [
           '`!summary` by `messages`, `voice`, `joins`, `leaves`, `invites` or `sanctions`, with the most active hour, a new picture and the Statistics page in the dashboard.',
-          'The invite tracker counts fake and bonus invites and has `who`, `list`, `codes`, `bonus` and `reset`.',
+          'The invite tracker counts fake and bonus invites, gives roles for reaching a number of invites, has `{inviter}` variables for the welcome message and a leaderboard by week or month.',
         ],
       },
       {

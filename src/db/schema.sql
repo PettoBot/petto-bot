@@ -1969,6 +1969,21 @@ create table if not exists user_prefixes (
 );
 alter table user_prefixes enable row level security;
 
+-- Invite tracker settings per server, and the roles given for reaching a number of invites.
+create table if not exists invite_config (
+  guild_id  text primary key references guilds(guild_id) on delete cascade,
+  fake_days integer not null default 3 check (fake_days between 0 and 365)
+);
+alter table invite_config enable row level security;
+
+create table if not exists invite_rewards (
+  guild_id text not null references guilds(guild_id) on delete cascade,
+  invites  integer not null check (invites between 1 and 100000),
+  role_id  text not null,
+  primary key (guild_id, role_id)
+);
+alter table invite_rewards enable row level security;
+
 -- Joins, leaves and joins through a tracked invite, per server and day (the Statistics page, `/summary`).
 create table if not exists member_flow (
   guild_id text not null references guilds(guild_id) on delete cascade,

@@ -2,12 +2,12 @@
 const FAKE_ACCOUNT_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 
 /**
- * A join is "fake" when the account is less than 3 days old or the member had joined this server before (it came back):
+ * A join is "fake" when the account is younger than the days the server set (3 by default, 0 turns it off) or the member had joined this server before (it came back):
  * those are counted apart, so leaving and rejoining does not raise anybody's invites.
  */
-function isFakeJoin({ accountCreatedAt, previousRow }) {
+function isFakeJoin({ accountCreatedAt, previousRow, fakeDays = 3 }) {
   if (previousRow) return true;
-  return accountCreatedAt != null && Date.now() - accountCreatedAt < FAKE_ACCOUNT_AGE_MS;
+  return fakeDays > 0 && accountCreatedAt != null && Date.now() - accountCreatedAt < fakeDays * 86_400_000;
 }
 
 module.exports = { isFakeJoin, FAKE_ACCOUNT_AGE_MS };

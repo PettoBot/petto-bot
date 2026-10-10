@@ -1,6 +1,7 @@
 const database = require('./database');
 const { isFakeJoin } = require('./inviteTrackingRules');
 const { getPrimaryPool } = require('./postgres');
+const { OFFSET_MS } = require('../utils/botTime');
 
 const stat = (guildId, inviterId, deltas) => database.rpc('increment_invite_stat', {
   p_guild_id: guildId, p_inviter_id: inviterId,
@@ -9,7 +10,7 @@ const stat = (guildId, inviterId, deltas) => database.rpc('increment_invite_stat
 
 async function recordJoin(guildId, userId, inviterId, inviteCode, { accountCreatedAt = null, source = null } = {}) {
   const { data: previousRow } = await database.from('member_invites').select('user_id, inviter_id, fake').eq('guild_id', guildId).eq('user_id', userId).maybeSingle();
-  const fake = isFakeJoin({ accountCreatedAt, previousRow });
+  const fake = isFakeJoin({ accountCreatedAt, previousRow, fakeDays: (await getSettings(guildId)).fakeDays });
   const where = source ?? (inviterId ? 'invite' : 'unknown');
 
   const { error } = await database
@@ -45,6 +46,43 @@ async function getStats(guildId, inviterId) {
   const { data, error } = await database.from('invite_uses').select('*').eq('guild_id', guildId).eq('inviter_id', inviterId).maybeSingle();
   if (error) throw error;
   return { ...empty, ...(data ?? {}) };
+}
+
+/** The invite settings of a server (the days under which an account is fake). */
+async function getSettings(guildId) {
+  try {
+    const { rows } = await getPrimaryPool().query('select fake_days from invite_config where guild_id = $1', [String(guildId)]);
+    return { fakeDays: rows[0]?.fake_days ?? 3 };
+  } catch {
+    return { fakeDays: 3 };
+  }
+}
+
+async function setFakeDays(guildId, days) {
+  await getPrimaryPool().query(
+    'insert into invite_config (guild_id, fake_days) values ($1, $2) on conflict (guild_id) do update set fake_days = excluded.fake_days',
+    [String(guildId), days],
+  );
+}
+
+/** The start of this week (Monday) or month in Colombia (GMT-5), as an instant. */
+function periodStart(period, now = new Date()) {
+  const local = new Date(now.getTime() + OFFSET_MS);
+  const day = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate());
+  const start = period === 'month' ? Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), 1) : day - ((local.getUTCDay() + 6) % 7) * 86_400_000;
+  return new Date(start - OFFSET_MS);
+}
+
+/** Top inviters of this week or month, from the members they brought in that period (fake joins are not counted). */
+async function getPeriodLeaderboard(guildId, period, limit = 10) {
+  const { rows } = await getPrimaryPool().query(
+    `select inviter_id, count(*)::int as joins, count(*) filter (where left_at is not null)::int as leaves,
+            (count(*) - count(*) filter (where left_at is not null))::int as net
+       from member_invites where guild_id = $1 and inviter_id is not null and not fake and joined_at >= $2
+      group by inviter_id order by net desc, joins desc limit $3`,
+    [String(guildId), periodStart(period), Math.max(1, Math.min(50, limit))],
+  );
+  return rows.map((row) => ({ ...row, bonus: 0, fake: 0 }));
 }
 
 /** Top inviters by net invites (joined - left + bonus). */
@@ -83,4 +121,27 @@ async function resetUser(guildId, inviterId) {
   if (error) throw error;
 }
 
-module.exports = { recordJoin, recordLeave, getStats, getLeaderboard, getInviter, listInvited, addBonus, resetUser, isFakeJoin };
+async function listRewards(guildId) {
+  const { rows } = await getPrimaryPool().query('select invites, role_id from invite_rewards where guild_id = $1 order by invites asc', [String(guildId)]);
+  return rows;
+}
+
+async function addReward(guildId, invites, roleId) {
+  await getPrimaryPool().query(
+    'insert into invite_rewards (guild_id, invites, role_id) values ($1, $2, $3) on conflict (guild_id, role_id) do update set invites = excluded.invites',
+    [String(guildId), invites, String(roleId)],
+  );
+}
+
+async function removeReward(guildId, roleId) {
+  const { rowCount } = await getPrimaryPool().query('delete from invite_rewards where guild_id = $1 and role_id = $2', [String(guildId), String(roleId)]);
+  return rowCount > 0;
+}
+
+/** Everybody the server has counted invites for (to give the roles of a new reward to those who already have enough). */
+async function listInviterIds(guildId, limit = 500) {
+  const { rows } = await getPrimaryPool().query('select inviter_id from invite_uses where guild_id = $1 order by joins desc limit $2', [String(guildId), limit]);
+  return rows.map((row) => row.inviter_id);
+}
+
+module.exports = { getSettings, setFakeDays, periodStart, getPeriodLeaderboard, listRewards, addReward, removeReward, listInviterIds, recordJoin, recordLeave, getStats, getLeaderboard, getInviter, listInvited, addBonus, resetUser, isFakeJoin };
