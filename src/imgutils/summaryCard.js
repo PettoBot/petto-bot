@@ -85,7 +85,7 @@ function barChart(ctx, { x, y, w, h, values, labels, color, highlight = -1, form
   ctx.setLineDash([]);
 
   const slot = plotW / values.length;
-  const barW = Math.max(3, Math.min(34, slot * 0.64));
+  const barW = Math.max(1, Math.min(34, slot * 0.64));
   values.forEach((value, i) => {
     const bh = (value / max) * plotH;
     const bx = left + slot * i + (slot - barW) / 2;

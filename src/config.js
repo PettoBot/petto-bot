@@ -95,6 +95,9 @@ module.exports = {
     ? String(process.env.PETTO_PRESENCE_STATUS).trim().toLowerCase()
     : 'online',
   mobileStatus: envBool('PETTO_MOBILE_STATUS', true),
+  // Requests per second the bot may make to Discord, all of them (commands, logs, webhooks, panels). Discloud shuts an app down when it
+  // passes 300 requests in 30 seconds (10 a second), so the default keeps a clear margin: 7 a second is at most 210 in 30 seconds.
+  restRequestsPerSecond: envInt('PETTO_REST_RPS', 7, 1, 45),
   // Votes for the bot on top.gg: the secret (starts with whs_) that top.gg shows when the webhook URL is saved, and the channel where each vote is thanked.
   topggWebhookSecret: String(process.env.TOPGG_WEBHOOK_SECRET || '').trim() || null,
   voteChannelId: /^\d{15,25}$/.test(process.env.VOTE_CHANNEL_ID || '') ? process.env.VOTE_CHANNEL_ID : null,

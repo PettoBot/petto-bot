@@ -61,6 +61,8 @@ const client = new Client({
     GatewayIntentBits.GuildPresences,
   ],
   partials: [Partials.GuildMember, Partials.User, Partials.Message, Partials.Reaction],
+  // One limit for every request the bot makes, so a burst (a restart, a sync, a busy minute) waits in line instead of passing the host's cap.
+  rest: { globalRequestsPerSecond: config.restRequestsPerSecond },
   // Case cards/logs render `@user` mentions as text/reference, not as pings 
   // this is the default for every message the bot sends unless a specific
   // send call opts back in with its own `allowedMentions`.

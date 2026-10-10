@@ -22,11 +22,14 @@ module.exports = {
     .setDMPermission(false)
     .addStringOption((option) => option.setName('metric').setDescription('What to show (default: everything)').setRequired(false)
       .addChoices(...METRICS.map((metric) => ({ name: TITLES[metric], value: metric }))))
-    .addIntegerOption((option) => option.setName('days').setDescription('How many days to include, from 1 to 31').setMinValue(1).setMaxValue(31).setRequired(false)),
+    .addIntegerOption((option) => option.setName('days').setDescription('How many days to include, from 1 to 365').setMinValue(1).setMaxValue(365).setRequired(false)),
 
   async execute(interaction) {
-    const metric = METRICS.includes(interaction.options.getString('metric')) ? interaction.options.getString('metric') : 'overview';
-    const days = interaction.options.getInteger('days') ?? 7;
+    // `,summary 30` or `,summary 30d`: a number where the metric goes is the number of days.
+    const asked = String(interaction.options.getString('metric') ?? '').trim().toLowerCase();
+    const askedDays = /^\d{1,3}d?$/.test(asked) ? Number.parseInt(asked, 10) : null;
+    const metric = METRICS.includes(asked) ? asked : 'overview';
+    const days = Math.min(365, Math.max(1, interaction.options.getInteger('days') ?? askedDays ?? 7));
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 | MessageFlags.SuppressNotifications });
     const guild = interaction.guild;
 
