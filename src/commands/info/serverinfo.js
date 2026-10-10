@@ -30,7 +30,7 @@ module.exports = {
   async execute(interaction) {
     const guild = interaction.guild;
     // The server's description is not always in the cached copy of the server, so it is read fresh.
-    const [owner, fresh] = await Promise.all([guild.fetchOwner().catch(() => null), guild.fetch().catch(() => null)]);
+    const [owner, fresh] = await Promise.all([guild.fetchOwner().catch(() => null), (typeof guild.fetch === 'function' ? guild.fetch().catch(() => null) : null)]);
     const description = fresh?.description ?? guild.description ?? null;
     const tier = premiumTierNumber(guild.premiumTier);
     const channels = [...guild.channels.cache.values()];
