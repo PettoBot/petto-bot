@@ -67,23 +67,12 @@ function sanctionContext({ type, guild, user, member = null, moderator, reason, 
   };
 }
 
-/** How many sanctions the user had before this case, or null when that cannot be read. */
-async function previousSanctions(guildId, userId, caseNumber) {
-  try {
-    const { getUserHistory } = require('../db/modActions');
-    const rows = await getUserHistory(guildId, userId, { limit: 100 });
-    return rows.filter((row) => row.case_number !== caseNumber && !['unban', 'unmute', 'unjail'].includes(row.type)).length;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * What the sanctioned member is sent: the server's DM template when it has one, the usual text otherwise. Meant to go
  * straight into `.send(...)`, which takes either.
  */
-async function sanctionDM({ type, guild, client, reason, duration, user = null, member = null, moderator = null, source = 'moderator', caseNumber = null, expiresAt = null }) {
-  const fallback = () => buildSanctionDM({ type, guild, reason, duration, moderator: moderator ?? client?.user, caseNumber, expiresAt });
+async function sanctionDM({ type, guild, client, reason, duration, user = null, member = null, moderator = null, source = 'moderator' }) {
+  const fallback = () => buildSanctionDM({ type, guild, client, reason, duration });
   try {
     const name = await templateFor(guild.id, type, 'dm');
     if (!name) return fallback();
@@ -102,11 +91,8 @@ async function sanctionDM({ type, guild, client, reason, duration, user = null, 
  * the message is sent as a follow-up (or posted in the channel when that fails).
  */
 async function sanctionReply(interaction, { type, modCase, target, moderator, reason, duration }) {
-  const card = async () => buildCaseCard({
-    caseNumber: modCase.case_number, type, target, moderator, reason, duration, guild: interaction.guild,
-    expiresAt: modCase.expires_at, previous: await previousSanctions(interaction.guild.id, target.id, modCase.case_number),
-  });
-  const showCard = async () => interaction.editReply({ components: [await card()], flags: MessageFlags.IsComponentsV2 });
+  const card = () => buildCaseCard({ caseNumber: modCase.case_number, type, target, moderator, reason, duration });
+  const showCard = () => interaction.editReply({ components: [card()], flags: MessageFlags.IsComponentsV2 });
   let payload = null;
   try {
     const name = await templateFor(interaction.guild.id, type, 'reply');
@@ -156,4 +142,4 @@ async function sanctionLogEmbed({ modCase, guild, target, moderator, reason, dur
   }
 }
 
-module.exports = { ACTION, sanctionContext, sanctionDM, sanctionReply, sanctionLogEmbed, previousSanctions };
+module.exports = { ACTION, sanctionContext, sanctionDM, sanctionReply, sanctionLogEmbed };
