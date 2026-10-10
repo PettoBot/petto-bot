@@ -133,6 +133,7 @@ async function sendLog(client, guildId, event, embed, { ignoreIds = [], files = 
         username: client.user.username,
         avatar_url: getAvatar(client.user) ?? undefined,
         flags: 4096, // SuppressNotifications
+        allowed_mentions: { parse: [] }, // names inside a log must never ping anyone
       };
       if (v2) {
         body.components = v2.map((component) => (typeof component?.toJSON === 'function' ? component.toJSON() : component));

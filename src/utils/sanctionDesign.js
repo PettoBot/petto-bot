@@ -42,45 +42,50 @@ function iconOf(user, size = 256) {
   return user?.displayAvatarURL?.({ extension: 'png', size }) ?? null;
 }
 
-/** The lines of the card, each one starting with the colored bar of the sanction. */
-function fieldLines({ type, caseNumber, target, moderator, reason, duration, expiresAt, previous, audience }) {
-  const bar = TYPE_BAR[type] ?? EMOJI.BAR_GRAY;
-  const line = (icon, label, value) => `${bar} ${icon} **${label}** ${value}`;
-  const lines = [];
+/** A detail line: the icon, a dim label and the value. */
+function detail(icon, label, value) {
+  return `${icon} ${label} **${value}**`;
+}
 
-  if (audience === 'staff') lines.push(line(EMOJI.FIELD_DOT, 'User', `${mention(target)} (\`${target?.id ?? target}\`)`));
-  lines.push(line(EMOJI.FIELD_DOT, 'Moderator', mention(moderator)));
-
+/** The details of the sanction itself: moderator, when it ends and how many sanctions the member had before. */
+function detailLines({ type, moderator, duration, expiresAt, previous, audience }) {
+  const lines = [detail(EMOJI.FIELD_DOT, 'Moderator', mention(moderator))];
   const end = expiresAt ? unix(expiresAt) : null;
-  if (end) lines.push(line(EMOJI.FIELD_CALENDAR, 'Ends', `<t:${end}:R> · <t:${end}:f>`));
-  else if (duration) lines.push(line(EMOJI.FIELD_CALENDAR, 'Duration', duration));
-  else if (['ban', 'hardban'].includes(type)) lines.push(line(EMOJI.FIELD_CALENDAR, 'Duration', 'Permanent'));
-
-  lines.push(line(EMOJI.FIELD_REASON, 'Reason', clip(reason || 'No reason provided.', REASON_LIMIT)));
-
+  if (end) lines.push(`${EMOJI.FIELD_CALENDAR} Ends <t:${end}:R> · <t:${end}:f>`);
+  else if (duration) lines.push(detail(EMOJI.FIELD_CALENDAR, 'Duration', duration));
+  else if (['ban', 'hardban'].includes(type)) lines.push(detail(EMOJI.FIELD_CALENDAR, 'Duration', 'Permanent'));
   if (audience === 'staff' && Number.isInteger(previous)) {
-    lines.push(line(EMOJI.FIELD_NOTES, 'History', previous === 0 ? 'First sanction' : `${previous} earlier ${previous === 1 ? 'sanction' : 'sanctions'}`));
+    lines.push(`${EMOJI.FIELD_NOTES} ${previous === 0 ? 'First sanction' : `${previous} earlier ${previous === 1 ? 'sanction' : 'sanctions'}`}`);
   }
   return lines;
 }
 
 /**
- * The card. `audience` is `staff` (the command reply and the log, with the user and their history) or `member` (the DM,
- * addressed to the member, with the server's name and picture). `previous` is the number of earlier sanctions, when known.
+ * The card: title, the member (with their picture), the details and the reason below its own line. `audience` is `staff`
+ * (the command reply and the log) or `member` (the DM, addressed to the member, with the server's name and picture).
+ * `previous` is the number of earlier sanctions, when known.
  */
 function buildSanctionCard({ type, caseNumber = null, guild = null, target = null, moderator = null, reason = null, duration = null, expiresAt = null, previous = null, audience = 'staff' }) {
   const emoji = TYPE_EMOJI[type] ?? EMOJI.ALERT;
+  const bar = TYPE_BAR[type] ?? EMOJI.BAR_GRAY;
   const name = TITLE[type] ?? type;
   const heading = audience === 'member'
     ? `### ${emoji} You were ${VERB[type] ?? 'sanctioned in'} ${guild?.name ?? 'the server'}`
     : `### ${emoji} ${name}${caseNumber != null ? ` · Case #${caseNumber}` : ''}`;
-  const text = [heading, ...fieldLines({ type, caseNumber, target, moderator, reason, duration, expiresAt, previous, audience })].join('\n');
 
+  const who = audience === 'staff' ? [`**${mention(target)}** · \`${target?.id ?? target}\``] : [];
+  const body = new TextDisplayBuilder().setContent([...who, ...detailLines({ type, moderator, duration, expiresAt, previous, audience })].join('\n'));
   const picture = audience === 'member' ? guild?.iconURL?.({ extension: 'png', size: 256 }) : iconOf(target);
-  const container = new ContainerBuilder().setAccentColor(COLORS[type] ?? 0x4b4f59);
-  const body = new TextDisplayBuilder().setContent(text);
+  const divider = () => new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small);
+
+  const container = new ContainerBuilder().setAccentColor(COLORS[type] ?? 0x4b4f59)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(heading))
+    .addSeparatorComponents(divider());
   if (picture) container.addSectionComponents(new SectionBuilder().addTextDisplayComponents(body).setThumbnailAccessory(new ThumbnailBuilder().setURL(picture)));
   else container.addTextDisplayComponents(body);
+  container
+    .addSeparatorComponents(divider())
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`${bar} ${EMOJI.FIELD_REASON} **REASON**\n${clip(reason || 'No reason provided.', REASON_LIMIT)}`));
 
   const footer = audience === 'member'
     ? `-# ${caseNumber != null ? `Case #${caseNumber} · ` : ''}${guild?.name ?? ''}${guild?.memberCount ? ` · ${guild.memberCount} members` : ''}`
