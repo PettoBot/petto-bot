@@ -34,6 +34,8 @@ All notable changes to Petto are documented here.
 
 ### Fixed
 
+- Kicking or banning a bot (or any member) with the Administrator permission works again when Petto is above them. Petto was judging every action with the time-out rule, which Discord refuses for administrators; now kick and ban are judged by whether the member can be kicked or banned, and only time-outs keep the Administrator warning. When Discord refuses an action, the answer now says what Discord replied.
+
 - `!vanity sync`, `!guildtag sync` and `!identity sync` no longer fail when Discord limits how often the members of a server can be requested (`Request with opcode 8 was rate limited`). They use the members Petto already has when it has nearly all of them, wait and try again when the wait is short, use the ones it knows (and say so in the result) when it is long, and tell when to try again instead of crashing.
 - `!vanity sync`, `!vanity test`, `!guildtag sync`, `!guildtag test` and `!identity sync` work with a typed command: they failed with `getMember is not a function` because a typed command gives the user, not the member.
 - The saved copy of each server marks the roles the bot has, so the dashboard knows which roles it can hand out (the Vanity page showed a role the bot could give as one it could not).

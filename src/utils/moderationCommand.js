@@ -68,4 +68,11 @@ async function confirmBulkAction(interaction, action, targets) {
   return true;
 }
 
-module.exports = { asSubcommand, confirmBulkAction, requireAdministrator };
+/** What Discord said when an action failed, in a few words, to add to "I was unable to...". Empty when there is nothing useful to say. */
+function failureDetail(error) {
+  const text = String(error?.rawError?.message ?? error?.message ?? '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  return ` Discord said: ${text.slice(0, 160)}${error?.code ? ` (${error.code})` : ''}`;
+}
+
+module.exports = { asSubcommand, confirmBulkAction, requireAdministrator, failureDetail };

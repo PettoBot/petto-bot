@@ -17,7 +17,7 @@ const { resolveUsers } = require('../../utils/userResolve');
 const { parseDuration, formatDuration } = require('../../utils/duration');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
-const { confirmBulkAction, requireAdministrator } = require('../../utils/moderationCommand');
+const { confirmBulkAction, requireAdministrator, failureDetail } = require('../../utils/moderationCommand');
 
 module.exports = {
   aliases: ['b'],
@@ -97,7 +97,7 @@ async function banUser(interaction) {
   } catch (err) {
     logger.error('Failed to ban member:', err);
     await interaction.editReply({
-      components: [textCard('I was unable to ban that user. They may already be banned, or I lack permission.', 0xfe6465)],
+      components: [textCard(`I was unable to ban that user. They may already be banned, or I lack permission.${failureDetail(err)}`, 0xfe6465)],
       flags: MessageFlags.IsComponentsV2,
     });
     return;
@@ -194,7 +194,7 @@ async function tempBan(interaction) {
   } catch (err) {
     logger.error('Failed to ban member:', err);
     await interaction.editReply({
-      components: [textCard('I was unable to ban that user. They may already be banned, or I lack permission.', 0xfe6465)],
+      components: [textCard(`I was unable to ban that user. They may already be banned, or I lack permission.${failureDetail(err)}`, 0xfe6465)],
       flags: MessageFlags.IsComponentsV2,
     });
     return;

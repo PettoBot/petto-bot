@@ -10,7 +10,7 @@ const { resolveUsers } = require('../../utils/userResolve');
 const { parseDuration, formatDuration } = require('../../utils/duration');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
-const { confirmBulkAction, requireAdministrator } = require('../../utils/moderationCommand');
+const { confirmBulkAction, requireAdministrator, failureDetail } = require('../../utils/moderationCommand');
 
 const MAX_TIMEOUT_MS = 28 * 24 * 60 * 60 * 1000; // Discord's native timeout hard limit
 
@@ -110,7 +110,7 @@ async function muteUser(interaction) {
     await targetMember.roles.add(muteRole, reason ?? undefined);
   } catch (err) {
     logger.error('Failed to mute member:', err);
-    await interaction.editReply({ components: [textCard('I was unable to mute that user. My role may be below theirs.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(`I was unable to mute that user. My role may be below theirs.${failureDetail(err)}`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -221,7 +221,7 @@ async function tempMute(interaction) {
     await targetMember.timeout(durationMs, reason ?? undefined);
   } catch (err) {
     logger.error('Failed to timeout member:', err);
-    await interaction.editReply({ components: [textCard('I was unable to mute that user.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(`I was unable to mute that user.${failureDetail(err)}`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 

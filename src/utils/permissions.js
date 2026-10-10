@@ -1,4 +1,4 @@
-const { PermissionsBitField } = require('discord.js');
+const { PermissionsBitField, PermissionFlagsBits } = require('discord.js');
 
 /**
  * Full permission/hierarchy check for a moderation action against a target member.
@@ -6,7 +6,28 @@ const { PermissionsBitField } = require('discord.js');
  * with `message` and stop, so every mod command gets identical, clear errors
  * instead of Discord's silent/opaque API failures.
  */
-function canModerate(interaction, targetMember, requiredPermission) {
+const DEFAULT_HIERARCHY = { [PermissionFlagsBits.KickMembers]: 'kick', [PermissionFlagsBits.BanMembers]: 'ban', [PermissionFlagsBits.ModerateMembers]: 'timeout' };
+
+/**
+ * Whether the bot can act on the member, judged by what Discord itself checks for that action. `moderatable` is only for timeouts
+ * (it is false for anyone with the Administrator permission, even when the bot's role is above theirs), so using it for a kick
+ * or a ban refused members that Discord would have let the bot remove, like a bot with an admin role.
+ * `hierarchy` is 'kick', 'ban', 'timeout' or 'none' (the action does not change the member: a warning, a voice action).
+ */
+function botCanAct(member, hierarchy) {
+  switch (hierarchy) {
+    case 'kick': return member.kickable ? null : 'I cannot kick this member: their highest role is above or equal to mine, or they own the server.';
+    case 'ban': return member.bannable ? null : 'I cannot ban this member: their highest role is above or equal to mine, or they own the server.';
+    case 'timeout':
+      if (member.moderatable) return null;
+      return member.permissions?.has(PermissionFlagsBits.Administrator)
+        ? 'Discord does not let anyone time out a member with the Administrator permission. Use a kick or a ban instead.'
+        : 'I cannot act on this member: their highest role is above or equal to mine.';
+    default: return null;
+  }
+}
+
+function canModerate(interaction, targetMember, requiredPermission, { hierarchy = DEFAULT_HIERARCHY[requiredPermission] ?? 'none' } = {}) {
   const { member: moderator, guild } = interaction;
   const me = guild.members.me;
 
@@ -38,9 +59,8 @@ function canModerate(interaction, targetMember, requiredPermission) {
     return { ok: false, message: 'You cannot target me.' };
   }
 
-  if (!targetMember.moderatable) {
-    return { ok: false, message: 'I cannot act on this member: their highest role is above or equal to mine.' };
-  }
+  const blocked = botCanAct(targetMember, hierarchy);
+  if (blocked) return { ok: false, message: blocked };
 
   if (
     moderator.id !== guild.ownerId &&
@@ -57,4 +77,4 @@ function permissionLabel(flag) {
   return entry ? entry[0] : String(flag);
 }
 
-module.exports = { canModerate };
+module.exports = { canModerate, botCanAct };
