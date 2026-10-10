@@ -13,6 +13,7 @@ All notable changes to Petto are documented here.
 
 ### Fixed
 
+- `!channel clear 1000` failed with "Invalid Form Body: limit should be less than or equal to 100": Discord gives 100 messages at a time and the command asked for all at once. It now reads pages of 100 and deletes in groups of 100, up to 1000 messages, and stops at the messages older than 14 days (which Discord does not let a bot bulk delete). With `user` it looks through up to 1500 recent messages for theirs.
 - The channel of errors no longer fills up: the rate limit notes of Discord's client are left out of it (sending to that channel is itself limited, so reporting every rate limit caused more of them), the same warning many times is sent once with a count of how many were not repeated, and a burst is sent one message at a time (up to 20 queued; warnings are dropped before errors).
 - The Vault backup job reported "Connection terminated due to connection timeout" at the first hiccup of the database. A timeout is now reported only when it lasts three minutes in a row, and the report says what failed.
 - In the picture of `/summary` the label of the average (`avg 104`) was covered by the bars. It has its own space on the right now.
