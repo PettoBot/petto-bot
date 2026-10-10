@@ -19,7 +19,7 @@ const TOTAL_GROUPS = [
   ['Mutes', ['mute', 'tempmute']],
   ['Jails', ['jail']],
   ['Kicks', ['kick', 'softban']],
-  ['Bans', ['ban', 'tempban']],
+  ['Bans', ['ban', 'hardban', 'tempban']],
 ];
 
 function capitalize(text) {

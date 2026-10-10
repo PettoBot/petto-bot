@@ -2,6 +2,7 @@ const { EMOJI, TYPE_EMOJI } = require('./emojis');
 
 const VERB = {
   ban: 'banned from',
+  hardban: 'permanently banned from',
   tempban: 'temporarily banned from',
   softban: 'kicked from',
   unban: 'unbanned from',

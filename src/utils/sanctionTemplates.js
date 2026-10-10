@@ -14,6 +14,7 @@ const logger = require('./logger');
 
 const ACTION = {
   ban: 'banned',
+  hardban: 'hard banned',
   tempban: 'temporarily banned',
   softban: 'softbanned',
   unban: 'unbanned',

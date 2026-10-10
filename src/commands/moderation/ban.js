@@ -17,6 +17,7 @@ const { resolveUsers } = require('../../utils/userResolve');
 const { parseDuration, formatDuration } = require('../../utils/duration');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
+const { addHardBan, getHardBan, removeHardBan, canLiftHardBan, listHardBanIds } = require('../../db/hardBans');
 const { confirmBulkAction, requireAdministrator, failureDetail } = require('../../utils/moderationCommand');
 
 module.exports = {
@@ -68,9 +69,11 @@ module.exports = {
     if (sub === 'remove') return unban(interaction);
     if (sub === 'remove-all') return unbanAll(interaction);
   },
+  hardBanUser: (interaction) => banUser(interaction, { hard: true }),
 };
 
-async function banUser(interaction) {
+async function banUser(interaction, { hard = false } = {}) {
+  const type = hard ? 'hardban' : 'ban';
   const targetUser = interaction.options.getUser('user', true);
   const reason = interaction.options.getString('reason');
   const deleteDays = interaction.options.getInteger('delete_message_days') ?? 0;
@@ -88,7 +91,7 @@ async function banUser(interaction) {
   // Best-effort: DM before the ban, since the bot can't message someone it no longer shares a server with.
   if (targetMember) {
     await targetMember
-      .send(await sanctionDM({ type: 'ban', guild: interaction.guild, client: interaction.client, reason, member: targetMember, moderator: interaction.user }))
+      .send(await sanctionDM({ type, guild: interaction.guild, client: interaction.client, reason, member: targetMember, moderator: interaction.user }))
       .catch(() => logger.warn(`Could not DM ban notice to ${targetUser.id} in guild ${interaction.guild.id}.`));
   }
 
@@ -104,9 +107,10 @@ async function banUser(interaction) {
   }
 
   await ensureGuild(interaction.guild.id);
-  const modCase = await createCase({ guildId: interaction.guild.id, userId: targetUser.id, moderatorId: interaction.user.id, type: 'ban', reason });
+  if (hard) await addHardBan(interaction.guild.id, targetUser.id, interaction.user.id, reason);
+  const modCase = await createCase({ guildId: interaction.guild.id, userId: targetUser.id, moderatorId: interaction.user.id, type, reason });
 
-  await sanctionReply(interaction, { modCase, type: 'ban', target: targetUser, moderator: interaction.user, reason });
+  await sanctionReply(interaction, { modCase, type, target: targetUser, moderator: interaction.user, reason });
   await logSanction(interaction.client, interaction.guild, { modCase, target: targetUser, moderator: interaction.user, reason });
 }
 
@@ -218,6 +222,12 @@ async function unban(interaction) {
     return;
   }
 
+  const hardBan = await getHardBan(interaction.guild.id, targetUser.id).catch(() => null);
+  if (hardBan && !(await canLiftHardBan(interaction.guild, interaction.user.id))) {
+    await interaction.reply({ content: 'That user has a **hardban**. Only the server owner and the antinuke admins can lift it.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   try {
@@ -232,7 +242,8 @@ async function unban(interaction) {
     return;
   }
 
-  const activeSanction = await getActiveSanction(interaction.guild.id, targetUser.id, ['ban', 'tempban']);
+  if (hardBan) await removeHardBan(interaction.guild.id, targetUser.id);
+  const activeSanction = await getActiveSanction(interaction.guild.id, targetUser.id, ['ban', 'tempban', 'hardban']);
   if (activeSanction) await deactivateCase(interaction.guild.id, activeSanction.case_number);
 
   await ensureGuild(interaction.guild.id);
@@ -292,7 +303,11 @@ async function unbanAll(interaction) {
   let succeeded = 0;
   let failed = 0;
   const caseNumbers = [];
+  // Hard bans stay unless the one running this is the owner or an antinuke admin.
+  const mayLiftHard = await canLiftHardBan(interaction.guild, interaction.user.id);
+  const hardIds = mayLiftHard ? new Set() : await listHardBanIds(interaction.guild.id);
   for (const userId of bans.keys()) {
+    if (hardIds.has(userId)) continue;
     let target;
     try {
       await interaction.guild.members.unban(userId, reason ?? 'Mass unban');

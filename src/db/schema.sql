@@ -164,7 +164,7 @@ create table if not exists mod_actions (
   case_number   integer not null,
   user_id       text not null,
   moderator_id  text not null,
-  type          text not null check (type in ('ban', 'unban', 'kick', 'mute', 'unmute', 'tempban', 'tempmute', 'warn', 'softban', 'jail', 'unjail')),
+  type          text not null check (type in ('ban', 'unban', 'kick', 'mute', 'unmute', 'tempban', 'tempmute', 'warn', 'softban', 'jail', 'unjail', 'hardban')),
   reason        text,
   created_at    timestamptz not null default now(),
   expires_at    timestamptz,
@@ -176,7 +176,18 @@ create table if not exists mod_actions (
 -- CHECK constraint (added here for tempban/tempmute/softban) needs its own idempotent migration step.
 alter table mod_actions drop constraint if exists mod_actions_type_check;
 alter table mod_actions add constraint mod_actions_type_check
-  check (type in ('ban', 'unban', 'kick', 'mute', 'unmute', 'tempban', 'tempmute', 'warn', 'softban', 'jail', 'unjail'));
+  check (type in ('ban', 'unban', 'kick', 'mute', 'unmute', 'tempban', 'tempmute', 'warn', 'softban', 'jail', 'unjail', 'hardban'));
+
+-- A hard ban only the server owner and the antinuke admins can lift. Anyone else who unbans the user gets the ban put back.
+create table if not exists hard_bans (
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  user_id    text not null,
+  banned_by  text not null,
+  reason     text,
+  created_at timestamptz not null default now(),
+  primary key (guild_id, user_id)
+);
+alter table hard_bans enable row level security;
 
 create index if not exists idx_mod_actions_guild_user on mod_actions(guild_id, user_id);
 create index if not exists idx_mod_actions_guild_created on mod_actions(guild_id, created_at desc);
@@ -2187,13 +2198,16 @@ $$;
 -- that have no template of their own.
 create table if not exists sanction_templates (
   guild_id       text not null references guilds(guild_id) on delete cascade,
-  type           text not null check (type in ('default', 'ban', 'tempban', 'softban', 'unban', 'kick', 'mute', 'tempmute', 'unmute', 'warn', 'jail', 'unjail')),
+  type           text not null check (type in ('default', 'ban', 'hardban', 'tempban', 'softban', 'unban', 'kick', 'mute', 'tempmute', 'unmute', 'warn', 'jail', 'unjail')),
   dm_template    text,
   reply_template text,
   log_template   text,
   updated_at     timestamptz not null default now(),
   primary key (guild_id, type)
 );
+alter table sanction_templates drop constraint if exists sanction_templates_type_check;
+alter table sanction_templates add constraint sanction_templates_type_check
+  check (type in ('default', 'ban', 'hardban', 'tempban', 'softban', 'unban', 'kick', 'mute', 'tempmute', 'unmute', 'warn', 'jail', 'unjail'));
 alter table sanction_templates enable row level security;
 
 -- Custom messages for the starboard repost, the giveaway announcements, verification and bump.

@@ -57,6 +57,7 @@ const EMOJI = {
 // Which emoji represents each mod_actions.type, for DMs and case embeds.
 const TYPE_EMOJI = {
   ban: EMOJI.HAMMER,
+  hardban: EMOJI.HAMMER,
   tempban: EMOJI.HAMMER,
   softban: EMOJI.HAMMER,
   unban: EMOJI.APPROVE,
