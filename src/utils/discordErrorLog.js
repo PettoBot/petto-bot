@@ -107,9 +107,31 @@ function createErrorLogEmbed(level, args, stamp, context) {
   return embed;
 }
 
-function createDiscordErrorLogSink(client, channelId) {
+const DUPLICATE_WINDOW_MS = 60_000;
+const SEND_GAP_MS = 1_500;
+const MAX_QUEUE = 20;
+
+/**
+ * Messages that are routine and not worth a message in the channel: the rate limit notes of Discord's REST client. Sending to this
+ * channel is itself a request that Discord limits, so reporting every rate limit made more of them. They stay in the console.
+ */
+function isRoutineNoise(level, args) {
+  if (level === 'error') return false;
+  const text = collectText(args);
+  return /\[Discord REST\].*rate limit/i.test(text);
+}
+
+/** The same problem again and again is one line with a count: digits and ids are ignored when comparing. */
+function duplicateKey(level, args) {
+  return `${level}:${collectText(args).replace(/\d+(\.\d+)?/g, '#').slice(0, 200)}`;
+}
+
+function createDiscordErrorLogSink(client, channelId, { gapMs = SEND_GAP_MS, now = () => Date.now() } = {}) {
   let channelPromise = null;
   let lastFailureAt = 0;
+  const seen = new Map(); // key -> { at, suppressed }
+  const queue = [];
+  let draining = false;
 
   async function getChannel() {
     if (!channelId || !client?.channels?.fetch) return null;
@@ -122,24 +144,53 @@ function createDiscordErrorLogSink(client, channelId) {
     return channel?.isTextBased?.() ? channel : null;
   }
 
-  return async (level, args, stamp, context) => {
-    if (level === 'info') return;
-    const channel = await getChannel();
-    if (!channel) return;
-
+  async function drain() {
+    if (draining) return;
+    draining = true;
     try {
-      await channel.send({
-        embeds: [createErrorLogEmbed(level, args, stamp, context)],
-        allowedMentions: { parse: [] },
-      });
-    } catch (error) {
-      const now = Date.now();
-      if (now - lastFailureAt >= 60_000) {
-        lastFailureAt = now;
-        console.error('[Petto diagnostics] Could not send a log embed:', error?.message ?? error);
+      while (queue.length) {
+        const item = queue.shift();
+        const channel = await getChannel();
+        if (!channel) continue;
+        try {
+          const embed = createErrorLogEmbed(item.level, item.args, item.stamp, item.context);
+          if (item.suppressed) embed.setFooter({ text: `Petto diagnostics · ${process.version} · ${item.suppressed} similar message(s) not repeated` });
+          await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
+        } catch (error) {
+          const at = now();
+          if (at - lastFailureAt >= 60_000) {
+            lastFailureAt = at;
+            console.error('[Petto diagnostics] Could not send a log embed:', error?.message ?? error);
+          }
+        }
+        if (queue.length) await new Promise((resolve) => setTimeout(resolve, gapMs));
       }
+    } finally {
+      draining = false;
     }
+  }
+
+  return async (level, args, stamp, context) => {
+    if (level === 'info' || isRoutineNoise(level, args)) return;
+    const key = duplicateKey(level, args);
+    const at = now();
+    const previous = seen.get(key);
+    if (previous && at - previous.at < DUPLICATE_WINDOW_MS) {
+      previous.suppressed += 1;
+      return;
+    }
+    const suppressed = previous?.suppressed ?? 0;
+    seen.set(key, { at, suppressed: 0 });
+    if (seen.size > 500) for (const [oldKey, entry] of seen) if (at - entry.at > DUPLICATE_WINDOW_MS) seen.delete(oldKey);
+    // A burst is sent one message at a time; when it is too long, warnings are dropped and errors are kept.
+    if (queue.length >= MAX_QUEUE) {
+      if (level !== 'error') return;
+      const dropIndex = queue.findIndex((item) => item.level !== 'error');
+      if (dropIndex >= 0) queue.splice(dropIndex, 1); else return;
+    }
+    queue.push({ level, args, stamp, context, suppressed });
+    drain();
   };
 }
 
-module.exports = { createDiscordErrorLogSink, createErrorLogEmbed };
+module.exports = { createDiscordErrorLogSink, createErrorLogEmbed, isRoutineNoise, duplicateKey };
