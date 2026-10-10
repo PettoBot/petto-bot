@@ -5,10 +5,10 @@ const SERVER_RANK_SIZE = 5;
 const USER_RANK_SIZE = 10;
 const METRICS = ['messages', 'reactions', 'voiceSeconds'];
 
-/** The messages, reactions and voice time of every server, all time, today (UTC) and in the last 7 days. */
+/** The messages, reactions and voice time of every server, all time, today (GMT-5) and in the last 7 days. */
 async function readTotals() {
   const { rows } = await getPrimaryPool().query(`
-    with d as (select (now() at time zone 'utc')::date as today)
+    with d as (select (now() at time zone 'America/Bogota')::date as today)
     select
       coalesce(sum(messages), 0)::bigint as messages_all,
       coalesce(sum(reactions), 0)::bigint as reactions_all,
@@ -30,7 +30,7 @@ async function readTotals() {
 /** The servers that chose to be ranked, with their numbers all time and in the last 7 days. */
 async function readRankedServers() {
   const { rows } = await getPrimaryPool().query(`
-    with d as (select (now() at time zone 'utc')::date as today)
+    with d as (select (now() at time zone 'America/Bogota')::date as today)
     select a.guild_id,
       sum(a.messages)::bigint as messages_all, sum(a.reactions)::bigint as reactions_all, sum(a.voice_seconds)::bigint as voice_all,
       coalesce(sum(a.messages) filter (where a.day > d.today - 7), 0)::bigint as messages_week,

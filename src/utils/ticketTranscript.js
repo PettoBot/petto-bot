@@ -26,8 +26,8 @@ function formatDate(value) {
   return `${new Intl.DateTimeFormat('en-US', {
     dateStyle: 'medium',
     timeStyle: 'short',
-    timeZone: 'UTC',
-  }).format(date)} UTC`;
+    timeZone: 'America/Bogota',
+  }).format(date)} GMT-5`;
 }
 
 function colorHex(value, fallback = '#8399ff') {

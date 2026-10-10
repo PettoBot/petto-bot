@@ -162,7 +162,7 @@ const customEmoji = (text) => { const match = /^<(a?):(\w+):(\d+)>$/.exec(text);
 const REWARD_EMOJI = { decoration: '🎭', code: '🎟️', ingame: '🎮', nitro: '💎', other: '🎁' };
 const REWARD_ICON = { orbs: customEmoji(EMOJI.QUEST_NITRO), decoration: '🎭', code: '🎟️', ingame: '🎮', nitro: '💎', other: '🎁' };
 const TASK_WORD = { video: 'Video', play: 'Play', stream: 'Stream', activity: 'Activity' };
-const shortDate = (date) => date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+const shortDate = (date) => date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Bogota' });
 
 function listOption(quest) {
   const reward = quest.rewards.map((entry) => (entry.kind === 'orbs' ? `${entry.amount} Orbs` : entry.name)).join(', ') || 'No reward listed';

@@ -92,10 +92,11 @@ const fakeGuild = (id, extra = {}) => ({ id, name: 'Mine', ownerId: 'owner', mem
 
   // Periods and numbers: Saturday 2026-10-03, the week started on Monday 2026-09-28.
   const saturday = new Date('2026-10-03T20:00:00Z');
-  assert.equal(engine.periodStart('day', saturday).toISOString(), '2026-10-03T00:00:00.000Z');
-  assert.equal(engine.periodStart('week', saturday).toISOString(), '2026-09-28T00:00:00.000Z');
-  assert.equal(engine.periodStart('week', new Date('2026-09-28T01:00:00Z')).toISOString(), '2026-09-28T00:00:00.000Z', 'Monday is the first day');
-  assert.equal(engine.periodStart('week', new Date('2026-10-04T23:00:00Z')).toISOString(), '2026-09-28T00:00:00.000Z', 'Sunday is the last');
+  assert.equal(engine.periodStart('day', saturday).toISOString(), '2026-10-03T05:00:00.000Z', 'the day starts at midnight in Colombia (GMT-5)');
+  assert.equal(engine.periodStart('week', saturday).toISOString(), '2026-09-28T05:00:00.000Z');
+  assert.equal(engine.periodStart('week', new Date('2026-09-28T06:00:00Z')).toISOString(), '2026-09-28T05:00:00.000Z', 'Monday is the first day');
+  assert.equal(engine.periodStart('week', new Date('2026-09-28T01:00:00Z')).toISOString(), '2026-09-21T05:00:00.000Z', 'at 01:00 UTC on Monday it is still Sunday night in Colombia');
+  assert.equal(engine.periodStart('week', new Date('2026-10-04T23:00:00Z')).toISOString(), '2026-09-28T05:00:00.000Z', 'Sunday is the last');
   assert.equal(engine.periodStart('all'), null);
   const rows = [
     { manager_id: 'a', created_at: '2026-10-03T10:00:00Z' }, { manager_id: 'a', created_at: '2026-09-29T10:00:00Z' },

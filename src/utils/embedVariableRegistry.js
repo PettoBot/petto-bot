@@ -403,8 +403,8 @@ const VARIABLE_GROUPS = [
     label: 'Date',
     availability: 'always',
     vars: [
-      { tok: '{date}', desc: 'Today\'s date' },
-      { tok: '{date.now}', desc: 'Today\'s date, Pacific time' },
+      { tok: '{date}', desc: 'Today\'s date, GMT-5 (Colombia)' },
+      { tok: '{date.now}', desc: 'Today\'s date, GMT-5 (Colombia)' },
       { tok: '{date.utc_now}', desc: 'Current date and time, UTC' },
       { tok: '{date.utc_timestamp}', desc: 'Current unix timestamp' },
       { tok: '{timestamp}', desc: 'Right now, as a Discord timestamp in each reader\'s own time zone' },

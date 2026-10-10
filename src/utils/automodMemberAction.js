@@ -25,7 +25,7 @@ async function applyAutomatedKick(member, reason) {
 
   try {
     await ensureGuild(guild.id);
-    const modCase = await createCase({ guildId: guild.id, userId: user.id, moderatorId: client.user.id, type: 'kick', reason });
+    const modCase = await createCase({ guildId: guild.id, userId: user.id, moderatorId: client.user.id, type: 'kick', reason, source: 'automod' });
     await logSanction(client, guild, { modCase, target: user, moderator: client.user, reason, source: 'automod' });
   } catch (err) {
     // The Discord action already happened. Keep the process alive, but make the

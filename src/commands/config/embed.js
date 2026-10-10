@@ -107,7 +107,7 @@ const VAR_PAGES = [
       ['`{channel.topic}`', 'Channel topic'],
       ['`{message_link}`', 'Link to the triggering message (empty in slash commands)'],
       ['`{date}`', "Today's date"],
-      ['`{date.now}`', "Today's date (Pacific time)"],
+      ['`{date.now}`', "Today's date (GMT-5, Colombia)"],
       ['`{date.utc_now}`', 'Current UTC date & time'],
       ['`{date.utc_timestamp}`', 'Current Unix timestamp'],
     ],

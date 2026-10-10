@@ -11,7 +11,8 @@ const pending = new Map(); // key -> { rpc, params, add(values) }
 let timer = null;
 let flushing = false;
 
-const dayOf = (date) => date.toISOString().slice(0, 10);
+const { botDay, botHour } = require('../utils/botTime');
+const dayOf = (date) => botDay(date); // the day of Colombia (GMT-5)
 
 function queue(key, rpc, params, counters) {
   const current = pending.get(key);
@@ -66,14 +67,14 @@ async function flush() {
 /** A message by a member (hour of the day and member counters). */
 function queueMessage(guildId, userId, now = new Date()) {
   const day = dayOf(now);
-  queue(`h:${guildId}:${day}:${now.getUTCHours()}`, 'increment_activity_hourly', { p_guild_id: guildId, p_day: day, p_hour: now.getUTCHours() }, { p_messages: 1, p_voice_seconds: 0 });
+  queue(`h:${guildId}:${day}:${botHour(now)}`, 'increment_activity_hourly', { p_guild_id: guildId, p_day: day, p_hour: botHour(now) }, { p_messages: 1, p_voice_seconds: 0 });
   queue(`m:${guildId}:${day}:${userId}`, 'increment_activity_member', { p_guild_id: guildId, p_day: day, p_user_id: userId }, { p_messages: 1, p_voice_seconds: 0 });
 }
 
 /** Voice time of one member in this minute. */
 function queueVoice(guildId, userId, seconds, now = new Date()) {
   const day = dayOf(now);
-  queue(`h:${guildId}:${day}:${now.getUTCHours()}`, 'increment_activity_hourly', { p_guild_id: guildId, p_day: day, p_hour: now.getUTCHours() }, { p_messages: 0, p_voice_seconds: seconds });
+  queue(`h:${guildId}:${day}:${botHour(now)}`, 'increment_activity_hourly', { p_guild_id: guildId, p_day: day, p_hour: botHour(now) }, { p_messages: 0, p_voice_seconds: seconds });
   queue(`m:${guildId}:${day}:${userId}`, 'increment_activity_member', { p_guild_id: guildId, p_day: day, p_user_id: userId }, { p_messages: 0, p_voice_seconds: seconds });
 }
 
@@ -84,9 +85,7 @@ function queueFlow(guildId, { joins = 0, leaves = 0, invited = 0 }, now = new Da
 }
 
 function startOf(days) {
-  const start = new Date();
-  start.setUTCDate(start.getUTCDate() - Math.max(0, days - 1));
-  return dayOf(start);
+  return dayOf(new Date(Date.now() - Math.max(0, days - 1) * 86_400_000));
 }
 
 async function select(table, columns, guildId, days) {
@@ -97,6 +96,14 @@ async function select(table, columns, guildId, days) {
 
 const getHourly = (guildId, days) => select('activity_hourly', 'day, hour, messages, voice_seconds', guildId, days);
 const getFlow = (guildId, days) => select('member_flow', 'day, joins, leaves, invited', guildId, days);
+/** The sanction cases of the last days (kind, who applied it, who got it and when). */
+async function getCases(guildId, days) {
+  const from = new Date(`${startOf(days)}T00:00:00-05:00`).toISOString(); // the start of that day in Colombia (GMT-5)
+  const { data, error } = await database.from('mod_actions').select('type, source, moderator_id, user_id, created_at').eq('guild_id', guildId).gte('created_at', from).order('created_at', { ascending: true }).limit(20000);
+  if (error) throw error;
+  return data ?? [];
+}
+
 const getMembers = (guildId, days) => select('activity_members', 'day, user_id, messages, voice_seconds', guildId, days);
 
-module.exports = { queueMessage, queueVoice, queueFlow, flush, getHourly, getFlow, getMembers };
+module.exports = { queueMessage, queueVoice, queueFlow, flush, getHourly, getFlow, getMembers, getCases };

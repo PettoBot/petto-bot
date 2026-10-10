@@ -172,6 +172,9 @@ create table if not exists mod_actions (
   unique (guild_id, case_number)
 );
 
+-- Who or what applied the case: a moderator, automod, the honeypot, warn escalation, automatic expiry or anti-nuke.
+alter table mod_actions add column if not exists source text not null default 'moderator';
+
 -- `create table if not exists` above is a no-op against an already-migrated database, so the
 -- CHECK constraint (added here for tempban/tempmute/softban) needs its own idempotent migration step.
 alter table mod_actions drop constraint if exists mod_actions_type_check;
@@ -234,13 +237,16 @@ alter table guild_case_counters enable row level security;
 -- Atomically allocates the next case number for this guild and inserts the case.
 -- The MAX() guard only repairs a missing/stale counter; normal numbering comes
 -- from guild_case_counters and therefore never mixes numbers between servers.
+-- The old six-argument version is dropped first: a new signature next to it would make every call ambiguous.
+drop function if exists create_mod_case(text, text, text, text, text, timestamptz);
 create or replace function create_mod_case(
   p_guild_id      text,
   p_user_id       text,
   p_moderator_id  text,
   p_type          text,
   p_reason        text default null,
-  p_expires_at    timestamptz default null
+  p_expires_at    timestamptz default null,
+  p_source        text default 'moderator'
 ) returns mod_actions
 language plpgsql
 as $$
@@ -262,8 +268,8 @@ begin
    where guild_id = p_guild_id
    returning last_case_number into v_case_number;
 
-  insert into mod_actions (guild_id, case_number, user_id, moderator_id, type, reason, expires_at)
-  values (p_guild_id, v_case_number, p_user_id, p_moderator_id, p_type, p_reason, p_expires_at)
+  insert into mod_actions (guild_id, case_number, user_id, moderator_id, type, reason, expires_at, source)
+  values (p_guild_id, v_case_number, p_user_id, p_moderator_id, p_type, p_reason, p_expires_at, coalesce(p_source, 'moderator'))
   returning * into v_row;
 
   return v_row;
@@ -1953,6 +1959,15 @@ begin
         voice_seconds = activity_stats.voice_seconds + excluded.voice_seconds;
 end;
 $$;
+
+-- The prefix a person chose for themselves (`!myprefix`). It works in every server next to the server's own prefix, for as
+-- long as the person still meets the requirements.
+create table if not exists user_prefixes (
+  user_id    text primary key,
+  prefix     text not null,
+  updated_at timestamptz not null default now()
+);
+alter table user_prefixes enable row level security;
 
 -- Joins, leaves and joins through a tracked invite, per server and day (the Statistics page, `/summary`).
 create table if not exists member_flow (

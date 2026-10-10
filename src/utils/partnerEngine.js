@@ -74,11 +74,12 @@ function judge({ invite, ownGuildId, config, blacklisted = false, last = null, n
   return null;
 }
 
-/** The start of "today" or "this week" (Monday) in UTC, or null for all time. */
+/** The start of "today" or "this week" (Monday) in GMT-5 (Colombia), or null for all time. */
 function periodStart(period, now = new Date()) {
-  const day = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const local = new Date(now.getTime() - 5 * 3_600_000);
+  const day = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()) + 5 * 3_600_000;
   if (period === 'day') return new Date(day);
-  if (period === 'week') return new Date(day - ((now.getUTCDay() + 6) % 7) * DAY_MS);
+  if (period === 'week') return new Date(day - ((local.getUTCDay() + 6) % 7) * DAY_MS);
   return null;
 }
 

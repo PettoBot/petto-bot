@@ -215,7 +215,7 @@ function normalizeZoneInput(value) {
 
 function resolveTimezone(input) {
   const raw = String(input ?? '').trim();
-  if (!raw) return { zone: 'UTC', label: 'UTC' };
+  if (!raw) return { zone: 'America/Bogota', label: 'Colombia · GMT-5 (the time Petto uses)' };
   const zone = COUNTRY_ZONES.get(normalizeZoneInput(raw)) ?? raw;
   return { zone, label: zone === raw ? raw : `${raw} · ${zone}` };
 }
@@ -232,7 +232,7 @@ module.exports = {
     .addStringOption((option) => option.setName('timezone').setDescription('Country name or IANA zone, for example Colombia or America/Bogota').setRequired(false)),
 
   async execute(interaction) {
-    const requested = interaction.options.getString('timezone')?.trim() || 'UTC';
+    const requested = interaction.options.getString('timezone')?.trim() || '';
     const { zone, label } = resolveTimezone(requested);
     let value;
     try {

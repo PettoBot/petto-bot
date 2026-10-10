@@ -9,8 +9,11 @@ const rules = require('../src/utils/levelRules');
 assert.deepEqual(rules.periodKeys(new Date('2026-10-02T10:00:00Z')), { week: '2026-W40', month: '2026-10' });
 assert.deepEqual(rules.periodKeys(new Date('2026-12-31T23:00:00Z')), { week: '2026-W53', month: '2026-12' });
 assert.equal(rules.periodKeys(new Date('2027-01-01T00:00:00Z')).week, '2026-W53', 'the first days of January can belong to the last ISO week');
-assert.equal(rules.periodKeys(new Date('2026-01-05T00:00:00Z')).week, '2026-W02');
+assert.equal(rules.periodKeys(new Date('2026-01-05T05:00:00Z')).week, '2026-W02', 'the week starts at midnight in Colombia (GMT-5)');
+assert.equal(rules.periodKeys(new Date('2026-01-05T00:00:00Z')).week, '2026-W01', 'at 00:00 UTC it is still Sunday night in Colombia');
 assert.equal(rules.utcDay(new Date('2026-10-02T23:59:59Z')), '2026-10-02');
+assert.equal(rules.utcDay(new Date('2026-10-03T04:59:00Z')), '2026-10-02', 'the day changes at 05:00 UTC, midnight in Colombia');
+assert.equal(rules.utcDay(new Date('2026-10-03T05:00:00Z')), '2026-10-03');
 
 assert.equal(rules.meaningfulText('hi <@123> https://x.test/a <:smile:456> ok'), 'hiok');
 assert.equal(rules.longEnough('a', { min_message_chars: 3 }), false);

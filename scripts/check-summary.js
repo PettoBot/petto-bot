@@ -37,8 +37,27 @@ assert.equal(summary.topChannels.messages[0].id, 'a');
 assert.deepEqual(bestDay(summary, 'joins'), { day: '2026-10-09', value: 4 });
 assert.equal(buildSummary({ days: 2, now }).peakHour.messages, null, 'with no data there is no busiest hour');
 
+// Sanctions: kinds, who applied them, and the day in Colombia (GMT-5).
+const caseRows = [
+  { type: 'ban', source: 'moderator', moderator_id: 'm1', user_id: 'u1', created_at: '2026-10-09T15:00:00Z' },
+  { type: 'warn', source: 'honeypot', moderator_id: 'bot', user_id: 'u2', created_at: '2026-10-10T02:00:00Z' }, // 21:00 on Oct 9 in Colombia
+  { type: 'tempmute', source: 'moderator', moderator_id: 'bot', user_id: 'u2', created_at: '2026-10-10T08:00:00Z' }, // a case by the bot with no source is automatic
+  { type: 'unban', source: 'moderator', moderator_id: 'm1', user_id: 'u1', created_at: '2026-10-10T09:00:00Z' },
+  { type: 'kick', source: 'automod', moderator_id: 'bot', user_id: 'u3', created_at: '2026-09-01T09:00:00Z' },
+];
+const withCases = buildSummary({ days: 3, caseRows, botId: 'bot', now });
+assert.equal(withCases.sanctions.total, 3, 'an unban is not a sanction and an old case is outside the range');
+assert.deepEqual([withCases.sanctions.byGroup.bans, withCases.sanctions.byGroup.warns, withCases.sanctions.byGroup.mutes, withCases.sanctions.byGroup.undone], [1, 1, 1, 1]);
+assert.deepEqual(withCases.sanctions.daily, [0, 2, 1], 'the case at 02:00 UTC belongs to the day before in Colombia');
+assert.equal(withCases.sanctions.bySource.honeypot, 1); assert.equal(withCases.sanctions.bySource.automod, 1); assert.equal(withCases.sanctions.automatic, 2);
+assert.equal(withCases.sanctions.topUsers[0].id, 'u2');
+const { botDay, botHour, formatBotTime } = require('../src/utils/botTime');
+assert.equal(botDay(new Date('2026-10-10T04:59:00Z')), '2026-10-09'); assert.equal(botDay(new Date('2026-10-10T05:00:00Z')), '2026-10-10');
+assert.equal(botHour(new Date('2026-10-10T02:00:00Z')), 21);
+assert.match(formatBotTime(new Date('2026-10-10T02:00:00Z')), /9:00 PM GMT-5$/);
+
 for (const metric of METRICS) {
-  const png = buildSummaryCard({ guildName: 'Test', days: 3, metric, summary });
+  const png = buildSummaryCard({ guildName: 'Test', days: 3, metric, summary: withCases });
   assert.equal(png.subarray(1, 4).toString(), 'PNG', `${metric} draws a picture`);
 }
 assert.ok(buildSummaryCard({ guildName: 'Empty', days: 7, metric: 'overview', summary: buildSummary({ days: 7, now }) }).length > 1000, 'a server with no data still gets a picture');

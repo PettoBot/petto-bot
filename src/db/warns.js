@@ -6,8 +6,8 @@ const { createCase } = require('./modActions');
  * shows up in general history/logs) and a row in `warns` (so it can be
  * listed or revoked independently, e.g. a future /warnings or /delwarn).
  */
-async function addWarn({ guildId, userId, moderatorId, reason = null }) {
-  const modCase = await createCase({ guildId, userId, moderatorId, type: 'warn', reason });
+async function addWarn({ guildId, userId, moderatorId, reason = null, source = 'moderator' }) {
+  const modCase = await createCase({ guildId, userId, moderatorId, type: 'warn', reason, source });
 
   const { data, error } = await database
     .from('warns')
