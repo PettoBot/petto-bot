@@ -6,6 +6,7 @@ All notable changes to Petto are documented here.
 
 ### Changed
 
+- `!serverinfo` has a new Components V2 design: the server's picture next to its name, description, creation date and owner; the banner under it; then members (people and bots), boosters, channels, the boost level with how many boosts are left for the next one, verification and language, how full the roles, emojis and stickers are, and the features that matter (Community, Partnered, Verified, vanity link...). The buttons open the icon, the banner, the invite splash and the server link, only when the server has them.
 - `!serverinfo` shows the description of the server: it is read fresh from Discord, because the copy Petto keeps does not always have it.
 - `!myprefix` says in its help how to get a prefix of your own (boost the support server, Premium, partner or team).
 - The text under the picture of `/summary` is short and friendly: at most four lines, each with a Petto emoji (the busiest hour and day, the favorite channels, who chatted the most, and whether the server grew), instead of long lists that repeated what the picture already shows.

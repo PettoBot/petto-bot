@@ -1,6 +1,5 @@
 const { SlashCommandBuilder, ChannelType } = require('discord.js');
-const { infoPayload, clip, stamp, line } = require('../../utils/infoCard');
-const { EMOJI } = require('../../utils/emojis');
+const { serverInfoPayload } = require('../../utils/serverInfoCard');
 
 const VERIFICATION_LEVELS = ['None', 'Low', 'Medium', 'High', 'Highest'];
 const TEXT_CHANNEL_TYPES = new Set([ChannelType.GuildText, ChannelType.GuildAnnouncement]);
@@ -16,11 +15,6 @@ function premiumTierNumber(tier) {
   if (normalized.startsWith('TIER_')) return premiumTierNumber(normalized.slice(5));
   if (/^\d+$/.test(normalized)) return Math.max(0, Math.min(3, Number(normalized)));
   return 0;
-}
-
-function premiumTierLabel(tier) {
-  const level = premiumTierNumber(tier);
-  return level === 0 ? 'No level' : `Level ${level}`;
 }
 
 module.exports = {
@@ -49,56 +43,28 @@ module.exports = {
     const iconUrl = guild.iconURL({ size: 512 });
     const shardCount = Math.max(1, interaction.client.ws?.shards?.size ?? 1);
 
-    await interaction.reply(infoPayload({
-      title: guild.name,
-      thumbnail: iconUrl,
-      banner: guild.bannerURL({ size: 1024 }),
-      subtitle: [
-        description ? `> ${clip(description, 300)}` : null,
-        `${EMOJI.RELEASE_NOTE} Created ${stamp(guild.createdTimestamp)}`,
-      ],
-      sections: [
-        {
-          title: 'Overview',
-          lines: [
-            line('Owner', owner ? `<@${owner.id}>` : 'Unknown'),
-            line('Verification', VERIFICATION_LEVELS[guild.verificationLevel] ?? 'Unknown'),
-            line('Boosts', `${guild.premiumSubscriptionCount ?? 0} · ${premiumTierLabel(tier)}`),
-            line('Language', guild.preferredLocale),
-          ],
-        },
-        {
-          title: 'Members',
-          lines: [
-            line('Total', guild.memberCount),
-            humans === null ? null : line('Humans', `${humans} · **Bots** ${bots}`),
-            boosters === null ? null : line('Boosters', boosters),
-          ],
-        },
-        {
-          title: `Channels (${textChannels + forumChannels + voiceChannels + categories})`,
-          lines: [
-            line('Text', textChannels),
-            forumChannels ? line('Forums', forumChannels) : null,
-            line('Voice', voiceChannels),
-            line('Categories', categories),
-          ],
-        },
-        {
-          title: 'Content',
-          lines: [
-            line('Roles', `${Math.max(0, guild.roles.cache.size - 1)}/250`),
-            line('Emojis', `${guild.emojis.cache.size}/${EMOJI_LIMITS[tier]}`),
-            line('Stickers', `${guild.stickers.cache.size}/${STICKER_LIMITS[tier]}`),
-          ],
-        },
-      ],
-      footer: `ID ${guild.id} · Shard ${guild.shardId + 1}/${shardCount}`,
-      buttons: [
-        { label: 'Icon', url: guild.iconURL({ size: 1024 }) },
-        { label: 'Banner', url: guild.bannerURL({ size: 1024 }) },
-        { label: 'Invite splash', url: guild.splashURL({ size: 1024 }) },
-      ],
+    await interaction.reply(serverInfoPayload({
+      name: guild.name,
+      id: guild.id,
+      description,
+      createdTimestamp: guild.createdTimestamp,
+      ownerId: owner?.id ?? guild.ownerId ?? null,
+      iconUrl,
+      bannerUrl: guild.bannerURL({ size: 1024 }),
+      splashUrl: guild.splashURL({ size: 1024 }),
+      vanityUrl: guild.vanityURLCode ? `https://discord.gg/${guild.vanityURLCode}` : null,
+      memberCount: guild.memberCount,
+      humans, bots, boosters,
+      boosts: guild.premiumSubscriptionCount ?? 0,
+      tier,
+      verification: VERIFICATION_LEVELS[guild.verificationLevel] ?? 'Unknown',
+      locale: guild.preferredLocale,
+      textChannels, forumChannels, voiceChannels, categories,
+      roles: Math.max(0, guild.roles.cache.size - 1),
+      emojis: guild.emojis.cache.size, emojiLimit: EMOJI_LIMITS[tier],
+      stickers: guild.stickers.cache.size, stickerLimit: STICKER_LIMITS[tier],
+      features: [...(fresh?.features ?? guild.features ?? [])],
+      shard: guild.shardId + 1, shards: shardCount,
     }));
   },
 };
