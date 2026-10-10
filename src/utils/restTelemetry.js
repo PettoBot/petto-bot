@@ -1,3 +1,4 @@
+const config = require('../config');
 const logger = require('./logger');
 
 const LOG_COOLDOWN_MS = 60_000;
@@ -20,6 +21,8 @@ function attachRestRateLimitTelemetry(client) {
   client.rest[ATTACHED] = true;
 
   client.rest.on('rateLimited', (info = {}) => {
+    // The wait of the bot's own limit (see `restRequestsPerSecond`) is not Discord limiting it: nothing to warn about.
+    if (info.global && Number(info.limit) === Number(config.restRequestsPerSecond)) return;
     const key = routeKey(info);
     const now = Date.now();
     const lastLogged = lastLoggedAt.get(key) || 0;

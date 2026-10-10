@@ -4,7 +4,7 @@ const logger = require('./logger');
 const { exclusiveTask } = require('./concurrency');
 
 const STATUS_MARKER = 'Petto operational status';
-const STATUS_INTERVAL_MS = 60_000;
+const STATUS_INTERVAL_MS = 5 * 60_000; // two message edits each time, so not every minute
 const statusMessages = new Map();
 const STATUS_ROLE_ID = '1535390039780098200';
 const STATUS_ALERT = '<a:campana:1531389377949859870>';
@@ -240,6 +240,28 @@ function startDiscordStatusJob(client) {
   timer.unref?.();
 }
 
+// The log lines go to the general channel in groups instead of one message each: every line used to be its own request, and a busy
+// minute (or a warning about requests, which is itself a message) multiplied them.
+const LOG_FLUSH_MS = 5_000;
+const LOG_MESSAGE_LIMIT = 1900;
+let logLines = [];
+let logTimer = null;
+
+function flushLogLines(client) {
+  logTimer = null;
+  const lines = logLines;
+  logLines = [];
+  const chunks = [];
+  let current = '';
+  for (const line of lines) {
+    if (current && current.length + line.length + 1 > LOG_MESSAGE_LIMIT) { chunks.push(current); current = ''; }
+    current += `${current ? '\n' : ''}${line}`;
+  }
+  if (current) chunks.push(current);
+  // At most three messages per flush; the rest of a flood is dropped from the channel (it is still in the host log).
+  for (const content of chunks.slice(0, 3)) sendToChannel(client, channelIdFor('general'), { content, allowedMentions: { parse: [] } }).catch(() => {});
+}
+
 function attachDiscordLogger(client) {
   if (loggerAttached) return;
   loggerAttached = true;
@@ -248,10 +270,9 @@ function attachDiscordLogger(client) {
     // diagnostics sink handles WARN/ERROR embeds in its own channel as well.
     const text = redact(args.map(safeText).join(' '));
     if (!text || /Status heartbeat job started|Failed to report status/i.test(text)) return;
-    return sendToChannel(client, channelIdFor('general'), {
-      content: `\`${stamp}\` **${level.toUpperCase()}** ${text}`,
-      allowedMentions: { parse: [] },
-    });
+    if (!channelIdFor('general')) return;
+    logLines.push(`\`${stamp}\` **${level.toUpperCase()}** ${text.slice(0, 600)}`);
+    if (!logTimer) { logTimer = setTimeout(() => flushLogLines(client), LOG_FLUSH_MS); logTimer.unref?.(); }
   });
 }
 
