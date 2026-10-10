@@ -4,8 +4,8 @@ const RELEASES = [
   {
     version: 'v0.7.4',
     display: 'v0.7.4',
-    name: 'Mochi',
-    label: 'v0.7.4 · Mochi: Vanity in Petto, statistics & hardban',
+    name: 'Brownie',
+    label: 'v0.7.4 · Brownie: Vanity in Petto, statistics & hardban',
     date: '2026-10-10',
     accent: 0xf0a88f,
     status: `${EMOJI.RELEASE_APPROVED} Latest`,

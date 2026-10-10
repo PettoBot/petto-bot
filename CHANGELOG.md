@@ -4,7 +4,7 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
-## [0.7.4] — 2026-10-10 · Mochi
+## [0.7.4] — 2026-10-10 · Brownie
 
 ### Added
 
