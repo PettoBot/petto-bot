@@ -4,6 +4,10 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- The new activity counters failed with `Unsupported PostgreSQL RPC: increment_activity_member`: the database layer only allows the functions it lists, and the new ones (`increment_activity_hourly`, `increment_activity_member`, `increment_member_flow`) were not listed, so the most active hour, the active members and the joins and leaves per day were never counted. The same list also left out the new arguments of `increment_invite_stat` (fake and bonus invites) and `create_mod_case` (who applied the case), so those were dropped silently. A check now fails when a function the bot calls is missing from the list or its arguments differ.
+
 ## [0.7.4] — 2026-10-10 · Brownie
 
 ### Added
