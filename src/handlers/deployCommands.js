@@ -21,7 +21,7 @@ async function rememberDeployed(settings, key, hash) {
  * changed since the last time. A failure here (a rate limit, Discord being down) never stops the bot from starting: the
  * commands that were registered before keep working.
  */
-async function deployCommands({ force = false, strict = false, rest = new REST().setToken(config.token), settings = null } = {}) {
+async function deployCommands({ force = false, strict = false, rest = new REST({ globalRequestsPerSecond: config.restRequestsPerSecond ?? 7 }).setToken(config.token), settings = null } = {}) {
   const commands = collectCommandData();
   settings ??= defaultSettings();
 
