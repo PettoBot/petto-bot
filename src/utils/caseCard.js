@@ -11,15 +11,15 @@ const {
 } = require('discord.js');
 const { EMOJI, TYPE_EMOJI } = require('./emojis');
 
-const { COLORS, buildSanctionCard } = require('./sanctionDesign');
+const { COLORS, buildSanctionConfirm } = require('./sanctionDesign');
 
 function capitalize(str) {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
-/** Components V2 case card, used for the command reply (the log and the DM use the same design). */
-function buildCaseCard({ caseNumber, type, target, moderator, reason, duration, expiresAt = null, previous = null, guild = null }) {
-  return buildSanctionCard({ type, caseNumber, target, moderator, reason, duration, expiresAt, previous, guild });
+/** Short Components V2 confirmation for the command reply (the log and the DM have their own, fuller cards). */
+function buildCaseCard({ caseNumber, type, target, moderator, reason, duration, expiresAt = null }) {
+  return buildSanctionConfirm({ type, caseNumber, target, moderator, reason, duration, expiresAt });
 }
 
 /** A single-block Components V2 card for plain status text (errors, confirmations) once a reply is already in V2 mode. */
