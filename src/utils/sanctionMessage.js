@@ -1,39 +1,11 @@
-const { EMOJI, TYPE_EMOJI } = require('./emojis');
-
-const VERB = {
-  ban: 'banned from',
-  hardban: 'permanently banned from',
-  tempban: 'temporarily banned from',
-  softban: 'kicked from',
-  unban: 'unbanned from',
-  kick: 'kicked from',
-  mute: 'muted in',
-  tempmute: 'temporarily muted in',
-  unmute: 'unmuted in',
-  warn: 'warned in',
-  jail: 'jailed in',
-  unjail: 'released from jail in',
-};
+const { sanctionPayload } = require('./sanctionDesign');
 
 /**
- * Builds the DM sent to a sanctioned user, shared by every sanction command
- * (ban/kick/mute/warn/tempban/tempmute) so they all read the same way:
- *
- *   <emoji>  You have been banned from **Guild Name** for 7 days | Reason: `spamming`
- *
- *   -# Sent from 'Petto' (`123456789012345678`) with 214 members
+ * The message a sanctioned user is sent when the server has no saved DM for the sanction: a Components V2 card with the
+ * server's picture, what happened, who did it, how long and why. Goes straight into `.send(...)`.
  */
-function buildSanctionDM({ type, guild, client, reason, duration }) {
-  const emoji = TYPE_EMOJI[type] ?? EMOJI.ALERT;
-  const verb = VERB[type] ?? 'sanctioned in';
-  const durationPart = duration ? ` for ${duration}` : '';
-  const reasonPart = reason ? ` | Reason: \`${reason}\`` : '';
-
-  return [
-    `${emoji}  You have been ${verb} **${guild.name}**${durationPart}${reasonPart}`,
-    '',
-    `-# Sent from '${client.user.username}' (\`${guild.id}\`) with ${guild.memberCount} members`,
-  ].join('\n');
+function buildSanctionDM({ type, guild, reason, duration, moderator = null, caseNumber = null, expiresAt = null }) {
+  return sanctionPayload({ type, guild, reason, duration, moderator: moderator ?? guild?.client?.user ?? 'Petto', caseNumber, expiresAt, audience: 'member' });
 }
 
 module.exports = { buildSanctionDM };

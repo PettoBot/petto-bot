@@ -4,6 +4,8 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+
+- New default look for sanctions, in Components V2, with the new Petto emojis: one person icon per kind of sanction (ban, tempban, kick, mute, warn, unban and more), a colored side bar (red, yellow or green), the member's picture, and lines for User, Moderator, Ends or Duration, Reason and History (how many earlier sanctions the user has). The same design is used for the reply of the command, the sanctions log (sent through the log webhook as a V2 message) and the DM to the member (which shows the server picture and what happened, without ids). A server that saved its own message for a sanction keeps using it.
 ### Added
 
 - The saved embeds of the old Vanity bot come over as Components V2 cards instead of flat embeds: the title and text with the thumbnail next to them, the image as a picture, the fields as bold labels, the footer as small text and the link buttons. The messages the old bot made by itself (`vanity_notify`, `guildtag_notify`, `notify_*`) become Petto's own designs, with the member's picture and Petto's emoji. `node scripts/upgrade-vanity-embeds.js` turns the ones an earlier import brought over as classic embeds into V2 working only on Petto's database (the old Vanity database is not needed, so it works after it is gone). It only touches those that came from the import and are still classic, and it can be run again.

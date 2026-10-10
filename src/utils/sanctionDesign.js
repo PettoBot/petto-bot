@@ -1,0 +1,99 @@
+// The default look of a sanction (Components V2): the same card for the reply of the command, the sanctions log and the
+// message the sanctioned member gets. A server can still replace each one with its own saved message.
+const { ContainerBuilder, SectionBuilder, SeparatorBuilder, SeparatorSpacingSize, TextDisplayBuilder, ThumbnailBuilder, MessageFlags } = require('discord.js');
+const { EMOJI, TYPE_EMOJI, TYPE_BAR } = require('./emojis');
+
+const COLORS = {
+  ban: 0xfe6465, hardban: 0xfe6465, tempban: 0xfe6465, softban: 0xfe6465,
+  unban: 0xa5ea7a, unmute: 0xa5ea7a, unjail: 0xa5ea7a,
+  kick: 0xfed53c, mute: 0xfed53c, tempmute: 0xfed53c, warn: 0xfed53c, jail: 0xfed53c,
+};
+
+const TITLE = {
+  ban: 'Ban', hardban: 'Hardban', tempban: 'Tempban', softban: 'Softban', unban: 'Unban',
+  kick: 'Kick', mute: 'Mute', tempmute: 'Tempmute', unmute: 'Unmute', warn: 'Warn', jail: 'Jail', unjail: 'Unjail',
+};
+
+// What a member reads in their DM: "You were ___ in <server>".
+const VERB = {
+  ban: 'banned from', hardban: 'permanently banned from', tempban: 'temporarily banned from', softban: 'softbanned from',
+  unban: 'unbanned from', kick: 'kicked from', mute: 'muted in', tempmute: 'temporarily muted in', unmute: 'unmuted in',
+  warn: 'warned in', jail: 'jailed in', unjail: 'released from jail in',
+};
+
+const REASON_LIMIT = 900;
+
+function unix(value) {
+  const time = value instanceof Date ? value.getTime() : Date.parse(value);
+  return Number.isFinite(time) ? Math.floor(time / 1000) : null;
+}
+
+function clip(text, limit) {
+  const value = String(text ?? '').trim();
+  return value.length > limit ? `${value.slice(0, limit - 1)}…` : value;
+}
+
+function mention(user) {
+  const id = user?.id ?? String(user);
+  return `<@${id}>`;
+}
+
+function iconOf(user, size = 256) {
+  return user?.displayAvatarURL?.({ extension: 'png', size }) ?? null;
+}
+
+/** The lines of the card, each one starting with the colored bar of the sanction. */
+function fieldLines({ type, caseNumber, target, moderator, reason, duration, expiresAt, previous, audience }) {
+  const bar = TYPE_BAR[type] ?? EMOJI.BAR_GRAY;
+  const line = (icon, label, value) => `${bar} ${icon} **${label}** ${value}`;
+  const lines = [];
+
+  if (audience === 'staff') lines.push(line(EMOJI.FIELD_DOT, 'User', `${mention(target)} (\`${target?.id ?? target}\`)`));
+  lines.push(line(EMOJI.FIELD_DOT, 'Moderator', mention(moderator)));
+
+  const end = expiresAt ? unix(expiresAt) : null;
+  if (end) lines.push(line(EMOJI.FIELD_CALENDAR, 'Ends', `<t:${end}:R> · <t:${end}:f>`));
+  else if (duration) lines.push(line(EMOJI.FIELD_CALENDAR, 'Duration', duration));
+  else if (['ban', 'hardban'].includes(type)) lines.push(line(EMOJI.FIELD_CALENDAR, 'Duration', 'Permanent'));
+
+  lines.push(line(EMOJI.FIELD_REASON, 'Reason', clip(reason || 'No reason provided.', REASON_LIMIT)));
+
+  if (audience === 'staff' && Number.isInteger(previous)) {
+    lines.push(line(EMOJI.FIELD_NOTES, 'History', previous === 0 ? 'First sanction' : `${previous} earlier ${previous === 1 ? 'sanction' : 'sanctions'}`));
+  }
+  return lines;
+}
+
+/**
+ * The card. `audience` is `staff` (the command reply and the log, with the user and their history) or `member` (the DM,
+ * addressed to the member, with the server's name and picture). `previous` is the number of earlier sanctions, when known.
+ */
+function buildSanctionCard({ type, caseNumber = null, guild = null, target = null, moderator = null, reason = null, duration = null, expiresAt = null, previous = null, audience = 'staff' }) {
+  const emoji = TYPE_EMOJI[type] ?? EMOJI.ALERT;
+  const name = TITLE[type] ?? type;
+  const heading = audience === 'member'
+    ? `### ${emoji} You were ${VERB[type] ?? 'sanctioned in'} ${guild?.name ?? 'the server'}`
+    : `### ${emoji} ${name}${caseNumber != null ? ` · Case #${caseNumber}` : ''}`;
+  const text = [heading, ...fieldLines({ type, caseNumber, target, moderator, reason, duration, expiresAt, previous, audience })].join('\n');
+
+  const picture = audience === 'member' ? guild?.iconURL?.({ extension: 'png', size: 256 }) : iconOf(target);
+  const container = new ContainerBuilder().setAccentColor(COLORS[type] ?? 0x4b4f59);
+  const body = new TextDisplayBuilder().setContent(text);
+  if (picture) container.addSectionComponents(new SectionBuilder().addTextDisplayComponents(body).setThumbnailAccessory(new ThumbnailBuilder().setURL(picture)));
+  else container.addTextDisplayComponents(body);
+
+  const footer = audience === 'member'
+    ? `-# ${caseNumber != null ? `Case #${caseNumber} · ` : ''}${guild?.name ?? ''}${guild?.memberCount ? ` · ${guild.memberCount} members` : ''}`
+    : `-# ${guild?.name ?? ''} · <t:${Math.floor(Date.now() / 1000)}:f>`;
+  container
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(false).setSpacing(SeparatorSpacingSize.Small))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(footer));
+  return container;
+}
+
+/** The same card as something `.send()` or a webhook takes. */
+function sanctionPayload(options) {
+  return { components: [buildSanctionCard(options)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } };
+}
+
+module.exports = { buildSanctionCard, sanctionPayload, COLORS, TITLE, VERB };
