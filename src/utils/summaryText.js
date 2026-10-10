@@ -8,15 +8,15 @@ const dayText = (day) => new Date(`${day}T00:00:00Z`).toLocaleDateString('en-US'
 const hours = (seconds) => { const m = Math.floor(seconds / 60); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`; };
 
 const MAX_LINES = 4;
-const ICON = { time: EMOJI.FIELD_CALENDAR, good: EMOJI.APPROVE, star: EMOJI.STAR, note: EMOJI.FIELD_NOTES, alert: EMOJI.ALERT, hammer: EMOJI.HAMMER };
+const ICON = { time: EMOJI.FIELD_CALENDAR, good: EMOJI.APPROVE, star: EMOJI.STAR, note: EMOJI.FIELD_NOTES, alert: EMOJI.ALERT, hammer: EMOJI.HAMMER, members: EMOJI.MEMBERS };
 
 const names = (entries, limit = 3) => entries.slice(0, limit).join('  ·  ');
 const growthLine = (totals) => {
   const growth = totals.joins - totals.leaves;
   if (!totals.joins && !totals.leaves) return null;
-  if (growth > 0) return `${ICON.good} The server grew by **${n(growth)}** member${growth === 1 ? '' : 's'}`;
-  if (growth < 0) return `${ICON.alert} **${n(-growth)}** more member${growth === -1 ? '' : 's'} left than joined`;
-  return `${ICON.note} The same number of members joined and left`;
+  if (growth > 0) return `${ICON.members} The server grew by **${n(growth)}** member${growth === 1 ? '' : 's'}`;
+  if (growth < 0) return `${ICON.members} **${n(-growth)}** more member${growth === -1 ? '' : 's'} left than joined`;
+  return `${ICON.members} The same number of members joined and left`;
 };
 
 function busiest(summary, key, noun, peak, label) {
@@ -57,11 +57,11 @@ function describeSummary(metric, summary, days, inviters = [], { channelExists =
     if (s.topModerators.length) out.push(`${ICON.star} Busiest moderators  ${names(s.topModerators.map((r) => `<@${r.id}> ${n(r.count)}`), 2)}`);
     if (s.topUsers.length) out.push(`${ICON.alert} Most sanctioned  ${names(s.topUsers.map((r) => `<@${r.id}> ${n(r.count)}`), 2)}`);
   } else if (['joins', 'leaves', 'invites'].includes(metric)) {
-    if (!totals.joins && !totals.leaves) return [`${ICON.note} Joins and leaves are counted from the moment this was added`];
+    if (!totals.joins && !totals.leaves) return [`${ICON.members} Joins and leaves are counted from the moment this was added`];
     out.push(growthLine(totals));
-    if (totals.joins) out.push(`${ICON.star} **${Math.round((totals.invited / totals.joins) * 100)}%** of the joins came through an invite`);
+    if (totals.joins) out.push(`${ICON.members} **${Math.round((totals.invited / totals.joins) * 100)}%** of the joins came through an invite`);
     out.push(busiest(summary, metric === 'invites' ? 'invited' : metric, metric === 'leaves' ? 'left' : 'joined', null, null));
-    if (metric === 'invites' && inviters.length) out.push(`${ICON.star} Top inviters  ${names(inviters.map((r) => `<@${r.inviter_id}> ${n(r.net)}`))}`);
+    if (metric === 'invites' && inviters.length) out.push(`${ICON.members} Top inviters  ${names(inviters.map((r) => `<@${r.inviter_id}> ${n(r.net)}`))}`);
   } else {
     out.push(busiest(summary, 'messages', 'messages', summary.peakHour.messages, (v) => `${n(v)} messages`));
     if (summary.topChannels.messages.length) out.push(`${ICON.note} Favorite channels  ${names(channels(summary.topChannels.messages, (r) => n(r.messages)), 2)}`);
