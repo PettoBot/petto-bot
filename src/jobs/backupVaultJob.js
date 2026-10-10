@@ -41,15 +41,27 @@ function startBackupVaultJob(client) {
     return;
   }
   const run = exclusiveTask(() => processDueBackups(client));
-  // The job polls every minute, so only report the first failure of an outage
-  // (and the recovery) instead of alerting on every retry.
-  let failing = false;
+  // The job polls every minute. A database connection that times out for a moment is normal and comes back by itself, so it is
+  // only reported when it lasts (three ticks in a row); anything else is reported at the first failure. Either way only the first
+  // report of an outage is sent, and the recovery.
+  const TRANSIENT = /connection (terminated|timeout)|timeout|ECONNRESET|ETIMEDOUT|ECONNREFUSED|EAI_AGAIN/i;
+  const REPORT_AFTER = 3;
+  let failures = 0;
+  let reported = false;
   const tick = () => run().then(() => {
-    if (failing) logger.info('Vault backup job recovered.');
-    failing = false;
+    if (reported) logger.info('Vault backup job recovered.');
+    failures = 0;
+    reported = false;
   }).catch((err) => {
-    if (!failing) logger.error('Vault backup job error:', err);
-    failing = true;
+    failures += 1;
+    const transient = TRANSIENT.test(String(err?.message ?? err));
+    if (reported) return;
+    if (transient && failures < REPORT_AFTER) {
+      logger.info(`Vault backup job: ${err.message}; trying again in a minute (${failures}/${REPORT_AFTER}).`);
+      return;
+    }
+    reported = true;
+    logger.error(`Vault backup job error: ${err?.message ?? err}`, err);
   });
   tick();
   setInterval(tick, POLL_INTERVAL_MS).unref?.();

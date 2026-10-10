@@ -29,7 +29,9 @@ module.exports = {
 
   async execute(interaction) {
     const guild = interaction.guild;
-    const owner = await guild.fetchOwner().catch(() => null);
+    // The server's description is not always in the cached copy of the server, so it is read fresh.
+    const [owner, fresh] = await Promise.all([guild.fetchOwner().catch(() => null), guild.fetch().catch(() => null)]);
+    const description = fresh?.description ?? guild.description ?? null;
     const tier = premiumTierNumber(guild.premiumTier);
     const channels = [...guild.channels.cache.values()];
     const count = (types) => channels.filter((channel) => types.has(channel.type)).length;
@@ -52,7 +54,7 @@ module.exports = {
       thumbnail: iconUrl,
       banner: guild.bannerURL({ size: 1024 }),
       subtitle: [
-        guild.description ? `> ${clip(guild.description, 300)}` : null,
+        description ? `> ${clip(description, 300)}` : null,
         `${EMOJI.RELEASE_NOTE} Created ${stamp(guild.createdTimestamp)}`,
       ],
       sections: [
