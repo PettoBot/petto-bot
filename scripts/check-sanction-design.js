@@ -8,7 +8,7 @@ require.cache[enginePath] = { id: enginePath, filename: enginePath, loaded: true
 const templatesPath = path.resolve(__dirname, '../src/utils/sanctionTemplates.js');
 require.cache[templatesPath] = { id: templatesPath, filename: templatesPath, loaded: true, exports: { sanctionLogEmbed: async () => null, previousSanctions: async () => 2 } };
 
-const { buildSanctionCard, sanctionPayload } = require('../src/utils/sanctionDesign');
+const { buildSanctionCard, buildSanctionConfirm, sanctionPayload } = require('../src/utils/sanctionDesign');
 const { buildSanctionDM } = require('../src/utils/sanctionMessage');
 const { logSanction } = require('../src/utils/caseLog');
 const { TYPE_EMOJI } = require('../src/utils/emojis');
@@ -34,10 +34,10 @@ const text = (card) => JSON.stringify(card.toJSON());
   assert.ok(text(buildSanctionCard({ type: 'ban', caseNumber: 1, guild, target: user, moderator: mod, previous: 0 })).includes('First sanction'));
   assert.ok(text(buildSanctionCard({ type: 'ban', caseNumber: 1, guild, target: user, moderator: mod, reason: 'a'.repeat(5000) })).length < 4000, 'a long reason is cut');
 
-  const dm = buildSanctionDM({ type: 'hardban', guild, moderator: mod, reason: 'evasion', caseNumber: 9 });
-  assert.equal(dm.flags, 32768);
-  const dmText = JSON.stringify(dm.components[0].toJSON());
-  assert.ok(dmText.includes('permanently banned from') && dmText.includes('Test Server') && !dmText.includes('111'), 'the DM talks to the member and hides ids');
+  const dm = buildSanctionDM({ type: 'hardban', guild: { ...guild, client: { user: { username: 'petto' } } }, moderator: mod, reason: 'evasion', caseNumber: 9 });
+  assert.ok(dm.content.includes('permanently banned from **Test Server**') && dm.content.includes('Reason: `evasion`') && dm.content.includes('-# Sent from'), 'the DM is the one-line message');
+  assert.ok(buildSanctionDM({ type: 'softban', guild, reason: 'x' }).content.includes('kicked from'), 'a softban reads as a kick');
+  assert.ok(!text(buildSanctionConfirm({ type: 'softban', caseNumber: 3, target: user, moderator: mod, reason: 'x' })).includes('Permanent'), 'a softban is not permanent');
   assert.deepEqual(sanctionPayload({ type: 'warn', guild, target: user, moderator: mod }).allowedMentions, { parse: [] });
 
   await logSanction({}, guild, { modCase: { type: 'kick', case_number: 5, expires_at: null }, target: user, moderator: mod, reason: 'r' });

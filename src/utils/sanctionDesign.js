@@ -74,7 +74,7 @@ function buildSanctionCard({ type, caseNumber = null, guild = null, target = nul
     : `### ${emoji} ${name}${caseNumber != null ? ` · Case #${caseNumber}` : ''}`;
 
   const who = audience === 'staff' ? [`**${mention(target)}** · \`${target?.id ?? target}\``, 'ㅤ'] : [];
-  const quoted = [...who, ...detailLines({ type, moderator, duration, expiresAt, previous, audience })].map((l) => `> ${l}`).join('\n');
+  const quoted = [...who, ...detailLines({ type, moderator, duration, expiresAt, previous, audience })].map((l, i) => (i === 0 && audience === 'staff' ? `> ${l}` : `> -# ${l}`)).join('\n');
   const body = new TextDisplayBuilder().setContent(quoted);
   const picture = audience === 'member' ? guild?.iconURL?.({ extension: 'png', size: 256 }) : iconOf(target);
   const divider = () => new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Large);
@@ -102,21 +102,16 @@ const DONE = {
   kick: 'kicked', mute: 'muted', tempmute: 'temporarily muted', unmute: 'unmuted', warn: 'warned', jail: 'jailed', unjail: 'released from jail',
 };
 
-/**
- * What the moderator sees right after using the command: short, one line about what was done and one about the case, with
- * the member's picture. The full card (with the history and the reason in its own block) stays in the sanctions log.
- */
+/** What the moderator sees right after using the command: one line about what was done and a small one with the reason. */
 function buildSanctionConfirm({ type, caseNumber = null, target = null, moderator = null, reason = null, duration = null, expiresAt = null }) {
   const emoji = TYPE_EMOJI[type] ?? EMOJI.ALERT;
   const end = expiresAt ? unix(expiresAt) : null;
-  const meta = [caseNumber != null ? `Case #${caseNumber}` : null, moderator ? `by ${mention(moderator)}` : null, end ? `ends <t:${end}:R>` : duration ? duration : null].filter(Boolean).join(' · ');
-  const text = [`${emoji} **${mention(target)}** was **${DONE[type] ?? 'sanctioned'}**`, `-# ${meta}`, `> ${clip(reason || 'No reason provided.', 300).replace(/\n/g, '\n> ')}`].join('\n');
-  const body = new TextDisplayBuilder().setContent(text);
-  const picture = iconOf(target, 128);
-  const container = new ContainerBuilder().setAccentColor(COLORS[type] ?? 0x4b4f59);
-  if (picture) container.addSectionComponents(new SectionBuilder().addTextDisplayComponents(body).setThumbnailAccessory(new ThumbnailBuilder().setURL(picture)));
-  else container.addTextDisplayComponents(body);
-  return container;
+  const when = end ? ` until <t:${end}:f>` : duration ? ` for ${duration}` : '';
+  const text = [
+    `${emoji}  ${mention(target)} has been **${DONE[type] ?? 'sanctioned'}**${when}${caseNumber != null ? ` · Case #${caseNumber}` : ''}`,
+    `-# Reason: \`${clip(reason || 'No reason provided.', 300).replace(/`/g, "'")}\`${moderator ? ` · by ${mention(moderator)}` : ''}`,
+  ].join('\n');
+  return new ContainerBuilder().setAccentColor(COLORS[type] ?? 0x4b4f59).addTextDisplayComponents(new TextDisplayBuilder().setContent(text));
 }
 
 /** The same card as something `.send()` or a webhook takes. */
