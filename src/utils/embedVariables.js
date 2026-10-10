@@ -186,7 +186,7 @@ async function resolve(text, ctx = {}) {
     '{case.action}': ctx.sanction?.action ?? '',
     '{case.emoji}': ctx.sanction?.emoji ?? '',
     '{case.reason}': ctx.sanction ? (ctx.sanction.reason || 'No reason provided.') : '',
-    '{case.duration}': ctx.sanction ? (ctx.sanction.durationText || 'Permanent') : '',
+    '{case.duration}': ctx.sanction ? (ctx.sanction.durationText || (['ban', 'hardban', 'mute', 'jail'].includes(ctx.sanction.type) ? 'Permanent' : 'N/A')) : '',
     '{case.expires}': ctx.sanction ? (ctx.sanction.expiresUnix ? `<t:${ctx.sanction.expiresUnix}:R>` : 'Never') : '',
     '{case.expires_at}': ctx.sanction ? (ctx.sanction.expiresUnix ? `<t:${ctx.sanction.expiresUnix}:f>` : 'Never') : '',
     '{case.source}': ctx.sanction?.source ?? '',
