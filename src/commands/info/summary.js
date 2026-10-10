@@ -58,7 +58,7 @@ module.exports = {
       logger.warn({ guildId: guild.id, command: 'summary' }, 'The summary picture could not be drawn; sending the text only.', error);
     }
 
-    const lines = describeSummary(metric, summary, days, inviters);
+    const lines = describeSummary(metric, summary, days, inviters, { channelExists: (id) => guild.channels.cache.has(id) });
     if (lines.length) {
       container.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
       container.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));

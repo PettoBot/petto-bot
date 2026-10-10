@@ -67,7 +67,8 @@ function niceMax(value) {
 /** Bars with a grid, the axis labels, the average line and one highlighted bar. */
 function barChart(ctx, { x, y, w, h, values, labels, color, highlight = -1, format = compact, average = null }) {
   const left = x + 54;
-  const plotW = w - 54 - 8;
+  const gutter = average != null && average > 0 ? 58 : 0; // room for the label of the average, so no bar covers it
+  const plotW = w - 54 - 8 - gutter;
   const plotH = h - 34;
   const max = niceMax(Math.max(0, ...values));
   ctx.strokeStyle = GRID;
@@ -100,7 +101,7 @@ function barChart(ctx, { x, y, w, h, values, labels, color, highlight = -1, form
     ctx.lineTo(left + plotW, ay);
     ctx.stroke();
     ctx.setLineDash([]);
-    text(ctx, `avg ${format(average)}`, left + plotW, ay - 6, { font: FONT(400, 11), color: MUTED, align: 'right' });
+    text(ctx, `avg ${format(average)}`, left + plotW + 8, ay, { font: FONT(700, 11), color: ACCENT, align: 'left', baseline: 'middle' });
   }
 
   const every = Math.ceil(values.length / (plotW > 500 ? 12 : 8));

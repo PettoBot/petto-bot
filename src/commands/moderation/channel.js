@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, ChannelType } = require('discord.js');
+const { collectMessages, deleteMessages } = require('../../utils/clearMessages');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
@@ -68,7 +69,7 @@ module.exports = {
       sub
         .setName('clear')
         .setDescription('Bulk delete recent messages from this channel.')
-        .addIntegerOption((opt) => opt.setName('amount').setDescription('How many messages to delete (1-100)').setRequired(true).setMinValue(1).setMaxValue(100))
+        .addIntegerOption((opt) => opt.setName('amount').setDescription('How many messages to delete (1-1000)').setRequired(true).setMinValue(1).setMaxValue(1000))
         .addUserOption((opt) => opt.setName('user').setDescription('Only delete messages from this user').setRequired(false)),
     )
     .addSubcommand((sub) =>
@@ -229,16 +230,9 @@ async function clear(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   try {
-    let toDelete;
-    if (user) {
-      const recent = await interaction.channel.messages.fetch({ limit: 100 });
-      toDelete = recent.filter((m) => m.author.id === user.id).first(amount);
-    } else {
-      toDelete = await interaction.channel.messages.fetch({ limit: amount });
-    }
-
-    const deleted = await interaction.channel.bulkDelete(toDelete, true);
-    const text = `${EMOJI.APPROVE}  Deleted **${deleted.size}** message(s)${user ? ` from ${user}` : ''}. Messages older than 14 days can't be bulk-deleted and were skipped.`;
+    const messages = await collectMessages(interaction.channel, { amount, userId: user?.id ?? null });
+    const deletedCount = await deleteMessages(interaction.channel, messages);
+    const text = `${EMOJI.APPROVE}  Deleted **${deletedCount}** message(s)${user ? ` from ${user}` : ''}. Messages older than 14 days can't be bulk-deleted and were skipped.`;
     await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
   } catch (err) {
     logger.error('Failed to bulk delete:', err);

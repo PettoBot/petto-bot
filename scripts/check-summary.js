@@ -68,6 +68,8 @@ assert.ok(describeSummary('overview', summary, 3, []).some((line) => line.includ
 assert.ok(describeSummary('messages', summary, 3, []).length <= 4, 'at most four lines');
 assert.ok(describeSummary('overview', summary, 3, []).every((line) => /<:pe_|<:pet/.test(line)), 'every line starts with a Petto emoji');
 const manyChannels = buildSummary({ days: 3, now, channelRows: ['a', 'b', 'c', 'd', 'e'].map((id, i) => ({ day: '2026-10-10', channel_id: id, messages: 50 - i, reactions: 0, voice_seconds: 0 })) });
+const gone = describeSummary('messages', manyChannels, 3, [], { channelExists: (id) => id === 'a' }).find((line) => line.includes('Favorite channels'));
+assert.ok(gone.includes('<#a>') && gone.includes('deleted or temporary channel') && !gone.includes('<#b>'), 'a channel that is gone is named for what it is');
 assert.equal((describeSummary('messages', manyChannels, 3, []).find((line) => line.includes('Favorite channels')).match(/<#/g) ?? []).length, 2, 'a list of channels shows two names');
 
 for (const metric of METRICS) {

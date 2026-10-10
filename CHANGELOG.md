@@ -6,10 +6,18 @@ All notable changes to Petto are documented here.
 
 ### Changed
 
+- `!serverinfo` has a new Components V2 design: the server's picture next to its name, description, creation date and owner; the banner under it; then members (people and bots), boosters, channels, the boost level with how many boosts are left for the next one, verification and language, how full the roles, emojis and stickers are, and the features that matter (Community, Partnered, Verified, vanity link...). The buttons open the icon, the banner, the invite splash and the server link, only when the server has them.
+- `!serverinfo` shows the description of the server: it is read fresh from Discord, because the copy Petto keeps does not always have it.
+- `!myprefix` says in its help how to get a prefix of your own (boost the support server, Premium, partner or team).
 - The text under the picture of `/summary` is short and friendly: at most four lines, each with a Petto emoji (the busiest hour and day, the favorite channels, who chatted the most, and whether the server grew), instead of long lists that repeated what the picture already shows.
 
 ### Fixed
 
+- `!channel clear 1000` failed with "Invalid Form Body: limit should be less than or equal to 100": Discord gives 100 messages at a time and the command asked for all at once. It now reads pages of 100 and deletes in groups of 100, up to 1000 messages, and stops at the messages older than 14 days (which Discord does not let a bot bulk delete). With `user` it looks through up to 1500 recent messages for theirs.
+- The channel of errors no longer fills up: the rate limit notes of Discord's client are left out of it (sending to that channel is itself limited, so reporting every rate limit caused more of them), the same warning many times is sent once with a count of how many were not repeated, and a burst is sent one message at a time (up to 20 queued; warnings are dropped before errors).
+- The Vault backup job reported "Connection terminated due to connection timeout" at the first hiccup of the database. A timeout is now reported only when it lasts three minutes in a row, and the report says what failed.
+- In the picture of `/summary` the label of the average (`avg 104`) was covered by the bars. It has its own space on the right now.
+- In `/summary` and the Statistics page, a channel that no longer exists (deleted, or a temporary voice channel) is shown as "deleted or temporary channel" instead of a bare number.
 - The new activity counters failed with `Unsupported PostgreSQL RPC: increment_activity_member`: the database layer only allows the functions it lists, and the new ones (`increment_activity_hourly`, `increment_activity_member`, `increment_member_flow`) were not listed, so the most active hour, the active members and the joins and leaves per day were never counted. The same list also left out the new arguments of `increment_invite_stat` (fake and bonus invites) and `create_mod_case` (who applied the case), so those were dropped silently. A check now fails when a function the bot calls is missing from the list or its arguments differ.
 
 ## [0.7.4] — 2026-10-10 · Brownie

@@ -13,8 +13,8 @@ module.exports = {
   prefixDefaultSubcommand: 'show',
   data: new SlashCommandBuilder()
     .setName('myprefix')
-    .setDescription('Your own prefix for Petto, in every server (boosters, Premium, partners and the team).')
-    .addSubcommand((s) => s.setName('show').setDescription('See your prefix and whether you can have one.'))
+    .setDescription('Your own prefix. Get it by boosting the support server, with Premium, as a partner or in the team.')
+    .addSubcommand((s) => s.setName('show').setDescription('See your prefix, and how to get one if you cannot have it yet.'))
     .addSubcommand((s) => s.setName('set').setDescription('Choose your prefix.').addStringOption((o) => o.setName('prefix').setDescription(`Up to ${MAX_LENGTH} characters, with a symbol, for example p! or ,`).setMaxLength(10).setRequired(true)))
     .addSubcommand((s) => s.setName('reset').setDescription('Remove your prefix.')),
 

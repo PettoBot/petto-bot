@@ -34,10 +34,11 @@ function bestSanctionDay(summary) {
   return best === -1 ? null : { day: summary.days[best], value: values[best] };
 }
 
-/** The lines under the picture, at most four. */
-function describeSummary(metric, summary, days, inviters = []) {
+/** The lines under the picture, at most four. `channelExists(id)` says whether a channel is still in the server. */
+function describeSummary(metric, summary, days, inviters = [], { channelExists = () => true } = {}) {
   const { totals } = summary;
-  const channels = (rows, value) => rows.map((r) => `<#${r.id}> ${value(r)}`);
+  // A channel that is gone (deleted, or a temporary voice channel) would show as a bare number, so it is named for what it is.
+  const channels = (rows, value) => rows.map((r) => `${channelExists(r.id) ? `<#${r.id}>` : '*deleted or temporary channel*'} ${value(r)}`);
   const members = (rows, value) => rows.map((r) => `<@${r.id}> ${value(r)}`);
   const out = [];
 
