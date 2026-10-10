@@ -21,7 +21,7 @@ const text = (card) => JSON.stringify(card.toJSON());
 (async () => {
   const types = ['ban', 'hardban', 'tempban', 'softban', 'unban', 'kick', 'mute', 'tempmute', 'unmute', 'warn', 'jail', 'unjail'];
   for (const type of types) {
-    assert.match(TYPE_EMOJI[type], /^<:pe_user_/, `${type} has its own person icon`);
+    assert.match(TYPE_EMOJI[type], /^<:pe_(user_|ban_|tempban|mute|unmute)/, `${type} has its own person icon`);
     const json = buildSanctionCard({ type, caseNumber: 7, guild, target: user, moderator: mod, reason: 'spam', previous: 0 }).toJSON();
     assert.equal(json.type, 17, `${type} is a container`);
     assert.ok(JSON.stringify(json).includes('Case #7'));

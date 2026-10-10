@@ -4,6 +4,10 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- The members line of `!serverinfo` showed the icon of an unmute (a crossed-out person). It has its own icons now (members and safety), and the sanction emojis are named like they are in the application (`pe_unmute`, `pe_mute`, `pe_ban_hardban`, `pe_tempban`; the IDs did not change).
+
 ### Changed
 
 - `!serverinfo` has a new Components V2 design: the server's picture next to its name, description, creation date and owner; the banner under it; then members (people and bots), boosters, channels, the boost level with how many boosts are left for the next one, verification and language, how full the roles, emojis and stickers are, and the features that matter (Community, Partnered, Verified, vanity link...). The buttons open the icon, the banner, the invite splash and the server link, only when the server has them.

@@ -55,7 +55,7 @@ function buildServerInfoCard(d) {
   if (d.bannerUrl) card.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(d.bannerUrl)));
 
   const members = [
-    row(EMOJI.USER_UNMUTE, 'Members', joinParts([
+    row(EMOJI.MEMBERS, 'Members', joinParts([
       `${n(d.memberCount)}`,
       d.humans === null ? null : `${n(d.humans)} people`,
       d.bots === null ? null : `${n(d.bots)} bots`,
@@ -70,7 +70,7 @@ function buildServerInfoCard(d) {
 
   const server = [
     row(EMOJI.STAR, 'Boost', boostText(d.tier, d.boosts)),
-    row(EMOJI.FIELD_REASON, 'Safety', joinParts([`${d.verification} verification`, d.locale])),
+    row(EMOJI.SAFETY, 'Safety', joinParts([`${d.verification} verification`, d.locale])),
     row(EMOJI.FIELD_DOT, 'Content', joinParts([`${n(d.roles)}/250 roles`, `${n(d.emojis)}/${n(d.emojiLimit)} emojis`, `${n(d.stickers)}/${n(d.stickerLimit)} stickers`])),
     featureList(d.features) ? row(EMOJI.APPROVE, 'Features', featureList(d.features)) : null,
   ].filter(Boolean);
