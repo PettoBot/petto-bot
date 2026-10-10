@@ -173,11 +173,11 @@ async function notifyLevelUp({ client, guild, member, config, level, channel, me
     } else if (config.notify_mode === 'channel' && config.notify_channel_id) {
       const target = await guild.channels.fetch(config.notify_channel_id).catch(() => null);
       if (target) {
-        const sent = await target.send(payload);
+        const sent = await require('./senderIdentity').sendAs(target, 'levelup', payload);
         if (reactReplies.length) await applyReactReplies(sent, reactReplies);
       }
     } else if (channel) {
-      const sent = await channel.send(payload);
+      const sent = await require('./senderIdentity').sendAs(channel, 'levelup', payload);
       if (reactReplies.length) await applyReactReplies(sent, reactReplies);
     }
   } catch (err) {

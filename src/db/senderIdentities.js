@@ -1,8 +1,8 @@
 // The name and the picture a server chose for the messages Petto sends in some places (quest alerts, welcome, leave, boost,
-// sanctions). The message goes out through a webhook of the channel that Petto makes by itself, so it can have its own look.
+// sanctions, level-ups, Vanity and Server Tag thank-yous). The message goes out through a webhook of the channel that Petto makes by itself, so it can have its own look.
 const database = require('./database');
 
-const FEATURES = ['quests', 'welcome', 'leave', 'boost', 'sanctions'];
+const FEATURES = ['quests', 'welcome', 'leave', 'boost', 'sanctions', 'levelup', 'vanity'];
 const CACHE_MS = 60_000;
 const cache = new Map();
 

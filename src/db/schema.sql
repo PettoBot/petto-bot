@@ -2376,12 +2376,15 @@ alter table quest_posts enable row level security;
 -- The look (name and picture) of the messages Petto sends in some places, sent through a webhook the bot makes in the channel.
 create table if not exists sender_identities (
   guild_id   text not null references guilds(guild_id) on delete cascade,
-  feature    text not null check (feature in ('quests', 'welcome', 'leave', 'boost', 'sanctions')),
+  feature    text not null check (feature in ('quests', 'welcome', 'leave', 'boost', 'sanctions', 'levelup', 'vanity')),
   name       text,
   avatar_url text,
   updated_at timestamptz not null default now(),
   primary key (guild_id, feature)
 );
+alter table sender_identities drop constraint if exists sender_identities_feature_check;
+alter table sender_identities add constraint sender_identities_feature_check
+  check (feature in ('quests', 'welcome', 'leave', 'boost', 'sanctions', 'levelup', 'vanity'));
 alter table sender_identities enable row level security;
 
 -- Partners: a partnership is counted when a Partner Manager posts the invite of another server in a partner channel and

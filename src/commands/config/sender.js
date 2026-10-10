@@ -6,7 +6,7 @@ const { ensureGuild } = require('../../db/guilds');
 const identities = require('../../db/senderIdentities');
 
 const REPLY_FLAGS = MessageFlags.IsComponentsV2;
-const LABELS = { quests: 'quest alerts', welcome: 'welcome messages', leave: 'leave messages', boost: 'boost messages', sanctions: 'sanction messages' };
+const LABELS = { quests: 'quest alerts', welcome: 'welcome messages', leave: 'leave messages', boost: 'boost messages', sanctions: 'sanction messages', levelup: 'level-up messages', vanity: 'Vanity and Server Tag thank-yous' };
 const httpsUrl = (value) => { try { return new URL(String(value)).protocol === 'https:'; } catch { return false; } };
 
 module.exports = {
