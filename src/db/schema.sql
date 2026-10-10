@@ -1837,15 +1837,24 @@ create table if not exists member_invites (
 );
 
 alter table member_invites enable row level security;
+-- Fake joins (a very new account, or somebody who came back) are counted apart, so they do not inflate the invites.
+alter table member_invites add column if not exists fake boolean not null default false;
+alter table member_invites add column if not exists source text not null default 'invite';
+alter table invite_uses add column if not exists fake integer not null default 0;
+alter table invite_uses add column if not exists bonus integer not null default 0;
 
-create or replace function increment_invite_stat(p_guild_id text, p_inviter_id text, p_joins_delta integer, p_leaves_delta integer)
+-- The old four-argument version is dropped first: a new signature next to it would make every call ambiguous.
+drop function if exists increment_invite_stat(text, text, integer, integer);
+create or replace function increment_invite_stat(p_guild_id text, p_inviter_id text, p_joins_delta integer, p_leaves_delta integer, p_fake_delta integer default 0, p_bonus_delta integer default 0)
 returns void as $$
 begin
-  insert into invite_uses (guild_id, inviter_id, joins, leaves)
-  values (p_guild_id, p_inviter_id, greatest(p_joins_delta, 0), greatest(p_leaves_delta, 0))
+  insert into invite_uses (guild_id, inviter_id, joins, leaves, fake, bonus)
+  values (p_guild_id, p_inviter_id, greatest(p_joins_delta, 0), greatest(p_leaves_delta, 0), greatest(p_fake_delta, 0), p_bonus_delta)
   on conflict (guild_id, inviter_id) do update
     set joins = invite_uses.joins + excluded.joins,
-        leaves = invite_uses.leaves + excluded.leaves;
+        leaves = invite_uses.leaves + excluded.leaves,
+        fake = invite_uses.fake + excluded.fake,
+        bonus = invite_uses.bonus + excluded.bonus;
 end;
 $$ language plpgsql;
 
@@ -1942,6 +1951,67 @@ begin
     set messages = activity_stats.messages + excluded.messages,
         reactions = activity_stats.reactions + excluded.reactions,
         voice_seconds = activity_stats.voice_seconds + excluded.voice_seconds;
+end;
+$$;
+
+-- Joins, leaves and joins through a tracked invite, per server and day (the Statistics page, `/summary`).
+create table if not exists member_flow (
+  guild_id text not null references guilds(guild_id) on delete cascade,
+  day      date not null,
+  joins    integer not null default 0,
+  leaves   integer not null default 0,
+  invited  integer not null default 0,
+  primary key (guild_id, day)
+);
+alter table member_flow enable row level security;
+
+-- Messages and voice time by hour of the day (UTC), to show the most active hour.
+create table if not exists activity_hourly (
+  guild_id      text not null references guilds(guild_id) on delete cascade,
+  day           date not null,
+  hour          smallint not null check (hour between 0 and 23),
+  messages      integer not null default 0,
+  voice_seconds integer not null default 0,
+  primary key (guild_id, day, hour)
+);
+alter table activity_hourly enable row level security;
+
+-- Messages per member and day: the number of active members and the top members.
+create table if not exists activity_members (
+  guild_id text not null references guilds(guild_id) on delete cascade,
+  day      date not null,
+  user_id  text not null,
+  messages integer not null default 0,
+  voice_seconds integer not null default 0,
+  primary key (guild_id, day, user_id)
+);
+create index if not exists idx_activity_members_guild_day on activity_members(guild_id, day);
+alter table activity_members enable row level security;
+
+create or replace function increment_member_flow(p_guild_id text, p_day date, p_joins integer, p_leaves integer, p_invited integer)
+returns void language plpgsql as $$
+begin
+  insert into member_flow (guild_id, day, joins, leaves, invited) values (p_guild_id, p_day, p_joins, p_leaves, p_invited)
+  on conflict (guild_id, day) do update
+    set joins = member_flow.joins + excluded.joins, leaves = member_flow.leaves + excluded.leaves, invited = member_flow.invited + excluded.invited;
+end;
+$$;
+
+create or replace function increment_activity_hourly(p_guild_id text, p_day date, p_hour integer, p_messages integer, p_voice_seconds integer)
+returns void language plpgsql as $$
+begin
+  insert into activity_hourly (guild_id, day, hour, messages, voice_seconds) values (p_guild_id, p_day, p_hour, p_messages, p_voice_seconds)
+  on conflict (guild_id, day, hour) do update
+    set messages = activity_hourly.messages + excluded.messages, voice_seconds = activity_hourly.voice_seconds + excluded.voice_seconds;
+end;
+$$;
+
+create or replace function increment_activity_member(p_guild_id text, p_day date, p_user_id text, p_messages integer, p_voice_seconds integer)
+returns void language plpgsql as $$
+begin
+  insert into activity_members (guild_id, day, user_id, messages, voice_seconds) values (p_guild_id, p_day, p_user_id, p_messages, p_voice_seconds)
+  on conflict (guild_id, day, user_id) do update
+    set messages = activity_members.messages + excluded.messages, voice_seconds = activity_members.voice_seconds + excluded.voice_seconds;
 end;
 $$;
 

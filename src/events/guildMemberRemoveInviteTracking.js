@@ -1,10 +1,13 @@
 const { Events } = require('discord.js');
 const inviteTrackingDb = require('../db/inviteTracking');
+const { queueFlow } = require('../db/activityDetail');
 const logger = require('../utils/logger');
 
 module.exports = {
   name: Events.GuildMemberRemove,
   async execute(member) {
+    if (member.user?.bot) return;
+    queueFlow(member.guild.id, { leaves: 1 });
     try {
       await inviteTrackingDb.recordLeave(member.guild.id, member.id);
     } catch (err) {

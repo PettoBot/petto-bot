@@ -1,4 +1,5 @@
 const { queueActivity } = require('../db/activityStats');
+const { queueVoice } = require('../db/activityDetail');
 const logger = require('../utils/logger');
 const config = require('../config');
 const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency');
@@ -10,8 +11,10 @@ async function processGuild(guild) {
   for (const channel of guild.channels.cache.values()) {
     if (!channel.isVoiceBased?.() || channel.id === guild.afkChannelId) continue;
 
-    const humanCount = [...channel.members.values()].filter((m) => !m.user.bot).length;
+    const humans = [...channel.members.values()].filter((m) => !m.user.bot);
+    const humanCount = humans.length;
     if (humanCount === 0) continue;
+    for (const member of humans) queueVoice(guild.id, member.id, SECONDS_PER_TICK);
 
     queueActivity(guild.id, channel.id, { voiceSeconds: SECONDS_PER_TICK * humanCount });
   }
