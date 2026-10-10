@@ -56,6 +56,20 @@ assert.equal(botDay(new Date('2026-10-10T04:59:00Z')), '2026-10-09'); assert.equ
 assert.equal(botHour(new Date('2026-10-10T02:00:00Z')), 21);
 assert.match(formatBotTime(new Date('2026-10-10T02:00:00Z')), /9:00 PM GMT-5$/);
 
+// The text under the picture: short lines, the top lists on one line with at most three names, nothing the picture already says.
+const { describeSummary } = require('../src/utils/summaryText');
+for (const metric of METRICS) {
+  const lines = describeSummary(metric, withCases, 3, [{ inviter_id: '9', net: 4 }]);
+  assert.ok(Array.isArray(lines) && lines.length <= 4, `${metric}: up to four lines`);
+  assert.ok(lines.every((line) => !line.includes('\n')), `${metric}: every line is one line`);
+  assert.ok(lines.join('\n').length < 1000, `${metric}: the text is short`);
+}
+assert.ok(describeSummary('overview', summary, 3, []).some((line) => line.includes('Busiest hour') && line.includes('GMT-5')), 'the busiest hour is under the overview');
+assert.ok(describeSummary('messages', summary, 3, []).length <= 4, 'at most four lines');
+assert.ok(describeSummary('overview', summary, 3, []).every((line) => /<:pe_|<:pet/.test(line)), 'every line starts with a Petto emoji');
+const manyChannels = buildSummary({ days: 3, now, channelRows: ['a', 'b', 'c', 'd', 'e'].map((id, i) => ({ day: '2026-10-10', channel_id: id, messages: 50 - i, reactions: 0, voice_seconds: 0 })) });
+assert.equal((describeSummary('messages', manyChannels, 3, []).find((line) => line.includes('Favorite channels')).match(/<#/g) ?? []).length, 2, 'a list of channels shows two names');
+
 for (const metric of METRICS) {
   const png = buildSummaryCard({ guildName: 'Test', days: 3, metric, summary: withCases });
   assert.equal(png.subarray(1, 4).toString(), 'PNG', `${metric} draws a picture`);
