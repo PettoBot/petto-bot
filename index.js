@@ -128,7 +128,10 @@ async function main() {
   startCloudflareTunnel(config.cloudflareTunnelToken);
 }
 
-main().catch((err) => {
+main().catch(async (err) => {
   logger.error('Fatal error during startup:', err);
+  // The host starts the bot again as soon as it stops. A pause first keeps a start that always fails from asking Discord
+  // and the database again every few seconds, which is how a rate limit turns into a restart loop.
+  await new Promise((resolve) => setTimeout(resolve, 30_000));
   process.exit(1);
 });

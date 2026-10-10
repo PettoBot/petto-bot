@@ -7,6 +7,8 @@ const { thanksDesign } = require('./v2Designs');
 const db = require('../../db/identity');
 const { templatePayload } = require('../templatedMessage');
 const { EMOJI } = require('../emojis');
+// Loaded when a message goes out: it reaches for the database, which the checks do without.
+const sendAs = (...args) => require('../senderIdentity').sendAs(...args);
 const logger = require('../logger');
 
 const LOG_EVENTS = ['vanity_add', 'vanity_remove', 'tag_add', 'tag_remove', 'error'];
@@ -84,16 +86,16 @@ async function emitNotification(guild, member, action) {
     : null;
   if (payload) {
     const { reactions, ...message } = payload;
-    await channel.send({ ...message, allowedMentions });
+    await sendAs(channel, 'vanity', { ...message, allowedMentions });
     return;
   }
   // Without a saved embed the thank-you is the same V2 design the import gives to the old default message.
   const designed = await build({ v2: thanksDesign(action.source) }, { guild, user: member.user, member, channel, identity: identityContext(action), allowV2: true }).catch(() => null);
   if (designed?.components?.length) {
-    await channel.send({ components: designed.components, flags: designed.flags, allowedMentions });
+    await sendAs(channel, 'vanity', { components: designed.components, flags: designed.flags, allowedMentions });
     return;
   }
-  await channel.send({ components: [thanksCard(action, member)], flags: MessageFlags.IsComponentsV2, allowedMentions });
+  await sendAs(channel, 'vanity', { components: [thanksCard(action, member)], flags: MessageFlags.IsComponentsV2, allowedMentions });
 }
 
 /** One line of the log of role changes. */

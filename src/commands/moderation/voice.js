@@ -81,7 +81,7 @@ async function resolveTarget(interaction, kind) {
     return null;
   }
 
-  const check = canModerate(interaction, targetMember, REQUIRED_PERMISSION[kind]);
+  const check = canModerate(interaction, targetMember, REQUIRED_PERMISSION[kind], { hierarchy: 'none' });
   if (!check.ok) {
     await interaction.reply({ content: check.message, flags: MessageFlags.Ephemeral });
     return null;

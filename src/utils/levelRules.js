@@ -3,9 +3,11 @@
 
 const REPEAT_WINDOW_MS = 60_000;
 const MAX_REMEMBERED = 5000;
+const { shifted, botDay } = require('./botTime');
 
-/** The week (ISO 8601, UTC) and the month a moment belongs to, as the keys of the ranking tables. */
-function periodKeys(date = new Date()) {
+/** The week (ISO 8601) and the month a moment belongs to, in GMT-5 (Colombia), as the keys of the ranking tables. */
+function periodKeys(moment = new Date()) {
+  const date = shifted(moment);
   const day = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
   const weekday = day.getUTCDay() || 7;
   day.setUTCDate(day.getUTCDate() + 4 - weekday);
@@ -17,9 +19,9 @@ function periodKeys(date = new Date()) {
   };
 }
 
-/** Today in UTC as `YYYY-MM-DD`, the day a streak is counted in. */
+/** Today in GMT-5 (Colombia) as `YYYY-MM-DD`, the day a streak is counted in. */
 function utcDay(date = new Date()) {
-  return date.toISOString().slice(0, 10);
+  return botDay(date);
 }
 
 /** What is left of a message once links, mentions, custom emoji and spaces are taken out: the part a person wrote. */

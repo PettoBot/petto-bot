@@ -2,7 +2,7 @@
 const { getPrimaryPool } = require('./postgres');
 const { createExpiringCache } = require('../utils/expiringCache');
 
-const TYPES = ['default', 'ban', 'tempban', 'softban', 'unban', 'kick', 'mute', 'tempmute', 'unmute', 'warn', 'jail', 'unjail'];
+const TYPES = ['default', 'ban', 'hardban', 'tempban', 'softban', 'unban', 'kick', 'mute', 'tempmute', 'unmute', 'warn', 'jail', 'unjail'];
 const SLOTS = { dm: 'dm_template', reply: 'reply_template', log: 'log_template' };
 const cache = createExpiringCache(30_000);
 

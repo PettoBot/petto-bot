@@ -99,10 +99,11 @@ function prettyPermission(name) {
  * from under us (Discord error 10015), the dead webhook and the failing
  * entry are pruned so future events don't keep retrying it.
  */
-async function sendLog(client, guildId, event, embed, { ignoreIds = [], files = [], components = [] } = {}) {
+async function sendLog(client, guildId, event, embed, { ignoreIds = [], files = [], components = [], v2 = null } = {}) {
   try {
-    const safeEmbed = sanitizeEmbed(embed);
-    if (!safeEmbed) {
+    // `v2`: Components V2 containers sent instead of an embed (a message cannot hold both).
+    const safeEmbed = v2 ? null : sanitizeEmbed(embed);
+    if (!v2 && !safeEmbed) {
       logger.warn({ guildId, event, action: 'log-embed-sanitize' }, '[logEngine] Skipping invalid log embed.');
       return;
     }
@@ -131,10 +132,15 @@ async function sendLog(client, guildId, event, embed, { ignoreIds = [], files = 
         // change) never has to be manually re-patched, every send just carries the current one.
         username: client.user.username,
         avatar_url: getAvatar(client.user) ?? undefined,
-        embeds: [entry.color != null ? { ...safeEmbed, color: entry.color } : safeEmbed],
         flags: 4096, // SuppressNotifications
       };
-      if (components.length) {
+      if (v2) {
+        body.components = v2.map((component) => (typeof component?.toJSON === 'function' ? component.toJSON() : component));
+        body.flags |= 32768; // IsComponentsV2
+      } else {
+        body.embeds = [entry.color != null ? { ...safeEmbed, color: entry.color } : safeEmbed];
+      }
+      if (!v2 && components.length) {
         body.components = components.map((component) => (
           typeof component?.toJSON === 'function' ? component.toJSON() : component
         ));
@@ -143,7 +149,7 @@ async function sendLog(client, guildId, event, embed, { ignoreIds = [], files = 
       let deliveryError = null;
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
-          await client.rest.post(Routes.webhook(wh.webhook_id, wh.webhook_token), { body, files: files.length ? files : undefined });
+          await client.rest.post(Routes.webhook(wh.webhook_id, wh.webhook_token), { body, files: files.length ? files : undefined, query: v2 ? new URLSearchParams({ with_components: 'true' }) : undefined });
           deliveryError = null;
           break;
         } catch (err) {

@@ -19,6 +19,8 @@ const logger = require('../utils/logger');
 const { logCommandUse } = require('../logging/extraLog');
 const { runCodeCommand } = require('../utils/codeCommands');
 const { findTrigger } = require('../utils/codeTriggers');
+// Loaded when a message comes in: it reaches for the configuration and the database, which the checks do without.
+const activeUserPrefix = async (...args) => require('../utils/userPrefixAccess').activeUserPrefix(...args);
 
 const DEFAULT_COOLDOWN_MS = 3000;
 const UNKNOWN_COMMAND_DELETE_MS = 10_000;
@@ -171,7 +173,11 @@ async function isCommandMessage(message) {
   const botId = message.client.user?.id;
   const mention = botId ? [`<@${botId}>`, `<@!${botId}>`].find((p) => message.content.startsWith(p)) : null;
   const prefix = mention || await getPrefix(message.guild.id).catch(() => '!');
-  const parsed = parsePrefixCommand(message.content, prefix);
+  let parsed = parsePrefixCommand(message.content, prefix);
+  if (!parsed && !mention) {
+    const own = await activeUserPrefix(message.client, message.author.id).catch(() => null);
+    if (own) parsed = parsePrefixCommand(message.content, own);
+  }
   if (!parsed) return false;
   const name = parsed.commandName;
   if (message.client.commands?.has(name) || message.client.commandAliases?.has(name) || message.client.commandRoutes?.has(name)) return true;
@@ -195,7 +201,12 @@ module.exports = {
     const mentionMatch = mentionPrefixes.find((p) => message.content.startsWith(p));
 
     const configuredPrefix = mentionMatch || await getPrefix(message.guild.id).catch(() => '!');
-    const parsed = parsePrefixCommand(message.content, configuredPrefix);
+    let parsed = parsePrefixCommand(message.content, configuredPrefix);
+    // A person with a prefix of their own (boosters, Premium, partners, the team) can use it anywhere, next to the server's.
+    if (!parsed && !mentionMatch) {
+      const own = await activeUserPrefix(message.client, message.author.id).catch(() => null);
+      if (own) parsed = parsePrefixCommand(message.content, own);
+    }
     if (!parsed) {
       // Not a command of Petto: it may still set off a custom command that has its own prefix or words.
       const trigger = await findTrigger(message.guild.id, message.content).catch(() => null);

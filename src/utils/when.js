@@ -1,8 +1,9 @@
 // @ts-check
 // Moments in time, the way people write them: "in 2h", "3d 4h", "tomorrow 8pm", "mañana 20:00", "2026-10-12 18:00", a Discord
-// timestamp or a unix time. Used by commands that take a time and by the {timestamp:...} variable. Times are read in UTC.
+// timestamp or a unix time. Used by commands that take a time and by the {timestamp:...} variable. Times are read in GMT-5 (Colombia), unless they end in `z` or `utc`.
 
 const { parseDuration } = require('./duration');
+const { OFFSET_MS } = require('./botTime');
 
 /** The Discord timestamp styles by the names people can write in a variable. */
 const TIMESTAMP_STYLES = {
@@ -53,9 +54,10 @@ function parseWhen(input, { now = Date.now() } = {}) {
   const stamp = text.match(/^<t:(\d{1,13})(?::[a-z])?>$/) ?? text.match(/^(\d{10})$/);
   if (stamp) return Number(stamp[1]) * 1000;
 
-  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:[t\s]+(\d{1,2}):(\d{2}))?(?:z|\s*utc)?$/);
+  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:[t\s]+(\d{1,2}):(\d{2}))?(z|\s*utc)?$/);
   if (iso) {
-    const moment = Date.UTC(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]), Number(iso[4] ?? 0), Number(iso[5] ?? 0));
+    const written = Date.UTC(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]), Number(iso[4] ?? 0), Number(iso[5] ?? 0));
+    const moment = iso[6] ? written : written - OFFSET_MS; // without z or utc it is the clock of Colombia
     const check = new Date(moment);
     return check.getUTCMonth() === Number(iso[2]) - 1 && check.getUTCDate() === Number(iso[3]) ? moment : null;
   }
@@ -69,17 +71,16 @@ function parseWhen(input, { now = Date.now() } = {}) {
       const rest = text.slice(word.length).trim();
       const clock = rest ? readClock(rest) : word.includes('noche') || word === 'tonight' ? 21 * 60 : null;
       if (clock === null) return null;
-      const day = new Date(now);
-      const moment = Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate() + offset) + clock * 60_000;
-      return moment;
+      const day = new Date(now + OFFSET_MS);
+      return Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate() + offset) + clock * 60_000 - OFFSET_MS;
     }
   }
 
   // A time of day on its own is the next time the clock shows it.
   const clock = readClock(text);
   if (clock !== null) {
-    const day = new Date(now);
-    const today = Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()) + clock * 60_000;
+    const day = new Date(now + OFFSET_MS);
+    const today = Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()) + clock * 60_000 - OFFSET_MS;
     return today > now ? today : today + 24 * 60 * 60_000;
   }
 

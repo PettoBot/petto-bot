@@ -8,7 +8,7 @@ const { sanctionDM, sanctionReply } = require('../../utils/sanctionTemplates');
 const { resolveUsers } = require('../../utils/userResolve');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
-const { confirmBulkAction, requireAdministrator } = require('../../utils/moderationCommand');
+const { confirmBulkAction, requireAdministrator, failureDetail } = require('../../utils/moderationCommand');
 
 module.exports = {
   aliases: ['k'],
@@ -66,7 +66,7 @@ async function kickUser(interaction) {
     await targetMember.kick(reason ?? undefined);
   } catch (err) {
     logger.error('Failed to kick member:', err);
-    await interaction.editReply({ components: [textCard('I was unable to kick that user.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(`I was unable to kick that user.${failureDetail(err)}`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 

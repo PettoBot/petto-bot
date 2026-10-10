@@ -47,6 +47,7 @@ async function processExpiredSanctions(client) {
         moderatorId: client.user.id,
         type: reverseType,
         reason: 'Automatic expiry',
+        source: 'expiry',
       });
 
       await logSanction(client, guild, { modCase, target: userMention(sanction.user_id), moderator: client.user, reason: 'Automatic expiry', source: 'expiry' });

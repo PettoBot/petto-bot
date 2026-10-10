@@ -164,7 +164,7 @@ create table if not exists mod_actions (
   case_number   integer not null,
   user_id       text not null,
   moderator_id  text not null,
-  type          text not null check (type in ('ban', 'unban', 'kick', 'mute', 'unmute', 'tempban', 'tempmute', 'warn', 'softban', 'jail', 'unjail')),
+  type          text not null check (type in ('ban', 'unban', 'kick', 'mute', 'unmute', 'tempban', 'tempmute', 'warn', 'softban', 'jail', 'unjail', 'hardban')),
   reason        text,
   created_at    timestamptz not null default now(),
   expires_at    timestamptz,
@@ -172,11 +172,25 @@ create table if not exists mod_actions (
   unique (guild_id, case_number)
 );
 
+-- Who or what applied the case: a moderator, automod, the honeypot, warn escalation, automatic expiry or anti-nuke.
+alter table mod_actions add column if not exists source text not null default 'moderator';
+
 -- `create table if not exists` above is a no-op against an already-migrated database, so the
 -- CHECK constraint (added here for tempban/tempmute/softban) needs its own idempotent migration step.
 alter table mod_actions drop constraint if exists mod_actions_type_check;
 alter table mod_actions add constraint mod_actions_type_check
-  check (type in ('ban', 'unban', 'kick', 'mute', 'unmute', 'tempban', 'tempmute', 'warn', 'softban', 'jail', 'unjail'));
+  check (type in ('ban', 'unban', 'kick', 'mute', 'unmute', 'tempban', 'tempmute', 'warn', 'softban', 'jail', 'unjail', 'hardban'));
+
+-- A hard ban only the server owner and the antinuke admins can lift. Anyone else who unbans the user gets the ban put back.
+create table if not exists hard_bans (
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  user_id    text not null,
+  banned_by  text not null,
+  reason     text,
+  created_at timestamptz not null default now(),
+  primary key (guild_id, user_id)
+);
+alter table hard_bans enable row level security;
 
 create index if not exists idx_mod_actions_guild_user on mod_actions(guild_id, user_id);
 create index if not exists idx_mod_actions_guild_created on mod_actions(guild_id, created_at desc);
@@ -223,13 +237,16 @@ alter table guild_case_counters enable row level security;
 -- Atomically allocates the next case number for this guild and inserts the case.
 -- The MAX() guard only repairs a missing/stale counter; normal numbering comes
 -- from guild_case_counters and therefore never mixes numbers between servers.
+-- The old six-argument version is dropped first: a new signature next to it would make every call ambiguous.
+drop function if exists create_mod_case(text, text, text, text, text, timestamptz);
 create or replace function create_mod_case(
   p_guild_id      text,
   p_user_id       text,
   p_moderator_id  text,
   p_type          text,
   p_reason        text default null,
-  p_expires_at    timestamptz default null
+  p_expires_at    timestamptz default null,
+  p_source        text default 'moderator'
 ) returns mod_actions
 language plpgsql
 as $$
@@ -251,8 +268,8 @@ begin
    where guild_id = p_guild_id
    returning last_case_number into v_case_number;
 
-  insert into mod_actions (guild_id, case_number, user_id, moderator_id, type, reason, expires_at)
-  values (p_guild_id, v_case_number, p_user_id, p_moderator_id, p_type, p_reason, p_expires_at)
+  insert into mod_actions (guild_id, case_number, user_id, moderator_id, type, reason, expires_at, source)
+  values (p_guild_id, v_case_number, p_user_id, p_moderator_id, p_type, p_reason, p_expires_at, coalesce(p_source, 'moderator'))
   returning * into v_row;
 
   return v_row;
@@ -1826,15 +1843,24 @@ create table if not exists member_invites (
 );
 
 alter table member_invites enable row level security;
+-- Fake joins (a very new account, or somebody who came back) are counted apart, so they do not inflate the invites.
+alter table member_invites add column if not exists fake boolean not null default false;
+alter table member_invites add column if not exists source text not null default 'invite';
+alter table invite_uses add column if not exists fake integer not null default 0;
+alter table invite_uses add column if not exists bonus integer not null default 0;
 
-create or replace function increment_invite_stat(p_guild_id text, p_inviter_id text, p_joins_delta integer, p_leaves_delta integer)
+-- The old four-argument version is dropped first: a new signature next to it would make every call ambiguous.
+drop function if exists increment_invite_stat(text, text, integer, integer);
+create or replace function increment_invite_stat(p_guild_id text, p_inviter_id text, p_joins_delta integer, p_leaves_delta integer, p_fake_delta integer default 0, p_bonus_delta integer default 0)
 returns void as $$
 begin
-  insert into invite_uses (guild_id, inviter_id, joins, leaves)
-  values (p_guild_id, p_inviter_id, greatest(p_joins_delta, 0), greatest(p_leaves_delta, 0))
+  insert into invite_uses (guild_id, inviter_id, joins, leaves, fake, bonus)
+  values (p_guild_id, p_inviter_id, greatest(p_joins_delta, 0), greatest(p_leaves_delta, 0), greatest(p_fake_delta, 0), p_bonus_delta)
   on conflict (guild_id, inviter_id) do update
     set joins = invite_uses.joins + excluded.joins,
-        leaves = invite_uses.leaves + excluded.leaves;
+        leaves = invite_uses.leaves + excluded.leaves,
+        fake = invite_uses.fake + excluded.fake,
+        bonus = invite_uses.bonus + excluded.bonus;
 end;
 $$ language plpgsql;
 
@@ -1931,6 +1957,91 @@ begin
     set messages = activity_stats.messages + excluded.messages,
         reactions = activity_stats.reactions + excluded.reactions,
         voice_seconds = activity_stats.voice_seconds + excluded.voice_seconds;
+end;
+$$;
+
+-- The prefix a person chose for themselves (`!myprefix`). It works in every server next to the server's own prefix, for as
+-- long as the person still meets the requirements.
+create table if not exists user_prefixes (
+  user_id    text primary key,
+  prefix     text not null,
+  updated_at timestamptz not null default now()
+);
+alter table user_prefixes enable row level security;
+
+-- Invite tracker settings per server, and the roles given for reaching a number of invites.
+create table if not exists invite_config (
+  guild_id  text primary key references guilds(guild_id) on delete cascade,
+  fake_days integer not null default 3 check (fake_days between 0 and 365)
+);
+alter table invite_config enable row level security;
+
+create table if not exists invite_rewards (
+  guild_id text not null references guilds(guild_id) on delete cascade,
+  invites  integer not null check (invites between 1 and 100000),
+  role_id  text not null,
+  primary key (guild_id, role_id)
+);
+alter table invite_rewards enable row level security;
+
+-- Joins, leaves and joins through a tracked invite, per server and day (the Statistics page, `/summary`).
+create table if not exists member_flow (
+  guild_id text not null references guilds(guild_id) on delete cascade,
+  day      date not null,
+  joins    integer not null default 0,
+  leaves   integer not null default 0,
+  invited  integer not null default 0,
+  primary key (guild_id, day)
+);
+alter table member_flow enable row level security;
+
+-- Messages and voice time by hour of the day (UTC), to show the most active hour.
+create table if not exists activity_hourly (
+  guild_id      text not null references guilds(guild_id) on delete cascade,
+  day           date not null,
+  hour          smallint not null check (hour between 0 and 23),
+  messages      integer not null default 0,
+  voice_seconds integer not null default 0,
+  primary key (guild_id, day, hour)
+);
+alter table activity_hourly enable row level security;
+
+-- Messages per member and day: the number of active members and the top members.
+create table if not exists activity_members (
+  guild_id text not null references guilds(guild_id) on delete cascade,
+  day      date not null,
+  user_id  text not null,
+  messages integer not null default 0,
+  voice_seconds integer not null default 0,
+  primary key (guild_id, day, user_id)
+);
+create index if not exists idx_activity_members_guild_day on activity_members(guild_id, day);
+alter table activity_members enable row level security;
+
+create or replace function increment_member_flow(p_guild_id text, p_day date, p_joins integer, p_leaves integer, p_invited integer)
+returns void language plpgsql as $$
+begin
+  insert into member_flow (guild_id, day, joins, leaves, invited) values (p_guild_id, p_day, p_joins, p_leaves, p_invited)
+  on conflict (guild_id, day) do update
+    set joins = member_flow.joins + excluded.joins, leaves = member_flow.leaves + excluded.leaves, invited = member_flow.invited + excluded.invited;
+end;
+$$;
+
+create or replace function increment_activity_hourly(p_guild_id text, p_day date, p_hour integer, p_messages integer, p_voice_seconds integer)
+returns void language plpgsql as $$
+begin
+  insert into activity_hourly (guild_id, day, hour, messages, voice_seconds) values (p_guild_id, p_day, p_hour, p_messages, p_voice_seconds)
+  on conflict (guild_id, day, hour) do update
+    set messages = activity_hourly.messages + excluded.messages, voice_seconds = activity_hourly.voice_seconds + excluded.voice_seconds;
+end;
+$$;
+
+create or replace function increment_activity_member(p_guild_id text, p_day date, p_user_id text, p_messages integer, p_voice_seconds integer)
+returns void language plpgsql as $$
+begin
+  insert into activity_members (guild_id, day, user_id, messages, voice_seconds) values (p_guild_id, p_day, p_user_id, p_messages, p_voice_seconds)
+  on conflict (guild_id, day, user_id) do update
+    set messages = activity_members.messages + excluded.messages, voice_seconds = activity_members.voice_seconds + excluded.voice_seconds;
 end;
 $$;
 
@@ -2187,13 +2298,16 @@ $$;
 -- that have no template of their own.
 create table if not exists sanction_templates (
   guild_id       text not null references guilds(guild_id) on delete cascade,
-  type           text not null check (type in ('default', 'ban', 'tempban', 'softban', 'unban', 'kick', 'mute', 'tempmute', 'unmute', 'warn', 'jail', 'unjail')),
+  type           text not null check (type in ('default', 'ban', 'hardban', 'tempban', 'softban', 'unban', 'kick', 'mute', 'tempmute', 'unmute', 'warn', 'jail', 'unjail')),
   dm_template    text,
   reply_template text,
   log_template   text,
   updated_at     timestamptz not null default now(),
   primary key (guild_id, type)
 );
+alter table sanction_templates drop constraint if exists sanction_templates_type_check;
+alter table sanction_templates add constraint sanction_templates_type_check
+  check (type in ('default', 'ban', 'hardban', 'tempban', 'softban', 'unban', 'kick', 'mute', 'tempmute', 'unmute', 'warn', 'jail', 'unjail'));
 alter table sanction_templates enable row level security;
 
 -- Custom messages for the starboard repost, the giveaway announcements, verification and bump.
@@ -2362,12 +2476,15 @@ alter table quest_posts enable row level security;
 -- The look (name and picture) of the messages Petto sends in some places, sent through a webhook the bot makes in the channel.
 create table if not exists sender_identities (
   guild_id   text not null references guilds(guild_id) on delete cascade,
-  feature    text not null check (feature in ('quests', 'welcome', 'leave', 'boost', 'sanctions')),
+  feature    text not null check (feature in ('quests', 'welcome', 'leave', 'boost', 'sanctions', 'levelup', 'vanity')),
   name       text,
   avatar_url text,
   updated_at timestamptz not null default now(),
   primary key (guild_id, feature)
 );
+alter table sender_identities drop constraint if exists sender_identities_feature_check;
+alter table sender_identities add constraint sender_identities_feature_check
+  check (feature in ('quests', 'welcome', 'leave', 'boost', 'sanctions', 'levelup', 'vanity'));
 alter table sender_identities enable row level security;
 
 -- Partners: a partnership is counted when a Partner Manager posts the invite of another server in a partner channel and
@@ -2582,6 +2699,26 @@ alter table polls add column if not exists embed_template text;
 
 -- The people shown on the public team page. The owner edits them from the dashboard; the page keeps its own
 -- list while this table is empty. Each position holds up to 100 people (the dashboard checks it).
+-- The partners shown on the public Partners page of the website. The owner and the team edit them in the dashboard. While this
+-- table has nothing in it the page shows its original list.
+create table if not exists site_partners (
+  id             bigserial primary key,
+  kind           text not null default 'other' check (kind in ('hosting', 'servers', 'apps', 'bots', 'communities', 'other')),
+  name           text not null,
+  url            text not null,
+  logo_url       text,
+  icon           text,
+  description_en text not null default '',
+  description_es text not null default '',
+  description_pt text not null default '',
+  is_primary     boolean not null default false,
+  visible        boolean not null default true,
+  sort_order     integer not null default 0,
+  created_at     timestamptz not null default now()
+);
+create index if not exists site_partners_order_idx on site_partners (kind, sort_order);
+alter table site_partners enable row level security;
+
 create table if not exists site_team (
   id bigserial primary key,
   position text not null,

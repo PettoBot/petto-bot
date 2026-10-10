@@ -121,6 +121,10 @@ module.exports = {
     3: process.env.PETTO_PREMIUM_ROLE_3_ID || '1535057189570478214',
     5: process.env.PETTO_PREMIUM_ROLE_5_ID || '1535057199574032384',
   },
+  // Who may have a prefix of their own (`!myprefix`): a booster of the support server, a Premium user, a team member
+  // (owner, developers and the site team), someone with a partner role, or someone with one of these roles in the support server.
+  partnerRoleIds: envList('PETTO_PARTNER_ROLE_IDS'),
+  userPrefixRoleIds: envList('PETTO_USER_PREFIX_ROLE_IDS'),
   premiumGuildId: /^\d{15,25}$/.test(process.env.PETTO_PREMIUM_GUILD_ID || '') ? process.env.PETTO_PREMIUM_GUILD_ID : null,
   devGuildId: process.env.DISCORD_DEV_GUILD_ID || null,
   databaseMode: 'discloud-postgres',

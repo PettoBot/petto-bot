@@ -6,6 +6,7 @@ const { textCard } = require('../../utils/caseCard');
 const { logSanction } = require('../../utils/caseLog');
 const { sanctionDM, sanctionReply } = require('../../utils/sanctionTemplates');
 const logger = require('../../utils/logger');
+const { failureDetail } = require('../../utils/moderationCommand');
 
 module.exports = {
   aliases: ['sb', 'sofban'],
@@ -45,7 +46,7 @@ module.exports = {
     } catch (err) {
       logger.error('Failed to softban member:', err);
       await interaction.editReply({
-        components: [textCard('I was unable to softban that user. They may already be banned, or I lack permission.', 0xfe6465)],
+        components: [textCard(`I was unable to softban that user. They may already be banned, or I lack permission.${failureDetail(err)}`, 0xfe6465)],
         flags: MessageFlags.IsComponentsV2,
       });
       return;

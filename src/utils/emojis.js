@@ -35,6 +35,31 @@ const EMOJI = {
   QUEST_NITRO: '<:pe_Nitro1:1555687432509456485>',
   QUEST_ALERT: '<:pe_Alert:1555688656876867726>',
   RELEASE_ALERT: '<:pe_alert:1542048558365286531>',
+  // Sanction cards: one person icon per kind of sanction, the field icons and the colored side bar.
+  USER_BAN: '<:pe_user_ban_hardban:1450708426140287007>',
+  USER_BAN_ALL: '<:pe_user_ban_hardban_tempban:1450708437305655366>',
+  USER_TEMPBAN: '<:pe_user_tempban:1558288991319760956>',
+  USER_KICK: '<:pe_user_kick:1450708433551491173>',
+  USER_MUTE: '<:pe_user_mute:1450677538203500635>',
+  USER_MUTE_WARN: '<:pe_user_mute_warn:1450677523875631186>',
+  USER_WARN: '<:pe_user_warn:1450708431391428802>',
+  USER_UNBAN: '<:pe_user_unban:1450708429403586611>',
+  USER_UNBAN_UNMUTE: '<:pe_user_unban_unmute:1450708439180509318>',
+  USER_UNMUTE: '<:pe_user_unmute:1450708435262898297>',
+  FIELD_REASON: '<:pe_razon:1450677650933940347>',
+  FIELD_DOT: '<:pe_punto:1450719691063558237>',
+  FIELD_NOTES: '<:pe_notas:1450677529118642372>',
+  FIELD_CALENDAR: '<:pe_calendario:1450677526752923649>',
+  CORNER_TOP_LEFT: '<:pe_esquina_superior_izquierda:1450720994967945329>',
+  CORNER_TOP_RIGHT: '<:pe_esquina_superior_derecha:1450720996586819655>',
+  CORNER_BOTTOM_RIGHT: '<:pe_esquina_inferior_derecha:1450720993025982560>',
+  CORNER_LEFT: '<:pe_esquina_izquierda:1450677535494115399>',
+  LINE_HORIZONTAL: '<:pe_barra_horizontal:1450677536848609430>',
+  LINE_VERTICAL: '<:pe_barra_vertical:1450677533719662654>',
+  BAR_YELLOW: '<:pe_barra_izquierda_amarilla:1558289417494462506>',
+  BAR_GRAY: '<:pe_barra_izquierda_gris:1558292567790063656>',
+  BAR_RED: '<:pe_barra_izquierda_rojisa:1558289504694173826>',
+  BAR_GREEN: '<:pe_barra_izquierda_verde:1558289666019557498>',
   // Level progress bar: start/middle/end × full/half/empty.
   BAR_START_FULL: '<:petto_iniciolleno:1534705766370381885>',
   BAR_START_HALF: '<:petto_iniciomediolleno:1534705752692883486>',
@@ -56,17 +81,25 @@ const EMOJI = {
 
 // Which emoji represents each mod_actions.type, for DMs and case embeds.
 const TYPE_EMOJI = {
-  ban: EMOJI.HAMMER,
-  tempban: EMOJI.HAMMER,
-  softban: EMOJI.HAMMER,
-  unban: EMOJI.APPROVE,
-  kick: EMOJI.HAMMER,
-  mute: EMOJI.ALERT,
-  tempmute: EMOJI.ALERT,
-  unmute: EMOJI.APPROVE,
-  warn: EMOJI.WARNING,
-  jail: EMOJI.RELEASE_LOCKED,
-  unjail: EMOJI.APPROVE,
+  ban: EMOJI.USER_BAN,
+  hardban: EMOJI.USER_BAN,
+  tempban: EMOJI.USER_TEMPBAN,
+  softban: EMOJI.USER_BAN_ALL,
+  unban: EMOJI.USER_UNBAN,
+  kick: EMOJI.USER_KICK,
+  mute: EMOJI.USER_MUTE,
+  tempmute: EMOJI.USER_MUTE,
+  unmute: EMOJI.USER_UNMUTE,
+  warn: EMOJI.USER_WARN,
+  jail: EMOJI.USER_MUTE_WARN,
+  unjail: EMOJI.USER_UNBAN_UNMUTE,
 };
 
-module.exports = { EMOJI, TYPE_EMOJI };
+// The colored bar at the start of each line of a sanction card.
+const TYPE_BAR = {
+  ban: EMOJI.BAR_RED, hardban: EMOJI.BAR_RED, tempban: EMOJI.BAR_RED, softban: EMOJI.BAR_RED,
+  kick: EMOJI.BAR_YELLOW, mute: EMOJI.BAR_YELLOW, tempmute: EMOJI.BAR_YELLOW, warn: EMOJI.BAR_YELLOW, jail: EMOJI.BAR_YELLOW,
+  unban: EMOJI.BAR_GREEN, unmute: EMOJI.BAR_GREEN, unjail: EMOJI.BAR_GREEN,
+};
+
+module.exports = { EMOJI, TYPE_EMOJI, TYPE_BAR };

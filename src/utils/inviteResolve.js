@@ -32,6 +32,16 @@ async function resolveJoinInvite(member) {
         }
       }
 
+      // A single-use (or last-use) invite disappears when it is used, so it is not in the new list: it is the one that is gone.
+      if (!usedInvite) {
+        for (const [code, prev] of before) {
+          if (!afterInvites.has(code) && prev.maxUses > 0 && prev.uses + 1 >= prev.maxUses) {
+            usedInvite = { code, inviter: prev.inviterId ? { id: prev.inviterId } : null, uses: prev.maxUses };
+            break;
+          }
+        }
+      }
+
       inviteCache.replaceGuildCache(guild.id, afterInvites);
       return usedInvite;
     } catch {
@@ -44,4 +54,16 @@ async function resolveJoinInvite(member) {
   return promise;
 }
 
-module.exports = { resolveJoinInvite };
+const vanityUses = new Map(); // guildId -> uses of the vanity URL the last time it was looked at
+
+/** True when the join came through the server's vanity URL (its use count went up). Remembers the count for the next join. */
+async function wasVanityJoin(guild) {
+  if (!guild.vanityURLCode) return false;
+  const data = await guild.fetchVanityData().catch(() => null);
+  if (!data) return false;
+  const before = vanityUses.get(guild.id);
+  vanityUses.set(guild.id, data.uses);
+  return before !== undefined && data.uses > before;
+}
+
+module.exports = { resolveJoinInvite, wasVanityJoin };

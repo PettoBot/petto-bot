@@ -82,7 +82,7 @@ async function warnUser(interaction) {
     return;
   }
 
-  const check = canModerate(interaction, targetMember, WARN_PERMISSION);
+  const check = canModerate(interaction, targetMember, WARN_PERMISSION, { hierarchy: 'none' });
   if (!check.ok) {
     await interaction.reply({ content: check.message, flags: MessageFlags.Ephemeral });
     return;

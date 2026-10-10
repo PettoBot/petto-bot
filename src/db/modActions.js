@@ -5,7 +5,7 @@ const database = require('./database');
  * Case numbering is handled atomically in Postgres (see create_mod_case in
  * schema.sql) so concurrent actions in the same guild never collide.
  */
-async function createCase({ guildId, userId, moderatorId, type, reason = null, expiresAt = null }) {
+async function createCase({ guildId, userId, moderatorId, type, reason = null, expiresAt = null, source = 'moderator' }) {
   const { data, error } = await database.rpc('create_mod_case', {
     p_guild_id: guildId,
     p_user_id: userId,
@@ -13,6 +13,7 @@ async function createCase({ guildId, userId, moderatorId, type, reason = null, e
     p_type: type,
     p_reason: reason,
     p_expires_at: expiresAt,
+    p_source: source,
   });
 
   if (error) throw error;

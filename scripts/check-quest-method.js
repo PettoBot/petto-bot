@@ -50,7 +50,7 @@ const quest = { id: 'q1', name: 'Watch the trailer', game: 'Some Game', publishe
   assert.equal(extras.task_time, '2 min');
   assert.equal(extras.countries, 'US, BR');
   assert.equal(extras.excluded_countries, 'DE');
-  assert.match(extras.starts_datetime, /UTC$/);
+  assert.match(extras.starts_datetime, /GMT-5$/);
   assert.equal(extras['orbs.amount'], '200');
   assert.equal(extras['orbs.nitro_amount'], '240');
   assert.equal(extras['decoration.name'], 'Cool frame');

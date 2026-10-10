@@ -1,6 +1,7 @@
 const { Events } = require('discord.js');
 const { getConfig } = require('../db/memberEvents');
 const { sendMemberEvent } = require('../utils/memberEventMessage');
+const { inviteInfoFor } = require('../utils/inviteContext');
 const logger = require('../utils/logger');
 
 module.exports = {
@@ -19,7 +20,7 @@ module.exports = {
         kind: 'welcome',
         messageText: config.dm_join_message,
         embedTemplateName: config.dm_join_embed_template,
-        ctx: { member, guild: member.guild, channel: dm },
+        ctx: { member, guild: member.guild, channel: dm, invite: await inviteInfoFor(member) },
       });
     } catch (err) {
       logger.error(`Join DM failed for ${member.id} in guild ${member.guild.id}:`, err);

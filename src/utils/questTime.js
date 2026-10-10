@@ -47,8 +47,8 @@ function spanText(ms) {
   return parts.slice(0, 2).join(' ');
 }
 
-const dateText = (date) => date.toLocaleDateString('en-US', { timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric' });
-const dateTimeText = (date) => `${date.toLocaleString('en-US', { timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} UTC`;
+const dateText = (date) => date.toLocaleDateString('en-US', { timeZone: 'America/Bogota', year: 'numeric', month: 'short', day: 'numeric' });
+const dateTimeText = (date) => `${date.toLocaleString('en-US', { timeZone: 'America/Bogota', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} GMT-5`;
 const seconds = (value) => (value >= 120 ? `${Math.round(value / 60)} min` : value ? `${value} s` : '');
 
 /** The extra variables of a quest, by name (`starts.relative`, `expires_in`...). `now` is only for tests. */
@@ -104,10 +104,10 @@ const QUEST_EXTRA_VARS = [
   ...['starts', 'expires'].flatMap((label) => STYLES.map((style) => ({ key: `${label}.${style}`, desc: `When it ${label === 'starts' ? 'starts' : 'ends'}, as ${STYLE_DESCRIPTIONS[style]}` }))),
   { key: 'starts_ago', desc: 'When it started in plain words, such as 2 days ago, in 3 hours or now (works in titles and footers)' },
   { key: 'expires_in', desc: 'When it ends in plain words, such as in 5 days, or ended 1 day ago (works in titles and footers)' },
-  { key: 'starts_date', desc: 'Start date in plain text, such as Oct 1, 2026 (UTC)' },
-  { key: 'expires_date', desc: 'End date in plain text, such as Oct 8, 2026 (UTC)' },
-  { key: 'starts_datetime', desc: 'Start date and time in plain text, in UTC' },
-  { key: 'expires_datetime', desc: 'End date and time in plain text, in UTC' },
+  { key: 'starts_date', desc: 'Start date in plain text, such as Oct 1, 2026 (GMT-5)' },
+  { key: 'expires_date', desc: 'End date in plain text, such as Oct 8, 2026 (GMT-5)' },
+  { key: 'starts_datetime', desc: 'Start date and time in plain text, in GMT-5 (Colombia)' },
+  { key: 'expires_datetime', desc: 'End date and time in plain text, in GMT-5 (Colombia)' },
   { key: 'duration', desc: 'How long the quest lasts, such as 7 days' },
   { key: 'time_left', desc: 'How long is left, such as 5 days 3 hours, or Ended' },
   { key: 'days_left', desc: 'Whole days left, as a number' },

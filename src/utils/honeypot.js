@@ -197,6 +197,7 @@ async function applyHoneypotAction(message, config) {
       moderatorId: client.user.id,
       type: punishment,
       reason: fullReason,
+      source: 'honeypot',
     });
     await logSanction(client, guild, { modCase, target: author, moderator: client.user, reason: fullReason });
   } catch (err) {

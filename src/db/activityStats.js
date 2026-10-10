@@ -1,4 +1,5 @@
 const database = require('./database');
+const { botDay } = require('../utils/botTime');
 const { ensureGuild } = require('./guilds');
 const logger = require('../utils/logger');
 const { forEachWithConcurrency } = require('../utils/concurrency');
@@ -17,7 +18,7 @@ let lastFlushErrorLogAt = 0;
 let suppressedFlushErrors = 0;
 
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  return botDay(); // the day of Colombia (GMT-5)
 }
 
 async function incrementActivity(guildId, channelId, { messages = 0, reactions = 0, voiceSeconds = 0, day = today() } = {}) {
@@ -148,13 +149,12 @@ async function flushActivity() {
 }
 
 async function getActivitySummary(guildId, days = 7) {
-  const start = new Date();
-  start.setUTCDate(start.getUTCDate() - Math.max(0, days - 1));
+  const start = new Date(Date.now() - Math.max(0, days - 1) * 86_400_000);
   const { data, error } = await database
     .from('activity_stats')
     .select('channel_id, day, messages, reactions, voice_seconds')
     .eq('guild_id', guildId)
-    .gte('day', start.toISOString().slice(0, 10))
+    .gte('day', botDay(start))
     .order('day', { ascending: true });
   if (error) throw error;
   return data ?? [];

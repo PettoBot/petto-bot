@@ -399,12 +399,24 @@ const VARIABLE_GROUPS = [
     ],
   },
   {
+    id: 'invites',
+    label: 'Invites',
+    availability: 'always',
+    vars: [
+      { tok: '{inviter}', desc: 'Welcome messages: mentions who invited the member, or Unknown' },
+      { tok: '{inviter.name}', desc: 'Welcome messages: the name of who invited the member' },
+      { tok: '{inviter.id}', desc: 'Welcome messages: the ID of who invited the member' },
+      { tok: '{inviter.invites}', desc: 'Welcome messages: how many invites that person has now' },
+      { tok: '{invite.code}', desc: 'Welcome messages: the code of the invite that was used' },
+    ],
+  },
+  {
     id: 'date',
     label: 'Date',
     availability: 'always',
     vars: [
-      { tok: '{date}', desc: 'Today\'s date' },
-      { tok: '{date.now}', desc: 'Today\'s date, Pacific time' },
+      { tok: '{date}', desc: 'Today\'s date, GMT-5 (Colombia)' },
+      { tok: '{date.now}', desc: 'Today\'s date, GMT-5 (Colombia)' },
       { tok: '{date.utc_now}', desc: 'Current date and time, UTC' },
       { tok: '{date.utc_timestamp}', desc: 'Current unix timestamp' },
       { tok: '{timestamp}', desc: 'Right now, as a Discord timestamp in each reader\'s own time zone' },

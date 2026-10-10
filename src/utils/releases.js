@@ -2,13 +2,54 @@ const { EMOJI } = require('./emojis');
 
 const RELEASES = [
   {
+    version: 'v0.7.4',
+    display: 'v0.7.4',
+    name: 'Brownie',
+    label: 'v0.7.4 · Brownie: Vanity in Petto, statistics & hardban',
+    date: '2026-10-10',
+    accent: 0xf0a88f,
+    status: `${EMOJI.RELEASE_APPROVED} Latest`,
+    summary: 'Vanity and Server Tag roles inside Petto, a new look for sanctions, a real hardban, `/summary` with sanctions, joins, leaves and invites, a fuller invite tracker, a prefix of your own and Petto working in GMT-5 (Colombia).',
+    sections: [
+      {
+        title: `${EMOJI.RELEASE_ROCKET} Vanity and Server Tag`,
+        items: [
+          '`!vanity`, `!guildtag` and `!identity` (short names `!vy` and `!tag`) give or take a role by the Custom Status, the name or the Server Tag of a member, with a thank-you message, a log and persistent roles. The data of the old Vanity bot can be imported.',
+          'Reaction roles: buttons with a color, a row and only an emoji, and `!reactionrole add new` posts a saved embed with its role button.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_MAGIC} Moderation`,
+        items: [
+          'A new default look for sanctions (reply, log and member DM) in Components V2 with new icons, and more kinds of message for `!sender`.',
+          '`!hardban` is real: only the server owner and the antinuke admins can unban, and Petto puts the ban back if somebody else lifts it. A hackban is a ban by ID.',
+          'Kicking or banning an administrator bot works when Petto is above it.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_EYES} Statistics`,
+        items: [
+          '`!summary` by `messages`, `voice`, `joins`, `leaves`, `invites` or `sanctions`, with the most active hour, a new picture and the Statistics page in the dashboard.',
+          'The invite tracker counts fake and bonus invites, gives roles for reaching a number of invites, has `{inviter}` variables for the welcome message and a leaderboard by week or month.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_SETTINGS} Your own prefix and time`,
+        items: [
+          '`!myprefix` gives boosters of the support server, Premium users, partners and the team a prefix of their own in every server.',
+          'Petto works in GMT-5 (Colombia) and says so: days, weeks, hours and the times you write.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'v0.7.3',
     display: 'v0.7.3',
     name: 'Flan',
     label: 'v0.7.3 · Flan: easier tickets, config cards & votes',
     date: '2026-10-08',
     accent: 0xffe3a3,
-    status: `${EMOJI.RELEASE_APPROVED} Latest`,
+    status: `${EMOJI.RELEASE_APPROVED} Published`,
     summary: 'A guided setup for tickets, a `!<command>config` card for every command, votes from top.gg with a voter role, and Petto online with the phone icon.',
     sections: [
       {

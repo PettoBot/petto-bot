@@ -61,7 +61,7 @@ async function jailUser(interaction) {
   const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
   if (!targetMember) return refuse(interaction, 'That user is not a member of this server.');
 
-  const check = canModerate(interaction, targetMember, PermissionFlagsBits.ModerateMembers);
+  const check = canModerate(interaction, targetMember, PermissionFlagsBits.ModerateMembers, { hierarchy: 'none' });
   if (!check.ok) return refuse(interaction, check.message);
   if (!targetMember.manageable) return refuse(interaction, 'I cannot change that member’s roles: their highest role is above or equal to mine.');
 
@@ -91,7 +91,7 @@ async function releaseUser(interaction) {
   const reason = interaction.options.getString('reason');
 
   const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
-  const check = canModerate(interaction, targetMember, PermissionFlagsBits.ModerateMembers);
+  const check = canModerate(interaction, targetMember, PermissionFlagsBits.ModerateMembers, { hierarchy: 'none' });
   if (!check.ok) return refuse(interaction, check.message);
 
   await interaction.deferReply({ flags: V2 });

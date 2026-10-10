@@ -6,7 +6,7 @@ const cache = new Map(); // guildId -> Map<code, { uses, inviterId }>
 function snapshotFromCollection(invites) {
   const map = new Map();
   for (const invite of invites.values()) {
-    map.set(invite.code, { uses: invite.uses ?? 0, inviterId: invite.inviter?.id ?? null });
+    map.set(invite.code, { uses: invite.uses ?? 0, inviterId: invite.inviter?.id ?? null, maxUses: invite.maxUses ?? 0 });
   }
   return map;
 }
