@@ -2699,6 +2699,26 @@ alter table polls add column if not exists embed_template text;
 
 -- The people shown on the public team page. The owner edits them from the dashboard; the page keeps its own
 -- list while this table is empty. Each position holds up to 100 people (the dashboard checks it).
+-- The partners shown on the public Partners page of the website. The owner and the team edit them in the dashboard. While this
+-- table has nothing in it the page shows its original list.
+create table if not exists site_partners (
+  id             bigserial primary key,
+  kind           text not null default 'other' check (kind in ('hosting', 'servers', 'apps', 'bots', 'communities', 'other')),
+  name           text not null,
+  url            text not null,
+  logo_url       text,
+  icon           text,
+  description_en text not null default '',
+  description_es text not null default '',
+  description_pt text not null default '',
+  is_primary     boolean not null default false,
+  visible        boolean not null default true,
+  sort_order     integer not null default 0,
+  created_at     timestamptz not null default now()
+);
+create index if not exists site_partners_order_idx on site_partners (kind, sort_order);
+alter table site_partners enable row level security;
+
 create table if not exists site_team (
   id bigserial primary key,
   position text not null,
