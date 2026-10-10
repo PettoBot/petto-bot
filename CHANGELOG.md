@@ -6,7 +6,7 @@ All notable changes to Petto are documented here.
 
 ### Changed
 
-- The text under the picture of `/summary` is shorter and tidier: one line for each thing with an icon (growth, the most active hour, the best day), and the top channels, members and inviters on a single line with three names each, instead of long numbered lists that repeated what the picture already shows.
+- The text under the picture of `/summary` is short and friendly: at most four lines, each with a Petto emoji (the busiest hour and day, the favorite channels, who chatted the most, and whether the server grew), instead of long lists that repeated what the picture already shows.
 
 ## [0.7.4] — 2026-10-10 · Brownie
 
