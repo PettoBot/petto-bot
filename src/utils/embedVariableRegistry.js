@@ -371,6 +371,8 @@ const VARIABLE_GROUPS = [
       { tok: '{rollout.to}', desc: 'The share now' },
       { tok: '{rollout.change}', desc: 'The change, such as +12.5%, empty for a new one' },
       { tok: '{rollout.badge}', desc: 'The short text of the card button, such as +12.5% (50%)' },
+      { tok: '{rollout.kind_icon}', desc: "Petto's icon for the kind of experiment (a person for users, the gear for servers...)" },
+      { tok: '{rollout.event_icon}', desc: "Petto's icon for the event (new, plus, minus or reload)" },
       { tok: '{rollout.variants}', desc: 'One line per variant with its change' },
       { tok: '{rollout.ranges}', desc: 'The ranges of each variant' },
       { tok: '{rollout.platforms}', desc: 'Where it applies: android, desktop...' },

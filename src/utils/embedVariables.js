@@ -257,6 +257,8 @@ async function resolve(text, ctx = {}) {
     '{rollout.to}': ctx.rollout?.to ?? '',
     '{rollout.change}': ctx.rollout?.change ?? '',
     '{rollout.badge}': ctx.rollout?.badge ?? '',
+    '{rollout.kind_icon}': ctx.rollout?.kind_icon ?? '',
+    '{rollout.event_icon}': ctx.rollout?.event_icon ?? '',
     '{rollout.variants}': ctx.rollout?.variants ?? '',
     '{rollout.ranges}': ctx.rollout?.ranges ?? '',
     '{rollout.platforms}': ctx.rollout?.platforms ?? '',

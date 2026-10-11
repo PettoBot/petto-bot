@@ -57,6 +57,8 @@ function rolloutContext(event) {
     to: pct(rollout.percent),
     change: type === 'new' ? '' : signed(change),
     badge: badge(event),
+    kind_icon: KIND_ICONS[rollout.kind] ?? KIND_ICONS.unknown,
+    event_icon: EVENT_ICONS[type],
     variants: variantLines(event).join('\n'),
     ranges: rangeLines(event).join('\n'),
     platforms: rollout.platforms.join(', '),

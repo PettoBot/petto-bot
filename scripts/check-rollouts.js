@@ -65,6 +65,7 @@ const raw = [
   assert.equal(buildRolloutCard(events[2], { accent_color: 0xff91c2 }).components[0].toJSON().accent_color, 0xff91c2, 'the color of a server');
   const ctx = rolloutContext(events[0]);
   assert.deepEqual([ctx.name, ctx.change, ctx.from, ctx.to, ctx.type], ['Android media viewer full resolution', '+12.5%', '50%', '62.5%', 'Rollout increased']);
+  assert.ok(ctx.kind_icon.includes('pe_exp') && ctx.event_icon.includes('pe_more'), 'the icons are variables too');
   const message = await rolloutMessage({ id: 'g' }, { style: 'card', role_id: '99' }, events[0]);
   assert.deepEqual(message.allowedMentions, { parse: [], roles: ['99'] });
 
