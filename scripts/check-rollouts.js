@@ -64,7 +64,7 @@ const raw = [
   assert.ok(json.includes('pe_rexperiment') && !json.includes('pe_ban') && !json.includes('pe_mute') && !json.includes('pe_user_'), "Petto's own icons, never the ones of the sanctions");
   assert.equal(card.components.length, 1, 'only the card, like the design it follows');
   assert.ok(!JSON.stringify(buildRolloutCard(events[0], {}).components[0].toJSON()).match(/## |-# /), 'no big titles and no small text');
-  assert.equal(JSON.parse(json).components[0].accessory.style, 3, 'a green button');
+  assert.equal(JSON.parse(json).components.find((c) => c.accessory).accessory.style, 3, 'a green button');
   assert.ok(!JSON.stringify(buildRolloutCard(events[1], { hide_sections: ['status', 'variants', 'ranges'] }).components[0].toJSON()).includes('Status:'), 'a section can be hidden');
   assert.equal(buildRolloutCard(events[2], { accent_color: 0xff91c2 }).components[0].toJSON().accent_color, 0xff91c2, 'the color of a server');
   const plain = buildRolloutCard(events[0], {}).components[0].toJSON();

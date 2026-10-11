@@ -6,7 +6,7 @@ const { ensureGuild } = require('../../db/guilds');
 const { getTemplate } = require('../../db/embedTemplates');
 const rolloutsDb = require('../../db/rollouts');
 const rolloutApi = require('../../utils/rolloutApi');
-const { rolloutMessage, SECTIONS, CREDIT } = require('../../utils/rolloutMessages');
+const { rolloutMessage, SECTIONS } = require('../../utils/rolloutMessages');
 const { canUseRollouts } = require('../../utils/rolloutAlerts');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
@@ -161,7 +161,7 @@ module.exports = {
       if (sub === 'list') {
         if (!live.length) return reply('No experiment is rolling out right now.');
         const lines = live.sort((a, b) => (b.percent ?? 0) - (a.percent ?? 0)).slice(0, 20).map((entry) => `- **${entry.title}** · ${Number(entry.percent.toFixed(2))}% · ${rolloutApi.STATUS_LABELS[entry.status] ?? entry.status}`);
-        return reply(`## Rolling out now\n${lines.join('\n')}${live.length > 20 ? `\n-# and ${live.length - 20} more` : ''}\n${CREDIT}`);
+        return reply(`## Rolling out now\n${lines.join('\n')}${live.length > 20 ? `\n-# and ${live.length - 20} more` : ''}`);
       }
       const sample = live[0] ?? list[0];
       const event = { type: 'increase', rollout: sample, before: { ...sample, percent: Math.max(0, (sample.percent ?? 0) - 12.5), variants: sample.variants.map((variant) => ({ ...variant, percent: Math.max(0, (variant.percent ?? 0) - 12.5) })) }, change: 12.5 };

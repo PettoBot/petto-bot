@@ -1,12 +1,11 @@
 // The messages of rollout alerts: a Components V2 card that servers can style (color, sections), or one of their saved embeds with
 // the `{rollout.*}` variables. A saved embed that is missing or broken falls back to the card.
-const { ContainerBuilder, SectionBuilder, TextDisplayBuilder, SeparatorBuilder, SeparatorSpacingSize, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
+const { ContainerBuilder, SectionBuilder, TextDisplayBuilder, SeparatorBuilder, SeparatorSpacingSize, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
 const { SOURCE_NAME, SOURCE_URL, KIND_LABELS, STATUS_LABELS } = require('./rolloutApi');
 const { templatePayload } = require('./templatedMessage');
 const { EMOJI } = require('./emojis');
 
 const SECTIONS = ['variants', 'ranges', 'status', 'platforms', 'filters'];
-const CREDIT = `-# Data from [${SOURCE_NAME}](${SOURCE_URL})`;
 const EVENT_LABELS = { new: 'New experiment', increase: 'Rollout increased', decrease: 'Rollout decreased', status: 'Status changed' };
 // Petto's own icons (never the ones of the sanctions): a person for users, the gear for servers, and so on.
 const KIND_ICONS = { user: EMOJI.ROLLOUT_USERS, guild: EMOJI.ROLLOUT_GUILD, apex_user: EMOJI.ROLLOUT_EXPERIMENT, installation: EMOJI.ROLLOUT_INSTALLATION, unknown: EMOJI.ROLLOUT_NOTHING };
@@ -133,11 +132,11 @@ async function rolloutMessage(guild, config, event) {
   const rolePing = config.role_id ? `<@&${config.role_id}>` : null;
   const names = [templateForRollout(config.type_templates, event.rollout), config.style === 'template' ? config.embed_template : null].filter((name, index, all) => name && all.indexOf(name) === index);
   for (const name of names) {
-    const payload = await templatePayload(guild.id, name, { guild, rollout: rolloutContext(event) }, { v2Extras: { prefixText: rolePing ? `-# ${rolePing}` : null, suffixText: CREDIT } });
+    const payload = await templatePayload(guild.id, name, { guild, rollout: rolloutContext(event) }, { v2Extras: { prefixText: rolePing ? `-# ${rolePing}` : null } });
     if (payload?.flags) return { ...payload, allowedMentions: { parse: [], roles: config.role_id ? [config.role_id] : [] } };
-    if (payload) return { ...payload, content: [rolePing, payload.content, CREDIT].filter(Boolean).join('\n'), allowedMentions: { parse: [], roles: config.role_id ? [config.role_id] : [] } };
+    if (payload) return { ...payload, content: [rolePing, payload.content].filter(Boolean).join('\n'), allowedMentions: { parse: [], roles: config.role_id ? [config.role_id] : [] } };
   }
   return buildRolloutCard(event, config, { rolePing });
 }
 
-module.exports = { SECTIONS, CREDIT, EVENT_LABELS, rolloutContext, buildRolloutCard, buildRolloutDigest, rolloutMessage, badge, variantLines };
+module.exports = { SECTIONS, EVENT_LABELS, rolloutContext, buildRolloutCard, buildRolloutDigest, rolloutMessage, badge, variantLines };
