@@ -1,5 +1,7 @@
 // Rollout alerts: reading the list, telling what changed, the card and the pass that posts it.
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 process.env.DISCORD_TOKEN ||= 'x';
 process.env.DISCORD_CLIENT_ID ||= '1';
@@ -66,6 +68,20 @@ const raw = [
   const ctx = rolloutContext(events[0]);
   assert.deepEqual([ctx.name, ctx.change, ctx.from, ctx.to, ctx.type], ['Android media viewer full resolution', '+12.5%', '50%', '62.5%', 'Rollout increased']);
   assert.ok(ctx.kind_icon.includes('pe_rexperiment') && ctx.event_icon.includes('pe_rup'), 'the icons are variables too');
+  // The design a server made in the Embed Generator (a section with a disabled button that shows the change): variables in the label and in
+  // the emoji of the button work, and the button can never be pressed.
+  const { buildV2 } = require('../src/utils/embedV2');
+  const { Collection } = require('discord.js');
+  const fakeGuild = { id: '9', name: 'Test', memberCount: 5, ownerId: '1', premiumTier: 0, premiumSubscriptionCount: 0, createdAt: new Date(), iconURL: () => null, bannerURL: () => null, members: { cache: new Collection() }, roles: { cache: new Collection() }, channels: { cache: new Collection() }, emojis: { cache: new Collection() } };
+  const design = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/rollout-design.json'), 'utf8'));
+  const built = await buildV2({ components: design.components }, { guild: fakeGuild, rollout: ctx });
+  const head = built.components[0].components[0];
+  assert.equal(head.type, 9, 'the section is kept');
+  assert.equal(head.accessory.type, 2);
+  assert.equal(head.accessory.disabled, true, 'the button cannot be pressed');
+  assert.equal(head.accessory.label, 'Rollout increased · +12.5% (62.5%)', 'the label has the variables and no stray asterisks');
+  assert.deepEqual([head.accessory.emoji.name, head.accessory.emoji.id], ['pe_rup', '1558964315627720786'], 'the emoji of the button comes from a variable');
+  assert.ok(head.accessory.custom_id, 'a button that is not a link has an id');
   const message = await rolloutMessage({ id: 'g' }, { style: 'card', role_id: '99' }, events[0]);
   assert.deepEqual(message.allowedMentions, { parse: [], roles: ['99'] });
 
