@@ -2,7 +2,7 @@ const database = require('./database');
 const { createExpiringCache } = require('../utils/expiringCache');
 const { retryIdempotent } = require('../utils/transientDb');
 
-const stickyCache = createExpiringCache(15_000);
+const stickyCache = createExpiringCache(15_000, { name: 'sticky' });
 const cacheKey = (guildId, channelId) => `${guildId}:${channelId}`;
 
 async function getSticky(guildId, channelId) {

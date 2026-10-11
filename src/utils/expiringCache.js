@@ -3,7 +3,11 @@
  * The in-flight map is as important as the TTL: when several events for the
  * same guild arrive together, they share one database request.
  */
-function createExpiringCache(ttlMs) {
+function createExpiringCache(ttlMs, { name = null } = {}) {
+  // With a `name` and a Redis, a second level keeps the values there too, so a restart starts with the caches warm instead of asking
+  // the database for every server at once. Without them it is exactly the cache that was here before.
+  const shared = name ? require('./redis') : null;
+  const sharedKey = (cacheKey) => `cache:${name}:${cacheKey}`;
   const values = new Map();
   const pending = new Map();
   const versions = new Map();
@@ -18,8 +22,13 @@ function createExpiringCache(ttlMs) {
 
     const version = versions.get(cacheKey) ?? 0;
     const request = Promise.resolve()
-      .then(loader)
-      .then((value) => {
+      .then(async () => {
+        if (!shared || force) return { value: await loader(), fromShared: false };
+        const found = await shared.getJson(sharedKey(cacheKey));
+        return found.hit ? { value: found.value, fromShared: true } : { value: await loader(), fromShared: false };
+      })
+      .then(({ value, fromShared }) => {
+        if (shared && !fromShared && (versions.get(cacheKey) ?? 0) === version) shared.setJson(sharedKey(cacheKey), value, ttlMs).catch(() => {});
         // An update can finish while an older read is still in flight. Do not
         // let that stale response overwrite the value written by the update.
         if ((versions.get(cacheKey) ?? 0) === version) {
@@ -50,6 +59,7 @@ function createExpiringCache(ttlMs) {
     versions.set(cacheKey, (versions.get(cacheKey) ?? 0) + 1);
     values.set(cacheKey, { value, expiresAt: Date.now() + ttlMs });
     pending.delete(cacheKey);
+    if (shared) shared.setJson(sharedKey(cacheKey), value, ttlMs).catch(() => {});
     return value;
   }
 
@@ -58,6 +68,7 @@ function createExpiringCache(ttlMs) {
     versions.set(cacheKey, (versions.get(cacheKey) ?? 0) + 1);
     values.delete(cacheKey);
     pending.delete(cacheKey);
+    if (shared) shared.del(sharedKey(cacheKey)).catch(() => {});
   }
 
   function clear() {

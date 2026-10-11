@@ -3,7 +3,7 @@ const { createExpiringCache } = require('../utils/expiringCache');
 
 // Every message of a server passes through the partner check, so its settings are kept for a few seconds. Saving them here
 // forgets them at once; a change made from the dashboard is seen within the 15 seconds.
-const configCache = createExpiringCache(15_000);
+const configCache = createExpiringCache(15_000, { name: 'partners-config' });
 
 const DEFAULTS = {
   enabled: false,

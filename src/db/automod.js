@@ -1,7 +1,7 @@
 const database = require('./database');
 const { createExpiringCache } = require('../utils/expiringCache');
 
-const configCache = createExpiringCache(15_000);
+const configCache = createExpiringCache(15_000, { name: 'automod-config' });
 const silentChannelCache = createExpiringCache(15_000);
 
 async function getConfig(guildId) {
