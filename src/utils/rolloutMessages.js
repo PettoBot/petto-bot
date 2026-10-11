@@ -1,21 +1,24 @@
 // The messages of rollout alerts: a Components V2 card that servers can style (color, sections), or one of their saved embeds with
 // the `{rollout.*}` variables. A saved embed that is missing or broken falls back to the card.
-const { ContainerBuilder, TextDisplayBuilder, SectionBuilder, SeparatorBuilder, SeparatorSpacingSize, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
+const { ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, SeparatorSpacingSize, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
 const { SOURCE_NAME, SOURCE_URL, KIND_LABELS, STATUS_LABELS } = require('./rolloutApi');
 const { templatePayload } = require('./templatedMessage');
+const { EMOJI } = require('./emojis');
 
 const SECTIONS = ['variants', 'ranges', 'status', 'platforms', 'filters'];
 const CREDIT = `-# Data from [${SOURCE_NAME}](${SOURCE_URL})`;
 const EVENT_LABELS = { new: 'New experiment', increase: 'Rollout increased', decrease: 'Rollout decreased', status: 'Status changed' };
-const KIND_ICONS = { user: '👤', guild: '🏠', apex_user: '🧪', installation: '📱', unknown: '🧪' };
 const COLORS = { new: 0x5865f2, increase: 0x6df08e, decrease: 0xfe6465, status: 0xfed53c };
-const BUTTON_STYLES = { new: ButtonStyle.Primary, increase: ButtonStyle.Success, decrease: ButtonStyle.Danger, status: ButtonStyle.Secondary };
+// Petto's own icons (never the ones of the sanctions): a person for users, the gear for servers, and so on.
+const KIND_ICONS = { user: EMOJI.MEMBERS, guild: EMOJI.RELEASE_SETTINGS, apex_user: EMOJI.RELEASE_EXPERIENCE, installation: EMOJI.RELEASE_ROCKET, unknown: EMOJI.RELEASE_MAGIC };
+const EVENT_ICONS = { new: EMOJI.RELEASE_MAGIC, increase: EMOJI.RELEASE_MORE, decrease: EMOJI.RELEASE_MINUS, status: EMOJI.RELEASE_RELOAD };
+const ICONS = { rollouts: EMOJI.RELEASE_RELOAD, ranges: EMOJI.RELEASE_NOTE, status: EMOJI.RELEASE_CHANGELOG, platforms: EMOJI.RELEASE_PC, filters: EMOJI.RELEASE_EYES };
 
 const pct = (value) => (value == null ? '?' : `${Number(value.toFixed(2))}%`);
 const signed = (value) => `${value > 0 ? '+' : ''}${Number(value.toFixed(2))}%`;
 const statusLabel = (status) => STATUS_LABELS[status ?? 'none'] ?? String(status);
 
-/** The text on the button of the card: `+12.5% (50%)` for a change, `New` for a new one, the new status for a status change. */
+/** The short text of the change: `+12.5% (50%)` for a change, `New (50%)` for a new one, the new status for a status change. */
 function badge(event) {
   const { rollout, type, change } = event;
   if (type === 'new') return rollout.percent != null ? `New (${pct(rollout.percent)})` : 'New';
@@ -62,41 +65,55 @@ function rolloutContext(event) {
   };
 }
 
-/** The default Components V2 card, modeled on the rollout bots of the community: the kind, the experiment and its change at the top. */
+const text = (content) => new TextDisplayBuilder().setContent(content);
+const divider = () => new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small);
+const sourceRow = () => new ActionRowBuilder().addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Rollout list').setURL(SOURCE_URL));
+
+/**
+ * The default Components V2 card, laid out like the quest card: the title, a line with the event, the details, the variants and
+ * the filters, one block after another, with the credit at the end.
+ */
 function buildRolloutCard(event, config = {}, { rolePing = null } = {}) {
   const hidden = new Set(config.hide_sections ?? []);
   const { rollout, type } = event;
-  const text = (content) => new TextDisplayBuilder().setContent(content);
-  const divider = () => new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small);
   const container = new ContainerBuilder().setAccentColor(Number.isInteger(config.accent_color) ? config.accent_color : COLORS[type]);
+  container.addTextDisplayComponents(text(`${rolePing ? `-# ${rolePing}\n` : ''}# ${KIND_ICONS[rollout.kind] ?? KIND_ICONS.unknown} ${rollout.title}\n-# ${EVENT_ICONS[type]} ${EVENT_LABELS[type]} · **${badge(event)}**`));
+  container.addSeparatorComponents(divider());
 
-  const heading = new SectionBuilder()
-    .addTextDisplayComponents(
-      text(`${rolePing ? `-# ${rolePing}\n` : ''}${KIND_ICONS[rollout.kind] ?? KIND_ICONS.unknown} **${KIND_LABELS[rollout.kind] ?? KIND_LABELS.unknown}** · ${EVENT_LABELS[type]}`),
-      text(`* **${rollout.title}**\n* \`${rollout.id}\``),
-    )
-    .setButtonAccessory(new ButtonBuilder().setCustomId('rollout_badge').setStyle(BUTTON_STYLES[type]).setDisabled(true).setLabel(badge(event)));
-  container.addSectionComponents(heading);
+  const info = [`- ${KIND_ICONS[rollout.kind] ?? KIND_ICONS.unknown} **Kind:** ${KIND_LABELS[rollout.kind] ?? KIND_LABELS.unknown}`];
+  if (!hidden.has('status')) info.push(`- ${ICONS.status} **Status:** ${statusLabel(rollout.status)}`);
+  if (!hidden.has('platforms') && rollout.platforms.length) info.push(`- ${ICONS.platforms} **Platforms:** ${rollout.platforms.join(', ')}`);
+  info.push(`-# \`${rollout.id}\``);
+  container.addTextDisplayComponents(text(info.join('\n')));
 
   const variants = variantLines(event);
-  if (!hidden.has('variants') && variants.length) {
-    container.addSeparatorComponents(divider());
-    container.addTextDisplayComponents(text(`**🔁 Rollouts:**\n\`\`\`py\n${variants.join('\n')}\n\`\`\``));
-  }
   const ranges = rangeLines(event);
-  if (!hidden.has('ranges') && ranges.length) container.addTextDisplayComponents(text(`**🎯 Ranges:**\n\`\`\`py\n${ranges.join('\n').slice(0, 900)}\n\`\`\``));
-
-  const info = [];
-  if (!hidden.has('status')) info.push(`- **Status:** ${statusLabel(rollout.status)}`);
-  if (!hidden.has('platforms') && rollout.platforms.length) info.push(`- **Platforms:** ${rollout.platforms.join(', ')}`);
-  if (!hidden.has('filters') && rollout.filters.length) info.push(`- **Filters:** ${rollout.filters.join(' · ')}`);
-  if (info.length) {
+  if ((!hidden.has('variants') && variants.length) || (!hidden.has('ranges') && ranges.length)) {
     container.addSeparatorComponents(divider());
-    container.addTextDisplayComponents(text(info.join('\n')));
+    const blocks = [];
+    if (!hidden.has('variants') && variants.length) blocks.push(`## ${ICONS.rollouts} Rollouts\n\`\`\`py\n${variants.join('\n')}\n\`\`\``);
+    if (!hidden.has('ranges') && ranges.length) blocks.push(`## ${ICONS.ranges} Ranges\n\`\`\`py\n${ranges.join('\n').slice(0, 900)}\n\`\`\``);
+    container.addTextDisplayComponents(text(blocks.join('\n')));
+  }
+  if (!hidden.has('filters') && rollout.filters.length) {
+    container.addSeparatorComponents(divider());
+    container.addTextDisplayComponents(text(`## ${ICONS.filters} Filters\n${rollout.filters.map((line) => `* ${line}`).join('\n')}`));
   }
   container.addSeparatorComponents(divider());
   container.addTextDisplayComponents(text(CREDIT));
-  return { components: [container], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [], roles: config.role_id ? [config.role_id] : [] } };
+  return { components: [container, sourceRow()], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [], roles: config.role_id ? [config.role_id] : [] } };
+}
+
+/** Many changes at once as one card: a line for each, so a big day is a few messages and not hundreds. */
+function buildRolloutDigest(events, config = {}, { rolePing = null } = {}) {
+  const container = new ContainerBuilder().setAccentColor(Number.isInteger(config.accent_color) ? config.accent_color : COLORS.new);
+  container.addTextDisplayComponents(text(`${rolePing ? `-# ${rolePing}\n` : ''}# ${EMOJI.RELEASE_EXPERIENCE} Rollout updates\n-# ${events.length} changes`));
+  container.addSeparatorComponents(divider());
+  const lines = events.map((event) => `${KIND_ICONS[event.rollout.kind] ?? KIND_ICONS.unknown} **${event.rollout.title}**\n-# ${EVENT_ICONS[event.type]} ${EVENT_LABELS[event.type]} · ${badge(event)} · \`${event.rollout.id}\``);
+  container.addTextDisplayComponents(text(lines.join('\n').slice(0, 3800)));
+  container.addSeparatorComponents(divider());
+  container.addTextDisplayComponents(text(CREDIT));
+  return { components: [container, sourceRow()], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [], roles: config.role_id ? [config.role_id] : [] } };
 }
 
 /** The saved embed a server chose for the kind of experiment (`{ guild: 'servers-alert' }`), or null. */
@@ -116,4 +133,4 @@ async function rolloutMessage(guild, config, event) {
   return buildRolloutCard(event, config, { rolePing });
 }
 
-module.exports = { SECTIONS, CREDIT, EVENT_LABELS, rolloutContext, buildRolloutCard, rolloutMessage, badge, variantLines };
+module.exports = { SECTIONS, CREDIT, EVENT_LABELS, rolloutContext, buildRolloutCard, buildRolloutDigest, rolloutMessage, badge, variantLines };

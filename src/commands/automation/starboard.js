@@ -18,7 +18,7 @@ module.exports = {
     .addSubcommand((s) => s.setName('selfstar').setDescription('Allow the message author to count their own reaction.').addBooleanOption((o) => o.setName('enabled').setDescription('Enabled?').setRequired(true)))
     .addSubcommand((s) => s.setName('ignore').setDescription('Ignore a channel, role, or member.').addStringOption((o) => o.setName('type').setDescription('What to ignore.').setRequired(true).addChoices({ name: 'channel', value: 'channel' }, { name: 'role', value: 'role' }, { name: 'member', value: 'member' })).addStringOption((o) => o.setName('target').setDescription('Mention or ID.').setRequired(true)))
     .addSubcommand((s) => s.setName('unignore').setDescription('Remove an ignored channel, role, or member.').addStringOption((o) => o.setName('type').setDescription('What to unignore.').setRequired(true).addChoices({ name: 'channel', value: 'channel' }, { name: 'role', value: 'role' }, { name: 'member', value: 'member' })).addStringOption((o) => o.setName('target').setDescription('Mention or ID.').setRequired(true)))
-    .addSubcommand((s) => s.setName('message').setDescription('Use a saved embed for the reposts, or none to go back to the usual one.').addStringOption((o) => o.setName('template').setDescription('Name of a saved embed, or none.').setRequired(true)))
+    .addSubcommand((s) => s.setName('message').setDescription('Use a saved embed for the reposts, or none to go back to the usual one.').addStringOption((o) => o.setName('template').setDescription('Name of a saved embed, or none. Leave it empty to see what is in use.').setRequired(false)))
     .addSubcommand((s) => s.setName('view').setDescription('View starboard settings.')),
 
   async execute(interaction) {
@@ -51,7 +51,12 @@ async function update(interaction, changes) {
 }
 
 async function setMessage(interaction) {
-  const name = interaction.options.getString('template', true).trim();
+  const name = String(interaction.options.getString('template') ?? '').trim();
+  if (!name) {
+    const { templateHint } = require('../../utils/templateHint');
+    const row = await starboardDb.ensureConfig(interaction.guild.id);
+    return interaction.reply({ components: [textCard(await templateHint(interaction.guild.id, { current: row.embed_template ?? null, usage: 'starboard message <name>', what: 'The starboard reposts' }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  }
   if (name.toLowerCase() === 'none') {
     await starboardDb.updateConfig(interaction.guild.id, { embed_template: null });
     return interaction.reply({ components: [textCard('The starboard reposts use the usual message again.', 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });

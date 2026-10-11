@@ -28,7 +28,7 @@ module.exports = {
     )
     .addSubcommand((s) => s.setName('template').setDescription('Use a saved embed for the DMs of verification, or none to go back to the usual one.')
       .addStringOption((o) => o.setName('which').setDescription('Which message').setRequired(true).addChoices({ name: 'prompt', value: 'prompt' }, { name: 'verified', value: 'verified' }))
-      .addStringOption((o) => o.setName('template').setDescription('Saved embed name, or none').setRequired(true)))
+      .addStringOption((o) => o.setName('template').setDescription('Saved embed name, or none. Leave it empty to see what is in use').setRequired(false)))
     .addSubcommand((s) => s.setName('status').setDescription('Show the current verification setup.'))
     .addSubcommand((s) => s.setName('send').setDescription('Manually (re)send a verification link to a member.').addUserOption((o) => o.setName('user').setDescription('The member to send a link to').setRequired(true))),
 
@@ -46,9 +46,14 @@ async function setTemplate(interaction) {
   await ensureGuild(interaction.guild.id);
   const which = interaction.options.getString('which', true).trim().toLowerCase();
   if (!['prompt', 'verified'].includes(which)) return interaction.editReply({ components: [textCard('Choose `prompt` or `verified`.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
-  const name = interaction.options.getString('template', true).trim();
   const column = `${which}_embed_template`;
+  const name = String(interaction.options.getString('template') ?? '').trim();
   const done = (text, color = 0xa5ea7a) => interaction.editReply({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2 });
+  if (!name) {
+    const { templateHint } = require('../../utils/templateHint');
+    const current = await getConfig(interaction.guild.id).catch(() => null);
+    return done(await templateHint(interaction.guild.id, { current: current?.[column] ?? null, usage: `verify template ${which} <name>`, what: `The ${which} DM` }), 0x4b4f59);
+  }
   if (name.toLowerCase() === 'none') {
     await upsertConfig(interaction.guild.id, { [column]: null });
     return done(`${EMOJI.APPROVE}  The ${which} DM goes back to the usual message.`);

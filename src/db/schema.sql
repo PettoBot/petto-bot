@@ -2944,3 +2944,17 @@ create table if not exists rollout_state (
   updated_at timestamptz not null default now()
 );
 alter table rollout_state enable row level security;
+
+-- The rollout alerts waiting to be sent. A day with hundreds of changes goes out in order, a few messages at a time, instead of
+-- all at once; `attempts` counts the tries of one that Discord refused, and `event_key` stops the same news from being queued twice.
+create table if not exists rollout_queue (
+  id         bigserial primary key,
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  event_key  text not null,
+  event      jsonb not null,
+  attempts   integer not null default 0,
+  created_at timestamptz not null default now(),
+  unique (guild_id, event_key)
+);
+create index if not exists rollout_queue_guild_idx on rollout_queue (guild_id, id);
+alter table rollout_queue enable row level security;

@@ -28,7 +28,7 @@ module.exports = {
       .setDescription('Use a saved embed for one message of a sanction.')
       .addStringOption(typeOption)
       .addStringOption((o) => o.setName('slot').setDescription('Which message').setRequired(true).addChoices(...slotChoices))
-      .addStringOption((o) => o.setName('template').setDescription('Name of a saved embed (see /embed list)').setRequired(true)))
+      .addStringOption((o) => o.setName('template').setDescription('Name of a saved embed (see /embed list). Leave it empty to see the saved embeds').setRequired(false)))
     .addSubcommand((s) => s
       .setName('clear')
       .setDescription('Go back to the usual message.')
@@ -58,7 +58,11 @@ module.exports = {
       return reply(`${EMOJI.APPROVE}  ${slot ? `The ${SLOT_LABELS[slot]}` : 'The custom messages'} of **${type}** ${slot ? 'goes' : 'go'} back to the usual message.`);
     }
 
-    const name = interaction.options.getString('template', true);
+    const name = String(interaction.options.getString('template') ?? '').trim();
+    if (!name) {
+      const { templateHint } = require('../../utils/templateHint');
+      return reply(await templateHint(interaction.guild.id, { usage: `sanctionmessage set ${type} ${slot} <name>`, what: `The ${SLOT_LABELS[slot]} of ${type}` }), 0x4b4f59);
+    }
     const doc = await getTemplate(interaction.guild.id, name).catch(() => null);
     if (!doc) return reply(`No saved embed named \`${name}\` was found. Make one in the dashboard, under Embeds.`, 0xfe6465);
     await sanctionTemplates.setTemplates(interaction.guild.id, type, { [slot]: doc.name });

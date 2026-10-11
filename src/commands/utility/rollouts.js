@@ -12,7 +12,26 @@ const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 
 const textChannels = [ChannelType.GuildText, ChannelType.GuildAnnouncement];
+
 const EVENT_KINDS = ['new', 'increase', 'decrease', 'status'];
+
+const HELP = [
+  '## Rollout alerts (beta)',
+  'A message in a channel when a Discord experiment appears, its rollout grows or shrinks, or its status changes. Many changes at once are sent in order, a few cards at a time.',
+  '**Set it up**',
+  '- `!rollouts enable #channel [@role]` turns it on. `!rollouts disable` turns it off.',
+  '- `!rollouts role [@role]` changes the role that is pinged, or none.',
+  '**Choose what you get**',
+  `- \`!rollouts kinds user guild\` only some experiments (${rolloutApi.KINDS.join(', ')}). \`!rollouts kinds all\` for every one.`,
+  `- \`!rollouts events new increase\` only some events (${EVENT_KINDS.join(', ')}).`,
+  '- `!rollouts min 5` ignores changes smaller than 5 points. `!rollouts unrolled on` also announces experiments with no rollout yet.',
+  '**Make it yours**',
+  '- `!rollouts style card` or `!rollouts style template <saved embed>`. `!rollouts card hide|show <section>` and `!rollouts color #ff91c2` change the card.',
+  '- The dashboard has everything in one page, with a preview and a different saved embed for each kind.',
+  '**Check it**',
+  '- `!rollouts test` sends an example here. `!rollouts list` shows what is rolling out now.',
+  '- `!rollouts queue` shows what is waiting to be sent. `!rollouts status` shows your settings.',
+].join('\n');
 
 /** A list typed as `user, guild` (or `all`) as the values it may hold, or null when one of them is not valid. */
 function readList(text, allowed) {
@@ -30,7 +49,7 @@ module.exports = {
     .setName('rollouts')
     .setDescription('Alerts when a Discord experiment appears or its rollout changes (beta).')
     .setDMPermission(false)
-    .addSubcommand((s) => s.setName('enable').setDescription('Turn the alerts on in a channel.')
+    .addSubcommand((s) => s.setName('enable').setDescription('Turn the alerts on in a channel, e.g. enable #betas @Testers.')
       .addChannelOption((o) => o.setName('channel').setDescription('Where the alerts go').addChannelTypes(...textChannels).setRequired(true))
       .addRoleOption((o) => o.setName('role').setDescription('A role to ping with each alert').setRequired(false)))
     .addSubcommand((s) => s.setName('disable').setDescription('Turn the alerts off.'))
@@ -39,11 +58,11 @@ module.exports = {
     .addSubcommand((s) => s.setName('style').setDescription('Use the card, or one of your saved embeds.')
       .addStringOption((o) => o.setName('style').setDescription('card or template').setRequired(true).addChoices({ name: 'card', value: 'card' }, { name: 'template', value: 'template' }))
       .addStringOption((o) => o.setName('template').setDescription('Name of a saved embed, for the template style').setRequired(false)))
-    .addSubcommand((s) => s.setName('kinds').setDescription('Only alert for some experiments: user, guild, apex_user, installation. Empty for all.')
+    .addSubcommand((s) => s.setName('kinds').setDescription('Only some experiments: user, guild, apex_user, installation. E.g. kinds user guild.')
       .addStringOption((o) => o.setName('kinds').setDescription('For example: user, guild').setRequired(false)))
-    .addSubcommand((s) => s.setName('events').setDescription('Only alert for some events: new, increase, decrease, status. Empty for all.')
+    .addSubcommand((s) => s.setName('events').setDescription('Only some events: new, increase, decrease, status. E.g. events new increase.')
       .addStringOption((o) => o.setName('events').setDescription('For example: new, increase').setRequired(false)))
-    .addSubcommand((s) => s.setName('min').setDescription('Ignore rollout changes smaller than this many percentage points.')
+    .addSubcommand((s) => s.setName('min').setDescription('Ignore changes smaller than this many points, e.g. min 5.')
       .addNumberOption((o) => o.setName('points').setDescription('0 to 100').setMinValue(0).setMaxValue(100).setRequired(true)))
     .addSubcommand((s) => s.setName('unrolled').setDescription('Also announce new experiments that have no rollout yet.')
       .addStringOption((o) => o.setName('value').setDescription('on or off').setRequired(true).addChoices({ name: 'on', value: 'on' }, { name: 'off', value: 'off' })))
@@ -53,16 +72,19 @@ module.exports = {
     .addSubcommand((s) => s.setName('color').setDescription('Color of the card, as hex, or empty to use the color of each event.')
       .addStringOption((o) => o.setName('hex').setDescription('For example #ff91c2').setRequired(false)))
     .addSubcommand((s) => s.setName('list').setDescription('Show the experiments that are rolling out now.'))
+    .addSubcommand((s) => s.setName('queue').setDescription('See how many alerts are waiting to be sent here, or empty the queue.')
+      .addStringOption((o) => o.setName('action').setDescription('show (default) or clear').setRequired(false).addChoices({ name: 'show', value: 'show' }, { name: 'clear', value: 'clear' })))
+    .addSubcommand((s) => s.setName('help').setDescription('How the rollout alerts work, with the commands and examples.'))
     .addSubcommand((s) => s.setName('test').setDescription('Send an example alert here, to see how it looks.'))
-    .addSubcommand((s) => s.setName('status').setDescription('Show the settings and the state of the list.')),
+    .addSubcommand((s) => s.setName('status').setDescription('Show the settings, the queue and the state of the list.')),
 
   async execute(interaction) {
     const reply = (text) => interaction.editReply({ components: [textCard(text, null)], flags: MessageFlags.IsComponentsV2 });
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
     if (!canUseRollouts(interaction.user.id)) return reply(`${EMOJI.DENY}  Rollout alerts are in beta and only available to Petto's team and testers for now.`);
     const sub = interaction.options.getSubcommand();
-    if (sub !== 'list' && !interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-      return reply(`${EMOJI.DENY}  You need the Manage Server permission to change the rollout alerts. Anyone in the beta can use \`rollouts list\`.`);
+    if (!['list', 'help'].includes(sub) && !interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
+      return reply(`${EMOJI.DENY}  You need the Manage Server permission to change the rollout alerts. Anyone in the beta can use \`rollouts list\` and \`rollouts help\`.`);
     }
     await ensureGuild(interaction.guild.id);
     const guildId = interaction.guild.id;
@@ -73,7 +95,7 @@ module.exports = {
       const channel = interaction.options.getChannel('channel', true);
       const role = interaction.options.getRole('role');
       await save({ enabled: true, channel_id: channel.id, ...(role ? { role_id: role.id } : {}) });
-      return reply(`${EMOJI.APPROVE}  Rollout alerts will be sent in ${channel}${role ? ` with ${role}` : ''}. Use \`rollouts test\` to see how they look; more options are in the dashboard.`);
+      return reply(`${EMOJI.APPROVE}  Rollout alerts will be sent in ${channel}${role ? ` and will ping ${role}` : ''}. The first check only remembers what exists, so you will hear about the next change. Try \`!rollouts test\` to see how it looks, or \`!rollouts help\` for everything you can set.`);
     }
     if (sub === 'disable') { await save({ enabled: false }); return reply(`${EMOJI.APPROVE}  Rollout alerts are off.`); }
     if (sub === 'role') {
@@ -124,6 +146,14 @@ module.exports = {
       return reply(`${EMOJI.APPROVE}  ${hex ? `The card color is #${hex.toLowerCase()}.` : 'The card uses the color of each event.'}`);
     }
 
+    if (sub === 'help') return reply(HELP);
+    if (sub === 'queue') {
+      const action = String(interaction.options.getString('action') ?? 'show').toLowerCase();
+      if (action === 'clear') { await rolloutsDb.clearGuildQueue(guildId); return reply(`${EMOJI.APPROVE}  The queue is empty. What was waiting will not be sent.`); }
+      const waiting = await rolloutsDb.countPending(guildId);
+      return reply(waiting ? `**${waiting}** alert${waiting === 1 ? '' : 's'} waiting. They go out one message every few seconds, grouped in cards of up to 10 changes when there are many. \`!rollouts queue clear\` empties it.` : 'Nothing is waiting to be sent.');
+    }
+
     if (sub === 'list' || sub === 'test') {
       let list;
       try { list = (await rolloutApi.fetchRollouts({ force: true })).list; } catch (error) { return reply(`${EMOJI.DENY}  The list could not be read: ${error.message}`); }
@@ -141,6 +171,7 @@ module.exports = {
     }
 
     const status = rolloutApi.getStatus();
+    const waiting = await rolloutsDb.countPending(guildId).catch(() => 0);
     return reply([
       `**Alerts:** ${current.enabled && current.channel_id ? `on in <#${current.channel_id}>` : 'off'}`,
       `**Role:** ${current.role_id ? `<@&${current.role_id}>` : 'none'}`,
@@ -148,7 +179,9 @@ module.exports = {
       `**Experiments:** ${current.kinds.length ? current.kinds.join(', ') : 'all'} · **Events:** ${current.events.length ? current.events.join(', ') : 'all'}`,
       `**Minimum change:** ${current.min_change || 0} points · **Unrolled:** ${current.include_unrolled ? 'announced' : 'not announced'}`,
       `**Card hides:** ${current.hide_sections.length ? current.hide_sections.join(', ') : 'nothing'}`,
+      `**Queue:** ${waiting ? `${waiting} waiting` : 'empty'}`,
       `**List:** ${status.ok === null ? 'not asked yet' : status.ok ? `ok, ${status.count} experiments` : `failing (${status.error})`}`,
+      '-# More options in the dashboard. `!rollouts help` shows every command.',
     ].join('\n'));
   },
 };

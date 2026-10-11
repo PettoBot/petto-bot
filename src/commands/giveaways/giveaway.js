@@ -87,7 +87,7 @@ module.exports = {
       .setName('message-template')
       .setDescription('Use a saved embed for one of the giveaway messages, or none to go back to its text.')
       .addStringOption((o) => o.setName('message').setDescription('Which message').setRequired(true).addChoices(...MESSAGE_CHOICES))
-      .addStringOption((o) => o.setName('template').setDescription('Saved embed name, or none').setRequired(true)))
+      .addStringOption((o) => o.setName('template').setDescription('Saved embed name, or none. Leave it empty to see what is in use').setRequired(false)))
     .addSubcommand((s) => s.setName('no-entries-message').setDescription('Set the message sent when a giveaway ends with no entries.').addStringOption((o) => o.setName('message').setDescription('Supports {gw.*} variables').setRequired(true))),
   aliases: ['gw'],
   prefixGreedyStringOptions: {
@@ -412,9 +412,14 @@ async function messageTemplateCmd(interaction) {
     return interaction.editReply({ components: [textCard(`Choose one of: ${MESSAGE_CHOICES.map((choice) => `\`${choice.value}\``).join(', ')}.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
   }
   const column = `${which}_embed_template`;
-  const name = interaction.options.getString('template', true).trim();
+  const name = String(interaction.options.getString('template') ?? '').trim();
   const label = MESSAGE_CHOICES.find((choice) => choice.value === which)?.name ?? which;
   const done = (text, color = 0xa5ea7a) => interaction.editReply({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2 });
+  if (!name) {
+    const { templateHint } = require('../../utils/templateHint');
+    const current = await configDb.ensureConfig(interaction.guild.id);
+    return done(await templateHint(interaction.guild.id, { current: current[column] ?? null, usage: `giveaway message-template ${which} <name>`, what: `The ${label} message` }), 0x4b4f59);
+  }
   if (['none', 'clear'].includes(name.toLowerCase())) {
     await configDb.updateConfig(interaction.guild.id, { [column]: null });
     return done(`${EMOJI.APPROVE}  The ${label} message goes back to its text.`);
