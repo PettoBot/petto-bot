@@ -12,9 +12,9 @@ module.exports = {
     .setDescription('Manage giveaway role presets — bonus entries and claim time per role.')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false)
-    .addSubcommand((s) => s.setName('create').setDescription('Create a preset.').addStringOption((o) => o.setName('name').setDescription('Preset name').setRequired(true)))
-    .addSubcommand((s) => s.setName('view').setDescription('View a preset.').addStringOption((o) => o.setName('name').setDescription('Preset name').setRequired(true)))
-    .addSubcommand((s) => s.setName('remove').setDescription('Delete a preset.').addStringOption((o) => o.setName('name').setDescription('Preset name').setRequired(true)))
+    .addSubcommand((s) => s.setName('create').setDescription('Save the usual settings of a giveaway as a preset to reuse.').addStringOption((o) => o.setName('name').setDescription('Preset name').setRequired(true)))
+    .addSubcommand((s) => s.setName('view').setDescription('Show the settings saved in a preset.').addStringOption((o) => o.setName('name').setDescription('Preset name').setRequired(true)))
+    .addSubcommand((s) => s.setName('remove').setDescription('Delete a giveaway preset.').addStringOption((o) => o.setName('name').setDescription('Preset name').setRequired(true)))
     .addSubcommand((s) =>
       s
         .setName('add-role')

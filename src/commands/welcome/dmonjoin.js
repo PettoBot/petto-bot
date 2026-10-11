@@ -16,7 +16,7 @@ module.exports = {
     .addSubcommand((s) =>
       s
         .setName('setup')
-        .setDescription('Set the join DM.')
+        .setDescription('Set the direct message new members get when they join.')
         .addStringOption((o) => o.setName('embed').setDescription('Use a saved /embed template instead of plain text').setRequired(false))
         .addStringOption((o) => o.setName('message').setDescription('Plain text (supports /embed variables, e.g. {user}, {server_name})').setRequired(false)),
     )

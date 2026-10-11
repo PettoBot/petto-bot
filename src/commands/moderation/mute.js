@@ -19,7 +19,7 @@ module.exports = {
   prefixDefaultSubcommand: 'user',
   data: new SlashCommandBuilder()
     .setName('mute')
-    .setDescription('Mute members.')
+    .setDescription('Stop a member from talking, with an optional length and reason.')
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
     .setDMPermission(false)
     .addSubcommand((sub) =>

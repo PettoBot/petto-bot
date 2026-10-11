@@ -28,7 +28,7 @@ const data = new SlashCommandBuilder()
   .setDescription('Messages with buttons or a menu of button responders.')
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
   .setDMPermission(false)
-  .addSubcommand((s) => shared(s.setName('create').setDescription('Make a panel.')
+  .addSubcommand((s) => shared(s.setName('create').setDescription('Create a panel made of buttons or a select menu.')
     .addStringOption((o) => o.setName('name').setDescription('The name of the panel').setRequired(true))
     .addStringOption((o) => o.setName('kind').setDescription('buttons or select').setRequired(true).addChoices({ name: 'buttons', value: 'buttons' }, { name: 'select', value: 'select' }))))
   .addSubcommand((s) => shared(s.setName('edit').setDescription('Change a panel. Only what you give changes.')
@@ -44,7 +44,7 @@ const data = new SlashCommandBuilder()
     .addChannelOption((o) => o.setName('channel').setDescription('Where (this channel by default)').addChannelTypes(...textChannels)))
   .addSubcommand((s) => s.setName('delete').setDescription('Delete a panel. The message that was posted stops working.')
     .addStringOption((o) => o.setName('name').setDescription('The panel').setRequired(true)))
-  .addSubcommand((s) => s.setName('list').setDescription('List the panels.'));
+  .addSubcommand((s) => s.setName('list').setDescription('List every panel of this server with its channel.'));
 
 async function execute(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });

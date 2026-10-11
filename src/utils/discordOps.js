@@ -6,8 +6,6 @@ const { exclusiveTask } = require('./concurrency');
 const STATUS_MARKER = 'Petto operational status';
 const STATUS_INTERVAL_MS = 5 * 60_000; // two message edits each time, so not every minute
 const statusMessages = new Map();
-const STATUS_ROLE_ID = '1535390039780098200';
-const STATUS_ALERT = '<a:campana:1531389377949859870>';
 const STATUS_EMOJIS = {
   online: '<:online:1535353909751709768>',
   outage: '<:outage:1535353911488159825>',
@@ -122,11 +120,10 @@ function statusCard({ color, title, lines, footer }) {
 function statusHistoryPayload(state, details) {
   const emoji = STATUS_EMOJIS[state] || STATUS_EMOJIS.idle;
   const lines = [details];
-  if (state !== 'online') lines.unshift(`${STATUS_ALERT} | <@&${STATUS_ROLE_ID}>`);
   return {
     components: [statusCard({ color: STATE_COLORS[state] ?? STATE_COLORS.idle, title: `${emoji} ${STATE_LABELS[state] || 'Status update'}`, lines, footer: `<t:${Math.floor(Date.now() / 1000)}:f>` })],
     flags: MessageFlags.IsComponentsV2,
-    allowedMentions: { roles: state === 'online' ? [] : [STATUS_ROLE_ID] },
+    allowedMentions: { parse: [] }, // a status message never pings anyone
   };
 }
 

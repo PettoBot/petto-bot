@@ -74,7 +74,7 @@ module.exports = {
         .addSubcommand((s) =>
           s
             .setName('edit')
-            .setDescription('Edit a category.')
+            .setDescription('Change a ticket category: its label, emoji, color, welcome text, form and more.')
             .addStringOption((o) => o.setName('key').setDescription('Category key').setRequired(true))
             .addStringOption((o) => o.setName('label').setDescription('New label').setRequired(false))
             .addChannelOption((o) => o.setName('parent').setDescription('New parent category channel').addChannelTypes(ChannelType.GuildCategory).setRequired(false))
@@ -125,7 +125,7 @@ module.exports = {
         .setDescription('(Staff) Manage reusable ticket intake forms.')
         .addSubcommand((s) => s.setName('create').setDescription('Create a form with buttons, or give the fields as type|id|label|placeholder|required;...').addStringOption((o) => o.setName('name').setDescription('Form name').setRequired(true)).addStringOption((o) => o.setName('fields').setDescription('Optional: 1-5 fields separated by ; (leave empty to use the buttons)').setRequired(false)).addStringOption((o) => o.setName('title').setDescription('Modal title').setRequired(false)))
         .addSubcommand((s) => s.setName('edit').setDescription('Edit a form with buttons, or give the replacement fields.').addStringOption((o) => o.setName('name').setDescription('Form name').setRequired(true)).addStringOption((o) => o.setName('fields').setDescription('Optional: replacement fields separated by ;').setRequired(false)).addStringOption((o) => o.setName('title').setDescription('New modal title').setRequired(false)))
-        .addSubcommand((s) => s.setName('delete').setDescription('Delete a form.').addStringOption((o) => o.setName('name').setDescription('Form name').setRequired(true)))
+        .addSubcommand((s) => s.setName('delete').setDescription('Delete a ticket form and its questions.').addStringOption((o) => o.setName('name').setDescription('Form name').setRequired(true)))
         .addSubcommand((s) => s.setName('list').setDescription('List ticket forms.')),
     )
 

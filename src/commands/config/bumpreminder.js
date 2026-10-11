@@ -3,6 +3,7 @@ const { ensureGuild } = require('../../db/guilds');
 const { ensureConfig, upsertConfig } = require('../../db/bumpReminders');
 const { getTemplate } = require('../../db/embedTemplates');
 const { textCard } = require('../../utils/caseCard');
+const { templateHint } = require('../../utils/templateHint');
 const { EMOJI } = require('../../utils/emojis');
 
 module.exports = {
@@ -17,7 +18,7 @@ module.exports = {
     .addSubcommand((s) => s.setName('thankyou').setDescription('Set the thank-you message (sent right after a successful bump).').addStringOption((o) => o.setName('text').setDescription('Supports {user.mention}, {nextBump}, and other /embed variables').setRequired(true)))
     .addSubcommand((s) => s.setName('template').setDescription('Use a saved embed for the reminder or the thank-you, or none to go back to the text.')
       .addStringOption((o) => o.setName('which').setDescription('Which message').setRequired(true).addChoices({ name: 'reminder', value: 'reminder' }, { name: 'thankyou', value: 'thankyou' }))
-      .addStringOption((o) => o.setName('template').setDescription('Saved embed name, or none').setRequired(true)))
+      .addStringOption((o) => o.setName('template').setDescription('Saved embed name, or none. Leave it empty to see what is in use and the saved embeds').setRequired(false)))
     .addSubcommand((s) => s.setName('pingable').setDescription('Whether the reminder message can actually ping.').addBooleanOption((o) => o.setName('enabled').setDescription('Enable?').setRequired(true)))
     .addSubcommand((s) => s.setName('autolock').setDescription('Lock the bump channel (deny Send Messages) between bumps.').addBooleanOption((o) => o.setName('enabled').setDescription('Enable?').setRequired(true)))
     .addSubcommand((s) => s.setName('autoclean').setDescription('Delete non-bump chatter in the bump channel.').addBooleanOption((o) => o.setName('enabled').setDescription('Enable?').setRequired(true)))
@@ -51,8 +52,12 @@ async function update(interaction, sub) {
   } else if (sub === 'template') {
     const which = interaction.options.getString('which', true).trim().toLowerCase();
     if (!['reminder', 'thankyou'].includes(which)) return interaction.editReply({ components: [textCard('Choose `reminder` or `thankyou`.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
-    const name = interaction.options.getString('template', true).trim();
     const column = `${which}_embed_template`;
+    const name = String(interaction.options.getString('template') ?? '').trim();
+    if (!name) {
+      const current = await ensureConfig(interaction.guild.id);
+      return interaction.editReply({ components: [textCard(await templateHint(interaction.guild.id, { current: current[column] ?? null, usage: `bumpreminder template ${which} <name>`, what: `The ${which} message` }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    }
     if (name.toLowerCase() === 'none') {
       patch[column] = null;
       confirmLine = `The ${which} message goes back to its text.`;

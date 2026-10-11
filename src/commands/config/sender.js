@@ -22,7 +22,7 @@ module.exports = {
       .addStringOption((o) => o.setName('avatar').setDescription('A link (https) to the picture').setMaxLength(500).setRequired(false)))
     .addSubcommand((s) => s.setName('reset').setDescription('Go back to Petto\'s own name and picture.')
       .addStringOption((o) => o.setName('feature').setDescription('Which messages').setRequired(true).addChoices(...identities.FEATURES.map((feature) => ({ name: LABELS[feature], value: feature })))))
-    .addSubcommand((s) => s.setName('list').setDescription('Show what is set.')),
+    .addSubcommand((s) => s.setName('list').setDescription('Show the names and pictures set for each kind of message.')),
 
   async execute(interaction) {
     await interaction.deferReply({ flags: REPLY_FLAGS });

@@ -52,7 +52,7 @@ module.exports = {
         .addNumberOption((o) => o.setName('difficulty').setDescription('Overall multiplier (default 2.5)').setRequired(false))
         .addIntegerOption((o) => o.setName('rounding').setDescription('Round totals to the nearest N (default 50, 0 = off)').setRequired(false).setMinValue(0)),
     )
-    .addSubcommand((s) => s.setName('max-level').setDescription('Level cap.').addIntegerOption((o) => o.setName('count').setDescription('Max level').setRequired(true).setMinValue(1)))
+    .addSubcommand((s) => s.setName('max-level').setDescription('Set the highest level members can reach, or 0 for no limit.').addIntegerOption((o) => o.setName('count').setDescription('Max level').setRequired(true).setMinValue(1)))
     .addSubcommand((s) => s.setName('voice-max-level').setDescription('Voice leveling cap.').addIntegerOption((o) => o.setName('count').setDescription('Max voice level').setRequired(true).setMinValue(1)))
     .addSubcommand((s) =>
       s

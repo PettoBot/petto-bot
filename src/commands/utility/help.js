@@ -40,6 +40,50 @@ const CATEGORY_META = {
   other: { label: 'Other', icon: '📄' },
 };
 
+// What each category is for, in a few words: shown in the menus so nobody has to open one to find out.
+const CATEGORY_BLURBS = {
+  moderation: 'Bans, mutes, warns, jail, cases and cleaning up',
+  info: 'Look up members, the server, roles and the bot',
+  welcome: 'Greetings, join and leave messages, join roles',
+  automation: 'Starboard, timers, counters, panels and auto roles',
+  leveling: 'XP, levels, rank cards, rewards and leaderboards',
+  giveaways: 'Run giveaways, presets and templates',
+  tickets: 'Support tickets, categories, forms and transcripts',
+  config: 'Prefix, aliases, permissions and how Petto looks',
+  utility: 'Reminders, polls, quests, booster roles and tools',
+  misc: 'Smaller commands that do not fit anywhere else',
+  roleplay: 'Hugs, pats and other reactions with a gif',
+  fun: 'Games and light-hearted commands',
+  other: 'Everything else',
+};
+
+function editDistance(a, b) {
+  const row = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i += 1) {
+    let previous = row[0];
+    row[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const next = Math.min(row[j] + 1, row[j - 1] + 1, previous + (a[i - 1] === b[j - 1] ? 0 : 1));
+      previous = row[j];
+      row[j] = next;
+    }
+  }
+  return row[b.length];
+}
+
+/** Up to three command names close to what was typed (it starts the same, contains it, or is a couple of letters off). */
+function suggestCommands(client, typed, includeHidden = false) {
+  const word = String(typed ?? '').toLowerCase();
+  if (!word) return [];
+  const names = getChatInputCommands(client, includeHidden).map((command) => command.data.name);
+  const scored = names.map((name) => {
+    const distance = editDistance(word, name);
+    const score = name.startsWith(word) ? 0 : name.includes(word) ? 1 : distance <= 2 ? 2 + distance : null;
+    return { name, score };
+  }).filter((entry) => entry.score !== null);
+  return scored.sort((a, b) => a.score - b.score || a.name.localeCompare(b.name)).slice(0, 3).map((entry) => entry.name);
+}
+
 function getChatInputCommands(client, includeHidden = false) {
   return [...client.commands.values()].filter((c) => (
     (c.data.toJSON().type ?? 1) === 1
@@ -101,10 +145,27 @@ function buildParams(entry) {
   return entry.options.map((opt) => (opt.required ? `<${opt.name}>` : `[${opt.name}]`)).join(' ');
 }
 
+const EXAMPLE_BY_NAME = {
+  reason: '"spamming links"', message: '"hello everyone"', text: '"hello everyone"', duration: '1h', time: '10m', name: 'my-name', template: 'my-embed',
+  hex: '#ff91c2', color: '#ff91c2', emoji: '🌸', code: 'ABC123', query: 'ticket', days: '7', amount: '10', prize: '"Nitro"', title: '"Welcome"', description: '"A short text"',
+};
+
+/** A believable value for an option, from its type and its name, so an example can be copied and used. */
+function exampleValue(opt) {
+  if (opt.choices?.length) return String(opt.choices[0].value);
+  if (opt.type === 6) return '@member';
+  if (opt.type === 8) return '@role';
+  if (opt.type === 7) return '#channel';
+  if (opt.type === 9) return '@member';
+  if (opt.type === 5) return 'true';
+  if (opt.type === 4 || opt.type === 10) return String(opt.min_value ?? 1);
+  return EXAMPLE_BY_NAME[opt.name] ?? opt.name;
+}
+
 function buildExample(prefix, name, entry) {
   const parts = [`${prefix}${name}`, ...entry.path];
   for (const opt of entry.options) {
-    const sample = opt.type === 6 ? '@member' : opt.type === 8 ? '@role' : opt.type === 7 ? '#channel' : opt.type === 5 ? 'true' : opt.type === 4 ? '1' : opt.name === 'message' || opt.name === 'reason' ? '"hello world"' : opt.name;
+    const sample = exampleValue(opt);
     if (opt.required) parts.push(sample);
   }
   return parts.join(' ');
@@ -157,23 +218,23 @@ function entryDetailCard(client, guild, prefix, command, entry, page = 0, total 
     .filter((route) => route.subcommand === entryPath)
     .map((route) => route.alias);
   const aliasesList = [...new Set([...(command.aliases ?? []), ...routeAliases])];
-  const aliases = aliasesList.length ? aliasesList.map((a) => `\`${prefix}${a}\``).join(', ') : 'No Aliases';
+  const aliases = aliasesList.length ? aliasesList.map((a) => `\`${prefix}${a}\``).join(', ') : 'None';
   const syntax = buildSyntax(commandPrefix, json.name, entry);
   const example = buildExample(commandPrefix, json.name, entry);
   const params = buildParams(entry);
-  const information = json.default_member_permissions == null ? 'n/a' : `${EMOJI.WARNING} ${describePermissions(json.default_member_permissions)}`;
+  const information = json.default_member_permissions == null ? 'Anyone can use it' : `${EMOJI.WARNING} ${describePermissions(json.default_member_permissions)}`;
   const title = [json.name, ...entry.path].join(' ');
   const moduleLabel = (CATEGORY_META[command.category] ?? CATEGORY_META.other).label;
 
   const text = [
     `### Command: ${title}`,
-    `> ${entry.description || json.description || 'No description.'}`,
+    `> ${entry.description || json.description || 'No description yet.'}`,
     '',
     buildMetadata(aliases, params, information),
     '',
     '**Usage**',
     `\`\`\`Ruby\nSyntax: ${syntax}\nExample: ${example}\n\`\`\``,
-    `-# Page ${page + 1}/${total} (${total} ${total === 1 ? 'entry' : 'entries'}) · Module: ${moduleLabel}`,
+    `-# <required> [optional] · ${total > 1 ? `Entry ${page + 1} of ${total} · ` : ''}${moduleLabel}`,
   ].join('\n');
 
   const section = new SectionBuilder()
@@ -199,22 +260,22 @@ function mainView(client, guild, prefix, includeHidden = false) {
   const section = new SectionBuilder()
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `**Use** the command below to look up **${commands.length}** commands\n` +
+        `**Petto has ${commands.length} commands.** Pick a category below, or look one up directly:\n` +
           `\`\`\`lua\n${prefix}help [category | command]\n\`\`\`` +
-          `\n-# You can also select a category below.`,
+          `\n-# For example \`${prefix}help ban\` or \`${prefix}help ticket category add\`. Aliases work too.`,
       ),
     )
     .setThumbnailAccessory(new ThumbnailBuilder().setURL(botAvatarURL(client, guild)));
 
   const options = [...categories.entries()].map(([id, cmds]) => {
     const meta = CATEGORY_META[id] ?? CATEGORY_META.other;
-    return new StringSelectMenuOptionBuilder().setLabel(meta.label).setValue(id).setDescription(`${cmds.length} command${cmds.length === 1 ? '' : 's'}`).setEmoji(meta.icon);
+    return new StringSelectMenuOptionBuilder().setLabel(meta.label).setValue(id).setDescription(`${CATEGORY_BLURBS[id] ? `${CATEGORY_BLURBS[id]} · ` : ''}${cmds.length} command${cmds.length === 1 ? '' : 's'}`.slice(0, 100)).setEmoji(meta.icon);
   });
 
   const container = new ContainerBuilder()
     .addSectionComponents(section)
     .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# Select a category to browse commands.\n${helpLinksLine()}`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# Select a category to browse its commands.\n${helpLinksLine()}`))
     .addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('help_cat').setPlaceholder('Select a category').addOptions(options)));
 
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
@@ -227,18 +288,18 @@ function categoryView(client, guild, categoryId, includeHidden = false) {
   const section = new SectionBuilder()
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `### ${meta.icon} ${meta.label}\n> Browse commands in this category.\n\n-# Press **Return to Help Menu** to go back.`,
+        `### ${meta.icon} ${meta.label}\n> ${CATEGORY_BLURBS[categoryId] ?? 'Commands of this category.'}.\n\n-# ${commands.length} command${commands.length === 1 ? '' : 's'}. Press **Return to Help Menu** to go back.`,
       ),
     )
     .setThumbnailAccessory(new ThumbnailBuilder().setURL(botAvatarURL(client, guild)));
 
-  const options = commands.slice(0, 25).map((cmd) => new StringSelectMenuOptionBuilder().setLabel(cmd.data.name).setValue(cmd.data.name).setDescription((cmd.data.description ?? 'No description.').slice(0, 100)));
+  const options = commands.slice(0, 25).map((cmd) => new StringSelectMenuOptionBuilder().setLabel(cmd.data.name).setValue(cmd.data.name).setDescription((cmd.data.description ?? 'No description yet.').slice(0, 100)));
 
   const container = new ContainerBuilder()
     .addSectionComponents(section)
     .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('help_back').setLabel('Return to Help Menu').setStyle(ButtonStyle.Secondary)))
     .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent('-# Select a command to view details.'))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# Select a command to see how it works${commands.length > 25 ? ` (showing the first 25 of ${commands.length}; look up the rest with \`help <command>\`)` : ''}.`))
     .addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('help_cmd').setPlaceholder('Select a command').addOptions(options)));
 
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
@@ -252,21 +313,21 @@ function subcommandView(client, guild, command, categoryId, includeHidden = fals
   const section = new SectionBuilder()
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `### ${json.name}\n> ${json.description || 'No description.'}\n\n-# Press **Return to ${meta.label}** to go back.`,
+        `### ${json.name}\n> ${json.description || 'No description yet.'}\n\n-# ${entries.length} subcommand${entries.length === 1 ? '' : 's'}. Press **Return to ${meta.label}** to go back.`,
       ),
     )
     .setThumbnailAccessory(new ThumbnailBuilder().setURL(botAvatarURL(client, guild)));
 
   const options = entries.slice(0, 25).map((e) => {
     const label = e.path.join(' ') || json.name;
-    return new StringSelectMenuOptionBuilder().setLabel(label).setValue(e.path.join(' ')).setDescription((e.description ?? 'No description.').slice(0, 100));
+    return new StringSelectMenuOptionBuilder().setLabel(label).setValue(e.path.join(' ')).setDescription((e.description ?? 'No description yet.').slice(0, 100));
   });
 
   const container = new ContainerBuilder()
     .addSectionComponents(section)
     .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`help_cmdback:${categoryId}`).setLabel(`Return to ${meta.label}`).setStyle(ButtonStyle.Secondary)))
     .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent('-# Select a subcommand to view details.'))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# Select a subcommand to see its syntax and an example${entries.length > 25 ? ` (showing the first 25 of ${entries.length}; look up the rest with \`help ${json.name} <subcommand>\`)` : ''}.`))
     .addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('help_sub').setPlaceholder('Select a subcommand').addOptions(options)));
 
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
@@ -307,7 +368,7 @@ module.exports = {
       const { command, entries } = findEntries(client, tokens, includeHidden);
 
       if (!command || !entries.length) {
-        await interaction.reply({ components: [textCard(`${EMOJI.WARNING}  No command named \`${tokens[0]}\` found. Use \`${prefix}help\` to browse.`, 0xfed53c)], flags: MessageFlags.IsComponentsV2 });
+        await interaction.reply({ components: [textCard(`${EMOJI.WARNING}  I could not find a command named \`${tokens[0]}\`.${suggestCommands(client, tokens[0], includeHidden).length ? ` Did you mean ${suggestCommands(client, tokens[0], includeHidden).map((name) => `\`${prefix}help ${name}\``).join(', ')}?` : ''} Use \`${prefix}help\` to browse every command.`, 0xfed53c)], flags: MessageFlags.IsComponentsV2 });
         return;
       }
 
@@ -406,7 +467,7 @@ module.exports = {
 
     collector.on('end', (_collected, reason) => {
       if (reason === 'messageDelete') return;
-      const closedCard = new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent('Help menu closed (timed out). Run the command again to reopen it.'));
+      const closedCard = new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent('This help menu closed after two minutes without use. Run the help command again to open it.'));
       msg.edit({ components: [closedCard], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
     });
   },

@@ -60,7 +60,7 @@ module.exports = {
     .setName('request')
     .setDescription('Ask the staff for something.')
     .setDMPermission(false)
-    .addSubcommand((s) => s.setName('make').setDescription('Make a request.').addStringOption((o) => o.setName('text').setDescription('What you are asking for').setRequired(true).setMaxLength(MAX_TEXT)))
+    .addSubcommand((s) => s.setName('make').setDescription('Ask the staff for something; they will see it in the requests channel.').addStringOption((o) => o.setName('text').setDescription('What you are asking for').setRequired(true).setMaxLength(MAX_TEXT)))
     .addSubcommand((s) => s.setName('list').setDescription('See the open requests.').addBooleanOption((o) => o.setName('mine').setDescription('Only yours').setRequired(false))),
 
   async execute(interaction) {

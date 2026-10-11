@@ -2944,3 +2944,35 @@ create table if not exists rollout_state (
   updated_at timestamptz not null default now()
 );
 alter table rollout_state enable row level security;
+
+-- The rollout alerts waiting to be sent. A day with hundreds of changes goes out in order, a few messages at a time, instead of
+-- all at once; `attempts` counts the tries of one that Discord refused, and `event_key` stops the same news from being queued twice.
+create table if not exists rollout_queue (
+  id         bigserial primary key,
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  event_key  text not null,
+  event      jsonb not null,
+  attempts   integer not null default 0,
+  created_at timestamptz not null default now(),
+  unique (guild_id, event_key)
+);
+create index if not exists rollout_queue_guild_idx on rollout_queue (guild_id, id);
+alter table rollout_queue enable row level security;
+
+-- The credits of the public Credits page (petto.sbs/credits): people, features, systems, data and tools that Petto owes something to.
+-- The owner and the team edit them in the dashboard; while the table has nothing in it the page shows its original list.
+create table if not exists site_credits (
+  id             bigserial primary key,
+  kind           text not null default 'other' check (kind in ('people', 'features', 'data', 'systems', 'tools', 'art', 'other')),
+  name           text not null,
+  url            text,
+  logo_url       text,
+  description_en text not null default '',
+  description_es text not null default '',
+  description_pt text not null default '',
+  visible        boolean not null default true,
+  sort_order     integer not null default 0,
+  created_at     timestamptz not null default now()
+);
+create index if not exists site_credits_order_idx on site_credits (kind, sort_order);
+alter table site_credits enable row level security;

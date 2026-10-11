@@ -11,8 +11,8 @@ module.exports = {
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false)
     .addSubcommand((s) => s.setName('add').setDescription('Create a timer, minimum 10 minutes.').addChannelOption((o) => o.setName('channel').setDescription('Text channel.').setRequired(true)).addStringOption((o) => o.setName('interval').setDescription('e.g. 10m, 2h, 1d.').setRequired(true)).addStringOption((o) => o.setName('message').setDescription('Message to send.').setRequired(true)))
-    .addSubcommand((s) => s.setName('remove').setDescription('Remove a timer.').addIntegerOption((o) => o.setName('id').setDescription('Timer ID.').setRequired(true)))
-    .addSubcommand((s) => s.setName('view').setDescription('View a timer.').addIntegerOption((o) => o.setName('id').setDescription('Timer ID.').setRequired(true)))
+    .addSubcommand((s) => s.setName('remove').setDescription('Delete a timer so it stops sending its message.').addIntegerOption((o) => o.setName('id').setDescription('Timer ID.').setRequired(true)))
+    .addSubcommand((s) => s.setName('view').setDescription('Show how a timer is set: its channel, interval and message.').addIntegerOption((o) => o.setName('id').setDescription('Timer ID.').setRequired(true)))
     .addSubcommand((s) => s.setName('list').setDescription('List this server’s timers.')),
 
   async execute(interaction) {

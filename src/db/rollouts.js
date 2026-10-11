@@ -54,4 +54,57 @@ async function saveState(entries) {
   }
 }
 
-module.exports = { DEFAULTS, getConfig, upsertConfig, listEnabledConfigs, loadState, saveState };
+/** Puts events in the queue of a server. The same news (same key) is kept once. */
+async function enqueue(rows) {
+  if (!rows.length) return;
+  for (let i = 0; i < rows.length; i += 200) {
+    const { error } = await database.from('rollout_queue').upsert(rows.slice(i, i + 200), { onConflict: 'guild_id,event_key' });
+    if (error) throw error;
+  }
+}
+
+/** The servers that have something waiting. */
+async function pendingGuilds() {
+  const { data, error } = await database.from('rollout_queue').select('guild_id').order('id', { ascending: true }).limit(1000);
+  if (error) throw error;
+  return [...new Set((data ?? []).map((row) => row.guild_id))];
+}
+
+async function countPending(guildId) {
+  const { data, error } = await database.from('rollout_queue').select('id').eq('guild_id', String(guildId)).limit(5000);
+  if (error) throw error;
+  return (data ?? []).length;
+}
+
+/** The oldest `limit` events waiting for a server. */
+async function peek(guildId, limit) {
+  const { data, error } = await database.from('rollout_queue').select('*').eq('guild_id', String(guildId)).order('id', { ascending: true }).limit(limit);
+  if (error) throw error;
+  return data ?? [];
+}
+
+async function removeQueued(ids) {
+  if (!ids.length) return;
+  const { error } = await database.from('rollout_queue').delete().in('id', ids);
+  if (error) throw error;
+}
+
+async function markFailed(ids, attempts) {
+  for (const id of ids) {
+    const { error } = await database.from('rollout_queue').update({ attempts }).eq('id', id);
+    if (error) throw error;
+  }
+}
+
+async function clearGuildQueue(guildId) {
+  const { error } = await database.from('rollout_queue').delete().eq('guild_id', String(guildId));
+  if (error) throw error;
+}
+
+/** Forgets what has waited longer than `hours`: news that old is not news. */
+async function dropOlderThan(hours) {
+  const { error } = await database.from('rollout_queue').delete().lt('created_at', new Date(Date.now() - hours * 3_600_000).toISOString());
+  if (error) throw error;
+}
+
+module.exports = { DEFAULTS, getConfig, upsertConfig, listEnabledConfigs, loadState, saveState, enqueue, pendingGuilds, countPending, peek, removeQueued, markFailed, clearGuildQueue, dropOlderThan };

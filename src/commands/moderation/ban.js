@@ -55,7 +55,7 @@ module.exports = {
     .addSubcommand((sub) =>
       sub
         .setName('remove')
-        .setDescription('Unban a user.')
+        .setDescription('Remove the ban of a user so they can join again.')
         .addUserOption((opt) => opt.setName('user').setDescription('The user to unban (by ID if they left no trace)').setRequired(true))
         .addStringOption((opt) => opt.setName('reason').setDescription('Reason for the unban').setRequired(false)),
     )
