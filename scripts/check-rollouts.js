@@ -60,7 +60,7 @@ const raw = [
   const json = JSON.stringify(card.components[0].toJSON());
   assert.ok(json.includes('Users experiment (A/B)') && json.includes('Rollouts') && json.includes('+12.5% (62.5%)') && json.includes('agnonotdev'), 'the card has the kind, the change and the credit');
   assert.ok(json.includes('pe_exp') && !json.includes('pe_ban') && !json.includes('pe_mute') && !json.includes('pe_user_'), "Petto's own icons, never the ones of the sanctions");
-  assert.equal(card.components[1].toJSON().components[0].url.includes('gist.github.com'), true, 'a link to the list');
+  assert.equal(new URL(card.components[1].toJSON().components[0].url).hostname, 'gist.github.com', 'a link to the list');
   assert.ok(!JSON.stringify(buildRolloutCard(events[1], { hide_sections: ['status', 'variants', 'ranges'] }).components[0].toJSON()).includes('Status:'), 'a section can be hidden');
   assert.equal(buildRolloutCard(events[2], { accent_color: 0xff91c2 }).components[0].toJSON().accent_color, 0xff91c2, 'the color of a server');
   const ctx = rolloutContext(events[0]);
