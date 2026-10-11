@@ -3,7 +3,7 @@ const { ensureGuild } = require('../db/guilds');
 const { buildInteractionFromMessage, tokenize } = require('../handlers/prefixInteraction');
 const { unknownSubcommandCard, missingOptionCard } = require('../utils/usageCard');
 const commandAliasesDb = require('../db/commandAliases');
-const { getRemainingCooldown } = require('../utils/cooldown');
+const { getRemainingCooldownShared } = require('../utils/sharedCooldown');
 const disabledDb = require('../db/disabledCommands');
 const permissionsDb = require('../db/permissions');
 const customCommandsDb = require('../db/customCommands');
@@ -280,7 +280,7 @@ module.exports = {
     message.channel.sendTyping().catch(() => {});
 
     const cooldownMs = command.cooldownMs ?? DEFAULT_COOLDOWN_MS;
-    const remaining = getRemainingCooldown(canonicalName, message.author.id, cooldownMs);
+    const remaining = await getRemainingCooldownShared(canonicalName, message.author.id, cooldownMs);
     if (remaining > 0) {
       await message.reply(warningPayload(message, `Please wait ${(remaining / 1000).toFixed(1)}s before using \`${prefix}${canonicalName}\` again.`)).catch(() => {});
       return;

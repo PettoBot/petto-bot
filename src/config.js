@@ -98,6 +98,9 @@ module.exports = {
   // Requests per second the bot may make to Discord, all of them (commands, logs, webhooks, panels). Discloud shuts an app down when it
   // passes 300 requests in 30 seconds (10 a second), so the default keeps a margin: 8 a second is at most 240 in 30 seconds.
   restRequestsPerSecond: envInt('PETTO_REST_RPS', 8, 1, 45),
+  // Optional Redis (the one Discloud offers, for example `redis://default:password@host:port`). Without it everything works from memory as
+  // before; with it the bot keeps its short-lived caches and command cooldowns across restarts and shares the request limit.
+  redisUrl: String(process.env.DISCLOUD_REDIS_URL || process.env.REDIS_URL || '').trim() || null,
   // Votes for the bot on top.gg: the secret (starts with whs_) that top.gg shows when the webhook URL is saved, and the channel where each vote is thanked.
   topggWebhookSecret: String(process.env.TOPGG_WEBHOOK_SECRET || '').trim() || null,
   voteChannelId: /^\d{15,25}$/.test(process.env.VOTE_CHANNEL_ID || '') ? process.env.VOTE_CHANNEL_ID : null,

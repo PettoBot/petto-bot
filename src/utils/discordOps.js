@@ -1,4 +1,4 @@
-const { EmbedBuilder, Events, Status } = require('discord.js');
+const { ContainerBuilder, EmbedBuilder, Events, MessageFlags, SeparatorBuilder, SeparatorSpacingSize, Status, TextDisplayBuilder } = require('discord.js');
 const config = require('../config');
 const logger = require('./logger');
 const { exclusiveTask } = require('./concurrency');
@@ -106,11 +106,28 @@ function aggregateGatewayState(client) {
   return 'idle';
 }
 
-function statusHistoryText(state, details) {
-  const labels = { online: 'All services operational', idle: 'Service degradation detected', outage: 'Partial outage detected', offline: 'Petto is offline' };
+const STATE_COLORS = { online: 0xa5ea7a, idle: 0xfed53c, outage: 0xfe6465, offline: 0x4b4f59 };
+const STATE_LABELS = { online: 'All services operational', idle: 'Service degradation detected', outage: 'Partial outage detected', offline: 'Petto is offline' };
+
+/** A card with a title, some text under a line and a small footer. */
+function statusCard({ color, title, lines, footer }) {
+  const card = new ContainerBuilder().setAccentColor(color)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### ${title}`))
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
+  if (footer) card.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${footer}`));
+  return card;
+}
+
+function statusHistoryPayload(state, details) {
   const emoji = STATUS_EMOJIS[state] || STATUS_EMOJIS.idle;
-  const alert = state === 'online' ? '' : `${STATUS_ALERT} | <@&${STATUS_ROLE_ID}>\n`;
-  return `${emoji} **${labels[state] || 'Status update'}**\n${alert}${details}`;
+  const lines = [details];
+  if (state !== 'online') lines.unshift(`${STATUS_ALERT} | <@&${STATUS_ROLE_ID}>`);
+  return {
+    components: [statusCard({ color: STATE_COLORS[state] ?? STATE_COLORS.idle, title: `${emoji} ${STATE_LABELS[state] || 'Status update'}`, lines, footer: `<t:${Math.floor(Date.now() / 1000)}:f>` })],
+    flags: MessageFlags.IsComponentsV2,
+    allowedMentions: { roles: state === 'online' ? [] : [STATUS_ROLE_ID] },
+  };
 }
 
 async function announceStatusHistory(client, state, details, { force = false } = {}) {
@@ -121,71 +138,83 @@ async function announceStatusHistory(client, state, details, { force = false } =
 
   logger.info(`Status event: state=${state} channel=${channelId} details=${details}`);
 
-  const sent = await channel.send({
-    content: statusHistoryText(state, details),
-    allowedMentions: { roles: state === 'online' ? [] : [STATUS_ROLE_ID] },
-  }).catch(() => null);
+  const sent = await channel.send(statusHistoryPayload(state, details)).catch(() => null);
   if (sent) lastHistoryState = state;
 }
 
 function registerGatewayStatusEvents(client) {
   const announce = (state, details) => announceStatusHistory(client, state, details).catch(() => {});
   client.on(Events.ShardReconnecting, (shardId) => {
-    announce('idle', `Shard **${shardId}** is reconnecting. Some servers may respond slowly while Discord restores the connection.`);
+    announce('idle', `Shard **${Number(shardId) + 1}** is reconnecting. Some servers may respond slowly while Discord restores the connection.`);
   });
   client.on(Events.ShardDisconnect, (closeEvent, shardId) => {
-    announce('outage', `Shard **${shardId}** disconnected (code \`${closeEvent?.code ?? 'unknown'}\`). Petto is attempting to recover automatically.`);
+    announce('outage', `Shard **${Number(shardId) + 1}** disconnected (code \`${closeEvent?.code ?? 'unknown'}\`). Petto is attempting to recover automatically.`);
   });
   client.on(Events.ShardError, (error, shardId) => {
-    announce('outage', `Shard **${shardId}** reported an error: \`${redact(error?.message || error)}\``);
+    announce('outage', `Shard **${Number(shardId) + 1}** reported an error: \`${redact(error?.message || error)}\``);
   });
   client.on(Events.ShardReady, (shardId) => {
     const state = aggregateGatewayState(client);
     announce(state, state === 'online'
-      ? `Shard **${shardId}** recovered. **All services are restored.**`
-      : `Shard **${shardId}** is ready, but another shard is still recovering.`);
+      ? `Shard **${Number(shardId) + 1}** recovered. **All services are restored.**`
+      : `Shard **${Number(shardId) + 1}** is ready, but another shard is still recovering.`);
   });
   client.on(Events.ShardResume, (shardId, replayedEvents) => {
     const state = aggregateGatewayState(client);
     announce(state, state === 'online'
-      ? `Shard **${shardId}** resumed successfully. **All services are restored.**`
-      : `Shard **${shardId}** resumed with ${replayedEvents ?? 0} replayed events.`);
+      ? `Shard **${Number(shardId) + 1}** resumed successfully. **All services are restored.**`
+      : `Shard **${Number(shardId) + 1}** resumed with ${replayedEvents ?? 0} replayed events.`);
   });
 }
 
-function publicStatusEmbed(client) {
-  return new EmbedBuilder()
-    .setColor(0xa5ea7a)
-    .setTitle('Petto status')
-    .setDescription('Petto is online and serving Discord communities.')
-    .addFields(
-      { name: 'Status', value: 'Online', inline: true },
-      { name: 'Servers', value: String(guildCount(client)), inline: true },
-      { name: 'Latency', value: `${Math.max(0, Math.round(client.ws.ping))} ms`, inline: true },
-      { name: 'Uptime', value: `<t:${Math.floor((Date.now() - process.uptime() * 1000) / 1000)}:R>`, inline: true },
-    )
-    .setFooter({ text: STATUS_MARKER })
-    .setTimestamp();
+const SHARD_STATE = { [Status.Ready]: 'Online', [Status.Connecting]: 'Connecting', [Status.Reconnecting]: 'Reconnecting', [Status.Resuming]: 'Resuming', [Status.Disconnected]: 'Disconnected' };
+
+/** One line per shard, numbered from 1: how it is and how many servers it has. */
+function shardLines(client) {
+  const perShard = new Map();
+  for (const guild of client.guilds.cache.values()) perShard.set(guild.shardId ?? 0, (perShard.get(guild.shardId ?? 0) ?? 0) + 1);
+  return [...client.ws.shards.values()].map((shard) => `${SHARD_EMOJI[shard.status === Status.Ready ? 'on' : 'off']} **Shard ${shard.id + 1}** · ${SHARD_STATE[shard.status] ?? 'Unknown'} · ${perShard.get(shard.id) ?? 0} servers`);
+}
+const SHARD_EMOJI = { on: STATUS_EMOJIS.online, off: STATUS_EMOJIS.outage };
+
+function publicStatusCard(client) {
+  const state = aggregateGatewayState(client);
+  return statusCard({
+    color: STATE_COLORS[state] ?? STATE_COLORS.idle,
+    title: `${STATUS_EMOJIS[state] || STATUS_EMOJIS.idle} Petto status`,
+    lines: [
+      state === 'online' ? 'Petto is online and serving Discord communities.' : STATE_LABELS[state],
+      `**Servers** ${guildCount(client)} · **Online since** <t:${Math.floor((Date.now() - process.uptime() * 1000) / 1000)}:R>`,
+      ...shardLines(client),
+    ],
+    footer: `${STATUS_MARKER} · updated <t:${Math.floor(Date.now() / 1000)}:R>`,
+  });
 }
 
-function internalStatusEmbed(client) {
+function internalStatusCard(client) {
   const memory = process.memoryUsage();
-  const shards = [...client.ws.shards.values()].map((shard) => `Shard ${shard.id}: ${shard.status} · ${Math.round(shard.ping)} ms`);
-  return new EmbedBuilder()
-    .setColor(0x8799ff)
-    .setTitle('Petto internal status')
-    .setDescription('Operational snapshot for developers and owners.')
-    .addFields(
-      { name: 'Process', value: `Node ${process.version}\nPID ${process.pid}\nUptime ${Math.floor(process.uptime())}s`, inline: true },
-      { name: 'Runtime', value: `${(memory.rss / 1024 / 1024).toFixed(1)} MB RSS\nHeap ${(memory.heapUsed / 1024 / 1024).toFixed(1)} MB`, inline: true },
-      { name: 'Discord', value: `${guildCount(client)} servers\n${memberCount(client)} cached members`, inline: true },
-      { name: 'Shards', value: shards.join('\n').slice(0, 1024) || 'No shard data', inline: false },
-    )
-    .setFooter({ text: STATUS_MARKER })
-    .setTimestamp();
+  return statusCard({
+    color: 0x8799ff,
+    title: 'Petto internal status',
+    lines: [
+      'Operational snapshot for developers and owners.',
+      `**Process** Node ${process.version} · PID ${process.pid} · uptime ${Math.floor(process.uptime())}s`,
+      `**Runtime** ${(memory.rss / 1024 / 1024).toFixed(1)} MB RSS · heap ${(memory.heapUsed / 1024 / 1024).toFixed(1)} MB`,
+      `**Discord** ${guildCount(client)} servers · ${memberCount(client)} cached members`,
+      ...shardLines(client),
+    ],
+    footer: `${STATUS_MARKER} · updated <t:${Math.floor(Date.now() / 1000)}:R>`,
+  });
 }
 
-async function upsertStatusMessage(client, kind, embed) {
+/** Whether a message is one of the status messages: the embed ones from before, or the cards that replaced them. */
+function isStatusMessage(candidate, clientId) {
+  if (candidate.author?.id !== clientId) return false;
+  if (candidate.embeds?.some((item) => item.footer?.text === STATUS_MARKER)) return true;
+  try { return JSON.stringify(candidate.components?.map((c) => c.toJSON?.() ?? c) ?? []).includes(STATUS_MARKER); } catch { return false; }
+}
+
+async function upsertStatusMessage(client, kind, card) {
   const channelId = channelIdFor(kind);
   const channel = await getTextChannel(client, channelId);
   if (!channel) return;
@@ -194,34 +223,37 @@ async function upsertStatusMessage(client, kind, embed) {
   let message = statusMessages.get(key) || null;
   if (!message) {
     const recent = await channel.messages.fetch({ limit: 50 }).catch(() => null);
-    message = recent?.find((candidate) => candidate.author?.id === client.user?.id && candidate.embeds?.some((item) => item.footer?.text === STATUS_MARKER)) || null;
+    message = recent?.find((candidate) => isStatusMessage(candidate, client.user?.id)) || null;
   }
 
+  const payload = { components: [card], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } };
   if (message) {
-    const edited = await message.edit({ embeds: [embed] }).catch(() => null);
-    if (edited) {
-      statusMessages.set(key, edited);
-      return;
+    // A message cannot change from an embed to a card: the old embed goes and the card takes its place.
+    if (message.flags?.has?.(MessageFlags.IsComponentsV2)) {
+      const edited = await message.edit(payload).catch(() => null);
+      if (edited) { statusMessages.set(key, edited); return; }
+    } else {
+      await message.delete().catch(() => {});
     }
   }
 
-  const sent = await channel.send({ embeds: [embed] }).catch(() => null);
+  const sent = await channel.send(payload).catch(() => null);
   if (sent) statusMessages.set(key, sent);
 }
 
 async function reportDiscordStatus(client) {
   if (!client.user) return;
   const shards = [...client.ws.shards.values()]
-    .map((shard) => `${shard.id}:${Status[shard.status] || shard.status}/${Math.round(shard.ping)}ms`)
+    .map((shard) => `${shard.id + 1}:${Status[shard.status] || shard.status}`)
     .join(' ');
   logger.info(
     `Discord health snapshot: state=${aggregateGatewayState(client)} guilds=${guildCount(client)} members=${memberCount(client)} ` +
-    `ping=${Math.max(0, Math.round(client.ws.ping))}ms uptime=${Math.floor(process.uptime())}s ` +
+    `uptime=${Math.floor(process.uptime())}s ` +
     `rss=${Math.round(process.memoryUsage().rss / 1024 / 1024)}MB shards=[${shards || 'none'}]`,
   );
   await Promise.all([
-    upsertStatusMessage(client, 'publicStatus', publicStatusEmbed(client)),
-    upsertStatusMessage(client, 'internalStatus', internalStatusEmbed(client)),
+    upsertStatusMessage(client, 'publicStatus', publicStatusCard(client)),
+    upsertStatusMessage(client, 'internalStatus', internalStatusCard(client)),
   ]);
 }
 
@@ -244,22 +276,29 @@ function startDiscordStatusJob(client) {
 // minute (or a warning about requests, which is itself a message) multiplied them.
 const LOG_FLUSH_MS = 5_000;
 const LOG_MESSAGE_LIMIT = 1900;
-let logLines = [];
+let logLines = []; // { level, text }
 let logTimer = null;
+
+const LEVEL_COLORS = { error: 0xfe6465, warn: 0xfed53c, info: 0x8799ff };
+const LEVEL_RANK = { info: 0, warn: 1, error: 2 };
 
 function flushLogLines(client) {
   logTimer = null;
   const lines = logLines;
   logLines = [];
-  const chunks = [];
-  let current = '';
+  const groups = [];
+  let current = { text: '', level: 'info' };
   for (const line of lines) {
-    if (current && current.length + line.length + 1 > LOG_MESSAGE_LIMIT) { chunks.push(current); current = ''; }
-    current += `${current ? '\n' : ''}${line}`;
+    if (current.text && current.text.length + line.text.length + 1 > LOG_MESSAGE_LIMIT) { groups.push(current); current = { text: '', level: 'info' }; }
+    current.text += `${current.text ? '\n' : ''}${line.text}`;
+    if (LEVEL_RANK[line.level] > LEVEL_RANK[current.level]) current.level = line.level;
   }
-  if (current) chunks.push(current);
-  // At most three messages per flush; the rest of a flood is dropped from the channel (it is still in the host log).
-  for (const content of chunks.slice(0, 3)) sendToChannel(client, channelIdFor('general'), { content, allowedMentions: { parse: [] } }).catch(() => {});
+  if (current.text) groups.push(current);
+  // At most three cards per flush; the rest of a flood is dropped from the channel (it is still in the host log).
+  for (const group of groups.slice(0, 3)) {
+    const card = new ContainerBuilder().setAccentColor(LEVEL_COLORS[group.level]).addTextDisplayComponents(new TextDisplayBuilder().setContent(group.text));
+    sendToChannel(client, channelIdFor('general'), { components: [card], flags: MessageFlags.IsComponentsV2 | MessageFlags.SuppressNotifications, allowedMentions: { parse: [] } }).catch(() => {});
+  }
 }
 
 function attachDiscordLogger(client) {
@@ -271,7 +310,9 @@ function attachDiscordLogger(client) {
     const text = redact(args.map(safeText).join(' '));
     if (!text || /Status heartbeat job started|Failed to report status/i.test(text)) return;
     if (!channelIdFor('general')) return;
-    logLines.push(`\`${stamp}\` **${level.toUpperCase()}** ${text.slice(0, 600)}`);
+    const unix = Math.floor(Date.parse(stamp) / 1000) || Math.floor(Date.now() / 1000);
+    const tag = level === 'error' ? 'ERROR' : level === 'warn' ? 'WARN' : 'INFO';
+    logLines.push({ level, text: `-# <t:${unix}:T> **${tag}**\n${text.slice(0, 600)}` });
     if (!logTimer) { logTimer = setTimeout(() => flushLogLines(client), LOG_FLUSH_MS); logTimer.unref?.(); }
   });
 }

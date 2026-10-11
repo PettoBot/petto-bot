@@ -74,6 +74,8 @@ const client = new Client({
 // normal fan-out, not a leak, so raise the default cap instead of Node warning on every restart.
 client.setMaxListeners(30);
 attachRestRateLimitTelemetry(client);
+require('./src/utils/redis').start();
+require('./src/utils/sharedRestLimit').attachSharedRestLimit(client.rest, config.restRequestsPerSecond);
 logger.setDiscordSink(createDiscordErrorLogSink(client, config.errorLogChannelId));
 logger.addDiscordSink(createGuildDiagnosticSink(client));
 attachGuildComplianceMonitor(client);

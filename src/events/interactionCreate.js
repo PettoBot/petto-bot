@@ -1,5 +1,5 @@
 const { Events, MessageFlags } = require('discord.js');
-const { getRemainingCooldown } = require('../utils/cooldown');
+const { getRemainingCooldownShared } = require('../utils/sharedCooldown');
 const { handleButton: handleEmbedPanelButton, handleModal: handleEmbedPanelModal } = require('../interactions/embedPanel');
 const { handleModal: handleReportModal } = require('../interactions/reportModal');
 const { handleModal: handleReportConfigModal } = require('../interactions/reportConfigModal');
@@ -374,7 +374,7 @@ module.exports = {
     }
 
     const cooldownMs = command.cooldownMs ?? DEFAULT_COOLDOWN_MS;
-    const remaining = getRemainingCooldown(command.data.name, interaction.user.id, cooldownMs);
+    const remaining = await getRemainingCooldownShared(command.data.name, interaction.user.id, cooldownMs);
     if (remaining > 0) {
       await interaction.reply({
         content: `Please wait ${(remaining / 1000).toFixed(1)}s before using /${command.data.name} again.`,
