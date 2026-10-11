@@ -170,7 +170,7 @@ const SHARD_STATE = { [Status.Ready]: 'Online', [Status.Connecting]: 'Connecting
 function shardLines(client) {
   const perShard = new Map();
   for (const guild of client.guilds.cache.values()) perShard.set(guild.shardId ?? 0, (perShard.get(guild.shardId ?? 0) ?? 0) + 1);
-  return [...client.ws.shards.values()].map((shard) => `${SHARD_EMOJI[shard.status === Status.Ready ? 'on' : 'off']} **Shard ${shard.id + 1}** · ${SHARD_STATE[shard.status] ?? 'Unknown'} · ${perShard.get(shard.id) ?? 0} servers`);
+  return [...client.ws.shards.values()].map((shard) => `${SHARD_EMOJI[shard.status === Status.Ready ? 'on' : 'off']} **Shard ${shard.id + 1}** · ${SHARD_STATE[shard.status] ?? 'Unknown'} · ${perShard.get(shard.id) ?? 0} servers${shard.ping >= 0 ? ` · ${Math.round(shard.ping)} ms` : ''}`);
 }
 const SHARD_EMOJI = { on: STATUS_EMOJIS.online, off: STATUS_EMOJIS.outage };
 
