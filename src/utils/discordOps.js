@@ -166,11 +166,20 @@ function registerGatewayStatusEvents(client) {
 
 const SHARD_STATE = { [Status.Ready]: 'Online', [Status.Connecting]: 'Connecting', [Status.Reconnecting]: 'Reconnecting', [Status.Resuming]: 'Resuming', [Status.Disconnected]: 'Disconnected' };
 
+/** The ping of a shard in ms. Right after a start the first heartbeat has not answered yet, so it says so instead of leaving it out. */
+function pingText(client, shard) {
+  const own = Number(shard.ping);
+  if (Number.isFinite(own) && own >= 0) return ` · ${Math.round(own)} ms`;
+  const average = Number(client.ws.ping);
+  if (Number.isFinite(average) && average >= 0) return ` · ${Math.round(average)} ms`;
+  return ' · measuring ping';
+}
+
 /** One line per shard, numbered from 1: how it is and how many servers it has. */
 function shardLines(client) {
   const perShard = new Map();
   for (const guild of client.guilds.cache.values()) perShard.set(guild.shardId ?? 0, (perShard.get(guild.shardId ?? 0) ?? 0) + 1);
-  return [...client.ws.shards.values()].map((shard) => `${SHARD_EMOJI[shard.status === Status.Ready ? 'on' : 'off']} **Shard ${shard.id + 1}** · ${SHARD_STATE[shard.status] ?? 'Unknown'} · ${perShard.get(shard.id) ?? 0} servers${shard.ping >= 0 ? ` · ${Math.round(shard.ping)} ms` : ''}`);
+  return [...client.ws.shards.values()].map((shard) => `${SHARD_EMOJI[shard.status === Status.Ready ? 'on' : 'off']} **Shard ${shard.id + 1}** · ${SHARD_STATE[shard.status] ?? 'Unknown'} · ${perShard.get(shard.id) ?? 0} servers${pingText(client, shard)}`);
 }
 const SHARD_EMOJI = { on: STATUS_EMOJIS.online, off: STATUS_EMOJIS.outage };
 

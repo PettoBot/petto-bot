@@ -63,7 +63,7 @@ const raw = [
   assert.ok(json.includes('Users experiment (A/B)') && json.includes('Rollouts') && json.includes('+12.5% (62.5%)') , 'the card has the kind and the change');
   assert.ok(json.includes('pe_rexperiment') && !json.includes('pe_ban') && !json.includes('pe_mute') && !json.includes('pe_user_'), "Petto's own icons, never the ones of the sanctions");
   assert.equal(card.components.length, 1, 'only the card, like the design it follows');
-  assert.ok(!JSON.stringify(buildRolloutCard(events[0], {}).components[0].toJSON()).match(/## |-# /), 'no big titles and no small text');
+  assert.ok(!JSON.stringify(buildRolloutCard(events[0], {}).components[0].toJSON()).match(/[^#]##? |-# /), 'no titles of one or two, and no small text');
   assert.equal(JSON.parse(json).components.find((c) => c.accessory).accessory.style, 3, 'a green button');
   assert.ok(!JSON.stringify(buildRolloutCard(events[1], { hide_sections: ['status', 'variants', 'ranges'] }).components[0].toJSON()).includes('Status:'), 'a section can be hidden');
   assert.equal(buildRolloutCard(events[2], { accent_color: 0xff91c2 }).components[0].toJSON().accent_color, 0xff91c2, 'the color of a server');
@@ -71,7 +71,9 @@ const raw = [
   assert.equal(plain.accent_color, undefined, 'no color by default');
   assert.equal(plain.components[0].accessory.label, '+12.5% (62.5%)', 'the button shows the change');
   assert.equal(plain.components[0].accessory.emoji.name, 'pe_rup', 'with the icon of the event');
-  assert.equal(plain.components[0].accessory.disabled, true);
+  assert.ok(!plain.components[0].accessory.disabled && plain.components[0].accessory.custom_id.startsWith('petto_display:'), 'it looks active and does nothing');
+  assert.equal(JSON.stringify(plain).split('"type":14').length - 1, 1, 'one separator');
+  assert.ok(JSON.stringify(plain).includes('### '), 'the titles are of three');
   const ctx = rolloutContext(events[0]);
   assert.deepEqual([ctx.name, ctx.change, ctx.from, ctx.to, ctx.type], ['Android media viewer full resolution', '+12.5%', '50%', '62.5%', 'Rollout increased']);
   assert.ok(ctx.kind_icon.includes('pe_rexperiment') && ctx.event_icon.includes('pe_rup'), 'the icons are variables too');
@@ -85,7 +87,7 @@ const raw = [
   const head = built.components[0].components[0];
   assert.equal(head.type, 9, 'the section is kept');
   assert.equal(head.accessory.type, 2);
-  assert.equal(head.accessory.disabled, true, 'the button cannot be pressed');
+  assert.ok(!head.accessory.disabled, 'the button looks active');
   assert.equal(head.accessory.label, '+12.5% (62.5%)', 'the label has the variables and no stray asterisks');
   assert.deepEqual([head.accessory.emoji.name, head.accessory.emoji.id], ['pe_rup', '1558964315627720786'], 'the emoji of the button comes from a variable');
   assert.ok(head.accessory.custom_id, 'a button that is not a link has an id');
