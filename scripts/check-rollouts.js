@@ -9,6 +9,7 @@ process.env.DISCLOUD_DATABASE_URL ||= 'postgres://u:p@localhost:5432/d';
 
 const api = require('../src/utils/rolloutApi');
 const { diffRollouts, matchesEvent, snapshotOf } = require('../src/utils/rolloutDiff');
+const { SOURCE_URL } = require('../src/utils/rolloutApi');
 const { buildRolloutCard, rolloutContext, rolloutMessage, badge, variantLines } = require('../src/utils/rolloutMessages');
 const { checkRollouts, drainQueue, canUseRollouts } = require('../src/utils/rolloutAlerts');
 const config = require('../src/config');
@@ -74,6 +75,8 @@ const raw = [
   assert.ok(!plain.components[0].accessory.disabled && plain.components[0].accessory.custom_id.startsWith('petto_display:'), 'it looks active and does nothing');
   assert.equal(JSON.stringify(plain).split('"type":14').length - 1, 1, 'one separator');
   assert.ok(JSON.stringify(plain).includes('### '), 'the titles are of three');
+  assert.ok(JSON.stringify(plain).includes('[`2026-10-'), 'the id is in code');
+  assert.ok(JSON.stringify(plain).includes(`](${SOURCE_URL})`), 'and a link to the list');
   const ctx = rolloutContext(events[0]);
   assert.deepEqual([ctx.name, ctx.change, ctx.from, ctx.to, ctx.type], ['Android media viewer full resolution', '+12.5%', '50%', '62.5%', 'Rollout increased']);
   assert.ok(ctx.kind_icon.includes('pe_rexperiment') && ctx.event_icon.includes('pe_rup'), 'the icons are variables too');

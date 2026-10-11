@@ -92,7 +92,7 @@ function buildRolloutCard(event, config = {}, { rolePing = null } = {}) {
   const info = [`- ${KIND_ICONS[rollout.kind] ?? KIND_ICONS.unknown} **Kind:** ${KIND_LABELS[rollout.kind] ?? KIND_LABELS.unknown}`];
   if (!hidden.has('status')) info.push(`- ${ICONS.status} **Status:** ${statusLabel(rollout.status)}`);
   if (!hidden.has('platforms') && rollout.platforms.length) info.push(`- ${ICONS.platforms} **Platforms:** ${rollout.platforms.join(', ')}`);
-  info.push(`- \`${rollout.id}\``);
+  info.push(`- [\`${rollout.id}\`](${SOURCE_URL})`);
   container.addTextDisplayComponents(text(info.join('\n')));
 
   const variants = variantLines(event);
