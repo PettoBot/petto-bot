@@ -14,6 +14,7 @@ const handlers = {};
 const fake = {
   on(event, fn) { handlers[event] = fn; },
   async connect() { handlers.ready?.(); },
+  async ping() { return 'PONG'; },
   async get(key) { const e = store.get(key); return e && e.until > Date.now() ? e.value : null; },
   async set(key, value, options = {}) {
     const e = store.get(key);

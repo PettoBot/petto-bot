@@ -6,44 +6,72 @@ const logger = require('./logger');
 const config = new Proxy({}, { get: (_, key) => require('../config')[key], set: (_, key, value) => { require('../config')[key] = value; return true; } });
 
 const PREFIX = 'petto:';
-const TIMEOUT_MS = 300; // a Redis that does not answer this fast is as good as down for that call
-const BACKOFF_MS = 10_000; // after a failure it is not asked again for a while
+const TIMEOUT_MS = Math.max(100, Number(process.env.PETTO_REDIS_TIMEOUT_MS) || 1_000); // a Redis that does not answer in this time is as good as down for that call
+const SLOW_MS = 250; // a Redis whose round trip is longer than this costs more than the database it would save
+const PROBE_EVERY_MS = 5 * 60_000;
+const BACKOFFS_MS = [10_000, 30_000, 120_000, 300_000]; // after failures it is left alone for longer each time
 
 let client = null;
 let ready = false;
+let tooSlow = false;
+let failures = 0;
 let downUntil = 0;
 let lastWarnAt = 0;
 
 function enabled() { return Boolean(config.redisUrl); }
 
-function warn(message) {
-  if (Date.now() - lastWarnAt < 60_000) return;
+function warn(message, everyMs = 30 * 60_000) {
+  if (Date.now() - lastWarnAt < everyMs) return;
   lastWarnAt = Date.now();
   logger.warn(`[Redis] ${message}`);
+}
+
+/** Measures one round trip. A Redis that is too slow is not used (the bot goes on as it did without it) until a later probe finds it fast. */
+async function probe() {
+  if (!client || !ready) return;
+  const started = Date.now();
+  try {
+    await Promise.race([client.ping(), new Promise((_, reject) => setTimeout(() => reject(new Error('timed out')), 3_000).unref?.())]);
+  } catch (error) {
+    tooSlow = true;
+    warn(`it did not answer a ping (${error?.message ?? error}); it is not used for now.`);
+    return;
+  }
+  const took = Date.now() - started;
+  const slow = took > SLOW_MS;
+  if (slow !== tooSlow || failures === 0) {
+    logger.info(slow ? `[Redis] round trip of ${took} ms is too slow to help; it is not used for now.` : `[Redis] in use, round trip of ${took} ms.`);
+  }
+  tooSlow = slow;
 }
 
 function start() {
   if (!enabled() || client) return;
   client = require('redis').createClient({ url: config.redisUrl, socket: { connectTimeout: 5_000, reconnectStrategy: (attempt) => Math.min(attempt * 500, 10_000) } });
-  client.on('ready', () => { ready = true; downUntil = 0; logger.info('[Redis] connected.'); });
+  client.on('ready', () => { ready = true; downUntil = 0; failures = 0; probe().catch(() => {}); });
   client.on('end', () => { ready = false; });
   client.on('error', (error) => { ready = false; warn(`connection problem: ${error?.message ?? error}`); });
   client.connect().catch((error) => warn(`could not connect: ${error?.message ?? error}`));
+  setInterval(() => probe().catch(() => {}), PROBE_EVERY_MS).unref?.();
 }
 
-function available() { return enabled() && ready && Date.now() >= downUntil; }
+function available() { return enabled() && ready && !tooSlow && Date.now() >= downUntil; }
 
 async function run(action, fallback) {
   if (!available()) return fallback;
   let timer;
   try {
-    return await Promise.race([
+    const result = await Promise.race([
       action(client),
       new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timed out')), TIMEOUT_MS); }),
     ]);
+    failures = 0;
+    return result;
   } catch (error) {
-    downUntil = Date.now() + BACKOFF_MS;
-    warn(`a command failed (${error?.message ?? error}); skipping Redis for ${BACKOFF_MS / 1000}s.`);
+    const wait = BACKOFFS_MS[Math.min(failures, BACKOFFS_MS.length - 1)];
+    failures += 1;
+    downUntil = Date.now() + wait;
+    warn(`a command failed (${error?.message ?? error}); skipping Redis for ${wait / 1000}s.`);
     return fallback;
   } finally {
     clearTimeout(timer);
