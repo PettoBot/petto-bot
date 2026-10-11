@@ -18,7 +18,7 @@ module.exports = {
     .addSubcommand((s) =>
       s
         .setName('add')
-        .setDescription('Set a reminder.')
+        .setDescription('Ask Petto to remind you of something later, e.g. remind add 2h water.')
         .addStringOption((o) => o.setName('duration').setDescription('A length or a moment: 10m, 3d 4h, tomorrow 8pm, 2026-10-12 18:00').setRequired(true))
         .addStringOption((o) => o.setName('message').setDescription('What to remind you about').setRequired(true)),
     )

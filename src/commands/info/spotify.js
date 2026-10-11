@@ -14,7 +14,7 @@ module.exports = {
   aliases: ['sp'],
   data: new SlashCommandBuilder()
     .setName('spotify')
-    .setDescription('Spotify commands.')
+    .setDescription('See what a member is listening to on Spotify right now.')
     .setDMPermission(false)
     .addSubcommand((s) =>
       s

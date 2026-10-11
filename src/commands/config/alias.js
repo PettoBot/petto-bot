@@ -10,8 +10,8 @@ module.exports = {
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false)
     .addSubcommand((s) => s.setName('add').setDescription('Add or replace an alias.').addStringOption((o) => o.setName('name').setDescription('Shortcut, without the prefix.').setRequired(true)).addStringOption((o) => o.setName('command').setDescription('Command to run, including its arguments.').setRequired(true)))
-    .addSubcommand((s) => s.setName('remove').setDescription('Remove an alias.').addStringOption((o) => o.setName('name').setDescription('Shortcut to remove.').setRequired(true)))
-    .addSubcommand((s) => s.setName('view').setDescription('View one alias.').addStringOption((o) => o.setName('name').setDescription('Shortcut to view.').setRequired(true)))
+    .addSubcommand((s) => s.setName('remove').setDescription('Delete one of your command aliases.').addStringOption((o) => o.setName('name').setDescription('Shortcut to remove.').setRequired(true)))
+    .addSubcommand((s) => s.setName('view').setDescription('Show what an alias runs.').addStringOption((o) => o.setName('name').setDescription('Shortcut to view.').setRequired(true)))
     .addSubcommand((s) => s.setName('list').setDescription('List this server’s aliases.')),
 
   async execute(interaction) {

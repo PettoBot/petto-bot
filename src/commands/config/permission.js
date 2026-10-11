@@ -16,15 +16,15 @@ module.exports = {
       g
         .setName('group')
         .setDescription('Create and assign authorization groups.')
-        .addSubcommand((s) => s.setName('create').setDescription('Create a group.').addStringOption((o) => o.setName('name').setDescription('Group name').setRequired(true)).addIntegerOption((o) => o.setName('level').setDescription('Level from 0 to 100').setMinValue(0).setMaxValue(100).setRequired(true)))
-        .addSubcommand((s) => s.setName('delete').setDescription('Delete a group.').addStringOption((o) => o.setName('name').setDescription('Group name').setRequired(true)))
+        .addSubcommand((s) => s.setName('create').setDescription('Create a permission group with a level from 0 to 100.').addStringOption((o) => o.setName('name').setDescription('Group name').setRequired(true)).addIntegerOption((o) => o.setName('level').setDescription('Level from 0 to 100').setMinValue(0).setMaxValue(100).setRequired(true)))
+        .addSubcommand((s) => s.setName('delete').setDescription('Delete a permission group.').addStringOption((o) => o.setName('name').setDescription('Group name').setRequired(true)))
         .addSubcommand((s) => s.setName('level').setDescription('Change a group level.').addStringOption((o) => o.setName('name').setDescription('Group name').setRequired(true)).addIntegerOption((o) => o.setName('level').setDescription('Level from 0 to 100').setMinValue(0).setMaxValue(100).setRequired(true)))
         .addSubcommand((s) => s.setName('add-role').setDescription('Add a role to a group.').addStringOption((o) => o.setName('name').setDescription('Group name').setRequired(true)).addRoleOption((o) => o.setName('role').setDescription('Role').setRequired(true)))
         .addSubcommand((s) => s.setName('remove-role').setDescription('Remove a role from a group.').addStringOption((o) => o.setName('name').setDescription('Group name').setRequired(true)).addRoleOption((o) => o.setName('role').setDescription('Role').setRequired(true)))
         .addSubcommand((s) => s.setName('add-user').setDescription('Add a user to a group.').addStringOption((o) => o.setName('name').setDescription('Group name').setRequired(true)).addUserOption((o) => o.setName('user').setDescription('User').setRequired(true)))
         .addSubcommand((s) => s.setName('remove-user').setDescription('Remove a user from a group.').addStringOption((o) => o.setName('name').setDescription('Group name').setRequired(true)).addUserOption((o) => o.setName('user').setDescription('User').setRequired(true)))
         .addSubcommand((s) => s.setName('list').setDescription('List groups and their levels.'))
-        .addSubcommand((s) => s.setName('view').setDescription('View a group.').addStringOption((o) => o.setName('name').setDescription('Group name').setRequired(true))),
+        .addSubcommand((s) => s.setName('view').setDescription('Show the level, roles and users of a permission group.').addStringOption((o) => o.setName('name').setDescription('Group name').setRequired(true))),
     )
     .addSubcommandGroup((g) =>
       g

@@ -74,8 +74,8 @@ module.exports = {
       g
         .setName('filter')
         .setDescription('(Staff) Words not allowed in booster role names.')
-        .addSubcommand((s) => s.setName('add').setDescription('Filter a word.').addStringOption((o) => o.setName('word').setDescription('Word or phrase').setRequired(true)))
-        .addSubcommand((s) => s.setName('remove').setDescription('Un-filter a word.').addStringOption((o) => o.setName('word').setDescription('Word or phrase').setRequired(true)))
+        .addSubcommand((s) => s.setName('add').setDescription('Block a word from booster role names.').addStringOption((o) => o.setName('word').setDescription('Word or phrase').setRequired(true)))
+        .addSubcommand((s) => s.setName('remove').setDescription('Allow a word again in booster role names.').addStringOption((o) => o.setName('word').setDescription('Word or phrase').setRequired(true)))
         .addSubcommand((s) => s.setName('list').setDescription('List filtered words.')),
     ),
 
