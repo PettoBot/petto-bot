@@ -31,7 +31,7 @@ async function reportStatus(client) {
         shardId,
         statusLabel(shard.status),
         guildsPerShard.get(shardId) ?? 0,
-        null, // the status page no longer shows the latency of a shard
+        shard.ping >= 0 ? Math.round(shard.ping) : null,
       );
     } catch (error) {
       failures.push({ label: `shard ${shardId}`, error });

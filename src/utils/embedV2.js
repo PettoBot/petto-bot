@@ -75,7 +75,24 @@ function makeBuilder(ctx) {
     return { type: TYPES.GALLERY, items };
   };
 
+  let displayButtons = 0;
+  /**
+   * A button that only shows something (a style other than link, such as the change of a rollout): its label and its emoji can hold
+   * variables, and it is always disabled because nothing is done when it is pressed. A `{variable}` that gives a custom emoji
+   * (`<:name:id>`) becomes that emoji.
+   */
+  const displayButton = async (raw) => {
+    const label = (await text(raw?.label)).replace(/\*\*/g, '').trim().slice(0, LIMITS.buttonLabel);
+    const emojiText = String(await resolve(String(raw?.emoji?.name ?? '').trim(), ctx)).trim();
+    const custom = /^<(a?):(\w{2,32}):(\d{15,25})>$/.exec(emojiText);
+    const emoji = custom ? { name: custom[2], id: custom[3], animated: Boolean(custom[1]) } : (emojiText && emojiText.length <= 8 && !/[{}<>]/.test(emojiText) ? { name: emojiText } : undefined);
+    if (!label && !emoji) return null;
+    displayButtons += 1;
+    return { type: TYPES.BUTTON, style: [1, 2, 3, 4].includes(Number(raw.style)) ? Number(raw.style) : 2, custom_id: `display_${displayButtons}`, ...(label ? { label } : {}), ...(emoji ? { emoji } : {}), disabled: true };
+  };
+
   const button = async (raw) => {
+    if ([1, 2, 3, 4].includes(Number(raw?.style))) return displayButton(raw);
     const label = (await text(raw?.label)).slice(0, LIMITS.buttonLabel);
     const url = await link(raw?.url);
     const emoji = emojiOf(raw?.emoji);
