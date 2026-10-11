@@ -30,20 +30,16 @@ function capitalize(str) {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
-/** Components V2 case card — used for both the command reply and the mod-log channel. */
+/** The confirmation of a sanction: plain text, no card and no emojis. */
 function buildCaseCard({ caseNumber, type, target, moderator, reason, duration }) {
-  const emoji = TYPE_EMOJI[type] ?? '';
   const lines = [
-    `### ${emoji} Case #${caseNumber} · ${capitalize(type)}`.trim(),
+    `**Case #${caseNumber} · ${capitalize(type)}**`,
     `**User:** ${target} (\`${target.id ?? target}\`)`,
     `**Moderator:** ${moderator}`,
   ];
   if (duration) lines.push(`**Duration:** ${duration}`);
   lines.push(`**Reason:** ${reason || 'No reason provided.'}`);
-
-  return new ContainerBuilder()
-    .setAccentColor(COLORS[type] ?? 0x4b4f59)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
+  return new TextDisplayBuilder().setContent(lines.join('\n'));
 }
 
 /** A single-block Components V2 card for plain status text (errors, confirmations) once a reply is already in V2 mode. */

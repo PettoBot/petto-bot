@@ -1,4 +1,4 @@
-const { EMOJI, TYPE_EMOJI } = require('./emojis');
+const { EMOJI } = require('./emojis');
 
 const VERB = {
   ban: 'banned from',
@@ -24,7 +24,7 @@ const VERB = {
  *   -# Sent from 'Petto' (`123456789012345678`) with 214 members
  */
 function buildSanctionDM({ type, guild, client, reason, duration }) {
-  const emoji = TYPE_EMOJI[type] ?? EMOJI.ALERT;
+  const emoji = EMOJI.HAMMER;
   const verb = VERB[type] ?? 'sanctioned in';
   const durationPart = duration ? ` for ${duration}` : '';
   const reasonPart = reason ? ` | Reason: \`${reason}\`` : '';
