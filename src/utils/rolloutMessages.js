@@ -10,9 +10,9 @@ const CREDIT = `-# Data from [${SOURCE_NAME}](${SOURCE_URL})`;
 const EVENT_LABELS = { new: 'New experiment', increase: 'Rollout increased', decrease: 'Rollout decreased', status: 'Status changed' };
 const COLORS = { new: 0x5865f2, increase: 0x6df08e, decrease: 0xfe6465, status: 0xfed53c };
 // Petto's own icons (never the ones of the sanctions): a person for users, the gear for servers, and so on.
-const KIND_ICONS = { user: EMOJI.MEMBERS, guild: EMOJI.RELEASE_SETTINGS, apex_user: EMOJI.RELEASE_EXPERIENCE, installation: EMOJI.RELEASE_ROCKET, unknown: EMOJI.RELEASE_MAGIC };
-const EVENT_ICONS = { new: EMOJI.RELEASE_MAGIC, increase: EMOJI.RELEASE_MORE, decrease: EMOJI.RELEASE_MINUS, status: EMOJI.RELEASE_RELOAD };
-const ICONS = { rollouts: EMOJI.RELEASE_RELOAD, ranges: EMOJI.RELEASE_NOTE, status: EMOJI.RELEASE_CHANGELOG, platforms: EMOJI.RELEASE_PC, filters: EMOJI.RELEASE_EYES };
+const KIND_ICONS = { user: EMOJI.ROLLOUT_USERS, guild: EMOJI.ROLLOUT_GUILD, apex_user: EMOJI.ROLLOUT_EXPERIMENT, installation: EMOJI.ROLLOUT_INSTALLATION, unknown: EMOJI.ROLLOUT_NOTHING };
+const EVENT_ICONS = { new: EMOJI.ROLLOUT_NEW, increase: EMOJI.ROLLOUT_UP, decrease: EMOJI.ROLLOUT_DOWN, status: EMOJI.ROLLOUT_RELOAD };
+const ICONS = { rollouts: EMOJI.ROLLOUT_RELOAD, ranges: EMOJI.ROLLOUT_RANGES, status: EMOJI.ROLLOUT_STATUS, platforms: EMOJI.ROLLOUT_PLATFORMS, filters: EMOJI.ROLLOUT_FILTERS };
 
 const pct = (value) => (value == null ? '?' : `${Number(value.toFixed(2))}%`);
 const signed = (value) => `${value > 0 ? '+' : ''}${Number(value.toFixed(2))}%`;
@@ -109,7 +109,7 @@ function buildRolloutCard(event, config = {}, { rolePing = null } = {}) {
 /** Many changes at once as one card: a line for each, so a big day is a few messages and not hundreds. */
 function buildRolloutDigest(events, config = {}, { rolePing = null } = {}) {
   const container = new ContainerBuilder().setAccentColor(Number.isInteger(config.accent_color) ? config.accent_color : COLORS.new);
-  container.addTextDisplayComponents(text(`${rolePing ? `-# ${rolePing}\n` : ''}# ${EMOJI.RELEASE_EXPERIENCE} Rollout updates\n-# ${events.length} changes`));
+  container.addTextDisplayComponents(text(`${rolePing ? `-# ${rolePing}\n` : ''}# ${EMOJI.ROLLOUT_EXPERIMENT} Rollout updates\n-# ${events.length} changes`));
   container.addSeparatorComponents(divider());
   const lines = events.map((event) => `${KIND_ICONS[event.rollout.kind] ?? KIND_ICONS.unknown} **${event.rollout.title}**\n-# ${EVENT_ICONS[event.type]} ${EVENT_LABELS[event.type]} · ${badge(event)} · \`${event.rollout.id}\``);
   container.addTextDisplayComponents(text(lines.join('\n').slice(0, 3800)));

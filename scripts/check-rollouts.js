@@ -59,13 +59,13 @@ const raw = [
   const card = buildRolloutCard(events[0], { role_id: '99', hide_sections: ['filters'] }, { rolePing: '<@&99>' });
   const json = JSON.stringify(card.components[0].toJSON());
   assert.ok(json.includes('Users experiment (A/B)') && json.includes('Rollouts') && json.includes('+12.5% (62.5%)') && json.includes('agnonotdev'), 'the card has the kind, the change and the credit');
-  assert.ok(json.includes('pe_exp') && !json.includes('pe_ban') && !json.includes('pe_mute') && !json.includes('pe_user_'), "Petto's own icons, never the ones of the sanctions");
+  assert.ok(json.includes('pe_rexperiment') && !json.includes('pe_ban') && !json.includes('pe_mute') && !json.includes('pe_user_'), "Petto's own icons, never the ones of the sanctions");
   assert.equal(new URL(card.components[1].toJSON().components[0].url).hostname, 'gist.github.com', 'a link to the list');
   assert.ok(!JSON.stringify(buildRolloutCard(events[1], { hide_sections: ['status', 'variants', 'ranges'] }).components[0].toJSON()).includes('Status:'), 'a section can be hidden');
   assert.equal(buildRolloutCard(events[2], { accent_color: 0xff91c2 }).components[0].toJSON().accent_color, 0xff91c2, 'the color of a server');
   const ctx = rolloutContext(events[0]);
   assert.deepEqual([ctx.name, ctx.change, ctx.from, ctx.to, ctx.type], ['Android media viewer full resolution', '+12.5%', '50%', '62.5%', 'Rollout increased']);
-  assert.ok(ctx.kind_icon.includes('pe_exp') && ctx.event_icon.includes('pe_more'), 'the icons are variables too');
+  assert.ok(ctx.kind_icon.includes('pe_rexperiment') && ctx.event_icon.includes('pe_rup'), 'the icons are variables too');
   const message = await rolloutMessage({ id: 'g' }, { style: 'card', role_id: '99' }, events[0]);
   assert.deepEqual(message.allowedMentions, { parse: [], roles: ['99'] });
 
