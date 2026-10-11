@@ -2915,3 +2915,32 @@ create table if not exists identity_logs (
   updated_at timestamptz not null default now()
 );
 alter table identity_logs enable row level security;
+
+-- Rollout alerts (beta): a message in a channel when a Discord experiment appears or its rollout changes (data from a community
+-- list of Discord's experiments). `kinds` and `events` filter what is sent; `min_change` ignores changes smaller than that many
+-- percentage points; `include_unrolled` also announces experiments that have no rollout yet.
+create table if not exists rollout_config (
+  guild_id         text primary key references guilds(guild_id) on delete cascade,
+  enabled          boolean not null default false,
+  channel_id       text,
+  role_id          text,
+  style            text not null default 'card' check (style in ('card', 'template')),
+  embed_template   text,
+  kinds            text[] not null default '{}',
+  events           text[] not null default '{}',
+  min_change       numeric not null default 0 check (min_change >= 0 and min_change <= 100),
+  include_unrolled boolean not null default false,
+  hide_sections    text[] not null default '{}',
+  accent_color     integer,
+  type_templates   jsonb not null default '{}'::jsonb,
+  updated_at       timestamptz not null default now()
+);
+alter table rollout_config enable row level security;
+
+-- What was true of each experiment the last time the list was read, to tell what changed.
+create table if not exists rollout_state (
+  rollout_id text primary key,
+  snapshot   jsonb not null,
+  updated_at timestamptz not null default now()
+);
+alter table rollout_state enable row level security;
