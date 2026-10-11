@@ -60,9 +60,11 @@ const raw = [
   assert.deepEqual(variantLines(events[0]), ['Variant 0 (control): 50%', 'Variant 1: 50% → 62.5% (+12.5%)']);
   const card = buildRolloutCard(events[0], { role_id: '99', hide_sections: ['filters'] }, { rolePing: '<@&99>' });
   const json = JSON.stringify(card.components[0].toJSON());
-  assert.ok(json.includes('Users experiment (A/B)') && json.includes('Rollouts') && json.includes('+12.5% (62.5%)') && json.includes('agnonotdev'), 'the card has the kind, the change and the credit');
+  assert.ok(json.includes('Users experiment (A/B)') && json.includes('Rollouts') && json.includes('+12.5% (62.5%)') , 'the card has the kind and the change');
   assert.ok(json.includes('pe_rexperiment') && !json.includes('pe_ban') && !json.includes('pe_mute') && !json.includes('pe_user_'), "Petto's own icons, never the ones of the sanctions");
-  assert.equal(new URL(card.components[1].toJSON().components[0].url).hostname, 'gist.github.com', 'a link to the list');
+  assert.equal(card.components.length, 1, 'only the card, like the design it follows');
+  assert.ok(!JSON.stringify(buildRolloutCard(events[0], {}).components[0].toJSON()).match(/## |-# /), 'no big titles and no small text');
+  assert.equal(JSON.parse(json).components.find((c) => c.accessory).accessory.style, 3, 'a green button');
   assert.ok(!JSON.stringify(buildRolloutCard(events[1], { hide_sections: ['status', 'variants', 'ranges'] }).components[0].toJSON()).includes('Status:'), 'a section can be hidden');
   assert.equal(buildRolloutCard(events[2], { accent_color: 0xff91c2 }).components[0].toJSON().accent_color, 0xff91c2, 'the color of a server');
   const plain = buildRolloutCard(events[0], {}).components[0].toJSON();
