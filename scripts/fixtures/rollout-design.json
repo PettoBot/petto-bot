@@ -15,7 +15,7 @@
           "accessory": {
             "type": 2,
             "style": 3,
-            "label": "{rollout.type} · **{rollout.badge}",
+            "label": "{rollout.badge}",
             "custom_id": "",
             "emoji": {
               "name": "{rollout.event_icon} "

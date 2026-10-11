@@ -65,6 +65,11 @@ const raw = [
   assert.equal(new URL(card.components[1].toJSON().components[0].url).hostname, 'gist.github.com', 'a link to the list');
   assert.ok(!JSON.stringify(buildRolloutCard(events[1], { hide_sections: ['status', 'variants', 'ranges'] }).components[0].toJSON()).includes('Status:'), 'a section can be hidden');
   assert.equal(buildRolloutCard(events[2], { accent_color: 0xff91c2 }).components[0].toJSON().accent_color, 0xff91c2, 'the color of a server');
+  const plain = buildRolloutCard(events[0], {}).components[0].toJSON();
+  assert.equal(plain.accent_color, undefined, 'no color by default');
+  assert.equal(plain.components[0].accessory.label, '+12.5% (62.5%)', 'the button shows the change');
+  assert.equal(plain.components[0].accessory.emoji.name, 'pe_rup', 'with the icon of the event');
+  assert.equal(plain.components[0].accessory.disabled, true);
   const ctx = rolloutContext(events[0]);
   assert.deepEqual([ctx.name, ctx.change, ctx.from, ctx.to, ctx.type], ['Android media viewer full resolution', '+12.5%', '50%', '62.5%', 'Rollout increased']);
   assert.ok(ctx.kind_icon.includes('pe_rexperiment') && ctx.event_icon.includes('pe_rup'), 'the icons are variables too');
@@ -79,7 +84,7 @@ const raw = [
   assert.equal(head.type, 9, 'the section is kept');
   assert.equal(head.accessory.type, 2);
   assert.equal(head.accessory.disabled, true, 'the button cannot be pressed');
-  assert.equal(head.accessory.label, 'Rollout increased · +12.5% (62.5%)', 'the label has the variables and no stray asterisks');
+  assert.equal(head.accessory.label, '+12.5% (62.5%)', 'the label has the variables and no stray asterisks');
   assert.deepEqual([head.accessory.emoji.name, head.accessory.emoji.id], ['pe_rup', '1558964315627720786'], 'the emoji of the button comes from a variable');
   assert.ok(head.accessory.custom_id, 'a button that is not a link has an id');
   const message = await rolloutMessage({ id: 'g' }, { style: 'card', role_id: '99' }, events[0]);

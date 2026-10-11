@@ -1,6 +1,6 @@
 // The messages of rollout alerts: a Components V2 card that servers can style (color, sections), or one of their saved embeds with
 // the `{rollout.*}` variables. A saved embed that is missing or broken falls back to the card.
-const { ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, SeparatorSpacingSize, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
+const { ContainerBuilder, SectionBuilder, TextDisplayBuilder, SeparatorBuilder, SeparatorSpacingSize, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
 const { SOURCE_NAME, SOURCE_URL, KIND_LABELS, STATUS_LABELS } = require('./rolloutApi');
 const { templatePayload } = require('./templatedMessage');
 const { EMOJI } = require('./emojis');
@@ -8,7 +8,6 @@ const { EMOJI } = require('./emojis');
 const SECTIONS = ['variants', 'ranges', 'status', 'platforms', 'filters'];
 const CREDIT = `-# Data from [${SOURCE_NAME}](${SOURCE_URL})`;
 const EVENT_LABELS = { new: 'New experiment', increase: 'Rollout increased', decrease: 'Rollout decreased', status: 'Status changed' };
-const COLORS = { new: 0x5865f2, increase: 0x6df08e, decrease: 0xfe6465, status: 0xfed53c };
 // Petto's own icons (never the ones of the sanctions): a person for users, the gear for servers, and so on.
 const KIND_ICONS = { user: EMOJI.ROLLOUT_USERS, guild: EMOJI.ROLLOUT_GUILD, apex_user: EMOJI.ROLLOUT_EXPERIMENT, installation: EMOJI.ROLLOUT_INSTALLATION, unknown: EMOJI.ROLLOUT_NOTHING };
 const EVENT_ICONS = { new: EMOJI.ROLLOUT_NEW, increase: EMOJI.ROLLOUT_UP, decrease: EMOJI.ROLLOUT_DOWN, status: EMOJI.ROLLOUT_RELOAD };
@@ -67,6 +66,11 @@ function rolloutContext(event) {
   };
 }
 
+/** `<:name:id>` as the emoji object of a button. */
+const emojiOf = (value) => {
+  const found = /^<(a?):(\w+):(\d+)>$/.exec(value);
+  return found ? { name: found[2], id: found[3], animated: Boolean(found[1]) } : { name: value };
+};
 const text = (content) => new TextDisplayBuilder().setContent(content);
 const divider = () => new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small);
 const sourceRow = () => new ActionRowBuilder().addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Rollout list').setURL(SOURCE_URL));
@@ -78,8 +82,13 @@ const sourceRow = () => new ActionRowBuilder().addComponents(new ButtonBuilder()
 function buildRolloutCard(event, config = {}, { rolePing = null } = {}) {
   const hidden = new Set(config.hide_sections ?? []);
   const { rollout, type } = event;
-  const container = new ContainerBuilder().setAccentColor(Number.isInteger(config.accent_color) ? config.accent_color : COLORS[type]);
-  container.addTextDisplayComponents(text(`${rolePing ? `-# ${rolePing}\n` : ''}# ${KIND_ICONS[rollout.kind] ?? KIND_ICONS.unknown} ${rollout.title}\n-# ${EVENT_ICONS[type]} ${EVENT_LABELS[type]} · **${badge(event)}**`));
+  // No color unless the server chose one.
+  const container = new ContainerBuilder();
+  if (Number.isInteger(config.accent_color)) container.setAccentColor(config.accent_color);
+  if (rolePing) container.addTextDisplayComponents(text(`-# ${rolePing}`));
+  // The title, and a button that only shows the change: the icon of the event and `+12.5% (50%)`.
+  const changeButton = new ButtonBuilder().setStyle(ButtonStyle.Secondary).setCustomId('rollout_change').setDisabled(true).setLabel(badge(event).replace(/\*\*/g, '').slice(0, 80)).setEmoji(emojiOf(EVENT_ICONS[type]));
+  container.addSectionComponents(new SectionBuilder().addTextDisplayComponents(text(`# ${KIND_ICONS[rollout.kind] ?? KIND_ICONS.unknown} ${rollout.title}`)).setButtonAccessory(changeButton));
   container.addSeparatorComponents(divider());
 
   const info = [`- ${KIND_ICONS[rollout.kind] ?? KIND_ICONS.unknown} **Kind:** ${KIND_LABELS[rollout.kind] ?? KIND_LABELS.unknown}`];
@@ -108,7 +117,8 @@ function buildRolloutCard(event, config = {}, { rolePing = null } = {}) {
 
 /** Many changes at once as one card: a line for each, so a big day is a few messages and not hundreds. */
 function buildRolloutDigest(events, config = {}, { rolePing = null } = {}) {
-  const container = new ContainerBuilder().setAccentColor(Number.isInteger(config.accent_color) ? config.accent_color : COLORS.new);
+  const container = new ContainerBuilder();
+  if (Number.isInteger(config.accent_color)) container.setAccentColor(config.accent_color);
   container.addTextDisplayComponents(text(`${rolePing ? `-# ${rolePing}\n` : ''}# ${EMOJI.ROLLOUT_EXPERIMENT} Rollout updates\n-# ${events.length} changes`));
   container.addSeparatorComponents(divider());
   const lines = events.map((event) => `${KIND_ICONS[event.rollout.kind] ?? KIND_ICONS.unknown} **${event.rollout.title}**\n-# ${EVENT_ICONS[event.type]} ${EVENT_LABELS[event.type]} · ${badge(event)} · \`${event.rollout.id}\``);
