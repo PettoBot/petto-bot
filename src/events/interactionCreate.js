@@ -39,6 +39,7 @@ const disabledCommandsDb = require('../db/disabledCommands');
 const logger = require('../utils/logger');
 const { logCommandUse } = require('../logging/extraLog');
 const { commandKey } = require('../handlers/commandHandler');
+const { DISPLAY_BUTTON_PREFIX } = require('../utils/embedV2');
 
 const DEFAULT_COOLDOWN_MS = 3000;
 
@@ -47,6 +48,12 @@ module.exports = {
   async execute(interaction, client) {
     if ((interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) && interaction.customId.startsWith(CODE_COMMAND_PREFIX)) {
       try { await handleCodeCommandComponent(interaction); } catch (err) { logger.error('Error handling a custom command button or menu:', err); }
+      return;
+    }
+
+    // A button that only shows something (a change in a rollout card): answered with nothing.
+    if (interaction.isButton() && interaction.customId.startsWith(`${DISPLAY_BUTTON_PREFIX}:`)) {
+      try { await interaction.deferUpdate(); } catch { /* it expired */ }
       return;
     }
 

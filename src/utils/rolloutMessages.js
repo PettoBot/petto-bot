@@ -2,6 +2,7 @@
 // the `{rollout.*}` variables. A saved embed that is missing or broken falls back to the card.
 const { ContainerBuilder, SectionBuilder, TextDisplayBuilder, SeparatorBuilder, SeparatorSpacingSize, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
 const { SOURCE_NAME, SOURCE_URL, KIND_LABELS, STATUS_LABELS } = require('./rolloutApi');
+const { DISPLAY_BUTTON_PREFIX } = require('./embedV2');
 const { templatePayload } = require('./templatedMessage');
 const { EMOJI } = require('./emojis');
 
@@ -85,7 +86,7 @@ function buildRolloutCard(event, config = {}, { rolePing = null } = {}) {
   if (Number.isInteger(config.accent_color)) container.setAccentColor(config.accent_color);
   if (rolePing) container.addTextDisplayComponents(text(`-# ${rolePing}`));
   // The title, and a button that only shows the change: the icon of the event and `+12.5% (50%)`.
-  const changeButton = new ButtonBuilder().setStyle(ButtonStyle.Success).setCustomId('rollout_change').setDisabled(true).setLabel(badge(event).replace(/\*\*/g, '').slice(0, 80)).setEmoji(emojiOf(EVENT_ICONS[type]));
+  const changeButton = new ButtonBuilder().setStyle(ButtonStyle.Success).setCustomId(`${DISPLAY_BUTTON_PREFIX}:rollout`).setLabel(badge(event).replace(/\*\*/g, '').slice(0, 80)).setEmoji(emojiOf(EVENT_ICONS[type]));
   container.addSectionComponents(new SectionBuilder().addTextDisplayComponents(text(`**${KIND_ICONS[rollout.kind] ?? KIND_ICONS.unknown} ${rollout.title}**`)).setButtonAccessory(changeButton));
 
   const info = [`- ${KIND_ICONS[rollout.kind] ?? KIND_ICONS.unknown} **Kind:** ${KIND_LABELS[rollout.kind] ?? KIND_LABELS.unknown}`];
@@ -97,15 +98,15 @@ function buildRolloutCard(event, config = {}, { rolePing = null } = {}) {
   const variants = variantLines(event);
   const ranges = rangeLines(event);
   if ((!hidden.has('variants') && variants.length) || (!hidden.has('ranges') && ranges.length)) {
-    container.addSeparatorComponents(divider(), divider());
+    container.addSeparatorComponents(divider());
     const blocks = [];
-    if (!hidden.has('variants') && variants.length) blocks.push(`**${ICONS.rollouts} Rollouts**\n\`\`\`py\n${variants.join('\n')}\n\`\`\``);
-    if (!hidden.has('ranges') && ranges.length) blocks.push(`**${ICONS.ranges} Ranges**\n\`\`\`py\n${ranges.join('\n').slice(0, 900)}\n\`\`\``);
+    if (!hidden.has('variants') && variants.length) blocks.push(`### ${ICONS.rollouts} Rollouts\n\`\`\`py\n${variants.join('\n')}\n\`\`\``);
+    if (!hidden.has('ranges') && ranges.length) blocks.push(`### ${ICONS.ranges} Ranges\n\`\`\`py\n${ranges.join('\n').slice(0, 900)}\n\`\`\``);
     container.addTextDisplayComponents(text(blocks.join('\n')));
   }
   if (!hidden.has('filters') && rollout.filters.length) {
     container.addSeparatorComponents(divider());
-    container.addTextDisplayComponents(text(`**${ICONS.filters} Filters**\n${rollout.filters.map((line) => `* ${line}`).join('\n')}`));
+    container.addTextDisplayComponents(text(`### ${ICONS.filters} Filters\n${rollout.filters.map((line) => `* ${line}`).join('\n')}`));
   }
   return { components: [container], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [], roles: config.role_id ? [config.role_id] : [] } };
 }

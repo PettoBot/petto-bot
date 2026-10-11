@@ -88,7 +88,7 @@ function makeBuilder(ctx) {
     const emoji = custom ? { name: custom[2], id: custom[3], animated: Boolean(custom[1]) } : (emojiText && emojiText.length <= 8 && !/[{}<>]/.test(emojiText) ? { name: emojiText } : undefined);
     if (!label && !emoji) return null;
     displayButtons += 1;
-    return { type: TYPES.BUTTON, style: [1, 2, 3, 4].includes(Number(raw.style)) ? Number(raw.style) : 2, custom_id: `display_${displayButtons}`, ...(label ? { label } : {}), ...(emoji ? { emoji } : {}), disabled: true };
+    return { type: TYPES.BUTTON, style: [1, 2, 3, 4].includes(Number(raw.style)) ? Number(raw.style) : 2, custom_id: `${DISPLAY_BUTTON_PREFIX}:${displayButtons}`, ...(label ? { label } : {}), ...(emoji ? { emoji } : {}) };
   };
 
   const button = async (raw) => {
@@ -173,6 +173,9 @@ function makeBuilder(ctx) {
  * The components of a V2 template for one send, with the variables resolved, plus the flag Discord needs.
  * `extraText` is added as a last line of text when there is room (the credit of the quest alerts uses it).
  */
+/** A button that only shows something: it looks active and does nothing when pressed (the bot answers it without a message). */
+const DISPLAY_BUTTON_PREFIX = 'petto_display';
+
 async function buildV2(v2, ctx = {}, { prefixText = null, suffixText = null } = {}) {
   const builder = makeBuilder(ctx);
   const components = [];
@@ -197,4 +200,4 @@ function hasV2Content(data) {
   return isV2(data) && walk(data.v2.components);
 }
 
-module.exports = { LIMITS, TYPES, isV2, buildV2, hasV2Content };
+module.exports = { DISPLAY_BUTTON_PREFIX, LIMITS, TYPES, isV2, buildV2, hasV2Content };

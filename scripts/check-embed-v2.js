@@ -49,7 +49,7 @@ const design = {
   assert.equal(container.components[0].content, '# [Watch the trailer](https://discord.com/quests/1)');
   assert.equal(container.components[1].items[0].media.url, quest.image);
   assert.equal(container.components[3].content, '## Rewards\n200 Orbs', 'a section without its picture is plain text');
-  assert.deepEqual(container.components[4].components, [{ type: 2, style: 5, label: 'Accept Watch the trailer', url: 'https://discord.com/quests/1' }, { type: 2, style: 1, custom_id: 'display_1', label: 'Not a link', disabled: true }], 'link buttons need a label and a link; a button that is not a link stays, disabled, as something to read');
+  assert.deepEqual(container.components[4].components, [{ type: 2, style: 5, label: 'Accept Watch the trailer', url: 'https://discord.com/quests/1' }, { type: 2, style: 1, custom_id: 'petto_display:1', label: 'Not a link' }], 'link buttons need a label and a link; a button that is not a link stays, as something to read that does nothing');
 
   // A section keeps its thumbnail when it has one.
   const withPicture = await buildV2(design.v2, { ...ctx, quest: { ...quest, reward_image: 'https://cdn.discordapp.com/x.png' } });
