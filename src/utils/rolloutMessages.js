@@ -11,7 +11,8 @@ const EVENT_LABELS = { new: 'New experiment', increase: 'Rollout increased', dec
 // Petto's own icons (never the ones of the sanctions): a person for users, the gear for servers, and so on.
 const KIND_ICONS = { user: EMOJI.ROLLOUT_USERS, guild: EMOJI.ROLLOUT_GUILD, apex_user: EMOJI.ROLLOUT_EXPERIMENT, installation: EMOJI.ROLLOUT_INSTALLATION, unknown: EMOJI.ROLLOUT_NOTHING };
 const EVENT_ICONS = { new: EMOJI.ROLLOUT_NEW, increase: EMOJI.ROLLOUT_UP, decrease: EMOJI.ROLLOUT_DOWN, status: EMOJI.ROLLOUT_RELOAD };
-const ICONS = { rollouts: EMOJI.ROLLOUT_RELOAD, ranges: EMOJI.ROLLOUT_RANGES, status: EMOJI.ROLLOUT_STATUS, platforms: EMOJI.ROLLOUT_PLATFORMS, filters: EMOJI.ROLLOUT_FILTERS };
+// The icons of the lines of the card, the same as the design it follows.
+const ICONS = { rollouts: '<:pe_reload:1542053990282567752>', ranges: '<:pe_note:1542048566657155153>', status: '<:pe_cl:1542054021416751174>', platforms: '<:pe_pc:1542053996028633108>', filters: EMOJI.ROLLOUT_FILTERS };
 
 const pct = (value) => (value == null ? '?' : `${Number(value.toFixed(2))}%`);
 const signed = (value) => `${value > 0 ? '+' : ''}${Number(value.toFixed(2))}%`;
@@ -73,7 +74,6 @@ const emojiOf = (value) => {
 };
 const text = (content) => new TextDisplayBuilder().setContent(content);
 const divider = () => new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small);
-const sourceRow = () => new ActionRowBuilder().addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Rollout list').setURL(SOURCE_URL));
 
 /**
  * The default Components V2 card, laid out like the quest card: the title, a line with the event, the details, the variants and
@@ -87,32 +87,29 @@ function buildRolloutCard(event, config = {}, { rolePing = null } = {}) {
   if (Number.isInteger(config.accent_color)) container.setAccentColor(config.accent_color);
   if (rolePing) container.addTextDisplayComponents(text(`-# ${rolePing}`));
   // The title, and a button that only shows the change: the icon of the event and `+12.5% (50%)`.
-  const changeButton = new ButtonBuilder().setStyle(ButtonStyle.Secondary).setCustomId('rollout_change').setDisabled(true).setLabel(badge(event).replace(/\*\*/g, '').slice(0, 80)).setEmoji(emojiOf(EVENT_ICONS[type]));
-  container.addSectionComponents(new SectionBuilder().addTextDisplayComponents(text(`# ${KIND_ICONS[rollout.kind] ?? KIND_ICONS.unknown} ${rollout.title}`)).setButtonAccessory(changeButton));
-  container.addSeparatorComponents(divider());
+  const changeButton = new ButtonBuilder().setStyle(ButtonStyle.Success).setCustomId('rollout_change').setDisabled(true).setLabel(badge(event).replace(/\*\*/g, '').slice(0, 80)).setEmoji(emojiOf(EVENT_ICONS[type]));
+  container.addSectionComponents(new SectionBuilder().addTextDisplayComponents(text(`**${KIND_ICONS[rollout.kind] ?? KIND_ICONS.unknown} ${rollout.title}**`)).setButtonAccessory(changeButton));
 
   const info = [`- ${KIND_ICONS[rollout.kind] ?? KIND_ICONS.unknown} **Kind:** ${KIND_LABELS[rollout.kind] ?? KIND_LABELS.unknown}`];
   if (!hidden.has('status')) info.push(`- ${ICONS.status} **Status:** ${statusLabel(rollout.status)}`);
   if (!hidden.has('platforms') && rollout.platforms.length) info.push(`- ${ICONS.platforms} **Platforms:** ${rollout.platforms.join(', ')}`);
-  info.push(`-# \`${rollout.id}\``);
+  info.push(`- \`${rollout.id}\``);
   container.addTextDisplayComponents(text(info.join('\n')));
 
   const variants = variantLines(event);
   const ranges = rangeLines(event);
   if ((!hidden.has('variants') && variants.length) || (!hidden.has('ranges') && ranges.length)) {
-    container.addSeparatorComponents(divider());
+    container.addSeparatorComponents(divider(), divider());
     const blocks = [];
-    if (!hidden.has('variants') && variants.length) blocks.push(`## ${ICONS.rollouts} Rollouts\n\`\`\`py\n${variants.join('\n')}\n\`\`\``);
-    if (!hidden.has('ranges') && ranges.length) blocks.push(`## ${ICONS.ranges} Ranges\n\`\`\`py\n${ranges.join('\n').slice(0, 900)}\n\`\`\``);
+    if (!hidden.has('variants') && variants.length) blocks.push(`**${ICONS.rollouts} Rollouts**\n\`\`\`py\n${variants.join('\n')}\n\`\`\``);
+    if (!hidden.has('ranges') && ranges.length) blocks.push(`**${ICONS.ranges} Ranges**\n\`\`\`py\n${ranges.join('\n').slice(0, 900)}\n\`\`\``);
     container.addTextDisplayComponents(text(blocks.join('\n')));
   }
   if (!hidden.has('filters') && rollout.filters.length) {
     container.addSeparatorComponents(divider());
-    container.addTextDisplayComponents(text(`## ${ICONS.filters} Filters\n${rollout.filters.map((line) => `* ${line}`).join('\n')}`));
+    container.addTextDisplayComponents(text(`**${ICONS.filters} Filters**\n${rollout.filters.map((line) => `* ${line}`).join('\n')}`));
   }
-  container.addSeparatorComponents(divider());
-  container.addTextDisplayComponents(text(CREDIT));
-  return { components: [container, sourceRow()], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [], roles: config.role_id ? [config.role_id] : [] } };
+  return { components: [container], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [], roles: config.role_id ? [config.role_id] : [] } };
 }
 
 /** Many changes at once as one card: a line for each, so a big day is a few messages and not hundreds. */
@@ -123,9 +120,7 @@ function buildRolloutDigest(events, config = {}, { rolePing = null } = {}) {
   container.addSeparatorComponents(divider());
   const lines = events.map((event) => `${KIND_ICONS[event.rollout.kind] ?? KIND_ICONS.unknown} **${event.rollout.title}**\n-# ${EVENT_ICONS[event.type]} ${EVENT_LABELS[event.type]} · ${badge(event)} · \`${event.rollout.id}\``);
   container.addTextDisplayComponents(text(lines.join('\n').slice(0, 3800)));
-  container.addSeparatorComponents(divider());
-  container.addTextDisplayComponents(text(CREDIT));
-  return { components: [container, sourceRow()], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [], roles: config.role_id ? [config.role_id] : [] } };
+  return { components: [container], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [], roles: config.role_id ? [config.role_id] : [] } };
 }
 
 /** The saved embed a server chose for the kind of experiment (`{ guild: 'servers-alert' }`), or null. */
