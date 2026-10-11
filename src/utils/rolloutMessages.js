@@ -10,8 +10,7 @@ const EVENT_LABELS = { new: 'New experiment', increase: 'Rollout increased', dec
 // Petto's own icons (never the ones of the sanctions): a person for users, the gear for servers, and so on.
 const KIND_ICONS = { user: EMOJI.ROLLOUT_USERS, guild: EMOJI.ROLLOUT_GUILD, apex_user: EMOJI.ROLLOUT_EXPERIMENT, installation: EMOJI.ROLLOUT_INSTALLATION, unknown: EMOJI.ROLLOUT_NOTHING };
 const EVENT_ICONS = { new: EMOJI.ROLLOUT_NEW, increase: EMOJI.ROLLOUT_UP, decrease: EMOJI.ROLLOUT_DOWN, status: EMOJI.ROLLOUT_RELOAD };
-// The icons of the lines of the card, the same as the design it follows.
-const ICONS = { rollouts: '<:pe_reload:1542053990282567752>', ranges: '<:pe_note:1542048566657155153>', status: '<:pe_cl:1542054021416751174>', platforms: '<:pe_pc:1542053996028633108>', filters: EMOJI.ROLLOUT_FILTERS };
+const ICONS = { rollouts: EMOJI.ROLLOUT_RELOAD, ranges: EMOJI.ROLLOUT_RANGES, status: EMOJI.ROLLOUT_STATUS, platforms: EMOJI.ROLLOUT_PLATFORMS, filters: EMOJI.ROLLOUT_FILTERS };
 
 const pct = (value) => (value == null ? '?' : `${Number(value.toFixed(2))}%`);
 const signed = (value) => `${value > 0 ? '+' : ''}${Number(value.toFixed(2))}%`;
