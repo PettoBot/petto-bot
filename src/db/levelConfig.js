@@ -1,7 +1,7 @@
 const database = require('./database');
 const { createExpiringCache } = require('../utils/expiringCache');
 
-const configCache = createExpiringCache(15_000, { name: 'level-config' });
+const configCache = createExpiringCache(15_000, { name: 'level-config', invalidateOn: ['level_config'] });
 
 async function getConfig(guildId, { force = false } = {}) {
   return configCache.get(guildId, async () => {

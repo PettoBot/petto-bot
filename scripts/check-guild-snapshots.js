@@ -21,8 +21,10 @@ stub('src/db/database.js', {
         assert.equal(options.onConflict, 'guild_id');
         // The driver would turn an array into a PostgreSQL array and refuse it as JSON: the lists must arrive as JSON text.
         assert.equal(typeof row.channels, 'string', 'channels go in as JSON text'); assert.equal(typeof row.roles, 'string', 'roles go in as JSON text');
-        assert.ok(Array.isArray(JSON.parse(row.channels)) && Array.isArray(JSON.parse(row.roles)));
-        writes += 1; table.set(row.guild_id, { ...row, channels: JSON.parse(row.channels), roles: JSON.parse(row.roles) }); return { error: null };
+        assert.equal(typeof row.emojis, 'string', 'emojis go in as JSON text');
+        assert.ok(Array.isArray(JSON.parse(row.channels)) && Array.isArray(JSON.parse(row.roles)) && Array.isArray(JSON.parse(row.emojis)));
+        assert.ok(!Number.isNaN(Date.parse(row.updated_at)), 'the row carries when it was saved');
+        writes += 1; table.set(row.guild_id, { ...row, channels: JSON.parse(row.channels), roles: JSON.parse(row.roles), emojis: JSON.parse(row.emojis) }); return { error: null };
       },
       select: () => Promise.resolve({ data: [...table.keys()].map((guild_id) => ({ guild_id })), error: null }),
       delete: () => ({ in: async (_column, ids) => { for (const id of ids) table.delete(id); return { error: null }; } }),
@@ -36,7 +38,7 @@ const { buildSnapshot, saveGuildSnapshot, removeGuildSnapshot, syncAllGuildSnaps
 const channel = (id, name, type, extra = {}) => ({ id, name, type, rawPosition: Number(id) % 10, parentId: null, topic: null, nsfw: false, isThread: () => false, ...extra });
 const guild = (id, overrides = {}) => ({
   id, name: `Server ${id}`, icon: 'abc123', ownerId: '99', memberCount: 42, banner: 'ban1', premiumTier: 2, premiumSubscriptionCount: 9,
-  emojis: { cache: new Map([['e1', {}], ['e2', {}]]) }, members: { me: { nickname: 'Petto Pet', avatar: 'av1' } },
+  emojis: { cache: new Map([['e1', { id: 'e1', name: 'wave', animated: false }], ['e2', { id: 'e2', name: 'party', animated: true, extra: 'x' }]]) }, members: { me: { nickname: 'Petto Pet', avatar: 'av1' } },
   channels: { cache: new Map([['1', channel('1', 'general', 0, { topic: 'hello', parentId: '5' })], ['2', channel('2', 'voice', 2)], ['3', { ...channel('3', 'a thread', 11), isThread: () => true }]]) },
   roles: { cache: new Map([['10', { id: '10', name: '@everyone', color: 0, rawPosition: 0, managed: false, permissions: { bitfield: 1024n }, icon: null, hoist: false, mentionable: false }], ['11', { id: '11', name: 'Mods', color: 255, rawPosition: 3, managed: false, permissions: { bitfield: 8n }, icon: 'x', hoist: true, mentionable: true }]]) },
   ...overrides,
@@ -51,6 +53,8 @@ const guild = (id, overrides = {}) => ({
   assert.equal(row.roles.length, 2);
   assert.equal(row.roles[1].permissions, '8', 'permissions are a string like Discord sends them');
   assert.equal(row.roles[1].color, 255);
+  assert.deepEqual(row.emojis, [{ id: 'e1', name: 'wave', animated: false }, { id: 'e2', name: 'party', animated: true }], 'emojis are saved as { id, name, animated }');
+  assert.deepEqual(buildSnapshot(guild('1001', { emojis: undefined })).emojis, [], 'a server without emojis in memory has an empty list');
   JSON.stringify(row); // BigInt must not leak into the row
 
   const g = guild('1000');
@@ -58,6 +62,12 @@ const guild = (id, overrides = {}) => ({
   assert.equal(await saveGuildSnapshot(g), false, 'nothing changed, nothing saved'); assert.equal(writes, 1);
   g.name = 'Renamed';
   assert.equal(await saveGuildSnapshot(g), true); assert.equal(table.get('1000').name, 'Renamed');
+  assert.deepEqual(table.get('1000').emojis.map((emoji) => emoji.name), ['wave', 'party']);
+  g.emojis.cache.set('e3', { id: 'e3', name: 'new', animated: false });
+  assert.equal(await saveGuildSnapshot(g), true, 'a new emoji is a change');
+  g.emojis.cache.set('e3', { id: 'e3', name: 'renamed', animated: false });
+  assert.equal(await saveGuildSnapshot(g), true, 'a renamed emoji is a change');
+  assert.equal(table.get('1000').emojis[2].name, 'renamed');
 
   // Full sync: saves new servers, forgets the ones the bot left.
   table.set('gone', { guild_id: 'gone' });

@@ -4,7 +4,7 @@ const { getPrimaryPool } = require('./postgres');
 const { createExpiringCache } = require('../utils/expiringCache');
 
 const MAX_EVENTS = 25;
-const cache = createExpiringCache(30_000);
+const cache = createExpiringCache(30_000, { invalidateOn: ['xp_events'] });
 
 async function loadEvents(guildId) {
   const { rows } = await getPrimaryPool().query(

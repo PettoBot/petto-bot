@@ -25,7 +25,7 @@ const ID = '900000000000000001';
 const channel = (id, name, type) => ({ id, name, type, rawPosition: 1, parentId: null, topic: null, nsfw: false, isThread: () => false });
 const guild = {
   id: ID, name: 'Check server', icon: 'hash', ownerId: '9', memberCount: 5, banner: null, premiumTier: 1, premiumSubscriptionCount: 2,
-  emojis: { cache: new Map([['e', {}]]) }, members: { me: { nickname: 'Pet', avatar: null } },
+  emojis: { cache: new Map([['e', { id: '800000000000000001', name: 'wave', animated: true }]]) }, members: { me: { nickname: 'Pet', avatar: null } },
   channels: { cache: new Map([['1', channel('1', 'general', 0)], ['2', channel('2', 'voice', 2)]]) },
   roles: { cache: new Map([['10', { id: '10', name: '@everyone', color: 0, rawPosition: 0, managed: false, permissions: { bitfield: 1024n }, icon: null, hoist: false, mentionable: false }]]) },
 };
@@ -35,6 +35,8 @@ const guild = {
     assert.equal(await saveGuildSnapshot(guild), true);
     const stored = (await pool.query('select jsonb_typeof(channels) as kind, jsonb_array_length(channels) as channels, jsonb_array_length(roles) as roles, channels->0->>\'name\' as first, roles->0->>\'permissions\' as permissions from discord_guild_snapshots where guild_id = $1', [ID])).rows[0];
     assert.deepEqual(stored, { kind: 'array', channels: 2, roles: 1, first: 'general', permissions: '1024' }, 'the lists are stored as JSON arrays');
+    const emojis = (await pool.query('select jsonb_typeof(emojis) as kind, emojis from discord_guild_snapshots where guild_id = $1', [ID])).rows[0];
+    assert.deepEqual(emojis, { kind: 'array', emojis: [{ id: '800000000000000001', name: 'wave', animated: true }] }, 'the emojis are stored as a JSON array');
     guild.name = 'Renamed';
     assert.equal(await saveGuildSnapshot(guild), true);
     assert.equal((await pool.query('select name from discord_guild_snapshots where guild_id = $1', [ID])).rows[0].name, 'Renamed');

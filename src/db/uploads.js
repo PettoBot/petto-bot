@@ -2,7 +2,7 @@ const database = require('./database');
 const { createExpiringCache } = require('../utils/expiringCache');
 
 // Every message of a server passes through the upload check, so the settings are kept for a few seconds.
-const configCache = createExpiringCache(15_000, { name: 'uploads-config' });
+const configCache = createExpiringCache(15_000, { name: 'uploads-config', invalidateOn: ['upload_config'] });
 const DEFAULTS = { enabled: false, channel_ids: [], uploader_role_id: null, welcome: {} };
 
 async function getConfig(guildId) {

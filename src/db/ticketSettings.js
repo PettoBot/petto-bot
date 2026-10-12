@@ -1,7 +1,7 @@
 const database = require('./database');
 const { createExpiringCache } = require('../utils/expiringCache');
 
-const settingsCache = createExpiringCache(15_000, { name: 'ticket-settings' });
+const settingsCache = createExpiringCache(15_000, { name: 'ticket-settings', invalidateOn: ['ticket_settings'] });
 
 const DEFAULTS = {
   claim_mode: 'shared',

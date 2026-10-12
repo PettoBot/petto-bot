@@ -20,6 +20,7 @@ const { registerDashboardRestRoutes } = require('./dashboardDatabase');
 const { registerCardRoutes } = require('./cardRoutes');
 const { registerCodeRoutes } = require('./codeRoutes');
 const { registerIdentityRoutes } = require('./identityRoutes');
+const { registerMemberRoutes } = require('./memberRoutes');
 const { listVariables } = require('../utils/embedVariableRegistry');
 const { renderPollRequest } = require('../utils/pollApi');
 const { sendMethodNow } = require('../utils/questMethod');
@@ -274,6 +275,8 @@ function startServer(client) {
     registerCardRoutes(app, { authorize: dashboardCardAccess });
     registerCodeRoutes(app, { authorize: dashboardCardAccess });
     registerIdentityRoutes(app, { authorize: dashboardCardAccess });
+    // Names and avatars of members for the dashboard pages, from the gateway instead of one REST call per person.
+    registerMemberRoutes(app, { isAuthorized: dashboardAuthorized, authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
 
     app.post('/api/dashboard/guild/:guildId/prefix', dashboardPrefixRateLimiter, async (req, res) => {
       if (!dashboardAuthorized(req)) {

@@ -4,7 +4,7 @@ const { createExpiringCache } = require('../utils/expiringCache');
 
 const TYPES = ['default', 'ban', 'hardban', 'tempban', 'softban', 'unban', 'kick', 'mute', 'tempmute', 'unmute', 'warn', 'jail', 'unjail'];
 const SLOTS = { dm: 'dm_template', reply: 'reply_template', log: 'log_template' };
-const cache = createExpiringCache(30_000);
+const cache = createExpiringCache(30_000, { invalidateOn: ['sanction_templates'] });
 
 async function loadAll(guildId) {
   const { rows } = await getPrimaryPool().query('select type, dm_template, reply_template, log_template from sanction_templates where guild_id = $1', [String(guildId)]);

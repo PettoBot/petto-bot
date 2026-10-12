@@ -3,7 +3,7 @@
  * The in-flight map is as important as the TTL: when several events for the
  * same guild arrive together, they share one database request.
  */
-function createExpiringCache(ttlMs, { name = null } = {}) {
+function createExpiringCache(ttlMs, { name = null, invalidateOn = [], match = 'guild' } = {}) {
   // With a `name` and a Redis, a second level keeps the values there too, so a restart starts with the caches warm instead of asking
   // the database for every server at once. Without them it is exactly the cache that was here before.
   const shared = name ? require('./redis') : null;
@@ -71,13 +71,25 @@ function createExpiringCache(ttlMs, { name = null } = {}) {
     if (shared) shared.del(sharedKey(cacheKey)).catch(() => {});
   }
 
+  /** Forgets every entry whose key (and value, when it is loaded) matches, in memory and in Redis. Answers how many. */
+  function deleteWhere(matches) {
+    const keys = new Set();
+    for (const [cacheKey, entry] of values) if (matches(cacheKey, entry.value)) keys.add(cacheKey);
+    for (const cacheKey of pending.keys()) if (matches(cacheKey, undefined)) keys.add(cacheKey);
+    for (const cacheKey of keys) deleteKey(cacheKey);
+    return keys.size;
+  }
+
   function clear() {
     values.clear();
     pending.clear();
     versions.clear();
   }
 
-  return { get, set, delete: deleteKey, clear };
+  const cache = { get, set, delete: deleteKey, deleteWhere, clear };
+  // The dashboard tells the bot when it changes one of these tables (see cacheInvalidation.js).
+  if (invalidateOn.length) require('./cacheInvalidation').registerCache(cache, invalidateOn, { match });
+  return cache;
 }
 
 module.exports = { createExpiringCache };
