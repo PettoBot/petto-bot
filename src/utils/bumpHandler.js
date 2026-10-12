@@ -1,4 +1,5 @@
 const { upsertConfig, getConfigByChannel, getDueReminders } = require('../db/bumpReminders');
+const { sendAs } = require('./senderIdentity');
 const { resolve } = require('./embedVariables');
 const { extractReactReplies, applyReactReplies } = require('./messageFlags');
 const logger = require('./logger');
@@ -38,13 +39,12 @@ async function handleBumpMessage(message) {
     guild: message.guild, channel: message.channel, user: bumper ?? undefined, bump: { nextUnix: Math.floor(nextBumpAt.getTime() / 1000) },
   });
   if (customThanks) {
-    await message.channel.send({ ...customThanks, allowedMentions: { parse: ['users', 'roles'] } }).catch((err) => logger.error('Bump thank-you send failed:', err));
+    await sendAs(message.channel, 'bump', { ...customThanks, allowedMentions: { parse: ['users', 'roles'] } }).catch((err) => logger.error('Bump thank-you send failed:', err));
   } else if (config.thankyou) {
     const { text: cleanedText, emojis: reactReplies } = extractReactReplies(config.thankyou);
     const text = await applyBumpVars(cleanedText, { guild: message.guild, channel: message.channel, bumper, nextBumpAt });
     if (text) {
-      const sent = await message.channel
-        .send({ content: text, allowedMentions: { parse: ['users', 'roles'] } })
+      const sent = await sendAs(message.channel, 'bump', { content: text, allowedMentions: { parse: ['users', 'roles'] } })
         .catch((err) => { logger.error('Bump thank-you send failed:', err); return null; });
       if (sent && reactReplies.length) await applyReactReplies(sent, reactReplies);
     } else if (reactReplies.length) {
@@ -73,10 +73,9 @@ async function checkBumpReminders(client) {
 
       const customReminder = await templatePayload(guild.id, reminder.reminder_embed_template, { guild, channel, user: bumper ?? undefined, bump: {} });
       if (customReminder) {
-        await channel.send({ ...customReminder, allowedMentions: reminder.pingable ? { parse: ['users', 'roles'] } : { parse: [] } }).catch((err) => logger.error('Bump reminder send failed:', err));
+        await sendAs(channel, 'bump', { ...customReminder, allowedMentions: reminder.pingable ? { parse: ['users', 'roles'] } : { parse: [] } }).catch((err) => logger.error('Bump reminder send failed:', err));
       } else if (text) {
-        const sent = await channel
-          .send({ content: text, allowedMentions: reminder.pingable ? { parse: ['users', 'roles'] } : { parse: [] } })
+        const sent = await sendAs(channel, 'bump', { content: text, allowedMentions: reminder.pingable ? { parse: ['users', 'roles'] } : { parse: [] } })
           .catch((err) => { logger.error('Bump reminder send failed:', err); return null; });
         if (sent && reactReplies.length) await applyReactReplies(sent, reactReplies);
       }

@@ -1,5 +1,6 @@
 // The route of the vote webhook of top.gg: checks the signature, stores the vote once and thanks the voter in the vote channel.
 const config = require('../config');
+const { sendAs } = require('./senderIdentity');
 const votesDb = require('../db/votes');
 const { verifySignature, parseVote } = require('./topgg');
 const { ContainerBuilder, TextDisplayBuilder, SectionBuilder, ThumbnailBuilder, SeparatorBuilder, SeparatorSpacingSize, MessageFlags } = require('discord.js');
@@ -28,7 +29,7 @@ async function thank(client, vote) {
   container
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ID: ${vote.userId} | <t:${Math.floor(new Date(vote.votedAt).getTime() / 1000)}:f>`));
-  await channel.send({
+  await sendAs(channel, 'votes', {
     components: [container],
     flags: MessageFlags.IsComponentsV2,
     allowedMentions: { users: [vote.userId] },

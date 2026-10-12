@@ -30,20 +30,20 @@ const TASKS = {
 const TASK_KINDS = ['video', 'play', 'stream', 'activity'];
 const REWARD_KIND_LIST = ['orbs', 'decoration', 'code', 'ingame', 'nitro'];
 
-// Five public copies of the list of quests are read, so one being late or down does not stop the alerts. The first one is
+// Five public copies of the list of quests are read (the first is agnonotdev's compact gist, the main one), so one being late or down does not stop the alerts. The first one is
 // the short list of recent quests of the discord-api-tracker repository (the one that has a new quest within minutes), then
 // the community API, aamiaa/discord-api-diff (which archives Discord's own quest data, every few hours) and the tracker's
 // big file. A quest found by any of them is announced, and the earlier source wins when they differ.
 const COMMUNITY = 'discordquest.com';
 const COMPACT = 'agnonotdev quests (compact)';
 const SOURCES = [
+  // The main source: a compact list of every quest with its dates, rewards and limits (platforms, countries, age gate). Its shape is its own.
+  { name: COMPACT, url: 'https://gist.githubusercontent.com/agnonotdev/8c2c84d70ae989d1ea2f178566163079/raw/quests-todas-compacto.json', compact: true },
   // The same tracker's short list of recent quests: its own job refreshes it within minutes of a quest starting, well before the big files.
   { name: 'discord-api-tracker (recent)', url: 'https://raw.githubusercontent.com/xGustavvo/discord-api-tracker/main/quest.json' },
   { name: COMMUNITY, url: `${API_BASE}/api/quests`, minIntervalMs: 30 * 60_000 },
   { name: 'discord-api-diff', url: 'https://raw.githubusercontent.com/aamiaa/discord-api-diff/main/quests.json' },
   { name: 'discord-api-tracker', url: 'https://raw.githubusercontent.com/xGustavvo/discord-api-tracker/main/quests.json' },
-  // A compact list of every quest with its limits (platforms, countries, age gate): the main source of the limits. Its shape is its own.
-  { name: COMPACT, url: 'https://gist.githubusercontent.com/agnonotdev/8c2c84d70ae989d1ea2f178566163079/raw/quests-todas-compacto.json', compact: true },
 ];
 // Region and age limits: the community API knows them, and when it is down the tracker keeps a list of its own.
 const REGIONS_URLS = [
@@ -292,7 +292,17 @@ async function fetchQuests({ force = false } = {}) {
 /** The last list of every source, joined by quest id (the earlier source wins), without asking anything. */
 function cachedQuests() {
   const merged = new Map();
-  for (const source of [...SOURCES].reverse()) for (const quest of state.get(source.name).quests ?? []) merged.set(quest.id, quest);
+  // The earlier source wins, and what it leaves empty is filled from the later ones.
+  const blank = (value) => value == null || value === '' || (Array.isArray(value) && !value.length);
+  for (const source of [...SOURCES].reverse()) {
+    for (const quest of state.get(source.name).quests ?? []) {
+      const before = merged.get(quest.id);
+      if (!before) { merged.set(quest.id, quest); continue; }
+      const filled = { ...quest };
+      for (const [key, value] of Object.entries(before)) if (blank(filled[key]) && !blank(value)) filled[key] = value;
+      merged.set(quest.id, filled);
+    }
+  }
   // The limits come from the compact list first; the quests it does not have fall back to the region lists.
   const compact = new Map((state.get(COMPACT).quests ?? []).map((quest) => [quest.id, quest]));
   return [...merged.values()].map((quest) => {

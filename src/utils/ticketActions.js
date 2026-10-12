@@ -1,4 +1,5 @@
 const { ChannelType, PermissionFlagsBits, MessageFlags, AttachmentBuilder } = require('discord.js');
+const { sendAs } = require('./senderIdentity');
 const { describeTicketOpenError } = require('./ticketErrors');
 const db = require('../db/tickets');
 const formsDb = require('../db/ticketForms');
@@ -133,11 +134,11 @@ async function openTicket({ guild, client, category, opener, formAnswers = null 
 
   // The bot's client-level default suppresses all mentions (see index.js) — this is the one ticket
   // message that's actually meant to notify people, so it opts back in for just the configured roles.
-  await channel.send({ ...welcome, allowedMentions: { roles: pingRoleIds } }).catch((err) => logger.warn(`Ticket #${ticket.ticket_number}: failed to send welcome message:`, err.message));
+  await sendAs(channel, 'tickets', { ...welcome, allowedMentions: { roles: pingRoleIds } }).catch((err) => logger.warn(`Ticket #${ticket.ticket_number}: failed to send welcome message:`, err.message));
 
   if (formAnswers && Object.keys(formAnswers).length) {
     const answerLines = Object.entries(formAnswers).map(([label, answer]) => `**${label}:** ${String(answer).slice(0, 1000)}`);
-    await channel.send({ components: [textCard(`### Submitted form\n${answerLines.join('\n')}`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+    await sendAs(channel, 'tickets', { components: [textCard(`### Submitted form\n${answerLines.join('\n')}`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
   }
 
   await sendLog(client, guild.id, 'tickets', {
@@ -170,8 +171,7 @@ async function claimTicket({ guild, client, channel, ticket, actor }) {
     }
   }
   if (channel && settings.ping_on_claim) {
-    await channel
-      .send({ content: `<@${ticket.opener_id}> your ticket was claimed by <@${actor.id}>.`, allowedMentions: { users: [ticket.opener_id] } })
+    await sendAs(channel, 'tickets', { content: `<@${ticket.opener_id}> your ticket was claimed by <@${actor.id}>.`, allowedMentions: { users: [ticket.opener_id] } })
       .catch(() => {});
   }
 
@@ -315,7 +315,7 @@ async function closeTicket({ guild, client, channel, ticket, actor, reason }) {
     [`${EMOJI.DENY}  **Ticket closed.** ${closedByLine}`, `**Reason:** ${finalReason}`, 'Staff can reopen or permanently delete this channel below.'].join('\n'),
     0xfe6465,
   );
-  await channel.send({ components: [closeCard, buildClosedControlRow(ticket.id, link)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+  await sendAs(channel, 'tickets', { components: [closeCard, buildClosedControlRow(ticket.id, link)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
 
   return closed;
 }

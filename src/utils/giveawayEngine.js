@@ -1,4 +1,5 @@
 const giveawaysDb = require('../db/giveaways');
+const { sendAs } = require('./senderIdentity');
 const levelUsersDb = require('../db/levelUsers');
 const presetsDb = require('../db/giveawayPresets');
 const { formatDuration } = require('./duration');
@@ -319,7 +320,7 @@ async function announceWinner(channel, config, giveaway, presetText, winnerId, c
     const winnerRow = await giveawaysDb.addWinner(giveaway.id, winnerId, new Date(Date.now() + claimTimeMs).toISOString());
     const text = config.claim_time_message ? null : DEFAULT_CLAIM_TEXT;
     await sendGiveawayResponse({ target: channel, guildId: giveaway.guild_id, messageText: config.claim_time_message, embedTemplateName: config.claim_time_embed_template, ctx, fallback: text });
-    await channel.send({ content: `<@${winnerId}>`, components: [buildClaimRow(winnerRow.id)] }).catch(() => {});
+    await sendAs(channel, 'giveaways', { content: `<@${winnerId}>`, components: [buildClaimRow(winnerRow.id)] }).catch(() => {});
     return winnerRow;
   }
 

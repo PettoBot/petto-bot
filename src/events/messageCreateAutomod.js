@@ -1,4 +1,5 @@
 const { Events, PermissionFlagsBits } = require('discord.js');
+const { sendAs } = require('../utils/senderIdentity');
 const { getConfig, listSilentChannelsCached } = require('../db/automod');
 const { findBannedWord, isExcessiveCaps, hasMassMentions, hasUnauthorizedInvite, isRepeatFlood } = require('../utils/automodChecks');
 const { applyAutomodAction } = require('../utils/automodAction');
@@ -35,7 +36,7 @@ module.exports = {
             return false;
           });
 
-          const notice = await message.channel.send({
+          const notice = await sendAs(message.channel, 'automod', {
             content: deleted
               ? `<@${message.author.id}> your message was removed because Petto identified one of its URLs as malicious or unsafe. Do not open it.`
               : `<@${message.author.id}> that message contains a URL Petto identified as malicious or unsafe. Do not open it.`,

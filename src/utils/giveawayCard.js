@@ -1,4 +1,5 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { sendAs } = require('./senderIdentity');
 const { getTemplate } = require('../db/embedTemplates');
 const { build } = require('./embedBuilder');
 const { resolve } = require('./embedVariables');
@@ -78,7 +79,7 @@ async function sendGiveawayResponse({ target, guildId, messageText, embedTemplat
       const doc = await getTemplate(guildId, embedTemplateName);
       if (doc) {
         const payload = await build(doc.data, ctx);
-        const sent = await target.send({ content: payload.content, embeds: payload.embeds, components: payload.components, files: payload.files });
+        const sent = await sendAs(target, 'giveaways', { content: payload.content, embeds: payload.embeds, components: payload.components, files: payload.files });
         if (reactReplies.length) await applyReactReplies(sent, reactReplies);
         return;
       }
@@ -88,7 +89,7 @@ async function sendGiveawayResponse({ target, guildId, messageText, embedTemplat
     const text = cleanedText || fallback;
     if (text) {
       const resolved = await resolve(text, ctx);
-      const sent = await target.send({ content: resolved });
+      const sent = await sendAs(target, 'giveaways', { content: resolved });
       if (reactReplies.length) await applyReactReplies(sent, reactReplies);
     }
   } catch (err) {

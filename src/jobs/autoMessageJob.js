@@ -1,4 +1,5 @@
 const autoMessagesDb = require('../db/autoMessages');
+const { sendAs } = require('../utils/senderIdentity');
 const logger = require('../utils/logger');
 const config = require('../config');
 const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency');
@@ -10,7 +11,7 @@ async function processDueAutoMessages(client) {
   await forEachWithConcurrency(rows, async (row) => {
     try {
       const channel = await client.channels.fetch(row.channel_id).catch(() => null);
-      if (channel?.isTextBased()) await channel.send({ content: row.message, allowedMentions: { parse: [] } }).catch(() => {});
+      if (channel?.isTextBased()) await sendAs(channel, 'automessages', { content: row.message, allowedMentions: { parse: [] } }).catch(() => {});
       await autoMessagesDb.scheduleNext(row.id, row.next_run_at, row.interval_ms);
     } catch (err) {
       logger.error(`Failed to process timer #${row.id}:`, err);
