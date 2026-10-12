@@ -17,10 +17,10 @@ function formatMinutes(minutes) {
 /**
  * The embed of a rank, laid out like the ones of other level bots: the member on top, the avatar at the side, one field for each
  * number (level, rank, experience, progress with the bar) and the total experience with the time at the bottom. It has no color.
- * `data` is the member's `levelData`; `week` is their weekly standing (`{ xp, position }`) or null. With `withCard` the card is
+ * `data` is the member's `levelData`. With `withCard` the card is
  * the picture and the avatar thumbnail is left out.
  */
-function buildRankEmbed({ data, name, avatarUrl, week = null, withCard = false, date = new Date() }) {
+function buildRankEmbed({ data, name, avatarUrl, withCard = false, date = new Date() }) {
   const voice = data.source === 'voice';
   const embed = new EmbedBuilder().setAuthor({ name, iconURL: avatarUrl });
 
@@ -31,8 +31,6 @@ function buildRankEmbed({ data, name, avatarUrl, week = null, withCard = false, 
     { name: `Progress (${data.progress}%)`, value: buildProgressBar(data.progress) },
   ];
   if (voice) fields.push({ name: 'Time in voice', value: formatMinutes(data.voiceMinutes) });
-  if (data.streak > 0) fields.push({ name: 'Streak', value: `${n(data.streak)} day${data.streak === 1 ? '' : 's'}${data.bestStreak > data.streak ? ` (best ${n(data.bestStreak)})` : ''}` });
-  if (week) fields.push({ name: 'This week', value: `#${n(week.position)} · ${n(week.xp)} XP` });
   embed.addFields(fields);
 
   if (withCard) embed.setImage(`attachment://${CARD_FILE_NAME}`);
@@ -45,12 +43,12 @@ function buildRankEmbed({ data, name, avatarUrl, week = null, withCard = false, 
  * The message for /rank. `style` is `card`, `embed` or `both`. A card that cannot be drawn leaves the embed, so a rank is
  * always answered.
  */
-async function buildRankReply({ style, ctx, data, name, avatarUrl, week, cardName, source }) {
+async function buildRankReply({ style, ctx, data, name, avatarUrl, cardName, source }) {
   let file = null;
   if (style !== 'embed') file = await renderRankCard(ctx, cardName, source);
   const useCard = Boolean(file);
   if (style === 'card' && useCard) return { files: [new AttachmentBuilder(file.buffer, { name: file.name })] };
-  const embed = buildRankEmbed({ data, name, avatarUrl, week, withCard: useCard });
+  const embed = buildRankEmbed({ data, name, avatarUrl, withCard: useCard });
   return useCard ? { embeds: [embed], files: [new AttachmentBuilder(file.buffer, { name: file.name })] } : { embeds: [embed] };
 }
 

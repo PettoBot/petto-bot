@@ -44,9 +44,9 @@ const parse = async (text) => buildInteractionFromMessage(message, command, text
 
   // The order of the options of notify did not change when `card` was added: message is still the sixth, card the seventh.
   const notify = command.data.toJSON().options.find((option) => option.name === 'notify').options.map((option) => option.name);
-  assert.deepEqual(notify, ['mode', 'channel', 'embed', 'embed_template', 'every', 'message', 'card']);
+  assert.deepEqual(notify, ['mode', 'channel', 'embed', 'embed_template', 'every', 'message', 'card', 'reply', 'delete_after', 'ping', 'milestone']);
   const voiceNotify = command.data.toJSON().options.find((option) => option.name === 'voice-notify').options.map((option) => option.name);
-  assert.deepEqual(voiceNotify, ['mode', 'channel', 'embed', 'embed_template', 'every', 'message', 'card']);
+  assert.deepEqual(voiceNotify, ['mode', 'channel', 'embed', 'embed_template', 'every', 'message', 'card', 'delete_after', 'ping', 'milestone']);
 
   const { readRuleValue, RULE_SETTINGS } = command;
   assert.equal(readRuleValue(RULE_SETTINGS.min_chars, '5'), 5);

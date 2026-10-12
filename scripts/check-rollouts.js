@@ -16,7 +16,7 @@ const config = require('../src/config');
 
 const raw = [
   { id: '2026-10-android-media-viewer-full-resolution', title: 'Android media viewer full resolution', kind: 'apex_user', rollout_status: 'ab_test', platforms: ['android', 'desktop'], total: { from: 0, to: 50, change: 50 },
-    variants: [{ variant: 0, role: 'control', to: 50, ranges: ['0 - 5000'] }, { variant: 1, role: 'treatment', to: 50, ranges: ['5000 - 10000'] }] },
+    variants: [{ variant: 0, role: 'control', to: 25, ranges: ['0 - 2500'] }, { variant: 1, role: 'treatment', to: 25, ranges: ['2500 - 5000'] }] },
   { id: '2026-10-badge-directory-updates', kind: 'user', rollout_status: null, variants: [{ variant: 0 }, { variant: 1 }] },
   { id: '2026-06_guild_rooms', title: 'Guild Rooms', kind: 'guild', rollout_status: 'rolling_out', total: { to: 0.01 },
     filters: [{ type: 'guild_member_count_range', args: { min_id: 3, max_id: 50 } }], variants: [{ variant: -1, role: 'not_eligible', to: 99.98, ranges: ['2 - 10000'] }, { variant: 5, role: 'treatment', to: 0.01, ranges: ['1 - 2'] }] },
@@ -29,7 +29,11 @@ const raw = [
   const list = raw.map(api.normalizeRollout).filter(Boolean);
   assert.equal(list.length, 4, 'an entry with an unusable id is left out');
   assert.equal(list[1].title, 'Badge directory updates', 'a missing name comes from the id');
-  assert.equal(list[0].percent, 50);
+  assert.equal(list[0].percent, 50, 'the control counts too: variant 0 (25%) and variant 1 (25%) are half of Discord');
+  assert.equal(api.normalizeRollout({ id: '2024-06_message_bookmarks', rollout_status: 'ab_test', total: { to: 10 }, variants: [{ variant: 0, role: 'control', to: 5, ranges: ['0 - 500'] }, { variant: 1, role: 'treatment', to: 5, ranges: ['500 - 1000'] }, { variant: 1, role: 'treatment', to: 5, ranges: ['1000 - 1500'] }] }).percent, 15, 'every variant is added, the control too');
+  assert.equal(api.normalizeRollout({ id: '2024-04_overlap', variants: [{ variant: 0, role: 'control', to: 100, ranges: ['0 - 10000'] }, { variant: 7, role: 'treatment', to: 100, ranges: ['0 - 10000'] }, { variant: -1, role: 'not_eligible', to: 100, ranges: ['0 - 10000'] }] }).percent, 100, 'a part that two variants cover is counted once');
+  assert.equal(api.normalizeRollout({ id: '2024-04_no_ranges', variants: [{ variant: 0, role: 'control', to: 5 }, { variant: 1, role: 'treatment', to: 5 }] }).percent, 10, 'with no ranges the percentages are added');
+  assert.equal(api.normalizeRollout({ id: '2024-04_only_total', total: { to: 7 }, variants: [] }).percent, 7, 'the total is the last resort');
   assert.equal(api.rangesPercent(['1600 - 3000', '4000 - 5000']), 24, 'ranges are out of 10000');
   assert.equal(list[2].filters[0], 'Servers of 3 to 50 members');
   assert.equal(list[3].kind, 'unknown');
@@ -47,6 +51,13 @@ const raw = [
   const down = diffRollouts(before, [{ ...list[0], percent: 40 }, ...list.slice(1)]);
   assert.equal(down[0].type, 'decrease');
 
+  // A snapshot kept with the old way of counting is not read as a change, and is written again.
+  const { staleSnapshots } = require('../src/utils/rolloutDiff');
+  const old = new Map(list.map((entry) => { const snapshot = snapshotOf(entry); delete snapshot._v; return [entry.id, { ...snapshot, percent: 1 }]; }));
+  assert.deepEqual(diffRollouts(old, list), [], 'a different percentage in an old snapshot is not a change');
+  assert.equal(staleSnapshots(old, list).length, list.length, 'and it is saved again with the new way');
+  assert.equal(staleSnapshots(before, list).length, 0);
+
   // Filters.
   assert.equal(matchesEvent(events[0], { kinds: [], events: [], min_change: 0 }), true);
   assert.equal(matchesEvent(events[0], { kinds: ['guild'], events: [] }), false, 'the kind filter');
@@ -58,7 +69,7 @@ const raw = [
 
   // The card.
   assert.equal(badge(events[0]), '+12.5% (62.5%)');
-  assert.deepEqual(variantLines(events[0]), ['Variant 0 (control): 50%', 'Variant 1: 50% → 62.5% (+12.5%)']);
+  assert.deepEqual(variantLines(events[0]), ['Variant 0 (control): 25%', 'Variant 1: 25% → 62.5% (+37.5%)']);
   const card = buildRolloutCard(events[0], { role_id: '99', hide_sections: ['filters'] }, { rolePing: '<@&99>' });
   const json = JSON.stringify(card.components[0].toJSON());
   assert.ok(json.includes('Users experiment (A/B)') && json.includes('Rollouts') && json.includes('+12.5% (62.5%)') , 'the card has the kind and the change');

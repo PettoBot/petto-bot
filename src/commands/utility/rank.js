@@ -1,7 +1,6 @@
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { getConfig } = require('../../db/levelConfig');
 const levelUsersDb = require('../../db/levelUsers');
-const { memberStanding } = require('../../db/levelPeriods');
 const { buildLevelData } = require('../../utils/levelData');
 const { buildRankReply } = require('../../utils/rankView');
 const { textCard } = require('../../utils/caseCard');
@@ -38,10 +37,9 @@ module.exports = {
     await interaction.deferReply();
 
     const member = await interaction.guild.members.fetch(target.id).catch(() => null);
-    const [rank, total, week] = await Promise.all([
+    const [rank, total] = await Promise.all([
       voice ? levelUsersDb.getVoiceRank(interaction.guild.id, xp) : levelUsersDb.getRank(interaction.guild.id, xp),
       voice ? levelUsersDb.countVoiceRanked(interaction.guild.id) : levelUsersDb.countRanked(interaction.guild.id),
-      memberStanding(interaction.guild.id, target.id, 'week', voice ? 'voice' : 'text').catch(() => null),
     ]);
     const data = buildLevelData({ config: sourceConfig, userData, source, rank, total });
     const shown = member ?? target;
@@ -52,7 +50,6 @@ module.exports = {
       data,
       name: member?.displayName ?? target.username,
       avatarUrl: shown.displayAvatarURL({ size: 256, extension: 'png' }),
-      week,
       cardName: config.rank_card ?? null,
       source,
     });

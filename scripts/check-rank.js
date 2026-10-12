@@ -30,10 +30,10 @@ assert.ok(buildLevelData({ config: { ...config, max_level: 1 }, userData: { xp: 
 
 assert.equal(formatMinutes(0), '0m'); assert.equal(formatMinutes(45), '45m'); assert.equal(formatMinutes(60), '1h'); assert.equal(formatMinutes(95), '1h 35m');
 
-const embed = buildRankEmbed({ data, name: 'Liam', avatarUrl: 'https://cdn.test/a.png', week: { xp: 400, position: 2 }, date: new Date('2026-10-02T12:00:00Z') }).toJSON();
+const embed = buildRankEmbed({ data, name: 'Liam', avatarUrl: 'https://cdn.test/a.png', date: new Date('2026-10-02T12:00:00Z') }).toJSON();
 assert.equal(embed.color, undefined, 'the embed has no color');
 const fieldNames = embed.fields.map((field) => field.name);
-assert.deepEqual(fieldNames, ['Level', 'Server Rank', 'Experience', `Progress (${data.progress}%)`, 'Streak', 'This week']);
+assert.deepEqual(fieldNames, ['Level', 'Server Rank', 'Experience', `Progress (${data.progress}%)`], 'no streak and no week, like the embeds of other level bots');
 assert.equal(embed.fields.find((field) => field.name === 'Level').value, String(data.level));
 assert.equal(embed.fields.find((field) => field.name === 'Server Rank').value, '#3 out of 120');
 assert.equal(embed.fields.find((field) => field.name === 'Experience').value, `${data.xpCurrent.toLocaleString('en-US')}/${data.xpNeeded.toLocaleString('en-US')} XP`);
@@ -41,15 +41,13 @@ assert.ok(embed.fields.find((field) => field.name.startsWith('Progress')).value.
 assert.equal(embed.fields.every((field) => !field.inline), true, 'one field under another');
 assert.equal(embed.footer.text, `Total Experience: ${data.xp.toLocaleString('en-US')}`);
 assert.ok(embed.timestamp, 'with the time');
-assert.equal(embed.fields.find((field) => field.name === 'Streak').value, '4 days (best 9)');
-assert.equal(embed.fields.find((field) => field.name === 'This week').value, '#2 · 400 XP');
 assert.equal(embed.thumbnail.url, 'https://cdn.test/a.png'); assert.equal(embed.image, undefined, 'without a card the avatar is the thumbnail');
 const withCard = buildRankEmbed({ data, name: 'Liam', avatarUrl: 'https://cdn.test/a.png', withCard: true }).toJSON();
 assert.equal(withCard.image.url, 'attachment://card.png'); assert.equal(withCard.thumbnail, undefined, 'with a card the picture is the card');
 const voiceEmbed = buildRankEmbed({ data: { ...data, source: 'voice', streak: 0 }, name: 'Liam' }).toJSON();
 assert.equal(voiceEmbed.fields[0].name, 'Voice Level');
 assert.equal(voiceEmbed.fields[0].value, '5');
-assert.deepEqual(voiceEmbed.fields.map((field) => field.name).slice(-1), ['Time in voice'], 'no streak field with no streak');
+assert.deepEqual(voiceEmbed.fields.map((field) => field.name).slice(-1), ['Time in voice']);
 assert.equal(voiceEmbed.fields[voiceEmbed.fields.length - 1].value, '1h 35m');
 assert.equal(buildRankEmbed({ data: { ...data, rank: null, total: null }, name: 'x' }).toJSON().fields[1].value, 'Not ranked yet');
 

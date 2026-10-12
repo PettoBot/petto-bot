@@ -69,14 +69,17 @@ async function renderCardForMessage(cardRef, ctx) {
   }
 }
 
-/** The rank card a server has not designed: a basic rank card, with its own color for voice. */
+/**
+ * The rank card a server has not designed: the layout with the bar along the bottom, in Petto's own colors (a warm peach on a deep plum),
+ * and teal for voice.
+ */
 function defaultRankCard(source) {
   const voice = source === 'voice';
   return {
     kind: 'rank',
     mode: 'basic',
-    basic: { preset: 'rank', accent: voice ? '#3ddc97' : '#8399ff', title: voice ? 'VOICE LEVEL {level}' : 'LEVEL {level}' },
-    background: { color: '#1e1f22', gradient: voice ? { from: '#12372f', to: '#1e1f22', angle: 120 } : { from: '#2b2f6b', to: '#4a2b52', angle: 120 } },
+    basic: { preset: 'rankBottom', accent: voice ? '#5eead4' : '#ffb199', title: voice ? 'VOICE LEVEL {level}' : 'LEVEL {level}' },
+    background: { color: '#1b1722', gradient: voice ? { from: '#0f2f2c', to: '#1b1722', angle: 135 } : { from: '#3a1f47', to: '#1b1722', angle: 135 } },
   };
 }
 

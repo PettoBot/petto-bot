@@ -64,13 +64,17 @@ module.exports = {
         .addStringOption((o) => o.setName('embed_template').setDescription('Saved /embed template to use for the announcement').setRequired(false))
         .addIntegerOption((o) => o.setName('every').setDescription('Only announce every N levels (default 1 = every level)').setRequired(false).setMinValue(1))
         .addStringOption((o) => o.setName('message').setDescription('Supports {user}, {level}, {level_xp}, {level_rank}, and every /embed variable').setRequired(false))
-        .addStringOption((o) => o.setName('card').setDescription('Image card sent with the announcement, or "none"').setRequired(false)),
+        .addStringOption((o) => o.setName('card').setDescription('Image card sent with the announcement, or "none"').setRequired(false))
+        .addBooleanOption((o) => o.setName('reply').setDescription('Answer the message that made them level up (default on)').setRequired(false))
+        .addIntegerOption((o) => o.setName('delete_after').setDescription('Delete the announcement after this many seconds, 0 to keep it').setRequired(false).setMinValue(0).setMaxValue(86400))
+        .addBooleanOption((o) => o.setName('ping').setDescription('Ping the member (default on)').setRequired(false))
+        .addIntegerOption((o) => o.setName('milestone').setDescription('A level with a message of its own: use it with message (message off removes it)').setRequired(false).setMinValue(1).setMaxValue(10000)),
     )
-    .addSubcommand((s) => s.setName('voice-notify').setDescription('Configure voice level-up announcements.').addStringOption((o) => o.setName('mode').setDescription('Where it posts').setRequired(true).addChoices({ name: 'off', value: 'off' }, { name: 'fixed channel', value: 'channel' }, { name: 'DM', value: 'dm' })).addChannelOption((o) => o.setName('channel').setDescription('Channel to use with mode:channel').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement).setRequired(false)).addBooleanOption((o) => o.setName('embed').setDescription('Use an embed').setRequired(false)).addStringOption((o) => o.setName('embed_template').setDescription('Saved /embed template').setRequired(false)).addIntegerOption((o) => o.setName('every').setDescription('Only announce every N levels').setRequired(false).setMinValue(1)).addStringOption((o) => o.setName('message').setDescription('Voice level-up message').setRequired(false)).addStringOption((o) => o.setName('card').setDescription('Image card sent with the announcement, or "none"').setRequired(false)))
+    .addSubcommand((s) => s.setName('voice-notify').setDescription('Configure voice level-up announcements.').addStringOption((o) => o.setName('mode').setDescription('Where it posts').setRequired(true).addChoices({ name: 'off', value: 'off' }, { name: 'reply (in the voice channel chat)', value: 'reply' }, { name: 'fixed channel', value: 'channel' }, { name: 'DM', value: 'dm' })).addChannelOption((o) => o.setName('channel').setDescription('Channel to use with mode:channel').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement).setRequired(false)).addBooleanOption((o) => o.setName('embed').setDescription('Use an embed').setRequired(false)).addStringOption((o) => o.setName('embed_template').setDescription('Saved /embed template').setRequired(false)).addIntegerOption((o) => o.setName('every').setDescription('Only announce every N levels').setRequired(false).setMinValue(1)).addStringOption((o) => o.setName('message').setDescription('Voice level-up message').setRequired(false)).addStringOption((o) => o.setName('card').setDescription('Image card sent with the announcement, or "none"').setRequired(false)).addIntegerOption((o) => o.setName('delete_after').setDescription('Delete the announcement after this many seconds, 0 to keep it').setRequired(false).setMinValue(0).setMaxValue(86400)).addBooleanOption((o) => o.setName('ping').setDescription('Ping the member (default on)').setRequired(false)).addIntegerOption((o) => o.setName('milestone').setDescription('A level with a message of its own: use it with message (message off removes it)').setRequired(false).setMinValue(1).setMaxValue(10000)))
     .addSubcommand((s) => s.setName('role-mode').setDescription('Whether members keep every earned reward role, or just the highest.').addStringOption((o) => o.setName('mode').setDescription('Mode').setRequired(true).addChoices({ name: 'highest only', value: 'highest' }, { name: 'all earned', value: 'all' })))
     .addSubcommand((s) => s.setName('voice-role-mode').setDescription('Voice reward role mode.').addStringOption((o) => o.setName('mode').setDescription('Mode').setRequired(true).addChoices({ name: 'highest only', value: 'highest' }, { name: 'all earned', value: 'all' })))
-    .addSubcommand((s) => s.setName('ignore').setDescription('Toggle a channel out of/into XP tracking.').addChannelOption((o) => o.setName('channel').setDescription('Channel').setRequired(true)))
-    .addSubcommand((s) => s.setName('voice-ignore').setDescription('Toggle a voice channel out of/into voice XP tracking.').addChannelOption((o) => o.setName('channel').setDescription('Voice channel').addChannelTypes(ChannelType.GuildVoice, ChannelType.GuildStageVoice).setRequired(true)))
+    .addSubcommand((s) => s.setName('ignore').setDescription('Toggle a channel, a category or a role out of/into earning XP.').addChannelOption((o) => o.setName('channel').setDescription('Channel or category').setRequired(false)).addRoleOption((o) => o.setName('role').setDescription('A role whose members earn no XP').setRequired(false)).addRoleOption((o) => o.setName('only_role').setDescription('A role that is the only one allowed to earn XP (toggle; none picked = everyone)').setRequired(false)))
+    .addSubcommand((s) => s.setName('voice-ignore').setDescription('Toggle a voice channel or a category out of/into voice XP tracking.').addChannelOption((o) => o.setName('channel').setDescription('Voice channel or category').addChannelTypes(ChannelType.GuildVoice, ChannelType.GuildStageVoice).setRequired(true)))
     .addSubcommand((s) =>
       s
         .setName('join')
@@ -93,6 +97,9 @@ module.exports = {
           { name: 'daily_bonus (XP for the first activity of each day)', value: 'daily_bonus' },
           { name: 'streak_bonus (extra XP per earlier day in a row)', value: 'streak_bonus' },
           { name: 'streak_max_days (days after which the streak bonus stops growing)', value: 'streak_max_days' },
+          { name: 'xp_multiplier (a base multiplier for all XP, e.g. 1.5)', value: 'xp_multiplier' },
+          { name: 'multiplier_mode (how several role multipliers join: highest, stack or sum)', value: 'multiplier_mode' },
+          { name: 'multiplier_cap (the most a combined multiplier can reach)', value: 'multiplier_cap' },
         ))
         .addStringOption((o) => o.setName('value').setDescription('The new value: a number, or on/off').setRequired(false)),
     )
@@ -102,8 +109,8 @@ module.exports = {
       g
         .setName('reward')
         .setDescription('Roles granted at specific levels.')
-        .addSubcommand((s) => s.setName('add').setDescription('Grant a role at a level.').addIntegerOption((o) => o.setName('level').setDescription('Level').setRequired(true).setMinValue(1)).addRoleOption((o) => o.setName('role').setDescription('Role').setRequired(true)))
-        .addSubcommand((s) => s.setName('remove').setDescription('Remove a level reward.').addIntegerOption((o) => o.setName('level').setDescription('Level').setRequired(true).setMinValue(1)))
+        .addSubcommand((s) => s.setName('add').setDescription('Grant a role at a level.').addStringOption((o) => o.setName('type').setDescription('Message levels (default) or voice levels').setRequired(false).addChoices({ name: 'messages', value: 'text' }, { name: 'voice', value: 'voice' })).addIntegerOption((o) => o.setName('level').setDescription('Level').setRequired(true).setMinValue(1)).addRoleOption((o) => o.setName('role').setDescription('Role').setRequired(true)))
+        .addSubcommand((s) => s.setName('remove').setDescription('Remove a level reward.').addStringOption((o) => o.setName('type').setDescription('Message levels (default) or voice levels').setRequired(false).addChoices({ name: 'messages', value: 'text' }, { name: 'voice', value: 'voice' })).addIntegerOption((o) => o.setName('level').setDescription('Level').setRequired(true).setMinValue(1)))
         .addSubcommand((s) => s.setName('list').setDescription('List all level rewards.')),
     )
     .addSubcommandGroup((g) =>
@@ -115,15 +122,17 @@ module.exports = {
             .setName('set')
             .setDescription('Set a multiplier for a role or channel.')
             .addNumberOption((o) => o.setName('value').setDescription('Multiplier, e.g. 2 for double XP, 0.5 for half').setRequired(true).setMinValue(0))
-            .addRoleOption((o) => o.setName('role').setDescription('Role (provide this or channel)').setRequired(false))
-            .addChannelOption((o) => o.setName('channel').setDescription('Channel (provide this or role)').setRequired(false)),
+            .addRoleOption((o) => o.setName('role').setDescription('Role (provide this, a channel or a category)').setRequired(false))
+            .addChannelOption((o) => o.setName('channel').setDescription('Channel (provide this, a role or a category)').setRequired(false))
+            .addChannelOption((o) => o.setName('category').setDescription('Category: every channel in it, unless it has a multiplier of its own').addChannelTypes(ChannelType.GuildCategory).setRequired(false)),
         )
         .addSubcommand((s) =>
           s
             .setName('remove')
             .setDescription('Remove a multiplier.')
-            .addRoleOption((o) => o.setName('role').setDescription('Role (provide this or channel)').setRequired(false))
-            .addChannelOption((o) => o.setName('channel').setDescription('Channel (provide this or role)').setRequired(false)),
+            .addRoleOption((o) => o.setName('role').setDescription('Role (provide this, a channel or a category)').setRequired(false))
+            .addChannelOption((o) => o.setName('channel').setDescription('Channel (provide this, a role or a category)').setRequired(false))
+            .addChannelOption((o) => o.setName('category').setDescription('Category').addChannelTypes(ChannelType.GuildCategory).setRequired(false)),
         )
         .addSubcommand((s) => s.setName('list').setDescription('List all multipliers.')),
     )
@@ -333,6 +342,30 @@ async function voiceMaxLevelCmd(interaction) {
   await reply(interaction, `${EMOJI.APPROVE}  Max voice level set to **${count}**.`);
 }
 
+/** The patch for the new announcement options (reply, delete_after, ping and a milestone message). `prefix` is `` or `voice_`. */
+async function notifyExtras(interaction, config, prefix) {
+  const patch = {};
+  const reply = prefix ? null : interaction.options.getBoolean('reply');
+  const deleteAfter = interaction.options.getInteger('delete_after');
+  const ping = interaction.options.getBoolean('ping');
+  const milestone = interaction.options.getInteger('milestone');
+  const message = interaction.options.getString('message');
+  if (reply != null) patch.notify_reply = reply;
+  if (deleteAfter != null) patch[`${prefix}notify_delete_after`] = deleteAfter;
+  if (ping != null) patch[`${prefix}notify_ping`] = ping;
+  if (milestone != null) {
+    if (!message) return { error: 'Give the `message` for that level (or `off` to remove it).' };
+    const current = (Array.isArray(config?.[`${prefix}notify_milestones`]) ? config[`${prefix}notify_milestones`] : []).filter((entry) => Number(entry.level) !== milestone);
+    if (message.trim().toLowerCase() !== 'off') {
+      if (current.length >= 25) return { error: 'There can be 25 levels with a message of their own. Remove one first.' };
+      current.push({ level: milestone, message: message.slice(0, 1000) });
+    }
+    patch[`${prefix}notify_milestones`] = current.sort((a, b) => a.level - b.level);
+    patch.__milestone = { level: milestone, removed: message.trim().toLowerCase() === 'off' };
+  }
+  return patch;
+}
+
 async function notifyCmd(interaction) {
   const mode = interaction.options.getString('mode', true);
   const channel = interaction.options.getChannel('channel');
@@ -358,14 +391,19 @@ async function notifyCmd(interaction) {
     patch.notify_embed_template = embedTemplate;
   }
   if (every != null) patch.notify_every = every;
-  if (message) patch.notify_message = message;
+  // With `milestone`, the message is the one of that level and not the general one.
+  if (message && interaction.options.getInteger('milestone') == null) patch.notify_message = message;
   const cardPatch = await cardOption(interaction, 'notify_card');
   if (cardPatch === false) return;
   Object.assign(patch, cardPatch);
+  const extras = await notifyExtras(interaction, await levelConfigDb.ensureConfig(interaction.guild.id), '');
+  if (extras.error) { await interaction.reply({ content: extras.error, flags: MessageFlags.Ephemeral }); return; }
+  const { __milestone: milestoneNote, ...extraPatch } = extras;
+  Object.assign(patch, extraPatch);
 
   await defer(interaction);
   await levelConfigDb.upsertConfig(interaction.guild.id, patch);
-  await reply(interaction, `${EMOJI.APPROVE}  Level-up notifications: **${mode}**.`);
+  await reply(interaction, `${EMOJI.APPROVE}  Level-up notifications: **${mode}**${milestoneNote ? `. ${milestoneNote.removed ? `Level ${milestoneNote.level} uses the general message again` : `Level ${milestoneNote.level} has a message of its own`}` : ''}.`);
 }
 
 async function voiceNotifyCmd(interaction) {
@@ -393,14 +431,18 @@ async function voiceNotifyCmd(interaction) {
     patch.voice_notify_embed_template = embedTemplate;
   }
   if (every != null) patch.voice_notify_every = every;
-  if (message) patch.voice_notify_message = message;
+  if (message && interaction.options.getInteger('milestone') == null) patch.voice_notify_message = message;
   const cardPatch = await cardOption(interaction, 'voice_notify_card');
   if (cardPatch === false) return;
   Object.assign(patch, cardPatch);
+  const extras = await notifyExtras(interaction, await levelConfigDb.ensureConfig(interaction.guild.id), 'voice_');
+  if (extras.error) { await interaction.reply({ content: extras.error, flags: MessageFlags.Ephemeral }); return; }
+  const { __milestone: milestoneNote, ...extraPatch } = extras;
+  Object.assign(patch, extraPatch);
 
   await defer(interaction);
   await levelConfigDb.upsertConfig(interaction.guild.id, patch);
-  await reply(interaction, `${EMOJI.APPROVE}  Voice level-up notifications: **${mode}**.`);
+  await reply(interaction, `${EMOJI.APPROVE}  Voice level-up notifications: **${mode}**${milestoneNote ? `. ${milestoneNote.removed ? `Level ${milestoneNote.level} uses the general message again` : `Level ${milestoneNote.level} has a message of its own`}` : ''}.`);
 }
 
 async function roleModeCmd(interaction) {
@@ -418,25 +460,50 @@ async function voiceRoleModeCmd(interaction) {
 }
 
 async function ignoreCmd(interaction) {
-  const channel = interaction.options.getChannel('channel', true);
+  const channel = interaction.options.getChannel('channel');
+  const role = interaction.options.getRole('role');
+  const onlyRole = interaction.options.getRole('only_role');
+  if (!channel && !role && !onlyRole) {
+    await interaction.reply({ content: 'Pick a `channel` (or a category), a `role` that earns no XP, or an `only_role`.', flags: MessageFlags.Ephemeral });
+    return;
+  }
   await defer(interaction);
   const config = await levelConfigDb.ensureConfig(interaction.guild.id);
-  const ignored = new Set(config.ignored_channel_ids);
-  const wasIgnored = ignored.has(channel.id);
-  wasIgnored ? ignored.delete(channel.id) : ignored.add(channel.id);
-  await levelConfigDb.upsertConfig(interaction.guild.id, { ignored_channel_ids: [...ignored] });
-  await reply(interaction, `${EMOJI.APPROVE}  ${channel} ${wasIgnored ? 'removed from' : 'added to'} ignored channels.`);
+  const toggle = (list, id) => { const set = new Set(list ?? []); const had = set.has(id); had ? set.delete(id) : set.add(id); return { list: [...set], had }; };
+  const notes = [];
+  const patch = {};
+  if (channel) {
+    const isCategory = channel.type === ChannelType.GuildCategory;
+    const column = isCategory ? 'ignored_category_ids' : 'ignored_channel_ids';
+    const { list, had } = toggle(config[column], channel.id);
+    patch[column] = list;
+    notes.push(`${channel} ${had ? 'removed from' : 'added to'} ignored ${isCategory ? 'categories' : 'channels'}.`);
+  }
+  if (role) {
+    const { list, had } = toggle(config.no_xp_role_ids, role.id);
+    patch.no_xp_role_ids = list;
+    notes.push(`${role} ${had ? 'can earn XP again' : 'earns no XP now'}.`);
+  }
+  if (onlyRole) {
+    const { list, had } = toggle(config.only_xp_role_ids, onlyRole.id);
+    patch.only_xp_role_ids = list;
+    notes.push(`${onlyRole} ${had ? 'removed from' : 'added to'} the roles allowed to earn XP${list.length ? '' : ' (nobody is picked, so everyone can earn XP)'}.`);
+  }
+  await levelConfigDb.upsertConfig(interaction.guild.id, patch);
+  await reply(interaction, `${EMOJI.APPROVE}  ${notes.join('\n')}`);
 }
 
 async function voiceIgnoreCmd(interaction) {
   const channel = interaction.options.getChannel('channel', true);
   await defer(interaction);
   const config = await levelConfigDb.ensureConfig(interaction.guild.id);
-  const ignored = new Set(config.voice_ignored_channel_ids ?? []);
+  const isCategory = channel.type === ChannelType.GuildCategory;
+  const column = isCategory ? 'voice_ignored_category_ids' : 'voice_ignored_channel_ids';
+  const ignored = new Set(config[column] ?? []);
   const wasIgnored = ignored.has(channel.id);
   wasIgnored ? ignored.delete(channel.id) : ignored.add(channel.id);
-  await levelConfigDb.upsertConfig(interaction.guild.id, { voice_ignored_channel_ids: [...ignored] });
-  await reply(interaction, `${EMOJI.APPROVE}  ${channel} ${wasIgnored ? 'removed from' : 'added to'} ignored voice channels.`);
+  await levelConfigDb.upsertConfig(interaction.guild.id, { [column]: [...ignored] });
+  await reply(interaction, `${EMOJI.APPROVE}  ${channel} ${wasIgnored ? 'removed from' : 'added to'} ignored voice ${isCategory ? 'categories' : 'channels'}.`);
 }
 
 async function joinCmd(interaction) {
@@ -533,6 +600,9 @@ const RULE_SETTINGS = {
   daily_bonus: { column: 'daily_bonus_xp', kind: 'number', min: 0, max: 100000 },
   streak_bonus: { column: 'streak_bonus_xp', kind: 'number', min: 0, max: 10000 },
   streak_max_days: { column: 'streak_max_days', kind: 'number', min: 1, max: 365 },
+  xp_multiplier: { column: 'xp_multiplier', kind: 'decimal', min: 0, max: 20 },
+  multiplier_mode: { column: 'multiplier_mode', kind: 'choice', choices: ['highest', 'stack', 'sum'] },
+  multiplier_cap: { column: 'multiplier_cap', kind: 'decimal', min: 1, max: 100 },
 };
 
 /** The value of a rule from what was typed: a whole number in its range, or on/off. Null when it is not valid. */
@@ -542,6 +612,12 @@ function readRuleValue(rule, text) {
     if (/^(on|true|yes|1|enable|enabled)$/.test(raw)) return true;
     if (/^(off|false|no|0|disable|disabled)$/.test(raw)) return false;
     return null;
+  }
+  if (rule.kind === 'choice') return rule.choices.includes(raw) ? raw : null;
+  if (rule.kind === 'decimal') {
+    if (!/^\d{1,3}(\.\d{1,2})?$/.test(raw)) return null;
+    const decimal = Number(raw);
+    return decimal >= rule.min && decimal <= rule.max ? decimal : null;
   }
   if (!/^\d{1,6}$/.test(raw)) return null;
   const value = Number(raw);
@@ -560,7 +636,7 @@ async function rulesCmd(interaction) {
     }
     const value = readRuleValue(rule, text);
     if (value === null) {
-      await interaction.reply({ content: rule.kind === 'flag' ? `\`${setting}\` takes \`on\` or \`off\`.` : `\`${setting}\` takes a whole number from ${rule.min} to ${rule.max}.`, flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: rule.kind === 'flag' ? `\`${setting}\` takes \`on\` or \`off\`.` : rule.kind === 'choice' ? `\`${setting}\` takes one of: ${rule.choices.map((name) => `\`${name}\``).join(', ')}.` : rule.kind === 'decimal' ? `\`${setting}\` takes a number from ${rule.min} to ${rule.max}, such as 1.5.` : `\`${setting}\` takes a whole number from ${rule.min} to ${rule.max}.`, flags: MessageFlags.Ephemeral });
       return;
     }
     patch = { [rule.column]: value };
@@ -577,6 +653,7 @@ function rulesSummary(config) {
     `**Voice needs:** ${config.voice_min_members} people in the channel${config.voice_ignore_muted ? ', not muted' : ''}`,
     `**Daily bonus:** ${config.daily_bonus_xp > 0 ? `${config.daily_bonus_xp} XP` : 'off'}`,
     `**Streak bonus:** ${config.streak_bonus_xp > 0 ? `${config.streak_bonus_xp} XP per earlier day, up to ${config.streak_max_days} days` : 'off'}`,
+    `**Multipliers:** base ×${Number(config.xp_multiplier ?? 1)}, several roles: ${config.multiplier_mode ?? 'highest'}, never above ×${Number(config.multiplier_cap ?? 20)}`,
   ].join('\n');
 }
 
@@ -628,7 +705,7 @@ async function eventCmd(interaction, sub) {
 async function statusCmd(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const config = await levelConfigDb.ensureConfig(interaction.guild.id);
-  const rewards = await levelRewardsDb.listRewards(interaction.guild.id);
+  const rewards = await levelRewardsDb.listRewards(interaction.guild.id, 'all');
   const multipliers = await levelMultipliersDb.listMultipliers(interaction.guild.id);
 
   const lines = [
@@ -646,7 +723,11 @@ async function statusCmd(interaction) {
     `**Join bonus:** ${config.join_level ? `level ${config.join_level}` : config.join_xp ? `${config.join_xp} XP` : 'None'}`,
     `**Ignored channels:** ${config.ignored_channel_ids.length ? config.ignored_channel_ids.map((id) => `<#${id}>`).join(', ') : 'None'}`,
     `**Ignored voice channels:** ${(config.voice_ignored_channel_ids ?? []).length ? config.voice_ignored_channel_ids.map((id) => `<#${id}>`).join(', ') : 'None'}`,
-    `**Rewards:** ${rewards.length ? rewards.map((r) => `Lv.${r.level} → <@&${r.role_id}>`).join(', ') : 'None'}`,
+    `**Ignored categories:** ${(config.ignored_category_ids ?? []).length ? config.ignored_category_ids.map((id) => `<#${id}>`).join(', ') : 'None'}`,
+    `**No XP for roles:** ${(config.no_xp_role_ids ?? []).length ? config.no_xp_role_ids.map((id) => `<@&${id}>`).join(', ') : 'None'} · **Only these roles:** ${(config.only_xp_role_ids ?? []).length ? config.only_xp_role_ids.map((id) => `<@&${id}>`).join(', ') : 'everyone'}`,
+    `**Level-up:** ${config.notify_reply === false ? 'sent on its own' : 'answers the message'}${config.notify_delete_after > 0 ? `, deleted after ${config.notify_delete_after}s` : ''}${config.notify_ping === false ? ', no ping' : ''}${(config.notify_milestones ?? []).length ? ` · levels with their own message: ${config.notify_milestones.map((m) => m.level).join(', ')}` : ''}`,
+    `**Rewards:** ${rewards.filter((r) => r.source !== 'voice').length ? rewards.filter((r) => r.source !== 'voice').map((r) => `Lv.${r.level} → <@&${r.role_id}>`).join(', ') : 'None'}`,
+    `**Voice rewards:** ${rewards.filter((r) => r.source === 'voice').length ? rewards.filter((r) => r.source === 'voice').map((r) => `Lv.${r.level} → <@&${r.role_id}>`).join(', ') : 'None'}`,
     `**Multipliers:** ${multipliers.length ? multipliers.map((m) => `${m.target_type === 'role' ? `<@&${m.target_id}>` : `<#${m.target_id}>`} ×${m.multiplier}`).join(', ') : 'None'}`,
   ];
 
@@ -657,23 +738,28 @@ async function rewardCmd(interaction, sub) {
   await defer(interaction);
 
   if (sub === 'list') {
-    const rewards = await levelRewardsDb.listRewards(interaction.guild.id);
-    const text = rewards.length ? rewards.map((r) => `**Level ${r.level}** → <@&${r.role_id}>`).join('\n') : 'No level rewards configured.';
+    const rewards = await levelRewardsDb.listRewards(interaction.guild.id, 'all');
+    const lines = (kind) => rewards.filter((r) => r.source === kind).map((r) => `**Level ${r.level}** → <@&${r.role_id}>`);
+    const text = rewards.length
+      ? [lines('text').length ? `**Messages**\n${lines('text').join('\n')}` : '', lines('voice').length ? `**Voice**\n${lines('voice').join('\n')}` : ''].filter(Boolean).join('\n\n')
+      : 'No level rewards configured.';
     await reply(interaction, text, 0x4b4f59);
     return;
   }
 
   const level = interaction.options.getInteger('level', true);
+  const type = interaction.options.getString('type') === 'voice' ? 'voice' : 'text';
+  const label = type === 'voice' ? 'voice level' : 'level';
 
   if (sub === 'remove') {
-    const removed = await levelRewardsDb.removeReward(interaction.guild.id, level);
-    await reply(interaction, removed ? `${EMOJI.APPROVE}  Removed the level ${level} reward.` : `No reward configured for level ${level}.`, removed ? 0xa5ea7a : 0x4b4f59);
+    const removed = await levelRewardsDb.removeReward(interaction.guild.id, level, type);
+    await reply(interaction, removed ? `${EMOJI.APPROVE}  Removed the ${label} ${level} reward.` : `No reward configured for ${label} ${level}.`, removed ? 0xa5ea7a : 0x4b4f59);
     return;
   }
 
   const role = interaction.options.getRole('role', true);
-  await levelRewardsDb.setReward(interaction.guild.id, level, role.id);
-  await reply(interaction, `${EMOJI.APPROVE}  Members will now get ${role} at level **${level}**.`);
+  await levelRewardsDb.setReward(interaction.guild.id, level, role.id, type);
+  await reply(interaction, `${EMOJI.APPROVE}  Members will now get ${role} at ${label} **${level}**.`);
 }
 
 async function multiplierCmd(interaction, sub) {
@@ -681,20 +767,22 @@ async function multiplierCmd(interaction, sub) {
 
   if (sub === 'list') {
     const multipliers = await levelMultipliersDb.listMultipliers(interaction.guild.id);
-    const text = multipliers.length ? multipliers.map((m) => `${m.target_type === 'role' ? `<@&${m.target_id}>` : `<#${m.target_id}>`} → ×${m.multiplier}`).join('\n') : 'No multipliers configured.';
+    const text = multipliers.length ? multipliers.map((m) => `${m.target_type === 'role' ? `<@&${m.target_id}>` : `<#${m.target_id}>`}${m.target_type === 'category' ? ' (category)' : ''} → ×${m.multiplier}`).join('\n') : 'No multipliers configured.';
     await reply(interaction, text, 0x4b4f59);
     return;
   }
 
   const role = interaction.options.getRole('role');
   const channel = interaction.options.getChannel('channel');
-  if (!role && !channel) {
-    await reply(interaction, 'Provide a `role` or a `channel`.', 0xfe6465);
+  const category = interaction.options.getChannel('category');
+  if (!role && !channel && !category) {
+    await reply(interaction, 'Provide a `role`, a `channel` or a `category`.', 0xfe6465);
     return;
   }
-  const targetId = role ? role.id : channel.id;
-  const targetType = role ? 'role' : 'channel';
-  const targetMention = role ?? channel;
+  const target = role ?? category ?? channel;
+  const targetId = target.id;
+  const targetType = role ? 'role' : category ? 'category' : 'channel';
+  const targetMention = target;
 
   if (sub === 'remove') {
     const removed = await levelMultipliersDb.removeMultiplier(interaction.guild.id, targetId);

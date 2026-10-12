@@ -7,9 +7,33 @@ const { getTemplate } = require('../../db/embedTemplates');
 const rolloutsDb = require('../../db/rollouts');
 const rolloutApi = require('../../utils/rolloutApi');
 const { rolloutMessage, SECTIONS } = require('../../utils/rolloutMessages');
+const { register, buildPage } = require('../../utils/pager');
 const { canUseRollouts } = require('../../utils/rolloutAlerts');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+
+const LIST_PER_PAGE = 10;
+const LIST_MAX_PAGES = 10;
+
+/** The date an experiment is named after (`2026-10-...` is 202610), 0 when it has none, to put the newest first. */
+const rolloutMonth = (entry) => {
+  const match = /^(\d{4})[-_](\d{1,2})/.exec(entry.id);
+  return match ? Number(match[1]) * 100 + Number(match[2]) : 0;
+};
+
+// The list of experiments, the newest first, ten to a page and at most ten pages.
+register('rollouts', {
+  perPage: LIST_PER_PAGE,
+  async load() {
+    const list = (await rolloutApi.fetchRollouts({ force: false })).list;
+    // The list is already from the newest to the oldest; the month only puts the ones with no date at the end, and the sort is stable.
+    const items = [...list].sort((a, b) => rolloutMonth(b) - rolloutMonth(a)).slice(0, LIST_PER_PAGE * LIST_MAX_PAGES).map((entry) => {
+      const share = entry.percent != null ? ` · ${Number(entry.percent.toFixed(2))}%` : '';
+      return `- **${entry.title}**${share} · ${rolloutApi.STATUS_LABELS[entry.status ?? 'none'] ?? entry.status}\n  -# \`${entry.id}\``;
+    });
+    return { items, title: 'Rollouts, newest first', subtitle: ['Discord experiments, from the most recent to the oldest.'], empty: 'The list has nothing to show right now.' };
+  },
+});
 
 const textChannels = [ChannelType.GuildText, ChannelType.GuildAnnouncement];
 
@@ -29,7 +53,7 @@ const HELP = [
   '- `!rollouts style card` or `!rollouts style template <saved embed>`. `!rollouts card hide|show <section>` and `!rollouts color #ff91c2` change the card.',
   '- The dashboard has everything in one page, with a preview and a different saved embed for each kind.',
   '**Check it**',
-  '- `!rollouts test` sends an example here. `!rollouts list` shows what is rolling out now.',
+  '- `!rollouts test` sends an example here. `!rollouts list` shows the experiments from the newest to the oldest, ten to a page.',
   '- `!rollouts queue` shows what is waiting to be sent. `!rollouts status` shows your settings.',
 ].join('\n');
 
@@ -142,7 +166,7 @@ module.exports = {
       const hex = String(interaction.options.getString('hex') ?? '').trim().replace(/^#/, '');
       if (hex && !/^[0-9a-f]{6}$/i.test(hex)) return reply('Give the color as 6 hex digits, such as `#ff91c2`.');
       await save({ accent_color: hex ? parseInt(hex, 16) : null });
-      return reply(`${EMOJI.APPROVE}  ${hex ? `The card color is #${hex.toLowerCase()}.` : 'The card uses the color of each event.'}`);
+      return reply(`${EMOJI.APPROVE}  ${hex ? `The card color is #${hex.toLowerCase()}.` : 'The card has no color.'}`);
     }
 
     if (sub === 'help') return reply(HELP);
@@ -157,11 +181,7 @@ module.exports = {
       let list;
       try { list = (await rolloutApi.fetchRollouts({ force: true })).list; } catch (error) { return reply(`${EMOJI.DENY}  The list could not be read: ${error.message}`); }
       const live = list.filter((entry) => ['rolling_out', 'rolling_back', 'ab_test', 'segmented'].includes(entry.status) && entry.percent != null);
-      if (sub === 'list') {
-        if (!live.length) return reply('No experiment is rolling out right now.');
-        const lines = live.sort((a, b) => (b.percent ?? 0) - (a.percent ?? 0)).slice(0, 20).map((entry) => `- **${entry.title}** · ${Number(entry.percent.toFixed(2))}% · ${rolloutApi.STATUS_LABELS[entry.status] ?? entry.status}`);
-        return reply(`## Rolling out now\n${lines.join('\n')}${live.length > 20 ? `\n-# and ${live.length - 20} more` : ''}`);
-      }
+      if (sub === 'list') return interaction.editReply(await buildPage('rollouts', { guild: interaction.guild, userId: interaction.user.id }));
       const sample = live[0] ?? list[0];
       const event = { type: 'increase', rollout: sample, before: { ...sample, percent: Math.max(0, (sample.percent ?? 0) - 12.5), variants: sample.variants.map((variant) => ({ ...variant, percent: Math.max(0, (variant.percent ?? 0) - 12.5) })) }, change: 12.5 };
       const payload = await rolloutMessage(interaction.guild, { ...current, role_id: null }, event);

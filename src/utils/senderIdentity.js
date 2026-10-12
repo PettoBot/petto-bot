@@ -45,7 +45,10 @@ async function sendAs(channel, feature, payload, deps = {}) {
     const hook = await (deps.webhookFor ?? webhookFor)(channel, channel.client);
     if (hook) {
       try {
-        const options = { ...payload, username: name || undefined, avatarURL: avatar ?? undefined };
+        // A webhook cannot answer a message, so the reply is left out when the message has its own look.
+        const { reply: ignoredReply, ...rest } = payload;
+        void ignoredReply;
+        const options = { ...rest, username: name || undefined, avatarURL: avatar ?? undefined };
         if (payload.components?.length) options.withComponents = true;
         if (channel.isThread?.()) options.threadId = channel.id;
         return await hook.send(options);
