@@ -2,8 +2,9 @@ const database = require('./database');
 const { createExpiringCache } = require('../utils/expiringCache');
 
 // Every message of a server passes through the partner check, so its settings are kept for a few seconds. Saving them here
-// forgets them at once; a change made from the dashboard is seen within the 15 seconds.
-const configCache = createExpiringCache(15_000, { name: 'partners-config' });
+// forgets them at once; a change made from the dashboard
+// arrives on petto:invalidate (with Redis), or is seen within the 15 seconds.
+const configCache = createExpiringCache(15_000, { name: 'partners-config', invalidateOn: ['partner_config'] });
 
 const DEFAULTS = {
   enabled: false,

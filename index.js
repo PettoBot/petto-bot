@@ -76,6 +76,8 @@ const client = new Client({
 client.setMaxListeners(30);
 attachRestRateLimitTelemetry(client);
 require('./src/utils/redis').start();
+// The dashboard says on Redis when it changes a setting, so the caches forget it at once instead of when they expire.
+require('./src/utils/cacheInvalidation').startCacheInvalidation();
 require('./src/utils/sharedRestLimit').attachSharedRestLimit(client.rest, config.restRequestsPerSecond);
 logger.setDiscordSink(createDiscordErrorLogSink(client, config.errorLogChannelId));
 logger.addDiscordSink(createGuildDiagnosticSink(client));

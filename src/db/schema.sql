@@ -2693,6 +2693,8 @@ alter table discord_guild_snapshots add column if not exists premium_tier intege
 alter table discord_guild_snapshots add column if not exists boost_count integer;
 alter table discord_guild_snapshots add column if not exists bot_nick text;
 alter table discord_guild_snapshots add column if not exists bot_avatar text;
+-- The server's custom emojis ([{ id, name, animated }]), so the dashboard's emoji pickers do not ask Discord for them.
+alter table discord_guild_snapshots add column if not exists emojis jsonb not null default '[]'::jsonb;
 
 -- A poll can use one of the server's saved Components V2 embeds as its design (with the {poll.*} variables); empty is the default card.
 alter table polls add column if not exists embed_template text;

@@ -1,10 +1,10 @@
-// Keeps the saved copy of every server (name, icon, members, channels, roles) fresh, so the dashboard reads it from the
+// Keeps the saved copy of every server (name, icon, members, channels, roles, emojis) fresh, so the dashboard reads it from the
 // database instead of asking Discord on every page. Changes are saved a few seconds after they happen, and a full pass
 // every 10 minutes catches member counts and anything an event missed.
 const { Events } = require('discord.js');
 const logger = require('../utils/logger');
 const { exclusiveTask } = require('../utils/concurrency');
-const { scheduleGuildSnapshot, removeGuildSnapshot, syncAllGuildSnapshots } = require('../utils/guildSnapshots');
+const { scheduleGuildSnapshot, removeGuildSnapshot, announceGuildChange, syncAllGuildSnapshots } = require('../utils/guildSnapshots');
 
 const INTERVAL_MS = 10 * 60_000;
 
@@ -13,7 +13,7 @@ function startGuildSnapshotJob(client) {
   for (const event of [Events.ChannelCreate, Events.ChannelDelete, Events.RoleCreate, Events.RoleDelete]) {
     client.on(event, (item) => scheduleGuildSnapshot(guildOf(item)));
   }
-  for (const event of [Events.ChannelUpdate, Events.RoleUpdate]) {
+  for (const event of [Events.ChannelUpdate, Events.RoleUpdate, Events.GuildEmojiUpdate]) {
     client.on(event, (_before, after) => scheduleGuildSnapshot(guildOf(after)));
   }
   for (const event of [Events.GuildEmojiCreate, Events.GuildEmojiDelete]) {
@@ -23,12 +23,16 @@ function startGuildSnapshotJob(client) {
   client.on(Events.GuildMemberUpdate, (_before, member) => {
     if (member?.id && member.id === client.user?.id) scheduleGuildSnapshot(member.guild);
   });
-  client.on(Events.GuildCreate, (guild) => scheduleGuildSnapshot(guild));
+  client.on(Events.GuildCreate, (guild) => {
+    scheduleGuildSnapshot(guild);
+    announceGuildChange(guild.id).catch(() => {});
+  });
   client.on(Events.GuildUpdate, (_before, guild) => scheduleGuildSnapshot(guild));
   client.on(Events.GuildDelete, (guild) => {
     // The same event fires when Discord has an outage for that server, and then the bot is still in it.
     if (guild.available === false) return;
     removeGuildSnapshot(guild.id).catch((error) => logger.error(`[snapshots] removing ${guild.id} failed:`, error));
+    announceGuildChange(guild.id).catch(() => {});
   });
 
   const run = exclusiveTask(() => syncAllGuildSnapshots(client));

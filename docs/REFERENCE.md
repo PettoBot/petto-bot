@@ -380,6 +380,15 @@ The hidden prefix-only `!leaveguild <guild_id>` control is restricted to Petto o
 
 **Verification (optional, powers `/verify`):** see "Join verification (Cloudflare Turnstile)" below for the full flow. Needs `VERIFY_BASE_URL` (the public domain the verification page will be served at, e.g. `https://captcha.example.com` — pointed at this process's `WEB_PORT` via reverse proxy/port-forward), `TURNSTILE_SITE_KEY` + `TURNSTILE_SECRET_KEY` (Cloudflare dashboard → Turnstile → your widget), and `VERIFY_TOKEN_SECRET` (a random secret that signs the magic-link tokens — generate one with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`). Leave any of these empty and the web server simply doesn't start; `/verify setup`/`/verify status` still work for configuring the gate ahead of time.
 
+**Redis (optional, `REDIS_URL` or `DISCLOUD_REDIS_URL`):** shares caches, cooldowns and the request limit between processes, and lets the dashboard skip Discord. Without it (or while it is down or slow) every part falls back to what the bot does alone. What the dashboard can rely on:
+
+- `petto:snap:<guildId>`: the saved copy of a server, the same row as `discord_guild_snapshots` (channels, roles and emojis as JSON arrays, `updated_at`), kept 10 minutes and written again by the full pass. A change is published on `petto:snap` with the server id as the message.
+- `petto:guilds`: the server id is published when the bot joins or leaves a server.
+- `petto:members:<guildId>:<userId>`: a member as the members route answers it, kept 10 minutes.
+- `petto:invalidate`: the dashboard publishes `{ "table": "<postgres table>", "guildId": "<id>" }` after it writes a setting, and the bot forgets that server's entry in the caches that read that table (memory and Redis). The tables it understands are `INVALIDATION_TABLES` in `src/utils/cacheInvalidation.js`; a cache declares the tables it reads with the `invalidateOn` option of `createExpiringCache`.
+
+**Dashboard members route:** `POST /api/dashboard/guild/:guildId/members` with the `x-petto-dashboard-key` header, a `user_id` (query or body) who can manage the server, and `{ "ids": ["<user id>", ...] }` (at most 100 snowflakes as strings) answers `{ "ok": true, "members": { "<id>": { "id", "username", "globalName", "displayName", "avatar", "bot" } } }`. `avatar` is the server avatar, else the user's, else `null`. Ids of people who are not in the server are left out. Errors: `401 unauthorized`, `400 invalid_ids` / `too_many_ids`, `403 no_access`, `404 guild_unavailable`. Members come from the bot's memory, then the 10 minute cache, then one gateway request (Request Guild Members) for the rest; it never calls REST.
+
 ### 4. Install and run
 
 ```

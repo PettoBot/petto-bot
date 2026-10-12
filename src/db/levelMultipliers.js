@@ -1,7 +1,7 @@
 const database = require('./database');
 const { createExpiringCache } = require('../utils/expiringCache');
 
-const multiplierCache = createExpiringCache(30_000);
+const multiplierCache = createExpiringCache(30_000, { invalidateOn: ['level_multipliers'] });
 
 async function listMultipliers(guildId) {
   return multiplierCache.get(guildId, async () => {

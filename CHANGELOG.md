@@ -4,6 +4,14 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- The dashboard pages load faster and stop spending the bot's Discord limit. **Run `schema.sql`** (new column `emojis` in `discord_guild_snapshots`; the bot also applies it on start). No new settings: the Redis parts use the existing `REDIS_URL` / `DISCLOUD_REDIS_URL`, and without a Redis everything works as before.
+  - `POST /api/dashboard/guild/:guildId/members` with `{ "ids": [...] }` (up to 100 user ids) answers the name, display name, avatar and bot flag of those members in one call, from what the bot has in memory and then one gateway request for the rest (no REST calls, one call counts once against the limit). Members are kept 10 minutes in Redis (`petto:members:<guild>:<user>`) or in the bot's memory. People who are not in the server are left out. Same access as the other dashboard routes of a server (the dashboard key and a `user_id` who manages it).
+  - The saved copy of each server has its custom emojis (`[{ id, name, animated }]`), refreshed when an emoji is created, edited or deleted (edits were not watched before), so the emoji pickers do not ask Discord.
+  - With Redis, each saved server is also kept in `petto:snap:<guild>` (the same row as the table, 10 minutes) and a change is announced on `petto:snap`; joining or leaving a server is announced on `petto:guilds`.
+  - With Redis, the dashboard can say on `petto:invalidate` (`{ "table": "...", "guildId": "..." }`) that it changed a setting, and the bot forgets that server's cached copy at once instead of up to 30 seconds later. Tables understood: `automod_config`, `automod_silent_channels`, `button_responders`, `level_config`, `level_multipliers`, `partner_config`, `sanction_templates`, `sticky_messages`, `ticket_settings`, `upload_config`, `xp_events` (listed in `src/utils/cacheInvalidation.js`).
+
 ### Fixed
 
 - The members line of `!serverinfo` showed the icon of an unmute (a crossed-out person). It has its own icons now (members and safety), and the sanction emojis are named like they are in the application (`pe_unmute`, `pe_mute`, `pe_ban_hardban`, `pe_tempban`; the IDs did not change).

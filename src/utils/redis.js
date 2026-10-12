@@ -17,6 +17,9 @@ let tooSlow = false;
 let failures = 0;
 let downUntil = 0;
 let lastWarnAt = 0;
+let subscriber = null; // a second connection in subscriber mode (a connection that subscribes can send nothing else)
+let subscriberReady = false;
+const listeners = new Map(); // full channel name -> the handlers of its messages
 
 function enabled() { return Boolean(config.redisUrl); }
 
@@ -53,6 +56,28 @@ function start() {
   client.on('error', (error) => { ready = false; warn(`connection problem: ${error?.message ?? error}`); });
   client.connect().catch((error) => warn(`could not connect: ${error?.message ?? error}`));
   setInterval(() => probe().catch(() => {}), PROBE_EVERY_MS).unref?.();
+  startSubscriber();
+}
+
+function deliver(channel, message) {
+  for (const handler of listeners.get(channel) ?? []) {
+    Promise.resolve().then(() => handler(message)).catch((error) => warn(`a message on ${channel} could not be handled: ${error?.message ?? error}`, 60_000));
+  }
+}
+
+function listen(channel) {
+  return subscriber.subscribe(channel, (message) => deliver(channel, message))
+    .catch((error) => warn(`could not subscribe to ${channel}: ${error?.message ?? error}`));
+}
+
+/** Opens the subscriber connection once there is a client and something to listen to. The client library subscribes again after a reconnect. */
+function startSubscriber() {
+  if (subscriber || !client || !listeners.size) return;
+  subscriber = client.duplicate();
+  subscriber.on('error', (error) => warn(`subscriber connection problem: ${error?.message ?? error}`));
+  subscriber.connect()
+    .then(() => { subscriberReady = true; return Promise.all([...listeners.keys()].map(listen)); })
+    .catch((error) => warn(`the subscriber could not connect: ${error?.message ?? error}`));
 }
 
 function available() { return enabled() && ready && !tooSlow && Date.now() >= downUntil; }
@@ -119,4 +144,36 @@ async function countThisSecond(name) {
   }, 0);
 }
 
-module.exports = { enabled, start, available, getJson, setJson, del, claim, countThisSecond };
+/** Several JSON values in one round trip: a Map of the keys that are there (none without Redis). */
+async function getJsonMany(keys) {
+  const found = new Map();
+  if (!keys.length) return found;
+  const raws = await run((redis) => redis.mGet(keys.map((key) => PREFIX + key)), null);
+  (raws ?? []).forEach((raw, index) => {
+    if (raw == null) return;
+    try { found.set(keys[index], JSON.parse(raw)); } catch { /* a broken value is a miss */ }
+  });
+  return found;
+}
+
+/** Publishes `message` on `petto:<channel>`. False when there is no Redis (nobody is told, and nothing waits). */
+async function publish(channel, message) {
+  return run(async (redis) => { await redis.publish(PREFIX + channel, String(message)); return true; }, false);
+}
+
+/**
+ * Calls `handler(message)` for each message published on `petto:<channel>`, over a second connection in subscriber mode. Without a
+ * Redis it is never called (and this answers false): whatever the messages would have done then happens when the caches expire.
+ */
+function subscribe(channel, handler) {
+  if (!enabled() || typeof handler !== 'function') return false;
+  const full = PREFIX + channel;
+  const known = listeners.has(full);
+  if (!known) listeners.set(full, new Set());
+  listeners.get(full).add(handler);
+  if (subscriber && subscriberReady && !known) listen(full);
+  else startSubscriber();
+  return true;
+}
+
+module.exports = { PREFIX, enabled, start, available, getJson, getJsonMany, setJson, del, claim, countThisSecond, publish, subscribe };

@@ -64,6 +64,8 @@ npm run build:ts
 npm start
 ```
 
+After pulling changes, run [`src/db/schema.sql`](src/db/schema.sql) on the database (the bot also applies it on start) when the [changelog](CHANGELOG.md) says so; the current unreleased changes add the `emojis` column to `discord_guild_snapshots`.
+
 Petto currently runs as JavaScript/CommonJS. TypeScript is being adopted incrementally inside the same `src/` tree; the full JS/TS-to-`dist` migration is future work, not a requirement for current contributors.
 
 ## Contributing
