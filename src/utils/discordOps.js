@@ -4,7 +4,7 @@ const logger = require('./logger');
 const { exclusiveTask } = require('./concurrency');
 
 const STATUS_MARKER = 'Petto operational status';
-const STATUS_INTERVAL_MS = 5 * 60_000; // two message edits each time, so not every minute
+const STATUS_INTERVAL_MS = 60_000; // two message edits each minute, a small share of the request limit
 const statusMessages = new Map();
 const STATUS_EMOJIS = {
   online: '<:online:1535353909751709768>',
