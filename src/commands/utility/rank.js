@@ -52,7 +52,6 @@ module.exports = {
       data,
       name: member?.displayName ?? target.username,
       avatarUrl: shown.displayAvatarURL({ size: 256, extension: 'png' }),
-      color: member?.displayColor || null,
       week,
       cardName: config.rank_card ?? null,
       source,
