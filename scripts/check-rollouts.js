@@ -71,7 +71,10 @@ const raw = [
   const plain = buildRolloutCard(events[0], {}).components[0].toJSON();
   assert.equal(plain.accent_color, undefined, 'no color by default');
   assert.equal(plain.components[0].accessory.label, '+12.5% (62.5%)', 'the button shows the change');
-  assert.equal(plain.components[0].accessory.emoji.name, 'pe_rup', 'with the icon of the event');
+  assert.equal(plain.components[0].accessory.emoji, undefined, 'no emoji, so the button stays beside the text');
+  const styleOf = (index) => buildRolloutCard(events[index], {}).components[0].toJSON().components[0].accessory.style;
+  assert.deepEqual([styleOf(0), styleOf(1)].every((style) => [1, 2, 3, 4].includes(style)), true);
+  assert.equal(styleOf(0), 3, 'green when it grows');
   assert.ok(!plain.components[0].accessory.disabled && plain.components[0].accessory.custom_id.startsWith('petto_display:'), 'it looks active and does nothing');
   assert.equal(JSON.stringify(plain).split('"type":14').length - 1, 1, 'one separator');
   assert.ok(JSON.stringify(plain).includes('### '), 'the titles are of three');

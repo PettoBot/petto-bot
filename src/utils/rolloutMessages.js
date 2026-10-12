@@ -10,6 +10,8 @@ const SECTIONS = ['variants', 'ranges', 'status', 'platforms', 'filters'];
 const EVENT_LABELS = { new: 'New experiment', increase: 'Rollout increased', decrease: 'Rollout decreased', status: 'Status changed' };
 // Petto's own icons (never the ones of the sanctions): a person for users, the gear for servers, and so on.
 const KIND_ICONS = { user: EMOJI.ROLLOUT_USERS, guild: EMOJI.ROLLOUT_GUILD, apex_user: EMOJI.ROLLOUT_EXPERIMENT, installation: EMOJI.ROLLOUT_INSTALLATION, unknown: EMOJI.ROLLOUT_NOTHING };
+// The color of the button of the card says what happened: green when it grows, red when it shrinks, blue for a new one, grey for a status.
+const BUTTON_STYLES = { new: ButtonStyle.Primary, increase: ButtonStyle.Success, decrease: ButtonStyle.Danger, status: ButtonStyle.Secondary };
 const EVENT_ICONS = { new: EMOJI.ROLLOUT_NEW, increase: EMOJI.ROLLOUT_UP, decrease: EMOJI.ROLLOUT_DOWN, status: EMOJI.ROLLOUT_RELOAD };
 const ICONS = { rollouts: EMOJI.ROLLOUT_RELOAD, ranges: EMOJI.ROLLOUT_RANGES, status: EMOJI.ROLLOUT_STATUS, platforms: EMOJI.ROLLOUT_PLATFORMS, filters: EMOJI.ROLLOUT_FILTERS };
 
@@ -69,11 +71,6 @@ function rolloutContext(event) {
   };
 }
 
-/** `<:name:id>` as the emoji object of a button. */
-const emojiOf = (value) => {
-  const found = /^<(a?):(\w+):(\d+)>$/.exec(value);
-  return found ? { name: found[2], id: found[3], animated: Boolean(found[1]) } : { name: value };
-};
 const text = (content) => new TextDisplayBuilder().setContent(content);
 const divider = () => new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small);
 
@@ -88,8 +85,8 @@ function buildRolloutCard(event, config = {}, { rolePing = null } = {}) {
   const container = new ContainerBuilder();
   if (Number.isInteger(config.accent_color)) container.setAccentColor(config.accent_color);
   if (rolePing) container.addTextDisplayComponents(text(`-# ${rolePing}`));
-  // The title, and a button that only shows the change: the icon of the event and `+12.5% (50%)`.
-  const changeButton = new ButtonBuilder().setStyle(ButtonStyle.Success).setCustomId(`${DISPLAY_BUTTON_PREFIX}:rollout`).setLabel(badge(event).replace(/\*\*/g, '').slice(0, 80)).setEmoji(emojiOf(EVENT_ICONS[type]));
+  // The title, and a button that only shows the change, such as `+12.5% (50%)`. It has no emoji: with one, Discord puts the button under the text.
+  const changeButton = new ButtonBuilder().setStyle(BUTTON_STYLES[type] ?? ButtonStyle.Secondary).setCustomId(`${DISPLAY_BUTTON_PREFIX}:rollout`).setLabel(badge(event).replace(/\*\*/g, '').slice(0, 80));
   const info = [`- ${KIND_ICONS[rollout.kind] ?? KIND_ICONS.unknown} **Kind:** ${KIND_LABELS[rollout.kind] ?? KIND_LABELS.unknown}`];
   if (!hidden.has('status')) info.push(`- ${ICONS.status} **Status:** ${statusLabel(rollout.status)}`);
   if (!hidden.has('platforms') && rollout.platforms.length) info.push(`- ${ICONS.platforms} **Platforms:** ${rollout.platforms.join(', ')}`);
