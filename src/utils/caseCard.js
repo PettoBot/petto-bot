@@ -45,14 +45,14 @@ const CONFIRM_VERB = {
   unjail: 'was released from jail',
 };
 
-/** The confirmation of a sanction: one line of plain text, with the hammer (the alert for a warn) and no card. */
-function buildCaseCard({ type, target, reason, duration }) {
+/** The confirmation of a sanction: a line of plain text, with the hammer (the alert for a warn) and the case number small under it. */
+function buildCaseCard({ caseNumber, type, target, reason, duration }) {
   const emoji = type === 'warn' ? EMOJI.ALERT : EMOJI.HAMMER;
   const name = target?.username ?? target?.user?.username ?? String(target?.id ?? target);
   const mention = target?.id ? ` (<@${target.id}>)` : '';
   const verb = CONFIRM_VERB[type] ?? 'was sanctioned';
   const during = duration ? ` for **${duration}**` : '';
-  return new TextDisplayBuilder().setContent(`${emoji} **${name}**${mention} ${verb}${during}. Reason: **${reason || 'No reason provided'}**.`);
+  return new TextDisplayBuilder().setContent(`${emoji} **${name}**${mention} ${verb}${during}. Reason: **${reason || 'No reason provided'}**.${caseNumber != null ? `\n-# case · #${caseNumber}` : ''}`);
 }
 
 /** A single-block Components V2 card for plain status text (errors, confirmations) once a reply is already in V2 mode. */
