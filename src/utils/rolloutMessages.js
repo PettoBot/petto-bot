@@ -89,6 +89,8 @@ function buildRolloutCard(event, config = {}, { rolePing = null } = {}) {
   const changeButton = new ButtonBuilder().setStyle(BUTTON_STYLES[type] ?? ButtonStyle.Secondary).setCustomId(`${DISPLAY_BUTTON_PREFIX}:rollout`).setLabel(badge(event).replace(/\*\*/g, '').slice(0, 80));
   const info = [`- ${KIND_ICONS[rollout.kind] ?? KIND_ICONS.unknown} **Kind:** ${KIND_LABELS[rollout.kind] ?? KIND_LABELS.unknown}`];
   if (!hidden.has('status')) info.push(`- ${ICONS.status} **Status:** ${statusLabel(rollout.status)}`);
+  if (rollout.aaMode) info.push(`- ${ICONS.status} **A/A mode:** only measuring, nothing changes for anyone`);
+  if (rollout.employeePercent != null && rollout.employeePercent > 0) info.push(`- ${ICONS.filters} **Employees only:** ${pct(rollout.employeePercent)}`);
   if (!hidden.has('platforms') && rollout.platforms.length) info.push(`- ${ICONS.platforms} **Platforms:** ${rollout.platforms.join(', ')}`);
   info.push(`- [\`${rollout.id}\`](${SOURCE_URL})`);
   // The title and the details are in the section, so it is tall enough and Discord puts the button beside the text, not under it.
