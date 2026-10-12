@@ -1,6 +1,6 @@
 const { MessageFlags } = require('discord.js');
 const giveawaysDb = require('../db/giveaways');
-const { handleForfeit, handleAccept, refreshGiveawayMessage } = require('../utils/giveawayEngine');
+const { handleForfeit, handleAccept, refreshGiveawayMessage, loadPreset, entryProblem } = require('../utils/giveawayEngine');
 
 async function handleEnter(interaction) {
   const giveawayId = Number(interaction.customId.split('::')[1]);
@@ -18,6 +18,15 @@ async function handleEnter(interaction) {
     await refreshGiveawayMessage(interaction.channel, giveaway).catch(() => {});
     await interaction.editReply({ content: 'You left the giveaway.' });
     return;
+  }
+
+  // A preset can ask for a level (messages and/or voice) to enter.
+  if (giveaway.preset_id) {
+    const problem = await entryProblem(giveaway.guild_id, await loadPreset(giveaway.preset_id), interaction.user.id).catch(() => null);
+    if (problem) {
+      await interaction.editReply({ content: problem });
+      return;
+    }
   }
 
   await giveawaysDb.addEntry(giveawayId, interaction.user.id, 1);

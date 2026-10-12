@@ -59,4 +59,33 @@ async function removeRole(presetId, roleId) {
   return data.length > 0;
 }
 
-module.exports = { normalizeName, createPreset, getPreset, getPresetById, removePreset, listPresets, listRoles, upsertRole, removeRole };
+async function listLevels(presetId) {
+  const { data, error } = await database.from('giveaway_preset_levels').select('*').eq('preset_id', presetId).order('level', { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** From `level` of the messages (`text`) or voice levels, a member gets `entries` extra entries. */
+async function upsertLevel(presetId, source, level, entries) {
+  const { data, error } = await database.from('giveaway_preset_levels').upsert({ preset_id: presetId, source: source === 'voice' ? 'voice' : 'text', level, entries }, { onConflict: 'preset_id,source,level' }).select('*').single();
+  if (error) throw error;
+  return data;
+}
+
+async function removeLevel(presetId, source, level) {
+  const { data, error } = await database.from('giveaway_preset_levels').delete().eq('preset_id', presetId).eq('source', source === 'voice' ? 'voice' : 'text').eq('level', level).select('level');
+  if (error) throw error;
+  return data.length > 0;
+}
+
+/** The levels a member needs to enter (0 asks for nothing). */
+async function setRequirements(presetId, { minLevel, minVoiceLevel }) {
+  const patch = {};
+  if (minLevel != null) patch.min_level = minLevel;
+  if (minVoiceLevel != null) patch.min_voice_level = minVoiceLevel;
+  const { data, error } = await database.from('giveaway_presets').update(patch).eq('id', presetId).select('*').single();
+  if (error) throw error;
+  return data;
+}
+
+module.exports = { listLevels, upsertLevel, removeLevel, setRequirements, normalizeName, createPreset, getPreset, getPresetById, removePreset, listPresets, listRoles, upsertRole, removeRole };

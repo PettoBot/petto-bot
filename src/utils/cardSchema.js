@@ -33,11 +33,11 @@ const color = (value, fallback) => {
 const text = (value, max) => String(value ?? '').slice(0, max);
 const bool = (value) => value === true || value === 'true' || value === 1;
 
-/** A background or layer image: an https link, a variable such as {user.avatar}, or `asset:<id>` for an uploaded file. */
+/** A background or layer image: an https link, a variable such as {user.avatar}, `asset:<id>` for an uploaded file, or `petto:<name>` for one of the pictures that come with Petto. */
 function source(value) {
   const src = text(value, LIMITS.src).trim();
   if (!src) return '';
-  if (/^asset:\d{1,18}$/.test(src) || /^\{[a-z0-9_.]+\}$/i.test(src) || /^https:\/\/\S+$/i.test(src)) return src;
+  if (/^asset:\d{1,18}$/.test(src) || /^petto:[a-z0-9-]{3,30}$/.test(src) || /^\{[a-z0-9_.]+\}$/i.test(src) || /^https:\/\/\S+$/i.test(src)) return src;
   return '';
 }
 

@@ -1,4 +1,5 @@
 const giveawaysDb = require('../db/giveaways');
+const levelUsersDb = require('../db/levelUsers');
 const presetsDb = require('../db/giveawayPresets');
 const { formatDuration } = require('./duration');
 const { buildEntryCard, buildEnterRow, buildClaimRow, sendGiveawayResponse } = require('./giveawayCard');
@@ -12,6 +13,40 @@ const DEFAULT_CLAIM_OVER_TEXT = '{user} did not claim **{gw.prize}** in time. Re
 const DEFAULT_ACCEPT_TEXT = '{user} accepted their win for **{gw.prize}**! 🎉';
 const DEFAULT_NO_ENTRIES_TEXT = 'The giveaway for **{gw.prize}** ended with no valid entries.';
 const refreshQueues = new Map();
+
+/**
+ * What a preset asks and gives: its roles (the array), and on the array too `levels` (extra entries from some levels), `minLevel` and
+ * `minVoiceLevel` (the levels needed to enter). They are properties of the array so everything that already takes the roles keeps working.
+ */
+async function loadPreset(presetId) {
+  if (!presetId) return Object.assign([], { levels: [], minLevel: 0, minVoiceLevel: 0 });
+  const [roles, levels, preset] = await Promise.all([presetsDb.listRoles(presetId), presetsDb.listLevels(presetId), presetsDb.getPresetById(presetId)]);
+  return Object.assign([...roles], { levels, minLevel: Number(preset?.min_level ?? 0), minVoiceLevel: Number(preset?.min_voice_level ?? 0) });
+}
+
+/** Extra entries a member earns from their levels: for each kind of level (messages, voice) the best step they have reached. */
+function computeLevelBonus(levelRow, levels) {
+  if (!levels?.length || !levelRow) return 0;
+  let total = 0;
+  for (const source of ['text', 'voice']) {
+    const reached = source === 'voice' ? Number(levelRow.voice_level ?? 0) : Number(levelRow.level ?? 0);
+    const steps = levels.filter((step) => step.source === source && Number(step.level) <= reached);
+    if (steps.length) total += Number(steps.reduce((best, step) => (Number(step.level) > Number(best.level) ? step : best)).entries);
+  }
+  return total;
+}
+
+/** Why a member cannot enter a giveaway of a preset (a text for them), or null when they can. */
+async function entryProblem(guildId, preset, userId) {
+  if (!preset?.minLevel && !preset?.minVoiceLevel) return null;
+  const row = (await levelUsersDb.getUsers(guildId, [userId])).get(userId);
+  const text = Number(row?.level ?? 0);
+  const voice = Number(row?.voice_level ?? 0);
+  const missing = [];
+  if (preset.minLevel > text) missing.push(`message level **${preset.minLevel}** (you are at ${text})`);
+  if (preset.minVoiceLevel > voice) missing.push(`voice level **${preset.minVoiceLevel}** (you are at ${voice})`);
+  return missing.length ? `You need ${missing.join(' and ')} to enter this giveaway.` : null;
+}
 
 /** Bonus entries / claim time a member earns from a preset's roles. Stacking roles sum; non-stacking roles contribute only their single best value. */
 function computePresetBonus(member, presetRoles) {
@@ -29,10 +64,11 @@ function computePresetBonus(member, presetRoles) {
 
 /** Pre-joined text for the {gw.preset} variable — the templating engine has no real loop syntax, so this is built once here. */
 function buildPresetText(presetRoles) {
-  if (!presetRoles?.length) return '';
-  return presetRoles
-    .map((r) => `<@&${r.role_id}> — +${r.entries} entries${r.claim_time_ms ? ` · ${formatDuration(r.claim_time_ms)} to claim` : ''}`)
-    .join('\n');
+  const lines = (presetRoles ?? []).map((r) => `<@&${r.role_id}> — +${r.entries} entries${r.claim_time_ms ? ` · ${formatDuration(r.claim_time_ms)} to claim` : ''}`);
+  if (presetRoles?.minLevel) lines.push(`Needs message level ${presetRoles.minLevel}`);
+  if (presetRoles?.minVoiceLevel) lines.push(`Needs voice level ${presetRoles.minVoiceLevel}`);
+  for (const step of presetRoles?.levels ?? []) lines.push(`${step.source === 'voice' ? 'Voice level' : 'Level'} ${step.level}+ — +${step.entries} entries`);
+  return lines.join('\n');
 }
 
 function weightedDraw(pool, count) {
@@ -53,14 +89,16 @@ function weightedDraw(pool, count) {
 
 /** Builds the weighted entry pool for a giveaway, fetching members only if a preset is attached (flat weight-1 otherwise). */
 async function buildEntryPool(guild, entries, presetRoles) {
-  if (!presetRoles?.length) return entries.map((e) => ({ userId: e.user_id, weight: 1 }));
+  const levels = presetRoles?.levels ?? [];
+  if (!presetRoles?.length && !levels.length) return entries.map((e) => ({ userId: e.user_id, weight: 1 }));
 
+  const levelRows = levels.length ? await levelUsersDb.getUsers(guild.id, entries.map((e) => e.user_id)).catch(() => new Map()) : new Map();
   const pool = [];
   for (const entry of entries) {
     const member = guild.members.cache.get(entry.user_id) ?? (await guild.members.fetch(entry.user_id).catch(() => null));
     if (!member) continue;
     const bonus = computePresetBonus(member, presetRoles);
-    pool.push({ userId: entry.user_id, weight: 1 + bonus.entries });
+    pool.push({ userId: entry.user_id, weight: 1 + bonus.entries + computeLevelBonus(levelRows.get(entry.user_id), levels) });
   }
   return pool;
 }
@@ -155,7 +193,7 @@ async function refreshGiveawayMessageNow(channel, giveaway) {
   const message = await channel.messages.fetch(giveaway.message_id).catch(() => null);
   if (!message) return;
 
-  const presetRoles = giveaway.preset_id ? await presetsDb.listRoles(giveaway.preset_id) : [];
+  const presetRoles = giveaway.preset_id ? await loadPreset(giveaway.preset_id) : [];
   const presetText = buildPresetText(presetRoles);
   const entriesCount = await giveawaysDb.countEntries(giveaway.id);
   const customPayload = await resolveCustomEmbed(channel.guild, channel, giveaway, presetText, entriesCount);
@@ -213,7 +251,7 @@ async function startGiveaway({ guild, channel, hostId, prize, winnersCount, ends
     embed_template: embedTemplate ?? null,
   });
 
-  const presetRoles = presetId ? await presetsDb.listRoles(presetId) : [];
+  const presetRoles = presetId ? await loadPreset(presetId) : [];
   const message = await postGiveawayMessage(channel, giveaway, 0, buildPresetText(presetRoles));
   await giveawaysDb.setMessageId(giveaway.id, message.id);
   return { ...giveaway, message_id: message.id };
@@ -301,7 +339,7 @@ async function endGiveaway(client, giveaway) {
   const configDb = require('../db/giveawayConfig');
   const config = await configDb.ensureConfig(giveaway.guild_id);
 
-  const presetRoles = giveaway.preset_id ? await presetsDb.listRoles(giveaway.preset_id) : [];
+  const presetRoles = giveaway.preset_id ? await loadPreset(giveaway.preset_id) : [];
   const presetText = buildPresetText(presetRoles);
 
   await giveawaysDb.markEnded(giveaway.id);
@@ -338,7 +376,7 @@ async function handleForfeit(client, winnerRow, status) {
 
   const configDb = require('../db/giveawayConfig');
   const config = await configDb.ensureConfig(giveaway.guild_id);
-  const presetRoles = giveaway.preset_id ? await presetsDb.listRoles(giveaway.preset_id) : [];
+  const presetRoles = giveaway.preset_id ? await loadPreset(giveaway.preset_id) : [];
   const presetText = buildPresetText(presetRoles);
 
   await giveawaysDb.setWinnerStatus(winnerRow.id, status);
@@ -367,7 +405,7 @@ async function handleAccept(client, winnerRow) {
 
   const configDb = require('../db/giveawayConfig');
   const config = await configDb.ensureConfig(giveaway.guild_id);
-  const presetRoles = giveaway.preset_id ? await presetsDb.listRoles(giveaway.preset_id) : [];
+  const presetRoles = giveaway.preset_id ? await loadPreset(giveaway.preset_id) : [];
   const presetText = buildPresetText(presetRoles);
 
   await giveawaysDb.setWinnerStatus(winnerRow.id, 'claimed');
@@ -385,7 +423,7 @@ async function rerollGiveaway(client, giveaway, winnersCount) {
 
   const configDb = require('../db/giveawayConfig');
   const config = await configDb.ensureConfig(giveaway.guild_id);
-  const presetRoles = giveaway.preset_id ? await presetsDb.listRoles(giveaway.preset_id) : [];
+  const presetRoles = giveaway.preset_id ? await loadPreset(giveaway.preset_id) : [];
   const presetText = buildPresetText(presetRoles);
 
   const entries = await giveawaysDb.listEntries(giveaway.id);
@@ -403,6 +441,9 @@ async function rerollGiveaway(client, giveaway, winnersCount) {
 }
 
 module.exports = {
+  loadPreset,
+  computeLevelBonus,
+  entryProblem,
   computePresetBonus,
   buildPresetText,
   weightedDraw,

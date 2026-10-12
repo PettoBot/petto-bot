@@ -8,9 +8,21 @@ const imageCards = require('../db/imageCards');
 const cardAssets = require('../db/cardAssets');
 const { getGuildPremium } = require('../db/premium');
 const logger = require('./logger');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const CARD_FILE_NAME = 'card.png';
 const PLACEMENTS = new Set(['default', 'embed', 'attachment']);
+
+// The pictures that come with Petto (src/assets/backgrounds), read once and kept.
+const bundled = new Map();
+async function loadBundled(name) {
+  if (bundled.has(name)) return bundled.get(name);
+  let image = null;
+  try { image = await decode(fs.readFileSync(path.join(__dirname, '../assets/backgrounds', `${name}.png`))); } catch { image = null; }
+  bundled.set(name, image);
+  return image;
+}
 
 function avatarUrl(kind, ctx) {
   if (kind === 'server') return ctx.guild?.iconURL?.({ extension: 'png', size: 512 }) ?? null;
@@ -27,6 +39,8 @@ function depsFor(ctx, guildId) {
       return url ? loadImageFromLink(url) : null;
     },
     loadSource: async (src) => {
+      const own = /^petto:([a-z0-9-]{3,30})$/.exec(src);
+      if (own) return loadBundled(own[1]);
       const asset = /^asset:(\d{1,18})$/.exec(src);
       if (asset) {
         const row = await cardAssets.getAsset(guildId, asset[1]).catch(() => null);
@@ -70,16 +84,16 @@ async function renderCardForMessage(cardRef, ctx) {
 }
 
 /**
- * The rank card a server has not designed: the layout with the bar along the bottom, in Petto's own colors (a warm peach on a deep plum),
- * and teal for voice.
+ * The rank card a server has not designed: the layout with the avatar on the left and the bar under the level, in Petto's own colors
+ * (peach for messages, teal for voice), over a picture that comes with Petto.
  */
 function defaultRankCard(source) {
   const voice = source === 'voice';
   return {
     kind: 'rank',
     mode: 'basic',
-    basic: { preset: 'rankBottom', accent: voice ? '#5eead4' : '#ffb199', title: voice ? 'VOICE LEVEL {level}' : 'LEVEL {level}' },
-    background: { color: '#1b1722', gradient: voice ? { from: '#0f2f2c', to: '#1b1722', angle: 135 } : { from: '#3a1f47', to: '#1b1722', angle: 135 } },
+    basic: { preset: 'rank', accent: voice ? '#5eead4' : '#ffb199', title: voice ? 'VOICE LEVEL {level}' : 'LEVEL {level}' },
+    background: { color: '#120c1a', image: { src: voice ? 'petto:rank-voice' : 'petto:rank-default', fit: 'cover', blur: 0 } },
   };
 }
 

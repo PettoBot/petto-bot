@@ -158,6 +158,18 @@ function milestoneFor(config, level) {
   return found ? String(found.message) : null;
 }
 
+/**
+ * Gives a member the reward roles their levels have earned (messages and voice), without announcing anything. Used when a member comes
+ * back and when the server syncs. Returns how many roles were added.
+ */
+async function syncRewardRoles(guild, member, row, config) {
+  const { getVoiceConfig } = require('./levelSource');
+  let added = 0;
+  if (Number(row?.level) > 0 && await checkRewards(guild, member, Number(row.level), config, 'text').catch(() => null)) added += 1;
+  if (Number(row?.voice_level) > 0 && await checkRewards(guild, member, Number(row.voice_level), getVoiceConfig(config), 'voice').catch(() => null)) added += 1;
+  return added;
+}
+
 async function notifyLevelUp({ client, guild, member, config, level, channel, message = null, source = 'text', earnedRole = null }) {
   if (config.notify_mode === 'off') return;
   const milestone = milestoneFor(config, level);
@@ -291,4 +303,4 @@ async function grantVoiceXp({ client, guild, member, config, xpGain, vcInc = 1, 
   return { ...updated, level: newLevel, leveledUp: newLevel > oldLevel, bonusXp: award.bonus, streak: award.streak };
 }
 
-module.exports = { getMultiplier, canEarnXp, milestoneFor, checkRewards, stripRewardRoles, notifyLevelUp, grantXp, grantVoiceXp };
+module.exports = { syncRewardRoles, getMultiplier, canEarnXp, milestoneFor, checkRewards, stripRewardRoles, notifyLevelUp, grantXp, grantVoiceXp };
