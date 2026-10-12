@@ -30,17 +30,20 @@ const TASKS = {
 const TASK_KINDS = ['video', 'play', 'stream', 'activity'];
 const REWARD_KIND_LIST = ['orbs', 'decoration', 'code', 'ingame', 'nitro'];
 
-// Four public copies of the list of quests are read, so one being late or down does not stop the alerts. The first one is
+// Five public copies of the list of quests are read, so one being late or down does not stop the alerts. The first one is
 // the short list of recent quests of the discord-api-tracker repository (the one that has a new quest within minutes), then
 // the community API, aamiaa/discord-api-diff (which archives Discord's own quest data, every few hours) and the tracker's
 // big file. A quest found by any of them is announced, and the earlier source wins when they differ.
 const COMMUNITY = 'discordquest.com';
+const COMPACT = 'agnonotdev quests (compact)';
 const SOURCES = [
   // The same tracker's short list of recent quests: its own job refreshes it within minutes of a quest starting, well before the big files.
   { name: 'discord-api-tracker (recent)', url: 'https://raw.githubusercontent.com/xGustavvo/discord-api-tracker/main/quest.json' },
   { name: COMMUNITY, url: `${API_BASE}/api/quests`, minIntervalMs: 30 * 60_000 },
   { name: 'discord-api-diff', url: 'https://raw.githubusercontent.com/aamiaa/discord-api-diff/main/quests.json' },
   { name: 'discord-api-tracker', url: 'https://raw.githubusercontent.com/xGustavvo/discord-api-tracker/main/quests.json' },
+  // A compact list of every quest with its limits (platforms, countries, age gate): the main source of the limits. Its shape is its own.
+  { name: COMPACT, url: 'https://gist.githubusercontent.com/agnonotdev/8c2c84d70ae989d1ea2f178566163079/raw/quests-todas-compacto.json', compact: true },
 ];
 // Region and age limits: the community API knows them, and when it is down the tracker keeps a list of its own.
 const REGIONS_URLS = [
@@ -136,6 +139,60 @@ function normalizeQuest(raw, region = null) {
   };
 }
 
+const COMPACT_REWARDS = { orbs: 'orbs', collectible: 'decoration', code: 'code', in_game: 'ingame', nitro: 'nitro' };
+const COMPACT_PLATFORMS = { desktop: 'Desktop', mobile: 'Mobile', playstation: 'PlayStation', xbox: 'Xbox', activity: 'Activity' };
+
+/** A picture of the compact list (a full link) as a Discord CDN link, only for still images. */
+function compactImage(value) {
+  const url = String(value ?? '');
+  return url.startsWith(CDN_BASE) ? cdnImage(url.slice(CDN_BASE.length)) : null;
+}
+
+/** The limits of a quest of the compact list: its countries (or the ones left out), the age gate and who can do it. */
+function compactLimits(requirements) {
+  const include = (Array.isArray(requirements?.regions) ? requirements.regions : []).slice(0, 20).map((c) => clean(c, 4)).filter(Boolean);
+  const exclude = (Array.isArray(requirements?.excluded_regions) ? requirements.excluded_regions : []).slice(0, 20).map((c) => clean(c, 4)).filter(Boolean);
+  return { global: !include.length && !exclude.length, regions: { include, exclude }, ageGate: Boolean(requirements?.age_gate) };
+}
+
+/** One quest of the compact list as the plain object the bot works with, or null when it has no usable id, name or dates. */
+function normalizeCompact(raw) {
+  const id = String(raw?.id ?? '');
+  const name = clean(raw?.name, 100);
+  const startsAt = date(raw?.dates?.starts_at);
+  const expiresAt = date(raw?.dates?.expires_at);
+  if (!/^\d{15,25}$/.test(id) || !name || !startsAt || !expiresAt) return null;
+  const tasks = (Array.isArray(raw.tasks) ? raw.tasks : []).slice(0, 8).map((task) => {
+    const type = clean(task.type, 60);
+    const known = TASKS[type] ?? { kind: 'play', label: type.toLowerCase().replace(/_/g, ' ') || 'Complete the task', platform: 'Desktop' };
+    return { type, kind: known.kind, label: known.label, platform: known.platform, seconds: Math.max(0, Number(task.target) || 0) };
+  });
+  const rewards = (Array.isArray(raw.rewards) ? raw.rewards : []).slice(0, 5).map((reward) => {
+    const kind = COMPACT_REWARDS[reward.type] ?? 'other';
+    const amount = kind === 'orbs' ? Math.max(0, Number(reward.amount) || 0) : 0;
+    const premium = kind === 'orbs' ? (Number(reward.premium_amount) || Math.round(amount * 1.2)) : 0;
+    return { kind, sku: '', name: clean(reward.name, 100) || (kind === 'orbs' && amount ? `${amount} Orbs` : REWARD_LABELS[kind]), amount, premiumAmount: premium > amount ? premium : 0, expiresAt: date(raw.dates?.rewards_expires_at), image: compactImage(reward.image) };
+  });
+  const listed = (Array.isArray(raw.requirements?.platforms) ? raw.requirements.platforms : []).map((p) => COMPACT_PLATFORMS[p]).filter(Boolean);
+  return {
+    id,
+    name,
+    game: clean(raw.game?.name, 100),
+    publisher: clean(raw.game?.publisher, 100),
+    startsAt,
+    expiresAt,
+    url: `https://discord.com/quests/${id}`,
+    link: null,
+    color: '#5865f2',
+    image: compactImage(raw.assets?.hero),
+    logo: compactImage(raw.assets?.logotype) ?? compactImage(raw.assets?.game_tile),
+    rewards,
+    tasks,
+    platforms: listed.length ? [...new Set(listed)] : [...new Set(tasks.map((task) => task.platform))],
+    ...compactLimits(raw.requirements),
+  };
+}
+
 function isActive(quest, now = Date.now()) {
   return quest.startsAt.getTime() <= now && quest.expiresAt.getTime() > now;
 }
@@ -202,7 +259,9 @@ async function readSource(source, force) {
     }
     if (!Array.isArray(result.data)) throw new Error('the answer has an unexpected shape');
     // The short list has the quests themselves, without the `config` wrapper the other files use.
-    entry.quests = result.data.map((raw) => normalizeQuest(raw?.config ? raw : { id: raw?.id, config: raw })).filter(Boolean);
+    entry.quests = source.compact
+      ? result.data.map(normalizeCompact).filter(Boolean)
+      : result.data.map((raw) => normalizeQuest(raw?.config ? raw : { id: raw?.id, config: raw })).filter(Boolean);
     Object.assign(entry, { etag: result.etag ?? null, ok: true, at: new Date(), error: null, strikes: 0 });
     return true;
   } catch (error) {
@@ -234,7 +293,13 @@ async function fetchQuests({ force = false } = {}) {
 function cachedQuests() {
   const merged = new Map();
   for (const source of [...SOURCES].reverse()) for (const quest of state.get(source.name).quests ?? []) merged.set(quest.id, quest);
-  return [...merged.values()].map((quest) => (regionCache.map.has(quest.id) ? { ...quest, ...regionFields(regionCache.map.get(quest.id)) } : quest));
+  // The limits come from the compact list first; the quests it does not have fall back to the region lists.
+  const compact = new Map((state.get(COMPACT).quests ?? []).map((quest) => [quest.id, quest]));
+  return [...merged.values()].map((quest) => {
+    const limits = compact.get(quest.id);
+    if (limits) return { ...quest, global: limits.global, regions: limits.regions, ageGate: limits.ageGate };
+    return regionCache.map.has(quest.id) ? { ...quest, ...regionFields(regionCache.map.get(quest.id)) } : quest;
+  });
 }
 
 /** Forgets the ETags, so the next pass downloads everything again (used when a pass could not finish). */
@@ -259,5 +324,5 @@ function getStatus() {
 
 module.exports = {
   API_BASE, SOURCE_NAME, SOURCE_URL, TRACKER_URL, TASK_KINDS, REWARD_KIND_LIST, REWARD_LABELS,
-  fetchQuests, getQuests, cachedQuests, resetCache, normalizeQuest, isActive, getStatus, cdnImage,
+  fetchQuests, getQuests, cachedQuests, resetCache, normalizeQuest, normalizeCompact, isActive, getStatus, cdnImage,
 };

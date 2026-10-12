@@ -83,7 +83,7 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
   assert.equal(answer.notModified, true); assert.equal(answer.quests.length, 6, 'when nothing changed the list is still given'); assert.ok(calls.some(([, tag]) => tag === '"t1"'));
   assert.equal(calls.filter(([link]) => link.endsWith('/api/quests')).length, 1, 'the community API is not asked again within half an hour');
   await questApi.fetchQuests({ force: true }); assert.equal(calls.filter(([link]) => link.endsWith('/api/quests')).length, 2, 'a forced read asks anyway');
-  assert.equal(questApi.getStatus().ok, true); assert.equal(questApi.getStatus().sources.length, 4);
+  assert.equal(questApi.getStatus().ok, true); assert.equal(questApi.getStatus().sources.length, 5);
   questApi.resetCache(); failTracker = true;
   answer = await questApi.fetchQuests({ force: true });
   assert.equal(answer.notModified, false); assert.equal(answer.quests.length, 6, 'one source failing is not a problem');
@@ -379,6 +379,23 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
     posted8.clear();
     outcome = await resendMissing(client8, { ...settings8, reward_kinds: ['decoration'] }, { api: api8, db: db8, now, pause: 0 });
     assert.equal(outcome.missing, 0, 'the filters of the server apply');
+  }
+  {
+    // The compact list: its limits are the main ones (countries, countries left out, age gate, platforms).
+    const compact = questApi.normalizeCompact({
+      id: '1552766796283641978', name: 'Forgotten Island', dates: { starts_at: '2026-10-11T23:00:00Z', expires_at: '2026-10-18T22:59:00Z', rewards_expires_at: '2026-11-17T22:59:00Z' },
+      game: { name: 'IN CINEMAS OCTOBER 16', publisher: 'Universal Pictures' }, requirements: { platforms: ['activity'], regions: ['GB'], age_gate: true },
+      tasks: [{ type: 'ACHIEVEMENT_IN_ACTIVITY', target: 5, unit: 'count' }], rewards: [{ type: 'orbs', name: '700 Orbs', amount: 700, premium_amount: 840 }],
+      assets: { hero: 'https://cdn.discordapp.com/quests/1547367413320777830/1549122469913305179.jpg' },
+    });
+    assert.equal(compact.name, 'Forgotten Island');
+    assert.deepEqual([compact.global, compact.regions.include, compact.regions.exclude, compact.ageGate], [false, ['GB'], [], true]);
+    assert.deepEqual(compact.platforms, ['Activity']);
+    assert.deepEqual([compact.rewards[0].kind, compact.rewards[0].amount, compact.rewards[0].premiumAmount], ['orbs', 700, 840]);
+    assert.equal(compact.image, 'https://cdn.discordapp.com/quests/1547367413320777830/1549122469913305179.jpg');
+    const left = questApi.normalizeCompact({ id: '1552766796283641979', name: 'Odyssey', dates: { starts_at: '2026-10-01T00:00:00Z', expires_at: '2026-10-08T00:00:00Z' }, requirements: { excluded_regions: ['CA', 'US'] } });
+    assert.deepEqual([left.global, left.regions.exclude], [false, ['CA', 'US']]);
+    assert.equal(questApi.normalizeCompact({ id: 'x', name: 'No' }), null);
   }
   console.log('Checked the quest alerts: the API answer, the filters, who is told, the card, the saved embed and who can use it.');
 })().catch((error) => { console.error(error); process.exit(1); });
