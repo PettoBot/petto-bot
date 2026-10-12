@@ -71,9 +71,9 @@ module.exports = {
   // again, so only the owner, the developers and these testers can set them up.
   questsPublic: process.env.QUESTS_PUBLIC !== 'false',
   questTesterIds: envList('QUESTS_TESTER_IDS'),
-  // Discord rollout alerts (beta): only the owner, the developers and these testers can set them up until ROLLOUTS_PUBLIC=true.
+  // Discord rollout alerts: open to everyone with Manage Server; ROLLOUTS_PUBLIC=false limits them to the owner, the developers and these testers.
   // The list is a community copy of Discord's experiments; ROLLOUTS_URL points to another file with the same shape.
-  rolloutsPublic: process.env.ROLLOUTS_PUBLIC === 'true',
+  rolloutsPublic: process.env.ROLLOUTS_PUBLIC !== 'false',
   rolloutTesterIds: envList('ROLLOUTS_TESTER_IDS'),
   rolloutsUrl: String(process.env.ROLLOUTS_URL || '').trim() || null,
   // Custom commands written in code (Petto Code) are open to every server that can manage commands, with the limit of

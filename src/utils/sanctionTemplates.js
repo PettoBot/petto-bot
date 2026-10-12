@@ -92,7 +92,7 @@ async function sanctionDM({ type, guild, client, reason, duration, user = null, 
  */
 async function sanctionReply(interaction, { type, modCase, target, moderator, reason, duration }) {
   const card = () => buildCaseCard({ caseNumber: modCase.case_number, type, target, moderator, reason, duration });
-  const showCard = () => interaction.editReply({ components: [card()], flags: MessageFlags.IsComponentsV2 });
+  const showCard = () => interaction.editReply({ components: [card()], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
   let payload = null;
   try {
     const name = await templateFor(interaction.guild.id, type, 'reply');

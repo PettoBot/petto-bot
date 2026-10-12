@@ -1,6 +1,6 @@
-// Alerts for Discord's rollouts (beta): a message in a channel when an experiment appears or its rollout changes, in a card the
-// server can style or in one of its saved embeds. The data comes from a community list of Discord's experiments. For now only
-// the team and the testers can set it up (see config.js); the dashboard has the full set of options.
+// Alerts for Discord's rollouts: a message in a channel when an experiment appears or its rollout changes, in a card the
+// server can style or in one of its saved embeds. The data comes from a community list of Discord's experiments. Anyone with Manage
+// Server can set it up (config.js can limit it to the team and the testers); the dashboard has the full set of options.
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = require('discord.js');
 const { ensureGuild } = require('../../db/guilds');
 const { getTemplate } = require('../../db/embedTemplates');
@@ -16,7 +16,7 @@ const textChannels = [ChannelType.GuildText, ChannelType.GuildAnnouncement];
 const EVENT_KINDS = ['new', 'increase', 'decrease', 'status'];
 
 const HELP = [
-  '## Rollout alerts (beta)',
+  '## Rollout alerts',
   'A message in a channel when a Discord experiment appears, its rollout grows or shrinks, or its status changes. Many changes at once are sent in order, a few cards at a time.',
   '**Set it up**',
   '- `!rollouts enable #channel [@role]` turns it on. `!rollouts disable` turns it off.',
@@ -43,13 +43,12 @@ function readList(text, allowed) {
 
 module.exports = {
   prefixOnly: true,
-  hiddenFromHelp: true,
   aliases: ['rollout', 'experiments'],
   data: new SlashCommandBuilder()
     .setName('rollouts')
-    .setDescription('Alerts when a Discord experiment appears or its rollout changes (beta).')
+    .setDescription('Alerts when a Discord experiment appears or its rollout changes.')
     .setDMPermission(false)
-    .addSubcommand((s) => s.setName('enable').setDescription('Turn the alerts on in a channel, e.g. enable #betas @Testers.')
+    .addSubcommand((s) => s.setName('enable').setDescription('Turn the alerts on in a channel, e.g. enable #rollouts @Role.')
       .addChannelOption((o) => o.setName('channel').setDescription('Where the alerts go').addChannelTypes(...textChannels).setRequired(true))
       .addRoleOption((o) => o.setName('role').setDescription('A role to ping with each alert').setRequired(false)))
     .addSubcommand((s) => s.setName('disable').setDescription('Turn the alerts off.'))
@@ -81,10 +80,10 @@ module.exports = {
   async execute(interaction) {
     const reply = (text) => interaction.editReply({ components: [textCard(text, null)], flags: MessageFlags.IsComponentsV2 });
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
-    if (!canUseRollouts(interaction.user.id)) return reply(`${EMOJI.DENY}  Rollout alerts are in beta and only available to Petto's team and testers for now.`);
+    if (!canUseRollouts(interaction.user.id)) return reply(`${EMOJI.DENY}  Rollout alerts are only available to Petto's team and testers for now.`);
     const sub = interaction.options.getSubcommand();
     if (!['list', 'help'].includes(sub) && !interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-      return reply(`${EMOJI.DENY}  You need the Manage Server permission to change the rollout alerts. Anyone in the beta can use \`rollouts list\` and \`rollouts help\`.`);
+      return reply(`${EMOJI.DENY}  You need the Manage Server permission to change the rollout alerts. Anyone can use \`rollouts list\` and \`rollouts help\`.`);
     }
     await ensureGuild(interaction.guild.id);
     const guildId = interaction.guild.id;
@@ -157,7 +156,7 @@ module.exports = {
     if (sub === 'list' || sub === 'test') {
       let list;
       try { list = (await rolloutApi.fetchRollouts({ force: true })).list; } catch (error) { return reply(`${EMOJI.DENY}  The list could not be read: ${error.message}`); }
-      const live = list.filter((entry) => ['rolling_out', 'ab_test', 'segmented'].includes(entry.status) && entry.percent != null);
+      const live = list.filter((entry) => ['rolling_out', 'rolling_back', 'ab_test', 'segmented'].includes(entry.status) && entry.percent != null);
       if (sub === 'list') {
         if (!live.length) return reply('No experiment is rolling out right now.');
         const lines = live.sort((a, b) => (b.percent ?? 0) - (a.percent ?? 0)).slice(0, 20).map((entry) => `- **${entry.title}** · ${Number(entry.percent.toFixed(2))}% · ${rolloutApi.STATUS_LABELS[entry.status] ?? entry.status}`);

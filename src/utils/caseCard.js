@@ -30,20 +30,29 @@ function capitalize(str) {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
-/** Components V2 case card — used for both the command reply and the mod-log channel. */
-function buildCaseCard({ caseNumber, type, target, moderator, reason, duration }) {
-  const emoji = TYPE_EMOJI[type] ?? '';
-  const lines = [
-    `### ${emoji} Case #${caseNumber} · ${capitalize(type)}`.trim(),
-    `**User:** ${target} (\`${target.id ?? target}\`)`,
-    `**Moderator:** ${moderator}`,
-  ];
-  if (duration) lines.push(`**Duration:** ${duration}`);
-  lines.push(`**Reason:** ${reason || 'No reason provided.'}`);
+const CONFIRM_VERB = {
+  ban: 'was banned from the server',
+  hardban: 'was permanently banned from the server',
+  tempban: 'was temporarily banned from the server',
+  softban: 'was softbanned from the server',
+  unban: 'was unbanned from the server',
+  kick: 'was kicked from the server',
+  mute: 'was muted in the server',
+  tempmute: 'was muted in the server',
+  unmute: 'was unmuted in the server',
+  warn: 'was warned',
+  jail: 'was jailed',
+  unjail: 'was released from jail',
+};
 
-  return new ContainerBuilder()
-    .setAccentColor(COLORS[type] ?? 0x4b4f59)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
+/** The confirmation of a sanction: a line of plain text, with the hammer (the alert for a warn) and the case number small under it. */
+function buildCaseCard({ caseNumber, type, target, reason, duration }) {
+  const emoji = type === 'warn' ? EMOJI.ALERT : EMOJI.HAMMER;
+  const name = target?.username ?? target?.user?.username ?? String(target?.id ?? target);
+  const mention = target?.id ? ` (<@${target.id}>)` : '';
+  const verb = CONFIRM_VERB[type] ?? 'was sanctioned';
+  const during = duration ? ` for **${duration}**` : '';
+  return new TextDisplayBuilder().setContent(`${emoji} **${name}**${mention} ${verb}${during}. Reason: **${reason || 'No reason provided'}**.${caseNumber != null ? `\n-# case · #${caseNumber}` : ''}`);
 }
 
 /** A single-block Components V2 card for plain status text (errors, confirmations) once a reply is already in V2 mode. */

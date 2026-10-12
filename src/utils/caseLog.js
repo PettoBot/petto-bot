@@ -1,5 +1,5 @@
 const { sendLog, getAvatar } = require('../logging/engine');
-const { TYPE_EMOJI } = require('./emojis');
+const { EMOJI } = require('./emojis');
 const { COLORS } = require('./caseCard');
 const { sanctionLogEmbed } = require('./sanctionTemplates');
 
@@ -13,12 +13,10 @@ function capitalize(str) {
  * place sanction actions get logged — there's no separate mod-log channel setting.
  */
 async function logSanction(client, guild, { modCase, target, moderator, reason, duration, source = 'moderator' }) {
-  const emoji = TYPE_EMOJI[modCase.type] ?? '';
-
   const embed = {
     author: { name: `${target.username ?? target.id} (ID ${target.id})`, icon_url: getAvatar(target) ?? undefined },
     description: [
-      `${emoji} **${capitalize(modCase.type)}** · Case #${modCase.case_number}`,
+      `${EMOJI.HAMMER} **${capitalize(modCase.type)}** · Case #${modCase.case_number}`,
       `**Moderator:** <@${moderator.id}> (**${moderator.username}**)`,
       `**Duration:** ${duration ?? (['ban', 'hardban', 'mute', 'jail'].includes(modCase.type) ? 'Permanent' : 'N/A')}`,
       `**Reason:** ${reason || 'No reason provided.'}`,

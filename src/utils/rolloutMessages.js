@@ -25,11 +25,14 @@ function badge(event) {
   return `${signed(change)} (${pct(rollout.percent)})`.slice(0, 80);
 }
 
+/** `Variant 1`, or `No variant` for the ones the list marks with -1 or "none". */
+const variantName = (variant) => (['-1', 'none'].includes(String(variant.variant)) ? 'No variant' : `Variant ${variant.variant}`);
+
 /** The variants as lines for a code block: `Variant 1: 37.5% → 50% (+12.5%)`. */
 function variantLines(event) {
   const before = new Map((event.before?.variants ?? []).map((variant) => [variant.variant, variant]));
   return event.rollout.variants.filter((variant) => variant.role !== 'not_eligible').map((variant) => {
-    const name = variant.role === 'control' ? `Variant ${variant.variant} (control)` : `Variant ${variant.variant}`;
+    const name = variant.role === 'control' ? `${variantName(variant)} (control)` : variantName(variant);
     const old = before.get(variant.variant);
     if (old && old.percent != null && variant.percent != null && Math.abs(old.percent - variant.percent) >= 0.01) {
       return `${name}: ${pct(old.percent)} → ${pct(variant.percent)} (${signed(variant.percent - old.percent)})`;
@@ -39,7 +42,7 @@ function variantLines(event) {
 }
 
 function rangeLines(event) {
-  return event.rollout.variants.filter((variant) => variant.ranges.length && variant.role !== 'not_eligible').map((variant) => `Variant ${variant.variant}: ${variant.ranges.slice(0, 8).map((range) => `(${range})`).join(' ')}${variant.ranges.length > 8 ? ' …' : ''}`);
+  return event.rollout.variants.filter((variant) => variant.ranges.length && variant.role !== 'not_eligible').map((variant) => `${variantName(variant)}: ${variant.ranges.slice(0, 8).map((range) => `(${range})`).join(' ')}${variant.ranges.length > 8 ? ' …' : ''}`);
 }
 
 /** What `{rollout.*}` gives in a saved embed. */
@@ -87,13 +90,14 @@ function buildRolloutCard(event, config = {}, { rolePing = null } = {}) {
   if (rolePing) container.addTextDisplayComponents(text(`-# ${rolePing}`));
   // The title, and a button that only shows the change: the icon of the event and `+12.5% (50%)`.
   const changeButton = new ButtonBuilder().setStyle(ButtonStyle.Success).setCustomId(`${DISPLAY_BUTTON_PREFIX}:rollout`).setLabel(badge(event).replace(/\*\*/g, '').slice(0, 80)).setEmoji(emojiOf(EVENT_ICONS[type]));
-  container.addSectionComponents(new SectionBuilder().addTextDisplayComponents(text(`**${KIND_ICONS[rollout.kind] ?? KIND_ICONS.unknown} ${rollout.title}**`)).setButtonAccessory(changeButton));
-
   const info = [`- ${KIND_ICONS[rollout.kind] ?? KIND_ICONS.unknown} **Kind:** ${KIND_LABELS[rollout.kind] ?? KIND_LABELS.unknown}`];
   if (!hidden.has('status')) info.push(`- ${ICONS.status} **Status:** ${statusLabel(rollout.status)}`);
   if (!hidden.has('platforms') && rollout.platforms.length) info.push(`- ${ICONS.platforms} **Platforms:** ${rollout.platforms.join(', ')}`);
-  info.push(`- \`${rollout.id}\``);
-  container.addTextDisplayComponents(text(info.join('\n')));
+  info.push(`- [\`${rollout.id}\`](${SOURCE_URL})`);
+  // The title and the details are in the section, so it is tall enough and Discord puts the button beside the text, not under it.
+  container.addSectionComponents(new SectionBuilder()
+    .addTextDisplayComponents(text(`**${KIND_ICONS[rollout.kind] ?? KIND_ICONS.unknown} ${rollout.title}**`), text(info.join('\n')))
+    .setButtonAccessory(changeButton));
 
   const variants = variantLines(event);
   const ranges = rangeLines(event);
