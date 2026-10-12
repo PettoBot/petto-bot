@@ -1,4 +1,5 @@
 const remindersDb = require('../db/reminders');
+const { sendAs } = require('../utils/senderIdentity');
 const logger = require('../utils/logger');
 const config = require('../config');
 const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency');
@@ -13,7 +14,7 @@ async function processDueReminders(client) {
       await remindersDb.markSent(reminder.id);
       const channel = await client.channels.fetch(reminder.channel_id).catch(() => null);
       if (channel) {
-        await channel.send({ content: `⏰ <@${reminder.user_id}>, reminder: ${reminder.message}`, allowedMentions: { users: [reminder.user_id] } }).catch(() => {});
+        await sendAs(channel, 'reminders', { content: `⏰ <@${reminder.user_id}>, reminder: ${reminder.message}`, allowedMentions: { users: [reminder.user_id] } }).catch(() => {});
       }
     } catch (err) {
       logger.error(`Failed to send reminder #${reminder.id}:`, err);

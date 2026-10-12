@@ -92,11 +92,9 @@ function summarizeFilter(filter) {
   return type ? type.replace(/_/g, ' ') : 'Filtered';
 }
 
-/** One entry of the list as the plain object the bot works with, or null when it has no usable id. */
-function normalizeRollout(raw) {
-  const id = clean(raw?.id, 120);
-  if (!/^[\w.:-]{3,120}$/.test(id)) return null;
-  const variants = (Array.isArray(raw.variants) ? raw.variants : []).slice(0, 12).map((variant) => {
+/** The variants of an experiment as plain objects (up to 12). */
+function normalizeVariants(list) {
+  return (Array.isArray(list) ? list : []).slice(0, 12).map((variant) => {
     const ranges = (Array.isArray(variant.ranges) ? variant.ranges : []).slice(0, 24).map((range) => clean(range, 24));
     const to = number(variant.to);
     return {
@@ -106,6 +104,13 @@ function normalizeRollout(raw) {
       ranges,
     };
   });
+}
+
+/** One entry of the list as the plain object the bot works with, or null when it has no usable id. */
+function normalizeRollout(raw) {
+  const id = clean(raw?.id, 120);
+  if (!/^[\w.:-]{3,120}$/.test(id)) return null;
+  const variants = normalizeVariants(raw.variants);
   const filters = [
     ...(Array.isArray(raw.filters) ? raw.filters : []),
     ...(Array.isArray(raw.populations) ? raw.populations.flatMap((population) => population.filters ?? []) : []),
@@ -119,6 +124,9 @@ function normalizeRollout(raw) {
     title: clean(raw.title, 100) || humanize(id),
     kind,
     status: raw.rollout_status ? clean(raw.rollout_status, 30) : null,
+    // A/A mode (the experiment only measures, nothing changes for anyone) and the part reserved for employees; neither is added to the share.
+    aaMode: raw.aa_mode === true,
+    employeePercent: number(raw.internal_employee_only?.total?.to) ?? sharePercent(normalizeVariants(raw.internal_employee_only?.variants)),
     platforms: (Array.isArray(raw.platforms) ? raw.platforms : []).slice(0, 6).map((p) => clean(p, 20)),
     percent,
     variants,

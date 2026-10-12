@@ -1,6 +1,7 @@
 // The welcome of a new Partner Manager: it goes to the welcome channel of the server when there is one, and otherwise to the
 // channel it was asked in. Used by `!partnerconfig welcome` and when the manager role is given to someone.
 const { responsePayload } = require('./partnerMessages');
+const { sendAs } = require('./senderIdentity');
 
 /** Sends the welcome; false when there is no channel to send it to. */
 async function sendManagerWelcome({ guild, member, config, fallbackChannel = null }) {
@@ -8,7 +9,7 @@ async function sendManagerWelcome({ guild, member, config, fallbackChannel = nul
   const channel = configured?.isTextBased?.() ? configured : fallbackChannel;
   if (!channel?.send) return false;
   const payload = await responsePayload(guild.id, config, 'manager_welcome', { guild, member, user: member.user, channel, partner: {} });
-  const sent = await channel.send({ ...payload, allowedMentions: { users: [member.id] } }).catch(() => null);
+  const sent = await sendAs(channel, 'partners', { ...payload, allowedMentions: { users: [member.id] } }).catch(() => null);
   return Boolean(sent);
 }
 

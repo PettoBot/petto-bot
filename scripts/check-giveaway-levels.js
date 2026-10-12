@@ -22,6 +22,7 @@ stub('src/db/giveawayPresets.js', {
   getPresetById: async () => ({ id: 1, min_level: 5, min_voice_level: 0 }),
 });
 stub('src/utils/giveawayCard.js', {});
+stub('src/utils/senderIdentity.js', { sendAs: async () => null });
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
 stub('src/utils/emojis.js', { EMOJI: {} });
 const { loadPreset, computeLevelBonus, entryProblem, buildPresetText, weightedDraw } = require('../src/utils/giveawayEngine');

@@ -4,6 +4,7 @@
 // remembers what exists, so turning the alerts on never floods a channel, and the state is kept up to date even when no server uses the
 // alerts, so the first server that does gets only what is new.
 const rolloutApi = require('./rolloutApi');
+const { sendAs } = require('./senderIdentity');
 const rolloutsDb = require('../db/rollouts');
 const { diffRollouts, matchesEvent, snapshotOf, staleSnapshots } = require('./rolloutDiff');
 const { rolloutMessage, buildRolloutDigest } = require('./rolloutMessages');
@@ -94,7 +95,7 @@ async function drainQueue(client, deps = {}) {
       const payload = asDigest
         ? buildRolloutDigest(events, settings, { rolePing: settings.role_id ? `<@&${settings.role_id}>` : null })
         : await rolloutMessage(target.guild, settings, events[0]);
-      await target.channel.send(payload);
+      await sendAs(target.channel, 'rollouts', payload);
       await db.removeQueued(batch.map((row) => row.id));
       result.messages += 1;
       result.events += batch.length;

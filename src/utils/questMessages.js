@@ -142,8 +142,6 @@ function buildQuestCard(quest, config = {}, { kind = 'new', rolePing = null } = 
     container.addSeparatorComponents(divider());
     container.addTextDisplayComponents(text(`## ${EMOJI.QUEST_ALERT} Limitations\n${limits.map((line) => `* ${line}`).join('\n')}`));
   }
-  container.addSeparatorComponents(divider());
-  container.addTextDisplayComponents(text(CREDIT));
   // Discord refuses a link button whose address is longer than 512 characters, and with it the whole message, so a button
   // whose address does not fit is left out (the title of the card still links to the quest).
   const buttons = [];
@@ -207,8 +205,6 @@ function buildQuestList(quests, { page = 1 } = {}) {
       new ButtonBuilder().setCustomId(`${PAGE_ID}:${current + 1}`).setLabel('Next').setStyle(ButtonStyle.Secondary).setDisabled(current >= pages),
     ));
   }
-  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(CREDIT));
   return { components: [container], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } };
 }
 

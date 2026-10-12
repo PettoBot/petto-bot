@@ -9,6 +9,7 @@ const {
   commandMention,
   commandSubcommandMention,
   ensureAdminSetupChannel,
+  findFallbackChannel,
   buildAdminSetupMessage,
   buildOwnerGuide,
   sendSetupMessage,
@@ -80,22 +81,33 @@ module.exports = {
       const setupMention = await commandMention(guild.client, 'setup', guild);
       const reportConfigMention = await commandSubcommandMention(guild.client, 'report', 'config', guild);
 
-      if (setupChannel) {
-        await sendSetupMessage(setupChannel, buildAdminSetupMessage({
-          botId: guild.client.user.id,
-          setupMention,
-          reportConfigMention,
-          prefix: guildConfig.prefix || '!',
-        })).catch((err) => {
+      const setupPayload = (fallback) => buildAdminSetupMessage({
+        botId: guild.client.user.id,
+        setupMention,
+        reportConfigMention,
+        prefix: guildConfig.prefix || '!',
+        fallback,
+      });
+      // The private channel is the first choice; when it could not be made (or written to), the message goes to a public channel, or a private one.
+      let setupTarget = setupChannel;
+      if (setupTarget) {
+        const sent = await sendSetupMessage(setupTarget, setupPayload(false)).catch((err) => {
           logger.error(`Could not send setup welcome message in guild ${guild.id}:`, err);
+          return null;
         });
+        if (!sent) setupTarget = null;
+      }
+      if (!setupTarget) {
+        const fallbackChannel = findFallbackChannel(guild);
+        const sent = fallbackChannel ? await sendSetupMessage(fallbackChannel, setupPayload(true)).catch(() => null) : null;
+        if (sent) setupTarget = fallbackChannel;
       }
 
       const ownerUser = await guild.client.users.fetch(OWNER_ID).catch(() => null);
       if (ownerUser) await ownerUser.send({ content }).catch(() => {});
 
-      if (owner?.user && setupChannel) {
-        await owner.user.send(buildOwnerGuide({ guild, setupChannel, setupMention, prefix: guildConfig.prefix || '!' })).catch(() => {});
+      if (owner?.user && setupTarget) {
+        await owner.user.send(buildOwnerGuide({ guild, setupChannel: setupTarget, setupMention, prefix: guildConfig.prefix || '!' })).catch(() => {});
       }
 
       if (inviter && inviter.id !== owner?.id) {

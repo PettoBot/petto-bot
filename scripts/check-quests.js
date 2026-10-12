@@ -200,7 +200,7 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
   assert.ok(text.includes('**Starts:** <t:') && text.includes('**Ends:** <t:') && text.includes('**Platforms:** Desktop') && text.includes('**Task:** Watch a video (2:00)'));
   assert.ok(text.includes('## 🎁 Rewards') && text.includes('**Type:** Virtual currency') && text.includes(`**Amount:** 200 Orbs | ${EMOJI.QUEST_NITRO} 240`));
   assert.ok(text.includes(`## ${EMOJI.QUEST_ALERT} Limitations`) && text.includes('Users residing in United States 🇺🇸') && text.includes('Users over 18 🔞'));
-  assert.ok(text.includes(questApi.SOURCE_NAME), 'the credit is there');
+  assert.ok(!text.includes('Data from'), 'the default card has no credit line');
   const row = card.components[1].toJSON();
   assert.deepEqual(row.components.map((button) => [button.label, button.url]), [['Accept Quest', `https://discord.com/quests/${ids.orbs}`], ['Game page', 'https://example.com/game']]);
   const japan = questApi.normalizeQuest(rawQuest('1550000000000000007', { name: 'Japan only' }), { is_global: false, show_age_gate: false, regions: { include: ['JP'], exclude: ['KR'] } });
