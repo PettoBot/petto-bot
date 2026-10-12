@@ -5,7 +5,7 @@
 // alerts, so the first server that does gets only what is new.
 const rolloutApi = require('./rolloutApi');
 const rolloutsDb = require('../db/rollouts');
-const { diffRollouts, matchesEvent, snapshotOf } = require('./rolloutDiff');
+const { diffRollouts, matchesEvent, snapshotOf, staleSnapshots } = require('./rolloutDiff');
 const { rolloutMessage, buildRolloutDigest } = require('./rolloutMessages');
 const logger = require('./logger');
 const config = require('../config');
@@ -56,7 +56,8 @@ async function checkRollouts(client, deps = {}) {
     result.queued += rows.length;
   }
   // Only what changed is written, and only after it is in the queues, so a failed pass tells the same news again next time (the key keeps it from being queued twice).
-  await db.saveState(events.map((event) => [event.rollout.id, snapshotOf(event.rollout)]));
+  const changed = new Set(events.map((event) => event.rollout.id));
+  await db.saveState([...events.map((event) => [event.rollout.id, snapshotOf(event.rollout)]), ...staleSnapshots(previous, answer.list).filter(([id]) => !changed.has(id))]);
   return result;
 }
 

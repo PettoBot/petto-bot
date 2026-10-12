@@ -2978,3 +2978,34 @@ create table if not exists site_credits (
 );
 create index if not exists site_credits_order_idx on site_credits (kind, sort_order);
 alter table site_credits enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- Levels, second round: the level-up message can answer the message that levelled the member up and delete itself, voice has reward
+-- roles of its own, multipliers also work by category and can stack, a base multiplier for the whole server, who can earn XP, and a
+-- message of its own for some levels. Everything has a default that keeps the old behavior.
+-- ---------------------------------------------------------------------------
+alter table level_config add column if not exists notify_reply boolean not null default true;
+alter table level_config add column if not exists notify_delete_after integer not null default 0 check (notify_delete_after between 0 and 86400);
+alter table level_config add column if not exists notify_ping boolean not null default true;
+alter table level_config add column if not exists voice_notify_reply boolean not null default true;
+alter table level_config add column if not exists voice_notify_delete_after integer not null default 0 check (voice_notify_delete_after between 0 and 86400);
+alter table level_config add column if not exists voice_notify_ping boolean not null default true;
+alter table level_config add column if not exists notify_milestones jsonb not null default '[]';
+alter table level_config add column if not exists voice_notify_milestones jsonb not null default '[]';
+alter table level_config add column if not exists xp_multiplier numeric not null default 1 check (xp_multiplier >= 0 and xp_multiplier <= 20);
+alter table level_config add column if not exists multiplier_mode text not null default 'highest' check (multiplier_mode in ('highest', 'stack', 'sum'));
+alter table level_config add column if not exists multiplier_cap numeric not null default 20 check (multiplier_cap >= 1 and multiplier_cap <= 100);
+alter table level_config add column if not exists no_xp_role_ids text[] not null default '{}';
+alter table level_config add column if not exists only_xp_role_ids text[] not null default '{}';
+alter table level_config add column if not exists ignored_category_ids text[] not null default '{}';
+alter table level_config add column if not exists voice_ignored_category_ids text[] not null default '{}';
+
+-- Reward roles of the voice levels: the same table, with the kind of level they belong to.
+alter table level_rewards add column if not exists source text not null default 'text';
+alter table level_rewards drop constraint if exists level_rewards_source_check;
+alter table level_rewards add constraint level_rewards_source_check check (source in ('text', 'voice'));
+alter table level_rewards drop constraint if exists level_rewards_pkey;
+create unique index if not exists idx_level_rewards_source_level on level_rewards(guild_id, source, level);
+
+alter table level_multipliers drop constraint if exists level_multipliers_target_type_check;
+alter table level_multipliers add constraint level_multipliers_target_type_check check (target_type in ('role', 'channel', 'category'));

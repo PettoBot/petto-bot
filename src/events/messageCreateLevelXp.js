@@ -1,6 +1,6 @@
 const { Events } = require('discord.js');
 const { getConfig } = require('../db/levelConfig');
-const { getMultiplier, grantXp } = require('../utils/levelActions');
+const { getMultiplier, canEarnXp, grantXp } = require('../utils/levelActions');
 const { longEnough, createRepeatGuard } = require('../utils/levelRules');
 const logger = require('../utils/logger');
 
@@ -17,7 +17,7 @@ module.exports = {
     try {
       const config = await getConfig(message.guild.id);
       if (!config?.enabled) return;
-      if (config.ignored_channel_ids.includes(message.channel.id)) return;
+      if (!canEarnXp({ member: message.member, channel: message.channel, config })) return;
 
       // Messages that are not chat do not earn XP, and they do not start the cooldown either.
       if (!longEnough(message.content, config)) return;
@@ -29,7 +29,7 @@ module.exports = {
       cooldowns.set(key, now);
 
       try {
-        const multi = await getMultiplier(message.guild.id, message.channel.id, message.member);
+        const multi = await getMultiplier(message.guild.id, message.channel, message.member, config);
         const base = Math.floor(Math.random() * (config.xp_max - config.xp_min + 1)) + config.xp_min;
         const xpGain = Math.round(base * multi);
 

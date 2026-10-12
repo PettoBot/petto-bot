@@ -1,5 +1,5 @@
 const { getConfig } = require('../db/levelConfig');
-const { getMultiplier, grantVoiceXp } = require('../utils/levelActions');
+const { getMultiplier, canEarnXp, grantVoiceXp } = require('../utils/levelActions');
 const { getVoiceConfig } = require('../utils/levelSource');
 const { voiceEligible } = require('../utils/levelRules');
 const { pruneOldPeriods } = require('../db/levelPeriods');
@@ -16,7 +16,6 @@ async function processGuild(client, guild) {
 
   for (const channel of guild.channels.cache.values()) {
     if (!channel.isVoiceBased?.() || channel.id === guild.afkChannelId) continue;
-    if (voiceConfig.ignored_channel_ids.includes(channel.id)) continue;
 
     const humans = [...channel.members.values()].filter((member) => !member.user.bot).length;
     for (const member of channel.members.values()) {
@@ -27,12 +26,13 @@ async function processGuild(client, guild) {
         muted: member.voice.selfMute || member.voice.serverMute,
       }, voiceConfig);
       if (!eligible) continue;
+      if (!canEarnXp({ member, channel, config: voiceConfig })) continue;
 
       try {
-        const multi = await getMultiplier(guild.id, channel.id, member);
+        const multi = await getMultiplier(guild.id, channel, member, voiceConfig);
         const xpGain = Math.round(config.xp_per_vc_minute * multi);
 
-        await grantVoiceXp({ client, guild, member, config: voiceConfig, xpGain, vcInc: 1 });
+        await grantVoiceXp({ client, guild, member, config: voiceConfig, xpGain, vcInc: 1, channel });
       } catch (err) {
         // Keep one failed member from aborting the rest of this guild's tick.
         // The structured context also makes the Discord diagnostics card useful

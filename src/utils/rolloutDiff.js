@@ -2,11 +2,19 @@
 // or a new status. The first time there is nothing to compare with, so that pass only remembers (see rolloutAlerts).
 const round = (value) => Math.round(value * 100) / 100;
 
+// Raised when the way the percentage is counted changes, so the snapshots kept with the old way are not read as a change.
+const SNAPSHOT_VERSION = 2;
+
 /** What is kept of an experiment to compare it later. */
 function snapshotOf(rollout) {
   const { id, ...rest } = rollout;
   void id;
-  return rest;
+  return { ...rest, _v: SNAPSHOT_VERSION };
+}
+
+/** The snapshots kept with an older way of counting, to be written again with the current one without telling anyone. */
+function staleSnapshots(previous, list) {
+  return list.filter((rollout) => previous.has(rollout.id) && previous.get(rollout.id)?._v !== SNAPSHOT_VERSION).map((rollout) => [rollout.id, snapshotOf(rollout)]);
 }
 
 /** The change in percentage points between two snapshots, or 0 when either has no percentage to compare. */
@@ -24,7 +32,8 @@ function diffRollouts(previous, list) {
   for (const rollout of list) {
     const before = previous.get(rollout.id);
     if (!before) { events.push({ type: 'new', rollout, before: null, change: rollout.percent ?? 0 }); continue; }
-    const change = changeBetween(before, rollout);
+    // A snapshot from the old way of counting cannot say whether the percentage moved, only whether the status did.
+    const change = before._v === SNAPSHOT_VERSION ? changeBetween(before, rollout) : 0;
     if ((before.status ?? null) !== (rollout.status ?? null)) events.push({ type: 'status', rollout, before, change });
     else if (Math.abs(change) >= 0.01) events.push({ type: change > 0 ? 'increase' : 'decrease', rollout, before, change });
   }
@@ -41,4 +50,4 @@ function matchesEvent(event, config) {
   return true;
 }
 
-module.exports = { snapshotOf, changeBetween, diffRollouts, matchesEvent };
+module.exports = { SNAPSHOT_VERSION, snapshotOf, staleSnapshots, changeBetween, diffRollouts, matchesEvent };

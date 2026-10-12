@@ -29,7 +29,13 @@ const raw = [
   const list = raw.map(api.normalizeRollout).filter(Boolean);
   assert.equal(list.length, 4, 'an entry with an unusable id is left out');
   assert.equal(list[1].title, 'Badge directory updates', 'a missing name comes from the id');
-  assert.equal(list[0].percent, 50);
+  assert.equal(list[0].percent, 50, 'the control (variant 0) is not added: only the treatment counts');
+  assert.equal(api.normalizeRollout({ id: '2024-06_message_bookmarks', rollout_status: 'ab_test', variants: [{ variant: 0, role: 'control', to: 5, ranges: ['0 - 500'] }, { variant: 1, role: 'treatment', to: 5, ranges: ['500 - 1000'] }, { variant: 1, role: 'treatment', to: 5, ranges: ['1000 - 1500'] }] }).percent, 10, 'with no total the treatments are added and the control is not');
+  assert.equal(api.normalizeRollout({ id: '2024-06_with_total', total: { to: 18 }, variants: [{ variant: 1, role: 'treatment', to: 8, ranges: ['0 - 800'] }, { variant: 2, role: 'treatment', to: 10, ranges: ['0 - 1000'] }] }).percent, 18, 'the total of the list is used when it has one');
+  assert.equal(api.normalizeRollout({ id: '2024-04_overlap', variants: [{ variant: 0, role: 'control', to: 100, ranges: ['0 - 10000'] }, { variant: 7, role: 'treatment', to: 100, ranges: ['0 - 10000'] }, { variant: -1, role: 'not_eligible', to: 100, ranges: ['0 - 10000'] }] }).percent, 100, 'a part that two variants cover is counted once');
+  assert.equal(api.normalizeRollout({ id: '2024-04_no_ranges', variants: [{ variant: 0, role: 'control', to: 5 }, { variant: 1, role: 'treatment', to: 5 }] }).percent, 5, 'with no ranges the percentages of the treatments are added, not the control');
+  assert.equal(api.normalizeRollout({ id: '2024-04_no_roles', variants: [{ variant: 0, to: 10 }, { variant: 1, to: 10 }] }).percent, 10, 'with no roles, variant 0 is the control');
+  assert.equal(api.normalizeRollout({ id: '2024-04_only_total', total: { to: 7 }, variants: [] }).percent, 7, 'the total is the last resort');
   assert.equal(api.rangesPercent(['1600 - 3000', '4000 - 5000']), 24, 'ranges are out of 10000');
   assert.equal(list[2].filters[0], 'Servers of 3 to 50 members');
   assert.equal(list[3].kind, 'unknown');
@@ -46,6 +52,13 @@ const raw = [
   assert.equal(events[0].change, 12.5);
   const down = diffRollouts(before, [{ ...list[0], percent: 40 }, ...list.slice(1)]);
   assert.equal(down[0].type, 'decrease');
+
+  // A snapshot kept with the old way of counting is not read as a change, and is written again.
+  const { staleSnapshots } = require('../src/utils/rolloutDiff');
+  const old = new Map(list.map((entry) => { const snapshot = snapshotOf(entry); delete snapshot._v; return [entry.id, { ...snapshot, percent: 1 }]; }));
+  assert.deepEqual(diffRollouts(old, list), [], 'a different percentage in an old snapshot is not a change');
+  assert.equal(staleSnapshots(old, list).length, list.length, 'and it is saved again with the new way');
+  assert.equal(staleSnapshots(before, list).length, 0);
 
   // Filters.
   assert.equal(matchesEvent(events[0], { kinds: [], events: [], min_change: 0 }), true);

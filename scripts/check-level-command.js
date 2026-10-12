@@ -11,6 +11,7 @@ function stub(relative, exports) {
 }
 for (const file of ['src/db/guilds.js', 'src/db/levelConfig.js', 'src/db/levelUsers.js', 'src/db/levelRewards.js', 'src/db/levelMultipliers.js', 'src/utils/levelActions.js', 'src/utils/caseCard.js', 'src/utils/emojis.js', 'src/db/embedTemplates.js', 'src/db/imageCards.js', 'src/db/xpEvents.js', 'src/utils/roleResolve.js', 'src/utils/userResolve.js']) stub(file, {});
 stub('src/utils/emojis.js', { EMOJI: {} });
+stub('src/utils/roleResolve.js', { resolveRole: (guild, token) => ({ id: String(token).replace(/\D/g, '') || '1' }) });
 const command = require('../src/commands/leveling/level.js');
 const { buildInteractionFromMessage } = require('../src/handlers/prefixInteraction');
 
@@ -33,6 +34,17 @@ const parse = async (text) => buildInteractionFromMessage(message, command, text
   i = await parse('rules');
   assert.equal(i.options.getString('setting'), null, 'with nothing typed the rules are only shown');
 
+  // The new options of the second round, as they are typed with the prefix (the ones that are not the first go with --).
+  i = await parse('notify reply --delete_after 30 --ping false');
+  assert.equal(i.options.getSubcommand(), 'notify'); assert.equal(i.options.getString('mode'), 'reply');
+  assert.equal(i.options.getInteger('delete_after'), 30); assert.equal(i.options.getBoolean('ping'), false);
+  i = await parse('notify reply --milestone 50 --message "Level 50, {user}!"');
+  assert.equal(i.options.getInteger('milestone'), 50); assert.equal(i.options.getString('message'), 'Level 50, {user}!');
+  i = await parse('reward add 5 <@&123456789012345678> --type voice');
+  assert.equal(i.options.getSubcommandGroup(), 'reward'); assert.equal(i.options.getString('type'), 'voice'); assert.equal(i.options.getInteger('level'), 5);
+  i = await parse('rules xp_multiplier 1.5');
+  assert.equal(i.options.getString('setting'), 'xp_multiplier'); assert.equal(i.options.getString('value'), '1.5');
+
   i = await parse('event add "Double XP" 2 2h voice 1h');
   assert.equal(i.options.getSubcommandGroup(), 'event'); assert.equal(i.options.getSubcommand(), 'add');
   assert.equal(i.options.getString('name'), 'Double XP'); assert.equal(i.options.getNumber('multiplier'), 2); assert.equal(i.options.getString('duration'), '2h');
@@ -44,9 +56,9 @@ const parse = async (text) => buildInteractionFromMessage(message, command, text
 
   // The order of the options of notify did not change when `card` was added: message is still the sixth, card the seventh.
   const notify = command.data.toJSON().options.find((option) => option.name === 'notify').options.map((option) => option.name);
-  assert.deepEqual(notify, ['mode', 'channel', 'embed', 'embed_template', 'every', 'message', 'card']);
+  assert.deepEqual(notify, ['mode', 'channel', 'embed', 'embed_template', 'every', 'message', 'card', 'reply', 'delete_after', 'ping', 'milestone']);
   const voiceNotify = command.data.toJSON().options.find((option) => option.name === 'voice-notify').options.map((option) => option.name);
-  assert.deepEqual(voiceNotify, ['mode', 'channel', 'embed', 'embed_template', 'every', 'message', 'card']);
+  assert.deepEqual(voiceNotify, ['mode', 'channel', 'embed', 'embed_template', 'every', 'message', 'card', 'delete_after', 'ping', 'milestone']);
 
   const { readRuleValue, RULE_SETTINGS } = command;
   assert.equal(readRuleValue(RULE_SETTINGS.min_chars, '5'), 5);

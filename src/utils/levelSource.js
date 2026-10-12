@@ -21,6 +21,11 @@ function getVoiceConfig(config) {
     notify_every: config?.voice_notify_every ?? 1,
     role_mode: config?.voice_role_mode ?? config?.role_mode ?? 'highest',
     ignored_channel_ids: config?.voice_ignored_channel_ids ?? config?.ignored_channel_ids ?? [],
+    ignored_category_ids: config?.voice_ignored_category_ids ?? config?.ignored_category_ids ?? [],
+    notify_reply: config?.voice_notify_reply ?? true,
+    notify_delete_after: config?.voice_notify_delete_after ?? 0,
+    notify_ping: config?.voice_notify_ping ?? true,
+    notify_milestones: config?.voice_notify_milestones ?? [],
   };
 }
 

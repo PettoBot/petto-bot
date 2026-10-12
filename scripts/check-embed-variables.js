@@ -1,3 +1,4 @@
+const assert = require('node:assert/strict');
 // Fails when the variable list shown to people and the engine that resolves variables disagree.
 const fs = require('node:fs');
 const path = require('node:path');
@@ -57,4 +58,13 @@ if (problems.length) {
   process.exit(1);
 }
 
-console.log(`Checked ${listed.length} embed variables against the engine.`);
+// A variable is found whatever its case, with spaces inside the braces, and by the names other bots use for it.
+(async () => {
+  const { resolve } = require('../src/utils/embedVariables');
+  const user = { id: '42', username: 'liam', displayAvatarURL: () => 'avatar' };
+  const ctx = { user, levelData: { level: 5, xp: 1200, progress: 40, rank: 3, total: 20 }, levelReward: { id: '7', name: 'Gold' } };
+  assert.equal(await resolve('{user.mention}|{ User.Mention }|{USER_MENTION}|{mention}', ctx), '<@42>|<@42>|<@42>|<@42>');
+  assert.equal(await resolve('{level.rank}/{level.total} {level.role_name} {level_role}', ctx), '3/20 Gold <@&7>');
+  assert.equal(await resolve('{not.a.variable} stays', ctx), '{not.a.variable} stays', 'an unknown variable is left as it was');
+  console.log(`Checked ${listed.length} embed variables against the engine.`);
+})();

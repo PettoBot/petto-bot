@@ -39,6 +39,45 @@ function rangesPercent(ranges) {
 }
 
 /** One filter of an experiment as a short line. Every type the list can have has its own line; an unknown one is shown by its name. */
+/** The ranges of a list as `[from, to]` pairs of the 10000 buckets. */
+function rangePairs(ranges) {
+  const pairs = [];
+  for (const range of ranges ?? []) {
+    const match = /^\s*(\d+)\s*-\s*(\d+)\s*$/.exec(String(range));
+    if (match && Number(match[2]) > Number(match[1])) pairs.push([Number(match[1]), Number(match[2])]);
+  }
+  return pairs;
+}
+
+/** Whether a variant is the one people are tested with: the treatments, and, when the list gives no roles, every variant that is not the control (variant 0) or "none". */
+function isTreatment(variant) {
+  if (variant.role === 'treatment') return true;
+  if (variant.role) return false;
+  return !['0', '-1', 'none', ''].includes(String(variant.variant));
+}
+
+/**
+ * The share of Discord an experiment reaches: the treatments are added, and the control (variant 0) is not, nor the ones that are not eligible.
+ * The ranges say it best, joined so two variants that cover the same part are not counted twice; with no ranges the percentages of the treatments
+ * are added (up to 100). Null when there is nothing to count.
+ */
+function sharePercent(variants) {
+  const counted = variants.filter(isTreatment);
+  const pairs = counted.flatMap((variant) => rangePairs(variant.ranges)).sort((a, b) => a[0] - b[0]);
+  if (pairs.length) {
+    let covered = 0;
+    let end = 0;
+    for (const [from, to] of pairs) {
+      const start = Math.max(from, end);
+      if (to > start) covered += to - start;
+      end = Math.max(end, to);
+    }
+    return round(Math.min(100, covered / 100));
+  }
+  const known = counted.filter((variant) => variant.percent != null);
+  return known.length ? round(Math.min(100, known.reduce((sum, variant) => sum + variant.percent, 0))) : null;
+}
+
 function summarizeFilter(filter) {
   const type = clean(filter?.type, 60);
   const args = filter?.args ?? {};
@@ -71,9 +110,9 @@ function normalizeRollout(raw) {
     ...(Array.isArray(raw.filters) ? raw.filters : []),
     ...(Array.isArray(raw.populations) ? raw.populations.flatMap((population) => population.filters ?? []) : []),
   ].slice(0, 8).map(summarizeFilter);
-  const treated = variants.filter((variant) => variant.role === 'treatment');
   const total = number(raw.total?.to);
-  const percent = total ?? (treated.length ? round(treated.reduce((sum, variant) => sum + (variant.percent ?? 0), 0)) : null);
+  // The list gives its own total for almost every experiment (it matches the treatments); without one the treatments are counted, never the control.
+  const percent = total ?? sharePercent(variants);
   const kind = KINDS.includes(raw.kind) ? raw.kind : 'unknown';
   return {
     id,
@@ -139,4 +178,4 @@ async function fetchRollouts({ url = process.env.ROLLOUTS_URL || DEFAULT_URL, fo
 function resetCache() { state.etag = null; }
 function getStatus() { return { ok: state.ok, at: state.at, error: state.error, count: state.list?.length ?? 0 }; }
 
-module.exports = { SOURCE_NAME, SOURCE_URL, KINDS, KIND_LABELS, STATUS_LABELS, normalizeRollout, rangesPercent, humanize, fetchRollouts, resetCache, getStatus };
+module.exports = { SOURCE_NAME, SOURCE_URL, KINDS, KIND_LABELS, STATUS_LABELS, normalizeRollout, rangesPercent, sharePercent, humanize, fetchRollouts, resetCache, getStatus };

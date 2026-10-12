@@ -149,6 +149,10 @@ const VARIABLE_GROUPS = [
       { tok: '{level_messages}', desc: 'Messages counted' },
       { tok: '{level_voice_minutes}', desc: 'Minutes in voice counted' },
       { tok: '{level_type}', desc: 'text or voice' },
+      { tok: '{level_bar}', desc: 'The progress bar to the next level' },
+      { tok: '{level_previous}', desc: 'The level before this one' },
+      { tok: '{level_role}', desc: 'In the level-up message: the reward role the member just earned, as a mention (empty when there is none)' },
+      { tok: '{level_role_name}', desc: 'The name of that reward role' },
     ],
   },
   {
