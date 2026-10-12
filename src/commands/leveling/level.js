@@ -5,7 +5,7 @@ const levelConfigDb = require('../../db/levelConfig');
 const levelUsersDb = require('../../db/levelUsers');
 const levelRewardsDb = require('../../db/levelRewards');
 const levelMultipliersDb = require('../../db/levelMultipliers');
-const { stripRewardRoles } = require('../../utils/levelActions');
+const { stripRewardRoles, syncRewardRoles } = require('../../utils/levelActions');
 const { totalXpForLevel, levelForXp } = require('../../utils/levelCurve');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
@@ -98,6 +98,8 @@ module.exports = {
           { name: 'streak_bonus (extra XP per earlier day in a row)', value: 'streak_bonus' },
           { name: 'streak_max_days (days after which the streak bonus stops growing)', value: 'streak_max_days' },
           { name: 'xp_multiplier (a base multiplier for all XP, e.g. 1.5)', value: 'xp_multiplier' },
+          { name: 'reset_on_leave (wipe the XP and level of a member who leaves)', value: 'reset_on_leave' },
+          { name: 'restore_roles (give the reward roles back to a member who returns)', value: 'restore_roles' },
           { name: 'multiplier_mode (how several role multipliers join: highest, stack or sum)', value: 'multiplier_mode' },
           { name: 'multiplier_cap (the most a combined multiplier can reach)', value: 'multiplier_cap' },
         ))
@@ -173,7 +175,8 @@ module.exports = {
             .addStringOption((o) => o.setName('action').setDescription('Action').setRequired(true).addChoices({ name: 'add', value: 'add' }, { name: 'set', value: 'set' }, { name: 'remove', value: 'remove' }))
             .addUserOption((o) => o.setName('user').setDescription('Member').setRequired(true))
             .addIntegerOption((o) => o.setName('amount').setDescription('Level amount').setRequired(true).setMinValue(0)),
-        ),
+        )
+        .addSubcommand((s) => s.setName('sync').setDescription('Give every member the reward roles their levels have earned, for example after adding rewards.')),
     ),
 
   async execute(interaction) {
@@ -601,6 +604,8 @@ const RULE_SETTINGS = {
   streak_bonus: { column: 'streak_bonus_xp', kind: 'number', min: 0, max: 10000 },
   streak_max_days: { column: 'streak_max_days', kind: 'number', min: 1, max: 365 },
   xp_multiplier: { column: 'xp_multiplier', kind: 'decimal', min: 0, max: 20 },
+  reset_on_leave: { column: 'reset_on_leave', kind: 'flag' },
+  restore_roles: { column: 'restore_roles', kind: 'flag' },
   multiplier_mode: { column: 'multiplier_mode', kind: 'choice', choices: ['highest', 'stack', 'sum'] },
   multiplier_cap: { column: 'multiplier_cap', kind: 'decimal', min: 1, max: 100 },
 };
@@ -653,6 +658,7 @@ function rulesSummary(config) {
     `**Voice needs:** ${config.voice_min_members} people in the channel${config.voice_ignore_muted ? ', not muted' : ''}`,
     `**Daily bonus:** ${config.daily_bonus_xp > 0 ? `${config.daily_bonus_xp} XP` : 'off'}`,
     `**Streak bonus:** ${config.streak_bonus_xp > 0 ? `${config.streak_bonus_xp} XP per earlier day, up to ${config.streak_max_days} days` : 'off'}`,
+    `**Members who leave:** ${config.reset_on_leave ? 'their XP is wiped' : 'their XP is kept'}${config.restore_roles === false ? '' : ', reward roles given back when they return'}`,
     `**Multipliers:** base ×${Number(config.xp_multiplier ?? 1)}, several roles: ${config.multiplier_mode ?? 'highest'}, never above ×${Number(config.multiplier_cap ?? 20)}`,
   ].join('\n');
 }
@@ -795,7 +801,32 @@ async function multiplierCmd(interaction, sub) {
   await reply(interaction, `${EMOJI.APPROVE}  ${targetMention} now gives **×${value}** XP.`);
 }
 
+const SYNC_LIMIT = 2000;
+
+/** Checks the reward roles of the members who have a level: the ones they earned and do not have yet are given. */
+async function syncCmd(interaction) {
+  await defer(interaction);
+  const config = await levelConfigDb.ensureConfig(interaction.guild.id);
+  let checked = 0;
+  let given = 0;
+  for (let offset = 0; checked < SYNC_LIMIT; offset += 100) {
+    const page = await levelUsersDb.listWithLevels(interaction.guild.id, { offset, limit: 100 });
+    if (!page.length) break;
+    const members = await interaction.guild.members.fetch({ user: page.map((row) => row.user_id) }).catch(() => null);
+    for (const row of page) {
+      const member = members?.get(row.user_id);
+      if (!member) continue;
+      checked += 1;
+      given += await syncRewardRoles(interaction.guild, member, row, config);
+      if (given && given % 5 === 0) await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+    if (page.length < 100) break;
+  }
+  await reply(interaction, `${EMOJI.APPROVE}  Checked **${checked}** member${checked === 1 ? '' : 's'} with a level: **${given}** reward role${given === 1 ? '' : 's'} given.${checked >= SYNC_LIMIT ? ` Only the first ${SYNC_LIMIT} were checked; run it again for the rest of a big server.` : ''}`);
+}
+
 async function manageCmd(interaction, sub) {
+  if (sub === 'sync') return syncCmd(interaction);
   if (sub === 'xp') return manageXp(interaction);
   return manageLevel(interaction);
 }

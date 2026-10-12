@@ -3009,3 +3009,22 @@ create unique index if not exists idx_level_rewards_source_level on level_reward
 
 alter table level_multipliers drop constraint if exists level_multipliers_target_type_check;
 alter table level_multipliers add constraint level_multipliers_target_type_check check (target_type in ('role', 'channel', 'category'));
+
+-- ---------------------------------------------------------------------------
+-- Giveaways with levels: a preset can ask for a level to enter (messages and/or voice) and give extra entries from some levels.
+-- ---------------------------------------------------------------------------
+alter table giveaway_presets add column if not exists min_level integer not null default 0 check (min_level between 0 and 10000);
+alter table giveaway_presets add column if not exists min_voice_level integer not null default 0 check (min_voice_level between 0 and 10000);
+
+create table if not exists giveaway_preset_levels (
+  preset_id bigint not null references giveaway_presets(id) on delete cascade,
+  source    text not null default 'text' check (source in ('text', 'voice')),
+  level     integer not null check (level between 1 and 10000),
+  entries   integer not null default 1 check (entries between 0 and 1000),
+  primary key (preset_id, source, level)
+);
+
+alter table giveaway_preset_levels enable row level security;
+
+alter table level_config add column if not exists reset_on_leave boolean not null default false;
+alter table level_config add column if not exists restore_roles boolean not null default true;

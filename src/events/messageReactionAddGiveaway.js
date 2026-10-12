@@ -1,6 +1,6 @@
 const { Events } = require('discord.js');
 const giveawaysDb = require('../db/giveaways');
-const { refreshGiveawayMessage } = require('../utils/giveawayEngine');
+const { refreshGiveawayMessage, loadPreset, entryProblem } = require('../utils/giveawayEngine');
 
 module.exports = {
   name: Events.MessageReactionAdd,
@@ -13,6 +13,15 @@ module.exports = {
       if (!giveaway || giveaway.ended || giveaway.entry_mode !== 'reaction') return;
       if (reaction.emoji.toString() !== giveaway.reaction) return;
 
+      // A preset can ask for a level to enter: the reaction is taken away and the member is told why.
+      if (giveaway.preset_id) {
+        const problem = await entryProblem(giveaway.guild_id, await loadPreset(giveaway.preset_id), user.id);
+        if (problem) {
+          await reaction.users.remove(user.id).catch(() => {});
+          await user.send(problem).catch(() => {});
+          return;
+        }
+      }
       await giveawaysDb.addEntry(giveaway.id, user.id, 1);
       await refreshGiveawayMessage(reaction.message.channel, giveaway);
     } catch {

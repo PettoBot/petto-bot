@@ -23,7 +23,8 @@ stub('src/utils/cardService.js', { renderRankCard: async () => null, CARD_FILE_N
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
 const sent = [];
 stub('src/utils/senderIdentity.js', { sendAs: async (channel, feature, payload) => { const message = { id: `m${sent.length}`, payload, deleted: false, delete: async () => { message.deleted = true; } }; sent.push({ channel: channel.id, feature, message }); return message; } });
-const { getMultiplier, canEarnXp, checkRewards, notifyLevelUp, milestoneFor } = require('../src/utils/levelActions');
+const { getMultiplier, canEarnXp, checkRewards, notifyLevelUp, milestoneFor, syncRewardRoles } = require('../src/utils/levelActions');
+const { getVoiceConfig } = require('../src/utils/levelSource');
 
 const roles = (...ids) => ({ roles: { cache: { has: (id) => ids.includes(id) } } });
 const row = (target_id, target_type, multiplier) => ({ target_id, target_type, multiplier });
@@ -64,6 +65,21 @@ const row = (target_id, target_type, multiplier) => ({ target_id, target_type, m
   earned = await checkRewards(guild, holder, 5, { role_mode: 'all' }, 'text');
   assert.equal(earned.id, 'text5');
   assert.equal(await checkRewards(guild, holder, 4, { role_mode: 'all' }, 'text'), null, 'nothing earned yet');
+
+  // The multipliers and the rules about who earns XP are the same for voice: the voice settings keep them.
+  const voiceSettings = getVoiceConfig({ xp_multiplier: 2, multiplier_mode: 'stack', multiplier_cap: 7, no_xp_role_ids: ['bad'], only_xp_role_ids: ['vip'], ignored_category_ids: ['cat'], voice_ignored_category_ids: ['vcat'] });
+  assert.deepEqual([voiceSettings.xp_multiplier, voiceSettings.multiplier_mode, voiceSettings.multiplier_cap, voiceSettings.no_xp_role_ids, voiceSettings.only_xp_role_ids], [2, 'stack', 7, ['bad'], ['vip']]);
+  assert.deepEqual(voiceSettings.ignored_category_ids, ['vcat'], 'voice has its own ignored categories');
+  assert.equal(await getMultiplier('g', { id: 'vc1', parentId: 'cat' }, roles('r1', 'r2'), voiceSettings), 7, 'a voice channel: base, roles and category, up to the cap');
+  assert.equal(canEarnXp({ member: roles('bad'), channel: { id: 'vc1', parentId: null, isThread: () => false }, config: voiceSettings }), false, 'a role left out earns no voice XP either');
+
+  // Syncing the reward roles: what a member earned and does not have is given, for both kinds of level.
+  rewards = [{ level: 5, role_id: 'text5', source: 'text' }, { level: 5, role_id: 'voice5', source: 'voice' }];
+  given.length = 0;
+  assert.equal(await syncRewardRoles(guild, holder, { level: 6, voice_level: 5 }, { role_mode: 'all' }), 2);
+  assert.deepEqual(given.sort(), ['text5', 'voice5']);
+  given.length = 0;
+  assert.equal(await syncRewardRoles(guild, holder, { level: 1, voice_level: 0 }, { role_mode: 'all' }), 0, 'nothing earned, nothing given');
 
   // The level-up message.
   const target = { id: 'chan', guild, send: async () => null };
