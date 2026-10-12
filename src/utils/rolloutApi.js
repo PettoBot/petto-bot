@@ -49,13 +49,20 @@ function rangePairs(ranges) {
   return pairs;
 }
 
+/** Whether a variant is the one people are tested with: the treatments, and, when the list gives no roles, every variant that is not the control (variant 0) or "none". */
+function isTreatment(variant) {
+  if (variant.role === 'treatment') return true;
+  if (variant.role) return false;
+  return !['0', '-1', 'none', ''].includes(String(variant.variant));
+}
+
 /**
- * The share of Discord an experiment reaches: every variant counts, the control (variant 0) too, and only the ones that are not eligible
- * are left out. The ranges say it best, joined so two variants that cover the same part are not counted twice; with no ranges the
- * percentages of the variants are added (up to 100). Null when there is nothing to count.
+ * The share of Discord an experiment reaches: the treatments are added, and the control (variant 0) is not, nor the ones that are not eligible.
+ * The ranges say it best, joined so two variants that cover the same part are not counted twice; with no ranges the percentages of the treatments
+ * are added (up to 100). Null when there is nothing to count.
  */
 function sharePercent(variants) {
-  const counted = variants.filter((variant) => variant.role !== 'not_eligible');
+  const counted = variants.filter(isTreatment);
   const pairs = counted.flatMap((variant) => rangePairs(variant.ranges)).sort((a, b) => a[0] - b[0]);
   if (pairs.length) {
     let covered = 0;
@@ -104,7 +111,8 @@ function normalizeRollout(raw) {
     ...(Array.isArray(raw.populations) ? raw.populations.flatMap((population) => population.filters ?? []) : []),
   ].slice(0, 8).map(summarizeFilter);
   const total = number(raw.total?.to);
-  const percent = sharePercent(variants) ?? total;
+  // The list gives its own total for almost every experiment (it matches the treatments); without one the treatments are counted, never the control.
+  const percent = total ?? sharePercent(variants);
   const kind = KINDS.includes(raw.kind) ? raw.kind : 'unknown';
   return {
     id,

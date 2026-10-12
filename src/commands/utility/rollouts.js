@@ -183,7 +183,7 @@ module.exports = {
       const live = list.filter((entry) => ['rolling_out', 'rolling_back', 'ab_test', 'segmented'].includes(entry.status) && entry.percent != null);
       if (sub === 'list') return interaction.editReply(await buildPage('rollouts', { guild: interaction.guild, userId: interaction.user.id }));
       const sample = live[0] ?? list[0];
-      const event = { type: 'increase', rollout: sample, before: { ...sample, percent: Math.max(0, (sample.percent ?? 0) - 12.5), variants: sample.variants.map((variant) => ({ ...variant, percent: Math.max(0, (variant.percent ?? 0) - 12.5) })) }, change: 12.5 };
+      const event = { type: 'increase', rollout: sample, before: { ...sample, percent: Math.max(0, (sample.percent ?? 0) - 12.5), variants: sample.variants.map((variant) => (variant.role === 'control' || ['0', '-1', 'none'].includes(String(variant.variant)) ? variant : { ...variant, percent: Math.max(0, (variant.percent ?? 0) - 12.5) })) }, change: 12.5 };
       const payload = await rolloutMessage(interaction.guild, { ...current, role_id: null }, event);
       await interaction.channel.send(payload).catch(() => null);
       return reply(`${EMOJI.APPROVE}  Sent an example here (with an invented +12.5% change on a real experiment).`);
