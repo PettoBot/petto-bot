@@ -99,6 +99,21 @@ async function ensureAdminSetupChannel(guild) {
   return channel;
 }
 
+/**
+ * A channel to send the setup message to when the private one could not be made: the system channel, then a public text channel
+ * where Petto can write, then any text channel where it can (a private one). Null when there is none.
+ */
+function findFallbackChannel(guild) {
+  const me = guild.members.me;
+  if (!me) return null;
+  const canWrite = (channel) => channel.type === ChannelType.GuildText
+    && channel.permissionsFor(me)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages]);
+  const isPublic = (channel) => channel.permissionsFor(guild.roles.everyone)?.has(PermissionFlagsBits.ViewChannel);
+  const texts = [...guild.channels.cache.values()].filter(canWrite).sort((a, b) => a.rawPosition - b.rawPosition);
+  const system = guild.systemChannel && canWrite(guild.systemChannel) ? guild.systemChannel : null;
+  return system ?? texts.find(isPublic) ?? texts[0] ?? null;
+}
+
 async function commandMention(client, commandName, guild = null) {
   try {
     const commands = guild?.commands
@@ -118,7 +133,7 @@ async function commandSubcommandMention(client, commandName, subcommandName, gui
   return `</${commandName} ${subcommandName}:${mention.slice(commandPrefix.length)}`;
 }
 
-function buildAdminSetupMessage({ botId, setupMention, reportConfigMention, prefix }) {
+function buildAdminSetupMessage({ botId, setupMention, reportConfigMention, prefix, fallback = false }) {
   const inviteUrl = `https://discord.com/oauth2/authorize?client_id=${botId}&permissions=8&scope=bot%20applications.commands`;
   const intro = new ContainerBuilder()
     .addTextDisplayComponents(
@@ -150,13 +165,15 @@ function buildAdminSetupMessage({ botId, setupMention, reportConfigMention, pref
         new TextDisplayBuilder().setContent([
           '## Petto setup',
           '',
-          `${EMOJI.RELEASE_MAGIC} Welcome to Petto's admin setup channel!`,
-          'This private channel is visible to server administrators and Petto.',
+          fallback ? `${EMOJI.RELEASE_MAGIC} Welcome to Petto!` : `${EMOJI.RELEASE_MAGIC} Welcome to Petto's admin setup channel!`,
+          fallback
+            ? "Petto could not make its private setup channel, so the setup is here. Administrators can move it to a private channel and delete this message."
+            : 'This private channel is visible to server administrators and Petto.',
           '',
           `- Open ${setupMention} to configure the server in one form.`,
           `- Use \`${prefix}help\` to browse Petto's prefix commands.`,
           `- Use \`${prefix}logs\`, \`${prefix}automod\`, and \`${prefix}welcome\` for detailed settings.`,
-          '- Do not share this channel with regular members or other bots.',
+          ...(fallback ? [] : ['- Do not share this channel with regular members or other bots.']),
           `- Use ${reportConfigMention} to configure the reporting system.`,
         ].join('\n')),
       )
@@ -193,6 +210,7 @@ async function sendSetupMessage(channel, payload) {
 module.exports = {
   SETUP_CHANNEL_TOPIC,
   ensureAdminSetupChannel,
+  findFallbackChannel,
   commandMention,
   commandSubcommandMention,
   buildAdminSetupMessage,
