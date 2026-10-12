@@ -43,7 +43,6 @@ function readList(text, allowed) {
 
 module.exports = {
   prefixOnly: true,
-  hiddenFromHelp: true,
   aliases: ['rollout', 'experiments'],
   data: new SlashCommandBuilder()
     .setName('rollouts')
