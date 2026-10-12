@@ -13,7 +13,7 @@ const KINDS = ['user', 'guild', 'apex_user', 'installation'];
 const KIND_LABELS = { user: 'Users experiment', guild: 'Servers experiment', apex_user: 'Users experiment (A/B)', installation: 'Installations experiment', unknown: 'Experiment' };
 const STATUS_LABELS = {
   rolling_out: 'Rolling out', full: 'Fully rolled out', ab_test: 'A/B test', segmented: 'Segmented', overrides_only: 'Overrides only',
-  full_filtered: 'Full, with filters', not_rolled_out: 'Not rolled out', none: 'No rollout yet',
+  full_filtered: 'Full, with filters', not_rolled_out: 'Not rolled out', rolling_back: 'Rolling back', unlisted: 'Unlisted', unknown: 'Unknown', none: 'No rollout yet',
 };
 
 const state = { etag: null, list: null, ok: null, at: null, error: null, pausedUntil: 0, strikes: 0 };
@@ -38,12 +38,18 @@ function rangesPercent(ranges) {
   return round(width / 100);
 }
 
+/** One filter of an experiment as a short line. Every type the list can have has its own line; an unknown one is shown by its name. */
 function summarizeFilter(filter) {
   const type = clean(filter?.type, 60);
   const args = filter?.args ?? {};
-  if (type === 'guild_has_feature') return `Servers with ${(filter.features ?? []).slice(0, 6).map((f) => clean(f, 40)).join(', ') || 'a feature'}`;
+  const list = (value, max = 6) => (Array.isArray(value) ? value : []).slice(0, max).map((item) => clean(item, 40)).filter(Boolean);
+  if (type === 'guild_has_feature') return `Servers with ${list(filter.features ?? filter.guild_features).join(', ') || 'a feature'}`;
   if (type === 'guild_member_count_range') return `Servers of ${args.min_id ?? 0} to ${args.max_id ?? '∞'} members`;
   if (type === 'guild_id_range') return `Servers created ${args.min_id ? 'between two dates' : 'before a date'}`;
+  if (type === 'guild_ids') return `Only ${Array.isArray(filter.ids) ? `${filter.ids.length} ` : ''}chosen servers`;
+  if (type === 'guild_in_range_by_hash') return 'A share of the servers, chosen by hash';
+  if (type === 'guild_has_vanity_url') return filter.has_vanity === false ? 'Servers without a vanity URL' : 'Servers with a vanity URL';
+  if (type === 'user_in_country') return `Users in ${list(filter.regions, 8).join(', ') || 'some countries'}`;
   return type ? type.replace(/_/g, ' ') : 'Filtered';
 }
 

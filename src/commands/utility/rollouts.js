@@ -157,7 +157,7 @@ module.exports = {
     if (sub === 'list' || sub === 'test') {
       let list;
       try { list = (await rolloutApi.fetchRollouts({ force: true })).list; } catch (error) { return reply(`${EMOJI.DENY}  The list could not be read: ${error.message}`); }
-      const live = list.filter((entry) => ['rolling_out', 'ab_test', 'segmented'].includes(entry.status) && entry.percent != null);
+      const live = list.filter((entry) => ['rolling_out', 'rolling_back', 'ab_test', 'segmented'].includes(entry.status) && entry.percent != null);
       if (sub === 'list') {
         if (!live.length) return reply('No experiment is rolling out right now.');
         const lines = live.sort((a, b) => (b.percent ?? 0) - (a.percent ?? 0)).slice(0, 20).map((entry) => `- **${entry.title}** · ${Number(entry.percent.toFixed(2))}% · ${rolloutApi.STATUS_LABELS[entry.status] ?? entry.status}`);

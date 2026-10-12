@@ -176,6 +176,15 @@ const raw = [
   await drainQueue(client, { db });
   assert.equal(queue.length, 0, 'a server with the alerts off has nothing waiting');
 
+  // Every filter type, status and variant value the list documents.
+  const odd = api.normalizeRollout({ id: 'odd-one', kind: 'installation', rollout_status: 'rolling_back', filters: [
+    { type: 'guild_ids', ids: ['1', '2'] }, { type: 'guild_in_range_by_hash', hash_key: 1 }, { type: 'guild_has_vanity_url', has_vanity: true },
+    { type: 'user_in_country', regions: ['CO', 'ES'] }, { type: 'guild_has_feature', guild_features: ['COMMUNITY'] },
+  ], variants: [{ variant: -1, role: 'control', to: 90 }, { variant: 'none', to: 10 }] });
+  assert.deepEqual(odd.filters, ['Only 2 chosen servers', 'A share of the servers, chosen by hash', 'Servers with a vanity URL', 'Users in CO, ES', 'Servers with COMMUNITY']);
+  assert.equal(api.STATUS_LABELS.rolling_back, 'Rolling back');
+  assert.deepEqual(variantLines({ rollout: odd, before: null }), ['No variant (control): 90%', 'No variant: 10%']);
+
   // Who can use it.
   config.rolloutsPublic = false;
   assert.equal(canUseRollouts('123456789012345678'), false);
