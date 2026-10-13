@@ -3141,3 +3141,65 @@ alter table verification_config add constraint verification_config_method_check 
 alter table verification_config add column if not exists panel_channel_id text;
 alter table verification_config add column if not exists panel_message_id text;
 alter table verification_config add column if not exists panel_posted_channel_id text;
+
+-- Suggestions: members suggest things, the server votes with two buttons and the staff answers.
+create table if not exists suggestion_config (
+  guild_id        text primary key references guilds(guild_id) on delete cascade,
+  enabled         boolean not null default false,
+  channel_id      text,
+  listen_channel  boolean not null default false,
+  allow_command   boolean not null default true,
+  up_emoji        text not null default '✅',
+  down_emoji      text not null default '❌',
+  thread          boolean not null default true,
+  thread_name     text not null default 'Thread for suggestion {suggestion.id}',
+  self_vote       boolean not null default true,
+  dm_author       boolean not null default true,
+  anonymous       boolean not null default false,
+  staff_role_id   text,
+  embed_template  text,
+  color_pending     integer not null default 16766307,
+  color_approved    integer not null default 10873466,
+  color_denied      integer not null default 16739179,
+  color_considering integer not null default 16758892,
+  color_implemented integer not null default 8624639,
+  updated_at      timestamptz not null default now()
+);
+alter table suggestion_config enable row level security;
+
+create table if not exists suggestions (
+  id            text primary key,
+  guild_id      text not null references guilds(guild_id) on delete cascade,
+  number        integer not null,
+  channel_id    text,
+  message_id    text,
+  thread_id     text,
+  author_id     text not null,
+  content       text not null,
+  image_url     text,
+  status        text not null default 'pending' check (status in ('pending', 'approved', 'denied', 'considering', 'implemented')),
+  status_reason text,
+  status_by     text,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
+);
+create index if not exists idx_suggestions_guild on suggestions(guild_id, number desc);
+create index if not exists idx_suggestions_author on suggestions(guild_id, author_id);
+alter table suggestions enable row level security;
+
+create table if not exists suggestion_votes (
+  suggestion_id text not null references suggestions(id) on delete cascade,
+  user_id       text not null,
+  vote          smallint not null check (vote in (1, -1)),
+  primary key (suggestion_id, user_id)
+);
+alter table suggestion_votes enable row level security;
+
+create table if not exists suggestion_blocks (
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  user_id    text not null,
+  blocked_by text,
+  created_at timestamptz not null default now(),
+  primary key (guild_id, user_id)
+);
+alter table suggestion_blocks enable row level security;
