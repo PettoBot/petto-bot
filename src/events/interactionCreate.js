@@ -31,6 +31,7 @@ const { BUTTON_PREFIX: RESPONDER_BUTTON_PREFIX, SELECT_PREFIX: RESPONDER_SELECT_
 const { handleButton: handleResponderButton, handleSelect: handleResponderSelect } = require('../interactions/responders');
 const { PREFIX: REQUEST_PREFIX } = require('../utils/requestCards');
 const { handleButton: handleRequestButton } = require('../interactions/requests');
+const { PREFIX: CONFESSION_PREFIX, handleButton: handleConfessionButton, handleModal: handleConfessionModal } = require('../interactions/confessions');
 const { PREFIX: SUGGESTION_PREFIX, handleButton: handleSuggestionButton, handleModal: handleSuggestionModal } = require('../interactions/suggestions');
 const { PREFIX: VERIFY_LETTERS_PREFIX, handleButton: handleVerifyLettersButton, handleModal: handleVerifyLettersModal } = require('../interactions/verifyLetters');
 const { handleSetupModal } = require('../interactions/setup');
@@ -54,6 +55,14 @@ module.exports = {
     }
 
     // The letters check of verification, inside Discord (the buttons and the form of the verification DM).
+    if (interaction.isButton() && interaction.customId.startsWith(`${CONFESSION_PREFIX}:`)) {
+      await handleConfessionButton(interaction);
+      return;
+    }
+    if (interaction.isModalSubmit() && interaction.customId.startsWith(`${CONFESSION_PREFIX}:`)) {
+      await handleConfessionModal(interaction);
+      return;
+    }
     if (interaction.isButton() && interaction.customId.startsWith(`${SUGGESTION_PREFIX}:`)) {
       await handleSuggestionButton(interaction);
       return;
