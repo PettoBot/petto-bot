@@ -35,7 +35,7 @@ module.exports = {
   aliases: ['suggestions', 'sg'],
   data: new SlashCommandBuilder()
     .setName('suggestion')
-    .setDescription('Set up the suggestions of this server and answer them.')
+    .setDescription('Set up suggestions and answer them: approve, deny, consider, implement (with the ID).')
     .setDMPermission(false)
     .addSubcommand((s) => s.setName('setup').setDescription('Turn suggestions on in a channel.').addChannelOption((o) => o.setName('channel').setDescription('Where the suggestions go').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement).setRequired(true)))
     .addSubcommand((s) => s.setName('enable').setDescription('Turn suggestions on.'))
@@ -46,11 +46,11 @@ module.exports = {
       .setDescription('Change one setting.')
       .addStringOption((o) => o.setName('setting').setDescription('What to change').setRequired(true).addChoices(...Object.entries(SETTINGS).map(([name, def]) => ({ name: `${name}: ${def.label}`.slice(0, 100), value: name }))))
       .addStringOption((o) => o.setName('value').setDescription('The new value: on or off, an emoji, text, a role or the name of a saved design (none removes it)').setRequired(true).setMaxLength(100)))
-    .addSubcommand((s) => s.setName('approve').setDescription('Approve a suggestion.').addStringOption(idOption).addStringOption(reasonOption))
-    .addSubcommand((s) => s.setName('deny').setDescription('Deny a suggestion.').addStringOption(idOption).addStringOption(reasonOption))
-    .addSubcommand((s) => s.setName('consider').setDescription('Mark a suggestion as under consideration.').addStringOption(idOption).addStringOption(reasonOption))
-    .addSubcommand((s) => s.setName('implement').setDescription('Mark a suggestion as implemented.').addStringOption(idOption).addStringOption(reasonOption))
-    .addSubcommand((s) => s.setName('reopen').setDescription('Take a suggestion back to pending.').addStringOption(idOption))
+    .addSubcommand((s) => s.setName('approve').setDescription('Approve a suggestion by its ID, with a reason if you want.').addStringOption(idOption).addStringOption(reasonOption))
+    .addSubcommand((s) => s.setName('deny').setDescription('Deny a suggestion by its ID, with a reason if you want.').addStringOption(idOption).addStringOption(reasonOption))
+    .addSubcommand((s) => s.setName('consider').setDescription('Mark a suggestion by its ID as under consideration.').addStringOption(idOption).addStringOption(reasonOption))
+    .addSubcommand((s) => s.setName('implement').setDescription('Mark a suggestion by its ID as implemented.').addStringOption(idOption).addStringOption(reasonOption))
+    .addSubcommand((s) => s.setName('reopen').setDescription('Take a suggestion by its ID back to pending (open to votes again).').addStringOption(idOption))
     .addSubcommand((s) => s.setName('delete').setDescription('Delete a suggestion, its message and its thread.').addStringOption(idOption))
     .addSubcommand((s) => s.setName('view').setDescription('See a suggestion.').addStringOption(idOption))
     .addSubcommand((s) => s.setName('list').setDescription('The latest suggestions.').addStringOption((o) => o.setName('status').setDescription('Only the ones with this status').setRequired(false).addChoices(...Object.keys(suggestions.STATUSES).map((value) => ({ name: value, value })))))
@@ -116,6 +116,11 @@ async function show(interaction, c) {
     `Thread: ${yes(c.thread)}${c.thread ? ` (${c.thread_name})` : ''} · DM to the author: ${yes(c.dm_author)} · anonymous: ${yes(c.anonymous)}`,
     `Staff role: ${c.staff_role_id ? `<@&${c.staff_role_id}>` : 'only who has Manage Server'}`,
     `Design: ${c.embed_template ? `\`${c.embed_template}\`` : 'the usual one'}`,
+    '',
+    '**How to answer** (the ID is under each suggestion, like `si2tr-foytm`):',
+    '`suggestion approve <id> [reason]` · `deny` · `consider` · `implement` · `reopen`',
+    '`suggestion view <id>` · `list [status]` · `delete <id>` · `block <user>` · `unblock <user>`',
+    'Also in the dashboard: **Suggestions**, with a button for each answer.',
   ];
   return reply(interaction, lines.join('\n'));
 }
