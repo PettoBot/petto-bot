@@ -3,6 +3,7 @@ const { ensureGuild } = require('../../db/guilds');
 const { getConfig, upsertConfig } = require('../../db/verificationConfig');
 const { getTemplate } = require('../../db/embedTemplates');
 const { ensureUnverifiedRole } = require('../../utils/verifyRole');
+const { postPanel } = require('../../utils/verifyPanel');
 const { createToken } = require('../../utils/verifyToken');
 const { sendVerifyDM } = require('../../utils/verifyMessage');
 const { textCard } = require('../../utils/caseCard');
@@ -62,16 +63,8 @@ async function panel(interaction) {
   if (!settings.enabled) return done('Turn verification on first: `verify setup true`.', 0xfe6465);
   const method = methodOf(settings);
   if (!ENV_CONFIGURED(method)) return done(`${EMOJI.DENY}  The verification environment variables are not fully set. See \`verify status\`.`, 0xfe6465);
-  const me = interaction.guild.members.me;
-  if (!channel.permissionsFor(me)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageRoles])) return done(`${EMOJI.DENY}  I need to see and write in ${channel}, and the **Manage Roles** permission.`, 0xfe6465);
   try {
-    // The role of the members who have not verified cannot see any channel, so this one is opened to it (to read, not to write).
-    const role = await ensureUnverifiedRole(interaction.guild, settings);
-    await channel.permissionOverwrites.edit(role, { ViewChannel: true, ReadMessageHistory: true, SendMessages: false, AddReactions: false, CreatePublicThreads: false, CreatePrivateThreads: false }, { reason: 'Petto: verification panel' });
-    const previous = settings.panel_channel_id && settings.panel_message_id ? await interaction.guild.channels.fetch(settings.panel_channel_id).catch(() => null) : null;
-    if (previous?.isTextBased?.()) await previous.messages.delete(settings.panel_message_id).catch(() => {});
-    const sent = await channel.send(require('../../interactions/verifyLetters').buildPanel({ guild: interaction.guild, method }));
-    await upsertConfig(interaction.guild.id, { panel_channel_id: channel.id, panel_message_id: sent.id });
+    await postPanel(interaction.guild, settings, channel);
     return done(`${EMOJI.APPROVE}  The verification panel is in ${channel}. Members who have not verified can see that channel and press the button there${usesLink(method) ? ' (to get their link)' : ''}${method === 'letters' || method === 'discord' ? ' (to do the letters right there)' : ''}.`);
   } catch (err) {
     logger.error('Failed to post the verification panel:', err);

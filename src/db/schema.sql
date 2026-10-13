@@ -3140,3 +3140,4 @@ alter table verification_config add constraint verification_config_method_check 
 -- The verification panel: a message with the buttons to verify, in a channel the unverified role can see.
 alter table verification_config add column if not exists panel_channel_id text;
 alter table verification_config add column if not exists panel_message_id text;
+alter table verification_config add column if not exists panel_posted_channel_id text;
