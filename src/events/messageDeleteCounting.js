@@ -10,7 +10,7 @@ module.exports = {
       const config = await lastNumberOf(message);
       if (!config) return;
       const who = config.last_user_id ? `<@${config.last_user_id}>` : 'Someone';
-      await tell(message.guild, message.channel, `${who} deleted their number. The last number was **${config.current_number}**, so the next one is **${Number(config.current_number) + 1}**.`);
+      await tell(message.guild, message.channel, `${who} deleted their number. The last number was **${config.current_number}**, so the next one is **${Number(config.current_number) + 1}**.`, config.alert_seconds);
     } catch (error) {
       logger.error('Counting delete check failed:', error);
     }

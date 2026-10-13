@@ -29,6 +29,13 @@ const DEFAULTS = {
   saves_max: 0,
   save_every: 100,
   milestone_every: 100,
+  record_every: 100,
+  wrong_role_id: null,
+  wrong_role_minutes: 60,
+  top_role_id: null,
+  top_user_id: null,
+  top_correct: 0,
+  alert_seconds: 30,
 };
 
 async function loadConfig(guildId) {
@@ -63,6 +70,26 @@ async function bumpUser(guildId, userId, { correct = 0, wrong = 0, streak = 0 })
   return row;
 }
 
+/** Remembers the role a member got for a mistake and until when (`removeAt` null: until they count a right number). */
+async function rememberRole(guildId, userId, roleId, removeAt) {
+  const { error } = await database.from('counting_roles').upsert({ guild_id: String(guildId), user_id: String(userId), role_id: roleId, remove_at: removeAt ? removeAt.toISOString() : null }, { onConflict: 'guild_id,user_id' });
+  if (error) throw error;
+}
+async function getRole(guildId, userId) {
+  const { data, error } = await database.from('counting_roles').select('*').eq('guild_id', String(guildId)).eq('user_id', String(userId)).maybeSingle();
+  if (error) throw error;
+  return data ?? null;
+}
+async function listDueRoles() {
+  const { data, error } = await database.from('counting_roles').select('*').not('remove_at', 'is', null).lte('remove_at', new Date().toISOString()).limit(200);
+  if (error) throw error;
+  return data ?? [];
+}
+async function forgetRole(guildId, userId) {
+  const { error } = await database.from('counting_roles').delete().eq('guild_id', String(guildId)).eq('user_id', String(userId));
+  if (error) throw error;
+}
+
 async function userStats(guildId, userId) {
   const { data, error } = await database.from('counting_users').select('*').eq('guild_id', String(guildId)).eq('user_id', String(userId)).maybeSingle();
   if (error) throw error;
@@ -80,4 +107,4 @@ async function resetUsers(guildId) {
   if (error) throw error;
 }
 
-module.exports = { DEFAULTS, getConfig, updateConfig, bumpUser, userStats, topUsers, resetUsers };
+module.exports = { rememberRole, getRole, listDueRoles, forgetRole, DEFAULTS, getConfig, updateConfig, bumpUser, userStats, topUsers, resetUsers };

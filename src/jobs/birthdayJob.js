@@ -9,6 +9,7 @@ const { exclusiveTask } = require('../utils/concurrency');
 const POLL_INTERVAL_MS = 5 * 60_000;
 const ROLE_LASTS_MS = 24 * 3_600_000;
 const MAX_PER_DAY = 25;
+const BIRTHDAY_COLOR = 0xf78fb3;
 const DEFAULT_BIRTHDAY_MESSAGE = '{EMOJI} Happy birthday {user}! Have a great day!';
 
 /** The people to celebrate on `local`: their saved day is today, or 29 February on a 28 February with no 29th. */
@@ -34,8 +35,8 @@ async function celebrate(client, config, local) {
       const text = String(config.message ?? '').replaceAll('{age}', age === null ? '' : String(age));
       await sendMemberEvent({
         guild, channel, kind: 'birthday', messageText: text, embedTemplateName: config.embed_template,
-        // The message nobody changed is sent as a card without color; one the server wrote stays as it wrote it.
-        asCard: String(config.message ?? '').trim() === DEFAULT_BIRTHDAY_MESSAGE,
+        // The message nobody changed is sent as a pink card; one the server wrote stays as it wrote it.
+        asCard: String(config.message ?? '').trim() === DEFAULT_BIRTHDAY_MESSAGE ? BIRTHDAY_COLOR : false,
         ctx: { member, guild, channel, user: member.user },
       });
     }
