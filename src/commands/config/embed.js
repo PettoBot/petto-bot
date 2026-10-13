@@ -211,11 +211,50 @@ async function getOrFail(interaction, name) {
   return doc;
 }
 
+/** Reads a `p2.` share code: base64url of `{ components: [...] }`. Returns null for anything else. */
+function readV2Code(code) {
+  const text = String(code ?? '').trim();
+  if (!text.startsWith('p2.') || text.length > 40000) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(text.slice(3).replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
+    return Array.isArray(parsed?.components) && parsed.components.every((node) => node && typeof node === 'object') ? { components: parsed.components } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** `/embed create name code:p2....` saves a Components V2 design from its code, checked the way a send is. */
+async function createV2FromCode(interaction, guildId, name, code, ctx) {
+  const v2 = readV2Code(code);
+  if (!v2) {
+    await interaction.editReply('That `p2.` code could not be read. Copy it again from the Embed Builder or the dashboard (it starts with `p2.`).');
+    return;
+  }
+  const data = { content: '', embeds: [], buttons: [], v2 };
+  let payload;
+  try {
+    payload = await build(data, { ...ctx, allowV2: true });
+  } catch (err) {
+    await interaction.editReply(`That design builds a message Discord would refuse: ${formatEmbedError(err)}`);
+    return;
+  }
+  if (!payload.components?.length) {
+    await interaction.editReply('That design has nothing to show. Add a text, a picture or a button.');
+    return;
+  }
+  await upsertTemplate(guildId, name, data);
+  const note = `Design \`${name}\` created from the code. It is a Components V2 message: change it in the dashboard (Embeds) and send it with \`${commandRef(interaction, 'embed send', ctx.prefix)}\`.`;
+  await interaction.editReply({ content: note, components: [], embeds: [] });
+  await interaction.followUp({ components: payload.components, flags: payload.flags, files: payload.files ?? [], allowedMentions: { parse: [] } }).catch(() => {});
+}
+
 /**
  * `/embed create name code:...` saves an embed written as one code, so it does not need the editor. The code is checked
  * the same way a send is, nothing is saved when Discord would refuse it, and the result is shown right away.
  */
 async function createFromCode(interaction, guildId, name, code, ctx) {
+  // A `p2.` code is a Components V2 design (the Embed Builder and the dashboard make them): it is saved as it is.
+  if (/^\s*p2\./.test(code)) return createV2FromCode(interaction, guildId, name, code, ctx);
   const parsed = parseEmbedScript(code);
   if (!parsed.embed && !parsed.content && !parsed.buttons.length) {
     const problems = parsed.warnings.length ? `\n${parsed.warnings.map((line) => `- ${line}`).join('\n')}` : '';
@@ -247,6 +286,7 @@ async function createFromCode(interaction, guildId, name, code, ctx) {
 
 module.exports = {
   createFromCode,
+  readV2Code,
   aliases: ['em'],
   data: new SlashCommandBuilder()
     .setName('embed')
@@ -254,7 +294,7 @@ module.exports = {
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false)
 
-    .addSubcommand((s) => s.setName('create').setDescription('Create a new named embed, with the editor or from a code.').addStringOption((o) => o.setName('name').setDescription('Embed name (e.g. rules_embed)').setRequired(true)).addStringOption((o) => o.setName('code').setDescription('Optional: the whole embed as one line, e.g. {embed}&v{title: Hi}&v{description: A{newline}B}').setRequired(false).setMaxLength(6000)))
+    .addSubcommand((s) => s.setName('create').setDescription('Create a new named embed, with the editor or from a code.').addStringOption((o) => o.setName('name').setDescription('Embed name (e.g. rules_embed)').setRequired(true)).addStringOption((o) => o.setName('code').setDescription('Optional: the whole embed as one line, e.g. {embed}&v{title: Hi}&v{description: A{newline}B}, or a p2. code for a V2 design').setRequired(false).setMaxLength(6000)))
     .addSubcommand((s) => s.setName('preview').setDescription('Preview a saved embed with variables resolved.').addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true)))
     .addSubcommand((s) =>
       s
