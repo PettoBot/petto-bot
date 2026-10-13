@@ -3076,3 +3076,38 @@ alter table level_config add column if not exists leaderboard_public boolean not
 alter table level_config add column if not exists leaderboard_slug text check (leaderboard_slug is null or leaderboard_slug ~ '^[a-z0-9][a-z0-9-]{1,31}$');
 alter table level_config add column if not exists leaderboard_join_url text;
 create unique index if not exists idx_level_config_leaderboard_slug on level_config(leaderboard_slug) where leaderboard_slug is not null;
+
+-- ---------------------------------------------------------------------------
+-- Monkeyboard: the starboard's opposite. The same rules, with its own channel, emoji (🐵) and posts.
+-- ---------------------------------------------------------------------------
+create table if not exists monkeyboards (
+  guild_id            text primary key references guilds(guild_id) on delete cascade,
+  channel_id          text,
+  threshold           integer not null default 3 check (threshold between 1 and 100),
+  emoji               text not null default '🐵',
+  selfstar            boolean not null default false,
+  color               integer not null default 9132587,
+  timestamp           boolean not null default true,
+  jumpurl             boolean not null default true,
+  attachments         boolean not null default true,
+  ignored_channel_ids text[] not null default '{}',
+  ignored_role_ids    text[] not null default '{}',
+  ignored_user_ids    text[] not null default '{}',
+  embed_template      text,
+  created_at          timestamptz not null default now(),
+  updated_at          timestamptz not null default now()
+);
+
+create table if not exists monkeyboard_entries (
+  guild_id             text not null references guilds(guild_id) on delete cascade,
+  source_message_id    text not null,
+  starboard_message_id text not null,
+  count                integer not null default 0,
+  updated_at           timestamptz not null default now(),
+  primary key (guild_id, source_message_id)
+);
+
+create index if not exists idx_monkeyboard_entries_guild on monkeyboard_entries(guild_id);
+
+alter table monkeyboards enable row level security;
+alter table monkeyboard_entries enable row level security;

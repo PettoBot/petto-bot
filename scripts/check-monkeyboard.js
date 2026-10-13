@@ -1,0 +1,80 @@
+// Checks the reaction boards: the starboard and the monkeyboard share one engine but keep their own settings and posts.
+// A message with enough monkeys is reposted only by the monkeyboard, the repost follows the count and goes when the
+// reactions are taken back. Storage and Discord are replaced.
+const assert = require('node:assert/strict');
+const path = require('node:path');
+
+function stub(relative, exports) {
+  const resolved = require.resolve(path.join(__dirname, '..', relative));
+  require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports };
+}
+stub('src/db/database.js', {});
+stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
+stub('src/utils/templatedMessage.js', { templatePayload: async () => null });
+const { syncBoard } = require('../src/utils/reactionBoard');
+const monkeyDefaults = require('../src/db/monkeyboard').DEFAULTS;
+const starDefaults = require('../src/db/starboard').DEFAULTS;
+
+function memoryBoard(config) {
+  const entries = new Map();
+  return {
+    entries,
+    getConfig: async () => config,
+    getEntry: async (guildId, id) => entries.get(id) ?? null,
+    saveEntry: async ({ sourceMessageId, starboardMessageId, count }) => { entries.set(sourceMessageId, { starboard_message_id: starboardMessageId, count }); },
+    removeEntry: async (guildId, id) => { entries.delete(id); },
+  };
+}
+
+function discord(emoji, voters) {
+  const sent = [];
+  const reposts = new Map();
+  const destination = {
+    isTextBased: () => true,
+    send: async (payload) => { const repost = { id: `repost${sent.length + 1}`, payload, deleted: false, edit: async (next) => { repost.payload = next; }, delete: async () => { repost.deleted = true; } }; sent.push(repost); reposts.set(repost.id, repost); return repost; },
+    messages: { fetch: async (id) => reposts.get(id) ?? null },
+  };
+  const message = {
+    id: 'm1', content: 'a message', url: 'https://discord.com/x', createdAt: new Date(), attachments: new Map(), channel: { id: 'c1', name: 'general' },
+    author: { id: 'author', tag: 'author#0', displayAvatarURL: () => null },
+    guild: { id: 'g1', channels: { fetch: async () => destination }, members: { fetch: async () => ({ roles: { cache: [] } }) } },
+  };
+  const reaction = { partial: false, message, emoji: { toString: () => emoji }, users: { fetch: async () => new Map(voters().map((id) => [id, { id, bot: false }])) } };
+  // A Map filters through its values, so give it the same `filter` a Collection has.
+  reaction.users.fetch = async () => { const list = voters().map((id) => ({ id, bot: false })); return { filter: (test) => ({ size: list.filter(test).length }) }; };
+  return { reaction, sent };
+}
+
+(async () => {
+  assert.deepEqual([monkeyDefaults.emoji, starDefaults.emoji], ['🐵', '⭐'], 'each board has its own emoji');
+  assert.notEqual(monkeyDefaults.color, starDefaults.color);
+
+  let voters = ['u1', 'u2'];
+  const monkey = memoryBoard({ ...monkeyDefaults, channel_id: 'dest' });
+  const star = memoryBoard({ ...starDefaults, channel_id: 'dest' });
+  const { reaction, sent } = discord('🐵', () => voters);
+
+  await syncBoard(reaction, { db: monkey });
+  assert.equal(sent.length, 0, 'below the threshold nothing is posted');
+  voters = ['u1', 'u2', 'u3'];
+  await syncBoard(reaction, { db: star });
+  assert.equal(sent.length, 0, 'the starboard ignores monkeys');
+  await syncBoard(reaction, { db: monkey });
+  assert.equal(sent.length, 1, 'three monkeys reach the monkeyboard');
+  assert.ok(sent[0].payload.embeds[0].data.footer.text.startsWith('3 🐵'), 'the footer counts the monkeys');
+  assert.equal(sent[0].payload.embeds[0].data.color, monkeyDefaults.color, 'and the repost has the monkey color');
+  assert.equal(monkey.entries.size, 1);
+  assert.equal(star.entries.size, 0, 'the starboard keeps nothing');
+
+  voters = ['u1', 'u2', 'u3', 'u4'];
+  await syncBoard(reaction, { db: monkey });
+  assert.equal(sent.length, 1, 'the same message is edited, not posted again');
+  assert.ok(sent[0].payload.embeds[0].data.footer.text.startsWith('4 🐵'));
+
+  // The author's own monkey does not count unless the board allows it: one voter left, so the repost goes.
+  voters = ['author', 'u1'];
+  await syncBoard(reaction, { db: monkey });
+  assert.equal(sent[0].deleted, true, 'with the reactions taken back the repost goes');
+  assert.equal(monkey.entries.size, 0);
+  console.log('Checked the monkeyboard and the starboard: one engine, separate settings and posts.');
+})().catch((error) => { console.error(error); process.exit(1); });
