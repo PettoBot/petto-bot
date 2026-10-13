@@ -22,6 +22,7 @@ stub('src/db/premium.js', { getGuildPremium: async () => ({ active: premiumActiv
 // An in-memory copy of the partner tables.
 let config = null;
 const blacklist = new Set();
+const welcomedKeys = new Set();
 let logRows = [];
 let nextId = 1;
 stub('src/db/partners.js', {
@@ -36,6 +37,9 @@ stub('src/db/partners.js', {
   lastWith: async (guildId, partnerId) => logRows.filter((row) => row.partner_guild_id === partnerId).at(-1) ?? null,
   addLog: async (row) => { const saved = { id: nextId++, guild_id: row.guildId, manager_id: row.managerId, partner_guild_id: row.partnerGuildId, partner_name: row.partnerName, members: row.members, created_at: new Date().toISOString() }; logRows.push(saved); return saved; },
   removeLog: async () => true,
+  wasWelcomed: async (guildId, userId) => welcomedKeys.has(`${guildId}:${userId}`),
+  markWelcomed: async (guildId, userId) => { welcomedKeys.add(`${guildId}:${userId}`); },
+  forgetWelcomed: async (guildId, userId) => { welcomedKeys.delete(`${guildId}:${userId}`); },
   listLog: async (guildId, { since = null, managerId = null } = {}) => logRows.filter((row) => (!since || new Date(row.created_at) >= since) && (!managerId || row.manager_id === managerId)).slice().reverse(),
 });
 
@@ -128,7 +132,14 @@ const fakeGuild = (id, extra = {}) => ({ id, name: 'Mine', ownerId: 'owner', mem
     adult: { code: 'adult', memberCount: 900, guild: { id: '1100000000000000004', name: 'After Dark', nsfwLevel: 1 } },
     casino: { code: 'casino', memberCount: 900, guild: { id: '1100000000000000005', name: 'Lucky Hub', description: 'The best GAMBLING tips' } },
   };
-  const client = { fetchInvite: async (code) => { if (!invites[code]) throw new Error('Unknown Invite'); return invites[code]; } };
+  let flaky = 0;
+  const client = { fetchInvite: async (code) => {
+    if (code === 'flaky' && (flaky += 1) <= 1) throw new Error('socket hang up');
+    if (code === 'down') throw new Error('socket hang up');
+    if (code === 'flaky') return invites.big;
+    if (!invites[code]) { const error = new Error('Unknown Invite'); error.code = 10006; throw error; }
+    return invites[code];
+  } };
   const sent = [];
   const made = (content, { channelId = 'chan', roles = ['pm'], authorId = 'u1', bot = false } = {}) => {
     const message = {
@@ -159,6 +170,9 @@ const fakeGuild = (id, extra = {}) => ({ id, name: 'Mine', ownerId: 'owner', mem
   out = await run('discord.gg/small'); assert.match(out[0].content, /has 10 members and at least 100/); assert.equal(logRows.length, 1);
   out = await run('discord.gg/mine'); assert.match(out[0].content, /this same server/);
   out = await run('discord.gg/unknown'); assert.match(out[0].content, /not valid or has expired/);
+  // A failure of the connection is not the invite's fault: it is tried again, and if it keeps failing the message is left alone.
+  out = await run('discord.gg/flaky'); assert.ok(!out.some((item) => item.kind === 'delete'), 'a failed look-up once does not throw the message away'); assert.ok(out.some((item) => /Partnership|partner/i.test(item.content ?? '')) || out.length > 0);
+  out = await run('discord.gg/down'); assert.ok(!out.some((item) => item.kind === 'delete'), 'an invite that cannot be checked does not delete the message'); assert.match(out[0].content, /could not check that invite/);
   blacklist.add('1100000000000000003');
   out = await run('discord.gg/bad'); assert.match(out[0].content, /not allowed as a partner/);
   assert.equal(out.some((item) => item.kind === 'delete'), false, 'the post is kept by default');
@@ -253,7 +267,9 @@ const fakeGuild = (id, extra = {}) => ({ id, name: 'Mine', ownerId: 'owner', mem
   config.welcome_channel_id = 'welcome';
   await memberUpdate.execute(memberWith([]), memberWith(['pm'])); assert.equal(welcomed.length, 1); assert.match(welcomed[0].content, /Welcome to the team, <@u9>/); assert.deepEqual(welcomed[0].allowedMentions, { users: ['u9'] });
   await memberUpdate.execute(memberWith(['pm']), memberWith(['pm'])); await memberUpdate.execute(memberWith(['pm']), memberWith([])); await memberUpdate.execute(memberWith([]), memberWith(['other'])); assert.equal(welcomed.length, 1, 'only getting the role counts');
-  await memberUpdate.execute({ ...memberWith([]), partial: true }, memberWith(['pm'])); assert.equal(welcomed.length, 1, 'an unknown old state is skipped');
+  // The role was taken away above, so a new one is welcomed. When Discord does not say what the roles were, it counts only if not welcomed before.
+  await memberUpdate.execute({ ...memberWith([]), partial: true }, memberWith(['pm'])); assert.equal(welcomed.length, 2, 'an unknown old state is welcomed when it was not welcomed before');
+  await memberUpdate.execute({ ...memberWith([]), partial: true }, memberWith(['pm'])); assert.equal(welcomed.length, 2, 'and only once');
 
   // The commands are used with the prefix only, so no slash command is made for them.
   assert.equal(partner.prefixOnly, true); assert.equal(partnerConfig.prefixOnly, true);

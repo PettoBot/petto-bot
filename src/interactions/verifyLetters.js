@@ -13,7 +13,7 @@ const { applyVerification } = require('../utils/verifyApply');
 const logger = require('../utils/logger');
 
 const PREFIX = 'vfy';
-const ids = { start: (guildId) => `${PREFIX}:start:${guildId}`, type: (guildId) => `${PREFIX}:type:${guildId}`, answer: (guildId) => `${PREFIX}:answer:${guildId}`, link: (guildId) => `${PREFIX}:link:${guildId}` };
+const ids = { start: (guildId) => `${PREFIX}:start:${guildId}`, type: (guildId) => `${PREFIX}:type:${guildId}`, answer: (guildId) => `${PREFIX}:answer:${guildId}`, link: (guildId) => `${PREFIX}:link:${guildId}`, again: (guildId) => `${PREFIX}:again:${guildId}` };
 const V2 = MessageFlags.IsComponentsV2;
 
 const tickets = new Map(); // `${guildId}:${userId}` -> { ticket, jti, until }
@@ -39,8 +39,11 @@ async function situation(client, guildId, userId) {
   return { guild, member, settings };
 }
 
-/** Sends a picture with the buttons to type the letters or to get another one. */
-async function showPicture(interaction, guildId) {
+/**
+ * Sends a picture with the buttons to type the letters or to get another one. `replace` is for the button of a picture that is already
+ * there (New picture): the same message gets the new picture, so asking again never piles up messages.
+ */
+async function showPicture(interaction, guildId, { replace = false } = {}) {
   const state = await situation(interaction.client, guildId, interaction.user.id);
   if (state.error) return say(interaction, state.error);
   const jti = `dc:${guildId}:${interaction.user.id}`;
@@ -52,9 +55,11 @@ async function showPicture(interaction, guildId) {
     .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://verify.png')))
     .addActionRowComponents(new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(ids.type(guildId)).setLabel('Type the letters').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId(ids.start(guildId)).setLabel('New picture').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(ids.again(guildId)).setLabel('New picture').setStyle(ButtonStyle.Secondary),
     ));
-  return interaction.reply({ components: [container], files: [new AttachmentBuilder(challenge.png, { name: 'verify.png' })], flags: flagsFor(interaction) });
+  const file = new AttachmentBuilder(challenge.png, { name: 'verify.png' });
+  if (replace && interaction.isButton?.()) return interaction.update({ components: [container], files: [file], attachments: [] });
+  return interaction.reply({ components: [container], files: [file], flags: flagsFor(interaction) });
 }
 
 /** The panel of a channel: what to do to get in, with a button for each way the server allows. */
@@ -84,6 +89,7 @@ async function handleButton(interaction) {
   const [, action, guildId] = interaction.customId.split(':');
   if (!/^\d{15,25}$/.test(guildId ?? '')) return undefined;
   if (action === 'start') return showPicture(interaction, guildId);
+  if (action === 'again') return showPicture(interaction, guildId, { replace: true });
   if (action === 'link') return sendLink(interaction, guildId);
   if (action === 'type') {
     const modal = new ModalBuilder().setCustomId(ids.answer(guildId)).setTitle('Verification')

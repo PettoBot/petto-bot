@@ -45,9 +45,19 @@ const text = (payload) => JSON.stringify(payload.components?.map((component) => 
   await verifyLetters.handleButton(interaction(button.custom_id));
   assert.equal(replies.length, 1);
   assert.equal(replies[0].files[0].name, 'verify.png');
-  assert.ok(text(replies[0]).includes(`vfy:type:${GUILD}`) && text(replies[0]).includes(`vfy:start:${GUILD}`), 'the picture comes with its buttons');
+  assert.ok(text(replies[0]).includes(`vfy:type:${GUILD}`) && text(replies[0]).includes(`vfy:again:${GUILD}`), 'the picture comes with its buttons');
   await verifyLetters.handleButton(interaction(`vfy:type:${GUILD}`));
   assert.equal(replies[1].modal.custom_id, `vfy:answer:${GUILD}`, 'the button opens the form');
+
+  // New picture changes the picture of the same message, it does not send another one.
+  const updates = [];
+  const pressed = { ...interaction(`vfy:again:${GUILD}`), isButton: () => true, update: async (payload) => { updates.push(payload); } };
+  const before = replies.length;
+  await verifyLetters.handleButton(pressed);
+  assert.equal(replies.length, before, 'no new message');
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].files[0].name, 'verify.png');
+  assert.deepEqual(updates[0].attachments, [], 'the old picture is taken out');
 
   // We do not know the letters of the picture the bot drew, so the ticket is replaced by one we know.
   const original = captcha.createChallenge;

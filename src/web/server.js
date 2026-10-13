@@ -3,6 +3,7 @@ const { rateLimit } = require('express-rate-limit');
 const path = require('path');
 const { MessageFlags, PermissionFlagsBits } = require('discord.js');
 const config = require('../config');
+const { setupEverything, sendPanelNow, setEnabled } = require('../utils/verifyProvision');
 const { verifyToken } = require('../utils/verifyToken');
 const { verifyTranscriptToken } = require('../utils/transcriptToken');
 const { getConfig } = require('../db/verificationConfig');
@@ -253,6 +254,24 @@ function startServer(client) {
       } catch (err) {
         logger.error(`Dashboard giveaway ${req.params.action} failed for guild ${req.params.guildId}:`, err);
         res.status(500).json({ ok: false, error: 'giveaway_failed', message: 'The giveaway action failed. Try again.' });
+      }
+    });
+
+    // The verification, done now instead of waiting for the panel job: `setup` makes the roles, the channel and the panel; `panel` posts it; `enable` / `disable` switch it.
+    app.post('/api/dashboard/guild/:guildId/verification/:action', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await dashboardCardAccess(req, res);
+      if (!access) return;
+      const action = String(req.params.action);
+      try {
+        let result;
+        if (action === 'setup') result = await setupEverything(access.guild);
+        else if (action === 'panel') result = await sendPanelNow(access.guild);
+        else if (action === 'enable' || action === 'disable') result = await setEnabled(access.guild, action === 'enable');
+        else { res.status(404).json({ ok: false, error: 'unknown_action' }); return; }
+        res.status(result.ok ? 200 : 400).json(result);
+      } catch (err) {
+        logger.error(`Dashboard verification ${action} failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, message: 'The verification could not be changed. Try again.' });
       }
     });
 

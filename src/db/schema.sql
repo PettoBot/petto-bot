@@ -2514,6 +2514,15 @@ create table if not exists partner_blacklist (
 );
 alter table partner_blacklist enable row level security;
 
+-- Who was already welcomed as a Partner Manager, so the welcome works when Discord does not say what roles the member had before.
+create table if not exists partner_welcomed (
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  user_id    text not null,
+  created_at timestamptz not null default now(),
+  primary key (guild_id, user_id)
+);
+alter table partner_welcomed enable row level security;
+
 create table if not exists partner_log (
   id               bigserial primary key,
   guild_id         text not null references guilds(guild_id) on delete cascade,
