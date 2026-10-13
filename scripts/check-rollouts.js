@@ -73,7 +73,7 @@ const raw = [
 
   // The card.
   assert.equal(badge(events[0]), '+12.5% (62.5%)');
-  assert.deepEqual(variantLines(events[0]), ['Variant 0 (control): 50%', 'Variant 1: 50% → 62.5% (+12.5%)']);
+  assert.deepEqual(variantLines(events[0]), ['Treatment 1: 50% → 62.5% (+12.5%)']);
   const card = buildRolloutCard(events[0], { role_id: '99', hide_sections: ['filters'] }, { rolePing: '<@&99>' });
   const json = JSON.stringify(card.components[0].toJSON());
   assert.ok(json.includes('Users experiment (A/B)') && json.includes('Rollouts') && json.includes('+12.5% (62.5%)') , 'the card has the kind and the change');
@@ -201,7 +201,12 @@ const raw = [
   ], variants: [{ variant: -1, role: 'control', to: 90 }, { variant: 'none', to: 10 }] });
   assert.deepEqual(odd.filters, ['Only 2 chosen servers', 'A share of the servers, chosen by hash', 'Servers with a vanity URL', 'Users in CO, ES', 'Servers with COMMUNITY']);
   assert.equal(api.STATUS_LABELS.rolling_back, 'Rolling back');
-  assert.deepEqual(variantLines({ rollout: odd, before: null }), ['No variant (control): 90%', 'No variant: 10%']);
+  assert.deepEqual(variantLines({ rollout: odd, before: null }), ['Control: 90%', 'No variant: 10%']);
+
+  // A new experiment shows every variant, a change only the ones that moved, and the platforms are written as people write them.
+  const fresh = diffRollouts(new Map(), list)[0];
+  assert.deepEqual(variantLines(fresh), ['Control: 50%', 'Treatment 1: 50%']);
+  assert.ok(JSON.stringify(buildRolloutCard(fresh).components[0].toJSON()).includes('Android, Desktop'), 'platforms start with a capital');
 
   // Who can use it.
   config.rolloutsPublic = false;

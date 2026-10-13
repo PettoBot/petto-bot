@@ -27,14 +27,34 @@ function badge(event) {
   return `${signed(change)} (${pct(rollout.percent)})`.slice(0, 80);
 }
 
-/** `Variant 1`, or `No variant` for the ones the list marks with -1 or "none". */
-const variantName = (variant) => (['-1', 'none'].includes(String(variant.variant)) ? 'No variant' : `Variant ${variant.variant}`);
+/** `Control`, `Treatment 1`, `Variant 1`, or `No variant` for the ones the list marks with -1 or "none". */
+function variantName(variant) {
+  if (['-1', 'none'].includes(String(variant.variant))) return variant.role === 'control' ? 'Control' : 'No variant';
+  if (variant.role === 'control') return 'Control';
+  if (variant.role === 'treatment') return `Treatment ${variant.variant}`;
+  return `Variant ${variant.variant}`;
+}
 
-/** The variants as lines for a code block: `Variant 1: 37.5% → 50% (+12.5%)`. */
+const sameRanges = (a, b) => (a ?? []).join('|') === (b ?? []).join('|');
+const moved = (old, now) => !old || (old.percent != null && now.percent != null && Math.abs(old.percent - now.percent) >= 0.01) || !sameRanges(old.ranges, now.ranges);
+
+/**
+ * The variants to show. A rollout that grew or shrank shows only the variants that moved, like the lists that follow Discord's own
+ * announcements do; a new one or a change of status shows them all. If nothing moved (the share is the same), all are shown.
+ */
+function shownVariants(event) {
+  const all = event.rollout.variants.filter((variant) => variant.role !== 'not_eligible');
+  if (!['increase', 'decrease'].includes(event.type) || !event.before) return all;
+  const before = new Map((event.before.variants ?? []).map((variant) => [variant.variant, variant]));
+  const changed = all.filter((variant) => moved(before.get(variant.variant), variant));
+  return changed.length ? changed : all;
+}
+
+/** The variants as lines for a code block: `Treatment 1: 37.5% → 50% (+12.5%)`. */
 function variantLines(event) {
   const before = new Map((event.before?.variants ?? []).map((variant) => [variant.variant, variant]));
-  return event.rollout.variants.filter((variant) => variant.role !== 'not_eligible').map((variant) => {
-    const name = variant.role === 'control' ? `${variantName(variant)} (control)` : variantName(variant);
+  return shownVariants(event).map((variant) => {
+    const name = variantName(variant);
     const old = before.get(variant.variant);
     if (old && old.percent != null && variant.percent != null && Math.abs(old.percent - variant.percent) >= 0.01) {
       return `${name}: ${pct(old.percent)} → ${pct(variant.percent)} (${signed(variant.percent - old.percent)})`;
@@ -44,8 +64,12 @@ function variantLines(event) {
 }
 
 function rangeLines(event) {
-  return event.rollout.variants.filter((variant) => variant.ranges.length && variant.role !== 'not_eligible').map((variant) => `${variantName(variant)}: ${variant.ranges.slice(0, 8).map((range) => `(${range})`).join(' ')}${variant.ranges.length > 8 ? ' …' : ''}`);
+  return shownVariants(event).filter((variant) => variant.ranges.length).map((variant) => `${variantName(variant)}: ${variant.ranges.slice(0, 8).map((range) => `(${range})`).join(' ')}${variant.ranges.length > 8 ? ' …' : ''}`);
 }
+
+/** `android` -> `Android`, `ios` -> `iOS`: the platforms as people write them. */
+const PLATFORM_NAMES = { android: 'Android', ios: 'iOS', desktop: 'Desktop', web: 'Web', mobile: 'Mobile', macos: 'macOS', windows: 'Windows', linux: 'Linux', xbox: 'Xbox', playstation: 'PlayStation', ps4: 'PS4', ps5: 'PS5', embedded: 'Embedded', console: 'Console' };
+const platformName = (name) => PLATFORM_NAMES[String(name).toLowerCase()] ?? (String(name).charAt(0).toUpperCase() + String(name).slice(1));
 
 /** What `{rollout.*}` gives in a saved embed. */
 function rolloutContext(event) {
@@ -65,7 +89,7 @@ function rolloutContext(event) {
     event_icon: EVENT_ICONS[type],
     variants: variantLines(event).join('\n'),
     ranges: rangeLines(event).join('\n'),
-    platforms: rollout.platforms.join(', '),
+    platforms: rollout.platforms.map(platformName).join(', '),
     filters: rollout.filters.join(' · '),
     source: SOURCE_NAME,
   };
@@ -91,7 +115,7 @@ function buildRolloutCard(event, config = {}, { rolePing = null } = {}) {
   if (!hidden.has('status')) info.push(`- ${ICONS.status} **Status:** ${statusLabel(rollout.status)}`);
   if (rollout.aaMode) info.push(`- ${ICONS.status} **A/A mode:** only measuring, nothing changes for anyone`);
   if (rollout.employeePercent != null && rollout.employeePercent > 0) info.push(`- ${ICONS.filters} **Employees only:** ${pct(rollout.employeePercent)}`);
-  if (!hidden.has('platforms') && rollout.platforms.length) info.push(`- ${ICONS.platforms} **Platforms:** ${rollout.platforms.join(', ')}`);
+  if (!hidden.has('platforms') && rollout.platforms.length) info.push(`- ${ICONS.platforms} **Platforms:** ${rollout.platforms.map(platformName).join(', ')}`);
   info.push(`- [\`${rollout.id}\`](${SOURCE_URL})`);
   // The title and the details are in the section, so it is tall enough and Discord puts the button beside the text, not under it.
   container.addSectionComponents(new SectionBuilder()
