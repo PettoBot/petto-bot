@@ -18,6 +18,7 @@ const rows = new Map();
 const blocked = new Set();
 const sent = [];
 let when = Date.now();
+let ownAvatar = false;
 stub('src/db/confessions.js', {
   DEFAULTS: {},
   getConfig: async () => config,
@@ -28,6 +29,7 @@ stub('src/db/confessions.js', {
   remove: async (guildId, id) => { const had = rows.get(id); rows.delete(id); return had ?? null; },
   lastBy: async (guildId, userId) => { const mine = [...rows.values()].filter((row) => row.author_id === userId); return mine.length ? new Date(mine[mine.length - 1].created_at) : null; },
   isBlocked: async (guildId, userId) => blocked.has(userId),
+  updateConfig: async (guildId, patch) => { config = { ...config, ...patch }; return config; },
 });
 stub('src/utils/senderIdentity.js', {
   webhookFor: async () => ({ send: async (options) => { sent.push({ via: 'webhook', ...options }); return { id: `m${sent.length}` }; } }),
@@ -39,14 +41,18 @@ const empty = () => ({ cache: new Map() });
 const makeChannel = (id) => ({
   id, isTextBased: () => true, isThread: () => false, client: {}, permissionsFor: () => ({ has: () => true }),
   send: async (payload) => { sent.push({ via: 'bot', channel: id, ...payload }); return { id: `m${sent.length}`, attachments: { first: () => null } }; },
-  messages: { fetch: async () => ({ id: 'm1', startThread: async () => ({ ...makeChannel('thread1'), isThread: () => true }) }) },
+  messages: { fetch: async () => ({ id: 'm1', startThread: async () => ({ ...makeChannel('thread1'), isThread: () => true, guild }) }) },
 });
-const channels = { c1: makeChannel('c1'), review: makeChannel('review') };
+const deleted = [];
+const channels = { c1: makeChannel('c1'), review: makeChannel('review'), log: makeChannel('log') };
+channels.c1.messages = { fetch: async (id) => (id === 'panel1' ? { id, delete: async () => { deleted.push(id); } } : { id: 'm1', startThread: async () => ({ ...makeChannel('thread1'), isThread: () => true, guild }) }) };
 const guild = {
-  id: '111111111111111111', name: 'G', members: { ...empty(), me: {} }, roles: empty(), emojis: empty(), stickers: empty(), memberCount: 1, premiumTier: 0,
+  client: { user: { displayAvatarURL: () => 'https://cdn.example/petto.png' } },
+  id: '111111111111111111', name: 'G', members: { ...empty(), me: { avatarURL: () => (ownAvatar ? 'https://cdn.example/petto-server.png' : null) } }, roles: empty(), emojis: empty(), stickers: empty(), memberCount: 1, premiumTier: 0,
   iconURL: () => null, bannerURL: () => null, splashURL: () => null, discoverySplashURL: () => null,
   channels: { ...empty(), fetch: async (id) => channels[id] ?? null },
 };
+for (const channel of Object.values(channels)) channel.guild = guild;
 const user = (id) => ({ id });
 const base = { enabled: true, channel_id: 'c1', review_channel_id: 'review', require_review: false, allow_images: true, allow_replies: true, keep_author: true, use_webhook: true, webhook_name: 'Anonymous', webhook_avatar: null, title: 'Anonymous confession #{confession.number}', footer: 'Confession ID: {confession.id}', color: 0xa5ea7a, reply_label: 'Reply anonymously', cooldown_seconds: 60 };
 
@@ -91,7 +97,7 @@ const base = { enabled: true, channel_id: 'c1', review_channel_id: 'review', req
   result = await confessions.submit({ guild, user: user('u5'), text: 'check me' });
   assert.ok(result.review);
   assert.equal(sent.length, 1);
-  assert.equal(sent[0].channel, 'review');
+  assert.equal(sent[0].username, 'Confessions review', 'the card of the staff is sent through the webhook');
   assert.ok(JSON.stringify(sent[0].components).includes('cfs:ok:'), 'the staff gets the approve button');
   const waiting = result.row;
   let decided = await confessions.decide({ guild, member: { permissions: { has: () => false }, roles: empty() }, id: waiting.id, approve: true });
@@ -117,6 +123,40 @@ const base = { enabled: true, channel_id: 'c1', review_channel_id: 'review', req
   assert.ok(JSON.stringify(sent[0].components.map((c) => c.toJSON?.() ?? c)).includes('Anonymous reply'));
   config = { ...base, allow_replies: false };
   assert.match((await confessions.reply({ guild, user: user('u8'), id: posted.id, text: 'x' })).error, /not turned on/);
+
+  // The picture it shows: the one of the server, else Petto's own in that server, else the usual one of Petto.
+  assert.equal(confessions.avatarFor(guild, { webhook_avatar: 'https://cdn.example/chosen.png' }), 'https://cdn.example/chosen.png');
+  assert.equal(confessions.avatarFor(guild, { webhook_avatar: null }), 'https://cdn.example/petto.png', 'the usual picture of Petto');
+  ownAvatar = true;
+  assert.equal(confessions.avatarFor(guild, { webhook_avatar: null }), 'https://cdn.example/petto-server.png', 'the picture Petto has in that server');
+  config = { ...base, cooldown_seconds: 0, webhook_avatar: null };
+  sent.length = 0;
+  await confessions.submit({ guild, user: user('u9'), text: 'with the avatar' });
+  assert.equal(sent[0].avatarURL, 'https://cdn.example/petto-server.png');
+  sent.length = 0;
+  await confessions.reply({ guild, user: user('u9'), id: posted.id, text: 'reply with the avatar' });
+  assert.equal(sent[0].avatarURL, 'https://cdn.example/petto-server.png', 'the replies show it too');
+  ownAvatar = false;
+
+  // The review card goes through the webhook too.
+  config = { ...base, require_review: true, cooldown_seconds: 0 };
+  sent.length = 0;
+  await confessions.submit({ guild, user: user('u10'), text: 'review look' });
+  assert.equal(sent[0].via, 'webhook');
+  assert.equal(sent[0].username, 'Confessions review');
+
+  // The panel goes back to the bottom after a confession, and the staff actions are logged.
+  config = { ...base, cooldown_seconds: 0, panel_channel_id: 'c1', panel_message_id: 'panel1', log_channel_id: 'log' };
+  sent.length = 0;
+  await confessions.submit({ guild, user: user('u11'), text: 'panel goes down' });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.deepEqual(deleted, ['panel1'], 'the old panel is deleted');
+  assert.ok(sent.some((entry) => entry.via === 'bot' && JSON.stringify(entry.components).includes('cfs:new')), 'the panel is sent again, as the last message');
+  assert.notEqual(config.panel_message_id, 'panel1', 'the new panel is remembered');
+  sent.length = 0;
+  await confessions.logAction(guild, config, 'someone did something');
+  assert.equal(sent[0].username, 'Confessions log');
+  assert.ok(JSON.stringify(sent[0].components.map((c) => c.toJSON?.() ?? c)).includes('someone did something'));
 
   console.log('confessions ok');
 })().catch((error) => { console.error(error); process.exit(1); });

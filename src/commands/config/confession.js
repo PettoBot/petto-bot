@@ -1,7 +1,6 @@
 const { SlashCommandBuilder, MessageFlags, PermissionFlagsBits, ChannelType } = require('discord.js');
 const db = require('../../db/confessions');
 const confessions = require('../../utils/confessions');
-const { buildPanel } = require('../../interactions/confessions');
 const { getTemplate } = require('../../db/embedTemplates');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
@@ -30,6 +29,7 @@ const SETTINGS = {
   panel_text: { column: 'panel_text', kind: 'text', label: 'Text of the panel' },
   cooldown: { column: 'cooldown_seconds', kind: 'number', min: 0, max: 86400, label: 'Seconds to wait between confessions (0 = none)' },
   review_channel: { column: 'review_channel_id', kind: 'channel', label: 'Channel where the staff checks confessions' },
+  log_channel: { column: 'log_channel_id', kind: 'channel', label: 'Channel where the staff actions are logged' },
   staff_role: { column: 'staff_role_id', kind: 'role', label: 'Role that can check confessions' },
   design: { column: 'embed_template', kind: 'design', label: 'Saved design of the confessions' },
 };
@@ -105,7 +105,7 @@ async function show(interaction, c) {
   const yes = (v) => (v ? 'on' : 'off');
   const lines = [
     `**Confessions** · ${c.enabled ? 'on' : 'off'}`,
-    `Channel: ${c.channel_id ? `<#${c.channel_id}>` : 'none'} · checked by the staff first: ${yes(c.require_review)}${c.review_channel_id ? ` (in <#${c.review_channel_id}>)` : ''}`,
+    `Channel: ${c.channel_id ? `<#${c.channel_id}>` : 'none'} · checked by the staff first: ${yes(c.require_review)}${c.review_channel_id ? ` (in <#${c.review_channel_id}>)` : ''} · log: ${c.log_channel_id ? `<#${c.log_channel_id}>` : 'none'}`,
     `The confess command: ${yes(c.allow_command)} · pictures: ${yes(c.allow_images)} · anonymous replies: ${yes(c.allow_replies)}`,
     `Webhook: ${yes(c.use_webhook)}${c.use_webhook ? ` as **${c.webhook_name}**` : ''} · keep who confessed: ${yes(c.keep_author)} · wait: ${c.cooldown_seconds}s`,
     `Staff role: ${c.staff_role_id ? `<@&${c.staff_role_id}>` : 'only who has Manage Server'}`,
@@ -161,8 +161,9 @@ async function panel(interaction, config) {
   if (!config.enabled) return reply(interaction, `${EMOJI.DENY}  Turn confessions on first with \`confession setup\`.`, RED, true);
   const channel = interaction.options.getChannel('channel') ?? interaction.channel;
   if (!channel.permissionsFor(interaction.guild.members.me)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages])) return reply(interaction, `${EMOJI.DENY}  I cannot write in ${channel}.`, RED, true);
-  await channel.send(buildPanel(interaction.guild, config));
-  return reply(interaction, `${EMOJI.APPROVE}  The panel is in ${channel}.`, GREEN, true);
+  const result = await confessions.postPanel(interaction.guild, config, channel.id);
+  if (!result.ok) return reply(interaction, `${EMOJI.DENY}  ${result.message}`, RED, true);
+  return reply(interaction, `${EMOJI.APPROVE}  The panel is in ${channel}, at the bottom. It goes back down after each confession.`, GREEN, true);
 }
 
 async function decide(interaction, approve) {
@@ -177,6 +178,7 @@ async function reveal(interaction) {
   const row = await db.getById(id);
   if (!row || row.guild_id !== interaction.guild.id) return reply(interaction, `${EMOJI.DENY}  There is no confession with the ID \`${id}\`.`, RED, true);
   if (!row.author_id) return reply(interaction, `${EMOJI.DENY}  This server does not keep who confessed, so it cannot be known.`, RED, true);
+  await confessions.logAction(interaction.guild, await db.getConfig(interaction.guild.id), `${interaction.user} looked at who made the confession \`${row.id}\` (#${row.number}).`, 0xffd563);
   return reply(interaction, `**Confession #${row.number}** · \`${row.id}\`\nBy <@${row.author_id}> (${row.author_id})\n${String(row.content).slice(0, 400)}`, GREY, true);
 }
 
@@ -191,7 +193,7 @@ async function erase(interaction, config) {
   }
   if (row.thread_id) await (await interaction.guild.channels.fetch(row.thread_id).catch(() => null))?.delete().catch(() => {});
   await db.remove(interaction.guild.id, id);
-  void config;
+  await confessions.logAction(interaction.guild, config, `${interaction.user} deleted the confession \`${id}\` (#${row.number}).`, 0xff6b6b);
   return reply(interaction, `${EMOJI.APPROVE}  Deleted the confession \`${id}\`.`, GREEN);
 }
 
@@ -210,10 +212,12 @@ async function blocking(interaction, on) {
     if (!row || row.guild_id !== interaction.guild.id) return reply(interaction, `${EMOJI.DENY}  There is no confession with that ID.`, RED, true);
     if (!row.author_id) return reply(interaction, `${EMOJI.DENY}  This server does not keep who confessed, so it cannot be known.`, RED, true);
     await db.block(interaction.guild.id, row.author_id, interaction.user.id);
+    await confessions.logAction(interaction.guild, await db.getConfig(interaction.guild.id), `${interaction.user} blocked the author of the confession \`${row.id}\`.`, 0xff6b6b);
     return reply(interaction, `${EMOJI.APPROVE}  The author of \`${row.id}\` cannot confess now.`, GREEN, true);
   }
   if (!user) return reply(interaction, `${EMOJI.DENY}  Pick a member${on ? ' or give the ID of one of their confessions' : ''}.`, RED, true);
   if (on) await db.block(interaction.guild.id, user.id, interaction.user.id);
   else if (!(await db.unblock(interaction.guild.id, user.id))) return reply(interaction, `${EMOJI.DENY}  ${user} was not blocked.`, RED, true);
+  await confessions.logAction(interaction.guild, await db.getConfig(interaction.guild.id), `${interaction.user} ${on ? 'blocked' : 'unblocked'} ${user} ${on ? 'from' : 'to'} confess${on ? '' : 'ing again'}.`, on ? 0xff6b6b : 0xa5ea7a);
   return reply(interaction, `${EMOJI.APPROVE}  ${user} ${on ? 'cannot confess now' : 'can confess again'}.`, GREEN, true);
 }

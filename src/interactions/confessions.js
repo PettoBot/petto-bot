@@ -14,13 +14,7 @@ const say = (interaction, text, color = 0x4b4f59) => interaction.reply({
   allowedMentions: { parse: [] },
 });
 
-/** The panel: a message with a button that opens the form, for servers that want confessions without a command. */
-function buildPanel(guild, config) {
-  const container = new ContainerBuilder().setAccentColor(config.color)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### Confessions\n${config.panel_text}`))
-    .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:new`).setLabel(String(config.button_label || 'Confess').slice(0, 80)).setStyle(ButtonStyle.Success)));
-  return { components: [container], flags: V2, allowedMentions: { parse: [] } };
-}
+const { buildPanel } = confessions;
 
 function form(customId, title, config, withImage) {
   const rows = [new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('text').setLabel('What do you want to say?').setStyle(TextInputStyle.Paragraph).setMinLength(1).setMaxLength(confessions.MAX_CONTENT).setRequired(true))];
@@ -69,20 +63,6 @@ async function handleModal(interaction) {
   return interaction.editReply({ components: [new ContainerBuilder().setAccentColor(result.error ? 0xff6b6b : 0xa5ea7a).addTextDisplayComponents(new TextDisplayBuilder().setContent(body))], flags: V2 });
 }
 
-/** Posts the panel in a channel, or edits the one posted before there. Returns `{ ok, message }`. */
-async function postPanel(guild, config, channelId) {
-  const channel = await guild.channels.fetch(channelId).catch(() => null);
-  if (!channel?.isTextBased?.() || channel.isThread?.()) return { ok: false, message: 'Pick a text channel for the panel.' };
-  if (!channel.permissionsFor(guild.members.me)?.has(['ViewChannel', 'SendMessages'])) return { ok: false, message: `I cannot write in #${channel.name}.` };
-  const payload = buildPanel(guild, config);
-  let message = null;
-  if (config.panel_message_id && config.panel_channel_id === channel.id) {
-    message = await channel.messages.fetch(config.panel_message_id).catch(() => null);
-    if (message) await message.edit({ components: payload.components, flags: payload.flags }).catch(() => { message = null; });
-  }
-  if (!message) message = await channel.send(payload);
-  await db.updateConfig(guild.id, { panel_channel_id: channel.id, panel_message_id: message.id });
-  return { ok: true, message: `The panel is in #${channel.name}.` };
-}
+const { postPanel } = confessions;
 
 module.exports = { PREFIX, buildPanel, postPanel, handleButton: (i) => handleButton(i).catch((err) => logger.error('Confession button failed:', err)), handleModal: (i) => handleModal(i).catch((err) => logger.error('Confession form failed:', err)) };
