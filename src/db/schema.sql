@@ -3028,3 +3028,51 @@ alter table giveaway_preset_levels enable row level security;
 
 alter table level_config add column if not exists reset_on_leave boolean not null default false;
 alter table level_config add column if not exists restore_roles boolean not null default true;
+
+-- ---------------------------------------------------------------------------
+-- Birthdays: each member saves their own in a server; Petto announces them, and can give a role for the day.
+-- ---------------------------------------------------------------------------
+create table if not exists birthdays (
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  user_id    text not null,
+  month      smallint not null check (month between 1 and 12),
+  day        smallint not null check (day between 1 and 31),
+  year       smallint check (year is null or year between 1900 and 2100),
+  created_at timestamptz not null default now(),
+  primary key (guild_id, user_id)
+);
+create index if not exists idx_birthdays_guild_date on birthdays(guild_id, month, day);
+alter table birthdays enable row level security;
+
+create table if not exists birthday_config (
+  guild_id           text primary key references guilds(guild_id) on delete cascade,
+  enabled            boolean not null default false,
+  channel_id         text,
+  role_id            text,
+  message            text not null default '{EMOJI} Happy birthday {user}! Have a great day!',
+  embed_template     text,
+  hour               smallint not null default 9 check (hour between 0 and 23),
+  utc_offset_minutes integer not null default -300 check (utc_offset_minutes between -720 and 840),
+  last_announced     date,
+  updated_at         timestamptz not null default now()
+);
+alter table birthday_config enable row level security;
+
+-- The birthday role is taken back a day later; this remembers who has it and until when.
+create table if not exists birthday_roles (
+  guild_id  text not null references guilds(guild_id) on delete cascade,
+  user_id   text not null,
+  role_id   text not null,
+  remove_at timestamptz not null,
+  primary key (guild_id, user_id)
+);
+create index if not exists idx_birthday_roles_due on birthday_roles(remove_at);
+alter table birthday_roles enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- Public leaderboard page of a server (petto.sbs/lb/<name>): off until the server turns it on.
+-- ---------------------------------------------------------------------------
+alter table level_config add column if not exists leaderboard_public boolean not null default false;
+alter table level_config add column if not exists leaderboard_slug text check (leaderboard_slug is null or leaderboard_slug ~ '^[a-z0-9][a-z0-9-]{1,31}$');
+alter table level_config add column if not exists leaderboard_join_url text;
+create unique index if not exists idx_level_config_leaderboard_slug on level_config(leaderboard_slug) where leaderboard_slug is not null;
