@@ -3214,3 +3214,46 @@ create table if not exists suggestion_blocks (
   primary key (guild_id, user_id)
 );
 alter table suggestion_blocks enable row level security;
+
+
+-- ---------------------------------------------------------------------------
+-- Counting: a channel where members count one number after the other
+-- ---------------------------------------------------------------------------
+create table if not exists counting_config (
+  guild_id        text primary key references guilds(guild_id) on delete cascade,
+  enabled         boolean not null default false,
+  channel_id      text,
+  current_number  integer not null default 0,
+  last_user_id    text,
+  last_message_id text,
+  high_score      integer not null default 0,
+  total_correct   integer not null default 0,
+  total_wrong     integer not null default 0,
+  start_number    integer not null default 0,
+  allow_double    boolean not null default false,
+  math            boolean not null default true,
+  reset_on_wrong  boolean not null default true,
+  delete_wrong    boolean not null default false,
+  announce_edits  boolean not null default true,
+  react_ok        text not null default '✅',
+  react_bad       text not null default '❌',
+  react_record    text not null default '🏆',
+  saves           integer not null default 0,
+  saves_max       integer not null default 0,
+  save_every      integer not null default 100,
+  milestone_every integer not null default 100,
+  updated_at      timestamptz not null default now()
+);
+alter table counting_config enable row level security;
+
+create table if not exists counting_users (
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  user_id    text not null,
+  correct    integer not null default 0,
+  wrong      integer not null default 0,
+  best       integer not null default 0,
+  updated_at timestamptz not null default now(),
+  primary key (guild_id, user_id)
+);
+create index if not exists idx_counting_users_top on counting_users(guild_id, correct desc);
+alter table counting_users enable row level security;
