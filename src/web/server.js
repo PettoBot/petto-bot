@@ -13,7 +13,9 @@ const { sendVerifiedDM } = require('../utils/verifyMessage');
 const { createBackup, listBackups, getBackup, recordAudit, vault } = require('../db/backups');
 const { restoreBackup } = require('../utils/backupRestore');
 const { buildSnapshot } = require('../commands/config/backup');
-const { renderVerifyPage } = require('./verifyPage');
+const { renderVerifyPage, pickLanguage } = require('./verifyPage');
+const { createChallenge, checkAnswer } = require('../utils/verifyCaptcha');
+const { methodOf, usesTurnstile, usesLetters } = require('../utils/verifyMethod');
 const { renderHomePage } = require('./homePage');
 const { setCachedPrefix } = require('../events/messageCreateCommands');
 const { registerDashboardRestRoutes } = require('./dashboardDatabase');
@@ -111,7 +113,8 @@ const dashboardDatabaseRateLimiter = rateLimit({
  * /verify's slash command still works for config, it just can't send working links.
  */
 function startServer(client) {
-  const verificationEnabled = Boolean(config.verifyBaseUrl && config.turnstileSiteKey && config.turnstileSecretKey && config.verifyTokenSecret);
+  // The Cloudflare keys are only needed by the servers that use that method; the letters method needs only the link and its secret.
+  const verificationEnabled = Boolean(config.verifyBaseUrl && config.verifyTokenSecret);
   const dashboardEnabled = Boolean(config.dashboardApiSecret);
   const votesEnabled = Boolean(config.topggWebhookSecret);
   if (!verificationEnabled && !dashboardEnabled && !votesEnabled) {
@@ -401,8 +404,44 @@ function startServer(client) {
     res.set('Content-Type', 'text/html; charset=utf-8').send(renderHomePage({ guildCount: client.guilds.cache.size }));
   });
 
-  app.get('/verify/:token', (req, res) => {
-    res.set('Content-Type', 'text/html; charset=utf-8').send(renderVerifyPage({ token: req.params.token, siteKey: config.turnstileSiteKey }));
+  app.get('/verify/:token', async (req, res) => {
+    // The page shows the check the server chose and its name, and speaks the language of the visitor.
+    const payload = verifyToken(req.params.token);
+    const settings = payload ? await getConfig(payload.guildId).catch(() => null) : null;
+    const guild = payload ? client.guilds.cache.get(payload.guildId) : null;
+    res.set('Content-Type', 'text/html; charset=utf-8').send(renderVerifyPage({
+      token: req.params.token,
+      siteKey: config.turnstileSiteKey,
+      method: methodOf(settings),
+      guildName: guild?.name ?? null,
+      guildIcon: guild?.iconURL?.({ size: 64, extension: 'png' }) ?? null,
+      lang: pickLanguage(req.get('accept-language')),
+    }));
+  });
+
+  // A new picture of letters for the letters method: the PNG as a data link and the signed ticket the page sends back with the answer.
+  app.post('/api/verify/captcha', createRateLimiter({ windowMs: 60_000, max: 40 }), async (req, res) => {
+    const payload = verifyToken(req.body?.token);
+    if (!payload) {
+      res.status(400).json({ ok: false, error: 'This verification link is invalid or has expired. Rejoin the server to get a new one.' });
+      return;
+    }
+    try {
+      const settings = await getConfig(payload.guildId);
+      if (!usesLetters(methodOf(settings))) {
+        res.status(400).json({ ok: false, error: 'This server does not use the letters check.' });
+        return;
+      }
+      if (await isRedeemed(payload.jti)) {
+        res.status(400).json({ ok: false, error: "You've already verified with this link." });
+        return;
+      }
+      const challenge = createChallenge(payload.jti);
+      res.set('Cache-Control', 'no-store').json({ ok: true, image: `data:image/png;base64,${challenge.png.toString('base64')}`, ticket: challenge.ticket });
+    } catch (err) {
+      logger.error('Failed to make a verification picture:', err);
+      res.status(500).json({ ok: false, error: 'Something went wrong. Please try again.' });
+    }
   });
 
   app.post('/api/verify', createRateLimiter({ windowMs: 60_000, max: 20 }), async (req, res) => {
@@ -427,23 +466,48 @@ function startServer(client) {
       return;
     }
 
-    if (!turnstileToken) {
-      res.status(400).json({ ok: false, error: 'Captcha response missing.' });
-      return;
-    }
-
-    let turnstileResult;
+    let method;
     try {
-      turnstileResult = await checkTurnstile(turnstileToken, req.ip);
+      method = methodOf(await getConfig(payload.guildId));
     } catch (err) {
-      logger.error('Turnstile verification request failed:', err);
-      res.status(502).json({ ok: false, error: 'Could not reach the captcha service. Try again.' });
+      logger.error('Failed to read the verification settings:', err);
+      res.status(500).json({ ok: false, error: 'Something went wrong. Please try again.' });
       return;
     }
 
-    if (!turnstileResult.success) {
-      res.status(400).json({ ok: false, error: 'Captcha check failed. Please try again.' });
-      return;
+    // The letters are checked first: it is cheap, and a wrong answer must not use up the Cloudflare check.
+    if (usesLetters(method)) {
+      const answer = checkAnswer(payload.jti, req.body?.captchaTicket, req.body?.captchaAnswer);
+      if (!answer.ok) {
+        const text = { wrong: 'Those letters are not right.', locked: 'Too many wrong tries. Wait a few minutes and open the link again.', expired: 'The picture expired.', invalid: 'The picture is not valid. Ask for a new one.' }[answer.reason];
+        res.status(400).json({ ok: false, code: answer.reason, error: text });
+        return;
+      }
+    }
+
+    if (usesTurnstile(method)) {
+      if (!config.turnstileSecretKey) {
+        res.status(500).json({ ok: false, error: 'This server uses the Cloudflare check, but it is not set up. Contact a moderator.' });
+        return;
+      }
+      if (!turnstileToken) {
+        res.status(400).json({ ok: false, error: 'Captcha response missing.' });
+        return;
+      }
+
+      let turnstileResult;
+      try {
+        turnstileResult = await checkTurnstile(turnstileToken, req.ip);
+      } catch (err) {
+        logger.error('Turnstile verification request failed:', err);
+        res.status(502).json({ ok: false, error: 'Could not reach the captcha service. Try again.' });
+        return;
+      }
+
+      if (!turnstileResult.success) {
+        res.status(400).json({ ok: false, error: 'Captcha check failed. Please try again.' });
+        return;
+      }
     }
 
     try {
@@ -462,10 +526,10 @@ function startServer(client) {
 
       try {
         if (verifyConfig?.unverified_role_id && member.roles.cache.has(verifyConfig.unverified_role_id)) {
-          await member.roles.remove(verifyConfig.unverified_role_id, 'Passed Turnstile verification');
+          await member.roles.remove(verifyConfig.unverified_role_id, 'Passed verification');
         }
         if (verifyConfig?.verified_role_id) {
-          await member.roles.add(verifyConfig.verified_role_id, 'Passed Turnstile verification');
+          await member.roles.add(verifyConfig.verified_role_id, 'Passed verification');
         }
       } catch (err) {
         await releaseRedemption(payload.jti).catch((releaseErr) => logger.error('Failed to release verification claim after role failure:', releaseErr));

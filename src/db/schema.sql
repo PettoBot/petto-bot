@@ -3111,3 +3111,28 @@ create index if not exists idx_monkeyboard_entries_guild on monkeyboard_entries(
 
 alter table monkeyboards enable row level security;
 alter table monkeyboard_entries enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- History of avatars, names and nicknames: what a person has shown, newest first. Each person can turn it off and clear it.
+-- ---------------------------------------------------------------------------
+create table if not exists identity_history (
+  id        bigserial primary key,
+  user_id   text not null,
+  guild_id  text,
+  kind      text not null check (kind in ('avatar', 'name', 'nickname')),
+  value     text not null,
+  seen_at   timestamptz not null default now()
+);
+create index if not exists idx_identity_history_user_kind on identity_history(user_id, kind, seen_at desc);
+alter table identity_history enable row level security;
+
+create table if not exists identity_history_optout (
+  user_id    text primary key,
+  created_at timestamptz not null default now()
+);
+alter table identity_history_optout enable row level security;
+
+-- How a server verifies new members: the Cloudflare check, the letters of a picture, or both.
+alter table verification_config add column if not exists method text not null default 'turnstile';
+alter table verification_config drop constraint if exists verification_config_method_check;
+alter table verification_config add constraint verification_config_method_check check (method in ('turnstile', 'letters', 'both'));

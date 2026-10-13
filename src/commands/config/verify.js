@@ -10,13 +10,20 @@ const { EMOJI } = require('../../utils/emojis');
 const config = require('../../config');
 const logger = require('../../utils/logger');
 
-const ENV_CONFIGURED = () => Boolean(config.verifyBaseUrl && config.turnstileSiteKey && config.turnstileSecretKey && config.verifyTokenSecret);
+const { methodOf, usesTurnstile } = require('../../utils/verifyMethod');
+
+const METHOD_LABELS = { turnstile: 'Cloudflare check', letters: 'Letters in a picture', both: 'Cloudflare check and letters' };
+
+// The link and its secret are always needed; the Cloudflare keys only for the servers that use that check.
+const LINK_CONFIGURED = () => Boolean(config.verifyBaseUrl && config.verifyTokenSecret);
+const TURNSTILE_CONFIGURED = () => Boolean(config.turnstileSiteKey && config.turnstileSecretKey);
+const ENV_CONFIGURED = (method = 'turnstile') => LINK_CONFIGURED() && (!usesTurnstile(method) || TURNSTILE_CONFIGURED());
 
 module.exports = {
   aliases: ['vf'],
   data: new SlashCommandBuilder()
     .setName('verify')
-    .setDescription('Configure the Cloudflare Turnstile join-verification gate.')
+    .setDescription('Configure the join-verification gate (Cloudflare check, letters, or both).')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false)
     .addSubcommand((s) =>
@@ -24,7 +31,8 @@ module.exports = {
         .setName('setup')
         .setDescription('Enable/disable verification and set the optional bonus role.')
         .addBooleanOption((o) => o.setName('enabled').setDescription('Turn verification on/off').setRequired(true))
-        .addRoleOption((o) => o.setName('verified_role').setDescription('Optional role to grant once someone passes verification').setRequired(false)),
+        .addRoleOption((o) => o.setName('verified_role').setDescription('Optional role to grant once someone passes verification').setRequired(false))
+        .addStringOption((o) => o.setName('method').setDescription('How members prove they are human').setRequired(false).addChoices({ name: 'Cloudflare check', value: 'turnstile' }, { name: 'Letters in a picture', value: 'letters' }, { name: 'Both', value: 'both' })),
     )
     .addSubcommand((s) => s.setName('template').setDescription('Use a saved embed for the DMs of verification, or none to go back to the usual one.')
       .addStringOption((o) => o.setName('which').setDescription('Which message').setRequired(true).addChoices({ name: 'prompt', value: 'prompt' }, { name: 'verified', value: 'verified' }))
@@ -67,6 +75,7 @@ async function setTemplate(interaction) {
 async function setup(interaction) {
   const enabled = interaction.options.getBoolean('enabled', true);
   const verifiedRole = interaction.options.getRole('verified_role');
+  const chosenMethod = interaction.options.getString('method');
 
   if (enabled && !interaction.guild.members.me.permissions.has(PermissionFlagsBits.ManageRoles)) {
     await interaction.reply({ content: 'I need the **Manage Roles** permission to set up verification.', flags: MessageFlags.Ephemeral });
@@ -80,6 +89,7 @@ async function setup(interaction) {
 
   const patch = { enabled };
   if (verifiedRole) patch.verified_role_id = verifiedRole.id;
+  if (chosenMethod) patch.method = chosenMethod;
   const saved = await upsertConfig(interaction.guild.id, patch);
 
   let roleLine = '';
@@ -94,9 +104,10 @@ async function setup(interaction) {
     }
   }
 
-  const envLine = ENV_CONFIGURED() ? '' : `\n${EMOJI.ALERT}  \`VERIFY_BASE_URL\`/\`TURNSTILE_*\`/\`VERIFY_TOKEN_SECRET\` aren't fully set in \`.env\`. Links won't work until they are.`;
+  const method = methodOf({ ...existing, ...saved });
+  const envLine = ENV_CONFIGURED(method) ? '' : `\n${EMOJI.ALERT}  \`VERIFY_BASE_URL\`/\`TURNSTILE_*\`/\`VERIFY_TOKEN_SECRET\` aren't fully set in \`.env\`. Links won't work until they are.`;
 
-  const text = `${EMOJI.APPROVE}  Verification ${enabled ? 'enabled' : 'disabled'}.${roleLine}${verifiedRole ? `\n**Bonus role on success:** ${verifiedRole}` : ''}${envLine}`;
+  const text = `${EMOJI.APPROVE}  Verification ${enabled ? 'enabled' : 'disabled'}.${roleLine}${verifiedRole ? `\n**Bonus role on success:** ${verifiedRole}` : ''}\n**Check:** ${METHOD_LABELS[method]}${envLine}`;
   await interaction.editReply({ components: [textCard(text, enabled ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
@@ -114,7 +125,8 @@ async function status(interaction) {
     `**Enabled:** ${verifyConfig.enabled ? `${EMOJI.APPROVE} Yes` : `${EMOJI.DENY} No`}`,
     `**Gate role:** ${verifyConfig.unverified_role_id ? `<@&${verifyConfig.unverified_role_id}>` : 'Not created yet'}`,
     `**Bonus role on success:** ${verifyConfig.verified_role_id ? `<@&${verifyConfig.verified_role_id}>` : 'None'}`,
-    `**Web server env vars:** ${ENV_CONFIGURED() ? `${EMOJI.APPROVE} Configured` : `${EMOJI.DENY} Missing (links won't work)`}`,
+    `**Check:** ${METHOD_LABELS[methodOf(verifyConfig)]}`,
+    `**Web server env vars:** ${ENV_CONFIGURED(methodOf(verifyConfig)) ? `${EMOJI.APPROVE} Configured` : `${EMOJI.DENY} Missing (links won't work)`}`,
   ];
   await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
@@ -122,7 +134,8 @@ async function status(interaction) {
 async function send(interaction) {
   const targetUser = interaction.options.getUser('user', true);
 
-  if (!ENV_CONFIGURED()) {
+  const sendConfig = (await getConfig(interaction.guild.id).catch(() => null)) ?? {};
+  if (!ENV_CONFIGURED(methodOf(sendConfig))) {
     await interaction.reply({ content: 'Verification env vars are not fully set. See `!verify status`.', flags: MessageFlags.Ephemeral });
     return;
   }
