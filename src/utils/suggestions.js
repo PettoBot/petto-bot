@@ -2,11 +2,12 @@
 // saved design of the server (with the {suggestion.*} variables) or, when none is chosen, the usual one below: a container with the
 // suggestion, who made it, the votes so far and the ID. The two vote buttons are always put under it.
 const crypto = require('node:crypto');
-const { PermissionFlagsBits } = require('discord.js');
+const { PermissionFlagsBits, AttachmentBuilder } = require('discord.js');
 const db = require('../db/suggestions');
 const { build } = require('./embedBuilder');
 const { templatePayload } = require('./templatedMessage');
 const logger = require('./logger');
+const { fetchImageBuffer } = require('./safeImage');
 
 const ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 const MAX_CONTENT = 1800;
@@ -78,6 +79,30 @@ function defaultDesign(config, status) {
   return { v2: { components: [{ type: 17, accent_color: config.status_colors ? config[STATUSES[status].color] : null, components: children }] } };
 }
 
+/** The kind of picture and its file name, from the first bytes; null when it is not a picture Discord shows. */
+function pictureName(buffer) {
+  if (buffer.length > 12 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return 'suggestion.png';
+  if (buffer.length > 3 && buffer[0] === 0xff && buffer[1] === 0xd8) return 'suggestion.jpg';
+  if (buffer.length > 6 && buffer.toString('latin1', 0, 4) === 'GIF8') return 'suggestion.gif';
+  if (buffer.length > 12 && buffer.toString('latin1', 0, 4) === 'RIFF' && buffer.toString('latin1', 8, 12) === 'WEBP') return 'suggestion.webp';
+  return null;
+}
+
+/**
+ * The picture of a suggestion as a file of its own message. The link the member gave (usually the attachment of their own message, which is
+ * deleted right after) stops working, so the picture is copied now and the suggestion keeps it. null when it cannot be had.
+ */
+async function copyPicture(url) {
+  try {
+    const buffer = await fetchImageBuffer(url);
+    const name = pictureName(buffer);
+    return name ? { buffer, name } : null;
+  } catch (err) {
+    logger.warn(`The picture of a suggestion could not be copied: ${err.message}`);
+    return null;
+  }
+}
+
 /** What `{suggestion.*}` says about one suggestion. */
 function suggestionVars(row, config, { guild, tally, author, staffName }) {
   const total = tally.up + tally.down;
@@ -114,7 +139,8 @@ async function render(guild, row, config, { tally = null, authorUser = null } = 
   const author = guild.members.cache.get(row.author_id) ?? authorUser ?? await guild.client.users.fetch(row.author_id).catch(() => null);
   let staffName = '';
   if (row.status_by) staffName = guild.members.cache.get(row.status_by)?.displayName ?? (await guild.client.users.fetch(row.status_by).catch(() => null))?.username ?? '';
-  const ctx = { guild, user: author?.user ?? author ?? undefined, member: guild.members.cache.get(row.author_id) ?? undefined, suggestion: suggestionVars(row, config, { guild, tally: votes, author, staffName }) };
+  const own = /^attachment:\/\/([\w.-]+)$/.exec(row.image_url ?? '');
+  const ctx = { guild, user: author?.user ?? author ?? undefined, member: guild.members.cache.get(row.author_id) ?? undefined, suggestion: suggestionVars(row, config, { guild, tally: votes, author, staffName }), attachmentNames: new Set(own ? [own[1]] : []) };
   const color = config[STATUSES[row.status]?.color ?? 'color_pending'];
 
   let payload = null;
@@ -169,10 +195,14 @@ async function submit({ guild, user, text, attachments = [] }) {
   if (!channel.permissionsFor(me)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages])) return { error: `I cannot write in ${channel}. Ask the staff to give me access.` };
 
   const id = makeId();
-  let row = await db.createSuggestion({ id, guild_id: guild.id, number: await db.nextNumber(guild.id), channel_id: channel.id, author_id: user.id, content: content || '*(a picture)*', image_url: imageUrl });
+  // The picture is copied and sent with the suggestion: the link of the member's message dies when that message is deleted.
+  const picture = imageUrl ? await copyPicture(imageUrl) : null;
+  let row = await db.createSuggestion({ id, guild_id: guild.id, number: await db.nextNumber(guild.id), channel_id: channel.id, author_id: user.id, content: content || '*(a picture)*', image_url: picture ? `attachment://${picture.name}` : imageUrl });
   let message;
   try {
-    message = await channel.send(await render(guild, row, config, { tally: { up: 0, down: 0, mine: 0 }, authorUser: user }));
+    const payload = await render(guild, row, config, { tally: { up: 0, down: 0, mine: 0 }, authorUser: user });
+    if (picture) payload.files = [...(payload.files ?? []), new AttachmentBuilder(picture.buffer, { name: picture.name })];
+    message = await channel.send(payload);
   } catch (err) {
     logger.warn(`A suggestion could not be posted in ${guild.id}: ${err.message}`);
     await db.deleteSuggestion(guild.id, id).catch(() => {});
@@ -246,4 +276,4 @@ async function remove({ guild, member, id }) {
   return { row };
 }
 
-module.exports = { BUTTON_PREFIX, STATUSES, CLOSED, MAX_CONTENT, makeId, splitImage, parseEmoji, voteRow, defaultDesign, suggestionVars, render, refresh, isStaff, submit, vote, answer, remove };
+module.exports = { pictureName, BUTTON_PREFIX, STATUSES, CLOSED, MAX_CONTENT, makeId, splitImage, parseEmoji, voteRow, defaultDesign, suggestionVars, render, refresh, isStaff, submit, vote, answer, remove };
