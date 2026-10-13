@@ -81,7 +81,10 @@ async function check(message) {
     if (top.changed && config.top_role_id) await moveTopRole(message, config.top_role_id, top.previous, message.author.id);
     // A mistake role that lasts "until the next right number" ends now.
     if (config.wrong_role_id && Number(config.wrong_role_minutes) === 0) await clearWrongRole(message, config.wrong_role_id, message.author.id);
-    await react(message, result.record ? config.react_record : config.react_ok);
+    // The record reaction is only for the numbers that are a record AND fall on the step the server chose (every 100 by default; 0 never),
+    // so it does not pile up on every number of a climb.
+    const recordStep = Number(config.record_every) > 0 && result.record && verdict.number % Number(config.record_every) === 0;
+    await react(message, recordStep ? config.react_record : config.react_ok);
     if (result.milestone) await say(message, `**${verdict.number}** reached! Keep going.${result.record ? ' It is a new record.' : ''}`);
     if (result.earnedSave) await say(message, `The server earned a save: ${result.patch.saves}/${config.saves_max}. A save is used when somebody gets a number wrong.`);
     return;

@@ -20,6 +20,7 @@ const SETTINGS = {
   saves: { column: 'saves_max', kind: 'number', min: 0, max: 5, label: 'Saves the server can keep (a save forgives one mistake)' },
   save_every: { column: 'save_every', kind: 'number', min: 10, max: 10000, label: 'A save is earned every this many numbers' },
   milestone: { column: 'milestone_every', kind: 'number', min: 0, max: 100000, label: 'A message every this many numbers (0 for none)' },
+  record_every: { column: 'record_every', kind: 'number', min: 0, max: 100000, label: 'The record reaction is given every this many numbers (0 = never)' },
   wrong_role: { column: 'wrong_role_id', kind: 'role', label: 'Role given to who gets a number wrong (none removes it)' },
   wrong_role_time: { column: 'wrong_role_minutes', kind: 'number', min: 0, max: 10080, label: 'Minutes the mistake role lasts (0 = until their next right number)' },
   top_role: { column: 'top_role_id', kind: 'role', label: 'Role of the best counter (none removes it)' },
@@ -72,7 +73,7 @@ module.exports = {
         `Channel: ${config.channel_id ? `<#${config.channel_id}>` : 'none'} · now at **${config.current_number}** · record **${config.high_score}**`,
         `The same person twice: ${on(config.allow_double)} · sums: ${on(config.math)} · a mistake resets: ${on(config.reset_on_wrong)} · wrong numbers deleted: ${on(config.delete_wrong)}`,
         `Saves: ${config.saves}/${config.saves_max}${config.saves_max ? ` (one more every ${config.save_every})` : ''} · message every ${config.milestone_every || 'never'} · starts after ${config.start_number}`,
-        `Reactions: ${config.react_ok} ${config.react_bad} ${config.react_record}`,
+        `Reactions: ${config.react_ok} ${config.react_bad} ${config.react_record}${config.record_every ? ` (the record one every ${config.record_every})` : ' (the record one is off)'}`,
         `Mistake role: ${config.wrong_role_id ? `<@&${config.wrong_role_id}> for ${config.wrong_role_minutes || 'until the next right number'}${config.wrong_role_minutes ? ' min' : ''}` : 'none'} · best counter role: ${config.top_role_id ? `<@&${config.top_role_id}>` : 'none'} · alerts delete after ${config.alert_seconds ? `${config.alert_seconds} s` : 'never'}`,
       ].join('\n'));
     }

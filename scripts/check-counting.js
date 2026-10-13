@@ -79,7 +79,7 @@ const { readNumber, judge, afterCorrect, afterWrong } = require('../src/utils/co
   await counting.execute(message('2', 'u2', 'b'));
   assert.equal(config.current_number, 2);
   assert.equal(config.last_user_id, 'u2');
-  assert.deepEqual(reactions, ['🏆', '🏆'], 'the first numbers are records');
+  assert.deepEqual(reactions, ['✅', '✅'], 'a record gets its reaction only on the step of the server, not on every number');
   await counting.execute(message('hello there', 'u3'));
   assert.equal(config.current_number, 2, 'chat is left alone');
   await counting.execute(message('3', 'u2'));
@@ -89,6 +89,20 @@ const { readNumber, judge, afterCorrect, afterWrong } = require('../src/utils/co
   assert.equal(config.current_number, 0, 'a mistake sends the count back');
   assert.ok(sent.at(-1).includes('messed up at **2**'));
   assert.equal(users.get('u3').wrong, 1);
+  // The record reaction: only when the number is a record and falls on the step (every record_every).
+  config = { ...config, current_number: 99, last_user_id: null, high_score: 98, record_every: 100 };
+  reactions.length = 0;
+  await counting.execute(message('100', 'u8', 'rec1'));
+  assert.deepEqual(reactions, ['🏆'], 'number 100 is a record on the step');
+  reactions.length = 0;
+  await counting.execute(message('101', 'u9', 'rec2'));
+  assert.deepEqual(reactions, ['✅'], 'the next one is a record too, but off the step');
+  config = { ...config, record_every: 0, current_number: 199, last_user_id: null, high_score: 150 };
+  reactions.length = 0;
+  await counting.execute(message('200', 'u8', 'rec3'));
+  assert.deepEqual(reactions, ['✅'], 'with 0 the record reaction is off');
+  config = { ...config, current_number: 0, last_user_id: null, record_every: 100 };
+
   // Two people at once: only one is right.
   await Promise.all([counting.execute(message('1', 'u4')), counting.execute(message('1', 'u5'))]);
   assert.equal(users.get('u4').correct, 1, 'the first one counted');

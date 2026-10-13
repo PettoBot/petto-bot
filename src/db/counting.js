@@ -29,6 +29,7 @@ const DEFAULTS = {
   saves_max: 0,
   save_every: 100,
   milestone_every: 100,
+  record_every: 100,
   wrong_role_id: null,
   wrong_role_minutes: 60,
   top_role_id: null,

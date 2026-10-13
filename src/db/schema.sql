@@ -3244,6 +3244,7 @@ create table if not exists counting_config (
   saves_max       integer not null default 0,
   save_every      integer not null default 100,
   milestone_every integer not null default 100,
+  record_every    integer not null default 100,
   wrong_role_id   text,
   wrong_role_minutes integer not null default 60,
   top_role_id     text,
@@ -3252,6 +3253,7 @@ create table if not exists counting_config (
   alert_seconds   integer not null default 30,
   updated_at      timestamptz not null default now()
 );
+alter table counting_config add column if not exists record_every integer not null default 100;
 alter table counting_config add column if not exists wrong_role_id text;
 alter table counting_config add column if not exists wrong_role_minutes integer not null default 60;
 alter table counting_config add column if not exists top_role_id text;
