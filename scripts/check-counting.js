@@ -55,10 +55,14 @@ const { readNumber, judge, afterCorrect, afterWrong } = require('../src/utils/co
   // A channel from start to end, with the storage and Discord replaced.
   let config = { ...base, guild_id: 'g1', enabled: true, channel_id: 'c1', current_number: 0, last_user_id: null, last_message_id: null, high_score: 0, total_correct: 0, delete_wrong: false, react_ok: '✅', react_bad: '❌', react_record: '🏆' };
   const users = new Map();
+  const kept = new Map();
   stub('src/db/counting.js', {
     getConfig: async () => config,
     updateConfig: async (_g, patch) => { config = { ...config, ...patch }; return config; },
-    bumpUser: async (_g, id, delta) => { const row = users.get(id) ?? { correct: 0, wrong: 0, best: 0 }; users.set(id, { correct: row.correct + (delta.correct ?? 0), wrong: row.wrong + (delta.wrong ?? 0), best: Math.max(row.best, delta.streak ?? 0) }); },
+    bumpUser: async (_g, id, delta) => { const row = users.get(id) ?? { correct: 0, wrong: 0, best: 0 }; const next = { correct: row.correct + (delta.correct ?? 0), wrong: row.wrong + (delta.wrong ?? 0), best: Math.max(row.best, delta.streak ?? 0) }; users.set(id, next); return { user_id: id, ...next }; },
+    rememberRole: async (_g, id, roleId, removeAt) => { kept.set(id, { role_id: roleId, remove_at: removeAt }); },
+    getRole: async (_g, id) => kept.get(id) ?? null,
+    forgetRole: async (_g, id) => { kept.delete(id); },
   });
   stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
   const counting = require('../src/events/messageCreateCounting');
@@ -90,5 +94,56 @@ const { readNumber, judge, afterCorrect, afterWrong } = require('../src/utils/co
   assert.equal(users.get('u4').correct, 1, 'the first one counted');
   assert.equal(users.get('u5').wrong, 1, 'and the second 1 is wrong, because the first one had counted already');
   assert.equal(config.current_number, 0);
+
+  // Roles: the one for a mistake (for a time, or until the next right number) and the one of the best counter.
+  const roles = new Map();
+  const make = (id) => ({ id, editable: true });
+  const members = new Map();
+  const memberOf = (id) => {
+    if (!members.has(id)) members.set(id, { id, roles: { add: async (role) => { roles.set(`${id}:${role.id ?? role}`, true); }, remove: async (role) => { roles.delete(`${id}:${role.id ?? role}`); return {}; } } });
+    return members.get(id);
+  };
+  const withRoles = (content, author, id) => {
+    const m = message(content, author, id);
+    m.member = memberOf(author);
+    m.guild = { id: 'g1', members: { me: {}, fetch: async (uid) => memberOf(uid) }, roles: { cache: new Map([['wrong', make('wrong')], ['top', make('top')]]) } };
+    return m;
+  };
+  config = { ...config, current_number: 0, last_user_id: null, high_score: 0, wrong_role_id: 'wrong', wrong_role_minutes: 60, top_role_id: 'top', top_user_id: null, top_correct: 0, alert_seconds: 0 };
+  users.clear();
+  const say = async (n, who, id) => counting.execute(withRoles(String(n), who, id || `m${n}${who}${Math.random()}`));
+  await say(1, 'a1');
+  assert.equal(config.top_user_id, 'a1', 'the first one to count is the best counter');
+  assert.ok(roles.has('a1:top'), 'and gets the role');
+  for (const [n, who] of [[2, 'a2'], [3, 'a1'], [4, 'a2'], [5, 'a1']]) await say(n, who);
+  assert.deepEqual([users.get('a1').correct, users.get('a2').correct], [3, 2]);
+  await say(6, 'a2');
+  assert.equal(config.top_user_id, 'a1', 'a tie does not take the place');
+  await say(7, 'a1');
+  await say(8, 'a2');
+  assert.deepEqual([users.get('a1').correct, users.get('a2').correct], [4, 4]);
+  assert.equal(config.top_user_id, 'a1');
+  await say(20, 'a1');
+  assert.ok(roles.has('a1:wrong'), 'who gets a number wrong gets the mistake role');
+  assert.ok(kept.get('a1').remove_at instanceof Date, 'for the time the server chose');
+  assert.equal(config.current_number, 0);
+  // Passing the lead moves the role of the best counter.
+  await say(1, 'a2');
+  assert.equal(users.get('a2').correct, 5);
+  assert.equal(config.top_user_id, 'a2', 'the one with more right numbers is the best counter');
+  assert.ok(roles.has('a2:top') && !roles.has('a1:top'), 'the role moved');
+  // A mistake role that lasts until the next right number ends with it.
+  config = { ...config, wrong_role_minutes: 0, current_number: 0, last_user_id: null };
+  roles.clear(); kept.clear();
+  await counting.execute(withRoles('5', 'b1', 'w1'));
+  assert.ok(roles.has('b1:wrong') && kept.get('b1').remove_at === null, 'no time: it stays');
+  await counting.execute(withRoles('1', 'b2', 'w2'));
+  await counting.execute(withRoles('2', 'b1', 'w3'));
+  assert.ok(!roles.has('b1:wrong') && !kept.has('b1'), 'a right number takes it back');
+  // Alerts delete themselves after the time of the server.
+  const { deleteLater } = require('../src/utils/counting');
+  let gone = 0;
+  deleteLater({ delete: async () => { gone += 1; } }, 0);
+  assert.equal(gone, 0, '0 means never');
   console.log('counting ok');
 })().catch((error) => { console.error(error); process.exit(1); });

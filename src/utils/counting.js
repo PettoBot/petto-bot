@@ -96,4 +96,21 @@ function afterWrong(config) {
   };
 }
 
-module.exports = { MAX_NUMBER, readNumber, evaluate, judge, afterCorrect, afterWrong };
+/** Deletes a message after `seconds` (nothing when it is 0). Timers that a restart loses just leave the message there. */
+function deleteLater(message, seconds) {
+  if (!message?.delete || !(seconds > 0)) return;
+  setTimeout(() => { message.delete().catch(() => {}); }, Math.min(seconds, 86_400) * 1000).unref?.();
+}
+
+/**
+ * Who the best counter is after a member's score changed: `{ topUserId, topCorrect, changed }`. The member takes the first place when they have more
+ * right numbers than who holds it (or they are the one who holds it and their number grows).
+ */
+function trackTop(config, userId, correct) {
+  const holder = config.top_user_id ? String(config.top_user_id) : null;
+  if (holder === String(userId)) return { topUserId: holder, topCorrect: correct, changed: false };
+  if (!holder || correct > Number(config.top_correct ?? 0)) return { topUserId: String(userId), topCorrect: correct, changed: true, previous: holder };
+  return { topUserId: holder, topCorrect: Number(config.top_correct ?? 0), changed: false };
+}
+
+module.exports = { deleteLater, trackTop, MAX_NUMBER, readNumber, evaluate, judge, afterCorrect, afterWrong };

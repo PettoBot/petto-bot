@@ -20,6 +20,10 @@ const SETTINGS = {
   saves: { column: 'saves_max', kind: 'number', min: 0, max: 5, label: 'Saves the server can keep (a save forgives one mistake)' },
   save_every: { column: 'save_every', kind: 'number', min: 10, max: 10000, label: 'A save is earned every this many numbers' },
   milestone: { column: 'milestone_every', kind: 'number', min: 0, max: 100000, label: 'A message every this many numbers (0 for none)' },
+  wrong_role: { column: 'wrong_role_id', kind: 'role', label: 'Role given to who gets a number wrong (none removes it)' },
+  wrong_role_time: { column: 'wrong_role_minutes', kind: 'number', min: 0, max: 10080, label: 'Minutes the mistake role lasts (0 = until their next right number)' },
+  top_role: { column: 'top_role_id', kind: 'role', label: 'Role of the best counter (none removes it)' },
+  alert_time: { column: 'alert_seconds', kind: 'number', min: 0, max: 3600, label: 'Seconds until the alerts of a mistake delete themselves (0 = never)' },
   start: { column: 'start_number', kind: 'number', min: 0, max: 1000000, label: 'The number the count starts after (0 = starts at 1)' },
 };
 const parseBool = (text) => (/^(true|on|yes|si|sí|1|enable|enabled)$/i.test(text) ? true : /^(false|off|no|0|disable|disabled)$/i.test(text) ? false : null);
@@ -37,7 +41,7 @@ module.exports = {
       .setName('set')
       .setDescription('Change one setting.')
       .addStringOption((o) => o.setName('setting').setDescription('What to change').setRequired(true).addChoices(...Object.entries(SETTINGS).map(([name, def]) => ({ name: `${name}: ${def.label}`.slice(0, 100), value: name }))))
-      .addStringOption((o) => o.setName('value').setDescription('on or off, an emoji, or a number').setRequired(true).setMaxLength(64)))
+      .addStringOption((o) => o.setName('value').setDescription('on or off, an emoji, a number or a role').setRequired(true).setMaxLength(64)))
     .addSubcommand((s) => s.setName('number').setDescription('Set the number the count is at now.').addIntegerOption((o) => o.setName('value').setDescription('The last number counted (the next one is this plus 1)').setMinValue(0).setMaxValue(1000000).setRequired(true)))
     .addSubcommand((s) => s.setName('reset').setDescription('Send the count back to the start and clear who counted.').addBooleanOption((o) => o.setName('clear_scores').setDescription('Also clear the scores of everyone').setRequired(false)))
     .addSubcommand((s) => s.setName('next').setDescription('See which number comes next.'))
@@ -69,6 +73,7 @@ module.exports = {
         `The same person twice: ${on(config.allow_double)} · sums: ${on(config.math)} · a mistake resets: ${on(config.reset_on_wrong)} · wrong numbers deleted: ${on(config.delete_wrong)}`,
         `Saves: ${config.saves}/${config.saves_max}${config.saves_max ? ` (one more every ${config.save_every})` : ''} · message every ${config.milestone_every || 'never'} · starts after ${config.start_number}`,
         `Reactions: ${config.react_ok} ${config.react_bad} ${config.react_record}`,
+        `Mistake role: ${config.wrong_role_id ? `<@&${config.wrong_role_id}> for ${config.wrong_role_minutes || 'until the next right number'}${config.wrong_role_minutes ? ' min' : ''}` : 'none'} · best counter role: ${config.top_role_id ? `<@&${config.top_role_id}>` : 'none'} · alerts delete after ${config.alert_seconds ? `${config.alert_seconds} s` : 'never'}`,
       ].join('\n'));
     }
     if (sub === 'set') {
@@ -81,11 +86,20 @@ module.exports = {
       else if (def.kind === 'number') {
         value = Number(raw);
         if (!Number.isInteger(value) || value < def.min || value > def.max) return no(interaction, `Write a whole number from ${def.min} to ${def.max}.`);
+      } else if (def.kind === 'role') {
+        if (/^(none|off|no)$/i.test(raw)) value = null;
+        else {
+          const roleId = raw.replace(/\D/g, '');
+          const role = roleId && interaction.guild.roles.cache.get(roleId);
+          if (!role) return no(interaction, 'Mention a role of this server (or write none).');
+          if (!role.editable) return no(interaction, 'I cannot give that role: it is above my highest role or managed by an integration.');
+          value = role.id;
+        }
       } else { if (!raw || raw.length > 64) return no(interaction, 'Write one emoji.'); value = raw; }
       const patch = { [def.column]: value };
       if (name === 'saves') patch.saves = Math.min(config.saves, value);
       await db.updateConfig(interaction.guild.id, patch);
-      return yes(interaction, `${def.label}: **${typeof value === 'boolean' ? (value ? 'on' : 'off') : value}**.`);
+      return yes(interaction, `${def.label}: **${value === null ? 'none' : typeof value === 'boolean' ? (value ? 'on' : 'off') : def.kind === 'role' ? `<@&${value}>` : value}**.`);
     }
     if (sub === 'number') {
       const value = interaction.options.getInteger('value', true);
