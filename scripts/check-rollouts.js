@@ -73,6 +73,8 @@ const raw = [
 
   // The card.
   assert.equal(badge(events[0]), '+12.5% (62.5%)');
+  assert.equal(badge({ type: 'status', rollout: { status: 'ab_test', percent: 1 }, change: 0 }), 'A/B test (1%)', 'a change of status keeps the share in the button');
+  assert.equal(badge({ type: 'status', rollout: { status: 'full', percent: null }, change: 0 }), 'Fully rolled out', 'no share, no parentheses');
   assert.deepEqual(variantLines(events[0]), ['Treatment 1: 50% → 62.5% (+12.5%)']);
   const card = buildRolloutCard(events[0], { role_id: '99', hide_sections: ['filters'] }, { rolePing: '<@&99>' });
   const json = JSON.stringify(card.components[0].toJSON());

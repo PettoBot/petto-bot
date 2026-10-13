@@ -19,11 +19,12 @@ const pct = (value) => (value == null ? '?' : `${Number(value.toFixed(2))}%`);
 const signed = (value) => `${value > 0 ? '+' : ''}${Number(value.toFixed(2))}%`;
 const statusLabel = (status) => STATUS_LABELS[status ?? 'none'] ?? String(status);
 
-/** The short text of the change: `+12.5% (50%)` for a change, `New (50%)` for a new one, the new status for a status change. */
+/** The short text of the change: `+12.5% (50%)` for a change, `New (50%)` for a new one, the new status and its share (`A/B test (1%)`) for a status change. */
 function badge(event) {
   const { rollout, type, change } = event;
   if (type === 'new') return rollout.percent != null ? `New (${pct(rollout.percent)})` : 'New';
-  if (type === 'status') return statusLabel(rollout.status).slice(0, 80);
+  // A change of status keeps the share in the button too, as `A/B test (1%)`, so every button says how far the rollout is.
+  if (type === 'status') return `${statusLabel(rollout.status)}${rollout.percent != null ? ` (${pct(rollout.percent)})` : ''}`.slice(0, 80);
   return `${signed(change)} (${pct(rollout.percent)})`.slice(0, 80);
 }
 
