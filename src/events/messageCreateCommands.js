@@ -1,3 +1,4 @@
+const { isPermissionError, permissionHelp } = require('../utils/permissionErrors');
 const { Events, MessageFlags, PermissionsBitField } = require('discord.js');
 const { plainMessage } = require('../utils/cardService');
 const { ensureGuild } = require('../db/guilds');
@@ -347,8 +348,10 @@ module.exports = {
     try {
       await command.execute(interaction, message.client);
     } catch (err) {
-      logger.error(`Error executing ${prefix}${canonicalName}:`, err);
-      const errorReply = warningPayload(message, err.userFacing ? err.message : 'Something went wrong while running that command.');
+      // A missing permission is the server's to fix: it is told in plain words and kept out of the channel of errors.
+      if (isPermissionError(err)) logger.warn(`Missing permission running ${prefix}${canonicalName}: ${err.message} (code ${err.code})`);
+      else logger.error(`Error executing ${prefix}${canonicalName}:`, err);
+      const errorReply = warningPayload(message, err.userFacing ? err.message : isPermissionError(err) ? permissionHelp(err) : 'Something went wrong while running that command.');
       if (interaction.deferred || interaction.replied) await interaction.editReply(errorReply).catch(() => {});
       else await interaction.reply(errorReply).catch(() => {});
     }

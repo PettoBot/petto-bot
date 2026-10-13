@@ -1,3 +1,4 @@
+const { isPermissionError } = require('../utils/permissionErrors');
 const fs = require('fs');
 const path = require('path');
 const logger = require('../utils/logger');
@@ -48,7 +49,9 @@ function loadEvents(client) {
       const context = eventContext(event.name, args);
       logger.runWithContext(context, () => Promise.resolve()
         .then(() => event.execute(...args, client))
-        .catch((err) => logger.error(`[event:${event.name}] Handler failed (${file}):`, err)));
+        .catch((err) => (isPermissionError(err)
+          ? logger.warn(`Missing permission in [event:${event.name}] (${file}): ${err.message} (code ${err.code})`)
+          : logger.error(`[event:${event.name}] Handler failed (${file}):`, err))));
     };
 
     if (event.once) client.once(event.name, invoke);

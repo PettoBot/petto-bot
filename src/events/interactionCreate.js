@@ -1,3 +1,4 @@
+const { isPermissionError, permissionHelp } = require('../utils/permissionErrors');
 const { Events, MessageFlags } = require('discord.js');
 const { getRemainingCooldownShared } = require('../utils/sharedCooldown');
 const { handleButton: handleEmbedPanelButton, handleModal: handleEmbedPanelModal } = require('../interactions/embedPanel');
@@ -451,9 +452,10 @@ module.exports = {
         logger.warn(`Ignored duplicate acknowledgement for /${interaction.commandName}. Another handler or bot instance already responded.`);
         return;
       }
-      logger.error(`Error executing /${interaction.commandName}:`, err);
+      if (isPermissionError(err)) logger.warn(`Missing permission running /${interaction.commandName}: ${err.message} (code ${err.code})`);
+      else logger.error(`Error executing /${interaction.commandName}:`, err);
 
-      const errorReply = { content: 'Something went wrong while running that command.', flags: MessageFlags.Ephemeral };
+      const errorReply = { content: isPermissionError(err) ? permissionHelp(err) : 'Something went wrong while running that command.', flags: MessageFlags.Ephemeral };
       if (interaction.deferred || interaction.replied) {
         await interaction.editReply(errorReply).catch(() => {});
       } else {

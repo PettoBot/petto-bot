@@ -40,6 +40,9 @@ const { attachGuildComplianceMonitor } = require('./src/utils/guildComplianceDet
 const { flushActivity } = require('./src/db/activityStats');
 const logger = require('./src/utils/logger');
 
+// Answers fall back to a normal message when quoting is not possible (no Read Message History, or the message is gone).
+require('./src/utils/safeReply').installSafeReply(require('discord.js').Message);
+
 // Before the client exists: the phone icon next to the status dot (PETTO_MOBILE_STATUS=false turns it off).
 if (config.mobileStatus) require('./src/utils/mobilePresence').applyMobileIdentify();
 
@@ -86,7 +89,9 @@ logger.setDiscordSink(createDiscordErrorLogSink(client, config.errorLogChannelId
 logger.addDiscordSink(createGuildDiagnosticSink(client));
 attachGuildComplianceMonitor(client);
 
-process.on('unhandledRejection', (err) => logger.error('Unhandled promise rejection:', err));
+process.on('unhandledRejection', (err) => (require('./src/utils/permissionErrors').isPermissionError(err)
+  ? logger.warn(`Missing permission (unhandled): ${err.message} (code ${err.code})`)
+  : logger.error('Unhandled promise rejection:', err)));
 
 let shuttingDown = false;
 async function shutdown(signal) {
