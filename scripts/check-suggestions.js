@@ -26,4 +26,9 @@ const json = cmd.data.toJSON();
 const subs = json.options.map((o) => o.name);
 for (const n of ['setup', 'enable', 'disable', 'config', 'set', 'approve', 'deny', 'consider', 'implement', 'delete', 'block', 'unblock', 'panel']) assert.ok(subs.includes(n), `sub ${n}`);
 assert.strictEqual(suggest.data.toJSON().name, 'suggest');
+// The usual look has no color; the status colors are only used when the server turns them on.
+const off = s.defaultDesign({ status_colors: false, color_pending: 1, anonymous: false }, 'pending').v2.components[0];
+assert.equal(off.accent_color, null);
+const on = s.defaultDesign({ status_colors: true, color_pending: 1, anonymous: false }, 'pending').v2.components[0];
+assert.equal(on.accent_color, 1);
 console.log('suggestions ok');

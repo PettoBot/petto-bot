@@ -26,7 +26,7 @@ function startButton(guildId) {
 
 // In a server channel (the verification panel) the answers are only for the member who pressed the button; in the DM there is no one else.
 const flagsFor = (interaction) => (interaction.inGuild?.() ? V2 | MessageFlags.Ephemeral : V2);
-const say = (interaction, text) => interaction.reply({ components: [new ContainerBuilder().setAccentColor(0x4b4f59).addTextDisplayComponents(new TextDisplayBuilder().setContent(text))], flags: flagsFor(interaction) });
+const say = (interaction, text) => interaction.reply({ components: [new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(text))], flags: flagsFor(interaction) });
 
 /** Whether this member still has to verify in that server, with the settings; or `{ error }` with what to tell them. */
 async function situation(client, guildId, userId) {
@@ -50,7 +50,7 @@ async function showPicture(interaction, guildId, { replace = false } = {}) {
   const challenge = captcha.createChallenge(jti);
   tickets.set(key(guildId, interaction.user.id), { ticket: challenge.ticket, jti, until: Date.now() + TICKET_TTL_SECONDS * 1000 });
   if (tickets.size > 2_000) tickets.delete(tickets.keys().next().value);
-  const container = new ContainerBuilder().setAccentColor(0x8c7cff)
+  const container = new ContainerBuilder()
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### Verify for ${state.guild.name}\nType the 5 letters and numbers you see. Small or big letters both work. The picture lasts ${Math.round(TICKET_TTL_SECONDS / 60)} minutes.`))
     .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://verify.png')))
     .addActionRowComponents(new ActionRowBuilder().addComponents(
@@ -67,7 +67,7 @@ function buildPanel({ guild, method }) {
   const row = new ActionRowBuilder();
   if (usesLink(method)) row.addComponents(new ButtonBuilder().setCustomId(ids.link(guild.id)).setLabel('Get my verification link').setStyle(method === 'letters' ? ButtonStyle.Secondary : ButtonStyle.Primary));
   if (inDiscord(method)) row.addComponents(startButton(guild.id));
-  const container = new ContainerBuilder().setAccentColor(0x8c7cff)
+  const container = new ContainerBuilder()
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### Verify to enter ${guild.name}\nPress a button below to prove you're human and get access to the rest of the server.${inDiscord(method) ? '\nYou can do it right here: you will see a picture and type its letters.' : ''}`))
     .addActionRowComponents(row);
   return { components: [container], flags: V2 };

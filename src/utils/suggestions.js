@@ -75,7 +75,7 @@ function defaultDesign(config, status) {
   ];
   if (status !== 'pending') children.push({ type: 10, content: '**{suggestion.status_label}** by {suggestion.staff}\n{suggestion.reason}' });
   children.push({ type: 10, content: 'Suggestion ID: `{suggestion.id}` | Created {suggestion.created}' });
-  return { v2: { components: [{ type: 17, accent_color: config[STATUSES[status].color], components: children }] } };
+  return { v2: { components: [{ type: 17, accent_color: config.status_colors ? config[STATUSES[status].color] : null, components: children }] } };
 }
 
 /** What `{suggestion.*}` says about one suggestion. */
@@ -120,10 +120,13 @@ async function render(guild, row, config, { tally = null, authorUser = null } = 
   let payload = null;
   if (config.embed_template) payload = await templatePayload(guild.id, config.embed_template, ctx);
   if (payload) {
-    // The status shows in the color: a saved design keeps its own while the suggestion is pending.
-    const first = (payload.components ?? []).find((component) => component?.type === 17);
-    if (first && (row.status !== 'pending' || first.accent_color == null)) first.accent_color = color;
-    if (!first && row.status !== 'pending') payload.embeds?.[0]?.setColor?.(color);
+    // With the colors on, the status shows in the color: a saved design keeps its own while the suggestion is pending. With them off
+    // (the usual) nothing is painted.
+    if (config.status_colors) {
+      const first = (payload.components ?? []).find((component) => component?.type === 17);
+      if (first && (row.status !== 'pending' || first.accent_color == null)) first.accent_color = color;
+      if (!first && row.status !== 'pending') payload.embeds?.[0]?.setColor?.(color);
+    }
   } else {
     const built = await build(defaultDesign(config, row.status), { ...ctx, allowV2: true });
     payload = { content: undefined, embeds: [], components: built.components, files: built.files ?? [], flags: built.flags };

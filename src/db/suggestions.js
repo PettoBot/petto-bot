@@ -15,6 +15,7 @@ const DEFAULTS = {
   anonymous: false,
   staff_role_id: null,
   embed_template: null,
+  status_colors: false,
   color_pending: 0xffd563,
   color_approved: 0xa5ea7a,
   color_denied: 0xff6b6b,

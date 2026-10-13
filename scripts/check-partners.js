@@ -110,14 +110,17 @@ const fakeGuild = (id, extra = {}) => ({ id, name: 'Mine', ownerId: 'owner', mem
   assert.deepEqual(engine.rank(rows), [{ managerId: 'b', count: 3 }, { managerId: 'a', count: 2 }]);
   assert.deepEqual(engine.rank([{ manager_id: 'x', created_at: '2026-09-02T00:00:00Z' }, { manager_id: 'y', created_at: '2026-09-01T00:00:00Z' }]).map((entry) => entry.managerId), ['y', 'x'], 'a tie goes to who started first');
 
+    // The usual look of a reply is a card without color: its text is read from the card.
+  const textOf = (payload) => payload.content ?? JSON.stringify((payload.components ?? []).map((component) => component.toJSON?.() ?? component));
+  const noColor = (payload) => (payload.components ?? []).every((component) => (component.toJSON?.() ?? component).accent_color == null);
   // The replies: the default, a changed text, a missing saved embed.
   const partnerCtx = (extra = {}) => ({ user: fakeUser('7', 'Mia'), member: { id: '7', user: fakeUser('7', 'Mia'), roles: { cache: new Collection() }, displayName: 'Mia', displayAvatarURL: () => 'https://cdn.example/a.png', joinedTimestamp: 1_700_000_000_000 }, guild: fakeGuild('mine'), partner: messages.partnerContext({ name: 'Partner', members: 1234, managerId: '7', counts: { day: 1, week: 2, total: 3 }, config: rules, ...extra }) });
   let payload = await messages.responsePayload('mine', { messages: {} }, 'completed', partnerCtx());
-  assert.match(payload.content, /<@7> thanks for the partnership with \*\*Partner\*\*/); assert.match(payload.content, /3 in total \(2 this week\)/);
+  assert.match(textOf(payload), /<@7> thanks for the partnership with \*\*Partner\*\*/); assert.match(textOf(payload), /3 in total \(2 this week\)/); assert.ok(noColor(payload), 'the default card has no color'); assert.equal(payload.flags, 1 << 15, 'it is a Components V2 message');
   payload = await messages.responsePayload('mine', { messages: { member_requirement: { text: 'Too small: {partner.members}/{partner.min_members}' } } }, 'member_requirement', partnerCtx());
-  assert.equal(payload.content, 'Too small: 1,234/100');
+  assert.match(textOf(payload), /Too small: 1,234\/100/);
   payload = await messages.responsePayload('mine', { messages: { completed: { template: 'gone' } } }, 'completed', partnerCtx());
-  assert.match(payload.content, /thanks for the partnership/, 'a missing saved embed gives the default text');
+  assert.match(textOf(payload), /thanks for the partnership/, 'a missing saved embed gives the default text');
   assert.deepEqual(payload.allowedMentions, { parse: [], users: ['7'] }, 'the manager of the partnership is really pinged, nobody else');
   assert.deepEqual((await messages.responsePayload('mine', { messages: {} }, 'completed', { guild: partnerCtx().guild, partner: partnerCtx().partner })).allowedMentions, { parse: [] }, 'without a manager nobody is pinged');
   assert.equal(messages.textOf({ messages: { completed: { text: '   ' } } }, 'completed'), messages.DEFAULTS.completed, 'an empty text gives the default');
@@ -146,7 +149,7 @@ const fakeGuild = (id, extra = {}) => ({ id, name: 'Mine', ownerId: 'owner', mem
       id: `m${sent.length + 1}`, content, client, author: fakeUser(authorId, 'Mia', bot), channel: { id: channelId },
       member: { id: authorId, user: fakeUser(authorId, 'Mia'), displayName: 'Mia', displayAvatarURL: () => 'https://cdn.example/a.png', joinedTimestamp: 1_700_000_000_000, roles: { cache: new Collection(roles.map((id) => [id, { id }])) } },
       guild: fakeGuild('guild1', { members: { cache: new Collection(), me: { permissions: { has: () => true } } } }),
-      reply: async (payload) => { sent.push({ kind: 'reply', content: payload.content }); },
+      reply: async (payload) => { sent.push({ kind: 'reply', content: payload.content ?? JSON.stringify((payload.components ?? []).map((component) => component.toJSON?.() ?? component)) }); },
       react: async (emoji) => { sent.push({ kind: 'react', emoji }); },
       delete: async () => { sent.push({ kind: 'delete' }); },
     };
@@ -259,7 +262,7 @@ const fakeGuild = (id, extra = {}) => ({ id, name: 'Mine', ownerId: 'owner', mem
   // A new Partner Manager is welcomed in the welcome channel when they are given the role.
   const memberUpdate = require('../src/events/guildMemberUpdatePartners');
   const welcomed = [];
-  const welcomeChannel = { isTextBased: () => true, send: async (payload) => { welcomed.push(payload); return { id: 'w' }; } };
+  const welcomeChannel = { isTextBased: () => true, send: async (payload) => { welcomed.push({ ...payload, content: payload.content ?? JSON.stringify((payload.components ?? []).map((component) => component.toJSON?.() ?? component)) }); return { id: 'w' }; } };
   const updateGuild = fakeGuild('guild1', { channels: { cache: new Collection(), fetch: async (id) => (id === 'welcome' ? welcomeChannel : null) } });
   const memberWith = (roleIds) => ({ id: 'u9', guild: updateGuild, user: fakeUser('u9', 'New'), partial: false, displayName: 'New', displayAvatarURL: () => 'https://cdn.example/a.png', joinedTimestamp: 1, roles: { cache: new Collection(roleIds.map((id) => [id, { id }])) } });
   config = { ...config, enabled: true, manager_role_id: 'pm', welcome_channel_id: null, messages: {} };

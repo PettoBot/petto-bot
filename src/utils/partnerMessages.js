@@ -3,6 +3,7 @@
 const { resolve } = require('./embedVariables');
 const { formatSpan, cooldownMinutes } = require('./partnerEngine');
 const { templatePayload } = require('./templatedMessage');
+const { plainCard } = require('./plainCard');
 
 const RESPONSE_KEYS = ['completed', 'cooldown', 'invalid_invite', 'member_requirement', 'blacklisted', 'self_partner', 'age_requirement', 'nsfw_blocked', 'keyword_blocked', 'manager_welcome'];
 
@@ -72,7 +73,7 @@ function partnerContext(info) {
   };
 }
 
-/** `{ content, embeds, components, ... }` to send for one response, never empty. `ctx` has `member`/`user`/`guild` and `partner`. */
+/** `{ components, flags, ... }` (or what a saved design gives) to send for one response, never empty. `ctx` has `member`/`user`/`guild` and `partner`. */
 async function responsePayload(guildId, config, key, ctx) {
   // The partner manager that the message is about is really pinged (a mention with `{user.mention}`); nobody else is, so the names in a
   // top list and anything else a message writes stay plain text.
@@ -84,7 +85,8 @@ async function responsePayload(guildId, config, key, ctx) {
     if (payload) return { ...payload, allowedMentions };
   }
   const content = (await resolve(textOf(config, key), ctx)).slice(0, MAX_TEXT);
-  return { content: content || DEFAULTS[key], allowedMentions };
+  // The usual look is a card without color; the text keeps its variables and its one real mention.
+  return { ...plainCard(content || DEFAULTS[key]), allowedMentions };
 }
 
 module.exports = { RESPONSE_KEYS, LABELS, DEFAULTS, MAX_TEXT, textOf, partnerContext, responsePayload };
