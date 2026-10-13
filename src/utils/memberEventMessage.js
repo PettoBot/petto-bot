@@ -5,6 +5,7 @@ const { resolve } = require('./embedVariables');
 const { extractReactReplies, applyReactReplies } = require('./messageFlags');
 const logger = require('./logger');
 const { sendAs } = require('./senderIdentity');
+const { plainCard } = require('./plainCard');
 
 // Which look a kind of announcement takes (see db/senderIdentities.js). Other kinds are sent the normal way.
 const IDENTITY_FEATURE = { welcome: 'welcome', leave: 'leave', boost: 'boost', boost_level: 'boost', birthday: 'birthdays' };
@@ -22,7 +23,7 @@ const ANNOUNCEMENT_MENTIONS = { parse: ['users', 'roles'] };
  * message both required" is how a trigger gets turned off without a separate
  * enabled flag.
  */
-async function sendMemberEvent({ guild, channel, kind, messageText, embedTemplateName, ctx }) {
+async function sendMemberEvent({ guild, channel, kind, messageText, embedTemplateName, ctx, asCard = false }) {
   if (!messageText && !embedTemplateName) return;
 
   // {reactreply:emoji} can appear in the message text regardless of whether it ends up sent
@@ -43,7 +44,9 @@ async function sendMemberEvent({ guild, channel, kind, messageText, embedTemplat
 
     if (cleanedText) {
       const plain = await plainMessage(cleanedText, ctx);
-      const sent = await deliver(channel, kind, { ...plain, allowedMentions: ANNOUNCEMENT_MENTIONS });
+      // The usual look of a message the server did not write itself: a card without color, with the same text and the same files.
+      const body = asCard ? { ...plainCard(plain.content), ...(plain.files ? { files: plain.files } : {}) } : plain;
+      const sent = await deliver(channel, kind, { ...body, allowedMentions: ANNOUNCEMENT_MENTIONS });
       if (emojis.length) await applyReactReplies(sent, emojis);
     } else if (emojis.length) {
       // Reactions were the only thing configured (no other text) — nothing to react to without

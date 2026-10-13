@@ -45,9 +45,19 @@ const text = (payload) => JSON.stringify(payload.components?.map((component) => 
   await verifyLetters.handleButton(interaction(button.custom_id));
   assert.equal(replies.length, 1);
   assert.equal(replies[0].files[0].name, 'verify.png');
-  assert.ok(text(replies[0]).includes(`vfy:type:${GUILD}`) && text(replies[0]).includes(`vfy:start:${GUILD}`), 'the picture comes with its buttons');
+  assert.ok(text(replies[0]).includes(`vfy:type:${GUILD}`) && text(replies[0]).includes(`vfy:again:${GUILD}`), 'the picture comes with its buttons');
   await verifyLetters.handleButton(interaction(`vfy:type:${GUILD}`));
   assert.equal(replies[1].modal.custom_id, `vfy:answer:${GUILD}`, 'the button opens the form');
+
+  // New picture changes the picture of the same message, it does not send another one.
+  const updates = [];
+  const pressed = { ...interaction(`vfy:again:${GUILD}`), isButton: () => true, update: async (payload) => { updates.push(payload); } };
+  const before = replies.length;
+  await verifyLetters.handleButton(pressed);
+  assert.equal(replies.length, before, 'no new message');
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].files[0].name, 'verify.png');
+  assert.deepEqual(updates[0].attachments, [], 'the old picture is taken out');
 
   // We do not know the letters of the picture the bot drew, so the ticket is replaced by one we know.
   const original = captcha.createChallenge;
@@ -69,6 +79,20 @@ const text = (payload) => JSON.stringify(payload.components?.map((component) => 
   assert.ok(text(replies.at(-1)).includes("You're verified"), 'the right letters let the member in');
   assert.equal(applied.length, 1);
   assert.ok(applied[0].startsWith('dc'), 'a single-use pass is claimed');
+
+  // After a right answer the picture that was answered keeps its picture but its buttons are off.
+  captcha.createChallenge = (id) => known(id);
+  await verifyLetters.handleButton(interaction(`vfy:start:${GUILD}`));
+  captcha.createChallenge = original;
+  const locked = [];
+  const answered = { ...interaction(`vfy:answer:${GUILD}`, { letters: 'AB7K2' }), replied: false, isFromMessage: () => true, message: { components: [{ toJSON: () => ({ type: 17, components: [{ type: 10, content: 'x' }, { type: 1, components: [{ type: 2, custom_id: `vfy:type:${GUILD}` }, { type: 2, custom_id: `vfy:again:${GUILD}` }] }] }) }] } };
+  answered.update = async (payload) => { locked.push(payload); answered.replied = true; };
+  answered.followUp = async (payload) => { replies.push(payload); };
+  await verifyLetters.handleModal(answered);
+  assert.equal(locked.length, 1, 'the picture message is updated once');
+  const buttons = JSON.stringify(locked[0].components).match(/"disabled":true/g) ?? [];
+  assert.equal(buttons.length, 2, 'both buttons are off');
+  assert.ok(text(replies.at(-1)).includes("You're verified") || JSON.stringify(replies.at(-1)).includes("You're verified"), 'and the member is told they are in');
 
   // A server that does not use the check in Discord, or a member who is already in.
   settings = { ...settings, method: 'turnstile' };

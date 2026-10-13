@@ -23,7 +23,7 @@ stub('src/db/birthdays.js', {
   listDueRoles: async () => [...state.roles.entries()].filter(([, v]) => v.removeAt.getTime() <= Date.now()).map(([user_id, v]) => ({ guild_id: 'g1', user_id, role_id: v.roleId })),
   forgetRole: async (guildId, userId) => { state.roles.delete(userId); },
 });
-stub('src/utils/memberEventMessage.js', { sendMemberEvent: async (options) => { state.sent.push({ kind: options.kind, text: options.messageText, user: options.ctx.member.id }); } });
+stub('src/utils/memberEventMessage.js', { sendMemberEvent: async (options) => { state.sent.push({ kind: options.kind, text: options.messageText, user: options.ctx.member.id, asCard: options.asCard }); } });
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
 
 const birthdays = require('../src/utils/birthdays');
@@ -70,6 +70,7 @@ const { processBirthdays } = require('../src/jobs/birthdayJob');
   assert.equal(state.sent.length, 0, 'before the hour of the server nothing is sent');
   await processBirthdays(client, new Date('2026-10-13T14:10:00Z')); // 09:10 local
   assert.deepEqual(state.sent.map((entry) => [entry.kind, entry.user, entry.text]), [['birthday', 'u1', 'Happy birthday {user}! You turn 19.']], 'one message, the bot is left out and {age} is filled');
+  assert.equal(state.sent[0].asCard, false, 'a message the server wrote stays as it wrote it');
   assert.deepEqual(added, [['u1', 'r1']], 'the role is given');
   assert.ok(state.roles.get('u1').removeAt.getTime() > Date.now() + 23 * 3_600_000, 'and taken back about a day later');
   await processBirthdays(client, new Date('2026-10-13T20:00:00Z'));

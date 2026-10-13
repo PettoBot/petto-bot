@@ -47,6 +47,14 @@ function makeBuilder(ctx) {
     return clipped;
   };
   const link = async (value) => safeUrl(await resolve(String(value ?? ''), ctx));
+  // A picture can also be a file the sender attaches to this very message (`attachment://name`). It is only accepted when the sender says it
+  // has that file (`ctx.attachmentNames`), so a saved design cannot make a message that Discord refuses for a file that is not there.
+  const mediaLink = async (value) => {
+    const resolved = String(await resolve(String(value ?? ''), ctx)).trim();
+    const own = /^attachment:\/\/([\w.-]{1,80})$/.exec(resolved);
+    if (own) return ctx?.attachmentNames?.has(own[1]) ? resolved : '';
+    return safeUrl(resolved);
+  };
 
   const textNode = async (raw) => {
     if (!room()) return null;
@@ -65,7 +73,7 @@ function makeBuilder(ctx) {
   const gallery = async (raw) => {
     const items = [];
     for (const item of (Array.isArray(raw.items) ? raw.items : []).slice(0, LIMITS.galleryItems)) {
-      const url = await link(item?.media?.url);
+      const url = await mediaLink(item?.media?.url);
       if (!url) continue;
       const description = item.description ? (await text(item.description)).slice(0, LIMITS.description) : '';
       items.push({ media: { url }, ...(description ? { description } : {}), spoiler: Boolean(item.spoiler) });
@@ -122,7 +130,7 @@ function makeBuilder(ctx) {
     if (!texts.length) return null;
     let accessory = null;
     if (raw.accessory?.type === TYPES.THUMBNAIL) {
-      const url = await link(raw.accessory.media?.url);
+      const url = await mediaLink(raw.accessory.media?.url);
       if (url) {
         const description = raw.accessory.description ? (await text(raw.accessory.description)).slice(0, LIMITS.description) : '';
         accessory = { type: TYPES.THUMBNAIL, media: { url }, ...(description ? { description } : {}), spoiler: Boolean(raw.accessory.spoiler) };

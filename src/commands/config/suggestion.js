@@ -21,6 +21,7 @@ const SETTINGS = {
   self_vote: { column: 'self_vote', kind: 'boolean', label: 'The author can vote on their own suggestion' },
   dm: { column: 'dm_author', kind: 'boolean', label: 'A DM to the author when the staff answers' },
   anonymous: { column: 'anonymous', kind: 'boolean', label: 'Suggestions do not show who made them' },
+  colors: { column: 'status_colors', kind: 'boolean', label: 'The suggestion is colored by its status' },
   up_emoji: { column: 'up_emoji', kind: 'emoji', label: 'Emoji of the vote in favor' },
   down_emoji: { column: 'down_emoji', kind: 'emoji', label: 'Emoji of the vote against' },
   thread_name: { column: 'thread_name', kind: 'text', label: 'Name of the threads' },

@@ -11,6 +11,13 @@ function parseColor(input) {
   return num;
 }
 
+/** A picture of an embed: a link, or a file the sender attached to this message (`attachment://name`, only when the sender listed it in `ctx.attachmentNames`). */
+function mediaUrl(value, ctx) {
+  const own = /^attachment:\/\/([\w.-]{1,80})$/.exec(String(value ?? '').trim());
+  if (own) return ctx?.attachmentNames?.has(own[1]) ? `attachment://${own[1]}` : undefined;
+  return validUrl(value);
+}
+
 function validUrl(url) {
   if (!url) return undefined;
   try {
@@ -109,11 +116,11 @@ async function buildOneEmbed(e, ctx) {
     if (u) embed.setURL(u);
   }
   if (thumbnail) {
-    const u = validUrl(await resolve(thumbnail, ctx));
+    const u = mediaUrl(await resolve(thumbnail, ctx), ctx);
     if (u) embed.setThumbnail(u);
   }
   if (image) {
-    const u = validUrl(await resolve(image, ctx));
+    const u = mediaUrl(await resolve(image, ctx), ctx);
     if (u) embed.setImage(u);
   }
   if (booleanValue(e.timestamp)) embed.setTimestamp();

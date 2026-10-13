@@ -13,7 +13,7 @@ const { applyVerification } = require('../utils/verifyApply');
 const logger = require('../utils/logger');
 
 const PREFIX = 'vfy';
-const ids = { start: (guildId) => `${PREFIX}:start:${guildId}`, type: (guildId) => `${PREFIX}:type:${guildId}`, answer: (guildId) => `${PREFIX}:answer:${guildId}`, link: (guildId) => `${PREFIX}:link:${guildId}` };
+const ids = { start: (guildId) => `${PREFIX}:start:${guildId}`, type: (guildId) => `${PREFIX}:type:${guildId}`, answer: (guildId) => `${PREFIX}:answer:${guildId}`, link: (guildId) => `${PREFIX}:link:${guildId}`, again: (guildId) => `${PREFIX}:again:${guildId}` };
 const V2 = MessageFlags.IsComponentsV2;
 
 const tickets = new Map(); // `${guildId}:${userId}` -> { ticket, jti, until }
@@ -26,7 +26,28 @@ function startButton(guildId) {
 
 // In a server channel (the verification panel) the answers are only for the member who pressed the button; in the DM there is no one else.
 const flagsFor = (interaction) => (interaction.inGuild?.() ? V2 | MessageFlags.Ephemeral : V2);
-const say = (interaction, text) => interaction.reply({ components: [new ContainerBuilder().setAccentColor(0x4b4f59).addTextDisplayComponents(new TextDisplayBuilder().setContent(text))], flags: flagsFor(interaction) });
+/** The same components with every button turned off (and the tree of a Components V2 message kept as it is). */
+function withButtonsOff(node) {
+  const copy = { ...node };
+  if (copy.type === 2) copy.disabled = true;
+  if (Array.isArray(copy.components)) copy.components = copy.components.map(withButtonsOff);
+  return copy;
+}
+
+/** After a right answer: the message with the picture keeps its picture but its buttons are off. Does nothing when the form was not opened from it. */
+async function lockPicture(interaction) {
+  try {
+    if (!interaction.isFromMessage?.() || !interaction.message?.components?.length) return false;
+    const components = interaction.message.components.map((component) => withButtonsOff(component.toJSON?.() ?? component));
+    await interaction.update({ components });
+    return true;
+  } catch (err) {
+    logger.warn(`The picture of a verification could not be locked: ${err.message}`);
+    return false;
+  }
+}
+
+const say = (interaction, text) => (interaction.replied || interaction.deferred ? interaction.followUp : interaction.reply).call(interaction, { components: [new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(text))], flags: flagsFor(interaction) });
 
 /** Whether this member still has to verify in that server, with the settings; or `{ error }` with what to tell them. */
 async function situation(client, guildId, userId) {
@@ -39,22 +60,27 @@ async function situation(client, guildId, userId) {
   return { guild, member, settings };
 }
 
-/** Sends a picture with the buttons to type the letters or to get another one. */
-async function showPicture(interaction, guildId) {
+/**
+ * Sends a picture with the buttons to type the letters or to get another one. `replace` is for the button of a picture that is already
+ * there (New picture): the same message gets the new picture, so asking again never piles up messages.
+ */
+async function showPicture(interaction, guildId, { replace = false } = {}) {
   const state = await situation(interaction.client, guildId, interaction.user.id);
   if (state.error) return say(interaction, state.error);
   const jti = `dc:${guildId}:${interaction.user.id}`;
   const challenge = captcha.createChallenge(jti);
   tickets.set(key(guildId, interaction.user.id), { ticket: challenge.ticket, jti, until: Date.now() + TICKET_TTL_SECONDS * 1000 });
   if (tickets.size > 2_000) tickets.delete(tickets.keys().next().value);
-  const container = new ContainerBuilder().setAccentColor(0x8c7cff)
+  const container = new ContainerBuilder()
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### Verify for ${state.guild.name}\nType the 5 letters and numbers you see. Small or big letters both work. The picture lasts ${Math.round(TICKET_TTL_SECONDS / 60)} minutes.`))
     .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://verify.png')))
     .addActionRowComponents(new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(ids.type(guildId)).setLabel('Type the letters').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId(ids.start(guildId)).setLabel('New picture').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(ids.again(guildId)).setLabel('New picture').setStyle(ButtonStyle.Secondary),
     ));
-  return interaction.reply({ components: [container], files: [new AttachmentBuilder(challenge.png, { name: 'verify.png' })], flags: flagsFor(interaction) });
+  const file = new AttachmentBuilder(challenge.png, { name: 'verify.png' });
+  if (replace && interaction.isButton?.()) return interaction.update({ components: [container], files: [file], attachments: [] });
+  return interaction.reply({ components: [container], files: [file], flags: flagsFor(interaction) });
 }
 
 /** The panel of a channel: what to do to get in, with a button for each way the server allows. */
@@ -62,7 +88,7 @@ function buildPanel({ guild, method }) {
   const row = new ActionRowBuilder();
   if (usesLink(method)) row.addComponents(new ButtonBuilder().setCustomId(ids.link(guild.id)).setLabel('Get my verification link').setStyle(method === 'letters' ? ButtonStyle.Secondary : ButtonStyle.Primary));
   if (inDiscord(method)) row.addComponents(startButton(guild.id));
-  const container = new ContainerBuilder().setAccentColor(0x8c7cff)
+  const container = new ContainerBuilder()
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### Verify to enter ${guild.name}\nPress a button below to prove you're human and get access to the rest of the server.${inDiscord(method) ? '\nYou can do it right here: you will see a picture and type its letters.' : ''}`))
     .addActionRowComponents(row);
   return { components: [container], flags: V2 };
@@ -84,6 +110,7 @@ async function handleButton(interaction) {
   const [, action, guildId] = interaction.customId.split(':');
   if (!/^\d{15,25}$/.test(guildId ?? '')) return undefined;
   if (action === 'start') return showPicture(interaction, guildId);
+  if (action === 'again') return showPicture(interaction, guildId, { replace: true });
   if (action === 'link') return sendLink(interaction, guildId);
   if (action === 'type') {
     const modal = new ModalBuilder().setCustomId(ids.answer(guildId)).setTitle('Verification')
@@ -109,6 +136,8 @@ async function handleModal(interaction) {
   tickets.delete(key(guildId, interaction.user.id));
   try {
     const applied = await applyVerification({ client: interaction.client, guild: state.guild, member: state.member, settings: state.settings, jti: `dc${Date.now().toString(36)}${state.member.id}` });
+    // The picture that was answered stops being usable: its buttons are locked, so nobody asks for another one once verified.
+    await lockPicture(interaction);
     return say(interaction, applied.ok ? `You're verified. You now have access to **${state.guild.name}**.` : 'You are already verified.');
   } catch (err) {
     logger.error('Failed to apply verification roles (letters in Discord):', err);

@@ -67,6 +67,20 @@ async function removeBlacklist(guildId, partnerGuildId) {
   return (data ?? []).length > 0;
 }
 
+async function wasWelcomed(guildId, userId) {
+  const { data, error } = await database.from('partner_welcomed').select('user_id').eq('guild_id', String(guildId)).eq('user_id', String(userId)).maybeSingle();
+  if (error) throw error;
+  return Boolean(data);
+}
+async function markWelcomed(guildId, userId) {
+  const { error } = await database.from('partner_welcomed').upsert({ guild_id: String(guildId), user_id: String(userId) }, { onConflict: 'guild_id,user_id' });
+  if (error) throw error;
+}
+async function forgetWelcomed(guildId, userId) {
+  const { error } = await database.from('partner_welcomed').delete().eq('guild_id', String(guildId)).eq('user_id', String(userId));
+  if (error) throw error;
+}
+
 /** The newest counted partnership with that server, or null (used for the cooldown). */
 async function lastWith(guildId, partnerGuildId) {
   const { data, error } = await database.from('partner_log').select('*').eq('guild_id', String(guildId)).eq('partner_guild_id', String(partnerGuildId)).order('created_at', { ascending: false }).limit(1).maybeSingle();
@@ -104,4 +118,4 @@ async function listLog(guildId, { since = null, managerId = null, limit = 5000 }
   return data ?? [];
 }
 
-module.exports = { DEFAULTS, getConfig, getConfigCached, upsertConfig, isBlacklisted, listBlacklist, addBlacklist, removeBlacklist, lastWith, addLog, removeLog, listLog };
+module.exports = { wasWelcomed, markWelcomed, forgetWelcomed, DEFAULTS, getConfig, getConfigCached, upsertConfig, isBlacklisted, listBlacklist, addBlacklist, removeBlacklist, lastWith, addLog, removeLog, listLog };

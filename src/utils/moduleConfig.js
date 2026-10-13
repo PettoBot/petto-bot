@@ -65,6 +65,7 @@ const MODULES = {
   vmconfig: { aliases: ['voicemasterconfig'], title: 'VoiceMaster', command: 'voicemaster', show: [/^setup/, /^disable/, /^info/, /^panel/], sources: [{ table: 'voice_configs' }] },
   stickyrolesconfig: { aliases: [], title: 'Sticky roles', command: 'stickyroles', sources: [{ table: 'sticky_roles_config' }] },
   honeypotconfig: { aliases: [], title: 'Honeypots', command: 'honeypot', sources: [{ table: 'honeypots', list: true, only: ['channel_id', 'punishment', 'caught_count'] }] },
+  countingconfig: { aliases: [], title: 'Counting', command: 'counting', sources: [{ table: 'counting_config', skip: ['current_number', 'last_user_id', 'last_message_id', 'high_score', 'total_correct', 'total_wrong', 'saves'] }] },
   counterconfig: { aliases: [], title: 'Counters', command: 'counter', sources: [{ table: 'server_counters', list: true, only: ['channel_id', 'counter_option', 'enabled'] }] },
   jailconfig: { aliases: [], title: 'Jail', command: 'jail', show: [/^setup/], sources: [{ table: 'jail_config' }] },
   autothreadconfig: { aliases: [], title: 'Auto threads', command: 'autothread', sources: [{ table: 'auto_threads', list: true, only: ['channel_id', 'name_template'] }] },

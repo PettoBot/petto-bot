@@ -22,6 +22,7 @@ stub('src/db/premium.js', { getGuildPremium: async () => ({ active: premiumActiv
 // An in-memory copy of the partner tables.
 let config = null;
 const blacklist = new Set();
+const welcomedKeys = new Set();
 let logRows = [];
 let nextId = 1;
 stub('src/db/partners.js', {
@@ -36,6 +37,9 @@ stub('src/db/partners.js', {
   lastWith: async (guildId, partnerId) => logRows.filter((row) => row.partner_guild_id === partnerId).at(-1) ?? null,
   addLog: async (row) => { const saved = { id: nextId++, guild_id: row.guildId, manager_id: row.managerId, partner_guild_id: row.partnerGuildId, partner_name: row.partnerName, members: row.members, created_at: new Date().toISOString() }; logRows.push(saved); return saved; },
   removeLog: async () => true,
+  wasWelcomed: async (guildId, userId) => welcomedKeys.has(`${guildId}:${userId}`),
+  markWelcomed: async (guildId, userId) => { welcomedKeys.add(`${guildId}:${userId}`); },
+  forgetWelcomed: async (guildId, userId) => { welcomedKeys.delete(`${guildId}:${userId}`); },
   listLog: async (guildId, { since = null, managerId = null } = {}) => logRows.filter((row) => (!since || new Date(row.created_at) >= since) && (!managerId || row.manager_id === managerId)).slice().reverse(),
 });
 
@@ -106,14 +110,17 @@ const fakeGuild = (id, extra = {}) => ({ id, name: 'Mine', ownerId: 'owner', mem
   assert.deepEqual(engine.rank(rows), [{ managerId: 'b', count: 3 }, { managerId: 'a', count: 2 }]);
   assert.deepEqual(engine.rank([{ manager_id: 'x', created_at: '2026-09-02T00:00:00Z' }, { manager_id: 'y', created_at: '2026-09-01T00:00:00Z' }]).map((entry) => entry.managerId), ['y', 'x'], 'a tie goes to who started first');
 
+    // The usual look of a reply is a card without color: its text is read from the card.
+  const textOf = (payload) => payload.content ?? JSON.stringify((payload.components ?? []).map((component) => component.toJSON?.() ?? component));
+  const noColor = (payload) => (payload.components ?? []).every((component) => (component.toJSON?.() ?? component).accent_color == null);
   // The replies: the default, a changed text, a missing saved embed.
   const partnerCtx = (extra = {}) => ({ user: fakeUser('7', 'Mia'), member: { id: '7', user: fakeUser('7', 'Mia'), roles: { cache: new Collection() }, displayName: 'Mia', displayAvatarURL: () => 'https://cdn.example/a.png', joinedTimestamp: 1_700_000_000_000 }, guild: fakeGuild('mine'), partner: messages.partnerContext({ name: 'Partner', members: 1234, managerId: '7', counts: { day: 1, week: 2, total: 3 }, config: rules, ...extra }) });
   let payload = await messages.responsePayload('mine', { messages: {} }, 'completed', partnerCtx());
-  assert.match(payload.content, /<@7> thanks for the partnership with \*\*Partner\*\*/); assert.match(payload.content, /3 in total \(2 this week\)/);
+  assert.match(textOf(payload), /<@7> thanks for the partnership with \*\*Partner\*\*/); assert.match(textOf(payload), /3 in total \(2 this week\)/); assert.ok(noColor(payload), 'the default card has no color'); assert.equal(payload.flags, 1 << 15, 'it is a Components V2 message');
   payload = await messages.responsePayload('mine', { messages: { member_requirement: { text: 'Too small: {partner.members}/{partner.min_members}' } } }, 'member_requirement', partnerCtx());
-  assert.equal(payload.content, 'Too small: 1,234/100');
+  assert.match(textOf(payload), /Too small: 1,234\/100/);
   payload = await messages.responsePayload('mine', { messages: { completed: { template: 'gone' } } }, 'completed', partnerCtx());
-  assert.match(payload.content, /thanks for the partnership/, 'a missing saved embed gives the default text');
+  assert.match(textOf(payload), /thanks for the partnership/, 'a missing saved embed gives the default text');
   assert.deepEqual(payload.allowedMentions, { parse: [], users: ['7'] }, 'the manager of the partnership is really pinged, nobody else');
   assert.deepEqual((await messages.responsePayload('mine', { messages: {} }, 'completed', { guild: partnerCtx().guild, partner: partnerCtx().partner })).allowedMentions, { parse: [] }, 'without a manager nobody is pinged');
   assert.equal(messages.textOf({ messages: { completed: { text: '   ' } } }, 'completed'), messages.DEFAULTS.completed, 'an empty text gives the default');
@@ -128,14 +135,21 @@ const fakeGuild = (id, extra = {}) => ({ id, name: 'Mine', ownerId: 'owner', mem
     adult: { code: 'adult', memberCount: 900, guild: { id: '1100000000000000004', name: 'After Dark', nsfwLevel: 1 } },
     casino: { code: 'casino', memberCount: 900, guild: { id: '1100000000000000005', name: 'Lucky Hub', description: 'The best GAMBLING tips' } },
   };
-  const client = { fetchInvite: async (code) => { if (!invites[code]) throw new Error('Unknown Invite'); return invites[code]; } };
+  let flaky = 0;
+  const client = { fetchInvite: async (code) => {
+    if (code === 'flaky' && (flaky += 1) <= 1) throw new Error('socket hang up');
+    if (code === 'down') throw new Error('socket hang up');
+    if (code === 'flaky') return invites.big;
+    if (!invites[code]) { const error = new Error('Unknown Invite'); error.code = 10006; throw error; }
+    return invites[code];
+  } };
   const sent = [];
   const made = (content, { channelId = 'chan', roles = ['pm'], authorId = 'u1', bot = false } = {}) => {
     const message = {
       id: `m${sent.length + 1}`, content, client, author: fakeUser(authorId, 'Mia', bot), channel: { id: channelId },
       member: { id: authorId, user: fakeUser(authorId, 'Mia'), displayName: 'Mia', displayAvatarURL: () => 'https://cdn.example/a.png', joinedTimestamp: 1_700_000_000_000, roles: { cache: new Collection(roles.map((id) => [id, { id }])) } },
       guild: fakeGuild('guild1', { members: { cache: new Collection(), me: { permissions: { has: () => true } } } }),
-      reply: async (payload) => { sent.push({ kind: 'reply', content: payload.content }); },
+      reply: async (payload) => { sent.push({ kind: 'reply', content: payload.content ?? JSON.stringify((payload.components ?? []).map((component) => component.toJSON?.() ?? component)) }); },
       react: async (emoji) => { sent.push({ kind: 'react', emoji }); },
       delete: async () => { sent.push({ kind: 'delete' }); },
     };
@@ -159,6 +173,9 @@ const fakeGuild = (id, extra = {}) => ({ id, name: 'Mine', ownerId: 'owner', mem
   out = await run('discord.gg/small'); assert.match(out[0].content, /has 10 members and at least 100/); assert.equal(logRows.length, 1);
   out = await run('discord.gg/mine'); assert.match(out[0].content, /this same server/);
   out = await run('discord.gg/unknown'); assert.match(out[0].content, /not valid or has expired/);
+  // A failure of the connection is not the invite's fault: it is tried again, and if it keeps failing the message is left alone.
+  out = await run('discord.gg/flaky'); assert.ok(!out.some((item) => item.kind === 'delete'), 'a failed look-up once does not throw the message away'); assert.ok(out.some((item) => /Partnership|partner/i.test(item.content ?? '')) || out.length > 0);
+  out = await run('discord.gg/down'); assert.ok(!out.some((item) => item.kind === 'delete'), 'an invite that cannot be checked does not delete the message'); assert.match(out[0].content, /could not check that invite/);
   blacklist.add('1100000000000000003');
   out = await run('discord.gg/bad'); assert.match(out[0].content, /not allowed as a partner/);
   assert.equal(out.some((item) => item.kind === 'delete'), false, 'the post is kept by default');
@@ -245,7 +262,7 @@ const fakeGuild = (id, extra = {}) => ({ id, name: 'Mine', ownerId: 'owner', mem
   // A new Partner Manager is welcomed in the welcome channel when they are given the role.
   const memberUpdate = require('../src/events/guildMemberUpdatePartners');
   const welcomed = [];
-  const welcomeChannel = { isTextBased: () => true, send: async (payload) => { welcomed.push(payload); return { id: 'w' }; } };
+  const welcomeChannel = { isTextBased: () => true, send: async (payload) => { welcomed.push({ ...payload, content: payload.content ?? JSON.stringify((payload.components ?? []).map((component) => component.toJSON?.() ?? component)) }); return { id: 'w' }; } };
   const updateGuild = fakeGuild('guild1', { channels: { cache: new Collection(), fetch: async (id) => (id === 'welcome' ? welcomeChannel : null) } });
   const memberWith = (roleIds) => ({ id: 'u9', guild: updateGuild, user: fakeUser('u9', 'New'), partial: false, displayName: 'New', displayAvatarURL: () => 'https://cdn.example/a.png', joinedTimestamp: 1, roles: { cache: new Collection(roleIds.map((id) => [id, { id }])) } });
   config = { ...config, enabled: true, manager_role_id: 'pm', welcome_channel_id: null, messages: {} };
@@ -253,7 +270,9 @@ const fakeGuild = (id, extra = {}) => ({ id, name: 'Mine', ownerId: 'owner', mem
   config.welcome_channel_id = 'welcome';
   await memberUpdate.execute(memberWith([]), memberWith(['pm'])); assert.equal(welcomed.length, 1); assert.match(welcomed[0].content, /Welcome to the team, <@u9>/); assert.deepEqual(welcomed[0].allowedMentions, { users: ['u9'] });
   await memberUpdate.execute(memberWith(['pm']), memberWith(['pm'])); await memberUpdate.execute(memberWith(['pm']), memberWith([])); await memberUpdate.execute(memberWith([]), memberWith(['other'])); assert.equal(welcomed.length, 1, 'only getting the role counts');
-  await memberUpdate.execute({ ...memberWith([]), partial: true }, memberWith(['pm'])); assert.equal(welcomed.length, 1, 'an unknown old state is skipped');
+  // The role was taken away above, so a new one is welcomed. When Discord does not say what the roles were, it counts only if not welcomed before.
+  await memberUpdate.execute({ ...memberWith([]), partial: true }, memberWith(['pm'])); assert.equal(welcomed.length, 2, 'an unknown old state is welcomed when it was not welcomed before');
+  await memberUpdate.execute({ ...memberWith([]), partial: true }, memberWith(['pm'])); assert.equal(welcomed.length, 2, 'and only once');
 
   // The commands are used with the prefix only, so no slash command is made for them.
   assert.equal(partner.prefixOnly, true); assert.equal(partnerConfig.prefixOnly, true);

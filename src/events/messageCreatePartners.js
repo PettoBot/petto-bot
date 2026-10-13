@@ -14,8 +14,34 @@ async function reply(message, config, key, info) {
   if (sent && payload.reactions?.length) await applyReactReplies(sent, payload.reactions);
 }
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const UNKNOWN_INVITE = 10006;
+
+/**
+ * The invite, or `{ invite: null, unreachable }`: an invite Discord says does not exist is invalid, but a failure of the connection or a
+ * rate limit is not the invite's fault, so it is tried again and, if it keeps failing, nobody's message is thrown away.
+ */
+async function lookUpInvite(client, code) {
+  let last = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return { invite: await client.fetchInvite(code), unreachable: false };
+    } catch (error) {
+      last = error;
+      if (error?.code === UNKNOWN_INVITE || error?.status === 404) return { invite: null, unreachable: false };
+      await sleep(400 * (attempt + 1) + Math.floor(Math.random() * 200));
+    }
+  }
+  logger.warn(`Could not look up the invite ${code}: ${last?.message ?? last}`);
+  return { invite: null, unreachable: true };
+}
+
 async function handleInvite(message, config, code) {
-  const invite = await message.client.fetchInvite(code).catch(() => null);
+  const { invite, unreachable } = await lookUpInvite(message.client, code);
+  if (unreachable) {
+    await message.reply({ content: 'I could not check that invite right now. Post it again in a moment.', failIfNotExists: false, allowedMentions: { repliedUser: false } }).catch(() => null);
+    return { blocked: false };
+  }
   if (!invite?.guild) {
     await reply(message, config, 'invalid_invite', { invite: `https://discord.gg/${code}` });
     return { blocked: true };
@@ -53,7 +79,11 @@ module.exports = {
     try {
       const config = await partnersDb.getConfigCached(message.guild.id);
       if (!config?.enabled || !config.channel_ids.includes(message.channel.id)) return;
-      if (config.manager_role_id && !message.member?.roles.cache.has(config.manager_role_id)) return;
+      // The member can be missing from memory (a message from someone Petto has not seen lately): it is fetched, not taken as "not a manager".
+      if (config.manager_role_id) {
+        const member = message.member ?? await message.guild.members.fetch(message.author.id).catch(() => null);
+        if (!member?.roles.cache.has(config.manager_role_id)) return;
+      }
 
       const codes = extractInviteCodes(message.content);
       if (!codes.length) return;
