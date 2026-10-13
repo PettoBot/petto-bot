@@ -2,13 +2,56 @@ const { EMOJI } = require('./emojis');
 
 const RELEASES = [
   {
+    version: 'v0.7.5',
+    display: 'v0.7.5',
+    name: 'Waffle',
+    label: 'v0.7.5 · Waffle: birthdays, verification in a channel & a faster dashboard',
+    date: '2026-10-13',
+    accent: 0xf3c98b,
+    status: `${EMOJI.RELEASE_APPROVED} Latest`,
+    summary: 'Birthdays, profile history, a letters check for the verification (also inside Discord and in a channel), the monkeyboard, a public leaderboard, levels with giveaways, rollout alerts and a much faster dashboard.',
+    sections: [
+      {
+        title: `${EMOJI.RELEASE_ROCKET} New`,
+        items: [
+          'Birthdays: `!birthday set`, `view`, `upcoming`, `remove` and `config`. Petto celebrates with a message at the hour you choose and, if you want, a role for the day.',
+          'Profile history: `!avatars` shows every avatar in one picture, `!names` and `!nicknames` list the rest, `!clear` deletes your own and a History page in the dashboard has a search by ID.',
+          'Verification: members can type the letters of a picture (on the page or inside Discord, with no link) and the server can post a verification panel in a channel (`!verify channel`, or from the dashboard).',
+          'Monkeyboard 🐒: the starboard\'s opposite, with its own settings and `{monkey.*}` variables.',
+          'Public leaderboard: `petto.sbs/lb/<name>`, in three languages, off until the server turns it on.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_MAGIC} Levels and giveaways`,
+        items: [
+          'Level-up answers the message, deletes itself when you want, voice has its own reward roles, multipliers work by category and you choose who earns XP.',
+          'Giveaways can ask for a level and give extra entries by level. A new default rank card, and `!level manage sync`.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_EYES} Rollouts and quests`,
+        items: [
+          'Rollout alerts: Discord experiments announced in a channel with `!rollouts`, with a queue, saved designs and a dashboard page.',
+          'The compact quests list is the main source, and the default quest cards no longer have the credit line.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_SETTINGS} Speed and dashboard`,
+        items: [
+          'The dashboard loads 3 to 16 times faster, settings change instantly and Petto makes far fewer requests to Discord.',
+          'More messages can have their own name and picture (`!sender`), and the Levels dashboard has one Save.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'v0.7.4',
     display: 'v0.7.4',
     name: 'Brownie',
     label: 'v0.7.4 · Brownie: Vanity in Petto, statistics & hardban',
     date: '2026-10-10',
     accent: 0xf0a88f,
-    status: `${EMOJI.RELEASE_APPROVED} Latest`,
+    status: `${EMOJI.RELEASE_APPROVED} Published`,
     summary: 'Vanity and Server Tag roles inside Petto, a new look for sanctions, a real hardban, `/summary` with sanctions, joins, leaves and invites, a fuller invite tracker, a prefix of your own and Petto working in GMT-5 (Colombia).',
     sections: [
       {
