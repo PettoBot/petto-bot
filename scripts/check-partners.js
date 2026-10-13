@@ -110,13 +110,15 @@ const fakeGuild = (id, extra = {}) => ({ id, name: 'Mine', ownerId: 'owner', mem
   assert.deepEqual(engine.rank(rows), [{ managerId: 'b', count: 3 }, { managerId: 'a', count: 2 }]);
   assert.deepEqual(engine.rank([{ manager_id: 'x', created_at: '2026-09-02T00:00:00Z' }, { manager_id: 'y', created_at: '2026-09-01T00:00:00Z' }]).map((entry) => entry.managerId), ['y', 'x'], 'a tie goes to who started first');
 
-    // The usual look of a reply is a card without color: its text is read from the card.
+    // The usual look of a reply is a colored card (green, yellow or red): its text is read from the card.
   const textOf = (payload) => payload.content ?? JSON.stringify((payload.components ?? []).map((component) => component.toJSON?.() ?? component));
-  const noColor = (payload) => (payload.components ?? []).every((component) => (component.toJSON?.() ?? component).accent_color == null);
+  const accentOf = (payload) => (payload.components?.[0]?.toJSON?.() ?? payload.components?.[0])?.accent_color;
   // The replies: the default, a changed text, a missing saved embed.
   const partnerCtx = (extra = {}) => ({ user: fakeUser('7', 'Mia'), member: { id: '7', user: fakeUser('7', 'Mia'), roles: { cache: new Collection() }, displayName: 'Mia', displayAvatarURL: () => 'https://cdn.example/a.png', joinedTimestamp: 1_700_000_000_000 }, guild: fakeGuild('mine'), partner: messages.partnerContext({ name: 'Partner', members: 1234, managerId: '7', counts: { day: 1, week: 2, total: 3 }, config: rules, ...extra }) });
   let payload = await messages.responsePayload('mine', { messages: {} }, 'completed', partnerCtx());
-  assert.match(textOf(payload), /<@7> thanks for the partnership with \*\*Partner\*\*/); assert.match(textOf(payload), /3 in total \(2 this week\)/); assert.ok(noColor(payload), 'the default card has no color'); assert.equal(payload.flags, 1 << 15, 'it is a Components V2 message');
+  assert.match(textOf(payload), /<@7> thanks for the partnership with \*\*Partner\*\*/); assert.match(textOf(payload), /3 in total \(2 this week\)/); assert.equal(accentOf(payload), 0xa5ea7a, 'a partnership that counts is a green card'); assert.equal(payload.flags, 1 << 15, 'it is a Components V2 message');
+  assert.equal(accentOf(await messages.responsePayload('mine', { messages: {} }, 'invalid_invite', partnerCtx())), 0xff6b6b, 'a no is a red card');
+  assert.equal(accentOf(await messages.responsePayload('mine', { messages: {} }, 'cooldown', partnerCtx())), 0xffd563, 'a wait is a yellow card');
   payload = await messages.responsePayload('mine', { messages: { member_requirement: { text: 'Too small: {partner.members}/{partner.min_members}' } } }, 'member_requirement', partnerCtx());
   assert.match(textOf(payload), /Too small: 1,234\/100/);
   payload = await messages.responsePayload('mine', { messages: { completed: { template: 'gone' } } }, 'completed', partnerCtx());

@@ -15,12 +15,12 @@ const DEFAULTS = {
   anonymous: false,
   staff_role_id: null,
   embed_template: null,
-  status_colors: false,
+  status_colors: true,
   color_pending: 0xffd563,
   color_approved: 0xa5ea7a,
   color_denied: 0xff6b6b,
   color_considering: 0xffb86c,
-  color_implemented: 0x8399ff,
+  color_implemented: 0xf78fb3,
 };
 
 async function getConfig(guildId) {

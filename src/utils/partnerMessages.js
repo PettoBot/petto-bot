@@ -3,7 +3,7 @@
 const { resolve } = require('./embedVariables');
 const { formatSpan, cooldownMinutes } = require('./partnerEngine');
 const { templatePayload } = require('./templatedMessage');
-const { plainCard } = require('./plainCard');
+const { plainCard, TONES } = require('./plainCard');
 
 const RESPONSE_KEYS = ['completed', 'cooldown', 'invalid_invite', 'member_requirement', 'blacklisted', 'self_partner', 'age_requirement', 'nsfw_blocked', 'keyword_blocked', 'manager_welcome'];
 
@@ -34,6 +34,13 @@ const DEFAULTS = {
 };
 
 const MAX_TEXT = 2000;
+
+// The color of the card of each reply: green when it counts or welcomes, yellow when there is a wait or a number missing, red when the answer is no.
+const COLORS = {
+  completed: TONES.green, manager_welcome: TONES.green,
+  cooldown: TONES.yellow, member_requirement: TONES.yellow, age_requirement: TONES.yellow,
+  invalid_invite: TONES.red, blacklisted: TONES.red, self_partner: TONES.red, nsfw_blocked: TONES.red, keyword_blocked: TONES.red,
+};
 
 /** The words of a saved response: its text, or the default. */
 function textOf(config, key) {
@@ -85,8 +92,8 @@ async function responsePayload(guildId, config, key, ctx) {
     if (payload) return { ...payload, allowedMentions };
   }
   const content = (await resolve(textOf(config, key), ctx)).slice(0, MAX_TEXT);
-  // The usual look is a card without color; the text keeps its variables and its one real mention.
-  return { ...plainCard(content || DEFAULTS[key]), allowedMentions };
+  // The usual look is a card; the text keeps its variables and its one real mention.
+  return { ...plainCard(content || DEFAULTS[key], COLORS[key] ?? null), allowedMentions };
 }
 
 module.exports = { RESPONSE_KEYS, LABELS, DEFAULTS, MAX_TEXT, textOf, partnerContext, responsePayload };

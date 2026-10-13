@@ -3167,15 +3167,17 @@ create table if not exists suggestion_config (
   anonymous       boolean not null default false,
   staff_role_id   text,
   embed_template  text,
-  status_colors     boolean not null default false,
+  status_colors     boolean not null default true,
   color_pending     integer not null default 16766307,
   color_approved    integer not null default 10873466,
   color_denied      integer not null default 16739179,
   color_considering integer not null default 16758892,
-  color_implemented integer not null default 8624639,
+  color_implemented integer not null default 16224179,
   updated_at      timestamptz not null default now()
 );
-alter table suggestion_config add column if not exists status_colors boolean not null default false;
+alter table suggestion_config add column if not exists status_colors boolean not null default true;
+alter table suggestion_config alter column status_colors set default true;
+alter table suggestion_config alter column color_implemented set default 16224179;
 alter table suggestion_config enable row level security;
 
 create table if not exists suggestions (
@@ -3242,8 +3244,22 @@ create table if not exists counting_config (
   saves_max       integer not null default 0,
   save_every      integer not null default 100,
   milestone_every integer not null default 100,
+  record_every    integer not null default 100,
+  wrong_role_id   text,
+  wrong_role_minutes integer not null default 60,
+  top_role_id     text,
+  top_user_id     text,
+  top_correct     integer not null default 0,
+  alert_seconds   integer not null default 30,
   updated_at      timestamptz not null default now()
 );
+alter table counting_config add column if not exists record_every integer not null default 100;
+alter table counting_config add column if not exists wrong_role_id text;
+alter table counting_config add column if not exists wrong_role_minutes integer not null default 60;
+alter table counting_config add column if not exists top_role_id text;
+alter table counting_config add column if not exists top_user_id text;
+alter table counting_config add column if not exists top_correct integer not null default 0;
+alter table counting_config add column if not exists alert_seconds integer not null default 30;
 alter table counting_config enable row level security;
 
 create table if not exists counting_users (
@@ -3255,5 +3271,15 @@ create table if not exists counting_users (
   updated_at timestamptz not null default now(),
   primary key (guild_id, user_id)
 );
+-- The role given to who gets a number wrong, and until when.
+create table if not exists counting_roles (
+  guild_id  text not null references guilds(guild_id) on delete cascade,
+  user_id   text not null,
+  role_id   text not null,
+  remove_at timestamptz,
+  primary key (guild_id, user_id)
+);
+alter table counting_roles enable row level security;
+
 create index if not exists idx_counting_users_top on counting_users(guild_id, correct desc);
 alter table counting_users enable row level security;
