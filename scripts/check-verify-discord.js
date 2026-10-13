@@ -80,5 +80,15 @@ const text = (payload) => JSON.stringify(payload.components?.map((component) => 
   await verifyLetters.handleButton(interaction(`vfy:start:${GUILD}`));
   assert.ok(text(replies.at(-1)).includes('already verified'));
   await verifyLetters.handleButton(interaction('vfy:start:not-a-server'));
+  // The panel of a channel and its ephemeral answers.
+  const panel = verifyLetters.buildPanel({ guild, method: 'letters' }).components[0].toJSON();
+  const customIds = JSON.stringify(panel).match(/vfy:[a-z]+:\d+/g);
+  assert.deepEqual(customIds, [`vfy:link:${GUILD}`, `vfy:start:${GUILD}`]);
+  assert.equal(JSON.stringify(verifyLetters.buildPanel({ guild, method: 'discord' }).components[0].toJSON()).includes('vfy:link'), false);
+  settings = { enabled: true, method: 'letters', unverified_role_id: 'role-un', verified_role_id: 'role-ok' };
+  const inChannel = { ...interaction(`vfy:start:${GUILD}`), inGuild: () => true };
+  await verifyLetters.handleButton(inChannel);
+  assert.ok(replies.at(-1).flags & 64, 'answers in a channel are ephemeral');
+  console.log('verify panel checks passed');
   console.log('Checked the letters check inside Discord: the button, the picture, the form and the pass.');
 })().catch((error) => { console.error(error); process.exit(1); });

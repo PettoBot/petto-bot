@@ -6,12 +6,14 @@ const { hasEverVerified } = require('../db/verificationRedemptions');
 const captcha = require('../utils/verifyCaptcha');
 
 const { TICKET_TTL_SECONDS } = captcha;
-const { methodOf, inDiscord } = require('../utils/verifyMethod');
+const { methodOf, inDiscord, usesLink } = require('../utils/verifyMethod');
+const { createToken } = require('../utils/verifyToken');
+const config = require('../config');
 const { applyVerification } = require('../utils/verifyApply');
 const logger = require('../utils/logger');
 
 const PREFIX = 'vfy';
-const ids = { start: (guildId) => `${PREFIX}:start:${guildId}`, type: (guildId) => `${PREFIX}:type:${guildId}`, answer: (guildId) => `${PREFIX}:answer:${guildId}` };
+const ids = { start: (guildId) => `${PREFIX}:start:${guildId}`, type: (guildId) => `${PREFIX}:type:${guildId}`, answer: (guildId) => `${PREFIX}:answer:${guildId}`, link: (guildId) => `${PREFIX}:link:${guildId}` };
 const V2 = MessageFlags.IsComponentsV2;
 
 const tickets = new Map(); // `${guildId}:${userId}` -> { ticket, jti, until }
@@ -22,7 +24,9 @@ function startButton(guildId) {
   return new ButtonBuilder().setCustomId(ids.start(guildId)).setLabel('Verify here in Discord').setStyle(ButtonStyle.Primary);
 }
 
-const say = (interaction, text) => interaction.reply({ components: [new ContainerBuilder().setAccentColor(0x4b4f59).addTextDisplayComponents(new TextDisplayBuilder().setContent(text))], flags: V2 });
+// In a server channel (the verification panel) the answers are only for the member who pressed the button; in the DM there is no one else.
+const flagsFor = (interaction) => (interaction.inGuild?.() ? V2 | MessageFlags.Ephemeral : V2);
+const say = (interaction, text) => interaction.reply({ components: [new ContainerBuilder().setAccentColor(0x4b4f59).addTextDisplayComponents(new TextDisplayBuilder().setContent(text))], flags: flagsFor(interaction) });
 
 /** Whether this member still has to verify in that server, with the settings; or `{ error }` with what to tell them. */
 async function situation(client, guildId, userId) {
@@ -50,13 +54,37 @@ async function showPicture(interaction, guildId) {
       new ButtonBuilder().setCustomId(ids.type(guildId)).setLabel('Type the letters').setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId(ids.start(guildId)).setLabel('New picture').setStyle(ButtonStyle.Secondary),
     ));
-  return interaction.reply({ components: [container], files: [new AttachmentBuilder(challenge.png, { name: 'verify.png' })], flags: V2 });
+  return interaction.reply({ components: [container], files: [new AttachmentBuilder(challenge.png, { name: 'verify.png' })], flags: flagsFor(interaction) });
+}
+
+/** The panel of a channel: what to do to get in, with a button for each way the server allows. */
+function buildPanel({ guild, method }) {
+  const row = new ActionRowBuilder();
+  if (usesLink(method)) row.addComponents(new ButtonBuilder().setCustomId(ids.link(guild.id)).setLabel('Get my verification link').setStyle(method === 'letters' ? ButtonStyle.Secondary : ButtonStyle.Primary));
+  if (inDiscord(method)) row.addComponents(startButton(guild.id));
+  const container = new ContainerBuilder().setAccentColor(0x8c7cff)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### Verify to enter ${guild.name}\nPress a button below to prove you're human and get access to the rest of the server.${inDiscord(method) ? '\nYou can do it right here: you will see a picture and type its letters.' : ''}`))
+    .addActionRowComponents(row);
+  return { components: [container], flags: V2 };
+}
+
+/** The personal link of a member, only for them (an answer only they see). */
+async function sendLink(interaction, guildId) {
+  const guild = interaction.client.guilds.cache.get(guildId);
+  const settings = guild ? await getConfig(guildId).catch(() => null) : null;
+  if (!guild || !settings?.enabled || !usesLink(methodOf(settings))) return say(interaction, 'This server does not use a verification link.');
+  if (!config.verifyBaseUrl || !config.verifyTokenSecret) return say(interaction, 'The verification link is not set up. Contact a moderator.');
+  const member = await guild.members.fetch(interaction.user.id).catch(() => null);
+  if (!member) return say(interaction, 'You are not in that server any more.');
+  if (settings.unverified_role_id && !member.roles.cache.has(settings.unverified_role_id) && await hasEverVerified(guildId, interaction.user.id).catch(() => false)) return say(interaction, 'You are already verified.');
+  return say(interaction, `**[Click here to verify](${config.verifyBaseUrl}/verify/${createToken({ userId: interaction.user.id, guildId })})**\nThe link is only for you and lasts 24 hours.`);
 }
 
 async function handleButton(interaction) {
   const [, action, guildId] = interaction.customId.split(':');
   if (!/^\d{15,25}$/.test(guildId ?? '')) return undefined;
   if (action === 'start') return showPicture(interaction, guildId);
+  if (action === 'link') return sendLink(interaction, guildId);
   if (action === 'type') {
     const modal = new ModalBuilder().setCustomId(ids.answer(guildId)).setTitle('Verification')
       .addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('letters').setLabel('The letters of the picture').setStyle(TextInputStyle.Short).setMinLength(4).setMaxLength(12).setRequired(true)));
@@ -88,4 +116,4 @@ async function handleModal(interaction) {
   }
 }
 
-module.exports = { PREFIX, startButton, handleButton, handleModal, ids };
+module.exports = { PREFIX, startButton, buildPanel, handleButton, handleModal, ids };

@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, ChannelType } = require('discord.js');
 const { ensureGuild } = require('../../db/guilds');
 const { getConfig, upsertConfig } = require('../../db/verificationConfig');
 const { getTemplate } = require('../../db/embedTemplates');
@@ -39,6 +39,7 @@ module.exports = {
     .addSubcommand((s) => s.setName('template').setDescription('Use a saved embed for the DMs of verification, or none to go back to the usual one.')
       .addStringOption((o) => o.setName('which').setDescription('Which message').setRequired(true).addChoices({ name: 'prompt', value: 'prompt' }, { name: 'verified', value: 'verified' }))
       .addStringOption((o) => o.setName('template').setDescription('Saved embed name, or none. Leave it empty to see what is in use').setRequired(false)))
+    .addSubcommand((s) => s.setName('channel').setDescription('Post the verification panel in a channel, so members can verify there too.').addChannelOption((o) => o.setName('channel').setDescription('The channel for the panel').addChannelTypes(ChannelType.GuildText).setRequired(true)))
     .addSubcommand((s) => s.setName('status').setDescription('Show the current verification setup.'))
     .addSubcommand((s) => s.setName('send').setDescription('Manually (re)send a verification link to a member.').addUserOption((o) => o.setName('user').setDescription('The member to send a link to').setRequired(true))),
 
@@ -47,9 +48,36 @@ module.exports = {
     if (sub === 'setup') return setup(interaction);
     if (sub === 'status') return status(interaction);
     if (sub === 'template') return setTemplate(interaction);
+    if (sub === 'channel') return panel(interaction);
     return send(interaction);
   },
 };
+
+async function panel(interaction) {
+  const channel = interaction.options.getChannel('channel', true);
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  await ensureGuild(interaction.guild.id);
+  const settings = (await getConfig(interaction.guild.id)) ?? {};
+  const done = (text, color = 0xa5ea7a) => interaction.editReply({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2 });
+  if (!settings.enabled) return done('Turn verification on first: `verify setup true`.', 0xfe6465);
+  const method = methodOf(settings);
+  if (!ENV_CONFIGURED(method)) return done(`${EMOJI.DENY}  The verification environment variables are not fully set. See \`verify status\`.`, 0xfe6465);
+  const me = interaction.guild.members.me;
+  if (!channel.permissionsFor(me)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageRoles])) return done(`${EMOJI.DENY}  I need to see and write in ${channel}, and the **Manage Roles** permission.`, 0xfe6465);
+  try {
+    // The role of the members who have not verified cannot see any channel, so this one is opened to it (to read, not to write).
+    const role = await ensureUnverifiedRole(interaction.guild, settings);
+    await channel.permissionOverwrites.edit(role, { ViewChannel: true, ReadMessageHistory: true, SendMessages: false, AddReactions: false, CreatePublicThreads: false, CreatePrivateThreads: false }, { reason: 'Petto: verification panel' });
+    const previous = settings.panel_channel_id && settings.panel_message_id ? await interaction.guild.channels.fetch(settings.panel_channel_id).catch(() => null) : null;
+    if (previous?.isTextBased?.()) await previous.messages.delete(settings.panel_message_id).catch(() => {});
+    const sent = await channel.send(require('../../interactions/verifyLetters').buildPanel({ guild: interaction.guild, method }));
+    await upsertConfig(interaction.guild.id, { panel_channel_id: channel.id, panel_message_id: sent.id });
+    return done(`${EMOJI.APPROVE}  The verification panel is in ${channel}. Members who have not verified can see that channel and press the button there${usesLink(method) ? ' (to get their link)' : ''}${method === 'letters' || method === 'discord' ? ' (to do the letters right there)' : ''}.`);
+  } catch (err) {
+    logger.error('Failed to post the verification panel:', err);
+    return done(`${EMOJI.DENY}  I could not post the panel: ${err.message}`, 0xfe6465);
+  }
+}
 
 async function setTemplate(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
@@ -128,6 +156,7 @@ async function status(interaction) {
     `**Gate role:** ${verifyConfig.unverified_role_id ? `<@&${verifyConfig.unverified_role_id}>` : 'Not created yet'}`,
     `**Bonus role on success:** ${verifyConfig.verified_role_id ? `<@&${verifyConfig.verified_role_id}>` : 'None'}`,
     `**Check:** ${METHOD_LABELS[methodOf(verifyConfig)]}`,
+    `**Panel channel:** ${verifyConfig.panel_channel_id ? `<#${verifyConfig.panel_channel_id}>` : 'none (use `verify channel`)'}`,
     `**Web server env vars:** ${ENV_CONFIGURED(methodOf(verifyConfig)) ? `${EMOJI.APPROVE} Configured` : `${EMOJI.DENY} Missing (links won't work)`}`,
   ];
   await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
