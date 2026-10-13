@@ -294,6 +294,21 @@ const VARIABLE_GROUPS = [
     ],
   },
   {
+    id: 'confessions',
+    label: 'Confessions',
+    availability: 'confessions',
+    vars: [
+      { tok: '{confession.id}', desc: 'The ID of the confession (like si2tr-foytm)' },
+      { tok: '{confession.number}', desc: 'The number of the confession in this server' },
+      { tok: '{confession.content}', desc: 'The text of the confession' },
+      { tok: '{confession.image}', desc: 'Link of the picture of the confession, empty if none' },
+      { tok: '{confession.link}', desc: 'Link to the confession message' },
+      { tok: '{confession.channel}', desc: 'Mentions the channel of the confession' },
+      { tok: '{confession.created}', desc: 'When it was made, as a relative time (5 days ago)' },
+      { tok: '{confession.created_time}', desc: 'When it was made, as a date and time' },
+    ],
+  },
+  {
     id: 'starboard',
     label: 'Starboard',
     availability: 'starboard',

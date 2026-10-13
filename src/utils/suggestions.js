@@ -56,8 +56,8 @@ function voteRow(id, config) {
   return {
     type: 1,
     components: [
-      { type: 2, style: 2, custom_id: `${BUTTON_PREFIX}:up:${id}`, emoji: parseEmoji(config.up_emoji, '✅') },
-      { type: 2, style: 2, custom_id: `${BUTTON_PREFIX}:down:${id}`, emoji: parseEmoji(config.down_emoji, '❌') },
+      { type: 2, style: 2, custom_id: `${BUTTON_PREFIX}:up:${id}`, emoji: parseEmoji(config.up_emoji, '<:Pe_nerdSuccess:1559577139328847963>') },
+      { type: 2, style: 2, custom_id: `${BUTTON_PREFIX}:down:${id}`, emoji: parseEmoji(config.down_emoji, '<:Pe_nerdError:1559577090586841188>') },
     ],
   };
 }
@@ -226,7 +226,10 @@ async function refresh(guild, row, config, options = {}) {
   const channel = row.channel_id ? await guild.channels.fetch(row.channel_id).catch(() => null) : null;
   const message = channel?.isTextBased?.() && row.message_id ? await channel.messages.fetch(row.message_id).catch(() => null) : null;
   if (!message) return null;
-  await message.edit(await render(guild, row, config, options)).catch((err) => logger.warn(`A suggestion could not be edited in ${guild.id}: ${err.message}`));
+  // The picture of the suggestion is a file of the message: it has to be kept or the edit says the attachment was not found.
+  const payload = await render(guild, row, config, options);
+  if (message.attachments?.size) payload.attachments = [...message.attachments.values()];
+  await message.edit(payload).catch((err) => logger.warn(`A suggestion could not be edited in ${guild.id}: ${err.message}`));
   return message;
 }
 

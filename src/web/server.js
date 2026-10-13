@@ -1,3 +1,5 @@
+const confessionsDb = require('../db/confessions');
+const { postPanel: postConfessionPanel } = require('../interactions/confessions');
 const express = require('express');
 const { rateLimit } = require('express-rate-limit');
 const path = require('path');
@@ -254,6 +256,22 @@ function startServer(client) {
       } catch (err) {
         logger.error(`Dashboard giveaway ${req.params.action} failed for guild ${req.params.guildId}:`, err);
         res.status(500).json({ ok: false, error: 'giveaway_failed', message: 'The giveaway action failed. Try again.' });
+      }
+    });
+
+    // The panel of confessions (the button that opens the form), posted or updated now from the dashboard.
+    app.post('/api/dashboard/guild/:guildId/confessions/panel', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await dashboardCardAccess(req, res);
+      if (!access) return;
+      try {
+        const config = await confessionsDb.getConfig(access.guild.id);
+        const channelId = typeof req.body?.channel_id === 'string' && /^\d{5,25}$/.test(req.body.channel_id) ? req.body.channel_id : config.panel_channel_id || config.channel_id;
+        if (!channelId) { res.status(400).json({ ok: false, message: 'Pick a channel for the panel first.' }); return; }
+        const result = await postConfessionPanel(access.guild, config, channelId);
+        res.status(result.ok ? 200 : 400).json(result);
+      } catch (err) {
+        logger.error(`Dashboard confession panel failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, message: 'The panel could not be posted. Try again.' });
       }
     });
 

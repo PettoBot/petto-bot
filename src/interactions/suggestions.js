@@ -39,7 +39,7 @@ async function handleButton(interaction) {
   // The button answers by changing the message it is on, so what people see is always what is counted.
   const tally = await db.tally(id, interaction.user.id);
   const payload = await suggestions.render(interaction.guild, result.row, result.config, { tally });
-  return interaction.update({ components: payload.components, embeds: payload.embeds, files: payload.files, content: payload.content ?? null, flags: payload.flags, allowedMentions: { parse: [] } });
+  return interaction.update({ components: payload.components, embeds: payload.embeds, files: payload.files, attachments: [...(interaction.message?.attachments?.values?.() ?? [])], content: payload.content ?? null, flags: payload.flags, allowedMentions: { parse: [] } });
 }
 
 async function handleModal(interaction) {

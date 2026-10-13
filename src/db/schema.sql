@@ -3158,8 +3158,8 @@ create table if not exists suggestion_config (
   channel_id      text,
   listen_channel  boolean not null default false,
   allow_command   boolean not null default true,
-  up_emoji        text not null default '✅',
-  down_emoji      text not null default '❌',
+  up_emoji        text not null default '<:Pe_nerdSuccess:1559577139328847963>',
+  down_emoji      text not null default '<:Pe_nerdError:1559577090586841188>',
   thread          boolean not null default true,
   thread_name     text not null default 'Thread for suggestion {suggestion.id}',
   self_vote       boolean not null default true,
@@ -3178,6 +3178,11 @@ create table if not exists suggestion_config (
 alter table suggestion_config add column if not exists status_colors boolean not null default true;
 alter table suggestion_config alter column status_colors set default true;
 alter table suggestion_config alter column color_implemented set default 16224179;
+alter table suggestion_config alter column up_emoji set default '<:Pe_nerdSuccess:1559577139328847963>';
+alter table suggestion_config alter column down_emoji set default '<:Pe_nerdError:1559577090586841188>';
+update suggestion_config set up_emoji = '<:Pe_nerdSuccess:1559577139328847963>' where up_emoji = '✅';
+update suggestion_config set down_emoji = '<:Pe_nerdError:1559577090586841188>' where down_emoji = '❌';
+update suggestion_config set status_colors = true where status_colors = false;
 alter table suggestion_config enable row level security;
 
 create table if not exists suggestions (
@@ -3283,3 +3288,60 @@ alter table counting_roles enable row level security;
 
 create index if not exists idx_counting_users_top on counting_users(guild_id, correct desc);
 alter table counting_users enable row level security;
+
+-- Confessions: members confess without a name, with or without the staff checking each one first.
+create table if not exists confession_config (
+  guild_id          text primary key references guilds(guild_id) on delete cascade,
+  enabled           boolean not null default false,
+  channel_id        text,
+  review_channel_id text,
+  require_review    boolean not null default false,
+  allow_command     boolean not null default true,
+  allow_images      boolean not null default true,
+  allow_replies     boolean not null default true,
+  keep_author       boolean not null default true,
+  use_webhook       boolean not null default true,
+  webhook_name      text not null default 'Anonymous',
+  webhook_avatar    text,
+  title             text not null default 'Anonymous confession #{confession.number}',
+  footer            text not null default 'Confession ID: {confession.id}',
+  color             integer not null default 10873466,
+  button_label      text not null default 'Confess',
+  reply_label       text not null default 'Reply anonymously',
+  panel_text        text not null default 'Press the button and write it. Nobody will know it was you.',
+  cooldown_seconds  integer not null default 60,
+  staff_role_id     text,
+  embed_template    text,
+  panel_channel_id  text,
+  panel_message_id  text,
+  updated_at        timestamptz not null default now()
+);
+
+create table if not exists confessions (
+  id                text primary key,
+  guild_id          text not null references guilds(guild_id) on delete cascade,
+  number            integer not null,
+  author_id         text,
+  content           text not null,
+  image_url         text,
+  status            text not null default 'pending',
+  channel_id        text,
+  message_id        text,
+  thread_id         text,
+  review_channel_id text,
+  review_message_id text,
+  reviewed_by       text,
+  reply_to          text,
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now()
+);
+alter table confessions add column if not exists reply_to text;
+create index if not exists confessions_guild_idx on confessions (guild_id, number desc);
+
+create table if not exists confession_blocks (
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  user_id    text not null,
+  blocked_by text,
+  created_at timestamptz not null default now(),
+  primary key (guild_id, user_id)
+);
