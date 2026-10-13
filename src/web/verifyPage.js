@@ -107,7 +107,7 @@ function renderVerifyPage({ token, siteKey, method = 'turnstile', guildName = nu
   </div>
   ${useTurnstile ? '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>' : ''}
   <script>
-    const TOKEN = ${JSON.stringify(token)};
+    const TOKEN = ${JSON.stringify(token).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')};
     const T = ${JSON.stringify(t).replace(/</g, '\\u003c')};
     const USE_TURNSTILE = ${useTurnstile};
     const USE_LETTERS = ${useLetters};

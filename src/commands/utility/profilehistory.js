@@ -75,7 +75,7 @@ async function showCmd(interaction, kindName) {
   const total = rows.length;
   const title = kind === 'name' ? `Names of ${user.username}` : `Nicknames of ${member?.displayName ?? user.username} in this server`;
   if (!total) return interaction.editReply({ components: [textCard(`No ${kindName} are saved yet.`, 0x4b4f59)], flags: V2 });
-  const lines = rows.slice(0, MAX_LINES).map((row, index) => `${index === 0 ? '**Now**' : `${index + 1}.`} ${String(row.value).replace(/[`*_~|>]/g, '\\$&')} · <t:${unix(row.seen_at)}:R>`);
+  const lines = rows.slice(0, MAX_LINES).map((row, index) => `${index === 0 ? '**Now**' : `${index + 1}.`} ${String(row.value).replace(/[\\`*_~|>]/g, '\\$&')} · <t:${unix(row.seen_at)}:R>`);
   const container = new ContainerBuilder().setAccentColor(ACCENT)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### ${title}\n${total} saved${total > MAX_LINES ? `, the newest ${MAX_LINES} shown` : ''}`))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small))

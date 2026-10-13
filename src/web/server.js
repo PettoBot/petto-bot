@@ -86,6 +86,26 @@ const dashboardPrefixRateLimiter = rateLimit({
 });
 
 // The vote webhook of top.gg: a few requests a minute are normal (one per vote, plus retries), so this only stops a flood of bad calls.
+const verifyPageRateLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 60,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).type('text/plain').send('Too many requests. Wait a minute and try again.');
+  },
+});
+
+const verifyCaptchaRateLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 40,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).json({ ok: false, error: 'Too many pictures asked. Wait a minute and try again.' });
+  },
+});
+
 const topggRateLimiter = rateLimit({
   windowMs: 60_000,
   limit: 120,
@@ -404,7 +424,7 @@ function startServer(client) {
     res.set('Content-Type', 'text/html; charset=utf-8').send(renderHomePage({ guildCount: client.guilds.cache.size }));
   });
 
-  app.get('/verify/:token', async (req, res) => {
+  app.get('/verify/:token', verifyPageRateLimiter, async (req, res) => {
     // The page shows the check the server chose and its name, and speaks the language of the visitor.
     const payload = verifyToken(req.params.token);
     const settings = payload ? await getConfig(payload.guildId).catch(() => null) : null;
@@ -420,7 +440,7 @@ function startServer(client) {
   });
 
   // A new picture of letters for the letters method: the PNG as a data link and the signed ticket the page sends back with the answer.
-  app.post('/api/verify/captcha', createRateLimiter({ windowMs: 60_000, max: 40 }), async (req, res) => {
+  app.post('/api/verify/captcha', verifyCaptchaRateLimiter, async (req, res) => {
     const payload = verifyToken(req.body?.token);
     if (!payload) {
       res.status(400).json({ ok: false, error: 'This verification link is invalid or has expired. Rejoin the server to get a new one.' });

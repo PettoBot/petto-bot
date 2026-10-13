@@ -39,7 +39,7 @@ assert.equal(methodOf({ method: 'discord' }), 'discord');
 const { renderVerifyPage, pickLanguage } = require('../src/web/verifyPage');
 const page = (method, extra = {}) => renderVerifyPage({ token: 'a.b', siteKey: 'site', method, ...extra });
 assert.ok(page('turnstile').includes('class="cf-turnstile"') && !page('turnstile').includes('id="letters-img"'), 'turnstile: only the Cloudflare check');
-assert.ok(!page('letters').includes('class="cf-turnstile"') && !page('letters').includes('challenges.cloudflare.com') && page('letters').includes('id="letters-img"'), 'letters: no Cloudflare at all');
+assert.ok(!page('letters').includes('class="cf-turnstile"') && !/challenges\.cloudflare\.com/.test(page('letters')) && page('letters').includes('id="letters-img"'), 'letters: no Cloudflare at all');
 assert.ok(page('both').includes('class="cf-turnstile"') && page('both').includes('id="letters-img"'), 'both: the two');
 assert.ok(page('letters', { guildName: 'A <b>Server</b>' }).includes('A &lt;b&gt;Server&lt;/b&gt;'), 'the name of the server is shown and escaped');
 assert.ok(page('letters', { lang: 'es' }).includes('Escribe las letras que ves') && page('letters', { lang: 'pt' }).includes('Digite as letras'), 'in Spanish and Portuguese');

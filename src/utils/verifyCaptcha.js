@@ -17,7 +17,7 @@ const COLORS = ['#ff9ecb', '#7fd1ff', '#ffd27f', '#a8f08a', '#c4a1ff', '#ff8a80'
 
 const wrong = new Map(); // jti -> { count, until }
 
-const b64 = (buffer) => buffer.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const b64 = (buffer) => buffer.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
 const mac = (secret, input) => crypto.createHmac('sha256', secret).update(input).digest();
 const pick = (list) => list[crypto.randomInt(list.length)];
 const between = (min, max) => min + crypto.randomInt(Math.round((max - min) * 1000) + 1) / 1000;
