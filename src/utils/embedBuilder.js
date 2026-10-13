@@ -1,6 +1,7 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { resolve } = require('./embedVariables');
 const { renderCardForMessage, normalizeCardRef, CARD_FILE_NAME } = require('./cardService');
+const { pullImgCards } = require('./imgCardTokens');
 const { isV2, buildV2, hasV2Content, TYPES, LIMITS } = require('./embedV2');
 
 function parseColor(input) {
@@ -213,6 +214,9 @@ function placeCardInV2(components, card) {
  * `embed`) and replaces its image, and it is attached on its own otherwise or when `placement` is `attachment`.
  */
 async function build(data, ctx = {}) {
+  // {imgcard:name} anywhere in the message asks for that card, unless the saved design already points at one.
+  const pulled = pullImgCards(data);
+  if (pulled.card) data = { ...pulled.data, card: pulled.data?.card?.name ? pulled.data.card : pulled.card };
   // A Components V2 message cannot have text or embeds and needs its own flag, so only the senders that pass `allowV2`
   // get it. Anywhere else it gives an empty message, and the sender goes on with its usual one.
   if (isV2(data)) {

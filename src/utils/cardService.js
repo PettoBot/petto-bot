@@ -8,6 +8,7 @@ const imageCards = require('../db/imageCards');
 const cardAssets = require('../db/cardAssets');
 const { getGuildPremium } = require('../db/premium');
 const logger = require('./logger');
+const { pullImgCards } = require('./imgCardTokens');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -116,9 +117,21 @@ async function renderRankCard(ctx, cardName, source = 'messages') {
   }
 }
 
+/**
+ * A plain text message that may hold {imgcard:name}: `{ content, files }` with the text resolved and the card drawn when the text
+ * asks for one. For the places that send text without building a whole design.
+ */
+async function plainMessage(text, ctx) {
+  const pulled = pullImgCards({ content: String(text ?? '') });
+  const content = await resolve(pulled.data.content, ctx);
+  const card = normalizeCardRef(pulled.card);
+  const picture = card ? await renderCardForMessage(card, ctx) : null;
+  return picture ? { content, files: [{ attachment: picture.buffer, name: picture.name }] } : { content };
+}
+
 function normalizeCardRef(raw) {
   if (!raw || typeof raw !== 'object' || typeof raw.name !== 'string' || !raw.name.trim()) return null;
   return { name: imageCards.normalizeName(raw.name), placement: PLACEMENTS.has(raw.placement) ? raw.placement : 'default' };
 }
 
-module.exports = { CARD_FILE_NAME, PLACEMENTS, drawCard, renderCardForMessage, renderRankCard, defaultRankCard, normalizeCardRef };
+module.exports = { CARD_FILE_NAME, PLACEMENTS, drawCard, renderCardForMessage, renderRankCard, defaultRankCard, normalizeCardRef, plainMessage };

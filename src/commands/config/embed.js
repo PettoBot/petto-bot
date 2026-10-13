@@ -294,7 +294,7 @@ module.exports = {
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false)
 
-    .addSubcommand((s) => s.setName('create').setDescription('Create a new named embed, with the editor or from a code.').addStringOption((o) => o.setName('name').setDescription('Embed name (e.g. rules_embed)').setRequired(true)).addStringOption((o) => o.setName('code').setDescription('Optional: the whole embed as one line, e.g. {embed}&v{title: Hi}&v{description: A{newline}B}, or a p2. code for a V2 design').setRequired(false).setMaxLength(6000)))
+    .addSubcommand((s) => s.setName('create').setDescription('Create a new named embed, with the editor or from a code.').addStringOption((o) => o.setName('name').setDescription('Embed name (e.g. rules_embed)').setRequired(true)).addStringOption((o) => o.setName('code').setDescription('Optional: the whole embed as one code ({embed}&v{title: Hi}...), or a p2. code for a V2 design').setRequired(false).setMaxLength(6000)))
     .addSubcommand((s) => s.setName('preview').setDescription('Preview a saved embed with variables resolved.').addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true)))
     .addSubcommand((s) =>
       s

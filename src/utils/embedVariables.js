@@ -38,7 +38,8 @@ async function resolve(text, ctx = {}) {
     return pos > 0 ? String(pos) : '';
   })();
 
-  let result = text;
+  // {imgcard:name} is read by the message builder (utils/imgCardTokens.js); where no card is drawn it must not show up as text.
+  let result = text.replace(/\{imgcard:[^}]*\}/gi, '');
   result = result.replace(/\{choose\d*:([^}]+)\}/gi, (_, opts) => {
     const choices = opts.split('|').map((s) => s.trim()).filter(Boolean);
     return choices[Math.floor(Math.random() * choices.length)] ?? '';

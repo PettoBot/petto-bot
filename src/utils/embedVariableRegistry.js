@@ -200,6 +200,7 @@ const VARIABLE_GROUPS = [
       { tok: '{arg_count}', desc: 'Number of arguments supplied' },
       { tok: '{command_name}', desc: 'The command name that was used' },
       { tok: '{prefix}', desc: 'The prefix that was used' },
+      { tok: '{imgcard:name}', desc: 'Puts the image card with that name in the message (made in Image cards). {imgcard:name|attachment} sends the picture on its own instead of inside the first embed.', dynamic: true },
       { tok: '{reactreply:emoji}', desc: 'Response flag: reacts to the sent message with this emoji; repeat it for more reactions', dynamic: true },
     ],
   },
