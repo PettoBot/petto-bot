@@ -1,5 +1,6 @@
 const { Events, EmbedBuilder } = require('discord.js');
 const arDb = require('../db/autoResponders');
+const { plainMessage } = require('../utils/cardService');
 const { getTemplate } = require('../db/embedTemplates');
 const { build } = require('../utils/embedBuilder');
 const { resolve } = require('../utils/embedVariables');
@@ -116,7 +117,7 @@ module.exports = {
           if (ar.embed_footer) embed.setFooter({ text: await resolve(ar.embed_footer, ctx) });
           payload = { embeds: [embed] };
         } else {
-          payload = { content: await resolve(cleanedReply, ctx) };
+          payload = await plainMessage(cleanedReply, ctx);
         }
 
         // A ping only actually notifies if the mention text is present AND allowedMentions opts

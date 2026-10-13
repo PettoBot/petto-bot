@@ -1,5 +1,6 @@
 const { getTemplate } = require('../db/embedTemplates');
 const { build } = require('./embedBuilder');
+const { plainMessage } = require('./cardService');
 const { resolve } = require('./embedVariables');
 const { extractReactReplies, applyReactReplies } = require('./messageFlags');
 const logger = require('./logger');
@@ -41,8 +42,8 @@ async function sendMemberEvent({ guild, channel, kind, messageText, embedTemplat
     }
 
     if (cleanedText) {
-      const resolved = await resolve(cleanedText, ctx);
-      const sent = await deliver(channel, kind, { content: resolved, allowedMentions: ANNOUNCEMENT_MENTIONS });
+      const plain = await plainMessage(cleanedText, ctx);
+      const sent = await deliver(channel, kind, { ...plain, allowedMentions: ANNOUNCEMENT_MENTIONS });
       if (emojis.length) await applyReactReplies(sent, emojis);
     } else if (emojis.length) {
       // Reactions were the only thing configured (no other text) — nothing to react to without

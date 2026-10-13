@@ -6,6 +6,7 @@ const { VARIABLE_GROUPS } = require('../src/utils/embedVariableRegistry');
 
 const engineSource = fs.readFileSync(path.join(__dirname, '../src/utils/embedVariables.js'), 'utf8');
 const flagSource = fs.readFileSync(path.join(__dirname, '../src/utils/messageFlags.js'), 'utf8');
+const imgCardSource = fs.readFileSync(path.join(__dirname, '../src/utils/imgCardTokens.js'), 'utf8');
 const bumpSource = fs.readFileSync(path.join(__dirname, '../src/utils/bumpHandler.js'), 'utf8');
 
 const engineTokens = new Set([...engineSource.matchAll(/^\s*'(\{[^']+\})':/gm)].map((match) => match[1]));
@@ -28,6 +29,7 @@ const dynamicChecks = [
   [/^\{arg\d+\}$/, /\{arg\(\\d\{1,2\}\)\\\}/, engineSource],
   [/^\{args_from:/, /args_from:/, engineSource],
   [/^\{reactreply/, /reactreply/, flagSource],
+  [/^\{imgcard:/, /imgcard:/, imgCardSource],
   [/^\{nextBump\}$/, /nextBump/, bumpSource],
 ];
 

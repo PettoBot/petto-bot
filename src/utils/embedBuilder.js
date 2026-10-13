@@ -1,7 +1,8 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { resolve } = require('./embedVariables');
 const { renderCardForMessage, normalizeCardRef, CARD_FILE_NAME } = require('./cardService');
-const { isV2, buildV2, hasV2Content } = require('./embedV2');
+const { pullImgCards } = require('./imgCardTokens');
+const { isV2, buildV2, hasV2Content, TYPES, LIMITS } = require('./embedV2');
 
 function parseColor(input) {
   const hex = input.replace('#', '');
@@ -192,6 +193,16 @@ function formatEmbedError(error) {
   return [...new Set(messages)].slice(0, 3).join('; ') || error?.message || 'Unknown embed error';
 }
 
+/** Puts the picture of a card into the components of a V2 message (it counts as one component of the 40 a message can have). */
+function placeCardInV2(components, card) {
+  const gallery = { type: TYPES.GALLERY, items: [{ media: { url: `attachment://${CARD_FILE_NAME}` } }] };
+  const countAll = (nodes) => nodes.reduce((total, node) => total + 1 + countAll(Array.isArray(node?.components) ? node.components : []) + (node?.accessory ? 1 : 0), 0);
+  if (countAll(components) >= LIMITS.components) return;
+  const first = components[0];
+  if (card.placement !== 'attachment' && first?.type === TYPES.CONTAINER) first.components = [gallery, ...first.components];
+  else components.unshift(gallery);
+}
+
 /**
  * Builds a real send payload from a saved template's `data`, resolving variables against ctx.
  * Returns `{ content, embeds, components }`, ready to spread into a `.send()`/`.reply()` call.
@@ -203,12 +214,25 @@ function formatEmbedError(error) {
  * `embed`) and replaces its image, and it is attached on its own otherwise or when `placement` is `attachment`.
  */
 async function build(data, ctx = {}) {
+  // {imgcard:name} anywhere in the message asks for that card, unless the saved design already points at one.
+  const pulled = pullImgCards(data);
+  if (pulled.card) data = { ...pulled.data, card: pulled.data?.card?.name ? pulled.data.card : pulled.card };
   // A Components V2 message cannot have text or embeds and needs its own flag, so only the senders that pass `allowV2`
   // get it. Anywhere else it gives an empty message, and the sender goes on with its usual one.
   if (isV2(data)) {
     if (!ctx.allowV2) return { content: undefined, embeds: [], components: [], files: [] };
     const { components, flags } = await buildV2(data.v2, ctx, ctx.v2Extras);
-    return { content: undefined, embeds: [], components, files: [], flags };
+    const files = [];
+    // An image card can go in a V2 design too: a picture at the top of the first container, or on its own above everything.
+    const card = normalizeCardRef(data.card);
+    if (card) {
+      const picture = await renderCardForMessage(card, ctx);
+      if (picture) {
+        files.push({ attachment: picture.buffer, name: picture.name });
+        placeCardInV2(components, card);
+      }
+    }
+    return { content: undefined, embeds: [], components, files, flags };
   }
   const { content, embeds, buttons, card } = normalize(data);
   const builtEmbeds = await Promise.all(embeds.slice(0, 10).map((e) => buildOneEmbed(e, ctx)));

@@ -1,4 +1,5 @@
 const { Events, MessageFlags, PermissionsBitField } = require('discord.js');
+const { plainMessage } = require('../utils/cardService');
 const { ensureGuild } = require('../db/guilds');
 const { buildInteractionFromMessage, tokenize } = require('../handlers/prefixInteraction');
 const { unknownSubcommandCard, missingOptionCard } = require('../utils/usageCard');
@@ -151,8 +152,8 @@ async function runCustomCommandRow(message, row, commandName, argText = '', pref
       return true;
     }
     if (cleanedResponse) {
-      const resolved = await resolve(cleanedResponse, ctx);
-      const sent = await message.reply({ content: resolved, allowedMentions }).catch(() => null);
+      const plain = await plainMessage(cleanedResponse, ctx);
+      const sent = await message.reply({ ...plain, allowedMentions }).catch(() => null);
       if (sent && reactReplies.length) await applyReactReplies(sent, reactReplies);
     } else if (reactReplies.length) {
       await applyReactReplies(message, reactReplies);
