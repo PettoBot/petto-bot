@@ -40,7 +40,7 @@ async function syncBoard(reaction, board) {
       return;
     }
 
-    const payload = await buildCustomPayload(message, row, count) ?? buildPayload(message, row, count);
+    const payload = await buildCustomPayload(message, row, count, board.variable) ?? buildPayload(message, row, count);
     if (entry) {
       const repost = await destination.messages.fetch(entry.starboard_message_id).catch(() => null);
       if (repost) {
@@ -57,7 +57,7 @@ async function syncBoard(reaction, board) {
 }
 
 // A saved embed chosen in the dashboard replaces the usual repost; a missing or broken one falls back to it.
-async function buildCustomPayload(message, row, count) {
+async function buildCustomPayload(message, row, count, variable = 'star') {
   if (!row.embed_template) return null;
   const files = [...message.attachments.values()];
   const image = files.find((file) => file.contentType?.startsWith('image/'));
@@ -75,7 +75,8 @@ async function buildCustomPayload(message, row, count) {
     attachments: links.join('\n'),
     unix: Math.floor((message.createdTimestamp ?? Date.now()) / 1000),
   };
-  const payload = await templatePayload(message.guild.id, row.embed_template, { guild: message.guild, user: message.author, member: message.member, channel: message.channel, star });
+  // The variables are `{star.…}` on the starboard and `{monkey.…}` on the monkeyboard.
+  const payload = await templatePayload(message.guild.id, row.embed_template, { guild: message.guild, user: message.author, member: message.member, channel: message.channel, [variable]: star });
   return payload ? { ...payload, allowedMentions: { parse: [] } } : null;
 }
 

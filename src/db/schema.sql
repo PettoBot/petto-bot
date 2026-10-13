@@ -3078,13 +3078,13 @@ alter table level_config add column if not exists leaderboard_join_url text;
 create unique index if not exists idx_level_config_leaderboard_slug on level_config(leaderboard_slug) where leaderboard_slug is not null;
 
 -- ---------------------------------------------------------------------------
--- Monkeyboard: the starboard's opposite. The same rules, with its own channel, emoji (🐵) and posts.
+-- Monkeyboard: the starboard's opposite. The same rules, with its own channel, emoji (🐒) and posts.
 -- ---------------------------------------------------------------------------
 create table if not exists monkeyboards (
   guild_id            text primary key references guilds(guild_id) on delete cascade,
   channel_id          text,
   threshold           integer not null default 3 check (threshold between 1 and 100),
-  emoji               text not null default '🐵',
+  emoji               text not null default '🐒',
   selfstar            boolean not null default false,
   color               integer not null default 9132587,
   timestamp           boolean not null default true,

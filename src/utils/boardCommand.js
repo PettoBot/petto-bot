@@ -9,9 +9,10 @@ const GREY = 0x4b4f59;
 
 /**
  * `name` and `label` ("Starboard") say what the board is called, `db` is its storage (db/boardStore.js), `selfName` is the name of the
- * subcommand that lets an author count their own reaction, and `description` is what the command says it is.
+ * subcommand that lets an author count their own reaction, `variable` is the start of the variables of its reposts (`star`, `monkey`) and
+ * `description` is what the command says it is.
  */
-function createBoardCommand({ name, label, aliases = [], db, description, selfName = 'selfstar' }) {
+function createBoardCommand({ name, label, aliases = [], db, description, selfName = 'selfstar', variable = 'star' }) {
   const lower = label.toLowerCase();
   const reply = (interaction, text, color) => interaction.reply({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2 });
 
@@ -44,7 +45,7 @@ function createBoardCommand({ name, label, aliases = [], db, description, selfNa
     const doc = await getTemplate(interaction.guild.id, template).catch(() => null);
     if (!doc) return reply(interaction, `No saved embed named \`${template}\` was found. Make one in the dashboard, under Embeds.`, RED);
     await db.updateConfig(interaction.guild.id, { embed_template: doc.name });
-    return reply(interaction, `The ${lower} reposts now use \`${doc.name}\`. Its variables start with \`{star.…}\`.`, GREEN);
+    return reply(interaction, `The ${lower} reposts now use \`${doc.name}\`. Its variables start with \`{${variable}.…}\`.`, GREEN);
   }
 
   async function changeIgnore(interaction, add) {

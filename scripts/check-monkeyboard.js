@@ -10,7 +10,8 @@ function stub(relative, exports) {
 }
 stub('src/db/database.js', {});
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
-stub('src/utils/templatedMessage.js', { templatePayload: async () => null });
+let lastContext = null;
+stub('src/utils/templatedMessage.js', { templatePayload: async (guildId, name, ctx) => { lastContext = ctx; return name ? { content: 'custom' } : null; } });
 const { syncBoard } = require('../src/utils/reactionBoard');
 const monkeyDefaults = require('../src/db/monkeyboard').DEFAULTS;
 const starDefaults = require('../src/db/starboard').DEFAULTS;
@@ -46,13 +47,13 @@ function discord(emoji, voters) {
 }
 
 (async () => {
-  assert.deepEqual([monkeyDefaults.emoji, starDefaults.emoji], ['🐵', '⭐'], 'each board has its own emoji');
+  assert.deepEqual([monkeyDefaults.emoji, starDefaults.emoji], ['🐒', '⭐'], 'each board has its own emoji');
   assert.notEqual(monkeyDefaults.color, starDefaults.color);
 
   let voters = ['u1', 'u2'];
   const monkey = memoryBoard({ ...monkeyDefaults, channel_id: 'dest' });
   const star = memoryBoard({ ...starDefaults, channel_id: 'dest' });
-  const { reaction, sent } = discord('🐵', () => voters);
+  const { reaction, sent } = discord('🐒', () => voters);
 
   await syncBoard(reaction, { db: monkey });
   assert.equal(sent.length, 0, 'below the threshold nothing is posted');
@@ -61,7 +62,7 @@ function discord(emoji, voters) {
   assert.equal(sent.length, 0, 'the starboard ignores monkeys');
   await syncBoard(reaction, { db: monkey });
   assert.equal(sent.length, 1, 'three monkeys reach the monkeyboard');
-  assert.ok(sent[0].payload.embeds[0].data.footer.text.startsWith('3 🐵'), 'the footer counts the monkeys');
+  assert.ok(sent[0].payload.embeds[0].data.footer.text.startsWith('3 🐒'), 'the footer counts the monkeys');
   assert.equal(sent[0].payload.embeds[0].data.color, monkeyDefaults.color, 'and the repost has the monkey color');
   assert.equal(monkey.entries.size, 1);
   assert.equal(star.entries.size, 0, 'the starboard keeps nothing');
@@ -69,12 +70,22 @@ function discord(emoji, voters) {
   voters = ['u1', 'u2', 'u3', 'u4'];
   await syncBoard(reaction, { db: monkey });
   assert.equal(sent.length, 1, 'the same message is edited, not posted again');
-  assert.ok(sent[0].payload.embeds[0].data.footer.text.startsWith('4 🐵'));
+  assert.ok(sent[0].payload.embeds[0].data.footer.text.startsWith('4 🐒'));
 
   // The author's own monkey does not count unless the board allows it: one voter left, so the repost goes.
   voters = ['author', 'u1'];
   await syncBoard(reaction, { db: monkey });
   assert.equal(sent[0].deleted, true, 'with the reactions taken back the repost goes');
   assert.equal(monkey.entries.size, 0);
+  // A saved embed gets its own variables: {monkey.…} on the monkeyboard, {star.…} on the starboard.
+  const custom = memoryBoard({ ...monkeyDefaults, channel_id: 'dest', embed_template: 'funny' });
+  const second = discord('🐒', () => ['u1', 'u2', 'u3']);
+  await syncBoard(second.reaction, { db: custom, variable: 'monkey' });
+  assert.deepEqual([Object.keys(lastContext).includes('monkey'), Object.keys(lastContext).includes('star'), lastContext.monkey.count, lastContext.monkey.emoji], [true, false, 3, '🐒']);
+  assert.equal(second.sent[0].payload.content, 'custom');
+  const plain = memoryBoard({ ...starDefaults, channel_id: 'dest', embed_template: 'loved' });
+  const third = discord('⭐', () => ['u1', 'u2', 'u3']);
+  await syncBoard(third.reaction, { db: plain });
+  assert.deepEqual([Object.keys(lastContext).includes('star'), Object.keys(lastContext).includes('monkey')], [true, false]);
   console.log('Checked the monkeyboard and the starboard: one engine, separate settings and posts.');
 })().catch((error) => { console.error(error); process.exit(1); });

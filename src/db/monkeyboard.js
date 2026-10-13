@@ -3,7 +3,7 @@ const { createBoardStore } = require('./boardStore');
 // Everything the starboard has, with its own emoji and color: the monkey is what goes where the star would.
 const DEFAULTS = {
   threshold: 3,
-  emoji: '🐵',
+  emoji: '🐒',
   selfstar: false,
   color: 0x8b5a2b,
   timestamp: true,

@@ -3,7 +3,7 @@ const monkeyboardDb = require('../db/monkeyboard');
 const logger = require('../utils/logger');
 const { syncBoard } = require('../utils/reactionBoard');
 
-const board = { db: monkeyboardDb };
+const board = { db: monkeyboardDb, variable: 'monkey' };
 
 module.exports = {
   name: Events.MessageReactionAdd,
