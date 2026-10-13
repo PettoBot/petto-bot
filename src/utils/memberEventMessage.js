@@ -44,8 +44,8 @@ async function sendMemberEvent({ guild, channel, kind, messageText, embedTemplat
 
     if (cleanedText) {
       const plain = await plainMessage(cleanedText, ctx);
-      // The usual look of a message the server did not write itself: a card without color, with the same text and the same files.
-      const body = asCard ? { ...plainCard(plain.content), ...(plain.files ? { files: plain.files } : {}) } : plain;
+      // The usual look of a message the server did not write itself: a card (`asCard` can be its color), with the same text and the same files.
+      const body = asCard ? { ...plainCard(plain.content, Number.isInteger(asCard) ? asCard : null), ...(plain.files ? { files: plain.files } : {}) } : plain;
       const sent = await deliver(channel, kind, { ...body, allowedMentions: ANNOUNCEMENT_MENTIONS });
       if (emojis.length) await applyReactReplies(sent, emojis);
     } else if (emojis.length) {

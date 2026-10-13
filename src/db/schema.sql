@@ -3167,15 +3167,17 @@ create table if not exists suggestion_config (
   anonymous       boolean not null default false,
   staff_role_id   text,
   embed_template  text,
-  status_colors     boolean not null default false,
+  status_colors     boolean not null default true,
   color_pending     integer not null default 16766307,
   color_approved    integer not null default 10873466,
   color_denied      integer not null default 16739179,
   color_considering integer not null default 16758892,
-  color_implemented integer not null default 8624639,
+  color_implemented integer not null default 16224179,
   updated_at      timestamptz not null default now()
 );
-alter table suggestion_config add column if not exists status_colors boolean not null default false;
+alter table suggestion_config add column if not exists status_colors boolean not null default true;
+alter table suggestion_config alter column status_colors set default true;
+alter table suggestion_config alter column color_implemented set default 16224179;
 alter table suggestion_config enable row level security;
 
 create table if not exists suggestions (
