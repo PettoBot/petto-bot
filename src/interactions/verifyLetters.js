@@ -26,7 +26,28 @@ function startButton(guildId) {
 
 // In a server channel (the verification panel) the answers are only for the member who pressed the button; in the DM there is no one else.
 const flagsFor = (interaction) => (interaction.inGuild?.() ? V2 | MessageFlags.Ephemeral : V2);
-const say = (interaction, text) => interaction.reply({ components: [new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(text))], flags: flagsFor(interaction) });
+/** The same components with every button turned off (and the tree of a Components V2 message kept as it is). */
+function withButtonsOff(node) {
+  const copy = { ...node };
+  if (copy.type === 2) copy.disabled = true;
+  if (Array.isArray(copy.components)) copy.components = copy.components.map(withButtonsOff);
+  return copy;
+}
+
+/** After a right answer: the message with the picture keeps its picture but its buttons are off. Does nothing when the form was not opened from it. */
+async function lockPicture(interaction) {
+  try {
+    if (!interaction.isFromMessage?.() || !interaction.message?.components?.length) return false;
+    const components = interaction.message.components.map((component) => withButtonsOff(component.toJSON?.() ?? component));
+    await interaction.update({ components });
+    return true;
+  } catch (err) {
+    logger.warn(`The picture of a verification could not be locked: ${err.message}`);
+    return false;
+  }
+}
+
+const say = (interaction, text) => (interaction.replied || interaction.deferred ? interaction.followUp : interaction.reply).call(interaction, { components: [new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(text))], flags: flagsFor(interaction) });
 
 /** Whether this member still has to verify in that server, with the settings; or `{ error }` with what to tell them. */
 async function situation(client, guildId, userId) {
@@ -115,6 +136,8 @@ async function handleModal(interaction) {
   tickets.delete(key(guildId, interaction.user.id));
   try {
     const applied = await applyVerification({ client: interaction.client, guild: state.guild, member: state.member, settings: state.settings, jti: `dc${Date.now().toString(36)}${state.member.id}` });
+    // The picture that was answered stops being usable: its buttons are locked, so nobody asks for another one once verified.
+    await lockPicture(interaction);
     return say(interaction, applied.ok ? `You're verified. You now have access to **${state.guild.name}**.` : 'You are already verified.');
   } catch (err) {
     logger.error('Failed to apply verification roles (letters in Discord):', err);
