@@ -3135,4 +3135,4 @@ alter table identity_history_optout enable row level security;
 -- How a server verifies new members: the Cloudflare check, the letters of a picture, or both.
 alter table verification_config add column if not exists method text not null default 'turnstile';
 alter table verification_config drop constraint if exists verification_config_method_check;
-alter table verification_config add constraint verification_config_method_check check (method in ('turnstile', 'letters', 'both'));
+alter table verification_config add constraint verification_config_method_check check (method in ('turnstile', 'letters', 'both', 'discord'));

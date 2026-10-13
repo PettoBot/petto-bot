@@ -6,6 +6,7 @@ const { ensureUnverifiedRole } = require('../utils/verifyRole');
 const { createToken } = require('../utils/verifyToken');
 const { sendVerifyDM } = require('../utils/verifyMessage');
 const config = require('../config');
+const { methodOf, usesLink } = require('../utils/verifyMethod');
 const logger = require('../utils/logger');
 
 module.exports = {
@@ -26,7 +27,8 @@ module.exports = {
         return;
       }
 
-      if (!config.verifyBaseUrl) {
+      const method = methodOf(verifyConfig);
+      if (usesLink(method) && !config.verifyBaseUrl) {
         logger.warn(`Verification is enabled in guild ${member.guild.id} but VERIFY_BASE_URL is not set — skipping gate.`);
         return;
       }
@@ -34,8 +36,8 @@ module.exports = {
       const role = await ensureUnverifiedRole(member.guild, verifyConfig);
       await member.roles.add(role, 'Verification gate: new member').catch((err) => logger.warn(`Could not gate ${member.id} on join:`, err.message));
 
-      const token = createToken({ userId: member.id, guildId: member.guild.id });
-      const link = `${config.verifyBaseUrl}/verify/${token}`;
+      // A server that verifies only inside Discord has no link: the DM has the button.
+      const link = usesLink(method) ? `${config.verifyBaseUrl}/verify/${createToken({ userId: member.id, guildId: member.guild.id })}` : null;
 
       await sendVerifyDM(member, { guild: member.guild, link })
         .catch(() => logger.warn(`Could not DM verification link to ${member.id} in guild ${member.guild.id} — they may have DMs closed.`));

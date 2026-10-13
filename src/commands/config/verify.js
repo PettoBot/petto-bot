@@ -10,14 +10,16 @@ const { EMOJI } = require('../../utils/emojis');
 const config = require('../../config');
 const logger = require('../../utils/logger');
 
-const { methodOf, usesTurnstile } = require('../../utils/verifyMethod');
+const { methodOf, usesTurnstile, usesLink } = require('../../utils/verifyMethod');
 
-const METHOD_LABELS = { turnstile: 'Cloudflare check', letters: 'Letters in a picture', both: 'Cloudflare check and letters' };
+const METHOD_LABELS = { turnstile: 'Cloudflare check', letters: 'Letters in a picture (on the page or in Discord)', both: 'Cloudflare check and letters', discord: 'Letters inside Discord, no link' };
 
 // The link and its secret are always needed; the Cloudflare keys only for the servers that use that check.
 const LINK_CONFIGURED = () => Boolean(config.verifyBaseUrl && config.verifyTokenSecret);
+// Inside Discord there is no link: only the secret that signs the picture is needed.
+const SECRET_CONFIGURED = () => Boolean(config.verifyTokenSecret);
 const TURNSTILE_CONFIGURED = () => Boolean(config.turnstileSiteKey && config.turnstileSecretKey);
-const ENV_CONFIGURED = (method = 'turnstile') => LINK_CONFIGURED() && (!usesTurnstile(method) || TURNSTILE_CONFIGURED());
+const ENV_CONFIGURED = (method = 'turnstile') => (usesLink(method) ? LINK_CONFIGURED() : SECRET_CONFIGURED()) && (!usesTurnstile(method) || TURNSTILE_CONFIGURED());
 
 module.exports = {
   aliases: ['vf'],
@@ -32,7 +34,7 @@ module.exports = {
         .setDescription('Enable/disable verification and set the optional bonus role.')
         .addBooleanOption((o) => o.setName('enabled').setDescription('Turn verification on/off').setRequired(true))
         .addRoleOption((o) => o.setName('verified_role').setDescription('Optional role to grant once someone passes verification').setRequired(false))
-        .addStringOption((o) => o.setName('method').setDescription('How members prove they are human').setRequired(false).addChoices({ name: 'Cloudflare check', value: 'turnstile' }, { name: 'Letters in a picture', value: 'letters' }, { name: 'Both', value: 'both' })),
+        .addStringOption((o) => o.setName('method').setDescription('How members prove they are human').setRequired(false).addChoices({ name: 'Cloudflare check', value: 'turnstile' }, { name: 'Letters in a picture', value: 'letters' }, { name: 'Both', value: 'both' }, { name: 'Letters inside Discord (no link)', value: 'discord' })),
     )
     .addSubcommand((s) => s.setName('template').setDescription('Use a saved embed for the DMs of verification, or none to go back to the usual one.')
       .addStringOption((o) => o.setName('which').setDescription('Which message').setRequired(true).addChoices({ name: 'prompt', value: 'prompt' }, { name: 'verified', value: 'verified' }))
@@ -158,13 +160,12 @@ async function send(interaction) {
     }
   }
 
-  const token = createToken({ userId: targetUser.id, guildId: interaction.guild.id });
-  const link = `${config.verifyBaseUrl}/verify/${token}`;
+  const link = usesLink(methodOf(verifyConfig)) ? `${config.verifyBaseUrl}/verify/${createToken({ userId: targetUser.id, guildId: interaction.guild.id })}` : null;
 
   const dmSent = await sendVerifyDM(targetMember, { guild: interaction.guild, link })
     .then(() => true)
     .catch(() => false);
 
-  const text = dmSent ? `${EMOJI.APPROVE}  Sent a verification link to ${targetUser}.` : `${EMOJI.DENY}  Could not DM ${targetUser} (DMs closed). Link: ${link}`;
+  const text = dmSent ? `${EMOJI.APPROVE}  Sent a verification link to ${targetUser}.` : `${EMOJI.DENY}  Could not DM ${targetUser} (DMs closed).${link ? ` Link: ${link}` : ''}`;
   await interaction.editReply({ components: [textCard(text, dmSent ? 0xa5ea7a : 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
 }

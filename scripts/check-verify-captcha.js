@@ -32,9 +32,10 @@ assert.equal(captcha.checkAnswer('j3', t, 'AB7K2', { now }).reason, 'locked');
 assert.equal(captcha.checkAnswer('j3', t, 'AB7K2', { now: now + 11 * 60_000 }).ok, false, 'after the wait the old ticket has expired');
 assert.equal(captcha.checkAnswer('j3', captcha.createChallenge('j3', { text: 'QQ223', now: now + 11 * 60_000 }).ticket, 'QQ223', { now: now + 11 * 60_000 }).ok, true, 'but a new one works');
 // The method of a server and what the page shows for each one.
-const { methodOf, usesTurnstile, usesLetters } = require('../src/utils/verifyMethod');
+const { methodOf, usesTurnstile, usesLetters, inDiscord, usesLink } = require('../src/utils/verifyMethod');
 assert.deepEqual([undefined, null, {}, { method: 'letters' }, { method: 'both' }, { method: 'nonsense' }].map(methodOf), ['turnstile', 'turnstile', 'turnstile', 'letters', 'both', 'turnstile']);
-assert.deepEqual(['turnstile', 'letters', 'both'].map((m) => [usesTurnstile(m), usesLetters(m)]), [[true, false], [false, true], [true, true]]);
+assert.deepEqual(['turnstile', 'letters', 'both', 'discord'].map((m) => [usesTurnstile(m), usesLetters(m), inDiscord(m), usesLink(m)]), [[true, false, false, true], [false, true, true, true], [true, true, false, true], [false, true, true, false]], 'what each method uses');
+assert.equal(methodOf({ method: 'discord' }), 'discord');
 const { renderVerifyPage, pickLanguage } = require('../src/web/verifyPage');
 const page = (method, extra = {}) => renderVerifyPage({ token: 'a.b', siteKey: 'site', method, ...extra });
 assert.ok(page('turnstile').includes('class="cf-turnstile"') && !page('turnstile').includes('id="letters-img"'), 'turnstile: only the Cloudflare check');

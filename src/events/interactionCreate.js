@@ -31,6 +31,7 @@ const { BUTTON_PREFIX: RESPONDER_BUTTON_PREFIX, SELECT_PREFIX: RESPONDER_SELECT_
 const { handleButton: handleResponderButton, handleSelect: handleResponderSelect } = require('../interactions/responders');
 const { PREFIX: REQUEST_PREFIX } = require('../utils/requestCards');
 const { handleButton: handleRequestButton } = require('../interactions/requests');
+const { PREFIX: VERIFY_LETTERS_PREFIX, handleButton: handleVerifyLettersButton, handleModal: handleVerifyLettersModal } = require('../interactions/verifyLetters');
 const { handleSetupModal } = require('../interactions/setup');
 const { SETUP_BUTTON_PREFIX, handleSetupButton } = require('../interactions/setupPanel');
 const { BUTTON_PREFIX, handleButton: handleReactionRoleButton } = require('../interactions/reactionRoleButton');
@@ -48,6 +49,16 @@ module.exports = {
   async execute(interaction, client) {
     if ((interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) && interaction.customId.startsWith(CODE_COMMAND_PREFIX)) {
       try { await handleCodeCommandComponent(interaction); } catch (err) { logger.error('Error handling a custom command button or menu:', err); }
+      return;
+    }
+
+    // The letters check of verification, inside Discord (the buttons and the form of the verification DM).
+    if (interaction.isButton() && interaction.customId.startsWith(`${VERIFY_LETTERS_PREFIX}:`)) {
+      try { await handleVerifyLettersButton(interaction); } catch (err) { logger.error('Error handling a verification button:', err); }
+      return;
+    }
+    if (interaction.isModalSubmit() && interaction.customId.startsWith(`${VERIFY_LETTERS_PREFIX}:`)) {
+      try { await handleVerifyLettersModal(interaction); } catch (err) { logger.error('Error handling the verification form:', err); }
       return;
     }
 
