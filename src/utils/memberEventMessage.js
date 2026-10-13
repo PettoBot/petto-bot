@@ -6,7 +6,7 @@ const logger = require('./logger');
 const { sendAs } = require('./senderIdentity');
 
 // Which look a kind of announcement takes (see db/senderIdentities.js). Other kinds are sent the normal way.
-const IDENTITY_FEATURE = { welcome: 'welcome', leave: 'leave', boost: 'boost', boost_level: 'boost' };
+const IDENTITY_FEATURE = { welcome: 'welcome', leave: 'leave', boost: 'boost', boost_level: 'boost', birthday: 'birthdays' };
 const deliver = (channel, kind, payload) => (IDENTITY_FEATURE[kind] ? sendAs(channel, IDENTITY_FEATURE[kind], payload) : channel.send(payload));
 
 // Admin-authored announcement text (staff decided what it says, e.g. "{user} welcome!") —

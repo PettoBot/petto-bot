@@ -14,6 +14,8 @@ const { startActivityStatsJob } = require('./src/jobs/activityStatsJob');
 const { startGiveawayJob } = require('./src/jobs/giveawayJob');
 const { startReminderJob } = require('./src/jobs/reminderJob');
 const { startAutoMessageJob } = require('./src/jobs/autoMessageJob');
+const { startVerifyPanelJob } = require('./src/jobs/verifyPanelJob');
+const { startBirthdayJob } = require('./src/jobs/birthdayJob');
 const { startStatusHeartbeatJob } = require('./src/jobs/statusHeartbeatJob');
 const { startBulkRoleJob } = require('./src/jobs/bulkRoleJob');
 const { startTicketAutocloseJob } = require('./src/jobs/ticketAutocloseJob');
@@ -118,6 +120,8 @@ async function main() {
   startGiveawayJob(client);
   startReminderJob(client);
   startAutoMessageJob(client);
+  startBirthdayJob(client);
+  startVerifyPanelJob(client);
   startStatusHeartbeatJob(client);
   startBulkRoleJob(client);
   startTicketAutocloseJob(client);

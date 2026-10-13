@@ -3028,3 +3028,116 @@ alter table giveaway_preset_levels enable row level security;
 
 alter table level_config add column if not exists reset_on_leave boolean not null default false;
 alter table level_config add column if not exists restore_roles boolean not null default true;
+
+-- ---------------------------------------------------------------------------
+-- Birthdays: each member saves their own in a server; Petto announces them, and can give a role for the day.
+-- ---------------------------------------------------------------------------
+create table if not exists birthdays (
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  user_id    text not null,
+  month      smallint not null check (month between 1 and 12),
+  day        smallint not null check (day between 1 and 31),
+  year       smallint check (year is null or year between 1900 and 2100),
+  created_at timestamptz not null default now(),
+  primary key (guild_id, user_id)
+);
+create index if not exists idx_birthdays_guild_date on birthdays(guild_id, month, day);
+alter table birthdays enable row level security;
+
+create table if not exists birthday_config (
+  guild_id           text primary key references guilds(guild_id) on delete cascade,
+  enabled            boolean not null default false,
+  channel_id         text,
+  role_id            text,
+  message            text not null default '{EMOJI} Happy birthday {user}! Have a great day!',
+  embed_template     text,
+  hour               smallint not null default 9 check (hour between 0 and 23),
+  utc_offset_minutes integer not null default -300 check (utc_offset_minutes between -720 and 840),
+  last_announced     date,
+  updated_at         timestamptz not null default now()
+);
+alter table birthday_config enable row level security;
+
+-- The birthday role is taken back a day later; this remembers who has it and until when.
+create table if not exists birthday_roles (
+  guild_id  text not null references guilds(guild_id) on delete cascade,
+  user_id   text not null,
+  role_id   text not null,
+  remove_at timestamptz not null,
+  primary key (guild_id, user_id)
+);
+create index if not exists idx_birthday_roles_due on birthday_roles(remove_at);
+alter table birthday_roles enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- Public leaderboard page of a server (petto.sbs/lb/<name>): off until the server turns it on.
+-- ---------------------------------------------------------------------------
+alter table level_config add column if not exists leaderboard_public boolean not null default false;
+alter table level_config add column if not exists leaderboard_slug text check (leaderboard_slug is null or leaderboard_slug ~ '^[a-z0-9][a-z0-9-]{1,31}$');
+alter table level_config add column if not exists leaderboard_join_url text;
+create unique index if not exists idx_level_config_leaderboard_slug on level_config(leaderboard_slug) where leaderboard_slug is not null;
+
+-- ---------------------------------------------------------------------------
+-- Monkeyboard: the starboard's opposite. The same rules, with its own channel, emoji (🐒) and posts.
+-- ---------------------------------------------------------------------------
+create table if not exists monkeyboards (
+  guild_id            text primary key references guilds(guild_id) on delete cascade,
+  channel_id          text,
+  threshold           integer not null default 3 check (threshold between 1 and 100),
+  emoji               text not null default '🐒',
+  selfstar            boolean not null default false,
+  color               integer not null default 9132587,
+  timestamp           boolean not null default true,
+  jumpurl             boolean not null default true,
+  attachments         boolean not null default true,
+  ignored_channel_ids text[] not null default '{}',
+  ignored_role_ids    text[] not null default '{}',
+  ignored_user_ids    text[] not null default '{}',
+  embed_template      text,
+  created_at          timestamptz not null default now(),
+  updated_at          timestamptz not null default now()
+);
+
+create table if not exists monkeyboard_entries (
+  guild_id             text not null references guilds(guild_id) on delete cascade,
+  source_message_id    text not null,
+  starboard_message_id text not null,
+  count                integer not null default 0,
+  updated_at           timestamptz not null default now(),
+  primary key (guild_id, source_message_id)
+);
+
+create index if not exists idx_monkeyboard_entries_guild on monkeyboard_entries(guild_id);
+
+alter table monkeyboards enable row level security;
+alter table monkeyboard_entries enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- History of avatars, names and nicknames: what a person has shown, newest first. Each person can turn it off and clear it.
+-- ---------------------------------------------------------------------------
+create table if not exists identity_history (
+  id        bigserial primary key,
+  user_id   text not null,
+  guild_id  text,
+  kind      text not null check (kind in ('avatar', 'name', 'nickname')),
+  value     text not null,
+  seen_at   timestamptz not null default now()
+);
+create index if not exists idx_identity_history_user_kind on identity_history(user_id, kind, seen_at desc);
+alter table identity_history enable row level security;
+
+create table if not exists identity_history_optout (
+  user_id    text primary key,
+  created_at timestamptz not null default now()
+);
+alter table identity_history_optout enable row level security;
+
+-- How a server verifies new members: the Cloudflare check, the letters of a picture, or both.
+alter table verification_config add column if not exists method text not null default 'turnstile';
+alter table verification_config drop constraint if exists verification_config_method_check;
+alter table verification_config add constraint verification_config_method_check check (method in ('turnstile', 'letters', 'both', 'discord'));
+
+-- The verification panel: a message with the buttons to verify, in a channel the unverified role can see.
+alter table verification_config add column if not exists panel_channel_id text;
+alter table verification_config add column if not exists panel_message_id text;
+alter table verification_config add column if not exists panel_posted_channel_id text;

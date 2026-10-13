@@ -10,7 +10,7 @@ function stub(relative, exports) {
   require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports };
 }
 stub('src/config.js', { verifyBaseUrl: null });
-for (const file of ['src/db/guilds.js', 'src/db/embedTemplates.js', 'src/db/sanctionTemplates.js', 'src/db/starboard.js', 'src/db/giveaways.js', 'src/db/giveawayPresets.js', 'src/db/giveawayTemplates.js', 'src/db/giveawayConfig.js', 'src/db/bumpReminders.js', 'src/db/verificationConfig.js', 'src/utils/giveawayEngine.js', 'src/utils/duration.js', 'src/utils/caseCard.js', 'src/utils/commandRef.js', 'src/utils/verifyRole.js', 'src/utils/verifyToken.js', 'src/utils/verifyMessage.js', 'src/utils/logger.js']) {
+for (const file of ['src/db/guilds.js', 'src/db/embedTemplates.js', 'src/db/sanctionTemplates.js', 'src/db/starboard.js', 'src/db/giveaways.js', 'src/db/giveawayPresets.js', 'src/db/giveawayTemplates.js', 'src/db/giveawayConfig.js', 'src/db/bumpReminders.js', 'src/db/verificationConfig.js', 'src/utils/giveawayEngine.js', 'src/utils/duration.js', 'src/utils/caseCard.js', 'src/utils/commandRef.js', 'src/utils/verifyRole.js', 'src/utils/verifyToken.js', 'src/utils/verifyMessage.js', 'src/utils/verifyPanel.js', 'src/utils/logger.js']) {
   try { stub(file, new Proxy({ TYPES: ['default', 'ban', 'kick', 'warn'] }, { get: (t, k) => (k in t ? t[k] : () => {}) })); } catch { /* the file is not in this version */ }
 }
 stub('src/utils/emojis.js', { EMOJI: {} });

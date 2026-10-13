@@ -1,8 +1,9 @@
-const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, ChannelType } = require('discord.js');
 const { ensureGuild } = require('../../db/guilds');
 const { getConfig, upsertConfig } = require('../../db/verificationConfig');
 const { getTemplate } = require('../../db/embedTemplates');
 const { ensureUnverifiedRole } = require('../../utils/verifyRole');
+const { postPanel } = require('../../utils/verifyPanel');
 const { createToken } = require('../../utils/verifyToken');
 const { sendVerifyDM } = require('../../utils/verifyMessage');
 const { textCard } = require('../../utils/caseCard');
@@ -10,13 +11,22 @@ const { EMOJI } = require('../../utils/emojis');
 const config = require('../../config');
 const logger = require('../../utils/logger');
 
-const ENV_CONFIGURED = () => Boolean(config.verifyBaseUrl && config.turnstileSiteKey && config.turnstileSecretKey && config.verifyTokenSecret);
+const { methodOf, usesTurnstile, usesLink } = require('../../utils/verifyMethod');
+
+const METHOD_LABELS = { turnstile: 'Cloudflare check', letters: 'Letters in a picture (on the page or in Discord)', both: 'Cloudflare check and letters', discord: 'Letters inside Discord, no link' };
+
+// The link and its secret are always needed; the Cloudflare keys only for the servers that use that check.
+const LINK_CONFIGURED = () => Boolean(config.verifyBaseUrl && config.verifyTokenSecret);
+// Inside Discord there is no link: only the secret that signs the picture is needed.
+const SECRET_CONFIGURED = () => Boolean(config.verifyTokenSecret);
+const TURNSTILE_CONFIGURED = () => Boolean(config.turnstileSiteKey && config.turnstileSecretKey);
+const ENV_CONFIGURED = (method = 'turnstile') => (usesLink(method) ? LINK_CONFIGURED() : SECRET_CONFIGURED()) && (!usesTurnstile(method) || TURNSTILE_CONFIGURED());
 
 module.exports = {
   aliases: ['vf'],
   data: new SlashCommandBuilder()
     .setName('verify')
-    .setDescription('Configure the Cloudflare Turnstile join-verification gate.')
+    .setDescription('Configure the join-verification gate (Cloudflare check, letters, or both).')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false)
     .addSubcommand((s) =>
@@ -24,11 +34,13 @@ module.exports = {
         .setName('setup')
         .setDescription('Enable/disable verification and set the optional bonus role.')
         .addBooleanOption((o) => o.setName('enabled').setDescription('Turn verification on/off').setRequired(true))
-        .addRoleOption((o) => o.setName('verified_role').setDescription('Optional role to grant once someone passes verification').setRequired(false)),
+        .addRoleOption((o) => o.setName('verified_role').setDescription('Optional role to grant once someone passes verification').setRequired(false))
+        .addStringOption((o) => o.setName('method').setDescription('How members prove they are human').setRequired(false).addChoices({ name: 'Cloudflare check', value: 'turnstile' }, { name: 'Letters in a picture', value: 'letters' }, { name: 'Both', value: 'both' }, { name: 'Letters inside Discord (no link)', value: 'discord' })),
     )
     .addSubcommand((s) => s.setName('template').setDescription('Use a saved embed for the DMs of verification, or none to go back to the usual one.')
       .addStringOption((o) => o.setName('which').setDescription('Which message').setRequired(true).addChoices({ name: 'prompt', value: 'prompt' }, { name: 'verified', value: 'verified' }))
       .addStringOption((o) => o.setName('template').setDescription('Saved embed name, or none. Leave it empty to see what is in use').setRequired(false)))
+    .addSubcommand((s) => s.setName('channel').setDescription('Post the verification panel in a channel, so members can verify there too.').addChannelOption((o) => o.setName('channel').setDescription('The channel for the panel').addChannelTypes(ChannelType.GuildText).setRequired(true)))
     .addSubcommand((s) => s.setName('status').setDescription('Show the current verification setup.'))
     .addSubcommand((s) => s.setName('send').setDescription('Manually (re)send a verification link to a member.').addUserOption((o) => o.setName('user').setDescription('The member to send a link to').setRequired(true))),
 
@@ -37,9 +49,28 @@ module.exports = {
     if (sub === 'setup') return setup(interaction);
     if (sub === 'status') return status(interaction);
     if (sub === 'template') return setTemplate(interaction);
+    if (sub === 'channel') return panel(interaction);
     return send(interaction);
   },
 };
+
+async function panel(interaction) {
+  const channel = interaction.options.getChannel('channel', true);
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  await ensureGuild(interaction.guild.id);
+  const settings = (await getConfig(interaction.guild.id)) ?? {};
+  const done = (text, color = 0xa5ea7a) => interaction.editReply({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2 });
+  if (!settings.enabled) return done('Turn verification on first: `verify setup true`.', 0xfe6465);
+  const method = methodOf(settings);
+  if (!ENV_CONFIGURED(method)) return done(`${EMOJI.DENY}  The verification environment variables are not fully set. See \`verify status\`.`, 0xfe6465);
+  try {
+    await postPanel(interaction.guild, settings, channel);
+    return done(`${EMOJI.APPROVE}  The verification panel is in ${channel}. Members who have not verified can see that channel and press the button there${usesLink(method) ? ' (to get their link)' : ''}${method === 'letters' || method === 'discord' ? ' (to do the letters right there)' : ''}.`);
+  } catch (err) {
+    logger.error('Failed to post the verification panel:', err);
+    return done(`${EMOJI.DENY}  I could not post the panel: ${err.message}`, 0xfe6465);
+  }
+}
 
 async function setTemplate(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
@@ -67,6 +98,7 @@ async function setTemplate(interaction) {
 async function setup(interaction) {
   const enabled = interaction.options.getBoolean('enabled', true);
   const verifiedRole = interaction.options.getRole('verified_role');
+  const chosenMethod = interaction.options.getString('method');
 
   if (enabled && !interaction.guild.members.me.permissions.has(PermissionFlagsBits.ManageRoles)) {
     await interaction.reply({ content: 'I need the **Manage Roles** permission to set up verification.', flags: MessageFlags.Ephemeral });
@@ -80,6 +112,7 @@ async function setup(interaction) {
 
   const patch = { enabled };
   if (verifiedRole) patch.verified_role_id = verifiedRole.id;
+  if (chosenMethod) patch.method = chosenMethod;
   const saved = await upsertConfig(interaction.guild.id, patch);
 
   let roleLine = '';
@@ -94,9 +127,10 @@ async function setup(interaction) {
     }
   }
 
-  const envLine = ENV_CONFIGURED() ? '' : `\n${EMOJI.ALERT}  \`VERIFY_BASE_URL\`/\`TURNSTILE_*\`/\`VERIFY_TOKEN_SECRET\` aren't fully set in \`.env\`. Links won't work until they are.`;
+  const method = methodOf({ ...existing, ...saved });
+  const envLine = ENV_CONFIGURED(method) ? '' : `\n${EMOJI.ALERT}  \`VERIFY_BASE_URL\`/\`TURNSTILE_*\`/\`VERIFY_TOKEN_SECRET\` aren't fully set in \`.env\`. Links won't work until they are.`;
 
-  const text = `${EMOJI.APPROVE}  Verification ${enabled ? 'enabled' : 'disabled'}.${roleLine}${verifiedRole ? `\n**Bonus role on success:** ${verifiedRole}` : ''}${envLine}`;
+  const text = `${EMOJI.APPROVE}  Verification ${enabled ? 'enabled' : 'disabled'}.${roleLine}${verifiedRole ? `\n**Bonus role on success:** ${verifiedRole}` : ''}\n**Check:** ${METHOD_LABELS[method]}${envLine}`;
   await interaction.editReply({ components: [textCard(text, enabled ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
@@ -114,7 +148,9 @@ async function status(interaction) {
     `**Enabled:** ${verifyConfig.enabled ? `${EMOJI.APPROVE} Yes` : `${EMOJI.DENY} No`}`,
     `**Gate role:** ${verifyConfig.unverified_role_id ? `<@&${verifyConfig.unverified_role_id}>` : 'Not created yet'}`,
     `**Bonus role on success:** ${verifyConfig.verified_role_id ? `<@&${verifyConfig.verified_role_id}>` : 'None'}`,
-    `**Web server env vars:** ${ENV_CONFIGURED() ? `${EMOJI.APPROVE} Configured` : `${EMOJI.DENY} Missing (links won't work)`}`,
+    `**Check:** ${METHOD_LABELS[methodOf(verifyConfig)]}`,
+    `**Panel channel:** ${verifyConfig.panel_channel_id ? `<#${verifyConfig.panel_channel_id}>` : 'none (use `verify channel`)'}`,
+    `**Web server env vars:** ${ENV_CONFIGURED(methodOf(verifyConfig)) ? `${EMOJI.APPROVE} Configured` : `${EMOJI.DENY} Missing (links won't work)`}`,
   ];
   await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
@@ -122,7 +158,8 @@ async function status(interaction) {
 async function send(interaction) {
   const targetUser = interaction.options.getUser('user', true);
 
-  if (!ENV_CONFIGURED()) {
+  const sendConfig = (await getConfig(interaction.guild.id).catch(() => null)) ?? {};
+  if (!ENV_CONFIGURED(methodOf(sendConfig))) {
     await interaction.reply({ content: 'Verification env vars are not fully set. See `!verify status`.', flags: MessageFlags.Ephemeral });
     return;
   }
@@ -145,13 +182,12 @@ async function send(interaction) {
     }
   }
 
-  const token = createToken({ userId: targetUser.id, guildId: interaction.guild.id });
-  const link = `${config.verifyBaseUrl}/verify/${token}`;
+  const link = usesLink(methodOf(verifyConfig)) ? `${config.verifyBaseUrl}/verify/${createToken({ userId: targetUser.id, guildId: interaction.guild.id })}` : null;
 
   const dmSent = await sendVerifyDM(targetMember, { guild: interaction.guild, link })
     .then(() => true)
     .catch(() => false);
 
-  const text = dmSent ? `${EMOJI.APPROVE}  Sent a verification link to ${targetUser}.` : `${EMOJI.DENY}  Could not DM ${targetUser} (DMs closed). Link: ${link}`;
+  const text = dmSent ? `${EMOJI.APPROVE}  Sent a verification link to ${targetUser}.` : `${EMOJI.DENY}  Could not DM ${targetUser} (DMs closed).${link ? ` Link: ${link}` : ''}`;
   await interaction.editReply({ components: [textCard(text, dmSent ? 0xa5ea7a : 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
 }

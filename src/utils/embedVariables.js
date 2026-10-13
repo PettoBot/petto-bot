@@ -184,7 +184,7 @@ async function resolve(text, ctx = {}) {
     // lines (using {role.mention}/{role.entries}/{role.claim_time}/{role.id}) are built by
     // the caller (see utils/giveawayEngine.js) and passed in pre-joined as ctx.giveaway.presetText.
     '{gw.preset}': ctx.giveaway?.presetText ?? '',
-    // Moderation: ctx.sanction describes one case (see utils/sanctionTemplates.js), ctx.star one starred message (see
+    // Moderation: ctx.sanction describes one case (see utils/sanctionTemplates.js), ctx.star one starred message and ctx.monkey one monkeyed message (see
     // events/starboardReaction.js) and ctx.verify the verification link.
     '{case.id}': ctx.sanction?.caseNumber != null ? String(ctx.sanction.caseNumber) : '',
     '{case.type}': ctx.sanction?.type ?? '',
@@ -251,6 +251,20 @@ async function resolve(text, ctx = {}) {
     '{star.image}': ctx.star?.image ?? '',
     '{star.attachments}': ctx.star?.attachments ?? '',
     '{star.time}': ctx.star?.unix ? `<t:${ctx.star.unix}:f>` : '',
+    '{monkey.count}': ctx.monkey?.count != null ? String(ctx.monkey.count) : '',
+    '{monkey.emoji}': ctx.monkey?.emoji ?? '',
+    '{monkey.channel}': ctx.monkey?.channelId ? `<#${ctx.monkey.channelId}>` : '',
+    '{monkey.channel_name}': ctx.monkey?.channelName ?? '',
+    '{monkey.link}': ctx.monkey?.link ?? '',
+    '{monkey.message_id}': ctx.monkey?.messageId ?? '',
+    '{monkey.author}': ctx.monkey?.author?.id ? `<@${ctx.monkey.author.id}>` : '',
+    '{monkey.author_name}': ctx.monkey?.author?.name ?? '',
+    '{monkey.author_id}': ctx.monkey?.author?.id ?? '',
+    '{monkey.author_avatar}': ctx.monkey?.author?.avatar ?? '',
+    '{monkey.content}': ctx.monkey ? (ctx.monkey.content || '*No text content*') : '',
+    '{monkey.image}': ctx.monkey?.image ?? '',
+    '{monkey.attachments}': ctx.monkey?.attachments ?? '',
+    '{monkey.time}': ctx.monkey?.unix ? `<t:${ctx.monkey.unix}:f>` : '',
     '{verify.link}': ctx.verify?.link ?? '',
     '{rollout.name}': ctx.rollout?.name ?? '',
     '{rollout.id}': ctx.rollout?.id ?? '',

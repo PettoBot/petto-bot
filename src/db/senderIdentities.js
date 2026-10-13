@@ -2,7 +2,7 @@
 // sanctions, level-ups, Vanity and Server Tag thank-yous). The message goes out through a webhook of the channel that Petto makes by itself, so it can have its own look.
 const database = require('./database');
 
-const FEATURES = ['quests', 'welcome', 'leave', 'boost', 'sanctions', 'levelup', 'vanity', 'giveaways', 'bump', 'tickets', 'automod', 'partners', 'votes', 'reminders', 'automessages', 'rollouts'];
+const FEATURES = ['quests', 'welcome', 'leave', 'boost', 'sanctions', 'levelup', 'vanity', 'giveaways', 'bump', 'tickets', 'automod', 'partners', 'votes', 'reminders', 'automessages', 'rollouts', 'birthdays'];
 const CACHE_MS = 60_000;
 const cache = new Map();
 

@@ -84,7 +84,7 @@ module.exports = {
     )
     .addSubcommand((s) => s.setName('sync-join').setDescription('Apply the current join bonus to every member who has zero XP right now.'))
     .addSubcommand((s) => s.setName('reset').setDescription('Wipe a member\'s XP/level and remove their reward roles.').addUserOption((o) => o.setName('user').setDescription('Member').setRequired(true)))
-    .addSubcommand((s) => s.setName('rank-style').setDescription('How /rank answers: a card, an embed, or both.').addStringOption((o) => o.setName('style').setDescription('Card, embed or both').setRequired(true).addChoices({ name: 'card (image)', value: 'card' }, { name: 'embed', value: 'embed' }, { name: 'both', value: 'both' })).addStringOption((o) => o.setName('card').setDescription('Name of an image card for the rank, or "default"').setRequired(false)))
+    .addSubcommand((s) => s.setName('rank-style').setDescription('How the rank command answers: a card, an embed, or both.').addStringOption((o) => o.setName('style').setDescription('Card, embed or both').setRequired(true).addChoices({ name: 'card (image)', value: 'card' }, { name: 'embed', value: 'embed' }, { name: 'both', value: 'both' })).addStringOption((o) => o.setName('card').setDescription('Name of an image card for the rank, or "default"').setRequired(false)))
     .addSubcommand(
       (s) => s
         .setName('rules')
@@ -591,7 +591,7 @@ async function rankStyleCmd(interaction) {
   await defer(interaction);
   await levelConfigDb.upsertConfig(interaction.guild.id, patch);
   const config = await levelConfigDb.getConfig(interaction.guild.id);
-  await reply(interaction, `${EMOJI.APPROVE}  /rank now answers with ${style === 'card' ? 'a **card**' : style === 'embed' ? 'an **embed**' : 'a **card and an embed**'}${config?.rank_card ? `, using the card \`${config.rank_card}\`` : ', using the default rank card'}.`);
+  await reply(interaction, `${EMOJI.APPROVE}  \`!rank\` now answers with ${style === 'card' ? 'a **card**' : style === 'embed' ? 'an **embed**' : 'a **card and an embed**'}${config?.rank_card ? `, using the card \`${config.rank_card}\`` : ', using the default rank card'}.`);
 }
 
 // The rules a person can change with `/level rules setting value`, with the column, the kind of value and its range.
