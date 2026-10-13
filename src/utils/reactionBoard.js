@@ -1,7 +1,7 @@
 // A reaction board (the starboard, the monkeyboard): when enough people react to a message with the board's emoji, it is reposted in the
 // board's channel, and the repost follows the count (and goes away when the reactions are taken back). Each board brings its own
 // storage (`db`, see db/boardStore.js); the rules are the same.
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const logger = require('./logger');
 const { templatePayload } = require('./templatedMessage');
 
@@ -80,19 +80,23 @@ async function buildCustomPayload(message, row, count, variable = 'star') {
   return payload ? { ...payload, allowedMentions: { parse: [] } } : null;
 }
 
+// The usual repost: "⭐ 3 | #channel" over the original message (author, text, picture and date), and a button to go to it.
 function buildPayload(message, row, count) {
-  const embed = new EmbedBuilder().setColor(row.color ?? 0xffc107).setAuthor({ name: message.author?.tag ?? 'Unknown user', iconURL: message.author?.displayAvatarURL?.() }).setDescription(message.content || '*No text content*');
-  if (row.timestamp) embed.setTimestamp(message.createdAt);
-  const footer = `${count} ${row.emoji} • #${message.channel.name}`;
-  embed.setFooter({ text: footer });
-  if (row.attachments) {
-    const files = [...message.attachments.values()];
-    const image = files.find((file) => file.contentType?.startsWith('image/'));
-    if (image) embed.setImage(image.url);
-    const links = files.filter((file) => file !== image).map((file) => `[${file.name}](${file.url})`);
-    if (links.length) embed.addFields({ name: 'Attachments', value: links.join('\n').slice(0, 1024) });
+  const embed = new EmbedBuilder().setColor(row.color ?? 0xffc107)
+    .setAuthor({ name: message.member?.displayName ?? message.author?.globalName ?? message.author?.username ?? 'Unknown user', iconURL: message.member?.displayAvatarURL?.() ?? message.author?.displayAvatarURL?.() })
+    .setDescription(message.content || null);
+  if (row.timestamp !== false) embed.setTimestamp(message.createdAt);
+  const files = [...message.attachments.values()];
+  const image = row.attachments !== false ? files.find((file) => file.contentType?.startsWith('image/')) : null;
+  if (image) embed.setImage(image.url);
+  const links = row.attachments !== false ? files.filter((file) => file !== image).map((file) => `[${file.name}](${file.url})`) : [];
+  if (links.length) embed.addFields({ name: 'Attachments', value: links.join('\n').slice(0, 1024) });
+  if (!message.content && !image && !links.length) embed.setDescription('*No text content*');
+  const payload = { content: `${row.emoji} **${count}** | ${message.channel}`, embeds: [embed], allowedMentions: { parse: [] } };
+  if (row.jumpurl !== false) {
+    payload.components = [new ActionRowBuilder().addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Original Message').setURL(message.url))];
   }
-  return { content: row.jumpurl ? `**${message.channel}** [Jump to message](${message.url})` : undefined, embeds: [embed], allowedMentions: { parse: [] } };
+  return payload;
 }
 
 module.exports = { syncBoard, buildCustomPayload, buildPayload };
