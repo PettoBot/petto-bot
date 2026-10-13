@@ -24,7 +24,14 @@ module.exports = {
     if (typeof interaction.deferReply === 'function' && !interaction.deferred && !interaction.replied && interaction.isChatInputCommand?.() && !interaction.rawMessage) await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => {});
     const attachments = interaction.rawMessage ? [...interaction.rawMessage.attachments.values()] : [interaction.options.getAttachment?.('image')].filter(Boolean);
     const result = await submit({ guild: interaction.guild, user: interaction.user, text: interaction.options.getString('text', true), attachments });
+    // Written with the prefix, the message of the member is in the channel: it goes away so nobody sees who confessed.
+    if (interaction.rawMessage?.deletable) await interaction.rawMessage.delete().catch(() => {});
     const text = result.error ? `${EMOJI.DENY}  ${result.error}` : result.review ? `${EMOJI.APPROVE}  Your confession was sent to the staff. It shows up when they approve it.` : `${EMOJI.APPROVE}  Your confession was posted${result.message?.url ? `: ${result.message.url}` : '.'}`;
+    if (interaction.rawMessage) {
+      // A reply in the channel would show who confessed, so the answer goes to their DMs.
+      await interaction.user.send({ components: [textCard(text, result.error ? 0xff6b6b : 0xa5ea7a)], flags: V2 }).catch(() => {});
+      return undefined;
+    }
     const payload = { components: [textCard(text, result.error ? 0xff6b6b : 0xa5ea7a)], flags: V2 | MessageFlags.Ephemeral, allowedMentions: { parse: [] } };
     return interaction.deferred ? interaction.editReply({ components: payload.components, flags: V2 }) : interaction.reply(payload);
   },
