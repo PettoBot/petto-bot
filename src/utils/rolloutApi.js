@@ -51,6 +51,8 @@ function rangePairs(ranges) {
 
 /** Whether a variant is the one people are tested with: the treatments, and, when the list gives no roles, every variant that is not the control (variant 0) or "none". */
 function isTreatment(variant) {
+  // Variant 0 is the control, whatever the list says about its role: it is never read, not counted and never shown as what people are tested with.
+  if (String(variant.variant) === '0') return false;
   if (variant.role === 'treatment') return true;
   if (variant.role) return false;
   return !['0', '-1', 'none', ''].includes(String(variant.variant));
