@@ -181,6 +181,45 @@ alter table mod_actions drop constraint if exists mod_actions_type_check;
 alter table mod_actions add constraint mod_actions_type_check
   check (type in ('ban', 'unban', 'kick', 'mute', 'unmute', 'tempban', 'tempmute', 'warn', 'softban', 'jail', 'unjail', 'hardban'));
 
+-- Anti scam: hijacked accounts spamming fake giveaways (the MrBeast scam), fake withdrawals and casinos. Nothing is on until a
+-- server turns it on, and it starts by only alerting.
+create table if not exists scam_config (
+  guild_id            text primary key references guilds(guild_id) on delete cascade,
+  enabled             boolean not null default false,
+  action              text not null default 'alert' check (action in ('alert', 'timeout', 'kick', 'ban')),
+  timeout_minutes     integer not null default 120,
+  delete_messages     boolean not null default true,
+  delete_minutes      integer not null default 15,
+  channels_threshold  integer not null default 3,
+  window_seconds      integer not null default 30,
+  scan_text           boolean not null default true,
+  scan_new_accounts   boolean not null default true,
+  new_account_hours   integer not null default 72,
+  dm_user             boolean not null default true,
+  alert_channel_id    text,
+  ping_role_id        text,
+  exempt_role_ids     text[] not null default '{}',
+  exempt_channel_ids  text[] not null default '{}',
+  caught              integer not null default 0,
+  updated_at          timestamptz not null default now()
+);
+alter table scam_config enable row level security;
+
+create table if not exists scam_events (
+  id          bigserial primary key,
+  guild_id    text not null references guilds(guild_id) on delete cascade,
+  user_id     text not null,
+  user_name   text,
+  signal      text not null,
+  detail      text,
+  channels    integer not null default 1,
+  action      text not null default 'alert',
+  deleted     integer not null default 0,
+  created_at  timestamptz not null default now()
+);
+create index if not exists idx_scam_events_guild on scam_events(guild_id, created_at desc);
+alter table scam_events enable row level security;
+
 -- Filters of Petto's own AutoMod made from templates (links, invites, emojis...). They act after the message is sent and use
 -- the same sanctions as the rest of the moderation. Nothing exists until a server adds one.
 create table if not exists automod_rules (

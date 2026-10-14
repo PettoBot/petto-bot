@@ -15,6 +15,7 @@ const INVALIDATION_TABLES = Object.freeze([
   'automod_config', // src/db/automod.js, the automod settings of a server
   'antinuke_config', // src/db/antinuke.js, the shared settings of the anti-nuke
   'antinuke_rules', // src/db/antinuke.js, one row per protection
+  'scam_config', // src/db/scamConfig.js
   'automod_rules', // src/db/automodRules.js, the template filters
   'automod_silent_channels', // src/db/automod.js, channels where automod acts without a message
   'button_responders', // src/db/responders.js, button responders (cached by responder id)
