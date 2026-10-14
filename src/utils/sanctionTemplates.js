@@ -72,7 +72,9 @@ function sanctionContext({ type, guild, user, member = null, moderator, reason, 
  * straight into `.send(...)`, which takes either.
  */
 async function sanctionDM({ type, guild, client, reason, duration, user = null, member = null, moderator = null, source = 'moderator' }) {
-  const fallback = () => buildSanctionDM({ type, guild, client, reason, duration });
+  let appealUrl = null;
+  try { appealUrl = await require('./appeals').appealLinkFor(guild.id, type); } catch { /* No appeal link: the sanction DM still goes out. */ }
+  const fallback = () => buildSanctionDM({ type, guild, client, reason, duration, appealUrl });
   try {
     const name = await templateFor(guild.id, type, 'dm');
     if (!name) return fallback();

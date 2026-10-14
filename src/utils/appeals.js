@@ -159,8 +159,19 @@ function siteLink(guildId) {
   return `https://petto.sbs/appeal/${guildId}`;
 }
 
+const APPEAL_KIND = { ban: 'ban', tempban: 'ban', mute: 'mute', tempmute: 'mute', timeout: 'mute', warn: 'warn', kick: 'kick', softban: 'kick', jail: 'jail' };
+
+/** The appeal page to point a sanctioned member to, or null when the server has appeals off or this sanction cannot be appealed. */
+async function appealLinkFor(guildId, type) {
+  const kind = APPEAL_KIND[type];
+  if (!kind) return null;
+  const config = await db.getConfig(guildId);
+  if (!config.enabled || !(config.punishment_types ?? []).includes(kind)) return null;
+  return siteLink(guildId);
+}
+
 function staffCardText(submission, form, config) {
-  const lines = [`## 📨 Appeal · ${clip(submission.form_name || form?.name, 80)}`, `<@${submission.user_id}> · \`${submission.username}\` · \`${submission.user_id}\``];
+  const lines = [`## Appeal · ${clip(submission.form_name || form?.name, 80)}`, `<@${submission.user_id}> · \`${submission.username}\` · \`${submission.user_id}\``];
   const punishments = submission.punishments ?? [];
   if (punishments.length) {
     lines.push('', '**Punishments**', ...punishments.slice(0, 6).map((p) => `• ${p.type}${p.reason ? ` — ${clip(p.reason, 140)}` : ''}${p.until ? ` · until <t:${Math.floor(Date.parse(p.until) / 1000)}:f>` : ''}${p.source === 'discord' ? ' (Discord)' : ''}`));
@@ -248,7 +259,7 @@ async function submitAppeal({ client, guild, config, form, user, rawAnswers }) {
     return { ok: false, error: 'post_failed' };
   }
   await db.addMessage({ submission_id: submission.id, guild_id: guild.id, author_type: 'system', author_name: 'Petto', content: messageFor(config, form, 'submitted').replace(/\{server\}/g, guild.name) }).catch(() => {});
-  await logLine(guild, config, `📨 **${clip(user.username, 40)}** sent an appeal (${clip(form.name, 60)}).`, STATUS_COLORS.pending);
+  await logLine(guild, config, `**${clip(user.username, 40)}** sent an appeal (${clip(form.name, 60)}).`, STATUS_COLORS.pending);
   return { ok: true, submission };
 }
 
@@ -311,7 +322,7 @@ async function resolveAppeal({ client, guild, submission, status, moderatorId, m
   await db.addMessage({ submission_id: row.id, guild_id: guild.id, author_type: 'system', author_name: 'Petto', content: renderTemplate(messageFor(config, form, status), vars) + (invite ? `\n${invite}` : '') }).catch(() => {});
   await updateStaffCard(guild, row, form, config, moderatorId);
   const who = moderatorName ?? `<@${moderatorId}>`;
-  await logLine(guild, config, `${status === 'accepted' ? '✅' : '❌'} ${who} ${status} the appeal of **${clip(row.username, 40)}**${lifted.length ? ` (lifted: ${lifted.join(', ')})` : ''}.`, STATUS_COLORS[status]);
+  await logLine(guild, config, `${who} ${status} the appeal of **${clip(row.username, 40)}**${lifted.length ? ` (lifted: ${lifted.join(', ')})` : ''}.`, STATUS_COLORS[status]);
   return { ok: true, submission: row, dm, invite, lifted };
 }
 
@@ -321,7 +332,7 @@ async function updateStaffCard(guild, row, form, config, moderatorId) {
   const message = await channel.messages.fetch(row.message_id).catch(() => null);
   if (!message) return;
   const stamp = row.resolved_at ? Math.floor(Date.parse(row.resolved_at) / 1000) : Math.floor(Date.now() / 1000);
-  const text = `${staffCardText(row, form, config)}\n\n**${row.status === 'accepted' ? '✅ Accepted' : '❌ Rejected'}** by <@${moderatorId}> · <t:${stamp}:R>${row.resolution_reason ? `\n> ${clip(row.resolution_reason, 300)}` : ''}`;
+  const text = `${staffCardText(row, form, config)}\n\n**${row.status === 'accepted' ? 'Accepted' : 'Rejected'}** by <@${moderatorId}> · <t:${stamp}:R>${row.resolution_reason ? `\n> ${clip(row.resolution_reason, 300)}` : ''}`;
   await message.edit({ components: [textCard(text, STATUS_COLORS[row.status]), staffButtons(row.id, true)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } }).catch(() => {});
 }
 
@@ -334,7 +345,7 @@ async function staffReply({ client, guild, submission, content, moderatorId, mod
   await db.addMessage({ submission_id: submission.id, guild_id: guild.id, author_type: 'staff', author_id: moderatorId, author_name: moderatorName ?? null, content: text, anonymous });
   const form = submission.form_id ? await db.getForm(guild.id, submission.form_id).catch(() => null) : null;
   const dm = await sendDm(client, submission.user_id, `${renderTemplate(messageFor(config, form, 'reply'), { server: guild.name })}\n\n**${anonymous ? 'Staff' : clip(moderatorName ?? 'Staff', 40)}**\n${text}\n\n-# ${config.allow_replies ? 'Answer on ' : ''}${siteLink(guild.id)}/status/${submission.id}`, 0x8c7cff);
-  await notifyStaff(guild, submission, `💬 <@${moderatorId}> replied to **${clip(submission.username, 40)}**\n> ${text.slice(0, 400)}`, 0x8c7cff);
+  await notifyStaff(guild, submission, `<@${moderatorId}> replied to **${clip(submission.username, 40)}**\n> ${text.slice(0, 400)}`, 0x8c7cff);
   return { ok: true, dm };
 }
 
@@ -345,7 +356,7 @@ async function userReply({ guild, config, submission, content }) {
   const text = clip(content, LIMITS.reply);
   if (!text) return { ok: false, error: 'empty' };
   await db.addMessage({ submission_id: submission.id, guild_id: guild.id, author_type: 'user', author_id: submission.user_id, author_name: submission.username, content: text });
-  await notifyStaff(guild, submission, `💬 **${clip(submission.username, 40)}** wrote about their appeal\n> ${text.slice(0, 600)}`, 0xfed53c);
+  await notifyStaff(guild, submission, `**${clip(submission.username, 40)}** wrote about their appeal\n> ${text.slice(0, 600)}`, 0xfed53c);
   return { ok: true };
 }
 
@@ -354,7 +365,7 @@ async function withdrawAppeal({ guild, config, submission }) {
   if (!row) return { ok: false, error: 'already_resolved' };
   const form = row.form_id ? await db.getForm(guild.id, row.form_id).catch(() => null) : null;
   await updateStaffCard(guild, { ...row, resolution_reason: 'Withdrawn by the member' }, form, config, row.user_id);
-  await logLine(guild, config, `↩️ **${clip(row.username, 40)}** withdrew their appeal.`, STATUS_COLORS.withdrawn);
+  await logLine(guild, config, `**${clip(row.username, 40)}** withdrew their appeal.`, STATUS_COLORS.withdrawn);
   return { ok: true };
 }
 
@@ -370,6 +381,6 @@ async function cleanup() {
 
 module.exports = {
   PREFIX, LIMITS, QUESTION_TYPES, PUNISHMENT_TYPES, DETAILS, BLOCKS, DEFAULT_MESSAGES,
-  renderTemplate, messageFor, normalizeForm, validateAnswers, shapePunishment, fetchPunishments, meetsRequirement, blockUntil, siteLink,
+  renderTemplate, messageFor, normalizeForm, validateAnswers, shapePunishment, fetchPunishments, meetsRequirement, blockUntil, siteLink, appealLinkFor,
   staffCardText, staffButtons, submitAppeal, resolveAppeal, staffReply, userReply, withdrawAppeal, cleanup,
 };

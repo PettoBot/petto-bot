@@ -23,7 +23,7 @@ const VERB = {
  *
  *   -# Sent from 'Petto' (`123456789012345678`) with 214 members
  */
-function buildSanctionDM({ type, guild, client, reason, duration }) {
+function buildSanctionDM({ type, guild, client, reason, duration, appealUrl = null }) {
   const emoji = EMOJI.HAMMER;
   const verb = VERB[type] ?? 'sanctioned in';
   const durationPart = duration ? ` for ${duration}` : '';
@@ -31,6 +31,7 @@ function buildSanctionDM({ type, guild, client, reason, duration }) {
 
   return [
     `${emoji}  You have been ${verb} **${guild.name}**${durationPart}${reasonPart}`,
+    ...(appealUrl ? ['', `Think this is a mistake? Appeal here: ${appealUrl}`] : []),
     '',
     `-# Sent from '${client.user.username}' (\`${guild.id}\`) with ${guild.memberCount} members`,
   ].join('\n');
