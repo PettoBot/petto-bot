@@ -32,6 +32,8 @@ const { BUTTON_PREFIX: RESPONDER_BUTTON_PREFIX, SELECT_PREFIX: RESPONDER_SELECT_
 const { handleButton: handleResponderButton, handleSelect: handleResponderSelect } = require('../interactions/responders');
 const { PREFIX: REQUEST_PREFIX } = require('../utils/requestCards');
 const { handleButton: handleRequestButton } = require('../interactions/requests');
+const { PREFIX: SCAM_PREFIX, handleButton: handleScamButton } = require('../utils/antiScam');
+const { PREFIX: ANTINUKE_PREFIX, handleButton: handleAntiNukeButton } = require('../interactions/antiNuke');
 const { PREFIX: CONFESSION_PREFIX, handleButton: handleConfessionButton, handleModal: handleConfessionModal } = require('../interactions/confessions');
 const { PREFIX: SUGGESTION_PREFIX, handleButton: handleSuggestionButton, handleModal: handleSuggestionModal } = require('../interactions/suggestions');
 const { PREFIX: VERIFY_LETTERS_PREFIX, handleButton: handleVerifyLettersButton, handleModal: handleVerifyLettersModal } = require('../interactions/verifyLetters');
@@ -52,6 +54,15 @@ module.exports = {
   async execute(interaction, client) {
     if ((interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) && interaction.customId.startsWith(CODE_COMMAND_PREFIX)) {
       try { await handleCodeCommandComponent(interaction); } catch (err) { logger.error('Error handling a custom command button or menu:', err); }
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith(`${SCAM_PREFIX}::`)) {
+      await handleScamButton(interaction);
+      return;
+    }
+    if (interaction.isButton() && interaction.customId.startsWith(`${ANTINUKE_PREFIX}::`)) {
+      await handleAntiNukeButton(interaction);
       return;
     }
 

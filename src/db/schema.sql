@@ -174,12 +174,97 @@ create table if not exists mod_actions (
 
 -- Who or what applied the case: a moderator, automod, the honeypot, warn escalation, automatic expiry or anti-nuke.
 alter table mod_actions add column if not exists source text not null default 'moderator';
+-- Links to the proof of a case (screenshots, message links), added by the staff.
+alter table mod_actions add column if not exists evidence text[] not null default '{}';
 
 -- `create table if not exists` above is a no-op against an already-migrated database, so the
 -- CHECK constraint (added here for tempban/tempmute/softban) needs its own idempotent migration step.
 alter table mod_actions drop constraint if exists mod_actions_type_check;
 alter table mod_actions add constraint mod_actions_type_check
   check (type in ('ban', 'unban', 'kick', 'mute', 'unmute', 'tempban', 'tempmute', 'warn', 'softban', 'jail', 'unjail', 'hardban'));
+
+-- Lockdown: close the channels, pause the invites and raise the verification while a raid lasts, and put it all back after.
+create table if not exists lockdown_config (
+  guild_id            text primary key references guilds(guild_id) on delete cascade,
+  channel_ids         text[] not null default '{}',
+  pause_invites       boolean not null default true,
+  raise_verification  boolean not null default false,
+  auto_end_minutes    integer not null default 0,
+  announce_channel_id text,
+  message             text,
+  updated_at          timestamptz not null default now()
+);
+alter table lockdown_config enable row level security;
+
+create table if not exists lockdowns (
+  guild_id          text primary key references guilds(guild_id) on delete cascade,
+  started_by        text not null,
+  reason            text,
+  started_at        timestamptz not null default now(),
+  ends_at           timestamptz,
+  locked            jsonb not null default '[]'::jsonb,
+  previous_level    integer,
+  invites_paused    boolean not null default false
+);
+alter table lockdowns enable row level security;
+
+-- Anti scam: hijacked accounts spamming fake giveaways (the MrBeast scam), fake withdrawals and casinos. Nothing is on until a
+-- server turns it on, and it starts by only alerting.
+create table if not exists scam_config (
+  guild_id            text primary key references guilds(guild_id) on delete cascade,
+  enabled             boolean not null default false,
+  action              text not null default 'alert' check (action in ('alert', 'timeout', 'kick', 'ban')),
+  timeout_minutes     integer not null default 120,
+  delete_messages     boolean not null default true,
+  delete_minutes      integer not null default 15,
+  channels_threshold  integer not null default 3,
+  window_seconds      integer not null default 30,
+  scan_text           boolean not null default true,
+  scan_new_accounts   boolean not null default true,
+  new_account_hours   integer not null default 72,
+  dm_user             boolean not null default true,
+  alert_channel_id    text,
+  ping_role_id        text,
+  exempt_role_ids     text[] not null default '{}',
+  exempt_channel_ids  text[] not null default '{}',
+  caught              integer not null default 0,
+  updated_at          timestamptz not null default now()
+);
+alter table scam_config enable row level security;
+
+create table if not exists scam_events (
+  id          bigserial primary key,
+  guild_id    text not null references guilds(guild_id) on delete cascade,
+  user_id     text not null,
+  user_name   text,
+  signal      text not null,
+  detail      text,
+  channels    integer not null default 1,
+  action      text not null default 'alert',
+  deleted     integer not null default 0,
+  created_at  timestamptz not null default now()
+);
+create index if not exists idx_scam_events_guild on scam_events(guild_id, created_at desc);
+alter table scam_events enable row level security;
+
+-- Filters of Petto's own AutoMod made from templates (links, invites, emojis...). They act after the message is sent and use
+-- the same sanctions as the rest of the moderation. Nothing exists until a server adds one.
+create table if not exists automod_rules (
+  id                bigserial primary key,
+  guild_id          text not null references guilds(guild_id) on delete cascade,
+  name              text not null,
+  template          text not null,
+  options           jsonb not null default '{}'::jsonb,
+  action            text not null default 'delete' check (action in ('delete', 'warn', 'mute', 'kick')),
+  mute_minutes      integer not null default 10,
+  exempt_role_ids   text[] not null default '{}',
+  exempt_channel_ids text[] not null default '{}',
+  enabled           boolean not null default true,
+  hits              integer not null default 0,
+  created_at        timestamptz not null default now()
+);
+create index if not exists idx_automod_rules_guild on automod_rules(guild_id);
+alter table automod_rules enable row level security;
 
 -- A hard ban only the server owner and the antinuke admins can lift. Anyone else who unbans the user gets the ban put back.
 create table if not exists hard_bans (
@@ -459,7 +544,7 @@ create table if not exists automod_config (
   anti_raid_enabled     boolean not null default false,
   raid_join_threshold   integer not null default 6,
   raid_window_seconds   integer not null default 10,
-  raid_action           text not null default 'alert' check (raid_action in ('alert', 'kick')),
+  raid_action           text not null default 'alert' check (raid_action in ('alert', 'kick', 'lockdown')),
   -- Roles that bypass the word filter / anti-spam checks above entirely.
   immune_role_ids       text[] not null default '{}',
   -- New-account detection on join.
@@ -475,6 +560,23 @@ alter table automod_config add column if not exists word_filter_action text not 
 alter table automod_config drop constraint if exists automod_config_word_filter_action_check;
 alter table automod_config add constraint automod_config_word_filter_action_check check (word_filter_action in ('warn', 'mute', 'kick', 'delete'));
 alter table automod_config add column if not exists immune_role_ids text[] not null default '{}';
+alter table automod_config drop constraint if exists automod_config_raid_action_check;
+alter table automod_config add constraint automod_config_raid_action_check check (raid_action in ('alert', 'kick', 'lockdown'));
+alter table automod_config add column if not exists repeat_threshold integer not null default 3;
+alter table automod_config add column if not exists repeat_window_seconds integer not null default 10;
+alter table automod_config add column if not exists caps_percent integer not null default 70;
+alter table automod_config add column if not exists caps_min_length integer not null default 12;
+alter table automod_config add column if not exists max_message_length integer not null default 0;
+alter table automod_config add column if not exists max_lines integer not null default 0;
+alter table automod_config add column if not exists exempt_channel_ids text[] not null default '{}';
+alter table automod_config add column if not exists spam_repeat boolean not null default true;
+alter table automod_config add column if not exists spam_mentions boolean not null default true;
+alter table automod_config add column if not exists spam_invites boolean not null default true;
+alter table automod_config add column if not exists spam_caps boolean not null default true;
+-- Strikes: after this many automod hits in the window the member is muted (0 keeps it off).
+alter table automod_config add column if not exists strike_limit integer not null default 0;
+alter table automod_config add column if not exists strike_window_minutes integer not null default 10;
+alter table automod_config add column if not exists strike_mute_minutes integer not null default 10;
 alter table automod_config add column if not exists anti_alt_enabled boolean not null default false;
 alter table automod_config add column if not exists anti_alt_min_age_days integer not null default 7;
 alter table automod_config add column if not exists anti_alt_action text not null default 'kick';
@@ -616,6 +718,43 @@ create table if not exists antinuke_config (
 );
 
 alter table antinuke_config enable row level security;
+alter table antinuke_config add column if not exists whitelist_role_ids text[] not null default '{}';
+alter table antinuke_config add column if not exists alert_channel_id text;
+
+-- One row per protection the server tuned. A protection without a row keeps the older behavior (the single switch above
+-- for the protections that existed, off for the new ones), so nothing starts protecting or punishing by surprise.
+create table if not exists antinuke_rules (
+  guild_id           text not null references guilds(guild_id) on delete cascade,
+  rule               text not null,
+  enabled            boolean not null default false,
+  threshold          integer not null default 3,
+  window_seconds     integer not null default 10,
+  action             text not null default 'quarantine' check (action in ('alert', 'quarantine', 'kick', 'ban')),
+  alert_channel_id   text,
+  whitelist_ids      text[] not null default '{}',
+  whitelist_role_ids text[] not null default '{}',
+  updated_at         timestamptz not null default now(),
+  primary key (guild_id, rule)
+);
+alter table antinuke_rules enable row level security;
+
+-- Every time a protection acted, with what can be put back (deleted channels and roles, lifted bans, the roles taken away).
+create table if not exists antinuke_events (
+  id             bigserial primary key,
+  guild_id       text not null references guilds(guild_id) on delete cascade,
+  rule           text not null,
+  executor_id    text not null,
+  executor_name  text,
+  action_count   integer not null default 0,
+  action         text not null default 'alert',
+  detail         text,
+  restorable     jsonb not null default '[]'::jsonb,
+  previous_roles text[] not null default '{}',
+  restored_at    timestamptz,
+  created_at     timestamptz not null default now()
+);
+create index if not exists idx_antinuke_events_guild on antinuke_events(guild_id, created_at desc);
+alter table antinuke_events enable row level security;
 
 -- Server configuration snapshots. The JSON is deliberately limited to Discord
 -- configuration and never contains bot credentials, access tokens, or message content.
@@ -1016,6 +1155,8 @@ alter table ticket_settings add column if not exists hours_message text;
 alter table ticket_settings add column if not exists unclaimed_reminder_minutes integer not null default 0;
 alter table tickets add column if not exists reminded_at timestamptz;
 alter table ticket_settings add column if not exists auto_delete_closed_hours integer not null default 0;
+alter table ticket_settings add column if not exists transcript_channel_id text;
+alter table ticket_settings add column if not exists transcript_mode text not null default 'auto';
 
 -- Quick replies of the staff of tickets: a text saved with a name, sent in a ticket with one command.
 create table if not exists ticket_replies (

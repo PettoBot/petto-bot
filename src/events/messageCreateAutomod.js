@@ -1,7 +1,8 @@
 const { Events, PermissionFlagsBits } = require('discord.js');
 const { sendAs } = require('../utils/senderIdentity');
 const { getConfig, listSilentChannelsCached } = require('../db/automod');
-const { findBannedWord, isExcessiveCaps, hasMassMentions, hasUnauthorizedInvite, isRepeatFlood } = require('../utils/automodChecks');
+const { listCompiled: listAutomodRules, countHit } = require('../db/automodRules');
+const { findBannedWord, isExcessiveCaps, hasMassMentions, hasUnauthorizedInvite, isRepeatFlood, isTooLong } = require('../utils/automodChecks');
 const { applyAutomodAction } = require('../utils/automodAction');
 const { handleHoneypotMessage } = require('../utils/honeypot');
 const logger = require('../utils/logger');
@@ -64,6 +65,8 @@ module.exports = {
       // Immune roles bypass every automod check below, including silent channels.
       if (config?.immune_role_ids?.some((id) => message.member.roles.cache.has(id))) return;
 
+      if (config?.exempt_channel_ids?.includes(message.channel.id) || (message.channel.parentId && config?.exempt_channel_ids?.includes(message.channel.parentId))) return;
+
       const silentChannels = await listSilentChannelsCached(message.guild.id);
       const silent = silentChannels.find((row) => row.channel_id === message.channel.id) ?? null;
       if (silent) {
@@ -71,9 +74,7 @@ module.exports = {
         return;
       }
 
-      if (!config) return;
-
-      if (config.word_filter_enabled) {
+      if (config?.word_filter_enabled) {
         const hit = findBannedWord(message.content, config.banned_words);
         if (hit) {
           const action = config.word_filter_action === 'mute' ? 'tempmute' : config.word_filter_action;
@@ -82,25 +83,48 @@ module.exports = {
         }
       }
 
-      if (config.anti_spam_enabled) {
-        if (isRepeatFlood(message.guild.id, message.author.id, message.content)) {
+      // Filters made from templates (links, invites, emojis...): the first one that matches answers.
+      const rules = await listAutomodRules(message.guild.id);
+      for (const rule of rules) {
+        if (rule.exempt_channel_ids?.includes(message.channel.id) || rule.exempt_channel_ids?.includes(message.channel.parentId)) continue;
+        if (rule.exempt_role_ids?.some((id) => message.member.roles.cache.has(id))) continue;
+        if (!rule.regexes.some((re) => re.test(message.content))) continue;
+        countHit(message.guild.id, rule);
+        await applyAutomodAction(message, {
+          violationType: `filter-${rule.template}`,
+          reason: `Matched the filter "${rule.name}".`,
+          action: rule.action === 'mute' ? 'tempmute' : rule.action,
+          durationMs: rule.action === 'mute' ? rule.mute_minutes * 60_000 : undefined,
+        });
+        return;
+      }
+
+      if (config?.anti_spam_enabled) {
+        if (config.spam_repeat !== false && isRepeatFlood(message.guild.id, message.author.id, message.content, { threshold: config.repeat_threshold ?? 3, windowMs: (config.repeat_window_seconds ?? 10) * 1000 })) {
           await applyAutomodAction(message, { violationType: 'repeat-flood', reason: 'Sent the same message repeatedly in a short time.', action: 'tempmute' });
           return;
         }
 
-        if (hasMassMentions(message, config.max_mentions)) {
+        if (config.spam_mentions !== false && hasMassMentions(message, config.max_mentions)) {
           await applyAutomodAction(message, { violationType: 'mass-mentions', reason: `Mentioned more than ${config.max_mentions} users/roles in one message.`, action: 'warn' });
           return;
         }
 
-        if (hasUnauthorizedInvite(message.content, config.allowed_invite_codes)) {
+        if (config.spam_invites !== false && hasUnauthorizedInvite(message.content, config.allowed_invite_codes)) {
           await applyAutomodAction(message, { violationType: 'unauthorized-invite', reason: 'Posted a Discord invite that is not on this server\'s allow-list.', action: 'warn' });
           return;
         }
 
-        if (isExcessiveCaps(message.content)) {
+        if (config.spam_caps !== false && isExcessiveCaps(message.content, { minLength: config.caps_min_length ?? 12, threshold: (config.caps_percent ?? 70) / 100 })) {
           await applyAutomodAction(message, { violationType: 'excessive-caps', reason: 'Message was mostly uppercase.', action: 'warn' });
+          return;
         }
+      }
+
+      // Long messages and walls of lines are only taken down, nobody is punished for them.
+      const tooLong = isTooLong(message.content, { maxLength: config?.max_message_length ?? 0, maxLines: config?.max_lines ?? 0 });
+      if (tooLong) {
+        await applyAutomodAction(message, { violationType: 'long-message', reason: tooLong === 'lines' ? 'Message had too many lines.' : 'Message was too long.', action: 'delete' });
       }
     } catch (err) {
       logger.error(`Automod scan failed for message ${message.id} in guild ${message.guild.id}:`, err);

@@ -11,7 +11,7 @@ const { verifyToken } = require('../utils/verifyToken');
 const { verifyTranscriptToken } = require('../utils/transcriptToken');
 const { getConfig } = require('../db/verificationConfig');
 const { isRedeemed, claimRedemption, releaseRedemption } = require('../db/verificationRedemptions');
-const { getTicketById } = require('../db/tickets');
+const { getTicketById, getTicketByNumber } = require('../db/tickets');
 const { logVerification } = require('../utils/verificationLog');
 const { sendVerifiedDM } = require('../utils/verifyMessage');
 const { createBackup, listBackups, getBackup, recordAudit, vault } = require('../db/backups');
@@ -296,6 +296,120 @@ function startServer(client) {
       } catch (err) {
         logger.error(`Dashboard suggestion votes failed for guild ${req.params.guildId}:`, err);
         res.status(500).json({ ok: false, message: 'The votes could not be read. Try again.' });
+      }
+    });
+
+    // The link to the saved transcript of a ticket, for the "Closed" list of the dashboard (the same signed link the log shows).
+    app.post('/api/dashboard/guild/:guildId/tickets/transcript', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await dashboardCardAccess(req, res);
+      if (!access) return;
+      try {
+        const number = Number(req.body?.number);
+        const ticket = Number.isInteger(number) && number > 0 ? await getTicketByNumber(access.guild.id, number) : null;
+        if (!ticket) { res.status(404).json({ ok: false, message: 'That ticket does not exist.' }); return; }
+        if (!ticket.transcript_html) { res.status(404).json({ ok: false, message: 'This ticket has no saved transcript yet.' }); return; }
+        const link = require('../utils/ticketActions').buildTranscriptLink({ guild: access.guild, ticket });
+        if (!link) { res.status(400).json({ ok: false, message: 'The transcript viewer is not set up in the bot.' }); return; }
+        res.json({ ok: true, link });
+      } catch (err) {
+        logger.error(`Dashboard ticket transcript failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, message: 'The transcript could not be opened. Try again.' });
+      }
+    });
+
+    // Puts back what an anti-nuke protection stopped (channels, roles, bans, the roles taken away). Owner and administrators only.
+    app.post('/api/dashboard/guild/:guildId/antinuke/restore', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await dashboardCardAccess(req, res);
+      if (!access) return;
+      try {
+        const { canRestore, restoreEvent } = require('../utils/antiNukeRestore');
+        const antinukeDb = require('../db/antinuke');
+        if (!canRestore(access.member)) { res.status(403).json({ ok: false, message: 'Only the server owner and administrators can restore this.' }); return; }
+        const event = await antinukeDb.getEvent(access.guild.id, Number(req.body?.id));
+        if (!event) { res.status(404).json({ ok: false, message: 'That event does not exist.' }); return; }
+        if (event.restored_at) { res.status(400).json({ ok: false, message: 'This was already restored.' }); return; }
+        const { done, failed } = await restoreEvent(access.guild, event);
+        if (!failed.length) await antinukeDb.markRestored(access.guild.id, event.id);
+        res.json({ ok: failed.length === 0, done, failed, message: failed.length ? failed.join(' ') : undefined });
+      } catch (err) {
+        logger.error(`Dashboard anti-nuke restore failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, message: 'It could not be restored. Try again.' });
+      }
+    });
+
+    // The AutoMod rules of Discord made from templates: list them, add one, turn one on or off, remove one.
+    app.post('/api/dashboard/guild/:guildId/automod/native', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await dashboardCardAccess(req, res);
+      if (!access) return;
+      const native = require('../utils/nativeAutomod');
+      try {
+        const op = String(req.body?.op ?? 'list');
+        const body = req.body ?? {};
+        const id = (value) => (typeof value === 'string' && /^\d{5,25}$/.test(value) ? value : null);
+        const ids = (list) => (Array.isArray(list) ? list.map(String).filter((v) => /^\d{5,25}$/.test(v)) : []);
+        if (op === 'add') {
+          const rule = await native.createNative(access.guild, {
+            template: body.template, pack: body.pack, kind: body.kind, options: body.options && typeof body.options === 'object' ? body.options : {},
+            presets: Array.isArray(body.presets) ? body.presets : [], mentionLimit: body.mentionLimit, block: body.block !== false,
+            alertChannelId: id(body.alertChannelId), timeoutMinutes: body.timeoutMinutes, customMessage: typeof body.customMessage === 'string' ? body.customMessage : '',
+            exemptRoleIds: ids(body.exemptRoleIds), exemptChannelIds: ids(body.exemptChannelIds),
+          });
+          res.json({ ok: true, rule, ...(await native.listNative(access.guild)) });
+          return;
+        }
+        if (op === 'toggle') await native.setNativeEnabled(access.guild, String(body.id), body.enabled === true);
+        else if (op === 'delete') await native.deleteNative(access.guild, String(body.id));
+        res.json({ ok: true, ...(await native.listNative(access.guild)) });
+      } catch (err) {
+        if (err.userFacing) { res.status(400).json({ ok: false, message: err.message }); return; }
+        logger.error(`Dashboard native automod failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, message: 'Discord did not answer the AutoMod request. Try again.' });
+      }
+    });
+
+    // Lockdown from the dashboard: start or end it now. Administrators only, the same as the command.
+    app.post('/api/dashboard/guild/:guildId/lockdown', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await dashboardCardAccess(req, res);
+      if (!access) return;
+      try {
+        if (!access.member.permissions.has(PermissionFlagsBits.Administrator)) { res.status(403).json({ ok: false, message: 'Only administrators can start or end a lockdown.' }); return; }
+        const lockdown = require('../utils/lockdown');
+        const op = String(req.body?.op ?? '');
+        if (op === 'start') {
+          const minutes = Math.max(0, Math.min(10080, Math.floor(Number(req.body?.minutes)) || 0)) || null;
+          const result = await lockdown.startLockdown(access.guild, { startedBy: access.userId, reason: typeof req.body?.reason === 'string' ? req.body.reason.slice(0, 300) : null, minutes });
+          res.json({ ok: true, ...result });
+          return;
+        }
+        if (op === 'end') {
+          res.json({ ok: true, ...(await lockdown.endLockdown(access.guild, { endedBy: access.userId })) });
+          return;
+        }
+        res.status(400).json({ ok: false, message: 'That is not something I can do.' });
+      } catch (err) {
+        if (err.userFacing) { res.status(400).json({ ok: false, message: err.message }); return; }
+        logger.error(`Dashboard lockdown failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, message: 'The lockdown could not be changed. Try again.' });
+      }
+    });
+
+    // Lifts an active sanction (ban, mute or jail) from its case. Needs the permission the command needs.
+    app.post('/api/dashboard/guild/:guildId/moderation/lift', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await dashboardCardAccess(req, res);
+      if (!access) return;
+      try {
+        const { liftSanction } = require('../utils/sanctionLift');
+        const modCase = require('../db/modActions');
+        const row = await modCase.getCase(access.guild.id, Number(req.body?.case));
+        if (!row) { res.status(404).json({ ok: false, message: 'That case does not exist.' }); return; }
+        const needs = ['ban', 'tempban', 'hardban'].includes(row.type) ? PermissionFlagsBits.BanMembers : PermissionFlagsBits.ModerateMembers;
+        if (!access.member.permissions.has(needs) && !access.member.permissions.has(PermissionFlagsBits.Administrator)) { res.status(403).json({ ok: false, message: 'You need the same permission as the command to lift this.' }); return; }
+        const result = await liftSanction(access.guild, row.case_number, access.member.user, typeof req.body?.reason === 'string' ? req.body.reason.slice(0, 300) : null);
+        res.json({ ok: true, ...result });
+      } catch (err) {
+        if (err.userFacing) { res.status(400).json({ ok: false, message: err.message }); return; }
+        logger.error(`Dashboard lift failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, message: 'It could not be lifted. Check my permissions and try again.' });
       }
     });
 

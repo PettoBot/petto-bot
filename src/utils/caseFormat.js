@@ -30,6 +30,7 @@ function formatCaseDetail(row) {
 
   lines.push(`**Active:** ${row.active ? 'Yes' : 'No'}`);
   lines.push(`**Reason:** ${row.reason || 'No reason provided.'}`);
+  if (row.evidence?.length) lines.push(`**Evidence:** ${row.evidence.map((url, i) => `[${i + 1}](${url})`).join(' · ')}`);
   return lines.join('\n');
 }
 

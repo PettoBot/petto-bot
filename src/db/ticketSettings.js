@@ -32,6 +32,8 @@ const DEFAULTS = {
   hours_message: null,
   unclaimed_reminder_minutes: 0,
   auto_delete_closed_hours: 0,
+  transcript_channel_id: null,
+  transcript_mode: 'auto',
 };
 
 async function getSettings(guildId) {

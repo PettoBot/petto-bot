@@ -43,13 +43,37 @@ const REPEAT_THRESHOLD = 3;
 const recentByUser = new Map(); // `${guildId}:${userId}` -> [{ content, ts }]
 
 /** True once a user has posted the same content REPEAT_THRESHOLD+ times within the window. */
-function isRepeatFlood(guildId, userId, content) {
+function isRepeatFlood(guildId, userId, content, { threshold = REPEAT_THRESHOLD, windowMs = RECENT_WINDOW_MS } = {}) {
   const key = `${guildId}:${userId}`;
   const now = Date.now();
-  const history = (recentByUser.get(key) ?? []).filter((m) => now - m.ts < RECENT_WINDOW_MS);
+  const history = (recentByUser.get(key) ?? []).filter((m) => now - m.ts < Math.max(windowMs, RECENT_WINDOW_MS));
   history.push({ content, ts: now });
   recentByUser.set(key, history);
-  return history.filter((m) => m.content === content).length >= REPEAT_THRESHOLD;
+  return history.filter((m) => m.content === content && now - m.ts < windowMs).length >= threshold;
 }
 
-module.exports = { findBannedWord, isExcessiveCaps, hasMassMentions, hasUnauthorizedInvite, isRepeatFlood };
+/** True when the message is longer than the limit in characters or in lines (0 turns each limit off). */
+function isTooLong(content, { maxLength = 0, maxLines = 0 } = {}) {
+  if (maxLength > 0 && content.length > maxLength) return 'length';
+  if (maxLines > 0 && content.split('\n').length > maxLines) return 'lines';
+  return null;
+}
+
+// Automod hits per member: after enough of them in the window the member is muted (strikes).
+const strikesByUser = new Map(); // `${guildId}:${userId}` -> [ts]
+
+/** Counts a hit and answers true when the member just reached the limit (the count starts over). A limit of 0 never answers true. */
+function recordStrike(guildId, userId, { limit, windowMinutes }, now = Date.now()) {
+  if (!limit || limit < 1) return false;
+  const key = `${guildId}:${userId}`;
+  const recent = (strikesByUser.get(key) ?? []).filter((ts) => now - ts < windowMinutes * 60_000);
+  recent.push(now);
+  if (recent.length >= limit) {
+    strikesByUser.delete(key);
+    return true;
+  }
+  strikesByUser.set(key, recent);
+  return false;
+}
+
+module.exports = { findBannedWord, isExcessiveCaps, hasMassMentions, hasUnauthorizedInvite, isRepeatFlood, isTooLong, recordStrike };

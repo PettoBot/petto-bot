@@ -9,7 +9,7 @@ module.exports = {
   name: Events.WebhooksUpdate,
   execute(channel) {
     if (!channel.guild) return;
-    return trackDestructiveActionByRecency(channel.client, channel.guild, { auditLogType: AuditLogEvent.WebhookCreate, actionLabel: 'webhook creation' }).catch((err) =>
+    return trackDestructiveActionByRecency(channel.client, channel.guild, { rule: 'webhook', auditLogType: AuditLogEvent.WebhookCreate, actionLabel: 'webhook creation' }).catch((err) =>
       logger.error('Anti-nuke webhook-creation tracking failed:', err),
     );
   },

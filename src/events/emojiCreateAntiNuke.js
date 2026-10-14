@@ -6,6 +6,7 @@ module.exports = {
   name: Events.GuildEmojiCreate,
   execute(emoji) {
     return trackDestructiveAction(emoji.client, emoji.guild, {
+      rule: 'emoji_create',
       auditLogType: AuditLogEvent.EmojiCreate,
       targetId: emoji.id,
       actionLabel: 'emoji creation',

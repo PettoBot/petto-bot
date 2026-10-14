@@ -262,7 +262,7 @@ function fakeMember(userId, { username, globalName = null, nick = null, avatar =
   // ---- Invalidation from the dashboard ----------------------------------------------------------------------------------
   {
     const invalidation = require('../src/utils/cacheInvalidation');
-    const modules = ['automod', 'uploads', 'responders', 'xpEvents', 'sanctionTemplates', 'ticketSettings', 'levelConfig', 'partners', 'stickyMessages', 'levelMultipliers', 'counting'];
+    const modules = ['automod', 'uploads', 'responders', 'xpEvents', 'sanctionTemplates', 'ticketSettings', 'levelConfig', 'partners', 'stickyMessages', 'levelMultipliers', 'counting', 'antinuke', 'automodRules', 'scamConfig'];
     for (const name of modules) require(`../src/db/${name}`);
     assert.deepEqual(invalidation.registeredTables(), [...invalidation.INVALIDATION_TABLES].sort(), 'every documented table has a cache, and every cache table is documented');
     assert.throws(() => require('../src/utils/expiringCache').createExpiringCache(1000, { invalidateOn: ['not_a_table'] }), /INVALIDATION_TABLES/);
