@@ -349,9 +349,13 @@ module.exports = {
       await command.execute(interaction, message.client);
     } catch (err) {
       // A missing permission is the server's to fix: it is told in plain words and kept out of the channel of errors.
+      // Something the member did (a missing argument...) is not a bug: it is told to them, with how to write it, and kept out of the error channel.
       if (isPermissionError(err)) logger.warn(`Missing permission running ${prefix}${canonicalName}: ${err.message} (code ${err.code})`);
+      else if (err.userFacing) logger.info(`${prefix}${canonicalName}: ${err.message}`);
       else logger.error(`Error executing ${prefix}${canonicalName}:`, err);
-      const errorReply = warningPayload(message, err.userFacing ? err.message : isPermissionError(err) ? permissionHelp(err) : 'Something went wrong while running that command.');
+      const errorReply = err.missingOption
+        ? missingOptionCard({ command, prefix, name: canonicalName, argText, missing: err.missingOption })
+        : warningPayload(message, err.userFacing ? err.message : isPermissionError(err) ? permissionHelp(err) : 'Something went wrong while running that command.');
       if (interaction.deferred || interaction.replied) await interaction.editReply(errorReply).catch(() => {});
       else await interaction.reply(errorReply).catch(() => {});
     }
