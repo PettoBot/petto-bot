@@ -42,4 +42,9 @@ function durationText(minutes) {
   return `${Math.floor(minutes / 1440)} d ${Math.floor((minutes % 1440) / 60)} h`;
 }
 
-module.exports = { dueForReminder, summarizeStats, durationText };
+/** The moment before which a ticket closed long enough ago to have its channel deleted (null when the server keeps them). */
+function deleteCutoff(hours, now = Date.now()) {
+  return hours > 0 ? new Date(now - hours * 3_600_000).toISOString() : null;
+}
+
+module.exports = { dueForReminder, summarizeStats, durationText, deleteCutoff };

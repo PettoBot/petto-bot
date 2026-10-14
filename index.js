@@ -21,6 +21,7 @@ const { startStatusHeartbeatJob } = require('./src/jobs/statusHeartbeatJob');
 const { startBulkRoleJob } = require('./src/jobs/bulkRoleJob');
 const { startTicketAutocloseJob } = require('./src/jobs/ticketAutocloseJob');
 const { startTicketReminderJob } = require('./src/jobs/ticketReminderJob');
+const { startTicketAutoDeleteJob } = require('./src/jobs/ticketAutoDeleteJob');
 const { startPollAutocloseJob } = require('./src/jobs/pollAutocloseJob');
 const { startCounterJob } = require('./src/jobs/counterJob');
 const { startBackupVaultJob } = require('./src/jobs/backupVaultJob');
@@ -134,6 +135,7 @@ async function main() {
   startBulkRoleJob(client);
   startTicketAutocloseJob(client);
   startTicketReminderJob(client);
+  startTicketAutoDeleteJob(client);
   startPollAutocloseJob(client);
   startCounterJob(client);
   startBackupVaultJob(client);

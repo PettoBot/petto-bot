@@ -247,6 +247,13 @@ async function listOpenTicketsForGuild(guildId) {
   return data;
 }
 
+/** Closed tickets of a server whose channel is still there and was closed before `cutoffIso`. */
+async function listClosedWithChannelBefore(guildId, cutoffIso) {
+  const { data, error } = await database.from('tickets').select('*').eq('guild_id', guildId).eq('status', 'closed').not('channel_id', 'is', null).lte('closed_at', cutoffIso).limit(200);
+  if (error) throw error;
+  return data ?? [];
+}
+
 async function markReminded(ticketId) {
   const { error } = await database.from('tickets').update({ reminded_at: new Date().toISOString() }).eq('id', ticketId);
   if (error) throw error;
@@ -266,6 +273,7 @@ async function listRatingsForGuild(guildId) {
 }
 
 module.exports = {
+  listClosedWithChannelBefore,
   markReminded,
   listTicketsForStats,
   listRatingsForGuild,

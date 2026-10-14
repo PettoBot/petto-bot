@@ -1015,6 +1015,18 @@ alter table ticket_settings add column if not exists hours_block boolean not nul
 alter table ticket_settings add column if not exists hours_message text;
 alter table ticket_settings add column if not exists unclaimed_reminder_minutes integer not null default 0;
 alter table tickets add column if not exists reminded_at timestamptz;
+alter table ticket_settings add column if not exists auto_delete_closed_hours integer not null default 0;
+
+-- Quick replies of the staff of tickets: a text saved with a name, sent in a ticket with one command.
+create table if not exists ticket_replies (
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  name       text not null,
+  content    text not null,
+  created_by text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (guild_id, name)
+);
 
 create index if not exists idx_ticket_settings_autoclose_enabled
   on ticket_settings(guild_id) where autoclose_inactivity_enabled;

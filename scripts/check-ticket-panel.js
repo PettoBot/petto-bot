@@ -1,6 +1,7 @@
 // The look of a ticket panel (color, picture, footer, dropdown text) and the hours of the staff.
 process.env.DISCORD_TOKEN ||= 'check-only';
 process.env.DISCORD_CLIENT_ID ||= '1';
+process.env.DISCLOUD_DATABASE_URL ||= 'postgres://check:check@127.0.0.1:1/check';
 const assert = require('node:assert/strict');
 const cards = require('../src/utils/ticketCards');
 const { isWithinHours, outsideHoursText, isValidTimezone, toMinutes } = require('../src/utils/ticketHours');
@@ -82,4 +83,17 @@ console.log('ticket panel ok');
   assert.equal(durationText(3000), '2 d 2 h');
   assert.equal(durationText(null), 'no data');
   console.log('ticket reminders and stats ok');
+})();
+
+// Closed tickets: the moment before which their channel can go.
+(() => {
+  const { deleteCutoff } = require('../src/utils/ticketReminders');
+  const now = Date.parse('2026-10-14T12:00:00Z');
+  assert.equal(deleteCutoff(0, now), null, '0 keeps them');
+  assert.equal(deleteCutoff(24, now), '2026-10-13T12:00:00.000Z');
+  const reply = require('../src/commands/tickets/quickreply');
+  const json = reply.data.toJSON();
+  assert.deepEqual(json.options.map((o) => o.name), ['send', 'add', 'remove', 'list']);
+  assert.deepEqual(reply.aliases, ['qr', 'macro']);
+  console.log('ticket auto delete and quick replies ok');
 })();

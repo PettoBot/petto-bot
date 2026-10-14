@@ -31,6 +31,7 @@ const DEFAULTS = {
   hours_block: false,
   hours_message: null,
   unclaimed_reminder_minutes: 0,
+  auto_delete_closed_hours: 0,
 };
 
 async function getSettings(guildId) {
@@ -75,4 +76,11 @@ async function listReminderEnabled() {
   return data ?? [];
 }
 
-module.exports = { DEFAULTS, getSettings, upsertSettings, listAutocloseEnabled, listReminderEnabled };
+/** The servers that delete the channel of a closed ticket after some hours. */
+async function listAutoDeleteEnabled() {
+  const { data, error } = await database.from('ticket_settings').select('guild_id,auto_delete_closed_hours').gt('auto_delete_closed_hours', 0).order('guild_id').limit(5000);
+  if (error) throw error;
+  return data ?? [];
+}
+
+module.exports = { DEFAULTS, getSettings, upsertSettings, listAutocloseEnabled, listReminderEnabled, listAutoDeleteEnabled };
