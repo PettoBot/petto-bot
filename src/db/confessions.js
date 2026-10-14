@@ -24,6 +24,7 @@ const DEFAULTS = {
   embed_template: null,
   panel_channel_id: null,
   panel_message_id: null,
+  log_channel_id: null,
 };
 
 async function getConfig(guildId) {

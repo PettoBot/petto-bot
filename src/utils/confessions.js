@@ -2,7 +2,7 @@
 // chose, with or without the staff checking it first, and anyone can answer it anonymously in a thread. The author is kept only for the
 // staff (to reveal who it was or block them) and the server can turn even that off.
 const crypto = require('node:crypto');
-const { PermissionFlagsBits, AttachmentBuilder, MessageFlags } = require('discord.js');
+const { PermissionFlagsBits, AttachmentBuilder, MessageFlags, ContainerBuilder, TextDisplayBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const db = require('../db/confessions');
 const { build } = require('./embedBuilder');
 const { templatePayload } = require('./templatedMessage');
@@ -66,13 +66,23 @@ async function render(guild, row, config, { pictureName = null, reply = false } 
   return { content: payload.content || undefined, embeds: payload.embeds ?? [], components: [...(payload.components ?? []), ...rows], files: payload.files ?? [], flags: payload.flags ?? V2, allowedMentions: { parse: [] } };
 }
 
-/** Sends as the name and picture the server chose (a webhook of the bot), or as the bot when that cannot be done. */
-async function sendAnonymous(channel, config, payload) {
+/**
+ * The picture a confession shows: the one the server chose in the dashboard, else the picture Petto has in that server (when the server
+ * gave it its own), else the usual picture of Petto.
+ */
+function avatarFor(guild, config) {
+  if (isHttps(config.webhook_avatar)) return config.webhook_avatar;
+  const own = guild?.members?.me?.avatarURL?.({ extension: 'png', size: 256 });
+  return own || guild?.client?.user?.displayAvatarURL?.({ extension: 'png', size: 256 }) || undefined;
+}
+
+/** Sends as the name and picture the server chose (a webhook of the bot), or as the bot when that cannot be done. `name` changes the name shown. */
+async function sendAnonymous(channel, config, payload, { name = null } = {}) {
   if (config.use_webhook) {
     const hook = await webhookFor(channel, channel.client);
     if (hook) {
       try {
-        const options = { ...payload, username: String(config.webhook_name || 'Anonymous').slice(0, 80), avatarURL: isHttps(config.webhook_avatar) ? config.webhook_avatar : undefined, withComponents: true };
+        const options = { ...payload, username: String(name || config.webhook_name || 'Anonymous').slice(0, 80), avatarURL: avatarFor(channel.guild, config), withComponents: true };
         if (channel.isThread?.()) options.threadId = channel.id;
         return await hook.send(options);
       } catch (error) {
@@ -81,6 +91,59 @@ async function sendAnonymous(channel, config, payload) {
     }
   }
   return channel.send(payload);
+}
+
+/** The panel: a message with a button that opens the form, for servers that want confessions without a command. */
+function buildPanel(guild, config) {
+  const container = new ContainerBuilder().setAccentColor(config.color)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### Confessions\n${config.panel_text}`))
+    .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`${BUTTON_PREFIX}:new`).setLabel(String(config.button_label || 'Confess').slice(0, 80)).setStyle(ButtonStyle.Success)));
+  return { components: [container], flags: V2, allowedMentions: { parse: [] } };
+}
+
+const panelQueue = new Map();
+
+/**
+ * Sends the panel again so it is the last message of the channel: the one posted before goes away. `force` posts it in `channelId` even if
+ * it had no panel there yet. Returns `{ ok, message }`.
+ */
+async function postPanel(guild, config, channelId) {
+  const channel = await guild.channels.fetch(channelId).catch(() => null);
+  if (!channel?.isTextBased?.() || channel.isThread?.()) return { ok: false, message: 'Pick a text channel for the panel.' };
+  if (!channel.permissionsFor(guild.members.me)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages])) return { ok: false, message: `I cannot write in #${channel.name}.` };
+  if (config.panel_message_id && config.panel_channel_id) {
+    const old = await guild.channels.fetch(config.panel_channel_id).catch(() => null);
+    const oldMessage = old?.isTextBased?.() ? await old.messages.fetch(config.panel_message_id).catch(() => null) : null;
+    await oldMessage?.delete().catch(() => {});
+  }
+  const message = await channel.send(buildPanel(guild, config));
+  await db.updateConfig(guild.id, { panel_channel_id: channel.id, panel_message_id: message.id });
+  return { ok: true, message: `The panel is at the bottom of #${channel.name}.` };
+}
+
+/** After a confession, the panel of that channel goes back to the bottom. One at a time per server; it never stops a confession. */
+function bumpPanel(guild, config, channelId) {
+  if (!config.panel_message_id || config.panel_channel_id !== channelId) return Promise.resolve();
+  const previous = panelQueue.get(guild.id) ?? Promise.resolve();
+  const next = previous.then(async () => {
+    const fresh = await db.getConfig(guild.id);
+    if (fresh.panel_message_id && fresh.panel_channel_id === channelId) await postPanel(guild, fresh, channelId);
+  }).catch((error) => logger.warn({ guildId: guild.id, action: 'confession' }, `The panel could not go back to the bottom: ${error.message}`));
+  panelQueue.set(guild.id, next);
+  return next;
+}
+
+/** A line in the log of the staff (a card in the log channel), for what the staff did with confessions. Never stops what was being done. */
+async function logAction(guild, config, text, color = 0x4b4f59) {
+  if (!config?.log_channel_id) return;
+  try {
+    const channel = await guild.channels.fetch(config.log_channel_id).catch(() => null);
+    if (!channel?.isTextBased?.()) return;
+    const card = new ContainerBuilder().setAccentColor(color).addTextDisplayComponents(new TextDisplayBuilder().setContent(`### Confessions log\n${text}`));
+    await sendAnonymous(channel, { ...config, use_webhook: config.use_webhook }, { components: [card], flags: V2, allowedMentions: { parse: [] } }, { name: 'Confessions log' });
+  } catch (error) {
+    logger.warn({ guildId: guild.id, action: 'confession' }, `The confessions log could not be written: ${error.message}`);
+  }
 }
 
 const isStaff = (member, config) => Boolean(member && (member.permissions?.has(PermissionFlagsBits.ManageGuild) || (config?.staff_role_id && member.roles?.cache?.has(config.staff_role_id))));
@@ -94,7 +157,10 @@ async function publish(guild, row, config, picture = null) {
   if (picture) payload.files = [...payload.files, new AttachmentBuilder(picture.buffer, { name: picture.name })];
   const message = await sendAnonymous(channel, config, payload);
   const keepImage = picture ? `attachment://${picture.name}` : row.image_url;
-  return db.update(row.id, { status: 'posted', channel_id: channel.id, message_id: message.id, image_url: keepImage });
+  const posted = await db.update(row.id, { status: 'posted', channel_id: channel.id, message_id: message.id, image_url: keepImage });
+  // The panel goes back to the bottom, under the confession that just came out.
+  bumpPanel(guild, config, channel.id);
+  return posted;
 }
 
 /** The card the staff sees to approve or reject a confession. */
@@ -142,8 +208,8 @@ async function submit({ guild, user, text, attachments = [], imageUrl = null }) 
     if (config.require_review && config.review_channel_id) {
       const card = reviewCard(row, config, { pictureName: picture?.name });
       if (picture) card.files = [new AttachmentBuilder(picture.buffer, { name: picture.name })];
-      const message = await channel.send(card);
-      row = await db.update(row.id, { review_channel_id: channel.id, review_message_id: message.id, image_url: message.attachments.first()?.url ?? row.image_url });
+      const message = await sendAnonymous(channel, config, card, { name: 'Confessions review' });
+      row = await db.update(row.id, { review_channel_id: channel.id, review_message_id: message.id, image_url: message.attachments?.first?.()?.url ?? row.image_url });
       return { row, review: true };
     }
     row = await publish(guild, row, config, picture);
@@ -175,6 +241,7 @@ async function decide({ guild, member, id, approve }) {
     updated = await db.update(id, { status: 'rejected', reviewed_by: member.id });
   }
   if (approve) updated = await db.update(id, { reviewed_by: member.id });
+  await logAction(guild, config, `${member} ${approve ? 'approved' : 'rejected'} the confession \`${id}\` (#${row.number}).`, approve ? config.color : RED);
   return { row: updated, config };
 }
 
@@ -219,4 +286,4 @@ async function reply({ guild, user, id, text }) {
   return { row, thread };
 }
 
-module.exports = { BUTTON_PREFIX, MAX_CONTENT, makeId, confessionVars, defaultDesign, render, sendAnonymous, isStaff, publish, reviewCard, submit, decide, reply };
+module.exports = { BUTTON_PREFIX, MAX_CONTENT, makeId, confessionVars, defaultDesign, render, avatarFor, sendAnonymous, buildPanel, postPanel, bumpPanel, logAction, isStaff, publish, reviewCard, submit, decide, reply };

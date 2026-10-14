@@ -1,4 +1,5 @@
 const confessionsDb = require('../db/confessions');
+const suggestionsUtil = require('../utils/suggestions');
 const { postPanel: postConfessionPanel } = require('../interactions/confessions');
 const express = require('express');
 const { rateLimit } = require('express-rate-limit');
@@ -256,6 +257,45 @@ function startServer(client) {
       } catch (err) {
         logger.error(`Dashboard giveaway ${req.params.action} failed for guild ${req.params.guildId}:`, err);
         res.status(500).json({ ok: false, error: 'giveaway_failed', message: 'The giveaway action failed. Try again.' });
+      }
+    });
+
+    // The answer of the staff to a suggestion from the dashboard: approve, deny, consider, implement or take it back to pending.
+    app.post('/api/dashboard/guild/:guildId/suggestions/answer', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await dashboardCardAccess(req, res);
+      if (!access) return;
+      try {
+        const id = String(req.body?.id ?? '').trim().toLowerCase();
+        const status = String(req.body?.status ?? '');
+        if (!/^[a-z0-9]{5}-[a-z0-9]{5}$/.test(id) || !suggestionsUtil.STATUSES[status]) { res.status(400).json({ ok: false, message: 'That is not a suggestion or a status.' }); return; }
+        const member = await access.guild.members.fetch(access.userId).catch(() => null);
+        const result = await suggestionsUtil.answer({ guild: access.guild, member, id, status, reason: req.body?.reason });
+        if (result.error) { res.status(400).json({ ok: false, message: result.error }); return; }
+        res.json({ ok: true, message: `Now ${suggestionsUtil.STATUSES[status].label.toLowerCase()}.` });
+      } catch (err) {
+        logger.error(`Dashboard suggestion answer failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, message: 'The answer could not be saved. Try again.' });
+      }
+    });
+
+    // Who voted a suggestion, for the dashboard (the staff only, the same as the command).
+    app.post('/api/dashboard/guild/:guildId/suggestions/votes', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await dashboardCardAccess(req, res);
+      if (!access) return;
+      try {
+        const member = await access.guild.members.fetch(access.userId).catch(() => null);
+        const result = await suggestionsUtil.voters({ guild: access.guild, member, id: String(req.body?.id ?? '') });
+        if (result.error) { res.status(400).json({ ok: false, message: result.error }); return; }
+        const name = async (userId) => {
+          const cached = access.guild.members.cache.get(userId) ?? await access.guild.members.fetch(userId).catch(() => null);
+          return { id: userId, name: cached?.displayName ?? cached?.user?.username ?? userId };
+        };
+        const up = await Promise.all(result.up.slice(0, 50).map(name));
+        const down = await Promise.all(result.down.slice(0, 50).map(name));
+        res.json({ ok: true, up, down, upTotal: result.up.length, downTotal: result.down.length });
+      } catch (err) {
+        logger.error(`Dashboard suggestion votes failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, message: 'The votes could not be read. Try again.' });
       }
     });
 

@@ -35,7 +35,7 @@ module.exports = {
   aliases: ['suggestions', 'sg'],
   data: new SlashCommandBuilder()
     .setName('suggestion')
-    .setDescription('Set up the suggestions of this server and answer them.')
+    .setDescription('Set up suggestions and answer them: approve, deny, consider, implement (with the ID).')
     .setDMPermission(false)
     .addSubcommand((s) => s.setName('setup').setDescription('Turn suggestions on in a channel.').addChannelOption((o) => o.setName('channel').setDescription('Where the suggestions go').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement).setRequired(true)))
     .addSubcommand((s) => s.setName('enable').setDescription('Turn suggestions on.'))
@@ -46,13 +46,14 @@ module.exports = {
       .setDescription('Change one setting.')
       .addStringOption((o) => o.setName('setting').setDescription('What to change').setRequired(true).addChoices(...Object.entries(SETTINGS).map(([name, def]) => ({ name: `${name}: ${def.label}`.slice(0, 100), value: name }))))
       .addStringOption((o) => o.setName('value').setDescription('The new value: on or off, an emoji, text, a role or the name of a saved design (none removes it)').setRequired(true).setMaxLength(100)))
-    .addSubcommand((s) => s.setName('approve').setDescription('Approve a suggestion.').addStringOption(idOption).addStringOption(reasonOption))
-    .addSubcommand((s) => s.setName('deny').setDescription('Deny a suggestion.').addStringOption(idOption).addStringOption(reasonOption))
-    .addSubcommand((s) => s.setName('consider').setDescription('Mark a suggestion as under consideration.').addStringOption(idOption).addStringOption(reasonOption))
-    .addSubcommand((s) => s.setName('implement').setDescription('Mark a suggestion as implemented.').addStringOption(idOption).addStringOption(reasonOption))
-    .addSubcommand((s) => s.setName('reopen').setDescription('Take a suggestion back to pending.').addStringOption(idOption))
+    .addSubcommand((s) => s.setName('approve').setDescription('Approve a suggestion by its ID, with a reason if you want.').addStringOption(idOption).addStringOption(reasonOption))
+    .addSubcommand((s) => s.setName('deny').setDescription('Deny a suggestion by its ID, with a reason if you want.').addStringOption(idOption).addStringOption(reasonOption))
+    .addSubcommand((s) => s.setName('consider').setDescription('Mark a suggestion by its ID as under consideration.').addStringOption(idOption).addStringOption(reasonOption))
+    .addSubcommand((s) => s.setName('implement').setDescription('Mark a suggestion by its ID as implemented.').addStringOption(idOption).addStringOption(reasonOption))
+    .addSubcommand((s) => s.setName('reopen').setDescription('Take a suggestion by its ID back to pending (open to votes again).').addStringOption(idOption))
     .addSubcommand((s) => s.setName('delete').setDescription('Delete a suggestion, its message and its thread.').addStringOption(idOption))
     .addSubcommand((s) => s.setName('view').setDescription('See a suggestion.').addStringOption(idOption))
+    .addSubcommand((s) => s.setName('votes').setDescription('See who voted a suggestion, in favor and against (by its ID).').addStringOption(idOption))
     .addSubcommand((s) => s.setName('list').setDescription('The latest suggestions.').addStringOption((o) => o.setName('status').setDescription('Only the ones with this status').setRequired(false).addChoices(...Object.keys(suggestions.STATUSES).map((value) => ({ name: value, value })))))
     .addSubcommand((s) => s.setName('block').setDescription('Stop a member from making suggestions.').addUserOption((o) => o.setName('user').setDescription('The member').setRequired(true)))
     .addSubcommand((s) => s.setName('unblock').setDescription('Let a member make suggestions again.').addUserOption((o) => o.setName('user').setDescription('The member').setRequired(true)))
@@ -63,7 +64,7 @@ module.exports = {
     const config = await db.getConfig(interaction.guild.id);
     const manager = interaction.member?.permissions?.has(PermissionFlagsBits.ManageGuild);
     const staff = suggestions.isStaff(interaction.member, config);
-    const staffOnly = ['approve', 'deny', 'consider', 'implement', 'reopen', 'delete', 'view', 'list', 'block', 'unblock', 'config'];
+    const staffOnly = ['approve', 'deny', 'consider', 'implement', 'reopen', 'delete', 'view', 'votes', 'list', 'block', 'unblock', 'config'];
     if (staffOnly.includes(sub) && !staff) return reply(interaction, `${EMOJI.DENY}  Only the staff can use this.`, RED, true);
     if (!staffOnly.includes(sub) && !manager) return reply(interaction, `${EMOJI.DENY}  You need the **Manage Server** permission.`, RED, true);
 
@@ -80,6 +81,7 @@ module.exports = {
       case 'reopen': return respond(interaction, 'pending');
       case 'delete': return erase(interaction);
       case 'view': return view(interaction, config);
+      case 'votes': return whoVoted(interaction);
       case 'list': return list(interaction);
       case 'block': return blocking(interaction, true);
       case 'unblock': return blocking(interaction, false);
@@ -116,6 +118,11 @@ async function show(interaction, c) {
     `Thread: ${yes(c.thread)}${c.thread ? ` (${c.thread_name})` : ''} · DM to the author: ${yes(c.dm_author)} · anonymous: ${yes(c.anonymous)}`,
     `Staff role: ${c.staff_role_id ? `<@&${c.staff_role_id}>` : 'only who has Manage Server'}`,
     `Design: ${c.embed_template ? `\`${c.embed_template}\`` : 'the usual one'}`,
+    '',
+    '**How to answer** (the ID is under each suggestion, like `si2tr-foytm`):',
+    '`suggestion approve <id> [reason]` · `deny` · `consider` · `implement` · `reopen`',
+    '`suggestion votes <id>` (who voted) · `view <id>` · `list [status]` · `delete <id>` · `block <user>` · `unblock <user>`',
+    'Also in the dashboard: **Suggestions**, with a button for each answer.',
   ];
   return reply(interaction, lines.join('\n'));
 }
@@ -177,6 +184,16 @@ async function view(interaction) {
   return reply(interaction, [`**Suggestion #${row.number}** · \`${row.id}\` · ${suggestions.STATUSES[row.status].label}`, `By <@${row.author_id}> · ${config_up(tally)}`, row.content.slice(0, 900), row.status_reason ? `Reason: ${row.status_reason}` : '', link].filter(Boolean).join('\n'));
 }
 const config_up = (tally) => `${tally.up} in favor · ${tally.down} against`;
+
+async function whoVoted(interaction) {
+  const id = interaction.options.getString('id', true).trim().toLowerCase();
+  const result = await suggestions.voters({ guild: interaction.guild, member: interaction.member, id });
+  if (result.error) return reply(interaction, `${EMOJI.DENY}  ${result.error}`, RED, true);
+  const config = await db.getConfig(interaction.guild.id);
+  const names = (ids) => (ids.length ? ids.slice(0, 40).map((userId) => `<@${userId}>`).join(' ') + (ids.length > 40 ? ` and ${ids.length - 40} more` : '') : 'nobody');
+  const text = [`**Votes of #${result.row.number}** · \`${result.row.id}\``, `${config.up_emoji} **${result.up.length}** in favor: ${names(result.up)}`, `${config.down_emoji} **${result.down.length}** against: ${names(result.down)}`].join('\n');
+  return reply(interaction, text, GREY, true);
+}
 
 async function list(interaction) {
   const status = interaction.options.getString('status');

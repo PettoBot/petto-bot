@@ -118,6 +118,8 @@ const MAX_QUEUE = 20;
 function isRoutineNoise(level, args) {
   if (level === 'error') return false;
   const text = collectText(args);
+  // A permission the server has to give is not ours to fix; it stays in the console.
+  if (/Missing Permissions|Missing Access|Cannot send messages to this user|Cannot reply without permission|Missing permission running/i.test(text)) return true;
   return /\[Discord REST\].*rate limit/i.test(text);
 }
 

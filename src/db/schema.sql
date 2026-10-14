@@ -3314,8 +3314,10 @@ create table if not exists confession_config (
   embed_template    text,
   panel_channel_id  text,
   panel_message_id  text,
+  log_channel_id    text,
   updated_at        timestamptz not null default now()
 );
+alter table confession_config add column if not exists log_channel_id text;
 
 create table if not exists confessions (
   id                text primary key,
