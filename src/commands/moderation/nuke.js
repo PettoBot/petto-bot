@@ -31,7 +31,8 @@ module.exports = {
       await clone.setPosition(position).catch(() => {});
       await channel.delete(`Nuked by ${interaction.user.tag}`);
       await clone.send({ components: [textCard(`${EMOJI.APPROVE}  This channel was nuked by ${interaction.user}.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
-      await interaction.editReply(`${EMOJI.APPROVE} Done — ${clone}.`);
+      // The channel the command was written in is gone, so with the prefix the message in the new channel is the answer.
+      if (!interaction.rawMessage) await interaction.editReply(`${EMOJI.APPROVE} Done — ${clone}.`).catch(() => {});
     } catch (err) {
       logger.error('Failed to nuke channel:', err);
       await interaction.editReply('I was unable to nuke that channel.').catch(() => {});

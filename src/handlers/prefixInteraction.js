@@ -232,6 +232,11 @@ function sanitizePayload(payload) {
  * — reply()/editReply() both just resolve to a real message send under the hood, since a
  * prefix command has no 3-second ack window or ephemeral concept to route around.
  */
+/** The channel of the message while it still exists (a deleted channel leaves `message.channel` empty). */
+function liveChannel(message) {
+  return message.channel ?? message.client?.channels?.cache?.get(message.channelId) ?? null;
+}
+
 function buildPseudoInteraction(message, { commandName, subcommand, subcommandGroup, values }) {
   let repliedMessage = null;
   let deferredFlag = false;
@@ -284,11 +289,15 @@ function buildPseudoInteraction(message, { commandName, subcommand, subcommandGr
     },
     async editReply(payload) {
       if (repliedMessage) return repliedMessage.edit(sanitizePayload(payload));
-      repliedMessage = await message.channel.send(sanitizePayload(payload));
+      // A command that deletes its own channel (nuke) leaves no channel to answer in: there is nobody to tell, so it is not an error.
+      const channel = liveChannel(message);
+      if (!channel) return null;
+      repliedMessage = await channel.send(sanitizePayload(payload));
       return repliedMessage;
     },
     async followUp(payload) {
-      return message.channel.send(sanitizePayload(payload));
+      const channel = liveChannel(message);
+      return channel ? channel.send(sanitizePayload(payload)) : null;
     },
     async fetchReply() {
       return repliedMessage;
