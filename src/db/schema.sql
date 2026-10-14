@@ -1013,6 +1013,8 @@ alter table ticket_settings add column if not exists hours_end text not null def
 alter table ticket_settings add column if not exists hours_days integer[] not null default '{1,2,3,4,5}';
 alter table ticket_settings add column if not exists hours_block boolean not null default false;
 alter table ticket_settings add column if not exists hours_message text;
+alter table ticket_settings add column if not exists unclaimed_reminder_minutes integer not null default 0;
+alter table tickets add column if not exists reminded_at timestamptz;
 
 create index if not exists idx_ticket_settings_autoclose_enabled
   on ticket_settings(guild_id) where autoclose_inactivity_enabled;

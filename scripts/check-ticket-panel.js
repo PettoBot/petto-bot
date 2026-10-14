@@ -47,3 +47,39 @@ assert.match(outsideHoursText({ hours_start: '09:00', hours_end: '21:00', hours_
 assert.equal(outsideHoursText({ hours_message: 'Back at {start}', hours_start: '08:00' }), 'Back at 08:00');
 
 console.log('ticket panel ok');
+
+// The reminder of tickets nobody claimed, and the numbers of the stats.
+(() => {
+  const { dueForReminder, summarizeStats, durationText } = require('../src/utils/ticketReminders');
+  const now = Date.parse('2026-10-14T12:00:00Z');
+  const minutesAgo = (m) => new Date(now - m * 60_000).toISOString();
+  const open = { status: 'open', channel_id: 'c', claimed_by: null, reminded_at: null, created_at: minutesAgo(31) };
+  assert.equal(dueForReminder(open, 30, now), true);
+  assert.equal(dueForReminder({ ...open, created_at: minutesAgo(10) }, 30, now), false, 'not yet');
+  assert.equal(dueForReminder({ ...open, claimed_by: 'u' }, 30, now), false, 'a claimed ticket needs no reminder');
+  assert.equal(dueForReminder({ ...open, reminded_at: minutesAgo(1) }, 30, now), false, 'only once');
+  assert.equal(dueForReminder({ ...open, status: 'closed' }, 30, now), false);
+  assert.equal(dueForReminder(open, 0, now), false, '0 is off');
+
+  const tickets = [
+    { status: 'open', claimed_by: null, created_at: minutesAgo(60), closed_at: null },
+    { status: 'open', claimed_by: 'a', created_at: minutesAgo(120), closed_at: null },
+    { status: 'closed', claimed_by: 'a', created_at: minutesAgo(60 * 24 * 2), closed_at: minutesAgo(60 * 24 * 2 - 90) },
+    { status: 'closed', claimed_by: 'b', created_at: minutesAgo(60 * 24 * 20), closed_at: minutesAgo(60 * 24 * 20 - 30) },
+  ];
+  const s = summarizeStats(tickets, [{ rating: 5 }, { rating: 4 }, { rating: 9 }], now);
+  assert.equal(s.open, 2);
+  assert.equal(s.unclaimed, 1);
+  assert.equal(s.opened7, 3);
+  assert.equal(s.opened30, 4);
+  assert.equal(s.closed7, 1);
+  assert.equal(s.closed30, 2);
+  assert.equal(s.averageMinutesOpen, 60, 'the average of 90 and 30 minutes');
+  assert.equal(s.averageRating, 4.5, 'a rating out of 1 to 5 is ignored');
+  assert.deepEqual(s.topClaimers[0], { userId: 'a', count: 2 });
+  assert.equal(durationText(45), '45 min');
+  assert.equal(durationText(200), '3 h 20 min');
+  assert.equal(durationText(3000), '2 d 2 h');
+  assert.equal(durationText(null), 'no data');
+  console.log('ticket reminders and stats ok');
+})();

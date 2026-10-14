@@ -137,6 +137,7 @@ async function openTicket({ guild, client, category, opener, formAnswers = null 
       name: formatTicketChannelName(category.naming_pattern, { number: ticket.ticket_number, username: opener.username, userId: opener.id, category: category.label }),
       type: ChannelType.GuildText,
       parent: category.parent_channel_id || undefined,
+      topic: `Ticket #${String(ticket.ticket_number).padStart(4, '0')} · ${category.label} · opened by ${opener.username ?? opener.id} (${opener.id})`.slice(0, 1000),
       permissionOverwrites: buildOpenOverwrites({ guild, opener, category }),
       reason: `Ticket #${ticket.ticket_number} opened by ${opener.tag ?? opener.username}`,
     });

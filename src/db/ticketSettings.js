@@ -30,6 +30,7 @@ const DEFAULTS = {
   hours_days: [1, 2, 3, 4, 5],
   hours_block: false,
   hours_message: null,
+  unclaimed_reminder_minutes: 0,
 };
 
 async function getSettings(guildId) {
@@ -67,4 +68,11 @@ async function listAutocloseEnabled() {
   }
 }
 
-module.exports = { DEFAULTS, getSettings, upsertSettings, listAutocloseEnabled };
+/** The servers that asked to be reminded of tickets nobody has claimed. */
+async function listReminderEnabled() {
+  const { data, error } = await database.from('ticket_settings').select('guild_id,unclaimed_reminder_minutes').gt('unclaimed_reminder_minutes', 0).order('guild_id').limit(5000);
+  if (error) throw error;
+  return data ?? [];
+}
+
+module.exports = { DEFAULTS, getSettings, upsertSettings, listAutocloseEnabled, listReminderEnabled };

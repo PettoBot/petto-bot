@@ -247,7 +247,28 @@ async function listOpenTicketsForGuild(guildId) {
   return data;
 }
 
+async function markReminded(ticketId) {
+  const { error } = await database.from('tickets').update({ reminded_at: new Date().toISOString() }).eq('id', ticketId);
+  if (error) throw error;
+}
+
+/** Every ticket of a server with only what the numbers need (up to the last 5000). */
+async function listTicketsForStats(guildId) {
+  const { data, error } = await database.from('tickets').select('status,claimed_by,created_at,closed_at').eq('guild_id', guildId).order('created_at', { ascending: false }).limit(5000);
+  if (error) throw error;
+  return data ?? [];
+}
+
+async function listRatingsForGuild(guildId) {
+  const { data, error } = await database.from('ticket_ratings').select('rating').eq('guild_id', guildId).limit(5000);
+  if (error) throw error;
+  return data ?? [];
+}
+
 module.exports = {
+  markReminded,
+  listTicketsForStats,
+  listRatingsForGuild,
   normalizeKey,
   createPanel,
   setPanelMessageId,

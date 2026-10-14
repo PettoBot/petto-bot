@@ -1,4 +1,5 @@
 // Ticket panel setup, access rules, and ticket lifecycle actions.
+const { summarizeStats, durationText } = require('../../utils/ticketReminders');
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = require('discord.js');
 const { ensureGuild } = require('../../db/guilds');
 const { getTemplate } = require('../../db/embedTemplates');
@@ -167,7 +168,8 @@ module.exports = {
     .addSubcommand((s) => s.setName('remove').setDescription('Remove a member from this ticket.').addUserOption((o) => o.setName('user').setDescription('User to remove').setRequired(true)))
     .addSubcommand((s) => s.setName('rename').setDescription('(Staff) Rename this ticket\'s channel.').addStringOption((o) => o.setName('name').setDescription('New channel name').setRequired(true)))
     .addSubcommand((s) => s.setName('transcript').setDescription('(Staff) Post a transcript of this ticket so far, without closing it.'))
-    .addSubcommand((s) => s.setName('info').setDescription('Show info about this ticket.')),
+    .addSubcommand((s) => s.setName('info').setDescription('Show info about this ticket.'))
+    .addSubcommand((s) => s.setName('stats').setDescription('(Staff) The numbers of the tickets of this server: open, closed, ratings and who claims the most.')),
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
@@ -184,6 +186,7 @@ module.exports = {
     if (sub === 'setup') return setupCmd(interaction);
     if (sub === 'open') return openCmd(interaction);
     if (sub === 'info') return infoCmd(interaction);
+    if (sub === 'stats') return statsCmd(interaction);
     return ticketActionCmd(interaction, sub);
   },
 };
@@ -690,6 +693,24 @@ async function openCmd(interaction) {
   }
 
   await actions.openTicketInteractive(interaction, category);
+}
+
+async function statsCmd(interaction) {
+  if (!(await requireManageGuild(interaction))) return;
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  const [tickets, ratings] = await Promise.all([db.listTicketsForStats(interaction.guild.id), db.listRatingsForGuild(interaction.guild.id)]);
+  const s = summarizeStats(tickets, ratings);
+  const lines = [
+    `### Tickets of ${interaction.guild.name}`,
+    `**Open now:** ${s.open} (${s.unclaimed} without anyone claiming)`,
+    `**Opened:** ${s.opened7} in 7 days · ${s.opened30} in 30 days`,
+    `**Closed:** ${s.closed7} in 7 days · ${s.closed30} in 30 days`,
+    `**Average time open:** ${durationText(s.averageMinutesOpen)}`,
+    `**Rating:** ${s.averageRating === null ? 'no ratings yet' : `${s.averageRating} / 5 (${s.ratingCount})`}`,
+    s.topClaimers.length ? `**Claims the most:**\n${s.topClaimers.map((c, i) => `${i + 1}. <@${c.userId}> · ${c.count}`).join('\n')}` : '',
+    `-# ${s.total} ticket${s.total === 1 ? '' : 's'} counted${s.total >= 5000 ? ' (the latest 5000)' : ''}`,
+  ].filter(Boolean);
+  await interaction.editReply({ components: [textCard(lines.join('\n'), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function infoCmd(interaction) {
