@@ -1,10 +1,10 @@
 // Persistence helpers for ticket panels, categories, and ticket records.
 const database = require('./database');
 
-async function createPanel({ guildId, channelId, title, description, embedTemplate, style }) {
+async function createPanel({ guildId, channelId, title, description, embedTemplate, style, color = null, image_url = null, footer = null, placeholder = null }) {
   const { data, error } = await database
     .from('ticket_panels')
-    .insert({ guild_id: guildId, channel_id: channelId, title, description, embed_template: embedTemplate, style: style ?? 'button' })
+    .insert({ guild_id: guildId, channel_id: channelId, title, description, embed_template: embedTemplate, style: style ?? 'button', color, image_url, footer, placeholder })
     .select('*')
     .single();
 
@@ -158,6 +158,13 @@ async function getTicketByNumber(guildId, number) {
   return data;
 }
 
+/** How many tickets a member has open in the whole server (for the global limit). */
+async function countOpenTicketsForMember(guildId, openerId) {
+  const { count, error } = await database.from('tickets').select('id', { count: 'exact', head: true }).eq('guild_id', guildId).eq('opener_id', openerId).eq('status', 'open');
+  if (error) throw error;
+  return count ?? 0;
+}
+
 async function countOpenTickets(guildId, categoryId, openerId) {
   const { count, error } = await database
     .from('tickets')
@@ -264,6 +271,7 @@ module.exports = {
   getTicketByChannel,
   getTicketByNumber,
   countOpenTickets,
+  countOpenTicketsForMember,
   setClaim,
   PRIORITIES,
   setPriority,

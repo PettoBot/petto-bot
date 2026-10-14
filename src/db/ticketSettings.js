@@ -22,6 +22,14 @@ const DEFAULTS = {
   opened_log_channel_id: null,
   closed_log_channel_id: null,
   blocked_role_ids: [],
+  global_limit: 0,
+  hours_enabled: false,
+  hours_timezone: 'America/Bogota',
+  hours_start: '09:00',
+  hours_end: '21:00',
+  hours_days: [1, 2, 3, 4, 5],
+  hours_block: false,
+  hours_message: null,
 };
 
 async function getSettings(guildId) {
