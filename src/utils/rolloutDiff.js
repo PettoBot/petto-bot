@@ -3,7 +3,7 @@
 const round = (value) => Math.round(value * 100) / 100;
 
 // Raised when the way the percentage is counted changes, so the snapshots kept with the old way are not read as a change.
-const SNAPSHOT_VERSION = 2;
+const SNAPSHOT_VERSION = 3;
 
 /** What is kept of an experiment to compare it later. */
 function snapshotOf(rollout) {

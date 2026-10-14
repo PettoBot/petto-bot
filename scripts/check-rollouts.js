@@ -37,6 +37,8 @@ const raw = [
   assert.equal(api.normalizeRollout({ id: '2024-04_overlap', variants: [{ variant: 0, role: 'control', to: 100, ranges: ['0 - 10000'] }, { variant: 7, role: 'treatment', to: 100, ranges: ['0 - 10000'] }, { variant: -1, role: 'not_eligible', to: 100, ranges: ['0 - 10000'] }] }).percent, 100, 'a part that two variants cover is counted once');
   assert.equal(api.normalizeRollout({ id: '2024-04_no_ranges', variants: [{ variant: 0, role: 'control', to: 5 }, { variant: 1, role: 'treatment', to: 5 }] }).percent, 5, 'with no ranges the percentages of the treatments are added, not the control');
   assert.equal(api.normalizeRollout({ id: '2024-04_no_roles', variants: [{ variant: 0, to: 10 }, { variant: 1, to: 10 }] }).percent, 10, 'with no roles, variant 0 is the control');
+  assert.equal(api.normalizeRollout({ id: '2024-04_zero_is_treatment', variants: [{ variant: 0, role: 'treatment', to: 99, ranges: ['0 - 9900'] }, { variant: 1, role: 'treatment', to: 1, ranges: ['9900 - 10000'] }] }).percent, 1, 'variant 0 is never read, even when the list calls it a treatment');
+  assert.equal(api.normalizeRollout({ id: '2024-04_zero_numeric', variants: [{ variant: '0', to: 80 }, { variant: 2, to: 4 }] }).percent, 4, 'a variant 0 written as text is the control too');
   assert.equal(api.normalizeRollout({ id: '2024-04_only_total', total: { to: 7 }, variants: [] }).percent, 7, 'the total is the last resort');
   assert.equal(api.rangesPercent(['1600 - 3000', '4000 - 5000']), 24, 'ranges are out of 10000');
   assert.equal(list[2].filters[0], 'Servers of 3 to 50 members');
