@@ -1016,6 +1016,8 @@ alter table ticket_settings add column if not exists hours_message text;
 alter table ticket_settings add column if not exists unclaimed_reminder_minutes integer not null default 0;
 alter table tickets add column if not exists reminded_at timestamptz;
 alter table ticket_settings add column if not exists auto_delete_closed_hours integer not null default 0;
+alter table ticket_settings add column if not exists transcript_channel_id text;
+alter table ticket_settings add column if not exists transcript_mode text not null default 'auto';
 
 -- Quick replies of the staff of tickets: a text saved with a name, sent in a ticket with one command.
 create table if not exists ticket_replies (

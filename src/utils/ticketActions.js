@@ -11,6 +11,7 @@ const { getTemplate } = require('../db/embedTemplates');
 const { build } = require('./embedBuilder');
 const { formatTicketChannelName, sanitizeChannelName } = require('./ticketName');
 const { buildTranscript } = require('./ticketTranscript');
+const { transcriptParts } = require('./transcriptDelivery');
 const { createTranscriptToken } = require('./transcriptToken');
 const { buildTicketControlRow, buildTicketMemberRow, buildClosedControlRow, buildWelcomeFallbackCard, buildTranscriptLinkRow, buildTicketClosedCard, buildRatingRow } = require('./ticketCards');
 const { textCard } = require('./caseCard');
@@ -233,12 +234,38 @@ async function generateAndStoreTranscript({ guild, channel, ticket, opener }) {
   return { html, messageCount, link };
 }
 
+/** The link row and the file of a transcript, as the server chose to send them (see transcriptDelivery.js). */
+function transcriptDelivery(settings, link, html, ticketNumber) {
+  const parts = transcriptParts(settings.transcript_mode, Boolean(link));
+  const fileName = `ticket-${ticketNumber}-transcript.html`;
+  return {
+    linkRow: parts.link ? buildTranscriptLinkRow(link) : null,
+    fileBuffer: parts.file ? Buffer.from(html, 'utf8') : null,
+    fileName,
+  };
+}
+
+/** Sends the transcript to the channel set for transcripts, if there is one (best effort, a missing channel or permission never blocks a close). */
+async function sendToTranscriptChannel({ guild, settings, ticket, messageCount, link, delivery, opener }) {
+  if (!settings.transcript_channel_id) return;
+  const channel = await guild.channels.fetch(settings.transcript_channel_id).catch(() => null);
+  if (!channel?.isTextBased?.()) return;
+  const desc = `${EMOJI.STAR} Transcript of ticket #${ticket.ticket_number} (${messageCount} message(s)). Opened by ${opener ? `<@${opener.id}>` : `<@${ticket.opener_id}>`}.${link && delivery.linkRow ? `\n[View online](${link})` : ''}`;
+  await channel
+    .send({
+      components: [textCard(desc, 0xffd563), ...(delivery.linkRow ? [delivery.linkRow] : [])],
+      flags: MessageFlags.IsComponentsV2,
+      ...(delivery.fileBuffer ? { files: [{ attachment: delivery.fileBuffer, name: delivery.fileName }] } : {}),
+    })
+    .catch((err) => logger.warn(`Ticket #${ticket.ticket_number}: could not post the transcript in the transcripts channel: ${err.message}`));
+}
+
 /** Generates and delivers a transcript (log channel + best-effort DM to the opener), without closing anything. */
 async function postTranscript({ guild, client, channel, ticket }) {
+  const settings = await settingsDb.getSettings(guild.id);
   const opener = await client.users.fetch(ticket.opener_id).catch(() => null);
   const { html, messageCount, link } = await generateAndStoreTranscript({ guild, channel, ticket, opener });
-  const fileName = `ticket-${ticket.ticket_number}-transcript.html`;
-  const linkRow = buildTranscriptLinkRow(link);
+  const delivery = transcriptDelivery(settings, link, html, ticket.ticket_number);
 
   await sendLog(
     client,
@@ -249,10 +276,12 @@ async function postTranscript({ guild, client, channel, ticket }) {
       color: 0x4b4f59,
       timestamp: new Date().toISOString(),
     },
-    linkRow
-      ? { components: [linkRow] }
-      : { files: [{ data: Buffer.from(html, 'utf8'), name: fileName }] },
+    {
+      ...(delivery.linkRow ? { components: [delivery.linkRow] } : {}),
+      ...(delivery.fileBuffer ? { files: [{ data: delivery.fileBuffer, name: delivery.fileName }] } : {}),
+    },
   ).catch((err) => logger.error('Ticket log (transcript) failed:', err));
+  await sendToTranscriptChannel({ guild, settings, ticket, messageCount, link, delivery, opener });
 
   return { link };
 }
@@ -281,12 +310,10 @@ async function closeTicket({ guild, client, channel, ticket, actor, reason }) {
   const closed = await db.closeTicket(ticket.id, { closedBy: actor.id, reason: finalReason });
 
   const { html, messageCount, link } = await generateAndStoreTranscript({ guild, channel, ticket, opener });
-  const fileBuffer = Buffer.from(html, 'utf8');
-  const fileName = `ticket-${ticket.ticket_number}-transcript.html`;
+  const delivery = transcriptDelivery(settings, link, html, ticket.ticket_number);
 
   const closedByLine = settings.hide_closing_user ? 'Closed by staff.' : `Closed by <@${actor.id}>.`;
   const staffCountLine = settings.log_staff_message_counts ? `\n**Staff replies:** ${ticket.staff_message_count ?? 0}` : '';
-  const logLinkRow = buildTranscriptLinkRow(link);
 
   await sendLog(
     client,
@@ -299,20 +326,20 @@ async function closeTicket({ guild, client, channel, ticket, actor, reason }) {
       footer: { text: `Opened by ${opener?.username ?? ticket.opener_id}` },
       timestamp: new Date().toISOString(),
     },
-    logLinkRow
-      ? { components: [logLinkRow] }
-      : { files: [{ data: fileBuffer, name: fileName }] },
+    {
+      ...(delivery.linkRow ? { components: [delivery.linkRow] } : {}),
+      ...(delivery.fileBuffer ? { files: [{ data: delivery.fileBuffer, name: delivery.fileName }] } : {}),
+    },
   ).catch((err) => logger.error('Ticket log (close) failed:', err));
 
   if (settings.closed_log_channel_id) {
     const logChannel = await guild.channels.fetch(settings.closed_log_channel_id).catch(() => null);
     if (logChannel) {
       const desc = `${EMOJI.DENY} Ticket #${ticket.ticket_number} closed. ${closedByLine}\n**Reason:** ${finalReason}\n**Messages:** ${messageCount}${staffCountLine}${link ? `\n[View transcript online](${link})` : ''}`;
-      const dedicatedLinkRow = buildTranscriptLinkRow(link);
       const payload = {
-        components: [textCard(desc, 0xfe6465), ...(dedicatedLinkRow ? [dedicatedLinkRow] : [])],
+        components: [textCard(desc, 0xfe6465), ...(delivery.linkRow ? [delivery.linkRow] : [])],
         flags: MessageFlags.IsComponentsV2,
-        ...(dedicatedLinkRow ? {} : { files: [{ attachment: fileBuffer, name: fileName }] }),
+        ...(delivery.fileBuffer ? { files: [{ attachment: delivery.fileBuffer, name: delivery.fileName }] } : {}),
       };
       await logChannel
         .send(payload)
@@ -320,17 +347,18 @@ async function closeTicket({ guild, client, channel, ticket, actor, reason }) {
     }
   }
 
+  await sendToTranscriptChannel({ guild, settings, ticket, messageCount, link, delivery, opener });
+
   if (opener && settings.dm_user_on_close) {
-    const linkRow = buildTranscriptLinkRow(link);
+    const linkRow = delivery.linkRow;
     const card = buildTicketClosedCard({ ticket, guild, actor, reason: finalReason, channel, hideCloser: settings.hide_closing_user });
     const rows = [card];
     if (settings.rating_enabled) rows.push(buildRatingRow(ticket.id));
     if (linkRow) rows.push(linkRow);
 
-    // With a web link available, skip the raw .html attachment in the DM — Discord auto-previews
-    // small text attachments as a syntax-highlighted code block, which looks noisy for an end user.
-    // Without one (web server not configured), the file is the only way to deliver it, so keep it.
-    const dmPayload = linkRow ? { components: rows, flags: MessageFlags.IsComponentsV2 } : { components: rows, flags: MessageFlags.IsComponentsV2, files: [new AttachmentBuilder(fileBuffer, { name: fileName })] };
+    // With "auto" and a web link, the raw .html attachment is skipped in the DM (Discord previews small text files as a code block,
+    // which looks noisy); the file goes when the server chose it or when there is no link.
+    const dmPayload = { components: rows, flags: MessageFlags.IsComponentsV2, ...(delivery.fileBuffer ? { files: [new AttachmentBuilder(delivery.fileBuffer, { name: delivery.fileName })] } : {}) };
 
     await opener.send(dmPayload).catch(() => logger.warn(`Ticket #${ticket.ticket_number}: could not DM transcript to opener.`));
   }
@@ -472,4 +500,5 @@ module.exports = {
   removeMember,
   renameTicket,
   postTranscript,
+  buildTranscriptLink,
 };

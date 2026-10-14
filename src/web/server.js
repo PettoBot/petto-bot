@@ -11,7 +11,7 @@ const { verifyToken } = require('../utils/verifyToken');
 const { verifyTranscriptToken } = require('../utils/transcriptToken');
 const { getConfig } = require('../db/verificationConfig');
 const { isRedeemed, claimRedemption, releaseRedemption } = require('../db/verificationRedemptions');
-const { getTicketById } = require('../db/tickets');
+const { getTicketById, getTicketByNumber } = require('../db/tickets');
 const { logVerification } = require('../utils/verificationLog');
 const { sendVerifiedDM } = require('../utils/verifyMessage');
 const { createBackup, listBackups, getBackup, recordAudit, vault } = require('../db/backups');
@@ -296,6 +296,24 @@ function startServer(client) {
       } catch (err) {
         logger.error(`Dashboard suggestion votes failed for guild ${req.params.guildId}:`, err);
         res.status(500).json({ ok: false, message: 'The votes could not be read. Try again.' });
+      }
+    });
+
+    // The link to the saved transcript of a ticket, for the "Closed" list of the dashboard (the same signed link the log shows).
+    app.post('/api/dashboard/guild/:guildId/tickets/transcript', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await dashboardCardAccess(req, res);
+      if (!access) return;
+      try {
+        const number = Number(req.body?.number);
+        const ticket = Number.isInteger(number) && number > 0 ? await getTicketByNumber(access.guild.id, number) : null;
+        if (!ticket) { res.status(404).json({ ok: false, message: 'That ticket does not exist.' }); return; }
+        if (!ticket.transcript_html) { res.status(404).json({ ok: false, message: 'This ticket has no saved transcript yet.' }); return; }
+        const link = require('../utils/ticketActions').buildTranscriptLink({ guild: access.guild, ticket });
+        if (!link) { res.status(400).json({ ok: false, message: 'The transcript viewer is not set up in the bot.' }); return; }
+        res.json({ ok: true, link });
+      } catch (err) {
+        logger.error(`Dashboard ticket transcript failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, message: 'The transcript could not be opened. Try again.' });
       }
     });
 
