@@ -1974,6 +1974,12 @@ create table if not exists voice_temp_channels (
 
 create index if not exists idx_voice_temp_guild on voice_temp_channels(guild_id);
 
+-- Permissions of the temporary rooms; everything starts off, so a server keeps behaving as before until it turns something on.
+alter table voice_configs add column if not exists sync_category_permissions boolean not null default false;
+alter table voice_configs add column if not exists access_role_ids text[] not null default '{}';
+alter table voice_configs add column if not exists privacy_mode text not null default 'public' check (privacy_mode in ('public', 'locked', 'hidden'));
+alter table voice_configs add column if not exists owner_permissions text[] not null default '{manage_channels,move_members}';
+
 alter table voice_configs enable row level security;
 alter table voice_temp_channels enable row level security;
 

@@ -1,6 +1,7 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { INFO_ACCENT, infoPayload, clip, stamp, line } = require('../../utils/infoCard');
 const { badgeList, badgeText } = require('../../utils/userBadges');
+const { dominantColor } = require('../../utils/dominantColor');
 
 const ROLE_LIST_LIMIT = 800;
 
@@ -44,7 +45,13 @@ module.exports = {
     const badges = badgeList(user, member);
     const globalAvatar = user.displayAvatarURL({ size: 1024 });
     const serverAvatar = member?.avatar ? member.displayAvatarURL({ size: 1024 }) : null;
-    const banner = user.bannerURL?.({ size: 1024 }) ?? null;
+    // A banner set for this server wins over the global one.
+    const serverBanner = member?.banner ? member.bannerURL({ size: 1024 }) : null;
+    const globalBanner = user.bannerURL?.({ size: 1024 }) ?? null;
+    const banner = serverBanner ?? globalBanner;
+    const shownAvatar = serverAvatar ?? globalAvatar;
+    const accent = (await dominantColor(member?.avatar ? member.displayAvatarURL({ extension: 'png', size: 128 }) : user.displayAvatarURL({ extension: 'png', size: 128 })))
+      ?? (member?.displayColor || user.accentColor || INFO_ACCENT);
     const displayName = member?.displayName ?? user.globalName ?? user.username;
 
     const sections = [
@@ -78,9 +85,9 @@ module.exports = {
     }
 
     await interaction.reply(infoPayload({
-      accent: member?.displayColor || user.accentColor || INFO_ACCENT,
+      accent,
       title: displayName,
-      thumbnail: serverAvatar ?? globalAvatar,
+      thumbnail: shownAvatar,
       banner,
       subtitle: [`<@${user.id}>${user.bot ? ' · Bot' : ''}`],
       sections,
@@ -88,7 +95,8 @@ module.exports = {
       buttons: [
         { label: serverAvatar ? 'Global avatar' : 'Avatar', url: globalAvatar },
         { label: 'Server avatar', url: serverAvatar },
-        { label: 'Banner', url: banner },
+        { label: serverBanner ? 'Global banner' : 'Banner', url: globalBanner },
+        { label: 'Server banner', url: serverBanner },
       ],
     }));
   },

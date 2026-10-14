@@ -1,4 +1,5 @@
-const { Events, ChannelType, PermissionFlagsBits } = require('discord.js');
+const { Events, ChannelType } = require('discord.js');
+const { buildOverwrites, startingFlags } = require('../utils/voiceMasterPermissions');
 const voiceDb = require('../db/voiceMaster');
 const logger = require('../utils/logger');
 
@@ -15,13 +16,19 @@ module.exports = {
         const creator = guild.channels.cache.get(config.creator_channel_id);
         const name = renderName(config.default_name, member);
         const parent = await resolveParentCategory(guild, config.category_id, creator?.parentId);
-        const channel = await guild.channels.create({ name, type: ChannelType.GuildVoice, parent: parent?.id ?? null, userLimit: config.default_limit || 0, permissionOverwrites: [{ id: guild.roles.everyone.id, allow: [PermissionFlagsBits.Connect] }, { id: member.id, allow: [PermissionFlagsBits.Connect, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.MoveMembers] }] });
+        const create = (syncCategory) => guild.channels.create({ name, type: ChannelType.GuildVoice, parent: parent?.id ?? null, userLimit: config.default_limit || 0, permissionOverwrites: buildOverwrites({ guild, config, ownerId: member.id, parent, syncCategory }) });
+        // Copying the category can ask for a permission the bot does not have; the room is then made without the copy rather than not at all.
+        const channel = await create(true).catch(async (err) => {
+          if (!config.sync_category_permissions) throw err;
+          logger.warn(`VoiceMaster could not copy the category permissions in guild ${guild.id}: ${err.message}`);
+          return create(false);
+        });
         if (config.category_id !== (parent?.id ?? null)) {
           await voiceDb.upsertConfig(guild.id, { category_id: parent?.id ?? null }).catch((err) => {
             logger.warn(`Could not repair VoiceMaster category for guild ${guild.id}:`, err.message);
           });
         }
-        await voiceDb.createTemp({ guild_id: guild.id, channel_id: channel.id, owner_id: member.id, trusted_user_ids: [], banned_user_ids: [], is_locked: false, is_ghosted: false, user_limit: config.default_limit || 0 });
+        await voiceDb.createTemp({ guild_id: guild.id, channel_id: channel.id, owner_id: member.id, trusted_user_ids: [], banned_user_ids: [], ...startingFlags(config), user_limit: config.default_limit || 0 });
         await member.voice.setChannel(channel).catch(() => {});
       }
       if (oldState.channelId && oldState.channelId !== newState.channelId) {
