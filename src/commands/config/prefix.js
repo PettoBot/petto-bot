@@ -3,6 +3,7 @@ const { ensureGuild, updateGuild } = require('../../db/guilds');
 const { setCachedPrefix } = require('../../events/messageCreateCommands');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { readPrefixInput, isValidPrefix } = require('../../utils/prefixInput');
 
 module.exports = {
   aliases: ['pfx'],
@@ -23,9 +24,9 @@ module.exports = {
       return;
     }
 
-    const newPrefix = requestedPrefix.trim();
-    if (!newPrefix || newPrefix.length > 5 || /\s/.test(newPrefix)) {
-      await interaction.reply({ content: 'Prefix must be 1 to 5 characters and cannot contain spaces.', flags: MessageFlags.Ephemeral });
+    const newPrefix = readPrefixInput(requestedPrefix);
+    if (!isValidPrefix(newPrefix)) {
+      await interaction.reply({ content: 'Prefix must be 1 to 5 characters and cannot contain spaces. Write it like `prefix ?` (or `prefix set ?`).', flags: MessageFlags.Ephemeral });
       return;
     }
 
