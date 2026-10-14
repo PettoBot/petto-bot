@@ -181,6 +181,25 @@ alter table mod_actions drop constraint if exists mod_actions_type_check;
 alter table mod_actions add constraint mod_actions_type_check
   check (type in ('ban', 'unban', 'kick', 'mute', 'unmute', 'tempban', 'tempmute', 'warn', 'softban', 'jail', 'unjail', 'hardban'));
 
+-- Filters of Petto's own AutoMod made from templates (links, invites, emojis...). They act after the message is sent and use
+-- the same sanctions as the rest of the moderation. Nothing exists until a server adds one.
+create table if not exists automod_rules (
+  id                bigserial primary key,
+  guild_id          text not null references guilds(guild_id) on delete cascade,
+  name              text not null,
+  template          text not null,
+  options           jsonb not null default '{}'::jsonb,
+  action            text not null default 'delete' check (action in ('delete', 'warn', 'mute', 'kick')),
+  mute_minutes      integer not null default 10,
+  exempt_role_ids   text[] not null default '{}',
+  exempt_channel_ids text[] not null default '{}',
+  enabled           boolean not null default true,
+  hits              integer not null default 0,
+  created_at        timestamptz not null default now()
+);
+create index if not exists idx_automod_rules_guild on automod_rules(guild_id);
+alter table automod_rules enable row level security;
+
 -- A hard ban only the server owner and the antinuke admins can lift. Anyone else who unbans the user gets the ban put back.
 create table if not exists hard_bans (
   guild_id   text not null references guilds(guild_id) on delete cascade,
@@ -616,6 +635,43 @@ create table if not exists antinuke_config (
 );
 
 alter table antinuke_config enable row level security;
+alter table antinuke_config add column if not exists whitelist_role_ids text[] not null default '{}';
+alter table antinuke_config add column if not exists alert_channel_id text;
+
+-- One row per protection the server tuned. A protection without a row keeps the older behavior (the single switch above
+-- for the protections that existed, off for the new ones), so nothing starts protecting or punishing by surprise.
+create table if not exists antinuke_rules (
+  guild_id           text not null references guilds(guild_id) on delete cascade,
+  rule               text not null,
+  enabled            boolean not null default false,
+  threshold          integer not null default 3,
+  window_seconds     integer not null default 10,
+  action             text not null default 'quarantine' check (action in ('alert', 'quarantine', 'kick', 'ban')),
+  alert_channel_id   text,
+  whitelist_ids      text[] not null default '{}',
+  whitelist_role_ids text[] not null default '{}',
+  updated_at         timestamptz not null default now(),
+  primary key (guild_id, rule)
+);
+alter table antinuke_rules enable row level security;
+
+-- Every time a protection acted, with what can be put back (deleted channels and roles, lifted bans, the roles taken away).
+create table if not exists antinuke_events (
+  id             bigserial primary key,
+  guild_id       text not null references guilds(guild_id) on delete cascade,
+  rule           text not null,
+  executor_id    text not null,
+  executor_name  text,
+  action_count   integer not null default 0,
+  action         text not null default 'alert',
+  detail         text,
+  restorable     jsonb not null default '[]'::jsonb,
+  previous_roles text[] not null default '{}',
+  restored_at    timestamptz,
+  created_at     timestamptz not null default now()
+);
+create index if not exists idx_antinuke_events_guild on antinuke_events(guild_id, created_at desc);
+alter table antinuke_events enable row level security;
 
 -- Server configuration snapshots. The JSON is deliberately limited to Discord
 -- configuration and never contains bot credentials, access tokens, or message content.

@@ -1,21 +1,26 @@
-const { getConfig } = require('../db/antinuke');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, AuditLogEvent } = require('discord.js');
+const { getConfig, getRules, createEvent } = require('../db/antinuke');
+const { RULES, resolveRule } = require('./antiNukeRules');
+const { MAX_ITEMS, describeItem } = require('./antiNukeRestore');
+const { textCard } = require('./caseCard');
 const { sendLog } = require('../logging/engine');
 const { EMOJI } = require('./emojis');
 const logger = require('./logger');
 
-// In-memory sliding window of destructive-action timestamps, per guild per executor.
-const actionsByGuild = new Map(); // guildId -> Map<executorId, timestamp[]>
-const triggeredByGuild = new Map(); // guildId -> Map<executorId, expiresAt>
+const RESTORE_PREFIX = 'an_restore';
 
-function recordAction(guildId, executorId, windowSeconds) {
-  const guildMap = actionsByGuild.get(guildId) ?? new Map();
+// In-memory sliding window of destructive actions, per guild per protection per executor. Each one keeps what is needed
+// to undo it, so when a protection answers it can say what it can put back.
+const actionsByKey = new Map(); // `${guildId}:${counterKey}:${executorId}` -> [{ ts, label, undo }]
+const triggeredByKey = new Map(); // same key -> expiresAt
+
+function recordAction(key, windowSeconds, label, undo) {
   const now = Date.now();
   const windowMs = windowSeconds * 1000;
-  const recent = (guildMap.get(executorId) ?? []).filter((ts) => now - ts < windowMs);
-  recent.push(now);
-  guildMap.set(executorId, recent);
-  actionsByGuild.set(guildId, guildMap);
-  return recent.length;
+  const recent = (actionsByKey.get(key) ?? []).filter((entry) => now - entry.ts < windowMs);
+  recent.push({ ts: now, label, undo: undo ?? null });
+  actionsByKey.set(key, recent);
+  return recent;
 }
 
 /** Best-effort audit log lookup for who performed a destructive action on `targetId`. */
@@ -45,82 +50,154 @@ async function findExecutorByRecency(guild, auditLogType) {
   }
 }
 
-/**
- * Tracks a destructive action (ban, channel delete, role delete, emoji
- * delete, webhook creation) against its executor. Once the same executor
- * crosses `action_threshold` such actions within `window_seconds`, responds
- * automatically: bans the executor if it's a bot, or strips all roles
- * ("quarantine") if it's a human — the guild owner and any whitelisted id
- * are never auto-actioned.
- */
-async function handleExecutor(client, guild, executor, config, actionLabel) {
-  if (!executor) return;
-  if (executor.id === client.user.id) return;
-  if (executor.id === guild.ownerId) return;
-  if (config.whitelist_ids?.includes(executor.id)) return;
-
-  const count = recordAction(guild.id, executor.id, config.window_seconds);
-  if (count < config.action_threshold) return;
-
-  // Several Discord events can arrive concurrently after the threshold is
-  // crossed. Trigger once per window so anti-nuke does not repeatedly ban the
-  // same bot or spam role-removal requests for the same human.
-  const now = Date.now();
-  const triggered = triggeredByGuild.get(guild.id) ?? new Map();
-  const triggeredUntil = triggered.get(executor.id) ?? 0;
-  if (triggeredUntil > now) return;
-  triggered.set(executor.id, now + config.window_seconds * 1000);
-  for (const [id, expiresAt] of triggered) {
-    if (expiresAt <= now) triggered.delete(id);
+async function isTrusted(client, guild, executor, eff) {
+  if (executor.id === client.user.id) return true;
+  if (executor.id === guild.ownerId) return true;
+  if (eff.whitelistIds.includes(executor.id)) return true;
+  if (eff.whitelistRoleIds.length) {
+    const member = guild.members.cache.get(executor.id) ?? (await guild.members.fetch(executor.id).catch(() => null));
+    if (member && eff.whitelistRoleIds.some((id) => member.roles.cache.has(id))) return true;
   }
-  triggeredByGuild.set(guild.id, triggered);
+  return false;
+}
 
-  await sendLog(client, guild.id, 'automod', {
-    author: { name: executor.username, icon_url: executor.displayAvatarURL?.({ extension: 'png', size: 128 }) ?? undefined },
-    description: `${EMOJI.DENY} **Anti-nuke triggered** — <@${executor.id}> performed ${count} destructive action(s) (${actionLabel}) within ${config.window_seconds}s.`,
-    color: 0xfe6465,
-    footer: { text: `User ID: ${executor.id}` },
-    timestamp: new Date().toISOString(),
-  }).catch((err) => logger.error('Anti-nuke: failed to send alert:', err));
-
+/** What the protection does to the account, from the action chosen. Answers { text, previousRoles }. */
+async function punish(guild, executor, action) {
+  if (action === 'alert') return { text: 'Only an alert, nobody was punished.', previousRoles: [] };
   try {
-    if (executor.bot) {
+    if (executor.bot || action === 'ban') {
       await guild.members.ban(executor.id, { reason: 'Anti-nuke: automated response to a burst of destructive actions' });
-      return;
+      return { text: `Banned ${executor.bot ? 'the bot' : 'the account'}.`, previousRoles: [] };
     }
-
     const member = await guild.members.fetch(executor.id).catch(() => null);
-    if (!member || !member.manageable) return;
-
+    if (!member) return { text: 'The account is not in the server anymore.', previousRoles: [] };
+    if (action === 'kick') {
+      if (!member.kickable) return { text: 'Could not kick the account (its role is above mine).', previousRoles: [] };
+      await member.kick('Anti-nuke: automated response to a burst of destructive actions');
+      return { text: 'Kicked the account.', previousRoles: [] };
+    }
+    if (!member.manageable) return { text: 'Could not take the roles (the account is above my role).', previousRoles: [] };
     const previousRoles = member.roles.cache.filter((r) => r.id !== guild.id).map((r) => r.id);
     await member.roles.set([], 'Anti-nuke: quarantine after a burst of destructive actions');
-
-    await sendLog(client, guild.id, 'automod', {
-      description: `${EMOJI.ALERT} Quarantined <@${executor.id}> (all roles removed). Previous roles: ${previousRoles.map((id) => `<@&${id}>`).join(' ') || 'none'}. Restore manually once reviewed.`,
-      color: 0xfe6465,
-      timestamp: new Date().toISOString(),
-    }).catch(() => {});
+    return { text: 'Took all its roles (quarantine).', previousRoles };
   } catch (err) {
     logger.error('Anti-nuke: response action failed:', err);
+    return { text: 'The response failed, check my permissions.', previousRoles: [] };
   }
+}
+
+/** Undoes right away what must not stay (a bot that was added, a dangerous role that was given). */
+async function applyInline(guild, items) {
+  const lines = [];
+  for (const item of items) {
+    try {
+      if (item.kind === 'kick_bot') {
+        await guild.members.kick(item.id, 'Anti-nuke: bot added without permission');
+        lines.push('Removed the bot that was added.');
+      } else if (item.kind === 'remove_roles') {
+        const member = await guild.members.fetch(item.userId).catch(() => null);
+        if (member) {
+          await member.roles.remove(item.roleIds, 'Anti-nuke: dangerous role given');
+          lines.push(`Took the dangerous role(s) from <@${item.userId}>.`);
+        }
+      }
+    } catch (err) {
+      logger.warn(`Anti-nuke inline undo ${item.kind} failed in ${guild.id}: ${err.message}`);
+    }
+  }
+  return lines;
+}
+
+async function sendAlert(client, guild, eff, event, lines, canRestore) {
+  const meta = RULES[eff.rule];
+  const text = [
+    `${EMOJI.DENY} **Anti-nuke · ${meta.label}**`,
+    `<@${event.executor_id}> did ${event.action_count} action(s) (${event.detail}) within ${eff.windowSeconds}s.`,
+    ...lines,
+    canRestore ? `-# Event #${event.id}. Press restore to put back what can be put back.` : `-# Event #${event.id}`,
+  ].join('\n');
+
+  const row = canRestore
+    ? new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`${RESTORE_PREFIX}::${event.id}`).setLabel('Restore').setStyle(ButtonStyle.Success))
+    : null;
+
+  if (eff.alertChannelId) {
+    const channel = await guild.channels.fetch(eff.alertChannelId).catch(() => null);
+    if (channel?.isTextBased?.()) {
+      const sent = await channel
+        .send({ components: [textCard(text, 0xff6b6b), ...(row ? [row] : [])], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } })
+        .then(() => true)
+        .catch((err) => {
+          logger.warn(`Anti-nuke: could not send the alert to ${eff.alertChannelId}: ${err.message}`);
+          return false;
+        });
+      if (sent) return;
+    }
+  }
+  await sendLog(client, guild.id, 'automod', { description: text, color: 0xff6b6b, timestamp: new Date().toISOString() }, row ? { components: [row] } : {}).catch((err) => logger.error('Anti-nuke: failed to send alert:', err));
+}
+
+/**
+ * Tracks one action against its executor. When the same account crosses the threshold of that protection within its
+ * window, the protection answers once (alert, quarantine, kick or ban), keeps what can be put back and tells the staff.
+ * The owner, Petto and anyone in the whitelists (accounts or roles) are never touched.
+ */
+async function track(client, guild, { rule, auditLogType, targetId, byRecency = false, actionLabel, undo = null, inline = null, executor: knownExecutor = null }) {
+  const [config, rows] = await Promise.all([getConfig(guild.id), getRules(guild.id)]);
+  const eff = resolveRule(config, rows, rule);
+  if (!eff?.enabled) return;
+
+  const executor = knownExecutor ?? (byRecency ? await findExecutorByRecency(guild, auditLogType) : await findExecutorByTarget(guild, auditLogType, targetId));
+  if (!executor) return;
+  if (await isTrusted(client, guild, executor, eff)) return;
+
+  const key = `${guild.id}:${eff.counterKey}:${executor.id}`;
+  const recent = recordAction(key, eff.windowSeconds, actionLabel, undo);
+  if (inline) recent[recent.length - 1].inline = inline;
+  if (recent.length < eff.threshold) return;
+
+  // Several events arrive together once the threshold is crossed: answer once per window.
+  const now = Date.now();
+  if ((triggeredByKey.get(key) ?? 0) > now) return;
+  triggeredByKey.set(key, now + eff.windowSeconds * 1000);
+  for (const [k, expiresAt] of triggeredByKey) if (expiresAt <= now) triggeredByKey.delete(k);
+
+  const restorable = recent.map((entry) => entry.undo).filter(Boolean).slice(-MAX_ITEMS);
+  const inlineItems = recent.flatMap((entry) => entry.inline ?? []);
+
+  const response = await punish(guild, executor, eff.action);
+  const lines = [response.text, ...(await applyInline(guild, inlineItems))];
+
+  let event = { id: '?', executor_id: executor.id, action_count: recent.length, detail: actionLabel };
+  try {
+    event = await createEvent({
+      guild_id: guild.id,
+      rule,
+      executor_id: executor.id,
+      executor_name: executor.username ?? null,
+      action_count: recent.length,
+      action: eff.action,
+      detail: actionLabel,
+      restorable,
+      previous_roles: response.previousRoles,
+    });
+  } catch (err) {
+    logger.error('Anti-nuke: could not save the event:', err);
+  }
+
+  if (restorable.length) lines.push(`Can be put back: ${restorable.slice(0, 5).map(describeItem).join(', ')}${restorable.length > 5 ? ` and ${restorable.length - 5} more` : ''}.`);
+  if (response.previousRoles.length) lines.push(`Its roles were saved (${response.previousRoles.length}).`);
+  await sendAlert(client, guild, eff, event, lines, event.id !== '?' && (restorable.length > 0 || response.previousRoles.length > 0));
 }
 
 /** Tracks a destructive action that has a clean target id to correlate against the audit log (ban, channel/role/emoji delete). */
-async function trackDestructiveAction(client, guild, { auditLogType, targetId, actionLabel }) {
-  const config = await getConfig(guild.id);
-  if (!config?.enabled) return;
-
-  const executor = await findExecutorByTarget(guild, auditLogType, targetId);
-  await handleExecutor(client, guild, executor, config, actionLabel);
+function trackDestructiveAction(client, guild, options) {
+  return track(client, guild, { rule: options.rule ?? 'ban', ...options });
 }
 
 /** Tracks a destructive action with no clean target id (e.g. webhook creation, only known via the channel it fired on). */
-async function trackDestructiveActionByRecency(client, guild, { auditLogType, actionLabel }) {
-  const config = await getConfig(guild.id);
-  if (!config?.enabled) return;
-
-  const executor = await findExecutorByRecency(guild, auditLogType);
-  await handleExecutor(client, guild, executor, config, actionLabel);
+function trackDestructiveActionByRecency(client, guild, options) {
+  return track(client, guild, { rule: options.rule ?? 'webhook', byRecency: true, ...options });
 }
 
-module.exports = { trackDestructiveAction, trackDestructiveActionByRecency };
+module.exports = { RESTORE_PREFIX, track, trackDestructiveAction, trackDestructiveActionByRecency, AuditLogEvent };

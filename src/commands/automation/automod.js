@@ -7,6 +7,9 @@ const { findKnownMalicious, markDeveloperAlerted } = require('../../db/malicious
 const { notifyMaliciousLink } = require('../../utils/maliciousLinkAlerts');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const rulesDb = require('../../db/automodRules');
+const native = require('../../utils/nativeAutomod');
+const { TEMPLATES, TEMPLATE_IDS, PACKS } = require('../../utils/automodTemplates');
 const { syncGuildAutoMod, getAutoModStats } = require('../../utils/autoModManager');
 const { isPettoOperator } = require('../../utils/autoModControl');
 const logger = require('../../utils/logger');
@@ -63,6 +66,42 @@ module.exports = {
         .addBooleanOption((opt) => opt.setName('enabled').setDescription('Turn anti-nuke on/off').setRequired(true))
         .addIntegerOption((opt) => opt.setName('threshold').setDescription('Destructive actions within the window that trigger a response (default 5)').setMinValue(2).setRequired(false))
         .addIntegerOption((opt) => opt.setName('window_seconds').setDescription('Time window in seconds (default 10)').setMinValue(2).setMaxValue(300).setRequired(false)),
+    )
+
+    .addSubcommandGroup((group) =>
+      group
+        .setName('template')
+        .setDescription("Filters of Petto's own AutoMod made from ready templates (links, invites, emojis...).")
+        .addSubcommand((sub) =>
+          sub
+            .setName('add')
+            .setDescription('Add a filter from a template.')
+            .addStringOption((opt) => opt.setName('template').setDescription('What to filter').addChoices(...TEMPLATE_IDS.slice(0, 25).map((id) => ({ name: native.NAMES[id], value: id }))).setRequired(true))
+            .addStringOption((opt) => opt.setName('action').setDescription('What happens (default delete the message)').addChoices({ name: 'delete only', value: 'delete' }, { name: 'warn', value: 'warn' }, { name: 'mute', value: 'mute' }, { name: 'kick', value: 'kick' }))
+            .addIntegerOption((opt) => opt.setName('mute_minutes').setDescription('Minutes of mute when the action is mute (default 10)').setMinValue(1).setMaxValue(40320))
+            .addIntegerOption((opt) => opt.setName('amount').setDescription('The number some templates use (emojis allowed, words in caps, repeated characters...)').setMinValue(0).setMaxValue(30)),
+        )
+        .addSubcommand((sub) => sub.setName('list').setDescription('See the filters of this server.'))
+        .addSubcommand((sub) => sub.setName('remove').setDescription('Remove a filter.').addIntegerOption((opt) => opt.setName('id').setDescription('The number of the filter (see list)').setMinValue(1).setRequired(true)))
+        .addSubcommand((sub) => sub.setName('toggle').setDescription('Turn a filter on or off.').addIntegerOption((opt) => opt.setName('id').setDescription('The number of the filter (see list)').setMinValue(1).setRequired(true)).addBooleanOption((opt) => opt.setName('enabled').setDescription('On or off').setRequired(true))),
+    )
+
+    .addSubcommandGroup((group) =>
+      group
+        .setName('native')
+        .setDescription("Rules in Discord's own AutoMod made from the same templates and packs.")
+        .addSubcommand((sub) =>
+          sub
+            .setName('add')
+            .setDescription("Make a rule in Discord's AutoMod from a template or a pack.")
+            .addStringOption((opt) => opt.setName('template').setDescription('One template').addChoices(...TEMPLATE_IDS.slice(0, 25).map((id) => ({ name: native.NAMES[id], value: id }))))
+            .addStringOption((opt) => opt.setName('pack').setDescription('Or a pack of templates in one rule').addChoices(...Object.keys(PACKS).map((id) => ({ name: native.PACK_NAMES[id], value: id }))))
+            .addChannelOption((opt) => opt.setName('alert_channel').setDescription('Where Discord sends an alert when it blocks something').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
+            .addIntegerOption((opt) => opt.setName('timeout_minutes').setDescription('Also mute the member for these minutes').setMinValue(1).setMaxValue(40320))
+            .addIntegerOption((opt) => opt.setName('amount').setDescription('The number some templates use (emojis allowed, words in caps...)').setMinValue(0).setMaxValue(30)),
+        )
+        .addSubcommand((sub) => sub.setName('list').setDescription("See the rules of Discord's AutoMod in this server."))
+        .addSubcommand((sub) => sub.setName('remove').setDescription('Remove a rule made from these templates.').addStringOption((opt) => opt.setName('rule').setDescription('The rule ID (see list)').setRequired(true))),
     )
 
     // Prefix-only owner/developer control. The dispatcher unlocks this hidden path
@@ -153,6 +192,8 @@ module.exports = {
     if (group === 'silent-channel') return silentChannel(interaction, sub);
     if (group === 'immune') return immune(interaction, sub);
     if (group === 'antinuke-whitelist') return antinukeWhitelist(interaction, sub);
+    if (group === 'template') return templateFilters(interaction, sub);
+    if (group === 'native') return nativeRules(interaction, sub);
   },
 };
 
@@ -450,5 +491,76 @@ async function antinukeWhitelist(interaction, sub) {
   } else {
     await removeWhitelist(interaction.guild.id, user.id);
     await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  ${user} removed from the anti-nuke whitelist.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  }
+}
+
+const AMOUNT_KEY = { emojis: 'max', caps: 'words', repeated_characters: 'times', spoilers: 'max', headings: 'level' };
+
+async function templateFilters(interaction, sub) {
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  await ensureGuild(interaction.guild.id);
+  const guildId = interaction.guild.id;
+  const show = (text, color = 0xa5ea7a) => interaction.editReply({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2 });
+
+  if (sub === 'list') {
+    const rows = await rulesDb.listRules(guildId);
+    if (!rows.length) return show('No filters yet. Add one with `automod template add`.', 0x4b4f59);
+    return show(['### Template filters', ...rows.map((r) => `**#${r.id}** ${r.enabled ? EMOJI.APPROVE : '▫️'} ${r.name} · ${r.action}${r.action === 'mute' ? ` ${r.mute_minutes}m` : ''} · ${r.hits} hit(s)`)].join('\n'), 0x4b4f59);
+  }
+  if (sub === 'remove') {
+    const removed = await rulesDb.deleteRule(guildId, interaction.options.getInteger('id', true));
+    return show(removed ? `${EMOJI.APPROVE}  Filter removed.` : 'That filter does not exist.', removed ? 0xa5ea7a : 0xff6b6b);
+  }
+  if (sub === 'toggle') {
+    const enabled = interaction.options.getBoolean('enabled', true);
+    const updated = await rulesDb.updateRule(guildId, interaction.options.getInteger('id', true), { enabled });
+    return show(updated ? `${EMOJI.APPROVE}  Filter ${enabled ? 'on' : 'off'}.` : 'That filter does not exist.', updated ? 0xa5ea7a : 0xff6b6b);
+  }
+
+  const id = interaction.options.getString('template', true);
+  const amount = interaction.options.getInteger('amount');
+  const options = amount !== null && AMOUNT_KEY[id] ? { [AMOUNT_KEY[id]]: amount } : {};
+  try {
+    const row = await rulesDb.createRule(guildId, {
+      name: native.NAMES[id],
+      template: id,
+      options,
+      action: interaction.options.getString('action') ?? 'delete',
+      mute_minutes: interaction.options.getInteger('mute_minutes') ?? 10,
+    });
+    return show(`${EMOJI.APPROVE}  Filter **#${row.id} ${row.name}** is on: ${row.action}. Staff with Manage Messages and the immune roles are never checked.`);
+  } catch (err) {
+    if (err.userFacing) return show(err.message, 0xff6b6b);
+    throw err;
+  }
+}
+
+async function nativeRules(interaction, sub) {
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  const show = (text, color = 0xa5ea7a) => interaction.editReply({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2 });
+  try {
+    if (sub === 'list') {
+      const { rules, used, limits } = await native.listNative(interaction.guild);
+      const lines = rules.map((r) => `${r.enabled ? EMOJI.APPROVE : '▫️'} **${r.name}** · \`${r.id}\`${r.official ? ' · Petto Official' : ''}`);
+      return show(['### AutoMod of Discord', `Keyword rules ${used.keyword}/${limits.keyword}`, ...lines].join('\n').slice(0, 3800), 0x4b4f59);
+    }
+    if (sub === 'remove') {
+      await native.deleteNative(interaction.guild, interaction.options.getString('rule', true).trim());
+      return show(`${EMOJI.APPROVE}  Rule removed.`);
+    }
+    const template = interaction.options.getString('template');
+    const pack = interaction.options.getString('pack');
+    if (!template && !pack) return show('Pick a template or a pack.', 0xff6b6b);
+    const amount = interaction.options.getInteger('amount');
+    const made = await native.createNative(interaction.guild, {
+      template, pack,
+      options: amount !== null && template && AMOUNT_KEY[template] ? { [AMOUNT_KEY[template]]: amount } : {},
+      alertChannelId: interaction.options.getChannel('alert_channel')?.id,
+      timeoutMinutes: interaction.options.getInteger('timeout_minutes'),
+    });
+    return show(`${EMOJI.APPROVE}  Rule **${made.name}** is on in Discord's AutoMod. Discord blocks the message before it is sent.`);
+  } catch (err) {
+    if (err.userFacing) return show(err.message, 0xff6b6b);
+    throw err;
   }
 }

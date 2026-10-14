@@ -1,6 +1,7 @@
 const { Events, PermissionFlagsBits } = require('discord.js');
 const { sendAs } = require('../utils/senderIdentity');
 const { getConfig, listSilentChannelsCached } = require('../db/automod');
+const { listCompiled: listAutomodRules, countHit } = require('../db/automodRules');
 const { findBannedWord, isExcessiveCaps, hasMassMentions, hasUnauthorizedInvite, isRepeatFlood } = require('../utils/automodChecks');
 const { applyAutomodAction } = require('../utils/automodAction');
 const { handleHoneypotMessage } = require('../utils/honeypot');
@@ -71,9 +72,7 @@ module.exports = {
         return;
       }
 
-      if (!config) return;
-
-      if (config.word_filter_enabled) {
+      if (config?.word_filter_enabled) {
         const hit = findBannedWord(message.content, config.banned_words);
         if (hit) {
           const action = config.word_filter_action === 'mute' ? 'tempmute' : config.word_filter_action;
@@ -82,7 +81,23 @@ module.exports = {
         }
       }
 
-      if (config.anti_spam_enabled) {
+      // Filters made from templates (links, invites, emojis...): the first one that matches answers.
+      const rules = await listAutomodRules(message.guild.id);
+      for (const rule of rules) {
+        if (rule.exempt_channel_ids?.includes(message.channel.id) || rule.exempt_channel_ids?.includes(message.channel.parentId)) continue;
+        if (rule.exempt_role_ids?.some((id) => message.member.roles.cache.has(id))) continue;
+        if (!rule.regexes.some((re) => re.test(message.content))) continue;
+        countHit(message.guild.id, rule);
+        await applyAutomodAction(message, {
+          violationType: `filter-${rule.template}`,
+          reason: `Matched the filter "${rule.name}".`,
+          action: rule.action === 'mute' ? 'tempmute' : rule.action,
+          durationMs: rule.action === 'mute' ? rule.mute_minutes * 60_000 : undefined,
+        });
+        return;
+      }
+
+      if (config?.anti_spam_enabled) {
         if (isRepeatFlood(message.guild.id, message.author.id, message.content)) {
           await applyAutomodAction(message, { violationType: 'repeat-flood', reason: 'Sent the same message repeatedly in a short time.', action: 'tempmute' });
           return;

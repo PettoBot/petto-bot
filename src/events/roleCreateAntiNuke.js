@@ -8,7 +8,9 @@ module.exports = {
     return trackDestructiveAction(role.client, role.guild, {
       auditLogType: AuditLogEvent.RoleCreate,
       targetId: role.id,
+      rule: 'role_create',
       actionLabel: 'role creation',
+      undo: { kind: 'delete_role', id: role.id },
     }).catch((err) => logger.error('Anti-nuke role-create tracking failed:', err));
   },
 };

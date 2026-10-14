@@ -11,6 +11,7 @@ module.exports = {
     return trackDestructiveAction(member.client, member.guild, {
       auditLogType: AuditLogEvent.MemberKick,
       targetId: member.id,
+      rule: 'kick',
       actionLabel: 'member kick',
     }).catch((err) => logger.error('Anti-nuke member-kick tracking failed:', err));
   },

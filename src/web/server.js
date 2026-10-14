@@ -317,6 +317,56 @@ function startServer(client) {
       }
     });
 
+    // Puts back what an anti-nuke protection stopped (channels, roles, bans, the roles taken away). Owner and administrators only.
+    app.post('/api/dashboard/guild/:guildId/antinuke/restore', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await dashboardCardAccess(req, res);
+      if (!access) return;
+      try {
+        const { canRestore, restoreEvent } = require('../utils/antiNukeRestore');
+        const antinukeDb = require('../db/antinuke');
+        if (!canRestore(access.member)) { res.status(403).json({ ok: false, message: 'Only the server owner and administrators can restore this.' }); return; }
+        const event = await antinukeDb.getEvent(access.guild.id, Number(req.body?.id));
+        if (!event) { res.status(404).json({ ok: false, message: 'That event does not exist.' }); return; }
+        if (event.restored_at) { res.status(400).json({ ok: false, message: 'This was already restored.' }); return; }
+        const { done, failed } = await restoreEvent(access.guild, event);
+        if (!failed.length) await antinukeDb.markRestored(access.guild.id, event.id);
+        res.json({ ok: failed.length === 0, done, failed, message: failed.length ? failed.join(' ') : undefined });
+      } catch (err) {
+        logger.error(`Dashboard anti-nuke restore failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, message: 'It could not be restored. Try again.' });
+      }
+    });
+
+    // The AutoMod rules of Discord made from templates: list them, add one, turn one on or off, remove one.
+    app.post('/api/dashboard/guild/:guildId/automod/native', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await dashboardCardAccess(req, res);
+      if (!access) return;
+      const native = require('../utils/nativeAutomod');
+      try {
+        const op = String(req.body?.op ?? 'list');
+        const body = req.body ?? {};
+        const id = (value) => (typeof value === 'string' && /^\d{5,25}$/.test(value) ? value : null);
+        const ids = (list) => (Array.isArray(list) ? list.map(String).filter((v) => /^\d{5,25}$/.test(v)) : []);
+        if (op === 'add') {
+          const rule = await native.createNative(access.guild, {
+            template: body.template, pack: body.pack, kind: body.kind, options: body.options && typeof body.options === 'object' ? body.options : {},
+            presets: Array.isArray(body.presets) ? body.presets : [], mentionLimit: body.mentionLimit, block: body.block !== false,
+            alertChannelId: id(body.alertChannelId), timeoutMinutes: body.timeoutMinutes, customMessage: typeof body.customMessage === 'string' ? body.customMessage : '',
+            exemptRoleIds: ids(body.exemptRoleIds), exemptChannelIds: ids(body.exemptChannelIds),
+          });
+          res.json({ ok: true, rule, ...(await native.listNative(access.guild)) });
+          return;
+        }
+        if (op === 'toggle') await native.setNativeEnabled(access.guild, String(body.id), body.enabled === true);
+        else if (op === 'delete') await native.deleteNative(access.guild, String(body.id));
+        res.json({ ok: true, ...(await native.listNative(access.guild)) });
+      } catch (err) {
+        if (err.userFacing) { res.status(400).json({ ok: false, message: err.message }); return; }
+        logger.error(`Dashboard native automod failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, message: 'Discord did not answer the AutoMod request. Try again.' });
+      }
+    });
+
     // The panel of confessions (the button that opens the form), posted or updated now from the dashboard.
     app.post('/api/dashboard/guild/:guildId/confessions/panel', dashboardDatabaseRateLimiter, async (req, res) => {
       const access = await dashboardCardAccess(req, res);

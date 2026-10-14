@@ -19,7 +19,7 @@ const SILENT_CHANNEL_MUTE_MS = 30 * 60 * 1000; // 30 minutes
  * show up in /case history and the 'sanctions' log like anything a moderator did),
  * and separately logs the raw detection to the 'automod' category of /logs.
  */
-async function applyAutomodAction(message, { violationType, reason, action }) {
+async function applyAutomodAction(message, { violationType, reason, action, durationMs: customDurationMs }) {
   const { guild, member, author } = message;
   const client = message.client;
 
@@ -47,7 +47,7 @@ async function applyAutomodAction(message, { violationType, reason, action }) {
     }
 
     if (action === 'tempmute') {
-      const durationMs = violationType === 'silent-channel' ? SILENT_CHANNEL_MUTE_MS : FLOOD_MUTE_MS;
+      const durationMs = customDurationMs ?? (violationType === 'silent-channel' ? SILENT_CHANNEL_MUTE_MS : FLOOD_MUTE_MS);
       try {
         await member.timeout(durationMs, fullReason);
       } catch (err) {

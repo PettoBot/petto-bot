@@ -47,10 +47,12 @@ const MODULES = {
     aliases: ['antinukeconfig', 'antiraidconfig', 'antialtconfig'],
     title: 'AutoMod and protection',
     command: 'automod',
-    show: [/^raid/, /^anti-alt/, /^antinuke /, /^spam/, /^link/, /^word-filter toggle/, /^word-filter add/, /^invites allow/, /^immune add/, /^antinuke-whitelist add/, /^silent-channel add/, /^control/],
+    show: [/^raid/, /^anti-alt/, /^antinuke /, /^spam/, /^link/, /^word-filter toggle/, /^word-filter add/, /^invites allow/, /^immune add/, /^antinuke-whitelist add/, /^silent-channel add/, /^template add/, /^native add/, /^control/],
     sources: [
       { table: 'automod_config', label: 'AutoMod', skip: ['banned_words', 'allowed_invite_codes'] },
       { table: 'antinuke_config', label: 'Anti-nuke' },
+      { table: 'antinuke_rules', list: true, label: 'Anti-nuke protections', only: ['rule', 'enabled', 'threshold', 'window_seconds', 'action'] },
+      { table: 'automod_rules', list: true, label: 'Template filters', only: ['name', 'action', 'enabled', 'hits'] },
     ],
   },
   logsconfig: { aliases: ['logconfig'], title: 'Logs', command: 'logs', sources: [{ table: 'log_entries', list: true, group: { by: 'channel_id', collect: 'event' } }] },
