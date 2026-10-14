@@ -1,3 +1,4 @@
+const { isWithinHours, outsideHoursText } = require('./ticketHours');
 const { ChannelType, PermissionFlagsBits, MessageFlags, AttachmentBuilder } = require('discord.js');
 const { sendAs } = require('./senderIdentity');
 const { describeTicketOpenError } = require('./ticketErrors');
@@ -109,6 +110,24 @@ async function openTicket({ guild, client, category, opener, formAnswers = null 
     throw err;
   }
 
+  // The limit of the whole server: the most tickets a member can have open at once, whatever the type (0 is no limit).
+  if (settings.global_limit > 0) {
+    const open = await db.countOpenTicketsForMember(guild.id, opener.id);
+    if (open >= settings.global_limit) {
+      const err = new Error(`You already have ${open} open ticket${open === 1 ? '' : 's'} (the limit of this server is ${settings.global_limit}). Close one before opening another.`);
+      err.userFacing = true;
+      throw err;
+    }
+  }
+
+  // The hours of the staff: outside them the ticket is refused, or it opens with a note that says when they answer.
+  const onDuty = isWithinHours(settings);
+  if (!onDuty && settings.hours_block) {
+    const err = new Error(outsideHoursText(settings));
+    err.userFacing = true;
+    throw err;
+  }
+
   const ticket = await db.createTicket({ guildId: guild.id, categoryId: category.id, openerId: opener.id });
 
   let channel;
@@ -118,6 +137,7 @@ async function openTicket({ guild, client, category, opener, formAnswers = null 
       name: formatTicketChannelName(category.naming_pattern, { number: ticket.ticket_number, username: opener.username, userId: opener.id, category: category.label }),
       type: ChannelType.GuildText,
       parent: category.parent_channel_id || undefined,
+      topic: `Ticket #${String(ticket.ticket_number).padStart(4, '0')} · ${category.label} · opened by ${opener.username ?? opener.id} (${opener.id})`.slice(0, 1000),
       permissionOverwrites: buildOpenOverwrites({ guild, opener, category }),
       reason: `Ticket #${ticket.ticket_number} opened by ${opener.tag ?? opener.username}`,
     });
@@ -135,6 +155,10 @@ async function openTicket({ guild, client, category, opener, formAnswers = null 
   // The bot's client-level default suppresses all mentions (see index.js) — this is the one ticket
   // message that's actually meant to notify people, so it opts back in for just the configured roles.
   await sendAs(channel, 'tickets', { ...welcome, allowedMentions: { roles: pingRoleIds } }).catch((err) => logger.warn(`Ticket #${ticket.ticket_number}: failed to send welcome message:`, err.message));
+
+  if (!onDuty) {
+    await sendAs(channel, 'tickets', { components: [textCard(`${EMOJI.WARNING}  ${outsideHoursText(settings)}`, 0xffd563)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+  }
 
   if (formAnswers && Object.keys(formAnswers).length) {
     const answerLines = Object.entries(formAnswers).map(([label, answer]) => `**${label}:** ${String(answer).slice(0, 1000)}`);

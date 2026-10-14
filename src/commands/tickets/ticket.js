@@ -1,4 +1,5 @@
 // Ticket panel setup, access rules, and ticket lifecycle actions.
+const { summarizeStats, durationText } = require('../../utils/ticketReminders');
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = require('discord.js');
 const { ensureGuild } = require('../../db/guilds');
 const { getTemplate } = require('../../db/embedTemplates');
@@ -41,8 +42,22 @@ module.exports = {
             .addStringOption((o) => o.setName('title').setDescription('Panel title (ignored if embed_template is set)').setRequired(false))
             .addStringOption((o) => o.setName('description').setDescription('Panel description (ignored if embed_template is set)').setRequired(false))
             .addStringOption((o) => o.setName('embed_template').setDescription('Use a saved /embed template instead of title/description').setRequired(false))
-            .addStringOption((o) => o.setName('style').setDescription('Buttons (max 5 categories) or a dropdown (max 25)').addChoices({ name: 'buttons', value: 'button' }, { name: 'dropdown', value: 'select' }).setRequired(false)),
+            .addStringOption((o) => o.setName('style').setDescription('Buttons (max 5 categories) or a dropdown (max 25)').addChoices({ name: 'buttons', value: 'button' }, { name: 'dropdown', value: 'select' }).setRequired(false))
+            .addStringOption((o) => o.setName('color').setDescription('Color of the card as a hex, like a5ea7a').setRequired(false))
+            .addStringOption((o) => o.setName('image').setDescription('A picture on top of the panel (a link that starts with https)').setRequired(false))
+            .addStringOption((o) => o.setName('footer').setDescription('A small text under the panel').setRequired(false)),
         )
+        .addSubcommand((s) => s
+          .setName('edit')
+          .setDescription('Change how a panel looks and update its message.')
+          .addIntegerOption((o) => o.setName('panel_id').setDescription('Panel ID (see ticket panel list)').setRequired(true))
+          .addStringOption((o) => o.setName('title').setDescription('New title (none removes it)').setRequired(false))
+          .addStringOption((o) => o.setName('description').setDescription('New description (none removes it)').setRequired(false))
+          .addStringOption((o) => o.setName('color').setDescription('Color of the card as a hex, like a5ea7a (none for the usual green)').setRequired(false))
+          .addStringOption((o) => o.setName('image').setDescription('A picture on top (a link that starts with https, none removes it)').setRequired(false))
+          .addStringOption((o) => o.setName('footer').setDescription('A small text under the panel (none removes it)').setRequired(false))
+          .addStringOption((o) => o.setName('placeholder').setDescription('Text of the dropdown before choosing (none for the usual)').setRequired(false))
+          .addStringOption((o) => o.setName('style').setDescription('Buttons or a dropdown').addChoices({ name: 'buttons', value: 'button' }, { name: 'dropdown', value: 'select' }).setRequired(false)))
         .addSubcommand((s) => s.setName('delete').setDescription('Delete a panel (and its message, if still present).').addIntegerOption((o) => o.setName('panel_id').setDescription('Panel ID (see /ticket panel list)').setRequired(true)))
         .addSubcommand((s) => s.setName('resend').setDescription('Delete and repost a panel with its current categories.').addIntegerOption((o) => o.setName('panel_id').setDescription('Panel ID (see /ticket panel list)').setRequired(true)))
         .addSubcommand((s) => s.setName('list').setDescription('List panels in this server.')),
@@ -153,7 +168,8 @@ module.exports = {
     .addSubcommand((s) => s.setName('remove').setDescription('Remove a member from this ticket.').addUserOption((o) => o.setName('user').setDescription('User to remove').setRequired(true)))
     .addSubcommand((s) => s.setName('rename').setDescription('(Staff) Rename this ticket\'s channel.').addStringOption((o) => o.setName('name').setDescription('New channel name').setRequired(true)))
     .addSubcommand((s) => s.setName('transcript').setDescription('(Staff) Post a transcript of this ticket so far, without closing it.'))
-    .addSubcommand((s) => s.setName('info').setDescription('Show info about this ticket.')),
+    .addSubcommand((s) => s.setName('info').setDescription('Show info about this ticket.'))
+    .addSubcommand((s) => s.setName('stats').setDescription('(Staff) The numbers of the tickets of this server: open, closed, ratings and who claims the most.')),
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
@@ -170,6 +186,7 @@ module.exports = {
     if (sub === 'setup') return setupCmd(interaction);
     if (sub === 'open') return openCmd(interaction);
     if (sub === 'info') return infoCmd(interaction);
+    if (sub === 'stats') return statsCmd(interaction);
     return ticketActionCmd(interaction, sub);
   },
 };
@@ -277,6 +294,8 @@ async function panelCmd(interaction, sub) {
     return;
   }
 
+  if (sub === 'edit') return panelEdit(interaction);
+
   // create
   const channel = interaction.options.getChannel('channel', true);
   const title = interaction.options.getString('title');
@@ -292,7 +311,12 @@ async function panelCmd(interaction, sub) {
     return;
   }
 
-  const panel = await db.createPanel({ guildId: interaction.guild.id, channelId: channel.id, title, description, embedTemplate, style });
+  const look = readPanelLook(interaction);
+  if (look.error) {
+    await interaction.editReply({ components: [textCard(`${EMOJI.ALERT}  ${look.error}`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+  const panel = await db.createPanel({ guildId: interaction.guild.id, channelId: channel.id, title, description, embedTemplate, style, ...look.patch });
 
   const payload = await renderPanelMessage(interaction.guild, panel, [], channel);
   const message = await channel.send(payload).catch((err) => {
@@ -313,9 +337,71 @@ async function panelCmd(interaction, sub) {
   });
 }
 
+const NONE = /^(none|off|no|-)$/i;
+
+/** The color, picture, footer and dropdown text a member typed for a panel: `{ patch }` with what was given, or `{ error }`. */
+function readPanelLook(interaction) {
+  const patch = {};
+  const color = interaction.options.getString('color');
+  if (color !== null && color !== undefined) {
+    if (NONE.test(color.trim())) patch.color = null;
+    else {
+      const hex = /^#?([0-9a-f]{6})$/i.exec(color.trim());
+      if (!hex) return { error: 'Write the color as a hex like `a5ea7a`.' };
+      patch.color = parseInt(hex[1], 16);
+    }
+  }
+  const image = interaction.options.getString('image');
+  if (image !== null && image !== undefined) {
+    if (NONE.test(image.trim())) patch.image_url = null;
+    else if (!/^https:\/\/\S+$/i.test(image.trim())) return { error: 'The picture has to be a link that starts with `https://`.' };
+    else patch.image_url = image.trim().slice(0, 500);
+  }
+  const footer = interaction.options.getString('footer');
+  if (footer !== null && footer !== undefined) patch.footer = NONE.test(footer.trim()) ? null : footer.trim().slice(0, 300);
+  const placeholder = interaction.options.getString?.('placeholder');
+  if (placeholder !== null && placeholder !== undefined) patch.placeholder = NONE.test(placeholder.trim()) ? null : placeholder.trim().slice(0, 150);
+  return { patch };
+}
+
+/** `ticket panel edit`: changes the look of a panel and updates its message where it is. */
+async function panelEdit(interaction) {
+  const panelId = interaction.options.getInteger('panel_id', true);
+  const panel = await db.getPanel(interaction.guild.id, panelId);
+  if (!panel) {
+    await interaction.editReply({ components: [textCard(`No panel with id \`${panelId}\`.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+  const look = readPanelLook(interaction);
+  if (look.error) {
+    await interaction.editReply({ components: [textCard(`${EMOJI.ALERT}  ${look.error}`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+  const patch = { ...look.patch };
+  for (const key of ['title', 'description']) {
+    const value = interaction.options.getString(key);
+    if (value !== null && value !== undefined) patch[key] = NONE.test(value.trim()) ? null : value.trim().slice(0, key === 'title' ? 100 : 500);
+  }
+  const style = interaction.options.getString('style');
+  if (style) patch.style = style;
+  if (!Object.keys(patch).length) {
+    await interaction.editReply({ components: [textCard('Give at least one thing to change: title, description, color, image, footer, placeholder or style.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+  const updated = await db.updatePanel(interaction.guild.id, panelId, patch);
+  const channel = await interaction.guild.channels.fetch(updated.channel_id).catch(() => null);
+  const message = channel && updated.message_id ? await channel.messages.fetch(updated.message_id).catch(() => null) : null;
+  if (message) {
+    const categories = await db.listCategories(interaction.guild.id, updated.id);
+    const payload = await renderPanelMessage(interaction.guild, updated, categories, channel);
+    await message.edit(payload).catch((err) => logger.warn(`Panel #${panelId} could not be edited: ${err.message}`));
+  }
+  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Panel **#${panelId}** changed${message ? ' and its message updated' : ' (it is not posted: use `ticket panel resend`)'}.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+}
+
 /** Renders (or re-renders) a panel's message payload: embed-template-or-fallback + its categories' button/select row. */
 async function renderPanelMessage(guild, panel, categories, channel) {
-  const rows = buildPanelRows(panel.style, categories);
+  const rows = buildPanelRows(panel.style, categories, { placeholder: panel.placeholder });
 
   if (panel.embed_template) {
     const doc = await getTemplate(guild.id, panel.embed_template);
@@ -326,7 +412,7 @@ async function renderPanelMessage(guild, panel, categories, channel) {
     }
   }
 
-  return { components: [buildPanelFallbackCard({ title: panel.title, description: panel.description }), ...rows], flags: MessageFlags.IsComponentsV2 };
+  return { components: [buildPanelFallbackCard({ title: panel.title, description: panel.description, color: panel.color, imageUrl: panel.image_url, footer: panel.footer }), ...rows], flags: MessageFlags.IsComponentsV2 };
 }
 
 async function categoryCmd(interaction, sub) {
@@ -607,6 +693,24 @@ async function openCmd(interaction) {
   }
 
   await actions.openTicketInteractive(interaction, category);
+}
+
+async function statsCmd(interaction) {
+  if (!(await requireManageGuild(interaction))) return;
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  const [tickets, ratings] = await Promise.all([db.listTicketsForStats(interaction.guild.id), db.listRatingsForGuild(interaction.guild.id)]);
+  const s = summarizeStats(tickets, ratings);
+  const lines = [
+    `### Tickets of ${interaction.guild.name}`,
+    `**Open now:** ${s.open} (${s.unclaimed} without anyone claiming)`,
+    `**Opened:** ${s.opened7} in 7 days · ${s.opened30} in 30 days`,
+    `**Closed:** ${s.closed7} in 7 days · ${s.closed30} in 30 days`,
+    `**Average time open:** ${durationText(s.averageMinutesOpen)}`,
+    `**Rating:** ${s.averageRating === null ? 'no ratings yet' : `${s.averageRating} / 5 (${s.ratingCount})`}`,
+    s.topClaimers.length ? `**Claims the most:**\n${s.topClaimers.map((c, i) => `${i + 1}. <@${c.userId}> · ${c.count}`).join('\n')}` : '',
+    `-# ${s.total} ticket${s.total === 1 ? '' : 's'} counted${s.total >= 5000 ? ' (the latest 5000)' : ''}`,
+  ].filter(Boolean);
+  await interaction.editReply({ components: [textCard(lines.join('\n'), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function infoCmd(interaction) {

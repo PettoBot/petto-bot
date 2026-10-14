@@ -869,6 +869,10 @@ create table if not exists ticket_panels (
   style          text not null default 'button' check (style in ('button', 'select')),
   created_at     timestamptz not null default now()
 );
+alter table ticket_panels add column if not exists color integer;
+alter table ticket_panels add column if not exists image_url text;
+alter table ticket_panels add column if not exists footer text;
+alter table ticket_panels add column if not exists placeholder text;
 
 create index if not exists idx_ticket_panels_guild on ticket_panels(guild_id);
 
@@ -991,7 +995,37 @@ create table if not exists ticket_settings (
   opened_log_channel_id         text,
   closed_log_channel_id         text,
   blocked_role_ids              text[] not null default '{}',
+  global_limit                  integer not null default 0,
+  hours_enabled                 boolean not null default false,
+  hours_timezone                text not null default 'America/Bogota',
+  hours_start                   text not null default '09:00',
+  hours_end                     text not null default '21:00',
+  hours_days                    integer[] not null default '{1,2,3,4,5}',
+  hours_block                   boolean not null default false,
+  hours_message                 text,
   updated_at                    timestamptz not null default now()
+);
+alter table ticket_settings add column if not exists global_limit integer not null default 0;
+alter table ticket_settings add column if not exists hours_enabled boolean not null default false;
+alter table ticket_settings add column if not exists hours_timezone text not null default 'America/Bogota';
+alter table ticket_settings add column if not exists hours_start text not null default '09:00';
+alter table ticket_settings add column if not exists hours_end text not null default '21:00';
+alter table ticket_settings add column if not exists hours_days integer[] not null default '{1,2,3,4,5}';
+alter table ticket_settings add column if not exists hours_block boolean not null default false;
+alter table ticket_settings add column if not exists hours_message text;
+alter table ticket_settings add column if not exists unclaimed_reminder_minutes integer not null default 0;
+alter table tickets add column if not exists reminded_at timestamptz;
+alter table ticket_settings add column if not exists auto_delete_closed_hours integer not null default 0;
+
+-- Quick replies of the staff of tickets: a text saved with a name, sent in a ticket with one command.
+create table if not exists ticket_replies (
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  name       text not null,
+  content    text not null,
+  created_by text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (guild_id, name)
 );
 
 create index if not exists idx_ticket_settings_autoclose_enabled

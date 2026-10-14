@@ -1,4 +1,4 @@
-const { ContainerBuilder, TextDisplayBuilder, SectionBuilder, ThumbnailBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
+const { ContainerBuilder, TextDisplayBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, SeparatorBuilder, SeparatorSpacingSize, SectionBuilder, ThumbnailBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
 const { EMOJI } = require('./emojis');
 
 const BUTTON_STYLE_MAP = { primary: ButtonStyle.Primary, secondary: ButtonStyle.Secondary, success: ButtonStyle.Success, danger: ButtonStyle.Danger };
@@ -13,10 +13,10 @@ function buildPanelButtonRow(categories) {
   return row;
 }
 
-function buildPanelSelectRow(categories) {
+function buildPanelSelectRow(categories, placeholder) {
   const menu = new StringSelectMenuBuilder()
     .setCustomId('tk_open_select')
-    .setPlaceholder('Select a ticket category...')
+    .setPlaceholder(String(placeholder || 'Select a ticket category...').slice(0, 150))
     .addOptions(
       categories.slice(0, 25).map((cat) => {
         const opt = new StringSelectMenuOptionBuilder().setLabel(cat.label).setValue(cat.key);
@@ -29,17 +29,30 @@ function buildPanelSelectRow(categories) {
 }
 
 /** Row(s) of open-ticket components for a panel message, given its style + categories. Button style caps at 5 (one row); use select for more. */
-function buildPanelRows(style, categories) {
+function buildPanelRows(style, categories, { placeholder = null } = {}) {
   if (!categories.length) return [];
-  return style === 'select' ? [buildPanelSelectRow(categories)] : [buildPanelButtonRow(categories)];
+  return style === 'select' ? [buildPanelSelectRow(categories, placeholder)] : [buildPanelButtonRow(categories)];
 }
 
-/** Fallback plain-text panel card (Components V2) when the panel has no linked /embed template. */
-function buildPanelFallbackCard({ title, description }) {
+/** The color of a panel when the server picked none: the green of the other cards of Petto. */
+const DEFAULT_PANEL_COLOR = 0xa5ea7a;
+
+/**
+ * The usual panel (Components V2): a picture on top if there is one, the title, the text, and a small line under it. The buttons or the
+ * menu go under the card. `color` is the stripe of the card (a number, or null for the green of Petto).
+ */
+function buildPanelFallbackCard({ title, description, color = null, imageUrl = null, footer = null }) {
+  const container = new ContainerBuilder().setAccentColor(Number.isInteger(color) ? color : DEFAULT_PANEL_COLOR);
+  if (imageUrl && /^https:\/\//i.test(imageUrl)) container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(imageUrl)));
   const lines = [];
   if (title) lines.push(`### ${title}`);
   lines.push(description || 'Click a button below to open a ticket.');
-  return new ContainerBuilder().setAccentColor(0x4b4f59).addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
+  if (footer) {
+    container.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${String(footer).slice(0, 300)}`));
+  }
+  return container;
 }
 
 /** Fills {user}, {username}, {category}, {server} and {number} in a category's own welcome text. */
@@ -139,6 +152,7 @@ function buildClosedControlRow(ticketId, transcriptLink) {
 }
 
 module.exports = {
+  DEFAULT_PANEL_COLOR,
   buildPanelRows,
   buildPanelFallbackCard,
   buildWelcomeFallbackCard,

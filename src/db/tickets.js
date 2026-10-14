@@ -1,10 +1,10 @@
 // Persistence helpers for ticket panels, categories, and ticket records.
 const database = require('./database');
 
-async function createPanel({ guildId, channelId, title, description, embedTemplate, style }) {
+async function createPanel({ guildId, channelId, title, description, embedTemplate, style, color = null, image_url = null, footer = null, placeholder = null }) {
   const { data, error } = await database
     .from('ticket_panels')
-    .insert({ guild_id: guildId, channel_id: channelId, title, description, embed_template: embedTemplate, style: style ?? 'button' })
+    .insert({ guild_id: guildId, channel_id: channelId, title, description, embed_template: embedTemplate, style: style ?? 'button', color, image_url, footer, placeholder })
     .select('*')
     .single();
 
@@ -158,6 +158,13 @@ async function getTicketByNumber(guildId, number) {
   return data;
 }
 
+/** How many tickets a member has open in the whole server (for the global limit). */
+async function countOpenTicketsForMember(guildId, openerId) {
+  const { count, error } = await database.from('tickets').select('id', { count: 'exact', head: true }).eq('guild_id', guildId).eq('opener_id', openerId).eq('status', 'open');
+  if (error) throw error;
+  return count ?? 0;
+}
+
 async function countOpenTickets(guildId, categoryId, openerId) {
   const { count, error } = await database
     .from('tickets')
@@ -240,7 +247,36 @@ async function listOpenTicketsForGuild(guildId) {
   return data;
 }
 
+/** Closed tickets of a server whose channel is still there and was closed before `cutoffIso`. */
+async function listClosedWithChannelBefore(guildId, cutoffIso) {
+  const { data, error } = await database.from('tickets').select('*').eq('guild_id', guildId).eq('status', 'closed').not('channel_id', 'is', null).lte('closed_at', cutoffIso).limit(200);
+  if (error) throw error;
+  return data ?? [];
+}
+
+async function markReminded(ticketId) {
+  const { error } = await database.from('tickets').update({ reminded_at: new Date().toISOString() }).eq('id', ticketId);
+  if (error) throw error;
+}
+
+/** Every ticket of a server with only what the numbers need (up to the last 5000). */
+async function listTicketsForStats(guildId) {
+  const { data, error } = await database.from('tickets').select('status,claimed_by,created_at,closed_at').eq('guild_id', guildId).order('created_at', { ascending: false }).limit(5000);
+  if (error) throw error;
+  return data ?? [];
+}
+
+async function listRatingsForGuild(guildId) {
+  const { data, error } = await database.from('ticket_ratings').select('rating').eq('guild_id', guildId).limit(5000);
+  if (error) throw error;
+  return data ?? [];
+}
+
 module.exports = {
+  listClosedWithChannelBefore,
+  markReminded,
+  listTicketsForStats,
+  listRatingsForGuild,
   normalizeKey,
   createPanel,
   setPanelMessageId,
@@ -264,6 +300,7 @@ module.exports = {
   getTicketByChannel,
   getTicketByNumber,
   countOpenTickets,
+  countOpenTicketsForMember,
   setClaim,
   PRIORITIES,
   setPriority,
