@@ -174,12 +174,39 @@ create table if not exists mod_actions (
 
 -- Who or what applied the case: a moderator, automod, the honeypot, warn escalation, automatic expiry or anti-nuke.
 alter table mod_actions add column if not exists source text not null default 'moderator';
+-- Links to the proof of a case (screenshots, message links), added by the staff.
+alter table mod_actions add column if not exists evidence text[] not null default '{}';
 
 -- `create table if not exists` above is a no-op against an already-migrated database, so the
 -- CHECK constraint (added here for tempban/tempmute/softban) needs its own idempotent migration step.
 alter table mod_actions drop constraint if exists mod_actions_type_check;
 alter table mod_actions add constraint mod_actions_type_check
   check (type in ('ban', 'unban', 'kick', 'mute', 'unmute', 'tempban', 'tempmute', 'warn', 'softban', 'jail', 'unjail', 'hardban'));
+
+-- Lockdown: close the channels, pause the invites and raise the verification while a raid lasts, and put it all back after.
+create table if not exists lockdown_config (
+  guild_id            text primary key references guilds(guild_id) on delete cascade,
+  channel_ids         text[] not null default '{}',
+  pause_invites       boolean not null default true,
+  raise_verification  boolean not null default false,
+  auto_end_minutes    integer not null default 0,
+  announce_channel_id text,
+  message             text,
+  updated_at          timestamptz not null default now()
+);
+alter table lockdown_config enable row level security;
+
+create table if not exists lockdowns (
+  guild_id          text primary key references guilds(guild_id) on delete cascade,
+  started_by        text not null,
+  reason            text,
+  started_at        timestamptz not null default now(),
+  ends_at           timestamptz,
+  locked            jsonb not null default '[]'::jsonb,
+  previous_level    integer,
+  invites_paused    boolean not null default false
+);
+alter table lockdowns enable row level security;
 
 -- Anti scam: hijacked accounts spamming fake giveaways (the MrBeast scam), fake withdrawals and casinos. Nothing is on until a
 -- server turns it on, and it starts by only alerting.
@@ -517,7 +544,7 @@ create table if not exists automod_config (
   anti_raid_enabled     boolean not null default false,
   raid_join_threshold   integer not null default 6,
   raid_window_seconds   integer not null default 10,
-  raid_action           text not null default 'alert' check (raid_action in ('alert', 'kick')),
+  raid_action           text not null default 'alert' check (raid_action in ('alert', 'kick', 'lockdown')),
   -- Roles that bypass the word filter / anti-spam checks above entirely.
   immune_role_ids       text[] not null default '{}',
   -- New-account detection on join.
@@ -533,6 +560,23 @@ alter table automod_config add column if not exists word_filter_action text not 
 alter table automod_config drop constraint if exists automod_config_word_filter_action_check;
 alter table automod_config add constraint automod_config_word_filter_action_check check (word_filter_action in ('warn', 'mute', 'kick', 'delete'));
 alter table automod_config add column if not exists immune_role_ids text[] not null default '{}';
+alter table automod_config drop constraint if exists automod_config_raid_action_check;
+alter table automod_config add constraint automod_config_raid_action_check check (raid_action in ('alert', 'kick', 'lockdown'));
+alter table automod_config add column if not exists repeat_threshold integer not null default 3;
+alter table automod_config add column if not exists repeat_window_seconds integer not null default 10;
+alter table automod_config add column if not exists caps_percent integer not null default 70;
+alter table automod_config add column if not exists caps_min_length integer not null default 12;
+alter table automod_config add column if not exists max_message_length integer not null default 0;
+alter table automod_config add column if not exists max_lines integer not null default 0;
+alter table automod_config add column if not exists exempt_channel_ids text[] not null default '{}';
+alter table automod_config add column if not exists spam_repeat boolean not null default true;
+alter table automod_config add column if not exists spam_mentions boolean not null default true;
+alter table automod_config add column if not exists spam_invites boolean not null default true;
+alter table automod_config add column if not exists spam_caps boolean not null default true;
+-- Strikes: after this many automod hits in the window the member is muted (0 keeps it off).
+alter table automod_config add column if not exists strike_limit integer not null default 0;
+alter table automod_config add column if not exists strike_window_minutes integer not null default 10;
+alter table automod_config add column if not exists strike_mute_minutes integer not null default 10;
 alter table automod_config add column if not exists anti_alt_enabled boolean not null default false;
 alter table automod_config add column if not exists anti_alt_min_age_days integer not null default 7;
 alter table automod_config add column if not exists anti_alt_action text not null default 'kick';

@@ -180,7 +180,56 @@ async function getExpiredSanctions() {
   return data;
 }
 
+/** Cases filtered by user, moderator, type and a word of the reason, newest first. The word is matched here so it never reaches a query. */
+async function searchCases(guildId, { userId = null, moderatorId = null, type = null, text = null, limit = 10 } = {}) {
+  let query = database.from('mod_actions').select('*').eq('guild_id', guildId).order('case_number', { ascending: false }).limit(text ? 500 : Math.min(50, Math.max(1, limit)));
+  if (userId) query = query.eq('user_id', userId);
+  if (moderatorId) query = query.eq('moderator_id', moderatorId);
+  if (type) query = query.eq('type', type);
+  const { data, error } = await query;
+  if (error) throw error;
+  const needle = text ? String(text).toLowerCase() : null;
+  const rows = needle ? (data ?? []).filter((row) => String(row.reason ?? '').toLowerCase().includes(needle)) : data ?? [];
+  return rows.slice(0, Math.min(50, Math.max(1, limit)));
+}
+
+/** Adds a link to the proof of a case (at most 10 per case). Answers the case, or null when it does not exist. */
+async function addEvidence(guildId, caseNumber, url) {
+  const row = await getCase(guildId, caseNumber);
+  if (!row) return null;
+  const evidence = [...new Set([...(row.evidence ?? []), url])].slice(0, 10);
+  const { data, error } = await database.from('mod_actions').update({ evidence }).eq('guild_id', guildId).eq('case_number', caseNumber).select('*').maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+async function clearEvidence(guildId, caseNumber) {
+  const { data, error } = await database.from('mod_actions').update({ evidence: [] }).eq('guild_id', guildId).eq('case_number', caseNumber).select('*').maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+/** What each moderator did in the last `days`: totals by moderator and by type. Automatic cases (the bot itself) are counted apart. */
+async function moderatorStats(guildId, days = 30, botId = null) {
+  const from = new Date(Date.now() - days * 86_400_000).toISOString();
+  const { data, error } = await database.from('mod_actions').select('type, source, moderator_id').eq('guild_id', guildId).gte('created_at', from).limit(20000);
+  if (error) throw error;
+  const byModerator = new Map();
+  const byType = {};
+  let automatic = 0;
+  for (const row of data ?? []) {
+    byType[row.type] = (byType[row.type] ?? 0) + 1;
+    if (row.moderator_id === botId || (row.source && row.source !== 'moderator')) { automatic += 1; continue; }
+    byModerator.set(row.moderator_id, (byModerator.get(row.moderator_id) ?? 0) + 1);
+  }
+  return { total: (data ?? []).length, automatic, byType, moderators: [...byModerator.entries()].map(([id, count]) => ({ id, count })).sort((a, b) => b.count - a.count) };
+}
+
 module.exports = {
+  searchCases,
+  addEvidence,
+  clearEvidence,
+  moderatorStats,
   createCase,
   getCase,
   getUserHistory,

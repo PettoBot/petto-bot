@@ -7,6 +7,8 @@ const { checkAndApplyEscalation } = require('./escalation');
 const { formatDuration } = require('./duration');
 const { sendLog } = require('../logging/engine');
 const { EMOJI } = require('./emojis');
+const { getConfig } = require('../db/automod');
+const { recordStrike } = require('./automodChecks');
 const logger = require('./logger');
 
 const FLOOD_MUTE_MS = 10 * 60 * 1000; // 10 minutes
@@ -19,7 +21,7 @@ const SILENT_CHANNEL_MUTE_MS = 30 * 60 * 1000; // 30 minutes
  * show up in /case history and the 'sanctions' log like anything a moderator did),
  * and separately logs the raw detection to the 'automod' category of /logs.
  */
-async function applyAutomodAction(message, { violationType, reason, action, durationMs: customDurationMs }) {
+async function applyAutomodActionCore(message, { violationType, reason, action, durationMs: customDurationMs }) {
   const { guild, member, author } = message;
   const client = message.client;
 
@@ -84,6 +86,27 @@ async function applyAutomodAction(message, { violationType, reason, action, dura
   } catch (err) {
     logger.error(`Automod: failed to apply "${action}" to ${author.id} in guild ${guild.id}:`, err);
   }
+}
+
+/** The consequence of one automod hit, and then the strike it counts. */
+async function applyAutomodAction(message, options) {
+  await applyAutomodActionCore(message, options);
+  await applyStrike(message, options.action).catch((err) => logger.warn(`Automod: strike check failed for ${message.author.id}: ${err.message}`));
+}
+
+/** After enough automod hits in a row the member is muted, as the server chose (strikes). Off until the limit is set. */
+async function applyStrike(message, action) {
+  if (action === 'tempmute' || action === 'kick') return;
+  const { guild, member, author, client } = message;
+  const config = await getConfig(guild.id);
+  if (!config?.strike_limit) return;
+  if (!recordStrike(guild.id, author.id, { limit: config.strike_limit, windowMinutes: config.strike_window_minutes ?? 10 })) return;
+  const minutes = config.strike_mute_minutes ?? 10;
+  const reason = `Automod: ${config.strike_limit} violations in ${config.strike_window_minutes ?? 10} minutes`;
+  if (!member?.moderatable) return;
+  await member.timeout(minutes * 60_000, reason);
+  const modCase = await createCase({ guildId: guild.id, userId: author.id, moderatorId: client.user.id, type: 'tempmute', reason, expiresAt: new Date(Date.now() + minutes * 60_000).toISOString(), source: 'automod' });
+  await logSanction(client, guild, { modCase, target: author, moderator: client.user, reason, duration: formatDuration(minutes * 60_000), source: 'automod' });
 }
 
 module.exports = { applyAutomodAction };

@@ -367,6 +367,52 @@ function startServer(client) {
       }
     });
 
+    // Lockdown from the dashboard: start or end it now. Administrators only, the same as the command.
+    app.post('/api/dashboard/guild/:guildId/lockdown', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await dashboardCardAccess(req, res);
+      if (!access) return;
+      try {
+        if (!access.member.permissions.has(PermissionFlagsBits.Administrator)) { res.status(403).json({ ok: false, message: 'Only administrators can start or end a lockdown.' }); return; }
+        const lockdown = require('../utils/lockdown');
+        const op = String(req.body?.op ?? '');
+        if (op === 'start') {
+          const minutes = Math.max(0, Math.min(10080, Math.floor(Number(req.body?.minutes)) || 0)) || null;
+          const result = await lockdown.startLockdown(access.guild, { startedBy: access.userId, reason: typeof req.body?.reason === 'string' ? req.body.reason.slice(0, 300) : null, minutes });
+          res.json({ ok: true, ...result });
+          return;
+        }
+        if (op === 'end') {
+          res.json({ ok: true, ...(await lockdown.endLockdown(access.guild, { endedBy: access.userId })) });
+          return;
+        }
+        res.status(400).json({ ok: false, message: 'That is not something I can do.' });
+      } catch (err) {
+        if (err.userFacing) { res.status(400).json({ ok: false, message: err.message }); return; }
+        logger.error(`Dashboard lockdown failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, message: 'The lockdown could not be changed. Try again.' });
+      }
+    });
+
+    // Lifts an active sanction (ban, mute or jail) from its case. Needs the permission the command needs.
+    app.post('/api/dashboard/guild/:guildId/moderation/lift', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await dashboardCardAccess(req, res);
+      if (!access) return;
+      try {
+        const { liftSanction } = require('../utils/sanctionLift');
+        const modCase = require('../db/modActions');
+        const row = await modCase.getCase(access.guild.id, Number(req.body?.case));
+        if (!row) { res.status(404).json({ ok: false, message: 'That case does not exist.' }); return; }
+        const needs = ['ban', 'tempban', 'hardban'].includes(row.type) ? PermissionFlagsBits.BanMembers : PermissionFlagsBits.ModerateMembers;
+        if (!access.member.permissions.has(needs) && !access.member.permissions.has(PermissionFlagsBits.Administrator)) { res.status(403).json({ ok: false, message: 'You need the same permission as the command to lift this.' }); return; }
+        const result = await liftSanction(access.guild, row.case_number, access.member.user, typeof req.body?.reason === 'string' ? req.body.reason.slice(0, 300) : null);
+        res.json({ ok: true, ...result });
+      } catch (err) {
+        if (err.userFacing) { res.status(400).json({ ok: false, message: err.message }); return; }
+        logger.error(`Dashboard lift failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, message: 'It could not be lifted. Check my permissions and try again.' });
+      }
+    });
+
     // The panel of confessions (the button that opens the form), posted or updated now from the dashboard.
     app.post('/api/dashboard/guild/:guildId/confessions/panel', dashboardDatabaseRateLimiter, async (req, res) => {
       const access = await dashboardCardAccess(req, res);

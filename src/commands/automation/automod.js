@@ -37,7 +37,18 @@ module.exports = {
         .setName('spam')
         .setDescription('Configure anti-spam (repeat messages, mass mentions, excessive caps, unauthorized invites).')
         .addBooleanOption((opt) => opt.setName('enabled').setDescription('Turn anti-spam on/off').setRequired(true))
-        .addIntegerOption((opt) => opt.setName('max_mentions').setDescription('Max users/roles mentioned in one message before it counts as spam (default 5)').setMinValue(1).setRequired(false)),
+        .addIntegerOption((opt) => opt.setName('max_mentions').setDescription('Max users/roles mentioned in one message before it counts as spam (default 5)').setMinValue(1).setRequired(false))
+        .addIntegerOption((opt) => opt.setName('repeat').setDescription('Same message this many times is a flood (default 3)').setMinValue(2).setMaxValue(20).setRequired(false))
+        .addIntegerOption((opt) => opt.setName('caps_percent').setDescription('Percent of capital letters that counts as shouting (default 70)').setMinValue(30).setMaxValue(100).setRequired(false))
+        .addIntegerOption((opt) => opt.setName('max_length').setDescription('Delete messages longer than this many characters (0 for no limit)').setMinValue(0).setMaxValue(2000).setRequired(false)),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('strikes')
+        .setDescription('Mute a member who breaks the automod again and again.')
+        .addIntegerOption((opt) => opt.setName('limit').setDescription('Hits that trigger the mute (0 turns it off)').setMinValue(0).setMaxValue(20).setRequired(true))
+        .addIntegerOption((opt) => opt.setName('window_minutes').setDescription('In how many minutes (default 10)').setMinValue(1).setMaxValue(1440))
+        .addIntegerOption((opt) => opt.setName('mute_minutes').setDescription('How long the mute lasts (default 10)').setMinValue(1).setMaxValue(40320)),
     )
 
     .addSubcommand((sub) =>
@@ -47,7 +58,7 @@ module.exports = {
         .addBooleanOption((opt) => opt.setName('enabled').setDescription('Turn anti-raid on/off').setRequired(true))
         .addIntegerOption((opt) => opt.setName('threshold').setDescription('Joins within the window that count as a raid (default 6)').setMinValue(2).setRequired(false))
         .addIntegerOption((opt) => opt.setName('window_seconds').setDescription('Time window in seconds (default 10)').setMinValue(2).setMaxValue(300).setRequired(false))
-        .addStringOption((opt) => opt.setName('action').setDescription('What to do once a raid is detected (default alert)').addChoices({ name: 'alert', value: 'alert' }, { name: 'kick', value: 'kick' }).setRequired(false)),
+        .addStringOption((opt) => opt.setName('action').setDescription('What to do once a raid is detected (default alert)').addChoices({ name: 'alert', value: 'alert' }, { name: 'kick', value: 'kick' }, { name: 'lockdown', value: 'lockdown' }).setRequired(false)),
     )
 
     .addSubcommand((sub) =>
@@ -184,6 +195,7 @@ module.exports = {
     if (!group && sub === 'link') return link(interaction);
     if (!group && sub === 'spam') return spam(interaction);
     if (!group && sub === 'raid') return raid(interaction);
+    if (!group && sub === 'strikes') return strikes(interaction);
     if (!group && sub === 'anti-alt') return antiAlt(interaction);
     if (!group && sub === 'antinuke') return antinuke(interaction);
     if (!group && sub === 'control') return officialControl(interaction);
@@ -294,6 +306,12 @@ async function spam(interaction) {
 
   const patch = { anti_spam_enabled: enabled };
   if (maxMentions) patch.max_mentions = maxMentions;
+  const repeat = interaction.options.getInteger('repeat');
+  if (repeat) patch.repeat_threshold = repeat;
+  const capsPercent = interaction.options.getInteger('caps_percent');
+  if (capsPercent) patch.caps_percent = capsPercent;
+  const maxLength = interaction.options.getInteger('max_length');
+  if (maxLength !== null) patch.max_message_length = maxLength;
   const saved = await upsertConfig(interaction.guild.id, patch);
 
   const text = `${EMOJI.APPROVE}  Anti-spam ${enabled ? 'enabled' : 'disabled'}.\n**Max mentions:** ${saved.max_mentions}\nCovers repeat-message flooding, mass mentions, excessive caps, and unauthorized invite links — all checked locally, no external API calls per message.`;
@@ -563,4 +581,20 @@ async function nativeRules(interaction, sub) {
     if (err.userFacing) return show(err.message, 0xff6b6b);
     throw err;
   }
+}
+
+async function strikes(interaction) {
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  await ensureGuild(interaction.guild.id);
+  const limit = interaction.options.getInteger('limit', true);
+  const patch = { strike_limit: limit };
+  const windowMinutes = interaction.options.getInteger('window_minutes');
+  if (windowMinutes) patch.strike_window_minutes = windowMinutes;
+  const muteMinutes = interaction.options.getInteger('mute_minutes');
+  if (muteMinutes) patch.strike_mute_minutes = muteMinutes;
+  const saved = await upsertConfig(interaction.guild.id, patch);
+  const text = limit
+    ? `${EMOJI.APPROVE}  Strikes on: **${saved.strike_limit}** automod hits in ${saved.strike_window_minutes} minutes mute the member for ${saved.strike_mute_minutes} minutes.`
+    : `${EMOJI.APPROVE}  Strikes are off.`;
+  await interaction.editReply({ components: [textCard(text, limit ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }

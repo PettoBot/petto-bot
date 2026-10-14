@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { getUserHistory, getCaseHistory, getLastCase, getCase, updateCase, deleteCase, deleteAllForUser } = require('../../db/modActions');
+const { getUserHistory, getCaseHistory, getLastCase, getCase, updateCase, deleteCase, deleteAllForUser, searchCases, addEvidence, clearEvidence, moderatorStats } = require('../../db/modActions');
 const { formatCaseLine, formatCaseDetail } = require('../../utils/caseFormat');
 const { buildCaseListCard, textCard } = require('../../utils/caseCard');
 const { resolveUsers } = require('../../utils/userResolve');
@@ -41,6 +41,25 @@ module.exports = {
         .addStringOption((opt) => opt.setName('duration').setDescription('New duration from now, e.g. 7d (only for tempban/tempmute)').setRequired(false))
         .addStringOption((opt) => opt.setName('reason').setDescription('New reason').setRequired(false)),
     )
+    .addSubcommand((sub) =>
+      sub
+        .setName('search')
+        .setDescription('Find cases by member, moderator, type or a word of the reason.')
+        .addUserOption((opt) => opt.setName('user').setDescription('The member'))
+        .addUserOption((opt) => opt.setName('moderator').setDescription('The moderator'))
+        .addStringOption((opt) => opt.setName('type').setDescription('The kind of case').addChoices(...['ban', 'unban', 'kick', 'mute', 'unmute', 'tempban', 'tempmute', 'warn', 'softban', 'jail', 'unjail', 'hardban'].map((t) => ({ name: t, value: t }))))
+        .addStringOption((opt) => opt.setName('text').setDescription('A word that is in the reason').setMaxLength(100)),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('evidence')
+        .setDescription('Attach proof to a case (a screenshot or a link), or clear it.')
+        .addIntegerOption((opt) => opt.setName('case').setDescription('Case number').setRequired(true).setMinValue(1))
+        .addAttachmentOption((opt) => opt.setName('file').setDescription('A screenshot or file'))
+        .addStringOption((opt) => opt.setName('link').setDescription('A link (https) to the proof, like a message link').setMaxLength(500))
+        .addBooleanOption((opt) => opt.setName('clear').setDescription('Remove all the proof of the case')),
+    )
+    .addSubcommand((sub) => sub.setName('stats').setDescription('What the moderators did lately.').addIntegerOption((opt) => opt.setName('days').setDescription('How many days back (default 30)').setMinValue(1).setMaxValue(365)))
     .addSubcommand((sub) => sub.setName('delete').setDescription('Delete a single case by number.').addIntegerOption((opt) => opt.setName('case').setDescription('Case number').setRequired(true).setMinValue(1)))
     .addSubcommand((sub) => sub.setName('delete-all').setDescription("Delete a user's entire case history.").addUserOption((opt) => opt.setName('user').setDescription('The user whose cases to wipe').setRequired(true))),
 
@@ -50,6 +69,9 @@ module.exports = {
     if (sub === 'last') return last(interaction);
     if (sub === 'last-many') return lastMany(interaction);
     if (sub === 'view') return view(interaction);
+    if (sub === 'search') return search(interaction);
+    if (sub === 'evidence') return evidence(interaction);
+    if (sub === 'stats') return stats(interaction);
     if (sub === 'edit') return edit(interaction);
     if (sub === 'edit-many') return editMany(interaction);
     if (sub === 'delete') return del(interaction);
@@ -360,4 +382,48 @@ async function deleteAll(interaction) {
 
   const deleted = await deleteAllForUser(interaction.guild.id, targetUser.id);
   await click.update({ components: [textCard(`${EMOJI.APPROVE}  Deleted **${deleted}** infraction(s) for ${targetUser}.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+}
+
+async function search(interaction) {
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  const filters = {
+    userId: interaction.options.getUser('user')?.id ?? null,
+    moderatorId: interaction.options.getUser('moderator')?.id ?? null,
+    type: interaction.options.getString('type'),
+    text: interaction.options.getString('text'),
+    limit: 10,
+  };
+  if (!filters.userId && !filters.moderatorId && !filters.type && !filters.text) {
+    await interaction.editReply({ components: [textCard('Pick at least one thing to search for.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+  const rows = await searchCases(interaction.guild.id, filters);
+  const text = rows.length ? ['### Cases found', ...rows.map(formatCaseLine)].join('\n') : 'No case matches that.';
+  await interaction.editReply({ components: [textCard(text.slice(0, 3900), 0x4b4f59)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
+}
+
+async function evidence(interaction) {
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  const caseNumber = interaction.options.getInteger('case', true);
+  const file = interaction.options.getAttachment('file');
+  const link = interaction.options.getString('link');
+  const show = (text, color) => interaction.editReply({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2 });
+  if (interaction.options.getBoolean('clear')) {
+    const row = await clearEvidence(interaction.guild.id, caseNumber);
+    return show(row ? `${EMOJI.APPROVE}  The proof of case #${caseNumber} was cleared.` : `No case #${caseNumber} found in this server.`, row ? 0xa5ea7a : 0xfe6465);
+  }
+  const url = file?.url ?? link;
+  if (!url || !/^https:\/\//i.test(url)) return show('Attach a file, or give a link that starts with https.', 0xfe6465);
+  const row = await addEvidence(interaction.guild.id, caseNumber, url);
+  return show(row ? `${EMOJI.APPROVE}  Proof added to case #${caseNumber} (${row.evidence.length}).` : `No case #${caseNumber} found in this server.`, row ? 0xa5ea7a : 0xfe6465);
+}
+
+async function stats(interaction) {
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  const days = interaction.options.getInteger('days') ?? 30;
+  const result = await moderatorStats(interaction.guild.id, days, interaction.client.user.id);
+  const types = Object.entries(result.byType).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t} ${n}`).join(' · ') || 'none';
+  const moderators = result.moderators.slice(0, 10).map((m, i) => `${i + 1}. <@${m.id}> · ${m.count}`).join('\n') || 'Nobody yet.';
+  const text = [`### Moderation · last ${days} days`, `**Cases:** ${result.total} (${result.automatic} automatic)`, `**By kind:** ${types}`, '**Moderators:**', moderators].join('\n');
+  await interaction.editReply({ components: [textCard(text.slice(0, 3900), 0x4b4f59)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
 }
