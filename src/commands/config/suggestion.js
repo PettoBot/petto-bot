@@ -53,6 +53,7 @@ module.exports = {
     .addSubcommand((s) => s.setName('reopen').setDescription('Take a suggestion by its ID back to pending (open to votes again).').addStringOption(idOption))
     .addSubcommand((s) => s.setName('delete').setDescription('Delete a suggestion, its message and its thread.').addStringOption(idOption))
     .addSubcommand((s) => s.setName('view').setDescription('See a suggestion.').addStringOption(idOption))
+    .addSubcommand((s) => s.setName('votes').setDescription('See who voted a suggestion, in favor and against (by its ID).').addStringOption(idOption))
     .addSubcommand((s) => s.setName('list').setDescription('The latest suggestions.').addStringOption((o) => o.setName('status').setDescription('Only the ones with this status').setRequired(false).addChoices(...Object.keys(suggestions.STATUSES).map((value) => ({ name: value, value })))))
     .addSubcommand((s) => s.setName('block').setDescription('Stop a member from making suggestions.').addUserOption((o) => o.setName('user').setDescription('The member').setRequired(true)))
     .addSubcommand((s) => s.setName('unblock').setDescription('Let a member make suggestions again.').addUserOption((o) => o.setName('user').setDescription('The member').setRequired(true)))
@@ -63,7 +64,7 @@ module.exports = {
     const config = await db.getConfig(interaction.guild.id);
     const manager = interaction.member?.permissions?.has(PermissionFlagsBits.ManageGuild);
     const staff = suggestions.isStaff(interaction.member, config);
-    const staffOnly = ['approve', 'deny', 'consider', 'implement', 'reopen', 'delete', 'view', 'list', 'block', 'unblock', 'config'];
+    const staffOnly = ['approve', 'deny', 'consider', 'implement', 'reopen', 'delete', 'view', 'votes', 'list', 'block', 'unblock', 'config'];
     if (staffOnly.includes(sub) && !staff) return reply(interaction, `${EMOJI.DENY}  Only the staff can use this.`, RED, true);
     if (!staffOnly.includes(sub) && !manager) return reply(interaction, `${EMOJI.DENY}  You need the **Manage Server** permission.`, RED, true);
 
@@ -80,6 +81,7 @@ module.exports = {
       case 'reopen': return respond(interaction, 'pending');
       case 'delete': return erase(interaction);
       case 'view': return view(interaction, config);
+      case 'votes': return whoVoted(interaction);
       case 'list': return list(interaction);
       case 'block': return blocking(interaction, true);
       case 'unblock': return blocking(interaction, false);
@@ -119,7 +121,7 @@ async function show(interaction, c) {
     '',
     '**How to answer** (the ID is under each suggestion, like `si2tr-foytm`):',
     '`suggestion approve <id> [reason]` · `deny` · `consider` · `implement` · `reopen`',
-    '`suggestion view <id>` · `list [status]` · `delete <id>` · `block <user>` · `unblock <user>`',
+    '`suggestion votes <id>` (who voted) · `view <id>` · `list [status]` · `delete <id>` · `block <user>` · `unblock <user>`',
     'Also in the dashboard: **Suggestions**, with a button for each answer.',
   ];
   return reply(interaction, lines.join('\n'));
@@ -182,6 +184,16 @@ async function view(interaction) {
   return reply(interaction, [`**Suggestion #${row.number}** · \`${row.id}\` · ${suggestions.STATUSES[row.status].label}`, `By <@${row.author_id}> · ${config_up(tally)}`, row.content.slice(0, 900), row.status_reason ? `Reason: ${row.status_reason}` : '', link].filter(Boolean).join('\n'));
 }
 const config_up = (tally) => `${tally.up} in favor · ${tally.down} against`;
+
+async function whoVoted(interaction) {
+  const id = interaction.options.getString('id', true).trim().toLowerCase();
+  const result = await suggestions.voters({ guild: interaction.guild, member: interaction.member, id });
+  if (result.error) return reply(interaction, `${EMOJI.DENY}  ${result.error}`, RED, true);
+  const config = await db.getConfig(interaction.guild.id);
+  const names = (ids) => (ids.length ? ids.slice(0, 40).map((userId) => `<@${userId}>`).join(' ') + (ids.length > 40 ? ` and ${ids.length - 40} more` : '') : 'nobody');
+  const text = [`**Votes of #${result.row.number}** · \`${result.row.id}\``, `${config.up_emoji} **${result.up.length}** in favor: ${names(result.up)}`, `${config.down_emoji} **${result.down.length}** against: ${names(result.down)}`].join('\n');
+  return reply(interaction, text, GREY, true);
+}
 
 async function list(interaction) {
   const status = interaction.options.getString('status');

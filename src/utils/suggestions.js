@@ -279,4 +279,14 @@ async function remove({ guild, member, id }) {
   return { row };
 }
 
-module.exports = { pictureName, BUTTON_PREFIX, STATUSES, CLOSED, MAX_CONTENT, makeId, splitImage, parseEmoji, voteRow, defaultDesign, suggestionVars, render, refresh, isStaff, submit, vote, answer, remove };
+/** Who voted a suggestion: the IDs in favor and against, newest first as stored. Returns `{ error }` or `{ row, up, down }`. */
+async function voters({ guild, member, id }) {
+  const config = await db.getConfig(guild.id);
+  if (!isStaff(member, config)) return { error: 'Only the staff can see who voted.' };
+  const row = await db.getSuggestion(guild.id, String(id).trim().toLowerCase());
+  if (!row) return { error: `There is no suggestion with the ID \`${id}\` in this server.` };
+  const votes = await db.getVotes(row.id);
+  return { row, up: votes.filter((v) => v.vote === 1).map((v) => v.user_id), down: votes.filter((v) => v.vote === -1).map((v) => v.user_id) };
+}
+
+module.exports = { pictureName, BUTTON_PREFIX, STATUSES, CLOSED, MAX_CONTENT, makeId, splitImage, parseEmoji, voteRow, defaultDesign, suggestionVars, render, refresh, isStaff, submit, vote, voters, answer, remove };

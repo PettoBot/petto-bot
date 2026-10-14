@@ -278,6 +278,27 @@ function startServer(client) {
       }
     });
 
+    // Who voted a suggestion, for the dashboard (the staff only, the same as the command).
+    app.post('/api/dashboard/guild/:guildId/suggestions/votes', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await dashboardCardAccess(req, res);
+      if (!access) return;
+      try {
+        const member = await access.guild.members.fetch(access.userId).catch(() => null);
+        const result = await suggestionsUtil.voters({ guild: access.guild, member, id: String(req.body?.id ?? '') });
+        if (result.error) { res.status(400).json({ ok: false, message: result.error }); return; }
+        const name = async (userId) => {
+          const cached = access.guild.members.cache.get(userId) ?? await access.guild.members.fetch(userId).catch(() => null);
+          return { id: userId, name: cached?.displayName ?? cached?.user?.username ?? userId };
+        };
+        const up = await Promise.all(result.up.slice(0, 50).map(name));
+        const down = await Promise.all(result.down.slice(0, 50).map(name));
+        res.json({ ok: true, up, down, upTotal: result.up.length, downTotal: result.down.length });
+      } catch (err) {
+        logger.error(`Dashboard suggestion votes failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, message: 'The votes could not be read. Try again.' });
+      }
+    });
+
     // The panel of confessions (the button that opens the form), posted or updated now from the dashboard.
     app.post('/api/dashboard/guild/:guildId/confessions/panel', dashboardDatabaseRateLimiter, async (req, res) => {
       const access = await dashboardCardAccess(req, res);
