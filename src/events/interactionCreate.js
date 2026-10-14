@@ -34,6 +34,7 @@ const { PREFIX: REQUEST_PREFIX } = require('../utils/requestCards');
 const { handleButton: handleRequestButton } = require('../interactions/requests');
 const { PREFIX: SCAM_PREFIX, handleButton: handleScamButton } = require('../utils/antiScam');
 const { PREFIX: ANTINUKE_PREFIX, handleButton: handleAntiNukeButton } = require('../interactions/antiNuke');
+const { PREFIX: APPEAL_PREFIX, handleButton: handleAppealButton, handleModal: handleAppealModal } = require('../interactions/appeals');
 const { PREFIX: CONFESSION_PREFIX, handleButton: handleConfessionButton, handleModal: handleConfessionModal } = require('../interactions/confessions');
 const { PREFIX: SUGGESTION_PREFIX, handleButton: handleSuggestionButton, handleModal: handleSuggestionModal } = require('../interactions/suggestions');
 const { PREFIX: VERIFY_LETTERS_PREFIX, handleButton: handleVerifyLettersButton, handleModal: handleVerifyLettersModal } = require('../interactions/verifyLetters');
@@ -61,6 +62,16 @@ module.exports = {
       await handleScamButton(interaction);
       return;
     }
+    // The card of an appeal: accept, reject or reply, and the small forms those open.
+    if (interaction.isButton() && interaction.customId.startsWith(`${APPEAL_PREFIX}::`)) {
+      await handleAppealButton(interaction);
+      return;
+    }
+    if (interaction.isModalSubmit() && interaction.customId.startsWith(`${APPEAL_PREFIX}::`)) {
+      await handleAppealModal(interaction);
+      return;
+    }
+
     if (interaction.isButton() && interaction.customId.startsWith(`${ANTINUKE_PREFIX}::`)) {
       await handleAntiNukeButton(interaction);
       return;
