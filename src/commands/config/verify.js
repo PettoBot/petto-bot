@@ -10,10 +10,11 @@ const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const config = require('../../config');
 const logger = require('../../utils/logger');
+const { t, languageOf } = require('../../i18n');
 
 const { methodOf, usesTurnstile, usesLink } = require('../../utils/verifyMethod');
 
-const METHOD_LABELS = { turnstile: 'Cloudflare check', letters: 'Letters in a picture (on the page or in Discord)', both: 'Cloudflare check and letters', discord: 'Letters inside Discord, no link' };
+const methodLabel = (lang, method) => t(lang, `verify.method.${method}`);
 
 // The link and its secret are always needed; the Cloudflare keys only for the servers that use that check.
 const LINK_CONFIGURED = () => Boolean(config.verifyBaseUrl && config.verifyTokenSecret);
@@ -46,62 +47,65 @@ module.exports = {
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
-    if (sub === 'setup') return setup(interaction);
-    if (sub === 'status') return status(interaction);
-    if (sub === 'template') return setTemplate(interaction);
-    if (sub === 'channel') return panel(interaction);
-    return send(interaction);
+    const lang = await languageOf(interaction);
+    if (sub === 'setup') return setup(interaction, lang);
+    if (sub === 'status') return status(interaction, lang);
+    if (sub === 'template') return setTemplate(interaction, lang);
+    if (sub === 'channel') return panel(interaction, lang);
+    return send(interaction, lang);
   },
 };
 
-async function panel(interaction) {
+async function panel(interaction, lang) {
   const channel = interaction.options.getChannel('channel', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
   const settings = (await getConfig(interaction.guild.id)) ?? {};
   const done = (text, color = 0xa5ea7a) => interaction.editReply({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2 });
-  if (!settings.enabled) return done('Turn verification on first: `verify setup true`.', 0xfe6465);
+  if (!settings.enabled) return done(t(lang, 'verify.panel.turnOnFirst'), 0xfe6465);
   const method = methodOf(settings);
-  if (!ENV_CONFIGURED(method)) return done(`${EMOJI.DENY}  The verification environment variables are not fully set. See \`verify status\`.`, 0xfe6465);
+  if (!ENV_CONFIGURED(method)) return done(t(lang, 'verify.panel.envMissing', { emoji: EMOJI.DENY }), 0xfe6465);
   try {
     await postPanel(interaction.guild, settings, channel);
-    return done(`${EMOJI.APPROVE}  The verification panel is in ${channel}. Members who have not verified can see that channel and press the button there${usesLink(method) ? ' (to get their link)' : ''}${method === 'letters' || method === 'discord' ? ' (to do the letters right there)' : ''}.`);
+    const letters = method === 'letters' || method === 'discord';
+    const which = usesLink(method) ? (letters ? 'both' : 'link') : 'letters';
+    return done(t(lang, `verify.panel.posted.${which}`, { emoji: EMOJI.APPROVE, channel: `${channel}` }));
   } catch (err) {
     logger.error('Failed to post the verification panel:', err);
-    return done(`${EMOJI.DENY}  I could not post the panel: ${err.message}`, 0xfe6465);
+    return done(t(lang, 'verify.panel.failed', { emoji: EMOJI.DENY, error: err.message }), 0xfe6465);
   }
 }
 
-async function setTemplate(interaction) {
+async function setTemplate(interaction, lang) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
   const which = interaction.options.getString('which', true).trim().toLowerCase();
-  if (!['prompt', 'verified'].includes(which)) return interaction.editReply({ components: [textCard('Choose `prompt` or `verified`.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+  if (!['prompt', 'verified'].includes(which)) return interaction.editReply({ components: [textCard(t(lang, 'verify.template.choose'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
   const column = `${which}_embed_template`;
   const name = String(interaction.options.getString('template') ?? '').trim();
   const done = (text, color = 0xa5ea7a) => interaction.editReply({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2 });
   if (!name) {
     const { templateHint } = require('../../utils/templateHint');
     const current = await getConfig(interaction.guild.id).catch(() => null);
-    return done(await templateHint(interaction.guild.id, { current: current?.[column] ?? null, usage: `verify template ${which} <name>`, what: `The ${which} DM` }), 0x4b4f59);
+    return done(await templateHint(interaction.guild.id, { current: current?.[column] ?? null, usage: t(lang, 'verify.template.usage', { which }), what: t(lang, `verify.template.what.${which}`), lang }), 0x4b4f59);
   }
   if (name.toLowerCase() === 'none') {
     await upsertConfig(interaction.guild.id, { [column]: null });
-    return done(`${EMOJI.APPROVE}  The ${which} DM goes back to the usual message.`);
+    return done(t(lang, `verify.template.reset.${which}`, { emoji: EMOJI.APPROVE }));
   }
   const doc = await getTemplate(interaction.guild.id, name).catch(() => null);
-  if (!doc) return done(`No saved embed named \`${name}\` was found. Make one in the dashboard, under Embeds.`, 0xfe6465);
+  if (!doc) return done(t(lang, 'verify.template.notFound', { name }), 0xfe6465);
   await upsertConfig(interaction.guild.id, { [column]: doc.name });
-  return done(`${EMOJI.APPROVE}  The ${which} DM now uses \`${doc.name}\`.${which === 'prompt' ? ' Put `{verify.link}` where the link goes.' : ''}`);
+  return done(t(lang, `verify.template.set.${which}`, { emoji: EMOJI.APPROVE, name: doc.name }));
 }
 
-async function setup(interaction) {
+async function setup(interaction, lang) {
   const enabled = interaction.options.getBoolean('enabled', true);
   const verifiedRole = interaction.options.getRole('verified_role');
   const chosenMethod = interaction.options.getString('method');
 
   if (enabled && !interaction.guild.members.me.permissions.has(PermissionFlagsBits.ManageRoles)) {
-    await interaction.reply({ content: 'I need the **Manage Roles** permission to set up verification.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'verify.setup.needManageRoles'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -119,54 +123,60 @@ async function setup(interaction) {
   if (enabled) {
     try {
       const role = await ensureUnverifiedRole(interaction.guild, { ...existing, ...saved });
-      roleLine = `\n**Gate role:** ${role} (denies View Channel everywhere; new members get it on join, lose it once verified)`;
+      roleLine = t(lang, 'verify.setup.gateRole', { role: `${role}` });
     } catch (err) {
       logger.error('Failed to provision unverified role:', err);
-      await interaction.editReply({ components: [textCard(`${EMOJI.DENY}  Enabled the config, but I was unable to set up the gate role: ${err.message}`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'verify.setup.gateFailed', { emoji: EMOJI.DENY, error: err.message }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
   }
 
   const method = methodOf({ ...existing, ...saved });
-  const envLine = ENV_CONFIGURED(method) ? '' : `\n${EMOJI.ALERT}  \`VERIFY_BASE_URL\`/\`TURNSTILE_*\`/\`VERIFY_TOKEN_SECRET\` aren't fully set in \`.env\`. Links won't work until they are.`;
+  const envLine = ENV_CONFIGURED(method) ? '' : t(lang, 'verify.setup.envMissing', { emoji: EMOJI.ALERT });
 
-  const text = `${EMOJI.APPROVE}  Verification ${enabled ? 'enabled' : 'disabled'}.${roleLine}${verifiedRole ? `\n**Bonus role on success:** ${verifiedRole}` : ''}\n**Check:** ${METHOD_LABELS[method]}${envLine}`;
+  const text = [
+    t(lang, enabled ? 'verify.setup.enabled' : 'verify.setup.disabled', { emoji: EMOJI.APPROVE }),
+    roleLine,
+    verifiedRole ? t(lang, 'verify.bonusRole', { role: `${verifiedRole}` }) : '',
+    t(lang, 'verify.check', { method: methodLabel(lang, method) }),
+    envLine,
+  ].filter(Boolean).join('\n');
   await interaction.editReply({ components: [textCard(text, enabled ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
-async function status(interaction) {
+async function status(interaction, lang) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const verifyConfig = await getConfig(interaction.guild.id);
   if (!verifyConfig) {
-    await interaction.editReply({ components: [textCard('Verification has never been configured in this server. Use `!verify setup enabled:true`.', 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'verify.status.never'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const lines = [
-    `### Verification status`,
-    `**Enabled:** ${verifyConfig.enabled ? `${EMOJI.APPROVE} Yes` : `${EMOJI.DENY} No`}`,
-    `**Gate role:** ${verifyConfig.unverified_role_id ? `<@&${verifyConfig.unverified_role_id}>` : 'Not created yet'}`,
-    `**Bonus role on success:** ${verifyConfig.verified_role_id ? `<@&${verifyConfig.verified_role_id}>` : 'None'}`,
-    `**Check:** ${METHOD_LABELS[methodOf(verifyConfig)]}`,
-    `**Panel channel:** ${verifyConfig.panel_channel_id ? `<#${verifyConfig.panel_channel_id}>` : 'none (use `verify channel`)'}`,
-    `**Web server env vars:** ${ENV_CONFIGURED(methodOf(verifyConfig)) ? `${EMOJI.APPROVE} Configured` : `${EMOJI.DENY} Missing (links won't work)`}`,
+    t(lang, 'verify.status.title'),
+    t(lang, 'verify.status.enabled', { value: verifyConfig.enabled ? t(lang, 'verify.status.yes', { emoji: EMOJI.APPROVE }) : t(lang, 'verify.status.no', { emoji: EMOJI.DENY }) }),
+    t(lang, 'verify.status.gateRole', { role: verifyConfig.unverified_role_id ? `<@&${verifyConfig.unverified_role_id}>` : t(lang, 'verify.status.notCreated') }),
+    t(lang, 'verify.bonusRole', { role: verifyConfig.verified_role_id ? `<@&${verifyConfig.verified_role_id}>` : t(lang, 'verify.status.none') }),
+    t(lang, 'verify.check', { method: methodLabel(lang, methodOf(verifyConfig)) }),
+    t(lang, 'verify.status.panelChannel', { channel: verifyConfig.panel_channel_id ? `<#${verifyConfig.panel_channel_id}>` : t(lang, 'verify.status.noPanel') }),
+    t(lang, 'verify.status.env', { value: ENV_CONFIGURED(methodOf(verifyConfig)) ? t(lang, 'verify.status.configured', { emoji: EMOJI.APPROVE }) : t(lang, 'verify.status.missing', { emoji: EMOJI.DENY }) }),
   ];
   await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
-async function send(interaction) {
+async function send(interaction, lang) {
   const targetUser = interaction.options.getUser('user', true);
 
   const sendConfig = (await getConfig(interaction.guild.id).catch(() => null)) ?? {};
   if (!ENV_CONFIGURED(methodOf(sendConfig))) {
-    await interaction.reply({ content: 'Verification env vars are not fully set. See `!verify status`.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'verify.send.envMissing'), flags: MessageFlags.Ephemeral });
     return;
   }
 
   const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
   if (!targetMember) {
-    await interaction.reply({ content: 'That user is not a member of this server.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'verify.send.notMember'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -178,16 +188,16 @@ async function send(interaction) {
   if (verifyConfig.enabled) {
     const role = await ensureUnverifiedRole(interaction.guild, verifyConfig);
     if (!targetMember.roles.cache.has(role.id)) {
-      await targetMember.roles.add(role, 'Verification link resent').catch((err) => logger.warn('Could not add gate role:', err.message));
+      await targetMember.roles.add(role, t(lang, 'verify.reason.resent')).catch((err) => logger.warn('Could not add gate role:', err.message));
     }
   }
 
   const link = usesLink(methodOf(verifyConfig)) ? `${config.verifyBaseUrl}/verify/${createToken({ userId: targetUser.id, guildId: interaction.guild.id })}` : null;
 
-  const dmSent = await sendVerifyDM(targetMember, { guild: interaction.guild, link })
+  const dmSent = await sendVerifyDM(targetMember, { guild: interaction.guild, link, lang })
     .then(() => true)
     .catch(() => false);
 
-  const text = dmSent ? `${EMOJI.APPROVE}  Sent a verification link to ${targetUser}.` : `${EMOJI.DENY}  Could not DM ${targetUser} (DMs closed).${link ? ` Link: ${link}` : ''}`;
+  const text = dmSent ? t(lang, 'verify.send.sent', { emoji: EMOJI.APPROVE, user: `${targetUser}` }) : t(lang, link ? 'verify.send.failedLink' : 'verify.send.failed', { emoji: EMOJI.DENY, user: `${targetUser}`, link });
   await interaction.editReply({ components: [textCard(text, dmSent ? 0xa5ea7a : 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
 }

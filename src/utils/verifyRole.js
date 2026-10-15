@@ -1,6 +1,7 @@
 const { ChannelType } = require('discord.js');
 const { upsertConfig } = require('../db/verificationConfig');
 const logger = require('./logger');
+const { t, guildLanguage } = require('../i18n');
 
 /**
  * Returns the guild's "Unverified" role, creating one (and denying it View
@@ -14,16 +15,18 @@ async function ensureUnverifiedRole(guild, verifyConfig) {
     if (existing) return existing;
   }
 
+  // The role and the reasons in the audit log are in the language of the server.
+  const lang = await guildLanguage(guild.id);
   const role = await guild.roles.create({
-    name: 'Unverified',
+    name: t(lang, 'verify.role.unverified'),
     color: 0x2b2d31,
     permissions: [],
-    reason: 'Petto: auto-created verification gate role',
+    reason: t(lang, 'verify.reason.gateRole'),
   });
 
   for (const channel of guild.channels.cache.values()) {
     if (![ChannelType.GuildText, ChannelType.GuildVoice, ChannelType.GuildAnnouncement, ChannelType.GuildForum, ChannelType.GuildStageVoice, ChannelType.GuildCategory].includes(channel.type)) continue;
-    await channel.permissionOverwrites.edit(role, { ViewChannel: false }, { reason: 'Petto: verification gate setup' }).catch((err) => {
+    await channel.permissionOverwrites.edit(role, { ViewChannel: false }, { reason: t(lang, 'verify.reason.gateSetup') }).catch((err) => {
       logger.warn(`Could not set verification overwrite in #${channel.name} (${channel.id}):`, err.message);
     });
   }
