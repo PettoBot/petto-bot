@@ -17,7 +17,7 @@ const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { COLORS } = require('../../utils/colors');
 const logger = require('../../utils/logger');
-const { t, currentLanguage, languageOf } = require('../../i18n');
+const { t, currentLanguage, languageOf, defaultText } = require('../../i18n');
 
 const LOADING_EMOJI = EMOJI.LOADING;
 const BACKUP_MENU_PREFIX = 'backup_menu';
@@ -78,7 +78,7 @@ async function createBackupForInteraction(interaction, label = null) {
 
   await finish(interaction, buildStatusCard([
     t(lang, 'backup.created.saved', { emoji: EMOJI.APPROVE, number: publicBackupNumber(saved) }),
-    t(lang, 'backup.created.label', { label: saved.label || t(lang, 'backup.manualLabel') }),
+    t(lang, 'backup.created.label', { label: backupLabel(saved, lang) }),
     t(lang, 'backup.created.captured', { roles: snapshot.roles.length, channels: snapshot.channels.length, emojis: snapshot.emojis.length }),
     t(lang, 'backup.created.note'),
   ].join('\n'), COLORS.GREEN, interaction, lang));
@@ -271,9 +271,15 @@ function buildStatusCard(content, color, interaction, lang = currentLanguage()) 
   return card;
 }
 
+/** The name of a backup: the one given to it, or the database's default ("Manual backup", "Scheduled backup") in `lang`. */
+function backupLabel(row, lang = currentLanguage()) {
+  if (!row?.label) return t(lang, 'backup.manualLabel');
+  return defaultText(lang, defaultText(lang, row.label, 'backup.manualLabel'), 'backup.scheduledLabel');
+}
+
 /** One saved backup in a list: number, label, automatic or manual, and when. */
 function backupLine(row, lang) {
-  return `• **#${publicBackupNumber(row)}** ${row.label || t(lang, 'backup.manualLabel')} · ${t(lang, row.source === 'scheduled' ? 'backup.source.automatic' : 'backup.source.manual')} · <t:${Math.floor(new Date(row.created_at).getTime() / 1000)}:R>`;
+  return `• **#${publicBackupNumber(row)}** ${backupLabel(row, lang)} · ${t(lang, row.source === 'scheduled' ? 'backup.source.automatic' : 'backup.source.manual')} · <t:${Math.floor(new Date(row.created_at).getTime() / 1000)}:R>`;
 }
 
 function buildPanel(guild, userId, rows, scheduleRow, lang = currentLanguage()) {
