@@ -88,5 +88,20 @@ assert.throws(() => rpsOutcome('lizard', 'rock'), RangeError);
   }
   assert.ok(replies[0].files?.length === 1 && replies[0].files[0].name === 'ship.png', '/ship attaches its picture');
 
+  // In Spanish and Portuguese: the answers, the moves and the verdicts are translated; the typed moves stay English.
+  const { t } = require('../src/i18n');
+  assert.equal(shipVerdict(100, 'es'), 'Almas gemelas');
+  assert.equal(shipVerdict(0, 'pt-BR'), 'Não nasceram um para o outro');
+  const run = async (name, lang, value) => {
+    replies.length = 0;
+    await require(`../src/commands/fun/${name}`).execute({ ...interaction, pettoLang: lang, options: { getString: () => value, getUser: interaction.options.getUser } });
+    return replies[0].content;
+  };
+  const eightBall = await run('8ball', 'es', 'Will it work?');
+  assert.ok(EIGHT_BALL_ANSWERS.some((answer) => eightBall.startsWith(`🎱 **${t('es', answer.key)}**`)), '8ball answers in Spanish');
+  assert.match(await run('rps', 'pt-BR', 'rock'), /^✊ \*\*pedra\*\* {2}vs {2}.+\n\*\*(Você ganhou!|Eu ganhei!|Deu empate\.)\*\*$/);
+  assert.equal(await run('rps', 'es', 'piedra'), t('es', 'fun.rps.pick'));
+  assert.equal(await run('ship', 'es', ''), '💞 **a** × **a**: **100%** · Almas gemelas', 'a member with themselves, in Spanish');
+
   console.log('Checked the fun command logic.');
 })().catch((err) => { console.error(err); process.exit(1); });

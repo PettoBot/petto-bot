@@ -2,6 +2,7 @@ const { AttachmentBuilder, SlashCommandBuilder } = require('discord.js');
 const { shipScore, shipVerdict } = require('../../utils/funGames');
 const { buildShipCard } = require('../../imgutils/shipCard');
 const logger = require('../../utils/logger');
+const { languageOf } = require('../../i18n');
 
 function nameOf(guild, user) {
   return guild?.members?.cache?.get(user.id)?.displayName ?? user.globalName ?? user.username;
@@ -22,13 +23,14 @@ module.exports = {
 
   async execute(interaction) {
     await interaction.deferReply();
+    const lang = await languageOf(interaction);
 
     const first = interaction.options.getUser('first', true);
     const second = interaction.options.getUser('second') ?? interaction.user;
     const score = shipScore(first.id, second.id);
     const nameA = nameOf(interaction.guild, first);
     const nameB = nameOf(interaction.guild, second);
-    const text = `💞 **${nameA}** × **${nameB}**: **${score}%** · ${shipVerdict(score)}`;
+    const text = `💞 **${nameA}** × **${nameB}**: **${score}%** · ${shipVerdict(score, lang)}`;
 
     try {
       const card = await buildShipCard({ avatarA: avatarOf(interaction.guild, first), avatarB: avatarOf(interaction.guild, second), nameA, nameB, score });

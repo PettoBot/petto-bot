@@ -130,12 +130,12 @@ async function buildShipCard({ avatarA, avatarB, nameA, nameB, score }) {
   ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = '58px Chewy, sans-serif';
+  ctx.font = '58px Chewy, sans-serif'; // i18n-ignore: font, not text
   ctx.fillText(`${score}%`, CENTER_X, AVATAR_Y + AVATAR / 2 - 6);
 
   // Names under the avatars.
   ctx.fillStyle = '#7a1f4d';
-  ctx.font = '30px Chewy, sans-serif';
+  ctx.font = '30px Chewy, sans-serif'; // i18n-ignore: font, not text
   ctx.fillText(fitText(ctx, nameA, 260), LEFT_X + AVATAR / 2, AVATAR_Y + AVATAR + 38);
   ctx.fillText(fitText(ctx, nameB, 260), RIGHT_X + AVATAR / 2, AVATAR_Y + AVATAR + 38);
 

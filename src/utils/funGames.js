@@ -1,28 +1,30 @@
 // Logic behind the small fun commands (8ball, ship, rps, choose). Free of Discord so scripts/check-fun.js can test it.
 const { createHash, randomInt } = require('node:crypto');
+const { t, currentLanguage } = require('../i18n');
 
+// The 20 answers (10 yes, 5 maybe, 5 no); their texts are in the fun catalog and `text` is the English one.
 const EIGHT_BALL_ANSWERS = [
-  { tone: 'yes', text: 'It is certain.' },
-  { tone: 'yes', text: 'Without a doubt.' },
-  { tone: 'yes', text: 'Yes, definitely.' },
-  { tone: 'yes', text: 'You may rely on it.' },
-  { tone: 'yes', text: 'As I see it, yes.' },
-  { tone: 'yes', text: 'Most likely.' },
-  { tone: 'yes', text: 'Outlook good.' },
-  { tone: 'yes', text: 'Yes.' },
-  { tone: 'yes', text: 'Signs point to yes.' },
-  { tone: 'yes', text: 'All the stars agree.' },
-  { tone: 'maybe', text: 'Reply hazy, try again.' },
-  { tone: 'maybe', text: 'Ask again later.' },
-  { tone: 'maybe', text: 'Better not tell you now.' },
-  { tone: 'maybe', text: 'Cannot predict now.' },
-  { tone: 'maybe', text: 'Concentrate and ask again.' },
-  { tone: 'no', text: 'Do not count on it.' },
-  { tone: 'no', text: 'My reply is no.' },
-  { tone: 'no', text: 'My sources say no.' },
-  { tone: 'no', text: 'Outlook not so good.' },
-  { tone: 'no', text: 'Very doubtful.' },
-];
+  { tone: 'yes', key: 'fun.eightBall.certain' },
+  { tone: 'yes', key: 'fun.eightBall.noDoubt' },
+  { tone: 'yes', key: 'fun.eightBall.definitely' },
+  { tone: 'yes', key: 'fun.eightBall.relyOnIt' },
+  { tone: 'yes', key: 'fun.eightBall.asISeeIt' },
+  { tone: 'yes', key: 'fun.eightBall.mostLikely' },
+  { tone: 'yes', key: 'fun.eightBall.outlookGood' },
+  { tone: 'yes', key: 'fun.eightBall.yes' },
+  { tone: 'yes', key: 'fun.eightBall.signsYes' },
+  { tone: 'yes', key: 'fun.eightBall.starsAgree' },
+  { tone: 'maybe', key: 'fun.eightBall.hazy' },
+  { tone: 'maybe', key: 'fun.eightBall.askLater' },
+  { tone: 'maybe', key: 'fun.eightBall.betterNotTell' },
+  { tone: 'maybe', key: 'fun.eightBall.cannotPredict' },
+  { tone: 'maybe', key: 'fun.eightBall.concentrate' },
+  { tone: 'no', key: 'fun.eightBall.dontCount' },
+  { tone: 'no', key: 'fun.eightBall.replyNo' },
+  { tone: 'no', key: 'fun.eightBall.sourcesNo' },
+  { tone: 'no', key: 'fun.eightBall.outlookNotGood' },
+  { tone: 'no', key: 'fun.eightBall.veryDoubtful' },
+].map((answer) => ({ ...answer, text: t('en', answer.key) }));
 
 const RPS_CHOICES = ['rock', 'paper', 'scissors'];
 const RPS_BEATS = { rock: 'scissors', paper: 'rock', scissors: 'paper' };
@@ -30,7 +32,7 @@ const RPS_ICON = { rock: '✊', paper: '✋', scissors: '✌️' };
 
 /** Picks one entry. `random(min, maxExclusive)` can be replaced in tests. */
 function pickRandom(list, random = randomInt) {
-  if (!list.length) throw new RangeError('Nothing to pick from.');
+  if (!list.length) throw new RangeError('Nothing to pick from.'); // i18n-ignore: internal error, never shown
   return list[random(0, list.length)];
 }
 
@@ -60,13 +62,13 @@ function shipScore(idA, idB) {
   return digest.readUInt32BE(0) % 101;
 }
 
-function shipVerdict(score) {
-  if (score >= 90) return 'Soulmates';
-  if (score >= 75) return 'A great match';
-  if (score >= 55) return 'Good chemistry';
-  if (score >= 35) return 'Could work with effort';
-  if (score >= 15) return 'Just friends, maybe';
-  return 'Not meant to be';
+function shipVerdict(score, lang = currentLanguage()) {
+  if (score >= 90) return t(lang, 'fun.ship.verdict.soulmates');
+  if (score >= 75) return t(lang, 'fun.ship.verdict.greatMatch');
+  if (score >= 55) return t(lang, 'fun.ship.verdict.goodChemistry');
+  if (score >= 35) return t(lang, 'fun.ship.verdict.withEffort');
+  if (score >= 15) return t(lang, 'fun.ship.verdict.justFriends');
+  return t(lang, 'fun.ship.verdict.notMeant');
 }
 
 function shipBar(score, segments = 10) {
@@ -76,7 +78,7 @@ function shipBar(score, segments = 10) {
 
 /** The result of a rock, paper, scissors round from the player's point of view. */
 function rpsOutcome(player, bot) {
-  if (!RPS_BEATS[player] || !RPS_BEATS[bot]) throw new RangeError('Unknown rock paper scissors choice.');
+  if (!RPS_BEATS[player] || !RPS_BEATS[bot]) throw new RangeError('Unknown rock paper scissors choice.'); // i18n-ignore: internal error, never shown
   if (player === bot) return 'tie';
   return RPS_BEATS[player] === bot ? 'win' : 'lose';
 }
