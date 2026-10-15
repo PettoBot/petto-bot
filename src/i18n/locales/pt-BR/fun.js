@@ -20,7 +20,7 @@ module.exports = {
   'fun.eightBall.sourcesNo': 'Minhas fontes dizem que não.',
   'fun.eightBall.outlookNotGood': 'As perspectivas não são muito boas.',
   'fun.eightBall.veryDoubtful': 'Muito duvidoso.',
-  'fun.rps.pick': 'Escolha rock, paper ou scissors (pedra, papel ou tesoura).',
+  'fun.rps.pick': 'Escolha pedra, papel ou tesoura.',
   'fun.rps.move.rock': 'pedra',
   'fun.rps.move.paper': 'papel',
   'fun.rps.move.scissors': 'tesoura',

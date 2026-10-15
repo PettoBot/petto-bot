@@ -61,6 +61,10 @@ for (const player of RPS_CHOICES) {
   }
 }
 assert.throws(() => rpsOutcome('lizard', 'rock'), RangeError);
+const { readRpsChoice } = require('../src/utils/funGames');
+for (const [typed, move] of [['rock', 'rock'], ['Piedra', 'rock'], ['pedra', 'rock'], ['papel', 'paper'], ['tijera', 'scissors'], ['TESOURA', 'scissors'], ['lizard', null]]) {
+  assert.equal(readRpsChoice(typed), move, `!rps ${typed}`);
+}
 
 // The fun commands answer with plain text; /ship adds the picture. A card is a PNG even when the avatars cannot load.
 (async () => {
@@ -100,7 +104,9 @@ assert.throws(() => rpsOutcome('lizard', 'rock'), RangeError);
   const eightBall = await run('8ball', 'es', 'Will it work?');
   assert.ok(EIGHT_BALL_ANSWERS.some((answer) => eightBall.startsWith(`🎱 **${t('es', answer.key)}**`)), '8ball answers in Spanish');
   assert.match(await run('rps', 'pt-BR', 'rock'), /^✊ \*\*pedra\*\* {2}vs {2}.+\n\*\*(Você ganhou!|Eu ganhei!|Deu empate\.)\*\*$/);
-  assert.equal(await run('rps', 'es', 'piedra'), t('es', 'fun.rps.pick'));
+  assert.equal(await run('rps', 'es', 'lagarto'), t('es', 'fun.rps.pick'));
+  assert.match(await run('rps', 'es', 'piedra'), /^✊ \*\*piedra\*\* {2}vs /, 'the Spanish word is a move');
+  assert.match(await run('rps', 'pt-BR', 'tesoura'), /^✌️ \*\*tesoura\*\* {2}vs /, 'the Portuguese word is a move');
   assert.equal(await run('ship', 'es', ''), '💞 **a** × **a**: **100%** · Almas gemelas', 'a member with themselves, in Spanish');
 
   console.log('Checked the fun command logic.');

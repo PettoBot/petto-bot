@@ -29,6 +29,17 @@ const EIGHT_BALL_ANSWERS = [
 const RPS_CHOICES = ['rock', 'paper', 'scissors'];
 const RPS_BEATS = { rock: 'scissors', paper: 'rock', scissors: 'paper' };
 const RPS_ICON = { rock: '✊', paper: '✋', scissors: '✌️' };
+// The words a member can type for each move, in English, Spanish and Portuguese (read, never shown).
+const RPS_WORDS = new Map([
+  ...['rock', 'piedra', 'pedra'].map((word) => [word, 'rock']),
+  ...['paper', 'papel'].map((word) => [word, 'paper']),
+  ...['scissors', 'tijera', 'tijeras', 'tesoura', 'tesouras'].map((word) => [word, 'scissors']),
+]);
+
+/** The move a member typed (`rock`, `piedra`, `tesoura`…), or null. */
+function readRpsChoice(text) {
+  return RPS_WORDS.get(String(text ?? '').trim().toLowerCase()) ?? null;
+}
 
 /** Picks one entry. `random(min, maxExclusive)` can be replaced in tests. */
 function pickRandom(list, random = randomInt) {
@@ -94,4 +105,5 @@ module.exports = {
   shipVerdict,
   shipBar,
   rpsOutcome,
+  readRpsChoice,
 };
