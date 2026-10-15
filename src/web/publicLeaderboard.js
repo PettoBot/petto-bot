@@ -96,7 +96,7 @@ function registerPublicLeaderboardRoute(app, { isAuthorized, limiter, client }) 
         res.status(answer.status).json({ ok: false, error: answer.error });
         return;
       }
-      res.set('Cache-Control', 'public, max-age=30');
+      res.set('Cache-Control', 'public, max-age=30'); // i18n-ignore: HTTP header
       res.json(answer);
     } catch (err) {
       logger.error('Public leaderboard failed:', err);

@@ -1,6 +1,17 @@
-function renderHomePage({ guildCount }) {
+const { t, tn, currentLanguage, normalizeLanguage, DEFAULT_LANGUAGE } = require('../i18n');
+
+function escapeHtml(str) {
+  return String(str ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/** The home page of the service, in `lang` (the visitor's language, see requestLanguage() in src/i18n). */
+function renderHomePage({ guildCount, lang = currentLanguage() }) {
+  const language = normalizeLanguage(lang) ?? DEFAULT_LANGUAGE;
+  const text = (key) => escapeHtml(t(language, `web.home.${key}`));
+  const servers = Number(guildCount) || 0;
+  // i18n-ignore: the markup and the styles of the page; every text in it comes from the catalogs
   return `<!doctype html>
-<html lang="en">
+<html lang="${language}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -19,8 +30,8 @@ function renderHomePage({ guildCount }) {
 </head>
 <body>
   <div class="shell">
-    <header class="topbar"><div class="brand"><img src="/assets/favicon.png" alt=""> <span>Petto</span></div><div class="service"><span class="dot" aria-hidden="true"></span>Discord bot online</div></header>
-    <main class="main"><section class="card"><div class="intro"><div class="logo"><img src="/assets/favicon.png" alt="Petto"></div><div><div class="eyebrow">Petto for Discord</div><h1>A duck shaped bot for servers that want things under control.</h1><p class="sub">Moderation, tickets, leveling, giveaways and useful server tools in one place. This is the service home page, while the actual setup happens in Discord.</p></div></div><div class="status"><span class="dot" aria-hidden="true"></span>Online · serving ${Number(guildCount) || 0} server${Number(guildCount) === 1 ? '' : 's'}</div><nav class="links" aria-label="Petto links"><a href="https://discord.com">Open Discord</a><a href="/">Refresh status</a></nav></section><footer>Cloudflare · Discord · <b>Petto</b></footer></main>
+    <header class="topbar"><div class="brand"><img src="/assets/favicon.png" alt=""> <span>Petto</span></div><div class="service"><span class="dot" aria-hidden="true"></span>${text('service')}</div></header>
+    <main class="main"><section class="card"><div class="intro"><div class="logo"><img src="/assets/favicon.png" alt="Petto"></div><div><div class="eyebrow">${text('eyebrow')}</div><h1>${text('heading')}</h1><p class="sub">${text('sub')}</p></div></div><div class="status"><span class="dot" aria-hidden="true"></span>${escapeHtml(tn(language, 'web.home.status', servers, { count: servers }))}</div><nav class="links" aria-label="${text('linksLabel')}"><a href="https://discord.com">${text('openDiscord')}</a><a href="/">${text('refresh')}</a></nav></section><footer>Cloudflare · Discord · <b>Petto</b></footer></main>
   </div>
 </body>
 </html>`;

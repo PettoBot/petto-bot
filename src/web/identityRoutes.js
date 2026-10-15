@@ -11,6 +11,7 @@ const { LOG_EVENTS } = require('../utils/identity/emit');
 const { VANITY_SOURCES, COMPARISONS, CONDITIONS, ACTIONS } = require('../utils/identity/compare');
 const { VARIABLE_GROUPS } = require('../utils/embedVariableRegistry');
 const logger = require('../utils/logger');
+const { t, currentLanguage, requestLanguage } = require('../i18n');
 
 const limiter = rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: true, legacyHeaders: false });
 const writes = new Map();
@@ -53,8 +54,8 @@ async function overview(guild) {
   };
 }
 
-/** Runs one action. Returns `{ ok: true, note? }` or `{ ok: false, code, message }`. */
-async function act(guild, member, body) {
+/** Runs one action. Returns `{ ok: true, note? }` or `{ ok: false, code, message }`, the texts in `lang`. */
+async function act(guild, member, body, lang = currentLanguage()) {
   const action = String(body.action ?? '');
   const kind = action.startsWith('vanity_') ? 'vanity' : action.startsWith('guildtag_') ? 'guildtag' : null;
   const pick = (...keys) => Object.fromEntries(keys.filter((key) => body[key] !== undefined && body[key] !== '').map((key) => [key, body[key]]));
@@ -62,43 +63,43 @@ async function act(guild, member, body) {
     const fields = kind === 'vanity'
       ? { ...pick('word', 'source', 'comparison', 'role_id'), action: body.rule_action, normalization: { case_fold: body.case_fold !== false, trim_space: body.trim_space !== false, collapse_space: body.collapse_space !== false } }
       : { ...pick('condition', 'value', 'role_id'), action: body.rule_action };
-    const result = await rules.createRule(guild, kind, { name: body.name, ...fields }, member, member.id);
-    return result.ok ? { ok: true, note: 'Members are checked as they change. Use the sync command to apply it to everyone now.' } : result;
+    const result = await rules.createRule(guild, kind, { name: body.name, ...fields }, member, member.id, lang);
+    return result.ok ? { ok: true, note: t(lang, 'web.identity.created') } : result;
   }
   if (kind && action.endsWith('_update')) {
     const fields = pick(...(kind === 'vanity' ? ['word', 'source', 'comparison', 'role_id'] : ['condition', 'value', 'role_id']));
     if (typeof body.enabled === 'boolean') fields.enabled = body.enabled;
-    const result = await rules.updateRule(guild, kind, body.name, fields, member);
+    const result = await rules.updateRule(guild, kind, body.name, fields, member, lang);
     return result.ok ? { ok: true } : result;
   }
-  if (kind && action.endsWith('_delete')) return rules.removeRule(guild, kind, body.name);
+  if (kind && action.endsWith('_delete')) return rules.removeRule(guild, kind, body.name, lang);
   if (action === 'notify_set') {
     const source = body.notify_source === 'guildtag' ? 'guildtag' : body.notify_source === 'vanity' ? 'vanity' : null;
-    if (!source) return { ok: false, code: 'invalid_action', message: 'Choose vanity or guildtag.' };
+    if (!source) return { ok: false, code: 'invalid_action', message: t(lang, 'web.identity.chooseSource') };
     if (!body.channel_id) { await db.clearNotification(guild.id, source); return { ok: true }; }
     const channel = guild.channels.cache.get(String(body.channel_id));
-    if (!isTextChannel(channel)) return { ok: false, code: 'channel_not_found', message: 'Choose a text channel of this server.' };
+    if (!isTextChannel(channel)) return { ok: false, code: 'channel_not_found', message: t(lang, 'web.identity.chooseChannel') };
     const embedName = body.embed && body.embed !== 'default' ? String(body.embed).toLowerCase() : '';
-    if (embedName && !(await getTemplate(guild.id, embedName))) return { ok: false, code: 'embed_not_found', message: 'That embed does not exist.' };
+    if (embedName && !(await getTemplate(guild.id, embedName))) return { ok: false, code: 'embed_not_found', message: t(lang, 'web.identity.embedMissing') };
     await db.setNotification(guild.id, source, { channelId: channel.id, embedName, ping: body.ping === 'none' ? 'none' : 'user' });
     return { ok: true };
   }
   if (action === 'logs_set') {
     if (!body.channel_id) { await db.clearLogConfig(guild.id); return { ok: true }; }
     const channel = guild.channels.cache.get(String(body.channel_id));
-    if (!isTextChannel(channel)) return { ok: false, code: 'channel_not_found', message: 'Choose a text channel of this server.' };
+    if (!isTextChannel(channel)) return { ok: false, code: 'channel_not_found', message: t(lang, 'web.identity.chooseChannel') };
     const chosen = (Array.isArray(body.events) ? body.events : []).filter((event) => LOG_EVENTS.includes(event));
-    if (!chosen.length) return { ok: false, code: 'no_events', message: 'Choose at least one log event.' };
+    if (!chosen.length) return { ok: false, code: 'no_events', message: t(lang, 'web.identity.chooseEvent') };
     const embeds = {};
     for (const [event, name] of Object.entries(body.embeds ?? {})) {
       if (!LOG_EVENTS.includes(event) || !name) continue;
-      if (!(await getTemplate(guild.id, String(name).toLowerCase()))) return { ok: false, code: 'embed_not_found', message: 'That embed does not exist.' };
+      if (!(await getTemplate(guild.id, String(name).toLowerCase()))) return { ok: false, code: 'embed_not_found', message: t(lang, 'web.identity.embedMissing') };
       embeds[event] = String(name).toLowerCase();
     }
     await db.setLogConfig(guild.id, { channelId: channel.id, events: Object.fromEntries(chosen.map((event) => [event, true])), embeds });
     return { ok: true };
   }
-  return { ok: false, code: 'invalid_action', message: 'Unknown action.' };
+  return { ok: false, code: 'invalid_action', message: t(lang, 'web.identity.unknownAction') };
 }
 
 function registerIdentityRoutes(app, { authorize }) {
@@ -107,7 +108,7 @@ function registerIdentityRoutes(app, { authorize }) {
     if (!access) return;
     try { await handler(req, res, access); } catch (error) {
       logger.error({ guildId: req.params.guildId, action: 'identity-route' }, `Vanity request failed: ${error.message}`);
-      if (!res.headersSent) res.status(500).json({ ok: false, error: 'unavailable', message: 'Something went wrong.' });
+      if (!res.headersSent) res.status(500).json({ ok: false, error: 'unavailable', message: t(requestLanguage(req, req.params.guildId), 'web.identity.failed') });
     }
   };
 
@@ -116,9 +117,10 @@ function registerIdentityRoutes(app, { authorize }) {
   }));
 
   app.post('/api/dashboard/guild/:guildId/identity', limiter, route(async (req, res, { guild, member, userId }) => {
-    if (rateLimited(userId)) return failure(res, 'rate_limited', 'Too many changes, wait a minute and try again.');
+    const lang = requestLanguage(req, guild.id);
+    if (rateLimited(userId)) return failure(res, 'rate_limited', t(lang, 'web.identity.tooMany'));
     await ensureGuild(guild.id);
-    const result = await act(guild, member, req.body ?? {});
+    const result = await act(guild, member, req.body ?? {}, lang);
     if (!result.ok) return failure(res, result.code, result.message);
     await db.recordAudit({
       eventType: `dashboard_${req.body.action}`, dedupeKey: `dashboard:${guild.id}:${userId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
