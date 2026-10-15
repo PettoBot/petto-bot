@@ -9,6 +9,7 @@ const config = require('../config');
 const { forEachWithConcurrency } = require('./concurrency');
 const { startQuestThread, sendMethod } = require('./questMethod');
 const { sendAs } = require('./senderIdentity');
+const { guildLanguage } = require('../i18n');
 
 /** Who can set the alerts up: everyone once the API is allowed for all, otherwise the team and the testers. */
 function canUseQuests(userId) {
@@ -30,7 +31,9 @@ async function post(client, settings, quest, kind, db) {
   const channel = guild ? await guild.channels.fetch(settings.channel_id).catch(() => null) : null;
   if (!guild || !channel?.isTextBased?.()) return false;
   if (await db.hasPost(settings.guild_id, quest.id, kind)) return false;
-  const payload = await questMessage(guild, settings, quest, kind);
+  // Alerts run on a timer, outside of any server: each one is written in the language of its server.
+  const lang = await guildLanguage(guild.id);
+  const payload = await questMessage(guild, settings, quest, kind, lang);
   const sent = await sendAs(channel, 'quests', payload).catch(async (error) => {
     logger.warn({ guildId: guild.id, action: 'quest-alert' }, `A quest alert could not be sent: ${error.message}`);
     // Discord refused the message itself (Invalid Form Body): sending it again would fail the same way every pass and fill
@@ -43,8 +46,8 @@ async function post(client, settings, quest, kind, db) {
   // The thread and the method go with the first alert of a quest, not with the one that says it is about to end. They never undo the alert.
   if (kind === 'new' && (settings.auto_thread || settings.method_enabled)) {
     try {
-      const thread = settings.auto_thread ? await startQuestThread(sent, settings, quest) : null;
-      if (settings.method_enabled) await sendMethod(guild, settings, quest, thread);
+      const thread = settings.auto_thread ? await startQuestThread(sent, settings, quest, lang) : null;
+      if (settings.method_enabled) await sendMethod(guild, settings, quest, thread, lang);
     } catch (error) {
       logger.warn({ guildId: guild.id, action: 'quest-extras' }, `The thread or the method of a quest alert failed: ${error.message}`);
     }

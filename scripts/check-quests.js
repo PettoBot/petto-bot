@@ -397,5 +397,13 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
     assert.deepEqual([left.global, left.regions.exclude], [false, ['CA', 'US']]);
     assert.equal(questApi.normalizeCompact({ id: 'x', name: 'No' }), null);
   }
+  // The card follows the language of the server; the quest data stays in English.
+  {
+    const spanish = texts(buildQuestCard({ ...orbs, rewards: [{ kind: 'orbs', name: '200 Orbs', amount: 200, premiumAmount: 240, image: null }] }, { hide_sections: [] }, { lang: 'es' }));
+    assert.ok(spanish.includes('**Tarea:** Ver un video (2:00)') && spanish.includes('**Plataformas:** Computadora'), 'the Spanish card');
+    assert.equal(orbs.tasks[0].label, 'Watch a video', 'the task keeps its English name as data');
+    const list = buildQuestList([orbs], { lang: 'pt-BR' });
+    assert.ok(texts(list).includes('Missões ativas'), 'the Portuguese list');
+  }
   console.log('Checked the quest alerts: the API answer, the filters, who is told, the card, the saved embed and who can use it.');
 })().catch((error) => { console.error(error); process.exit(1); });
