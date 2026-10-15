@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const config = require('../../config');
+const { resolveOpsGuildId } = require('../../utils/opsGuild');
 const { isPettoOperator } = require('../../utils/autoModControl');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
@@ -43,9 +44,9 @@ module.exports = {
       return reply(interaction, `${EMOJI.DENY} This private support control is not available to this account.`, 0xfe6465);
     }
 
-    const supportGuildId = await resolveSupportGuildId(interaction.client);
+    const supportGuildId = await resolveOpsGuildId(interaction.client);
     if (!supportGuildId || interaction.guildId !== supportGuildId) {
-      return reply(interaction, `${EMOJI.DENY} This control can only be used in Petto's official support server.`, 0xfe6465);
+      return reply(interaction, `${EMOJI.DENY} This control can only be used in Petto's private operations server.`, 0xfe6465);
     }
 
     const guildId = interaction.options.getString('guild_id', true).trim();
@@ -190,11 +191,6 @@ async function resolveGuild(client, guildId) {
     ?? client.guilds.fetch(String(guildId)).catch(() => null);
 }
 
-async function resolveSupportGuildId(client) {
-  if (config.supportGuildId) return config.supportGuildId;
-  const joinLog = await client.channels.fetch(config.opsChannels?.joinLog).catch(() => null);
-  return joinLog?.guildId ?? null;
-}
 
 function formatEvidence(evidence) {
   if (!evidence?.content) return null;

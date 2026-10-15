@@ -2,6 +2,12 @@
 
 All notable changes to Petto are documented here.
 
+## [Unreleased]
+
+### Added
+
+- `PETTO_OPS_GUILD_ID` (optional): the server where the private team controls work, `!guildsend`, `!leaveguild` and the buttons of the alerts, when it is not the support server. Without it nothing changes: the support server (`PETTO_SUPPORT_GUILD_ID`, or the server of the join-log channel when that is empty) is used. The support server keeps its other uses (boosters for `!myprefix`, Premium roles), and neither the operations server nor the support server can be targeted by `!leaveguild` or the notice controls.
+
 ## [0.7.6] — 2026-10-15 · Macaron
 
 ### Added
