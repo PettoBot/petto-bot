@@ -337,6 +337,144 @@ function startServer(client) {
       }
     });
 
+    // ── Appeals ──────────────────────────────────────────────────────────────
+    // The public appeal site (petto.sbs/appeal/<server id>) asks the bot for what only Discord knows and for the actions that touch Discord. The web has already
+    // checked who the member is (their Discord login), so these routes trust the user id the same way the dashboard routes do.
+    const appealHits = new Map();
+    const appealLimited = (key, max, windowMs) => {
+      const now = Date.now();
+      const hits = (appealHits.get(key) ?? []).filter((t) => now - t < windowMs);
+      if (hits.length >= max) { appealHits.set(key, hits); return true; }
+      hits.push(now); appealHits.set(key, hits);
+      if (appealHits.size > 5000) for (const [k, v] of appealHits) if (!v.some((t) => now - t < windowMs)) appealHits.delete(k);
+      return false;
+    };
+    async function appealAccess(req, res, { needUser = true } = {}) {
+      if (!dashboardAuthorized(req)) { res.status(401).json({ ok: false, error: 'unauthorized' }); return null; }
+      const guildId = String(req.params.guildId || '');
+      const userId = String(req.query.user_id || req.body?.user_id || '');
+      if (!/^\d{15,25}$/.test(guildId) || (needUser && !/^\d{15,25}$/.test(userId))) { res.status(400).json({ ok: false, error: 'missing_identity' }); return null; }
+      const guild = client.guilds.cache.get(guildId) ?? await client.guilds.fetch(guildId).catch(() => null);
+      if (!guild) { res.status(404).json({ ok: false, error: 'guild_unavailable' }); return null; }
+      const appealsDb = require('../db/appeals');
+      const config = await appealsDb.getConfig(guildId);
+      let user = null;
+      if (needUser) {
+        const fetched = await client.users.fetch(userId).catch(() => null);
+        if (!fetched) { res.status(404).json({ ok: false, error: 'user_unavailable' }); return null; }
+        user = { id: fetched.id, username: fetched.username, avatarUrl: fetched.displayAvatarURL({ extension: 'png', size: 128 }) };
+      }
+      return { guild, config, user };
+    }
+
+    // What the site shows before any login: the name and the icon of the server.
+    app.get('/api/appeals/:guildId/guild', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await appealAccess(req, res, { needUser: false });
+      if (!access) return;
+      res.set('Cache-Control', 'private, max-age=60');
+      res.json({ ok: true, guild: { id: access.guild.id, name: access.guild.name, icon: access.guild.iconURL({ extension: 'png', size: 128 }) ?? null, members: access.guild.memberCount ?? null } });
+    });
+
+    // The punishments of the member in the server, as the server wants them shown, and whether they are blocked from appealing.
+    app.get('/api/appeals/:guildId/punishments', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await appealAccess(req, res);
+      if (!access) return;
+      try {
+        const appealsDb = require('../db/appeals');
+        const { fetchPunishments, shapePunishment } = require('../utils/appeals');
+        const rows = await fetchPunishments(access.guild, access.user.id, access.config);
+        const block = await appealsDb.getBlock(access.guild.id, access.user.id);
+        res.json({ ok: true, punishments: rows.map((p) => shapePunishment(p, access.config)), blocked: Boolean(block), blockedUntil: block?.until ?? null });
+      } catch (err) {
+        logger.error(`Appeals punishments failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, error: 'failed' });
+      }
+    });
+
+    app.post('/api/appeals/:guildId/submit', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await appealAccess(req, res);
+      if (!access) return;
+      if (appealLimited(`submit:${access.user.id}`, 5, 10 * 60_000)) { res.status(429).json({ ok: false, error: 'rate_limited' }); return; }
+      try {
+        const appealsDb = require('../db/appeals');
+        const { submitAppeal } = require('../utils/appeals');
+        const form = await appealsDb.getForm(access.guild.id, Number(req.body?.form_id));
+        const result = await submitAppeal({ client, guild: access.guild, config: access.config, form, user: access.user, rawAnswers: req.body?.answers ?? {} });
+        if (!result.ok) { res.status(result.error === 'invalid' ? 422 : 400).json({ ok: false, error: result.error, fields: result.fields }); return; }
+        res.json({ ok: true, id: result.submission.id });
+      } catch (err) {
+        logger.error(`Appeals submit failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, error: 'failed' });
+      }
+    });
+
+    app.post('/api/appeals/:guildId/reply', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await appealAccess(req, res);
+      if (!access) return;
+      if (appealLimited(`reply:${access.user.id}`, 20, 10 * 60_000)) { res.status(429).json({ ok: false, error: 'rate_limited' }); return; }
+      try {
+        const appealsDb = require('../db/appeals');
+        const { userReply } = require('../utils/appeals');
+        const submission = await appealsDb.getSubmission(access.guild.id, String(req.body?.submission_id ?? ''));
+        if (!submission || submission.user_id !== access.user.id) { res.status(404).json({ ok: false, error: 'not_found' }); return; }
+        const result = await userReply({ guild: access.guild, config: access.config, submission, content: req.body?.content });
+        res.status(result.ok ? 200 : 400).json(result);
+      } catch (err) {
+        logger.error(`Appeals reply failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, error: 'failed' });
+      }
+    });
+
+    app.post('/api/appeals/:guildId/withdraw', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await appealAccess(req, res);
+      if (!access) return;
+      try {
+        const appealsDb = require('../db/appeals');
+        const { withdrawAppeal } = require('../utils/appeals');
+        const submission = await appealsDb.getSubmission(access.guild.id, String(req.body?.submission_id ?? ''));
+        if (!submission || submission.user_id !== access.user.id) { res.status(404).json({ ok: false, error: 'not_found' }); return; }
+        const result = await withdrawAppeal({ guild: access.guild, config: access.config, submission });
+        res.status(result.ok ? 200 : 400).json(result);
+      } catch (err) {
+        logger.error(`Appeals withdraw failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, error: 'failed' });
+      }
+    });
+
+    // The staff, from the dashboard: accept or reject an appeal, or write to the member.
+    app.post('/api/dashboard/guild/:guildId/appeals/resolve', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await dashboardCardAccess(req, res);
+      if (!access) return;
+      try {
+        const appealsDb = require('../db/appeals');
+        const { resolveAppeal } = require('../utils/appeals');
+        const submission = await appealsDb.getSubmission(access.guild.id, String(req.body?.id ?? ''));
+        if (!submission) { res.status(404).json({ ok: false, message: 'That appeal does not exist.' }); return; }
+        const result = await resolveAppeal({ client, guild: access.guild, submission, status: String(req.body?.status ?? ''), moderatorId: access.userId, moderatorName: access.member.displayName, reason: req.body?.reason });
+        if (!result.ok) { res.status(400).json({ ok: false, message: result.error === 'already_resolved' ? 'This appeal was already answered.' : 'That could not be done.' }); return; }
+        res.json({ ok: true, dm: result.dm, lifted: result.lifted });
+      } catch (err) {
+        logger.error(`Dashboard appeal resolve failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, message: 'It could not be saved. Try again.' });
+      }
+    });
+
+    app.post('/api/dashboard/guild/:guildId/appeals/reply', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await dashboardCardAccess(req, res);
+      if (!access) return;
+      try {
+        const appealsDb = require('../db/appeals');
+        const { staffReply } = require('../utils/appeals');
+        const submission = await appealsDb.getSubmission(access.guild.id, String(req.body?.id ?? ''));
+        if (!submission) { res.status(404).json({ ok: false, message: 'That appeal does not exist.' }); return; }
+        const result = await staffReply({ client, guild: access.guild, submission, content: req.body?.content, moderatorId: access.userId, moderatorName: access.member.displayName });
+        res.status(result.ok ? 200 : 400).json({ ok: result.ok, dm: result.dm, message: result.ok ? undefined : 'Write something first.' });
+      } catch (err) {
+        logger.error(`Dashboard appeal reply failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, message: 'It could not be sent. Try again.' });
+      }
+    });
+
     // The AutoMod rules of Discord made from templates: list them, add one, turn one on or off, remove one.
     app.post('/api/dashboard/guild/:guildId/automod/native', dashboardDatabaseRateLimiter, async (req, res) => {
       const access = await dashboardCardAccess(req, res);

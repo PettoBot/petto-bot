@@ -23,6 +23,7 @@ const { startTicketAutocloseJob } = require('./src/jobs/ticketAutocloseJob');
 const { startTicketReminderJob } = require('./src/jobs/ticketReminderJob');
 const { startAntiScamJob } = require('./src/jobs/antiScamJob');
 const { startLockdownJob } = require('./src/jobs/lockdownJob');
+const { startAppealCleanupJob } = require('./src/jobs/appealCleanupJob');
 const { startTicketAutoDeleteJob } = require('./src/jobs/ticketAutoDeleteJob');
 const { startPollAutocloseJob } = require('./src/jobs/pollAutocloseJob');
 const { startCounterJob } = require('./src/jobs/counterJob');
@@ -139,6 +140,7 @@ async function main() {
   startTicketReminderJob(client);
   startAntiScamJob();
   startLockdownJob(client);
+  startAppealCleanupJob();
   startTicketAutoDeleteJob(client);
   startPollAutocloseJob(client);
   startCounterJob(client);

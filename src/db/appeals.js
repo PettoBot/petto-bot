@@ -1,0 +1,85 @@
+const database = require('./database');
+
+const CONFIG_DEFAULTS = {
+  enabled: false, greeting: null, language: 'en', rejoin_invite_code: null, auto_invite: false, allow_server_id: true,
+  punishment_types: ['ban', 'mute'], punishment_details: ['reason', 'duration'], punishment_source: 'both', warns_max_age_days: 30,
+  anonymous_messages: false, allow_replies: true, store_days: 7, submission_channel_id: null, log_channel_id: null, auto_thread: false,
+  thread_name: 'Appeal by {username}', ping_role_ids: [], messages: {}, brand: {}, embed: {},
+};
+
+async function getConfig(guildId) {
+  const { data, error } = await database.from('appeal_config').select('*').eq('guild_id', guildId).maybeSingle();
+  if (error) throw error;
+  return { ...CONFIG_DEFAULTS, ...data, guild_id: guildId };
+}
+
+async function getForm(guildId, formId) {
+  const { data, error } = await database.from('appeal_forms').select('*').eq('guild_id', guildId).eq('id', formId).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+async function getSubmission(guildId, id) {
+  const { data, error } = await database.from('appeal_submissions').select('*').eq('guild_id', guildId).eq('id', id).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+async function createSubmission(row) {
+  const { data, error } = await database.from('appeal_submissions').insert(row).select('*').single();
+  if (error) throw error;
+  return data;
+}
+
+async function updateSubmission(id, patch) {
+  const { data, error } = await database.from('appeal_submissions').update(patch).eq('id', id).select('*').single();
+  if (error) throw error;
+  return data;
+}
+
+/** Marks a pending submission as resolved; returns null when someone else resolved it first. */
+async function resolveSubmission(id, patch) {
+  const { data, error } = await database.from('appeal_submissions').update(patch).eq('id', id).eq('status', 'pending').select('*').maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+async function countPending(guildId, userId, formId) {
+  const { count, error } = await database.from('appeal_submissions').select('id', { count: 'exact', head: true })
+    .eq('guild_id', guildId).eq('user_id', userId).eq('form_id', formId).eq('status', 'pending');
+  if (error) throw error;
+  return count ?? 0;
+}
+
+async function addMessage(row) {
+  const { data, error } = await database.from('appeal_messages').insert(row).select('*').single();
+  if (error) throw error;
+  return data;
+}
+
+async function getBlock(guildId, userId) {
+  const { data, error } = await database.from('appeal_blocks').select('*').eq('guild_id', guildId).eq('user_id', userId).maybeSingle();
+  if (error) throw error;
+  if (data?.until && Date.parse(data.until) <= Date.now()) return null;
+  return data;
+}
+
+async function setBlock(guildId, userId, until, reason) {
+  const { error } = await database.from('appeal_blocks').upsert({ guild_id: guildId, user_id: userId, until, reason: reason ?? null }, { onConflict: 'guild_id,user_id' });
+  if (error) throw error;
+}
+
+/** Deletes the resolved submissions that were kept longer than a server wants. Returns how many went. */
+async function deleteResolvedBefore(guildId, beforeIso) {
+  const { data, error } = await database.from('appeal_submissions').delete().eq('guild_id', guildId).neq('status', 'pending').lt('resolved_at', beforeIso).select('id');
+  if (error) throw error;
+  return data?.length ?? 0;
+}
+
+async function listEnabledConfigs() {
+  const { data, error } = await database.from('appeal_config').select('guild_id,store_days').eq('enabled', true);
+  if (error) throw error;
+  return data ?? [];
+}
+
+module.exports = { CONFIG_DEFAULTS, getConfig, getForm, getSubmission, createSubmission, updateSubmission, resolveSubmission, countPending, addMessage, getBlock, setBlock, deleteResolvedBefore, listEnabledConfigs };

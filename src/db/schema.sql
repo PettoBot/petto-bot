@@ -3528,3 +3528,103 @@ create table if not exists confession_blocks (
   created_at timestamptz not null default now(),
   primary key (guild_id, user_id)
 );
+
+-- ── Appeals ──────────────────────────────────────────────────────────────
+-- A public appeal site per server (petto.sbs/appeal/<guild id>): forms, submissions, the talk between staff and the member, brand and link preview.
+-- Everything starts off: a server has no appeals until it turns them on.
+
+create table if not exists appeal_config (
+  guild_id            text primary key references guilds(guild_id) on delete cascade,
+  enabled             boolean not null default false,
+  greeting            text,
+  language            text not null default 'en' check (language in ('en', 'es', 'pt-BR')),
+  rejoin_invite_code  text,
+  auto_invite         boolean not null default false,
+  allow_server_id     boolean not null default true,
+  punishment_types    text[] not null default '{ban,mute}',
+  punishment_details  text[] not null default '{reason,duration}',
+  punishment_source   text not null default 'both' check (punishment_source in ('petto', 'discord', 'both')),
+  warns_max_age_days  integer not null default 30 check (warns_max_age_days between 1 and 3650),
+  anonymous_messages  boolean not null default false,
+  allow_replies       boolean not null default true,
+  store_days          integer not null default 7 check (store_days between 1 and 365),
+  submission_channel_id text,
+  log_channel_id      text,
+  auto_thread         boolean not null default false,
+  thread_name         text not null default 'Appeal by {username}',
+  ping_role_ids       text[] not null default '{}',
+  messages            jsonb not null default '{}'::jsonb,
+  brand               jsonb not null default '{}'::jsonb,
+  embed               jsonb not null default '{}'::jsonb,
+  created_at          timestamptz not null default now(),
+  updated_at          timestamptz not null default now()
+);
+
+create table if not exists appeal_forms (
+  id                 bigserial primary key,
+  guild_id           text not null references guilds(guild_id) on delete cascade,
+  name               text not null check (char_length(name) between 1 and 80),
+  icon               text,
+  short_description  text,
+  description        text,
+  status             text not null default 'draft' check (status in ('draft', 'live')),
+  position           integer not null default 0,
+  requirement_types  text[] not null default '{}',
+  block_on_reject    text not null default 'none' check (block_on_reject in ('none', 'day', 'week', 'month', 'forever')),
+  generate_invite    boolean not null default false,
+  sections           jsonb not null default '[]'::jsonb,
+  messages           jsonb not null default '{}'::jsonb,
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now()
+);
+create index if not exists idx_appeal_forms_guild on appeal_forms(guild_id, position);
+
+create table if not exists appeal_submissions (
+  id                uuid primary key default gen_random_uuid(),
+  guild_id          text not null references guilds(guild_id) on delete cascade,
+  form_id           bigint references appeal_forms(id) on delete set null,
+  form_name         text not null default '',
+  user_id           text not null,
+  username          text not null default '',
+  avatar_url        text,
+  status            text not null default 'pending' check (status in ('pending', 'accepted', 'rejected', 'withdrawn')),
+  answers           jsonb not null default '[]'::jsonb,
+  punishments       jsonb not null default '[]'::jsonb,
+  channel_id        text,
+  message_id        text,
+  thread_id         text,
+  resolved_by       text,
+  resolved_at       timestamptz,
+  resolution_reason text,
+  created_at        timestamptz not null default now()
+);
+create index if not exists idx_appeal_submissions_guild on appeal_submissions(guild_id, status, created_at desc);
+create index if not exists idx_appeal_submissions_user on appeal_submissions(guild_id, user_id);
+
+create table if not exists appeal_messages (
+  id             bigserial primary key,
+  submission_id  uuid not null references appeal_submissions(id) on delete cascade,
+  guild_id       text not null references guilds(guild_id) on delete cascade,
+  author_type    text not null check (author_type in ('user', 'staff', 'system')),
+  author_id      text,
+  author_name    text,
+  content        text not null,
+  anonymous      boolean not null default false,
+  created_at     timestamptz not null default now()
+);
+create index if not exists idx_appeal_messages_submission on appeal_messages(submission_id, created_at);
+
+create table if not exists appeal_blocks (
+  guild_id    text not null references guilds(guild_id) on delete cascade,
+  user_id     text not null,
+  until       timestamptz,
+  reason      text,
+  created_at  timestamptz not null default now(),
+  primary key (guild_id, user_id)
+);
+
+alter table appeal_config enable row level security;
+alter table appeal_forms enable row level security;
+alter table appeal_submissions enable row level security;
+alter table appeal_messages enable row level security;
+alter table appeal_blocks enable row level security;
