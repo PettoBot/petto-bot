@@ -185,6 +185,40 @@ const json = (component) => JSON.parse(JSON.stringify(component.toJSON ? compone
   assert.equal(await i18n.guildLanguage('g3'), 'es', 'used at once');
   await assert.rejects(() => i18n.setGuildLanguage('g3', 'klingon'));
 
+  // `!language`: shows the language in that language, changes it and answers in the new one.
+  const language = require('../src/commands/config/language');
+  for (const lang of LANGUAGES) {
+    for (const card of [language.buildCurrentCard(lang, '!'), language.buildDoneCard(lang)]) {
+      assert.ok(textLength(json(card)) <= 4000, `the ${lang} language card fits`);
+    }
+  }
+  for (const [input, expected] of [['es', 'es'], ['set pt', 'pt-BR'], ['Español', 'es'], ['EN', 'en'], ['set', null], ['klingon', null]]) {
+    assert.equal(language.readLanguageInput(input), expected, `!language ${input}`);
+  }
+  const run = async (guildId, value, extra = {}) => {
+    const replies = [];
+    const interaction = { guildId, guild: { id: guildId }, typedPrefix: '!', options: { getString: () => value }, reply: async (payload) => replies.push(payload), ...extra };
+    await language.execute(interaction);
+    return { interaction, text: JSON.stringify(replies.map((payload) => (payload.components ?? []).map(json).concat(payload.content ?? ''))) };
+  };
+  let result = await run('g1', null);
+  assert.match(result.text, /Idioma do servidor:\*\* Português \(Brasil\)/, 'shown in the language of the server');
+  assert.match(result.text, /!language <en\|es\|pt-BR>/);
+  result = await run('g1', 'klingon');
+  assert.match(result.text, /Não conheço esse idioma/, 'an unknown language is told in the current language');
+  assert.equal(rows.g1.language, 'pt-BR', 'and nothing changes');
+  result = await run('g1', 'set es');
+  assert.equal(rows.g1.language, 'es', 'saved');
+  assert.match(result.text, /Listo: ahora Petto habla \*\*Español\*\*/, 'the answer is already in the new language');
+  assert.equal(result.interaction.pettoLang, 'es');
+  assert.equal(await i18n.guildLanguage('g1'), 'es', 'the next command uses it at once');
+  result = await run('g1', 'en', { pettoLang: 'es' });
+  assert.match(result.text, /Done: Petto now speaks \*\*English\*\*/, 'back to English');
+  const slash = language.data.toJSON();
+  assert.equal(slash.default_member_permissions, String(require('discord.js').PermissionFlagsBits.ManageGuild), 'needs Manage Server');
+  assert.deepEqual(slash.options[0].choices.map((choice) => choice.value), ['en', 'es', 'pt-BR']);
+  assert.equal(slash.description_localizations['es-419'], CATALOGS.es['config.language.desc']);
+
   console.log(`Checked ${Object.keys(english).length} translation keys in ${LANGUAGES.join(', ')}.`);
 })().catch((err) => {
   console.error(err);
