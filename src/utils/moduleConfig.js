@@ -16,7 +16,7 @@ const database = require('../db/database');
 const { ensureGuild } = require('../db/guilds');
 const { formatDuration } = require('./duration');
 const logger = require('./logger');
-const { t, tn, currentLanguage, commandDescription, languageOf } = require('../i18n');
+const { t, tn, currentLanguage, commandDescription, languageOf, DEFAULT_LANGUAGE } = require('../i18n');
 
 const WIKI_URL = 'https://wiki.petto.sbs';
 const MAX_ROWS = 28;
@@ -281,8 +281,11 @@ const codeBlock = (lines, prefix) => `\`\`\`\n${lines.map((line) => `${prefix}${
 async function buildCardText(module, { guildId, prefix, commands, lang = currentLanguage() }) {
   const command = commands?.get(module.command);
   const { config, rest } = command ? pickUsage(usagePaths(command.data.toJSON()), module.show) : { config: [], rest: [] };
+  // A generated card is titled with its command: "Poll" in English, the command as it is typed (`!poll`) in the other languages,
+  // where the capitalized English name would read as an English word.
+  const generatedTitle = lang === DEFAULT_LANGUAGE ? module.title : `\`${prefix}${module.command}\``;
   const head = module.generated
-    ? `### ${module.title}\n-# ${command ? commandDescription(lang, command, [], null, command.data.toJSON().description ?? '') : ''}`
+    ? `### ${generatedTitle}\n-# ${command ? commandDescription(lang, command, [], null, command.data.toJSON().description ?? '') : ''}`
     : [t(lang, 'config.card.heading', { title: moduleTitle(module, lang) }), await settingsText(module, guildId, lang)].join('\n');
   if (!config.length && !rest.length) return `${head}\n${t(lang, 'config.card.changeWithHelp', { prefix, command: module.command })}`;
 
