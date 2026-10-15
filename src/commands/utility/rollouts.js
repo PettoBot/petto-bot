@@ -12,6 +12,7 @@ const { canUseRollouts } = require('../../utils/rolloutAlerts');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { t, tn, languageOf } = require('../../i18n');
+const { sourceProblem } = require('../../utils/sourceProblems');
 
 const LIST_PER_PAGE = 10;
 const LIST_MAX_PAGES = 10;
@@ -168,7 +169,7 @@ module.exports = {
 
     if (sub === 'list' || sub === 'test') {
       let list;
-      try { list = (await rolloutApi.fetchRollouts({ force: true })).list; } catch (error) { return reply(`${EMOJI.DENY}  ${t(lang, 'rollouts.readFailed', { error: error.message })}`); }
+      try { list = (await rolloutApi.fetchRollouts({ force: true })).list; } catch (error) { return reply(`${EMOJI.DENY}  ${t(lang, 'rollouts.readFailed', { error: sourceProblem(error.message, lang) })}`); }
       const live = list.filter((entry) => ['rolling_out', 'rolling_back', 'ab_test', 'segmented'].includes(entry.status) && entry.percent != null);
       if (sub === 'list') return interaction.editReply(await buildPage('rollouts', { guild: interaction.guild, userId: interaction.user.id, lang }));
       const sample = live[0] ?? list[0];
@@ -183,7 +184,7 @@ module.exports = {
     const all = t(lang, 'rollouts.all');
     const list = status.ok === null
       ? t(lang, 'rollouts.settings.notAsked')
-      : status.ok ? t(lang, 'rollouts.settings.listOk', { count: status.count }) : t(lang, 'rollouts.settings.listFailing', { error: status.error });
+      : status.ok ? t(lang, 'rollouts.settings.listOk', { count: status.count }) : t(lang, 'rollouts.settings.listFailing', { error: sourceProblem(status.error, lang) });
     return reply([
       t(lang, 'rollouts.settings.alerts', { value: current.enabled && current.channel_id ? t(lang, 'rollouts.settings.onIn', { channel: `<#${current.channel_id}>` }) : t(lang, 'rollouts.settings.alertsOff') }),
       t(lang, 'rollouts.settings.role', { value: current.role_id ? `<@&${current.role_id}>` : t(lang, 'rollouts.none') }),

@@ -11,4 +11,12 @@ module.exports = {
   'common.duration.hour.other': '{count} horas',
   'common.duration.day.one': '{count} día',
   'common.duration.day.other': '{count} días',
+  'common.source.rateLimited': 'respondió {status}, demasiadas solicitudes',
+  'common.source.answered': 'respondió {status}',
+  'common.source.tooLarge': 'la respuesta es demasiado grande',
+  'common.source.badShape': 'la respuesta tiene una forma inesperada',
+  'common.source.empty': 'la lista llegó vacía',
+  'common.source.timeout': 'tardó demasiado',
+  'common.source.paused': 'en pausa por un límite de solicitudes, hasta {until}',
+  'common.source.questsUnreadable': 'No se pudieron leer las misiones: {problems}',
 };
