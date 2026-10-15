@@ -80,7 +80,7 @@ const A = require(path.join(root, 'src/utils/appeals.js'));
   const result = await A.submitAppeal({ client, guild, config, form, user, rawAnswers: { [qs[0].id]: 'I was wrong', [qs[1].id]: 'b', [qs[2].id]: 'x' } });
   assert.ok(result.ok, JSON.stringify(result));
   const sent = guild.sent.find((m) => m.channel === 'C1');
-  assert.ok(sent.payload.components.length === 2 && sent.payload.content.includes('<@&R1>'));
+  assert.ok(sent.payload.components.length === 2 && sent.payload.content === undefined && JSON.stringify(sent.payload.components[0].toJSON()).includes('<@&R1>'), 'a Components V2 message has no content; the ping is in the card');
   assert.equal(store.submissions.get(result.submission.id).thread_id, 'T1');
   assert.equal((await A.submitAppeal({ client, guild, config, form, user, rawAnswers: { [qs[0].id]: 'again' } })).error, 'already_pending');
   assert.equal((await A.submitAppeal({ client, guild, config, form: { ...form, status: 'draft' }, user, rawAnswers: {} })).error, 'form_unavailable');
@@ -96,7 +96,8 @@ const A = require(path.join(root, 'src/utils/appeals.js'));
 
   // Accepting lifts the ban and gives an invite; resolving twice is refused.
   const accepted = await A.resolveAppeal({ client, guild, submission: result.submission, status: 'accepted', moderatorId: 'M1', reason: 'Welcome back' });
-  assert.ok(accepted.ok); assert.deepEqual(lifted, [7]); assert.ok(accepted.invite && accepted.invite.includes('discord.gg'));
+  assert.ok(accepted.ok); assert.deepEqual(lifted, [7]); assert.ok(accepted.invite && accepted.invite.url.includes('discord.gg') && accepted.invite.note.length > 0, 'the invite and where it came from');
+  assert.ok(accepted.submission.invite_url === accepted.invite.url && accepted.submission.invite_note === accepted.invite.note, 'the staff card knows which invite was made');
   assert.equal((await A.resolveAppeal({ client, guild, submission: result.submission, status: 'rejected', moderatorId: 'M2' })).error, 'already_resolved');
   assert.ok(client.dms.some((d) => d.text.includes('Welcome back')));
 
@@ -124,6 +125,7 @@ const A = require(path.join(root, 'src/utils/appeals.js'));
   const freed = await A.releaseIdleNames(live, now);
   assert.deepEqual(freed.map((f) => `${f.slug}:${f.reason}`).sort(), ['gone:left', 'idle:idle', 'off-old:off']);
   assert.deepEqual(store.cleared.sort(), ['A', 'C', 'E']);
+  assert.ok(A.messageFor({ language: 'es' }, null, 'submitted').includes('Tu apelación') && A.messageFor({}, null, 'submitted').startsWith('Your appeal') && A.messageFor({ language: 'pt-BR' }, null, 'accepted').includes('aceita'), 'default texts follow the language of the page');
   console.log('appeals OK');
 })().catch((err) => { console.error(err); process.exit(1); });
 

@@ -9,12 +9,29 @@ const QUESTION_TYPES = ['short', 'paragraph', 'choice', 'multi', 'yesno', 'numbe
 const PUNISHMENT_TYPES = ['ban', 'mute', 'warn', 'kick'];
 const DETAILS = ['reason', 'duration', 'moderator'];
 const BLOCKS = { none: 0, day: 86_400_000, week: 7 * 86_400_000, month: 30 * 86_400_000, forever: -1 };
+// What the members read when the server wrote nothing: in the language the server chose for its appeal page (English when it chose none).
 const DEFAULT_MESSAGES = {
-  submitted: 'Your appeal was sent. The staff of {server} will look at it.',
-  accepted: 'Your appeal was accepted. {reason}',
-  rejected: 'Your appeal was rejected. {reason}',
-  reply: 'The staff of {server} wrote to you about your appeal.',
+  en: {
+    submitted: 'Your appeal was sent. The staff of {server} will look at it.',
+    accepted: 'Your appeal was accepted. {reason}',
+    rejected: 'Your appeal was rejected. {reason}',
+    reply: 'The staff of {server} wrote to you about your appeal.',
+  },
+  es: {
+    submitted: 'Tu apelación fue enviada. El staff de {server} la revisará.',
+    accepted: 'Tu apelación fue aceptada. {reason}',
+    rejected: 'Tu apelación fue rechazada. {reason}',
+    reply: 'El staff de {server} te escribió sobre tu apelación.',
+  },
+  'pt-BR': {
+    submitted: 'Sua apelação foi enviada. A equipe de {server} vai analisá-la.',
+    accepted: 'Sua apelação foi aceita. {reason}',
+    rejected: 'Sua apelação foi recusada. {reason}',
+    reply: 'A equipe de {server} escreveu para você sobre a sua apelação.',
+  },
 };
+const LABELS = { en: { rejoin: 'Rejoin', answer: 'Answer on ' }, es: { rejoin: 'Volver a entrar', answer: 'Responde en ' }, 'pt-BR': { rejoin: 'Voltar a entrar', answer: 'Responda em ' } };
+const labelsFor = (config) => LABELS[config?.language] ?? LABELS.en;
 
 const clip = (value, max) => String(value ?? '').replace(/\u0000/g, '').trim().slice(0, max);
 const id = (value, fallback) => (/^[a-z0-9_-]{1,24}$/i.test(String(value ?? '')) ? String(value) : fallback);
@@ -25,7 +42,7 @@ function renderTemplate(text, vars) {
 }
 
 function messageFor(config, form, key) {
-  return clip(form?.messages?.[key] || config?.messages?.[key] || DEFAULT_MESSAGES[key], 1000);
+  return clip(form?.messages?.[key] || config?.messages?.[key] || (DEFAULT_MESSAGES[config?.language] ?? DEFAULT_MESSAGES.en)[key], 1000);
 }
 
 /** A form as the dashboard sends it, cut down to what is allowed: limits, types and ids all checked. */
@@ -185,6 +202,7 @@ function staffCardText(submission, form, config) {
     if (used + block.length > 3500) { lines.push('*…more answers in the dashboard*'); break; }
     lines.push(block); used += block.length;
   }
+  if (submission.invite_note) lines.push(`**Invite** — ${submission.invite_url ? `${submission.invite_url} (${submission.invite_note})` : submission.invite_note}`, '');
   lines.push(`-# ID ${submission.id}`);
   return lines.join('\n');
 }
@@ -242,8 +260,8 @@ async function submitAppeal({ client, guild, config, form, user, rawAnswers }) {
   try {
     const pings = (config.ping_role_ids ?? []).filter((r) => guild.roles.cache.has(r));
     const message = await channel.send({
-      content: pings.length ? pings.map((r) => `<@&${r}>`).join(' ') : undefined,
-      components: [textCard(staffCardText(submission, form, config), STATUS_COLORS.pending), staffButtons(submission.id)],
+      // A Components V2 message cannot carry `content`: the role pings go at the top of the card.
+      components: [textCard(`${pings.length ? `${pings.map((r) => `<@&${r}>`).join(' ')}\n` : ''}${staffCardText(submission, form, config)}`, STATUS_COLORS.pending), staffButtons(submission.id)],
       flags: MessageFlags.IsComponentsV2,
       allowedMentions: { roles: pings, parse: [] },
     });
@@ -270,15 +288,20 @@ async function logLine(guild, config, text, color) {
   await channel.send({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } }).catch(() => {});
 }
 
-/** The invite a member gets after an accepted appeal: the fixed code of the server or a fresh single-use one. */
+/**
+ * The invite a member gets after an accepted appeal, and a short note on where it came from so the staff can see it:
+ * the fixed code of the server, or a fresh single-use one (valid 7 days) made in a channel Petto can create invites in.
+ */
 async function inviteFor(guild, config, form) {
-  if (config.rejoin_invite_code && !config.auto_invite && !form?.generate_invite) return `https://discord.gg/${config.rejoin_invite_code}`;
-  if (!(config.auto_invite || form?.generate_invite)) return config.rejoin_invite_code ? `https://discord.gg/${config.rejoin_invite_code}` : null;
+  const fixed = config.rejoin_invite_code ? `https://discord.gg/${config.rejoin_invite_code}` : null;
+  const wantsNew = Boolean(config.auto_invite || form?.generate_invite);
+  if (!wantsNew) return fixed ? { url: fixed, note: 'fixed invite of the server' } : { url: null, note: 'no invite is set' };
   const me = guild.members.me;
   const channel = guild.channels.cache.find((c) => [ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(c.type) && me?.permissionsIn(c).has(PermissionFlagsBits.CreateInstantInvite));
-  if (!channel) return config.rejoin_invite_code ? `https://discord.gg/${config.rejoin_invite_code}` : null;
+  if (!channel) return { url: fixed, note: `Petto could not create an invite: it needs Create Invite in a text channel${fixed ? '; the fixed invite was sent instead' : ''}` };
   const invite = await channel.createInvite({ maxAge: 7 * 86_400, maxUses: 1, unique: true, reason: 'Accepted appeal' }).catch(() => null);
-  return invite ? invite.url : (config.rejoin_invite_code ? `https://discord.gg/${config.rejoin_invite_code}` : null);
+  if (!invite) return { url: fixed, note: `Discord did not let Petto create an invite${fixed ? '; the fixed invite was sent instead' : ''}` };
+  return { url: invite.url, note: `single-use invite created in #${channel.name}, valid 7 days` };
 }
 
 /** Lifts what the member was appealing: the ban and the timeout. Petto cases are lifted through the same path as the dashboard. */
@@ -315,15 +338,18 @@ async function resolveAppeal({ client, guild, submission, status, moderatorId, m
   if (status === 'accepted') {
     lifted = await liftPunishments(guild, row, moderatorId);
     invite = await inviteFor(guild, config, form);
+    // The staff can see which invite was made, or why there is none.
+    row.invite_url = invite.url; row.invite_note = invite.note;
+    await db.updateSubmission(row.id, { invite_url: invite.url, invite_note: invite.note }).catch(() => {});
   } else if (form?.block_on_reject && form.block_on_reject !== 'none') {
     await db.setBlock(guild.id, row.user_id, blockUntil(form.block_on_reject), 'Appeal rejected').catch(() => {});
   }
-  const text = `${renderTemplate(messageFor(config, form, status), vars)}${invite ? `\n\nRejoin: ${invite}` : ''}\n\n-# ${siteLink(guild.id, config.slug)}/status/${row.id}`;
+  const text = `${renderTemplate(messageFor(config, form, status), vars)}${invite?.url ? `\n\n${labelsFor(config).rejoin}: ${invite.url}` : ''}\n\n-# ${siteLink(guild.id, config.slug)}/status/${row.id}`;
   const dm = await sendDm(client, row.user_id, text, STATUS_COLORS[status]);
-  await db.addMessage({ submission_id: row.id, guild_id: guild.id, author_type: 'system', author_name: 'Petto', content: renderTemplate(messageFor(config, form, status), vars) + (invite ? `\n${invite}` : '') }).catch(() => {});
+  await db.addMessage({ submission_id: row.id, guild_id: guild.id, author_type: 'system', author_name: 'Petto', content: renderTemplate(messageFor(config, form, status), vars) + (invite?.url ? `\n${invite.url}` : '') }).catch(() => {});
   await updateStaffCard(guild, row, form, config, moderatorId);
   const who = moderatorName ?? `<@${moderatorId}>`;
-  await logLine(guild, config, `${who} ${status} the appeal of **${clip(row.username, 40)}**${lifted.length ? ` (lifted: ${lifted.join(', ')})` : ''}.`, STATUS_COLORS[status]);
+  await logLine(guild, config, `${who} ${status} the appeal of **${clip(row.username, 40)}**${lifted.length ? ` (lifted: ${lifted.join(', ')})` : ''}${row.invite_note ? `. Invite: ${row.invite_url ? `${row.invite_url} (${row.invite_note})` : row.invite_note}` : ''}.`, STATUS_COLORS[status]);
   return { ok: true, submission: row, dm, invite, lifted };
 }
 
@@ -345,7 +371,7 @@ async function staffReply({ client, guild, submission, content, moderatorId, mod
   const anonymous = Boolean(config.anonymous_messages);
   await db.addMessage({ submission_id: submission.id, guild_id: guild.id, author_type: 'staff', author_id: moderatorId, author_name: moderatorName ?? null, content: text, anonymous });
   const form = submission.form_id ? await db.getForm(guild.id, submission.form_id).catch(() => null) : null;
-  const dm = await sendDm(client, submission.user_id, `${renderTemplate(messageFor(config, form, 'reply'), { server: guild.name })}\n\n**${anonymous ? 'Staff' : clip(moderatorName ?? 'Staff', 40)}**\n${text}\n\n-# ${config.allow_replies ? 'Answer on ' : ''}${siteLink(guild.id, config.slug)}/status/${submission.id}`, 0x8c7cff);
+  const dm = await sendDm(client, submission.user_id, `${renderTemplate(messageFor(config, form, 'reply'), { server: guild.name })}\n\n**${anonymous ? 'Staff' : clip(moderatorName ?? 'Staff', 40)}**\n${text}\n\n-# ${config.allow_replies ? labelsFor(config).answer : ''}${siteLink(guild.id, config.slug)}/status/${submission.id}`, 0x8c7cff);
   await notifyStaff(guild, submission, `<@${moderatorId}> replied to **${clip(submission.username, 40)}**\n> ${text.slice(0, 400)}`, 0x8c7cff);
   return { ok: true, dm };
 }

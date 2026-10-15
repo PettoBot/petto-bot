@@ -24,6 +24,7 @@ const { renderHomePage } = require('./homePage');
 const { setCachedPrefix } = require('../events/messageCreateCommands');
 const { registerDashboardRestRoutes } = require('./dashboardDatabase');
 const { registerCardRoutes } = require('./cardRoutes');
+const { registerAppealImageRoutes } = require('./appealImageRoutes');
 const { registerCodeRoutes } = require('./codeRoutes');
 const { registerIdentityRoutes } = require('./identityRoutes');
 const { registerMemberRoutes } = require('./memberRoutes');
@@ -626,6 +627,7 @@ function startServer(client) {
     });
 
     registerCardRoutes(app, { authorize: dashboardCardAccess });
+    registerAppealImageRoutes(app, { authorize: dashboardCardAccess, isAuthorized: dashboardAuthorized });
     registerCodeRoutes(app, { authorize: dashboardCardAccess });
     registerIdentityRoutes(app, { authorize: dashboardCardAccess });
     // Names and avatars of members for the dashboard pages, from the gateway instead of one REST call per person.
