@@ -1,5 +1,6 @@
 const jailDb = require('../db/jail');
 const logger = require('./logger');
+const { t, currentLanguage } = require('../i18n');
 
 const CACHE_TTL_MS = 60_000;
 
@@ -52,7 +53,7 @@ async function enforceJail(oldMember, newMember) {
   if (!unexpected.size) return 0;
 
   try {
-    await newMember.roles.remove([...unexpected.keys()], 'Petto jail: member is in jail');
+    await newMember.roles.remove([...unexpected.keys()], t(currentLanguage(), 'moderation.jail.audit.guard'));
     const saved = [...new Set([...(row.saved_role_ids ?? []), ...unexpected.keys()])];
     await jailDb.setSavedRoles(newMember.guild.id, newMember.id, saved);
     row.saved_role_ids = saved;

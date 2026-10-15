@@ -5,6 +5,7 @@ const { EMOJI } = require('../../utils/emojis');
 const { parseDuration, formatDuration } = require('../../utils/duration');
 const logger = require('../../utils/logger');
 const { requireAdministrator } = require('../../utils/moderationCommand');
+const { t, tn, languageOf } = require('../../i18n');
 
 module.exports = {
   aliases: ['pi'],
@@ -17,13 +18,14 @@ module.exports = {
 
   async execute(interaction) {
     if (!(await requireAdministrator(interaction))) return;
+    const lang = await languageOf(interaction);
     const durationMs = parseDuration(interaction.options.getString('duration', true));
     if (!durationMs) {
-      await interaction.reply({ content: 'Invalid duration. Use something like `1h`, `30m`, or `1d`.', flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: t(lang, 'moderation.duration.invalidPause'), flags: MessageFlags.Ephemeral });
       return;
     }
     if (!interaction.guild.members.me.permissions.has(PermissionFlagsBits.ManageGuild)) {
-      await interaction.reply({ content: 'I need the **Manage Server** permission.', flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: t(lang, 'moderation.pauseInvites.needsManageServer'), flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -37,7 +39,7 @@ module.exports = {
     try {
       const invites = await interaction.guild.invites.fetch();
       for (const invite of invites.values()) {
-        await invite.delete(`Invites paused by ${interaction.user.tag}`).catch(() => {});
+        await invite.delete(t(lang, 'moderation.pauseInvites.audit.pausedBy', { user: interaction.user.tag })).catch(() => {});
         deleted += 1;
       }
     } catch (err) {
@@ -45,7 +47,7 @@ module.exports = {
     }
 
     await interaction.editReply({
-      components: [textCard(`${EMOJI.APPROVE}  Deleted **${deleted}** invite(s). New invites will be auto-deleted for **${formatDuration(durationMs)}**.`, 0xa5ea7a)],
+      components: [textCard(tn(lang, 'moderation.pauseInvites.done', deleted, { emoji: EMOJI.APPROVE, count: deleted, duration: formatDuration(durationMs, lang) }), 0xa5ea7a)],
       flags: MessageFlags.IsComponentsV2,
     });
   },

@@ -2,6 +2,7 @@ const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('disc
 const { addNote, getNote, getNotesForUser } = require('../../db/notes');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { t, languageOf } = require('../../i18n');
 
 module.exports = {
   aliases: ['notes'],
@@ -29,6 +30,7 @@ module.exports = {
 };
 
 async function add(interaction) {
+  const lang = await languageOf(interaction);
   const targetUser = interaction.options.getUser('user', true);
   const note = interaction.options.getString('note', true);
 
@@ -36,42 +38,48 @@ async function add(interaction) {
 
   const saved = await addNote({ guildId: interaction.guild.id, userId: targetUser.id, moderatorId: interaction.user.id, note });
 
-  const text = [`${EMOJI.APPROVE}  Note #${saved.id} added for ${targetUser}.`, `**Moderator:** ${interaction.user}`, `**Note:** ${note}`].join('\n');
+  const text = [
+    t(lang, 'moderation.note.added', { emoji: EMOJI.APPROVE, id: saved.id, user: `${targetUser}` }),
+    t(lang, 'moderation.common.moderator', { moderator: `${interaction.user}` }),
+    t(lang, 'moderation.note.note', { note }),
+  ].join('\n');
   await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function view(interaction) {
+  const lang = await languageOf(interaction);
   const noteId = interaction.options.getInteger('id', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const note = await getNote(interaction.guild.id, noteId);
   if (!note) {
-    await interaction.editReply({ components: [textCard(`No note #${noteId} found in this server.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.note.notFound', { id: noteId }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const ts = Math.floor(new Date(note.created_at).getTime() / 1000);
   const text = [
-    `### ${EMOJI.QUESTION} Note #${note.id}`,
-    `**User:** <@${note.user_id}>`,
-    `**Moderator:** <@${note.moderator_id}>`,
-    `**When:** <t:${ts}:F> (<t:${ts}:R>)`,
-    `**Note:** ${note.note}`,
+    t(lang, 'moderation.note.title', { emoji: EMOJI.QUESTION, id: note.id }),
+    t(lang, 'moderation.note.user', { user: `<@${note.user_id}>` }),
+    t(lang, 'moderation.common.moderator', { moderator: `<@${note.moderator_id}>` }),
+    t(lang, 'moderation.note.when', { full: `<t:${ts}:F>`, relative: `<t:${ts}:R>` }),
+    t(lang, 'moderation.note.note', { note: note.note }),
   ].join('\n');
   await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function list(interaction) {
+  const lang = await languageOf(interaction);
   const targetUser = interaction.options.getUser('user', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const notes = await getNotesForUser(interaction.guild.id, targetUser.id);
   if (!notes.length) {
-    await interaction.editReply({ components: [textCard(`No notes on record for ${targetUser}.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.note.none', { user: `${targetUser}` }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
-  const lines = [`### Notes for ${targetUser}`];
+  const lines = [t(lang, 'moderation.note.listTitle', { user: `${targetUser}` })];
   for (const note of notes) {
     const ts = Math.floor(new Date(note.created_at).getTime() / 1000);
     lines.push(`\`#${note.id}\` <@${note.moderator_id}> · <t:${ts}:R>\n> ${note.note}`);

@@ -1,12 +1,13 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { getUserHistory, getCaseHistory, getLastCase, getCase, updateCase, deleteCase, deleteAllForUser, searchCases, addEvidence, clearEvidence, moderatorStats } = require('../../db/modActions');
-const { formatCaseLine, formatCaseDetail } = require('../../utils/caseFormat');
+const { formatCaseLine, formatCaseDetail, typeName } = require('../../utils/caseFormat');
 const { buildCaseListCard, textCard } = require('../../utils/caseCard');
 const { resolveUsers } = require('../../utils/userResolve');
 const { parseDuration } = require('../../utils/duration');
 const { EMOJI } = require('../../utils/emojis');
 const { requireAdministrator } = require('../../utils/moderationCommand');
 const logger = require('../../utils/logger');
+const { t, tn, languageOf } = require('../../i18n');
 
 const MAX_TIMEOUT_MS = 28 * 24 * 60 * 60 * 1000;
 const CASES_PER_PAGE = 10;
@@ -80,6 +81,7 @@ module.exports = {
 };
 
 async function list(interaction) {
+  const lang = await languageOf(interaction);
   const targetUser = interaction.options.getUser('user', false);
   const targetUserId = targetUser?.id ?? null;
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
@@ -93,8 +95,8 @@ async function list(interaction) {
 
   if (!result.count) {
     const emptyText = targetUser
-      ? `${targetUser} has no infractions on record.`
-      : 'This server has no moderation cases on record.';
+      ? t(lang, 'moderation.case.noInfractions', { user: `${targetUser}` })
+      : t(lang, 'moderation.case.noCases');
     await interaction.editReply({ components: [textCard(emptyText, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
@@ -105,7 +107,7 @@ async function list(interaction) {
 
   function renderPage(rows, count, currentPage, includeControls = true) {
     if (!rows.length) {
-      const emptyText = targetUser ? `${targetUser} has no infractions on record.` : 'This server has no moderation cases on record.';
+      const emptyText = targetUser ? t(lang, 'moderation.case.noInfractions', { user: `${targetUser}` }) : t(lang, 'moderation.case.noCases');
       return { components: [textCard(emptyText, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 };
     }
     const card = buildCaseListCard({
@@ -116,6 +118,7 @@ async function list(interaction) {
       guild: interaction.guild,
       user: targetUser,
       ids: includeControls ? { previous: previousId, next: nextId } : null,
+      lang,
     });
     return { components: [card], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } };
   }
@@ -163,54 +166,58 @@ async function list(interaction) {
 }
 
 async function last(interaction) {
+  const lang = await languageOf(interaction);
   const targetUser = interaction.options.getUser('user', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const row = await getLastCase(interaction.guild.id, targetUser.id);
   if (!row) {
-    await interaction.editReply({ components: [textCard(`${targetUser} has no infractions on record.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.case.noInfractions', { user: `${targetUser}` }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
-  await interaction.editReply({ components: [textCard(formatCaseDetail(row), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(formatCaseDetail(row, lang), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function lastMany(interaction) {
+  const lang = await languageOf(interaction);
   const usersInput = interaction.options.getString('users', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const { users, failed: notFound } = await resolveUsers(interaction.client, usersInput, interaction.guild);
 
-  const lines = ['### Most recent infractions'];
+  const lines = [t(lang, 'moderation.case.lastManyTitle')];
   for (const user of users) {
     const row = await getLastCase(interaction.guild.id, user.id);
-    lines.push(row ? formatCaseLine(row) : `${user}: no infractions on record.`);
+    lines.push(row ? formatCaseLine(row, lang) : t(lang, 'moderation.case.lastManyNone', { user: `${user}` }));
   }
-  if (notFound.length) lines.push(`Not found: ${notFound.map((id) => `\`${id}\``).join(', ')}`);
+  if (notFound.length) lines.push(t(lang, 'moderation.common.notFound', { list: notFound.map((id) => `\`${id}\``).join(', ') }));
 
   await interaction.editReply({ components: [textCard(lines.join('\n\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function view(interaction) {
+  const lang = await languageOf(interaction);
   const caseNumber = interaction.options.getInteger('case', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const row = await getCase(interaction.guild.id, caseNumber);
   if (!row) {
-    await interaction.editReply({ components: [textCard(`No case #${caseNumber} found in this server.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.case.notFound', { number: caseNumber }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
-  await interaction.editReply({ components: [textCard(formatCaseDetail(row), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(formatCaseDetail(row, lang), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function edit(interaction) {
+  const lang = await languageOf(interaction);
   const caseNumber = interaction.options.getInteger('case', true);
   const reason = interaction.options.getString('reason');
   const durationStr = interaction.options.getString('duration');
 
   if (!reason && !durationStr) {
-    await interaction.reply({ content: 'Provide at least a new `reason` or `duration`.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'moderation.case.editNothing'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -218,7 +225,7 @@ async function edit(interaction) {
 
   const row = await getCase(interaction.guild.id, caseNumber);
   if (!row) {
-    await interaction.editReply({ components: [textCard(`No case #${caseNumber} found in this server.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.case.notFound', { number: caseNumber }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -227,16 +234,16 @@ async function edit(interaction) {
 
   if (durationStr) {
     if (!['tempban', 'tempmute'].includes(row.type)) {
-      await interaction.editReply({ components: [textCard(`Case #${caseNumber} is a \`${row.type}\`, which has no duration to change.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'moderation.case.noDuration', { number: caseNumber, type: typeName(row.type, lang) }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
     const durationMs = parseDuration(durationStr);
     if (!durationMs) {
-      await interaction.editReply({ components: [textCard('Invalid duration. Use something like `10m`, `2h`, or `7d`.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'moderation.duration.invalidMute'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
     if (row.type === 'tempmute' && durationMs > MAX_TIMEOUT_MS) {
-      await interaction.editReply({ components: [textCard('Discord timeouts cap at 28 days.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'moderation.case.timeoutCap'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
 
@@ -247,10 +254,10 @@ async function edit(interaction) {
       const targetMember = await interaction.guild.members.fetch(row.user_id).catch(() => null);
       if (targetMember) {
         try {
-          await targetMember.timeout(durationMs, `Case #${caseNumber} duration updated by ${interaction.user.tag}`);
+          await targetMember.timeout(durationMs, t(lang, 'moderation.case.audit.durationUpdated', { number: caseNumber, user: interaction.user.tag }));
         } catch (err) {
           logger.error(`Failed to update timeout for case #${caseNumber}:`, err);
-          await interaction.editReply({ components: [textCard('I could not update the member\'s live timeout, so the case was not changed.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+          await interaction.editReply({ components: [textCard(t(lang, 'moderation.case.liveTimeoutFailed'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
           return;
         }
       }
@@ -259,24 +266,25 @@ async function edit(interaction) {
   }
 
   const updated = await updateCase(interaction.guild.id, caseNumber, patch);
-  const text = `${EMOJI.APPROVE}  Updated case #${caseNumber}.\n\n${formatCaseDetail(updated)}`;
+  const text = `${t(lang, 'moderation.case.updated', { emoji: EMOJI.APPROVE, number: caseNumber })}\n\n${formatCaseDetail(updated, lang)}`;
   await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function editMany(interaction) {
   if (!(await requireAdministrator(interaction))) return;
+  const lang = await languageOf(interaction);
   const casesInput = interaction.options.getString('cases', true);
   const reason = interaction.options.getString('reason');
   const durationStr = interaction.options.getString('duration');
 
   if (!reason && !durationStr) {
-    await interaction.reply({ content: 'Provide at least a new `reason` or `duration`.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'moderation.case.editNothing'), flags: MessageFlags.Ephemeral });
     return;
   }
 
   const durationMs = durationStr ? parseDuration(durationStr) : null;
   if (durationStr && !durationMs) {
-    await interaction.reply({ content: 'Invalid duration. Use something like `10m`, `2h`, or `7d`.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'moderation.duration.invalidMute'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -290,7 +298,7 @@ async function editMany(interaction) {
   for (const caseNumber of caseNumbers) {
     const row = await getCase(interaction.guild.id, caseNumber);
     if (!row) {
-      skipped.push(`#${caseNumber} (not found)`);
+      skipped.push(t(lang, 'moderation.case.skip.notFound', { number: caseNumber }));
       continue;
     }
 
@@ -298,21 +306,21 @@ async function editMany(interaction) {
     if (reason) patch.reason = reason;
     if (durationMs) {
       if (!['tempban', 'tempmute'].includes(row.type)) {
-        skipped.push(`#${caseNumber} (no duration to change)`);
+        skipped.push(t(lang, 'moderation.case.skip.noDuration', { number: caseNumber }));
         continue;
       }
       if (row.type === 'tempmute' && durationMs > MAX_TIMEOUT_MS) {
-        skipped.push(`#${caseNumber} (timeout limit is 28 days)`);
+        skipped.push(t(lang, 'moderation.case.skip.timeoutCap', { number: caseNumber }));
         continue;
       }
       if (row.type === 'tempmute') {
         const targetMember = await interaction.guild.members.fetch(row.user_id).catch(() => null);
         if (targetMember) {
           try {
-            await targetMember.timeout(durationMs, `Case #${caseNumber} duration updated by ${interaction.user.tag}`);
+            await targetMember.timeout(durationMs, t(lang, 'moderation.case.audit.durationUpdated', { number: caseNumber, user: interaction.user.tag }));
           } catch (err) {
             logger.error(`Failed to update timeout for case #${caseNumber}:`, err);
-            skipped.push(`#${caseNumber} (live timeout could not be updated)`);
+            skipped.push(t(lang, 'moderation.case.skip.liveTimeout', { number: caseNumber }));
             continue;
           }
         }
@@ -324,67 +332,70 @@ async function editMany(interaction) {
     updated.push(caseNumber);
   }
 
-  const lines = [`${EMOJI.APPROVE}  Updated **${updated.length}** case(s)${updated.length ? `: #${updated.join(', #')}` : ''}.`];
-  if (skipped.length) lines.push(`Skipped: ${skipped.join(', ')}`);
-  if (reason) lines.push(`**New reason:** ${reason}`);
-  if (durationStr) lines.push(`**New duration:** ${durationStr}`);
+  const lines = [tn(lang, 'moderation.case.updatedMany', updated.length, { emoji: EMOJI.APPROVE, count: updated.length, list: updated.length ? `: #${updated.join(', #')}` : '' })];
+  if (skipped.length) lines.push(t(lang, 'moderation.common.skipped', { list: skipped.join(', ') }));
+  if (reason) lines.push(t(lang, 'moderation.case.newReason', { reason }));
+  if (durationStr) lines.push(t(lang, 'moderation.case.newDuration', { duration: durationStr }));
 
   await interaction.editReply({ components: [textCard(lines.join('\n'), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function del(interaction) {
+  const lang = await languageOf(interaction);
   const caseNumber = interaction.options.getInteger('case', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const row = await getCase(interaction.guild.id, caseNumber);
   if (!row) {
-    await interaction.editReply({ components: [textCard(`No case #${caseNumber} found in this server.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.case.notFound', { number: caseNumber }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   await deleteCase(interaction.guild.id, caseNumber);
 
-  const text = `${EMOJI.APPROVE}  Deleted case #${caseNumber}.\n\n${formatCaseDetail(row)}`;
+  const text = `${t(lang, 'moderation.case.deleted', { emoji: EMOJI.APPROVE, number: caseNumber })}\n\n${formatCaseDetail(row, lang)}`;
   await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function deleteAll(interaction) {
   if (!(await requireAdministrator(interaction))) return;
+  const lang = await languageOf(interaction);
   const targetUser = interaction.options.getUser('user', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const history = await getUserHistory(interaction.guild.id, targetUser.id, { limit: 1000 });
   if (!history.length) {
-    await interaction.editReply({ components: [textCard(`${targetUser} has no infractions on record.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.case.noInfractions', { user: `${targetUser}` }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const confirmRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('case_deleteall_confirm').setLabel(`Delete all ${history.length}`).setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId('case_deleteall_cancel').setLabel('Cancel').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('case_deleteall_confirm').setLabel(t(lang, 'moderation.case.deleteAll.confirm.button', { count: history.length })).setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId('case_deleteall_cancel').setLabel(t(lang, 'moderation.bulk.cancel.button')).setStyle(ButtonStyle.Secondary),
   );
 
-  const promptCard = textCard(`${EMOJI.ALERT}  This will permanently delete **${history.length}** infraction(s) for ${targetUser}. Continue?`, 0xfe6465);
+  const promptCard = textCard(tn(lang, 'moderation.case.deleteAll.prompt', history.length, { emoji: EMOJI.ALERT, count: history.length, user: `${targetUser}` }), 0xfe6465);
   const promptMessage = await interaction.editReply({ components: [promptCard, confirmRow], flags: MessageFlags.IsComponentsV2 });
 
   let click;
   try {
     click = await promptMessage.awaitMessageComponent({ filter: (i) => i.user.id === interaction.user.id, time: 30_000 });
   } catch {
-    await interaction.editReply({ components: [textCard(`${EMOJI.DENY}  Timed out. Nothing was deleted.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.case.deleteAll.timedOut', { emoji: EMOJI.DENY }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   if (click.customId === 'case_deleteall_cancel') {
-    await click.update({ components: [textCard(`${EMOJI.DENY}  Cancelled. Nothing was deleted.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await click.update({ components: [textCard(t(lang, 'moderation.case.deleteAll.cancelled', { emoji: EMOJI.DENY }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const deleted = await deleteAllForUser(interaction.guild.id, targetUser.id);
-  await click.update({ components: [textCard(`${EMOJI.APPROVE}  Deleted **${deleted}** infraction(s) for ${targetUser}.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await click.update({ components: [textCard(tn(lang, 'moderation.case.deleteAll.done', deleted, { emoji: EMOJI.APPROVE, count: deleted, user: `${targetUser}` }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function search(interaction) {
+  const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const filters = {
     userId: interaction.options.getUser('user')?.id ?? null,
@@ -394,15 +405,16 @@ async function search(interaction) {
     limit: 10,
   };
   if (!filters.userId && !filters.moderatorId && !filters.type && !filters.text) {
-    await interaction.editReply({ components: [textCard('Pick at least one thing to search for.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.case.search.nothing'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
   const rows = await searchCases(interaction.guild.id, filters);
-  const text = rows.length ? ['### Cases found', ...rows.map(formatCaseLine)].join('\n') : 'No case matches that.';
+  const text = rows.length ? [t(lang, 'moderation.case.search.title'), ...rows.map((row) => formatCaseLine(row, lang))].join('\n') : t(lang, 'moderation.case.search.none');
   await interaction.editReply({ components: [textCard(text.slice(0, 3900), 0x4b4f59)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
 }
 
 async function evidence(interaction) {
+  const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const caseNumber = interaction.options.getInteger('case', true);
   const file = interaction.options.getAttachment('file');
@@ -410,20 +422,27 @@ async function evidence(interaction) {
   const show = (text, color) => interaction.editReply({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2 });
   if (interaction.options.getBoolean('clear')) {
     const row = await clearEvidence(interaction.guild.id, caseNumber);
-    return show(row ? `${EMOJI.APPROVE}  The proof of case #${caseNumber} was cleared.` : `No case #${caseNumber} found in this server.`, row ? 0xa5ea7a : 0xfe6465);
+    return show(row ? t(lang, 'moderation.case.evidence.cleared', { emoji: EMOJI.APPROVE, number: caseNumber }) : t(lang, 'moderation.case.notFound', { number: caseNumber }), row ? 0xa5ea7a : 0xfe6465);
   }
   const url = file?.url ?? link;
-  if (!url || !/^https:\/\//i.test(url)) return show('Attach a file, or give a link that starts with https.', 0xfe6465);
+  if (!url || !/^https:\/\//i.test(url)) return show(t(lang, 'moderation.case.evidence.invalid'), 0xfe6465);
   const row = await addEvidence(interaction.guild.id, caseNumber, url);
-  return show(row ? `${EMOJI.APPROVE}  Proof added to case #${caseNumber} (${row.evidence.length}).` : `No case #${caseNumber} found in this server.`, row ? 0xa5ea7a : 0xfe6465);
+  return show(row ? t(lang, 'moderation.case.evidence.added', { emoji: EMOJI.APPROVE, number: caseNumber, count: row.evidence.length }) : t(lang, 'moderation.case.notFound', { number: caseNumber }), row ? 0xa5ea7a : 0xfe6465);
 }
 
 async function stats(interaction) {
+  const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const days = interaction.options.getInteger('days') ?? 30;
   const result = await moderatorStats(interaction.guild.id, days, interaction.client.user.id);
-  const types = Object.entries(result.byType).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t} ${n}`).join(' · ') || 'none';
-  const moderators = result.moderators.slice(0, 10).map((m, i) => `${i + 1}. <@${m.id}> · ${m.count}`).join('\n') || 'Nobody yet.';
-  const text = [`### Moderation · last ${days} days`, `**Cases:** ${result.total} (${result.automatic} automatic)`, `**By kind:** ${types}`, '**Moderators:**', moderators].join('\n');
+  const types = Object.entries(result.byType).sort((a, b) => b[1] - a[1]).map(([type, n]) => `${typeName(type, lang)} ${n}`).join(' · ') || t(lang, 'moderation.case.stats.noTypes');
+  const moderators = result.moderators.slice(0, 10).map((m, i) => `${i + 1}. <@${m.id}> · ${m.count}`).join('\n') || t(lang, 'moderation.case.stats.noModerators');
+  const text = [
+    tn(lang, 'moderation.case.stats.title', days, { count: days }),
+    t(lang, 'moderation.case.stats.cases', { total: result.total, automatic: result.automatic }),
+    t(lang, 'moderation.case.stats.byKind', { types }),
+    t(lang, 'moderation.case.stats.moderators'),
+    moderators,
+  ].join('\n');
   await interaction.editReply({ components: [textCard(text.slice(0, 3900), 0x4b4f59)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
 }

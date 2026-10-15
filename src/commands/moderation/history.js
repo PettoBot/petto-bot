@@ -9,39 +9,37 @@ const { infoPayload, clip, stamp, line } = require('../../utils/infoCard');
 const { EMOJI, TYPE_EMOJI } = require('../../utils/emojis');
 const { COLORS } = require('../../utils/colors');
 const { settle } = require('../../utils/withTimeout');
+const { typeName, reasonText, capitalize } = require('../../utils/caseFormat');
+const { t, tn, languageOf } = require('../../i18n');
 
 const CASE_SCAN_LIMIT = 500;
 const RECENT_CASES = 5;
 
-// How case types are grouped into the totals line.
+// How case types are grouped into the totals line (the label is `moderation.history.total.<group>`).
 const TOTAL_GROUPS = [
-  ['Warns', ['warn']],
-  ['Mutes', ['mute', 'tempmute']],
-  ['Jails', ['jail']],
-  ['Kicks', ['kick', 'softban']],
-  ['Bans', ['ban', 'hardban', 'tempban']],
+  ['warns', ['warn']],
+  ['mutes', ['mute', 'tempmute']],
+  ['jails', ['jail']],
+  ['kicks', ['kick', 'softban']],
+  ['bans', ['ban', 'hardban', 'tempban']],
 ];
 
-function capitalize(text) {
-  return text.charAt(0).toUpperCase() + text.slice(1);
-}
-
-function totals(cases) {
+function totals(cases, lang) {
   return TOTAL_GROUPS
-    .map(([label, types]) => [label, cases.filter((row) => types.includes(row.type)).length])
+    .map(([group, types]) => [group, cases.filter((row) => types.includes(row.type)).length])
     .filter(([, count]) => count > 0)
-    .map(([label, count]) => `**${label}** ${count}`);
+    .map(([group, count]) => `**${t(lang, `moderation.history.total.${group}`)}** ${count}`);
 }
 
 /** What applies to the member right now, from the strictest down. */
-function currentStatus({ jail, member, muteRoleId, banned }) {
+function currentStatus({ jail, member, muteRoleId, banned }, lang) {
   const status = [];
-  if (banned) status.push('Banned from the server');
-  if (jail) status.push(`In jail${jail.expires_at ? ` until <t:${Math.floor(new Date(jail.expires_at).getTime() / 1000)}:f>` : ' with no end'}`);
+  if (banned) status.push(t(lang, 'moderation.history.status.banned'));
+  if (jail) status.push(jail.expires_at ? t(lang, 'moderation.history.status.jailedUntil', { time: `<t:${Math.floor(new Date(jail.expires_at).getTime() / 1000)}:f>` }) : t(lang, 'moderation.history.status.jailed'));
   if (member?.communicationDisabledUntilTimestamp && member.communicationDisabledUntilTimestamp > Date.now()) {
-    status.push(`Timed out until <t:${Math.floor(member.communicationDisabledUntilTimestamp / 1000)}:f>`);
+    status.push(t(lang, 'moderation.history.status.timedOut', { time: `<t:${Math.floor(member.communicationDisabledUntilTimestamp / 1000)}:f>` }));
   }
-  if (muteRoleId && member?.roles?.cache?.has(muteRoleId)) status.push('Has the mute role');
+  if (muteRoleId && member?.roles?.cache?.has(muteRoleId)) status.push(t(lang, 'moderation.history.status.muteRole'));
   return status;
 }
 
@@ -55,6 +53,7 @@ module.exports = {
     .addUserOption((opt) => opt.setName('user').setDescription('The member to look up (default: you)').setRequired(false)),
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const user = interaction.options.getUser('user') ?? interaction.user;
     const guild = interaction.guild;
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
@@ -73,39 +72,45 @@ module.exports = {
 
     // Someone who left may still be banned; only worth the extra API call when they are not a member.
     const banned = member.value ? false : await guild.bans.fetch({ user: user.id, force: true }).then(() => true, () => false);
-    const status = currentStatus({ jail: jail.ok ? jail.value : null, member: member.value, muteRoleId: guildRow.ok ? guildRow.value.mute_role_id : null, banned });
+    const status = currentStatus({ jail: jail.ok ? jail.value : null, member: member.value, muteRoleId: guildRow.ok ? guildRow.value.mute_role_id : null, banned }, lang);
 
     const caseRows = cases.ok ? cases.value : [];
     const sections = [];
 
     sections.push({
-      title: 'Status',
-      lines: status.length ? status.map((entry) => `${EMOJI.WARNING} ${entry}`) : [`${EMOJI.APPROVE} No active restrictions.`],
+      title: t(lang, 'moderation.history.section.status'),
+      lines: status.length ? status.map((entry) => `${EMOJI.WARNING} ${entry}`) : [t(lang, 'moderation.history.noRestrictions', { emoji: EMOJI.APPROVE })],
     });
 
     sections.push({
-      title: 'Record',
+      title: t(lang, 'moderation.history.section.record'),
       lines: cases.ok
         ? [
-            caseRows.length ? totals(caseRows).join(' · ') || `${caseRows.length} case(s) with no sanctions` : 'No cases on record.',
-            warns.ok ? line('Active warnings', warns.value.length) : null,
-            notes.ok ? line('Staff notes', notes.value.length) : null,
+            caseRows.length ? totals(caseRows, lang).join(' · ') || tn(lang, 'moderation.history.noSanctions', caseRows.length, { count: caseRows.length }) : t(lang, 'moderation.history.noCases'),
+            warns.ok ? line(t(lang, 'moderation.history.activeWarnings'), warns.value.length) : null,
+            notes.ok ? line(t(lang, 'moderation.history.staffNotes'), notes.value.length) : null,
           ]
-        : ['Cases could not be loaded right now.'],
+        : [t(lang, 'moderation.history.casesFailed')],
     });
 
     const reportTotal = reportsAbout.ok ? reportsAbout.value.count : 0;
     if (reportTotal) {
       const open = openReports.ok ? openReports.value.count : 0;
-      sections.push({ title: 'Reports', lines: [`${reportTotal} ${reportTotal === 1 ? 'report' : 'reports'} about this member${open ? ` · **${open}** still open` : ''}`, 'Use `/report list user:` to read them.'] });
+      sections.push({
+        title: t(lang, 'moderation.history.section.reports'),
+        lines: [
+          `${tn(lang, 'moderation.history.reports', reportTotal, { count: reportTotal })}${open ? t(lang, 'moderation.history.reportsOpen', { count: open }) : ''}`,
+          t(lang, 'moderation.history.reportsHint'),
+        ],
+      });
     }
 
     if (caseRows.length) {
       sections.push({
-        title: 'Latest cases',
+        title: t(lang, 'moderation.history.section.latestCases'),
         lines: caseRows.slice(0, RECENT_CASES).map((row) => {
           const when = `<t:${Math.floor(new Date(row.created_at).getTime() / 1000)}:R>`;
-          return `${TYPE_EMOJI[row.type] ?? ''} **#${row.case_number}** ${capitalize(row.type)} · ${when}${row.active === false ? ' · *inactive*' : ''}\n> ${clip(row.reason || 'No reason provided.', 90)}`.trim();
+          return `${TYPE_EMOJI[row.type] ?? ''} **#${row.case_number}** ${capitalize(typeName(row.type, lang))} · ${when}${row.active === false ? t(lang, 'moderation.history.inactive') : ''}\n> ${clip(reasonText(row.reason, lang), 90)}`.trim();
         }),
         limit: 1800,
       });
@@ -113,7 +118,7 @@ module.exports = {
 
     if (notes.ok && notes.value.length) {
       const latest = notes.value[0];
-      sections.push({ title: 'Latest note', lines: [`#${latest.id} · <t:${Math.floor(new Date(latest.created_at).getTime() / 1000)}:R> · <@${latest.moderator_id}>\n> ${clip(latest.note, 150)}`] });
+      sections.push({ title: t(lang, 'moderation.history.section.latestNote'), lines: [`#${latest.id} · <t:${Math.floor(new Date(latest.created_at).getTime() / 1000)}:R> · <@${latest.moderator_id}>\n> ${clip(latest.note, 150)}`] });
     }
 
     const worst = status.length ? COLORS.RED : caseRows.length ? COLORS.YELLOW : COLORS.GREEN;
@@ -124,11 +129,11 @@ module.exports = {
       thumbnail: (m ?? user).displayAvatarURL({ size: 256 }),
       subtitle: [
         `<@${user.id}> · \`${user.id}\``,
-        `Account created ${stamp(user.createdTimestamp)}`,
-        m?.joinedTimestamp ? `Joined ${stamp(m.joinedTimestamp)}` : 'Not in this server.',
+        t(lang, 'moderation.history.created', { time: stamp(user.createdTimestamp) }),
+        m?.joinedTimestamp ? t(lang, 'moderation.history.joined', { time: stamp(m.joinedTimestamp) }) : t(lang, 'moderation.history.notMember'),
       ],
       sections,
-      footer: 'Use case list to page through every case.',
+      footer: t(lang, 'moderation.history.footer'),
     }));
   },
 };

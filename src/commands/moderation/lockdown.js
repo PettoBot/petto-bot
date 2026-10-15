@@ -5,6 +5,7 @@ const { startLockdown, endLockdown, targetChannels } = require('../../utils/lock
 const { requireAdministrator } = require('../../utils/moderationCommand');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { t, tn, languageOf } = require('../../i18n');
 
 const GREEN = 0xa5ea7a;
 const GREY = 0x4b4f59;
@@ -52,12 +53,13 @@ module.exports = {
     await ensureGuild(interaction.guild.id);
     const group = interaction.options.getSubcommandGroup(false);
     const sub = interaction.options.getSubcommand();
+    const lang = await languageOf(interaction);
     try {
-      if (group === 'channel') return await channel(interaction, sub);
-      if (sub === 'start') return await start(interaction);
-      if (sub === 'end') return await end(interaction);
-      if (sub === 'config') return await config(interaction);
-      return await status(interaction);
+      if (group === 'channel') return await channel(interaction, sub, lang);
+      if (sub === 'start') return await start(interaction, lang);
+      if (sub === 'end') return await end(interaction, lang);
+      if (sub === 'config') return await config(interaction, lang);
+      return await status(interaction, lang);
     } catch (err) {
       if (err.userFacing) return reply(interaction, err.message, RED);
       throw err;
@@ -65,30 +67,44 @@ module.exports = {
   },
 };
 
-async function start(interaction) {
+async function start(interaction, lang) {
   const result = await startLockdown(interaction.guild, { startedBy: interaction.user.id, reason: interaction.options.getString('reason'), minutes: interaction.options.getInteger('minutes') });
-  return reply(interaction, [`### ${EMOJI.ALERT} Lockdown on`, `**${result.locked}** channel(s) closed${result.failed ? ` (${result.failed} could not be)` : ''}${result.invitesDeleted ? `, ${result.invitesDeleted} invite(s) deleted` : ''}.`, result.endsInMinutes ? `It ends by itself in ${result.endsInMinutes} minutes.` : 'It stays until you end it with `lockdown end`.'].join('\n'), RED);
+  const closed = [
+    tn(lang, 'moderation.lockdown.started.closed', result.locked, { count: result.locked }),
+    result.failed ? t(lang, 'moderation.lockdown.started.failed', { count: result.failed }) : '',
+    result.invitesDeleted ? tn(lang, 'moderation.lockdown.started.invites', result.invitesDeleted, { count: result.invitesDeleted }) : '',
+    '.',
+  ].join('');
+  const ends = result.endsInMinutes ? tn(lang, 'moderation.lockdown.started.endsIn', result.endsInMinutes, { count: result.endsInMinutes }) : t(lang, 'moderation.lockdown.started.staysOn');
+  return reply(interaction, [t(lang, 'moderation.lockdown.started.title', { emoji: EMOJI.ALERT }), closed, ends].join('\n'), RED);
 }
 
-async function end(interaction) {
+async function end(interaction, lang) {
   const result = await endLockdown(interaction.guild, { endedBy: interaction.user.id });
-  return reply(interaction, `${EMOJI.APPROVE} Lockdown ended. **${result.restored}** channel(s) reopened${result.failed ? `, ${result.failed} could not be` : ''}.`);
+  return reply(interaction, tn(lang, 'moderation.lockdown.ended', result.restored, { emoji: EMOJI.APPROVE, count: result.restored, failed: result.failed ? t(lang, 'moderation.lockdown.endedFailed', { count: result.failed }) : '' }));
 }
 
-async function status(interaction) {
+async function status(interaction, lang) {
   const [active, c] = await Promise.all([db.getActive(interaction.guild.id), db.getConfig(interaction.guild.id)]);
-  const scope = c.channel_ids.length ? c.channel_ids.map((id) => `<#${id}>`).join(' ') : `every text channel (${targetChannels(interaction.guild, c).length})`;
+  const scope = c.channel_ids.length ? c.channel_ids.map((id) => `<#${id}>`).join(' ') : t(lang, 'moderation.lockdown.status.everyChannel', { count: targetChannels(interaction.guild, c).length });
+  const yesNo = (value) => t(lang, value ? 'moderation.lockdown.status.yes' : 'moderation.lockdown.status.no');
   const lines = [
-    active ? `### ${EMOJI.ALERT} Lockdown on since <t:${Math.floor(new Date(active.started_at).getTime() / 1000)}:R>${active.ends_at ? ` · ends <t:${Math.floor(new Date(active.ends_at).getTime() / 1000)}:R>` : ''}` : '### Lockdown off',
-    `**Closes:** ${scope}`,
-    `**Pauses invites:** ${c.pause_invites ? 'yes' : 'no'} · **Raises verification:** ${c.raise_verification ? 'yes' : 'no'} · **Ends by itself:** ${c.auto_end_minutes ? `after ${c.auto_end_minutes} minutes` : 'no'}`,
-    `**Notice:** ${c.announce_channel_id ? `<#${c.announce_channel_id}>` : 'no channel'}`,
-    '-# Anti Raid can start it by itself: set its action to lockdown.',
+    active
+      ? t(lang, active.ends_at ? 'moderation.lockdown.status.onUntil' : 'moderation.lockdown.status.on', { emoji: EMOJI.ALERT, since: `<t:${Math.floor(new Date(active.started_at).getTime() / 1000)}:R>`, ends: active.ends_at ? `<t:${Math.floor(new Date(active.ends_at).getTime() / 1000)}:R>` : '' })
+      : t(lang, 'moderation.lockdown.status.off'),
+    t(lang, 'moderation.lockdown.status.closes', { scope }),
+    t(lang, 'moderation.lockdown.status.settings', {
+      invites: yesNo(c.pause_invites),
+      verification: yesNo(c.raise_verification),
+      ends: c.auto_end_minutes ? tn(lang, 'moderation.lockdown.status.after', c.auto_end_minutes, { count: c.auto_end_minutes }) : yesNo(false),
+    }),
+    t(lang, 'moderation.lockdown.status.notice', { channel: c.announce_channel_id ? `<#${c.announce_channel_id}>` : t(lang, 'moderation.lockdown.status.noChannel') }),
+    t(lang, 'moderation.lockdown.status.antiRaid'),
   ];
   return reply(interaction, lines.join('\n'), active ? RED : GREY);
 }
 
-async function config(interaction) {
+async function config(interaction, lang) {
   const o = interaction.options;
   const patch = {};
   for (const [key, value] of [['pause_invites', o.getBoolean('pause_invites')], ['raise_verification', o.getBoolean('raise_verification')], ['auto_end_minutes', o.getInteger('auto_end_minutes')], ['message', o.getString('message')]]) {
@@ -97,13 +113,14 @@ async function config(interaction) {
   const announce = o.getChannel('announce_channel');
   if (announce) patch.announce_channel_id = announce.id;
   if (Object.keys(patch).length) await db.upsertConfig(interaction.guild.id, patch);
-  return status(interaction);
+  return status(interaction, lang);
 }
 
-async function channel(interaction, sub) {
+async function channel(interaction, sub, lang) {
   const target = interaction.options.getChannel('channel', true);
   const c = await db.getConfig(interaction.guild.id);
   const ids = sub === 'add' ? [...new Set([...c.channel_ids, target.id])] : c.channel_ids.filter((id) => id !== target.id);
   await db.upsertConfig(interaction.guild.id, { channel_ids: ids });
-  return reply(interaction, `${EMOJI.APPROVE} ${target} ${sub === 'add' ? 'will be closed' : 'will not be closed'} in a lockdown.${ids.length === 0 ? ' With no channels chosen, every text channel is closed.' : ''}`);
+  const done = t(lang, sub === 'add' ? 'moderation.lockdown.channel.added' : 'moderation.lockdown.channel.removed', { emoji: EMOJI.APPROVE, channel: `${target}` });
+  return reply(interaction, `${done}${ids.length === 0 ? t(lang, 'moderation.lockdown.channel.noneChosen') : ''}`);
 }

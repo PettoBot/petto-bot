@@ -4,6 +4,7 @@ const { noticePayload, infoPayload, line } = require('../../utils/infoCard');
 const { EMOJI } = require('../../utils/emojis');
 const { COLORS } = require('../../utils/colors');
 const logger = require('../../utils/logger');
+const { t, tn, languageOf } = require('../../i18n');
 
 const MAX_SCAN = 500;
 const FETCH_PAGE = 100;
@@ -11,11 +12,8 @@ const FETCH_PAGE = 100;
 const BULK_DELETE_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 const RESULT_LIFETIME_MS = 8_000;
 
-const NEEDED = [
-  ['View Channel', PermissionFlagsBits.ViewChannel],
-  ['Read Message History', PermissionFlagsBits.ReadMessageHistory],
-  ['Manage Messages', PermissionFlagsBits.ManageMessages],
-];
+// The permissions a purge needs, by their flag name (shown with the `core.perm.*` names).
+const NEEDED = ['ViewChannel', 'ReadMessageHistory', 'ManageMessages'];
 
 module.exports = {
   aliases: ['prune'],
@@ -34,6 +32,7 @@ module.exports = {
     .addStringOption((opt) => opt.setName('text').setDescription('Only messages containing this text').setRequired(false).setMaxLength(100)),
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const amount = interaction.options.getInteger('amount', true);
     const user = interaction.options.getUser('user');
     const filter = interaction.options.getString('filter') ?? 'all';
@@ -41,19 +40,19 @@ module.exports = {
     const channel = interaction.channel;
 
     if (!PURGE_FILTERS.includes(filter)) {
-      await interaction.reply({ ...noticePayload(`Unknown filter. Use one of: ${PURGE_FILTERS.map((name) => `\`${name}\``).join(', ')}.`, COLORS.RED), flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
+      await interaction.reply({ ...noticePayload(t(lang, 'moderation.purge.unknownFilter', { list: PURGE_FILTERS.map((name) => `\`${name}\``).join(', ') }), COLORS.RED), flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
       return;
     }
 
-    const missingFor = (who) => NEEDED.filter(([, flag]) => !channel.permissionsFor(who)?.has(flag)).map(([name]) => name);
+    const missingFor = (who) => NEEDED.filter((flag) => !channel.permissionsFor(who)?.has(PermissionFlagsBits[flag])).map((flag) => t(lang, `core.perm.${flag}`));
     const youMissing = missingFor(interaction.member);
     if (youMissing.length) {
-      await interaction.reply({ content: `You need **${youMissing.join(', ')}** in this channel.`, flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: t(lang, 'moderation.purge.youNeed', { permissions: youMissing.join(', ') }), flags: MessageFlags.Ephemeral });
       return;
     }
     const meMissing = missingFor(interaction.guild.members.me);
     if (meMissing.length) {
-      await interaction.reply({ content: `I need **${meMissing.join(', ')}** in this channel.`, flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: t(lang, 'moderation.purge.iNeed', { permissions: meMissing.join(', ') }), flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -91,16 +90,16 @@ module.exports = {
       deleted += result.length;
     }
 
-    const filters = [filter !== 'all' ? `**${filter}**` : null, user ? `from ${user}` : null, text ? `containing \`${text}\`` : null].filter(Boolean).join(' · ');
+    const filters = [filter !== 'all' ? `**${filter}**` : null, user ? t(lang, 'moderation.purge.from', { user: `${user}` }) : null, text ? t(lang, 'moderation.purge.containing', { text }) : null].filter(Boolean).join(' · ');
     const sent = await interaction.editReply(infoPayload({
       accent: deleted ? COLORS.GREEN : COLORS.DEFAULT,
-      title: `${deleted ? EMOJI.APPROVE : EMOJI.RELEASE_MINUS} ${deleted ? `Deleted ${deleted} ${deleted === 1 ? 'message' : 'messages'}` : 'Nothing to delete'}`,
-      subtitle: [`Scanned ${scanned.length} ${scanned.length === 1 ? 'message' : 'messages'}${filters ? ` · ${filters}` : ''}`],
+      title: `${deleted ? EMOJI.APPROVE : EMOJI.RELEASE_MINUS} ${deleted ? tn(lang, 'moderation.purge.deleted', deleted, { count: deleted }) : t(lang, 'moderation.purge.nothing')}`,
+      subtitle: [`${tn(lang, 'moderation.purge.scanned', scanned.length, { count: scanned.length })}${filters ? ` · ${filters}` : ''}`],
       sections: [{
         lines: [
-          tooOld ? line('Older than 14 days', `${tooOld} (Discord cannot bulk delete these)`) : null,
-          pinnedKept ? line('Pinned and kept', pinnedKept) : null,
-          deletable.length - deleted > 0 ? line('Could not delete', deletable.length - deleted) : null,
+          tooOld ? line(t(lang, 'moderation.purge.tooOld'), t(lang, 'moderation.purge.tooOldValue', { count: tooOld })) : null,
+          pinnedKept ? line(t(lang, 'moderation.purge.pinnedKept'), pinnedKept) : null,
+          deletable.length - deleted > 0 ? line(t(lang, 'moderation.purge.couldNotDelete'), deletable.length - deleted) : null,
         ],
       }],
     }));

@@ -6,8 +6,10 @@ const { getTemplate } = require('../../db/embedTemplates');
 const sanctionTemplates = require('../../db/sanctionTemplates');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { t, languageOf } = require('../../i18n');
 
-const SLOT_LABELS = { dm: 'DM to the member', reply: 'reply where the command was used', log: 'sanctions log' };
+// The three messages of a sanction; each has its label and its sentences under `moderation.sanctionMessage.*.<slot>`.
+const SLOTS = ['dm', 'reply', 'log'];
 
 const typeOption = (option) => option
   .setName('type')
@@ -38,35 +40,35 @@ module.exports = {
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
+    const lang = await languageOf(interaction);
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
     await ensureGuild(interaction.guild.id);
     const reply = (text, color = 0xa5ea7a) => interaction.editReply({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2 });
 
     if (sub === 'list') {
       const all = await sanctionTemplates.listTemplates(interaction.guild.id, { force: true });
-      const lines = [...all.entries()].map(([type, set]) => `**${type}** · ${Object.entries(SLOT_LABELS).filter(([slot]) => set[slot]).map(([slot, label]) => `${label}: \`${set[slot]}\``).join(' · ')}`);
-      return reply(lines.length ? lines.join('\n') : 'No custom sanction messages are set. Use `sanctionmessage set`.', 0x4b4f59);
+      const lines = [...all.entries()].map(([type, set]) => `**${type}** · ${SLOTS.filter((slot) => set[slot]).map((slot) => t(lang, 'moderation.sanctionMessage.listEntry', { label: t(lang, `moderation.sanctionMessage.slot.${slot}`), name: set[slot] })).join(' · ')}`);
+      return reply(lines.length ? lines.join('\n') : t(lang, 'moderation.sanctionMessage.none'), 0x4b4f59);
     }
 
     const type = interaction.options.getString('type', true).trim().toLowerCase();
     const slot = interaction.options.getString('slot')?.trim().toLowerCase() || null;
-    if (!sanctionTemplates.TYPES.includes(type)) return reply(`Choose a type: ${sanctionTemplates.TYPES.map((t) => `\`${t}\``).join(', ')}.`, 0xfe6465);
-    if ((slot || sub === 'set') && !SLOT_LABELS[slot]) return reply(`Choose a message: ${Object.keys(SLOT_LABELS).map((s) => `\`${s}\``).join(', ')}.`, 0xfe6465);
+    if (!sanctionTemplates.TYPES.includes(type)) return reply(t(lang, 'moderation.sanctionMessage.chooseType', { list: sanctionTemplates.TYPES.map((name) => `\`${name}\``).join(', ') }), 0xfe6465);
+    if ((slot || sub === 'set') && !SLOTS.includes(slot)) return reply(t(lang, 'moderation.sanctionMessage.chooseSlot', { list: SLOTS.map((name) => `\`${name}\``).join(', ') }), 0xfe6465);
 
     if (sub === 'clear') {
       await sanctionTemplates.setTemplates(interaction.guild.id, type, slot ? { [slot]: null } : { dm: null, reply: null, log: null });
-      return reply(`${EMOJI.APPROVE}  ${slot ? `The ${SLOT_LABELS[slot]}` : 'The custom messages'} of **${type}** ${slot ? 'goes' : 'go'} back to the usual message.`);
+      return reply(t(lang, `moderation.sanctionMessage.cleared.${slot ?? 'all'}`, { emoji: EMOJI.APPROVE, type }));
     }
 
     const name = String(interaction.options.getString('template') ?? '').trim();
     if (!name) {
       const { templateHint } = require('../../utils/templateHint');
-      return reply(await templateHint(interaction.guild.id, { usage: `sanctionmessage set ${type} ${slot} <name>`, what: `The ${SLOT_LABELS[slot]} of ${type}` }), 0x4b4f59);
+      return reply(await templateHint(interaction.guild.id, { usage: `sanctionmessage set ${type} ${slot} <name>`, what: t(lang, `moderation.sanctionMessage.what.${slot}`, { type }), lang }), 0x4b4f59);
     }
     const doc = await getTemplate(interaction.guild.id, name).catch(() => null);
-    if (!doc) return reply(`No saved embed named \`${name}\` was found. Make one in the dashboard, under Embeds.`, 0xfe6465);
+    if (!doc) return reply(t(lang, 'moderation.sanctionMessage.noEmbed', { name }), 0xfe6465);
     await sanctionTemplates.setTemplates(interaction.guild.id, type, { [slot]: doc.name });
-    const note = slot === 'dm' ? ' The case number is not known yet when a ban or kick sends it.' : '';
-    return reply(`${EMOJI.APPROVE}  The ${SLOT_LABELS[slot]} of **${type}** now uses \`${doc.name}\`. Its variables start with \`{case.…}\`.${note}`);
+    return reply(t(lang, `moderation.sanctionMessage.set.${slot}`, { emoji: EMOJI.APPROVE, type, name: doc.name }));
   },
 };

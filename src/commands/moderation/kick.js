@@ -9,6 +9,8 @@ const { resolveUsers } = require('../../utils/userResolve');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
 const { confirmBulkAction, requireAdministrator, failureDetail } = require('../../utils/moderationCommand');
+const { reasonText } = require('../../utils/caseFormat');
+const { t, tn, languageOf } = require('../../i18n');
 
 module.exports = {
   aliases: ['k'],
@@ -41,12 +43,13 @@ module.exports = {
 };
 
 async function kickUser(interaction) {
+  const lang = await languageOf(interaction);
   const targetUser = interaction.options.getUser('user', true);
   const reason = interaction.options.getString('reason');
 
   const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
   if (!targetMember) {
-    await interaction.reply({ content: 'That user is not a member of this server.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'moderation.common.notMember'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -66,7 +69,7 @@ async function kickUser(interaction) {
     await targetMember.kick(reason ?? undefined);
   } catch (err) {
     logger.error('Failed to kick member:', err);
-    await interaction.editReply({ components: [textCard(`I was unable to kick that user.${failureDetail(err)}`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.kick.failed', { detail: failureDetail(err, lang) }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -79,11 +82,12 @@ async function kickUser(interaction) {
 
 async function kickUsers(interaction) {
   if (!(await requireAdministrator(interaction))) return;
+  const lang = await languageOf(interaction);
   const usersInput = interaction.options.getString('users', true);
   const reason = interaction.options.getString('reason');
 
   if (!interaction.guild.members.me.permissions.has(PermissionFlagsBits.KickMembers)) {
-    await interaction.reply({ content: 'I need the **Kick Members** permission.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'moderation.kick.needsKickMembers'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -121,12 +125,12 @@ async function kickUsers(interaction) {
     }
   }
 
-  const lines = [`${EMOJI.APPROVE}  Kicked **${succeeded.length}** user(s)${caseNumbers.length ? ` (cases #${caseNumbers.join(', #')})` : ''}.`];
+  const lines = [tn(lang, 'moderation.kick.bulkDone', succeeded.length, { emoji: EMOJI.APPROVE, count: succeeded.length, cases: caseNumbers.length ? t(lang, 'moderation.common.cases', { list: caseNumbers.join(', #') }) : '' })];
   if (succeeded.length) lines.push(succeeded.map((u) => `${u}`).join(' '));
-  if (failed.length) lines.push(`${EMOJI.DENY}  Failed: ${failed.map((u) => `${u}`).join(' ')}`);
-  if (skipped.length) lines.push(`Not in this server: ${skipped.map((u) => `${u}`).join(' ')}`);
-  if (notFound.length) lines.push(`Not found: ${notFound.map((id) => `\`${id}\``).join(', ')}`);
-  lines.push(`**Reason:** ${reason || 'No reason provided.'}`);
+  if (failed.length) lines.push(t(lang, 'moderation.common.failedList', { emoji: EMOJI.DENY, list: failed.map((u) => `${u}`).join(' ') }));
+  if (skipped.length) lines.push(t(lang, 'moderation.common.notInServer', { list: skipped.map((u) => `${u}`).join(' ') }));
+  if (notFound.length) lines.push(t(lang, 'moderation.common.notFound', { list: notFound.map((id) => `\`${id}\``).join(', ') }));
+  lines.push(t(lang, 'moderation.common.reason', { reason: reasonText(reason, lang) }));
 
   const card = textCard(lines.join('\n'), 0xfed53c);
   await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });

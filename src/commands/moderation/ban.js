@@ -19,6 +19,8 @@ const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
 const { addHardBan, getHardBan, removeHardBan, canLiftHardBan, listHardBanIds } = require('../../db/hardBans');
 const { confirmBulkAction, requireAdministrator, failureDetail } = require('../../utils/moderationCommand');
+const { reasonText } = require('../../utils/caseFormat');
+const { t, tn, languageOf } = require('../../i18n');
 
 module.exports = {
   aliases: ['b'],
@@ -73,6 +75,7 @@ module.exports = {
 };
 
 async function banUser(interaction, { hard = false } = {}) {
+  const lang = await languageOf(interaction);
   const type = hard ? 'hardban' : 'ban';
   const targetUser = interaction.options.getUser('user', true);
   const reason = interaction.options.getString('reason');
@@ -100,7 +103,7 @@ async function banUser(interaction, { hard = false } = {}) {
   } catch (err) {
     logger.error('Failed to ban member:', err);
     await interaction.editReply({
-      components: [textCard(`I was unable to ban that user. They may already be banned, or I lack permission.${failureDetail(err)}`, 0xfe6465)],
+      components: [textCard(t(lang, 'moderation.ban.failed', { detail: failureDetail(err, lang) }), 0xfe6465)],
       flags: MessageFlags.IsComponentsV2,
     });
     return;
@@ -116,11 +119,12 @@ async function banUser(interaction, { hard = false } = {}) {
 
 async function banUsers(interaction) {
   if (!(await requireAdministrator(interaction))) return;
+  const lang = await languageOf(interaction);
   const usersInput = interaction.options.getString('users', true);
   const reason = interaction.options.getString('reason');
 
   if (!interaction.guild.members.me.permissions.has(PermissionFlagsBits.BanMembers)) {
-    await interaction.reply({ content: 'I need the **Ban Members** permission.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'moderation.ban.needsBanMembers'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -154,24 +158,25 @@ async function banUsers(interaction) {
     }
   }
 
-  const lines = [`${EMOJI.APPROVE}  Banned **${succeeded.length}** user(s)${caseNumbers.length ? ` (cases #${caseNumbers.join(', #')})` : ''}.`];
+  const lines = [tn(lang, 'moderation.ban.bulkDone', succeeded.length, { emoji: EMOJI.APPROVE, count: succeeded.length, cases: caseNumbers.length ? t(lang, 'moderation.common.cases', { list: caseNumbers.join(', #') }) : '' })];
   if (succeeded.length) lines.push(succeeded.map((u) => `${u}`).join(' '));
-  if (failed.length) lines.push(`${EMOJI.DENY}  Failed: ${failed.map((u) => `${u}`).join(' ')}`);
-  if (notFound.length) lines.push(`Not found: ${notFound.map((id) => `\`${id}\``).join(', ')}`);
-  lines.push(`**Reason:** ${reason || 'No reason provided.'}`);
+  if (failed.length) lines.push(t(lang, 'moderation.common.failedList', { emoji: EMOJI.DENY, list: failed.map((u) => `${u}`).join(' ') }));
+  if (notFound.length) lines.push(t(lang, 'moderation.common.notFound', { list: notFound.map((id) => `\`${id}\``).join(', ') }));
+  lines.push(t(lang, 'moderation.common.reason', { reason: reasonText(reason, lang) }));
 
   const card = textCard(lines.join('\n'), 0xfe6465);
   await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function tempBan(interaction) {
+  const lang = await languageOf(interaction);
   const targetUser = interaction.options.getUser('user', true);
   const reason = interaction.options.getString('reason');
   const deleteDays = interaction.options.getInteger('delete_message_days') ?? 0;
   const durationMs = parseDuration(interaction.options.getString('duration', true));
 
   if (!durationMs) {
-    await interaction.reply({ content: 'Invalid duration. Use something like `1d`, `12h`, or `2w`.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'moderation.duration.invalidBan'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -185,7 +190,7 @@ async function tempBan(interaction) {
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
-  const duration = formatDuration(durationMs);
+  const duration = formatDuration(durationMs, lang);
 
   if (targetMember) {
     await targetMember
@@ -198,7 +203,7 @@ async function tempBan(interaction) {
   } catch (err) {
     logger.error('Failed to ban member:', err);
     await interaction.editReply({
-      components: [textCard(`I was unable to ban that user. They may already be banned, or I lack permission.${failureDetail(err)}`, 0xfe6465)],
+      components: [textCard(t(lang, 'moderation.ban.failed', { detail: failureDetail(err, lang) }), 0xfe6465)],
       flags: MessageFlags.IsComponentsV2,
     });
     return;
@@ -213,6 +218,7 @@ async function tempBan(interaction) {
 }
 
 async function unban(interaction) {
+  const lang = await languageOf(interaction);
   const targetUser = interaction.options.getUser('user', true);
   const reason = interaction.options.getString('reason');
 
@@ -224,7 +230,7 @@ async function unban(interaction) {
 
   const hardBan = await getHardBan(interaction.guild.id, targetUser.id).catch(() => null);
   if (hardBan && !(await canLiftHardBan(interaction.guild, interaction.user.id))) {
-    await interaction.reply({ content: 'That user has a **hardban**. Only the server owner and the antinuke admins can lift it.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'moderation.unban.hardban'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -234,10 +240,10 @@ async function unban(interaction) {
     await interaction.guild.members.unban(targetUser.id, reason ?? undefined);
   } catch (err) {
     if (err.code === 10026) {
-      await interaction.editReply({ components: [textCard('That user is not banned.', 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'moderation.unban.notBanned'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     } else {
       logger.error('Failed to unban member:', err);
-      await interaction.editReply({ components: [textCard('I was unable to unban that user.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'moderation.unban.failed'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     }
     return;
   }
@@ -258,8 +264,9 @@ function statusCard(text, color) {
 }
 
 async function unbanAll(interaction) {
+  const lang = await languageOf(interaction);
   if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-    await interaction.reply({ content: 'This is a destructive, server-wide action. It requires **Administrator**.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'moderation.unbanAll.needsAdmin'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -269,36 +276,36 @@ async function unbanAll(interaction) {
 
   const bans = await interaction.guild.bans.fetch().catch(() => null);
   if (!bans) {
-    await interaction.editReply({ components: [statusCard('I was unable to fetch the ban list. Check my **Ban Members** permission.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [statusCard(t(lang, 'moderation.unbanAll.fetchFailed'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
   if (!bans.size) {
-    await interaction.editReply({ components: [statusCard('There are no banned users to unban.', 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [statusCard(t(lang, 'moderation.unbanAll.none'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const confirmRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('unbanall_confirm').setLabel(`Unban all ${bans.size}`).setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId('unbanall_cancel').setLabel('Cancel').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('unbanall_confirm').setLabel(t(lang, 'moderation.unbanAll.confirm.button', { count: bans.size })).setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId('unbanall_cancel').setLabel(t(lang, 'moderation.bulk.cancel.button')).setStyle(ButtonStyle.Secondary),
   );
 
-  const promptCard = statusCard(`${EMOJI.ALERT}  This will unban **${bans.size}** user(s) from **${interaction.guild.name}**. This cannot be bulk-reverted. Continue?`, 0xfe6465);
+  const promptCard = statusCard(tn(lang, 'moderation.unbanAll.prompt', bans.size, { emoji: EMOJI.ALERT, count: bans.size, server: interaction.guild.name }), 0xfe6465);
   const promptMessage = await interaction.editReply({ components: [promptCard, confirmRow], flags: MessageFlags.IsComponentsV2 });
 
   let click;
   try {
     click = await promptMessage.awaitMessageComponent({ filter: (i) => i.user.id === interaction.user.id, time: 30_000 });
   } catch {
-    await interaction.editReply({ components: [statusCard(`${EMOJI.DENY}  Timed out. No users were unbanned.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [statusCard(t(lang, 'moderation.unbanAll.timedOut', { emoji: EMOJI.DENY }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   if (click.customId === 'unbanall_cancel') {
-    await click.update({ components: [statusCard(`${EMOJI.DENY}  Cancelled. No users were unbanned.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await click.update({ components: [statusCard(t(lang, 'moderation.unbanAll.cancelled', { emoji: EMOJI.DENY }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
-  await click.update({ components: [statusCard(`${EMOJI.LOAD}  Unbanning ${bans.size} user(s)...`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await click.update({ components: [statusCard(tn(lang, 'moderation.unbanAll.working', bans.size, { emoji: EMOJI.LOAD, count: bans.size }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 
   let succeeded = 0;
   let failed = 0;
@@ -310,7 +317,7 @@ async function unbanAll(interaction) {
     if (hardIds.has(userId)) continue;
     let target;
     try {
-      await interaction.guild.members.unban(userId, reason ?? 'Mass unban');
+      await interaction.guild.members.unban(userId, reason ?? t(lang, 'moderation.unbanAll.audit'));
       succeeded += 1;
       target = bans.get(userId)?.user ?? { id: userId, username: userId };
     } catch (err) {
@@ -329,17 +336,26 @@ async function unbanAll(interaction) {
   }
 
   const resultLines = [
-    `${EMOJI.APPROVE}  Unbanned **${succeeded}** user(s)${failed ? ` (${failed} failed)` : ''}${caseNumbers.length ? ` · Cases #${caseNumbers.join(', #')}` : ''}.`,
-    `**Moderator:** ${interaction.user}`,
-    `**Reason:** ${reason || 'No reason provided.'}`,
+    tn(lang, 'moderation.unbanAll.done', succeeded, {
+      emoji: EMOJI.APPROVE,
+      count: succeeded,
+      failed: failed ? t(lang, 'moderation.unbanAll.failedCount', { count: failed }) : '',
+      cases: caseNumbers.length ? t(lang, 'moderation.unbanAll.cases', { list: caseNumbers.join(', #') }) : '',
+    }),
+    t(lang, 'moderation.common.moderator', { moderator: `${interaction.user}` }),
+    t(lang, 'moderation.common.reason', { reason: reasonText(reason, lang) }),
   ];
   const resultCard = statusCard(resultLines.join('\n'), 0xa5ea7a);
 
   await interaction.editReply({ components: [resultCard], flags: MessageFlags.IsComponentsV2 });
 
   await sendLog(interaction.client, interaction.guild.id, 'sanctions', {
-    author: { name: `${interaction.user.username} unbanned ${succeeded} user(s)` },
-    description: [`${EMOJI.APPROVE} **Mass unban** · ${succeeded} succeeded${failed ? `, ${failed} failed` : ''}`, `**Moderator:** <@${interaction.user.id}>`, `**Reason:** ${reason || 'No reason provided.'}`].join('\n'),
+    author: { name: tn(lang, 'moderation.unbanAll.log.author', succeeded, { name: interaction.user.username, count: succeeded }) },
+    description: [
+      tn(lang, 'moderation.unbanAll.log.title', succeeded, { emoji: EMOJI.APPROVE, count: succeeded, failed: failed ? t(lang, 'moderation.unbanAll.log.failed', { count: failed }) : '' }),
+      t(lang, 'moderation.common.moderator', { moderator: `<@${interaction.user.id}>` }),
+      t(lang, 'moderation.common.reason', { reason: reasonText(reason, lang) }),
+    ].join('\n'),
     color: 0xa5ea7a,
     footer: { text: interaction.guild.name, icon_url: interaction.guild.iconURL({ extension: 'png', size: 128 }) ?? undefined },
     timestamp: new Date().toISOString(),

@@ -7,6 +7,7 @@ const { logSanction } = require('../../utils/caseLog');
 const { sanctionDM, sanctionReply } = require('../../utils/sanctionTemplates');
 const logger = require('../../utils/logger');
 const { failureDetail } = require('../../utils/moderationCommand');
+const { t, languageOf } = require('../../i18n');
 
 module.exports = {
   aliases: ['sb', 'sofban'],
@@ -20,6 +21,7 @@ module.exports = {
     .addStringOption((opt) => opt.setName('reason').setDescription('Reason for the softban').setRequired(false)),
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const targetUser = interaction.options.getUser('user', true);
     const reason = interaction.options.getString('reason');
     const deleteDays = interaction.options.getInteger('delete_message_days') ?? 1;
@@ -42,11 +44,11 @@ module.exports = {
 
     try {
       await interaction.guild.members.ban(targetUser.id, { reason: reason ?? undefined, deleteMessageSeconds: deleteDays * 86400 });
-      await interaction.guild.members.unban(targetUser.id, 'Softban: message cleanup complete.');
+      await interaction.guild.members.unban(targetUser.id, t(lang, 'moderation.softban.audit'));
     } catch (err) {
       logger.error('Failed to softban member:', err);
       await interaction.editReply({
-        components: [textCard(`I was unable to softban that user. They may already be banned, or I lack permission.${failureDetail(err)}`, 0xfe6465)],
+        components: [textCard(t(lang, 'moderation.softban.failed', { detail: failureDetail(err, lang) }), 0xfe6465)],
         flags: MessageFlags.IsComponentsV2,
       });
       return;

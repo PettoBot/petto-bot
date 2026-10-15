@@ -1,6 +1,7 @@
 const { Events } = require('discord.js');
 const { ensureGuild, updateGuild } = require('../db/guilds');
 const logger = require('../utils/logger');
+const { t, currentLanguage } = require('../i18n');
 
 module.exports = {
   name: Events.InviteCreate,
@@ -18,7 +19,7 @@ module.exports = {
         return;
       }
 
-      await invite.delete('Invites are paused').catch(() => {});
+      await invite.delete(t(currentLanguage(), 'moderation.pauseInvites.audit.paused')).catch(() => {});
     } catch (err) {
       logger.error('[inviteCreatePause]', err);
     }
