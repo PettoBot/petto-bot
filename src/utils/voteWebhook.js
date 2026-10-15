@@ -6,6 +6,7 @@ const { verifySignature, parseVote } = require('./topgg');
 const { ContainerBuilder, TextDisplayBuilder, SectionBuilder, ThumbnailBuilder, SeparatorBuilder, SeparatorSpacingSize, MessageFlags } = require('discord.js');
 const { grantVoteRole } = require('./voteRole');
 const logger = require('./logger');
+const { t, guildLanguage } = require('../i18n');
 
 async function thank(client, vote) {
   if (!config.voteChannelId) return;
@@ -13,13 +14,16 @@ async function thank(client, vote) {
   if (!channel?.isTextBased()) return;
   const [{ mine, total }, user] = await Promise.all([votesDb.voteTotals(vote.userId), client.users.fetch(vote.userId).catch(() => null)]);
   const voteUrl = `https://top.gg/bot/${client.user?.id ?? config.clientId}/vote`;
-  const double = vote.weight > 1 ? ` It counted as **${vote.weight}** votes.` : '';
+  // The thanks are posted in a server's channel, in that server's language (a webhook has no language of its own).
+  const lang = await guildLanguage(channel.guildId ?? channel.guild?.id);
+  // The counts are written as plain numbers, as they always were, so the plural form is picked here instead of with tn().
+  const form = (count) => (Number(count) === 1 ? 'one' : 'other');
   const text = [
     `<@${vote.userId}>`,
-    `### ${user?.displayName ?? user?.username ?? 'Someone'} voted!`,
-    `- **Thank you!** You already voted **${mine}** time${mine === 1 ? '' : 's'}.${double}`,
-    `- You can vote [here](${voteUrl}) every 12 hours.`,
-    `- Petto has **${total}** vote${total === 1 ? '' : 's'} in total.`,
+    t(lang, 'votes.thanks.title', { name: user?.displayName ?? user?.username ?? t(lang, 'votes.thanks.someone') }),
+    t(lang, `votes.thanks.${vote.weight > 1 ? 'timesDouble' : 'times'}.${form(mine)}`, { count: mine, weight: vote.weight }),
+    t(lang, 'votes.thanks.every', { link: voteUrl }),
+    t(lang, `votes.thanks.total.${form(total)}`, { count: total }),
   ].join('\n');
   const body = new TextDisplayBuilder().setContent(text);
   const container = new ContainerBuilder().setAccentColor(0xa5ea7a);
