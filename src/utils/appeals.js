@@ -464,6 +464,16 @@ async function liftPunishments(guild, submission, moderatorId, lang = currentLan
   return done;
 }
 
+/** Locks and archives the thread of a closed appeal, so nothing more is written in it. Best effort: it needs Manage Threads. */
+async function closeThread(guild, submission, lang) {
+  if (!submission.thread_id) return;
+  const thread = guild.channels.cache.get(submission.thread_id) ?? await guild.channels.fetch(submission.thread_id).catch(() => null);
+  if (!thread?.isThread?.()) return;
+  const reason = t(lang, 'appeals.audit.closed');
+  await thread.setLocked(true, reason).catch((err) => logger.warn(`Appeals: could not lock the thread: ${err.message}`));
+  await thread.setArchived(true, reason).catch(() => {});
+}
+
 /** Accepts or rejects a pending appeal: stores it, updates the card, writes to the member and applies the form's rules. */
 async function resolveAppeal({ client, guild, submission, status, moderatorId, moderatorName = null, reason = null }) {
   if (!['accepted', 'rejected'].includes(status)) return { ok: false, error: 'bad_status' };
@@ -492,6 +502,7 @@ async function resolveAppeal({ client, guild, submission, status, moderatorId, m
   const liftedPart = lifted.length ? t(lang, 'appeals.log.lifted', { lifted: liftedText(lifted, lang) }) : '';
   const invitePart = row.invite_note ? t(lang, 'appeals.log.invite', { invite: row.invite_url ? `${row.invite_url} (${row.invite_note})` : row.invite_note }) : '';
   await logLine(guild, config, t(lang, `appeals.log.${status}`, { moderator: who, user: clip(row.username, 40), lifted: liftedPart, invite: invitePart }), STATUS_COLORS[status]);
+  await closeThread(guild, row, lang);
   return { ok: true, submission: row, dm, invite, lifted };
 }
 
@@ -541,6 +552,7 @@ async function withdrawAppeal({ guild, config, submission }) {
   const lang = await guildLanguage(guild.id);
   await updateStaffCard(guild, { ...row, resolution_reason: t(lang, 'appeals.card.withdrawn') }, form, config, row.user_id, lang);
   await logLine(guild, config, t(lang, 'appeals.log.withdrawn', { user: clip(row.username, 40) }), STATUS_COLORS.withdrawn);
+  await closeThread(guild, row, lang);
   return { ok: true };
 }
 

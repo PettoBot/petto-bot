@@ -178,6 +178,7 @@ const A = require(path.join(root, 'src/utils/appeals.js'));
   assert.ok(accepted.ok); assert.deepEqual(lifted, [7]); assert.ok(accepted.invite && accepted.invite.url.includes('discord.gg') && accepted.invite.note.length > 0, 'the invite and where it came from');
   assert.ok(accepted.submission.invite_url === accepted.invite.url && accepted.submission.invite_note === accepted.invite.note, 'the staff card knows which invite was made');
   assert.equal((await A.resolveAppeal({ client, guild, submission: result.submission, status: 'rejected', moderatorId: 'M2' })).error, 'already_resolved');
+  assert.deepEqual(threadCalls.slice(-2), [['locked', 'T1', true], ['archived', 'T1', true]], 'a decision locks and archives the thread of the appeal');
   assert.ok(client.dms.some((d) => d.text.includes('Welcome back')));
 
   // Rejecting blocks for the time the form says.
@@ -209,6 +210,7 @@ const A = require(path.join(root, 'src/utils/appeals.js'));
 })().catch((err) => { console.error(err); process.exit(1); });
 
 const edits = [];
+const threadCalls = [];
 function fakeGuild() {
   const sent = [];
   const channel = (id) => ({
@@ -216,6 +218,9 @@ function fakeGuild() {
     send: async (payload) => { sent.push({ channel: id, payload }); return { id: `M-${sent.length}`, startThread: async () => ({ id: 'T1' }), edit: async () => {} }; },
     messages: { fetch: async () => ({ edit: async (payload) => { edits.push(payload); } }) },
     createInvite: async () => ({ url: 'https://discord.gg/abc123' }),
+    isThread: () => id === 'T1',
+    setLocked: async (value) => { threadCalls.push(['locked', id, value]); },
+    setArchived: async (value) => { threadCalls.push(['archived', id, value]); },
   });
   const channels = new Map(['C1', 'L1', 'T1'].map((id) => [id, channel(id)]));
   channels.find = (fn) => [...channels.values()].find(fn);
