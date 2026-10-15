@@ -308,47 +308,81 @@ const json = (component) => JSON.parse(JSON.stringify(component.toJSON ? compone
   assert.match(JSON.stringify(thanks.components.map(json)), /Gracias por agregar a Petto a S/);
   assert.match(JSON.stringify(guildCreate.buildThanksMessage('S', '</setup:1>', '!').components.map(json)), /Thanks for adding Petto to S/);
 
-  const rows = { g1: { language: 'pt-BR' }, g2: { language: 'pt' }, g3: { language: null } };
+  const rows = { g1: { language: 'pt-BR' }, g2: { language: 'pt' }, g3: { language: null }, g4: { language: 'es' } };
   let reads = 0;
+  let loads = 0;
+  let loadGate = null;
   const updates = [];
   stub('src/db/guilds.js', {
     findGuildLanguage: async (id) => {
       reads += 1;
       if (id === 'broken') throw new Error('database down');
-      if (id === 'slow' || id === 'slow-stale') return new Promise(() => {});
-      if (id === 'late') return new Promise((resolve) => setTimeout(() => resolve('es'), 1300));
+      if (id === 'hangs') return new Promise(() => {});
       return rows[id]?.language ?? null;
+    },
+    listGuildLanguages: async () => {
+      loads += 1;
+      if (loadGate) await loadGate;
+      if (loads === 99) throw new Error('database down');
+      return Object.entries(rows).filter(([, row]) => row.language && row.language !== 'en').map(([guild_id, row]) => ({ guild_id, language: row.language }));
     },
     updateGuild: async (id, patch) => { updates.push([id, patch]); rows[id] = { ...rows[id], ...patch }; return rows[id]; },
   });
+  const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+  // Before the first load: nothing waits. An unknown server is English for this message and is looked up once in the background.
+  const start = Date.now();
+  assert.equal(await i18n.guildLanguage('hangs'), 'en', 'a database that does not answer never holds a message');
+  assert.ok(Date.now() - start < 50, 'not even for a moment');
+  assert.equal(i18n.peekGuildLanguage('g1'), 'en', 'not known yet: English right away');
+  await settle();
+  assert.equal(i18n.peekGuildLanguage('g1'), 'pt-BR', 'the background lookup filled it for the next message');
+  i18n.peekGuildLanguage('g1');
+  assert.equal(reads, 2, 'one lookup per server, not one per message');
   assert.equal(await languageOf({ guildId: 'g1', locale: 'es-ES' }), 'pt-BR', 'in a server the server decides, not the member');
-  assert.equal(await i18n.guildLanguage('g1'), 'pt-BR');
-  assert.equal(reads, 1, 'the language of a server is cached');
-  const together = await Promise.all([i18n.guildLanguage('g2'), i18n.guildLanguage('g2'), i18n.guildLanguage('g2')]);
-  assert.deepEqual(together, ['pt-BR', 'pt-BR', 'pt-BR']);
-  assert.equal(reads, 2, 'events that arrive together share one lookup');
-  const slowStart = Date.now();
-  assert.equal(await i18n.guildLanguage('slow'), 'en', 'a database that does not answer gives English');
-  assert.ok(Date.now() - slowStart < 1500, 'without waiting long');
-  // A lookup that answers late still fills the cache, so the next message is in the right language.
-  assert.equal(await i18n.guildLanguage('late'), 'en', 'too slow for this message');
-  await new Promise((resolve) => setTimeout(resolve, 400));
-  assert.equal(await i18n.guildLanguage('late'), 'es', 'the late answer was kept for the next one');
-  // And a server whose language was known keeps it while the database is slow, instead of falling back to English.
-  i18n.setCachedGuildLanguage('slow-stale', 'pt-BR');
-  const realNow = Date.now;
-  Date.now = () => realNow() + 6 * 60 * 1000; // the cached language is now older than 5 minutes
-  try {
-    assert.equal(await i18n.guildLanguage('slow-stale'), 'pt-BR', 'the last known language, not English');
-  } finally {
-    Date.now = realNow;
+
+  // When the bot is ready: one query for every server, then no database at all on the hot path.
+  assert.equal(await i18n.loadGuildLanguages(), 3, 'g1, g2 and g4 chose a language; g3 is English');
+  assert.equal(loads, 1);
+  const readsAfterLoad = reads;
+  for (let i = 0; i < 1000; i += 1) {
+    await i18n.guildLanguage('g1');
+    await i18n.guildLanguage(`unknown${i}`);
+    i18n.peekGuildLanguage('g4');
   }
+  await settle();
+  assert.equal(reads, readsAfterLoad, 'with the cache loaded, no guildLanguage call touches the database');
+  assert.equal(loads, 1);
   assert.equal(await i18n.guildLanguage('g2'), 'pt-BR', 'an old "pt" is read as pt-BR');
   assert.equal(await i18n.guildLanguage('g3'), 'en', 'no language is English');
+  assert.equal(await i18n.guildLanguage('unknown1'), 'en', 'a server without a row is English');
+
+  // The refresh in the background: it replaces what changed in the database, serving the old values until it answers.
+  rows.g4.language = 'en';
+  rows.g3.language = 'pt-BR';
+  let open;
+  loadGate = new Promise((resolve) => { open = resolve; });
+  const refresh = i18n.loadGuildLanguages();
+  assert.equal(await i18n.guildLanguage('g4'), 'es', 'while the refresh runs, the value already known is served');
+  i18n.setCachedGuildLanguage('g1', 'es'); // !language during the refresh
+  open();
+  await refresh;
+  loadGate = null;
+  assert.equal(i18n.peekGuildLanguage('g4'), 'en', 'a server that went back to English');
+  assert.equal(i18n.peekGuildLanguage('g3'), 'pt-BR', 'a server that changed in the dashboard');
+  assert.equal(i18n.peekGuildLanguage('g1'), 'es', 'a change written during the refresh is newer than what the refresh read');
+  loads = 98; // the next load fails
+  await i18n.loadGuildLanguages();
+  assert.equal(i18n.peekGuildLanguage('g3'), 'pt-BR', 'a failed refresh keeps what was known');
+  i18n.forgetGuildLanguage('g3');
+  assert.equal(i18n.peekGuildLanguage('g3'), 'en', 'a server Petto left is forgotten');
+  const refresher = await i18n.startGuildLanguageRefresh({ everyMs: 60_000 });
+  assert.equal(typeof refresher, 'number', 'started with a first load');
   assert.equal(await i18n.guildLanguage('broken'), 'en', 'a database error answers in English');
   assert.equal(await i18n.setGuildLanguage('g3', 'español'), 'es');
   assert.deepEqual(updates, [['g3', { language: 'es' }]], 'saved as the code');
   assert.equal(await i18n.guildLanguage('g3'), 'es', 'used at once');
+  i18n.setCachedGuildLanguage('g1', 'pt-BR');
   await assert.rejects(() => i18n.setGuildLanguage('g3', 'klingon'));
 
   // The translated cards fit the 4000 characters of a Components V2 message.

@@ -16,10 +16,13 @@ let reads = 0;
 const guildsPath = require.resolve('../src/db/guilds');
 require.cache[guildsPath] = {
   id: guildsPath, filename: guildsPath, loaded: true,
-  exports: { findGuildLanguage: async (id) => { reads += 1; return saved.get(id) ?? null; } },
+  exports: {
+    findGuildLanguage: async (id) => { reads += 1; return saved.get(id) ?? null; },
+    listGuildLanguages: async () => { reads += 1; return [...saved].filter(([, language]) => language !== 'en').map(([guild_id, language]) => ({ guild_id, language })); },
+  },
 };
 
-const { guildLanguage } = require('../src/i18n');
+const { guildLanguage, loadGuildLanguages } = require('../src/i18n');
 const { registerGuildLanguageRoute } = require('../src/web/languageRoutes');
 
 const KEY = 'secret-key';
@@ -49,10 +52,11 @@ function call(port, body, headers = { 'x-petto-dashboard-key': KEY }) {
   const { port } = server.address();
 
   try {
-    // The bot has the old language cached.
+    // The bot loaded the languages when it was ready: this server is English.
     saved.set(GUILD, 'en');
+    await loadGuildLanguages();
     assert.equal(await guildLanguage(GUILD), 'en');
-    assert.equal(reads, 1);
+    assert.equal(reads, 1, 'one query for every server');
 
     // Without the key, or with a wrong one, nothing changes.
     let res = await call(port, { guildId: GUILD, language: 'es' }, {});

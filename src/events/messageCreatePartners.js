@@ -6,7 +6,7 @@ const { extractInviteCodes, snowflakeDate, judge, counts, standings, cooldownMin
 const { partnerContext, responsePayload } = require('../utils/partnerMessages');
 const { applyReactReplies } = require('../utils/messageFlags');
 const logger = require('../utils/logger');
-const { t, guildLanguage } = require('../i18n');
+const { t, peekGuildLanguage } = require('../i18n');
 
 async function reply(message, config, key, info, lang) {
   const ctx = { guild: message.guild, member: message.member, user: message.author, channel: message.channel, message, partner: partnerContext({ ...info, config, managerId: message.author.id, managerName: message.author.username }, lang) };
@@ -89,7 +89,7 @@ module.exports = {
       const codes = extractInviteCodes(message.content);
       if (!codes.length) return;
 
-      const lang = await guildLanguage(message.guild.id);
+      const lang = (message.pettoLang ?? peekGuildLanguage(message.guild.id));
       let blockedAny = false;
       for (const code of codes) {
         const result = await handleInvite(message, config, code, lang);

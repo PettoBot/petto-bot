@@ -7,7 +7,7 @@ const { templatePayload } = require('../utils/templatedMessage');
 const { resolve } = require('../utils/embedVariables');
 const { applyReactReplies } = require('../utils/messageFlags');
 const logger = require('../utils/logger');
-const { t, guildLanguage } = require('../i18n');
+const { t, peekGuildLanguage } = require('../i18n');
 
 async function welcome(message, config, lang) {
   const ctx = { guild: message.guild, member: message.member, user: message.author, channel: message.channel, message };
@@ -32,7 +32,7 @@ module.exports = {
       const row = await uploadsDb.addLog({ guildId: message.guild.id, userId: message.author.id, channelId: message.channel.id, messageId: message.id, files: message.attachments.size });
       if (!row || !first) return;
 
-      const lang = await guildLanguage(message.guild.id);
+      const lang = (message.pettoLang ?? peekGuildLanguage(message.guild.id));
       if (config.uploader_role_id && message.member && !message.member.roles.cache.has(config.uploader_role_id)) {
         const role = message.guild.roles.cache.get(config.uploader_role_id);
         if (role && !role.managed && role.position < (message.guild.members.me?.roles.highest.position ?? 0)) await message.member.roles.add(role, t(lang, 'uploads.auditReason')).catch(() => null);

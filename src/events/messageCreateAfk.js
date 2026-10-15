@@ -1,7 +1,7 @@
 const { Events } = require('discord.js');
 const afkDb = require('../db/afk');
 const logger = require('../utils/logger');
-const { t, tn, guildLanguage } = require('../i18n');
+const { t, tn, peekGuildLanguage } = require('../i18n');
 
 module.exports = {
   name: Events.MessageCreate,
@@ -9,7 +9,7 @@ module.exports = {
     if (message.author.bot || !message.guild) return;
 
     try {
-      const lang = await guildLanguage(message.guild.id);
+      const lang = (message.pettoLang ?? peekGuildLanguage(message.guild.id));
       // Mentioning an AFK member — flag it back and log it for their /afk mentions.
       if (message.mentions.users.size > 0) {
         for (const user of message.mentions.users.values()) {

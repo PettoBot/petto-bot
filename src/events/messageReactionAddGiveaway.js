@@ -1,7 +1,7 @@
 const { Events } = require('discord.js');
 const giveawaysDb = require('../db/giveaways');
 const { refreshGiveawayMessage, loadPreset, entryProblem } = require('../utils/giveawayEngine');
-const { guildLanguage } = require('../i18n');
+const { peekGuildLanguage } = require('../i18n');
 
 module.exports = {
   name: Events.MessageReactionAdd,
@@ -16,7 +16,7 @@ module.exports = {
 
       // A preset can ask for a level to enter: the reaction is taken away and the member is told why, by DM in the server's language.
       if (giveaway.preset_id) {
-        const problem = await entryProblem(giveaway.guild_id, await loadPreset(giveaway.preset_id), user.id, await guildLanguage(giveaway.guild_id));
+        const problem = await entryProblem(giveaway.guild_id, await loadPreset(giveaway.preset_id), user.id, peekGuildLanguage(giveaway.guild_id));
         if (problem) {
           await reaction.users.remove(user.id).catch(() => {});
           await user.send(problem).catch(() => {});

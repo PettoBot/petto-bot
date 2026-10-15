@@ -6,6 +6,7 @@ const { attachDiscordLogger, startDiscordStatusJob } = require('../utils/discord
 const config = require('../config');
 const { syncAllGuildsAutoMod } = require('../utils/autoModManager');
 const { forEachWithConcurrency } = require('../utils/concurrency');
+const { startGuildLanguageRefresh } = require('../i18n');
 
 /** A while after connecting, says in the log how Discord sees the bot (for example `{"mobile":"idle"}`), to check the phone icon without a screenshot. */
 function reportMobileStatus(client) {
@@ -27,6 +28,8 @@ module.exports = {
   name: Events.ClientReady,
   once: true,
   async execute(client) {
+    // The language of every server, in one query, refreshed every few minutes in the background: messages never wait for it.
+    startGuildLanguageRefresh().then((count) => logger.info(`Loaded the language of ${count} server(s) that do not use English.`));
     applyStatus(client, await currentStatus());
 
     if (config.mobileStatus) reportMobileStatus(client);
