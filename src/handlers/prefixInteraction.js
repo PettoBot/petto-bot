@@ -4,6 +4,7 @@ const ms = require('ms');
 const { resolveRole } = require('../utils/roleResolve');
 const { resolveUser } = require('../utils/userResolve');
 const { dropTokens } = require('../utils/codeArgs');
+const { t, currentLanguage } = require('../i18n');
 
 /** Splits a command's argument text into tokens, treating "quoted strings" and 'single-quoted' as one token each. */
 function tokenize(content) {
@@ -203,7 +204,7 @@ async function parseOptions(message, optionDefs, tokens, resolveContext, parseCo
 }
 
 function missingArgError(name) {
-  const err = new Error(`Missing required argument: \`${name}\`. Check the command's usage.`);
+  const err = new Error(t(currentLanguage(), 'core.missingArgument', { name }));
   err.userFacing = true;
   err.missingOption = name;
   return err;
@@ -262,7 +263,7 @@ function buildPseudoInteraction(message, { commandName, subcommand, subcommandGr
         return subcommand;
       },
       getSubcommandGroup: (required = false) => {
-        if (!subcommandGroup && required) throw missingArgError('subcommand group');
+        if (!subcommandGroup && required) throw missingArgError('subcommand group'); // i18n-ignore: an internal name, shown translated by the usage card
         return subcommandGroup ?? null;
       },
       getString: (name, required) => getOpt(values, name, required),

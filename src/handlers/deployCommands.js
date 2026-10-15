@@ -42,8 +42,8 @@ async function deployCommands({ force = false, strict = false, rest = new REST({
       await rememberDeployed(settings, target.key, hash);
       logger.info(
         target.guildId
-          ? `Registered ${result.length} command(s) to dev guild ${target.guildId}.`
-          : `Registered ${result.length} command(s) globally (can take up to 1 hour to propagate).`,
+          ? `Registered ${result.length} command(s) to dev guild ${target.guildId}.` // i18n-ignore: a log
+          : `Registered ${result.length} command(s) globally (can take up to 1 hour to propagate).`, // i18n-ignore: a log
       );
     } catch (error) {
       if (strict) throw error;

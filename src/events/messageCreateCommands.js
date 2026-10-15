@@ -21,7 +21,7 @@ const logger = require('../utils/logger');
 const { logCommandUse } = require('../logging/extraLog');
 const { runCodeCommand } = require('../utils/codeCommands');
 const { findTrigger } = require('../utils/codeTriggers');
-const { guildLanguage } = require('../i18n');
+const { guildLanguage, t, formatDecimal } = require('../i18n');
 // Loaded when a message comes in: it reaches for the configuration and the database, which the checks do without.
 const activeUserPrefix = async (...args) => require('../utils/userPrefixAccess').activeUserPrefix(...args);
 
@@ -141,7 +141,8 @@ async function runCustomCommandRow(message, row, commandName, argText = '', pref
     const doc = row.embed_template ? await getTemplate(message.guild.id, row.embed_template) : null;
     const needsArgs = containsArgumentVariable(row.response ?? '') || containsArgumentVariable(doc?.data);
     if (needsArgs && !argText.trim()) {
-      await message.reply(warningPayload(message, `This custom command needs text after it. Try \`${prefix}${commandName} your request here\`.`)).catch(() => {});
+      const lang = await guildLanguage(message.guild.id);
+      await message.reply(warningPayload(message, t(lang, 'core.customCommand.needsText', { prefix, command: commandName }))).catch(() => {});
       return true;
     }
 
@@ -218,6 +219,7 @@ module.exports = {
     }
 
     const prefix = parsed.typedPrefix;
+    const lang = await guildLanguage(message.guild.id);
     let commandName = parsed.commandName;
     let argText = parsed.argText;
 
@@ -268,7 +270,7 @@ module.exports = {
       }
       if (!handled) {
         const warning = await message
-          .reply({ components: [textCard(`${EMOJI.WARNING}  Unknown command \`${canonicalName}\`. Use \`${prefix}help\` to see all commands.`, 0xfed53c)], flags: MessageFlags.IsComponentsV2, allowedMentions: { repliedUser: false } })
+          .reply({ components: [textCard(t(lang, 'core.unknownCommand', { emoji: EMOJI.WARNING, command: canonicalName, prefix }), 0xfed53c)], flags: MessageFlags.IsComponentsV2, allowedMentions: { repliedUser: false } })
           .catch(() => null);
         // Matches bli: the "unknown command" nudge clears itself out instead of cluttering chat.
         if (warning) setTimeout(() => warning.delete().catch(() => {}), UNKNOWN_COMMAND_DELETE_MS);
@@ -278,8 +280,10 @@ module.exports = {
 
     const disabled = hiddenAutomodControl ? null : await disabledDb.findCached(message.guild.id, canonicalName, message.channel.id).catch(() => null);
     if (disabled) {
-      const scope = disabled.channel_id ? `in <#${disabled.channel_id}>` : 'on this server';
-      await message.reply(warningPayload(message, `Command \`${canonicalName}\` is disabled ${scope}.`)).catch(() => {});
+      const text = disabled.channel_id
+        ? t(lang, 'core.disabled.channel', { command: canonicalName, channel: `<#${disabled.channel_id}>` })
+        : t(lang, 'core.disabled.server', { command: canonicalName });
+      await message.reply(warningPayload(message, text)).catch(() => {});
       return;
     }
 
@@ -292,7 +296,7 @@ module.exports = {
     const cooldownMs = command.cooldownMs ?? DEFAULT_COOLDOWN_MS;
     const remaining = await getRemainingCooldownShared(canonicalName, message.author.id, cooldownMs);
     if (remaining > 0) {
-      await message.reply(warningPayload(message, `Please wait ${(remaining / 1000).toFixed(1)}s before using \`${prefix}${canonicalName}\` again.`)).catch(() => {});
+      await message.reply(warningPayload(message, t(lang, 'core.cooldown', { seconds: formatDecimal(lang, remaining / 1000), prefix, command: canonicalName }))).catch(() => {});
       return;
     }
 
@@ -306,14 +310,14 @@ module.exports = {
 
     const permissionData = effectiveCommandData(command, argText);
     if (!hiddenAutomodControl && !moderationRoleOverride && !checkDefaultPermission(permissionData, message.member)) {
-      await message.reply(warningPayload(message, `You're missing permission: \`${permissionKey(permissionData)}\`.`)).catch(() => {});
+      await message.reply(warningPayload(message, t(lang, 'core.missingPermission', { permission: permissionKey(permissionData) }))).catch(() => {});
       return;
     }
 
     try {
       const allowed = hiddenAutomodControl || moderationRoleOverride || await permissionsDb.hasCommandPermission(message.guild.id, canonicalName, message.member);
       if (!allowed) {
-        await message.reply(warningPayload(message, `You're missing the permission level required for \`${prefix}${canonicalName}\`.`)).catch(() => {});
+        await message.reply(warningPayload(message, t(lang, 'core.missingLevel', { prefix, command: canonicalName }))).catch(() => {});
         return;
       }
     } catch (err) {
@@ -330,18 +334,18 @@ module.exports = {
         await message.reply(warningPayload(message, err.message)).catch(() => {});
         return;
       }
-      await message.reply(missingOptionCard({ command, prefix, name: canonicalName, argText, missing: err.missingOption ?? null })).catch(() => {});
+      await message.reply(missingOptionCard({ command, prefix, name: canonicalName, argText, missing: err.missingOption ?? null, lang })).catch(() => {});
       return;
     }
 
     if (!interaction) {
-      await message.reply(unknownSubcommandCard({ command, prefix, name: canonicalName, typed: tokenize(argText)[0] ?? '' })).catch(() => {});
+      await message.reply(unknownSubcommandCard({ command, prefix, name: canonicalName, typed: tokenize(argText)[0] ?? '', lang })).catch(() => {});
       return;
     }
 
     interaction.typedPrefix = prefix;
     // The language of the server, found once here so the command does not look it up again.
-    interaction.pettoLang = await guildLanguage(message.guild.id);
+    interaction.pettoLang = lang;
     interaction.pettoModerationRoleAllowed = moderationRoleOverride;
     interaction.pettoAutomodControl = hiddenAutomodControl;
 
@@ -357,8 +361,8 @@ module.exports = {
       else if (err.userFacing) logger.info(`${prefix}${canonicalName}: ${err.message}`);
       else logger.error(`Error executing ${prefix}${canonicalName}:`, err);
       const errorReply = err.missingOption
-        ? missingOptionCard({ command, prefix, name: canonicalName, argText, missing: err.missingOption })
-        : warningPayload(message, err.userFacing ? err.message : isPermissionError(err) ? permissionHelp(err) : 'Something went wrong while running that command.');
+        ? missingOptionCard({ command, prefix, name: canonicalName, argText, missing: err.missingOption, lang })
+        : warningPayload(message, err.userFacing ? err.message : isPermissionError(err) ? permissionHelp(err, lang) : t(lang, 'core.error'));
       if (interaction.deferred || interaction.replied) await interaction.editReply(errorReply).catch(() => {});
       else await interaction.reply(errorReply).catch(() => {});
     }

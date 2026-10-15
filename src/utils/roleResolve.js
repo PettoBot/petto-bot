@@ -1,3 +1,5 @@
+const { t, currentLanguage } = require('../i18n');
+
 /**
  * Parses a free-form string of role mentions/IDs/names (space or comma separated) into
  * resolved guild Role objects. Used by /darol and /quitarol, which take multiple roles
@@ -35,7 +37,7 @@ function resolveRoles(guild, input) {
  * Splits resolved roles into ones the moderator+bot are actually allowed to add/remove
  * (below both their highest roles, and not integration-managed) vs blocked ones.
  */
-function filterAssignableRoles(interaction, roles) {
+function filterAssignableRoles(interaction, roles, lang = interaction.pettoLang ?? currentLanguage()) {
   const { member: moderator, guild } = interaction;
   const me = guild.members.me;
   const isOwner = moderator.id === guild.ownerId;
@@ -45,11 +47,11 @@ function filterAssignableRoles(interaction, roles) {
 
   for (const role of roles) {
     if (role.managed || role.id === guild.id) {
-      blocked.push(`${role} (managed by an integration)`);
+      blocked.push(t(lang, 'core.role.managed', { role: `${role}` }));
     } else if (role.position >= me.roles.highest.position) {
-      blocked.push(`${role} (above my highest role)`);
+      blocked.push(t(lang, 'core.role.aboveMine', { role: `${role}` }));
     } else if (!isOwner && role.position >= moderator.roles.highest.position) {
-      blocked.push(`${role} (above your highest role)`);
+      blocked.push(t(lang, 'core.role.aboveYours', { role: `${role}` }));
     } else {
       assignable.push(role);
     }

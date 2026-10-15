@@ -1,4 +1,5 @@
 const { PermissionsBitField, PermissionFlagsBits } = require('discord.js');
+const { t, currentLanguage } = require('../i18n');
 
 /**
  * Full permission/hierarchy check for a moderation action against a target member.
@@ -14,20 +15,20 @@ const DEFAULT_HIERARCHY = { [PermissionFlagsBits.KickMembers]: 'kick', [Permissi
  * or a ban refused members that Discord would have let the bot remove, like a bot with an admin role.
  * `hierarchy` is 'kick', 'ban', 'timeout' or 'none' (the action does not change the member: a warning, a voice action).
  */
-function botCanAct(member, hierarchy) {
+function botCanAct(member, hierarchy, lang = currentLanguage()) {
   switch (hierarchy) {
-    case 'kick': return member.kickable ? null : 'I cannot kick this member: their highest role is above or equal to mine, or they own the server.';
-    case 'ban': return member.bannable ? null : 'I cannot ban this member: their highest role is above or equal to mine, or they own the server.';
+    case 'kick': return member.kickable ? null : t(lang, 'core.moderate.cannotKick');
+    case 'ban': return member.bannable ? null : t(lang, 'core.moderate.cannotBan');
     case 'timeout':
       if (member.moderatable) return null;
       return member.permissions?.has(PermissionFlagsBits.Administrator)
-        ? 'Discord does not let anyone time out a member with the Administrator permission. Use a kick or a ban instead.'
-        : 'I cannot act on this member: their highest role is above or equal to mine.';
+        ? t(lang, 'core.moderate.adminTimeout')
+        : t(lang, 'core.moderate.cannotAct');
     default: return null;
   }
 }
 
-function canModerate(interaction, targetMember, requiredPermission, { hierarchy = DEFAULT_HIERARCHY[requiredPermission] ?? 'none' } = {}) {
+function canModerate(interaction, targetMember, requiredPermission, { hierarchy = DEFAULT_HIERARCHY[requiredPermission] ?? 'none', lang = interaction.pettoLang ?? currentLanguage() } = {}) {
   const { member: moderator, guild } = interaction;
   const me = guild.members.me;
 
@@ -35,11 +36,11 @@ function canModerate(interaction, targetMember, requiredPermission, { hierarchy 
   // That role-based access only replaces the caller's Discord permission; the
   // bot permission and the normal role hierarchy checks below still apply.
   if (!moderator.permissions.has(requiredPermission) && !interaction.pettoModerationRoleAllowed) {
-    return { ok: false, message: `You need the **${permissionLabel(requiredPermission)}** permission to do that.` };
+    return { ok: false, message: t(lang, 'core.moderate.youNeed', { permission: permissionLabel(requiredPermission, lang) }) };
   }
 
   if (!me.permissions.has(requiredPermission)) {
-    return { ok: false, message: `I need the **${permissionLabel(requiredPermission)}** permission to do that.` };
+    return { ok: false, message: t(lang, 'core.moderate.iNeed', { permission: permissionLabel(requiredPermission, lang) }) };
   }
 
   if (!targetMember) {
@@ -48,33 +49,35 @@ function canModerate(interaction, targetMember, requiredPermission, { hierarchy 
   }
 
   if (targetMember.id === interaction.user.id) {
-    return { ok: false, message: 'You cannot target yourself.' };
+    return { ok: false, message: t(lang, 'core.moderate.self') };
   }
 
   if (targetMember.id === guild.ownerId) {
-    return { ok: false, message: 'You cannot target the server owner.' };
+    return { ok: false, message: t(lang, 'core.moderate.owner') };
   }
 
   if (targetMember.id === me.id) {
-    return { ok: false, message: 'You cannot target me.' };
+    return { ok: false, message: t(lang, 'core.moderate.me') };
   }
 
-  const blocked = botCanAct(targetMember, hierarchy);
+  const blocked = botCanAct(targetMember, hierarchy, lang);
   if (blocked) return { ok: false, message: blocked };
 
   if (
     moderator.id !== guild.ownerId &&
     targetMember.roles.highest.position >= moderator.roles.highest.position
   ) {
-    return { ok: false, message: 'You cannot target someone with a role equal to or higher than yours.' };
+    return { ok: false, message: t(lang, 'core.moderate.higherRole') };
   }
 
   return { ok: true };
 }
 
-function permissionLabel(flag) {
+// English keeps the name of the flag (`BanMembers`) as it always showed it; the other languages show the name Discord uses.
+function permissionLabel(flag, lang = 'en') {
   const entry = Object.entries(PermissionsBitField.Flags).find(([, value]) => value === flag);
-  return entry ? entry[0] : String(flag);
+  if (!entry) return String(flag);
+  return lang === 'en' ? entry[0] : t(lang, `core.perm.${entry[0]}`);
 }
 
 module.exports = { canModerate, botCanAct };
