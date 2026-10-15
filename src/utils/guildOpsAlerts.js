@@ -1,4 +1,5 @@
-// i18n-ignore-file: notices and alerts of the Petto team (service, compliance and diagnostic notices), kept in English.
+// Notices Petto sends to a server (its private staff/log channel, or the owner by DM), in the language of that server, and the
+// alerts of the Petto team about servers, which stay in English.
 const {
   ActionRowBuilder,
   ButtonBuilder,
@@ -9,6 +10,7 @@ const {
 } = require('discord.js');
 const config = require('../config');
 const { getLogConfig } = require('../db/logConfig');
+const { t, defaultText, peekGuildLanguage } = require('../i18n');
 
 const SUPPORT_URL = 'https://petto.sbs/support';
 const DEFAULT_ALERT_CHANNEL_ID = process.env.PETTO_GUILD_ALERT_CHANNEL_ID || config.opsChannels?.general || config.errorLogChannelId || null;
@@ -38,54 +40,43 @@ const FALLBACK = {
 const noticeCooldowns = new Map();
 const teamCooldowns = new Map();
 
+// The English of each notice (the team alerts use it as it is); the notice a server gets is drawn from notices.<kind>.* in its
+// language.
+const template = (kind, severity) => ({
+  severity,
+  title: t('en', `notices.${kind}.title`),
+  body: t('en', `notices.${kind}.body`),
+  action: t('en', `notices.${kind}.action`),
+});
 const TEMPLATES = {
-  diagnostic: {
-    severity: 'warning',
-    title: 'Petto diagnostic notice',
-    body: 'Petto detected a configuration issue that may affect one or more features on this server.',
-    action: 'Review the affected feature and Petto\'s permissions. If the issue continues, contact the Petto team.',
-  },
-  permissions: {
-    severity: 'warning',
-    title: 'Petto permissions need attention',
-    body: 'Petto detected missing or insufficient permissions. Some features may be unavailable until access is restored.',
-    action: 'Restore **View Channel**, **Send Messages**, **Embed Links**, and **Read Message History** where needed. Logging features may also require **Manage Webhooks** in the configured log channel.',
-  },
-  logs: {
-    severity: 'warning',
-    title: 'Petto logging configuration needs attention',
-    body: 'A configured log destination or webhook is missing, inaccessible, or no longer valid.',
-    action: 'Check the log channel and its permissions. Reconfigure logging if the webhook was deleted or replaced.',
-  },
-  policy: {
-    severity: 'critical',
-    title: 'Petto server review required',
-    body: 'Petto detected a high-severity signal that requires manual review. This automated notice is **not** a final determination that a violation occurred.',
-    action: 'Review the affected activity and Discord\'s applicable rules. Contact the Petto team if you believe the alert is incorrect.',
-  },
-  shop: {
-    severity: 'critical',
-    title: 'Petto commerce review required',
-    body: 'Petto detected multiple independent signals associated with a commerce workflow that requires review. This automated notice is **not** a final policy determination.',
-    action: 'Review the affected activity and verify that the server and its workflows follow Discord rules and Petto\'s supported-use requirements.',
-  },
-  maintenance: {
-    severity: 'info',
-    title: 'Petto service notice',
-    body: 'Petto detected a service or configuration condition that may temporarily affect features on this server.',
-    action: 'No immediate action may be necessary. If features remain unavailable after the notice clears, contact the Petto team.',
-  },
+  diagnostic: template('diagnostic', 'warning'),
+  permissions: template('permissions', 'warning'),
+  logs: template('logs', 'warning'),
+  policy: template('policy', 'critical'),
+  shop: template('shop', 'critical'),
+  maintenance: template('maintenance', 'info'),
 };
+
+// Details Petto writes itself (the diagnostic classifier, the team review button): shown in the language of the server while
+// they are exactly the English text. Any other details come from Discord or the team and are shown as they are.
+const DETAIL_KEYS = ['notices.details.logs', 'notices.details.permissions', 'notices.details.teamReview'];
+function noticeDetails(details, lang) {
+  for (const key of DETAIL_KEYS) {
+    const shown = defaultText(lang, details, key);
+    if (shown !== details) return shown;
+  }
+  return details;
+}
 
 function truncate(value, max = 700) {
   const text = String(value ?? '').trim();
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
-function severityStyle(severity) {
-  if (severity === 'critical') return { key: 'offline', label: 'Critical review', color: 0xfe6465 };
-  if (severity === 'info') return { key: 'online', label: 'Information', color: 0xa5ea7a };
-  return { key: 'outage', label: 'Action recommended', color: 0xf5c451 };
+function severityStyle(severity, lang = 'en') {
+  if (severity === 'critical') return { key: 'offline', label: t(lang, 'notices.severity.critical'), color: 0xfe6465 };
+  if (severity === 'info') return { key: 'online', label: t(lang, 'notices.severity.info'), color: 0xa5ea7a };
+  return { key: 'outage', label: t(lang, 'notices.severity.warning'), color: 0xf5c451 };
 }
 
 function canSend(channel, me) {
@@ -169,31 +160,35 @@ async function findPrivateNoticeChannel(guild) {
   return scoreCandidates(fetched.values())[0]?.channel ?? null;
 }
 
-function renderNotice({ kind, details, externalEmojis = true }) {
-  const template = TEMPLATES[kind] ?? TEMPLATES.diagnostic;
-  const style = severityStyle(template.severity);
+/** The notice a server gets, in `lang` (the language of that server). */
+function renderNotice({ kind, details, externalEmojis = true, lang = 'en' }) {
+  const noticeKind = TEMPLATES[kind] ? kind : 'diagnostic';
+  const style = severityStyle(TEMPLATES[noticeKind].severity, lang);
   const e = externalEmojis ? SPECIAL : FALLBACK;
-  const detailBlock = details ? `\n\n${e.visibility} **Details**\n> ${truncate(details, 520).replace(/\n/g, '\n> ')}` : '';
+  const detailBlock = details
+    ? `\n\n${t(lang, 'notices.detailsHeading', { emoji: e.visibility })}\n> ${truncate(noticeDetails(details, lang), 520).replace(/\n/g, '\n> ')}`
+    : '';
 
   return [
-    `${e.announcement} **${template.title}**`,
+    `${e.announcement} **${t(lang, `notices.${noticeKind}.title`)}**`,
     `${e[style.key]} **${style.label}**`,
     '',
-    template.body + detailBlock,
+    t(lang, `notices.${noticeKind}.body`) + detailBlock,
     '',
-    `${e.auto} **Recommended action**`,
-    template.action,
+    t(lang, 'notices.recommendedAction', { emoji: e.auto }),
+    t(lang, `notices.${noticeKind}.action`),
     '',
-    '**Automated notice** • Petto Diagnostics',
-    `Need help? <${SUPPORT_URL}>`,
+    t(lang, 'notices.footer'),
+    t(lang, 'notices.help', { url: `<${SUPPORT_URL}>` }),
   ].join('\n').slice(0, 1_990);
 }
 
+// The buttons of a team alert, for the Petto team only.
 function teamActionRow(guildId, kind, severity) {
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`gops_notice:${kind}:${guildId}`)
-      .setLabel('Send review notice')
+      .setLabel('Send review notice') // i18n-ignore: team channel
       .setStyle(ButtonStyle.Primary),
   );
 
@@ -201,7 +196,7 @@ function teamActionRow(guildId, kind, severity) {
     row.addComponents(
       new ButtonBuilder()
         .setCustomId(`gops_ignore_prepare:${guildId}`)
-        .setLabel('Ignore server')
+        .setLabel('Ignore server') // i18n-ignore: team channel
         .setStyle(ButtonStyle.Secondary),
     );
   }
@@ -210,7 +205,7 @@ function teamActionRow(guildId, kind, severity) {
     row.addComponents(
       new ButtonBuilder()
         .setCustomId(`gops_leave_prepare:${guildId}`)
-        .setLabel('Leave server')
+        .setLabel('Leave server') // i18n-ignore: team channel
         .setStyle(ButtonStyle.Danger),
     );
   }
@@ -232,7 +227,7 @@ function describeDelivery({ deliveredChannel = null, deliveryType = null, delive
   if (deliveryType === 'owner_dm' && deliveredRecipientId) {
     return `Owner DM <@${deliveredRecipientId}>\n\`${deliveredRecipientId}\``;
   }
-  return 'Not delivered';
+  return 'Not delivered'; // i18n-ignore: team channel
 }
 
 function formatEvidence(evidence) {
@@ -244,19 +239,20 @@ function formatEvidence(evidence) {
     .replace(/@/g, '@\u200b');
 
   const lines = [];
-  if (evidence.channelId) lines.push(`Channel: <#${evidence.channelId}>`);
-  if (evidence.authorId) lines.push(`Author: <@${evidence.authorId}> (\`${evidence.authorId}\`)`);
+  if (evidence.channelId) lines.push(`Channel: <#${evidence.channelId}>`); // i18n-ignore: team channel
+  if (evidence.authorId) lines.push(`Author: <@${evidence.authorId}> (\`${evidence.authorId}\`)`); // i18n-ignore: team channel
   lines.push(`> ${snippet}`);
-  if (evidence.url) lines.push(`[Jump to message](${evidence.url})`);
+  if (evidence.url) lines.push(`[Jump to message](${evidence.url})`); // i18n-ignore: team channel
   return lines.join('\n').slice(0, 1_024);
 }
 
+/** The alert in the Petto team's own channel, in English (the team reads it). */
 async function sendTeamAlert(client, {
   guild,
   kind = 'diagnostic',
   severity = null,
   details = null,
-  source = 'Petto diagnostics',
+  source = 'Petto diagnostics', // i18n-ignore: internal source label, never shown to a server
   deliveredChannel = null,
   deliveryType = null,
   deliveredRecipientId = null,
@@ -278,7 +274,7 @@ async function sendTeamAlert(client, {
   const style = severityStyle(effectiveSeverity);
   const embed = new EmbedBuilder()
     .setColor(style.color)
-    .setTitle('Petto guild alert')
+    .setTitle('Petto guild alert') // i18n-ignore: team channel
     .setDescription([
       `${SPECIAL.announcement} **${template.title}**`,
       `${SPECIAL[style.key]} **${style.label}**`,
@@ -286,19 +282,19 @@ async function sendTeamAlert(client, {
       truncate(details || template.body, 1_200),
     ].join('\n'))
     .addFields(
-      { name: 'Server', value: `${truncate(guild.name, 80)}\n\`${guild.id}\``, inline: true },
-      { name: 'Members', value: String(guild.memberCount ?? 'unknown'), inline: true },
-      { name: 'Severity', value: `\`${effectiveSeverity}\``, inline: true },
-      { name: 'Owner', value: owner ? `<@${owner.id}>\n\`${owner.id}\`` : 'Unavailable', inline: true },
-      { name: 'Notice delivery', value: describeDelivery({ deliveredChannel, deliveryType, deliveredRecipientId }), inline: true },
-      { name: 'Source', value: `\`${truncate(source, 120)}\``, inline: true },
+      { name: 'Server', value: `${truncate(guild.name, 80)}\n\`${guild.id}\``, inline: true }, // i18n-ignore: team channel
+      { name: 'Members', value: String(guild.memberCount ?? 'unknown'), inline: true }, // i18n-ignore: team channel
+      { name: 'Severity', value: `\`${effectiveSeverity}\``, inline: true }, // i18n-ignore: team channel
+      { name: 'Owner', value: owner ? `<@${owner.id}>\n\`${owner.id}\`` : 'Unavailable', inline: true }, // i18n-ignore: team channel
+      { name: 'Notice delivery', value: describeDelivery({ deliveredChannel, deliveryType, deliveredRecipientId }), inline: true }, // i18n-ignore: team channel
+      { name: 'Source', value: `\`${truncate(source, 120)}\``, inline: true }, // i18n-ignore: team channel
     )
-    .setFooter({ text: requestedBy ? `Requested by ${requestedBy}` : 'Petto automated guild diagnostics' })
+    .setFooter({ text: requestedBy ? `Requested by ${requestedBy}` : 'Petto automated guild diagnostics' }) // i18n-ignore: team channel
     .setTimestamp();
 
   const evidenceValue = formatEvidence(evidence);
   if (evidenceValue) {
-    embed.addFields({ name: 'Detected message', value: evidenceValue, inline: false });
+    embed.addFields({ name: 'Detected message', value: evidenceValue, inline: false }); // i18n-ignore: team channel
   }
 
   const mentionOwner = effectiveSeverity === 'critical' && config.ownerId ? `<@${config.ownerId}>` : null;
@@ -328,7 +324,7 @@ async function sendGuildNotice(client, {
   guildId,
   kind = 'diagnostic',
   details = null,
-  source = 'Petto diagnostics',
+  source = 'Petto diagnostics', // i18n-ignore: internal source label, never shown to a server
   requestedBy = null,
   force = false,
   teamAlert = null,
@@ -343,6 +339,7 @@ async function sendGuildNotice(client, {
     return { ok: true, skipped: 'cooldown', guild, channel: null, deliveryType: 'cooldown' };
   }
 
+  const lang = peekGuildLanguage(guild.id);
   const channel = await findPrivateNoticeChannel(guild);
   let sent = null;
   let deliveryType = null;
@@ -351,7 +348,7 @@ async function sendGuildNotice(client, {
   if (channel) {
     const me = guild.members.me ?? await guild.members.fetchMe().catch(() => null);
     sent = await channel.send({
-      content: renderNotice({ kind, details, externalEmojis: canUseExternalEmojis(channel, me) }),
+      content: renderNotice({ kind, details, externalEmojis: canUseExternalEmojis(channel, me), lang }),
       allowedMentions: { parse: [] },
     }).catch(() => null);
     if (sent) deliveryType = 'private_channel';
@@ -364,7 +361,7 @@ async function sendGuildNotice(client, {
     // In DMs there is no guild permission gate for external emoji usage. Use Petto's
     // branded emoji IDs here too so owner notices keep the same visual language as
     // private guild notices. Discord will render them when the bot has access to them.
-    const dm = await sendOwnerDm(guild, renderNotice({ kind, details, externalEmojis: true }));
+    const dm = await sendOwnerDm(guild, renderNotice({ kind, details, externalEmojis: true, lang }));
     if (dm) {
       sent = dm.message;
       deliveryType = 'owner_dm';
@@ -380,7 +377,7 @@ async function sendGuildNotice(client, {
       guild,
       kind,
       severity: template.severity,
-      details: details || (sent ? null : 'Petto could not find a safe private delivery route. No public channel was used.'),
+      details: details || (sent ? null : 'Petto could not find a safe private delivery route. No public channel was used.'), // i18n-ignore: team channel
       source,
       deliveredChannel: deliveryType === 'private_channel' ? channel : null,
       deliveryType,
@@ -421,7 +418,7 @@ function classifyDiagnostic(text) {
       || lower.includes('configured log webhook')) {
     return {
       kind: 'logs',
-      details: '`[logEngine]` could not use the configured logging webhook. The webhook may have been deleted, moved, or become inaccessible.',
+      details: t('en', 'notices.details.logs'),
       teamAlert: false,
     };
   }
@@ -434,7 +431,7 @@ function classifyDiagnostic(text) {
       || /(?:code|discordapierror)\D*50001/.test(lower)) {
     return {
       kind: 'permissions',
-      details: 'Petto received a Discord permissions/access error while trying to use a configured feature.',
+      details: t('en', 'notices.details.permissions'),
       teamAlert: false,
     };
   }
@@ -455,7 +452,7 @@ function createGuildDiagnosticSink(client) {
       guildId,
       kind: classified.kind,
       details: classified.details,
-      source: context.command ?? context.source ?? 'runtime diagnostic',
+      source: context.command ?? context.source ?? 'runtime diagnostic', // i18n-ignore: internal source label, never shown to a server
       teamAlert: classified.teamAlert,
     }).catch(() => {});
   };
@@ -468,6 +465,7 @@ async function reportGuildIncident(client, options) {
 
 module.exports = {
   TEMPLATES,
+  renderNotice,
   createGuildDiagnosticSink,
   reportGuildIncident,
   sendGuildNotice,

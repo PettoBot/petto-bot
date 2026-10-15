@@ -1,4 +1,4 @@
-// i18n-ignore-file: compliance signals for the Petto team, never shown to members.
+// i18n-ignore-file: compliance signals for the Petto team; they only feed sendTeamAlert (the team's own channel), never a server.
 const { Events } = require('discord.js');
 const { sendTeamAlert } = require('./guildOpsAlerts');
 const { isGuildComplianceIgnored } = require('../db/guildComplianceSettings');
