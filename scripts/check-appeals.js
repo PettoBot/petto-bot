@@ -19,7 +19,7 @@ const dbStub = {
   getBlock: async (g, u) => store.blocks.get(`${g}:${u}`) ?? null,
   setBlock: async (g, u, until, reason) => { store.blocks.set(`${g}:${u}`, { until, reason }); },
   deleteResolvedBefore: async () => 0, listEnabledConfigs: async () => [],
-  listNamed: async () => store.named, clearSlug: async (g) => { store.cleared.push(g); }, lastSubmissionAt: async (g) => store.lastAt[g] ?? null,
+  deleteExpiredReservations: async () => 0, listNamed: async () => store.named, clearSlug: async (g) => { store.cleared.push(g); }, lastSubmissionAt: async (g) => store.lastAt[g] ?? null,
 };
 stub('src/db/appeals.js', dbStub);
 const lifted = [];

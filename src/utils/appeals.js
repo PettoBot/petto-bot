@@ -402,6 +402,7 @@ async function cleanup() {
   for (const { guild_id: guildId, store_days: days } of configs) {
     removed += await db.deleteResolvedBefore(guildId, new Date(Date.now() - (days ?? 7) * 86_400_000).toISOString()).catch(() => 0);
   }
+  await db.deleteExpiredReservations(new Date().toISOString()).catch(() => 0);
   return removed;
 }
 

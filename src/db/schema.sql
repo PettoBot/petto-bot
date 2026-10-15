@@ -3646,6 +3646,13 @@ create table if not exists appeal_name_claims (
 create unique index if not exists appeal_name_claims_one_pending on appeal_name_claims (guild_id) where status = 'pending';
 create index if not exists appeal_name_claims_status on appeal_name_claims (status, created_at);
 alter table appeal_name_claims enable row level security;
+-- A link name a server changed away from stays reserved for it for a while: its old link leads to the new address and nobody else can take the name.
+create table if not exists appeal_name_reservations (
+  slug            text primary key,
+  guild_id        text not null,
+  reserved_until  timestamptz not null
+);
+alter table appeal_name_reservations enable row level security;
 alter table appeal_config enable row level security;
 alter table appeal_forms enable row level security;
 alter table appeal_submissions enable row level security;

@@ -101,4 +101,10 @@ async function lastSubmissionAt(guildId) {
   return data?.[0]?.created_at ?? null;
 }
 
-module.exports = { listNamed, clearSlug, lastSubmissionAt, CONFIG_DEFAULTS, getConfig, getForm, getSubmission, createSubmission, updateSubmission, resolveSubmission, countPending, addMessage, getBlock, setBlock, deleteResolvedBefore, listEnabledConfigs };
+async function deleteExpiredReservations(beforeIso) {
+  const { data, error } = await database.from('appeal_name_reservations').delete().lt('reserved_until', beforeIso).select('slug');
+  if (error) throw error;
+  return data?.length ?? 0;
+}
+
+module.exports = { deleteExpiredReservations, listNamed, clearSlug, lastSubmissionAt, CONFIG_DEFAULTS, getConfig, getForm, getSubmission, createSubmission, updateSubmission, resolveSubmission, countPending, addMessage, getBlock, setBlock, deleteResolvedBefore, listEnabledConfigs };
