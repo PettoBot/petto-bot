@@ -1,3 +1,4 @@
+// i18n-ignore-file: Petto team operator command.
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const config = require('../../config');
 const { resolveOpsGuildId } = require('../../utils/opsGuild');

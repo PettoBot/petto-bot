@@ -1,3 +1,4 @@
+// i18n-ignore-file: operations messages for the Petto team channels.
 const { ContainerBuilder, EmbedBuilder, Events, MessageFlags, SeparatorBuilder, SeparatorSpacingSize, Status, TextDisplayBuilder } = require('discord.js');
 const config = require('../config');
 const logger = require('./logger');

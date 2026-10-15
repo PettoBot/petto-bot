@@ -1,3 +1,4 @@
+// i18n-ignore-file: notices and alerts of the Petto team (service, compliance and diagnostic notices), kept in English.
 const {
   ActionRowBuilder,
   ButtonBuilder,

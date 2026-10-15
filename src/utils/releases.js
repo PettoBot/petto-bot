@@ -1,3 +1,4 @@
+// i18n-ignore-file: release notes of the Petto team, kept in English on purpose (team announcements).
 const { EMOJI } = require('./emojis');
 
 const RELEASES = [

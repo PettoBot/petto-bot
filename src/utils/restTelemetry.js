@@ -1,3 +1,4 @@
+// i18n-ignore-file: internal telemetry (logs).
 const config = require('../config');
 const logger = require('./logger');
 

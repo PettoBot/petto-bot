@@ -1,3 +1,4 @@
+// i18n-ignore-file: the global status of the bot is the same for every server, and its admin command is team-only.
 // The status of the bot in the member list: the dot, and the custom status text under its name.
 const { ActivityType } = require('discord.js');
 const config = require('../config');
