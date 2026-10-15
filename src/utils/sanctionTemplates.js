@@ -28,6 +28,11 @@ function sourceText(source, lang = currentLanguage()) {
   return SOURCE_TYPES.includes(source) ? t(lang, `moderation.template.source.${source}`) : source;
 }
 
+/** The appeal link of a sanction for `{case.appeal}`, or null when there is none (appeals off, or a sanction that cannot be appealed). */
+async function appealUrlOf(guildId, type) {
+  try { return await require('./appeals').appealLinkFor(guildId, type); } catch { return null; }
+}
+
 function person(value) {
   if (!value) return null;
   const id = value.id ?? String(value);
@@ -42,7 +47,7 @@ function person(value) {
  * The context a sanction template is built with. `user` is the sanctioned member, `moderator` who applied it (the bot
  * itself for the automatic ones). `durationText` is something like `2 hours`; `expiresAt` overrides what it gives.
  */
-function sanctionContext({ type, guild, user, member = null, moderator, reason, durationText = null, expiresAt = null, caseNumber = null, source = 'moderator', channel = null, lang = currentLanguage() }) {
+function sanctionContext({ type, guild, user, member = null, moderator, reason, durationText = null, expiresAt = null, caseNumber = null, source = 'moderator', channel = null, appealUrl = null, lang = currentLanguage() }) {
   const durationMs = durationText ? parseDuration(durationText) : null;
   const end = expiresAt ? new Date(expiresAt) : durationMs ? new Date(Date.now() + durationMs) : null;
   return {
@@ -61,6 +66,7 @@ function sanctionContext({ type, guild, user, member = null, moderator, reason, 
       source: sourceText(source, lang),
       moderator: person(moderator),
       target: person(user),
+      appealUrl: appealUrl ?? '',
     },
   };
 }
@@ -78,7 +84,7 @@ async function sanctionDM({ type, guild, client, reason, duration, user = null, 
     const name = await templateFor(guild.id, type, 'dm');
     if (!name) return fallback();
     const target = user ?? member?.user ?? null;
-    const ctx = sanctionContext({ type, guild, user: target, member, moderator: moderator ?? client.user, reason, durationText: duration, source, lang });
+    const ctx = sanctionContext({ type, guild, user: target, member, moderator: moderator ?? client.user, reason, durationText: duration, source, appealUrl, lang });
     return (await templatePayload(guild.id, name, ctx)) ?? fallback();
   } catch (error) {
     logger.warn({ guildId: guild?.id, action: 'sanction-dm' }, `The sanction DM template failed: ${error.message}`);
@@ -100,7 +106,7 @@ async function sanctionReply(interaction, { type, modCase, target, moderator, re
     const name = await templateFor(interaction.guild.id, type, 'reply');
     if (name) {
       const member = interaction.guild.members.cache.get(target.id) ?? null;
-      const ctx = sanctionContext({ type, guild: interaction.guild, user: target, member, moderator, reason, durationText: duration, expiresAt: modCase.expires_at, caseNumber: modCase.case_number, channel: interaction.channel, lang });
+      const ctx = sanctionContext({ type, guild: interaction.guild, user: target, member, moderator, reason, durationText: duration, expiresAt: modCase.expires_at, caseNumber: modCase.case_number, channel: interaction.channel, appealUrl: await appealUrlOf(interaction.guild.id, type), lang });
       payload = await templatePayload(interaction.guild.id, name, ctx);
     }
   } catch (error) {
@@ -131,7 +137,7 @@ async function sanctionLogEmbed({ modCase, guild, target, moderator, reason, dur
     const name = await templateFor(guild.id, modCase.type, 'log');
     if (!name) return null;
     const member = guild.members.cache.get(target.id) ?? null;
-    const ctx = sanctionContext({ type: modCase.type, guild, user: target, member, moderator, reason, durationText: duration, expiresAt: modCase.expires_at, caseNumber: modCase.case_number, source, lang });
+    const ctx = sanctionContext({ type: modCase.type, guild, user: target, member, moderator, reason, durationText: duration, expiresAt: modCase.expires_at, caseNumber: modCase.case_number, source, appealUrl: await appealUrlOf(guild.id, modCase.type), lang });
     const payload = await templatePayload(guild.id, name, ctx);
     const embed = payload?.embeds?.[0];
     if (!embed) return null;

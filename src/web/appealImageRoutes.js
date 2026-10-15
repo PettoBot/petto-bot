@@ -3,11 +3,11 @@
 const express = require('express');
 const { rateLimit } = require('express-rate-limit');
 const images = require('../db/appealImages');
-const { cleanUpload, UPLOAD } = require('./cardRoutes');
+const { UPLOAD } = require('./cardRoutes');
+const { prepareImage } = require('../utils/appealImage');
 const logger = require('../utils/logger');
 
 const MIMES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
-const MAX_SIDE = { banner: 2048, embed: 2048, icon: 512 };
 const limiter = rateLimit({
   windowMs: 60_000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false,
   handler: (_req, res) => { res.status(429).json({ ok: false, error: 'rate_limited' }); },
@@ -30,7 +30,7 @@ function registerAppealImageRoutes(app, { authorize, isAuthorized }) {
         if (!MIMES.has(mime)) return res.status(415).json({ ok: false, error: 'unsupported_type' });
         if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ ok: false, error: 'empty_file' });
         let clean;
-        try { clean = await cleanUpload(req.body, MAX_SIDE[kind]); } catch { return res.status(400).json({ ok: false, error: 'not_an_image' }); }
+        try { clean = await prepareImage(req.body, kind); } catch { return res.status(400).json({ ok: false, error: 'not_an_image' }); }
         const row = await images.setImage(req.params.guildId, kind, { mime: 'image/png', width: clean.width, height: clean.height, bytes: clean.bytes });
         res.json({ ok: true, width: row.width, height: row.height, size: row.size, version: new Date(row.updated_at).getTime() });
       } catch (err) {

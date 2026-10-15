@@ -19,7 +19,7 @@ async function handleButton(interaction) {
   if (!['accept', 'reject', 'reply'].includes(action)) return;
   const submission = await db.getSubmission(interaction.guild.id, submissionId).catch(() => null);
   if (!submission) { await interaction.reply(ephemeral(t(lang, 'appeals.staff.gone'))); return; }
-  if (action !== 'reply' && submission.status !== 'pending') { await interaction.reply(ephemeral(t(lang, 'appeals.staff.alreadyAnswered'))); return; }
+  if (submission.status !== 'pending') { await interaction.reply(ephemeral(t(lang, 'appeals.staff.alreadyAnswered'))); return; }
   const input = new TextInputBuilder().setCustomId('text').setStyle(TextInputStyle.Paragraph).setRequired(action === 'reply').setMaxLength(1000)
     .setLabel(t(lang, action === 'reply' ? 'appeals.form.messageLabel' : 'appeals.form.reasonLabel'));
   const title = t(lang, `appeals.form.${action}Title`);

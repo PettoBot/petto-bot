@@ -39,6 +39,10 @@ const moderator = { id: '222', username: 'mod', displayAvatarURL: () => 'https:/
   const plain = sanctionContext({ type: 'ban', guild, user: target, moderator: client.user, reason: '', source: 'automod' });
   assert.equal(await resolve('{case.reason}|{case.duration}|{case.expires}|{case.source}', plain), 'No reason provided.|Permanent|Never|Automod');
   assert.equal(await resolve('{case.id}', {}), '', 'outside a sanction the variables are empty');
+  // The appeal link: the page of the server when the sanction can be appealed, nothing when it cannot.
+  const appealable = sanctionContext({ type: 'ban', guild, user: target, moderator, reason: 'x', appealUrl: 'https://petto.sbs/appeal/amor' });
+  assert.equal(await resolve('{case.appeal}', appealable), 'https://petto.sbs/appeal/amor');
+  assert.equal(await resolve('{case.appeal}', plain), '', 'no link when there is none');
 
   // The DM.
   let dm = await sanctionDM({ type: 'ban', guild, client, reason: 'rules', user: target });

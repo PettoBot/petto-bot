@@ -217,6 +217,7 @@ async function resolve(text, ctx = {}) {
     '{case.user_name}': ctx.sanction?.target?.name ?? '',
     '{case.user_id}': ctx.sanction?.target?.id ?? '',
     '{case.user_avatar}': ctx.sanction?.target?.avatar ?? '',
+    '{case.appeal}': ctx.sanction?.appealUrl ?? '',
     // Vanity and Server Tag rules: ctx.identity describes one rule and the role it changed (see utils/identity/emit.js).
     '{rule.name}': ctx.identity?.rule?.name ?? '',
     '{rule.source}': ctx.identity?.rule?.source ?? '',

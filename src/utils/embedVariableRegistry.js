@@ -223,6 +223,7 @@ const GROUPS = [
       '{case.user_name}',
       '{case.user_id}',
       '{case.user_avatar}',
+      '{case.appeal}',
     ],
   },
   {

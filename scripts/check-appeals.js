@@ -22,6 +22,14 @@ const dbStub = {
   deleteExpiredReservations: async () => 0, listNamed: async () => store.named, clearSlug: async (g) => { store.cleared.push(g); }, lastSubmissionAt: async (g) => store.lastAt[g] ?? null,
 };
 stub('src/db/appeals.js', dbStub);
+// The files of the answers, kept in memory.
+const fileStore = [];
+stub('src/db/appealFiles.js', {
+  listLoose: async (g, u, formId, q = null) => fileStore.filter((f) => f.guild_id === g && f.user_id === u && f.form_id === formId && !f.submission_id && (!q || f.question_id === q)),
+  attach: async (g, u, ids, sid) => { let n = 0; for (const f of fileStore) if (f.guild_id === g && f.user_id === u && !f.submission_id && ids.includes(f.id)) { f.submission_id = sid; n += 1; } return n; },
+  listForSubmission: async (sid, { withBytes = false } = {}) => fileStore.filter((f) => f.submission_id === sid).map(({ bytes, ...meta }) => (withBytes ? { ...meta, bytes } : meta)),
+  deleteLooseBefore: async () => 0,
+});
 const lifted = [];
 stub('src/db/modActions.js', { getUserHistory: async () => [
   { type: 'tempban', case_number: 7, active: true, reason: 'spam', expires_at: new Date(Date.now() + 86400000).toISOString(), created_at: new Date().toISOString(), moderator_id: '999' },
@@ -61,6 +69,77 @@ const A = require(path.join(root, 'src/utils/appeals.js'));
   assert.equal(A.validateAnswers(form, {}).errors[qs[0].id], 'required');
   assert.equal(A.validateAnswers(form, { [qs[0].id]: 'x', [qs[1].id]: 'zzz', [qs[2].id]: 'x' }).errors[qs[1].id], 'invalid');
 
+
+  // More kinds of question: a dropdown, a scale, a date, a link, a confirmation and a file question, cut down and checked.
+  const rich = A.normalizeForm({
+    name: 'Rich', status: 'live',
+    sections: [{ title: 'More', questions: [
+      { id: 'dd', type: 'dropdown', label: 'Where', options: ['one', 'two'] },
+      { id: 'sc', type: 'scale', label: 'How sorry', max: 99 },
+      { id: 'dt', type: 'date', label: 'When' },
+      { id: 'lk', type: 'link', label: 'Proof link' },
+      { id: 'ok', type: 'confirm', label: 'I agree' },
+      { id: 'fl', type: 'file', label: 'Screenshot', accept: 'weird', max_files: 99 },
+      { id: 'dd2', type: 'dropdown', label: 'Broken dropdown', options: ['alone'] },
+    ] }],
+  });
+  const rq = Object.fromEntries(rich.sections[0].questions.map((q) => [q.id, q]));
+  assert.equal(rich.sections[0].questions.length, 6, 'a dropdown with one option is dropped');
+  assert.equal(rq.sc.max, 10, 'a scale has at most 10 steps'); assert.equal(rq.fl.accept, 'images'); assert.equal(rq.fl.max_files, 5);
+  rich.id = 2; store.forms.set(2, rich);
+  fileStore.push({ id: 'F-1', guild_id: 'G1', user_id: 'U1', form_id: 2, question_id: 'fl', submission_id: null, name: 'proof.png', mime: 'image/png', size: 1200, bytes: Buffer.from('png') });
+  fileStore.push({ id: 'F-2', guild_id: 'G1', user_id: 'U1', form_id: 2, question_id: 'fl', submission_id: null, name: 'report.pdf', mime: 'application/pdf', size: 3000, bytes: Buffer.from('pdf') });
+  fileStore.push({ id: 'F-X', guild_id: 'G1', user_id: 'OTHER', form_id: 2, question_id: 'fl', submission_id: null, name: 'not-mine.png', mime: 'image/png', size: 10, bytes: Buffer.from('x') });
+  const good = { dd: 'two', sc: '4', dt: '2026-10-01', lk: 'https://example.com/clip', ok: 'on', fl: ['F-1', 'F-2'] };
+  const loaded = await A.loadAnswerFiles('G1', 'U1', rich, good);
+  assert.deepEqual(Object.keys(loaded).sort(), ['F-1', 'F-2'], 'only the files of that person for that form are known');
+  const richOk = A.validateAnswers(rich, good, loaded);
+  assert.ok(richOk.ok, JSON.stringify(richOk.errors));
+  assert.equal(richOk.answers.find((a) => a.id === 'sc').max, 10); assert.equal(richOk.answers.find((a) => a.id === 'ok').value, 'Yes');
+  assert.deepEqual(richOk.answers.find((a) => a.id === 'fl').value.map((f) => f.name), ['proof.png', 'report.pdf']);
+  const bad = (patch) => A.validateAnswers(rich, { ...good, ...patch }, loaded).errors;
+  assert.equal(bad({ sc: '11' }).sc, 'invalid'); assert.equal(bad({ sc: '0' }).sc, 'invalid');
+  assert.equal(bad({ dt: '2026-02-31' }).dt, 'invalid'); assert.equal(bad({ dt: 'yesterday' }).dt, 'invalid');
+  assert.equal(bad({ lk: 'javascript:alert(1)' }).lk, 'invalid'); assert.equal(bad({ lk: 'not a link' }).lk, 'invalid');
+  assert.equal(bad({ dd: 'three' }).dd, 'invalid');
+  assert.equal(bad({ ok: '' }).ok, 'required');
+  assert.equal(bad({ fl: ['F-X'] }).fl, 'invalid', 'a file of someone else is refused');
+  assert.equal(bad({ fl: ['nope'] }).fl, 'invalid');
+  assert.equal(bad({ fl: [] }).fl, 'required');
+  assert.equal(bad({ fl: ['F-1', 'F-2', 'F-1'] }).fl, undefined, 'the same file twice counts once');
+
+  // The card for the staff: files travel with the message; once answered, the buttons are locked.
+  const client0 = fakeClient();
+  const richGuild = fakeGuild();
+  const sentRich = await A.submitAppeal({ client: client0, guild: richGuild, config: await dbStub.getConfig(), form: rich, user: { id: 'U1', username: 'liam', avatarUrl: 'https://cdn.test/a.png' }, rawAnswers: good });
+  assert.ok(sentRich.ok, JSON.stringify(sentRich));
+  const cardMessage = richGuild.sent.find((m) => m.channel === 'C1').payload;
+  assert.equal(cardMessage.files.length, 2, 'the picture and the PDF are attached');
+  const cardJson = JSON.stringify(cardMessage.components[0].toJSON());
+  assert.ok(cardJson.includes('attachment://1-F-1'.slice(0, 13)) || cardJson.includes('attachment://'), 'the card points at the attachments');
+  assert.ok(cardJson.includes('4 / 10') && cardJson.includes('proof.png'), 'a scale shows 4 / 10 and a file shows its name');
+  assert.ok(!cardJson.includes('"disabled":true'), 'while it waits, no button is locked');
+  assert.equal(fileStore.filter((f) => f.submission_id === sentRich.submission.id).length, 2, 'the files are tied to the submission');
+  assert.equal(fileStore.find((f) => f.id === 'F-X').submission_id, null, 'a file of someone else is left alone');
+  edits.length = 0;
+  await A.resolveAppeal({ client: client0, guild: richGuild, submission: sentRich.submission, status: 'rejected', moderatorId: 'M1', reason: 'No' });
+  const lockedJson = JSON.stringify(edits.at(-1).components[0].toJSON());
+  assert.ok(lockedJson.includes('"disabled":true'), 'after a decision the buttons are locked');
+  assert.equal((lockedJson.match(/"disabled":true/g) ?? []).length, 3, 'accept, reject and reply are locked');
+  assert.ok(lockedJson.includes('Rejected'), 'the card says it was rejected');
+
+
+  // A big card still fits Discord: at most 40 components and 4000 characters of text.
+  const bigAnswers = Array.from({ length: 12 }, (_, i) => ({ id: `q${i}`, label: `Question number ${i}`.padEnd(120, '?'), type: 'paragraph', value: 'x'.repeat(1500) }));
+  const bigFiles = Array.from({ length: 12 }, (_, i) => ({ id: `ffffffff-${i}`, name: `evidence-${i}.png`, mime: i % 3 === 0 ? 'application/pdf' : 'image/png', size: 700_000 }));
+  const big = A.buildStaffCard({ submission: { id: 'sub-big', guild_id: 'G1', user_id: 'U1', username: 'liam', avatar_url: 'https://cdn.test/a.png', status: 'pending', answers: bigAnswers, punishments: [{ type: 'ban', reason: 'r'.repeat(300) }, { type: 'mute' }], form_name: 'Big' }, form: null, config: {}, files: bigFiles, pings: ['R1', 'R2'] });
+  const walk = (node) => [node, ...(node.components ?? []).flatMap(walk), ...(node.accessory ? [node.accessory] : []), ...(node.items ?? [])];
+  const nodes = walk(big.container.toJSON());
+  assert.ok(nodes.length <= 40, `the card has ${nodes.length} components`);
+  const chars = nodes.filter((n) => typeof n.content === 'string').reduce((sum, n) => sum + n.content.length, 0);
+  assert.ok(chars <= 4000, `the card has ${chars} characters of text`);
+  assert.ok(big.attached.length <= 10 && big.attached.reduce((sum, a) => sum + a.file.size, 0) <= 8 * 1024 * 1024, 'the attachments fit the message');
+
   // Messages.
   assert.equal(A.renderTemplate('Hi {username} from {server}. {reason}', { username: 'Liam', server: 'Petto' }), 'Hi Liam from Petto.');
 
@@ -80,7 +159,7 @@ const A = require(path.join(root, 'src/utils/appeals.js'));
   const result = await A.submitAppeal({ client, guild, config, form, user, rawAnswers: { [qs[0].id]: 'I was wrong', [qs[1].id]: 'b', [qs[2].id]: 'x' } });
   assert.ok(result.ok, JSON.stringify(result));
   const sent = guild.sent.find((m) => m.channel === 'C1');
-  assert.ok(sent.payload.components.length === 2 && sent.payload.content === undefined && JSON.stringify(sent.payload.components[0].toJSON()).includes('<@&R1>'), 'a Components V2 message has no content; the ping is in the card');
+  assert.ok(sent.payload.components.length === 1 && sent.payload.content === undefined && JSON.stringify(sent.payload.components[0].toJSON()).includes('<@&R1>'), 'a Components V2 message has no content; the ping is in the card');
   assert.equal(store.submissions.get(result.submission.id).thread_id, 'T1');
   assert.equal((await A.submitAppeal({ client, guild, config, form, user, rawAnswers: { [qs[0].id]: 'again' } })).error, 'already_pending');
   assert.equal((await A.submitAppeal({ client, guild, config, form: { ...form, status: 'draft' }, user, rawAnswers: {} })).error, 'form_unavailable');
@@ -129,12 +208,13 @@ const A = require(path.join(root, 'src/utils/appeals.js'));
   console.log('appeals OK');
 })().catch((err) => { console.error(err); process.exit(1); });
 
+const edits = [];
 function fakeGuild() {
   const sent = [];
   const channel = (id) => ({
     id, type: 0, isTextBased: () => true,
     send: async (payload) => { sent.push({ channel: id, payload }); return { id: `M-${sent.length}`, startThread: async () => ({ id: 'T1' }), edit: async () => {} }; },
-    messages: { fetch: async () => ({ edit: async () => {} }) },
+    messages: { fetch: async () => ({ edit: async (payload) => { edits.push(payload); } }) },
     createInvite: async () => ({ url: 'https://discord.gg/abc123' }),
   });
   const channels = new Map(['C1', 'L1', 'T1'].map((id) => [id, channel(id)]));

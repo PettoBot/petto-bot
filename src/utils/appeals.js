@@ -1,12 +1,20 @@
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, MessageFlags, PermissionFlagsBits } = require('discord.js');
+const {
+  ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, ChannelType, ContainerBuilder, FileBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, MessageFlags,
+  PermissionFlagsBits, SectionBuilder, SeparatorBuilder, SeparatorSpacingSize, TextDisplayBuilder, ThumbnailBuilder,
+} = require('discord.js');
 const db = require('../db/appeals');
+// Loaded when used: it needs the PostgreSQL pool, and the checks of this module run without one.
+const filesDb = new Proxy({}, { get: (_target, name) => require('../db/appealFiles')[name] });
+const { ACCEPT_KEYS, MAX_FILES_LIMIT } = require('./appealFile');
 const { textCard } = require('./caseCard');
 const logger = require('./logger');
 const { t, guildLanguage, normalizeLanguage, currentLanguage, defaultText } = require('../i18n');
 
 const PREFIX = 'appeal';
-const LIMITS = { forms: 10, sections: 6, questions: 12, options: 20, label: 200, help: 300, short: 300, paragraph: 1500, number: 20, reply: 1500, greeting: 600 };
-const QUESTION_TYPES = ['short', 'paragraph', 'choice', 'multi', 'yesno', 'number'];
+const LIMITS = { forms: 10, sections: 6, questions: 12, options: 20, label: 200, help: 300, short: 300, paragraph: 1500, number: 20, reply: 1500, greeting: 600, link: 300 };
+const QUESTION_TYPES = ['short', 'paragraph', 'choice', 'multi', 'yesno', 'number', 'dropdown', 'scale', 'date', 'link', 'file', 'confirm'];
+const LIST_TYPES = ['choice', 'multi', 'dropdown']; // the types that have a list of options
+const clampInt = (value, min, max, fallback) => { const n = Math.trunc(Number(value)); return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback; };
 const PUNISHMENT_TYPES = ['ban', 'mute', 'warn', 'kick'];
 const DETAILS = ['reason', 'duration', 'moderator'];
 const BLOCKS = { none: 0, day: 86_400_000, week: 7 * 86_400_000, month: 30 * 86_400_000, forever: -1 };
@@ -73,46 +81,94 @@ function normalizeForm(input) {
       const type = QUESTION_TYPES.includes(question?.type) ? question.type : 'short';
       const label = clip(question?.label, LIMITS.label);
       if (!label) continue;
-      const options = ['choice', 'multi'].includes(type) ? [...new Set((Array.isArray(question?.options) ? question.options : []).map((o) => clip(o, 100)).filter(Boolean))].slice(0, LIMITS.options) : [];
-      if (['choice', 'multi'].includes(type) && options.length < 2) continue;
-      clean.questions.push({ id: unique(question?.id, 'q', qi), type, label, help: clip(question?.help, LIMITS.help) || null, required: question?.required !== false, options });
+      const options = LIST_TYPES.includes(type) ? [...new Set((Array.isArray(question?.options) ? question.options : []).map((o) => clip(o, 100)).filter(Boolean))].slice(0, LIMITS.options) : [];
+      if (LIST_TYPES.includes(type) && options.length < 2) continue;
+      clean.questions.push({
+        id: unique(question?.id, 'q', qi), type, label, help: clip(question?.help, LIMITS.help) || null, required: question?.required !== false, options,
+        // A scale goes from 1 to `max`; a file question says what it takes and how many files.
+        ...(type === 'scale' ? { max: clampInt(question?.max, 3, 10, 5) } : {}),
+        ...(type === 'file' ? { accept: ACCEPT_KEYS.includes(question?.accept) ? question.accept : 'images', max_files: clampInt(question?.max_files, 1, MAX_FILES_LIMIT, 3) } : {}),
+      });
     }
     form.sections.push(clean);
   }
   return form;
 }
 
-/** The answers of a person checked against the form. Returns { ok, answers: [{ id, label, type, value }], errors: { questionId: message } }. */
-function validateAnswers(form, raw) {
+/**
+ * The answers of a person checked against the form. `files` is what is known about the files the person uploaded (id -> row), already checked
+ * to be theirs, for this form and not sent before. Returns { ok, answers: [{ id, label, type, value }], errors: { questionId: code } }.
+ */
+function validateAnswers(form, raw, files = {}) {
   const answers = [];
   const errors = {};
   for (const section of form?.sections ?? []) {
     for (const q of section.questions ?? []) {
       let value = raw?.[q.id];
-      const empty = value === undefined || value === null || value === '' || (Array.isArray(value) && value.length === 0);
+      const empty = value === undefined || value === null || value === '' || value === false || (Array.isArray(value) && value.length === 0);
       if (empty) { if (q.required) errors[q.id] = 'required'; continue; }
       if (q.type === 'multi') {
         value = (Array.isArray(value) ? value : [value]).map(String);
         if (value.some((v) => !q.options.includes(v))) { errors[q.id] = 'invalid'; continue; }
         value = [...new Set(value)];
-      } else if (q.type === 'choice') {
+      } else if (q.type === 'choice' || q.type === 'dropdown') {
         value = String(value);
         if (!q.options.includes(value)) { errors[q.id] = 'invalid'; continue; }
       } else if (q.type === 'yesno') {
         value = value === true || value === 'yes' || value === 'true' ? 'Yes' : value === false || value === 'no' || value === 'false' ? 'No' : null;
         if (!value) { errors[q.id] = 'invalid'; continue; }
+      } else if (q.type === 'confirm') {
+        if (!(value === true || value === 'yes' || value === 'true' || value === 'on')) { if (q.required) errors[q.id] = 'required'; continue; }
+        value = 'Yes';
       } else if (q.type === 'number') {
         const text = String(value).trim();
         if (!/^-?\d{1,15}(\.\d{1,6})?$/.test(text)) { errors[q.id] = 'invalid'; continue; }
         value = text;
+      } else if (q.type === 'scale') {
+        const max = clampInt(q.max, 3, 10, 5);
+        const text = String(value).trim();
+        if (!/^\d{1,2}$/.test(text) || Number(text) < 1 || Number(text) > max) { errors[q.id] = 'invalid'; continue; }
+        value = text;
+      } else if (q.type === 'date') {
+        const text = String(value).trim();
+        const date = /^\d{4}-\d{2}-\d{2}$/.test(text) ? new Date(`${text}T00:00:00Z`) : null;
+        if (!date || Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== text || date.getUTCFullYear() < 1900 || date.getUTCFullYear() > 2100) { errors[q.id] = 'invalid'; continue; }
+        value = text;
+      } else if (q.type === 'link') {
+        const text = String(value).trim().slice(0, LIMITS.link);
+        let url = null;
+        try { url = new URL(text); } catch { /* not a link */ }
+        if (!url || !['http:', 'https:'].includes(url.protocol)) { errors[q.id] = 'invalid'; continue; }
+        value = url.toString().slice(0, LIMITS.link);
+      } else if (q.type === 'file') {
+        const ids = [...new Set((Array.isArray(value) ? value : [value]).map(String))];
+        const rows = ids.map((fileId) => files[fileId]);
+        if (!ids.length || rows.some((row) => !row || row.question_id !== q.id) || ids.length > clampInt(q.max_files, 1, MAX_FILES_LIMIT, 3)) { errors[q.id] = 'invalid'; continue; }
+        value = rows.map((row) => ({ id: row.id, name: row.name, mime: row.mime, size: row.size }));
       } else {
         value = clip(value, q.type === 'paragraph' ? LIMITS.paragraph : LIMITS.short);
         if (!value) { if (q.required) errors[q.id] = 'required'; continue; }
       }
-      answers.push({ id: q.id, label: q.label, type: q.type, value });
+      answers.push({ id: q.id, label: q.label, type: q.type, value, ...(q.type === 'scale' ? { max: clampInt(q.max, 3, 10, 5) } : {}) });
     }
   }
   return { ok: Object.keys(errors).length === 0, answers, errors };
+}
+
+/** The files a person uploaded that the answers point to, checked to be theirs, of this form and not sent before. Returns id -> row. */
+async function loadAnswerFiles(guildId, userId, form, rawAnswers) {
+  const wanted = new Set();
+  for (const section of form?.sections ?? []) {
+    for (const q of section.questions ?? []) {
+      if (q.type !== 'file') continue;
+      const value = rawAnswers?.[q.id];
+      for (const fileId of Array.isArray(value) ? value : value ? [value] : []) wanted.add(String(fileId));
+    }
+  }
+  const known = {};
+  if (!wanted.size) return known;
+  for (const row of await filesDb.listLoose(guildId, userId, form.id)) if (wanted.has(row.id)) known[row.id] = row;
+  return known;
 }
 
 /** What the member is shown about a punishment, cut down to what the server allows to show. */
@@ -202,41 +258,13 @@ function liftedText(lifted, lang) {
   }).join(', ');
 }
 
-// A yes/no answer is stored as `Yes` or `No`; the card shows it in the server's language.
+// A yes/no answer is stored as `Yes` or `No`; the card shows it in the server's language. Files show their names, a scale `3 / 5`.
 const answerValue = (answer, lang) => {
-  if (answer.type === 'yesno' && (answer.value === 'Yes' || answer.value === 'No')) return t(lang, answer.value === 'Yes' ? 'appeals.card.yes' : 'appeals.card.no');
+  if ((answer.type === 'yesno' || answer.type === 'confirm') && (answer.value === 'Yes' || answer.value === 'No')) return t(lang, answer.value === 'Yes' ? 'appeals.card.yes' : 'appeals.card.no');
+  if (answer.type === 'scale') return `${answer.value} / ${answer.max ?? 5}`;
+  if (answer.type === 'file') return (Array.isArray(answer.value) ? answer.value : []).map((file) => `📎 ${clip(file?.name, 80)}`).join('\n'); // i18n-ignore: a paperclip emoji
   return Array.isArray(answer.value) ? answer.value.join(', ') : String(answer.value);
 };
-
-function staffCardText(submission, form, config, lang = currentLanguage()) {
-  const lines = [`## ${t(lang, 'appeals.card.title', { form: clip(submission.form_name || form?.name, 80) })}`, `<@${submission.user_id}> · \`${submission.username}\` · \`${submission.user_id}\``];
-  const punishments = submission.punishments ?? [];
-  if (punishments.length) {
-    lines.push('', `**${t(lang, 'appeals.card.punishments')}**`, ...punishments.slice(0, 6).map((p) => `• ${typeName(p.type, lang)}${p.reason ? ` — ${clip(p.reason, 140)}` : ''}${p.until ? ` · ${t(lang, 'appeals.card.until', { time: `<t:${Math.floor(Date.parse(p.until) / 1000)}:f>` })}` : ''}${p.source === 'discord' ? ' (Discord)' : ''}`));
-  }
-  lines.push('');
-  let used = lines.join('\n').length;
-  for (const a of submission.answers ?? []) {
-    const block = `**${clip(a.label, 120)}**\n${clip(answerValue(a, lang), 700)}\n`;
-    if (used + block.length > 3500) { lines.push(`*${t(lang, 'appeals.card.moreAnswers')}*`); break; }
-    lines.push(block); used += block.length;
-  }
-  if (submission.invite_note) lines.push(`**${t(lang, 'appeals.card.invite')}** — ${submission.invite_url ? `${submission.invite_url} (${submission.invite_note})` : submission.invite_note}`, '');
-  lines.push(`-# ID ${submission.id}`);
-  return lines.join('\n');
-}
-
-function staffButtons(submissionId, resolved = false, lang = currentLanguage()) {
-  const row = new ActionRowBuilder();
-  if (!resolved) {
-    row.addComponents(
-      new ButtonBuilder().setCustomId(`${PREFIX}::accept::${submissionId}`).setLabel(t(lang, 'appeals.card.accept.button')).setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId(`${PREFIX}::reject::${submissionId}`).setLabel(t(lang, 'appeals.card.reject.button')).setStyle(ButtonStyle.Danger),
-    );
-  }
-  row.addComponents(new ButtonBuilder().setCustomId(`${PREFIX}::reply::${submissionId}`).setLabel(t(lang, 'appeals.card.reply.button')).setStyle(ButtonStyle.Secondary));
-  return row;
-}
 
 const STATUS_COLORS = { pending: 0xfed53c, accepted: 0xa5ea7a, rejected: 0xfe6465, withdrawn: 0x4b4f59 };
 
@@ -244,6 +272,89 @@ async function fetchChannel(guild, channelId) {
   if (!channelId) return null;
   const channel = guild.channels.cache.get(channelId) ?? await guild.channels.fetch(channelId).catch(() => null);
   return channel?.isTextBased?.() ? channel : null;
+}
+
+// What Discord shows for the files of a card: up to 10 of them travel with the message while their sizes fit; the rest are read in the dashboard.
+const ATTACH_MAX = 10;
+const ATTACH_BUDGET = 8 * 1024 * 1024;
+const attachName = (file, index) => `${index + 1}-${String(file.id).slice(0, 8)}.${file.mime.startsWith('image/') ? 'png' : file.mime === 'application/pdf' ? 'pdf' : 'txt'}`;
+function planAttachments(files = []) {
+  const attached = [];
+  let total = 0;
+  files.forEach((file, index) => {
+    if (attached.length >= ATTACH_MAX || total + (file.size ?? 0) > ATTACH_BUDGET) return;
+    total += file.size ?? 0;
+    attached.push({ file, name: attachName(file, index) });
+  });
+  return { attached, extra: files.length - attached.length };
+}
+
+const dashboardUrl = (guildId) => `https://petto.sbs/dash/guild/${guildId}/appeals?section=submissions`;
+
+/**
+ * The card the staff reads in the submissions channel, in Components V2: who it is, the state, the punishments, every answer, the files
+ * and the buttons. Once the appeal is answered or withdrawn the buttons stay but are locked, and the card shows who answered and when.
+ * `files` are the rows of the files of the submission (without bytes); the bytes travel as attachments only when the card is first sent.
+ */
+function buildStaffCard({ submission, form, config, lang = currentLanguage(), files = [], pings = [], moderatorId = null }) {
+  const status = submission.status ?? 'pending';
+  const container = new ContainerBuilder().setAccentColor(STATUS_COLORS[status] ?? STATUS_COLORS.pending);
+  const head = [
+    ...(pings.length ? [pings.map((r) => `<@&${r}>`).join(' ')] : []),
+    `## ${t(lang, 'appeals.card.title', { form: clip(submission.form_name || form?.name, 80) })}`,
+    `<@${submission.user_id}> · \`${clip(submission.username, 60)}\` · \`${submission.user_id}\``,
+    `-# ${t(lang, `appeals.card.status.${status}`)}`,
+  ].join('\n');
+  const header = new TextDisplayBuilder().setContent(head);
+  const avatar = /^https?:\/\//i.test(String(submission.avatar_url ?? '')) ? submission.avatar_url : null;
+  if (avatar) container.addSectionComponents(new SectionBuilder().addTextDisplayComponents(header).setThumbnailAccessory(new ThumbnailBuilder().setURL(avatar)));
+  else container.addTextDisplayComponents(header);
+
+  const punishments = submission.punishments ?? [];
+  if (punishments.length) {
+    container.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent([`### ${t(lang, 'appeals.card.punishments')}`, ...punishments.slice(0, 6).map((p) => `• ${typeName(p.type, lang)}${p.reason ? ` — ${clip(p.reason, 140)}` : ''}${p.until ? ` · ${t(lang, 'appeals.card.until', { time: `<t:${Math.floor(Date.parse(p.until) / 1000)}:f>` })}` : ''}${p.source === 'discord' ? ' (Discord)' : ''}`)].join('\n')));
+  }
+
+  // The answers, grouped so the card keeps within Discord's 4000 characters of text and its 40 components.
+  const verdictText = status === 'pending' ? '' : `${t(lang, `appeals.card.${status === 'accepted' ? 'acceptedBy' : status === 'rejected' ? 'rejectedBy' : 'withdrawnBy'}`, { moderator: moderatorId ? `<@${moderatorId}>` : '', time: `<t:${Math.floor((submission.resolved_at ? Date.parse(submission.resolved_at) : Date.now()) / 1000)}:R>` })}${submission.resolution_reason && status !== 'withdrawn' ? `\n> ${clip(submission.resolution_reason, 300)}` : ''}`;
+  let budget = 3400 - head.length - verdictText.length - (submission.invite_note ? 300 : 0);
+  const blocks = [];
+  let more = false;
+  for (const a of submission.answers ?? []) {
+    const block = `**${clip(a.label, 120)}**\n${clip(answerValue(a, lang), a.type === 'file' ? 500 : 700)}`;
+    if (budget - block.length < 0 || blocks.length >= 24) { more = true; break; }
+    budget -= block.length; blocks.push(block);
+  }
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Large));
+  for (let i = 0; i < blocks.length; i += 4) container.addTextDisplayComponents(new TextDisplayBuilder().setContent(blocks.slice(i, i + 4).join('\n\n')));
+  if (more) container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`*${t(lang, 'appeals.card.moreAnswers')}*`));
+
+  const { attached, extra } = planAttachments(files);
+  const pictures = attached.filter((a) => a.file.mime.startsWith('image/'));
+  const documents = attached.filter((a) => !a.file.mime.startsWith('image/'));
+  if (attached.length || extra) {
+    container.addSeparatorComponents(new SeparatorBuilder().setDivider(false).setSpacing(SeparatorSpacingSize.Small));
+    if (pictures.length) container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(...pictures.slice(0, 10).map((a) => new MediaGalleryItemBuilder().setURL(`attachment://${a.name}`).setDescription(clip(a.file.name, 100)))));
+    for (const a of documents.slice(0, 5)) container.addFileComponents(new FileBuilder().setURL(`attachment://${a.name}`));
+    if (extra) container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${t(lang, 'appeals.card.moreFiles', { count: extra })}`));
+  }
+
+  const footer = [];
+  if (submission.invite_note) footer.push(`**${t(lang, 'appeals.card.invite')}** — ${submission.invite_url ? `${submission.invite_url} (${submission.invite_note})` : submission.invite_note}`);
+  if (verdictText) footer.push(verdictText);
+  footer.push(`-# ID ${submission.id}`);
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(footer.join('\n\n')));
+
+  const locked = status !== 'pending';
+  container.addActionRowComponents(new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`${PREFIX}::accept::${submission.id}`).setLabel(t(lang, 'appeals.card.accept.button')).setStyle(ButtonStyle.Success).setDisabled(locked),
+    new ButtonBuilder().setCustomId(`${PREFIX}::reject::${submission.id}`).setLabel(t(lang, 'appeals.card.reject.button')).setStyle(ButtonStyle.Danger).setDisabled(locked),
+    new ButtonBuilder().setCustomId(`${PREFIX}::reply::${submission.id}`).setLabel(t(lang, 'appeals.card.reply.button')).setStyle(ButtonStyle.Secondary).setDisabled(locked),
+    new ButtonBuilder().setLabel(t(lang, 'appeals.card.dashboard.button')).setStyle(ButtonStyle.Link).setURL(dashboardUrl(submission.guild_id)),
+  ));
+  return { container, attached };
 }
 
 /** Sends a plain card to the people of a submission's thread or the submissions channel, never failing the caller. */
@@ -267,7 +378,7 @@ async function submitAppeal({ client, guild, config, form, user, rawAnswers }) {
   const punishments = (await fetchPunishments(guild, user.id, config)).map((p) => shapePunishment(p, config));
   if (!meetsRequirement(form, punishments)) return { ok: false, error: 'requirement' };
   if (await db.countPending(guild.id, user.id, form.id) > 0) return { ok: false, error: 'already_pending' };
-  const checked = validateAnswers(form, rawAnswers);
+  const checked = validateAnswers(form, rawAnswers, await loadAnswerFiles(guild.id, user.id, form, rawAnswers));
   if (!checked.ok) return { ok: false, error: 'invalid', fields: checked.errors };
   const channel = await fetchChannel(guild, config.submission_channel_id);
   if (!channel) return { ok: false, error: 'no_channel' };
@@ -278,11 +389,17 @@ async function submitAppeal({ client, guild, config, form, user, rawAnswers }) {
     guild_id: guild.id, form_id: form.id, form_name: form.name, user_id: user.id, username: clip(user.username, 80),
     avatar_url: user.avatarUrl ?? null, answers: checked.answers, punishments,
   });
+  // The files the answers carry are tied to the submission, and the card takes them along.
+  const fileIds = checked.answers.filter((a) => a.type === 'file').flatMap((a) => a.value.map((file) => file.id));
+  await filesDb.attach(guild.id, user.id, fileIds, submission.id).catch((err) => logger.warn(`Appeals: could not tie the files of ${submission.id}: ${err.message}`));
   try {
     const pings = (config.ping_role_ids ?? []).filter((r) => guild.roles.cache.has(r));
+    const fileRows = fileIds.length ? await filesDb.listForSubmission(submission.id, { withBytes: true }) : [];
+    const { container, attached } = buildStaffCard({ submission: { ...submission, guild_id: guild.id }, form, config, lang, files: fileRows, pings });
     const message = await channel.send({
       // A Components V2 message cannot carry `content`: the role pings go at the top of the card.
-      components: [textCard(`${pings.length ? `${pings.map((r) => `<@&${r}>`).join(' ')}\n` : ''}${staffCardText(submission, form, config, lang)}`, STATUS_COLORS.pending), staffButtons(submission.id, false, lang)],
+      components: [container],
+      files: attached.map(({ file, name }) => new AttachmentBuilder(fileRows.find((row) => row.id === file.id).bytes, { name })),
       flags: MessageFlags.IsComponentsV2,
       allowedMentions: { roles: pings, parse: [] },
     });
@@ -383,10 +500,10 @@ async function updateStaffCard(guild, row, form, config, moderatorId, lang = cur
   if (!channel || !row.message_id) return;
   const message = await channel.messages.fetch(row.message_id).catch(() => null);
   if (!message) return;
-  const stamp = row.resolved_at ? Math.floor(Date.parse(row.resolved_at) / 1000) : Math.floor(Date.now() / 1000);
-  const verdict = t(lang, row.status === 'accepted' ? 'appeals.card.acceptedBy' : 'appeals.card.rejectedBy', { moderator: `<@${moderatorId}>`, time: `<t:${stamp}:R>` });
-  const text = `${staffCardText(row, form, config, lang)}\n\n${verdict}${row.resolution_reason ? `\n> ${clip(row.resolution_reason, 300)}` : ''}`;
-  await message.edit({ components: [textCard(text, STATUS_COLORS[row.status]), staffButtons(row.id, true, lang)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } }).catch(() => {});
+  const files = await filesDb.listForSubmission(row.id).catch(() => []);
+  // The files already travel with the message: the card only points at them again, and its buttons are locked.
+  const { container } = buildStaffCard({ submission: { ...row, guild_id: guild.id }, form, config, lang, files, moderatorId });
+  await message.edit({ components: [container], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } }).catch(() => {});
 }
 
 /** A message from the staff to the member (and the DM that tells them), from the card or from the dashboard. */
@@ -454,6 +571,8 @@ async function releaseIdleNames(client, now = Date.now()) {
 }
 
 async function cleanup() {
+  // Files uploaded for a form that was never sent.
+  await filesDb.deleteLooseBefore(new Date(Date.now() - 24 * 3_600_000).toISOString()).catch(() => 0);
   const configs = await db.listEnabledConfigs();
   let removed = 0;
   for (const { guild_id: guildId, store_days: days } of configs) {
@@ -466,5 +585,5 @@ async function cleanup() {
 module.exports = {
   PREFIX, LIMITS, QUESTION_TYPES, PUNISHMENT_TYPES, DETAILS, BLOCKS, DEFAULT_MESSAGES,
   renderTemplate, messageFor, normalizeForm, validateAnswers, shapePunishment, fetchPunishments, meetsRequirement, blockUntil, siteLink, appealLinkFor, releaseIdleNames,
-  staffCardText, staffButtons, liftedText, submitAppeal, resolveAppeal, staffReply, userReply, withdrawAppeal, cleanup,
+  buildStaffCard, planAttachments, loadAnswerFiles, liftedText, submitAppeal, resolveAppeal, staffReply, userReply, withdrawAppeal, cleanup,
 };
