@@ -1,6 +1,7 @@
 const database = require('./database');
 
 const CONFIG_DEFAULTS = {
+  slug: null,
   enabled: false, greeting: null, language: 'en', rejoin_invite_code: null, auto_invite: false, allow_server_id: true,
   punishment_types: ['ban', 'mute'], punishment_details: ['reason', 'duration'], punishment_source: 'both', warns_max_age_days: 30,
   anonymous_messages: false, allow_replies: true, store_days: 7, submission_channel_id: null, log_channel_id: null, auto_thread: false,
@@ -82,4 +83,28 @@ async function listEnabledConfigs() {
   return data ?? [];
 }
 
-module.exports = { CONFIG_DEFAULTS, getConfig, getForm, getSubmission, createSubmission, updateSubmission, resolveSubmission, countPending, addMessage, getBlock, setBlock, deleteResolvedBefore, listEnabledConfigs };
+/** The servers that hold a link name, with what tells if they still use it. */
+async function listNamed() {
+  const { data, error } = await database.from('appeal_config').select('guild_id,slug,enabled,updated_at').not('slug', 'is', null);
+  if (error) throw error;
+  return data ?? [];
+}
+
+async function clearSlug(guildId) {
+  const { error } = await database.from('appeal_config').update({ slug: null }).eq('guild_id', guildId);
+  if (error) throw error;
+}
+
+async function lastSubmissionAt(guildId) {
+  const { data, error } = await database.from('appeal_submissions').select('created_at').eq('guild_id', guildId).order('created_at', { ascending: false }).limit(1);
+  if (error) throw error;
+  return data?.[0]?.created_at ?? null;
+}
+
+async function deleteExpiredReservations(beforeIso) {
+  const { data, error } = await database.from('appeal_name_reservations').delete().lt('reserved_until', beforeIso).select('slug');
+  if (error) throw error;
+  return data?.length ?? 0;
+}
+
+module.exports = { deleteExpiredReservations, listNamed, clearSlug, lastSubmissionAt, CONFIG_DEFAULTS, getConfig, getForm, getSubmission, createSubmission, updateSubmission, resolveSubmission, countPending, addMessage, getBlock, setBlock, deleteResolvedBefore, listEnabledConfigs };

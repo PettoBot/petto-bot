@@ -15,7 +15,7 @@ module.exports = {
   async execute(interaction) {
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
     const config = await getConfig(interaction.guild.id);
-    const link = siteLink(interaction.guild.id);
+    const link = siteLink(interaction.guild.id, config.slug);
     if (!config.enabled) {
       return interaction.editReply({ components: [textCard(`## Appeals\nAppeals are off. Turn them on in the dashboard, under Appeals.\n\n${link}`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     }

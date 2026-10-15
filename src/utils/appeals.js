@@ -155,8 +155,9 @@ function blockUntil(kind, now = Date.now()) {
   return span < 0 ? null : new Date(now + span).toISOString();
 }
 
-function siteLink(guildId) {
-  return `https://petto.sbs/appeal/${guildId}`;
+/** The address of the appeal page: the short name the server chose, or its id. */
+function siteLink(guildId, slug = null) {
+  return `https://petto.sbs/appeal/${slug || guildId}`;
 }
 
 const APPEAL_KIND = { ban: 'ban', tempban: 'ban', mute: 'mute', tempmute: 'mute', timeout: 'mute', warn: 'warn', kick: 'kick', softban: 'kick', jail: 'jail' };
@@ -167,7 +168,7 @@ async function appealLinkFor(guildId, type) {
   if (!kind) return null;
   const config = await db.getConfig(guildId);
   if (!config.enabled || !(config.punishment_types ?? []).includes(kind)) return null;
-  return siteLink(guildId);
+  return siteLink(guildId, config.slug);
 }
 
 function staffCardText(submission, form, config) {
@@ -308,7 +309,7 @@ async function resolveAppeal({ client, guild, submission, status, moderatorId, m
   if (!row) return { ok: false, error: 'already_resolved' };
   const config = await db.getConfig(guild.id);
   const form = row.form_id ? await db.getForm(guild.id, row.form_id).catch(() => null) : null;
-  const vars = { server: guild.name, reason: clip(reason, 800) || '', form: row.form_name, username: row.username, link: `${siteLink(guild.id)}/status/${row.id}` };
+  const vars = { server: guild.name, reason: clip(reason, 800) || '', form: row.form_name, username: row.username, link: `${siteLink(guild.id, config.slug)}/status/${row.id}` };
   let invite = null;
   let lifted = [];
   if (status === 'accepted') {
@@ -317,7 +318,7 @@ async function resolveAppeal({ client, guild, submission, status, moderatorId, m
   } else if (form?.block_on_reject && form.block_on_reject !== 'none') {
     await db.setBlock(guild.id, row.user_id, blockUntil(form.block_on_reject), 'Appeal rejected').catch(() => {});
   }
-  const text = `${renderTemplate(messageFor(config, form, status), vars)}${invite ? `\n\nRejoin: ${invite}` : ''}\n\n-# ${siteLink(guild.id)}/status/${row.id}`;
+  const text = `${renderTemplate(messageFor(config, form, status), vars)}${invite ? `\n\nRejoin: ${invite}` : ''}\n\n-# ${siteLink(guild.id, config.slug)}/status/${row.id}`;
   const dm = await sendDm(client, row.user_id, text, STATUS_COLORS[status]);
   await db.addMessage({ submission_id: row.id, guild_id: guild.id, author_type: 'system', author_name: 'Petto', content: renderTemplate(messageFor(config, form, status), vars) + (invite ? `\n${invite}` : '') }).catch(() => {});
   await updateStaffCard(guild, row, form, config, moderatorId);
@@ -344,7 +345,7 @@ async function staffReply({ client, guild, submission, content, moderatorId, mod
   const anonymous = Boolean(config.anonymous_messages);
   await db.addMessage({ submission_id: submission.id, guild_id: guild.id, author_type: 'staff', author_id: moderatorId, author_name: moderatorName ?? null, content: text, anonymous });
   const form = submission.form_id ? await db.getForm(guild.id, submission.form_id).catch(() => null) : null;
-  const dm = await sendDm(client, submission.user_id, `${renderTemplate(messageFor(config, form, 'reply'), { server: guild.name })}\n\n**${anonymous ? 'Staff' : clip(moderatorName ?? 'Staff', 40)}**\n${text}\n\n-# ${config.allow_replies ? 'Answer on ' : ''}${siteLink(guild.id)}/status/${submission.id}`, 0x8c7cff);
+  const dm = await sendDm(client, submission.user_id, `${renderTemplate(messageFor(config, form, 'reply'), { server: guild.name })}\n\n**${anonymous ? 'Staff' : clip(moderatorName ?? 'Staff', 40)}**\n${text}\n\n-# ${config.allow_replies ? 'Answer on ' : ''}${siteLink(guild.id, config.slug)}/status/${submission.id}`, 0x8c7cff);
   await notifyStaff(guild, submission, `<@${moderatorId}> replied to **${clip(submission.username, 40)}**\n> ${text.slice(0, 400)}`, 0x8c7cff);
   return { ok: true, dm };
 }
@@ -370,17 +371,43 @@ async function withdrawAppeal({ guild, config, submission }) {
 }
 
 /** Removes resolved submissions kept longer than each server asked. */
+// How long a link name stays with a server that stopped using it. Appeals off and untouched, or on without a single appeal.
+const NAME_OFF_DAYS = 30;
+const NAME_IDLE_DAYS = 90;
+const GONE_CODES = new Set([10004, 50001]); // Unknown Guild, Missing Access: Petto is not in that server anymore.
+
+/** Frees the link names of servers that left Petto, switched appeals off for a month, or got no appeal in three months. The server id link keeps working. */
+async function releaseIdleNames(client, now = Date.now()) {
+  const freed = [];
+  for (const row of await db.listNamed()) {
+    let reason = null;
+    if (client?.isReady?.() && client.guilds.cache.size > 0 && !client.guilds.cache.has(row.guild_id)) {
+      try { await client.guilds.fetch(row.guild_id); } catch (err) { if (GONE_CODES.has(err?.code)) reason = 'left'; }
+    }
+    const touched = Date.parse(row.updated_at) || now;
+    if (!reason && !row.enabled && now - touched > NAME_OFF_DAYS * 86_400_000) reason = 'off';
+    if (!reason && row.enabled && now - touched > NAME_IDLE_DAYS * 86_400_000) {
+      const last = Date.parse(await db.lastSubmissionAt(row.guild_id).catch(() => null) ?? '') || 0;
+      if (now - last > NAME_IDLE_DAYS * 86_400_000) reason = 'idle';
+    }
+    if (!reason) continue;
+    try { await db.clearSlug(row.guild_id); freed.push({ guildId: row.guild_id, slug: row.slug, reason }); } catch (err) { logger.warn(`Appeals: could not free the name ${row.slug}: ${err.message}`); }
+  }
+  return freed;
+}
+
 async function cleanup() {
   const configs = await db.listEnabledConfigs();
   let removed = 0;
   for (const { guild_id: guildId, store_days: days } of configs) {
     removed += await db.deleteResolvedBefore(guildId, new Date(Date.now() - (days ?? 7) * 86_400_000).toISOString()).catch(() => 0);
   }
+  await db.deleteExpiredReservations(new Date().toISOString()).catch(() => 0);
   return removed;
 }
 
 module.exports = {
   PREFIX, LIMITS, QUESTION_TYPES, PUNISHMENT_TYPES, DETAILS, BLOCKS, DEFAULT_MESSAGES,
-  renderTemplate, messageFor, normalizeForm, validateAnswers, shapePunishment, fetchPunishments, meetsRequirement, blockUntil, siteLink, appealLinkFor,
+  renderTemplate, messageFor, normalizeForm, validateAnswers, shapePunishment, fetchPunishments, meetsRequirement, blockUntil, siteLink, appealLinkFor, releaseIdleNames,
   staffCardText, staffButtons, submitAppeal, resolveAppeal, staffReply, userReply, withdrawAppeal, cleanup,
 };

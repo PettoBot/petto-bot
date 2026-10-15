@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const root = path.join(__dirname, '..');
 function stub(rel, exports) { const r = require.resolve(path.join(root, rel)); require.cache[r] = { id: r, filename: r, loaded: true, exports }; }
 
-const store = { submissions: new Map(), messages: [], blocks: new Map(), forms: new Map(), config: {} };
+const store = { submissions: new Map(), messages: [], blocks: new Map(), forms: new Map(), config: {}, named: [], cleared: [], lastAt: {} };
 let nextId = 1;
 const dbStub = {
   getConfig: async () => ({ enabled: true, punishment_types: ['ban', 'mute', 'warn'], punishment_details: ['reason', 'duration'], punishment_source: 'both', warns_max_age_days: 30, anonymous_messages: false, allow_replies: true, submission_channel_id: 'C1', log_channel_id: 'L1', auto_thread: true, thread_name: 'Appeal by {username}', ping_role_ids: ['R1'], messages: {}, ...store.config }),
@@ -19,6 +19,7 @@ const dbStub = {
   getBlock: async (g, u) => store.blocks.get(`${g}:${u}`) ?? null,
   setBlock: async (g, u, until, reason) => { store.blocks.set(`${g}:${u}`, { until, reason }); },
   deleteResolvedBefore: async () => 0, listEnabledConfigs: async () => [],
+  deleteExpiredReservations: async () => 0, listNamed: async () => store.named, clearSlug: async (g) => { store.cleared.push(g); }, lastSubmissionAt: async (g) => store.lastAt[g] ?? null,
 };
 stub('src/db/appeals.js', dbStub);
 const lifted = [];
@@ -108,6 +109,21 @@ const A = require(path.join(root, 'src/utils/appeals.js'));
   assert.ok(block && Date.parse(block.until) > Date.now() + 6 * 86400000, 'blocked for a week');
   assert.equal((await A.submitAppeal({ client, guild, config, form, user, rawAnswers: {} })).error, 'blocked');
   assert.equal(A.blockUntil('forever'), null); assert.equal(A.blockUntil('none'), undefined);
+  assert.equal(A.siteLink('123'), 'https://petto.sbs/appeal/123'); assert.equal(A.siteLink('123', 'amor'), 'https://petto.sbs/appeal/amor');
+  // Link names nobody uses are freed; the ones in use are kept.
+  const day = 86_400_000; const now = Date.now();
+  store.named = [
+    { guild_id: 'A', slug: 'off-old', enabled: false, updated_at: new Date(now - 40 * day).toISOString() },
+    { guild_id: 'B', slug: 'off-new', enabled: false, updated_at: new Date(now - 5 * day).toISOString() },
+    { guild_id: 'C', slug: 'idle', enabled: true, updated_at: new Date(now - 120 * day).toISOString() },
+    { guild_id: 'D', slug: 'busy', enabled: true, updated_at: new Date(now - 120 * day).toISOString() },
+    { guild_id: 'E', slug: 'gone', enabled: true, updated_at: new Date(now).toISOString() },
+  ];
+  store.lastAt = { D: new Date(now - 10 * day).toISOString() };
+  const live = { isReady: () => true, guilds: { cache: new Map([['A', 1], ['B', 1], ['C', 1], ['D', 1], ['Z', 1]]), fetch: async () => { const e = new Error('Unknown Guild'); e.code = 10004; throw e; } } };
+  const freed = await A.releaseIdleNames(live, now);
+  assert.deepEqual(freed.map((f) => `${f.slug}:${f.reason}`).sort(), ['gone:left', 'idle:idle', 'off-old:off']);
+  assert.deepEqual(store.cleared.sort(), ['A', 'C', 'E']);
   console.log('appeals OK');
 })().catch((err) => { console.error(err); process.exit(1); });
 
