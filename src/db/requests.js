@@ -31,7 +31,7 @@ async function create({ guildId, userId, content }) {
     if (!error) return data;
     if (error.code !== '23505') throw error;
   }
-  throw new Error('Could not number the request.');
+  throw new Error('Could not number the request.'); // i18n-ignore: internal error
 }
 
 async function get(guildId, number) {

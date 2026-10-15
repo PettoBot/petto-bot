@@ -187,7 +187,7 @@ async function setClaim(ticketId, claimedBy) {
 const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
 
 async function setPriority(ticketId, priority) {
-  if (!PRIORITIES.includes(priority)) throw new Error('Priority must be low, normal, high or urgent.');
+  if (!PRIORITIES.includes(priority)) throw new Error('Priority must be low, normal, high or urgent.'); // i18n-ignore: internal validation, not reachable from Discord or the dashboard
   const { data, error } = await database.from('tickets').update({ priority }).eq('id', ticketId).select('*').single();
   if (error) throw error;
   return data;

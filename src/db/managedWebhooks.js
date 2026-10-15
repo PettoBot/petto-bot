@@ -94,7 +94,7 @@ async function get(guildId, identifier) {
 
   if (matches.length > 1) {
     const error = new Error(
-      `More than one managed webhook is named "${value}". Use its server number instead.`
+      `More than one managed webhook is named "${value}". Use its server number instead.` // i18n-ignore: has a code; !webhook shows its own translated text
     );
 
     error.code = 'AMBIGUOUS_WEBHOOK_NAME';

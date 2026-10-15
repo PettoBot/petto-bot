@@ -9,7 +9,7 @@ const DEFAULTS = {
   up_emoji: '<:Pe_nerdSuccess:1559577139328847963>',
   down_emoji: '<:Pe_nerdError:1559577090586841188>',
   thread: true,
-  thread_name: 'Thread for suggestion {suggestion.id}',
+  thread_name: 'Thread for suggestion {suggestion.id}', // i18n-ignore: English default kept in the database, shown translated
   self_vote: true,
   dm_author: true,
   anonymous: false,

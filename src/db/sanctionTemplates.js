@@ -28,7 +28,7 @@ async function templateFor(guildId, type, slot) {
 
 /** Saves the templates of one type. A slot given as null or empty is cleared; a slot left undefined is kept. */
 async function setTemplates(guildId, type, slots) {
-  if (!TYPES.includes(type)) throw new Error(`Unknown sanction type ${type}.`);
+  if (!TYPES.includes(type)) throw new Error(`Unknown sanction type ${type}.`); // i18n-ignore: internal validation (types come from a fixed list)
   const current = (await listTemplates(guildId, { force: true })).get(type) ?? {};
   const next = { dm: current.dm ?? null, reply: current.reply ?? null, log: current.log ?? null };
   for (const slot of Object.keys(SLOTS)) {

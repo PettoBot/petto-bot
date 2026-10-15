@@ -42,9 +42,9 @@ async function getLogConfig(guildId, { force = false } = {}) {
 
   const request = (async () => {
     const [entriesResult, webhooksResult, ignoredResult] = await Promise.allSettled([
-      readRows(() => database.from('log_entries').select('*').eq('guild_id', guildId), 'log entries'),
-      readRows(() => database.from('log_webhooks').select('*').eq('guild_id', guildId), 'log webhooks'),
-      readRows(() => database.from('log_ignored').select('target_id').eq('guild_id', guildId), 'ignored log targets'),
+      readRows(() => database.from('log_entries').select('*').eq('guild_id', guildId), 'log entries'), // i18n-ignore: label for the log
+      readRows(() => database.from('log_webhooks').select('*').eq('guild_id', guildId), 'log webhooks'), // i18n-ignore: label for the log
+      readRows(() => database.from('log_ignored').select('target_id').eq('guild_id', guildId), 'ignored log targets'), // i18n-ignore: label for the log
     ]);
 
     if (entriesResult.status === 'rejected' || webhooksResult.status === 'rejected') {

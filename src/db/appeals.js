@@ -5,7 +5,7 @@ const CONFIG_DEFAULTS = {
   enabled: false, greeting: null, language: 'en', rejoin_invite_code: null, auto_invite: false, allow_server_id: true,
   punishment_types: ['ban', 'mute'], punishment_details: ['reason', 'duration'], punishment_source: 'both', warns_max_age_days: 30,
   anonymous_messages: false, allow_replies: true, store_days: 7, submission_channel_id: null, log_channel_id: null, auto_thread: false,
-  thread_name: 'Appeal by {username}', ping_role_ids: [], messages: {}, brand: {}, embed: {},
+  thread_name: 'Appeal by {username}', ping_role_ids: [], messages: {}, brand: {}, embed: {}, // i18n-ignore: English default kept in the database, shown translated (defaultText)
 };
 
 async function getConfig(guildId) {

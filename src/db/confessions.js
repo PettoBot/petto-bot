@@ -13,12 +13,12 @@ const DEFAULTS = {
   use_webhook: true,
   webhook_name: 'Anonymous',
   webhook_avatar: null,
-  title: 'Anonymous confession #{confession.number}',
-  footer: 'Confession ID: {confession.id}',
+  title: 'Anonymous confession #{confession.number}', // i18n-ignore: English default kept in the database, shown translated
+  footer: 'Confession ID: {confession.id}', // i18n-ignore: English default kept in the database, shown translated
   color: 0xa5ea7a,
   button_label: 'Confess',
-  reply_label: 'Reply anonymously',
-  panel_text: 'Press the button and write it. Nobody will know it was you.',
+  reply_label: 'Reply anonymously', // i18n-ignore: English default kept in the database, shown translated
+  panel_text: 'Press the button and write it. Nobody will know it was you.', // i18n-ignore: English default kept in the database, shown translated
   cooldown_seconds: 60,
   staff_role_id: null,
   embed_template: null,

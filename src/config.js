@@ -54,12 +54,12 @@ function resolveShards() {
 
 for (const key of required) {
   if (!process.env[key]) {
-    throw new Error(`Missing required environment variable: ${key}. Configure it in the host secret store or a local, untracked .env file.`);
+    throw new Error(`Missing required environment variable: ${key}. Configure it in the host secret store or a local, untracked .env file.`); // i18n-ignore: startup error for the operator
   }
 }
 
 if (!primaryDatabaseUrl) {
-  throw new Error('DISCLOUD_DATABASE_URL is required. Petto uses Discloud PostgreSQL as its runtime database.');
+  throw new Error('DISCLOUD_DATABASE_URL is required. Petto uses Discloud PostgreSQL as its runtime database.'); // i18n-ignore: startup error for the operator
 }
 
 module.exports = {

@@ -186,7 +186,8 @@ for (const [key, file] of used) if (!Object.hasOwn(english, key)) problem(`${fil
 // notices, names that are never translated) carry `i18n-ignore`; files nobody outside the team reads start with
 // `// i18n-ignore-file: <why>`.
 const SCAN_ALL = true;
-const SCANNED_DIRS = ['commands', 'interactions', 'events', 'jobs', 'utils', 'logging', 'handlers', 'imgutils'].map((dir) => path.join(ROOT, 'src', dir));
+// Every folder of src with code (the catalogs themselves are the translations), and src/config.js.
+const SCANNED_DIRS = [...fs.readdirSync(path.join(ROOT, 'src'), { withFileTypes: true }).filter((entry) => entry.isDirectory() && !['i18n', 'assets'].includes(entry.name)).map((entry) => path.join(ROOT, 'src', entry.name)), path.join(ROOT, 'src', 'config.js')];
 const ignoredTexts = builderTexts();
 const USES_I18N = /require\(['"](?:\.\.?\/)+(?:\.\.\/)*i18n['"]\)/;
 // The TypeScript sources of some files (src/**/*.ts, compiled over their .js by `npm run build:ts`) are held to the same
@@ -198,6 +199,10 @@ const typeScriptSources = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir, { w
 }) : []);
 for (const file of [...SCANNED_DIRS.flatMap(filesUnder), ...typeScriptSources(path.join(ROOT, 'src'))]) {
   const source = fs.readFileSync(file, 'utf8');
+  // Every exception says why: `// i18n-ignore: <reason>`.
+  source.split('\n').forEach((text, index) => {
+    if (/i18n-ignore(?:-file|-next-line)?(?!-)(?!\s*:\s*\S)/.test(text) && !/i18n-ignore\/|USES_I18N|i18n-ignore\)/.test(text)) problem(`${path.relative(ROOT, file)}:${index + 1} has an i18n-ignore without a reason (write \`// i18n-ignore: why\`)`);
+  });
   if (!SCAN_ALL && !USES_I18N.test(source)) continue;
   for (const hit of hardcodedText(source)) {
     if (ignoredTexts.has(hit.text)) continue;

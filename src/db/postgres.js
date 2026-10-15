@@ -1,3 +1,4 @@
+// i18n-ignore-file: the PostgreSQL query builder; its errors are internal and never reach a member.
 const { Pool } = require('pg');
 const config = require('../config');
 

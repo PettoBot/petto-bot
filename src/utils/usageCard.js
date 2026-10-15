@@ -10,7 +10,7 @@ const SUBCOMMAND = 1;
 const GROUP = 2;
 // How a person is told what an option holds.
 const TYPE_HINT = { 3: 'text', 4: 'number', 5: 'boolean', 6: 'user', 7: 'channel', 8: 'role', 9: 'mentionable', 10: 'number', 11: 'file' };
-// The names the prefix parser gives to a missing subcommand, written for people. i18n-ignore-next-line
+// The names the prefix parser gives to a missing subcommand, written for people. i18n-ignore-next-line: internal names, shown translated below
 const MISSING_NAMES = { subcommand: 'core.usage.subcommand', 'subcommand group': 'core.usage.subcommandGroup' };
 
 const clip = (text, max) => (String(text).length > max ? `${String(text).slice(0, max - 1).trimEnd()}…` : String(text));

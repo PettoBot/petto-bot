@@ -31,7 +31,7 @@ async function listChannels(guildId) {
 async function addChannel(guildId, channelId, deleteAfterMs) {
   const existing = await listChannels(guildId);
   if (existing.length >= MAX_CHANNELS && !existing.some((c) => c.channel_id === channelId)) {
-    const err = new Error(`Maximum of ${MAX_CHANNELS} ping-on-join channels reached. Remove one first.`);
+    const err = new Error(`Maximum of ${MAX_CHANNELS} ping-on-join channels reached. Remove one first.`); // i18n-ignore: !poj shows its own translated text (welcome.poj.maxChannels)
     err.userFacing = true;
     throw err;
   }
