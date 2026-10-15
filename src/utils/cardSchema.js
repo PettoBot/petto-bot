@@ -2,6 +2,7 @@
 // A card is plain JSON: a size, a background and a list of layers drawn from the first to the last.
 const { fontExists, isPremiumFont, DEFAULT_FONT } = require('../imgutils/cardFonts');
 const { normalizeBasic, buildBasicLayers } = require('./cardPresets');
+const { t, currentLanguage } = require('../i18n');
 
 const LIMITS = {
   minWidth: 400, maxWidth: 1600, minHeight: 160, maxHeight: 900,
@@ -56,9 +57,9 @@ function shadow(value) {
   return { color: color(value.color, '#000000'), blur, x, y };
 }
 
-function normalizeLayer(raw, index, problems) {
+function normalizeLayer(raw, index, problems, lang) {
   if (!raw || typeof raw !== 'object' || !LAYER_TYPES.has(raw.type)) {
-    problems.push(`Layer ${index + 1} has an unknown type and was left out.`);
+    problems.push(t(lang, 'embeds.card.unknownLayer', { number: index + 1 }));
     return null;
   }
   const base = {
@@ -100,7 +101,7 @@ function normalizeLayer(raw, index, problems) {
   }
   if (raw.type === 'image') {
     const src = source(raw.src);
-    if (!src) problems.push(`The image in layer ${index + 1} needs an https link, an uploaded file or a variable such as {user.avatar}.`);
+    if (!src) problems.push(t(lang, 'embeds.card.badLayerImage', { number: index + 1 }));
     return {
       ...base,
       src,
@@ -139,7 +140,7 @@ function normalizeLayer(raw, index, problems) {
   };
 }
 
-function normalizeBackground(raw, problems) {
+function normalizeBackground(raw, problems, lang) {
   const input = raw && typeof raw === 'object' ? raw : {};
   const background = { color: color(input.color, '#1e1f22'), gradient: null, image: null, overlay: null };
   if (input.gradient && typeof input.gradient === 'object') {
@@ -147,7 +148,7 @@ function normalizeBackground(raw, problems) {
   }
   if (input.image && typeof input.image === 'object') {
     const src = source(input.image.src);
-    if (input.image.src && !src) problems.push('The background image needs an https link or an uploaded file.');
+    if (input.image.src && !src) problems.push(t(lang, 'embeds.card.badBackground'));
     if (src) background.image = { src, fit: FITS.has(input.image.fit) ? input.image.fit : 'cover', blur: num(input.image.blur, 0, 24, 0) };
   }
   if (input.overlay && typeof input.overlay === 'object') {
@@ -161,8 +162,9 @@ function normalizeBackground(raw, problems) {
  * Cleans a card to the limits. Nothing throws: what is not valid is dropped or put back to a default, and described
  * in `problems`. `premium` says whether the server can use the advanced editor and every font.
  * `usesAdvanced` tells whether the card needs Premium, so the dashboard can refuse to save it for a free server.
+ * The problems are written in `lang`.
  */
-function normalizeCard(raw, { premium = false } = {}) {
+function normalizeCard(raw, { premium = false, lang = currentLanguage() } = {}) {
   const problems = [];
   const input = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
   const mode = input.mode === 'advanced' ? 'advanced' : 'basic';
@@ -175,17 +177,17 @@ function normalizeCard(raw, { premium = false } = {}) {
     mode,
     width: Math.round(num(input.width, LIMITS.minWidth, LIMITS.maxWidth, fallbackSize.width)),
     height: Math.round(num(input.height, LIMITS.minHeight, LIMITS.maxHeight, fallbackSize.height)),
-    background: normalizeBackground(input.background, problems),
+    background: normalizeBackground(input.background, problems, lang),
     layers: [],
   };
   const maxLayers = mode === 'advanced' ? LIMITS.layersAdvanced : LIMITS.layersBasic;
   // A basic card is its settings: the layers always come from the presets, never from what was sent.
   if (mode === 'basic') card.basic = normalizeBasic(input.basic, kind);
   const rawLayers = mode === 'basic' ? buildBasicLayers(card.basic, card.width, card.height, kind) : (Array.isArray(input.layers) ? input.layers : []);
-  if (rawLayers.length > maxLayers) problems.push(`A card holds at most ${maxLayers} layers, the rest were left out.`);
+  if (rawLayers.length > maxLayers) problems.push(t(lang, 'embeds.card.maxLayers', { count: maxLayers }));
   const seen = new Set();
   rawLayers.slice(0, maxLayers).forEach((layer, index) => {
-    const clean = normalizeLayer(layer, index, problems);
+    const clean = normalizeLayer(layer, index, problems, lang);
     if (!clean) return;
     while (seen.has(clean.id)) clean.id = `${clean.id}-${seen.size + 1}`;
     seen.add(clean.id);
@@ -193,7 +195,7 @@ function normalizeCard(raw, { premium = false } = {}) {
   });
   const usesPremiumFont = card.layers.some((layer) => layer.type === 'text' && isPremiumFont(layer.font));
   const usesAdvanced = mode === 'advanced' || usesPremiumFont;
-  if (usesAdvanced && !premium) problems.push('This card uses the advanced editor or a Premium font, which needs Premium.');
+  if (usesAdvanced && !premium) problems.push(t(lang, 'embeds.card.needsPremium'));
   return { card, problems, usesAdvanced, usesPremiumFont };
 }
 

@@ -8,8 +8,16 @@
 const { parseWhen, discordTimestamp } = require('./when');
 const { QUEST_EXTRA_KEYS } = require('./questTime');
 const { buildProgressBar } = require('./levelProgressBar');
+const { t, currentLanguage, formatNumber } = require('../i18n');
 
-function ordinal(n) {
+// The words Petto itself puts in a variable ("Yes", "Never", a date) follow the language of the server (`ctx.lang`, or the
+// language of the command or event that is running). What the server wrote and the names of things are never translated.
+const DATE_LOCALES = { en: 'en-US', es: 'es-419', 'pt-BR': 'pt-BR' };
+// 1.º / 1º: the ordinal mark of each language after the number (English uses its suffixes).
+const ORDINAL_MARKS = { es: '.º', 'pt-BR': 'º' };
+
+function ordinal(n, lang = 'en') {
+  if (ORDINAL_MARKS[lang]) return `${n}${ORDINAL_MARKS[lang]}`;
   const s = ['th', 'st', 'nd', 'rd'];
   const v = n % 100;
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
@@ -19,6 +27,11 @@ const BOOST_THRESHOLDS = [0, 2, 7, 14];
 
 async function resolve(text, ctx = {}) {
   const { member, guild, channel, message } = ctx;
+  const lang = DATE_LOCALES[ctx.lang] ? ctx.lang : currentLanguage();
+  const dateLocale = DATE_LOCALES[lang] ?? DATE_LOCALES.en;
+  const word = (key, vars) => t(lang, `embeds.value.${key}`, vars);
+  // Numbers with thousands separators: as before in English, and the way each language writes them otherwise.
+  const count = (n) => (lang === 'en' ? n.toLocaleString() : formatNumber(lang, n));
   const argText = typeof ctx.args === 'string' ? ctx.args : '';
   const argTokens = Array.isArray(ctx.argTokens) ? ctx.argTokens : [];
   const user = member?.user ?? ctx.user ?? message?.author;
@@ -71,29 +84,29 @@ async function resolve(text, ctx = {}) {
     '{user_id}': user?.id ?? '',
     '{user_discrim}': user?.discriminator ?? '',
     '{user_nick}': member?.displayName ?? user?.username ?? '',
-    '{user_joindate}': member?.joinedAt?.toLocaleDateString('en-US') ?? '',
-    '{user_createdate}': user?.createdAt?.toLocaleDateString('en-US') ?? '',
+    '{user_joindate}': member?.joinedAt?.toLocaleDateString(dateLocale) ?? '',
+    '{user_createdate}': user?.createdAt?.toLocaleDateString(dateLocale) ?? '',
     '{user_displaycolor}': member?.displayHexColor ?? '#000000',
-    '{user_boostsince}': member?.premiumSince?.toLocaleDateString('en-US') ?? 'Not boosting',
+    '{user_boostsince}': member?.premiumSince?.toLocaleDateString(dateLocale) ?? word('notBoosting'),
     '{user.mention}': user ? `<@${user.id}>` : '',
     '{user.name}': user?.username ?? '',
     '{user.id}': user?.id ?? '',
     '{user.avatar}': user?.displayAvatarURL({ size: 512 }) ?? '',
     '{user.display_avatar}': member?.displayAvatarURL({ size: 512 }) ?? user?.displayAvatarURL({ size: 512 }) ?? '',
     '{user.display_name}': member?.displayName ?? user?.username ?? '',
-    '{user.joined_at}': member?.joinedAt?.toLocaleDateString('en-US') ?? '',
+    '{user.joined_at}': member?.joinedAt?.toLocaleDateString(dateLocale) ?? '',
     '{user.joined_at_timestamp}': member?.joinedTimestamp ? String(Math.floor(member.joinedTimestamp / 1000)) : '',
-    '{user.created_at}': user?.createdAt?.toLocaleDateString('en-US') ?? '',
+    '{user.created_at}': user?.createdAt?.toLocaleDateString(dateLocale) ?? '',
     '{user.created_at_timestamp}': user?.createdTimestamp ? String(Math.floor(user.createdTimestamp / 1000)) : '',
-    '{user.boost}': member?.premiumSince ? 'Yes' : 'No',
-    '{user.boost_since}': member?.premiumSince?.toLocaleDateString('en-US') ?? 'Not boosting',
+    '{user.boost}': member?.premiumSince ? word('yes') : word('no'),
+    '{user.boost_since}': member?.premiumSince?.toLocaleDateString(dateLocale) ?? word('notBoosting'),
     '{user.boost_since_timestamp}': member?.premiumSinceTimestamp ? String(Math.floor(member.premiumSinceTimestamp / 1000)) : '',
     '{user.color}': member?.displayHexColor ?? '#000000',
     '{user.top_role}': member?.roles.highest?.name ?? 'N/A',
     '{user.role_list}': member ? member.roles.cache.filter((r) => r.id !== guild?.id).map((r) => `<@&${r.id}>`).join(', ') || 'N/A' : 'N/A',
-    '{user.bot}': user?.bot ? 'Yes' : 'No',
+    '{user.bot}': user?.bot ? word('yes') : word('no'),
     '{user.join_position}': joinPos,
-    '{user.join_position_suffix}': joinPos ? ordinal(parseInt(joinPos, 10)) : '',
+    '{user.join_position_suffix}': joinPos ? ordinal(parseInt(joinPos, 10), lang) : '',
     '{args}': argText,
     '{arguments}': argText,
     '{args_raw}': argText,
@@ -104,11 +117,11 @@ async function resolve(text, ctx = {}) {
     '{server_name}': guild?.name ?? '',
     '{server_id}': guild?.id ?? '',
     '{server_membercount}': (guild?.memberCount ?? 0).toString(),
-    '{server_membercount_ordinal}': ordinal(guild?.memberCount ?? 0),
+    '{server_membercount_ordinal}': ordinal(guild?.memberCount ?? 0, lang),
     '{server_membercount_nobots}': humanMembers.length.toString(),
-    '{server_membercount_nobots_ordinal}': ordinal(humanMembers.length),
+    '{server_membercount_nobots_ordinal}': ordinal(humanMembers.length, lang),
     '{server_botcount}': (allMembers.length - humanMembers.length).toString(),
-    '{server_botcount_ordinal}': ordinal(allMembers.length - humanMembers.length),
+    '{server_botcount_ordinal}': ordinal(allMembers.length - humanMembers.length, lang),
     '{server_icon}': guild?.iconURL({ size: 512 }) ?? '',
     '{server_rolecount}': (guild?.roles.cache.size ?? 0).toString(),
     '{server_channelcount}': (guild?.channels.cache.size ?? 0).toString(),
@@ -117,7 +130,7 @@ async function resolve(text, ctx = {}) {
     '{server_randommember_nobots}': randHuman ? `<@${randHuman.id}>` : '',
     '{server_owner}': guild ? `<@${guild.ownerId}>` : '',
     '{server_owner_id}': guild?.ownerId ?? '',
-    '{server_createdate}': guild?.createdAt?.toLocaleDateString('en-US') ?? '',
+    '{server_createdate}': guild?.createdAt?.toLocaleDateString(dateLocale) ?? '',
     '{server_boostlevel}': currentLevel.toString(),
     '{server_boostcount}': boostCurrent.toString(),
     '{server_nextboostlevel}': nextLevel.toString(),
@@ -129,19 +142,19 @@ async function resolve(text, ctx = {}) {
     '{guild.icon}': guild?.iconURL({ size: 512 }) ?? 'N/A',
     '{guild.banner}': guild?.bannerURL({ size: 1024 }) ?? 'N/A',
     '{guild.owner_id}': guild?.ownerId ?? '',
-    '{guild.created_at}': guild?.createdAt?.toLocaleDateString('en-US') ?? '',
+    '{guild.created_at}': guild?.createdAt?.toLocaleDateString(dateLocale) ?? '',
     '{guild.created_at_timestamp}': guild?.createdTimestamp ? String(Math.floor(guild.createdTimestamp / 1000)) : '',
     '{guild.emoji_count}': (guild?.emojis.cache.size ?? 0).toString(),
     '{guild.role_count}': (guild?.roles.cache.size ?? 0).toString(),
     '{guild.boost_count}': boostCurrent.toString(),
-    '{guild.boost_tier}': currentLevel > 0 ? `Level ${currentLevel}` : 'No Level',
+    '{guild.boost_tier}': currentLevel > 0 ? word('boostTier', { level: currentLevel }) : word('noBoostTier'),
     '{guild.channels_count}': (guild?.channels.cache.size ?? 0).toString(),
     '{guild.vanity}': guild?.vanityURLCode ? `discord.gg/${guild.vanityURLCode}` : 'N/A',
     '{guild.region}': guild?.preferredLocale ?? 'N/A',
     '{guild.max_members}': (guild?.maximumMembers ?? 0).toString(),
     '{channel}': channel ? `<#${channel.id}>` : '',
     '{channel_name}': channel?.name ?? '',
-    '{channel_createdate}': channel?.createdAt?.toLocaleDateString('en-US') ?? '',
+    '{channel_createdate}': channel?.createdAt?.toLocaleDateString(dateLocale) ?? '',
     '{channel.name}': channel?.name ?? '',
     '{channel.id}': channel?.id ?? '',
     '{channel.mention}': channel ? `<#${channel.id}>` : '',
@@ -150,17 +163,17 @@ async function resolve(text, ctx = {}) {
     '{message_id}': message?.id ?? '',
     '{message_content}': message?.content ?? '',
     '{level}': ctx.levelData?.level != null ? String(ctx.levelData.level) : '',
-    '{level_xp}': ctx.levelData?.xp != null ? ctx.levelData.xp.toLocaleString() : '',
-    '{level_xp_needed}': ctx.levelData?.xpNeeded != null ? ctx.levelData.xpNeeded.toLocaleString() : '',
+    '{level_xp}': ctx.levelData?.xp != null ? count(ctx.levelData.xp) : '',
+    '{level_xp_needed}': ctx.levelData?.xpNeeded != null ? count(ctx.levelData.xpNeeded) : '',
     '{level_rank}': ctx.levelData?.rank != null ? String(ctx.levelData.rank) : '',
     '{level_next}': ctx.levelData?.level != null ? String(ctx.levelData.level + 1) : '',
     '{level_progress}': ctx.levelData?.progress != null ? String(ctx.levelData.progress) : '',
-    '{level_xp_current}': ctx.levelData?.xpCurrent != null ? ctx.levelData.xpCurrent.toLocaleString() : '',
-    '{level_xp_to_next}': ctx.levelData?.xpToNext != null ? ctx.levelData.xpToNext.toLocaleString() : '',
+    '{level_xp_current}': ctx.levelData?.xpCurrent != null ? count(ctx.levelData.xpCurrent) : '',
+    '{level_xp_to_next}': ctx.levelData?.xpToNext != null ? count(ctx.levelData.xpToNext) : '',
     '{level_rank_total}': ctx.levelData?.total != null ? String(ctx.levelData.total) : '',
     '{level_streak}': ctx.levelData?.streak != null ? String(ctx.levelData.streak) : '',
-    '{level_messages}': ctx.levelData?.messages != null ? ctx.levelData.messages.toLocaleString() : '',
-    '{level_voice_minutes}': ctx.levelData?.voiceMinutes != null ? ctx.levelData.voiceMinutes.toLocaleString() : '',
+    '{level_messages}': ctx.levelData?.messages != null ? count(ctx.levelData.messages) : '',
+    '{level_voice_minutes}': ctx.levelData?.voiceMinutes != null ? count(ctx.levelData.voiceMinutes) : '',
     '{level_type}': ctx.levelData?.source ?? '',
     '{level_bar}': ctx.levelData?.progress != null ? buildProgressBar(ctx.levelData.progress) : '',
     '{level_role}': ctx.levelReward?.id ? `<@&${ctx.levelReward.id}>` : '',
@@ -177,7 +190,7 @@ async function resolve(text, ctx = {}) {
     '{gw.ends}': ctx.giveaway?.endsAtUnix != null ? `<t:${ctx.giveaway.endsAtUnix}:R>` : '',
     '{gw.claim_time}': ctx.giveaway?.claimTimeText ?? '',
     '{gw.reaction}': ctx.giveaway?.reaction ?? '',
-    '{gw.entry_mode}': ctx.giveaway?.entryMode === 'reaction' ? 'react with' : 'click on',
+    '{gw.entry_mode}': ctx.giveaway?.entryMode === 'reaction' ? word('entryReact') : word('entryClick'),
     '{gw.entry_text}': ctx.giveaway?.entryText ?? '',
     '{gw.winner_text}': ctx.giveaway?.winnerText ?? '',
     '{gw.status}': ctx.giveaway?.status ?? '',
@@ -191,10 +204,10 @@ async function resolve(text, ctx = {}) {
     '{case.type}': ctx.sanction?.type ?? '',
     '{case.action}': ctx.sanction?.action ?? '',
     '{case.emoji}': ctx.sanction?.emoji ?? '',
-    '{case.reason}': ctx.sanction ? (ctx.sanction.reason || 'No reason provided.') : '',
-    '{case.duration}': ctx.sanction ? (ctx.sanction.durationText || (['ban', 'hardban', 'mute', 'jail'].includes(ctx.sanction.type) ? 'Permanent' : 'N/A')) : '',
-    '{case.expires}': ctx.sanction ? (ctx.sanction.expiresUnix ? `<t:${ctx.sanction.expiresUnix}:R>` : 'Never') : '',
-    '{case.expires_at}': ctx.sanction ? (ctx.sanction.expiresUnix ? `<t:${ctx.sanction.expiresUnix}:f>` : 'Never') : '',
+    '{case.reason}': ctx.sanction ? (ctx.sanction.reason || word('noReason')) : '',
+    '{case.duration}': ctx.sanction ? (ctx.sanction.durationText || (['ban', 'hardban', 'mute', 'jail'].includes(ctx.sanction.type) ? word('permanent') : 'N/A')) : '',
+    '{case.expires}': ctx.sanction ? (ctx.sanction.expiresUnix ? `<t:${ctx.sanction.expiresUnix}:R>` : word('never')) : '',
+    '{case.expires_at}': ctx.sanction ? (ctx.sanction.expiresUnix ? `<t:${ctx.sanction.expiresUnix}:f>` : word('never')) : '',
     '{case.source}': ctx.sanction?.source ?? '',
     '{case.moderator}': ctx.sanction?.moderator?.id ? `<@${ctx.sanction.moderator.id}>` : '',
     '{case.moderator_name}': ctx.sanction?.moderator?.name ?? '',
@@ -220,8 +233,8 @@ async function resolve(text, ctx = {}) {
     '{rule.event}': ctx.identity?.rule?.event ?? '',
     '{rule.event_title}': ctx.identity?.rule?.eventTitle ?? '',
     // The invite a member joined with (welcome messages): who made it, how many invites they have, and its code.
-    '{inviter}': ctx.invite?.inviterId ? `<@${ctx.invite.inviterId}>` : 'Unknown',
-    '{inviter.name}': ctx.invite?.inviterName || 'Unknown',
+    '{inviter}': ctx.invite?.inviterId ? `<@${ctx.invite.inviterId}>` : word('unknown'),
+    '{inviter.name}': ctx.invite?.inviterName || word('unknown'),
     '{inviter.id}': ctx.invite?.inviterId ?? '',
     '{inviter.invites}': String(ctx.invite?.invites ?? 0),
     '{invite.code}': ctx.invite?.code ?? '',
@@ -248,7 +261,7 @@ async function resolve(text, ctx = {}) {
     '{star.author_name}': ctx.star?.author?.name ?? '',
     '{star.author_id}': ctx.star?.author?.id ?? '',
     '{star.author_avatar}': ctx.star?.author?.avatar ?? '',
-    '{star.content}': ctx.star ? (ctx.star.content || '*No text content*') : '',
+    '{star.content}': ctx.star ? (ctx.star.content || word('noText')) : '',
     '{star.image}': ctx.star?.image ?? '',
     '{star.attachments}': ctx.star?.attachments ?? '',
     '{star.time}': ctx.star?.unix ? `<t:${ctx.star.unix}:f>` : '',
@@ -262,7 +275,7 @@ async function resolve(text, ctx = {}) {
     '{monkey.author_name}': ctx.monkey?.author?.name ?? '',
     '{monkey.author_id}': ctx.monkey?.author?.id ?? '',
     '{monkey.author_avatar}': ctx.monkey?.author?.avatar ?? '',
-    '{monkey.content}': ctx.monkey ? (ctx.monkey.content || '*No text content*') : '',
+    '{monkey.content}': ctx.monkey ? (ctx.monkey.content || word('noText')) : '',
     '{monkey.image}': ctx.monkey?.image ?? '',
     '{monkey.attachments}': ctx.monkey?.attachments ?? '',
     '{monkey.time}': ctx.monkey?.unix ? `<t:${ctx.monkey.unix}:f>` : '',
@@ -388,8 +401,8 @@ async function resolve(text, ctx = {}) {
     '{honeypot.count}': ctx.honeypot?.count ?? '',
     '{honeypot.channel}': ctx.honeypot?.channel ?? '',
     '{nextBump}': ctx.bump?.nextUnix ? `<t:${ctx.bump.nextUnix}:R>` : '',
-    '{date}': new Date().toLocaleDateString('en-US', { timeZone: 'America/Bogota' }),
-    '{date.now}': new Date().toLocaleDateString('en-US', { timeZone: 'America/Bogota' }),
+    '{date}': new Date().toLocaleDateString(dateLocale, { timeZone: 'America/Bogota' }),
+    '{date.now}': new Date().toLocaleDateString(dateLocale, { timeZone: 'America/Bogota' }),
     '{date.utc_timestamp}': String(Math.floor(Date.now() / 1000)),
     '{timestamp}': discordTimestamp(Date.now(), 'f'),
     '{timestamp.unix}': String(Math.floor(Date.now() / 1000)),

@@ -28,6 +28,7 @@ assert.equal(r.usesAdvanced, false);
 r = normalizeCard({ mode: 'advanced', layers: [{ type: 'text', text: 'hi' }] }, { premium: false });
 assert.equal(r.usesAdvanced, true);
 assert.ok(r.problems.some((problem) => problem.includes('needs Premium')));
+assert.ok(normalizeCard({ mode: 'advanced', layers: [] }, { premium: false, lang: 'pt-BR' }).problems.some((problem) => problem.includes('exigem Premium')), 'the problems follow the language');
 assert.equal(normalizeCard({ mode: 'advanced', layers: [{ type: 'text', text: 'hi' }] }, { premium: true }).problems.length, 0);
 r = normalizeCard({ mode: 'basic', basic: { font: 'Pacifico' } });
 assert.equal(r.usesPremiumFont, true, 'a Premium font needs Premium even in a basic card');

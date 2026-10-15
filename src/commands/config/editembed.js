@@ -4,6 +4,7 @@ const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { payloadFromCode } = require('../../utils/embedCodeMessage');
 const { messageTarget, editMessage } = require('../../utils/codeArgs');
+const { t, languageOf } = require('../../i18n');
 
 const REPLY_FLAGS = MessageFlags.IsComponentsV2;
 const RED = 0xfe6465;
@@ -20,38 +21,39 @@ module.exports = {
   prefixRawOptions: { _: editMessage },
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     await interaction.deferReply({ flags: REPLY_FLAGS });
-    const fail = (text) => interaction.editReply({ components: [textCard(text, RED)], flags: REPLY_FLAGS });
+    const fail = (key, vars) => interaction.editReply({ components: [textCard(t(lang, key, vars), RED)], flags: REPLY_FLAGS });
     const code = interaction.options.getString('code');
-    if (!code) return fail('Write the new message as an embed code: `editembed <message link> {embed}$v{description: Hi}`. You can also reply to my message and write only the code.');
+    if (!code) return fail('embeds.editembed.noCode');
 
     const target = messageTarget(interaction.options.getString('message'));
     let channelId = target?.channelId ?? interaction.channel.id;
     let messageId = target?.messageId ?? interaction.rawMessage?.reference?.messageId ?? null;
-    if (target?.guildId && target.guildId !== interaction.guild.id) return fail('That message is from another server.');
-    if (!messageId) return fail('Say which message to change: its link, its ID, or reply to it.');
+    if (target?.guildId && target.guildId !== interaction.guild.id) return fail('embeds.editembed.otherServer');
+    if (!messageId) return fail('embeds.editembed.noTarget');
 
     const channel = await interaction.guild.channels.fetch(channelId).catch(() => null);
-    if (!channel?.isTextBased?.()) return fail('I cannot find that channel in this server.');
+    if (!channel?.isTextBased?.()) return fail('embeds.editembed.noChannel');
     const permissions = channel.permissionsFor(interaction.member);
-    if (!permissions?.has(PermissionFlagsBits.ViewChannel) || !permissions.has(PermissionFlagsBits.ManageMessages)) return fail('You need **Manage Messages** in that channel to change its messages.');
+    if (!permissions?.has(PermissionFlagsBits.ViewChannel) || !permissions.has(PermissionFlagsBits.ManageMessages)) return fail('embeds.editembed.noPermission', { permission: t(lang, 'core.perm.ManageMessages') });
 
     const message = await channel.messages.fetch(messageId).catch(() => null);
-    if (!message) return fail('I cannot find that message. Check the link, or that it was not deleted.');
-    if (message.author.id !== interaction.client.user.id) return fail('I can only change messages that I sent.');
-    if (message.flags?.has(MessageFlags.IsComponentsV2)) return fail('That message uses the new components layout, which cannot be changed into a normal embed message. Send a new one with `embed send`.');
+    if (!message) return fail('embeds.editembed.noMessage');
+    if (message.author.id !== interaction.client.user.id) return fail('embeds.editembed.notMine');
+    if (message.flags?.has(MessageFlags.IsComponentsV2)) return fail('embeds.editembed.componentsV2');
 
-    const { payload, warnings, error } = await payloadFromCode(code, { member: interaction.member, guild: interaction.guild, channel, message: interaction.rawMessage, args: '', argTokens: [], commandName: 'editembed', prefix: '' });
-    if (error) return fail(`That code builds an embed Discord would refuse: ${error}`);
-    if (!payload) return fail('That code has nothing to show. Write it like `{embed}$v{description: Hi {user.mention}}`; you can add `{message: text}`, more embeds and `{button: link && Label && https://...}`.');
+    const { payload, warnings, error } = await payloadFromCode(code, { member: interaction.member, guild: interaction.guild, channel, message: interaction.rawMessage, args: '', argTokens: [], commandName: 'editembed', prefix: '', lang });
+    if (error) return fail('embeds.code.refused', { error });
+    if (!payload) return fail('embeds.editembed.nothing');
 
     try {
       // What the new code does not set is cleared, so the message becomes exactly what the code says.
       await message.edit({ content: payload.content ?? null, embeds: payload.embeds ?? [], components: payload.components ?? [], files: payload.files, attachments: payload.files?.length ? undefined : [], allowedMentions: { parse: [] } });
     } catch (err) {
-      return fail(`Discord did not let me change it: ${err.message}`);
+      return fail('embeds.editembed.editFailed', { error: err.message });
     }
-    const lines = [`${EMOJI.APPROVE}  Changed the message in <#${channel.id}>: ${message.url}`, ...warnings.map((line) => `- ${line}`)];
+    const lines = [t(lang, 'embeds.editembed.done', { emoji: EMOJI.APPROVE, channel: `<#${channel.id}>`, url: message.url }), ...warnings.map((line) => `- ${line}`)];
     return interaction.editReply({ components: [textCard(lines.join('\n'), 0xa5ea7a)], flags: REPLY_FLAGS });
   },
 };

@@ -3,11 +3,12 @@ const { resolve } = require('./embedVariables');
 const { renderCardForMessage, normalizeCardRef, CARD_FILE_NAME } = require('./cardService');
 const { pullImgCards } = require('./imgCardTokens');
 const { isV2, buildV2, hasV2Content, TYPES, LIMITS } = require('./embedV2');
+const { t, currentLanguage } = require('../i18n');
 
-function parseColor(input) {
+function parseColor(input, lang = currentLanguage()) {
   const hex = input.replace('#', '');
   const num = parseInt(hex, 16);
-  if (Number.isNaN(num) || hex.length > 6) throw new Error(`Invalid color \`${input}\`. Use hex like \`#ff91c2\`.`);
+  if (Number.isNaN(num) || hex.length > 6) throw new Error(t(lang, 'embeds.builder.badColor', { color: input }));
   return num;
 }
 
@@ -152,7 +153,7 @@ async function buildOneEmbed(e, ctx) {
       if (!resolvedName || !resolvedValue) continue;
       embed.addFields({ name: resolvedName, value: resolvedValue, inline: booleanValue(f.inline) });
     } catch (error) {
-      throw new Error(`Invalid field ${index + 1}: ${error.message}`, { cause: error });
+      throw new Error(t(ctx.lang ?? currentLanguage(), 'embeds.builder.badField', { number: index + 1, error: error.message }), { cause: error });
     }
   }
 
@@ -181,12 +182,13 @@ function buildButtonRows(buttons) {
 }
 
 /** Turns Discord.js' nested validation errors into a short, useful message. */
-function formatEmbedError(error) {
+function formatEmbedError(error, lang = currentLanguage()) {
   const messages = [];
   const seen = new Set();
   const visit = (value) => {
     if (!value || typeof value !== 'object' || seen.has(value)) return;
     seen.add(value);
+    // i18n-ignore: the message discord.js gives a list of errors, matched to skip it
     if (typeof value.message === 'string' && value.message !== 'Received one or more errors') messages.push(value.message);
     if (Array.isArray(value.errors)) {
       for (const entry of value.errors) {
@@ -197,7 +199,7 @@ function formatEmbedError(error) {
     if (value.cause) visit(value.cause);
   };
   visit(error);
-  return [...new Set(messages)].slice(0, 3).join('; ') || error?.message || 'Unknown embed error';
+  return [...new Set(messages)].slice(0, 3).join('; ') || error?.message || t(lang, 'embeds.builder.unknownError');
 }
 
 /** Puts the picture of a card into the components of a V2 message (it counts as one component of the 40 a message can have). */

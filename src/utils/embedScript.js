@@ -11,6 +11,8 @@
 //   {field: name && value}  or  {field: name && value && inline}
 //   {button: link && label && url}  (link buttons only)           {message: text}  (same as text before {embed})
 
+const { t, currentLanguage } = require('../i18n');
+
 const SEPARATORS = ['&v', '$v'];
 const KNOWN_KEYS = new Set(['embed', 'content', 'message', 'text', 'title', 'url', 'description', 'desc', 'thumbnail', 'image', 'timestamp', 'color', 'colour', 'author', 'footer', 'field', 'button']);
 // Words that start a variable of the bot, so a block such as {choose:a|b} is text and not a typo of a block name.
@@ -19,9 +21,12 @@ const EMBED_START = /^\{embed\}\s*(?:&v|\$v|$)/i;
 const BUTTON_KINDS = new Set(['link', 'blurple', 'green', 'grey', 'gray', 'red', 'primary', 'success', 'secondary', 'danger']);
 
 /** Splits the code into text and top-level `{...}` blocks, in order. Braces inside a block nest. */
-function tokenize(code) {
+function tokenize(code, lang) {
   const items = [];
   const warnings = [];
+  // Each of these problems is described once, however many times it happens.
+  let spareBrace = false;
+  let unclosedBlock = false;
   let text = '';
   let depth = 0;
   let current = '';
@@ -34,7 +39,8 @@ function tokenize(code) {
       if (char === '{') { flush(); depth = 1; current = ''; continue; }
       if (char === '}') {
         // A spare closing brace is skipped, so the rest of the code is still read.
-        if (!warnings.some((line) => line.includes('closing brace'))) warnings.push('There is a closing brace } with no opening one, it was ignored.');
+        if (!spareBrace) warnings.push(t(lang, 'embeds.script.spareBrace'));
+        spareBrace = true;
         continue;
       }
       text += char;
@@ -43,7 +49,7 @@ function tokenize(code) {
     // A new {embed} inside a block means the block before it lost its closing brace, such as two codes pasted one
     // after the other. The block is closed there and the new embed starts, instead of swallowing it as text.
     if (char === '{' && EMBED_START.test(code.slice(i))) {
-      warnings.push('A block was not closed before the next {embed}, it was closed there.');
+      warnings.push(t(lang, 'embeds.script.unclosedBeforeEmbed'));
       items.push({ block: true, value: current });
       current = '';
       depth = 0;
@@ -56,7 +62,8 @@ function tokenize(code) {
       const separator = SEPARATORS.find((candidate) => code.startsWith(`${candidate}{`, i));
       const next = separator ? /^\{\s*([a-z]+)\s*[:}]/i.exec(code.slice(i + separator.length)) : null;
       if (next && KNOWN_KEYS.has(next[1].toLowerCase())) {
-        if (!warnings.some((line) => line.includes('before the next block'))) warnings.push('A block was not closed before the next block, it was closed there.');
+        if (!unclosedBlock) warnings.push(t(lang, 'embeds.script.unclosedBeforeBlock'));
+        unclosedBlock = true;
         items.push({ block: true, value: current });
         current = '';
         depth = 0;
@@ -72,7 +79,7 @@ function tokenize(code) {
     current += char;
   }
   flush();
-  if (depth !== 0) warnings.push('A block is not closed: there is an opening brace { with no closing one.');
+  if (depth !== 0) warnings.push(t(lang, 'embeds.script.unclosed'));
   return { items, warnings };
 }
 
@@ -89,7 +96,7 @@ function parseColor(value) {
  * Reads a code. It never throws: what cannot be read is left out and described in `warnings`.
  * Returns the message text, the embeds (`embed` is the first one, or null when the code sets nothing for it), the link buttons, and the warnings.
  */
-function parseEmbedScript(code) {
+function parseEmbedScript(code, lang = currentLanguage()) {
   const warnings = [];
   const newEmbed = () => ({ title: '', description: '', color: null, url: '', thumbnail: '', image: '', timestamp: false, author: null, footer: null, fields: [] });
   const embeds = [];
@@ -104,7 +111,7 @@ function parseEmbedScript(code) {
     return embed;
   };
 
-  const tokens = tokenize(String(code ?? '').trim());
+  const tokens = tokenize(String(code ?? '').trim(), lang);
   warnings.push(...tokens.warnings);
 
   for (const item of tokens.items) {
@@ -130,7 +137,7 @@ function parseEmbedScript(code) {
       case 'timestamp': current().timestamp = value === '' || !/^(false|no|0)$/i.test(value); break;
       case 'color': case 'colour': {
         const color = parseColor(value);
-        if (color === null) warnings.push(`The color "${value}" is not a hex color such as #8399ff.`);
+        if (color === null) warnings.push(t(lang, 'embeds.script.badColor', { color: value }));
         else current().color = color;
         break;
       }
@@ -146,7 +153,7 @@ function parseEmbedScript(code) {
       }
       case 'field': {
         const [name, fieldValue, inline] = parts(value);
-        if (!name || !fieldValue) { warnings.push('A field needs a name and a value: {field: name && value && inline}.'); break; }
+        if (!name || !fieldValue) { warnings.push(t(lang, 'embeds.script.fieldNeeds')); break; }
         current().fields.push({ name, value: fieldValue, inline: /^(true|yes|inline|1)$/i.test(inline ?? '') });
         break;
       }
@@ -154,26 +161,26 @@ function parseEmbedScript(code) {
         let [first, ...rest] = parts(value);
         const kind = (first ?? '').toLowerCase();
         if (BUTTON_KINDS.has(kind)) {
-          if (kind !== 'link') warnings.push(`Only link buttons can be saved, the ${kind} button was turned into a link button.`);
+          if (kind !== 'link') warnings.push(t(lang, 'embeds.script.linkOnly', { kind }));
         } else {
           rest = [first ?? '', ...rest];
         }
         const disabled = rest.length > 2 && /^disabled$/i.test(rest[rest.length - 1] ?? '');
         const [label, url] = rest;
-        if (!label || !url) { warnings.push('A button needs a label and a link: {button: link && label && https://...}.'); break; }
+        if (!label || !url) { warnings.push(t(lang, 'embeds.script.buttonNeeds')); break; }
         buttons.push({ label, url, emoji: '', disabled });
         break;
       }
       default:
-        warnings.push(`The block {${key}} is not supported and was ignored.`);
+        warnings.push(t(lang, 'embeds.script.unsupported', { block: `{${key}}` }));
     }
   }
 
   for (const each of embeds) {
-    if (each.fields.length > 25) { warnings.push('An embed holds at most 25 fields, the rest were left out.'); each.fields.length = 25; }
+    if (each.fields.length > 25) { warnings.push(t(lang, 'embeds.script.maxFields')); each.fields.length = 25; }
   }
-  if (embeds.length > 10) { warnings.push('A message holds at most 10 embeds, the rest were left out.'); embeds.length = 10; }
-  if (buttons.length > 5) warnings.push('Only the first 5 buttons fit in one row.');
+  if (embeds.length > 10) { warnings.push(t(lang, 'embeds.script.maxEmbeds')); embeds.length = 10; }
+  if (buttons.length > 5) warnings.push(t(lang, 'embeds.script.maxButtons'));
   return { content: loose.trim(), embed: embeds[0] ?? null, embeds, buttons: buttons.slice(0, 5), warnings };
 }
 

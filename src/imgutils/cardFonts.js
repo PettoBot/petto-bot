@@ -1,3 +1,4 @@
+// i18n-ignore-file: font family names are proper names, never translated
 // The fonts image cards can use. The files are WOFF2 in src/assets/fonts, named `<slug>-<weight>.woff2`.
 // The same list is in the dashboard, which loads the same files to draw the preview.
 const path = require('node:path');

@@ -9,6 +9,7 @@ const cardAssets = require('../db/cardAssets');
 const { getGuildPremium } = require('../db/premium');
 const logger = require('./logger');
 const { pullImgCards } = require('./imgCardTokens');
+const { t, currentLanguage } = require('../i18n');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -55,12 +56,14 @@ function depsFor(ctx, guildId) {
 
 /**
  * Draws a card for a message. `premium` decides what is allowed: a card that uses the advanced editor or a Premium font
- * is drawn with its basic settings when the server is not Premium, so a card keeps working after Premium ends.
+ * is drawn with its basic settings when the server is not Premium, so a card keeps working after Premium ends. The texts
+ * the basic card falls back to when the card has none of its own are in `lang`.
  */
-async function drawCard(rawCard, ctx, { guildId, premium }) {
-  let { card, usesAdvanced } = normalizeCard(rawCard, { premium });
+async function drawCard(rawCard, ctx, { guildId, premium, lang = ctx?.lang ?? currentLanguage() }) {
+  let { card, usesAdvanced } = normalizeCard(rawCard, { premium, lang });
   if (usesAdvanced && !premium) {
-    ({ card } = normalizeCard({ mode: 'basic', width: card.width, height: card.height, background: card.background, basic: rawCard?.basic }, { premium: false }));
+    const basic = { title: t(lang, 'embeds.card.welcomeTitle'), subtitle: t(lang, 'embeds.card.welcomeSubtitle'), ...(rawCard?.basic ?? {}) };
+    ({ card } = normalizeCard({ mode: 'basic', width: card.width, height: card.height, background: card.background, basic }, { premium: false, lang }));
   }
   return renderCard(card, depsFor(ctx, guildId));
 }
@@ -86,14 +89,14 @@ async function renderCardForMessage(cardRef, ctx) {
 
 /**
  * The rank card a server has not designed: the layout with the avatar on the left and the bar under the level, in Petto's own colors
- * (peach for messages, teal for voice), over a picture that comes with Petto.
+ * (peach for messages, teal for voice), over a picture that comes with Petto. Its texts are in `lang`.
  */
-function defaultRankCard(source) {
+function defaultRankCard(source, lang = currentLanguage()) {
   const voice = source === 'voice';
   return {
     kind: 'rank',
     mode: 'basic',
-    basic: { preset: 'rank', accent: voice ? '#5eead4' : '#ffb199', title: voice ? 'VOICE LEVEL {level}' : 'LEVEL {level}' },
+    basic: { preset: 'rank', accent: voice ? '#5eead4' : '#ffb199', title: t(lang, voice ? 'embeds.card.rankVoiceTitle' : 'embeds.card.rankTitle'), extra: t(lang, 'embeds.card.rankExtra') },
     background: { color: '#120c1a', image: { src: voice ? 'petto:rank-voice' : 'petto:rank-default', fit: 'cover', blur: 0 } },
   };
 }
@@ -102,14 +105,14 @@ function defaultRankCard(source) {
  * The picture of the rank of one member. `cardName` is the card the server chose, or null for the default one. It never
  * throws: when the picture cannot be had the caller shows the embed alone.
  */
-async function renderRankCard(ctx, cardName, source = 'messages') {
+async function renderRankCard(ctx, cardName, source = 'messages', lang = ctx?.lang ?? currentLanguage()) {
   const guildId = ctx.guild?.id;
   if (!guildId) return null;
   try {
     let raw = null;
     if (cardName) raw = (await imageCards.getCard(guildId, cardName))?.data ?? null;
     const premium = (await getGuildPremium(guildId)).active;
-    const buffer = await drawCard(raw ?? defaultRankCard(source), ctx, { guildId, premium });
+    const buffer = await drawCard(raw ?? defaultRankCard(source, lang), ctx, { guildId, premium, lang });
     return { buffer, name: CARD_FILE_NAME };
   } catch (error) {
     logger.warn({ guildId, action: 'rank-card' }, `Could not draw the rank card: ${error.message}`);
