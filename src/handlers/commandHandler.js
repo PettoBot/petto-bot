@@ -3,6 +3,7 @@ const path = require('path');
 const { ApplicationCommandType, Collection } = require('discord.js');
 const logger = require('../utils/logger');
 const { aliasesFor, DEFAULT_PREFIX_ROUTES } = require('../utils/defaultCommandAliases');
+const { localizeCommandJson } = require('../i18n');
 
 /**
  * The key a command is stored under in client.commands. Discord lets a user menu and a message menu share a name
@@ -130,7 +131,7 @@ function loadCommands(client) {
 /**
  * Reads every command's `data` (used by deploy-commands.js), without needing a client.
  * Roleplay chat-input commands and explicitly marked slash-only commands are
- * registered with Discord. Other chat-input builders stay available only to the
+ * registered with Discord, with their descriptions localized from the catalogs. Other chat-input builders stay available only to the
  * configured message-prefix parser.
  */
 function collectCommandData() {
@@ -147,7 +148,8 @@ function collectCommandData() {
       const type = command.data.toJSON().type ?? 1;
       return type !== 1 || command.slashOnly || command.registerSlash || categoryFromPath(filePath) === 'roleplay';
     })
-    .map(({ command }) => command.data.toJSON());
+    // The descriptions go to Discord in Spanish and Portuguese too (names are never translated).
+    .map(({ filePath, command }) => localizeCommandJson(categoryFromPath(filePath), command.data.toJSON()));
 }
 
 /**

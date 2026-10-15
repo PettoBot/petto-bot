@@ -1,13 +1,14 @@
 // @ts-check
 
 const ms = require('ms');
+const i18n = require('../i18n');
 
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
-// Every way of writing a unit, in English and Spanish.
+// Every way of writing a unit, in English, Spanish and Portuguese.
 const UNITS = new Map();
 for (const [names, value] of /** @type {[string[], number][]} */ ([
   [['ms', 'msec', 'millisecond', 'milliseconds', 'milisegundo', 'milisegundos'], 1],
@@ -16,11 +17,11 @@ for (const [names, value] of /** @type {[string[], number][]} */ ([
   [['h', 'hr', 'hrs', 'hour', 'hours', 'hora', 'horas'], HOUR],
   [['d', 'day', 'days', 'dia', 'dias', 'día', 'días'], DAY],
   [['w', 'wk', 'wks', 'week', 'weeks', 'sem', 'semana', 'semanas'], 7 * DAY],
-  [['mo', 'month', 'months', 'mes', 'meses'], 30 * DAY],
+  [['mo', 'month', 'months', 'mes', 'meses', 'mês'], 30 * DAY],
   [['y', 'yr', 'yrs', 'year', 'years', 'año', 'años', 'ano', 'anos'], 365 * DAY],
 ])) for (const name of names) UNITS.set(name, value);
 
-const PIECE = /(\d+(?:[.,]\d+)?)\s*([a-záéíóúñ]+)/giy;
+const PIECE = /(\d+(?:[.,]\d+)?)\s*([a-záéíóúñêç]+)/giy;
 const GLUE = /^[\s,]*(?:and|y|e)?[\s,]*/i;
 
 /**
@@ -56,8 +57,14 @@ function parseDuration(str) {
   return value;
 }
 
-function formatDuration(msValue) {
-  return ms(msValue, { long: true });
+/**
+ * A length of time in words, the largest unit rounded ("1 minute", "2 hours"), in the language of the command or event that is
+ * running unless `lang` is given.
+ * @param {number} msValue
+ * @param {string} [lang]
+ */
+function formatDuration(msValue, lang = i18n.currentLanguage()) {
+  return i18n.formatDuration(lang, msValue);
 }
 
 module.exports = { parseDuration, formatDuration };

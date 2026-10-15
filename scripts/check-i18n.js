@@ -1,6 +1,7 @@
 // The translations of Petto (src/i18n): every English key exists in Spanish and Brazilian Portuguese with the same
-// placeholders and the same Markdown, no key is written twice, and the texts fit the limits of Discord (100 characters for
-// a slash command description, 80 for a button, 100 for a menu, 4000 for a whole Components V2 message).
+// placeholders and the same Markdown, no key is written twice, the texts fit the limits of Discord (100 characters for
+// a slash command description, 80 for a button, 100 for a menu, 4000 for a whole Components V2 message), the descriptions of
+// the commands match their builders, and the translated files have no English text left written in the code.
 process.env.DISCORD_TOKEN ||= 'check-only';
 process.env.DISCORD_CLIENT_ID ||= '1';
 process.env.DISCLOUD_DATABASE_URL ||= 'postgres://check:check@127.0.0.1:1/check'; // never connected to
@@ -13,7 +14,9 @@ const resolvedDb = require.resolve('../src/db/database');
 require.cache[resolvedDb] = { id: resolvedDb, filename: resolvedDb, loaded: true, exports: { from: () => ({}) } };
 
 const i18n = require('../src/i18n');
-const { LANGUAGES, CATALOGS, t, localizations, normalizeLanguage, languageFromLocale, languageOf, formatNumber } = i18n;
+const { LANGUAGES, CATALOGS, t, tn, localizations, normalizeLanguage, languageFromLocale, languageOf, formatNumber, formatDuration, formatList, formatDecimal, runWithLanguage, currentLanguage, localizeCommandJson } = i18n;
+const { commandEntries, builderTexts } = require('./i18n-commands');
+const { hardcodedText, filesUnder } = require('./find-hardcoded-text');
 
 const ROOT = path.join(__dirname, '..');
 const LOCALES_DIR = path.join(ROOT, 'src', 'i18n', 'locales');
@@ -82,6 +85,27 @@ for (const lang of LANGUAGES) {
   }
 }
 
+// A plural has both forms.
+for (const key of Object.keys(english)) {
+  const match = /^(.*)\.(one|other)$/.exec(key);
+  if (match && !Object.hasOwn(english, `${match[1]}.${match[2] === 'one' ? 'other' : 'one'}`)) problem(`en: ${key} has no ${match[2] === 'one' ? '.other' : '.one'} form`);
+}
+
+// The descriptions of the commands in the catalogs are the ones of the builders, word for word (the English stays in the
+// builder; scripts/i18n-commands.js writes the catalog). A category is checked once its English catalog exists.
+const entries = commandEntries();
+for (const [category, list] of Object.entries(entries)) {
+  const file = path.join(LOCALES_DIR, 'en', `cmd.${category}.js`);
+  if (!fs.existsSync(file)) continue;
+  const catalog = require(file);
+  const expected = new Map(list);
+  for (const [key, text] of expected) {
+    if (!Object.hasOwn(catalog, key)) problem(`en/cmd.${category}.js is missing ${key}: run node scripts/i18n-commands.js ${category}`);
+    else if (catalog[key] !== text) problem(`en/cmd.${category}.js: ${key} is not the builder's text (${JSON.stringify(text)}): run node scripts/i18n-commands.js ${category}`);
+  }
+  for (const key of Object.keys(catalog)) if (!expected.has(key)) problem(`en/cmd.${category}.js: ${key} is no longer in the builders: run node scripts/i18n-commands.js ${category}`);
+}
+
 // (c) And the descriptions as Discord gets them, every language of every command, subcommand and option.
 const tooLong = (node, trail) => {
   const found = [];
@@ -103,6 +127,13 @@ for (const file of findCommandFiles(COMMANDS_DIR)) {
   }
 }
 
+// What is registered with Discord: the localized descriptions fit, and `!language` is a prefix command only.
+const { collectCommandData } = require('../src/handlers/commandHandler');
+const registered = collectCommandData();
+for (const json of registered) problems.push(...tooLong(json, `registered /${json.name}`));
+if (registered.some((json) => json.name === 'language')) problem('!language must not be registered as a slash command');
+if (require('../src/commands/config/language').registerSlash || require('../src/commands/config/language').slashOnly) problem('!language must stay prefix only (no registerSlash / slashOnly)');
+
 // Every key the code asks for by name exists in English (a typo would show the key to the member).
 const used = new Map();
 const scan = (dir) => {
@@ -111,11 +142,30 @@ const scan = (dir) => {
     if (entry.isDirectory()) { if (full !== LOCALES_DIR) scan(full); continue; }
     if (!entry.name.endsWith('.js')) continue;
     const source = fs.readFileSync(full, 'utf8');
-    for (const match of source.matchAll(/\b(?:t\(\s*[^,()]+,|localizations\()\s*'([a-z][\w-]*(?:\.[\w-]+)+)'/g)) used.set(match[1], path.relative(ROOT, full));
+    for (const match of source.matchAll(/\b(t|tn)\((?:[^,()]|\([^()]*\))+,\s*'([a-z][\w-]*(?:\.[\w-]+)+)'/g)) {
+      for (const key of match[1] === 'tn' ? [`${match[2]}.one`, `${match[2]}.other`] : [match[2]]) used.set(key, path.relative(ROOT, full));
+    }
   }
 };
 scan(path.join(ROOT, 'src'));
 for (const [key, file] of used) if (!Object.hasOwn(english, key)) problem(`${file} uses ${key}, which is not in the English catalog`);
+
+// No English left written in the code of what is translated. Until every module is done, a file counts as translated once
+// it uses src/i18n; SCAN_ALL then covers every file people read text from. Lines that must stay in English (logs, team
+// notices, names that are never translated) carry `i18n-ignore`; files nobody outside the team reads start with
+// `// i18n-ignore-file: <why>`.
+const SCAN_ALL = false;
+const SCANNED_DIRS = ['commands', 'interactions', 'events', 'jobs', 'utils', 'logging', 'handlers', 'imgutils'].map((dir) => path.join(ROOT, 'src', dir));
+const ignoredTexts = builderTexts();
+const USES_I18N = /require\(['"](?:\.\.?\/)+(?:\.\.\/)*i18n['"]\)/;
+for (const file of SCANNED_DIRS.flatMap(filesUnder)) {
+  const source = fs.readFileSync(file, 'utf8');
+  if (!SCAN_ALL && !USES_I18N.test(source)) continue;
+  for (const hit of hardcodedText(source)) {
+    if (ignoredTexts.has(hit.text)) continue;
+    problem(`${path.relative(ROOT, file)}:${hit.line} looks like English written in the code: ${JSON.stringify(hit.text)} (translate it, or mark the line with // i18n-ignore and why)`);
+  }
+}
 
 assert.deepEqual(problems, [], `Translation problems:\n${problems.join('\n')}`);
 
@@ -163,20 +213,79 @@ const json = (component) => JSON.parse(JSON.stringify(component.toJSON ? compone
   assert.equal(await languageOf({ guildId: null, locale: 'de' }), 'en');
   assert.equal(await languageOf({ guildId: 'g1', pettoLang: 'es', locale: 'pt-BR' }), 'es', 'the language the dispatcher found');
 
-  const guildsPath = require.resolve('../src/db/guilds');
+  // A new server starts in the language of its community, a known one keeps its own (the real db/guilds on a fake table).
+  const database = require('../src/db/database');
+  const table = new Map([['old', { guild_id: 'old', prefix: '!', language: 'en' }]]);
+  database.from = () => {
+    const query = { filters: {}, payload: null };
+    const result = () => {
+      if (query.payload) {
+        if (table.has(query.payload.guild_id)) return { data: null, error: new Error('duplicate key') };
+        const row = { prefix: '!', language: 'en', ...query.payload };
+        table.set(row.guild_id, row);
+        return { data: row, error: null };
+      }
+      return { data: table.get(query.filters.guild_id) ?? null, error: null };
+    };
+    const api = {
+      select: () => api,
+      eq: (column, value) => { query.filters[column] = value; return api; },
+      insert: (payload) => { query.payload = payload; return api; },
+      maybeSingle: async () => result(),
+      single: async () => result(),
+    };
+    return api;
+  };
+  const guildsDb = require('../src/db/guilds');
+  let created = await guildsDb.createGuildIfMissing('new-es', { language: languageFromLocale('es-419') });
+  assert.equal(created.created, true);
+  assert.equal(table.get('new-es').language, 'es', 'a new Spanish-speaking server starts in Spanish');
+  created = await guildsDb.createGuildIfMissing('old', { language: languageFromLocale('pt-BR') });
+  assert.equal(created.created, false);
+  assert.equal(table.get('old').language, 'en', 'a server Petto already knew keeps its language');
+  assert.equal(await guildsDb.findGuildLanguage('nobody'), null, 'reading the language never makes a row');
+  assert.equal(table.has('nobody'), false);
+  for (const [locale, expected] of [['es-ES', 'es'], ['es-419', 'es'], ['pt-BR', 'pt-BR'], ['en-US', 'en'], ['fr', 'en'], ['pt-PT', 'en']]) {
+    assert.equal(languageFromLocale(locale), expected, `a new server with preferredLocale ${locale}`);
+  }
+
+  // guildCreate makes the row first, with the language of guild.preferredLocale, and sends its messages in it.
+  const stub = (relative, exports) => {
+    const resolved = require.resolve(path.join(ROOT, relative));
+    require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports };
+  };
+  const joins = [];
+  stub('src/db/guilds.js', { createGuildIfMissing: async (id, defaults) => { joins.push([id, defaults]); return { row: { guild_id: id, prefix: '!', ...defaults }, created: true }; } });
+  stub('src/utils/discordOps.js', { sendGuildLifecycleLog: async () => { joins.push(['language during the join', currentLanguage()]); } });
+  stub('src/utils/autoModManager.js', { syncGuildAutoMod: async () => {} });
+  stub('src/utils/onboarding.js', { commandMention: async () => '</setup:1>', commandSubcommandMention: async () => '', ensureAdminSetupChannel: async () => null, findFallbackChannel: () => null, buildAdminSetupMessage: () => ({}), buildOwnerGuide: () => ({}), sendSetupMessage: async () => null });
+  delete require.cache[require.resolve('../src/events/guildCreate')];
+  const guildCreate = require('../src/events/guildCreate');
+  const fakeGuild = { id: 'joined', preferredLocale: 'pt-BR', name: 'Servidor', memberCount: 3, createdTimestamp: 0, client: { user: { id: '1' }, users: { fetch: async () => null } }, fetchOwner: async () => null, fetchAuditLogs: async () => { throw new Error('no access'); } };
+  await guildCreate.execute(fakeGuild);
+  assert.deepEqual(joins[0], ['joined', { language: 'pt-BR' }], 'guildCreate saves the language of preferredLocale');
+  assert.deepEqual(joins[1], ['language during the join', 'pt-BR'], 'and runs the rest of the join in it');
+  assert.equal(await i18n.guildLanguage('joined'), 'pt-BR', 'used at once');
+  const thanks = guildCreate.buildThanksMessage('S', '</setup:1>', '!', 'es');
+  assert.match(JSON.stringify(thanks.components.map(json)), /Gracias por agregar a Petto a S/);
+  assert.match(JSON.stringify(guildCreate.buildThanksMessage('S', '</setup:1>', '!').components.map(json)), /Thanks for adding Petto to S/);
+
   const rows = { g1: { language: 'pt-BR' }, g2: { language: 'pt' }, g3: { language: null } };
   let reads = 0;
   const updates = [];
-  require.cache[guildsPath] = {
-    id: guildsPath, filename: guildsPath, loaded: true,
-    exports: {
-      ensureGuild: async (id) => { reads += 1; if (id === 'broken') throw new Error('database down'); return rows[id]; },
-      updateGuild: async (id, patch) => { updates.push([id, patch]); rows[id] = { ...rows[id], ...patch }; return rows[id]; },
-    },
-  };
+  stub('src/db/guilds.js', {
+    findGuildLanguage: async (id) => { reads += 1; if (id === 'broken') throw new Error('database down'); if (id === 'slow') return new Promise(() => {}); return rows[id]?.language ?? null; },
+    updateGuild: async (id, patch) => { updates.push([id, patch]); rows[id] = { ...rows[id], ...patch }; return rows[id]; },
+  });
   assert.equal(await languageOf({ guildId: 'g1', locale: 'es-ES' }), 'pt-BR', 'in a server the server decides, not the member');
   assert.equal(await i18n.guildLanguage('g1'), 'pt-BR');
   assert.equal(reads, 1, 'the language of a server is cached');
+  const together = await Promise.all([i18n.guildLanguage('g2'), i18n.guildLanguage('g2'), i18n.guildLanguage('g2')]);
+  assert.deepEqual(together, ['pt-BR', 'pt-BR', 'pt-BR']);
+  assert.equal(reads, 2, 'events that arrive together share one lookup');
+  const slowStart = Date.now();
+  assert.equal(await i18n.guildLanguage('slow'), 'en', 'a database that does not answer gives English');
+  assert.ok(Date.now() - slowStart < 1500, 'without waiting long');
   assert.equal(await i18n.guildLanguage('g2'), 'pt-BR', 'an old "pt" is read as pt-BR');
   assert.equal(await i18n.guildLanguage('g3'), 'en', 'no language is English');
   assert.equal(await i18n.guildLanguage('broken'), 'en', 'a database error answers in English');
@@ -228,10 +337,52 @@ const json = (component) => JSON.parse(JSON.stringify(component.toJSON ? compone
   assert.equal(await i18n.guildLanguage('g1'), 'es', 'the next command uses it at once');
   result = await run('g1', 'en', { pettoLang: 'es' });
   assert.match(result.text, /Done: Petto now speaks \*\*English\*\*/, 'back to English');
-  const slash = language.data.toJSON();
-  assert.equal(slash.default_member_permissions, String(require('discord.js').PermissionFlagsBits.ManageGuild), 'needs Manage Server');
-  assert.deepEqual(slash.options[0].choices.map((choice) => choice.value), ['en', 'es', 'pt-BR']);
-  assert.equal(slash.description_localizations['es-419'], CATALOGS.es['config.language.desc']);
+  const data = language.data.toJSON();
+  assert.equal(data.default_member_permissions, String(require('discord.js').PermissionFlagsBits.ManageGuild), 'needs Manage Server');
+  assert.deepEqual(data.options[0].choices.map((choice) => choice.value), ['en', 'es', 'pt-BR']);
+  assert.deepEqual(language.aliases, ['lang']);
+  assert.equal(registered.some((json) => json.name === 'language'), false, '!language is not a slash command');
+
+  // The language of the running command or event reaches the helpers that are not handed one.
+  assert.equal(currentLanguage(), 'en', 'English outside of a command');
+  await runWithLanguage('es', async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1));
+    assert.equal(currentLanguage(), 'es', 'kept across awaits and timers');
+    assert.equal(require('../src/utils/duration').formatDuration(7_200_000), '2 horas');
+    assert.equal(require('../src/utils/permissions').botCanAct({ kickable: false }, 'kick'), t('es', 'core.moderate.cannotKick'));
+  });
+  assert.equal(currentLanguage(), 'en');
+  assert.equal(require('../src/utils/duration').formatDuration(7_200_000), '2 hours', 'English is unchanged');
+
+  // The descriptions registered with Discord carry their translations, never translated names.
+  CATALOGS.es['cmd.check.hug.desc'] = 'Abraza a alguien';
+  CATALOGS.es['cmd.check.hug.opt.user.desc'] = 'A quién abrazar';
+  const localized = localizeCommandJson('check', { name: 'hug', description: 'Hug someone', options: [{ type: 6, name: 'user', description: 'Who to hug' }] });
+  assert.equal(localized.description_localizations['es-419'], 'Abraza a alguien');
+  assert.equal(localized.options[0].description_localizations['es-ES'], 'A quién abrazar');
+  assert.equal(localized.name_localizations, undefined);
+  assert.equal(localized.options[0].name, 'user');
+  delete CATALOGS.es['cmd.check.hug.desc'];
+  delete CATALOGS.es['cmd.check.hug.opt.user.desc'];
+
+  // The answers every command shares: the dispatcher, usage cards and lists.
+  const { missingOptionCard, unknownSubcommandCard } = require('../src/utils/usageCard');
+  const fakeCommand = { category: 'check', data: { name: 'demo', toJSON: () => ({ name: 'demo', options: [{ type: 1, name: 'create', description: 'Make one', options: [{ type: 3, name: 'name', description: 'The name', required: true }] }] }) } };
+  for (const lang of LANGUAGES) {
+    const unknown = JSON.stringify(unknownSubcommandCard({ command: fakeCommand, prefix: '!', name: 'demo', typed: 'crate', lang }).components.map(json));
+    assert.ok(unknown.includes('!demo create'), `${lang}: the guess`);
+    const missing = JSON.stringify(missingOptionCard({ command: fakeCommand, prefix: '!', name: 'demo', argText: 'create', missing: 'name', lang }).components.map(json));
+    assert.ok(missing.includes(t(lang, 'core.usage.type.text')), `${lang}: the type of the option`);
+  }
+  assert.match(JSON.stringify(unknownSubcommandCard({ command: fakeCommand, prefix: '!', name: 'demo', typed: 'crate', lang: 'es' }).components.map(json)), /Quisiste decir/);
+  assert.match(JSON.stringify(unknownSubcommandCard({ command: fakeCommand, prefix: '!', name: 'demo', typed: 'crate' }).components.map(json)), /Did you mean/, 'English by default');
+  assert.equal(tn('pt-BR', 'core.pager.entries', 1), '1 item');
+  assert.equal(tn('es', 'core.pager.entries', 1200), '1,200 entradas');
+  assert.equal(formatList('pt-BR', ['a', 'b', 'c']), 'a, b e c');
+  assert.equal(formatDecimal('pt-BR', 2.54), '2,5');
+  assert.equal(formatDuration('es', 60_000), '1 minuto');
+  assert.equal(require('../src/utils/permissionLabels').describePermissions(String(1n << 2n), 'pt-BR'), 'Banir membros');
+  assert.equal(require('../src/utils/permissionLabels').describePermissions(String(1n << 2n), 'en'), 'Ban Members');
 
   console.log(`Checked ${Object.keys(english).length} translation keys in ${LANGUAGES.join(', ')}.`);
 })().catch((err) => {

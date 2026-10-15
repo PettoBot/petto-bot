@@ -1,21 +1,31 @@
 // The languages Petto speaks: `t(lang, key, vars)` and the language of each server.
 //
 // The catalogs live in src/i18n/locales/<lang>/<module>.js, one flat object per module whose keys all start with the
-// module name (`info.ping.title` lives in info.js). English is the reference: a key missing in es or pt-BR falls back to
-// English, and `npm run check` (scripts/check-i18n.js) fails when a key or a `{placeholder}` is missing.
+// module name (`moderation.ban.done` lives in moderation.js; `cmd.moderation.ban.desc` lives in cmd.moderation.js).
+// English is the reference: a key missing in es or pt-BR falls back to English, and `npm run check`
+// (scripts/check-i18n.js) fails when a key or a `{placeholder}` is missing.
 //
-// Key endings that carry a Discord limit, checked by scripts/check-i18n.js:
-//   `.desc`   description of a slash command, subcommand or option (100 characters)
-//   `.button` label of a button (80 characters)
-//   `.menu`   label, description or placeholder of a select menu (100 characters)
+// How the code finds the language:
+//   - commands, buttons, menus and modals: `const lang = await languageOf(interaction)` once, then `t(lang, ...)`;
+//   - events and jobs: `await guildLanguage(guild.id)` (the event handler also runs each event inside its server's language);
+//   - helpers that build text take `lang` as a parameter that defaults to `currentLanguage()`, the language of the command or
+//     event that is running (English outside of one, so the checks get English).
+//
+// Key endings with a meaning, checked by scripts/check-i18n.js:
+//   `.desc`            description of a command, subcommand or option (100 characters, the limit of Discord)
+//   `.button`          label of a button (80 characters)
+//   `.menu`            label, description or placeholder of a select menu (100 characters)
+//   `.one` / `.other`  the two forms of a plural, used by `tn()` (both must exist)
 const fs = require('node:fs');
 const path = require('node:path');
+const { AsyncLocalStorage } = require('node:async_hooks');
 
 const LANGUAGES = ['en', 'es', 'pt-BR'];
 const DEFAULT_LANGUAGE = 'en';
 // The name of each language, written in that language (they are never translated).
 const LANGUAGE_NAMES = { en: 'English', es: 'Español', 'pt-BR': 'Português (Brasil)' };
-// The Discord locales each language answers for, in descriptions of slash commands and for `interaction.locale`.
+// The Discord locales each language answers for: descriptions of registered slash commands, `interaction.locale` and
+// `guild.preferredLocale`.
 const DISCORD_LOCALES = { es: ['es-ES', 'es-419'], 'pt-BR': ['pt-BR'] };
 // How numbers are written (thousands separators) in each language.
 const NUMBER_LOCALES = { en: 'en-US', es: 'es-419', 'pt-BR': 'pt-BR' };
@@ -45,12 +55,25 @@ function normalizeLanguage(value) {
   return null;
 }
 
-/** The language for a Discord locale (`interaction.locale`): Spanish for es-ES and es-419, Portuguese for pt-BR, else English. */
+/** The language for a Discord locale (`interaction.locale`, `guild.preferredLocale`): es-ES and es-419 -> es, pt-BR -> pt-BR, else en. */
 function languageFromLocale(locale) {
   for (const [lang, locales] of Object.entries(DISCORD_LOCALES)) {
     if (locales.includes(locale)) return lang;
   }
   return DEFAULT_LANGUAGE;
+}
+
+// The language of the command or event that is running, for helpers that are not handed one.
+const languageStorage = new AsyncLocalStorage();
+
+/** Runs `callback` with `lang` as the current language. */
+function runWithLanguage(lang, callback) {
+  return languageStorage.run(normalizeLanguage(lang) ?? DEFAULT_LANGUAGE, callback);
+}
+
+/** The language of the command or event that is running; English outside of one. */
+function currentLanguage() {
+  return languageStorage.getStore() ?? DEFAULT_LANGUAGE;
 }
 
 /**
@@ -65,7 +88,69 @@ function t(lang, key, vars) {
   return text.replace(/\{([A-Za-z0-9_]+)\}/g, (match, name) => (Object.hasOwn(vars, name) ? String(vars[name]) : match));
 }
 
-/** `setDescriptionLocalizations` of a slash command, subcommand or option: { 'es-ES', 'es-419', 'pt-BR' } from the catalogs. */
+/**
+ * A plural: `${key}.one` when `count` is 1, `${key}.other` otherwise, with `{count}` filled in (with the thousands separators
+ * of the language) next to `vars`.
+ */
+function tn(lang, key, count, vars = {}) {
+  return t(lang, `${key}.${Number(count) === 1 ? 'one' : 'other'}`, { count: formatNumber(lang, count), ...vars });
+}
+
+/** A number with the thousands separators of the language. */
+function formatNumber(lang, value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return String(value);
+  return number.toLocaleString(NUMBER_LOCALES[normalizeLanguage(lang) ?? DEFAULT_LANGUAGE]);
+}
+
+/** A number with exactly `digits` decimals, written the way the language does it ("2.5" in English, "2,5" in Portuguese). */
+function formatDecimal(lang, value, digits = 1) {
+  return Number(value).toLocaleString(NUMBER_LOCALES[normalizeLanguage(lang) ?? DEFAULT_LANGUAGE], { minimumFractionDigits: digits, maximumFractionDigits: digits, useGrouping: false });
+}
+
+/** A list joined the way the language does it: "a, b and c", "a, b y c", "a, b e c" (`word: 'or'` for "a, b or c"). */
+function formatList(lang, items, { word = 'and' } = {}) {
+  const list = [...items].map(String);
+  if (list.length <= 1) return list.join('');
+  return `${list.slice(0, -1).join(', ')} ${t(lang, word === 'or' ? 'common.or' : 'common.and')} ${list[list.length - 1]}`;
+}
+
+// A length of time in words, like the `ms` library writes it in English ("1 minute", "2 hours"): the largest unit, rounded.
+const DURATION_UNITS = [['day', 86_400_000], ['hour', 3_600_000], ['minute', 60_000], ['second', 1000]];
+function formatDuration(lang, value) {
+  const msValue = Number(value);
+  const abs = Math.abs(msValue);
+  for (const [unit, size] of DURATION_UNITS) {
+    if (abs >= size) {
+      const amount = Math.round(msValue / size);
+      return t(lang, `common.duration.${unit}.${abs >= size * 1.5 ? 'other' : 'one'}`, { count: amount });
+    }
+  }
+  return t(lang, 'common.duration.ms', { count: msValue });
+}
+
+// Descriptions of commands. They stay written in English in each command's builder; the catalogs `cmd.<category>.js` hold
+// them in every language under `cmd.<category>.<command>[.<group>][.<subcommand>][.opt.<option>].desc` (scripts/i18n-commands.js
+// writes the English file and checks keeps it equal to the builders).
+
+/** The catalog key of a description: `path` is the subcommand group and subcommand (none, one or both), `option` an option name. */
+function commandDescriptionKey(category, commandName, path = [], option = null) {
+  return ['cmd', category, commandName, ...path, ...(option ? ['opt', option] : []), 'desc'].join('.');
+}
+
+/**
+ * The description of a command, subcommand or option in `lang` (`command` is a loaded command, which has `category`).
+ * `fallback` (the English text of the builder) is used when the catalogs do not have it.
+ */
+function commandDescription(lang, command, path = [], option = null, fallback = '') {
+  const category = command?.category ?? 'other';
+  const name = command?.data?.name ?? '';
+  const key = commandDescriptionKey(category, name, path, option);
+  const text = t(lang, key);
+  return text === key ? fallback : text;
+}
+
+/** `description_localizations` for Discord ({ 'es-ES', 'es-419', 'pt-BR' }) of one catalog key; empty when none is translated. */
 function localizations(key) {
   const result = {};
   for (const [lang, locales] of Object.entries(DISCORD_LOCALES)) {
@@ -76,31 +161,59 @@ function localizations(key) {
   return result;
 }
 
-/** A number with the thousands separators of the language. */
-function formatNumber(lang, value) {
-  return Number(value).toLocaleString(NUMBER_LOCALES[normalizeLanguage(lang) ?? DEFAULT_LANGUAGE]);
+/**
+ * The JSON of a slash command (as `toJSON()` gives it) with the translated descriptions of the command, its subcommands and
+ * options as `description_localizations`. Names are never localized. Used only for the commands registered with Discord.
+ */
+function localizeCommandJson(category, json) {
+  const walk = (node, path) => {
+    const copy = { ...node };
+    const optionName = path.option ?? null;
+    if (copy.description) {
+      const found = localizations(commandDescriptionKey(category, json.name, path.parts, optionName));
+      if (Object.keys(found).length) copy.description_localizations = { ...(copy.description_localizations ?? {}), ...found };
+    }
+    if (Array.isArray(node.options)) {
+      copy.options = node.options.map((option) => (option.type === 1 || option.type === 2
+        ? walk(option, { parts: [...path.parts, option.name] })
+        : walk(option, { parts: path.parts, option: option.name })));
+    }
+    return copy;
+  };
+  return walk(json, { parts: [] });
 }
 
 // The language of each server, kept a few minutes so a command does not read the database every time.
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const LOOKUP_TIMEOUT_MS = 1000;
 const guildCache = new Map(); // guildId -> { lang, expiresAt }
+const pending = new Map(); // guildId -> the lookup in flight
 
-/** The language a server chose (`guilds.language`), English when it chose none or the database cannot be read. */
-async function guildLanguage(guildId) {
-  if (!guildId) return DEFAULT_LANGUAGE;
+/** The language a server chose (`guilds.language`), English when it chose none or the database cannot be read in time. */
+function guildLanguage(guildId) {
+  if (!guildId) return Promise.resolve(DEFAULT_LANGUAGE);
   const cached = guildCache.get(guildId);
-  if (cached && cached.expiresAt > Date.now()) return cached.lang;
-  let lang = DEFAULT_LANGUAGE;
-  try {
-    // Required here: the catalogs and `t` work without the database (the checks load them alone).
-    const { ensureGuild } = require('../db/guilds');
-    const row = await ensureGuild(guildId);
-    lang = normalizeLanguage(row?.language) ?? DEFAULT_LANGUAGE;
-  } catch {
-    return DEFAULT_LANGUAGE; // not cached, so the next message tries again
-  }
-  guildCache.set(guildId, { lang, expiresAt: Date.now() + CACHE_TTL_MS });
-  return lang;
+  if (cached && cached.expiresAt > Date.now()) return Promise.resolve(cached.lang);
+  // Many events of one server arrive together: they share one lookup.
+  if (pending.has(guildId)) return pending.get(guildId);
+  const lookup = Promise.resolve().then(async () => {
+    let timer;
+    try {
+      // Required here: the catalogs and `t` work without the database (the checks load them alone).
+      const { findGuildLanguage } = require('../db/guilds');
+      const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('language lookup timed out')), LOOKUP_TIMEOUT_MS); });
+      const lang = normalizeLanguage(await Promise.race([findGuildLanguage(guildId), timeout])) ?? DEFAULT_LANGUAGE;
+      guildCache.set(guildId, { lang, expiresAt: Date.now() + CACHE_TTL_MS });
+      return lang;
+    } catch {
+      return DEFAULT_LANGUAGE; // not cached, so the next message tries again
+    } finally {
+      clearTimeout(timer);
+      pending.delete(guildId);
+    }
+  });
+  pending.set(guildId, lookup);
+  return lookup;
 }
 
 /** Called right after `!language` changes it, so the new language is used at once instead of when the cache runs out. */
@@ -136,10 +249,19 @@ module.exports = {
   DISCORD_LOCALES,
   CATALOGS,
   t,
-  localizations,
+  tn,
   formatNumber,
+  formatDecimal,
+  formatList,
+  formatDuration,
+  localizations,
+  commandDescriptionKey,
+  commandDescription,
+  localizeCommandJson,
   normalizeLanguage,
   languageFromLocale,
+  runWithLanguage,
+  currentLanguage,
   guildLanguage,
   setGuildLanguage,
   setCachedGuildLanguage,
