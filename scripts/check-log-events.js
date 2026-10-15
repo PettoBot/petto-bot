@@ -41,6 +41,18 @@ const field = (name) => last().embed.fields.find((f) => f.name === name)?.value;
 const reset = () => { sent.length = 0; entriesByType.clear(); };
 const member2 = () => ({ id: 'b1', guild: { id: '1' }, roles: { cache: new Collection() }, joinedTimestamp: Date.now() - 1000 });
 
+// The grouped channel updates wait on timers that do not keep the process alive (they are unref'd so the bot can stop at any time).
+// Without something else to wait on, Node would exit in the middle of the check with code 0 and skip everything after it.
+const keepAlive = setInterval(() => {}, 1000);
+// And if the check ever stops before its last line again, it fails instead of passing in silence.
+let finished = false;
+process.on('exit', (code) => {
+  if (!finished && code === 0) {
+    console.error('check-log-events ended before its last assertion.');
+    process.exitCode = 1;
+  }
+});
+
 (async () => {
   for (const category of ['webhooks', 'threads', 'integrations', 'commands']) assert.ok(EVENTS.includes(category), `${category} can be chosen with !logs`);
 
@@ -292,5 +304,7 @@ const member2 = () => ({ id: 'b1', guild: { id: '1' }, roles: { cache: new Colle
   await server.handleGuildUpdate(guildState(), guildState(), client);
   assert.equal(sent.length, guildCount);
 
+  clearInterval(keepAlive);
+  finished = true;
   console.log('Checked the log handlers: webhooks, threads, stickers, events, AutoMod rules, permissions, timeouts, boosts, kicks, pins, stages, sounds, integrations, bots, command use and server settings.');
 })().catch((error) => { console.error(error); process.exit(1); });

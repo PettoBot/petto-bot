@@ -129,16 +129,30 @@ async function handleChannelDelete(channel, client) {
 // The @everyone role is shown as plain text: Discord draws a mention of it as `@@everyone`.
 const who = (overwrite) => (overwrite.id === overwrite.channel?.guild?.id ? '`@everyone`' : overwrite.type === 0 ? `<@&${overwrite.id}>` : `<@${overwrite.id}>`);
 
-/** The permission overwrites of a channel that were added, removed or changed, one line each. */
+/** "allowed X; denied Y" for what one overwrite allows and denies that the other did not. */
+function grantedParts(allow, deny, previousAllow, previousDeny, lang) {
+  const parts = [];
+  const allowed = only(allow, previousAllow, lang);
+  const denied = only(deny, previousDeny, lang);
+  if (allowed.length) parts.push(t(lang, 'logs.channel.overwrite.allowed', { permissions: allowed.join(', ') }));
+  if (denied.length) parts.push(t(lang, 'logs.channel.overwrite.denied', { permissions: denied.join(', ') }));
+  return parts;
+}
+
+/** The permission overwrites of a channel that were added (with what they allow and deny), removed or changed, one line each. */
 function overwriteChanges(oldChannel, newChannel, lang = currentLanguage()) {
   const before = oldChannel.permissionOverwrites?.cache;
   const after = newChannel.permissionOverwrites?.cache;
   if (!before || !after) return [];
   const lines = [];
+  const nothing = new PermissionsBitField(0n);
   for (const overwrite of after.values()) {
     const previous = before.get(overwrite.id);
-    if (!previous) lines.push(t(lang, 'logs.channel.overwrite.added', { target: who(overwrite) }));
-    else if (previous.allow.bitfield !== overwrite.allow.bitfield || previous.deny.bitfield !== overwrite.deny.bitfield) {
+    if (!previous) {
+      const parts = grantedParts(overwrite.allow, overwrite.deny, nothing, nothing, lang);
+      const added = t(lang, 'logs.channel.overwrite.added', { target: who(overwrite) });
+      lines.push(parts.length ? `${added}: ${parts.join('; ')}` : added);
+    } else if (previous.allow.bitfield !== overwrite.allow.bitfield || previous.deny.bitfield !== overwrite.deny.bitfield) {
       const allowed = only(overwrite.allow, previous.allow, lang);
       const denied = only(overwrite.deny, previous.deny, lang);
       const reset = only(previous.allow, overwrite.allow, lang).concat(only(previous.deny, overwrite.deny, lang)).filter((name) => !allowed.includes(name) && !denied.includes(name));
