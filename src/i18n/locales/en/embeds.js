@@ -421,6 +421,7 @@ module.exports = {
   'embeds.var.sanction.case.userName': 'Name of the sanctioned member',
   'embeds.var.sanction.case.userId': 'ID of the sanctioned member',
   'embeds.var.sanction.case.userAvatar': 'Avatar of the sanctioned member',
+  'embeds.var.sanction.case.appeal': 'The link where the member can appeal this sanction, empty when the server has appeals off or this kind of sanction cannot be appealed',
   'embeds.varGroup.identity': 'Vanity and Server Tag',
   'embeds.var.identity.rule.name': 'Name of the rule that matched',
   'embeds.var.identity.rule.source': 'Which kind of rule it is: vanity or guildtag',

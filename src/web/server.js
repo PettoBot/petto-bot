@@ -441,6 +441,91 @@ function startServer(client) {
       }
     });
 
+    // The files a member attaches to the answers of a form: uploaded while the form is filled, tied to the submission when it is sent.
+    const sendAppealFile = (res, file) => {
+      const image = file.mime.startsWith('image/');
+      res.set({
+        'Content-Type': file.mime, // i18n-ignore: HTTP header
+        'Content-Disposition': `${image ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(file.name)}`, // i18n-ignore: HTTP header
+        'X-Content-Type-Options': 'nosniff', // i18n-ignore: HTTP header
+        'Content-Security-Policy': "default-src 'none'; sandbox", // i18n-ignore: HTTP header
+        'Cache-Control': 'private, no-store', // i18n-ignore: HTTP header
+        'X-Petto-File-Name': encodeURIComponent(file.name), // i18n-ignore: HTTP header
+      }).send(file.bytes);
+    };
+
+    app.post('/api/appeals/:guildId/files', dashboardDatabaseRateLimiter, express.raw({ type: () => true, limit: '5.5mb' }), async (req, res) => {
+      const access = await appealAccess(req, res);
+      if (!access) return;
+      if (appealLimited(`file:${access.user.id}`, 30, 10 * 60_000)) { res.status(429).json({ ok: false, error: 'rate_limited' }); return; }
+      try {
+        const appealsDb = require('../db/appeals');
+        const filesDb = require('../db/appealFiles');
+        const { prepareFile, MAX_LOOSE } = require('../utils/appealFile');
+        const formId = Number(req.query.form_id);
+        const questionId = String(req.query.question_id || '');
+        const form = Number.isInteger(formId) ? await appealsDb.getForm(access.guild.id, formId) : null;
+        if (!access.config.enabled || !form || form.status !== 'live') { res.status(404).json({ ok: false, error: 'form_unavailable' }); return; }
+        const question = (form.sections ?? []).flatMap((section) => section.questions ?? []).find((q) => q.id === questionId && q.type === 'file');
+        if (!question) { res.status(400).json({ ok: false, error: 'unknown_question' }); return; }
+        const sameQuestion = await filesDb.listLoose(access.guild.id, access.user.id, formId, questionId);
+        if (sameQuestion.length >= (question.max_files ?? 3) || await filesDb.countLoose(access.guild.id, access.user.id) >= MAX_LOOSE) { res.status(409).json({ ok: false, error: 'too_many_files' }); return; }
+        let prepared;
+        try {
+          // The body is bytes only when it came as raw bytes; it is copied, so what the checks read is a Buffer and nothing else.
+          const upload = Buffer.isBuffer(req.body) ? Buffer.from(req.body) : Buffer.alloc(0);
+          prepared = await prepareFile(upload, { accept: question.accept, name: String(req.query.name || 'file') });
+        } catch (err) {
+          const code = { too_big: 413, unsupported: 415 }[err.message] ?? 400;
+          res.status(code).json({ ok: false, error: ['too_big', 'unsupported'].includes(err.message) ? err.message : 'unreadable' }); // i18n-ignore: an error code for the website
+          return;
+        }
+        const row = await filesDb.createFile({ guildId: access.guild.id, userId: access.user.id, formId, questionId, name: prepared.name, mime: prepared.mime, bytes: prepared.bytes });
+        res.json({ ok: true, file: { id: row.id, name: row.name, mime: row.mime, size: row.size, question_id: row.question_id } });
+      } catch (err) {
+        logger.error(`Appeal file upload failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, error: 'failed' });
+      }
+    });
+
+    app.delete('/api/appeals/:guildId/files/:fileId', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await appealAccess(req, res);
+      if (!access) return;
+      try {
+        res.json({ ok: true, removed: await require('../db/appealFiles').removeLoose(access.guild.id, access.user.id, String(req.params.fileId)) });
+      } catch (err) {
+        logger.error(`Appeal file removal failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, error: 'failed' });
+      }
+    });
+
+    // A file the member uploaded or sent: only they can read it here (the staff read it from the dashboard).
+    app.get('/api/appeals/:guildId/files/:fileId', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await appealAccess(req, res);
+      if (!access) return;
+      try {
+        const file = await require('../db/appealFiles').getFile(access.guild.id, String(req.params.fileId));
+        if (!file || file.user_id !== access.user.id) { res.status(404).json({ ok: false, error: 'not_found' }); return; }
+        sendAppealFile(res, file);
+      } catch (err) {
+        logger.error(`Appeal file read failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, error: 'failed' });
+      }
+    });
+
+    app.get('/api/dashboard/guild/:guildId/appeals/files/:fileId', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await dashboardCardAccess(req, res);
+      if (!access) return;
+      try {
+        const file = await require('../db/appealFiles').getFile(access.guild.id, String(req.params.fileId));
+        if (!file || !file.submission_id) { res.status(404).json({ ok: false, error: 'not_found' }); return; }
+        sendAppealFile(res, file);
+      } catch (err) {
+        logger.error(`Dashboard appeal file read failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, error: 'failed' });
+      }
+    });
+
     // The staff, from the dashboard: accept or reject an appeal, or write to the member.
     app.post('/api/dashboard/guild/:guildId/appeals/resolve', dashboardDatabaseRateLimiter, async (req, res) => {
       const access = await dashboardCardAccess(req, res);

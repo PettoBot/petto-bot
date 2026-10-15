@@ -3668,6 +3668,24 @@ create table if not exists appeal_images (
   primary key (guild_id, kind)
 );
 alter table appeal_images enable row level security;
+-- The files a member attaches to the answers of an appeal form (pictures, PDFs, text). They are uploaded while the form is filled, so they have no
+-- submission until it is sent; the ones that never get one are removed by the cleanup.
+create table if not exists appeal_files (
+  id             uuid primary key default gen_random_uuid(),
+  guild_id       text not null,
+  user_id        text not null,
+  form_id        bigint,
+  question_id    text not null,
+  submission_id  uuid references appeal_submissions(id) on delete cascade,
+  name           text not null,
+  mime           text not null,
+  size           integer not null,
+  bytes          bytea not null,
+  created_at     timestamptz not null default now()
+);
+create index if not exists idx_appeal_files_submission on appeal_files(submission_id);
+create index if not exists idx_appeal_files_loose on appeal_files(guild_id, user_id) where submission_id is null;
+alter table appeal_files enable row level security;
 -- The invite made when an appeal was accepted, and why there is none when Petto could not make it.
 alter table appeal_submissions add column if not exists invite_url text;
 alter table appeal_submissions add column if not exists invite_note text;
