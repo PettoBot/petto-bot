@@ -184,7 +184,7 @@ module.exports = {
   'reports.config.status.noChannel': '{emoji} Elige un canal de reportes para empezar a recibirlos.',
   'reports.config.status.missing': '{emoji} No tengo **{missing}** en {channel}.',
   'reports.config.status.on': '{emoji} Los reportes están activados y llegan a {channel}.',
-  'reports.config.status.off': '{emoji} Los reportes están desactivados. Pulsa **{button}** para activarlos.',
+  'reports.config.status.off': '{emoji} Los reportes están desactivados. Presiona **{button}** para activarlos.',
   'reports.config.title': '{emoji} Ajustes de reportes',
   'reports.config.delivery': 'Entrega',
   'reports.config.rules': 'Reglas',
