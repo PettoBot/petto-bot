@@ -21,6 +21,7 @@ const logger = require('../utils/logger');
 const { logCommandUse } = require('../logging/extraLog');
 const { runCodeCommand } = require('../utils/codeCommands');
 const { findTrigger } = require('../utils/codeTriggers');
+const { guildLanguage } = require('../i18n');
 // Loaded when a message comes in: it reaches for the configuration and the database, which the checks do without.
 const activeUserPrefix = async (...args) => require('../utils/userPrefixAccess').activeUserPrefix(...args);
 
@@ -339,6 +340,8 @@ module.exports = {
     }
 
     interaction.typedPrefix = prefix;
+    // The language of the server, found once here so the command does not look it up again.
+    interaction.pettoLang = await guildLanguage(message.guild.id);
     interaction.pettoModerationRoleAllowed = moderationRoleOverride;
     interaction.pettoAutomodControl = hiddenAutomodControl;
 

@@ -94,6 +94,8 @@ alter table guilds add column if not exists compliance_ignored boolean not null 
 alter table guilds add column if not exists compliance_ignored_by text;
 alter table guilds add column if not exists compliance_ignored_at timestamptz;
 alter table guilds add column if not exists compliance_ignore_reason text;
+-- The language Petto answers in on this server: 'en', 'es' or 'pt-BR' (other values are read as 'en').
+alter table guilds add column if not exists language text not null default 'en';
 
 -- Persistent compliance signal summary. This stores only the latest actionable
 -- server-level signal; raw message evidence remains transient and is never stored.
