@@ -3,10 +3,12 @@ const { ensureGuild } = require('../db/guilds');
 const { upsertConfig } = require('../db/report');
 const { textCard } = require('../utils/caseCard');
 const { EMOJI } = require('../utils/emojis');
+const { t, languageOf } = require('../i18n');
 
 async function handleModal(interaction) {
+  const lang = await languageOf(interaction);
   if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-    await interaction.reply({ content: 'You need the **Manage Server** permission to configure reports.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'reports.configModal.needsManageServer'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -17,19 +19,19 @@ async function handleModal(interaction) {
   const anonymousReporting = interaction.fields.getCheckbox('report_config_anonymous') === true;
 
   if (!channel) {
-    await interaction.reply({ content: 'Choose a report channel before submitting.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'reports.configModal.chooseChannel'), flags: MessageFlags.Ephemeral });
     return;
   }
 
   if (urgentRole?.id === interaction.guild.id) {
-    await interaction.reply({ content: 'The @everyone role cannot be used as the urgent role.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'reports.configModal.everyone'), flags: MessageFlags.Ephemeral });
     return;
   }
 
   const botMember = interaction.guild.members.me;
   const permissions = botMember ? channel.permissionsFor(botMember) : null;
   if (permissions && !permissions.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks])) {
-    await interaction.reply({ content: 'I need View Channel, Send Messages, and Embed Links in the selected report channel.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'reports.configModal.permissions'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -41,12 +43,12 @@ async function handleModal(interaction) {
     urgent_role_id: urgentRole?.id ?? null,
   });
 
-  const roleText = urgentRole ? `<@&${urgentRole.id}>` : 'none';
+  const roleText = urgentRole ? `<@&${urgentRole.id}>` : t(lang, 'reports.config.none');
   const content = [
-    `${EMOJI.APPROVE} **Report config updated!**`,
-    `• Reports go to: <#${channel.id}>`,
-    `• Anonymous reporting: **${anonymousReporting ? 'enabled' : 'disabled'}**`,
-    `• Urgent role: ${roleText}`,
+    t(lang, 'reports.configModal.updated', { emoji: EMOJI.APPROVE }),
+    t(lang, 'reports.configModal.channel', { channel: `<#${channel.id}>` }),
+    t(lang, anonymousReporting ? 'reports.configModal.anonymousOn' : 'reports.configModal.anonymousOff'),
+    t(lang, 'reports.configModal.urgentRole', { role: roleText }),
   ].join('\n');
 
   await interaction.reply({

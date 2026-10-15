@@ -14,6 +14,7 @@ const {
 const { noticePayload } = require('../../utils/infoCard');
 const { EMOJI } = require('../../utils/emojis');
 const { COLORS } = require('../../utils/colors');
+const { t, languageOf } = require('../../i18n');
 
 const PRIVATE = MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral;
 
@@ -79,29 +80,30 @@ module.exports = {
     .addSubcommand((sub) => sub.setName('blocklist').setDescription('(Staff) List members blocked from reporting.')),
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const sub = interaction.options.getSubcommand();
-    if (sub === 'send') return send(interaction);
+    if (sub === 'send') return send(interaction, lang);
 
     // Everything below is for staff: settings need Manage Server, the rest any moderator-level permission.
     const needsManageServer = sub === 'config' || sub === 'disable';
     const allowed = needsManageServer ? interaction.member.permissions.has(PermissionFlagsBits.ManageGuild) : isReportStaff(interaction.member);
     if (!allowed) {
-      await interaction.reply(notice(needsManageServer ? 'You need the **Manage Server** permission to change report settings.' : 'Only staff can use this report command.', COLORS.RED));
+      await interaction.reply(notice(t(lang, needsManageServer ? 'reports.command.needsManageServer' : 'reports.command.staffOnly'), COLORS.RED));
       return;
     }
 
-    if (sub === 'config') return showConfig(interaction);
-    if (sub === 'disable') return disable(interaction);
-    if (sub === 'list') return list(interaction);
-    if (sub === 'view') return view(interaction);
-    if (sub === 'stats') return stats(interaction);
-    if (sub === 'block') return block(interaction);
-    if (sub === 'unblock') return unblock(interaction);
-    return blocklist(interaction);
+    if (sub === 'config') return showConfig(interaction, lang);
+    if (sub === 'disable') return disable(interaction, lang);
+    if (sub === 'list') return list(interaction, lang);
+    if (sub === 'view') return view(interaction, lang);
+    if (sub === 'stats') return stats(interaction, lang);
+    if (sub === 'block') return block(interaction, lang);
+    if (sub === 'unblock') return unblock(interaction, lang);
+    return blocklist(interaction, lang);
   },
 };
 
-async function send(interaction) {
+async function send(interaction, lang) {
   await interaction.deferReply({ flags: PRIVATE });
   await ensureGuild(interaction.guild.id);
 
@@ -115,76 +117,77 @@ async function send(interaction) {
     sourceChannel: interaction.channel,
     urgent: interaction.options.getBoolean('ping') === true,
     anonymous: interaction.options.getBoolean('anonymous') === true,
+    lang,
   });
 
-  await interaction.editReply(result.ok ? buildReceipt(result, config ?? {}) : noticePayload(result.message, COLORS.RED));
+  await interaction.editReply(result.ok ? buildReceipt(result, config ?? {}, lang) : noticePayload(result.message, COLORS.RED));
 }
 
-async function showConfig(interaction) {
+async function showConfig(interaction, lang) {
   // The panel holds settings and is only meant for the person who opened it, which prefix commands cannot guarantee.
   if (interaction.rawMessage) {
-    await interaction.reply(notice('Report settings are available from the `/report config` slash command only.', COLORS.RED));
+    await interaction.reply(notice(t(lang, 'reports.command.configSlashOnly'), COLORS.RED));
     return;
   }
 
   await ensureGuild(interaction.guild.id);
   const config = await getConfig(interaction.guild.id).catch(() => null);
-  await interaction.reply(privately(buildConfigPanel(interaction.guild, config)));
+  await interaction.reply(privately(buildConfigPanel(interaction.guild, config, { lang })));
 }
 
-async function disable(interaction) {
+async function disable(interaction, lang) {
   await ensureGuild(interaction.guild.id);
   await upsertConfig(interaction.guild.id, { enabled: false });
-  await interaction.reply(notice(`${EMOJI.APPROVE} **Reports disabled.** The saved channel and options are kept; run \`/report config\` to turn them on again.`));
+  await interaction.reply(notice(t(lang, 'reports.command.disabled', { emoji: EMOJI.APPROVE })));
 }
 
-async function list(interaction) {
+async function list(interaction, lang) {
   await interaction.deferReply({ flags: PRIVATE });
   const status = interaction.options.getString('status') ?? 'open';
   const user = interaction.options.getUser('user');
-  await interaction.editReply(await buildReportListPayload(interaction.guild, { status, reportedUserId: user?.id ?? null }));
+  await interaction.editReply(await buildReportListPayload(interaction.guild, { status, reportedUserId: user?.id ?? null, lang }));
 }
 
-async function view(interaction) {
+async function view(interaction, lang) {
   await interaction.deferReply({ flags: PRIVATE });
-  await interaction.editReply(await buildReportViewPayload(interaction.guild, interaction.options.getInteger('number', true)));
+  await interaction.editReply(await buildReportViewPayload(interaction.guild, interaction.options.getInteger('number', true), lang));
 }
 
-async function stats(interaction) {
+async function stats(interaction, lang) {
   await interaction.deferReply({ flags: PRIVATE });
-  await interaction.editReply(await buildReportStatsPayload(interaction.guild));
+  await interaction.editReply(await buildReportStatsPayload(interaction.guild, lang));
 }
 
-async function block(interaction) {
+async function block(interaction, lang) {
   const user = interaction.options.getUser('user', true);
   if (user.id === interaction.user.id) {
-    await interaction.reply(notice('You cannot block yourself from reporting.', COLORS.RED));
+    await interaction.reply(notice(t(lang, 'reports.command.blockSelf'), COLORS.RED));
     return;
   }
   if (user.bot) {
-    await interaction.reply(notice('Bots cannot send reports, so there is nothing to block.', COLORS.RED));
+    await interaction.reply(notice(t(lang, 'reports.command.blockBot'), COLORS.RED));
     return;
   }
 
   await ensureGuild(interaction.guild.id);
   if (await getBlock(interaction.guild.id, user.id)) {
-    await interaction.reply(notice(`${user} is already blocked from sending reports.`));
+    await interaction.reply(notice(t(lang, 'reports.command.alreadyBlocked', { user: `${user}` })));
     return;
   }
 
   await addBlock(interaction.guild.id, user.id, interaction.user.id, interaction.options.getString('reason'));
-  await interaction.reply(notice(`${EMOJI.APPROVE} ${user} can no longer send reports in this server.`, COLORS.GREEN));
+  await interaction.reply(notice(t(lang, 'reports.command.blocked', { emoji: EMOJI.APPROVE, user: `${user}` }), COLORS.GREEN));
 }
 
-async function unblock(interaction) {
+async function unblock(interaction, lang) {
   const user = interaction.options.getUser('user', true);
   const removed = await removeBlock(interaction.guild.id, user.id);
   await interaction.reply(removed
-    ? notice(`${EMOJI.APPROVE} ${user} can send reports again.`, COLORS.GREEN)
-    : notice(`${user} was not blocked from sending reports.`));
+    ? notice(t(lang, 'reports.command.unblocked', { emoji: EMOJI.APPROVE, user: `${user}` }), COLORS.GREEN)
+    : notice(t(lang, 'reports.command.notBlocked', { user: `${user}` })));
 }
 
-async function blocklist(interaction) {
+async function blocklist(interaction, lang) {
   await interaction.deferReply({ flags: PRIVATE });
-  await interaction.editReply(await buildBlocklistPayload(interaction.guild));
+  await interaction.editReply(await buildBlocklistPayload(interaction.guild, lang));
 }

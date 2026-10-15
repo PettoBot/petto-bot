@@ -1,4 +1,5 @@
 const logger = require('./logger');
+const { t, currentLanguage } = require('../i18n');
 
 const NOTE_LIMIT = 500;
 
@@ -18,21 +19,21 @@ async function fetchReportThread(guild, report) {
  * is locked and archived. Each step is best effort, because locking needs Manage Threads and a missing permission
  * must never get in the way of the report itself.
  */
-async function closeReportThread(thread, { status, note, byId }) {
-  const outcome = status === 'resolved' ? 'Resolved' : 'Dismissed';
+async function closeReportThread(thread, { status, note, byId, lang = currentLanguage() }) {
+  const outcome = status === 'resolved' ? 'resolved' : 'dismissed';
   await thread
-    .send({ content: `**Report ${outcome.toLowerCase()}** by <@${byId}>.${noteQuote(note)}`, allowedMentions: { parse: [] } })
+    .send({ content: `${t(lang, `reports.thread.${outcome}`, { user: `<@${byId}>` })}${noteQuote(note)}`, allowedMentions: { parse: [] } })
     .catch((err) => logger.warn(`Could not post the closing note in thread ${thread.id}: ${err.message}`));
-  await thread.setLocked(true, `Report ${outcome.toLowerCase()}`).catch(() => {});
-  await thread.setArchived(true, `Report ${outcome.toLowerCase()}`).catch((err) => logger.warn(`Could not archive thread ${thread.id}: ${err.message}`));
+  await thread.setLocked(true, t(lang, `reports.thread.audit.${outcome}`)).catch(() => {});
+  await thread.setArchived(true, t(lang, `reports.thread.audit.${outcome}`)).catch((err) => logger.warn(`Could not archive thread ${thread.id}: ${err.message}`));
 }
 
 /** Opens the discussion again when a closed report is reopened. */
-async function reopenReportThread(thread, { byId, note }) {
-  await thread.setLocked(false, 'Report reopened').catch(() => {});
-  await thread.setArchived(false, 'Report reopened').catch((err) => logger.warn(`Could not unarchive thread ${thread.id}: ${err.message}`));
+async function reopenReportThread(thread, { byId, note, lang = currentLanguage() }) {
+  await thread.setLocked(false, t(lang, 'reports.thread.audit.reopened')).catch(() => {});
+  await thread.setArchived(false, t(lang, 'reports.thread.audit.reopened')).catch((err) => logger.warn(`Could not unarchive thread ${thread.id}: ${err.message}`));
   await thread
-    .send({ content: `**Report reopened** by <@${byId}>.${noteQuote(note)}`, allowedMentions: { parse: [] } })
+    .send({ content: `${t(lang, 'reports.thread.reopened', { user: `<@${byId}>` })}${noteQuote(note)}`, allowedMentions: { parse: [] } })
     .catch((err) => logger.warn(`Could not post the reopening note in thread ${thread.id}: ${err.message}`));
 }
 

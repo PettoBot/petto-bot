@@ -155,4 +155,21 @@ for (const action of NEEDS_REASON) {
   assert.ok(input.min_length >= 1 && input.max_length <= 4000);
 }
 
+// The cards and forms fit Discord's limits in Spanish and Portuguese too.
+for (const lang of ['es', 'pt-BR']) {
+  for (const status of ['open', 'claimed', 'resolved', 'dismissed']) {
+    const stats = inspect(buildReportCard({ ...withThread, status, resolution_note: note, reopened_by: '9', reopen_note: longText }, { pingRoleIds: ['555555555555555555'], lang }));
+    assert.ok(stats.chars <= 4000 && stats.components <= 40 && stats.buttons <= 5, `${lang} ${status} card fits`);
+  }
+  assert.ok(!inspect(buildReportCard({ ...base, anonymous: true }, { lang })).text.includes(base.reporter_id), `${lang}: an anonymous report never names the reporter`);
+  for (const action of NEEDS_REASON) {
+    const modal = buildReasonModal(action, 123456789, lang).toJSON();
+    assert.ok(modal.title.length <= 45 && modal.components[0].description.length <= 100 && modal.components[0].label.length <= 45, `${lang} ${action} form fits`);
+  }
+  const form = buildReportModal({ customId: 'rp_usr::1', title: 'Report', intro: 'x', config: { urgent_role_id: '1', anonymous_reporting_enabled: true }, lang }).toJSON();
+  for (const label of form.components.filter((c) => c.type === 18)) assert.ok(label.label.length <= 45 && (label.description ?? '').length <= 100, `${lang} form label fits: ${label.label}`);
+}
+assert.equal(categoryLabel('scam', 'es'), 'Estafa o phishing');
+assert.equal(categoryLabel('scam', 'pt-BR'), 'Golpe ou phishing');
+
 console.log('Checked the report cards, categories, forms and button ids.');

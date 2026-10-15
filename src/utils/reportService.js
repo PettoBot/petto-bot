@@ -4,6 +4,7 @@ const { buildReportPayload } = require('./reportCard');
 const { DEFAULT_CATEGORY, isReportCategory } = require('./reportCategories');
 const { formatDuration } = require('./duration');
 const logger = require('./logger');
+const { t, tn, currentLanguage } = require('../i18n');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const IMAGE_URL_RE = /\.(?:avif|gif|jpe?g|png|webp)(?:[?#].*)?$/i;
@@ -40,22 +41,22 @@ function pingRolesFor(config, urgent) {
  * Everything that has to be true before a report is accepted. Returns a message for the reporter when it is
  * not, so a refusal is always explained.
  */
-async function checkCanReport({ guild, reporter, reportedUser, reason, config, now = Date.now() }) {
-  if (!config?.enabled || !config.channel_id) return 'Reports are not set up on this server yet.';
-  if (reportedUser.id === reporter.id) return 'You cannot report yourself.';
+async function checkCanReport({ guild, reporter, reportedUser, reason, config, now = Date.now(), lang = currentLanguage() }) {
+  if (!config?.enabled || !config.channel_id) return t(lang, 'reports.send.notSetUp');
+  if (reportedUser.id === reporter.id) return t(lang, 'reports.send.self');
 
   const block = await reportDb.getBlock(guild.id, reporter.id).catch(() => null);
-  if (block) return 'Staff have turned off reporting for your account in this server.';
+  if (block) return t(lang, 'reports.send.blocked');
 
-  if (config.require_reason && !reason) return 'This server requires a reason with every report. Please say what happened.';
+  if (config.require_reason && !reason) return t(lang, 'reports.send.reasonRequired');
 
   if (config.cooldown_seconds > 0 || config.daily_limit > 0) {
     const activity = await reportDb.getReporterActivity(guild.id, reporter.id, now - DAY_MS).catch(() => null);
     if (activity?.lastAt && config.cooldown_seconds > 0 && now - activity.lastAt < config.cooldown_seconds * 1000) {
-      return `You sent a report a moment ago. Please wait ${formatDuration(config.cooldown_seconds * 1000 - (now - activity.lastAt))} before sending another.`;
+      return t(lang, 'reports.send.cooldown', { time: formatDuration(config.cooldown_seconds * 1000 - (now - activity.lastAt), lang) });
     }
     if (activity && config.daily_limit > 0 && activity.count >= config.daily_limit) {
-      return `You reached the limit of ${config.daily_limit} ${config.daily_limit === 1 ? 'report' : 'reports'} per day in this server.`;
+      return tn(lang, 'reports.send.dailyLimit', config.daily_limit, { count: config.daily_limit });
     }
   }
 
@@ -67,20 +68,20 @@ async function checkCanReport({ guild, reporter, reportedUser, reason, config, n
  *
  * @returns {Promise<{ok: true, report: object, thread: object|null} | {ok: false, message: string}>}
  */
-async function submitReport({ guild, reporter, reportedUser, category = DEFAULT_CATEGORY, reason = null, sourceChannel = null, message = null, anonymous = false, urgent = false }) {
+async function submitReport({ guild, reporter, reportedUser, category = DEFAULT_CATEGORY, reason = null, sourceChannel = null, message = null, anonymous = false, urgent = false, lang = currentLanguage() }) {
   const config = await reportDb.getConfig(guild.id).catch(() => null);
   const cleanReason = reason?.trim().slice(0, REASON_LIMIT) || null;
 
-  const refusal = await checkCanReport({ guild, reporter, reportedUser, reason: cleanReason, config });
+  const refusal = await checkCanReport({ guild, reporter, reportedUser, reason: cleanReason, config, lang });
   if (refusal) return { ok: false, message: refusal };
 
   const channel = await guild.channels.fetch(config.channel_id).catch(() => null);
-  if (!channel?.isTextBased?.()) return { ok: false, message: 'The configured report channel no longer exists. Ask staff to run `/report config` again.' };
+  if (!channel?.isTextBased?.()) return { ok: false, message: t(lang, 'reports.send.channelGone') };
 
   const me = guild.members.me;
   const permissions = me ? channel.permissionsFor(me) : null;
   if (permissions && !permissions.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks])) {
-    return { ok: false, message: 'I cannot post in the report channel right now. Please tell the staff team.' };
+    return { ok: false, message: t(lang, 'reports.send.cannotPost') };
   }
 
   const useUrgent = urgent === true && Boolean(config.urgent_role_id);
@@ -102,11 +103,11 @@ async function submitReport({ guild, reporter, reportedUser, category = DEFAULT_
 
   let sent;
   try {
-    sent = await channel.send(buildReportPayload(report, { pingRoleIds: pingRolesFor(config, useUrgent) }));
+    sent = await channel.send(buildReportPayload(report, { pingRoleIds: pingRolesFor(config, useUrgent), lang }));
   } catch (err) {
     logger.error(`Failed to deliver report #${report.report_number} in guild ${guild.id}:`, err);
     await reportDb.deleteReport(guild.id, report.report_number).catch(() => {});
-    return { ok: false, message: 'I could not deliver your report to the staff team. Please try again in a moment.' };
+    return { ok: false, message: t(lang, 'reports.send.deliveryFailed') };
   }
 
   report = (await reportDb.updateReport(guild.id, report.report_number, { report_channel_id: channel.id, report_message_id: sent.id }).catch(() => null)) ?? report;
@@ -114,7 +115,7 @@ async function submitReport({ guild, reporter, reportedUser, category = DEFAULT_
   let thread = null;
   if (config.auto_thread && typeof sent.startThread === 'function') {
     thread = await sent
-      .startThread({ name: `Report #${report.report_number} · ${reportedUser.username}`.slice(0, 100), autoArchiveDuration: 1440, reason: 'Petto report discussion' })
+      .startThread({ name: t(lang, 'reports.send.threadName', { number: report.report_number, user: reportedUser.username }).slice(0, 100), autoArchiveDuration: 1440, reason: t(lang, 'reports.send.threadReason') })
       .catch((err) => {
         logger.warn(`Could not start a thread for report #${report.report_number} in guild ${guild.id}: ${err.message}`);
         return null;
@@ -123,7 +124,7 @@ async function submitReport({ guild, reporter, reportedUser, category = DEFAULT_
       report = (await reportDb.updateReport(guild.id, report.report_number, { thread_id: thread.id }).catch(() => null)) ?? report;
       // The card was posted before the thread existed, so it gets edited to show the invite button. Editing never pings.
       await Promise.resolve()
-        .then(() => sent.edit({ ...buildReportPayload(report, { pingRoleIds: pingRolesFor(config, useUrgent) }), allowedMentions: { parse: [] } }))
+        .then(() => sent.edit({ ...buildReportPayload(report, { pingRoleIds: pingRolesFor(config, useUrgent), lang }), allowedMentions: { parse: [] } }))
         .catch((err) => logger.warn(`Could not add the thread button to report #${report.report_number}: ${err.message}`));
     }
   }
