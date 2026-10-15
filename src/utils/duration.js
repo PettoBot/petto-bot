@@ -32,7 +32,8 @@ const GLUE = /^[\s,]*(?:and|y|e)?[\s,]*/i;
  */
 function parseDuration(str) {
   const text = String(str ?? '').trim().toLowerCase();
-  if (!text) return null;
+  // No real length of time is this long; the cap also keeps the patterns below fast on hostile input.
+  if (!text || text.length > 64) return null;
 
   let total = 0;
   let index = 0;
