@@ -6,7 +6,7 @@
 function withTimeout(promise, ms, label = 'operation') {
   let timer;
   const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms); // i18n-ignore: internal error
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }

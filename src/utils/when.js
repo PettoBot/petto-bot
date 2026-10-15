@@ -1,5 +1,5 @@
 // @ts-check
-// Moments in time, the way people write them: "in 2h", "3d 4h", "tomorrow 8pm", "mañana 20:00", "2026-10-12 18:00", a Discord
+// Moments in time, the way people write them: "in 2h", "3d 4h", "tomorrow 8pm", "mañana 20:00", "amanhã às 20:00", "2026-10-12 18:00", a Discord
 // timestamp or a unix time. Used by commands that take a time and by the {timestamp:...} variable. Times are read in GMT-5 (Colombia), unless they end in `z` or `utc`.
 
 const { parseDuration } = require('./duration');
@@ -16,14 +16,15 @@ function discordTimestamp(ms, style = 'f') {
   return `<t:${Math.floor(ms / 1000)}:${TIMESTAMP_STYLES[style] ?? 'f'}>`;
 }
 
-const DAY_WORDS = new Map([
-  ['today', 0], ['hoy', 0], ['tonight', 0], ['esta noche', 0],
-  ['tomorrow', 1], ['tmrw', 1], ['mañana', 1], ['manana', 1],
+// Words people type, in English, Spanish and Portuguese (read, never shown). A longer phrase goes before the word it starts with.
+const DAY_WORDS = new Map([ // i18n-ignore-next-line
+  ['today', 0], ['hoy', 0], ['tonight', 0], ['esta noche', 0], ['hoje à noite', 0], ['hoje a noite', 0], ['hoje', 0], // i18n-ignore
+  ['tomorrow', 1], ['tmrw', 1], ['mañana', 1], ['manana', 1], ['amanhã', 1], ['amanha', 1], // i18n-ignore
 ]);
 
 /** "8pm", "8:30 pm", "20:00", "at 8pm", "a las 20:00" -> minutes after midnight, or null. */
 function readClock(text) {
-  const match = text.trim().match(/^(?:at|a las|a la|@)?\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?$/i);
+  const match = text.trim().match(/^(?:at|a las|a la|às|as|@)?\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?$/i);
   if (!match) return null;
   let hour = Number(match[1]);
   const minute = match[2] ? Number(match[2]) : 0;
@@ -35,7 +36,7 @@ function readClock(text) {
     if (meridiem === 'am' && hour === 12) hour = 0;
   } else if (hour > 23) {
     return null;
-  } else if (!match[2] && !/^(?:at|a las|a la|@)/i.test(text.trim())) {
+  } else if (!match[2] && !/^(?:at|a las|a la|às|as|@)/i.test(text.trim())) {
     return null; // a bare number is not a time of day
   }
   return hour * 60 + minute;
@@ -62,14 +63,14 @@ function parseWhen(input, { now = Date.now() } = {}) {
     return check.getUTCMonth() === Number(iso[2]) - 1 && check.getUTCDate() === Number(iso[3]) ? moment : null;
   }
 
-  const relative = text.replace(/^(?:in|en|dentro de|within)\s+/, '');
+  const relative = text.replace(/^(?:in|en|em|dentro de|daqui a|within)\s+/, '');
   const length = parseDuration(relative);
   if (length) return now + length;
 
   for (const [word, offset] of DAY_WORDS) {
     if (text === word || text.startsWith(`${word} `)) {
       const rest = text.slice(word.length).trim();
-      const clock = rest ? readClock(rest) : word.includes('noche') || word === 'tonight' ? 21 * 60 : null;
+      const clock = rest ? readClock(rest) : word.includes('noche') || word.includes('noite') || word === 'tonight' ? 21 * 60 : null;
       if (clock === null) return null;
       const day = new Date(now + OFFSET_MS);
       return Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate() + offset) + clock * 60_000 - OFFSET_MS;
