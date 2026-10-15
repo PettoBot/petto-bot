@@ -1,21 +1,26 @@
 const { EmbedBuilder, SlashCommandBuilder } = require('discord.js');
 const { COLORS } = require('../../utils/colors');
+const { t, languageOf, currentLanguage } = require('../../i18n');
 
 class Calculator {
-  constructor(expression) {
+  constructor(expression, lang = currentLanguage()) {
     this.expression = expression;
+    this.lang = lang;
     this.tokens = expression.match(/(?:\d+(?:\.\d*)?|\.\d+)|[()+\-*/%^]/g) ?? [];
     this.position = 0;
-    if (!this.tokens.length || this.tokens.join('') !== expression.replace(/\s+/g, '')) throw new Error('Only numbers, parentheses, and arithmetic operators are supported.');
+    if (!this.tokens.length || this.tokens.join('') !== expression.replace(/\s+/g, '')) this.fail('unsupported');
   }
+
+  // The errors are shown to the member, after "I could not calculate that:".
+  fail(reason) { throw new Error(t(this.lang, `utility.calc.error.${reason}`)); }
 
   current() { return this.tokens[this.position]; }
   take(token) { if (this.current() === token) { this.position += 1; return true; } return false; }
 
   parse() {
     const result = this.additive();
-    if (this.position !== this.tokens.length) throw new Error('The expression has an unexpected operator or value.');
-    if (!Number.isFinite(result) || Math.abs(result) > 1e100) throw new Error('That result is too large or not a finite number.');
+    if (this.position !== this.tokens.length) this.fail('unexpected');
+    if (!Number.isFinite(result) || Math.abs(result) > 1e100) this.fail('tooLarge');
     return result;
   }
 
@@ -34,7 +39,7 @@ class Calculator {
     while (['*', '/', '%'].includes(this.current())) {
       const operator = this.tokens[this.position++];
       const next = this.power();
-      if ((operator === '/' || operator === '%') && next === 0) throw new Error('Division by zero is not allowed.');
+      if ((operator === '/' || operator === '%') && next === 0) this.fail('divisionByZero');
       value = operator === '*' ? value * next : operator === '/' ? value / next : value % next;
     }
     return value;
@@ -51,11 +56,11 @@ class Calculator {
     if (this.take('-')) return -this.unary();
     if (this.take('(')) {
       const value = this.additive();
-      if (!this.take(')')) throw new Error('A closing parenthesis is missing.');
+      if (!this.take(')')) this.fail('closingParenthesis');
       return value;
     }
     const value = Number(this.tokens[this.position++]);
-    if (!Number.isFinite(value)) throw new Error('A number was expected.');
+    if (!Number.isFinite(value)) this.fail('numberExpected');
     return value;
   }
 }
@@ -72,18 +77,19 @@ module.exports = {
     .addStringOption((option) => option.setName('expression').setDescription('Example: (12 + 4) * 3 / 2').setRequired(true)),
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const expression = interaction.options.getString('expression', true).trim();
     if (expression.length > 120) {
-      await interaction.reply({ content: 'Keep the expression under 120 characters.' });
+      await interaction.reply({ content: t(lang, 'utility.calc.tooLong') });
       return;
     }
 
     try {
-      const result = new Calculator(expression).parse();
-      const embed = new EmbedBuilder().setColor(COLORS.DEFAULT).setTitle('Calculator').setDescription(`\`${expression}\`\n\n**${formatResult(result)}**`);
+      const result = new Calculator(expression, lang).parse();
+      const embed = new EmbedBuilder().setColor(COLORS.DEFAULT).setTitle(t(lang, 'utility.calc.title')).setDescription(`\`${expression}\`\n\n**${formatResult(result)}**`);
       await interaction.reply({ embeds: [embed] });
     } catch (error) {
-      await interaction.reply({ content: `I could not calculate that: ${error.message}` });
+      await interaction.reply({ content: t(lang, 'utility.calc.failed', { reason: error.message }) });
     }
   },
 };

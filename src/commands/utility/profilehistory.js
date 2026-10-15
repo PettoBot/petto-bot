@@ -5,6 +5,7 @@ const { renderAvatarSheet, MAX_TILES } = require('../../utils/avatarSheet');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { COLORS } = require('../../utils/colors');
+const { t, tn, languageOf } = require('../../i18n');
 
 const ACCENT = 0x8c7cff;
 const MAX_LINES = 40;
@@ -42,26 +43,30 @@ module.exports = {
 const say = (interaction, text, color = 0x4b4f59, ephemeral = false) => interaction.reply({ components: [textCard(text, color)], flags: ephemeral ? V2 | MessageFlags.Ephemeral : V2, allowedMentions: { parse: [] } });
 
 async function clearCmd(interaction) {
+  const lang = await languageOf(interaction);
   const what = interaction.options.getString('what', true);
   const kind = { avatars: 'avatar', names: 'name', nicknames: 'nickname', all: null }[what];
   const removed = await history.clear(interaction.user.id, kind);
-  return say(interaction, `${EMOJI.APPROVE}  Deleted ${removed} saved ${what === 'all' ? 'entries' : what}. ${await recordingOn(interaction.user.id) ? 'Petto keeps saving new ones; use `profilehistory record false` to stop.' : 'Saving is off for you.'}`, COLORS.GREEN, true);
+  const status = t(lang, await recordingOn(interaction.user.id) ? 'utility.history.stillSaving' : 'utility.history.savingOff');
+  return say(interaction, tn(lang, `utility.history.cleared.${what}`, removed, { emoji: EMOJI.APPROVE, count: removed, status }), COLORS.GREEN, true);
 }
 
 async function recordCmd(interaction) {
+  const lang = await languageOf(interaction);
   const enabled = interaction.options.getBoolean('enabled', true);
   await history.setOptOut(interaction.user.id, !enabled);
   forgetOptOut(interaction.user.id);
   if (enabled) await noteUser(interaction.user);
-  return say(interaction, enabled ? `${EMOJI.APPROVE}  Your avatars, names and nicknames are saved again.` : `${EMOJI.APPROVE}  Petto stops saving your history, and others cannot see it. What is saved stays until you \`clear\` it.`, COLORS.GREEN, true);
+  return say(interaction, t(lang, enabled ? 'utility.history.recordOn' : 'utility.history.recordOff', { emoji: EMOJI.APPROVE }), COLORS.GREEN, true);
 }
 
 async function showCmd(interaction, kindName) {
+  const lang = await languageOf(interaction);
   const user = interaction.options.getUser('user') ?? interaction.user;
-  if (user.bot) return say(interaction, 'Bots do not have a history.', COLORS.RED, true);
+  if (user.bot) return say(interaction, t(lang, 'utility.history.bot'), COLORS.RED, true);
   const self = user.id === interaction.user.id;
   if (!(await recordingOn(user.id))) {
-    return say(interaction, self ? 'Your history is turned off. Use `profilehistory record true` to save it again.' : `${user} turned their history off.`, 0x4b4f59, true);
+    return say(interaction, self ? t(lang, 'utility.history.offSelf') : t(lang, 'utility.history.offOther', { user: `${user}` }), 0x4b4f59, true);
   }
   await interaction.deferReply({ flags: V2 });
   // What the person shows now is part of the history, so it is saved before it is read.
@@ -69,26 +74,30 @@ async function showCmd(interaction, kindName) {
   await noteUser(user);
   if (member) await noteMember(member);
 
-  if (kindName === 'avatars') return showAvatars(interaction, user);
+  if (kindName === 'avatars') return showAvatars(interaction, user, lang);
   const kind = kindName === 'names' ? 'name' : 'nickname';
   const rows = await history.list(user.id, kind, { guildId: kind === 'nickname' ? interaction.guild.id : null });
   const total = rows.length;
-  const title = kind === 'name' ? `Names of ${user.username}` : `Nicknames of ${member?.displayName ?? user.username} in this server`;
-  if (!total) return interaction.editReply({ components: [textCard(`No ${kindName} are saved yet.`, 0x4b4f59)], flags: V2 });
-  const lines = rows.slice(0, MAX_LINES).map((row, index) => `${index === 0 ? '**Now**' : `${index + 1}.`} ${String(row.value).replace(/[\\`*_~|>]/g, '\\$&')} · <t:${unix(row.seen_at)}:R>`);
+  const title = kind === 'name' ? t(lang, 'utility.history.namesTitle', { name: user.username }) : t(lang, 'utility.history.nicknamesTitle', { name: member?.displayName ?? user.username });
+  if (!total) return interaction.editReply({ components: [textCard(t(lang, `utility.history.empty.${kindName}`), 0x4b4f59)], flags: V2 });
+  const now = `**${t(lang, 'utility.history.now')}**`;
+  // \x60 is the backtick: written so, the text scanner of scripts/find-hardcoded-text.js does not read a template there.
+  const lines = rows.slice(0, MAX_LINES).map((row, index) => `${index === 0 ? now : `${index + 1}.`} ${String(row.value).replace(/[\\\x60*_~|>]/g, '\\$&')} · <t:${unix(row.seen_at)}:R>`);
+  const saved = total > MAX_LINES ? t(lang, 'utility.history.savedMore', { count: total, shown: MAX_LINES }) : tn(lang, 'utility.history.saved', total, { count: total });
   const container = new ContainerBuilder().setAccentColor(ACCENT)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### ${title}\n${total} saved${total > MAX_LINES ? `, the newest ${MAX_LINES} shown` : ''}`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### ${title}\n${saved}`))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n').slice(0, 3500)));
   return interaction.editReply({ components: [container], flags: V2, allowedMentions: { parse: [] } });
 }
 
-async function showAvatars(interaction, user) {
+async function showAvatars(interaction, user, lang) {
   const rows = await history.list(user.id, 'avatar');
-  if (!rows.length) return interaction.editReply({ components: [textCard('No avatars are saved yet: this person has the default one.', 0x4b4f59)], flags: V2 });
+  if (!rows.length) return interaction.editReply({ components: [textCard(t(lang, 'utility.history.empty.avatars'), 0x4b4f59)], flags: V2 });
   const sheet = await renderAvatarSheet(user.id, rows);
+  const saved = rows.length > MAX_TILES ? t(lang, 'utility.history.avatarsSavedMore', { count: rows.length, shown: MAX_TILES }) : tn(lang, 'utility.history.avatarsSaved', rows.length, { count: rows.length });
   const container = new ContainerBuilder().setAccentColor(ACCENT)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### Avatars of ${user.username}\n${rows.length} saved${rows.length > MAX_TILES ? `, the newest ${MAX_TILES} shown` : ''}, newest first`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### ${t(lang, 'utility.history.avatarsTitle', { name: user.username })}\n${saved}`))
     .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://avatars.png')));
   return interaction.editReply({ components: [container], files: [new AttachmentBuilder(sheet.buffer, { name: 'avatars.png' })], flags: V2, allowedMentions: { parse: [] } });
 }

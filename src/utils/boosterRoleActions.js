@@ -1,5 +1,6 @@
 // Shared validation and mutation helpers for booster-role commands.
 const db = require('../db/boosterRole');
+const { t, tn, currentLanguage } = require('../i18n');
 
 function parseHex(str) {
   if (!str) return null;
@@ -17,16 +18,16 @@ function filterCheck(name, words) {
   return (words ?? []).some((w) => lower.includes(w.toLowerCase()));
 }
 
-function resolveIconInput(input) {
-  if (!input) return { error: 'Provide a URL, custom emoji `<:name:id>`, or sticker ID.' };
-  if (/^<a:\w+:\d+>$/.test(input)) return { error: 'Animated emojis are not supported for role icons.' };
+function resolveIconInput(input, lang = currentLanguage()) {
+  if (!input) return { error: t(lang, 'utility.boosterrole.icon.missing') };
+  if (/^<a:\w+:\d+>$/.test(input)) return { error: t(lang, 'utility.boosterrole.icon.animated') };
 
   const emojiMatch = input.match(/^<:[\w~]+:(\d+)>$/);
   if (emojiMatch) return { url: `https://cdn.discordapp.com/emojis/${emojiMatch[1]}.png` };
   if (input.startsWith('http')) return { url: input };
   if (/^\d{15,25}$/.test(input)) return { url: `https://media.discordapp.net/stickers/${input}.png` };
 
-  return { error: 'Provide a valid URL, custom emoji `<:name:id>`, or sticker ID.' };
+  return { error: t(lang, 'utility.boosterrole.icon.invalid') };
 }
 
 /** Returns remaining ms on a cooldown (0 if elapsed, not set, or the cooldown itself is disabled). */
@@ -67,13 +68,14 @@ async function getTargetPosition(guild, config) {
 /**
  * Creates or updates a member's booster role. `bypassLimit` skips the
  * per-user role_limit check (used by admin's direct `set`, which is allowed
- * to act regardless of the member's own boost status/limit).
+ * to act regardless of the member's own boost status/limit). `lang` is the
+ * language of the errors and of the audit log reasons.
  */
-async function applyRole({ guild, member, colorInt, color2Int, name, bypassLimit = false }) {
+async function applyRole({ guild, member, colorInt, color2Int, name, bypassLimit = false, lang = currentLanguage() }) {
   const config = await db.ensureConfig(guild.id);
 
   if (name && filterCheck(name, config.filtered_words)) {
-    return { error: 'That role name contains a filtered word.' };
+    return { error: t(lang, 'utility.boosterrole.filteredRoleName') };
   }
 
   const existing = await db.getBoosterRole(guild.id, member.id);
@@ -97,11 +99,11 @@ async function applyRole({ guild, member, colorInt, color2Int, name, bypassLimit
 
   if (!bypassLimit && config.role_limit > 0) {
     const count = await db.countBoosterRoles(guild.id, member.id);
-    if (count >= config.role_limit) return { error: `This member already has **${config.role_limit}** booster role(s) (the server limit).` };
+    if (count >= config.role_limit) return { error: tn(lang, 'utility.boosterrole.limitReached', config.role_limit, { count: config.role_limit }) };
   }
 
   const position = await getTargetPosition(guild, config);
-  const roleData = { name: name || member.displayName, reason: `Booster role for ${member.user.tag}` };
+  const roleData = { name: name || member.displayName, reason: t(lang, 'utility.boosterrole.audit.created', { user: member.user.tag }) };
   if (colorInt !== undefined) roleData.colors = { primaryColor: colorInt, secondaryColor: color2Int ?? undefined };
 
   let role;
@@ -110,7 +112,7 @@ async function applyRole({ guild, member, colorInt, color2Int, name, bypassLimit
     await role.setPosition(position).catch(() => {});
     await member.roles.add(role);
   } catch (err) {
-    if (role) await role.delete('Booster role creation failed partway through').catch(() => {});
+    if (role) await role.delete(t(lang, 'utility.boosterrole.audit.failed')).catch(() => {});
     return { error: err.message };
   }
 

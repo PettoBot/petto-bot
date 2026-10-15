@@ -15,21 +15,22 @@ function collectionValues(collection) {
   return collection ? [...collection.values()] : [];
 }
 
+// A name Discord did not give is kept as null: !snipe writes "Unknown user" in the server's language when it shows it.
 function snapshotMessage(message) {
   return {
     id: message.id,
     channelId: message.channelId,
     author: {
       id: message.author?.id ?? null,
-      tag: message.author?.tag ?? message.author?.username ?? 'Unknown user',
-      name: message.member?.displayName ?? message.author?.globalName ?? message.author?.username ?? 'Unknown user',
+      tag: message.author?.tag ?? message.author?.username ?? null,
+      name: message.member?.displayName ?? message.author?.globalName ?? message.author?.username ?? null,
       avatar: message.author?.displayAvatarURL?.({ extension: 'png', size: 128 }) ?? null,
       bot: Boolean(message.author?.bot),
     },
     content: message.content ?? '',
     createdTimestamp: message.createdTimestamp ?? Date.now(),
     attachments: collectionValues(message.attachments).map((attachment) => ({
-      name: attachment.name ?? 'Attachment',
+      name: attachment.name ?? null,
       url: attachment.url,
       contentType: attachment.contentType ?? '',
     })),
@@ -61,7 +62,7 @@ function snapshotFor(message) {
     content: current.content || previous.content,
     attachments: current.attachments.length ? current.attachments : previous.attachments,
     embeds: current.embeds.length ? current.embeds : previous.embeds,
-    author: { ...previous.author, ...current.author, name: current.author.name === 'Unknown user' ? previous.author.name : current.author.name },
+    author: { ...previous.author, ...current.author, name: current.author.name ?? previous.author.name },
   };
 }
 

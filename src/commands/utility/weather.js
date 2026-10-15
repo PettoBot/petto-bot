@@ -1,14 +1,9 @@
 const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 const { COLORS } = require('../../utils/colors');
+const { t, languageOf } = require('../../i18n');
 
-const WEATHER_LABELS = {
-  0: 'Clear sky', 1: 'Mainly clear', 2: 'Partly cloudy', 3: 'Overcast',
-  45: 'Fog', 48: 'Rime fog', 51: 'Light drizzle', 53: 'Drizzle', 55: 'Heavy drizzle',
-  56: 'Light freezing drizzle', 57: 'Freezing drizzle', 61: 'Light rain', 63: 'Rain', 65: 'Heavy rain',
-  66: 'Light freezing rain', 67: 'Freezing rain', 71: 'Light snow', 73: 'Snow', 75: 'Heavy snow',
-  77: 'Snow grains', 80: 'Light showers', 81: 'Showers', 82: 'Heavy showers',
-  85: 'Light snow showers', 86: 'Heavy snow showers', 95: 'Thunderstorm', 96: 'Thunderstorm with hail', 99: 'Thunderstorm with heavy hail',
-};
+// The WMO weather codes Open-Meteo answers with; each one is named in `utility.weather.code.<code>`.
+const WEATHER_CODES = new Set([0, 1, 2, 3, 45, 48, 51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 71, 73, 75, 77, 80, 81, 82, 85, 86, 95, 96, 99]);
 
 module.exports = {
   aliases: ['clima', 'meteo'],
@@ -18,13 +13,14 @@ module.exports = {
     .addStringOption((option) => option.setName('place').setDescription('City or country, for example San Salvador or Colombia').setRequired(true)),
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const place = interaction.options.getString('place', true).trim();
     await interaction.deferReply({ flags: MessageFlags.SuppressNotifications });
 
     try {
       const location = await geocode(place);
       if (!location) {
-        await interaction.editReply({ content: `I couldn't find **${place}**. Try a city name or a country.` });
+        await interaction.editReply({ content: t(lang, 'utility.weather.notFound', { place }) });
         return;
       }
 
@@ -33,25 +29,27 @@ module.exports = {
       const windUnit = weather.wind_speed_unit === 'mph' ? 'mph' : 'km/h';
       const embed = new EmbedBuilder()
         .setColor(COLORS.DEFAULT)
-        .setTitle(`Weather · ${location.name}${location.country ? `, ${location.country}` : ''}`)
-        .setDescription(`**${WEATHER_LABELS[weather.weather_code] ?? 'Current conditions'}**`)
+        .setTitle(t(lang, 'utility.weather.title', { place: `${location.name}${location.country ? `, ${location.country}` : ''}` }))
+        .setDescription(`**${t(lang, WEATHER_CODES.has(weather.weather_code) ? `utility.weather.code.${weather.weather_code}` : 'utility.weather.current')}**`)
         .addFields(
-          { name: 'Temperature', value: `${Math.round(weather.temperature_2m)}${unit}`, inline: true },
-          { name: 'Feels like', value: `${Math.round(weather.apparent_temperature)}${unit}`, inline: true },
-          { name: 'Wind', value: `${Math.round(weather.wind_speed_10m)} ${windUnit}`, inline: true },
+          { name: t(lang, 'utility.weather.temperature'), value: `${Math.round(weather.temperature_2m)}${unit}`, inline: true },
+          { name: t(lang, 'utility.weather.feelsLike'), value: `${Math.round(weather.apparent_temperature)}${unit}`, inline: true },
+          { name: t(lang, 'utility.weather.wind'), value: `${Math.round(weather.wind_speed_10m)} ${windUnit}`, inline: true },
         )
-        .setFooter({ text: 'Weather data from Open-Meteo. No API key required.' });
+        .setFooter({ text: t(lang, 'utility.weather.footer') });
       await interaction.editReply({ embeds: [embed] });
     } catch {
-      await interaction.editReply({ content: 'The weather service is unavailable right now. Try again in a moment.' });
+      await interaction.editReply({ content: t(lang, 'utility.weather.unavailable') });
     }
   },
 };
 
+// The search stays in English: Open-Meteo's `language` also changes which place matches a name (with `es`, "Germany"
+// finds a town in the United States), so place names come back as the API writes them in English.
 async function geocode(name) {
   const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=1&language=en&format=json`;
   const response = await fetch(url, { headers: { Accept: 'application/json' } });
-  if (!response.ok) throw new Error(`Geocoding failed with ${response.status}`);
+  if (!response.ok) throw new Error(`Geocoding failed with ${response.status}`); // i18n-ignore: internal error, execute answers with its own message
   const body = await response.json();
   const result = body.results?.[0];
   return result ? { name: result.name, country: result.country, latitude: result.latitude, longitude: result.longitude } : null;
@@ -65,7 +63,7 @@ async function currentWeather(latitude, longitude) {
     timezone: 'auto',
   });
   const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`, { headers: { Accept: 'application/json' } });
-  if (!response.ok) throw new Error(`Forecast failed with ${response.status}`);
+  if (!response.ok) throw new Error(`Forecast failed with ${response.status}`); // i18n-ignore: internal error, execute answers with its own message
   const body = await response.json();
   return { ...body.current, ...Object.fromEntries(Object.entries(body.current_units ?? {}).map(([key, value]) => [`${key}_unit`, value])) };
 }
