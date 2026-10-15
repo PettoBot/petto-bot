@@ -3,7 +3,7 @@ import { recordRoleplayResponse, type RoleplayResponseKind } from '../db/rolepla
 import {
   buildRoleplayButtonRow,
   getRoleplayCounterMessage,
-  getRoleplayLabel,
+  getRoleplayResponseSentence,
   ROLEPLAY_BUTTON_PREFIX,
 } from '../utils/roleplayButtons';
 
@@ -13,6 +13,10 @@ const { fetchActionImage } = require('../utils/roleplay') as {
   fetchActionImage: (action: string) => Promise<string | null>;
 };
 const { COLORS } = require('../utils/colors') as { COLORS: { GREEN: number; RED: number } };
+const { t, languageOf } = require('../i18n') as {
+  t: (lang: string, key: string, vars?: Record<string, unknown>) => string;
+  languageOf: (interaction: unknown) => Promise<string>;
+};
 
 interface ParsedRoleplayButton {
   response: RoleplayResponseKind;
@@ -43,10 +47,11 @@ function displayName(user: { globalName?: string | null; username: string }): st
 }
 
 export async function handleButton(interaction: ButtonInteraction): Promise<boolean> {
+  const lang = await languageOf(interaction);
   const parsed = parseButton(interaction.customId);
   if (!parsed) {
     await interaction.reply({
-      content: 'This roleplay interaction is no longer valid. Please send the command again.',
+      content: t(lang, 'roleplay.response.invalid'),
       flags: MessageFlags.Ephemeral,
       allowedMentions: { parse: [] },
     }).catch(() => {});
@@ -55,7 +60,7 @@ export async function handleButton(interaction: ButtonInteraction): Promise<bool
 
   if (interaction.user.id !== parsed.targetId) {
     await interaction.reply({
-      content: 'Only the mentioned member can respond to this roleplay interaction.',
+      content: t(lang, 'roleplay.response.notTarget'),
       flags: MessageFlags.Ephemeral,
       allowedMentions: { parse: [] },
     });
@@ -64,7 +69,7 @@ export async function handleButton(interaction: ButtonInteraction): Promise<bool
 
   if (!interaction.guildId || !interaction.channelId) {
     await interaction.reply({
-      content: 'Roleplay responses are only available inside a server.',
+      content: t(lang, 'roleplay.response.guildOnly'),
       flags: MessageFlags.Ephemeral,
       allowedMentions: { parse: [] },
     });
@@ -87,7 +92,7 @@ export async function handleButton(interaction: ButtonInteraction): Promise<bool
     });
   } catch {
     await interaction.followUp({
-      content: 'This roleplay response could not be saved. Please try again.',
+      content: t(lang, 'roleplay.response.saveFailed'),
       flags: MessageFlags.Ephemeral,
       allowedMentions: { parse: [] },
     }).catch(() => {});
@@ -96,7 +101,7 @@ export async function handleButton(interaction: ButtonInteraction): Promise<bool
 
   if (!result.claimed) {
     await interaction.followUp({
-      content: 'This roleplay interaction already has a response.',
+      content: t(lang, 'roleplay.response.alreadyAnswered'),
       flags: MessageFlags.Ephemeral,
       allowedMentions: { parse: [] },
     }).catch(() => {});
@@ -106,21 +111,18 @@ export async function handleButton(interaction: ButtonInteraction): Promise<bool
   const responseAction = parsed.response === 'accepted' ? parsed.action : 'slap';
   const imageUrl = await fetchActionImage(responseAction);
   const actor = await interaction.client.users.fetch(parsed.actorId).catch(() => null);
-  const actorLabel = actor ? displayName(actor) : 'The sender';
+  const actorLabel = actor ? displayName(actor) : t(lang, 'roleplay.response.unknownSender');
   const targetLabel = displayName(interaction.user);
-  const actionLabel = getRoleplayLabel(parsed.action);
-  const description = parsed.response === 'accepted'
-    ? `**${targetLabel}** responds to **${actorLabel}** with a ${actionLabel}.`
-    : `**${targetLabel}** rejects the ${actionLabel} from **${actorLabel}** and gives them a slap.`;
+  const description = getRoleplayResponseSentence(parsed.action, parsed.response === 'accepted', targetLabel, actorLabel, lang);
   const counterAction = parsed.response === 'accepted' ? parsed.action : 'slap';
   const counterRecipient = parsed.response === 'accepted' ? `**${targetLabel}**` : `**${actorLabel}**`;
-  const counterMessage = getRoleplayCounterMessage(counterAction, result.counterValue, counterRecipient);
+  const counterMessage = getRoleplayCounterMessage(counterAction, result.counterValue, counterRecipient, lang);
 
   const embed = new EmbedBuilder()
     .setColor(parsed.response === 'accepted' ? COLORS.GREEN : COLORS.RED)
-    .setAuthor({ name: `${targetLabel} · response`, iconURL: interaction.user.displayAvatarURL({ size: 128 }) })
+    .setAuthor({ name: t(lang, 'roleplay.response.author', { name: targetLabel }), iconURL: interaction.user.displayAvatarURL({ size: 128 }) })
     .setDescription(`${description}\n\n*${counterMessage}*`)
-    .setFooter({ text: 'Roleplay response · Petto' });
+    .setFooter({ text: t(lang, 'roleplay.response.footer') });
 
   if (imageUrl) embed.setImage(imageUrl);
 
@@ -132,7 +134,7 @@ export async function handleButton(interaction: ButtonInteraction): Promise<bool
       action: parsed.action,
       actorId: parsed.actorId,
       targetId: parsed.targetId,
-    }, true)],
+    }, true, lang)],
     allowedMentions: { parse: [] },
   }).catch(() => {});
 
@@ -144,7 +146,7 @@ export async function handleButton(interaction: ButtonInteraction): Promise<bool
 
   if (!sent) {
     await interaction.followUp({
-      content: 'Your response was saved, but Petto could not send the roleplay message.',
+      content: t(lang, 'roleplay.response.sendFailed'),
       flags: MessageFlags.Ephemeral,
       allowedMentions: { parse: [] },
     }).catch(() => {});
