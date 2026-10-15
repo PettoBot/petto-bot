@@ -154,11 +154,18 @@ for (const [key, file] of used) if (!Object.hasOwn(english, key)) problem(`${fil
 // it uses src/i18n; SCAN_ALL then covers every file people read text from. Lines that must stay in English (logs, team
 // notices, names that are never translated) carry `i18n-ignore`; files nobody outside the team reads start with
 // `// i18n-ignore-file: <why>`.
-const SCAN_ALL = false;
+const SCAN_ALL = true;
 const SCANNED_DIRS = ['commands', 'interactions', 'events', 'jobs', 'utils', 'logging', 'handlers', 'imgutils'].map((dir) => path.join(ROOT, 'src', dir));
 const ignoredTexts = builderTexts();
 const USES_I18N = /require\(['"](?:\.\.?\/)+(?:\.\.\/)*i18n['"]\)/;
-for (const file of SCANNED_DIRS.flatMap(filesUnder)) {
+// The TypeScript sources of some files (src/**/*.ts, compiled over their .js by `npm run build:ts`) are held to the same
+// rule, so a build can never bring English back.
+const typeScriptSources = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+  const full = path.join(dir, entry.name);
+  if (entry.isDirectory()) return typeScriptSources(full);
+  return entry.name.endsWith('.ts') && !entry.name.endsWith('.d.ts') && fs.existsSync(full.replace(/\.ts$/, '.js')) ? [full] : [];
+}) : []);
+for (const file of [...SCANNED_DIRS.flatMap(filesUnder), ...typeScriptSources(path.join(ROOT, 'src'))]) {
   const source = fs.readFileSync(file, 'utf8');
   if (!SCAN_ALL && !USES_I18N.test(source)) continue;
   for (const hit of hardcodedText(source)) {

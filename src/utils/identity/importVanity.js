@@ -56,7 +56,7 @@ function freeName(name, taken) {
     const candidate = `vanity-${base}`.slice(0, 36) + `-${index}`;
     if (!taken.has(candidate)) return candidate;
   }
-  throw new Error(`No free name for the embed ${name}.`);
+  throw new Error(`No free name for the embed ${name}.`); // i18n-ignore: internal error of the import script
 }
 
 module.exports = { TOKEN_RENAMES, renameTokens, toPettoTemplate, freeName };
