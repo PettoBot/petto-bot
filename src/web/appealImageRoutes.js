@@ -57,7 +57,7 @@ function registerAppealImageRoutes(app, { authorize, isAuthorized }) {
     try {
       const image = await images.getImage(req.params.guildId, kind);
       if (!image) return res.status(404).json({ ok: false, error: 'not_found' });
-      res.set('Content-Type', image.mime).set('Cache-Control', 'public, max-age=300').send(image.bytes);
+      res.set('Content-Type', image.mime).set('Cache-Control', 'public, max-age=300').send(image.bytes); // i18n-ignore: HTTP header
     } catch (err) {
       logger.error(`Appeal image read failed for guild ${req.params.guildId}:`, err);
       res.status(500).json({ ok: false, error: 'failed' });

@@ -21,7 +21,7 @@ const kinds = new Map();
  *   options?: { label: string, value: string }[], placeholder?: string }> }} definition
  */
 function register(kind, definition) {
-  if (kind.includes('::')) throw new Error(`Pager kind "${kind}" cannot contain "::".`);
+  if (kind.includes('::')) throw new Error(`Pager kind "${kind}" cannot contain "::".`); // i18n-ignore: internal error
   kinds.set(kind, definition);
 }
 

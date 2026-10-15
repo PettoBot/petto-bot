@@ -81,7 +81,7 @@ function logFlushFailure(failedRows, batchSize, error) {
     return;
   }
 
-  const suffix = suppressedFlushErrors ? ` (${suppressedFlushErrors} similar errors suppressed)` : '';
+  const suffix = suppressedFlushErrors ? ` (${suppressedFlushErrors} similar errors suppressed)` : ''; // i18n-ignore: log
   suppressedFlushErrors = 0;
   lastFlushErrorLogAt = now;
   logger.error(`[Activity stats] Failed to flush ${failedRows}/${batchSize} buckets; counters were kept for retry${suffix}:`, error);

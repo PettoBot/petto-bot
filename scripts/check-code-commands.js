@@ -614,5 +614,73 @@ const row = (code, name = `c${(rowCount += 1)}`) => ({ name, code });
   assert.deepEqual(admin.effectDetails({ type: 'modal', modal: { title: 'T', fields: [{ label: 'Why', required: true }, { label: 'More', required: false }] } }), ['Fields: "Why", "More" (optional)']);
   assert.deepEqual(admin.effectDetails({ type: 'dm', embed: {} }), ['Embed: empty']);
 
+  // Spanish and Portuguese: the mistakes are said in the language of the server, the logs in the language of who reads them,
+  // and a template is installed with its sentences in the language of the server.
+  {
+    const { runWithLanguage, CATALOGS } = require('../src/i18n');
+    const { templateCode, templateIn } = require('../src/scripting/templates');
+    assert.equal(check('{{ if true }}x', 'es').message, 'Un "if" nunca se cierra con "end"');
+    assert.equal(runWithLanguage('pt-BR', () => check('x {{ foo')).message, 'Uma ação nunca é fechada, falta um }}', 'a parse error follows the language that is running');
+    assert.equal(admin.codeProblem('a\n{{ end }}', 'pt-BR'), 'O código tem um erro: "end" sem um bloco para fechar (linha 2, coluna 4)');
+    const stopped = await run('{{ div 1 0 }}', {}, { lang: 'es' }).catch((error) => error);
+    assert.equal(stopped.message, 'div: No se puede dividir entre cero (línea 1, columna 4)');
+    assert.equal(stopped.code, 'scripting.run.inFunction', 'a mistake has a code, so it is told apart without reading its words');
+    assert.equal(stopped.messageIn('pt-BR'), 'div: Não dá para dividir por zero (linha 1, coluna 4)', 'a mistake can be said again in another language');
+    const notNumber = await runWithLanguage('pt-BR', () => run('{{ add 1 "x" }}', {})).catch((error) => error);
+    assert.equal(notNumber.detail, 'add: Esperava um número, mas veio um texto "x"');
+    assert.equal(notNumber.detailIn('en'), 'add: Expected a number, got string "x"');
+    assert.equal((await run('{{ lowr "A" }}', {}, { lang: 'es' }).catch((error) => error)).detail, 'No hay ninguna función llamada "lowr". ¿Quisiste decir lower?');
+
+    // A mistake written down while the server spoke Spanish is read in Portuguese by `!cc logs`.
+    const brokenEs = makeMessage({ content: '!brokenes' });
+    store.set(`${G}:brokenes`, { name: 'brokenes', code: '{{ len 1 2 }}' });
+    await runWithLanguage('es', () => codeCommands.runCodeCommand(brokenEs.message, store.get(`${G}:brokenes`), '', '!'));
+    assert.ok(brokenEs.replies[0].content.includes('El código de este comando tiene un error: len necesita 1 argumento y recibió 2'), brokenEs.replies[0].content);
+    assert.equal(problemsOf('brokenes')[0].text, 'len necesita 1 argumento y recibió 2 (línea 1, columna 4)');
+    const logsPt = fakeInteraction('logs', { name: 'brokenes' }, '!cc logs brokenes');
+    logsPt.pettoLang = 'pt-BR';
+    const logsPtText = await say(logsPt);
+    assert.ok(logsPtText.includes('len precisa de 1 argumento e recebeu 2 (linha 1, coluna 4)'), logsPtText);
+
+    // !cc codetest in Spanish.
+    const testEs = fakeInteraction('codetest', {}, '!cc codetest {{ dbget "x" }}');
+    testEs.pettoLang = 'es';
+    const testEsText = await say(testEs);
+    assert.ok(testEsText.includes('El código se detuvo: No hay ninguna función llamada "dbget". ¿Quisiste decir dbGet? (línea 1, columna 4)') && testEsText.split('dbGet').length === 2, testEsText);
+
+    // Installing a template in a Spanish server: its sentences are Spanish, the rest of the code is the same.
+    const listedEs = fakeInteraction('template', {}, '!cc template');
+    listedEs.pettoLang = 'es';
+    assert.ok((await say(listedEs)).includes('`roll` · **Dado**: Tira un dado.'));
+    const installEs = fakeInteraction('template', { id: 'roll', name: 'dado' }, '!cc template roll dado');
+    installEs.pettoLang = 'es';
+    assert.ok((await say(installEs)).includes('creado a partir de la plantilla'));
+    const dado = store.get(`${G}:dado`).code;
+    assert.ok(dado.includes('Usa un número del 2 al 1000: {{ .Prefix }}{{ .Cmd }} 20') && dado.includes('🎲 {{ .User.Mention }} sacó **{{ add 1 (randInt $sides) }}** (de 1 a {{ $sides }}).'), dado);
+    assert.equal((await run(dado, { ...base, Args: ['5000'], Prefix: '!', Cmd: 'dado' })).output.trim(), 'Usa un número del 2 al 1000: !dado 20');
+    assert.equal(templateCode(TEMPLATES.find((template) => template.id === 'hello'), 'pt-BR').split('\n')[1], '  "title" (print "Olá, " (or .Member.Nick .User.GlobalName .User.Username) "!")');
+
+    // Every template, in every language, is valid, runs, has no hints and keeps what its code compares with.
+    for (const lang of ['es', 'pt-BR']) {
+      for (const template of TEMPLATES) {
+        const shown = templateIn(template, lang);
+        assert.ok(shown.name !== template.name || ['Avatar', 'Clicker', 'Rank'].includes(template.name), `${template.id} has a name in ${lang}`);
+        assert.equal(check(shown.code), null, `${template.id} is valid in ${lang}`);
+        assert.deepEqual(admin.codeHints(shown.code), [], `${template.id} has no hints in ${lang}`);
+        for (const args of [[], ['20'], ['a', 'b', 'c']]) {
+          const result = await run(shown.code, { ...base, Args: args, RawArgs: args.join(' ') }, { random: () => 0.5, store: codeCommands.memoryStore(), lookup: codeCommands.lookupFor(makeMessage().message.guild) });
+          assert.ok(result.output.trim() || result.effects.length, `${template.id} does something in ${lang} with ${args.length} arguments`);
+        }
+      }
+      // The sentences put as they are keep the printf verbs, the quotes, and never open or close an action.
+      for (const key of Object.keys(CATALOGS.en).filter((name) => name.startsWith('scripting.template.'))) {
+        const [english, translated] = [CATALOGS.en[key], CATALOGS[lang][key]];
+        assert.deepEqual(translated.match(/%[a-z]/g), english.match(/%[a-z]/g), `${key} keeps its printf verbs in ${lang}`);
+        assert.equal(translated.split('"').length, english.split('"').length, `${key} keeps its quotes in ${lang}`);
+        assert.ok(!/\{\{|\}\}|\\/.test(translated), `${key} has no {{, }} or backslash in ${lang}`);
+      }
+    }
+  }
+
   console.log('Checked the custom commands in code: who writes them, what they may do, the limits of pings, roles and channels, share codes and the templates.');
 })().catch((error) => { console.error(error); process.exit(1); });

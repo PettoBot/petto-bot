@@ -1,4 +1,5 @@
-const { PettoCodeError } = require('./errors');
+const { PettoCodeError, phrase } = require('./errors');
+const { currentLanguage } = require('../i18n');
 const { splitActions, tokenize, locate } = require('./lexer');
 
 const MAX_SOURCE_LENGTH = 10_000;
@@ -9,17 +10,21 @@ const MAX_NESTING = 20;
  *   Text, Print(pipeline), Assign(names, declare, pipeline), If(branches, otherwise), Range, With, Break, Continue, Return.
  * A pipeline is a list of commands joined by `|`; a command is a list of operands, the first one a function name or a value.
  */
-function parse(source) {
-  if (typeof source !== 'string') throw new PettoCodeError('syntax', 'The code must be text');
-  if (source.length > MAX_SOURCE_LENGTH) throw new PettoCodeError('limit', `The code is too long (${source.length} of ${MAX_SOURCE_LENGTH} characters)`);
-  const parts = splitActions(source);
+function parse(source, lang = currentLanguage()) {
+  const said = (key, vars) => phrase(`scripting.parse.${key}`, vars);
+  if (typeof source !== 'string') throw new PettoCodeError('syntax', said('notText'), {}, lang);
+  if (source.length > MAX_SOURCE_LENGTH) throw new PettoCodeError('limit', said('tooLong', { count: source.length, max: MAX_SOURCE_LENGTH }), {}, lang);
+  const parts = splitActions(source, lang);
   let cursor = 0;
 
-  const fail = (message, token) => { throw new PettoCodeError('syntax', message, token ?? {}); };
+  const fail = (key, token, vars) => { throw new PettoCodeError('syntax', said(key, vars), token ?? {}, lang); };
+  // A piece of the code that was not expected there, as it is written: "else", "x", 5.
+  const unexpectedValue = (token) => fail('unexpected', token, { token: JSON.stringify(token.value) });
+  const unexpected = (token) => fail('unexpected', token, { token: token.type === 'keyword' ? `"${token.value}"` : JSON.stringify(token.value) });
 
   function parseOperand(tokens, state, depth) {
     const token = tokens[state.i];
-    if (!token) fail('The action ends too soon');
+    if (!token) fail('endsTooSoon');
     let operand;
     switch (token.type) {
       case 'string': case 'number': case 'bool': case 'nil':
@@ -29,15 +34,15 @@ function parse(source) {
       case 'dot': operand = { kind: 'dot', fields: [], line: token.line, column: token.column }; state.i += 1; break;
       case 'field': operand = { kind: 'dot', fields: [token.value], line: token.line, column: token.column }; state.i += 1; break;
       case 'lparen': {
-        if (depth >= MAX_NESTING) fail('Too many parentheses inside each other', token);
+        if (depth >= MAX_NESTING) fail('tooManyParentheses', token);
         state.i += 1;
         const pipeline = parsePipeline(tokens, state, depth + 1);
-        if (tokens[state.i]?.type !== 'rparen') fail('A ( is never closed', token);
+        if (tokens[state.i]?.type !== 'rparen') fail('parenNotClosed', token);
         state.i += 1;
         operand = { kind: 'paren', pipeline, fields: [], line: token.line, column: token.column };
         break;
       }
-      default: return fail(`Unexpected ${token.type === 'keyword' ? `"${token.value}"` : JSON.stringify(token.value)}`, token);
+      default: return unexpected(token);
     }
     // A chain of fields after a variable, a dot or a ( ): $user.ID, (dict "a" 1).a
     while (tokens[state.i]?.type === 'field' && tokens[state.i].adjacent) { operand.fields.push(tokens[state.i].value); state.i += 1; }
@@ -51,8 +56,8 @@ function parse(source) {
       while (state.i < tokens.length && !['pipe', 'rparen', 'comma', 'declare', 'assign'].includes(tokens[state.i].type)) {
         operands.push(parseOperand(tokens, state, depth));
       }
-      if (!operands.length) fail('A command is empty', tokens[state.i] ?? tokens[state.i - 1]);
-      if (operands[0].kind !== 'ident' && operands.length > 1) fail('Only a function can take arguments', operands[1]);
+      if (!operands.length) fail('commandEmpty', tokens[state.i] ?? tokens[state.i - 1]);
+      if (operands[0].kind !== 'ident' && operands.length > 1) fail('onlyFunctionArgs', operands[1]);
       commands.push(operands);
       if (tokens[state.i]?.type === 'pipe') { state.i += 1; continue; }
       break;
@@ -62,24 +67,24 @@ function parse(source) {
 
   /** The nodes up to one of the `stops` keywords (else, end), which is returned with the nodes. */
   function parseList(stops, depth) {
-    if (depth > MAX_NESTING) throw new PettoCodeError('syntax', 'Too many blocks inside each other', locate(source, parts[cursor - 1]?.offset ?? 0));
+    if (depth > MAX_NESTING) fail('tooManyBlocks', locate(source, parts[cursor - 1]?.offset ?? 0));
     const nodes = [];
     while (cursor < parts.length) {
       const part = parts[cursor];
       cursor += 1;
       if (part.type === 'text') { nodes.push({ type: 'Text', value: part.value }); continue; }
-      const tokens = tokenize(part.body, source, part.bodyOffset);
+      const tokens = tokenize(part.body, source, part.bodyOffset, lang);
       const where = locate(source, part.offset);
-      if (!tokens.length) throw new PettoCodeError('syntax', 'An action is empty', where);
+      if (!tokens.length) fail('actionEmpty', where);
       const first = tokens[0];
       const state = { i: 0 };
-      const done = () => { if (state.i < tokens.length) fail(`Unexpected ${JSON.stringify(tokens[state.i].value)}`, tokens[state.i]); };
+      const done = () => { if (state.i < tokens.length) unexpectedValue(tokens[state.i]); };
       if (first.type === 'keyword') {
         state.i = 1;
-        if (first.value === 'end') { done(); if (!stops.includes('end')) fail('"end" without a block to close', first); return { nodes, stop: 'end' }; }
+        if (first.value === 'end') { done(); if (!stops.includes('end')) fail('endWithoutBlock', first); return { nodes, stop: 'end' }; }
         if (first.value === 'else') {
-          if (!stops.includes('else')) fail('"else" outside an if, range or with', first);
-          if (tokens[1]?.type === 'keyword' && tokens[1].value === 'if') return { nodes, stop: 'else if', tokens, where };
+          if (!stops.includes('else')) fail('elseOutside', first);
+          if (tokens[1]?.type === 'keyword' && tokens[1].value === 'if') return { nodes, stop: 'else if', tokens, where }; // i18n-ignore: an internal name of the block
           done();
           return { nodes, stop: 'else' };
         }
@@ -99,7 +104,7 @@ function parse(source) {
         if (tokens[probe]?.type === 'comma') probe += 1; else break;
       }
       if (names.length && (tokens[probe]?.type === 'declare' || tokens[probe]?.type === 'assign')) {
-        if (names.length > 1) fail('Only one variable can be set at a time', tokens[0]);
+        if (names.length > 1) fail('oneVariable', tokens[0]);
         const declare = tokens[probe].type === 'declare';
         state.i = probe + 1;
         const pipeline = parsePipeline(tokens, state, 0);
@@ -120,32 +125,32 @@ function parse(source) {
     let current = { tokens, state, where };
     for (;;) {
       const pipeline = parsePipeline(current.tokens, current.state, 0);
-      if (current.state.i < current.tokens.length) fail(`Unexpected ${JSON.stringify(current.tokens[current.state.i].value)}`, current.tokens[current.state.i]);
+      if (current.state.i < current.tokens.length) unexpectedValue(current.tokens[current.state.i]);
       const body = parseList(['else', 'end'], depth + 1);
       branches.push({ condition: pipeline, body: body.nodes });
       if (body.stop === 'end') break;
       if (body.stop === 'else') {
         const rest = parseList(['end'], depth + 1);
-        if (rest.stop !== 'end') fail('An "if" is never closed with "end"', where);
+        if (rest.stop !== 'end') fail('ifNotClosed', where);
         otherwise = rest.nodes;
         break;
       }
       if (body.stop === 'else if') { current = { tokens: body.tokens, state: { i: 2 }, where: body.where }; continue; }
-      fail('An "if" is never closed with "end"', where);
+      fail('ifNotClosed', where);
     }
     return { type: 'If', branches, otherwise, ...where };
   }
 
   function parseWith(tokens, state, where, depth) {
     const pipeline = parsePipeline(tokens, state, 0);
-    if (state.i < tokens.length) fail(`Unexpected ${JSON.stringify(tokens[state.i].value)}`, tokens[state.i]);
+    if (state.i < tokens.length) unexpectedValue(tokens[state.i]);
     const body = parseList(['else', 'end'], depth + 1);
     let otherwise = null;
     if (body.stop === 'else') {
       const rest = parseList(['end'], depth + 1);
-      if (rest.stop !== 'end') fail('A "with" is never closed with "end"', where);
+      if (rest.stop !== 'end') fail('withNotClosed', where);
       otherwise = rest.nodes;
-    } else if (body.stop !== 'end') fail('A "with" is never closed with "end"', where);
+    } else if (body.stop !== 'end') fail('withNotClosed', where);
     return { type: 'With', pipeline, body: body.nodes, otherwise, ...where };
   }
 
@@ -160,16 +165,16 @@ function parse(source) {
     }
     let declare = false;
     if (names.length && (tokens[probe]?.type === 'declare' || tokens[probe]?.type === 'assign')) { declare = tokens[probe].type === 'declare'; state.i = probe + 1; } else names.length = 0;
-    if (names.length > 2) fail('A range sets at most two variables', tokens[0]);
+    if (names.length > 2) fail('rangeTwoVariables', tokens[0]);
     const pipeline = parsePipeline(tokens, state, 0);
-    if (state.i < tokens.length) fail(`Unexpected ${JSON.stringify(tokens[state.i].value)}`, tokens[state.i]);
+    if (state.i < tokens.length) unexpectedValue(tokens[state.i]);
     const body = parseList(['else', 'end'], depth + 1);
     let otherwise = null;
     if (body.stop === 'else') {
       const rest = parseList(['end'], depth + 1);
-      if (rest.stop !== 'end') fail('A "range" is never closed with "end"', where);
+      if (rest.stop !== 'end') fail('rangeNotClosed', where);
       otherwise = rest.nodes;
-    } else if (body.stop !== 'end') fail('A "range" is never closed with "end"', where);
+    } else if (body.stop !== 'end') fail('rangeNotClosed', where);
     const [keyName, valueName] = names.length === 2 ? names : [null, names[0] ?? null];
     return { type: 'Range', keyName, valueName, declare, pipeline, body: body.nodes, otherwise, ...where };
   }

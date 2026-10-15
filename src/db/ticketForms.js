@@ -29,7 +29,7 @@ async function createForm({ guildId, name, title, fields }) {
   const normalizedName = normalizeName(name);
   const normalizedFields = normalizeFields(fields);
   if (!normalizedName) throw new Error(t(currentLanguage(), 'tickets.db.form.nameRequired'));
-  const { data, error } = await database.from('ticket_forms').insert({ guild_id: guildId, name: normalizedName, title: String(title || 'Ticket details').slice(0, 45), fields: normalizedFields }).select('*').single();
+  const { data, error } = await database.from('ticket_forms').insert({ guild_id: guildId, name: normalizedName, title: String(title || 'Ticket details').slice(0, 45), fields: normalizedFields }).select('*').single(); // i18n-ignore: English default kept in the database, shown translated (defaultText)
   if (error) throw error;
   return data;
 }

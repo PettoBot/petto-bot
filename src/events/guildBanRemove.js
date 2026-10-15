@@ -2,7 +2,7 @@ const { Events, AuditLogEvent } = require('discord.js');
 const { handleBanRemove } = require('../logging/memberLog');
 const { getHardBan, canLiftHardBan } = require('../db/hardBans');
 const logger = require('../utils/logger');
-const { t, guildLanguage } = require('../i18n');
+const { t, peekGuildLanguage } = require('../i18n');
 
 /** A hardban lifted by someone who may not lift it (a manual unban in Discord's settings, another bot) is put back. */
 async function restoreHardBan(ban, client) {
@@ -24,7 +24,7 @@ async function restoreHardBan(ban, client) {
   if (by && (await canLiftHardBan(ban.guild, by))) return;
 
   // The reason is read by the staff in the audit log of the server.
-  const reason = t(await guildLanguage(ban.guild.id), 'logs.hardban.restoreReason');
+  const reason = t(peekGuildLanguage(ban.guild.id), 'logs.hardban.restoreReason');
   await ban.guild.members
     .ban(ban.user.id, { reason })
     .catch((err) => logger.warn(`[hardban] could not restore the ban of ${ban.user.id} in ${ban.guild.id}: ${err.message}`));

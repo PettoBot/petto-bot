@@ -28,7 +28,7 @@ function fallbackDashboardRateLimiter(req, res, next) {
   }
 
   if (bucket.count >= DASHBOARD_RATE_LIMIT_MAX) {
-    res.status(429).json({ code: 'PGRST429', message: 'Too many requests.' });
+    res.status(429).json({ code: 'PGRST429', message: 'Too many requests.' }); // i18n-ignore: PostgREST-shaped answer for the dashboard's database client, English like PostgREST
     return;
   }
 
@@ -42,7 +42,7 @@ function first(value) {
 
 function quoteIdentifier(value, label = 'identifier') {
   const text = String(value);
-  if (!IDENTIFIER.test(text)) throw new Error(`Invalid PostgreSQL ${label}.`);
+  if (!IDENTIFIER.test(text)) throw new Error(`Invalid PostgreSQL ${label}.`); // i18n-ignore: internal error; its start ('Invalid ', 'not supported') is matched below
   return `"${text.replaceAll('"', '""')}"`;
 }
 
@@ -58,13 +58,13 @@ function splitOutsideParentheses(value) {
     const character = value[index];
     if (character === '(') depth += 1;
     if (character === ')') depth -= 1;
-    if (depth < 0) throw new Error('Invalid select expression.');
+    if (depth < 0) throw new Error('Invalid select expression.'); // i18n-ignore: internal error; its start ('Invalid ', 'not supported') is matched below
     if (character === ',' && depth === 0) {
       parts.push(value.slice(start, index).trim());
       start = index + 1;
     }
   }
-  if (depth !== 0) throw new Error('Invalid select expression.');
+  if (depth !== 0) throw new Error('Invalid select expression.'); // i18n-ignore: internal error; its start ('Invalid ', 'not supported') is matched below
   const finalPart = value.slice(start).trim();
   if (finalPart) parts.push(finalPart);
   return parts;
@@ -79,12 +79,12 @@ function parseSelect(rawValue) {
     if (embed) {
       const embedFields = embed[2].split(',').map((field) => field.trim()).filter(Boolean);
       if (!embedFields.length || embedFields.some((field) => !IDENTIFIER.test(field))) {
-        throw new Error('Invalid nested select expression.');
+        throw new Error('Invalid nested select expression.'); // i18n-ignore: internal error; its start ('Invalid ', 'not supported') is matched below
       }
       embeds.push({ name: embed[1], fields: embedFields });
       continue;
     }
-    if (part !== '*' && !IDENTIFIER.test(part)) throw new Error('Invalid select column.');
+    if (part !== '*' && !IDENTIFIER.test(part)) throw new Error('Invalid select column.'); // i18n-ignore: internal error; its start ('Invalid ', 'not supported') is matched below
     fields.push(part);
   }
 
@@ -115,17 +115,17 @@ function parseFilter(value) {
 
 function parseOperator(text) {
   const match = /^([a-z]+)\.(.*)$/i.exec(text);
-  if (!match || !FILTER_OPERATORS.has(match[1].toLowerCase())) throw new Error('Invalid PostgreSQL filter.');
+  if (!match || !FILTER_OPERATORS.has(match[1].toLowerCase())) throw new Error('Invalid PostgreSQL filter.'); // i18n-ignore: internal error; its start ('Invalid ', 'not supported') is matched below
   const operator = match[1].toLowerCase();
   let operand = match[2];
 
   if (operator === 'in') {
-    if (!operand.startsWith('(') || !operand.endsWith(')')) throw new Error('Invalid PostgreSQL IN filter.');
+    if (!operand.startsWith('(') || !operand.endsWith(')')) throw new Error('Invalid PostgreSQL IN filter.'); // i18n-ignore: internal error; its start ('Invalid ', 'not supported') is matched below
     operand = operand.slice(1, -1).split(',').map((entry) => entry.trim()).filter(Boolean).map((entry) => entry.replace(/^"(.*)"$/, '$1'));
     return { operator, value: operand };
   }
   if (operator === 'is') {
-    if (!['null', 'true', 'false'].includes(operand.toLowerCase())) throw new Error('Invalid PostgreSQL IS filter.');
+    if (!['null', 'true', 'false'].includes(operand.toLowerCase())) throw new Error('Invalid PostgreSQL IS filter.'); // i18n-ignore: internal error; its start ('Invalid ', 'not supported') is matched below
     return { operator, value: operand.toLowerCase() };
   }
   return { operator, value: operand };
@@ -134,7 +134,7 @@ function parseOperator(text) {
 function applyFilters(query, queryParameters) {
   for (const [column, rawValue] of Object.entries(queryParameters)) {
     if (RESERVED_QUERY_KEYS.has(column) || column === 'or' || column === 'and' || column.startsWith('not.')) continue;
-    if (Array.isArray(rawValue)) throw new Error('Duplicate query filters are not supported.');
+    if (Array.isArray(rawValue)) throw new Error('Duplicate query filters are not supported.'); // i18n-ignore: internal error; its start ('Invalid ', 'not supported') is matched below
     const parsed = parseFilter(rawValue);
     if (parsed.negated) query.not(column, parsed.operator, parsed.value);
     else if (parsed.operator === 'in') query.in(column, parsed.value);
@@ -150,7 +150,7 @@ function applyFilters(query, queryParameters) {
 
   for (const rawOrder of String(first(queryParameters.order) || '').split(',').map((entry) => entry.trim()).filter(Boolean)) {
     const [column, direction = 'asc'] = rawOrder.split('.');
-    if (!IDENTIFIER.test(column) || !['asc', 'desc'].includes(direction.toLowerCase())) throw new Error('Invalid PostgreSQL order.');
+    if (!IDENTIFIER.test(column) || !['asc', 'desc'].includes(direction.toLowerCase())) throw new Error('Invalid PostgreSQL order.'); // i18n-ignore: internal error; its start ('Invalid ', 'not supported') is matched below
     query.order(column, { ascending: direction.toLowerCase() !== 'desc' });
   }
 }
@@ -191,7 +191,7 @@ async function attachTicketCategoryEmbed(pool, rows, selection) {
   const ticketEmbed = selection.embeds.find((embed) => embed.name === 'ticket_categories');
   if (!ticketEmbed) return;
   if (selection.embeds.length !== 1 || ticketEmbed.fields.some((field) => field !== 'label')) {
-    throw new Error('Only ticket_categories(label) is supported by the dashboard API.');
+    throw new Error('Only ticket_categories(label) is supported by the dashboard API.'); // i18n-ignore: internal error, logged
   }
 
   const ids = [...new Set(rows.map((row) => Number(row.category_id)).filter((id) => Number.isSafeInteger(id) && id > 0))];
@@ -217,7 +217,7 @@ function isExpectedConflict(error) {
 
 function responseError(res, error) {
   const status = error?.code === 'PGRST116' ? 406 : error?.code === '23505' ? 409 : 400;
-  res.status(status).json({ code: error?.code || 'dashboard_database_error', message: 'Database request could not be completed.' });
+  res.status(status).json({ code: error?.code || 'dashboard_database_error', message: 'Database request could not be completed.' }); // i18n-ignore: PostgREST-shaped answer for the dashboard's database client, English like PostgREST
 }
 
 function dashboardAuthorized(req) {
@@ -229,19 +229,19 @@ function dashboardAuthorized(req) {
 
 async function handleDashboardRest(req, res) {
   if (!dashboardAuthorized(req)) {
-    res.status(401).json({ code: 'PGRST301', message: 'Invalid dashboard credentials.' });
+    res.status(401).json({ code: 'PGRST301', message: 'Invalid dashboard credentials.' }); // i18n-ignore: PostgREST-shaped answer for the dashboard's database client, English like PostgREST
     return;
   }
 
   const table = String(req.params.table || '');
   if (!IDENTIFIER.test(table)) {
-    res.status(400).json({ code: 'PGRST100', message: 'Invalid table name.' });
+    res.status(400).json({ code: 'PGRST100', message: 'Invalid table name.' }); // i18n-ignore: PostgREST-shaped answer for the dashboard's database client, English like PostgREST
     return;
   }
 
   const method = req.method.toUpperCase();
   if (!['GET', 'HEAD', 'POST', 'PATCH', 'DELETE'].includes(method)) {
-    res.status(405).set('Allow', 'GET,HEAD,POST,PATCH,DELETE').json({ code: 'PGRST117', message: 'Method not allowed.' });
+    res.status(405).set('Allow', 'GET,HEAD,POST,PATCH,DELETE').json({ code: 'PGRST117', message: 'Method not allowed.' }); // i18n-ignore: PostgREST-shaped answer for the dashboard's database client, English like PostgREST
     return;
   }
 
@@ -315,7 +315,7 @@ async function handleDashboardRest(req, res) {
       responseError(res, error);
       return;
     }
-    res.status(503).json({ code: 'PGRST000', message: 'Dashboard database is unavailable.' });
+    res.status(503).json({ code: 'PGRST000', message: 'Dashboard database is unavailable.' }); // i18n-ignore: PostgREST-shaped answer for the dashboard's database client, English like PostgREST
   }
 }
 

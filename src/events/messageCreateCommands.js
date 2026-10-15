@@ -21,7 +21,7 @@ const logger = require('../utils/logger');
 const { logCommandUse } = require('../logging/extraLog');
 const { runCodeCommand } = require('../utils/codeCommands');
 const { findTrigger } = require('../utils/codeTriggers');
-const { guildLanguage, t, formatDecimal } = require('../i18n');
+const { peekGuildLanguage, t, formatDecimal } = require('../i18n');
 // Loaded when a message comes in: it reaches for the configuration and the database, which the checks do without.
 const activeUserPrefix = async (...args) => require('../utils/userPrefixAccess').activeUserPrefix(...args);
 
@@ -141,7 +141,7 @@ async function runCustomCommandRow(message, row, commandName, argText = '', pref
     const doc = row.embed_template ? await getTemplate(message.guild.id, row.embed_template) : null;
     const needsArgs = containsArgumentVariable(row.response ?? '') || containsArgumentVariable(doc?.data);
     if (needsArgs && !argText.trim()) {
-      const lang = await guildLanguage(message.guild.id);
+      const lang = (message.pettoLang ?? peekGuildLanguage(message.guild.id));
       await message.reply(warningPayload(message, t(lang, 'core.customCommand.needsText', { prefix, command: commandName }))).catch(() => {});
       return true;
     }
@@ -219,7 +219,7 @@ module.exports = {
     }
 
     const prefix = parsed.typedPrefix;
-    const lang = await guildLanguage(message.guild.id);
+    const lang = (message.pettoLang ?? peekGuildLanguage(message.guild.id));
     let commandName = parsed.commandName;
     let argText = parsed.argText;
 

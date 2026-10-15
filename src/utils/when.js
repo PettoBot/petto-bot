@@ -17,9 +17,9 @@ function discordTimestamp(ms, style = 'f') {
 }
 
 // Words people type, in English, Spanish and Portuguese (read, never shown). A longer phrase goes before the word it starts with.
-const DAY_WORDS = new Map([ // i18n-ignore-next-line
-  ['today', 0], ['hoy', 0], ['tonight', 0], ['esta noche', 0], ['hoje à noite', 0], ['hoje a noite', 0], ['hoje', 0], // i18n-ignore
-  ['tomorrow', 1], ['tmrw', 1], ['mañana', 1], ['manana', 1], ['amanhã', 1], ['amanha', 1], // i18n-ignore
+const DAY_WORDS = new Map([ // i18n-ignore-next-line: words people type, parsed
+  ['today', 0], ['hoy', 0], ['tonight', 0], ['esta noche', 0], ['hoje à noite', 0], ['hoje a noite', 0], ['hoje', 0], // i18n-ignore: words people type, parsed
+  ['tomorrow', 1], ['tmrw', 1], ['mañana', 1], ['manana', 1], ['amanhã', 1], ['amanha', 1], // i18n-ignore: words people type, parsed
 ]);
 
 /** "8pm", "8:30 pm", "20:00", "at 8pm", "a las 20:00" -> minutes after midnight, or null. */

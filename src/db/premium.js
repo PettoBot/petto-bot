@@ -92,7 +92,7 @@ function isActiveEntitlement(entitlement) {
 }
 
 async function listUserPremium(userId) {
-  if (!isDiscordId(userId)) throw new Error('Invalid Discord user ID.');
+  if (!isDiscordId(userId)) throw new Error('Invalid Discord user ID.'); // i18n-ignore: owner-only operation
   const { data, error } = await database
     .from('premium_entitlements')
     .select(ENTITLEMENT_COLUMNS)

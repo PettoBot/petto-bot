@@ -121,9 +121,9 @@ async function invalidateStaleGrants(guildId, userId, source, scopes) {
     const clauses = scopes.map((scope) => {
       const base = args.length + 1;
       args.push(scope.ruleId, scope.roleId, scope.action);
-      return `(rule_id = $${base} and role_id = $${base + 1} and action = $${base + 2})`;
+      return `(rule_id = $${base} and role_id = $${base + 1} and action = $${base + 2})`; // i18n-ignore: SQL
     });
-    sql += ` and not (${clauses.join(' or ')})`;
+    sql += ` and not (${clauses.join(' or ')})`; // i18n-ignore: SQL
   }
   await pool().query(sql, args);
 }

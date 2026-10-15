@@ -22,7 +22,7 @@ const { infoPayload, noticePayload, clip } = require('../utils/infoCard');
 const { settle } = require('../utils/withTimeout');
 const { EMOJI } = require('../utils/emojis');
 const { COLORS } = require('../utils/colors');
-const { t, tn, currentLanguage, languageOf } = require('../i18n');
+const { t, tn, currentLanguage, languageOf, LANGUAGES, LANGUAGE_NAMES } = require('../i18n');
 
 const SETUP_QUICK_ID = 'setup:quick';
 const SETUP_REFRESH_ID = 'setup:refresh';
@@ -155,6 +155,7 @@ function buildSetupPanel(guild, state, { notice = null, lang = currentLanguage()
         lines: items.map((item) => `${item.done ? EMOJI.APPROVE : EMOJI.RELEASE_MINUS} **${item.label}** · ${item.detail}`),
       },
       { title: t(lang, 'setup.panel.permissions'), lines: permissionLines },
+      { title: t(lang, 'setup.panel.language.title'), lines: [t(lang, 'setup.panel.language.text', { language: LANGUAGE_NAMES[lang], list: LANGUAGES.map((code) => LANGUAGE_NAMES[code]).join(', '), prefix: state.guild?.prefix || '!' })] },
     ],
     footer: t(lang, 'setup.panel.footer'),
     rows,

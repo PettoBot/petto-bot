@@ -11,4 +11,12 @@ module.exports = {
   'common.duration.hour.other': '{count} hours',
   'common.duration.day.one': '{count} day',
   'common.duration.day.other': '{count} days',
+  'common.source.rateLimited': 'answered {status}, too many requests',
+  'common.source.answered': 'answered {status}',
+  'common.source.tooLarge': 'the answer is too large',
+  'common.source.badShape': 'the answer has an unexpected shape',
+  'common.source.empty': 'the list came back empty',
+  'common.source.timeout': 'it took too long',
+  'common.source.paused': 'paused after a rate limit, until {until}',
+  'common.source.questsUnreadable': 'The quests could not be read: {problems}',
 };

@@ -22,7 +22,7 @@ function registerMemberRoutes(app, { isAuthorized, authorize, limiter }) {
     if (!access) return;
     try {
       const members = parsed.ids.length ? await lookupMembers(access.guild, parsed.ids) : {};
-      res.set('Cache-Control', 'private, max-age=60');
+      res.set('Cache-Control', 'private, max-age=60'); // i18n-ignore: HTTP header
       res.json({ ok: true, members });
     } catch (err) {
       logger.error(`Dashboard member lookup failed for guild ${req.params.guildId}:`, err);

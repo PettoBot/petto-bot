@@ -96,6 +96,14 @@ function tn(lang, key, count, vars = {}) {
   return t(lang, `${key}.${Number(count) === 1 ? 'one' : 'other'}`, { count: formatNumber(lang, count), ...vars });
 }
 
+/**
+ * A text the database keeps with an English default (a backup label, a form title, a thread name…): while it is still exactly
+ * that default (`t('en', key)`), it is shown in `lang`; anything the server wrote is shown as it is.
+ */
+function defaultText(lang, stored, key) {
+  return stored === t(DEFAULT_LANGUAGE, key) ? t(lang, key) : stored;
+}
+
 /** A number with the thousands separators of the language. */
 function formatNumber(lang, value) {
   const number = Number(value);
@@ -183,42 +191,118 @@ function localizeCommandJson(category, json) {
   return walk(json, { parts: [] });
 }
 
-// The language of each server, kept a few minutes so a command does not read the database every time.
-const CACHE_TTL_MS = 5 * 60 * 1000;
-const LOOKUP_TIMEOUT_MS = 1000;
-const guildCache = new Map(); // guildId -> { lang, expiresAt }
-const pending = new Map(); // guildId -> the lookup in flight
+// The language of each server, always answered from memory so a message or a command never waits for the database:
+//   - when the bot is ready, one query loads every server that chose a language other than English (loadGuildLanguages);
+//   - every few minutes the same query runs again in the background, and until it answers the values already known are served
+//     (stale-while-revalidate);
+//   - `!language`, the dashboard route and guildCreate write the new value at once (setCachedGuildLanguage);
+//   - a server that is not known is English. Before the first load has answered, it is looked up once in the background and the
+//     message goes on in English (or the last known language) instead of waiting.
+const REFRESH_EVERY_MS = 5 * 60 * 1000;
+const languages = new Map(); // guildId -> language, for servers that are not English or were set explicitly
+const writtenAt = new Map(); // guildId -> when !language / the dashboard / a join wrote it (newer than a load that started before)
+const lookups = new Map(); // guildId -> a single-server lookup in flight (only before the first load)
+let loadedAt = 0; // when the last full load started; 0 = never loaded
+let loading = null;
+let refreshTimer = null;
 
-/** The language a server chose (`guilds.language`), English when it chose none or the database cannot be read in time. */
-function guildLanguage(guildId) {
-  if (!guildId) return Promise.resolve(DEFAULT_LANGUAGE);
-  const cached = guildCache.get(guildId);
-  if (cached && cached.expiresAt > Date.now()) return Promise.resolve(cached.lang);
-  // Many events of one server arrive together: they share one lookup.
-  if (pending.has(guildId)) return pending.get(guildId);
-  const lookup = Promise.resolve().then(async () => {
-    let timer;
-    try {
-      // Required here: the catalogs and `t` work without the database (the checks load them alone).
-      const { findGuildLanguage } = require('../db/guilds');
-      const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('language lookup timed out')), LOOKUP_TIMEOUT_MS); });
-      const lang = normalizeLanguage(await Promise.race([findGuildLanguage(guildId), timeout])) ?? DEFAULT_LANGUAGE;
-      guildCache.set(guildId, { lang, expiresAt: Date.now() + CACHE_TTL_MS });
-      return lang;
-    } catch {
-      return DEFAULT_LANGUAGE; // not cached, so the next message tries again
-    } finally {
-      clearTimeout(timer);
-      pending.delete(guildId);
-    }
-  });
-  pending.set(guildId, lookup);
-  return lookup;
+/** The language of a server, from memory, never waiting: what the last load or change said, English when nothing is known. */
+function peekGuildLanguage(guildId) {
+  if (!guildId) return DEFAULT_LANGUAGE;
+  const known = languages.get(guildId);
+  if (known) return known;
+  if (!loadedAt) lookupInBackground(guildId);
+  return DEFAULT_LANGUAGE;
 }
 
-/** Called right after `!language` changes it, so the new language is used at once instead of when the cache runs out. */
+/** The language a server chose (`guilds.language`). Kept as a promise for the callers that await it; it never waits. */
+function guildLanguage(guildId) {
+  return Promise.resolve(peekGuildLanguage(guildId));
+}
+
+// Before the first load, a server that sends a message is looked up on its own (once), so it has its language a moment later.
+function lookupInBackground(guildId) {
+  if (lookups.has(guildId)) return;
+  const started = Date.now();
+  const lookup = Promise.resolve()
+    .then(() => require('../db/guilds').findGuildLanguage(guildId)) // required here: `t` and the catalogs work without the database
+    .then((value) => {
+      if ((writtenAt.get(guildId) ?? 0) >= started || loadedAt >= started) return; // something newer already answered
+      const lang = normalizeLanguage(value) ?? DEFAULT_LANGUAGE;
+      if (lang === DEFAULT_LANGUAGE) languages.delete(guildId);
+      else languages.set(guildId, lang);
+    })
+    .catch(() => { lookups.delete(guildId); }) // a failed lookup can be tried again by the next message
+    .finally(() => { if (loadedAt) lookups.delete(guildId); });
+  lookups.set(guildId, lookup);
+}
+
+/**
+ * Loads the language of every server in one query (the servers that chose a language other than English; the rest are English)
+ * and replaces what is in memory, except the servers changed after the load started. Never throws: on a database error the
+ * values already known stay. Returns how many servers have a language other than English.
+ */
+function loadGuildLanguages() {
+  if (loading) return loading;
+  const started = Date.now();
+  loading = Promise.resolve()
+    .then(() => require('../db/guilds').listGuildLanguages())
+    .then((rows) => {
+      const next = new Map();
+      for (const row of rows ?? []) {
+        const lang = normalizeLanguage(row.language);
+        if (lang && lang !== DEFAULT_LANGUAGE) next.set(String(row.guild_id), lang);
+      }
+      // A change written while the query was running is newer than what the query read.
+      for (const [guildId, at] of writtenAt) {
+        if (at >= started) {
+          const lang = languages.get(guildId);
+          if (lang) next.set(guildId, lang);
+          else next.delete(guildId);
+        }
+      }
+      languages.clear();
+      for (const [guildId, lang] of next) languages.set(guildId, lang);
+      loadedAt = started;
+      lookups.clear();
+      return languages.size;
+    })
+    .catch(() => languages.size)
+    .finally(() => { loading = null; });
+  return loading;
+}
+
+/** Loads the languages now and again every few minutes, in the background (called when the bot is ready). */
+function startGuildLanguageRefresh({ everyMs = REFRESH_EVERY_MS } = {}) {
+  clearInterval(refreshTimer);
+  refreshTimer = setInterval(() => { loadGuildLanguages(); }, everyMs);
+  refreshTimer.unref?.();
+  return loadGuildLanguages();
+}
+
+/** Called right after `!language`, the dashboard or a join changes it, so the new language is used at once. */
 function setCachedGuildLanguage(guildId, lang) {
-  guildCache.set(guildId, { lang: normalizeLanguage(lang) ?? DEFAULT_LANGUAGE, expiresAt: Date.now() + CACHE_TTL_MS });
+  const value = normalizeLanguage(lang) ?? DEFAULT_LANGUAGE;
+  writtenAt.set(guildId, Date.now());
+  languages.set(guildId, value);
+}
+
+/** Forgets a server (when Petto leaves it). */
+function forgetGuildLanguage(guildId) {
+  languages.delete(guildId);
+  writtenAt.delete(guildId);
+}
+
+/**
+ * The language for a request of the website: the one it asks for (`?lang=`, `lang` in the body or the `x-petto-language`
+ * header), then the browser's (`Accept-Language`), then the server's when the request is about one, else English.
+ */
+function requestLanguage(req, guildId = null) {
+  const asked = normalizeLanguage(req?.query?.lang ?? req?.body?.lang ?? req?.get?.('x-petto-language'));
+  if (asked) return asked;
+  const browser = String(req?.get?.('accept-language') ?? '').split(',').map((part) => normalizeLanguage(part.split(';')[0].trim())).find(Boolean);
+  if (browser) return browser;
+  return guildId ? peekGuildLanguage(String(guildId)) : DEFAULT_LANGUAGE;
 }
 
 /** Saves the language of a server and uses it at once. */
@@ -238,7 +322,7 @@ async function setGuildLanguage(guildId, lang) {
 async function languageOf(interaction) {
   if (interaction?.pettoLang) return interaction.pettoLang;
   const guildId = interaction?.guildId ?? interaction?.guild?.id ?? null;
-  if (guildId) return guildLanguage(guildId);
+  if (guildId) return peekGuildLanguage(guildId);
   return languageFromLocale(interaction?.locale);
 }
 
@@ -250,6 +334,7 @@ module.exports = {
   CATALOGS,
   t,
   tn,
+  defaultText,
   formatNumber,
   formatDecimal,
   formatList,
@@ -263,6 +348,11 @@ module.exports = {
   runWithLanguage,
   currentLanguage,
   guildLanguage,
+  peekGuildLanguage,
+  loadGuildLanguages,
+  startGuildLanguageRefresh,
+  forgetGuildLanguage,
+  requestLanguage,
   setGuildLanguage,
   setCachedGuildLanguage,
   languageOf,

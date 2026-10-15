@@ -57,7 +57,6 @@ module.exports = {
     const manager = interaction.member?.permissions?.has(PermissionFlagsBits.ManageGuild);
     if (['setup', 'disable', 'set', 'number', 'reset'].includes(sub) && !manager) return no(interaction, t(lang, 'counting.needManageServer'));
     const config = await db.getConfig(interaction.guild.id);
-    const never = t(lang, 'counting.never');
 
     if (sub === 'setup') {
       const channel = interaction.options.getChannel('channel', true);
@@ -80,9 +79,9 @@ module.exports = {
         t(lang, 'counting.config.title', { state: on(config.enabled) }),
         t(lang, 'counting.config.channel', { channel: config.channel_id ? `<#${config.channel_id}>` : none, current: config.current_number, record: config.high_score }),
         t(lang, 'counting.config.rules', { double: on(config.allow_double), math: on(config.math), reset: on(config.reset_on_wrong), deleted: on(config.delete_wrong) }),
-        t(lang, 'counting.config.saves', { saves: config.saves, max: config.saves_max, more: config.saves_max ? t(lang, 'counting.config.saveEvery', { every: config.save_every }) : '', milestone: config.milestone_every || never, start: config.start_number }),
+        t(lang, config.milestone_every ? 'counting.config.saves' : 'counting.config.savesNoMilestone', { saves: config.saves, max: config.saves_max, more: config.saves_max ? t(lang, 'counting.config.saveEvery', { every: config.save_every }) : '', milestone: config.milestone_every, start: config.start_number }),
         t(lang, 'counting.config.reactions', { ok: config.react_ok, bad: config.react_bad, record: config.react_record, note: config.record_every ? t(lang, 'counting.config.recordEvery', { every: config.record_every }) : t(lang, 'counting.config.recordOff') }),
-        t(lang, 'counting.config.roles', { wrongRole, topRole: config.top_role_id ? `<@&${config.top_role_id}>` : none, alerts: config.alert_seconds ? t(lang, 'counting.config.seconds', { seconds: config.alert_seconds }) : never }),
+        t(lang, config.alert_seconds ? 'counting.config.roles' : 'counting.config.rolesKeepAlerts', { wrongRole, topRole: config.top_role_id ? `<@&${config.top_role_id}>` : none, alerts: config.alert_seconds ? t(lang, 'counting.config.seconds', { seconds: config.alert_seconds }) : '' }),
       ].join('\n'));
     }
     if (sub === 'set') {

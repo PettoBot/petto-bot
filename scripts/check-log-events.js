@@ -24,7 +24,7 @@ stub('src/db/postgres.js', { createPostgresClient() {}, getPrimaryPool() {} });
 stub('src/logging/engine.js', engine);
 stub('src/utils/inviteResolve.js', { resolveJoinInvite: async () => null });
 // The language of each fake server: '1' speaks English, 'es' Spanish and 'pt' Brazilian Portuguese.
-stub('src/db/guilds.js', { findGuildLanguage: async (id) => ({ es: 'es', pt: 'pt-BR' })[id] ?? null });
+stub('src/db/guilds.js', { findGuildLanguage: async (id) => ({ es: 'es', pt: 'pt-BR' })[id] ?? null, listGuildLanguages: async () => [{ guild_id: 'es', language: 'es' }, { guild_id: 'pt', language: 'pt-BR' }] });
 
 const { handleWebhooksUpdate } = require('../src/logging/webhookLog');
 const { handleThreadCreate, handleThreadDelete, handleThreadUpdate } = require('../src/logging/threadLog');
@@ -54,6 +54,8 @@ process.on('exit', (code) => {
 });
 
 (async () => {
+  // The languages of the servers are loaded once, as the bot does when it is ready.
+  await require('../src/i18n').loadGuildLanguages();
   for (const category of ['webhooks', 'threads', 'integrations', 'commands']) assert.ok(EVENTS.includes(category), `${category} can be chosen with !logs`);
 
   // ---- webhooks: created, updated and deleted, each told once, and Petto's own ones left out

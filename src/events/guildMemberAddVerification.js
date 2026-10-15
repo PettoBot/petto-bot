@@ -8,7 +8,7 @@ const { sendVerifyDM } = require('../utils/verifyMessage');
 const config = require('../config');
 const { methodOf, usesLink } = require('../utils/verifyMethod');
 const logger = require('../utils/logger');
-const { t, guildLanguage } = require('../i18n');
+const { t, peekGuildLanguage } = require('../i18n');
 
 module.exports = {
   name: Events.GuildMemberAdd,
@@ -19,7 +19,7 @@ module.exports = {
       await ensureGuild(member.guild.id);
       const verifyConfig = await getConfig(member.guild.id);
       if (!verifyConfig?.enabled) return;
-      const lang = await guildLanguage(member.guild.id);
+      const lang = peekGuildLanguage(member.guild.id);
 
       // Returning member who already passed verification before — don't re-gate them.
       if (await hasEverVerified(member.guild.id, member.id)) {

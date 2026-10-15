@@ -19,7 +19,7 @@ const { describePermissions } = require('../../utils/permissionLabels');
 const { EMOJI } = require('../../utils/emojis');
 const { isPettoOperator } = require('../../utils/autoModControl');
 const { helpLinksLine } = require('../../utils/links');
-const { t, tn, commandDescription, languageOf, currentLanguage } = require('../../i18n');
+const { t, tn, commandDescription, languageOf, currentLanguage, LANGUAGES, LANGUAGE_NAMES } = require('../../i18n');
 
 const TIMEOUT_MS = 120_000;
 
@@ -148,7 +148,7 @@ const EXAMPLE_BY_NAME = {
   duration: '1h', time: '10m', hex: '#ff91c2', color: '#ff91c2', emoji: '🌸', code: 'ABC123', query: 'ticket', days: '7', amount: '10', prize: '"Nitro"',
 };
 // Examples written in words, so they are in the language of the server: option name -> `help.example.<key>`.
-const WORDED_EXAMPLE = { reason: 'reason', message: 'text', text: 'text', name: 'name', template: 'template', title: 'title', description: 'description' };
+const WORDED_EXAMPLE = { reason: 'reason', message: 'text', text: 'text', name: 'name', template: 'template', title: 'title', description: 'description' }; // i18n-ignore: option names -> catalog key parts
 
 /** A believable value for an option, from its type and its name, so an example can be copied and used. */
 function exampleValue(opt, lang) {
@@ -279,7 +279,7 @@ function mainView(client, guild, prefix, includeHidden = false, lang = currentLa
   const container = new ContainerBuilder()
     .addSectionComponents(section)
     .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'help.main.footer', { links: helpLinksLine(lang) })))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`${t(lang, 'help.main.footer', { links: helpLinksLine(lang) })}\n${t(lang, 'help.main.languages', { language: LANGUAGE_NAMES[lang], list: LANGUAGES.map((code) => LANGUAGE_NAMES[code]).join(', '), prefix })}`))
     .addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('help_cat').setPlaceholder(t(lang, 'help.main.placeholder.menu')).addOptions(options)));
 
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
@@ -292,7 +292,8 @@ function categoryView(client, guild, categoryId, includeHidden = false, lang = c
   const section = new SectionBuilder()
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        tn(lang, 'help.category.text', commands.length, { icon: meta.icon, label: meta.label, blurb: categoryBlurb(categoryId, lang) ?? t(lang, 'help.category.fallbackBlurb') }),
+        tn(lang, 'help.category.text', commands.length, { icon: meta.icon, label: meta.label, blurb: categoryBlurb(categoryId, lang) ?? t(lang, 'help.category.fallbackBlurb') })
+          + (categoryId === 'config' ? `\n${t(lang, 'help.category.languages', { language: LANGUAGE_NAMES[lang], list: LANGUAGES.map((code) => LANGUAGE_NAMES[code]).join(', ') })}` : ''),
       ),
     )
     .setThumbnailAccessory(new ThumbnailBuilder().setURL(botAvatarURL(client, guild)));
@@ -479,3 +480,7 @@ module.exports = {
     });
   },
 };
+
+// The main menu and a category page, drawn by scripts/check-i18n-panels.js in every language.
+module.exports.mainView = mainView;
+module.exports.categoryView = categoryView;

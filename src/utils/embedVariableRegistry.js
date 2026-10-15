@@ -467,7 +467,7 @@ const GROUPS = [
       '{quest.age_gate}',
       '{quest.status}',
       '{quest.source}',
-      ...QUEST_EXTRA_VARS.map((entry) => ({ tok: `{quest.${entry.key}}`, desc: entry.desc })),
+      ...QUEST_EXTRA_VARS.map((entry) => ({ tok: `{quest.${entry.key}}`, desc: entry.desc, describe: entry.describe })),
     ],
   },
   {
@@ -544,7 +544,8 @@ function describeGroups(lang) {
     availability: group.availability,
     vars: group.vars.map((entry) => {
       if (typeof entry === 'string') return { tok: entry, desc: t(lang, variableKey(group.id, entry)) };
-      // The extra quest variables carry their own (English) description.
+      // The extra quest variables describe themselves in each language.
+      if (entry.describe) return { tok: entry.tok, desc: entry.describe(lang) };
       if (entry.desc !== undefined) return { tok: entry.tok, desc: entry.desc };
       return { tok: entry.tok, desc: t(lang, variableKey(group.id, entry.tok)), dynamic: true };
     }),

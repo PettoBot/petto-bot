@@ -57,6 +57,8 @@ module.exports = {
   'setup.panel.progress': '{bar}  **{done}/{total}** areas configured',
   'setup.panel.unavailable': '{emoji} Some settings could not be loaded right now; press **Refresh** to try again.',
   'setup.panel.configuration': 'Configuration',
+  'setup.panel.language.title': 'Language',
+  'setup.panel.language.text': 'Petto speaks **{language}** in this server. Available: {list}. Change it with `{prefix}language`.',
   'setup.panel.permissions': 'Permissions',
   'setup.panel.footer': 'Quick setup opens one form with everything pre-filled from your current settings.',
   'setup.modal.title': 'Petto Setup',
@@ -119,6 +121,7 @@ module.exports = {
   'setup.result.section': 'Result',
   'setup.result.next': 'Next',
   'setup.result.nextHint': 'Use `{prefix}help` to browse every command, and `/setup` any time to review this server.',
+  'setup.result.nextLanguage': 'Petto speaks {list}. This server uses **{language}**; change it any time with `{prefix}language`.',
   'setup.result.openChannel.button': 'Open setup channel',
   'setup.result.error': '{emoji} Setup could not be completed: {error}',
 };

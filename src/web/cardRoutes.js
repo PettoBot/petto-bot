@@ -125,7 +125,7 @@ function registerCardRoutes(app, { authorize }) {
   app.get('/api/dashboard/cards/:guildId/assets/:id', cardLimiter, route(async (req, res) => {
     const asset = await cardAssets.getAsset(req.params.guildId, req.params.id);
     if (!asset) return res.status(404).json({ ok: false, error: 'not_found' });
-    res.set('Content-Type', 'image/png').set('Cache-Control', 'private, max-age=300');
+    res.set('Content-Type', 'image/png').set('Cache-Control', 'private, max-age=300'); // i18n-ignore: HTTP header
     res.send(asset.bytes);
   }));
 

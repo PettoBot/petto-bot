@@ -69,7 +69,7 @@ async function welcomeGuild(guild, guildConfig) {
       findInviter(guild),
     ]);
 
-    // The notice for the Petto team, in English. i18n-ignore-next-line
+    // The notice for the Petto team, in English. i18n-ignore-next-line: team notice
     const content = [
       `**Petto joined a new server.**`, // i18n-ignore: team notice
       `Name: ${guild.name}`, // i18n-ignore: team notice

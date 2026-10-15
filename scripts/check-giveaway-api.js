@@ -85,6 +85,9 @@ const base = { prize: ' A nitro ', winners: 2, duration: '3d 4h', channel_id: '2
   const failed = await runGiveawayAction(client, '10', 'reroll', { id: 2, winners: 9 });
   assert.equal(failed.error, 'reroll_failed'); assert.equal(failed.message, 'Not enough entries.');
   assert.equal((await runGiveawayAction(client, '10', 'dance', {})).status, 404);
+  // The message follows the language of the request; the code does not change.
+  assert.deepEqual(await runGiveawayAction(client, '10', 'end', { id: 2 }, 'es'), { ok: false, status: 400, error: 'already_ended', message: 'Ese sorteo ya terminó.' });
+  assert.equal((await runGiveawayAction(client, '10', 'start', { ...base, winners: 0 }, 'pt-BR')).message, 'O número de vencedores deve ser de 1 a 50.');
 
   console.log('giveaway api ok');
 })().catch((error) => { console.error(error); process.exit(1); });

@@ -432,4 +432,6 @@ module.exports = {
   'info.version.previous.button': 'Previous',
   'info.version.next.button': 'Next',
   'info.version.refresh.button': 'Refresh',
+  'info.version.status.latest': '{emoji} Latest',
+  'info.version.status.published': '{emoji} Published',
 };

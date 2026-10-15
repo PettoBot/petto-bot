@@ -13,11 +13,8 @@ const {
   ThumbnailBuilder,
 } = require('discord.js');
 const { EMOJI } = require('../utils/emojis');
-const { RELEASES, getLatestRelease, getRelease, getReleaseIndex } = require('../utils/releases');
+const { RELEASES, getReleases, getLatestRelease, getRelease, getReleaseIndex } = require('../utils/releases');
 const { t, currentLanguage, languageOf } = require('../i18n');
-
-// The release notes themselves (names, status, summaries, sections) stay in English on purpose: they are the team's
-// announcements. Only the card around them (position, menu, buttons) is translated.
 
 const VERSION_SELECT_ID = 'version:select';
 const PETTO_IMAGE_URL = 'https://i.imgur.com/WUwcYwM.png';
@@ -68,7 +65,7 @@ function buildVersionSelect(selectedVersion, lang) {
   const menu = new StringSelectMenuBuilder()
     .setCustomId(VERSION_SELECT_ID)
     .setPlaceholder(t(lang, 'info.version.choose.menu'))
-    .addOptions(RELEASES.map((release) => {
+    .addOptions(getReleases(lang).map((release) => {
       const option = new StringSelectMenuOptionBuilder()
         .setLabel(release.label)
         .setValue(release.version)
@@ -122,7 +119,7 @@ function buildLinksRow(lang) {
 }
 
 function buildVersionPayload(version = getLatestRelease().version, lang = currentLanguage()) {
-  const release = getRelease(version) ?? getLatestRelease();
+  const release = getRelease(version, lang) ?? getLatestRelease(lang);
   return { components: [buildReleaseCard(release, lang)], flags: MessageFlags.IsComponentsV2 };
 }
 

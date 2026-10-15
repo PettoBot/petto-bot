@@ -3,14 +3,15 @@
 const { parse, MAX_SOURCE_LENGTH } = require('./parser');
 const { run, DEFAULT_LIMITS, closestName } = require('./interpreter');
 const { functions } = require('./functions');
-const { PettoCodeError } = require('./errors');
+const { PettoCodeError, CodeProblem, phrase, say } = require('./errors');
+const { currentLanguage } = require('../i18n');
 
-/** The mistake in some code, or null when it is fine, so an editor can show it. */
-function check(source) {
-  try { parse(source); return null; } catch (error) {
+/** The mistake in some code (said in `lang`), or null when it is fine, so an editor can show it. */
+function check(source, lang = currentLanguage()) {
+  try { parse(source, lang); return null; } catch (error) {
     if (error instanceof PettoCodeError) return { kind: error.kind, message: error.detail, line: error.line, column: error.column };
     throw error;
   }
 }
 
-module.exports = { parse, run, check, closestName, PettoCodeError, DEFAULT_LIMITS, MAX_SOURCE_LENGTH, functionNames: () => [...functions.keys()].sort() };
+module.exports = { parse, run, check, closestName, PettoCodeError, CodeProblem, phrase, say, DEFAULT_LIMITS, MAX_SOURCE_LENGTH, functionNames: () => [...functions.keys()].sort() };

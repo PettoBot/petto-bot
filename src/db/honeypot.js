@@ -26,7 +26,7 @@ async function listHoneypots(guildId) {
 }
 
 async function upsertHoneypot(guildId, channelId, punishment = 'softban') {
-  if (!PUNISHMENTS.includes(punishment)) throw new Error(`Unsupported honeypot punishment: ${punishment}`);
+  if (!PUNISHMENTS.includes(punishment)) throw new Error(`Unsupported honeypot punishment: ${punishment}`); // i18n-ignore: internal validation
 
   const { data, error } = await database
     .from('honeypots')

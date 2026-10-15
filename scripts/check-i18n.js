@@ -150,12 +150,44 @@ const scan = (dir) => {
 scan(path.join(ROOT, 'src'));
 for (const [key, file] of used) if (!Object.hasOwn(english, key)) problem(`${file} uses ${key}, which is not in the English catalog`);
 
+// The detector itself: what it must catch, and what it must leave alone.
+{
+  const sample = [
+    "const PANEL = [{ label: 'Lock', desc: 'Lock the voice channel', value: 'lock' }, { label: 'Reveal', description: 'Show it again' }];",
+    "const ITEMS = { title: 'Voice Channel Panel', placeholder: 'Pick one', footer: 'Petto panel', text: 'Hello' };",
+    "const field = { name: 'Reason', value: 'Nothing yet' };",
+    "const line = `Increase the user limit of ${channel}`;",
+    "new EmbedBuilder().setTitle('Settings').setDescription('Change how it works').setFooter({ text: 'Page' }).addFields({ name: 'Owner', value: x });",
+    "new ButtonBuilder().setCustomId('vc:lock').setLabel('Lock').setStyle(ButtonStyle.Danger);",
+    "new StringSelectMenuBuilder().setCustomId('pick').setPlaceholder('Choose').addOptions(new StringSelectMenuOptionBuilder().setLabel('Ban').setDescription('Bans').setValue('ban'));",
+    "new ModalBuilder().setCustomId('m').setTitle('Rename').addComponents(new TextInputBuilder().setCustomId('n').setLabel('Name'));",
+    "lines.push('**Status:** waiting');",
+    "const mixed = t(lang, 'core.error') + ' and more words here';",
+  ].join('\n');
+  const caught = hardcodedText(sample).map((hit) => hit.text);
+  for (const text of ['Lock', 'Lock the voice channel', 'Reveal', 'Show it again', 'Voice Channel Panel', 'Pick one', 'Petto panel', 'Hello', 'Reason', 'Nothing yet',
+    'Increase the user limit of {}', 'Settings', 'Change how it works', 'Page', 'Owner', 'Choose', 'Ban', 'Bans', 'Rename', 'Name', '**Status:** waiting', ' and more words here']) {
+    assert.ok(caught.includes(text), `the detector catches ${JSON.stringify(text)}`);
+  }
+  const quiet = [
+    "const label = t(lang, 'voicemaster.panel.lock');",
+    "logger.info('Something happened in a guild');",
+    "if (text.includes('hello there friend')) return;",
+    "new ButtonBuilder().setCustomId('vc:lock').setEmoji(emoji.lock).setStyle(ButtonStyle.Secondary);",
+    "const x = { value: 'lock', customId: 'vc:lock', type: 'button' };",
+    "throw new Error('Internal thing went wrong'); // i18n-ignore: internal error",
+    "const usage = commandRef(interaction, 'embed create name:my_embed');",
+  ].join('\n');
+  assert.deepEqual(hardcodedText(quiet), [], 'keys, logs, comparisons, ids and marked lines are left alone');
+}
+
 // No English left written in the code of what is translated. Until every module is done, a file counts as translated once
 // it uses src/i18n; SCAN_ALL then covers every file people read text from. Lines that must stay in English (logs, team
 // notices, names that are never translated) carry `i18n-ignore`; files nobody outside the team reads start with
 // `// i18n-ignore-file: <why>`.
 const SCAN_ALL = true;
-const SCANNED_DIRS = ['commands', 'interactions', 'events', 'jobs', 'utils', 'logging', 'handlers', 'imgutils'].map((dir) => path.join(ROOT, 'src', dir));
+// Every folder of src with code (the catalogs themselves are the translations), and src/config.js.
+const SCANNED_DIRS = [...fs.readdirSync(path.join(ROOT, 'src'), { withFileTypes: true }).filter((entry) => entry.isDirectory() && !['i18n', 'assets'].includes(entry.name)).map((entry) => path.join(ROOT, 'src', entry.name)), path.join(ROOT, 'src', 'config.js')];
 const ignoredTexts = builderTexts();
 const USES_I18N = /require\(['"](?:\.\.?\/)+(?:\.\.\/)*i18n['"]\)/;
 // The TypeScript sources of some files (src/**/*.ts, compiled over their .js by `npm run build:ts`) are held to the same
@@ -167,6 +199,10 @@ const typeScriptSources = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir, { w
 }) : []);
 for (const file of [...SCANNED_DIRS.flatMap(filesUnder), ...typeScriptSources(path.join(ROOT, 'src'))]) {
   const source = fs.readFileSync(file, 'utf8');
+  // Every exception says why: `// i18n-ignore: <reason>`.
+  source.split('\n').forEach((text, index) => {
+    if (/i18n-ignore(?:-file|-next-line)?(?!-)(?!\s*:\s*\S)/.test(text) && !/i18n-ignore\/|USES_I18N|i18n-ignore\)/.test(text)) problem(`${path.relative(ROOT, file)}:${index + 1} has an i18n-ignore without a reason (write \`// i18n-ignore: why\`)`);
+  });
   if (!SCAN_ALL && !USES_I18N.test(source)) continue;
   for (const hit of hardcodedText(source)) {
     if (ignoredTexts.has(hit.text)) continue;
@@ -277,28 +313,81 @@ const json = (component) => JSON.parse(JSON.stringify(component.toJSON ? compone
   assert.match(JSON.stringify(thanks.components.map(json)), /Gracias por agregar a Petto a S/);
   assert.match(JSON.stringify(guildCreate.buildThanksMessage('S', '</setup:1>', '!').components.map(json)), /Thanks for adding Petto to S/);
 
-  const rows = { g1: { language: 'pt-BR' }, g2: { language: 'pt' }, g3: { language: null } };
+  const rows = { g1: { language: 'pt-BR' }, g2: { language: 'pt' }, g3: { language: null }, g4: { language: 'es' } };
   let reads = 0;
+  let loads = 0;
+  let loadGate = null;
   const updates = [];
   stub('src/db/guilds.js', {
-    findGuildLanguage: async (id) => { reads += 1; if (id === 'broken') throw new Error('database down'); if (id === 'slow') return new Promise(() => {}); return rows[id]?.language ?? null; },
+    findGuildLanguage: async (id) => {
+      reads += 1;
+      if (id === 'broken') throw new Error('database down');
+      if (id === 'hangs') return new Promise(() => {});
+      return rows[id]?.language ?? null;
+    },
+    listGuildLanguages: async () => {
+      loads += 1;
+      if (loadGate) await loadGate;
+      if (loads === 99) throw new Error('database down');
+      return Object.entries(rows).filter(([, row]) => row.language && row.language !== 'en').map(([guild_id, row]) => ({ guild_id, language: row.language }));
+    },
     updateGuild: async (id, patch) => { updates.push([id, patch]); rows[id] = { ...rows[id], ...patch }; return rows[id]; },
   });
+  const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+  // Before the first load: nothing waits. An unknown server is English for this message and is looked up once in the background.
+  const start = Date.now();
+  assert.equal(await i18n.guildLanguage('hangs'), 'en', 'a database that does not answer never holds a message');
+  assert.ok(Date.now() - start < 50, 'not even for a moment');
+  assert.equal(i18n.peekGuildLanguage('g1'), 'en', 'not known yet: English right away');
+  await settle();
+  assert.equal(i18n.peekGuildLanguage('g1'), 'pt-BR', 'the background lookup filled it for the next message');
+  i18n.peekGuildLanguage('g1');
+  assert.equal(reads, 2, 'one lookup per server, not one per message');
   assert.equal(await languageOf({ guildId: 'g1', locale: 'es-ES' }), 'pt-BR', 'in a server the server decides, not the member');
-  assert.equal(await i18n.guildLanguage('g1'), 'pt-BR');
-  assert.equal(reads, 1, 'the language of a server is cached');
-  const together = await Promise.all([i18n.guildLanguage('g2'), i18n.guildLanguage('g2'), i18n.guildLanguage('g2')]);
-  assert.deepEqual(together, ['pt-BR', 'pt-BR', 'pt-BR']);
-  assert.equal(reads, 2, 'events that arrive together share one lookup');
-  const slowStart = Date.now();
-  assert.equal(await i18n.guildLanguage('slow'), 'en', 'a database that does not answer gives English');
-  assert.ok(Date.now() - slowStart < 1500, 'without waiting long');
+
+  // When the bot is ready: one query for every server, then no database at all on the hot path.
+  assert.equal(await i18n.loadGuildLanguages(), 3, 'g1, g2 and g4 chose a language; g3 is English');
+  assert.equal(loads, 1);
+  const readsAfterLoad = reads;
+  for (let i = 0; i < 1000; i += 1) {
+    await i18n.guildLanguage('g1');
+    await i18n.guildLanguage(`unknown${i}`);
+    i18n.peekGuildLanguage('g4');
+  }
+  await settle();
+  assert.equal(reads, readsAfterLoad, 'with the cache loaded, no guildLanguage call touches the database');
+  assert.equal(loads, 1);
   assert.equal(await i18n.guildLanguage('g2'), 'pt-BR', 'an old "pt" is read as pt-BR');
   assert.equal(await i18n.guildLanguage('g3'), 'en', 'no language is English');
+  assert.equal(await i18n.guildLanguage('unknown1'), 'en', 'a server without a row is English');
+
+  // The refresh in the background: it replaces what changed in the database, serving the old values until it answers.
+  rows.g4.language = 'en';
+  rows.g3.language = 'pt-BR';
+  let open;
+  loadGate = new Promise((resolve) => { open = resolve; });
+  const refresh = i18n.loadGuildLanguages();
+  assert.equal(await i18n.guildLanguage('g4'), 'es', 'while the refresh runs, the value already known is served');
+  i18n.setCachedGuildLanguage('g1', 'es'); // !language during the refresh
+  open();
+  await refresh;
+  loadGate = null;
+  assert.equal(i18n.peekGuildLanguage('g4'), 'en', 'a server that went back to English');
+  assert.equal(i18n.peekGuildLanguage('g3'), 'pt-BR', 'a server that changed in the dashboard');
+  assert.equal(i18n.peekGuildLanguage('g1'), 'es', 'a change written during the refresh is newer than what the refresh read');
+  loads = 98; // the next load fails
+  await i18n.loadGuildLanguages();
+  assert.equal(i18n.peekGuildLanguage('g3'), 'pt-BR', 'a failed refresh keeps what was known');
+  i18n.forgetGuildLanguage('g3');
+  assert.equal(i18n.peekGuildLanguage('g3'), 'en', 'a server Petto left is forgotten');
+  const refresher = await i18n.startGuildLanguageRefresh({ everyMs: 60_000 });
+  assert.equal(typeof refresher, 'number', 'started with a first load');
   assert.equal(await i18n.guildLanguage('broken'), 'en', 'a database error answers in English');
   assert.equal(await i18n.setGuildLanguage('g3', 'español'), 'es');
   assert.deepEqual(updates, [['g3', { language: 'es' }]], 'saved as the code');
   assert.equal(await i18n.guildLanguage('g3'), 'es', 'used at once');
+  i18n.setCachedGuildLanguage('g1', 'pt-BR');
   await assert.rejects(() => i18n.setGuildLanguage('g3', 'klingon'));
 
   // The translated cards fit the 4000 characters of a Components V2 message.
@@ -337,13 +426,25 @@ const json = (component) => JSON.parse(JSON.stringify(component.toJSON ? compone
   result = await run('g1', 'klingon');
   assert.match(result.text, /Não conheço esse idioma/, 'an unknown language is told in the current language');
   assert.equal(rows.g1.language, 'pt-BR', 'and nothing changes');
+  // Setting a language redraws the panels Petto posted (here two fake ones), and says how many.
+  const { REFRESHERS } = require('../src/utils/panelRefresh');
+  const realRefreshers = { ...REFRESHERS };
+  for (const name of Object.keys(REFRESHERS)) delete REFRESHERS[name];
+  const redrawnIn = [];
+  REFRESHERS.fake = async (guild, lang) => { redrawnIn.push([guild.id, lang]); return 2; };
   result = await run('g1', 'set es');
+  assert.deepEqual(redrawnIn, [['g1', 'es']], 'the panels are redrawn in the new language');
+  assert.match(result.text, /Se volvieron a dibujar en este idioma 2 mensajes/, 'and the answer says how many');
+  result = await run('g1', 'es');
+  assert.equal(redrawnIn.length, 2, 'setting the same language again redraws them too (panels posted before the change)');
   assert.equal(rows.g1.language, 'es', 'saved');
   assert.match(result.text, /Listo: ahora Petto habla \*\*Español\*\*/, 'the answer is already in the new language');
   assert.equal(result.interaction.pettoLang, 'es');
   assert.equal(await i18n.guildLanguage('g1'), 'es', 'the next command uses it at once');
   result = await run('g1', 'en', { pettoLang: 'es' });
   assert.match(result.text, /Done: Petto now speaks \*\*English\*\*/, 'back to English');
+  for (const name of Object.keys(REFRESHERS)) delete REFRESHERS[name];
+  Object.assign(REFRESHERS, realRefreshers);
   const data = language.data.toJSON();
   assert.equal(data.default_member_permissions, String(require('discord.js').PermissionFlagsBits.ManageGuild), 'needs Manage Server');
   assert.deepEqual(data.options[0].choices.map((choice) => choice.value), ['en', 'es', 'pt-BR']);

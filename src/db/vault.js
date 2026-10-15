@@ -113,7 +113,7 @@ async function createBackup(guildId, createdBy, label, snapshot, source = 'manua
       `insert into petto_vault_backups (guild_id, backup_number, created_by, label, source, snapshot)
        values ($1, coalesce((select max(backup_number) + 1 from petto_vault_backups where guild_id = $1), 1), $2, $3, $4, $5::jsonb)
        returning id, backup_number, label, source, created_at`,
-      [guildId, createdBy, label || (source === 'scheduled' ? 'Scheduled backup' : 'Manual backup'), source, JSON.stringify(snapshot)],
+      [guildId, createdBy, label || (source === 'scheduled' ? 'Scheduled backup' : 'Manual backup'), source, JSON.stringify(snapshot)], // i18n-ignore: English default kept in the database, shown translated (defaultText)
     );
     await client.query('commit');
     return rows[0];

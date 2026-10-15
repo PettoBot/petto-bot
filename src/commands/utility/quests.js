@@ -13,6 +13,7 @@ const { EMOJI } = require('../../utils/emojis');
 const { actionAndText } = require('../../utils/codeArgs');
 const { ARCHIVE_MINUTES, DEFAULT_THREAD_NAME, TEXT_LIMIT, sendMethodNow } = require('../../utils/questMethod');
 const { t, tn, languageOf } = require('../../i18n');
+const { sourceProblem } = require('../../utils/sourceProblems');
 
 const textChannels = [ChannelType.GuildText, ChannelType.GuildAnnouncement];
 
@@ -155,7 +156,7 @@ module.exports = {
     if (sub === 'resend') {
       if (!current.enabled || !current.channel_id) return reply(`${EMOJI.DENY}  ${t(lang, 'quests.resend.notEnabled')}`);
       let result;
-      try { result = await resendMissing(interaction.client, { ...current, guild_id: guildId }); } catch (error) { return reply(`${EMOJI.DENY}  ${t(lang, 'quests.readFailed', { error: error.message })}`); }
+      try { result = await resendMissing(interaction.client, { ...current, guild_id: guildId }); } catch (error) { return reply(`${EMOJI.DENY}  ${t(lang, 'quests.readFailed', { error: sourceProblem(error.message, lang) })}`); }
       if (!result.missing) return done('quests.resend.nothing');
       const parts = [tn(lang, 'quests.resend.sent', result.missing, { sent: result.sent, count: result.missing, channel: `<#${current.channel_id}>` })];
       if (result.left) parts.push(t(lang, 'quests.resend.left', { count: result.left }));
@@ -263,7 +264,7 @@ module.exports = {
     }
     if (sub === 'list' || sub === 'test') {
       let quests;
-      try { quests = (await questApi.fetchQuests({ force: true })).quests.filter((quest) => questApi.isActive(quest)); } catch (error) { return reply(`${EMOJI.DENY}  ${t(lang, 'quests.readFailed', { error: error.message })}`); }
+      try { quests = (await questApi.fetchQuests({ force: true })).quests.filter((quest) => questApi.isActive(quest)); } catch (error) { return reply(`${EMOJI.DENY}  ${t(lang, 'quests.readFailed', { error: sourceProblem(error.message, lang) })}`); }
       quests.sort((a, b) => (b.startsAt - a.startsAt) || b.id.localeCompare(a.id));
       if (!quests.length) return reply(t(lang, 'quests.noActive'));
       if (sub === 'list') return interaction.editReply(buildQuestList(quests, { page: interaction.options.getInteger('page') ?? 1, lang }));
@@ -282,7 +283,7 @@ module.exports = {
       : off;
     const sources = status.ok === null
       ? t(lang, 'quests.status.notAsked')
-      : status.sources.filter((source) => source.ok !== null).map((source) => (source.ok ? t(lang, 'quests.status.sourceOk', { name: source.name }) : t(lang, 'quests.status.sourceFailing', { name: source.name, error: source.error }))).join(', ');
+      : status.sources.filter((source) => source.ok !== null).map((source) => (source.ok ? t(lang, 'quests.status.sourceOk', { name: source.name }) : t(lang, 'quests.status.sourceFailing', { name: source.name, error: sourceProblem(source.error, lang) }))).join(', ');
     const lines = [
       t(lang, 'quests.status.alerts', { value: current.enabled && current.channel_id ? t(lang, 'quests.status.onIn', { channel: `<#${current.channel_id}>` }) : t(lang, 'quests.status.alertsOff') }),
       t(lang, 'quests.status.role', { value: current.role_id ? `<@&${current.role_id}>` : none }),

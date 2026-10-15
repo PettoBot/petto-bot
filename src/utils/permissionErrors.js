@@ -2,13 +2,13 @@
 // member in plain words and kept out of the channel of errors.
 const { t, currentLanguage } = require('../i18n');
 
-// The messages Discord sends with each code (matched, never shown). i18n-ignore
+// The messages Discord sends with each code (matched, never shown). i18n-ignore: Discord's own error texts, matched
 const CODES = new Map([
-  [50013, 'Missing Permissions'], // i18n-ignore
-  [50001, 'Missing Access'], // i18n-ignore
-  [160002, 'Read Message History'], // i18n-ignore
-  [50007, 'Cannot send messages to this user'], // i18n-ignore
-  [40333, 'Cannot send messages in this channel'], // i18n-ignore
+  [50013, 'Missing Permissions'], // i18n-ignore: Discord's error text, matched
+  [50001, 'Missing Access'], // i18n-ignore: Discord's error text, matched
+  [160002, 'Read Message History'], // i18n-ignore: Discord's error text, matched
+  [50007, 'Cannot send messages to this user'], // i18n-ignore: Discord's error text, matched
+  [40333, 'Cannot send messages in this channel'], // i18n-ignore: Discord's error text, matched
 ]);
 
 const isPermissionError = (error) => Boolean(error) && CODES.has(error.code);

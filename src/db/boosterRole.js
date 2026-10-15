@@ -64,7 +64,7 @@ async function upsertBoosterRole(guildId, userId, patch) {
     if (existing) {
       patch = { ...patch, role_id: existing.role_id };
     } else {
-      throw new Error(`upsertBoosterRole: no existing row for ${guildId}/${userId} and no role_id in patch — refusing to insert a broken row.`);
+      throw new Error(`upsertBoosterRole: no existing row for ${guildId}/${userId} and no role_id in patch — refusing to insert a broken row.`); // i18n-ignore: internal error
     }
   }
 

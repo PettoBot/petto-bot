@@ -15,7 +15,7 @@ const { build } = require('../../utils/embedBuilder');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
-const { t, tn, formatNumber, languageOf } = require('../../i18n');
+const { t, tn, formatNumber, languageOf, defaultText } = require('../../i18n');
 
 const STYLE_CHOICES = [
   { name: 'primary (blurple)', value: 'primary' },
@@ -403,6 +403,10 @@ async function panelEdit(interaction, lang) {
 
 /** Renders (or re-renders) a panel's message payload: embed-template-or-fallback + its categories' button/select row. */
 async function renderPanelMessage(guild, panel, categories, channel, lang) {
+  // The first panel and type the setup wizard writes are saved in the language of that moment: while they are still the English
+  // defaults, they are shown in the server's language (what the staff wrote is shown as it is).
+  panel = { ...panel, title: defaultText(lang, panel.title, 'tickets.setup.default.title'), description: defaultText(lang, panel.description, 'tickets.setup.default.description') };
+  categories = categories.map((category) => ({ ...category, label: defaultText(lang, category.label, 'tickets.setup.default.typeLabel'), description: defaultText(lang, category.description, 'tickets.setup.default.typeDescription') }));
   const rows = buildPanelRows(panel.style, categories, { placeholder: panel.placeholder, lang });
 
   if (panel.embed_template) {
@@ -904,3 +908,5 @@ async function ticketActionCmd(interaction, sub, lang) {
     await interaction.editReply({ content: t(lang, 'tickets.actionFailed') });
   }
 }
+
+module.exports.renderPanelMessage = renderPanelMessage;

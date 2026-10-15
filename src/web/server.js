@@ -17,7 +17,7 @@ const { sendVerifiedDM } = require('../utils/verifyMessage');
 const { createBackup, listBackups, getBackup, recordAudit, vault } = require('../db/backups');
 const { restoreBackup } = require('../utils/backupRestore');
 const { buildSnapshot } = require('../commands/config/backup');
-const { renderVerifyPage, pickLanguage } = require('./verifyPage');
+const { renderVerifyPage } = require('./verifyPage');
 const { createChallenge, checkAnswer } = require('../utils/verifyCaptcha');
 const { methodOf, usesTurnstile, usesLetters } = require('../utils/verifyMethod');
 const { renderHomePage } = require('./homePage');
@@ -29,6 +29,7 @@ const { registerCodeRoutes } = require('./codeRoutes');
 const { registerIdentityRoutes } = require('./identityRoutes');
 const { registerMemberRoutes } = require('./memberRoutes');
 const { registerGuildLanguageRoute } = require('./languageRoutes');
+const { refreshGuildPanels } = require('../utils/panelRefresh');
 const { registerPublicLeaderboardRoute } = require('./publicLeaderboard');
 const { listVariables } = require('../utils/embedVariableRegistry');
 const { renderPollRequest } = require('../utils/pollApi');
@@ -38,6 +39,9 @@ const questsDb = require('../db/quests');
 const { runGiveawayAction } = require('../utils/giveawayApi');
 const { createTopggHandler } = require('../utils/voteWebhook');
 const logger = require('../utils/logger');
+const { t, requestLanguage, peekGuildLanguage, runWithLanguage } = require('../i18n');
+
+const SNOWFLAKE = /^\d{15,25}$/;
 
 async function checkTurnstile(responseToken, remoteIp) {
   const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
@@ -64,8 +68,8 @@ const verifyPageRateLimiter = rateLimit({
   limit: 60,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  handler: (_req, res) => {
-    res.status(429).type('text/plain').send('Too many requests. Wait a minute and try again.');
+  handler: (req, res) => {
+    res.status(429).type('text/plain').send(t(requestLanguage(req), 'web.limit.verifyPage'));
   },
 });
 
@@ -74,8 +78,8 @@ const verifyCaptchaRateLimiter = rateLimit({
   limit: 40,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  handler: (_req, res) => {
-    res.status(429).json({ ok: false, error: 'Too many pictures asked. Wait a minute and try again.' });
+  handler: (req, res) => {
+    res.status(429).json({ ok: false, error: t(requestLanguage(req), 'web.limit.captcha') });
   },
 });
 
@@ -106,8 +110,8 @@ const transcriptRateLimiter = rateLimit({
   limit: 60,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  handler: (_req, res) => {
-    res.status(429).send('Too many requests. Try again in a minute.');
+  handler: (req, res) => {
+    res.status(429).send(t(requestLanguage(req, SNOWFLAKE.test(req.params?.guildId ?? '') ? req.params.guildId : null), 'web.limit.transcript'));
   },
 });
 
@@ -140,7 +144,7 @@ function startServer(client) {
   const app = express();
   const proxyHops = Number(process.env.TRUST_PROXY_HOPS ?? 1);
   app.disable('x-powered-by');
-  app.set('trust proxy', Number.isInteger(proxyHops) && proxyHops >= 0 ? proxyHops : 1);
+  app.set('trust proxy', Number.isInteger(proxyHops) && proxyHops >= 0 ? proxyHops : 1); // i18n-ignore: Express setting
   app.use((req, res, next) => {
     res.set('X-Content-Type-Options', 'nosniff');
     res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
@@ -233,21 +237,22 @@ function startServer(client) {
         res.status(401).json({ ok: false, error: 'unauthorized' });
         return;
       }
-      res.set('Cache-Control', 'private, max-age=300');
-      res.json({ ok: true, groups: listVariables() });
+      res.set('Cache-Control', 'private, max-age=300'); // i18n-ignore: HTTP header
+      res.json({ ok: true, groups: listVariables(requestLanguage(req)) });
     });
 
     // Start, edit, end or reroll a giveaway from the dashboard. The person must manage the server; the host of a new giveaway is that person.
     app.post('/api/dashboard/guild/:guildId/giveaway/:action', dashboardDatabaseRateLimiter, async (req, res) => {
       const access = await dashboardCardAccess(req, res);
       if (!access) return;
+      const lang = requestLanguage(req, access.guild.id);
       try {
-        const result = await runGiveawayAction(client, access.guild.id, String(req.params.action), { ...req.body, host_id: access.userId });
+        const result = await runGiveawayAction(client, access.guild.id, String(req.params.action), { ...req.body, host_id: access.userId }, lang);
         const { status, ...body } = result;
         res.status(result.ok ? 200 : status ?? 400).json(body);
       } catch (err) {
         logger.error(`Dashboard giveaway ${req.params.action} failed for guild ${req.params.guildId}:`, err);
-        res.status(500).json({ ok: false, error: 'giveaway_failed', message: 'The giveaway action failed. Try again.' });
+        res.status(500).json({ ok: false, error: 'giveaway_failed', message: t(lang, 'web.api.giveawayFailed') });
       }
     });
 
@@ -255,17 +260,18 @@ function startServer(client) {
     app.post('/api/dashboard/guild/:guildId/suggestions/answer', dashboardDatabaseRateLimiter, async (req, res) => {
       const access = await dashboardCardAccess(req, res);
       if (!access) return;
+      const lang = requestLanguage(req, access.guild.id);
       try {
         const id = String(req.body?.id ?? '').trim().toLowerCase();
         const status = String(req.body?.status ?? '');
-        if (!/^[a-z0-9]{5}-[a-z0-9]{5}$/.test(id) || !suggestionsUtil.STATUSES[status]) { res.status(400).json({ ok: false, message: 'That is not a suggestion or a status.' }); return; }
+        if (!/^[a-z0-9]{5}-[a-z0-9]{5}$/.test(id) || !suggestionsUtil.STATUSES[status]) { res.status(400).json({ ok: false, message: t(lang, 'web.api.suggestions.invalid') }); return; }
         const member = await access.guild.members.fetch(access.userId).catch(() => null);
         const result = await suggestionsUtil.answer({ guild: access.guild, member, id, status, reason: req.body?.reason });
         if (result.error) { res.status(400).json({ ok: false, message: result.error }); return; }
-        res.json({ ok: true, message: `Now ${suggestionsUtil.STATUSES[status].label.toLowerCase()}.` });
+        res.json({ ok: true, message: t(lang, 'web.api.suggestions.now', { status: suggestionsUtil.statusLabel(status, lang).toLocaleLowerCase(lang) }) });
       } catch (err) {
         logger.error(`Dashboard suggestion answer failed for guild ${req.params.guildId}:`, err);
-        res.status(500).json({ ok: false, message: 'The answer could not be saved. Try again.' });
+        res.status(500).json({ ok: false, message: t(lang, 'web.api.suggestions.answerFailed') });
       }
     });
 
@@ -273,6 +279,7 @@ function startServer(client) {
     app.post('/api/dashboard/guild/:guildId/suggestions/votes', dashboardDatabaseRateLimiter, async (req, res) => {
       const access = await dashboardCardAccess(req, res);
       if (!access) return;
+      const lang = requestLanguage(req, access.guild.id);
       try {
         const member = await access.guild.members.fetch(access.userId).catch(() => null);
         const result = await suggestionsUtil.voters({ guild: access.guild, member, id: String(req.body?.id ?? '') });
@@ -286,7 +293,7 @@ function startServer(client) {
         res.json({ ok: true, up, down, upTotal: result.up.length, downTotal: result.down.length });
       } catch (err) {
         logger.error(`Dashboard suggestion votes failed for guild ${req.params.guildId}:`, err);
-        res.status(500).json({ ok: false, message: 'The votes could not be read. Try again.' });
+        res.status(500).json({ ok: false, message: t(lang, 'web.api.suggestions.votesFailed') });
       }
     });
 
@@ -294,17 +301,18 @@ function startServer(client) {
     app.post('/api/dashboard/guild/:guildId/tickets/transcript', dashboardDatabaseRateLimiter, async (req, res) => {
       const access = await dashboardCardAccess(req, res);
       if (!access) return;
+      const lang = requestLanguage(req, access.guild.id);
       try {
         const number = Number(req.body?.number);
         const ticket = Number.isInteger(number) && number > 0 ? await getTicketByNumber(access.guild.id, number) : null;
-        if (!ticket) { res.status(404).json({ ok: false, message: 'That ticket does not exist.' }); return; }
-        if (!ticket.transcript_html) { res.status(404).json({ ok: false, message: 'This ticket has no saved transcript yet.' }); return; }
+        if (!ticket) { res.status(404).json({ ok: false, message: t(lang, 'web.api.tickets.notFound') }); return; }
+        if (!ticket.transcript_html) { res.status(404).json({ ok: false, message: t(lang, 'web.api.tickets.noTranscript') }); return; }
         const link = require('../utils/ticketActions').buildTranscriptLink({ guild: access.guild, ticket });
-        if (!link) { res.status(400).json({ ok: false, message: 'The transcript viewer is not set up in the bot.' }); return; }
+        if (!link) { res.status(400).json({ ok: false, message: t(lang, 'web.api.tickets.noViewer') }); return; }
         res.json({ ok: true, link });
       } catch (err) {
         logger.error(`Dashboard ticket transcript failed for guild ${req.params.guildId}:`, err);
-        res.status(500).json({ ok: false, message: 'The transcript could not be opened. Try again.' });
+        res.status(500).json({ ok: false, message: t(lang, 'web.api.tickets.transcriptFailed') });
       }
     });
 
@@ -312,19 +320,20 @@ function startServer(client) {
     app.post('/api/dashboard/guild/:guildId/antinuke/restore', dashboardDatabaseRateLimiter, async (req, res) => {
       const access = await dashboardCardAccess(req, res);
       if (!access) return;
+      const lang = requestLanguage(req, access.guild.id);
       try {
         const { canRestore, restoreEvent } = require('../utils/antiNukeRestore');
         const antinukeDb = require('../db/antinuke');
-        if (!canRestore(access.member)) { res.status(403).json({ ok: false, message: 'Only the server owner and administrators can restore this.' }); return; }
+        if (!canRestore(access.member)) { res.status(403).json({ ok: false, message: t(lang, 'web.api.antinuke.ownerOnly') }); return; }
         const event = await antinukeDb.getEvent(access.guild.id, Number(req.body?.id));
-        if (!event) { res.status(404).json({ ok: false, message: 'That event does not exist.' }); return; }
-        if (event.restored_at) { res.status(400).json({ ok: false, message: 'This was already restored.' }); return; }
-        const { done, failed } = await restoreEvent(access.guild, event);
+        if (!event) { res.status(404).json({ ok: false, message: t(lang, 'web.api.antinuke.notFound') }); return; }
+        if (event.restored_at) { res.status(400).json({ ok: false, message: t(lang, 'web.api.antinuke.alreadyRestored') }); return; }
+        const { done, failed } = await restoreEvent(access.guild, event, lang);
         if (!failed.length) await antinukeDb.markRestored(access.guild.id, event.id);
         res.json({ ok: failed.length === 0, done, failed, message: failed.length ? failed.join(' ') : undefined });
       } catch (err) {
         logger.error(`Dashboard anti-nuke restore failed for guild ${req.params.guildId}:`, err);
-        res.status(500).json({ ok: false, message: 'It could not be restored. Try again.' });
+        res.status(500).json({ ok: false, message: t(lang, 'web.api.antinuke.failed') });
       }
     });
 
@@ -362,7 +371,7 @@ function startServer(client) {
     app.get('/api/appeals/:guildId/guild', dashboardDatabaseRateLimiter, async (req, res) => {
       const access = await appealAccess(req, res, { needUser: false });
       if (!access) return;
-      res.set('Cache-Control', 'private, max-age=60');
+      res.set('Cache-Control', 'private, max-age=60'); // i18n-ignore: HTTP header
       res.json({ ok: true, guild: { id: access.guild.id, name: access.guild.name, icon: access.guild.iconURL({ extension: 'png', size: 128 }) ?? null, members: access.guild.memberCount ?? null } });
     });
 
@@ -436,33 +445,35 @@ function startServer(client) {
     app.post('/api/dashboard/guild/:guildId/appeals/resolve', dashboardDatabaseRateLimiter, async (req, res) => {
       const access = await dashboardCardAccess(req, res);
       if (!access) return;
+      const lang = requestLanguage(req, access.guild.id);
       try {
         const appealsDb = require('../db/appeals');
         const { resolveAppeal } = require('../utils/appeals');
         const submission = await appealsDb.getSubmission(access.guild.id, String(req.body?.id ?? ''));
-        if (!submission) { res.status(404).json({ ok: false, message: 'That appeal does not exist.' }); return; }
+        if (!submission) { res.status(404).json({ ok: false, message: t(lang, 'web.api.appeals.notFound') }); return; }
         const result = await resolveAppeal({ client, guild: access.guild, submission, status: String(req.body?.status ?? ''), moderatorId: access.userId, moderatorName: access.member.displayName, reason: req.body?.reason });
-        if (!result.ok) { res.status(400).json({ ok: false, message: result.error === 'already_resolved' ? 'This appeal was already answered.' : 'That could not be done.' }); return; }
+        if (!result.ok) { res.status(400).json({ ok: false, message: t(lang, result.error === 'already_resolved' ? 'web.api.appeals.alreadyAnswered' : 'web.api.appeals.cannotDo') }); return; }
         res.json({ ok: true, dm: result.dm, lifted: result.lifted });
       } catch (err) {
         logger.error(`Dashboard appeal resolve failed for guild ${req.params.guildId}:`, err);
-        res.status(500).json({ ok: false, message: 'It could not be saved. Try again.' });
+        res.status(500).json({ ok: false, message: t(lang, 'web.api.appeals.saveFailed') });
       }
     });
 
     app.post('/api/dashboard/guild/:guildId/appeals/reply', dashboardDatabaseRateLimiter, async (req, res) => {
       const access = await dashboardCardAccess(req, res);
       if (!access) return;
+      const lang = requestLanguage(req, access.guild.id);
       try {
         const appealsDb = require('../db/appeals');
         const { staffReply } = require('../utils/appeals');
         const submission = await appealsDb.getSubmission(access.guild.id, String(req.body?.id ?? ''));
-        if (!submission) { res.status(404).json({ ok: false, message: 'That appeal does not exist.' }); return; }
+        if (!submission) { res.status(404).json({ ok: false, message: t(lang, 'web.api.appeals.notFound') }); return; }
         const result = await staffReply({ client, guild: access.guild, submission, content: req.body?.content, moderatorId: access.userId, moderatorName: access.member.displayName });
-        res.status(result.ok ? 200 : 400).json({ ok: result.ok, dm: result.dm, message: result.ok ? undefined : 'Write something first.' });
+        res.status(result.ok ? 200 : 400).json({ ok: result.ok, dm: result.dm, message: result.ok ? undefined : t(lang, 'web.api.appeals.empty') });
       } catch (err) {
         logger.error(`Dashboard appeal reply failed for guild ${req.params.guildId}:`, err);
-        res.status(500).json({ ok: false, message: 'It could not be sent. Try again.' });
+        res.status(500).json({ ok: false, message: t(lang, 'web.api.appeals.sendFailed') });
       }
     });
 
@@ -470,6 +481,7 @@ function startServer(client) {
     app.post('/api/dashboard/guild/:guildId/automod/native', dashboardDatabaseRateLimiter, async (req, res) => {
       const access = await dashboardCardAccess(req, res);
       if (!access) return;
+      const lang = requestLanguage(req, access.guild.id);
       const native = require('../utils/nativeAutomod');
       try {
         const op = String(req.body?.op ?? 'list');
@@ -481,18 +493,18 @@ function startServer(client) {
             template: body.template, pack: body.pack, kind: body.kind, options: body.options && typeof body.options === 'object' ? body.options : {},
             presets: Array.isArray(body.presets) ? body.presets : [], mentionLimit: body.mentionLimit, block: body.block !== false,
             alertChannelId: id(body.alertChannelId), timeoutMinutes: body.timeoutMinutes, customMessage: typeof body.customMessage === 'string' ? body.customMessage : '',
-            exemptRoleIds: ids(body.exemptRoleIds), exemptChannelIds: ids(body.exemptChannelIds),
+            exemptRoleIds: ids(body.exemptRoleIds), exemptChannelIds: ids(body.exemptChannelIds), lang,
           });
           res.json({ ok: true, rule, ...(await native.listNative(access.guild)) });
           return;
         }
-        if (op === 'toggle') await native.setNativeEnabled(access.guild, String(body.id), body.enabled === true);
-        else if (op === 'delete') await native.deleteNative(access.guild, String(body.id));
+        if (op === 'toggle') await native.setNativeEnabled(access.guild, String(body.id), body.enabled === true, lang);
+        else if (op === 'delete') await native.deleteNative(access.guild, String(body.id), lang);
         res.json({ ok: true, ...(await native.listNative(access.guild)) });
       } catch (err) {
         if (err.userFacing) { res.status(400).json({ ok: false, message: err.message }); return; }
         logger.error(`Dashboard native automod failed for guild ${req.params.guildId}:`, err);
-        res.status(500).json({ ok: false, message: 'Discord did not answer the AutoMod request. Try again.' });
+        res.status(500).json({ ok: false, message: t(lang, 'web.api.automod.failed') });
       }
     });
 
@@ -500,25 +512,27 @@ function startServer(client) {
     app.post('/api/dashboard/guild/:guildId/lockdown', dashboardDatabaseRateLimiter, async (req, res) => {
       const access = await dashboardCardAccess(req, res);
       if (!access) return;
+      const lang = requestLanguage(req, access.guild.id);
       try {
-        if (!access.member.permissions.has(PermissionFlagsBits.Administrator)) { res.status(403).json({ ok: false, message: 'Only administrators can start or end a lockdown.' }); return; }
+        if (!access.member.permissions.has(PermissionFlagsBits.Administrator)) { res.status(403).json({ ok: false, message: t(lang, 'web.api.lockdown.adminOnly') }); return; }
         const lockdown = require('../utils/lockdown');
         const op = String(req.body?.op ?? '');
         if (op === 'start') {
           const minutes = Math.max(0, Math.min(10080, Math.floor(Number(req.body?.minutes)) || 0)) || null;
-          const result = await lockdown.startLockdown(access.guild, { startedBy: access.userId, reason: typeof req.body?.reason === 'string' ? req.body.reason.slice(0, 300) : null, minutes });
+          // Its errors are in the language of the request; what it posts in the server is in the server's language.
+          const result = await runWithLanguage(lang, () => lockdown.startLockdown(access.guild, { startedBy: access.userId, reason: typeof req.body?.reason === 'string' ? req.body.reason.slice(0, 300) : null, minutes }));
           res.json({ ok: true, ...result });
           return;
         }
         if (op === 'end') {
-          res.json({ ok: true, ...(await lockdown.endLockdown(access.guild, { endedBy: access.userId })) });
+          res.json({ ok: true, ...(await runWithLanguage(lang, () => lockdown.endLockdown(access.guild, { endedBy: access.userId }))) });
           return;
         }
-        res.status(400).json({ ok: false, message: 'That is not something I can do.' });
+        res.status(400).json({ ok: false, message: t(lang, 'web.api.lockdown.unknownOp') });
       } catch (err) {
         if (err.userFacing) { res.status(400).json({ ok: false, message: err.message }); return; }
         logger.error(`Dashboard lockdown failed for guild ${req.params.guildId}:`, err);
-        res.status(500).json({ ok: false, message: 'The lockdown could not be changed. Try again.' });
+        res.status(500).json({ ok: false, message: t(lang, 'web.api.lockdown.failed') });
       }
     });
 
@@ -526,19 +540,20 @@ function startServer(client) {
     app.post('/api/dashboard/guild/:guildId/moderation/lift', dashboardDatabaseRateLimiter, async (req, res) => {
       const access = await dashboardCardAccess(req, res);
       if (!access) return;
+      const lang = requestLanguage(req, access.guild.id);
       try {
         const { liftSanction } = require('../utils/sanctionLift');
         const modCase = require('../db/modActions');
         const row = await modCase.getCase(access.guild.id, Number(req.body?.case));
-        if (!row) { res.status(404).json({ ok: false, message: 'That case does not exist.' }); return; }
+        if (!row) { res.status(404).json({ ok: false, message: t(lang, 'web.api.lift.notFound') }); return; }
         const needs = ['ban', 'tempban', 'hardban'].includes(row.type) ? PermissionFlagsBits.BanMembers : PermissionFlagsBits.ModerateMembers;
-        if (!access.member.permissions.has(needs) && !access.member.permissions.has(PermissionFlagsBits.Administrator)) { res.status(403).json({ ok: false, message: 'You need the same permission as the command to lift this.' }); return; }
-        const result = await liftSanction(access.guild, row.case_number, access.member.user, typeof req.body?.reason === 'string' ? req.body.reason.slice(0, 300) : null);
+        if (!access.member.permissions.has(needs) && !access.member.permissions.has(PermissionFlagsBits.Administrator)) { res.status(403).json({ ok: false, message: t(lang, 'web.api.lift.permission') }); return; }
+        const result = await runWithLanguage(lang, () => liftSanction(access.guild, row.case_number, access.member.user, typeof req.body?.reason === 'string' ? req.body.reason.slice(0, 300) : null));
         res.json({ ok: true, ...result });
       } catch (err) {
         if (err.userFacing) { res.status(400).json({ ok: false, message: err.message }); return; }
         logger.error(`Dashboard lift failed for guild ${req.params.guildId}:`, err);
-        res.status(500).json({ ok: false, message: 'It could not be lifted. Check my permissions and try again.' });
+        res.status(500).json({ ok: false, message: t(lang, 'web.api.lift.failed') });
       }
     });
 
@@ -546,15 +561,16 @@ function startServer(client) {
     app.post('/api/dashboard/guild/:guildId/confessions/panel', dashboardDatabaseRateLimiter, async (req, res) => {
       const access = await dashboardCardAccess(req, res);
       if (!access) return;
+      const lang = requestLanguage(req, access.guild.id);
       try {
         const config = await confessionsDb.getConfig(access.guild.id);
         const channelId = typeof req.body?.channel_id === 'string' && /^\d{5,25}$/.test(req.body.channel_id) ? req.body.channel_id : config.panel_channel_id || config.channel_id;
-        if (!channelId) { res.status(400).json({ ok: false, message: 'Pick a channel for the panel first.' }); return; }
+        if (!channelId) { res.status(400).json({ ok: false, message: t(lang, 'web.api.confessions.pickChannel') }); return; }
         const result = await postConfessionPanel(access.guild, config, channelId);
         res.status(result.ok ? 200 : 400).json(result);
       } catch (err) {
         logger.error(`Dashboard confession panel failed for guild ${req.params.guildId}:`, err);
-        res.status(500).json({ ok: false, message: 'The panel could not be posted. Try again.' });
+        res.status(500).json({ ok: false, message: t(lang, 'web.api.confessions.failed') });
       }
     });
 
@@ -572,7 +588,7 @@ function startServer(client) {
         res.status(result.ok ? 200 : 400).json(result);
       } catch (err) {
         logger.error(`Dashboard verification ${action} failed for guild ${req.params.guildId}:`, err);
-        res.status(500).json({ ok: false, message: 'The verification could not be changed. Try again.' });
+        res.status(500).json({ ok: false, message: t(requestLanguage(req, access.guild.id), 'web.api.verification.failed') });
       }
     });
 
@@ -580,15 +596,16 @@ function startServer(client) {
     app.post('/api/dashboard/guild/:guildId/quests/method', dashboardDatabaseRateLimiter, async (req, res) => {
       const access = await dashboardCardAccess(req, res);
       if (!access) return;
-      if (!canUseQuests(access.userId)) { res.status(403).json({ ok: false, error: 'no_access', message: 'Quest alerts are in testing.' }); return; }
+      const lang = requestLanguage(req, access.guild.id);
+      if (!canUseQuests(access.userId)) { res.status(403).json({ ok: false, error: 'no_access', message: t(lang, 'web.api.quests.testing') }); return; }
       try {
         const settings = (await questsDb.getConfig(access.guild.id)) ?? questsDb.DEFAULTS;
         const questId = typeof req.body?.quest_id === 'string' && /^[\w-]{1,64}$/.test(req.body.quest_id) ? req.body.quest_id : null;
-        const result = await sendMethodNow(access.guild, { ...settings, guild_id: access.guild.id }, { questId });
+        const result = await sendMethodNow(access.guild, { ...settings, guild_id: access.guild.id }, { questId, lang });
         res.status(result.ok ? 200 : 400).json({ ok: result.ok, message: result.message });
       } catch (err) {
         logger.error(`Dashboard quest method failed for guild ${req.params.guildId}:`, err);
-        res.status(500).json({ ok: false, error: 'method_failed', message: 'The method could not be sent. Try again.' });
+        res.status(500).json({ ok: false, error: 'method_failed', message: t(lang, 'web.api.quests.methodFailed') });
       }
     });
 
@@ -626,7 +643,12 @@ function startServer(client) {
     registerPublicLeaderboardRoute(app, { isAuthorized: dashboardAuthorized, limiter: dashboardDatabaseRateLimiter, client });
 
     // The dashboard saved a new language for a server: use it at once (the bot caches each server's language for 5 minutes).
-    registerGuildLanguageRoute(app, { isAuthorized: dashboardAuthorized, limiter: dashboardPrefixRateLimiter });
+    registerGuildLanguageRoute(app, {
+      isAuthorized: dashboardAuthorized,
+      limiter: dashboardPrefixRateLimiter,
+      // The panels Petto posted there (VoiceMaster, tickets, verification…) are redrawn in the new language, after the answer.
+      onChange: (guildId, language) => refreshGuildPanels(client.guilds.cache.get(guildId), language),
+    });
 
     app.post('/api/dashboard/guild/:guildId/prefix', dashboardPrefixRateLimiter, async (req, res) => {
       if (!dashboardAuthorized(req)) {
@@ -690,13 +712,15 @@ function startServer(client) {
             res.status(404).json({ ok: false, error: 'backup_not_found' });
             return;
           }
-          const safety = await createBackup(guild.id, userId, `Before restoring backup #${backupNumber}`, buildSnapshot(guild), 'manual');
+          // The label is kept with the backup and shown to everyone in the server, so it is in the server's language (as with !backup).
+          const serverLang = peekGuildLanguage(guild.id);
+          const safety = await createBackup(guild.id, userId, t(serverLang, 'backup.restore.safetyLabel', { number: backupNumber }), buildSnapshot(guild), 'manual');
           await recordAudit(guild.id, userId, 'backup_created', safety.backup_number, {
             source: 'manual',
             purpose: 'restore_safety',
             beforeBackupNumber: backupNumber,
           });
-          const restoreResult = await restoreBackup(guild, backup.snapshot, { mode, reason: `Petto dashboard restore #${backupNumber}` });
+          const restoreResult = await restoreBackup(guild, backup.snapshot, { mode, reason: t(serverLang, 'web.audit.restore', { number: backupNumber }) });
           await recordAudit(guild.id, userId, 'backup_restored', backupNumber, { mode, safetyBackupNumber: safety.backup_number, result: restoreResult });
         } else if (action === 'schedule') {
           const hours = Number(req.body?.hours);
@@ -730,7 +754,7 @@ function startServer(client) {
           return;
         }
         await recordAudit(req.params.guildId, authorized.userId, 'backup_exported', backup.backup_number, { source: backup.source || 'manual' });
-        res.set('Content-Disposition', `attachment; filename="petto-backup-${req.params.guildId}-${backup.backup_number}.json"`);
+        res.set('Content-Disposition', `attachment; filename="petto-backup-${req.params.guildId}-${backup.backup_number}.json"`); // i18n-ignore: HTTP header
         res.json(backup.snapshot);
       } catch (err) {
         logger.error('Dashboard failed to export Vault backup:', err);
@@ -745,7 +769,7 @@ function startServer(client) {
   }
 
   app.get('/', (req, res) => {
-    res.set('Content-Type', 'text/html; charset=utf-8').send(renderHomePage({ guildCount: client.guilds.cache.size }));
+    res.set('Content-Type', 'text/html; charset=utf-8').send(renderHomePage({ guildCount: client.guilds.cache.size, lang: requestLanguage(req) })); // i18n-ignore: HTTP header
   });
 
   app.get('/verify/:token', verifyPageRateLimiter, async (req, res) => {
@@ -753,38 +777,40 @@ function startServer(client) {
     const payload = verifyToken(req.params.token);
     const settings = payload ? await getConfig(payload.guildId).catch(() => null) : null;
     const guild = payload ? client.guilds.cache.get(payload.guildId) : null;
+    // i18n-ignore: HTTP header
     res.set('Content-Type', 'text/html; charset=utf-8').send(renderVerifyPage({
       token: req.params.token,
       siteKey: config.turnstileSiteKey,
       method: methodOf(settings),
       guildName: guild?.name ?? null,
       guildIcon: guild?.iconURL?.({ size: 64, extension: 'png' }) ?? null,
-      lang: pickLanguage(req.get('accept-language')),
+      lang: requestLanguage(req, payload?.guildId),
     }));
   });
 
   // A new picture of letters for the letters method: the PNG as a data link and the signed ticket the page sends back with the answer.
   app.post('/api/verify/captcha', verifyCaptchaRateLimiter, async (req, res) => {
     const payload = verifyToken(req.body?.token);
+    const lang = requestLanguage(req, payload?.guildId);
     if (!payload) {
-      res.status(400).json({ ok: false, error: 'This verification link is invalid or has expired. Rejoin the server to get a new one.' });
+      res.status(400).json({ ok: false, error: t(lang, 'web.verifyApi.invalidLink') });
       return;
     }
     try {
       const settings = await getConfig(payload.guildId);
       if (!usesLetters(methodOf(settings))) {
-        res.status(400).json({ ok: false, error: 'This server does not use the letters check.' });
+        res.status(400).json({ ok: false, error: t(lang, 'web.verifyApi.noLetters') });
         return;
       }
       if (await isRedeemed(payload.jti)) {
-        res.status(400).json({ ok: false, error: "You've already verified with this link." });
+        res.status(400).json({ ok: false, error: t(lang, 'web.verifyApi.alreadyShort') });
         return;
       }
       const challenge = createChallenge(payload.jti);
       res.set('Cache-Control', 'no-store').json({ ok: true, image: `data:image/png;base64,${challenge.png.toString('base64')}`, ticket: challenge.ticket });
     } catch (err) {
       logger.error('Failed to make a verification picture:', err);
-      res.status(500).json({ ok: false, error: 'Something went wrong. Please try again.' });
+      res.status(500).json({ ok: false, error: t(lang, 'web.verifyApi.failed') });
     }
   });
 
@@ -792,8 +818,9 @@ function startServer(client) {
     const { token, turnstileToken } = req.body ?? {};
 
     const payload = verifyToken(token);
+    const lang = requestLanguage(req, payload?.guildId);
     if (!payload) {
-      res.status(400).json({ ok: false, error: 'This verification link is invalid or has expired. Rejoin the server to get a new one.' });
+      res.status(400).json({ ok: false, error: t(lang, 'web.verifyApi.invalidLink') });
       return;
     }
 
@@ -801,12 +828,12 @@ function startServer(client) {
     // link is dead rather than reusable for the rest of its 24h lifetime.
     try {
       if (await isRedeemed(payload.jti)) {
-        res.status(400).json({ ok: false, error: "You've already verified with this link. You should already have access, if not, contact a moderator." });
+        res.status(400).json({ ok: false, error: t(lang, 'web.verifyApi.already') });
         return;
       }
     } catch (err) {
       logger.error('Failed to check token redemption status:', err);
-      res.status(500).json({ ok: false, error: 'Something went wrong. Please try again.' });
+      res.status(500).json({ ok: false, error: t(lang, 'web.verifyApi.failed') });
       return;
     }
 
@@ -815,7 +842,7 @@ function startServer(client) {
       method = methodOf(await getConfig(payload.guildId));
     } catch (err) {
       logger.error('Failed to read the verification settings:', err);
-      res.status(500).json({ ok: false, error: 'Something went wrong. Please try again.' });
+      res.status(500).json({ ok: false, error: t(lang, 'web.verifyApi.failed') });
       return;
     }
 
@@ -823,19 +850,18 @@ function startServer(client) {
     if (usesLetters(method)) {
       const answer = checkAnswer(payload.jti, req.body?.captchaTicket, req.body?.captchaAnswer);
       if (!answer.ok) {
-        const text = { wrong: 'Those letters are not right.', locked: 'Too many wrong tries. Wait a few minutes and open the link again.', expired: 'The picture expired.', invalid: 'The picture is not valid. Ask for a new one.' }[answer.reason];
-        res.status(400).json({ ok: false, code: answer.reason, error: text });
+        res.status(400).json({ ok: false, code: answer.reason, error: t(lang, `web.verifyApi.letters.${answer.reason}`) });
         return;
       }
     }
 
     if (usesTurnstile(method)) {
       if (!config.turnstileSecretKey) {
-        res.status(500).json({ ok: false, error: 'This server uses the Cloudflare check, but it is not set up. Contact a moderator.' });
+        res.status(500).json({ ok: false, error: t(lang, 'web.verifyApi.turnstileMissing') });
         return;
       }
       if (!turnstileToken) {
-        res.status(400).json({ ok: false, error: 'Captcha response missing.' });
+        res.status(400).json({ ok: false, error: t(lang, 'web.verifyApi.captchaMissing') });
         return;
       }
 
@@ -844,12 +870,12 @@ function startServer(client) {
         turnstileResult = await checkTurnstile(turnstileToken, req.ip);
       } catch (err) {
         logger.error('Turnstile verification request failed:', err);
-        res.status(502).json({ ok: false, error: 'Could not reach the captcha service. Try again.' });
+        res.status(502).json({ ok: false, error: t(lang, 'web.verifyApi.captchaUnreachable') });
         return;
       }
 
       if (!turnstileResult.success) {
-        res.status(400).json({ ok: false, error: 'Captcha check failed. Please try again.' });
+        res.status(400).json({ ok: false, error: t(lang, 'web.verifyApi.captchaFailed') });
         return;
       }
     }
@@ -864,16 +890,18 @@ function startServer(client) {
       // same token.
       const claimed = await claimRedemption({ jti: payload.jti, guildId: payload.guildId, userId: payload.userId });
       if (!claimed) {
-        res.status(400).json({ ok: false, error: "You've already verified with this link. You should already have access, if not, contact a moderator." });
+        res.status(400).json({ ok: false, error: t(lang, 'web.verifyApi.already') });
         return;
       }
 
+      // The audit log reason is in the server's language, the same as when the member verifies inside Discord (utils/verifyApply.js).
+      const serverLang = peekGuildLanguage(guild.id);
       try {
         if (verifyConfig?.unverified_role_id && member.roles.cache.has(verifyConfig.unverified_role_id)) {
-          await member.roles.remove(verifyConfig.unverified_role_id, 'Passed verification');
+          await member.roles.remove(verifyConfig.unverified_role_id, t(serverLang, 'verify.reason.passed'));
         }
         if (verifyConfig?.verified_role_id) {
-          await member.roles.add(verifyConfig.verified_role_id, 'Passed verification');
+          await member.roles.add(verifyConfig.verified_role_id, t(serverLang, 'verify.reason.passed'));
         }
       } catch (err) {
         await releaseRedemption(payload.jti).catch((releaseErr) => logger.error('Failed to release verification claim after role failure:', releaseErr));
@@ -889,7 +917,7 @@ function startServer(client) {
         .catch(() => logger.warn(`Could not DM verified confirmation to ${member.id} in guild ${guild.id}.`));
     } catch (err) {
       logger.error('Failed to apply verification roles:', err);
-      res.status(500).json({ ok: false, error: 'Verified, but I was unable to update your roles. Contact a moderator.' });
+      res.status(500).json({ ok: false, error: t(lang, 'web.verifyApi.rolesFailed') });
     }
   });
 
@@ -898,25 +926,26 @@ function startServer(client) {
   // ticket row to make sure they weren't just edited to browse a different ticket.
   app.get('/transcript/:guildId/:number/:token', transcriptRateLimiter, async (req, res) => {
     const payload = verifyTranscriptToken(req.params.token);
+    const lang = requestLanguage(req, SNOWFLAKE.test(req.params.guildId) ? req.params.guildId : null);
     if (!payload) {
-      res.status(403).send('Invalid or tampered transcript link.');
+      res.status(403).send(t(lang, 'web.transcript.invalid'));
       return;
     }
 
     try {
       const ticket = await getTicketById(payload.ticketId);
       if (!ticket || ticket.guild_id !== req.params.guildId || String(ticket.ticket_number) !== req.params.number) {
-        res.status(404).send('Transcript not found.');
+        res.status(404).send(t(lang, 'web.transcript.notFound'));
         return;
       }
       if (!ticket.transcript_html) {
-        res.status(404).send('No transcript has been generated for this ticket yet.');
+        res.status(404).send(t(lang, 'web.transcript.notGenerated'));
         return;
       }
-      res.set('Content-Type', 'text/html; charset=utf-8').send(ticket.transcript_html);
+      res.set('Content-Type', 'text/html; charset=utf-8').send(ticket.transcript_html); // i18n-ignore: HTTP header
     } catch (err) {
       logger.error('Failed to serve ticket transcript:', err);
-      res.status(500).send('Something went wrong loading this transcript.');
+      res.status(500).send(t(lang, 'web.transcript.failed'));
     }
   });
 
@@ -927,7 +956,7 @@ function startServer(client) {
       res.status(404).json({ ok: false, error: 'not_found' });
       return;
     }
-    res.status(404).send('Not found.');
+    res.status(404).send(t(requestLanguage(req), 'web.notFound'));
   });
 
   app.listen(config.webPort, () => {

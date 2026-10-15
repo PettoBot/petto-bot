@@ -4,11 +4,12 @@
 const { rateLimit } = require('express-rate-limit');
 const { run, check, PettoCodeError, functionNames, DEFAULT_LIMITS, MAX_SOURCE_LENGTH } = require('../scripting');
 const { functions } = require('../scripting/functions');
-const { TEMPLATES } = require('../scripting/templates');
+const { TEMPLATES, templateIn, templateCode } = require('../scripting/templates');
 const { TRIGGER_TYPES } = require('../utils/codeTriggers');
 const codeCommands = require('../utils/codeCommands');
 const admin = require('../utils/codeCommandAdmin');
 const logger = require('../utils/logger');
+const { t, requestLanguage, peekGuildLanguage } = require('../i18n');
 
 const limiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: true, legacyHeaders: false });
 
@@ -30,19 +31,24 @@ function registerCodeRoutes(app, { authorize }) {
       if (!res.headersSent) res.status(500).json({ ok: false, error: 'code_unavailable' });
     }
   };
-  const needWrite = (res) => {
+  // The language of the answers: the one the dashboard asks for, else the browser's, else the server's.
+  const languageOf = (req) => requestLanguage(req, req.params.guildId);
+  const needWrite = (req, res) => {
     if (codeCommands.canWriteCode()) return true;
-    res.status(403).json({ ok: false, error: 'turned_off', message: 'Commands in code are turned off for now.' });
+    res.status(403).json({ ok: false, error: 'turned_off', message: t(languageOf(req), 'scripting.dashboard.off') });
     return false;
   };
 
   app.get('/api/dashboard/guild/:guildId/code/meta', limiter, route(async (req, res) => {
     const allowed = await admin.commandLimit(req.params.guildId);
+    const lang = languageOf(req);
+    // A template is installed with its sentences in the language of the server, like `!customcommand template` does.
+    const serverLang = peekGuildLanguage(String(req.params.guildId));
     res.json({
       ok: true,
       canWrite: codeCommands.canWriteCode(),
       functions: [...functions.entries()].map(([name, entry]) => ({ name, min: entry.min, max: entry.max })).sort((a, b) => a.name.localeCompare(b.name)),
-      templates: TEMPLATES.map(({ id, name, description, suggestedName, code }) => ({ id, name, description, suggestedName, code })),
+      templates: TEMPLATES.map((template) => ({ ...templateIn(template, lang), code: templateCode(template, serverLang) })),
       triggerTypes: TRIGGER_TYPES,
       limits: { source: MAX_SOURCE_LENGTH, steps: DEFAULT_LIMITS.maxSteps, commands: allowed.limit, premium: allowed.premium, storeCalls: DEFAULT_LIMITS.maxStoreCalls },
     });
@@ -51,21 +57,23 @@ function registerCodeRoutes(app, { authorize }) {
   // The mistake in the code, for the editor to show while someone writes, and hints: names that are most likely mistakes
   // (a function that does not exist, `.User.Usrname`), as sentences. Code with a mistake or too long has no hints.
   app.post('/api/dashboard/guild/:guildId/code/check', limiter, route(async (req, res) => {
+    const lang = languageOf(req);
     const code = typeof req.body?.code === 'string' ? req.body.code : '';
-    if (code.length > MAX_SOURCE_LENGTH + 1000) { res.json({ ok: true, problem: { kind: 'limit', message: `The code is too long (more than ${MAX_SOURCE_LENGTH} characters)`, line: null, column: null }, hints: [] }); return; }
-    const problem = code.length > MAX_SOURCE_LENGTH ? { kind: 'limit', message: `The code is too long (${code.length} of ${MAX_SOURCE_LENGTH} characters)`, line: null, column: null } : check(code);
-    res.json({ ok: true, problem, hints: problem ? [] : admin.codeHints(code) });
+    if (code.length > MAX_SOURCE_LENGTH + 1000) { res.json({ ok: true, problem: { kind: 'limit', message: t(lang, 'scripting.parse.tooLongMore', { max: MAX_SOURCE_LENGTH }), line: null, column: null }, hints: [] }); return; }
+    const problem = code.length > MAX_SOURCE_LENGTH ? { kind: 'limit', message: t(lang, 'scripting.parse.tooLong', { count: code.length, max: MAX_SOURCE_LENGTH }), line: null, column: null } : check(code, lang);
+    res.json({ ok: true, problem, hints: problem ? [] : admin.codeHints(code, lang) });
   }));
 
   // Runs the code as the person who is testing, with memory-only storage: nothing is sent, saved or changed.
   app.post('/api/dashboard/guild/:guildId/code/test', limiter, route(async (req, res, { guild, member, userId }) => {
-    if (!needWrite(res)) return;
+    if (!needWrite(req, res)) return;
+    const lang = languageOf(req);
     const code = typeof req.body?.code === 'string' ? req.body.code : '';
     const args = typeof req.body?.args === 'string' ? req.body.args.slice(0, 500) : '';
     const trigger = ['button', 'select'].includes(req.body?.trigger) ? req.body.trigger : 'command';
-    const problem = admin.codeProblem(code);
+    const problem = admin.codeProblem(code, lang);
     if (problem) { res.json({ ok: true, error: { kind: 'syntax', message: problem }, hints: [] }); return; }
-    const hints = admin.codeHints(code);
+    const hints = admin.codeHints(code, lang);
     const data = sampleData(guild, member, args);
     if (trigger !== 'command') {
       data.Trigger = trigger;
@@ -73,10 +81,10 @@ function registerCodeRoutes(app, { authorize }) {
       data.Values = trigger === 'select' ? [String(req.body?.value ?? '').slice(0, 100)].filter(Boolean) : [];
     }
     try {
-      const result = await run(code, data, { store: codeCommands.memoryStore(), lookup: codeCommands.lookupFor(guild) });
+      const result = await run(code, data, { store: codeCommands.memoryStore(), lookup: codeCommands.lookupFor(guild), lang });
       // `actions` says each effect as a sentence; `effects` are the effects themselves (what run gives), for a preview that
       // draws the messages like Discord does.
-      res.json({ ok: true, output: result.output, actions: result.effects.map(admin.describeEffect), effects: result.effects, hints, steps: result.steps, millis: result.millis });
+      res.json({ ok: true, output: result.output, actions: result.effects.map((effect) => admin.describeEffect(effect, lang)), effects: result.effects, hints, steps: result.steps, millis: result.millis });
     } catch (error) {
       if (error instanceof PettoCodeError) { res.json({ ok: true, error: { kind: error.kind, message: error.detail, line: error.line, column: error.column }, hints }); return; }
       throw error;
@@ -84,17 +92,17 @@ function registerCodeRoutes(app, { authorize }) {
   }));
 
   app.post('/api/dashboard/guild/:guildId/code/save', limiter, route(async (req, res, { guild, userId }) => {
-    if (!needWrite(res)) return;
+    if (!needWrite(req, res)) return;
     const name = String(req.body?.name ?? '').toLowerCase().trim().replace(/\s+/g, '');
     const code = typeof req.body?.code === 'string' ? req.body.code.replace(/\r\n/g, '\n') : '';
-    const saved = await admin.saveCodeCommand({ guild, client: guild.client, userId, name, code });
+    const saved = await admin.saveCodeCommand({ guild, client: guild.client, userId, name, code, lang: languageOf(req) });
     res.status(saved.ok ? 200 : 400).json(saved);
   }));
 
   app.post('/api/dashboard/guild/:guildId/code/trigger', limiter, route(async (req, res, { guild, userId }) => {
-    if (!needWrite(res)) return;
+    if (!needWrite(req, res)) return;
     const name = String(req.body?.name ?? '').toLowerCase().trim();
-    const changed = await admin.setCommandTrigger({ guild, client: guild.client, name, type: String(req.body?.type ?? ''), text: typeof req.body?.text === 'string' ? req.body.text : null });
+    const changed = await admin.setCommandTrigger({ guild, client: guild.client, name, type: String(req.body?.type ?? ''), text: typeof req.body?.text === 'string' ? req.body.text : null, lang: languageOf(req) });
     res.status(changed.ok ? 200 : 400).json(changed);
   }));
 }

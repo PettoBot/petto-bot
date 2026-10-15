@@ -37,6 +37,17 @@ async function findGuildLanguage(guildId) {
   return data?.language ?? null;
 }
 
+/** Every server that chose a language other than English, in one query: [{ guild_id, language }]. The rest are English. */
+async function listGuildLanguages() {
+  const { data, error } = await database
+    .from('guilds')
+    .select('guild_id, language')
+    .neq('language', 'en');
+
+  if (error) throw error;
+  return data ?? [];
+}
+
 /**
  * Creates the config row of a server that has none, with `defaults` (used when Petto joins a server). A server that already
  * has a row keeps it untouched. Returns { row, created }.
@@ -74,4 +85,4 @@ async function updateGuild(guildId, patch) {
   return data;
 }
 
-module.exports = { ensureGuild, findGuildLanguage, createGuildIfMissing, updateGuild };
+module.exports = { ensureGuild, findGuildLanguage, listGuildLanguages, createGuildIfMissing, updateGuild };

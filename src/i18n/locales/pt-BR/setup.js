@@ -57,6 +57,8 @@ module.exports = {
   'setup.panel.progress': '{bar}  **{done}/{total}** áreas configuradas',
   'setup.panel.unavailable': '{emoji} Algumas configurações não puderam ser carregadas agora; clique em **Atualizar** para tentar de novo.',
   'setup.panel.configuration': 'Configuração',
+  'setup.panel.language.title': 'Idioma',
+  'setup.panel.language.text': 'O Petto fala **{language}** neste servidor. Disponíveis: {list}. Mude com `{prefix}language`.',
   'setup.panel.permissions': 'Permissões',
   'setup.panel.footer': 'A configuração rápida abre um único formulário com tudo preenchido a partir das suas configurações atuais.',
   'setup.modal.title': 'Configuração do Petto',
@@ -119,6 +121,7 @@ module.exports = {
   'setup.result.section': 'Resultado',
   'setup.result.next': 'Próximo passo',
   'setup.result.nextHint': 'Use `{prefix}help` para ver todos os comandos, e `/setup` quando quiser para revisar este servidor.',
+  'setup.result.nextLanguage': 'O Petto fala {list}. Este servidor usa **{language}**; mude quando quiser com `{prefix}language`.',
   'setup.result.openChannel.button': 'Abrir canal de configuração',
   'setup.result.error': '{emoji} Não foi possível concluir a configuração: {error}',
 };

@@ -4,6 +4,8 @@
 const { Pool } = require('pg');
 const config = require('../config');
 const { getPrimaryPool } = require('./postgres');
+// Errors a member sees through their Petto Code (`dbIncr: …`), in the language of the server.
+const { CodeProblem } = require('../scripting/errors');
 
 const MAX_ENTRIES_PER_GUILD = 500;
 
@@ -42,7 +44,7 @@ async function db() {
   return pool;
 }
 
-const alive = '(expires_at is null or expires_at > now())';
+const alive = '(expires_at is null or expires_at > now())'; // i18n-ignore: SQL
 
 /** The data of one server, as the object the language sees: `get`, `set`, `del`, `incr`, `top` and `keys`. */
 function forGuild(guildId) {
@@ -57,7 +59,7 @@ function forGuild(guildId) {
       const exists = await pool.query(`select 1 from custom_command_data where guild_id = $1 and user_id = $2 and key = $3 and ${alive}`, [guild, user, key]);
       if (!exists.rowCount) {
         const { rows } = await pool.query(`select count(*)::int as total from custom_command_data where guild_id = $1 and ${alive}`, [guild]);
-        if (rows[0].total >= MAX_ENTRIES_PER_GUILD) throw new Error(`This server already stores ${MAX_ENTRIES_PER_GUILD} values, the most it can`);
+        if (rows[0].total >= MAX_ENTRIES_PER_GUILD) throw new CodeProblem('scripting.store.full', { max: MAX_ENTRIES_PER_GUILD });
       }
       await pool.query(
         `insert into custom_command_data (guild_id, user_id, key, value, expires_at) values ($1, $2, $3, $4::jsonb, case when $5::int is null then null else now() + ($5::int * interval '1 second') end)
@@ -72,10 +74,10 @@ function forGuild(guildId) {
       const pool = await db();
       await pool.query('delete from custom_command_data where guild_id = $1 and user_id = $2 and key = $3 and expires_at <= now()', [guild, user, key]);
       const exists = await pool.query('select value from custom_command_data where guild_id = $1 and user_id = $2 and key = $3', [guild, user, key]);
-      if (exists.rowCount && typeof exists.rows[0].value !== 'number') throw new Error('That key does not hold a number');
+      if (exists.rowCount && typeof exists.rows[0].value !== 'number') throw new CodeProblem('scripting.store.notNumber');
       if (!exists.rowCount) {
         const { rows } = await pool.query(`select count(*)::int as total from custom_command_data where guild_id = $1 and ${alive}`, [guild]);
-        if (rows[0].total >= MAX_ENTRIES_PER_GUILD) throw new Error(`This server already stores ${MAX_ENTRIES_PER_GUILD} values, the most it can`);
+        if (rows[0].total >= MAX_ENTRIES_PER_GUILD) throw new CodeProblem('scripting.store.full', { max: MAX_ENTRIES_PER_GUILD });
       }
       const { rows } = await pool.query(
         `insert into custom_command_data as t (guild_id, user_id, key, value) values ($1, $2, $3, to_jsonb($4::numeric))

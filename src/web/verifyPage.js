@@ -1,67 +1,48 @@
+const { t, currentLanguage, normalizeLanguage, DEFAULT_LANGUAGE } = require('../i18n');
+
 function escapeHtml(str) {
   return String(str ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-const COPY = {
-  en: {
-    title: 'Verify', eyebrow: 'Server access', heading: "Let's confirm you're human", sub: 'Complete this quick check and Petto will give you access to the rest of the server.',
-    forServer: 'Verifying for', s1: '1. Check', s1d: 'Confirm you are human', s2: '2. Discord', s2d: 'Petto checks your link', s3: '3. Access', s3d: 'Roles update',
-    checkTitle: 'One small check', checkTitleTwo: 'Two small checks', turnstile: 'Cloudflare protects this page from automated abuse. Petto does not ask for your Discord password.',
-    lettersTitle: 'Type the letters you see', lettersHint: 'Letters and numbers, without spaces. Small or big letters both work.', refresh: 'New picture', lettersLabel: 'The letters',
-    button: 'Verify with Petto', verifying: 'Verifying...', done: "You're verified. You can close this tab and return to Discord.",
-    cfLoad: 'Cloudflare could not load the check. Refresh the page and try again.', cfExpired: 'The check expired. Complete it again to continue.',
-    wrong: "Those letters are not right. Here is a new picture, try again.", locked: 'Too many wrong tries. Wait a few minutes and open the link again.', expired: 'The picture expired. Here is a new one.',
-    network: 'Network error. Please try again.', failed: 'Verification failed.', loadPic: 'The picture could not load. Press "New picture".',
-    privacy: 'Protected by', handled: 'handled by', rolesIn: 'roles are changed in Discord', footer: 'Discord server verification', service: 'Discord verification',
-  },
-  es: {
-    title: 'Verificar', eyebrow: 'Acceso al servidor', heading: 'Confirma que eres humano', sub: 'Completa esta comprobación rápida y Petto te dará acceso al resto del servidor.',
-    forServer: 'Verificando para', s1: '1. Comprobación', s1d: 'Confirma que eres humano', s2: '2. Discord', s2d: 'Petto revisa tu enlace', s3: '3. Acceso', s3d: 'Se actualizan los roles',
-    checkTitle: 'Una pequeña comprobación', checkTitleTwo: 'Dos pequeñas comprobaciones', turnstile: 'Cloudflare protege esta página de abusos automáticos. Petto no te pide tu contraseña de Discord.',
-    lettersTitle: 'Escribe las letras que ves', lettersHint: 'Letras y números, sin espacios. Sirven mayúsculas y minúsculas.', refresh: 'Otra imagen', lettersLabel: 'Las letras',
-    button: 'Verificar con Petto', verifying: 'Verificando...', done: 'Estás verificado. Puedes cerrar esta pestaña y volver a Discord.',
-    cfLoad: 'Cloudflare no pudo cargar la comprobación. Recarga la página e inténtalo de nuevo.', cfExpired: 'La comprobación caducó. Complétala otra vez para continuar.',
-    wrong: 'Esas letras no son correctas. Aquí tienes otra imagen, inténtalo de nuevo.', locked: 'Demasiados intentos fallidos. Espera unos minutos y abre el enlace otra vez.', expired: 'La imagen caducó. Aquí tienes una nueva.',
-    network: 'Error de red. Inténtalo de nuevo.', failed: 'La verificación falló.', loadPic: 'No se pudo cargar la imagen. Pulsa "Otra imagen".',
-    privacy: 'Protegido por', handled: 'gestionado por', rolesIn: 'los roles se cambian en Discord', footer: 'Verificación de servidores de Discord', service: 'Verificación de Discord',
-  },
-  pt: {
-    title: 'Verificar', eyebrow: 'Acesso ao servidor', heading: 'Confirme que você é humano', sub: 'Complete esta verificação rápida e o Petto vai liberar o acesso ao resto do servidor.',
-    forServer: 'Verificando para', s1: '1. Verificação', s1d: 'Confirme que é humano', s2: '2. Discord', s2d: 'O Petto confere seu link', s3: '3. Acesso', s3d: 'Os cargos são atualizados',
-    checkTitle: 'Uma pequena verificação', checkTitleTwo: 'Duas pequenas verificações', turnstile: 'A Cloudflare protege esta página contra abuso automático. O Petto não pede sua senha do Discord.',
-    lettersTitle: 'Digite as letras que você vê', lettersHint: 'Letras e números, sem espaços. Maiúsculas e minúsculas funcionam.', refresh: 'Outra imagem', lettersLabel: 'As letras',
-    button: 'Verificar com o Petto', verifying: 'Verificando...', done: 'Você está verificado. Pode fechar esta aba e voltar ao Discord.',
-    cfLoad: 'A Cloudflare não conseguiu carregar a verificação. Atualize a página e tente de novo.', cfExpired: 'A verificação expirou. Complete-a de novo para continuar.',
-    wrong: 'Essas letras não estão certas. Aqui está outra imagem, tente de novo.', locked: 'Muitas tentativas erradas. Espere alguns minutos e abra o link de novo.', expired: 'A imagem expirou. Aqui está uma nova.',
-    network: 'Erro de rede. Tente de novo.', failed: 'A verificação falhou.', loadPic: 'Não foi possível carregar a imagem. Toque em "Outra imagem".',
-    privacy: 'Protegido por', handled: 'gerenciado pelo', rolesIn: 'os cargos são alterados no Discord', footer: 'Verificação de servidores do Discord', service: 'Verificação do Discord',
-  },
-};
+// The texts of the page (`web.verify.<field>`), in this order: the script of the page gets them as one object.
+const COPY_FIELDS = [
+  'title', 'eyebrow', 'heading', 'sub', 'forServer', 's1', 's1d', 's2', 's2d', 's3', 's3d', 'checkTitle', 'checkTitleTwo', 'turnstile',
+  'lettersTitle', 'lettersHint', 'refresh', 'lettersLabel', 'button', 'verifying', 'done', 'cfLoad', 'cfExpired', 'wrong', 'locked', 'expired',
+  'network', 'failed', 'loadPic', 'privacy', 'handled', 'rolesIn', 'footer', 'service',
+];
 
-/** The language of the page from the Accept-Language header of the visitor: Spanish, Portuguese, or English. */
+/** The short language code (`es`, `pt` or `en`) of an Accept-Language header. The route itself uses requestLanguage() of src/i18n. */
 function pickLanguage(header) {
   const first = String(header ?? '').toLowerCase().split(',').map((part) => part.trim().slice(0, 2));
-  return first.find((code) => COPY[code]) ?? 'en';
+  return first.find((code) => ['en', 'es', 'pt'].includes(code)) ?? 'en';
 }
 
 /**
  * `method` is `turnstile` (the Cloudflare check), `letters` (type the letters of a picture) or `both`. `guildName` and `guildIcon`
  * say which server the visitor is verifying for.
  */
-function renderVerifyPage({ token, siteKey, method = 'turnstile', guildName = null, guildIcon = null, lang = 'en' }) {
-  const t = COPY[lang] ?? COPY.en;
+function renderVerifyPage({ token, siteKey, method = 'turnstile', guildName = null, guildIcon = null, lang = currentLanguage() }) {
+  const language = normalizeLanguage(lang) ?? DEFAULT_LANGUAGE;
+  const copy = Object.fromEntries(COPY_FIELDS.map((field) => [field, t(language, `web.verify.${field}`)]));
   const useTurnstile = method !== 'letters';
   const useLetters = method === 'letters' || method === 'both';
-  const server = guildName ? `<div class="server">${guildIcon ? `<img src="${escapeHtml(guildIcon)}" alt="">` : ''}<span>${escapeHtml(t.forServer)} <b>${escapeHtml(guildName)}</b></span></div>` : '';
-  const turnstileBlock = useTurnstile ? `<p class="check-copy">${escapeHtml(t.turnstile)}</p><div class="widget-wrap"><div class="cf-turnstile" data-sitekey="${escapeHtml(siteKey)}" data-callback="onTurnstileSuccess" data-error-callback="onTurnstileError" data-expired-callback="onTurnstileExpired" data-theme="dark"></div></div>` : '';
-  const lettersBlock = useLetters ? `<div class="letters"><p class="check-title">${escapeHtml(t.lettersTitle)}</p><img class="letters-img" id="letters-img" width="260" height="96" alt="" hidden><div class="letters-row"><input id="letters-input" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="12" aria-label="${escapeHtml(t.lettersLabel)}"><button type="button" id="letters-new">${escapeHtml(t.refresh)}</button></div><p class="letters-hint">${escapeHtml(t.lettersHint)}</p></div>` : '';
+  // i18n-ignore: markup; the texts in it come from the catalogs
+  const server = guildName ? `<div class="server">${guildIcon ? `<img src="${escapeHtml(guildIcon)}" alt="">` : ''}<span>${escapeHtml(copy.forServer)} <b>${escapeHtml(guildName)}</b></span></div>` : '';
+  // i18n-ignore: markup
+  const turnstileBlock = useTurnstile ? `<p class="check-copy">${escapeHtml(copy.turnstile)}</p><div class="widget-wrap"><div class="cf-turnstile" data-sitekey="${escapeHtml(siteKey)}" data-callback="onTurnstileSuccess" data-error-callback="onTurnstileError" data-expired-callback="onTurnstileExpired" data-theme="dark"></div></div>` : '';
+  // i18n-ignore: markup
+  const lettersBlock = useLetters ? `<div class="letters"><p class="check-title">${escapeHtml(copy.lettersTitle)}</p><img class="letters-img" id="letters-img" width="260" height="96" alt="" hidden><div class="letters-row"><input id="letters-input" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="12" aria-label="${escapeHtml(copy.lettersLabel)}"><button type="button" id="letters-new">${escapeHtml(copy.refresh)}</button></div><p class="letters-hint">${escapeHtml(copy.lettersHint)}</p></div>` : '';
+  // i18n-ignore: markup and a product name
+  const privacyLead = useTurnstile ? `${escapeHtml(copy.privacy)} <b>Cloudflare Turnstile</b> · ` : '';
+  const turnstileScript = useTurnstile ? '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>' : ''; // i18n-ignore: markup
+  // i18n-ignore: the markup, styles and script of the page; every text in it comes from the catalogs
   return `<!doctype html>
-<html lang="${lang === 'pt' ? 'pt-BR' : lang}">
+<html lang="${language}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<title>${escapeHtml(t.title)} &middot; Petto</title>
+<title>${escapeHtml(copy.title)} &middot; Petto</title>
 <link rel="icon" type="image/png" href="/assets/favicon.png">
 <style>
   :root { color-scheme:dark; --bg:#111214; --surface:#15171b; --surface-2:#191b20; --border:#2a2d35; --border-soft:#202228; --text:#f3f1ea; --muted:#9c968a; --dim:#6f6a62; --accent:#8399ff; --accent-soft:rgba(131,153,255,.14); --accent-hover:#9aacff; --accent-ink:#1a1c2e; --green:#a5ea7a; --green-soft:rgba(165,234,122,.14); --red:#fe6465; --red-soft:rgba(254,100,101,.14); --font:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif; }
@@ -95,20 +76,20 @@ function renderVerifyPage({ token, siteKey, method = 'turnstile', guildName = nu
 </head>
 <body>
   <div class="shell">
-    <header class="topbar"><a class="brand" href="/" aria-label="Petto home"><img src="/assets/favicon.png" alt=""> <span>Petto</span></a><div class="service"><span class="service-dot" aria-hidden="true"></span>${escapeHtml(t.service)}</div></header>
+    <header class="topbar"><a class="brand" href="/" aria-label="${escapeHtml(t(language, 'web.verify.homeLabel'))}"><img src="/assets/favicon.png" alt=""> <span>Petto</span></a><div class="service"><span class="service-dot" aria-hidden="true"></span>${escapeHtml(copy.service)}</div></header>
     <main class="main"><section class="card" aria-labelledby="page-title">
-      <div class="intro"><div class="logo"><img src="/assets/favicon.png" alt="Petto"></div><div><div class="eyebrow">${escapeHtml(t.eyebrow)}</div><h1 id="page-title">${escapeHtml(t.heading)}</h1><p class="sub">${escapeHtml(t.sub)}</p>${server}</div></div>
-      <div class="steps" aria-label="Verification progress"><div class="step active"><b>${escapeHtml(t.s1)}</b>${escapeHtml(t.s1d)}</div><div class="step"><b>${escapeHtml(t.s2)}</b>${escapeHtml(t.s2d)}</div><div class="step"><b>${escapeHtml(t.s3)}</b>${escapeHtml(t.s3d)}</div></div>
-      <div class="check"><p class="check-title">${escapeHtml(useTurnstile && useLetters ? t.checkTitleTwo : t.checkTitle)}</p>${turnstileBlock}${lettersBlock}<button id="continue-btn" disabled>${escapeHtml(t.button)}</button></div>
-      <div class="status success" id="status-success" role="status" aria-live="polite"><img src="/assets/icon-approve.png" alt=""><span id="status-success-text">${escapeHtml(t.done)}</span></div>
+      <div class="intro"><div class="logo"><img src="/assets/favicon.png" alt="Petto"></div><div><div class="eyebrow">${escapeHtml(copy.eyebrow)}</div><h1 id="page-title">${escapeHtml(copy.heading)}</h1><p class="sub">${escapeHtml(copy.sub)}</p>${server}</div></div>
+      <div class="steps" aria-label="${escapeHtml(t(language, 'web.verify.progressLabel'))}"><div class="step active"><b>${escapeHtml(copy.s1)}</b>${escapeHtml(copy.s1d)}</div><div class="step"><b>${escapeHtml(copy.s2)}</b>${escapeHtml(copy.s2d)}</div><div class="step"><b>${escapeHtml(copy.s3)}</b>${escapeHtml(copy.s3d)}</div></div>
+      <div class="check"><p class="check-title">${escapeHtml(useTurnstile && useLetters ? copy.checkTitleTwo : copy.checkTitle)}</p>${turnstileBlock}${lettersBlock}<button id="continue-btn" disabled>${escapeHtml(copy.button)}</button></div>
+      <div class="status success" id="status-success" role="status" aria-live="polite"><img src="/assets/icon-approve.png" alt=""><span id="status-success-text">${escapeHtml(copy.done)}</span></div>
       <div class="status error" id="status-error" role="alert"><img src="/assets/icon-deny.png" alt=""><span id="status-error-text"></span></div>
-      <p class="privacy">${useTurnstile ? `${escapeHtml(t.privacy)} <b>Cloudflare Turnstile</b> · ` : ''}${escapeHtml(t.handled)} <b>Petto</b> · ${escapeHtml(t.rolesIn)}</p>
-    </section><footer>Petto · ${escapeHtml(t.footer)}</footer></main>
+      <p class="privacy">${privacyLead}${escapeHtml(copy.handled)} <b>Petto</b> · ${escapeHtml(copy.rolesIn)}</p>
+    </section><footer>Petto · ${escapeHtml(copy.footer)}</footer></main>
   </div>
-  ${useTurnstile ? '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>' : ''}
+  ${turnstileScript}
   <script>
     const TOKEN = ${JSON.stringify(token).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')};
-    const T = ${JSON.stringify(t).replace(/</g, '\\u003c')};
+    const T = ${JSON.stringify(copy).replace(/</g, '\\u003c')};
     const USE_TURNSTILE = ${useTurnstile};
     const USE_LETTERS = ${useLetters};
     let turnstileToken = null;

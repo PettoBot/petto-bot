@@ -19,7 +19,7 @@ const { sendLog } = require('../logging/engine');
 const { EMOJI } = require('./emojis');
 const config = require('../config');
 const logger = require('./logger');
-const { t, tn, guildLanguage, languageOf } = require('../i18n');
+const { t, tn, guildLanguage, languageOf, defaultText } = require('../i18n');
 
 const STAFF_OVERWRITE_PERMS = [
   PermissionFlagsBits.ViewChannel,
@@ -476,7 +476,7 @@ async function openTicketInteractive(interaction, category, lang) {
       return;
     }
     const { ModalBuilder, ActionRowBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
-    const modal = new ModalBuilder().setCustomId(`tk_form::${category.id}::${form.id}`).setTitle(form.title || t(lang, 'tickets.form.defaultTitle'));
+    const modal = new ModalBuilder().setCustomId(`tk_form::${category.id}::${form.id}`).setTitle(defaultText(lang, form.title, 'tickets.form.defaultTitle') || t(lang, 'tickets.form.defaultTitle'));
     for (const field of form.fields ?? []) {
       const input = new TextInputBuilder().setCustomId(`field::${field.id}`).setLabel(field.label).setStyle(field.type === 'long_text' ? TextInputStyle.Paragraph : TextInputStyle.Short).setRequired(field.required !== false);
       if (field.placeholder) input.setPlaceholder(field.placeholder);

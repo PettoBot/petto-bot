@@ -33,7 +33,7 @@ module.exports = {
     await interaction.showModal(buildReportModal({
       customId: `${USER_MODAL_PREFIX}${author.id}`,
       title: t(lang, 'reports.form.userTitle'),
-      intro: `### ${t(lang, 'reports.form.userIntro', { user: `${author}` })}\n${t(lang, 'reports.form.userLine', { user: `${author}`, id: author.id })}\n-# ${t(lang, 'reports.form.personNotMessage', { command: 'Report Message' })}`,
+      intro: `### ${t(lang, 'reports.form.userIntro', { user: `${author}` })}\n${t(lang, 'reports.form.userLine', { user: `${author}`, id: author.id })}\n-# ${t(lang, 'reports.form.personNotMessage', { command: 'Report Message' })}`, // i18n-ignore: the name of a context menu command is never translated
       config: reportConfig,
       lang,
     }));

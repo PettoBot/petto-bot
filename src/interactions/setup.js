@@ -12,7 +12,7 @@ const { COLORS } = require('../utils/colors');
 const { syncGuildAutoMod } = require('../utils/autoModManager');
 const { invalidateSetupState } = require('./setupPanel');
 const logger = require('../utils/logger');
-const { t, tn, languageOf } = require('../i18n');
+const { t, tn, languageOf, LANGUAGES, LANGUAGE_NAMES } = require('../i18n');
 
 function selectedChannel(fields, customId) {
   return fields.getSelectedChannels(customId)?.first?.() ?? null;
@@ -185,7 +185,7 @@ async function handleSetupModal(interaction) {
       subtitle: [guild.name, failed ? tn(lang, 'setup.result.failed', failed, { count: failed }) : t(lang, warned ? 'setup.result.warned' : 'setup.result.allSaved')],
       sections: [
         { title: t(lang, 'setup.result.section'), lines: steps.map((step) => `${STATUS_ICON[step.status] ?? EMOJI.RELEASE_MINUS} ${step.text}`) },
-        { title: t(lang, 'setup.result.next'), lines: [t(lang, 'setup.result.nextHint', { prefix })] },
+        { title: t(lang, 'setup.result.next'), lines: [t(lang, 'setup.result.nextHint', { prefix }), t(lang, 'setup.result.nextLanguage', { language: LANGUAGE_NAMES[lang], list: LANGUAGES.map((code) => LANGUAGE_NAMES[code]).join(', '), prefix })] },
       ],
       buttons: [
         setupChannelId ? { label: t(lang, 'setup.result.openChannel.button'), url: `https://discord.com/channels/${guild.id}/${setupChannelId}` } : null,

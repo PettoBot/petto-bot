@@ -41,7 +41,7 @@ async function runMigrations() {
   await applySchema({
     connectionString: config.primaryDatabaseUrl,
     sslEnabled: config.primaryDatabaseSsl,
-    label: 'Discloud primary',
+    label: 'Discloud primary', // i18n-ignore: label for the log
   });
 }
 
