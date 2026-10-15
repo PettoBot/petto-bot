@@ -89,7 +89,6 @@ module.exports = {
   'setup.modal.feature.officialAutomod.description.menu': 'Cria regras do Petto no AutoMod do Discord; exige Gerenciar servidor.',
   'setup.modal.prefix': 'Prefixo de comandos',
   'setup.modal.prefixHint': 'O prefixo dos comandos do Petto, até cinco caracteres.',
-  'setup.defaultWelcome': '{user.mention}, boas-vindas ao servidor {server.name}!',
   'setup.result.badPrefix': 'O prefixo deve ter de 1 a 5 caracteres e não pode ter espaços.',
   'setup.result.unexpected': 'Erro inesperado.',
   'setup.result.prefix': 'O prefixo é `{prefix}`.',

@@ -89,7 +89,6 @@ module.exports = {
   'setup.modal.feature.officialAutomod.description.menu': 'Create Petto rules in Discord AutoMod; Manage Server is required.',
   'setup.modal.prefix': 'Command Prefix',
   'setup.modal.prefixHint': 'The prefix for Petto commands, up to five characters.',
-  'setup.defaultWelcome': 'Welcome {user.mention} to {server.name}!',
   'setup.result.badPrefix': 'The prefix must be 1 to 5 characters and cannot contain spaces.',
   'setup.result.unexpected': 'Unexpected error.',
   'setup.result.prefix': 'Prefix is `{prefix}`.',

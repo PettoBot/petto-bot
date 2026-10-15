@@ -132,7 +132,8 @@ async function handleSetupModal(interaction) {
         const existing = await getMemberConfig(guild.id).catch(() => null);
         const patch = { welcome_channel_id: welcomeEnabled ? welcomeChannel.id : null };
         if (welcomeEnabled && !existing?.welcome_message && !existing?.welcome_embed_template) {
-          patch.welcome_message = t(lang, 'setup.defaultWelcome');
+          // i18n-ignore-next-line: stored in English on purpose, the welcome module translates this default when it sends it
+          patch.welcome_message = 'Welcome {user.mention} to {server.name}!';
         }
         await upsertMemberConfig(guild.id, patch);
         if (welcomeEnabled) return { status: 'ok', text: t(lang, 'setup.result.welcome.enabled', { channel: `<#${welcomeChannel.id}>` }) };
