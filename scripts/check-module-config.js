@@ -96,5 +96,25 @@ logger.warn = () => {};
   assert.equal(formatValue('role_id', '222222222222222222'), '<@&222222222222222222>');
   assert.equal(formatValue('x_seconds', 10), '10s');
   assert.equal(formatValue('channel_id', null), '*not set*');
+  // In Spanish and Portuguese the cards are written in the language of the server, and still fit.
+  for (const lang of ['es', 'pt-BR']) {
+    for (const [name, module] of Object.entries(MODULES)) {
+      const translated = await buildCardText(module, { guildId: '1', prefix: '?', commands: client.commands, lang });
+      assert.ok(translated.length < 4000, `${name} fits in one message in ${lang} (${translated.length})`);
+      assert.match(translated, new RegExp(`\\?${module.command}\\b`), `${name} keeps the command names in ${lang}`);
+    }
+  }
+  const welcomeEs = await buildCardText(MODULES.welcomeconfig, { guildId: '1', prefix: '?', commands: client.commands, lang: 'es' });
+  assert.match(welcomeEs, /^### Configuración: Bienvenida\n- Canal: <#333333333333333333>/);
+  assert.match(welcomeEs, /- Mensaje: `Hi \{user\}`/);
+  assert.match(welcomeEs, /\*\*Comandos\*\*\n```\n\?welcome setup/);
+  const automodPt = await buildCardText(MODULES.automodconfig, { guildId: '1', prefix: '?', commands: client.commands, lang: 'pt-BR' });
+  assert.match(automodPt, /^### Configurações: AutoMod e proteção/);
+  assert.match(automodPt, /- Anti-raid ativado: \*\*Ativado\*\*/);
+  assert.match(automodPt, /\*\*Proteções anti-nuke\*\*\n\*Ainda não há nada configurado\.\*/);
+  assert.match(await buildCardText(MODULES.logsconfig, { guildId: '1', prefix: '?', commands: client.commands, lang: 'es' }), /-# 2 configurados\n- <#444444444444444444>: `sanctions`, `members`/);
+  assert.equal(formatValue('enabled', false, 'es'), '**Desactivado**');
+  assert.equal(formatValue('a_ms', 3600000, 'pt-BR'), '1 hora');
+  assert.equal(formatValue('channel_id', null, 'pt-BR'), '*não definido*');
   console.log('Checked the module config cards: they load, show real commands and write the stored values.');
 })().catch((err) => { console.error(err); process.exit(1); });

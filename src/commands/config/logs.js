@@ -12,6 +12,7 @@ const {
   toggleIgnored,
 } = require('../../db/logConfig');
 const logger = require('../../utils/logger');
+const { t, languageOf } = require('../../i18n');
 
 const COLOR = 0x4b4f59;
 const OK = 0xa5ea7a;
@@ -124,6 +125,7 @@ module.exports = {
     ),
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const guildId = interaction.guild.id;
     await ensureGuild(guildId);
 
@@ -134,7 +136,7 @@ module.exports = {
 
       if (!config.entries.length) {
         await interaction.reply({
-          embeds: [okEmbed(`No log channels configured.\nUse \`!logs add\` to get started.\nEvents: ${EVENTS.join(', ')}`)],
+          embeds: [okEmbed(t(lang, 'config.logs.none', { events: EVENTS.join(', ') }))],
           flags: MessageFlags.Ephemeral,
         });
         return;
@@ -143,7 +145,7 @@ module.exports = {
       const grouped = {};
       for (const e of config.entries) (grouped[e.channel_id] ??= []).push(e.event);
 
-      const embed = new EmbedBuilder().setColor(COLOR).setTitle('Log Configuration').setDescription('Events configured per channel:');
+      const embed = new EmbedBuilder().setColor(COLOR).setTitle(t(lang, 'config.logs.title')).setDescription(t(lang, 'config.logs.perChannel'));
       for (const [channelId, events] of Object.entries(grouped)) {
         embed.addFields({ name: `<#${channelId}>`, value: events.map((e) => `\`${e}\``).join(', '), inline: false });
       }
@@ -152,7 +154,7 @@ module.exports = {
         const lines = config.ignored.map((id) =>
           interaction.guild.channels.cache.has(id) ? `<#${id}>` : `<@${id}>`,
         );
-        embed.addFields({ name: 'Ignored', value: lines.join(', '), inline: false });
+        embed.addFields({ name: t(lang, 'config.logs.ignored'), value: lines.join(', '), inline: false });
       }
 
       await interaction.reply({ embeds: [embed] });
@@ -163,7 +165,7 @@ module.exports = {
       const event = interaction.options.getString('event', true);
 
       if (!channel.permissionsFor(interaction.guild.members.me)?.has(PermissionFlagsBits.ManageWebhooks)) {
-        await interaction.reply({ embeds: [errEmbed('I need **Manage Webhooks** permission in that channel.')], flags: MessageFlags.Ephemeral });
+        await interaction.reply({ embeds: [errEmbed(t(lang, 'config.logs.needWebhooks'))], flags: MessageFlags.Ephemeral });
         return;
       }
 
@@ -171,12 +173,13 @@ module.exports = {
 
       const config = await getLogConfig(guildId);
       if (config.entries.some((e) => e.channel_id === channel.id && e.event === event)) {
-        await interaction.editReply({ embeds: [errEmbed(`\`${event}\` is already configured for <#${channel.id}>.`)] });
+        await interaction.editReply({ embeds: [errEmbed(t(lang, 'config.logs.already', { event, channel: `<#${channel.id}>` }))] });
         return;
       }
 
       if (!config.webhooks.find((w) => w.channel_id === channel.id)) {
         const webhook = await channel
+          // i18n-ignore-next-line: the name of Petto's webhook, never translated
           .createWebhook({ name: 'Petto logs', avatar: interaction.client.user.displayAvatarURL({ extension: 'png', size: 256 }) })
           .catch((err) => {
             logger.error('Failed to create log webhook:', err);
@@ -184,7 +187,7 @@ module.exports = {
           });
 
         if (!webhook) {
-          await interaction.editReply({ embeds: [errEmbed('Failed to create webhook. Check my **Manage Webhooks** permission.')] });
+          await interaction.editReply({ embeds: [errEmbed(t(lang, 'config.logs.webhookFailed'))] });
           return;
         }
 
@@ -192,7 +195,7 @@ module.exports = {
       }
 
       await addEntry(guildId, channel.id, event);
-      await interaction.editReply({ embeds: [okEmbed(`\`${event}\` logs will now be sent to <#${channel.id}>.`)] });
+      await interaction.editReply({ embeds: [okEmbed(t(lang, 'config.logs.added', { event, channel: `<#${channel.id}>` }))] });
       return;
     }
     if (!group && sub === 'remove') {
@@ -208,7 +211,7 @@ module.exports = {
       }
 
       await interaction.editReply({
-        embeds: [okEmbed(event ? `\`${event}\` logs removed from <#${channel.id}>.` : `All logs removed from <#${channel.id}>.`)],
+        embeds: [okEmbed(event ? t(lang, 'config.logs.removedEvent', { event, channel: `<#${channel.id}>` }) : t(lang, 'config.logs.removedAll', { channel: `<#${channel.id}>` }))],
       });
       return;
     }
@@ -219,11 +222,11 @@ module.exports = {
         const config = await getLogConfig(guildId);
         const entries = config.entries.filter((e) => e.channel_id === channel.id);
         if (!entries.length) {
-          await interaction.reply({ embeds: [errEmbed('No events configured for that channel.')], flags: MessageFlags.Ephemeral });
+          await interaction.reply({ embeds: [errEmbed(t(lang, 'config.logs.noEvents'))], flags: MessageFlags.Ephemeral });
           return;
         }
-        const lines = entries.map((e) => `\`${e.event}\`: ${e.color != null ? `\`#${e.color.toString(16).padStart(6, '0')}\`` : '*Default*'}`);
-        await interaction.reply({ embeds: [new EmbedBuilder().setColor(COLOR).setTitle(`Colors - <#${channel.id}>`).setDescription(lines.join('\n'))] });
+        const lines = entries.map((e) => `\`${e.event}\`: ${e.color != null ? `\`#${e.color.toString(16).padStart(6, '0')}\`` : t(lang, 'config.logs.defaultColor')}`);
+        await interaction.reply({ embeds: [new EmbedBuilder().setColor(COLOR).setTitle(t(lang, 'config.logs.colorsTitle', { channel: `<#${channel.id}>` })).setDescription(lines.join('\n'))] });
         return;
       }
 
@@ -233,28 +236,28 @@ module.exports = {
       const color = parseColor(colorStr);
 
       if (color === null) {
-        await interaction.reply({ embeds: [errEmbed('Invalid color. Use `#rrggbb` format.')], flags: MessageFlags.Ephemeral });
+        await interaction.reply({ embeds: [errEmbed(t(lang, 'config.logs.invalidColor'))], flags: MessageFlags.Ephemeral });
         return;
       }
 
       const updated = await setEntryColor(guildId, channel.id, event, color);
       if (!updated) {
-        await interaction.reply({ embeds: [errEmbed(`\`${event}\` is not configured for <#${channel.id}>.`)], flags: MessageFlags.Ephemeral });
+        await interaction.reply({ embeds: [errEmbed(t(lang, 'config.logs.notConfigured', { event, channel: `<#${channel.id}>` }))], flags: MessageFlags.Ephemeral });
         return;
       }
 
-      await interaction.reply({ embeds: [okEmbed(`Color for \`${event}\` in <#${channel.id}> set to \`#${color.toString(16).padStart(6, '0')}\`.`)] });
+      await interaction.reply({ embeds: [okEmbed(t(lang, 'config.logs.colorSet', { event, channel: `<#${channel.id}>`, color: `#${color.toString(16).padStart(6, '0')}` }))] });
       return;
     }
     if (group === 'ignore') {
       if (sub === 'list') {
         const config = await getLogConfig(guildId);
         if (!config.ignored.length) {
-          await interaction.reply({ embeds: [new EmbedBuilder().setColor(COLOR).setDescription('Nothing is being ignored.')] });
+          await interaction.reply({ embeds: [new EmbedBuilder().setColor(COLOR).setDescription(t(lang, 'config.logs.nothingIgnored'))] });
           return;
         }
         const lines = config.ignored.map((id) => (interaction.guild.channels.cache.has(id) ? `<#${id}> (\`${id}\`)` : `<@${id}> (\`${id}\`)`));
-        await interaction.reply({ embeds: [new EmbedBuilder().setColor(COLOR).setTitle('Ignored').setDescription(lines.join('\n'))] });
+        await interaction.reply({ embeds: [new EmbedBuilder().setColor(COLOR).setTitle(t(lang, 'config.logs.ignored')).setDescription(lines.join('\n'))] });
         return;
       }
 
@@ -263,7 +266,7 @@ module.exports = {
       const channel = interaction.options.getChannel('channel');
 
       if ((!user && !channel) || (user && channel)) {
-        await interaction.reply({ embeds: [errEmbed('Provide exactly one of `user` or `channel`.')], flags: MessageFlags.Ephemeral });
+        await interaction.reply({ embeds: [errEmbed(t(lang, 'config.logs.exactlyOne'))], flags: MessageFlags.Ephemeral });
         return;
       }
 
@@ -271,7 +274,7 @@ module.exports = {
       const tag = user ? `<@${targetId}>` : `<#${targetId}>`;
       const nowIgnored = await toggleIgnored(guildId, targetId);
 
-      await interaction.reply({ embeds: [okEmbed(nowIgnored ? `${tag} will now be ignored in logs.` : `${tag} is no longer ignored in logs.`)] });
+      await interaction.reply({ embeds: [okEmbed(t(lang, nowIgnored ? 'config.logs.nowIgnored' : 'config.logs.noLongerIgnored', { target: tag }))] });
     }
   },
 };

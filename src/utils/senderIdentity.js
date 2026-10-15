@@ -4,8 +4,9 @@
 const { ChannelType } = require('discord.js');
 const identities = require('../db/senderIdentities');
 const logger = require('./logger');
+const { t, currentLanguage } = require('../i18n');
 
-const WEBHOOK_NAME = 'Petto messages';
+const WEBHOOK_NAME = 'Petto messages'; // i18n-ignore: Petto finds its webhook again by this name
 const webhooks = new Map();
 const failed = new Map();
 const RETRY_AFTER_MS = 10 * 60_000;
@@ -21,7 +22,7 @@ async function webhookFor(channel, client) {
   if (Date.now() - (failed.get(base.id) ?? 0) < RETRY_AFTER_MS) return null;
   try {
     const own = [...(await base.fetchWebhooks()).values()].find((hook) => hook.owner?.id === client.user.id && hook.name === WEBHOOK_NAME && hook.token);
-    const hook = own ?? await base.createWebhook({ name: WEBHOOK_NAME, avatar: client.user.displayAvatarURL({ extension: 'png', size: 256 }), reason: 'Messages with their own name and picture' });
+    const hook = own ?? await base.createWebhook({ name: WEBHOOK_NAME, avatar: client.user.displayAvatarURL({ extension: 'png', size: 256 }), reason: t(currentLanguage(), 'config.sender.webhookReason') });
     webhooks.set(base.id, hook);
     return hook;
   } catch (error) {

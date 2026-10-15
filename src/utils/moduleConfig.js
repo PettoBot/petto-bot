@@ -16,6 +16,7 @@ const database = require('../db/database');
 const { ensureGuild } = require('../db/guilds');
 const { formatDuration } = require('./duration');
 const logger = require('./logger');
+const { t, tn, currentLanguage, commandDescription, languageOf } = require('../i18n');
 
 const WIKI_URL = 'https://wiki.petto.sbs';
 const MAX_ROWS = 28;
@@ -28,86 +29,105 @@ const SNOWFLAKE = /^\d{15,25}$/;
 /**
  * The modules. `command` is the command that changes the settings, `sources` where the settings live:
  * `show` lists the commands that configure the module (shown first, in that order; the others come after). `{ table, only, skip, list }` reads a row of the server (or, with `list`, every row of the server) and shows the columns that match `only`
- * (a RegExp or a list of names) without the ones in `skip`.
+ * (a RegExp or a list of names) without the ones in `skip`. Titles and labels are the English texts of the catalog (config.module.*,
+ * config.source.*); the cards show them in the language of the server.
  */
 const MODULES = {
-  brconfig: { aliases: ['boosterroleconfig', 'boosterconfig'], title: 'Booster roles', command: 'boosterrole', show: [/^admin (base|limit|share-limit|cooldown|link|cleanup)/, /^filter/], sources: [{ table: 'booster_role_config' }] },
-  welcomeconfig: { aliases: [], title: 'Welcome', command: 'welcome', sources: [{ table: 'member_events_config', only: /^welcome_/ }] },
-  leaveconfig: { aliases: [], title: 'Leave', command: 'leave', sources: [{ table: 'member_events_config', only: /^leave_/ }] },
-  boostconfig: { aliases: [], title: 'Boost messages', command: 'boost', sources: [{ table: 'member_events_config', only: /^boost_/ }] },
-  dmonjoinconfig: { aliases: [], title: 'DM on join', command: 'dmonjoin', sources: [{ table: 'member_events_config', only: /^dm_join_/ }] },
-  joinroleconfig: { aliases: ['autoroleconfig'], title: 'Join roles', command: 'joinrole', sources: [{ table: 'join_roles', list: true, only: ['role_id', 'target'] }] },
+  brconfig: { aliases: ['boosterroleconfig', 'boosterconfig'], title: t('en', 'config.module.brconfig.title'), command: 'boosterrole', show: [/^admin (base|limit|share-limit|cooldown|link|cleanup)/, /^filter/], sources: [{ table: 'booster_role_config' }] },
+  welcomeconfig: { aliases: [], title: t('en', 'config.module.welcomeconfig.title'), command: 'welcome', sources: [{ table: 'member_events_config', only: /^welcome_/ }] },
+  leaveconfig: { aliases: [], title: t('en', 'config.module.leaveconfig.title'), command: 'leave', sources: [{ table: 'member_events_config', only: /^leave_/ }] },
+  boostconfig: { aliases: [], title: t('en', 'config.module.boostconfig.title'), command: 'boost', sources: [{ table: 'member_events_config', only: /^boost_/ }] },
+  dmonjoinconfig: { aliases: [], title: t('en', 'config.module.dmonjoinconfig.title'), command: 'dmonjoin', sources: [{ table: 'member_events_config', only: /^dm_join_/ }] },
+  joinroleconfig: { aliases: ['autoroleconfig'], title: t('en', 'config.module.joinroleconfig.title'), command: 'joinrole', sources: [{ table: 'join_roles', list: true, only: ['role_id', 'target'] }] },
   pojconfig: {
     aliases: [],
-    title: 'Ping on join',
+    title: t('en', 'config.module.pojconfig.title'),
     command: 'poj',
-    sources: [{ table: 'poj_config' }, { table: 'poj_channels', list: true, label: 'Channels', only: ['channel_id', 'delete_after_ms'] }],
+    sources: [{ table: 'poj_config' }, { table: 'poj_channels', list: true, label: t('en', 'config.source.poj_channels'), only: ['channel_id', 'delete_after_ms'] }],
   },
   automodconfig: {
     aliases: ['antinukeconfig', 'antiraidconfig', 'antialtconfig'],
-    title: 'AutoMod and protection',
+    title: t('en', 'config.module.automodconfig.title'),
     command: 'automod',
     show: [/^raid/, /^anti-alt/, /^antinuke /, /^spam/, /^link/, /^word-filter toggle/, /^word-filter add/, /^invites allow/, /^immune add/, /^antinuke-whitelist add/, /^silent-channel add/, /^template add/, /^native add/, /^strikes/, /^control/],
     sources: [
-      { table: 'automod_config', label: 'AutoMod', skip: ['banned_words', 'allowed_invite_codes'] },
-      { table: 'antinuke_config', label: 'Anti-nuke' },
-      { table: 'antinuke_rules', list: true, label: 'Anti-nuke protections', only: ['rule', 'enabled', 'threshold', 'window_seconds', 'action'] },
-      { table: 'automod_rules', list: true, label: 'Template filters', only: ['name', 'action', 'enabled', 'hits'] },
-      { table: 'scam_config', label: 'Anti scam', skip: ['caught'] },
-      { table: 'lockdown_config', label: 'Lockdown' },
+      { table: 'automod_config', label: t('en', 'config.source.automod_config'), skip: ['banned_words', 'allowed_invite_codes'] },
+      { table: 'antinuke_config', label: t('en', 'config.source.antinuke_config') },
+      { table: 'antinuke_rules', list: true, label: t('en', 'config.source.antinuke_rules'), only: ['rule', 'enabled', 'threshold', 'window_seconds', 'action'] },
+      { table: 'automod_rules', list: true, label: t('en', 'config.source.automod_rules'), only: ['name', 'action', 'enabled', 'hits'] },
+      { table: 'scam_config', label: t('en', 'config.source.scam_config'), skip: ['caught'] },
+      { table: 'lockdown_config', label: t('en', 'config.source.lockdown_config') },
     ],
   },
-  logsconfig: { aliases: ['logconfig'], title: 'Logs', command: 'logs', sources: [{ table: 'log_entries', list: true, group: { by: 'channel_id', collect: 'event' } }] },
-  levelconfig: { aliases: ['xpconfig'], title: 'Levels', command: 'level', show: [/^enable/, /^xp/, /^cooldown/, /^curve/, /^max-level/, /^notify/, /^role-mode/, /^ignore/, /^join/, /^voice-enable/, /^voice-xp/, /^reward add/, /^multiplier set/, /^event add/, /^rank-style/, /^status/], sources: [{ table: 'level_config', skip: ['notify_embed_template', 'notify_message'] }] },
-  starboardconfig: { aliases: [], title: 'Starboard', command: 'starboard', sources: [{ table: 'starboards' }] },
-  suggestionconfig: { aliases: [], title: 'Suggestions', command: 'suggestion', sources: [{ table: 'suggestion_config' }] },
-  monkeyboardconfig: { aliases: [], title: 'Monkeyboard', command: 'monkeyboard', sources: [{ table: 'monkeyboards' }] },
-  giveawayconfig: { aliases: [], title: 'Giveaways', command: 'giveaway', show: [/^embed/, /^reaction/, /^entry-mode/, /^template/, /^winner-message/, /^deny-message/, /^accept-message/, /^no-entries-message/, /^claim-time/, /^message-template/], sources: [{ table: 'giveaway_config', only: ['reaction', 'entry_mode', 'embed_template'] }] },
-  ticketconfig: { aliases: [], title: 'Tickets', command: 'ticket', show: [/^setup/, /^panel create/, /^category (add|edit)/, /^support-role add/, /^ping-role add/, /^required-role add/, /^form create/, /^blacklist add/, /^panel (resend|delete)/, /^category remove/], sources: [{ table: 'ticket_settings' }] },
-  verifyconfig: { aliases: [], title: 'Verification', command: 'verify', sources: [{ table: 'verification_config' }] },
-  bumpconfig: { aliases: ['bumpreminderconfig'], title: 'Bump reminder', command: 'bumpreminder', sources: [{ table: 'bump_reminders', skip: ['message', 'thankyou'] }] },
-  vmconfig: { aliases: ['voicemasterconfig'], title: 'VoiceMaster', command: 'voicemaster', show: [/^setup/, /^disable/, /^info/, /^panel/], sources: [{ table: 'voice_configs' }] },
-  stickyrolesconfig: { aliases: [], title: 'Sticky roles', command: 'stickyroles', sources: [{ table: 'sticky_roles_config' }] },
-  honeypotconfig: { aliases: [], title: 'Honeypots', command: 'honeypot', sources: [{ table: 'honeypots', list: true, only: ['channel_id', 'punishment', 'caught_count'] }] },
-  countingconfig: { aliases: [], title: 'Counting', command: 'counting', sources: [{ table: 'counting_config', skip: ['current_number', 'last_user_id', 'last_message_id', 'high_score', 'total_correct', 'total_wrong', 'saves', 'top_user_id', 'top_correct'] }] },
-  counterconfig: { aliases: [], title: 'Counters', command: 'counter', sources: [{ table: 'server_counters', list: true, only: ['channel_id', 'counter_option', 'enabled'] }] },
-  jailconfig: { aliases: [], title: 'Jail', command: 'jail', show: [/^setup/], sources: [{ table: 'jail_config' }] },
-  autothreadconfig: { aliases: [], title: 'Auto threads', command: 'autothread', sources: [{ table: 'auto_threads', list: true, only: ['channel_id', 'name_template'] }] },
-  autoresponderconfig: { aliases: [], title: 'Autoresponders', command: 'autoresponder', sources: [{ table: 'auto_responders', list: true, only: ['trigger', 'match_mode', 'reply_type'] }] },
-  reactionroleconfig: { aliases: [], title: 'Reaction roles', command: 'reactionrole', sources: [{ table: 'reaction_roles', list: true, only: ['channel_id', 'emoji', 'role_id', 'mode'] }] },
-  customcommandconfig: { aliases: [], title: 'Custom commands', command: 'customcommand', sources: [{ table: 'custom_commands', list: true, only: ['name', 'embed_template'] }] },
-  disablecommandconfig: { aliases: [], title: 'Disabled commands', command: 'disablecommand', sources: [{ table: 'disabled_commands', list: true, only: ['command', 'channel_id'] }] },
-  reactionconfig: { aliases: ['reactreplyconfig'], title: 'Reaction triggers', command: 'reaction', sources: [{ table: 'reaction_triggers', list: true, only: ['emoji', 'trigger', 'enabled'] }] },
-  timerconfig: { aliases: [], title: 'Timers', command: 'timer', sources: [{ table: 'auto_messages', list: true, only: ['channel_id', 'interval_ms'] }] },
-  aliasconfig: { aliases: [], title: 'Command aliases', command: 'alias', sources: [{ table: 'command_aliases', list: true, only: ['name', 'command'] }] },
-  senderconfig: { aliases: [], title: 'Sender identities', command: 'sender', sources: [{ table: 'sender_identities', list: true, only: ['feature', 'name'] }] },
-  sanctionmessageconfig: { aliases: [], title: 'Sanction messages', command: 'sanctionmessage', sources: [{ table: 'sanction_templates', list: true, only: ['type'] }] },
-  giveawaypresetconfig: { aliases: [], title: 'Giveaway presets', command: 'giveawaypreset', sources: [{ table: 'giveaway_presets', list: true, only: ['name'] }] },
-  giveawaytemplateconfig: { aliases: [], title: 'Giveaway templates', command: 'giveawaytemplate', sources: [{ table: 'giveaway_templates', list: true, only: ['name'] }] },
-  prefixconfig: { aliases: [], title: 'Prefix and language', command: 'prefix', sources: [{ table: 'guilds', only: ['prefix', 'language', 'mute_role_id', 'setup_channel_id'] }] },
-  reportconfig: { aliases: [], title: 'Reports', command: 'report', sources: [{ table: 'report_config' }] },
+  logsconfig: { aliases: ['logconfig'], title: t('en', 'config.module.logsconfig.title'), command: 'logs', sources: [{ table: 'log_entries', list: true, group: { by: 'channel_id', collect: 'event' } }] },
+  levelconfig: { aliases: ['xpconfig'], title: t('en', 'config.module.levelconfig.title'), command: 'level', show: [/^enable/, /^xp/, /^cooldown/, /^curve/, /^max-level/, /^notify/, /^role-mode/, /^ignore/, /^join/, /^voice-enable/, /^voice-xp/, /^reward add/, /^multiplier set/, /^event add/, /^rank-style/, /^status/], sources: [{ table: 'level_config', skip: ['notify_embed_template', 'notify_message'] }] },
+  starboardconfig: { aliases: [], title: t('en', 'config.module.starboardconfig.title'), command: 'starboard', sources: [{ table: 'starboards' }] },
+  suggestionconfig: { aliases: [], title: t('en', 'config.module.suggestionconfig.title'), command: 'suggestion', sources: [{ table: 'suggestion_config' }] },
+  monkeyboardconfig: { aliases: [], title: t('en', 'config.module.monkeyboardconfig.title'), command: 'monkeyboard', sources: [{ table: 'monkeyboards' }] },
+  giveawayconfig: { aliases: [], title: t('en', 'config.module.giveawayconfig.title'), command: 'giveaway', show: [/^embed/, /^reaction/, /^entry-mode/, /^template/, /^winner-message/, /^deny-message/, /^accept-message/, /^no-entries-message/, /^claim-time/, /^message-template/], sources: [{ table: 'giveaway_config', only: ['reaction', 'entry_mode', 'embed_template'] }] },
+  ticketconfig: { aliases: [], title: t('en', 'config.module.ticketconfig.title'), command: 'ticket', show: [/^setup/, /^panel create/, /^category (add|edit)/, /^support-role add/, /^ping-role add/, /^required-role add/, /^form create/, /^blacklist add/, /^panel (resend|delete)/, /^category remove/], sources: [{ table: 'ticket_settings' }] },
+  verifyconfig: { aliases: [], title: t('en', 'config.module.verifyconfig.title'), command: 'verify', sources: [{ table: 'verification_config' }] },
+  bumpconfig: { aliases: ['bumpreminderconfig'], title: t('en', 'config.module.bumpconfig.title'), command: 'bumpreminder', sources: [{ table: 'bump_reminders', skip: ['message', 'thankyou'] }] },
+  vmconfig: { aliases: ['voicemasterconfig'], title: t('en', 'config.module.vmconfig.title'), command: 'voicemaster', show: [/^setup/, /^disable/, /^info/, /^panel/], sources: [{ table: 'voice_configs' }] },
+  stickyrolesconfig: { aliases: [], title: t('en', 'config.module.stickyrolesconfig.title'), command: 'stickyroles', sources: [{ table: 'sticky_roles_config' }] },
+  honeypotconfig: { aliases: [], title: t('en', 'config.module.honeypotconfig.title'), command: 'honeypot', sources: [{ table: 'honeypots', list: true, only: ['channel_id', 'punishment', 'caught_count'] }] },
+  countingconfig: { aliases: [], title: t('en', 'config.module.countingconfig.title'), command: 'counting', sources: [{ table: 'counting_config', skip: ['current_number', 'last_user_id', 'last_message_id', 'high_score', 'total_correct', 'total_wrong', 'saves', 'top_user_id', 'top_correct'] }] },
+  counterconfig: { aliases: [], title: t('en', 'config.module.counterconfig.title'), command: 'counter', sources: [{ table: 'server_counters', list: true, only: ['channel_id', 'counter_option', 'enabled'] }] },
+  jailconfig: { aliases: [], title: t('en', 'config.module.jailconfig.title'), command: 'jail', show: [/^setup/], sources: [{ table: 'jail_config' }] },
+  autothreadconfig: { aliases: [], title: t('en', 'config.module.autothreadconfig.title'), command: 'autothread', sources: [{ table: 'auto_threads', list: true, only: ['channel_id', 'name_template'] }] },
+  autoresponderconfig: { aliases: [], title: t('en', 'config.module.autoresponderconfig.title'), command: 'autoresponder', sources: [{ table: 'auto_responders', list: true, only: ['trigger', 'match_mode', 'reply_type'] }] },
+  reactionroleconfig: { aliases: [], title: t('en', 'config.module.reactionroleconfig.title'), command: 'reactionrole', sources: [{ table: 'reaction_roles', list: true, only: ['channel_id', 'emoji', 'role_id', 'mode'] }] },
+  customcommandconfig: { aliases: [], title: t('en', 'config.module.customcommandconfig.title'), command: 'customcommand', sources: [{ table: 'custom_commands', list: true, only: ['name', 'embed_template'] }] },
+  disablecommandconfig: { aliases: [], title: t('en', 'config.module.disablecommandconfig.title'), command: 'disablecommand', sources: [{ table: 'disabled_commands', list: true, only: ['command', 'channel_id'] }] },
+  reactionconfig: { aliases: ['reactreplyconfig'], title: t('en', 'config.module.reactionconfig.title'), command: 'reaction', sources: [{ table: 'reaction_triggers', list: true, only: ['emoji', 'trigger', 'enabled'] }] },
+  timerconfig: { aliases: [], title: t('en', 'config.module.timerconfig.title'), command: 'timer', sources: [{ table: 'auto_messages', list: true, only: ['channel_id', 'interval_ms'] }] },
+  aliasconfig: { aliases: [], title: t('en', 'config.module.aliasconfig.title'), command: 'alias', sources: [{ table: 'command_aliases', list: true, only: ['name', 'command'] }] },
+  senderconfig: { aliases: [], title: t('en', 'config.module.senderconfig.title'), command: 'sender', sources: [{ table: 'sender_identities', list: true, only: ['feature', 'name'] }] },
+  sanctionmessageconfig: { aliases: [], title: t('en', 'config.module.sanctionmessageconfig.title'), command: 'sanctionmessage', sources: [{ table: 'sanction_templates', list: true, only: ['type'] }] },
+  giveawaypresetconfig: { aliases: [], title: t('en', 'config.module.giveawaypresetconfig.title'), command: 'giveawaypreset', sources: [{ table: 'giveaway_presets', list: true, only: ['name'] }] },
+  giveawaytemplateconfig: { aliases: [], title: t('en', 'config.module.giveawaytemplateconfig.title'), command: 'giveawaytemplate', sources: [{ table: 'giveaway_templates', list: true, only: ['name'] }] },
+  prefixconfig: { aliases: [], title: t('en', 'config.module.prefixconfig.title'), command: 'prefix', sources: [{ table: 'guilds', only: ['prefix', 'language', 'mute_role_id', 'setup_channel_id'] }] },
+  reportconfig: { aliases: [], title: t('en', 'config.module.reportconfig.title'), command: 'report', sources: [{ table: 'report_config' }] },
   permissionconfig: {
     aliases: [],
-    title: 'Permissions',
+    title: t('en', 'config.module.permissionconfig.title'),
     command: 'permission',
     sources: [
-      { table: 'permission_groups', list: true, label: 'Groups', only: ['name', 'level'] },
-      { table: 'command_permission_levels', list: true, label: 'Command levels', only: ['command_name', 'required_level'] },
+      { table: 'permission_groups', list: true, label: t('en', 'config.source.permission_groups'), only: ['name', 'level'] },
+      { table: 'command_permission_levels', list: true, label: t('en', 'config.source.command_permission_levels'), only: ['command_name', 'required_level'] },
     ],
   },
-  backupconfig: { aliases: [], title: 'Backups', command: 'backup', sources: [{ table: 'guild_backups', list: true, only: ['backup_number', 'label', 'source'] }] },
-  panelconfig: { aliases: [], title: 'Button and menu panels', command: 'panel', sources: [{ table: 'component_panels', list: true, only: ['name', 'kind', 'channel_id'] }] },
-  responderconfig: { aliases: [], title: 'Button responders', command: 'responder', sources: [{ table: 'button_responders', list: true, only: ['name', 'label'] }] },
-  warnconfig: { aliases: ['escalationconfig'], title: 'Warn escalation', command: 'warn', sources: [{ table: 'warn_escalation_rules', list: true, only: ['warn_count', 'action', 'duration_ms'] }] },
-  embedconfig: { aliases: ['embedsconfig'], title: 'Saved embeds', command: 'embed', sources: [{ table: 'embed_templates', list: true, only: ['name'] }] },
-  webhookconfig: { aliases: [], title: 'Webhooks', command: 'webhook', sources: [{ table: 'managed_webhooks', list: true, only: ['name', 'channel_id', 'enabled'] }] },
-  stickymessageconfig: { aliases: [], title: 'Sticky messages', command: 'stickymessage', sources: [{ table: 'sticky_messages', list: true, only: ['channel_id'] }] },
+  backupconfig: { aliases: [], title: t('en', 'config.module.backupconfig.title'), command: 'backup', sources: [{ table: 'guild_backups', list: true, only: ['backup_number', 'label', 'source'] }] },
+  panelconfig: { aliases: [], title: t('en', 'config.module.panelconfig.title'), command: 'panel', sources: [{ table: 'component_panels', list: true, only: ['name', 'kind', 'channel_id'] }] },
+  responderconfig: { aliases: [], title: t('en', 'config.module.responderconfig.title'), command: 'responder', sources: [{ table: 'button_responders', list: true, only: ['name', 'label'] }] },
+  warnconfig: { aliases: ['escalationconfig'], title: t('en', 'config.module.warnconfig.title'), command: 'warn', sources: [{ table: 'warn_escalation_rules', list: true, only: ['warn_count', 'action', 'duration_ms'] }] },
+  embedconfig: { aliases: ['embedsconfig'], title: t('en', 'config.module.embedconfig.title'), command: 'embed', sources: [{ table: 'embed_templates', list: true, only: ['name'] }] },
+  webhookconfig: { aliases: [], title: t('en', 'config.module.webhookconfig.title'), command: 'webhook', sources: [{ table: 'managed_webhooks', list: true, only: ['name', 'channel_id', 'enabled'] }] },
+  stickymessageconfig: { aliases: [], title: t('en', 'config.module.stickymessageconfig.title'), command: 'stickymessage', sources: [{ table: 'sticky_messages', list: true, only: ['channel_id'] }] },
 };
+
+const MODULE_NAMES = new Map(Object.entries(MODULES).map(([name, module]) => [module, name]));
 
 const sentence = (column) => {
   const words = column.replace(/_(ids?|ms|seconds|minutes|hours|days)$/, '').replace(/_/g, ' ').trim();
   return words.charAt(0).toUpperCase() + words.slice(1);
 };
+
+/** The label of a column in `lang` (`config.column.<column>`); a column without a translation keeps the English made from its name. */
+function columnLabel(column, lang) {
+  const key = `config.column.${column}`;
+  const text = t(lang, key);
+  return text === key ? sentence(column) : text;
+}
+
+/** The title of a module in `lang`; a generated card is titled with the command name, which is never translated. */
+function moduleTitle(module, lang) {
+  const name = MODULE_NAMES.get(module);
+  return name ? t(lang, `config.module.${name}.title`) : module.title;
+}
+
+/** The heading of a source of settings in `lang`. */
+const sourceLabel = (source, lang) => t(lang, `config.source.${source.table}`);
 
 const mention = (column, id) => {
   if (/role/.test(column)) return `<@&${id}>`;
@@ -117,17 +137,17 @@ const mention = (column, id) => {
 };
 
 /** One stored value, written for a person: mentions for ids, On/Off, durations, and "not set" for nothing. */
-function formatValue(column, value) {
-  if (value === null || value === undefined || value === '') return '*not set*';
-  if (typeof value === 'boolean') return value ? '**On**' : '**Off**';
+function formatValue(column, value, lang = currentLanguage()) {
+  if (value === null || value === undefined || value === '') return t(lang, 'config.card.notSet');
+  if (typeof value === 'boolean') return value ? t(lang, 'config.card.on') : t(lang, 'config.card.off');
   if (Array.isArray(value)) {
-    if (!value.length) return '*none*';
+    if (!value.length) return t(lang, 'config.card.none');
     const shown = value.slice(0, 10).map((item) => (SNOWFLAKE.test(String(item)) ? mention(column, item) : `\`${item}\``));
-    return shown.join(' ') + (value.length > 10 ? ` +${value.length - 10} more` : '');
+    return shown.join(' ') + (value.length > 10 ? ` ${t(lang, 'config.card.more', { count: value.length - 10 })}` : '');
   }
   if (typeof value === 'number' || (typeof value === 'string' && /^-?\d+(\.\d+)?$/.test(value) && !SNOWFLAKE.test(value))) {
     const number = Number(value);
-    if (/_ms$/.test(column)) return number > 0 ? formatDuration(number) : '*none*';
+    if (/_ms$/.test(column)) return number > 0 ? formatDuration(number, lang) : t(lang, 'config.card.none');
     if (/_seconds$/.test(column)) return `${number}s`;
     if (/_minutes$/.test(column)) return `${number} min`;
     if (/_hours$/.test(column)) return `${number}h`;
@@ -146,58 +166,58 @@ function matches(column, only, skip) {
 }
 
 
-function rowLines(row, source) {
+function rowLines(row, source, lang) {
   const prefix = source.only instanceof RegExp ? source.only : null; // "welcome_channel_id" is shown as "Channel"
   return Object.entries(row)
     .filter(([column]) => matches(column, source.only, source.skip))
-    .map(([column, value]) => `- ${sentence(prefix ? column.replace(prefix, '') : column)}: ${formatValue(column, value)}`);
+    .map(([column, value]) => `- ${columnLabel(prefix ? column.replace(prefix, '') : column, lang)}: ${formatValue(column, value, lang)}`);
 }
 
-function groupLines(rows, { by, collect }) {
+function groupLines(rows, { by, collect }, lang) {
   const groups = new Map();
   for (const row of rows) groups.set(row[by], [...(groups.get(row[by]) ?? []), row[collect]]);
-  return [...groups.entries()].slice(0, MAX_LIST_ITEMS).map(([key, items]) => `- ${formatValue(by, key)}: ${items.slice(0, 12).map((item) => `\`${item}\``).join(', ')}${items.length > 12 ? ` +${items.length - 12}` : ''}`);
+  return [...groups.entries()].slice(0, MAX_LIST_ITEMS).map(([key, items]) => `- ${formatValue(by, key, lang)}: ${items.slice(0, 12).map((item) => `\`${item}\``).join(', ')}${items.length > 12 ? ` +${items.length - 12}` : ''}`);
 }
 
 /** The lines of the current settings of one source, or null when the server has nothing stored for it. */
-async function sourceLines(source, guildId) {
+async function sourceLines(source, guildId, lang) {
   const query = database.from(source.table).select('*').eq('guild_id', guildId);
   if (source.list) {
     const { data, error } = await query;
     if (error) throw error;
     if (!data?.length) return null;
     const lines = source.group
-      ? groupLines(data, source.group)
-      : data.slice(0, MAX_LIST_ITEMS).map((row) => `- ${Object.entries(row).filter(([column]) => matches(column, source.only, source.skip)).map(([column, value]) => formatValue(column, value)).join(' · ')}`);
-    if (!source.group && data.length > MAX_LIST_ITEMS) lines.push(`-# +${data.length - MAX_LIST_ITEMS} more`);
-    return [`${data.length} configured`, ...lines];
+      ? groupLines(data, source.group, lang)
+      : data.slice(0, MAX_LIST_ITEMS).map((row) => `- ${Object.entries(row).filter(([column]) => matches(column, source.only, source.skip)).map(([column, value]) => formatValue(column, value, lang)).join(' · ')}`);
+    if (!source.group && data.length > MAX_LIST_ITEMS) lines.push(`-# ${t(lang, 'config.card.more', { count: data.length - MAX_LIST_ITEMS })}`);
+    return [tn(lang, 'config.card.configured', data.length, { count: data.length }), ...lines];
   }
   const { data, error } = await query.maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  return rowLines(data, source);
+  return rowLines(data, source, lang);
 }
 
-async function settingsText(module, guildId) {
+async function settingsText(module, guildId, lang) {
   const parts = [];
   for (const source of module.sources) {
     let lines;
     try {
-      lines = await sourceLines(source, guildId);
+      lines = await sourceLines(source, guildId, lang);
     } catch (err) {
       logger.warn(`Could not read ${source.table} for a config card:`, err.message);
-      parts.push('*Could not read these settings right now.*');
+      parts.push(t(lang, 'config.card.unreadable'));
       continue;
     }
-    const heading = source.label && module.sources.length > 1 ? `**${source.label}**\n` : '';
+    const heading = source.label && module.sources.length > 1 ? `**${sourceLabel(source, lang)}**\n` : '';
     if (!lines?.length) {
-      if (module.sources.length === 1 || source.label) parts.push(`${heading}*Nothing is set up yet.*`);
+      if (module.sources.length === 1 || source.label) parts.push(`${heading}${t(lang, 'config.card.nothing')}`);
       continue;
     }
     const [first, ...rest] = source.list ? lines : [null, ...lines];
     parts.push(`${heading}${source.list ? `-# ${first}\n` : ''}${rest.slice(0, MAX_ROWS).join('\n')}`);
   }
-  return parts.length ? parts.join('\n\n') : '*Nothing is set up yet.*';
+  return parts.length ? parts.join('\n\n') : t(lang, 'config.card.nothing');
 }
 
 function optionToken(option) {
@@ -250,18 +270,18 @@ const WRITERS = [(lines) => lines, (lines) => lines.map(withoutOptions), grouped
 const codeBlock = (lines, prefix) => `\`\`\`\n${lines.map((line) => `${prefix}${line}`).join('\n')}\n\`\`\``;
 
 /** The text of the card for a server: the current settings and every command of the module, shortened when they do not fit. */
-async function buildCardText(module, { guildId, prefix, commands }) {
+async function buildCardText(module, { guildId, prefix, commands, lang = currentLanguage() }) {
   const command = commands?.get(module.command);
   const { config, rest } = command ? pickUsage(usagePaths(command.data.toJSON()), module.show) : { config: [], rest: [] };
   const head = module.generated
-    ? `### ${module.title}\n-# ${command?.data.toJSON().description ?? ''}`
-    : [`### ${module.title} config`, await settingsText(module, guildId)].join('\n');
-  if (!config.length && !rest.length) return `${head}\n-# Change it with \`${prefix}help ${module.command}\`.`;
+    ? `### ${module.title}\n-# ${command ? commandDescription(lang, command, [], null, command.data.toJSON().description ?? '') : ''}`
+    : [t(lang, 'config.card.heading', { title: moduleTitle(module, lang) }), await settingsText(module, guildId, lang)].join('\n');
+  if (!config.length && !rest.length) return `${head}\n${t(lang, 'config.card.changeWithHelp', { prefix, command: module.command })}`;
 
   const render = (write) => {
     const sections = [head];
-    if (config.length) sections.push(`**${rest.length ? 'Change it' : 'Commands'}**\n${codeBlock(write(config), prefix)}`);
-    if (rest.length) sections.push(`**${config.length ? 'More commands' : 'Commands'}**\n${codeBlock(write(rest), prefix)}`);
+    if (config.length) sections.push(`**${t(lang, rest.length ? 'config.card.changeIt' : 'config.card.commands')}**\n${codeBlock(write(config), prefix)}`);
+    if (rest.length) sections.push(`**${t(lang, config.length ? 'config.card.moreCommands' : 'config.card.commands')}**\n${codeBlock(write(rest), prefix)}`);
     return sections.join('\n');
   };
   for (const write of WRITERS) {
@@ -270,7 +290,7 @@ async function buildCardText(module, { guildId, prefix, commands }) {
   }
   // Even the shortest way does not fit: keep the start and point to !help.
   const text = render(grouped);
-  return `${text.slice(0, MAX_TEXT - 120).replace(/\n[^\n]*$/, '')}\n\`\`\`\n-# More in \`${prefix}help ${module.command}\`.`;
+  return `${text.slice(0, MAX_TEXT - 120).replace(/\n[^\n]*$/, '')}\n\`\`\`\n${t(lang, 'config.card.moreInHelp', { prefix, command: module.command })}`;
 }
 
 function createConfigCommand(name, module = MODULES[name]) {
@@ -280,18 +300,20 @@ function createConfigCommand(name, module = MODULES[name]) {
     configModule: module,
     data: new SlashCommandBuilder()
       .setName(name)
+      // i18n-ignore: builder description, translated through the cmd.<category> catalogs
       .setDescription((module.generated ? `Show how to use ${module.command} and all its commands.` : `Show the ${module.title.toLowerCase()} settings and how to change them.`).slice(0, 100))
       .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
       .setDMPermission(false),
 
     async execute(interaction) {
+      const lang = await languageOf(interaction);
       const guildConfig = await ensureGuild(interaction.guild.id).catch(() => null);
-      const text = await buildCardText(module, { guildId: interaction.guild.id, prefix: guildConfig?.prefix || '!', commands: interaction.client.commands });
+      const text = await buildCardText(module, { guildId: interaction.guild.id, prefix: guildConfig?.prefix || '!', commands: interaction.client.commands, lang });
       const container = new ContainerBuilder()
         .setAccentColor(0x4b4f59)
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(text))
         .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
-        .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel('Documentation').setStyle(ButtonStyle.Link).setURL(WIKI_URL)));
+        .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel(t(lang, 'config.card.docs.button')).setStyle(ButtonStyle.Link).setURL(WIKI_URL)));
       await interaction.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     },
   };

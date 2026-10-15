@@ -4,8 +4,10 @@ const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { ensureGuild } = require('../../db/guilds');
 const identities = require('../../db/senderIdentities');
+const { t, languageOf } = require('../../i18n');
 
 const REPLY_FLAGS = MessageFlags.IsComponentsV2;
+// The names of the choices of the builder; the replies use config.sender.feature.<feature> in the language of the server.
 const LABELS = { quests: 'quest alerts', welcome: 'welcome messages', leave: 'leave messages', boost: 'boost messages', sanctions: 'sanction messages', levelup: 'level-up messages', vanity: 'Vanity and Server Tag thank-yous', giveaways: 'giveaway messages', bump: 'bump thank-yous and reminders', tickets: 'ticket messages', automod: 'automod notices', partners: 'partner welcomes', votes: 'vote thank-yous', reminders: 'reminders', automessages: 'auto messages', rollouts: 'rollout alerts', birthdays: 'birthday messages' };
 const httpsUrl = (value) => { try { return new URL(String(value)).protocol === 'https:'; } catch { return false; } };
 
@@ -25,32 +27,36 @@ module.exports = {
     .addSubcommand((s) => s.setName('list').setDescription('Show the names and pictures set for each kind of message.')),
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     await interaction.deferReply({ flags: REPLY_FLAGS });
     const reply = (text, color = null) => interaction.editReply({ components: [textCard(text, color)], flags: REPLY_FLAGS });
-    if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) return reply(`${EMOJI.DENY}  You need the Manage Server permission.`);
+    const label = (feature) => t(lang, `config.sender.feature.${feature}`);
+    if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) return reply(t(lang, 'config.sender.noPermission', { emoji: EMOJI.DENY }));
     const guildId = interaction.guild.id;
     const sub = interaction.options.getSubcommand();
     if (sub === 'list') {
       const rows = await identities.list(guildId).catch(() => []);
       const lines = identities.FEATURES.map((feature) => {
         const row = rows.find((entry) => entry.feature === feature);
-        return `**${LABELS[feature]}:** ${row ? `${row.name ? `\`${row.name}\`` : 'Petto\'s name'}${row.avatar_url ? `, [picture](${row.avatar_url})` : ', Petto\'s picture'}` : 'Petto'}`;
+        const look = !row ? 'Petto'
+          : t(lang, `config.sender.list.${row.name ? 'name' : 'pettoName'}.${row.avatar_url ? 'picture' : 'pettoPicture'}`, { name: row.name, url: row.avatar_url });
+        return `**${label(feature)}:** ${look}`;
       });
       return reply(lines.join('\n'));
     }
     const feature = String(interaction.options.getString('feature', true)).toLowerCase();
-    if (!identities.FEATURES.includes(feature)) return reply(`Choose one of: ${identities.FEATURES.map((entry) => `\`${entry}\``).join(', ')}.`);
+    if (!identities.FEATURES.includes(feature)) return reply(t(lang, 'config.sender.chooseOne', { list: identities.FEATURES.map((entry) => `\`${entry}\``).join(', ') }));
     await ensureGuild(guildId);
     if (sub === 'reset') {
       await identities.remove(guildId, feature);
-      return reply(`${EMOJI.APPROVE}  The ${LABELS[feature]} use Petto's name and picture again.`);
+      return reply(t(lang, 'config.sender.reset', { emoji: EMOJI.APPROVE, feature: label(feature) }));
     }
     const name = String(interaction.options.getString('name') ?? '').trim();
     const avatar = String(interaction.options.getString('avatar') ?? '').trim();
-    if (!name && !avatar) return reply('Give a name, a picture link, or both: `sender set quests Quest Hunter https://example.com/pic.png`.');
-    if (avatar && !httpsUrl(avatar)) return reply('The picture has to be a link that starts with `https://`.');
-    if (/discord/i.test(name) || /^clyde$/i.test(name)) return reply('Discord does not accept a webhook name with "discord" or "clyde" in it. Choose another name.');
+    if (!name && !avatar) return reply(t(lang, 'config.sender.needLook'));
+    if (avatar && !httpsUrl(avatar)) return reply(t(lang, 'config.sender.httpsOnly'));
+    if (/discord/i.test(name) || /^clyde$/i.test(name)) return reply(t(lang, 'config.sender.badName'));
     await identities.upsert(guildId, feature, { name: name || null, avatarUrl: avatar || null });
-    return reply(`${EMOJI.APPROVE}  The ${LABELS[feature]} will be sent as ${name ? `\`${name}\`` : 'Petto'}${avatar ? ' with your picture' : ''}. Petto needs **Manage Webhooks** in the channel; without it the message is sent the normal way.`, 0xa5ea7a);
+    return reply(t(lang, avatar ? 'config.sender.savedWithPicture' : 'config.sender.saved', { emoji: EMOJI.APPROVE, feature: label(feature), name: name ? `\`${name}\`` : 'Petto' }), 0xa5ea7a);
   },
 };

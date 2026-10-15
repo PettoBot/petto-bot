@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const aliasesDb = require('../../db/commandAliases');
 const { textCard } = require('../../utils/caseCard');
+const { t, languageOf } = require('../../i18n');
 
 module.exports = {
   aliases: ['aliases'],
@@ -15,32 +16,33 @@ module.exports = {
     .addSubcommand((s) => s.setName('list').setDescription('List this server’s aliases.')),
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const sub = interaction.options.getSubcommand();
-    if (sub === 'add') return addAlias(interaction);
-    if (sub === 'remove') return removeAlias(interaction);
-    if (sub === 'view') return viewAlias(interaction);
+    if (sub === 'add') return addAlias(interaction, lang);
+    if (sub === 'remove') return removeAlias(interaction, lang);
+    if (sub === 'view') return viewAlias(interaction, lang);
     const rows = await aliasesDb.list(interaction.guild.id);
-    const body = rows.length ? rows.map((row) => `\`${row.name}\` → \`${row.command}\``).join('\n') : 'No aliases configured.';
+    const body = rows.length ? rows.map((row) => `\`${row.name}\` → \`${row.command}\``).join('\n') : t(lang, 'config.alias.none');
     return interaction.reply({ components: [textCard(body, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
   },
 };
 
-async function addAlias(interaction) {
+async function addAlias(interaction, lang) {
   const name = aliasesDb.normalizeName(interaction.options.getString('name', true));
   const command = interaction.options.getString('command', true).trim();
-  if (!/^[a-z0-9_-]{1,32}$/.test(name)) return interaction.reply({ content: 'Alias names may only contain letters, numbers, `_` and `-`.', flags: MessageFlags.Ephemeral });
-  if (!command || command.startsWith('alias ')) return interaction.reply({ content: 'Provide a valid target command.', flags: MessageFlags.Ephemeral });
-  if (interaction.client.commands.has(name) || interaction.client.commandAliases.has(name) || interaction.client.commandRoutes?.has(name)) return interaction.reply({ content: 'That name is already used by a built-in command or shortcut.', flags: MessageFlags.Ephemeral });
+  if (!/^[a-z0-9_-]{1,32}$/.test(name)) return interaction.reply({ content: t(lang, 'config.alias.invalidName'), flags: MessageFlags.Ephemeral });
+  if (!command || command.startsWith('alias ')) return interaction.reply({ content: t(lang, 'config.alias.invalidTarget'), flags: MessageFlags.Ephemeral });
+  if (interaction.client.commands.has(name) || interaction.client.commandAliases.has(name) || interaction.client.commandRoutes?.has(name)) return interaction.reply({ content: t(lang, 'config.alias.taken'), flags: MessageFlags.Ephemeral });
   const row = await aliasesDb.add(interaction.guild.id, name, command);
-  return interaction.reply({ components: [textCard(`Alias \`${row.name}\` now runs \`${row.command}\`. Use placeholders such as \`{0}\` for arguments.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  return interaction.reply({ components: [textCard(t(lang, 'config.alias.added', { name: row.name, command: row.command }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
-async function removeAlias(interaction) {
+async function removeAlias(interaction, lang) {
   const removed = await aliasesDb.remove(interaction.guild.id, interaction.options.getString('name', true));
-  return interaction.reply({ components: [textCard(removed ? 'Alias removed.' : 'That alias does not exist.', removed ? 0xa5ea7a : 0xff6b6b)], flags: MessageFlags.IsComponentsV2 });
+  return interaction.reply({ components: [textCard(t(lang, removed ? 'config.alias.removed' : 'config.alias.missing'), removed ? 0xa5ea7a : 0xff6b6b)], flags: MessageFlags.IsComponentsV2 });
 }
 
-async function viewAlias(interaction) {
+async function viewAlias(interaction, lang) {
   const row = await aliasesDb.get(interaction.guild.id, interaction.options.getString('name', true));
-  return interaction.reply({ components: [textCard(row ? `\`${row.name}\` → \`${row.command}\`` : 'That alias does not exist.', row ? 0x4b4f59 : 0xff6b6b)], flags: MessageFlags.IsComponentsV2 });
+  return interaction.reply({ components: [textCard(row ? `\`${row.name}\` → \`${row.command}\`` : t(lang, 'config.alias.missing'), row ? 0x4b4f59 : 0xff6b6b)], flags: MessageFlags.IsComponentsV2 });
 }
