@@ -2,6 +2,8 @@ const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, ChannelType } = 
 const countersDb = require('../../db/counters');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { OPTIONS: OPTION_LIST, optionLabel } = require('../../utils/counterNames');
+const { t, languageOf } = require('../../i18n');
 
 const TYPE_CHOICES = [
   { name: 'voice', value: 'voice' }, { name: 'text', value: 'text' }, { name: 'category', value: 'category' },
@@ -21,42 +23,46 @@ module.exports = {
     .addSubcommand((s) => s.setName('list').setDescription('List live counters.')),
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const sub = interaction.options.getSubcommand();
-    if (sub === 'add') return add(interaction);
-    if (sub === 'edit') return edit(interaction);
-    if (sub === 'remove') return remove(interaction);
-    return list(interaction);
+    if (sub === 'add') return add(interaction, lang);
+    if (sub === 'edit') return edit(interaction, lang);
+    if (sub === 'remove') return remove(interaction, lang);
+    return list(interaction, lang);
   },
 };
 
-const OPTIONS = new Set(['members', 'users_only', 'bots_only', 'pending_members', 'all_channels', 'text_channels', 'voice_channels', 'categories', 'announcement_channels', 'staging_channels', 'boosts', 'booster_count']);
+const OPTIONS = new Set(OPTION_LIST);
 
 function card(interaction, content, color = 0x4b4f59) { return interaction.reply({ components: [textCard(content, color)], flags: MessageFlags.IsComponentsV2 }); }
 
-async function add(interaction) {
+async function add(interaction, lang) {
   const option = interaction.options.getString('option', true).trim().toLowerCase();
   const type = interaction.options.getString('type', true);
-  if (!OPTIONS.has(option) && !/^\d{10}$/.test(option)) return card(interaction, `Unknown counter option. Use one of: ${[...OPTIONS].join(', ')} or a 10-digit unix timestamp.`, 0xfe6465);
+  if (!OPTIONS.has(option) && !/^\d{10}$/.test(option)) return card(interaction, t(lang, 'counters.add.unknownOption', { options: [...OPTIONS].join(', ') }), 0xfe6465);
   const channelType = { voice: ChannelType.GuildVoice, text: ChannelType.GuildText, category: ChannelType.GuildCategory, announce: ChannelType.GuildAnnouncement, stage: ChannelType.GuildStageVoice }[type];
   try {
     const parent = interaction.options.getChannel('parent');
+    // i18n-ignore: the default template is saved as is; `{option}` shows in the server's language when the name is drawn
     const nameTemplate = interaction.options.getString('name_template')?.slice(0, 100) || '{option}: {value}';
     const intervalSeconds = interaction.options.getInteger('interval_seconds') ?? 60;
     const prefix = interaction.options.getString('prefix')?.slice(0, 30) || '';
     const suffix = interaction.options.getString('suffix')?.slice(0, 30) || '';
-    if (parent && parent.type !== ChannelType.GuildCategory) return card(interaction, 'The parent must be a category channel.', 0xfe6465);
-    const channel = await interaction.guild.channels.create({ name: `${prefix}${option}${suffix}`.slice(0, 100), type: channelType, parent: parent?.id, reason: `Counter created by ${interaction.user.tag}` });
+    if (parent && parent.type !== ChannelType.GuildCategory) return card(interaction, t(lang, 'counters.parentNotCategory'), 0xfe6465);
+    const channel = await interaction.guild.channels.create({ name: `${prefix}${optionLabel(option, lang)}${suffix}`.slice(0, 100), type: channelType, parent: parent?.id, reason: t(lang, 'counters.add.reason', { user: interaction.user.tag }) });
     await countersDb.add({ guild_id: interaction.guild.id, channel_id: channel.id, counter_option: option, channel_type: type, created_by: interaction.user.id, name_template: nameTemplate, interval_seconds: intervalSeconds, prefix, suffix, parent_id: parent?.id ?? null });
-    return card(interaction, `${EMOJI.APPROVE}  Counter created: ${channel}. It will update automatically.`, 0xa5ea7a);
+    return card(interaction, t(lang, 'counters.add.done', { emoji: EMOJI.APPROVE, channel: `${channel}` }), 0xa5ea7a);
   } catch (err) {
-    return card(interaction, `Could not create that counter: ${err.message ?? 'check my Manage Channels permission.'}`, 0xfe6465);
+    // The error of Discord is shown as it comes.
+    if (err.message != null) return card(interaction, t(lang, 'counters.add.failed', { error: err.message }), 0xfe6465);
+    return card(interaction, t(lang, 'counters.add.failedPermission', { permission: t(lang, 'core.perm.ManageChannels') }), 0xfe6465);
   }
 }
 
-async function edit(interaction) {
+async function edit(interaction, lang) {
   const channel = interaction.options.getChannel('channel', true);
   const current = await countersDb.get(interaction.guild.id, channel.id);
-  if (!current) return card(interaction, 'That channel is not a Petto counter.', 0xfe6465);
+  if (!current) return card(interaction, t(lang, 'counters.notCounter'), 0xfe6465);
   const patch = {};
   const template = interaction.options.getString('name_template');
   const interval = interaction.options.getInteger('interval_seconds');
@@ -67,26 +73,29 @@ async function edit(interaction) {
   if (template) patch.name_template = template.slice(0, 100);
   if (interval != null) patch.interval_seconds = interval;
   if (parent) {
-    if (parent.type !== ChannelType.GuildCategory) return card(interaction, 'The parent must be a category channel.', 0xfe6465);
+    if (parent.type !== ChannelType.GuildCategory) return card(interaction, t(lang, 'counters.parentNotCategory'), 0xfe6465);
     patch.parent_id = parent.id;
     await channel.setParent(parent.id, { lockPermissions: false }).catch(() => {});
   }
   if (prefix != null) patch.prefix = prefix.slice(0, 30);
   if (suffix != null) patch.suffix = suffix.slice(0, 30);
   if (enabled != null) patch.enabled = enabled;
-  if (!Object.keys(patch).length) return card(interaction, 'Provide at least one setting to edit.', 0xfe6465);
+  if (!Object.keys(patch).length) return card(interaction, t(lang, 'counters.edit.nothing'), 0xfe6465);
   await countersDb.update(interaction.guild.id, channel.id, patch);
-  return card(interaction, `${EMOJI.APPROVE}  Counter configuration updated for ${channel}.`, 0xa5ea7a);
+  return card(interaction, t(lang, 'counters.edit.done', { emoji: EMOJI.APPROVE, channel: `${channel}` }), 0xa5ea7a);
 }
 
-async function remove(interaction) {
+async function remove(interaction, lang) {
   const channel = interaction.options.getChannel('channel', true);
   const removed = await countersDb.remove(interaction.guild.id, channel.id);
-  return card(interaction, removed ? `${EMOJI.APPROVE}  Counter stopped for ${channel}. The channel was not deleted.` : 'That channel is not a Petto counter.', removed ? 0xa5ea7a : 0xfe6465);
+  return card(interaction, removed ? t(lang, 'counters.remove.done', { emoji: EMOJI.APPROVE, channel: `${channel}` }) : t(lang, 'counters.notCounter'), removed ? 0xa5ea7a : 0xfe6465);
 }
 
-async function list(interaction) {
+const CHANNEL_TYPES = new Set(TYPE_CHOICES.map((choice) => choice.value));
+
+async function list(interaction, lang) {
   const rows = await countersDb.list(interaction.guild.id);
-  const body = rows.length ? rows.map((row) => `<#${row.channel_id}> · \`${row.counter_option}\` · ${row.channel_type}`).join('\n') : 'No counters configured.';
-  return card(interaction, `**Counters (${rows.length})**\n${body}`);
+  const typeName = (type) => (CHANNEL_TYPES.has(type) ? t(lang, `counters.type.${type}`) : type);
+  const body = rows.length ? rows.map((row) => `<#${row.channel_id}> · \`${row.counter_option}\` · ${typeName(row.channel_type)}`).join('\n') : t(lang, 'counters.list.none');
+  return card(interaction, t(lang, 'counters.list.title', { count: rows.length, body }));
 }

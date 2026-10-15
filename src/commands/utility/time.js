@@ -1,5 +1,6 @@
 const { EmbedBuilder, SlashCommandBuilder } = require('discord.js');
 const { COLORS } = require('../../utils/colors');
+const { t, languageOf, currentLanguage } = require('../../i18n');
 
 // Country names resolve to a representative IANA zone. Users can still enter
 // any exact IANA zone when they need a specific city or region.
@@ -204,6 +205,30 @@ const COUNTRY_ZONES = new Map(Object.entries({
   zimbabwe: 'Africa/Harare', zimbabue: 'Africa/Harare',
 }));
 
+// The same countries written in Portuguese, where the name differs from the English and Spanish ones above.
+for (const [name, zone] of Object.entries({
+  afeganistao: 'Asia/Kabul', antigua_e_barbuda: 'America/Antigua', azerbaijao: 'Asia/Baku', bielorrussia: 'Europe/Minsk',
+  butao: 'Asia/Thimphu', bosnia_e_herzegovina: 'Europe/Sarajevo', camboja: 'Asia/Phnom_Penh', camaroes: 'Africa/Douala',
+  republica_centro_africana: 'Africa/Bangui', chade: 'Africa/Ndjamena', comores: 'Indian/Comoro', republica_do_congo: 'Africa/Brazzaville',
+  republica_democratica_do_congo: 'Africa/Kinshasa', tchequia: 'Europe/Prague', republica_tcheca: 'Europe/Prague',
+  jibuti: 'Africa/Djibouti', equador: 'America/Guayaquil', egito: 'Africa/Cairo', guine_equatorial: 'Africa/Malabo',
+  eritreia: 'Africa/Asmara', essuatini: 'Africa/Mbabane', franca: 'Europe/Paris', gabao: 'Africa/Libreville',
+  alemanha: 'Europe/Berlin', gana: 'Africa/Accra', guine: 'Africa/Conakry', guine_bissau: 'Africa/Bissau',
+  guiana: 'America/Guyana', ira: 'Asia/Tehran', iraque: 'Asia/Baghdad', costa_do_marfim: 'Africa/Abidjan',
+  japao: 'Asia/Tokyo', cazaquistao: 'Asia/Almaty', quenia: 'Africa/Nairobi', quiribati: 'Pacific/Tarawa',
+  quirguistao: 'Asia/Bishkek', lesoto: 'Africa/Maseru', ilhas_marshall: 'Pacific/Majuro', estados_federados_da_micronesia: 'Pacific/Pohnpei',
+  marrocos: 'Africa/Casablanca', mocambique: 'Africa/Maputo', mianmar: 'Asia/Yangon', paises_baixos: 'Europe/Amsterdam',
+  nova_zelandia: 'Pacific/Auckland', coreia_do_norte: 'Asia/Pyongyang', macedonia_do_norte: 'Europe/Skopje',
+  oma: 'Asia/Muscat', paquistao: 'Asia/Karachi', papua_nova_guine: 'Pacific/Port_Moresby', paraguai: 'America/Asuncion',
+  catar: 'Asia/Qatar', romenia: 'Europe/Bucharest', sao_cristovao_e_nevis: 'America/St_Kitts', sao_vicente_e_granadinas: 'America/St_Vincent',
+  sao_marinho: 'Europe/San_Marino', sao_tome_e_principe: 'Africa/Sao_Tome', servia: 'Europe/Belgrade', seicheles: 'Indian/Mahe',
+  serra_leoa: 'Africa/Freetown', singapura: 'Asia/Singapore', ilhas_salomao: 'Pacific/Guadalcanal', africa_do_sul: 'Africa/Johannesburg',
+  coreia_do_sul: 'Asia/Seoul', coreia: 'Asia/Seoul', sudao_do_sul: 'Africa/Juba', espanha: 'Europe/Madrid',
+  sudao: 'Africa/Khartoum', suica: 'Europe/Zurich', tajiquistao: 'Asia/Dushanbe', trinidad_e_tobago: 'America/Port_of_Spain',
+  turcomenistao: 'Asia/Ashgabat', emirados_arabes_unidos: 'Asia/Dubai', eua: 'America/New_York', uruguai: 'America/Montevideo',
+  uzbequistao: 'Asia/Tashkent', cidade_do_vaticano: 'Europe/Rome', vietna: 'Asia/Ho_Chi_Minh', iemen: 'Asia/Aden',
+})) COUNTRY_ZONES.set(name, zone);
+
 function normalizeZoneInput(value) {
   return String(value ?? '')
     .trim()
@@ -213,15 +238,18 @@ function normalizeZoneInput(value) {
     .replace(/[\s-]+/g, '_');
 }
 
-function resolveTimezone(input) {
+function resolveTimezone(input, lang = currentLanguage()) {
   const raw = String(input ?? '').trim();
-  if (!raw) return { zone: 'America/Bogota', label: 'Colombia · GMT-5 (the time Petto uses)' };
+  if (!raw) return { zone: 'America/Bogota', label: t(lang, 'misc.time.defaultZone') };
   const zone = COUNTRY_ZONES.get(normalizeZoneInput(raw)) ?? raw;
   return { zone, label: zone === raw ? raw : `${raw} · ${zone}` };
 }
 
-function formatTime(zone) {
-  return new Intl.DateTimeFormat('en-US', { dateStyle: 'full', timeStyle: 'long', timeZone: zone }).format(new Date());
+// How each language writes a date and a time.
+const DATE_LOCALES = { en: 'en-US', es: 'es-419', 'pt-BR': 'pt-BR' };
+
+function formatTime(zone, lang = currentLanguage()) {
+  return new Intl.DateTimeFormat(DATE_LOCALES[lang] ?? 'en-US', { dateStyle: 'full', timeStyle: 'long', timeZone: zone }).format(new Date());
 }
 
 module.exports = {
@@ -232,22 +260,23 @@ module.exports = {
     .addStringOption((option) => option.setName('timezone').setDescription('Country name or IANA zone, for example Colombia or America/Bogota').setRequired(false)),
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const requested = interaction.options.getString('timezone')?.trim() || '';
-    const { zone, label } = resolveTimezone(requested);
+    const { zone, label } = resolveTimezone(requested, lang);
     let value;
     try {
-      value = formatTime(zone);
+      value = formatTime(zone, lang);
     } catch {
-      await interaction.reply({ content: 'That country or time zone is not valid. Try `Colombia`, `Japan`, `South Africa`, or `America/Bogota`.' });
+      await interaction.reply({ content: t(lang, 'misc.time.invalid') });
       return;
     }
 
     const unix = Math.floor(Date.now() / 1000);
     const embed = new EmbedBuilder()
       .setColor(COLORS.DEFAULT)
-      .setTitle(`Current time · ${label}`)
+      .setTitle(t(lang, 'misc.time.title', { label }))
       .setDescription(`**${value}**\n<t:${unix}:F>\n<t:${unix}:R>`)
-      .setFooter({ text: `Time zone: ${zone}` });
+      .setFooter({ text: t(lang, 'misc.time.footer', { zone }) });
     await interaction.reply({ embeds: [embed] });
   },
 

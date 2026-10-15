@@ -1,6 +1,7 @@
 // What the dashboard asks the bot for when it posts or updates a poll: the poll's message, drawn by the bot's own engine
 // (the default card, or a saved Components V2 design with the {poll.*} variables) so the web does not keep a second copy.
 const { buildPollMessage } = require('./pollCard');
+const { guildLanguage } = require('../i18n');
 
 const MAX_OPTIONS = 10;
 
@@ -35,11 +36,12 @@ function readPollRequest(body) {
   };
 }
 
-/** The JSON of the message (`{ flags, components }`) that the web sends to Discord as it is. */
+/** The JSON of the message (`{ flags, components }`) that the web sends to Discord as it is, in the server's language. */
 async function renderPollRequest(guild, body) {
   const request = readPollRequest(body);
   if (!request) return null;
-  const message = await buildPollMessage({ guild, ...request });
+  const lang = await guildLanguage(guild?.id);
+  const message = await buildPollMessage({ guild, ...request, lang });
   return { flags: message.flags, components: message.components.map((component) => (typeof component.toJSON === 'function' ? component.toJSON() : component)) };
 }
 

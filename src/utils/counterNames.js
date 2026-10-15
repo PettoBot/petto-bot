@@ -1,5 +1,9 @@
 // How a live counter turns into a channel name, and when the channel is worth renaming.
 // Kept free of Discord and database imports so scripts/check-counters.js can run it on its own.
+const { t, currentLanguage } = require('../i18n');
+
+// What a counter can count. `{option}` in a name shows it in the server's language (in English, the option itself).
+const OPTIONS = ['members', 'users_only', 'bots_only', 'pending_members', 'all_channels', 'text_channels', 'voice_channels', 'categories', 'announcement_channels', 'staging_channels', 'boosts', 'booster_count'];
 
 // Discord lets a channel be renamed about twice every ten minutes. Asking more often does not rename it
 // faster: the request waits in line, and a single waiting rename used to hold up every other counter.
@@ -15,10 +19,19 @@ function normalizeForType(name, channelType) {
   return name.toLowerCase().replace(/\s+/g, '-');
 }
 
-function renderName(row, value) {
-  const template = row.name_template || '{option}: {value}';
+/** The name of a counter option in `lang`; a countdown's timestamp and anything unknown stay as they are. */
+function optionLabel(option, lang = currentLanguage()) {
+  return OPTIONS.includes(option) ? t(lang, `counters.option.${option}`) : option;
+}
+
+/**
+ * The channel name of a counter. The name only depends on the server's language, so it stays the same from one pass to the
+ * next and is renamed once when the language changes.
+ */
+function renderName(row, value, lang = currentLanguage()) {
+  const template = row.name_template || '{option}: {value}'; // i18n-ignore: a template, its words come from optionLabel
   const text = template
-    .replaceAll('{option}', row.counter_option)
+    .replaceAll('{option}', optionLabel(row.counter_option, lang))
     .replaceAll('{value}', String(value))
     .replaceAll('{remaining}', String(value));
   return `${row.prefix ?? ''}${text}${row.suffix ?? ''}`.slice(0, 100);
@@ -40,4 +53,4 @@ function shouldRename({ currentName, wantedName, channelType, lastWanted, lastSt
   return true;
 }
 
-module.exports = { MIN_RENAME_GAP_MS, normalizeForType, renderName, sameName, shouldRename };
+module.exports = { MIN_RENAME_GAP_MS, OPTIONS, optionLabel, normalizeForType, renderName, sameName, shouldRename };
