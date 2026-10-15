@@ -103,6 +103,18 @@ async function listUserPremium(userId) {
   return data ?? [];
 }
 
+/** Every Premium that is active now (paid or granted by hand), oldest first. */
+async function listActiveEntitlements() {
+  const { data, error } = await database
+    .from('premium_entitlements')
+    .select(ENTITLEMENT_COLUMNS)
+    .eq('status', 'active')
+    .order('created_at', { ascending: true })
+    .limit(500);
+  if (error) throw error;
+  return (data ?? []).filter(isActiveEntitlement);
+}
+
 async function listUserAssignments(userId) {
   const { data, error } = await database
     .from('premium_slot_assignments')
@@ -352,6 +364,7 @@ module.exports = {
   getGuildPremium,
   getGuildLimits,
   listUserPremium,
+  listActiveEntitlements,
   getUserPremium,
   grantManualPremium,
   assignPremiumSlot,
