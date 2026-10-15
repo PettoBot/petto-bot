@@ -60,7 +60,7 @@ module.exports = {
   'config.module.permissionconfig.title': 'Permisos',
   'config.module.backupconfig.title': 'Copias de seguridad',
   'config.module.panelconfig.title': 'Paneles de botones y menús',
-  'config.module.responderconfig.title': 'Respuestas de botones',
+  'config.module.responderconfig.title': 'Botones de respuesta',
   'config.module.warnconfig.title': 'Escalado de advertencias',
   'config.module.embedconfig.title': 'Embeds guardados',
   'config.module.webhookconfig.title': 'Webhooks',
