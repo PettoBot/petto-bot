@@ -242,8 +242,8 @@ async function submitAppeal({ client, guild, config, form, user, rawAnswers }) {
   try {
     const pings = (config.ping_role_ids ?? []).filter((r) => guild.roles.cache.has(r));
     const message = await channel.send({
-      content: pings.length ? pings.map((r) => `<@&${r}>`).join(' ') : undefined,
-      components: [textCard(staffCardText(submission, form, config), STATUS_COLORS.pending), staffButtons(submission.id)],
+      // A Components V2 message cannot carry `content`: the role pings go at the top of the card.
+      components: [textCard(`${pings.length ? `${pings.map((r) => `<@&${r}>`).join(' ')}\n` : ''}${staffCardText(submission, form, config)}`, STATUS_COLORS.pending), staffButtons(submission.id)],
       flags: MessageFlags.IsComponentsV2,
       allowedMentions: { roles: pings, parse: [] },
     });
