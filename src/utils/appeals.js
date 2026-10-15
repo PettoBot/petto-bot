@@ -155,8 +155,9 @@ function blockUntil(kind, now = Date.now()) {
   return span < 0 ? null : new Date(now + span).toISOString();
 }
 
-function siteLink(guildId) {
-  return `https://petto.sbs/appeal/${guildId}`;
+/** The address of the appeal page: the short name the server chose, or its id. */
+function siteLink(guildId, slug = null) {
+  return `https://petto.sbs/appeal/${slug || guildId}`;
 }
 
 const APPEAL_KIND = { ban: 'ban', tempban: 'ban', mute: 'mute', tempmute: 'mute', timeout: 'mute', warn: 'warn', kick: 'kick', softban: 'kick', jail: 'jail' };
@@ -167,7 +168,7 @@ async function appealLinkFor(guildId, type) {
   if (!kind) return null;
   const config = await db.getConfig(guildId);
   if (!config.enabled || !(config.punishment_types ?? []).includes(kind)) return null;
-  return siteLink(guildId);
+  return siteLink(guildId, config.slug);
 }
 
 function staffCardText(submission, form, config) {
@@ -308,7 +309,7 @@ async function resolveAppeal({ client, guild, submission, status, moderatorId, m
   if (!row) return { ok: false, error: 'already_resolved' };
   const config = await db.getConfig(guild.id);
   const form = row.form_id ? await db.getForm(guild.id, row.form_id).catch(() => null) : null;
-  const vars = { server: guild.name, reason: clip(reason, 800) || '', form: row.form_name, username: row.username, link: `${siteLink(guild.id)}/status/${row.id}` };
+  const vars = { server: guild.name, reason: clip(reason, 800) || '', form: row.form_name, username: row.username, link: `${siteLink(guild.id, config.slug)}/status/${row.id}` };
   let invite = null;
   let lifted = [];
   if (status === 'accepted') {
@@ -317,7 +318,7 @@ async function resolveAppeal({ client, guild, submission, status, moderatorId, m
   } else if (form?.block_on_reject && form.block_on_reject !== 'none') {
     await db.setBlock(guild.id, row.user_id, blockUntil(form.block_on_reject), 'Appeal rejected').catch(() => {});
   }
-  const text = `${renderTemplate(messageFor(config, form, status), vars)}${invite ? `\n\nRejoin: ${invite}` : ''}\n\n-# ${siteLink(guild.id)}/status/${row.id}`;
+  const text = `${renderTemplate(messageFor(config, form, status), vars)}${invite ? `\n\nRejoin: ${invite}` : ''}\n\n-# ${siteLink(guild.id, config.slug)}/status/${row.id}`;
   const dm = await sendDm(client, row.user_id, text, STATUS_COLORS[status]);
   await db.addMessage({ submission_id: row.id, guild_id: guild.id, author_type: 'system', author_name: 'Petto', content: renderTemplate(messageFor(config, form, status), vars) + (invite ? `\n${invite}` : '') }).catch(() => {});
   await updateStaffCard(guild, row, form, config, moderatorId);
@@ -344,7 +345,7 @@ async function staffReply({ client, guild, submission, content, moderatorId, mod
   const anonymous = Boolean(config.anonymous_messages);
   await db.addMessage({ submission_id: submission.id, guild_id: guild.id, author_type: 'staff', author_id: moderatorId, author_name: moderatorName ?? null, content: text, anonymous });
   const form = submission.form_id ? await db.getForm(guild.id, submission.form_id).catch(() => null) : null;
-  const dm = await sendDm(client, submission.user_id, `${renderTemplate(messageFor(config, form, 'reply'), { server: guild.name })}\n\n**${anonymous ? 'Staff' : clip(moderatorName ?? 'Staff', 40)}**\n${text}\n\n-# ${config.allow_replies ? 'Answer on ' : ''}${siteLink(guild.id)}/status/${submission.id}`, 0x8c7cff);
+  const dm = await sendDm(client, submission.user_id, `${renderTemplate(messageFor(config, form, 'reply'), { server: guild.name })}\n\n**${anonymous ? 'Staff' : clip(moderatorName ?? 'Staff', 40)}**\n${text}\n\n-# ${config.allow_replies ? 'Answer on ' : ''}${siteLink(guild.id, config.slug)}/status/${submission.id}`, 0x8c7cff);
   await notifyStaff(guild, submission, `<@${moderatorId}> replied to **${clip(submission.username, 40)}**\n> ${text.slice(0, 400)}`, 0x8c7cff);
   return { ok: true, dm };
 }

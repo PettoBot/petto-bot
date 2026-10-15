@@ -3623,6 +3623,9 @@ create table if not exists appeal_blocks (
   primary key (guild_id, user_id)
 );
 
+-- The short name of the appeal link (petto.sbs/appeal/<slug>); the dashboard checks it, the index keeps it unique.
+alter table appeal_config add column if not exists slug text;
+create unique index if not exists appeal_config_slug_key on appeal_config (lower(slug)) where slug is not null;
 alter table appeal_config enable row level security;
 alter table appeal_forms enable row level security;
 alter table appeal_submissions enable row level security;

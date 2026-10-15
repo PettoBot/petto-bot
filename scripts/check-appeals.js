@@ -108,6 +108,7 @@ const A = require(path.join(root, 'src/utils/appeals.js'));
   assert.ok(block && Date.parse(block.until) > Date.now() + 6 * 86400000, 'blocked for a week');
   assert.equal((await A.submitAppeal({ client, guild, config, form, user, rawAnswers: {} })).error, 'blocked');
   assert.equal(A.blockUntil('forever'), null); assert.equal(A.blockUntil('none'), undefined);
+  assert.equal(A.siteLink('123'), 'https://petto.sbs/appeal/123'); assert.equal(A.siteLink('123', 'amor'), 'https://petto.sbs/appeal/amor');
   console.log('appeals OK');
 })().catch((err) => { console.error(err); process.exit(1); });
 
