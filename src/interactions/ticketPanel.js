@@ -1,14 +1,16 @@
 const { MessageFlags } = require('discord.js');
 const db = require('../db/tickets');
 const { openTicketInteractive } = require('../utils/ticketActions');
+const { t, languageOf } = require('../i18n');
 
 async function openFromKey(interaction, categoryKey) {
+  const lang = await languageOf(interaction);
   const category = await db.getCategoryByKey(interaction.guild.id, categoryKey);
   if (!category) {
-    await interaction.reply({ content: 'This ticket category no longer exists.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'tickets.categoryGone'), flags: MessageFlags.Ephemeral });
     return;
   }
-  await openTicketInteractive(interaction, category);
+  await openTicketInteractive(interaction, category, lang);
 }
 
 /** Panel button click — customId `tk_open::<categoryKey>`. */

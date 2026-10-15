@@ -1,4 +1,9 @@
+// i18n-ignore-file: the literals left here are HTML markup only; every label people read comes from t() (tickets.html.*) in the server's language.
+const { t, tn, currentLanguage, normalizeLanguage } = require('../i18n');
+
 const MAX_MESSAGES = 2000;
+// How dates are written in the transcript of each language.
+const DATE_LOCALES = { en: 'en-US', es: 'es-419', 'pt-BR': 'pt-BR' };
 const PLACEHOLDER = '\u0000';
 const MARKDOWN_PLACEHOLDER = '\u0001';
 
@@ -20,10 +25,10 @@ function collectionValues(collection) {
   return collection ? [...collection.values()] : [];
 }
 
-function formatDate(value) {
+function formatDate(value, lang) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
-  return `${new Intl.DateTimeFormat('en-US', {
+  return `${new Intl.DateTimeFormat(DATE_LOCALES[lang] ?? DATE_LOCALES.en, {
     dateStyle: 'medium',
     timeStyle: 'short',
     timeZone: 'America/Bogota',
@@ -51,9 +56,9 @@ async function fetchAllMessages(channel) {
   return messages.reverse();
 }
 
-function renderAttachment(attachment) {
+function renderAttachment(attachment, lang) {
   const type = String(attachment.contentType ?? '').toLowerCase();
-  const name = escapeHtml(attachment.name || 'Attachment');
+  const name = escapeHtml(attachment.name || t(lang, 'tickets.html.attachment'));
   const url = safeUrl(attachment.url);
   if (!url) return `<div class="attachment">${name}</div>`;
 
@@ -73,7 +78,7 @@ function renderAttachment(attachment) {
 
 const TOKEN_RE = /<a?:([\w-]+):(\d+)>|<@!?(\d+)>|<@&(\d+)>|<#(\d+)>|@(everyone|here)/g;
 
-function renderMentionToken(full, emojiName, emojiId, userId, roleId, channelId, broadcast, guild) {
+function renderMentionToken(full, emojiName, emojiId, userId, roleId, channelId, broadcast, guild, lang) {
   if (emojiId) {
     const extension = full.startsWith('<a:') ? 'gif' : 'png';
     const url = `https://media.discordapp.net/emojis/${emojiId}.${extension}?size=44&quality=lossless`;
@@ -85,8 +90,8 @@ function renderMentionToken(full, emojiName, emojiId, userId, roleId, channelId,
     const name = member?.displayName ?? user?.globalName ?? user?.username ?? userId;
     return `<span class="mention">@${escapeHtml(name)}</span>`;
   }
-  if (roleId) return `<span class="mention">@${escapeHtml(guild?.roles?.cache?.get(roleId)?.name ?? 'role')}</span>`;
-  if (channelId) return `<span class="mention">#${escapeHtml(guild?.channels?.cache?.get(channelId)?.name ?? 'channel')}</span>`;
+  if (roleId) return `<span class="mention">@${escapeHtml(guild?.roles?.cache?.get(roleId)?.name ?? t(lang, 'tickets.html.role'))}</span>`;
+  if (channelId) return `<span class="mention">#${escapeHtml(guild?.channels?.cache?.get(channelId)?.name ?? t(lang, 'tickets.html.channel'))}</span>`;
   if (broadcast) return `<span class="mention mention-broadcast">@${broadcast}</span>`;
   return escapeHtml(full);
 }
@@ -128,7 +133,7 @@ function renderMarkdown(escapedText) {
   return html.replace(new RegExp(`${MARKDOWN_PLACEHOLDER}(\\d+)${MARKDOWN_PLACEHOLDER}`, 'g'), (_, index) => preserved[Number(index)] ?? '');
 }
 
-function renderRichText(raw, guild) {
+function renderRichText(raw, guild, lang) {
   const placeholders = [];
   let result = '';
   let lastIndex = 0;
@@ -137,7 +142,7 @@ function renderRichText(raw, guild) {
 
   while ((match = TOKEN_RE.exec(String(raw ?? '')))) {
     result += escapeHtml(String(raw).slice(lastIndex, match.index));
-    placeholders.push(renderMentionToken(match[0], match[1], match[2], match[3], match[4], match[5], match[6], guild));
+    placeholders.push(renderMentionToken(match[0], match[1], match[2], match[3], match[4], match[5], match[6], guild, lang));
     result += `${PLACEHOLDER}${placeholders.length - 1}${PLACEHOLDER}`;
     lastIndex = TOKEN_RE.lastIndex;
   }
@@ -146,60 +151,60 @@ function renderRichText(raw, guild) {
   return renderUnicodeEmojis(renderMarkdown(result)).replace(new RegExp(`${PLACEHOLDER}(\\d+)${PLACEHOLDER}`, 'g'), (_, index) => placeholders[Number(index)] ?? '');
 }
 
-function renderEmbed(embed, guild) {
+function renderEmbed(embed, guild, lang) {
   const color = colorHex(embed.color);
   const authorIcon = safeUrl(embed.author?.iconURL);
   const embedUrl = safeUrl(embed.url);
   const author = embed.author?.name
     ? `<div class="embed-author">${authorIcon ? `<img src="${authorIcon}" alt="" loading="lazy">` : ''}${escapeHtml(embed.author.name)}</div>`
     : '';
-  const titleText = embed.title ? renderRichText(embed.title, guild) : '';
+  const titleText = embed.title ? renderRichText(embed.title, guild, lang) : '';
   const title = titleText ? `<div class="embed-title">${embedUrl ? `<a href="${embedUrl}" target="_blank" rel="noopener">${titleText}</a>` : titleText}</div>` : '';
-  const description = embed.description ? `<div class="embed-description">${renderRichText(embed.description, guild)}</div>` : '';
-  const fields = (embed.fields ?? []).map((field) => `<div class="embed-field${field.inline ? ' inline' : ''}"><div class="embed-field-name">${renderRichText(field.name, guild)}</div><div>${renderRichText(field.value, guild)}</div></div>`).join('');
+  const description = embed.description ? `<div class="embed-description">${renderRichText(embed.description, guild, lang)}</div>` : '';
+  const fields = (embed.fields ?? []).map((field) => `<div class="embed-field${field.inline ? ' inline' : ''}"><div class="embed-field-name">${renderRichText(field.name, guild, lang)}</div><div>${renderRichText(field.value, guild, lang)}</div></div>`).join('');
   const thumbnail = safeUrl(embed.thumbnail?.url);
   const image = safeUrl(embed.image?.url);
   const footerIcon = safeUrl(embed.footer?.iconURL);
   const provider = embed.provider?.name ? `<span class="embed-provider">${escapeHtml(embed.provider.name)}</span>` : '';
-  const timestamp = embed.timestamp ? `<span class="embed-timestamp">${escapeHtml(formatDate(embed.timestamp))}</span>` : '';
+  const timestamp = embed.timestamp ? `<span class="embed-timestamp">${escapeHtml(formatDate(embed.timestamp, lang))}</span>` : '';
   const video = safeUrl(embed.video?.url);
 
   return `<article class="embed" style="--embed-color:${color}">
     <div class="embed-main">
       ${author}${title}${provider}${description}${fields ? `<div class="embed-fields">${fields}</div>` : ''}
       ${image ? `<img class="embed-image" src="${image}" alt="" loading="lazy">` : ''}
-      ${video ? `<a class="embed-video" href="${video}" target="_blank" rel="noopener">Open embedded video</a>` : ''}
+      ${video ? `<a class="embed-video" href="${video}" target="_blank" rel="noopener">${escapeHtml(t(lang, 'tickets.html.openVideo'))}</a>` : ''}
       ${embed.footer?.text || timestamp ? `<div class="embed-footer">${footerIcon ? `<img src="${footerIcon}" alt="" loading="lazy">` : ''}${embed.footer?.text ? escapeHtml(embed.footer.text) : ''}${timestamp}</div>` : ''}
     </div>
     ${thumbnail ? `<img class="embed-thumbnail" src="${thumbnail}" alt="" loading="lazy">` : ''}
   </article>`;
 }
 
-function renderSticker(sticker) {
+function renderSticker(sticker, lang) {
   const url = safeUrl(sticker.url || `https://cdn.discordapp.com/stickers/${sticker.id}.png`);
-  const name = escapeHtml(sticker.name || 'Sticker');
+  const name = escapeHtml(sticker.name || t(lang, 'tickets.html.sticker'));
   if (!url) return '';
   const format = String(sticker.format ?? '').toLowerCase();
-  if (format.includes('lottie') || url.endsWith('.json')) return `<div class="sticker sticker-link"><a href="${url}" target="_blank" rel="noopener">Open sticker: ${name}</a></div>`;
+  if (format.includes('lottie') || url.endsWith('.json')) return `<div class="sticker sticker-link"><a href="${url}" target="_blank" rel="noopener">${escapeHtml(t(lang, 'tickets.html.openSticker', { name: '\u0002' })).replace('\u0002', name)}</a></div>`;
   return `<figure class="sticker"><img src="${url}" alt="${name}" loading="lazy"><figcaption>${name}</figcaption></figure>`;
 }
 
-function renderComponent(component, guild) {
+function renderComponent(component, guild, lang) {
   const c = typeof component?.toJSON === 'function' ? component.toJSON() : component;
   if (!c) return '';
-  if (c.type === 10 && c.content) return `<div class="component-text">${renderRichText(c.content, guild)}</div>`;
-  if (c.type === 9) return `<div class="component-section">${(c.components ?? []).map((child) => renderComponent(child, guild)).join('')}${c.accessory ? `<div class="component-accessory">${renderComponent(c.accessory, guild)}</div>` : ''}</div>`;
-  if (c.type === 17) return `<div class="component-container">${(c.components ?? []).map((child) => renderComponent(child, guild)).join('')}</div>`;
+  if (c.type === 10 && c.content) return `<div class="component-text">${renderRichText(c.content, guild, lang)}</div>`;
+  if (c.type === 9) return `<div class="component-section">${(c.components ?? []).map((child) => renderComponent(child, guild, lang)).join('')}${c.accessory ? `<div class="component-accessory">${renderComponent(c.accessory, guild, lang)}</div>` : ''}</div>`;
+  if (c.type === 17) return `<div class="component-container">${(c.components ?? []).map((child) => renderComponent(child, guild, lang)).join('')}</div>`;
   if (c.type === 12) return `<div class="media-gallery">${(c.items ?? []).map((item) => { const url = safeUrl(item.media?.url || item.url); return url ? `<img src="${url}" alt="${escapeHtml(item.description || '')}" loading="lazy">` : ''; }).join('')}</div>`;
-  if (c.type === 13) { const url = safeUrl(c.file?.url || c.url); return url ? `<div class="attachment"><span class="file-icon" aria-hidden="true">↗</span><a href="${url}" target="_blank" rel="noopener">${escapeHtml(c.name || 'File')}</a></div>` : ''; }
+  if (c.type === 13) { const url = safeUrl(c.file?.url || c.url); return url ? `<div class="attachment"><span class="file-icon" aria-hidden="true">↗</span><a href="${url}" target="_blank" rel="noopener">${escapeHtml(c.name || t(lang, 'tickets.html.file'))}</a></div>` : ''; }
   if (c.type === 14) return '<div class="component-separator" aria-hidden="true"></div>';
-  if (c.type === 2) return c.url ? `<a class="component-button" href="${safeUrl(c.url)}" target="_blank" rel="noopener">${escapeHtml(c.label || 'Open link')}</a>` : `<span class="component-button disabled">${escapeHtml(c.label || 'Button')}</span>`;
-  if (Array.isArray(c.components)) return c.components.map((child) => renderComponent(child, guild)).join('');
+  if (c.type === 2) return c.url ? `<a class="component-button" href="${safeUrl(c.url)}" target="_blank" rel="noopener">${escapeHtml(c.label || t(lang, 'tickets.html.openLink'))}</a>` : `<span class="component-button disabled">${escapeHtml(c.label || t(lang, 'tickets.html.button'))}</span>`;
+  if (Array.isArray(c.components)) return c.components.map((child) => renderComponent(child, guild, lang)).join('');
   return '';
 }
 
-function renderComponents(components, guild) {
-  return collectionValues(components).map((component) => renderComponent(component, guild)).join('');
+function renderComponents(components, guild, lang) {
+  return collectionValues(components).map((component) => renderComponent(component, guild, lang)).join('');
 }
 
 function avatarUrl(user, size = 64) {
@@ -217,38 +222,39 @@ function renderReaction(reaction) {
   return `<span class="reaction">${emojiHtml}<b>${Number(reaction.count ?? 0)}</b></span>`;
 }
 
-function renderReply(msg, messageMap) {
+function renderReply(msg, messageMap, lang) {
   const reference = msg.reference?.messageId ? messageMap.get(msg.reference.messageId) : null;
   if (!reference) return '';
-  const author = reference.member?.displayName ?? reference.author?.globalName ?? reference.author?.username ?? 'Unknown user';
-  const snippet = reference.content || (reference.embeds?.length ? '[embed]' : reference.attachments?.size ? '[attachment]' : '[message]');
-  return `<div class="reply"><span>Replying to <b>${escapeHtml(author)}</b></span><span>${escapeHtml(String(snippet).slice(0, 180))}</span></div>`;
+  const author = reference.member?.displayName ?? reference.author?.globalName ?? reference.author?.username ?? t(lang, 'tickets.html.unknownUser');
+  const snippet = reference.content || t(lang, reference.embeds?.length ? 'tickets.html.snippet.embed' : reference.attachments?.size ? 'tickets.html.snippet.attachment' : 'tickets.html.snippet.message');
+  const replying = escapeHtml(t(lang, 'tickets.html.replyingTo', { user: '\u0002' })).replace('\u0002', `<b>${escapeHtml(author)}</b>`);
+  return `<div class="reply"><span>${replying}</span><span>${escapeHtml(String(snippet).slice(0, 180))}</span></div>`;
 }
 
-function renderPoll(poll, guild) {
+function renderPoll(poll, guild, lang) {
   if (!poll) return '';
-  const question = poll.question?.text ?? poll.question ?? 'Poll';
+  const question = poll.question?.text ?? poll.question ?? t(lang, 'tickets.html.poll');
   const answers = collectionValues(poll.answers ?? poll.answerOptions);
-  if (!answers.length) return `<div class="poll"><strong>${renderRichText(question, guild)}</strong></div>`;
-  return `<div class="poll"><strong>${renderRichText(question, guild)}</strong>${answers.map((answer) => `<div class="poll-answer"><span>${renderRichText(answer.pollMedia?.text ?? answer.text ?? 'Option', guild)}</span>${answer.voteCount != null ? `<b>${answer.voteCount}</b>` : ''}</div>`).join('')}</div>`;
+  if (!answers.length) return `<div class="poll"><strong>${renderRichText(question, guild, lang)}</strong></div>`;
+  return `<div class="poll"><strong>${renderRichText(question, guild, lang)}</strong>${answers.map((answer) => `<div class="poll-answer"><span>${renderRichText(answer.pollMedia?.text ?? answer.text ?? t(lang, 'tickets.html.option'), guild, lang)}</span>${answer.voteCount != null ? `<b>${answer.voteCount}</b>` : ''}</div>`).join('')}</div>`;
 }
 
-function renderMessage(msg, messageMap) {
+function renderMessage(msg, messageMap, lang) {
   const avatar = avatarUrl(msg.author);
-  const displayName = msg.member?.displayName ?? msg.author?.globalName ?? msg.author?.username ?? 'Unknown user';
+  const displayName = msg.member?.displayName ?? msg.author?.globalName ?? msg.author?.username ?? t(lang, 'tickets.html.unknownUser');
   const rawText = msg.content || '';
-  const content = rawText ? `<div class="content">${renderRichText(rawText, msg.guild)}</div>` : '';
-  const components = renderComponents(msg.components, msg.guild);
-  const attachments = collectionValues(msg.attachments).map(renderAttachment).join('');
-  const embeds = (msg.embeds ?? []).map((embed) => renderEmbed(embed, msg.guild)).join('');
-  const stickers = collectionValues(msg.stickers).map(renderSticker).join('');
+  const content = rawText ? `<div class="content">${renderRichText(rawText, msg.guild, lang)}</div>` : '';
+  const components = renderComponents(msg.components, msg.guild, lang);
+  const attachments = collectionValues(msg.attachments).map((attachment) => renderAttachment(attachment, lang)).join('');
+  const embeds = (msg.embeds ?? []).map((embed) => renderEmbed(embed, msg.guild, lang)).join('');
+  const stickers = collectionValues(msg.stickers).map((sticker) => renderSticker(sticker, lang)).join('');
   const reactions = collectionValues(msg.reactions?.cache).map(renderReaction).join('');
-  const poll = renderPoll(msg.poll, msg.guild);
+  const poll = renderPoll(msg.poll, msg.guild, lang);
   const hasRichContent = content || components || attachments || embeds || stickers || poll;
   const botTag = msg.author?.bot ? '<span class="bot-tag">APP</span>' : '';
-  const edited = msg.editedTimestamp ? '<span class="edited">edited</span>' : '';
-  const reply = renderReply(msg, messageMap);
-  const time = formatDate(msg.createdTimestamp);
+  const edited = msg.editedTimestamp ? `<span class="edited">${escapeHtml(t(lang, 'tickets.html.edited'))}</span>` : '';
+  const reply = renderReply(msg, messageMap, lang);
+  const time = formatDate(msg.createdTimestamp, lang);
   const messageId = escapeHtml(msg.id || 'message');
 
   return `<article class="message" id="message-${messageId}">
@@ -256,21 +262,25 @@ function renderMessage(msg, messageMap) {
     <div class="message-body">
       <div class="meta"><span class="author">${escapeHtml(displayName)}</span>${botTag}<time datetime="${escapeHtml(new Date(msg.createdTimestamp).toISOString())}" title="${escapeHtml(time)}">${escapeHtml(time)}</time>${edited}</div>
       ${reply}${content}${components}${attachments}${embeds}${stickers}${poll}${reactions ? `<div class="reactions">${reactions}</div>` : ''}
-      ${hasRichContent ? '' : '<div class="empty-content">No text content</div>'}
+      ${hasRichContent ? '' : `<div class="empty-content">${escapeHtml(t(lang, 'tickets.html.noText'))}</div>`}
     </div>
   </article>`;
 }
 
-async function buildTranscript(channel, { ticketNumber, openerTag } = {}) {
+/** The HTML transcript of a ticket channel; Petto's own labels are written in `lang`, the messages stay as they were. */
+async function buildTranscript(channel, { ticketNumber, openerTag, lang = currentLanguage() } = {}) {
+  lang = normalizeLanguage(lang) ?? 'en';
   const messages = await fetchAllMessages(channel);
   const messageMap = new Map(messages.map((message) => [message.id, message]));
-  const body = messages.map((message) => renderMessage(message, messageMap)).join('\n');
-  const guildName = channel.guild?.name ?? 'Discord server';
-  const title = `Ticket #${ticketNumber ?? ''}`;
-  const subtitle = `${channel.name ? `#${channel.name}` : 'Ticket'} · ${messages.length} message${messages.length === 1 ? '' : 's'}`;
+  const body = messages.map((message) => renderMessage(message, messageMap, lang)).join('\n');
+  const guildName = channel.guild?.name ?? t(lang, 'tickets.html.discordServer');
+  const title = t(lang, 'tickets.html.title', { number: ticketNumber ?? '' });
+  // The raw count, as it always was (no thousands separator).
+  const subtitle = `${channel.name ? `#${channel.name}` : t(lang, 'tickets.html.ticket')} · ${tn(lang, 'tickets.html.messageCount', messages.length, { count: messages.length })}`;
+  const label = (key) => escapeHtml(t(lang, key));
 
   const html = `<!doctype html>
-<html lang="en">
+<html lang="${escapeHtml(lang)}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -309,10 +319,10 @@ async function buildTranscript(channel, { ticketNumber, openerTag } = {}) {
 </head>
 <body>
   <main class="shell">
-    <header class="topbar"><a class="brand" href="/" aria-label="Petto home"><img src="/assets/favicon.png" alt=""> <span>Petto</span></a><div class="top-actions"><button type="button" onclick="window.print()">Print</button></div></header>
-    <section class="hero"><div><div class="eyebrow">Ticket transcript</div><h1>${escapeHtml(title)}</h1><p class="sub">${escapeHtml(guildName)} · ${escapeHtml(subtitle)}</p></div><div class="hero-meta"><strong>${escapeHtml(openerTag ?? 'Unknown user')}</strong>Opened by</div></section>
-    <section class="transcript" aria-label="Ticket transcript"><div class="transcript-head"><span class="chip"><strong>Channel</strong> #${escapeHtml(channel.name ?? 'ticket')}</span><span class="chip"><strong>Messages</strong> ${messages.length}</span><span class="chip"><strong>Rendered</strong> text, embeds, media and stickers</span></div><div class="messages">${body || '<div class="empty">No messages were found in this ticket.</div>'}</div></section>
-    <footer>Transcript generated by <b>Petto</b> · Discord content is shown as it was available when the transcript was created.</footer>
+    <header class="topbar"><a class="brand" href="/" aria-label="${label('tickets.html.home')}"><img src="/assets/favicon.png" alt=""> <span>Petto</span></a><div class="top-actions"><button type="button" onclick="window.print()">${label('tickets.html.print')}</button></div></header>
+    <section class="hero"><div><div class="eyebrow">${label('tickets.html.eyebrow')}</div><h1>${escapeHtml(title)}</h1><p class="sub">${escapeHtml(guildName)} · ${escapeHtml(subtitle)}</p></div><div class="hero-meta"><strong>${escapeHtml(openerTag ?? t(lang, 'tickets.html.unknownUser'))}</strong>${label('tickets.html.openedBy')}</div></section>
+    <section class="transcript" aria-label="${label('tickets.html.eyebrow')}"><div class="transcript-head"><span class="chip"><strong>${label('tickets.html.channelLabel')}</strong> #${escapeHtml(channel.name ?? 'ticket')}</span><span class="chip"><strong>${label('tickets.html.messagesLabel')}</strong> ${messages.length}</span><span class="chip"><strong>${label('tickets.html.renderedLabel')}</strong> ${label('tickets.html.rendered')}</span></div><div class="messages">${body || `<div class="empty">${label('tickets.html.empty')}</div>`}</div></section>
+    <footer>${escapeHtml(t(lang, 'tickets.html.footer', { petto: '\u0002' })).replace('\u0002', '<b>Petto</b>')}</footer>
   </main>
 </body>
 </html>`;

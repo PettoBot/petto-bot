@@ -47,6 +47,12 @@ assert.equal(toMinutes('24:00'), null);
 assert.match(outsideHoursText({ hours_start: '09:00', hours_end: '21:00', hours_timezone: 'America/Bogota' }), /09:00 and 21:00 \(America\/Bogota\)/);
 assert.equal(outsideHoursText({ hours_message: 'Back at {start}', hours_start: '08:00' }), 'Back at 08:00');
 
+// Petto's own texts follow the language of the server; what the server wrote stays as it is.
+assert.match(json(cards.buildPanelRows('select', types, { lang: 'es' })[0]).components[0].placeholder, /categoría de ticket/);
+assert.equal(json(cards.buildPanelRows('select', types, { placeholder: 'Pick one', lang: 'pt-BR' })[0]).components[0].placeholder, 'Pick one');
+assert.match(outsideHoursText({ hours_start: '09:00', hours_end: '21:00', hours_timezone: 'America/Bogota' }, 'pt-BR'), /entre 09:00 e 21:00 \(America\/Bogota\)/);
+assert.equal(outsideHoursText({ hours_message: 'Back at {start}', hours_start: '08:00' }, 'es'), 'Back at 08:00');
+
 console.log('ticket panel ok');
 
 // The reminder of tickets nobody claimed, and the numbers of the stats.
@@ -82,6 +88,8 @@ console.log('ticket panel ok');
   assert.equal(durationText(200), '3 h 20 min');
   assert.equal(durationText(3000), '2 d 2 h');
   assert.equal(durationText(null), 'no data');
+  assert.equal(durationText(null, 'es'), 'sin datos');
+  assert.equal(durationText(200, 'pt-BR'), '3 h 20 min');
   console.log('ticket reminders and stats ok');
 })();
 

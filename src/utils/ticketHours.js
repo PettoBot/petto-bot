@@ -1,7 +1,8 @@
 // The hours of the staff for tickets: whether it is inside them now (in the timezone the server chose) and the text that says so.
 // Days are 0 (Sunday) to 6 (Saturday). A range that ends before it starts (22:00 to 06:00) runs through the night into the next day.
+const { t, currentLanguage, DEFAULT_LANGUAGE } = require('../i18n');
 
-const DEFAULT_MESSAGE = 'Our staff is away right now. They answer between {start} and {end} ({timezone}). Your ticket is open and someone will reply when they are back.';
+const DEFAULT_MESSAGE = t(DEFAULT_LANGUAGE, 'tickets.hours.defaultMessage');
 
 const TIME = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const toMinutes = (text) => { const m = TIME.exec(String(text ?? '')); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
@@ -36,9 +37,9 @@ function isWithinHours(settings, date = new Date()) {
   return false;
 }
 
-/** The message for outside the hours, with {start}, {end} and {timezone} filled in. */
-function outsideHoursText(settings) {
-  const text = String(settings?.hours_message || DEFAULT_MESSAGE);
+/** The message for outside the hours (the server's own, or Petto's in `lang`), with {start}, {end} and {timezone} filled in. */
+function outsideHoursText(settings, lang = currentLanguage()) {
+  const text = String(settings?.hours_message || t(lang, 'tickets.hours.defaultMessage'));
   return text.replaceAll('{start}', settings?.hours_start ?? '').replaceAll('{end}', settings?.hours_end ?? '').replaceAll('{timezone}', settings?.hours_timezone ?? 'UTC').slice(0, 1000);
 }
 

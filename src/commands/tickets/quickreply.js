@@ -7,6 +7,7 @@ const actions = require('../../utils/ticketActions');
 const { renderWelcomeText } = require('../../utils/ticketCards');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { t, languageOf } = require('../../i18n');
 
 const V2 = MessageFlags.IsComponentsV2;
 const GREEN = 0xa5ea7a;
@@ -27,40 +28,41 @@ module.exports = {
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
+    const lang = await languageOf(interaction);
     const manager = interaction.member?.permissions?.has(PermissionFlagsBits.ManageGuild);
-    if ((sub === 'add' || sub === 'remove') && !manager) return reply(interaction, `${EMOJI.DENY}  You need the **Manage Server** permission.`, RED, true);
+    if ((sub === 'add' || sub === 'remove') && !manager) return reply(interaction, t(lang, 'tickets.quickreply.needManageServer', { emoji: EMOJI.DENY, permission: t(lang, 'core.perm.ManageGuild') }), RED, true);
 
     if (sub === 'list') {
       const rows = await replies.list(interaction.guild.id);
-      if (!rows.length) return reply(interaction, 'There are no quick replies yet. Save one with `quickreply add <name> <text>`.', 0x4b4f59, true);
+      if (!rows.length) return reply(interaction, t(lang, 'tickets.quickreply.none'), 0x4b4f59, true);
       return reply(interaction, rows.map((r) => `**${r.name}** · ${String(r.content).replace(/\s+/g, ' ').slice(0, 80)}`).join('\n'), 0x4b4f59, true);
     }
 
     const name = replies.normalizeName(interaction.options.getString('name', true));
-    if (!replies.NAME.test(name)) return reply(interaction, `${EMOJI.DENY}  Use letters, numbers, - and _ (up to 30).`, RED, true);
+    if (!replies.NAME.test(name)) return reply(interaction, t(lang, 'tickets.quickreply.badName', { emoji: EMOJI.DENY }), RED, true);
 
     if (sub === 'add') {
       const existing = await replies.get(interaction.guild.id, name);
-      if (!existing && (await replies.list(interaction.guild.id)).length >= replies.MAX_REPLIES) return reply(interaction, `${EMOJI.DENY}  You can keep up to ${replies.MAX_REPLIES} quick replies.`, RED, true);
+      if (!existing && (await replies.list(interaction.guild.id)).length >= replies.MAX_REPLIES) return reply(interaction, t(lang, 'tickets.quickreply.full', { emoji: EMOJI.DENY, max: replies.MAX_REPLIES }), RED, true);
       await replies.upsert(interaction.guild.id, name, interaction.options.getString('text', true), interaction.user.id);
-      return reply(interaction, `${EMOJI.APPROVE}  Quick reply **${name}** ${existing ? 'changed' : 'saved'}. Send it in a ticket with \`quickreply send ${name}\`.`, GREEN, true);
+      return reply(interaction, t(lang, existing ? 'tickets.quickreply.changed' : 'tickets.quickreply.saved', { emoji: EMOJI.APPROVE, name }), GREEN, true);
     }
 
     if (sub === 'remove') {
-      if (!(await replies.remove(interaction.guild.id, name))) return reply(interaction, `${EMOJI.DENY}  There is no quick reply called **${name}**.`, RED, true);
-      return reply(interaction, `${EMOJI.APPROVE}  Quick reply **${name}** deleted.`, GREEN, true);
+      if (!(await replies.remove(interaction.guild.id, name))) return reply(interaction, t(lang, 'tickets.quickreply.notFound', { emoji: EMOJI.DENY, name }), RED, true);
+      return reply(interaction, t(lang, 'tickets.quickreply.deleted', { emoji: EMOJI.APPROVE, name }), GREEN, true);
     }
 
     // send: only staff of the ticket, and only inside a ticket.
     const ticket = await tickets.getTicketByChannel(interaction.channel.id);
-    if (!ticket || ticket.status !== 'open') return reply(interaction, `${EMOJI.DENY}  Use this inside an open ticket.`, RED, true);
+    if (!ticket || ticket.status !== 'open') return reply(interaction, t(lang, 'tickets.quickreply.openTicketOnly', { emoji: EMOJI.DENY }), RED, true);
     const category = await tickets.getCategoryById(ticket.category_id);
-    if (!(await actions.isStaffAllowedForTicket(interaction.member, category, ticket))) return reply(interaction, `${EMOJI.DENY}  Only the staff of this ticket can send quick replies.`, RED, true);
+    if (!(await actions.isStaffAllowedForTicket(interaction.member, category, ticket))) return reply(interaction, t(lang, 'tickets.quickreply.staffOnly', { emoji: EMOJI.DENY }), RED, true);
     const row = await replies.get(interaction.guild.id, name);
-    if (!row) return reply(interaction, `${EMOJI.DENY}  There is no quick reply called **${name}**. See them with \`quickreply list\`.`, RED, true);
+    if (!row) return reply(interaction, t(lang, 'tickets.quickreply.notFoundList', { emoji: EMOJI.DENY, name }), RED, true);
     const opener = await interaction.client.users.fetch(ticket.opener_id).catch(() => null);
-    const text = renderWelcomeText(row.content, { opener: opener ?? 'there', categoryLabel: category?.label, guildName: interaction.guild.name, ticketNumber: ticket.ticket_number });
+    const text = renderWelcomeText(row.content, { opener: opener ?? t(lang, 'tickets.quickreply.openerFallback'), categoryLabel: category?.label, guildName: interaction.guild.name, ticketNumber: ticket.ticket_number });
     await interaction.channel.send({ components: [textCard(text, GREEN)], flags: V2, allowedMentions: { users: opener ? [opener.id] : [] } });
-    return reply(interaction, `${EMOJI.APPROVE}  Sent.`, GREEN, true);
+    return reply(interaction, t(lang, 'tickets.quickreply.sent', { emoji: EMOJI.APPROVE }), GREEN, true);
   },
 };

@@ -8,6 +8,7 @@ const { forEachWithConcurrency } = require('../utils/concurrency');
 const { exclusiveTask } = require('../utils/concurrency');
 const config = require('../config');
 const logger = require('../utils/logger');
+const { t, guildLanguage } = require('../i18n');
 
 const POLL_INTERVAL_MS = 5 * 60_000;
 
@@ -16,6 +17,7 @@ async function checkTicketReminders(client) {
   await forEachWithConcurrency(guilds, async (row) => {
     const guild = client.guilds.cache.get(row.guild_id);
     if (!guild) return;
+    const lang = await guildLanguage(guild.id);
     const tickets = await db.listOpenTicketsForGuild(guild.id).catch((err) => { logger.warn(`Ticket reminders: could not list the tickets of ${guild.id}: ${err.message}`); return []; });
     for (const ticket of tickets) {
       if (!dueForReminder(ticket, row.unclaimed_reminder_minutes)) continue;
@@ -27,7 +29,7 @@ async function checkTicketReminders(client) {
       const roles = (category?.support_role_ids ?? []).filter((id) => guild.roles.cache.has(id));
       const ping = roles.map((id) => `<@&${id}>`).join(' ');
       await channel.send({
-        components: [textCard(`${ping ? `${ping}\n` : ''}This ticket has been waiting for **${row.unclaimed_reminder_minutes} minutes** and nobody has claimed it. Press **Claim** to take it.`, 0xffd563)],
+        components: [textCard(`${ping ? `${ping}\n` : ''}${t(lang, 'tickets.reminder.unclaimed', { minutes: row.unclaimed_reminder_minutes })}`, 0xffd563)],
         flags: MessageFlags.IsComponentsV2,
         allowedMentions: { roles },
       }).catch((err) => logger.warn(`Ticket #${ticket.ticket_number}: the reminder could not be sent: ${err.message}`));

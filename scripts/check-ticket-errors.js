@@ -16,4 +16,8 @@ const internal = describeTicketOpenError(Object.assign(new Error('invalid input 
 assert.match(internal, /error on my side/);
 assert.equal(/json|22P02|syntax/i.test(internal), false, 'database details never reach the person');
 assert.doesNotMatch(describeTicketOpenError(new Error('boom')), /Manage Channels/, 'a generic failure no longer blames permissions');
+// The same reasons in the language of the server.
+assert.match(describeTicketOpenError(discordError(30013, 'Maximum number of server channels reached (500)'), 'es'), /límite de canales de Discord/);
+assert.match(describeTicketOpenError(discordError(10003, 'Unknown Channel'), 'pt-BR'), /não existe mais/);
+assert.match(describeTicketOpenError(new Error('boom'), 'es'), /error de mi parte/);
 console.log('ticket errors ok');
