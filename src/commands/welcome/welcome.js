@@ -3,9 +3,10 @@ const { commandRef } = require('../../utils/commandRef');
 const { ensureGuild } = require('../../db/guilds');
 const { getConfig, upsertConfig } = require('../../db/memberEvents');
 const { getTemplate } = require('../../db/embedTemplates');
-const { sendMemberEvent } = require('../../utils/memberEventMessage');
+const { sendMemberEvent, localizeDefaultText } = require('../../utils/memberEventMessage');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { t, languageOf } = require('../../i18n');
 
 module.exports = {
   aliases: ['wc'],
@@ -36,12 +37,13 @@ module.exports = {
 };
 
 async function setup(interaction) {
+  const lang = await languageOf(interaction);
   const channel = interaction.options.getChannel('channel', true);
   const message = interaction.options.getString('message');
   const embed = interaction.options.getString('embed');
 
   if (embed && !(await getTemplate(interaction.guild.id, embed))) {
-    await interaction.reply({ content: `No embed named \`${embed}\` found. Create it with \`${commandRef(interaction, 'embed create')}\` first.`, flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'welcome.common.noEmbed', { name: embed, command: commandRef(interaction, 'embed create') }), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -49,32 +51,35 @@ async function setup(interaction) {
   await ensureGuild(interaction.guild.id);
   await upsertConfig(interaction.guild.id, { welcome_channel_id: channel.id, welcome_message: message ?? null, welcome_embed_template: embed ?? null });
 
-  const text = `${EMOJI.APPROVE}  Welcome messages will be posted to ${channel}.${embed ? `\n**Embed:** \`${embed}\`` : message ? `\n**Message:** ${message}` : `\n${EMOJI.ALERT}  No message or embed set yet — nothing will send until you add one.`}`;
+  const detail = embed ? t(lang, 'welcome.common.embed', { name: embed }) : message ? t(lang, 'welcome.common.message', { message }) : t(lang, 'welcome.common.nothingYet', { emoji: EMOJI.ALERT });
+  const text = `${t(lang, 'welcome.welcome.setup.done', { emoji: EMOJI.APPROVE, channel: `${channel}` })}\n${detail}`;
   await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function status(interaction) {
+  const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const config = await getConfig(interaction.guild.id);
 
   const lines = [
-    `**Channel:** ${config?.welcome_channel_id ? `<#${config.welcome_channel_id}>` : 'Not set'}`,
-    `**Embed template:** ${config?.welcome_embed_template ? `\`${config.welcome_embed_template}\`` : 'None'}`,
-    `**Plain message:** ${config?.welcome_message ? config.welcome_message : 'None'}`,
+    t(lang, 'welcome.common.status.channel', { value: config?.welcome_channel_id ? `<#${config.welcome_channel_id}>` : t(lang, 'welcome.common.notSet') }),
+    t(lang, 'welcome.common.status.embedTemplate', { value: config?.welcome_embed_template ? `\`${config.welcome_embed_template}\`` : t(lang, 'welcome.common.none.embed') }),
+    t(lang, 'welcome.common.status.plainMessage', { value: config?.welcome_message ? localizeDefaultText('welcome', config.welcome_message, lang) : t(lang, 'welcome.common.none.message') }),
   ];
   await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function test(interaction) {
+  const lang = await languageOf(interaction);
   const config = await getConfig(interaction.guild.id);
   if (!config?.welcome_channel_id || (!config.welcome_message && !config.welcome_embed_template)) {
-    await interaction.reply({ content: 'Welcome messages are not fully configured. Use `!welcome setup` first.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'welcome.welcome.notConfigured'), flags: MessageFlags.Ephemeral });
     return;
   }
 
   const channel = await interaction.guild.channels.fetch(config.welcome_channel_id).catch(() => null);
   if (!channel) {
-    await interaction.reply({ content: 'The configured welcome channel no longer exists.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'welcome.welcome.channelGone'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -86,13 +91,15 @@ async function test(interaction) {
     messageText: config.welcome_message,
     embedTemplateName: config.welcome_embed_template,
     ctx: { member: interaction.member, guild: interaction.guild, channel },
+    lang,
   });
-  await interaction.editReply({ content: `${EMOJI.APPROVE} Test welcome message sent to ${channel}.` });
+  await interaction.editReply({ content: t(lang, 'welcome.welcome.testSent', { emoji: EMOJI.APPROVE, channel: `${channel}` }) });
 }
 
 async function disable(interaction) {
+  const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
   await upsertConfig(interaction.guild.id, { welcome_channel_id: null });
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Welcome messages disabled.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'welcome.welcome.disabled', { emoji: EMOJI.APPROVE }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }

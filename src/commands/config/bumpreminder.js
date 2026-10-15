@@ -5,6 +5,7 @@ const { getTemplate } = require('../../db/embedTemplates');
 const { textCard } = require('../../utils/caseCard');
 const { templateHint } = require('../../utils/templateHint');
 const { EMOJI } = require('../../utils/emojis');
+const { t, languageOf } = require('../../i18n');
 
 module.exports = {
   aliases: ['bump'],
@@ -32,6 +33,7 @@ module.exports = {
 };
 
 async function update(interaction, sub) {
+  const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
   await ensureConfig(interaction.guild.id);
@@ -42,60 +44,68 @@ async function update(interaction, sub) {
   if (sub === 'channel') {
     const channel = interaction.options.getChannel('channel', true);
     patch.channel_id = channel.id;
-    confirmLine = `Bump channel set to ${channel}.`;
+    confirmLine = t(lang, 'welcome.bump.channelSet', { channel: `${channel}` });
   } else if (sub === 'message') {
     patch.message = interaction.options.getString('text', true);
-    confirmLine = 'Reminder message updated.';
+    confirmLine = t(lang, 'welcome.bump.messageUpdated');
   } else if (sub === 'thankyou') {
     patch.thankyou = interaction.options.getString('text', true);
-    confirmLine = 'Thank-you message updated.';
+    confirmLine = t(lang, 'welcome.bump.thankyouUpdated');
   } else if (sub === 'template') {
     const which = interaction.options.getString('which', true).trim().toLowerCase();
-    if (!['reminder', 'thankyou'].includes(which)) return interaction.editReply({ components: [textCard('Choose `reminder` or `thankyou`.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    if (!['reminder', 'thankyou'].includes(which)) return interaction.editReply({ components: [textCard(t(lang, 'welcome.bump.chooseWhich'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     const column = `${which}_embed_template`;
     const name = String(interaction.options.getString('template') ?? '').trim();
     if (!name) {
       const current = await ensureConfig(interaction.guild.id);
-      return interaction.editReply({ components: [textCard(await templateHint(interaction.guild.id, { current: current[column] ?? null, usage: `bumpreminder template ${which} <name>`, what: `The ${which} message` }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+      return interaction.editReply({ components: [textCard(await templateHint(interaction.guild.id, { current: current[column] ?? null, usage: `bumpreminder template ${which} <name>`, what: t(lang, `welcome.bump.what.${which}`), lang }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     }
     if (name.toLowerCase() === 'none') {
       patch[column] = null;
-      confirmLine = `The ${which} message goes back to its text.`;
+      confirmLine = t(lang, `welcome.bump.templateCleared.${which}`);
     } else {
       const doc = await getTemplate(interaction.guild.id, name).catch(() => null);
-      if (!doc) return interaction.editReply({ components: [textCard(`No saved embed named \`${name}\` was found. Make one in the dashboard, under Embeds.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      if (!doc) return interaction.editReply({ components: [textCard(t(lang, 'welcome.bump.templateMissing', { name }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
       patch[column] = doc.name;
-      confirmLine = `The ${which} message now uses \`${doc.name}\`.`;
+      confirmLine = t(lang, `welcome.bump.templateSet.${which}`, { name: doc.name });
     }
   } else if (sub === 'pingable') {
     patch.pingable = interaction.options.getBoolean('enabled', true);
-    confirmLine = `Pingable **${patch.pingable ? 'on' : 'off'}**.`;
+    confirmLine = t(lang, patch.pingable ? 'welcome.bump.pingable.on' : 'welcome.bump.pingable.off');
   } else if (sub === 'autolock') {
     patch.autolock = interaction.options.getBoolean('enabled', true);
-    confirmLine = `Autolock **${patch.autolock ? 'on' : 'off'}**.`;
+    confirmLine = t(lang, patch.autolock ? 'welcome.bump.autolock.on' : 'welcome.bump.autolock.off');
   } else if (sub === 'autoclean') {
     patch.autoclean = interaction.options.getBoolean('enabled', true);
-    confirmLine = `Autoclean **${patch.autoclean ? 'on' : 'off'}**.`;
+    confirmLine = t(lang, patch.autoclean ? 'welcome.bump.autoclean.on' : 'welcome.bump.autoclean.off');
   }
 
   await upsertConfig(interaction.guild.id, patch);
   await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  ${confirmLine}`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
+// The texts a server did not write are stored in English (the column defaults); they are shown in the server's language, the
+// way utils/bumpHandler.js sends them.
+function shownText(which, text, lang) {
+  const key = `welcome.bump.default.${which}`;
+  return text === t('en', key) ? t(lang, key) : text;
+}
+
 async function status(interaction) {
+  const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
   const config = await ensureConfig(interaction.guild.id);
 
   const ready = !config.next_bump_at || new Date(config.next_bump_at) <= new Date();
   const lines = [
-    `**Channel:** ${config.channel_id ? `<#${config.channel_id}>` : 'Not set'}`,
-    `**Pingable:** ${config.pingable ? 'On' : 'Off'}`,
-    `**Autolock:** ${config.autolock ? 'On' : 'Off'}`,
-    `**Autoclean:** ${config.autoclean ? 'On' : 'Off'}`,
-    `**Status:** ${ready ? `${EMOJI.APPROVE} Ready to bump` : `Next: <t:${Math.floor(new Date(config.next_bump_at).getTime() / 1000)}:R>`}`,
-    `**Reminder:** ${config.message}`,
-    `**Thank you:** ${config.thankyou}`,
+    t(lang, 'welcome.common.status.channel', { value: config.channel_id ? `<#${config.channel_id}>` : t(lang, 'welcome.common.notSet') }),
+    t(lang, config.pingable ? 'welcome.bump.status.pingable.on' : 'welcome.bump.status.pingable.off'),
+    t(lang, config.autolock ? 'welcome.bump.status.autolock.on' : 'welcome.bump.status.autolock.off'),
+    t(lang, config.autoclean ? 'welcome.bump.status.autoclean.on' : 'welcome.bump.status.autoclean.off'),
+    ready ? t(lang, 'welcome.bump.status.ready', { emoji: EMOJI.APPROVE }) : t(lang, 'welcome.bump.status.next', { time: `<t:${Math.floor(new Date(config.next_bump_at).getTime() / 1000)}:R>` }),
+    t(lang, 'welcome.bump.status.reminder', { text: shownText('reminder', config.message, lang) }),
+    t(lang, 'welcome.bump.status.thankyou', { text: shownText('thankyou', config.thankyou, lang) }),
   ];
   await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }

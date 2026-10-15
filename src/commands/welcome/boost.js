@@ -5,6 +5,7 @@ const { getTemplate } = require('../../db/embedTemplates');
 const { sendMemberEvent } = require('../../utils/memberEventMessage');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { t, languageOf } = require('../../i18n');
 
 module.exports = {
   aliases: ['bst'],
@@ -42,69 +43,75 @@ module.exports = {
   },
 };
 
-async function validateEmbed(interaction, embed) {
+async function validateEmbed(interaction, embed, lang) {
   if (!embed) return true;
   if (await getTemplate(interaction.guild.id, embed)) return true;
-  await interaction.reply({ content: `No embed named \`${embed}\` found. Create it with \`!embed create\` first.`, flags: MessageFlags.Ephemeral });
+  await interaction.reply({ content: t(lang, 'welcome.common.noEmbed', { name: embed, command: '!embed create' }), flags: MessageFlags.Ephemeral });
   return false;
 }
 
 async function setup(interaction) {
+  const lang = await languageOf(interaction);
   const channel = interaction.options.getChannel('channel', true);
   const message = interaction.options.getString('message');
   const embed = interaction.options.getString('embed');
-  if (!(await validateEmbed(interaction, embed))) return;
+  if (!(await validateEmbed(interaction, embed, lang))) return;
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
   await upsertConfig(interaction.guild.id, { boost_channel_id: channel.id, boost_message: message ?? null, boost_embed_template: embed ?? null });
 
-  const text = `${EMOJI.APPROVE}  Boost messages will be posted to ${channel} (once per individual boost).${embed ? `\n**Embed:** \`${embed}\`` : message ? `\n**Message:** ${message}` : `\n${EMOJI.ALERT}  No message or embed set yet — nothing will send until you add one.`}`;
+  const detail = embed ? t(lang, 'welcome.common.embed', { name: embed }) : message ? t(lang, 'welcome.common.message', { message }) : t(lang, 'welcome.common.nothingYet', { emoji: EMOJI.ALERT });
+  const text = `${t(lang, 'welcome.boost.setup.done', { emoji: EMOJI.APPROVE, channel: `${channel}` })}\n${detail}`;
   await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function levelUp(interaction) {
+  const lang = await languageOf(interaction);
   const message = interaction.options.getString('message');
   const embed = interaction.options.getString('embed');
-  if (!(await validateEmbed(interaction, embed))) return;
+  if (!(await validateEmbed(interaction, embed, lang))) return;
 
   const existing = await getConfig(interaction.guild.id);
   if (!existing?.boost_channel_id) {
-    await interaction.reply({ content: 'Set a boost channel first with `!boost setup`.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'welcome.boost.levelUp.needChannel'), flags: MessageFlags.Ephemeral });
     return;
   }
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await upsertConfig(interaction.guild.id, { boost_level_message: message ?? null, boost_level_embed_template: embed ?? null });
 
-  const text = `${EMOJI.APPROVE}  Level-up announcements will post to <#${existing.boost_channel_id}> whenever the server reaches a new boost level.${embed ? `\n**Embed:** \`${embed}\`` : message ? `\n**Message:** ${message}` : `\n${EMOJI.ALERT}  No message or embed set — level-ups won't send anything until you add one.`}`;
+  const detail = embed ? t(lang, 'welcome.common.embed', { name: embed }) : message ? t(lang, 'welcome.common.message', { message }) : t(lang, 'welcome.boost.levelUp.nothing', { emoji: EMOJI.ALERT });
+  const text = `${t(lang, 'welcome.boost.levelUp.done', { emoji: EMOJI.APPROVE, channel: `<#${existing.boost_channel_id}>` })}\n${detail}`;
   await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function status(interaction) {
+  const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const config = await getConfig(interaction.guild.id);
 
   const lines = [
-    `**Channel:** ${config?.boost_channel_id ? `<#${config.boost_channel_id}>` : 'Not set'}`,
-    `**Per-boost embed:** ${config?.boost_embed_template ? `\`${config.boost_embed_template}\`` : 'None'}`,
-    `**Per-boost message:** ${config?.boost_message ? config.boost_message : 'None'}`,
-    `**Level-up embed:** ${config?.boost_level_embed_template ? `\`${config.boost_level_embed_template}\`` : 'None'}`,
-    `**Level-up message:** ${config?.boost_level_message ? config.boost_level_message : 'None'}`,
+    t(lang, 'welcome.common.status.channel', { value: config?.boost_channel_id ? `<#${config.boost_channel_id}>` : t(lang, 'welcome.common.notSet') }),
+    t(lang, 'welcome.boost.status.perBoostEmbed', { value: config?.boost_embed_template ? `\`${config.boost_embed_template}\`` : t(lang, 'welcome.common.none.embed') }),
+    t(lang, 'welcome.boost.status.perBoostMessage', { value: config?.boost_message ? config.boost_message : t(lang, 'welcome.common.none.message') }),
+    t(lang, 'welcome.boost.status.levelUpEmbed', { value: config?.boost_level_embed_template ? `\`${config.boost_level_embed_template}\`` : t(lang, 'welcome.common.none.embed') }),
+    t(lang, 'welcome.boost.status.levelUpMessage', { value: config?.boost_level_message ? config.boost_level_message : t(lang, 'welcome.common.none.message') }),
   ];
   await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function test(interaction) {
+  const lang = await languageOf(interaction);
   const config = await getConfig(interaction.guild.id);
   if (!config?.boost_channel_id || (!config.boost_message && !config.boost_embed_template)) {
-    await interaction.reply({ content: 'Boost messages are not fully configured. Use `!boost setup` first.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'welcome.boost.notConfigured'), flags: MessageFlags.Ephemeral });
     return;
   }
 
   const channel = await interaction.guild.channels.fetch(config.boost_channel_id).catch(() => null);
   if (!channel) {
-    await interaction.reply({ content: 'The configured boost channel no longer exists.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'welcome.boost.channelGone'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -116,13 +123,15 @@ async function test(interaction) {
     messageText: config.boost_message,
     embedTemplateName: config.boost_embed_template,
     ctx: { member: interaction.member, guild: interaction.guild, channel },
+    lang,
   });
-  await interaction.editReply({ content: `${EMOJI.APPROVE} Test boost message sent to ${channel}.` });
+  await interaction.editReply({ content: t(lang, 'welcome.boost.testSent', { emoji: EMOJI.APPROVE, channel: `${channel}` }) });
 }
 
 async function disable(interaction) {
+  const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
   await upsertConfig(interaction.guild.id, { boost_channel_id: null });
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Boost announcements disabled.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'welcome.boost.disabled', { emoji: EMOJI.APPROVE }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
