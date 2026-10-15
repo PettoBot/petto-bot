@@ -8,7 +8,10 @@ const {
 } = require('discord.js');
 const { getLogConfig } = require('../db/logConfig');
 const logger = require('./logger');
+const { t, currentLanguage, guildLanguage } = require('../i18n');
 
+// The rules keep their English names in every language: a rule is found again by its name (and by MANAGED_PREFIX).
+// The keyword lists and patterns are data, never translated.
 const MANAGED_PREFIX = 'Petto • ';
 const USES_AUTOMOD_TARGET = 100;
 const SYNC_CONCURRENCY = 2;
@@ -23,21 +26,21 @@ const TRIGGER_LIMITS = Object.freeze({
 const RULE_DEFINITIONS = Object.freeze([
   {
     key: 'mention-spam',
-    name: `${MANAGED_PREFIX}Mention Spam`,
+    name: `${MANAGED_PREFIX}Mention Spam`, // i18n-ignore: rule name / keyword data
     eventType: AutoModerationRuleEventType.MessageSend,
     triggerType: AutoModerationRuleTriggerType.MentionSpam,
     triggerMetadata: { mentionTotalLimit: 5, mentionRaidProtectionEnabled: true },
   },
   {
     key: 'spam',
-    name: `${MANAGED_PREFIX}Spam Protection`,
+    name: `${MANAGED_PREFIX}Spam Protection`, // i18n-ignore: rule name / keyword data
     eventType: AutoModerationRuleEventType.MessageSend,
     triggerType: AutoModerationRuleTriggerType.Spam,
     triggerMetadata: {},
   },
   {
     key: 'harmful-content',
-    name: `${MANAGED_PREFIX}Harmful Content`,
+    name: `${MANAGED_PREFIX}Harmful Content`, // i18n-ignore: rule name / keyword data
     eventType: AutoModerationRuleEventType.MessageSend,
     triggerType: AutoModerationRuleTriggerType.KeywordPreset,
     triggerMetadata: {
@@ -50,84 +53,83 @@ const RULE_DEFINITIONS = Object.freeze([
   },
   {
     key: 'scam-links',
-    name: `${MANAGED_PREFIX}Scam Links`,
+    name: `${MANAGED_PREFIX}Scam Links`, // i18n-ignore: rule name / keyword data
     eventType: AutoModerationRuleEventType.MessageSend,
     triggerType: AutoModerationRuleTriggerType.Keyword,
     triggerMetadata: {
       keywordFilter: [
-        '*free nitro*', '*nitro gift*', '*claim your nitro*', '*discordgift*', '*discord-gift*',
-        '*steam gift*', '*free robux*', '*wallet connect*', '*verify your account*', '*crypto airdrop*',
+        '*free nitro*', '*nitro gift*', '*claim your nitro*', '*discordgift*', '*discord-gift*', // i18n-ignore: keyword data
+        '*steam gift*', '*free robux*', '*wallet connect*', '*verify your account*', '*crypto airdrop*', // i18n-ignore: keyword data
       ],
-      regexPatterns: ['discord(?:[- ]?gift|[- ]?nitro)', '(?:free|claim).{0,20}(?:nitro|robux|steam)'],
+      regexPatterns: ['discord(?:[- ]?gift|[- ]?nitro)', '(?:free|claim).{0,20}(?:nitro|robux|steam)'], // i18n-ignore: keyword data
     },
   },
   {
     key: 'suspicious-promotions',
-    name: `${MANAGED_PREFIX}Suspicious Promotions`,
+    name: `${MANAGED_PREFIX}Suspicious Promotions`, // i18n-ignore: rule name / keyword data
     eventType: AutoModerationRuleEventType.MessageSend,
     triggerType: AutoModerationRuleTriggerType.Keyword,
     triggerMetadata: {
       keywordFilter: [
-        '*double your money*', '*guaranteed profit*', '*limited slots*', '*buy followers*',
-        '*cheap nitro*', '*free followers*', '*airdrop now*', '*click my bio*', '*dm me to invest*',
+        '*double your money*', '*guaranteed profit*', '*limited slots*', '*buy followers*', // i18n-ignore: keyword data
+        '*cheap nitro*', '*free followers*', '*airdrop now*', '*click my bio*', '*dm me to invest*', // i18n-ignore: keyword data
       ],
     },
   },
   {
     key: 'dangerous-downloads',
-    name: `${MANAGED_PREFIX}Dangerous Downloads`,
+    name: `${MANAGED_PREFIX}Dangerous Downloads`, // i18n-ignore: rule name / keyword data
     eventType: AutoModerationRuleEventType.MessageSend,
     triggerType: AutoModerationRuleTriggerType.Keyword,
     triggerMetadata: {
       keywordFilter: [
-        '*keygen*', '*crack download*', '*cheat download*', '*free executor*', '*download and run*',
-        '*password stealer*', '*token logger*', '*discord stealer*', '*trojan download*', '*injector download*',
+        '*keygen*', '*crack download*', '*cheat download*', '*free executor*', '*download and run*', // i18n-ignore: keyword data
+        '*password stealer*', '*token logger*', '*discord stealer*', '*trojan download*', '*injector download*', // i18n-ignore: keyword data
       ],
-      regexPatterns: ['(?i)download.{0,40}(?:\\.exe|\\.scr|\\.bat|\\.cmd)', '(?i)(?:run|open).{0,20}(?:\\.exe|\\.scr|\\.bat)'],
+      regexPatterns: ['(?i)download.{0,40}(?:\\.exe|\\.scr|\\.bat|\\.cmd)', '(?i)(?:run|open).{0,20}(?:\\.exe|\\.scr|\\.bat)'], // i18n-ignore: keyword data
     },
   },
   {
     key: 'impersonation',
-    name: `${MANAGED_PREFIX}Impersonation Protection`,
+    name: `${MANAGED_PREFIX}Impersonation Protection`, // i18n-ignore: rule name / keyword data
     eventType: AutoModerationRuleEventType.MessageSend,
     triggerType: AutoModerationRuleTriggerType.Keyword,
     triggerMetadata: {
       keywordFilter: [
-        '*discord support*', '*discord security*', '*discord moderator*', '*petto support*',
-        '*account recovery*', '*appeal your ban*', '*verify ownership*', '*staff application fee*',
+        '*discord support*', '*discord security*', '*discord moderator*', '*petto support*', // i18n-ignore: keyword data
+        '*account recovery*', '*appeal your ban*', '*verify ownership*', '*staff application fee*', // i18n-ignore: keyword data
       ],
     },
   },
   {
     key: 'invite-spam',
-    name: `${MANAGED_PREFIX}Invite Spam`,
+    name: `${MANAGED_PREFIX}Invite Spam`, // i18n-ignore: rule name / keyword data
     eventType: AutoModerationRuleEventType.MessageSend,
     triggerType: AutoModerationRuleTriggerType.Keyword,
     triggerMetadata: {
-      keywordFilter: ['*discord.gg/*', '*discord.com/invite/*', '*discordapp.com/invite/*', '*discord.gift/*'],
+      keywordFilter: ['*discord.gg/*', '*discord.com/invite/*', '*discordapp.com/invite/*', '*discord.gift/*'], // i18n-ignore: keyword data
     },
   },
   {
     key: 'evasion-patterns',
-    name: `${MANAGED_PREFIX}Evasion Patterns`,
+    name: `${MANAGED_PREFIX}Evasion Patterns`, // i18n-ignore: rule name / keyword data
     eventType: AutoModerationRuleEventType.MessageSend,
     triggerType: AutoModerationRuleTriggerType.Keyword,
     triggerMetadata: {
-      keywordFilter: ['*fr33 nitro*', '*n1tro gift*', '*d1scord support*', '*free n1tro*', '*g1veaway*', '*v3rify account*'],
+      keywordFilter: ['*fr33 nitro*', '*n1tro gift*', '*d1scord support*', '*free n1tro*', '*g1veaway*', '*v3rify account*'], // i18n-ignore: keyword data
     },
   },
   {
     key: 'profile-protection',
-    name: `${MANAGED_PREFIX}Profile Protection`,
+    name: `${MANAGED_PREFIX}Profile Protection`, // i18n-ignore: rule name / keyword data
     eventType: AutoModerationRuleEventType.MemberUpdate,
     triggerType: AutoModerationRuleTriggerType.MemberProfile,
     triggerMetadata: {
-      keywordFilter: ['*discord support*', '*free nitro*', '*verify account*', '*account recovery*', '*dm for nitro*', '*steam gift*'],
+      keywordFilter: ['*discord support*', '*free nitro*', '*verify account*', '*account recovery*', '*dm for nitro*', '*steam gift*'], // i18n-ignore: keyword data
     },
   },
 ]);
 
-const BLOCK_MESSAGE = 'Petto blocked this message with AutoMod.';
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -187,20 +189,21 @@ function normalizeActions(actions = []) {
   })).sort((a, b) => a.type - b.type);
 }
 
-function buildActions(definition, alertChannelId) {
+/** The actions of a rule; the message a member sees when Discord blocks theirs is in the server's language. */
+function buildActions(definition, alertChannelId, lang = currentLanguage()) {
   const blockType = definition.triggerType === AutoModerationRuleTriggerType.MemberProfile
     ? AutoModerationActionType.BlockMemberInteraction
     : AutoModerationActionType.BlockMessage;
   const actions = [{ type: blockType }];
-  if (blockType === AutoModerationActionType.BlockMessage) actions[0].metadata = { customMessage: BLOCK_MESSAGE };
+  if (blockType === AutoModerationActionType.BlockMessage) actions[0].metadata = { customMessage: t(lang, 'security.official.blocked') };
   if (alertChannelId) actions.push({ type: AutoModerationActionType.SendAlertMessage, metadata: { channel: alertChannelId } });
   return actions;
 }
 
-function desiredRule(definition, alertChannelId) {
+function desiredRule(definition, alertChannelId, lang = currentLanguage()) {
   return {
     ...definition,
-    actions: buildActions(definition, alertChannelId),
+    actions: buildActions(definition, alertChannelId, lang),
     enabled: true,
   };
 }
@@ -284,9 +287,9 @@ function isPermissionError(error) {
 
 function permissionSkipReason(definition) {
   if (definition?.triggerType === AutoModerationRuleTriggerType.MemberProfile) {
-    return `${definition.name}: grant Petto Manage Server and ensure AutoMod is available in this server`;
+    return `${definition.name}: grant Petto Manage Server and ensure AutoMod is available in this server`; // i18n-ignore: Petto team only (!automod control)
   }
-  return `${definition?.name ?? 'Petto AutoMod rule'}: Petto cannot access or manage AutoMod rules in this server`;
+  return `${definition?.name ?? 'Petto AutoMod rule'}: Petto cannot access or manage AutoMod rules in this server`; // i18n-ignore: Petto team only (!automod control)
 }
 
 function recordPermissionSkip(result, definition) {
@@ -307,6 +310,7 @@ function logSyncIssue(action, definition, guild, error) {
 }
 
 async function fetchRules(guild) {
+  // i18n-ignore: the label only goes to the logs
   return discordRequest(`fetch rules for ${guild.id}`, () => guild.autoModerationRules.fetch({ cache: false }));
 }
 
@@ -340,7 +344,9 @@ async function syncGuildAutoMod(guild) {
   const managed = allRules.filter((rule) => isManagedRule(rule, botId));
   result.managedRules = managed.length;
   const alertChannelId = await findAlertChannelId(guild);
-  const desired = RULE_DEFINITIONS.map((definition) => desiredRule(definition, alertChannelId));
+  // Synchronized at start-up too, outside of any server: the language is the one the server chose.
+  const lang = await guildLanguage(guild.id);
+  const desired = RULE_DEFINITIONS.map((definition) => desiredRule(definition, alertChannelId, lang));
   const byName = new Map();
   for (const rule of managed) {
     if (!byName.has(rule.name)) byName.set(rule.name, []);
@@ -352,7 +358,7 @@ async function syncGuildAutoMod(guild) {
     if (matches.length < 2) continue;
     for (const duplicate of matches.slice(1)) {
       try {
-        await discordRequest(`delete duplicate ${duplicate.id} in ${guild.id}`, () => duplicate.delete('Remove duplicate Petto AutoMod rule'));
+        await discordRequest(`delete duplicate ${duplicate.id} in ${guild.id}`, () => duplicate.delete(t(lang, 'security.official.audit.duplicate')));
         result.duplicatesRemoved += 1;
         removedByTrigger.set(duplicate.triggerType, (removedByTrigger.get(duplicate.triggerType) ?? 0) + 1);
       } catch (error) {
@@ -387,7 +393,7 @@ async function syncGuildAutoMod(guild) {
           triggerMetadata: wanted.triggerMetadata,
           actions: wanted.actions,
           enabled: true,
-          reason: 'Synchronize Petto official AutoMod rule',
+          reason: t(lang, 'security.official.audit.update'),
         }));
         result.updated += 1;
       } catch (error) {
@@ -404,7 +410,7 @@ async function syncGuildAutoMod(guild) {
     const limit = TRIGGER_LIMITS[wanted.triggerType];
     if (limit && (triggerCounts.get(wanted.triggerType) ?? 0) >= limit) {
       result.skipped += 1;
-      result.skippedReasons.push(`${wanted.name}: trigger limit reached`);
+      result.skippedReasons.push(`${wanted.name}: trigger limit reached`); // i18n-ignore: Petto team only (!automod control)
       continue;
     }
 
@@ -416,7 +422,7 @@ async function syncGuildAutoMod(guild) {
         triggerMetadata: Object.keys(wanted.triggerMetadata ?? {}).length ? wanted.triggerMetadata : undefined,
         actions: wanted.actions,
         enabled: true,
-        reason: 'Create Petto official AutoMod rule',
+        reason: t(lang, 'security.official.audit.create'),
       }));
       triggerCounts.set(wanted.triggerType, (triggerCounts.get(wanted.triggerType) ?? 0) + 1);
       result.created += 1;
@@ -427,7 +433,7 @@ async function syncGuildAutoMod(guild) {
         logSyncIssue('create', wanted, guild, error);
       } else if (reason === 'invalid_automod_configuration' || errorCode(error) === 40060) {
         result.skipped += 1;
-        result.skippedReasons.push(`${wanted.name}: unsupported trigger or configuration`);
+        result.skippedReasons.push(`${wanted.name}: unsupported trigger or configuration`); // i18n-ignore: Petto team only (!automod control)
         logSyncIssue('create', wanted, guild, error);
       } else {
         result.failed += 1;

@@ -13,13 +13,23 @@ const { TEMPLATES, TEMPLATE_IDS, PACKS } = require('../../utils/automodTemplates
 const { syncGuildAutoMod, getAutoModStats } = require('../../utils/autoModManager');
 const { isPettoOperator } = require('../../utils/autoModControl');
 const logger = require('../../utils/logger');
+const { t, tn, languageOf } = require('../../i18n');
 
-const THREAT_LABELS = {
-  MALWARE: 'Malware',
-  SOCIAL_ENGINEERING: 'Phishing / social engineering',
-  UNWANTED_SOFTWARE: 'Unwanted software',
-  POTENTIALLY_HARMFUL_APPLICATION: 'Potentially harmful application',
+// The threat types of the feeds and the catalog key of each one's name.
+const THREAT_KEYS = {
+  MALWARE: 'malware',
+  SOCIAL_ENGINEERING: 'socialEngineering',
+  UNWANTED_SOFTWARE: 'unwantedSoftware',
+  POTENTIALLY_HARMFUL_APPLICATION: 'harmfulApplication',
 };
+const threatLabel = (type, lang) => (THREAT_KEYS[type] ? t(lang, `security.threat.${THREAT_KEYS[type]}`) : type);
+
+/** A saved action value (warn, kick, lockdown...) as the replies name it; an unknown value as it is. */
+function actionWord(value, lang) {
+  const key = `security.action.${value}`;
+  const text = t(lang, key);
+  return text === key ? String(value) : text;
+}
 
 module.exports = {
   aliases: ['am'],
@@ -189,32 +199,34 @@ module.exports = {
     ),
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const sub = interaction.options.getSubcommand();
     const group = interaction.options.getSubcommandGroup(false);
 
-    if (!group && sub === 'link') return link(interaction);
-    if (!group && sub === 'spam') return spam(interaction);
-    if (!group && sub === 'raid') return raid(interaction);
-    if (!group && sub === 'strikes') return strikes(interaction);
-    if (!group && sub === 'anti-alt') return antiAlt(interaction);
-    if (!group && sub === 'antinuke') return antinuke(interaction);
-    if (!group && sub === 'control') return officialControl(interaction);
-    if (group === 'word-filter') return wordFilter(interaction, sub);
-    if (group === 'invites') return invites(interaction, sub);
-    if (group === 'silent-channel') return silentChannel(interaction, sub);
-    if (group === 'immune') return immune(interaction, sub);
-    if (group === 'antinuke-whitelist') return antinukeWhitelist(interaction, sub);
-    if (group === 'template') return templateFilters(interaction, sub);
-    if (group === 'native') return nativeRules(interaction, sub);
+    if (!group && sub === 'link') return link(interaction, lang);
+    if (!group && sub === 'spam') return spam(interaction, lang);
+    if (!group && sub === 'raid') return raid(interaction, lang);
+    if (!group && sub === 'strikes') return strikes(interaction, lang);
+    if (!group && sub === 'anti-alt') return antiAlt(interaction, lang);
+    if (!group && sub === 'antinuke') return antinuke(interaction, lang);
+    if (!group && sub === 'control') return officialControl(interaction, lang);
+    if (group === 'word-filter') return wordFilter(interaction, sub, lang);
+    if (group === 'invites') return invites(interaction, sub, lang);
+    if (group === 'silent-channel') return silentChannel(interaction, sub, lang);
+    if (group === 'immune') return immune(interaction, sub, lang);
+    if (group === 'antinuke-whitelist') return antinukeWhitelist(interaction, sub, lang);
+    if (group === 'template') return templateFilters(interaction, sub, lang);
+    if (group === 'native') return nativeRules(interaction, sub, lang);
   },
 };
 
-async function officialControl(interaction) {
+async function officialControl(interaction, lang) {
   if (!interaction.pettoAutomodControl || !isPettoOperator(interaction.user.id)) {
-    await interaction.reply({ content: 'This private AutoMod control is not available to this account.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'security.control.unavailable'), flags: MessageFlags.Ephemeral });
     return;
   }
 
+  // From here on only the Petto team (isPettoOperator) reads the answers, so they stay in English.
   const action = interaction.options.getString('action') ?? 'stats';
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
@@ -222,16 +234,16 @@ async function officialControl(interaction) {
     const result = await syncGuildAutoMod(interaction.guild);
     const clean = result.success && !result.missingPermissions && result.failed === 0;
     const lines = [
-      `### ${clean ? EMOJI.APPROVE : EMOJI.ALERT} Petto Official AutoMod`,
-      `**Created:** ${result.created}`,
-      `**Updated:** ${result.updated}`,
-      `**Existing:** ${result.existing}`,
-      `**Skipped:** ${result.skipped}`,
-      `**Errors:** ${result.failed}`,
-      `**Managed rules:** ${result.managedRules}`,
+      `### ${clean ? EMOJI.APPROVE : EMOJI.ALERT} Petto Official AutoMod`, // i18n-ignore: Petto team only
+      `**Created:** ${result.created}`, // i18n-ignore: Petto team only
+      `**Updated:** ${result.updated}`, // i18n-ignore: Petto team only
+      `**Existing:** ${result.existing}`, // i18n-ignore: Petto team only
+      `**Skipped:** ${result.skipped}`, // i18n-ignore: Petto team only
+      `**Errors:** ${result.failed}`, // i18n-ignore: Petto team only
+      `**Managed rules:** ${result.managedRules}`, // i18n-ignore: Petto team only
     ];
-    if (result.reason) lines.push(`**Result:** ${result.reason}`);
-    if (result.skippedReasons.length) lines.push(`**Notes:** ${result.skippedReasons.slice(0, 3).join(' · ')}`);
+    if (result.reason) lines.push(`**Result:** ${result.reason}`); // i18n-ignore: Petto team only
+    if (result.skippedReasons.length) lines.push(`**Notes:** ${result.skippedReasons.slice(0, 3).join(' · ')}`); // i18n-ignore: Petto team only
     await interaction.editReply({ components: [textCard(lines.join('\n'), clean ? 0xa5ea7a : 0xf5c451)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
@@ -239,24 +251,24 @@ async function officialControl(interaction) {
   const stats = await getAutoModStats(interaction.client);
   const reached = stats.remaining === 0;
   const lines = [
-    `### ${reached ? EMOJI.APPROVE : EMOJI.STAR} Petto Official AutoMod`,
-    `**Guilds checked:** ${stats.guilds}`,
-    `**Guilds with Petto rules:** ${stats.guildsWithAutoMod}`,
-    `**Managed rules:** ${stats.managedRules}`,
-    `**Target:** ${stats.target}`,
-    `**Remaining:** ${stats.remaining}`,
-    `**Status:** ${reached ? 'Target reached' : 'In progress'}`,
+    `### ${reached ? EMOJI.APPROVE : EMOJI.STAR} Petto Official AutoMod`, // i18n-ignore: Petto team only
+    `**Guilds checked:** ${stats.guilds}`, // i18n-ignore: Petto team only
+    `**Guilds with Petto rules:** ${stats.guildsWithAutoMod}`, // i18n-ignore: Petto team only
+    `**Managed rules:** ${stats.managedRules}`, // i18n-ignore: Petto team only
+    `**Target:** ${stats.target}`, // i18n-ignore: Petto team only
+    `**Remaining:** ${stats.remaining}`, // i18n-ignore: Petto team only
+    `**Status:** ${reached ? 'Target reached' : 'In progress'}`, // i18n-ignore: Petto team only
   ];
-  if (stats.missingPermissions || stats.errors) lines.push(`**Warnings:** ${stats.missingPermissions} permission · ${stats.errors} errors`);
+  if (stats.missingPermissions || stats.errors) lines.push(`**Warnings:** ${stats.missingPermissions} permission · ${stats.errors} errors`); // i18n-ignore: Petto team only
   await interaction.editReply({ components: [textCard(lines.join('\n'), reached ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
-async function link(interaction) {
+async function link(interaction, lang) {
   const raw = interaction.options.getString('url', true);
   const url = normalizeUrl(raw);
 
   if (!url) {
-    await interaction.reply({ content: `\`${raw}\` doesn't look like a valid URL.`, flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'security.link.invalid', { url: raw }), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -275,8 +287,8 @@ async function link(interaction) {
 
   if (known) {
     const threats = known.threat_types ?? [];
-    const labels = threats.map((t) => THREAT_LABELS[t] ?? t);
-    const text = [`${EMOJI.DENY}  This URL was flagged as dangerous:`, `\`${defangUrl(url)}\``, `**Threats:** ${labels.join(', ') || 'Unknown'}`].join('\n');
+    const labels = threats.map((type) => threatLabel(type, lang));
+    const text = t(lang, 'security.link.flagged', { emoji: EMOJI.DENY, url: defangUrl(url), threats: labels.join(', ') || t(lang, 'security.link.unknownThreat') });
     await interaction.editReply({ components: [textCard(text, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
 
     // Retry the developer alert only if a previous attempt never succeeded.
@@ -293,11 +305,11 @@ async function link(interaction) {
     return;
   }
 
-  const text = `${EMOJI.APPROVE}  No known threats found in Petto's synchronized public threat feeds for:\n\`${url}\``;
+  const text = t(lang, 'security.link.clean', { emoji: EMOJI.APPROVE, url });
   await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
-async function spam(interaction) {
+async function spam(interaction, lang) {
   const enabled = interaction.options.getBoolean('enabled', true);
   const maxMentions = interaction.options.getInteger('max_mentions');
 
@@ -314,11 +326,11 @@ async function spam(interaction) {
   if (maxLength !== null) patch.max_message_length = maxLength;
   const saved = await upsertConfig(interaction.guild.id, patch);
 
-  const text = `${EMOJI.APPROVE}  Anti-spam ${enabled ? 'enabled' : 'disabled'}.\n**Max mentions:** ${saved.max_mentions}\nCovers repeat-message flooding, mass mentions, excessive caps, and unauthorized invite links — all checked locally, no external API calls per message.`;
+  const text = t(lang, enabled ? 'security.spam.enabled' : 'security.spam.disabled', { emoji: EMOJI.APPROVE, maxMentions: saved.max_mentions });
   await interaction.editReply({ components: [textCard(text, enabled ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
-async function raid(interaction) {
+async function raid(interaction, lang) {
   const enabled = interaction.options.getBoolean('enabled', true);
   const threshold = interaction.options.getInteger('threshold');
   const windowSeconds = interaction.options.getInteger('window_seconds');
@@ -333,11 +345,15 @@ async function raid(interaction) {
   if (action) patch.raid_action = action;
   const saved = await upsertConfig(interaction.guild.id, patch);
 
-  const text = `${EMOJI.APPROVE}  Anti-raid ${enabled ? 'enabled' : 'disabled'}.\n**Threshold:** ${saved.raid_join_threshold} joins in ${saved.raid_window_seconds}s\n**Action:** ${saved.raid_action}`;
+  const text = t(lang, enabled ? 'security.raid.enabled' : 'security.raid.disabled', { emoji: EMOJI.APPROVE, threshold: saved.raid_join_threshold, seconds: saved.raid_window_seconds, action: actionWord(saved.raid_action, lang) });
   await interaction.editReply({ components: [textCard(text, enabled ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
-async function wordFilter(interaction, sub) {
+// What happens on a word filter hit, as the replies name it.
+const WORD_FILTER_ACTIONS = ['warn', 'mute', 'kick', 'delete'];
+const wordFilterAction = (value, lang) => (WORD_FILTER_ACTIONS.includes(value) ? t(lang, `security.wordFilter.action.${value}`) : value);
+
+async function wordFilter(interaction, sub, lang) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
 
@@ -349,41 +365,44 @@ async function wordFilter(interaction, sub) {
     if (action) patch.word_filter_action = action;
     const saved = await upsertConfig(interaction.guild.id, patch);
 
-    const actionLabel = { warn: 'warn', mute: 'mute (10m)', kick: 'kick', delete: 'delete only, no sanction' }[saved.word_filter_action] ?? saved.word_filter_action;
-    await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Word filter ${enabled ? 'enabled' : 'disabled'}.\n**Action:** ${actionLabel}`, enabled ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    const actionLabel = wordFilterAction(saved.word_filter_action, lang);
+    await interaction.editReply({ components: [textCard(t(lang, enabled ? 'security.wordFilter.enabled' : 'security.wordFilter.disabled', { emoji: EMOJI.APPROVE, action: actionLabel }), enabled ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   if (sub === 'add') {
     const word = interaction.options.getString('word', true);
     await addBannedWord(interaction.guild.id, word);
-    await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Added \`${word}\` to the word filter.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'security.wordFilter.added', { emoji: EMOJI.APPROVE, word }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   if (sub === 'remove') {
     const word = interaction.options.getString('word', true);
     await removeBannedWord(interaction.guild.id, word);
-    await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Removed \`${word}\` from the word filter.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'security.wordFilter.removed', { emoji: EMOJI.APPROVE, word }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   // list
   const config = await getConfig(interaction.guild.id);
   const words = config?.banned_words ?? [];
-  const actionLabel = { warn: 'warn', mute: 'mute (10m)', kick: 'kick', delete: 'delete only, no sanction' }[config?.word_filter_action] ?? 'warn';
-  const lines = [`**Action on hit:** ${actionLabel}`, words.length ? `**Banned words (${words.length}):** ${words.map((w) => `\`${w}\``).join(', ')}` : 'No banned words configured.'];
+  const actionLabel = wordFilterAction(WORD_FILTER_ACTIONS.includes(config?.word_filter_action) ? config.word_filter_action : 'warn', lang);
+  const lines = [
+    t(lang, 'security.wordFilter.list.action', { action: actionLabel }),
+    words.length ? t(lang, 'security.wordFilter.list.words', { count: words.length, words: words.map((w) => `\`${w}\``).join(', ') }) : t(lang, 'security.wordFilter.list.empty'),
+  ];
   await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
-async function invites(interaction, sub) {
+async function invites(interaction, sub, lang) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
 
   if (sub === 'list') {
     const config = await getConfig(interaction.guild.id);
     const codes = config?.allowed_invite_codes ?? [];
-    const text = codes.length ? `**Allowed invite codes (${codes.length}):** ${codes.map((c) => `\`${c}\``).join(', ')}` : 'No invite codes allow-listed — every Discord invite link will be treated as unauthorized when anti-spam is on.';
+    const text = codes.length ? t(lang, 'security.invites.list', { count: codes.length, codes: codes.map((c) => `\`${c}\``).join(', ') }) : t(lang, 'security.invites.empty');
     await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
@@ -400,11 +419,11 @@ async function invites(interaction, sub) {
   }
 
   await upsertConfig(interaction.guild.id, { allowed_invite_codes: [...codes] });
-  const text = `${EMOJI.APPROVE}  \`${code}\` is now ${sub === 'allow' ? 'allowed' : 'no longer allowed'}.`;
+  const text = t(lang, sub === 'allow' ? 'security.invites.allowed' : 'security.invites.disallowed', { emoji: EMOJI.APPROVE, code });
   await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
-async function silentChannel(interaction, sub) {
+async function silentChannel(interaction, sub, lang) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
 
@@ -412,24 +431,25 @@ async function silentChannel(interaction, sub) {
     const channel = interaction.options.getChannel('channel', true);
     const action = interaction.options.getString('action') ?? 'warn';
     await addSilentChannel(interaction.guild.id, channel.id, action);
-    await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  ${channel} is now silent — posting there triggers **${action}**.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'security.silent.added', { emoji: EMOJI.APPROVE, channel: `${channel}`, action: actionWord(action, lang) }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   if (sub === 'remove') {
     const channel = interaction.options.getChannel('channel', true);
     const removed = await removeSilentChannel(interaction.guild.id, channel.id);
-    await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  ${channel} is no longer silent.` : `${channel} wasn't marked as silent.`, removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    const text = removed ? t(lang, 'security.silent.removed', { emoji: EMOJI.APPROVE, channel: `${channel}` }) : t(lang, 'security.silent.notSilent', { channel: `${channel}` });
+    await interaction.editReply({ components: [textCard(text, removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   // list
   const channels = await listSilentChannels(interaction.guild.id);
-  const text = channels.length ? channels.map((c) => `<#${c.channel_id}> · ${c.action}`).join('\n') : 'No silent channels configured.';
+  const text = channels.length ? channels.map((c) => `<#${c.channel_id}> · ${actionWord(c.action, lang)}`).join('\n') : t(lang, 'security.silent.empty');
   await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
-async function antiAlt(interaction) {
+async function antiAlt(interaction, lang) {
   const enabled = interaction.options.getBoolean('enabled', true);
   const minAgeDays = interaction.options.getInteger('min_age_days');
   const action = interaction.options.getString('action');
@@ -442,17 +462,17 @@ async function antiAlt(interaction) {
   if (action) patch.anti_alt_action = action;
   const saved = await upsertConfig(interaction.guild.id, patch);
 
-  const text = `${EMOJI.APPROVE}  Anti-alt ${enabled ? 'enabled' : 'disabled'}.\n**Minimum account age:** ${saved.anti_alt_min_age_days}d\n**Action:** ${saved.anti_alt_action}`;
+  const text = t(lang, enabled ? 'security.antiAlt.enabled' : 'security.antiAlt.disabled', { emoji: EMOJI.APPROVE, days: saved.anti_alt_min_age_days, action: actionWord(saved.anti_alt_action, lang) });
   await interaction.editReply({ components: [textCard(text, enabled ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
-async function antinuke(interaction) {
+async function antinuke(interaction, lang) {
   const enabled = interaction.options.getBoolean('enabled', true);
   const threshold = interaction.options.getInteger('threshold');
   const windowSeconds = interaction.options.getInteger('window_seconds');
 
   if (enabled && !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-    await interaction.reply({ content: 'Enabling anti-nuke requires **Administrator** — it can strip roles or ban accounts automatically.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'security.antinukeSwitch.needsAdmin'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -464,18 +484,18 @@ async function antinuke(interaction) {
   if (windowSeconds) patch.window_seconds = windowSeconds;
   const saved = await upsertAntinukeConfig(interaction.guild.id, patch);
 
-  const text = `${EMOJI.APPROVE}  Anti-nuke ${enabled ? 'enabled' : 'disabled'}.\n**Threshold:** ${saved.action_threshold} destructive actions in ${saved.window_seconds}s\nResponds by banning a bot executor, or stripping all roles from a human executor. The server owner is never auto-actioned.`;
+  const text = t(lang, enabled ? 'security.antinukeSwitch.enabled' : 'security.antinukeSwitch.disabled', { emoji: EMOJI.APPROVE, threshold: saved.action_threshold, seconds: saved.window_seconds });
   await interaction.editReply({ components: [textCard(text, enabled ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
-async function immune(interaction, sub) {
+async function immune(interaction, sub, lang) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
 
   if (sub === 'list') {
     const config = await getConfig(interaction.guild.id);
     const ids = config?.immune_role_ids ?? [];
-    const text = ids.length ? ids.map((id) => `<@&${id}>`).join(' ') : 'No immune roles configured.';
+    const text = ids.length ? ids.map((id) => `<@&${id}>`).join(' ') : t(lang, 'security.immune.empty');
     await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
@@ -483,21 +503,21 @@ async function immune(interaction, sub) {
   const role = interaction.options.getRole('role', true);
   if (sub === 'add') {
     await addImmuneRole(interaction.guild.id, role.id);
-    await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  ${role} is now immune to automod.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'security.immune.added', { emoji: EMOJI.APPROVE, role: `${role}` }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
   } else {
     await removeImmuneRole(interaction.guild.id, role.id);
-    await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  ${role} is no longer immune to automod.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'security.immune.removed', { emoji: EMOJI.APPROVE, role: `${role}` }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
   }
 }
 
-async function antinukeWhitelist(interaction, sub) {
+async function antinukeWhitelist(interaction, sub, lang) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
 
   if (sub === 'list') {
     const config = await getAntinukeConfig(interaction.guild.id);
     const ids = config?.whitelist_ids ?? [];
-    const text = ids.length ? ids.map((id) => `<@${id}>`).join(' ') : 'No whitelisted users/bots.';
+    const text = ids.length ? ids.map((id) => `<@${id}>`).join(' ') : t(lang, 'security.antinukeWhitelist.empty');
     await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
@@ -505,16 +525,16 @@ async function antinukeWhitelist(interaction, sub) {
   const user = interaction.options.getUser('user', true);
   if (sub === 'add') {
     await addWhitelist(interaction.guild.id, user.id);
-    await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  ${user} is now exempt from anti-nuke tracking.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'security.antinukeWhitelist.added', { emoji: EMOJI.APPROVE, user: `${user}` }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
   } else {
     await removeWhitelist(interaction.guild.id, user.id);
-    await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  ${user} removed from the anti-nuke whitelist.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'security.antinukeWhitelist.removed', { emoji: EMOJI.APPROVE, user: `${user}` }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
   }
 }
 
 const AMOUNT_KEY = { emojis: 'max', caps: 'words', repeated_characters: 'times', spoilers: 'max', headings: 'level' };
 
-async function templateFilters(interaction, sub) {
+async function templateFilters(interaction, sub, lang) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
   const guildId = interaction.guild.id;
@@ -522,17 +542,24 @@ async function templateFilters(interaction, sub) {
 
   if (sub === 'list') {
     const rows = await rulesDb.listRules(guildId);
-    if (!rows.length) return show('No filters yet. Add one with `automod template add`.', 0x4b4f59);
-    return show(['### Template filters', ...rows.map((r) => `**#${r.id}** ${r.enabled ? EMOJI.APPROVE : '▫️'} ${r.name} · ${r.action}${r.action === 'mute' ? ` ${r.mute_minutes}m` : ''} · ${r.hits} hit(s)`)].join('\n'), 0x4b4f59);
+    if (!rows.length) return show(t(lang, 'security.template.list.empty'), 0x4b4f59);
+    const line = (r) => t(lang, 'security.template.list.line', {
+      id: r.id,
+      status: r.enabled ? EMOJI.APPROVE : '▫️',
+      name: native.filterName(r, lang),
+      action: `${actionWord(r.action, lang)}${r.action === 'mute' ? ` ${r.mute_minutes}m` : ''}`,
+      hits: tn(lang, 'security.template.list.hits', r.hits, { count: r.hits }),
+    });
+    return show([t(lang, 'security.template.list.title'), ...rows.map(line)].join('\n'), 0x4b4f59);
   }
   if (sub === 'remove') {
     const removed = await rulesDb.deleteRule(guildId, interaction.options.getInteger('id', true));
-    return show(removed ? `${EMOJI.APPROVE}  Filter removed.` : 'That filter does not exist.', removed ? 0xa5ea7a : 0xff6b6b);
+    return show(removed ? t(lang, 'security.template.removed', { emoji: EMOJI.APPROVE }) : t(lang, 'security.template.missing'), removed ? 0xa5ea7a : 0xff6b6b);
   }
   if (sub === 'toggle') {
     const enabled = interaction.options.getBoolean('enabled', true);
     const updated = await rulesDb.updateRule(guildId, interaction.options.getInteger('id', true), { enabled });
-    return show(updated ? `${EMOJI.APPROVE}  Filter ${enabled ? 'on' : 'off'}.` : 'That filter does not exist.', updated ? 0xa5ea7a : 0xff6b6b);
+    return show(updated ? t(lang, enabled ? 'security.template.on' : 'security.template.off', { emoji: EMOJI.APPROVE }) : t(lang, 'security.template.missing'), updated ? 0xa5ea7a : 0xff6b6b);
   }
 
   const id = interaction.options.getString('template', true);
@@ -546,44 +573,45 @@ async function templateFilters(interaction, sub) {
       action: interaction.options.getString('action') ?? 'delete',
       mute_minutes: interaction.options.getInteger('mute_minutes') ?? 10,
     });
-    return show(`${EMOJI.APPROVE}  Filter **#${row.id} ${row.name}** is on: ${row.action}. Staff with Manage Messages and the immune roles are never checked.`);
+    return show(t(lang, 'security.template.created', { emoji: EMOJI.APPROVE, id: row.id, name: native.filterName(row, lang), action: actionWord(row.action, lang) }));
   } catch (err) {
     if (err.userFacing) return show(err.message, 0xff6b6b);
     throw err;
   }
 }
 
-async function nativeRules(interaction, sub) {
+async function nativeRules(interaction, sub, lang) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const show = (text, color = 0xa5ea7a) => interaction.editReply({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2 });
   try {
     if (sub === 'list') {
       const { rules, used, limits } = await native.listNative(interaction.guild);
-      const lines = rules.map((r) => `${r.enabled ? EMOJI.APPROVE : '▫️'} **${r.name}** · \`${r.id}\`${r.official ? ' · Petto Official' : ''}`);
-      return show(['### AutoMod of Discord', `Keyword rules ${used.keyword}/${limits.keyword}`, ...lines].join('\n').slice(0, 3800), 0x4b4f59);
+      const lines = rules.map((r) => t(lang, r.official ? 'security.native.list.lineOfficial' : 'security.native.list.line', { status: r.enabled ? EMOJI.APPROVE : '▫️', name: r.name, id: r.id }));
+      return show([t(lang, 'security.native.list.title'), t(lang, 'security.native.list.keywordRules', { used: used.keyword, limit: limits.keyword }), ...lines].join('\n').slice(0, 3800), 0x4b4f59);
     }
     if (sub === 'remove') {
-      await native.deleteNative(interaction.guild, interaction.options.getString('rule', true).trim());
-      return show(`${EMOJI.APPROVE}  Rule removed.`);
+      await native.deleteNative(interaction.guild, interaction.options.getString('rule', true).trim(), lang);
+      return show(t(lang, 'security.native.removed', { emoji: EMOJI.APPROVE }));
     }
     const template = interaction.options.getString('template');
     const pack = interaction.options.getString('pack');
-    if (!template && !pack) return show('Pick a template or a pack.', 0xff6b6b);
+    if (!template && !pack) return show(t(lang, 'security.native.pickOne'), 0xff6b6b);
     const amount = interaction.options.getInteger('amount');
     const made = await native.createNative(interaction.guild, {
       template, pack,
       options: amount !== null && template && AMOUNT_KEY[template] ? { [AMOUNT_KEY[template]]: amount } : {},
       alertChannelId: interaction.options.getChannel('alert_channel')?.id,
       timeoutMinutes: interaction.options.getInteger('timeout_minutes'),
+      lang,
     });
-    return show(`${EMOJI.APPROVE}  Rule **${made.name}** is on in Discord's AutoMod. Discord blocks the message before it is sent.`);
+    return show(t(lang, 'security.native.created', { emoji: EMOJI.APPROVE, name: made.name }));
   } catch (err) {
     if (err.userFacing) return show(err.message, 0xff6b6b);
     throw err;
   }
 }
 
-async function strikes(interaction) {
+async function strikes(interaction, lang) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
   const limit = interaction.options.getInteger('limit', true);
@@ -594,7 +622,7 @@ async function strikes(interaction) {
   if (muteMinutes) patch.strike_mute_minutes = muteMinutes;
   const saved = await upsertConfig(interaction.guild.id, patch);
   const text = limit
-    ? `${EMOJI.APPROVE}  Strikes on: **${saved.strike_limit}** automod hits in ${saved.strike_window_minutes} minutes mute the member for ${saved.strike_mute_minutes} minutes.`
-    : `${EMOJI.APPROVE}  Strikes are off.`;
+    ? t(lang, 'security.strikes.on', { emoji: EMOJI.APPROVE, limit: saved.strike_limit, window: saved.strike_window_minutes, minutes: saved.strike_mute_minutes })
+    : t(lang, 'security.strikes.off', { emoji: EMOJI.APPROVE });
   await interaction.editReply({ components: [textCard(text, limit ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }

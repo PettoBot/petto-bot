@@ -10,6 +10,23 @@ const { EMOJI } = require('./emojis');
 const { getConfig } = require('../db/automod');
 const { recordStrike } = require('./automodChecks');
 const logger = require('./logger');
+const { t, tn, currentLanguage } = require('../i18n');
+
+// The kinds of hit, as the automod log names them (catalog key); a `filter-<template>` hit names its template.
+const VIOLATION_KEYS = {
+  'silent-channel': 'silentChannel',
+  'word-filter': 'wordFilter',
+  'repeat-flood': 'repeatFlood',
+  'mass-mentions': 'massMentions',
+  'unauthorized-invite': 'unauthorizedInvite',
+  'excessive-caps': 'excessiveCaps',
+  'long-message': 'longMessage',
+};
+function violationLabel(type, lang) {
+  if (VIOLATION_KEYS[type]) return t(lang, `security.violation.${VIOLATION_KEYS[type]}`);
+  if (String(type).startsWith('filter-')) return t(lang, 'security.violation.filter', { template: String(type).slice('filter-'.length) });
+  return type;
+}
 
 const FLOOD_MUTE_MS = 10 * 60 * 1000; // 10 minutes
 const SILENT_CHANNEL_MUTE_MS = 30 * 60 * 1000; // 30 minutes
@@ -24,18 +41,19 @@ const SILENT_CHANNEL_MUTE_MS = 30 * 60 * 1000; // 30 minutes
 async function applyAutomodActionCore(message, { violationType, reason, action, durationMs: customDurationMs }) {
   const { guild, member, author } = message;
   const client = message.client;
+  const lang = currentLanguage();
 
   await message.delete().catch((err) => logger.warn(`Automod: failed to delete message ${message.id}:`, err.message));
 
   await sendLog(client, guild.id, 'automod', {
     author: { name: author.username, icon_url: author.displayAvatarURL?.() ?? undefined },
-    description: `${EMOJI.ALERT} **${violationType}** in <#${message.channel.id}> — <@${author.id}>\n${reason}`,
+    description: t(lang, 'security.automod.log', { emoji: EMOJI.ALERT, type: violationLabel(violationType, lang), channel: `<#${message.channel.id}>`, user: `<@${author.id}>`, reason }),
     color: 0xfed53c,
-    footer: { text: `User ID: ${author.id}` },
+    footer: { text: t(lang, 'security.log.userId', { id: author.id }) },
     timestamp: new Date().toISOString(),
   }).catch((err) => logger.error('Automod: failed to send automod log:', err));
 
-  const fullReason = `Automod: ${reason}`;
+  const fullReason = t(lang, 'security.automod.reason', { reason });
 
   try {
     await ensureGuild(guild.id);
@@ -55,13 +73,13 @@ async function applyAutomodActionCore(message, { violationType, reason, action, 
       } catch (err) {
         logger.warn(
           { guildId: guild.id, channelId: message.channel.id, userId: author.id, action: 'timeout', source: violationType },
-          'Automod: timeout failed:',
+          'Automod: timeout failed:', // i18n-ignore: log
           err,
         );
         return;
       }
       const expiresAt = new Date(Date.now() + durationMs).toISOString();
-      const duration = formatDuration(durationMs);
+      const duration = formatDuration(durationMs, lang);
       const modCase = await createCase({ guildId: guild.id, userId: author.id, moderatorId: client.user.id, type: 'tempmute', reason: fullReason, expiresAt, source: 'automod' });
       await logSanction(client, guild, { modCase, target: author, moderator: client.user, reason: fullReason, duration, source: 'automod' });
       await author.send(await sanctionDM({ type: 'tempmute', guild, client, reason: fullReason, duration, user: author, member, source: 'automod', caseNumber: modCase.case_number })).catch(() => {});
@@ -74,7 +92,7 @@ async function applyAutomodActionCore(message, { violationType, reason, action, 
       } catch (err) {
         logger.warn(
           { guildId: guild.id, channelId: message.channel.id, userId: author.id, action: 'kick', source: violationType },
-          'Automod: kick failed:',
+          'Automod: kick failed:', // i18n-ignore: log
           err,
         );
         return;
@@ -102,11 +120,12 @@ async function applyStrike(message, action) {
   if (!config?.strike_limit) return;
   if (!recordStrike(guild.id, author.id, { limit: config.strike_limit, windowMinutes: config.strike_window_minutes ?? 10 })) return;
   const minutes = config.strike_mute_minutes ?? 10;
-  const reason = `Automod: ${config.strike_limit} violations in ${config.strike_window_minutes ?? 10} minutes`;
+  const lang = currentLanguage();
+  const reason = tn(lang, 'security.automod.strikeReason', config.strike_limit, { count: config.strike_limit, minutes: config.strike_window_minutes ?? 10 });
   if (!member?.moderatable) return;
   await member.timeout(minutes * 60_000, reason);
   const modCase = await createCase({ guildId: guild.id, userId: author.id, moderatorId: client.user.id, type: 'tempmute', reason, expiresAt: new Date(Date.now() + minutes * 60_000).toISOString(), source: 'automod' });
-  await logSanction(client, guild, { modCase, target: author, moderator: client.user, reason, duration: formatDuration(minutes * 60_000), source: 'automod' });
+  await logSanction(client, guild, { modCase, target: author, moderator: client.user, reason, duration: formatDuration(minutes * 60_000, lang), source: 'automod' });
 }
 
 module.exports = { applyAutomodAction };

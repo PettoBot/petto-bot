@@ -1,3 +1,4 @@
+// i18n-ignore-file: alert for the Petto team (their own channel, developers pinged), never read by a server.
 const { EmbedBuilder } = require('discord.js');
 const config = require('../config');
 const { defangUrl } = require('./safeBrowsing');

@@ -1,6 +1,7 @@
 const { Events, AuditLogEvent } = require('discord.js');
 const { trackDestructiveAction } = require('../utils/antiNuke');
 const logger = require('../utils/logger');
+const { t, currentLanguage } = require('../i18n');
 
 // GuildMemberRemove also fires when someone leaves voluntarily. The audit-log
 // lookup only returns a recent executor for an actual kick, so normal leaves
@@ -12,7 +13,7 @@ module.exports = {
       auditLogType: AuditLogEvent.MemberKick,
       targetId: member.id,
       rule: 'kick',
-      actionLabel: 'member kick',
+      actionLabel: t(currentLanguage(), 'security.antinuke.detail.kick'),
     }).catch((err) => logger.error('Anti-nuke member-kick tracking failed:', err));
   },
 };

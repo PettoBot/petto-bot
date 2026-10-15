@@ -1,5 +1,6 @@
 const { PermissionFlagsBits } = require('discord.js');
 const logger = require('./logger');
+const { t, tn, currentLanguage } = require('../i18n');
 
 /**
  * What the anti-nuke keeps of an action so it can be put back. Only what Discord lets a bot rebuild: a channel or a role
@@ -33,20 +34,20 @@ function snapshotRole(role) {
   };
 }
 
-function describeItem(item) {
+function describeItem(item, lang = currentLanguage()) {
   switch (item.kind) {
-    case 'channel': return `channel #${item.name}`;
-    case 'role': return `role ${item.name}`;
-    case 'unban': return `unban <@${item.userId}>`;
-    case 'reban': return `ban <@${item.userId}> again`;
-    case 'delete_channel': return `delete the channel created (${item.id})`;
-    case 'delete_role': return `delete the role created (${item.id})`;
+    case 'channel': return t(lang, 'security.antinuke.item.channel', { name: item.name });
+    case 'role': return t(lang, 'security.antinuke.item.role', { name: item.name });
+    case 'unban': return t(lang, 'security.antinuke.item.unban', { user: `<@${item.userId}>` });
+    case 'reban': return t(lang, 'security.antinuke.item.reban', { user: `<@${item.userId}>` });
+    case 'delete_channel': return t(lang, 'security.antinuke.item.deleteChannel', { id: item.id });
+    case 'delete_role': return t(lang, 'security.antinuke.item.deleteRole', { id: item.id });
     default: return item.kind;
   }
 }
 
 /** Puts one thing back. Answers a short line for the report. */
-async function restoreItem(guild, item) {
+async function restoreItem(guild, item, lang) {
   switch (item.kind) {
     case 'channel': {
       const parent = item.parentId && guild.channels.cache.has(item.parentId) ? item.parentId : null;
@@ -63,30 +64,30 @@ async function restoreItem(guild, item) {
         bitrate: item.bitrate,
         userLimit: item.userLimit,
         permissionOverwrites: overwrites,
-        reason: 'Anti-nuke: restoring a deleted channel',
+        reason: t(lang, 'security.antinuke.audit.restoreChannel'),
       });
-      return `Recreated #${item.name}`;
+      return t(lang, 'security.antinuke.restored.channel', { name: item.name });
     }
     case 'role':
-      await guild.roles.create({ name: item.name, color: item.color, hoist: item.hoist, mentionable: item.mentionable, permissions: BigInt(item.permissions), reason: 'Anti-nuke: restoring a deleted role' });
-      return `Recreated the role ${item.name}`;
+      await guild.roles.create({ name: item.name, color: item.color, hoist: item.hoist, mentionable: item.mentionable, permissions: BigInt(item.permissions), reason: t(lang, 'security.antinuke.audit.restoreRole') });
+      return t(lang, 'security.antinuke.restored.role', { name: item.name });
     case 'unban':
-      await guild.members.unban(item.userId, 'Anti-nuke: undoing a mass ban');
-      return `Unbanned <@${item.userId}>`;
+      await guild.members.unban(item.userId, t(lang, 'security.antinuke.audit.undoBan'));
+      return t(lang, 'security.antinuke.restored.unban', { user: `<@${item.userId}>` });
     case 'reban':
-      await guild.members.ban(item.userId, { reason: 'Anti-nuke: undoing a mass unban' });
-      return `Banned <@${item.userId}> again`;
+      await guild.members.ban(item.userId, { reason: t(lang, 'security.antinuke.audit.undoUnban') });
+      return t(lang, 'security.antinuke.restored.reban', { user: `<@${item.userId}>` });
     case 'delete_channel': {
       const channel = guild.channels.cache.get(item.id);
       if (!channel) return null;
-      await channel.delete('Anti-nuke: undoing a mass channel creation');
-      return `Deleted #${channel.name}`;
+      await channel.delete(t(lang, 'security.antinuke.audit.undoChannelCreate'));
+      return t(lang, 'security.antinuke.restored.deleteChannel', { name: channel.name });
     }
     case 'delete_role': {
       const role = guild.roles.cache.get(item.id);
       if (!role) return null;
-      await role.delete('Anti-nuke: undoing a mass role creation');
-      return `Deleted the role ${role.name}`;
+      await role.delete(t(lang, 'security.antinuke.audit.undoRoleCreate'));
+      return t(lang, 'security.antinuke.restored.deleteRole', { name: role.name });
     }
     default:
       return null;
@@ -97,16 +98,16 @@ async function restoreItem(guild, item) {
  * Puts back what an event kept, plus the roles taken from the account that was quarantined. Answers the lines of what
  * worked and what did not, so the staff knows exactly what is still missing.
  */
-async function restoreEvent(guild, event) {
+async function restoreEvent(guild, event, lang = currentLanguage()) {
   const done = [];
   const failed = [];
   for (const item of event.restorable ?? []) {
     try {
-      const line = await restoreItem(guild, item);
+      const line = await restoreItem(guild, item, lang);
       if (line) done.push(line);
     } catch (err) {
       logger.warn(`Anti-nuke restore (${item.kind}) failed in ${guild.id}: ${err.message}`);
-      failed.push(`Could not restore ${describeItem(item)}`);
+      failed.push(t(lang, 'security.antinuke.restored.failed', { item: describeItem(item, lang) }));
     }
   }
   if (event.previous_roles?.length) {
@@ -114,7 +115,9 @@ async function restoreEvent(guild, event) {
     if (member) {
       const roles = event.previous_roles.filter((id) => guild.roles.cache.has(id) && guild.roles.cache.get(id).position < (guild.members.me?.roles.highest.position ?? 0));
       if (roles.length) {
-        await member.roles.add(roles, 'Anti-nuke: giving the roles back after review').then(() => done.push(`Gave ${roles.length} role(s) back to <@${event.executor_id}>`)).catch(() => failed.push('Could not give the roles back'));
+        await member.roles.add(roles, t(lang, 'security.antinuke.audit.rolesBack'))
+          .then(() => done.push(tn(lang, 'security.antinuke.restored.rolesBack', roles.length, { count: roles.length, user: `<@${event.executor_id}>` })))
+          .catch(() => failed.push(t(lang, 'security.antinuke.restored.rolesBackFailed')));
       }
     }
   }

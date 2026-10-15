@@ -11,12 +11,20 @@ const { resolve } = require('./embedVariables');
 const { applyReactReplies } = require('./messageFlags');
 const { EMOJI } = require('./emojis');
 const logger = require('./logger');
+const { t, currentLanguage, guildLanguage } = require('../i18n');
 
 const CONFIG_CACHE_MS = 15_000;
 const PANEL_UPDATE_DELAY_MS = 750;
 const configCache = new Map();
 const panelUpdates = new Map();
 const activeUsers = new Set();
+
+/** A punishment value (ban, softban, kick) as the log names it; an unknown value as it is. */
+function actionWord(value, lang) {
+  const key = `security.action.${value}`;
+  const text = t(lang, key);
+  return text === key ? String(value) : text;
+}
 
 function isStaffExempt(message) {
   const member = message.member;
@@ -62,7 +70,8 @@ function schedulePanelUpdate(client, row) {
       const panel = await channel.messages.fetch(current.row.panel_message_id).catch(() => null);
       if (!panel || panel.author?.id !== client.user?.id) return;
 
-      const payload = await renderPanel(channel, current.row);
+      // A timer is not inside the server's language: the panel is drawn in the language the server chose.
+      const payload = await renderPanel(channel, current.row, await guildLanguage(row.guild_id));
       if (payload) await panel.edit(payload);
     } catch (err) {
       logger.warn(`Honeypot panel update failed in ${row.guild_id}/${row.channel_id}:`, err.message);
@@ -76,14 +85,14 @@ function schedulePanelUpdate(client, row) {
  * What is posted in the bait channel: the warning panel Petto makes (`default`), the text and/or saved embed of the server
  * (`custom`, with `{honeypot.*}` variables, and the panel when neither is usable), or nothing at all (`none`, null here).
  */
-async function renderPanel(channel, row) {
+async function renderPanel(channel, row, lang = currentLanguage()) {
   const mode = row.panel_mode ?? 'default';
   if (mode === 'none') return null;
   if (mode === 'custom') {
     const ctx = {
       guild: channel.guild,
       channel,
-      honeypot: { action: punishmentText(row.punishment), count: String(Math.max(0, Number(row.caught_count) || 0)), channel: `<#${channel.id}>` },
+      honeypot: { action: punishmentText(row.punishment, lang), count: String(Math.max(0, Number(row.caught_count) || 0)), channel: `<#${channel.id}>` },
     };
     let payload = row.panel_template ? await templatePayload(channel.guild.id, row.panel_template, ctx) : null;
     if (!payload && row.panel_text?.trim()) {
@@ -92,10 +101,10 @@ async function renderPanel(channel, row) {
     }
     if (payload) return { ...payload, allowedMentions: { parse: [] } };
   }
-  return { components: [buildHoneypotPanel(row)], files: [buildHoneypotImageAttachment()], flags: MessageFlags.IsComponentsV2 };
+  return { components: [buildHoneypotPanel({ ...row, lang })], files: [buildHoneypotImageAttachment()], flags: MessageFlags.IsComponentsV2 };
 }
 
-async function createOrUpdatePanel(client, channel, row) {
+async function createOrUpdatePanel(client, channel, row, lang = currentLanguage()) {
   let panel = null;
 
   if (row.panel_message_id) {
@@ -103,7 +112,7 @@ async function createOrUpdatePanel(client, channel, row) {
     if (panel?.author?.id !== client.user?.id) panel = null;
   }
 
-  const payload = await renderPanel(channel, row);
+  const payload = await renderPanel(channel, row, lang);
   if (!payload) {
     // Nothing is posted: the panel that was there goes away.
     if (panel) await panel.delete().catch(() => {});
@@ -142,8 +151,9 @@ async function applyHoneypotAction(message, config) {
   const { guild, author } = message;
   const client = message.client;
   const punishment = config.punishment;
-  const reason = 'Honeypot: sent a message in the honeypot channel.';
-  const fullReason = `Automod: ${reason}`;
+  const lang = currentLanguage();
+  const reason = t(lang, 'security.honeypot.reason');
+  const fullReason = t(lang, 'security.automod.reason', { reason });
 
   await message.delete().catch((err) => logger.warn(`Honeypot: failed to delete message ${message.id}:`, err.message));
 
@@ -170,9 +180,9 @@ async function applyHoneypotAction(message, config) {
 
   await sendLog(client, guild.id, 'automod', {
     author: { name: author.username, icon_url: author.displayAvatarURL?.() ?? undefined },
-    description: `${EMOJI.ALERT} **Honeypot triggered** in <#${message.channel.id}>\n**User:** <@${author.id}>\n**Action:** ${punishment}\n**Reason:** ${reason}`,
+    description: t(lang, 'security.honeypot.log', { emoji: EMOJI.ALERT, channel: `<#${message.channel.id}>`, user: `<@${author.id}>`, action: actionWord(punishment, lang), reason }),
     color: 0xfe6465,
-    footer: { text: `User ID: ${author.id}` },
+    footer: { text: t(lang, 'security.log.userId', { id: author.id }) },
     timestamp: new Date().toISOString(),
   }).catch((err) => logger.error('Honeypot: failed to send automod log:', err));
 
@@ -184,10 +194,10 @@ async function applyHoneypotAction(message, config) {
       await guild.members.ban(author.id, { reason: fullReason, deleteMessageSeconds: 86400 });
     } else if (punishment === 'softban') {
       await guild.members.ban(author.id, { reason: fullReason, deleteMessageSeconds: 86400 });
-      await guild.members.unban(author.id, 'Honeypot softban completed.');
+      await guild.members.unban(author.id, t(lang, 'security.honeypot.audit.softban'));
     } else {
       const member = message.member ?? await guild.members.fetch(author.id).catch(() => null);
-      if (!member) throw new Error('The triggering user is no longer a guild member, so the kick could not be applied.');
+      if (!member) throw new Error('The triggering user is no longer a guild member, so the kick could not be applied.'); // i18n-ignore: only logged
       await member.kick(fullReason);
     }
 

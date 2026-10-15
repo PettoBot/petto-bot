@@ -21,6 +21,7 @@ const { punishmentText } = require('../../utils/honeypotPanel');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
+const { t, tn, languageOf } = require('../../i18n');
 
 const CHANNEL_TYPES = [ChannelType.GuildText, ChannelType.GuildAnnouncement];
 
@@ -84,15 +85,16 @@ module.exports = {
       .setDescription('List this server\'s configured honeypot channels.')),
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const subcommand = interaction.options.getSubcommand();
-    if (subcommand === 'add') return addHoneypot(interaction);
-    if (subcommand === 'remove') return removeConfiguredHoneypot(interaction);
-    if (subcommand === 'panel') return configurePanel(interaction);
-    return listConfiguredHoneypots(interaction);
+    if (subcommand === 'add') return addHoneypot(interaction, lang);
+    if (subcommand === 'remove') return removeConfiguredHoneypot(interaction, lang);
+    if (subcommand === 'panel') return configurePanel(interaction, lang);
+    return listConfiguredHoneypots(interaction, lang);
   },
 };
 
-async function addHoneypot(interaction) {
+async function addHoneypot(interaction, lang) {
   const channel = interaction.options.getChannel('channel', true);
   const punishment = interaction.options.getString('punishment') ?? 'softban';
   const botMember = interaction.guild.members.me;
@@ -105,7 +107,14 @@ async function addHoneypot(interaction) {
   ];
 
   if (!permissions?.has(required)) {
-    await reply(interaction, `${EMOJI.DENY} I need **View Channel**, **Send Messages**, **Read Message History**, and **Manage Messages** in ${channel}.`, 0xfe6465);
+    await reply(interaction, t(lang, 'security.honeypot.add.permissions', {
+      emoji: EMOJI.DENY,
+      view: t(lang, 'core.perm.ViewChannel'),
+      send: t(lang, 'core.perm.SendMessages'),
+      history: t(lang, 'core.perm.ReadMessageHistory'),
+      manage: t(lang, 'core.perm.ManageMessages'),
+      channel: `${channel}`,
+    }), 0xfe6465);
     return;
   }
 
@@ -113,36 +122,30 @@ async function addHoneypot(interaction) {
 
   try {
     const row = await upsertHoneypot(interaction.guild.id, channel.id, punishment);
-    const configured = await createOrUpdatePanel(interaction.client, channel, row);
-    const action = punishmentText(configured.punishment);
+    const configured = await createOrUpdatePanel(interaction.client, channel, row, lang);
+    const action = punishmentText(configured.punishment, lang);
 
     await interaction.editReply({
-      components: [textCard([
-        `${EMOJI.APPROVE} Honeypot enabled in ${channel}.`,
-        `**Action:** ${action} for non-staff members who post there.`,
-        '**Repeat protection:** each member is actioned once while they remain in the server; later messages are removed without duplicate cases.',
-        '**Staff exemption:** the server owner, Administrators, and members with Manage Messages.',
-        'The warning panel is now posted in that channel. Use `!honeypot list` to view the trigger count.',
-      ].join('\n'), 0xa5ea7a)],
+      components: [textCard(t(lang, 'security.honeypot.add.done', { emoji: EMOJI.APPROVE, channel: `${channel}`, action }), 0xa5ea7a)],
       flags: MessageFlags.IsComponentsV2,
     });
   } catch (error) {
     logger.error('Honeypot configuration failed:', error);
     await interaction.editReply({
-      components: [textCard(`${EMOJI.DENY} I could not configure that honeypot right now. Check my channel permissions and try again.`, 0xfe6465)],
+      components: [textCard(t(lang, 'security.honeypot.add.failed', { emoji: EMOJI.DENY }), 0xfe6465)],
       flags: MessageFlags.IsComponentsV2,
     }).catch(() => {});
   }
 }
 
-function panelModeText(row) {
+function panelModeText(row, lang) {
   const mode = row.panel_mode ?? 'default';
-  if (mode === 'none') return 'none';
-  if (mode === 'custom') return row.panel_template ? `saved embed \`${row.panel_template}\`` : 'your text';
-  return 'Petto\'s panel';
+  if (mode === 'none') return t(lang, 'security.honeypot.mode.none');
+  if (mode === 'custom') return row.panel_template ? t(lang, 'security.honeypot.mode.embed', { name: row.panel_template }) : t(lang, 'security.honeypot.mode.text');
+  return t(lang, 'security.honeypot.mode.default');
 }
 
-async function configurePanel(interaction) {
+async function configurePanel(interaction, lang) {
   const channel = interaction.options.getChannel('channel', true);
   const mode = String(interaction.options.getString('mode', true)).trim().toLowerCase();
   const text = interaction.options.getString('text');
@@ -151,33 +154,33 @@ async function configurePanel(interaction) {
   const fail = (message) => interaction.editReply({ components: [textCard(message, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 
   try {
-    if (!['default', 'custom', 'none'].includes(mode)) return fail('The message is `default`, `custom` or `none`.');
+    if (!['default', 'custom', 'none'].includes(mode)) return fail(t(lang, 'security.honeypot.panel.badMode'));
     const existing = await getHoneypot(interaction.guild.id, channel.id);
-    if (!existing) return fail(`${channel} is not a honeypot channel. Use \`!honeypot add\` first.`);
+    if (!existing) return fail(t(lang, 'security.honeypot.panel.notHoneypot', { channel: `${channel}` }));
 
     const changes = { panel_mode: mode };
     if (text !== null) changes.panel_text = text.trim().toLowerCase() === 'none' ? '' : text.trim();
     if (template) {
       if (template.toLowerCase() === 'none') changes.panel_template = null;
-      else if (!(await getTemplate(interaction.guild.id, template).catch(() => null))?.data) return fail(`There is no saved embed called \`${template}\`.`);
+      else if (!(await getTemplate(interaction.guild.id, template).catch(() => null))?.data) return fail(t(lang, 'security.honeypot.panel.noEmbed', { name: template }));
       else changes.panel_template = template;
     }
     if (mode === 'custom' && !(changes.panel_text ?? existing.panel_text) && !(('panel_template' in changes) ? changes.panel_template : existing.panel_template)) {
-      return fail('For a custom message give a `text` or a saved `template`, otherwise Petto\'s panel would be posted.');
+      return fail(t(lang, 'security.honeypot.panel.customEmpty'));
     }
 
     const row = await setPanelSettings(interaction.guild.id, channel.id, changes);
     invalidateHoneypotCache(interaction.guild.id);
-    const configured = await createOrUpdatePanel(interaction.client, channel, row);
-    const summary = { default: 'Petto\'s warning panel is posted in', custom: `${panelModeText(configured)} is posted in`, none: 'Nothing is posted in' }[mode];
-    return interaction.editReply({ components: [textCard(`${EMOJI.APPROVE} ${summary} ${channel}. The honeypot still works the same.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+    const configured = await createOrUpdatePanel(interaction.client, channel, row, lang);
+    const summary = t(lang, `security.honeypot.panel.done.${mode}`, { emoji: EMOJI.APPROVE, what: panelModeText(configured, lang), channel: `${channel}` });
+    return interaction.editReply({ components: [textCard(summary, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
   } catch (error) {
     logger.error('Honeypot panel configuration failed:', error);
-    return interaction.editReply({ components: [textCard(`${EMOJI.DENY} I could not change that message right now. Check my permissions in the channel.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+    return interaction.editReply({ components: [textCard(t(lang, 'security.honeypot.panel.failed', { emoji: EMOJI.DENY }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
   }
 }
 
-async function removeConfiguredHoneypot(interaction) {
+async function removeConfiguredHoneypot(interaction, lang) {
   const channel = interaction.options.getChannel('channel', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
@@ -185,7 +188,7 @@ async function removeConfiguredHoneypot(interaction) {
     const existing = await getHoneypot(interaction.guild.id, channel.id);
     if (!existing) {
       await interaction.editReply({
-        components: [textCard(`${EMOJI.WARNING} ${channel} is not configured as a honeypot.`, 0xfed53c)],
+        components: [textCard(t(lang, 'security.honeypot.remove.missing', { emoji: EMOJI.WARNING, channel: `${channel}` }), 0xfed53c)],
         flags: MessageFlags.IsComponentsV2,
       });
       return;
@@ -196,31 +199,37 @@ async function removeConfiguredHoneypot(interaction) {
     invalidateHoneypotCache(interaction.guild.id);
 
     await interaction.editReply({
-      components: [textCard(`${EMOJI.APPROVE} Honeypot disabled in ${channel}. Its warning panel was removed when possible.`, 0xa5ea7a)],
+      components: [textCard(t(lang, 'security.honeypot.remove.done', { emoji: EMOJI.APPROVE, channel: `${channel}` }), 0xa5ea7a)],
       flags: MessageFlags.IsComponentsV2,
     });
   } catch (error) {
     logger.error('Honeypot removal failed:', error);
     await interaction.editReply({
-      components: [textCard(`${EMOJI.DENY} I could not remove that honeypot right now. Try again shortly.`, 0xfe6465)],
+      components: [textCard(t(lang, 'security.honeypot.remove.failed', { emoji: EMOJI.DENY }), 0xfe6465)],
       flags: MessageFlags.IsComponentsV2,
     }).catch(() => {});
   }
 }
 
-async function listConfiguredHoneypots(interaction) {
+async function listConfiguredHoneypots(interaction, lang) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   try {
     const rows = await listHoneypots(interaction.guild.id);
+    const line = (row) => tn(lang, 'security.honeypot.list.line', row.caught_count === 1 ? 1 : 0, {
+      count: row.caught_count ?? 0,
+      channel: `<#${row.channel_id}>`,
+      action: punishmentText(row.punishment, lang),
+      message: panelModeText(row, lang),
+    });
     const content = rows.length
       ? [
-        '### Honeypot channels',
-        ...rows.map((row) => `• <#${row.channel_id}> · **${punishmentText(row.punishment)}** · **${row.caught_count ?? 0}** member${row.caught_count === 1 ? '' : 's'} caught · message: ${panelModeText(row)}`),
+        t(lang, 'security.honeypot.list.title'),
+        ...rows.map(line),
         '',
-        'The server owner, Administrators, and members with Manage Messages are exempt.',
+        t(lang, 'security.honeypot.list.footer'),
       ].join('\n')
-      : `${EMOJI.STAR} No honeypot channels are configured. Use \`!honeypot add #channel\` to create one.`;
+      : t(lang, 'security.honeypot.list.empty', { emoji: EMOJI.STAR });
 
     await interaction.editReply({
       components: [textCard(content, 0x4b4f59)],
@@ -229,7 +238,7 @@ async function listConfiguredHoneypots(interaction) {
   } catch (error) {
     logger.error('Honeypot listing failed:', error);
     await interaction.editReply({
-      components: [textCard(`${EMOJI.DENY} I could not load the honeypot configuration right now.`, 0xfe6465)],
+      components: [textCard(t(lang, 'security.honeypot.list.failed', { emoji: EMOJI.DENY }), 0xfe6465)],
       flags: MessageFlags.IsComponentsV2,
     }).catch(() => {});
   }

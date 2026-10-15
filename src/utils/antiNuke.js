@@ -1,11 +1,12 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, AuditLogEvent } = require('discord.js');
 const { getConfig, getRules, createEvent } = require('../db/antinuke');
-const { RULES, resolveRule } = require('./antiNukeRules');
+const { resolveRule, ruleLabel } = require('./antiNukeRules');
 const { MAX_ITEMS, describeItem } = require('./antiNukeRestore');
 const { textCard } = require('./caseCard');
 const { sendLog } = require('../logging/engine');
 const { EMOJI } = require('./emojis');
 const logger = require('./logger');
+const { t, tn, currentLanguage } = require('../i18n');
 
 const RESTORE_PREFIX = 'an_restore';
 
@@ -62,43 +63,43 @@ async function isTrusted(client, guild, executor, eff) {
 }
 
 /** What the protection does to the account, from the action chosen. Answers { text, previousRoles }. */
-async function punish(guild, executor, action) {
-  if (action === 'alert') return { text: 'Only an alert, nobody was punished.', previousRoles: [] };
+async function punish(guild, executor, action, lang) {
+  if (action === 'alert') return { text: t(lang, 'security.antinuke.punish.alertOnly'), previousRoles: [] };
   try {
     if (executor.bot || action === 'ban') {
-      await guild.members.ban(executor.id, { reason: 'Anti-nuke: automated response to a burst of destructive actions' });
-      return { text: `Banned ${executor.bot ? 'the bot' : 'the account'}.`, previousRoles: [] };
+      await guild.members.ban(executor.id, { reason: t(lang, 'security.antinuke.audit.response') });
+      return { text: t(lang, executor.bot ? 'security.antinuke.punish.bannedBot' : 'security.antinuke.punish.bannedAccount'), previousRoles: [] };
     }
     const member = await guild.members.fetch(executor.id).catch(() => null);
-    if (!member) return { text: 'The account is not in the server anymore.', previousRoles: [] };
+    if (!member) return { text: t(lang, 'security.antinuke.punish.gone'), previousRoles: [] };
     if (action === 'kick') {
-      if (!member.kickable) return { text: 'Could not kick the account (its role is above mine).', previousRoles: [] };
-      await member.kick('Anti-nuke: automated response to a burst of destructive actions');
-      return { text: 'Kicked the account.', previousRoles: [] };
+      if (!member.kickable) return { text: t(lang, 'security.antinuke.punish.cannotKick'), previousRoles: [] };
+      await member.kick(t(lang, 'security.antinuke.audit.response'));
+      return { text: t(lang, 'security.antinuke.punish.kicked'), previousRoles: [] };
     }
-    if (!member.manageable) return { text: 'Could not take the roles (the account is above my role).', previousRoles: [] };
+    if (!member.manageable) return { text: t(lang, 'security.antinuke.punish.cannotQuarantine'), previousRoles: [] };
     const previousRoles = member.roles.cache.filter((r) => r.id !== guild.id).map((r) => r.id);
-    await member.roles.set([], 'Anti-nuke: quarantine after a burst of destructive actions');
-    return { text: 'Took all its roles (quarantine).', previousRoles };
+    await member.roles.set([], t(lang, 'security.antinuke.audit.quarantine'));
+    return { text: t(lang, 'security.antinuke.punish.quarantined'), previousRoles };
   } catch (err) {
     logger.error('Anti-nuke: response action failed:', err);
-    return { text: 'The response failed, check my permissions.', previousRoles: [] };
+    return { text: t(lang, 'security.antinuke.punish.failed'), previousRoles: [] };
   }
 }
 
 /** Undoes right away what must not stay (a bot that was added, a dangerous role that was given). */
-async function applyInline(guild, items) {
+async function applyInline(guild, items, lang) {
   const lines = [];
   for (const item of items) {
     try {
       if (item.kind === 'kick_bot') {
-        await guild.members.kick(item.id, 'Anti-nuke: bot added without permission');
-        lines.push('Removed the bot that was added.');
+        await guild.members.kick(item.id, t(lang, 'security.antinuke.audit.botAdded'));
+        lines.push(t(lang, 'security.antinuke.inline.botRemoved'));
       } else if (item.kind === 'remove_roles') {
         const member = await guild.members.fetch(item.userId).catch(() => null);
         if (member) {
-          await member.roles.remove(item.roleIds, 'Anti-nuke: dangerous role given');
-          lines.push(`Took the dangerous role(s) from <@${item.userId}>.`);
+          await member.roles.remove(item.roleIds, t(lang, 'security.antinuke.audit.dangerousRole'));
+          lines.push(t(lang, 'security.antinuke.inline.rolesTaken', { user: `<@${item.userId}>` }));
         }
       }
     } catch (err) {
@@ -108,17 +109,16 @@ async function applyInline(guild, items) {
   return lines;
 }
 
-async function sendAlert(client, guild, eff, event, lines, canRestore) {
-  const meta = RULES[eff.rule];
+async function sendAlert(client, guild, eff, event, lines, canRestore, lang) {
   const text = [
-    `${EMOJI.DENY} **Anti-nuke · ${meta.label}**`,
-    `<@${event.executor_id}> did ${event.action_count} action(s) (${event.detail}) within ${eff.windowSeconds}s.`,
+    t(lang, 'security.antinuke.alert.title', { emoji: EMOJI.DENY, rule: ruleLabel(eff.rule, lang) }),
+    tn(lang, 'security.antinuke.alert.summary', event.action_count, { count: event.action_count, user: `<@${event.executor_id}>`, detail: event.detail, seconds: eff.windowSeconds }),
     ...lines,
-    canRestore ? `-# Event #${event.id}. Press restore to put back what can be put back.` : `-# Event #${event.id}`,
+    t(lang, canRestore ? 'security.antinuke.alert.footerRestore' : 'security.antinuke.alert.footer', { id: event.id }),
   ].join('\n');
 
   const row = canRestore
-    ? new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`${RESTORE_PREFIX}::${event.id}`).setLabel('Restore').setStyle(ButtonStyle.Success))
+    ? new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`${RESTORE_PREFIX}::${event.id}`).setLabel(t(lang, 'security.antinuke.alert.restore.button')).setStyle(ButtonStyle.Success))
     : null;
 
   if (eff.alertChannelId) {
@@ -142,7 +142,7 @@ async function sendAlert(client, guild, eff, event, lines, canRestore) {
  * window, the protection answers once (alert, quarantine, kick or ban), keeps what can be put back and tells the staff.
  * The owner, Petto and anyone in the whitelists (accounts or roles) are never touched.
  */
-async function track(client, guild, { rule, auditLogType, targetId, byRecency = false, actionLabel, undo = null, inline = null, executor: knownExecutor = null }) {
+async function track(client, guild, { rule, auditLogType, targetId, byRecency = false, actionLabel, undo = null, inline = null, executor: knownExecutor = null, lang = currentLanguage() }) {
   const [config, rows] = await Promise.all([getConfig(guild.id), getRules(guild.id)]);
   const eff = resolveRule(config, rows, rule);
   if (!eff?.enabled) return;
@@ -165,8 +165,8 @@ async function track(client, guild, { rule, auditLogType, targetId, byRecency = 
   const restorable = recent.map((entry) => entry.undo).filter(Boolean).slice(-MAX_ITEMS);
   const inlineItems = recent.flatMap((entry) => entry.inline ?? []);
 
-  const response = await punish(guild, executor, eff.action);
-  const lines = [response.text, ...(await applyInline(guild, inlineItems))];
+  const response = await punish(guild, executor, eff.action, lang);
+  const lines = [response.text, ...(await applyInline(guild, inlineItems, lang))];
 
   let event = { id: '?', executor_id: executor.id, action_count: recent.length, detail: actionLabel };
   try {
@@ -185,9 +185,14 @@ async function track(client, guild, { rule, auditLogType, targetId, byRecency = 
     logger.error('Anti-nuke: could not save the event:', err);
   }
 
-  if (restorable.length) lines.push(`Can be put back: ${restorable.slice(0, 5).map(describeItem).join(', ')}${restorable.length > 5 ? ` and ${restorable.length - 5} more` : ''}.`);
-  if (response.previousRoles.length) lines.push(`Its roles were saved (${response.previousRoles.length}).`);
-  await sendAlert(client, guild, eff, event, lines, event.id !== '?' && (restorable.length > 0 || response.previousRoles.length > 0));
+  if (restorable.length) {
+    const items = restorable.slice(0, 5).map((item) => describeItem(item, lang)).join(', ');
+    lines.push(restorable.length > 5
+      ? t(lang, 'security.antinuke.alert.restorableMore', { items, count: restorable.length - 5 })
+      : t(lang, 'security.antinuke.alert.restorable', { items }));
+  }
+  if (response.previousRoles.length) lines.push(t(lang, 'security.antinuke.alert.rolesSaved', { count: response.previousRoles.length }));
+  await sendAlert(client, guild, eff, event, lines, event.id !== '?' && (restorable.length > 0 || response.previousRoles.length > 0), lang);
 }
 
 /** Tracks a destructive action that has a clean target id to correlate against the audit log (ban, channel/role/emoji delete). */
