@@ -52,6 +52,11 @@ const { loadPreset, computeLevelBonus, entryProblem, buildPresetText, weightedDr
   assert.ok(text.includes('<@&r1> — +2 entries') && text.includes('Needs message level 5') && text.includes('Level 50+ — +4 entries') && text.includes('Voice level 20+ — +2 entries'));
   assert.equal(buildPresetText([]), '');
 
+  // In the server's language.
+  assert.match(await entryProblem('g', preset, 'low', 'es'), /nivel de mensajes \*\*5\*\* \(tienes 2\)/);
+  const portuguese = buildPresetText(preset, 'pt-BR');
+  assert.ok(portuguese.includes('<@&r1> — +2 participações') && portuguese.includes('Exige nível de mensagens 5') && portuguese.includes('Nível de voz 20+ — +2 participações'), portuguese);
+
   // A bigger weight wins more often.
   let highWins = 0;
   for (let i = 0; i < 2000; i += 1) if (weightedDraw([{ userId: 'high', weight: 7 }, { userId: 'low', weight: 1 }], 1)[0] === 'high') highWins += 1;

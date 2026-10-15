@@ -5,6 +5,7 @@ const { build } = require('./embedBuilder');
 const { resolve } = require('./embedVariables');
 const { extractReactReplies, applyReactReplies } = require('./messageFlags');
 const logger = require('./logger');
+const { t, tn, currentLanguage } = require('../i18n');
 
 const GIVEAWAY_COLOR = 0xf4a6d7;
 
@@ -21,47 +22,49 @@ function buildEntryCard({
   entriesCount,
   ended,
   presetText = '',
+  lang = currentLanguage(),
 }) {
   const enterText = entryMode === 'reaction'
-    ? `React with ${reaction} to **enter!**`
-    : 'Click **Enter Giveaway** below to enter!';
+    ? t(lang, 'giveaways.card.enterHint.reaction', { reaction })
+    : t(lang, 'giveaways.card.enterHint.click', { button: t(lang, 'giveaways.card.enter.button') });
+  const time = `<t:${endsAtUnix}:R>`;
 
   const lines = [
-    ended ? '• **This giveaway has ended.**' : `• ${enterText}`,
-    ended ? `• Ended <t:${endsAtUnix}:R>` : `• Ends <t:${endsAtUnix}:R>`,
-    `• Hosted by <@${hostId}>`,
+    `• ${ended ? t(lang, 'giveaways.card.ended') : enterText}`,
+    `• ${ended ? t(lang, 'giveaways.card.endedAt', { time }) : t(lang, 'giveaways.card.endsAt', { time })}`,
+    `• ${t(lang, 'giveaways.card.host', { host: `<@${hostId}>` })}`,
   ];
 
   if (presetText) {
-    lines.push('', '**Extra entries**', presetText);
+    lines.push('', t(lang, 'giveaways.card.extraEntries'), presetText);
   }
 
   const embed = new EmbedBuilder()
     .setColor(GIVEAWAY_COLOR)
-    .setTitle('🎉 Giveaway')
+    .setTitle(`🎉 ${t(lang, 'giveaways.card.title')}`)
     .setDescription(lines.join('\n'))
     .setAuthor({
       name: String(prize).slice(0, 256),
       ...(hostAvatar ? { iconURL: hostAvatar } : {}),
     })
     .setFooter({
-      text: `${winnersCount} lucky winner${winnersCount === 1 ? '' : 's'}! • ${entriesCount} ${entriesCount === 1 ? 'entry' : 'entries'}`,
+      text: `${tn(lang, 'giveaways.card.luckyWinners', winnersCount, { count: winnersCount })} • ${tn(lang, 'giveaways.card.entries', entriesCount, { count: entriesCount })}`,
     });
 
   if (hostName) embed.setTimestamp();
   return embed;
 }
 
-function buildEnterRow(giveawayId, { disabled = false } = {}) {
+function buildEnterRow(giveawayId, { disabled = false, lang = currentLanguage() } = {}) {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`gw_enter::${giveawayId}`).setLabel('Enter Giveaway').setStyle(ButtonStyle.Primary).setDisabled(disabled),
+    new ButtonBuilder().setCustomId(`gw_enter::${giveawayId}`).setLabel(t(lang, 'giveaways.card.enter.button')).setStyle(ButtonStyle.Primary).setDisabled(disabled),
   );
 }
 
-function buildClaimRow(winnerId) {
+function buildClaimRow(winnerId, lang = currentLanguage()) {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`gw_accept::${winnerId}`).setLabel('Accept').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`gw_deny::${winnerId}`).setLabel('Deny').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`gw_accept::${winnerId}`).setLabel(t(lang, 'giveaways.card.accept.button')).setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`gw_deny::${winnerId}`).setLabel(t(lang, 'giveaways.card.deny.button')).setStyle(ButtonStyle.Danger),
   );
 }
 
