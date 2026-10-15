@@ -17,6 +17,7 @@ const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { COLORS } = require('../../utils/colors');
 const logger = require('../../utils/logger');
+const { t, currentLanguage, languageOf } = require('../../i18n');
 
 const LOADING_EMOJI = EMOJI.LOADING;
 const BACKUP_MENU_PREFIX = 'backup_menu';
@@ -53,12 +54,13 @@ module.exports = {
 };
 
 async function openPanel(interaction) {
-  await beginOperation(interaction, 'Loading your backup center...');
+  const lang = await languageOf(interaction);
+  await beginOperation(interaction, t(lang, 'backup.loading.panel'), lang);
   const [rows, scheduleRow] = await Promise.all([
     listBackups(interaction.guild.id, 10),
     vault.isConfigured() ? vault.getSchedule(interaction.guild.id) : Promise.resolve(null),
   ]);
-  await finish(interaction, buildPanel(interaction.guild, interaction.user.id, rows, scheduleRow));
+  await finish(interaction, buildPanel(interaction.guild, interaction.user.id, rows, scheduleRow, lang));
 }
 
 async function create(interaction) {
@@ -67,25 +69,27 @@ async function create(interaction) {
 }
 
 async function createBackupForInteraction(interaction, label = null) {
-  await beginOperation(interaction, 'Creating a complete server configuration backup...');
+  const lang = await languageOf(interaction);
+  await beginOperation(interaction, t(lang, 'backup.loading.create'), lang);
   await fetchSnapshotResources(interaction.guild);
   const snapshot = buildSnapshot(interaction.guild);
   const saved = await createBackup(interaction.guild.id, interaction.user.id, label, snapshot);
   await recordBackupAudit(interaction.guild.id, interaction.user.id, 'backup_created', saved.backup_number, { source: saved.source || 'manual', label: saved.label });
 
   await finish(interaction, buildStatusCard([
-    `${EMOJI.APPROVE} Backup **#${publicBackupNumber(saved)}** saved successfully.`,
-    `**Label:** ${saved.label || 'Manual backup'}`,
-    `**Captured:** ${snapshot.roles.length} roles · ${snapshot.channels.length} channels · ${snapshot.emojis.length} emojis`,
-    'Configuration only is stored. Petto never stores bot tokens, passwords, or secrets in a backup.',
-  ].join('\n'), COLORS.GREEN, interaction));
+    t(lang, 'backup.created.saved', { emoji: EMOJI.APPROVE, number: publicBackupNumber(saved) }),
+    t(lang, 'backup.created.label', { label: saved.label || t(lang, 'backup.manualLabel') }),
+    t(lang, 'backup.created.captured', { roles: snapshot.roles.length, channels: snapshot.channels.length, emojis: snapshot.emojis.length }),
+    t(lang, 'backup.created.note'),
+  ].join('\n'), COLORS.GREEN, interaction, lang));
 }
 
 async function list(interaction) {
-  await beginOperation(interaction, 'Loading saved backups...');
+  const lang = await languageOf(interaction);
+  await beginOperation(interaction, t(lang, 'backup.loading.list'), lang);
   const rows = await listBackups(interaction.guild.id);
   await recordBackupAudit(interaction.guild.id, interaction.user.id, 'backups_listed', null, { count: rows.length });
-  await finish(interaction, buildStatusCard(formatBackupList(rows), COLORS.DEFAULT, interaction));
+  await finish(interaction, buildStatusCard(formatBackupList(rows, lang), COLORS.DEFAULT, interaction, lang));
 }
 
 async function exportBackup(interaction) {
@@ -94,10 +98,11 @@ async function exportBackup(interaction) {
 }
 
 async function exportBackupForInteraction(interaction, requestedNumber = null) {
-  await beginOperation(interaction, 'Preparing the backup export...');
+  const lang = await languageOf(interaction);
+  await beginOperation(interaction, t(lang, 'backup.loading.export'), lang);
   const backup = await getBackup(interaction.guild.id, requestedNumber);
   if (!backup) {
-    await finish(interaction, buildStatusCard(requestedNumber ? `Backup **#${requestedNumber}** was not found in this server.` : 'No backups have been saved yet. Use `!backup create` first.', COLORS.RED, interaction));
+    await finish(interaction, buildStatusCard(requestedNumber ? t(lang, 'backup.notFound', { number: requestedNumber }) : t(lang, 'backup.noneYet'), COLORS.RED, interaction, lang));
     return;
   }
 
@@ -106,7 +111,7 @@ async function exportBackupForInteraction(interaction, requestedNumber = null) {
     name: `petto-backup-${interaction.guild.id}-${number}.json`,
   });
   await recordBackupAudit(interaction.guild.id, interaction.user.id, 'backup_exported', number, { source: backup.source || 'manual' });
-  await finish(interaction, buildStatusCard(`${EMOJI.APPROVE} Backup **#${number}** is ready to download.`, COLORS.GREEN, interaction), { files: [file] });
+  await finish(interaction, buildStatusCard(t(lang, 'backup.exportReady', { emoji: EMOJI.APPROVE, number }), COLORS.GREEN, interaction, lang), { files: [file] });
 }
 
 async function restore(interaction) {
@@ -117,51 +122,61 @@ async function restore(interaction) {
 }
 
 async function restoreBackupForInteraction(interaction, { backupNumber, mode = 'merge', confirmed = false }) {
+  const lang = await languageOf(interaction);
   if (!interaction.member?.permissions?.has?.('Administrator')) {
-    await replyStatus(interaction, `${EMOJI.DENY} Only server Administrators can restore a backup.`, COLORS.RED);
+    await replyStatus(interaction, t(lang, 'backup.restore.adminOnly', { emoji: EMOJI.DENY }), COLORS.RED);
     return;
   }
   if (!['merge', 'replace'].includes(mode)) {
-    await replyStatus(interaction, `${EMOJI.WARNING} Restore mode must be \`merge\` or \`replace\`.`, COLORS.YELLOW);
+    await replyStatus(interaction, t(lang, 'backup.restore.badMode', { emoji: EMOJI.WARNING }), COLORS.YELLOW);
     return;
   }
 
-  await beginOperation(interaction, 'Checking the restore and preparing a safety backup...');
+  await beginOperation(interaction, t(lang, 'backup.loading.restore'), lang);
   const backup = await getBackup(interaction.guild.id, backupNumber);
   if (!backup) {
-    await finish(interaction, buildStatusCard(`Backup **#${backupNumber}** was not found in this server.`, COLORS.RED, interaction));
+    await finish(interaction, buildStatusCard(t(lang, 'backup.notFound', { number: backupNumber }), COLORS.RED, interaction, lang));
     return;
   }
 
   const number = publicBackupNumber(backup);
   if (!confirmed) {
     await finish(interaction, buildStatusCard([
-      `${EMOJI.WARNING} Restore **#${number}** is ready in **${mode}** mode.`,
-      `It contains **${backup.snapshot.roles?.length ?? 0} roles**, **${backup.snapshot.channels?.length ?? 0} channels**, and **${backup.snapshot.emojis?.length ?? 0} emojis**.`,
-      'A safety backup is always created first. To continue, confirm with `CONFIRM` in the menu or use the prefix command with `true`.',
-      '**Replace mode deletes channels and roles that are not in the snapshot.**',
-    ].join('\n'), COLORS.YELLOW, interaction));
+      t(lang, 'backup.restore.ready', { emoji: EMOJI.WARNING, number, mode }),
+      t(lang, 'backup.restore.contains', { roles: backup.snapshot.roles?.length ?? 0, channels: backup.snapshot.channels?.length ?? 0, emojis: backup.snapshot.emojis?.length ?? 0 }),
+      t(lang, 'backup.restore.confirmHint'),
+      t(lang, 'backup.restore.replaceWarning'),
+    ].join('\n'), COLORS.YELLOW, interaction, lang));
     return;
   }
 
   await fetchSnapshotResources(interaction.guild);
-  const safety = await createBackup(interaction.guild.id, interaction.user.id, `Before restoring backup #${number}`, buildSnapshot(interaction.guild), 'manual');
+  const safety = await createBackup(interaction.guild.id, interaction.user.id, t(lang, 'backup.restore.safetyLabel', { number }), buildSnapshot(interaction.guild), 'manual');
   await recordBackupAudit(interaction.guild.id, interaction.user.id, 'backup_created', publicBackupNumber(safety), {
     source: 'manual',
     purpose: 'restore_safety',
     beforeBackupNumber: number,
   });
-  const result = await restoreBackup(interaction.guild, backup.snapshot, { mode, reason: `Petto backup #${number} restored by ${interaction.user.tag ?? interaction.user.username}` });
+  const result = await restoreBackup(interaction.guild, backup.snapshot, { mode, reason: t(lang, 'backup.restore.reason', { number, user: interaction.user.tag ?? interaction.user.username }) });
   await recordBackupAudit(interaction.guild.id, interaction.user.id, 'backup_restored', number, { mode, safetyBackupNumber: publicBackupNumber(safety), result });
 
   const failed = result.roles.failed + result.channels.failed + result.emojis.failed + result.errors.length;
-  const details = `Roles: **${result.roles.created} created**, **${result.roles.updated} updated** · Channels: **${result.channels.created} created**, **${result.channels.updated} updated** · Emojis: **${result.emojis.created} created**, **${result.emojis.updated} updated**${mode === 'replace' ? ` · Deleted: **${result.deleted.channels} channels**, **${result.deleted.roles} roles**` : ''}`;
+  const details = t(lang, mode === 'replace' ? 'backup.restore.detailsReplace' : 'backup.restore.details', {
+    rolesCreated: result.roles.created,
+    rolesUpdated: result.roles.updated,
+    channelsCreated: result.channels.created,
+    channelsUpdated: result.channels.updated,
+    emojisCreated: result.emojis.created,
+    emojisUpdated: result.emojis.updated,
+    deletedChannels: result.deleted.channels,
+    deletedRoles: result.deleted.roles,
+  });
   await finish(interaction, buildStatusCard([
-    `${failed ? EMOJI.WARNING : EMOJI.APPROVE} ${failed ? 'Restore finished with warnings.' : 'Backup restored.'}`,
-    `Backup **#${number}** restored in **${mode}** mode. Safety backup: **#${publicBackupNumber(safety)}**.`,
+    failed ? t(lang, 'backup.restore.warnings', { emoji: EMOJI.WARNING }) : t(lang, 'backup.restore.done', { emoji: EMOJI.APPROVE }),
+    t(lang, 'backup.restore.summary', { number, mode, safety: publicBackupNumber(safety) }),
     details,
     failed ? result.errors.slice(0, 5).map((error) => `• ${error}`).join('\n') : '',
-  ].filter(Boolean).join('\n\n'), failed ? COLORS.YELLOW : COLORS.GREEN, interaction));
+  ].filter(Boolean).join('\n\n'), failed ? COLORS.YELLOW : COLORS.GREEN, interaction, lang));
 }
 
 async function schedule(interaction) {
@@ -171,31 +186,33 @@ async function schedule(interaction) {
 }
 
 async function scheduleForInteraction(interaction, { hours, retention = 7 }) {
-  await beginOperation(interaction, 'Saving the automatic backup schedule...');
+  const lang = await languageOf(interaction);
+  await beginOperation(interaction, t(lang, 'backup.loading.schedule'), lang);
   if (!vault.isConfigured()) {
-    await finish(interaction, buildStatusCard('Petto Vault is not connected yet. Add `PETTO_VAULT_DATABASE_URL` to the bot environment first.', COLORS.RED, interaction));
+    await finish(interaction, buildStatusCard(t(lang, 'backup.vault.notConnected'), COLORS.RED, interaction, lang));
     return;
   }
 
   const row = await vault.upsertSchedule(interaction.guild.id, hours, retention, interaction.user.id);
   await recordBackupAudit(interaction.guild.id, interaction.user.id, 'schedule_updated', null, { intervalHours: hours, retentionCount: retention });
   await finish(interaction, buildStatusCard([
-    `${EMOJI.APPROVE} Automatic backups enabled every **${hours}h**.`,
-    `Keeping the latest **${retention}** scheduled backups.`,
-    `Next run: <t:${Math.floor(new Date(row.next_run_at).getTime() / 1000)}:R>`,
-  ].join('\n'), COLORS.GREEN, interaction));
+    t(lang, 'backup.schedule.enabled', { emoji: EMOJI.APPROVE, hours }),
+    t(lang, 'backup.schedule.keeping', { retention }),
+    t(lang, 'backup.schedule.next', { time: `<t:${Math.floor(new Date(row.next_run_at).getTime() / 1000)}:R>` }),
+  ].join('\n'), COLORS.GREEN, interaction, lang));
 }
 
 async function unschedule(interaction) {
-  await beginOperation(interaction, 'Disabling automatic backups...');
+  const lang = await languageOf(interaction);
+  await beginOperation(interaction, t(lang, 'backup.loading.unschedule'), lang);
   if (!vault.isConfigured()) {
-    await finish(interaction, buildStatusCard('Petto Vault is not connected yet.', COLORS.RED, interaction));
+    await finish(interaction, buildStatusCard(t(lang, 'backup.vault.notConnectedShort'), COLORS.RED, interaction, lang));
     return;
   }
 
   const removed = await vault.removeSchedule(interaction.guild.id);
   if (removed) await recordBackupAudit(interaction.guild.id, interaction.user.id, 'schedule_disabled');
-  await finish(interaction, buildStatusCard(removed ? `${EMOJI.APPROVE} Automatic backups disabled.` : 'This server had no automatic backup schedule.', removed ? COLORS.GREEN : COLORS.DEFAULT, interaction));
+  await finish(interaction, buildStatusCard(removed ? t(lang, 'backup.schedule.disabled', { emoji: EMOJI.APPROVE }) : t(lang, 'backup.schedule.none'), removed ? COLORS.GREEN : COLORS.DEFAULT, interaction, lang));
 }
 
 async function audit(interaction) {
@@ -204,21 +221,22 @@ async function audit(interaction) {
 }
 
 async function auditForInteraction(interaction, limit = 10) {
-  await beginOperation(interaction, 'Loading the backup activity history...');
+  const lang = await languageOf(interaction);
+  await beginOperation(interaction, t(lang, 'backup.loading.audit'), lang);
   const rows = await listAudit(interaction.guild.id, limit);
   await recordBackupAudit(interaction.guild.id, interaction.user.id, 'backup_audit_viewed', null, { count: rows.length });
   const content = rows.length
-    ? ['### Backup activity', ...rows.map((row) => `• **${formatAuditAction(row.action)}** · <@${row.actor_id}>${row.backup_number ? ` · backup #${row.backup_number}` : ''} · <t:${Math.floor(new Date(row.created_at).getTime() / 1000)}:R>`)].join('\n')
-    : `${EMOJI.STAR} No backup activity has been recorded yet.`;
-  await finish(interaction, buildStatusCard(content, COLORS.DEFAULT, interaction));
+    ? [t(lang, 'backup.audit.title'), ...rows.map((row) => `• **${formatAuditAction(row.action, lang)}** · <@${row.actor_id}>${row.backup_number ? ` · ${t(lang, 'backup.audit.backupNumber', { number: row.backup_number })}` : ''} · <t:${Math.floor(new Date(row.created_at).getTime() / 1000)}:R>`)].join('\n')
+    : t(lang, 'backup.audit.empty', { emoji: EMOJI.STAR });
+  await finish(interaction, buildStatusCard(content, COLORS.DEFAULT, interaction, lang));
 }
 
 async function fetchSnapshotResources(guild) {
   await Promise.all([guild.roles.fetch(), guild.channels.fetch(), guild.emojis.fetch()]);
 }
 
-async function beginOperation(interaction, text) {
-  const payload = { components: [loadingCard(text)], flags: BACKUP_MENU_FLAGS };
+async function beginOperation(interaction, text, lang = currentLanguage()) {
+  const payload = { components: [loadingCard(text, lang)], flags: BACKUP_MENU_FLAGS };
   if (interaction.isMessageComponent?.()) {
     await interaction.update(payload);
     return;
@@ -243,72 +261,71 @@ async function recordBackupAudit(guildId, actorId, action, backupNumber = null, 
   }
 }
 
-function loadingCard(text) {
-  return textCard(`${LOADING_EMOJI} **${text}**\nPlease wait while Petto finishes this operation.`, COLORS.DEFAULT);
+function loadingCard(text, lang = currentLanguage()) {
+  return textCard(t(lang, 'backup.loading.card', { emoji: LOADING_EMOJI, text }), COLORS.DEFAULT);
 }
 
-function buildStatusCard(content, color, interaction) {
+function buildStatusCard(content, color, interaction, lang = currentLanguage()) {
   const card = textCard(content, color);
-  if (interaction) card.addActionRowComponents(buildBackupMenuRow(interaction.guild.id, interaction.user.id));
+  if (interaction) card.addActionRowComponents(buildBackupMenuRow(interaction.guild.id, interaction.user.id, lang));
   return card;
 }
 
-function buildPanel(guild, userId, rows, scheduleRow) {
+/** One saved backup in a list: number, label, automatic or manual, and when. */
+function backupLine(row, lang) {
+  return `• **#${publicBackupNumber(row)}** ${row.label || t(lang, 'backup.manualLabel')} · ${t(lang, row.source === 'scheduled' ? 'backup.source.automatic' : 'backup.source.manual')} · <t:${Math.floor(new Date(row.created_at).getTime() / 1000)}:R>`;
+}
+
+function buildPanel(guild, userId, rows, scheduleRow, lang = currentLanguage()) {
   const recent = rows.length
-    ? rows.slice(0, 5).map((row) => `• **#${publicBackupNumber(row)}** ${row.label || 'Manual backup'} · ${row.source === 'scheduled' ? 'automatic' : 'manual'} · <t:${Math.floor(new Date(row.created_at).getTime() / 1000)}:R>`).join('\n')
-    : 'No backups saved yet. Choose **Create backup** below.';
+    ? rows.slice(0, 5).map((row) => backupLine(row, lang)).join('\n')
+    : t(lang, 'backup.panel.empty');
   const scheduleText = scheduleRow
-    ? `Every **${scheduleRow.interval_hours}h** · keeping **${scheduleRow.retention_count}** scheduled backups · next <t:${Math.floor(new Date(scheduleRow.next_run_at).getTime() / 1000)}:R>`
-    : vault.isConfigured() ? 'No automatic schedule is active.' : 'Automatic schedules need Petto Vault to be connected.';
+    ? t(lang, 'backup.panel.schedule', { hours: scheduleRow.interval_hours, retention: scheduleRow.retention_count, time: `<t:${Math.floor(new Date(scheduleRow.next_run_at).getTime() / 1000)}:R>` })
+    : t(lang, vault.isConfigured() ? 'backup.panel.noSchedule' : 'backup.panel.needsVault');
 
   return new ContainerBuilder()
     .setAccentColor(COLORS.DEFAULT)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent([
-      `${EMOJI.STAR} **Petto Vault · Backup Center**`,
-      `Manage configuration snapshots for **${guild.name}**. Visible backup numbers are private to this server; they do not use the global database ID.`,
+      t(lang, 'backup.panel.title', { emoji: EMOJI.STAR }),
+      t(lang, 'backup.panel.intro', { server: guild.name }),
       '',
-      '**Recent backups**',
+      t(lang, 'backup.panel.recent'),
       recent,
       '',
-      `**Automatic schedule**\n${scheduleText}`,
+      `${t(lang, 'backup.panel.scheduleHeading')}\n${scheduleText}`,
       '',
-      'Choose an action from the menu below. Destructive restores always require Administrator confirmation and create a safety backup first.',
+      t(lang, 'backup.panel.footer'),
     ].join('\n')))
-    .addActionRowComponents(buildBackupMenuRow(guild.id, userId));
+    .addActionRowComponents(buildBackupMenuRow(guild.id, userId, lang));
 }
 
-function buildBackupMenuRow(guildId, userId) {
+function buildBackupMenuRow(guildId, userId, lang = currentLanguage()) {
+  const option = (key, value) => ({ label: t(lang, `backup.menu.${key}.menu`), value, description: t(lang, `backup.menu.${key}.description.menu`) });
   return new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId(`${BACKUP_MENU_PREFIX}:${guildId}:${userId}`)
-      .setPlaceholder('Choose a backup action...')
+      .setPlaceholder(t(lang, 'backup.menu.placeholder.menu'))
       .addOptions(
-        { label: 'Create backup', value: 'create', description: 'Capture the current server configuration.' },
-        { label: 'List backups', value: 'list', description: 'Show backups saved for this server.' },
-        { label: 'Export latest', value: 'export_latest', description: 'Download the newest server backup as JSON.' },
-        { label: 'Restore backup', value: 'restore', description: 'Restore a server backup with a safety copy first.' },
-        { label: 'Automatic schedule', value: 'schedule', description: 'Set or update scheduled backups.' },
-        { label: 'Activity history', value: 'audit', description: 'Review who created, exported, or restored backups.' },
+        option('create', 'create'),
+        option('list', 'list'),
+        option('exportLatest', 'export_latest'),
+        option('restore', 'restore'),
+        option('schedule', 'schedule'),
+        option('audit', 'audit'),
       ),
   );
 }
 
-function formatBackupList(rows) {
-  if (!rows.length) return `${EMOJI.STAR} No backups saved yet. Use \`!backup create\` or choose **Create backup** from the menu.`;
-  return ['### Backups for this server', ...rows.map((row) => `• **#${publicBackupNumber(row)}** ${row.label || 'Manual backup'} · ${row.source === 'scheduled' ? 'automatic' : 'manual'} · <t:${Math.floor(new Date(row.created_at).getTime() / 1000)}:R>`), '', 'Numbers start at 1 independently for each server.'].join('\n');
+function formatBackupList(rows, lang = currentLanguage()) {
+  if (!rows.length) return t(lang, 'backup.list.empty', { emoji: EMOJI.STAR });
+  return [t(lang, 'backup.list.title'), ...rows.map((row) => backupLine(row, lang)), '', t(lang, 'backup.list.footer')].join('\n');
 }
 
-function formatAuditAction(action) {
-  return ({
-    backup_created: 'Backup created',
-    backups_listed: 'Backups listed',
-    backup_exported: 'Backup exported',
-    backup_restored: 'Backup restored',
-    backups_pruned: 'Scheduled backups pruned',
-    backup_audit_viewed: 'Activity history viewed',
-    schedule_updated: 'Schedule updated',
-    schedule_disabled: 'Schedule disabled',
-  })[action] ?? action;
+const AUDIT_ACTIONS = ['backup_created', 'backups_listed', 'backup_exported', 'backup_restored', 'backups_pruned', 'backup_audit_viewed', 'schedule_updated', 'schedule_disabled'];
+
+function formatAuditAction(action, lang = currentLanguage()) {
+  return AUDIT_ACTIONS.includes(action) ? t(lang, `backup.audit.action.${action}`) : action;
 }
 
 function publicBackupNumber(row) {
@@ -360,24 +377,24 @@ function buildSnapshot(guild) {
   };
 }
 
-function buildScheduleModal(guildId, userId) {
+function buildScheduleModal(guildId, userId, lang = currentLanguage()) {
   return new ModalBuilder()
     .setCustomId(`backup_schedule_modal:${guildId}:${userId}`)
-    .setTitle('Automatic backups')
+    .setTitle(t(lang, 'backup.schedule.modal.title'))
     .addComponents(
-      new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('hours').setLabel('Hours between backups (1-168)').setStyle(TextInputStyle.Short).setRequired(true).setValue('24')),
-      new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('retention').setLabel('Scheduled backups to keep (1-30)').setStyle(TextInputStyle.Short).setRequired(true).setValue('7')),
+      new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('hours').setLabel(t(lang, 'backup.schedule.modal.hours')).setStyle(TextInputStyle.Short).setRequired(true).setValue('24')),
+      new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('retention').setLabel(t(lang, 'backup.schedule.modal.retention')).setStyle(TextInputStyle.Short).setRequired(true).setValue('7')),
     );
 }
 
-function buildRestoreModal(guildId, userId) {
+function buildRestoreModal(guildId, userId, lang = currentLanguage()) {
   return new ModalBuilder()
     .setCustomId(`backup_restore_modal:${guildId}:${userId}`)
-    .setTitle('Restore a backup')
+    .setTitle(t(lang, 'backup.restore.modal.title'))
     .addComponents(
-      new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('backup_number').setLabel('Server backup number').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Example: 3')),
-      new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('mode').setLabel('Mode: merge or replace').setStyle(TextInputStyle.Short).setRequired(true).setValue('merge')),
-      new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('confirm').setLabel('Type CONFIRM to continue').setStyle(TextInputStyle.Short).setRequired(true)),
+      new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('backup_number').setLabel(t(lang, 'backup.restore.modal.number')).setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder(t(lang, 'backup.restore.modal.example'))),
+      new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('mode').setLabel(t(lang, 'backup.restore.modal.mode')).setStyle(TextInputStyle.Short).setRequired(true).setValue('merge')),
+      new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('confirm').setLabel(t(lang, 'backup.restore.modal.confirm')).setStyle(TextInputStyle.Short).setRequired(true)),
     );
 }
 

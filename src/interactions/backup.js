@@ -1,6 +1,7 @@
 const { MessageFlags } = require('discord.js');
 const backupCommand = require('../commands/config/backup');
 const { EMOJI } = require('../utils/emojis');
+const { t, languageOf } = require('../i18n');
 
 const V2_EPHEMERAL = MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral;
 
@@ -17,9 +18,10 @@ function ownsPanel(interaction, context) {
 }
 
 async function handleSelect(interaction) {
+  const lang = await languageOf(interaction);
   const context = parseContext(interaction.customId, backupCommand.BACKUP_MENU_PREFIX);
   if (!ownsPanel(interaction, context)) {
-    await interaction.reply({ content: `${EMOJI.DENY} This backup panel belongs to someone else.`, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+    await interaction.reply({ content: t(lang, 'backup.notYours', { emoji: EMOJI.DENY }), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
     return;
   }
 
@@ -29,29 +31,30 @@ async function handleSelect(interaction) {
   if (action === 'export_latest') return backupCommand.exportBackupForInteraction(interaction);
   if (action === 'audit') return backupCommand.auditForInteraction(interaction);
   if (action === 'schedule') {
-    await interaction.showModal(backupCommand.buildScheduleModal(context.guildId, context.userId));
+    await interaction.showModal(backupCommand.buildScheduleModal(context.guildId, context.userId, lang));
     return;
   }
   if (action === 'restore') {
     if (!interaction.member?.permissions?.has?.('Administrator')) {
-      await interaction.reply({ content: `${EMOJI.DENY} Only server Administrators can restore a backup.`, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+      await interaction.reply({ content: t(lang, 'backup.restore.adminOnly', { emoji: EMOJI.DENY }), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
       return;
     }
-    await interaction.showModal(backupCommand.buildRestoreModal(context.guildId, context.userId));
+    await interaction.showModal(backupCommand.buildRestoreModal(context.guildId, context.userId, lang));
   }
 }
 
 async function handleScheduleModal(interaction) {
+  const lang = await languageOf(interaction);
   const context = parseContext(interaction.customId, 'backup_schedule_modal');
   if (!ownsPanel(interaction, context)) {
-    await interaction.reply({ content: `${EMOJI.DENY} This backup panel belongs to someone else.`, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+    await interaction.reply({ content: t(lang, 'backup.notYours', { emoji: EMOJI.DENY }), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
     return;
   }
 
   const hours = Number(interaction.fields.getTextInputValue('hours'));
   const retention = Number(interaction.fields.getTextInputValue('retention'));
   if (!Number.isInteger(hours) || hours < 1 || hours > 168 || !Number.isInteger(retention) || retention < 1 || retention > 30) {
-    await interaction.reply({ content: `${EMOJI.WARNING} Hours must be 1-168 and retention must be 1-30.`, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+    await interaction.reply({ content: t(lang, 'backup.schedule.invalid', { emoji: EMOJI.WARNING }), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
     return;
   }
 
@@ -59,14 +62,15 @@ async function handleScheduleModal(interaction) {
 }
 
 async function handleRestoreModal(interaction) {
+  const lang = await languageOf(interaction);
   const context = parseContext(interaction.customId, 'backup_restore_modal');
   if (!ownsPanel(interaction, context)) {
-    await interaction.reply({ content: `${EMOJI.DENY} This backup panel belongs to someone else.`, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+    await interaction.reply({ content: t(lang, 'backup.notYours', { emoji: EMOJI.DENY }), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
     return;
   }
 
   if (!interaction.member?.permissions?.has?.('Administrator')) {
-    await interaction.reply({ content: `${EMOJI.DENY} Only server Administrators can restore a backup.`, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+    await interaction.reply({ content: t(lang, 'backup.restore.adminOnly', { emoji: EMOJI.DENY }), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
     return;
   }
 
@@ -74,11 +78,11 @@ async function handleRestoreModal(interaction) {
   const mode = interaction.fields.getTextInputValue('mode').trim().toLowerCase();
   const confirm = interaction.fields.getTextInputValue('confirm').trim().toUpperCase();
   if (!Number.isInteger(backupNumber) || backupNumber < 1 || !['merge', 'replace'].includes(mode)) {
-    await interaction.reply({ content: `${EMOJI.WARNING} Use a valid server backup number and choose \`merge\` or \`replace\`.`, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+    await interaction.reply({ content: t(lang, 'backup.restore.invalid', { emoji: EMOJI.WARNING }), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
     return;
   }
   if (confirm !== 'CONFIRM') {
-    await interaction.reply({ content: `${EMOJI.WARNING} Type \`CONFIRM\` exactly to authorize the restore.`, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+    await interaction.reply({ content: t(lang, 'backup.restore.typeConfirm', { emoji: EMOJI.WARNING }), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
     return;
   }
 
