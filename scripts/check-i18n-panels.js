@@ -30,7 +30,10 @@ setup create created edit edited remove removed add added send sent message mess
 first last cancel confirm save saved category categories support help details report reports role voice temporary
 manage owner owners status rating rate rated transcript level xp`.split(/\s+/).filter(Boolean));
 // Names people read in every language.
-const NAMES = /\b(Petto|Discord|VoiceMaster|Nitro|Premium|Components|Server Tag|Vanity|AutoMod|Cloudflare|Turnstile|top\.gg|Watch Together|Petto Code)\b/g;
+const NAMES = /\b(Petto|Discord|VoiceMaster|Nitro|Premium|Components|Server Tag|Vanity|AutoMod|Cloudflare|Turnstile|top\.gg|Watch Together|Petto Code|XP)\b/g;
+// Words of the list that are also words of that language: Portuguese "remove" (Remove o cargo), "role" (Role os dados, from rolar)
+// and "status" (um status AFK).
+const ALSO_NATIVE = { 'pt-BR': new Set(['remove', 'role', 'status']) };
 
 /** Every text of a payload people read: contents, labels, placeholders, descriptions, titles, footers, field names and values. */
 function texts(node, out = []) {
@@ -57,9 +60,11 @@ const COMMAND_WORDS = (() => {
 })();
 
 /** The English words left in a payload drawn in another language. */
-function englishLeft(payload) {
+function englishLeft(payload, lang = null) {
   const found = new Set();
   for (const text of texts(payload)) {
+    // A text that is only the name of a command (a menu option of `!help`) is a name.
+    if (COMMAND_WORDS.has(text.trim())) continue;
     const hasCommand = /![a-z]/.test(text);
     const plain = text
       .replace(/`[^`]*`/g, ' ') // code and command syntax
@@ -68,7 +73,7 @@ function englishLeft(payload) {
       .replace(/https?:\/\/\S+/g, ' ')
       .replace(NAMES, ' ');
     for (const word of plain.toLowerCase().match(/\p{L}+/gu) ?? []) {
-      if (ENGLISH.has(word) && !(hasCommand && COMMAND_WORDS.has(word))) found.add(word);
+      if (ENGLISH.has(word) && !(hasCommand && COMMAND_WORDS.has(word)) && !ALSO_NATIVE[lang]?.has(word)) found.add(word);
     }
   }
   return [...found];
@@ -151,13 +156,148 @@ function draw(name, build) {
   draw('report settings panel', (lang) => reportPanel.buildConfigPanel({ ...guild, channels: { cache: new Map() }, roles: { cache: new Map() } }, {}, { lang }));
   draw('language cards', (lang) => [require('../src/commands/config/language').buildCurrentCard(lang, '!'), require('../src/commands/config/language').buildDoneCard(lang, 3)]);
 
+  // A payload drawn by an async builder, in every language.
+  const drawAsync = async (name, build) => {
+    for (const lang of LANGUAGES) {
+      try {
+        drawn.push([name, lang, await build(lang)]);
+      } catch (err) {
+        throw new Error(`${name} could not be drawn in ${lang}: ${err.stack}`);
+      }
+    }
+  };
+  // What a command answers (reply, editReply, followUp), run with a pretend interaction in `lang`. The database modules it reads are
+  // replaced by giving their functions fixed answers.
+  const avatar = () => 'https://cdn.discordapp.com/embed/avatars/1.png';
+  const user = { id: '5', username: 'ana', globalName: 'Ana', tag: 'ana', bot: false, createdTimestamp: 0, displayAvatarURL: avatar, avatarURL: avatar, toString: () => '<@5>' };
+  const { Collection } = require('discord.js');
+  const member = { id: '5', displayName: 'Ana', user, guild, joinedTimestamp: 0, displayAvatarURL: avatar, roles: { cache: new Collection(), highest: { id: '1', name: 'Rol' } }, permissions: { has: () => true }, toString: () => '<@5>' };
+  // A server with the caches the template variables read.
+  const richGuild = {
+    ...guild, memberCount: 50, iconURL: () => null, bannerURL: () => null, createdTimestamp: 0, createdAt: new Date(0), ownerId: '6', emojis: { cache: new Collection() },
+    members: { cache: new Collection([['5', member]]), me: guild.members.me },
+    roles: { cache: new Collection() }, channels: { cache: new Collection(), fetch: async () => null },
+    client: { user: { id: 'bot' }, users: { fetch: async () => null } },
+  };
+  const runCommand = async (command, options, lang) => {
+    const sent = [];
+    const interaction = {
+      guild: richGuild,
+      guildId: guild.id, pettoLang: lang, user: member.user, member, client: { user: { id: 'bot' }, users: { fetch: async () => null } },
+      options: { getSubcommand: () => options.sub, getSubcommandGroup: () => null, getString: (key) => options[key] ?? null, getUser: (key) => options[key] ?? null, getInteger: (key) => options[key] ?? null, getChannel: () => null, getRole: () => null, getBoolean: () => null },
+      deferReply: async () => {}, reply: async (payload) => sent.push(payload), editReply: async (payload) => sent.push(payload), followUp: async (payload) => sent.push(payload),
+    };
+    await command.execute(interaction);
+    return sent;
+  };
+  const day = new Date().toISOString();
+
+  // Reaction roles: the buttons Petto puts on a message, one without a label of its own (it shows the role, or "Role").
+  const reactionRoles = require('../src/interactions/reactionRoleButton');
+  draw('reaction role buttons', (lang) => reactionRoles.buildButtonRows([{ id: 1, interaction_type: 'button', emoji: '🎮', role_id: 'gone', mode: 'toggle', button_label: null }, { id: 2, interaction_type: 'button', emoji: 'label:x', role_id: 'gone', mode: 'add', button_label: null }], { roles: { cache: new Map() } }, lang));
+
+  // Suggestions: the posted card, pending and answered by the staff, with its buttons.
+  const suggestionGuild = richGuild;
+  const suggestionConfig = { anonymous: false, up_emoji: '👍', down_emoji: '👎', status_colors: true, color_pending: 0x999999, color_approved: 0x00ff00, embed_template: null };
+  const suggestionRow = { id: 'abc', number: 7, content: 'Más canales de voz', status: 'pending', author_id: '5', created_at: day, image_url: null };
+  await drawAsync('suggestion card', (lang) => suggestions.render(suggestionGuild, suggestionRow, suggestionConfig, { tally: { up: 3, down: 1 }, lang }));
+  await drawAsync('answered suggestion card', (lang) => suggestions.render(suggestionGuild, { ...suggestionRow, status: 'approved', status_reason: 'Buena idea', status_by: '5' }, suggestionConfig, { tally: { up: 9, down: 0 }, lang }));
+  await drawAsync('anonymous suggestion card', (lang) => suggestions.render(suggestionGuild, suggestionRow, { ...suggestionConfig, anonymous: true }, { tally: { up: 0, down: 0 }, lang }));
+
+  // Confessions: the posted confession with its reply button, and the staff review card in each state.
+  const confessionRow = { id: 'c1', number: 4, content: 'Me gusta el servidor', image_url: null };
+  // As the database keeps them: the English defaults, shown in the server's language.
+  const confessionLook = { ...confessionConfig, title: t('en', 'confessions.default.title'), footer: t('en', 'confessions.default.footer'), allow_replies: true, reply_label: t('en', 'confessions.default.reply.button'), embed_template: null };
+  await drawAsync('confession', (lang) => confessions.render(richGuild, confessionRow, confessionLook, { lang }));
+  for (const status of ['pending', 'approved', 'rejected']) draw(`confession review card (${status})`, (lang) => confessions.reviewCard(confessionRow, confessionLook, { status, by: '5', lang }));
+
+  // Counting: the settings card the staff reads.
+  const countingDb = require('../src/db/counting');
+  countingDb.getConfig = async () => ({ enabled: true, channel_id: '9', current_number: 41, high_score: 120, allow_double: false, math: true, reset_on_wrong: true, delete_wrong: false, saves: 1, saves_max: 3, save_every: 100, milestone_every: 0, start_number: 0, react_ok: '✅', react_bad: '❌', react_record: '🏆', record_every: 50, wrong_role_id: '3', wrong_role_minutes: 10, top_role_id: null, alert_seconds: 0 });
+  const counting = require('../src/commands/utility/counting');
+  await drawAsync('counting settings card', (lang) => runCommand(counting, { sub: 'config' }, lang));
+
+  // Votes: the totals and the ranking.
+  const votesDb = require('../src/db/votes');
+  votesDb.voteTotals = async () => ({ total: 1520, voters: 300, mine: 4, last: day });
+  votesDb.topVoters = async () => [{ user_id: '5', total: 12 }, { user_id: '6', total: 1 }];
+  const votes = require('../src/commands/info/votes');
+  await drawAsync('votes card', (lang) => runCommand(votes, { sub: 'show' }, lang));
+  await drawAsync('votes ranking', (lang) => runCommand(votes, { sub: 'top' }, lang));
+
+  // Partners: every response of the Partner Manager system (the welcome of a new manager included), the stats and the ranking.
+  const partnerMessages = require('../src/utils/partnerMessages');
+  const partnerCtx = { guild: richGuild, member, user: member.user, channel: { id: '9', name: 'partners' }, partner: { name: 'Otro servidor', members: 120 } };
+  for (const key of partnerMessages.RESPONSE_KEYS) await drawAsync(`partner response (${key})`, (lang) => partnerMessages.responsePayload(guild.id, { enabled: true, messages: {} }, key, partnerCtx, lang));
+  const partnersDb = require('../src/db/partners');
+  partnersDb.getConfig = async () => ({ enabled: true });
+  partnersDb.listLog = async () => [{ manager_id: '5', partner_name: null, created_at: day }];
+  const partner = require('../src/commands/automation/partner');
+  await drawAsync('partner stats', (lang) => runCommand(partner, { sub: 'stats' }, lang));
+  await drawAsync('partner ranking', (lang) => runCommand(partner, { sub: 'leaderboard', period: 'week' }, lang));
+
+  // Requests: the card in every state, with its buttons.
+  const requestCards = require('../src/utils/requestCards');
+  for (const status of ['open', 'claimed', 'done', 'cancelled']) {
+    draw(`request card (${status})`, (lang) => requestCards.requestCard({ number: 3, status, user_id: '5', content: 'Un banner nuevo', claimed_by: '6', claimed_at: day, completed_at: day, created_at: day }, lang));
+  }
+
+  // Reviews and uploads: what a member sees.
+  const reviewsDb = require('../src/db/reviews');
+  reviewsDb.getConfig = async () => ({ reviews_enabled: true });
+  reviewsDb.listFor = async () => [{ stars: 4, reviewer_id: '6', updated_at: day, comment: 'Muy amable' }, { stars: 5, reviewer_id: '7', updated_at: day, comment: null }];
+  const review = require('../src/commands/automation/review');
+  await drawAsync('reviews card', (lang) => runCommand(review, { sub: 'show' }, lang));
+  const uploadsDb = require('../src/db/uploads');
+  uploadsDb.getConfig = async () => ({ enabled: true });
+  uploadsDb.listLog = async () => [{ user_id: '5', files: 2, channel_id: '9', created_at: day }];
+  const uploads = require('../src/commands/automation/uploads');
+  await drawAsync('uploads stats', (lang) => runCommand(uploads, { sub: 'stats' }, lang));
+  await drawAsync('uploads ranking', (lang) => runCommand(uploads, { sub: 'leaderboard', period: 'all' }, lang));
+
+  // Tickets: the DM a member gets when their ticket is closed, with the rating and transcript buttons.
+  const closer = { toString: () => '<@6>', displayAvatarURL: () => 'https://cdn.discordapp.com/avatars/6/a.png' };
+  draw('ticket closed DM', (lang) => [cards.buildTicketClosedCard({ ticket: { ticket_number: 12 }, guild, actor: closer, reason: null, channel: { id: '9' }, lang }), cards.buildRatingRow(1), cards.buildTranscriptLinkRow('https://petto.sbs/t/1', lang)]);
+  draw('ticket closed DM (closer hidden)', (lang) => cards.buildTicketClosedCard({ ticket: { ticket_number: 12 }, guild: { ...guild, iconURL: () => null }, actor: closer, reason: 'Resuelto', channel: null, hideCloser: true, lang }));
+
+  // Help: the main menu and a category page, with every command loaded.
+  const { loadCommands } = require('../src/handlers/commandHandler');
+  const helpClient = { user: { id: 'bot', displayAvatarURL: () => 'https://cdn.discordapp.com/embed/avatars/0.png' } };
+  loadCommands(helpClient);
+  const help = require('../src/commands/utility/help');
+  const helpGuild = { ...guild, members: { me: { displayAvatarURL: avatar } } };
+  draw('help main menu', (lang) => help.mainView(helpClient, helpGuild, '!', false, lang));
+  for (const category of ['moderation', 'utility']) draw(`help category (${category})`, (lang) => help.categoryView(helpClient, helpGuild, category, false, lang));
+
+  // The notices Petto sends to a server's staff channel or its owner, every kind, with details Petto wrote itself (translated) and
+  // details from Discord (kept as they are).
+  const { renderNotice, TEMPLATES: NOTICE_KINDS } = require('../src/utils/guildOpsAlerts');
+  for (const kind of Object.keys(NOTICE_KINDS)) {
+    draw(`server notice (${kind})`, (lang) => ({ content: renderNotice({ kind, details: t('en', 'notices.details.permissions'), lang }) }));
+  }
+  assert.ok(renderNotice({ kind: 'logs', details: 'Missing Access', lang: 'es' }).includes('> Missing Access'), 'details from Discord are shown as they are');
+  assert.equal(renderNotice({ kind: 'logs', details: 'x', lang: 'en' }), renderNotice({ kind: 'logs', details: 'x' }), 'English is the default');
+
+  // A few `!<module>config` cards and a generated one.
+  const moduleConfig = require('../src/utils/moduleConfig');
+  for (const name of ['welcomeconfig', 'counterconfig', 'ticketconfig', 'automodconfig', 'pollconfig', 'banconfig']) {
+    const card = helpClient.commands.get(name);
+    assert.ok(card?.configModule, `${name} is a config card`);
+    await drawAsync(`!${name}`, async (lang) => ({ content: await moduleConfig.buildCardText(card.configModule, { guildId: guild.id, prefix: '!', commands: helpClient.commands, lang }) }));
+  }
+
   const problems = [];
   for (const [name, lang, payload] of drawn) {
     if (lang === 'en') continue;
-    const left = englishLeft(payload);
+    const left = englishLeft(payload, lang);
     if (left.length) problems.push(`${name} [${lang}]: ${left.join(', ')}  <- ${texts(payload).join(' | ').slice(0, 400)}`);
   }
   assert.deepEqual(problems, [], `English words left in translated panels:\n${problems.join('\n')}`);
+  // The check reads these cards for real: their English drawings are full of the listed words.
+  for (const name of ['votes card', 'partner stats', 'reviews card', 'uploads stats', 'request card (open)', 'counting settings card', 'ticket closed DM', 'confession review card (pending)', 'suggestion card', 'help main menu', 'reaction role buttons']) {
+    const english = drawn.find(([drawnName, lang]) => drawnName === name && lang === 'en');
+    assert.ok(english && englishLeft(english[2]).length, `the English ${name} is drawn and read`);
+  }
 
   // The English defaults the database keeps are shown in the server's language while nobody changed them.
   assert.equal(defaultText('es', 'Manual backup', 'backup.manualLabel'), t('es', 'backup.manualLabel'));
