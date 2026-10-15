@@ -25,28 +25,30 @@ async function deployCommands({ force = false, strict = false, rest = new REST({
   const commands = collectCommandData();
   settings ??= defaultSettings();
 
-  const route = config.devGuildId
-    ? Routes.applicationGuildCommands(config.clientId, config.devGuildId)
-    : Routes.applicationCommands(config.clientId);
-
-  const key = `commands_hash:${config.devGuildId ?? 'global'}`;
+  // One target per test server when there are some (a list of ids works), or the global one.
+  const devGuildIds = config.devGuildIds ?? (config.devGuildId ? [config.devGuildId] : []);
+  const targets = devGuildIds.length
+    ? devGuildIds.map((guildId) => ({ guildId, route: Routes.applicationGuildCommands(config.clientId, guildId), key: `commands_hash:${guildId}` }))
+    : [{ guildId: null, route: Routes.applicationCommands(config.clientId), key: 'commands_hash:global' }];
   const hash = hashOf(commands);
   let result = null;
-  if (!force && await lastDeployed(settings, key) === hash) {
-    logger.info(`The ${commands.length} command(s) did not change since the last start: not registering them again.`);
-  } else {
+  for (const target of targets) {
+    if (!force && await lastDeployed(settings, target.key) === hash) {
+      logger.info(`The ${commands.length} command(s) did not change since the last start: not registering them again${target.guildId ? ` in ${target.guildId}` : ''}.`);
+      continue;
+    }
     try {
-      result = await rest.put(route, { body: commands });
-      await rememberDeployed(settings, key, hash);
+      result = await rest.put(target.route, { body: commands });
+      await rememberDeployed(settings, target.key, hash);
       logger.info(
-        config.devGuildId
-          ? `Registered ${result.length} command(s) to dev guild ${config.devGuildId}.`
+        target.guildId
+          ? `Registered ${result.length} command(s) to dev guild ${target.guildId}.`
           : `Registered ${result.length} command(s) globally (can take up to 1 hour to propagate).`,
       );
     } catch (error) {
       if (strict) throw error;
       const wait = error?.retryAfter ?? error?.rawError?.retry_after;
-      logger.warn(`The commands could not be registered (${error?.status ?? ''} ${error?.message ?? error}${wait ? `, Discord asks to wait ${wait}s` : ''}). Starting anyway with the ones registered before; the next start tries again.`);
+      logger.warn(`The commands could not be registered${target.guildId ? ` in ${target.guildId}` : ''} (${error?.status ?? ''} ${error?.message ?? error}${wait ? `, Discord asks to wait ${wait}s` : ''}). Starting anyway with the ones registered before; the next start tries again.`);
     }
   }
 

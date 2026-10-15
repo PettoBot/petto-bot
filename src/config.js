@@ -141,7 +141,9 @@ module.exports = {
   // Optional: the channel of the team where Petto lists the active Premium each time it starts (the website can post the same list with a button).
   premiumLogChannelId: /^\d{15,25}$/.test(process.env.PETTO_PREMIUM_LOG_CHANNEL_ID || '') ? process.env.PETTO_PREMIUM_LOG_CHANNEL_ID : null,
   premiumGuildId: /^\d{15,25}$/.test(process.env.PETTO_PREMIUM_GUILD_ID || '') ? process.env.PETTO_PREMIUM_GUILD_ID : null,
-  devGuildId: process.env.DISCORD_DEV_GUILD_ID || null,
+  // Test servers: with them, the commands are registered only there and not globally. One id or several, separated by commas or spaces.
+  devGuildIds: String(process.env.DISCORD_DEV_GUILD_ID || '').split(/[\s,;]+/).filter((id) => /^\d{15,25}$/.test(id)),
+  devGuildId: String(process.env.DISCORD_DEV_GUILD_ID || '').split(/[\s,;]+/).find((id) => /^\d{15,25}$/.test(id)) || null,
   databaseMode: 'discloud-postgres',
   // Discloud PostgreSQL is Petto's runtime database.
   primaryDatabaseUrl,
