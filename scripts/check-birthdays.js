@@ -37,6 +37,10 @@ const { processBirthdays } = require('../src/jobs/birthdayJob');
   assert.equal(birthdays.parseBirthday({ day: 29, month: 2, year: 2004 }).year, 2004);
   assert.ok(birthdays.parseBirthday({ day: 1, month: 1, year: 2100 }).error, 'a year in the future is refused');
   assert.ok(birthdays.parseBirthday({ day: 1, month: 13 }).error);
+  // The reasons and the dates in the language of the server.
+  assert.equal(birthdays.parseBirthday({ day: 30, month: 2 }, new Date(), 'es').error, 'No existe el 30 de febrero.');
+  assert.equal(birthdays.formatDay({ month: 12, day: 25 }, 'pt-BR'), '25 de dezembro');
+  assert.equal(birthdays.formatDay({ month: 12, day: 25 }), '25 December');
   // 29 February is celebrated on the 28th in years with no 29th.
   assert.equal(birthdays.celebratesOn({ month: 2, day: 29 }, { year: 2027, month: 2, day: 28 }), true);
   assert.equal(birthdays.celebratesOn({ month: 2, day: 29 }, { year: 2028, month: 2, day: 28 }), false);
