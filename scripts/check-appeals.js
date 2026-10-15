@@ -125,6 +125,7 @@ const A = require(path.join(root, 'src/utils/appeals.js'));
   const freed = await A.releaseIdleNames(live, now);
   assert.deepEqual(freed.map((f) => `${f.slug}:${f.reason}`).sort(), ['gone:left', 'idle:idle', 'off-old:off']);
   assert.deepEqual(store.cleared.sort(), ['A', 'C', 'E']);
+  assert.ok(A.messageFor({ language: 'es' }, null, 'submitted').includes('Tu apelación') && A.messageFor({}, null, 'submitted').startsWith('Your appeal') && A.messageFor({ language: 'pt-BR' }, null, 'accepted').includes('aceita'), 'default texts follow the language of the page');
   console.log('appeals OK');
 })().catch((err) => { console.error(err); process.exit(1); });
 

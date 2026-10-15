@@ -9,12 +9,29 @@ const QUESTION_TYPES = ['short', 'paragraph', 'choice', 'multi', 'yesno', 'numbe
 const PUNISHMENT_TYPES = ['ban', 'mute', 'warn', 'kick'];
 const DETAILS = ['reason', 'duration', 'moderator'];
 const BLOCKS = { none: 0, day: 86_400_000, week: 7 * 86_400_000, month: 30 * 86_400_000, forever: -1 };
+// What the members read when the server wrote nothing: in the language the server chose for its appeal page (English when it chose none).
 const DEFAULT_MESSAGES = {
-  submitted: 'Your appeal was sent. The staff of {server} will look at it.',
-  accepted: 'Your appeal was accepted. {reason}',
-  rejected: 'Your appeal was rejected. {reason}',
-  reply: 'The staff of {server} wrote to you about your appeal.',
+  en: {
+    submitted: 'Your appeal was sent. The staff of {server} will look at it.',
+    accepted: 'Your appeal was accepted. {reason}',
+    rejected: 'Your appeal was rejected. {reason}',
+    reply: 'The staff of {server} wrote to you about your appeal.',
+  },
+  es: {
+    submitted: 'Tu apelación fue enviada. El staff de {server} la revisará.',
+    accepted: 'Tu apelación fue aceptada. {reason}',
+    rejected: 'Tu apelación fue rechazada. {reason}',
+    reply: 'El staff de {server} te escribió sobre tu apelación.',
+  },
+  'pt-BR': {
+    submitted: 'Sua apelação foi enviada. A equipe de {server} vai analisá-la.',
+    accepted: 'Sua apelação foi aceita. {reason}',
+    rejected: 'Sua apelação foi recusada. {reason}',
+    reply: 'A equipe de {server} escreveu para você sobre a sua apelação.',
+  },
 };
+const LABELS = { en: { rejoin: 'Rejoin', answer: 'Answer on ' }, es: { rejoin: 'Volver a entrar', answer: 'Responde en ' }, 'pt-BR': { rejoin: 'Voltar a entrar', answer: 'Responda em ' } };
+const labelsFor = (config) => LABELS[config?.language] ?? LABELS.en;
 
 const clip = (value, max) => String(value ?? '').replace(/\u0000/g, '').trim().slice(0, max);
 const id = (value, fallback) => (/^[a-z0-9_-]{1,24}$/i.test(String(value ?? '')) ? String(value) : fallback);
@@ -25,7 +42,7 @@ function renderTemplate(text, vars) {
 }
 
 function messageFor(config, form, key) {
-  return clip(form?.messages?.[key] || config?.messages?.[key] || DEFAULT_MESSAGES[key], 1000);
+  return clip(form?.messages?.[key] || config?.messages?.[key] || (DEFAULT_MESSAGES[config?.language] ?? DEFAULT_MESSAGES.en)[key], 1000);
 }
 
 /** A form as the dashboard sends it, cut down to what is allowed: limits, types and ids all checked. */
@@ -327,7 +344,7 @@ async function resolveAppeal({ client, guild, submission, status, moderatorId, m
   } else if (form?.block_on_reject && form.block_on_reject !== 'none') {
     await db.setBlock(guild.id, row.user_id, blockUntil(form.block_on_reject), 'Appeal rejected').catch(() => {});
   }
-  const text = `${renderTemplate(messageFor(config, form, status), vars)}${invite?.url ? `\n\nRejoin: ${invite.url}` : ''}\n\n-# ${siteLink(guild.id, config.slug)}/status/${row.id}`;
+  const text = `${renderTemplate(messageFor(config, form, status), vars)}${invite?.url ? `\n\n${labelsFor(config).rejoin}: ${invite.url}` : ''}\n\n-# ${siteLink(guild.id, config.slug)}/status/${row.id}`;
   const dm = await sendDm(client, row.user_id, text, STATUS_COLORS[status]);
   await db.addMessage({ submission_id: row.id, guild_id: guild.id, author_type: 'system', author_name: 'Petto', content: renderTemplate(messageFor(config, form, status), vars) + (invite?.url ? `\n${invite.url}` : '') }).catch(() => {});
   await updateStaffCard(guild, row, form, config, moderatorId);
@@ -354,7 +371,7 @@ async function staffReply({ client, guild, submission, content, moderatorId, mod
   const anonymous = Boolean(config.anonymous_messages);
   await db.addMessage({ submission_id: submission.id, guild_id: guild.id, author_type: 'staff', author_id: moderatorId, author_name: moderatorName ?? null, content: text, anonymous });
   const form = submission.form_id ? await db.getForm(guild.id, submission.form_id).catch(() => null) : null;
-  const dm = await sendDm(client, submission.user_id, `${renderTemplate(messageFor(config, form, 'reply'), { server: guild.name })}\n\n**${anonymous ? 'Staff' : clip(moderatorName ?? 'Staff', 40)}**\n${text}\n\n-# ${config.allow_replies ? 'Answer on ' : ''}${siteLink(guild.id, config.slug)}/status/${submission.id}`, 0x8c7cff);
+  const dm = await sendDm(client, submission.user_id, `${renderTemplate(messageFor(config, form, 'reply'), { server: guild.name })}\n\n**${anonymous ? 'Staff' : clip(moderatorName ?? 'Staff', 40)}**\n${text}\n\n-# ${config.allow_replies ? labelsFor(config).answer : ''}${siteLink(guild.id, config.slug)}/status/${submission.id}`, 0x8c7cff);
   await notifyStaff(guild, submission, `<@${moderatorId}> replied to **${clip(submission.username, 40)}**\n> ${text.slice(0, 400)}`, 0x8c7cff);
   return { ok: true, dm };
 }
