@@ -174,7 +174,8 @@ const PANEL_LINES = [
   ['leave', 'disconnect'], ['start', 'activity'], ['info', 'info'], ['increase', 'increase'], ['decrease', 'decrease'],
 ];
 
-async function sendPanel(channel, lang = currentLanguage()) {
+/** The panel message (Components V2, custom emojis, the vc:* buttons) in `lang`: posted by setup and `!voicemaster panel`, redrawn when the language changes. */
+function buildPanelPayload(lang = currentLanguage()) {
   const emoji = {
     leave: { id: '1533576199354454197', name: 'pe_leave' },
     decrease: { id: '1533576366174503085', name: 'pe_Decrease' },
@@ -196,7 +197,7 @@ async function sendPanel(channel, lang = currentLanguage()) {
 
   // Keep this payload in sync with Bli's fixed panel: Components V2, custom
   // emojis, no accent color, and the vc:* namespace used by its handler.
-  return channel.send({
+  return {
     flags: MessageFlags.IsComponentsV2,
     components: [{
       type: 17,
@@ -231,10 +232,15 @@ async function sendPanel(channel, lang = currentLanguage()) {
         ] },
       ],
     }],
-  });
+  };
+}
+
+async function sendPanel(channel, lang = currentLanguage()) {
+  return channel.send(buildPanelPayload(lang));
 }
 
 async function deletePanel(guild, channelId, messageId) { const channel = await guild.channels.fetch(channelId).catch(() => null); const message = await channel?.messages.fetch(messageId).catch(() => null); await message?.delete().catch(() => {}); }
 
 module.exports.sendPanel = sendPanel;
+module.exports.buildPanelPayload = buildPanelPayload;
 module.exports.executeAction = executeAction;
