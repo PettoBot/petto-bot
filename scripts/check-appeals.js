@@ -96,7 +96,8 @@ const A = require(path.join(root, 'src/utils/appeals.js'));
 
   // Accepting lifts the ban and gives an invite; resolving twice is refused.
   const accepted = await A.resolveAppeal({ client, guild, submission: result.submission, status: 'accepted', moderatorId: 'M1', reason: 'Welcome back' });
-  assert.ok(accepted.ok); assert.deepEqual(lifted, [7]); assert.ok(accepted.invite && accepted.invite.includes('discord.gg'));
+  assert.ok(accepted.ok); assert.deepEqual(lifted, [7]); assert.ok(accepted.invite && accepted.invite.url.includes('discord.gg') && accepted.invite.note.length > 0, 'the invite and where it came from');
+  assert.ok(accepted.submission.invite_url === accepted.invite.url && accepted.submission.invite_note === accepted.invite.note, 'the staff card knows which invite was made');
   assert.equal((await A.resolveAppeal({ client, guild, submission: result.submission, status: 'rejected', moderatorId: 'M2' })).error, 'already_resolved');
   assert.ok(client.dms.some((d) => d.text.includes('Welcome back')));
 

@@ -185,6 +185,7 @@ function staffCardText(submission, form, config) {
     if (used + block.length > 3500) { lines.push('*…more answers in the dashboard*'); break; }
     lines.push(block); used += block.length;
   }
+  if (submission.invite_note) lines.push(`**Invite** — ${submission.invite_url ? `${submission.invite_url} (${submission.invite_note})` : submission.invite_note}`, '');
   lines.push(`-# ID ${submission.id}`);
   return lines.join('\n');
 }
@@ -270,15 +271,20 @@ async function logLine(guild, config, text, color) {
   await channel.send({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } }).catch(() => {});
 }
 
-/** The invite a member gets after an accepted appeal: the fixed code of the server or a fresh single-use one. */
+/**
+ * The invite a member gets after an accepted appeal, and a short note on where it came from so the staff can see it:
+ * the fixed code of the server, or a fresh single-use one (valid 7 days) made in a channel Petto can create invites in.
+ */
 async function inviteFor(guild, config, form) {
-  if (config.rejoin_invite_code && !config.auto_invite && !form?.generate_invite) return `https://discord.gg/${config.rejoin_invite_code}`;
-  if (!(config.auto_invite || form?.generate_invite)) return config.rejoin_invite_code ? `https://discord.gg/${config.rejoin_invite_code}` : null;
+  const fixed = config.rejoin_invite_code ? `https://discord.gg/${config.rejoin_invite_code}` : null;
+  const wantsNew = Boolean(config.auto_invite || form?.generate_invite);
+  if (!wantsNew) return fixed ? { url: fixed, note: 'fixed invite of the server' } : { url: null, note: 'no invite is set' };
   const me = guild.members.me;
   const channel = guild.channels.cache.find((c) => [ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(c.type) && me?.permissionsIn(c).has(PermissionFlagsBits.CreateInstantInvite));
-  if (!channel) return config.rejoin_invite_code ? `https://discord.gg/${config.rejoin_invite_code}` : null;
+  if (!channel) return { url: fixed, note: `Petto could not create an invite: it needs Create Invite in a text channel${fixed ? '; the fixed invite was sent instead' : ''}` };
   const invite = await channel.createInvite({ maxAge: 7 * 86_400, maxUses: 1, unique: true, reason: 'Accepted appeal' }).catch(() => null);
-  return invite ? invite.url : (config.rejoin_invite_code ? `https://discord.gg/${config.rejoin_invite_code}` : null);
+  if (!invite) return { url: fixed, note: `Discord did not let Petto create an invite${fixed ? '; the fixed invite was sent instead' : ''}` };
+  return { url: invite.url, note: `single-use invite created in #${channel.name}, valid 7 days` };
 }
 
 /** Lifts what the member was appealing: the ban and the timeout. Petto cases are lifted through the same path as the dashboard. */
@@ -315,15 +321,18 @@ async function resolveAppeal({ client, guild, submission, status, moderatorId, m
   if (status === 'accepted') {
     lifted = await liftPunishments(guild, row, moderatorId);
     invite = await inviteFor(guild, config, form);
+    // The staff can see which invite was made, or why there is none.
+    row.invite_url = invite.url; row.invite_note = invite.note;
+    await db.updateSubmission(row.id, { invite_url: invite.url, invite_note: invite.note }).catch(() => {});
   } else if (form?.block_on_reject && form.block_on_reject !== 'none') {
     await db.setBlock(guild.id, row.user_id, blockUntil(form.block_on_reject), 'Appeal rejected').catch(() => {});
   }
-  const text = `${renderTemplate(messageFor(config, form, status), vars)}${invite ? `\n\nRejoin: ${invite}` : ''}\n\n-# ${siteLink(guild.id, config.slug)}/status/${row.id}`;
+  const text = `${renderTemplate(messageFor(config, form, status), vars)}${invite?.url ? `\n\nRejoin: ${invite.url}` : ''}\n\n-# ${siteLink(guild.id, config.slug)}/status/${row.id}`;
   const dm = await sendDm(client, row.user_id, text, STATUS_COLORS[status]);
-  await db.addMessage({ submission_id: row.id, guild_id: guild.id, author_type: 'system', author_name: 'Petto', content: renderTemplate(messageFor(config, form, status), vars) + (invite ? `\n${invite}` : '') }).catch(() => {});
+  await db.addMessage({ submission_id: row.id, guild_id: guild.id, author_type: 'system', author_name: 'Petto', content: renderTemplate(messageFor(config, form, status), vars) + (invite?.url ? `\n${invite.url}` : '') }).catch(() => {});
   await updateStaffCard(guild, row, form, config, moderatorId);
   const who = moderatorName ?? `<@${moderatorId}>`;
-  await logLine(guild, config, `${who} ${status} the appeal of **${clip(row.username, 40)}**${lifted.length ? ` (lifted: ${lifted.join(', ')})` : ''}.`, STATUS_COLORS[status]);
+  await logLine(guild, config, `${who} ${status} the appeal of **${clip(row.username, 40)}**${lifted.length ? ` (lifted: ${lifted.join(', ')})` : ''}${row.invite_note ? `. Invite: ${row.invite_url ? `${row.invite_url} (${row.invite_note})` : row.invite_note}` : ''}.`, STATUS_COLORS[status]);
   return { ok: true, submission: row, dm, invite, lifted };
 }
 

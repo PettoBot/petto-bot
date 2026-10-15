@@ -3653,6 +3653,22 @@ create table if not exists appeal_name_reservations (
   reserved_until  timestamptz not null
 );
 alter table appeal_name_reservations enable row level security;
+-- The pictures of an appeal page (banner, icon and the picture of the link preview), one of each kind per server.
+create table if not exists appeal_images (
+  guild_id    text not null,
+  kind        text not null,
+  mime        text not null default 'image/png',
+  width       integer,
+  height      integer,
+  size        integer,
+  bytes       bytea not null,
+  updated_at  timestamptz not null default now(),
+  primary key (guild_id, kind)
+);
+alter table appeal_images enable row level security;
+-- The invite made when an appeal was accepted, and why there is none when Petto could not make it.
+alter table appeal_submissions add column if not exists invite_url text;
+alter table appeal_submissions add column if not exists invite_note text;
 alter table appeal_config enable row level security;
 alter table appeal_forms enable row level security;
 alter table appeal_submissions enable row level security;

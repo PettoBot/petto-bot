@@ -43,9 +43,9 @@ function describeLimits(premium) {
 }
 
 /** Re-draws an upload as a PNG so only pixels are kept: nothing hidden in the file is stored. Large pictures are scaled down. */
-async function cleanUpload(buffer) {
+async function cleanUpload(buffer, maxSide = UPLOAD.maxSide) {
   const image = await decode(buffer);
-  const scale = Math.min(1, UPLOAD.maxSide / Math.max(image.width, image.height));
+  const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
   const width = Math.max(1, Math.round(image.width * scale));
   const height = Math.max(1, Math.round(image.height * scale));
   const canvas = createCanvas(width, height);
