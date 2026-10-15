@@ -2,7 +2,7 @@ const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, MessageFlags,
 const db = require('../db/appeals');
 const { textCard } = require('./caseCard');
 const logger = require('./logger');
-const { t, guildLanguage, normalizeLanguage, currentLanguage } = require('../i18n');
+const { t, guildLanguage, normalizeLanguage, currentLanguage, defaultText } = require('../i18n');
 
 const PREFIX = 'appeal';
 const LIMITS = { forms: 10, sections: 6, questions: 12, options: 20, label: 200, help: 300, short: 300, paragraph: 1500, number: 20, reply: 1500, greeting: 600 };
@@ -288,7 +288,7 @@ async function submitAppeal({ client, guild, config, form, user, rawAnswers }) {
     });
     let threadId = null;
     if (config.auto_thread && channel.type === ChannelType.GuildText && message.startThread) {
-      const name = renderTemplate(config.thread_name, { username: user.username }).slice(0, 100) || t(lang, 'appeals.threadName', { username: user.username }).slice(0, 100);
+      const name = renderTemplate(defaultText(lang, config.thread_name, 'appeals.threadName'), { username: user.username }).slice(0, 100) || t(lang, 'appeals.threadName', { username: user.username }).slice(0, 100);
       threadId = (await message.startThread({ name, autoArchiveDuration: 1440 }).catch(() => null))?.id ?? null;
     }
     await db.updateSubmission(submission.id, { channel_id: channel.id, message_id: message.id, thread_id: threadId });
