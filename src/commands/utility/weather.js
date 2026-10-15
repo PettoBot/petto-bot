@@ -18,13 +18,13 @@ module.exports = {
     await interaction.deferReply({ flags: MessageFlags.SuppressNotifications });
 
     try {
-      const location = await geocode(place);
-      if (!location) {
+      const found = await geocode(place);
+      if (!found) {
         await interaction.editReply({ content: t(lang, 'utility.weather.notFound', { place }) });
         return;
       }
 
-      const weather = await currentWeather(location.latitude, location.longitude);
+      const [location, weather] = await Promise.all([localizePlace(found, place, lang), currentWeather(found.latitude, found.longitude)]);
       const unit = weather.temperature_unit === 'fahrenheit' ? '°F' : '°C';
       const windUnit = weather.wind_speed_unit === 'mph' ? 'mph' : 'km/h';
       const embed = new EmbedBuilder()
@@ -44,15 +44,67 @@ module.exports = {
   },
 };
 
+const GEOCODING_URL = 'https://geocoding-api.open-meteo.com/v1/search';
+// The language Open-Meteo writes place names in, for each language of Petto.
+const GEOCODING_LANGUAGES = { es: 'es', 'pt-BR': 'pt' };
+const LOCALIZE_TIMEOUT_MS = 1500;
+const LOCALIZE_RESULTS = 10;
+
+const placeOf = (result) => ({
+  id: result.id,
+  name: result.name,
+  country: result.country,
+  countryCode: result.country_code,
+  admin1: result.admin1,
+  isCountry: /^PCL/.test(result.feature_code ?? ''),
+  latitude: result.latitude,
+  longitude: result.longitude,
+});
+
+/** The name of a country in `lang`, from its ISO code (Intl knows them all); null when it cannot tell. */
+function countryName(code, lang) {
+  if (!code) return null;
+  try {
+    return new Intl.DisplayNames([lang], { type: 'region' }).of(String(code).toUpperCase()) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // The search stays in English: Open-Meteo's `language` also changes which place matches a name (with `es`, "Germany"
-// finds a town in the United States), so place names come back as the API writes them in English.
-async function geocode(name) {
-  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=1&language=en&format=json`;
-  const response = await fetch(url, { headers: { Accept: 'application/json' } });
+// finds a town in the United States). The names are then shown in the server's language by `localizePlace`.
+async function geocode(name, fetchImpl = fetch) {
+  const url = `${GEOCODING_URL}?name=${encodeURIComponent(name)}&count=1&language=en&format=json`;
+  const response = await fetchImpl(url, { headers: { Accept: 'application/json' } });
   if (!response.ok) throw new Error(`Geocoding failed with ${response.status}`); // i18n-ignore: internal error, execute answers with its own message
   const body = await response.json();
   const result = body.results?.[0];
-  return result ? { name: result.name, country: result.country, latitude: result.latitude, longitude: result.longitude } : null;
+  return result ? placeOf(result) : null;
+}
+
+/**
+ * The place found in English, with its name, country and region written in `lang`: the same search again in that language,
+ * keeping only the result with the same id. When that search does not find it (or is slow or fails), the country is named from
+ * its code (and so is the place when it is a country itself) and the rest keeps the English names. English makes no second call.
+ */
+async function localizePlace(place, query, lang, fetchImpl = fetch) {
+  const language = GEOCODING_LANGUAGES[lang];
+  if (!language || !place) return place;
+  const fromCode = () => {
+    const country = countryName(place.countryCode, lang) || place.country;
+    return { ...place, country, name: place.isCountry ? country : place.name };
+  };
+  try {
+    const url = `${GEOCODING_URL}?name=${encodeURIComponent(query)}&count=${LOCALIZE_RESULTS}&language=${language}&format=json`;
+    const response = await fetchImpl(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(LOCALIZE_TIMEOUT_MS) });
+    if (!response.ok) return fromCode();
+    const body = await response.json();
+    const same = place.id == null ? null : (body.results ?? []).find((result) => result.id === place.id);
+    if (!same) return fromCode();
+    return { ...place, name: same.name || place.name, country: same.country || place.country, admin1: same.admin1 || place.admin1 };
+  } catch {
+    return fromCode();
+  }
 }
 
 async function currentWeather(latitude, longitude) {
@@ -69,3 +121,4 @@ async function currentWeather(latitude, longitude) {
 }
 
 module.exports.geocode = geocode;
+module.exports.localizePlace = localizePlace;
