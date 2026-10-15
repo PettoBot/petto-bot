@@ -3,10 +3,19 @@
 //   node scripts/find-hardcoded-text.js src/commands/moderation/ban.js src/utils/caseCard.js
 // A line that must stay in English (a log for the team, a name that is never translated...) carries `i18n-ignore` in a comment
 // on that line or the line before it; a whole file that nobody outside the team reads starts with `// i18n-ignore-file: <why>`.
+//
+// Each literal is read with where it sits: the call it is an argument of (and which argument), or the object key it is the value
+// of. That is what makes a single word count ("Close" in `.setLabel('Close')` or `{ label: 'Close' }`), and what lets the
+// arguments that are never text (`t(lang, 'key')`, `.includes('x')`, `logger.info(...)`, a customId) be left alone without
+// skipping the whole line they are on.
 const fs = require('node:fs');
 const path = require('node:path');
 
-/** The string literals of a JavaScript source, with their line: { line, text, before } (`${...}` becomes `{}`). */
+/**
+ * The string literals of a JavaScript (or TypeScript) source: { line, text, before, call, arg, key }. `${...}` becomes `{}`.
+ * `call` is the name of the innermost call the literal is an argument of (`setLabel`, `t`, `logger.info`…) and `arg` its
+ * position; `key` is the object key it is the value of, when the innermost bracket around it is an object.
+ */
 function literalsOf(source) {
   const found = [];
   let i = 0;
@@ -14,6 +23,23 @@ function literalsOf(source) {
   let lastSignificant = '';
   const n = source.length;
   const lineStartOf = (index) => source.lastIndexOf('\n', index - 1) + 1;
+  // Open brackets: { type: '(' | '{' | '[', name (for calls), arg (commas seen) }.
+  const stack = [];
+
+  function context(start) {
+    const top = stack[stack.length - 1];
+    const before = source.slice(lineStartOf(start), start);
+    const keyMatch = /([A-Za-z_$][\w$]*|'[^']*'|"[^"]*")\s*:\s*$/.exec(before);
+    // The callee for a literal that is inside an object passed to a call, like `.setFooter({ text: '…' })`.
+    const outer = top?.type === '{' ? stack[stack.length - 2] : null;
+    return {
+      before,
+      call: top?.type === '(' ? top.name : null,
+      arg: top?.type === '(' ? top.arg : null,
+      key: top?.type === '{' && keyMatch ? keyMatch[1].replace(/^['"]|['"]$/g, '') : null,
+      outerCall: outer?.type === '(' ? outer.name : null,
+    };
+  }
 
   function readQuoted(quote) {
     const startLine = line;
@@ -27,12 +53,13 @@ function literalsOf(source) {
       i += 1;
     }
     i += 1;
-    found.push({ line: startLine, text, before: source.slice(lineStartOf(start), start) });
+    found.push({ line: startLine, text, ...context(start) });
   }
 
   function readTemplate() {
     const startLine = line;
     const start = i;
+    const where = context(start);
     i += 1;
     let text = '';
     while (i < n && source[i] !== '`') {
@@ -48,21 +75,33 @@ function literalsOf(source) {
       i += 1;
     }
     i += 1;
-    found.push({ line: startLine, text, before: source.slice(lineStartOf(start), start) });
+    found.push({ line: startLine, text, ...where });
   }
 
   // Inside `${ ... }`: strings and templates in it are read too, braces are counted.
   function skipExpression() {
     let depth = 1;
+    const base = stack.length;
     while (i < n && depth > 0) {
       const c = source[i];
       if (c === '{') { depth += 1; i += 1; continue; }
       if (c === '}') { depth -= 1; i += 1; continue; }
       if (c === '\'' || c === '"') { readQuoted(c); continue; }
       if (c === '`') { readTemplate(); continue; }
+      if (c === '(') { stack.push({ type: '(', name: calleeBefore(i), arg: 0 }); i += 1; continue; }
+      if (c === ')') { if (stack.length > base) stack.pop(); i += 1; continue; }
+      if (c === ',' && stack.length > base && stack[stack.length - 1].type === '(') stack[stack.length - 1].arg += 1;
       if (c === '\n') line += 1;
       i += 1;
     }
+    stack.length = base;
+  }
+
+  // The name right before an opening parenthesis: `a.b.setLabel`, `t`, `new Error` -> `Error`.
+  function calleeBefore(index) {
+    const head = source.slice(Math.max(0, index - 80), index);
+    const match = /([A-Za-z_$][\w$]*(?:\s*\??\.\s*[A-Za-z_$][\w$]*)*)\s*$/.exec(head);
+    return match ? match[1].replace(/\s+/g, '').replace(/\?\./g, '.') : '';
   }
 
   while (i < n) {
@@ -94,15 +133,40 @@ function literalsOf(source) {
       lastSignificant = 'x';
       continue;
     }
+    if (c === '(') stack.push({ type: '(', name: calleeBefore(i), arg: 0 });
+    else if (c === '{') stack.push({ type: '{' });
+    else if (c === '[') stack.push({ type: '[' });
+    else if (c === ')' || c === '}' || c === ']') stack.pop();
+    else if (c === ',' && stack.length && stack[stack.length - 1].type === '(') stack[stack.length - 1].arg += 1;
     if (!/\s/.test(c)) lastSignificant = c;
     i += 1;
   }
   return found;
 }
 
-// Where a single word is already something people read: a button, a field name, a title.
-const SINK = /(?:\.set(?:Label|Placeholder|Title|Author|Footer|Content)\(\s*|\b(?:label|placeholder|title|name|header|footer|emptyText|empty|heading|text)\s*:\s*)$/;
-const SKIP_LINE = /\blogger\.|\bconsole\.|\brequire\(|i18n-ignore|\bt\(|\.setCustomId\(|customId\s*:|\.startsWith\(|\.endsWith\(|\.includes\(|\bcase\s+['"`]|\.(?:from|select|eq|neq|in|is|order|upsert|rpc)\(/;
+// Calls whose string arguments are never text people read (the last part of the name).
+const NOT_TEXT_CALLS = new Set([
+  'require', 'includes', 'startsWith', 'endsWith', 'indexOf', 'lastIndexOf', 'split', 'match', 'matchAll', 'test',
+  'has', 'get', 'delete', 'from', 'select', 'eq', 'neq', 'in', 'is', 'not', 'or', 'order', 'upsert', 'rpc', 'on', 'once', 'off', 'emit',
+  'query', 'setCustomId', 'setURL', 'setImage', 'setThumbnail', 'setColor', 'setEmoji', 'setStyle', 'setName',
+  'getString', 'getInteger', 'getNumber', 'getBoolean', 'getUser', 'getMember', 'getRole', 'getChannel', 'getMentionable', 'getAttachment',
+  'getSubcommand', 'getSubcommandGroup', 'getFocused', 'RegExp', 'Symbol', 'parseInt', 'parseFloat', 'createHash', 'createHmac', 'digest',
+  'toString', 'padStart', 'padEnd', 'localeCompare', 'toLocaleString', 'toLocaleDateString', 'toLocaleTimeString', 'toLocaleLowerCase',
+  'toLocaleUpperCase', 'DateTimeFormat', 'NumberFormat', 'PluralRules', 'stringify', 'defineProperty', 'hasOwn', 'hasOwnProperty',
+  'readFileSync', 'writeFileSync', 'existsSync', 'dirname', 'basename', 'extname', 'registerFromPath', 'loadImage', 'fetch',
+  'setHeader', 'header', 'status', 'envBool', 'envList', 'envInt', 'encodeURIComponent', 'decodeURIComponent', 'addChannelTypes',
+  'setRequired', 'setMinValue', 'setMaxValue', 'setMinLength', 'setMaxLength', 'setDMPermission', 'setDefaultMemberPermissions',
+  'setContexts', 'setIntegrationTypes', 'resolveRole', 'tokenize', 'canvasFont', 'font',
+  'commandRef', 'commandMention', 'commandSubcommandMention',
+]);
+// Calls whose string arguments are what people read: a single word there is already text.
+const TEXT_CALLS = new Set(['setLabel', 'setPlaceholder', 'setTitle', 'setDescription', 'setContent', 'setFooter', 'setAuthor', 'addField', 'reply', 'editReply', 'followUp', 'send', 'update', 'textCard', 'plainCard', 'noticePayload']);
+// Object keys whose values people read; `name` and `value` only count when they look like words for people (capitalized).
+const TEXT_KEYS = new Set(['label', 'placeholder', 'title', 'description', 'desc', 'text', 'footer', 'header', 'content', 'heading', 'emptyText', 'empty', 'subtitle', 'summary', 'message', 'hint', 'note', 'question', 'answer']);
+const NAME_KEYS = new Set(['name', 'value']);
+// Object keys whose values are never text people read.
+const NOT_TEXT_KEYS = new Set(['customId', 'custom_id', 'url', 'iconURL', 'icon_url', 'proxyURL', 'emoji', 'type', 'style', 'key', 'id', 'event', 'table', 'column', 'columns', 'channel', 'kind', 'mode', 'action', 'permission', 'flag', 'flags', 'code', 'format', 'locale', 'lang', 'language', 'font', 'family', 'path', 'file', 'src', 'href', 'method', 'route', 'command', 'commandName', 'subcommand', 'option', 'alias', 'aliases', 'prefix', 'pattern', 'regex', 'unit', 'units', 'color', 'colour', 'tone', 'status', 'state', 'reaction', 'trigger', 'match_mode', 'matchMode', 'onConflict', 'returning', 'parse', 'repliedUser', 'extension', 'size', 'contentType', 'encoding', 'sql', 'usage', 'syntax', 'example', 'examples']);
+
 const NOT_TEXT = [
   /^\s*$/,
   /^[\w.:/#@<>{}[\]|-]+$/, // ids, keys, paths, custom ids, mentions without spaces
@@ -113,6 +177,45 @@ const NOT_TEXT = [
   /^use strict$/,
 ];
 
+const lastPart = (name) => String(name ?? '').split('.').pop();
+
+/** Whether a literal, where it sits, reads like English for people. */
+function isHardcoded(literal) {
+  const text = literal.text;
+  const trimmed = text.trim();
+  const call = lastPart(literal.call);
+  // Arguments that are never text: the key of `t(lang, 'key')`, logs, ids, comparisons, parsing.
+  if ((call === 't' || call === 'tn') && literal.arg === 1) return false;
+  if (/^(logger|console)\./.test(literal.call ?? '') || /^(logger|console)\./.test(literal.outerCall ?? '')) return false;
+  if (literal.call && NOT_TEXT_CALLS.has(call) && !literal.key) return false;
+  if (literal.key && NOT_TEXT_KEYS.has(literal.key)) return false;
+  if (/\bcase\s+$/.test(literal.before) || /(?:===?|!==?)\s*$/.test(literal.before)) return false;
+  if (/^[a-z][\w-]*(\.[\w-]+)+$/.test(text)) return false; // a translation key
+
+  // Placeholders (`{user.name}`, `{}`) are not words.
+  const words = text.replace(/\{[^{}\s]*\}/g, ' ').match(/[A-Za-z][a-z']{1,}/g) ?? [];
+  // A text argument is the first one or two (`reply(interaction, 'text')`); later ones are kinds, colors, options.
+  const textCall = (TEXT_CALLS.has(call) && (literal.arg ?? 0) <= 1) || TEXT_CALLS.has(lastPart(literal.outerCall));
+  const textKey = literal.key && TEXT_KEYS.has(literal.key);
+  const nameKey = literal.key && NAME_KEYS.has(literal.key);
+
+  if (NOT_TEXT.some((pattern) => pattern.test(trimmed))) {
+    // A single word is still text where people read it ("Close" on a button, "Reason:" before a value).
+    const plain = trimmed.replace(/\*\*/g, '');
+    const capitalWord = /^[A-Z][a-z]{2,}(?:[ -][A-Za-z]+)*[.!?…:]*$/.test(plain);
+    const anyWord = /^[A-Za-z][a-z]{2,}[.!?…:]*$/.test(plain) && !/[_/:#@<>{}]/.test(plain.replace(/[.!?…:]+$/, ''));
+    if (((textCall || (textKey && !literal.call)) && anyWord) || (textKey && capitalWord)) return true;
+    if (nameKey && capitalWord) return true;
+    if (capitalWord && /:(\*\*)?$/.test(trimmed)) return true;
+    return false;
+  }
+  const sentence = words.length >= 2 && /[a-z]{3,}/.test(text.replace(/\{[^{}\s]*\}/g, ' ')) && /\s/.test(trimmed);
+  const single = (textCall || textKey || nameKey) && /^[A-Z][a-z]{2,}/.test(trimmed);
+  // "Members: {}", "**Reason:** {}": a label in front of a value.
+  const label = /(^|\n)[\s>*_#-]*[A-Z][a-z]+(?: [A-Za-z]+)*:(?:\*\*)?(?:\s|$)/.test(text);
+  return sentence || single || label;
+}
+
 /** Literals of `source` that look like English for people: { line, text }. */
 function hardcodedText(source) {
   const lines = source.split('\n');
@@ -121,21 +224,10 @@ function hardcodedText(source) {
   for (const literal of literalsOf(source)) {
     const lineText = lines[literal.line - 1] ?? '';
     const previous = lines[literal.line - 2] ?? '';
-    if (SKIP_LINE.test(lineText) || /i18n-ignore/.test(previous)) continue;
-    const text = literal.text;
-    if (NOT_TEXT.some((pattern) => pattern.test(text.trim()))) {
-      // A single capitalized word is still text where people read it ("Close" on a button, "Reason:" before a value).
-      const word = /^[A-Z][a-z]{2,}(?:[ -][A-Za-z]+)*[.!?…:]*$/.test(text.trim().replace(/\*\*/g, ''));
-      if (!word || !(SINK.test(literal.before) || /:(\*\*)?$/.test(text.trim()))) continue;
-    }
-    const words = text.replace(/\{\}/g, ' ').match(/[A-Za-z][a-z']{1,}/g) ?? [];
-    const sentence = words.length >= 2 && /[a-z]{3,}/.test(text) && /\s/.test(text.trim());
-    const single = SINK.test(literal.before) && /^[A-Z][a-z]{2,}/.test(text.trim());
-    // "Members: {}", "**Reason:** {}": a label in front of a value.
-    const label = /(^|\n)[\s>*_#-]*[A-Z][a-z]+(?: [A-Za-z]+)*:(?:\*\*)?(?:\s|$)/.test(text);
-    if (!sentence && !single && !label) continue;
-    if (/^[a-z][\w-]*(\.[\w-]+)+$/.test(text)) continue; // a translation key
-    hits.push({ line: literal.line, text: text.length > 120 ? `${text.slice(0, 117)}...` : text });
+    if (/i18n-ignore/.test(lineText) || /i18n-ignore/.test(previous)) continue;
+    if (/\blogger\.\w+\(|\bconsole\.\w+\(|\brequire\(/.test(lineText) && !/\bt\(/.test(lineText)) continue;
+    if (!isHardcoded(literal)) continue;
+    hits.push({ line: literal.line, text: literal.text.length > 120 ? `${literal.text.slice(0, 117)}...` : literal.text });
   }
   return hits;
 }
@@ -143,8 +235,8 @@ function hardcodedText(source) {
 function filesUnder(entry) {
   const absolute = path.resolve(entry);
   if (!fs.existsSync(absolute)) return [];
-  if (fs.statSync(absolute).isFile()) return absolute.endsWith('.js') ? [absolute] : [];
-  return fs.readdirSync(absolute, { withFileTypes: true }).flatMap((child) => filesUnder(path.join(absolute, child.name)));
+  if (fs.statSync(absolute).isFile()) return /\.(js|ts)$/.test(absolute) && !absolute.endsWith('.d.ts') ? [absolute] : [];
+  return fs.readdirSync(absolute, { withFileTypes: true }).flatMap((child) => filesUnder(path.join(absolute, child.name))).filter((file) => file.endsWith('.js') || fs.statSync(path.resolve(entry)).isFile());
 }
 
 module.exports = { literalsOf, hardcodedText, filesUnder };
