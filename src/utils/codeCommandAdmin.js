@@ -26,15 +26,13 @@ const clip = (text, max) => (text.length > max ? `${text.slice(0, max - 1)}…` 
 function codeProblem(code, lang = currentLanguage()) {
   if (!code) return t(lang, 'customcommands.problem.noCode');
   if (code.length > MAX_SOURCE_LENGTH) return t(lang, 'customcommands.problem.tooLong', { count: code.length, max: MAX_SOURCE_LENGTH });
-  // The mistake itself is the language's own message, in English like its documentation.
-  const problem = check(code);
+  const problem = check(code, lang);
   if (!problem) return null;
   return problem.line ? t(lang, 'customcommands.problem.mistakeAt', { message: problem.message, line: problem.line, column: problem.column }) : t(lang, 'customcommands.problem.mistake', { message: problem.message });
 }
 
 /** What an action of some code would do, as one line. */
 function describeEffect(effect, lang = currentLanguage()) {
-  // The dashboard maps over the effects, so the second argument can be an index: that gives English.
   const what = (e) => [e.content ? `"${clip(e.content.replace(/\s+/g, ' '), 80)}"` : null, e.embed ? t(lang, 'customcommands.effect.anEmbed') : null, e.components?.length ? t(lang, 'customcommands.effect.components') : null].filter(Boolean).join(` ${t(lang, 'common.and')} `);
   const hasData = effect.data !== null && effect.data !== undefined;
   switch (effect.type) {

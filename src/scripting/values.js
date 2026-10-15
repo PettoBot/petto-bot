@@ -1,7 +1,11 @@
 /** How Petto Code sees values: the truth of a value, how it prints, and how two values compare. */
+const { CodeProblem, phrase } = require('./errors');
+
 const FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
 const typeOf = (value) => (value === null || value === undefined ? 'nil' : Array.isArray(value) ? 'list' : typeof value === 'object' ? 'map' : typeof value);
+/** The kind of a value as words of a mistake ("list" in English, "una lista" in Spanish). */
+const kindPhrase = (value) => phrase(`scripting.type.${typeOf(value)}`);
 
 /** Like Go's templates: nil, false, 0, an empty text, list or map are false. */
 function isTruthy(value) {
@@ -34,19 +38,19 @@ function equals(a, b) {
 }
 
 /** A number from a number or from a text that holds one, so the arguments of a command (always text) can be used in math. */
-function toNumber(value, what = 'a number') {
+function toNumber(value, what = phrase('scripting.what.aNumber')) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string' && /^\s*-?\d+(\.\d+)?\s*$/.test(value)) return Number(value);
-  throw new Error(`Expected ${what}, got ${typeOf(value)}${typeof value === 'string' ? ` "${value.slice(0, 30)}"` : ''}`);
+  if (typeof value === 'string') throw new CodeProblem('scripting.value.expectedText', { what, type: kindPhrase(value), value: value.slice(0, 30) });
+  throw new CodeProblem('scripting.value.expected', { what, type: kindPhrase(value) });
 }
 
 /** The own field of a map or list, or nil. Reading the inside of nil or of a plain value is a mistake. */
 function readField(base, name) {
-  if (base === null || base === undefined) throw new Error(`Cannot read .${name} of nil`);
-  if (typeof base !== 'object') throw new Error(`Cannot read .${name} of ${typeOf(base)}`);
+  if (base === null || base === undefined || typeof base !== 'object') throw new CodeProblem('scripting.value.cannotRead', { field: name, type: kindPhrase(base) });
   if (FORBIDDEN_KEYS.has(name) || !Object.prototype.hasOwnProperty.call(base, name)) return null;
   const value = base[name];
   return value === undefined ? null : value;
 }
 
-module.exports = { FORBIDDEN_KEYS, typeOf, isTruthy, toText, equals, toNumber, readField };
+module.exports = { FORBIDDEN_KEYS, typeOf, kindPhrase, isTruthy, toText, equals, toNumber, readField };

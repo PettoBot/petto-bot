@@ -1,7 +1,8 @@
-const { PettoCodeError } = require('./errors');
+const { PettoCodeError, CodeProblem, phrase } = require('./errors');
 const { parse } = require('./parser');
 const { functions } = require('./functions');
-const { isTruthy, toText, readField, typeOf } = require('./values');
+const { isTruthy, toText, readField, kindPhrase } = require('./values');
+const { currentLanguage } = require('../i18n');
 
 const DEFAULT_LIMITS = {
   maxSteps: 10_000, // nodes, operands and function calls
@@ -71,10 +72,12 @@ class Scope {
 /**
  * Runs the code (a tree, or the text) with the data it can see, and gives back the text it printed and the effects it asked
  * for. It never touches Discord: that is for the bot to do with the effects. It can read and write the data stored for the
- * server through `options.store`. Mistakes and limits throw a PettoCodeError.
+ * server through `options.store`. Mistakes and limits throw a PettoCodeError, said in `options.lang` (by default the language
+ * of the command or event that is running).
  */
 async function run(codeOrTree, data = {}, options = {}) {
-  const tree = typeof codeOrTree === 'string' ? parse(codeOrTree) : codeOrTree;
+  const lang = options.lang ?? currentLanguage();
+  const tree = typeof codeOrTree === 'string' ? parse(codeOrTree, lang) : codeOrTree;
   const limits = { ...DEFAULT_LIMITS, ...options.limits, effects: { ...DEFAULT_LIMITS.effects, ...options.limits?.effects } };
   const now = options.now ?? (() => Date.now());
   const startedAt = now();
@@ -94,7 +97,7 @@ async function run(codeOrTree, data = {}, options = {}) {
     store: options.store ? {
       async call(operation, ...args) {
         storeCalls += 1;
-        if (storeCalls > limits.maxStoreCalls) throw Object.assign(new Error(`Too many reads and writes of stored data: at most ${limits.maxStoreCalls} per run`), { limit: true });
+        if (storeCalls > limits.maxStoreCalls) throw new CodeProblem('scripting.run.tooManyStoreCalls', { max: limits.maxStoreCalls }, { limit: true, lang });
         const before = now();
         try { return await options.store[operation](...args); } finally { waitedMillis += now() - before; }
       },
@@ -103,7 +106,7 @@ async function run(codeOrTree, data = {}, options = {}) {
     lookup: options.lookup ? {
       async call(kind, id) {
         lookups += 1;
-        if (lookups > limits.maxLookups) throw Object.assign(new Error(`Too many members, roles or channels read: at most ${limits.maxLookups} per run`), { limit: true });
+        if (lookups > limits.maxLookups) throw new CodeProblem('scripting.run.tooManyLookups', { max: limits.maxLookups }, { limit: true, lang });
         const before = now();
         try { return await options.lookup[kind](id); } finally { waitedMillis += now() - before; }
       },
@@ -111,42 +114,45 @@ async function run(codeOrTree, data = {}, options = {}) {
     effects: {
       add(kind, payload) {
         effectCount[kind] = (effectCount[kind] ?? 0) + 1;
-        if (effectCount[kind] > (limits.effects[kind] ?? 0)) throw Object.assign(new Error(`Too many actions of this kind: at most ${limits.effects[kind] ?? 0} per run`), { limit: true });
+        if (effectCount[kind] > (limits.effects[kind] ?? 0)) throw new CodeProblem('scripting.run.tooManyActions', { max: limits.effects[kind] ?? 0 }, { limit: true, lang });
         effectList.push({ type: kind, ...payload });
       },
     },
   };
 
-  const fail = (kind, message, node) => { throw new PettoCodeError(kind, message, node ?? {}); };
+  const fail = (kind, said, node) => { throw new PettoCodeError(kind, said, node ?? {}, lang); };
+  const failWith = (kind, key, vars, node) => fail(kind, phrase(`scripting.run.${key}`, vars), node);
+  // What an error of a function or of a value says: its phrase, or its text when it has none (the stored data).
+  const problemOf = (error) => error.phrase ?? error.message;
   const tick = (node) => {
     steps += 1;
-    if (steps > limits.maxSteps) fail('limit', `The code did too many steps (more than ${limits.maxSteps}). Is there a loop that is too long?`, node);
+    if (steps > limits.maxSteps) failWith('limit', 'tooManySteps', { max: limits.maxSteps }, node);
     if (steps % 32 === 0) {
       const elapsed = now() - startedAt;
-      if (elapsed > limits.maxMillis) fail('limit', `The code took longer than ${limits.maxMillis} ms`, node);
-      if (elapsed - waitedMillis > limits.maxCpuMillis) fail('limit', `The code took longer than ${limits.maxCpuMillis} ms to run`, node);
+      if (elapsed > limits.maxMillis) failWith('limit', 'tooSlow', { max: limits.maxMillis }, node);
+      if (elapsed - waitedMillis > limits.maxCpuMillis) failWith('limit', 'tooSlowToRun', { max: limits.maxCpuMillis }, node);
     }
   };
   const emit = (text, node) => {
     output += text;
-    if (output.length > limits.maxOutput) fail('limit', `The code printed more than ${limits.maxOutput} characters`, node);
+    if (output.length > limits.maxOutput) failWith('limit', 'printedTooMuch', { max: limits.maxOutput }, node);
   };
   const guardValue = (value, node) => {
-    if (typeof value === 'string' && value.length > limits.maxValueSize) fail('limit', 'A text got too long', node);
-    if (Array.isArray(value) && value.length > limits.maxListSize) fail('limit', 'A list got too long', node);
+    if (typeof value === 'string' && value.length > limits.maxValueSize) fail('limit', phrase('scripting.fn.textTooLong'), node);
+    if (Array.isArray(value) && value.length > limits.maxListSize) failWith('limit', 'listTooLong', {}, node);
     return value === undefined ? null : value;
   };
 
   function lookup(scope, name, node) {
     const holder = scope.find(name);
-    if (!holder) fail('runtime', `The variable ${name} is not defined. Create it first with ${name} := ...`, node);
+    if (!holder) failWith('runtime', 'notDefined', { name }, node);
     return holder.values.get(name);
   }
 
   const readFields = (value, fields, node) => {
     let current = value;
     for (const field of fields) {
-      try { current = readField(current, field); } catch (error) { fail('runtime', error.message, node); }
+      try { current = readField(current, field); } catch (error) { fail('runtime', problemOf(error), node); }
     }
     return current;
   };
@@ -158,8 +164,8 @@ async function run(codeOrTree, data = {}, options = {}) {
       case 'variable': return readFields(operand.name === '$' ? scope.root : lookup(scope, operand.name, operand), operand.fields, operand);
       case 'dot': return readFields(dot, operand.fields, operand);
       case 'paren': return readFields(await evalPipeline(operand.pipeline, scope, dot), operand.fields, operand);
-      case 'ident': return fail('runtime', `"${operand.name}" is a function and needs to be called, for example ${operand.name} ...`, operand);
-      default: return fail('runtime', 'Unknown operand', operand);
+      case 'ident': return failWith('runtime', 'functionNotCalled', { name: operand.name }, operand);
+      default: return failWith('runtime', 'unknownOperand', {}, operand);
     }
   }
 
@@ -167,11 +173,12 @@ async function run(codeOrTree, data = {}, options = {}) {
     const entry = functions.get(operand.name);
     if (!entry) {
       const meant = closestName(operand.name, functions.keys());
-      fail('runtime', `There is no function called "${operand.name}"${meant ? `. Did you mean ${meant}?` : ''}`, operand);
+      if (meant) failWith('runtime', 'noFunctionMeant', { name: operand.name, meant }, operand);
+      failWith('runtime', 'noFunction', { name: operand.name }, operand);
     }
     if (args.length < entry.min || (entry.max !== null && args.length > entry.max)) {
-      const expected = entry.max === entry.min ? `${entry.min}` : entry.max === null ? `at least ${entry.min}` : `${entry.min} to ${entry.max}`;
-      fail('runtime', `${operand.name} takes ${expected} argument${entry.min === 1 && entry.max === 1 ? '' : 's'}, got ${args.length}`, operand);
+      const shape = entry.min === 1 && entry.max === 1 ? 'argsOne' : entry.max === entry.min ? 'argsExact' : entry.max === null ? 'argsAtLeast' : 'argsRange';
+      failWith('runtime', shape, { name: operand.name, min: entry.min, max: entry.max, count: args.length }, operand);
     }
     tick(operand);
     try {
@@ -179,7 +186,7 @@ async function run(codeOrTree, data = {}, options = {}) {
     } catch (error) {
       if (error instanceof PettoCodeError) throw error;
       // A message that already names the function (`bare`) is said as it is.
-      return fail(error.limit ? 'limit' : 'runtime', error.bare ? error.message : `${operand.name}: ${error.message}`, operand);
+      return fail(error.limit ? 'limit' : 'runtime', error.bare ? problemOf(error) : phrase('scripting.run.inFunction', { name: operand.name, message: problemOf(error) }), operand);
     }
   }
 
@@ -193,7 +200,7 @@ async function run(codeOrTree, data = {}, options = {}) {
         if (index > 0) args.push(result);
         result = await callFunction(operands[0], args, operands[0]);
       } else {
-        if (index > 0) fail('runtime', 'Only a function can receive a value with |', operands[0]);
+        if (index > 0) failWith('runtime', 'pipeToValue', {}, operands[0]);
         result = await evalOperand(operands[0], scope, dot);
       }
     }
@@ -219,7 +226,7 @@ async function run(codeOrTree, data = {}, options = {}) {
         if (node.declare) scope.values.set(node.name, value);
         else {
           const holder = scope.find(node.name);
-          if (!holder) fail('runtime', `The variable ${node.name} is not defined. Create it first with ${node.name} := ...`, node);
+          if (!holder) failWith('runtime', 'notDefined', { name: node.name }, node);
           holder.values.set(node.name, value);
         }
         return null;
@@ -236,10 +243,10 @@ async function run(codeOrTree, data = {}, options = {}) {
         return node.otherwise ? execList(node.otherwise, new Scope(scope), dot, inLoop) : null;
       }
       case 'Range': return await execRange(node, scope, dot);
-      case 'Break': if (!inLoop) fail('runtime', '"break" only works inside a range', node); return 'break';
-      case 'Continue': if (!inLoop) fail('runtime', '"continue" only works inside a range', node); return 'continue';
+      case 'Break': if (!inLoop) failWith('runtime', 'breakOutside', {}, node); return 'break';
+      case 'Continue': if (!inLoop) failWith('runtime', 'continueOutside', {}, node); return 'continue';
       case 'Return': return 'return';
-      default: return fail('runtime', `Unknown node ${node.type}`, node);
+      default: return failWith('runtime', 'unknownNode', { type: node.type }, node);
     }
   }
 
@@ -249,11 +256,11 @@ async function run(codeOrTree, data = {}, options = {}) {
     if (Array.isArray(source)) entries = source.map((value, index) => [index, value]);
     else if (source && typeof source === 'object') entries = Object.keys(source).sort().map((key) => [key, source[key]]);
     else if (source === null || source === undefined) entries = [];
-    else return fail('runtime', `range needs a list or a map, got ${typeOf(source)}`, node);
+    else return failWith('runtime', 'rangeNeedsList', { type: kindPhrase(source) }, node);
     if (!entries.length) return node.otherwise ? execList(node.otherwise, new Scope(scope), dot, false) : null;
     for (const [key, value] of entries) {
       loopRuns += 1;
-      if (loopRuns > limits.maxLoopRuns) fail('limit', `The loops ran more than ${limits.maxLoopRuns} turns`, node);
+      if (loopRuns > limits.maxLoopRuns) failWith('limit', 'tooManyTurns', { max: limits.maxLoopRuns }, node);
       const inner = new Scope(scope);
       if (node.keyName) inner.values.set(node.keyName, key);
       if (node.valueName) inner.values.set(node.valueName, value);

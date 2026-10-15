@@ -97,6 +97,11 @@ const { registerCodeRoutes } = require('../src/web/codeRoutes');
   assert.deepEqual(r.json.effects, [{ type: 'respond', content: 'ok', ephemeral: true }]);
   r = await call('test', { code: '{{ respond "ok" }}' }); assert.ok(r.json.error.message.includes('button or a menu'), 'a click can only be answered in a click test');
   assert.equal(store.size, 0, 'a test saves nothing');
+  // The dashboard asks for its language: the mistakes, hints and actions are said in it.
+  r = await call('test', { code: '{{ lowr "A" }}', lang: 'es' }); assert.equal(r.json.error.message, 'No hay ninguna función llamada "lowr". ¿Quisiste decir lower?');
+  r = await call('test', { code: '{{ sendMessage nil "x" }}{{ div 1 0 }}', lang: 'pt-BR' }); assert.equal(r.json.error.message, 'div: Não dá para dividir por zero');
+  r = await call('check', { code: '{{ if }}', lang: 'pt-BR' }); assert.equal(r.json.problem.message, 'Um comando está vazio');
+  r = await call('test', { code: '{{ sendMessage nil "x" }}', lang: 'es' }); assert.deepEqual(r.json.actions, ['enviar "x" aquí']);
 
   // Saving.
   r = await call('save', { name: 'Greet', code: 'Hi {{ .User.Username }}' });

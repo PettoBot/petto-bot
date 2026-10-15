@@ -3,7 +3,8 @@
 const { EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, MessageFlags } = require('discord.js');
 const config = require('../config');
 const logger = require('./logger');
-const { run, check, PettoCodeError, MAX_SOURCE_LENGTH } = require('../scripting');
+const { run, check, PettoCodeError, CodeProblem, phrase, MAX_SOURCE_LENGTH } = require('../scripting');
+const { isPhrase, say } = require('../scripting/errors');
 const { tokenize } = require('../handlers/prefixInteraction');
 const commandData = require('../db/commandData');
 const ccDb = require('../db/customCommands');
@@ -17,12 +18,17 @@ const MAX_EXEC_DEPTH = 3; // a command, the one it runs with execCC and the one 
 // ── The problems of the commands, for `!customcommand logs` ─────────────────
 // Kept in memory only (a restart clears them), the last ones of each server.
 const MAX_PROBLEMS = 50;
-const problems = new Map(); // guildId -> [{ command, trigger, userId, at, text }], the oldest first
+const problems = new Map(); // guildId -> [{ command, trigger, userId, at, text, phrase? }], the oldest first
 
-/** Writes down a problem of a command: a mistake in its code, a crash, actions that were not done or a refused execCC. */
-function logProblem(guildId, { command, trigger, userId = null, text }) {
+/**
+ * Writes down a problem of a command: a mistake in its code, a crash, actions that were not done or a refused execCC. `text`
+ * is a text, or a phrase (src/scripting/errors) that `!customcommand logs` says in the language it is read in; `text` keeps
+ * it in `lang` too.
+ */
+function logProblem(guildId, { command, trigger, userId = null, text, lang = currentLanguage() }) {
   const list = problems.get(guildId) ?? [];
-  list.push({ command, trigger, userId, at: Math.floor(Date.now() / 1000), text: String(text).slice(0, 500) });
+  const said = isPhrase(text) ? text : null;
+  list.push({ command, trigger, userId, at: Math.floor(Date.now() / 1000), text: String(said ? say(lang, said) : text).slice(0, 500), ...(said ? { phrase: said } : {}) });
   if (list.length > MAX_PROBLEMS) list.splice(0, list.length - MAX_PROBLEMS);
   problems.set(guildId, list);
 }
@@ -356,8 +362,7 @@ function memoryStore() {
     async del(key, user) { data.delete(id(key, user)); },
     async incr(key, amount, user) {
       const current = data.has(id(key, user)) ? data.get(id(key, user)) : 0;
-      // i18n-ignore: the same error as the real store (db/commandData), part of the language's own messages
-      if (typeof current !== 'number') throw new Error('That key does not hold a number');
+      if (typeof current !== 'number') throw new CodeProblem('scripting.store.notNumber');
       data.set(id(key, user), current + amount);
       return current + amount;
     },
@@ -379,9 +384,8 @@ function memoryStore() {
   };
 }
 
-// The mistake itself is the language's own message, in English like its documentation; the words around it follow the server.
-const mistakeText = (error, lang) => t(lang, 'customcommands.run.mistake', { emoji: '⚠️', detail: error.detail ?? error.message });
-const crashedText = (lang) => t(lang, 'customcommands.run.crashed');
+const mistakeText = (error, lang) => t(lang, 'customcommands.run.mistake', { emoji: '⚠️', detail: error.detailIn(lang) });
+const CRASHED = phrase('customcommands.run.crashed');
 const skippedText = (skipped, lang) => t(lang, 'customcommands.run.skipped', { list: [...new Set(skipped)].join('; ') });
 
 /**
@@ -395,7 +399,7 @@ async function runExecs(context, effects, callerName, callerTrigger, depth) {
   for (const effect of effects) {
     if (effect.type !== 'execCC') continue;
     if (depth >= MAX_EXEC_DEPTH) {
-      logProblem(guild.id, { command: callerName, trigger: callerTrigger, userId: author.id, text: t(context.lang, 'customcommands.run.execTooDeep', { max: MAX_EXEC_DEPTH }) });
+      logProblem(guild.id, { command: callerName, trigger: callerTrigger, userId: author.id, text: phrase('customcommands.run.execTooDeep', { max: MAX_EXEC_DEPTH }), lang: context.lang });
       continue;
     }
     const go = () => runExec(context, effect, callerName, callerTrigger, depth + 1).catch((error) => logger.error(`execCC of "${callerName}" crashed in guild ${guild.id}:`, error));
@@ -414,21 +418,21 @@ async function runExec(context, effect, callerName, callerTrigger, depth) {
   const { guild, channel, author } = source;
   const row = await ccDb.getCommand(guild.id, effect.name).catch(() => null);
   if (!row?.code) {
-    logProblem(guild.id, { command: callerName, trigger: callerTrigger, userId: author.id, text: t(lang, 'customcommands.run.execMissing', { name: effect.name }) });
+    logProblem(guild.id, { command: callerName, trigger: callerTrigger, userId: author.id, text: phrase('customcommands.run.execMissing', { name: effect.name }), lang });
     return;
   }
-  const problem = (text) => logProblem(guild.id, { command: row.name, trigger: 'exec', userId: author.id, text });
+  const problem = (text) => logProblem(guild.id, { command: row.name, trigger: 'exec', userId: author.id, text, lang });
   const data = { ...buildData(source, row.name, '', prefix, serverPrefix), Trigger: 'exec', ExecData: effect.data ?? null, ExecBy: callerName };
   data.Message.CommandUserID = context.commandUserId ?? null;
   let result;
   try {
-    result = await run(row.code, data, { store: commandData.forGuild(guild.id), lookup: lookupFor(guild), limits: { maxMillis: 2000 } });
+    result = await run(row.code, data, { store: commandData.forGuild(guild.id), lookup: lookupFor(guild), limits: { maxMillis: 2000 }, lang });
   } catch (error) {
     if (error instanceof PettoCodeError) {
-      problem(error.message);
-      logger.warn(`Custom command "${row.name}" stopped when "${callerName}" ran it in guild ${guild.id}: ${error.message}`);
+      problem(error.toPhrase());
+      logger.warn(`Custom command "${row.name}" stopped when "${callerName}" ran it in guild ${guild.id}: ${error.messageIn('en')}`);
     } else {
-      problem(crashedText(lang));
+      problem(CRASHED);
       logger.error(`Custom command "${row.name}" crashed when "${callerName}" ran it in guild ${guild.id}:`, error);
     }
     return;
@@ -453,17 +457,17 @@ async function runCodeCommand(message, row, argText, prefix, serverPrefix = pref
 
   // Run from the message event, so the language of its server is the current one; it is kept for the commands run later with execCC.
   const lang = currentLanguage();
-  const problem = (text) => logProblem(message.guild.id, { command: row.name, trigger: 'command', userId: message.author.id, text });
+  const problem = (text) => logProblem(message.guild.id, { command: row.name, trigger: 'command', userId: message.author.id, text, lang });
   let result;
   try {
-    result = await run(row.code, buildData(message, row.name, argText, prefix, serverPrefix), { store: commandData.forGuild(message.guild.id), lookup: lookupFor(message.guild) });
+    result = await run(row.code, buildData(message, row.name, argText, prefix, serverPrefix), { store: commandData.forGuild(message.guild.id), lookup: lookupFor(message.guild), lang });
   } catch (error) {
     if (error instanceof PettoCodeError) {
-      problem(error.message);
+      problem(error.toPhrase());
       await message.reply({ content: clip(mistakeText(error, lang)), allowedMentions: { parse: [], repliedUser: false } }).catch(() => {});
       return true;
     }
-    problem(crashedText(lang));
+    problem(CRASHED);
     logger.error(`Custom command "${row.name}" crashed in guild ${message.guild.id}:`, error);
     return true;
   }
@@ -513,14 +517,14 @@ async function runComponent(interaction, row, parsed) {
   };
   // A button or a menu locked to a member knows who it is for; otherwise who sent the command is not known here.
   data.Message.CommandUserID = parsed.userId ?? null;
-  const problem = (text) => logProblem(guild.id, { command: row.name, trigger: data.Trigger, userId: user.id, text });
+  const problem = (text) => logProblem(guild.id, { command: row.name, trigger: data.Trigger, userId: user.id, text, lang });
 
   let result;
   try {
-    result = await run(row.code, data, { store: commandData.forGuild(guild.id), lookup: lookupFor(guild), limits: { maxMillis: 2000 } });
+    result = await run(row.code, data, { store: commandData.forGuild(guild.id), lookup: lookupFor(guild), limits: { maxMillis: 2000 }, lang });
   } catch (error) {
-    if (error instanceof PettoCodeError) { problem(error.message); return ephemeralReply(mistakeText(error, lang)); }
-    problem(crashedText(lang));
+    if (error instanceof PettoCodeError) { problem(error.toPhrase()); return ephemeralReply(mistakeText(error, lang)); }
+    problem(CRASHED);
     logger.error(`Custom command "${row.name}" crashed on a component in guild ${guild.id}:`, error);
     return acknowledge();
   }
@@ -578,16 +582,16 @@ async function runReaction(reaction, user, row, emojiText, watched = null) {
   };
   const data = { ...buildData(source, row.name, '', '!'), Trigger: 'reaction', Reaction: { Emoji: emojiText, Added: true }, Button: { ID: '', Data: '' }, Values: [] };
   data.Message.CommandUserID = watched?.user ?? null;
-  const problem = (text) => logProblem(guild.id, { command: row.name, trigger: 'reaction', userId: user.id, text });
+  const problem = (text) => logProblem(guild.id, { command: row.name, trigger: 'reaction', userId: user.id, text, lang });
   let result;
   try {
-    result = await run(row.code, data, { store: commandData.forGuild(guild.id), lookup: lookupFor(guild), limits: { maxMillis: 2000 } });
+    result = await run(row.code, data, { store: commandData.forGuild(guild.id), lookup: lookupFor(guild), limits: { maxMillis: 2000 }, lang });
   } catch (error) {
     if (error instanceof PettoCodeError) {
-      problem(error.message);
+      problem(error.toPhrase());
       logger.warn(`Custom command "${row.name}" stopped on a reaction in guild ${guild.id}: ${mistakeText(error, 'en')}`);
     } else {
-      problem(crashedText(lang));
+      problem(CRASHED);
       logger.error(`Custom command "${row.name}" crashed on a reaction in guild ${guild.id}:`, error);
     }
     return null;

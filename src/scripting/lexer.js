@@ -1,4 +1,5 @@
-const { PettoCodeError } = require('./errors');
+const { PettoCodeError, phrase } = require('./errors');
+const { currentLanguage } = require('../i18n');
 
 const KEYWORDS = new Set(['if', 'else', 'end', 'range', 'with', 'break', 'continue', 'return']);
 
@@ -16,7 +17,8 @@ function locate(source, offset) {
  * Splits the source into text and actions. Text is what is outside `{{ }}`; `{{-` and `-}}` take away the white space
  * next to an action, and `{{/* ... *\/}}` is a comment.
  */
-function splitActions(source) {
+function splitActions(source, lang = currentLanguage()) {
+  const fail = (key, vars, at) => { throw new PettoCodeError('syntax', phrase(`scripting.parse.${key}`, vars), at, lang); };
   const parts = [];
   let index = 0;
   while (index < source.length) {
@@ -31,10 +33,10 @@ function splitActions(source) {
     while (/\s/.test(source[commentAt] ?? '') && commentAt < source.length) commentAt += 1;
     if (source.startsWith('/*', commentAt)) {
       const endComment = source.indexOf('*/', commentAt + 2);
-      if (endComment === -1) throw new PettoCodeError('syntax', 'A comment is never closed', locate(source, open));
+      if (endComment === -1) fail('commentNotClosed', {}, locate(source, open));
       const closeAt = source.indexOf('}}', endComment + 2);
       const between = closeAt === -1 ? 'x' : source.slice(endComment + 2, closeAt).trim();
-      if (closeAt === -1 || (between !== '' && between !== '-')) throw new PettoCodeError('syntax', 'A comment must end with */}}', locate(source, open));
+      if (closeAt === -1 || (between !== '' && between !== '-')) fail('commentEnd', {}, locate(source, open));
       parts.push({ type: 'comment', trimBefore, trimAfter: between === '-', offset: open });
       index = closeAt + 2;
       continue;
@@ -49,7 +51,7 @@ function splitActions(source) {
       } else if (char === '"' || char === '`') quote = char;
       else if (char === '}' && source[i + 1] === '}') { close = i; break; }
     }
-    if (close === -1) throw new PettoCodeError('syntax', 'An action is never closed, a }} is missing', locate(source, open));
+    if (close === -1) fail('actionNotClosed', {}, locate(source, open));
     let body = source.slice(bodyStart, close);
     let trimAfter = false;
     if (body.length > 1 && body.endsWith('-') && /\s/.test(body[body.length - 2])) { trimAfter = true; body = body.slice(0, -1); }
@@ -69,9 +71,10 @@ function splitActions(source) {
 const ESCAPES = { n: '\n', t: '\t', r: '\r', '"': '"', '\\': '\\' };
 
 /** The tokens of the inside of one action. */
-function tokenize(body, source, bodyOffset) {
+function tokenize(body, source, bodyOffset, lang = currentLanguage()) {
   const tokens = [];
   const at = (i) => locate(source, bodyOffset + i);
+  const fail = (key, vars, where) => { throw new PettoCodeError('syntax', phrase(`scripting.parse.${key}`, vars), where, lang); };
   let i = 0;
   while (i < body.length) {
     const char = body[i];
@@ -83,24 +86,24 @@ function tokenize(body, source, bodyOffset) {
       let value = '';
       i += 1;
       for (;;) {
-        if (i >= body.length) throw new PettoCodeError('syntax', 'A string is never closed', at(start));
+        if (i >= body.length) fail('stringNotClosed', {}, at(start));
         if (body[i] === '"') { i += 1; break; }
         if (body[i] === '\\') {
           const next = body[i + 1];
-          if (!(next in ESCAPES)) throw new PettoCodeError('syntax', `Unknown escape \\${next ?? ''} in a string`, at(i));
+          if (!(next in ESCAPES)) fail('unknownEscape', { char: next ?? '' }, at(i));
           value += ESCAPES[next]; i += 2;
         } else { value += body[i]; i += 1; }
       }
       push('string', value);
     } else if (char === '`') {
       const end = body.indexOf('`', i + 1);
-      if (end === -1) throw new PettoCodeError('syntax', 'A raw string is never closed', at(start));
+      if (end === -1) fail('rawStringNotClosed', {}, at(start));
       push('string', body.slice(i + 1, end));
       i = end + 1;
     } else if (/[0-9]/.test(char) || (char === '-' && /[0-9]/.test(body[i + 1] ?? ''))) {
       const match = /^-?\d+(\.\d+)?/.exec(body.slice(i));
       const number = Number(match[0]);
-      if (Number.isInteger(number) && !Number.isSafeInteger(number)) throw new PettoCodeError('syntax', 'A number this big loses its last digits. Write an ID inside quotes, like "123456789012345678"', at(start));
+      if (Number.isInteger(number) && !Number.isSafeInteger(number)) fail('numberTooBig', {}, at(start));
       push('number', number);
       i += match[0].length;
     } else if (char === '$') {
@@ -120,7 +123,7 @@ function tokenize(body, source, bodyOffset) {
     } else if (char === ':' && body[i + 1] === '=') { push('declare', ':='); i += 2; }
     else if (char === '=') { push('assign', '='); i += 1; }
     else if (char === '(' || char === ')' || char === '|' || char === ',') { push(char === '(' ? 'lparen' : char === ')' ? 'rparen' : char === '|' ? 'pipe' : 'comma', char); i += 1; }
-    else throw new PettoCodeError('syntax', `Unexpected character ${JSON.stringify(char)}`, at(i));
+    else fail('unexpectedCharacter', { char: JSON.stringify(char) }, at(i));
     tokens[tokens.length - 1].end = i;
   }
   return tokens;

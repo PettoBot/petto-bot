@@ -6,8 +6,8 @@ const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { COLORS } = require('../../utils/colors');
 const { AttachmentBuilder } = require('discord.js');
-const { run, PettoCodeError, closestName, MAX_SOURCE_LENGTH } = require('../../scripting');
-const { TEMPLATES, byId } = require('../../scripting/templates');
+const { run, say, PettoCodeError, closestName, MAX_SOURCE_LENGTH } = require('../../scripting');
+const { TEMPLATES, byId, templateIn, templateCode } = require('../../scripting/templates');
 const codeCommands = require('../../utils/codeCommands');
 const { codeProblem, describeEffect, effectDetails, codeHintList, codeSummary, saveCodeCommand, setCommandTrigger, commandLimit, fullMessage, NAME_SHAPE, isRealCommand, prefixHint } = require('../../utils/codeCommandAdmin');
 const { TRIGGER_TYPES, invalidateTriggers } = require('../../utils/codeTriggers');
@@ -304,7 +304,8 @@ async function logsCmd(interaction) {
   if (!entries.length) {
     return reply(interaction, name ? t(lang, 'customcommands.logs.noneOne', { name, max: codeCommands.MAX_PROBLEMS }) : t(lang, 'customcommands.logs.noneAll', { max: codeCommands.MAX_PROBLEMS }));
   }
-  const lines = entries.map((entry) => `**\`${entry.command}\`** · ${entry.trigger}${entry.userId ? ` · <@${entry.userId}>` : ''} · <t:${entry.at}:R>\n${clipText(entry.text, 300)}`);
+  // A mistake of the code is said in the language of who reads it; the other problems stay in the language they were written in.
+  const lines = entries.map((entry) => `**\`${entry.command}\`** · ${entry.trigger}${entry.userId ? ` · <@${entry.userId}>` : ''} · <t:${entry.at}:R>\n${clipText(entry.phrase ? String(say(lang, entry.phrase)).slice(0, 500) : entry.text, 300)}`);
   return reply(interaction, clipText([name ? t(lang, 'customcommands.logs.titleOne', { name }) : t(lang, 'customcommands.logs.titleAll'), ...lines].join('\n'), 3800) + `\n${t(lang, 'customcommands.logs.footer')}`);
 }
 
@@ -385,13 +386,14 @@ async function codeCmd(interaction, sub) {
   if (sub === 'template') {
     const id = interaction.options.getString('id');
     if (!id) {
-      const lines = TEMPLATES.map((template) => `\`${template.id}\` · **${template.name}**: ${template.description}`);
+      const lines = TEMPLATES.map((template) => templateIn(template, lang)).map((template) => `\`${template.id}\` · **${template.name}**: ${template.description}`);
       return reply(interaction, `${t(lang, 'customcommands.template.title')}\n${lines.join('\n')}\n\n${t(lang, 'customcommands.template.footer')}`);
     }
     const template = byId(id);
     if (!template) return reply(interaction, t(lang, 'customcommands.template.missing', { id }), COLORS.RED);
     const name = ccDb.normalizeName(interaction.options.getString('name') ?? template.suggestedName);
-    return saveCode(interaction, name, template.code, 'template', lang);
+    // Its sentences are installed in the language of the server: from then on they are the server's own.
+    return saveCode(interaction, name, templateCode(template, lang), 'template', lang);
   }
 
   if (sub === 'code') {
@@ -408,7 +410,7 @@ async function codeCmd(interaction, sub) {
     const hints = codeHintList(code, lang);
     try {
       const data = codeCommands.buildData(interaction.rawMessage, 'test', args, '!');
-      const result = await run(code, data, { store: codeCommands.memoryStore(), lookup: codeCommands.lookupFor(interaction.guild) });
+      const result = await run(code, data, { store: codeCommands.memoryStore(), lookup: codeCommands.lookupFor(interaction.guild), lang });
       const output = result.output.trim();
       const actions = result.effects.map((effect) => [`• ${describeEffect(effect, lang)}`, ...effectDetails(effect, lang).map((line) => `  ↳ ${line}`)].join('\n')).join('\n');
       return reply(interaction, [
@@ -421,9 +423,10 @@ async function codeCmd(interaction, sub) {
     } catch (error) {
       if (error instanceof PettoCodeError) {
         // The mistake already says the name it meant, so only the other hints are added.
-        const more = hints.filter((hint) => !(hint.kind === 'function' && String(error.detail).includes(`"${hint.name}"`)));
-        // The mistake itself is the language's own message, in English like its documentation.
-        const stopped = error.line ? t(lang, 'customcommands.test.stoppedAt', { detail: error.detail, line: error.line, column: error.column }) : t(lang, 'customcommands.test.stopped', { detail: error.detail });
+        const namesFunction = ['scripting.run.noFunction', 'scripting.run.noFunctionMeant', 'scripting.run.functionNotCalled'].includes(error.code);
+        const more = hints.filter((hint) => !(hint.kind === 'function' && namesFunction && error.phrase.vars.name === hint.name));
+        const detail = error.detailIn(lang);
+        const stopped = error.line ? t(lang, 'customcommands.test.stoppedAt', { detail, line: error.line, column: error.column }) : t(lang, 'customcommands.test.stopped', { detail });
         return reply(interaction, [stopped, ...more.slice(0, 5).map((hint) => t(lang, 'customcommands.hint', { hint: hint.text }))].join('\n'), COLORS.RED);
       }
       throw error;
