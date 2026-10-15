@@ -2,6 +2,7 @@
 const { Events } = require('discord.js');
 const { lastNumberOf, tell } = require('./messageUpdateCounting');
 const logger = require('../utils/logger');
+const { t, currentLanguage } = require('../i18n');
 
 module.exports = {
   name: Events.MessageDelete,
@@ -9,8 +10,8 @@ module.exports = {
     try {
       const config = await lastNumberOf(message);
       if (!config) return;
-      const who = config.last_user_id ? `<@${config.last_user_id}>` : 'Someone';
-      await tell(message.guild, message.channel, `${who} deleted their number. The last number was **${config.current_number}**, so the next one is **${Number(config.current_number) + 1}**.`, config.alert_seconds);
+      const vars = { user: `<@${config.last_user_id}>`, last: config.current_number, next: Number(config.current_number) + 1 };
+      await tell(message.guild, message.channel, t(currentLanguage(), config.last_user_id ? 'counting.deleted' : 'counting.deletedSomeone', vars), config.alert_seconds);
     } catch (error) {
       logger.error('Counting delete check failed:', error);
     }
