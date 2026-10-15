@@ -9,7 +9,7 @@ const { listTemplates, getTemplate } = require('../db/embedTemplates');
 const rules = require('../utils/identity/rules');
 const { LOG_EVENTS } = require('../utils/identity/emit');
 const { VANITY_SOURCES, COMPARISONS, CONDITIONS, ACTIONS } = require('../utils/identity/compare');
-const { VARIABLE_GROUPS } = require('../utils/embedVariableRegistry');
+const { listVariables } = require('../utils/embedVariableRegistry');
 const logger = require('../utils/logger');
 const { t, currentLanguage, requestLanguage } = require('../i18n');
 
@@ -30,13 +30,13 @@ function rateLimited(userId) {
 const isTextChannel = (channel) => channel && [ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(channel.type);
 const failure = (res, code, message) => res.status(STATUS[code] ?? 400).json({ ok: false, error: code, message });
 
-async function overview(guild) {
+async function overview(guild, lang = 'en') {
   const [vanity, guildtag, notifyVanity, notifyTag, log, templates] = await Promise.all([
     db.listVanityRules(guild.id, { all: true }), db.listGuildTagRules(guild.id, { all: true }),
     db.getNotification(guild.id, 'vanity'), db.getNotification(guild.id, 'guildtag'), db.getLogConfig(guild.id), listTemplates(guild.id),
   ]);
   const notification = (entry) => ({ channel_id: entry?.channelId ?? '', embed: entry?.embedName ?? '', ping: entry?.ping ?? 'user' });
-  const group = VARIABLE_GROUPS.find((entry) => entry.id === 'identity');
+  const group = listVariables(lang).find((entry) => entry.id === 'identity');
   return {
     ok: true,
     guild: { id: guild.id, name: guild.name, icon: guild.icon },
@@ -113,7 +113,7 @@ function registerIdentityRoutes(app, { authorize }) {
   };
 
   app.get('/api/dashboard/guild/:guildId/identity', limiter, route(async (req, res, { guild }) => {
-    res.json(await overview(guild));
+    res.json(await overview(guild, requestLanguage(req, guild.id)));
   }));
 
   app.post('/api/dashboard/guild/:guildId/identity', limiter, route(async (req, res, { guild, member, userId }) => {

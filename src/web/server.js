@@ -238,7 +238,7 @@ function startServer(client) {
         return;
       }
       res.set('Cache-Control', 'private, max-age=300'); // i18n-ignore: HTTP header
-      res.json({ ok: true, groups: listVariables() });
+      res.json({ ok: true, groups: listVariables(requestLanguage(req)) });
     });
 
     // Start, edit, end or reroll a giveaway from the dashboard. The person must manage the server; the host of a new giveaway is that person.

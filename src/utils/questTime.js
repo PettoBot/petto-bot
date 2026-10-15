@@ -10,19 +10,9 @@ const DAY = 86_400_000;
 const HOUR = 3_600_000;
 const MINUTE = 60_000;
 
-const STYLE_DESCRIPTIONS = {
-  relative: 'relative, such as "2 days ago" or "in 5 hours" (it keeps updating)', // i18n-ignore: variable docs for the dashboard registry, in English like it
-  short_time: 'time, such as 5:00 PM', // i18n-ignore: variable docs for the dashboard registry, in English like it
-  long_time: 'time with seconds, such as 5:00:30 PM', // i18n-ignore: variable docs for the dashboard registry, in English like it
-  short_date: 'short date, such as 10/01/2026', // i18n-ignore: variable docs for the dashboard registry, in English like it
-  long_date: 'long date, such as October 1, 2026', // i18n-ignore: variable docs for the dashboard registry, in English like it
-  full: 'date and time, such as October 1, 2026 5:00 PM', // i18n-ignore: variable docs for the dashboard registry, in English like it
-  full_long: 'weekday, date and time', // i18n-ignore: variable docs for the dashboard registry, in English like it
-  short_datetime: 'short date and short time', // i18n-ignore: variable docs for the dashboard registry, in English like it
-  medium_datetime: 'short date and time with seconds', // i18n-ignore: variable docs for the dashboard registry, in English like it
-  unix: 'the unix time in seconds, for your own style: <t:{quest.starts.unix}:R>', // i18n-ignore: variable docs for the dashboard registry, in English like it
-};
-const STYLES = Object.keys(STYLE_DESCRIPTIONS);
+// What each style of a time variable looks like (`quests.var.style.<style>` in the catalogs).
+const STYLE_KEYS = ['relative', 'short_time', 'long_time', 'short_date', 'long_date', 'full', 'full_long', 'short_datetime', 'medium_datetime', 'unix'];
+const STYLES = STYLE_KEYS;
 
 // `1 day`, `3 hours`: the shared duration words, with the number as it is.
 const plural = (n, unit, lang) => t(lang, `common.duration.${unit}.${n === 1 ? 'one' : 'other'}`, { count: n });
@@ -114,33 +104,24 @@ function questExtras(quest, now = Date.now(), lang = currentLanguage()) {
   return out;
 }
 
-/** The names and meaning of the extra variables, for the lists in the dashboard and the docs. */
+/**
+ * The names and meaning of the extra variables, for the lists in the dashboard and the docs. `desc` is the English text (as it
+ * always was); `describe(lang)` gives it in another language.
+ */
+const describe = (key, vars) => (lang = 'en') => {
+  const filled = {};
+  for (const [name, value] of Object.entries(vars ?? {})) filled[name] = typeof value === 'function' ? value(lang) : value;
+  return t(lang, key, filled);
+};
+const entry = (key, descKey, vars) => ({ key, desc: describe(descKey, vars)('en'), describe: describe(descKey, vars) });
 const QUEST_EXTRA_VARS = [
-  ...['starts', 'expires'].flatMap((label) => STYLES.map((style) => ({ key: `${label}.${style}`, desc: `When it ${label === 'starts' ? 'starts' : 'ends'}, as ${STYLE_DESCRIPTIONS[style]}` }))), // i18n-ignore: variable docs for the dashboard registry, in English like it
-  { key: 'starts_ago', desc: 'When it started in plain words, such as 2 days ago, in 3 hours or now (works in titles and footers)' }, // i18n-ignore: variable docs for the dashboard registry, in English like it
-  { key: 'expires_in', desc: 'When it ends in plain words, such as in 5 days, or ended 1 day ago (works in titles and footers)' }, // i18n-ignore: variable docs for the dashboard registry, in English like it
-  { key: 'starts_date', desc: 'Start date in plain text, such as Oct 1, 2026 (GMT-5)' }, // i18n-ignore: variable docs for the dashboard registry, in English like it
-  { key: 'expires_date', desc: 'End date in plain text, such as Oct 8, 2026 (GMT-5)' }, // i18n-ignore: variable docs for the dashboard registry, in English like it
-  { key: 'starts_datetime', desc: 'Start date and time in plain text, in GMT-5 (Colombia)' }, // i18n-ignore: variable docs for the dashboard registry, in English like it
-  { key: 'expires_datetime', desc: 'End date and time in plain text, in GMT-5 (Colombia)' }, // i18n-ignore: variable docs for the dashboard registry, in English like it
-  { key: 'duration', desc: 'How long the quest lasts, such as 7 days' }, // i18n-ignore: variable docs for the dashboard registry, in English like it
-  { key: 'time_left', desc: 'How long is left, such as 5 days 3 hours, or Ended' }, // i18n-ignore: variable docs for the dashboard registry, in English like it
-  { key: 'days_left', desc: 'Whole days left, as a number' }, // i18n-ignore: variable docs for the dashboard registry, in English like it
-  { key: 'hours_left', desc: 'Whole hours left, as a number' }, // i18n-ignore: variable docs for the dashboard registry, in English like it
-  { key: 'reward_name', desc: 'Name of the first reward' }, // i18n-ignore: variable docs for the dashboard registry, in English like it
-  { key: 'rewards_count', desc: 'How many rewards it has' }, // i18n-ignore: variable docs for the dashboard registry, in English like it
-  { key: 'reward_nitro_amount', desc: 'Orbs a Nitro member gets, empty if none' }, // i18n-ignore: variable docs for the dashboard registry, in English like it
-  { key: 'reward_expires', desc: 'When the first reward that expires does so, as a relative time, empty if none' }, // i18n-ignore: variable docs for the dashboard registry, in English like it
-  { key: 'task_type', desc: 'Kind of the first task: video, play, stream or activity' }, // i18n-ignore: variable docs for the dashboard registry, in English like it
-  { key: 'task_seconds', desc: 'Seconds the first task takes' }, // i18n-ignore: variable docs for the dashboard registry, in English like it
-  { key: 'task_time', desc: 'Time of the first task, such as 2 min' }, // i18n-ignore: variable docs for the dashboard registry, in English like it
-  { key: 'countries', desc: 'Country codes it is only for, empty if none' }, // i18n-ignore: variable docs for the dashboard registry, in English like it
-  { key: 'excluded_countries', desc: 'Country codes where it is not available, empty if none' }, // i18n-ignore: variable docs for the dashboard registry, in English like it
+  ...['starts', 'expires'].flatMap((label) => STYLES.map((style) => entry(`${label}.${style}`, `quests.var.when.${label}`, { style: (lang) => t(lang, `quests.var.style.${style}`) }))),
+  ...['starts_ago', 'expires_in', 'starts_date', 'expires_date', 'starts_datetime', 'expires_datetime', 'duration', 'time_left', 'days_left', 'hours_left', 'reward_name', 'rewards_count', 'reward_nitro_amount', 'reward_expires', 'task_type', 'task_seconds', 'task_time', 'countries', 'excluded_countries'].map((key) => entry(key, `quests.var.${key}`)),
 ];
-const FIELD_DESCRIPTIONS = { name: 'name', type: 'type (Virtual currency, Collectible, Code...)', image: 'picture, empty if none', amount: 'number of Orbs, empty if it is not Orbs', nitro_amount: 'Orbs a Nitro member gets, empty if none', expires: 'when it expires, as a relative time, empty if never' }; // i18n-ignore: variable docs for the dashboard registry, in English like it
-for (const kind of REWARD_KIND_LIST) for (const [field, text] of Object.entries(FIELD_DESCRIPTIONS)) QUEST_EXTRA_VARS.push({ key: `${kind}.${field}`, desc: `The ${kind} reward of the quest: its ${text}. Empty when the quest has none` }); // i18n-ignore: variable docs for the dashboard registry, in English like it
-for (let n = 1; n <= REWARD_SLOTS; n += 1) for (const [field, text] of Object.entries(FIELD_DESCRIPTIONS)) QUEST_EXTRA_VARS.push({ key: `reward${n}.${field}`, desc: `Reward number ${n}: its ${text}. Empty when there is none` }); // i18n-ignore: variable docs for the dashboard registry, in English like it
-QUEST_EXTRA_VARS.push({ key: 'reward_types', desc: 'The kinds of reward of the quest, such as Virtual currency, Collectible' }); // i18n-ignore: variable docs for the dashboard registry, in English like it
+const FIELD_KEYS = ['name', 'type', 'image', 'amount', 'nitro_amount', 'expires'];
+for (const kind of REWARD_KIND_LIST) for (const field of FIELD_KEYS) QUEST_EXTRA_VARS.push(entry(`${kind}.${field}`, 'quests.var.kindReward', { kind, field: (lang) => t(lang, `quests.var.field.${field}`) }));
+for (let n = 1; n <= REWARD_SLOTS; n += 1) for (const field of FIELD_KEYS) QUEST_EXTRA_VARS.push(entry(`reward${n}.${field}`, 'quests.var.slotReward', { n, field: (lang) => t(lang, `quests.var.field.${field}`) }));
+QUEST_EXTRA_VARS.push(entry('reward_types', 'quests.var.reward_types'));
 const QUEST_EXTRA_KEYS = QUEST_EXTRA_VARS.map((entry) => entry.key);
 
 module.exports = { QUEST_EXTRA_KEYS, QUEST_EXTRA_VARS, questExtras, relativeText, spanText, TIMESTAMP_STYLES };
