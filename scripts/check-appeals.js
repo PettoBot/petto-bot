@@ -80,7 +80,7 @@ const A = require(path.join(root, 'src/utils/appeals.js'));
   const result = await A.submitAppeal({ client, guild, config, form, user, rawAnswers: { [qs[0].id]: 'I was wrong', [qs[1].id]: 'b', [qs[2].id]: 'x' } });
   assert.ok(result.ok, JSON.stringify(result));
   const sent = guild.sent.find((m) => m.channel === 'C1');
-  assert.ok(sent.payload.components.length === 2 && sent.payload.content.includes('<@&R1>'));
+  assert.ok(sent.payload.components.length === 2 && sent.payload.content === undefined && JSON.stringify(sent.payload.components[0].toJSON()).includes('<@&R1>'), 'a Components V2 message has no content; the ping is in the card');
   assert.equal(store.submissions.get(result.submission.id).thread_id, 'T1');
   assert.equal((await A.submitAppeal({ client, guild, config, form, user, rawAnswers: { [qs[0].id]: 'again' } })).error, 'already_pending');
   assert.equal((await A.submitAppeal({ client, guild, config, form: { ...form, status: 'draft' }, user, rawAnswers: {} })).error, 'form_unavailable');
