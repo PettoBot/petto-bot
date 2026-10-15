@@ -3,6 +3,7 @@ const db = require('../../db/confessions');
 const { submit, MAX_CONTENT } = require('../../utils/confessions');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { t, languageOf } = require('../../i18n');
 
 const V2 = MessageFlags.IsComponentsV2;
 const reply = (interaction, text, color = 0x4b4f59, ephemeral = false) => interaction.reply({ components: [textCard(text, color)], flags: ephemeral ? V2 | MessageFlags.Ephemeral : V2, allowedMentions: { parse: [] } });
@@ -17,16 +18,18 @@ module.exports = {
     .addAttachmentOption((o) => o.setName('image').setDescription('A picture to go with it (optional)').setRequired(false)),
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const config = await db.getConfig(interaction.guild.id);
-    if (!config.enabled || !config.channel_id) return reply(interaction, `${EMOJI.DENY}  Confessions are not turned on in this server.`, 0xff6b6b, true);
-    if (!config.allow_command) return reply(interaction, `${EMOJI.DENY}  Here confessions are made with the button of the confessions panel.`, 0xff6b6b, true);
+    if (!config.enabled || !config.channel_id) return reply(interaction, `${EMOJI.DENY}  ${t(lang, 'confessions.error.off')}`, 0xff6b6b, true);
+    if (!config.allow_command) return reply(interaction, t(lang, 'confessions.confess.byPanel', { emoji: EMOJI.DENY }), 0xff6b6b, true);
     // The answer is only for the member, so nobody sees who used the command.
     if (typeof interaction.deferReply === 'function' && !interaction.deferred && !interaction.replied && interaction.isChatInputCommand?.() && !interaction.rawMessage) await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => {});
     const attachments = interaction.rawMessage ? [...interaction.rawMessage.attachments.values()] : [interaction.options.getAttachment?.('image')].filter(Boolean);
     const result = await submit({ guild: interaction.guild, user: interaction.user, text: interaction.options.getString('text', true), attachments });
     // Written with the prefix, the message of the member is in the channel: it goes away so nobody sees who confessed.
     if (interaction.rawMessage?.deletable) await interaction.rawMessage.delete().catch(() => {});
-    const text = result.error ? `${EMOJI.DENY}  ${result.error}` : result.review ? `${EMOJI.APPROVE}  Your confession was sent to the staff. It shows up when they approve it.` : `${EMOJI.APPROVE}  Your confession was posted${result.message?.url ? `: ${result.message.url}` : '.'}`;
+    const done = result.review ? t(lang, 'confessions.sentToStaff') : result.message?.url ? t(lang, 'confessions.posted.link', { link: result.message.url }) : t(lang, 'confessions.posted.plain');
+    const text = result.error ? `${EMOJI.DENY}  ${result.error}` : `${EMOJI.APPROVE}  ${done}`;
     if (interaction.rawMessage) {
       // A reply in the channel would show who confessed, so the answer goes to their DMs.
       await interaction.user.send({ components: [textCard(text, result.error ? 0xff6b6b : 0xa5ea7a)], flags: V2 }).catch(() => {});
