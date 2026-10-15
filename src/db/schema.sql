@@ -3626,6 +3626,26 @@ create table if not exists appeal_blocks (
 -- The short name of the appeal link (petto.sbs/appeal/<slug>); the dashboard checks it, the index keeps it unique.
 alter table appeal_config add column if not exists slug text;
 create unique index if not exists appeal_config_slug_key on appeal_config (lower(slug)) where slug is not null;
+-- Requests to take a link name that another server holds: the team reviews them (1 to 72 hours).
+create table if not exists appeal_name_claims (
+  id               uuid primary key default gen_random_uuid(),
+  guild_id         text not null,
+  slug             text not null,
+  user_id          text not null,
+  username         text not null,
+  reason           text not null,
+  server_url       text not null,
+  extra_url        text,
+  status           text not null default 'pending',
+  note             text,
+  decided_by       text,
+  decided_by_name  text,
+  created_at       timestamptz not null default now(),
+  decided_at       timestamptz
+);
+create unique index if not exists appeal_name_claims_one_pending on appeal_name_claims (guild_id) where status = 'pending';
+create index if not exists appeal_name_claims_status on appeal_name_claims (status, created_at);
+alter table appeal_name_claims enable row level security;
 alter table appeal_config enable row level security;
 alter table appeal_forms enable row level security;
 alter table appeal_submissions enable row level security;

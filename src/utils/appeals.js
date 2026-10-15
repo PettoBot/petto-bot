@@ -371,6 +371,31 @@ async function withdrawAppeal({ guild, config, submission }) {
 }
 
 /** Removes resolved submissions kept longer than each server asked. */
+// How long a link name stays with a server that stopped using it. Appeals off and untouched, or on without a single appeal.
+const NAME_OFF_DAYS = 30;
+const NAME_IDLE_DAYS = 90;
+const GONE_CODES = new Set([10004, 50001]); // Unknown Guild, Missing Access: Petto is not in that server anymore.
+
+/** Frees the link names of servers that left Petto, switched appeals off for a month, or got no appeal in three months. The server id link keeps working. */
+async function releaseIdleNames(client, now = Date.now()) {
+  const freed = [];
+  for (const row of await db.listNamed()) {
+    let reason = null;
+    if (client?.isReady?.() && client.guilds.cache.size > 0 && !client.guilds.cache.has(row.guild_id)) {
+      try { await client.guilds.fetch(row.guild_id); } catch (err) { if (GONE_CODES.has(err?.code)) reason = 'left'; }
+    }
+    const touched = Date.parse(row.updated_at) || now;
+    if (!reason && !row.enabled && now - touched > NAME_OFF_DAYS * 86_400_000) reason = 'off';
+    if (!reason && row.enabled && now - touched > NAME_IDLE_DAYS * 86_400_000) {
+      const last = Date.parse(await db.lastSubmissionAt(row.guild_id).catch(() => null) ?? '') || 0;
+      if (now - last > NAME_IDLE_DAYS * 86_400_000) reason = 'idle';
+    }
+    if (!reason) continue;
+    try { await db.clearSlug(row.guild_id); freed.push({ guildId: row.guild_id, slug: row.slug, reason }); } catch (err) { logger.warn(`Appeals: could not free the name ${row.slug}: ${err.message}`); }
+  }
+  return freed;
+}
+
 async function cleanup() {
   const configs = await db.listEnabledConfigs();
   let removed = 0;
@@ -382,6 +407,6 @@ async function cleanup() {
 
 module.exports = {
   PREFIX, LIMITS, QUESTION_TYPES, PUNISHMENT_TYPES, DETAILS, BLOCKS, DEFAULT_MESSAGES,
-  renderTemplate, messageFor, normalizeForm, validateAnswers, shapePunishment, fetchPunishments, meetsRequirement, blockUntil, siteLink, appealLinkFor,
+  renderTemplate, messageFor, normalizeForm, validateAnswers, shapePunishment, fetchPunishments, meetsRequirement, blockUntil, siteLink, appealLinkFor, releaseIdleNames,
   staffCardText, staffButtons, submitAppeal, resolveAppeal, staffReply, userReply, withdrawAppeal, cleanup,
 };

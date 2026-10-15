@@ -140,7 +140,7 @@ async function main() {
   startTicketReminderJob(client);
   startAntiScamJob();
   startLockdownJob(client);
-  startAppealCleanupJob();
+  startAppealCleanupJob(client);
   startTicketAutoDeleteJob(client);
   startPollAutocloseJob(client);
   startCounterJob(client);
