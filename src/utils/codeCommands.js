@@ -7,6 +7,7 @@ const { run, check, PettoCodeError, MAX_SOURCE_LENGTH } = require('../scripting'
 const { tokenize } = require('../handlers/prefixInteraction');
 const commandData = require('../db/commandData');
 const ccDb = require('../db/customCommands');
+const { t, currentLanguage, languageOf } = require('../i18n');
 
 const COOLDOWN_MS = 2000;
 const MAX_MESSAGE = 2000;
@@ -249,13 +250,13 @@ function toPayload(action, guild, authorId, commandName = null, { clearComponent
   return payload;
 }
 
-function canGiveRole(guild, role) {
-  if (!role) return 'that role does not exist';
-  if (role.id === guild.id || role.managed) return 'that role cannot be given';
+function canGiveRole(guild, role, lang) {
+  if (!role) return t(lang, 'customcommands.run.role.missing');
+  if (role.id === guild.id || role.managed) return t(lang, 'customcommands.run.role.cannot');
   const me = guild.members.me;
-  if (!me?.permissions.has(PermissionFlagsBits.ManageRoles)) return 'Petto needs the Manage Roles permission';
-  if (role.position >= me.roles.highest.position) return 'that role is above Petto\'s highest role';
-  if (RISKY_PERMISSIONS.some((flag) => role.permissions.has(flag))) return 'a role with moderation or server permissions cannot be given by a command';
+  if (!me?.permissions.has(PermissionFlagsBits.ManageRoles)) return t(lang, 'customcommands.run.role.needPermission');
+  if (role.position >= me.roles.highest.position) return t(lang, 'customcommands.run.role.aboveMe');
+  if (RISKY_PERMISSIONS.some((flag) => role.permissions.has(flag))) return t(lang, 'customcommands.run.role.risky');
   return null;
 }
 
@@ -288,7 +289,7 @@ async function watchReactions(sent, emojis, commandName, guild, userId = null) {
 }
 
 /** Does what the code asked, as far as it is allowed. Returns the reasons for what was left undone. */
-async function applyEffects(message, effects, commandName = null, { code = '' } = {}) {
+async function applyEffects(message, effects, commandName = null, { code = '', lang = currentLanguage() } = {}) {
   const { guild, author, member } = message;
   const skipped = [];
   const me = guild.members.me;
@@ -296,11 +297,11 @@ async function applyEffects(message, effects, commandName = null, { code = '' } 
     try {
       if (effect.type === 'message') {
         const channel = effect.channelId ? guild.channels.cache.get(effect.channelId) : message.channel;
-        if (!channel?.isTextBased?.() || channel.isDMBased?.()) { skipped.push('a message to a channel that is not in this server'); continue; }
+        if (!channel?.isTextBased?.() || channel.isDMBased?.()) { skipped.push(t(lang, 'customcommands.run.skip.otherServer')); continue; }
         const botCan = channel.permissionsFor(me);
         const memberCan = channel.permissionsFor(member);
-        if (!botCan?.has(PermissionFlagsBits.SendMessages) || !botCan.has(PermissionFlagsBits.ViewChannel)) { skipped.push(`a message to #${channel.name}, Petto cannot send there`); continue; }
-        if (!memberCan?.has(PermissionFlagsBits.SendMessages)) { skipped.push(`a message to #${channel.name}, you cannot send there`); continue; }
+        if (!botCan?.has(PermissionFlagsBits.SendMessages) || !botCan.has(PermissionFlagsBits.ViewChannel)) { skipped.push(t(lang, 'customcommands.run.skip.botCannotSend', { channel: channel.name })); continue; }
+        if (!memberCan?.has(PermissionFlagsBits.SendMessages)) { skipped.push(t(lang, 'customcommands.run.skip.memberCannotSend', { channel: channel.name })); continue; }
         const payload = toPayload(effect, guild, author.id, commandName);
         // A role is pinged when it can be mentioned, or when Petto may mention any role there (Mention Everyone, or Administrator)
         // and the id of the role is written in the code itself: the member who used the command cannot choose it by typing it.
@@ -310,7 +311,7 @@ async function applyEffects(message, effects, commandName = null, { code = '' } 
         }
         payload.allowedMentions.roles = [...pinged];
         for (const id of mentionedIds(effect.content).roles.filter((roleId) => !pinged.has(roleId))) {
-          skipped.push(`the role ${guild.roles.cache.get(id)?.name ?? id} was not pinged: turn on "Allow anyone to @mention this role" for it, or let Petto mention every role`);
+          skipped.push(t(lang, 'customcommands.run.skip.notPinged', { role: guild.roles.cache.get(id)?.name ?? id }));
         }
         // "reply" answers the message that used the command, when the message goes to the same channel.
         const sent = effect.reply && channel.id === message.channel?.id && typeof message.reply === 'function' && message.id !== '0'
@@ -318,14 +319,15 @@ async function applyEffects(message, effects, commandName = null, { code = '' } 
           : await channel.send(payload);
         if (effect.reactions?.length && commandName && sent) await watchReactions(sent, effect.reactions, commandName, guild, author.id);
       } else if (effect.type === 'dm') {
-        await author.send({ ...toPayload(effect, guild, author.id), allowedMentions: { parse: [] } }).catch(() => skipped.push('a direct message, you have them closed'));
+        await author.send({ ...toPayload(effect, guild, author.id), allowedMentions: { parse: [] } }).catch(() => skipped.push(t(lang, 'customcommands.run.skip.dmClosed')));
       } else if (effect.type === 'addRole' || effect.type === 'removeRole') {
         const role = guild.roles.cache.get(effect.roleId);
-        const problem = canGiveRole(guild, role);
-        if (problem) { skipped.push(`${effect.type === 'addRole' ? 'giving' : 'taking'} a role: ${problem}`); continue; }
-        if (effect.type === 'addRole') await member.roles.add(role, 'Custom command'); else await member.roles.remove(role, 'Custom command');
+        const problem = canGiveRole(guild, role, lang);
+        if (problem) { skipped.push(t(lang, effect.type === 'addRole' ? 'customcommands.run.skip.giving' : 'customcommands.run.skip.taking', { problem })); continue; }
+        const reason = t(lang, 'customcommands.run.auditReason');
+        if (effect.type === 'addRole') await member.roles.add(role, reason); else await member.roles.remove(role, reason);
       } else if (effect.type === 'reaction') {
-        await message.react(effect.emoji).catch(() => skipped.push(`the reaction ${effect.emoji}`));
+        await message.react(effect.emoji).catch(() => skipped.push(t(lang, 'customcommands.run.skip.reaction', { emoji: effect.emoji })));
       }
     } catch (error) {
       logger.warn(`A custom command action failed (${effect.type}) in guild ${guild.id}: ${error.message}`);
@@ -354,6 +356,7 @@ function memoryStore() {
     async del(key, user) { data.delete(id(key, user)); },
     async incr(key, amount, user) {
       const current = data.has(id(key, user)) ? data.get(id(key, user)) : 0;
+      // i18n-ignore: the same error as the real store (db/commandData), part of the language's own messages
       if (typeof current !== 'number') throw new Error('That key does not hold a number');
       data.set(id(key, user), current + amount);
       return current + amount;
@@ -376,9 +379,10 @@ function memoryStore() {
   };
 }
 
-const mistakeText = (error) => `⚠️ The code of this command has a mistake: ${error.detail ?? error.message}\nA server admin can fix it.`;
-const CRASHED = 'It stopped because of a problem in Petto, not in the code.';
-const skippedText = (skipped) => `Some actions were not done: ${[...new Set(skipped)].join('; ')}.`;
+// The mistake itself is the language's own message, in English like its documentation; the words around it follow the server.
+const mistakeText = (error, lang) => t(lang, 'customcommands.run.mistake', { emoji: '⚠️', detail: error.detail ?? error.message });
+const crashedText = (lang) => t(lang, 'customcommands.run.crashed');
+const skippedText = (skipped, lang) => t(lang, 'customcommands.run.skipped', { list: [...new Set(skipped)].join('; ') });
 
 /**
  * Runs the commands some code asked for with execCC, once the code that asked is done: each one now, or after its delay
@@ -391,7 +395,7 @@ async function runExecs(context, effects, callerName, callerTrigger, depth) {
   for (const effect of effects) {
     if (effect.type !== 'execCC') continue;
     if (depth >= MAX_EXEC_DEPTH) {
-      logProblem(guild.id, { command: callerName, trigger: callerTrigger, userId: author.id, text: `execCC: too many commands in a chain (at most ${MAX_EXEC_DEPTH})` });
+      logProblem(guild.id, { command: callerName, trigger: callerTrigger, userId: author.id, text: t(context.lang, 'customcommands.run.execTooDeep', { max: MAX_EXEC_DEPTH }) });
       continue;
     }
     const go = () => runExec(context, effect, callerName, callerTrigger, depth + 1).catch((error) => logger.error(`execCC of "${callerName}" crashed in guild ${guild.id}:`, error));
@@ -406,11 +410,11 @@ async function runExecs(context, effects, callerName, callerTrigger, depth) {
  * channel as a normal message, not as a reply.
  */
 async function runExec(context, effect, callerName, callerTrigger, depth) {
-  const { source, prefix, serverPrefix } = context;
+  const { source, prefix, serverPrefix, lang } = context;
   const { guild, channel, author } = source;
   const row = await ccDb.getCommand(guild.id, effect.name).catch(() => null);
   if (!row?.code) {
-    logProblem(guild.id, { command: callerName, trigger: callerTrigger, userId: author.id, text: `execCC: there is no command with code called ${effect.name}` });
+    logProblem(guild.id, { command: callerName, trigger: callerTrigger, userId: author.id, text: t(lang, 'customcommands.run.execMissing', { name: effect.name }) });
     return;
   }
   const problem = (text) => logProblem(guild.id, { command: row.name, trigger: 'exec', userId: author.id, text });
@@ -424,7 +428,7 @@ async function runExec(context, effect, callerName, callerTrigger, depth) {
       problem(error.message);
       logger.warn(`Custom command "${row.name}" stopped when "${callerName}" ran it in guild ${guild.id}: ${error.message}`);
     } else {
-      problem(CRASHED);
+      problem(crashedText(lang));
       logger.error(`Custom command "${row.name}" crashed when "${callerName}" ran it in guild ${guild.id}:`, error);
     }
     return;
@@ -434,8 +438,8 @@ async function runExec(context, effect, callerName, callerTrigger, depth) {
   const answer = text && canSend ? await channel.send({ content: clip(text), allowedMentions: allowedMentionsFor(text, guild, author.id) }).catch(() => null) : null;
   const deleteResponse = result.effects.find((item) => item.type === 'deleteResponse');
   if (answer && deleteResponse) setTimeout(() => answer.delete().catch(() => {}), deleteResponse.delay * 1000).unref?.();
-  const skipped = await applyEffects(source, result.effects, row.name, { code: row.code });
-  if (skipped.length) problem(skippedText(skipped));
+  const skipped = await applyEffects(source, result.effects, row.name, { code: row.code, lang });
+  if (skipped.length) problem(skippedText(skipped, lang));
   await runExecs(context, result.effects, row.name, 'exec', depth);
 }
 
@@ -447,6 +451,8 @@ async function runCodeCommand(message, row, argText, prefix, serverPrefix = pref
   cooldowns.set(key, Date.now());
   if (cooldowns.size > 5000) for (const [stale, at] of cooldowns) if (Date.now() - at > COOLDOWN_MS) cooldowns.delete(stale);
 
+  // Run from the message event, so the language of its server is the current one; it is kept for the commands run later with execCC.
+  const lang = currentLanguage();
   const problem = (text) => logProblem(message.guild.id, { command: row.name, trigger: 'command', userId: message.author.id, text });
   let result;
   try {
@@ -454,10 +460,10 @@ async function runCodeCommand(message, row, argText, prefix, serverPrefix = pref
   } catch (error) {
     if (error instanceof PettoCodeError) {
       problem(error.message);
-      await message.reply({ content: clip(mistakeText(error)), allowedMentions: { parse: [], repliedUser: false } }).catch(() => {});
+      await message.reply({ content: clip(mistakeText(error, lang)), allowedMentions: { parse: [], repliedUser: false } }).catch(() => {});
       return true;
     }
-    problem(CRASHED);
+    problem(crashedText(lang));
     logger.error(`Custom command "${row.name}" crashed in guild ${message.guild.id}:`, error);
     return true;
   }
@@ -465,13 +471,13 @@ async function runCodeCommand(message, row, argText, prefix, serverPrefix = pref
   const answer = text ? await message.reply({ content: clip(text), allowedMentions: allowedMentionsFor(text, message.guild, message.author.id) }).catch(() => null) : null;
   const deleteResponse = result.effects.find((effect) => effect.type === 'deleteResponse');
   if (answer && deleteResponse) setTimeout(() => answer.delete().catch(() => {}), deleteResponse.delay * 1000).unref?.();
-  const skipped = await applyEffects(message, result.effects, row.name, { code: row.code });
+  const skipped = await applyEffects(message, result.effects, row.name, { code: row.code, lang });
   if (skipped.length) {
-    problem(skippedText(skipped));
-    await message.reply({ content: clip(`⚠️ ${skippedText(skipped)}`), allowedMentions: { parse: [], repliedUser: false } }).catch(() => {});
+    problem(skippedText(skipped, lang));
+    await message.reply({ content: clip(`⚠️ ${skippedText(skipped, lang)}`), allowedMentions: { parse: [], repliedUser: false } }).catch(() => {});
   }
   // The commands it runs with execCC go last, once everything it did itself is done.
-  await runExecs({ source: message, prefix, serverPrefix, commandUserId: message.author.id }, result.effects, row.name, 'command', 1);
+  await runExecs({ source: message, prefix, serverPrefix, commandUserId: message.author.id, lang }, result.effects, row.name, 'command', 1);
   return true;
 }
 
@@ -480,11 +486,12 @@ async function runCodeCommand(message, row, argText, prefix, serverPrefix = pref
  * "button" or "select", `.Button.ID` and `.Button.Data` from the component, and `.Values` for a menu.
  */
 async function runComponent(interaction, row, parsed) {
+  const lang = await languageOf(interaction);
   const ephemeralReply = (content) => interaction.reply({ content: clip(content), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } }).catch(() => {});
   const submitted = Boolean(interaction.isModalSubmit?.());
   // Acknowledges a click without a visible answer; a modal that did not come from a message has nothing to update.
   const acknowledge = () => (submitted && !interaction.isFromMessage?.() ? ephemeralReply('✅') : interaction.deferUpdate().catch(() => {}));
-  if (parsed.userId && parsed.userId !== interaction.user.id) return ephemeralReply('This is not for you.');
+  if (parsed.userId && parsed.userId !== interaction.user.id) return ephemeralReply(t(lang, 'customcommands.run.notForYou'));
   const key = `${interaction.guildId}:${interaction.user.id}:${row.name}:${parsed.handler}`;
   if (Date.now() - (cooldowns.get(key) ?? 0) < COOLDOWN_MS / 2) return acknowledge();
   cooldowns.set(key, Date.now());
@@ -494,6 +501,7 @@ async function runComponent(interaction, row, parsed) {
   const source = {
     id: interaction.message?.id ?? interaction.id, content: interaction.message?.content ?? '', url: interaction.message?.url ?? null, embeds: interaction.message?.embeds ?? [],
     guild, channel, member, author: user,
+    // i18n-ignore: internal, the action is only listed as not done
     react: async () => { throw new Error('A reaction needs the message of a command'); }, delete: async () => {},
   };
   const data = {
@@ -511,8 +519,8 @@ async function runComponent(interaction, row, parsed) {
   try {
     result = await run(row.code, data, { store: commandData.forGuild(guild.id), lookup: lookupFor(guild), limits: { maxMillis: 2000 } });
   } catch (error) {
-    if (error instanceof PettoCodeError) { problem(error.message); return ephemeralReply(mistakeText(error)); }
-    problem(CRASHED);
+    if (error instanceof PettoCodeError) { problem(error.message); return ephemeralReply(mistakeText(error, lang)); }
+    problem(crashedText(lang));
     logger.error(`Custom command "${row.name}" crashed on a component in guild ${guild.id}:`, error);
     return acknowledge();
   }
@@ -538,12 +546,12 @@ async function runComponent(interaction, row, parsed) {
     logger.warn(`Could not answer the component of "${row.name}" in guild ${guild.id}: ${error.message}`);
     return null;
   }
-  const skipped = await applyEffects(source, rest, row.name, { code: row.code });
+  const skipped = await applyEffects(source, rest, row.name, { code: row.code, lang });
   if (skipped.length) {
-    problem(skippedText(skipped));
-    await interaction.followUp({ content: clip(`⚠️ ${skippedText(skipped)}`), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } }).catch(() => {});
+    problem(skippedText(skipped, lang));
+    await interaction.followUp({ content: clip(`⚠️ ${skippedText(skipped, lang)}`), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } }).catch(() => {});
   }
-  await runExecs({ source, prefix: '!', serverPrefix: '!', commandUserId: data.Message.CommandUserID }, rest, row.name, data.Trigger, 1);
+  await runExecs({ source, prefix: '!', serverPrefix: '!', commandUserId: data.Message.CommandUserID, lang }, rest, row.name, data.Trigger, 1);
   return null;
 }
 
@@ -558,6 +566,8 @@ async function runReaction(reaction, user, row, emojiText, watched = null) {
   const member = guild.members.cache.get(user.id) ?? await guild.members.fetch(user.id).catch(() => guild.members.fetch(user.id).catch(() => null));
   if (!member) { logger.warn(`A reaction on "${row.name}" in guild ${guild.id} was skipped: could not read the member ${user.id}`); return null; }
   const key = `${guild.id}:${user.id}:${row.name}:reaction`;
+  // Run from the reaction event, so the language of its server is the current one.
+  const lang = currentLanguage();
   if (Date.now() - (cooldowns.get(key) ?? 0) < COOLDOWN_MS / 2) return null;
   cooldowns.set(key, Date.now());
 
@@ -575,9 +585,9 @@ async function runReaction(reaction, user, row, emojiText, watched = null) {
   } catch (error) {
     if (error instanceof PettoCodeError) {
       problem(error.message);
-      logger.warn(`Custom command "${row.name}" stopped on a reaction in guild ${guild.id}: ${mistakeText(error)}`);
+      logger.warn(`Custom command "${row.name}" stopped on a reaction in guild ${guild.id}: ${mistakeText(error, 'en')}`);
     } else {
-      problem(CRASHED);
+      problem(crashedText(lang));
       logger.error(`Custom command "${row.name}" crashed on a reaction in guild ${guild.id}:`, error);
     }
     return null;
@@ -595,9 +605,9 @@ async function runReaction(reaction, user, row, emojiText, watched = null) {
     await channel.send(toPayload(reply, guild, user.id, row.name)).catch(() => {});
   }
   if (rest.some((effect) => effect.type === 'removeReaction')) await reaction.users.remove(user.id).catch(() => {});
-  const skipped = await applyEffects(source, rest.filter((effect) => effect.type !== 'removeReaction'), row.name, { code: row.code });
-  if (skipped.length) problem(skippedText(skipped));
-  await runExecs({ source, prefix: '!', serverPrefix: '!', commandUserId: data.Message.CommandUserID }, rest, row.name, 'reaction', 1);
+  const skipped = await applyEffects(source, rest.filter((effect) => effect.type !== 'removeReaction'), row.name, { code: row.code, lang });
+  if (skipped.length) problem(skippedText(skipped, lang));
+  await runExecs({ source, prefix: '!', serverPrefix: '!', commandUserId: data.Message.CommandUserID, lang }, rest, row.name, 'reaction', 1);
   return null;
 }
 
@@ -648,13 +658,13 @@ function encodeShare({ name, description = '', code }) {
   return `${SHARE_PREFIX}${Buffer.from(JSON.stringify({ v: 1, n: name, d: description, c: code }), 'utf8').toString('base64url')}`;
 }
 
-function decodeShare(text) {
+function decodeShare(text, lang = currentLanguage()) {
   const raw = String(text ?? '').trim();
-  if (!raw.startsWith(SHARE_PREFIX)) throw new Error('A share code starts with pc1.');
+  if (!raw.startsWith(SHARE_PREFIX)) throw new Error(t(lang, 'customcommands.share.prefix'));
   let data;
-  try { data = JSON.parse(Buffer.from(raw.slice(SHARE_PREFIX.length), 'base64url').toString('utf8')); } catch { throw new Error('That share code is damaged'); }
-  if (!data || data.v !== 1 || typeof data.c !== 'string') throw new Error('That share code is not one of Petto Code');
-  if (data.c.length > MAX_SOURCE_LENGTH) throw new Error('The code in that share code is too long');
+  try { data = JSON.parse(Buffer.from(raw.slice(SHARE_PREFIX.length), 'base64url').toString('utf8')); } catch { throw new Error(t(lang, 'customcommands.share.damaged')); }
+  if (!data || data.v !== 1 || typeof data.c !== 'string') throw new Error(t(lang, 'customcommands.share.notPettoCode'));
+  if (data.c.length > MAX_SOURCE_LENGTH) throw new Error(t(lang, 'customcommands.share.tooLong'));
   const name = typeof data.n === 'string' ? data.n.toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 32) : '';
   return { name, description: typeof data.d === 'string' ? data.d.slice(0, 200) : '', code: data.c };
 }

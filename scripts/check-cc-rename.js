@@ -87,5 +87,10 @@ const last = () => sent[sent.length - 1];
   assert.match(last(), /prefix of the server again/);
   await command.execute(interactionFor('trigger', { name: 'req', type: 'command' }));
   assert.match(last(), /already starts with the prefix of the server/);
+  // Spanish and Portuguese.
+  await command.execute({ ...interactionFor('trigger', { name: 'req', type: 'command' }), pettoLang: 'es' });
+  assert.match(last(), /ya empieza con el prefijo del servidor \(`p!req`\)/);
+  await command.execute({ ...interaction('nope', 'other'), pettoLang: 'pt-BR' });
+  assert.match(last(), /`nope` não existe/);
   console.log('Checked !customcommand rename and trigger.');
 })().catch((err) => { console.error(err); process.exit(1); });
