@@ -9,6 +9,10 @@ All notable changes to Petto are documented here.
 - `PETTO_OPS_GUILD_ID` (optional): the server where the private team controls work, `!guildsend`, `!leaveguild` and the buttons of the alerts, when it is not the support server. Without it nothing changes: the support server (`PETTO_SUPPORT_GUILD_ID`, or the server of the join-log channel when that is empty) is used. The support server keeps its other uses (boosters for `!myprefix`, Premium roles), and neither the operations server nor the support server can be targeted by `!leaveguild` or the notice controls.
 - `PETTO_PREMIUM_LOG_CHANNEL_ID` (optional): the channel of the team where Petto lists the Premium that is active each time it starts (the user, the plan, the slots, until when and whether it came from Polar or was given by hand), 45 seconds after it starts. It pings nobody and does nothing without the variable. It is a way to see that the subscriptions that Polar reported reached the database.
 
+### Fixed
+
+- `DISCORD_DEV_GUILD_ID` can hold several test servers separated by commas or spaces. With a list it used to send the whole text as one server id and Discord answered `400 guild_id is not snowflake`, so the commands were not registered. Remember that with it set the commands are registered only in those servers and not globally: leave it empty in production.
+
 ## [0.7.6] — 2026-10-15 · Macaron
 
 ### Added
