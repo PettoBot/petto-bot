@@ -2,7 +2,41 @@
 
 All notable changes to Petto are documented here.
 
-## [Unreleased]
+## [0.7.6] — 2026-10-15 · Macaron
+
+### Added
+
+- **Appeals.** Each server gets an appeal page at `petto.sbs/appeal/<server id or your name>`. A member signs in with Discord, sees the punishments they have there (Petto cases, and the native bans and timeouts of Discord, cut to what the server allows: types, details and how old a warn can be), opens a form and sends an appeal; the staff gets it in a channel with **Accept**, **Reject** and **Reply** buttons (optionally in a thread and with a role ping), and the member follows it on the page and by DM, with a conversation in both ways. Everything starts off. **Run `schema.sql`** (tables `appeal_config`, `appeal_forms`, `appeal_submissions`, `appeal_messages`, `appeal_blocks`, `appeal_name_claims`, `appeal_name_reservations` and `appeal_images`, and columns `slug`, `invite_url` and `invite_note`) and deploy the bot and the website together.
+  - Accepting lifts the ban, the timeout and the active Petto sanctions (a hardban is never lifted), and can make a single-use invite that lasts 7 days. The invite that was made is shown on the appeal card, in the log and in the dashboard, or the reason there is none (Petto needs Create Invite in a text channel). Rejecting can block a new appeal for a day, a week, a month or for good.
+  - Forms are built in the dashboard with sections and questions (short and long text, choices, checkboxes, numbers and more), each with who can open it (by punishment type), its own messages and an icon from a set of real icons. The first form and the default messages are written in the language chosen for the page.
+  - A link name of your own, `petto.sbs/appeal/amor`, next to the one with the server id (which keeps working). 3 to 32 letters, numbers or dashes; names that are only numbers, reserved words (site pages, Discord, Petto, Valorant and other brands, staff words) and offensive words in English, Spanish and Portuguese are blocked, also with numbers or symbols for letters; the Petto team can take the reserved ones. If another server holds the name, the server can send a request (why, a link to see the server, an optional proof) that the team answers in 1 to 72 hours from the new page `/dash/appeal-names`; until then the page uses the server id link. A name that a server changes away from stays reserved for it for 30 days and its old link redirects. Names of servers that left Petto, that have appeals off and untouched for 30 days, or on with no appeal and no change for 90 days, are freed by the cleanup job.
+  - Brand and link preview: name, tagline, accent color, banner, icon, and what Discord shows when the link is pasted (title, description, picture and side color), with a live preview. The pictures can be uploaded from the device (PNG, JPG, WEBP or GIF, up to 5 MB) or taken from a link; the allowed links are direct `https://` links of a public site, and a link that cannot be used is reported instead of dropped.
+  - `!appeals` shows the link and how many appeals wait. The default sanction DM (ban, mute, warn and kick) points to the page when the server has appeals on and allows that type.
+  - New environment variable, optional: `APPEAL_CLAIMS_WEBHOOK_URL` (website) posts a message in a Discord channel when a request for a name arrives.
+- **Moderation.** Anti scam (the MrBeast scam by behavior, wording and new accounts, with actions, a DM, alert buttons and takedown), `!lockdown` (closes channels, pauses invites and raises verification while a raid lasts, with automatic end), anti-nuke with limits, whitelists, a log and restore for each protection, and AutoMod templates (Discord rules and Petto filters) with strikes and exceptions by channel. Sanctions can be lifted from the dashboard, cases can be searched, with proof and stats, and active sanctions have their own page.
+- **Tickets.** Panels with a color, a picture, a footer and the text of the dropdown (and `!ticket panel edit`), a limit of open tickets for the whole server, staff hours with a note outside them, a reminder for tickets nobody claims, `!ticket stats`, the channel topic with the number, type and opener, quick replies (`!quickreply`), automatic deletion of closed channels, and transcripts: a transcript channel and delivery as a link, a file or both.
+- **Suggestions** (`!suggest`, by writing in the channel or from a button with a form; votes, a thread for each, answers from the staff or the dashboard, who voted), **Counting** (a channel to count one number after the other, with saves, a record, roles and a leaderboard) and **Confessions** (anonymous, with a panel, a check by the staff, anonymous replies, blocks and a log channel).
+- **Image cards** go in any message with `{imgcard:name}` and inside Components V2 designs, with 24 new fonts (40 in total). The embed code generator has a Components V2 mode, and `!embed create <name> code: p2.…` reads it.
+- **VoiceMaster** can copy the category permissions, with access roles, a privacy mode for new rooms and owner permissions (all off by default).
+- **Verification** can be set up from the dashboard in one press, with a New picture button, and the buttons of the picture turn off once the member is verified.
+- The website has a **Brand page** (`/brand`, `/es/brand`, `/pt-br/brand`) with the mascot in its versions, colors, fonts, descriptions and a download kit.
+
+### Changed
+
+- The reposts of the starboard and the monkeyboard look like a message with its author, date and an **Original Message** button.
+- `!ping` is a Components V2 card with the latency of the guild and the API; `!userinfo` takes its accent from the dominant color of the avatar and shows the server banner.
+- New messages (partners, verification, birthdays, suggestions) are Components V2 cards without color by default, in warm colors when a status needs one.
+- Rollouts show only the variants that changed, with Treatment and Control names; variant 0 is the control and is never read.
+- Dashboard: Fraunces for titles and Plus Jakarta Sans for text, softer colors and smaller text, one color picker everywhere with a **No color** choice and bigger, easier-to-drag controls, a smaller save bar, a Modules page with a setup guide, and a real status page.
+
+### Fixed
+
+- Answers fall back to a normal message when quoting is not allowed (no Read Message History), and a missing permission is told in plain words and kept out of the error channel.
+- `!prefix set ?` works like `!prefix ?`; `!nuke` with the prefix no longer fails when its channel is gone, and a missing argument is told with the usage.
+- A new appeal could fail to reach the staff channel (Discord error 50035: a Components V2 message cannot have `content`); the role pings are now inside the card.
+- Opening a dashboard page with a color no longer shows "You have unsaved changes".
+
+## [0.7.5] — 2026-10-13 · Waffle
 
 ### Added
 

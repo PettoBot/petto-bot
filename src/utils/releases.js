@@ -2,13 +2,62 @@ const { EMOJI } = require('./emojis');
 
 const RELEASES = [
   {
+    version: 'v0.7.6',
+    display: 'v0.7.6',
+    name: 'Macaron',
+    label: 'v0.7.6 · Macaron: appeals, stronger moderation & more community tools',
+    date: '2026-10-15',
+    accent: 0xf0a88f,
+    status: `${EMOJI.RELEASE_APPROVED} Latest`,
+    summary: 'A full appeals system with its own page, stronger moderation (anti scam, lockdown, anti-nuke per protection), better tickets, suggestions, counting and confessions, and a new look for the dashboard.',
+    sections: [
+      {
+        title: `${EMOJI.RELEASE_ROCKET} Appeals`,
+        items: [
+          'A page for each server (`petto.sbs/appeal/<id or your name>`): members sign in with Discord, see their punishments, fill the forms you build and follow their appeal. In English, Spanish and Portuguese.',
+          'The staff gets each appeal with **Accept**, **Reject** and **Reply**. Accepting lifts the ban, the timeout and the active sanctions and can make a single-use invite (and says which one). Rejecting can block a new appeal for a day, a week, a month or for good.',
+          'Your own link name (`petto.sbs/appeal/amor`) with reserved and offensive names blocked, a request to the team when a name is taken (1 to 72 hours), 30 days of reservation when you change it, and names nobody uses are freed. Pictures can be uploaded from the device.',
+          '`!appeals` shows the link, and the sanction DM points to it. Everything starts off.',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_LOCKED} Moderation`,
+        items: [
+          'Anti scam (the MrBeast scam by behavior, words and new accounts), `!lockdown` for raids, anti-nuke with limits, whitelists and restore for each protection, and AutoMod templates (Discord rules and Petto filters) with strikes and exceptions.',
+          'Lift sanctions from the dashboard, search cases, add proof and see stats. VoiceMaster can copy the category permissions, with access roles, privacy and owner permissions (all off by default).',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_MAGIC} Community`,
+        items: [
+          'Suggestions (`!suggest`, votes, threads and staff answers), Counting (saves, records, roles and a leaderboard) and Confessions (anonymous, reviewed by the staff, with replies).',
+          'Tickets: panels with color, picture and footer, a limit per member, staff hours, reminders, quick replies, transcripts as a link, a file or both, and `!ticket panel edit`.',
+          'Verification can be set up from the dashboard in one press. Image cards go anywhere with `{imgcard:name}` (40 fonts).',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_SETTINGS} Look and dashboard`,
+        items: [
+          'Starboard and monkeyboard reposts look like the original message with an **Original Message** button, `!ping` and `!userinfo` have new cards, and new messages are warm Components V2 cards.',
+          'The dashboard has new fonts, softer colors, one color picker that is easier to drag, a smaller save bar and a real status page. The website has a Brand page (`/brand`).',
+        ],
+      },
+      {
+        title: `${EMOJI.RELEASE_BUG} Fixes`,
+        items: [
+          'Replies work without Read Message History, a missing permission is told in plain words, `!prefix set ?` works, and rollouts show only what changed.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'v0.7.5',
     display: 'v0.7.5',
     name: 'Waffle',
     label: 'v0.7.5 · Waffle: birthdays, verification in a channel & a faster dashboard',
     date: '2026-10-13',
     accent: 0xf3c98b,
-    status: `${EMOJI.RELEASE_APPROVED} Latest`,
+    status: `${EMOJI.RELEASE_APPROVED} Published`,
     summary: 'Birthdays, profile history, a letters check for the verification (also inside Discord and in a channel), the monkeyboard, a public leaderboard, levels with giveaways, rollout alerts and a much faster dashboard.',
     sections: [
       {
