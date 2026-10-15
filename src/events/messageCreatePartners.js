@@ -6,10 +6,11 @@ const { extractInviteCodes, snowflakeDate, judge, counts, standings, cooldownMin
 const { partnerContext, responsePayload } = require('../utils/partnerMessages');
 const { applyReactReplies } = require('../utils/messageFlags');
 const logger = require('../utils/logger');
+const { t, guildLanguage } = require('../i18n');
 
-async function reply(message, config, key, info) {
-  const ctx = { guild: message.guild, member: message.member, user: message.author, channel: message.channel, message, partner: partnerContext({ ...info, config, managerId: message.author.id, managerName: message.author.username }) };
-  const payload = await responsePayload(message.guild.id, config, key, ctx);
+async function reply(message, config, key, info, lang) {
+  const ctx = { guild: message.guild, member: message.member, user: message.author, channel: message.channel, message, partner: partnerContext({ ...info, config, managerId: message.author.id, managerName: message.author.username }, lang) };
+  const payload = await responsePayload(message.guild.id, config, key, ctx, lang);
   const sent = await message.reply({ ...payload, failIfNotExists: false }).catch(() => null);
   if (sent && payload.reactions?.length) await applyReactReplies(sent, payload.reactions);
 }
@@ -36,14 +37,14 @@ async function lookUpInvite(client, code) {
   return { invite: null, unreachable: true };
 }
 
-async function handleInvite(message, config, code) {
+async function handleInvite(message, config, code, lang) {
   const { invite, unreachable } = await lookUpInvite(message.client, code);
   if (unreachable) {
-    await message.reply({ content: 'I could not check that invite right now. Post it again in a moment.', failIfNotExists: false, allowedMentions: { repliedUser: false } }).catch(() => null);
+    await message.reply({ content: t(lang, 'partners.inviteUnreachable'), failIfNotExists: false, allowedMentions: { repliedUser: false } }).catch(() => null);
     return { blocked: false };
   }
   if (!invite?.guild) {
-    await reply(message, config, 'invalid_invite', { invite: `https://discord.gg/${code}` });
+    await reply(message, config, 'invalid_invite', { invite: `https://discord.gg/${code}` }, lang);
     return { blocked: true };
   }
   const found = {
@@ -59,14 +60,14 @@ async function handleInvite(message, config, code) {
   const reason = judge({ invite: found, ownGuildId: message.guild.id, config, blacklisted, last });
   const base = { name: found.name, id: found.guildId, members: found.members, invite: `https://discord.gg/${invite.code}`, cooldownEndsUnix: last && cooldownMinutes(config) ? Math.floor(new Date(last.created_at).getTime() / 1000) + cooldownMinutes(config) * 60 : null };
   if (reason) {
-    await reply(message, config, reason, base);
+    await reply(message, config, reason, base, lang);
     return { blocked: true };
   }
 
   const row = await partnersDb.addLog({ guildId: message.guild.id, managerId: message.author.id, partnerGuildId: found.guildId, partnerName: found.name, members: found.members, inviteCode: invite.code, channelId: message.channel.id, messageId: message.id });
   const all = await partnersDb.listLog(message.guild.id);
   const rows = all.some((item) => item.id === row.id) ? all : [row, ...all];
-  await reply(message, config, 'completed', { ...base, counts: counts(rows.filter((item) => item.manager_id === message.author.id)), standings: standings(rows, message.author.id) });
+  await reply(message, config, 'completed', { ...base, counts: counts(rows.filter((item) => item.manager_id === message.author.id)), standings: standings(rows, message.author.id) }, lang);
   if (config.react_emoji) await message.react(config.react_emoji).catch(() => null);
   return { blocked: false };
 }
@@ -88,9 +89,10 @@ module.exports = {
       const codes = extractInviteCodes(message.content);
       if (!codes.length) return;
 
+      const lang = await guildLanguage(message.guild.id);
       let blockedAny = false;
       for (const code of codes) {
-        const result = await handleInvite(message, config, code);
+        const result = await handleInvite(message, config, code, lang);
         if (result.blocked) blockedAny = true;
       }
       if (blockedAny && !config.keep_original && message.guild.members.me?.permissions.has(PermissionFlagsBits.ManageMessages)) await message.delete().catch(() => null);

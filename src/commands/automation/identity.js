@@ -6,9 +6,10 @@ const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { COLORS } = require('../../utils/colors');
 const { evaluateMember } = require('../../utils/identity/service');
-const { memberOption, runSync } = require('../../utils/identity/commands');
-const { LOG_EVENTS, EVENT_LABELS } = require('../../utils/identity/emit');
+const { memberOption, memberChecked, notifyText, runSync } = require('../../utils/identity/commands');
+const { LOG_EVENTS, EVENT_LABELS, eventLabel } = require('../../utils/identity/emit');
 const { infoPayload } = require('../../utils/infoCard');
+const { t, languageOf } = require('../../i18n');
 
 const EVENT_CHOICES = LOG_EVENTS.map((value) => ({ name: EVENT_LABELS[value], value }));
 
@@ -38,18 +39,15 @@ module.exports = {
 
   async execute(interaction) {
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+    const lang = await languageOf(interaction);
     const guild = interaction.guild;
     await ensureGuild(guild.id);
     const sub = interaction.options.getSubcommand();
 
     if (sub === 'sync') {
       const user = await memberOption(interaction, 'user');
-      if (user) {
-        const results = await evaluateMember(user);
-        const changed = results.filter((result) => result.changed && !result.error).length;
-        return ok(interaction, `Checked ${user}. ${changed ? `${changed} role change${changed === 1 ? '' : 's'}.` : 'Nothing to change.'}`);
-      }
-      return runSync(interaction, null);
+      if (user) return ok(interaction, memberChecked(user, await evaluateMember(user), lang));
+      return runSync(interaction, null, lang);
     }
 
     if (sub === 'status') {
@@ -57,20 +55,23 @@ module.exports = {
         db.listVanityRules(guild.id, { all: true }), db.listGuildTagRules(guild.id, { all: true }),
         db.getNotification(guild.id, 'vanity'), db.getNotification(guild.id, 'guildtag'), db.getLogConfig(guild.id),
       ]);
-      const notify = (entry) => (entry ? `<#${entry.channelId}>${entry.embedName ? ` · embed \`${entry.embedName}\`` : ''}${entry.ping === 'none' ? ' · no ping' : ''}` : 'off');
-      const count = (list) => `${list.length} (${list.filter((rule) => rule.enabled).length} on)`;
-      const events = log ? LOG_EVENTS.filter((event) => log.events?.[event]).map((event) => EVENT_LABELS[event]).join(', ') || 'none' : '';
+      const off = t(lang, 'identity.status.off');
+      const notify = (entry) => (entry ? notifyText(entry, lang) : off);
+      const count = (list) => t(lang, 'identity.status.count', { count: list.length, on: list.filter((rule) => rule.enabled).length });
+      const events = log ? LOG_EVENTS.filter((event) => log.events?.[event]).map((event) => eventLabel(event, lang)).join(', ') || t(lang, 'identity.status.none') : '';
       return interaction.editReply(infoPayload({
         accent: 0xf0a9c4,
-        title: 'Vanity and Server Tag',
-        subtitle: ['Roles by Custom Status, name or Server Tag'],
+        title: t(lang, 'identity.status.title'),
+        subtitle: [t(lang, 'identity.status.subtitle')],
         thumbnail: guild.iconURL?.({ extension: 'png', size: 128 }) ?? null,
         sections: [
-          { title: 'Rules', lines: [`**Vanity** ${count(vanity)}`, `**Server Tag** ${count(tags)}`] },
-          { title: 'Thank-you messages', lines: [`**Vanity** ${notify(notifyVanity)}`, `**Server Tag** ${notify(notifyTag)}`] },
-          { title: 'Log', lines: log ? [`<#${log.channelId}>`, events] : ['off'] },
+          // i18n-ignore: product names (Vanity, Server Tag) in front of a number
+          { title: t(lang, 'identity.section.rules'), lines: [`**Vanity** ${count(vanity)}`, `**Server Tag** ${count(tags)}`] },
+          // i18n-ignore: product names (Vanity, Server Tag) in front of a channel
+          { title: t(lang, 'identity.status.thanks'), lines: [`**Vanity** ${notify(notifyVanity)}`, `**Server Tag** ${notify(notifyTag)}`] },
+          { title: t(lang, 'identity.status.log'), lines: log ? [`<#${log.channelId}>`, events] : [off] },
         ],
-        footer: '!vanity · !guildtag · !identity sync',
+        footer: '!vanity · !guildtag · !identity sync', // i18n-ignore: command names
       }));
     }
 
@@ -79,25 +80,26 @@ module.exports = {
       const current = await db.getLogConfig(guild.id);
       const events = current?.events && Object.keys(current.events).length ? current.events : Object.fromEntries(LOG_EVENTS.map((event) => [event, true]));
       await db.setLogConfig(guild.id, { channelId: channel.id, events, embeds: current?.embeds ?? {} });
-      return ok(interaction, `Role changes made by the rules are logged in ${channel}. Use \`!identity log-event\` to choose which entries.`);
+      return ok(interaction, t(lang, 'identity.logs.set', { channel: `${channel}` }));
     }
 
     const current = await db.getLogConfig(guild.id);
     if (sub === 'logs-off') {
-      return (await db.clearLogConfig(guild.id)) ? ok(interaction, 'The log is off.') : reply(interaction, 'There was no log set up.');
+      return (await db.clearLogConfig(guild.id)) ? ok(interaction, t(lang, 'identity.logs.off')) : reply(interaction, t(lang, 'identity.logs.none'));
     }
-    if (!current) return reply(interaction, 'Set a log channel first with `!identity logs`.', COLORS.RED);
+    if (!current) return reply(interaction, t(lang, 'identity.logs.first'), COLORS.RED);
     const event = interaction.options.getString('event', true);
+    const label = eventLabel(event, lang);
     if (sub === 'log-event') {
       const enabled = interaction.options.getBoolean('enabled', true);
       await db.setLogConfig(guild.id, { channelId: current.channelId, events: { ...current.events, [event]: enabled }, embeds: current.embeds });
-      return ok(interaction, `${EVENT_LABELS[event]} entries are ${enabled ? 'on' : 'off'}.`);
+      return ok(interaction, t(lang, enabled ? 'identity.logs.eventOn' : 'identity.logs.eventOff', { event: label }));
     }
     const embedName = (interaction.options.getString('embed') ?? '').trim().toLowerCase();
-    if (embedName && !(await getTemplate(guild.id, embedName))) return reply(interaction, `There is no saved embed called \`${embedName}\`. Create it in Embeds first.`, COLORS.RED);
+    if (embedName && !(await getTemplate(guild.id, embedName))) return reply(interaction, t(lang, 'identity.noEmbed', { name: embedName }), COLORS.RED);
     const embeds = { ...current.embeds };
     if (embedName) embeds[event] = embedName; else delete embeds[event];
     await db.setLogConfig(guild.id, { channelId: current.channelId, events: current.events, embeds });
-    return ok(interaction, embedName ? `${EVENT_LABELS[event]} entries use the embed \`${embedName}\`.` : `${EVENT_LABELS[event]} entries use the default card.`);
+    return ok(interaction, embedName ? t(lang, 'identity.logs.embed', { event: label, name: embedName }) : t(lang, 'identity.logs.defaultCard', { event: label }));
   },
 };

@@ -237,6 +237,8 @@ function roleClient(log) {
   const card = thanksCard({ source: 'vanity', userId: '9', roleId: '5', value: 'cinnamochi', ruleName: 'rep' }, null).toJSON();
   assert.equal(card.type, 17, 'the thank-you is a container of Components V2');
   assert.match(JSON.stringify(card), /gracias por usar el vanity/);
+  assert.equal(legacyLogEmbed({ source: 'vanity', action: 'add_role', roleId: '5', userId: '9', value: 'cinnamochi' }, 'es').toJSON().description, '### Acción de Vanity\n<:petto_approve:1527894552277549066> Se agregó el rol <@&5> a <@9>\nPalabra: `cinnamochi`');
+  assert.match(JSON.stringify(thanksDesign('guildtag', 'pt-BR')), /obrigado por usar a tag/);
 
   // ---- Messages: the variables of a rule
   const context = identityContext({ source: 'vanity', action: 'add_role', roleId: 'role1', ruleName: 'rep', value: 'cinnamochi', matchField: 'custom_status', matchedValue: 'cinnamochi ♡', result: 'completed' });

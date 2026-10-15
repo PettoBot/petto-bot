@@ -2,13 +2,14 @@
 // channel it was asked in. Used by `!partnerconfig welcome` and when the manager role is given to someone.
 const { responsePayload } = require('./partnerMessages');
 const { sendAs } = require('./senderIdentity');
+const { currentLanguage } = require('../i18n');
 
 /** Sends the welcome; false when there is no channel to send it to. */
-async function sendManagerWelcome({ guild, member, config, fallbackChannel = null }) {
+async function sendManagerWelcome({ guild, member, config, fallbackChannel = null, lang = currentLanguage() }) {
   const configured = config.welcome_channel_id ? await guild.channels.fetch(config.welcome_channel_id).catch(() => null) : null;
   const channel = configured?.isTextBased?.() ? configured : fallbackChannel;
   if (!channel?.send) return false;
-  const payload = await responsePayload(guild.id, config, 'manager_welcome', { guild, member, user: member.user, channel, partner: {} });
+  const payload = await responsePayload(guild.id, config, 'manager_welcome', { guild, member, user: member.user, channel, partner: {} }, lang);
   const sent = await sendAs(channel, 'partners', { ...payload, allowedMentions: { users: [member.id] } }).catch(() => null);
   return Boolean(sent);
 }

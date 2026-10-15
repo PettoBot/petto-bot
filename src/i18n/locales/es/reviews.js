@@ -1,0 +1,20 @@
+// Reviews (!review): the checks of a review, the replies and the post in the channel of new reviews.
+module.exports = {
+  'reviews.problem.bot': 'No puedes dejar una reseña sobre un bot.',
+  'reviews.problem.self': 'No puedes dejar una reseña sobre ti.',
+  'reviews.problem.stars': 'Las estrellas son un número entero del 1 al 5.',
+  'reviews.problem.comment': 'El comentario puede tener hasta {max} caracteres.',
+  'reviews.post.new': '{stars}  {reviewer} dejó una reseña sobre {target}',
+  'reviews.post.changed': '{stars}  {reviewer} cambió su reseña sobre {target}',
+  'reviews.give.saved.one': '{emoji}  Reseña guardada. {user} tiene {stars} {average} de {count} reseña.',
+  'reviews.give.saved.other': '{emoji}  Reseña guardada. {user} tiene {stars} {average} de {count} reseñas.',
+  'reviews.give.changed.one': '{emoji}  Se cambió tu reseña. {user} tiene {stars} {average} de {count} reseña.',
+  'reviews.give.changed.other': '{emoji}  Se cambió tu reseña. {user} tiene {stars} {average} de {count} reseñas.',
+  'reviews.remove.done': '{emoji}  Se eliminó tu reseña sobre {user}.',
+  'reviews.remove.none': 'No tienes ninguna reseña sobre {user}.',
+  'reviews.show.none': '{user} todavía no tiene reseñas.',
+  'reviews.show.title': '### Reseñas de {user}',
+  'reviews.show.summary.one': '{stars} **{average}** de {count} reseña',
+  'reviews.show.summary.other': '{stars} **{average}** de {count} reseñas',
+  'reviews.off': 'Las reseñas están desactivadas en este servidor.',
+};

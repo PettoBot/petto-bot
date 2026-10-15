@@ -1,0 +1,20 @@
+// Reviews (!review): the checks of a review, the replies and the post in the channel of new reviews.
+module.exports = {
+  'reviews.problem.bot': 'Você não pode avaliar um bot.',
+  'reviews.problem.self': 'Você não pode se avaliar.',
+  'reviews.problem.stars': 'As estrelas são um número inteiro de 1 a 5.',
+  'reviews.problem.comment': 'O comentário pode ter até {max} caracteres.',
+  'reviews.post.new': '{stars}  {reviewer} avaliou {target}',
+  'reviews.post.changed': '{stars}  {reviewer} alterou a avaliação de {target}',
+  'reviews.give.saved.one': '{emoji}  Avaliação salva. {user} tem {stars} {average} de {count} avaliação.',
+  'reviews.give.saved.other': '{emoji}  Avaliação salva. {user} tem {stars} {average} de {count} avaliações.',
+  'reviews.give.changed.one': '{emoji}  Sua avaliação foi alterada. {user} tem {stars} {average} de {count} avaliação.',
+  'reviews.give.changed.other': '{emoji}  Sua avaliação foi alterada. {user} tem {stars} {average} de {count} avaliações.',
+  'reviews.remove.done': '{emoji}  Sua avaliação de {user} foi removida.',
+  'reviews.remove.none': 'Você não tem nenhuma avaliação de {user}.',
+  'reviews.show.none': '{user} ainda não tem avaliações.',
+  'reviews.show.title': '### Avaliações de {user}',
+  'reviews.show.summary.one': '{stars} **{average}** de {count} avaliação',
+  'reviews.show.summary.other': '{stars} **{average}** de {count} avaliações',
+  'reviews.off': 'As avaliações estão desativadas neste servidor.',
+};

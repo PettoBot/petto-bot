@@ -7,6 +7,7 @@ const { getTemplate } = require('../../db/embedTemplates');
 const { getGuildPremium } = require('../../db/premium');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { t, tn, languageOf } = require('../../i18n');
 
 const ok = (text) => textCard(`${EMOJI.APPROVE}  ${text}`, 0xa5ea7a);
 const note = (text) => textCard(text, 0x4b4f59);
@@ -32,6 +33,7 @@ module.exports = {
 
   async execute(interaction) {
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+    const lang = await languageOf(interaction);
     await ensureGuild(interaction.guild.id);
     const done = (component) => interaction.editReply({ components: [component], flags: MessageFlags.IsComponentsV2 });
     const config = (await requestsDb.getConfig(interaction.guild.id)) ?? { ...requestsDb.DEFAULTS };
@@ -40,48 +42,65 @@ module.exports = {
 
     if (sub === 'view') {
       const reply = config.messages?.created;
-      return done(note(['### Requests', `State: **${config.enabled ? 'on' : 'off'}**`, `Channel: ${config.channel_id ? `<#${config.channel_id}>` : 'not set'}`, `Staff: ${config.staff_role_id ? `<@&${config.staff_role_id}>` : 'who can manage messages'}`, `Ping: ${config.ping_role_id ? `<@&${config.ping_role_id}>` : 'none'}`, `Open requests per member: ${config.max_open}`, `Time to finish a claimed request: ${config.completion_hours ? `${config.completion_hours} hours` : 'no limit'}`, `Reply: ${reply?.template ? `embed \`${reply.template}\`` : reply?.text ? 'changed' : 'default'}`].join('\n')));
+      const none = t(lang, 'requests.view.none');
+      let replyText = t(lang, 'requests.view.replyDefault');
+      if (reply?.template) replyText = t(lang, 'requests.view.replyEmbed', { name: reply.template });
+      else if (reply?.text) replyText = t(lang, 'requests.view.replyChanged');
+      return done(note([
+        t(lang, 'requests.view.title'),
+        t(lang, 'requests.view.state', { state: t(lang, config.enabled ? 'requests.view.on' : 'requests.view.off') }),
+        t(lang, 'requests.view.channel', { channel: config.channel_id ? `<#${config.channel_id}>` : t(lang, 'requests.view.notSet') }),
+        t(lang, 'requests.view.staff', { staff: config.staff_role_id ? `<@&${config.staff_role_id}>` : t(lang, 'requests.view.staffDefault') }),
+        t(lang, 'requests.view.ping', { ping: config.ping_role_id ? `<@&${config.ping_role_id}>` : none }),
+        t(lang, 'requests.view.perMember', { count: config.max_open }),
+        t(lang, 'requests.view.time', { time: config.completion_hours ? tn(lang, 'requests.view.hours', config.completion_hours, { count: config.completion_hours }) : t(lang, 'requests.view.noLimit') }),
+        t(lang, 'requests.view.reply', { reply: replyText }),
+      ].join('\n')));
     }
     if (sub === 'enable') {
       const enabled = interaction.options.getBoolean('enabled', true);
       await save({ enabled });
-      return done(ok(enabled ? (config.channel_id ? 'Requests are on.' : 'Requests are on. Choose where the cards go with `!requestconfig channel`.') : 'Requests are off.'));
+      return done(ok(t(lang, enabled ? (config.channel_id ? 'requests.enable.on' : 'requests.enable.onNoChannel') : 'requests.enable.off')));
     }
     if (sub === 'channel') {
       const channel = interaction.options.getChannel('channel', true);
       await save({ channel_id: channel.id });
-      return done(ok(`The request cards go to ${channel}.`));
+      return done(ok(t(lang, 'requests.channel.set', { channel: `${channel}` })));
     }
     if (sub === 'staff' || sub === 'ping') {
       const role = interaction.options.getRole('role');
       await save(sub === 'staff' ? { staff_role_id: role?.id ?? null } : { ping_role_id: role?.id ?? null });
-      return done(ok(sub === 'staff' ? (role ? `${role} claims and finishes requests.` : 'Who can manage messages claims and finishes requests.') : (role ? `${role} is pinged with each request.` : 'No role is pinged.')));
+      if (sub === 'staff') return done(ok(role ? t(lang, 'requests.staff.role', { role: `${role}` }) : t(lang, 'requests.staff.default')));
+      return done(ok(role ? t(lang, 'requests.ping.role', { role: `${role}` }) : t(lang, 'requests.ping.none')));
     }
     if (sub === 'limit') {
       const amount = interaction.options.getInteger('amount', true);
       await save({ max_open: amount });
-      return done(ok(`A member can have ${amount} open request${amount === 1 ? '' : 's'}.`));
+      return done(ok(tn(lang, 'requests.limit.set', amount, { count: amount })));
     }
     if (sub === 'timeout') {
       const hours = interaction.options.getInteger('hours', true);
       const premium = await getGuildPremium(interaction.guild.id).catch(() => ({ active: false }));
-      if (hours > 0 && !premium?.active) return done(note('Sending a claimed request back to open by itself is a Premium feature.'));
+      if (hours > 0 && !premium?.active) return done(note(t(lang, 'requests.timeout.premium')));
       await save({ completion_hours: hours });
-      return done(ok(hours ? `A claimed request goes back to open after ${hours} hours.` : 'A claimed request has no time limit.'));
+      return done(ok(hours ? tn(lang, 'requests.timeout.set', hours, { count: hours }) : t(lang, 'requests.timeout.off')));
     }
     // reply
     const text = interaction.options.getString('text');
     const template = (interaction.options.getString('template') ?? '').trim();
     const current = config.messages?.created ?? {};
-    if (text === null && !template) return done(note(`**Reply**\n${current.template ? `Saved embed: \`${current.template}\`\n` : ''}${current.text?.trim() || require('./request').DEFAULT_CREATED}`));
+    if (text === null && !template) {
+      const words = current.text?.trim() || require('./request').defaultCreated(lang);
+      return done(note(current.template ? t(lang, 'requests.reply.showEmbed', { name: current.template, text: words }) : t(lang, 'requests.reply.show', { text: words })));
+    }
     const created = { ...current };
     if (text !== null) { if (text.trim().toLowerCase() === 'reset') delete created.text; else created.text = text.trim().slice(0, 2000); }
     if (template) {
       if (template.toLowerCase() === 'none') delete created.template;
-      else if (!(await getTemplate(interaction.guild.id, template).catch(() => null))?.data) return done(note(`There is no saved embed called \`${template}\`.`));
+      else if (!(await getTemplate(interaction.guild.id, template).catch(() => null))?.data) return done(note(t(lang, 'requests.reply.noEmbed', { name: template })));
       else created.template = template;
     }
     await save({ messages: { ...(config.messages ?? {}), created } });
-    return done(ok('Reply saved.'));
+    return done(ok(t(lang, 'requests.reply.saved')));
   },
 };

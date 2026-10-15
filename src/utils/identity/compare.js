@@ -1,4 +1,6 @@
 // How a Vanity or Server Tag rule decides that a member matches. Ported from the Vanity bot, same rules.
+const { t, currentLanguage } = require('../../i18n');
+
 const MAX_REGEX_LENGTH = 256;
 const MAX_VALUE_LENGTH = 512;
 
@@ -38,8 +40,8 @@ function vanityValue(member, source) {
 }
 
 /** Whether the rule matches the member. Throws for a rule that cannot work (empty word, a pattern that does not compile, a value too long for a pattern). */
-function matchVanity(rule, member) {
-  if (!rule.word) throw new Error(`The rule ${rule.name} has no text to match.`);
+function matchVanity(rule, member, lang = currentLanguage()) {
+  if (!rule.word) throw new Error(t(lang, 'identity.error.noWord', { name: rule.name }));
   const left = normalize(vanityValue(member, rule.source), rule.normalization);
   const right = normalize(rule.word, rule.normalization);
   switch (rule.comparison) {
@@ -48,13 +50,13 @@ function matchVanity(rule, member) {
     case 'starts_with': return left.startsWith(right);
     case 'ends_with': return left.endsWith(right);
     case 'regex': {
-      if ([...String(rule.word)].length > MAX_REGEX_LENGTH) throw new Error(`The pattern of ${rule.name} is longer than ${MAX_REGEX_LENGTH} characters.`);
-      if ([...left].length > MAX_VALUE_LENGTH) throw new Error(`The value checked by ${rule.name} is longer than ${MAX_VALUE_LENGTH} characters.`);
+      if ([...String(rule.word)].length > MAX_REGEX_LENGTH) throw new Error(t(lang, 'identity.error.patternTooLong', { name: rule.name, max: MAX_REGEX_LENGTH }));
+      if ([...left].length > MAX_VALUE_LENGTH) throw new Error(t(lang, 'identity.error.valueTooLong', { name: rule.name, max: MAX_VALUE_LENGTH }));
       let expression;
-      try { expression = new RegExp(right, 'u'); } catch (error) { throw new Error(`The pattern of ${rule.name} is not valid: ${error.message}`); }
+      try { expression = new RegExp(right, 'u'); } catch (error) { throw new Error(t(lang, 'identity.error.patternInvalid', { name: rule.name, error: error.message })); }
       return expression.test(left);
     }
-    default: throw new Error(`The comparison ${rule.comparison} is not supported.`);
+    default: throw new Error(t(lang, 'identity.error.comparison', { comparison: rule.comparison }));
   }
 }
 
@@ -80,23 +82,23 @@ function conditionNeedsValue(condition) {
 }
 
 /** A message for the first thing wrong with a Vanity rule, or null. Used by the commands and the dashboard alike. */
-function validateVanityRule(rule) {
-  if (!String(rule.name ?? '').trim()) return 'Give the rule a name, for example `cinnamochi`.';
-  if (!rule.word) return 'Give the text to look for in the chosen source.';
-  if (!rule.role_id) return 'Choose the role the rule manages.';
-  if (!VANITY_SOURCES.includes(rule.source)) return 'Choose where to look: Custom Status, username, global name, server nickname or display name.';
-  if (!COMPARISONS.includes(rule.comparison)) return 'Choose how to compare: equals, contains, starts with, ends with or regex.';
-  if (!ACTIONS.includes(rule.action)) return 'Choose whether the rule adds or removes the role.';
-  try { matchVanity(rule, {}); } catch (error) { return `The rule is not valid: ${error.message}`; }
+function validateVanityRule(rule, lang = currentLanguage()) {
+  if (!String(rule.name ?? '').trim()) return t(lang, 'identity.validate.vanityName');
+  if (!rule.word) return t(lang, 'identity.validate.word');
+  if (!rule.role_id) return t(lang, 'identity.validate.role');
+  if (!VANITY_SOURCES.includes(rule.source)) return t(lang, 'identity.validate.source');
+  if (!COMPARISONS.includes(rule.comparison)) return t(lang, 'identity.validate.comparison');
+  if (!ACTIONS.includes(rule.action)) return t(lang, 'identity.validate.action');
+  try { matchVanity(rule, {}, lang); } catch (error) { return t(lang, 'identity.validate.invalid', { error: error.message }); }
   return null;
 }
 
-function validateGuildTagRule(rule) {
-  if (!String(rule.name ?? '').trim()) return 'Give the rule a name, for example `partner-server`.';
-  if (!rule.role_id) return 'Choose the role the rule manages.';
-  if (!CONDITIONS.includes(rule.condition)) return 'Choose a valid Server Tag condition.';
-  if (conditionNeedsValue(rule.condition) && !String(rule.value ?? '').trim()) return 'This condition needs a server ID or the text of the Server Tag.';
-  if (!ACTIONS.includes(rule.action)) return 'Choose whether the rule adds or removes the role.';
+function validateGuildTagRule(rule, lang = currentLanguage()) {
+  if (!String(rule.name ?? '').trim()) return t(lang, 'identity.validate.tagName');
+  if (!rule.role_id) return t(lang, 'identity.validate.role');
+  if (!CONDITIONS.includes(rule.condition)) return t(lang, 'identity.validate.condition');
+  if (conditionNeedsValue(rule.condition) && !String(rule.value ?? '').trim()) return t(lang, 'identity.validate.conditionValue');
+  if (!ACTIONS.includes(rule.action)) return t(lang, 'identity.validate.action');
   return null;
 }
 

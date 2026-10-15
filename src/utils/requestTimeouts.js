@@ -5,6 +5,7 @@ const requestsDb = require('../db/requests');
 const { getGuildPremium } = require('../db/premium');
 const { requestCard } = require('./requestCards');
 const logger = require('./logger');
+const { tn, guildLanguage } = require('../i18n');
 
 async function unclaimLate(client) {
   const configs = await requestsDb.listConfigsWithTimeout();
@@ -13,6 +14,8 @@ async function unclaimLate(client) {
     const premium = await getGuildPremium(config.guild_id).catch(() => ({ active: false }));
     if (!premium?.active) continue;
     const late = await requestsDb.listClaimedBefore(config.guild_id, new Date(Date.now() - config.completion_hours * 3_600_000));
+    // A job runs outside of any server, so each server's language is looked up.
+    const lang = late.length ? await guildLanguage(config.guild_id) : null;
     for (const request of late) {
       const claimer = request.claimed_by;
       const updated = await requestsDb.update(config.guild_id, request.number, { status: 'open', claimed_by: null, claimed_at: null });
@@ -21,8 +24,8 @@ async function unclaimLate(client) {
       try {
         const channel = updated.channel_id ? await client.channels.fetch(updated.channel_id).catch(() => null) : null;
         const message = channel && updated.message_id ? await channel.messages.fetch(updated.message_id).catch(() => null) : null;
-        if (message) await message.edit({ components: [requestCard(updated)], flags: MessageFlags.IsComponentsV2 }).catch(() => null);
-        if (channel) await channel.send({ content: `Request #${updated.number} was claimed by <@${claimer}> and not finished in ${config.completion_hours} hours, so it is open again.`, allowedMentions: { users: [claimer] } }).catch(() => null);
+        if (message) await message.edit({ components: [requestCard(updated, lang)], flags: MessageFlags.IsComponentsV2 }).catch(() => null);
+        if (channel) await channel.send({ content: tn(lang, 'requests.timeout.notice', config.completion_hours, { count: config.completion_hours, number: updated.number, user: `<@${claimer}>` }), allowedMentions: { users: [claimer] } }).catch(() => null);
       } catch (error) {
         logger.warn(`Request timeout notice failed in guild ${config.guild_id}: ${error.message}`);
       }

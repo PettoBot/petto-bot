@@ -68,6 +68,11 @@ const buttons = (card) => (card.components[1]?.components ?? []).map((item) => i
   assert.equal(cards.mayPress('cancel', open, plain, withRole).allowed, true, 'the author can cancel'); assert.equal(cards.mayPress('cancel', open, stranger, withRole).allowed, false); assert.equal(cards.mayPress('cancel', { ...open, status: 'done' }, plain, withRole).allowed, false);
   function staff2() { return member('s2', { staffRole: true }); }
 
+  // The card and the answers in the language of the server.
+  assert.match(text(cards.requestCard(open, 'es')), /Solicitud #7 · Abierta[\s\S]*<@u1> pide:[\s\S]*Esperando a que alguien la reclame/);
+  assert.deepEqual(cards.requestCard(claimed, 'pt-BR').components[1].components.map((item) => item.data.label), ['Concluir', 'Liberar', 'Cancelar']);
+  assert.match(cards.mayPress('claim', open, plain, withRole, 'es').reason, /Solo el staff/);
+
   // Making one.
   const sentCards = [];
   const channel = { id: 'cards', isTextBased: () => true, send: async (payload) => { sentCards.push(payload); return { id: `card${sentCards.length}` }; } };

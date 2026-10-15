@@ -6,11 +6,12 @@
 //  - a source that could not be read right now (Custom Status in a sweep without presence) leaves its grants as they are.
 const db = require('../../db/identity');
 const { matchVanity, matchGuildTag, vanityValue, vanitySourceKnown } = require('./compare');
+const { t, currentLanguage } = require('../../i18n');
 
 /** `rules.vanity` / `rules.guildtag`: `null` means "this source was not evaluated"; an empty list means "evaluated, no active rules", which clears its old grants. */
-async function evaluate(member, rules, { roles, onAction, onNotify } = {}) {
+async function evaluate(member, rules, { roles, onAction, onNotify, lang = currentLanguage() } = {}) {
   if (member.isBot) return [];
-  if (!roles) throw new Error('The identity engine needs a role client.');
+  if (!roles) throw new Error('The identity engine needs a role client.'); // i18n-ignore: internal error, never shown
   const { vanity, guildtag } = rules;
 
   if (vanity) await db.invalidateStaleGrants(member.guildId, member.userId, 'vanity', scopes(vanity));
@@ -49,13 +50,13 @@ async function evaluate(member, rules, { roles, onAction, onNotify } = {}) {
     if (!vanitySourceKnown(member, rule.source)) continue;
     let matched = false;
     let evaluationError = null;
-    try { matched = matchVanity(rule, member); } catch (error) { evaluationError = error.message; }
+    try { matched = matchVanity(rule, member, lang); } catch (error) { evaluationError = error.message; }
     const value = vanityValue(member, rule.source);
     const context = {
       guildId: member.guildId, userId: member.userId, userName: member.username, userDisplayName: member.displayName, userAvatar: member.avatarUrl,
       roleId: rule.role_id, ruleId: rule.id, ruleName: rule.name, ruleCondition: rule.comparison, matchField: rule.source, matchedValue: value,
       source: 'vanity', action: rule.action, value: rule.word,
-      reason: matched ? `Matched ${rule.source} condition for value ${value}` : `No longer matched ${rule.source} condition for value ${value}`,
+      reason: t(lang, matched ? 'identity.reason.matched' : 'identity.reason.unmatched', { condition: rule.source, value }),
     };
     await track(rule, 'vanity', matched, context, evaluationError);
   }
@@ -70,7 +71,7 @@ async function evaluate(member, rules, { roles, onAction, onNotify } = {}) {
       roleId: rule.role_id, ruleId: rule.id, ruleName: rule.name, ruleCondition: rule.condition, matchedValue: rule.value,
       tag: primary?.tag ?? '', tagGuildId: primary?.identityGuildId ?? '', tagEnabled: primary?.identityEnabled == null ? '' : String(primary.identityEnabled), tagBadge: primary?.badge ?? '',
       source: 'guildtag', action: rule.action, value: rule.value,
-      reason: matched ? `Matched ${rule.condition} condition for value ${rule.value}` : `No longer matched ${rule.condition} condition for value ${rule.value}`,
+      reason: t(lang, matched ? 'identity.reason.matched' : 'identity.reason.unmatched', { condition: rule.condition, value: rule.value }),
     };
     await track(rule, 'guildtag', matched, context, null);
   }
@@ -79,7 +80,7 @@ async function evaluate(member, rules, { roles, onAction, onNotify } = {}) {
 
   const contextFor = (map, roleId, action) => map.get(roleId) ?? {
     guildId: member.guildId, userId: member.userId, userName: member.username, userDisplayName: member.displayName, userAvatar: member.avatarUrl,
-    roleId, action, reason: 'Role no longer justified by an active matching rule',
+    roleId, action, reason: t(lang, 'identity.reason.unjustified'),
   };
   const notify = (contexts) => { for (const context of contexts ?? []) onNotify?.({ ...context, action: 'add_role', result: 'completed', error: null }); };
   const audit = (roleId, action, result, suffix, error) => ({

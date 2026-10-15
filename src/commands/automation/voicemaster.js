@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags, EmbedBuilder, InviteTargetType } = require('discord.js');
 const voiceDb = require('../../db/voiceMaster');
 const { textCard } = require('../../utils/caseCard');
+const { t, currentLanguage, languageOf } = require('../../i18n');
 
 const USER_ACTIONS = ['lock', 'unlock', 'ghost', 'reveal', 'claim', 'delete', 'rename', 'transfer', 'limit', 'permit', 'reject', 'disconnect', 'activity'];
 
@@ -35,57 +36,64 @@ module.exports = {
     if (sub === 'info') return info(interaction);
     if (sub === 'panel') return resendPanel(interaction);
     if (USER_ACTIONS.includes(sub)) return executeAction(interaction, sub);
-    return interaction.reply({ content: 'Unknown VoiceMaster action.', flags: MessageFlags.Ephemeral });
+    return interaction.reply({ content: t(await languageOf(interaction), 'voicemaster.unknownAction'), flags: MessageFlags.Ephemeral });
   },
 };
 
+/** "You need Manage Server to ..." in `lang`; `what` is `setup`, `disable` or `panel`. */
+const needManage = (lang, what) => t(lang, `voicemaster.needManage.${what}`, { permission: t(lang, 'core.perm.ManageGuild') });
+
 async function setup(interaction) {
-  if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) return interaction.reply({ content: 'You need Manage Server to configure VoiceMaster.', flags: MessageFlags.Ephemeral });
+  const lang = await languageOf(interaction);
+  if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) return interaction.reply({ content: needManage(lang, 'setup'), flags: MessageFlags.Ephemeral });
   const creator = interaction.options.getChannel('creator', true);
   const panel = interaction.options.getChannel('panel', true);
   const old = await voiceDb.getConfig(interaction.guild.id);
   if (old?.panel_channel_id && old?.panel_message_id) await deletePanel(interaction.guild, old.panel_channel_id, old.panel_message_id);
-  const panelMessage = await sendPanel(panel);
+  const panelMessage = await sendPanel(panel, lang);
   const config = await voiceDb.upsertConfig(interaction.guild.id, { creator_channel_id: creator.id, panel_channel_id: panel.id, panel_message_id: panelMessage.id, category_id: interaction.options.getChannel('category')?.id ?? creator.parentId ?? null, default_limit: interaction.options.getInteger('limit') ?? 0, default_name: interaction.options.getString('name') || '{user.name}' });
-  return interaction.reply({ components: [textCard(`VoiceMaster configured. Creator: <#${config.creator_channel_id}> · Panel: <#${config.panel_channel_id}>`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  return interaction.reply({ components: [textCard(t(lang, 'voicemaster.configured', { creator: `<#${config.creator_channel_id}>`, panel: `<#${config.panel_channel_id}>` }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function disable(interaction) {
-  if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) return interaction.reply({ content: 'You need Manage Server to disable VoiceMaster.', flags: MessageFlags.Ephemeral });
+  const lang = await languageOf(interaction);
+  if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) return interaction.reply({ content: needManage(lang, 'disable'), flags: MessageFlags.Ephemeral });
   const row = await voiceDb.getConfig(interaction.guild.id);
   if (row?.panel_channel_id && row?.panel_message_id) await deletePanel(interaction.guild, row.panel_channel_id, row.panel_message_id);
   await voiceDb.removeConfig(interaction.guild.id);
-  return interaction.reply({ components: [textCard('VoiceMaster disabled.', 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  return interaction.reply({ components: [textCard(t(lang, 'voicemaster.disabled'), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function info(interaction) {
+  const lang = await languageOf(interaction);
   const row = await voiceDb.getConfig(interaction.guild.id);
-  if (!row) return interaction.reply({ components: [textCard('VoiceMaster is not configured.', 0xff6b6b)], flags: MessageFlags.IsComponentsV2 });
+  if (!row) return interaction.reply({ components: [textCard(t(lang, 'voicemaster.notConfigured'), 0xff6b6b)], flags: MessageFlags.IsComponentsV2 });
   const count = await voiceDb.countTemps(interaction.guild.id);
-  return interaction.reply({ embeds: [new EmbedBuilder().setColor(0x4b4f59).setTitle('VoiceMaster').addFields({ name: 'Creator', value: `<#${row.creator_channel_id}>`, inline: true }, { name: 'Panel', value: `<#${row.panel_channel_id}>`, inline: true }, { name: 'Active channels', value: String(count), inline: true }, { name: 'Name template', value: `\`${row.default_name}\`` })] });
+  return interaction.reply({ embeds: [new EmbedBuilder().setColor(0x4b4f59).setTitle('VoiceMaster').addFields({ name: t(lang, 'voicemaster.info.creator'), value: `<#${row.creator_channel_id}>`, inline: true }, { name: t(lang, 'voicemaster.info.panel'), value: `<#${row.panel_channel_id}>`, inline: true }, { name: t(lang, 'voicemaster.info.active'), value: String(count), inline: true }, { name: t(lang, 'voicemaster.info.template'), value: `\`${row.default_name}\`` })] });
 }
 
 async function resendPanel(interaction) {
-  if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) return interaction.reply({ content: 'You need Manage Server to resend the panel.', flags: MessageFlags.Ephemeral });
+  const lang = await languageOf(interaction);
+  if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) return interaction.reply({ content: needManage(lang, 'panel'), flags: MessageFlags.Ephemeral });
   const row = await voiceDb.getConfig(interaction.guild.id);
-  if (!row?.panel_channel_id) return interaction.reply({ content: 'Configure VoiceMaster first.', flags: MessageFlags.Ephemeral });
+  if (!row?.panel_channel_id) return interaction.reply({ content: t(lang, 'voicemaster.configureFirst'), flags: MessageFlags.Ephemeral });
 
   const panelChannel = await interaction.guild.channels.fetch(row.panel_channel_id).catch(() => null);
   if (!panelChannel?.isTextBased?.()) {
-    const error = new Error('The configured VoiceMaster panel channel no longer exists or is not accessible.');
+    const error = new Error(t(lang, 'voicemaster.panelMissing'));
     error.userFacing = true;
     throw error;
   }
 
   // Post first. If Discord rejects the new message, the existing panel remains usable.
-  const message = await sendPanel(panelChannel);
+  const message = await sendPanel(panelChannel, lang);
   await voiceDb.upsertConfig(interaction.guild.id, { panel_message_id: message.id });
   if (row.panel_message_id && row.panel_message_id !== message.id) {
     await deletePanel(interaction.guild, row.panel_channel_id, row.panel_message_id);
   }
   // Keep this confirmation as a normal message so the prefix path does not depend on
   // Components V2 for a simple status response.
-  return interaction.reply('VoiceMaster panel resent.');
+  return interaction.reply(t(lang, 'voicemaster.panelResent'));
 }
 
 function getVoiceChannelId(interaction) {
@@ -95,51 +103,51 @@ function getVoiceChannelId(interaction) {
 }
 
 async function executeAction(interaction, action, overrides = {}) {
+  const lang = await languageOf(interaction);
+  const say = (key, vars) => interaction.reply({ content: t(lang, key, vars), flags: MessageFlags.Ephemeral });
   const liveChannelId = getVoiceChannelId(interaction);
   const channelId = overrides.channelId ?? liveChannelId;
 
-  if (!liveChannelId || !channelId || liveChannelId !== channelId) {
-    return interaction.reply({ content: 'You must be inside a VoiceMaster temporary channel.', flags: MessageFlags.Ephemeral });
-  }
+  if (!liveChannelId || !channelId || liveChannelId !== channelId) return say('voicemaster.notInside');
 
   const temp = await voiceDb.getTemp(channelId);
-  if (!temp) return interaction.reply({ content: 'You must be inside a VoiceMaster temporary channel.', flags: MessageFlags.Ephemeral });
-  if (['lock', 'unlock', 'ghost', 'reveal', 'rename', 'transfer', 'limit', 'permit', 'reject', 'disconnect', 'delete'].includes(action) && temp.owner_id !== interaction.user.id) return interaction.reply({ content: 'Only the channel owner can do that.', flags: MessageFlags.Ephemeral });
+  if (!temp) return say('voicemaster.notInside');
+  if (['lock', 'unlock', 'ghost', 'reveal', 'rename', 'transfer', 'limit', 'permit', 'reject', 'disconnect', 'delete'].includes(action) && temp.owner_id !== interaction.user.id) return say('voicemaster.ownerOnly');
 
   const channel = interaction.guild.channels.cache.get(temp.channel_id)
     ?? await interaction.guild.channels.fetch(temp.channel_id).catch(() => null);
-  if (!channel) return interaction.reply({ content: 'That temporary channel no longer exists.', flags: MessageFlags.Ephemeral });
+  if (!channel) return say('voicemaster.channelGone');
 
   if (action === 'claim') {
     const owner = await interaction.guild.members.fetch(temp.owner_id).catch(() => null);
-    if (owner?.voice?.channelId === temp.channel_id) return interaction.reply({ content: 'The current owner is still in the channel.', flags: MessageFlags.Ephemeral });
+    if (owner?.voice?.channelId === temp.channel_id) return say('voicemaster.ownerStillHere');
     await voiceDb.updateTemp(temp.channel_id, { owner_id: interaction.user.id });
-    return interaction.reply({ content: 'You now own this temporary channel.', flags: MessageFlags.Ephemeral });
+    return say('voicemaster.claimed');
   }
-  if (action === 'delete') { await channel.delete().catch(() => {}); await voiceDb.removeTemp(temp.channel_id); return interaction.reply({ content: 'Temporary channel deleted.', flags: MessageFlags.Ephemeral }); }
-  if (action === 'rename') { const name = String(overrides.name ?? interaction.options.getString('name', true)).trim().slice(0, 100); await channel.setName(name); return interaction.reply({ content: `Channel renamed to **${name}**.`, flags: MessageFlags.Ephemeral }); }
-  if (action === 'transfer') { const targetId = overrides.userId ?? interaction.options.getUser('user', true).id; await voiceDb.updateTemp(temp.channel_id, { owner_id: targetId }); return interaction.reply({ content: `Ownership transferred to <@${targetId}>.`, flags: MessageFlags.Ephemeral }); }
-  if (action === 'limit') { const limit = overrides.limit ?? interaction.options.getInteger('limit', true); await channel.setUserLimit(limit); await voiceDb.updateTemp(temp.channel_id, { user_limit: limit }); return interaction.reply({ content: `User limit set to **${limit || 'unlimited'}**.`, flags: MessageFlags.Ephemeral }); }
-  if (action === 'permit' || action === 'reject') { const targetId = overrides.userId ?? interaction.options.getUser('user', true).id; return permissionAction(interaction, temp, channel, action, targetId); }
+  if (action === 'delete') { await channel.delete().catch(() => {}); await voiceDb.removeTemp(temp.channel_id); return say('voicemaster.deleted'); }
+  if (action === 'rename') { const name = String(overrides.name ?? interaction.options.getString('name', true)).trim().slice(0, 100); await channel.setName(name); return say('voicemaster.renamed', { name }); }
+  if (action === 'transfer') { const targetId = overrides.userId ?? interaction.options.getUser('user', true).id; await voiceDb.updateTemp(temp.channel_id, { owner_id: targetId }); return say('voicemaster.transferred', { user: `<@${targetId}>` }); }
+  if (action === 'limit') { const limit = overrides.limit ?? interaction.options.getInteger('limit', true); await channel.setUserLimit(limit); await voiceDb.updateTemp(temp.channel_id, { user_limit: limit }); return say('voicemaster.limitSet', { limit: limit || t(lang, 'voicemaster.unlimited') }); }
+  if (action === 'permit' || action === 'reject') { const targetId = overrides.userId ?? interaction.options.getUser('user', true).id; return permissionAction(interaction, temp, channel, action, targetId, lang); }
   if (action === 'disconnect') {
     const targetId = overrides.userId ?? interaction.options.getUser('user', true).id;
-    if (targetId === temp.owner_id) return interaction.reply({ content: 'You cannot disconnect yourself as the owner.', flags: MessageFlags.Ephemeral });
+    if (targetId === temp.owner_id) return say('voicemaster.disconnectSelf');
     const member = await interaction.guild.members.fetch(targetId).catch(() => null);
-    if (!member?.voice?.channelId || member.voice.channelId !== channel.id) return interaction.reply({ content: 'That member is not in your temporary channel.', flags: MessageFlags.Ephemeral });
+    if (!member?.voice?.channelId || member.voice.channelId !== channel.id) return say('voicemaster.notInYours');
     await member.voice.disconnect().catch(() => {});
-    return interaction.reply({ content: `<@${targetId}> was disconnected.`, flags: MessageFlags.Ephemeral });
+    return say('voicemaster.disconnected', { user: `<@${targetId}>` });
   }
   if (action === 'activity') {
     const invite = await channel.createInvite({ maxAge: 86400, targetType: InviteTargetType.EmbeddedApplication, targetApplication: '880218394199220334' }).catch(() => null);
-    return interaction.reply({ content: invite ? `Watch Together: ${invite.url}` : 'Could not create an activity invite.', flags: MessageFlags.Ephemeral });
+    return invite ? say('voicemaster.activity', { url: invite.url }) : say('voicemaster.activityFailed');
   }
-  if (action === 'lock' || action === 'unlock') { await channel.permissionOverwrites.edit(interaction.guild.roles.everyone, { Connect: action === 'lock' ? false : null }); await voiceDb.updateTemp(temp.channel_id, { is_locked: action === 'lock' }); return interaction.reply({ content: `Channel ${action === 'lock' ? 'locked' : 'unlocked'}.`, flags: MessageFlags.Ephemeral }); }
-  if (action === 'ghost' || action === 'reveal') { await channel.permissionOverwrites.edit(interaction.guild.roles.everyone, { ViewChannel: action === 'ghost' ? false : null }); await voiceDb.updateTemp(temp.channel_id, { is_ghosted: action === 'ghost' }); return interaction.reply({ content: `Channel ${action === 'ghost' ? 'hidden' : 'visible'}.`, flags: MessageFlags.Ephemeral }); }
+  if (action === 'lock' || action === 'unlock') { await channel.permissionOverwrites.edit(interaction.guild.roles.everyone, { Connect: action === 'lock' ? false : null }); await voiceDb.updateTemp(temp.channel_id, { is_locked: action === 'lock' }); return say(action === 'lock' ? 'voicemaster.locked' : 'voicemaster.unlocked'); }
+  if (action === 'ghost' || action === 'reveal') { await channel.permissionOverwrites.edit(interaction.guild.roles.everyone, { ViewChannel: action === 'ghost' ? false : null }); await voiceDb.updateTemp(temp.channel_id, { is_ghosted: action === 'ghost' }); return say(action === 'ghost' ? 'voicemaster.hidden' : 'voicemaster.visible'); }
 }
 
-async function permissionAction(interaction, temp, channel, action, userId) {
+async function permissionAction(interaction, temp, channel, action, userId, lang) {
   const member = await interaction.guild.members.fetch(userId).catch(() => null);
-  if (!member) return interaction.reply({ content: 'That member is no longer in this server.', flags: MessageFlags.Ephemeral });
+  if (!member) return interaction.reply({ content: t(lang, 'voicemaster.memberGone'), flags: MessageFlags.Ephemeral });
 
   const trusted = new Set(temp.trusted_user_ids ?? []);
   const banned = new Set(temp.banned_user_ids ?? []);
@@ -156,10 +164,17 @@ async function permissionAction(interaction, temp, channel, action, userId) {
   }
 
   await voiceDb.updateTemp(channel.id, { trusted_user_ids: [...trusted], banned_user_ids: [...banned] });
-  return interaction.reply({ content: `<@${userId}> ${action === 'permit' ? 'can now join' : 'is blocked from'} this channel.`, flags: MessageFlags.Ephemeral });
+  return interaction.reply({ content: t(lang, action === 'permit' ? 'voicemaster.permitted' : 'voicemaster.rejected', { user: `<@${userId}>` }), flags: MessageFlags.Ephemeral });
 }
 
-async function sendPanel(channel) {
+// The lines of the panel: the emoji of each button and what it does.
+const PANEL_LINES = [
+  ['lock', 'lock'], ['unlocked', 'unlock'], ['noVisibility', 'ghost'], ['visibility', 'reveal'], ['claim', 'claim'],
+  ['permit', 'permit'], ['deny', 'reject'], ['edit', 'rename'], ['reload', 'transfer'], ['delete', 'delete'],
+  ['leave', 'disconnect'], ['start', 'activity'], ['info', 'info'], ['increase', 'increase'], ['decrease', 'decrease'],
+];
+
+async function sendPanel(channel, lang = currentLanguage()) {
   const emoji = {
     leave: { id: '1533576199354454197', name: 'pe_leave' },
     decrease: { id: '1533576366174503085', name: 'pe_Decrease' },
@@ -187,27 +202,11 @@ async function sendPanel(channel) {
       type: 17,
       components: [
         { type: 10, content: [
-          '## Voice Channel Panel',
-          '-# Use the buttons below to manage your temporary voice channel.',
+          t(lang, 'voicemaster.panel.title'),
+          t(lang, 'voicemaster.panel.subtitle'),
         ].join('\n') },
         { type: 14, divider: true, spacing: 1 },
-        { type: 10, content: [
-          `>>> ${tag('lock')} · **Lock** the voice channel`,
-          `${tag('unlocked')} · **Unlock** the voice channel`,
-          `${tag('noVisibility')} · **Ghost** (hide) the voice channel`,
-          `${tag('visibility')} · **Reveal** the voice channel`,
-          `${tag('claim')} · **Claim** an unowned channel`,
-          `${tag('permit')} · **Permit** a member to join`,
-          `${tag('deny')} · **Reject** a member from the channel`,
-          `${tag('edit')} · **Rename** the voice channel`,
-          `${tag('reload')} · **Transfer** channel ownership`,
-          `${tag('delete')} · **Delete** your channel`,
-          `${tag('leave')} · **Disconnect** a member`,
-          `${tag('start')} · **Start** an activity`,
-          `${tag('info')} · **View** channel info`,
-          `${tag('increase')} · **Increase** the user limit`,
-          `${tag('decrease')} · **Decrease** the user limit`,
-        ].join('\n') },
+        { type: 10, content: `>>> ${PANEL_LINES.map(([icon, line]) => t(lang, `voicemaster.panel.${line}`, { emoji: tag(icon) })).join('\n')}` },
         { type: 14, divider: false, spacing: 1 },
         { type: 1, components: [
           { type: 2, custom_id: 'vc:lock', style: 2, emoji: emoji.lock },
