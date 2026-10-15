@@ -1,17 +1,19 @@
 const { SlashCommandBuilder, ChannelType } = require('discord.js');
 const { infoPayload, clip, stamp, line, yesNo } = require('../../utils/infoCard');
+const { t, languageOf } = require('../../i18n');
 
+// The catalog key of the name of each kind of channel.
 const TYPE_NAMES = {
-  [ChannelType.GuildText]: 'Text',
-  [ChannelType.GuildVoice]: 'Voice',
-  [ChannelType.GuildAnnouncement]: 'Announcement',
-  [ChannelType.GuildStageVoice]: 'Stage',
-  [ChannelType.GuildForum]: 'Forum',
-  [ChannelType.GuildMedia]: 'Media',
-  [ChannelType.GuildCategory]: 'Category',
-  [ChannelType.PublicThread]: 'Thread',
-  [ChannelType.PrivateThread]: 'Private thread',
-  [ChannelType.AnnouncementThread]: 'Announcement thread',
+  [ChannelType.GuildText]: 'info.channelinfo.type.text',
+  [ChannelType.GuildVoice]: 'info.channelinfo.type.voice',
+  [ChannelType.GuildAnnouncement]: 'info.channelinfo.type.announcement',
+  [ChannelType.GuildStageVoice]: 'info.channelinfo.type.stage',
+  [ChannelType.GuildForum]: 'info.channelinfo.type.forum',
+  [ChannelType.GuildMedia]: 'info.channelinfo.type.media',
+  [ChannelType.GuildCategory]: 'info.channelinfo.type.category',
+  [ChannelType.PublicThread]: 'info.channelinfo.type.thread',
+  [ChannelType.PrivateThread]: 'info.channelinfo.type.privateThread',
+  [ChannelType.AnnouncementThread]: 'info.channelinfo.type.announcementThread',
 };
 
 function formatSeconds(seconds) {
@@ -28,37 +30,38 @@ module.exports = {
   aliases: ['ci'],
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const channel = interaction.options.getChannel('channel') ?? interaction.channel;
     const isThread = typeof channel.isThread === 'function' && channel.isThread();
     const category = channel.parent && !isThread ? channel.parent : null;
 
     const details = [
-      line('Channel', `<#${channel.id}>`),
-      line('Type', TYPE_NAMES[channel.type] ?? String(channel.type)),
-      line('Category', category ? clip(category.name, 100) : null),
-      isThread && channel.parent ? line('Parent', `<#${channel.parent.id}>`) : null,
-      channel.createdTimestamp ? line('Created', stamp(channel.createdTimestamp)) : null,
-      isThread && channel.ownerId ? line('Started by', `<@${channel.ownerId}>`) : null,
+      line(t(lang, 'info.label.channel'), `<#${channel.id}>`),
+      line(t(lang, 'info.label.type'), TYPE_NAMES[channel.type] ? t(lang, TYPE_NAMES[channel.type]) : String(channel.type)),
+      line(t(lang, 'info.label.category'), category ? clip(category.name, 100) : null),
+      isThread && channel.parent ? line(t(lang, 'info.channelinfo.parent'), `<#${channel.parent.id}>`) : null,
+      channel.createdTimestamp ? line(t(lang, 'info.label.created'), stamp(channel.createdTimestamp)) : null,
+      isThread && channel.ownerId ? line(t(lang, 'info.channelinfo.startedBy'), `<@${channel.ownerId}>`) : null,
     ];
 
     const settings = [
-      'nsfw' in channel ? line('Age-restricted', yesNo(channel.nsfw)) : null,
-      'rateLimitPerUser' in channel && channel.rateLimitPerUser ? line('Slowmode', formatSeconds(channel.rateLimitPerUser)) : null,
-      'bitrate' in channel && channel.bitrate ? line('Bitrate', `${Math.round(channel.bitrate / 1000)} kbps`) : null,
-      'userLimit' in channel && channel.userLimit ? line('User limit', channel.userLimit) : null,
-      isThread ? line('Archived', yesNo(channel.archived)) : null,
-      isThread ? line('Locked', yesNo(channel.locked)) : null,
-      isThread && channel.memberCount !== null && channel.memberCount !== undefined ? line('Members', channel.memberCount) : null,
+      'nsfw' in channel ? line(t(lang, 'info.channelinfo.nsfw'), yesNo(channel.nsfw, lang)) : null,
+      'rateLimitPerUser' in channel && channel.rateLimitPerUser ? line(t(lang, 'info.channelinfo.slowmode'), formatSeconds(channel.rateLimitPerUser)) : null,
+      'bitrate' in channel && channel.bitrate ? line(t(lang, 'info.channelinfo.bitrate'), `${Math.round(channel.bitrate / 1000)} kbps`) : null,
+      'userLimit' in channel && channel.userLimit ? line(t(lang, 'info.channelinfo.userLimit'), channel.userLimit) : null,
+      isThread ? line(t(lang, 'info.channelinfo.archived'), yesNo(channel.archived, lang)) : null,
+      isThread ? line(t(lang, 'info.channelinfo.locked'), yesNo(channel.locked, lang)) : null,
+      isThread && channel.memberCount !== null && channel.memberCount !== undefined ? line(t(lang, 'info.label.members'), channel.memberCount) : null,
     ];
 
     await interaction.reply(infoPayload({
       title: `${isThread ? '' : '#'}${channel.name}`,
       subtitle: ['topic' in channel && channel.topic ? `> ${clip(channel.topic, 500)}` : null],
       sections: [
-        { title: 'Details', lines: details },
-        { title: 'Settings', lines: settings },
+        { title: t(lang, 'info.section.details'), lines: details },
+        { title: t(lang, 'info.section.settings'), lines: settings },
       ],
-      footer: `ID ${channel.id}`,
+      footer: t(lang, 'info.card.id', { id: channel.id }),
     }));
   },
 };

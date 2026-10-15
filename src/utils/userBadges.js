@@ -1,5 +1,6 @@
 // The badges shown in `!userinfo`: the ones Discord tells the bot about (the flags of the account), plus the server booster
 // badge and Nitro, which Discord does not hand to bots, so they are worked out from what is public.
+const { t, currentLanguage } = require('../i18n');
 
 const BADGE_EMOJI = {
   balance: '<:Badge_Balance:1556776236544434328>',
@@ -20,22 +21,23 @@ const BADGE_EMOJI = {
   earlyVerifiedDeveloper: '<:Badge_Early_VerifiedBotDeveloper:1556781527159799909>',
 };
 
-// Account flags (the names discord.js gives) and how each one is shown. The ones without an emoji show their name only.
+// Account flags (the names discord.js gives) and how each one is shown (`key` is the catalog key of its name,
+// `info.badge.<key>`). The ones without an emoji show their name only.
 const FLAG_BADGES = {
-  Staff: { name: 'Discord Staff', emoji: BADGE_EMOJI.staff },
-  Partner: { name: 'Partner', emoji: BADGE_EMOJI.partner },
-  Hypesquad: { name: 'HypeSquad Events', emoji: BADGE_EMOJI.hypeSquadEvents },
-  BugHunterLevel1: { name: 'Bug Hunter', emoji: BADGE_EMOJI.bugHunter1 },
-  BugHunterLevel2: { name: 'Bug Hunter (Gold)', emoji: BADGE_EMOJI.bugHunter2 },
-  HypeSquadOnlineHouse1: { name: 'HypeSquad Bravery', emoji: BADGE_EMOJI.bravery },
-  HypeSquadOnlineHouse2: { name: 'HypeSquad Brilliance', emoji: BADGE_EMOJI.brilliance },
-  HypeSquadOnlineHouse3: { name: 'HypeSquad Balance', emoji: BADGE_EMOJI.balance },
-  PremiumEarlySupporter: { name: 'Early Supporter', emoji: BADGE_EMOJI.earlySupporter },
-  VerifiedDeveloper: { name: 'Early Verified Bot Developer', emoji: BADGE_EMOJI.earlyVerifiedDeveloper },
-  VerifiedBot: { name: 'Verified App', emoji: BADGE_EMOJI.verifiedApp },
-  CertifiedModerator: { name: 'Moderator Programs Alumni', emoji: BADGE_EMOJI.moderatorAlumni },
-  ActiveDeveloper: { name: 'Active Developer', emoji: BADGE_EMOJI.activeDeveloper },
-  BotHTTPInteractions: { name: 'Supports Commands', emoji: BADGE_EMOJI.supportsCommands },
+  Staff: { key: 'staff', emoji: BADGE_EMOJI.staff },
+  Partner: { key: 'partner', emoji: BADGE_EMOJI.partner },
+  Hypesquad: { key: 'hypeSquadEvents', emoji: BADGE_EMOJI.hypeSquadEvents },
+  BugHunterLevel1: { key: 'bugHunter', emoji: BADGE_EMOJI.bugHunter1 },
+  BugHunterLevel2: { key: 'bugHunterGold', emoji: BADGE_EMOJI.bugHunter2 },
+  HypeSquadOnlineHouse1: { key: 'bravery', emoji: BADGE_EMOJI.bravery },
+  HypeSquadOnlineHouse2: { key: 'brilliance', emoji: BADGE_EMOJI.brilliance },
+  HypeSquadOnlineHouse3: { key: 'balance', emoji: BADGE_EMOJI.balance },
+  PremiumEarlySupporter: { key: 'earlySupporter', emoji: BADGE_EMOJI.earlySupporter },
+  VerifiedDeveloper: { key: 'earlyVerifiedDeveloper', emoji: BADGE_EMOJI.earlyVerifiedDeveloper },
+  VerifiedBot: { key: 'verifiedApp', emoji: BADGE_EMOJI.verifiedApp },
+  CertifiedModerator: { key: 'moderatorAlumni', emoji: BADGE_EMOJI.moderatorAlumni },
+  ActiveDeveloper: { key: 'activeDeveloper', emoji: BADGE_EMOJI.activeDeveloper },
+  BotHTTPInteractions: { key: 'supportsCommands', emoji: BADGE_EMOJI.supportsCommands },
 };
 
 /**
@@ -43,13 +45,14 @@ const FLAG_BADGES = {
  * cannot do that), and one without an icon is its name. Nitro is shown when a person (not an app) has something only Nitro
  * gives, an animated avatar or a banner, because Discord does not tell bots who has Nitro; apps can have both without it.
  */
-function badgeList(user, member = null) {
+function badgeList(user, member = null, lang = currentLanguage()) {
   const out = [];
-  const show = (badge) => out.push({ icon: badge.emoji ?? null, name: badge.name });
+  const show = (badge) => out.push({ icon: badge.emoji ?? null, name: badge.key ? t(lang, `info.badge.${badge.key}`) : badge.name });
+  // A flag Petto does not know yet shows its discord.js name, as it is.
   for (const flag of user?.flags?.toArray?.() ?? []) show(FLAG_BADGES[flag] ?? { name: flag });
   const animatedAvatar = typeof user?.avatar === 'string' && user.avatar.startsWith('a_');
-  if (!user?.bot && (animatedAvatar || user?.banner)) show({ name: 'Nitro', emoji: BADGE_EMOJI.nitro });
-  if (member?.premiumSinceTimestamp) show({ name: 'Server Booster', emoji: BADGE_EMOJI.booster });
+  if (!user?.bot && (animatedAvatar || user?.banner)) show({ name: 'Nitro', emoji: BADGE_EMOJI.nitro }); // i18n-ignore: a product name
+  if (member?.premiumSinceTimestamp) show({ key: 'booster', emoji: BADGE_EMOJI.booster });
   return out;
 }
 

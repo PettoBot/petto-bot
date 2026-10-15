@@ -13,6 +13,7 @@ const {
   ThumbnailBuilder,
 } = require('discord.js');
 const { COLORS } = require('./colors');
+const { t, currentLanguage } = require('../i18n');
 
 // Accent shared by the info commands; individual commands override it when the subject has its own color.
 const INFO_ACCENT = 0x8c7cff;
@@ -41,8 +42,8 @@ function line(label, value) {
   return `**${label}** ${value}`;
 }
 
-function yesNo(value) {
-  return value ? 'Yes' : 'No';
+function yesNo(value, lang = currentLanguage()) {
+  return t(lang, value ? 'info.card.yes' : 'info.card.no');
 }
 
 function snowflakeTime(id) {

@@ -11,6 +11,7 @@ const RADIUS = 20;
 // Spotify icon sits at ~x:930, so title must stay left of it
 const TEXT_X = 379.9;
 const TITLE_MAX_X = 910; // right edge before Spotify icon
+const chewy = (size, weight = '') => `${weight ? `${weight} ` : ''}${size}px Chewy, sans-serif`; // i18n-ignore: a font, not text
 
 function roundRect(ctx, x, y, w, h, r) {
   const rr = Math.min(r, w / 2, h / 2); // never exceed half of width or height
@@ -42,14 +43,14 @@ async function buildSpCard({ albumArtUrl, songName, artistName, elapsed, total, 
   }
   ctx.fillStyle = '#ffffff';
   ctx.textBaseline = 'top';
-  ctx.font = `bold 62px Chewy, sans-serif`;
+  ctx.font = chewy(62, 'bold');
 
   const maxTitleW = TITLE_MAX_X - TEXT_X;
   let song = songName;
   while (ctx.measureText(song).width > maxTitleW && song.length > 1) song = song.slice(0, -1);
   if (song !== songName) song = song.slice(0, -2) + '…';
   ctx.fillText(song, TEXT_X, 31.5);
-  ctx.font = `21px Chewy, sans-serif`;
+  ctx.font = chewy(21);
   ctx.fillStyle = 'rgba(255,255,255,0.75)';
 
   const maxArtistW = TITLE_MAX_X - TEXT_X;
@@ -65,7 +66,7 @@ async function buildSpCard({ albumArtUrl, songName, artistName, elapsed, total, 
   const fontSize = 13;
   const timeY = centerY - fontSize / 2; // 180.5
   const gap = 8;
-  ctx.font = `${fontSize}px Chewy, sans-serif`;
+  ctx.font = chewy(fontSize);
   ctx.fillStyle = 'rgba(255,255,255,0.6)';
   ctx.textBaseline = 'top';
 

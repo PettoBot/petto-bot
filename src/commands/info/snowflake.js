@@ -1,4 +1,5 @@
 const { SlashCommandBuilder } = require('discord.js');
+const { t, languageOf } = require('../../i18n');
 
 const DISCORD_EPOCH = 1420070400000n;
 
@@ -14,13 +15,14 @@ module.exports = {
     .addStringOption((o) => o.setName('id').setDescription('A Discord ID (user, channel, role, message, ...)').setRequired(true)),
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const id = interaction.options.getString('id', true).trim();
     if (!/^\d{17,20}$/.test(id)) {
-      await interaction.reply({ content: "That doesn't look like a valid Discord ID." });
+      await interaction.reply({ content: t(lang, 'info.snowflake.invalid') });
       return;
     }
 
     const ts = timestampFromSnowflake(id);
-    await interaction.reply({ content: `**${id}** was created <t:${Math.floor(ts / 1000)}:F> (<t:${Math.floor(ts / 1000)}:R>).` });
+    await interaction.reply({ content: t(lang, 'info.snowflake.created', { id, date: `<t:${Math.floor(ts / 1000)}:F>`, relative: `<t:${Math.floor(ts / 1000)}:R>` }) });
   },
 };

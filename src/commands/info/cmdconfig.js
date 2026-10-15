@@ -11,31 +11,32 @@ const {
   MessageFlags,
 } = require('discord.js');
 const { ensureGuild } = require('../../db/guilds');
+const { t, currentLanguage, languageOf } = require('../../i18n');
 
 const WIKI_URL = 'https://wiki.petto.sbs';
 
 /** The text of the card for a server prefix. Every command here exists in Petto; the numbers are the ones Petto suggests to start with. */
-function buildConfigText(prefix) {
+function buildConfigText(prefix, lang = currentLanguage()) {
   const block = (lines) => `\`\`\`\n${lines.map((line) => `${prefix}${line}`).join('\n')}\n\`\`\``;
   return [
-    '### Recommended Petto Config',
-    '**Protection** (anti-raid, new accounts and anti-nuke):',
+    t(lang, 'info.cmdconfig.title'),
+    t(lang, 'info.cmdconfig.protection'),
     block([
-      'automod raid on --threshold 6 --window_seconds 10 --action kick',
-      'automod anti-alt on --min_age_days 7 --action kick',
-      'automod antinuke on --threshold 5 --window_seconds 10',
-      'automod spam on --max_mentions 5',
+      'automod raid on --threshold 6 --window_seconds 10 --action kick', // i18n-ignore: a command to copy
+      'automod anti-alt on --min_age_days 7 --action kick', // i18n-ignore: a command to copy
+      'automod antinuke on --threshold 5 --window_seconds 10', // i18n-ignore: a command to copy
+      'automod spam on --max_mentions 5', // i18n-ignore: a command to copy
     ]),
-    '**How do I whitelist a user from anti-nuke?**',
-    block(['automod antinuke-whitelist add [user]']),
-    '-# Whitelisted users are ignored by anti-nuke, so only whitelist staff and bots you trust.',
-    '**How do I make a role immune to AutoMod?**',
-    block(['automod immune add [role]']),
-    '**Logs** (pick a channel and an event; `' + prefix + 'logs view` lists them):',
-    block(['logs add #logs sanctions', 'logs add #logs members', 'logs add #logs channels']),
-    '**Tickets** (guided setup, with menus and buttons):',
-    block(['ticket setup']),
-    '-# Every module also has its own card with its current settings and how to change them: `' + prefix + 'brconfig`, `' + prefix + 'welcomeconfig`, `' + prefix + 'levelconfig`, `' + prefix + 'ticketconfig`, `' + prefix + 'logsconfig`, `' + prefix + 'automodconfig`...',
+    t(lang, 'info.cmdconfig.whitelistQuestion'),
+    block(['automod antinuke-whitelist add [user]']), // i18n-ignore: a command to copy
+    t(lang, 'info.cmdconfig.whitelistNote'),
+    t(lang, 'info.cmdconfig.immuneQuestion'),
+    block(['automod immune add [role]']), // i18n-ignore: a command to copy
+    t(lang, 'info.cmdconfig.logs', { prefix }),
+    block(['logs add #logs sanctions', 'logs add #logs members', 'logs add #logs channels']), // i18n-ignore: a command to copy
+    t(lang, 'info.cmdconfig.tickets'),
+    block(['ticket setup']), // i18n-ignore: a command to copy
+    t(lang, 'info.cmdconfig.modules', { prefix }),
   ].join('\n');
 }
 
@@ -47,13 +48,14 @@ module.exports = {
     .setDMPermission(false),
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const guildConfig = await ensureGuild(interaction.guild.id).catch(() => null);
     const prefix = guildConfig?.prefix || '!';
     const container = new ContainerBuilder()
       .setAccentColor(0x4b4f59)
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(buildConfigText(prefix)))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(buildConfigText(prefix, lang)))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
-      .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel('Documentation').setStyle(ButtonStyle.Link).setURL(WIKI_URL)));
+      .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel(t(lang, 'info.cmdconfig.docs.button')).setStyle(ButtonStyle.Link).setURL(WIKI_URL)));
     await interaction.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
   },
 };

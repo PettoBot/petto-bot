@@ -3,16 +3,19 @@ const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
 const { ActivityType } = require('discord.js');
 const path = require('path');
 const logger = require('../utils/logger');
+const { t, currentLanguage } = require('../i18n');
 
 GlobalFonts.registerFromPath(path.join(__dirname, 'Chewy.ttf'), 'Chewy');
 
+// The catalog key of the small label above the activity name.
 const TYPE_LABEL = {
-  [ActivityType.Playing]: 'Playing',
-  [ActivityType.Streaming]: 'Streaming',
-  [ActivityType.Listening]: 'Listening to',
-  [ActivityType.Watching]: 'Watching',
-  [ActivityType.Competing]: 'Competing in',
+  [ActivityType.Playing]: 'info.acCard.type.playing',
+  [ActivityType.Streaming]: 'info.acCard.type.streaming',
+  [ActivityType.Listening]: 'info.acCard.type.listening',
+  [ActivityType.Watching]: 'info.acCard.type.watching',
+  [ActivityType.Competing]: 'info.acCard.type.competing',
 };
+const chewy = (size, weight = '') => `${weight ? `${weight} ` : ''}${size}px Chewy, sans-serif`; // i18n-ignore: a font, not text
 
 const W = 1000;
 const H = 315;
@@ -83,7 +86,7 @@ async function getActivityImage(activity) {
   return null;
 }
 
-async function buildAcCard({ activity, member }) {
+async function buildAcCard({ activity, member, lang = currentLanguage() }) {
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext('2d');
 
@@ -107,19 +110,19 @@ async function buildAcCard({ activity, member }) {
   const maxW = MAX_X - TEXT_X;
 
   ctx.textBaseline = 'top';
-  const typeLabel = TYPE_LABEL[activity.type] ?? 'Activity';
-  ctx.font = `16px Chewy, sans-serif`;
+  const typeLabel = t(lang, TYPE_LABEL[activity.type] ?? 'info.acCard.type.activity');
+  ctx.font = chewy(16);
   ctx.fillStyle = 'rgba(255,255,255,0.45)';
   ctx.fillText(typeLabel.toUpperCase(), TEXT_X, 22);
-  ctx.font = `bold 58px Chewy, sans-serif`;
+  ctx.font = chewy(58, 'bold');
   ctx.fillStyle = '#ffffff';
-  let name = activity.name ?? 'Unknown';
+  let name = activity.name ?? t(lang, 'info.unknown');
   while (ctx.measureText(name).width > maxW && name.length > 1) name = name.slice(0, -1);
   if (name !== activity.name) name = name.slice(0, -2) + '…';
   ctx.fillText(name, TEXT_X, 42);
   const detailStr = activity.details || activity.assets?.largeText || null;
   if (detailStr) {
-    ctx.font = `20px Chewy, sans-serif`;
+    ctx.font = chewy(20);
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
     let det = detailStr;
     while (ctx.measureText(det).width > maxW && det.length > 1) det = det.slice(0, -1);
@@ -127,7 +130,7 @@ async function buildAcCard({ activity, member }) {
     ctx.fillText(det, TEXT_X, 116);
   }
   if (activity.state) {
-    ctx.font = `17px Chewy, sans-serif`;
+    ctx.font = chewy(17);
     ctx.fillStyle = 'rgba(255,255,255,0.60)';
     let st = activity.state;
     while (ctx.measureText(st).width > maxW && st.length > 1) st = st.slice(0, -1);
@@ -137,13 +140,13 @@ async function buildAcCard({ activity, member }) {
   const party = activity.party;
   if (party?.size) {
     const [cur, max] = party.size;
-    ctx.font = `15px Chewy, sans-serif`;
+    ctx.font = chewy(15);
     ctx.fillStyle = 'rgba(255,255,255,0.45)';
-    ctx.fillText(`${cur} / ${max} players`, TEXT_X, 165);
+    ctx.fillText(t(lang, 'info.acCard.players', { current: cur, max }), TEXT_X, 165);
   }
   const smallText = activity.assets?.smallText;
   if (smallText) {
-    ctx.font = `14px Chewy, sans-serif`;
+    ctx.font = chewy(14);
     ctx.fillStyle = 'rgba(255,255,255,0.40)';
     ctx.fillText(smallText, TEXT_X, party?.size ? 184 : 165);
   }
@@ -163,14 +166,14 @@ async function buildAcCard({ activity, member }) {
     roundRect(ctx, barX, barY, barW, barH, barH / 2);
     ctx.fill();
 
-    ctx.font = `${fontSize}px Chewy, sans-serif`;
+    ctx.font = chewy(fontSize);
     ctx.fillStyle = 'rgba(255,255,255,0.7)';
     ctx.textBaseline = 'top';
 
     ctx.textAlign = 'right';
     ctx.fillText(elapsedStr, barX - 8, timeY);
     ctx.textAlign = 'left';
-    ctx.fillText('elapsed', barX + barW + 8, timeY);
+    ctx.fillText(t(lang, 'info.acCard.elapsed'), barX + barW + 8, timeY);
     ctx.textAlign = 'left';
   }
 

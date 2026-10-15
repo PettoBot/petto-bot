@@ -1,7 +1,9 @@
 const { SlashCommandBuilder, ChannelType } = require('discord.js');
 const { serverInfoPayload } = require('../../utils/serverInfoCard');
+const { t, languageOf } = require('../../i18n');
 
-const VERIFICATION_LEVELS = ['None', 'Low', 'Medium', 'High', 'Highest'];
+// The catalog key of each verification level, in Discord's order.
+const VERIFICATION_LEVELS = ['none', 'low', 'medium', 'high', 'highest'].map((level) => `info.serverinfo.verification.${level}`);
 const TEXT_CHANNEL_TYPES = new Set([ChannelType.GuildText, ChannelType.GuildAnnouncement]);
 const FORUM_CHANNEL_TYPES = new Set([ChannelType.GuildForum, ChannelType.GuildMedia]);
 const VOICE_CHANNEL_TYPES = new Set([ChannelType.GuildVoice, ChannelType.GuildStageVoice]);
@@ -22,6 +24,7 @@ module.exports = {
   aliases: ['si', 'server'],
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const guild = interaction.guild;
     // The server's description is not always in the cached copy of the server, so it is read fresh.
     const [owner, fresh] = await Promise.all([guild.fetchOwner().catch(() => null), (typeof guild.fetch === 'function' ? guild.fetch().catch(() => null) : null)]);
@@ -57,7 +60,7 @@ module.exports = {
       humans, bots, boosters,
       boosts: guild.premiumSubscriptionCount ?? 0,
       tier,
-      verification: VERIFICATION_LEVELS[guild.verificationLevel] ?? 'Unknown',
+      verification: t(lang, VERIFICATION_LEVELS[guild.verificationLevel] ?? 'info.serverinfo.verification.unknown'),
       locale: guild.preferredLocale,
       textChannels, forumChannels, voiceChannels, categories,
       roles: Math.max(0, guild.roles.cache.size - 1),
@@ -65,6 +68,7 @@ module.exports = {
       stickers: guild.stickers.cache.size, stickerLimit: STICKER_LIMITS[tier],
       features: [...(fresh?.features ?? guild.features ?? [])],
       shard: guild.shardId + 1, shards: shardCount,
+      lang,
     }));
   },
 };
