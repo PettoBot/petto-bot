@@ -180,7 +180,7 @@ async function reportChannelUpdate(oldChannel, newChannel, client) {
     fields.push({ name: t(lang, 'logs.field.category'), value: `${oldChannel.parent?.name || none} -> ${newChannel.parent?.name || none}`, inline: false });
   if (Boolean(oldChannel.nsfw) !== Boolean(newChannel.nsfw)) fields.push({ name: t(lang, 'logs.channel.ageRestricted'), value: `${bool(Boolean(oldChannel.nsfw), lang)} -> ${bool(Boolean(newChannel.nsfw), lang)}`, inline: true });
   if ((oldChannel.rateLimitPerUser ?? 0) !== (newChannel.rateLimitPerUser ?? 0)) fields.push({ name: t(lang, 'logs.field.slowmode'), value: `${oldChannel.rateLimitPerUser ?? 0}s -> ${newChannel.rateLimitPerUser ?? 0}s`, inline: true });
-  if ((oldChannel.bitrate ?? null) !== (newChannel.bitrate ?? null) && newChannel.bitrate) fields.push({ name: t(lang, 'logs.channel.bitrate'), value: `${Math.round((oldChannel.bitrate ?? 0) / 1000)} kbps -> ${Math.round(newChannel.bitrate / 1000)} kbps`, inline: true });
+  if ((oldChannel.bitrate ?? null) !== (newChannel.bitrate ?? null) && newChannel.bitrate) fields.push({ name: t(lang, 'logs.channel.bitrate'), value: `${Math.round((oldChannel.bitrate ?? 0) / 1000)} kbps -> ${Math.round(newChannel.bitrate / 1000)} kbps`, inline: true }); // i18n-ignore: units
   if ((oldChannel.userLimit ?? null) !== (newChannel.userLimit ?? null) && newChannel.userLimit !== undefined) fields.push({ name: t(lang, 'logs.channel.userLimit'), value: `${oldChannel.userLimit || unlimited} -> ${newChannel.userLimit || unlimited}`, inline: true });
   const overwrites = overwriteChanges(oldChannel, newChannel, lang);
   if (overwrites.length) fields.push({ name: t(lang, 'logs.field.permissions'), value: overwrites.join('\n').slice(0, 1000), inline: false });
@@ -301,7 +301,7 @@ async function handleGuildUpdate(oldGuild, newGuild, client) {
   for (const [key, label] of SERVER_CHANNELS) {
     if ((oldGuild[key] ?? null) !== (newGuild[key] ?? null)) fields.push({ name: t(lang, `logs.server.${label}`), value: `${oldGuild[key] ? `<#${oldGuild[key]}>` : none} -> ${newGuild[key] ? `<#${newGuild[key]}>` : none}`, inline: false });
   }
-  if (oldGuild.afkTimeout !== newGuild.afkTimeout) fields.push({ name: t(lang, 'logs.server.afkTimeout'), value: `${oldGuild.afkTimeout / 60} min -> ${newGuild.afkTimeout / 60} min`, inline: true });
+  if (oldGuild.afkTimeout !== newGuild.afkTimeout) fields.push({ name: t(lang, 'logs.server.afkTimeout'), value: `${oldGuild.afkTimeout / 60} min -> ${newGuild.afkTimeout / 60} min`, inline: true }); // i18n-ignore: units
   if (oldGuild.preferredLocale !== newGuild.preferredLocale) fields.push({ name: t(lang, 'logs.server.language'), value: `${oldGuild.preferredLocale} -> ${newGuild.preferredLocale}`, inline: true });
   if (!fields.length) return;
 

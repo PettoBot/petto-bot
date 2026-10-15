@@ -148,7 +148,7 @@ const EXAMPLE_BY_NAME = {
   duration: '1h', time: '10m', hex: '#ff91c2', color: '#ff91c2', emoji: '🌸', code: 'ABC123', query: 'ticket', days: '7', amount: '10', prize: '"Nitro"',
 };
 // Examples written in words, so they are in the language of the server: option name -> `help.example.<key>`.
-const WORDED_EXAMPLE = { reason: 'reason', message: 'text', text: 'text', name: 'name', template: 'template', title: 'title', description: 'description' };
+const WORDED_EXAMPLE = { reason: 'reason', message: 'text', text: 'text', name: 'name', template: 'template', title: 'title', description: 'description' }; // i18n-ignore: option names -> catalog key parts
 
 /** A believable value for an option, from its type and its name, so an example can be copied and used. */
 function exampleValue(opt, lang) {

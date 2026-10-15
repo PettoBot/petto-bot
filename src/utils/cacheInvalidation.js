@@ -48,7 +48,7 @@ function matcherFor(match, guildId) {
 /** Registers a cache made with createExpiringCache for the tables it reads. Unknown table names are a mistake in the code. */
 function registerCache(cache, tables, { match = 'guild' } = {}) {
   for (const table of tables) {
-    if (!INVALIDATION_TABLES.includes(table)) throw new Error(`cacheInvalidation: "${table}" is not in INVALIDATION_TABLES`);
+    if (!INVALIDATION_TABLES.includes(table)) throw new Error(`cacheInvalidation: "${table}" is not in INVALIDATION_TABLES`); // i18n-ignore: internal error
     if (!registry.has(table)) registry.set(table, new Set());
     registry.get(table).add((guildId) => {
       const matches = matcherFor(match, guildId);

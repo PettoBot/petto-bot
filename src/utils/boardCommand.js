@@ -90,7 +90,7 @@ function createBoardCommand({ name, label, aliases = [], db, description, selfNa
       .setDMPermission(false)
       // i18n-ignore: builder description, translated in the cmd.automation catalog
       .addSubcommand((s) => s.setName('enable').setDescription(`Enable ${lower} with the current settings.`))
-      .addSubcommand((s) => s.setName('disable').setDescription(`Disable ${lower}.`))
+      .addSubcommand((s) => s.setName('disable').setDescription(`Disable ${lower}.`)) // i18n-ignore: builder description (translated in cmd.automation)
       .addSubcommand((s) => s.setName('set').setDescription('Set the destination channel.').addChannelOption((o) => o.setName('channel').setDescription('Destination text channel.').setRequired(true)))
       .addSubcommand((s) => s.setName('threshold').setDescription('Set required reactions.').addIntegerOption((o) => o.setName('count').setDescription('Number of reactions.').setMinValue(1).setMaxValue(100).setRequired(true)))
       .addSubcommand((s) => s.setName('emoji').setDescription('Set the reaction emoji.').addStringOption((o) => o.setName('emoji').setDescription('Unicode or custom emoji.').setRequired(true)))
