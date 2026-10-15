@@ -166,11 +166,19 @@ function matches(column, only, skip) {
 }
 
 
+// The stored default welcome text is the English one; the welcome module shows it in the language of the server.
+const DEFAULT_TEXT_COLUMNS = new Set(['welcome_message', 'dm_join_message']);
+function shownValue(column, value, lang) {
+  if (!DEFAULT_TEXT_COLUMNS.has(column) || typeof value !== 'string') return value;
+  const { localizeDefaultText } = require('./memberEventMessage');
+  return typeof localizeDefaultText === 'function' ? localizeDefaultText('welcome', value, lang) : value;
+}
+
 function rowLines(row, source, lang) {
   const prefix = source.only instanceof RegExp ? source.only : null; // "welcome_channel_id" is shown as "Channel"
   return Object.entries(row)
     .filter(([column]) => matches(column, source.only, source.skip))
-    .map(([column, value]) => `- ${columnLabel(prefix ? column.replace(prefix, '') : column, lang)}: ${formatValue(column, value, lang)}`);
+    .map(([column, value]) => `- ${columnLabel(prefix ? column.replace(prefix, '') : column, lang)}: ${formatValue(column, shownValue(column, value, lang), lang)}`);
 }
 
 function groupLines(rows, { by, collect }, lang) {
