@@ -96,6 +96,14 @@ function tn(lang, key, count, vars = {}) {
   return t(lang, `${key}.${Number(count) === 1 ? 'one' : 'other'}`, { count: formatNumber(lang, count), ...vars });
 }
 
+/**
+ * A text the database keeps with an English default (a backup label, a form title, a thread name…): while it is still exactly
+ * that default (`t('en', key)`), it is shown in `lang`; anything the server wrote is shown as it is.
+ */
+function defaultText(lang, stored, key) {
+  return stored === t(DEFAULT_LANGUAGE, key) ? t(lang, key) : stored;
+}
+
 /** A number with the thousands separators of the language. */
 function formatNumber(lang, value) {
   const number = Number(value);
@@ -189,36 +197,43 @@ const LOOKUP_TIMEOUT_MS = 1000;
 const guildCache = new Map(); // guildId -> { lang, expiresAt }
 const pending = new Map(); // guildId -> the lookup in flight
 
-/** The language a server chose (`guilds.language`), English when it chose none or the database cannot be read in time. */
+/**
+ * The language a server chose (`guilds.language`). A slow database never makes Petto answer in the wrong language for long:
+ * after 1 second the last language known for the server is used (English if none is known yet), and the lookup still finishes
+ * in the background and fills the cache, so the next message has it. A failed lookup is not cached, so the next one tries again.
+ */
 function guildLanguage(guildId) {
   if (!guildId) return Promise.resolve(DEFAULT_LANGUAGE);
   const cached = guildCache.get(guildId);
   if (cached && cached.expiresAt > Date.now()) return Promise.resolve(cached.lang);
+  const fallback = cached?.lang ?? DEFAULT_LANGUAGE;
   // Many events of one server arrive together: they share one lookup.
-  if (pending.has(guildId)) return pending.get(guildId);
-  const lookup = Promise.resolve().then(async () => {
-    let timer;
-    try {
-      // Required here: the catalogs and `t` work without the database (the checks load them alone).
-      const { findGuildLanguage } = require('../db/guilds');
-      const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('language lookup timed out')), LOOKUP_TIMEOUT_MS); });
-      const lang = normalizeLanguage(await Promise.race([findGuildLanguage(guildId), timeout])) ?? DEFAULT_LANGUAGE;
-      guildCache.set(guildId, { lang, expiresAt: Date.now() + CACHE_TTL_MS });
-      return lang;
-    } catch {
-      return DEFAULT_LANGUAGE; // not cached, so the next message tries again
-    } finally {
-      clearTimeout(timer);
-      pending.delete(guildId);
-    }
+  if (!pending.has(guildId)) {
+    const lookup = Promise.resolve()
+      .then(() => require('../db/guilds').findGuildLanguage(guildId)) // required here: `t` and the catalogs work without the database
+      .then((value) => {
+        const lang = normalizeLanguage(value) ?? DEFAULT_LANGUAGE;
+        // `!language` or the dashboard may have set it while the lookup was running: theirs is newer.
+        const now = guildCache.get(guildId);
+        if (!now || now.setAt < started) guildCache.set(guildId, { lang, expiresAt: Date.now() + CACHE_TTL_MS, setAt: Date.now() });
+        return guildCache.get(guildId).lang;
+      })
+      .catch(() => null)
+      .finally(() => pending.delete(guildId));
+    const started = Date.now();
+    pending.set(guildId, lookup);
+  }
+  let timer;
+  const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve(null), LOOKUP_TIMEOUT_MS); });
+  return Promise.race([pending.get(guildId), timeout]).then((lang) => {
+    clearTimeout(timer);
+    return lang ?? fallback;
   });
-  pending.set(guildId, lookup);
-  return lookup;
 }
 
 /** Called right after `!language` changes it, so the new language is used at once instead of when the cache runs out. */
 function setCachedGuildLanguage(guildId, lang) {
-  guildCache.set(guildId, { lang: normalizeLanguage(lang) ?? DEFAULT_LANGUAGE, expiresAt: Date.now() + CACHE_TTL_MS });
+  guildCache.set(guildId, { lang: normalizeLanguage(lang) ?? DEFAULT_LANGUAGE, expiresAt: Date.now() + CACHE_TTL_MS, setAt: Date.now() });
 }
 
 /** Saves the language of a server and uses it at once. */
@@ -250,6 +265,7 @@ module.exports = {
   CATALOGS,
   t,
   tn,
+  defaultText,
   formatNumber,
   formatDecimal,
   formatList,
