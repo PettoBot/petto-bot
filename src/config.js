@@ -116,6 +116,8 @@ module.exports = {
   // Optional explicit official support guild. When empty, the private join-log
   // channel is used as the fail-closed source of truth for support-only controls.
   supportGuildId: /^\d{15,25}$/.test(process.env.PETTO_SUPPORT_GUILD_ID || '') ? process.env.PETTO_SUPPORT_GUILD_ID : null,
+  // Optional: the server where the private team controls (`!guildsend`, `!leaveguild`) work, when it is not the support server.
+  opsGuildId: /^\d{15,25}$/.test(process.env.PETTO_OPS_GUILD_ID || '') ? process.env.PETTO_OPS_GUILD_ID : null,
   opsChannels: {
     // Operational channels live in the Petto support/operations server. Environment
     // overrides keep the defaults convenient while allowing a future channel move.

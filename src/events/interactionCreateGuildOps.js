@@ -6,6 +6,7 @@ const {
   MessageFlags,
 } = require('discord.js');
 const config = require('../config');
+const { resolveOpsGuildId } = require('../utils/opsGuild');
 const { isPettoOperator } = require('../utils/autoModControl');
 const { sendGuildNotice, TEMPLATES } = require('../utils/guildOpsAlerts');
 const { clearGuildComplianceRuntimeState } = require('../utils/guildComplianceDetector');
@@ -101,10 +102,10 @@ module.exports = {
       return;
     }
 
-    const supportGuildId = await resolveSupportGuildId(interaction.client);
+    const supportGuildId = await resolveOpsGuildId(interaction.client);
     if (!supportGuildId || interaction.guildId !== supportGuildId) {
       await interaction.reply({
-        content: 'This control can only be used in Petto\'s official support server.',
+        content: 'This control can only be used in Petto\'s private operations server.',
         flags: MessageFlags.Ephemeral,
       }).catch(() => {});
       return;
@@ -134,7 +135,7 @@ async function handleReviewNotice(interaction, supportGuildId) {
   const kind = separator === -1 ? '' : payload.slice(0, separator);
   const guildId = separator === -1 ? '' : payload.slice(separator + 1);
 
-  if (!TEMPLATES[kind] || !SNOWFLAKE_RE.test(guildId) || guildId === supportGuildId) {
+  if (!TEMPLATES[kind] || !SNOWFLAKE_RE.test(guildId) || guildId === supportGuildId || guildId === config.supportGuildId) {
     await interaction.reply({ content: 'Invalid review-notice target.', flags: MessageFlags.Ephemeral }).catch(() => {});
     return;
   }
@@ -187,7 +188,7 @@ async function handleIgnoreControl(interaction, supportGuildId) {
       : IGNORE_CANCEL_PREFIX;
 
   const guildId = interaction.customId.slice(prefix.length);
-  if (!SNOWFLAKE_RE.test(guildId) || guildId === supportGuildId) {
+  if (!SNOWFLAKE_RE.test(guildId) || guildId === supportGuildId || guildId === config.supportGuildId) {
     await interaction.reply({ content: 'Invalid or protected server target.', flags: MessageFlags.Ephemeral }).catch(() => {});
     return;
   }
@@ -282,7 +283,7 @@ async function handleLeaveControl(interaction, supportGuildId) {
       : LEAVE_CANCEL_PREFIX;
 
   const guildId = interaction.customId.slice(prefix.length);
-  if (!SNOWFLAKE_RE.test(guildId) || guildId === supportGuildId) {
+  if (!SNOWFLAKE_RE.test(guildId) || guildId === supportGuildId || guildId === config.supportGuildId) {
     await interaction.reply({ content: 'Invalid or protected server target.', flags: MessageFlags.Ephemeral }).catch(() => {});
     return;
   }
@@ -364,8 +365,3 @@ async function handleLeaveControl(interaction, supportGuildId) {
   }
 }
 
-async function resolveSupportGuildId(client) {
-  if (config.supportGuildId) return config.supportGuildId;
-  const joinLog = await client.channels.fetch(config.opsChannels?.joinLog).catch(() => null);
-  return joinLog?.guildId ?? null;
-}
