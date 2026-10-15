@@ -32,5 +32,15 @@ const { deployCommands } = require('../src/handlers/deployCommands');
   await deployCommands({ rest, settings });
   assert.equal(puts, 5, 'a failed registration is tried again on the next start');
   await assert.rejects(() => deployCommands({ rest, settings, strict: true }), /rate limited/, 'the manual script still fails loudly');
+  // Several test servers: one registration for each, and a bad id is left out.
+  const config = require('../src/config');
+  config.devGuildIds = ['293504726505357312', '257181659865153539'];
+  const routes = [];
+  const restMany = { put: async (route, { body }) => { routes.push(route); return body; }, get: async () => [] };
+  current = [{ name: 'multi' }];
+  await deployCommands({ rest: restMany, settings, force: true });
+  assert.equal(routes.length, 2, 'each test server gets the commands');
+  assert.ok(routes[0].includes('293504726505357312') && routes[1].includes('257181659865153539') && routes.every((r) => !r.includes(',')), 'one id in each route');
+  config.devGuildIds = [];
   console.log('Checked that the commands are registered only when they change and a failure does not stop the start.');
 })();
