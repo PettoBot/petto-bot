@@ -1,7 +1,5 @@
 // Comandos de configuración.
 module.exports = {
-  'config.language.desc': 'Mira o cambia el idioma en el que Petto habla en este servidor.',
-  'config.language.opt.language.desc': 'El nuevo idioma: English, Español o Português (Brasil)',
   'config.language.current': '**Idioma del servidor:** {language}\nPetto responde en este idioma en este servidor. Cámbialo con `{command}`.',
   'config.language.available': '-# Disponibles: {list}',
   'config.language.invalid': 'No conozco ese idioma. Elige uno de estos: {list}.',

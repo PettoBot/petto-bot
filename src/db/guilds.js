@@ -25,6 +25,43 @@ async function ensureGuild(guildId) {
   return created;
 }
 
+/** The language saved for a server, or null when it has no row yet (read only: it never creates the row). */
+async function findGuildLanguage(guildId) {
+  const { data, error } = await database
+    .from('guilds')
+    .select('language')
+    .eq('guild_id', guildId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data?.language ?? null;
+}
+
+/**
+ * Creates the config row of a server that has none, with `defaults` (used when Petto joins a server). A server that already
+ * has a row keeps it untouched. Returns { row, created }.
+ */
+async function createGuildIfMissing(guildId, defaults = {}) {
+  const { data: existing, error: selectError } = await database
+    .from('guilds')
+    .select('*')
+    .eq('guild_id', guildId)
+    .maybeSingle();
+
+  if (selectError) throw selectError;
+  if (existing) return { row: existing, created: false };
+
+  const { data: created, error: insertError } = await database
+    .from('guilds')
+    .insert({ ...defaults, guild_id: guildId })
+    .select('*')
+    .single();
+
+  // Another part of Petto made the row at the same moment: that one stays.
+  if (insertError) return { row: await ensureGuild(guildId), created: false };
+  return { row: created, created: true };
+}
+
 async function updateGuild(guildId, patch) {
   const { data, error } = await database
     .from('guilds')
@@ -37,4 +74,4 @@ async function updateGuild(guildId, patch) {
   return data;
 }
 
-module.exports = { ensureGuild, updateGuild };
+module.exports = { ensureGuild, findGuildLanguage, createGuildIfMissing, updateGuild };

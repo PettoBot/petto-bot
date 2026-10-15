@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { textCard } = require('../../utils/caseCard');
 const { SUPPORT_URL } = require('../../utils/links');
-const { t, localizations, formatNumber, languageOf } = require('../../i18n');
+const { t, formatNumber, languageOf } = require('../../i18n');
 
 const STATUS_URL = 'https://petto.sbs/status';
 const GREEN = 0xa5ea7a;
@@ -30,8 +30,7 @@ module.exports = {
   buildPingCard,
   data: new SlashCommandBuilder()
     .setName('ping')
-    .setDescription(t('en', 'info.ping.desc'))
-    .setDescriptionLocalizations(localizations('info.ping.desc')),
+    .setDescription("Shows Petto's latency and how big it is."),
 
   async execute(interaction) {
     const lang = await languageOf(interaction);

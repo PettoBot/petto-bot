@@ -1,6 +1,5 @@
 // Info commands. Reference catalog: es and pt-BR must have the same keys and placeholders.
 module.exports = {
-  'info.ping.desc': "Shows Petto's latency and how big it is.",
   'info.ping.pinging': 'Pinging...',
   'info.ping.guild': '**Guild Ping:** `{ms}`',
   'info.ping.api': '**API Ping:** `{ms}`',

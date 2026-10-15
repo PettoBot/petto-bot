@@ -1,6 +1,5 @@
 // Comandos de información.
 module.exports = {
-  'info.ping.desc': 'Muestra la latencia de Petto y qué tan grande es.',
   'info.ping.pinging': 'Midiendo el ping...',
   'info.ping.guild': '**Ping del servidor:** `{ms}`',
   'info.ping.api': '**Ping de la API:** `{ms}`',

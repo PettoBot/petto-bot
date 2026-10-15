@@ -1,8 +1,8 @@
-// `!language` / `/language`: which language Petto speaks on this server, and changing it (Manage Server).
+// `!language` (alias `!lang`): which language Petto speaks on this server, and changing it (Manage Server). Prefix only.
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
-const { LANGUAGES, LANGUAGE_NAMES, t, localizations, normalizeLanguage, languageOf, setGuildLanguage } = require('../../i18n');
+const { LANGUAGES, LANGUAGE_NAMES, t, normalizeLanguage, languageOf, setGuildLanguage } = require('../../i18n');
 
 // The language names stay in their own language, so a member who cannot read the current one still finds theirs.
 const languageList = () => LANGUAGES.map((code) => `${LANGUAGE_NAMES[code]} (\`${code}\`)`).join(' · ');
@@ -29,27 +29,24 @@ function readLanguageInput(text) {
 
 module.exports = {
   aliases: ['lang'],
-  registerSlash: true,
   buildCurrentCard,
   buildDoneCard,
   readLanguageInput,
   data: new SlashCommandBuilder()
     .setName('language')
-    .setDescription(t('en', 'config.language.desc'))
-    .setDescriptionLocalizations(localizations('config.language.desc'))
+    .setDescription('View or change the language Petto speaks on this server.')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false)
     .addStringOption((o) => o
       .setName('language')
-      .setDescription(t('en', 'config.language.opt.language.desc'))
-      .setDescriptionLocalizations(localizations('config.language.opt.language.desc'))
+      .setDescription('The new language: English, Español or Português (Brasil)')
       .setRequired(false)
       .addChoices(...LANGUAGES.map((code) => ({ name: LANGUAGE_NAMES[code], value: code })))),
 
   async execute(interaction) {
     const requested = interaction.options.getString('language');
     const current = await languageOf(interaction);
-    const prefix = interaction.typedPrefix ?? '/';
+    const prefix = interaction.typedPrefix ?? '!';
 
     if (requested == null) {
       await interaction.reply({ components: [buildCurrentCard(current, prefix)], flags: MessageFlags.IsComponentsV2 });
