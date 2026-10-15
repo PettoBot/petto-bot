@@ -234,4 +234,10 @@ module.exports = {
   'automation.board.attachments': 'Attachments',
   'automation.board.noText': '*No text content*',
   'automation.board.original.button': 'Original Message',
+  'automation.db.autoresponderLimit': 'Limit reached ({max}). Remove one first.',
+  'automation.db.trigger.missing': 'Provide a trigger phrase.',
+  'automation.db.trigger.tooShort': 'A trigger must contain at least two characters.',
+  'automation.db.trigger.tooCommon': 'That trigger is too common. Use a more specific word or phrase.',
+  'automation.db.trigger.noEmoji': 'Provide an emoji.',
+  'automation.db.trigger.duplicate': 'That emoji and trigger are already configured.',
 };

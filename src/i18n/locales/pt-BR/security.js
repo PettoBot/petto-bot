@@ -392,4 +392,5 @@ module.exports = {
   'security.role.managedYes': 'Sim, cargo de uma integração do Discord',
   'security.role.managedNo': 'Não',
   'security.role.footer': 'Isto é uma prévia de permissões, não uma ação.',
+  'security.db.filterLimit': 'Um servidor pode ter {max} filtros. Remova um primeiro.',
 };

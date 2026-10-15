@@ -236,4 +236,5 @@ module.exports = {
   'utility.wiki.footer': 'Petto documentation',
   'utility.wiki.notFound': "I couldn't find **{query}** in the wiki. [Open Petto Wiki]({url}) and use its search.",
   'utility.wiki.open': '[Open the Petto wiki]({url}).',
+  'utility.db.reminderLimit': 'You already have {max} active reminders — cancel one first.',
 };

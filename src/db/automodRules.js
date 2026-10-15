@@ -1,4 +1,5 @@
 const database = require('./database');
+const { t, currentLanguage } = require('../i18n');
 const { createExpiringCache } = require('../utils/expiringCache');
 const { buildPatterns, toRegExp } = require('../utils/automodTemplates');
 
@@ -22,7 +23,7 @@ async function listCompiled(guildId) {
 async function createRule(guildId, row) {
   const current = await listRules(guildId);
   if (current.length >= MAX_RULES) {
-    const err = new Error(`A server can have ${MAX_RULES} filters. Remove one first.`);
+    const err = new Error(t(currentLanguage(), 'security.db.filterLimit', { max: MAX_RULES }));
     err.userFacing = true;
     throw err;
   }

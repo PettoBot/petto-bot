@@ -393,4 +393,5 @@ module.exports = {
   'security.role.managedYes': 'Yes, Discord integration role',
   'security.role.managedNo': 'No',
   'security.role.footer': 'This is a permission preview, not an action.',
+  'security.db.filterLimit': 'A server can have {max} filters. Remove one first.',
 };

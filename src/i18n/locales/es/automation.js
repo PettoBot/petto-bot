@@ -233,4 +233,10 @@ module.exports = {
   'automation.board.attachments': 'Archivos adjuntos',
   'automation.board.noText': '*Sin texto*',
   'automation.board.original.button': 'Mensaje original',
+  'automation.db.autoresponderLimit': 'Llegaste al límite ({max}). Quita uno primero.',
+  'automation.db.trigger.missing': 'Escribe una frase que lo active.',
+  'automation.db.trigger.tooShort': 'El disparador debe tener al menos dos caracteres.',
+  'automation.db.trigger.tooCommon': 'Ese disparador es demasiado común. Usa una palabra o frase más específica.',
+  'automation.db.trigger.noEmoji': 'Indica un emoji.',
+  'automation.db.trigger.duplicate': 'Ese emoji y ese disparador ya están configurados.',
 };

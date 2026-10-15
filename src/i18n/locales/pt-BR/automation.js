@@ -233,4 +233,10 @@ module.exports = {
   'automation.board.attachments': 'Anexos',
   'automation.board.noText': '*Sem texto*',
   'automation.board.original.button': 'Mensagem original',
+  'automation.db.autoresponderLimit': 'Limite atingido ({max}). Remova um primeiro.',
+  'automation.db.trigger.missing': 'Informe uma frase de gatilho.',
+  'automation.db.trigger.tooShort': 'O gatilho precisa ter pelo menos dois caracteres.',
+  'automation.db.trigger.tooCommon': 'Esse gatilho é comum demais. Use uma palavra ou frase mais específica.',
+  'automation.db.trigger.noEmoji': 'Informe um emoji.',
+  'automation.db.trigger.duplicate': 'Esse emoji e esse gatilho já estão configurados.',
 };

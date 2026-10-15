@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const database = require('./database');
+const { t, currentLanguage } = require('../i18n');
 
 const MAX_PER_GUILD = 100;
 const CACHE_TTL_MS = 15_000;
@@ -59,7 +60,7 @@ async function getByTrigger(guildId, trigger) {
 async function create(guildId, patch) {
   const count = await countForGuild(guildId);
   if (count >= MAX_PER_GUILD) {
-    const err = new Error(`Limit reached (${MAX_PER_GUILD}). Remove one first.`);
+    const err = new Error(t(currentLanguage(), 'automation.db.autoresponderLimit', { max: MAX_PER_GUILD }));
     err.userFacing = true;
     throw err;
   }

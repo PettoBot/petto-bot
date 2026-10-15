@@ -338,4 +338,8 @@ module.exports = {
   'tickets.html.rendered': 'texto, embeds, mídia e figurinhas',
   'tickets.html.empty': 'Nenhuma mensagem foi encontrada neste ticket.',
   'tickets.html.footer': 'Transcrição gerada pelo {petto} · O conteúdo do Discord aparece como estava disponível quando a transcrição foi criada.',
+  'tickets.db.form.fieldCount': 'Um formulário precisa de 1 a 5 campos.',
+  'tickets.db.form.fieldType': 'O campo {number} deve usar short_text ou long_text.',
+  'tickets.db.form.fieldLabel': 'O campo {number} precisa de um id e de um rótulo.',
+  'tickets.db.form.nameRequired': 'O formulário precisa de um nome.',
 };
