@@ -58,6 +58,22 @@ function sanitizeEmbed(embed, lang = currentLanguage()) {
   return safe;
 }
 
+/**
+ * The name and the picture a log is sent with. A server can give Petto its own name and picture (the dashboard sets them on the bot's
+ * profile in that server), and the logs carry them too; without them the global ones are used. Discord refuses a webhook name that
+ * has "clyde" or "discord" in it, so such a name falls back to the global one.
+ */
+function botLook(client, guildId) {
+  const me = client.guilds?.cache?.get(guildId)?.members?.me ?? null;
+  const own = String(me?.displayName ?? '').trim().slice(0, 80);
+  let avatar = null;
+  try { avatar = me?.displayAvatarURL?.({ extension: 'png', size: 256 }) ?? null; } catch { avatar = null; }
+  return {
+    username: own && !/clyde|discord/i.test(own) ? own : client.user.username,
+    avatar_url: avatar ?? getAvatar(client.user) ?? undefined,
+  };
+}
+
 function getAvatar(user) {
   if (!user) return null;
   try {
@@ -129,11 +145,10 @@ async function sendLog(client, guildId, event, embed, { ignoreIds = [], files = 
       }
 
       const body = {
-        // Overrides whatever avatar/name got baked into the webhook at creation time, so a
+        // Overrides whatever avatar/name got baked into the webhook at creation time, with the look the server gave Petto (or the global one), so a
         // stale webhook (created before the bot had a real avatar, or before an avatar/name
         // change) never has to be manually re-patched, every send just carries the current one.
-        username: client.user.username,
-        avatar_url: getAvatar(client.user) ?? undefined,
+        ...botLook(client, guildId),
         flags: 4096, // SuppressNotifications
         allowed_mentions: { parse: [] }, // names inside a log must never ping anyone
       };
@@ -181,4 +196,4 @@ async function sendLog(client, guildId, event, embed, { ignoreIds = [], files = 
   }
 }
 
-module.exports = { sendLog, getAvatar, fetchMod, fetchEntry, prettyPermission, sanitizeEmbed, EVENTS, AuditLogEvent };
+module.exports = { sendLog, botLook, getAvatar, fetchMod, fetchEntry, prettyPermission, sanitizeEmbed, EVENTS, AuditLogEvent };
