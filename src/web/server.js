@@ -48,39 +48,6 @@ async function checkTurnstile(responseToken, remoteIp) {
   return res.json();
 }
 
-function createRateLimiter({ windowMs, max }) {
-  const buckets = new Map();
-  let lastCleanup = Date.now();
-
-  return (req, res, next) => {
-    const now = Date.now();
-    if (now - lastCleanup >= windowMs) {
-      for (const [key, bucket] of buckets) {
-        if (bucket.resetAt <= now) buckets.delete(key);
-      }
-      lastCleanup = now;
-    }
-
-    const key = req.ip || req.socket.remoteAddress || 'unknown';
-    const current = buckets.get(key);
-    const bucket = current && current.resetAt > now
-      ? current
-      : { count: 0, resetAt: now + windowMs };
-    bucket.count += 1;
-    buckets.set(key, bucket);
-
-    const retryAfter = Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
-    res.set('RateLimit-Limit', String(max));
-    res.set('RateLimit-Remaining', String(Math.max(0, max - bucket.count)));
-    res.set('RateLimit-Reset', String(retryAfter));
-    if (bucket.count > max) {
-      res.set('Retry-After', String(retryAfter)).status(429).json({ ok: false, error: 'rate_limited' });
-      return;
-    }
-    next();
-  };
-}
-
 const dashboardPrefixRateLimiter = rateLimit({
   windowMs: 60_000,
   limit: 30,
@@ -119,6 +86,28 @@ const topggRateLimiter = rateLimit({
   legacyHeaders: false,
   handler: (_req, res) => {
     res.status(429).json({ ok: false, error: 'rate_limited' });
+  },
+});
+
+// Each visitor can try the verification a few times a minute.
+const verifyRateLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 20,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).json({ ok: false, error: 'rate_limited' });
+  },
+});
+
+// The public page of a ticket transcript opens with its signed link; a visitor cannot ask for it over and over.
+const transcriptRateLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 60,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).send('Too many requests. Try again in a minute.');
   },
 });
 
@@ -663,7 +652,7 @@ function startServer(client) {
       }
     });
 
-    app.get('/api/dashboard/vault/:guildId', async (req, res) => {
+    app.get('/api/dashboard/vault/:guildId', dashboardDatabaseRateLimiter, async (req, res) => {
       const authorized = await dashboardGuild(req, res);
       if (!authorized) return;
       try {
@@ -674,7 +663,7 @@ function startServer(client) {
       }
     });
 
-    app.post('/api/dashboard/vault/:guildId', async (req, res) => {
+    app.post('/api/dashboard/vault/:guildId', dashboardDatabaseRateLimiter, async (req, res) => {
       const authorized = await dashboardGuild(req, res);
       if (!authorized) return;
       const { guild, userId } = authorized;
@@ -731,7 +720,7 @@ function startServer(client) {
       }
     });
 
-    app.get('/api/dashboard/vault/:guildId/export/:backupId', async (req, res) => {
+    app.get('/api/dashboard/vault/:guildId/export/:backupId', dashboardDatabaseRateLimiter, async (req, res) => {
       const authorized = await dashboardGuild(req, res);
       if (!authorized) return;
       try {
@@ -799,7 +788,7 @@ function startServer(client) {
     }
   });
 
-  app.post('/api/verify', createRateLimiter({ windowMs: 60_000, max: 20 }), async (req, res) => {
+  app.post('/api/verify', verifyRateLimiter, async (req, res) => {
     const { token, turnstileToken } = req.body ?? {};
 
     const payload = verifyToken(token);
@@ -907,7 +896,7 @@ function startServer(client) {
   // Public transcript viewer, the URL's guildId/number are cosmetic (so a link is human-readable
   // at a glance); actual access is entirely gated by the signed token, checked against the same
   // ticket row to make sure they weren't just edited to browse a different ticket.
-  app.get('/transcript/:guildId/:number/:token', async (req, res) => {
+  app.get('/transcript/:guildId/:number/:token', transcriptRateLimiter, async (req, res) => {
     const payload = verifyTranscriptToken(req.params.token);
     if (!payload) {
       res.status(403).send('Invalid or tampered transcript link.');
