@@ -15,6 +15,7 @@ function getVoiceConfig(config) {
     max_level: config?.voice_max_level ?? config?.max_level ?? 1000,
     notify_mode: config?.voice_notify_mode ?? 'off',
     notify_channel_id: config?.voice_notify_channel_id ?? null,
+    // i18n-ignore: the stored English default; notifyLevelUp (levelActions.js) recognizes it and sends it translated.
     notify_message: config?.voice_notify_message ?? '{EMOJI} {user} reached voice level **{level}**!',
     notify_embed: config?.voice_notify_embed ?? false,
     notify_embed_template: config?.voice_notify_embed_template ?? null,

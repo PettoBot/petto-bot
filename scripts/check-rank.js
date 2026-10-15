@@ -51,6 +51,16 @@ assert.deepEqual(voiceEmbed.fields.map((field) => field.name).slice(-1), ['Time 
 assert.equal(voiceEmbed.fields[voiceEmbed.fields.length - 1].value, '1h 35m');
 assert.equal(buildRankEmbed({ data: { ...data, rank: null, total: null }, name: 'x' }).toJSON().fields[1].value, 'Not ranked yet');
 
+// In Spanish and Portuguese: the names of the fields, the numbers written the way the language does, and the footer.
+const esEmbed = buildRankEmbed({ data: { ...data, total: 1500 }, name: 'Liam', lang: 'es' }).toJSON();
+assert.deepEqual(esEmbed.fields.map((field) => field.name), ['Nivel', 'Rango en el servidor', 'Experiencia', `Progreso (${data.progress}%)`]);
+assert.equal(esEmbed.fields[1].value, '#3 de 1,500');
+assert.equal(esEmbed.footer.text, `Experiencia total: ${data.xp.toLocaleString('es-419')}`);
+const ptEmbed = buildRankEmbed({ data: { ...data, source: 'voice', total: 1500 }, name: 'Liam', lang: 'pt-BR' }).toJSON();
+assert.deepEqual(ptEmbed.fields.map((field) => field.name), ['Nível de voz', 'Rank de voz', 'Experiência', `Progresso (${data.progress}%)`, 'Tempo em voz']);
+assert.equal(ptEmbed.fields[1].value, '#3 de 1.500');
+assert.equal(buildRankEmbed({ data: { ...data, rank: null }, name: 'x', lang: 'pt-BR' }).toJSON().fields[1].value, 'Ainda sem rank');
+
 (async () => {
   const base = { ctx: {}, data, name: 'Liam', avatarUrl: 'https://cdn.test/a.png', week: null, cardName: null, source: 'messages' };
   let reply = await buildRankReply({ ...base, style: 'card' });
@@ -64,5 +74,7 @@ assert.equal(buildRankEmbed({ data: { ...data, rank: null, total: null }, name: 
   assert.equal(reply.files, undefined); assert.equal(reply.embeds.length, 1, 'a card that cannot be drawn leaves the embed');
   reply = await buildRankReply({ ...base, style: 'both' });
   assert.equal(reply.embeds[0].toJSON().image, undefined);
+  reply = await buildRankReply({ ...base, style: 'embed', lang: 'es' });
+  assert.equal(reply.embeds[0].toJSON().fields[0].name, 'Nivel', 'the language reaches the embed');
   console.log('Checked the rank numbers, the embed and the card, embed or both styles.');
 })().catch((error) => { console.error(error); process.exit(1); });

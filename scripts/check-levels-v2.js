@@ -110,5 +110,23 @@ const row = (target_id, target_type, multiplier) => ({ target_id, target_type, m
   assert.equal(milestoneFor({ notify_milestones: [] }, 10), null);
   await notifyLevelUp({ guild, member: user, config: { ...base, notify_mode: 'dm' }, level: 3, channel: target, message });
   assert.equal(sent.at(-1).dm, true, 'a DM is never a reply');
+
+  // The default level-up message (the one the database holds when the server wrote none) goes out in the server's language;
+  // a message the server wrote never changes.
+  const { runWithLanguage } = require('../src/i18n');
+  const defaults = { ...base, notify_message: '{user} just leveled up to **{level}**!' };
+  await notifyLevelUp({ guild, member: user, config: defaults, level: 3, channel: target, message });
+  assert.equal(sent.at(-1).message.payload.content, '<@u1> just leveled up to **3**!', 'English stays as it was');
+  await notifyLevelUp({ guild, member: user, config: { ...defaults, notify_message: '{EMOJI} {user} just leveled up to **{level}**!' }, level: 3, channel: target, message });
+  assert.equal(sent.at(-1).message.payload.content, '<@u1> just leveled up to **3**!', 'the old default still drops the star');
+  await notifyLevelUp({ guild, member: user, config: defaults, level: 3, channel: target, message, lang: 'es' });
+  assert.equal(sent.at(-1).message.payload.content, '¡<@u1> acaba de subir al nivel **3**!');
+  await runWithLanguage('pt-BR', () => notifyLevelUp({ guild, member: user, config: defaults, level: 3, channel: target, message }));
+  assert.equal(sent.at(-1).message.payload.content, '<@u1> acabou de subir para o nível **3**!', 'the language of the running event is used');
+  const voiceDefaults = getVoiceConfig({ ...base, voice_notify_mode: 'reply', voice_notify_message: '{user} reached voice level **{level}**!' });
+  await notifyLevelUp({ guild, member: user, config: voiceDefaults, level: 4, channel: target, message, source: 'voice', lang: 'pt-BR' });
+  assert.equal(sent.at(-1).message.payload.content, '<@u1> alcançou o nível de voz **4**!');
+  await notifyLevelUp({ guild, member: user, config: base, level: 3, channel: target, message, lang: 'es' });
+  assert.equal(sent.at(-1).message.payload.content, '<@u1> reached **3**', 'a message the server wrote is never translated');
   console.log('Checked the levels: multipliers, who earns XP, voice reward roles and the level-up message.');
 })().catch((error) => { console.error(error); process.exit(1); });
