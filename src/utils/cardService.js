@@ -2,6 +2,7 @@
 // variables for the member and the server, and draws it.
 const { renderCard } = require('../imgutils/cardRenderer');
 const { normalizeCard } = require('./cardSchema');
+const { BASIC_DEFAULTS, RANK_DEFAULTS } = require('./cardPresets');
 const { loadImageFromLink, decode } = require('./safeImage');
 const { resolve } = require('./embedVariables');
 const imageCards = require('../db/imageCards');
@@ -54,15 +55,33 @@ function depsFor(ctx, guildId) {
   };
 }
 
+// The texts of the basic editor that are Petto's defaults, with their keys in the embeds catalog. The dashboard saves them in
+// English, so a text that is missing or still equal to the English default is drawn in the language of the server.
+const DEFAULT_TEXTS = {
+  rank: [['title', RANK_DEFAULTS.title, 'embeds.card.rankTitle'], ['extra', RANK_DEFAULTS.extra, 'embeds.card.rankExtra']],
+  welcome: [['title', BASIC_DEFAULTS.title, 'embeds.card.welcomeTitle'], ['subtitle', BASIC_DEFAULTS.subtitle, 'embeds.card.welcomeSubtitle']],
+};
+
+/** The basic settings of a card with Petto's default texts in `lang`; what the server wrote is kept. */
+function localizedBasic(basic, kind, lang) {
+  const result = basic && typeof basic === 'object' && !Array.isArray(basic) ? { ...basic } : {};
+  for (const [field, english, key] of DEFAULT_TEXTS[kind]) {
+    if (result[field] === undefined || result[field] === english) result[field] = t(lang, key);
+  }
+  return result;
+}
+
 /**
  * Draws a card for a message. `premium` decides what is allowed: a card that uses the advanced editor or a Premium font
- * is drawn with its basic settings when the server is not Premium, so a card keeps working after Premium ends. The texts
- * the basic card falls back to when the card has none of its own are in `lang`.
+ * is drawn with its basic settings when the server is not Premium, so a card keeps working after Premium ends. Petto's
+ * default texts (the ones a server did not change) are drawn in `lang`.
  */
 async function drawCard(rawCard, ctx, { guildId, premium, lang = ctx?.lang ?? currentLanguage() }) {
-  let { card, usesAdvanced } = normalizeCard(rawCard, { premium, lang });
+  const kind = rawCard?.kind === 'rank' ? 'rank' : 'welcome';
+  const input = rawCard && typeof rawCard === 'object' && !Array.isArray(rawCard) ? { ...rawCard, basic: localizedBasic(rawCard.basic, kind, lang) } : rawCard;
+  let { card, usesAdvanced } = normalizeCard(input, { premium, lang });
   if (usesAdvanced && !premium) {
-    const basic = { title: t(lang, 'embeds.card.welcomeTitle'), subtitle: t(lang, 'embeds.card.welcomeSubtitle'), ...(rawCard?.basic ?? {}) };
+    const basic = localizedBasic(rawCard?.basic, 'welcome', lang);
     ({ card } = normalizeCard({ mode: 'basic', width: card.width, height: card.height, background: card.background, basic }, { premium: false, lang }));
   }
   return renderCard(card, depsFor(ctx, guildId));
