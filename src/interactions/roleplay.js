@@ -8,6 +8,7 @@ const roleplayButtons_1 = require("../utils/roleplayButtons");
 Object.defineProperty(exports, "ROLEPLAY_BUTTON_PREFIX", { enumerable: true, get: function () { return roleplayButtons_1.ROLEPLAY_BUTTON_PREFIX; } });
 const { fetchActionImage } = require('../utils/roleplay');
 const { COLORS } = require('../utils/colors');
+const { t, languageOf } = require('../i18n');
 function parseButton(customId) {
     const parts = customId.split(':');
     if (parts.length !== 6)
@@ -31,10 +32,11 @@ function displayName(user) {
     return user.globalName ?? user.username;
 }
 async function handleButton(interaction) {
+    const lang = await languageOf(interaction);
     const parsed = parseButton(interaction.customId);
     if (!parsed) {
         await interaction.reply({
-            content: 'This roleplay interaction is no longer valid. Please send the command again.',
+            content: t(lang, 'roleplay.response.invalid'),
             flags: discord_js_1.MessageFlags.Ephemeral,
             allowedMentions: { parse: [] },
         }).catch(() => { });
@@ -42,7 +44,7 @@ async function handleButton(interaction) {
     }
     if (interaction.user.id !== parsed.targetId) {
         await interaction.reply({
-            content: 'Only the mentioned member can respond to this roleplay interaction.',
+            content: t(lang, 'roleplay.response.notTarget'),
             flags: discord_js_1.MessageFlags.Ephemeral,
             allowedMentions: { parse: [] },
         });
@@ -50,7 +52,7 @@ async function handleButton(interaction) {
     }
     if (!interaction.guildId || !interaction.channelId) {
         await interaction.reply({
-            content: 'Roleplay responses are only available inside a server.',
+            content: t(lang, 'roleplay.response.guildOnly'),
             flags: discord_js_1.MessageFlags.Ephemeral,
             allowedMentions: { parse: [] },
         });
@@ -72,7 +74,7 @@ async function handleButton(interaction) {
     }
     catch {
         await interaction.followUp({
-            content: 'This roleplay response could not be saved. Please try again.',
+            content: t(lang, 'roleplay.response.saveFailed'),
             flags: discord_js_1.MessageFlags.Ephemeral,
             allowedMentions: { parse: [] },
         }).catch(() => { });
@@ -80,7 +82,7 @@ async function handleButton(interaction) {
     }
     if (!result.claimed) {
         await interaction.followUp({
-            content: 'This roleplay interaction already has a response.',
+            content: t(lang, 'roleplay.response.alreadyAnswered'),
             flags: discord_js_1.MessageFlags.Ephemeral,
             allowedMentions: { parse: [] },
         }).catch(() => { });
@@ -89,20 +91,17 @@ async function handleButton(interaction) {
     const responseAction = parsed.response === 'accepted' ? parsed.action : 'slap';
     const imageUrl = await fetchActionImage(responseAction);
     const actor = await interaction.client.users.fetch(parsed.actorId).catch(() => null);
-    const actorLabel = actor ? displayName(actor) : 'The sender';
+    const actorLabel = actor ? displayName(actor) : t(lang, 'roleplay.response.unknownSender');
     const targetLabel = displayName(interaction.user);
-    const actionLabel = (0, roleplayButtons_1.getRoleplayLabel)(parsed.action);
-    const description = parsed.response === 'accepted'
-        ? `**${targetLabel}** responds to **${actorLabel}** with a ${actionLabel}.`
-        : `**${targetLabel}** rejects the ${actionLabel} from **${actorLabel}** and gives them a slap.`;
+    const description = (0, roleplayButtons_1.getRoleplayResponseSentence)(parsed.action, parsed.response === 'accepted', targetLabel, actorLabel, lang);
     const counterAction = parsed.response === 'accepted' ? parsed.action : 'slap';
     const counterRecipient = parsed.response === 'accepted' ? `**${targetLabel}**` : `**${actorLabel}**`;
-    const counterMessage = (0, roleplayButtons_1.getRoleplayCounterMessage)(counterAction, result.counterValue, counterRecipient);
+    const counterMessage = (0, roleplayButtons_1.getRoleplayCounterMessage)(counterAction, result.counterValue, counterRecipient, lang);
     const embed = new discord_js_1.EmbedBuilder()
         .setColor(parsed.response === 'accepted' ? COLORS.GREEN : COLORS.RED)
-        .setAuthor({ name: `${targetLabel} · response`, iconURL: interaction.user.displayAvatarURL({ size: 128 }) })
+        .setAuthor({ name: t(lang, 'roleplay.response.author', { name: targetLabel }), iconURL: interaction.user.displayAvatarURL({ size: 128 }) })
         .setDescription(`${description}\n\n*${counterMessage}*`)
-        .setFooter({ text: 'Roleplay response · Petto' });
+        .setFooter({ text: t(lang, 'roleplay.response.footer') });
     if (imageUrl)
         embed.setImage(imageUrl);
     // An edit never notifies anyone, so the response goes out as a new message that replies to the original.
@@ -113,7 +112,7 @@ async function handleButton(interaction) {
                 action: parsed.action,
                 actorId: parsed.actorId,
                 targetId: parsed.targetId,
-            }, true)],
+            }, true, lang)],
         allowedMentions: { parse: [] },
     }).catch(() => { });
     // The response is a reply to the message that holds the buttons. It never mentions anyone, whether the
@@ -123,7 +122,7 @@ async function handleButton(interaction) {
         .then(() => true, () => false);
     if (!sent) {
         await interaction.followUp({
-            content: 'Your response was saved, but Petto could not send the roleplay message.',
+            content: t(lang, 'roleplay.response.sendFailed'),
             flags: discord_js_1.MessageFlags.Ephemeral,
             allowedMentions: { parse: [] },
         }).catch(() => { });
