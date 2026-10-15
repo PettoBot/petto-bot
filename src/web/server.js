@@ -28,6 +28,7 @@ const { registerAppealImageRoutes } = require('./appealImageRoutes');
 const { registerCodeRoutes } = require('./codeRoutes');
 const { registerIdentityRoutes } = require('./identityRoutes');
 const { registerMemberRoutes } = require('./memberRoutes');
+const { registerGuildLanguageRoute } = require('./languageRoutes');
 const { registerPublicLeaderboardRoute } = require('./publicLeaderboard');
 const { listVariables } = require('../utils/embedVariableRegistry');
 const { renderPollRequest } = require('../utils/pollApi');
@@ -634,6 +635,9 @@ function startServer(client) {
     registerMemberRoutes(app, { isAuthorized: dashboardAuthorized, authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
     // The public leaderboard page of a server that turned it on, asked for by the website.
     registerPublicLeaderboardRoute(app, { isAuthorized: dashboardAuthorized, limiter: dashboardDatabaseRateLimiter, client });
+
+    // The dashboard saved a new language for a server: use it at once (the bot caches each server's language for 5 minutes).
+    registerGuildLanguageRoute(app, { isAuthorized: dashboardAuthorized, limiter: dashboardPrefixRateLimiter });
 
     app.post('/api/dashboard/guild/:guildId/prefix', dashboardPrefixRateLimiter, async (req, res) => {
       if (!dashboardAuthorized(req)) {
