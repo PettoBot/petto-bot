@@ -13,8 +13,10 @@ const {
 const { ensureGuild, updateGuild } = require('../db/guilds');
 const { EMOJI } = require('./emojis');
 const logger = require('./logger');
+const { t, currentLanguage } = require('../i18n');
 
 const SETUP_CHANNEL_NAME = 'petto-setup';
+// i18n-ignore-next-line: the topic is how Petto finds its channel again, so it never changes with the language
 const SETUP_CHANNEL_TOPIC = 'Petto private administrator setup channel';
 const PETTO_IMAGE_URL = 'https://i.imgur.com/WUwcYwM.png';
 
@@ -59,7 +61,7 @@ function setupChannelOverwrites(guild, botId) {
 }
 
 /** Finds or creates the private channel used for first-run setup and admin guidance. */
-async function ensureAdminSetupChannel(guild) {
+async function ensureAdminSetupChannel(guild, lang = currentLanguage()) {
   const guildConfig = await ensureGuild(guild.id);
   const botId = guild.client.user.id;
   let channel = guildConfig.setup_channel_id
@@ -76,7 +78,7 @@ async function ensureAdminSetupChannel(guild) {
       type: ChannelType.GuildText,
       topic: SETUP_CHANNEL_TOPIC,
       permissionOverwrites: setupChannelOverwrites(guild, botId),
-      reason: 'Petto private administrator onboarding channel',
+      reason: t(lang, 'setup.reason.createChannel'),
     });
   } else {
     // This is a Petto-managed private channel. Replacing the managed overwrite
@@ -84,7 +86,7 @@ async function ensureAdminSetupChannel(guild) {
     // the channel with BASE_TYPE_MAX_LENGTH (>100 overwrites).
     await channel.permissionOverwrites.set(
       setupChannelOverwrites(guild, botId),
-      'Refresh Petto private administrator onboarding permissions',
+      t(lang, 'setup.reason.refreshChannel'),
     ).catch((err) => logger.warn(`Could not refresh setup channel permissions in ${guild.id}:`, err.message));
   }
 
@@ -133,48 +135,38 @@ async function commandSubcommandMention(client, commandName, subcommandName, gui
   return `</${commandName} ${subcommandName}:${mention.slice(commandPrefix.length)}`;
 }
 
-function buildAdminSetupMessage({ botId, setupMention, reportConfigMention, prefix, fallback = false }) {
+function buildAdminSetupMessage({ botId, setupMention, reportConfigMention, prefix, fallback = false, lang = currentLanguage() }) {
   const inviteUrl = `https://discord.com/oauth2/authorize?client_id=${botId}&permissions=8&scope=bot%20applications.commands`;
   const intro = new ContainerBuilder()
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent([
-        '## What is Petto?',
-        '',
-        'Petto is a multipurpose Discord bot designed to help communities manage, protect, and improve their servers.',
-        '',
-        'Petto provides tools for moderation, security, tickets, automation, utilities, and community management, all configurable for different types of servers.',
-        '',
-        'Server administrators can use Petto to automate repetitive tasks, manage members, protect their community from unwanted activity, and provide a smoother experience for both staff and users.',
-      ].join('\n')),
-    )
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'setup.intro')))
     .addActionRowComponents(
       new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setLabel('Invite bot')
+          .setLabel(t(lang, 'setup.invite.button'))
           .setEmoji({ name: 'petto', id: '1542559402983428368' })
           .setStyle(ButtonStyle.Link)
           .setURL(inviteUrl),
-        new ButtonBuilder().setLabel('Documentation').setStyle(ButtonStyle.Link).setURL('https://wiki.petto.sbs/overview/introduction'),
-        new ButtonBuilder().setLabel('Web').setStyle(ButtonStyle.Link).setURL('https://petto.sbs/'),
+        new ButtonBuilder().setLabel(t(lang, 'setup.docs.button')).setStyle(ButtonStyle.Link).setURL('https://wiki.petto.sbs/overview/introduction'),
+        new ButtonBuilder().setLabel(t(lang, 'setup.web.button')).setStyle(ButtonStyle.Link).setURL('https://petto.sbs/'),
       ),
     );
 
+  // `/report config` is a slash mention in English; Spanish and Portuguese name commands with the prefix (`!report config`).
+  const reportConfig = lang === 'en' ? reportConfigMention : `\`${prefix}report config\``; // i18n-ignore: a command name
   const setup = new ContainerBuilder().addSectionComponents(
     new SectionBuilder()
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent([
-          '## Petto setup',
+          t(lang, 'setup.admin.heading'),
           '',
-          fallback ? `${EMOJI.RELEASE_MAGIC} Welcome to Petto!` : `${EMOJI.RELEASE_MAGIC} Welcome to Petto's admin setup channel!`,
-          fallback
-            ? "Petto could not make its private setup channel, so the setup is here. Administrators can move it to a private channel and delete this message."
-            : 'This private channel is visible to server administrators and Petto.',
+          fallback ? t(lang, 'setup.admin.welcomeFallback', { emoji: EMOJI.RELEASE_MAGIC }) : t(lang, 'setup.admin.welcome', { emoji: EMOJI.RELEASE_MAGIC }),
+          fallback ? t(lang, 'setup.admin.fallbackNote') : t(lang, 'setup.admin.privateNote'),
           '',
-          `- Open ${setupMention} to configure the server in one form.`,
-          `- Use \`${prefix}help\` to browse Petto's prefix commands.`,
-          `- Use \`${prefix}logs\`, \`${prefix}automod\`, and \`${prefix}welcome\` for detailed settings.`,
-          ...(fallback ? [] : ['- Do not share this channel with regular members or other bots.']),
-          `- Use ${reportConfigMention} to configure the reporting system.`,
+          t(lang, 'setup.admin.openSetup', { setup: setupMention }),
+          t(lang, 'setup.admin.help', { prefix }),
+          t(lang, 'setup.admin.detailed', { prefix }),
+          ...(fallback ? [] : [t(lang, 'setup.admin.doNotShare')]),
+          t(lang, 'setup.admin.reports', { reportConfig }),
         ].join('\n')),
       )
       .setThumbnailAccessory(new ThumbnailBuilder().setURL(PETTO_IMAGE_URL)),
@@ -183,21 +175,19 @@ function buildAdminSetupMessage({ botId, setupMention, reportConfigMention, pref
   return { components: [intro, setup], flags: MessageFlags.IsComponentsV2 };
 }
 
-function buildOwnerGuide({ guild, setupChannel, setupMention, prefix }) {
+function buildOwnerGuide({ guild, setupChannel, setupMention, prefix, lang = currentLanguage() }) {
   const container = new ContainerBuilder()
     .setAccentColor(0x4b4f59)
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`${EMOJI.STAR} **Thanks for adding Petto to ${guild.name}!**`),
-      new TextDisplayBuilder().setContent(
-        `Run \`${prefix}help\` in the server to see every command, or set everything up from a browser instead with the dashboard.`,
-      ),
+      new TextDisplayBuilder().setContent(t(lang, 'core.join.thanks', { emoji: EMOJI.STAR, server: guild.name })),
+      new TextDisplayBuilder().setContent(t(lang, 'setup.owner.howToStart', { prefix })),
     );
 
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setLabel('Website').setStyle(ButtonStyle.Link).setURL('https://petto.sbs'),
-    new ButtonBuilder().setLabel('Dashboard').setStyle(ButtonStyle.Link).setURL('https://petto.sbs/dash'),
-    new ButtonBuilder().setLabel('Docs').setStyle(ButtonStyle.Link).setURL('https://wiki.petto.sbs'),
-    new ButtonBuilder().setLabel('Support server').setStyle(ButtonStyle.Link).setURL('https://petto.sbs/support'),
+    new ButtonBuilder().setLabel(t(lang, 'core.join.website.button')).setStyle(ButtonStyle.Link).setURL('https://petto.sbs'),
+    new ButtonBuilder().setLabel(t(lang, 'core.join.dashboard.button')).setStyle(ButtonStyle.Link).setURL('https://petto.sbs/dash'),
+    new ButtonBuilder().setLabel(t(lang, 'core.join.docs.button')).setStyle(ButtonStyle.Link).setURL('https://wiki.petto.sbs'),
+    new ButtonBuilder().setLabel(t(lang, 'core.join.support.button')).setStyle(ButtonStyle.Link).setURL('https://petto.sbs/support'),
   );
 
   return { components: [container, row], flags: MessageFlags.IsComponentsV2 };

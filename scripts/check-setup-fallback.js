@@ -25,4 +25,9 @@ const text = (payload) => JSON.stringify(payload.components.map((entry) => entry
 const options = { botId: '1', setupMention: '/setup', reportConfigMention: '/report config', prefix: '!' };
 assert.ok(text(buildAdminSetupMessage({ ...options, fallback: true })).includes('could not make its private setup channel'));
 assert.ok(!text(buildAdminSetupMessage(options)).includes('could not make'));
+// In Spanish the message is Spanish and names the commands with the prefix; /setup stays a slash command.
+const spanish = text(buildAdminSetupMessage({ ...options, setupMention: '</setup:1>', reportConfigMention: '</report config:1>', fallback: true, lang: 'es' }));
+assert.ok(spanish.includes('Petto no pudo crear su canal privado de configuración'));
+assert.ok(spanish.includes('</setup:1>') && spanish.includes('`!report config`') && !spanish.includes('</report config:1>'));
+assert.ok(text(buildAdminSetupMessage({ ...options, reportConfigMention: '</report config:1>' })).includes('</report config:1>'), 'English keeps the clickable mention');
 console.log('Checked the setup message fallback channels.');

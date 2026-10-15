@@ -22,6 +22,7 @@ const { infoPayload, noticePayload, clip } = require('../utils/infoCard');
 const { settle } = require('../utils/withTimeout');
 const { EMOJI } = require('../utils/emojis');
 const { COLORS } = require('../utils/colors');
+const { t, tn, currentLanguage, languageOf } = require('../i18n');
 
 const SETUP_QUICK_ID = 'setup:quick';
 const SETUP_REFRESH_ID = 'setup:refresh';
@@ -29,20 +30,21 @@ const SETUP_BUTTON_PREFIX = 'setup:';
 const SOURCE_TIMEOUT_MS = 2_200;
 const STATE_TTL_MS = 30_000;
 
-// What Petto needs in a server, and the feature that stops working without it.
+// What Petto needs in a server, and the feature that stops working without it: [name key, flag, reason key]. The names are the
+// shared core.perm.* ones, except two that this panel has always written differently in English.
 const PERMISSION_CHECKS = [
-  ['View Channels', PermissionFlagsBits.ViewChannel, 'everything'],
-  ['Send Messages', PermissionFlagsBits.SendMessages, 'every reply'],
-  ['Embed Links', PermissionFlagsBits.EmbedLinks, 'cards and previews'],
-  ['Manage Webhooks', PermissionFlagsBits.ManageWebhooks, 'audit logs'],
-  ['View Audit Log', PermissionFlagsBits.ViewAuditLog, 'audit logs'],
-  ['Manage Roles', PermissionFlagsBits.ManageRoles, 'mute and jail roles'],
-  ['Manage Channels', PermissionFlagsBits.ManageChannels, 'setup channel, jail, lockdown'],
-  ['Manage Messages', PermissionFlagsBits.ManageMessages, 'purge and automod'],
-  ['Kick Members', PermissionFlagsBits.KickMembers, 'kick and strict anti-raid'],
-  ['Ban Members', PermissionFlagsBits.BanMembers, 'bans'],
-  ['Moderate Members', PermissionFlagsBits.ModerateMembers, 'timeouts'],
-  ['Manage Server', PermissionFlagsBits.ManageGuild, 'official AutoMod'],
+  ['setup.perm.ViewChannel', PermissionFlagsBits.ViewChannel, 'setup.need.everything'],
+  ['core.perm.SendMessages', PermissionFlagsBits.SendMessages, 'setup.need.replies'],
+  ['core.perm.EmbedLinks', PermissionFlagsBits.EmbedLinks, 'setup.need.cards'],
+  ['core.perm.ManageWebhooks', PermissionFlagsBits.ManageWebhooks, 'setup.need.auditLogs'],
+  ['core.perm.ViewAuditLog', PermissionFlagsBits.ViewAuditLog, 'setup.need.auditLogs'],
+  ['core.perm.ManageRoles', PermissionFlagsBits.ManageRoles, 'setup.need.roles'],
+  ['core.perm.ManageChannels', PermissionFlagsBits.ManageChannels, 'setup.need.channels'],
+  ['core.perm.ManageMessages', PermissionFlagsBits.ManageMessages, 'setup.need.messages'],
+  ['core.perm.KickMembers', PermissionFlagsBits.KickMembers, 'setup.need.kick'],
+  ['core.perm.BanMembers', PermissionFlagsBits.BanMembers, 'setup.need.bans'],
+  ['setup.perm.ModerateMembers', PermissionFlagsBits.ModerateMembers, 'setup.need.timeouts'],
+  ['core.perm.ManageGuild', PermissionFlagsBits.ManageGuild, 'setup.need.automod'],
 ];
 
 const stateCache = new Map();
@@ -53,11 +55,11 @@ async function loadSetupState(guild, { fresh = false, timeoutMs = SOURCE_TIMEOUT
   if (!fresh && cached && Date.now() - cached.loadedAt < STATE_TTL_MS) return cached;
 
   const [guildRow, automod, logs, welcome, report] = await Promise.all([
-    settle(ensureGuild(guild.id), timeoutMs, 'guild settings'),
-    settle(getAutomodConfig(guild.id), timeoutMs, 'automod settings'),
-    settle(getLogConfig(guild.id), timeoutMs, 'log settings'),
-    settle(getMemberConfig(guild.id), timeoutMs, 'welcome settings'),
-    settle(getReportConfig(guild.id), timeoutMs, 'report settings'),
+    settle(ensureGuild(guild.id), timeoutMs, 'guild settings'), // i18n-ignore: internal timeout label
+    settle(getAutomodConfig(guild.id), timeoutMs, 'automod settings'), // i18n-ignore: internal timeout label
+    settle(getLogConfig(guild.id), timeoutMs, 'log settings'), // i18n-ignore: internal timeout label
+    settle(getMemberConfig(guild.id), timeoutMs, 'welcome settings'), // i18n-ignore: internal timeout label
+    settle(getReportConfig(guild.id), timeoutMs, 'report settings'), // i18n-ignore: internal timeout label
   ]);
 
   const state = {
@@ -84,7 +86,7 @@ function moderationMode(automod) {
   return automod.raid_action === 'kick' || automod.anti_alt_action === 'kick' ? 'strict' : 'balanced';
 }
 
-function checklist(state, guild) {
+function checklist(state, guild, lang) {
   const logChannels = [...new Set((state.logs?.entries ?? []).map((entry) => entry.channel_id))];
   const welcomeChannel = state.welcome?.welcome_channel_id;
   const automod = state.automod;
@@ -93,13 +95,17 @@ function checklist(state, guild) {
     : [];
   const setupChannel = state.guild?.setup_channel_id && guild.channels.cache.has(state.guild.setup_channel_id) ? state.guild.setup_channel_id : null;
 
+  const routes = () => tn(lang, 'setup.check.routes', state.logs.entries.length, {
+    count: state.logs.entries.length,
+    channels: `${logChannels.slice(0, 2).map((id) => `<#${id}>`).join(', ')}${logChannels.length > 2 ? ` +${logChannels.length - 2}` : ''}`,
+  });
   return [
-    { label: 'Prefix', done: Boolean(state.guild), detail: state.guild ? `\`${state.guild.prefix || '!'}\`` : 'could not load' },
-    { label: 'Audit logs', done: logChannels.length > 0, detail: logChannels.length ? `${state.logs.entries.length} routes in ${logChannels.slice(0, 2).map((id) => `<#${id}>`).join(', ')}${logChannels.length > 2 ? ` +${logChannels.length - 2}` : ''}` : 'not set up' },
-    { label: 'Welcome messages', done: Boolean(welcomeChannel), detail: welcomeChannel ? `<#${welcomeChannel}>` : 'not set up' },
-    { label: 'Moderation', done: protections.length > 0, detail: protections.length ? `${moderationMode(automod)} · ${protections.join(', ')}` : 'protections are off' },
-    { label: 'Reports', done: Boolean(state.report?.enabled && state.report.channel_id), detail: state.report?.enabled && state.report.channel_id ? `<#${state.report.channel_id}>` : 'run `/report config`' },
-    { label: 'Setup channel', done: Boolean(setupChannel), detail: setupChannel ? `<#${setupChannel}>` : 'not created' },
+    { label: t(lang, 'setup.check.prefix'), done: Boolean(state.guild), detail: state.guild ? `\`${state.guild.prefix || '!'}\`` : t(lang, 'setup.check.couldNotLoad') },
+    { label: t(lang, 'setup.check.logs'), done: logChannels.length > 0, detail: logChannels.length ? routes() : t(lang, 'setup.check.notSetUp') },
+    { label: t(lang, 'setup.check.welcome'), done: Boolean(welcomeChannel), detail: welcomeChannel ? `<#${welcomeChannel}>` : t(lang, 'setup.check.notSetUp') },
+    { label: t(lang, 'setup.check.moderation'), done: protections.length > 0, detail: protections.length ? `${t(lang, `setup.check.mode.${moderationMode(automod)}`)} · ${protections.join(', ')}` : t(lang, 'setup.check.protectionsOff') },
+    { label: t(lang, 'setup.check.reports'), done: Boolean(state.report?.enabled && state.report.channel_id), detail: state.report?.enabled && state.report.channel_id ? `<#${state.report.channel_id}>` : t(lang, 'setup.check.reportsHint') },
+    { label: t(lang, 'setup.check.setupChannel'), done: Boolean(setupChannel), detail: setupChannel ? `<#${setupChannel}>` : t(lang, 'setup.check.notCreated') },
   ];
 }
 
@@ -114,47 +120,47 @@ function progressBar(done, total) {
   return `${'▰'.repeat(done)}${'▱'.repeat(total - done)}`;
 }
 
-function buildSetupPanel(guild, state, { notice = null } = {}) {
-  const items = checklist(state, guild);
+function buildSetupPanel(guild, state, { notice = null, lang = currentLanguage() } = {}) {
+  const items = checklist(state, guild, lang);
   const done = items.filter((item) => item.done).length;
   const audit = permissionAudit(guild);
 
   const permissionLines = audit.missing.length
     ? [
-        `${EMOJI.WARNING} **Missing ${audit.missing.length}** ${audit.missing.length === 1 ? 'permission' : 'permissions'}:`,
-        ...audit.missing.map(([name, , reason]) => `> **${name}** · ${reason}`),
+        tn(lang, 'setup.panel.missing', audit.missing.length, { emoji: EMOJI.WARNING, count: audit.missing.length }),
+        ...audit.missing.map(([name, , reason]) => `> **${t(lang, name)}** · ${t(lang, reason)}`),
       ]
-    : [`${EMOJI.APPROVE} Petto has every permission it needs.`];
+    : [t(lang, 'setup.panel.allPermissions', { emoji: EMOJI.APPROVE })];
 
   const rows = [
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(SETUP_QUICK_ID).setLabel('Quick setup').setEmoji(EMOJI.RELEASE_ROCKET).setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId(SETUP_REFRESH_ID).setLabel('Refresh').setEmoji(EMOJI.RELEASE_RELOAD).setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(SETUP_QUICK_ID).setLabel(t(lang, 'setup.panel.quick.button')).setEmoji(EMOJI.RELEASE_ROCKET).setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(SETUP_REFRESH_ID).setLabel(t(lang, 'setup.panel.refresh.button')).setEmoji(EMOJI.RELEASE_RELOAD).setStyle(ButtonStyle.Secondary),
     ),
   ];
 
   return infoPayload({
     accent: done === items.length && !audit.missing.length ? COLORS.GREEN : audit.missing.length ? COLORS.YELLOW : 0x8c7cff,
-    title: `${EMOJI.RELEASE_SETTINGS} Petto setup`,
+    title: t(lang, 'setup.panel.title', { emoji: EMOJI.RELEASE_SETTINGS }),
     thumbnail: guild.iconURL({ size: 256 }),
     subtitle: [
       guild.name,
-      `${progressBar(done, items.length)}  **${done}/${items.length}** areas configured`,
-      state.unavailable ? `${EMOJI.WARNING} Some settings could not be loaded right now; press **Refresh** to try again.` : null,
+      t(lang, 'setup.panel.progress', { bar: progressBar(done, items.length), done, total: items.length }),
+      state.unavailable ? t(lang, 'setup.panel.unavailable', { emoji: EMOJI.WARNING }) : null,
       notice,
     ],
     sections: [
       {
-        title: 'Configuration',
+        title: t(lang, 'setup.panel.configuration'),
         lines: items.map((item) => `${item.done ? EMOJI.APPROVE : EMOJI.RELEASE_MINUS} **${item.label}** · ${item.detail}`),
       },
-      { title: 'Permissions', lines: permissionLines },
+      { title: t(lang, 'setup.panel.permissions'), lines: permissionLines },
     ],
-    footer: 'Quick setup opens one form with everything pre-filled from your current settings.',
+    footer: t(lang, 'setup.panel.footer'),
     rows,
     buttons: [
-      { label: 'Documentation', url: 'https://wiki.petto.sbs/overview/introduction' },
-      { label: 'Dashboard', url: 'https://petto.sbs/dash' },
+      { label: t(lang, 'setup.docs.button'), url: 'https://wiki.petto.sbs/overview/introduction' },
+      { label: t(lang, 'setup.dashboard.button'), url: 'https://petto.sbs/dash' },
     ],
   });
 }
@@ -164,7 +170,7 @@ function usableChannel(guild, id) {
 }
 
 /** The quick setup form, pre-filled from what the server already has so running it again never resets anything. */
-function buildSetupModal(guild, state) {
+function buildSetupModal(guild, state, lang = currentLanguage()) {
   const prefix = state.guild?.prefix || '!';
   const logChannelId = usableChannel(guild, state.logs?.entries?.[0]?.channel_id);
   const welcomeChannelId = usableChannel(guild, state.welcome?.welcome_channel_id);
@@ -195,55 +201,52 @@ function buildSetupModal(guild, state) {
     .setRequired(false);
   if (welcomeChannelId) welcomeSelect.setDefaultChannels(welcomeChannelId);
 
-  const feature = (label, value, description) => ({ label, value, description, default: selected.has(value) });
+  const feature = (key, value) => ({ label: t(lang, `setup.modal.feature.${key}.menu`), value, description: t(lang, `setup.modal.feature.${key}.description.menu`), default: selected.has(value) });
+  const modeOption = (value) => ({ label: t(lang, `setup.mode.${value}`), value, description: t(lang, `setup.modal.mode.${value}.menu`), default: mode === value });
 
   return new ModalBuilder()
     .setCustomId('petto_setup_modal')
-    .setTitle('Petto Setup')
+    .setTitle(t(lang, 'setup.modal.title'))
     .addLabelComponents(
       new LabelBuilder()
-        .setLabel('Log Channel')
-        .setDescription('Where Petto should send audit, moderation and automod logs.')
+        .setLabel(t(lang, 'setup.modal.logChannel'))
+        .setDescription(t(lang, 'setup.modal.logChannelHint'))
         .setChannelSelectMenuComponent(logSelect),
       new LabelBuilder()
-        .setLabel('Welcome Channel')
-        .setDescription('Where Petto should post the default member welcome message.')
+        .setLabel(t(lang, 'setup.modal.welcomeChannel'))
+        .setDescription(t(lang, 'setup.modal.welcomeChannelHint'))
         .setChannelSelectMenuComponent(welcomeSelect),
       new LabelBuilder()
-        .setLabel('Moderation Mode')
-        .setDescription('Choose the default level for local anti-spam and join protection.')
+        .setLabel(t(lang, 'setup.modal.moderationMode'))
+        .setDescription(t(lang, 'setup.modal.moderationModeHint'))
         .setRadioGroupComponent(
           new RadioGroupBuilder()
             .setCustomId('setup_moderation_mode')
             .setRequired(true)
-            .addOptions(
-              { label: 'Balanced', value: 'balanced', description: 'Warns first and alerts on suspicious joins.', default: mode === 'balanced' },
-              { label: 'Strict', value: 'strict', description: 'Enables automatic kicks for configured raid and alt checks.', default: mode === 'strict' },
-              { label: 'Disabled', value: 'disabled', description: 'Leaves automatic moderation protections off.', default: mode === 'disabled' },
-            ),
+            .addOptions(modeOption('balanced'), modeOption('strict'), modeOption('disabled')),
         ),
       new LabelBuilder()
-        .setLabel('Features')
-        .setDescription('Select the modules to enable during this setup.')
+        .setLabel(t(lang, 'setup.modal.features'))
+        .setDescription(t(lang, 'setup.modal.featuresHint'))
         .setStringSelectMenuComponent(
           new StringSelectMenuBuilder()
             .setCustomId('setup_features')
-            .setPlaceholder('Select features to enable')
+            .setPlaceholder(t(lang, 'setup.modal.features.placeholder.menu'))
             .setMinValues(0)
             .setMaxValues(6)
             .setRequired(false)
             .addOptions(
-              feature('Audit logs', 'logs', 'Route Petto event logs to the selected log channel.'),
-              feature('Welcome messages', 'welcome', 'Send a default message when members join.'),
-              feature('Anti-spam', 'anti-spam', 'Detect flooding, mass mentions and invite spam.'),
-              feature('Anti-raid', 'anti-raid', 'Detect bursts of new members joining.'),
-              feature('Anti-alt', 'anti-alt', 'Flag or kick very new accounts.'),
-              feature('Official Discord AutoMod', 'official-automod', 'Create Petto rules in Discord AutoMod; Manage Server is required.'),
+              feature('logs', 'logs'),
+              feature('welcome', 'welcome'),
+              feature('antiSpam', 'anti-spam'),
+              feature('antiRaid', 'anti-raid'),
+              feature('antiAlt', 'anti-alt'),
+              feature('officialAutomod', 'official-automod'),
             ),
         ),
       new LabelBuilder()
-        .setLabel('Command Prefix')
-        .setDescription('The prefix for Petto commands, up to five characters.')
+        .setLabel(t(lang, 'setup.modal.prefix'))
+        .setDescription(t(lang, 'setup.modal.prefixHint'))
         .setTextInputComponent(
           new TextInputBuilder()
             .setCustomId('setup_prefix')
@@ -257,22 +260,23 @@ function buildSetupModal(guild, state) {
 }
 
 async function handleSetupButton(interaction) {
+  const lang = await languageOf(interaction);
   if (!interaction.member?.permissions?.has(PermissionFlagsBits.ManageGuild)) {
-    await interaction.reply({ ...noticePayload('You need the **Manage Server** permission to use setup.', COLORS.RED), flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
+    await interaction.reply({ ...noticePayload(t(lang, 'setup.noPermission'), COLORS.RED), flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
     return true;
   }
 
   if (interaction.customId === SETUP_QUICK_ID) {
     // A modal has to open within three seconds of the click, so a slow database falls back to the defaults.
     const state = await loadSetupState(interaction.guild, { timeoutMs: 1_500 });
-    await interaction.showModal(buildSetupModal(interaction.guild, state));
+    await interaction.showModal(buildSetupModal(interaction.guild, state, lang));
     return true;
   }
 
   if (interaction.customId === SETUP_REFRESH_ID) {
     await interaction.deferUpdate();
     const state = await loadSetupState(interaction.guild, { fresh: true });
-    await interaction.editReply(buildSetupPanel(interaction.guild, state));
+    await interaction.editReply(buildSetupPanel(interaction.guild, state, { lang }));
     return true;
   }
 
