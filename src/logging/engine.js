@@ -1,6 +1,7 @@
 const { Routes, AuditLogEvent } = require('discord.js');
 const { EVENTS, getLogConfig, deleteWebhookById, removeEntries } = require('../db/logConfig');
 const logger = require('../utils/logger');
+const { t, currentLanguage, guildLanguage } = require('../i18n');
 const missingWebhookWarnings = new Map();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -26,14 +27,14 @@ function embedLength(embed) {
  * Logs are best-effort, so clamp every user/server-controlled embed value at
  * the Discord limit and keep the total embed below its 6,000-character limit.
  */
-function sanitizeEmbed(embed) {
+function sanitizeEmbed(embed, lang = currentLanguage()) {
   if (!embed || typeof embed !== 'object') return null;
 
   const safe = { ...embed };
   if (safe.title != null) safe.title = truncate(safe.title, 256);
   if (safe.description != null) safe.description = truncate(safe.description, 4096);
   if (safe.author) safe.author = { ...safe.author, name: truncate(safe.author.name || 'Petto', 256) };
-  if (safe.footer) safe.footer = { ...safe.footer, text: truncate(safe.footer.text || 'Petto log', 2048) };
+  if (safe.footer) safe.footer = { ...safe.footer, text: truncate(safe.footer.text || t(lang, 'logs.defaultFooter'), 2048) };
   if (Array.isArray(safe.fields)) {
     safe.fields = safe.fields.slice(0, 25).map((field) => ({
       ...field,
@@ -90,6 +91,7 @@ async function fetchEntry(guild, action, targetId, { maxAgeMs = 6000 } = {}) {
 
 /** `ManageMessages` -> `Manage Messages`. */
 function prettyPermission(name) {
+  // i18n-ignore: the English name of a permission flag; the other languages use `permissionName` (core.perm.*) instead.
   return String(name).replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^Use VAD$/i, 'Use Voice Activity');
 }
 
@@ -102,7 +104,7 @@ function prettyPermission(name) {
 async function sendLog(client, guildId, event, embed, { ignoreIds = [], files = [], components = [], v2 = null } = {}) {
   try {
     // `v2`: Components V2 containers sent instead of an embed (a message cannot hold both).
-    const safeEmbed = v2 ? null : sanitizeEmbed(embed);
+    const safeEmbed = v2 ? null : sanitizeEmbed(embed, await guildLanguage(guildId));
     if (!v2 && !safeEmbed) {
       logger.warn({ guildId, event, action: 'log-embed-sanitize' }, '[logEngine] Skipping invalid log embed.');
       return;
