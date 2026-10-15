@@ -3,6 +3,7 @@ const { getConfig } = require('../db/automod');
 const { sendLog } = require('../logging/engine');
 const { EMOJI } = require('../utils/emojis');
 const { applyAutomatedKick } = require('../utils/automodMemberAction');
+const logger = require('../utils/logger');
 const { t, tn, currentLanguage } = require('../i18n');
 
 module.exports = {
