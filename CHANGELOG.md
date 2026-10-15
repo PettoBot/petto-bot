@@ -22,6 +22,7 @@ All notable changes to Petto are documented here.
 
 ### Fixed
 
+- Messages and commands no longer wait for the database to know the language of a server. Before, the language of each server was looked up when a message arrived and kept 5 minutes, and the event handler waited for that lookup before running any handler: one database round trip per server every 5 minutes on the path of a message, and more load on the database. Now one query loads the language of every server that does not use English when the bot is ready, it is refreshed every 5 minutes in the background while the known values keep being used, `!language`, the dashboard and joining a server update it at once, and the language is read once per message. `node scripts/bench-i18n.js` measures it (`PETTO_ROOT=<checkout>` compares another commit).
 - A slow database could make Petto answer in English: after 1 second without the server's language it fell back to English and did not keep the late answer. It now uses the last language it knew for the server, and the late answer fills the cache for the next message.
 - Texts the database keeps with an English default are shown in the server's language while nobody changed them: backup labels (`Manual backup`, `Scheduled backup`), the ticket form title (`Ticket details`), the appeal thread name and the first panel and ticket type of the ticket setup wizard (`Support`, `General help`).
 - The anti-alt check logged its own failures with a `logger` it never required, so a failure (a database error) became a `ReferenceError` instead of a log line.
