@@ -2,6 +2,7 @@ const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('disc
 const autoMessagesDb = require('../../db/autoMessages');
 const { parseDuration, formatDuration } = require('../../utils/duration');
 const { textCard } = require('../../utils/caseCard');
+const { t, languageOf } = require('../../i18n');
 
 module.exports = {
   aliases: ['tm'],
@@ -16,37 +17,38 @@ module.exports = {
     .addSubcommand((s) => s.setName('list').setDescription('List this server’s timers.')),
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const sub = interaction.options.getSubcommand();
-    if (sub === 'add') return addTimer(interaction);
-    if (sub === 'remove') return removeTimer(interaction);
-    if (sub === 'view') return viewTimer(interaction);
+    if (sub === 'add') return addTimer(interaction, lang);
+    if (sub === 'remove') return removeTimer(interaction, lang);
+    if (sub === 'view') return viewTimer(interaction, lang);
     const rows = await autoMessagesDb.list(interaction.guild.id);
-    const body = rows.length ? rows.map(formatRow).join('\n') : 'No timers configured.';
+    const body = rows.length ? rows.map((row) => formatRow(row, lang)).join('\n') : t(lang, 'automation.timer.listEmpty');
     return interaction.reply({ components: [textCard(body, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
   },
 };
 
-function formatRow(row) {
-  return `**#${row.id}** <#${row.channel_id}> every **${formatDuration(row.interval_ms)}** · ${row.message}`;
+function formatRow(row, lang) {
+  return t(lang, 'automation.timer.row', { id: row.id, channel: `<#${row.channel_id}>`, interval: formatDuration(row.interval_ms, lang), message: row.message });
 }
 
-async function addTimer(interaction) {
+async function addTimer(interaction, lang) {
   const intervalMs = parseDuration(interaction.options.getString('interval', true));
-  if (!intervalMs || intervalMs < 10 * 60 * 1000) return interaction.reply({ content: 'The interval must be at least 10 minutes.', flags: MessageFlags.Ephemeral });
+  if (!intervalMs || intervalMs < 10 * 60 * 1000) return interaction.reply({ content: t(lang, 'automation.timer.tooShort'), flags: MessageFlags.Ephemeral });
   const channel = interaction.options.getChannel('channel', true);
-  if (!channel.isTextBased()) return interaction.reply({ content: 'Choose a text channel.', flags: MessageFlags.Ephemeral });
+  if (!channel.isTextBased()) return interaction.reply({ content: t(lang, 'automation.reaction.textChannel'), flags: MessageFlags.Ephemeral });
   const existing = (await autoMessagesDb.list(interaction.guild.id)).find((row) => row.channel_id === channel.id);
-  if (existing) return interaction.reply({ content: `That channel already has timer #${existing.id}. Remove it first.`, flags: MessageFlags.Ephemeral });
+  if (existing) return interaction.reply({ content: t(lang, 'automation.timer.exists', { id: existing.id }), flags: MessageFlags.Ephemeral });
   const row = await autoMessagesDb.add({ guildId: interaction.guild.id, channelId: channel.id, intervalMs, message: interaction.options.getString('message', true) });
-  return interaction.reply({ components: [textCard(`Timer #${row.id} created for <#${channel.id}> every **${formatDuration(intervalMs)}**.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  return interaction.reply({ components: [textCard(t(lang, 'automation.timer.created', { id: row.id, channel: `<#${channel.id}>`, interval: formatDuration(intervalMs, lang) }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
-async function removeTimer(interaction) {
+async function removeTimer(interaction, lang) {
   const removed = await autoMessagesDb.remove(interaction.guild.id, interaction.options.getInteger('id', true));
-  return interaction.reply({ components: [textCard(removed ? 'Timer removed.' : 'That timer does not exist.', removed ? 0xa5ea7a : 0xff6b6b)], flags: MessageFlags.IsComponentsV2 });
+  return interaction.reply({ components: [textCard(removed ? t(lang, 'automation.timer.removed') : t(lang, 'automation.timer.missing'), removed ? 0xa5ea7a : 0xff6b6b)], flags: MessageFlags.IsComponentsV2 });
 }
 
-async function viewTimer(interaction) {
+async function viewTimer(interaction, lang) {
   const row = await autoMessagesDb.get(interaction.guild.id, interaction.options.getInteger('id', true));
-  return interaction.reply({ components: [textCard(row ? formatRow(row) : 'That timer does not exist.', row ? 0x4b4f59 : 0xff6b6b)], flags: MessageFlags.IsComponentsV2 });
+  return interaction.reply({ components: [textCard(row ? formatRow(row, lang) : t(lang, 'automation.timer.missing'), row ? 0x4b4f59 : 0xff6b6b)], flags: MessageFlags.IsComponentsV2 });
 }

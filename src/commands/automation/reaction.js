@@ -5,6 +5,7 @@ const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { resolveChannels } = require('../../utils/channelResolve');
 const { resolveRoles } = require('../../utils/roleResolve');
+const { t, tn, languageOf } = require('../../i18n');
 
 const MODE_CHOICES = [
   { name: 'contains', value: 'contains' }, { name: 'starts with', value: 'startsWith' },
@@ -49,6 +50,7 @@ function reply(interaction, content, color = 0x4b4f59) {
 }
 
 async function addTrigger(interaction) {
+  const lang = await languageOf(interaction);
   await ensureGuild(interaction.guild.id);
   try {
     const channelInput = interaction.options.getString('channels');
@@ -56,13 +58,14 @@ async function addTrigger(interaction) {
     const channelIds = channelInput ? resolveChannels(interaction.guild, channelInput).resolved.map((channel) => channel.id) : [];
     const roleIds = roleInput ? resolveRoles(interaction.guild, roleInput).resolved.map((role) => role.id) : [];
     const row = await reactionDb.addTrigger({ guildId: interaction.guild.id, emoji: interaction.options.getString('emoji', true), trigger: interaction.options.getString('trigger', true), ownerId: interaction.user.id, matchMode: interaction.options.getString('mode') ?? 'contains', channelIds, roleIds, caseSensitive: interaction.options.getBoolean('case_sensitive') ?? false, cooldownSeconds: interaction.options.getInteger('cooldown_seconds') ?? 0 });
-    return reply(interaction, `${EMOJI.APPROVE}  Trigger **#${row.id}** added: ${row.emoji} reacts when a message matches **${row.trigger}**.`, 0xa5ea7a);
+    return reply(interaction, t(lang, 'automation.reaction.added', { emoji: EMOJI.APPROVE, id: row.id, reaction: row.emoji, trigger: row.trigger }), 0xa5ea7a);
   } catch (err) {
-    return reply(interaction, err.message ?? 'Could not create that trigger.', 0xfe6465);
+    return reply(interaction, err.message ?? t(lang, 'automation.reaction.createFailed'), 0xfe6465);
   }
 }
 
 async function editTrigger(interaction) {
+  const lang = await languageOf(interaction);
   const id = interaction.options.getString('id', true);
   const patch = {};
   const mode = interaction.options.getString('mode');
@@ -77,65 +80,73 @@ async function editTrigger(interaction) {
   if (caseSensitive != null) patch.case_sensitive = caseSensitive;
   if (cooldown != null) patch.cooldown_seconds = cooldown;
   if (enabled != null) patch.enabled = enabled;
-  if (!Object.keys(patch).length) return reply(interaction, 'Provide at least one setting to edit.', 0xfe6465);
+  if (!Object.keys(patch).length) return reply(interaction, t(lang, 'automation.reaction.needSetting'), 0xfe6465);
   const row = await reactionDb.updateTrigger(interaction.guild.id, id, patch);
-  return reply(interaction, row ? `${EMOJI.APPROVE}  Trigger **#${id}** updated.` : 'That trigger does not exist.', row ? 0xa5ea7a : 0xfe6465);
+  return reply(interaction, row ? t(lang, 'automation.reaction.updated', { emoji: EMOJI.APPROVE, id }) : t(lang, 'automation.reaction.missing'), row ? 0xa5ea7a : 0xfe6465);
 }
 
 async function owner(interaction) {
+  const lang = await languageOf(interaction);
   const row = await reactionDb.getOwner(interaction.guild.id, interaction.options.getString('trigger', true));
-  return reply(interaction, row ? `That trigger was created by <@${row.owner_id}>.` : 'No reaction trigger matches that phrase.');
+  return reply(interaction, row ? t(lang, 'automation.reaction.owner', { user: `<@${row.owner_id}>` }) : t(lang, 'automation.reaction.noMatch'));
 }
 
 async function removeTrigger(interaction) {
+  const lang = await languageOf(interaction);
   const removed = await reactionDb.removeTrigger(interaction.guild.id, interaction.options.getString('emoji', true), interaction.options.getString('trigger', true));
-  return reply(interaction, removed ? `${EMOJI.APPROVE}  Reaction trigger removed.` : 'That reaction trigger does not exist.', removed ? 0xa5ea7a : 0xfe6465);
+  return reply(interaction, removed ? t(lang, 'automation.reaction.removed', { emoji: EMOJI.APPROVE }) : t(lang, 'automation.reaction.removeMissing'), removed ? 0xa5ea7a : 0xfe6465);
 }
 
 async function removeAll(interaction) {
+  const lang = await languageOf(interaction);
   const count = await reactionDb.removeAllForTrigger(interaction.guild.id, interaction.options.getString('trigger', true));
-  return reply(interaction, count ? `${EMOJI.APPROVE}  Removed **${count}** reaction trigger(s).` : 'No reaction triggers match that phrase.', count ? 0xa5ea7a : 0x4b4f59);
+  return reply(interaction, count ? tn(lang, 'automation.reaction.removedMany', count, { count, emoji: EMOJI.APPROVE }) : t(lang, 'automation.reaction.noMatchAny'), count ? 0xa5ea7a : 0x4b4f59);
 }
 
 async function list(interaction) {
+  const lang = await languageOf(interaction);
   const rows = await reactionDb.listTriggers(interaction.guild.id);
-  const body = rows.length ? rows.map((row) => `${row.emoji}  **${row.trigger}** · #${row.id} · ${row.match_mode ?? 'contains'}${row.enabled === false ? ' · disabled' : ''}`).join('\n') : 'No reaction triggers configured.';
-  return reply(interaction, `**Reaction triggers (${rows.length})**\n${body}`);
+  const body = rows.length ? rows.map((row) => `${row.emoji}  **${row.trigger}** · #${row.id} · ${row.match_mode ?? 'contains'}${row.enabled === false ? ` · ${t(lang, 'automation.reaction.disabled')}` : ''}`).join('\n') : t(lang, 'automation.reaction.listEmpty');
+  return reply(interaction, `${t(lang, 'automation.reaction.listTitle', { count: rows.length })}\n${body}`);
 }
 
 async function reset(interaction) {
+  const lang = await languageOf(interaction);
   const count = await reactionDb.resetTriggers(interaction.guild.id);
-  return reply(interaction, count ? `${EMOJI.APPROVE}  Removed **${count}** reaction trigger(s).` : 'No reaction triggers to remove.', count ? 0xa5ea7a : 0x4b4f59);
+  return reply(interaction, count ? tn(lang, 'automation.reaction.removedMany', count, { count, emoji: EMOJI.APPROVE }) : t(lang, 'automation.reaction.resetEmpty'), count ? 0xa5ea7a : 0x4b4f59);
 }
 
 async function configureMessages(interaction) {
+  const lang = await languageOf(interaction);
   const emojis = ['emoji_1', 'emoji_2', 'emoji_3', 'emoji_4', 'emoji_5'].map((name) => interaction.options.getString(name)).filter(Boolean);
   const channel = interaction.options.getChannel('channel', true);
-  if (!channel.isTextBased()) return reply(interaction, 'Choose a text channel.', 0xfe6465);
-  if (emojis.length > reactionDb.MAX_EMOJIS_PER_CHANNEL) return reply(interaction, `You can configure up to ${reactionDb.MAX_EMOJIS_PER_CHANNEL} emojis per channel.`, 0xfe6465);
+  if (!channel.isTextBased()) return reply(interaction, t(lang, 'automation.reaction.textChannel'), 0xfe6465);
+  if (emojis.length > reactionDb.MAX_EMOJIS_PER_CHANNEL) return reply(interaction, t(lang, 'automation.reaction.tooManyEmojis', { max: reactionDb.MAX_EMOJIS_PER_CHANNEL }), 0xfe6465);
   await reactionDb.setMessageConfig({ guildId: interaction.guild.id, channelId: channel.id, emojis });
-  return reply(interaction, emojis.length ? `${EMOJI.APPROVE}  New messages in <#${channel.id}> will receive ${emojis.join(' ')}.` : `${EMOJI.APPROVE}  Automatic reactions disabled in <#${channel.id}>.`, 0xa5ea7a);
+  return reply(interaction, emojis.length ? t(lang, 'automation.reaction.messagesOn', { emoji: EMOJI.APPROVE, channel: `<#${channel.id}>`, emojis: emojis.join(' ') }) : t(lang, 'automation.reaction.messagesOff', { emoji: EMOJI.APPROVE, channel: `<#${channel.id}>` }), 0xa5ea7a);
 }
 
 async function listMessages(interaction) {
+  const lang = await languageOf(interaction);
   const rows = await reactionDb.listMessageConfigs(interaction.guild.id);
-  const body = rows.length ? rows.map((row) => `<#${row.channel_id}> · ${(row.emojis ?? []).join(' ')}`).join('\n') : 'No channels are configured for automatic reactions.';
-  return reply(interaction, `**Automatic reaction channels (${rows.length})**\n${body}`);
+  const body = rows.length ? rows.map((row) => `<#${row.channel_id}> · ${(row.emojis ?? []).join(' ')}`).join('\n') : t(lang, 'automation.reaction.messagesEmpty');
+  return reply(interaction, `${t(lang, 'automation.reaction.messagesTitle', { count: rows.length })}\n${body}`);
 }
 
 async function reactToMessage(interaction) {
+  const lang = await languageOf(interaction);
   const link = interaction.options.getString('message_link', true).trim();
   const emoji = interaction.options.getString('emoji', true).trim();
   const match = link.match(/\/channels\/(\d+)\/(\d+)\/(\d+)/);
-  if (!match || match[1] !== interaction.guild.id) return reply(interaction, 'Provide a message link from this server.', 0xfe6465);
+  if (!match || match[1] !== interaction.guild.id) return reply(interaction, t(lang, 'automation.reaction.badLink'), 0xfe6465);
   const channel = await interaction.guild.channels.fetch(match[2]).catch(() => null);
-  if (!channel?.isTextBased()) return reply(interaction, 'I could not access that text channel.', 0xfe6465);
+  if (!channel?.isTextBased()) return reply(interaction, t(lang, 'automation.reaction.noChannel'), 0xfe6465);
   const message = await channel.messages.fetch(match[3]).catch(() => null);
-  if (!message) return reply(interaction, 'I could not find that message.', 0xfe6465);
+  if (!message) return reply(interaction, t(lang, 'automation.reaction.noMessage'), 0xfe6465);
   try {
     await message.react(emoji);
-    return reply(interaction, `${EMOJI.APPROVE}  Reacted to the message with ${emoji}.`, 0xa5ea7a);
+    return reply(interaction, t(lang, 'automation.reaction.reacted', { emoji: EMOJI.APPROVE, reaction: emoji }), 0xa5ea7a);
   } catch {
-    return reply(interaction, 'I could not use that emoji in the target channel.', 0xfe6465);
+    return reply(interaction, t(lang, 'automation.reaction.badEmoji'), 0xfe6465);
   }
 }

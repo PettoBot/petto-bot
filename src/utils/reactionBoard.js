@@ -4,6 +4,7 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const logger = require('./logger');
 const { templatePayload } = require('./templatedMessage');
+const { t, currentLanguage } = require('../i18n');
 
 // Messages being synced, per board, so two reactions at once do not post the same message twice.
 const busyByBoard = new WeakMap();
@@ -40,7 +41,9 @@ async function syncBoard(reaction, board) {
       return;
     }
 
-    const payload = await buildCustomPayload(message, row, count, board.variable) ?? buildPayload(message, row, count);
+    // Run from the reaction events, so the language of the server is the current one.
+    const lang = currentLanguage();
+    const payload = await buildCustomPayload(message, row, count, board.variable, lang) ?? buildPayload(message, row, count, lang);
     if (entry) {
       const repost = await destination.messages.fetch(entry.starboard_message_id).catch(() => null);
       if (repost) {
@@ -57,7 +60,7 @@ async function syncBoard(reaction, board) {
 }
 
 // A saved embed chosen in the dashboard replaces the usual repost; a missing or broken one falls back to it.
-async function buildCustomPayload(message, row, count, variable = 'star') {
+async function buildCustomPayload(message, row, count, variable = 'star', lang = currentLanguage()) {
   if (!row.embed_template) return null;
   const files = [...message.attachments.values()];
   const image = files.find((file) => file.contentType?.startsWith('image/'));
@@ -69,7 +72,7 @@ async function buildCustomPayload(message, row, count, variable = 'star') {
     channelName: message.channel.name,
     link: message.url,
     messageId: message.id,
-    author: { id: message.author?.id, name: message.author?.username ?? 'Unknown user', avatar: message.author?.displayAvatarURL?.() },
+    author: { id: message.author?.id, name: message.author?.username ?? t(lang, 'automation.board.unknownUser'), avatar: message.author?.displayAvatarURL?.() },
     content: message.content,
     image: image?.url ?? '',
     attachments: links.join('\n'),
@@ -81,20 +84,20 @@ async function buildCustomPayload(message, row, count, variable = 'star') {
 }
 
 // The usual repost: "⭐ 3 | #channel" over the original message (author, text, picture and date), and a button to go to it.
-function buildPayload(message, row, count) {
+function buildPayload(message, row, count, lang = currentLanguage()) {
   const embed = new EmbedBuilder().setColor(row.color ?? 0xffc107)
-    .setAuthor({ name: message.member?.displayName ?? message.author?.globalName ?? message.author?.username ?? 'Unknown user', iconURL: message.member?.displayAvatarURL?.() ?? message.author?.displayAvatarURL?.() })
+    .setAuthor({ name: message.member?.displayName ?? message.author?.globalName ?? message.author?.username ?? t(lang, 'automation.board.unknownUser'), iconURL: message.member?.displayAvatarURL?.() ?? message.author?.displayAvatarURL?.() })
     .setDescription(message.content || null);
   if (row.timestamp !== false) embed.setTimestamp(message.createdAt);
   const files = [...message.attachments.values()];
   const image = row.attachments !== false ? files.find((file) => file.contentType?.startsWith('image/')) : null;
   if (image) embed.setImage(image.url);
   const links = row.attachments !== false ? files.filter((file) => file !== image).map((file) => `[${file.name}](${file.url})`) : [];
-  if (links.length) embed.addFields({ name: 'Attachments', value: links.join('\n').slice(0, 1024) });
-  if (!message.content && !image && !links.length) embed.setDescription('*No text content*');
+  if (links.length) embed.addFields({ name: t(lang, 'automation.board.attachments'), value: links.join('\n').slice(0, 1024) });
+  if (!message.content && !image && !links.length) embed.setDescription(t(lang, 'automation.board.noText'));
   const payload = { content: `${row.emoji} **${count}** | ${message.channel}`, embeds: [embed], allowedMentions: { parse: [] } };
   if (row.jumpurl !== false) {
-    payload.components = [new ActionRowBuilder().addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Original Message').setURL(message.url))];
+    payload.components = [new ActionRowBuilder().addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel(t(lang, 'automation.board.original.button')).setURL(message.url))];
   }
   return payload;
 }

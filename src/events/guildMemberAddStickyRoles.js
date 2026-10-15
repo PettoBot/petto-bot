@@ -2,6 +2,7 @@ const { Events } = require('discord.js');
 const stickyRolesDb = require('../db/stickyRoles');
 const identityDb = require('../db/identity');
 const logger = require('../utils/logger');
+const { t, currentLanguage } = require('../i18n');
 
 const MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
 
@@ -29,7 +30,7 @@ module.exports = {
       });
       if (assignable.length === 0) return;
 
-      await member.roles.add(assignable, 'Sticky roles: restored on rejoin').catch((err) => {
+      await member.roles.add(assignable, t(currentLanguage(), 'automation.stickyroles.auditReason')).catch((err) => {
         logger.warn(`Sticky roles restore couldn't apply roles for ${member.id} in guild ${member.guild.id}:`, err.message);
       });
     } catch (err) {

@@ -1,6 +1,7 @@
 const { Events } = require('discord.js');
 const rrDb = require('../db/reactionRoles');
 const logger = require('../utils/logger');
+const { t, currentLanguage } = require('../i18n');
 
 module.exports = {
   name: Events.MessageReactionRemove,
@@ -15,7 +16,7 @@ module.exports = {
       const member = await reaction.message.guild.members.fetch(user.id).catch(() => null);
       if (!member) return;
 
-      await member.roles.remove(row.role_id, 'Reaction role (un-reacted)').catch(() => {});
+      await member.roles.remove(row.role_id, t(currentLanguage(), 'automation.reactionrole.auditReasonRemoved')).catch(() => {});
     } catch (err) {
       logger.error('Reaction role remove failed:', err);
     }

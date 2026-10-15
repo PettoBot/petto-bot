@@ -7,6 +7,7 @@ const { applyReactReplies } = require('../../utils/messageFlags');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
+const { t, languageOf } = require('../../i18n');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -35,20 +36,21 @@ module.exports = {
 };
 
 async function setCmd(interaction) {
+  const lang = await languageOf(interaction);
   const channel = interaction.options.getChannel('channel', true);
   const rawContent = interaction.options.getString('content', true);
   const templateName = (interaction.options.getString('template') ?? '').trim();
   const content = rawContent.trim() === '-' && templateName ? '' : rawContent.replaceAll('{newline}', '\n').replaceAll('{separator}', '──────────────────────');
 
   if (!interaction.guild.members.me.permissions.has(PermissionFlagsBits.SendMessages)) {
-    await interaction.reply({ content: 'I need permission to send messages in that channel.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'automation.sticky.needPermission'), flags: MessageFlags.Ephemeral });
     return;
   }
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
   if (templateName && !(await getTemplate(interaction.guild.id, templateName).catch(() => null))?.data) {
-    await interaction.editReply({ components: [textCard(`There is no saved embed called \`${templateName}\`.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'automation.sticky.templateMissing', { name: templateName }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -71,16 +73,17 @@ async function setCmd(interaction) {
     if (payload?.reactions?.length) await applyReactReplies(sent, payload.reactions);
   }
 
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Sticky message set in ${channel}.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'automation.sticky.set', { emoji: EMOJI.APPROVE, channel: `${channel}` }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function removeCmd(interaction) {
+  const lang = await languageOf(interaction);
   const channel = interaction.options.getChannel('channel', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const existing = await stickyDb.getSticky(interaction.guild.id, channel.id);
   if (!existing) {
-    await interaction.editReply({ components: [textCard(`No sticky message in ${channel}.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'automation.sticky.none', { channel: `${channel}` }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -90,13 +93,14 @@ async function removeCmd(interaction) {
   }
   await stickyDb.removeSticky(interaction.guild.id, channel.id);
 
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Sticky message removed from ${channel}.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'automation.sticky.removed', { emoji: EMOJI.APPROVE, channel: `${channel}` }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function listCmd(interaction) {
+  const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const list = await stickyDb.listForGuild(interaction.guild.id);
-  const text = list.length ? list.map((s) => `<#${s.channel_id}> — ${s.embed_template ? `embed \`${s.embed_template}\`` : `${s.content.slice(0, 60)}${s.content.length > 60 ? '…' : ''}`}`).join('\n') : 'No sticky messages configured.';
+  const text = list.length ? list.map((s) => `<#${s.channel_id}> — ${s.embed_template ? t(lang, 'automation.sticky.embed', { name: s.embed_template }) : `${s.content.slice(0, 60)}${s.content.length > 60 ? '…' : ''}`}`).join('\n') : t(lang, 'automation.sticky.listEmpty');
   await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
