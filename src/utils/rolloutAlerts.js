@@ -11,6 +11,7 @@ const { rolloutMessage, buildRolloutDigest } = require('./rolloutMessages');
 const logger = require('./logger');
 const config = require('../config');
 const { forEachWithConcurrency } = require('./concurrency');
+const { guildLanguage } = require('../i18n');
 
 const MAX_QUEUED_PER_SERVER = 1_500; // beyond this the oldest news is not worth waiting for
 const DIGEST_FROM = 4; // this many waiting at once go out together as cards of several changes
@@ -88,13 +89,15 @@ async function drainQueue(client, deps = {}) {
     const target = await channelOf(client, settings);
     if (!target) { await db.removeQueued(waiting.map((row) => row.id)); result.dropped += waiting.length; return; } // the channel is gone: nothing can be sent
 
+    // The queue is emptied on a timer, outside of any server: each message is written in the language of its server.
+    const lang = await guildLanguage(guildId);
     const asDigest = waiting.length >= DIGEST_FROM;
     const batch = asDigest ? waiting : waiting.slice(0, 1);
     try {
       const events = batch.map((row) => row.event);
       const payload = asDigest
-        ? buildRolloutDigest(events, settings, { rolePing: settings.role_id ? `<@&${settings.role_id}>` : null })
-        : await rolloutMessage(target.guild, settings, events[0]);
+        ? buildRolloutDigest(events, settings, { rolePing: settings.role_id ? `<@&${settings.role_id}>` : null, lang })
+        : await rolloutMessage(target.guild, settings, events[0], lang);
       await sendAs(target.channel, 'rollouts', payload);
       await db.removeQueued(batch.map((row) => row.id));
       result.messages += 1;
