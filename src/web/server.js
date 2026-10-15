@@ -472,7 +472,9 @@ function startServer(client) {
         if (sameQuestion.length >= (question.max_files ?? 3) || await filesDb.countLoose(access.guild.id, access.user.id) >= MAX_LOOSE) { res.status(409).json({ ok: false, error: 'too_many_files' }); return; }
         let prepared;
         try {
-          prepared = await prepareFile(Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0), { accept: question.accept, name: String(req.query.name || 'file') });
+          // The body is bytes only when it came as raw bytes; it is copied, so what the checks read is a Buffer and nothing else.
+          const upload = Buffer.isBuffer(req.body) ? Buffer.from(req.body) : Buffer.alloc(0);
+          prepared = await prepareFile(upload, { accept: question.accept, name: String(req.query.name || 'file') });
         } catch (err) {
           const code = { too_big: 413, unsupported: 415 }[err.message] ?? 400;
           res.status(code).json({ ok: false, error: ['too_big', 'unsupported'].includes(err.message) ? err.message : 'unreadable' }); // i18n-ignore: an error code for the website
