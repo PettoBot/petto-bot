@@ -2,7 +2,8 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
-const { LANGUAGES, LANGUAGE_NAMES, t, normalizeLanguage, languageOf, setGuildLanguage } = require('../../i18n');
+const { LANGUAGES, LANGUAGE_NAMES, t, tn, normalizeLanguage, languageOf, setGuildLanguage } = require('../../i18n');
+const { refreshGuildPanels } = require('../../utils/panelRefresh');
 
 // The language names stay in their own language, so a member who cannot read the current one still finds theirs.
 const languageList = () => LANGUAGES.map((code) => `${LANGUAGE_NAMES[code]} (\`${code}\`)`).join(' · ');
@@ -11,13 +12,16 @@ const languageList = () => LANGUAGES.map((code) => `${LANGUAGE_NAMES[code]} (\`$
 function buildCurrentCard(lang, prefix) {
   return textCard([
     t(lang, 'config.language.current', { language: LANGUAGE_NAMES[lang], command: `${prefix}language <${LANGUAGES.join('|')}>` }),
+    t(lang, 'config.language.redrawHint', { command: `${prefix}language ${lang}` }),
     t(lang, 'config.language.available', { list: languageList() }),
   ].join('\n'), 0x4b4f59);
 }
 
-/** The answer after a change, already in the new language. */
-function buildDoneCard(lang) {
-  return textCard(t(lang, 'config.language.set', { emoji: EMOJI.APPROVE, language: LANGUAGE_NAMES[lang] }), 0xa5ea7a);
+/** The answer after a change, already in the new language, with how many standing messages of Petto were redrawn in it. */
+function buildDoneCard(lang, redrawn = 0) {
+  const lines = [t(lang, 'config.language.set', { emoji: EMOJI.APPROVE, language: LANGUAGE_NAMES[lang] })];
+  if (redrawn > 0) lines.push(tn(lang, 'config.language.redrawn', redrawn));
+  return textCard(lines.join('\n'), 0xa5ea7a);
 }
 
 /** `es`, `set es`, `español`, `pt` -> the language code, or null. */
@@ -61,6 +65,9 @@ module.exports = {
 
     await setGuildLanguage(interaction.guild.id, lang);
     interaction.pettoLang = lang;
-    await interaction.reply({ components: [buildDoneCard(lang)], flags: MessageFlags.IsComponentsV2 });
+    // The panels Petto already posted (VoiceMaster, tickets, verification…) keep the words they were posted with: they are redrawn
+    // now. Setting the same language again is the way to redraw panels posted before this server chose it.
+    const redrawn = await refreshGuildPanels(interaction.guild, lang);
+    await interaction.reply({ components: [buildDoneCard(lang, redrawn.total)], flags: MessageFlags.IsComponentsV2 });
   },
 };

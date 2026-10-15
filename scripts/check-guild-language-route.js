@@ -42,7 +42,8 @@ function call(port, body, headers = { 'x-petto-dashboard-key': KEY }) {
   const app = express();
   app.use(express.json());
   let limited = 0;
-  registerGuildLanguageRoute(app, { isAuthorized: (req) => req.get('x-petto-dashboard-key') === KEY, limiter: (req, res, next) => { limited += 1; next(); } });
+  const changes = [];
+  registerGuildLanguageRoute(app, { isAuthorized: (req) => req.get('x-petto-dashboard-key') === KEY, limiter: (req, res, next) => { limited += 1; next(); }, onChange: async (guildId, language) => { changes.push([guildId, language]); throw new Error('a panel could not be edited'); } });
   const server = app.listen(0);
   await new Promise((resolve) => server.once('listening', resolve));
   const { port } = server.address();
@@ -73,6 +74,7 @@ function call(port, body, headers = { 'x-petto-dashboard-key': KEY }) {
       assert.deepEqual(res.json.languages, ['en', 'es', 'pt-BR']);
     }
     assert.equal(await guildLanguage(GUILD), 'en', 'a refused request leaves the language as it was');
+    assert.deepEqual(changes, [], 'and redraws nothing');
 
     // The dashboard saved Spanish and tells the bot: the next command is already in Spanish, without reading the database.
     saved.set(GUILD, 'es');
@@ -82,6 +84,8 @@ function call(port, body, headers = { 'x-petto-dashboard-key': KEY }) {
     const readsBefore = reads;
     assert.equal(await guildLanguage(GUILD), 'es', 'used at once, not after 5 minutes');
     assert.equal(reads, readsBefore, 'from the cache the route refreshed');
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(changes, [[GUILD, 'es']], 'then the panels of that server are redrawn (a failure there does not touch the answer)');
 
     res = await call(port, { guildId: GUILD, language: 'pt-BR' });
     assert.equal(res.status, 200);
@@ -97,7 +101,9 @@ function call(port, body, headers = { 'x-petto-dashboard-key': KEY }) {
 
   // The bot's web server mounts it behind the same dashboard key check as the other dashboard routes.
   const source = fs.readFileSync(path.join(__dirname, '../src/web/server.js'), 'utf8');
-  assert.match(source, /registerGuildLanguageRoute\(app, \{ isAuthorized: dashboardAuthorized, limiter: \w+ \}\)/);
+  const registration = source.slice(source.indexOf('registerGuildLanguageRoute(app'), source.indexOf('registerGuildLanguageRoute(app') + 400);
+  assert.match(registration, /isAuthorized: dashboardAuthorized,/);
+  assert.match(registration, /onChange: \(guildId, language\) => refreshGuildPanels\(client\.guilds\.cache\.get\(guildId\), language\)/);
   assert.ok(source.indexOf('registerGuildLanguageRoute(app') > source.indexOf('if (dashboardEnabled) {'), 'only when the dashboard API is on');
   console.log('Checked the dashboard language route.');
 })().catch((err) => {

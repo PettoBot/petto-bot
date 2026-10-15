@@ -29,6 +29,7 @@ const { registerCodeRoutes } = require('./codeRoutes');
 const { registerIdentityRoutes } = require('./identityRoutes');
 const { registerMemberRoutes } = require('./memberRoutes');
 const { registerGuildLanguageRoute } = require('./languageRoutes');
+const { refreshGuildPanels } = require('../utils/panelRefresh');
 const { registerPublicLeaderboardRoute } = require('./publicLeaderboard');
 const { listVariables } = require('../utils/embedVariableRegistry');
 const { renderPollRequest } = require('../utils/pollApi');
@@ -626,7 +627,12 @@ function startServer(client) {
     registerPublicLeaderboardRoute(app, { isAuthorized: dashboardAuthorized, limiter: dashboardDatabaseRateLimiter, client });
 
     // The dashboard saved a new language for a server: use it at once (the bot caches each server's language for 5 minutes).
-    registerGuildLanguageRoute(app, { isAuthorized: dashboardAuthorized, limiter: dashboardPrefixRateLimiter });
+    registerGuildLanguageRoute(app, {
+      isAuthorized: dashboardAuthorized,
+      limiter: dashboardPrefixRateLimiter,
+      // The panels Petto posted there (VoiceMaster, tickets, verification…) are redrawn in the new language, after the answer.
+      onChange: (guildId, language) => refreshGuildPanels(client.guilds.cache.get(guildId), language),
+    });
 
     app.post('/api/dashboard/guild/:guildId/prefix', dashboardPrefixRateLimiter, async (req, res) => {
       if (!dashboardAuthorized(req)) {

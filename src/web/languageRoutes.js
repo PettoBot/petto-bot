@@ -1,9 +1,10 @@
 // POST /internal/guild-language with `{ "guildId": "<server id>", "language": "en" | "es" | "pt-BR" }`: the dashboard saves
 // `guilds.language` itself, then tells the bot so the new language is used at once instead of when the 5 minute cache runs out.
-// Protected like the other dashboard routes, with the `x-petto-dashboard-key` header. It only refreshes the cache; it writes nothing.
+// Protected like the other dashboard routes, with the `x-petto-dashboard-key` header. It writes nothing to the database: it refreshes
+// the cache, then `onChange` (the bot redraws the panels it posted in that server, see src/utils/panelRefresh.js) runs after the answer.
 const { LANGUAGES, setCachedGuildLanguage } = require('../i18n');
 
-function registerGuildLanguageRoute(app, { isAuthorized, limiter }) {
+function registerGuildLanguageRoute(app, { isAuthorized, limiter, onChange = null }) {
   const middleware = limiter ? [limiter] : [];
   app.post('/internal/guild-language', ...middleware, (req, res) => {
     if (!isAuthorized(req)) {
@@ -23,6 +24,7 @@ function registerGuildLanguageRoute(app, { isAuthorized, limiter }) {
     }
     setCachedGuildLanguage(guildId, language);
     res.json({ ok: true, guildId, language });
+    if (onChange) Promise.resolve().then(() => onChange(guildId, language)).catch(() => {});
   });
 }
 
