@@ -179,7 +179,7 @@ module.exports = {
   'cmd.utility.rank.opt.type.desc': 'Qual sistema de níveis ver',
   'cmd.utility.remind.desc': 'Crie um lembrete pessoal.',
   'cmd.utility.remind.add.desc': 'Peça ao Petto para lembrar você de algo mais tarde, ex.: remind add 2h água.',
-  'cmd.utility.remind.add.opt.duration.desc': 'Uma duração ou um momento: 10m, 3d 4h, tomorrow 8pm, 2026-10-12 18:00',
+  'cmd.utility.remind.add.opt.duration.desc': 'Uma duração ou um momento: 10m, 3d 4h, amanhã 20:00, 2026-10-12 18:00',
   'cmd.utility.remind.add.opt.message.desc': 'Do que lembrar você',
   'cmd.utility.remind.list.desc': 'Liste seus lembretes ativos.',
   'cmd.utility.remind.cancel.desc': 'Cancele um lembrete.',
