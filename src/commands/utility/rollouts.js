@@ -11,6 +11,7 @@ const { register, buildPage } = require('../../utils/pager');
 const { canUseRollouts } = require('../../utils/rolloutAlerts');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { t, tn, languageOf } = require('../../i18n');
 
 const LIST_PER_PAGE = 10;
 const LIST_MAX_PAGES = 10;
@@ -24,14 +25,14 @@ const rolloutMonth = (entry) => {
 // The list of experiments, the newest first, ten to a page and at most ten pages.
 register('rollouts', {
   perPage: LIST_PER_PAGE,
-  async load() {
+  async load(guild, { lang }) {
     const list = (await rolloutApi.fetchRollouts({ force: false })).list;
     // The list is already from the newest to the oldest; the month only puts the ones with no date at the end, and the sort is stable.
     const items = [...list].sort((a, b) => rolloutMonth(b) - rolloutMonth(a)).slice(0, LIST_PER_PAGE * LIST_MAX_PAGES).map((entry) => {
       const share = entry.percent != null ? ` · ${Number(entry.percent.toFixed(2))}%` : '';
-      return `- **${entry.title}**${share} · ${rolloutApi.STATUS_LABELS[entry.status ?? 'none'] ?? entry.status}\n  -# \`${entry.id}\``;
+      return `- **${entry.title}**${share} · ${rolloutApi.statusLabel(entry.status, lang)}\n  -# \`${entry.id}\``;
     });
-    return { items, title: 'Rollouts, newest first', subtitle: ['Discord experiments, from the most recent to the oldest.'], empty: 'The list has nothing to show right now.' };
+    return { items, title: t(lang, 'rollouts.list.title'), subtitle: [t(lang, 'rollouts.list.subtitle')], empty: t(lang, 'rollouts.list.empty') };
   },
 });
 
@@ -39,23 +40,8 @@ const textChannels = [ChannelType.GuildText, ChannelType.GuildAnnouncement];
 
 const EVENT_KINDS = ['new', 'increase', 'decrease', 'status'];
 
-const HELP = [
-  '## Rollout alerts',
-  'A message in a channel when a Discord experiment appears, its rollout grows or shrinks, or its status changes. Many changes at once are sent in order, a few cards at a time.',
-  '**Set it up**',
-  '- `!rollouts enable #channel [@role]` turns it on. `!rollouts disable` turns it off.',
-  '- `!rollouts role [@role]` changes the role that is pinged, or none.',
-  '**Choose what you get**',
-  `- \`!rollouts kinds user guild\` only some experiments (${rolloutApi.KINDS.join(', ')}). \`!rollouts kinds all\` for every one.`,
-  `- \`!rollouts events new increase\` only some events (${EVENT_KINDS.join(', ')}).`,
-  '- `!rollouts min 5` ignores changes smaller than 5 points. `!rollouts unrolled on` also announces experiments with no rollout yet.',
-  '**Make it yours**',
-  '- `!rollouts style card` or `!rollouts style template <saved embed>`. `!rollouts card hide|show <section>` and `!rollouts color #ff91c2` change the card.',
-  '- The dashboard has everything in one page, with a preview and a different saved embed for each kind.',
-  '**Check it**',
-  '- `!rollouts test` sends an example here. `!rollouts list` shows the experiments from the newest to the oldest, ten to a page.',
-  '- `!rollouts queue` shows what is waiting to be sent. `!rollouts status` shows your settings.',
-].join('\n');
+/** The help card of the rollout alerts, in `lang`. */
+const helpText = (lang) => t(lang, 'rollouts.help', { kinds: rolloutApi.KINDS.join(', '), events: EVENT_KINDS.join(', ') });
 
 /** A list typed as `user, guild` (or `all`) as the values it may hold, or null when one of them is not valid. */
 function readList(text, allowed) {
@@ -91,6 +77,7 @@ module.exports = {
       .addStringOption((o) => o.setName('value').setDescription('on or off').setRequired(true).addChoices({ name: 'on', value: 'on' }, { name: 'off', value: 'off' })))
     .addSubcommand((s) => s.setName('card').setDescription('Choose what the card shows.')
       .addStringOption((o) => o.setName('action').setDescription('hide, show or reset').setRequired(true).addChoices({ name: 'hide', value: 'hide' }, { name: 'show', value: 'show' }, { name: 'reset', value: 'reset' }))
+      // i18n-ignore: builder description (translated in the cmd catalogs)
       .addStringOption((o) => o.setName('section').setDescription(`One of: ${SECTIONS.join(', ')}`).setRequired(false)))
     .addSubcommand((s) => s.setName('color').setDescription('Color of the card, as hex, or empty to use the color of each event.')
       .addStringOption((o) => o.setName('hex').setDescription('For example #ff91c2').setRequired(false)))
@@ -102,12 +89,14 @@ module.exports = {
     .addSubcommand((s) => s.setName('status').setDescription('Show the settings, the queue and the state of the list.')),
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const reply = (text) => interaction.editReply({ components: [textCard(text, null)], flags: MessageFlags.IsComponentsV2 });
+    const done = (key, vars) => reply(`${EMOJI.APPROVE}  ${t(lang, key, vars)}`);
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
-    if (!canUseRollouts(interaction.user.id)) return reply(`${EMOJI.DENY}  Rollout alerts are only available to Petto's team and testers for now.`);
+    if (!canUseRollouts(interaction.user.id)) return reply(`${EMOJI.DENY}  ${t(lang, 'rollouts.testing')}`);
     const sub = interaction.options.getSubcommand();
     if (!['list', 'help'].includes(sub) && !interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-      return reply(`${EMOJI.DENY}  You need the Manage Server permission to change the rollout alerts. Anyone can use \`rollouts list\` and \`rollouts help\`.`);
+      return reply(`${EMOJI.DENY}  ${t(lang, 'rollouts.command.needsManageServer')}`);
     }
     await ensureGuild(interaction.guild.id);
     const guildId = interaction.guild.id;
@@ -118,89 +107,93 @@ module.exports = {
       const channel = interaction.options.getChannel('channel', true);
       const role = interaction.options.getRole('role');
       await save({ enabled: true, channel_id: channel.id, ...(role ? { role_id: role.id } : {}) });
-      return reply(`${EMOJI.APPROVE}  Rollout alerts will be sent in ${channel}${role ? ` and will ping ${role}` : ''}. The first check only remembers what exists, so you will hear about the next change. Try \`!rollouts test\` to see how it looks, or \`!rollouts help\` for everything you can set.`);
+      return done(role ? 'rollouts.command.enabledRole' : 'rollouts.command.enabled', { channel: `${channel}`, role: `${role}` });
     }
-    if (sub === 'disable') { await save({ enabled: false }); return reply(`${EMOJI.APPROVE}  Rollout alerts are off.`); }
+    if (sub === 'disable') { await save({ enabled: false }); return done('rollouts.command.disabled'); }
     if (sub === 'role') {
       const role = interaction.options.getRole('role');
       await save({ role_id: role?.id ?? null });
-      return reply(`${EMOJI.APPROVE}  ${role ? `Alerts will ping ${role}.` : 'Alerts will not ping a role.'}`);
+      return done(role ? 'rollouts.command.role' : 'rollouts.command.noRole', { role: `${role}` });
     }
     if (sub === 'style') {
       const style = String(interaction.options.getString('style', true)).trim().toLowerCase();
-      if (style === 'card') { await save({ style: 'card' }); return reply(`${EMOJI.APPROVE}  Alerts use the card.`); }
+      if (style === 'card') { await save({ style: 'card' }); return done('rollouts.style.card'); }
       const name = String(interaction.options.getString('template') ?? current.embed_template ?? '').trim();
       const doc = name ? await getTemplate(guildId, name).catch(() => null) : null;
-      if (!doc) return reply(name ? `No saved embed named \`${name}\` was found. Make one in the dashboard, under Embeds. Its variables start with \`{rollout.…}\`.` : 'Give the name of a saved embed: `rollouts style template <name>`.');
+      if (!doc) return reply(name ? t(lang, 'rollouts.style.notFound', { name }) : t(lang, 'rollouts.style.giveName'));
       await save({ style: 'template', embed_template: doc.name });
-      return reply(`${EMOJI.APPROVE}  Alerts now use the saved embed \`${doc.name}\`. If it is missing or broken, the card is sent instead.`);
+      return done('rollouts.style.template', { name: doc.name });
     }
     if (sub === 'kinds' || sub === 'events') {
       const allowed = sub === 'kinds' ? rolloutApi.KINDS : EVENT_KINDS;
       const values = readList(interaction.options.getString(sub), allowed);
-      if (values === null) return reply(`Choose from: ${allowed.map((v) => `\`${v}\``).join(', ')}, or \`all\`.`);
+      if (values === null) return reply(t(lang, 'rollouts.filterSettings.choose', { values: allowed.map((v) => `\`${v}\``).join(', ') }));
       await save({ [sub]: values });
-      return reply(`${EMOJI.APPROVE}  ${values.length ? `Only ${sub}: ${values.join(', ')}.` : `Alerts for every kind of ${sub === 'kinds' ? 'experiment' : 'event'}.`}`);
+      return done(values.length ? `rollouts.filterSettings.${sub}Only` : `rollouts.filterSettings.${sub}All`, { values: values.join(', ') });
     }
     if (sub === 'min') {
       const points = Number(interaction.options.getNumber('points', true));
       await save({ min_change: points });
-      return reply(`${EMOJI.APPROVE}  ${points ? `Changes smaller than ${points} points are ignored.` : 'Every change is announced.'}`);
+      return done(points ? 'rollouts.min.set' : 'rollouts.min.every', { points });
     }
     if (sub === 'unrolled') {
       const on = String(interaction.options.getString('value', true)).toLowerCase() === 'on';
       await save({ include_unrolled: on });
-      return reply(`${EMOJI.APPROVE}  New experiments ${on ? 'are announced even before they have a rollout' : 'are announced when they get a rollout'}.`);
+      return done(on ? 'rollouts.unrolled.on' : 'rollouts.unrolled.off');
     }
     if (sub === 'card') {
       const action = String(interaction.options.getString('action', true)).trim().toLowerCase();
       const section = String(interaction.options.getString('section') ?? '').trim().toLowerCase();
-      if (action === 'reset') { await save({ hide_sections: [], accent_color: null }); return reply(`${EMOJI.APPROVE}  The card shows everything again, with the color of each event.`); }
-      if (!['hide', 'show'].includes(action) || !SECTIONS.includes(section)) return reply(`Use \`rollouts card hide|show <section>\` with one of: ${SECTIONS.map((v) => `\`${v}\``).join(', ')}.`);
+      if (action === 'reset') { await save({ hide_sections: [], accent_color: null }); return done('rollouts.cardSettings.reset'); }
+      if (!['hide', 'show'].includes(action) || !SECTIONS.includes(section)) return reply(t(lang, 'rollouts.cardSettings.usage', { sections: SECTIONS.map((v) => `\`${v}\``).join(', ') }));
       const hidden = new Set(current.hide_sections);
       if (action === 'hide') hidden.add(section); else hidden.delete(section);
       await save({ hide_sections: [...hidden] });
-      return reply(`${EMOJI.APPROVE}  The card ${action === 'hide' ? 'hides' : 'shows'} \`${section}\`.`);
+      return done(action === 'hide' ? 'rollouts.cardSettings.hides' : 'rollouts.cardSettings.shows', { section });
     }
     if (sub === 'color') {
       const hex = String(interaction.options.getString('hex') ?? '').trim().replace(/^#/, '');
-      if (hex && !/^[0-9a-f]{6}$/i.test(hex)) return reply('Give the color as 6 hex digits, such as `#ff91c2`.');
+      if (hex && !/^[0-9a-f]{6}$/i.test(hex)) return reply(t(lang, 'rollouts.color.invalid'));
       await save({ accent_color: hex ? parseInt(hex, 16) : null });
-      return reply(`${EMOJI.APPROVE}  ${hex ? `The card color is #${hex.toLowerCase()}.` : 'The card has no color.'}`);
+      return done(hex ? 'rollouts.color.set' : 'rollouts.color.none', { hex: hex.toLowerCase() });
     }
 
-    if (sub === 'help') return reply(HELP);
+    if (sub === 'help') return reply(helpText(lang));
     if (sub === 'queue') {
       const action = String(interaction.options.getString('action') ?? 'show').toLowerCase();
-      if (action === 'clear') { await rolloutsDb.clearGuildQueue(guildId); return reply(`${EMOJI.APPROVE}  The queue is empty. What was waiting will not be sent.`); }
+      if (action === 'clear') { await rolloutsDb.clearGuildQueue(guildId); return done('rollouts.queue.cleared'); }
       const waiting = await rolloutsDb.countPending(guildId);
-      return reply(waiting ? `**${waiting}** alert${waiting === 1 ? '' : 's'} waiting. They go out one message every few seconds, grouped in cards of up to 10 changes when there are many. \`!rollouts queue clear\` empties it.` : 'Nothing is waiting to be sent.');
+      return reply(waiting ? tn(lang, 'rollouts.queue.waiting', waiting, { count: waiting }) : t(lang, 'rollouts.queue.empty'));
     }
 
     if (sub === 'list' || sub === 'test') {
       let list;
-      try { list = (await rolloutApi.fetchRollouts({ force: true })).list; } catch (error) { return reply(`${EMOJI.DENY}  The list could not be read: ${error.message}`); }
+      try { list = (await rolloutApi.fetchRollouts({ force: true })).list; } catch (error) { return reply(`${EMOJI.DENY}  ${t(lang, 'rollouts.readFailed', { error: error.message })}`); }
       const live = list.filter((entry) => ['rolling_out', 'rolling_back', 'ab_test', 'segmented'].includes(entry.status) && entry.percent != null);
-      if (sub === 'list') return interaction.editReply(await buildPage('rollouts', { guild: interaction.guild, userId: interaction.user.id }));
+      if (sub === 'list') return interaction.editReply(await buildPage('rollouts', { guild: interaction.guild, userId: interaction.user.id, lang }));
       const sample = live[0] ?? list[0];
       const event = { type: 'increase', rollout: sample, before: { ...sample, percent: Math.max(0, (sample.percent ?? 0) - 12.5), variants: sample.variants.map((variant) => (variant.role === 'control' || ['0', '-1', 'none'].includes(String(variant.variant)) ? variant : { ...variant, percent: Math.max(0, (variant.percent ?? 0) - 12.5) })) }, change: 12.5 };
-      const payload = await rolloutMessage(interaction.guild, { ...current, role_id: null }, event);
+      const payload = await rolloutMessage(interaction.guild, { ...current, role_id: null }, event, lang);
       await interaction.channel.send(payload).catch(() => null);
-      return reply(`${EMOJI.APPROVE}  Sent an example here (with an invented +12.5% change on a real experiment).`);
+      return done('rollouts.test.sent');
     }
 
     const status = rolloutApi.getStatus();
     const waiting = await rolloutsDb.countPending(guildId).catch(() => 0);
+    const all = t(lang, 'rollouts.all');
+    const list = status.ok === null
+      ? t(lang, 'rollouts.settings.notAsked')
+      : status.ok ? t(lang, 'rollouts.settings.listOk', { count: status.count }) : t(lang, 'rollouts.settings.listFailing', { error: status.error });
     return reply([
-      `**Alerts:** ${current.enabled && current.channel_id ? `on in <#${current.channel_id}>` : 'off'}`,
-      `**Role:** ${current.role_id ? `<@&${current.role_id}>` : 'none'}`,
-      `**Style:** ${current.style === 'template' && current.embed_template ? `saved embed \`${current.embed_template}\`` : 'card'}`,
-      `**Experiments:** ${current.kinds.length ? current.kinds.join(', ') : 'all'} · **Events:** ${current.events.length ? current.events.join(', ') : 'all'}`,
-      `**Minimum change:** ${current.min_change || 0} points · **Unrolled:** ${current.include_unrolled ? 'announced' : 'not announced'}`,
-      `**Card hides:** ${current.hide_sections.length ? current.hide_sections.join(', ') : 'nothing'}`,
-      `**Queue:** ${waiting ? `${waiting} waiting` : 'empty'}`,
-      `**List:** ${status.ok === null ? 'not asked yet' : status.ok ? `ok, ${status.count} experiments` : `failing (${status.error})`}`,
-      '-# More options in the dashboard. `!rollouts help` shows every command.',
+      t(lang, 'rollouts.settings.alerts', { value: current.enabled && current.channel_id ? t(lang, 'rollouts.settings.onIn', { channel: `<#${current.channel_id}>` }) : t(lang, 'rollouts.settings.alertsOff') }),
+      t(lang, 'rollouts.settings.role', { value: current.role_id ? `<@&${current.role_id}>` : t(lang, 'rollouts.none') }),
+      t(lang, 'rollouts.settings.style', { value: current.style === 'template' && current.embed_template ? t(lang, 'rollouts.settings.savedEmbed', { name: current.embed_template }) : t(lang, 'rollouts.settings.card') }),
+      t(lang, 'rollouts.settings.filters', { kinds: current.kinds.length ? current.kinds.join(', ') : all, events: current.events.length ? current.events.join(', ') : all }),
+      t(lang, current.include_unrolled ? 'rollouts.settings.minUnrolledOn' : 'rollouts.settings.minUnrolledOff', { points: current.min_change || 0 }),
+      t(lang, 'rollouts.settings.hides', { value: current.hide_sections.length ? current.hide_sections.join(', ') : t(lang, 'rollouts.settings.nothing') }),
+      t(lang, 'rollouts.settings.queue', { value: waiting ? t(lang, 'rollouts.settings.waiting', { count: waiting }) : t(lang, 'rollouts.settings.queueEmpty') }),
+      t(lang, 'rollouts.settings.list', { value: list }),
+      `-# ${t(lang, 'rollouts.settings.more')}`,
     ].join('\n'));
   },
 };

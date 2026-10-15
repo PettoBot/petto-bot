@@ -1,6 +1,7 @@
 const { Events, AuditLogEvent, PermissionFlagsBits } = require('discord.js');
 const { track } = require('../utils/antiNuke');
 const logger = require('../utils/logger');
+const { t, currentLanguage } = require('../i18n');
 
 const DANGEROUS = [
   PermissionFlagsBits.Administrator,
@@ -23,7 +24,7 @@ module.exports = {
       rule: 'role_assign',
       auditLogType: AuditLogEvent.MemberRoleUpdate,
       targetId: newMember.id,
-      actionLabel: `dangerous role given (${added.map((r) => r.name).join(', ')})`,
+      actionLabel: t(currentLanguage(), 'security.antinuke.detail.roleAssign', { roles: added.map((r) => r.name).join(', ') }),
       inline: [{ kind: 'remove_roles', userId: newMember.id, roleIds: added.map((r) => r.id) }],
     }).catch((err) => logger.error('Anti-nuke role-assign tracking failed:', err));
   },

@@ -1,5 +1,6 @@
 // The rules of the partner module, apart from Discord: finding the invites in a message, deciding whether a
 // partnership counts, and the day/week/total numbers. Everything here is plain data in, plain data out.
+const { t, currentLanguage } = require('../i18n');
 const INVITE_RE = /(?:https?:\/\/)?(?:www\.)?(?:discord\.gg|discord(?:app)?\.com\/invite)\/([a-z0-9-]{2,32})/gi;
 const DISCORD_EPOCH = 1420070400000;
 const DAY_MS = 86_400_000;
@@ -38,9 +39,9 @@ function parseSpan(text) {
   return minutes > 0 && minutes <= MAX_SPAN_MINUTES ? minutes : null;
 }
 
-/** Minutes as `3d 4h` (the two biggest units that are not zero), or `none`. */
-function formatSpan(minutes) {
-  if (!minutes) return 'none';
+/** Minutes as `3d 4h` (the units are the ones people type, in every language), or `none` in `lang`. */
+function formatSpan(minutes, lang = currentLanguage()) {
+  if (!minutes) return t(lang, 'partners.span.none');
   const parts = [];
   let left = minutes;
   for (const [unit, size] of [['w', 10_080], ['d', 1_440], ['h', 60], ['m', 1]]) {

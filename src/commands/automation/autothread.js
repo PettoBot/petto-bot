@@ -3,6 +3,7 @@ const { ensureGuild } = require('../../db/guilds');
 const db = require('../../db/autoThreads');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { t, languageOf } = require('../../i18n');
 
 const ARCHIVE_CHOICES = [
   { name: '1 hour', value: 60 },
@@ -40,6 +41,7 @@ module.exports = {
 };
 
 async function addCmd(interaction) {
+  const lang = await languageOf(interaction);
   const channel = interaction.options.getChannel('channel', true);
   const name = interaction.options.getString('name') ?? '{user_name}';
   const message = interaction.options.getString('message') ?? null;
@@ -47,7 +49,7 @@ async function addCmd(interaction) {
   const archive = interaction.options.getInteger('archive') ?? 60;
 
   if (!channel.permissionsFor(interaction.guild.members.me)?.has(PermissionFlagsBits.CreatePublicThreads)) {
-    await interaction.reply({ content: 'I need the **Create Public Threads** permission in that channel.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'automation.autothread.needPermission'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -55,27 +57,32 @@ async function addCmd(interaction) {
   await ensureGuild(interaction.guild.id);
   await db.upsertThread(interaction.guild.id, channel.id, { name_template: name, message_text: message, embed_template: embedTemplate, archive_minutes: archive });
 
-  const text = `${EMOJI.APPROVE}  Auto-threading is now on for ${channel}.\n**Thread name:** \`${name}\`${message ? `\n**Starter message:** ${message.length > 200 ? `${message.slice(0, 200)}…` : message}` : ''}${embedTemplate ? `\n**Embed template:** \`${embedTemplate}\`` : ''}`;
+  const lines = [t(lang, 'automation.autothread.added', { emoji: EMOJI.APPROVE, channel: `${channel}` }), t(lang, 'automation.autothread.threadName', { name })];
+  if (message) lines.push(t(lang, 'automation.autothread.starterMessage', { message: message.length > 200 ? `${message.slice(0, 200)}…` : message }));
+  if (embedTemplate) lines.push(t(lang, 'automation.autothread.embedTemplate', { name: embedTemplate }));
+  const text = lines.join('\n');
   await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function removeCmd(interaction) {
+  const lang = await languageOf(interaction);
   const channel = interaction.options.getChannel('channel', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const removed = await db.removeThread(interaction.guild.id, channel.id);
-  await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  Auto-threading turned off for ${channel}.` : `Auto-threading isn't on for ${channel}.`, removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(removed ? t(lang, 'automation.autothread.removed', { emoji: EMOJI.APPROVE, channel: `${channel}` }) : t(lang, 'automation.autothread.notOn', { channel: `${channel}` }), removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function listCmd(interaction) {
+  const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const threads = await db.listThreads(interaction.guild.id);
   if (!threads.length) {
-    await interaction.editReply({ components: [textCard('No channels have auto-threading on. Use `!autothread add`.', 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'automation.autothread.listEmpty'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
-  const lines = threads.map((t) => `<#${t.channel_id}> — name: \`${t.name_template}\`${t.message_text || t.embed_template ? ', with a starter message' : ''}`);
-  await interaction.editReply({ components: [textCard(`**Auto-threading (${threads.length}):**\n${lines.join('\n')}`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  const lines = threads.map((row) => t(lang, row.message_text || row.embed_template ? 'automation.autothread.listLineStarter' : 'automation.autothread.listLine', { channel: `<#${row.channel_id}>`, name: row.name_template }));
+  await interaction.editReply({ components: [textCard(`${t(lang, 'automation.autothread.listTitle', { count: threads.length })}\n${lines.join('\n')}`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }

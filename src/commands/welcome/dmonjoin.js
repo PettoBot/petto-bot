@@ -3,9 +3,10 @@ const { commandRef } = require('../../utils/commandRef');
 const { ensureGuild } = require('../../db/guilds');
 const { getConfig, upsertConfig } = require('../../db/memberEvents');
 const { getTemplate } = require('../../db/embedTemplates');
-const { sendMemberEvent } = require('../../utils/memberEventMessage');
+const { sendMemberEvent, localizeDefaultText } = require('../../utils/memberEventMessage');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { t, languageOf } = require('../../i18n');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -35,15 +36,16 @@ module.exports = {
 };
 
 async function setup(interaction) {
+  const lang = await languageOf(interaction);
   const message = interaction.options.getString('message');
   const embed = interaction.options.getString('embed');
 
   if (embed && !(await getTemplate(interaction.guild.id, embed))) {
-    await interaction.reply({ content: `No embed named \`${embed}\` found. Create it with \`${commandRef(interaction, 'embed create')}\` first.`, flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'welcome.common.noEmbed', { name: embed, command: commandRef(interaction, 'embed create') }), flags: MessageFlags.Ephemeral });
     return;
   }
   if (!message && !embed) {
-    await interaction.reply({ content: 'Provide a `message` or an `embed`.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'welcome.dmonjoin.needContent'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -51,32 +53,35 @@ async function setup(interaction) {
   await ensureGuild(interaction.guild.id);
   await upsertConfig(interaction.guild.id, { dm_join_message: message ?? null, dm_join_embed_template: embed ?? null });
 
-  const text = `${EMOJI.APPROVE}  Join DM set.${embed ? `\n**Embed:** \`${embed}\`` : `\n**Message:** ${message}`}`;
+  const detail = embed ? t(lang, 'welcome.common.embed', { name: embed }) : t(lang, 'welcome.common.message', { message });
+  const text = `${t(lang, 'welcome.dmonjoin.setup.done', { emoji: EMOJI.APPROVE })}\n${detail}`;
   await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function status(interaction) {
+  const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const config = await getConfig(interaction.guild.id);
 
   const lines = [
-    `**Embed template:** ${config?.dm_join_embed_template ? `\`${config.dm_join_embed_template}\`` : 'None'}`,
-    `**Plain message:** ${config?.dm_join_message ? config.dm_join_message : 'None'}`,
+    t(lang, 'welcome.common.status.embedTemplate', { value: config?.dm_join_embed_template ? `\`${config.dm_join_embed_template}\`` : t(lang, 'welcome.common.none.embed') }),
+    t(lang, 'welcome.common.status.plainMessage', { value: config?.dm_join_message ? localizeDefaultText('welcome', config.dm_join_message, lang) : t(lang, 'welcome.common.none.message') }),
   ];
   await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function test(interaction) {
+  const lang = await languageOf(interaction);
   const config = await getConfig(interaction.guild.id);
   if (!config?.dm_join_message && !config?.dm_join_embed_template) {
-    await interaction.reply({ content: 'The join DM is not configured. Use `!dmonjoin setup` first.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'welcome.dmonjoin.notConfigured'), flags: MessageFlags.Ephemeral });
     return;
   }
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const dm = await interaction.user.createDM().catch(() => null);
   if (!dm) {
-    await interaction.editReply({ content: 'I could not open a DM with you (DMs may be closed).' });
+    await interaction.editReply({ content: t(lang, 'welcome.dmonjoin.noDm') });
     return;
   }
 
@@ -87,13 +92,15 @@ async function test(interaction) {
     messageText: config.dm_join_message,
     embedTemplateName: config.dm_join_embed_template,
     ctx: { member: interaction.member, guild: interaction.guild, channel: dm },
+    lang,
   });
-  await interaction.editReply({ content: `${EMOJI.APPROVE} Preview sent to your DMs.` });
+  await interaction.editReply({ content: t(lang, 'welcome.dmonjoin.previewSent', { emoji: EMOJI.APPROVE }) });
 }
 
 async function disable(interaction) {
+  const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
   await upsertConfig(interaction.guild.id, { dm_join_message: null, dm_join_embed_template: null });
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Join DM disabled.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'welcome.dmonjoin.disabled', { emoji: EMOJI.APPROVE }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }

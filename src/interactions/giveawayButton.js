@@ -1,14 +1,16 @@
 const { MessageFlags } = require('discord.js');
 const giveawaysDb = require('../db/giveaways');
 const { handleForfeit, handleAccept, refreshGiveawayMessage, loadPreset, entryProblem } = require('../utils/giveawayEngine');
+const { t, languageOf } = require('../i18n');
 
 async function handleEnter(interaction) {
+  const lang = await languageOf(interaction);
   const giveawayId = Number(interaction.customId.split('::')[1]);
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const giveaway = await giveawaysDb.getGiveaway(giveawayId);
 
   if (!giveaway || giveaway.ended) {
-    await interaction.editReply({ content: 'This giveaway has ended.' });
+    await interaction.editReply({ content: t(lang, 'giveaways.entry.ended') });
     return;
   }
 
@@ -16,13 +18,13 @@ async function handleEnter(interaction) {
   if (already) {
     await giveawaysDb.removeEntry(giveawayId, interaction.user.id);
     await refreshGiveawayMessage(interaction.channel, giveaway).catch(() => {});
-    await interaction.editReply({ content: 'You left the giveaway.' });
+    await interaction.editReply({ content: t(lang, 'giveaways.entry.left') });
     return;
   }
 
   // A preset can ask for a level (messages and/or voice) to enter.
   if (giveaway.preset_id) {
-    const problem = await entryProblem(giveaway.guild_id, await loadPreset(giveaway.preset_id), interaction.user.id).catch(() => null);
+    const problem = await entryProblem(giveaway.guild_id, await loadPreset(giveaway.preset_id), interaction.user.id, lang).catch(() => null);
     if (problem) {
       await interaction.editReply({ content: problem });
       return;
@@ -31,23 +33,24 @@ async function handleEnter(interaction) {
 
   await giveawaysDb.addEntry(giveawayId, interaction.user.id, 1);
   await refreshGiveawayMessage(interaction.channel, giveaway).catch(() => {});
-  await interaction.editReply({ content: 'You entered the giveaway. Click the button again to leave.' });
+  await interaction.editReply({ content: t(lang, 'giveaways.entry.entered') });
 }
 
 async function handleAcceptClick(interaction) {
+  const lang = await languageOf(interaction);
   const winnerId = Number(interaction.customId.split('::')[1]);
   const winnerRow = await giveawaysDb.getWinner(winnerId);
 
   if (!winnerRow) {
-    await interaction.reply({ content: 'This claim no longer exists.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'giveaways.claim.gone'), flags: MessageFlags.Ephemeral });
     return;
   }
   if (winnerRow.user_id !== interaction.user.id) {
-    await interaction.reply({ content: "This isn't your win to claim.", flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'giveaways.claim.notYoursAccept'), flags: MessageFlags.Ephemeral });
     return;
   }
   if (winnerRow.status !== 'pending') {
-    await interaction.reply({ content: 'This claim was already resolved.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'giveaways.claim.resolved'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -57,19 +60,20 @@ async function handleAcceptClick(interaction) {
 }
 
 async function handleDenyClick(interaction) {
+  const lang = await languageOf(interaction);
   const winnerId = Number(interaction.customId.split('::')[1]);
   const winnerRow = await giveawaysDb.getWinner(winnerId);
 
   if (!winnerRow) {
-    await interaction.reply({ content: 'This claim no longer exists.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'giveaways.claim.gone'), flags: MessageFlags.Ephemeral });
     return;
   }
   if (winnerRow.user_id !== interaction.user.id) {
-    await interaction.reply({ content: "This isn't your win to deny.", flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'giveaways.claim.notYoursDeny'), flags: MessageFlags.Ephemeral });
     return;
   }
   if (winnerRow.status !== 'pending') {
-    await interaction.reply({ content: 'This claim was already resolved.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'giveaways.claim.resolved'), flags: MessageFlags.Ephemeral });
     return;
   }
 

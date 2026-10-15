@@ -5,6 +5,7 @@ const { templatePayload } = require('./templatedMessage');
 const { getConfig } = require('../db/verificationConfig');
 const { ActionRowBuilder } = require('discord.js');
 const { methodOf, inDiscord } = require('./verifyMethod');
+const { t, guildLanguage, currentLanguage } = require('../i18n');
 const ACCENT_COLOR = 0x4b4f59; // matches the verification page's accent
 const SUCCESS_COLOR = 0xa5ea7a;
 
@@ -15,10 +16,10 @@ function assetUrl(file) {
 }
 
 /** Components V2 DM sent to a member who needs to verify — a small Petto thumbnail next to the welcome text + link. */
-function buildVerifyDM({ guild, link, discordButton = false }) {
-  const lines = [`### Welcome to ${guild.name}!`, "Verify you're human to get access to the rest of the server."];
-  if (link) lines.push(`**[Click here to verify](${link})**`);
-  if (discordButton) lines.push(link ? 'Or do it right here, without leaving Discord:' : 'Press the button and type the letters of a picture.');
+function buildVerifyDM({ guild, link, discordButton = false, lang = currentLanguage() }) {
+  const lines = [t(lang, 'verify.dm.welcome', { server: guild.name }), t(lang, 'verify.dm.human')];
+  if (link) lines.push(t(lang, 'verify.dm.link', { link }));
+  if (discordButton) lines.push(t(lang, link ? 'verify.dm.orHere' : 'verify.dm.pressButton'));
   const text = new TextDisplayBuilder().setContent(lines.join('\n'));
 
   const container = new ContainerBuilder().setAccentColor(ACCENT_COLOR);
@@ -30,13 +31,13 @@ function buildVerifyDM({ guild, link, discordButton = false }) {
     container.addTextDisplayComponents(text);
   }
 
-  if (discordButton) container.addActionRowComponents(new ActionRowBuilder().addComponents(require('../interactions/verifyLetters').startButton(guild.id)));
+  if (discordButton) container.addActionRowComponents(new ActionRowBuilder().addComponents(require('../interactions/verifyLetters').startButton(guild.id, lang)));
   return container;
 }
 
 /** Components V2 DM confirming a member passed verification. */
-function buildVerifiedDM({ guild }) {
-  const text = new TextDisplayBuilder().setContent(["### You're verified!", `You now have full access to **${guild.name}**. Welcome aboard!`].join('\n'));
+function buildVerifiedDM({ guild, lang = currentLanguage() }) {
+  const text = new TextDisplayBuilder().setContent([t(lang, 'verify.dm.verifiedTitle'), t(lang, 'verify.dm.verifiedText', { server: guild.name })].join('\n'));
 
   const container = new ContainerBuilder().setAccentColor(SUCCESS_COLOR);
   const logo = assetUrl('favicon.png');
@@ -53,26 +54,28 @@ function buildVerifiedDM({ guild }) {
 /**
  * DMs the verification link (and, when the server uses the letters check, a button to do it in Discord), with the server's saved embed
  * when one is chosen. `link` is empty for a server that verifies only inside Discord. Rejects if the DM cannot be sent.
+ * The DM is in the language of the server (`lang`, found when not given).
  */
-async function sendVerifyDM(member, { guild, link }) {
+async function sendVerifyDM(member, { guild, link, lang }) {
+  const language = lang ?? await guildLanguage(guild.id);
   const settings = await getConfig(guild.id).catch(() => null);
   const discordButton = inDiscord(methodOf(settings));
   const custom = await templatePayload(guild.id, settings?.prompt_embed_template, { guild, user: member.user ?? member, member, verify: { link: link ?? '' } });
   if (custom) {
     const payload = { ...custom, allowedMentions: { parse: [] } };
     // A saved design does not know about the button, so it goes in a row of its own below it.
-    if (discordButton) payload.components = [...(payload.components ?? []), new ActionRowBuilder().addComponents(require('../interactions/verifyLetters').startButton(guild.id))];
+    if (discordButton) payload.components = [...(payload.components ?? []), new ActionRowBuilder().addComponents(require('../interactions/verifyLetters').startButton(guild.id, language))];
     return member.send(payload);
   }
-  return member.send({ components: [buildVerifyDM({ guild, link, discordButton })], flags: MessageFlags.IsComponentsV2 });
+  return member.send({ components: [buildVerifyDM({ guild, link, discordButton, lang: language })], flags: MessageFlags.IsComponentsV2 });
 }
 
-/** DMs the confirmation after a member verified, with the server's saved embed when one is chosen. */
-async function sendVerifiedDM(member, { guild }) {
+/** DMs the confirmation after a member verified, with the server's saved embed when one is chosen, in the language of the server. */
+async function sendVerifiedDM(member, { guild, lang }) {
   const settings = await getConfig(guild.id).catch(() => null);
   const custom = await templatePayload(guild.id, settings?.verified_embed_template, { guild, user: member.user ?? member, member });
   if (custom) return member.send({ ...custom, allowedMentions: { parse: [] } });
-  return member.send({ components: [buildVerifiedDM({ guild })], flags: MessageFlags.IsComponentsV2 });
+  return member.send({ components: [buildVerifiedDM({ guild, lang: lang ?? await guildLanguage(guild.id) })], flags: MessageFlags.IsComponentsV2 });
 }
 
 module.exports = { buildVerifyDM, buildVerifiedDM, sendVerifyDM, sendVerifiedDM };

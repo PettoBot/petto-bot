@@ -4,9 +4,10 @@ const { ensureGuild } = require('../../db/guilds');
 const uploadsDb = require('../../db/uploads');
 const { getTemplate } = require('../../db/embedTemplates');
 const { getGuildPremium, getGuildLimits } = require('../../db/premium');
-const { DEFAULT_WELCOME, MAX_TEXT, textOf } = require('../../utils/uploadMessages');
+const { defaultWelcome, MAX_TEXT, textOf } = require('../../utils/uploadMessages');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { t, languageOf } = require('../../i18n');
 
 const textChannels = [ChannelType.GuildText, ChannelType.GuildAnnouncement, ChannelType.PublicThread, ChannelType.GuildForum];
 const ok = (text) => textCard(`${EMOJI.APPROVE}  ${text}`, 0xa5ea7a);
@@ -31,52 +32,64 @@ module.exports = {
 
   async execute(interaction) {
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+    const lang = await languageOf(interaction);
     await ensureGuild(interaction.guild.id);
     const done = (component) => interaction.editReply({ components: [component], flags: MessageFlags.IsComponentsV2 });
     const config = (await uploadsDb.getConfig(interaction.guild.id)) ?? { ...uploadsDb.DEFAULTS };
     const save = (changes) => uploadsDb.upsertConfig(interaction.guild.id, changes);
     const sub = interaction.options.getSubcommand();
 
+    const fallback = defaultWelcome(lang);
     if (sub === 'view') {
-      return done(note(['### Uploads', `State: **${config.enabled ? 'on' : 'off'}**`, `Channels: ${config.channel_ids.length ? config.channel_ids.map((id) => `<#${id}>`).join(' ') : 'none'}`, `Uploader role: ${config.uploader_role_id ? `<@&${config.uploader_role_id}>` : 'none'}`, `Welcome: ${config.welcome?.template ? `embed \`${config.welcome.template}\`` : textOf(config.welcome)}`].join('\n')));
+      const none = t(lang, 'uploads.view.none');
+      return done(note([
+        t(lang, 'uploads.view.title'),
+        t(lang, 'uploads.view.state', { state: t(lang, config.enabled ? 'uploads.view.on' : 'uploads.view.off') }),
+        t(lang, 'uploads.view.channels', { channels: config.channel_ids.length ? config.channel_ids.map((id) => `<#${id}>`).join(' ') : none }),
+        t(lang, 'uploads.view.role', { role: config.uploader_role_id ? `<@&${config.uploader_role_id}>` : none }),
+        t(lang, 'uploads.view.welcome', { welcome: config.welcome?.template ? t(lang, 'uploads.view.embed', { name: config.welcome.template }) : textOf(config.welcome, fallback) }),
+      ].join('\n')));
     }
     if (sub === 'enable') {
       const enabled = interaction.options.getBoolean('enabled', true);
       await save({ enabled });
-      return done(ok(enabled ? (config.channel_ids.length ? 'Uploads are on.' : 'Uploads are on. Add a channel with `!uploadconfig addchannel`.') : 'Uploads are off.'));
+      return done(ok(t(lang, enabled ? (config.channel_ids.length ? 'uploads.enable.on' : 'uploads.enable.onNoChannel') : 'uploads.enable.off')));
     }
     if (sub === 'addchannel') {
       const channel = interaction.options.getChannel('channel', true);
-      if (config.channel_ids.includes(channel.id)) return done(note(`${channel} is already an upload channel.`));
+      if (config.channel_ids.includes(channel.id)) return done(note(t(lang, 'uploads.channel.already', { channel: `${channel}` })));
       const premium = await getGuildPremium(interaction.guild.id).catch(() => ({ active: false }));
       const limit = getGuildLimits(premium).uploadChannels;
-      if (config.channel_ids.length >= limit) return done(note(`This server already has ${limit} upload channels.${premium?.active ? '' : ' Premium raises it to 100.'}`));
+      if (config.channel_ids.length >= limit) return done(note(t(lang, premium?.active ? 'uploads.channel.limit' : 'uploads.channel.limitPremium', { limit })));
       await save({ channel_ids: [...config.channel_ids, channel.id] });
-      return done(ok(`${channel} is now an upload channel.`));
+      return done(ok(t(lang, 'uploads.channel.added', { channel: `${channel}` })));
     }
     if (sub === 'removechannel') {
       const channel = interaction.options.getChannel('channel', true);
-      if (!config.channel_ids.includes(channel.id)) return done(note(`${channel} is not an upload channel.`));
+      if (!config.channel_ids.includes(channel.id)) return done(note(t(lang, 'uploads.channel.notOne', { channel: `${channel}` })));
       await save({ channel_ids: config.channel_ids.filter((id) => id !== channel.id) });
-      return done(ok(`${channel} is not an upload channel anymore.`));
+      return done(ok(t(lang, 'uploads.channel.removed', { channel: `${channel}` })));
     }
     if (sub === 'role') {
       const role = interaction.options.getRole('role');
       await save({ uploader_role_id: role?.id ?? null });
-      return done(ok(role ? `${role} is given at the first upload.` : 'No role is given at the first upload.'));
+      return done(ok(role ? t(lang, 'uploads.role.set', { role: `${role}` }) : t(lang, 'uploads.role.none')));
     }
     // welcome
     const text = interaction.options.getString('text');
     const template = (interaction.options.getString('template') ?? '').trim();
-    if (text === null && !template) return done(note(`**Welcome**\n${config.welcome?.template ? `Saved embed: \`${config.welcome.template}\`\n` : ''}${textOf(config.welcome)}\n\nDefault: ${DEFAULT_WELCOME}`));
+    if (text === null && !template) {
+      const words = textOf(config.welcome, fallback);
+      return done(note(config.welcome?.template ? t(lang, 'uploads.welcome.showEmbed', { name: config.welcome.template, text: words, fallback }) : t(lang, 'uploads.welcome.show', { text: words, fallback })));
+    }
     const welcome = { ...(config.welcome ?? {}) };
     if (text !== null) { if (text.trim().toLowerCase() === 'reset') delete welcome.text; else welcome.text = text.trim().slice(0, MAX_TEXT); }
     if (template) {
       if (template.toLowerCase() === 'none') delete welcome.template;
-      else if (!(await getTemplate(interaction.guild.id, template).catch(() => null))?.data) return done(note(`There is no saved embed called \`${template}\`.`));
+      else if (!(await getTemplate(interaction.guild.id, template).catch(() => null))?.data) return done(note(t(lang, 'uploads.welcome.noEmbed', { name: template })));
       else welcome.template = template;
     }
     await save({ welcome });
-    return done(ok('Welcome saved.'));
+    return done(ok(t(lang, 'uploads.welcome.saved')));
   },
 };

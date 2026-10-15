@@ -4,6 +4,7 @@ const { updatePollMessage } = require('../utils/pollCard');
 const logger = require('../utils/logger');
 const config = require('../config');
 const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency');
+const { guildLanguage } = require('../i18n');
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -27,7 +28,9 @@ async function processDuePolls(client) {
       if (!message) return;
 
       const results = await pollsDb.getResults(poll.id, poll.options.length);
-      await updatePollMessage(message, { guild: channel.guild, poll, results }).catch(() => {});
+      // Jobs run outside any server's language: the card is drawn in the language of the poll's server.
+      const lang = await guildLanguage(channel.guild?.id ?? poll.guild_id);
+      await updatePollMessage(message, { guild: channel.guild, poll, results, lang }).catch(() => {});
     } catch (err) {
       logger.error(`Failed to auto-close poll #${poll.id}:`, err);
     }

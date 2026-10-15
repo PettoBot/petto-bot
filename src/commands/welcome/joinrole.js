@@ -3,6 +3,7 @@ const { ensureGuild } = require('../../db/guilds');
 const db = require('../../db/joinRoles');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { t, tn, languageOf } = require('../../i18n');
 
 module.exports = {
   aliases: ['jr'],
@@ -31,20 +32,21 @@ module.exports = {
   },
 };
 
-function targetLabel(target) {
-  return target === 'humans' ? 'Humans only' : target === 'bots' ? 'Bots only' : 'Everyone';
+function targetLabel(target, lang) {
+  return t(lang, target === 'humans' ? 'welcome.joinRole.target.humans' : target === 'bots' ? 'welcome.joinRole.target.bots' : 'welcome.joinRole.target.all');
 }
 
 async function addCmd(interaction) {
+  const lang = await languageOf(interaction);
   const role = interaction.options.getRole('role', true);
   const target = interaction.options.getString('target') ?? 'all';
 
   if (role.managed || role.id === interaction.guild.id) {
-    await interaction.reply({ content: "That role can't be assigned (managed by an integration, or @everyone).", flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'welcome.joinRole.managed'), flags: MessageFlags.Ephemeral });
     return;
   }
   if (role.position >= interaction.guild.members.me.roles.highest.position) {
-    await interaction.reply({ content: "That role is above my highest role, I can't assign it.", flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'welcome.joinRole.aboveMe'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -52,32 +54,35 @@ async function addCmd(interaction) {
   await ensureGuild(interaction.guild.id);
   await db.addRole(interaction.guild.id, role.id, target);
 
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  ${role} will now be given automatically on join. **Target:** ${targetLabel(target)}`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'welcome.joinRole.added', { emoji: EMOJI.APPROVE, role: `${role}`, target: targetLabel(target, lang) }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function removeCmd(interaction) {
+  const lang = await languageOf(interaction);
   const role = interaction.options.getRole('role', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const removed = await db.removeRole(interaction.guild.id, role.id);
-  await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  ${role} is no longer given on join.` : `${role} isn't a configured join role.`, removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(removed ? t(lang, 'welcome.joinRole.removed', { emoji: EMOJI.APPROVE, role: `${role}` }) : t(lang, 'welcome.joinRole.notConfigured', { role: `${role}` }), removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function listCmd(interaction) {
+  const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const roles = await db.listRoles(interaction.guild.id);
   if (!roles.length) {
-    await interaction.editReply({ components: [textCard('No join roles configured. Use `!joinrole add` to set one up.', 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'welcome.joinRole.empty'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
-  const lines = roles.map((r) => `<@&${r.role_id}> — ${targetLabel(r.target)}`);
-  await interaction.editReply({ components: [textCard(`**Join roles (${roles.length}):**\n${lines.join('\n')}`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  const lines = roles.map((r) => `<@&${r.role_id}> — ${targetLabel(r.target, lang)}`);
+  await interaction.editReply({ components: [textCard(`${t(lang, 'welcome.joinRole.listTitle', { count: roles.length })}\n${lines.join('\n')}`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function clearCmd(interaction) {
+  const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const removed = await db.clearRoles(interaction.guild.id);
-  await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  Removed all **${removed}** join role(s).` : 'No join roles to remove.', removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(removed ? tn(lang, 'welcome.joinRole.cleared', removed, { count: removed, emoji: EMOJI.APPROVE }) : t(lang, 'welcome.joinRole.nothingToClear'), removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }

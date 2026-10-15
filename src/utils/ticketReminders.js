@@ -1,3 +1,5 @@
+const { t, currentLanguage } = require('../i18n');
+
 // Two small helpers for tickets: which open tickets have waited too long without anyone claiming them, and the numbers of `ticket stats`.
 
 /** True when an open ticket nobody claimed has waited `minutes` or more and was not reminded yet. */
@@ -35,11 +37,11 @@ function summarizeStats(tickets, ratings, now = Date.now()) {
 }
 
 /** A length of time in minutes as text: `45 min`, `3 h 20 min`, `2 d 4 h`. */
-function durationText(minutes) {
-  if (minutes === null || minutes === undefined) return 'no data';
-  if (minutes < 60) return `${minutes} min`;
-  if (minutes < 1440) return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
-  return `${Math.floor(minutes / 1440)} d ${Math.floor((minutes % 1440) / 60)} h`;
+function durationText(minutes, lang = currentLanguage()) {
+  if (minutes === null || minutes === undefined) return t(lang, 'tickets.duration.noData');
+  if (minutes < 60) return t(lang, 'tickets.duration.minutes', { minutes });
+  if (minutes < 1440) return t(lang, 'tickets.duration.hoursMinutes', { hours: Math.floor(minutes / 60), minutes: minutes % 60 });
+  return t(lang, 'tickets.duration.daysHours', { days: Math.floor(minutes / 1440), hours: Math.floor((minutes % 1440) / 60) });
 }
 
 /** The moment before which a ticket closed long enough ago to have its channel deleted (null when the server keeps them). */

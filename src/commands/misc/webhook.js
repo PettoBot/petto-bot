@@ -8,6 +8,7 @@ const {
 const webhooksDb = require('../../db/managedWebhooks');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { t, languageOf } = require('../../i18n');
 
 module.exports = {
   aliases: ['wh'],
@@ -119,14 +120,15 @@ module.exports = {
     ),
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const sub = interaction.options.getSubcommand();
 
-    if (sub === 'create') return create(interaction);
-    if (sub === 'send') return send(interaction);
-    if (sub === 'edit') return edit(interaction);
-    if (sub === 'delete') return remove(interaction);
+    if (sub === 'create') return create(interaction, lang);
+    if (sub === 'send') return send(interaction, lang);
+    if (sub === 'edit') return edit(interaction, lang);
+    if (sub === 'delete') return remove(interaction, lang);
 
-    return list(interaction);
+    return list(interaction, lang);
   },
 };
 
@@ -154,7 +156,7 @@ function messageUrl(
   );
 }
 
-async function resolveWebhook(interaction) {
+async function resolveWebhook(interaction, lang) {
   const identifier =
     interaction.options.getString(
       'identifier',
@@ -172,23 +174,26 @@ async function resolveWebhook(interaction) {
       err?.code ===
       'AMBIGUOUS_WEBHOOK_NAME'
     ) {
-      const ids =
+      // The database names the webhook in English: the answer is written here instead.
+      const name = identifier.trim();
+      const text =
         Array.isArray(err.matches) &&
         err.matches.length
 
-          ? ` Numbers: ${
-              err.matches
+          ? t(lang, 'misc.webhook.ambiguousNumbers', {
+              name,
+              numbers: err.matches
                 .map(
                   (id) => `\`${id}\``
                 )
-                .join(', ')
-            }.`
+                .join(', '),
+            })
 
-          : '';
+          : t(lang, 'misc.webhook.ambiguous', { name });
 
       await card(
         interaction,
-        `${err.message}${ids}`,
+        text,
         0xfed53c
       );
 
@@ -199,14 +204,14 @@ async function resolveWebhook(interaction) {
   }
 }
 
-async function create(interaction) {
+async function create(interaction, lang) {
   if (
     !interaction.channel?.isTextBased() ||
     !interaction.channel.createWebhook
   ) {
     return card(
       interaction,
-      'This channel cannot host webhooks.',
+      t(lang, 'misc.webhook.cannotHost'),
       0xfe6465
     );
   }
@@ -220,7 +225,7 @@ async function create(interaction) {
             .slice(0, 80),
 
         reason:
-          `Managed by ${interaction.user.tag}`,
+          t(lang, 'misc.webhook.createReason', { user: interaction.user.tag }),
       });
 
     const row =
@@ -247,21 +252,24 @@ async function create(interaction) {
     return card(
       interaction,
 
-      `${EMOJI.APPROVE}  Webhook **${webhook.name}** created.\n` +
-        `**Number:** \`${row.local_id}\`\n` +
-        `**Channel:** <#${interaction.channel.id}>`,
+      t(lang, 'misc.webhook.created', {
+        emoji: EMOJI.APPROVE,
+        name: webhook.name,
+        number: row.local_id,
+        channel: `<#${interaction.channel.id}>`,
+      }),
 
       0xa5ea7a
     );
 
   } catch (err) {
+    // The error of Discord is shown as it comes.
     return card(
       interaction,
 
-      `Could not create the webhook: ${
-        err.message ??
-        'check my Manage Webhooks permission.'
-      }`,
+      err.message != null
+        ? t(lang, 'misc.webhook.createFailed', { error: err.message })
+        : t(lang, 'misc.webhook.createFailedPermission', { permission: t(lang, 'core.perm.ManageWebhooks') }),
 
       0xfe6465
     );
@@ -301,16 +309,16 @@ function parseEmbedCode(input) {
   ];
 }
 
-async function send(interaction) {
+async function send(interaction, lang) {
   const row =
-    await resolveWebhook(interaction);
+    await resolveWebhook(interaction, lang);
 
   if (row === undefined) return;
 
   if (!row?.webhook_token) {
     return card(
       interaction,
-      'That managed webhook does not exist.',
+      t(lang, 'misc.webhook.notFound'),
       0xfe6465
     );
   }
@@ -369,8 +377,7 @@ async function send(interaction) {
     return card(
       interaction,
 
-      `${EMOJI.APPROVE}  Message sent through **${row.name}**.\n` +
-        `[Jump to message](${jumpUrl})`,
+      t(lang, 'misc.webhook.sent', { emoji: EMOJI.APPROVE, name: row.name, url: jumpUrl }),
 
       0xa5ea7a
     );
@@ -379,17 +386,16 @@ async function send(interaction) {
     return card(
       interaction,
 
-      `Could not send through that webhook: ${
-        err.message ??
-        'unknown error.'
-      }`,
+      err.message != null
+        ? t(lang, 'misc.webhook.sendFailed', { error: err.message })
+        : t(lang, 'misc.webhook.sendFailedUnknown'),
 
       0xfe6465
     );
   }
 }
 
-async function edit(interaction) {
+async function edit(interaction, lang) {
   const link =
     interaction.options
       .getString(
@@ -407,7 +413,7 @@ async function edit(interaction) {
   ) {
     return card(
       interaction,
-      'Provide a message link from this server.',
+      t(lang, 'misc.webhook.badLink'),
       0xfe6465
     );
   }
@@ -452,8 +458,7 @@ async function edit(interaction) {
       return card(
         interaction,
 
-        `${EMOJI.APPROVE}  Message edited through **${row.name}**.\n` +
-          `[Jump to message](${jumpUrl})`,
+        t(lang, 'misc.webhook.edited', { emoji: EMOJI.APPROVE, name: row.name, url: jumpUrl }),
 
         0xa5ea7a
       );
@@ -464,22 +469,22 @@ async function edit(interaction) {
   return card(
     interaction,
 
-    'That message was not sent by one of Petto\'s managed webhooks.',
+    t(lang, 'misc.webhook.notManaged'),
 
     0xfe6465
   );
 }
 
-async function remove(interaction) {
+async function remove(interaction, lang) {
   const row =
-    await resolveWebhook(interaction);
+    await resolveWebhook(interaction, lang);
 
   if (row === undefined) return;
 
   if (!row) {
     return card(
       interaction,
-      'That managed webhook does not exist.',
+      t(lang, 'misc.webhook.notFound'),
       0xfe6465
     );
   }
@@ -492,7 +497,7 @@ async function remove(interaction) {
       token:
         row.webhook_token,
     }).delete(
-      'Deleted by Petto'
+      t(lang, 'misc.webhook.deleteReason')
     );
 
   } catch {}
@@ -505,13 +510,13 @@ async function remove(interaction) {
   return card(
     interaction,
 
-    `${EMOJI.APPROVE}  Webhook **${row.name}** deleted.`,
+    t(lang, 'misc.webhook.deleted', { emoji: EMOJI.APPROVE, name: row.name }),
 
     0xa5ea7a
   );
 }
 
-async function list(interaction) {
+async function list(interaction, lang) {
   const rows =
     await webhooksDb.list(
       interaction.guild.id
@@ -527,11 +532,11 @@ async function list(interaction) {
           )
           .join('\n')
 
-      : 'No managed webhooks configured.';
+      : t(lang, 'misc.webhook.listNone');
 
   return card(
     interaction,
 
-    `**Managed webhooks (${rows.length})**\n${body}`
+    t(lang, 'misc.webhook.listTitle', { count: rows.length, body })
   );
 }

@@ -14,6 +14,10 @@ const {
 } = require('discord.js');
 const { EMOJI } = require('../utils/emojis');
 const { RELEASES, getLatestRelease, getRelease, getReleaseIndex } = require('../utils/releases');
+const { t, currentLanguage, languageOf } = require('../i18n');
+
+// The release notes themselves (names, status, summaries, sections) stay in English on purpose: they are the team's
+// announcements. Only the card around them (position, menu, buttons) is translated.
 
 const VERSION_SELECT_ID = 'version:select';
 const PETTO_IMAGE_URL = 'https://i.imgur.com/WUwcYwM.png';
@@ -22,7 +26,7 @@ function versionActionId(action, version) {
   return `version:${action}:${version}`;
 }
 
-function buildReleaseCard(release) {
+function buildReleaseCard(release, lang) {
   const position = getReleaseIndex(release.version) + 1;
 
   const header = new SectionBuilder()
@@ -30,7 +34,7 @@ function buildReleaseCard(release) {
       new TextDisplayBuilder().setContent([
         `# ${EMOJI.RELEASE_ROCKET} Petto ${release.display ?? release.version}${release.name ? ` “${release.name}”` : ''}`,
         `${release.status}  ·  ${EMOJI.RELEASE_NOTE} ${release.date}`,
-        `-# Release ${position} of ${RELEASES.length}`,
+        t(lang, 'info.version.position', { position, total: RELEASES.length }),
       ].join('\n')),
     )
     .setThumbnailAccessory(new ThumbnailBuilder().setURL(PETTO_IMAGE_URL));
@@ -53,17 +57,17 @@ function buildReleaseCard(release) {
 
   card
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Large))
-    .addActionRowComponents(buildVersionSelect(release.version))
-    .addActionRowComponents(buildNavigationRow(release.version))
-    .addActionRowComponents(buildLinksRow());
+    .addActionRowComponents(buildVersionSelect(release.version, lang))
+    .addActionRowComponents(buildNavigationRow(release.version, lang))
+    .addActionRowComponents(buildLinksRow(lang));
 
   return card;
 }
 
-function buildVersionSelect(selectedVersion) {
+function buildVersionSelect(selectedVersion, lang) {
   const menu = new StringSelectMenuBuilder()
     .setCustomId(VERSION_SELECT_ID)
-    .setPlaceholder('Choose a published release...')
+    .setPlaceholder(t(lang, 'info.version.choose.menu'))
     .addOptions(RELEASES.map((release) => {
       const option = new StringSelectMenuOptionBuilder()
         .setLabel(release.label)
@@ -77,7 +81,7 @@ function buildVersionSelect(selectedVersion) {
   return new ActionRowBuilder().addComponents(menu);
 }
 
-function buildNavigationRow(selectedVersion) {
+function buildNavigationRow(selectedVersion, lang) {
   const index = getReleaseIndex(selectedVersion);
   const isLatest = index === 0;
   const isOldest = index === RELEASES.length - 1;
@@ -85,41 +89,41 @@ function buildNavigationRow(selectedVersion) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(versionActionId('latest', selectedVersion))
-      .setLabel('Latest')
+      .setLabel(t(lang, 'info.version.latest.button'))
       .setEmoji(EMOJI.RELEASE_ROCKET)
       .setStyle(ButtonStyle.Primary)
       .setDisabled(isLatest),
     new ButtonBuilder()
       .setCustomId(versionActionId('previous', selectedVersion))
-      .setLabel('Previous')
+      .setLabel(t(lang, 'info.version.previous.button'))
       .setEmoji(EMOJI.PREV)
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(isOldest),
     new ButtonBuilder()
       .setCustomId(versionActionId('next', selectedVersion))
-      .setLabel('Next')
+      .setLabel(t(lang, 'info.version.next.button'))
       .setEmoji(EMOJI.NEXT)
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(isLatest),
     new ButtonBuilder()
       .setCustomId(versionActionId('refresh', selectedVersion))
-      .setLabel('Refresh')
+      .setLabel(t(lang, 'info.version.refresh.button'))
       .setEmoji(EMOJI.RELEASE_RELOAD)
       .setStyle(ButtonStyle.Secondary),
   );
 }
 
-function buildLinksRow() {
+function buildLinksRow(lang) {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setLabel('Changelog').setEmoji(EMOJI.RELEASE_CHANGELOG).setStyle(ButtonStyle.Link).setURL('https://petto.sbs/changelog/'),
-    new ButtonBuilder().setLabel('Repository').setEmoji(EMOJI.RELEASE_LINK).setStyle(ButtonStyle.Link).setURL('https://github.com/PettoBot/petto-bot'),
-    new ButtonBuilder().setLabel('Dashboard').setEmoji(EMOJI.RELEASE_PC).setStyle(ButtonStyle.Link).setURL('https://petto.sbs/dash'),
+    new ButtonBuilder().setLabel(t(lang, 'info.button.changelog.button')).setEmoji(EMOJI.RELEASE_CHANGELOG).setStyle(ButtonStyle.Link).setURL('https://petto.sbs/changelog/'),
+    new ButtonBuilder().setLabel(t(lang, 'info.button.repository.button')).setEmoji(EMOJI.RELEASE_LINK).setStyle(ButtonStyle.Link).setURL('https://github.com/PettoBot/petto-bot'),
+    new ButtonBuilder().setLabel(t(lang, 'info.button.dashboard.button')).setEmoji(EMOJI.RELEASE_PC).setStyle(ButtonStyle.Link).setURL('https://petto.sbs/dash'),
   );
 }
 
-function buildVersionPayload(version = getLatestRelease().version) {
+function buildVersionPayload(version = getLatestRelease().version, lang = currentLanguage()) {
   const release = getRelease(version) ?? getLatestRelease();
-  return { components: [buildReleaseCard(release)], flags: MessageFlags.IsComponentsV2 };
+  return { components: [buildReleaseCard(release, lang)], flags: MessageFlags.IsComponentsV2 };
 }
 
 function selectedVersionFromButton(customId) {
@@ -132,7 +136,7 @@ async function handleSelect(interaction) {
     await interaction.deferUpdate();
     return;
   }
-  await interaction.update(buildVersionPayload(version));
+  await interaction.update(buildVersionPayload(version, await languageOf(interaction)));
 }
 
 async function handleButton(interaction) {
@@ -145,7 +149,7 @@ async function handleButton(interaction) {
   if (action === 'next') targetVersion = RELEASES[Math.max(0, currentIndex - 1)].version;
   if (action === 'refresh') targetVersion = selectedVersionFromButton(interaction.customId);
 
-  await interaction.update(buildVersionPayload(targetVersion));
+  await interaction.update(buildVersionPayload(targetVersion, await languageOf(interaction)));
 }
 
 module.exports = { VERSION_SELECT_ID, handleSelect, handleButton, buildVersionPayload };

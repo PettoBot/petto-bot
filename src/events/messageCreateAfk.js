@@ -1,6 +1,7 @@
 const { Events } = require('discord.js');
 const afkDb = require('../db/afk');
 const logger = require('../utils/logger');
+const { t, tn, guildLanguage } = require('../i18n');
 
 module.exports = {
   name: Events.MessageCreate,
@@ -8,6 +9,7 @@ module.exports = {
     if (message.author.bot || !message.guild) return;
 
     try {
+      const lang = await guildLanguage(message.guild.id);
       // Mentioning an AFK member — flag it back and log it for their /afk mentions.
       if (message.mentions.users.size > 0) {
         for (const user of message.mentions.users.values()) {
@@ -25,7 +27,7 @@ module.exports = {
 
           const ts = `<t:${Math.floor(new Date(afk.set_at).getTime() / 1000)}:R>`;
           await message
-            .reply({ content: `**${user.username}** is AFK ${ts}: **${afk.reason}**`, allowedMentions: { repliedUser: false } })
+            .reply({ content: t(lang, 'utility.afk.isAway', { name: user.username, time: ts, reason: afk.reason }), allowedMentions: { repliedUser: false } })
             .catch(() => {});
         }
       }
@@ -36,7 +38,9 @@ module.exports = {
         const count = await afkDb.countRecentMentions(message.guild.id, message.author.id);
         await message
           .reply({
-            content: `Welcome back, **${message.author.username}**! You're no longer AFK.${count ? ` You have **${count}** mention(s) — use \`!afk mentions\` to view them.` : ''}`,
+            content: count
+              ? tn(lang, 'utility.afk.backWithMentions', count, { name: message.author.username, count })
+              : t(lang, 'utility.afk.back', { name: message.author.username }),
             allowedMentions: { repliedUser: false },
           })
           .catch(() => {});

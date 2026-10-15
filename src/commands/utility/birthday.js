@@ -5,8 +5,11 @@ const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { COLORS } = require('../../utils/colors');
 const { parseBirthday, localDate, daysUntil, formatDay, parseOffset, formatOffset, nextAge } = require('../../utils/birthdays');
+const { t, tn, languageOf } = require('../../i18n');
 
 const DEFAULT_OFFSET = -300;
+// The message of a server that did not write one: stored in English, shown and sent in the language of the server.
+const DEFAULT_MESSAGE = t('en', 'birthdays.default.message');
 
 const FLAGS = MessageFlags.IsComponentsV2;
 const reply = (interaction, text, color = 0x4b4f59, ephemeral = false) => interaction.reply({ components: [textCard(text, color)], flags: ephemeral ? FLAGS | MessageFlags.Ephemeral : FLAGS, allowedMentions: { parse: [] } });
@@ -43,24 +46,25 @@ module.exports = {
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
-    if (sub === 'set') return setCmd(interaction);
-    if (sub === 'remove') return removeCmd(interaction);
-    if (sub === 'view') return viewCmd(interaction);
-    if (sub === 'upcoming') return upcomingCmd(interaction);
-    return configCmd(interaction);
+    const lang = await languageOf(interaction);
+    if (sub === 'set') return setCmd(interaction, lang);
+    if (sub === 'remove') return removeCmd(interaction, lang);
+    if (sub === 'view') return viewCmd(interaction, lang);
+    if (sub === 'upcoming') return upcomingCmd(interaction, lang);
+    return configCmd(interaction, lang);
   },
 };
 
-async function setCmd(interaction) {
-  const parsed = parseBirthday({ day: interaction.options.getInteger('day', true), month: interaction.options.getInteger('month', true), year: interaction.options.getInteger('year') });
+async function setCmd(interaction, lang) {
+  const parsed = parseBirthday({ day: interaction.options.getInteger('day', true), month: interaction.options.getInteger('month', true), year: interaction.options.getInteger('year') }, new Date(), lang);
   if (parsed.error) return reply(interaction, parsed.error, COLORS.RED, true);
   await birthdaysDb.setBirthday(interaction.guild.id, interaction.user.id, parsed);
-  return reply(interaction, `${EMOJI.APPROVE}  Your birthday is saved: **${formatDay(parsed)}**${parsed.year ? ` ${parsed.year}` : ''}. Petto will celebrate it here.`, COLORS.GREEN);
+  return reply(interaction, t(lang, parsed.year ? 'birthdays.saved.withYear' : 'birthdays.saved.plain', { emoji: EMOJI.APPROVE, date: formatDay(parsed, lang), year: parsed.year }), COLORS.GREEN);
 }
 
-async function removeCmd(interaction) {
+async function removeCmd(interaction, lang) {
   const removed = await birthdaysDb.removeBirthday(interaction.guild.id, interaction.user.id);
-  return reply(interaction, removed ? `${EMOJI.APPROVE}  Your birthday was forgotten.` : 'You had not saved a birthday here.', removed ? COLORS.GREEN : COLORS.RED, true);
+  return reply(interaction, removed ? t(lang, 'birthdays.removed', { emoji: EMOJI.APPROVE }) : t(lang, 'birthdays.notSaved'), removed ? COLORS.GREEN : COLORS.RED, true);
 }
 
 async function offsetOf(guildId) {
@@ -68,31 +72,34 @@ async function offsetOf(guildId) {
   return config?.utc_offset_minutes ?? DEFAULT_OFFSET;
 }
 
-async function viewCmd(interaction) {
+async function viewCmd(interaction, lang) {
   const user = interaction.options.getUser('user') ?? interaction.user;
   const row = await birthdaysDb.getBirthday(interaction.guild.id, user.id);
-  if (!row) return reply(interaction, user.id === interaction.user.id ? 'You have not saved your birthday. Use `birthday set <day> <month>`.' : `${user} has not saved a birthday here.`, 0x4b4f59, true);
+  if (!row) return reply(interaction, user.id === interaction.user.id ? t(lang, 'birthdays.view.noneSelf') : t(lang, 'birthdays.view.noneOther', { user: `${user}` }), 0x4b4f59, true);
   const local = localDate(new Date(), await offsetOf(interaction.guild.id));
   const days = daysUntil(row, local);
   const age = nextAge(row, local);
-  const when = days === 0 ? 'today!' : `in **${days}** day${days === 1 ? '' : 's'}`;
-  return reply(interaction, `🎂  ${user}: **${formatDay(row)}**${row.year ? ` ${row.year}` : ''}\nNext birthday ${when}${age !== null ? ` (turns ${age})` : ''}`);
+  const first = t(lang, row.year ? 'birthdays.view.dateWithYear' : 'birthdays.view.date', { user: `${user}`, date: formatDay(row, lang), year: row.year });
+  const withAge = age !== null ? 'Age' : '';
+  const next = days === 0 ? t(lang, `birthdays.view.today${withAge}`, { age }) : tn(lang, `birthdays.view.inDays${withAge}`, days, { count: days, age });
+  return reply(interaction, `${first}\n${next}`);
 }
 
-async function upcomingCmd(interaction) {
+async function upcomingCmd(interaction, lang) {
   const rows = await birthdaysDb.listBirthdays(interaction.guild.id);
-  if (!rows.length) return reply(interaction, 'Nobody has saved a birthday here yet. Use `birthday set <day> <month>`.', 0x4b4f59, true);
+  if (!rows.length) return reply(interaction, t(lang, 'birthdays.upcoming.empty'), 0x4b4f59, true);
   const local = localDate(new Date(), await offsetOf(interaction.guild.id));
   const next = rows
     .map((row) => ({ row, days: daysUntil(row, local) }))
     .sort((a, b) => a.days - b.days)
     .slice(0, birthdaysDb.MAX_UPCOMING);
-  const lines = next.map(({ row, days }) => `${days === 0 ? '🎂' : '•'} <@${row.user_id}> · **${formatDay(row)}** · ${days === 0 ? 'today' : days === 1 ? 'tomorrow' : `in ${days} days`}`);
-  return reply(interaction, `### Upcoming birthdays\n${lines.join('\n')}`);
+  const when = (days) => (days === 0 ? t(lang, 'birthdays.upcoming.today') : days === 1 ? t(lang, 'birthdays.upcoming.tomorrow') : tn(lang, 'birthdays.upcoming.inDays', days, { count: days }));
+  const lines = next.map(({ row, days }) => `${days === 0 ? '🎂' : '•'} <@${row.user_id}> · **${formatDay(row, lang)}** · ${when(days)}`);
+  return reply(interaction, t(lang, 'birthdays.upcoming.title', { list: lines.join('\n') }));
 }
 
-async function configCmd(interaction) {
-  if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) return reply(interaction, 'You need the **Manage Server** permission to change the birthday messages.', COLORS.RED, true);
+async function configCmd(interaction, lang) {
+  if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) return reply(interaction, t(lang, 'birthdays.config.needManageServer'), COLORS.RED, true);
   const patch = {};
   const enabled = interaction.options.getBoolean('enabled');
   const channel = interaction.options.getChannel('channel');
@@ -104,31 +111,32 @@ async function configCmd(interaction) {
   if (enabled !== null) patch.enabled = enabled;
   if (channel) patch.channel_id = channel.id;
   if (role) {
-    if (role.managed || role.id === interaction.guild.id) return reply(interaction, 'That role cannot be given by Petto.', COLORS.RED, true);
+    if (role.managed || role.id === interaction.guild.id) return reply(interaction, t(lang, 'birthdays.config.roleNotGivable'), COLORS.RED, true);
     patch.role_id = role.id;
   }
   if (interaction.options.getBoolean('clear_role')) patch.role_id = null;
-  if (message !== null) patch.message = message.toLowerCase() === 'none' ? '{EMOJI} Happy birthday {user}! Have a great day!' : message;
+  if (message !== null) patch.message = message.toLowerCase() === 'none' ? DEFAULT_MESSAGE : message;
   if (embed !== null) {
     if (embed.toLowerCase() === 'none') patch.embed_template = null;
-    else if (!(await getTemplate(interaction.guild.id, embed))) return reply(interaction, `There is no saved embed named **${embed}**.`, COLORS.RED, true);
+    else if (!(await getTemplate(interaction.guild.id, embed))) return reply(interaction, t(lang, 'birthdays.config.noEmbed', { name: embed }), COLORS.RED, true);
     else patch.embed_template = embed;
   }
   if (hour !== null) patch.hour = hour;
   if (timezone !== null) {
     const offset = parseOffset(timezone);
-    if (offset === null) return reply(interaction, 'Write the time zone as an offset, like `UTC-5`, `-5` or `+5:30`.', COLORS.RED, true);
+    if (offset === null) return reply(interaction, t(lang, 'birthdays.config.badTimezone'), COLORS.RED, true);
     patch.utc_offset_minutes = offset;
   }
   const config = Object.keys(patch).length ? await birthdaysDb.upsertConfig(interaction.guild.id, patch) : await birthdaysDb.getConfig(interaction.guild.id);
-  const shown = config ?? { enabled: false, hour: 9, utc_offset_minutes: DEFAULT_OFFSET, message: '{EMOJI} Happy birthday {user}! Have a great day!' };
+  const shown = config ?? { enabled: false, hour: 9, utc_offset_minutes: DEFAULT_OFFSET, message: DEFAULT_MESSAGE };
+  const shownMessage = String(shown.message).trim() === DEFAULT_MESSAGE ? t(lang, 'birthdays.default.message') : String(shown.message);
   const lines = [
-    `${shown.enabled ? EMOJI.APPROVE : EMOJI.DENY}  Birthday messages are **${shown.enabled ? 'on' : 'off'}**`,
-    `Channel: ${shown.channel_id ? `<#${shown.channel_id}>` : 'not set'}`,
-    `Role for the day: ${shown.role_id ? `<@&${shown.role_id}>` : 'none'}`,
-    `Sent at **${String(shown.hour).padStart(2, '0')}:00** (${formatOffset(shown.utc_offset_minutes)})`,
-    shown.embed_template ? `Embed: **${shown.embed_template}**` : `Message: ${String(shown.message).slice(0, 300)}`,
+    t(lang, shown.enabled ? 'birthdays.config.on' : 'birthdays.config.off', { emoji: shown.enabled ? EMOJI.APPROVE : EMOJI.DENY }),
+    t(lang, 'birthdays.config.channel', { channel: shown.channel_id ? `<#${shown.channel_id}>` : t(lang, 'birthdays.config.notSet') }),
+    t(lang, 'birthdays.config.role', { role: shown.role_id ? `<@&${shown.role_id}>` : t(lang, 'birthdays.config.none') }),
+    t(lang, 'birthdays.config.hour', { hour: String(shown.hour).padStart(2, '0'), offset: formatOffset(shown.utc_offset_minutes) }),
+    shown.embed_template ? t(lang, 'birthdays.config.embed', { name: shown.embed_template }) : t(lang, 'birthdays.config.message', { message: shownMessage.slice(0, 300) }),
   ];
-  if (shown.enabled && !shown.channel_id && !shown.role_id) lines.push('Set a channel (and/or a role) so Petto has something to do.');
+  if (shown.enabled && !shown.channel_id && !shown.role_id) lines.push(t(lang, 'birthdays.config.nothingToDo'));
   return reply(interaction, lines.join('\n'), shown.enabled ? COLORS.GREEN : 0x4b4f59);
 }

@@ -48,6 +48,17 @@ const text = (components) => JSON.stringify(components.map((c) => c.toJSON()));
   const many = buildPollCard({ ...poll, options: Array.from({ length: 10 }, (_, i) => `Option ${i}`) }, { counts: new Array(10).fill(0), voters: 0 });
   assert.equal(many.rows.length, 3, 'ten options are two rows of five plus End poll');
 
+  // The same card in Spanish and Portuguese.
+  const es = text(buildPollCard({ ...poll, closed: true }, results, 'es').components);
+  assert.match(es, /Opción única · cerrada/);
+  assert.match(es, /4 votos · cerrada/);
+  const pt = buildPollCard({ ...poll, ends_at: '2030-01-01T00:00:00.000Z' }, { counts: [1, 0, 0], voters: 1 }, 'pt-BR');
+  assert.match(text(pt.components), /encerra <t:1893456000:R>/);
+  assert.match(text(pt.components), /1 voto · aberta/);
+  assert.equal(pt.rows.at(-1).components[0].toJSON().label, 'Encerrar enquete');
+  assert.equal(pollContext({ ...poll, multi: true }, results, 'es').status, 'Abierta');
+  assert.equal(pollContext(poll, results, 'pt-BR').votesText, '4 votos');
+
   // The default message.
   const message = await buildPollMessage({ guild, poll, results });
   assert.equal(message.flags, MessageFlags.IsComponentsV2);

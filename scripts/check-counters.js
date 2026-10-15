@@ -9,6 +9,10 @@ assert.equal(renderName({ counter_option: 'members', name_template: '{option}: {
 assert.equal(renderName({ counter_option: 'boosts', name_template: 'Boosts {value}!', prefix: '> ', suffix: ' <' }, 3), '> Boosts 3! <');
 assert.equal(renderName({ counter_option: 'x', name_template: '', prefix: null, suffix: null }, 1), 'x: 1');
 assert.equal(renderName({ counter_option: 'x', name_template: 'a'.repeat(150), prefix: '', suffix: '' }, 1).length, 100);
+// In Spanish and Portuguese `{option}` is the translated name of the option; a countdown's timestamp stays as it is.
+assert.equal(renderName({ counter_option: 'members', name_template: '', prefix: '', suffix: '' }, 12, 'es'), 'miembros: 12');
+assert.equal(renderName({ counter_option: 'text_channels', name_template: '{option}: {value}', prefix: '', suffix: '' }, 3, 'pt-BR'), 'canais de texto: 3');
+assert.equal(renderName({ counter_option: '1790000000', name_template: '{option} {value}', prefix: '', suffix: '' }, '1d 2h', 'es'), '1790000000 1d 2h');
 assert.equal(normalizeForType('Members: 12', 'text'), 'members:-12');
 assert.equal(normalizeForType('Members: 12', 'announce'), 'members:-12');
 assert.equal(normalizeForType('Members: 12', 'voice'), 'Members: 12');

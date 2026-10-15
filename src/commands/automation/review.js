@@ -5,15 +5,16 @@ const reviewsDb = require('../../db/reviews');
 const { summarize, starsText, parseStars, problem, MAX_COMMENT } = require('../../utils/reviewEngine');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { t, tn, formatNumber, languageOf } = require('../../i18n');
 
 const reply = (interaction, component) => interaction.editReply({ components: [component], flags: MessageFlags.IsComponentsV2 });
 const unix = (value) => Math.floor(new Date(value).getTime() / 1000);
 
-async function give(interaction, config) {
+async function give(interaction, config, lang) {
   const target = interaction.options.getUser('user', true);
   const stars = parseStars(interaction.options.getString('stars', true));
   const comment = (interaction.options.getString('comment') ?? '').trim().replace(/\s+/g, ' ');
-  const refused = problem({ reviewer: interaction.user, target, stars, comment });
+  const refused = problem({ reviewer: interaction.user, target, stars, comment, lang });
   if (refused) return reply(interaction, textCard(refused));
   const existing = await reviewsDb.getReview(interaction.guild.id, target.id, interaction.user.id);
   await reviewsDb.saveReview({ guildId: interaction.guild.id, targetId: target.id, reviewerId: interaction.user.id, stars, comment });
@@ -21,24 +22,26 @@ async function give(interaction, config) {
 
   if (config.review_channel_id) {
     const channel = await interaction.guild.channels.fetch(config.review_channel_id).catch(() => null);
-    await channel?.send?.({ components: [textCard(`${starsText(stars)}  <@${interaction.user.id}> ${existing ? 'changed their review of' : 'reviewed'} <@${target.id}>${comment ? `\n> ${comment}` : ''}`, 0xf0b232)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } }).catch(() => null);
+    const post = t(lang, existing ? 'reviews.post.changed' : 'reviews.post.new', { stars: starsText(stars), reviewer: `<@${interaction.user.id}>`, target: `<@${target.id}>` });
+    await channel?.send?.({ components: [textCard(`${post}${comment ? `\n> ${comment}` : ''}`, 0xf0b232)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } }).catch(() => null);
   }
-  return reply(interaction, textCard(`${EMOJI.APPROVE}  ${existing ? 'Your review was changed.' : 'Review saved.'} ${target.username} has ${starsText(summary.average)} ${summary.average} from ${summary.count} review${summary.count === 1 ? '' : 's'}.`, 0xa5ea7a));
+  const vars = { emoji: EMOJI.APPROVE, count: summary.count, user: target.username, stars: starsText(summary.average), average: formatNumber(lang, summary.average) };
+  return reply(interaction, textCard(tn(lang, existing ? 'reviews.give.changed' : 'reviews.give.saved', summary.count, vars), 0xa5ea7a));
 }
 
-async function remove(interaction) {
+async function remove(interaction, lang) {
   const target = interaction.options.getUser('user', true);
   const removed = await reviewsDb.removeReview(interaction.guild.id, target.id, interaction.user.id);
-  return reply(interaction, textCard(removed ? `${EMOJI.APPROVE}  Your review of ${target.username} is removed.` : `You have no review of ${target.username}.`));
+  return reply(interaction, textCard(removed ? t(lang, 'reviews.remove.done', { emoji: EMOJI.APPROVE, user: target.username }) : t(lang, 'reviews.remove.none', { user: target.username })));
 }
 
-async function show(interaction) {
+async function show(interaction, lang) {
   const target = interaction.options.getUser('user') ?? interaction.user;
   const reviews = await reviewsDb.listFor(interaction.guild.id, target.id);
   const summary = summarize(reviews);
-  if (!summary.count) return reply(interaction, textCard(`${target.username} has no reviews yet.`));
+  if (!summary.count) return reply(interaction, textCard(t(lang, 'reviews.show.none', { user: target.username })));
   const lines = reviews.slice(0, 5).map((review) => `${starsText(review.stars)} <@${review.reviewer_id}> <t:${unix(review.updated_at)}:R>${review.comment ? `\n> ${review.comment}` : ''}`);
-  return reply(interaction, textCard([`### Reviews of ${target.username}`, `${starsText(summary.average)} **${summary.average}** from ${summary.count} review${summary.count === 1 ? '' : 's'}`, ...lines].join('\n')));
+  return reply(interaction, textCard([t(lang, 'reviews.show.title', { user: target.username }), tn(lang, 'reviews.show.summary', summary.count, { count: summary.count, stars: starsText(summary.average), average: formatNumber(lang, summary.average) }), ...lines].join('\n')));
 }
 
 module.exports = {
@@ -57,10 +60,11 @@ module.exports = {
 
   async execute(interaction) {
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+    const lang = await languageOf(interaction);
     const config = await reviewsDb.getConfig(interaction.guild.id);
-    if (!config.reviews_enabled) return reply(interaction, textCard('Reviews are turned off in this server.'));
+    if (!config.reviews_enabled) return reply(interaction, textCard(t(lang, 'reviews.off')));
     const sub = interaction.options.getSubcommand();
-    if (sub === 'give') return give(interaction, config);
-    return sub === 'remove' ? remove(interaction) : show(interaction);
+    if (sub === 'give') return give(interaction, config, lang);
+    return sub === 'remove' ? remove(interaction, lang) : show(interaction, lang);
   },
 };

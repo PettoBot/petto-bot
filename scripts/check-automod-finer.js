@@ -64,5 +64,16 @@ const msg = (content, channelId = 'c1', parentId = null) => ({ guild: { id: 'g1'
   config = { anti_spam_enabled: true, caps_percent: 40, caps_min_length: 8, max_mentions: 5, allowed_invite_codes: [] };
   await event.execute(msg('Hello EVERYONE how are you'));
   assert.equal(applied[0].violationType, 'excessive-caps', 'the percentage of the server is used');
+
+  // The anti-alt check logs its own failures (it used `logger` without requiring it, so a failure became a ReferenceError).
+  const logged = [];
+  stub('../src/utils/logger', { error: (...args) => logged.push(args), warn() {}, info() {}, debug() {} });
+  stub('../src/db/automod', { getConfig: async () => { throw new Error('database down'); } });
+  delete require.cache[require.resolve('../src/events/guildMemberAddAntiAlt')];
+  const antiAlt = require('../src/events/guildMemberAddAntiAlt');
+  await antiAlt.execute({ user: { bot: false, createdTimestamp: Date.now() }, guild: { id: 'g9' }, id: 'u9' });
+  assert.equal(logged.length, 1, 'the failure is logged, not thrown');
+  assert.match(logged[0][0], /Anti-alt check failed for guild g9/);
+  assert.equal(logged[0][1].message, 'database down');
   console.log('automod finer ok');
 })().catch((err) => { console.error(err); process.exit(1); });

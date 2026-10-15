@@ -7,187 +7,202 @@ const { renderPanel } = require('../../interactions/embedPanel');
 const { parseEmbedScript, toTemplateData } = require('../../utils/embedScript');
 const { commandRef } = require('../../utils/commandRef');
 const logger = require('../../utils/logger');
+const { t, languageOf, currentLanguage } = require('../../i18n');
 
+// The pages of `!embed vars`: each row is a variable (written as it is typed) and the key of its description, in the embeds
+// catalog under `embeds.vars.<page id>.<key>`; the title of a page is `embeds.vars.page.<page id>`.
 const VAR_PAGES = [
   {
-    title: 'Variables · User',
+    id: 'user',
     fields: [
-      ['`{user}`', 'Mentions the user (@mention)'],
-      ['`{user_tag}`', 'Username'],
-      ['`{user_name}`', 'Username (without tag)'],
-      ['`{user_avatar}`', 'Avatar URL'],
-      ['`{user_id}`', 'User ID'],
-      ['`{user_discrim}`', 'Discriminator'],
-      ['`{user_nick}`', 'Server nickname or username'],
-      ['`{user_joindate}`', 'Date the user joined the server'],
-      ['`{user_createdate}`', 'Date the account was created'],
-      ['`{user_displaycolor}`', 'Display color (hex)'],
-      ['`{user_boostsince}`', 'Date the user started boosting'],
+      ['`{user}`', 'user'], // i18n-ignore: variables as they are typed
+      ['`{user_tag}`', 'userTag'], // i18n-ignore: variables as they are typed
+      ['`{user_name}`', 'userName'], // i18n-ignore: variables as they are typed
+      ['`{user_avatar}`', 'userAvatar'], // i18n-ignore: variables as they are typed
+      ['`{user_id}`', 'userId'], // i18n-ignore: variables as they are typed
+      ['`{user_discrim}`', 'userDiscrim'], // i18n-ignore: variables as they are typed
+      ['`{user_nick}`', 'userNick'], // i18n-ignore: variables as they are typed
+      ['`{user_joindate}`', 'userJoindate'], // i18n-ignore: variables as they are typed
+      ['`{user_createdate}`', 'userCreatedate'], // i18n-ignore: variables as they are typed
+      ['`{user_displaycolor}`', 'userDisplaycolor'], // i18n-ignore: variables as they are typed
+      ['`{user_boostsince}`', 'userBoostsince'], // i18n-ignore: variables as they are typed
     ],
   },
   {
-    title: 'Variables · User (dot notation)',
+    id: 'userDot',
     fields: [
-      ['`{user.mention}`', 'Mentions the user (@mention)'],
-      ['`{user.name}`', 'Username'],
-      ['`{user.id}`', 'User ID'],
-      ['`{user.avatar}`', 'Avatar URL'],
-      ['`{user.display_avatar}`', 'Server avatar (falls back to global)'],
-      ['`{user.display_name}`', 'Server nickname or username'],
-      ['`{user.joined_at}`', 'Date joined the server'],
-      ['`{user.joined_at_timestamp}`', 'Unix timestamp of join date'],
-      ['`{user.created_at}`', 'Account creation date'],
-      ['`{user.created_at_timestamp}`', 'Unix timestamp of creation date'],
-      ['`{user.boost}`', '`Yes` or `No`: is the user boosting?'],
-      ['`{user.boost_since}`', 'Date they started boosting'],
-      ['`{user.boost_since_timestamp}`', 'Unix timestamp of boost start'],
-      ['`{user.color}`', 'Role color (hex)'],
-      ['`{user.top_role}`', 'Highest role name'],
-      ['`{user.role_list}`', 'All roles as mentions'],
-      ['`{user.bot}`', '`Yes` or `No`: is the user a bot?'],
-      ['`{user.join_position}`', 'Member join position (number)'],
-      ['`{user.join_position_suffix}`', 'Join position with suffix (1st, 2nd…)'],
+      ['`{user.mention}`', 'user.mention'], // i18n-ignore: variables as they are typed
+      ['`{user.name}`', 'user.name'], // i18n-ignore: variables as they are typed
+      ['`{user.id}`', 'user.id'], // i18n-ignore: variables as they are typed
+      ['`{user.avatar}`', 'user.avatar'], // i18n-ignore: variables as they are typed
+      ['`{user.display_avatar}`', 'user.displayAvatar'], // i18n-ignore: variables as they are typed
+      ['`{user.display_name}`', 'user.displayName'], // i18n-ignore: variables as they are typed
+      ['`{user.joined_at}`', 'user.joinedAt'], // i18n-ignore: variables as they are typed
+      ['`{user.joined_at_timestamp}`', 'user.joinedAtTimestamp'], // i18n-ignore: variables as they are typed
+      ['`{user.created_at}`', 'user.createdAt'], // i18n-ignore: variables as they are typed
+      ['`{user.created_at_timestamp}`', 'user.createdAtTimestamp'], // i18n-ignore: variables as they are typed
+      ['`{user.boost}`', 'user.boost'], // i18n-ignore: variables as they are typed
+      ['`{user.boost_since}`', 'user.boostSince'], // i18n-ignore: variables as they are typed
+      ['`{user.boost_since_timestamp}`', 'user.boostSinceTimestamp'], // i18n-ignore: variables as they are typed
+      ['`{user.color}`', 'user.color'], // i18n-ignore: variables as they are typed
+      ['`{user.top_role}`', 'user.topRole'], // i18n-ignore: variables as they are typed
+      ['`{user.role_list}`', 'user.roleList'], // i18n-ignore: variables as they are typed
+      ['`{user.bot}`', 'user.bot'], // i18n-ignore: variables as they are typed
+      ['`{user.join_position}`', 'user.joinPosition'], // i18n-ignore: variables as they are typed
+      ['`{user.join_position_suffix}`', 'user.joinPositionSuffix'], // i18n-ignore: variables as they are typed
     ],
   },
   {
-    title: 'Variables · Server',
+    id: 'server',
     fields: [
-      ['`{server_prefix}`', "Server's configured prefix (Petto is slash-only, so this is informational)"],
-      ['`{server_name}`', 'Server name'],
-      ['`{server_id}`', 'Server ID'],
-      ['`{server_membercount}`', 'Total member count'],
-      ['`{server_membercount_ordinal}`', 'Member count (1st, 2nd…)'],
-      ['`{server_membercount_nobots}`', 'Member count excluding bots'],
-      ['`{server_membercount_nobots_ordinal}`', 'Same but ordinal'],
-      ['`{server_botcount}`', 'Number of bots'],
-      ['`{server_icon}`', 'Server icon URL'],
-      ['`{server_rolecount}`', 'Number of roles'],
-      ['`{server_channelcount}`', 'Number of channels'],
-      ['`{server_owner}`', 'Mentions the server owner'],
-      ['`{server_owner_id}`', 'Server owner ID'],
-      ['`{server_createdate}`', 'Server creation date'],
-      ['`{server_randommember}`', 'Mentions a random member'],
-      ['`{server_randommember_tag}`', 'Username of a random member'],
-      ['`{server_randommember_nobots}`', 'Random member (no bots)'],
-      ['`{server_boostlevel}`', 'Current boost level (0-3)'],
-      ['`{server_boostcount}`', 'Total boosts'],
-      ['`{server_nextboostlevel}`', 'Next boost level'],
-      ['`{server_nextboostlevel_required}`', 'Boosts needed for next level'],
+      ['`{server_prefix}`', 'serverPrefix'], // i18n-ignore: variables as they are typed
+      ['`{server_name}`', 'serverName'], // i18n-ignore: variables as they are typed
+      ['`{server_id}`', 'serverId'], // i18n-ignore: variables as they are typed
+      ['`{server_membercount}`', 'serverMembercount'], // i18n-ignore: variables as they are typed
+      ['`{server_membercount_ordinal}`', 'serverMembercountOrdinal'], // i18n-ignore: variables as they are typed
+      ['`{server_membercount_nobots}`', 'serverMembercountNobots'], // i18n-ignore: variables as they are typed
+      ['`{server_membercount_nobots_ordinal}`', 'serverMembercountNobotsOrdinal'], // i18n-ignore: variables as they are typed
+      ['`{server_botcount}`', 'serverBotcount'], // i18n-ignore: variables as they are typed
+      ['`{server_icon}`', 'serverIcon'], // i18n-ignore: variables as they are typed
+      ['`{server_rolecount}`', 'serverRolecount'], // i18n-ignore: variables as they are typed
+      ['`{server_channelcount}`', 'serverChannelcount'], // i18n-ignore: variables as they are typed
+      ['`{server_owner}`', 'serverOwner'], // i18n-ignore: variables as they are typed
+      ['`{server_owner_id}`', 'serverOwnerId'], // i18n-ignore: variables as they are typed
+      ['`{server_createdate}`', 'serverCreatedate'], // i18n-ignore: variables as they are typed
+      ['`{server_randommember}`', 'serverRandommember'], // i18n-ignore: variables as they are typed
+      ['`{server_randommember_tag}`', 'serverRandommemberTag'], // i18n-ignore: variables as they are typed
+      ['`{server_randommember_nobots}`', 'serverRandommemberNobots'], // i18n-ignore: variables as they are typed
+      ['`{server_boostlevel}`', 'serverBoostlevel'], // i18n-ignore: variables as they are typed
+      ['`{server_boostcount}`', 'serverBoostcount'], // i18n-ignore: variables as they are typed
+      ['`{server_nextboostlevel}`', 'serverNextboostlevel'], // i18n-ignore: variables as they are typed
+      ['`{server_nextboostlevel_required}`', 'serverNextboostlevelRequired'], // i18n-ignore: variables as they are typed
     ],
   },
   {
-    title: 'Variables · Guild (dot notation)',
+    id: 'guild',
     fields: [
-      ['`{guild.name}`', 'Server name'],
-      ['`{guild.id}`', 'Server ID'],
-      ['`{guild.count}`', 'Total member count'],
-      ['`{guild.icon}`', 'Server icon URL'],
-      ['`{guild.banner}`', 'Server banner URL'],
-      ['`{guild.owner_id}`', 'Server owner ID'],
-      ['`{guild.created_at}`', 'Server creation date'],
-      ['`{guild.created_at_timestamp}`', 'Unix timestamp of creation date'],
-      ['`{guild.emoji_count}`', 'Number of custom emojis'],
-      ['`{guild.role_count}`', 'Number of roles'],
-      ['`{guild.boost_count}`', 'Total number of boosts'],
-      ['`{guild.boost_tier}`', 'Boost tier (e.g. Level 2)'],
-      ['`{guild.channels_count}`', 'Number of channels'],
-      ['`{guild.vanity}`', 'Vanity URL (e.g. discord.gg/code)'],
-      ['`{guild.region}`', 'Preferred locale'],
-      ['`{guild.max_members}`', 'Max member capacity'],
+      ['`{guild.name}`', 'guild.name'], // i18n-ignore: variables as they are typed
+      ['`{guild.id}`', 'guild.id'], // i18n-ignore: variables as they are typed
+      ['`{guild.count}`', 'guild.count'], // i18n-ignore: variables as they are typed
+      ['`{guild.icon}`', 'guild.icon'], // i18n-ignore: variables as they are typed
+      ['`{guild.banner}`', 'guild.banner'], // i18n-ignore: variables as they are typed
+      ['`{guild.owner_id}`', 'guild.ownerId'], // i18n-ignore: variables as they are typed
+      ['`{guild.created_at}`', 'guild.createdAt'], // i18n-ignore: variables as they are typed
+      ['`{guild.created_at_timestamp}`', 'guild.createdAtTimestamp'], // i18n-ignore: variables as they are typed
+      ['`{guild.emoji_count}`', 'guild.emojiCount'], // i18n-ignore: variables as they are typed
+      ['`{guild.role_count}`', 'guild.roleCount'], // i18n-ignore: variables as they are typed
+      ['`{guild.boost_count}`', 'guild.boostCount'], // i18n-ignore: variables as they are typed
+      ['`{guild.boost_tier}`', 'guild.boostTier'], // i18n-ignore: variables as they are typed
+      ['`{guild.channels_count}`', 'guild.channelsCount'], // i18n-ignore: variables as they are typed
+      ['`{guild.vanity}`', 'guild.vanity'], // i18n-ignore: variables as they are typed
+      ['`{guild.region}`', 'guild.region'], // i18n-ignore: variables as they are typed
+      ['`{guild.max_members}`', 'guild.maxMembers'], // i18n-ignore: variables as they are typed
     ],
   },
   {
-    title: 'Variables · Channel / Message / Date',
+    id: 'channel',
     fields: [
-      ['`{channel}`', 'Mentions the current channel'],
-      ['`{channel_name}`', 'Channel name'],
-      ['`{channel.name}`', 'Channel name (dot notation)'],
-      ['`{channel.id}`', 'Channel ID'],
-      ['`{channel.mention}`', 'Channel mention (#channel)'],
-      ['`{channel.topic}`', 'Channel topic'],
-      ['`{message_link}`', 'Link to the triggering message (empty in slash commands)'],
-      ['`{date}`', "Today's date"],
-      ['`{date.now}`', "Today's date (GMT-5, Colombia)"],
-      ['`{date.utc_now}`', 'Current UTC date & time'],
-      ['`{date.utc_timestamp}`', 'Current Unix timestamp'],
+      ['`{channel}`', 'channel'], // i18n-ignore: variables as they are typed
+      ['`{channel_name}`', 'channelName'], // i18n-ignore: variables as they are typed
+      ['`{channel.name}`', 'channel.name'], // i18n-ignore: variables as they are typed
+      ['`{channel.id}`', 'channel.id'], // i18n-ignore: variables as they are typed
+      ['`{channel.mention}`', 'channel.mention'], // i18n-ignore: variables as they are typed
+      ['`{channel.topic}`', 'channel.topic'], // i18n-ignore: variables as they are typed
+      ['`{message_link}`', 'messageLink'], // i18n-ignore: variables as they are typed
+      ['`{date}`', 'date'], // i18n-ignore: variables as they are typed
+      ['`{date.now}`', 'date.now'], // i18n-ignore: variables as they are typed
+      ['`{date.utc_now}`', 'date.utcNow'], // i18n-ignore: variables as they are typed
+      ['`{date.utc_timestamp}`', 'date.utcTimestamp'], // i18n-ignore: variables as they are typed
     ],
   },
   {
-    title: 'Variables · Functions',
+    id: 'functions',
     fields: [
-      ['`{newline}`', 'Line break'],
-      ['`{separator}`', 'Decorative line ──────────────────────'],
-      ['`{choose:a|b|c}`', 'Random choice from the list'],
-      ['`{range:1-100}`', 'Random number between 1 and 100'],
+      ['`{newline}`', 'newline'], // i18n-ignore: variables as they are typed
+      ['`{separator}`', 'separator'], // i18n-ignore: variables as they are typed
+      ['`{choose:a|b|c}`', 'choose'], // i18n-ignore: variables as they are typed
+      ['`{range:1-100}`', 'range'], // i18n-ignore: variables as they are typed
     ],
   },
   {
-    title: 'Variables · Giveaway',
+    id: 'giveaway',
     fields: [
-      ['`{gw.prize}`', 'The prize'],
-      ['`{gw.winners}`', 'Number of winners'],
-      ['`{gw.entries}`', 'Current number of entries'],
-      ['`{gw.host}`', 'Mentions whoever started it'],
-      ['`{gw.host_name}`', 'Giveaway host username'],
-      ['`{gw.host_avatar}`', 'Giveaway host avatar URL'],
-      ['`{gw.duration}`', 'End time as a Unix timestamp'],
-      ['`{gw.timestamp}` / `{gw.ends}`', 'End time as a relative Discord timestamp'],
-      ['`{gw.claim_time}`', 'How long winners have to claim'],
-      ['`{gw.reaction}`', 'Entry emoji when using reaction mode'],
-      ['`{gw.entry_mode}`', 'Whether members react or click to enter'],
-      ['`{gw.entry_text}`', 'Ready-made enter instruction'],
-      ['`{gw.winner_text}`', 'Ready-made winner-count text'],
-      ['`{gw.status}`', 'Active or Ended'],
-      ['`{gw.preset}`', 'Bonus-entry roles list, when a preset is used'],
+      ['`{gw.prize}`', 'gw.prize'], // i18n-ignore: variables as they are typed
+      ['`{gw.winners}`', 'gw.winners'], // i18n-ignore: variables as they are typed
+      ['`{gw.entries}`', 'gw.entries'], // i18n-ignore: variables as they are typed
+      ['`{gw.host}`', 'gw.host'], // i18n-ignore: variables as they are typed
+      ['`{gw.host_name}`', 'gw.hostName'], // i18n-ignore: variables as they are typed
+      ['`{gw.host_avatar}`', 'gw.hostAvatar'], // i18n-ignore: variables as they are typed
+      ['`{gw.duration}`', 'gw.duration'], // i18n-ignore: variables as they are typed
+      ['`{gw.timestamp}` / `{gw.ends}`', 'gw.timestamp'], // i18n-ignore: variables as they are typed
+      ['`{gw.claim_time}`', 'gw.claimTime'], // i18n-ignore: variables as they are typed
+      ['`{gw.reaction}`', 'gw.reaction'], // i18n-ignore: variables as they are typed
+      ['`{gw.entry_mode}`', 'gw.entryMode'], // i18n-ignore: variables as they are typed
+      ['`{gw.entry_text}`', 'gw.entryText'], // i18n-ignore: variables as they are typed
+      ['`{gw.winner_text}`', 'gw.winnerText'], // i18n-ignore: variables as they are typed
+      ['`{gw.status}`', 'gw.status'], // i18n-ignore: variables as they are typed
+      ['`{gw.preset}`', 'gw.preset'], // i18n-ignore: variables as they are typed
     ],
   },
   {
-    title: 'Variables · Level (level-up notifications only)',
+    id: 'level',
     fields: [
-      ['`{level}`', 'The level just reached'],
-      ['`{level_xp}`', 'Total XP'],
-      ['`{level_xp_needed}`', 'XP needed for the next level'],
-      ['`{level_rank}`', 'Server rank position'],
+      ['`{level}`', 'level'], // i18n-ignore: variables as they are typed
+      ['`{level_xp}`', 'levelXp'], // i18n-ignore: variables as they are typed
+      ['`{level_xp_needed}`', 'levelXpNeeded'], // i18n-ignore: variables as they are typed
+      ['`{level_rank}`', 'levelRank'], // i18n-ignore: variables as they are typed
     ],
   },
   {
-    title: 'Variables · Custom Commands',
+    id: 'custom',
     fields: [
-      ['`{args}` / `{arguments}` / `{args_raw}`', 'Everything typed after the custom command name'],
-      ['`{arg1}` … `{arg10}`', 'Individual arguments; quoted phrases stay together'],
-      ['`{args_from:N}`', 'Arguments from position N through the end, e.g. `{args_from:2}`'],
-      ['`{arg_count}`', 'Number of parsed arguments'],
-      ['`{command_name}`', 'Name of the custom command being executed'],
-      ['`{prefix}`', 'Prefix used to invoke the custom command'],
+      ['`{args}` / `{arguments}` / `{args_raw}`', 'args'], // i18n-ignore: variables as they are typed
+      ['`{arg1}` … `{arg10}`', 'arg1'], // i18n-ignore: variables as they are typed
+      ['`{args_from:N}`', 'argsFrom'], // i18n-ignore: variables as they are typed
+      ['`{arg_count}`', 'argCount'], // i18n-ignore: variables as they are typed
+      ['`{command_name}`', 'commandName'], // i18n-ignore: variables as they are typed
+      ['`{prefix}`', 'prefix'], // i18n-ignore: variables as they are typed
     ],
   },
   {
-    title: 'Embed code · /embed create code:',
-    ref: 'embed create code:',
+    id: 'code',
+    ref: 'embed create code:', // i18n-ignore: a command
     fields: [
-      ['`{embed}`', 'Starts the embed. Text before it becomes the message text'],
-      ['`&v`', 'Joins the blocks. `$v` also works, so codes from other bots can be pasted'],
-      ['`{title: text}` `{url: link}`', 'Title, and the link on the title'],
-      ['`{description: text}`', 'Description, line breaks are kept'],
-      ['`{color: #ff91c2}`', 'Embed color, hex'],
-      ['`{thumbnail: link}` `{image: link}`', 'Small image and large image'],
-      ['`{author: name && icon && link}`', 'Author, icon and link are optional'],
-      ['`{footer: text && icon}`', 'Footer, icon is optional'],
-      ['`{field: name && value && inline}`', 'A field, `inline` is optional'],
-      ['`{timestamp}`', 'Shows the current time in the footer'],
-      ['`{button: link && label && url}`', 'A link button, up to 5'],
-      ['`{message: text}`', 'Message text, the same as writing it before `{embed}`'],
-      ['`{newline}`', 'A line break. Discord does not allow real line breaks in a command, so write `{newline}` where one goes'],
-      ['Example', '`{message: Hi {user}}&v{embed}&v{title: Welcome}&v{description: Read the rules{newline}Have fun}&v{color: #ff91c2}`'],
-      ['Build one with a preview', 'https://petto.sbs/embed-code'],
+      ['`{embed}`', 'embed'], // i18n-ignore: variables as they are typed
+      ['`&v`', 'joiner'], // i18n-ignore: variables as they are typed
+      ['`{title: text}` `{url: link}`', 'title'], // i18n-ignore: variables as they are typed
+      ['`{description: text}`', 'description'], // i18n-ignore: variables as they are typed
+      ['`{color: #ff91c2}`', 'color'], // i18n-ignore: variables as they are typed
+      ['`{thumbnail: link}` `{image: link}`', 'thumbnail'], // i18n-ignore: variables as they are typed
+      ['`{author: name && icon && link}`', 'author'], // i18n-ignore: variables as they are typed
+      ['`{footer: text && icon}`', 'footer'], // i18n-ignore: variables as they are typed
+      ['`{field: name && value && inline}`', 'field'], // i18n-ignore: variables as they are typed
+      ['`{timestamp}`', 'timestamp'], // i18n-ignore: variables as they are typed
+      ['`{button: link && label && url}`', 'button'], // i18n-ignore: variables as they are typed
+      ['`{message: text}`', 'message'], // i18n-ignore: variables as they are typed
+      ['`{newline}`', 'newline'], // i18n-ignore: variables as they are typed
+      [null, 'example'],
+      [null, 'builder'],
     ],
   },
 ];
 
-function buildVarsEmbed(page, interaction, prefix) {
+/** The example of the code page, with its words in `lang` (the blocks and variables are never translated). */
+function exampleCode(lang) {
+  const word = (name) => t(lang, `embeds.vars.code.${name}`);
+  // i18n-ignore: an embed code, its words come from the catalog
+  return `\`{message: ${word('exampleHi')} {user}}&v{embed}&v{title: ${word('exampleWelcome')}}&v{description: ${word('exampleRules')}{newline}${word('exampleFun')}}&v{color: #ff91c2}\``;
+}
+
+function buildVarsEmbed(page, interaction, prefix, lang = currentLanguage()) {
   const p = VAR_PAGES[page];
-  const title = p.ref ? p.title.replace(/\/embed create code:/, commandRef(interaction, p.ref, prefix)) : p.title;
-  return new EmbedBuilder().setTitle(title).setDescription(p.fields.map(([k, v]) => `${k}: ${v}`).join('\n')).setColor(0x4b4f59).setFooter({ text: `Page ${page + 1}/${VAR_PAGES.length}` });
+  const title = t(lang, `embeds.vars.page.${p.id}`, p.ref ? { command: commandRef(interaction, p.ref, prefix) } : undefined);
+  const line = ([name, key]) => {
+    if (key === 'example') return t(lang, 'embeds.vars.code.example', { code: exampleCode(lang) });
+    if (key === 'builder') return t(lang, 'embeds.vars.code.builder', { url: 'https://petto.sbs/embed-code' });
+    return `${name}: ${t(lang, `embeds.vars.${p.id}.${key}`)}`;
+  };
+  return new EmbedBuilder().setTitle(title).setDescription(p.fields.map(line).join('\n')).setColor(0x4b4f59).setFooter({ text: t(lang, 'embeds.vars.footer', { page: page + 1, total: VAR_PAGES.length }) });
 }
 
 function varsNavRow(page) {
@@ -198,14 +213,14 @@ function varsNavRow(page) {
   );
 }
 
-async function getOrFail(interaction, name) {
+async function getOrFail(interaction, name, lang) {
   if (!name) {
-    await interaction.editReply(`Please provide an embed name, e.g. \`${commandRef(interaction, 'embed preview embed:my_embed')}\`. Use \`${commandRef(interaction, 'embed list')}\` to see saved embeds.`);
+    await interaction.editReply(t(lang, 'embeds.cmd.noName', { example: commandRef(interaction, 'embed preview embed:my_embed'), list: commandRef(interaction, 'embed list') }));
     return null;
   }
   const doc = await getTemplate(interaction.guild.id, name);
   if (!doc) {
-    await interaction.editReply(`No embed named \`${name}\` found. Create it first with \`${commandRef(interaction, `embed create name:${name}`)}\`.`);
+    await interaction.editReply(t(lang, 'embeds.cmd.notFoundCreate', { name, command: commandRef(interaction, `embed create name:${name}`) }));
     return null;
   }
   return doc;
@@ -225,9 +240,10 @@ function readV2Code(code) {
 
 /** `/embed create name code:p2....` saves a Components V2 design from its code, checked the way a send is. */
 async function createV2FromCode(interaction, guildId, name, code, ctx) {
+  const lang = ctx.lang ?? currentLanguage();
   const v2 = readV2Code(code);
   if (!v2) {
-    await interaction.editReply('That `p2.` code could not be read. Copy it again from the Embed Builder or the dashboard (it starts with `p2.`).');
+    await interaction.editReply(t(lang, 'embeds.create.v2Unreadable'));
     return;
   }
   const data = { content: '', embeds: [], buttons: [], v2 };
@@ -235,15 +251,15 @@ async function createV2FromCode(interaction, guildId, name, code, ctx) {
   try {
     payload = await build(data, { ...ctx, allowV2: true });
   } catch (err) {
-    await interaction.editReply(`That design builds a message Discord would refuse: ${formatEmbedError(err)}`);
+    await interaction.editReply(t(lang, 'embeds.create.v2Refused', { error: formatEmbedError(err, lang) }));
     return;
   }
   if (!payload.components?.length) {
-    await interaction.editReply('That design has nothing to show. Add a text, a picture or a button.');
+    await interaction.editReply(t(lang, 'embeds.create.v2Nothing'));
     return;
   }
   await upsertTemplate(guildId, name, data);
-  const note = `Design \`${name}\` created from the code. It is a Components V2 message: change it in the dashboard (Embeds) and send it with \`${commandRef(interaction, 'embed send', ctx.prefix)}\`.`;
+  const note = t(lang, 'embeds.create.v2Done', { name, command: commandRef(interaction, 'embed send', ctx.prefix) });
   await interaction.editReply({ content: note, components: [], embeds: [] });
   await interaction.followUp({ components: payload.components, flags: payload.flags, files: payload.files ?? [], allowedMentions: { parse: [] } }).catch(() => {});
 }
@@ -255,10 +271,11 @@ async function createV2FromCode(interaction, guildId, name, code, ctx) {
 async function createFromCode(interaction, guildId, name, code, ctx) {
   // A `p2.` code is a Components V2 design (the Embed Builder and the dashboard make them): it is saved as it is.
   if (/^\s*p2\./.test(code)) return createV2FromCode(interaction, guildId, name, code, ctx);
-  const parsed = parseEmbedScript(code);
+  const lang = ctx.lang ?? currentLanguage();
+  const parsed = parseEmbedScript(code, lang);
   if (!parsed.embed && !parsed.content && !parsed.buttons.length) {
     const problems = parsed.warnings.length ? `\n${parsed.warnings.map((line) => `- ${line}`).join('\n')}` : '';
-    await interaction.editReply(`I could not find anything to build in that code. Write it like \`{embed}&v{title: Hello}&v{description: Hi {user}{newline}Welcome}\`.${problems}`);
+    await interaction.editReply(`${t(lang, 'embeds.create.nothingFound')}${problems}`);
     return;
   }
   const { data, editableInPanel } = toTemplateData(parsed);
@@ -266,19 +283,19 @@ async function createFromCode(interaction, guildId, name, code, ctx) {
   try {
     payload = await build(data, ctx);
   } catch (err) {
-    await interaction.editReply(`That code builds an embed Discord would refuse: ${formatEmbedError(err)}`);
+    await interaction.editReply(t(lang, 'embeds.code.refused', { error: formatEmbedError(err, lang) }));
     return;
   }
   if (!hasSendablePayload(payload)) {
-    await interaction.editReply('That code has nothing to show. Add a title, description, field, message text, or link button.');
+    await interaction.editReply(t(lang, 'embeds.create.nothing'));
     return;
   }
   await upsertTemplate(guildId, name, data);
   const notes = [
-    `Embed \`${name}\` created from the code.`,
+    t(lang, 'embeds.create.done', { name }),
     editableInPanel
-      ? `Change it with \`${commandRef(interaction, 'embed edit', ctx.prefix)}\`, or send it with \`${commandRef(interaction, 'embed send', ctx.prefix)}\`.`
-      : `It has message text, buttons or several embeds, so change it in the dashboard. Send it with \`${commandRef(interaction, 'embed send', ctx.prefix)}\`.`,
+      ? t(lang, 'embeds.create.editHere', { edit: commandRef(interaction, 'embed edit', ctx.prefix), send: commandRef(interaction, 'embed send', ctx.prefix) })
+      : t(lang, 'embeds.create.editDashboard', { send: commandRef(interaction, 'embed send', ctx.prefix) }),
     ...parsed.warnings.map((line) => `- ${line}`),
   ];
   await interaction.editReply({ content: `${notes.join('\n')}\n\n${payload.content ?? ''}`.slice(0, 2000), embeds: payload.embeds, components: payload.components });
@@ -399,17 +416,18 @@ module.exports = {
     const sub = interaction.options.getSubcommand();
     const group = interaction.options.getSubcommandGroup(false);
     const guildId = interaction.guild.id;
-    const ctx = { member: interaction.member, guild: interaction.guild, channel: interaction.channel, user: interaction.user };
+    const lang = await languageOf(interaction);
+    const ctx = { member: interaction.member, guild: interaction.guild, channel: interaction.channel, user: interaction.user, lang };
 
     if (!group && sub === 'vars') {
       let page = (interaction.options.getInteger('page') ?? 1) - 1;
-      await interaction.reply({ embeds: [buildVarsEmbed(page, interaction, ctx.prefix)], components: [varsNavRow(page)] });
+      await interaction.reply({ embeds: [buildVarsEmbed(page, interaction, ctx.prefix, lang)], components: [varsNavRow(page)] });
       const msg = await interaction.fetchReply();
       const collector = msg.createMessageComponentCollector({ filter: (i) => i.user.id === interaction.user.id, time: 90_000 });
       collector.on('collect', async (i) => {
         if (i.customId === 'evars_prev') page = Math.max(0, page - 1);
         if (i.customId === 'evars_next') page = Math.min(VAR_PAGES.length - 1, page + 1);
-        await i.update({ embeds: [buildVarsEmbed(page, interaction, ctx.prefix)], components: [varsNavRow(page)] });
+        await i.update({ embeds: [buildVarsEmbed(page, interaction, ctx.prefix, lang)], components: [varsNavRow(page)] });
       });
       collector.on('end', () => msg.edit({ components: [] }).catch(() => {}));
       return;
@@ -426,37 +444,37 @@ module.exports = {
     try {
       if (group === 'field') {
         const name = normalizeName(interaction.options.getString('embed'));
-        const doc = await getOrFail(interaction, name);
+        const doc = await getOrFail(interaction, name, lang);
         if (!doc) return;
         const data = { ...doc.data, fields: doc.data?.fields ?? [] };
 
         if (sub === 'add') {
           if (data.fields.length >= 25) {
-            await interaction.editReply('Embeds can have at most 25 fields.');
+            await interaction.editReply(t(lang, 'embeds.cmd.maxFields'));
             return;
           }
           data.fields.push({ name: interaction.options.getString('name'), value: interaction.options.getString('value'), inline: interaction.options.getBoolean('inline') ?? false });
           await upsertTemplate(guildId, name, data);
-          await interaction.editReply(`Field added to \`${name}\`! (${data.fields.length}/25)`);
+          await interaction.editReply(t(lang, 'embeds.cmd.fieldAdded', { name, count: data.fields.length }));
           return;
         }
 
         if (sub === 'remove') {
           const pos = interaction.options.getInteger('position') - 1;
           if (pos < 0 || pos >= data.fields.length) {
-            await interaction.editReply('Invalid position.');
+            await interaction.editReply(t(lang, 'embeds.cmd.badPosition'));
             return;
           }
           data.fields.splice(pos, 1);
           await upsertTemplate(guildId, name, data);
-          await interaction.editReply(`Field removed from \`${name}\`.`);
+          await interaction.editReply(t(lang, 'embeds.cmd.fieldRemoved', { name }));
           return;
         }
       }
 
       if (group === 'edit') {
         const name = normalizeName(interaction.options.getString('embed'));
-        const doc = await getOrFail(interaction, name);
+        const doc = await getOrFail(interaction, name, lang);
         if (!doc) return;
         const data = doc.data ?? {};
 
@@ -466,7 +484,7 @@ module.exports = {
         } else if (sub === 'description') {
           data.description = interaction.options.getString('description');
         } else if (sub === 'color') {
-          data.color = parseColor(interaction.options.getString('color'));
+          data.color = parseColor(interaction.options.getString('color'), lang);
         } else if (sub === 'author') {
           data.author = { name: interaction.options.getString('text'), icon: interaction.options.getString('icon') ?? null, url: interaction.options.getString('url') ?? null };
         } else if (sub === 'footer') {
@@ -480,7 +498,7 @@ module.exports = {
         }
 
         await upsertTemplate(guildId, name, data);
-        await interaction.editReply(`\`${name}\` updated!`);
+        await interaction.editReply(t(lang, 'embeds.cmd.updated', { name }));
         return;
       }
 
@@ -488,12 +506,12 @@ module.exports = {
         case 'create': {
           const name = normalizeName(interaction.options.getString('name'));
           if (!name) {
-            await interaction.editReply(`Please provide a name, e.g. \`${commandRef(interaction, 'embed create name:my_embed', ctx.prefix)}\`.`);
+            await interaction.editReply(t(lang, 'embeds.cmd.noCreateName', { example: commandRef(interaction, 'embed create name:my_embed', ctx.prefix) }));
             return;
           }
           const existing = await getTemplate(guildId, name);
           if (existing) {
-            await interaction.editReply(`An embed named \`${name}\` already exists. Use \`${commandRef(interaction, 'embed edit', ctx.prefix)}\` to modify it.`);
+            await interaction.editReply(t(lang, 'embeds.cmd.exists', { name, command: commandRef(interaction, 'embed edit', ctx.prefix) }));
             return;
           }
           const code = interaction.options.getString('code');
@@ -503,7 +521,7 @@ module.exports = {
           }
           await upsertTemplate(guildId, name, { fields: [] });
           const doc = await getTemplate(guildId, name);
-          const panel = await renderPanel(doc, name, interaction.user.id, commandRef(interaction, 'embed preview', ctx.prefix));
+          const panel = await renderPanel(doc, name, interaction.user.id, commandRef(interaction, 'embed preview', ctx.prefix), lang); // i18n-ignore: a command
           await interaction.editReply(panel);
           return;
         }
@@ -511,66 +529,66 @@ module.exports = {
         case 'delete': {
           const name = normalizeName(interaction.options.getString('embed'));
           const deleted = await deleteTemplate(guildId, name);
-          await interaction.editReply(deleted ? `Embed \`${name}\` deleted.` : `No embed named \`${name}\` found.`);
+          await interaction.editReply(t(lang, deleted ? 'embeds.cmd.deleted' : 'embeds.cmd.notFound', { name }));
           return;
         }
 
         case 'list': {
           const templates = await listTemplates(guildId);
           if (!templates.length) {
-            await interaction.editReply(`No saved embeds in this server. Create one with \`${commandRef(interaction, 'embed create name:my_embed', ctx.prefix)}\`.`);
+            await interaction.editReply(t(lang, 'embeds.cmd.listEmpty', { command: commandRef(interaction, 'embed create name:my_embed', ctx.prefix) }));
             return;
           }
-          const lines = templates.map((t, i) => `\`${i + 1}.\` **${t.name}**`);
-          await interaction.editReply(`**Saved Embeds (${templates.length}):**\n${lines.join('\n')}`);
+          const lines = templates.map((template, i) => `\`${i + 1}.\` **${template.name}**`);
+          await interaction.editReply(t(lang, 'embeds.cmd.list', { count: templates.length, list: lines.join('\n') }));
           return;
         }
 
         case 'preview': {
           const name = normalizeName(interaction.options.getString('embed'));
-          const doc = await getOrFail(interaction, name);
+          const doc = await getOrFail(interaction, name, lang);
           if (!doc) return;
           const payload = await build(doc.data, { ...ctx, allowV2: true });
           if (!hasSendablePayload(payload)) {
-            await interaction.editReply(`Embed \`${name}\` has no sendable content. Add a title, description, field, message content, or link button first.`);
+            await interaction.editReply(t(lang, 'embeds.cmd.empty', { name }));
             return;
           }
           if (payload.flags) {
             await interaction.editReply({ components: payload.components, flags: payload.flags, allowedMentions: { parse: [] } });
             return;
           }
-          await interaction.editReply({ content: `Preview of \`${name}\`:\n${payload.content ?? ''}`, embeds: payload.embeds, components: payload.components, files: payload.files });
+          await interaction.editReply({ content: t(lang, 'embeds.cmd.preview', { name, content: payload.content ?? '' }), embeds: payload.embeds, components: payload.components, files: payload.files });
           return;
         }
 
         case 'send': {
           const name = normalizeName(interaction.options.getString('embed'));
           const target = interaction.options.getChannel('channel') ?? interaction.channel;
-          const doc = await getOrFail(interaction, name);
+          const doc = await getOrFail(interaction, name, lang);
           if (!doc) return;
           // The reactions of the embed (its `reactions` list and any {reactreply:emoji}) are put on the message once it is sent.
           const reactions = [];
           const payload = await build(extractReactRepliesFromTemplate(doc.data, reactions), { ...ctx, allowV2: true });
           if (!hasSendablePayload(payload)) {
-            await interaction.editReply(`Embed \`${name}\` has no sendable content. Add a title, description, field, message content, or link button first.`);
+            await interaction.editReply(t(lang, 'embeds.cmd.empty', { name }));
             return;
           }
           if (payload.flags) {
             const sentV2 = await target.send({ components: payload.components, flags: payload.flags, allowedMentions: { parse: [] } });
             await applyReactReplies(sentV2, uniqueReactions(reactions));
-            await interaction.editReply(`Embed \`${name}\` sent to <#${target.id}>!`);
+            await interaction.editReply(t(lang, 'embeds.cmd.sent', { name, channel: `<#${target.id}>` }));
             return;
           }
           const sentEmbed = await target.send({ content: payload.content, embeds: payload.embeds, components: payload.components, files: payload.files });
           await applyReactReplies(sentEmbed, uniqueReactions(reactions));
-          await interaction.editReply(`Embed \`${name}\` sent to <#${target.id}>!`);
+          await interaction.editReply(t(lang, 'embeds.cmd.sent', { name, channel: `<#${target.id}>` }));
           return;
         }
       }
     } catch (err) {
-      const detail = formatEmbedError(err);
+      const detail = formatEmbedError(err, lang);
       logger.error(`Embed ${sub}${group ? ` (${group})` : ''} failed in guild ${guildId}:`, err);
-      await interaction.editReply(`Error while processing embed: \`${detail}\``);
+      await interaction.editReply(t(lang, 'embeds.cmd.error', { error: detail }));
     }
   },
 };

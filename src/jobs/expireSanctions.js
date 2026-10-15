@@ -6,8 +6,11 @@ const { logSanction } = require('../utils/caseLog');
 const logger = require('../utils/logger');
 const config = require('../config');
 const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency');
+const { t, guildLanguage, runWithLanguage } = require('../i18n');
 
 const POLL_INTERVAL_MS = 60_000;
+// i18n-ignore: saved as the reason of the case in English, like before; caseFormat.displayReason translates it when shown
+const EXPIRY_REASON = 'Automatic expiry';
 
 /** A minimal mention-able stand-in for a User/GuildMember, for cases where the member may have left. */
 function userMention(userId) {
@@ -24,37 +27,43 @@ async function processExpiredSanctions(client) {
         await deactivateCase(sanction.guild_id, sanction.case_number);
         return;
       }
-
-      if (sanction.type === 'tempban') {
-        try {
-          await guild.members.unban(sanction.user_id, 'Temporary ban expired');
-        } catch (err) {
-          // Already unbanned is a successful final state. Other errors must
-          // leave the case active so the next poll can retry it.
-          if (err.code !== 10026) throw err;
-        }
-      } else if (sanction.type === 'tempmute') {
-        const member = await guild.members.fetch(sanction.user_id).catch(() => null);
-        if (member) await member.timeout(null, 'Temporary mute expired');
-      }
-
-      await deactivateCase(sanction.guild_id, sanction.case_number);
-
-      const reverseType = sanction.type === 'tempban' ? 'unban' : 'unmute';
-      const modCase = await createCase({
-        guildId: sanction.guild_id,
-        userId: sanction.user_id,
-        moderatorId: client.user.id,
-        type: reverseType,
-        reason: 'Automatic expiry',
-        source: 'expiry',
-      });
-
-      await logSanction(client, guild, { modCase, target: userMention(sanction.user_id), moderator: client.user, reason: 'Automatic expiry', source: 'expiry' });
+      // A job runs outside of any server: what it writes (audit log, sanction log) uses the server's language.
+      const lang = await guildLanguage(guild.id);
+      await runWithLanguage(lang, () => expireSanction(client, guild, sanction, lang));
     } catch (err) {
       logger.error(`Failed to process expired sanction (case #${sanction.case_number}, guild ${sanction.guild_id}):`, err);
     }
   }, config.jobConcurrency);
+}
+
+/** Lifts one timed ban or mute whose time is up and writes the case of it. */
+async function expireSanction(client, guild, sanction, lang) {
+  if (sanction.type === 'tempban') {
+    try {
+      await guild.members.unban(sanction.user_id, t(lang, 'moderation.expiry.audit.tempban'));
+    } catch (err) {
+      // Already unbanned is a successful final state. Other errors must
+      // leave the case active so the next poll can retry it.
+      if (err.code !== 10026) throw err;
+    }
+  } else if (sanction.type === 'tempmute') {
+    const member = await guild.members.fetch(sanction.user_id).catch(() => null);
+    if (member) await member.timeout(null, t(lang, 'moderation.expiry.audit.tempmute'));
+  }
+
+  await deactivateCase(sanction.guild_id, sanction.case_number);
+
+  const reverseType = sanction.type === 'tempban' ? 'unban' : 'unmute';
+  const modCase = await createCase({
+    guildId: sanction.guild_id,
+    userId: sanction.user_id,
+    moderatorId: client.user.id,
+    type: reverseType,
+    reason: EXPIRY_REASON,
+    source: 'expiry',
+  });
+
+  await logSanction(client, guild, { modCase, target: userMention(sanction.user_id), moderator: client.user, reason: EXPIRY_REASON, source: 'expiry' });
 }
 
 /** Releases members whose jail timer has run out and gives their roles back. */
@@ -69,12 +78,13 @@ async function processExpiredJails(client) {
         return;
       }
 
-      const result = await unjailMember({ guild, userId: jail.user_id, moderator: client.user, reason: 'Automatic expiry', source: 'expiry' });
+      const lang = await guildLanguage(guild.id);
+      const result = await runWithLanguage(lang, () => unjailMember({ guild, userId: jail.user_id, moderator: client.user, reason: EXPIRY_REASON, source: 'expiry' }));
       if (!result.ok) return;
 
-      await logSanction(client, guild, { modCase: result.modCase, target: userMention(jail.user_id), moderator: client.user, reason: 'Automatic expiry', source: 'expiry' });
+      await logSanction(client, guild, { modCase: result.modCase, target: userMention(jail.user_id), moderator: client.user, reason: EXPIRY_REASON, source: 'expiry' });
       await result.member
-        ?.send(await sanctionDM({ type: 'unjail', guild, client, reason: 'Automatic expiry', member: result.member, caseNumber: result.modCase.case_number, source: 'expiry' }))
+        ?.send(await sanctionDM({ type: 'unjail', guild, client, reason: EXPIRY_REASON, member: result.member, caseNumber: result.modCase.case_number, source: 'expiry' }))
         .catch(() => {});
     } catch (err) {
       // A release that cannot restore roles stays recorded and is retried on the next poll.

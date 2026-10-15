@@ -2,6 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { getRoleplayCounter } = require('../db/roleplayStats');
 const { COLORS } = require('./colors');
 const { buildRoleplayButtonRow, getRoleplayCounterMessage } = require('./roleplayButtons');
+const { t, languageOf } = require('../i18n');
 
 const WAIFU_ACTIONS = {
   airkiss: 'kiss',
@@ -126,9 +127,9 @@ async function requestJson(url) {
   try {
     const response = await fetch(url, {
       signal: controller.signal,
-      headers: { 'User-Agent': 'Petto Discord Bot/0.1' },
+      headers: { 'User-Agent': 'Petto Discord Bot/0.1' }, // i18n-ignore: HTTP header
     });
-    if (!response.ok) throw new Error('Image provider returned HTTP ' + response.status);
+    if (!response.ok) throw new Error('Image provider returned HTTP ' + response.status); // i18n-ignore: internal error, never shown
     return response.json();
   } finally {
     clearTimeout(timeout);
@@ -143,7 +144,7 @@ async function fetchActionImage(action) {
   if (waifuAction) {
     requests.push(
       requestJson('https://api.waifu.pics/sfw/' + waifuAction).then((payload) => {
-        if (typeof payload.url !== 'string') throw new Error('Invalid waifu.pics response');
+        if (typeof payload.url !== 'string') throw new Error('Invalid waifu.pics response'); // i18n-ignore: internal error, never shown
         return payload.url;
       }),
     );
@@ -153,7 +154,7 @@ async function fetchActionImage(action) {
     requests.push(
       requestJson('https://nekos.best/api/v2/' + nekosAction).then((payload) => {
         const url = payload.results?.[0]?.url;
-        if (typeof url !== 'string') throw new Error('Invalid nekos.best response');
+        if (typeof url !== 'string') throw new Error('Invalid nekos.best response'); // i18n-ignore: internal error, never shown
         return url;
       }),
     );
@@ -163,7 +164,7 @@ async function fetchActionImage(action) {
   if (otakuGifsAction) {
     requests.push(
       requestJson('https://api.otakugifs.xyz/gif?reaction=' + otakuGifsAction).then((payload) => {
-        if (typeof payload.url !== 'string') throw new Error('Invalid OtakuGIFs response');
+        if (typeof payload.url !== 'string') throw new Error('Invalid OtakuGIFs response'); // i18n-ignore: internal error, never shown
         return payload.url;
       }),
     );
@@ -181,6 +182,8 @@ function actorName(user) {
   return user.globalName ?? user.username;
 }
 
+// The texts of each action live in the roleplay catalog: `roleplay.<name>.title` (next to the author), `.target` (to another
+// member), `.self` (to themselves), and the response button, response lines and counters (see roleplayButtons.js).
 function createRoleplayCommand(name, config) {
   return {
     category: 'roleplay',
@@ -196,15 +199,17 @@ function createRoleplayCommand(name, config) {
         .setRequired(false)),
 
     async execute(interaction) {
+      const lang = await languageOf(interaction);
       const actor = interaction.user;
       const target = interaction.options.getUser('member') ?? actor;
       const actorLabel = actorName(actor);
       const targetLabel = actorName(target);
       const isSelf = actor.id === target.id;
       const requestId = interaction.id ?? interaction.rawMessage?.id ?? `rp-${actor.id}-${Date.now()}`;
+      // The self texts get the name already in bold, as they always did (a text that bolds {actor} again shows it the same).
       const sentence = isSelf
-        ? (config.self ?? '**' + actorLabel + '** ' + config.verb + ' themselves.').replaceAll('{actor}', '**' + actorLabel + '**')
-        : '**' + actorLabel + '** ' + config.verb + ' **' + targetLabel + '**.';
+        ? t(lang, `roleplay.${name}.self`, { actor: '**' + actorLabel + '**' })
+        : t(lang, `roleplay.${name}.target`, { actor: actorLabel, target: targetLabel });
 
       await interaction.deferReply();
       const imageUrl = await fetchActionImage(name);
@@ -212,14 +217,14 @@ function createRoleplayCommand(name, config) {
       let counterMessage;
       if (!isSelf) {
         const count = await getRoleplayCounter(interaction.guild.id, target.id, name).catch(() => null);
-        if (count !== null) counterMessage = getRoleplayCounterMessage(name, count, targetLabel);
-        components = buildRoleplayButtonRow({ requestId, action: name, actorId: actor.id, targetId: target.id });
+        if (count !== null) counterMessage = getRoleplayCounterMessage(name, count, targetLabel, lang);
+        components = buildRoleplayButtonRow({ requestId, action: name, actorId: actor.id, targetId: target.id }, false, lang);
       }
       const embed = new EmbedBuilder()
         .setColor(COLORS.DEFAULT)
-        .setAuthor({ name: actorLabel + ' · ' + config.label, iconURL: actor.displayAvatarURL({ size: 128 }) })
+        .setAuthor({ name: actorLabel + ' · ' + t(lang, `roleplay.${name}.title`), iconURL: actor.displayAvatarURL({ size: 128 }) })
         .setDescription(counterMessage ? sentence + '\n*' + counterMessage + '*' : sentence)
-        .setFooter({ text: 'Roleplay interaction · Petto' });
+        .setFooter({ text: t(lang, 'roleplay.footer') });
 
       if (imageUrl) embed.setImage(imageUrl);
       const payload = { embeds: [embed], allowedMentions: { parse: [] } };

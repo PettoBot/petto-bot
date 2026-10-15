@@ -1,3 +1,4 @@
+// i18n-ignore-file: internal connection messages (logs).
 // The optional Redis of the bot (REDIS_URL or DISCLOUD_REDIS_URL). Everything here is a helper that can say "nothing": with no Redis,
 // while it connects, or while it is down, each call answers right away with its fallback, so the bot never waits on it or breaks.
 const logger = require('./logger');

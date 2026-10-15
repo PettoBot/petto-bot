@@ -1,3 +1,4 @@
+// i18n-ignore-file: internal threat-feed sync (HTTP headers and logs).
 const config = require('../config');
 const { upsertMaliciousLinks } = require('../db/maliciousLinks');
 const { normalizeUrl } = require('../utils/safeBrowsing');

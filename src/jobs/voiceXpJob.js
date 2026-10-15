@@ -6,6 +6,7 @@ const { pruneOldPeriods } = require('../db/levelPeriods');
 const logger = require('../utils/logger');
 const config = require('../config');
 const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency');
+const { guildLanguage, runWithLanguage } = require('../i18n');
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -13,7 +14,12 @@ async function processGuild(client, guild) {
   const config = await getConfig(guild.id);
   const voiceConfig = getVoiceConfig(config ?? {});
   if (!voiceConfig.enabled || !config?.xp_per_vc_minute) return;
+  // Jobs run on a timer, outside any server: the level-up messages of this server go out in its language.
+  const lang = await guildLanguage(guild.id);
+  await runWithLanguage(lang, () => grantGuildVoiceXp(client, guild, config, voiceConfig));
+}
 
+async function grantGuildVoiceXp(client, guild, config, voiceConfig) {
   for (const channel of guild.channels.cache.values()) {
     if (!channel.isVoiceBased?.() || channel.id === guild.afkChannelId) continue;
 
@@ -39,7 +45,7 @@ async function processGuild(client, guild) {
         // when the console is not available.
         logger.error(
           { guildId: guild.id, channelId: channel.id, userId: member.id, action: 'voice-xp-grant', source: 'voiceXpJob' },
-          `Voice XP grant failed for ${member.id} in guild ${guild.id}:`,
+          `Voice XP grant failed for ${member.id} in guild ${guild.id}:`, // i18n-ignore: logger output
           err,
         );
       }
@@ -51,7 +57,7 @@ function startVoiceXpJob(client) {
   const run = exclusiveTask(() => forEachWithConcurrency(client.guilds.cache.values(), (guild) => (
     processGuild(client, guild).catch((err) => logger.error(
       { guildId: guild.id, action: 'voice-xp-guild-tick', source: 'voiceXpJob' },
-      `Voice XP job failed for guild ${guild.id}:`,
+      `Voice XP job failed for guild ${guild.id}:`, // i18n-ignore: logger output
       err,
     ))
   ), config.jobConcurrency));

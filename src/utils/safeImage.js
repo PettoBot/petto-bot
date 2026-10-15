@@ -1,3 +1,4 @@
+// i18n-ignore-file: these errors are only logged or swallowed (a card draws without the picture), never shown to anyone
 // Downloads an image for a card from a link a server owner typed. That link is not to be trusted: it must not reach
 // the bot's own network, so every address the name resolves to is checked at connection time, redirects are
 // followed by hand and checked again, and the download is limited in time and size.

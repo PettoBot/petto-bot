@@ -1,4 +1,5 @@
 const { sendLog, fetchMod, AuditLogEvent } = require('./engine');
+const { t, guildLanguage } = require('../i18n');
 
 function getEmojiUrl(emoji) {
   if (!emoji.id) return null;
@@ -6,15 +7,16 @@ function getEmojiUrl(emoji) {
 }
 
 async function handleEmojiCreate(emoji, client) {
+  const lang = await guildLanguage(emoji.guild.id);
   const mod = await fetchMod(emoji.guild, AuditLogEvent.EmojiCreate, emoji.id);
   const url = getEmojiUrl(emoji);
-  const fields = mod ? [{ name: 'By', value: mod, inline: true }] : [];
+  const fields = mod ? [{ name: t(lang, 'logs.field.by'), value: mod, inline: true }] : [];
 
   const embed = {
-    author: { name: 'Emoji Added', icon_url: url ?? undefined },
-    description: `\`:${emoji.name}:\` was added to the server`,
+    author: { name: t(lang, 'logs.emoji.added.title'), icon_url: url ?? undefined },
+    description: t(lang, 'logs.emoji.added.description', { name: emoji.name }),
     fields,
-    footer: { text: `Emoji ID: ${emoji.id}` },
+    footer: { text: t(lang, 'logs.emoji.footer', { id: emoji.id }) },
     timestamp: new Date().toISOString(),
   };
   if (url) embed.image = { url };
@@ -22,55 +24,59 @@ async function handleEmojiCreate(emoji, client) {
 }
 
 async function handleEmojiDelete(emoji, client) {
+  const lang = await guildLanguage(emoji.guild.id);
   const mod = await fetchMod(emoji.guild, AuditLogEvent.EmojiDelete, emoji.id);
-  const fields = mod ? [{ name: 'By', value: mod, inline: true }] : [];
+  const fields = mod ? [{ name: t(lang, 'logs.field.by'), value: mod, inline: true }] : [];
 
   await sendLog(client, emoji.guild.id, 'emojis', {
-    author: { name: 'Emoji Removed' },
-    description: `\`:${emoji.name}:\` was removed from the server`,
+    author: { name: t(lang, 'logs.emoji.removed.title') },
+    description: t(lang, 'logs.emoji.removed.description', { name: emoji.name }),
     fields,
-    footer: { text: `Emoji ID: ${emoji.id}` },
+    footer: { text: t(lang, 'logs.emoji.footer', { id: emoji.id }) },
     timestamp: new Date().toISOString(),
   });
 }
 
 async function handleEmojiUpdate(oldEmoji, newEmoji, client) {
   if (oldEmoji.name === newEmoji.name) return;
+  const lang = await guildLanguage(newEmoji.guild.id);
   const mod = await fetchMod(newEmoji.guild, AuditLogEvent.EmojiUpdate, newEmoji.id);
   const fields = [
-    { name: 'Before', value: `\`:${oldEmoji.name}:\``, inline: true },
-    { name: 'After', value: `\`:${newEmoji.name}:\``, inline: true },
+    { name: t(lang, 'logs.field.before'), value: `\`:${oldEmoji.name}:\``, inline: true },
+    { name: t(lang, 'logs.field.after'), value: `\`:${newEmoji.name}:\``, inline: true },
   ];
-  if (mod) fields.push({ name: 'By', value: mod, inline: true });
+  if (mod) fields.push({ name: t(lang, 'logs.field.by'), value: mod, inline: true });
 
   await sendLog(client, newEmoji.guild.id, 'emojis', {
-    author: { name: 'Emoji Renamed' },
-    description: 'An emoji was renamed',
+    author: { name: t(lang, 'logs.emoji.renamed.title') },
+    description: t(lang, 'logs.emoji.renamed.description'),
     fields,
-    footer: { text: `Emoji ID: ${newEmoji.id}` },
+    footer: { text: t(lang, 'logs.emoji.footer', { id: newEmoji.id }) },
     timestamp: new Date().toISOString(),
   });
 }
 
-const STICKER_FORMATS = { 1: 'PNG', 2: 'Animated PNG', 3: 'Lottie', 4: 'GIF' };
+// The names of the formats (PNG, Lottie, GIF) are the same in every language; only "Animated PNG" is translated.
+const STICKER_FORMATS = { 1: 'png', 2: 'apng', 3: 'lottie', 4: 'gif' };
 
-function stickerFields(sticker, mod) {
+function stickerFields(sticker, mod, lang) {
   const fields = [];
-  if (sticker.description) fields.push({ name: 'Description', value: sticker.description, inline: false });
-  if (sticker.tags) fields.push({ name: 'Emoji', value: sticker.tags, inline: true });
-  if (STICKER_FORMATS[sticker.format]) fields.push({ name: 'Format', value: STICKER_FORMATS[sticker.format], inline: true });
-  if (mod) fields.push({ name: 'By', value: mod, inline: true });
+  if (sticker.description) fields.push({ name: t(lang, 'logs.field.description'), value: sticker.description, inline: false });
+  if (sticker.tags) fields.push({ name: t(lang, 'logs.field.emoji'), value: sticker.tags, inline: true });
+  if (STICKER_FORMATS[sticker.format]) fields.push({ name: t(lang, 'logs.field.format'), value: t(lang, `logs.sticker.format.${STICKER_FORMATS[sticker.format]}`), inline: true });
+  if (mod) fields.push({ name: t(lang, 'logs.field.by'), value: mod, inline: true });
   return fields;
 }
 
 async function handleStickerCreate(sticker, client) {
   if (!sticker.guild) return;
+  const lang = await guildLanguage(sticker.guild.id);
   const mod = await fetchMod(sticker.guild, AuditLogEvent.StickerCreate, sticker.id);
   const embed = {
-    author: { name: 'Sticker Added' },
-    description: `The sticker \`${sticker.name}\` was added to the server`,
-    fields: stickerFields(sticker, mod),
-    footer: { text: `Sticker ID: ${sticker.id}` },
+    author: { name: t(lang, 'logs.sticker.added.title') },
+    description: t(lang, 'logs.sticker.added.description', { name: sticker.name }),
+    fields: stickerFields(sticker, mod, lang),
+    footer: { text: t(lang, 'logs.sticker.footer', { id: sticker.id }) },
     timestamp: new Date().toISOString(),
   };
   if (sticker.url) embed.thumbnail = { url: sticker.url };
@@ -79,30 +85,33 @@ async function handleStickerCreate(sticker, client) {
 
 async function handleStickerDelete(sticker, client) {
   if (!sticker.guild) return;
+  const lang = await guildLanguage(sticker.guild.id);
   const mod = await fetchMod(sticker.guild, AuditLogEvent.StickerDelete, sticker.id);
   await sendLog(client, sticker.guild.id, 'emojis', {
-    author: { name: 'Sticker Removed' },
-    description: `The sticker \`${sticker.name}\` was removed from the server`,
-    fields: stickerFields(sticker, mod),
-    footer: { text: `Sticker ID: ${sticker.id}` },
+    author: { name: t(lang, 'logs.sticker.removed.title') },
+    description: t(lang, 'logs.sticker.removed.description', { name: sticker.name }),
+    fields: stickerFields(sticker, mod, lang),
+    footer: { text: t(lang, 'logs.sticker.footer', { id: sticker.id }) },
     timestamp: new Date().toISOString(),
   });
 }
 
 async function handleStickerUpdate(oldSticker, newSticker, client) {
   if (!newSticker.guild) return;
+  const lang = await guildLanguage(newSticker.guild.id);
+  const none = t(lang, 'logs.noneItalic');
   const fields = [];
-  if (oldSticker.name !== newSticker.name) fields.push({ name: 'Name', value: `\`${oldSticker.name}\` -> \`${newSticker.name}\``, inline: false });
-  if ((oldSticker.description ?? '') !== (newSticker.description ?? '')) fields.push({ name: 'Description', value: `${oldSticker.description || '*None*'} -> ${newSticker.description || '*None*'}`, inline: false });
-  if ((oldSticker.tags ?? '') !== (newSticker.tags ?? '')) fields.push({ name: 'Emoji', value: `${oldSticker.tags || '*None*'} -> ${newSticker.tags || '*None*'}`, inline: true });
+  if (oldSticker.name !== newSticker.name) fields.push({ name: t(lang, 'logs.field.name'), value: `\`${oldSticker.name}\` -> \`${newSticker.name}\``, inline: false });
+  if ((oldSticker.description ?? '') !== (newSticker.description ?? '')) fields.push({ name: t(lang, 'logs.field.description'), value: `${oldSticker.description || none} -> ${newSticker.description || none}`, inline: false });
+  if ((oldSticker.tags ?? '') !== (newSticker.tags ?? '')) fields.push({ name: t(lang, 'logs.field.emoji'), value: `${oldSticker.tags || none} -> ${newSticker.tags || none}`, inline: true });
   if (!fields.length) return;
   const mod = await fetchMod(newSticker.guild, AuditLogEvent.StickerUpdate, newSticker.id);
-  if (mod) fields.push({ name: 'By', value: mod, inline: true });
+  if (mod) fields.push({ name: t(lang, 'logs.field.by'), value: mod, inline: true });
   const embed = {
-    author: { name: 'Sticker Updated' },
-    description: `The sticker \`${newSticker.name}\` was updated`,
+    author: { name: t(lang, 'logs.sticker.updated.title') },
+    description: t(lang, 'logs.sticker.updated.description', { name: newSticker.name }),
     fields,
-    footer: { text: `Sticker ID: ${newSticker.id}` },
+    footer: { text: t(lang, 'logs.sticker.footer', { id: newSticker.id }) },
     timestamp: new Date().toISOString(),
   };
   if (newSticker.url) embed.thumbnail = { url: newSticker.url };

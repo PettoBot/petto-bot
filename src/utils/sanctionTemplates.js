@@ -11,24 +11,22 @@ const { templateFor } = require('../db/sanctionTemplates');
 const { parseDuration } = require('./duration');
 const { MessageFlags } = require('discord.js');
 const logger = require('./logger');
+const { t, currentLanguage, guildLanguage, languageOf } = require('../i18n');
+const { displayReason } = require('./caseFormat');
 
-const ACTION = {
-  ban: 'banned',
-  hardban: 'hard banned',
-  tempban: 'temporarily banned',
-  softban: 'softbanned',
-  unban: 'unbanned',
-  kick: 'kicked',
-  mute: 'muted',
-  tempmute: 'temporarily muted',
-  unmute: 'unmuted',
-  warn: 'warned',
-  jail: 'jailed',
-  unjail: 'released from jail',
-};
+// What `{case.action}` says for each sanction and `{case.source}` for who applied it, in the server's language.
+const ACTION_TYPES = ['ban', 'hardban', 'tempban', 'softban', 'unban', 'kick', 'mute', 'tempmute', 'unmute', 'warn', 'jail', 'unjail'];
+const SOURCE_TYPES = ['moderator', 'automod', 'honeypot', 'escalation', 'expiry', 'antinuke'];
 
-/** Who or what applied a sanction, for `{case.source}`. */
-const SOURCES = { moderator: 'A moderator', automod: 'Automod', honeypot: 'The honeypot', escalation: 'Warn escalation', expiry: 'Automatic expiry', antinuke: 'Anti-nuke' };
+/** `{case.action}` of a sanction type, like `temporarily muted`. */
+function actionText(type, lang = currentLanguage()) {
+  return t(lang, `moderation.template.action.${ACTION_TYPES.includes(type) ? type : 'unknown'}`);
+}
+
+/** `{case.source}`: who or what applied a sanction. Sources Petto does not name are shown as they are. */
+function sourceText(source, lang = currentLanguage()) {
+  return SOURCE_TYPES.includes(source) ? t(lang, `moderation.template.source.${source}`) : source;
+}
 
 function person(value) {
   if (!value) return null;
@@ -44,7 +42,7 @@ function person(value) {
  * The context a sanction template is built with. `user` is the sanctioned member, `moderator` who applied it (the bot
  * itself for the automatic ones). `durationText` is something like `2 hours`; `expiresAt` overrides what it gives.
  */
-function sanctionContext({ type, guild, user, member = null, moderator, reason, durationText = null, expiresAt = null, caseNumber = null, source = 'moderator', channel = null }) {
+function sanctionContext({ type, guild, user, member = null, moderator, reason, durationText = null, expiresAt = null, caseNumber = null, source = 'moderator', channel = null, lang = currentLanguage() }) {
   const durationMs = durationText ? parseDuration(durationText) : null;
   const end = expiresAt ? new Date(expiresAt) : durationMs ? new Date(Date.now() + durationMs) : null;
   return {
@@ -54,13 +52,13 @@ function sanctionContext({ type, guild, user, member = null, moderator, reason, 
     channel: channel ?? undefined,
     sanction: {
       type,
-      action: ACTION[type] ?? 'sanctioned',
+      action: actionText(type, lang),
       emoji: TYPE_EMOJI[type] ?? EMOJI.ALERT ?? '',
       caseNumber,
-      reason: reason ?? '',
+      reason: displayReason(reason, lang) ?? '',
       durationText,
       expiresUnix: end && Number.isFinite(end.getTime()) ? Math.floor(end.getTime() / 1000) : null,
-      source: SOURCES[source] ?? source,
+      source: sourceText(source, lang),
       moderator: person(moderator),
       target: person(user),
     },
@@ -69,17 +67,18 @@ function sanctionContext({ type, guild, user, member = null, moderator, reason, 
 
 /**
  * What the sanctioned member is sent: the server's DM template when it has one, the usual text otherwise. Meant to go
- * straight into `.send(...)`, which takes either.
+ * straight into `.send(...)`, which takes either. Petto's own text is in the server's language.
  */
 async function sanctionDM({ type, guild, client, reason, duration, user = null, member = null, moderator = null, source = 'moderator' }) {
+  const lang = await guildLanguage(guild.id);
   let appealUrl = null;
   try { appealUrl = await require('./appeals').appealLinkFor(guild.id, type); } catch { /* No appeal link: the sanction DM still goes out. */ }
-  const fallback = () => buildSanctionDM({ type, guild, client, reason, duration, appealUrl });
+  const fallback = () => buildSanctionDM({ type, guild, client, reason, duration, appealUrl, lang });
   try {
     const name = await templateFor(guild.id, type, 'dm');
     if (!name) return fallback();
     const target = user ?? member?.user ?? null;
-    const ctx = sanctionContext({ type, guild, user: target, member, moderator: moderator ?? client.user, reason, durationText: duration, source });
+    const ctx = sanctionContext({ type, guild, user: target, member, moderator: moderator ?? client.user, reason, durationText: duration, source, lang });
     return (await templatePayload(guild.id, name, ctx)) ?? fallback();
   } catch (error) {
     logger.warn({ guildId: guild?.id, action: 'sanction-dm' }, `The sanction DM template failed: ${error.message}`);
@@ -93,14 +92,15 @@ async function sanctionDM({ type, guild, client, reason, duration, user = null, 
  * the message is sent as a follow-up (or posted in the channel when that fails).
  */
 async function sanctionReply(interaction, { type, modCase, target, moderator, reason, duration }) {
-  const card = () => buildCaseCard({ caseNumber: modCase.case_number, type, target, moderator, reason, duration });
+  const lang = await languageOf(interaction);
+  const card = () => buildCaseCard({ caseNumber: modCase.case_number, type, target, moderator, reason, duration, lang });
   const showCard = () => interaction.editReply({ components: [card()], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
   let payload = null;
   try {
     const name = await templateFor(interaction.guild.id, type, 'reply');
     if (name) {
       const member = interaction.guild.members.cache.get(target.id) ?? null;
-      const ctx = sanctionContext({ type, guild: interaction.guild, user: target, member, moderator, reason, durationText: duration, expiresAt: modCase.expires_at, caseNumber: modCase.case_number, channel: interaction.channel });
+      const ctx = sanctionContext({ type, guild: interaction.guild, user: target, member, moderator, reason, durationText: duration, expiresAt: modCase.expires_at, caseNumber: modCase.case_number, channel: interaction.channel, lang });
       payload = await templatePayload(interaction.guild.id, name, ctx);
     }
   } catch (error) {
@@ -126,12 +126,12 @@ async function sanctionReply(interaction, { type, modCase, target, moderator, re
 }
 
 /** The embed of a sanctions log entry from the server's template, or null to keep the usual one. */
-async function sanctionLogEmbed({ modCase, guild, target, moderator, reason, duration, source = 'moderator' }) {
+async function sanctionLogEmbed({ modCase, guild, target, moderator, reason, duration, source = 'moderator', lang = currentLanguage() }) {
   try {
     const name = await templateFor(guild.id, modCase.type, 'log');
     if (!name) return null;
     const member = guild.members.cache.get(target.id) ?? null;
-    const ctx = sanctionContext({ type: modCase.type, guild, user: target, member, moderator, reason, durationText: duration, expiresAt: modCase.expires_at, caseNumber: modCase.case_number, source });
+    const ctx = sanctionContext({ type: modCase.type, guild, user: target, member, moderator, reason, durationText: duration, expiresAt: modCase.expires_at, caseNumber: modCase.case_number, source, lang });
     const payload = await templatePayload(guild.id, name, ctx);
     const embed = payload?.embeds?.[0];
     if (!embed) return null;
@@ -144,4 +144,4 @@ async function sanctionLogEmbed({ modCase, guild, target, moderator, reason, dur
   }
 }
 
-module.exports = { ACTION, sanctionContext, sanctionDM, sanctionReply, sanctionLogEmbed };
+module.exports = { actionText, sourceText, sanctionContext, sanctionDM, sanctionReply, sanctionLogEmbed };

@@ -2,6 +2,7 @@ const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const afkDb = require('../../db/afk');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { t, languageOf } = require('../../i18n');
 
 module.exports = {
   aliases: ['away'],
@@ -22,25 +23,28 @@ module.exports = {
 };
 
 async function setCmd(interaction) {
+  const lang = await languageOf(interaction);
+  // The default reason is saved and shown to others; "AFK" reads the same in every language.
   const reason = interaction.options.getString('reason') || 'AFK';
   await afkDb.setStatus(interaction.guild.id, interaction.user.id, reason);
-  await interaction.reply({ components: [textCard(`${EMOJI.STAR}  ${interaction.user} is now AFK: **${reason}**`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.reply({ components: [textCard(t(lang, 'utility.afk.set', { emoji: EMOJI.STAR, user: `${interaction.user}`, reason }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function mentionsCmd(interaction) {
+  const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const mentions = await afkDb.listRecentMentions(interaction.guild.id, interaction.user.id);
   if (!mentions.length) {
-    await interaction.editReply({ content: 'You have no mentions in the last 3 days.' });
+    await interaction.editReply({ content: t(lang, 'utility.afk.noMentions') });
     return;
   }
 
   const lines = mentions.map((m) => {
     const ts = `<t:${Math.floor(new Date(m.created_at).getTime() / 1000)}:R>`;
     const text = m.content ? `\n> ${m.content.slice(0, 80)}${m.content.length > 80 ? '…' : ''}` : '';
-    return `<@${m.mentioned_by}> in <#${m.channel_id}> · ${ts}${text}`;
+    return `${t(lang, 'utility.afk.mentionLine', { user: `<@${m.mentioned_by}>`, channel: `<#${m.channel_id}>`, time: ts })}${text}`;
   });
 
-  await interaction.editReply({ content: `**Mentions while you were AFK (${mentions.length}):**\n\n${lines.join('\n\n')}` });
+  await interaction.editReply({ content: `${t(lang, 'utility.afk.mentionsTitle', { count: mentions.length })}\n\n${lines.join('\n\n')}` });
 }

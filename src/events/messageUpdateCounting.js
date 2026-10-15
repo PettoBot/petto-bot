@@ -3,6 +3,7 @@ const { Events } = require('discord.js');
 const db = require('../db/counting');
 const { plainCard } = require('../utils/plainCard');
 const logger = require('../utils/logger');
+const { t, currentLanguage } = require('../i18n');
 const { deleteLater } = require('../utils/counting');
 
 async function tell(guild, channel, text, seconds = 0) {
@@ -24,8 +25,8 @@ module.exports = {
       if (before.content === after.content) return;
       const config = await lastNumberOf(after);
       if (!config) return;
-      const who = config.last_user_id ? `<@${config.last_user_id}>` : 'Someone';
-      await tell(after.guild, after.channel, `${who} edited their number. The last number is **${config.current_number}**, so the next one is **${Number(config.current_number) + 1}**.`, config.alert_seconds);
+      const vars = { user: `<@${config.last_user_id}>`, last: config.current_number, next: Number(config.current_number) + 1 };
+      await tell(after.guild, after.channel, t(currentLanguage(), config.last_user_id ? 'counting.edited' : 'counting.editedSomeone', vars), config.alert_seconds);
     } catch (error) {
       logger.error('Counting edit check failed:', error);
     }

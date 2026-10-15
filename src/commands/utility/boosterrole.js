@@ -7,6 +7,7 @@ const actions = require('../../utils/boosterRoleActions');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
+const { t, tn, languageOf } = require('../../i18n');
 
 const COOLDOWN_CONFIG_FIELD = { color: 'color_cooldown_ms', icon: 'icon_cooldown_ms', rename: 'rename_cooldown_ms' };
 
@@ -116,14 +117,16 @@ function isBoosting(member) {
 }
 
 async function requireBotCanManageRoles(interaction) {
+  const lang = await languageOf(interaction);
   if (interaction.guild.members.me.permissions.has(PermissionFlagsBits.ManageRoles)) return true;
-  await interaction.reply({ content: 'I need the **Manage Roles** permission to do that.', flags: MessageFlags.Ephemeral });
+  await interaction.reply({ content: t(lang, 'core.moderate.iNeed', { permission: t(lang, 'core.perm.ManageRoles') }), flags: MessageFlags.Ephemeral });
   return false;
 }
 
 async function selfCreate(interaction) {
+  const lang = await languageOf(interaction);
   if (!isBoosting(interaction.member)) {
-    await interaction.reply({ content: 'You must be a server booster to use this.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'utility.boosterrole.notBooster'), flags: MessageFlags.Ephemeral });
     return;
   }
   if (!(await requireBotCanManageRoles(interaction))) return;
@@ -134,12 +137,12 @@ async function selfCreate(interaction) {
 
   const hex1 = hex1Raw ? actions.parseHex(hex1Raw) : null;
   if (hex1Raw && !hex1) {
-    await interaction.reply({ content: 'Invalid hex color — use `#RRGGBB` format.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'utility.boosterrole.badHex'), flags: MessageFlags.Ephemeral });
     return;
   }
   const hex2 = hex2Raw ? actions.parseHex(hex2Raw) : null;
   if (hex2Raw && !hex2) {
-    await interaction.reply({ content: 'Invalid second hex color — use `#RRGGBB` format.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'utility.boosterrole.badHex2'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -148,11 +151,11 @@ async function selfCreate(interaction) {
 
   const existing = await db.getBoosterRole(interaction.guild.id, interaction.user.id);
   if (existing && interaction.guild.roles.cache.has(existing.role_id)) {
-    await interaction.editReply({ components: [textCard("You already have a booster role. Use `!boosterrole rename` or `!boosterrole color` to change it.", 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.alreadyHave'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
-  const result = await actions.applyRole({ guild: interaction.guild, member: interaction.member, colorInt: hex1?.int, color2Int: hex2?.int, name });
+  const result = await actions.applyRole({ guild: interaction.guild, member: interaction.member, colorInt: hex1?.int, color2Int: hex2?.int, name, lang });
   if (result.error) {
     await interaction.editReply({ components: [textCard(`${EMOJI.DENY}  ${result.error}`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
@@ -160,13 +163,14 @@ async function selfCreate(interaction) {
 
   if (hex1) await db.upsertBoosterRole(interaction.guild.id, interaction.user.id, { role_id: result.role.id, color: hex1.hex, color2: hex2?.hex ?? null });
 
-  const text = `${EMOJI.APPROVE}  Booster role created: ${result.role}`;
+  const text = t(lang, 'utility.boosterrole.created', { emoji: EMOJI.APPROVE, role: `${result.role}` });
   await interaction.editReply({ components: [textCard(text, hex1?.int ?? 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function selfColor(interaction) {
+  const lang = await languageOf(interaction);
   if (!isBoosting(interaction.member)) {
-    await interaction.reply({ content: 'You must be a server booster to use this.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'utility.boosterrole.notBooster'), flags: MessageFlags.Ephemeral });
     return;
   }
   if (!(await requireBotCanManageRoles(interaction))) return;
@@ -174,12 +178,12 @@ async function selfColor(interaction) {
   const hex1 = actions.parseHex(interaction.options.getString('hex', true));
   const hex2Raw = interaction.options.getString('hex2');
   if (!hex1) {
-    await interaction.reply({ content: 'Invalid hex color — use `#RRGGBB` format.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'utility.boosterrole.badHex'), flags: MessageFlags.Ephemeral });
     return;
   }
   const hex2 = hex2Raw ? actions.parseHex(hex2Raw) : null;
   if (hex2Raw && !hex2) {
-    await interaction.reply({ content: 'Invalid second hex color — use `#RRGGBB` format.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'utility.boosterrole.badHex2'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -190,11 +194,11 @@ async function selfColor(interaction) {
   const existing = await db.getBoosterRole(interaction.guild.id, interaction.user.id);
   const remaining = actions.getRemainingCooldown(existing?.color_cooldown_at, config.color_cooldown_ms);
   if (remaining > 0) {
-    await interaction.editReply({ components: [textCard(`You can change your color again in **${actions.formatDuration(remaining)}**.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.cooldown.color', { duration: actions.formatDuration(remaining) }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
-  const result = await actions.applyRole({ guild: interaction.guild, member: interaction.member, colorInt: hex1.int, color2Int: hex2?.int });
+  const result = await actions.applyRole({ guild: interaction.guild, member: interaction.member, colorInt: hex1.int, color2Int: hex2?.int, lang });
   if (result.error) {
     await interaction.editReply({ components: [textCard(`${EMOJI.DENY}  ${result.error}`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
@@ -203,13 +207,14 @@ async function selfColor(interaction) {
   await db.upsertBoosterRole(interaction.guild.id, interaction.user.id, { role_id: result.role.id, color: hex1.hex, color2: hex2?.hex ?? null, color_cooldown_at: new Date().toISOString() });
 
   const colorText = hex2 ? `\`${hex1.hex}\` + \`${hex2.hex}\`` : `\`${hex1.hex}\``;
-  const text = `${EMOJI.APPROVE}  Booster role ${result.updated ? 'updated' : 'created'}: ${result.role}\n**Color:** ${colorText}`;
+  const text = t(lang, result.updated ? 'utility.boosterrole.colorUpdated' : 'utility.boosterrole.colorCreated', { emoji: EMOJI.APPROVE, role: `${result.role}`, color: colorText });
   await interaction.editReply({ components: [textCard(text, hex1.int)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function selfRename(interaction) {
+  const lang = await languageOf(interaction);
   if (!isBoosting(interaction.member)) {
-    await interaction.reply({ content: 'You must be a server booster to use this.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'utility.boosterrole.notBooster'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -219,45 +224,46 @@ async function selfRename(interaction) {
 
   const config = await db.ensureConfig(interaction.guild.id);
   if (actions.filterCheck(name, config.filtered_words)) {
-    await interaction.editReply({ components: [textCard('That name contains a filtered word.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.filteredName'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const existing = await db.getBoosterRole(interaction.guild.id, interaction.user.id);
   if (!existing) {
-    await interaction.editReply({ components: [textCard("You don't have a booster role yet. Use `!boosterrole color` first.", 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.noneUseColor'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
   const remaining = actions.getRemainingCooldown(existing.rename_cooldown_at, config.rename_cooldown_ms);
   if (remaining > 0) {
-    await interaction.editReply({ components: [textCard(`You can rename again in **${actions.formatDuration(remaining)}**.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.cooldown.rename', { duration: actions.formatDuration(remaining) }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const role = interaction.guild.roles.cache.get(existing.role_id);
   if (!role) {
-    await interaction.editReply({ components: [textCard('Your booster role no longer exists.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.gone'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   await role.setName(name).catch((err) => logger.warn('Booster role rename failed:', err.message));
   await db.upsertBoosterRole(interaction.guild.id, interaction.user.id, { rename_cooldown_at: new Date().toISOString() });
 
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Renamed your booster role to **${name}**.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.renamed', { emoji: EMOJI.APPROVE, name }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function selfIcon(interaction) {
+  const lang = await languageOf(interaction);
   if (!isBoosting(interaction.member)) {
-    await interaction.reply({ content: 'You must be a server booster to use this.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'utility.boosterrole.notBooster'), flags: MessageFlags.Ephemeral });
     return;
   }
 
   const input = interaction.options.getString('input') ?? interaction.rawMessage?.attachments?.first()?.url;
   if (!input) {
-    await interaction.reply({ content: 'Provide a URL, custom emoji, sticker ID — or just attach an image to your message.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'utility.boosterrole.icon.needInput'), flags: MessageFlags.Ephemeral });
     return;
   }
-  const resolved = actions.resolveIconInput(input);
+  const resolved = actions.resolveIconInput(input, lang);
   if (resolved.error) {
     await interaction.reply({ content: resolved.error, flags: MessageFlags.Ephemeral });
     return;
@@ -269,35 +275,36 @@ async function selfIcon(interaction) {
   const config = await db.ensureConfig(interaction.guild.id);
   const existing = await db.getBoosterRole(interaction.guild.id, interaction.user.id);
   if (!existing) {
-    await interaction.editReply({ components: [textCard("You don't have a booster role yet. Use `!boosterrole color` first.", 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.noneUseColor'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
   const remaining = actions.getRemainingCooldown(existing.icon_cooldown_at, config.icon_cooldown_ms);
   if (remaining > 0) {
-    await interaction.editReply({ components: [textCard(`You can change the icon again in **${actions.formatDuration(remaining)}**.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.cooldown.icon', { duration: actions.formatDuration(remaining) }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const role = interaction.guild.roles.cache.get(existing.role_id);
   if (!role) {
-    await interaction.editReply({ components: [textCard('Your booster role no longer exists.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.gone'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   try {
     await role.setIcon(resolved.url);
   } catch (err) {
-    await interaction.editReply({ components: [textCard(`${EMOJI.DENY}  Failed to set icon: ${err.message}`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.icon.failed', { emoji: EMOJI.DENY, error: err.message }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   await db.upsertBoosterRole(interaction.guild.id, interaction.user.id, { icon_cooldown_at: new Date().toISOString() });
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Role icon updated.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.icon.updated', { emoji: EMOJI.APPROVE }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function selfRandom(interaction) {
+  const lang = await languageOf(interaction);
   if (!isBoosting(interaction.member)) {
-    await interaction.reply({ content: 'You must be a server booster to use this.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'utility.boosterrole.notBooster'), flags: MessageFlags.Ephemeral });
     return;
   }
   if (!(await requireBotCanManageRoles(interaction))) return;
@@ -306,7 +313,7 @@ async function selfRandom(interaction) {
   await ensureGuild(interaction.guild.id);
 
   const colorInt = actions.randomColorInt();
-  const result = await actions.applyRole({ guild: interaction.guild, member: interaction.member, colorInt });
+  const result = await actions.applyRole({ guild: interaction.guild, member: interaction.member, colorInt, lang });
   if (result.error) {
     await interaction.editReply({ components: [textCard(`${EMOJI.DENY}  ${result.error}`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
@@ -315,34 +322,36 @@ async function selfRandom(interaction) {
   const hex = `#${colorInt.toString(16).padStart(6, '0').toUpperCase()}`;
   await db.upsertBoosterRole(interaction.guild.id, interaction.user.id, { role_id: result.role.id, color: hex, color_cooldown_at: new Date().toISOString() });
 
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Booster role color set to \`${hex}\`.`, colorInt)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.randomSet', { emoji: EMOJI.APPROVE, hex }), colorInt)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function selfRemove(interaction) {
+  const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const existing = await db.getBoosterRole(interaction.guild.id, interaction.user.id);
   if (!existing) {
-    await interaction.editReply({ components: [textCard("You don't have a booster role.", 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.none'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const role = interaction.guild.roles.cache.get(existing.role_id);
-  if (role) await role.delete(`Removed by ${interaction.user.tag}`).catch((err) => logger.warn('Booster role delete failed:', err.message));
+  if (role) await role.delete(t(lang, 'utility.boosterrole.audit.removedBy', { user: interaction.user.tag })).catch((err) => logger.warn('Booster role delete failed:', err.message));
   await db.deleteBoosterRole(interaction.guild.id, interaction.user.id);
 
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Your booster role has been removed.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.removed', { emoji: EMOJI.APPROVE }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function selfShare(interaction) {
+  const lang = await languageOf(interaction);
   if (!isBoosting(interaction.member)) {
-    await interaction.reply({ content: 'You must be a server booster to use this.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'utility.boosterrole.notBooster'), flags: MessageFlags.Ephemeral });
     return;
   }
 
   const target = interaction.options.getUser('user', true);
   if (target.id === interaction.user.id) {
-    await interaction.reply({ content: "You can't share with yourself.", flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'utility.boosterrole.share.self'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -350,44 +359,45 @@ async function selfShare(interaction) {
 
   const existing = await db.getBoosterRole(interaction.guild.id, interaction.user.id);
   if (!existing) {
-    await interaction.editReply({ components: [textCard("You don't have a booster role yet.", 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.noneYet'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
   const role = interaction.guild.roles.cache.get(existing.role_id);
   if (!role) {
-    await interaction.editReply({ components: [textCard('Your booster role no longer exists.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.gone'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
   if (existing.shared_with.includes(target.id)) {
-    await interaction.editReply({ components: [textCard('Already shared with that member.', 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.share.already'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const config = await db.ensureConfig(interaction.guild.id);
   if (config.share_max > 0 && 1 + existing.shared_with.length >= config.share_max) {
-    await interaction.editReply({ components: [textCard(`Share limit reached (**${config.share_max}**).`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.share.limit', { max: config.share_max }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const targetMember = await interaction.guild.members.fetch(target.id).catch(() => null);
   if (!targetMember) {
-    await interaction.editReply({ components: [textCard('That user is not a member of this server.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.notMember'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   await targetMember.roles.add(role).catch((err) => logger.warn('Booster role share failed:', err.message));
   await db.upsertBoosterRole(interaction.guild.id, interaction.user.id, { shared_with: [...existing.shared_with, target.id] });
 
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Shared your booster role with ${target}.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.share.done', { emoji: EMOJI.APPROVE, user: `${target}` }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function selfUnshare(interaction) {
+  const lang = await languageOf(interaction);
   const target = interaction.options.getUser('user', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const existing = await db.getBoosterRole(interaction.guild.id, interaction.user.id);
   if (!existing) {
-    await interaction.editReply({ components: [textCard("You don't have a booster role.", 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.none'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -396,25 +406,27 @@ async function selfUnshare(interaction) {
   if (role && targetMember) await targetMember.roles.remove(role).catch(() => {});
 
   await db.upsertBoosterRole(interaction.guild.id, interaction.user.id, { shared_with: existing.shared_with.filter((id) => id !== target.id) });
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Removed ${target} from your booster role.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.unshare.done', { emoji: EMOJI.APPROVE, user: `${target}` }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function selfShared(interaction) {
+  const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const existing = await db.getBoosterRole(interaction.guild.id, interaction.user.id);
   if (!existing) {
-    await interaction.editReply({ components: [textCard("You don't have a booster role yet.", 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.noneYet'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
-  const shared = existing.shared_with.length ? existing.shared_with.map((id) => `<@${id}>`).join(', ') : 'None';
-  await interaction.editReply({ components: [textCard(`**Your booster role:** <@&${existing.role_id}>\n**Shared with:** ${shared}`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  const shared = existing.shared_with.length ? existing.shared_with.map((id) => `<@${id}>`).join(', ') : t(lang, 'utility.boosterrole.shared.none');
+  await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.shared.text', { role: `<@&${existing.role_id}>`, users: shared }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function requireManageGuild(interaction) {
+  const lang = await languageOf(interaction);
   if (interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) return true;
-  await interaction.reply({ content: 'You need the **Manage Server** permission to do that.', flags: MessageFlags.Ephemeral });
+  await interaction.reply({ content: t(lang, 'core.moderate.youNeed', { permission: t(lang, 'core.perm.ManageGuild') }), flags: MessageFlags.Ephemeral });
   return false;
 }
 
@@ -435,24 +447,25 @@ async function adminCmd(interaction, sub) {
 }
 
 async function adminSet(interaction) {
+  const lang = await languageOf(interaction);
   const targetUser = interaction.options.getUser('user', true);
   const hex1Raw = interaction.options.getString('hex');
   const hex2Raw = interaction.options.getString('hex2');
   const name = interaction.options.getString('name');
 
   if (!hex1Raw && !hex2Raw && !name) {
-    await interaction.reply({ content: 'Provide at least a `hex` color or a `name`.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'utility.boosterrole.admin.needValue'), flags: MessageFlags.Ephemeral });
     return;
   }
 
   const hex1 = hex1Raw ? actions.parseHex(hex1Raw) : null;
   if (hex1Raw && !hex1) {
-    await interaction.reply({ content: 'Invalid hex color — use `#RRGGBB` format.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'utility.boosterrole.badHex'), flags: MessageFlags.Ephemeral });
     return;
   }
   const hex2 = hex2Raw ? actions.parseHex(hex2Raw) : null;
   if (hex2Raw && !hex2) {
-    await interaction.reply({ content: 'Invalid second hex color — use `#RRGGBB` format.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'utility.boosterrole.badHex2'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -462,11 +475,11 @@ async function adminSet(interaction) {
 
   const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
   if (!targetMember) {
-    await interaction.editReply({ components: [textCard('That user is not a member of this server.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.notMember'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
-  const result = await actions.applyRole({ guild: interaction.guild, member: targetMember, colorInt: hex1?.int, color2Int: hex2?.int, name: name ?? undefined, bypassLimit: true });
+  const result = await actions.applyRole({ guild: interaction.guild, member: targetMember, colorInt: hex1?.int, color2Int: hex2?.int, name: name ?? undefined, bypassLimit: true, lang });
   if (result.error) {
     await interaction.editReply({ components: [textCard(`${EMOJI.DENY}  ${result.error}`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
@@ -477,10 +490,11 @@ async function adminSet(interaction) {
   if (hex2) patch.color2 = hex2.hex;
   if (Object.keys(patch).length) await db.upsertBoosterRole(interaction.guild.id, targetUser.id, { role_id: result.role.id, ...patch });
 
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Booster role ${result.updated ? 'updated' : 'created'} for ${targetUser}: ${result.role}`, hex1?.int ?? 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, result.updated ? 'utility.boosterrole.admin.updated' : 'utility.boosterrole.admin.created', { emoji: EMOJI.APPROVE, user: `${targetUser}`, role: `${result.role}` }), hex1?.int ?? 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function adminRename(interaction) {
+  const lang = await languageOf(interaction);
   const targetUser = interaction.options.getUser('user', true);
   const name = interaction.options.getString('name', true);
 
@@ -488,27 +502,28 @@ async function adminRename(interaction) {
 
   const existing = await db.getBoosterRole(interaction.guild.id, targetUser.id);
   if (!existing) {
-    await interaction.editReply({ components: [textCard('That member has no booster role.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.admin.none'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
   const role = interaction.guild.roles.cache.get(existing.role_id);
   if (!role) {
-    await interaction.editReply({ components: [textCard("That member's booster role no longer exists.", 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.admin.gone'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   await role.setName(name).catch((err) => logger.warn('Admin booster role rename failed:', err.message));
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Renamed ${targetUser}'s booster role to **${name}**.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.admin.renamed', { emoji: EMOJI.APPROVE, user: `${targetUser}`, name }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function adminIcon(interaction) {
+  const lang = await languageOf(interaction);
   const targetUser = interaction.options.getUser('user', true);
   const input = interaction.options.getString('input') ?? interaction.rawMessage?.attachments?.first()?.url;
   if (!input) {
-    await interaction.reply({ content: 'Provide a URL, custom emoji, sticker ID — or just attach an image to your message.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'utility.boosterrole.icon.needInput'), flags: MessageFlags.Ephemeral });
     return;
   }
-  const resolved = actions.resolveIconInput(input);
+  const resolved = actions.resolveIconInput(input, lang);
   if (resolved.error) {
     await interaction.reply({ content: resolved.error, flags: MessageFlags.Ephemeral });
     return;
@@ -518,61 +533,64 @@ async function adminIcon(interaction) {
 
   const existing = await db.getBoosterRole(interaction.guild.id, targetUser.id);
   if (!existing) {
-    await interaction.editReply({ components: [textCard('That member has no booster role.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.admin.none'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
   const role = interaction.guild.roles.cache.get(existing.role_id);
   if (!role) {
-    await interaction.editReply({ components: [textCard("That member's booster role no longer exists.", 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.admin.gone'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   try {
     await role.setIcon(resolved.url);
   } catch (err) {
-    await interaction.editReply({ components: [textCard(`${EMOJI.DENY}  Failed to set icon: ${err.message}`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.icon.failed', { emoji: EMOJI.DENY, error: err.message }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Updated ${targetUser}'s booster role icon.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.admin.iconUpdated', { emoji: EMOJI.APPROVE, user: `${targetUser}` }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function adminRemove(interaction) {
+  const lang = await languageOf(interaction);
   const targetUser = interaction.options.getUser('user', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const existing = await db.getBoosterRole(interaction.guild.id, targetUser.id);
   if (!existing) {
-    await interaction.editReply({ components: [textCard('That member has no booster role.', 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.admin.none'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const role = interaction.guild.roles.cache.get(existing.role_id);
-  if (role) await role.delete(`Removed by ${interaction.user.tag}`).catch((err) => logger.warn('Admin booster role delete failed:', err.message));
+  if (role) await role.delete(t(lang, 'utility.boosterrole.audit.removedBy', { user: interaction.user.tag })).catch((err) => logger.warn('Admin booster role delete failed:', err.message));
   await db.deleteBoosterRole(interaction.guild.id, targetUser.id);
 
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Removed ${targetUser}'s booster role.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.admin.removed', { emoji: EMOJI.APPROVE, user: `${targetUser}` }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function adminList(interaction) {
+  const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const all = await db.listBoosterRoles(interaction.guild.id);
   if (!all.length) {
-    await interaction.editReply({ components: [textCard('No booster roles configured.', 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.list.empty'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const lines = all.map((br) => {
     const role = interaction.guild.roles.cache.get(br.role_id);
-    const shared = br.shared_with.length ? ` (shared with ${br.shared_with.map((id) => `<@${id}>`).join(', ')})` : '';
-    return `<@${br.user_id}> → ${role ? `<@&${br.role_id}>` : `~~${br.role_id}~~ (deleted)`}${br.color ? ` \`${br.color}\`` : ''}${shared}`;
+    const shared = br.shared_with.length ? ` ${t(lang, 'utility.boosterrole.list.shared', { users: br.shared_with.map((id) => `<@${id}>`).join(', ') })}` : '';
+    return `<@${br.user_id}> → ${role ? `<@&${br.role_id}>` : t(lang, 'utility.boosterrole.list.deleted', { id: br.role_id })}${br.color ? ` \`${br.color}\`` : ''}${shared}`;
   });
 
-  await interaction.editReply({ components: [textCard(`**Booster roles (${all.length}):**\n${lines.join('\n').slice(0, 3800)}`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(`${t(lang, 'utility.boosterrole.list.title', { count: all.length })}\n${lines.join('\n').slice(0, 3800)}`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function adminLink(interaction) {
+  const lang = await languageOf(interaction);
   const targetUser = interaction.options.getUser('user', true);
   const role = interaction.options.getRole('role', true);
 
@@ -580,10 +598,11 @@ async function adminLink(interaction) {
   await ensureGuild(interaction.guild.id);
   await db.upsertBoosterRole(interaction.guild.id, targetUser.id, { role_id: role.id });
 
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Linked ${targetUser} to ${role}.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.admin.linked', { emoji: EMOJI.APPROVE, user: `${targetUser}`, role: `${role}` }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function adminCleanup(interaction) {
+  const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const all = await db.listBoosterRoles(interaction.guild.id);
@@ -594,37 +613,40 @@ async function adminCleanup(interaction) {
     if (member?.premiumSince) continue;
 
     const role = interaction.guild.roles.cache.get(br.role_id);
-    if (role) await role.delete('Booster role cleanup: no longer boosting').catch(() => {});
+    if (role) await role.delete(t(lang, 'utility.boosterrole.audit.cleanup')).catch(() => {});
     await db.deleteBoosterRole(interaction.guild.id, br.user_id);
     deleted++;
   }
 
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Cleaned up **${deleted}** booster role(s) from members who are no longer boosting.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(tn(lang, 'utility.boosterrole.admin.cleanedUp', deleted, { emoji: EMOJI.APPROVE, count: deleted }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function adminBase(interaction) {
+  const lang = await languageOf(interaction);
   const role = interaction.options.getRole('role', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
   await db.upsertConfig(interaction.guild.id, { base_role_id: role.id });
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Base role set to ${role}. New booster roles will be placed above it.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.admin.base', { emoji: EMOJI.APPROVE, role: `${role}` }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function adminLimit(interaction) {
+  const lang = await languageOf(interaction);
   const count = interaction.options.getInteger('count', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
   await db.upsertConfig(interaction.guild.id, { role_limit: count });
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Per-member booster role limit set to **${count === 0 ? 'unlimited' : count}**.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, count === 0 ? 'utility.boosterrole.admin.limitUnlimited' : 'utility.boosterrole.admin.limit', { emoji: EMOJI.APPROVE, count }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function adminCooldown(interaction) {
+  const lang = await languageOf(interaction);
   const type = interaction.options.getString('type', true);
   const durationStr = interaction.options.getString('duration', true);
 
   const durationMs = durationStr === '0' ? 0 : parseLength(durationStr);
   if (typeof durationMs !== 'number' || Number.isNaN(durationMs) || durationMs < 0) {
-    await interaction.reply({ content: 'Provide a valid duration (`30s`, `5m`, `2h`, `24h`) or `0` to disable.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'utility.boosterrole.admin.badDuration'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -632,18 +654,22 @@ async function adminCooldown(interaction) {
   await ensureGuild(interaction.guild.id);
   await db.upsertConfig(interaction.guild.id, { [COOLDOWN_CONFIG_FIELD[type]]: durationMs });
 
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  **${type}** cooldown set to **${durationMs ? actions.formatDuration(durationMs) : 'Off'}**.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(durationMs
+    ? t(lang, 'utility.boosterrole.admin.cooldown', { emoji: EMOJI.APPROVE, type, duration: actions.formatDuration(durationMs) })
+    : t(lang, 'utility.boosterrole.admin.cooldownOff', { emoji: EMOJI.APPROVE, type }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function adminShareLimit(interaction) {
+  const lang = await languageOf(interaction);
   const count = interaction.options.getInteger('count', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
   await db.upsertConfig(interaction.guild.id, { share_max: count });
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Share limit set to **${count === 0 ? 'unlimited' : count}**.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, count === 0 ? 'utility.boosterrole.admin.shareLimitUnlimited' : 'utility.boosterrole.admin.shareLimit', { emoji: EMOJI.APPROVE, count }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function filterCmd(interaction, sub) {
+  const lang = await languageOf(interaction);
   if (!(await requireManageGuild(interaction))) return;
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
@@ -651,7 +677,7 @@ async function filterCmd(interaction, sub) {
   const config = await db.ensureConfig(interaction.guild.id);
 
   if (sub === 'list') {
-    const text = config.filtered_words.length ? config.filtered_words.map((w) => `\`${w}\``).join(', ') : 'No filtered words.';
+    const text = config.filtered_words.length ? config.filtered_words.map((w) => `\`${w}\``).join(', ') : t(lang, 'utility.boosterrole.filter.empty');
     await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
@@ -662,5 +688,5 @@ async function filterCmd(interaction, sub) {
   else words.delete(word);
 
   await db.upsertConfig(interaction.guild.id, { filtered_words: [...words] });
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  \`${word}\` ${sub === 'add' ? 'added to' : 'removed from'} the filter.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, sub === 'add' ? 'utility.boosterrole.filter.added' : 'utility.boosterrole.filter.removed', { emoji: EMOJI.APPROVE, word }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }

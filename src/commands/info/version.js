@@ -1,5 +1,6 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { buildVersionPayload } = require('../../interactions/version');
+const { languageOf } = require('../../i18n');
 
 module.exports = {
   // The release center is intentionally prefix-only. It is a public catalog,
@@ -12,6 +13,6 @@ module.exports = {
     .setDMPermission(false),
 
   async execute(interaction) {
-    await interaction.reply(buildVersionPayload());
+    await interaction.reply(buildVersionPayload(undefined, await languageOf(interaction)));
   },
 };

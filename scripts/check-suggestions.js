@@ -51,5 +51,10 @@ let built = await build(s.defaultDesign(config, 'pending'), { guild, suggestion:
 assert.ok(galleryOf(built).includes('attachment://suggestion.png'), 'the picture of the message shows in the gallery');
 built = await build(s.defaultDesign(config, 'pending'), { guild, suggestion: vars, allowV2: true });
 assert.ok(!galleryOf(built).includes('attachment://'), 'a file the sender did not attach is not used');
+// The usual look and the names of the statuses in the language of the server.
+const spanish = JSON.stringify(s.defaultDesign({ status_colors: false, anonymous: true }, 'approved', 'es'));
+assert.ok(spanish.includes('**Sugerencia**') && spanish.includes('Anónimo') && spanish.includes('{suggestion.content}'), 'the usual look in Spanish keeps its variables');
+assert.equal(s.statusLabel('considering', 'pt-BR'), 'Em análise');
+assert.equal(s.statusLabel('considering'), 'Under consideration');
 console.log('suggestions ok');
 })().catch((error) => { console.error(error); process.exit(1); });

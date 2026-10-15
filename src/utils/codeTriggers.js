@@ -2,6 +2,7 @@
 // starts with some words, is exactly some words, or has them inside. The commands with a trigger of each server are kept
 // for a minute, so a message in a server without any costs nothing.
 const customCommandsDb = require('../db/customCommands');
+const { t, currentLanguage } = require('../i18n');
 
 const TRIGGER_TYPES = ['command', 'prefix', 'startswith', 'exact', 'contains'];
 const MAX_TRIGGERS_PER_GUILD = 25;
@@ -23,14 +24,14 @@ function invalidateTriggers(guildId) { cache.delete(guildId); }
 const isWordChar = (char) => char !== undefined && /[\p{L}\p{N}_]/u.test(char);
 
 /** The trigger text a person may set for a type, or the reason it is not valid. */
-function validateTrigger(type, text) {
-  if (!TRIGGER_TYPES.includes(type)) return { error: `The trigger is one of: ${TRIGGER_TYPES.join(', ')}.` };
+function validateTrigger(type, text, lang = currentLanguage()) {
+  if (!TRIGGER_TYPES.includes(type)) return { error: t(lang, 'customcommands.trigger.invalidType', { types: TRIGGER_TYPES.join(', ') }) };
   if (type === 'command') return { text: null };
   const value = String(text ?? '').trim();
-  if (!value) return { error: 'Write the text of the trigger after its type.' };
-  if (value.length > 50) return { error: 'The text of a trigger has at most 50 characters.' };
-  if (type === 'prefix' && (/\s/.test(value) || value.length > 5)) return { error: 'A prefix has at most 5 characters and no spaces, for example `?` or `>>`.' };
-  if (/<@|@everyone|@here/i.test(value)) return { error: 'A trigger cannot hold a mention.' };
+  if (!value) return { error: t(lang, 'customcommands.trigger.needText') };
+  if (value.length > 50) return { error: t(lang, 'customcommands.trigger.textTooLong') };
+  if (type === 'prefix' && (/\s/.test(value) || value.length > 5)) return { error: t(lang, 'customcommands.trigger.prefixShape') };
+  if (/<@|@everyone|@here/i.test(value)) return { error: t(lang, 'customcommands.trigger.noMention') };
   return { text: value };
 }
 

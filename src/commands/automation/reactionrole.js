@@ -6,6 +6,7 @@ const { EMOJI } = require('../../utils/emojis');
 const { COLORS } = require('../../utils/colors');
 const { syncMessageButtons } = require('../../interactions/reactionRoleButton');
 const { templatePayload } = require('../../utils/templatedMessage');
+const { t, tn, languageOf } = require('../../i18n');
 
 const MODE_CHOICES = [
   { name: 'toggle (react adds, un-react removes)', value: 'toggle' },
@@ -74,6 +75,7 @@ async function findMessage(interaction, messageId, channelOverride) {
 const NEW_MESSAGE = 'new';
 
 async function addCmd(interaction) {
+  const lang = await languageOf(interaction);
   let messageId = interaction.options.getString('message_id', true).trim();
   const emoji = interaction.options.getString('emoji', true).trim();
   const role = interaction.options.getRole('role', true);
@@ -93,30 +95,30 @@ async function addCmd(interaction) {
   let posted = false;
   if (messageId.toLowerCase() === NEW_MESSAGE) {
     // `new` posts the saved embed as a message of its own and puts the role button on it.
-    if (!embedName) return fail('To post a new message, write the saved embed after `embed`, for example `rr add new 🎀 @role --embed rules`.');
+    if (!embedName) return fail(t(lang, 'automation.reactionrole.needEmbed'));
     const channel = channelOption ?? interaction.channel;
     const payload = await templatePayload(interaction.guild.id, embedName, { guild: interaction.guild, user: interaction.user, member: interaction.member, channel });
-    if (!payload) return fail(`The saved embed \`${embedName}\` does not exist or it is empty.`);
-    if (payload.flags) return fail('A V2 design cannot hold role buttons. Pick a classic embed.');
+    if (!payload) return fail(t(lang, 'automation.reactionrole.embedMissing', { name: embedName }));
+    if (payload.flags) return fail(t(lang, 'automation.reactionrole.v2'));
     message = await channel.send({ content: payload.content, embeds: payload.embeds, allowedMentions: { parse: [] } }).catch(() => null);
-    if (!message) return fail(`I could not post in ${channel}. Check that I can write there.`);
+    if (!message) return fail(t(lang, 'automation.reactionrole.postFailed', { channel: `${channel}` }));
     posted = true;
     messageId = message.id;
     type = 'button';
   } else {
     message = await findMessage(interaction, messageId, channelOption);
-    if (!message) return fail("Couldn't find that message (check the channel and message ID).");
+    if (!message) return fail(t(lang, 'automation.reactionrole.noMessage'));
   }
   // A message made just for this and left with no button would be left over, so it is taken down when something fails.
   const failAndClean = async (text) => { if (posted) await message.delete().catch(() => {}); return fail(text); };
 
-  if (await rrDb.getReactionRole(messageId, emoji)) return failAndClean('That emoji is already bound to a role on this message.');
+  if (await rrDb.getReactionRole(messageId, emoji)) return failAndClean(t(lang, 'automation.reactionrole.alreadyBound'));
 
   if (type === 'reaction') {
     try {
       await message.react(emoji);
     } catch {
-      return failAndClean("Couldn't react with that emoji - make sure it's valid and I can use it.");
+      return failAndClean(t(lang, 'automation.reactionrole.reactFailed'));
     }
   }
 
@@ -134,16 +136,18 @@ async function addCmd(interaction) {
       ...(type === 'button' && style ? { button_style: style } : {}),
       ...(type === 'button' && rowOption ? { button_row: rowOption - 1 } : {}),
     });
-    if (type === 'button') await syncMessageButtons(message, await rrDb.listForMessage(messageId));
+    if (type === 'button') await syncMessageButtons(message, await rrDb.listForMessage(messageId), lang);
   } catch (error) {
     if (row?.id) await rrDb.removeReactionRoleById(row.id).catch(() => {});
-    return failAndClean(error.message || "Couldn't save that role binding.");
+    return failAndClean(error.message || t(lang, 'automation.reactionrole.saveFailed'));
   }
 
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  ${type === 'button' ? 'Button role' : emoji} now grants ${role} (mode: ${mode}).${posted ? `\nMessage: ${message.url}\nTo add more buttons to it: \`rr add ${message.id} <emoji> <role> --type button\`.` : ''}`, COLORS.GREEN)], flags: MessageFlags.IsComponentsV2 });
+  const grants = t(lang, type === 'button' ? 'automation.reactionrole.grantsButton' : 'automation.reactionrole.grantsEmoji', { emoji: EMOJI.APPROVE, reaction: emoji, role: `${role}`, mode });
+  await interaction.editReply({ components: [textCard(`${grants}${posted ? `\n${t(lang, 'automation.reactionrole.postedHint', { url: message.url, id: message.id })}` : ''}`, COLORS.GREEN)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function removeCmd(interaction) {
+  const lang = await languageOf(interaction);
   const messageId = interaction.options.getString('message_id', true).trim();
   const emoji = interaction.options.getString('emoji', true).trim();
   const channelOption = interaction.options.getChannel('channel');
@@ -153,22 +157,24 @@ async function removeCmd(interaction) {
   const removed = await rrDb.removeReactionRole(messageId, emoji);
   if (removed && existing?.interaction_type === 'button') {
     const message = await findMessage(interaction, messageId, channelOption);
-    if (message) await syncMessageButtons(message, await rrDb.listForMessage(messageId)).catch(() => {});
+    if (message) await syncMessageButtons(message, await rrDb.listForMessage(messageId), lang).catch(() => {});
   }
-  await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  Role binding removed.` : "That emoji wasn't bound on this message.", removed ? COLORS.GREEN : COLORS.RED)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(removed ? t(lang, 'automation.reactionrole.removed', { emoji: EMOJI.APPROVE }) : t(lang, 'automation.reactionrole.notBound'), removed ? COLORS.GREEN : COLORS.RED)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function listCmd(interaction) {
+  const lang = await languageOf(interaction);
   const messageId = interaction.options.getString('message_id', true).trim();
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const rows = await rrDb.listForMessage(messageId);
   const text = rows.length
-    ? rows.map((r) => `${r.interaction_type === 'button' ? '[button]' : r.emoji} -> <@&${r.role_id}> (${r.mode})`).join('\n')
-    : 'No reaction or button roles on that message.';
+    ? rows.map((r) => `${r.interaction_type === 'button' ? t(lang, 'automation.reactionrole.buttonTag') : r.emoji} -> <@&${r.role_id}> (${r.mode})`).join('\n')
+    : t(lang, 'automation.reactionrole.listEmpty');
   await interaction.editReply({ components: [textCard(text, COLORS.DEFAULT)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
 }
 
 async function clearCmd(interaction) {
+  const lang = await languageOf(interaction);
   const messageId = interaction.options.getString('message_id', true).trim();
   const channelOption = interaction.options.getChannel('channel');
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
@@ -176,7 +182,7 @@ async function clearCmd(interaction) {
   const count = await rrDb.clearForMessage(messageId);
   if (rows.some((row) => row.interaction_type === 'button')) {
     const message = await findMessage(interaction, messageId, channelOption);
-    if (message) await syncMessageButtons(message, []).catch(() => {});
+    if (message) await syncMessageButtons(message, [], lang).catch(() => {});
   }
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Removed ${count} role binding(s) from that message.`, COLORS.GREEN)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(tn(lang, 'automation.reactionrole.cleared', count, { count, emoji: EMOJI.APPROVE }), COLORS.GREEN)], flags: MessageFlags.IsComponentsV2 });
 }

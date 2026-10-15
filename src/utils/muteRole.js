@@ -1,6 +1,7 @@
 const { ChannelType } = require('discord.js');
 const { updateGuild } = require('../db/guilds');
 const logger = require('./logger');
+const { t, guildLanguage } = require('../i18n');
 
 /**
  * Discord's native timeout caps at 28 days, so an indefinite /mute needs a role
@@ -14,11 +15,13 @@ async function ensureMuteRole(guild, guildConfig) {
     if (existing) return existing;
   }
 
+  // The role and the audit log are named in the server's language: it is created once and stays.
+  const lang = await guildLanguage(guild.id);
   const role = await guild.roles.create({
-    name: 'Muted',
+    name: t(lang, 'moderation.muteRole.name'),
     color: 0x2b2d31,
     permissions: [],
-    reason: 'Petto: auto-created mute role',
+    reason: t(lang, 'moderation.muteRole.audit.created'),
   });
 
   const overwrite = {
@@ -32,7 +35,7 @@ async function ensureMuteRole(guild, guildConfig) {
 
   for (const channel of guild.channels.cache.values()) {
     if (![ChannelType.GuildText, ChannelType.GuildVoice, ChannelType.GuildAnnouncement, ChannelType.GuildForum, ChannelType.GuildStageVoice].includes(channel.type)) continue;
-    await channel.permissionOverwrites.edit(role, overwrite, { reason: 'Petto: mute role setup' }).catch((err) => {
+    await channel.permissionOverwrites.edit(role, overwrite, { reason: t(lang, 'moderation.muteRole.audit.setup') }).catch((err) => {
       logger.warn(`Could not set mute overwrite in #${channel.name} (${channel.id}):`, err.message);
     });
   }

@@ -1,3 +1,4 @@
+// i18n-ignore-file: buttons of the Petto team alerts (operators only).
 const {
   ActionRowBuilder,
   ButtonBuilder,

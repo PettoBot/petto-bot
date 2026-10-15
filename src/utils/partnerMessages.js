@@ -5,33 +5,19 @@ const { formatSpan, cooldownMinutes } = require('./partnerEngine');
 const { templatePayload } = require('./templatedMessage');
 const { plainCard, TONES } = require('./plainCard');
 
+const { t, formatNumber, currentLanguage } = require('../i18n');
+
 const RESPONSE_KEYS = ['completed', 'cooldown', 'invalid_invite', 'member_requirement', 'blacklisted', 'self_partner', 'age_requirement', 'nsfw_blocked', 'keyword_blocked', 'manager_welcome'];
+const camel = (key) => key.replace(/_([a-z])/g, (match, letter) => letter.toUpperCase());
 
-const LABELS = {
-  completed: 'Partnership completed',
-  cooldown: 'Partner cooldown',
-  invalid_invite: 'Invalid invite',
-  member_requirement: 'Member requirement',
-  blacklisted: 'Partner blacklist',
-  self_partner: 'Self partner',
-  age_requirement: 'Partner age requirement',
-  nsfw_blocked: 'NSFW server',
-  keyword_blocked: 'Blocked keyword',
-  manager_welcome: 'Partner Manager welcome',
-};
+/** The name of a response, shown to the staff. */
+const labelOf = (key, lang = currentLanguage()) => t(lang, `partners.label.${camel(key)}`);
+/** The text of a response when the server did not change it. */
+const defaultText = (key, lang = currentLanguage()) => t(lang, `partners.default.${camel(key)}`);
 
-const DEFAULTS = {
-  completed: '{partner.manager} thanks for the partnership with **{partner.name}**! You have {partner.count_total} in total ({partner.count_week} this week).',
-  cooldown: '{user.mention} you partnered with **{partner.name}** recently. You can do it again {partner.cooldown_ends}.',
-  invalid_invite: '{user.mention} that invite is not valid or has expired.',
-  member_requirement: '{user.mention} **{partner.name}** has {partner.members} members and at least {partner.min_members} are needed.',
-  blacklisted: '{user.mention} that server is not allowed as a partner.',
-  self_partner: '{user.mention} that invite is for this same server.',
-  age_requirement: '{user.mention} **{partner.name}** is too new: it has to be at least {partner.min_age_days} days old.',
-  nsfw_blocked: '{user.mention} **{partner.name}** is marked as an NSFW server, so it can not be a partner.',
-  keyword_blocked: '{user.mention} **{partner.name}** is not allowed as a partner: it has a word this server does not accept.',
-  manager_welcome: 'Welcome to the team, {user.mention}! Post the invite of a partner server in a partner channel and I will count it.',
-};
+// In English: the choices of the slash command builder are named with the labels.
+const LABELS = Object.fromEntries(RESPONSE_KEYS.map((key) => [key, labelOf(key, 'en')]));
+const DEFAULTS = Object.fromEntries(RESPONSE_KEYS.map((key) => [key, defaultText(key, 'en')]));
 
 const MAX_TEXT = 2000;
 
@@ -43,20 +29,20 @@ const COLORS = {
 };
 
 /** The words of a saved response: its text, or the default. */
-function textOf(config, key) {
+function textOf(config, key, lang = currentLanguage()) {
   const saved = config?.messages?.[key];
   const text = typeof saved?.text === 'string' ? saved.text.trim() : '';
-  return text ? text.slice(0, MAX_TEXT) : DEFAULTS[key];
+  return text ? text.slice(0, MAX_TEXT) : defaultText(key, lang);
 }
 
 /** What `{partner.*}` gives. `info` is `{ name, id, members, invite, managerId, managerName, counts, standings, config, cooldownEndsUnix }`. */
-function partnerContext(info) {
+function partnerContext(info, lang = currentLanguage()) {
   const counts = info.counts ?? {};
   const stand = info.standings ?? {};
   return {
     name: info.name ?? '',
     id: info.id ?? '',
-    members: info.members != null ? Number(info.members).toLocaleString('en-US') : '',
+    members: info.members != null ? formatNumber(lang, Number(info.members)) : '',
     invite: info.invite ?? '',
     manager: info.managerId ? `<@${info.managerId}>` : '',
     manager_name: info.managerName ?? '',
@@ -67,7 +53,7 @@ function partnerContext(info) {
     min_age_days: String(info.config?.min_age_days ?? 0),
     cooldown_days: String(info.config?.cooldown_days ?? 0),
     cooldown_ends: info.cooldownEndsUnix ? `<t:${info.cooldownEndsUnix}:R>` : '',
-    cooldown: info.config ? formatSpan(cooldownMinutes(info.config)) : '',
+    cooldown: info.config ? formatSpan(cooldownMinutes(info.config), lang) : '',
     rank_week: stand.rankWeek != null ? String(stand.rankWeek) : '',
     rank_total: stand.rankTotal != null ? String(stand.rankTotal) : '',
     top_week: stand.topWeek ? `<@${stand.topWeek.managerId}>` : '',
@@ -81,7 +67,7 @@ function partnerContext(info) {
 }
 
 /** `{ components, flags, ... }` (or what a saved design gives) to send for one response, never empty. `ctx` has `member`/`user`/`guild` and `partner`. */
-async function responsePayload(guildId, config, key, ctx) {
+async function responsePayload(guildId, config, key, ctx, lang = currentLanguage()) {
   // The partner manager that the message is about is really pinged (a mention with `{user.mention}`); nobody else is, so the names in a
   // top list and anything else a message writes stay plain text.
   const manager = ctx.user?.id ?? ctx.member?.id ?? null;
@@ -91,9 +77,9 @@ async function responsePayload(guildId, config, key, ctx) {
     const payload = await templatePayload(guildId, saved.template, ctx);
     if (payload) return { ...payload, allowedMentions };
   }
-  const content = (await resolve(textOf(config, key), ctx)).slice(0, MAX_TEXT);
+  const content = (await resolve(textOf(config, key, lang), ctx)).slice(0, MAX_TEXT);
   // The usual look is a card; the text keeps its variables and its one real mention.
-  return { ...plainCard(content || DEFAULTS[key], COLORS[key] ?? null), allowedMentions };
+  return { ...plainCard(content || defaultText(key, lang), COLORS[key] ?? null), allowedMentions };
 }
 
-module.exports = { RESPONSE_KEYS, LABELS, DEFAULTS, MAX_TEXT, textOf, partnerContext, responsePayload };
+module.exports = { RESPONSE_KEYS, LABELS, DEFAULTS, MAX_TEXT, labelOf, defaultText, textOf, partnerContext, responsePayload };

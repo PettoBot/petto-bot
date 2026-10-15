@@ -2,6 +2,7 @@ const { SlashCommandBuilder } = require('discord.js');
 const { INFO_ACCENT, infoPayload, clip, stamp, line } = require('../../utils/infoCard');
 const { badgeList, badgeText } = require('../../utils/userBadges');
 const { dominantColor } = require('../../utils/dominantColor');
+const { t, languageOf } = require('../../i18n');
 
 const ROLE_LIST_LIMIT = 800;
 
@@ -15,7 +16,7 @@ function joinPosition(guild, member) {
 }
 
 /** Role mentions, highest first, cut at a whole mention with a "+N more" tail instead of mid-mention. */
-function roleList(roles) {
+function roleList(roles, lang) {
   const shown = [];
   let length = 0;
   for (const role of roles) {
@@ -25,7 +26,7 @@ function roleList(roles) {
     length += mention.length + 1;
   }
   const hidden = roles.length - shown.length;
-  return shown.join(' ') + (hidden > 0 ? ` +${hidden} more` : '');
+  return shown.join(' ') + (hidden > 0 ? ` ${t(lang, 'info.userinfo.moreRoles', { count: hidden })}` : '');
 }
 
 module.exports = {
@@ -36,13 +37,14 @@ module.exports = {
   aliases: ['ui', 'whois'],
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const selectedUser = interaction.options.getUser('user') ?? interaction.user;
     const user = await interaction.client.users.fetch(selectedUser.id, { force: true }).catch(() => selectedUser);
     const member = interaction.guild
       ? await interaction.guild.members.fetch(user.id).catch(() => interaction.guild.members.cache.get(user.id) ?? null)
       : null;
 
-    const badges = badgeList(user, member);
+    const badges = badgeList(user, member, lang);
     const globalAvatar = user.displayAvatarURL({ size: 1024 });
     const serverAvatar = member?.avatar ? member.displayAvatarURL({ size: 1024 }) : null;
     // A banner set for this server wins over the global one.
@@ -56,12 +58,12 @@ module.exports = {
 
     const sections = [
       {
-        title: 'Account',
+        title: t(lang, 'info.userinfo.account'),
         lines: [
-          line('Username', `\`${user.username}\``),
-          line('Type', user.bot ? 'Bot account' : 'User account'),
-          line('Created', stamp(user.createdTimestamp)),
-          badges.length ? line('Badges', badgeText(badges)) : null,
+          line(t(lang, 'info.userinfo.username'), `\`${user.username}\``),
+          line(t(lang, 'info.label.type'), t(lang, user.bot ? 'info.userinfo.botAccount' : 'info.userinfo.userAccount')),
+          line(t(lang, 'info.label.created'), stamp(user.createdTimestamp)),
+          badges.length ? line(t(lang, 'info.userinfo.badges'), badgeText(badges)) : null,
         ],
       },
     ];
@@ -69,19 +71,19 @@ module.exports = {
     if (member) {
       const joinPos = joinPosition(interaction.guild, member);
       sections.push({
-        title: 'In this server',
+        title: t(lang, 'info.userinfo.inServer'),
         lines: [
-          line('Joined', member.joinedTimestamp ? `${stamp(member.joinedTimestamp)}${joinPos ? ` · #${joinPos}` : ''}` : null),
-          line('Nickname', member.nickname ? clip(member.nickname, 64) : null),
-          member.premiumSinceTimestamp ? line('Boosting since', `<t:${Math.floor(member.premiumSinceTimestamp / 1000)}:R>`) : null,
+          line(t(lang, 'info.label.joined'), member.joinedTimestamp ? `${stamp(member.joinedTimestamp)}${joinPos ? ` · #${joinPos}` : ''}` : null),
+          line(t(lang, 'info.userinfo.nickname'), member.nickname ? clip(member.nickname, 64) : null),
+          member.premiumSinceTimestamp ? line(t(lang, 'info.userinfo.boostingSince'), `<t:${Math.floor(member.premiumSinceTimestamp / 1000)}:R>`) : null,
           member.communicationDisabledUntilTimestamp && member.communicationDisabledUntilTimestamp > Date.now()
-            ? line('Timed out until', `<t:${Math.floor(member.communicationDisabledUntilTimestamp / 1000)}:R>`)
+            ? line(t(lang, 'info.userinfo.timedOutUntil'), `<t:${Math.floor(member.communicationDisabledUntilTimestamp / 1000)}:R>`)
             : null,
         ],
       });
 
       const roles = [...member.roles.cache.filter((r) => r.id !== interaction.guild.id).values()].sort((a, b) => b.position - a.position);
-      sections.push({ title: `Roles (${roles.length})`, lines: [roles.length ? roleList(roles) : 'None'] });
+      sections.push({ title: t(lang, 'info.userinfo.roles', { count: roles.length }), lines: [roles.length ? roleList(roles, lang) : t(lang, 'info.userinfo.noRoles')] });
     }
 
     await interaction.reply(infoPayload({
@@ -91,12 +93,12 @@ module.exports = {
       banner,
       subtitle: [`<@${user.id}>${user.bot ? ' · Bot' : ''}`],
       sections,
-      footer: `ID ${user.id}`,
+      footer: t(lang, 'info.card.id', { id: user.id }),
       buttons: [
-        { label: serverAvatar ? 'Global avatar' : 'Avatar', url: globalAvatar },
-        { label: 'Server avatar', url: serverAvatar },
-        { label: serverBanner ? 'Global banner' : 'Banner', url: globalBanner },
-        { label: 'Server banner', url: serverBanner },
+        { label: t(lang, serverAvatar ? 'info.button.globalAvatar.button' : 'info.button.avatar.button'), url: globalAvatar },
+        { label: t(lang, 'info.button.serverAvatar.button'), url: serverAvatar },
+        { label: t(lang, serverBanner ? 'info.button.globalBanner.button' : 'info.button.banner.button'), url: globalBanner },
+        { label: t(lang, 'info.button.serverBanner.button'), url: serverBanner },
       ],
     }));
   },

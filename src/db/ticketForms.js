@@ -1,4 +1,5 @@
 const database = require('./database');
+const { t, currentLanguage } = require('../i18n');
 
 const FIELD_TYPES = new Set(['short_text', 'long_text']);
 
@@ -7,13 +8,13 @@ function normalizeName(name) {
 }
 
 function normalizeFields(fields) {
-  if (!Array.isArray(fields) || fields.length < 1 || fields.length > 5) throw new Error('A form needs between 1 and 5 fields.');
+  if (!Array.isArray(fields) || fields.length < 1 || fields.length > 5) throw new Error(t(currentLanguage(), 'tickets.db.form.fieldCount'));
   return fields.map((field, index) => {
     const type = String(field.type ?? 'short_text').trim().toLowerCase();
-    if (!FIELD_TYPES.has(type)) throw new Error(`Field ${index + 1} must use short_text or long_text.`);
+    if (!FIELD_TYPES.has(type)) throw new Error(t(currentLanguage(), 'tickets.db.form.fieldType', { number: index + 1 }));
     const id = String(field.id ?? field.label ?? `field_${index + 1}`).trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_').slice(0, 40);
     const label = String(field.label ?? '').trim().slice(0, 45);
-    if (!id || !label) throw new Error(`Field ${index + 1} needs an id and label.`);
+    if (!id || !label) throw new Error(t(currentLanguage(), 'tickets.db.form.fieldLabel', { number: index + 1 }));
     return {
       id,
       type,
@@ -27,7 +28,7 @@ function normalizeFields(fields) {
 async function createForm({ guildId, name, title, fields }) {
   const normalizedName = normalizeName(name);
   const normalizedFields = normalizeFields(fields);
-  if (!normalizedName) throw new Error('Form name is required.');
+  if (!normalizedName) throw new Error(t(currentLanguage(), 'tickets.db.form.nameRequired'));
   const { data, error } = await database.from('ticket_forms').insert({ guild_id: guildId, name: normalizedName, title: String(title || 'Ticket details').slice(0, 45), fields: normalizedFields }).select('*').single();
   if (error) throw error;
   return data;

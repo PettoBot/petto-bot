@@ -1,16 +1,24 @@
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = require('discord.js');
 const { ensureGuild } = require('../../db/guilds');
 const db = require('../../db/antinuke');
-const { RULES, RULE_IDS, ACTIONS, resolveRule } = require('../../utils/antiNukeRules');
+const { RULES, RULE_IDS, ACTIONS, resolveRule, ruleLabel } = require('../../utils/antiNukeRules');
 const { restoreEvent, canRestore } = require('../../utils/antiNukeRestore');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { t, languageOf, formatList } = require('../../i18n');
 
 const GREEN = 0xa5ea7a;
 const GREY = 0x4b4f59;
 const RED = 0xff6b6b;
 const ruleChoices = RULE_IDS.map((id) => ({ name: RULES[id].label, value: id }));
 const actionChoices = ACTIONS.map((a) => ({ name: a, value: a }));
+
+/** A saved action value (alert, quarantine, kick, ban) as the replies name it; an unknown value as it is. */
+function actionWord(value, lang) {
+  const key = `security.action.${value}`;
+  const text = t(lang, key);
+  return text === key ? String(value) : text;
+}
 
 const reply = (interaction, text, color = GREEN) => interaction.editReply({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2 });
 
@@ -46,29 +54,30 @@ module.exports = {
     .addSubcommand((sub) => sub.setName('restore').setDescription('Put back what a protection stopped (channels, roles, bans, roles taken away).').addIntegerOption((o) => o.setName('event').setDescription('The event number shown in the alert or in the log').setMinValue(1).setRequired(true))),
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
     await ensureGuild(interaction.guild.id);
     const group = interaction.options.getSubcommandGroup(false);
     const sub = interaction.options.getSubcommand();
-    if (group === 'whitelist') return whitelist(interaction, sub);
-    if (sub === 'rule') return rule(interaction);
-    if (sub === 'log') return log(interaction);
-    if (sub === 'restore') return restore(interaction);
-    return status(interaction);
+    if (group === 'whitelist') return whitelist(interaction, sub, lang);
+    if (sub === 'rule') return rule(interaction, lang);
+    if (sub === 'log') return log(interaction, lang);
+    if (sub === 'restore') return restore(interaction, lang);
+    return status(interaction, lang);
   },
 };
 
-async function status(interaction) {
+async function status(interaction, lang) {
   const [config, rows] = await Promise.all([db.getConfig(interaction.guild.id), db.getRules(interaction.guild.id)]);
   const lines = RULE_IDS.map((id) => {
     const eff = resolveRule(config, rows, id);
-    return `${eff.enabled ? EMOJI.APPROVE : '▫️'} **${RULES[id].label}** · ${eff.threshold} in ${eff.windowSeconds}s · ${eff.action}`;
+    return t(lang, 'security.antinuke.status.line', { status: eff.enabled ? EMOJI.APPROVE : '▫️', rule: ruleLabel(id, lang), threshold: eff.threshold, seconds: eff.windowSeconds, action: actionWord(eff.action, lang) });
   });
   const on = RULE_IDS.filter((id) => resolveRule(config, rows, id).enabled).length;
-  await reply(interaction, [`### Anti-nuke · ${on} of ${RULE_IDS.length} active`, ...lines, '-# Tune one with antinuke rule. Everything new starts off.'].join('\n'), on ? GREEN : GREY);
+  await reply(interaction, [t(lang, 'security.antinuke.status.title', { on, total: RULE_IDS.length }), ...lines, t(lang, 'security.antinuke.status.footer')].join('\n'), on ? GREEN : GREY);
 }
 
-async function rule(interaction) {
+async function rule(interaction, lang) {
   const id = interaction.options.getString('protection', true);
   const enabled = interaction.options.getBoolean('enabled');
   const limit = interaction.options.getInteger('limit');
@@ -86,49 +95,68 @@ async function rule(interaction) {
     alert_channel_id: channel ? channel.id : (rows.find((r) => r.rule === id)?.alert_channel_id ?? null),
   };
   const saved = await db.upsertRule(interaction.guild.id, id, patch);
-  await reply(interaction, `${EMOJI.APPROVE} **${RULES[id].label}** is ${saved.enabled ? 'on' : 'off'}: ${saved.threshold} in ${saved.window_seconds}s, then **${saved.action}**.${saved.alert_channel_id ? ` Alerts in <#${saved.alert_channel_id}>.` : ''}`);
+  const vars = { emoji: EMOJI.APPROVE, rule: ruleLabel(id, lang), threshold: saved.threshold, seconds: saved.window_seconds, action: actionWord(saved.action, lang) };
+  const text = t(lang, saved.enabled ? 'security.antinuke.saved.on' : 'security.antinuke.saved.off', vars);
+  await reply(interaction, `${text}${saved.alert_channel_id ? t(lang, 'security.antinuke.saved.alerts', { channel: `<#${saved.alert_channel_id}>` }) : ''}`);
 }
 
-async function whitelist(interaction, sub) {
+async function whitelist(interaction, sub, lang) {
   const guildId = interaction.guild.id;
   if (sub === 'list') {
     const config = await db.getConfig(guildId);
     const users = (config?.whitelist_ids ?? []).map((id) => `<@${id}>`);
     const roles = (config?.whitelist_role_ids ?? []).map((id) => `<@&${id}>`);
-    await reply(interaction, [`### Trusted`, users.length ? `**Accounts:** ${users.join(' ')}` : '**Accounts:** nobody', roles.length ? `**Roles:** ${roles.join(' ')}` : '**Roles:** none', '-# The owner and Petto are always trusted.'].join('\n'), GREY);
+    await reply(interaction, [
+      t(lang, 'security.antinuke.whitelist.title'),
+      users.length ? t(lang, 'security.antinuke.whitelist.accounts', { list: users.join(' ') }) : t(lang, 'security.antinuke.whitelist.accountsNone'),
+      roles.length ? t(lang, 'security.list.roles', { list: roles.join(' ') }) : t(lang, 'security.list.rolesNone'),
+      t(lang, 'security.antinuke.whitelist.footer'),
+    ].join('\n'), GREY);
     return;
   }
   const user = interaction.options.getUser('user');
   const role = interaction.options.getRole('role');
   if (!user && !role) {
-    await reply(interaction, 'Pick an account or a role.', RED);
+    await reply(interaction, t(lang, 'security.antinuke.whitelist.pick'), RED);
     return;
   }
   if (user) await (sub === 'add' ? db.addWhitelist(guildId, user.id) : db.removeWhitelist(guildId, user.id));
   if (role) await (sub === 'add' ? db.addWhitelistRole(guildId, role.id) : db.removeWhitelistRole(guildId, role.id));
-  await reply(interaction, `${EMOJI.APPROVE} ${[user && `<@${user.id}>`, role && `<@&${role.id}>`].filter(Boolean).join(' and ')} ${sub === 'add' ? 'will not be touched by the protections' : 'is no longer trusted'}.`);
+  const who = formatList(lang, [user && `<@${user.id}>`, role && `<@&${role.id}>`].filter(Boolean));
+  await reply(interaction, t(lang, sub === 'add' ? 'security.antinuke.whitelist.added' : 'security.antinuke.whitelist.removed', { emoji: EMOJI.APPROVE, who }));
 }
 
-async function log(interaction) {
+async function log(interaction, lang) {
   const events = await db.listEvents(interaction.guild.id, 8);
   if (!events.length) {
-    await reply(interaction, 'No protection has acted yet.', GREY);
+    await reply(interaction, t(lang, 'security.antinuke.log.empty'), GREY);
     return;
   }
-  const lines = events.map((e) => `**#${e.id}** · ${RULES[e.rule]?.label ?? e.rule} · <@${e.executor_id}> · ${e.action_count}× · ${e.action}${e.restored_at ? ' · restored' : (e.restorable?.length || e.previous_roles?.length) ? ' · can restore' : ''} · <t:${Math.floor(new Date(e.created_at).getTime() / 1000)}:R>`);
-  await reply(interaction, ['### Anti-nuke log', ...lines].join('\n'), GREY);
+  const lineKey = (e) => {
+    if (e.restored_at) return 'security.antinuke.log.lineRestored';
+    return (e.restorable?.length || e.previous_roles?.length) ? 'security.antinuke.log.lineCanRestore' : 'security.antinuke.log.line';
+  };
+  const lines = events.map((e) => t(lang, lineKey(e), {
+    id: e.id,
+    rule: RULES[e.rule] ? ruleLabel(e.rule, lang) : e.rule,
+    user: `<@${e.executor_id}>`,
+    count: e.action_count,
+    action: actionWord(e.action, lang),
+    time: `<t:${Math.floor(new Date(e.created_at).getTime() / 1000)}:R>`,
+  }));
+  await reply(interaction, [t(lang, 'security.antinuke.log.title'), ...lines].join('\n'), GREY);
 }
 
-async function restore(interaction) {
+async function restore(interaction, lang) {
   if (!canRestore(interaction.member)) {
-    await reply(interaction, 'Only the server owner and administrators can restore this.', RED);
+    await reply(interaction, t(lang, 'security.antinuke.restore.notAllowed'), RED);
     return;
   }
   const event = await db.getEvent(interaction.guild.id, interaction.options.getInteger('event', true));
-  if (!event) return reply(interaction, 'That event does not exist.', RED);
-  if (event.restored_at) return reply(interaction, 'This was already restored.', GREY);
-  const { done, failed } = await restoreEvent(interaction.guild, event);
+  if (!event) return reply(interaction, t(lang, 'security.antinuke.restore.missing'), RED);
+  if (event.restored_at) return reply(interaction, t(lang, 'security.antinuke.restore.already'), GREY);
+  const { done, failed } = await restoreEvent(interaction.guild, event, lang);
   if (!failed.length) await db.markRestored(interaction.guild.id, event.id).catch(() => {});
   const lines = [...done, ...failed].map((l) => `• ${l}`);
-  await reply(interaction, lines.length ? lines.join('\n').slice(0, 3500) : 'There was nothing left to restore.', failed.length ? RED : GREEN);
+  await reply(interaction, lines.length ? lines.join('\n').slice(0, 3500) : t(lang, 'security.antinuke.restore.nothing'), failed.length ? RED : GREEN);
 }

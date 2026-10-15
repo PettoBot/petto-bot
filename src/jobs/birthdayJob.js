@@ -5,12 +5,14 @@ const { sendMemberEvent } = require('../utils/memberEventMessage');
 const { celebratesOn, localDate, ageOn } = require('../utils/birthdays');
 const logger = require('../utils/logger');
 const { exclusiveTask } = require('../utils/concurrency');
+const { t, guildLanguage } = require('../i18n');
 
 const POLL_INTERVAL_MS = 5 * 60_000;
 const ROLE_LASTS_MS = 24 * 3_600_000;
 const MAX_PER_DAY = 25;
 const BIRTHDAY_COLOR = 0xf78fb3;
-const DEFAULT_BIRTHDAY_MESSAGE = '{EMOJI} Happy birthday {user}! Have a great day!';
+// The message a server has until it writes its own (stored in English); it is sent in the language of the server.
+const DEFAULT_BIRTHDAY_MESSAGE = t('en', 'birthdays.default.message');
 
 /** The people to celebrate on `local`: their saved day is today, or 29 February on a 28 February with no 29th. */
 async function peopleOn(guildId, local) {
@@ -25,6 +27,10 @@ async function celebrate(client, config, local) {
   const channel = config.channel_id ? await guild.channels.fetch(config.channel_id).catch(() => null) : null;
   const role = config.role_id ? guild.roles.cache.get(config.role_id) ?? null : null;
   if (!channel?.isTextBased?.() && !role) return;
+  // A job runs outside of any server: each one is announced in its own language.
+  const lang = await guildLanguage(guild.id);
+  const usual = String(config.message ?? '').trim() === DEFAULT_BIRTHDAY_MESSAGE;
+  const message = usual ? t(lang, 'birthdays.default.message') : String(config.message ?? '');
 
   for (const row of await peopleOn(guild.id, local)) {
     const member = await guild.members.fetch(row.user_id).catch(() => null);
@@ -32,16 +38,16 @@ async function celebrate(client, config, local) {
     const age = ageOn(row, local);
     if (channel?.isTextBased?.()) {
       // {age} is the age they turn, left out when they did not say the year.
-      const text = String(config.message ?? '').replaceAll('{age}', age === null ? '' : String(age));
+      const text = message.replaceAll('{age}', age === null ? '' : String(age));
       await sendMemberEvent({
         guild, channel, kind: 'birthday', messageText: text, embedTemplateName: config.embed_template,
         // The message nobody changed is sent as a pink card; one the server wrote stays as it wrote it.
-        asCard: String(config.message ?? '').trim() === DEFAULT_BIRTHDAY_MESSAGE ? BIRTHDAY_COLOR : false,
+        asCard: usual ? BIRTHDAY_COLOR : false,
         ctx: { member, guild, channel, user: member.user },
       });
     }
     if (role && role.editable) {
-      const added = await member.roles.add(role, 'Birthday').then(() => true).catch(() => false);
+      const added = await member.roles.add(role, t(lang, 'birthdays.reason.birthday')).then(() => true).catch(() => false);
       if (added) await birthdaysDb.rememberRole(guild.id, member.id, role.id, new Date(Date.now() + ROLE_LASTS_MS)).catch(() => {});
     }
   }
@@ -52,7 +58,7 @@ async function takeBackRoles(client) {
     try {
       const guild = client.guilds.cache.get(due.guild_id);
       const member = guild ? await guild.members.fetch(due.user_id).catch(() => null) : null;
-      if (member) await member.roles.remove(due.role_id, 'Birthday is over').catch(() => {});
+      if (member) await member.roles.remove(due.role_id, t(await guildLanguage(guild.id), 'birthdays.reason.over')).catch(() => {});
       await birthdaysDb.forgetRole(due.guild_id, due.user_id);
     } catch (err) {
       logger.warn(`Could not take back a birthday role in ${due.guild_id}: ${err.message}`);

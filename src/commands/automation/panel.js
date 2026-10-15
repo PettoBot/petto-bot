@@ -10,6 +10,7 @@ const { panelPayload } = require('../../utils/panelMessage');
 const { applyReactReplies } = require('../../utils/messageFlags');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { t, tn, languageOf } = require('../../i18n');
 
 const ok = (text) => textCard(`${EMOJI.APPROVE}  ${text}`, 0xa5ea7a);
 const note = (text) => textCard(text, 0x4b4f59);
@@ -47,14 +48,15 @@ const data = new SlashCommandBuilder()
   .addSubcommand((s) => s.setName('list').setDescription('List every panel of this server with its channel.'));
 
 async function execute(interaction) {
+  const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
   const done = (component) => interaction.editReply({ components: [component], flags: MessageFlags.IsComponentsV2 });
   const sub = interaction.options.getSubcommand();
-  if (sub === 'list') return list(interaction, done);
+  if (sub === 'list') return list(interaction, done, lang);
   const name = normalizeName(interaction.options.getString('name', true));
-  if (!name) return done(note('The name can have letters, numbers, dashes and underscores, up to 60.'));
-  if (sub === 'create' || sub === 'edit') return save(interaction, name, sub === 'edit', done);
+  if (!name) return done(note(t(lang, 'automation.panel.badName')));
+  if (sub === 'create' || sub === 'edit') return save(interaction, name, sub === 'edit', done, lang);
   if (sub === 'delete') {
     const panel = await respondersDb.getPanel(interaction.guild.id, name);
     const removed = await respondersDb.deletePanel(interaction.guild.id, name);
@@ -63,28 +65,28 @@ async function execute(interaction) {
       const message = await channel?.messages?.fetch(panel.message_id).catch(() => null);
       if (message) await message.edit({ components: [] }).catch(() => null);
     }
-    return done(removed ? ok(`\`${name}\` is deleted.`) : note(`There is no panel called \`${name}\`.`));
+    return done(removed ? ok(t(lang, 'automation.panel.deleted', { name })) : note(t(lang, 'automation.panel.missing', { name })));
   }
   const panel = await respondersDb.getPanel(interaction.guild.id, name);
-  if (!panel) return done(note(`There is no panel called \`${name}\`. Make it with \`!panel create\`.`));
-  if (sub === 'send') return send(interaction, panel, done);
-  return changeItems(interaction, panel, sub === 'add', done);
+  if (!panel) return done(note(t(lang, 'automation.panel.missingCreate', { name })));
+  if (sub === 'send') return send(interaction, panel, done, lang);
+  return changeItems(interaction, panel, sub === 'add', done, lang);
 }
 
-async function save(interaction, name, editing, done) {
+async function save(interaction, name, editing, done, lang) {
   const guildId = interaction.guild.id;
   const existing = await respondersDb.getPanel(guildId, name);
-  if (editing && !existing) return done(note(`There is no panel called \`${name}\`.`));
-  if (!editing && existing) return done(note(`\`${name}\` already exists. Use \`!panel edit\` to change it.`));
+  if (editing && !existing) return done(note(t(lang, 'automation.panel.missing', { name })));
+  if (!editing && existing) return done(note(t(lang, 'automation.panel.exists', { name })));
   if (!existing) {
     const premium = await getGuildPremium(guildId).catch(() => ({ active: false }));
     const limit = getGuildLimits(premium).componentPanels;
-    if ((await respondersDb.countPanels(guildId)) >= limit) return done(note(`This server already has ${limit} panels.${premium?.active ? '' : ' Premium raises it to 50.'}`));
+    if ((await respondersDb.countPanels(guildId)) >= limit) return done(note(t(lang, premium?.active ? 'automation.panel.full' : 'automation.panel.fullFree', { limit })));
   }
   const values = { ...(existing ?? respondersDb.PANEL_DEFAULTS) };
   delete values.id; delete values.guild_id; delete values.created_at; delete values.name;
   const kind = (interaction.options.getString('kind') ?? '').toLowerCase();
-  if (!editing) { if (!['buttons', 'select'].includes(kind)) return done(note('The kind is `buttons` or `select`.')); values.kind = kind; }
+  if (!editing) { if (!['buttons', 'select'].includes(kind)) return done(note(t(lang, 'automation.panel.badKind'))); values.kind = kind; }
   const content = interaction.options.getString('content');
   const template = (interaction.options.getString('template') ?? '').trim();
   const placeholder = interaction.options.getString('placeholder');
@@ -92,28 +94,28 @@ async function save(interaction, name, editing, done) {
   if (content !== null) values.content = content.slice(0, 2000);
   if (template) {
     if (template.toLowerCase() === 'none') values.embed_template = null;
-    else if (!(await getTemplate(guildId, template).catch(() => null))?.data) return done(note(`There is no saved embed called \`${template}\`. Use \`none\` to remove it.`));
+    else if (!(await getTemplate(guildId, template).catch(() => null))?.data) return done(note(t(lang, 'automation.panel.templateMissing', { name: template })));
     else values.embed_template = template;
   }
   if (placeholder !== null) values.placeholder = placeholder.slice(0, 100);
   if (exclusive !== null) values.exclusive = exclusive;
   await respondersDb.savePanel(guildId, name, values);
-  return done(ok(`\`${name}\` is ${editing ? 'saved' : 'ready'}. Add responders with \`!panel add ${name} <responder>\`, then \`!panel send ${name}\`.`));
+  return done(ok(t(lang, editing ? 'automation.panel.saved' : 'automation.panel.ready', { name })));
 }
 
-async function changeItems(interaction, panel, adding, done) {
+async function changeItems(interaction, panel, adding, done, lang) {
   const responderName = normalizeName(interaction.options.getString('responder', true));
   const responder = responderName ? await respondersDb.getByName(interaction.guild.id, responderName) : null;
   if (adding) {
-    if (!responder) return done(note('There is no responder with that name. See `!responder list`.'));
-    if (panel.responders.includes(responder.name)) return done(note(`\`${responder.name}\` is already in \`${panel.name}\`.`));
-    if (panel.responders.length >= MAX_ITEMS) return done(note(`A panel shows at most ${MAX_ITEMS}.`));
+    if (!responder) return done(note(t(lang, 'automation.panel.noResponder')));
+    if (panel.responders.includes(responder.name)) return done(note(t(lang, 'automation.panel.alreadyIn', { responder: responder.name, panel: panel.name })));
+    if (panel.responders.length >= MAX_ITEMS) return done(note(t(lang, 'automation.panel.maxItems', { max: MAX_ITEMS })));
     await respondersDb.savePanel(interaction.guild.id, panel.name, { ...strip(panel), responders: [...panel.responders, responder.name] });
-    return done(ok(`\`${responder.name}\` is in \`${panel.name}\`. Post it again with \`!panel send ${panel.name}\` to update the message.`));
+    return done(ok(t(lang, 'automation.panel.added', { responder: responder.name, panel: panel.name })));
   }
-  if (!responderName || !panel.responders.includes(responderName)) return done(note(`\`${panel.name}\` does not show that responder.`));
+  if (!responderName || !panel.responders.includes(responderName)) return done(note(t(lang, 'automation.panel.notShown', { panel: panel.name })));
   await respondersDb.savePanel(interaction.guild.id, panel.name, { ...strip(panel), responders: panel.responders.filter((item) => item !== responderName) });
-  return done(ok(`\`${responderName}\` is out of \`${panel.name}\`.`));
+  return done(ok(t(lang, 'automation.panel.removed', { responder: responderName, panel: panel.name })));
 }
 
 function strip(panel) {
@@ -122,15 +124,15 @@ function strip(panel) {
   return values;
 }
 
-async function send(interaction, panel, done) {
+async function send(interaction, panel, done, lang) {
   const guild = interaction.guild;
   const target = interaction.options.getChannel('channel') ?? (panel.channel_id && (await guild.channels.fetch(panel.channel_id).catch(() => null))) ?? interaction.channel;
-  if (!target?.isTextBased?.()) return done(note('I can not post in that channel.'));
+  if (!target?.isTextBased?.()) return done(note(t(lang, 'automation.panel.cannotPost')));
   const permissions = target.permissionsFor?.(guild.members.me);
-  if (permissions && !permissions.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages])) return done(note(`I need to see and write in ${target}.`));
+  if (permissions && !permissions.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages])) return done(note(t(lang, 'automation.panel.needAccess', { channel: `${target}` })));
   const responders = await respondersDb.listResponders(guild.id);
-  if (!panel.responders.some((name) => responders.some((responder) => responder.name === name))) return done(note('Add at least one responder first with `!panel add`.'));
-  const payload = await panelPayload(panel, responders, { guild, channel: target, member: interaction.member, user: interaction.user });
+  if (!panel.responders.some((name) => responders.some((responder) => responder.name === name))) return done(note(t(lang, 'automation.panel.empty')));
+  const payload = await panelPayload(panel, responders, { guild, channel: target, member: interaction.member, user: interaction.user }, lang);
   let message = null;
   if (panel.message_id && panel.channel_id === target.id) {
     message = await target.messages.fetch(panel.message_id).catch(() => null);
@@ -141,15 +143,15 @@ async function send(interaction, panel, done) {
     message = await target.send(payload).catch(() => null);
     if (message && payload.reactions?.length) await applyReactReplies(message, payload.reactions);
   }
-  if (!message) return done(note('I could not post the panel. Check my permissions in that channel.'));
+  if (!message) return done(note(t(lang, 'automation.panel.postFailed')));
   await respondersDb.savePanel(guild.id, panel.name, { ...strip(panel), channel_id: target.id, message_id: message.id });
-  return done(ok(`${updated ? 'Updated' : 'Posted'} \`${panel.name}\` in ${target}.`));
+  return done(ok(t(lang, updated ? 'automation.panel.updated' : 'automation.panel.posted', { name: panel.name, channel: `${target}` })));
 }
 
-async function list(interaction, done) {
+async function list(interaction, done, lang) {
   const rows = await respondersDb.listPanels(interaction.guild.id);
-  if (!rows.length) return done(note('There are no panels yet. Make one with `!panel create`.'));
-  return done(note(['### Panels', ...rows.slice(0, 40).map((row) => `\`${row.name}\` · ${row.kind} · ${row.responders.length} responders${row.channel_id ? ` · <#${row.channel_id}>` : ''}`)].join('\n')));
+  if (!rows.length) return done(note(t(lang, 'automation.panel.listEmpty')));
+  return done(note([t(lang, 'automation.panel.listTitle'), ...rows.slice(0, 40).map((row) => `\`${row.name}\` · ${row.kind} · ${tn(lang, 'automation.panel.responders', row.responders.length, { count: row.responders.length })}${row.channel_id ? ` · <#${row.channel_id}>` : ''}`)].join('\n')));
 }
 
 module.exports = { prefixOnly: true, aliases: ['panels'], data, execute };

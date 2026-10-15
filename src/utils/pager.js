@@ -1,5 +1,6 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
 const { infoPayload, noticePayload } = require('./infoCard');
+const { t, tn, formatNumber, currentLanguage, languageOf } = require('../i18n');
 
 // Long lists (roles, emojis, channels...) shown a page at a time with buttons. Nothing is stored: the buttons carry what
 // the page needs (list, who asked, page, how it is sorted or filtered), and the list is built again from the server each
@@ -15,7 +16,7 @@ const kinds = new Map();
 /**
  * Teaches the pager a list.
  * @param {string} kind  Short name without `::`.
- * @param {{ perPage?: number, load: (guild: import('discord.js').Guild, state: { option: string, arg: string }) => Promise<{
+ * @param {{ perPage?: number, load: (guild: import('discord.js').Guild, state: { option: string, arg: string, lang: string }) => Promise<{
  *   items: string[], title: string, subtitle?: string[], thumbnail?: string|null, footer?: string, empty?: string,
  *   options?: { label: string, value: string }[], placeholder?: string }> }} definition
  */
@@ -43,12 +44,12 @@ function fitPage(items) {
 }
 
 /** The card of one page of a list, with its buttons. */
-async function buildPage(kind, { guild, userId, page = 0, option = '', arg = '' }) {
+async function buildPage(kind, { guild, userId, page = 0, option = '', arg = '', lang = currentLanguage() }) {
   const definition = kinds.get(kind);
-  if (!definition) return noticePayload('That list is no longer available.');
+  if (!definition) return noticePayload(t(lang, 'core.pager.gone'));
 
-  const data = await definition.load(guild, { option, arg });
-  if (!data.items.length) return noticePayload(data.empty ?? 'There is nothing to show.');
+  const data = await definition.load(guild, { option, arg, lang });
+  if (!data.items.length) return noticePayload(data.empty ?? t(lang, 'core.pager.empty'));
 
   const perPage = definition.perPage ?? PER_PAGE;
   const pages = Math.max(1, Math.ceil(data.items.length / perPage));
@@ -62,7 +63,7 @@ async function buildPage(kind, { guild, userId, page = 0, option = '', arg = '' 
     rows.push(new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(`pgo::${kind}::${userId}::${safePart(arg)}`)
-        .setPlaceholder(data.placeholder ?? 'Show…')
+        .setPlaceholder(data.placeholder ?? t(lang, 'core.pager.show.menu'))
         .addOptions(data.options.slice(0, 25).map((entry) => new StringSelectMenuOptionBuilder().setLabel(entry.label).setValue(entry.value).setDefault(entry.value === selected))),
     ));
     option = selected;
@@ -79,20 +80,20 @@ async function buildPage(kind, { guild, userId, page = 0, option = '', arg = '' 
     ));
   }
 
-  const counted = `${data.items.length} ${data.items.length === 1 ? 'entry' : 'entries'}`;
+  const counted = tn(lang, 'core.pager.entries', data.items.length);
   return infoPayload({
     title: data.title,
     thumbnail: data.thumbnail,
     subtitle: data.subtitle,
     sections: [{ lines: shown, limit: LIST_LIMIT + 200 }],
-    footer: [pages > 1 ? `Showing ${start}–${start + shown.length - 1} of ${data.items.length}` : counted, data.footer].filter(Boolean).join(' · '),
+    footer: [pages > 1 ? t(lang, 'core.pager.showing', { start, end: start + shown.length - 1, total: formatNumber(lang, data.items.length) }) : counted, data.footer].filter(Boolean).join(' · '),
     rows,
   });
 }
 
 /** Answers a command with the first page of a list. */
 async function sendPager(interaction, kind, options = {}) {
-  const payload = await buildPage(kind, { guild: interaction.guild, userId: interaction.user.id, ...options });
+  const payload = await buildPage(kind, { guild: interaction.guild, userId: interaction.user.id, lang: await languageOf(interaction), ...options });
   return interaction.reply(payload);
 }
 
@@ -101,18 +102,19 @@ async function handlePager(interaction) {
   const parts = interaction.customId.split('::');
   const isSelect = parts[0] === 'pgo';
   const [, kind, userId] = parts;
+  const lang = await languageOf(interaction);
   if (interaction.user.id !== userId) {
-    await interaction.reply({ content: `Only <@${userId}> can use these buttons. Run the command yourself to get your own list.`, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+    await interaction.reply({ content: t(lang, 'core.pager.onlyOwner', { user: userId }), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
     return;
   }
   if (!interaction.guild) {
-    await interaction.reply({ content: 'This list only works inside a server.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'core.pager.guildOnly'), flags: MessageFlags.Ephemeral });
     return;
   }
   const state = isSelect
     ? { page: 0, option: interaction.values?.[0] ?? '', arg: parts[3] ?? '' }
     : { page: Number(parts[3]) || 0, option: parts[4] ?? '', arg: parts[5] ?? '' };
-  await interaction.update(await buildPage(kind, { guild: interaction.guild, userId, ...state }));
+  await interaction.update(await buildPage(kind, { guild: interaction.guild, userId, lang, ...state }));
 }
 
 const isPagerId = (customId) => customId.startsWith('pg::') || customId.startsWith('pgo::');

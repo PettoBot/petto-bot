@@ -2,6 +2,8 @@ const { SlashCommandBuilder, PermissionFlagsBits, StickerFormatType, MessageFlag
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
+const { permissionName } = require('../../utils/permissionLabels');
+const { t, languageOf } = require('../../i18n');
 
 const EMOJI_RE = /<(a?):(\w+):(\d+)>/g;
 
@@ -46,8 +48,9 @@ module.exports = {
     .addStringOption((o) => o.setName('emoji').setDescription('A custom emoji to steal (or reply to a message with emojis, reactions or a sticker instead)').setRequired(false)),
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     if (!interaction.guild.members.me.permissions.has(PermissionFlagsBits.ManageGuildExpressions)) {
-      await interaction.reply({ content: 'I need the **Manage Expressions** permission to add emojis/stickers.', flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: t(lang, 'utility.steal.needPermission', { permission: permissionName('ManageGuildExpressions', lang) }), flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -62,15 +65,15 @@ module.exports = {
     if (repliedSticker) {
       const url = stickerUrl(repliedSticker);
       if (!url) {
-        await interaction.editReply({ components: [textCard('Lottie stickers cannot be stolen.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+        await interaction.editReply({ components: [textCard(t(lang, 'utility.steal.lottie'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
         return;
       }
       try {
         const created = await interaction.guild.stickers.create({ file: url, name: repliedSticker.name, tags: repliedSticker.tags ?? 'e', description: repliedSticker.description ?? '' });
-        await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Sticker **${created.name}** added!`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+        await interaction.editReply({ components: [textCard(t(lang, 'utility.steal.stickerAdded', { emoji: EMOJI.APPROVE, name: created.name }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
       } catch (err) {
         logger.error('Failed to steal sticker:', err);
-        await interaction.editReply({ components: [textCard(`${EMOJI.DENY}  Failed to steal sticker: ${err.message}`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+        await interaction.editReply({ components: [textCard(t(lang, 'utility.steal.stickerFailed', { emoji: EMOJI.DENY, error: err.message }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
       }
       return;
     }
@@ -83,7 +86,7 @@ module.exports = {
     const matches = candidates.filter((entry) => !seen.has(entry.id) && seen.add(entry.id));
 
     if (!matches.length) {
-      await interaction.editReply({ components: [textCard('Write a custom emoji to steal, or reply to a message that has custom emojis (in its text or its reactions) or a sticker.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'utility.steal.nothing'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
 
@@ -91,13 +94,13 @@ module.exports = {
     for (const { animated, name, id } of matches.slice(0, MAX_EMOJIS)) {
       try {
         const created = await interaction.guild.emojis.create({ attachment: emojiUrl(id, Boolean(animated)), name });
-        results.push(`${created} \`:${created.name}:\` — added`);
+        results.push(t(lang, 'utility.steal.added', { emoji: `${created}`, name: created.name }));
       } catch (err) {
-        results.push(`\`:${name}:\` — failed (${err.message})`);
+        results.push(t(lang, 'utility.steal.failed', { name, error: err.message }));
       }
     }
 
-    const more = matches.length > MAX_EMOJIS ? `\n-# Only the first ${MAX_EMOJIS} were taken, run it again for the rest.` : '';
-    await interaction.editReply({ components: [textCard(`**Steal — ${results.length} emoji(s):**\n${results.join('\n')}${more}`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+    const more = matches.length > MAX_EMOJIS ? `\n${t(lang, 'utility.steal.more', { max: MAX_EMOJIS })}` : '';
+    await interaction.editReply({ components: [textCard(`${t(lang, 'utility.steal.title', { count: results.length })}\n${results.join('\n')}${more}`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
   },
 };

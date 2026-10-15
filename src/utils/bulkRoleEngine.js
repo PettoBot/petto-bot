@@ -1,6 +1,7 @@
 const { PermissionFlagsBits } = require('discord.js');
 const bulkRoleJobsDb = require('../db/bulkRoleJobs');
 const logger = require('./logger');
+const { t, tn, guildLanguage } = require('../i18n');
 
 const PROGRESS_SAVE_EVERY = 25;
 const CANCEL_CHECK_EVERY = 10;
@@ -22,6 +23,7 @@ function matchesFilters(member, job) {
   return true;
 }
 
+// The reasons a job fails are saved in the database (`error_message`) for the dashboard, in English like before.
 async function fail(job, message) {
   await bulkRoleJobsDb.updateJob(job.id, { status: 'failed', error_message: message, finished_at: new Date().toISOString() });
 }
@@ -29,25 +31,28 @@ async function fail(job, message) {
 /** Runs one bulk-role job to completion (or until cancelled), applied member-by-member so Discord's own per-route rate limiting paces it naturally, no manual throttling needed. */
 async function processBulkRoleJob(client, job) {
   const guild = await client.guilds.fetch(job.guild_id).catch(() => null);
-  if (!guild) return fail(job, "Petto isn't in that server anymore.");
+  if (!guild) return fail(job, "Petto isn't in that server anymore."); // i18n-ignore: saved in the database
 
   const botMember = await guild.members.fetchMe().catch(() => null);
-  if (!botMember?.permissions.has(PermissionFlagsBits.ManageRoles)) return fail(job, 'Petto is missing the Manage Roles permission.');
+  if (!botMember?.permissions.has(PermissionFlagsBits.ManageRoles)) return fail(job, 'Petto is missing the Manage Roles permission.'); // i18n-ignore: saved in the database
 
   const targetRole = await guild.roles.fetch(job.target_role_id).catch(() => null);
-  if (!targetRole) return fail(job, 'That role no longer exists.');
+  if (!targetRole) return fail(job, 'That role no longer exists.'); // i18n-ignore: saved in the database
   if (targetRole.position >= botMember.roles.highest.position) {
-    return fail(job, "That role is above Petto's highest role, move Petto's role above it and try again.");
+    return fail(job, "That role is above Petto's highest role, move Petto's role above it and try again."); // i18n-ignore: saved in the database
   }
 
   await bulkRoleJobsDb.updateJob(job.id, { status: 'running' });
+  // The job runs on a timer, outside of any server: the audit log and the notice use the server's language.
+  const lang = await guildLanguage(guild.id);
+  const auditReason = t(lang, 'moderation.bulkRole.audit', { id: job.id });
 
   let members;
   try {
     members = await guild.members.fetch();
   } catch (err) {
     logger.error(`Bulk role job #${job.id}: failed to fetch members:`, err);
-    return fail(job, "Couldn't load the member list, try again.");
+    return fail(job, "Couldn't load the member list, try again."); // i18n-ignore: saved in the database
   }
 
   const targets = members.filter((m) => matchesFilters(m, job));
@@ -66,10 +71,10 @@ async function processBulkRoleJob(client, job) {
     try {
       const already = member.roles.cache.has(job.target_role_id);
       if (job.action === 'add' && !already) {
-        await member.roles.add(job.target_role_id, `Bulk role job #${job.id}`);
+        await member.roles.add(job.target_role_id, auditReason);
         success++;
       } else if (job.action === 'remove' && already) {
-        await member.roles.remove(job.target_role_id, `Bulk role job #${job.id}`);
+        await member.roles.remove(job.target_role_id, auditReason);
         success++;
       }
     } catch (err) {
@@ -90,11 +95,9 @@ async function processBulkRoleJob(client, job) {
   if (job.notify_channel_id) {
     const channel = await guild.channels.fetch(job.notify_channel_id).catch(() => null);
     if (channel?.isTextBased()) {
-      const verb = job.action === 'add' ? 'assigned' : 'removed';
-      await channel.send(
-        `Bulk role job finished: **${verb}** <@&${job.target_role_id}> for **${success}** of **${targets.size}** matched member${targets.size === 1 ? '' : 's'}` +
-        (errors > 0 ? ` (${errors} failed, usually role-hierarchy or a member who left mid-run).` : '.'),
-      ).catch(() => {});
+      const vars = { role: `<@&${job.target_role_id}>`, success, count: targets.size };
+      const done = tn(lang, `moderation.bulkRole.done.${job.action === 'add' ? 'assigned' : 'removed'}`, targets.size, vars);
+      await channel.send(done + (errors > 0 ? t(lang, 'moderation.bulkRole.failed', { count: errors }) : '.')).catch(() => {});
     }
   }
 }

@@ -6,14 +6,20 @@ const { formatDuration } = require('./duration');
 const { buildEntryCard, buildEnterRow, buildClaimRow, sendGiveawayResponse } = require('./giveawayCard');
 const { EMOJI } = require('./emojis');
 const logger = require('./logger');
+const { t, tn, currentLanguage, guildLanguage, runWithLanguage } = require('../i18n');
 
-const DEFAULT_WINNER_TEXT = '{gw.host}\'s giveaway for **{gw.prize}** is over — congratulations {user}! 🎉';
-const DEFAULT_CLAIM_TEXT = 'You won **{gw.prize}**! Click **Accept** below within {gw.claim_time} to claim it.';
-const DEFAULT_DENY_TEXT = '{user} denied their win for **{gw.prize}**. Redrawing a new winner...';
-const DEFAULT_CLAIM_OVER_TEXT = '{user} did not claim **{gw.prize}** in time. Redrawing a new winner...';
-const DEFAULT_ACCEPT_TEXT = '{user} accepted their win for **{gw.prize}**! 🎉';
-const DEFAULT_NO_ENTRIES_TEXT = 'The giveaway for **{gw.prize}** ended with no valid entries.';
+// The default messages (used when the server wrote none) are the catalog texts `giveaways.default.*`, in the server's language;
+// their {gw.*} and {user} variables are filled by the template engine.
 const refreshQueues = new Map();
+
+/**
+ * Runs `work(lang)` in the language of a server. The engine is called from commands, but also from the giveaway job and the
+ * dashboard, which run outside of any server: everything it posts in Discord is in the server's language.
+ */
+async function inServerLanguage(guildId, work) {
+  const lang = await guildLanguage(guildId);
+  return runWithLanguage(lang, () => work(lang));
+}
 
 /**
  * What a preset asks and gives: its roles (the array), and on the array too `levels` (extra entries from some levels), `minLevel` and
@@ -38,15 +44,17 @@ function computeLevelBonus(levelRow, levels) {
 }
 
 /** Why a member cannot enter a giveaway of a preset (a text for them), or null when they can. */
-async function entryProblem(guildId, preset, userId) {
+async function entryProblem(guildId, preset, userId, lang = currentLanguage()) {
   if (!preset?.minLevel && !preset?.minVoiceLevel) return null;
   const row = (await levelUsersDb.getUsers(guildId, [userId])).get(userId);
   const text = Number(row?.level ?? 0);
   const voice = Number(row?.voice_level ?? 0);
-  const missing = [];
-  if (preset.minLevel > text) missing.push(`message level **${preset.minLevel}** (you are at ${text})`);
-  if (preset.minVoiceLevel > voice) missing.push(`voice level **${preset.minVoiceLevel}** (you are at ${voice})`);
-  return missing.length ? `You need ${missing.join(' and ')} to enter this giveaway.` : null;
+  const needsText = preset.minLevel > text;
+  const needsVoice = preset.minVoiceLevel > voice;
+  if (needsText && needsVoice) return t(lang, 'giveaways.entry.needBoth', { level: preset.minLevel, current: text, voiceLevel: preset.minVoiceLevel, voiceCurrent: voice });
+  if (needsText) return t(lang, 'giveaways.entry.needMessage', { level: preset.minLevel, current: text });
+  if (needsVoice) return t(lang, 'giveaways.entry.needVoice', { level: preset.minVoiceLevel, current: voice });
+  return null;
 }
 
 /** Bonus entries / claim time a member earns from a preset's roles. Stacking roles sum; non-stacking roles contribute only their single best value. */
@@ -64,11 +72,16 @@ function computePresetBonus(member, presetRoles) {
 }
 
 /** Pre-joined text for the {gw.preset} variable — the templating engine has no real loop syntax, so this is built once here. */
-function buildPresetText(presetRoles) {
-  const lines = (presetRoles ?? []).map((r) => `<@&${r.role_id}> — +${r.entries} entries${r.claim_time_ms ? ` · ${formatDuration(r.claim_time_ms)} to claim` : ''}`);
-  if (presetRoles?.minLevel) lines.push(`Needs message level ${presetRoles.minLevel}`);
-  if (presetRoles?.minVoiceLevel) lines.push(`Needs voice level ${presetRoles.minVoiceLevel}`);
-  for (const step of presetRoles?.levels ?? []) lines.push(`${step.source === 'voice' ? 'Voice level' : 'Level'} ${step.level}+ — +${step.entries} entries`);
+function buildPresetText(presetRoles, lang = currentLanguage()) {
+  const lines = (presetRoles ?? []).map((r) => (r.claim_time_ms
+    ? tn(lang, 'giveaways.preset.text.roleClaim', r.entries, { count: r.entries, role: `<@&${r.role_id}>`, duration: formatDuration(r.claim_time_ms, lang) })
+    : tn(lang, 'giveaways.preset.text.role', r.entries, { count: r.entries, role: `<@&${r.role_id}>` })));
+  if (presetRoles?.minLevel) lines.push(t(lang, 'giveaways.preset.text.minLevel', { level: presetRoles.minLevel }));
+  if (presetRoles?.minVoiceLevel) lines.push(t(lang, 'giveaways.preset.text.minVoiceLevel', { level: presetRoles.minVoiceLevel }));
+  for (const step of presetRoles?.levels ?? []) {
+    const vars = { count: step.entries, level: step.level };
+    lines.push(step.source === 'voice' ? tn(lang, 'giveaways.preset.text.voiceLevel', step.entries, vars) : tn(lang, 'giveaways.preset.text.level', step.entries, vars));
+  }
   return lines.join('\n');
 }
 
@@ -104,7 +117,7 @@ async function buildEntryPool(guild, entries, presetRoles) {
   return pool;
 }
 
-function giveawayCtx(giveaway, presetText, extra = {}) {
+function giveawayCtx(giveaway, presetText, extra = {}, lang = currentLanguage()) {
   const guild = extra.ctx?.guild;
   const hostUser = guild?.members?.cache?.get(giveaway.host_id)?.user
     ?? guild?.client?.users?.cache?.get(giveaway.host_id)
@@ -112,10 +125,10 @@ function giveawayCtx(giveaway, presetText, extra = {}) {
   const endsAtUnix = Math.floor(new Date(giveaway.ends_at).getTime() / 1000);
   const ended = Boolean(giveaway.ended);
   const entryText = ended
-    ? 'Giveaway ended'
+    ? t(lang, 'giveaways.vars.ended')
     : giveaway.entry_mode === 'reaction'
-      ? `React with ${giveaway.reaction} to enter!`
-      : 'Click the button below to enter!';
+      ? t(lang, 'giveaways.vars.react', { reaction: giveaway.reaction })
+      : t(lang, 'giveaways.vars.click');
 
   return {
     giveaway: {
@@ -126,12 +139,12 @@ function giveawayCtx(giveaway, presetText, extra = {}) {
       hostName: hostUser?.username ?? '',
       hostAvatar: hostUser?.displayAvatarURL?.({ size: 512 }) ?? '',
       endsAtUnix,
-      claimTimeText: extra.claimTimeMs ? formatDuration(extra.claimTimeMs) : '',
+      claimTimeText: extra.claimTimeMs ? formatDuration(extra.claimTimeMs, lang) : '',
       reaction: giveaway.reaction,
       entryMode: giveaway.entry_mode,
       entryText,
-      winnerText: `${giveaway.winners_count} lucky winner${giveaway.winners_count === 1 ? '' : 's'}!`,
-      status: ended ? 'Ended' : 'Active',
+      winnerText: tn(lang, 'giveaways.card.luckyWinners', giveaway.winners_count, { count: giveaway.winners_count }),
+      status: ended ? t(lang, 'giveaways.vars.statusEnded') : t(lang, 'giveaways.vars.statusActive'),
       presetText,
     },
     ...extra.ctx,
@@ -139,13 +152,13 @@ function giveawayCtx(giveaway, presetText, extra = {}) {
 }
 
 /** If the giveaway (or its guild default) has a saved embed template, resolves it against giveaway ctx. Returns null otherwise. */
-async function resolveCustomEmbed(guild, channel, giveaway, presetText, entriesCount = 0) {
+async function resolveCustomEmbed(guild, channel, giveaway, presetText, entriesCount = 0, lang = currentLanguage()) {
   if (!giveaway.embed_template) return null;
   const embedTemplatesDb = require('../db/embedTemplates');
   const doc = await embedTemplatesDb.getTemplate(giveaway.guild_id, giveaway.embed_template);
   if (!doc) return null;
   const { build } = require('./embedBuilder');
-  const ctx = giveawayCtx(giveaway, presetText, { entriesCount, ctx: { guild, channel } });
+  const ctx = giveawayCtx(giveaway, presetText, { entriesCount, ctx: { guild, channel } }, lang);
   return build(doc.data, ctx);
 }
 
@@ -154,15 +167,15 @@ function hostPresentation(guild, hostId) {
     ?? guild?.client?.users?.cache?.get(hostId)
     ?? null;
   return {
-    hostName: user?.username ?? 'Giveaway host',
+    hostName: user?.username ?? 'Giveaway host', // i18n-ignore: only tells the card to show a timestamp, never shown
     hostAvatar: user?.displayAvatarURL?.({ size: 512 }) ?? null,
   };
 }
 
 /** Posts (or re-posts, for edit) the live giveaway message. Uses a saved embed template if the giveaway has one, otherwise Petto's built-in Discord embed. */
-async function postGiveawayMessage(channel, giveaway, entriesCount, presetText = '') {
-  const customPayload = await resolveCustomEmbed(channel.guild, channel, giveaway, presetText, entriesCount);
-  const enterRow = giveaway.entry_mode === 'button' ? buildEnterRow(giveaway.id) : null;
+async function postGiveawayMessage(channel, giveaway, entriesCount, presetText = '', lang = currentLanguage()) {
+  const customPayload = await resolveCustomEmbed(channel.guild, channel, giveaway, presetText, entriesCount, lang);
+  const enterRow = giveaway.entry_mode === 'button' ? buildEnterRow(giveaway.id, { lang }) : null;
 
   let message;
   if (customPayload) {
@@ -181,6 +194,7 @@ async function postGiveawayMessage(channel, giveaway, entriesCount, presetText =
       ended: false,
       presetText,
       ...hostPresentation(channel.guild, giveaway.host_id),
+      lang,
     });
     message = await channel.send({ embeds: [card], components: enterRow ? [enterRow] : [] });
   }
@@ -190,15 +204,15 @@ async function postGiveawayMessage(channel, giveaway, entriesCount, presetText =
 }
 
 /** Re-renders a still-active giveaway's message in place (used by `giveaway edit`). */
-async function refreshGiveawayMessageNow(channel, giveaway) {
+async function refreshGiveawayMessageNow(channel, giveaway, lang) {
   const message = await channel.messages.fetch(giveaway.message_id).catch(() => null);
   if (!message) return;
 
   const presetRoles = giveaway.preset_id ? await loadPreset(giveaway.preset_id) : [];
-  const presetText = buildPresetText(presetRoles);
+  const presetText = buildPresetText(presetRoles, lang);
   const entriesCount = await giveawaysDb.countEntries(giveaway.id);
-  const customPayload = await resolveCustomEmbed(channel.guild, channel, giveaway, presetText, entriesCount);
-  const enterRow = giveaway.entry_mode === 'button' ? buildEnterRow(giveaway.id) : null;
+  const customPayload = await resolveCustomEmbed(channel.guild, channel, giveaway, presetText, entriesCount, lang);
+  const enterRow = giveaway.entry_mode === 'button' ? buildEnterRow(giveaway.id, { lang }) : null;
 
   if (customPayload) {
     const templateRows = (customPayload.components ?? []).slice(0, enterRow ? 4 : 5);
@@ -218,6 +232,7 @@ async function refreshGiveawayMessageNow(channel, giveaway) {
     ended: false,
     presetText,
     ...hostPresentation(channel.guild, giveaway.host_id),
+    lang,
   });
   await message.edit({ content: null, embeds: [card], components: enterRow ? [enterRow] : [] }).catch(() => {});
 }
@@ -228,7 +243,7 @@ async function refreshGiveawayMessage(channel, giveaway) {
   const previous = refreshQueues.get(key) ?? Promise.resolve();
   const current = previous
     .catch(() => {})
-    .then(() => refreshGiveawayMessageNow(channel, giveaway))
+    .then(() => inServerLanguage(channel.guild.id, (lang) => refreshGiveawayMessageNow(channel, giveaway, lang)))
     .finally(() => {
       if (refreshQueues.get(key) === current) refreshQueues.delete(key);
     });
@@ -253,19 +268,21 @@ async function startGiveaway({ guild, channel, hostId, prize, winnersCount, ends
   });
 
   const presetRoles = presetId ? await loadPreset(presetId) : [];
-  const message = await postGiveawayMessage(channel, giveaway, 0, buildPresetText(presetRoles));
+  const message = await inServerLanguage(guild.id, (lang) => postGiveawayMessage(channel, giveaway, 0, buildPresetText(presetRoles, lang), lang));
   await giveawaysDb.setMessageId(giveaway.id, message.id);
   return { ...giveaway, message_id: message.id };
 }
 
-async function editEndedMessage(channel, giveaway, winnerIds, presetText = '', entriesCount = 0) {
+async function editEndedMessage(channel, giveaway, winnerIds, presetText = '', entriesCount = 0, lang = currentLanguage()) {
   const message = await channel.messages.fetch(giveaway.message_id).catch(() => null);
   if (!message) return;
 
-  const summaryText = winnerIds.length ? `${EMOJI.APPROVE}  Winner(s): ${winnerIds.map((id) => `<@${id}>`).join(', ')}` : `${EMOJI.DENY}  No valid entries.`;
+  const summaryText = winnerIds.length
+    ? tn(lang, 'giveaways.result.winners', winnerIds.length, { emoji: EMOJI.APPROVE, winners: winnerIds.map((id) => `<@${id}>`).join(', ') })
+    : t(lang, 'giveaways.result.none', { emoji: EMOJI.DENY });
 
   const endedGiveaway = { ...giveaway, ended: true };
-  const customEmbed = await resolveCustomEmbed(channel.guild, channel, endedGiveaway, presetText, entriesCount);
+  const customEmbed = await resolveCustomEmbed(channel.guild, channel, endedGiveaway, presetText, entriesCount, lang);
   if (customEmbed) {
     const content = [customEmbed.content, summaryText].filter(Boolean).join('\n');
     await message.edit({
@@ -289,6 +306,7 @@ async function editEndedMessage(channel, giveaway, winnerIds, presetText = '', e
     ended: true,
     presetText,
     ...hostPresentation(channel.guild, giveaway.host_id),
+    lang,
   });
   await message.edit({ content: summaryText, embeds: [card], components: [] }).catch(() => {});
 }
@@ -312,20 +330,20 @@ async function claimTimeForWinner(guild, presetRoles, giveaway, userId) {
 }
 
 /** Announces a freshly-drawn winner: either an immediate congrats (no claim time) or a claim prompt with Accept/Deny buttons. */
-async function announceWinner(channel, config, giveaway, presetText, winnerId, claimTimeMs) {
+async function announceWinner(channel, config, giveaway, presetText, winnerId, claimTimeMs, lang = currentLanguage()) {
   const member = await channel.guild.members.fetch(winnerId).catch(() => null);
-  const ctx = giveawayCtx(giveaway, presetText, { claimTimeMs, ctx: { guild: channel.guild, channel, member, user: member?.user } });
+  const ctx = giveawayCtx(giveaway, presetText, { claimTimeMs, ctx: { guild: channel.guild, channel, member, user: member?.user } }, lang);
 
   if (claimTimeMs) {
     const winnerRow = await giveawaysDb.addWinner(giveaway.id, winnerId, new Date(Date.now() + claimTimeMs).toISOString());
-    const text = config.claim_time_message ? null : DEFAULT_CLAIM_TEXT;
+    const text = config.claim_time_message ? null : t(lang, 'giveaways.default.claim');
     await sendGiveawayResponse({ target: channel, guildId: giveaway.guild_id, messageText: config.claim_time_message, embedTemplateName: config.claim_time_embed_template, ctx, fallback: text });
-    await sendAs(channel, 'giveaways', { content: `<@${winnerId}>`, components: [buildClaimRow(winnerRow.id)] }).catch(() => {});
+    await sendAs(channel, 'giveaways', { content: `<@${winnerId}>`, components: [buildClaimRow(winnerRow.id, lang)] }).catch(() => {});
     return winnerRow;
   }
 
   const winnerRow = await giveawaysDb.addWinner(giveaway.id, winnerId, null);
-  await sendGiveawayResponse({ target: channel, guildId: giveaway.guild_id, messageText: config.winner_message, embedTemplateName: config.winner_embed_template, ctx, fallback: DEFAULT_WINNER_TEXT });
+  await sendGiveawayResponse({ target: channel, guildId: giveaway.guild_id, messageText: config.winner_message, embedTemplateName: config.winner_embed_template, ctx, fallback: t(lang, 'giveaways.default.winner') });
   return winnerRow;
 }
 
@@ -336,35 +354,37 @@ async function endGiveaway(client, giveaway) {
     await giveawaysDb.markEnded(giveaway.id);
     return;
   }
-  const channel = await guild.channels.fetch(giveaway.channel_id).catch(() => null);
-  const configDb = require('../db/giveawayConfig');
-  const config = await configDb.ensureConfig(giveaway.guild_id);
+  await inServerLanguage(giveaway.guild_id, async (lang) => {
+    const channel = await guild.channels.fetch(giveaway.channel_id).catch(() => null);
+    const configDb = require('../db/giveawayConfig');
+    const config = await configDb.ensureConfig(giveaway.guild_id);
 
-  const presetRoles = giveaway.preset_id ? await loadPreset(giveaway.preset_id) : [];
-  const presetText = buildPresetText(presetRoles);
+    const presetRoles = giveaway.preset_id ? await loadPreset(giveaway.preset_id) : [];
+    const presetText = buildPresetText(presetRoles, lang);
 
-  await giveawaysDb.markEnded(giveaway.id);
+    await giveawaysDb.markEnded(giveaway.id);
 
-  const entries = await giveawaysDb.listEntries(giveaway.id);
-  if (!entries.length) {
+    const entries = await giveawaysDb.listEntries(giveaway.id);
+    if (!entries.length) {
+      if (channel) {
+        const ctx = giveawayCtx(giveaway, presetText, { ctx: { guild, channel } }, lang);
+        await sendGiveawayResponse({ target: channel, guildId: giveaway.guild_id, messageText: config.no_entries_message, embedTemplateName: config.no_entries_embed_template, ctx, fallback: t(lang, 'giveaways.default.noEntries') });
+        await editEndedMessage(channel, giveaway, [], presetText, entries.length, lang);
+      }
+      return;
+    }
+
+    const pool = await buildEntryPool(guild, entries, presetRoles);
+    const winnerIds = weightedDraw(pool, giveaway.winners_count);
+
     if (channel) {
-      const ctx = giveawayCtx(giveaway, presetText, { ctx: { guild, channel } });
-      await sendGiveawayResponse({ target: channel, guildId: giveaway.guild_id, messageText: config.no_entries_message, embedTemplateName: config.no_entries_embed_template, ctx, fallback: DEFAULT_NO_ENTRIES_TEXT });
-      await editEndedMessage(channel, giveaway, [], presetText, entries.length);
+      for (const winnerId of winnerIds) {
+        const claimTimeMs = await claimTimeForWinner(guild, presetRoles, giveaway, winnerId);
+        await announceWinner(channel, config, giveaway, presetText, winnerId, claimTimeMs, lang).catch((err) => logger.error(`Failed to announce giveaway winner ${winnerId}:`, err));
+      }
+      await editEndedMessage(channel, giveaway, winnerIds, presetText, entries.length, lang);
     }
-    return;
-  }
-
-  const pool = await buildEntryPool(guild, entries, presetRoles);
-  const winnerIds = weightedDraw(pool, giveaway.winners_count);
-
-  if (channel) {
-    for (const winnerId of winnerIds) {
-      const claimTimeMs = await claimTimeForWinner(guild, presetRoles, giveaway, winnerId);
-      await announceWinner(channel, config, giveaway, presetText, winnerId, claimTimeMs).catch((err) => logger.error(`Failed to announce giveaway winner ${winnerId}:`, err));
-    }
-    await editEndedMessage(channel, giveaway, winnerIds, presetText, entries.length);
-  }
+  });
 }
 
 /** Handles a denied or expired claim: marks the status, announces it, and draws+announces a replacement winner if entries remain. */
@@ -375,26 +395,28 @@ async function handleForfeit(client, winnerRow, status) {
   const channel = guild ? await guild.channels.fetch(giveaway.channel_id).catch(() => null) : null;
   if (!guild || !channel) return;
 
-  const configDb = require('../db/giveawayConfig');
-  const config = await configDb.ensureConfig(giveaway.guild_id);
-  const presetRoles = giveaway.preset_id ? await loadPreset(giveaway.preset_id) : [];
-  const presetText = buildPresetText(presetRoles);
+  await inServerLanguage(giveaway.guild_id, async (lang) => {
+    const configDb = require('../db/giveawayConfig');
+    const config = await configDb.ensureConfig(giveaway.guild_id);
+    const presetRoles = giveaway.preset_id ? await loadPreset(giveaway.preset_id) : [];
+    const presetText = buildPresetText(presetRoles, lang);
 
-  await giveawaysDb.setWinnerStatus(winnerRow.id, status);
+    await giveawaysDb.setWinnerStatus(winnerRow.id, status);
 
-  const member = await guild.members.fetch(winnerRow.user_id).catch(() => null);
-  const ctx = giveawayCtx(giveaway, presetText, { ctx: { guild, channel, member, user: member?.user } });
-  const forfeitMessage = status === 'denied' ? config.deny_message : config.claim_time_over_message;
-  const forfeitFallback = status === 'denied' ? DEFAULT_DENY_TEXT : DEFAULT_CLAIM_OVER_TEXT;
-  await sendGiveawayResponse({ target: channel, guildId: giveaway.guild_id, messageText: forfeitMessage, embedTemplateName: status === 'denied' ? config.deny_embed_template : config.claim_time_over_embed_template, ctx, fallback: forfeitFallback });
+    const member = await guild.members.fetch(winnerRow.user_id).catch(() => null);
+    const ctx = giveawayCtx(giveaway, presetText, { ctx: { guild, channel, member, user: member?.user } }, lang);
+    const forfeitMessage = status === 'denied' ? config.deny_message : config.claim_time_over_message;
+    const forfeitFallback = status === 'denied' ? t(lang, 'giveaways.default.deny') : t(lang, 'giveaways.default.claimOver');
+    await sendGiveawayResponse({ target: channel, guildId: giveaway.guild_id, messageText: forfeitMessage, embedTemplateName: status === 'denied' ? config.deny_embed_template : config.claim_time_over_embed_template, ctx, fallback: forfeitFallback });
 
-  const allWinners = await giveawaysDb.listWinners(giveaway.id);
-  const excludeIds = allWinners.map((w) => w.user_id);
-  const replacementId = await drawOne(guild, giveaway, presetRoles, excludeIds);
-  if (!replacementId) return;
+    const allWinners = await giveawaysDb.listWinners(giveaway.id);
+    const excludeIds = allWinners.map((w) => w.user_id);
+    const replacementId = await drawOne(guild, giveaway, presetRoles, excludeIds);
+    if (!replacementId) return;
 
-  const claimTimeMs = await claimTimeForWinner(guild, presetRoles, giveaway, replacementId);
-  await announceWinner(channel, config, giveaway, presetText, replacementId, claimTimeMs);
+    const claimTimeMs = await claimTimeForWinner(guild, presetRoles, giveaway, replacementId);
+    await announceWinner(channel, config, giveaway, presetText, replacementId, claimTimeMs, lang);
+  });
 }
 
 async function handleAccept(client, winnerRow) {
@@ -404,40 +426,47 @@ async function handleAccept(client, winnerRow) {
   const channel = guild ? await guild.channels.fetch(giveaway.channel_id).catch(() => null) : null;
   if (!guild || !channel) return;
 
-  const configDb = require('../db/giveawayConfig');
-  const config = await configDb.ensureConfig(giveaway.guild_id);
-  const presetRoles = giveaway.preset_id ? await loadPreset(giveaway.preset_id) : [];
-  const presetText = buildPresetText(presetRoles);
+  await inServerLanguage(giveaway.guild_id, async (lang) => {
+    const configDb = require('../db/giveawayConfig');
+    const config = await configDb.ensureConfig(giveaway.guild_id);
+    const presetRoles = giveaway.preset_id ? await loadPreset(giveaway.preset_id) : [];
+    const presetText = buildPresetText(presetRoles, lang);
 
-  await giveawaysDb.setWinnerStatus(winnerRow.id, 'claimed');
-  const member = await guild.members.fetch(winnerRow.user_id).catch(() => null);
-  const ctx = giveawayCtx(giveaway, presetText, { ctx: { guild, channel, member, user: member?.user } });
-  await sendGiveawayResponse({ target: channel, guildId: giveaway.guild_id, messageText: config.accept_message, embedTemplateName: config.accept_embed_template, ctx, fallback: DEFAULT_ACCEPT_TEXT });
+    await giveawaysDb.setWinnerStatus(winnerRow.id, 'claimed');
+    const member = await guild.members.fetch(winnerRow.user_id).catch(() => null);
+    const ctx = giveawayCtx(giveaway, presetText, { ctx: { guild, channel, member, user: member?.user } }, lang);
+    await sendGiveawayResponse({ target: channel, guildId: giveaway.guild_id, messageText: config.accept_message, embedTemplateName: config.accept_embed_template, ctx, fallback: t(lang, 'giveaways.default.accept') });
+  });
 }
 
-/** Reroll — draws a fresh set of winners for an already-ended giveaway. Appends new giveaway_winners rows rather than deleting prior ones. */
-async function rerollGiveaway(client, giveaway, winnersCount) {
+/**
+ * Reroll — draws a fresh set of winners for an already-ended giveaway. Appends new giveaway_winners rows rather than deleting prior ones.
+ * `lang` is the language of the errors (for whoever asked); the announcements are in the server's language.
+ */
+async function rerollGiveaway(client, giveaway, winnersCount, lang = currentLanguage()) {
   const guild = await client.guilds.fetch(giveaway.guild_id).catch(() => null);
-  if (!guild) throw Object.assign(new Error("Couldn't fetch that giveaway's server."), { userFacing: true });
+  if (!guild) throw Object.assign(new Error(t(lang, 'giveaways.reroll.noServer')), { userFacing: true });
   const channel = await guild.channels.fetch(giveaway.channel_id).catch(() => null);
-  if (!channel) throw Object.assign(new Error("That giveaway's channel no longer exists."), { userFacing: true });
+  if (!channel) throw Object.assign(new Error(t(lang, 'giveaways.reroll.noChannel')), { userFacing: true });
 
   const configDb = require('../db/giveawayConfig');
   const config = await configDb.ensureConfig(giveaway.guild_id);
   const presetRoles = giveaway.preset_id ? await loadPreset(giveaway.preset_id) : [];
-  const presetText = buildPresetText(presetRoles);
 
   const entries = await giveawaysDb.listEntries(giveaway.id);
-  if (!entries.length) throw Object.assign(new Error('That giveaway has no entries to reroll from.'), { userFacing: true });
+  if (!entries.length) throw Object.assign(new Error(t(lang, 'giveaways.reroll.noEntries')), { userFacing: true });
 
   const pool = await buildEntryPool(guild, entries, presetRoles);
   const winnerIds = weightedDraw(pool, winnersCount ?? giveaway.winners_count);
-  if (!winnerIds.length) throw Object.assign(new Error('No eligible winners could be drawn.'), { userFacing: true });
+  if (!winnerIds.length) throw Object.assign(new Error(t(lang, 'giveaways.reroll.noWinners')), { userFacing: true });
 
-  for (const winnerId of winnerIds) {
-    const claimTimeMs = await claimTimeForWinner(guild, presetRoles, giveaway, winnerId);
-    await announceWinner(channel, config, giveaway, presetText, winnerId, claimTimeMs).catch((err) => logger.error(`Failed to announce reroll winner ${winnerId}:`, err));
-  }
+  await inServerLanguage(giveaway.guild_id, async (serverLang) => {
+    const presetText = buildPresetText(presetRoles, serverLang);
+    for (const winnerId of winnerIds) {
+      const claimTimeMs = await claimTimeForWinner(guild, presetRoles, giveaway, winnerId);
+      await announceWinner(channel, config, giveaway, presetText, winnerId, claimTimeMs, serverLang).catch((err) => logger.error(`Failed to announce reroll winner ${winnerId}:`, err));
+    }
+  });
   return winnerIds;
 }
 

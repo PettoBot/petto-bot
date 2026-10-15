@@ -12,6 +12,7 @@ const { parseDuration } = require('../../utils/duration');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
 const { confirmBulkAction, requireAdministrator } = require('../../utils/moderationCommand');
+const { t, tn, languageOf } = require('../../i18n');
 
 // Discord has no native "warn" permission; Moderate Members (used for timeouts)
 // is the closest built-in stand-in for "this person is server staff".
@@ -73,12 +74,13 @@ module.exports = {
 };
 
 async function warnUser(interaction) {
+  const lang = await languageOf(interaction);
   const targetUser = interaction.options.getUser('user', true);
   const reason = interaction.options.getString('reason', true);
 
   const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
   if (!targetMember) {
-    await interaction.reply({ content: 'That user is not a member of this server.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'moderation.common.notMember'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -105,6 +107,7 @@ async function warnUser(interaction) {
 
 async function warnUsers(interaction) {
   if (!(await requireAdministrator(interaction))) return;
+  const lang = await languageOf(interaction);
   const usersInput = interaction.options.getString('users', true);
   const reason = interaction.options.getString('reason', true);
 
@@ -138,27 +141,33 @@ async function warnUsers(interaction) {
     await checkAndApplyEscalation(interaction.client, interaction.guild, member, warnCount).catch((err) => logger.error('Escalation check failed:', err));
   }
 
-  const lines = [`${EMOJI.WARNING}  Warned **${succeeded.length}** user(s)${caseNumbers.length ? ` (cases #${caseNumbers.join(', #')})` : ''}.`];
+  const lines = [tn(lang, 'moderation.warn.bulkDone', succeeded.length, { emoji: EMOJI.WARNING, count: succeeded.length, cases: caseNumbers.length ? t(lang, 'moderation.common.cases', { list: caseNumbers.join(', #') }) : '' })];
   if (succeeded.length) lines.push(succeeded.map((u) => `${u}`).join(' '));
-  if (skipped.length) lines.push(`Not in this server: ${skipped.map((u) => `${u}`).join(' ')}`);
-  if (notFound.length) lines.push(`Not found: ${notFound.map((id) => `\`${id}\``).join(', ')}`);
-  lines.push(`**Reason:** ${reason}`);
+  if (skipped.length) lines.push(t(lang, 'moderation.common.notInServer', { list: skipped.map((u) => `${u}`).join(' ') }));
+  if (notFound.length) lines.push(t(lang, 'moderation.common.notFound', { list: notFound.map((id) => `\`${id}\``).join(', ') }));
+  lines.push(t(lang, 'moderation.common.reason', { reason }));
 
   const card = textCard(lines.join('\n'), 0xfed53c);
   await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });
 }
 
+/** The action of a rule as it is shown (`mute`, `tempmute`… in English, the choice values). */
+function ruleAction(action, lang) {
+  return t(lang, `moderation.escalation.action.${action}`);
+}
+
 async function escalation(interaction, sub) {
+  const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
 
   if (sub === 'list') {
     const rules = await getRules(interaction.guild.id);
     if (!rules.length) {
-      await interaction.editReply({ components: [textCard('No escalation rules configured.', 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'moderation.escalation.none'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
-    const lines = rules.map((r) => `**${r.warn_count}** warning(s) → ${r.action}${r.duration_ms ? ` (${Math.round(r.duration_ms / 60000)}m)` : ''}`);
+    const lines = rules.map((r) => tn(lang, 'moderation.escalation.rule', r.warn_count, { count: r.warn_count, action: ruleAction(r.action, lang), duration: r.duration_ms ? ` (${Math.round(r.duration_ms / 60000)}m)` : '' }));
     await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
@@ -166,7 +175,7 @@ async function escalation(interaction, sub) {
   if (sub === 'remove') {
     const threshold = interaction.options.getInteger('threshold', true);
     const removed = await removeRule(interaction.guild.id, threshold);
-    await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  Removed the rule for ${threshold} warning(s).` : `No rule found for ${threshold} warning(s).`, removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(removed ? tn(lang, 'moderation.escalation.removed', threshold, { emoji: EMOJI.APPROVE, count: threshold }) : tn(lang, 'moderation.escalation.notFound', threshold, { count: threshold }), removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -179,11 +188,11 @@ async function escalation(interaction, sub) {
   if (action === 'tempmute') {
     durationMs = parseDuration(durationStr ?? '');
     if (!durationMs) {
-      await interaction.editReply({ components: [textCard('`tempmute` needs a valid `duration`, e.g. `1h`, `12h`, `1d`.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'moderation.escalation.tempmuteDuration'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
     if (durationMs > MAX_TIMEOUT_MS) {
-      await interaction.editReply({ components: [textCard('Discord timeouts cannot exceed 28 days.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'moderation.escalation.timeoutCap'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
   }
@@ -191,12 +200,12 @@ async function escalation(interaction, sub) {
   if (action === 'jail' && durationStr) {
     durationMs = parseDuration(durationStr);
     if (!durationMs) {
-      await interaction.editReply({ components: [textCard('The jail `duration` is not valid. Use something like `1h`, `12h` or `1d`, or leave it empty for no end.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'moderation.escalation.jailDuration'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
   }
 
   await addRule(interaction.guild.id, threshold, action, durationMs);
-  const text = `${EMOJI.APPROVE}  At **${threshold}** warning(s), users will now be **${action}${durationMs ? ` (${durationStr})` : ''}** automatically.`;
+  const text = tn(lang, 'moderation.escalation.added', threshold, { emoji: EMOJI.APPROVE, count: threshold, action: ruleAction(action, lang), duration: durationMs ? ` (${durationStr})` : '' });
   await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }

@@ -1,0 +1,26 @@
+// Profiles (!profile, !profileconfig): the lines of a member's profile and the settings of reviews.
+// Reference catalog: es and pt-BR must have the same keys and placeholders.
+module.exports = {
+  'profiles.title': '### Profile of {user}',
+  'profiles.joined': 'Joined {date}',
+  'profiles.rating.one': 'Rating: {stars} **{average}** from {count} review',
+  'profiles.rating.other': 'Rating: {stars} **{average}** from {count} reviews',
+  'profiles.noRating': 'Rating: no reviews yet',
+  'profiles.uploads.one': 'Uploads: **{total}** ({count} files)',
+  'profiles.uploads.other': 'Uploads: **{total}** ({count} files)',
+  'profiles.uploadsLast.one': 'Uploads: **{total}** ({count} files) · last {time}',
+  'profiles.uploadsLast.other': 'Uploads: **{total}** ({count} files) · last {time}',
+  'profiles.requests': 'Requests: **{made}** made, **{done}** done',
+  'profiles.requestsStaff': 'Requests: **{made}** made, **{done}** done · **{staff}** finished for others',
+  'profiles.partners': 'Partnerships: **{total}** ({week} this week)',
+  'profiles.config.title': '### Reviews and profiles',
+  'profiles.config.reviews': 'Reviews: **{state}**',
+  'profiles.config.on': 'on',
+  'profiles.config.off': 'off',
+  'profiles.config.channel': 'Channel for new reviews: {channel}',
+  'profiles.config.none': 'none',
+  'profiles.config.reviewsOn': 'Reviews are on.',
+  'profiles.config.reviewsOff': 'Reviews are off. The profile does not show the rating.',
+  'profiles.config.channelSet': 'New reviews are shown in {channel}.',
+  'profiles.config.channelNone': 'New reviews are not shown anywhere.',
+};

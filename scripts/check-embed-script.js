@@ -34,6 +34,8 @@ assert.equal(parseEmbedScript('{embed}&v{button: Go && https://x.test}').buttons
 // Problems are described, nothing throws.
 assert.ok(parseEmbedScript('{embed}&v{title: x').warnings[0].includes('not closed'));
 assert.ok(parseEmbedScript('}').warnings[0].includes('closing brace'));
+assert.equal(parseEmbedScript('}', 'es').warnings[0], 'Hay una llave de cierre } sin su llave de apertura; se ignoró.', 'the warnings follow the language');
+assert.equal(parseEmbedScript('} }', 'pt-BR').warnings.length, 1, 'a problem is described once in any language');
 // Several embeds, and two codes pasted one after the other (the first lost its closing brace).
 r = parseEmbedScript('{embed}&v{title: One}&v{color: #ff0000}&v{embed}&v{title: Two}&v{description: b}');
 assert.equal(r.embeds.length, 2); assert.equal(r.embeds[0].title, 'One'); assert.equal(r.embeds[0].color, 0xff0000); assert.equal(r.embeds[1].title, 'Two'); assert.equal(r.embeds[1].color, null);

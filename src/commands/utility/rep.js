@@ -4,6 +4,7 @@ const db = require('../../db/reputation');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { formatDuration } = require('../../utils/duration');
+const { t, tn, languageOf } = require('../../i18n');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -31,14 +32,15 @@ module.exports = {
 };
 
 async function giveCmd(interaction) {
+  const lang = await languageOf(interaction);
   const target = interaction.options.getUser('user', true);
 
   if (target.id === interaction.user.id) {
-    await interaction.reply({ content: "You can't give reputation to yourself.", flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'utility.rep.self'), flags: MessageFlags.Ephemeral });
     return;
   }
   if (target.bot) {
-    await interaction.reply({ content: "You can't give reputation to a bot.", flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'utility.rep.bot'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -47,7 +49,7 @@ async function giveCmd(interaction) {
 
   const config = await db.getConfig(interaction.guild.id);
   if (!config.enabled) {
-    await interaction.editReply({ components: [textCard('Reputation is turned off in this server.', 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.rep.disabled'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -57,7 +59,7 @@ async function giveCmd(interaction) {
     const elapsed = Date.now() - new Date(giver.last_given_at).getTime();
     const remaining = cooldownMs - elapsed;
     if (remaining > 0) {
-      await interaction.editReply({ components: [textCard(`You can give another point in **${formatDuration(remaining)}**.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'utility.rep.cooldown', { duration: formatDuration(remaining, lang) }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
   }
@@ -66,36 +68,39 @@ async function giveCmd(interaction) {
   const receiver = await db.getUser(interaction.guild.id, target.id);
 
   await interaction.editReply({
-    components: [textCard(`${EMOJI.APPROVE}  Gave a reputation point to ${target}. They now have **${receiver.points}**.`, 0xa5ea7a)],
+    components: [textCard(t(lang, 'utility.rep.given', { emoji: EMOJI.APPROVE, user: `${target}`, points: receiver.points }), 0xa5ea7a)],
     flags: MessageFlags.IsComponentsV2,
   });
 }
 
 async function viewCmd(interaction) {
+  const lang = await languageOf(interaction);
   const target = interaction.options.getUser('user') ?? interaction.user;
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const row = await db.getUser(interaction.guild.id, target.id);
-  await interaction.editReply({ components: [textCard(`${target} has **${row.points}** reputation point${row.points === 1 ? '' : 's'}.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(tn(lang, 'utility.rep.points', row.points, { user: `${target}`, count: row.points }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function leaderboardCmd(interaction) {
+  const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const top = await db.getLeaderboard(interaction.guild.id, 10);
   if (!top.length) {
-    await interaction.editReply({ components: [textCard('No reputation given yet.', 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.rep.empty'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const medals = ['🥇', '🥈', '🥉'];
   const lines = top.map((row, i) => `${medals[i] ?? `**${i + 1}.**`} <@${row.user_id}> — **${row.points}**`);
-  await interaction.editReply({ components: [textCard(`**Reputation leaderboard**\n${lines.join('\n')}`, 0xfed53c)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(`**${t(lang, 'utility.rep.leaderboard')}**\n${lines.join('\n')}`, 0xfed53c)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function resetCmd(interaction) {
+  const lang = await languageOf(interaction);
   if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-    await interaction.reply({ content: 'You need the **Manage Server** permission to do that.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'core.moderate.youNeed', { permission: t(lang, 'core.perm.ManageGuild') }), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -103,5 +108,5 @@ async function resetCmd(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await db.resetUser(interaction.guild.id, target.id);
 
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Reset ${target}'s reputation to **0**.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'utility.rep.reset', { emoji: EMOJI.APPROVE, user: `${target}` }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }

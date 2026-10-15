@@ -6,6 +6,7 @@ const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { getVoiceConfig } = require('../../utils/levelSource');
 const periods = require('../../db/levelPeriods');
+const { t, tn, formatNumber, currentLanguage, languageOf } = require('../../i18n');
 
 const PER_PAGE = 10;
 const COLOR = 0x4b4f59;
@@ -20,7 +21,7 @@ function navRow(page, totalPages, disabled = false) {
   );
 }
 
-async function buildPage(guild, page, config, source = 'messages') {
+async function buildPage(guild, page, config, source = 'messages', lang = currentLanguage()) {
   const offset = (page - 1) * PER_PAGE;
   const rows = source === 'voice'
     ? await levelUsersDb.getVoiceLeaderboardPage(guild.id, { offset, limit: PER_PAGE })
@@ -34,32 +35,36 @@ async function buildPage(guild, page, config, source = 'messages') {
     const level = source === 'voice' ? Number(row.voice_level ?? 0) : Number(row.level ?? 0);
     const currXp = xp - totalXpForLevel(level, config);
     const needed = xpNeeded(level, config);
-    return `**\`${num}.\`** ${name}\n**»** Lv. **${level}** (${currXp.toLocaleString()}/${needed.toLocaleString()} XP)`;
+    return t(lang, 'leveling.top.line', { position: num, name, level, current: formatNumber(lang, currXp), needed: formatNumber(lang, needed) });
   });
 
   return new EmbedBuilder()
     .setColor(COLOR)
-    .setTitle(source === 'voice' ? `${guild.name} • Voice leaderboard` : `${guild.name} • Leaderboard`)
+    .setTitle(t(lang, source === 'voice' ? 'leveling.top.titleVoice' : 'leveling.top.title', { server: guild.name }))
     .setThumbnail(guild.iconURL())
-    .setDescription(lines.join('\n\n') || 'No data.');
+    .setDescription(lines.join('\n\n') || t(lang, 'leveling.top.noData'));
 }
 
-const PERIOD_LABELS = { week: 'This week', month: 'This month' };
+// The title of a weekly or monthly ranking, by source and period.
+const PERIOD_TITLES = {
+  messages: { week: 'leveling.top.titleWeek', month: 'leveling.top.titleMonth' },
+  voice: { week: 'leveling.top.titleVoiceWeek', month: 'leveling.top.titleVoiceMonth' },
+};
 
 /** A page of the weekly or monthly ranking: the XP earned in the period, since levels belong to the whole time. */
-async function buildPeriodPage(guild, page, source, period) {
+async function buildPeriodPage(guild, page, source, period, lang = currentLanguage()) {
   const offset = (page - 1) * PER_PAGE;
   const rows = await periods.boardPage(guild.id, period, source === 'voice' ? 'voice' : 'text', { offset, limit: PER_PAGE });
   const lines = rows.map((row, i) => {
     const num = String(offset + i + 1).padStart(2, '0');
     const member = guild.members.cache.get(row.user_id);
-    return `**\`${num}.\`** ${member?.displayName ?? `<@${row.user_id}>`}\n**»** ${row.xp.toLocaleString()} XP`;
+    return t(lang, 'leveling.top.periodLine', { position: num, name: member?.displayName ?? `<@${row.user_id}>`, xp: formatNumber(lang, row.xp) });
   });
   return new EmbedBuilder()
     .setColor(COLOR)
-    .setTitle(`${guild.name} • ${source === 'voice' ? 'Voice leaderboard' : 'Leaderboard'} · ${PERIOD_LABELS[period]}`)
+    .setTitle(t(lang, PERIOD_TITLES[source === 'voice' ? 'voice' : 'messages'][period], { server: guild.name }))
     .setThumbnail(guild.iconURL())
-    .setDescription(lines.join('\n\n') || 'No data.');
+    .setDescription(lines.join('\n\n') || t(lang, 'leveling.top.noData'));
 }
 
 module.exports = {
@@ -73,11 +78,13 @@ module.exports = {
   aliases: ['leaderboard', 'lb', 'ranking'],
 
   async execute(interaction) {
+    // Worked out once: the page buttons answer in a collector, outside the command's language.
+    const lang = await languageOf(interaction);
     const config = await getConfig(interaction.guild.id);
     const source = interaction.options.getString('type') ?? 'messages';
     const sourceConfig = source === 'voice' ? getVoiceConfig(config ?? {}) : config;
     if (!sourceConfig?.enabled) {
-      await interaction.reply({ components: [textCard(`${source === 'voice' ? 'Voice' : 'Message'} leveling is not enabled in this server.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.reply({ components: [textCard(t(lang, source === 'voice' ? 'leveling.notEnabled.voice' : 'leveling.notEnabled.messages'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
 
@@ -85,20 +92,21 @@ module.exports = {
     await interaction.guild.members.fetch().catch(() => {});
 
     const period = interaction.options.getString('period') ?? 'all';
-    const build = (page) => (period === 'all' ? buildPage(interaction.guild, page, sourceConfig, source) : buildPeriodPage(interaction.guild, page, source, period));
+    const build = (page) => (period === 'all' ? buildPage(interaction.guild, page, sourceConfig, source, lang) : buildPeriodPage(interaction.guild, page, source, period, lang));
     const total = period === 'all'
       ? (source === 'voice' ? await levelUsersDb.countVoiceRanked(interaction.guild.id) : await levelUsersDb.countRanked(interaction.guild.id))
       : await periods.boardCount(interaction.guild.id, period, source === 'voice' ? 'voice' : 'text');
     if (!total) {
-      await interaction.editReply({ components: [textCard(period === 'all' ? 'Nobody has ranked yet.' : `Nobody has earned XP ${period === 'week' ? 'this week' : 'this month'} yet.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, period === 'all' ? 'leveling.top.nobody' : period === 'week' ? 'leveling.top.nobodyWeek' : 'leveling.top.nobodyMonth'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
 
     const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
     let page = Math.min(Math.max(1, interaction.options.getInteger('page') ?? 1), totalPages);
+    const footer = (shown) => tn(lang, 'leveling.top.footer', total, { count: total, page: shown, pages: totalPages });
 
     const embed = await build(page);
-    embed.setFooter({ text: `${total} member(s) · Page ${page}/${totalPages}` });
+    embed.setFooter({ text: footer(page) });
 
     if (totalPages === 1) {
       await interaction.editReply({ embeds: [embed] });
@@ -119,7 +127,7 @@ module.exports = {
       if (i.customId === 'top_next') page = Math.min(totalPages, page + 1);
 
       const nextEmbed = await build(page);
-      nextEmbed.setFooter({ text: `${total} member(s) · Page ${page}/${totalPages}` });
+      nextEmbed.setFooter({ text: footer(page) });
       await i.update({ embeds: [nextEmbed], components: [navRow(page, totalPages)] });
     });
 

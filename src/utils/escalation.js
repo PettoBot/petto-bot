@@ -7,6 +7,8 @@ const { sanctionDM } = require('./sanctionTemplates');
 const { formatDuration } = require('./duration');
 const { jailMember, JailError } = require('./jail');
 const logger = require('./logger');
+const { guildLanguage } = require('../i18n');
+const { displayReason } = require('./caseFormat');
 
 const DEFAULT_TEMPMUTE_MS = 60 * 60 * 1000; // 1h, used if a rule somehow has no duration set
 const MAX_TIMEOUT_MS = 28 * 24 * 60 * 60 * 1000;
@@ -24,14 +26,18 @@ async function checkAndApplyEscalation(client, guild, member, warnCount) {
   const rule = rules.find((r) => r.warn_count === warnCount);
   if (!rule) return;
 
+  // i18n-ignore: saved as the reason of the case in English, like before; caseFormat.displayReason translates it when shown
   const reason = `Automatic escalation: reached ${warnCount} warning(s).`;
+  // The audit log and the durations are written in the server's language.
+  const lang = await guildLanguage(guild.id);
+  const auditReason = displayReason(reason, lang);
 
   try {
     const guildConfig = await ensureGuild(guild.id);
 
     if (rule.action === 'mute') {
       const muteRole = await ensureMuteRole(guild, guildConfig);
-      await member.roles.add(muteRole, reason);
+      await member.roles.add(muteRole, auditReason);
       const modCase = await createCase({ guildId: guild.id, userId: member.id, moderatorId: client.user.id, type: 'mute', reason, source: 'escalation' });
       await logSanction(client, guild, { modCase, target: member.user, moderator: client.user, reason, source: 'escalation' });
       await member.send(await sanctionDM({ type: 'mute', guild, client, reason, member, source: 'escalation', caseNumber: modCase.case_number })).catch(() => {});
@@ -44,9 +50,9 @@ async function checkAndApplyEscalation(client, guild, member, warnCount) {
         logger.error(`Escalation tempmute duration exceeds Discord's 28-day limit for guild ${guild.id}.`);
         return;
       }
-      await member.timeout(durationMs, reason);
+      await member.timeout(durationMs, auditReason);
       const expiresAt = new Date(Date.now() + durationMs).toISOString();
-      const duration = formatDuration(durationMs);
+      const duration = formatDuration(durationMs, lang);
       const modCase = await createCase({ guildId: guild.id, userId: member.id, moderatorId: client.user.id, type: 'tempmute', reason, expiresAt, source: 'escalation' });
       await logSanction(client, guild, { modCase, target: member.user, moderator: client.user, reason, duration, source: 'escalation' });
       await member.send(await sanctionDM({ type: 'tempmute', guild, client, reason, duration, member, source: 'escalation', caseNumber: modCase.case_number })).catch(() => {});
@@ -55,7 +61,7 @@ async function checkAndApplyEscalation(client, guild, member, warnCount) {
 
     if (rule.action === 'jail') {
       const durationMs = Number(rule.duration_ms) || null;
-      const duration = durationMs ? formatDuration(durationMs) : undefined;
+      const duration = durationMs ? formatDuration(durationMs, lang) : undefined;
       try {
         const { modCase } = await jailMember({ guild, member, moderator: client.user, reason, durationMs });
         await logSanction(client, guild, { modCase, target: member.user, moderator: client.user, reason, duration, source: 'escalation' });
@@ -70,7 +76,7 @@ async function checkAndApplyEscalation(client, guild, member, warnCount) {
 
     if (rule.action === 'kick') {
       await member.send(await sanctionDM({ type: 'kick', guild, client, reason, member, source: 'escalation' })).catch(() => {});
-      await member.kick(reason);
+      await member.kick(auditReason);
       const modCase = await createCase({ guildId: guild.id, userId: member.id, moderatorId: client.user.id, type: 'kick', reason, source: 'escalation' });
       await logSanction(client, guild, { modCase, target: member.user, moderator: client.user, reason, source: 'escalation' });
       return;
@@ -78,7 +84,7 @@ async function checkAndApplyEscalation(client, guild, member, warnCount) {
 
     if (rule.action === 'ban') {
       await member.send(await sanctionDM({ type: 'ban', guild, client, reason, member, source: 'escalation' })).catch(() => {});
-      await guild.members.ban(member.id, { reason });
+      await guild.members.ban(member.id, { reason: auditReason });
       const modCase = await createCase({ guildId: guild.id, userId: member.id, moderatorId: client.user.id, type: 'ban', reason, source: 'escalation' });
       await logSanction(client, guild, { modCase, target: member.user, moderator: client.user, reason, source: 'escalation' });
     }

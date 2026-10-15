@@ -5,6 +5,7 @@ const {
 const { getTemplate } = require('../db/embedTemplates');
 const { isV2 } = require('./embedV2');
 const { templatePayload } = require('./templatedMessage');
+const { t, tn, currentLanguage } = require('../i18n');
 
 const LETTERS = ['🇦', '🇧', '🇨', '🇩', '🇪', '🇫', '🇬', '🇭', '🇮', '🇯'];
 const BAR_LENGTH = 12;
@@ -27,8 +28,8 @@ function leaders(poll, results) {
   return top > 0 ? counts.map((count, i) => (count === top ? i : -1)).filter((i) => i >= 0) : [];
 }
 
-function typeText(poll) {
-  return poll.multi ? 'Multiple choice' : 'Single choice';
+function typeText(poll, lang = currentLanguage()) {
+  return t(lang, poll.multi ? 'polls.type.multi' : 'polls.type.single');
 }
 
 function endsAtUnix(poll) {
@@ -50,10 +51,10 @@ function resultBlocks(poll, results) {
 const divider = () => new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small);
 
 /** Builds the poll's default card (Components V2: header, a line, the options with their bars, a line, the votes) from its tallies. */
-function buildPollCard(poll, results) {
+function buildPollCard(poll, results, lang = currentLanguage()) {
   const total = results.voters;
   const ends = endsAtUnix(poll);
-  const meta = [typeText(poll), poll.closed ? 'closed' : ends ? `closes <t:${ends}:R>` : null].filter(Boolean).join(' · ');
+  const meta = [typeText(poll, lang), poll.closed ? t(lang, 'polls.card.closed') : ends ? t(lang, 'polls.card.closes', { time: `<t:${ends}:R>` }) : null].filter(Boolean).join(' · ');
 
   const container = new ContainerBuilder()
     .setAccentColor(poll.closed ? CLOSED_COLOR : OPEN_COLOR)
@@ -66,13 +67,13 @@ function buildPollCard(poll, results) {
   }
   container
     .addSeparatorComponents(divider())
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${total} vote${total === 1 ? '' : 's'} · ${poll.closed ? 'closed' : 'open'}`));
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${tn(lang, poll.closed ? 'polls.card.footer.closed' : 'polls.card.footer.open', total, { count: total })}`));
 
-  return { components: [container], rows: poll.closed ? [] : voteRows(poll) };
+  return { components: [container], rows: poll.closed ? [] : voteRows(poll, lang) };
 }
 
 /** The vote buttons (five to a row) and the End poll button, shared by the default card and by a saved design. */
-function voteRows(poll) {
+function voteRows(poll, lang = currentLanguage()) {
   const rows = [];
   for (let i = 0; i < poll.options.length; i += 5) {
     const row = new ActionRowBuilder();
@@ -82,12 +83,12 @@ function voteRows(poll) {
     });
     rows.push(row);
   }
-  rows.push(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`plv_close::${poll.id}`).setLabel('End poll').setStyle(ButtonStyle.Danger)));
+  rows.push(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`plv_close::${poll.id}`).setLabel(t(lang, 'polls.card.end.button')).setStyle(ButtonStyle.Danger)));
   return rows;
 }
 
 /** What the {poll.*} variables of a saved design resolve to. */
-function pollContext(poll, results) {
+function pollContext(poll, results, lang = currentLanguage()) {
   const total = results.voters;
   const lead = leaders(poll, results);
   return {
@@ -95,9 +96,9 @@ function pollContext(poll, results) {
     options: poll.options.map((option, i) => `${LETTERS[i]} ${option}`).join('\n'),
     results: resultBlocks({ ...poll, closed: false }, results).join('\n\n'),
     votes: total,
-    votesText: `${total} vote${total === 1 ? '' : 's'}`,
-    type: typeText(poll),
-    status: poll.closed ? 'Closed' : 'Open',
+    votesText: tn(lang, 'polls.card.votes', total, { count: total }),
+    type: typeText(poll, lang),
+    status: t(lang, poll.closed ? 'polls.status.closed' : 'polls.status.open'),
     endsAtUnix: endsAtUnix(poll),
     image: poll.image ?? '',
     hostId: poll.creator_id ?? null,
@@ -116,21 +117,21 @@ async function checkPollTemplate(guildId, name) {
  * The whole message of a poll, ready to send or edit: the saved design when the poll has one (with the vote buttons added
  * under it), otherwise the default card. A design that is missing, empty, or not Components V2 falls back to the card.
  */
-async function buildPollMessage({ guild, poll, results }) {
+async function buildPollMessage({ guild, poll, results, lang = currentLanguage() }) {
   if (poll.embed_template && guild) {
-    const payload = await templatePayload(guild.id, poll.embed_template, { guild, poll: pollContext(poll, results) });
+    const payload = await templatePayload(guild.id, poll.embed_template, { guild, poll: pollContext(poll, results, lang) });
     if (payload?.flags && payload.components?.length) {
-      return { components: [...payload.components, ...(poll.closed ? [] : voteRows(poll))], flags: payload.flags, allowedMentions: { parse: [] } };
+      return { components: [...payload.components, ...(poll.closed ? [] : voteRows(poll, lang))], flags: payload.flags, allowedMentions: { parse: [] } };
     }
   }
-  const card = buildPollCard(poll, results);
+  const card = buildPollCard(poll, results, lang);
   return { components: [...card.components, ...card.rows], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } };
 }
 
 // Polls posted before the V2 card are classic messages, and Discord will not turn those into V2: they keep their
 // message while they are open and only lose their buttons when they close.
-async function updatePollMessage(message, { guild, poll, results }) {
-  if (message.flags?.has?.(MessageFlags.IsComponentsV2)) return message.edit(await buildPollMessage({ guild, poll, results }));
+async function updatePollMessage(message, { guild, poll, results, lang = currentLanguage() }) {
+  if (message.flags?.has?.(MessageFlags.IsComponentsV2)) return message.edit(await buildPollMessage({ guild, poll, results, lang }));
   if (poll.closed) return message.edit({ components: [] });
   return null;
 }

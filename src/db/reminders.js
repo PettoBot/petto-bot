@@ -1,4 +1,5 @@
 const database = require('./database');
+const { t, currentLanguage } = require('../i18n');
 
 const MAX_PER_USER = 25;
 
@@ -10,7 +11,7 @@ async function countActive(guildId, userId) {
 
 async function createReminder({ guildId, channelId, userId, message, remindAt }) {
   const active = await countActive(guildId, userId);
-  if (active >= MAX_PER_USER) throw Object.assign(new Error(`You already have ${MAX_PER_USER} active reminders — cancel one first.`), { userFacing: true });
+  if (active >= MAX_PER_USER) throw Object.assign(new Error(t(currentLanguage(), 'utility.db.reminderLimit', { max: MAX_PER_USER })), { userFacing: true });
 
   const { data, error } = await database.from('reminders').insert({ guild_id: guildId, channel_id: channelId, user_id: userId, message, remind_at: remindAt.toISOString() }).select('*').single();
   if (error) throw error;

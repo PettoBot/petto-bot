@@ -1,3 +1,4 @@
+// i18n-ignore-file: audit-log reasons of Premium roles in the Petto support server.
 const database = require('../db/database');
 const config = require('../config');
 const logger = require('../utils/logger');

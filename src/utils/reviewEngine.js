@@ -1,4 +1,6 @@
 // Stars and averages, and the check of a review before it is saved.
+const { t, currentLanguage } = require('../i18n');
+
 const MAX_COMMENT = 300;
 
 /** `{ count, average }` of some reviews; the average has one decimal and is null with no reviews. */
@@ -21,11 +23,11 @@ function parseStars(value) {
 }
 
 /** Why a review is refused, or null when it is fine. */
-function problem({ reviewer, target, stars, comment }) {
-  if (target.bot) return 'You can not review a bot.';
-  if (reviewer.id === target.id) return 'You can not review yourself.';
-  if (stars === null) return 'The stars are a whole number from 1 to 5.';
-  if (comment.length > MAX_COMMENT) return `The comment can have up to ${MAX_COMMENT} characters.`;
+function problem({ reviewer, target, stars, comment, lang = currentLanguage() }) {
+  if (target.bot) return t(lang, 'reviews.problem.bot');
+  if (reviewer.id === target.id) return t(lang, 'reviews.problem.self');
+  if (stars === null) return t(lang, 'reviews.problem.stars');
+  if (comment.length > MAX_COMMENT) return t(lang, 'reviews.problem.comment', { max: MAX_COMMENT });
   return null;
 }
 

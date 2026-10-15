@@ -1,4 +1,5 @@
 const database = require('./database');
+const { t, currentLanguage } = require('../i18n');
 
 const MAX_TRIGGER_LENGTH = 80;
 const MAX_EMOJIS_PER_CHANNEL = 5;
@@ -22,9 +23,9 @@ function normalizeTrigger(trigger) {
 
 function validateTrigger(trigger) {
   const normalized = normalizeTrigger(trigger);
-  if (!normalized) throw new Error('Provide a trigger phrase.');
-  if (normalized.length < 2) throw new Error('A trigger must contain at least two characters.');
-  if (COMMON_TRIGGERS.has(normalized)) throw new Error('That trigger is too common. Use a more specific word or phrase.');
+  if (!normalized) throw new Error(t(currentLanguage(), 'automation.db.trigger.missing'));
+  if (normalized.length < 2) throw new Error(t(currentLanguage(), 'automation.db.trigger.tooShort'));
+  if (COMMON_TRIGGERS.has(normalized)) throw new Error(t(currentLanguage(), 'automation.db.trigger.tooCommon'));
   return normalized;
 }
 
@@ -35,7 +36,7 @@ function normalizeEmoji(emoji) {
 async function addTrigger({ guildId, emoji, trigger, ownerId, matchMode = 'contains', channelIds = [], roleIds = [], caseSensitive = false, cooldownSeconds = 0 }) {
   const normalizedTrigger = validateTrigger(trigger);
   const normalizedEmoji = normalizeEmoji(emoji);
-  if (!normalizedEmoji) throw new Error('Provide an emoji.');
+  if (!normalizedEmoji) throw new Error(t(currentLanguage(), 'automation.db.trigger.noEmoji'));
 
   const { data, error } = await database
     .from('reaction_triggers')
@@ -43,7 +44,7 @@ async function addTrigger({ guildId, emoji, trigger, ownerId, matchMode = 'conta
     .select('*')
     .single();
   if (error) {
-    if (error.code === '23505') throw new Error('That emoji and trigger are already configured.');
+    if (error.code === '23505') throw new Error(t(currentLanguage(), 'automation.db.trigger.duplicate'));
     throw error;
   }
   triggerCache.delete(guildId);

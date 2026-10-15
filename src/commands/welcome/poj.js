@@ -1,12 +1,14 @@
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = require('discord.js');
-const ms = require('ms');
-const { parseDuration: parseLength } = require('../../utils/duration');
+const { parseDuration: parseLength, formatDuration } = require('../../utils/duration');
 const { ensureGuild } = require('../../db/guilds');
 const pojDb = require('../../db/poj');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { t, languageOf } = require('../../i18n');
 
 const DEFAULT_DELETE_MS = 5000;
+// The limit db/poj.js enforces (its error is the one userFacing error addChannel throws).
+const MAX_CHANNELS = 10;
 
 module.exports = {
   aliases: ['j'],
@@ -38,12 +40,13 @@ module.exports = {
 };
 
 async function addCmd(interaction) {
+  const lang = await languageOf(interaction);
   const channel = interaction.options.getChannel('channel', true);
   const deleteAfterStr = interaction.options.getString('delete_after');
   const deleteAfterMs = deleteAfterStr ? parseLength(deleteAfterStr) : DEFAULT_DELETE_MS;
 
   if (typeof deleteAfterMs !== 'number' || Number.isNaN(deleteAfterMs) || deleteAfterMs <= 0) {
-    await interaction.reply({ content: 'Provide a valid duration, e.g. `5s`, `10s`, `1m`.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'welcome.poj.invalidDuration'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -54,41 +57,45 @@ async function addCmd(interaction) {
   try {
     await pojDb.addChannel(interaction.guild.id, channel.id, deleteAfterMs);
   } catch (err) {
-    await interaction.editReply({ components: [textCard(err.userFacing ? err.message : 'Failed to add channel.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(err.userFacing ? t(lang, 'welcome.poj.maxChannels', { max: MAX_CHANNELS }) : t(lang, 'welcome.poj.addFailed'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Added ${channel} — ping deletes after **${ms(deleteAfterMs, { long: true })}**.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'welcome.poj.added', { emoji: EMOJI.APPROVE, channel: `${channel}`, duration: formatDuration(deleteAfterMs, lang) }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function removeCmd(interaction) {
+  const lang = await languageOf(interaction);
   const channel = interaction.options.getChannel('channel', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const removed = await pojDb.removeChannel(interaction.guild.id, channel.id);
-  await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  Removed ${channel}.` : `${channel} wasn't in the ping-on-join list.`, removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(removed ? t(lang, 'welcome.poj.removed', { emoji: EMOJI.APPROVE, channel: `${channel}` }) : t(lang, 'welcome.poj.notInList', { channel: `${channel}` }), removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function listCmd(interaction) {
+  const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const config = await pojDb.ensureConfig(interaction.guild.id);
   const channels = await pojDb.listChannels(interaction.guild.id);
 
-  const lines = [`**Status:** ${config.enabled ? `${EMOJI.APPROVE} Enabled` : `${EMOJI.DENY} Disabled`}`];
-  lines.push(channels.length ? channels.map((c) => `<#${c.channel_id}> — deletes after **${ms(c.delete_after_ms, { long: true })}**`).join('\n') : 'No channels configured.');
+  const lines = [config.enabled ? t(lang, 'welcome.poj.status.enabled', { emoji: EMOJI.APPROVE }) : t(lang, 'welcome.poj.status.disabled', { emoji: EMOJI.DENY })];
+  lines.push(channels.length ? channels.map((c) => t(lang, 'welcome.poj.listLine', { channel: `<#${c.channel_id}>`, duration: formatDuration(c.delete_after_ms, lang) })).join('\n') : t(lang, 'welcome.poj.noChannels'));
   await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function enableCmd(interaction) {
+  const lang = await languageOf(interaction);
   const enabled = interaction.options.getBoolean('enabled', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
   await pojDb.setEnabled(interaction.guild.id, enabled);
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Ping-on-join ${enabled ? 'enabled' : 'disabled'}.`, enabled ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, enabled ? 'welcome.poj.enabled' : 'welcome.poj.disabled', { emoji: EMOJI.APPROVE }), enabled ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function clearCmd(interaction) {
+  const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await pojDb.clearChannels(interaction.guild.id);
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  All ping-on-join channels removed.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'welcome.poj.cleared', { emoji: EMOJI.APPROVE }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }

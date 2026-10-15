@@ -20,9 +20,10 @@ const disablecommand = require('../src/commands/automation/disablecommand');
 const known = new Set(['roles', 'emojis', 'help', 'disablecommand']);
 const client = { commands: { has: (name) => known.has(name) }, commandAliases: new Map([['rl', 'roles']]), commandRoutes: new Map() };
 const text = (payload) => JSON.stringify(payload.components.map((c) => c.toJSON()));
-function run(sub, command, channel = null) {
+function run(sub, command, channel = null, pettoLang = undefined) {
   const sent = [];
   const interaction = {
+    pettoLang,
     client, guild: { id: '1', name: 'Test', iconURL: () => null }, user: { id: '9' },
     options: { getSubcommand: () => sub, getString: () => command, getChannel: () => channel },
     deferReply: async () => {}, editReply: async (p) => sent.push(p), reply: async (p) => sent.push(p),
@@ -56,6 +57,11 @@ function run(sub, command, channel = null) {
   assert.match(text(await run('list', '')), /No commands are disabled/);
   assert.match(text(await run('disable', ' , ')), /at least one command/);
   assert.match(text(await run('disable', Array.from({ length: 30 }, (_, n) => `c${n}`).join(' '))), /up to 25/);
+
+  // Spanish and Portuguese.
+  assert.match(text(await run('disable', 'roles', null, 'es')), /Desactivados en todo el servidor: `roles`/);
+  assert.match(text(await run('disable', 'nothing', null, 'pt-BR')), /Não conheço estes comandos: `nothing`/);
+  assert.match(text(await run('list', '', null, 'es')), /Comandos desactivados \(1\)/);
 
   console.log('disablecommand ok');
 })().catch((error) => { console.error(error); process.exit(1); });

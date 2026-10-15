@@ -158,5 +158,21 @@ const base = { enabled: true, channel_id: 'c1', review_channel_id: 'review', req
   assert.equal(sent[0].username, 'Confessions log');
   assert.ok(JSON.stringify(sent[0].components.map((c) => c.toJSON?.() ?? c)).includes('someone did something'));
 
+  // In a server that speaks Spanish the texts nobody changed are in Spanish; what the server wrote stays as it is.
+  require('../src/i18n').setCachedGuildLanguage(guild.id, 'es');
+  config = { ...base, cooldown_seconds: 0 };
+  sent.length = 0;
+  await confessions.submit({ guild, user: user('u12'), text: 'en español' });
+  const spanish = JSON.stringify(sent[0].components.map((c) => c.toJSON?.() ?? c));
+  assert.ok(spanish.includes('Confesión anónima #') && spanish.includes('Responder en anónimo'), 'the usual title and button in Spanish');
+  assert.equal(sent[0].username, 'Anónimo');
+  config = { ...base, cooldown_seconds: 0, title: 'Secretos #{confession.number}' };
+  sent.length = 0;
+  await confessions.submit({ guild, user: user('u13'), text: 'own title' });
+  assert.ok(JSON.stringify(sent[0].components.map((c) => c.toJSON?.() ?? c)).includes('Secretos #'), 'a title the server wrote is kept');
+  config = { ...base, cooldown_seconds: 60 };
+  assert.match((await confessions.submit({ guild, user: user('u13'), text: 'again' })).error, /^Espera \d+ segundos? antes/);
+  require('../src/i18n').setCachedGuildLanguage(guild.id, 'en');
+
   console.log('confessions ok');
 })().catch((error) => { console.error(error); process.exit(1); });

@@ -3,6 +3,7 @@
 // it, which costs almost nothing when nothing changed. Everything that comes back is treated as untrusted text: names are
 // cleaned and cut, links must be https, and pictures must come from Discord's own CDN.
 const logger = require('./logger');
+const { t, currentLanguage } = require('../i18n');
 
 const API_BASE = 'https://api.discordquest.com';
 const CDN_BASE = 'https://cdn.discordapp.com/';
@@ -13,20 +14,45 @@ const TIMEOUT_MS = 45_000;
 const MAX_BYTES = 12 * 1024 * 1024;
 
 const REWARD_KINDS = { 1: 'code', 2: 'ingame', 3: 'decoration', 4: 'orbs', 5: 'nitro' };
-const REWARD_LABELS = { code: 'Code', ingame: 'In-game item', decoration: 'Collectible', orbs: 'Orbs', nitro: 'Nitro', other: 'Reward' };
+// The names Petto gives to the kinds of reward and of task. The quest objects keep them in English (they are data, compared
+// and stored); `rewardLabel`, `taskLabel` and `platformLabel` give them in the language of a server when a message is built.
+const rewardKey = (kind) => `quests.reward.${kind === 'other' ? 'unknown' : kind}`;
+const REWARD_LABELS = Object.fromEntries(['code', 'ingame', 'decoration', 'orbs', 'nitro', 'other'].map((kind) => [kind, t('en', rewardKey(kind))]));
 // The kind of task a member does, grouped so a server can choose "videos" without knowing every task name.
+const taskKind = (kind, key, platform) => ({ kind, key, label: t('en', `quests.task.${key}`), platform });
 const TASKS = {
-  WATCH_VIDEO: { kind: 'video', label: 'Watch a video', platform: 'Desktop' },
-  WATCH_VIDEO_ON_MOBILE: { kind: 'video', label: 'Watch a video on mobile', platform: 'Mobile' },
-  PLAY_ON_DESKTOP: { kind: 'play', label: 'Play the game', platform: 'Desktop' },
-  PLAY_ON_DESKTOP_V2: { kind: 'play', label: 'Play the game', platform: 'Desktop' },
-  PLAY_ON_XBOX: { kind: 'play', label: 'Play on Xbox', platform: 'Xbox' },
-  PLAY_ON_PLAYSTATION: { kind: 'play', label: 'Play on PlayStation', platform: 'PlayStation' },
-  STREAM_ON_DESKTOP: { kind: 'stream', label: 'Stream the game', platform: 'Desktop' },
-  PLAY_ACTIVITY: { kind: 'activity', label: 'Play an Activity', platform: 'Desktop' },
-  ACHIEVEMENT_IN_ACTIVITY: { kind: 'activity', label: 'Earn an achievement in an Activity', platform: 'Desktop' },
-  ACHIEVEMENT_IN_GAME: { kind: 'play', label: 'Earn an achievement in the game', platform: 'Desktop' },
+  WATCH_VIDEO: taskKind('video', 'watchVideo', 'Desktop'),
+  WATCH_VIDEO_ON_MOBILE: taskKind('video', 'watchVideoMobile', 'Mobile'),
+  PLAY_ON_DESKTOP: taskKind('play', 'playGame', 'Desktop'),
+  PLAY_ON_DESKTOP_V2: taskKind('play', 'playGame', 'Desktop'),
+  PLAY_ON_XBOX: taskKind('play', 'playXbox', 'Xbox'),
+  PLAY_ON_PLAYSTATION: taskKind('play', 'playPlaystation', 'PlayStation'),
+  STREAM_ON_DESKTOP: taskKind('stream', 'streamGame', 'Desktop'),
+  PLAY_ACTIVITY: taskKind('activity', 'playActivity', 'Desktop'),
+  ACHIEVEMENT_IN_ACTIVITY: taskKind('activity', 'achievementActivity', 'Desktop'),
+  ACHIEVEMENT_IN_GAME: taskKind('play', 'achievementGame', 'Desktop'),
 };
+const UNKNOWN_TASK = t('en', 'quests.task.complete');
+
+/** The name of a kind of reward in `lang` ("Collectible"), `Reward` for one Petto does not know. */
+function rewardLabel(kind, lang = currentLanguage()) {
+  return t(lang, rewardKey(Object.hasOwn(REWARD_LABELS, kind) ? kind : 'other'));
+}
+
+/** What a task asks for, in `lang`. A task Discord added and Petto does not know keeps the name the list gives it. */
+function taskLabel(entry, lang = currentLanguage()) {
+  const known = TASKS[entry?.type];
+  if (known) return t(lang, `quests.task.${known.key}`);
+  return entry?.label === UNKNOWN_TASK ? t(lang, 'quests.task.complete') : String(entry?.label ?? '');
+}
+
+/** A platform of a quest in `lang`: Desktop and Mobile are words, the others are names. */
+function platformLabel(name, lang = currentLanguage()) {
+  if (name === 'Desktop') return t(lang, 'quests.platform.desktop');
+  if (name === 'Mobile') return t(lang, 'quests.platform.mobile');
+  if (name === 'Activity') return t(lang, 'quests.platform.activity');
+  return String(name);
+}
 const TASK_KINDS = ['video', 'play', 'stream', 'activity'];
 const REWARD_KIND_LIST = ['orbs', 'decoration', 'code', 'ingame', 'nitro'];
 
@@ -35,11 +61,13 @@ const REWARD_KIND_LIST = ['orbs', 'decoration', 'code', 'ingame', 'nitro'];
 // the community API, aamiaa/discord-api-diff (which archives Discord's own quest data, every few hours) and the tracker's
 // big file. A quest found by any of them is announced, and the earlier source wins when they differ.
 const COMMUNITY = 'discordquest.com';
+// i18n-ignore: name of a data source
 const COMPACT = 'agnonotdev quests (compact)';
 const SOURCES = [
   // The main source: a compact list of every quest with its dates, rewards and limits (platforms, countries, age gate). Its shape is its own.
   { name: COMPACT, url: 'https://gist.githubusercontent.com/agnonotdev/8c2c84d70ae989d1ea2f178566163079/raw/quests-todas-compacto.json', compact: true },
   // The same tracker's short list of recent quests: its own job refreshes it within minutes of a quest starting, well before the big files.
+  // i18n-ignore: name of a data source
   { name: 'discord-api-tracker (recent)', url: 'https://raw.githubusercontent.com/xGustavvo/discord-api-tracker/main/quest.json' },
   { name: COMMUNITY, url: `${API_BASE}/api/quests`, minIntervalMs: 30 * 60_000 },
   { name: 'discord-api-diff', url: 'https://raw.githubusercontent.com/aamiaa/discord-api-diff/main/quests.json' },
@@ -96,7 +124,7 @@ function normalizeTasks(config) {
   const tasks = config.task_config_v2?.tasks ?? config.task_config?.tasks ?? {};
   return Object.values(tasks).slice(0, 8).map((task) => {
     const type = clean(task.type ?? task.event_name, 60);
-    const known = TASKS[type] ?? { kind: 'play', label: type.toLowerCase().replace(/_/g, ' ') || 'Complete the task', platform: 'Desktop' };
+    const known = TASKS[type] ?? { kind: 'play', label: type.toLowerCase().replace(/_/g, ' ') || UNKNOWN_TASK, platform: 'Desktop' };
     return { type, kind: known.kind, label: known.label, platform: known.platform, seconds: Math.max(0, Number(task.target) || 0) };
   });
 }
@@ -164,7 +192,7 @@ function normalizeCompact(raw) {
   if (!/^\d{15,25}$/.test(id) || !name || !startsAt || !expiresAt) return null;
   const tasks = (Array.isArray(raw.tasks) ? raw.tasks : []).slice(0, 8).map((task) => {
     const type = clean(task.type, 60);
-    const known = TASKS[type] ?? { kind: 'play', label: type.toLowerCase().replace(/_/g, ' ') || 'Complete the task', platform: 'Desktop' };
+    const known = TASKS[type] ?? { kind: 'play', label: type.toLowerCase().replace(/_/g, ' ') || UNKNOWN_TASK, platform: 'Desktop' };
     return { type, kind: known.kind, label: known.label, platform: known.platform, seconds: Math.max(0, Number(task.target) || 0) };
   });
   const rewards = (Array.isArray(raw.rewards) ? raw.rewards : []).slice(0, 5).map((reward) => {
@@ -201,18 +229,22 @@ async function getJson(url, headers = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
+    // i18n-ignore: HTTP user agent
     const response = await fetch(url, { headers: { accept: 'application/json', 'user-agent': 'Petto-Quest-Alerts (+https://petto.sbs)', ...headers }, signal: controller.signal });
     if (response.status === 304) return { notModified: true, etag: response.headers.get('etag') };
     if (response.status === 429) {
       const wait = Number(response.headers.get('retry-after'));
+      // i18n-ignore: technical detail of a quest source, logged and shown as-is in diagnostics
       const error = new Error('answered 429, too many requests');
       error.retryAfterMs = Math.min(3_600_000, Math.max(60_000, Number.isFinite(wait) && wait > 0 ? wait * 1000 : 10 * 60_000));
       throw error;
     }
     if (!response.ok) throw new Error(`answered ${response.status}`);
     const length = Number(response.headers.get('content-length') ?? 0);
+    // i18n-ignore: technical detail of a quest source, logged and shown as-is in diagnostics
     if (length > MAX_BYTES) throw new Error('the answer is too large');
     const text = await response.text();
+    // i18n-ignore: technical detail of a quest source, logged and shown as-is in diagnostics
     if (text.length > MAX_BYTES) throw new Error('the answer is too large');
     return { data: JSON.parse(text), etag: response.headers.get('etag') };
   } finally {
@@ -243,6 +275,7 @@ async function readRegions(force = false) {
 async function readSource(source, force) {
   const entry = state.get(source.name);
   if (entry.pausedUntil > Date.now()) {
+    // i18n-ignore: technical detail of a quest source, logged and shown as-is in diagnostics
     entry.error = `paused after a rate limit, until ${new Date(entry.pausedUntil).toISOString()}`;
     throw new Error(entry.error);
   }
@@ -257,6 +290,7 @@ async function readSource(source, force) {
       Object.assign(entry, { ok: true, at: new Date(), error: null, strikes: 0 });
       return false;
     }
+    // i18n-ignore: technical detail of a quest source, logged and shown as-is in diagnostics
     if (!Array.isArray(result.data)) throw new Error('the answer has an unexpected shape');
     // The short list has the quests themselves, without the `config` wrapper the other files use.
     entry.quests = source.compact
@@ -265,6 +299,7 @@ async function readSource(source, force) {
     Object.assign(entry, { etag: result.etag ?? null, ok: true, at: new Date(), error: null, strikes: 0 });
     return true;
   } catch (error) {
+    // i18n-ignore: technical detail of a quest source, logged and shown as-is in diagnostics
     Object.assign(entry, { ok: false, at: new Date(), error: error.name === 'AbortError' ? 'it took too long' : error.message });
     if (error.retryAfterMs) {
       entry.strikes += 1;
@@ -282,6 +317,7 @@ async function fetchQuests({ force = false } = {}) {
   await readRegions(force);
   const results = await Promise.allSettled(SOURCES.map((source) => readSource(source, force)));
   const failed = results.filter((result) => result.status === 'rejected');
+  // i18n-ignore: technical detail of a quest source, logged and shown as-is in diagnostics
   if (failed.length === SOURCES.length) throw new Error(`The quests could not be read: ${failed.map((result, i) => `${SOURCES[i].name} ${result.reason?.message}`).join('; ')}`);
   // `notModified` says the sources did not change, but the list is still given: what is active depends on the time, so a quest
   // that began (or is about to end) since the last pass must be looked at even when the files did not change.
@@ -333,6 +369,6 @@ function getStatus() {
 }
 
 module.exports = {
-  API_BASE, SOURCE_NAME, SOURCE_URL, TRACKER_URL, TASK_KINDS, REWARD_KIND_LIST, REWARD_LABELS,
+  API_BASE, SOURCE_NAME, SOURCE_URL, TRACKER_URL, TASK_KINDS, REWARD_KIND_LIST, REWARD_LABELS, rewardLabel, taskLabel, platformLabel,
   fetchQuests, getQuests, cachedQuests, resetCache, normalizeQuest, normalizeCompact, isActive, getStatus, cdnImage,
 };

@@ -113,6 +113,17 @@ const text = (payload) => JSON.stringify(payload.components?.map((component) => 
   const inChannel = { ...interaction(`vfy:start:${GUILD}`), inGuild: () => true };
   await verifyLetters.handleButton(inChannel);
   assert.ok(replies.at(-1).flags & 64, 'answers in a channel are ephemeral');
+  // A button pressed in a DM has no server: it answers in the language of the server of the customId, not in the member's.
+  const i18n = require('../src/i18n');
+  i18n.setCachedGuildLanguage(GUILD, 'es');
+  member.roles.cache.set('role-un', {});
+  everVerified = false;
+  await verifyLetters.handleButton({ ...interaction(`vfy:start:${GUILD}`), locale: 'pt-BR' });
+  assert.ok(text(replies.at(-1)).includes('Verificación para Petto HQ') && text(replies.at(-1)).includes('Escribir las letras'), 'the picture in Spanish');
+  await verifyLetters.handleModal({ ...interaction(`vfy:answer:${GUILD}`, { letters: 'WRONG' }), locale: 'pt-BR' });
+  assert.ok(text(replies.at(-1)).includes('Esas letras no son correctas'), 'a wrong answer in Spanish');
+  assert.ok(JSON.stringify(verifyLetters.buildPanel({ guild, method: 'letters', lang: 'pt-BR' }).components[0].toJSON()).includes('Verificar aqui no Discord'), 'the panel in Portuguese');
+  i18n.setCachedGuildLanguage(GUILD, 'en');
   console.log('verify panel checks passed');
   console.log('Checked the letters check inside Discord: the button, the picture, the form and the pass.');
 })().catch((error) => { console.error(error); process.exit(1); });

@@ -8,6 +8,7 @@ const { getGuildPremium, getGuildLimits } = require('../../db/premium');
 const { normalizeName, emojiOf, STYLES } = require('../../utils/responderEngine');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { t, languageOf } = require('../../i18n');
 
 const ok = (text) => textCard(`${EMOJI.APPROVE}  ${text}`, 0xa5ea7a);
 const note = (text) => textCard(text, 0x4b4f59);
@@ -38,34 +39,36 @@ const data = new SlashCommandBuilder()
   .setDMPermission(false)
   .addSubcommand((s) => optionsFor(s.setName('add').setDescription('Make a button responder.'), { nameRequired: true }))
   .addSubcommand((s) => optionsFor(s.setName('edit').setDescription('Change a button responder. Only what you give changes.'), { nameRequired: true })
+    // i18n-ignore: builder description, translated in the cmd.automation catalog
     .addStringOption((o) => o.setName('clear').setDescription(`Empty one thing: ${CLEARABLE.join(', ')}`)))
   .addSubcommand((s) => s.setName('delete').setDescription('Delete a button responder.').addStringOption((o) => o.setName('name').setDescription('Its name').setRequired(true)))
   .addSubcommand((s) => s.setName('list').setDescription('List the button responders.'));
 
 async function execute(interaction) {
+  const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
   const done = (component) => interaction.editReply({ components: [component], flags: MessageFlags.IsComponentsV2 });
   const sub = interaction.options.getSubcommand();
-  if (sub === 'list') return list(interaction, done);
+  if (sub === 'list') return list(interaction, done, lang);
   const name = normalizeName(interaction.options.getString('name', true));
-  if (!name) return done(note('The name can have letters, numbers, dashes and underscores, up to 60.'));
+  if (!name) return done(note(t(lang, 'automation.panel.badName')));
   if (sub === 'delete') {
     const removed = await respondersDb.deleteResponder(interaction.guild.id, name);
-    return done(removed ? ok(`\`${name}\` is deleted. A panel that shows it just stops showing it.`) : note(`There is no responder called \`${name}\`.`));
+    return done(removed ? ok(t(lang, 'automation.responder.deleted', { name })) : note(t(lang, 'automation.responder.missing', { name })));
   }
-  return save(interaction, name, sub === 'edit', done);
+  return save(interaction, name, sub === 'edit', done, lang);
 }
 
-async function save(interaction, name, editing, done) {
+async function save(interaction, name, editing, done, lang) {
   const guildId = interaction.guild.id;
   const existing = await respondersDb.getByName(guildId, name);
-  if (editing && !existing) return done(note(`There is no responder called \`${name}\`.`));
-  if (!editing && existing) return done(note(`\`${name}\` already exists. Use \`!responder edit\` to change it.`));
+  if (editing && !existing) return done(note(t(lang, 'automation.responder.missing', { name })));
+  if (!editing && existing) return done(note(t(lang, 'automation.responder.exists', { name })));
   if (!existing) {
     const premium = await getGuildPremium(guildId).catch(() => ({ active: false }));
     const limit = getGuildLimits(premium).buttonResponders;
-    if ((await respondersDb.countResponders(guildId)) >= limit) return done(note(`This server already has ${limit} button responders.${premium?.active ? '' : ' Premium raises it to 250.'}`));
+    if ((await respondersDb.countResponders(guildId)) >= limit) return done(note(t(lang, premium?.active ? 'automation.responder.full' : 'automation.responder.fullFree', { limit })));
   }
   const values = { ...(existing ?? respondersDb.RESPONDER_DEFAULTS) };
   delete values.id; delete values.guild_id; delete values.created_at; delete values.name;
@@ -79,14 +82,14 @@ async function save(interaction, name, editing, done) {
   const take = interaction.options.getRole('take');
   const need = interaction.options.getRole('require');
   const clear = (interaction.options.getString('clear') ?? '').trim().toLowerCase();
-  if (clear && !CLEARABLE.includes(clear)) return done(note(`You can clear: ${CLEARABLE.join(', ')}.`));
+  if (clear && !CLEARABLE.includes(clear)) return done(note(t(lang, 'automation.responder.clearable', { list: CLEARABLE.join(', ') })));
 
   if (label !== null) values.label = label.slice(0, 80);
   if (reply !== null) values.reply = reply.slice(0, 2000);
-  if (style !== null) { if (!STYLES[style]) return done(note(`The style is one of: ${Object.keys(STYLES).join(', ')}.`)); values.style = style; }
-  if (emoji !== null) { if (!emojiOf(emoji)) return done(note('That does not look like an emoji.')); values.emoji = emoji.trim(); }
+  if (style !== null) { if (!STYLES[style]) return done(note(t(lang, 'automation.responder.badStyle', { list: Object.keys(STYLES).join(', ') }))); values.style = style; }
+  if (emoji !== null) { if (!emojiOf(emoji)) return done(note(t(lang, 'automation.responder.badEmoji'))); values.emoji = emoji.trim(); }
   if (template) {
-    if (!(await getTemplate(guildId, template).catch(() => null))?.data) return done(note(`There is no saved embed called \`${template}\`.`));
+    if (!(await getTemplate(guildId, template).catch(() => null))?.data) return done(note(t(lang, 'automation.responder.templateMissing', { name: template })));
     values.reply_template = template;
   }
   if (toggle !== null) values.toggle = toggle;
@@ -94,7 +97,7 @@ async function save(interaction, name, editing, done) {
   const react = interaction.options.getString('react');
   const sendTo = interaction.options.getChannel('send_to');
   if (deleteMessage !== null) values.delete_message = deleteMessage;
-  if (react !== null) { if (!emojiOf(react)) return done(note('That does not look like an emoji.')); values.react_emoji = react.trim(); }
+  if (react !== null) { if (!emojiOf(react)) return done(note(t(lang, 'automation.responder.badEmoji'))); values.react_emoji = react.trim(); }
   if (sendTo) values.send_channel_id = sendTo.id;
   if (clear === 'react') values.react_emoji = null;
   if (clear === 'send_to') values.send_channel_id = null;
@@ -111,14 +114,14 @@ async function save(interaction, name, editing, done) {
   values.created_by = existing?.created_by ?? interaction.user.id;
 
   await respondersDb.saveResponder(guildId, name, values);
-  return done(ok(`\`${name}\` is ${editing ? 'saved' : 'ready'}. Show it in a panel with \`!panel add <panel> ${name}\`.`));
+  return done(ok(t(lang, editing ? 'automation.responder.saved' : 'automation.responder.ready', { name })));
 }
 
-async function list(interaction, done) {
+async function list(interaction, done, lang) {
   const rows = await respondersDb.listResponders(interaction.guild.id);
-  if (!rows.length) return done(note('There are no button responders yet. Make one with `!responder add`.'));
-  const lines = rows.slice(0, 40).map((row) => `\`${row.name}\` · ${row.label || row.emoji || ''}${row.give_role_ids.length ? ` · gives ${row.give_role_ids.map((id) => `<@&${id}>`).join(' ')}` : ''}${row.remove_role_ids.length ? ` · takes ${row.remove_role_ids.map((id) => `<@&${id}>`).join(' ')}` : ''}${row.toggle ? ' · toggle' : ''}`);
-  return done(note(['### Button responders', ...lines].join('\n')));
+  if (!rows.length) return done(note(t(lang, 'automation.responder.listEmpty')));
+  const lines = rows.slice(0, 40).map((row) => `\`${row.name}\` · ${row.label || row.emoji || ''}${row.give_role_ids.length ? ` · ${t(lang, 'automation.responder.gives', { roles: row.give_role_ids.map((id) => `<@&${id}>`).join(' ') })}` : ''}${row.remove_role_ids.length ? ` · ${t(lang, 'automation.responder.takes', { roles: row.remove_role_ids.map((id) => `<@&${id}>`).join(' ') })}` : ''}${row.toggle ? ` · ${t(lang, 'automation.responder.toggle')}` : ''}`);
+  return done(note([t(lang, 'automation.responder.listTitle'), ...lines].join('\n')));
 }
 
 module.exports = { prefixOnly: true, aliases: ['responders', 'buttonresponder'], data, execute };

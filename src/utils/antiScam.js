@@ -8,30 +8,29 @@ const { textCard } = require('./caseCard');
 const { sendLog } = require('../logging/engine');
 const { EMOJI } = require('./emojis');
 const logger = require('./logger');
+const { t, currentLanguage, languageOf } = require('../i18n');
 
 const PREFIX = 'scam';
 const handled = new Map(); // `${guildId}:${userId}` -> until
 const HANDLED_MS = 90_000;
 
-const SIGNAL_TEXT = {
-  'multi-channel': 'sent the same message in several channels in seconds',
-  wording: 'sent a message with the usual scam wording',
-  'new-account': 'is a new account that sent a picture or link with scam wording',
-};
+// What each signal says the account did (catalog key).
+const SIGNAL_KEYS = { 'multi-channel': 'multiChannel', wording: 'wording', 'new-account': 'newAccount' };
+const signalText = (signal, lang) => t(lang, `security.antiscam.signal.${SIGNAL_KEYS[signal]}`);
 
 /** Is this message one more of a scam? Answers { signal, detail, channels, entries } or null. */
-function detect(message, config, now = Date.now()) {
+function detect(message, config, now = Date.now(), lang = currentLanguage()) {
   const fps = checks.fingerprints(message);
   const hasAttachment = (message.attachments?.size ?? 0) > 0;
   const entry = { ts: now, channelId: message.channel.id, messageId: message.id, fps };
   const list = fps.length || hasAttachment || checks.hasLink(message.content) ? checks.remember(message.guild.id, message.author.id, entry) : [entry];
 
   const repeated = fps.length ? checks.repeatedAcrossChannels(list, entry, { threshold: config.channels_threshold, windowMs: config.window_seconds * 1000 }) : null;
-  if (repeated) return { signal: 'multi-channel', detail: `the same message in ${repeated.channels} channels`, channels: repeated.channels, entries: repeated.entries };
+  if (repeated) return { signal: 'multi-channel', detail: t(lang, 'security.antiscam.detail.multiChannel', { count: repeated.channels }), channels: repeated.channels, entries: repeated.entries };
 
   if (config.scan_text) {
     const verdict = checks.wordingVerdict(message.content, { hasAttachment });
-    if (verdict.scam) return { signal: 'wording', detail: verdict.kinds.join(', '), channels: 1, entries: [entry] };
+    if (verdict.scam) return { signal: 'wording', detail: verdict.kinds.map((kind) => t(lang, `security.antiscam.kind.${kind}`)).join(', '), channels: 1, entries: [entry] };
   }
 
   if (config.scan_new_accounts && (hasAttachment || checks.hasLink(message.content))) {
@@ -39,7 +38,8 @@ function detect(message, config, now = Date.now()) {
     const ageHours = (now - message.author.createdTimestamp) / 3_600_000;
     const everyone = Boolean(message.mentions?.everyone);
     if (ageHours < config.new_account_hours && kinds.length + (everyone ? 1 : 0) >= 2) {
-      return { signal: 'new-account', detail: `account ${Math.floor(ageHours)}h old${everyone ? ', pings everyone' : ''}`, channels: 1, entries: [entry] };
+      const detail = t(lang, everyone ? 'security.antiscam.detail.newAccountEveryone' : 'security.antiscam.detail.newAccount', { hours: Math.floor(ageHours) });
+      return { signal: 'new-account', detail, channels: 1, entries: [entry] };
     }
   }
   return null;
@@ -78,75 +78,78 @@ async function deleteRecent(guild, userId, entries, currentMessage) {
   return deleted;
 }
 
-function dmCard(guild, action) {
-  const outcome = action === 'ban' ? 'banned' : action === 'kick' ? 'removed' : action === 'timeout' ? 'muted for a while' : 'flagged';
+// The DM says what happened to the account; `flagged` is for an action the server has not chosen.
+const DM_OUTCOMES = { ban: 'banned', kick: 'kicked', timeout: 'muted' };
+
+function dmCard(guild, action, lang = currentLanguage()) {
   return textCard([
-    `### ${EMOJI.ALERT} Your account may be hacked`,
-    `You were ${outcome} in **${guild.name}** because your account sent messages that look like the MrBeast giveaway scam (a fake prize, a fake withdrawal or a casino promo). Scam accounts are usually real accounts that someone took over.`,
-    '**What to do now:**',
-    '1. Do not click the links you were sent.',
-    '2. Change your password from a device you trust and turn on two-factor authentication.',
-    '3. In Settings > Authorized Apps, remove what you do not know, and log out of all devices.',
-    '4. Scan your computer for malware before you log in again.',
-    '-# If this was a mistake, tell the server staff.',
+    t(lang, 'security.antiscam.dm.title', { emoji: EMOJI.ALERT }),
+    t(lang, `security.antiscam.dm.outcome.${DM_OUTCOMES[action] ?? 'flagged'}`, { server: guild.name }),
+    t(lang, 'security.antiscam.dm.steps'),
   ].join('\n'), 0xffd563);
 }
 
-async function applyAction(message, config, detection) {
+// The reasons Petto gives itself when it cannot act on the account (the staff reads them in the alert). i18n-ignore: matched
+const BLOCKED_KEYS = { 'not moderatable': 'notModeratable', 'not kickable': 'notKickable', 'not bannable': 'notBannable' };
+
+async function applyAction(message, config, detection, lang = currentLanguage()) {
   const { guild, author, client } = message;
   const member = message.member;
-  const reason = `Anti scam: ${SIGNAL_TEXT[detection.signal]}`;
-  let outcome = 'Only alerted the staff.';
+  const reason = t(lang, 'security.antiscam.reason', { signal: signalText(detection.signal, lang) });
+  let outcome = t(lang, 'security.antiscam.outcome.alert');
   let appliedAction = 'alert';
 
   if (config.action !== 'alert' && member) {
     if (config.dm_user) {
-      await author.send({ components: [dmCard(guild, config.action)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+      await author.send({ components: [dmCard(guild, config.action, lang)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
     }
     try {
       await ensureGuild(guild.id);
       if (config.action === 'timeout') {
-        if (!member.moderatable) throw new Error('not moderatable');
+        if (!member.moderatable) throw new Error('not moderatable'); // i18n-ignore: matched in BLOCKED_KEYS
         await member.timeout(config.timeout_minutes * 60_000, reason);
         const modCase = await createCase({ guildId: guild.id, userId: author.id, moderatorId: client.user.id, type: 'tempmute', reason, expiresAt: new Date(Date.now() + config.timeout_minutes * 60_000).toISOString(), source: 'antiscam' });
         await logSanction(client, guild, { modCase, target: author, moderator: client.user, reason, duration: `${config.timeout_minutes}m`, source: 'antiscam' });
-        outcome = `Muted for ${config.timeout_minutes} minutes (case #${modCase.case_number}).`;
+        outcome = t(lang, 'security.antiscam.outcome.timeout', { minutes: config.timeout_minutes, case: modCase.case_number });
       } else if (config.action === 'kick') {
-        if (!member.kickable) throw new Error('not kickable');
+        if (!member.kickable) throw new Error('not kickable'); // i18n-ignore: matched in BLOCKED_KEYS
         await member.kick(reason);
         const modCase = await createCase({ guildId: guild.id, userId: author.id, moderatorId: client.user.id, type: 'kick', reason, source: 'antiscam' });
         await logSanction(client, guild, { modCase, target: author, moderator: client.user, reason, source: 'antiscam' });
-        outcome = `Kicked (case #${modCase.case_number}).`;
+        outcome = t(lang, 'security.antiscam.outcome.kick', { case: modCase.case_number });
       } else if (config.action === 'ban') {
-        if (!member.bannable) throw new Error('not bannable');
+        if (!member.bannable) throw new Error('not bannable'); // i18n-ignore: matched in BLOCKED_KEYS
         await guild.members.ban(author.id, { reason, deleteMessageSeconds: Math.min(Math.max(config.delete_minutes, 1) * 60, 604_800) });
         const modCase = await createCase({ guildId: guild.id, userId: author.id, moderatorId: client.user.id, type: 'ban', reason, source: 'antiscam' });
         await logSanction(client, guild, { modCase, target: author, moderator: client.user, reason, source: 'antiscam' });
-        outcome = `Banned (case #${modCase.case_number}).`;
+        outcome = t(lang, 'security.antiscam.outcome.ban', { case: modCase.case_number });
       }
       appliedAction = config.action;
     } catch (err) {
       logger.warn(`Anti scam: could not ${config.action} ${author.id} in ${guild.id}: ${err.message}`);
-      outcome = `Could not ${config.action} the account (${err.message}). Check my permissions and my role position.`;
+      const why = BLOCKED_KEYS[err.message] ? t(lang, `security.antiscam.blocked.${BLOCKED_KEYS[err.message]}`) : err.message;
+      outcome = t(lang, `security.antiscam.outcome.failed.${config.action}`, { error: why });
     }
   }
   return { outcome, appliedAction };
 }
 
-async function sendAlert(client, guild, config, { message, detection, outcome, deleted, appliedAction }) {
+async function sendAlert(client, guild, config, { message, detection, outcome, deleted, appliedAction }, lang = currentLanguage()) {
   const author = message.author;
-  const text = [
-    `### ${EMOJI.ALERT} Scam caught`,
-    `<@${author.id}> (**${author.username}**, \`${author.id}\`) ${SIGNAL_TEXT[detection.signal]}.`,
-    `**Why:** ${detection.detail}`,
-    `**Messages taken down:** ${deleted}`,
-    `**Action:** ${outcome}`,
-    '-# Use the buttons if this was a mistake or it needs more.',
-  ].join('\n');
+  const text = t(lang, 'security.antiscam.alert.text', {
+    emoji: EMOJI.ALERT,
+    user: `<@${author.id}>`,
+    username: author.username,
+    userId: author.id,
+    signal: signalText(detection.signal, lang),
+    detail: detection.detail,
+    deleted,
+    outcome,
+  });
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`${PREFIX}::undo::${author.id}::${appliedAction}`).setLabel('Undo').setStyle(ButtonStyle.Secondary).setDisabled(appliedAction === 'alert' || appliedAction === 'kick'),
-    new ButtonBuilder().setCustomId(`${PREFIX}::ban::${author.id}::${appliedAction}`).setLabel('Ban').setStyle(ButtonStyle.Danger).setDisabled(appliedAction === 'ban'),
-    new ButtonBuilder().setCustomId(`${PREFIX}::safe::${author.id}::${appliedAction}`).setLabel('Not a scam').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`${PREFIX}::undo::${author.id}::${appliedAction}`).setLabel(t(lang, 'security.antiscam.alert.undo.button')).setStyle(ButtonStyle.Secondary).setDisabled(appliedAction === 'alert' || appliedAction === 'kick'),
+    new ButtonBuilder().setCustomId(`${PREFIX}::ban::${author.id}::${appliedAction}`).setLabel(t(lang, 'security.antiscam.alert.ban.button')).setStyle(ButtonStyle.Danger).setDisabled(appliedAction === 'ban'),
+    new ButtonBuilder().setCustomId(`${PREFIX}::safe::${author.id}::${appliedAction}`).setLabel(t(lang, 'security.antiscam.alert.safe.button')).setStyle(ButtonStyle.Success),
   );
   const ping = config.ping_role_id && guild.roles.cache.has(config.ping_role_id) ? `<@&${config.ping_role_id}>` : '';
   if (config.alert_channel_id) {
@@ -165,6 +168,7 @@ async function sendAlert(client, guild, config, { message, detection, outcome, d
 /** The message event of the anti scam. */
 async function handleMessage(message) {
   if (!message.guild || message.author.bot || !message.member) return;
+  const lang = currentLanguage();
   const config = await scamDb.getConfig(message.guild.id);
   if (!config.enabled) return;
   if (isExempt(message, config)) return;
@@ -177,14 +181,14 @@ async function handleMessage(message) {
     return;
   }
 
-  const detection = detect(message, config);
+  const detection = detect(message, config, Date.now(), lang);
   if (!detection) return;
   handled.set(key, now + HANDLED_MS);
   for (const [k, until] of handled) if (until <= now) handled.delete(k);
 
   const deleted = config.delete_messages ? await deleteRecent(message.guild, message.author.id, checks.recentEntries(message.guild.id, message.author.id, config.delete_minutes, now), message) : 0;
   checks.forget(message.guild.id, message.author.id);
-  const { outcome, appliedAction } = await applyAction(message, config, detection);
+  const { outcome, appliedAction } = await applyAction(message, config, detection, lang);
 
   await scamDb.addEvent({
     guild_id: message.guild.id,
@@ -198,7 +202,7 @@ async function handleMessage(message) {
   }).catch((err) => logger.error('Anti scam: could not save the event:', err));
   scamDb.countCaught(message.guild.id, config.caught);
   logger.warn(`Anti scam: ${detection.signal} by ${message.author.id} in ${message.guild.id} (${detection.detail}) -> ${appliedAction}`);
-  await sendAlert(message.client, message.guild, config, { message, detection, outcome, deleted, appliedAction });
+  await sendAlert(message.client, message.guild, config, { message, detection, outcome, deleted, appliedAction }, lang);
 }
 
 /** The buttons of the alert: `scam::undo|ban|safe::<user id>::<action taken>`. */
@@ -206,29 +210,30 @@ async function handleButton(interaction) {
   const [, kind, userId, taken] = interaction.customId.split('::');
   const guild = interaction.guild;
   if (!guild || !/^\d{15,25}$/.test(userId)) return;
+  const lang = await languageOf(interaction);
   const needs = kind === 'ban' ? PermissionFlagsBits.BanMembers : taken === 'ban' ? PermissionFlagsBits.BanMembers : PermissionFlagsBits.ModerateMembers;
   if (!interaction.member.permissions.has(needs)) {
-    await interaction.reply({ content: 'You need the moderation permission for this button.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'security.antiscam.button.noPermission'), flags: MessageFlags.Ephemeral });
     return;
   }
   await interaction.deferUpdate();
   let line;
   try {
     if (kind === 'ban') {
-      await guild.members.ban(userId, { reason: `Anti scam: confirmed by ${interaction.user.username}`, deleteMessageSeconds: 3600 });
-      line = `Banned by <@${interaction.user.id}>.`;
+      await guild.members.ban(userId, { reason: t(lang, 'security.antiscam.audit.confirmed', { name: interaction.user.username }), deleteMessageSeconds: 3600 });
+      line = t(lang, 'security.antiscam.button.banned', { user: `<@${interaction.user.id}>` });
     } else {
       if (taken === 'timeout') {
         const member = await guild.members.fetch(userId).catch(() => null);
-        await member?.timeout(null, `Anti scam: undone by ${interaction.user.username}`);
+        await member?.timeout(null, t(lang, 'security.antiscam.audit.undone', { name: interaction.user.username }));
       } else if (taken === 'ban') {
-        await guild.members.unban(userId, `Anti scam: undone by ${interaction.user.username}`);
+        await guild.members.unban(userId, t(lang, 'security.antiscam.audit.undone', { name: interaction.user.username }));
       }
-      line = kind === 'safe' ? `Marked as not a scam by <@${interaction.user.id}>.` : `Undone by <@${interaction.user.id}>.`;
+      line = t(lang, kind === 'safe' ? 'security.antiscam.button.safe' : 'security.antiscam.button.undone', { user: `<@${interaction.user.id}>` });
     }
   } catch (err) {
     logger.warn(`Anti scam button ${kind} failed in ${guild.id}: ${err.message}`);
-    line = `Could not do it (${err.message}).`;
+    line = t(lang, 'security.antiscam.button.failed', { error: err.message });
   }
   // The alert stays, without its buttons, and says what was done.
   const cards = interaction.message.components.map((c) => c.toJSON()).filter((c) => c.type === 17);

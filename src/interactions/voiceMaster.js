@@ -1,6 +1,9 @@
 const { ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, UserSelectMenuBuilder, MessageFlags } = require('discord.js');
 const voiceDb = require('../db/voiceMaster');
 const voiceMaster = require('../commands/automation/voicemaster');
+const { t, languageOf } = require('../i18n');
+
+const PROMPT_EMOJI = { permit: '✅', reject: '🚫', transfer: '🔄', disconnect: '🔨' };
 
 function getVoiceChannelId(interaction) {
   return interaction.guild?.voiceStates?.cache.get(interaction.user.id)?.channelId
@@ -9,36 +12,42 @@ function getVoiceChannelId(interaction) {
 }
 
 async function handleButton(interaction) {
+  const lang = await languageOf(interaction);
+  const joinFirst = () => interaction.reply({ content: t(lang, 'voicemaster.joinFirst'), flags: MessageFlags.Ephemeral });
   const isBliPanel = interaction.customId.startsWith('vc:');
   const action = interaction.customId.slice(3);
   const channelId = getVoiceChannelId(interaction);
 
   if (action === 'rename') {
-    if (!channelId) return interaction.reply({ content: 'Join your temporary voice channel first.', flags: MessageFlags.Ephemeral });
+    if (!channelId) return joinFirst();
     const customId = isBliPanel ? `vcm:rename::${channelId}` : 'vm_modal_rename';
-    return interaction.showModal(new ModalBuilder().setCustomId(customId).setTitle('Rename voice channel').addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('name').setLabel('New channel name').setStyle(TextInputStyle.Short).setMaxLength(100).setRequired(true))));
+    return interaction.showModal(new ModalBuilder().setCustomId(customId).setTitle(t(lang, 'voicemaster.modal.title')).addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('name').setLabel(t(lang, 'voicemaster.modal.name')).setStyle(TextInputStyle.Short).setMaxLength(100).setRequired(true))));
   }
 
   if (['permit', 'reject', 'transfer', 'disconnect'].includes(action)) {
-    if (!channelId) return interaction.reply({ content: 'Join your temporary voice channel first.', flags: MessageFlags.Ephemeral });
-    const prompt = { permit: '✅ Who do you want to **permit**?', reject: '🚫 Who do you want to **reject**?', transfer: '🔄 Who do you want to **transfer** ownership to?', disconnect: '🔨 Who do you want to **disconnect**?' }[action];
+    if (!channelId) return joinFirst();
+    const prompt = t(lang, `voicemaster.prompt.${action}`, { emoji: PROMPT_EMOJI[action] });
     const customId = isBliPanel
       ? `vc:do_${action}::${channelId}`
       : `vm_select:${action}`;
-    return interaction.reply({ content: isBliPanel ? prompt : 'Select a member:', components: [new ActionRowBuilder().addComponents(new UserSelectMenuBuilder().setCustomId(customId).setPlaceholder('Select a member'))], flags: MessageFlags.Ephemeral });
+    return interaction.reply({ content: isBliPanel ? prompt : t(lang, 'voicemaster.selectMember'), components: [new ActionRowBuilder().addComponents(new UserSelectMenuBuilder().setCustomId(customId).setPlaceholder(t(lang, 'voicemaster.select.menu')))], flags: MessageFlags.Ephemeral });
   }
 
   if (action === 'limit_up' || action === 'limit_down') {
-    if (!channelId) return interaction.reply({ content: 'Join your temporary voice channel first.', flags: MessageFlags.Ephemeral });
+    if (!channelId) return joinFirst();
     const temp = await voiceDb.getTemp(channelId);
-    if (!temp) return interaction.reply({ content: 'Join your temporary voice channel first.', flags: MessageFlags.Ephemeral });
+    if (!temp) return joinFirst();
     const next = Math.max(0, Math.min(99, (temp.user_limit || 0) + (action === 'limit_up' ? 1 : -1)));
     return voiceMaster.executeAction(interaction, 'limit', { limit: next, channelId });
   }
 
   if (action === 'info') {
     const temp = channelId ? await voiceDb.getTemp(channelId) : null;
-    return interaction.reply({ content: temp ? `Owner: <@${temp.owner_id}>\nLimit: ${temp.user_limit || 'unlimited'}\nLocked: ${temp.is_locked ? 'yes' : 'no'}\nHidden: ${temp.is_ghosted ? 'yes' : 'no'}` : 'You are not in a managed temporary channel.', flags: MessageFlags.Ephemeral });
+    const yesNo = (value) => t(lang, value ? 'voicemaster.yes' : 'voicemaster.no');
+    const content = temp
+      ? t(lang, 'voicemaster.info.text', { owner: `<@${temp.owner_id}>`, limit: temp.user_limit || t(lang, 'voicemaster.unlimited'), locked: yesNo(temp.is_locked), hidden: yesNo(temp.is_ghosted) })
+      : t(lang, 'voicemaster.notManaged');
+    return interaction.reply({ content, flags: MessageFlags.Ephemeral });
   }
 
   return voiceMaster.executeAction(interaction, action, { channelId });

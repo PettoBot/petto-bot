@@ -1,3 +1,4 @@
+// i18n-ignore-file: status heartbeat for the Petto team (logs).
 const { Status } = require('discord.js');
 const botStatusDb = require('../db/botStatus');
 const botHostDb = require('../db/botHost');

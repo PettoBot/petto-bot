@@ -61,6 +61,10 @@ for (const player of RPS_CHOICES) {
   }
 }
 assert.throws(() => rpsOutcome('lizard', 'rock'), RangeError);
+const { readRpsChoice } = require('../src/utils/funGames');
+for (const [typed, move] of [['rock', 'rock'], ['Piedra', 'rock'], ['pedra', 'rock'], ['papel', 'paper'], ['tijera', 'scissors'], ['TESOURA', 'scissors'], ['lizard', null]]) {
+  assert.equal(readRpsChoice(typed), move, `!rps ${typed}`);
+}
 
 // The fun commands answer with plain text; /ship adds the picture. A card is a PNG even when the avatars cannot load.
 (async () => {
@@ -87,6 +91,23 @@ assert.throws(() => rpsOutcome('lizard', 'rock'), RangeError);
     assert.ok(!payload.flags && !payload.components && !payload.embeds, `${name} is not an embed or a container`);
   }
   assert.ok(replies[0].files?.length === 1 && replies[0].files[0].name === 'ship.png', '/ship attaches its picture');
+
+  // In Spanish and Portuguese: the answers, the moves and the verdicts are translated; the typed moves stay English.
+  const { t } = require('../src/i18n');
+  assert.equal(shipVerdict(100, 'es'), 'Almas gemelas');
+  assert.equal(shipVerdict(0, 'pt-BR'), 'Não nasceram um para o outro');
+  const run = async (name, lang, value) => {
+    replies.length = 0;
+    await require(`../src/commands/fun/${name}`).execute({ ...interaction, pettoLang: lang, options: { getString: () => value, getUser: interaction.options.getUser } });
+    return replies[0].content;
+  };
+  const eightBall = await run('8ball', 'es', 'Will it work?');
+  assert.ok(EIGHT_BALL_ANSWERS.some((answer) => eightBall.startsWith(`🎱 **${t('es', answer.key)}**`)), '8ball answers in Spanish');
+  assert.match(await run('rps', 'pt-BR', 'rock'), /^✊ \*\*pedra\*\* {2}vs {2}.+\n\*\*(Você ganhou!|Eu ganhei!|Deu empate\.)\*\*$/);
+  assert.equal(await run('rps', 'es', 'lagarto'), t('es', 'fun.rps.pick'));
+  assert.match(await run('rps', 'es', 'piedra'), /^✊ \*\*piedra\*\* {2}vs /, 'the Spanish word is a move');
+  assert.match(await run('rps', 'pt-BR', 'tesoura'), /^✌️ \*\*tesoura\*\* {2}vs /, 'the Portuguese word is a move');
+  assert.equal(await run('ship', 'es', ''), '💞 **a** × **a**: **100%** · Almas gemelas', 'a member with themselves, in Spanish');
 
   console.log('Checked the fun command logic.');
 })().catch((err) => { console.error(err); process.exit(1); });

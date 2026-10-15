@@ -8,11 +8,14 @@ const { handleHoneypotMessage } = require('../utils/honeypot');
 const logger = require('../utils/logger');
 const { extractUrls } = require('../utils/safeBrowsing');
 const { findKnownMalicious } = require('../db/maliciousLinks');
+const { filterName } = require('../utils/nativeAutomod');
+const { t, currentLanguage } = require('../i18n');
 
 module.exports = {
   name: Events.MessageCreate,
   async execute(message) {
     if (!message.guild) return;
+    const lang = currentLanguage();
 
     // Honeypots intentionally inspect bot messages too: compromised accounts and spam bots
     // are the bait's primary target. Petto's own messages are excluded by the helper.
@@ -38,9 +41,7 @@ module.exports = {
           });
 
           const notice = await sendAs(message.channel, 'automod', {
-            content: deleted
-              ? `<@${message.author.id}> your message was removed because Petto identified one of its URLs as malicious or unsafe. Do not open it.`
-              : `<@${message.author.id}> that message contains a URL Petto identified as malicious or unsafe. Do not open it.`,
+            content: t(lang, deleted ? 'security.malicious.removed' : 'security.malicious.kept', { user: `<@${message.author.id}>` }),
             allowedMentions: { users: [message.author.id] },
           }).catch(() => null);
 
@@ -70,7 +71,7 @@ module.exports = {
       const silentChannels = await listSilentChannelsCached(message.guild.id);
       const silent = silentChannels.find((row) => row.channel_id === message.channel.id) ?? null;
       if (silent) {
-        await applyAutomodAction(message, { violationType: 'silent-channel', reason: 'This channel does not allow messages.', action: silent.action === 'mute' ? 'tempmute' : silent.action });
+        await applyAutomodAction(message, { violationType: 'silent-channel', reason: t(lang, 'security.automod.why.silentChannel'), action: silent.action === 'mute' ? 'tempmute' : silent.action });
         return;
       }
 
@@ -78,7 +79,7 @@ module.exports = {
         const hit = findBannedWord(message.content, config.banned_words);
         if (hit) {
           const action = config.word_filter_action === 'mute' ? 'tempmute' : config.word_filter_action;
-          await applyAutomodAction(message, { violationType: 'word-filter', reason: `Used a filtered word (\`${hit}\`).`, action });
+          await applyAutomodAction(message, { violationType: 'word-filter', reason: t(lang, 'security.automod.why.wordFilter', { word: hit }), action });
           return;
         }
       }
@@ -92,7 +93,7 @@ module.exports = {
         countHit(message.guild.id, rule);
         await applyAutomodAction(message, {
           violationType: `filter-${rule.template}`,
-          reason: `Matched the filter "${rule.name}".`,
+          reason: t(lang, 'security.automod.why.filter', { name: filterName(rule, lang) }),
           action: rule.action === 'mute' ? 'tempmute' : rule.action,
           durationMs: rule.action === 'mute' ? rule.mute_minutes * 60_000 : undefined,
         });
@@ -101,22 +102,22 @@ module.exports = {
 
       if (config?.anti_spam_enabled) {
         if (config.spam_repeat !== false && isRepeatFlood(message.guild.id, message.author.id, message.content, { threshold: config.repeat_threshold ?? 3, windowMs: (config.repeat_window_seconds ?? 10) * 1000 })) {
-          await applyAutomodAction(message, { violationType: 'repeat-flood', reason: 'Sent the same message repeatedly in a short time.', action: 'tempmute' });
+          await applyAutomodAction(message, { violationType: 'repeat-flood', reason: t(lang, 'security.automod.why.repeatFlood'), action: 'tempmute' });
           return;
         }
 
         if (config.spam_mentions !== false && hasMassMentions(message, config.max_mentions)) {
-          await applyAutomodAction(message, { violationType: 'mass-mentions', reason: `Mentioned more than ${config.max_mentions} users/roles in one message.`, action: 'warn' });
+          await applyAutomodAction(message, { violationType: 'mass-mentions', reason: t(lang, 'security.automod.why.massMentions', { max: config.max_mentions }), action: 'warn' });
           return;
         }
 
         if (config.spam_invites !== false && hasUnauthorizedInvite(message.content, config.allowed_invite_codes)) {
-          await applyAutomodAction(message, { violationType: 'unauthorized-invite', reason: 'Posted a Discord invite that is not on this server\'s allow-list.', action: 'warn' });
+          await applyAutomodAction(message, { violationType: 'unauthorized-invite', reason: t(lang, 'security.automod.why.unauthorizedInvite'), action: 'warn' });
           return;
         }
 
         if (config.spam_caps !== false && isExcessiveCaps(message.content, { minLength: config.caps_min_length ?? 12, threshold: (config.caps_percent ?? 70) / 100 })) {
-          await applyAutomodAction(message, { violationType: 'excessive-caps', reason: 'Message was mostly uppercase.', action: 'warn' });
+          await applyAutomodAction(message, { violationType: 'excessive-caps', reason: t(lang, 'security.automod.why.excessiveCaps'), action: 'warn' });
           return;
         }
       }
@@ -124,7 +125,7 @@ module.exports = {
       // Long messages and walls of lines are only taken down, nobody is punished for them.
       const tooLong = isTooLong(message.content, { maxLength: config?.max_message_length ?? 0, maxLines: config?.max_lines ?? 0 });
       if (tooLong) {
-        await applyAutomodAction(message, { violationType: 'long-message', reason: tooLong === 'lines' ? 'Message had too many lines.' : 'Message was too long.', action: 'delete' });
+        await applyAutomodAction(message, { violationType: 'long-message', reason: t(lang, tooLong === 'lines' ? 'security.automod.why.tooManyLines' : 'security.automod.why.tooLong'), action: 'delete' });
       }
     } catch (err) {
       logger.error(`Automod scan failed for message ${message.id} in guild ${message.guild.id}:`, err);

@@ -12,6 +12,7 @@ const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { actionAndText } = require('../../utils/codeArgs');
 const { ARCHIVE_MINUTES, DEFAULT_THREAD_NAME, TEXT_LIMIT, sendMethodNow } = require('../../utils/questMethod');
+const { t, tn, languageOf } = require('../../i18n');
 
 const textChannels = [ChannelType.GuildText, ChannelType.GuildAnnouncement];
 
@@ -47,6 +48,7 @@ module.exports = {
       .addStringOption((o) => o.setName('kinds').setDescription('For example: video, play').setRequired(false)))
     .addSubcommand((s) => s.setName('card').setDescription('Choose what the card shows.')
       .addStringOption((o) => o.setName('action').setDescription('hide, show or reset').setRequired(true).addChoices({ name: 'hide', value: 'hide' }, { name: 'show', value: 'show' }, { name: 'reset', value: 'reset' }))
+      // i18n-ignore: builder description (translated in the cmd catalogs)
       .addStringOption((o) => o.setName('section').setDescription(`One of: ${SECTIONS.join(', ')}`).setRequired(false)))
     .addSubcommand((s) => s.setName('color').setDescription('Color of the card, as hex, or empty to use the color of each quest.')
       .addStringOption((o) => o.setName('hex').setDescription('For example #ff91c2').setRequired(false)))
@@ -72,15 +74,18 @@ module.exports = {
     .addSubcommand((s) => s.setName('status').setDescription('Show the settings and the state of the quests API.')),
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const reply = (text) => interaction.editReply({ components: [textCard(text, null)], flags: MessageFlags.IsComponentsV2 });
+    const done = (key, vars) => reply(`${EMOJI.APPROVE}  ${t(lang, key, vars)}`);
+    const code = (values) => values.map((v) => `\`${v}\``).join(', ');
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
     if (!canUseQuests(interaction.user.id)) {
-      return reply(`${EMOJI.DENY}  Quest alerts are in testing and only available to Petto's team for now.`);
+      return reply(`${EMOJI.DENY}  ${t(lang, 'quests.testing')}`);
     }
     const sub = interaction.options.getSubcommand();
     // Anyone can see the quests that are active; the settings and the test are for who manages the server.
     if (sub !== 'list' && !interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-      return reply(`${EMOJI.DENY}  You need the Manage Server permission to change the quest alerts. Anyone can use \`quests list\`.`);
+      return reply(`${EMOJI.DENY}  ${t(lang, 'quests.command.needsManageServer')}`);
     }
     await ensureGuild(interaction.guild.id);
     const guildId = interaction.guild.id;
@@ -91,184 +96,203 @@ module.exports = {
       const channel = interaction.options.getChannel('channel', true);
       const role = interaction.options.getRole('role');
       await save({ enabled: true, channel_id: channel.id, ...(role ? { role_id: role.id } : {}) });
-      return reply(`${EMOJI.APPROVE}  Quest alerts will be sent in ${channel}${role ? ` with ${role}` : ''}. The first check only remembers the quests that exist now, so you will hear about the next new one. Use \`quests test\` to see how it looks.`);
+      return done(role ? 'quests.command.enabledRole' : 'quests.command.enabled', { channel: `${channel}`, role: `${role}` });
     }
     if (sub === 'disable') {
       await save({ enabled: false });
-      return reply(`${EMOJI.APPROVE}  Quest alerts are off.`);
+      return done('quests.command.disabled');
     }
     if (sub === 'role') {
       const role = interaction.options.getRole('role');
       await save({ role_id: role?.id ?? null });
-      return reply(`${EMOJI.APPROVE}  ${role ? `Alerts will ping ${role}.` : 'Alerts will not ping a role.'}`);
+      return done(role ? 'quests.command.role' : 'quests.command.noRole', { role: `${role}` });
     }
     if (sub === 'style') {
       const style = String(interaction.options.getString('style', true)).trim().toLowerCase();
-      if (!['card', 'template'].includes(style)) return reply('Choose `card` or `template`.');
+      if (!['card', 'template'].includes(style)) return reply(t(lang, 'quests.style.choose'));
       if (style === 'card') {
         await save({ style: 'card' });
-        return reply(`${EMOJI.APPROVE}  Alerts use the card.`);
+        return done('quests.style.card');
       }
       const name = String(interaction.options.getString('template') ?? current.embed_template ?? '').trim();
       const doc = name ? await getTemplate(guildId, name).catch(() => null) : null;
-      if (!doc) return reply(name ? `No saved embed named \`${name}\` was found. Make one in the dashboard, under Embeds. Its variables start with \`{quest.…}\`.` : 'Give the name of a saved embed: `quests style template <name>`.');
+      if (!doc) return reply(name ? t(lang, 'quests.style.notFound', { name }) : t(lang, 'quests.style.giveName'));
       await save({ style: 'template', embed_template: doc.name });
-      return reply(`${EMOJI.APPROVE}  Alerts now use the saved embed \`${doc.name}\`. If it is missing or broken, the card is sent instead.`);
+      return done('quests.style.template', { name: doc.name });
     }
     if (sub === 'rewards' || sub === 'tasks') {
       const allowed = sub === 'rewards' ? questApi.REWARD_KIND_LIST : questApi.TASK_KINDS;
       const values = readList(interaction.options.getString('kinds'), allowed);
-      if (values === null) return reply(`Choose from: ${allowed.map((v) => `\`${v}\``).join(', ')}, or \`all\`.`);
+      if (values === null) return reply(t(lang, 'quests.filter.choose', { values: code(allowed) }));
       await save({ [sub === 'rewards' ? 'reward_kinds' : 'task_kinds']: values });
-      return reply(`${EMOJI.APPROVE}  ${values.length ? `Only quests with ${sub === 'rewards' ? 'these rewards' : 'these tasks'}: ${values.join(', ')}.` : `Alerts for every kind of ${sub === 'rewards' ? 'reward' : 'task'}.`}`);
+      return done(values.length ? `quests.filter.${sub}Only` : `quests.filter.${sub}All`, { values: values.join(', ') });
     }
     if (sub === 'card') {
       const action = String(interaction.options.getString('action', true)).trim().toLowerCase();
       const section = String(interaction.options.getString('section') ?? '').trim().toLowerCase();
       if (action === 'reset') {
         await save({ hide_sections: [], accent_color: null });
-        return reply(`${EMOJI.APPROVE}  The card shows everything again, with the color of each quest.`);
+        return done('quests.cardSettings.reset');
       }
-      if (!['hide', 'show'].includes(action) || !SECTIONS.includes(section)) return reply(`Use \`quests card hide|show <section>\` with one of: ${SECTIONS.map((v) => `\`${v}\``).join(', ')}.`);
+      if (!['hide', 'show'].includes(action) || !SECTIONS.includes(section)) return reply(t(lang, 'quests.cardSettings.usage', { sections: code(SECTIONS) }));
       const hidden = new Set(current.hide_sections);
       if (action === 'hide') hidden.add(section); else hidden.delete(section);
       await save({ hide_sections: [...hidden] });
-      return reply(`${EMOJI.APPROVE}  The card ${action === 'hide' ? 'hides' : 'shows'} \`${section}\`.`);
+      return done(action === 'hide' ? 'quests.cardSettings.hides' : 'quests.cardSettings.shows', { section });
     }
     if (sub === 'color') {
       const hex = String(interaction.options.getString('hex') ?? '').trim().replace(/^#/, '');
-      if (!hex) { await save({ accent_color: null }); return reply(`${EMOJI.APPROVE}  The card uses the color of each quest.`); }
-      if (!/^[0-9a-f]{6}$/i.test(hex)) return reply('Use a color like `#ff91c2`.');
+      if (!hex) { await save({ accent_color: null }); return done('quests.color.each'); }
+      if (!/^[0-9a-f]{6}$/i.test(hex)) return reply(t(lang, 'quests.color.invalid'));
       await save({ accent_color: parseInt(hex, 16) });
-      return reply(`${EMOJI.APPROVE}  The card color is #${hex.toLowerCase()}.`);
+      return done('quests.color.set', { hex: hex.toLowerCase() });
     }
     if (sub === 'expiring') {
       const hours = interaction.options.getInteger('hours', true);
       await save({ expiring_hours: hours });
-      return reply(`${EMOJI.APPROVE}  ${hours ? `Alerts also go out ${hours} hour${hours === 1 ? '' : 's'} before a quest ends.` : 'No alerts before a quest ends.'}`);
+      return reply(`${EMOJI.APPROVE}  ${hours ? tn(lang, 'quests.expiring.on', hours, { count: hours }) : t(lang, 'quests.expiring.off')}`);
     }
     if (sub === 'resend') {
-      if (!current.enabled || !current.channel_id) return reply(`${EMOJI.DENY}  Turn the alerts on first with \`quests enable\`.`);
+      if (!current.enabled || !current.channel_id) return reply(`${EMOJI.DENY}  ${t(lang, 'quests.resend.notEnabled')}`);
       let result;
-      try { result = await resendMissing(interaction.client, { ...current, guild_id: guildId }); } catch (error) { return reply(`${EMOJI.DENY}  The quests could not be read: ${error.message}`); }
-      if (!result.missing) return reply(`${EMOJI.APPROVE}  Nothing is missing: every active quest that passes your filters was already posted.`);
-      return reply(`${result.sent ? EMOJI.APPROVE : EMOJI.DENY}  Sent ${result.sent} of ${result.missing} missing quest${result.missing === 1 ? '' : 's'} in <#${current.channel_id}>.${result.left ? ` ${result.left} more are left: run \`quests resend\` again.` : ''}${result.sent < Math.min(result.missing, 10) ? ' Some could not be sent, check that I can write in that channel.' : ''}`);
+      try { result = await resendMissing(interaction.client, { ...current, guild_id: guildId }); } catch (error) { return reply(`${EMOJI.DENY}  ${t(lang, 'quests.readFailed', { error: error.message })}`); }
+      if (!result.missing) return done('quests.resend.nothing');
+      const parts = [tn(lang, 'quests.resend.sent', result.missing, { sent: result.sent, count: result.missing, channel: `<#${current.channel_id}>` })];
+      if (result.left) parts.push(t(lang, 'quests.resend.left', { count: result.left }));
+      if (result.sent < Math.min(result.missing, 10)) parts.push(t(lang, 'quests.resend.someFailed'));
+      return reply(`${result.sent ? EMOJI.APPROVE : EMOJI.DENY}  ${parts.join(' ')}`);
     }
     if (sub === 'type') {
       const kind = String(interaction.options.getString('kind', true)).trim().toLowerCase();
       const target = String(interaction.options.getString('target', true)).trim().toLowerCase();
       const name = String(interaction.options.getString('template') ?? '').trim();
-      if (!questApi.REWARD_KIND_LIST.includes(kind) || !['alert', 'method'].includes(target)) return reply(`Use \`quests type <${questApi.REWARD_KIND_LIST.join('|')}> <alert|method> [saved embed]\`.`);
+      if (!questApi.REWARD_KIND_LIST.includes(kind) || !['alert', 'method'].includes(target)) return reply(t(lang, 'quests.type.usage', { kinds: questApi.REWARD_KIND_LIST.join('|') }));
       const column = target === 'alert' ? 'type_templates' : 'method_type_templates';
       const map = { ...(current[column] ?? {}) };
       if (!name) {
         delete map[kind];
         await save({ [column]: map });
-        return reply(`${EMOJI.APPROVE}  Quests with ${kind} rewards use the general ${target === 'alert' ? 'design' : 'method'} again.`);
+        return done(`quests.type.cleared.${target}`, { kind });
       }
       const doc = await getTemplate(guildId, name).catch(() => null);
-      if (!doc) return reply(`No saved embed named \`${name}\` was found. Make one in the dashboard, under Embeds.`);
+      if (!doc) return reply(t(lang, 'quests.embedNotFound', { name }));
       map[kind] = doc.name;
       await save({ [column]: map });
-      return reply(`${EMOJI.APPROVE}  Quests with a ${kind} reward use the saved embed \`${doc.name}\` for the ${target}. If it is missing or broken, the general one is used.`);
+      return done(`quests.type.set.${target}`, { kind, name: doc.name });
     }
     if (sub === 'thread') {
       const action = String(interaction.options.getString('action', true)).trim().toLowerCase();
       const value = String(interaction.options.getString('value') ?? '').trim();
       if (action === 'on' || action === 'off') {
         await save({ auto_thread: action === 'on' });
-        return reply(`${EMOJI.APPROVE}  ${action === 'on' ? `Each alert will get a thread${current.thread_ping ? ' and ping the role in it' : ''}. I need the Create Public Threads permission in the alert channel.` : 'Alerts will not open a thread.'}`);
+        return done(action === 'off' ? 'quests.thread.off' : current.thread_ping ? 'quests.thread.onPing' : 'quests.thread.on');
       }
       if (action === 'ping' || action === 'noping') {
         await save({ thread_ping: action === 'ping' });
-        return reply(`${EMOJI.APPROVE}  ${action === 'ping' ? (current.role_id ? 'The role is pinged in each thread, so its members are added to it.' : 'The role will be pinged in each thread once you set one with `quests role`.') : 'The threads do not ping the role.'}`);
+        return done(action === 'noping' ? 'quests.thread.noping' : current.role_id ? 'quests.thread.ping' : 'quests.thread.pingNoRole');
       }
       if (action === 'name') {
         await save({ thread_name: value ? value.slice(0, 100) : null });
-        return reply(`${EMOJI.APPROVE}  ${value ? `Threads are named \`${value.slice(0, 100)}\`. Quest variables such as \`{quest.name}\` work.` : `Threads are named \`${DEFAULT_THREAD_NAME}\` again.`}`);
+        return done(value ? 'quests.thread.name' : 'quests.thread.nameReset', { name: value ? value.slice(0, 100) : DEFAULT_THREAD_NAME });
       }
       if (action === 'archive') {
         const minutes = Number(value);
-        if (!ARCHIVE_MINUTES.includes(minutes)) return reply(`Use one of: ${ARCHIVE_MINUTES.map((n) => `\`${n}\``).join(', ')} (minutes before an idle thread hides itself).`);
+        if (!ARCHIVE_MINUTES.includes(minutes)) return reply(t(lang, 'quests.thread.archiveUsage', { values: code(ARCHIVE_MINUTES) }));
         await save({ thread_archive: minutes });
-        return reply(`${EMOJI.APPROVE}  An idle thread hides itself after ${minutes} minutes.`);
+        return done('quests.thread.archive', { count: minutes });
       }
-      return reply('Use `quests thread on|off|ping|noping|name <title>|archive <minutes>`.');
+      return reply(t(lang, 'quests.thread.usage'));
     }
     if (sub === 'method') {
       const action = String(interaction.options.getString('action', true)).trim().toLowerCase();
       const value = String(interaction.options.getString('value') ?? '').trim();
       if (action === 'on' || action === 'off') {
-        if (action === 'on' && !current.method_template && !String(current.method_text ?? '').trim()) return reply('Write the method first: `quests method text <the message>`, or `quests method template <saved embed>`.');
+        if (action === 'on' && !current.method_template && !String(current.method_text ?? '').trim()) return reply(t(lang, 'quests.method.writeFirst'));
         await save({ method_enabled: action === 'on' });
-        return reply(`${EMOJI.APPROVE}  ${action === 'on' ? `The method will be sent with each new quest, ${current.method_target === 'channel' ? 'in the channel you chose' : 'in its thread'}.` : 'The method is not sent with the alerts. You can still send it with `quests method send`.'}`);
+        return done(action === 'off' ? 'quests.method.off' : current.method_target === 'channel' ? 'quests.method.onChannel' : 'quests.method.onThread');
       }
       if (action === 'text') {
-        if (!value) { await save({ method_text: null }); return reply(`${EMOJI.APPROVE}  The method text was removed.`); }
-        if (value.length > TEXT_LIMIT) return reply(`The text can have up to ${TEXT_LIMIT} characters. For more, pictures or several parts, make a saved embed in the dashboard and use \`quests method template <name>\`.`);
+        if (!value) { await save({ method_text: null }); return done('quests.method.textRemoved'); }
+        if (value.length > TEXT_LIMIT) return reply(t(lang, 'quests.method.textTooLong', { max: TEXT_LIMIT }));
         await save({ method_text: value });
-        return reply(`${EMOJI.APPROVE}  The method text was saved. The quest variables such as \`{quest.name}\` work in it.`);
+        return done('quests.method.textSaved');
       }
       if (action === 'template') {
-        if (!value) { await save({ method_template: null }); return reply(`${EMOJI.APPROVE}  The method does not use a saved embed.`); }
+        if (!value) { await save({ method_template: null }); return done('quests.method.templateRemoved'); }
         const doc = await getTemplate(guildId, value).catch(() => null);
-        if (!doc) return reply(`No saved embed named \`${value}\` was found. Make one in the dashboard, under Embeds.`);
+        if (!doc) return reply(t(lang, 'quests.embedNotFound', { name: value }));
         await save({ method_template: doc.name });
-        return reply(`${EMOJI.APPROVE}  The method uses the saved embed \`${doc.name}\`, with text, pictures and everything it has. It goes before the plain text.`);
+        return done('quests.method.templateSet', { name: doc.name });
       }
       if (action === 'thread') {
         await save({ method_target: 'thread' });
-        return reply(`${EMOJI.APPROVE}  The method goes in the thread of each alert (turn the threads on with \`quests thread on\`; without a thread it goes in the alert channel).`);
+        return done('quests.method.targetThread');
       }
       if (action === 'channel') {
         const id = /^(?:<#)?(\d{15,25})>?$/.exec(value)?.[1] ?? null;
-        if (value && !id) return reply('Mention the channel or give its id: `quests method channel #how-to`.');
+        if (value && !id) return reply(t(lang, 'quests.method.channelUsage'));
         const channel = id ? await interaction.guild.channels.fetch(id).catch(() => null) : null;
-        if (id && !channel?.isTextBased?.()) return reply('I cannot find that text channel.');
+        if (id && !channel?.isTextBased?.()) return reply(t(lang, 'quests.method.channelNotFound'));
         await save({ method_target: 'channel', method_channel_id: channel?.id ?? null });
-        return reply(`${EMOJI.APPROVE}  The method goes in ${channel ? channel : 'the alert channel'}.`);
+        return done(channel ? 'quests.method.targetChannel' : 'quests.method.targetAlertChannel', { channel: `${channel}` });
       }
       if (action === 'ping' || action === 'noping') {
         await save({ method_ping: action === 'ping' });
-        return reply(`${EMOJI.APPROVE}  ${action === 'ping' ? (current.role_id ? 'The method pings the role.' : 'The method will ping the role once you set one with `quests role`.') : 'The method does not ping.'}`);
+        return done(action === 'noping' ? 'quests.method.noping' : current.role_id ? 'quests.method.ping' : 'quests.method.pingNoRole');
       }
       if (action === 'send') {
-        const result = await sendMethodNow(interaction.guild, { ...current, guild_id: guildId }, { questId: value || null });
+        const result = await sendMethodNow(interaction.guild, { ...current, guild_id: guildId }, { questId: value || null, lang });
         return reply(`${result.ok ? EMOJI.APPROVE : EMOJI.DENY}  ${result.message}`);
       }
       if (action === 'show') {
+        const yesNo = (value) => t(lang, value ? 'quests.yes' : 'quests.no');
+        const none = t(lang, 'quests.none');
+        const where = current.method_target === 'channel'
+          ? (current.method_channel_id ? `<#${current.method_channel_id}>` : t(lang, 'quests.show.alertChannel'))
+          : t(lang, 'quests.show.alertThread');
         const lines = [
-          `**Sent with the alerts:** ${current.method_enabled ? 'yes' : 'no'}`,
-          `**Where:** ${current.method_target === 'channel' ? (current.method_channel_id ? `<#${current.method_channel_id}>` : 'the alert channel') : 'the thread of the alert'}`,
-          `**Ping:** ${current.method_ping ? 'yes' : 'no'}`,
-          `**Saved embed:** ${current.method_template ? `\`${current.method_template}\`` : 'none'}`,
-          `**Text:** ${String(current.method_text ?? '').trim() ? `\n${String(current.method_text).slice(0, 600)}` : 'none'}`,
+          t(lang, 'quests.show.sent', { value: yesNo(current.method_enabled) }),
+          t(lang, 'quests.show.where', { value: where }),
+          t(lang, 'quests.show.ping', { value: yesNo(current.method_ping) }),
+          t(lang, 'quests.show.embed', { value: current.method_template ? `\`${current.method_template}\`` : none }),
+          t(lang, 'quests.show.text', { value: String(current.method_text ?? '').trim() ? `\n${String(current.method_text).slice(0, 600)}` : none }),
         ];
         return reply(lines.join('\n'));
       }
-      return reply('Use `quests method on|off|send|text <message>|template <saved embed>|thread|channel <#channel>|ping|noping|show`.');
+      return reply(t(lang, 'quests.method.usage'));
     }
     if (sub === 'list' || sub === 'test') {
       let quests;
-      try { quests = (await questApi.fetchQuests({ force: true })).quests.filter((quest) => questApi.isActive(quest)); } catch (error) { return reply(`${EMOJI.DENY}  The quests could not be read: ${error.message}`); }
+      try { quests = (await questApi.fetchQuests({ force: true })).quests.filter((quest) => questApi.isActive(quest)); } catch (error) { return reply(`${EMOJI.DENY}  ${t(lang, 'quests.readFailed', { error: error.message })}`); }
       quests.sort((a, b) => (b.startsAt - a.startsAt) || b.id.localeCompare(a.id));
-      if (!quests.length) return reply('There are no active quests right now.');
-      if (sub === 'list') return interaction.editReply(buildQuestList(quests, { page: interaction.options.getInteger('page') ?? 1 }));
-      const payload = await questMessage(interaction.guild, { ...current, role_id: null }, quests[0], 'new');
+      if (!quests.length) return reply(t(lang, 'quests.noActive'));
+      if (sub === 'list') return interaction.editReply(buildQuestList(quests, { page: interaction.options.getInteger('page') ?? 1, lang }));
+      const payload = await questMessage(interaction.guild, { ...current, role_id: null }, quests[0], 'new', lang);
       await interaction.channel.send(payload).catch(() => null);
-      return reply(`${EMOJI.APPROVE}  Sent the newest quest here as a test.`);
+      return done('quests.test.sent');
     }
     const status = questApi.getStatus();
+    const none = t(lang, 'quests.none');
+    const all = t(lang, 'quests.all');
+    const off = t(lang, 'quests.off');
+    const pairs = (map) => Object.entries(map ?? {}).map(([k, v]) => `${k} → \`${v}\``).join(', ');
+    const thread = current.auto_thread ? t(lang, current.thread_ping ? 'quests.status.threadOnPing' : 'quests.status.threadOn') : off;
+    const method = current.method_enabled
+      ? t(lang, current.method_target === 'channel' ? 'quests.status.methodChannel' : 'quests.status.methodThread')
+      : off;
+    const sources = status.ok === null
+      ? t(lang, 'quests.status.notAsked')
+      : status.sources.filter((source) => source.ok !== null).map((source) => (source.ok ? t(lang, 'quests.status.sourceOk', { name: source.name }) : t(lang, 'quests.status.sourceFailing', { name: source.name, error: source.error }))).join(', ');
     const lines = [
-      `**Alerts:** ${current.enabled && current.channel_id ? `on in <#${current.channel_id}>` : 'off'}`,
-      `**Role:** ${current.role_id ? `<@&${current.role_id}>` : 'none'}`,
-      `**Style:** ${current.style === 'template' && current.embed_template ? `saved embed \`${current.embed_template}\`` : 'card'}`,
-      `**Rewards:** ${current.reward_kinds.length ? current.reward_kinds.join(', ') : 'all'} · **Tasks:** ${current.task_kinds.length ? current.task_kinds.join(', ') : 'all'}`,
-      `**Card hides:** ${current.hide_sections.length ? current.hide_sections.join(', ') : 'nothing'}`,
-      `**By reward:** ${Object.entries(current.type_templates ?? {}).map(([k, v]) => `${k} → \`${v}\``).join(', ') || 'none'}${Object.keys(current.method_type_templates ?? {}).length ? ` · method: ${Object.entries(current.method_type_templates).map(([k, v]) => `${k} → \`${v}\``).join(', ')}` : ''}`,
-      `**Thread:** ${current.auto_thread ? `on${current.thread_ping ? ', pings the role' : ''}` : 'off'} · **Method:** ${current.method_enabled ? (current.method_target === 'channel' ? 'on, in a channel' : 'on, in the thread') : 'off'}${current.method_ping ? ', pings' : ''}`,
-      `**Before it ends:** ${current.expiring_hours ? `${current.expiring_hours} h` : 'off'}`,
-      `**Quest sources:** ${status.ok === null ? 'not asked yet' : status.sources.filter((source) => source.ok !== null).map((source) => `${source.name} ${source.ok ? 'ok' : `failing (${source.error})`}`).join(', ')}${status.count ? `, ${status.count} quests` : ''}`,
+      t(lang, 'quests.status.alerts', { value: current.enabled && current.channel_id ? t(lang, 'quests.status.onIn', { channel: `<#${current.channel_id}>` }) : t(lang, 'quests.status.alertsOff') }),
+      t(lang, 'quests.status.role', { value: current.role_id ? `<@&${current.role_id}>` : none }),
+      t(lang, 'quests.status.style', { value: current.style === 'template' && current.embed_template ? t(lang, 'quests.status.savedEmbed', { name: current.embed_template }) : t(lang, 'quests.status.card') }),
+      t(lang, 'quests.status.filters', { rewards: current.reward_kinds.length ? current.reward_kinds.join(', ') : all, tasks: current.task_kinds.length ? current.task_kinds.join(', ') : all }),
+      t(lang, 'quests.status.hides', { value: current.hide_sections.length ? current.hide_sections.join(', ') : t(lang, 'quests.status.nothing') }),
+      `${t(lang, 'quests.status.byReward', { value: pairs(current.type_templates) || none })}${Object.keys(current.method_type_templates ?? {}).length ? ` · ${t(lang, 'quests.status.byRewardMethod', { value: pairs(current.method_type_templates) })}` : ''}`,
+      t(lang, current.method_ping ? 'quests.status.threadMethodPings' : 'quests.status.threadMethod', { thread, method }),
+      t(lang, 'quests.status.expiring', { value: current.expiring_hours ? `${current.expiring_hours} h` : off }),
+      `${t(lang, 'quests.status.sources', { value: sources })}${status.count ? t(lang, 'quests.status.count', { count: status.count }) : ''}`,
     ];
     return reply(lines.join('\n'));
   },

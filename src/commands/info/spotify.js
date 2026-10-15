@@ -3,6 +3,7 @@ const { buildSpCard } = require('../../imgutils/spCard');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
+const { t, languageOf } = require('../../i18n');
 
 function fmtTime(ms) {
   const s = Math.floor(ms / 1000);
@@ -25,16 +26,17 @@ module.exports = {
 
   async execute(interaction) {
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+    const lang = await languageOf(interaction);
     const targetUser = interaction.options.getUser('user') ?? interaction.user;
     const target = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
     if (!target) {
-      await interaction.editReply({ components: [textCard('That user is not a member of this server.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'info.notMember'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
 
     const activity = target.presence?.activities?.find((a) => a.name === 'Spotify' && a.syncId);
     if (!activity) {
-      await interaction.editReply({ components: [textCard(`**${target.displayName}** is not listening to Spotify right now.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'info.spotify.none', { name: target.displayName }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
 
@@ -48,8 +50,8 @@ module.exports = {
     try {
       const buf = await buildSpCard({
         albumArtUrl: albumArt,
-        songName: activity.details ?? 'Unknown',
-        artistName: activity.state?.replace(/;/g, ',') ?? 'Unknown',
+        songName: activity.details ?? t(lang, 'info.unknown'),
+        artistName: activity.state?.replace(/;/g, ',') ?? t(lang, 'info.unknown'),
         elapsed,
         total,
         progressRatio: ratio,
@@ -57,7 +59,7 @@ module.exports = {
       await interaction.editReply({ files: [new AttachmentBuilder(buf, { name: 'sp.png' })] });
     } catch (err) {
       logger.error('[spotify] card error:', err);
-      await interaction.editReply({ components: [textCard(`${EMOJI.DENY}  Could not generate card.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'info.spotify.cardError', { emoji: EMOJI.DENY }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     }
   },
 };

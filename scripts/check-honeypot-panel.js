@@ -89,5 +89,20 @@ const client = { user: { id: 'bot' } };
   assert.match(await talk({ channel, mode: 'loud' }), /`default`, `custom` or `none`/);
   assert.match(await talk({ channel: { ...channel, id: 'other' }, mode: 'none' }), /is not a honeypot channel/);
   assert.equal(command.prefixOnly, true);
+
+  // The panel, its button and the command answer in the server's language.
+  const { buildHoneypotPanel, buildHoneypotStatsPanel } = require('../src/utils/honeypotPanel');
+  const panelText = (lang) => JSON.stringify(buildHoneypotPanel({ punishment: 'ban', caught_count: 2, lang }).toJSON());
+  assert.match(panelText('es'), /NO ENVÍES MENSAJES EN ESTE CANAL[\s\S]*\*\*un baneo\*\*[\s\S]*Expulsiones: 2/);
+  assert.match(panelText('pt-BR'), /NÃO ENVIE MENSAGENS NESTE CANAL[\s\S]*\*\*um banimento\*\*[\s\S]*Expulsões: 2/);
+  assert.match(JSON.stringify(buildHoneypotStatsPanel({ punishment: 'kick', caughtCount: 1, channelId: 'bait', lang: 'es' }).toJSON()), /\*\*Canal:\*\* <#bait>/);
+  payload = await honeypot.renderPanel(channel, { ...row, panel_mode: 'custom', panel_template: null, panel_text: '{honeypot.action}' }, 'pt-BR');
+  assert.equal(payload.content, 'um softban', 'the {honeypot.action} variable follows the language');
+  const talkIn = async (lang, values) => talk({ ...values, pettoLangForCheck: lang });
+  const original = command.execute;
+  command.execute = (interaction) => original({ ...interaction, pettoLang: interaction.options.getString('pettoLangForCheck') });
+  assert.match(await talkIn('es', { channel, mode: 'loud' }), /El mensaje puede ser `default`, `custom` o `none`\./);
+  assert.match(await talkIn('pt-BR', { channel, mode: 'none' }), /Nada é publicado em <#bait>/);
+  command.execute = original;
   console.log('Checked the honeypot message: Petto\'s panel, the text or embed of the server, nothing, and the command.');
 })().catch((error) => { console.error(error); process.exit(1); });

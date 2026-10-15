@@ -5,12 +5,14 @@
 const PRESETS = ['classic', 'side', 'bars', 'panel'];
 // The layouts of a rank card: they show the level, the rank and a progress bar.
 const RANK_PRESETS = ['rank', 'rankBottom'];
+// The defaults below are the dashboard's starting values and are pinned by scripts/fixtures/card-presets.json, so they stay in
+// English here; the cards the bot draws without texts of their own get them translated (utils/cardService.js, embeds.card.*).
 const RANK_DEFAULTS = {
   preset: 'rank',
   title: 'LEVEL {level}',
   name: '{user.display_name}',
-  subtitle: '{level_xp_current} / {level_xp_needed} XP',
-  extra: 'RANK #{level_rank}',
+  subtitle: '{level_xp_current} / {level_xp_needed} XP', // i18n-ignore: variables and XP, nothing to translate
+  extra: 'RANK #{level_rank}', // i18n-ignore: dashboard default (see above)
   textColor: '#ffffff',
   accent: '#8399ff',
   font: 'Poppins',
@@ -23,9 +25,9 @@ const RANK_DEFAULTS = {
 };
 const BASIC_DEFAULTS = {
   preset: 'classic',
-  title: 'Welcome',
+  title: 'Welcome', // i18n-ignore: dashboard default (see above)
   name: '{user.display_name}',
-  subtitle: 'We are now {server_membercount} members',
+  subtitle: 'We are now {server_membercount} members', // i18n-ignore: dashboard default (see above)
   textColor: '#ffffff',
   accent: '#ffffff',
   font: 'Poppins',

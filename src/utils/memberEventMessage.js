@@ -6,6 +6,7 @@ const { extractReactReplies, applyReactReplies } = require('./messageFlags');
 const logger = require('./logger');
 const { sendAs } = require('./senderIdentity');
 const { plainCard } = require('./plainCard');
+const { t, currentLanguage } = require('../i18n');
 
 // Which look a kind of announcement takes (see db/senderIdentities.js). Other kinds are sent the normal way.
 const IDENTITY_FEATURE = { welcome: 'welcome', leave: 'leave', boost: 'boost', boost_level: 'boost', birthday: 'birthdays' };
@@ -16,6 +17,15 @@ const deliver = (channel, kind, payload) => (IDENTITY_FEATURE[kind] ? sendAs(cha
 const ANNOUNCEMENT_MENTIONS = { parse: ['users', 'roles'] };
 
 /**
+ * The welcome text `!setup` saves when the server wrote none is stored in English; it is sent (and shown) in the server's
+ * language. Any other text is the server's own and stays as it is.
+ */
+function localizeDefaultText(kind, text, lang = currentLanguage()) {
+  if (kind === 'welcome' && text === t('en', 'welcome.default.welcome')) return t(lang, 'welcome.default.welcome');
+  return text;
+}
+
+/**
  * Sends a welcome/leave/boost/boost_level announcement: a saved /embed template
  * (resolved with variables) if configured, otherwise plain text (also variable-
  * resolved), sent as an ordinary message with no embed/card wrapper. No-ops
@@ -23,8 +33,9 @@ const ANNOUNCEMENT_MENTIONS = { parse: ['users', 'roles'] };
  * message both required" is how a trigger gets turned off without a separate
  * enabled flag.
  */
-async function sendMemberEvent({ guild, channel, kind, messageText, embedTemplateName, ctx, asCard = false }) {
-  if (!messageText && !embedTemplateName) return;
+async function sendMemberEvent({ guild, channel, kind, messageText: storedText, embedTemplateName, ctx, asCard = false, lang = currentLanguage() }) {
+  if (!storedText && !embedTemplateName) return;
+  const messageText = localizeDefaultText(kind, storedText, lang);
 
   // {reactreply:emoji} can appear in the message text regardless of whether it ends up sent
   // as plain text or an embed template takes over — strip it out before either path runs.
@@ -58,4 +69,4 @@ async function sendMemberEvent({ guild, channel, kind, messageText, embedTemplat
   }
 }
 
-module.exports = { sendMemberEvent };
+module.exports = { sendMemberEvent, localizeDefaultText };

@@ -1,5 +1,6 @@
 const { EmbedBuilder, SlashCommandBuilder } = require('discord.js');
 const { COLORS } = require('../../utils/colors');
+const { t, languageOf } = require('../../i18n');
 
 const WIKI_URL = 'https://wiki.petto.sbs';
 const INDEX_URL = `${WIKI_URL}/llms.txt`;
@@ -16,7 +17,7 @@ async function getWikiPages() {
   if (cachedPages && Date.now() - cachedAt < CACHE_TTL_MS) return cachedPages;
 
   const response = await fetch(INDEX_URL, { signal: AbortSignal.timeout(8000) });
-  if (!response.ok) throw new Error(`Petto wiki returned ${response.status}`);
+  if (!response.ok) throw new Error(`Petto wiki returned ${response.status}`); // i18n-ignore: internal error, caught in execute
   const text = await response.text();
   cachedPages = [...text.matchAll(/^- \[([^\]]+)\]\(([^)]+)\):\s*(.+)$/gm)].map((match) => ({
     title: match[1],
@@ -47,18 +48,19 @@ module.exports = {
     .addStringOption((option) => option.setName('query').setDescription('Feature, command, or topic to find').setRequired(false)),
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const query = interaction.options.getString('query')?.trim() ?? '';
     try {
       const pages = await getWikiPages();
       const matches = query ? findPages(pages, query) : pages.slice(0, 5);
       const embed = new EmbedBuilder()
         .setColor(COLORS.DEFAULT)
-        .setTitle(query ? `Petto Wiki · ${clip(query, 180)}` : 'Petto Wiki')
+        .setTitle(query ? t(lang, 'utility.wiki.titleQuery', { query: clip(query, 180) }) : t(lang, 'utility.wiki.title'))
         .setURL(WIKI_URL)
-        .setFooter({ text: 'Petto documentation' });
+        .setFooter({ text: t(lang, 'utility.wiki.footer') });
 
       if (!matches.length) {
-        embed.setDescription(`I couldn't find **${clip(query, 150)}** in the wiki. [Open Petto Wiki](${WIKI_URL}) and use its search.`);
+        embed.setDescription(t(lang, 'utility.wiki.notFound', { query: clip(query, 150), url: WIKI_URL }));
       } else {
         embed.setDescription(matches.map((page) => `**[${clip(page.title, 180)}](${page.url})**\n${clip(page.description, 260)}`).join('\n\n'));
       }
@@ -66,7 +68,7 @@ module.exports = {
       await interaction.reply({ embeds: [embed], allowedMentions: { parse: [] } });
     } catch {
       await interaction.reply({
-        embeds: [new EmbedBuilder().setColor(COLORS.YELLOW).setTitle('Petto Wiki').setDescription(`[Open the Petto wiki](${WIKI_URL}).`)],
+        embeds: [new EmbedBuilder().setColor(COLORS.YELLOW).setTitle(t(lang, 'utility.wiki.title')).setDescription(t(lang, 'utility.wiki.open', { url: WIKI_URL }))],
         allowedMentions: { parse: [] },
       });
     }

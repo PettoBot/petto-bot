@@ -10,6 +10,7 @@ const { EMOJI } = require('../../utils/emojis');
 const { looksLikeScript } = require('../../utils/embedScript');
 const { payloadFromCode } = require('../../utils/embedCodeMessage');
 const { autoresponderAdd, autoresponderEdit } = require('../../utils/codeArgs');
+const { t, tn, languageOf } = require('../../i18n');
 
 const MODE_CHOICES = [
   { name: 'contains', value: 'contains' },
@@ -108,12 +109,12 @@ module.exports = {
  * When a reply is written as an embed code, builds it once to be sure Discord would take it. Returns the problem to show,
  * and the notes about parts that were left out.
  */
-async function checkCode(interaction, trigger, reply) {
+async function checkCode(interaction, trigger, reply, lang) {
   if (!reply || !looksLikeScript(reply)) return { problem: null, notes: [] };
   const member = interaction.member;
   const { payload, warnings, error } = await payloadFromCode(reply, { member, guild: interaction.guild, channel: interaction.channel, message: interaction.rawMessage, args: '', argTokens: [], commandName: trigger, prefix: '' });
-  if (error) return { problem: `That code builds an embed Discord would refuse: ${error}`, notes: [] };
-  if (!payload) return { problem: 'That code has nothing to show. Add a message, a title, a description, a field or a link button.', notes: [] };
+  if (error) return { problem: t(lang, 'automation.autoresponder.codeRefused', { error }), notes: [] };
+  if (!payload) return { problem: t(lang, 'automation.autoresponder.codeEmpty'), notes: [] };
   return { problem: null, notes: warnings };
 }
 
@@ -122,7 +123,15 @@ function modeTag(mode) {
   return `${icons[mode] ?? ''} \`${mode}\``.trim();
 }
 
+const yesNo = (lang, value) => t(lang, value ? 'automation.common.yes' : 'automation.common.no');
+
+/** The line of settings of an autoresponder: match, type, delete trigger, reply to message and ping user. */
+function settingsLine(lang, { mode, type, deleteTrigger, replyToMessage, pingUser }) {
+  return t(lang, 'automation.autoresponder.settings', { mode: modeTag(mode), type, deleteTrigger: yesNo(lang, deleteTrigger), replyToMessage: yesNo(lang, replyToMessage), pingUser: yesNo(lang, pingUser) });
+}
+
 async function addCmd(interaction) {
+  const lang = await languageOf(interaction);
   const trigger = interaction.options.getString('trigger', true);
   const reply = interaction.options.getString('reply');
   const mode = interaction.options.getString('mode') ?? 'contains';
@@ -138,7 +147,7 @@ async function addCmd(interaction) {
     try {
       new RegExp(trigger);
     } catch {
-      await interaction.reply({ content: `Invalid regex pattern: \`${trigger}\``, flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: t(lang, 'automation.autoresponder.invalidRegex', { pattern: trigger }), flags: MessageFlags.Ephemeral });
       return;
     }
   }
@@ -159,19 +168,19 @@ async function addCmd(interaction) {
   await ensureGuild(interaction.guild.id);
 
   if (!reply && !embedTemplate) {
-    await interaction.editReply({ components: [textCard('Provide reply text/flags, an embed_template, or both.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'automation.autoresponder.needReply'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   if (embedTemplate) {
     const template = await getTemplate(interaction.guild.id, embedTemplate);
     if (!template) {
-      await interaction.editReply({ components: [textCard(`Embed template \`${embedTemplate}\` does not exist.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'automation.autoresponder.templateMissing', { name: embedTemplate }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
   }
 
-  const code = await checkCode(interaction, trigger, reply);
+  const code = await checkCode(interaction, trigger, reply, lang);
   if (code.problem) {
     await interaction.editReply({ components: [textCard(code.problem, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
@@ -192,31 +201,33 @@ async function addCmd(interaction) {
       role_ids: roleIds,
     });
   } catch (err) {
-    await interaction.editReply({ components: [textCard(err.userFacing ? err.message : 'Failed to create autoresponder.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(err.userFacing ? err.message : t(lang, 'automation.autoresponder.createFailed'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const lines = [
-    `${EMOJI.APPROVE}  Autoresponder \`${ar.ar_id}\` added.`,
-    `**Match:** ${modeTag(mode)}  ·  **Type:** ${embedTemplate ? `Saved embed \`${embedTemplate}\`` : (reply && looksLikeScript(reply) ? 'Embed code' : (embed ? 'Embed' : 'Text'))}  ·  **Delete trigger:** ${deleteTrigger ? 'Yes' : 'No'}  ·  **Reply to message:** ${replyToMessage ? 'Yes' : 'No'}  ·  **Ping user:** ${pingUser ? 'Yes' : 'No'}`,
-    `**Channels:** ${channelIds.length ? channelIds.map((id) => `<#${id}>`).join(' ') : 'All channels'}`,
-    `**Roles:** ${roleIds.length ? roleIds.map((id) => `<@&${id}>`).join(' ') : 'Everyone'}`,
-    `**Trigger:** ${trigger}`,
-    `**Reply/flags:** ${reply ? (reply.length > 300 ? `${reply.slice(0, 300)}…` : reply) : 'None'}`,
+    t(lang, 'automation.autoresponder.added', { emoji: EMOJI.APPROVE, id: ar.ar_id }),
+    settingsLine(lang, { mode, type: embedTemplate ? t(lang, 'automation.autoresponder.type.savedEmbed', { name: embedTemplate }) : t(lang, reply && looksLikeScript(reply) ? 'automation.autoresponder.type.embedCode' : (embed ? 'automation.autoresponder.type.embed' : 'automation.autoresponder.type.text')), deleteTrigger, replyToMessage, pingUser }),
+    t(lang, 'automation.autoresponder.channels', { channels: channelIds.length ? channelIds.map((id) => `<#${id}>`).join(' ') : t(lang, 'automation.autoresponder.allChannels') }),
+    t(lang, 'automation.autoresponder.roles', { roles: roleIds.length ? roleIds.map((id) => `<@&${id}>`).join(' ') : t(lang, 'automation.autoresponder.everyone') }),
+    t(lang, 'automation.autoresponder.trigger', { trigger }),
+    t(lang, 'automation.autoresponder.replyFlags', { reply: reply ? (reply.length > 300 ? `${reply.slice(0, 300)}…` : reply) : t(lang, 'automation.common.none') }),
     ...code.notes.map((line) => `- ${line}`),
   ];
   await interaction.editReply({ components: [textCard(lines.join('\n'), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function removeCmd(interaction) {
+  const lang = await languageOf(interaction);
   const trigger = interaction.options.getString('trigger', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const removed = await arDb.removeByTrigger(interaction.guild.id, trigger);
-  await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  Removed the autoresponder for \`${trigger}\`.` : `No autoresponder with trigger \`${trigger}\` found.`, removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(removed ? t(lang, 'automation.autoresponder.removed', { emoji: EMOJI.APPROVE, trigger }) : t(lang, 'automation.autoresponder.notFoundTrigger', { trigger }), removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function editCmd(interaction) {
+  const lang = await languageOf(interaction);
   const id = interaction.options.getString('id', true);
   const mode = interaction.options.getString('mode');
   const embed = interaction.options.getBoolean('embed');
@@ -227,7 +238,7 @@ async function editCmd(interaction) {
   const embedTemplateInput = interaction.options.getString('embed_template');
 
   if (!mode && embed == null && deleteTrigger == null && replyToMessage == null && pingUser == null && reply == null && embedTemplateInput == null) {
-    await interaction.reply({ content: 'Provide at least one field to change.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'automation.autoresponder.needField'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -243,7 +254,7 @@ async function editCmd(interaction) {
 
   let notes = [];
   if (patch.reply) {
-    const code = await checkCode(interaction, id, patch.reply);
+    const code = await checkCode(interaction, id, patch.reply, lang);
     if (code.problem) {
       await interaction.editReply({ components: [textCard(code.problem, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
       return;
@@ -257,7 +268,7 @@ async function editCmd(interaction) {
     } else {
       const template = await getTemplate(interaction.guild.id, embedTemplateInput);
       if (!template) {
-        await interaction.editReply({ components: [textCard(`Embed template \`${embedTemplateInput}\` does not exist.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+        await interaction.editReply({ components: [textCard(t(lang, 'automation.autoresponder.templateMissing', { name: embedTemplateInput }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
         return;
       }
       patch.embed_template = embedTemplateInput;
@@ -265,73 +276,77 @@ async function editCmd(interaction) {
   }
 
   const updated = await arDb.update(interaction.guild.id, id, patch);
-  await interaction.editReply({ components: [textCard(updated ? [`${EMOJI.APPROVE}  Autoresponder \`${id}\` updated.`, ...notes.map((line) => `- ${line}`)].join('\n') : `No autoresponder with ID \`${id}\` found.`, updated ? 0xa5ea7a : 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(updated ? [t(lang, 'automation.autoresponder.updated', { emoji: EMOJI.APPROVE, id }), ...notes.map((line) => `- ${line}`)].join('\n') : t(lang, 'automation.autoresponder.notFound', { id }), updated ? 0xa5ea7a : 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function listCmd(interaction) {
+  const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const list = await arDb.listForGuild(interaction.guild.id);
   if (!list.length) {
-    await interaction.editReply({ components: [textCard(`No autoresponders configured. Use \`!autoresponder add\`.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'automation.autoresponder.listEmpty'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const lines = list.map((a) => {
     const reply = a.reply ?? '';
-    const output = a.embed_template ? `embed:\`${a.embed_template}\`` : (reply.length > 60 ? `${reply.slice(0, 60)}…` : (reply || 'no text'));
+    const output = a.embed_template ? `embed:\`${a.embed_template}\`` : (reply.length > 60 ? `${reply.slice(0, 60)}…` : (reply || t(lang, 'automation.autoresponder.noText')));
     return `\`${a.ar_id}\` ${modeTag(a.match_mode)}${(a.reply_type === 'embed' || a.embed_template) ? ' 🖼️' : ''}${a.delete_trigger ? ' 🗑️' : ''}${a.role_ids?.length ? ' 🎭' : ''}${a.ping_user ? ' 🔔' : ''} · **${a.trigger}** → ${output}`;
   });
-  await interaction.editReply({ components: [textCard(`**Autoresponders (${list.length}/${arDb.MAX_PER_GUILD}):**\n${lines.join('\n')}`.slice(0, 3900), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(`${t(lang, 'automation.autoresponder.listTitle', { count: list.length, max: arDb.MAX_PER_GUILD })}\n${lines.join('\n')}`.slice(0, 3900), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function showCmd(interaction) {
+  const lang = await languageOf(interaction);
   const id = interaction.options.getString('id', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const ar = await arDb.getById(interaction.guild.id, id);
   if (!ar) {
-    await interaction.editReply({ components: [textCard(`No autoresponder with ID \`${id}\` found.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'automation.autoresponder.notFound', { id }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const lines = [
-    `### Autoresponder \`${ar.ar_id}\``,
-    `**Match:** ${modeTag(ar.match_mode)}  ·  **Type:** ${ar.reply_type === 'embed' ? 'Embed' : 'Text'}  ·  **Delete trigger:** ${ar.delete_trigger ? 'Yes' : 'No'}  ·  **Reply to message:** ${ar.reply_to_trigger ? 'Yes' : 'No'}  ·  **Ping user:** ${ar.ping_user ? 'Yes' : 'No'}`,
-    `**Channels:** ${ar.channel_ids.length ? ar.channel_ids.map((id2) => `<#${id2}>`).join(' ') : 'All channels'}`,
-    `**Roles:** ${ar.role_ids.length ? ar.role_ids.map((id2) => `<@&${id2}>`).join(' ') : 'Everyone'}`,
-    `**Trigger:** ${ar.trigger}`,
-    `**Embed template:** ${ar.embed_template ? `\`${ar.embed_template}\`` : 'None'}`,
-    `**Reply/flags:** ${ar.reply || 'None'}`,
+    t(lang, 'automation.autoresponder.showTitle', { id: ar.ar_id }),
+    settingsLine(lang, { mode: ar.match_mode, type: t(lang, ar.reply_type === 'embed' ? 'automation.autoresponder.type.embed' : 'automation.autoresponder.type.text'), deleteTrigger: ar.delete_trigger, replyToMessage: ar.reply_to_trigger, pingUser: ar.ping_user }),
+    t(lang, 'automation.autoresponder.channels', { channels: ar.channel_ids.length ? ar.channel_ids.map((id2) => `<#${id2}>`).join(' ') : t(lang, 'automation.autoresponder.allChannels') }),
+    t(lang, 'automation.autoresponder.roles', { roles: ar.role_ids.length ? ar.role_ids.map((id2) => `<@&${id2}>`).join(' ') : t(lang, 'automation.autoresponder.everyone') }),
+    t(lang, 'automation.autoresponder.trigger', { trigger: ar.trigger }),
+    t(lang, 'automation.autoresponder.embedTemplate', { template: ar.embed_template ? `\`${ar.embed_template}\`` : t(lang, 'automation.common.none') }),
+    t(lang, 'automation.autoresponder.replyFlags', { reply: ar.reply || t(lang, 'automation.common.none') }),
   ];
   await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function resetCmd(interaction) {
+  const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const removed = await arDb.removeAllForGuild(interaction.guild.id);
-  await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  Removed all **${removed}** autoresponder(s).` : 'No autoresponders to remove.', removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(removed ? tn(lang, 'automation.autoresponder.resetDone', removed, { count: removed, emoji: EMOJI.APPROVE }) : t(lang, 'automation.autoresponder.resetEmpty'), removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function channelCmd(interaction, sub) {
+  const lang = await languageOf(interaction);
   const id = interaction.options.getString('id', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const ar = await arDb.getById(interaction.guild.id, id);
   if (!ar) {
-    await interaction.editReply({ components: [textCard(`No autoresponder with ID \`${id}\` found.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'automation.autoresponder.notFound', { id }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   if (sub === 'clear') {
     await arDb.update(interaction.guild.id, id, { channel_ids: [] });
-    await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  \`${id}\` will now respond in all channels.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'automation.autoresponder.channelClear', { emoji: EMOJI.APPROVE, id }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const { resolved } = resolveChannels(interaction.guild, interaction.options.getString('channels', true));
   if (!resolved.length) {
-    await interaction.editReply({ components: [textCard('No valid channels found in that input.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'automation.autoresponder.noValidChannels'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -340,29 +355,30 @@ async function channelCmd(interaction, sub) {
   else resolved.forEach((c) => current.delete(c.id));
 
   const updated = await arDb.update(interaction.guild.id, id, { channel_ids: [...current] });
-  const text = `${EMOJI.APPROVE}  \`${id}\` is now active in: ${updated.channel_ids.length ? updated.channel_ids.map((cid) => `<#${cid}>`).join(' ') : 'all channels'}`;
+  const text = t(lang, 'automation.autoresponder.activeIn', { emoji: EMOJI.APPROVE, id, channels: updated.channel_ids.length ? updated.channel_ids.map((cid) => `<#${cid}>`).join(' ') : t(lang, 'automation.autoresponder.allChannelsLower') });
   await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function roleCmd(interaction, sub) {
+  const lang = await languageOf(interaction);
   const id = interaction.options.getString('id', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const ar = await arDb.getById(interaction.guild.id, id);
   if (!ar) {
-    await interaction.editReply({ components: [textCard(`No autoresponder with ID \`${id}\` found.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'automation.autoresponder.notFound', { id }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   if (sub === 'clear') {
     await arDb.update(interaction.guild.id, id, { role_ids: [] });
-    await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  \`${id}\` will now respond to everyone.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'automation.autoresponder.roleClear', { emoji: EMOJI.APPROVE, id }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const { resolved } = resolveRoles(interaction.guild, interaction.options.getString('roles', true));
   if (!resolved.length) {
-    await interaction.editReply({ components: [textCard('No valid roles found in that input.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'automation.autoresponder.noValidRoles'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -371,6 +387,6 @@ async function roleCmd(interaction, sub) {
   else resolved.forEach((r) => current.delete(r.id));
 
   const updated = await arDb.update(interaction.guild.id, id, { role_ids: [...current] });
-  const text = `${EMOJI.APPROVE}  \`${id}\` now requires one of: ${updated.role_ids.length ? updated.role_ids.map((rid) => `<@&${rid}>`).join(' ') : 'no role (everyone)'}`;
+  const text = t(lang, 'automation.autoresponder.requires', { emoji: EMOJI.APPROVE, id, roles: updated.role_ids.length ? updated.role_ids.map((rid) => `<@&${rid}>`).join(' ') : t(lang, 'automation.autoresponder.noRoleEveryone') });
   await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }

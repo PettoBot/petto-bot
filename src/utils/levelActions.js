@@ -14,6 +14,16 @@ const { listEvents } = require('../db/xpEvents');
 const { addPeriodXp } = require('../db/levelPeriods');
 const { eventMultiplier, dailyBonus, utcDay } = require('./levelRules');
 const logger = require('./logger');
+const { t, currentLanguage } = require('../i18n');
+
+// The level-up messages the database holds when a server wrote none, in English: they are shown in the server's language.
+// The old text and voice defaults carried {EMOJI}; the text one drops it (the old star is not injected into the default).
+const DEFAULT_MESSAGES = new Map([
+  ['{user} just leveled up to **{level}**!', 'leveling.notify.default'], // i18n-ignore: stored default, compared
+  ['{EMOJI} {user} just leveled up to **{level}**!', 'leveling.notify.default'], // i18n-ignore: stored default, compared
+  ['{user} reached voice level **{level}**!', 'leveling.notify.voiceDefault'], // i18n-ignore: stored default, compared
+  ['{EMOJI} {user} reached voice level **{level}**!', 'leveling.notify.voiceDefaultStar'], // i18n-ignore: stored default, compared
+]);
 
 // The day each member was last marked active, so a streak is touched in the database once a day and not on every message.
 const touchedDay = new Map();
@@ -170,7 +180,7 @@ async function syncRewardRoles(guild, member, row, config) {
   return added;
 }
 
-async function notifyLevelUp({ client, guild, member, config, level, channel, message = null, source = 'text', earnedRole = null }) {
+async function notifyLevelUp({ client, guild, member, config, level, channel, message = null, source = 'text', earnedRole = null, lang = currentLanguage() }) {
   if (config.notify_mode === 'off') return;
   const milestone = milestoneFor(config, level);
   // A level with a message of its own is always announced, whatever "every N levels" says.
@@ -191,10 +201,9 @@ async function notifyLevelUp({ client, guild, member, config, level, channel, me
     levelReward: earnedRole ? { id: earnedRole.id, name: earnedRole.name } : null,
   };
 
-  // Keep old databases compatible, but do not inject the old star into the default.
-  const configuredText = milestone ?? (config.notify_message === '{EMOJI} {user} just leveled up to **{level}**!'
-    ? '{user} just leveled up to **{level}**!'
-    : config.notify_message);
+  // A message the server wrote (a milestone or its own) is sent as it is; the default one is translated.
+  const defaultKey = DEFAULT_MESSAGES.get(config.notify_message);
+  const configuredText = milestone ?? (defaultKey ? t(lang, defaultKey) : config.notify_message);
   const rawText = configuredText.replace(/\{EMOJI\}/g, EMOJI.STAR);
   const { text: cleanedText, emojis: reactReplies } = extractReactReplies(rawText);
   const text = await resolve(cleanedText, ctx);

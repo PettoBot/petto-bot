@@ -1,3 +1,4 @@
+// i18n-ignore-file: gateway identify properties, not text.
 // Makes the bot connect to the gateway as the phone app, so the member list shows the phone icon next to its status dot.
 // Discord decides that from the `os`, `browser` and `device` the bot names when it identifies; the library does not let a bot choose them
 // (it sends its own name), so the defaults the gateway library reads are changed before the client is created.

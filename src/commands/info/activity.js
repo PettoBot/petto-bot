@@ -3,6 +3,7 @@ const { buildAcCard } = require('../../imgutils/acCard');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
+const { t, languageOf } = require('../../i18n');
 
 module.exports = {
   aliases: ['ac'],
@@ -19,10 +20,11 @@ module.exports = {
 
   async execute(interaction) {
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+    const lang = await languageOf(interaction);
     const targetUser = interaction.options.getUser('user') ?? interaction.user;
     const target = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
     if (!target) {
-      await interaction.editReply({ components: [textCard('That user is not a member of this server.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'info.notMember'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
 
@@ -37,16 +39,16 @@ module.exports = {
     );
 
     if (!activity) {
-      await interaction.editReply({ components: [textCard(`**${target.displayName}** has no active activity right now.`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'info.activity.none', { name: target.displayName }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
 
     try {
-      const buf = await buildAcCard({ activity, member: target });
+      const buf = await buildAcCard({ activity, member: target, lang });
       await interaction.editReply({ files: [new AttachmentBuilder(buf, { name: 'ac.png' })] });
     } catch (err) {
       logger.error('[activity] card error:', err);
-      await interaction.editReply({ components: [textCard(`${EMOJI.DENY}  Could not generate activity card.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'info.activity.cardError', { emoji: EMOJI.DENY }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     }
   },
 };

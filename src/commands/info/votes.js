@@ -2,6 +2,7 @@ const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const votesDb = require('../../db/votes');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { t, tn, languageOf } = require('../../i18n');
 
 const voteUrl = (client) => `https://top.gg/bot/${client.user.id}/vote`;
 
@@ -18,18 +19,24 @@ module.exports = {
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
+    const lang = await languageOf(interaction);
     const reply = (text, color = 0x4b4f59) => interaction.reply({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
 
     if (sub === 'top') {
       const rows = await votesDb.topVoters(10);
-      if (!rows.length) return reply(`No votes yet. Be the first: ${voteUrl(interaction.client)}`);
-      const lines = rows.map((row, index) => `**${index + 1}.** <@${row.user_id}> — ${row.total} vote${row.total === 1 ? '' : 's'}`);
-      return reply(`### ${EMOJI.STAR} Top voters\n${lines.join('\n')}\n-# Vote at ${voteUrl(interaction.client)}`);
+      if (!rows.length) return reply(t(lang, 'votes.none', { link: voteUrl(interaction.client) }));
+      const lines = rows.map((row, index) => tn(lang, 'votes.top.line', row.total, { count: row.total, rank: index + 1, user: `<@${row.user_id}>` }));
+      return reply([t(lang, 'votes.top.title', { emoji: EMOJI.STAR }), ...lines, t(lang, 'votes.voteAt', { link: voteUrl(interaction.client) })].join('\n'));
     }
 
     const target = interaction.options.getUser('user') ?? interaction.user;
     const totals = await votesDb.voteTotals(target.id);
-    const last = totals.last ? `\nLast vote: <t:${Math.floor(new Date(totals.last).getTime() / 1000)}:R>` : '';
-    return reply(`### ${EMOJI.STAR} Votes for Petto\n**${totals.total}** vote${totals.total === 1 ? '' : 's'} from **${totals.voters}** member${totals.voters === 1 ? '' : 's'} in total.\n<@${target.id}> has **${totals.mine}**.${last}\n-# Vote at ${voteUrl(interaction.client)}`);
+    return reply([
+      t(lang, 'votes.show.title', { emoji: EMOJI.STAR }),
+      t(lang, 'votes.show.total', { votes: tn(lang, 'votes.show.votes', totals.total, { count: totals.total }), members: tn(lang, 'votes.show.members', totals.voters, { count: totals.voters }) }),
+      t(lang, 'votes.show.mine', { user: `<@${target.id}>`, count: totals.mine }),
+      totals.last ? t(lang, 'votes.show.last', { time: `<t:${Math.floor(new Date(totals.last).getTime() / 1000)}:R>` }) : '',
+      t(lang, 'votes.voteAt', { link: voteUrl(interaction.client) }),
+    ].filter(Boolean).join('\n'));
   },
 };

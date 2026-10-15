@@ -4,19 +4,10 @@ const { getConfig: getAntinukeConfig } = require('../../db/antinuke');
 const { getConfig: getVerificationConfig } = require('../../db/verificationConfig');
 const { getLogConfig } = require('../../db/logConfig');
 const { COLORS } = require('../../utils/colors');
+const { t, tn, languageOf } = require('../../i18n');
 
-const DANGEROUS_PERMISSIONS = [
-  [PermissionFlagsBits.Administrator, 'Administrator'],
-  [PermissionFlagsBits.ManageGuild, 'Manage Server'],
-  [PermissionFlagsBits.ManageRoles, 'Manage Roles'],
-  [PermissionFlagsBits.ManageChannels, 'Manage Channels'],
-  [PermissionFlagsBits.BanMembers, 'Ban Members'],
-  [PermissionFlagsBits.KickMembers, 'Kick Members'],
-  [PermissionFlagsBits.ModerateMembers, 'Timeout Members'],
-  [PermissionFlagsBits.ManageWebhooks, 'Manage Webhooks'],
-  [PermissionFlagsBits.ManageMessages, 'Manage Messages'],
-  [PermissionFlagsBits.MentionEveryone, 'Mention Everyone'],
-];
+// The permissions the scan calls dangerous, by flag name; their names come from `core.perm.<flag>`.
+const DANGEROUS_PERMISSIONS = ['Administrator', 'ManageGuild', 'ManageRoles', 'ManageChannels', 'BanMembers', 'KickMembers', 'ModerateMembers', 'ManageWebhooks', 'ManageMessages', 'MentionEveryone'];
 
 module.exports = {
   aliases: ['securityscan', 'secscan'],
@@ -30,13 +21,14 @@ module.exports = {
     .addSubcommand((sub) => sub.setName('role').setDescription('Simulate what a role can do.').addRoleOption((opt) => opt.setName('role').setDescription('Role to inspect').setRequired(true))),
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const sub = interaction.options.getSubcommand();
-    if (sub === 'role') return inspectRole(interaction);
-    return scan(interaction);
+    if (sub === 'role') return inspectRole(interaction, lang);
+    return scan(interaction, lang);
   },
 };
 
-async function scan(interaction) {
+async function scan(interaction, lang) {
   const guild = interaction.guild;
   const [automod, antinuke, verification, logs] = await Promise.all([
     getAutomodConfig(guild.id).catch(() => null),
@@ -49,80 +41,88 @@ async function scan(interaction) {
   let score = 100;
   const everyone = guild.roles.everyone;
   const adminRoles = guild.roles.cache.filter((role) => role.id !== guild.id && role.permissions.has(PermissionFlagsBits.Administrator));
-  const dangerousEveryone = permissionNames(everyone).filter((name) => name !== 'Mention Everyone');
+  const dangerousEveryone = permissionFlags(everyone).filter((flag) => flag !== 'MentionEveryone').map((flag) => permissionName(flag, lang));
   const botMember = guild.members.me;
 
   if (dangerousEveryone.length) {
     score -= 30;
-    findings.push(`@everyone has: ${dangerousEveryone.join(', ')}`);
+    findings.push(t(lang, 'security.scan.finding.everyone', { permissions: dangerousEveryone.join(', ') }));
   }
   if (adminRoles.size > 0) {
     score -= Math.min(30, adminRoles.size * 10);
-    findings.push(`${adminRoles.size} role(s) have Administrator: ${adminRoles.map((role) => role.name).slice(0, 4).join(', ')}`);
+    findings.push(tn(lang, 'security.scan.finding.adminRoles', adminRoles.size, { count: adminRoles.size, roles: adminRoles.map((role) => role.name).slice(0, 4).join(', ') }));
   }
   if (!antinuke?.enabled) {
     score -= 15;
-    findings.push('Anti-nuke is disabled.');
+    findings.push(t(lang, 'security.scan.finding.antinuke'));
   }
   if (!automod?.anti_spam_enabled) {
     score -= 10;
-    findings.push('Anti-spam is disabled.');
+    findings.push(t(lang, 'security.scan.finding.antispam'));
   }
   if (!automod?.anti_raid_enabled) {
     score -= 10;
-    findings.push('Anti-raid is disabled.');
+    findings.push(t(lang, 'security.scan.finding.antiraid'));
   }
   if (!verification?.enabled) {
     score -= 5;
-    findings.push('Join verification is disabled.');
+    findings.push(t(lang, 'security.scan.finding.verification'));
   }
   if (!logs?.entries?.length) {
     score -= 10;
-    findings.push('No audit-log destination is configured.');
+    findings.push(t(lang, 'security.scan.finding.logs'));
   }
   if (!botMember?.permissions.has(PermissionFlagsBits.ViewAuditLog)) {
     score -= 10;
-    findings.push('Petto cannot view the audit log, so anti-nuke attribution is limited.');
+    findings.push(t(lang, 'security.scan.finding.auditLog'));
   }
 
   score = Math.max(0, score);
-  const status = score >= 80 ? 'Good baseline' : score >= 55 ? 'Needs attention' : 'High risk';
+  const status = t(lang, score >= 80 ? 'security.scan.status.good' : score >= 55 ? 'security.scan.status.attention' : 'security.scan.status.risk');
   const recommendations = findings.length
     ? findings.slice(0, 6).map((finding) => `• ${finding}`).join('\n')
-    : 'No high-impact gaps were found in this read-only scan.';
+    : t(lang, 'security.scan.noFindings');
+  const yesNo = (value) => t(lang, value ? 'security.scan.enabled' : 'security.scan.disabled');
 
   const embed = new EmbedBuilder()
     .setColor(COLORS.DEFAULT)
-    .setTitle(`Security scan · ${guild.name}`)
-    .setDescription(`**Score:** \`${score}/100\` · **${status}**\n\n${recommendations}`)
+    .setTitle(t(lang, 'security.scan.title', { server: guild.name }))
+    .setDescription(t(lang, 'security.scan.description', { score, status, recommendations }))
     .addFields(
-      { name: 'Protection', value: `Anti-nuke: ${yesNo(antinuke?.enabled)}\nAnti-spam: ${yesNo(automod?.anti_spam_enabled)}\nAnti-raid: ${yesNo(automod?.anti_raid_enabled)}\nVerification: ${yesNo(verification?.enabled)}`, inline: true },
-      { name: 'Coverage', value: `Log routes: ${logs?.entries?.length ?? 0}\nAdmin roles: ${adminRoles.size}\nDangerous @everyone perms: ${dangerousEveryone.length}\nAudit access: ${yesNo(botMember?.permissions.has(PermissionFlagsBits.ViewAuditLog))}`, inline: true },
+      {
+        name: t(lang, 'security.scan.protection.name'),
+        value: t(lang, 'security.scan.protection.value', { antinuke: yesNo(antinuke?.enabled), antispam: yesNo(automod?.anti_spam_enabled), antiraid: yesNo(automod?.anti_raid_enabled), verification: yesNo(verification?.enabled) }),
+        inline: true,
+      },
+      {
+        name: t(lang, 'security.scan.coverage.name'),
+        value: t(lang, 'security.scan.coverage.value', { logs: logs?.entries?.length ?? 0, admins: adminRoles.size, dangerous: dangerousEveryone.length, audit: yesNo(botMember?.permissions.has(PermissionFlagsBits.ViewAuditLog)) }),
+        inline: true,
+      },
     )
-    .setFooter({ text: 'Read-only scan. Petto did not change any server setting.' });
+    .setFooter({ text: t(lang, 'security.scan.footer') });
 
   await interaction.reply({ embeds: [embed], flags: MessageFlags.SuppressNotifications });
 }
 
-async function inspectRole(interaction) {
+async function inspectRole(interaction, lang) {
   const role = interaction.options.getRole('role', true);
-  const names = permissionNames(role);
+  const names = permissionFlags(role).map((flag) => permissionName(flag, lang));
   const embed = new EmbedBuilder()
     .setColor(COLORS.DEFAULT)
-    .setTitle(`Permission simulator · ${role.name}`)
-    .setDescription(names.length ? names.map((name) => `• ${name}`).join('\n') : 'This role has no elevated permissions.')
+    .setTitle(t(lang, 'security.role.title', { role: role.name }))
+    .setDescription(names.length ? names.map((name) => `• ${name}`).join('\n') : t(lang, 'security.role.none'))
     .addFields(
-      { name: 'Position', value: role.id === interaction.guild.id ? '@everyone' : `#${role.position}`, inline: true },
-      { name: 'Managed', value: role.managed ? 'Yes, Discord integration role' : 'No', inline: true },
+      { name: t(lang, 'security.role.position'), value: role.id === interaction.guild.id ? '@everyone' : `#${role.position}`, inline: true },
+      { name: t(lang, 'security.role.managed'), value: t(lang, role.managed ? 'security.role.managedYes' : 'security.role.managedNo'), inline: true },
     )
-    .setFooter({ text: 'This is a permission preview, not an action.' });
+    .setFooter({ text: t(lang, 'security.role.footer') });
   await interaction.reply({ embeds: [embed], flags: MessageFlags.SuppressNotifications });
 }
 
-function permissionNames(role) {
-  return DANGEROUS_PERMISSIONS.filter(([flag]) => role.permissions.has(flag)).map(([, name]) => name);
+/** The dangerous permissions a role has, as flag names. */
+function permissionFlags(role) {
+  return DANGEROUS_PERMISSIONS.filter((flag) => role.permissions.has(PermissionFlagsBits[flag]));
 }
 
-function yesNo(value) {
-  return value ? 'enabled' : 'disabled';
-}
+const permissionName = (flag, lang) => t(lang, `core.perm.${flag}`);

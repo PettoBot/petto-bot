@@ -1,5 +1,6 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { INFO_ACCENT, infoPayload } = require('../../utils/infoCard');
+const { t, languageOf } = require('../../i18n');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -9,6 +10,7 @@ module.exports = {
   aliases: ['av', 'pfp'],
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const user = interaction.options.getUser('user') ?? interaction.user;
     const member = interaction.guild?.members.cache.get(user.id);
 
@@ -18,13 +20,13 @@ module.exports = {
 
     await interaction.reply(infoPayload({
       accent: member?.displayColor || INFO_ACCENT,
-      title: `${member?.displayName ?? user.username}'s avatar`,
-      subtitle: [hasServerAvatar ? 'Showing the server avatar.' : null],
+      title: t(lang, 'info.avatar.title', { name: member?.displayName ?? user.username }),
+      subtitle: [hasServerAvatar ? t(lang, 'info.avatar.showingServer') : null],
       banner: hasServerAvatar ? serverAvatar : globalAvatar,
-      footer: `ID ${user.id}`,
+      footer: t(lang, 'info.card.id', { id: user.id }),
       buttons: [
-        { label: hasServerAvatar ? 'Global avatar' : 'Open original', url: globalAvatar },
-        { label: 'Server avatar', url: hasServerAvatar ? serverAvatar : null },
+        { label: t(lang, hasServerAvatar ? 'info.button.globalAvatar.button' : 'info.button.openOriginal.button'), url: globalAvatar },
+        { label: t(lang, 'info.button.serverAvatar.button'), url: hasServerAvatar ? serverAvatar : null },
       ],
     }));
   },

@@ -1,3 +1,4 @@
+// i18n-ignore-file: Petto team diagnostic command (private operations server only).
 const { MessageFlags, PermissionFlagsBits, SlashCommandBuilder } = require('discord.js');
 const config = require('../../config');
 const database = require('../../db/database');

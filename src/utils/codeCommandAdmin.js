@@ -6,6 +6,7 @@ const { check, parse, closestName, functionNames, MAX_SOURCE_LENGTH } = require(
 const { dataFields } = require('./codeCommands');
 const { getGuildPremium, getGuildLimits } = require('../db/premium');
 const { validateTrigger, invalidateTriggers, triggersFor, MAX_TRIGGERS_PER_GUILD } = require('./codeTriggers');
+const { t, tn, currentLanguage } = require('../i18n');
 
 const MAX_PER_GUILD = 100; // the most any server can have (Premium); a Free server has less, see commandLimit
 const NAME_SHAPE = /^[a-z0-9_-]{1,32}$/;
@@ -17,34 +18,42 @@ async function commandLimit(guildId) {
 }
 
 /** What to say when a server is full of custom commands. */
-const fullMessage = ({ limit, premium }) => `This server already has the maximum of ${limit} custom commands.${premium ? '' : ' Premium raises it to 100.'}`;
+const fullMessage = ({ limit, premium }, lang = currentLanguage()) => t(lang, premium ? 'customcommands.full' : 'customcommands.fullFree', { limit });
 
 const clip = (text, max) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
 
 /** The mistake in some code as a sentence, or null when the code is fine. */
-function codeProblem(code) {
-  if (!code) return 'There is no code. Write it after the name, inside a code block if it has several lines.';
-  if (code.length > MAX_SOURCE_LENGTH) return `The code is too long (${code.length} of ${MAX_SOURCE_LENGTH} characters).`;
+function codeProblem(code, lang = currentLanguage()) {
+  if (!code) return t(lang, 'customcommands.problem.noCode');
+  if (code.length > MAX_SOURCE_LENGTH) return t(lang, 'customcommands.problem.tooLong', { count: code.length, max: MAX_SOURCE_LENGTH });
+  // The mistake itself is the language's own message, in English like its documentation.
   const problem = check(code);
-  return problem ? `The code has a mistake: ${problem.message}${problem.line ? ` (line ${problem.line}, column ${problem.column})` : ''}` : null;
+  if (!problem) return null;
+  return problem.line ? t(lang, 'customcommands.problem.mistakeAt', { message: problem.message, line: problem.line, column: problem.column }) : t(lang, 'customcommands.problem.mistake', { message: problem.message });
 }
 
 /** What an action of some code would do, as one line. */
-function describeEffect(effect) {
-  const what = (e) => [e.content ? `"${clip(e.content.replace(/\s+/g, ' '), 80)}"` : null, e.embed ? 'an embed' : null, e.components?.length ? 'buttons or menus' : null].filter(Boolean).join(' and ');
+function describeEffect(effect, lang = currentLanguage()) {
+  // The dashboard maps over the effects, so the second argument can be an index: that gives English.
+  const what = (e) => [e.content ? `"${clip(e.content.replace(/\s+/g, ' '), 80)}"` : null, e.embed ? t(lang, 'customcommands.effect.anEmbed') : null, e.components?.length ? t(lang, 'customcommands.effect.components') : null].filter(Boolean).join(` ${t(lang, 'common.and')} `);
+  const hasData = effect.data !== null && effect.data !== undefined;
   switch (effect.type) {
-    case 'message': return `send ${what(effect)} ${effect.channelId ? `to <#${effect.channelId}>` : 'here'}${effect.reply ? ' as a reply' : ''}${effect.silent ? ' without a notification' : ''}`;
-    case 'dm': return `send ${what(effect)} in a direct message`;
-    case 'addRole': return `give the role <@&${effect.roleId}>`;
-    case 'removeRole': return `take the role <@&${effect.roleId}>`;
-    case 'reaction': return `react with ${effect.emoji}`;
-    case 'deleteTrigger': return `delete the message that used the command${effect.delay ? ` after ${effect.delay} seconds` : ''}`;
-    case 'deleteResponse': return `delete the answer of the command after ${effect.delay} seconds`;
-    case 'removeReaction': return 'take the reaction away';
-    case 'modal': return `show the form "${effect.modal.title}"`;
-    case 'respond': return `answer the click with ${what(effect)}${effect.ephemeral ? ' (only for who clicked)' : ''}`;
-    case 'update': return `change the message the button is on to ${what(effect)}`;
-    case 'execCC': return `run the command \`${effect.name}\`${effect.delay ? ` after ${effect.delay} seconds` : ''}${effect.data !== null && effect.data !== undefined ? ' with data' : ''}`;
+    case 'message': return t(lang, effect.channelId ? 'customcommands.effect.messageTo' : 'customcommands.effect.messageHere', { what: what(effect), channel: `<#${effect.channelId}>` })
+      + (effect.reply ? ` ${t(lang, 'customcommands.effect.asReply')}` : '') + (effect.silent ? ` ${t(lang, 'customcommands.effect.silent')}` : '');
+    case 'dm': return t(lang, 'customcommands.effect.dm', { what: what(effect) });
+    case 'addRole': return t(lang, 'customcommands.effect.addRole', { role: `<@&${effect.roleId}>` });
+    case 'removeRole': return t(lang, 'customcommands.effect.removeRole', { role: `<@&${effect.roleId}>` });
+    case 'reaction': return t(lang, 'customcommands.effect.reaction', { emoji: effect.emoji });
+    case 'deleteTrigger': return effect.delay ? t(lang, 'customcommands.effect.deleteTriggerLater', { seconds: effect.delay }) : t(lang, 'customcommands.effect.deleteTrigger');
+    case 'deleteResponse': return t(lang, 'customcommands.effect.deleteResponse', { seconds: effect.delay });
+    case 'removeReaction': return t(lang, 'customcommands.effect.removeReaction');
+    case 'modal': return t(lang, 'customcommands.effect.modal', { title: effect.modal.title });
+    case 'respond': return t(lang, effect.ephemeral ? 'customcommands.effect.respondPrivate' : 'customcommands.effect.respond', { what: what(effect) });
+    case 'update': return t(lang, 'customcommands.effect.update', { what: what(effect) });
+    case 'execCC': {
+      const key = effect.delay ? (hasData ? 'execLaterData' : 'execLater') : (hasData ? 'execData' : 'exec');
+      return t(lang, `customcommands.effect.${key}`, { name: effect.name, seconds: effect.delay });
+    }
     default: return effect.type;
   }
 }
@@ -52,13 +61,14 @@ function describeEffect(effect) {
 const snippet = (value, max) => clip(String(value ?? '').replace(/\s+/g, ' ').trim(), max);
 
 /** The buttons and menus of a message as short lines: `Buttons: Yes, No` and `Menu: Pick one (3 options)`. */
-function componentLines(rows) {
+function componentLines(rows, lang = currentLanguage()) {
   const lines = [];
   for (const row of rows ?? []) {
     const buttons = row.items.filter((item) => item.type !== 'select');
-    if (buttons.length) lines.push(`Buttons: ${buttons.map((item) => `[${[item.emoji, item.label].filter(Boolean).join(' ')}]${item.url ? ' (link)' : ''}`).join(' ')}`);
+    if (buttons.length) lines.push(t(lang, 'customcommands.effect.buttons', { buttons: buttons.map((item) => `[${[item.emoji, item.label].filter(Boolean).join(' ')}]${item.url ? ` ${t(lang, 'customcommands.effect.link')}` : ''}`).join(' ') }));
     for (const menu of row.items.filter((item) => item.type === 'select')) {
-      lines.push(`Menu: ${menu.placeholder ? `"${snippet(menu.placeholder, 60)}"` : 'no placeholder'} (${menu.options.length} option${menu.options.length === 1 ? '' : 's'}: ${clip(menu.options.map((option) => option.label).join(', '), 120)})`);
+      const placeholder = menu.placeholder ? `"${snippet(menu.placeholder, 60)}"` : t(lang, 'customcommands.effect.noPlaceholder');
+      lines.push(tn(lang, 'customcommands.effect.menu', menu.options.length, { count: menu.options.length, placeholder, options: clip(menu.options.map((option) => option.label).join(', '), 120) }));
     }
   }
   return lines;
@@ -68,28 +78,28 @@ function componentLines(rows) {
  * What a message of some code would look like, as short lines for a test: the text, the embed (title, the start of the
  * description, fields, footer), the buttons and menus, and the reactions. A form says its title and its fields.
  */
-function effectDetails(effect) {
-  if (effect.type === 'modal') return [`Fields: ${effect.modal.fields.map((field) => `"${snippet(field.label, 45)}"${field.required ? '' : ' (optional)'}`).join(', ')}`];
+function effectDetails(effect, lang = currentLanguage()) {
+  if (effect.type === 'modal') return [t(lang, 'customcommands.effect.fields', { fields: effect.modal.fields.map((field) => `"${snippet(field.label, 45)}"${field.required ? '' : ` ${t(lang, 'customcommands.effect.optional')}`}`).join(', ') })];
   // A test never runs the other command: it only says what it would get in .ExecData.
-  if (effect.type === 'execCC') return effect.data !== null && effect.data !== undefined ? [`Data: ${snippet(JSON.stringify(effect.data), 200)}`] : [];
+  if (effect.type === 'execCC') return effect.data !== null && effect.data !== undefined ? [t(lang, 'customcommands.effect.data', { data: snippet(JSON.stringify(effect.data), 200) })] : [];
   if (!['message', 'dm', 'respond', 'update'].includes(effect.type)) return [];
   const lines = [];
-  if (effect.content) lines.push(`Text: ${snippet(effect.content, 200)}`);
+  if (effect.content) lines.push(t(lang, 'customcommands.effect.text', { text: snippet(effect.content, 200) }));
   const embed = effect.embed;
   if (embed) {
     const parts = [
-      embed.author?.name ? `by ${snippet(embed.author.name, 40)}` : null,
+      embed.author?.name ? t(lang, 'customcommands.effect.embedAuthor', { name: snippet(embed.author.name, 40) }) : null,
       embed.title ? `**${snippet(embed.title, 80)}**` : null,
       embed.description ? `"${snippet(embed.description, 120)}"` : null,
-      embed.fields?.length ? `${embed.fields.length} field${embed.fields.length === 1 ? '' : 's'}` : null,
-      embed.image ? 'an image' : null,
-      embed.thumbnail ? 'a thumbnail' : null,
-      embed.footer?.text ? `footer "${snippet(embed.footer.text, 40)}"` : null,
+      embed.fields?.length ? tn(lang, 'customcommands.effect.embedFields', embed.fields.length, { count: embed.fields.length }) : null,
+      embed.image ? t(lang, 'customcommands.effect.embedImage') : null,
+      embed.thumbnail ? t(lang, 'customcommands.effect.embedThumbnail') : null,
+      embed.footer?.text ? t(lang, 'customcommands.effect.embedFooter', { text: snippet(embed.footer.text, 40) }) : null,
     ].filter(Boolean);
-    lines.push(`Embed: ${parts.length ? parts.join(' · ') : 'empty'}`);
+    lines.push(t(lang, 'customcommands.effect.embed', { parts: parts.length ? parts.join(' · ') : t(lang, 'customcommands.effect.embedEmpty') }));
   }
-  lines.push(...componentLines(effect.components));
-  if (effect.reactions?.length) lines.push(`Reactions: ${effect.reactions.join(' ')} (reacting runs the command)`);
+  lines.push(...componentLines(effect.components, lang));
+  if (effect.reactions?.length) lines.push(t(lang, 'customcommands.effect.reactions', { emojis: effect.reactions.join(' ') }));
   return lines;
 }
 
@@ -128,7 +138,7 @@ const parsed = (code) => { try { return parse(String(code ?? '')); } catch { ret
  * are not in the data (`.User.Usrname`). Reading a name that is not there still gives nothing when the code runs; these are
  * only hints. Each one is { kind: 'function' | 'field', name, text }. Code with a mistake in how it is written gives none.
  */
-function codeHintList(code) {
+function codeHintList(code, lang = currentLanguage()) {
   const tree = parsed(code);
   if (!tree) return [];
   const known = new Set(functionNames());
@@ -137,7 +147,7 @@ function codeHintList(code) {
   walkOperands(tree.nodes, (operand, rootDot) => {
     if (operand.kind === 'ident' && !known.has(operand.name) && !hints.has(`f:${operand.name}`)) {
       const meant = closestName(operand.name, known);
-      hints.set(`f:${operand.name}`, { kind: 'function', name: operand.name, text: `There is no function called "${operand.name}"${meant ? `. Did you mean ${meant}?` : '.'}` });
+      hints.set(`f:${operand.name}`, { kind: 'function', name: operand.name, text: meant ? t(lang, 'customcommands.hintText.functionMeant', { name: operand.name, meant }) : t(lang, 'customcommands.hintText.function', { name: operand.name }) });
     }
     const fromData = (operand.kind === 'dot' && rootDot) || (operand.kind === 'variable' && operand.name === '$');
     if (!fromData || !operand.fields?.length) return;
@@ -156,13 +166,14 @@ function codeHintList(code) {
     }
     if (!path || hints.has(`d:${path}`)) return;
     const last = path.split('.').length - 1 === operand.fields.length; // the end of the path gives nothing; a name after it stops the code
-    hints.set(`d:${path}`, { kind: 'field', name: path, text: `${path} is not in the data${last ? ', so it gives nothing' : ''}${meant ? `. Did you mean ${meant}?` : '.'}` });
+    const key = `customcommands.hintText.field${last ? 'Empty' : ''}${meant ? 'Meant' : ''}`;
+    hints.set(`d:${path}`, { kind: 'field', name: path, text: t(lang, key, { path, meant }) });
   });
   return [...hints.values()].slice(0, 10);
 }
 
 /** The hints of some code as sentences (see codeHintList). */
-const codeHints = (code) => codeHintList(code).map((hint) => hint.text);
+const codeHints = (code, lang = currentLanguage()) => codeHintList(code, lang).map((hint) => hint.text);
 
 const STORE_FUNCTIONS = /^db[A-Z]/;
 const LOOKUP_FUNCTIONS = new Set(['getMember', 'getRole', 'getChannel', 'targetHasRole']);
@@ -219,35 +230,35 @@ const isRealCommand = (client, name) => client.commands.has(name) || client.comm
  * Saves the code of a command after checking everything. Returns { ok: true, created } or { ok: false, message, field? }.
  * The person who asked must already have been allowed to write code.
  */
-async function saveCodeCommand({ guild, client, userId, name, code }) {
-  if (isRealCommand(client, name)) return { ok: false, field: 'name', message: `\`${name}\` is already a real command, pick a different name.` };
-  if (!NAME_SHAPE.test(name)) return { ok: false, field: 'name', message: 'A name has 1 to 32 letters, numbers, - or _.' };
-  const problem = codeProblem(code);
+async function saveCodeCommand({ guild, client, userId, name, code, lang = currentLanguage() }) {
+  if (isRealCommand(client, name)) return { ok: false, field: 'name', message: t(lang, 'customcommands.realCommand', { name }) };
+  if (!NAME_SHAPE.test(name)) return { ok: false, field: 'name', message: t(lang, 'customcommands.nameShape') };
+  const problem = codeProblem(code, lang);
   if (problem) return { ok: false, field: 'code', message: problem };
   await ensureGuild(guild.id);
   const existing = await ccDb.getCommand(guild.id, name);
   if (!existing) {
     const current = await ccDb.listCommands(guild.id);
     const allowed = await commandLimit(guild.id);
-    if (current.length >= allowed.limit) return { ok: false, field: 'name', message: fullMessage(allowed) };
+    if (current.length >= allowed.limit) return { ok: false, field: 'name', message: fullMessage(allowed, lang) };
   }
   await ccDb.upsertCommand(guild.id, name, { response: null, embedTemplate: null, code, createdBy: userId });
   return { ok: true, created: !existing };
 }
 
 /** Changes what starts a command. Returns { ok: true, type, text } or { ok: false, message }. */
-async function setCommandTrigger({ guild, client, name, type, text }) {
+async function setCommandTrigger({ guild, client, name, type, text, lang = currentLanguage() }) {
   const row = await ccDb.getCommand(guild.id, name);
-  if (!row) return { ok: false, message: `\`${name}\` does not exist.` };
-  const checked = validateTrigger(type, text);
+  if (!row) return { ok: false, message: t(lang, 'customcommands.notExist', { name }) };
+  const checked = validateTrigger(type, text, lang);
   if (checked.error) return { ok: false, message: checked.error };
   if (type !== 'command') {
     const current = await triggersFor(guild.id);
     if (!current.some((entry) => entry.name === name) && current.length >= MAX_TRIGGERS_PER_GUILD) {
-      return { ok: false, message: `This server already has ${MAX_TRIGGERS_PER_GUILD} commands with a trigger of their own, the most it can.` };
+      return { ok: false, message: t(lang, 'customcommands.trigger.tooMany', { max: MAX_TRIGGERS_PER_GUILD }) };
     }
     if (type === 'prefix' && (client.commands.has(`${checked.text}${name}`) || client.commandAliases.has(`${checked.text}${name}`))) {
-      return { ok: false, message: 'That would be the name of a real command.' };
+      return { ok: false, message: t(lang, 'customcommands.trigger.realCommand') };
     }
   }
   await ccDb.setTrigger(guild.id, name, type, checked.text);

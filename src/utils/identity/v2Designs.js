@@ -4,6 +4,7 @@
 //    a server wrote keeps its words, colors, pictures, fields and buttons and gets a header with a picture, clean sections
 //    and a small footer instead of a plain embed.
 const { EMOJI } = require('../emojis');
+const { t, currentLanguage } = require('../../i18n');
 
 const T = { ROW: 1, BUTTON: 2, SECTION: 9, TEXT: 10, THUMBNAIL: 11, GALLERY: 12, SEPARATOR: 14, CONTAINER: 17 };
 const PINK = 0xf0a9c4;
@@ -17,61 +18,64 @@ const thumbnail = (url) => ({ type: T.THUMBNAIL, media: { url } });
 const section = (lines, url) => ({ type: T.SECTION, components: lines.map(text), accessory: thumbnail(url) });
 const container = (accent, children) => ({ type: T.CONTAINER, ...(accent === null ? {} : { accent_color: accent }), components: children });
 
+// The texts keep the variables of the Embeds editor (`{user.mention}`, `{tag.role}`...), filled in when the message is sent.
+
 /** The thank-you message of a source (`vanity` or `guildtag`). */
-function thanksDesign(kind) {
+function thanksDesign(kind, lang = currentLanguage()) {
   const tag = kind === 'guildtag';
   return {
     components: [container(PINK, [
       section([
-        tag ? '## gracias por usar el tag ♡' : '## gracias por usar el vanity ♡',
-        tag ? '{user.mention}, ahora tienes {tag.role}' : '{user.mention}, ahora tienes {vanity.role}',
+        t(lang, tag ? 'identity.design.thanks.title.guildtag' : 'identity.design.thanks.title.vanity'),
+        t(lang, tag ? 'identity.design.thanks.subtitle.guildtag' : 'identity.design.thanks.subtitle.vanity'),
       ], AVATAR),
       separator(),
-      text(tag ? '**Server Tag** `{tag}`\n-# regla · {tag.rule}' : '**Vanity** `{vanity.word}`\n-# regla · {vanity.rule}'),
+      text(t(lang, tag ? 'identity.design.thanks.body.guildtag' : 'identity.design.thanks.body.vanity')),
     ])],
   };
 }
 
 /** One entry of the log of role changes: `vanity_add`, `vanity_remove`, `tag_add`, `tag_remove` or `error`. */
-function logDesign(key) {
+function logDesign(key, lang = currentLanguage()) {
   if (key === 'error') {
     return {
       components: [container(RED, [
-        section([`### ${EMOJI.DENY} Could not {rule.action_text} the role`, '{user.mention} · {rule.role}'], AVATAR),
+        section([t(lang, 'identity.design.log.errorTitle', { emoji: EMOJI.DENY }), '{user.mention} · {rule.role}'], AVATAR), // i18n-ignore: only variables
         separator(),
-        text('**Rule** {rule.name}\n**Error** `{rule.error}`\n-# {rule.reason}'),
+        text(t(lang, 'identity.design.log.errorBody')),
       ])],
     };
   }
   const tag = key.startsWith('tag');
   const remove = key.endsWith('remove');
-  const title = tag ? 'Server Tag Action' : 'Vanity Action';
+  const title = t(lang, tag ? 'identity.log.title.guildtag' : 'identity.log.title.vanity');
   const role = tag ? '{tag.role}' : '{vanity.role}';
   return {
     components: [container(remove ? RED : GREEN, [
       section([
         `### ${remove ? EMOJI.DENY : EMOJI.APPROVE} ${title}`,
-        `${remove ? 'Removed' : 'Added'} role ${role} ${remove ? 'from' : 'to'} {user.mention}`,
+        t(lang, remove ? 'identity.design.log.removed' : 'identity.design.log.added', { role }),
       ], AVATAR),
       separator(),
-      text(tag ? '**Tag** `{tag}`\n**Why** {rule.reason}\n-# rule · {tag.rule}' : '**Word** `{vanity.word}`\n**Matched** `{vanity.value}`\n-# rule · {vanity.rule}'),
+      text(t(lang, tag ? 'identity.design.log.body.guildtag' : 'identity.design.log.body.vanity')),
     ])],
   };
 }
 
-const LOG_TITLES = new Set(['Vanity Action', 'Server Tag Action', '{rule.event_title}', '{event.title}']);
+// The titles the old bot gave its log entries, matched in stored messages (never shown from here).
+const LOG_TITLES = new Set(['Vanity Action', 'Server Tag Action', '{rule.event_title}', '{event.title}']); // i18n-ignore: matched, not shown
 
 /**
  * A message of the old Vanity bot as a V2 design. `data` is in the shape of Petto's classic templates
  * (`{ content, embeds: [embed], buttons }`). Messages that are still the ones the old bot made by itself
  * (named like its defaults and with their words) become the polished designs above.
  */
-function toV2(name, data) {
+function toV2(name, data, lang = currentLanguage()) {
   const embed = data.embeds?.[0] ?? null;
   const key = /^notify_(vanity_add|vanity_remove|tag_add|tag_remove|error)$/.exec(name)?.[1];
-  if (embed && name === 'vanity_notify' && /gracias por usar el vanity/i.test(embed.description ?? '')) return thanksDesign('vanity');
-  if (embed && name === 'guildtag_notify' && /gracias por usar el tag/i.test(embed.description ?? '')) return thanksDesign('guildtag');
-  if (embed && key && LOG_TITLES.has(embed.title ?? '')) return logDesign(key);
+  if (embed && name === 'vanity_notify' && /gracias por usar el vanity/i.test(embed.description ?? '')) return thanksDesign('vanity', lang);
+  if (embed && name === 'guildtag_notify' && /gracias por usar el tag/i.test(embed.description ?? '')) return thanksDesign('guildtag', lang);
+  if (embed && key && LOG_TITLES.has(embed.title ?? '')) return logDesign(key, lang);
 
   const children = [];
   if (data.content?.trim()) children.push(text(data.content.trim()));

@@ -1,7 +1,8 @@
 const { ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags, PermissionFlagsBits } = require('discord.js');
 const db = require('../db/appeals');
-const { PREFIX, resolveAppeal, staffReply } = require('../utils/appeals');
+const { PREFIX, resolveAppeal, staffReply, liftedText } = require('../utils/appeals');
 const logger = require('../utils/logger');
+const { t, languageOf } = require('../i18n');
 
 const ephemeral = (content) => ({ content, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
 
@@ -13,38 +14,44 @@ function canHandle(member) {
 async function handleButton(interaction) {
   const [, action, submissionId] = interaction.customId.split('::');
   if (!interaction.guild) return;
-  if (!canHandle(interaction.member)) { await interaction.reply(ephemeral('Only the staff who can manage the server or ban members can answer appeals.')); return; }
+  const lang = await languageOf(interaction);
+  if (!canHandle(interaction.member)) { await interaction.reply(ephemeral(t(lang, 'appeals.staff.notAllowed'))); return; }
   if (!['accept', 'reject', 'reply'].includes(action)) return;
   const submission = await db.getSubmission(interaction.guild.id, submissionId).catch(() => null);
-  if (!submission) { await interaction.reply(ephemeral('That appeal no longer exists.')); return; }
-  if (action !== 'reply' && submission.status !== 'pending') { await interaction.reply(ephemeral('This appeal was already answered.')); return; }
+  if (!submission) { await interaction.reply(ephemeral(t(lang, 'appeals.staff.gone'))); return; }
+  if (action !== 'reply' && submission.status !== 'pending') { await interaction.reply(ephemeral(t(lang, 'appeals.staff.alreadyAnswered'))); return; }
   const input = new TextInputBuilder().setCustomId('text').setStyle(TextInputStyle.Paragraph).setRequired(action === 'reply').setMaxLength(1000)
-    .setLabel(action === 'reply' ? 'Message for the member' : 'Reason (optional, the member sees it)');
-  const title = action === 'accept' ? 'Accept this appeal' : action === 'reject' ? 'Reject this appeal' : 'Reply to the member';
+    .setLabel(t(lang, action === 'reply' ? 'appeals.form.messageLabel' : 'appeals.form.reasonLabel'));
+  const title = t(lang, `appeals.form.${action}Title`);
   await interaction.showModal(new ModalBuilder().setCustomId(`${PREFIX}::m-${action}::${submissionId}`).setTitle(title).addComponents(new ActionRowBuilder().addComponents(input)));
 }
 
 async function handleModal(interaction) {
   const [, kind, submissionId] = interaction.customId.split('::');
   const action = String(kind).replace(/^m-/, '');
-  if (!interaction.guild || !canHandle(interaction.member)) { await interaction.reply(ephemeral('You cannot answer appeals here.')); return; }
+  const lang = await languageOf(interaction);
+  if (!interaction.guild || !canHandle(interaction.member)) { await interaction.reply(ephemeral(t(lang, 'appeals.staff.cannotHere'))); return; }
   const submission = await db.getSubmission(interaction.guild.id, submissionId).catch(() => null);
-  if (!submission) { await interaction.reply(ephemeral('That appeal no longer exists.')); return; }
+  if (!submission) { await interaction.reply(ephemeral(t(lang, 'appeals.staff.gone'))); return; }
   const text = interaction.fields.getTextInputValue('text')?.trim() ?? '';
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   try {
     if (action === 'reply') {
       const result = await staffReply({ client: interaction.client, guild: interaction.guild, submission, content: text, moderatorId: interaction.user.id, moderatorName: interaction.member?.displayName ?? interaction.user.username });
-      await interaction.editReply(result.ok ? (result.dm ? 'Sent to the member.' : 'Saved, but the member has DMs closed. They can read it on the appeal site.') : 'Write something first.');
+      await interaction.editReply(t(lang, result.ok ? (result.dm ? 'appeals.staff.replySent' : 'appeals.staff.replySavedNoDm') : 'appeals.staff.replyEmpty'));
       return;
     }
     const result = await resolveAppeal({ client: interaction.client, guild: interaction.guild, submission, status: action === 'accept' ? 'accepted' : 'rejected', moderatorId: interaction.user.id, moderatorName: `<@${interaction.user.id}>`, reason: text });
-    if (!result.ok) { await interaction.editReply(result.error === 'already_resolved' ? 'Someone answered this appeal first.' : 'That could not be done.'); return; }
-    const notes = [action === 'accept' ? 'Appeal accepted.' : 'Appeal rejected.', result.lifted?.length ? `Lifted: ${result.lifted.join(', ')}.` : null, result.dm ? null : 'The member has DMs closed; they can see the answer on the appeal site.'].filter(Boolean);
+    if (!result.ok) { await interaction.editReply(t(lang, result.error === 'already_resolved' ? 'appeals.staff.answeredFirst' : 'appeals.staff.failed')); return; }
+    const notes = [
+      t(lang, action === 'accept' ? 'appeals.staff.accepted' : 'appeals.staff.rejected'),
+      result.lifted?.length ? t(lang, 'appeals.staff.lifted', { lifted: liftedText(result.lifted, lang) }) : null,
+      result.dm ? null : t(lang, 'appeals.staff.noDm'),
+    ].filter(Boolean);
     await interaction.editReply(notes.join(' '));
   } catch (err) {
     logger.error('Appeals interaction failed:', err);
-    await interaction.editReply('Something went wrong. Try again.').catch(() => {});
+    await interaction.editReply(t(lang, 'appeals.staff.error')).catch(() => {});
   }
 }
 

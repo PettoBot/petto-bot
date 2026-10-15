@@ -9,11 +9,11 @@ const {
   TextInputStyle,
 } = require('discord.js');
 const { getConfig } = require('../db/report');
-const { REPORT_CATEGORIES, DEFAULT_CATEGORY } = require('../utils/reportCategories');
+const { DEFAULT_CATEGORY, categoryLabel, categoryOptions } = require('../utils/reportCategories');
 const { submitReport } = require('../utils/reportService');
 const { infoPayload, noticePayload } = require('../utils/infoCard');
-const { categoryLabel } = require('../utils/reportCategories');
 const { COLORS } = require('../utils/colors');
+const { t, languageOf, currentLanguage } = require('../i18n');
 
 const MESSAGE_MODAL_PREFIX = 'rp_msg::';
 const USER_MODAL_PREFIX = 'rp_usr::';
@@ -22,10 +22,10 @@ const USER_MODAL_PREFIX = 'rp_usr::';
  * The form shared by "Report Message" and "Report User": what kind of problem it is, optional context, and the
  * ping and anonymous switches the server has turned on.
  */
-function buildReportModal({ customId, title, intro, config }) {
+function buildReportModal({ customId, title, intro, config, lang = currentLanguage() }) {
   const contextInput = new TextInputBuilder()
     .setCustomId('context')
-    .setPlaceholder('Why are you reporting this?')
+    .setPlaceholder(t(lang, 'reports.form.contextPlaceholder'))
     .setStyle(TextInputStyle.Paragraph)
     .setRequired(config.require_reason === true)
     .setMaxLength(500);
@@ -36,50 +36,50 @@ function buildReportModal({ customId, title, intro, config }) {
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(intro))
     .addLabelComponents(
       new LabelBuilder()
-        .setLabel('What is happening?')
-        .setDescription('Pick the closest match so staff can act faster.')
+        .setLabel(t(lang, 'reports.form.categoryLabel'))
+        .setDescription(t(lang, 'reports.form.categoryHelp'))
         .setStringSelectMenuComponent(
           new StringSelectMenuBuilder()
             .setCustomId('report_category')
-            .setPlaceholder('Choose a category')
+            .setPlaceholder(t(lang, 'reports.form.category.menu'))
             .setMinValues(1)
             .setMaxValues(1)
-            .addOptions(REPORT_CATEGORIES.map((category) => ({ label: category.label, value: category.value, description: category.description, default: category.value === DEFAULT_CATEGORY }))),
+            .addOptions(categoryOptions(lang).map((category) => ({ ...category, default: category.value === DEFAULT_CATEGORY }))),
         ),
       new LabelBuilder()
-        .setLabel('Additional Context')
-        .setDescription(config.require_reason ? 'Required by this server' : 'Anything the moderators should know (optional)')
+        .setLabel(t(lang, 'reports.form.contextLabel'))
+        .setDescription(t(lang, config.require_reason ? 'reports.form.contextRequired' : 'reports.form.contextOptional'))
         .setTextInputComponent(contextInput),
     );
 
   const extras = [];
   if (config.urgent_role_id) {
-    extras.push(new LabelBuilder().setLabel('Ping Moderators').setDescription('Urgently notify the mod role (use wisely)').setCheckboxComponent(new CheckboxBuilder().setCustomId('report_ping')));
+    extras.push(new LabelBuilder().setLabel(t(lang, 'reports.form.pingLabel')).setDescription(t(lang, 'reports.form.pingHelp')).setCheckboxComponent(new CheckboxBuilder().setCustomId('report_ping')));
   }
   if (config.anonymous_reporting_enabled) {
-    extras.push(new LabelBuilder().setLabel('Report Anonymously').setDescription('Your name won’t be shown in the report').setCheckboxComponent(new CheckboxBuilder().setCustomId('report_anonymous')));
+    extras.push(new LabelBuilder().setLabel(t(lang, 'reports.form.anonymousLabel')).setDescription(t(lang, 'reports.form.anonymousHelp')).setCheckboxComponent(new CheckboxBuilder().setCustomId('report_anonymous')));
   }
   if (extras.length) modal.addLabelComponents(...extras);
   return modal;
 }
 
 /** Confirmation shown only to the reporter. */
-function buildReceipt(result, config) {
+function buildReceipt(result, config, lang = currentLanguage()) {
   const { report } = result;
   return {
     ...infoPayload({
       accent: COLORS.GREEN,
-      title: `Report #${report.report_number} sent`,
-      subtitle: [`${categoryLabel(report.category)} · the staff team will review it.`],
+      title: t(lang, 'reports.receipt.title', { number: report.report_number }),
+      subtitle: [t(lang, 'reports.receipt.subtitle', { category: categoryLabel(report.category, lang) })],
       sections: [
         {
           lines: [
-            config.notify_reporter === false ? null : 'You will get a DM when staff close this report, if your DMs are open.',
-            report.anonymous ? 'Your name is hidden from the report.' : null,
+            config.notify_reporter === false ? null : t(lang, 'reports.receipt.dmNotice'),
+            report.anonymous ? t(lang, 'reports.receipt.anonymous') : null,
           ],
         },
       ],
-      footer: 'Thank you for helping keep the server safe.',
+      footer: t(lang, 'reports.dm.thanks'),
     }),
     flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
   };
@@ -103,6 +103,7 @@ function readOptionalCheckbox(fields, customId) {
 
 /** Handles the submitted form (customId `rp_msg::<messageId>` or `rp_usr::<userId>`). */
 async function handleModal(interaction) {
+  const lang = await languageOf(interaction);
   const isMessage = interaction.customId.startsWith(MESSAGE_MODAL_PREFIX);
   const targetId = interaction.customId.slice((isMessage ? MESSAGE_MODAL_PREFIX : USER_MODAL_PREFIX).length);
 
@@ -110,7 +111,7 @@ async function handleModal(interaction) {
 
   const config = await getConfig(interaction.guild.id).catch(() => null);
   if (!config?.enabled || !config.channel_id) {
-    await interaction.editReply(noticePayload('Reports are not set up on this server yet.', COLORS.RED));
+    await interaction.editReply(noticePayload(t(lang, 'reports.send.notSetUp'), COLORS.RED));
     return;
   }
 
@@ -119,14 +120,14 @@ async function handleModal(interaction) {
   if (isMessage) {
     message = await interaction.channel.messages.fetch(targetId).catch(() => null);
     if (!message) {
-      await interaction.editReply(noticePayload('That message is no longer available to report.', COLORS.RED));
+      await interaction.editReply(noticePayload(t(lang, 'reports.form.messageGone'), COLORS.RED));
       return;
     }
     reportedUser = message.author;
   } else {
     reportedUser = await interaction.client.users.fetch(targetId).catch(() => null);
     if (!reportedUser) {
-      await interaction.editReply(noticePayload('That user could not be found.', COLORS.RED));
+      await interaction.editReply(noticePayload(t(lang, 'reports.form.userGone'), COLORS.RED));
       return;
     }
   }
@@ -142,9 +143,10 @@ async function handleModal(interaction) {
     message,
     urgent: readOptionalCheckbox(interaction.fields, 'report_ping'),
     anonymous: readOptionalCheckbox(interaction.fields, 'report_anonymous'),
+    lang,
   });
 
-  await interaction.editReply(result.ok ? buildReceipt(result, config) : noticePayload(result.message, COLORS.RED));
+  await interaction.editReply(result.ok ? buildReceipt(result, config, lang) : noticePayload(result.message, COLORS.RED));
 }
 
 module.exports = { MESSAGE_MODAL_PREFIX, USER_MODAL_PREFIX, buildReportModal, buildReceipt, handleModal, readOptionalCheckbox };

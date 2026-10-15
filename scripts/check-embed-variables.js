@@ -68,5 +68,16 @@ if (problems.length) {
   assert.equal(await resolve('{user.mention}|{ User.Mention }|{USER_MENTION}|{mention}', ctx), '<@42>|<@42>|<@42>|<@42>');
   assert.equal(await resolve('{level.rank}/{level.total} {level.role_name} {level_role}', ctx), '3/20 Gold <@&7>');
   assert.equal(await resolve('{not.a.variable} stays', ctx), '{not.a.variable} stays', 'an unknown variable is left as it was');
+  // The words Petto itself puts in a variable follow the server language; the list for the dashboard keeps its tokens in every language.
+  const bot = { ...user, bot: true };
+  assert.equal(await resolve('{user.bot}', { user: bot }), 'Yes');
+  assert.equal(await resolve('{user.bot}', { user: bot, lang: 'es' }), 'Sí');
+  assert.equal(await resolve('{user.bot} {inviter}', { user: bot, lang: 'pt-BR' }), 'Sim Desconhecido');
+  const { listVariables } = require('../src/utils/embedVariableRegistry');
+  const spanish = listVariables('es');
+  assert.deepEqual(spanish.map((group) => group.vars.map((variable) => variable.tok)), VARIABLE_GROUPS.map((group) => group.vars.map((variable) => variable.tok)), 'the tokens never change');
+  assert.equal(spanish.find((group) => group.id === 'user').vars[0].desc, 'Menciona al usuario');
+  assert.ok(spanish.flatMap((group) => group.vars).every((variable) => variable.desc && !variable.desc.startsWith('embeds.')), 'every variable has a description');
+  assert.deepEqual(listVariables(), VARIABLE_GROUPS, 'outside of a command the list is the English one');
   console.log(`Checked ${listed.length} embed variables against the engine.`);
 })();

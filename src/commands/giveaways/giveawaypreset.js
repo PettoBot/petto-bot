@@ -5,6 +5,7 @@ const presetsDb = require('../../db/giveawayPresets');
 const { formatDuration } = require('../../utils/duration');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { t, tn, languageOf } = require('../../i18n');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -53,64 +54,72 @@ module.exports = {
   aliases: ['gwp'],
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const sub = interaction.options.getSubcommand();
-    if (sub === 'create') return createCmd(interaction);
-    if (sub === 'view') return viewCmd(interaction);
-    if (sub === 'remove') return removeCmd(interaction);
-    if (sub === 'add-role') return addRoleCmd(interaction);
-    if (sub === 'add-level') return addLevelCmd(interaction);
-    if (sub === 'require-level') return requireLevelCmd(interaction);
-    return removeRoleCmd(interaction);
+    if (sub === 'create') return createCmd(interaction, lang);
+    if (sub === 'view') return viewCmd(interaction, lang);
+    if (sub === 'remove') return removeCmd(interaction, lang);
+    if (sub === 'add-role') return addRoleCmd(interaction, lang);
+    if (sub === 'add-level') return addLevelCmd(interaction, lang);
+    if (sub === 'require-level') return requireLevelCmd(interaction, lang);
+    return removeRoleCmd(interaction, lang);
   },
 };
 
-async function createCmd(interaction) {
+async function createCmd(interaction, lang) {
   const name = interaction.options.getString('name', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
 
   const existing = await presetsDb.getPreset(interaction.guild.id, name);
   if (existing) {
-    await interaction.editReply({ components: [textCard('A preset with that name already exists.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'giveaways.preset.exists'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const preset = await presetsDb.createPreset(interaction.guild.id, name);
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Preset **${preset.name}** created. Add roles with \`giveawaypreset add-role\`.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'giveaways.preset.created', { emoji: EMOJI.APPROVE, name: preset.name }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
-async function viewCmd(interaction) {
+async function viewCmd(interaction, lang) {
   const name = interaction.options.getString('name', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const preset = await presetsDb.getPreset(interaction.guild.id, name);
   if (!preset) {
-    await interaction.editReply({ components: [textCard("That preset doesn't exist.", 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'giveaways.preset.notFound'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const [roles, levels] = await Promise.all([presetsDb.listRoles(preset.id), presetsDb.listLevels(preset.id)]);
-  const lines = roles.map(
-    (r) =>
-      `<@&${r.role_id}> — **${r.entries}** entries${r.entries_stack ? ' (stacks)' : ''}, ${r.claim_time_ms ? formatDuration(r.claim_time_ms) : 'no'} claim time${r.claim_time_stack ? ' (stacks)' : ''}`,
-  );
-  for (const step of levels) lines.push(`${step.source === 'voice' ? 'Voice level' : 'Level'} **${step.level}+** — **${step.entries}** extra entries`);
-  if (preset.min_level) lines.push(`Needs message level **${preset.min_level}** to enter`);
-  if (preset.min_voice_level) lines.push(`Needs voice level **${preset.min_voice_level}** to enter`);
-  if (!lines.length) lines.push('Nothing configured yet.');
+  const lines = roles.map((r) => {
+    const entries = tn(lang, r.entries_stack ? 'giveaways.preset.view.entriesStack' : 'giveaways.preset.view.entries', r.entries, { count: r.entries });
+    const duration = r.claim_time_ms ? formatDuration(r.claim_time_ms, lang) : null;
+    const claim = duration
+      ? t(lang, r.claim_time_stack ? 'giveaways.preset.view.claimStack' : 'giveaways.preset.view.claim', { duration })
+      : t(lang, r.claim_time_stack ? 'giveaways.preset.view.noClaimStack' : 'giveaways.preset.view.noClaim');
+    return t(lang, 'giveaways.preset.view.roleLine', { role: `<@&${r.role_id}>`, entries, claim });
+  });
+  for (const step of levels) {
+    const vars = { count: step.entries, level: step.level };
+    lines.push(step.source === 'voice' ? tn(lang, 'giveaways.preset.view.voiceLevel', step.entries, vars) : tn(lang, 'giveaways.preset.view.level', step.entries, vars));
+  }
+  if (preset.min_level) lines.push(t(lang, 'giveaways.preset.view.minLevel', { level: preset.min_level }));
+  if (preset.min_voice_level) lines.push(t(lang, 'giveaways.preset.view.minVoiceLevel', { level: preset.min_voice_level }));
+  if (!lines.length) lines.push(t(lang, 'giveaways.preset.view.empty'));
 
-  await interaction.editReply({ components: [textCard(`**Preset: ${preset.name}**\n${lines.join('\n')}`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard([t(lang, 'giveaways.preset.view.title', { name: preset.name }), ...lines].join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
-async function removeCmd(interaction) {
+async function removeCmd(interaction, lang) {
   const name = interaction.options.getString('name', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const removed = await presetsDb.removePreset(interaction.guild.id, name);
-  await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  Preset removed.` : "That preset doesn't exist.", removed ? 0xa5ea7a : 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(removed ? t(lang, 'giveaways.preset.removed', { emoji: EMOJI.APPROVE }) : t(lang, 'giveaways.preset.notFound'), removed ? 0xa5ea7a : 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
 }
 
-async function addRoleCmd(interaction) {
+async function addRoleCmd(interaction, lang) {
   const name = interaction.options.getString('name', true);
   const role = interaction.options.getRole('role', true);
   const claimTimeStr = interaction.options.getString('claim_time');
@@ -122,7 +131,7 @@ async function addRoleCmd(interaction) {
   if (claimTimeStr) {
     claimTimeMs = parseLength(claimTimeStr);
     if (typeof claimTimeMs !== 'number' || Number.isNaN(claimTimeMs) || claimTimeMs <= 0) {
-      await interaction.reply({ content: 'Provide a valid claim time, e.g. `5m`, `1h`.', flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: t(lang, 'giveaways.invalidClaimTime'), flags: MessageFlags.Ephemeral });
       return;
     }
   }
@@ -130,33 +139,35 @@ async function addRoleCmd(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const preset = await presetsDb.getPreset(interaction.guild.id, name);
   if (!preset) {
-    await interaction.editReply({ components: [textCard("That preset doesn't exist.", 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'giveaways.preset.notFound'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   await presetsDb.upsertRole(preset.id, role.id, { claimTimeMs, entries, claimTimeStack, entriesStack });
   await interaction.editReply({
-    components: [textCard(`${EMOJI.APPROVE}  ${role} now grants **${entries}** entries${claimTimeMs ? ` and ${formatDuration(claimTimeMs)} claim time` : ''} in **${preset.name}**.`, 0xa5ea7a)],
+    components: [textCard(claimTimeMs
+      ? tn(lang, 'giveaways.preset.roleSetClaim', entries, { count: entries, emoji: EMOJI.APPROVE, role: `${role}`, duration: formatDuration(claimTimeMs, lang), name: preset.name })
+      : tn(lang, 'giveaways.preset.roleSet', entries, { count: entries, emoji: EMOJI.APPROVE, role: `${role}`, name: preset.name }), 0xa5ea7a)],
     flags: MessageFlags.IsComponentsV2,
   });
 }
 
-async function removeRoleCmd(interaction) {
+async function removeRoleCmd(interaction, lang) {
   const name = interaction.options.getString('name', true);
   const role = interaction.options.getRole('role', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const preset = await presetsDb.getPreset(interaction.guild.id, name);
   if (!preset) {
-    await interaction.editReply({ components: [textCard("That preset doesn't exist.", 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'giveaways.preset.notFound'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const removed = await presetsDb.removeRole(preset.id, role.id);
-  await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  Removed ${role} from **${preset.name}**.` : 'That role was not in the preset.', removed ? 0xa5ea7a : 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(removed ? t(lang, 'giveaways.preset.roleRemoved', { emoji: EMOJI.APPROVE, role: `${role}`, name: preset.name }) : t(lang, 'giveaways.preset.roleNotIn'), removed ? 0xa5ea7a : 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
 }
 
-async function addLevelCmd(interaction) {
+async function addLevelCmd(interaction, lang) {
   const name = interaction.options.getString('name', true);
   const level = interaction.options.getInteger('level', true);
   const entries = interaction.options.getInteger('entries', true);
@@ -164,35 +175,44 @@ async function addLevelCmd(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const preset = await presetsDb.getPreset(interaction.guild.id, name);
   if (!preset) {
-    await interaction.editReply({ components: [textCard("That preset doesn't exist.", 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'giveaways.preset.notFound'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
-  const label = type === 'voice' ? 'voice level' : 'level';
+  const voice = type === 'voice';
   if (entries === 0) {
     const removed = await presetsDb.removeLevel(preset.id, type, level);
-    await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  Removed the bonus of ${label} ${level} from **${preset.name}**.` : `**${preset.name}** had no bonus at ${label} ${level}.`, removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    const text = removed
+      ? t(lang, voice ? 'giveaways.preset.voiceLevelRemoved' : 'giveaways.preset.levelRemoved', { emoji: EMOJI.APPROVE, level, name: preset.name })
+      : t(lang, voice ? 'giveaways.preset.voiceLevelNone' : 'giveaways.preset.levelNone', { level, name: preset.name });
+    await interaction.editReply({ components: [textCard(text, removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
   const existing = await presetsDb.listLevels(preset.id);
   if (existing.length >= 25 && !existing.some((step) => step.source === type && step.level === level)) {
-    await interaction.editReply({ components: [textCard('A preset can have 25 level bonuses. Remove one first.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'giveaways.preset.levelLimit'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
   await presetsDb.upsertLevel(preset.id, type, level, entries);
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  From ${label} **${level}**, members get **${entries}** extra entries in **${preset.name}**. Only the best step a member has reached counts.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  const vars = { count: entries, emoji: EMOJI.APPROVE, level, name: preset.name };
+  const text = voice ? tn(lang, 'giveaways.preset.voiceLevelSet', entries, vars) : tn(lang, 'giveaways.preset.levelSet', entries, vars);
+  await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
-async function requireLevelCmd(interaction) {
+async function requireLevelCmd(interaction, lang) {
   const name = interaction.options.getString('name', true);
   const level = interaction.options.getInteger('level');
   const voiceLevel = interaction.options.getInteger('voice_level');
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const preset = await presetsDb.getPreset(interaction.guild.id, name);
   if (!preset) {
-    await interaction.editReply({ components: [textCard("That preset doesn't exist.", 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'giveaways.preset.notFound'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
   const updated = await presetsDb.setRequirements(preset.id, { minLevel: level, minVoiceLevel: voiceLevel });
-  const asks = [updated.min_level ? `message level **${updated.min_level}**` : null, updated.min_voice_level ? `voice level **${updated.min_voice_level}**` : null].filter(Boolean);
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  **${updated.name}** ${asks.length ? `asks for ${asks.join(' and ')} to enter` : 'asks for no level'}.${asks.length ? ' Leveling has to be on for members to have a level.' : ''}`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  const vars = { emoji: EMOJI.APPROVE, name: updated.name, level: updated.min_level, voiceLevel: updated.min_voice_level };
+  const key = updated.min_level && updated.min_voice_level ? 'giveaways.preset.require.both'
+    : updated.min_level ? 'giveaways.preset.require.message'
+      : updated.min_voice_level ? 'giveaways.preset.require.voice'
+        : 'giveaways.preset.require.none';
+  await interaction.editReply({ components: [textCard(t(lang, key, vars), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }

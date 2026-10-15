@@ -4,6 +4,7 @@ const logger = require('../utils/logger');
 const config = require('../config');
 const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency');
 const { renderName, shouldRename } = require('../utils/counterNames');
+const { t, currentLanguage, guildLanguage } = require('../i18n');
 
 const INTERVAL_MS = 60_000;
 const RENAME_TIMEOUT_MS = 15_000;
@@ -21,10 +22,10 @@ const lastWantedName = new Map();
 const lastStoredName = new Map();
 const lastWarnAt = new Map();
 
-function countGuild(guild, option) {
+function countGuild(guild, option, lang = currentLanguage()) {
   if (/^\d{10}$/.test(option)) {
     let seconds = Number(option) - Math.floor(Date.now() / 1000);
-    return seconds > 0 ? formatDuration(seconds) : 'now';
+    return seconds > 0 ? formatDuration(seconds) : t(lang, 'counters.value.now');
   }
   const channels = guild.channels.cache;
   const members = guild.members.cache;
@@ -57,6 +58,7 @@ function formatDuration(seconds) {
 
 function withTimeout(promise, ms, label) {
   let timer;
+  // i18n-ignore: internal error, only logged
   const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms / 1000}s`)), ms); });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
@@ -77,8 +79,9 @@ async function ensureMembers(guild, option) {
   if (Date.now() - last < MEMBER_REFRESH_MS) return;
   memberFetchedAt.set(guild.id, Date.now());
   try {
-    await withTimeout(guild.members.fetch(), MEMBER_FETCH_TIMEOUT_MS, 'member fetch');
+    await withTimeout(guild.members.fetch(), MEMBER_FETCH_TIMEOUT_MS, 'member fetch'); // i18n-ignore: log label
   } catch (err) {
+    // i18n-ignore: log
     warnOnce(`members:${guild.id}`, { guildId: guild.id, action: 'counter-members' }, `Could not load every member for counters, using the cached ones: ${err.message}`);
   }
 }
@@ -93,13 +96,15 @@ async function updateCounters(client) {
   await forEachWithConcurrency(grouped, async ([guildId, guildRows]) => {
     const guild = client.guilds.cache.get(guildId);
     if (!guild) return;
+    // Jobs run outside any server's language: the names are written in the language of each server.
+    const lang = await guildLanguage(guildId);
     for (const row of guildRows) {
       if (!row.enabled) continue;
       if (row.last_updated_at && Date.now() - Date.parse(row.last_updated_at) < (row.interval_seconds ?? 60) * 1000) continue;
       const channel = guild.channels.cache.get(row.channel_id);
       if (!channel) { await countersDb.remove(guildId, row.channel_id).catch(() => {}); continue; }
       await ensureMembers(guild, row.counter_option);
-      const name = renderName(row, countGuild(guild, row.counter_option));
+      const name = renderName(row, countGuild(guild, row.counter_option, lang), lang);
       const wanted = shouldRename({
         currentName: channel.name,
         wantedName: name,
@@ -111,12 +116,13 @@ async function updateCounters(client) {
       });
       if (wanted) {
         try {
-          const renamed = await withTimeout(channel.setName(name, 'Update Petto counter'), RENAME_TIMEOUT_MS, 'channel rename');
+          const renamed = await withTimeout(channel.setName(name, t(lang, 'counters.renameReason')), RENAME_TIMEOUT_MS, 'channel rename'); // i18n-ignore: 'channel rename' is a log label
           lastRenamedAt.set(channel.id, Date.now());
           lastWantedName.set(channel.id, name);
           lastStoredName.set(channel.id, renamed?.name ?? name);
         } catch (err) {
           // Usually a missing Manage Channels permission or a rename limit. Say so instead of staying silent.
+          // i18n-ignore: log
           warnOnce(`rename:${channel.id}`, { guildId, channelId: channel.id, action: 'counter-rename' }, `Could not update counter channel: ${err.message}`);
         }
       }

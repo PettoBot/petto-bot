@@ -57,7 +57,7 @@ function channelOptions(data, parentId, permissionOverwrites, reason, includeTyp
 
 function normaliseSnapshot(snapshot) {
   if (!snapshot || snapshot.format !== 'petto-server-backup' || !Array.isArray(snapshot.roles) || !Array.isArray(snapshot.channels)) {
-    const error = new Error('Invalid or unsupported Petto backup format.');
+    const error = new Error('Invalid or unsupported Petto backup format.'); // i18n-ignore: internal error, never shown
     error.code = 'invalid_backup';
     throw error;
   }
@@ -69,11 +69,11 @@ function normaliseSnapshot(snapshot) {
  * Merge creates or updates resources without deleting anything. Replace also
  * removes user-created channels and roles that are not present in the snapshot.
  */
-async function restoreBackup(guild, rawSnapshot, { mode = 'merge', reason = 'Petto backup restore' } = {}) {
+async function restoreBackup(guild, rawSnapshot, { mode = 'merge', reason = 'Petto backup restore' } = {}) { // i18n-ignore: default only, callers pass a translated reason
   const snapshot = normaliseSnapshot(rawSnapshot);
   const replace = mode === 'replace';
   if (!['merge', 'replace'].includes(mode)) {
-    const error = new Error('Restore mode must be merge or replace.');
+    const error = new Error('Restore mode must be merge or replace.'); // i18n-ignore: internal error, never shown
     error.code = 'invalid_mode';
     throw error;
   }
@@ -129,7 +129,7 @@ async function restoreBackup(guild, rawSnapshot, { mode = 'merge', reason = 'Pet
       .filter((entry) => entry.role && entry.role !== String(guild.id));
     if (positions.length) await guild.roles.setPositions(positions, { reason });
   } catch (error) {
-    result.errors.push(`role_positions: ${error.message}`);
+    result.errors.push(`role_positions: ${error.message}`); // i18n-ignore: technical step name and Discord's own error text
   }
 
   const channelMap = new Map();
@@ -174,7 +174,7 @@ async function restoreBackup(guild, rawSnapshot, { mode = 'merge', reason = 'Pet
   try {
     if (Object.keys(guildEdit).length) await guild.edit({ ...guildEdit, reason });
   } catch (error) {
-    result.errors.push(`guild_settings: ${error.message}`);
+    result.errors.push(`guild_settings: ${error.message}`); // i18n-ignore: technical step name and Discord's own error text
   }
 
   for (const data of snapshot.emojis ?? []) {
@@ -203,7 +203,7 @@ async function restoreBackup(guild, rawSnapshot, { mode = 'merge', reason = 'Pet
         await channel.delete(reason);
         result.deleted.channels++;
       } catch (error) {
-        result.errors.push(`delete_channel:${channel.name}: ${error.message}`);
+        result.errors.push(`delete_channel:${channel.name}: ${error.message}`); // i18n-ignore: technical step name and Discord's own error text
       }
     }
     for (const role of [...guild.roles.cache.values()]) {
@@ -212,7 +212,7 @@ async function restoreBackup(guild, rawSnapshot, { mode = 'merge', reason = 'Pet
         await role.delete(reason);
         result.deleted.roles++;
       } catch (error) {
-        result.errors.push(`delete_role:${role.name}: ${error.message}`);
+        result.errors.push(`delete_role:${role.name}: ${error.message}`); // i18n-ignore: technical step name and Discord's own error text
       }
     }
   }

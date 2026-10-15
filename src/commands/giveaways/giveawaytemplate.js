@@ -7,6 +7,7 @@ const presetsDb = require('../../db/giveawayPresets');
 const embedTemplatesDb = require('../../db/embedTemplates');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { t, tn, languageOf } = require('../../i18n');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -34,22 +35,25 @@ module.exports = {
   aliases: ['gwt'],
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const sub = interaction.options.getSubcommand();
-    if (sub === 'list') return listCmd(interaction);
-    if (sub === 'create') return saveCmd(interaction, false);
-    if (sub === 'edit') return saveCmd(interaction, true);
-    return removeCmd(interaction);
+    if (sub === 'list') return listCmd(interaction, lang);
+    if (sub === 'create') return saveCmd(interaction, false, lang);
+    if (sub === 'edit') return saveCmd(interaction, true, lang);
+    return removeCmd(interaction, lang);
   },
 };
 
-async function listCmd(interaction) {
+async function listCmd(interaction, lang) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const templates = await templatesDb.listTemplates(interaction.guild.id);
-  const text = templates.length ? templates.map((t) => `\`${t.name}\` — **${t.data.prize}**, ${t.data.winners} winner(s)`).join('\n') : 'No giveaway templates saved.';
+  const text = templates.length
+    ? templates.map((row) => tn(lang, 'giveaways.template.listLine', row.data.winners, { count: row.data.winners, name: row.name, prize: row.data.prize })).join('\n')
+    : t(lang, 'giveaways.template.none');
   await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }
 
-async function saveCmd(interaction, isEdit) {
+async function saveCmd(interaction, isEdit, lang) {
   const name = interaction.options.getString('name', true);
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
@@ -59,7 +63,7 @@ async function saveCmd(interaction, isEdit) {
   if (isEdit) {
     const existing = await templatesDb.getTemplate(interaction.guild.id, name);
     if (!existing) {
-      await interaction.editReply({ components: [textCard("That template doesn't exist. Use `giveawaytemplate create` first.", 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'giveaways.template.editMissing'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
     base = existing.data;
@@ -76,7 +80,7 @@ async function saveCmd(interaction, isEdit) {
   const entryMode = interaction.options.getString('entry_mode') ?? base.entryMode ?? 'button';
 
   if (!prize || !winners || !durationMs || typeof durationMs !== 'number' || Number.isNaN(durationMs)) {
-    await interaction.editReply({ components: [textCard('Provide at least `prize`, `winners`, and a valid `duration` (e.g. `10m`).', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'giveaways.template.needFields'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -84,7 +88,7 @@ async function saveCmd(interaction, isEdit) {
   if (presetName) {
     const preset = await presetsDb.getPreset(interaction.guild.id, presetName);
     if (!preset) {
-      await interaction.editReply({ components: [textCard(`Preset \`${presetName}\` doesn't exist.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'giveaways.presetMissing', { name: presetName }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
     presetId = preset.id;
@@ -94,7 +98,7 @@ async function saveCmd(interaction, isEdit) {
     const embedDoc = await embedTemplatesDb.getTemplate(interaction.guild.id, embedTemplate);
     if (!embedDoc) {
       await interaction.editReply({
-        components: [textCard(`Saved embed \`${embedTemplate}\` doesn't exist. Create it first with \`${commandRef(interaction, `embed create ${embedTemplate}`)}\`.`, 0xfe6465)],
+        components: [textCard(t(lang, 'giveaways.embedMissing', { name: embedTemplate, command: commandRef(interaction, `embed create ${embedTemplate}`) }), 0xfe6465)],
         flags: MessageFlags.IsComponentsV2,
       });
       return;
@@ -113,12 +117,12 @@ async function saveCmd(interaction, isEdit) {
   };
 
   const saved = await templatesDb.upsertTemplate(interaction.guild.id, name, data);
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Template **${saved.name}** saved.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'giveaways.template.saved', { emoji: EMOJI.APPROVE, name: saved.name }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
-async function removeCmd(interaction) {
+async function removeCmd(interaction, lang) {
   const name = interaction.options.getString('name', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const removed = await templatesDb.deleteTemplate(interaction.guild.id, name);
-  await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  Template removed.` : "That template doesn't exist.", removed ? 0xa5ea7a : 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(removed ? t(lang, 'giveaways.template.removed', { emoji: EMOJI.APPROVE }) : t(lang, 'giveaways.template.notFound'), removed ? 0xa5ea7a : 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
 }

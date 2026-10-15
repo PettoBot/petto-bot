@@ -1,3 +1,4 @@
+// i18n-ignore-file: Premium list for the Petto team channel.
 // When Petto starts it lists the Premium that is active in the channel of the team (PETTO_PREMIUM_LOG_CHANNEL_ID), so the team can see
 // that the subscriptions that Polar reported reached the database. It does nothing when the channel is not set.
 const { MessageFlags } = require('discord.js');

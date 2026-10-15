@@ -1,3 +1,4 @@
+// i18n-ignore-file: error log for the Petto team channel.
 const { EmbedBuilder } = require('discord.js');
 const { EMOJI } = require('./emojis');
 

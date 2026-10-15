@@ -4,6 +4,7 @@ const actions = require('./ticketActions');
 const logger = require('./logger');
 const config = require('../config');
 const { forEachWithConcurrency } = require('./concurrency');
+const { t, guildLanguage } = require('../i18n');
 
 /** Closes every open ticket, in every guild with autoclose-by-inactivity on, whose last message is older than that guild's configured threshold. */
 async function checkTicketAutoclose(client) {
@@ -22,6 +23,8 @@ async function checkTicketAutoclose(client) {
       return;
     }
 
+    // Jobs run outside any server: the close reason is written in the language of this server.
+    const lang = await guildLanguage(guild.id);
     for (const ticket of openTickets) {
       if (!ticket.channel_id) continue;
       if (new Date(ticket.last_activity_at).getTime() > cutoff) continue;
@@ -30,7 +33,7 @@ async function checkTicketAutoclose(client) {
       if (!channel) continue;
 
       await actions
-        .closeTicket({ guild, client, channel, ticket, actor: client.user, reason: `Automatically closed after ${settings.autoclose_inactivity_hours}h of inactivity.` })
+        .closeTicket({ guild, client, channel, ticket, actor: client.user, reason: t(lang, 'tickets.autoclose.inactivity', { hours: settings.autoclose_inactivity_hours }) })
         .catch((err) => logger.error(`Ticket #${ticket.ticket_number}: inactivity autoclose failed:`, err));
     }
   }, config.jobConcurrency);

@@ -2,6 +2,7 @@ const { isPermissionError } = require('../utils/permissionErrors');
 const fs = require('fs');
 const path = require('path');
 const logger = require('../utils/logger');
+const { guildLanguage, languageFromLocale, runWithLanguage } = require('../i18n');
 
 const EVENTS_DIR = path.join(__dirname, '..', 'events');
 
@@ -19,6 +20,13 @@ function eventContext(eventName, args) {
     command: commandName ? `/${commandName}` : null,
     source: eventName,
   };
+}
+
+/** The language an event runs in: its server's, or the Discord language of the user for an interaction outside a server. */
+function eventLanguage(guildId, args) {
+  if (guildId) return guildLanguage(guildId);
+  const locale = args.find((value) => value && typeof value === 'object' && typeof value.locale === 'string')?.locale;
+  return Promise.resolve(languageFromLocale(locale));
 }
 
 /**
@@ -47,8 +55,9 @@ function loadEvents(client) {
 
     const invoke = (...args) => {
       const context = eventContext(event.name, args);
-      logger.runWithContext(context, () => Promise.resolve()
-        .then(() => event.execute(...args, client))
+      // Each event runs inside the language of its server, so what it sends follows `!language` (see src/i18n).
+      logger.runWithContext(context, () => eventLanguage(context.guildId, args)
+        .then((lang) => runWithLanguage(lang, () => event.execute(...args, client)))
         .catch((err) => (isPermissionError(err)
           ? logger.warn(`Missing permission in [event:${event.name}] (${file}): ${err.message} (code ${err.code})`)
           : logger.error(`[event:${event.name}] Handler failed (${file}):`, err))));

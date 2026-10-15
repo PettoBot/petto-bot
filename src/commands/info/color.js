@@ -1,6 +1,7 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { infoPayload, noticePayload, line } = require('../../utils/infoCard');
 const { COLORS } = require('../../utils/colors');
+const { t, languageOf } = require('../../i18n');
 
 function toHsl(r, g, b) {
   const rn = r / 255;
@@ -27,11 +28,12 @@ module.exports = {
     .addStringOption((o) => o.setName('hex').setDescription('e.g. #ff91c2 or ff91c2').setRequired(true)),
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const input = interaction.options.getString('hex', true).replace('#', '').trim();
     const num = parseInt(input, 16);
 
     if (!/^[0-9a-f]{1,6}$/i.test(input) || Number.isNaN(num)) {
-      await interaction.reply(noticePayload('Provide a valid hex color, e.g. `#ff91c2`.', COLORS.RED));
+      await interaction.reply(noticePayload(t(lang, 'info.color.invalid'), COLORS.RED));
       return;
     }
 

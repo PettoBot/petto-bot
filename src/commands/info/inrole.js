@@ -1,19 +1,15 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { noticePayload } = require('../../utils/infoCard');
 const { register, sendPager } = require('../../utils/pager');
+const { t, languageOf } = require('../../i18n');
 
-const FILTERS = [
-  { label: 'Everyone with the role', value: 'all' },
-  { label: 'People only', value: 'humans' },
-  { label: 'Bots only', value: 'bots' },
-  { label: 'Newest members first', value: 'newest' },
-];
+const FILTERS = ['all', 'humans', 'bots', 'newest'];
 
 register('inrole', {
   perPage: 20,
-  async load(guild, { option, arg }) {
+  async load(guild, { option, arg, lang }) {
     const role = guild.roles.cache.get(arg);
-    if (!role) return { items: [], title: 'Role', empty: 'That role no longer exists.' };
+    if (!role) return { items: [], title: t(lang, 'info.inrole.role'), empty: t(lang, 'info.inrole.gone') };
     let members = [...role.members.values()];
     if (option === 'humans') members = members.filter((member) => !member.user.bot);
     if (option === 'bots') members = members.filter((member) => member.user.bot);
@@ -23,9 +19,9 @@ register('inrole', {
       subtitle: [`<@&${role.id}>`],
       thumbnail: guild.iconURL({ size: 256 }),
       items: members.map((member) => `<@${member.id}> · ${member.user.username}`),
-      options: FILTERS,
-      placeholder: 'Show…',
-      empty: 'Nobody with that role matches.',
+      options: FILTERS.map((value) => ({ label: t(lang, `info.inrole.filter.${value}.menu`), value })),
+      placeholder: t(lang, 'core.pager.show.menu'),
+      empty: t(lang, 'info.inrole.empty'),
     };
   },
 });
@@ -40,7 +36,7 @@ module.exports = {
   async execute(interaction) {
     const role = interaction.options.getRole('role', true);
     if (role.id === interaction.guild.id) {
-      await interaction.reply(noticePayload('Everyone has @everyone. Pick another role.'));
+      await interaction.reply(noticePayload(t(await languageOf(interaction), 'info.inrole.everyone', { everyone: '@everyone' })));
       return;
     }
     await sendPager(interaction, 'inrole', { arg: role.id });

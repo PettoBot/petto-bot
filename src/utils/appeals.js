@@ -2,6 +2,7 @@ const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, MessageFlags,
 const db = require('../db/appeals');
 const { textCard } = require('./caseCard');
 const logger = require('./logger');
+const { t, guildLanguage, normalizeLanguage, currentLanguage } = require('../i18n');
 
 const PREFIX = 'appeal';
 const LIMITS = { forms: 10, sections: 6, questions: 12, options: 20, label: 200, help: 300, short: 300, paragraph: 1500, number: 20, reply: 1500, greeting: 600 };
@@ -12,25 +13,25 @@ const BLOCKS = { none: 0, day: 86_400_000, week: 7 * 86_400_000, month: 30 * 86_
 // What the members read when the server wrote nothing: in the language the server chose for its appeal page (English when it chose none).
 const DEFAULT_MESSAGES = {
   en: {
-    submitted: 'Your appeal was sent. The staff of {server} will look at it.',
-    accepted: 'Your appeal was accepted. {reason}',
-    rejected: 'Your appeal was rejected. {reason}',
-    reply: 'The staff of {server} wrote to you about your appeal.',
+    submitted: 'Your appeal was sent. The staff of {server} will look at it.', // i18n-ignore: default appeal text, follows the language of the appeal page
+    accepted: 'Your appeal was accepted. {reason}', // i18n-ignore: default appeal text, follows the language of the appeal page
+    rejected: 'Your appeal was rejected. {reason}', // i18n-ignore: default appeal text, follows the language of the appeal page
+    reply: 'The staff of {server} wrote to you about your appeal.', // i18n-ignore: default appeal text, follows the language of the appeal page
   },
   es: {
-    submitted: 'Tu apelación fue enviada. El staff de {server} la revisará.',
-    accepted: 'Tu apelación fue aceptada. {reason}',
-    rejected: 'Tu apelación fue rechazada. {reason}',
-    reply: 'El staff de {server} te escribió sobre tu apelación.',
+    submitted: 'Tu apelación fue enviada. El staff de {server} la revisará.', // i18n-ignore: default appeal text, follows the language of the appeal page
+    accepted: 'Tu apelación fue aceptada. {reason}', // i18n-ignore: default appeal text, follows the language of the appeal page
+    rejected: 'Tu apelación fue rechazada. {reason}', // i18n-ignore: default appeal text, follows the language of the appeal page
+    reply: 'El staff de {server} te escribió sobre tu apelación.', // i18n-ignore: default appeal text, follows the language of the appeal page
   },
   'pt-BR': {
-    submitted: 'Sua apelação foi enviada. A equipe de {server} vai analisá-la.',
-    accepted: 'Sua apelação foi aceita. {reason}',
-    rejected: 'Sua apelação foi recusada. {reason}',
-    reply: 'A equipe de {server} escreveu para você sobre a sua apelação.',
+    submitted: 'Sua apelação foi enviada. A equipe de {server} vai analisá-la.', // i18n-ignore: default appeal text, follows the language of the appeal page
+    accepted: 'Sua apelação foi aceita. {reason}', // i18n-ignore: default appeal text, follows the language of the appeal page
+    rejected: 'Sua apelação foi recusada. {reason}', // i18n-ignore: default appeal text, follows the language of the appeal page
+    reply: 'A equipe de {server} escreveu para você sobre a sua apelação.', // i18n-ignore: default appeal text, follows the language of the appeal page
   },
 };
-const LABELS = { en: { rejoin: 'Rejoin', answer: 'Answer on ' }, es: { rejoin: 'Volver a entrar', answer: 'Responde en ' }, 'pt-BR': { rejoin: 'Voltar a entrar', answer: 'Responda em ' } };
+const LABELS = { en: { rejoin: 'Rejoin', answer: 'Answer on ' }, es: { rejoin: 'Volver a entrar', answer: 'Responde en ' }, 'pt-BR': { rejoin: 'Voltar a entrar', answer: 'Responda em ' } }; // i18n-ignore: follows the language of the appeal page
 const labelsFor = (config) => LABELS[config?.language] ?? LABELS.en;
 
 const clip = (value, max) => String(value ?? '').replace(/\u0000/g, '').trim().slice(0, max);
@@ -48,7 +49,7 @@ function messageFor(config, form, key) {
 /** A form as the dashboard sends it, cut down to what is allowed: limits, types and ids all checked. */
 function normalizeForm(input) {
   const form = {
-    name: clip(input?.name, 80) || 'Untitled form',
+    name: clip(input?.name, 80) || 'Untitled form', // i18n-ignore: stored default of a dashboard form, shown on the website
     icon: clip(input?.icon, 60) || null,
     short_description: clip(input?.short_description, 160) || null,
     description: clip(input?.description, 1500) || null,
@@ -66,6 +67,7 @@ function normalizeForm(input) {
   const seen = new Set();
   const unique = (raw, prefix, index) => { let value = id(raw, `${prefix}${index + 1}`); while (seen.has(value)) value = `${value}x`; seen.add(value); return value; };
   for (const [si, section] of (Array.isArray(input?.sections) ? input.sections : []).slice(0, LIMITS.sections).entries()) {
+    // i18n-ignore: stored default of a dashboard form, shown on the website
     const clean = { id: unique(section?.id, 's', si), title: clip(section?.title, 100) || `Section ${si + 1}`, description: clip(section?.description, 500) || null, questions: [] };
     for (const [qi, question] of (Array.isArray(section?.questions) ? section.questions : []).slice(0, LIMITS.questions).entries()) {
       const type = QUESTION_TYPES.includes(question?.type) ? question.type : 'short';
@@ -188,34 +190,51 @@ async function appealLinkFor(guildId, type) {
   return siteLink(guildId, config.slug);
 }
 
-function staffCardText(submission, form, config) {
-  const lines = [`## Appeal · ${clip(submission.form_name || form?.name, 80)}`, `<@${submission.user_id}> · \`${submission.username}\` · \`${submission.user_id}\``];
+// The kinds of punishment and of lifted sanction, as the staff read them (the stored values stay in English).
+const TYPE_KEYS = ['ban', 'tempban', 'hardban', 'softban', 'mute', 'tempmute', 'timeout', 'warn', 'kick', 'jail'];
+const typeName = (type, lang) => (TYPE_KEYS.includes(type) ? t(lang, `appeals.type.${type}`) : String(type));
+
+/** What was lifted (`ban`, `timeout`, `tempban #7`) in words of `lang`. */
+function liftedText(lifted, lang) {
+  return lifted.map((entry) => {
+    const match = /^(\w+)( #\d+)?$/.exec(String(entry));
+    return match ? `${typeName(match[1], lang)}${match[2] ?? ''}` : String(entry);
+  }).join(', ');
+}
+
+// A yes/no answer is stored as `Yes` or `No`; the card shows it in the server's language.
+const answerValue = (answer, lang) => {
+  if (answer.type === 'yesno' && (answer.value === 'Yes' || answer.value === 'No')) return t(lang, answer.value === 'Yes' ? 'appeals.card.yes' : 'appeals.card.no');
+  return Array.isArray(answer.value) ? answer.value.join(', ') : String(answer.value);
+};
+
+function staffCardText(submission, form, config, lang = currentLanguage()) {
+  const lines = [`## ${t(lang, 'appeals.card.title', { form: clip(submission.form_name || form?.name, 80) })}`, `<@${submission.user_id}> · \`${submission.username}\` · \`${submission.user_id}\``];
   const punishments = submission.punishments ?? [];
   if (punishments.length) {
-    lines.push('', '**Punishments**', ...punishments.slice(0, 6).map((p) => `• ${p.type}${p.reason ? ` — ${clip(p.reason, 140)}` : ''}${p.until ? ` · until <t:${Math.floor(Date.parse(p.until) / 1000)}:f>` : ''}${p.source === 'discord' ? ' (Discord)' : ''}`));
+    lines.push('', `**${t(lang, 'appeals.card.punishments')}**`, ...punishments.slice(0, 6).map((p) => `• ${typeName(p.type, lang)}${p.reason ? ` — ${clip(p.reason, 140)}` : ''}${p.until ? ` · ${t(lang, 'appeals.card.until', { time: `<t:${Math.floor(Date.parse(p.until) / 1000)}:f>` })}` : ''}${p.source === 'discord' ? ' (Discord)' : ''}`));
   }
   lines.push('');
   let used = lines.join('\n').length;
   for (const a of submission.answers ?? []) {
-    const value = Array.isArray(a.value) ? a.value.join(', ') : String(a.value);
-    const block = `**${clip(a.label, 120)}**\n${clip(value, 700)}\n`;
-    if (used + block.length > 3500) { lines.push('*…more answers in the dashboard*'); break; }
+    const block = `**${clip(a.label, 120)}**\n${clip(answerValue(a, lang), 700)}\n`;
+    if (used + block.length > 3500) { lines.push(`*${t(lang, 'appeals.card.moreAnswers')}*`); break; }
     lines.push(block); used += block.length;
   }
-  if (submission.invite_note) lines.push(`**Invite** — ${submission.invite_url ? `${submission.invite_url} (${submission.invite_note})` : submission.invite_note}`, '');
+  if (submission.invite_note) lines.push(`**${t(lang, 'appeals.card.invite')}** — ${submission.invite_url ? `${submission.invite_url} (${submission.invite_note})` : submission.invite_note}`, '');
   lines.push(`-# ID ${submission.id}`);
   return lines.join('\n');
 }
 
-function staffButtons(submissionId, resolved = false) {
+function staffButtons(submissionId, resolved = false, lang = currentLanguage()) {
   const row = new ActionRowBuilder();
   if (!resolved) {
     row.addComponents(
-      new ButtonBuilder().setCustomId(`${PREFIX}::accept::${submissionId}`).setLabel('Accept').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId(`${PREFIX}::reject::${submissionId}`).setLabel('Reject').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId(`${PREFIX}::accept::${submissionId}`).setLabel(t(lang, 'appeals.card.accept.button')).setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`${PREFIX}::reject::${submissionId}`).setLabel(t(lang, 'appeals.card.reject.button')).setStyle(ButtonStyle.Danger),
     );
   }
-  row.addComponents(new ButtonBuilder().setCustomId(`${PREFIX}::reply::${submissionId}`).setLabel('Reply').setStyle(ButtonStyle.Secondary));
+  row.addComponents(new ButtonBuilder().setCustomId(`${PREFIX}::reply::${submissionId}`).setLabel(t(lang, 'appeals.card.reply.button')).setStyle(ButtonStyle.Secondary));
   return row;
 }
 
@@ -252,6 +271,8 @@ async function submitAppeal({ client, guild, config, form, user, rawAnswers }) {
   if (!checked.ok) return { ok: false, error: 'invalid', fields: checked.errors };
   const channel = await fetchChannel(guild, config.submission_channel_id);
   if (!channel) return { ok: false, error: 'no_channel' };
+  // Called from the website too, outside of any server: the staff read the card in the server's language.
+  const lang = await guildLanguage(guild.id);
 
   const submission = await db.createSubmission({
     guild_id: guild.id, form_id: form.id, form_name: form.name, user_id: user.id, username: clip(user.username, 80),
@@ -261,13 +282,13 @@ async function submitAppeal({ client, guild, config, form, user, rawAnswers }) {
     const pings = (config.ping_role_ids ?? []).filter((r) => guild.roles.cache.has(r));
     const message = await channel.send({
       // A Components V2 message cannot carry `content`: the role pings go at the top of the card.
-      components: [textCard(`${pings.length ? `${pings.map((r) => `<@&${r}>`).join(' ')}\n` : ''}${staffCardText(submission, form, config)}`, STATUS_COLORS.pending), staffButtons(submission.id)],
+      components: [textCard(`${pings.length ? `${pings.map((r) => `<@&${r}>`).join(' ')}\n` : ''}${staffCardText(submission, form, config, lang)}`, STATUS_COLORS.pending), staffButtons(submission.id, false, lang)],
       flags: MessageFlags.IsComponentsV2,
       allowedMentions: { roles: pings, parse: [] },
     });
     let threadId = null;
     if (config.auto_thread && channel.type === ChannelType.GuildText && message.startThread) {
-      const name = renderTemplate(config.thread_name, { username: user.username }).slice(0, 100) || `Appeal by ${user.username}`;
+      const name = renderTemplate(config.thread_name, { username: user.username }).slice(0, 100) || t(lang, 'appeals.threadName', { username: user.username }).slice(0, 100);
       threadId = (await message.startThread({ name, autoArchiveDuration: 1440 }).catch(() => null))?.id ?? null;
     }
     await db.updateSubmission(submission.id, { channel_id: channel.id, message_id: message.id, thread_id: threadId });
@@ -278,7 +299,7 @@ async function submitAppeal({ client, guild, config, form, user, rawAnswers }) {
     return { ok: false, error: 'post_failed' };
   }
   await db.addMessage({ submission_id: submission.id, guild_id: guild.id, author_type: 'system', author_name: 'Petto', content: messageFor(config, form, 'submitted').replace(/\{server\}/g, guild.name) }).catch(() => {});
-  await logLine(guild, config, `**${clip(user.username, 40)}** sent an appeal (${clip(form.name, 60)}).`, STATUS_COLORS.pending);
+  await logLine(guild, config, t(lang, 'appeals.log.sent', { user: clip(user.username, 40), form: clip(form.name, 60) }), STATUS_COLORS.pending);
   return { ok: true, submission };
 }
 
@@ -292,36 +313,37 @@ async function logLine(guild, config, text, color) {
  * The invite a member gets after an accepted appeal, and a short note on where it came from so the staff can see it:
  * the fixed code of the server, or a fresh single-use one (valid 7 days) made in a channel Petto can create invites in.
  */
-async function inviteFor(guild, config, form) {
+async function inviteFor(guild, config, form, lang = currentLanguage()) {
   const fixed = config.rejoin_invite_code ? `https://discord.gg/${config.rejoin_invite_code}` : null;
   const wantsNew = Boolean(config.auto_invite || form?.generate_invite);
-  if (!wantsNew) return fixed ? { url: fixed, note: 'fixed invite of the server' } : { url: null, note: 'no invite is set' };
+  if (!wantsNew) return fixed ? { url: fixed, note: t(lang, 'appeals.invite.fixed') } : { url: null, note: t(lang, 'appeals.invite.none') };
   const me = guild.members.me;
   const channel = guild.channels.cache.find((c) => [ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(c.type) && me?.permissionsIn(c).has(PermissionFlagsBits.CreateInstantInvite));
-  if (!channel) return { url: fixed, note: `Petto could not create an invite: it needs Create Invite in a text channel${fixed ? '; the fixed invite was sent instead' : ''}` };
-  const invite = await channel.createInvite({ maxAge: 7 * 86_400, maxUses: 1, unique: true, reason: 'Accepted appeal' }).catch(() => null);
-  if (!invite) return { url: fixed, note: `Discord did not let Petto create an invite${fixed ? '; the fixed invite was sent instead' : ''}` };
-  return { url: invite.url, note: `single-use invite created in #${channel.name}, valid 7 days` };
+  if (!channel) return { url: fixed, note: t(lang, fixed ? 'appeals.invite.noPermissionFixed' : 'appeals.invite.noPermission') };
+  const invite = await channel.createInvite({ maxAge: 7 * 86_400, maxUses: 1, unique: true, reason: t(lang, 'appeals.audit.accepted') }).catch(() => null);
+  if (!invite) return { url: fixed, note: t(lang, fixed ? 'appeals.invite.refusedFixed' : 'appeals.invite.refused') };
+  return { url: invite.url, note: t(lang, 'appeals.invite.created', { channel: channel.name }) };
 }
 
 /** Lifts what the member was appealing: the ban and the timeout. Petto cases are lifted through the same path as the dashboard. */
-async function liftPunishments(guild, submission, moderatorId) {
+async function liftPunishments(guild, submission, moderatorId, lang = currentLanguage()) {
+  const reason = t(lang, 'appeals.audit.accepted');
   const done = [];
   const user = { id: moderatorId, username: moderatorId };
   const { liftSanction, isLiftable } = require('./sanctionLift');
   const { getUserHistory } = require('../db/modActions');
   const history = await getUserHistory(guild.id, submission.user_id, { limit: 50 }).catch(() => []);
   for (const row of history.filter(isLiftable)) {
-    await liftSanction(guild, row.case_number, user, 'Appeal accepted').then(() => done.push(`${row.type} #${row.case_number}`)).catch((err) => logger.warn(`Appeals: could not lift case ${row.case_number}: ${err.message}`));
+    await liftSanction(guild, row.case_number, user, reason).then(() => done.push(`${row.type} #${row.case_number}`)).catch((err) => logger.warn(`Appeals: could not lift case ${row.case_number}: ${err.message}`));
   }
   if (await guild.bans.fetch({ user: submission.user_id, force: true }).catch(() => null)) {
     const { getHardBan } = require('../db/hardBans');
     if (!(await getHardBan(guild.id, submission.user_id).catch(() => null))) {
-      await guild.members.unban(submission.user_id, 'Appeal accepted').then(() => done.push('ban')).catch(() => {});
+      await guild.members.unban(submission.user_id, reason).then(() => done.push('ban')).catch(() => {});
     }
   }
   const member = guild.members.cache.get(submission.user_id) ?? await guild.members.fetch(submission.user_id).catch(() => null);
-  if (member?.isCommunicationDisabled?.()) await member.timeout(null, 'Appeal accepted').then(() => done.push('timeout')).catch(() => {});
+  if (member?.isCommunicationDisabled?.()) await member.timeout(null, reason).then(() => done.push('timeout')).catch(() => {});
   return done;
 }
 
@@ -331,36 +353,40 @@ async function resolveAppeal({ client, guild, submission, status, moderatorId, m
   const row = await db.resolveSubmission(submission.id, { status, resolved_by: moderatorId, resolved_at: new Date().toISOString(), resolution_reason: clip(reason, 800) || null });
   if (!row) return { ok: false, error: 'already_resolved' };
   const config = await db.getConfig(guild.id);
+  const lang = await guildLanguage(guild.id);
   const form = row.form_id ? await db.getForm(guild.id, row.form_id).catch(() => null) : null;
   const vars = { server: guild.name, reason: clip(reason, 800) || '', form: row.form_name, username: row.username, link: `${siteLink(guild.id, config.slug)}/status/${row.id}` };
   let invite = null;
   let lifted = [];
   if (status === 'accepted') {
-    lifted = await liftPunishments(guild, row, moderatorId);
-    invite = await inviteFor(guild, config, form);
+    lifted = await liftPunishments(guild, row, moderatorId, lang);
+    invite = await inviteFor(guild, config, form, lang);
     // The staff can see which invite was made, or why there is none.
     row.invite_url = invite.url; row.invite_note = invite.note;
     await db.updateSubmission(row.id, { invite_url: invite.url, invite_note: invite.note }).catch(() => {});
   } else if (form?.block_on_reject && form.block_on_reject !== 'none') {
-    await db.setBlock(guild.id, row.user_id, blockUntil(form.block_on_reject), 'Appeal rejected').catch(() => {});
+    await db.setBlock(guild.id, row.user_id, blockUntil(form.block_on_reject), t(lang, 'appeals.audit.rejected')).catch(() => {});
   }
   const text = `${renderTemplate(messageFor(config, form, status), vars)}${invite?.url ? `\n\n${labelsFor(config).rejoin}: ${invite.url}` : ''}\n\n-# ${siteLink(guild.id, config.slug)}/status/${row.id}`;
   const dm = await sendDm(client, row.user_id, text, STATUS_COLORS[status]);
   await db.addMessage({ submission_id: row.id, guild_id: guild.id, author_type: 'system', author_name: 'Petto', content: renderTemplate(messageFor(config, form, status), vars) + (invite?.url ? `\n${invite.url}` : '') }).catch(() => {});
-  await updateStaffCard(guild, row, form, config, moderatorId);
+  await updateStaffCard(guild, row, form, config, moderatorId, lang);
   const who = moderatorName ?? `<@${moderatorId}>`;
-  await logLine(guild, config, `${who} ${status} the appeal of **${clip(row.username, 40)}**${lifted.length ? ` (lifted: ${lifted.join(', ')})` : ''}${row.invite_note ? `. Invite: ${row.invite_url ? `${row.invite_url} (${row.invite_note})` : row.invite_note}` : ''}.`, STATUS_COLORS[status]);
+  const liftedPart = lifted.length ? t(lang, 'appeals.log.lifted', { lifted: liftedText(lifted, lang) }) : '';
+  const invitePart = row.invite_note ? t(lang, 'appeals.log.invite', { invite: row.invite_url ? `${row.invite_url} (${row.invite_note})` : row.invite_note }) : '';
+  await logLine(guild, config, t(lang, `appeals.log.${status}`, { moderator: who, user: clip(row.username, 40), lifted: liftedPart, invite: invitePart }), STATUS_COLORS[status]);
   return { ok: true, submission: row, dm, invite, lifted };
 }
 
-async function updateStaffCard(guild, row, form, config, moderatorId) {
+async function updateStaffCard(guild, row, form, config, moderatorId, lang = currentLanguage()) {
   const channel = await fetchChannel(guild, row.channel_id);
   if (!channel || !row.message_id) return;
   const message = await channel.messages.fetch(row.message_id).catch(() => null);
   if (!message) return;
   const stamp = row.resolved_at ? Math.floor(Date.parse(row.resolved_at) / 1000) : Math.floor(Date.now() / 1000);
-  const text = `${staffCardText(row, form, config)}\n\n**${row.status === 'accepted' ? 'Accepted' : 'Rejected'}** by <@${moderatorId}> · <t:${stamp}:R>${row.resolution_reason ? `\n> ${clip(row.resolution_reason, 300)}` : ''}`;
-  await message.edit({ components: [textCard(text, STATUS_COLORS[row.status]), staffButtons(row.id, true)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } }).catch(() => {});
+  const verdict = t(lang, row.status === 'accepted' ? 'appeals.card.acceptedBy' : 'appeals.card.rejectedBy', { moderator: `<@${moderatorId}>`, time: `<t:${stamp}:R>` });
+  const text = `${staffCardText(row, form, config, lang)}\n\n${verdict}${row.resolution_reason ? `\n> ${clip(row.resolution_reason, 300)}` : ''}`;
+  await message.edit({ components: [textCard(text, STATUS_COLORS[row.status]), staffButtons(row.id, true, lang)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } }).catch(() => {});
 }
 
 /** A message from the staff to the member (and the DM that tells them), from the card or from the dashboard. */
@@ -371,8 +397,11 @@ async function staffReply({ client, guild, submission, content, moderatorId, mod
   const anonymous = Boolean(config.anonymous_messages);
   await db.addMessage({ submission_id: submission.id, guild_id: guild.id, author_type: 'staff', author_id: moderatorId, author_name: moderatorName ?? null, content: text, anonymous });
   const form = submission.form_id ? await db.getForm(guild.id, submission.form_id).catch(() => null) : null;
-  const dm = await sendDm(client, submission.user_id, `${renderTemplate(messageFor(config, form, 'reply'), { server: guild.name })}\n\n**${anonymous ? 'Staff' : clip(moderatorName ?? 'Staff', 40)}**\n${text}\n\n-# ${config.allow_replies ? labelsFor(config).answer : ''}${siteLink(guild.id, config.slug)}/status/${submission.id}`, 0x8c7cff);
-  await notifyStaff(guild, submission, `<@${moderatorId}> replied to **${clip(submission.username, 40)}**\n> ${text.slice(0, 400)}`, 0x8c7cff);
+  // The DM follows the language of the appeal page, like the default texts and labels around it.
+  const staffName = t(normalizeLanguage(config?.language) ?? 'en', 'appeals.dm.staff');
+  const dm = await sendDm(client, submission.user_id, `${renderTemplate(messageFor(config, form, 'reply'), { server: guild.name })}\n\n**${anonymous ? staffName : clip(moderatorName ?? staffName, 40)}**\n${text}\n\n-# ${config.allow_replies ? labelsFor(config).answer : ''}${siteLink(guild.id, config.slug)}/status/${submission.id}`, 0x8c7cff);
+  const lang = await guildLanguage(guild.id);
+  await notifyStaff(guild, submission, `${t(lang, 'appeals.staff.replied', { moderator: `<@${moderatorId}>`, user: clip(submission.username, 40) })}\n> ${text.slice(0, 400)}`, 0x8c7cff);
   return { ok: true, dm };
 }
 
@@ -383,7 +412,8 @@ async function userReply({ guild, config, submission, content }) {
   const text = clip(content, LIMITS.reply);
   if (!text) return { ok: false, error: 'empty' };
   await db.addMessage({ submission_id: submission.id, guild_id: guild.id, author_type: 'user', author_id: submission.user_id, author_name: submission.username, content: text });
-  await notifyStaff(guild, submission, `**${clip(submission.username, 40)}** wrote about their appeal\n> ${text.slice(0, 600)}`, 0xfed53c);
+  const lang = await guildLanguage(guild.id);
+  await notifyStaff(guild, submission, `${t(lang, 'appeals.staff.memberWrote', { user: clip(submission.username, 40) })}\n> ${text.slice(0, 600)}`, 0xfed53c);
   return { ok: true };
 }
 
@@ -391,8 +421,9 @@ async function withdrawAppeal({ guild, config, submission }) {
   const row = await db.resolveSubmission(submission.id, { status: 'withdrawn', resolved_by: submission.user_id, resolved_at: new Date().toISOString() });
   if (!row) return { ok: false, error: 'already_resolved' };
   const form = row.form_id ? await db.getForm(guild.id, row.form_id).catch(() => null) : null;
-  await updateStaffCard(guild, { ...row, resolution_reason: 'Withdrawn by the member' }, form, config, row.user_id);
-  await logLine(guild, config, `**${clip(row.username, 40)}** withdrew their appeal.`, STATUS_COLORS.withdrawn);
+  const lang = await guildLanguage(guild.id);
+  await updateStaffCard(guild, { ...row, resolution_reason: t(lang, 'appeals.card.withdrawn') }, form, config, row.user_id, lang);
+  await logLine(guild, config, t(lang, 'appeals.log.withdrawn', { user: clip(row.username, 40) }), STATUS_COLORS.withdrawn);
   return { ok: true };
 }
 
@@ -435,5 +466,5 @@ async function cleanup() {
 module.exports = {
   PREFIX, LIMITS, QUESTION_TYPES, PUNISHMENT_TYPES, DETAILS, BLOCKS, DEFAULT_MESSAGES,
   renderTemplate, messageFor, normalizeForm, validateAnswers, shapePunishment, fetchPunishments, meetsRequirement, blockUntil, siteLink, appealLinkFor, releaseIdleNames,
-  staffCardText, staffButtons, submitAppeal, resolveAppeal, staffReply, userReply, withdrawAppeal, cleanup,
+  staffCardText, staffButtons, liftedText, submitAppeal, resolveAppeal, staffReply, userReply, withdrawAppeal, cleanup,
 };

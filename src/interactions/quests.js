@@ -6,6 +6,7 @@ const questsDb = require('../db/quests');
 const { questMessage, buildQuestList, SELECT_ID, PAGE_ID } = require('../utils/questMessages');
 const { canUseQuests } = require('../utils/questAlerts');
 const logger = require('../utils/logger');
+const { t, languageOf } = require('../i18n');
 
 const QUEST_PREFIX = 'quests:';
 
@@ -14,24 +15,26 @@ const activeQuests = async () => sortNewest((await questApi.getQuests()).filter(
 const say = (interaction, content) => interaction.reply({ content, flags: MessageFlags.Ephemeral });
 
 async function handleSelect(interaction) {
-  if (!canUseQuests(interaction.user.id)) return say(interaction, 'Quest alerts are in testing and only available to Petto\'s team for now.');
+  const lang = await languageOf(interaction);
+  if (!canUseQuests(interaction.user.id)) return say(interaction, t(lang, 'quests.testing'));
   const questId = interaction.values?.[0];
   let quests;
-  try { quests = await activeQuests(); } catch (error) { logger.warn(`Quest menu: ${error.message}`); return say(interaction, 'The quests could not be read right now, try again in a moment.'); }
+  try { quests = await activeQuests(); } catch (error) { logger.warn(`Quest menu: ${error.message}`); return say(interaction, t(lang, 'quests.menu.readFailed')); }
   const quest = quests.find((entry) => entry.id === questId);
-  if (!quest) return say(interaction, 'That quest is not active anymore.');
+  if (!quest) return say(interaction, t(lang, 'quests.menu.notActive'));
   const settings = (interaction.guild ? await questsDb.getConfig(interaction.guild.id).catch(() => null) : null) ?? questsDb.DEFAULTS;
-  const payload = await questMessage(interaction.guild, { ...settings, role_id: null }, quest, 'new');
+  const payload = await questMessage(interaction.guild, { ...settings, role_id: null }, quest, 'new', lang);
   return interaction.reply({ ...payload, flags: (payload.flags ?? 0) | MessageFlags.Ephemeral });
 }
 
 async function handleButton(interaction) {
-  if (!canUseQuests(interaction.user.id)) return say(interaction, 'Quest alerts are in testing and only available to Petto\'s team for now.');
+  const lang = await languageOf(interaction);
+  if (!canUseQuests(interaction.user.id)) return say(interaction, t(lang, 'quests.testing'));
   const page = Number(interaction.customId.split(':')[2]);
   if (!Number.isInteger(page) || page < 1) return interaction.deferUpdate();
   let quests;
-  try { quests = await activeQuests(); } catch (error) { logger.warn(`Quest menu: ${error.message}`); return say(interaction, 'The quests could not be read right now, try again in a moment.'); }
-  return interaction.update(buildQuestList(quests, { page }));
+  try { quests = await activeQuests(); } catch (error) { logger.warn(`Quest menu: ${error.message}`); return say(interaction, t(lang, 'quests.menu.readFailed')); }
+  return interaction.update(buildQuestList(quests, { page, lang }));
 }
 
 module.exports = { QUEST_PREFIX, SELECT_ID, PAGE_ID, handleSelect, handleButton };

@@ -4,6 +4,7 @@ const { createCase, deactivateCase } = require('../db/modActions');
 const { forEachWithConcurrency } = require('./concurrency');
 const { invalidateJailCache, beginRelease, endRelease } = require('./jailGuard');
 const logger = require('./logger');
+const { t, currentLanguage } = require('../i18n');
 
 // What the jail role may not do in any channel. Hiding the channel is what matters; the rest closes the gaps for
 // channels a member could still reach some other way.
@@ -80,15 +81,17 @@ function releasedRoleIds(member, jailRole, savedRoleIds) {
 }
 
 /**
- * Jails a member: the roles are saved first, then replaced by the jail role.
+ * Jails a member: the roles are saved first, then replaced by the jail role. The errors and the audit log are in the language
+ * of the command or event that is running.
  * @returns {Promise<{modCase: object, savedCount: number, expiresAt: string|null}>}
  */
 async function jailMember({ guild, member, moderator, reason = null, durationMs = null }) {
+  const lang = currentLanguage();
   const { role } = await getJailRole(guild);
-  if (!role) throw new JailError('Jail is not set up yet. Run `jail setup` first.');
-  if (!role.editable) throw new JailError('The jail role is above my highest role. Move my role above it.');
-  if (!guild.members.me.permissions.has(PermissionFlagsBits.ManageRoles)) throw new JailError('I need the **Manage Roles** permission to jail members.');
-  if (await jailDb.getJailed(guild.id, member.id)) throw new JailError('That member is already in jail.');
+  if (!role) throw new JailError(t(lang, 'moderation.jail.error.notSetUp'));
+  if (!role.editable) throw new JailError(t(lang, 'moderation.jail.error.roleAbove'));
+  if (!guild.members.me.permissions.has(PermissionFlagsBits.ManageRoles)) throw new JailError(t(lang, 'moderation.jail.error.needsManageRoles'));
+  if (await jailDb.getJailed(guild.id, member.id)) throw new JailError(t(lang, 'moderation.jail.error.alreadyJailed'));
 
   const saved = [...removableRoles(member, role).keys()];
   const expiresAt = durationMs ? new Date(Date.now() + durationMs).toISOString() : null;
@@ -98,16 +101,16 @@ async function jailMember({ guild, member, moderator, reason = null, durationMs 
   invalidateJailCache(guild.id);
 
   try {
-    await member.roles.set(jailedRoleIds(member, role), reason ?? 'Petto jail');
+    await member.roles.set(jailedRoleIds(member, role), reason ?? t(lang, 'moderation.jail.audit.jail'));
   } catch (err) {
     await jailDb.removeJailed(guild.id, member.id).catch(() => {});
     invalidateJailCache(guild.id);
     logger.warn(`Could not jail ${member.id} in guild ${guild.id}: ${err.message}`);
-    throw new JailError('I was unable to change that member’s roles. My role may be below theirs.');
+    throw new JailError(t(lang, 'moderation.jail.error.cannotChangeRoles'));
   }
 
   // A member in a voice channel keeps talking until they are moved out.
-  if (member.voice?.channelId) await member.voice.disconnect('Petto jail').catch(() => {});
+  if (member.voice?.channelId) await member.voice.disconnect(t(lang, 'moderation.jail.audit.jail')).catch(() => {});
 
   const modCase = await createCase({ guildId: guild.id, userId: member.id, moderatorId: moderator.id, type: 'jail', reason, expiresAt });
   await jailDb.setJailCase(guild.id, member.id, modCase.case_number).catch((err) => logger.warn(`Could not link jail case #${modCase.case_number}: ${err.message}`));
@@ -120,6 +123,7 @@ async function jailMember({ guild, member, moderator, reason = null, durationMs 
  * @returns {Promise<{ok: false} | {ok: true, member: object|null, restoredCount: number, modCase: object}>}
  */
 async function unjailMember({ guild, userId, moderator, reason = null }) {
+  const lang = currentLanguage();
   const row = await jailDb.getJailed(guild.id, userId);
   if (!row) return { ok: false };
 
@@ -134,10 +138,10 @@ async function unjailMember({ guild, userId, moderator, reason = null }) {
       const next = releasedRoleIds(member, role, row.saved_role_ids ?? []);
       restoredCount = next.filter((id) => !member.roles.cache.has(id)).length;
       try {
-        await member.roles.set(next, reason ?? 'Petto jail release');
+        await member.roles.set(next, reason ?? t(lang, 'moderation.jail.audit.release'));
       } catch (err) {
         logger.warn(`Could not release ${userId} in guild ${guild.id}: ${err.message}`);
-        throw new JailError('I was unable to restore that member’s roles. Check that my role is above theirs.');
+        throw new JailError(t(lang, 'moderation.jail.error.cannotRestoreRoles'));
       }
     }
 
@@ -159,7 +163,7 @@ async function reapplyJail(member) {
   const { role } = await getJailRole(member.guild);
   if (!role || !role.editable) return false;
 
-  await member.roles.set(jailedRoleIds(member, role), 'Petto jail: member rejoined').catch((err) => {
+  await member.roles.set(jailedRoleIds(member, role), t(currentLanguage(), 'moderation.jail.audit.rejoined')).catch((err) => {
     logger.warn(`Could not re-jail ${member.id} in guild ${member.guild.id}: ${err.message}`);
   });
   return true;
@@ -168,7 +172,7 @@ async function reapplyJail(member) {
 /** Hides one channel from the jail role. */
 async function applyJailOverwrite(channel, role) {
   if (!OVERWRITE_CHANNEL_TYPES.has(channel.type)) return;
-  await channel.permissionOverwrites.edit(role, JAIL_DENY, { reason: 'Petto jail setup' });
+  await channel.permissionOverwrites.edit(role, JAIL_DENY, { reason: t(currentLanguage(), 'moderation.jail.audit.setup') });
 }
 
 function jailChannelOverwrites(guild, role) {
@@ -191,26 +195,28 @@ function jailChannelOverwrites(guild, role) {
  * Safe to run again: it repairs what is missing and leaves the rest alone.
  */
 async function ensureJailSetup(guild) {
+  const lang = currentLanguage();
+  const setupReason = t(lang, 'moderation.jail.audit.setup');
   const config = await jailDb.getConfig(guild.id);
 
   let role = config?.jail_role_id ? guild.roles.cache.get(config.jail_role_id) ?? null : null;
   const createdRole = !role;
   if (!role) {
-    role = await guild.roles.create({ name: 'Jailed', color: 0x6b6f7a, permissions: [], mentionable: false, reason: 'Petto jail setup' });
+    role = await guild.roles.create({ name: t(lang, 'moderation.jail.setup.roleName'), color: 0x6b6f7a, permissions: [], mentionable: false, reason: setupReason });
   }
 
   let channel = config?.jail_channel_id ? guild.channels.cache.get(config.jail_channel_id) ?? null : null;
   const createdChannel = !channel;
   if (!channel) {
     channel = await guild.channels.create({
-      name: 'jail',
+      name: t(lang, 'moderation.jail.setup.channelName'),
       type: ChannelType.GuildText,
-      topic: 'Jailed members can only see this channel. Staff will talk to you here.',
+      topic: t(lang, 'moderation.jail.setup.channelTopic'),
       permissionOverwrites: jailChannelOverwrites(guild, role),
-      reason: 'Petto jail setup',
+      reason: setupReason,
     });
   } else {
-    await channel.permissionOverwrites.edit(role, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true, AttachFiles: true }, { reason: 'Petto jail setup' }).catch(() => {});
+    await channel.permissionOverwrites.edit(role, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true, AttachFiles: true }, { reason: setupReason }).catch(() => {});
   }
 
   await jailDb.upsertConfig(guild.id, { jail_role_id: role.id, jail_channel_id: channel.id });

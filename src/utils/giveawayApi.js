@@ -1,5 +1,7 @@
 // What the dashboard can do with giveaways: start one, change one that is running, end one now, or draw new winners of one that ended.
 // It uses the same engine as /giveaway, so a giveaway started here is the same as one started from Discord.
+// i18n-ignore-file: the answers of the dashboard HTTP API (error codes and messages for the website), not chat text; what the
+// engine posts in Discord follows the server's language.
 const { ChannelType, PermissionFlagsBits } = require('discord.js');
 const giveawaysDb = require('../db/giveaways');
 const presetsDb = require('../db/giveawayPresets');
@@ -111,7 +113,7 @@ async function rerollGiveaway(client, guildId, body) {
   const count = body.winners === undefined || body.winners === '' ? undefined : Number(body.winners);
   if (count !== undefined && (!Number.isInteger(count) || count < 1 || count > MAX_WINNERS)) return fail('invalid_winners', `Winners must be from 1 to ${MAX_WINNERS}.`);
   try {
-    const winners = await engine.rerollGiveaway(client, giveaway, count);
+    const winners = await engine.rerollGiveaway(client, giveaway, count, 'en');
     return { ok: true, winners };
   } catch (error) {
     if (error?.userFacing) return fail('reroll_failed', error.message);

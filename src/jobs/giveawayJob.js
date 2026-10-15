@@ -67,7 +67,7 @@ function logJobError(error) {
     return;
   }
 
-  const suffix = suppressedTransientErrors ? ` (${suppressedTransientErrors} similar errors suppressed)` : '';
+  const suffix = suppressedTransientErrors ? ` (${suppressedTransientErrors} similar errors suppressed)` : ''; // i18n-ignore: log output
   suppressedTransientErrors = 0;
   lastTransientErrorLogAt = now;
   logger.error(`Giveaway job temporarily unavailable; backing off${suffix}:`, error);

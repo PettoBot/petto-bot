@@ -22,13 +22,13 @@ const { buildPanelRows, buildPanelFallbackCard } = require('../utils/ticketCards
 const { textCard } = require('../utils/caseCard');
 const { EMOJI } = require('../utils/emojis');
 const logger = require('../utils/logger');
+const { t, tn, formatList, currentLanguage, languageOf } = require('../i18n');
 
 const DRAFT_TTL_MS = 20 * 60_000;
 const MAX_TYPES_BUTTON = 5;
 const MAX_TYPES_SELECT = 25;
 const COLORS = ['primary', 'secondary', 'success', 'danger'];
 const COLOR_DOT = { primary: '🔵', secondary: '⚪', success: '🟢', danger: '🔴' };
-const COLOR_NAME = { primary: 'Blue', secondary: 'Grey', success: 'Green', danger: 'Red' };
 const CUSTOM_EMOJI = /^<a?:\w{2,32}:\d{15,25}>$/;
 const drafts = new Map();
 
@@ -45,7 +45,8 @@ function deleteDraft(userId) {
   drafts.delete(userId);
 }
 
-function startDraft(userId, { guildId, channelId }) {
+/** A new setup, with Petto's example panel written in `lang` (the server changes it before publishing). */
+function startDraft(userId, { guildId, channelId, lang = currentLanguage() }) {
   return setDraft(userId, {
     guildId,
     channelId: channelId ?? null,
@@ -53,9 +54,9 @@ function startDraft(userId, { guildId, channelId }) {
     logChannelId: null,
     style: 'button',
     buttonStyle: 'primary',
-    title: 'Support',
-    description: 'Click a button below to open a ticket. A private channel will be created for you and our staff.',
-    types: [{ label: 'Support', emoji: '🎫', description: 'General help' }],
+    title: t(lang, 'tickets.setup.default.title'),
+    description: t(lang, 'tickets.setup.default.description'),
+    types: [{ label: t(lang, 'tickets.setup.default.typeLabel'), emoji: '🎫', description: t(lang, 'tickets.setup.default.typeDescription') }],
   });
 }
 
@@ -72,21 +73,28 @@ function previewCategories(draft) {
   return draft.types.map((t) => ({ key: `preview_${i}`, label: t.label, emoji: t.emoji, description: t.description, button_style: draft.buttonStyle }));
 }
 
-function renderWizard(uid, draft) {
+function renderWizard(uid, draft, lang = currentLanguage()) {
   const mark = (ok) => (ok ? EMOJI.APPROVE : '▫️');
+  const colorName = t(lang, `tickets.setup.color.${draft.buttonStyle}`);
+  const summary = [
+    ...(draft.types.some((type) => type.welcome) ? [t(lang, 'tickets.setup.summary.welcome')] : []),
+    t(lang, draft.style === 'select' ? 'tickets.setup.summary.dropdown' : 'tickets.setup.summary.buttons'),
+    t(lang, 'tickets.setup.summary.color', { color: colorName }),
+    t(lang, 'tickets.setup.summary.types', { count: draft.types.length, max: maxTypes(draft) }),
+  ];
   const lines = [
-    `${EMOJI.STAR} **Ticket setup.** Pick the options, then press **Publish**. Nothing is posted until then.`,
+    t(lang, 'tickets.setup.intro', { emoji: EMOJI.STAR }),
     '',
-    `${mark(draft.channelId)} **Panel channel:** ${draft.channelId ? `<#${draft.channelId}>` : '*choose one below*'}`,
-    `${mark(draft.supportRoleIds.length)} **Support roles:** ${draft.supportRoleIds.length ? draft.supportRoleIds.map((r) => `<@&${r}>`).join(' ') : '*choose who answers tickets*'}`,
-    `${mark(draft.logChannelId)} **Log channel:** ${draft.logChannelId ? `<#${draft.logChannelId}>` : '*optional: opened/closed tickets and transcripts*'}`,
+    t(lang, 'tickets.setup.panelChannel', { mark: mark(draft.channelId), channel: draft.channelId ? `<#${draft.channelId}>` : t(lang, 'tickets.setup.panelChannelEmpty') }),
+    t(lang, 'tickets.setup.supportRoles', { mark: mark(draft.supportRoleIds.length), roles: draft.supportRoleIds.length ? draft.supportRoleIds.map((r) => `<@&${r}>`).join(' ') : t(lang, 'tickets.setup.supportRolesEmpty') }),
+    t(lang, 'tickets.setup.logChannel', { mark: mark(draft.logChannelId), channel: draft.logChannelId ? `<#${draft.logChannelId}>` : t(lang, 'tickets.setup.logChannelEmpty') }),
     '',
     `### 🎫 ${draft.title}`,
     draft.description,
     '',
-    ...draft.types.map((t) => `${COLOR_DOT[draft.buttonStyle]} ${t.emoji ? `${t.emoji} ` : ''}**${t.label}**${t.description ? ` — ${t.description}` : ''}`),
+    ...draft.types.map((type) => `${COLOR_DOT[draft.buttonStyle]} ${type.emoji ? `${type.emoji} ` : ''}**${type.label}**${type.description ? ` — ${type.description}` : ''}`),
     '',
-    `-# ${draft.types.some((t) => t.welcome) ? 'Own welcome text set · ' : ''}${draft.style === 'select' ? 'Dropdown menu' : 'Buttons'} · ${COLOR_NAME[draft.buttonStyle]} buttons · ${draft.types.length}/${maxTypes(draft)} ticket types`,
+    `-# ${summary.join(' · ')}`,
   ];
 
   const channelSelect = (id, placeholder, current) => {
@@ -94,7 +102,7 @@ function renderWizard(uid, draft) {
     if (current) s.setDefaultChannels(current);
     return s;
   };
-  const roles = new RoleSelectMenuBuilder().setCustomId(`tfw_roles::${uid}`).setPlaceholder('Support roles (who answers tickets)').setMinValues(1).setMaxValues(10);
+  const roles = new RoleSelectMenuBuilder().setCustomId(`tfw_roles::${uid}`).setPlaceholder(t(lang, 'tickets.setup.rolesPlaceholder.menu')).setMinValues(1).setMaxValues(10);
   if (draft.supportRoleIds.length) roles.setDefaultRoles(draft.supportRoleIds);
 
   const btn = (id, label, style = ButtonStyle.Secondary, emoji) => {
@@ -103,19 +111,19 @@ function renderWizard(uid, draft) {
     return b;
   };
   const rows = [
-    new ActionRowBuilder().addComponents(channelSelect('tfw_channel', 'Where to post the panel', draft.channelId)),
+    new ActionRowBuilder().addComponents(channelSelect('tfw_channel', t(lang, 'tickets.setup.channelPlaceholder.menu'), draft.channelId)),
     new ActionRowBuilder().addComponents(roles),
-    new ActionRowBuilder().addComponents(channelSelect('tfw_log', 'Log channel (optional)', draft.logChannelId).setMinValues(0)),
+    new ActionRowBuilder().addComponents(channelSelect('tfw_log', t(lang, 'tickets.setup.logPlaceholder.menu'), draft.logChannelId).setMinValues(0)),
     new ActionRowBuilder().addComponents(
-      btn('tfw_text', 'Title & text'),
-      btn('tfw_add', 'Add type', ButtonStyle.Primary).setDisabled(draft.types.length >= maxTypes(draft)),
-      btn('tfw_remove', 'Remove last type').setDisabled(draft.types.length <= 1),
-      btn('tfw_color', `Color: ${COLOR_NAME[draft.buttonStyle]}`),
-      btn('tfw_style', draft.style === 'select' ? 'Use buttons' : 'Use dropdown'),
+      btn('tfw_text', t(lang, 'tickets.setup.text.button')),
+      btn('tfw_add', t(lang, 'tickets.setup.addType.button'), ButtonStyle.Primary).setDisabled(draft.types.length >= maxTypes(draft)),
+      btn('tfw_remove', t(lang, 'tickets.setup.removeType.button')).setDisabled(draft.types.length <= 1),
+      btn('tfw_color', t(lang, 'tickets.setup.color.button', { color: colorName })),
+      btn('tfw_style', t(lang, draft.style === 'select' ? 'tickets.setup.useButtons.button' : 'tickets.setup.useDropdown.button')),
     ),
     new ActionRowBuilder().addComponents(
-      btn('tfw_publish', 'Publish', ButtonStyle.Success, EMOJI.APPROVE),
-      btn('tfw_cancel', 'Cancel', ButtonStyle.Secondary, EMOJI.DENY),
+      btn('tfw_publish', t(lang, 'tickets.setup.publish.button'), ButtonStyle.Success, EMOJI.APPROVE),
+      btn('tfw_cancel', t(lang, 'tickets.cancel.button'), ButtonStyle.Secondary, EMOJI.DENY),
     ),
   ];
 
@@ -123,43 +131,43 @@ function renderWizard(uid, draft) {
   return { components: [container, ...rows], flags: MessageFlags.IsComponentsV2 };
 }
 
-function guard(interaction, uid) {
+function guard(interaction, uid, lang) {
   if (interaction.user.id !== uid) {
-    interaction.reply({ content: `${EMOJI.DENY} This setup belongs to someone else.`, flags: MessageFlags.Ephemeral }).catch(() => {});
+    interaction.reply({ content: t(lang, 'tickets.setup.notYours', { emoji: EMOJI.DENY }), flags: MessageFlags.Ephemeral }).catch(() => {});
     return false;
   }
   if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
-    interaction.reply({ content: 'You need the **Manage Server** permission to do that.', flags: MessageFlags.Ephemeral }).catch(() => {});
+    interaction.reply({ content: t(lang, 'tickets.needManageServer', { permission: t(lang, 'core.perm.ManageGuild') }), flags: MessageFlags.Ephemeral }).catch(() => {});
     return false;
   }
   return true;
 }
 
-function textModal(uid, draft) {
+function textModal(uid, draft, lang) {
   return new ModalBuilder()
     .setCustomId(`tfwm_text::${uid}`)
-    .setTitle('Panel title and text')
+    .setTitle(t(lang, 'tickets.setup.textModal.title'))
     .addComponents(
-      new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('title').setLabel('Title').setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(100).setValue(draft.title)),
-      new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('description').setLabel('Text shown above the buttons').setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(1000).setValue(draft.description)),
+      new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('title').setLabel(t(lang, 'tickets.setup.textModal.titleLabel')).setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(100).setValue(draft.title)),
+      new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('description').setLabel(t(lang, 'tickets.setup.textModal.textLabel')).setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(1000).setValue(draft.description)),
     );
 }
 
-function typeModal(uid) {
+function typeModal(uid, lang) {
   const input = (id, label, required, max, placeholder) => {
-    const t = new TextInputBuilder().setCustomId(id).setLabel(label).setStyle(TextInputStyle.Short).setRequired(required).setMaxLength(max);
-    if (placeholder) t.setPlaceholder(placeholder);
-    return new ActionRowBuilder().addComponents(t);
+    const field = new TextInputBuilder().setCustomId(id).setLabel(label).setStyle(TextInputStyle.Short).setRequired(required).setMaxLength(max);
+    if (placeholder) field.setPlaceholder(placeholder);
+    return new ActionRowBuilder().addComponents(field);
   };
   return new ModalBuilder()
     .setCustomId(`tfwm_type::${uid}`)
-    .setTitle('Add a ticket type')
+    .setTitle(t(lang, 'tickets.setup.typeModal.title'))
     .addComponents(
-      input('label', 'Name (button text)', true, 40, 'e.g. Report a player'),
-      input('emoji', 'Emoji (optional)', false, 60, '🎫'),
-      input('description', 'Short description (shown in the dropdown)', false, 100),
+      input('label', t(lang, 'tickets.setup.typeModal.name'), true, 40, t(lang, 'tickets.setup.typeModal.namePlaceholder')),
+      input('emoji', t(lang, 'tickets.setup.typeModal.emoji'), false, 60, '🎫'),
+      input('description', t(lang, 'tickets.setup.typeModal.description'), false, 100),
       new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId('welcome').setLabel('Welcome text in the ticket (optional)').setStyle(TextInputStyle.Paragraph).setRequired(false).setMaxLength(1000).setPlaceholder('Hi {user}! Tell us what you need and staff will answer soon.'),
+        new TextInputBuilder().setCustomId('welcome').setLabel(t(lang, 'tickets.setup.typeModal.welcome')).setStyle(TextInputStyle.Paragraph).setRequired(false).setMaxLength(1000).setPlaceholder(t(lang, 'tickets.setup.typeModal.welcomePlaceholder')),
       ),
     );
 }
@@ -173,13 +181,11 @@ function uniqueKey(label, taken) {
   return key;
 }
 
-async function publish(interaction, uid, draft) {
+async function publish(interaction, uid, draft, lang) {
   const guild = interaction.guild;
-  const problems = [];
-  if (!draft.channelId) problems.push('choose the panel channel');
-  if (!draft.supportRoleIds.length) problems.push('choose at least one support role');
-  if (problems.length) {
-    await interaction.reply({ content: `${EMOJI.ALERT} First ${problems.join(' and ')}.`, flags: MessageFlags.Ephemeral });
+  const missing = !draft.channelId && !draft.supportRoleIds.length ? 'both' : !draft.channelId ? 'channel' : !draft.supportRoleIds.length ? 'roles' : null;
+  if (missing) {
+    await interaction.reply({ content: t(lang, `tickets.setup.missing.${missing}`, { emoji: EMOJI.ALERT }), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -187,7 +193,8 @@ async function publish(interaction, uid, draft) {
   const me = guild.members.me;
   const needed = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks];
   if (!channel || !channel.isTextBased() || !channel.permissionsFor(me)?.has(needed)) {
-    await interaction.reply({ content: `${EMOJI.DENY} I cannot post in <#${draft.channelId}>. Give me View Channel, Send Messages and Embed Links there, or choose another channel.`, flags: MessageFlags.Ephemeral });
+    const permissions = formatList(lang, ['ViewChannel', 'SendMessages', 'EmbedLinks'].map((flag) => t(lang, `core.perm.${flag}`)));
+    await interaction.reply({ content: t(lang, 'tickets.setup.cannotPost', { emoji: EMOJI.DENY, channel: draft.channelId, permissions }), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -218,14 +225,14 @@ async function publish(interaction, uid, draft) {
       categories.push(category);
     }
 
-    const message = await channel.send({ components: [buildPanelFallbackCard({ title: draft.title, description: draft.description }), ...buildPanelRows(draft.style, categories)], flags: MessageFlags.IsComponentsV2 });
+    const message = await channel.send({ components: [buildPanelFallbackCard({ title: draft.title, description: draft.description, lang }), ...buildPanelRows(draft.style, categories, { lang })], flags: MessageFlags.IsComponentsV2 });
     await db.setPanelMessageId(panel.id, message.id);
 
     if (draft.logChannelId) await settingsDb.upsertSettings(guild.id, { opened_log_channel_id: draft.logChannelId, closed_log_channel_id: draft.logChannelId });
 
     deleteDraft(uid);
     await interaction.editReply({
-      components: [textCard(`${EMOJI.APPROVE} Ticket system ready. The panel is in ${channel} with ${categories.length} ticket type${categories.length === 1 ? '' : 's'}. Fine-tune each type (welcome message, form, naming) from the dashboard or with \`!ticket category edit\`.`, 0xa5ea7a)],
+      components: [textCard(tn(lang, 'tickets.setup.ready', categories.length, { emoji: EMOJI.APPROVE, channel: `${channel}` }), 0xa5ea7a)],
       flags: MessageFlags.IsComponentsV2,
     });
   } catch (err) {
@@ -234,35 +241,36 @@ async function publish(interaction, uid, draft) {
       for (const key of createdKeys) await db.deleteCategory(guild.id, key).catch(() => {});
       await db.deletePanel(guild.id, panel.id).catch(() => {});
     }
-    await interaction.followUp({ content: `${EMOJI.DENY} I could not finish the setup, so nothing was kept. ${err.message || ''}`.trim(), flags: MessageFlags.Ephemeral }).catch(() => {});
+    await interaction.followUp({ content: `${t(lang, 'tickets.setup.failed', { emoji: EMOJI.DENY })} ${err.message || ''}`.trim(), flags: MessageFlags.Ephemeral }).catch(() => {});
   }
 }
 
-async function expired(interaction) {
-  const payload = { components: [textCard('This setup expired. Run `!ticket setup` again.', 0x8b8fa3)], flags: MessageFlags.IsComponentsV2 };
-  if (interaction.isModalSubmit()) await interaction.reply({ content: 'This setup expired. Run `!ticket setup` again.', flags: MessageFlags.Ephemeral });
+async function expired(interaction, lang) {
+  const payload = { components: [textCard(t(lang, 'tickets.setup.expired'), 0x8b8fa3)], flags: MessageFlags.IsComponentsV2 };
+  if (interaction.isModalSubmit()) await interaction.reply({ content: t(lang, 'tickets.setup.expired'), flags: MessageFlags.Ephemeral });
   else await interaction.update(payload);
 }
 
 async function handleButton(interaction) {
   const [type, uid] = interaction.customId.split('::');
-  if (!guard(interaction, uid)) return;
+  const lang = await languageOf(interaction);
+  if (!guard(interaction, uid, lang)) return;
   const draft = getDraft(uid);
-  if (!draft) return expired(interaction);
+  if (!draft) return expired(interaction, lang);
 
-  if (type === 'tfw_text') return interaction.showModal(textModal(uid, draft));
+  if (type === 'tfw_text') return interaction.showModal(textModal(uid, draft, lang));
   if (type === 'tfw_add') {
     if (draft.types.length >= maxTypes(draft)) {
-      await interaction.reply({ content: `This panel can have up to ${maxTypes(draft)} ticket types.`, flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: t(lang, 'tickets.setup.typesFull', { max: maxTypes(draft) }), flags: MessageFlags.Ephemeral });
       return;
     }
-    return interaction.showModal(typeModal(uid));
+    return interaction.showModal(typeModal(uid, lang));
   }
-  if (type === 'tfw_publish') return publish(interaction, uid, draft);
+  if (type === 'tfw_publish') return publish(interaction, uid, draft, lang);
 
   if (type === 'tfw_cancel') {
     deleteDraft(uid);
-    await interaction.update({ components: [textCard(`${EMOJI.DENY} Setup cancelled. Nothing was posted.`, 0x8b8fa3)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.update({ components: [textCard(t(lang, 'tickets.setup.cancelled', { emoji: EMOJI.DENY }), 0x8b8fa3)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -274,14 +282,15 @@ async function handleButton(interaction) {
   } else return;
 
   setDraft(uid, draft);
-  await interaction.update(renderWizard(uid, draft));
+  await interaction.update(renderWizard(uid, draft, lang));
 }
 
 async function handleSelect(interaction) {
   const [type, uid] = interaction.customId.split('::');
-  if (!guard(interaction, uid)) return;
+  const lang = await languageOf(interaction);
+  if (!guard(interaction, uid, lang)) return;
   const draft = getDraft(uid);
-  if (!draft) return expired(interaction);
+  if (!draft) return expired(interaction, lang);
 
   if (type === 'tfw_channel') draft.channelId = interaction.values[0] ?? null;
   else if (type === 'tfw_log') draft.logChannelId = interaction.values[0] ?? null;
@@ -289,14 +298,15 @@ async function handleSelect(interaction) {
   else return;
 
   setDraft(uid, draft);
-  await interaction.update(renderWizard(uid, draft));
+  await interaction.update(renderWizard(uid, draft, lang));
 }
 
 async function handleModal(interaction) {
   const [type, uid] = interaction.customId.split('::');
-  if (!guard(interaction, uid)) return;
+  const lang = await languageOf(interaction);
+  if (!guard(interaction, uid, lang)) return;
   const draft = getDraft(uid);
-  if (!draft) return expired(interaction);
+  if (!draft) return expired(interaction, lang);
   const g = (id) => (interaction.fields.getTextInputValue(id) ?? '').trim();
 
   if (type === 'tfwm_text') {
@@ -304,17 +314,17 @@ async function handleModal(interaction) {
     draft.description = g('description') || draft.description;
   } else if (type === 'tfwm_type') {
     if (draft.types.length >= maxTypes(draft)) {
-      await interaction.reply({ content: `This panel can have up to ${maxTypes(draft)} ticket types.`, flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: t(lang, 'tickets.setup.typesFull', { max: maxTypes(draft) }), flags: MessageFlags.Ephemeral });
       return;
     }
     const label = g('label');
     const emoji = g('emoji');
     if (!label) {
-      await interaction.reply({ content: 'The name cannot be empty.', flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: t(lang, 'tickets.setup.emptyName'), flags: MessageFlags.Ephemeral });
       return;
     }
     if (emoji && !isValidEmoji(emoji)) {
-      await interaction.reply({ content: `${EMOJI.ALERT} \`${emoji}\` is not an emoji I can use. Use a normal emoji like 🎫 or a custom one pasted as \`<:name:123456789012345678>\`, or leave it empty.`, flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: t(lang, 'tickets.setup.badEmoji', { emoji: EMOJI.ALERT, value: emoji, sample: '🎫', example: '<:name:123456789012345678>' }), flags: MessageFlags.Ephemeral });
       return;
     }
     draft.types.push({ label, emoji: emoji || null, description: g('description') || null, welcome: g('welcome') || null });
@@ -322,7 +332,7 @@ async function handleModal(interaction) {
 
   setDraft(uid, draft);
   await interaction.deferUpdate();
-  await interaction.editReply(renderWizard(uid, draft));
+  await interaction.editReply(renderWizard(uid, draft, lang));
 }
 
 module.exports = { renderWizard, startDraft, handleButton, handleSelect, handleModal, isValidEmoji, uniqueKey };

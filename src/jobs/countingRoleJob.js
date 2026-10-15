@@ -2,6 +2,7 @@
 const db = require('../db/counting');
 const logger = require('../utils/logger');
 const { exclusiveTask } = require('../utils/concurrency');
+const { t, guildLanguage } = require('../i18n');
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -10,7 +11,7 @@ async function processCountingRoles(client) {
     try {
       const guild = client.guilds.cache.get(due.guild_id);
       const member = guild ? await guild.members.fetch(due.user_id).catch(() => null) : null;
-      if (member) await member.roles.remove(due.role_id, 'Counting: the time of the mistake role is over').catch(() => {});
+      if (member) await member.roles.remove(due.role_id, t(await guildLanguage(due.guild_id), 'counting.reason.timeOver')).catch(() => {});
       await db.forgetRole(due.guild_id, due.user_id);
     } catch (err) {
       logger.warn(`Could not take back a counting role in ${due.guild_id}: ${err.message}`);

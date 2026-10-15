@@ -3,6 +3,7 @@ const { ensureGuild } = require('../../db/guilds');
 const permissionsDb = require('../../db/permissions');
 const { textCard } = require('../../utils/caseCard');
 const { COLORS } = require('../../utils/colors');
+const { t, tn, languageOf } = require('../../i18n');
 
 module.exports = {
   aliases: ['auth', 'pgroup'],
@@ -37,11 +38,12 @@ module.exports = {
   async execute(interaction) {
     await ensureGuild(interaction.guild.id);
     await permissionsDb.getOrCreateBaseGroup(interaction.guild.id);
+    const lang = await languageOf(interaction);
     const group = interaction.options.getSubcommandGroup(false);
-    if (!group) return myLevel(interaction);
+    if (!group) return myLevel(interaction, lang);
     const sub = interaction.options.getSubcommand();
-    if (group === 'group') return groupCommand(interaction, sub);
-    return commandCommand(interaction, sub);
+    if (group === 'group') return groupCommand(interaction, sub, lang);
+    return commandCommand(interaction, sub, lang);
   },
 };
 
@@ -59,17 +61,17 @@ async function findGroup(guildId, name) {
   return groups.find((g) => g.name.toLowerCase() === wanted) ?? null;
 }
 
-async function myLevel(interaction) {
+async function myLevel(interaction, lang) {
   const level = await permissionsDb.getEffectiveLevel(interaction.guild.id, interaction.member);
-  return respond(interaction, `Your effective Petto authorization level is **${level}/100**.`);
+  return respond(interaction, t(lang, 'config.permission.myLevel', { level }));
 }
 
-async function groupCommand(interaction, sub) {
+async function groupCommand(interaction, sub, lang) {
   const guildId = interaction.guild.id;
   if (sub === 'list') {
     const groups = await permissionsDb.listGroups(guildId);
-    const lines = groups.map((g) => `**${g.is_base ? '@everyone' : g.name}** — level **${g.level}** · ${g.members.length} member(s)`);
-    return respond(interaction, lines.length ? lines.join('\n') : 'No authorization groups configured yet.');
+    const lines = groups.map((g) => tn(lang, 'config.permission.groupLine', g.members.length, { count: g.members.length, name: g.is_base ? '@everyone' : g.name, level: g.level }));
+    return respond(interaction, lines.length ? lines.join('\n') : t(lang, 'config.permission.noGroups'));
   }
 
   const name = interaction.options.getString('name', true);
@@ -77,30 +79,30 @@ async function groupCommand(interaction, sub) {
     const level = interaction.options.getInteger('level', true);
     try {
       const group = await permissionsDb.createGroup(guildId, name, level);
-      await audit(interaction, 'create_group', `Created group "${group.name}" at level ${group.level}`);
-      return respond(interaction, `Authorization group **${group.name}** created at level **${group.level}**.`, COLORS.GREEN);
+      await audit(interaction, 'create_group', `Created group "${group.name}" at level ${group.level}`); // i18n-ignore: stored audit record
+      return respond(interaction, t(lang, 'config.permission.created', { name: group.name, level: group.level }), COLORS.GREEN);
     } catch (err) {
-      if (err?.code === '23505') return respond(interaction, `A group named **${name}** already exists.`, COLORS.RED);
+      if (err?.code === '23505') return respond(interaction, t(lang, 'config.permission.exists', { name }), COLORS.RED);
       throw err;
     }
   }
 
   const group = await findGroup(guildId, name);
-  if (!group) return respond(interaction, `Authorization group **${name}** was not found.`, COLORS.RED);
+  if (!group) return respond(interaction, t(lang, 'config.permission.notFound', { name }), COLORS.RED);
   if (sub === 'delete') {
     const removed = await permissionsDb.deleteGroup(guildId, group.id);
-    if (removed) await audit(interaction, 'delete_group', `Deleted group "${group.name}"`);
-    return respond(interaction, removed ? `Group **${group.name}** deleted.` : 'The @everyone group cannot be deleted.', removed ? COLORS.GREEN : COLORS.RED);
+    if (removed) await audit(interaction, 'delete_group', `Deleted group "${group.name}"`); // i18n-ignore: stored audit record
+    return respond(interaction, removed ? t(lang, 'config.permission.deleted', { name: group.name }) : t(lang, 'config.permission.baseUndeletable'), removed ? COLORS.GREEN : COLORS.RED);
   }
   if (sub === 'level') {
     const level = interaction.options.getInteger('level', true);
     await permissionsDb.updateGroupLevel(guildId, group.id, level);
-    await audit(interaction, 'update_group_level', `Set "${group.name}" to level ${level}`);
-    return respond(interaction, `Group **${group.name}** now has level **${level}**.`, COLORS.GREEN);
+    await audit(interaction, 'update_group_level', `Set "${group.name}" to level ${level}`); // i18n-ignore: stored audit record
+    return respond(interaction, t(lang, 'config.permission.levelSet', { name: group.name, level }), COLORS.GREEN);
   }
   if (sub === 'view') {
-    const members = group.members.length ? group.members.map((m) => `${m.subject_type === 'role' ? '<@&' : '<@'}${m.subject_id}>`).join(' ') : 'No users or roles assigned.';
-    return respond(interaction, `**${group.is_base ? '@everyone' : group.name}** · level **${group.level}**\n${members}`);
+    const members = group.members.length ? group.members.map((m) => `${m.subject_type === 'role' ? '<@&' : '<@'}${m.subject_id}>`).join(' ') : t(lang, 'config.permission.noMembers');
+    return respond(interaction, t(lang, 'config.permission.view', { name: group.is_base ? '@everyone' : group.name, level: group.level, members }));
   }
 
   const isRole = sub.endsWith('role');
@@ -109,22 +111,23 @@ async function groupCommand(interaction, sub) {
   const adding = sub.startsWith('add-');
   if (adding) await permissionsDb.addGroupMember(group.id, subjectType, subject.id);
   else await permissionsDb.removeGroupMember(group.id, subjectType, subject.id);
+  // i18n-ignore-next-line: stored audit record
   await audit(interaction, adding ? 'add_member' : 'remove_member', `${adding ? 'Added' : 'Removed'} ${subjectType} ${subject.id} ${adding ? 'to' : 'from'} "${group.name}"`);
-  return respond(interaction, `${adding ? 'Added' : 'Removed'} ${subject} ${adding ? 'to' : 'from'} group **${group.name}**.`, COLORS.GREEN);
+  return respond(interaction, t(lang, adding ? 'config.permission.added' : 'config.permission.removed', { subject: `${subject}`, name: group.name }), COLORS.GREEN);
 }
 
-async function commandCommand(interaction, sub) {
+async function commandCommand(interaction, sub, lang) {
   if (sub === 'list') {
     const rows = await permissionsDb.listCommandLevels(interaction.guild.id);
     const custom = rows.filter((row) => row.required_level > 0).sort((a, b) => a.command_name.localeCompare(b.command_name));
-    return respond(interaction, custom.length ? custom.map((row) => `\`${row.command_name}\` → level **${row.required_level}**`).join('\n') : 'All commands are public to members who pass Discord permissions.');
+    return respond(interaction, custom.length ? custom.map((row) => t(lang, 'config.permission.commandLine', { command: row.command_name, level: row.required_level })).join('\n') : t(lang, 'config.permission.allPublic'));
   }
 
   const rawName = interaction.options.getString('name', true).toLowerCase();
   const canonical = interaction.client.commandAliases.get(rawName) ?? rawName;
-  if (!interaction.client.commands.has(canonical)) return respond(interaction, `Unknown built-in command **${rawName}**. Use your prefix + help to find commands.`, COLORS.RED);
+  if (!interaction.client.commands.has(canonical)) return respond(interaction, t(lang, 'config.permission.unknownCommand', { name: rawName }), COLORS.RED);
   const level = interaction.options.getInteger('level', true);
   await permissionsDb.setCommandLevel(interaction.guild.id, canonical, level);
-  await audit(interaction, 'set_command_level', `Set ${canonical} to required level ${level}`);
-  return respond(interaction, `Command **${canonical}** now requires authorization level **${level}**.`, COLORS.GREEN);
+  await audit(interaction, 'set_command_level', `Set ${canonical} to required level ${level}`); // i18n-ignore: stored audit record
+  return respond(interaction, t(lang, 'config.permission.commandSet', { command: canonical, level }), COLORS.GREEN);
 }

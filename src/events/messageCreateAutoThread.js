@@ -3,6 +3,7 @@ const autoThreadsDb = require('../db/autoThreads');
 const { resolve } = require('../utils/embedVariables');
 const { sendMemberEvent } = require('../utils/memberEventMessage');
 const logger = require('../utils/logger');
+const { t, currentLanguage } = require('../i18n');
 
 module.exports = {
   name: Events.MessageCreate,
@@ -17,7 +18,7 @@ module.exports = {
       if (!message.guild.members.me.permissions.has('CreatePublicThreads')) return;
 
       const ctx = { member: message.member, guild: message.guild, channel: message.channel, message };
-      const name = (await resolve(config.name_template || '{user_name}', ctx)).slice(0, 100) || 'Thread';
+      const name = (await resolve(config.name_template || '{user_name}', ctx)).slice(0, 100) || t(currentLanguage(), 'automation.autothread.defaultName');
 
       const thread = await message.startThread({ name, autoArchiveDuration: config.archive_minutes }).catch((err) => {
         logger.warn(`Auto-thread creation failed in guild ${message.guild.id}:`, err.message);

@@ -3,12 +3,15 @@
 const { ContainerBuilder, MessageFlags, TextDisplayBuilder } = require('discord.js');
 const { EMOJI } = require('./emojis');
 const { resolveSubcommandOptions, tokenize } = require('../handlers/prefixInteraction');
+const { t, currentLanguage, commandDescription } = require('../i18n');
 
 const ACCENT = 0xf5c26b;
 const SUBCOMMAND = 1;
 const GROUP = 2;
 // How a person is told what an option holds.
-const TYPE_HINT = { 3: 'text', 4: 'number', 5: 'yes or no', 6: 'a member', 7: 'a channel', 8: 'a role', 9: 'a member or a role', 10: 'number', 11: 'a file' };
+const TYPE_HINT = { 3: 'text', 4: 'number', 5: 'boolean', 6: 'user', 7: 'channel', 8: 'role', 9: 'mentionable', 10: 'number', 11: 'file' };
+// The names the prefix parser gives to a missing subcommand, written for people. i18n-ignore-next-line
+const MISSING_NAMES = { subcommand: 'core.usage.subcommand', 'subcommand group': 'core.usage.subcommandGroup' };
 
 const clip = (text, max) => (String(text).length > max ? `${String(text).slice(0, max - 1).trimEnd()}…` : String(text));
 
@@ -76,18 +79,18 @@ function topWords(paths) {
  * The answer for a subcommand that does not exist. Small on purpose: what was typed, what was probably meant (or the first
  * options), and where the full guide is.
  */
-function unknownSubcommandCard({ command, prefix, name, typed }) {
+function unknownSubcommandCard({ command, prefix, name, typed, lang = currentLanguage() }) {
   const paths = listPaths(command);
   const guesses = suggest(paths, typed);
-  const lines = [`${EMOJI.WARNING} \`${clip(typed || '(nothing)', 30)}\` is not part of \`${prefix}${name}\``];
+  const lines = [t(lang, 'core.usage.notPart', { emoji: EMOJI.WARNING, typed: clip(typed || t(lang, 'core.usage.nothing'), 30), prefix, command: name })];
   if (guesses.length) {
-    lines.push(`Did you mean ${guesses.map((entry) => `\`${prefix}${name} ${entry.path}\``).join(' or ')}?`);
+    lines.push(t(lang, 'core.usage.didYouMean', { options: guesses.map((entry) => `\`${prefix}${name} ${entry.path}\``).join(` ${t(lang, 'common.or')} `) }));
   } else {
     const words = topWords(paths);
     const shown = words.slice(0, 8).map((word) => `\`${word}\``).join(' ');
-    lines.push(`Try ${shown}${words.length > 8 ? ` and ${words.length - 8} more` : ''}`);
+    lines.push(words.length > 8 ? t(lang, 'core.usage.tryMore', { words: shown, count: words.length - 8 }) : t(lang, 'core.usage.try', { words: shown }));
   }
-  lines.push(`-# \`${prefix}help ${name}\` shows everything it can do`);
+  lines.push(t(lang, 'core.usage.helpHint', { prefix, command: name }));
   return card(lines);
 }
 
@@ -106,19 +109,23 @@ function resolveTyped(command, argText) {
  * The answer for a command that is missing an option, or was typed in a way that cannot be read. Small: the option that is
  * missing, the way to write the command, and one line about what that option is.
  */
-function missingOptionCard({ command, prefix, name, argText, missing = null }) {
+function missingOptionCard({ command, prefix, name, argText, missing = null, lang = currentLanguage() }) {
   const way = resolveTyped(command, argText);
   const options = way?.options ?? command.data.toJSON().options?.filter((option) => option.type !== SUBCOMMAND && option.type !== GROUP) ?? [];
   const path = way?.path ?? '';
   const lines = [
     missing
-      ? `${EMOJI.WARNING} \`${missing}\` is missing`
-      : `${EMOJI.WARNING} Check how you wrote \`${prefix}${name}${path ? ` ${path}` : ''}\``,
+      ? t(lang, 'core.usage.missing', { emoji: EMOJI.WARNING, option: MISSING_NAMES[missing] ? t(lang, MISSING_NAMES[missing]) : missing })
+      : t(lang, 'core.usage.checkWriting', { emoji: EMOJI.WARNING, command: `${prefix}${name}${path ? ` ${path}` : ''}` }),
     `\`${syntaxOf(prefix, name, path, options)}\``,
   ];
   const detail = options.find((option) => option.name === missing);
-  const hint = detail ? `\`${detail.name}\` is ${TYPE_HINT[detail.type] ?? 'text'}${detail.description ? `: ${clip(detail.description, 70)}` : ''}` : '';
-  lines.push(`-# ${hint ? `${hint} · ` : ''}\`<needed>\` \`[optional]\` · \`${prefix}help ${name}\``);
+  const type = t(lang, `core.usage.type.${TYPE_HINT[detail?.type] ?? 'text'}`);
+  const description = detail?.description ? commandDescription(lang, command, path ? path.split(' ') : [], detail.name, detail.description) : '';
+  const hint = !detail ? '' : description
+    ? t(lang, 'core.usage.optionIsDescribed', { option: detail.name, type, description: clip(description, 70) })
+    : t(lang, 'core.usage.optionIs', { option: detail.name, type });
+  lines.push(`-# ${hint ? `${hint} · ` : ''}${t(lang, 'core.usage.legend', { prefix, command: name })}`);
   return card(lines);
 }
 

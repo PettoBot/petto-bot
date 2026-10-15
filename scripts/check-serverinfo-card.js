@@ -33,4 +33,14 @@ const longName = buildServerInfoCard({ ...data, name: 'x'.repeat(500), descripti
 const total = JSON.stringify(longName).length;
 assert.ok(total < 6000, 'a long name and description are cut');
 assert.equal(serverInfoPayload(data).flags, 32768);
+
+// The card in Spanish and Portuguese: same layout, translated words and the numbers of each language.
+assert.equal(boostText(2, 9, 'es'), 'Nivel 2  ·  9 boosts (faltan 5 para el nivel 3)');
+assert.equal(boostText(0, 1, 'pt-BR'), 'Sem nível  ·  1 impulso (falta 1 para o nível 1)');
+assert.equal(featureList(['COMMUNITY', 'VANITY_URL'], 6, 'es'), 'Comunidad, Enlace personalizado');
+const spanish = JSON.stringify(buildServerInfoCard({ ...data, lang: 'es' }).toJSON());
+for (const part of ['**Miembros** 1,234', '1,100 personas', '20 de texto', '2 foros', 'Verificación: Medium', '31/250 roles', 'Shard 1/1']) assert.ok(spanish.includes(part), `the Spanish card says ${part}`);
+const portuguese = buildServerInfoCard({ ...data, lang: 'pt-BR' }).toJSON();
+assert.ok(JSON.stringify(portuguese).includes('1.234') && JSON.stringify(portuguese).includes('31/250 cargos'));
+assert.deepEqual(portuguese.components.find((component) => component.type === 1).components.map((button) => button.label), ['Ícone', 'Banner', 'Link do servidor']);
 console.log('Checked the card of /serverinfo.');

@@ -11,8 +11,19 @@ const engine = require('../../utils/giveawayEngine');
 const { formatDuration } = require('../../utils/duration');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { t, tn, languageOf } = require('../../i18n');
 
 const ENTRY_MODE_CHOICES = [{ name: 'button', value: 'button' }, { name: 'reaction', value: 'reaction' }];
+
+// The name of each message of `message-template` in the catalogs (`giveaways.messageTemplate.what.<key>`).
+const MESSAGE_KEYS = {
+  winner: 'giveaways.messageTemplate.what.winner',
+  deny: 'giveaways.messageTemplate.what.deny',
+  claim_time: 'giveaways.messageTemplate.what.claimTime',
+  claim_time_over: 'giveaways.messageTemplate.what.claimTimeOver',
+  accept: 'giveaways.messageTemplate.what.accept',
+  no_entries: 'giveaways.messageTemplate.what.noEntries',
+};
 
 const MESSAGE_CHOICES = [
   { name: 'winner', value: 'winner' },
@@ -99,33 +110,34 @@ module.exports = {
   prefixRawOptions: { edit: parseEditText },
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const sub = interaction.options.getSubcommand();
-    if (sub === 'quick') return quickCmd(interaction);
-    if (sub === 'start') return startCmd(interaction);
-    if (sub === 'template') return templateCmd(interaction);
-    if (sub === 'reroll') return rerollCmd(interaction);
-    if (sub === 'end') return endCmd(interaction);
-    if (sub === 'edit') return editCmd(interaction);
-    if (sub === 'embed') return setEmbedCmd(interaction);
-    if (sub === 'reaction') return configCmd(interaction, 'reaction', interaction.options.getString('emoji', true), 'Default entry reaction set.');
-    if (sub === 'entry-mode') return configCmd(interaction, 'entry_mode', interaction.options.getString('mode', true), 'Default entry mode set.');
-    if (sub === 'winner-message') return configCmd(interaction, 'winner_message', interaction.options.getString('message', true), 'Winner message set.');
-    if (sub === 'deny-message') return configCmd(interaction, 'deny_message', interaction.options.getString('message', true), 'Deny message set.');
-    if (sub === 'claim-time-message') return configCmd(interaction, 'claim_time_message', interaction.options.getString('message', true), 'Claim-time message set.');
-    if (sub === 'claim-time-over-message') return configCmd(interaction, 'claim_time_over_message', interaction.options.getString('message', true), 'Claim-time-over message set.');
-    if (sub === 'accept-message') return configCmd(interaction, 'accept_message', interaction.options.getString('message', true), 'Accept message set.');
-    if (sub === 'message-template') return messageTemplateCmd(interaction);
-    return configCmd(interaction, 'no_entries_message', interaction.options.getString('message', true), 'No-entries message set.');
+    if (sub === 'quick') return quickCmd(interaction, lang);
+    if (sub === 'start') return startCmd(interaction, lang);
+    if (sub === 'template') return templateCmd(interaction, lang);
+    if (sub === 'reroll') return rerollCmd(interaction, lang);
+    if (sub === 'end') return endCmd(interaction, lang);
+    if (sub === 'edit') return editCmd(interaction, lang);
+    if (sub === 'embed') return setEmbedCmd(interaction, lang);
+    if (sub === 'reaction') return configCmd(interaction, 'reaction', interaction.options.getString('emoji', true), t(lang, 'giveaways.config.reaction', { emoji: EMOJI.APPROVE }));
+    if (sub === 'entry-mode') return configCmd(interaction, 'entry_mode', interaction.options.getString('mode', true), t(lang, 'giveaways.config.entryMode', { emoji: EMOJI.APPROVE }));
+    if (sub === 'winner-message') return configCmd(interaction, 'winner_message', interaction.options.getString('message', true), t(lang, 'giveaways.config.winnerMessage', { emoji: EMOJI.APPROVE }));
+    if (sub === 'deny-message') return configCmd(interaction, 'deny_message', interaction.options.getString('message', true), t(lang, 'giveaways.config.denyMessage', { emoji: EMOJI.APPROVE }));
+    if (sub === 'claim-time-message') return configCmd(interaction, 'claim_time_message', interaction.options.getString('message', true), t(lang, 'giveaways.config.claimTimeMessage', { emoji: EMOJI.APPROVE }));
+    if (sub === 'claim-time-over-message') return configCmd(interaction, 'claim_time_over_message', interaction.options.getString('message', true), t(lang, 'giveaways.config.claimTimeOverMessage', { emoji: EMOJI.APPROVE }));
+    if (sub === 'accept-message') return configCmd(interaction, 'accept_message', interaction.options.getString('message', true), t(lang, 'giveaways.config.acceptMessage', { emoji: EMOJI.APPROVE }));
+    if (sub === 'message-template') return messageTemplateCmd(interaction, lang);
+    return configCmd(interaction, 'no_entries_message', interaction.options.getString('message', true), t(lang, 'giveaways.config.noEntriesMessage', { emoji: EMOJI.APPROVE }));
   },
 };
 
 // Lengths of time as people write them ("3d 4h", "1 hour 30 minutes"), shared with the other commands.
 const parseDuration = (str) => parseLength(str);
 
-async function quickCmd(interaction) {
+async function quickCmd(interaction, lang) {
   const durationMs = parseDuration(interaction.options.getString('duration', true));
   if (!durationMs) {
-    await interaction.reply({ content: 'Provide a valid duration, e.g. `10m`, `1h`, `3d`.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'giveaways.invalidDuration'), flags: MessageFlags.Ephemeral });
     return;
   }
   const winners = interaction.options.getInteger('winners', true);
@@ -150,19 +162,19 @@ async function quickCmd(interaction) {
     embedTemplate: config.embed_template,
   });
 
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Giveaway started in ${channel} for **${prize}**.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'giveaways.started', { emoji: EMOJI.APPROVE, channel: `${channel}`, prize }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
-async function startCmd(interaction) {
+async function startCmd(interaction, lang) {
   const durationMs = parseDuration(interaction.options.getString('duration', true));
   if (!durationMs) {
-    await interaction.reply({ content: 'Provide a valid duration, e.g. `10m`, `1h`, `3d`.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'giveaways.invalidDuration'), flags: MessageFlags.Ephemeral });
     return;
   }
   const claimTimeStr = interaction.options.getString('claim_time');
   const claimTimeMs = claimTimeStr ? parseDuration(claimTimeStr) : null;
   if (claimTimeStr && !claimTimeMs) {
-    await interaction.reply({ content: 'Provide a valid claim time, e.g. `5m`, `1h`.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'giveaways.invalidClaimTime'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -181,7 +193,7 @@ async function startCmd(interaction) {
   if (presetName) {
     const preset = await presetsDb.getPreset(interaction.guild.id, presetName);
     if (!preset) {
-      await interaction.editReply({ components: [textCard(`Preset \`${presetName}\` doesn't exist.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'giveaways.presetMissing', { name: presetName }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
     presetId = preset.id;
@@ -191,7 +203,7 @@ async function startCmd(interaction) {
     const template = await embedTemplatesDb.getTemplate(interaction.guild.id, embedTemplate);
     if (!template) {
       await interaction.editReply({
-        components: [textCard(`Saved embed \`${embedTemplate}\` doesn't exist. Create it first with \`${commandRef(interaction, `embed create ${embedTemplate}`)}\`.`, 0xfe6465)],
+        components: [textCard(t(lang, 'giveaways.embedMissing', { name: embedTemplate, command: commandRef(interaction, `embed create ${embedTemplate}`) }), 0xfe6465)],
         flags: MessageFlags.IsComponentsV2,
       });
       return;
@@ -212,10 +224,10 @@ async function startCmd(interaction) {
     embedTemplate: embedTemplate ?? config.embed_template,
   });
 
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Giveaway started in ${channel} for **${prize}**.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'giveaways.started', { emoji: EMOJI.APPROVE, channel: `${channel}`, prize }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
-async function templateCmd(interaction) {
+async function templateCmd(interaction, lang) {
   const name = interaction.options.getString('template_name', true);
   const channelOverride = interaction.options.getChannel('channel');
 
@@ -224,7 +236,7 @@ async function templateCmd(interaction) {
 
   const doc = await giveawayTemplatesDb.getTemplate(interaction.guild.id, name);
   if (!doc) {
-    await interaction.editReply({ components: [textCard("That giveaway template doesn't exist.", 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'giveaways.templateMissing'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -246,52 +258,53 @@ async function templateCmd(interaction) {
     embedTemplate: data.embedTemplate ?? config.embed_template,
   });
 
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Giveaway started from template **${doc.name}** in ${channel}.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'giveaways.startedFromTemplate', { emoji: EMOJI.APPROVE, name: doc.name, channel: `${channel}` }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function findGiveaway(interaction, messageId) {
   return giveawaysDb.getGiveawayByMessageId(interaction.guild.id, messageId.trim());
 }
 
-async function rerollCmd(interaction) {
+async function rerollCmd(interaction, lang) {
   const messageId = interaction.options.getString('message_id', true);
   const winners = interaction.options.getInteger('winners');
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const giveaway = await findGiveaway(interaction, messageId);
   if (!giveaway) {
-    await interaction.editReply({ components: [textCard("Couldn't find a giveaway with that message ID.", 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'giveaways.notFound'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
   if (!giveaway.ended) {
-    await interaction.editReply({ components: [textCard('That giveaway is still active — use `end` first.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'giveaways.stillActive'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   try {
-    const winnerIds = await engine.rerollGiveaway(interaction.client, giveaway, winners);
-    await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  New winner(s): ${winnerIds.map((id) => `<@${id}>`).join(', ')}`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+    const winnerIds = await engine.rerollGiveaway(interaction.client, giveaway, winners, lang);
+    const mentions = winnerIds.map((id) => `<@${id}>`).join(', ');
+    await interaction.editReply({ components: [textCard(tn(lang, 'giveaways.rerolled', winnerIds.length, { emoji: EMOJI.APPROVE, winners: mentions }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
   } catch (err) {
-    await interaction.editReply({ components: [textCard(err.userFacing ? err.message : 'Failed to reroll.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(err.userFacing ? err.message : t(lang, 'giveaways.rerollFailed'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
   }
 }
 
-async function endCmd(interaction) {
+async function endCmd(interaction, lang) {
   const messageId = interaction.options.getString('message_id', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const giveaway = await findGiveaway(interaction, messageId);
   if (!giveaway) {
-    await interaction.editReply({ components: [textCard("Couldn't find a giveaway with that message ID.", 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'giveaways.notFound'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
   if (giveaway.ended) {
-    await interaction.editReply({ components: [textCard('That giveaway already ended.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'giveaways.alreadyEnded'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   await engine.endGiveaway(interaction.client, giveaway);
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Giveaway ended.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'giveaways.ended', { emoji: EMOJI.APPROVE }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 const DURATION_WORD = /^\d+(?:\.\d+)?\s*[smhdw]$/i;
@@ -330,7 +343,7 @@ function parseEditText(text) {
   return values;
 }
 
-async function editCmd(interaction) {
+async function editCmd(interaction, lang) {
   const messageId = interaction.options.getString('message_id', true);
   const prize = interaction.options.getString('prize');
   const winners = interaction.options.getInteger('winners');
@@ -340,7 +353,7 @@ async function editCmd(interaction) {
   if (durationStr) {
     durationMs = parseDuration(durationStr);
     if (!durationMs) {
-      await interaction.reply({ content: 'Provide a valid duration, e.g. `10m`, `1h`.', flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: t(lang, 'giveaways.invalidDurationShort'), flags: MessageFlags.Ephemeral });
       return;
     }
   }
@@ -348,15 +361,15 @@ async function editCmd(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const giveaway = await findGiveaway(interaction, messageId);
   if (!giveaway) {
-    await interaction.editReply({ components: [textCard("Couldn't find a giveaway with that message ID.", 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'giveaways.notFound'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
   if (giveaway.ended) {
-    await interaction.editReply({ components: [textCard('That giveaway already ended.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'giveaways.alreadyEnded'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
   if (!prize && !winners && !durationMs) {
-    await interaction.editReply({ components: [textCard('Provide at least one field to change.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'giveaways.edit.nothing'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -370,10 +383,10 @@ async function editCmd(interaction) {
   const channel = await interaction.guild.channels.fetch(giveaway.channel_id).catch(() => null);
   if (channel) await engine.refreshGiveawayMessage(channel, updated);
 
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Giveaway updated.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'giveaways.updated', { emoji: EMOJI.APPROVE }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
-async function setEmbedCmd(interaction) {
+async function setEmbedCmd(interaction, lang) {
   const rawName = interaction.options.getString('template', true).trim();
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
@@ -382,7 +395,7 @@ async function setEmbedCmd(interaction) {
   if (['clear', 'none'].includes(rawName.toLowerCase())) {
     await configDb.updateConfig(interaction.guild.id, { embed_template: null });
     await interaction.editReply({
-      components: [textCard(`${EMOJI.APPROVE}  Default giveaway embed cleared. New giveaways will use Petto's built-in design.`, 0xa5ea7a)],
+      components: [textCard(t(lang, 'giveaways.embed.cleared', { emoji: EMOJI.APPROVE }), 0xa5ea7a)],
       flags: MessageFlags.IsComponentsV2,
     });
     return;
@@ -391,7 +404,7 @@ async function setEmbedCmd(interaction) {
   const doc = await embedTemplatesDb.getTemplate(interaction.guild.id, rawName);
   if (!doc) {
     await interaction.editReply({
-      components: [textCard(`No saved embed named \`${rawName}\` exists. Create one with \`${commandRef(interaction, `embed create ${rawName}`)}\` first.`, 0xfe6465)],
+      components: [textCard(t(lang, 'giveaways.embed.missing', { name: rawName, command: commandRef(interaction, `embed create ${rawName}`) }), 0xfe6465)],
       flags: MessageFlags.IsComponentsV2,
     });
     return;
@@ -399,40 +412,40 @@ async function setEmbedCmd(interaction) {
 
   await configDb.updateConfig(interaction.guild.id, { embed_template: doc.name });
   await interaction.editReply({
-    components: [textCard(`${EMOJI.APPROVE}  Default giveaway design set to saved embed **${doc.name}**.`, 0xa5ea7a)],
+    components: [textCard(t(lang, 'giveaways.embed.set', { emoji: EMOJI.APPROVE, name: doc.name }), 0xa5ea7a)],
     flags: MessageFlags.IsComponentsV2,
   });
 }
 
-async function messageTemplateCmd(interaction) {
+async function messageTemplateCmd(interaction, lang) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
   const which = interaction.options.getString('message', true).trim().toLowerCase().replace(/[\s-]+/g, '_');
   if (!MESSAGE_CHOICES.some((choice) => choice.value === which)) {
-    return interaction.editReply({ components: [textCard(`Choose one of: ${MESSAGE_CHOICES.map((choice) => `\`${choice.value}\``).join(', ')}.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return interaction.editReply({ components: [textCard(t(lang, 'giveaways.messageTemplate.choose', { list: MESSAGE_CHOICES.map((choice) => `\`${choice.value}\``).join(', ') }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
   }
   const column = `${which}_embed_template`;
   const name = String(interaction.options.getString('template') ?? '').trim();
-  const label = MESSAGE_CHOICES.find((choice) => choice.value === which)?.name ?? which;
+  const what = t(lang, MESSAGE_KEYS[which]);
   const done = (text, color = 0xa5ea7a) => interaction.editReply({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2 });
   if (!name) {
     const { templateHint } = require('../../utils/templateHint');
     const current = await configDb.ensureConfig(interaction.guild.id);
-    return done(await templateHint(interaction.guild.id, { current: current[column] ?? null, usage: `giveaway message-template ${which} <name>`, what: `The ${label} message` }), 0x4b4f59);
+    return done(await templateHint(interaction.guild.id, { current: current[column] ?? null, usage: t(lang, 'giveaways.messageTemplate.usage', { which }), what, lang }), 0x4b4f59);
   }
   if (['none', 'clear'].includes(name.toLowerCase())) {
     await configDb.updateConfig(interaction.guild.id, { [column]: null });
-    return done(`${EMOJI.APPROVE}  The ${label} message goes back to its text.`);
+    return done(t(lang, 'giveaways.messageTemplate.cleared', { emoji: EMOJI.APPROVE, what }));
   }
   const doc = await embedTemplatesDb.getTemplate(interaction.guild.id, name);
-  if (!doc) return done(`No saved embed named \`${name}\` exists. Create one with \`${commandRef(interaction, `embed create ${name}`)}\` first.`, 0xfe6465);
+  if (!doc) return done(t(lang, 'giveaways.embed.missing', { name, command: commandRef(interaction, `embed create ${name}`) }), 0xfe6465);
   await configDb.updateConfig(interaction.guild.id, { [column]: doc.name });
-  return done(`${EMOJI.APPROVE}  The ${label} message now uses the saved embed **${doc.name}**.`);
+  return done(t(lang, 'giveaways.messageTemplate.set', { emoji: EMOJI.APPROVE, what, name: doc.name }));
 }
 
-async function configCmd(interaction, field, value, successText) {
+async function configCmd(interaction, field, value, doneText) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
   await configDb.updateConfig(interaction.guild.id, { [field]: value });
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  ${successText}`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(doneText, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }

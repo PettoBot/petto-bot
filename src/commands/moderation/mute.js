@@ -11,6 +11,8 @@ const { parseDuration, formatDuration } = require('../../utils/duration');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
 const { confirmBulkAction, requireAdministrator, failureDetail } = require('../../utils/moderationCommand');
+const { reasonText } = require('../../utils/caseFormat');
+const { t, tn, languageOf } = require('../../i18n');
 
 const MAX_TIMEOUT_MS = 28 * 24 * 60 * 60 * 1000; // Discord's native timeout hard limit
 
@@ -70,12 +72,13 @@ module.exports = {
 };
 
 async function muteUser(interaction) {
+  const lang = await languageOf(interaction);
   const targetUser = interaction.options.getUser('user', true);
   const reason = interaction.options.getString('reason');
 
   const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
   if (!targetMember) {
-    await interaction.reply({ content: 'That user is not a member of this server.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'moderation.common.notMember'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -86,7 +89,7 @@ async function muteUser(interaction) {
   }
 
   if (!interaction.guild.members.me.permissions.has(PermissionFlagsBits.ManageRoles)) {
-    await interaction.reply({ content: 'I need the **Manage Roles** permission to mute members.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'moderation.mute.needsManageRoles'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -100,7 +103,7 @@ async function muteUser(interaction) {
   } catch (err) {
     logger.error('Failed to set up mute role:', err);
     await interaction.editReply({
-      components: [textCard('I was unable to set up the mute role. Check my **Manage Roles** and **Manage Channels** permissions.', 0xfe6465)],
+      components: [textCard(t(lang, 'moderation.mute.roleSetupFailed'), 0xfe6465)],
       flags: MessageFlags.IsComponentsV2,
     });
     return;
@@ -110,7 +113,7 @@ async function muteUser(interaction) {
     await targetMember.roles.add(muteRole, reason ?? undefined);
   } catch (err) {
     logger.error('Failed to mute member:', err);
-    await interaction.editReply({ components: [textCard(`I was unable to mute that user. My role may be below theirs.${failureDetail(err)}`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.mute.failedRole', { detail: failureDetail(err, lang) }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -126,11 +129,12 @@ async function muteUser(interaction) {
 
 async function muteUsers(interaction) {
   if (!(await requireAdministrator(interaction))) return;
+  const lang = await languageOf(interaction);
   const usersInput = interaction.options.getString('users', true);
   const reason = interaction.options.getString('reason');
 
   if (!interaction.guild.members.me.permissions.has(PermissionFlagsBits.ManageRoles)) {
-    await interaction.reply({ content: 'I need the **Manage Roles** permission to mute members.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'moderation.mute.needsManageRoles'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -145,7 +149,7 @@ async function muteUsers(interaction) {
     muteRole = await ensureMuteRole(interaction.guild, guildConfig);
   } catch (err) {
     logger.error('Failed to set up mute role:', err);
-    await interaction.editReply({ components: [textCard('I was unable to set up the mute role.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.mute.roleSetupFailedShort'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -178,34 +182,35 @@ async function muteUsers(interaction) {
     }
   }
 
-  const lines = [`${EMOJI.ALERT}  Muted **${succeeded.length}** user(s)${caseNumbers.length ? ` (cases #${caseNumbers.join(', #')})` : ''}.`];
+  const lines = [tn(lang, 'moderation.mute.bulkDone', succeeded.length, { emoji: EMOJI.ALERT, count: succeeded.length, cases: caseNumbers.length ? t(lang, 'moderation.common.cases', { list: caseNumbers.join(', #') }) : '' })];
   if (succeeded.length) lines.push(succeeded.map((u) => `${u}`).join(' '));
-  if (failed.length) lines.push(`${EMOJI.DENY}  Failed: ${failed.map((u) => `${u}`).join(' ')}`);
-  if (skipped.length) lines.push(`Not in this server: ${skipped.map((u) => `${u}`).join(' ')}`);
-  if (notFound.length) lines.push(`Not found: ${notFound.map((id) => `\`${id}\``).join(', ')}`);
-  lines.push(`**Reason:** ${reason || 'No reason provided.'}`);
+  if (failed.length) lines.push(t(lang, 'moderation.common.failedList', { emoji: EMOJI.DENY, list: failed.map((u) => `${u}`).join(' ') }));
+  if (skipped.length) lines.push(t(lang, 'moderation.common.notInServer', { list: skipped.map((u) => `${u}`).join(' ') }));
+  if (notFound.length) lines.push(t(lang, 'moderation.common.notFound', { list: notFound.map((id) => `\`${id}\``).join(', ') }));
+  lines.push(t(lang, 'moderation.common.reason', { reason: reasonText(reason, lang) }));
 
   const card = textCard(lines.join('\n'), 0xfed53c);
   await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function tempMute(interaction) {
+  const lang = await languageOf(interaction);
   const targetUser = interaction.options.getUser('user', true);
   const reason = interaction.options.getString('reason');
   const durationMs = parseDuration(interaction.options.getString('duration', true));
 
   if (!durationMs) {
-    await interaction.reply({ content: 'Invalid duration. Use something like `10m`, `2h`, or `7d`.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'moderation.duration.invalidMute'), flags: MessageFlags.Ephemeral });
     return;
   }
   if (durationMs > MAX_TIMEOUT_MS) {
-    await interaction.reply({ content: 'Discord timeouts cap at 28 days. Use `!mute user` for an indefinite mute instead.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'moderation.mute.timeoutCap'), flags: MessageFlags.Ephemeral });
     return;
   }
 
   const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
   if (!targetMember) {
-    await interaction.reply({ content: 'That user is not a member of this server.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'moderation.common.notMember'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -221,7 +226,7 @@ async function tempMute(interaction) {
     await targetMember.timeout(durationMs, reason ?? undefined);
   } catch (err) {
     logger.error('Failed to timeout member:', err);
-    await interaction.editReply({ components: [textCard(`I was unable to mute that user.${failureDetail(err)}`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.mute.failed', { detail: failureDetail(err, lang) }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -229,7 +234,7 @@ async function tempMute(interaction) {
   await ensureGuild(interaction.guild.id);
   const modCase = await createCase({ guildId: interaction.guild.id, userId: targetUser.id, moderatorId: interaction.user.id, type: 'tempmute', reason, expiresAt });
 
-  const duration = formatDuration(durationMs);
+  const duration = formatDuration(durationMs, lang);
   await sanctionReply(interaction, { modCase, type: 'tempmute', target: targetUser, moderator: interaction.user, reason, duration });
   await logSanction(interaction.client, interaction.guild, { modCase, target: targetUser, moderator: interaction.user, reason, duration });
 
@@ -239,12 +244,13 @@ async function tempMute(interaction) {
 }
 
 async function unmuteUser(interaction) {
+  const lang = await languageOf(interaction);
   const targetUser = interaction.options.getUser('user', true);
   const reason = interaction.options.getString('reason');
 
   const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
   if (!targetMember) {
-    await interaction.reply({ content: 'That user is not a member of this server.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'moderation.common.notMember'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -276,7 +282,7 @@ async function unmuteUser(interaction) {
   }
 
   if (!didSomething) {
-    await interaction.editReply({ components: [textCard('That user is not currently muted.', 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.unmute.notMuted'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -292,6 +298,7 @@ async function unmuteUser(interaction) {
 
 async function unmuteUsers(interaction) {
   if (!(await requireAdministrator(interaction))) return;
+  const lang = await languageOf(interaction);
   const usersInput = interaction.options.getString('users', true);
   const reason = interaction.options.getString('reason');
 
@@ -346,10 +353,10 @@ async function unmuteUsers(interaction) {
       .catch(() => logger.warn(`Could not DM unmute notice to ${user.id} in guild ${interaction.guild.id}.`));
   }
 
-  const lines = [`${EMOJI.APPROVE}  Unmuted **${succeeded.length}** user(s)${caseNumbers.length ? ` (cases #${caseNumbers.join(', #')})` : ''}.`];
+  const lines = [tn(lang, 'moderation.unmute.bulkDone', succeeded.length, { emoji: EMOJI.APPROVE, count: succeeded.length, cases: caseNumbers.length ? t(lang, 'moderation.common.cases', { list: caseNumbers.join(', #') }) : '' })];
   if (succeeded.length) lines.push(succeeded.map((u) => `${u}`).join(' '));
-  if (skipped.length) lines.push(`Skipped (not muted / not in server): ${skipped.map((u) => `${u}`).join(' ')}`);
-  if (notFound.length) lines.push(`Not found: ${notFound.map((id) => `\`${id}\``).join(', ')}`);
+  if (skipped.length) lines.push(t(lang, 'moderation.unmute.skipped', { list: skipped.map((u) => `${u}`).join(' ') }));
+  if (notFound.length) lines.push(t(lang, 'moderation.common.notFound', { list: notFound.map((id) => `\`${id}\``).join(', ') }));
 
   const card = textCard(lines.join('\n'), 0xa5ea7a);
   await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });

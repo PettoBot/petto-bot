@@ -3,6 +3,7 @@ const { buildSnapshot } = require('../commands/config/backup');
 const logger = require('../utils/logger');
 const config = require('../config');
 const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency');
+const { t, guildLanguage } = require('../i18n');
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -17,7 +18,9 @@ async function processDueBackups(client) {
         return;
       }
       const snapshot = buildSnapshot(guild);
-      const saved = await createBackup(guild.id, client.user.id, 'Scheduled backup', snapshot, 'scheduled');
+      // The label is shown in the backup lists of the server, so it is written in its language.
+      const label = t(await guildLanguage(guild.id), 'backup.scheduledLabel');
+      const saved = await createBackup(guild.id, client.user.id, label, snapshot, 'scheduled');
       await recordAudit(guild.id, client.user.id, 'backup_created', saved.backup_number, { source: 'scheduled', label: saved.label });
       const pruned = await vault.pruneScheduledBackups(guild.id, schedule.retention_count);
       if (pruned) {

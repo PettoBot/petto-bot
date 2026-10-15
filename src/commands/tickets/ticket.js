@@ -15,6 +15,7 @@ const { build } = require('../../utils/embedBuilder');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
+const { t, tn, formatNumber, languageOf } = require('../../i18n');
 
 const STYLE_CHOICES = [
   { name: 'primary (blurple)', value: 'primary' },
@@ -174,51 +175,52 @@ module.exports = {
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
     const group = interaction.options.getSubcommandGroup(false);
+    const lang = await languageOf(interaction);
 
-    if (group === 'panel') return panelCmd(interaction, sub);
-    if (group === 'category') return categoryCmd(interaction, sub);
-    if (group === 'support-role') return roleListCmd(interaction, sub, 'support_role_ids');
-    if (group === 'ping-role') return roleListCmd(interaction, sub, 'ping_role_ids');
-    if (group === 'required-role') return roleListCmd(interaction, sub, 'required_role_ids');
-    if (group === 'form') return formCmd(interaction, sub);
-    if (group === 'blacklist') return blacklistCmd(interaction, sub);
+    if (group === 'panel') return panelCmd(interaction, sub, lang);
+    if (group === 'category') return categoryCmd(interaction, sub, lang);
+    if (group === 'support-role') return roleListCmd(interaction, sub, 'support_role_ids', lang);
+    if (group === 'ping-role') return roleListCmd(interaction, sub, 'ping_role_ids', lang);
+    if (group === 'required-role') return roleListCmd(interaction, sub, 'required_role_ids', lang);
+    if (group === 'form') return formCmd(interaction, sub, lang);
+    if (group === 'blacklist') return blacklistCmd(interaction, sub, lang);
 
-    if (sub === 'setup') return setupCmd(interaction);
-    if (sub === 'open') return openCmd(interaction);
-    if (sub === 'info') return infoCmd(interaction);
-    if (sub === 'stats') return statsCmd(interaction);
-    return ticketActionCmd(interaction, sub);
+    if (sub === 'setup') return setupCmd(interaction, lang);
+    if (sub === 'open') return openCmd(interaction, lang);
+    if (sub === 'info') return infoCmd(interaction, lang);
+    if (sub === 'stats') return statsCmd(interaction, lang);
+    return ticketActionCmd(interaction, sub, lang);
   },
 };
 
 /** Replies with a permission error and returns false if the caller lacks Manage Server; true (no reply sent) otherwise. */
-async function requireManageGuild(interaction) {
+async function requireManageGuild(interaction, lang) {
   if (interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) return true;
-  await interaction.reply({ content: 'You need the **Manage Server** permission to do that.', flags: MessageFlags.Ephemeral });
+  await interaction.reply({ content: t(lang, 'tickets.needManageServer', { permission: t(lang, 'core.perm.ManageGuild') }), flags: MessageFlags.Ephemeral });
   return false;
 }
 
-async function setupCmd(interaction) {
-  if (!(await requireManageGuild(interaction))) return;
-  const draft = startSetupDraft(interaction.user.id, { guildId: interaction.guild.id, channelId: interaction.channel?.isTextBased() ? interaction.channel.id : null });
-  await interaction.reply({ ...renderWizard(interaction.user.id, draft), flags: [MessageFlags.IsComponentsV2, MessageFlags.Ephemeral] });
+async function setupCmd(interaction, lang) {
+  if (!(await requireManageGuild(interaction, lang))) return;
+  const draft = startSetupDraft(interaction.user.id, { guildId: interaction.guild.id, channelId: interaction.channel?.isTextBased() ? interaction.channel.id : null, lang });
+  await interaction.reply({ ...renderWizard(interaction.user.id, draft, lang), flags: [MessageFlags.IsComponentsV2, MessageFlags.Ephemeral] });
 }
 
-async function panelCmd(interaction, sub) {
-  if (!(await requireManageGuild(interaction))) return;
+async function panelCmd(interaction, sub, lang) {
+  if (!(await requireManageGuild(interaction, lang))) return;
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
 
   if (sub === 'list') {
     const panels = await db.listPanels(interaction.guild.id);
     if (!panels.length) {
-      await interaction.editReply({ components: [textCard('No panels yet. Create one with `!ticket panel create`.', 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'tickets.panel.none'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
     const lines = await Promise.all(
       panels.map(async (p) => {
         const cats = await db.listCategories(interaction.guild.id, p.id);
-        return `**#${p.id}** in <#${p.channel_id}> (${p.style}) — ${cats.length} categor${cats.length === 1 ? 'y' : 'ies'}`;
+        return tn(lang, 'tickets.panel.listLine', cats.length, { id: p.id, channel: p.channel_id, style: ['button', 'select'].includes(p.style) ? t(lang, `tickets.panel.style.${p.style}`) : p.style });
       }),
     );
     await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
@@ -229,7 +231,7 @@ async function panelCmd(interaction, sub) {
     const panelId = interaction.options.getInteger('panel_id', true);
     const panel = await db.getPanel(interaction.guild.id, panelId);
     if (!panel) {
-      await interaction.editReply({ components: [textCard(`No panel with id \`${panelId}\`.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'tickets.panel.notFound', { id: panelId }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
     if (panel.message_id) {
@@ -238,7 +240,7 @@ async function panelCmd(interaction, sub) {
       await msg?.delete().catch(() => {});
     }
     await db.deletePanel(interaction.guild.id, panelId);
-    await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Panel #${panelId} deleted.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'tickets.panel.deleted', { emoji: EMOJI.APPROVE, id: panelId }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -246,13 +248,13 @@ async function panelCmd(interaction, sub) {
     const panelId = interaction.options.getInteger('panel_id', true);
     const panel = await db.getPanel(interaction.guild.id, panelId);
     if (!panel) {
-      await interaction.editReply({ components: [textCard(`No panel with id \`${panelId}\`.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'tickets.panel.notFound', { id: panelId }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
 
     const channel = await interaction.guild.channels.fetch(panel.channel_id).catch(() => null);
     if (!channel || !channel.isTextBased()) {
-      await interaction.editReply({ components: [textCard('The panel channel no longer exists or I cannot access it.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'tickets.panel.channelGone'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
 
@@ -264,7 +266,7 @@ async function panelCmd(interaction, sub) {
         // Discord 10008 means the old message is already gone; any other error is a real permission/API failure.
         if (err?.code !== 10008) {
           logger.error(`Failed to fetch panel #${panelId} before resend:`, err);
-          await interaction.editReply({ components: [textCard('I could not access the old panel message, so I did not resend it.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+          await interaction.editReply({ components: [textCard(t(lang, 'tickets.panel.oldNoAccess'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
           return;
         }
       }
@@ -273,7 +275,7 @@ async function panelCmd(interaction, sub) {
           await oldMessage.delete();
         } catch (err) {
           logger.error(`Failed to delete panel #${panelId} before resend:`, err);
-          await interaction.editReply({ components: [textCard('I could not delete the old panel message, so I did not resend it.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+          await interaction.editReply({ components: [textCard(t(lang, 'tickets.panel.oldNoDelete'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
           return;
         }
       }
@@ -281,20 +283,20 @@ async function panelCmd(interaction, sub) {
 
     await db.updatePanel(interaction.guild.id, panelId, { message_id: null });
     const categories = await db.listCategories(interaction.guild.id, panel.id);
-    const message = await channel.send(await renderPanelMessage(interaction.guild, panel, categories, channel)).catch((err) => {
+    const message = await channel.send(await renderPanelMessage(interaction.guild, panel, categories, channel, lang)).catch((err) => {
       logger.error(`Failed to resend panel #${panelId}:`, err);
       return null;
     });
     if (!message) {
-      await interaction.editReply({ components: [textCard('The old panel was removed, but I could not post the replacement. Check my permissions in that channel.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'tickets.panel.resendFailed'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
     await db.setPanelMessageId(panel.id, message.id);
-    await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE} Panel **#${panelId}** resent in ${channel}.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'tickets.panel.resent', { emoji: EMOJI.APPROVE, id: panelId, channel: `${channel}` }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
-  if (sub === 'edit') return panelEdit(interaction);
+  if (sub === 'edit') return panelEdit(interaction, lang);
 
   // create
   const channel = interaction.options.getChannel('channel', true);
@@ -305,20 +307,20 @@ async function panelCmd(interaction, sub) {
 
   if (embedTemplate && !(await getTemplate(interaction.guild.id, embedTemplate))) {
     await interaction.editReply({
-      components: [textCard(`${EMOJI.ALERT}  No embed named \`${embedTemplate}\` found. Create it with \`!embed create\` first — the panel was not created.`, 0xfe6465)],
+      components: [textCard(t(lang, 'tickets.panel.noEmbed', { emoji: EMOJI.ALERT, name: embedTemplate }), 0xfe6465)],
       flags: MessageFlags.IsComponentsV2,
     });
     return;
   }
 
-  const look = readPanelLook(interaction);
+  const look = readPanelLook(interaction, lang);
   if (look.error) {
     await interaction.editReply({ components: [textCard(`${EMOJI.ALERT}  ${look.error}`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
   const panel = await db.createPanel({ guildId: interaction.guild.id, channelId: channel.id, title, description, embedTemplate, style, ...look.patch });
 
-  const payload = await renderPanelMessage(interaction.guild, panel, [], channel);
+  const payload = await renderPanelMessage(interaction.guild, panel, [], channel, lang);
   const message = await channel.send(payload).catch((err) => {
     logger.error('Failed to post ticket panel:', err);
     return null;
@@ -326,13 +328,13 @@ async function panelCmd(interaction, sub) {
 
   if (!message) {
     await db.deletePanel(interaction.guild.id, panel.id);
-    await interaction.editReply({ components: [textCard(`${EMOJI.DENY}  I couldn't post the panel in ${channel}. Check my permissions there.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'tickets.panel.postFailed', { emoji: EMOJI.DENY, channel: `${channel}` }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   await db.setPanelMessageId(panel.id, message.id);
   await interaction.editReply({
-    components: [textCard(`${EMOJI.APPROVE}  Panel **#${panel.id}** posted in ${channel}. Add categories with \`!ticket category add panel_id:${panel.id}\`.`, 0xa5ea7a)],
+    components: [textCard(t(lang, 'tickets.panel.posted', { emoji: EMOJI.APPROVE, id: panel.id, channel: `${channel}` }), 0xa5ea7a)],
     flags: MessageFlags.IsComponentsV2,
   });
 }
@@ -340,21 +342,21 @@ async function panelCmd(interaction, sub) {
 const NONE = /^(none|off|no|-)$/i;
 
 /** The color, picture, footer and dropdown text a member typed for a panel: `{ patch }` with what was given, or `{ error }`. */
-function readPanelLook(interaction) {
+function readPanelLook(interaction, lang) {
   const patch = {};
   const color = interaction.options.getString('color');
   if (color !== null && color !== undefined) {
     if (NONE.test(color.trim())) patch.color = null;
     else {
       const hex = /^#?([0-9a-f]{6})$/i.exec(color.trim());
-      if (!hex) return { error: 'Write the color as a hex like `a5ea7a`.' };
+      if (!hex) return { error: t(lang, 'tickets.panel.badColor') };
       patch.color = parseInt(hex[1], 16);
     }
   }
   const image = interaction.options.getString('image');
   if (image !== null && image !== undefined) {
     if (NONE.test(image.trim())) patch.image_url = null;
-    else if (!/^https:\/\/\S+$/i.test(image.trim())) return { error: 'The picture has to be a link that starts with `https://`.' };
+    else if (!/^https:\/\/\S+$/i.test(image.trim())) return { error: t(lang, 'tickets.panel.badImage') };
     else patch.image_url = image.trim().slice(0, 500);
   }
   const footer = interaction.options.getString('footer');
@@ -365,14 +367,14 @@ function readPanelLook(interaction) {
 }
 
 /** `ticket panel edit`: changes the look of a panel and updates its message where it is. */
-async function panelEdit(interaction) {
+async function panelEdit(interaction, lang) {
   const panelId = interaction.options.getInteger('panel_id', true);
   const panel = await db.getPanel(interaction.guild.id, panelId);
   if (!panel) {
-    await interaction.editReply({ components: [textCard(`No panel with id \`${panelId}\`.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'tickets.panel.notFound', { id: panelId }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
-  const look = readPanelLook(interaction);
+  const look = readPanelLook(interaction, lang);
   if (look.error) {
     await interaction.editReply({ components: [textCard(`${EMOJI.ALERT}  ${look.error}`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
@@ -385,7 +387,7 @@ async function panelEdit(interaction) {
   const style = interaction.options.getString('style');
   if (style) patch.style = style;
   if (!Object.keys(patch).length) {
-    await interaction.editReply({ components: [textCard('Give at least one thing to change: title, description, color, image, footer, placeholder or style.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'tickets.panel.nothingToChange'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
   const updated = await db.updatePanel(interaction.guild.id, panelId, patch);
@@ -393,15 +395,15 @@ async function panelEdit(interaction) {
   const message = channel && updated.message_id ? await channel.messages.fetch(updated.message_id).catch(() => null) : null;
   if (message) {
     const categories = await db.listCategories(interaction.guild.id, updated.id);
-    const payload = await renderPanelMessage(interaction.guild, updated, categories, channel);
+    const payload = await renderPanelMessage(interaction.guild, updated, categories, channel, lang);
     await message.edit(payload).catch((err) => logger.warn(`Panel #${panelId} could not be edited: ${err.message}`));
   }
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Panel **#${panelId}** changed${message ? ' and its message updated' : ' (it is not posted: use `ticket panel resend`)'}.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, message ? 'tickets.panel.changed' : 'tickets.panel.changedNotPosted', { emoji: EMOJI.APPROVE, id: panelId }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 /** Renders (or re-renders) a panel's message payload: embed-template-or-fallback + its categories' button/select row. */
-async function renderPanelMessage(guild, panel, categories, channel) {
-  const rows = buildPanelRows(panel.style, categories, { placeholder: panel.placeholder });
+async function renderPanelMessage(guild, panel, categories, channel, lang) {
+  const rows = buildPanelRows(panel.style, categories, { placeholder: panel.placeholder, lang });
 
   if (panel.embed_template) {
     const doc = await getTemplate(guild.id, panel.embed_template);
@@ -412,21 +414,21 @@ async function renderPanelMessage(guild, panel, categories, channel) {
     }
   }
 
-  return { components: [buildPanelFallbackCard({ title: panel.title, description: panel.description, color: panel.color, imageUrl: panel.image_url, footer: panel.footer }), ...rows], flags: MessageFlags.IsComponentsV2 };
+  return { components: [buildPanelFallbackCard({ title: panel.title, description: panel.description, color: panel.color, imageUrl: panel.image_url, footer: panel.footer, lang }), ...rows], flags: MessageFlags.IsComponentsV2 };
 }
 
-async function categoryCmd(interaction, sub) {
-  if (!(await requireManageGuild(interaction))) return;
+async function categoryCmd(interaction, sub, lang) {
+  if (!(await requireManageGuild(interaction, lang))) return;
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
 
   if (sub === 'list') {
     const categories = await db.listCategories(interaction.guild.id);
     if (!categories.length) {
-      await interaction.editReply({ components: [textCard('No categories yet. Create a panel first, then `!ticket category add`.', 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'tickets.category.none'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
-    const lines = categories.map((c) => `**${c.key}** — ${c.label} · panel #${c.panel_id ?? 'none'} · parent <#${c.parent_channel_id}> · ${c.support_role_ids.length} support role(s)`);
+    const lines = categories.map((c) => t(lang, 'tickets.category.listLine', { key: c.key, label: c.label, panel: c.panel_id ?? t(lang, 'tickets.none'), parent: c.parent_channel_id, count: c.support_role_ids.length }));
     await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
@@ -434,8 +436,8 @@ async function categoryCmd(interaction, sub) {
   if (sub === 'remove') {
     const key = interaction.options.getString('key', true);
     const removed = await db.deleteCategory(interaction.guild.id, key);
-    await interaction.editReply({ components: [textCard(removed ? `${EMOJI.APPROVE}  Category \`${key}\` removed.` : `No category \`${key}\` found.`, removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
-    if (removed) await resyncPanelsForCategoryChange(interaction.guild, key);
+    await interaction.editReply({ components: [textCard(removed ? t(lang, 'tickets.category.removed', { emoji: EMOJI.APPROVE, key }) : t(lang, 'tickets.category.notFound', { key }), removed ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    if (removed) await resyncPanelsForCategoryChange(interaction.guild, key, lang);
     return;
   }
 
@@ -443,7 +445,7 @@ async function categoryCmd(interaction, sub) {
     const key = interaction.options.getString('key', true);
     const existing = await db.getCategoryByKey(interaction.guild.id, key);
     if (!existing) {
-      await interaction.editReply({ components: [textCard(`No category \`${key}\` found.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'tickets.category.notFound', { key }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
 
@@ -472,7 +474,7 @@ async function categoryCmd(interaction, sub) {
       else {
         const form = await formsDb.getFormByName(interaction.guild.id, formName);
         if (!form) {
-          await interaction.editReply({ components: [textCard(`No form named \`${formName}\` found.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+          await interaction.editReply({ components: [textCard(t(lang, 'tickets.form.notFound', { name: formName }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
           return;
         }
         patch.form_id = form.id;
@@ -483,8 +485,8 @@ async function categoryCmd(interaction, sub) {
     if (welcome) patch.welcome_message = welcome.toLowerCase() === 'none' ? null : welcome;
 
     const updated = await db.updateCategory(interaction.guild.id, key, patch);
-    await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Category \`${updated.key}\` updated.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
-    if (label || emoji || style) await resyncPanelsForCategoryChange(interaction.guild, key);
+    await interaction.editReply({ components: [textCard(t(lang, 'tickets.category.updated', { emoji: EMOJI.APPROVE, key: updated.key }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+    if (label || emoji || style) await resyncPanelsForCategoryChange(interaction.guild, key, lang);
     return;
   }
 
@@ -492,26 +494,26 @@ async function categoryCmd(interaction, sub) {
   const panelId = interaction.options.getInteger('panel_id', true);
   const panel = await db.getPanel(interaction.guild.id, panelId);
   if (!panel) {
-    await interaction.editReply({ components: [textCard(`No panel with id \`${panelId}\`.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'tickets.panel.notFound', { id: panelId }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const key = interaction.options.getString('key', true);
   if (await db.getCategoryByKey(interaction.guild.id, key)) {
-    await interaction.editReply({ components: [textCard(`A category with key \`${key}\` already exists.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'tickets.category.exists', { key }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const welcomeEmbed = interaction.options.getString('welcome_embed');
   if (welcomeEmbed && !(await getTemplate(interaction.guild.id, welcomeEmbed))) {
-    await interaction.editReply({ components: [textCard(`${EMOJI.ALERT}  No embed named \`${welcomeEmbed}\` found. Create it with \`!embed create\` first.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'tickets.category.noEmbed', { emoji: EMOJI.ALERT, name: welcomeEmbed }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const formName = interaction.options.getString('form');
   const form = formName ? await formsDb.getFormByName(interaction.guild.id, formName) : null;
   if (formName && !form) {
-    await interaction.editReply({ components: [textCard(`No form named \`${formName}\` found.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'tickets.form.notFound', { name: formName }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
   const requiredRole = interaction.options.getRole('required_role');
@@ -534,12 +536,12 @@ async function categoryCmd(interaction, sub) {
     welcomeMessage: interaction.options.getString('welcome'),
   });
 
-  await resyncPanelsForCategoryChange(interaction.guild, category.key);
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  Category \`${category.key}\` added to panel #${panelId}.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await resyncPanelsForCategoryChange(interaction.guild, category.key, lang);
+  await interaction.editReply({ components: [textCard(t(lang, 'tickets.category.added', { emoji: EMOJI.APPROVE, key: category.key, id: panelId }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 /** Re-renders a panel's live message after one of its categories changes, so the buttons/dropdown stay in sync. */
-async function resyncPanelsForCategoryChange(guild, categoryKey) {
+async function resyncPanelsForCategoryChange(guild, categoryKey, lang) {
   try {
     const category = await db.getCategoryByKey(guild.id, categoryKey);
     if (!category?.panel_id) return;
@@ -551,7 +553,7 @@ async function resyncPanelsForCategoryChange(guild, categoryKey) {
     if (!message) return;
 
     const categories = await db.listCategories(guild.id, panel.id);
-    const payload = await renderPanelMessage(guild, panel, categories, channel);
+    const payload = await renderPanelMessage(guild, panel, categories, channel, lang);
     await message.edit(payload);
   } catch (err) {
     logger.warn('Failed to resync ticket panel message:', err.message);
@@ -570,8 +572,8 @@ function parseFormFields(spec) {
   return formsDb.normalizeFields(fields);
 }
 
-async function formCmd(interaction, sub) {
-  if (!(await requireManageGuild(interaction))) return;
+async function formCmd(interaction, sub, lang) {
+  if (!(await requireManageGuild(interaction, lang))) return;
 
   if ((sub === 'create' || sub === 'edit') && !interaction.options.getString('fields') && !(sub === 'edit' && interaction.options.getString('title'))) {
     const panelName = interaction.options.getString('name', true);
@@ -581,16 +583,16 @@ async function formCmd(interaction, sub) {
       if (sub === 'edit') {
         const existing = await formsDb.getFormByName(interaction.guild.id, panelName);
         if (!existing) {
-          await interaction.reply({ content: `No form named \`${panelName}\` found.`, flags: MessageFlags.Ephemeral });
+          await interaction.reply({ content: t(lang, 'tickets.form.notFound', { name: panelName }), flags: MessageFlags.Ephemeral });
           return;
         }
         draft = startDraft(interaction.user.id, { guildId: interaction.guild.id, mode: 'edit', name: existing.name, title: existing.title, fields: existing.fields ?? [] });
       } else {
-        draft = startDraft(interaction.user.id, { guildId: interaction.guild.id, mode: 'create', name: panelName.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50) || 'form', title });
+        draft = startDraft(interaction.user.id, { guildId: interaction.guild.id, mode: 'create', name: panelName.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50) || 'form', title, lang });
       }
-      await interaction.reply({ ...renderFormPanel(interaction.user.id, draft), flags: [MessageFlags.IsComponentsV2, MessageFlags.Ephemeral] });
+      await interaction.reply({ ...renderFormPanel(interaction.user.id, draft, lang), flags: [MessageFlags.IsComponentsV2, MessageFlags.Ephemeral] });
     } catch (err) {
-      await interaction.reply({ content: err.message || 'Unable to open the form builder.', flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: err.message || t(lang, 'tickets.form.builderFailed'), flags: MessageFlags.Ephemeral });
     }
     return;
   }
@@ -600,7 +602,7 @@ async function formCmd(interaction, sub) {
   try {
     if (sub === 'list') {
       const forms = await formsDb.listForms(interaction.guild.id);
-      const text = forms.length ? forms.map((form) => `**${form.name}** — ${form.fields.length} field(s) · ${form.title}`).join('\n') : 'No forms yet.';
+      const text = forms.length ? forms.map((form) => t(lang, 'tickets.form.listLine', { name: form.name, count: form.fields.length, title: form.title })).join('\n') : t(lang, 'tickets.form.none');
       await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
@@ -608,7 +610,7 @@ async function formCmd(interaction, sub) {
     const name = interaction.options.getString('name', true);
     if (sub === 'delete') {
       const deleted = await formsDb.deleteForm(interaction.guild.id, name);
-      await interaction.editReply({ components: [textCard(deleted ? `${EMOJI.APPROVE} Form \`${name}\` deleted.` : `No form named \`${name}\` found.`, deleted ? 0xa5ea7a : 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(deleted ? t(lang, 'tickets.form.deleted', { emoji: EMOJI.APPROVE, name }) : t(lang, 'tickets.form.notFound', { name }), deleted ? 0xa5ea7a : 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
 
@@ -616,30 +618,30 @@ async function formCmd(interaction, sub) {
     const title = interaction.options.getString('title');
     if (sub === 'create') {
       const form = await formsDb.createForm({ guildId: interaction.guild.id, name, title, fields: parseFormFields(fieldsSpec) });
-      await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE} Form \`${form.name}\` created. Assign it with !ticket category edit key:<key> form:${form.name}.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'tickets.form.created', { emoji: EMOJI.APPROVE, name: form.name }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
 
     const patch = {};
     if (fieldsSpec) patch.fields = parseFormFields(fieldsSpec);
     if (title) patch.title = title;
-    if (!Object.keys(patch).length) throw new Error('Provide a new title or fields definition.');
+    if (!Object.keys(patch).length) throw new Error(t(lang, 'tickets.form.nothingToChange'));
     const form = await formsDb.updateForm(interaction.guild.id, name, patch);
-    await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE} Form \`${form.name}\` updated.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'tickets.form.updated', { emoji: EMOJI.APPROVE, name: form.name }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
   } catch (err) {
-    await interaction.editReply({ components: [textCard(err.message || 'Unable to update that form.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(err.message || t(lang, 'tickets.form.updateFailed'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
   }
 }
 
-async function blacklistCmd(interaction, sub) {
-  if (!(await requireManageGuild(interaction))) return;
+async function blacklistCmd(interaction, sub, lang) {
+  if (!(await requireManageGuild(interaction, lang))) return;
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   if (sub === 'list') {
     const entries = await accessDb.listBlacklist(interaction.guild.id);
     const text = entries.length
       ? entries.map((entry) => `${entry.target_type === 'user' ? `<@${entry.target_id}>` : `<@&${entry.target_id}>`}${entry.reason ? ` — ${entry.reason}` : ''}`).join('\n')
-      : 'Ticket blacklist is empty.';
+      : t(lang, 'tickets.blacklist.empty');
     await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
@@ -648,29 +650,29 @@ async function blacklistCmd(interaction, sub) {
   const role = interaction.options.getRole('role');
   const target = user ? { type: 'user', id: user.id, mention: user.toString() } : role ? { type: 'role', id: role.id, mention: role.toString() } : null;
   if (!target) {
-    await interaction.editReply({ components: [textCard('Choose either a user or a role.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'tickets.blacklist.chooseTarget'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const removed = sub === 'remove' ? await accessDb.removeBlacklist(interaction.guild.id, target.type, target.id) : false;
   if (sub === 'add') await accessDb.addBlacklist({ guildId: interaction.guild.id, targetType: target.type, targetId: target.id, reason: interaction.options.getString('reason') });
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE} ${target.mention} ${sub === 'add' ? 'added to' : removed ? 'removed from' : 'was not in'} the ticket blacklist.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, sub === 'add' ? 'tickets.blacklist.added' : removed ? 'tickets.blacklist.removed' : 'tickets.blacklist.notIn', { emoji: EMOJI.APPROVE, target: target.mention }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
-async function roleListCmd(interaction, sub, column) {
-  if (!(await requireManageGuild(interaction))) return;
+async function roleListCmd(interaction, sub, column, lang) {
+  if (!(await requireManageGuild(interaction, lang))) return;
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const key = interaction.options.getString('key', true);
   const category = await db.getCategoryByKey(interaction.guild.id, key);
   if (!category) {
-    await interaction.editReply({ components: [textCard(`No category \`${key}\` found.`, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'tickets.category.notFound', { key }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   if (sub === 'list') {
     const ids = category[column] ?? [];
-    const text = ids.length ? ids.map((id) => `<@&${id}>`).join(' ') : 'None configured.';
+    const text = ids.length ? ids.map((id) => `<@&${id}>`).join(' ') : t(lang, 'tickets.roles.none');
     await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
@@ -681,57 +683,59 @@ async function roleListCmd(interaction, sub, column) {
   else ids.delete(role.id);
 
   await db.updateCategory(interaction.guild.id, key, { [column]: [...ids] });
-  await interaction.editReply({ components: [textCard(`${EMOJI.APPROVE}  ${role} ${sub === 'add' ? 'added to' : 'removed from'} \`${key}\`.`, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, sub === 'add' ? 'tickets.roles.added' : 'tickets.roles.removed', { emoji: EMOJI.APPROVE, role: `${role}`, key }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
-async function openCmd(interaction) {
+async function openCmd(interaction, lang) {
   const key = interaction.options.getString('category', true);
   const category = await db.getCategoryByKey(interaction.guild.id, key);
   if (!category) {
-    await interaction.reply({ content: `No ticket category \`${key}\` exists here.`, flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'tickets.open.noCategory', { key }), flags: MessageFlags.Ephemeral });
     return;
   }
 
-  await actions.openTicketInteractive(interaction, category);
+  await actions.openTicketInteractive(interaction, category, lang);
 }
 
-async function statsCmd(interaction) {
-  if (!(await requireManageGuild(interaction))) return;
+async function statsCmd(interaction, lang) {
+  if (!(await requireManageGuild(interaction, lang))) return;
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const [tickets, ratings] = await Promise.all([db.listTicketsForStats(interaction.guild.id), db.listRatingsForGuild(interaction.guild.id)]);
   const s = summarizeStats(tickets, ratings);
+  // The counts are written as they always were (no thousands separators); only the average rating takes the decimal mark of the language.
   const lines = [
-    `### Tickets of ${interaction.guild.name}`,
-    `**Open now:** ${s.open} (${s.unclaimed} without anyone claiming)`,
-    `**Opened:** ${s.opened7} in 7 days · ${s.opened30} in 30 days`,
-    `**Closed:** ${s.closed7} in 7 days · ${s.closed30} in 30 days`,
-    `**Average time open:** ${durationText(s.averageMinutesOpen)}`,
-    `**Rating:** ${s.averageRating === null ? 'no ratings yet' : `${s.averageRating} / 5 (${s.ratingCount})`}`,
-    s.topClaimers.length ? `**Claims the most:**\n${s.topClaimers.map((c, i) => `${i + 1}. <@${c.userId}> · ${c.count}`).join('\n')}` : '',
-    `-# ${s.total} ticket${s.total === 1 ? '' : 's'} counted${s.total >= 5000 ? ' (the latest 5000)' : ''}`,
+    t(lang, 'tickets.stats.title', { server: interaction.guild.name }),
+    t(lang, 'tickets.stats.open', { open: s.open, unclaimed: s.unclaimed }),
+    t(lang, 'tickets.stats.opened', { week: s.opened7, month: s.opened30 }),
+    t(lang, 'tickets.stats.closed', { week: s.closed7, month: s.closed30 }),
+    t(lang, 'tickets.stats.averageOpen', { duration: durationText(s.averageMinutesOpen, lang) }),
+    s.averageRating === null ? t(lang, 'tickets.stats.noRatings') : t(lang, 'tickets.stats.rating', { rating: formatNumber(lang, s.averageRating), count: s.ratingCount }),
+    s.topClaimers.length ? `${t(lang, 'tickets.stats.topClaimers')}\n${s.topClaimers.map((c, i) => `${i + 1}. <@${c.userId}> · ${c.count}`).join('\n')}` : '',
+    s.total >= 5000 ? t(lang, 'tickets.stats.countedLatest', { count: s.total }) : tn(lang, 'tickets.stats.counted', s.total, { count: s.total }),
   ].filter(Boolean);
   await interaction.editReply({ components: [textCard(lines.join('\n'), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
-async function infoCmd(interaction) {
+async function infoCmd(interaction, lang) {
   const ticket = await db.getTicketByChannel(interaction.channel.id);
   if (!ticket) {
-    await interaction.reply({ content: 'This isn\'t a ticket channel.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'tickets.notTicketChannel'), flags: MessageFlags.Ephemeral });
     return;
   }
 
   const category = await db.getCategoryById(ticket.category_id);
+  const priority = ticket.priority ?? 'normal';
   const lines = [
-    `### Ticket #${ticket.ticket_number}`,
-    `**Category:** ${category?.label ?? 'Unknown'}`,
-    `**Opened by:** <@${ticket.opener_id}>`,
-    `**Status:** ${ticket.status}`,
-    `**Claimed by:** ${ticket.claimed_by ? `<@${ticket.claimed_by}>` : 'Nobody yet'}`,
-    `**Priority:** ${PRIORITY_MARK[ticket.priority ?? 'normal']} ${ticket.priority ?? 'normal'}`,
-    `**Opened:** <t:${Math.floor(new Date(ticket.created_at).getTime() / 1000)}:R>`,
+    t(lang, 'tickets.info.title', { number: ticket.ticket_number }),
+    t(lang, 'tickets.info.category', { category: category?.label ?? t(lang, 'tickets.unknown') }),
+    t(lang, 'tickets.info.openedBy', { user: ticket.opener_id }),
+    t(lang, 'tickets.info.status', { status: ['open', 'closed'].includes(ticket.status) ? t(lang, `tickets.status.${ticket.status}`) : ticket.status }),
+    t(lang, 'tickets.info.claimedBy', { user: ticket.claimed_by ? `<@${ticket.claimed_by}>` : t(lang, 'tickets.info.nobody') }),
+    t(lang, 'tickets.info.priority', { mark: PRIORITY_MARK[priority], priority: priorityName(lang, priority) }),
+    t(lang, 'tickets.info.opened', { time: `<t:${Math.floor(new Date(ticket.created_at).getTime() / 1000)}:R>` }),
   ];
   if (ticket.status === 'closed') {
-    lines.push(`**Closed by:** <@${ticket.closed_by}>`, `**Close reason:** ${ticket.close_reason || 'No reason provided.'}`);
+    lines.push(t(lang, 'tickets.info.closedBy', { user: ticket.closed_by }), t(lang, 'tickets.info.closeReason', { reason: ticket.close_reason || t(lang, 'tickets.close.noReason') }));
   }
 
   await interaction.reply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
@@ -739,11 +743,13 @@ async function infoCmd(interaction) {
 
 /** Shared entry point for close/reopen/delete/claim/unclaim/add/remove/rename/transcript — all operate on "the ticket in this channel". */
 const PRIORITY_MARK = { low: '🟢', normal: '🔵', high: '🟠', urgent: '🔴' };
+/** The name of a priority in `lang` (the value itself when it is not one Petto knows). */
+const priorityName = (lang, level) => (Object.hasOwn(PRIORITY_MARK, level) ? t(lang, `tickets.priority.${level}`) : level);
 
-async function ticketActionCmd(interaction, sub) {
+async function ticketActionCmd(interaction, sub, lang) {
   const ticket = await db.getTicketByChannel(interaction.channel.id);
   if (!ticket) {
-    await interaction.reply({ content: 'This isn\'t a ticket channel.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'tickets.notTicketChannel'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -758,34 +764,34 @@ async function ticketActionCmd(interaction, sub) {
 
   if (staffOnly.includes(sub) && !isStaffAllowed) {
     if (isStaff && settings.claim_mode === 'exclusive' && ticket.claimed_by && ticket.claimed_by !== interaction.user.id && !interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-      await interaction.reply({ content: `This ticket is exclusively claimed by <@${ticket.claimed_by}>.`, flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: t(lang, 'tickets.exclusiveClaim', { user: ticket.claimed_by }), flags: MessageFlags.Ephemeral });
       return;
     }
-    await interaction.reply({ content: 'Only staff for this ticket\'s category can do that.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'tickets.staffOnlyCategory'), flags: MessageFlags.Ephemeral });
     return;
   }
   if (openerOrStaff.includes(sub) && !isStaff && !isOpener) {
-    await interaction.reply({ content: 'Only the ticket opener or staff can do that.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'tickets.openerOrStaffOnly'), flags: MessageFlags.Ephemeral });
     return;
   }
   if (sub === 'close' && !isStaff) {
     const settings = await settingsDb.getSettings(interaction.guild.id);
     if (settings.close_requires_support_role) {
-      await interaction.reply({ content: 'Only staff for this ticket can close it.', flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: t(lang, 'tickets.staffOnlyClose'), flags: MessageFlags.Ephemeral });
       return;
     }
   }
 
   if (sub === 'close' && ticket.status === 'closed') {
-    await interaction.reply({ content: 'This ticket is already closed.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'tickets.alreadyClosed'), flags: MessageFlags.Ephemeral });
     return;
   }
   if (['priority', 'transfer', 'request-close'].includes(sub) && ticket.status === 'closed') {
-    await interaction.reply({ content: 'This ticket is closed.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'tickets.isClosed'), flags: MessageFlags.Ephemeral });
     return;
   }
   if (sub === 'reopen' && ticket.status !== 'closed') {
-    await interaction.reply({ content: 'This ticket is not closed.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'tickets.notClosed'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -798,92 +804,94 @@ async function ticketActionCmd(interaction, sub) {
       case 'close': {
         const reason = interaction.options.getString('reason');
         await actions.closeTicket({ ...ctx, reason });
-        await interaction.editReply({ content: `${EMOJI.DENY} Ticket closed.` });
+        await interaction.editReply({ content: t(lang, 'tickets.closed', { emoji: EMOJI.DENY }) });
         return;
       }
       case 'reopen':
         await actions.reopenTicket(ctx);
-        await interaction.editReply({ content: `${EMOJI.APPROVE} Ticket reopened.` });
+        await interaction.editReply({ content: t(lang, 'tickets.reopened', { emoji: EMOJI.APPROVE }) });
         return;
       case 'delete':
-        await interaction.editReply({ content: `${EMOJI.HAMMER} Deleting this channel...` });
+        await interaction.editReply({ content: t(lang, 'tickets.deleting', { emoji: EMOJI.HAMMER }) });
         await actions.deleteTicketChannel(ctx);
         return;
       case 'claim':
         if (ticket.claimed_by) {
-          await interaction.editReply({ content: `Already claimed by <@${ticket.claimed_by}>.` });
+          await interaction.editReply({ content: t(lang, 'tickets.alreadyClaimed', { user: ticket.claimed_by }) });
           return;
         }
         await actions.claimTicket(ctx);
-        await interaction.editReply({ content: `${EMOJI.STAR} You claimed this ticket.` });
+        await interaction.editReply({ content: t(lang, 'tickets.claim.youClaimed', { emoji: EMOJI.STAR }) });
         return;
       case 'unclaim':
         await actions.unclaimTicket(ctx);
-        await interaction.editReply({ content: 'Claim released.' });
+        await interaction.editReply({ content: t(lang, 'tickets.claim.released') });
         return;
       case 'add': {
         const targetUser = interaction.options.getUser('user', true);
         await actions.addMember({ ...ctx, targetUser });
-        await interaction.editReply({ content: `${EMOJI.APPROVE} Added ${targetUser} to this ticket.` });
+        await interaction.editReply({ content: t(lang, 'tickets.member.added', { emoji: EMOJI.APPROVE, user: `${targetUser}` }) });
         return;
       }
       case 'remove': {
         const targetUser = interaction.options.getUser('user', true);
         await actions.removeMember({ ...ctx, targetUser });
-        await interaction.editReply({ content: `${EMOJI.APPROVE} Removed ${targetUser} from this ticket.` });
+        await interaction.editReply({ content: t(lang, 'tickets.member.removed', { emoji: EMOJI.APPROVE, user: `${targetUser}` }) });
         return;
       }
       case 'rename': {
         const newName = interaction.options.getString('name', true);
         const finalName = await actions.renameTicket({ ...ctx, newName });
-        await interaction.editReply({ content: `${EMOJI.APPROVE} Renamed to \`${finalName}\`.` });
+        await interaction.editReply({ content: t(lang, 'tickets.renamed', { emoji: EMOJI.APPROVE, name: finalName }) });
         return;
       }
       case 'priority': {
         const level = interaction.options.getString('level', true);
         await db.setPriority(ticket.id, level);
-        await interaction.channel.send({ content: `${PRIORITY_MARK[level]} <@${interaction.user.id}> set the priority of this ticket to **${level}**.`, allowedMentions: { parse: [] } }).catch(() => {});
-        await interaction.editReply({ content: `${EMOJI.APPROVE} Priority is now **${level}**.` });
+        await interaction.channel.send({ content: t(lang, 'tickets.priority.set', { mark: PRIORITY_MARK[level], user: interaction.user.id, priority: priorityName(lang, level) }), allowedMentions: { parse: [] } }).catch(() => {});
+        await interaction.editReply({ content: t(lang, 'tickets.priority.now', { emoji: EMOJI.APPROVE, priority: priorityName(lang, level) }) });
         return;
       }
       case 'transfer': {
         const target = interaction.options.getUser('user', true);
         const targetMember = await interaction.guild.members.fetch(target.id).catch(() => null);
         if (!targetMember || target.bot || !actions.isStaffForCategory(targetMember, category ?? { support_role_ids: [] })) {
-          await interaction.editReply({ content: `${target} is not staff for this ticket's category.` });
+          await interaction.editReply({ content: t(lang, 'tickets.transfer.notStaff', { user: `${target}` }) });
           return;
         }
         await db.setClaim(ticket.id, target.id);
-        await interaction.channel.send({ content: `${EMOJI.STAR} <@${interaction.user.id}> handed this ticket to ${target}.`, allowedMentions: { users: [target.id] } }).catch(() => {});
-        await interaction.editReply({ content: `${EMOJI.APPROVE} ${target} has the ticket now.` });
+        await interaction.channel.send({ content: t(lang, 'tickets.transfer.notice', { emoji: EMOJI.STAR, user: interaction.user.id, target: `${target}` }), allowedMentions: { users: [target.id] } }).catch(() => {});
+        await interaction.editReply({ content: t(lang, 'tickets.transfer.done', { emoji: EMOJI.APPROVE, target: `${target}` }) });
         return;
       }
       case 'note': {
         const text = interaction.options.getString('text');
         if (text) {
           await db.addNote({ guildId: interaction.guild.id, ticketId: ticket.id, authorId: interaction.user.id, note: text });
-          await interaction.editReply({ content: `${EMOJI.APPROVE} Note saved. Only staff can see it with \`!ticket note\`.` });
+          await interaction.editReply({ content: t(lang, 'tickets.note.saved', { emoji: EMOJI.APPROVE }) });
           return;
         }
         const notes = await db.listNotes(ticket.id);
-        const body = notes.length ? notes.map((n) => `<t:${Math.floor(new Date(n.created_at).getTime() / 1000)}:R> <@${n.author_id}>: ${n.note}`).join('\n') : 'No notes yet. Add one with `!ticket note text:<note>`.';
+        const body = notes.length ? notes.map((n) => `<t:${Math.floor(new Date(n.created_at).getTime() / 1000)}:R> <@${n.author_id}>: ${n.note}`).join('\n') : t(lang, 'tickets.note.none');
         await interaction.editReply({ content: body.slice(0, 1900), allowedMentions: { parse: [] } });
         return;
       }
       case 'request-close': {
         const reason = interaction.options.getString('reason');
         await interaction.channel.send({
-          content: `<@${ticket.opener_id}> ${interaction.user} thinks this ticket is solved${reason ? `: ${reason}` : '.'} Can we close it?`,
-          components: [buildCloseRequestRow(ticket.id)],
+          content: reason
+            ? t(lang, 'tickets.requestClose.askReason', { opener: ticket.opener_id, user: `${interaction.user}`, reason })
+            : t(lang, 'tickets.requestClose.ask', { opener: ticket.opener_id, user: `${interaction.user}` }),
+          components: [buildCloseRequestRow(ticket.id, lang)],
           allowedMentions: { users: [ticket.opener_id] },
         });
-        await interaction.editReply({ content: `${EMOJI.APPROVE} Asked <@${ticket.opener_id}> to confirm.` });
+        await interaction.editReply({ content: t(lang, 'tickets.requestClose.asked', { emoji: EMOJI.APPROVE, opener: ticket.opener_id }) });
         return;
       }
       case 'transcript': {
         const { link } = await actions.postTranscript(ctx);
-        const linkRow = buildTranscriptLinkRow(link);
-        await interaction.editReply({ content: `${EMOJI.APPROVE} Transcript posted to the ticket log.`, components: linkRow ? [linkRow] : [] });
+        const linkRow = buildTranscriptLinkRow(link, lang);
+        await interaction.editReply({ content: t(lang, 'tickets.transcript.posted', { emoji: EMOJI.APPROVE }), components: linkRow ? [linkRow] : [] });
         return;
       }
     }
@@ -893,6 +901,6 @@ async function ticketActionCmd(interaction, sub) {
       return;
     }
     logger.error(`Ticket action "${sub}" failed:`, err);
-    await interaction.editReply({ content: 'Something went wrong performing that action.' });
+    await interaction.editReply({ content: t(lang, 'tickets.actionFailed') });
   }
 }

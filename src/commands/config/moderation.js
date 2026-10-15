@@ -10,6 +10,7 @@ const {
   resetAction,
   listActionRoles,
 } = require('../../utils/moderationPermissions');
+const { t, languageOf } = require('../../i18n');
 
 function actionOption(option) {
   return option
@@ -33,39 +34,40 @@ module.exports = {
     .addSubcommand((sub) => sub.setName('list').setDescription('Show configured moderation roles.')),
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     await ensureGuild(interaction.guild.id);
     const sub = interaction.options.getSubcommand();
-    if (sub === 'list') return list(interaction);
+    if (sub === 'list') return list(interaction, lang);
 
     const action = interaction.options.getString('action', true);
     if (!ACTION_COMMANDS[action]) {
-      return respond(interaction, `Unknown moderation action **${action}**.`, COLORS.RED);
+      return respond(interaction, t(lang, 'moderation.config.unknownAction', { action }), COLORS.RED);
     }
 
     if (sub === 'reset') {
       const removed = await resetAction(interaction.guild.id, action);
-      return respond(interaction, removed ? `Reset moderation roles for **${action}**.` : `No roles were configured for **${action}**.`, removed ? COLORS.GREEN : COLORS.DEFAULT);
+      return respond(interaction, t(lang, removed ? 'moderation.config.reset' : 'moderation.config.resetNone', { action }), removed ? COLORS.GREEN : COLORS.DEFAULT);
     }
 
     const role = interaction.options.getRole('role', true);
-    if (role.managed) return respond(interaction, 'Managed integration roles cannot be used for moderation access.', COLORS.RED);
+    if (role.managed) return respond(interaction, t(lang, 'moderation.config.managedRole'), COLORS.RED);
 
     if (sub === 'allow') {
       await allowRole(interaction.guild.id, action, role.id);
-      return respond(interaction, `Allowed ${role} to use **${action}**.`, COLORS.GREEN);
+      return respond(interaction, t(lang, 'moderation.config.allowed', { role: `${role}`, action }), COLORS.GREEN);
     }
 
     const removed = await denyRole(interaction.guild.id, action, role.id);
-    return respond(interaction, removed ? `Removed ${role} from **${action}**.` : `${role} was not configured for **${action}**.`, removed ? COLORS.GREEN : COLORS.DEFAULT);
+    return respond(interaction, t(lang, removed ? 'moderation.config.denied' : 'moderation.config.notConfigured', { role: `${role}`, action }), removed ? COLORS.GREEN : COLORS.DEFAULT);
   },
 };
 
-async function list(interaction) {
+async function list(interaction, lang) {
   const configs = await listActionRoles(interaction.guild.id);
-  if (!configs.length) return respond(interaction, 'No moderation roles configured. Discord permissions still apply.');
+  if (!configs.length) return respond(interaction, t(lang, 'moderation.config.listEmpty'));
 
   const lines = configs.map(({ action, roles }) => `**${action}** · ${roles.map((id) => `<@&${id}>`).join(' ')}`);
-  return respond(interaction, `**Configured moderation roles**\n\n${lines.join('\n')}`);
+  return respond(interaction, `${t(lang, 'moderation.config.listTitle')}\n\n${lines.join('\n')}`);
 }
 
 function respond(interaction, message, color = COLORS.DEFAULT) {

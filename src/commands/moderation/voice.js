@@ -3,6 +3,7 @@ const { canModerate } = require('../../utils/permissions');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
+const { t, languageOf } = require('../../i18n');
 
 module.exports = {
   aliases: ['v'],
@@ -73,11 +74,11 @@ const REQUIRED_PERMISSION = {
   move: PermissionFlagsBits.MoveMembers,
 };
 
-async function resolveTarget(interaction, kind) {
+async function resolveTarget(interaction, kind, lang) {
   const targetUser = interaction.options.getUser('user', true);
   const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
   if (!targetMember) {
-    await interaction.reply({ content: 'That user is not a member of this server.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'moderation.common.notMember'), flags: MessageFlags.Ephemeral });
     return null;
   }
 
@@ -88,15 +89,21 @@ async function resolveTarget(interaction, kind) {
   }
 
   if (!targetMember.voice.channelId) {
-    await interaction.reply({ content: `${targetUser} is not currently in a voice channel.`, flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'moderation.voice.notInVoice', { user: `${targetUser}` }), flags: MessageFlags.Ephemeral });
     return null;
   }
 
   return { targetUser, targetMember };
 }
 
+// The reason line under a voice action, when one was given.
+function reasonSuffix(reason, lang) {
+  return reason ? `\n${t(lang, 'moderation.common.reason', { reason })}` : '';
+}
+
 async function setMute(interaction, muted) {
-  const resolved = await resolveTarget(interaction, 'mute');
+  const lang = await languageOf(interaction);
+  const resolved = await resolveTarget(interaction, 'mute', lang);
   if (!resolved) return;
   const { targetUser, targetMember } = resolved;
   const reason = interaction.options.getString('reason');
@@ -107,16 +114,17 @@ async function setMute(interaction, muted) {
     await targetMember.voice.setMute(muted, reason ?? undefined);
   } catch (err) {
     logger.error('Failed to set voice mute state:', err);
-    await interaction.editReply({ components: [textCard('I was unable to change that member\'s voice mute state.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.voice.muteFailed'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
-  const text = `${muted ? EMOJI.ALERT : EMOJI.APPROVE}  ${muted ? 'Voice-muted' : 'Voice-unmuted'} ${targetUser}.${reason ? `\n**Reason:** ${reason}` : ''}`;
+  const text = `${t(lang, muted ? 'moderation.voice.muted' : 'moderation.voice.unmuted', { emoji: muted ? EMOJI.ALERT : EMOJI.APPROVE, user: `${targetUser}` })}${reasonSuffix(reason, lang)}`;
   await interaction.editReply({ components: [textCard(text, muted ? 0xfed53c : 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function setDeaf(interaction, deafened) {
-  const resolved = await resolveTarget(interaction, 'deaf');
+  const lang = await languageOf(interaction);
+  const resolved = await resolveTarget(interaction, 'deaf', lang);
   if (!resolved) return;
   const { targetUser, targetMember } = resolved;
   const reason = interaction.options.getString('reason');
@@ -127,16 +135,17 @@ async function setDeaf(interaction, deafened) {
     await targetMember.voice.setDeaf(deafened, reason ?? undefined);
   } catch (err) {
     logger.error('Failed to set voice deafen state:', err);
-    await interaction.editReply({ components: [textCard('I was unable to change that member\'s voice deafen state.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.voice.deafenFailed'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
-  const text = `${deafened ? EMOJI.ALERT : EMOJI.APPROVE}  ${deafened ? 'Voice-deafened' : 'Voice-undeafened'} ${targetUser}.${reason ? `\n**Reason:** ${reason}` : ''}`;
+  const text = `${t(lang, deafened ? 'moderation.voice.deafened' : 'moderation.voice.undeafened', { emoji: deafened ? EMOJI.ALERT : EMOJI.APPROVE, user: `${targetUser}` })}${reasonSuffix(reason, lang)}`;
   await interaction.editReply({ components: [textCard(text, deafened ? 0xfed53c : 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function disconnect(interaction) {
-  const resolved = await resolveTarget(interaction, 'disconnect');
+  const lang = await languageOf(interaction);
+  const resolved = await resolveTarget(interaction, 'disconnect', lang);
   if (!resolved) return;
   const { targetUser, targetMember } = resolved;
   const reason = interaction.options.getString('reason');
@@ -147,23 +156,24 @@ async function disconnect(interaction) {
     await targetMember.voice.disconnect(reason ?? undefined);
   } catch (err) {
     logger.error('Failed to disconnect member from voice:', err);
-    await interaction.editReply({ components: [textCard('I was unable to disconnect that member.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.voice.disconnectFailed'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
-  const text = `${EMOJI.HAMMER}  Disconnected ${targetUser} from voice.${reason ? `\n**Reason:** ${reason}` : ''}`;
+  const text = `${t(lang, 'moderation.voice.disconnected', { emoji: EMOJI.HAMMER, user: `${targetUser}` })}${reasonSuffix(reason, lang)}`;
   await interaction.editReply({ components: [textCard(text, 0xfed53c)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function move(interaction) {
-  const resolved = await resolveTarget(interaction, 'move');
+  const lang = await languageOf(interaction);
+  const resolved = await resolveTarget(interaction, 'move', lang);
   if (!resolved) return;
   const { targetUser, targetMember } = resolved;
   const destination = interaction.options.getChannel('channel', true);
   const reason = interaction.options.getString('reason');
 
   if (!interaction.guild.members.me.permissions.has(PermissionFlagsBits.MoveMembers)) {
-    await interaction.reply({ content: 'I need the **Move Members** permission to do that.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: t(lang, 'moderation.voice.needsMoveMembers'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -173,10 +183,10 @@ async function move(interaction) {
     await targetMember.voice.setChannel(destination.id, reason ?? undefined);
   } catch (err) {
     logger.error('Failed to move member in voice:', err);
-    await interaction.editReply({ components: [textCard('I was unable to move that member. Check my permissions in the destination channel.', 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.voice.moveFailed'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
-  const text = `${EMOJI.APPROVE}  Moved ${targetUser} to ${destination}.${reason ? `\n**Reason:** ${reason}` : ''}`;
+  const text = `${t(lang, 'moderation.voice.moved', { emoji: EMOJI.APPROVE, user: `${targetUser}`, channel: `${destination}` })}${reasonSuffix(reason, lang)}`;
   await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }

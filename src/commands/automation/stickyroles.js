@@ -3,6 +3,7 @@ const { ensureGuild } = require('../../db/guilds');
 const stickyRolesDb = require('../../db/stickyRoles');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { t, languageOf } = require('../../i18n');
 
 module.exports = {
   aliases: ['sr'],
@@ -16,12 +17,13 @@ module.exports = {
     .addSubcommand((s) => s.setName('status').setDescription('Show whether sticky roles is on.')),
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const sub = interaction.options.getSubcommand();
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
     if (sub === 'status') {
       const config = await stickyRolesDb.getConfig(interaction.guild.id);
-      const text = `**Sticky roles:** ${config?.enabled ? 'On' : 'Off'}\nSnapshots older than 90 days are never restored.`;
+      const text = t(lang, config?.enabled ? 'automation.stickyroles.statusOn' : 'automation.stickyroles.statusOff');
       await interaction.editReply({ components: [textCard(text, config?.enabled ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
@@ -30,9 +32,7 @@ module.exports = {
     const enabled = sub === 'enable';
     await stickyRolesDb.setEnabled(interaction.guild.id, enabled);
 
-    const text = enabled
-      ? `${EMOJI.APPROVE}  Sticky roles enabled. A member's roles (except managed ones) are saved when they leave, and restored if they rejoin within 90 days.`
-      : `${EMOJI.APPROVE}  Sticky roles disabled.`;
+    const text = t(lang, enabled ? 'automation.stickyroles.enabled' : 'automation.stickyroles.disabled', { emoji: EMOJI.APPROVE });
     await interaction.editReply({ components: [textCard(text, enabled ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
   },
 };

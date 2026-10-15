@@ -1,6 +1,7 @@
 // The rules of button responders and panels, apart from Discord: names, which roles a click gives or takes, and the
 // buttons and menu a panel shows.
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require('discord.js');
+const { t, currentLanguage } = require('../i18n');
 
 const NAME_RE = /^[a-z0-9_-]{1,60}$/;
 const STYLES = { primary: ButtonStyle.Primary, secondary: ButtonStyle.Secondary, success: ButtonStyle.Success, danger: ButtonStyle.Danger };
@@ -37,10 +38,10 @@ function exclusiveRemovals(chosen, all, memberRoleIds) {
 }
 
 /** The sentence that says what happened to the roles. */
-function describe(add, remove) {
+function describe(add, remove, lang = currentLanguage()) {
   const parts = [];
-  if (add.length) parts.push(`Added ${add.map((id) => `<@&${id}>`).join(', ')}.`);
-  if (remove.length) parts.push(`Removed ${remove.map((id) => `<@&${id}>`).join(', ')}.`);
+  if (add.length) parts.push(t(lang, 'automation.responder.added', { roles: add.map((id) => `<@&${id}>`).join(', ') }));
+  if (remove.length) parts.push(t(lang, 'automation.responder.removed', { roles: remove.map((id) => `<@&${id}>`).join(', ') }));
   return parts.join(' ');
 }
 
@@ -53,13 +54,13 @@ function emojiOf(text) {
 }
 
 /** The rows of components of a panel: buttons (5 to a row) or one dropdown menu. `room` is how many rows are still free. */
-function panelRows(panel, responders, room = 5) {
+function panelRows(panel, responders, room = 5, lang = currentLanguage()) {
   const shown = panel.responders.map((name) => responders.find((responder) => responder.name === name)).filter(Boolean).slice(0, MAX_ITEMS);
   if (!shown.length || room < 1) return [];
   if (panel.kind === 'select') {
     const menu = new StringSelectMenuBuilder()
       .setCustomId(`${SELECT_PREFIX}${panel.id}`)
-      .setPlaceholder((panel.placeholder || 'Choose one').slice(0, 100))
+      .setPlaceholder((panel.placeholder || t(lang, 'automation.panel.placeholder.menu')).slice(0, 100))
       .setMinValues(0)
       .setMaxValues(1)
       .addOptions(shown.map((responder) => {

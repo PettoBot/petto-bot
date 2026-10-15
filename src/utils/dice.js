@@ -1,6 +1,7 @@
 // Dice notation for the roll command: `2d6+3`, `d20`, `4d6kh3` (keep the highest 3), `2d20kl1` (keep the lowest 1),
 // and several terms added or subtracted. Pure and free of Discord, so scripts/check-dice.js can test it alone.
 const { randomInt } = require('node:crypto');
+const { t, currentLanguage } = require('../i18n');
 
 const MAX_DICE_PER_TERM = 100;
 const MAX_DICE_TOTAL = 200;
@@ -17,15 +18,16 @@ class DiceError extends Error {
 
 const TERM_RE = /^(\d*)d(\d+)(?:(kh|kl)(\d+))?$/i;
 
-/** Splits `2d6 + 3 - 1d4` into signed terms. Throws a readable DiceError when the text is not dice notation. */
-function parseDice(input) {
+/** Splits `2d6 + 3 - 1d4` into signed terms. Throws a readable DiceError (in `lang`) when the text is not dice notation. */
+function parseDice(input, lang = currentLanguage()) {
+  const fail = (key, vars) => new DiceError(t(lang, `utility.dice.${key}`, vars));
   const text = String(input ?? '').toLowerCase().replace(/\s+/g, '');
-  if (!text) throw new DiceError('Say what to roll, for example `2d6+3` or `d20`.');
-  if (!/^[0-9dkhl+-]+$/.test(text)) throw new DiceError(`I do not understand \`${String(input).slice(0, 40)}\`. Use dice like \`2d6+3\`.`);
+  if (!text) throw fail('empty');
+  if (!/^[0-9dkhl+-]+$/.test(text)) throw fail('notDice', { input: String(input).slice(0, 40) });
 
   const pieces = text.match(/[+-]?[^+-]+/g);
-  if (!pieces || pieces.join('') !== text) throw new DiceError('That expression has a stray `+` or `-`.');
-  if (pieces.length > MAX_TERMS) throw new DiceError(`Use at most ${MAX_TERMS} terms.`);
+  if (!pieces || pieces.join('') !== text) throw fail('stray');
+  if (pieces.length > MAX_TERMS) throw fail('tooManyTerms', { max: MAX_TERMS });
 
   let totalDice = 0;
   const terms = pieces.map((piece) => {
@@ -34,31 +36,31 @@ function parseDice(input) {
 
     if (/^\d+$/.test(body)) {
       const value = Number(body);
-      if (value > MAX_MODIFIER) throw new DiceError(`Numbers cannot be larger than ${MAX_MODIFIER}.`);
+      if (value > MAX_MODIFIER) throw fail('numberTooLarge', { max: MAX_MODIFIER });
       return { type: 'number', sign, value };
     }
 
     const match = TERM_RE.exec(body);
-    if (!match) throw new DiceError(`I do not understand \`${body}\`. Use dice like \`2d6\` or \`4d6kh3\`.`);
+    if (!match) throw fail('badTerm', { term: body });
 
     const count = match[1] === '' ? 1 : Number(match[1]);
     const sides = Number(match[2]);
-    if (count < 1 || count > MAX_DICE_PER_TERM) throw new DiceError(`Roll between 1 and ${MAX_DICE_PER_TERM} dice at a time.`);
-    if (sides < 2 || sides > MAX_SIDES) throw new DiceError(`Dice need between 2 and ${MAX_SIDES} sides.`);
+    if (count < 1 || count > MAX_DICE_PER_TERM) throw fail('diceCount', { max: MAX_DICE_PER_TERM });
+    if (sides < 2 || sides > MAX_SIDES) throw fail('sides', { max: MAX_SIDES });
 
     let keep = null;
     if (match[3]) {
       const amount = Number(match[4]);
-      if (amount < 1 || amount > count) throw new DiceError(`\`${body}\` keeps ${amount} of ${count} dice; keep between 1 and ${count}.`);
+      if (amount < 1 || amount > count) throw fail('keep', { term: body, amount, count });
       keep = { mode: match[3] === 'kh' ? 'highest' : 'lowest', amount };
     }
 
     totalDice += count;
-    if (totalDice > MAX_DICE_TOTAL) throw new DiceError(`That is more than ${MAX_DICE_TOTAL} dice in total.`);
+    if (totalDice > MAX_DICE_TOTAL) throw fail('tooManyDice', { max: MAX_DICE_TOTAL });
     return { type: 'dice', sign, count, sides, keep };
   });
 
-  if (!terms.some((term) => term.type === 'dice')) throw new DiceError('Add at least one die, for example `d20`.');
+  if (!terms.some((term) => term.type === 'dice')) throw fail('noDie');
   return terms;
 }
 
@@ -71,11 +73,11 @@ function keptIndexes(rolls, keep) {
 }
 
 /**
- * Rolls an expression. `random(min, maxExclusive)` is injectable so tests can fix the dice.
+ * Rolls an expression. `random(min, maxExclusive)` is injectable so tests can fix the dice; `lang` is the language of the errors.
  * @returns {{terms: object[], total: number, min: number, max: number}}
  */
-function rollDice(input, random = randomInt) {
-  const parsed = parseDice(input);
+function rollDice(input, random = randomInt, lang = currentLanguage()) {
+  const parsed = parseDice(input, lang);
   let total = 0;
   let min = 0;
   let max = 0;

@@ -5,11 +5,12 @@ const { ensureGuild } = require('../../db/guilds');
 const partnersDb = require('../../db/partners');
 const { getTemplate } = require('../../db/embedTemplates');
 const { getGuildPremium, getGuildLimits } = require('../../db/premium');
-const { RESPONSE_KEYS, LABELS, MAX_TEXT, textOf } = require('../../utils/partnerMessages');
+const { RESPONSE_KEYS, LABELS, MAX_TEXT, labelOf, textOf } = require('../../utils/partnerMessages');
 const { parseSpan, formatSpan, cooldownMinutes } = require('../../utils/partnerEngine');
 const { sendManagerWelcome } = require('../../utils/partnerWelcome');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { t, formatNumber, languageOf } = require('../../i18n');
 
 const textChannels = [ChannelType.GuildText, ChannelType.GuildAnnouncement];
 const keyChoices = RESPONSE_KEYS.map((key) => ({ name: LABELS[key], value: key }));
@@ -56,67 +57,76 @@ module.exports = {
 
   async execute(interaction) {
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+    const lang = await languageOf(interaction);
     await ensureGuild(interaction.guild.id);
     const sub = interaction.options.getSubcommand();
     const done = (component) => interaction.editReply({ components: [component], flags: MessageFlags.IsComponentsV2 });
     const config = (await partnersDb.getConfig(interaction.guild.id)) ?? { ...partnersDb.DEFAULTS };
     const save = (changes) => partnersDb.upsertConfig(interaction.guild.id, changes);
 
-    if (sub === 'view') return done(note(viewText(config)));
+    if (sub === 'view') return done(note(viewText(config, lang)));
     if (sub === 'enable') {
       const enabled = interaction.options.getBoolean('enabled', true);
       await save({ enabled });
-      return done(ok(enabled ? (config.channel_ids.length ? 'Partners are on.' : 'Partners are on. Add a channel with `!partnerconfig addchannel`.') : 'Partners are off.'));
+      return done(ok(t(lang, enabled ? (config.channel_ids.length ? 'partners.enable.on' : 'partners.enable.onNoChannel') : 'partners.enable.off')));
     }
     if (sub === 'addchannel') {
       const channel = interaction.options.getChannel('channel', true);
-      if (config.channel_ids.includes(channel.id)) return done(note(`${channel} is already a partner channel.`));
+      if (config.channel_ids.includes(channel.id)) return done(note(t(lang, 'partners.channel.already', { channel: `${channel}` })));
       const premium = await getGuildPremium(interaction.guild.id).catch(() => ({ active: false }));
       const limit = getGuildLimits(premium).partnerChannels;
-      if (config.channel_ids.length >= limit) return done(note(`This server already has ${limit} partner channels.${premium?.active ? '' : ' Premium raises it to 25.'}`));
+      if (config.channel_ids.length >= limit) return done(note(t(lang, premium?.active ? 'partners.channel.limit' : 'partners.channel.limitPremium', { limit })));
       await save({ channel_ids: [...config.channel_ids, channel.id] });
-      return done(ok(`${channel} is now a partner channel.`));
+      return done(ok(t(lang, 'partners.channel.added', { channel: `${channel}` })));
     }
     if (sub === 'removechannel') {
       const channel = interaction.options.getChannel('channel', true);
-      if (!config.channel_ids.includes(channel.id)) return done(note(`${channel} is not a partner channel.`));
+      if (!config.channel_ids.includes(channel.id)) return done(note(t(lang, 'partners.channel.notOne', { channel: `${channel}` })));
       await save({ channel_ids: config.channel_ids.filter((id) => id !== channel.id) });
-      return done(ok(`${channel} is not a partner channel anymore.`));
+      return done(ok(t(lang, 'partners.channel.removed', { channel: `${channel}` })));
     }
     if (sub === 'manager') {
       const role = interaction.options.getRole('role');
       await save({ manager_role_id: role?.id ?? null });
-      return done(ok(role ? `Partner Managers are the members with ${role}.` : 'Anyone who posts an invite in a partner channel counts.'));
+      return done(ok(role ? t(lang, 'partners.manager.role', { role: `${role}` }) : t(lang, 'partners.manager.anyone')));
     }
     if (sub === 'welcomechannel') {
       const channel = interaction.options.getChannel('channel');
       await save({ welcome_channel_id: channel?.id ?? null });
-      return done(ok(channel ? `New Partner Managers are welcomed in ${channel}, also when they are given the role.` : 'New Partner Managers are welcomed where the welcome command is used.'));
+      return done(ok(channel ? t(lang, 'partners.welcomeChannel.set', { channel: `${channel}` }) : t(lang, 'partners.welcomeChannel.here')));
     }
-    if (sub === 'requirements') return requirements(interaction, config, save, done);
-    if (sub === 'blacklist') return blacklist(interaction, done);
-    if (sub === 'response') return response(interaction, config, save, done);
-    return welcome(interaction, config, done);
+    if (sub === 'requirements') return requirements(interaction, config, save, done, lang);
+    if (sub === 'blacklist') return blacklist(interaction, done, lang);
+    if (sub === 'response') return response(interaction, config, save, done, lang);
+    return welcome(interaction, config, done, lang);
   },
 };
 
-function viewText(config) {
-  const channels = config.channel_ids.length ? config.channel_ids.map((id) => `<#${id}>`).join(' ') : 'none';
-  const changed = RESPONSE_KEYS.filter((key) => config.messages?.[key]?.text || config.messages?.[key]?.template).map((key) => LABELS[key]);
+function viewText(config, lang) {
+  const none = t(lang, 'partners.view.none');
+  const channels = config.channel_ids.length ? config.channel_ids.map((id) => `<#${id}>`).join(' ') : none;
+  const changed = RESPONSE_KEYS.filter((key) => config.messages?.[key]?.text || config.messages?.[key]?.template).map((key) => labelOf(key, lang));
   return [
-    '### Partners',
-    `State: **${config.enabled ? 'on' : 'off'}**`,
-    `Channels: ${channels}`,
-    `Partner Managers: ${config.manager_role_id ? `<@&${config.manager_role_id}>` : 'anyone'}`,
-    `Needs: ${config.min_members ? `${config.min_members.toLocaleString('en-US')}+ members` : 'any size'} · ${config.min_age_days ? `${config.min_age_days}+ days old` : 'any age'} · cooldown ${formatSpan(cooldownMinutes(config))}`,
-    `Refuses: ${config.block_nsfw ? 'NSFW servers' : 'no NSFW filter'} · ${config.blocked_keywords?.length ? `words: ${config.blocked_keywords.join(', ')}` : 'no blocked words'}`,
-    `Welcome channel: ${config.welcome_channel_id ? `<#${config.welcome_channel_id}>` : 'where the command is used'}`,
-    `Refused messages are ${config.keep_original ? 'kept' : 'deleted'} · reaction ${config.react_emoji ?? 'none'}`,
-    `Changed replies: ${changed.length ? changed.join(', ') : 'none'}`,
+    t(lang, 'partners.view.title'),
+    t(lang, 'partners.view.state', { state: t(lang, config.enabled ? 'partners.view.on' : 'partners.view.off') }),
+    t(lang, 'partners.view.channels', { channels }),
+    t(lang, 'partners.view.managers', { managers: config.manager_role_id ? `<@&${config.manager_role_id}>` : t(lang, 'partners.view.anyone') }),
+    t(lang, 'partners.view.needs', {
+      members: config.min_members ? t(lang, 'partners.view.minMembers', { count: formatNumber(lang, config.min_members) }) : t(lang, 'partners.view.anySize'),
+      age: config.min_age_days ? t(lang, 'partners.view.minAge', { count: config.min_age_days }) : t(lang, 'partners.view.anyAge'),
+      cooldown: formatSpan(cooldownMinutes(config), lang),
+    }),
+    t(lang, 'partners.view.refuses', {
+      nsfw: t(lang, config.block_nsfw ? 'partners.view.nsfwOn' : 'partners.view.nsfwOff'),
+      words: config.blocked_keywords?.length ? t(lang, 'partners.view.words', { list: config.blocked_keywords.join(', ') }) : t(lang, 'partners.view.noWords'),
+    }),
+    t(lang, 'partners.view.welcomeChannel', { channel: config.welcome_channel_id ? `<#${config.welcome_channel_id}>` : t(lang, 'partners.view.welcomeHere') }),
+    t(lang, config.keep_original ? 'partners.view.refusedKept' : 'partners.view.refusedDeleted', { reaction: config.react_emoji ?? none }),
+    t(lang, 'partners.view.changed', { list: changed.length ? changed.join(', ') : none }),
   ].join('\n');
 }
 
-async function requirements(interaction, config, save, done) {
+async function requirements(interaction, config, save, done, lang) {
   const changes = {};
   const members = interaction.options.getInteger('members');
   const age = interaction.options.getInteger('age_days');
@@ -129,7 +139,7 @@ async function requirements(interaction, config, save, done) {
   if (age !== null) changes.min_age_days = age;
   if (cooldown !== null) {
     const minutes = parseSpan(cooldown);
-    if (minutes === null) return done(note('The cooldown is written like `3d 4h`, `12h` or `30m` (up to a year), or `none`.'));
+    if (minutes === null) return done(note(t(lang, 'partners.requirements.cooldown')));
     // The new setting replaces the old one in days.
     changes.cooldown_minutes = minutes;
     changes.cooldown_days = 0;
@@ -138,70 +148,75 @@ async function requirements(interaction, config, save, done) {
   if (nsfw !== null) changes.block_nsfw = nsfw;
   if (keywords !== null) {
     const words = keywords.trim().toLowerCase() === 'none' ? [] : [...new Set(keywords.split(',').map((word) => word.trim().toLowerCase()).filter(Boolean))];
-    if (words.length > 10 || words.some((word) => word.length > 40)) return done(note('Up to 10 words, each up to 40 characters, separated by commas.'));
+    if (words.length > 10 || words.some((word) => word.length > 40)) return done(note(t(lang, 'partners.requirements.words')));
     changes.blocked_keywords = words;
   }
   if (reaction !== null) {
     const value = reaction.trim();
     if (value.toLowerCase() === 'none') changes.react_emoji = null;
-    else if (value.length > 64 || /\s/.test(value)) return done(note('That does not look like an emoji.'));
+    else if (value.length > 64 || /\s/.test(value)) return done(note(t(lang, 'partners.requirements.emoji')));
     else changes.react_emoji = value;
   }
-  if (!Object.keys(changes).length) return done(note(viewText(config)));
+  if (!Object.keys(changes).length) return done(note(viewText(config, lang)));
   const next = await save(changes);
-  return done(ok(`Requirements saved.\n${viewText(next).split('\n').slice(4, 7).join('\n')}`));
+  return done(ok(t(lang, 'partners.requirements.saved', { lines: viewText(next, lang).split('\n').slice(4, 7).join('\n') })));
 }
 
-async function blacklist(interaction, done) {
+async function blacklist(interaction, done, lang) {
   const action = interaction.options.getString('action', true).toLowerCase();
-  if (!['add', 'remove', 'list'].includes(action)) return done(note('Choose `add`, `remove` or `list`.'));
+  if (!['add', 'remove', 'list'].includes(action)) return done(note(t(lang, 'partners.blacklist.choose')));
   if (action === 'list') {
     const rows = await partnersDb.listBlacklist(interaction.guild.id);
-    return done(note(rows.length ? ['### Partner blacklist', ...rows.slice(0, 40).map((row) => `\`${row.partner_guild_id}\`${row.note ? ` · ${row.note}` : ''}`)].join('\n') : 'The blacklist is empty.'));
+    return done(note(rows.length ? [t(lang, 'partners.blacklist.title'), ...rows.slice(0, 40).map((row) => `\`${row.partner_guild_id}\`${row.note ? ` · ${row.note}` : ''}`)].join('\n') : t(lang, 'partners.blacklist.empty')));
   }
   const server = (interaction.options.getString('server') ?? '').trim();
-  if (!/^\d{15,25}$/.test(server)) return done(note('Give the ID of the server, a number of 17 to 20 digits.'));
+  if (!/^\d{15,25}$/.test(server)) return done(note(t(lang, 'partners.blacklist.badId')));
   if (action === 'add') {
     await partnersDb.addBlacklist(interaction.guild.id, server, (interaction.options.getString('note') ?? '').slice(0, 200));
-    return done(ok(`\`${server}\` can not be a partner now.`));
+    return done(ok(t(lang, 'partners.blacklist.added', { server })));
   }
   const removed = await partnersDb.removeBlacklist(interaction.guild.id, server);
-  return done(removed ? ok(`\`${server}\` is not blacklisted anymore.`) : note('That server was not blacklisted.'));
+  return done(removed ? ok(t(lang, 'partners.blacklist.removed', { server })) : note(t(lang, 'partners.blacklist.notListed')));
 }
 
-async function response(interaction, config, save, done) {
+async function response(interaction, config, save, done, lang) {
   const key = interaction.options.getString('reply', true).toLowerCase().replace(/[\s-]/g, '_');
-  if (!RESPONSE_KEYS.includes(key)) return done(note(`Choose one of: ${RESPONSE_KEYS.map((name) => `\`${name}\``).join(', ')}.`));
+  if (!RESPONSE_KEYS.includes(key)) return done(note(t(lang, 'partners.response.choose', { list: RESPONSE_KEYS.map((name) => `\`${name}\``).join(', ') })));
   const text = interaction.options.getString('text');
   const template = (interaction.options.getString('template') ?? '').trim();
   const messages = { ...(config.messages ?? {}) };
-  if (text === null && !template) return done(note(`**${LABELS[key]}**\n${textOf(config, key)}${messages[key]?.template ? `\nSaved embed: \`${messages[key].template}\`` : ''}`));
+  const label = labelOf(key, lang);
+  if (text === null && !template) {
+    const current = textOf(config, key, lang);
+    return done(note(messages[key]?.template ? t(lang, 'partners.response.showEmbed', { label, text: current, name: messages[key].template }) : t(lang, 'partners.response.show', { label, text: current })));
+  }
   if (text?.trim().toLowerCase() === 'reset' && !template) {
     delete messages[key];
     await save({ messages });
-    return done(ok(`${LABELS[key]} goes back to the default.`));
+    return done(ok(t(lang, 'partners.response.reset', { label })));
   }
   const next = {};
   if (template) {
     const doc = await getTemplate(interaction.guild.id, template).catch(() => null);
-    if (!doc?.data) return done(note(`There is no saved embed called \`${template}\`.`));
+    if (!doc?.data) return done(note(t(lang, 'partners.response.noEmbed', { name: template })));
     next.template = template;
   }
   if (text !== null && text.trim().toLowerCase() !== 'reset') next.text = text.trim().slice(0, MAX_TEXT);
   messages[key] = next;
   await save({ messages });
-  return done(ok(`${LABELS[key]} saved.`));
+  return done(ok(t(lang, 'partners.response.saved', { label })));
 }
 
-async function welcome(interaction, config, done) {
+async function welcome(interaction, config, done, lang) {
   const user = interaction.options.getUser('user', true);
   const member = await interaction.guild.members.fetch(user.id).catch(() => null);
-  if (!member) return done(note('That person is not in this server.'));
+  if (!member) return done(note(t(lang, 'partners.welcome.notMember')));
   const role = config.manager_role_id ? interaction.guild.roles.cache.get(config.manager_role_id) : null;
   if (role) {
-    if (role.position >= interaction.guild.members.me.roles.highest.position) return done(note('That role is above mine, so I can not give it.'));
-    await member.roles.add(role, 'Partner Manager').catch(() => null);
+    if (role.position >= interaction.guild.members.me.roles.highest.position) return done(note(t(lang, 'partners.welcome.roleAbove')));
+    await member.roles.add(role, 'Partner Manager').catch(() => null); // i18n-ignore: the name of the role in the audit log, the same in every language
   }
-  const sent = await sendManagerWelcome({ guild: interaction.guild, member, config, fallbackChannel: interaction.channel });
-  return done(ok(`${user} is a Partner Manager now.${role ? '' : ' (There is no manager role set, so nothing was given.)'}${sent ? '' : ' I could not send the welcome.'}`));
+  const sent = await sendManagerWelcome({ guild: interaction.guild, member, config, fallbackChannel: interaction.channel, lang });
+  const key = `partners.welcome.done${role ? '' : 'NoRole'}${sent ? '' : 'NotSent'}`;
+  return done(ok(t(lang, key, { user: `${user}` })));
 }

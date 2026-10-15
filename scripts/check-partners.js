@@ -127,6 +127,8 @@ const fakeGuild = (id, extra = {}) => ({ id, name: 'Mine', ownerId: 'owner', mem
   assert.deepEqual((await messages.responsePayload('mine', { messages: {} }, 'completed', { guild: partnerCtx().guild, partner: partnerCtx().partner })).allowedMentions, { parse: [] }, 'without a manager nobody is pinged');
   assert.equal(messages.textOf({ messages: { completed: { text: '   ' } } }, 'completed'), messages.DEFAULTS.completed, 'an empty text gives the default');
   for (const key of messages.RESPONSE_KEYS) assert.ok(messages.DEFAULTS[key] && messages.LABELS[key], `${key} has a default and a name`);
+  assert.match(textOf(await messages.responsePayload('mine', { messages: {} }, 'completed', partnerCtx(), 'pt-BR')), /obrigado pela parceria com \*\*Partner\*\*/, 'the default reply follows the language of the server');
+  assert.equal(engine.formatSpan(0, 'es'), 'ninguno');
 
   // A message in a partner channel, from the invite to the answer.
   const invites = {

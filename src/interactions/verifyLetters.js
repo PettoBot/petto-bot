@@ -11,6 +11,7 @@ const { createToken } = require('../utils/verifyToken');
 const config = require('../config');
 const { applyVerification } = require('../utils/verifyApply');
 const logger = require('../utils/logger');
+const { t, guildLanguage, currentLanguage } = require('../i18n');
 
 const PREFIX = 'vfy';
 const ids = { start: (guildId) => `${PREFIX}:start:${guildId}`, type: (guildId) => `${PREFIX}:type:${guildId}`, answer: (guildId) => `${PREFIX}:answer:${guildId}`, link: (guildId) => `${PREFIX}:link:${guildId}`, again: (guildId) => `${PREFIX}:again:${guildId}` };
@@ -20,8 +21,8 @@ const tickets = new Map(); // `${guildId}:${userId}` -> { ticket, jti, until }
 const key = (guildId, userId) => `${guildId}:${userId}`;
 
 /** The button of the verification DM that starts the letters check. */
-function startButton(guildId) {
-  return new ButtonBuilder().setCustomId(ids.start(guildId)).setLabel('Verify here in Discord').setStyle(ButtonStyle.Primary);
+function startButton(guildId, lang = currentLanguage()) {
+  return new ButtonBuilder().setCustomId(ids.start(guildId)).setLabel(t(lang, 'verify.letters.start.button')).setStyle(ButtonStyle.Primary);
 }
 
 // In a server channel (the verification panel) the answers are only for the member who pressed the button; in the DM there is no one else.
@@ -50,13 +51,13 @@ async function lockPicture(interaction) {
 const say = (interaction, text) => (interaction.replied || interaction.deferred ? interaction.followUp : interaction.reply).call(interaction, { components: [new ContainerBuilder().setAccentColor(0x4b4f59).addTextDisplayComponents(new TextDisplayBuilder().setContent(text))], flags: flagsFor(interaction) });
 
 /** Whether this member still has to verify in that server, with the settings; or `{ error }` with what to tell them. */
-async function situation(client, guildId, userId) {
+async function situation(client, guildId, userId, lang) {
   const guild = client.guilds.cache.get(guildId);
   const settings = guild ? await getConfig(guildId).catch(() => null) : null;
-  if (!guild || !settings?.enabled || !inDiscord(methodOf(settings))) return { error: 'This server does not ask for the letters check in Discord.' };
+  if (!guild || !settings?.enabled || !inDiscord(methodOf(settings))) return { error: t(lang, 'verify.letters.notAsked') };
   const member = await guild.members.fetch(userId).catch(() => null);
-  if (!member) return { error: 'You are not in that server any more.' };
-  if (settings.unverified_role_id && !member.roles.cache.has(settings.unverified_role_id) && await hasEverVerified(guildId, userId).catch(() => false)) return { error: 'You are already verified.' };
+  if (!member) return { error: t(lang, 'verify.letters.notMember') };
+  if (settings.unverified_role_id && !member.roles.cache.has(settings.unverified_role_id) && await hasEverVerified(guildId, userId).catch(() => false)) return { error: t(lang, 'verify.letters.already') };
   return { guild, member, settings };
 }
 
@@ -64,19 +65,19 @@ async function situation(client, guildId, userId) {
  * Sends a picture with the buttons to type the letters or to get another one. `replace` is for the button of a picture that is already
  * there (New picture): the same message gets the new picture, so asking again never piles up messages.
  */
-async function showPicture(interaction, guildId, { replace = false } = {}) {
-  const state = await situation(interaction.client, guildId, interaction.user.id);
+async function showPicture(interaction, guildId, lang, { replace = false } = {}) {
+  const state = await situation(interaction.client, guildId, interaction.user.id, lang);
   if (state.error) return say(interaction, state.error);
   const jti = `dc:${guildId}:${interaction.user.id}`;
   const challenge = captcha.createChallenge(jti);
   tickets.set(key(guildId, interaction.user.id), { ticket: challenge.ticket, jti, until: Date.now() + TICKET_TTL_SECONDS * 1000 });
   if (tickets.size > 2_000) tickets.delete(tickets.keys().next().value);
   const container = new ContainerBuilder().setAccentColor(0xffb86c)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### Verify for ${state.guild.name}\nType the 5 letters and numbers you see. Small or big letters both work. The picture lasts ${Math.round(TICKET_TTL_SECONDS / 60)} minutes.`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'verify.letters.picture', { server: state.guild.name, minutes: Math.round(TICKET_TTL_SECONDS / 60) })))
     .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://verify.png')))
     .addActionRowComponents(new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(ids.type(guildId)).setLabel('Type the letters').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId(ids.again(guildId)).setLabel('New picture').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(ids.type(guildId)).setLabel(t(lang, 'verify.letters.type.button')).setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(ids.again(guildId)).setLabel(t(lang, 'verify.letters.again.button')).setStyle(ButtonStyle.Secondary),
     ));
   const file = new AttachmentBuilder(challenge.png, { name: 'verify.png' });
   if (replace && interaction.isButton?.()) return interaction.update({ components: [container], files: [file], attachments: [] });
@@ -84,37 +85,39 @@ async function showPicture(interaction, guildId, { replace = false } = {}) {
 }
 
 /** The panel of a channel: what to do to get in, with a button for each way the server allows. */
-function buildPanel({ guild, method }) {
+function buildPanel({ guild, method, lang = currentLanguage() }) {
   const row = new ActionRowBuilder();
-  if (usesLink(method)) row.addComponents(new ButtonBuilder().setCustomId(ids.link(guild.id)).setLabel('Get my verification link').setStyle(method === 'letters' ? ButtonStyle.Secondary : ButtonStyle.Primary));
-  if (inDiscord(method)) row.addComponents(startButton(guild.id));
+  if (usesLink(method)) row.addComponents(new ButtonBuilder().setCustomId(ids.link(guild.id)).setLabel(t(lang, 'verify.panel.link.button')).setStyle(method === 'letters' ? ButtonStyle.Secondary : ButtonStyle.Primary));
+  if (inDiscord(method)) row.addComponents(startButton(guild.id, lang));
   const container = new ContainerBuilder().setAccentColor(0xffb86c)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### Verify to enter ${guild.name}\nPress a button below to prove you're human and get access to the rest of the server.${inDiscord(method) ? '\nYou can do it right here: you will see a picture and type its letters.' : ''}`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, inDiscord(method) ? 'verify.panel.textLetters' : 'verify.panel.text', { server: guild.name })))
     .addActionRowComponents(row);
   return { components: [container], flags: V2 };
 }
 
 /** The personal link of a member, only for them (an answer only they see). */
-async function sendLink(interaction, guildId) {
+async function sendLink(interaction, guildId, lang) {
   const guild = interaction.client.guilds.cache.get(guildId);
   const settings = guild ? await getConfig(guildId).catch(() => null) : null;
-  if (!guild || !settings?.enabled || !usesLink(methodOf(settings))) return say(interaction, 'This server does not use a verification link.');
-  if (!config.verifyBaseUrl || !config.verifyTokenSecret) return say(interaction, 'The verification link is not set up. Contact a moderator.');
+  if (!guild || !settings?.enabled || !usesLink(methodOf(settings))) return say(interaction, t(lang, 'verify.link.notUsed'));
+  if (!config.verifyBaseUrl || !config.verifyTokenSecret) return say(interaction, t(lang, 'verify.link.notSetUp'));
   const member = await guild.members.fetch(interaction.user.id).catch(() => null);
-  if (!member) return say(interaction, 'You are not in that server any more.');
-  if (settings.unverified_role_id && !member.roles.cache.has(settings.unverified_role_id) && await hasEverVerified(guildId, interaction.user.id).catch(() => false)) return say(interaction, 'You are already verified.');
-  return say(interaction, `**[Click here to verify](${config.verifyBaseUrl}/verify/${createToken({ userId: interaction.user.id, guildId })})**\nThe link is only for you and lasts 24 hours.`);
+  if (!member) return say(interaction, t(lang, 'verify.letters.notMember'));
+  if (settings.unverified_role_id && !member.roles.cache.has(settings.unverified_role_id) && await hasEverVerified(guildId, interaction.user.id).catch(() => false)) return say(interaction, t(lang, 'verify.letters.already'));
+  return say(interaction, t(lang, 'verify.link.yours', { link: `${config.verifyBaseUrl}/verify/${createToken({ userId: interaction.user.id, guildId })}` }));
 }
 
 async function handleButton(interaction) {
   const [, action, guildId] = interaction.customId.split(':');
   if (!/^\d{15,25}$/.test(guildId ?? '')) return undefined;
-  if (action === 'start') return showPicture(interaction, guildId);
-  if (action === 'again') return showPicture(interaction, guildId, { replace: true });
-  if (action === 'link') return sendLink(interaction, guildId);
+  // Pressed in a DM there is no server around: the answer is in the language of the server being verified for.
+  const lang = await guildLanguage(guildId);
+  if (action === 'start') return showPicture(interaction, guildId, lang);
+  if (action === 'again') return showPicture(interaction, guildId, lang, { replace: true });
+  if (action === 'link') return sendLink(interaction, guildId, lang);
   if (action === 'type') {
-    const modal = new ModalBuilder().setCustomId(ids.answer(guildId)).setTitle('Verification')
-      .addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('letters').setLabel('The letters of the picture').setStyle(TextInputStyle.Short).setMinLength(4).setMaxLength(12).setRequired(true)));
+    const modal = new ModalBuilder().setCustomId(ids.answer(guildId)).setTitle(t(lang, 'verify.letters.modal.title'))
+      .addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('letters').setLabel(t(lang, 'verify.letters.modal.label')).setStyle(TextInputStyle.Short).setMinLength(4).setMaxLength(12).setRequired(true)));
     return interaction.showModal(modal);
   }
   return undefined;
@@ -123,25 +126,26 @@ async function handleButton(interaction) {
 async function handleModal(interaction) {
   const guildId = interaction.customId.split(':')[2];
   if (!/^\d{15,25}$/.test(guildId ?? '')) return undefined;
-  const state = await situation(interaction.client, guildId, interaction.user.id);
+  const lang = await guildLanguage(guildId);
+  const state = await situation(interaction.client, guildId, interaction.user.id, lang);
   if (state.error) return say(interaction, state.error);
   const kept = tickets.get(key(guildId, interaction.user.id));
-  if (!kept || kept.until < Date.now()) return say(interaction, 'That picture expired. Press **Verify here in Discord** to get a new one.');
+  if (!kept || kept.until < Date.now()) return say(interaction, t(lang, 'verify.letters.expired'));
   const result = captcha.checkAnswer(kept.jti, kept.ticket, interaction.fields.getTextInputValue('letters'));
   if (!result.ok) {
-    if (result.reason === 'locked') return say(interaction, 'Too many wrong tries. Wait a few minutes and press the button again.');
+    if (result.reason === 'locked') return say(interaction, t(lang, 'verify.letters.locked'));
     tickets.delete(key(guildId, interaction.user.id));
-    return say(interaction, 'Those letters are not right. Press **Verify here in Discord** to get a new picture and try again.');
+    return say(interaction, t(lang, 'verify.letters.wrong'));
   }
   tickets.delete(key(guildId, interaction.user.id));
   try {
     const applied = await applyVerification({ client: interaction.client, guild: state.guild, member: state.member, settings: state.settings, jti: `dc${Date.now().toString(36)}${state.member.id}` });
     // The picture that was answered stops being usable: its buttons are locked, so nobody asks for another one once verified.
     await lockPicture(interaction);
-    return say(interaction, applied.ok ? `You're verified. You now have access to **${state.guild.name}**.` : 'You are already verified.');
+    return say(interaction, applied.ok ? t(lang, 'verify.letters.done', { server: state.guild.name }) : t(lang, 'verify.letters.already'));
   } catch (err) {
     logger.error('Failed to apply verification roles (letters in Discord):', err);
-    return say(interaction, 'Those letters are right, but I was unable to update your roles. Contact a moderator.');
+    return say(interaction, t(lang, 'verify.letters.rolesFailed'));
   }
 }
 

@@ -1,23 +1,32 @@
-// What a member can pick when reporting. The value is stored with the report and shown on its card.
-const REPORT_CATEGORIES = [
-  { value: 'spam', label: 'Spam or advertising', description: 'Unwanted ads, invites or message flooding.' },
-  { value: 'harassment', label: 'Harassment or bullying', description: 'Targeting, insulting or pestering a member.' },
-  { value: 'hate', label: 'Hate speech', description: 'Slurs or content attacking a group of people.' },
-  { value: 'nsfw', label: 'NSFW or graphic content', description: 'Adult or disturbing content outside allowed channels.' },
-  { value: 'scam', label: 'Scam or phishing', description: 'Fake giveaways, stolen accounts or malicious links.' },
-  { value: 'threats', label: 'Threats or self-harm', description: 'Threats of violence or someone at risk.' },
-  { value: 'impersonation', label: 'Impersonation', description: 'Pretending to be staff or another member.' },
-  { value: 'other', label: 'Something else', description: 'Anything that does not fit the other options.' },
-];
+// What a member can pick when reporting. The value is stored with the report and shown on its card. The English labels are
+// the choices of `/report send` (choice names stay in English); the cards and the form show them in the server's language.
+const { t, currentLanguage } = require('../i18n');
+
+const CATEGORY_VALUES = ['spam', 'harassment', 'hate', 'nsfw', 'scam', 'threats', 'impersonation', 'other'];
+
+const REPORT_CATEGORIES = CATEGORY_VALUES.map((value) => ({
+  value,
+  label: t('en', `reports.category.${value}.label.menu`),
+  description: t('en', `reports.category.${value}.description.menu`),
+}));
 
 const DEFAULT_CATEGORY = 'other';
 
-function categoryLabel(value) {
-  return REPORT_CATEGORIES.find((category) => category.value === value)?.label ?? REPORT_CATEGORIES.find((category) => category.value === DEFAULT_CATEGORY).label;
-}
-
 function isReportCategory(value) {
-  return REPORT_CATEGORIES.some((category) => category.value === value);
+  return CATEGORY_VALUES.includes(value);
 }
 
-module.exports = { REPORT_CATEGORIES, DEFAULT_CATEGORY, categoryLabel, isReportCategory };
+function categoryLabel(value, lang = currentLanguage()) {
+  return t(lang, `reports.category.${isReportCategory(value) ? value : DEFAULT_CATEGORY}.label.menu`);
+}
+
+/** The categories as options of a select menu, in `lang`. */
+function categoryOptions(lang = currentLanguage()) {
+  return CATEGORY_VALUES.map((value) => ({
+    value,
+    label: t(lang, `reports.category.${value}.label.menu`),
+    description: t(lang, `reports.category.${value}.description.menu`),
+  }));
+}
+
+module.exports = { REPORT_CATEGORIES, DEFAULT_CATEGORY, categoryLabel, categoryOptions, isReportCategory };

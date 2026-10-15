@@ -87,5 +87,26 @@ const actor = { id: 'mod', username: 'mod' };
   assert.match(formatCaseDetail({ case_number: 1, type: 'ban', user_id: '1', moderator_id: '2', created_at: new Date().toISOString(), active: true, reason: 'x', evidence: ['https://a.png', 'https://b.png'] }), /\*\*Evidence:\*\* \[1\]\(https:\/\/a\.png\) · \[2\]/);
   assert.doesNotMatch(formatCaseDetail({ case_number: 1, type: 'ban', user_id: '1', moderator_id: '2', created_at: new Date().toISOString(), active: true, reason: 'x', evidence: [] }), /Evidence/);
 
+  // Spanish and Portuguese: the case, the automatic reasons (saved in English, translated when shown), the card and the DM.
+  const { runWithLanguage } = require('../src/i18n');
+  const { displayReason, reasonText } = require('../src/utils/caseFormat');
+  const row = { case_number: 7, type: 'ban', user_id: '1', moderator_id: '2', created_at: new Date().toISOString(), active: true, reason: 'Automatic expiry' };
+  assert.match(formatCaseDetail(row, 'es'), /^### .*Caso #7 · Baneo\n\*\*Usuario:\*\* <@1>[\s\S]*\*\*Activo:\*\* Sí\n\*\*Razón:\*\* Vencimiento automático$/);
+  assert.match(formatCaseDetail({ ...row, reason: null }, 'pt-BR'), /\*\*Motivo:\*\* Nenhum motivo informado\.$/);
+  assert.equal(formatCaseDetail(row), formatCaseDetail(row, 'en'), 'outside a server the case is in English');
+  assert.equal(displayReason('Automatic escalation: reached 3 warning(s).', 'es'), 'Escalado automático: llegó a 3 advertencias.');
+  assert.equal(displayReason('Automatic escalation: reached 1 warning(s).', 'pt-BR'), 'Escalonamento automático: chegou a 1 advertência.');
+  assert.equal(displayReason('spam in #general', 'es'), 'spam in #general', 'a reason someone wrote is never translated');
+  assert.equal(displayReason('Automatic expiry', 'en'), 'Automatic expiry');
+  assert.equal(reasonText('', 'es'), 'No se indicó una razón.');
+  await assert.rejects(runWithLanguage('es', () => liftSanction(guild, 99, actor)), /no existe/, 'the errors follow the language of the command');
+  const { buildCaseCard } = require('../src/utils/caseCard');
+  const target = { id: '5', username: 'rule_breaker' };
+  assert.match(buildCaseCard({ caseNumber: 3, type: 'tempban', target, reason: 'spam', duration: '2 días', lang: 'es' }).toJSON().content, /Se baneó a \*\*rule_breaker\*\* \(<@5>\) del servidor temporalmente por \*\*2 días\*\*\. Razón: \*\*spam\*\*\.\n-# caso · #3$/);
+  assert.match(buildCaseCard({ caseNumber: 3, type: 'ban', target, reason: '' }).toJSON().content, /\*\*rule_breaker\*\* \(<@5>\) was banned from the server\. Reason: \*\*No reason provided\*\*\.\n-# case · #3$/);
+  const { buildSanctionDM } = require('../src/utils/sanctionMessage');
+  const dm = buildSanctionDM({ type: 'warn', guild: { id: '9', name: 'Servidor', memberCount: 1 }, client: { user: { username: 'Petto' } }, reason: 'flood', appealUrl: 'https://appeal.test', lang: 'pt-BR' });
+  assert.match(dm, /Você recebeu uma advertência em \*\*Servidor\*\* \| Motivo: `flood`\n\nAcha que foi um engano\? Apele aqui: https:\/\/appeal\.test\n\n-# Enviado por 'Petto' \(`9`\) com 1 membro$/);
+
   console.log('moderation tools ok');
 })().catch((err) => { console.error(err); process.exit(1); });

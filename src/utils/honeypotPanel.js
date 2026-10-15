@@ -9,34 +9,33 @@ const {
   ThumbnailBuilder,
 } = require('discord.js');
 const path = require('node:path');
+const { t, currentLanguage } = require('../i18n');
 
 const HONEYPOT_IMAGE_PATH = path.join(__dirname, '..', 'assets', 'petto-honeypot.png');
 const HONEYPOT_IMAGE_URL = 'attachment://petto-honeypot.png';
 const HONEYPOT_COUNT_BUTTON_ID = 'moderated_count_button';
 const HONEYPOT_BUTTON_EMOJI = '<:petto_honeypot:1541493688054841405>';
 
-function punishmentText(punishment) {
-  if (punishment === 'ban') return 'a ban';
-  if (punishment === 'kick') return 'a kick';
-  return 'a softban';
+function punishmentText(punishment, lang = currentLanguage()) {
+  if (punishment === 'ban') return t(lang, 'security.honeypot.punishment.ban');
+  if (punishment === 'kick') return t(lang, 'security.honeypot.punishment.kick');
+  return t(lang, 'security.honeypot.punishment.softban');
 }
 
-function buildHoneypotPanel({ punishment = 'softban', caughtCount, caught_count } = {}) {
+function buildHoneypotPanel({ punishment = 'softban', caughtCount, caught_count, lang = currentLanguage() } = {}) {
   // Database rows use snake_case; accepting camelCase as well keeps this builder
   // convenient for tests and other Discord-facing callers.
   const count = Math.max(0, Number(caughtCount ?? caught_count) || 0);
   const section = new SectionBuilder()
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `## DO NOT SEND MESSAGES IN THIS CHANNEL\n\nThis channel is used to catch spam bots. Any messages sent here will result in **${punishmentText(punishment)}**.`,
-      ),
+      new TextDisplayBuilder().setContent(t(lang, 'security.honeypot.panel.warning', { punishment: punishmentText(punishment, lang) })),
     )
     .setThumbnailAccessory(new ThumbnailBuilder().setURL(HONEYPOT_IMAGE_URL));
 
   const countButton = new ButtonBuilder()
     .setCustomId(HONEYPOT_COUNT_BUTTON_ID)
     .setStyle(ButtonStyle.Secondary)
-    .setLabel(`Kicks: ${count}`)
+    .setLabel(t(lang, 'security.honeypot.panel.count.button', { count }))
     .setEmoji(HONEYPOT_BUTTON_EMOJI);
 
   return new ContainerBuilder()
@@ -44,14 +43,14 @@ function buildHoneypotPanel({ punishment = 'softban', caughtCount, caught_count 
     .addActionRowComponents(new ActionRowBuilder().addComponents(countButton));
 }
 
-function buildHoneypotStatsPanel({ punishment = 'softban', caughtCount, caught_count, channelId } = {}) {
+function buildHoneypotStatsPanel({ punishment = 'softban', caughtCount, caught_count, channelId, lang = currentLanguage() } = {}) {
   const count = Math.max(0, Number(caughtCount ?? caught_count) || 0);
-  const channelLine = channelId ? `**Channel:** <#${channelId}>\n` : '';
+  const vars = { emoji: HONEYPOT_BUTTON_EMOJI, count, punishment: punishmentText(punishment, lang) };
   const section = new SectionBuilder()
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `## <:petto_honeypot:1541493688054841405> Honeypot Statistics\n\n${channelLine}**Kicks:** ${count}\n**Configured action:** ${punishmentText(punishment)}\n\nEach member is actioned once while they remain in the server. Later messages are deleted without duplicate cases or repeated actions.`,
-      ),
+      new TextDisplayBuilder().setContent(channelId
+        ? t(lang, 'security.honeypot.stats.withChannel', { ...vars, channel: `<#${channelId}>` })
+        : t(lang, 'security.honeypot.stats.text', vars)),
     )
     .setThumbnailAccessory(new ThumbnailBuilder().setURL(HONEYPOT_IMAGE_URL));
 

@@ -4,126 +4,12 @@ exports.ROLEPLAY_BUTTON_PREFIX = void 0;
 exports.getRoleplayLabel = getRoleplayLabel;
 exports.getRoleplayResponseLabel = getRoleplayResponseLabel;
 exports.getRoleplayResponseEmoji = getRoleplayResponseEmoji;
+exports.getRoleplayResponseSentence = getRoleplayResponseSentence;
 exports.getRoleplayCounterMessage = getRoleplayCounterMessage;
 exports.buildRoleplayButtonRow = buildRoleplayButtonRow;
 const discord_js_1 = require("discord.js");
+const { CATALOGS, currentLanguage, t, tn } = require('../i18n');
 exports.ROLEPLAY_BUTTON_PREFIX = 'rp:';
-const LABELS = {
-    airkiss: 'air kiss',
-    angry: 'angry moment',
-    angrystare: 'angry stare',
-    bleh: 'bleh',
-    blush: 'blush',
-    boop: 'boop',
-    brofist: 'brofist',
-    bye: 'goodbye',
-    cry: 'cry',
-    cuddle: 'cuddle',
-    dance: 'dance',
-    glomp: 'glomp',
-    handhold: 'hand hold',
-    happy: 'happy moment',
-    hi: 'hi',
-    highfive: 'high five',
-    hug: 'hug',
-    kick: 'kick',
-    kill: 'defeat',
-    kiss: 'kiss',
-    laugh: 'laugh',
-    lick: 'lick',
-    no: 'no',
-    nom: 'nom',
-    pat: 'pat',
-    poke: 'poke',
-    punch: 'punch',
-    sad: 'sad moment',
-    slap: 'slap',
-    smile: 'smile',
-    smug: 'smug look',
-    tickle: 'tickle',
-    wave: 'wave',
-    wink: 'wink',
-    yeet: 'yeet',
-    yes: 'yes',
-};
-const COUNTER_NOUNS = {
-    airkiss: ['air kiss', 'air kisses'],
-    angry: ['angry moment', 'angry moments'],
-    angrystare: ['angry stare', 'angry stares'],
-    bite: ['bite', 'bites'],
-    bleh: ['bleh', 'blehs'],
-    blush: ['blush', 'blushes'],
-    boop: ['boop', 'boops'],
-    brofist: ['brofist', 'brofists'],
-    bye: ['goodbye', 'goodbyes'],
-    cry: ['cry', 'cries'],
-    cuddle: ['cuddle', 'cuddles'],
-    dance: ['dance', 'dances'],
-    glomp: ['glomp', 'glomps'],
-    handhold: ['hand hold', 'hand holds'],
-    happy: ['happy moment', 'happy moments'],
-    highfive: ['high five', 'high fives'],
-    hi: ['hi', 'his'],
-    hug: ['hug', 'hugs'],
-    kick: ['kick', 'kicks'],
-    kill: ['defeat', 'defeats'],
-    kiss: ['kiss', 'kisses'],
-    laugh: ['laugh', 'laughs'],
-    lick: ['lick', 'licks'],
-    nom: ['nom', 'noms'],
-    no: ['no', 'nos'],
-    pat: ['pat', 'pats'],
-    poke: ['poke', 'pokes'],
-    punch: ['punch', 'punches'],
-    sad: ['sad moment', 'sad moments'],
-    slap: ['slap', 'slaps'],
-    smile: ['smile', 'smiles'],
-    smug: ['smug look', 'smug looks'],
-    tickle: ['tickle', 'tickles'],
-    wave: ['wave', 'waves'],
-    wink: ['wink', 'winks'],
-    yes: ['yes', 'yeses'],
-    yeet: ['yeet', 'yeets'],
-};
-const RESPONSE_LABELS = {
-    airkiss: 'Air kiss back',
-    angry: 'Get angry back',
-    angrystare: 'Stare back',
-    bite: 'Bite back',
-    bleh: 'Bleh back',
-    blush: 'Blush back',
-    boop: 'Boop back',
-    brofist: 'Brofist back',
-    bye: 'Say goodbye back',
-    cry: 'Cry together',
-    cuddle: 'Cuddle back',
-    dance: 'Dance back',
-    glomp: 'Glomp back',
-    handhold: 'Hold hands back',
-    happy: 'Celebrate back',
-    highfive: 'High-five back',
-    hi: 'Say hi back',
-    hug: 'Hug back',
-    kick: 'Kick back',
-    kill: 'Fight back',
-    kiss: 'Kiss back',
-    laugh: 'Laugh back',
-    lick: 'Lick back',
-    nom: 'Nom back',
-    no: 'Say no back',
-    pat: 'Pat back',
-    poke: 'Boop back',
-    punch: 'Punch back',
-    sad: 'Cry together',
-    slap: 'Slap back',
-    smile: 'Smile back',
-    smug: 'Smirk back',
-    tickle: 'Tickle back',
-    wave: 'Wave back',
-    wink: 'Wink back',
-    yes: 'Say yes back',
-    yeet: 'Yeet back',
-};
 const RESPONSE_EMOJIS = {
     airkiss: '💋',
     angry: '😠',
@@ -154,30 +40,43 @@ const RESPONSE_EMOJIS = {
     yes: '✅',
     no: '❌',
 };
-function getRoleplayLabel(action) {
-    return LABELS[action] ?? action.replaceAll('_', ' ');
+// Actions with their own texts in the roleplay catalog; any other action (an old or hand-made button) gets the generic ones.
+function hasTexts(action) {
+    return Object.hasOwn(CATALOGS.en, `roleplay.${action}.accepted`);
 }
-function getRoleplayResponseLabel(action) {
-    return RESPONSE_LABELS[action] ?? `${getRoleplayLabel(action)} back`;
+function getRoleplayLabel(action) {
+    return action.replaceAll('_', ' ');
+}
+function getRoleplayResponseLabel(action, lang = currentLanguage()) {
+    return hasTexts(action)
+        ? t(lang, `roleplay.${action}.reply.button`)
+        : t(lang, 'roleplay.unknown.reply.button', { label: getRoleplayLabel(action) });
 }
 function getRoleplayResponseEmoji(action) {
     return RESPONSE_EMOJIS[action] ?? '↩️';
 }
-function getRoleplayCounterMessage(action, count, recipient) {
-    const [singular, plural] = COUNTER_NOUNS[action] ?? [getRoleplayLabel(action), `${getRoleplayLabel(action)}s`];
-    const noun = count === 1 ? singular : plural;
-    return `${recipient} has received ${count.toLocaleString('en-US')} ${noun}.`;
+/** "**Ana** responds to **Bruno** with a hug." (`accepted`) or "**Ana** rejects the hug from **Bruno** and gives them a slap." */
+function getRoleplayResponseSentence(action, accepted, target, actor, lang = currentLanguage()) {
+    const shape = accepted ? 'accepted' : 'rejected';
+    return hasTexts(action)
+        ? t(lang, `roleplay.${action}.${shape}`, { target, actor })
+        : t(lang, `roleplay.unknown.${shape}`, { target, actor, label: getRoleplayLabel(action) });
 }
-function buildRoleplayButtonRow(input, disabled = false) {
+function getRoleplayCounterMessage(action, count, recipient, lang = currentLanguage()) {
+    return hasTexts(action)
+        ? tn(lang, `roleplay.${action}.count`, count, { recipient })
+        : tn(lang, 'roleplay.unknown.count', count, { recipient, label: getRoleplayLabel(action) });
+}
+function buildRoleplayButtonRow(input, disabled = false, lang = currentLanguage()) {
     const base = `${exports.ROLEPLAY_BUTTON_PREFIX}%s:${input.action}:${input.actorId}:${input.targetId}:${input.requestId}`;
     return new discord_js_1.ActionRowBuilder().addComponents(new discord_js_1.ButtonBuilder()
         .setCustomId(base.replace('%s', 'accept'))
-        .setLabel(getRoleplayResponseLabel(input.action))
+        .setLabel(getRoleplayResponseLabel(input.action, lang))
         .setEmoji(getRoleplayResponseEmoji(input.action))
         .setStyle(discord_js_1.ButtonStyle.Success)
         .setDisabled(disabled), new discord_js_1.ButtonBuilder()
         .setCustomId(base.replace('%s', 'reject'))
-        .setLabel('Reject')
+        .setLabel(t(lang, 'roleplay.reject.button'))
         .setEmoji('✋')
         .setStyle(discord_js_1.ButtonStyle.Danger)
         .setDisabled(disabled));

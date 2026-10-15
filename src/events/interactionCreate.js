@@ -47,6 +47,7 @@ const logger = require('../utils/logger');
 const { logCommandUse } = require('../logging/extraLog');
 const { commandKey } = require('../handlers/commandHandler');
 const { DISPLAY_BUTTON_PREFIX } = require('../utils/embedV2');
+const { t, formatDecimal, languageOf } = require('../i18n');
 
 const DEFAULT_COOLDOWN_MS = 3000;
 
@@ -381,7 +382,7 @@ module.exports = {
       } catch (err) {
         logger.error('Error handling reaction role button:', err);
         if (!interaction.replied && !interaction.deferred) {
-          await interaction.reply({ content: 'Something went wrong while updating that role.', flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } }).catch(() => {});
+          await interaction.reply({ content: t(await languageOf(interaction), 'core.reactionRoleError'), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } }).catch(() => {});
         }
       }
       return;
@@ -392,7 +393,7 @@ module.exports = {
         await handlePager(interaction);
       } catch (err) {
         logger.error('Error handling list page:', err);
-        if (!interaction.replied && !interaction.deferred) await interaction.reply({ content: 'Something went wrong while changing the page.', flags: MessageFlags.Ephemeral }).catch(() => {});
+        if (!interaction.replied && !interaction.deferred) await interaction.reply({ content: t(await languageOf(interaction), 'core.pagerError'), flags: MessageFlags.Ephemeral }).catch(() => {});
       }
       return;
     }
@@ -432,11 +433,14 @@ module.exports = {
       return;
     }
 
+    const lang = await languageOf(interaction);
     const cooldownMs = command.cooldownMs ?? DEFAULT_COOLDOWN_MS;
     const remaining = await getRemainingCooldownShared(command.data.name, interaction.user.id, cooldownMs);
     if (remaining > 0) {
+      // Spanish and Portuguese name the prefix form when the command has one (only slash-only commands and menus do not).
+      const prefixForm = !command.slashOnly && (command.data.toJSON().type ?? 1) === 1;
       await interaction.reply({
-        content: `Please wait ${(remaining / 1000).toFixed(1)}s before using /${command.data.name} again.`,
+        content: t(lang, prefixForm ? 'core.slash.cooldown' : 'core.slash.cooldownSlashOnly', { seconds: formatDecimal(lang, remaining / 1000), command: command.data.name }),
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -446,7 +450,7 @@ module.exports = {
       try {
         const allowed = await permissionsDb.hasCommandPermission(interaction.guildId, command.data.name, interaction.member);
         if (!allowed) {
-          await interaction.reply({ content: "You don't have the required permission level to use this command.", flags: MessageFlags.Ephemeral });
+          await interaction.reply({ content: t(lang, 'core.slash.missingLevel'), flags: MessageFlags.Ephemeral });
           return;
         }
       } catch (err) {
@@ -460,13 +464,17 @@ module.exports = {
     if (interaction.guildId && interaction.channelId) {
       const disabled = await disabledCommandsDb.findCached(interaction.guildId, command.data.name, interaction.channelId).catch(() => null);
       if (disabled) {
-        await interaction.reply({ content: `The command \`${command.data.name}\` is disabled ${disabled.channel_id ? `in <#${disabled.channel_id}>` : 'on this server'}.`, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+        const text = disabled.channel_id
+          ? t(lang, 'core.slash.disabled.channel', { command: command.data.name, channel: `<#${disabled.channel_id}>` })
+          : t(lang, 'core.slash.disabled.server', { command: command.data.name });
+        await interaction.reply({ content: text, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
         return;
       }
     }
 
     logCommandUse({ guild: interaction.guild, user: interaction.user, channel: interaction.channel, name: interaction.commandName, prefix: '/', subcommand: interaction.options?.getSubcommand?.(false) ?? null }, client);
 
+    interaction.pettoLang = lang;
     try {
       await command.execute(interaction, client);
     } catch (err) {
@@ -477,7 +485,7 @@ module.exports = {
       if (isPermissionError(err)) logger.warn(`Missing permission running /${interaction.commandName}: ${err.message} (code ${err.code})`);
       else logger.error(`Error executing /${interaction.commandName}:`, err);
 
-      const errorReply = { content: isPermissionError(err) ? permissionHelp(err) : 'Something went wrong while running that command.', flags: MessageFlags.Ephemeral };
+      const errorReply = { content: isPermissionError(err) ? permissionHelp(err, lang) : t(lang, 'core.error'), flags: MessageFlags.Ephemeral };
       if (interaction.deferred || interaction.replied) {
         await interaction.editReply(errorReply).catch(() => {});
       } else {

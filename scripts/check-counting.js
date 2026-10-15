@@ -154,6 +154,13 @@ const { readNumber, judge, afterCorrect, afterWrong } = require('../src/utils/co
   await counting.execute(withRoles('1', 'b2', 'w2'));
   await counting.execute(withRoles('2', 'b1', 'w3'));
   assert.ok(!roles.has('b1:wrong') && !kept.has('b1'), 'a right number takes it back');
+  // The answers are in the language of the server.
+  config = { ...config, current_number: 4, last_user_id: 'es1', allow_double: false };
+  await counting.check(message('5', 'es1'), 'es');
+  assert.ok(sent.at(-1).includes('no puedes contar dos números seguidos'), 'the same person twice, in Spanish');
+  config = { ...config, current_number: 4, last_user_id: null, saves: 0 };
+  await counting.check(message('9', 'pt1'), 'pt-BR');
+  assert.ok(sent.at(-1).includes('errou em **4**'), 'a mistake, in Portuguese');
   // Alerts delete themselves after the time of the server.
   const { deleteLater } = require('../src/utils/counting');
   let gone = 0;

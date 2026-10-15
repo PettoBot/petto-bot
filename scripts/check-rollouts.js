@@ -221,5 +221,12 @@ const raw = [
   config.rolloutsPublic = true;
   assert.equal(canUseRollouts('999999999999999999'), true, 'everyone once it is public');
 
+  // The card and the filters follow the language of the server; the stored filters stay in English.
+  const { filterLines } = require('../src/utils/rolloutApi');
+  assert.deepEqual(filterLines(list[2], 'es'), ['Servidores de 3 a 50 miembros']);
+  assert.equal(list[2].filters[0], 'Servers of 3 to 50 members');
+  assert.equal(badge({ type: 'status', rollout: { status: 'ab_test', percent: 1 }, change: 0 }, 'pt-BR'), 'Teste A/B (1%)');
+  assert.ok(JSON.stringify(buildRolloutCard(events[0], {}, { lang: 'es' }).components[0].toJSON()).includes('Despliegues'));
+
   console.log('rollout checks passed');
 })().catch((error) => { console.error(error); process.exit(1); });

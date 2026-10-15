@@ -5,6 +5,7 @@ const { evaluate } = require('./engine');
 const db = require('../../db/identity');
 const { emitAction, emitNotification } = require('./emit');
 const logger = require('../logger');
+const { t, currentLanguage, guildLanguage } = require('../../i18n');
 
 const LOCKS = 64;
 const queues = Array.from({ length: LOCKS }, () => Promise.resolve());
@@ -64,10 +65,11 @@ function primaryGuildOf(user) {
   return { identityGuildId: primary.identityGuildId ?? '', identityEnabled: primary.identityEnabled ?? null, tag: primary.tag ?? '', badge: primary.badge ?? '' };
 }
 
-function roleClient(guild) {
+function roleClient(guild, lang = currentLanguage()) {
+  const reason = t(lang, 'identity.auditReason');
   return {
-    add: (guildId, userId, roleId) => guild.members.addRole({ user: userId, role: roleId, reason: 'Vanity / Server Tag rule' }),
-    remove: (guildId, userId, roleId) => guild.members.removeRole({ user: userId, role: roleId, reason: 'Vanity / Server Tag rule' }),
+    add: (guildId, userId, roleId) => guild.members.addRole({ user: userId, role: roleId, reason }),
+    remove: (guildId, userId, roleId) => guild.members.removeRole({ user: userId, role: roleId, reason }),
   };
 }
 
@@ -89,10 +91,13 @@ async function evaluateMember(member, { source = null, rules = null, primary } =
       const loaded = rules ?? await loadRules(guildId, source);
       const active = (loaded.vanity?.length ?? 0) + (loaded.guildtag?.length ?? 0);
       if (!active && !(await db.hasActiveRules(guildId))) return [];
+      // A change of a user reaches every server they share with Petto, so each server's language is looked up here.
+      const lang = await guildLanguage(guildId);
       return evaluate(memberIdentity(member, { primary }), loaded, {
-        roles: roleClient(member.guild),
-        onAction: (action) => emitAction(member.guild, action).catch((error) => logger.warn({ guildId }, `Identity log failed: ${error.message}`)),
-        onNotify: (action) => emitNotification(member.guild, member, action).catch((error) => logger.warn({ guildId }, `Identity notification failed: ${error.message}`)),
+        lang,
+        roles: roleClient(member.guild, lang),
+        onAction: (action) => emitAction(member.guild, action, lang).catch((error) => logger.warn({ guildId }, `Identity log failed: ${error.message}`)),
+        onNotify: (action) => emitNotification(member.guild, member, action, lang).catch((error) => logger.warn({ guildId }, `Identity notification failed: ${error.message}`)),
       });
     });
   } catch (error) {

@@ -6,9 +6,19 @@ const logger = require('./logger');
 const config = require('../config');
 const { templatePayload } = require('./templatedMessage');
 const { forEachWithConcurrency } = require('./concurrency');
+const { t, guildLanguage } = require('../i18n');
 
 const DISBOARD_ID = '302050872383242240';
 const BUMP_COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2 hours — DISBOARD's own cooldown between bumps
+
+/**
+ * The reminder and thank-you texts a server did not write are stored in English (the column defaults of bump_reminders); they are
+ * sent and shown in the server's language. `which` is `reminder` or `thankyou`. A text the server wrote stays as it is.
+ */
+function localizeBumpDefault(which, text, lang) {
+  const key = `welcome.bump.default.${which}`;
+  return text === t('en', key) ? t(lang, key) : text;
+}
 
 /** `{nextBump}` is bump-reminder-specific (not part of the general /embed variable set), so it's substituted before handing off to the shared resolve() engine for everything else. */
 async function applyBumpVars(text, { guild, channel, bumper, nextBumpAt }) {
@@ -41,7 +51,8 @@ async function handleBumpMessage(message) {
   if (customThanks) {
     await sendAs(message.channel, 'bump', { ...customThanks, allowedMentions: { parse: ['users', 'roles'] } }).catch((err) => logger.error('Bump thank-you send failed:', err));
   } else if (config.thankyou) {
-    const { text: cleanedText, emojis: reactReplies } = extractReactReplies(config.thankyou);
+    const lang = await guildLanguage(message.guild.id);
+    const { text: cleanedText, emojis: reactReplies } = extractReactReplies(localizeBumpDefault('thankyou', config.thankyou, lang));
     const text = await applyBumpVars(cleanedText, { guild: message.guild, channel: message.channel, bumper, nextBumpAt });
     if (text) {
       const sent = await sendAs(message.channel, 'bump', { content: text, allowedMentions: { parse: ['users', 'roles'] } })
@@ -68,7 +79,9 @@ async function checkBumpReminders(client) {
       if (!guild || !channel) return;
 
       const bumper = reminder.last_bumper_id ? await client.users.fetch(reminder.last_bumper_id).catch(() => null) : null;
-      const { text: cleanedText, emojis: reactReplies } = extractReactReplies(reminder.message);
+      // A job runs outside of any server's language: each server's is looked up.
+      const lang = await guildLanguage(guild.id);
+      const { text: cleanedText, emojis: reactReplies } = extractReactReplies(localizeBumpDefault('reminder', reminder.message, lang));
       const text = await applyBumpVars(cleanedText, { guild, channel, bumper, nextBumpAt: null });
 
       const customReminder = await templatePayload(guild.id, reminder.reminder_embed_template, { guild, channel, user: bumper ?? undefined, bump: {} });

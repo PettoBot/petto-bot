@@ -57,4 +57,9 @@ refuses('100d6+100d6+1d6', /more than 200 dice/);
 refuses('d6+999999999', /larger than/);
 refuses('2d6x3', /do not understand/);
 
+// The refusals follow the language they are asked in (English when none is given).
+assert.throws(() => parseDice('', 'es'), /Di qué quieres tirar/);
+assert.throws(() => parseDice('4d6kh5', 'pt-BR'), /mantém 5 de 4 dados/);
+assert.throws(() => rollDice('d1', undefined, 'es'), /entre 2 y 1000 caras/);
+
 console.log('Checked the dice parser and roller.');

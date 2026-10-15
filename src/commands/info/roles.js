@@ -1,16 +1,9 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { noticePayload } = require('../../utils/infoCard');
 const { register, sendPager } = require('../../utils/pager');
+const { t, tn, languageOf } = require('../../i18n');
 
-const SORTS = [
-  { label: 'Highest role first', value: 'position' },
-  { label: 'Most members', value: 'members' },
-  { label: 'Name (A–Z)', value: 'name' },
-  { label: 'Newest first', value: 'newest' },
-  { label: 'Oldest first', value: 'oldest' },
-  { label: 'Only roles with a color', value: 'colored' },
-  { label: 'Only roles without members', value: 'empty' },
-];
+const SORTS = ['position', 'members', 'name', 'newest', 'oldest', 'colored', 'empty'];
 
 const compare = {
   position: (a, b) => b.position - a.position,
@@ -21,20 +14,20 @@ const compare = {
 };
 
 register('roles', {
-  async load(guild, { option }) {
-    const sort = SORTS.some((entry) => entry.value === option) ? option : 'position';
+  async load(guild, { option, lang }) {
+    const sort = SORTS.includes(option) ? option : 'position';
     let roles = [...guild.roles.cache.filter((role) => role.id !== guild.id).values()];
     if (sort === 'colored') roles = roles.filter((role) => role.color);
     if (sort === 'empty') roles = roles.filter((role) => role.members.size === 0);
     roles.sort(compare[sort] ?? compare.position);
     return {
-      title: `Roles (${guild.roles.cache.size - 1})`,
+      title: t(lang, 'info.roles.title', { count: guild.roles.cache.size - 1 }),
       subtitle: [guild.name],
       thumbnail: guild.iconURL({ size: 256 }),
-      items: roles.map((role) => `<@&${role.id}> · ${role.members.size} ${role.members.size === 1 ? 'member' : 'members'}`),
-      options: SORTS,
-      placeholder: 'Sort or filter the roles',
-      empty: 'No role matches that filter.',
+      items: roles.map((role) => tn(lang, 'info.roles.item', role.members.size, { role: `<@&${role.id}>`, count: role.members.size })),
+      options: SORTS.map((value) => ({ label: t(lang, `info.roles.sort.${value}.menu`), value })),
+      placeholder: t(lang, 'info.roles.placeholder.menu'),
+      empty: t(lang, 'info.roles.empty'),
     };
   },
 });
@@ -45,7 +38,7 @@ module.exports = {
 
   async execute(interaction) {
     if (guildHasNoRoles(interaction.guild)) {
-      await interaction.reply(noticePayload('This server has no roles.'));
+      await interaction.reply(noticePayload(t(await languageOf(interaction), 'info.roles.none')));
       return;
     }
     await sendPager(interaction, 'roles');

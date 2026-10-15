@@ -10,6 +10,8 @@ const {
   ThumbnailBuilder,
 } = require('discord.js');
 const { EMOJI, TYPE_EMOJI } = require('./emojis');
+const { t, tn, currentLanguage } = require('../i18n');
+const { typeName, displayReason, reasonText, capitalize } = require('./caseFormat');
 
 const COLORS = {
   ban: 0xfe6465,
@@ -26,33 +28,17 @@ const COLORS = {
   unjail: 0xa5ea7a,
 };
 
-function capitalize(str) {
-  return str.charAt(0).toUpperCase() + str.slice(1);
-}
-
-const CONFIRM_VERB = {
-  ban: 'was banned from the server',
-  hardban: 'was permanently banned from the server',
-  tempban: 'was temporarily banned from the server',
-  softban: 'was softbanned from the server',
-  unban: 'was unbanned from the server',
-  kick: 'was kicked from the server',
-  mute: 'was muted in the server',
-  tempmute: 'was muted in the server',
-  unmute: 'was unmuted in the server',
-  warn: 'was warned',
-  jail: 'was jailed',
-  unjail: 'was released from jail',
-};
+// The sanctions that have their own sentence in the confirmation; any other type uses `moderation.card.unknown`.
+const CONFIRM_TYPES = new Set(['ban', 'hardban', 'tempban', 'softban', 'unban', 'kick', 'mute', 'tempmute', 'unmute', 'warn', 'jail', 'unjail']);
 
 /** The confirmation of a sanction: a line of plain text, with the hammer (the alert for a warn) and the case number small under it. */
-function buildCaseCard({ caseNumber, type, target, reason, duration }) {
+function buildCaseCard({ caseNumber, type, target, reason, duration, lang = currentLanguage() }) {
   const emoji = type === 'warn' ? EMOJI.ALERT : EMOJI.HAMMER;
   const name = target?.username ?? target?.user?.username ?? String(target?.id ?? target);
   const mention = target?.id ? ` (<@${target.id}>)` : '';
-  const verb = CONFIRM_VERB[type] ?? 'was sanctioned';
-  const during = duration ? ` for **${duration}**` : '';
-  return new TextDisplayBuilder().setContent(`${emoji} **${name}**${mention} ${verb}${during}. Reason: **${reason || 'No reason provided'}**.${caseNumber != null ? `\n-# case · #${caseNumber}` : ''}`);
+  const vars = { emoji, name, mention, duration, reason: displayReason(reason, lang) || t(lang, 'moderation.card.noReason') };
+  const sentence = t(lang, `moderation.card.${CONFIRM_TYPES.has(type) ? type : 'unknown'}${duration ? 'Timed' : ''}`, vars);
+  return new TextDisplayBuilder().setContent(`${sentence}${caseNumber != null ? `\n${t(lang, 'moderation.card.caseNumber', { number: caseNumber })}` : ''}`);
 }
 
 /** A single-block Components V2 card for plain status text (errors, confirmations) once a reply is already in V2 mode. */
@@ -68,26 +54,26 @@ function unixSeconds(value) {
   return Math.floor(new Date(value).getTime() / 1000);
 }
 
-function previewReason(reason) {
-  const text = String(reason || 'No reason provided.').replace(/\s+/g, ' ').trim();
+function previewReason(reason, lang) {
+  const text = String(reasonText(reason, lang)).replace(/\s+/g, ' ').trim();
   return text.length > REASON_PREVIEW_LENGTH ? `${text.slice(0, REASON_PREVIEW_LENGTH - 1)}…` : text;
 }
 
 /** Status shown next to a case: only timed sanctions can be running or over. */
-function caseStatus(row) {
-  if (!row.expires_at) return row.active === false ? 'Inactive' : null;
-  if (row.active === false) return 'Ended';
-  return Date.parse(row.expires_at) > Date.now() ? `Active · ends <t:${unixSeconds(row.expires_at)}:R>` : 'Ended';
+function caseStatus(row, lang) {
+  if (!row.expires_at) return row.active === false ? t(lang, 'moderation.caseList.inactive') : null;
+  if (row.active === false) return t(lang, 'moderation.caseList.ended');
+  return Date.parse(row.expires_at) > Date.now() ? t(lang, 'moderation.caseList.activeEnds', { time: `<t:${unixSeconds(row.expires_at)}:R>` }) : t(lang, 'moderation.caseList.ended');
 }
 
-function buildCaseListEntry(row, { showUser }) {
+function buildCaseListEntry(row, { showUser, lang }) {
   const emoji = TYPE_EMOJI[row.type] ?? '';
-  const status = caseStatus(row);
-  const people = [showUser ? `<@${row.user_id}>` : null, `by <@${row.moderator_id}>`].filter(Boolean).join(' · ');
+  const status = caseStatus(row, lang);
+  const people = [showUser ? `<@${row.user_id}>` : null, t(lang, 'moderation.caseList.by', { moderator: `<@${row.moderator_id}>` })].filter(Boolean).join(' · ');
   return [
-    `### ${[emoji, `#${row.case_number} · ${capitalize(row.type)}`].filter(Boolean).join(' ')}`,
+    `### ${[emoji, `#${row.case_number} · ${capitalize(typeName(row.type, lang))}`].filter(Boolean).join(' ')}`,
     `${people} · <t:${unixSeconds(row.created_at)}:R>${status ? ` · *${status}*` : ''}`,
-    `> ${previewReason(row.reason)}`,
+    `> ${previewReason(row.reason, lang)}`,
   ].join('\n');
 }
 
@@ -96,9 +82,9 @@ function buildCaseListEntry(row, { showUser }) {
  * case, and page controls. `ids` carries the previous/next custom ids so the
  * command that owns the collector stays in charge of them.
  */
-function buildCaseListCard({ rows, count, page, perPage, guild, user = null, ids = null }) {
+function buildCaseListCard({ rows, count, page, perPage, guild, user = null, ids = null, lang = currentLanguage() }) {
   const totalPages = Math.max(1, Math.ceil(count / perPage));
-  const title = user ? 'Infractions' : 'Moderation cases';
+  const title = t(lang, user ? 'moderation.caseList.titleUser' : 'moderation.caseList.titleServer');
   const subject = user ? `${user} · \`${user.id}\`` : guild.name;
   const iconUrl = user
     ? user.displayAvatarURL?.({ extension: 'png', size: 256 })
@@ -107,7 +93,7 @@ function buildCaseListCard({ rows, count, page, perPage, guild, user = null, ids
   const headerText = new TextDisplayBuilder().setContent([
     `## ${EMOJI.HAMMER} ${title}`,
     subject,
-    `-# ${count} ${count === 1 ? 'case' : 'cases'} · Page ${page + 1} of ${totalPages}`,
+    tn(lang, 'moderation.caseList.summary', count, { count, page: page + 1, pages: totalPages }),
   ].join('\n'));
 
   const card = new ContainerBuilder().setAccentColor(user && rows[0] ? COLORS[rows[0].type] ?? LIST_ACCENT : LIST_ACCENT);
@@ -119,7 +105,7 @@ function buildCaseListCard({ rows, count, page, perPage, guild, user = null, ids
 
   rows.forEach((row, index) => {
     if (index > 0) card.addSeparatorComponents(new SeparatorBuilder().setDivider(false).setSpacing(SeparatorSpacingSize.Small));
-    card.addTextDisplayComponents(new TextDisplayBuilder().setContent(buildCaseListEntry(row, { showUser: !user })));
+    card.addTextDisplayComponents(new TextDisplayBuilder().setContent(buildCaseListEntry(row, { showUser: !user, lang })));
   });
 
   if (ids && totalPages > 1) {
@@ -127,9 +113,9 @@ function buildCaseListCard({ rows, count, page, perPage, guild, user = null, ids
       .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small))
       .addActionRowComponents(
         new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId(ids.previous).setLabel('Previous').setEmoji(EMOJI.PREV).setStyle(ButtonStyle.Secondary).setDisabled(page <= 0),
+          new ButtonBuilder().setCustomId(ids.previous).setLabel(t(lang, 'moderation.caseList.previous.button')).setEmoji(EMOJI.PREV).setStyle(ButtonStyle.Secondary).setDisabled(page <= 0),
           new ButtonBuilder().setCustomId(`${ids.previous}:page`).setLabel(`${page + 1} / ${totalPages}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
-          new ButtonBuilder().setCustomId(ids.next).setLabel('Next').setEmoji(EMOJI.NEXT).setStyle(ButtonStyle.Secondary).setDisabled(page >= totalPages - 1),
+          new ButtonBuilder().setCustomId(ids.next).setLabel(t(lang, 'moderation.caseList.next.button')).setEmoji(EMOJI.NEXT).setStyle(ButtonStyle.Secondary).setDisabled(page >= totalPages - 1),
         ),
       );
   }

@@ -3,6 +3,7 @@ const { getConfig } = require('../../db/report');
 const { buildReportModal, USER_MODAL_PREFIX } = require('../../interactions/reportModal');
 const { noticePayload } = require('../../utils/infoCard');
 const { COLORS } = require('../../utils/colors');
+const { t, languageOf } = require('../../i18n');
 
 function refusal(text) {
   return { ...noticePayload(text, COLORS.RED), flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral };
@@ -12,26 +13,29 @@ function refusal(text) {
 // the person who wrote the message, not the message itself: "Report Message" is the one that attaches the text and
 // the images.
 module.exports = {
+  // i18n-ignore: context menu command name, never translated
   data: new ContextMenuCommandBuilder().setName('Report User').setType(ApplicationCommandType.Message),
 
   async execute(interaction) {
+    const lang = await languageOf(interaction);
     const reportConfig = await getConfig(interaction.guild.id).catch(() => null);
     if (!reportConfig?.enabled || !reportConfig.channel_id) {
-      await interaction.reply(refusal('Reports are not set up on this server yet.'));
+      await interaction.reply(refusal(t(lang, 'reports.send.notSetUp')));
       return;
     }
 
     const author = interaction.targetMessage.author;
     if (author.id === interaction.user.id) {
-      await interaction.reply(refusal('You cannot report yourself.'));
+      await interaction.reply(refusal(t(lang, 'reports.send.self')));
       return;
     }
 
     await interaction.showModal(buildReportModal({
       customId: `${USER_MODAL_PREFIX}${author.id}`,
-      title: 'Report User',
-      intro: `### Reporting ${author}\n**User:** ${author} (\`${author.id}\`)\n-# This reports the person. To report the message itself, use **Report Message**.`,
+      title: t(lang, 'reports.form.userTitle'),
+      intro: `### ${t(lang, 'reports.form.userIntro', { user: `${author}` })}\n${t(lang, 'reports.form.userLine', { user: `${author}`, id: author.id })}\n-# ${t(lang, 'reports.form.personNotMessage', { command: 'Report Message' })}`,
       config: reportConfig,
+      lang,
     }));
   },
 };
