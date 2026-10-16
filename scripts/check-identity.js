@@ -186,7 +186,7 @@ function roleClient(log) {
   assert.deepEqual(calls, ['remove:role1', 'action:remove_role:completed'], 'the default: a member Discord says went offline loses the role the bot gave');
   calls = [];
   await evaluate(person({ customStatus: 'cinnamochi' }), { vanity: [vrule()], guildtag: null }, options(calls));
-  assert.deepEqual(calls, ['add:role1', 'action:add_role:completed'], 'and it comes back when they are online again, without thanking them a second time');
+  assert.deepEqual(calls, ['add:role1', 'action:add_role:completed', 'notify:vanity'], 'and it comes back, with the thank-you, when they are online again with the status');
   assert.equal((await ledger.getRoleState('g', 'u', 'role1')).botAddedRole, true, 'and it is the bot\'s again');
   await gaveTheRole(); calls = [];
   await evaluate(offline({ knownOffline: true }), { vanity: [vrule()], guildtag: null }, { ...options(calls), offlineMode: 'keep' });
