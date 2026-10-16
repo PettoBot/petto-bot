@@ -17,6 +17,7 @@ const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { COLORS } = require('../../utils/colors');
 const logger = require('../../utils/logger');
+const { backupsUnderMaintenance } = require('../../utils/maintenance');
 const { t, currentLanguage, languageOf, defaultText } = require('../../i18n');
 
 const LOADING_EMOJI = EMOJI.LOADING;
@@ -41,6 +42,7 @@ module.exports = {
     .addSubcommand((sub) => sub.setName('audit').setDescription('Show the backup activity history.').addIntegerOption((opt) => opt.setName('limit').setDescription('Entries to show').setMinValue(1).setMaxValue(20).setRequired(false))),
 
   async execute(interaction) {
+    if (backupsUnderMaintenance()) return replyMaintenance(interaction);
     const sub = interaction.options.getSubcommand();
     if (sub === 'panel') return openPanel(interaction);
     if (sub === 'create') return create(interaction);
@@ -404,6 +406,13 @@ function buildRestoreModal(guildId, userId, lang = currentLanguage()) {
     );
 }
 
+/** Backups are paused: says so, and does nothing else. */
+async function replyMaintenance(interaction) {
+  const lang = await languageOf(interaction);
+  await interaction.reply({ content: t(lang, 'backup.maintenance', { emoji: EMOJI.ALERT }), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+}
+
+module.exports.replyMaintenance = replyMaintenance;
 module.exports.buildSnapshot = buildSnapshot;
 module.exports.buildBackupMenuRow = buildBackupMenuRow;
 module.exports.buildPanel = buildPanel;
