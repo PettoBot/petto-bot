@@ -4,13 +4,13 @@ const logger = require('../utils/logger');
 const config = require('../config');
 const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency');
 const { t, guildLanguage } = require('../i18n');
-const { backupsUnderMaintenance } = require('../utils/maintenance');
+const { backupsPaused } = require('../utils/maintenance');
 
 const POLL_INTERVAL_MS = 60_000;
 
 async function processDueBackups(client) {
   // Paused: no backup is taken and the schedules are left as they are, so they continue when backups come back.
-  if (backupsUnderMaintenance()) return;
+  if (backupsPaused()) return;
   if (!vault.isConfigured()) return;
   const schedules = await vault.listDueSchedules();
   await forEachWithConcurrency(schedules, async (schedule) => {

@@ -42,7 +42,7 @@ module.exports = {
     .addSubcommand((sub) => sub.setName('audit').setDescription('Show the backup activity history.').addIntegerOption((opt) => opt.setName('limit').setDescription('Entries to show').setMinValue(1).setMaxValue(20).setRequired(false))),
 
   async execute(interaction) {
-    if (backupsUnderMaintenance()) return replyMaintenance(interaction);
+    if (backupsUnderMaintenance(interaction.user.id)) return replyMaintenance(interaction);
     const sub = interaction.options.getSubcommand();
     if (sub === 'panel') return openPanel(interaction);
     if (sub === 'create') return create(interaction);
