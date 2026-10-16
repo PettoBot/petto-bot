@@ -1,6 +1,6 @@
 // Checks every member of a server against the rules, for when rules were just created or something was missed. Members are
 // read in one request (with presences, so Custom Status rules can see them) and processed a few at a time.
-const { evaluateMember, loadRules } = require('./service');
+const { evaluateMember, loadRules, settingsOf } = require('./service');
 const { t, currentLanguage } = require('../../i18n');
 
 const MAX_MEMBERS = Number(process.env.IDENTITY_SYNC_MAX_MEMBERS) > 0 ? Number(process.env.IDENTITY_SYNC_MAX_MEMBERS) : 25000;
@@ -22,9 +22,10 @@ const MAX_WAIT_SECONDS = 20;
  * members Petto already knows are used and the result says so; with none known there is nothing to check, and the error says
  * when to try again.
  */
-async function loadMembers(guild, { onWait, wait = sleep, lang = currentLanguage() } = {}) {
+async function loadMembers(guild, { onWait, wait = sleep, lang = currentLanguage(), fresh = false } = {}) {
   const known = [...guild.members.cache.values()];
-  if (guild.memberCount && known.length >= guild.memberCount * 0.98) return { members: known, from: 'cache', complete: true };
+  // `fresh` asks Discord even when Petto already has nearly everyone: the answer carries who is online, which the cache cannot promise.
+  if (!fresh && guild.memberCount && known.length >= guild.memberCount * 0.98) return { members: known, from: 'cache', complete: true };
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       const fetched = await guild.members.fetch({ withPresences: true });
@@ -55,7 +56,12 @@ async function syncGuild(guild, { source = null, onProgress, onWait, wait, lang 
   const started = Date.now();
   try {
     const rules = await loadRules(guild.id, source);
-    const loaded = await loadMembers(guild, { onWait, wait, lang });
+    // A server that takes the role away when a member goes offline needs to know who is offline. Discord's answer, with the presences, says it:
+    // whoever is not in it is offline. The cache cannot say (just after a start nobody has a presence yet), so then nobody is treated as offline.
+    const settings = await settingsOf(guild.id);
+    const wantsOffline = settings.offlineMode === 'remove' && source !== 'guildtag';
+    const loaded = await loadMembers(guild, { onWait, wait, lang, fresh: wantsOffline });
+    const presenceComplete = wantsOffline && loaded.from === 'discord' && loaded.complete;
     const members = loaded.members.filter((member) => !member.user.bot);
     const skipped = members.length > MAX_MEMBERS;
     const queue = skipped ? members.slice(0, MAX_MEMBERS) : members;
@@ -65,7 +71,7 @@ async function syncGuild(guild, { source = null, onProgress, onWait, wait, lang 
     const worker = async () => {
       while (cursor < total) {
         const member = queue[cursor++];
-        const results = await evaluateMember(member, { source, rules });
+        const results = await evaluateMember(member, { source, rules, presenceComplete });
         for (const result of results) {
           if (result.error) totals.errors += 1;
           else if (result.changed) totals[result.desired ? 'added' : 'removed'] += 1;

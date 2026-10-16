@@ -163,10 +163,12 @@ async function recordGrant(grant, audit) {
   }
 }
 
-async function activeCount(guildId, userId, roleId, action) {
+/** How many rules say the member should (or should not) have the role right now. `exceptRuleIds` leaves some rules out: the ones that cannot be read at the moment. */
+async function activeCount(guildId, userId, roleId, action, { exceptRuleIds = [] } = {}) {
+  const except = exceptRuleIds.map(String);
   const { rows } = await pool().query(
-    'select count(*)::int as total from identity_role_grants where guild_id = $1 and user_id = $2 and role_id = $3 and matched = true and action = $4',
-    [String(guildId), String(userId), String(roleId), action],
+    `select count(*)::int as total from identity_role_grants where guild_id = $1 and user_id = $2 and role_id = $3 and matched = true and action = $4${except.length ? ' and rule_id <> all($5::text[])' : ''}`, // i18n-ignore: SQL
+    except.length ? [String(guildId), String(userId), String(roleId), action, except] : [String(guildId), String(userId), String(roleId), action],
   );
   return rows[0].total;
 }
@@ -269,6 +271,23 @@ async function clearNotification(guildId, source) {
   return rowCount > 0;
 }
 
+// ---- Settings of the rules
+
+const OFFLINE_MODES = ['keep', 'remove'];
+// A server that has not chosen takes the role away when the member goes offline.
+const DEFAULT_OFFLINE_MODE = 'remove';
+async function getSettings(guildId) {
+  const { rows } = await pool().query('select offline_mode from identity_settings where guild_id = $1', [String(guildId)]);
+  return { offlineMode: OFFLINE_MODES.includes(rows[0]?.offline_mode) ? rows[0].offline_mode : DEFAULT_OFFLINE_MODE };
+}
+async function setSettings(guildId, { offlineMode }) {
+  if (!OFFLINE_MODES.includes(offlineMode)) throw new Error('offline_mode must be keep or remove.'); // i18n-ignore: internal error, callers check first
+  await pool().query(`
+    insert into identity_settings (guild_id, offline_mode, updated_at) values ($1,$2,now())
+    on conflict (guild_id) do update set offline_mode = excluded.offline_mode, updated_at = now()`,
+    [String(guildId), offlineMode]);
+}
+
 async function getLogConfig(guildId) {
   const { rows } = await pool().query('select channel_id, events, embeds from identity_logs where guild_id = $1', [String(guildId)]);
   return rows[0] ? { channelId: rows[0].channel_id, events: rows[0].events ?? {}, embeds: rows[0].embeds ?? {} } : null;
@@ -287,5 +306,5 @@ async function clearLogConfig(guildId) {
 module.exports = {
   newId, listVanityRules, listGuildTagRules, hasActiveRules, managedRoleIds, createRule, updateRule, deleteRule,
   invalidateStaleGrants, managedRolesOfMember, recordGrant, activeCount, getRoleState, observeRolePresence, markBotAdded, markBotRemoved, recordAudit,
-  getNotification, setNotification, clearNotification, getLogConfig, setLogConfig, clearLogConfig,
+  getSettings, setSettings, OFFLINE_MODES, DEFAULT_OFFLINE_MODE, getNotification, setNotification, clearNotification, getLogConfig, setLogConfig, clearLogConfig,
 };

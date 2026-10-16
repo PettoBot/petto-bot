@@ -536,6 +536,8 @@ module.exports = {
   'cmd.automation.vanity.notify.opt.channel.desc': 'Onde enviar a mensagem',
   'cmd.automation.vanity.notify.opt.embed.desc': 'Um embed salvo em Embeds (deixe vazio para a mensagem simples)',
   'cmd.automation.vanity.notify.opt.ping.desc': 'Mencionar o membro (padrão) ou não',
+  'cmd.automation.vanity.offline.desc': 'O que fazer com um cargo quando o membro fica offline (o Discord esconde o status).',
+  'cmd.automation.vanity.offline.opt.mode.desc': 'Tirar o cargo (o padrão), ou mantê-lo (vazio: ver o configurado)',
   'cmd.automation.vanity.notify-off.desc': 'Desativa a mensagem de agradecimento de Vanity.',
   'cmd.automation.voicemaster.desc': 'Cria e gerencia canais de voz temporários.',
   'cmd.automation.voicemaster.setup.desc': 'Configura o canal criador e o painel de controle.',
