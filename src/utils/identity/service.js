@@ -81,8 +81,8 @@ const settingsCache = new Map();
 async function settingsOf(guildId) {
   const hit = settingsCache.get(guildId);
   if (hit && hit.until > Date.now()) return hit.value;
-  let value = { offlineMode: 'keep' };
-  try { value = await db.getSettings(guildId); } catch { /* the default is the safe one */ }
+  let value = { offlineMode: db.DEFAULT_OFFLINE_MODE ?? 'remove' };
+  try { value = await db.getSettings(guildId); } catch { /* the default is used */ }
   settingsCache.set(guildId, { value, until: Date.now() + SETTINGS_TTL_MS });
   if (settingsCache.size > 2_000) settingsCache.delete(settingsCache.keys().next().value);
   return value;

@@ -538,7 +538,7 @@ module.exports = {
   'cmd.automation.vanity.notify.opt.ping.desc': 'Ping the member (default) or not',
   'cmd.automation.vanity.notify-off.desc': 'Stop the Vanity thank-you message.',
   'cmd.automation.vanity.offline.desc': 'What to do with a role when its member goes offline (Discord then hides their Custom Status).',
-  'cmd.automation.vanity.offline.opt.mode.desc': 'Keep the role, or take it away (leave empty to see what is set)',
+  'cmd.automation.vanity.offline.opt.mode.desc': 'Take the role away (default), or keep it (leave empty to see what is set)',
   'cmd.automation.voicemaster.desc': 'Create and manage temporary voice channels.',
   'cmd.automation.voicemaster.setup.desc': 'Configure the creator channel and management panel.',
   'cmd.automation.voicemaster.setup.opt.creator.desc': 'Join-to-create voice channel.',

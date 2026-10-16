@@ -4,14 +4,15 @@
 //  - the bot only takes a role away when its own record says the bot put it there, so a role given by hand is never touched;
 //  - bots are never evaluated;
 //  - a source that could not be read right now (Custom Status of a member who is offline or in a sweep without presence) leaves its grants as they are,
-//    unless the server chose `offlineMode: 'remove'` and the member is known to have just gone offline: then the status counts as empty;
-//  - a role that several rules manage is one role: it is added or taken away once and the member is thanked once.
+//    unless the server wants the role to go when the member goes offline (`offlineMode: 'remove'`, the default) and Discord has just said they are
+//    offline: then the role is taken away without touching what the rule said, and given back, quietly, when they are online and match again;
+//  - a role that several rules manage is one role: it is added or taken away once and the member is thanked once for each source (Vanity, Server Tag).
 const db = require('../../db/identity');
 const { matchVanity, matchGuildTag, vanityValue, vanitySourceKnown } = require('./compare');
 const { t, currentLanguage } = require('../../i18n');
 
 /** `rules.vanity` / `rules.guildtag`: `null` means "this source was not evaluated"; an empty list means "evaluated, no active rules", which clears its old grants. */
-async function evaluate(member, rules, { roles, onAction, onNotify, offlineMode = 'keep', lang = currentLanguage() } = {}) {
+async function evaluate(member, rules, { roles, onAction, onNotify, offlineMode = 'remove', lang = currentLanguage() } = {}) {
   if (member.isBot) return [];
   if (!roles) throw new Error('The identity engine needs a role client.'); // i18n-ignore: internal error, never shown
   const { vanity, guildtag } = rules;
@@ -24,6 +25,8 @@ async function evaluate(member, rules, { roles, onAction, onNotify, offlineMode 
   const removeContexts = new Map();
   const matching = new Map();
   const pending = new Map();
+  const suspended = new Map(); // role -> rules that cannot be read because the member went offline (their grants stay as they were)
+  const suspendedContexts = new Map();
   const stopped = new Map(); // rules that matched before and do not now: what the log says when a role goes because of them
   const push = (map, roleId, value) => map.set(roleId, [...(map.get(roleId) ?? []), value]);
 
@@ -64,6 +67,11 @@ async function evaluate(member, rules, { roles, onAction, onNotify, offlineMode 
       source: 'vanity', action: rule.action, value: rule.word,
       reason: wentOffline ? t(lang, 'identity.reason.offline') : t(lang, matched ? 'identity.reason.matched' : 'identity.reason.unmatched', { condition: rule.source, value }),
     };
+    if (wentOffline) {
+      // What the rule said is not changed (the member did not stop matching, they went away), so coming back is not a new match.
+      if (rule.action === 'add_role') { push(suspended, rule.role_id, rule.id); suspendedContexts.set(rule.role_id, context); }
+      continue;
+    }
     await track(rule, 'vanity', matched, context, evaluationError);
   }
 
@@ -88,8 +96,15 @@ async function evaluate(member, rules, { roles, onAction, onNotify, offlineMode 
     guildId: member.guildId, userId: member.userId, userName: member.username, userDisplayName: member.displayName, userAvatar: member.avatarUrl,
     roleId, action, reason: t(lang, 'identity.reason.unjustified'),
   };
-  // One thank-you for the role, even when several rules that manage it match at once.
-  const notify = (contexts) => { const [context] = contexts ?? []; if (context) onNotify?.({ ...context, action: 'add_role', result: 'completed', error: null }); };
+  // One thank-you for each source that starts matching, even when several rules of it manage the same role (a Vanity rule and a Server Tag rule have their own message).
+  const notify = (contexts) => {
+    const seen = new Set();
+    for (const context of contexts ?? []) {
+      if (seen.has(context.source)) continue;
+      seen.add(context.source);
+      onNotify?.({ ...context, action: 'add_role', result: 'completed', error: null });
+    }
+  };
   const audit = (roleId, action, result, suffix, error) => ({
     eventType: `identity_role_${action}`, dedupeKey: `${suffix}:${member.guildId}:${member.userId}:${roleId}${error ? ':error' : ''}`,
     guildId: member.guildId, userId: member.userId, roleId, action, result, error: error?.message, metadata: { source: 'shared-role-ledger' },
@@ -99,7 +114,7 @@ async function evaluate(member, rules, { roles, onAction, onNotify, offlineMode 
   for (const roleId of [...roleIds].filter(Boolean).sort()) {
     const present = Boolean(member.roleIds?.has(roleId));
     await db.observeRolePresence(member.guildId, member.userId, roleId, present);
-    const activeAdds = await db.activeCount(member.guildId, member.userId, roleId, 'add_role');
+    const activeAdds = await db.activeCount(member.guildId, member.userId, roleId, 'add_role', { exceptRuleIds: suspended.get(roleId) ?? [] });
     const activeRemovals = await db.activeCount(member.guildId, member.userId, roleId, 'remove_role');
     const state = await db.getRoleState(member.guildId, member.userId, roleId);
     const desired = activeAdds > 0 && activeRemovals === 0;
@@ -120,14 +135,15 @@ async function evaluate(member, rules, { roles, onAction, onNotify, offlineMode 
       await db.markBotAdded(member.guildId, member.userId, roleId);
       await db.recordAudit(audit(roleId, 'add_role', 'completed', 'role-add-completed'));
       onAction?.({ ...contextFor(roleContexts, roleId, 'add_role'), action: 'add_role', result: 'completed', error: null });
-      notify(matching.get(roleId));
+      // Thanked for what is new, not for a role that comes back after the member was away.
+      notify(pending.get(roleId));
     } else if (desired && present) {
       notify(pending.get(roleId));
     } else if (!desired && present && state.botAddedRole && !state.manualMarked) {
       result.changed = true;
       await db.recordAudit(audit(roleId, 'remove_role', 'requested', 'role-remove'));
       // A remove rule that matches is the reason; otherwise it is the rule that just stopped matching (the Server Tag that was taken off, not a Vanity rule that never changed).
-      const context = activeRemovals > 0 ? contextFor(removeContexts, roleId, 'remove_role') : stopped.has(roleId) ? stopped.get(roleId)[0] : contextFor(roleContexts, roleId, 'remove_role');
+      const context = activeRemovals > 0 ? contextFor(removeContexts, roleId, 'remove_role') : stopped.has(roleId) ? stopped.get(roleId)[0] : suspendedContexts.has(roleId) ? suspendedContexts.get(roleId) : contextFor(roleContexts, roleId, 'remove_role');
       try {
         await roles.remove(member.guildId, member.userId, roleId);
       } catch (error) {

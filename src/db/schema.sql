@@ -3111,10 +3111,11 @@ create table if not exists identity_logs (
 alter table identity_logs enable row level security;
 
 -- Settings of the Vanity rules of a server. `offline_mode` is what to do with a role when a member whose Custom Status a rule reads goes
--- offline or invisible (Discord then hides the status): `keep` leaves the role as it is (the default), `remove` takes it away.
+-- offline or invisible (Discord then hides the status): `remove` takes it away (the default, also when there is no row) and `keep` leaves
+-- the role as it is.
 create table if not exists identity_settings (
   guild_id     text primary key references guilds(guild_id) on delete cascade,
-  offline_mode text not null default 'keep' check (offline_mode in ('keep','remove')),
+  offline_mode text not null default 'remove' check (offline_mode in ('keep','remove')),
   updated_at   timestamptz not null default now()
 );
 alter table identity_settings enable row level security;

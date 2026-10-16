@@ -32,8 +32,8 @@ const ledger = {
     grants.set(id, { ...grant, botAddedRole: previous?.botAddedRole ?? false });
     return { hadPrevious: Boolean(previous), previousMatched: previous?.matched ?? false };
   },
-  async activeCount(guildId, userId, roleId, action) {
-    return [...grants.values()].filter((g) => g.guildId === guildId && g.userId === userId && g.roleId === roleId && g.matched && g.action === action).length;
+  async activeCount(guildId, userId, roleId, action, { exceptRuleIds = [] } = {}) {
+    return [...grants.values()].filter((g) => g.guildId === guildId && g.userId === userId && g.roleId === roleId && g.matched && g.action === action && !exceptRuleIds.map(String).includes(String(g.ruleId))).length;
   },
   async getRoleState(guildId, userId, roleId) {
     const state = states.get(key(guildId, userId, roleId));
@@ -177,24 +177,29 @@ function roleClient(log) {
 
   // ---- A server can choose what happens when a member goes offline (Discord then hides their Custom Status)
   const offline = (extra = {}) => person({ customStatus: '', unknownSources: new Set(['custom_status']), roleIds: new Set(['role1']), ...extra });
-  reset(); calls = [];
-  await evaluate(person({ customStatus: 'cinnamochi' }), { vanity: [vrule()], guildtag: null }, options(calls));
-  calls = [];
-  await evaluate(offline({ knownOffline: true }), { vanity: [vrule()], guildtag: null }, { ...options(calls), offlineMode: 'keep' });
-  assert.deepEqual(calls, [], 'keep (the default): the role stays when the member goes offline');
+  const gaveTheRole = async () => { reset(); const log = []; await evaluate(person({ customStatus: 'cinnamochi' }), { vanity: [vrule()], guildtag: null }, options(log)); };
+  await gaveTheRole(); calls = [];
   await evaluate(offline({ knownOffline: true }), { vanity: [vrule()], guildtag: null }, options(calls));
-  assert.deepEqual(calls, [], 'and with nothing chosen');
-  await evaluate(offline(), { vanity: [vrule()], guildtag: null }, { ...options(calls), offlineMode: 'remove' });
-  assert.deepEqual(calls, [], 'remove, but the bot only has no presence for them (a sweep): nothing is taken away from people who may be online');
-  await evaluate(offline({ knownOffline: true }), { vanity: [vrule()], guildtag: null }, { ...options(calls), offlineMode: 'remove' });
-  assert.deepEqual(calls, ['remove:role1', 'action:remove_role:completed'], 'remove: a member Discord says went offline loses the role the bot gave');
+  assert.deepEqual(calls, ['remove:role1', 'action:remove_role:completed'], 'the default: a member Discord says went offline loses the role the bot gave');
   calls = [];
-  await evaluate(person({ customStatus: 'cinnamochi' }), { vanity: [vrule()], guildtag: null }, { ...options(calls), offlineMode: 'remove' });
-  assert.deepEqual(calls, ['add:role1', 'action:add_role:completed', 'notify:vanity'], 'and gets it back when they are online with a matching status');
-  // A role given by hand is never taken away, whatever the setting says.
+  await evaluate(person({ customStatus: 'cinnamochi' }), { vanity: [vrule()], guildtag: null }, options(calls));
+  assert.deepEqual(calls, ['add:role1', 'action:add_role:completed'], 'and it comes back when they are online again, without thanking them a second time');
+  assert.equal((await ledger.getRoleState('g', 'u', 'role1')).botAddedRole, true, 'and it is the bot\'s again');
+  await gaveTheRole(); calls = [];
+  await evaluate(offline({ knownOffline: true }), { vanity: [vrule()], guildtag: null }, { ...options(calls), offlineMode: 'keep' });
+  assert.deepEqual(calls, [], 'keep: the role stays when the member goes offline');
+  await evaluate(offline(), { vanity: [vrule()], guildtag: null }, options(calls));
+  assert.deepEqual(calls, [], 'the bot only has no presence for them (a sweep): nothing is taken away from people who may be online, whatever the setting');
+  // A role given by hand is never taken away.
   reset(); calls = [];
-  await evaluate(offline({ knownOffline: true }), { vanity: [vrule()], guildtag: null }, { ...options(calls), offlineMode: 'remove' });
+  await evaluate(offline({ knownOffline: true }), { vanity: [vrule()], guildtag: null }, options(calls));
   assert.deepEqual(calls, [], 'a role the bot did not give stays');
+  // Going offline is not stopping to match: if they come back with the status changed, that is what counts.
+  await gaveTheRole(); calls = [];
+  await evaluate(offline({ knownOffline: true }), { vanity: [vrule()], guildtag: null }, options(calls));
+  calls = [];
+  await evaluate(person({ customStatus: 'something else' }), { vanity: [vrule()], guildtag: null }, options(calls));
+  assert.deepEqual(calls, [], 'back with another status: the role stays off');
 
   // ---- Several rules for one role are one role
   reset(); calls = [];
@@ -208,18 +213,39 @@ function roleClient(log) {
   assert.deepEqual(calls, [], 'one stops matching and the other still does: the role stays');
   await evaluate(person({ customStatus: 'nothing', roleIds: new Set(['role1']) }), { vanity: twin, guildtag: null }, options(calls));
   assert.deepEqual(calls, ['remove:role1', 'action:remove_role:completed'], 'both stop: the role goes once');
-  // One rule for the status and one for the name, the member goes offline: the name rule can still say no, but the status one is unknown.
+  // One rule for the status and one for the nickname, the member goes offline.
   reset(); calls = [];
   const mixed = [vrule(), vrule({ id: 'r4', name: 'nick', source: 'guild_nickname', word: 'cinna' })];
   await evaluate(person({ customStatus: 'cinnamochi' }), { vanity: mixed, guildtag: null }, options(calls));
   calls = [];
-  await evaluate(offline({ knownOffline: true }), { vanity: mixed, guildtag: null }, { ...options(calls), offlineMode: 'remove' });
-  assert.deepEqual(calls, ['remove:role1', 'action:remove_role:completed'], 'remove with two rules: neither matches an offline member without that nickname, so the role goes once');
+  await evaluate(offline({ knownOffline: true }), { vanity: mixed, guildtag: null }, options(calls));
+  assert.deepEqual(calls, ['remove:role1', 'action:remove_role:completed'], 'neither the status (hidden) nor the nickname rule says yes: the role goes once');
   reset(); calls = [];
   await evaluate(person({ customStatus: 'cinnamochi', guildNickname: 'cinna' }), { vanity: mixed, guildtag: null }, options(calls));
   calls = [];
-  await evaluate(offline({ knownOffline: true, guildNickname: 'cinna' }), { vanity: mixed, guildtag: null }, { ...options(calls), offlineMode: 'remove' });
+  await evaluate(offline({ knownOffline: true, guildNickname: 'cinna' }), { vanity: mixed, guildtag: null }, options(calls));
   assert.deepEqual(calls, [], 'the nickname rule still matches, so the role stays');
+
+  // ---- A role that a Server Tag rule also manages: each source thanks the member for its own match
+  reset(); calls = [];
+  const viaTag = { vanity: [vrule()], guildtag: [frule({ role_id: 'role1' })] };
+  await evaluate(person({ customStatus: 'cinnamochi', primaryGuild: { identityGuildId: '777', identityEnabled: true, tag: 'PET', badge: 'b' } }), viaTag, options(calls));
+  assert.deepEqual(calls, ['add:role1', 'action:add_role:completed', 'notify:vanity', 'notify:guildtag'], 'matching the status and the tag at once: one role, and each message once');
+  calls = [];
+  await evaluate(person({ customStatus: 'cinnamochi', roleIds: new Set(['role1']), primaryGuild: { identityGuildId: '777', identityEnabled: true, tag: 'PET', badge: 'b' } }), viaTag, options(calls));
+  assert.deepEqual(calls, [], 'nothing again while both keep matching');
+  reset(); calls = [];
+  await evaluate(person({ customStatus: 'cinnamochi' }), viaTag, options(calls));
+  calls = [];
+  await evaluate(person({ customStatus: 'cinnamochi', roleIds: new Set(['role1']), primaryGuild: { identityGuildId: '777', identityEnabled: true, tag: 'PET', badge: 'b' } }), viaTag, options(calls));
+  assert.deepEqual(calls, ['notify:guildtag'], 'the tag starts matching later, when the role is already there: they are thanked for the tag');
+  // Offline with a status rule and a tag rule for the same role: the tag still says yes, so the role stays.
+  calls = [];
+  await evaluate(offline({ knownOffline: true, primaryGuild: { identityGuildId: '777', identityEnabled: true, tag: 'PET', badge: 'b' } }), viaTag, options(calls));
+  assert.deepEqual(calls, [], 'offline, but the Server Tag is still worn: the role stays');
+  calls = [];
+  await evaluate(offline({ knownOffline: true }), viaTag, options(calls));
+  assert.deepEqual(calls, ['remove:role1', 'action:remove_role:completed'], 'offline and without the tag: the role goes');
 
   // ---- Server Tag rules, and a source that was not evaluated
   reset(); calls = [];

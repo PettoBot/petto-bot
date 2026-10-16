@@ -95,7 +95,7 @@ function addSubcommands(builder, kind) {
   // i18n-ignore: builder description (the next lines too)
   if (vanity) {
     built.addSubcommand((s) => s.setName('offline').setDescription('What to do with a role when its member goes offline (Discord then hides their Custom Status).')
-      .addStringOption((o) => o.setName('mode').setDescription('Keep the role, or take it away (leave empty to see what is set)').addChoices({ name: 'Keep the role (default)', value: 'keep' }, { name: 'Take the role away', value: 'remove' })));
+      .addStringOption((o) => o.setName('mode').setDescription('Take the role away (default), or keep it (leave empty to see what is set)').addChoices({ name: 'Take the role away (default)', value: 'remove' }, { name: 'Keep the role', value: 'keep' })));
   }
   return built;
 }

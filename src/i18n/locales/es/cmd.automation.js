@@ -537,7 +537,7 @@ module.exports = {
   'cmd.automation.vanity.notify.opt.embed.desc': 'Un embed guardado de Embeds (déjalo vacío para el mensaje simple)',
   'cmd.automation.vanity.notify.opt.ping.desc': 'Mencionar al miembro (por defecto) o no',
   'cmd.automation.vanity.offline.desc': 'Qué hacer con un rol cuando su miembro se desconecta (Discord oculta su estado personalizado).',
-  'cmd.automation.vanity.offline.opt.mode.desc': 'Conservar el rol, o quitarlo (déjalo vacío para ver lo configurado)',
+  'cmd.automation.vanity.offline.opt.mode.desc': 'Quitar el rol (lo normal), o conservarlo (vacío: ver lo configurado)',
   'cmd.automation.vanity.notify-off.desc': 'Detiene el mensaje de agradecimiento de Vanity.',
   'cmd.automation.voicemaster.desc': 'Crea y gestiona canales de voz temporales.',
   'cmd.automation.voicemaster.setup.desc': 'Configura el canal creador y el panel de control.',
