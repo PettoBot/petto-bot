@@ -152,7 +152,7 @@ module.exports = {
 
       if (config.ignored.length) {
         const lines = config.ignored.map((id) =>
-          interaction.guild.channels.cache.has(id) ? `<#${id}>` : `<@${id}>`,
+          interaction.guild.channels.cache.has(id) ? `<#${id}>` : interaction.guild.roles.cache.has(id) ? `<@&${id}>` : `<@${id}>`,
         );
         embed.addFields({ name: t(lang, 'config.logs.ignored'), value: lines.join(', '), inline: false });
       }
@@ -259,7 +259,7 @@ module.exports = {
           await interaction.reply({ embeds: [new EmbedBuilder().setColor(COLOR).setDescription(t(lang, 'config.logs.nothingIgnored'))] });
           return;
         }
-        const lines = config.ignored.map((id) => (interaction.guild.channels.cache.has(id) ? `<#${id}> (\`${id}\`)` : `<@${id}> (\`${id}\`)`));
+        const lines = config.ignored.map((id) => (interaction.guild.channels.cache.has(id) ? `<#${id}> (\`${id}\`)` : interaction.guild.roles.cache.has(id) ? `<@&${id}> (\`${id}\`)` : `<@${id}> (\`${id}\`)`));
         await interaction.reply({ embeds: [new EmbedBuilder().setColor(COLOR).setTitle(t(lang, 'config.logs.ignored')).setDescription(lines.join('\n'))] });
         return;
       }
