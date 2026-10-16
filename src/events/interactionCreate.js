@@ -23,7 +23,7 @@ const { handleButton: handlePollButton } = require('../interactions/pollButton')
 const { handleButton: handlePollPanelButton, handleModal: handlePollPanelModal } = require('../interactions/pollPanel');
 const { HONEYPOT_COUNT_BUTTON_ID, handleButton: handleHoneypotButton } = require('../interactions/honeypot');
 const { ROLEPLAY_BUTTON_PREFIX, handleButton: handleRoleplayButton } = require('../interactions/roleplay');
-const { handleSelect: handleBackupSelect, handleScheduleModal, handleRestoreModal } = require('../interactions/backup');
+const { handleSelect: handleBackupSelect, handleScheduleModal, handleRestoreModal, handleRestoreButton, handleRestoreCodeModal } = require('../interactions/backup');
 const { VERSION_SELECT_ID, handleButton: handleVersionButton, handleSelect: handleVersionSelect } = require('../interactions/version');
 const { handleButton: handleVoiceMasterButton, handleModal: handleVoiceMasterModal, handleSelect: handleVoiceMasterSelect } = require('../interactions/voiceMaster');
 const { SELECT_ID: QUEST_SELECT_ID, PAGE_ID: QUEST_PAGE_ID, handleSelect: handleQuestSelect, handleButton: handleQuestButton } = require('../interactions/quests');
@@ -177,6 +177,16 @@ module.exports = {
 
     if (interaction.isModalSubmit() && interaction.customId.startsWith('backup_schedule_modal:')) {
       try { await handleScheduleModal(interaction); } catch (err) { logger.error('Error handling backup schedule modal:', err); }
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('backup_restore:')) {
+      try { await handleRestoreButton(interaction); } catch (err) { logger.error('Error handling backup restore button:', err); }
+      return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('backup_restore_code:')) {
+      try { await handleRestoreCodeModal(interaction); } catch (err) { logger.error('Error handling backup restore check:', err); }
       return;
     }
 

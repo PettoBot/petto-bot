@@ -6,6 +6,8 @@ All notable changes to Petto are documented here.
 
 ### Changed
 
+- **Restoring a backup asks first, shows how far it is and can be stopped.** Before anything changes, Petto shows what the restore would create, update and (in replace mode) delete, by name. Then it asks a human check: a picture with letters, like the verification. After that it saves a safety backup, restores while one message shows the progress with a **Stop restore** button, and says what it did. Only one restore runs at a time in a server. A stopped restore keeps what it already did and deletes nothing more, and replace mode deletes nothing at all if a role or channel could not be created or the restore was stopped. The channel it was started from is never deleted. The dashboard does the same through its own steps (preview, check, live progress, stop). The old one-click restore is closed.
+- **The Premium list at start no longer repeats on every restart.** When Petto starts it compares the list with the one already posted in the team channel: if it is the same it posts nothing, and if it changed it posts the new one and removes the old one.
 - **Backups are under maintenance.** For now `!backup` and its panel answer that backups are under maintenance, and the scheduled backups are not taken. The owner and the developers can still use them. The saved backups and the schedules are kept as they are. Setting `BACKUPS_MAINTENANCE=off` brings it all back. The dashboard page of backups shows the same notice.
 
 ### Added

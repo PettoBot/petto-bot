@@ -66,7 +66,7 @@ module.exports = {
   'cmd.config.backup.export.opt.id.desc': 'Server backup number, or omit it for the latest one',
   'cmd.config.backup.restore.desc': 'Restore a snapshot. Administrator and confirmation required.',
   'cmd.config.backup.restore.opt.id.desc': 'Server backup number to restore',
-  'cmd.config.backup.restore.opt.confirm.desc': 'Confirm the restore and create a safety backup first',
+  'cmd.config.backup.restore.opt.confirm.desc': 'Not needed any more: Petto always asks you to confirm',
   'cmd.config.backup.restore.opt.mode.desc': 'Merge without deleting, or replace extra resources',
   'cmd.config.backup.schedule.desc': 'Create automatic backups.',
   'cmd.config.backup.schedule.opt.hours.desc': 'Hours between backups',

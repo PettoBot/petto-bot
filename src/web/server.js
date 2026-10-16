@@ -15,7 +15,8 @@ const { getTicketById, getTicketByNumber } = require('../db/tickets');
 const { logVerification } = require('../utils/verificationLog');
 const { sendVerifiedDM } = require('../utils/verifyMessage');
 const { createBackup, listBackups, getBackup, recordAudit, vault } = require('../db/backups');
-const { restoreBackup } = require('../utils/backupRestore');
+const { planRestore } = require('../utils/backupRestore');
+const backupJobs = require('../utils/backupJobs');
 const { buildSnapshot } = require('../commands/config/backup');
 const { renderVerifyPage } = require('./verifyPage');
 const { createChallenge, checkAnswer } = require('../utils/verifyCaptcha');
@@ -224,7 +225,7 @@ function startServer(client) {
       vault.getSchedule(guildId),
       vault.listAudit(guildId, 20),
     ]);
-    return { backups, schedule, audit };
+    return { backups, schedule, audit, restoreJob: backupJobs.describeJob(backupJobs.getJob(guildId)) };
   }
 
   if (dashboardEnabled) {
@@ -782,31 +783,9 @@ function startServer(client) {
           const saved = await createBackup(guild.id, userId, String(req.body?.label || '').trim() || null, snapshot);
           await recordAudit(guild.id, userId, 'backup_created', saved.backup_number, { source: saved.source || 'manual', label: saved.label });
         } else if (action === 'restore') {
-          if (!authorized.isAdministrator) {
-            res.status(403).json({ ok: false, error: 'administrator_required' });
-            return;
-          }
-          const backupNumber = Number(req.body?.backup_id);
-          const mode = String(req.body?.mode || 'merge');
-          if (!Number.isInteger(backupNumber) || backupNumber < 1 || !['merge', 'replace'].includes(mode) || req.body?.confirm !== true) {
-            res.status(400).json({ ok: false, error: 'restore_confirmation_required' });
-            return;
-          }
-          const backup = await getBackup(guild.id, backupNumber);
-          if (!backup) {
-            res.status(404).json({ ok: false, error: 'backup_not_found' });
-            return;
-          }
-          // The label is kept with the backup and shown to everyone in the server, so it is in the server's language (as with !backup).
-          const serverLang = peekGuildLanguage(guild.id);
-          const safety = await createBackup(guild.id, userId, t(serverLang, 'backup.restore.safetyLabel', { number: backupNumber }), buildSnapshot(guild), 'manual');
-          await recordAudit(guild.id, userId, 'backup_created', safety.backup_number, {
-            source: 'manual',
-            purpose: 'restore_safety',
-            beforeBackupNumber: backupNumber,
-          });
-          const restoreResult = await restoreBackup(guild, backup.snapshot, { mode, reason: t(serverLang, 'web.audit.restore', { number: backupNumber }) });
-          await recordAudit(guild.id, userId, 'backup_restored', backupNumber, { mode, safetyBackupNumber: safety.backup_number, result: restoreResult });
+          // A restore now goes through its own steps (preview, human check, progress), never in one call.
+          res.status(400).json({ ok: false, error: 'restore_use_steps' });
+          return;
         } else if (action === 'schedule') {
           const hours = Number(req.body?.hours);
           const retention = Number(req.body?.retention || 7);
@@ -827,6 +806,94 @@ function startServer(client) {
         logger.error(`Dashboard Vault action failed for guild ${guild.id}:`, err);
         res.status(500).json({ ok: false, error: 'vault_action_failed' });
       }
+    });
+
+    // The steps of a restore: what it would do, a human check, the start, how far it is and the way to stop it.
+    const restoreAdmin = async (req, res) => {
+      const authorized = await dashboardGuild(req, res);
+      if (!authorized) return null;
+      if (!authorized.isAdministrator) {
+        res.status(403).json({ ok: false, error: 'administrator_required' });
+        return null;
+      }
+      return authorized;
+    };
+    const restoreInput = (source) => ({ number: Number(source?.backup_id), mode: String(source?.mode || 'merge') });
+    const validRestoreInput = ({ number, mode }) => Number.isInteger(number) && number >= 1 && ['merge', 'replace'].includes(mode);
+
+    app.get('/api/dashboard/vault/:guildId/restore/status', dashboardDatabaseRateLimiter, async (req, res) => {
+      const authorized = await dashboardGuild(req, res);
+      if (!authorized) return;
+      res.json({ ok: true, job: backupJobs.describeJob(backupJobs.getJob(authorized.guild.id)) });
+    });
+
+    app.get('/api/dashboard/vault/:guildId/restore/preview', dashboardDatabaseRateLimiter, async (req, res) => {
+      const authorized = await restoreAdmin(req, res);
+      if (!authorized) return;
+      const input = restoreInput(req.query);
+      if (!validRestoreInput(input)) { res.status(400).json({ ok: false, error: 'invalid_restore' }); return; }
+      try {
+        const backup = await getBackup(authorized.guild.id, input.number);
+        if (!backup) { res.status(404).json({ ok: false, error: 'backup_not_found' }); return; }
+        await Promise.all([authorized.guild.roles.fetch(), authorized.guild.channels.fetch(), authorized.guild.emojis.fetch()]);
+        const plan = planRestore(authorized.guild, backup.snapshot, { mode: input.mode });
+        res.json({ ok: true, plan: { ...plan, deleteChannelCount: plan.deleteChannels.length, deleteRoleCount: plan.deleteRoles.length, deleteChannels: plan.deleteChannels.slice(0, 25), deleteRoles: plan.deleteRoles.slice(0, 25) }, running: backupJobs.isRunning(authorized.guild.id) });
+      } catch (err) {
+        logger.error('Dashboard failed to preview a restore:', err);
+        res.status(500).json({ ok: false, error: 'restore_preview_failed' });
+      }
+    });
+
+    app.post('/api/dashboard/vault/:guildId/restore/challenge', dashboardDatabaseRateLimiter, async (req, res) => {
+      const authorized = await restoreAdmin(req, res);
+      if (!authorized) return;
+      const challenge = backupJobs.createRestoreChallenge(authorized.guild, authorized.userId);
+      res.set('Cache-Control', 'no-store');
+      res.json({ ok: true, challenge: { id: challenge.id, kind: challenge.kind, name: challenge.name ?? null, seconds: challenge.seconds, image: challenge.png ? `data:image/png;base64,${challenge.png.toString('base64')}` : null } });
+    });
+
+    app.post('/api/dashboard/vault/:guildId/restore/start', dashboardDatabaseRateLimiter, async (req, res) => {
+      const authorized = await restoreAdmin(req, res);
+      if (!authorized) return;
+      const { guild, userId } = authorized;
+      const input = restoreInput(req.body);
+      if (!validRestoreInput(input)) { res.status(400).json({ ok: false, error: 'invalid_restore' }); return; }
+      try {
+        if (backupJobs.isRunning(guild.id)) { res.status(409).json({ ok: false, error: 'restore_running' }); return; }
+        const checked = backupJobs.checkRestoreChallenge(String(req.body?.challenge_id || ''), guild.id, userId, req.body?.answer);
+        if (!checked.ok) { res.status(checked.reason === 'locked' ? 429 : 400).json({ ok: false, error: `captcha_${checked.reason}` }); return; }
+        const backup = await getBackup(guild.id, input.number);
+        if (!backup) { res.status(404).json({ ok: false, error: 'backup_not_found' }); return; }
+        await Promise.all([guild.roles.fetch(), guild.channels.fetch(), guild.emojis.fetch()]);
+        // The label is kept with the backup and shown to everyone in the server, so it is in the server's language (as with !backup).
+        const serverLang = peekGuildLanguage(guild.id);
+        const job = backupJobs.startRestoreJob(guild, {
+          userId,
+          number: input.number,
+          mode: input.mode,
+          snapshot: backup.snapshot,
+          reason: t(serverLang, 'web.audit.restore', { number: input.number }),
+          prepare: async () => {
+            const safety = await createBackup(guild.id, userId, t(serverLang, 'backup.restore.safetyLabel', { number: input.number }), buildSnapshot(guild), 'manual');
+            await recordAudit(guild.id, userId, 'backup_created', safety.backup_number, { source: 'manual', purpose: 'restore_safety', beforeBackupNumber: input.number });
+            return safety.backup_number;
+          },
+          finish: async (ended) => {
+            await recordAudit(guild.id, userId, 'backup_restored', input.number, { mode: input.mode, safetyBackupNumber: ended.safetyNumber, status: ended.status, result: ended.result });
+          },
+        });
+        res.json({ ok: true, job: backupJobs.describeJob(job) });
+      } catch (err) {
+        logger.error(`Dashboard failed to start a restore for guild ${guild.id}:`, err);
+        res.status(err.code === 'restore_running' ? 409 : 500).json({ ok: false, error: err.code === 'restore_running' ? 'restore_running' : 'restore_start_failed' });
+      }
+    });
+
+    app.post('/api/dashboard/vault/:guildId/restore/cancel', dashboardDatabaseRateLimiter, async (req, res) => {
+      const authorized = await restoreAdmin(req, res);
+      if (!authorized) return;
+      const stopped = backupJobs.cancelJob(authorized.guild.id);
+      res.json({ ok: true, stopped, job: backupJobs.describeJob(backupJobs.getJob(authorized.guild.id)) });
     });
 
     app.get('/api/dashboard/vault/:guildId/export/:backupId', dashboardDatabaseRateLimiter, async (req, res) => {

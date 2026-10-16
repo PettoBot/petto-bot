@@ -66,7 +66,7 @@ module.exports = {
   'cmd.config.backup.export.opt.id.desc': 'Número do backup do servidor, ou omita para o mais recente',
   'cmd.config.backup.restore.desc': 'Restaura uma cópia. Exige Administrador e confirmação.',
   'cmd.config.backup.restore.opt.id.desc': 'Número do backup do servidor a restaurar',
-  'cmd.config.backup.restore.opt.confirm.desc': 'Confirma a restauração e cria antes um backup de segurança',
+  'cmd.config.backup.restore.opt.confirm.desc': 'Não é mais necessário: o Petto sempre pede para você confirmar',
   'cmd.config.backup.restore.opt.mode.desc': 'Mesclar sem apagar, ou substituir os recursos extras',
   'cmd.config.backup.schedule.desc': 'Cria backups automáticos.',
   'cmd.config.backup.schedule.opt.hours.desc': 'Horas entre os backups',
