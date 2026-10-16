@@ -6,7 +6,7 @@ const { ensureGuild } = require('../../db/guilds');
 const { textCard } = require('../caseCard');
 const { EMOJI } = require('../emojis');
 const { COLORS } = require('../colors');
-const { getTemplate } = require('../../db/embedTemplates');
+const { getTemplate, listTemplates } = require('../../db/embedTemplates');
 const rules = require('./rules');
 const { memberIdentity } = require('./service');
 const { matchVanity, matchGuildTag, vanityValue, vanitySourceKnown, VANITY_SOURCES, COMPARISONS, CONDITIONS } = require('./compare');
@@ -88,9 +88,23 @@ function addSubcommands(builder, kind) {
     // i18n-ignore: builder description
     .addSubcommand((s) => s.setName('notify').setDescription(`Thank members when they start matching a ${thing} rule.`)
       .addChannelOption((o) => o.setName('channel').setDescription('Where to send the message').setRequired(true).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
-      .addStringOption((o) => o.setName('embed').setDescription('A saved embed from Embeds (leave empty for the simple message)').setMaxLength(64))
+      .addStringOption((o) => o.setName('embed').setDescription('A saved embed from Embeds (leave empty for the simple message)').setMaxLength(64).setAutocomplete(true))
       .addStringOption((o) => o.setName('ping').setDescription('Ping the member (default) or not').addChoices(...PING_CHOICES)))
     .addSubcommand((s) => s.setName('notify-off').setDescription(`Stop the ${thing} thank-you message.`)); // i18n-ignore: builder description
+}
+
+/** The saved embeds of the server that match what is being typed in the `embed` option: the list that Discord shows under it. */
+async function autocomplete(interaction) {
+  const focused = interaction.options.getFocused(true);
+  if (focused.name !== 'embed' || !interaction.guildId) return interaction.respond([]);
+  const typed = String(focused.value ?? '').trim().toLowerCase();
+  let rows = [];
+  try { rows = await listTemplates(interaction.guildId); } catch { rows = []; }
+  const choices = rows
+    .filter((row) => row?.name && (!typed || String(row.name).toLowerCase().includes(typed)))
+    .slice(0, 25)
+    .map((row) => ({ name: String(row.name).slice(0, 100), value: String(row.name).slice(0, 100) }));
+  return interaction.respond(choices);
 }
 
 function ruleOptions(interaction, kind) {
@@ -292,4 +306,4 @@ async function execute(interaction, kind) {
 
 const PERMISSION = PermissionFlagsBits.ManageGuild;
 
-module.exports = { addSubcommands, execute, memberOption, memberChecked, notifyText, progressPayload, resultPayload, runSync, PERMISSION, SOURCE_CHOICES, ACTION_CHOICES, VANITY_SOURCES, CONDITIONS };
+module.exports = { addSubcommands, autocomplete, execute, memberOption, memberChecked, notifyText, progressPayload, resultPayload, runSync, PERMISSION, SOURCE_CHOICES, ACTION_CHOICES, VANITY_SOURCES, CONDITIONS };
