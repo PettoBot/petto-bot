@@ -25,6 +25,25 @@ const json = (card) => JSON.stringify(card.toJSON());
   assert.equal(await announceActivePremium(client), true);
   assert.equal(sent.length, 1);
   assert.deepEqual(sent[0].allowedMentions, { parse: [] }, 'it pings nobody');
+  // A restart finds the same list already there and adds nothing; a changed list is posted and the old one removed.
+  const botId = '999999999999999999';
+  const posted = [];
+  const channelWithHistory = {
+    send: async (payload) => { sent.push(payload); },
+    messages: { fetch: async () => new Map(posted.map((m, i) => [String(i), m])) },
+  };
+  const asMessage = (card, at) => ({ author: { id: botId }, createdTimestamp: at, components: card.toJSON().components ? [card.toJSON()] : [], deleted: false, delete: async function del() { this.deleted = true; } });
+  const historyClient = { user: { id: botId }, channels: { fetch: async () => channelWithHistory } };
+  const current = buildPremiumCards(rows);
+  current.forEach((card, i) => posted.push(asMessage(card, i + 1)));
+  const before = sent.length;
+  assert.equal(await announceActivePremium(historyClient), false, 'the same list is not posted again');
+  assert.equal(sent.length, before);
+  rows.push(many[10]);
+  assert.equal(await announceActivePremium(historyClient), true, 'a changed list is posted');
+  assert.equal(sent.length, before + 1);
+  assert.ok(posted.every((message) => message.deleted), 'and the old one is removed');
+  rows.pop();
   config.premiumLogChannelId = null;
   assert.equal(await announceActivePremium(client), false, 'nothing without the channel');
   console.log('Checked the list of active Premium posted at start.');

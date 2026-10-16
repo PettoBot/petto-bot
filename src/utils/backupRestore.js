@@ -9,6 +9,9 @@ const RESTORABLE_CHANNEL_TYPES = new Set([
   ChannelType.GuildForum,
 ].filter((type) => type !== undefined));
 
+// Stickers that can be uploaded again: PNG, APNG and GIF (the animated ones made with Lottie cannot).
+const STICKER_FORMATS = new Set([1, 2, 4]);
+
 function bitfield(value) {
   try {
     return BigInt(String(value ?? '0'));
@@ -51,6 +54,21 @@ function channelOptions(data, parentId, permissionOverwrites, reason, includeTyp
   if (data.rateLimitPerUser != null) options.rateLimitPerUser = Number(data.rateLimitPerUser) || 0;
   if (data.bitrate != null && (data.type === ChannelType.GuildVoice || data.type === ChannelType.GuildStageVoice)) options.bitrate = Number(data.bitrate);
   if (data.userLimit != null && (data.type === ChannelType.GuildVoice || data.type === ChannelType.GuildStageVoice)) options.userLimit = Number(data.userLimit);
+  const text = data.type === ChannelType.GuildText || data.type === ChannelType.GuildAnnouncement || data.type === ChannelType.GuildForum;
+  if (text && data.defaultAutoArchiveDuration != null) options.defaultAutoArchiveDuration = Number(data.defaultAutoArchiveDuration);
+  if (data.type === ChannelType.GuildVoice || data.type === ChannelType.GuildStageVoice) {
+    if (data.rtcRegion) options.rtcRegion = String(data.rtcRegion);
+    if (data.videoQualityMode != null) options.videoQualityMode = Number(data.videoQualityMode);
+  }
+  if (data.type === ChannelType.GuildForum) {
+    if (Array.isArray(data.availableTags) && data.availableTags.length) {
+      options.availableTags = data.availableTags.slice(0, 20).map((tag) => ({ name: String(tag.name).slice(0, 20), moderated: Boolean(tag.moderated), emoji: tag.emojiId ? { id: String(tag.emojiId) } : tag.emojiName ? { name: String(tag.emojiName) } : undefined }));
+    }
+    if (data.defaultReactionEmoji) options.defaultReactionEmoji = data.defaultReactionEmoji.id ? { id: String(data.defaultReactionEmoji.id) } : { name: String(data.defaultReactionEmoji.name) };
+    if (data.defaultSortOrder != null) options.defaultSortOrder = Number(data.defaultSortOrder);
+    if (data.defaultForumLayout != null) options.defaultForumLayout = Number(data.defaultForumLayout);
+    if (data.defaultThreadRateLimitPerUser != null) options.defaultThreadRateLimitPerUser = Number(data.defaultThreadRateLimitPerUser);
+  }
   if (permissionOverwrites.length) options.permissionOverwrites = permissionOverwrites;
   return options;
 }
@@ -64,12 +82,75 @@ function normaliseSnapshot(snapshot) {
   return snapshot;
 }
 
+/** The channels the restore must never delete: the ones the server needs to keep working (rules, system, updates, AFK) and any the caller names. */
+function protectedChannelIds(guild, extra = []) {
+  return new Set([guild.rulesChannelId, guild.systemChannelId, guild.publicUpdatesChannelId, guild.afkChannelId, ...extra].filter(Boolean).map(String));
+}
+
+/**
+ * What a restore would do, without touching anything: how many roles, channels and emojis it creates or updates and, in replace mode,
+ * the names of what it would delete. The command and the dashboard show it before asking to confirm.
+ */
+function planRestore(guild, rawSnapshot, { mode = 'merge', keepChannelIds = [] } = {}) {
+  const snapshot = normaliseSnapshot(rawSnapshot);
+  const plan = {
+    mode,
+    roles: { create: 0, update: 0, skip: 0 },
+    channels: { create: 0, update: 0 },
+    emojis: { create: 0, update: 0, skip: 0 },
+    stickers: { create: 0, skip: 0 },
+    automod: { create: 0, update: 0 },
+    deleteRoles: [],
+    deleteChannels: [],
+    steps: 0,
+  };
+  const matchedRoles = new Set([String(guild.id)]);
+  for (const data of snapshot.roles) {
+    if (!data?.id || String(data.id) === String(guild.id)) continue;
+    const existing = guild.roles.cache.get(String(data.id));
+    if (existing?.managed) { plan.roles.skip++; matchedRoles.add(String(existing.id)); continue; }
+    if (existing) { plan.roles.update++; matchedRoles.add(String(existing.id)); } else plan.roles.create++;
+  }
+  const matchedChannels = new Set();
+  const channels = snapshot.channels.filter((data) => data && RESTORABLE_CHANNEL_TYPES.has(data.type));
+  for (const data of channels) {
+    const existing = findChannel(guild, data);
+    if (existing) { plan.channels.update++; matchedChannels.add(String(existing.id)); } else plan.channels.create++;
+  }
+  for (const data of snapshot.emojis ?? []) {
+    if (!data?.name) continue;
+    const existing = data.id ? guild.emojis.cache.get(String(data.id)) : guild.emojis.cache.find((emoji) => emoji.name === data.name);
+    if (existing) plan.emojis.update++; else if (data.url) plan.emojis.create++; else plan.emojis.skip++;
+  }
+  for (const data of snapshot.stickers ?? []) {
+    if (!data?.name) continue;
+    if (guild.stickers?.cache?.find((sticker) => sticker.name === data.name)) plan.stickers.skip++; else if (data.url && STICKER_FORMATS.has(Number(data.format))) plan.stickers.create++; else plan.stickers.skip++;
+  }
+  for (const data of snapshot.automod ?? []) {
+    if (!data?.name) continue;
+    if (guild.autoModerationRules?.cache?.find((rule) => rule.name === data.name)) plan.automod.update++; else plan.automod.create++;
+  }
+  if (mode === 'replace') {
+    const keep = protectedChannelIds(guild, keepChannelIds);
+    for (const channel of guild.channels.cache.values()) {
+      if (isRestorableChannel(channel) && !matchedChannels.has(String(channel.id)) && !keep.has(String(channel.id))) plan.deleteChannels.push(channel.name);
+    }
+    for (const role of guild.roles.cache.values()) {
+      if (!role.managed && role.id !== guild.id && !matchedRoles.has(String(role.id))) plan.deleteRoles.push(role.name);
+    }
+  }
+  plan.steps = snapshot.roles.length + 1 + channels.length + 1 + (snapshot.emojis ?? []).length + (snapshot.stickers ?? []).length + (snapshot.automod ?? []).length + plan.deleteChannels.length + plan.deleteRoles.length;
+  return plan;
+}
+
 /**
  * Restores a Petto snapshot into the same Discord server.
  * Merge creates or updates resources without deleting anything. Replace also
- * removes user-created channels and roles that are not present in the snapshot.
+ * removes user-created channels and roles that are not present in the snapshot, and only after everything else worked.
+ * `onProgress({ phase, done, total })` is told after every step; `shouldStop()` is asked before each one, and a restore that is
+ * stopped leaves what it already did, deletes nothing more and says `cancelled: true`.
  */
-async function restoreBackup(guild, rawSnapshot, { mode = 'merge', reason = 'Petto backup restore' } = {}) { // i18n-ignore: default only, callers pass a translated reason
+async function restoreBackup(guild, rawSnapshot, { mode = 'merge', reason = 'Petto backup restore', onProgress = null, shouldStop = null, keepChannelIds = [] } = {}) { // i18n-ignore: default only, callers pass a translated reason
   const snapshot = normaliseSnapshot(rawSnapshot);
   const replace = mode === 'replace';
   if (!['merge', 'replace'].includes(mode)) {
@@ -80,21 +161,35 @@ async function restoreBackup(guild, rawSnapshot, { mode = 'merge', reason = 'Pet
 
   const result = {
     mode,
+    cancelled: false,
+    deletionSkipped: null,
     roles: { created: 0, updated: 0, skipped: 0, failed: 0 },
     channels: { created: 0, updated: 0, skipped: 0, failed: 0 },
     emojis: { created: 0, updated: 0, skipped: 0, failed: 0 },
+    stickers: { created: 0, updated: 0, skipped: 0, failed: 0 },
+    automod: { created: 0, updated: 0, skipped: 0, failed: 0 },
     deleted: { roles: 0, channels: 0 },
     errors: [],
+  };
+  const plan = planRestore(guild, snapshot, { mode, keepChannelIds });
+  let done = 0;
+  const report = (phase) => { done += 1; try { onProgress?.({ phase, done, total: plan.steps }); } catch { /* a progress listener must never stop a restore */ } };
+  const stopped = () => {
+    if (result.cancelled) return true;
+    if (shouldStop?.()) result.cancelled = true;
+    return result.cancelled;
   };
   const roleMap = new Map([[String(guild.id), String(guild.id)]]);
   const targetRoleIds = new Set([String(guild.id)]);
 
   const roles = [...snapshot.roles].sort((a, b) => Number(a.position ?? 0) - Number(b.position ?? 0));
   for (const data of roles) {
-    if (!data?.id || String(data.id) === String(guild.id)) continue;
+    if (stopped()) return result;
+    if (!data?.id || String(data.id) === String(guild.id)) { report('roles'); continue; }
     const existing = guild.roles.cache.get(String(data.id));
     if (existing?.managed) {
       result.roles.skipped++;
+      report('roles');
       continue;
     }
     try {
@@ -116,13 +211,17 @@ async function restoreBackup(guild, rawSnapshot, { mode = 'merge', reason = 'Pet
         permissions: bitfield(data.permissions),
         reason,
       });
+      // The icon of a role needs a boosted server: it is tried on its own so that a refusal never undoes the rest.
+      if (data.unicodeEmoji || data.iconURL) await role.edit({ ...(data.unicodeEmoji ? { unicodeEmoji: String(data.unicodeEmoji) } : { icon: String(data.iconURL) }), reason }).catch(() => {});
       result.roles[existing ? 'updated' : 'created']++;
     } catch (error) {
       result.roles.failed++;
       result.errors.push(`role:${data.name || data.id}: ${error.message}`);
     }
+    report('roles');
   }
 
+  if (stopped()) return result;
   try {
     const positions = roles
       .map((data) => ({ role: roleMap.get(String(data.id)), position: Number(data.position) || 1 }))
@@ -131,6 +230,7 @@ async function restoreBackup(guild, rawSnapshot, { mode = 'merge', reason = 'Pet
   } catch (error) {
     result.errors.push(`role_positions: ${error.message}`); // i18n-ignore: technical step name and Discord's own error text
   }
+  report('roles');
 
   const channelMap = new Map();
   const targetChannelIds = new Set();
@@ -139,6 +239,7 @@ async function restoreBackup(guild, rawSnapshot, { mode = 'merge', reason = 'Pet
     .sort((a, b) => (a.type === ChannelType.GuildCategory ? -1 : 0) - (b.type === ChannelType.GuildCategory ? -1 : 0) || Number(a.position ?? 0) - Number(b.position ?? 0));
 
   for (const data of channels) {
+    if (stopped()) return result;
     const parentId = data.parentId ? channelMap.get(String(data.parentId)) : null;
     const overwrites = buildOverwrites(guild, data, roleMap);
     const existing = findChannel(guild, data);
@@ -157,8 +258,10 @@ async function restoreBackup(guild, rawSnapshot, { mode = 'merge', reason = 'Pet
       result.channels.failed++;
       result.errors.push(`channel:${data.name || data.id}: ${error.message}`);
     }
+    report('channels');
   }
 
+  if (stopped()) return result;
   const guildData = snapshot.guild ?? {};
   const guildEdit = {};
   if (guildData.name) guildEdit.name = String(guildData.name).slice(0, 100);
@@ -169,6 +272,11 @@ async function restoreBackup(guild, rawSnapshot, { mode = 'merge', reason = 'Pet
   if (guildData.systemChannelId !== undefined) guildEdit.systemChannel = guildData.systemChannelId ? channelMap.get(String(guildData.systemChannelId)) ?? null : null;
   if (guildData.rulesChannelId !== undefined) guildEdit.rulesChannel = guildData.rulesChannelId ? channelMap.get(String(guildData.rulesChannelId)) ?? null : null;
   if (guildData.publicUpdatesChannelId !== undefined) guildEdit.publicUpdatesChannel = guildData.publicUpdatesChannelId ? channelMap.get(String(guildData.publicUpdatesChannelId)) ?? null : null;
+  if (guildData.description != null) guildEdit.description = guildData.description ? String(guildData.description).slice(0, 120) : null;
+  if (guildData.preferredLocale) guildEdit.preferredLocale = guildData.preferredLocale;
+  if (guildData.premiumProgressBarEnabled != null) guildEdit.premiumProgressBarEnabled = Boolean(guildData.premiumProgressBarEnabled);
+  if (guildData.systemChannelFlags != null) guildEdit.systemChannelFlags = Number(guildData.systemChannelFlags);
+  if (guildData.safetyAlertsChannelId !== undefined) guildEdit.safetyAlertsChannel = guildData.safetyAlertsChannelId ? channelMap.get(String(guildData.safetyAlertsChannelId)) ?? null : null;
   if (guildData.iconURL) guildEdit.icon = guildData.iconURL;
   if (guildData.bannerURL) guildEdit.banner = guildData.bannerURL;
   try {
@@ -176,9 +284,11 @@ async function restoreBackup(guild, rawSnapshot, { mode = 'merge', reason = 'Pet
   } catch (error) {
     result.errors.push(`guild_settings: ${error.message}`); // i18n-ignore: technical step name and Discord's own error text
   }
+  report('settings');
 
   for (const data of snapshot.emojis ?? []) {
-    if (!data?.name) continue;
+    if (stopped()) return result;
+    if (!data?.name) { report('emojis'); continue; }
     try {
       const existing = data.id ? guild.emojis.cache.get(String(data.id)) : guild.emojis.cache.find((emoji) => emoji.name === data.name);
       if (existing) {
@@ -194,30 +304,89 @@ async function restoreBackup(guild, rawSnapshot, { mode = 'merge', reason = 'Pet
       result.emojis.failed++;
       result.errors.push(`emoji:${data.name}: ${error.message}`);
     }
+    report('emojis');
+  }
+
+  for (const data of snapshot.stickers ?? []) {
+    if (stopped()) return result;
+    if (!data?.name) { report('stickers'); continue; }
+    try {
+      if (guild.stickers?.cache?.find((sticker) => sticker.name === data.name) || !data.url || !STICKER_FORMATS.has(Number(data.format))) {
+        result.stickers.skipped++;
+      } else {
+        await guild.stickers.create({ file: data.url, name: String(data.name).slice(0, 30), tags: String(data.tags || 'sticker').slice(0, 200), description: data.description ? String(data.description).slice(0, 100) : undefined, reason });
+        result.stickers.created++;
+      }
+    } catch (error) {
+      result.stickers.failed++;
+      result.errors.push(`sticker:${data.name}: ${error.message}`);
+    }
+    report('stickers');
+  }
+
+  for (const data of snapshot.automod ?? []) {
+    if (stopped()) return result;
+    if (!data?.name) { report('automod'); continue; }
+    try {
+      const mapChannel = (id) => channelMap.get(String(id)) ?? (guild.channels.cache.has(String(id)) ? String(id) : null);
+      const mapRole = (id) => roleMap.get(String(id)) ?? (guild.roles.cache.has(String(id)) ? String(id) : null);
+      const options = {
+        name: String(data.name).slice(0, 100),
+        eventType: data.eventType,
+        triggerType: data.triggerType,
+        triggerMetadata: data.triggerMetadata ?? {},
+        actions: (data.actions ?? []).map((action) => {
+          const metadata = { ...(action.metadata ?? {}) };
+          if (metadata.channelId) metadata.channel = mapChannel(metadata.channelId);
+          delete metadata.channelId;
+          return { type: action.type, metadata };
+        }).filter((action) => !(action.metadata.channel === null && 'channel' in action.metadata)),
+        enabled: Boolean(data.enabled),
+        exemptRoles: (data.exemptRoles ?? []).map(mapRole).filter(Boolean),
+        exemptChannels: (data.exemptChannels ?? []).map(mapChannel).filter(Boolean),
+        reason,
+      };
+      const existing = guild.autoModerationRules?.cache?.find((rule) => rule.name === data.name);
+      if (existing) { await existing.edit(options); result.automod.updated++; } else { await guild.autoModerationRules.create(options); result.automod.created++; }
+    } catch (error) {
+      result.automod.failed++;
+      result.errors.push(`automod:${data.name}: ${error.message}`);
+    }
+    report('automod');
   }
 
   if (replace) {
+    // Nothing is deleted unless everything above was put back: a channel or role that could not be created would be lost for good.
+    if (result.roles.failed || result.channels.failed) {
+      result.deletionSkipped = 'failures';
+      return result;
+    }
+    const keep = protectedChannelIds(guild, keepChannelIds);
     for (const channel of [...guild.channels.cache.values()]) {
-      if (!isRestorableChannel(channel) || targetChannelIds.has(String(channel.id))) continue;
+      if (!isRestorableChannel(channel) || targetChannelIds.has(String(channel.id)) || keep.has(String(channel.id))) continue;
+      if (stopped()) return result;
       try {
         await channel.delete(reason);
         result.deleted.channels++;
       } catch (error) {
         result.errors.push(`delete_channel:${channel.name}: ${error.message}`); // i18n-ignore: technical step name and Discord's own error text
       }
+      report('cleanup');
     }
     for (const role of [...guild.roles.cache.values()]) {
       if (role.managed || role.id === guild.id || targetRoleIds.has(String(role.id))) continue;
+      if (stopped()) return result;
       try {
         await role.delete(reason);
         result.deleted.roles++;
       } catch (error) {
         result.errors.push(`delete_role:${role.name}: ${error.message}`); // i18n-ignore: technical step name and Discord's own error text
       }
+      report('cleanup');
     }
   }
 
   return result;
 }
 
-module.exports = { restoreBackup, isRestorableChannel };
+module.exports = { restoreBackup, planRestore, isRestorableChannel };

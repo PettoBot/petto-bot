@@ -35,6 +35,22 @@ async function getBackup(guildId, backupNumber = null) {
   return data;
 }
 
+/** Deletes one backup of a server. True when there was one. */
+async function deleteBackup(guildId, backupNumber) {
+  if (vault.isConfigured()) return vault.deleteBackup(guildId, backupNumber);
+  const { data, error } = await database.from('guild_backups').delete().eq('guild_id', guildId).eq('backup_number', backupNumber).select('backup_number');
+  if (error) throw error;
+  return (data ?? []).length > 0;
+}
+
+/** Deletes every backup of a server and turns its automatic backups off. Returns how many backups there were. */
+async function deleteAllBackups(guildId) {
+  if (vault.isConfigured()) return vault.deleteAllBackups(guildId);
+  const { data, error } = await database.from('guild_backups').delete().eq('guild_id', guildId).select('backup_number');
+  if (error) throw error;
+  return (data ?? []).length;
+}
+
 async function recordAudit(guildId, actorId, action, backupNumber = null, metadata = {}) {
   if (vault.isConfigured()) {
     await vault.recordAudit(guildId, actorId, action, backupNumber, metadata);
@@ -64,4 +80,4 @@ async function listAudit(guildId, limit = 10) {
   return data ?? [];
 }
 
-module.exports = { createBackup, listBackups, getBackup, recordAudit, listAudit, vault };
+module.exports = { createBackup, listBackups, getBackup, deleteBackup, deleteAllBackups, recordAudit, listAudit, vault };

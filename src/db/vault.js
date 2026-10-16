@@ -195,4 +195,26 @@ async function pruneScheduledBackups(guildId, retentionCount) {
   return result.rowCount;
 }
 
-module.exports = { isConfigured, ensureSchema, createBackup, listBackups, getBackup, recordAudit, listAudit, getSchedule, upsertSchedule, removeSchedule, listDueSchedules, advanceSchedule, pruneScheduledBackups };
+/** Deletes one backup of a server. True when there was one. */
+async function deleteBackup(guildId, backupNumber) {
+  await ensureSchema();
+  const result = await pool.query('delete from petto_vault_backups where guild_id = $1 and backup_number = $2', [guildId, backupNumber]);
+  return result.rowCount > 0;
+}
+
+/** Deletes every backup of a server and its schedule. Returns how many backups there were. The activity history is kept: it holds no server data. */
+async function deleteAllBackups(guildId) {
+  await ensureSchema();
+  const result = await pool.query('delete from petto_vault_backups where guild_id = $1', [guildId]);
+  await pool.query('delete from petto_vault_schedules where guild_id = $1', [guildId]);
+  return result.rowCount;
+}
+
+/** The servers that have backups, with the date of the last one: to find the ones Petto is no longer in. */
+async function listBackupGuilds() {
+  await ensureSchema();
+  const { rows } = await pool.query('select guild_id, max(created_at) as last_at from petto_vault_backups group by guild_id');
+  return rows;
+}
+
+module.exports = { deleteBackup, deleteAllBackups, listBackupGuilds, isConfigured, ensureSchema, createBackup, listBackups, getBackup, recordAudit, listAudit, getSchedule, upsertSchedule, removeSchedule, listDueSchedules, advanceSchedule, pruneScheduledBackups };

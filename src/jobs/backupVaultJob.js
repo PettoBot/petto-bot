@@ -1,5 +1,5 @@
 const { createBackup, recordAudit, vault } = require('../db/backups');
-const { buildSnapshot } = require('../commands/config/backup');
+const { buildFullSnapshot } = require('../commands/config/backup');
 const logger = require('../utils/logger');
 const config = require('../config');
 const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency');
@@ -7,11 +7,29 @@ const { t, guildLanguage } = require('../i18n');
 const { backupsPaused } = require('../utils/maintenance');
 
 const POLL_INTERVAL_MS = 60_000;
+// The backups of a server Petto is no longer in are not kept for ever: they are deleted this long after the last one was taken.
+const ORPHAN_KEEP_DAYS = 30;
+const ORPHAN_CHECK_MS = 6 * 60 * 60_000;
+let lastOrphanCheck = 0;
+
+/** Deletes the backups of the servers Petto left more than ORPHAN_KEEP_DAYS ago. Does nothing while the list of servers looks unloaded. */
+async function purgeOrphanedBackups(client) {
+  if (!vault.isConfigured() || !client.guilds.cache.size) return 0;
+  const cutoff = Date.now() - ORPHAN_KEEP_DAYS * 24 * 60 * 60_000;
+  let removed = 0;
+  for (const row of await vault.listBackupGuilds()) {
+    if (client.guilds.cache.has(row.guild_id) || new Date(row.last_at).getTime() > cutoff) continue;
+    removed += await vault.deleteAllBackups(row.guild_id);
+  }
+  if (removed) logger.info(`Deleted ${removed} backups of servers Petto is no longer in.`);
+  return removed;
+}
 
 async function processDueBackups(client) {
   // Paused: no backup is taken and the schedules are left as they are, so they continue when backups come back.
   if (backupsPaused()) return;
   if (!vault.isConfigured()) return;
+  if (Date.now() - lastOrphanCheck > ORPHAN_CHECK_MS) { lastOrphanCheck = Date.now(); await purgeOrphanedBackups(client).catch((err) => logger.warn(`Backup cleanup failed: ${err.message}`)); }
   const schedules = await vault.listDueSchedules();
   await forEachWithConcurrency(schedules, async (schedule) => {
     try {
@@ -20,7 +38,7 @@ async function processDueBackups(client) {
         await vault.advanceSchedule(schedule.guild_id, schedule.interval_hours);
         return;
       }
-      const snapshot = buildSnapshot(guild);
+      const snapshot = await buildFullSnapshot(guild);
       // The label is shown in the backup lists of the server, so it is written in its language.
       const label = t(await guildLanguage(guild.id), 'backup.scheduledLabel');
       const saved = await createBackup(guild.id, client.user.id, label, snapshot, 'scheduled');
@@ -74,4 +92,4 @@ function startBackupVaultJob(client) {
   logger.info('Petto Vault scheduled backup job started.');
 }
 
-module.exports = { startBackupVaultJob, processDueBackups };
+module.exports = { startBackupVaultJob, processDueBackups, purgeOrphanedBackups };
