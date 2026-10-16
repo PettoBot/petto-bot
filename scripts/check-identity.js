@@ -415,5 +415,17 @@ function roleClient(log) {
   assert.match(source('vanity.js'), /aliases: \['vy'\]/);
   assert.match(source('guildtag.js'), /aliases: \['servertag', 'tag', 'gt'\]/);
 
+  // Both also work as slash commands now (the words of the subcommands are hard to write with the prefix).
+  for (const file of ['vanity.js', 'guildtag.js']) {
+    assert.match(source(file), /registerSlash: true/, `${file} is registered as a slash command`);
+    assert.doesNotMatch(source(file), /prefixOnly: true/, `${file} is no longer prefix-only`);
+  }
+  process.env.DISCORD_TOKEN ??= 'check';
+  process.env.DISCORD_CLIENT_ID ??= '1';
+  process.env.DISCLOUD_DATABASE_URL ??= 'postgres://check:check@127.0.0.1:1/check';
+  const { collectCommandData } = require('../src/handlers/commandHandler');
+  const registered = collectCommandData().map((command) => command.name);
+  assert.ok(registered.includes('vanity') && registered.includes('guildtag'), 'Discord gets /vanity and /guildtag');
+
   console.log('Checked the Vanity and Server Tag rules.');
 })().catch((error) => { console.error(error); process.exit(1); });

@@ -3,8 +3,8 @@ const { addSubcommands, execute, PERMISSION } = require('../../utils/identity/co
 
 module.exports = {
   aliases: ['vy'],
-  // Only with the prefix: no slash command is registered for it.
-  prefixOnly: true,
+  // Works with the prefix (the subcommands are written as words) and as a slash command, which is easier for the rules with several options.
+  registerSlash: true,
   data: addSubcommands(
     new SlashCommandBuilder()
       .setName('vanity')
