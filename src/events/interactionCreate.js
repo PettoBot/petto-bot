@@ -445,6 +445,17 @@ module.exports = {
       return;
     }
 
+    // The list that Discord shows under an option while it is typed: the command that has one fills it, and the rest do nothing.
+    if (interaction.isAutocomplete()) {
+      const target = client.commands.get(commandKey(interaction.commandName, interaction.commandType ?? 1));
+      if (typeof target?.autocomplete !== 'function') return;
+      try { await target.autocomplete(interaction); } catch (err) {
+        logger.warn(`The list of an option of ${interaction.commandName} could not be made: ${err.message}`);
+        await interaction.respond([]).catch(() => {});
+      }
+      return;
+    }
+
     if (!interaction.isChatInputCommand() && !interaction.isMessageContextMenuCommand() && !interaction.isUserContextMenuCommand()) return;
 
     const command = client.commands.get(commandKey(interaction.commandName, interaction.commandType));

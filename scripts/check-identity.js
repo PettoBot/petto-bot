@@ -74,7 +74,8 @@ stub('src/db/identity.js', {
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
 // The messages are built by other modules that need the database; here only the variables they get are checked.
 stub('src/utils/templatedMessage.js', { templatePayload: async () => null });
-stub('src/db/embedTemplates.js', { getTemplate: async () => null });
+const savedEmbeds = [{ name: 'thanks' }, { name: 'welcome-tag' }, { name: 'Partner thanks' }];
+stub('src/db/embedTemplates.js', { getTemplate: async () => null, listTemplates: async () => savedEmbeds });
 stub('src/utils/embedBuilder.js', { build: async () => null });
 stub('src/db/guilds.js', { ensureGuild: async () => {} });
 
@@ -414,6 +415,21 @@ function roleClient(log) {
   const source = (file) => require('node:fs').readFileSync(path.join(__dirname, '..', 'src/commands/automation', file), 'utf8');
   assert.match(source('vanity.js'), /aliases: \['vy'\]/);
   assert.match(source('guildtag.js'), /aliases: \['servertag', 'tag', 'gt'\]/);
+
+  // The `embed` option of notify lists the saved embeds as it is typed.
+  const { autocomplete } = require('../src/utils/identity/commands');
+  const answer = async (name, value, guildId = '123456789012345678') => {
+    let given = null;
+    await autocomplete({ guildId, options: { getFocused: () => ({ name, value }) }, respond: async (list) => { given = list; } });
+    return given;
+  };
+  assert.deepEqual((await answer('embed', '')).map((c) => c.value), ['thanks', 'welcome-tag', 'Partner thanks'], 'empty: all the saved embeds');
+  assert.deepEqual((await answer('embed', 'THANK')).map((c) => c.value), ['thanks', 'Partner thanks'], 'what is typed filters them, in any case');
+  assert.deepEqual(await answer('channel', 'x'), [], 'another option has no list');
+  assert.deepEqual(await answer('embed', '', null), [], 'without a server there is nothing to list');
+  const embedOption = require('../src/commands/automation/vanity').data.toJSON().options.find((o) => o.name === 'notify').options.find((o) => o.name === 'embed');
+  assert.equal(embedOption.autocomplete, true, 'the option asks Discord for the list');
+  for (const file of ['vanity.js', 'guildtag.js']) assert.match(source(file), /autocomplete,/, `${file} fills the list`);
 
   // Both also work as slash commands now (the words of the subcommands are hard to write with the prefix).
   for (const file of ['vanity.js', 'guildtag.js']) {

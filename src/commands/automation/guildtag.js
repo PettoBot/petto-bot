@@ -1,5 +1,5 @@
 const { SlashCommandBuilder } = require('discord.js');
-const { addSubcommands, execute, PERMISSION } = require('../../utils/identity/commands');
+const { addSubcommands, autocomplete, execute, PERMISSION } = require('../../utils/identity/commands');
 
 module.exports = {
   aliases: ['servertag', 'tag', 'gt'],
@@ -14,4 +14,6 @@ module.exports = {
     'guildtag',
   ),
   execute: (interaction) => execute(interaction, 'guildtag'),
+  // The `embed` option of notify lists the saved embeds of the server as it is typed.
+  autocomplete,
 };
