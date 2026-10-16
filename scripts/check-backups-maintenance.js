@@ -1,5 +1,5 @@
-// Backups are paused: the command and its panel answer that they are under maintenance and the scheduled backups are not taken,
-// until BACKUPS_MAINTENANCE=off brings them back.
+// Backups are paused: the command and its panel answer that they are under maintenance and the scheduled backups are not taken, except for the
+// owner and the developers, until BACKUPS_MAINTENANCE=off brings them back.
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
@@ -8,7 +8,7 @@ function stub(relative, exports) {
   require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports };
 }
 let listed = 0;
-stub('src/config.js', { dashboard: {}, web: {} });
+stub('src/config.js', { dashboard: {}, web: {}, ownerId: 'owner1', developerIds: ['dev1'] });
 stub('src/utils/logger.js', { info() {}, error() {}, warn() {} });
 stub('src/db/postgres.js', { createPostgresClient() {}, getPrimaryPool() {} });
 stub('src/db/guilds.js', { findGuildLanguage: async () => null, listGuildLanguages: async () => [] });
@@ -19,7 +19,7 @@ stub('src/db/backups.js', {
 });
 stub('src/utils/backupRestore.js', { restoreBackup: async () => { throw new Error('a restore was made'); } });
 
-const { backupsUnderMaintenance } = require('../src/utils/maintenance');
+const { backupsUnderMaintenance, backupsPaused } = require('../src/utils/maintenance');
 const backup = require('../src/commands/config/backup');
 const interactions = require('../src/interactions/backup');
 const { processDueBackups } = require('../src/jobs/backupVaultJob');
@@ -28,7 +28,11 @@ const reply = () => { const replies = []; return { replies, reply: async (payloa
 
 (async () => {
   delete process.env.BACKUPS_MAINTENANCE;
-  assert.equal(backupsUnderMaintenance(), true, 'backups are paused unless switched back on');
+  assert.equal(backupsPaused(), true, 'backups are paused unless switched back on');
+  assert.equal(backupsUnderMaintenance('u1'), true, 'a member cannot use them');
+  assert.equal(backupsUnderMaintenance('owner1'), false, 'the owner can');
+  assert.equal(backupsUnderMaintenance('dev1'), false, 'a developer can');
+  assert.equal(backupsUnderMaintenance(undefined), true, 'nobody unknown can');
 
   const command = reply();
   await backup.execute(command);
@@ -44,7 +48,7 @@ const reply = () => { const replies = []; return { replies, reply: async (payloa
   assert.equal(listed, 0, 'no scheduled backup is looked for while paused');
 
   process.env.BACKUPS_MAINTENANCE = 'off';
-  assert.equal(backupsUnderMaintenance(), false, 'BACKUPS_MAINTENANCE=off brings them back');
+  assert.equal(backupsUnderMaintenance('u1'), false, 'BACKUPS_MAINTENANCE=off brings them back for everyone');
   await processDueBackups({ guilds: { cache: new Map() }, user: { id: 'bot' } });
   assert.equal(listed, 1, 'the scheduled backups run again');
   console.log('Checked that backups are under maintenance: the command, its panel, the scheduled backups and the switch back on.');

@@ -19,7 +19,7 @@ function ownsPanel(interaction, context) {
 }
 
 async function handleSelect(interaction) {
-  if (backupsUnderMaintenance()) return backupCommand.replyMaintenance(interaction);
+  if (backupsUnderMaintenance(interaction.user.id)) return backupCommand.replyMaintenance(interaction);
   const lang = await languageOf(interaction);
   const context = parseContext(interaction.customId, backupCommand.BACKUP_MENU_PREFIX);
   if (!ownsPanel(interaction, context)) {
@@ -46,7 +46,7 @@ async function handleSelect(interaction) {
 }
 
 async function handleScheduleModal(interaction) {
-  if (backupsUnderMaintenance()) return backupCommand.replyMaintenance(interaction);
+  if (backupsUnderMaintenance(interaction.user.id)) return backupCommand.replyMaintenance(interaction);
   const lang = await languageOf(interaction);
   const context = parseContext(interaction.customId, 'backup_schedule_modal');
   if (!ownsPanel(interaction, context)) {
@@ -65,7 +65,7 @@ async function handleScheduleModal(interaction) {
 }
 
 async function handleRestoreModal(interaction) {
-  if (backupsUnderMaintenance()) return backupCommand.replyMaintenance(interaction);
+  if (backupsUnderMaintenance(interaction.user.id)) return backupCommand.replyMaintenance(interaction);
   const lang = await languageOf(interaction);
   const context = parseContext(interaction.customId, 'backup_restore_modal');
   if (!ownsPanel(interaction, context)) {
