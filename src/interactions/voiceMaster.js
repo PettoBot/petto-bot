@@ -2,6 +2,7 @@ const { ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, UserSe
 const voiceDb = require('../db/voiceMaster');
 const voiceMaster = require('../commands/automation/voicemaster');
 const { t, languageOf } = require('../i18n');
+const { ack, answer } = require('../utils/interactionAck');
 
 const PROMPT_EMOJI = { permit: '✅', reject: '🚫', transfer: '🔄', disconnect: '🔨' };
 
@@ -12,10 +13,13 @@ function getVoiceChannelId(interaction) {
 }
 
 async function handleButton(interaction) {
-  const lang = await languageOf(interaction);
-  const joinFirst = () => interaction.reply({ content: t(lang, 'voicemaster.joinFirst'), flags: MessageFlags.Ephemeral });
   const isBliPanel = interaction.customId.startsWith('vc:');
   const action = interaction.customId.slice(3);
+  // Everything but the rename form is answered with a message, which can take longer than the 3 seconds Discord waits: Discord is told
+  // first. (The form has to be the first thing said, so it cannot be announced.)
+  if (action !== 'rename' && !(await ack(interaction))) return undefined;
+  const lang = await languageOf(interaction);
+  const joinFirst = () => answer(interaction, { content: t(lang, 'voicemaster.joinFirst'), flags: MessageFlags.Ephemeral });
   const channelId = getVoiceChannelId(interaction);
 
   if (action === 'rename') {
@@ -30,7 +34,7 @@ async function handleButton(interaction) {
     const customId = isBliPanel
       ? `vc:do_${action}::${channelId}`
       : `vm_select:${action}`;
-    return interaction.reply({ content: isBliPanel ? prompt : t(lang, 'voicemaster.selectMember'), components: [new ActionRowBuilder().addComponents(new UserSelectMenuBuilder().setCustomId(customId).setPlaceholder(t(lang, 'voicemaster.select.menu')))], flags: MessageFlags.Ephemeral });
+    return answer(interaction, { content: isBliPanel ? prompt : t(lang, 'voicemaster.selectMember'), components: [new ActionRowBuilder().addComponents(new UserSelectMenuBuilder().setCustomId(customId).setPlaceholder(t(lang, 'voicemaster.select.menu')))], flags: MessageFlags.Ephemeral });
   }
 
   if (action === 'limit_up' || action === 'limit_down') {
@@ -47,7 +51,7 @@ async function handleButton(interaction) {
     const content = temp
       ? t(lang, 'voicemaster.info.text', { owner: `<@${temp.owner_id}>`, limit: temp.user_limit || t(lang, 'voicemaster.unlimited'), locked: yesNo(temp.is_locked), hidden: yesNo(temp.is_ghosted) })
       : t(lang, 'voicemaster.notManaged');
-    return interaction.reply({ content, flags: MessageFlags.Ephemeral });
+    return answer(interaction, { content, flags: MessageFlags.Ephemeral });
   }
 
   return voiceMaster.executeAction(interaction, action, { channelId });
@@ -55,6 +59,7 @@ async function handleButton(interaction) {
 
 async function handleModal(interaction) {
   if (interaction.customId !== 'vm_modal_rename' && !interaction.customId.startsWith('vcm:rename::')) return;
+  if (!(await ack(interaction))) return undefined;
   const channelId = interaction.customId.startsWith('vcm:rename::')
     ? interaction.customId.slice('vcm:rename::'.length) || undefined
     : undefined;
@@ -62,6 +67,8 @@ async function handleModal(interaction) {
 }
 
 async function handleSelect(interaction) {
+  const known = interaction.customId.startsWith('vm_select:') || interaction.customId.startsWith('vc:do_');
+  if (known && !(await ack(interaction))) return undefined;
   if (interaction.customId.startsWith('vm_select:')) {
     return voiceMaster.executeAction(interaction, interaction.customId.slice('vm_select:'.length), { userId: interaction.values[0] });
   }

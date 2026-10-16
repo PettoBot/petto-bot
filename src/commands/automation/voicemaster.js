@@ -2,6 +2,7 @@ const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags, Emb
 const voiceDb = require('../../db/voiceMaster');
 const { textCard } = require('../../utils/caseCard');
 const { t, currentLanguage, languageOf } = require('../../i18n');
+const { answer } = require('../../utils/interactionAck');
 
 const USER_ACTIONS = ['lock', 'unlock', 'ghost', 'reveal', 'claim', 'delete', 'rename', 'transfer', 'limit', 'permit', 'reject', 'disconnect', 'activity'];
 
@@ -104,7 +105,7 @@ function getVoiceChannelId(interaction) {
 
 async function executeAction(interaction, action, overrides = {}) {
   const lang = await languageOf(interaction);
-  const say = (key, vars) => interaction.reply({ content: t(lang, key, vars), flags: MessageFlags.Ephemeral });
+  const say = (key, vars) => answer(interaction, { content: t(lang, key, vars), flags: MessageFlags.Ephemeral });
   const liveChannelId = getVoiceChannelId(interaction);
   const channelId = overrides.channelId ?? liveChannelId;
 
@@ -147,7 +148,7 @@ async function executeAction(interaction, action, overrides = {}) {
 
 async function permissionAction(interaction, temp, channel, action, userId, lang) {
   const member = await interaction.guild.members.fetch(userId).catch(() => null);
-  if (!member) return interaction.reply({ content: t(lang, 'voicemaster.memberGone'), flags: MessageFlags.Ephemeral });
+  if (!member) return answer(interaction, { content: t(lang, 'voicemaster.memberGone'), flags: MessageFlags.Ephemeral });
 
   const trusted = new Set(temp.trusted_user_ids ?? []);
   const banned = new Set(temp.banned_user_ids ?? []);
@@ -164,7 +165,7 @@ async function permissionAction(interaction, temp, channel, action, userId, lang
   }
 
   await voiceDb.updateTemp(channel.id, { trusted_user_ids: [...trusted], banned_user_ids: [...banned] });
-  return interaction.reply({ content: t(lang, action === 'permit' ? 'voicemaster.permitted' : 'voicemaster.rejected', { user: `<@${userId}>` }), flags: MessageFlags.Ephemeral });
+  return answer(interaction, { content: t(lang, action === 'permit' ? 'voicemaster.permitted' : 'voicemaster.rejected', { user: `<@${userId}>` }), flags: MessageFlags.Ephemeral });
 }
 
 // The lines of the panel: the emoji of each button and what it does.

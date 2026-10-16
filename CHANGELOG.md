@@ -6,6 +6,7 @@ All notable changes to Petto are documented here.
 
 ### Changed
 
+- **The VoiceMaster buttons no longer fail when the bot is slow.** Discord only waits 3 seconds for an answer to a button, a menu or a form, and a slow moment (Redis, the database or the host) made the answer arrive late: the member saw "This interaction failed" and the log got an "Unknown interaction" error. Now Discord is told at once that the answer is coming, and the answer is filled in after. A button that still comes too late is ignored quietly. The rename form is the only one that cannot be announced first.
 - **The log of Discord says what the Cloudflare tunnel did while the bot was starting.** The tunnel starts before the bot is connected to Discord, so its lines were only in the host console. The lines of the tunnel and every warning and error written before the log connects are now kept and said in it, and nothing else, so a normal start adds no noise.
 - **`/vanity notify` and `/guildtag notify` list your saved embeds.** While you type in the `embed` option, Discord shows the saved embeds of the server that match, so the name does not have to be written exactly.
 - **The log says which slash commands were created, and why they were not.** The commands are registered before the bot connects, when the log of Discord does not exist yet, so the result only reached the host console. Now, once the bot is connected, the log says how many commands are registered, which ones are new or gone, that nothing changed, or the reason Discord gave when it refused them.
