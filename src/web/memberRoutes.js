@@ -2,7 +2,7 @@
 // `{ ok: true, members: { "<id>": { id, username, globalName, displayName, avatar, bot } } }`, leaving out the ids that are not
 // members. The same access as the other dashboard routes of a server: the `x-petto-dashboard-key` header and a `user_id` (query or
 // body) who can manage the server. One call counts once against the per-IP limit, however many ids it carries.
-const { parseMemberIds, lookupMembers } = require('../utils/dashboardMembers');
+const { parseMemberIds, lookupMembers, searchMembers } = require('../utils/dashboardMembers');
 const logger = require('../utils/logger');
 
 function registerMemberRoutes(app, { isAuthorized, authorize, limiter }) {
@@ -26,6 +26,22 @@ function registerMemberRoutes(app, { isAuthorized, authorize, limiter }) {
       res.json({ ok: true, members });
     } catch (err) {
       logger.error(`Dashboard member lookup failed for guild ${req.params.guildId}:`, err);
+      res.status(500).json({ ok: false, error: 'members_failed' });
+    }
+  });
+
+  // POST .../members/search with `{ "query": "ana" }`: up to 10 members whose name starts with it, for the dashboard's "pick a person" boxes.
+  app.post('/api/dashboard/guild/:guildId/members/search', ...middleware, async (req, res) => {
+    if (!isAuthorized(req)) {
+      res.status(401).json({ ok: false, error: 'unauthorized' });
+      return;
+    }
+    const access = await authorize(req, res);
+    if (!access) return;
+    try {
+      res.json({ ok: true, members: await searchMembers(access.guild, req.body?.query) });
+    } catch (err) {
+      logger.error(`Dashboard member search failed for guild ${req.params.guildId}:`, err);
       res.status(500).json({ ok: false, error: 'members_failed' });
     }
   });

@@ -120,4 +120,17 @@ async function lookupMembers(guild, ids) {
   return found;
 }
 
-module.exports = { MAX_IDS, CACHE_TTL_MS, parseMemberIds, memberCard, lookupMembers, _local: local, _missing: missing };
+/** Up to 10 members whose name starts with what was typed (one gateway request, no REST). Nothing for fewer than 2 characters. */
+async function searchMembers(guild, query) {
+  const text = String(query ?? '').trim().slice(0, 32);
+  if (text.length < 2) return [];
+  try {
+    const fetched = await guild.members.fetch({ query: text, limit: 10, time: FETCH_TIMEOUT_MS });
+    return [...(fetched?.values?.() ?? [])].map(memberCard);
+  } catch (error) {
+    logger.warn(`Member search failed in guild ${guild.id}: ${error.message}`);
+    return [];
+  }
+}
+
+module.exports = { searchMembers, MAX_IDS, CACHE_TTL_MS, parseMemberIds, memberCard, lookupMembers, _local: local, _missing: missing };
