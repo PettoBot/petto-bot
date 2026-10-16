@@ -1,3 +1,4 @@
+// i18n-ignore-file: log lines for the team of Petto (the host console and the log channel of Discord), not messages for the members.
 const { REST, Routes } = require('discord.js');
 const config = require('../config');
 const { collectCommandData, collectPrivateGuildCommandData } = require('./commandHandler');
