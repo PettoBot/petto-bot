@@ -6,6 +6,7 @@ All notable changes to Petto are documented here.
 
 ### Changed
 
+- **The log of Discord says what the Cloudflare tunnel did while the bot was starting.** The tunnel starts before the bot is connected to Discord, so its lines were only in the host console. The lines of the tunnel and every warning and error written before the log connects are now kept and said in it, and nothing else, so a normal start adds no noise.
 - **`/vanity notify` and `/guildtag notify` list your saved embeds.** While you type in the `embed` option, Discord shows the saved embeds of the server that match, so the name does not have to be written exactly.
 - **The log says which slash commands were created, and why they were not.** The commands are registered before the bot connects, when the log of Discord does not exist yet, so the result only reached the host console. Now, once the bot is connected, the log says how many commands are registered, which ones are new or gone, that nothing changed, or the reason Discord gave when it refused them.
 - **`!vanity` and `!guildtag` also work as slash commands.** The rules have several options, which are easier to fill in with the slash form than with the prefix. The prefix keeps working, with the short names `!vy` and `!tag`.

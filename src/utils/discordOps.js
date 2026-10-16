@@ -321,7 +321,8 @@ function attachDiscordLogger(client) {
     const tag = level === 'error' ? 'ERROR' : level === 'warn' ? 'WARN' : 'INFO';
     logLines.push({ level, text: `-# <t:${unix}:T> **${tag}**\n${text.slice(0, 600)}` });
     if (!logTimer) { logTimer = setTimeout(() => flushLogLines(client), LOG_FLUSH_MS); logTimer.unref?.(); }
-  });
+    // Told what happened before it was connected too (the Cloudflare tunnel starts first): see the logger.
+  }, { replayEarly: true });
 }
 
 module.exports = {
