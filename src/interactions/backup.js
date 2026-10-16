@@ -38,6 +38,14 @@ async function handleSelect(interaction) {
     await interaction.showModal(backupCommand.buildScheduleModal(context.guildId, context.userId, lang));
     return;
   }
+  if (action === 'delete') {
+    if (!interaction.member?.permissions?.has?.('Administrator')) {
+      await interaction.reply({ content: t(lang, 'backup.delete.adminOnly', { emoji: EMOJI.DENY }), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+      return;
+    }
+    await interaction.showModal(backupCommand.buildDeleteModal(context.guildId, context.userId, lang));
+    return;
+  }
   if (action === 'restore') {
     if (!interaction.member?.permissions?.has?.('Administrator')) {
       await interaction.reply({ content: t(lang, 'backup.restore.adminOnly', { emoji: EMOJI.DENY }), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
@@ -89,6 +97,39 @@ async function handleRestoreModal(interaction) {
 
   // Nothing is restored here: this shows what it would do and asks to confirm, step by step.
   await backupCommand.restoreBackupForInteraction(interaction, { backupNumber, mode });
+}
+
+async function handleDeleteModal(interaction) {
+  if (backupsUnderMaintenance(interaction.user.id)) return backupCommand.replyMaintenance(interaction);
+  const lang = await languageOf(interaction);
+  const context = parseContext(interaction.customId, 'backup_delete_modal');
+  if (!ownsPanel(interaction, context)) {
+    await interaction.reply({ content: t(lang, 'backup.notYours', { emoji: EMOJI.DENY }), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+    return;
+  }
+  const typed = interaction.fields.getTextInputValue('target').trim();
+  const all = typed.toUpperCase() === 'ALL';
+  await backupCommand.deleteBackupsForInteraction(interaction, { backupNumber: Number(typed), all });
+}
+
+/** `backup_delete:<yes|no>:<guild>:<user>:<number|all>`: the answer to "delete this?". */
+async function handleDeleteButton(interaction) {
+  if (backupsUnderMaintenance(interaction.user.id)) return backupCommand.replyMaintenance(interaction);
+  const lang = await languageOf(interaction);
+  const [, action, guildId, userId, target] = interaction.customId.split(':');
+  if (interaction.guildId !== guildId || interaction.user.id !== userId) {
+    await interaction.reply({ content: t(lang, 'backup.notYours', { emoji: EMOJI.DENY }), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+    return;
+  }
+  if (!interaction.member?.permissions?.has?.('Administrator')) {
+    await interaction.reply({ content: t(lang, 'backup.delete.adminOnly', { emoji: EMOJI.DENY }), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+    return;
+  }
+  if (action === 'no') {
+    await interaction.update({ components: [backupCommand.buildStatusCard(t(lang, 'backup.delete.cancelled', { emoji: EMOJI.APPROVE }), COLORS.DEFAULT, interaction, lang)], flags: V2_EPHEMERAL });
+    return;
+  }
+  if (action === 'yes' && (target === 'all' || Number.isInteger(Number(target)))) await backupCommand.runDelete(interaction, target);
 }
 
 /** `backup_restore:<step>:<guild>:<user>:<number>:<mode>[:<picture>]`, or `backup_restore:stop:<guild>`. */
@@ -161,4 +202,4 @@ async function handleRestoreCodeModal(interaction) {
   await backupCommand.startRestoreFromInteraction(interaction, { number: context.number, mode });
 }
 
-module.exports = { handleSelect, handleScheduleModal, handleRestoreModal, handleRestoreButton, handleRestoreCodeModal, V2_EPHEMERAL };
+module.exports = { handleSelect, handleScheduleModal, handleRestoreModal, handleRestoreButton, handleRestoreCodeModal, handleDeleteModal, handleDeleteButton, V2_EPHEMERAL };

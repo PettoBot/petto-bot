@@ -9,6 +9,9 @@ const RESTORABLE_CHANNEL_TYPES = new Set([
   ChannelType.GuildForum,
 ].filter((type) => type !== undefined));
 
+// Stickers that can be uploaded again: PNG, APNG and GIF (the animated ones made with Lottie cannot).
+const STICKER_FORMATS = new Set([1, 2, 4]);
+
 function bitfield(value) {
   try {
     return BigInt(String(value ?? '0'));
@@ -51,6 +54,21 @@ function channelOptions(data, parentId, permissionOverwrites, reason, includeTyp
   if (data.rateLimitPerUser != null) options.rateLimitPerUser = Number(data.rateLimitPerUser) || 0;
   if (data.bitrate != null && (data.type === ChannelType.GuildVoice || data.type === ChannelType.GuildStageVoice)) options.bitrate = Number(data.bitrate);
   if (data.userLimit != null && (data.type === ChannelType.GuildVoice || data.type === ChannelType.GuildStageVoice)) options.userLimit = Number(data.userLimit);
+  const text = data.type === ChannelType.GuildText || data.type === ChannelType.GuildAnnouncement || data.type === ChannelType.GuildForum;
+  if (text && data.defaultAutoArchiveDuration != null) options.defaultAutoArchiveDuration = Number(data.defaultAutoArchiveDuration);
+  if (data.type === ChannelType.GuildVoice || data.type === ChannelType.GuildStageVoice) {
+    if (data.rtcRegion) options.rtcRegion = String(data.rtcRegion);
+    if (data.videoQualityMode != null) options.videoQualityMode = Number(data.videoQualityMode);
+  }
+  if (data.type === ChannelType.GuildForum) {
+    if (Array.isArray(data.availableTags) && data.availableTags.length) {
+      options.availableTags = data.availableTags.slice(0, 20).map((tag) => ({ name: String(tag.name).slice(0, 20), moderated: Boolean(tag.moderated), emoji: tag.emojiId ? { id: String(tag.emojiId) } : tag.emojiName ? { name: String(tag.emojiName) } : undefined }));
+    }
+    if (data.defaultReactionEmoji) options.defaultReactionEmoji = data.defaultReactionEmoji.id ? { id: String(data.defaultReactionEmoji.id) } : { name: String(data.defaultReactionEmoji.name) };
+    if (data.defaultSortOrder != null) options.defaultSortOrder = Number(data.defaultSortOrder);
+    if (data.defaultForumLayout != null) options.defaultForumLayout = Number(data.defaultForumLayout);
+    if (data.defaultThreadRateLimitPerUser != null) options.defaultThreadRateLimitPerUser = Number(data.defaultThreadRateLimitPerUser);
+  }
   if (permissionOverwrites.length) options.permissionOverwrites = permissionOverwrites;
   return options;
 }
@@ -80,6 +98,8 @@ function planRestore(guild, rawSnapshot, { mode = 'merge', keepChannelIds = [] }
     roles: { create: 0, update: 0, skip: 0 },
     channels: { create: 0, update: 0 },
     emojis: { create: 0, update: 0, skip: 0 },
+    stickers: { create: 0, skip: 0 },
+    automod: { create: 0, update: 0 },
     deleteRoles: [],
     deleteChannels: [],
     steps: 0,
@@ -102,6 +122,14 @@ function planRestore(guild, rawSnapshot, { mode = 'merge', keepChannelIds = [] }
     const existing = data.id ? guild.emojis.cache.get(String(data.id)) : guild.emojis.cache.find((emoji) => emoji.name === data.name);
     if (existing) plan.emojis.update++; else if (data.url) plan.emojis.create++; else plan.emojis.skip++;
   }
+  for (const data of snapshot.stickers ?? []) {
+    if (!data?.name) continue;
+    if (guild.stickers?.cache?.find((sticker) => sticker.name === data.name)) plan.stickers.skip++; else if (data.url && STICKER_FORMATS.has(Number(data.format))) plan.stickers.create++; else plan.stickers.skip++;
+  }
+  for (const data of snapshot.automod ?? []) {
+    if (!data?.name) continue;
+    if (guild.autoModerationRules?.cache?.find((rule) => rule.name === data.name)) plan.automod.update++; else plan.automod.create++;
+  }
   if (mode === 'replace') {
     const keep = protectedChannelIds(guild, keepChannelIds);
     for (const channel of guild.channels.cache.values()) {
@@ -111,7 +139,7 @@ function planRestore(guild, rawSnapshot, { mode = 'merge', keepChannelIds = [] }
       if (!role.managed && role.id !== guild.id && !matchedRoles.has(String(role.id))) plan.deleteRoles.push(role.name);
     }
   }
-  plan.steps = snapshot.roles.length + 1 + channels.length + 1 + (snapshot.emojis ?? []).length + plan.deleteChannels.length + plan.deleteRoles.length;
+  plan.steps = snapshot.roles.length + 1 + channels.length + 1 + (snapshot.emojis ?? []).length + (snapshot.stickers ?? []).length + (snapshot.automod ?? []).length + plan.deleteChannels.length + plan.deleteRoles.length;
   return plan;
 }
 
@@ -138,6 +166,8 @@ async function restoreBackup(guild, rawSnapshot, { mode = 'merge', reason = 'Pet
     roles: { created: 0, updated: 0, skipped: 0, failed: 0 },
     channels: { created: 0, updated: 0, skipped: 0, failed: 0 },
     emojis: { created: 0, updated: 0, skipped: 0, failed: 0 },
+    stickers: { created: 0, updated: 0, skipped: 0, failed: 0 },
+    automod: { created: 0, updated: 0, skipped: 0, failed: 0 },
     deleted: { roles: 0, channels: 0 },
     errors: [],
   };
@@ -181,6 +211,8 @@ async function restoreBackup(guild, rawSnapshot, { mode = 'merge', reason = 'Pet
         permissions: bitfield(data.permissions),
         reason,
       });
+      // The icon of a role needs a boosted server: it is tried on its own so that a refusal never undoes the rest.
+      if (data.unicodeEmoji || data.iconURL) await role.edit({ ...(data.unicodeEmoji ? { unicodeEmoji: String(data.unicodeEmoji) } : { icon: String(data.iconURL) }), reason }).catch(() => {});
       result.roles[existing ? 'updated' : 'created']++;
     } catch (error) {
       result.roles.failed++;
@@ -240,6 +272,11 @@ async function restoreBackup(guild, rawSnapshot, { mode = 'merge', reason = 'Pet
   if (guildData.systemChannelId !== undefined) guildEdit.systemChannel = guildData.systemChannelId ? channelMap.get(String(guildData.systemChannelId)) ?? null : null;
   if (guildData.rulesChannelId !== undefined) guildEdit.rulesChannel = guildData.rulesChannelId ? channelMap.get(String(guildData.rulesChannelId)) ?? null : null;
   if (guildData.publicUpdatesChannelId !== undefined) guildEdit.publicUpdatesChannel = guildData.publicUpdatesChannelId ? channelMap.get(String(guildData.publicUpdatesChannelId)) ?? null : null;
+  if (guildData.description != null) guildEdit.description = guildData.description ? String(guildData.description).slice(0, 120) : null;
+  if (guildData.preferredLocale) guildEdit.preferredLocale = guildData.preferredLocale;
+  if (guildData.premiumProgressBarEnabled != null) guildEdit.premiumProgressBarEnabled = Boolean(guildData.premiumProgressBarEnabled);
+  if (guildData.systemChannelFlags != null) guildEdit.systemChannelFlags = Number(guildData.systemChannelFlags);
+  if (guildData.safetyAlertsChannelId !== undefined) guildEdit.safetyAlertsChannel = guildData.safetyAlertsChannelId ? channelMap.get(String(guildData.safetyAlertsChannelId)) ?? null : null;
   if (guildData.iconURL) guildEdit.icon = guildData.iconURL;
   if (guildData.bannerURL) guildEdit.banner = guildData.bannerURL;
   try {
@@ -268,6 +305,54 @@ async function restoreBackup(guild, rawSnapshot, { mode = 'merge', reason = 'Pet
       result.errors.push(`emoji:${data.name}: ${error.message}`);
     }
     report('emojis');
+  }
+
+  for (const data of snapshot.stickers ?? []) {
+    if (stopped()) return result;
+    if (!data?.name) { report('stickers'); continue; }
+    try {
+      if (guild.stickers?.cache?.find((sticker) => sticker.name === data.name) || !data.url || !STICKER_FORMATS.has(Number(data.format))) {
+        result.stickers.skipped++;
+      } else {
+        await guild.stickers.create({ file: data.url, name: String(data.name).slice(0, 30), tags: String(data.tags || 'sticker').slice(0, 200), description: data.description ? String(data.description).slice(0, 100) : undefined, reason });
+        result.stickers.created++;
+      }
+    } catch (error) {
+      result.stickers.failed++;
+      result.errors.push(`sticker:${data.name}: ${error.message}`);
+    }
+    report('stickers');
+  }
+
+  for (const data of snapshot.automod ?? []) {
+    if (stopped()) return result;
+    if (!data?.name) { report('automod'); continue; }
+    try {
+      const mapChannel = (id) => channelMap.get(String(id)) ?? (guild.channels.cache.has(String(id)) ? String(id) : null);
+      const mapRole = (id) => roleMap.get(String(id)) ?? (guild.roles.cache.has(String(id)) ? String(id) : null);
+      const options = {
+        name: String(data.name).slice(0, 100),
+        eventType: data.eventType,
+        triggerType: data.triggerType,
+        triggerMetadata: data.triggerMetadata ?? {},
+        actions: (data.actions ?? []).map((action) => {
+          const metadata = { ...(action.metadata ?? {}) };
+          if (metadata.channelId) metadata.channel = mapChannel(metadata.channelId);
+          delete metadata.channelId;
+          return { type: action.type, metadata };
+        }).filter((action) => !(action.metadata.channel === null && 'channel' in action.metadata)),
+        enabled: Boolean(data.enabled),
+        exemptRoles: (data.exemptRoles ?? []).map(mapRole).filter(Boolean),
+        exemptChannels: (data.exemptChannels ?? []).map(mapChannel).filter(Boolean),
+        reason,
+      };
+      const existing = guild.autoModerationRules?.cache?.find((rule) => rule.name === data.name);
+      if (existing) { await existing.edit(options); result.automod.updated++; } else { await guild.autoModerationRules.create(options); result.automod.created++; }
+    } catch (error) {
+      result.automod.failed++;
+      result.errors.push(`automod:${data.name}: ${error.message}`);
+    }
+    report('automod');
   }
 
   if (replace) {

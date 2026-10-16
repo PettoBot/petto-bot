@@ -14,10 +14,10 @@ const { isRedeemed, claimRedemption, releaseRedemption } = require('../db/verifi
 const { getTicketById, getTicketByNumber } = require('../db/tickets');
 const { logVerification } = require('../utils/verificationLog');
 const { sendVerifiedDM } = require('../utils/verifyMessage');
-const { createBackup, listBackups, getBackup, recordAudit, vault } = require('../db/backups');
+const { createBackup, listBackups, getBackup, deleteBackup, deleteAllBackups, recordAudit, vault } = require('../db/backups');
 const { planRestore } = require('../utils/backupRestore');
 const backupJobs = require('../utils/backupJobs');
-const { buildSnapshot } = require('../commands/config/backup');
+const { buildFullSnapshot } = require('../commands/config/backup');
 const { renderVerifyPage } = require('./verifyPage');
 const { createChallenge, checkAnswer } = require('../utils/verifyCaptcha');
 const { methodOf, usesTurnstile, usesLetters } = require('../utils/verifyMethod');
@@ -779,13 +779,24 @@ function startServer(client) {
       try {
         if (action === 'create') {
           await Promise.all([guild.roles.fetch(), guild.channels.fetch(), guild.emojis.fetch()]);
-          const snapshot = buildSnapshot(guild);
+          const snapshot = await buildFullSnapshot(guild);
           const saved = await createBackup(guild.id, userId, String(req.body?.label || '').trim() || null, snapshot);
           await recordAudit(guild.id, userId, 'backup_created', saved.backup_number, { source: saved.source || 'manual', label: saved.label });
         } else if (action === 'restore') {
           // A restore now goes through its own steps (preview, human check, progress), never in one call.
           res.status(400).json({ ok: false, error: 'restore_use_steps' });
           return;
+        } else if (action === 'delete') {
+          if (!authorized.isAdministrator) { res.status(403).json({ ok: false, error: 'administrator_required' }); return; }
+          const backupNumber = Number(req.body?.backup_id);
+          if (!Number.isInteger(backupNumber) || backupNumber < 1) { res.status(400).json({ ok: false, error: 'invalid_backup' }); return; }
+          if (!(await deleteBackup(guild.id, backupNumber))) { res.status(404).json({ ok: false, error: 'backup_not_found' }); return; }
+          await recordAudit(guild.id, userId, 'backup_deleted', backupNumber, {});
+        } else if (action === 'delete_all') {
+          if (!authorized.isAdministrator) { res.status(403).json({ ok: false, error: 'administrator_required' }); return; }
+          // Every backup and the schedule: asked for by name of the action only, the dashboard confirms before.
+          const count = await deleteAllBackups(guild.id);
+          await recordAudit(guild.id, userId, 'backups_deleted_all', null, { count });
         } else if (action === 'schedule') {
           const hours = Number(req.body?.hours);
           const retention = Number(req.body?.retention || 7);
@@ -874,7 +885,7 @@ function startServer(client) {
           snapshot: backup.snapshot,
           reason: t(serverLang, 'web.audit.restore', { number: input.number }),
           prepare: async () => {
-            const safety = await createBackup(guild.id, userId, t(serverLang, 'backup.restore.safetyLabel', { number: input.number }), buildSnapshot(guild), 'manual');
+            const safety = await createBackup(guild.id, userId, t(serverLang, 'backup.restore.safetyLabel', { number: input.number }), await buildFullSnapshot(guild), 'manual');
             await recordAudit(guild.id, userId, 'backup_created', safety.backup_number, { source: 'manual', purpose: 'restore_safety', beforeBackupNumber: input.number });
             return safety.backup_number;
           },

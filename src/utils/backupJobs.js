@@ -83,6 +83,8 @@ function describeJob(job) {
       roles: result.roles,
       channels: result.channels,
       emojis: result.emojis,
+      stickers: result.stickers,
+      automod: result.automod,
       deleted: result.deleted,
       errors: result.errors.slice(0, 5),
       errorCount: result.errors.length,

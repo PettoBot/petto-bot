@@ -15,7 +15,7 @@ const {
   TextInputBuilder,
   TextInputStyle,
 } = require('discord.js');
-const { createBackup, listBackups, getBackup, recordAudit, listAudit, vault } = require('../../db/backups');
+const { createBackup, listBackups, getBackup, deleteBackup, deleteAllBackups, recordAudit, listAudit, vault } = require('../../db/backups');
 const { planRestore } = require('../../utils/backupRestore');
 const jobs = require('../../utils/backupJobs');
 const { textCard } = require('../../utils/caseCard');
@@ -42,6 +42,7 @@ module.exports = {
     .addSubcommand((sub) => sub.setName('list').setDescription('List the latest saved backups for this server.'))
     .addSubcommand((sub) => sub.setName('export').setDescription('Download a backup as a JSON file.').addIntegerOption((opt) => opt.setName('id').setDescription('Server backup number, or omit it for the latest one').setMinValue(1).setRequired(false)))
     .addSubcommand((sub) => sub.setName('restore').setDescription('Restore a snapshot. Administrator and confirmation required.').addIntegerOption((opt) => opt.setName('id').setDescription('Server backup number to restore').setMinValue(1).setRequired(true)).addBooleanOption((opt) => opt.setName('confirm').setDescription('Not needed any more: Petto always asks you to confirm').setRequired(false)).addStringOption((opt) => opt.setName('mode').setDescription('Merge without deleting, or replace extra resources').addChoices({ name: 'Merge (safe)', value: 'merge' }, { name: 'Replace (deletes extras)', value: 'replace' }).setRequired(false)))
+    .addSubcommand((sub) => sub.setName('delete').setDescription('Delete a backup, or all of them. Administrator and confirmation required.').addIntegerOption((opt) => opt.setName('id').setDescription('Server backup number to delete').setMinValue(1).setRequired(false)).addBooleanOption((opt) => opt.setName('all').setDescription('Delete every backup of this server and turn off automatic backups').setRequired(false)))
     .addSubcommand((sub) => sub.setName('schedule').setDescription('Create automatic backups.').addIntegerOption((opt) => opt.setName('hours').setDescription('Hours between backups').setMinValue(1).setMaxValue(168).setRequired(true)).addIntegerOption((opt) => opt.setName('retention').setDescription('Scheduled backups to keep').setMinValue(1).setMaxValue(30).setRequired(false)))
     .addSubcommand((sub) => sub.setName('unschedule').setDescription('Disable automatic backups.'))
     .addSubcommand((sub) => sub.setName('audit').setDescription('Show the backup activity history.').addIntegerOption((opt) => opt.setName('limit').setDescription('Entries to show').setMinValue(1).setMaxValue(20).setRequired(false))),
@@ -53,6 +54,7 @@ module.exports = {
     if (sub === 'create') return create(interaction);
     if (sub === 'export') return exportBackup(interaction);
     if (sub === 'restore') return restore(interaction);
+    if (sub === 'delete') return deleteCommand(interaction);
     if (sub === 'schedule') return schedule(interaction);
     if (sub === 'unschedule') return unschedule(interaction);
     if (sub === 'audit') return audit(interaction);
@@ -79,7 +81,7 @@ async function createBackupForInteraction(interaction, label = null) {
   const lang = await languageOf(interaction);
   await beginOperation(interaction, t(lang, 'backup.loading.create'), lang);
   await fetchSnapshotResources(interaction.guild);
-  const snapshot = buildSnapshot(interaction.guild);
+  const snapshot = await buildFullSnapshot(interaction.guild);
   const saved = await createBackup(interaction.guild.id, interaction.user.id, label, snapshot);
   await recordBackupAudit(interaction.guild.id, interaction.user.id, 'backup_created', saved.backup_number, { source: saved.source || 'manual', label: saved.label });
 
@@ -127,9 +129,83 @@ async function restore(interaction) {
   return restoreBackupForInteraction(interaction, { backupNumber, mode });
 }
 
+
+const DELETE_PREFIX = 'backup_delete';
+const deleteId = (action, guildId, userId, target) => `${DELETE_PREFIX}:${action}:${guildId}:${userId}:${target}`;
+
+async function deleteCommand(interaction) {
+  const all = interaction.options.getBoolean('all') === true;
+  const backupNumber = interaction.options.getInteger('id');
+  return deleteBackupsForInteraction(interaction, { backupNumber, all });
+}
+
+/** Step one of deleting: says what would be deleted and asks. Nothing is deleted here. */
+async function deleteBackupsForInteraction(interaction, { backupNumber = null, all = false }) {
+  const lang = await languageOf(interaction);
+  if (!interaction.member?.permissions?.has?.('Administrator')) {
+    await replyStatus(interaction, t(lang, 'backup.delete.adminOnly', { emoji: EMOJI.DENY }), COLORS.RED);
+    return;
+  }
+  if (!all && !Number.isInteger(backupNumber)) {
+    await replyStatus(interaction, t(lang, 'backup.delete.invalid', { emoji: EMOJI.WARNING }), COLORS.YELLOW);
+    return;
+  }
+  await beginOperation(interaction, t(lang, 'backup.loading.list'), lang);
+  let text;
+  let target;
+  if (all) {
+    const rows = await listBackups(interaction.guild.id, 500);
+    if (!rows.length) {
+      await finish(interaction, buildStatusCard(t(lang, 'backup.noneYet'), COLORS.DEFAULT, interaction, lang));
+      return;
+    }
+    text = t(lang, 'backup.delete.confirmAll', { emoji: EMOJI.ALERT, count: rows.length });
+    target = 'all';
+  } else {
+    const backup = await getBackup(interaction.guild.id, backupNumber);
+    if (!backup) {
+      await finish(interaction, buildStatusCard(t(lang, 'backup.notFound', { number: backupNumber }), COLORS.RED, interaction, lang));
+      return;
+    }
+    text = t(lang, 'backup.delete.confirmOne', { emoji: EMOJI.ALERT, number: publicBackupNumber(backup) });
+    target = String(publicBackupNumber(backup));
+  }
+  const card = textCard(text, COLORS.RED);
+  card.addActionRowComponents(new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(deleteId('yes', interaction.guild.id, interaction.user.id, target)).setLabel(t(lang, 'backup.delete.button.yes')).setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(deleteId('no', interaction.guild.id, interaction.user.id, target)).setLabel(t(lang, 'backup.delete.button.no')).setStyle(ButtonStyle.Secondary),
+  ));
+  await finish(interaction, card);
+}
+
+/** Step two: the person pressed Delete. */
+async function runDelete(interaction, target) {
+  const lang = await languageOf(interaction);
+  const guildId = interaction.guild.id;
+  let text;
+  if (target === 'all') {
+    const count = await deleteAllBackups(guildId);
+    await recordBackupAudit(guildId, interaction.user.id, 'backups_deleted_all', null, { count });
+    text = t(lang, 'backup.delete.doneAll', { emoji: EMOJI.APPROVE, count });
+  } else {
+    const number = Number(target);
+    const removed = await deleteBackup(guildId, number);
+    if (removed) await recordBackupAudit(guildId, interaction.user.id, 'backup_deleted', number, {});
+    text = removed ? t(lang, 'backup.delete.doneOne', { emoji: EMOJI.APPROVE, number }) : t(lang, 'backup.notFound', { number });
+  }
+  await interaction.update({ components: [buildStatusCard(text, COLORS.GREEN, interaction, lang)], flags: BACKUP_MENU_FLAGS });
+}
+
+function buildDeleteModal(guildId, userId, lang = currentLanguage()) {
+  return new ModalBuilder()
+    .setCustomId(`backup_delete_modal:${guildId}:${userId}`)
+    .setTitle(t(lang, 'backup.delete.modal.title'))
+    .addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('target').setLabel(t(lang, 'backup.delete.modal.label')).setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(10).setPlaceholder(t(lang, 'backup.restore.modal.example'))));
+}
+
 const RESTORE_PREFIX = 'backup_restore';
 const restoreId = (action, guildId, userId, number, mode, extra = '') => [RESTORE_PREFIX, action, guildId, userId, number, mode, extra].filter((part, index) => index < 6 || part).join(':');
-const PHASES = ['safety', 'roles', 'channels', 'settings', 'emojis', 'cleanup'];
+const PHASES = ['safety', 'roles', 'channels', 'settings', 'emojis', 'stickers', 'automod', 'cleanup'];
 const barOf = (percent) => { const filled = Math.round(percent / 10); return '▰'.repeat(filled) + '▱'.repeat(10 - filled); };
 const listNames = (names) => (names.length ? `${names.slice(0, 8).map((name) => `\`${String(name).slice(0, 40)}\``).join(', ')}${names.length > 8 ? ` +${names.length - 8}` : ''}` : '');
 
@@ -235,6 +311,7 @@ function buildProgressCard(view, lang = currentLanguage()) {
         emojisCreated: result.emojis?.created ?? 0, emojisUpdated: result.emojis?.updated ?? 0,
         deletedChannels: result.deleted?.channels ?? 0, deletedRoles: result.deleted?.roles ?? 0,
       }));
+      if ((result.stickers?.created ?? 0) + (result.automod?.created ?? 0) + (result.automod?.updated ?? 0) > 0) lines.push(t(lang, 'backup.restore.extras', { stickersCreated: result.stickers?.created ?? 0, automodCreated: result.automod?.created ?? 0, automodUpdated: result.automod?.updated ?? 0 }));
       if (result.deletionSkipped) lines.push(t(lang, 'backup.restore.deletionSkipped', { emoji: EMOJI.WARNING }));
       if (failed && result.errors?.length) lines.push(result.errors.map((error) => `• ${error}`).join('\n'));
     }
@@ -275,7 +352,7 @@ async function startRestoreFromInteraction(interaction, { number, mode }) {
       reason,
       keepChannelIds: [interaction.channelId],
       prepare: async () => {
-        const safety = await createBackup(guild.id, interaction.user.id, t(lang, 'backup.restore.safetyLabel', { number }), buildSnapshot(guild), 'manual');
+        const safety = await createBackup(guild.id, interaction.user.id, t(lang, 'backup.restore.safetyLabel', { number }), await buildFullSnapshot(guild), 'manual');
         await recordBackupAudit(guild.id, interaction.user.id, 'backup_created', publicBackupNumber(safety), { source: 'manual', purpose: 'restore_safety', beforeBackupNumber: number });
         return publicBackupNumber(safety);
       },
@@ -419,6 +496,8 @@ function buildPanel(guild, userId, rows, scheduleRow, lang = currentLanguage()) 
       '',
       `${t(lang, 'backup.panel.scheduleHeading')}\n${scheduleText}`,
       '',
+      t(lang, 'backup.panel.data'),
+      '',
       t(lang, 'backup.panel.footer'),
     ].join('\n')))
     .addActionRowComponents(buildBackupMenuRow(guild.id, userId, lang));
@@ -435,6 +514,7 @@ function buildBackupMenuRow(guildId, userId, lang = currentLanguage()) {
         option('list', 'list'),
         option('exportLatest', 'export_latest'),
         option('restore', 'restore'),
+        option('delete', 'delete'),
         option('schedule', 'schedule'),
         option('audit', 'audit'),
       ),
@@ -446,7 +526,7 @@ function formatBackupList(rows, lang = currentLanguage()) {
   return [t(lang, 'backup.list.title'), ...rows.map((row) => backupLine(row, lang)), '', t(lang, 'backup.list.footer')].join('\n');
 }
 
-const AUDIT_ACTIONS = ['backup_created', 'backups_listed', 'backup_exported', 'backup_restored', 'backups_pruned', 'backup_audit_viewed', 'schedule_updated', 'schedule_disabled'];
+const AUDIT_ACTIONS = ['backup_created', 'backups_listed', 'backup_exported', 'backup_restored', 'backup_deleted', 'backups_deleted_all', 'backups_pruned', 'backup_audit_viewed', 'schedule_updated', 'schedule_disabled'];
 
 function formatAuditAction(action, lang = currentLanguage()) {
   return AUDIT_ACTIONS.includes(action) ? t(lang, `backup.audit.action.${action}`) : action;
@@ -459,7 +539,7 @@ function publicBackupNumber(row) {
 function buildSnapshot(guild) {
   return {
     format: 'petto-server-backup',
-    version: 2,
+    version: 3,
     capturedAt: new Date().toISOString(),
     guild: {
       id: guild.id,
@@ -472,11 +552,18 @@ function buildSnapshot(guild) {
       afkTimeout: guild.afkTimeout,
       afkChannelId: guild.afkChannelId,
       systemChannelId: guild.systemChannelId,
+      rulesChannelId: guild.rulesChannelId ?? null,
+      publicUpdatesChannelId: guild.publicUpdatesChannelId ?? null,
+      safetyAlertsChannelId: guild.safetyAlertsChannelId ?? null,
+      description: guild.description ?? null,
+      preferredLocale: guild.preferredLocale ?? null,
+      premiumProgressBarEnabled: guild.premiumProgressBarEnabled ?? null,
+      systemChannelFlags: guild.systemChannelFlags?.bitfield ?? null,
     },
     roles: [...guild.roles.cache.values()]
       .filter((role) => !role.managed)
       .sort((a, b) => a.position - b.position)
-      .map((role) => ({ id: role.id, name: role.name, color: role.color, hoist: role.hoist, mentionable: role.mentionable, position: role.position, permissions: role.permissions.bitfield.toString() })),
+      .map((role) => ({ id: role.id, name: role.name, color: role.color, hoist: role.hoist, mentionable: role.mentionable, position: role.position, permissions: role.permissions.bitfield.toString(), unicodeEmoji: role.unicodeEmoji ?? null, iconURL: role.icon ? role.iconURL({ extension: 'png', size: 128 }) : null })),
     channels: [...guild.channels.cache.values()]
       .filter((channel) => !channel.isThread?.())
       .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
@@ -495,10 +582,45 @@ function buildSnapshot(guild) {
         videoQualityMode: 'videoQualityMode' in channel ? channel.videoQualityMode : null,
         defaultAutoArchiveDuration: 'defaultAutoArchiveDuration' in channel ? channel.defaultAutoArchiveDuration : null,
         defaultThreadRateLimitPerUser: 'defaultThreadRateLimitPerUser' in channel ? channel.defaultThreadRateLimitPerUser : null,
+        availableTags: Array.isArray(channel.availableTags) ? channel.availableTags.map((tag) => ({ name: tag.name, moderated: Boolean(tag.moderated), emojiId: tag.emoji?.id ?? null, emojiName: tag.emoji?.name ?? null })) : null,
+        defaultReactionEmoji: channel.defaultReactionEmoji ? { id: channel.defaultReactionEmoji.id ?? null, name: channel.defaultReactionEmoji.name ?? null } : null,
+        defaultSortOrder: 'defaultSortOrder' in channel ? channel.defaultSortOrder : null,
+        defaultForumLayout: 'defaultForumLayout' in channel ? channel.defaultForumLayout : null,
         permissionOverwrites: channel.permissionOverwrites?.cache.map((overwrite) => ({ id: overwrite.id, type: overwrite.type, allow: overwrite.allow.bitfield.toString(), deny: overwrite.deny.bitfield.toString() })) ?? [],
       })),
     emojis: [...guild.emojis.cache.values()].map((emoji) => ({ id: emoji.id, name: emoji.name, animated: emoji.animated, url: emoji.imageURL({ extension: emoji.animated ? 'gif' : 'png', size: 256 }) })),
+    stickers: [...(guild.stickers?.cache?.values() ?? [])].map((sticker) => ({ id: sticker.id, name: sticker.name, description: sticker.description ?? null, tags: sticker.tags ?? null, format: sticker.format, url: sticker.url })),
+    automod: [],
   };
+}
+
+/**
+ * The whole backup: what `buildSnapshot` reads from the cache plus what needs a request to Discord (the stickers and the AutoMod rules).
+ * Nothing about the people of the server is kept: no member list, no messages. The only people in it are the ones named in the
+ * permissions of a channel (their ID), which is what a restore needs to put those permissions back.
+ */
+async function buildFullSnapshot(guild) {
+  await Promise.all([guild.stickers?.fetch?.().catch(() => null), guild.autoModerationRules?.fetch?.().catch(() => null)]);
+  const snapshot = buildSnapshot(guild);
+  snapshot.automod = [...(guild.autoModerationRules?.cache?.values() ?? [])].map((rule) => ({
+    id: rule.id,
+    name: rule.name,
+    eventType: rule.eventType,
+    triggerType: rule.triggerType,
+    triggerMetadata: {
+      keywordFilter: rule.triggerMetadata?.keywordFilter ?? [],
+      regexPatterns: rule.triggerMetadata?.regexPatterns ?? [],
+      presets: rule.triggerMetadata?.presets ?? [],
+      allowList: rule.triggerMetadata?.allowList ?? [],
+      mentionTotalLimit: rule.triggerMetadata?.mentionTotalLimit ?? null,
+      mentionRaidProtectionEnabled: rule.triggerMetadata?.mentionRaidProtectionEnabled ?? false,
+    },
+    actions: (rule.actions ?? []).map((action) => ({ type: action.type, metadata: { channelId: action.metadata?.channelId ?? null, durationSeconds: action.metadata?.durationSeconds ?? null, customMessage: action.metadata?.customMessage ?? null } })),
+    enabled: rule.enabled,
+    exemptRoles: [...(rule.exemptRoles?.keys?.() ?? [])],
+    exemptChannels: [...(rule.exemptChannels?.keys?.() ?? [])],
+  }));
+  return snapshot;
 }
 
 function buildScheduleModal(guildId, userId, lang = currentLanguage()) {
@@ -529,6 +651,7 @@ async function replyMaintenance(interaction) {
 
 module.exports.replyMaintenance = replyMaintenance;
 module.exports.buildSnapshot = buildSnapshot;
+module.exports.buildFullSnapshot = buildFullSnapshot;
 module.exports.buildBackupMenuRow = buildBackupMenuRow;
 module.exports.buildPanel = buildPanel;
 module.exports.buildScheduleModal = buildScheduleModal;
@@ -542,6 +665,10 @@ module.exports.startRestoreFromInteraction = startRestoreFromInteraction;
 module.exports.buildProgressCard = buildProgressCard;
 module.exports.buildStatusCard = buildStatusCard;
 module.exports.RESTORE_PREFIX = RESTORE_PREFIX;
+module.exports.DELETE_PREFIX = DELETE_PREFIX;
+module.exports.deleteBackupsForInteraction = deleteBackupsForInteraction;
+module.exports.runDelete = runDelete;
+module.exports.buildDeleteModal = buildDeleteModal;
 module.exports.scheduleForInteraction = scheduleForInteraction;
 module.exports.auditForInteraction = auditForInteraction;
 module.exports.executeListFromMenu = list;

@@ -13,6 +13,8 @@ function fakeGuild({ failCreate = false } = {}) {
   const channels = new Map();
   const roles = new Map();
   const calls = { deleted: [], created: [] };
+  const stickerStore = new Map();
+  const ruleStore = new Map();
   const channel = (id, name, type = 0) => ({
     id, name, type, isThread: () => false,
     edit: async () => {}, setPosition: async () => {},
@@ -26,6 +28,8 @@ function fakeGuild({ failCreate = false } = {}) {
     roles: { cache: Object.assign(roles, { find: (fn) => [...roles.values()].find(fn) }), create: async (data) => { const made = role(String(900 + roles.size), data.name); roles.set(made.id, made); calls.created.push(`role:${data.name}`); return made; }, setPositions: async () => {} },
     channels: { cache: Object.assign(channels, { find: (fn) => [...channels.values()].find(fn) }), create: async (data) => { if (failCreate) throw new Error('missing permission'); const made = channel(String(800 + channels.size), data.name, data.type); channels.set(made.id, made); calls.created.push(`channel:${data.name}`); return made; } },
     emojis: { cache: Object.assign(new Map(), { find: () => undefined }), create: async () => {} },
+    stickers: { cache: Object.assign(new Map(), { find: (fn) => [...stickerStore.values()].find(fn) }), create: async (data) => { stickerStore.set(data.name, { name: data.name }); calls.created.push(`sticker:${data.name}`); } },
+    autoModerationRules: { cache: Object.assign(new Map(), { find: (fn) => [...ruleStore.values()].find(fn) }), create: async (data) => { ruleStore.set(data.name, { name: data.name, edit: async () => {} }); calls.created.push(`automod:${data.name}`); } },
     edit: async () => {},
   };
   roles.set(guild.id, role(guild.id, '@everyone'));
@@ -41,6 +45,8 @@ const snapshot = {
   roles: [{ id: '100000000000000001', name: '@everyone', position: 0 }, { id: 'r-1', name: 'Mods', position: 1 }, { id: 'r-2', name: 'Members', position: 2 }],
   channels: [{ id: 'c-1', name: 'general', type: 0, position: 0 }, { id: 'c-2', name: 'rules', type: 0, position: 1 }, { id: 'c-3', name: 'voice', type: 2, position: 2 }],
   emojis: [],
+  stickers: [{ name: 'wave', url: 'https://cdn.example/wave.png', format: 1, tags: 'wave' }, { name: 'lottie', url: 'https://cdn.example/l.json', format: 3, tags: 'x' }],
+  automod: [{ name: 'No links', eventType: 1, triggerType: 1, triggerMetadata: { keywordFilter: ['http'] }, actions: [{ type: 1, metadata: {} }, { type: 2, metadata: { channelId: 'c-1' } }], enabled: true, exemptRoles: ['r-1'], exemptChannels: [] }],
 };
 
 (async () => {
@@ -53,12 +59,18 @@ const snapshot = {
   assert.deepEqual(replace.deleteRoles, ['old-role']);
   assert.equal(calls.created.length + calls.deleted.length, 0, 'planning touches nothing');
 
+  // The fuller backup: stickers that can be uploaded again and AutoMod rules, counted and restored.
+  assert.deepEqual([merge.stickers.create, merge.stickers.skip, merge.automod.create], [1, 1, 1], 'the plan counts stickers (not the Lottie ones) and rules');
+  assert.equal(merge.steps, 3 + 1 + 3 + 1 + 0 + 2 + 1, 'every step is counted');
+
   // Progress reaches the end, and what is deleted is only what was said.
   const steps = [];
   const done = await restoreBackup(guild, snapshot, { mode: 'replace', keepChannelIds: ['c-here'], onProgress: (step) => steps.push(step) });
   assert.equal(steps.at(-1).done, steps.at(-1).total, 'the progress ends complete');
   assert.ok(steps.every((step, i) => i === 0 || step.done === steps[i - 1].done + 1), 'one step at a time');
   assert.deepEqual(calls.deleted.sort(), ['channel:old-channel', 'role:old-role']);
+  assert.ok(calls.created.includes('sticker:wave') && calls.created.includes('automod:No links'), 'the sticker and the rule are put back');
+  assert.equal(done.stickers.skipped, 1, 'a sticker that cannot be uploaded is skipped, not failed');
   assert.equal(done.cancelled, false);
 
   // Stopped half way: it keeps what it did, deletes nothing.
