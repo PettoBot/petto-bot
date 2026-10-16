@@ -79,6 +79,85 @@ function englishLeft(payload, lang = null) {
   return [...found];
 }
 
+
+const IS_V2 = 1 << 15;
+/** What Discord would refuse in a payload (a message, a card, a row or a list of them): the limits of its components, texts and embeds. */
+function limitProblems(payload) {
+  const out = [];
+  const json = JSON.parse(JSON.stringify(payload));
+  const nodes = Array.isArray(json) ? json : [json];
+  const ids = new Set();
+  let components = 0;
+  let componentText = 0;
+  const over = (label, value, max) => { if (typeof value === 'string' && [...value].length > max) out.push(`${label} has ${[...value].length} characters (the limit is ${max})`); };
+  const component = (node, inRow = false) => {
+    components += 1;
+    if (node.custom_id !== undefined) {
+      over('a custom id', node.custom_id, 100);
+      if (ids.has(node.custom_id)) out.push(`the custom id "${node.custom_id}" is used twice`);
+      ids.add(node.custom_id);
+    }
+    if (node.type === 1) {
+      const children = node.components ?? [];
+      const selects = children.filter((c) => [3, 5, 6, 7, 8].includes(c.type)).length;
+      if (!children.length || children.length > 5) out.push(`an action row has ${children.length} components (1 to 5)`);
+      if (selects && children.length > 1) out.push('a menu shares its row with another component');
+      children.forEach((child) => component(child, true));
+    } else if (node.type === 2) {
+      if (!inRow && !node.accessory_of_section) { /* a button can also be the accessory of a section */ }
+      over(`the button "${node.label}"`, node.label, 80);
+      if (node.style === 5) { if (!node.url) out.push(`the link button "${node.label}" has no url`); }
+      else if (!node.custom_id) out.push(`the button "${node.label ?? ''}" has no custom id`);
+      if (!node.label && !node.emoji) out.push('a button has neither a label nor an emoji');
+    } else if (node.type === 3) {
+      over('a menu placeholder', node.placeholder, 150);
+      const options = node.options ?? [];
+      if (!options.length || options.length > 25) out.push(`a menu has ${options.length} options (1 to 25)`);
+      for (const option of options) { over(`the option "${option.label}"`, option.label, 100); over('an option value', option.value, 100); over(`the description of "${option.label}"`, option.description, 100); }
+    } else if (node.type === 10) {
+      componentText += [...(node.content ?? '')].length;
+      if (!String(node.content ?? '').trim()) out.push('a text display is empty');
+    } else if (node.type === 9) {
+      const children = node.components ?? [];
+      if (!children.length || children.length > 3) out.push(`a section has ${children.length} texts (1 to 3)`);
+      if (!node.accessory) out.push('a section has no accessory');
+      children.forEach((child) => component(child));
+      if (node.accessory) component(node.accessory);
+    } else if (node.type === 17) {
+      (node.components ?? []).forEach((child) => component(child));
+    } else if (node.type === 12) {
+      const items = node.items ?? [];
+      if (!items.length || items.length > 10) out.push(`a media gallery has ${items.length} items (1 to 10)`);
+    }
+  };
+  const embed = (node) => {
+    over('an embed title', node.title, 256);
+    over('an embed description', node.description, 4096);
+    over('an embed footer', node.footer?.text, 2048);
+    over('an embed author', node.author?.name, 256);
+    const fields = node.fields ?? [];
+    if (fields.length > 25) out.push(`an embed has ${fields.length} fields (the limit is 25)`);
+    for (const field of fields) { over(`the field "${field.name}"`, field.name, 256); over(`the value of "${field.name}"`, field.value, 1024); if (!String(field.name ?? '').trim() || !String(field.value ?? '').trim()) out.push('an embed field is empty'); }
+    const total = [node.title, node.description, node.footer?.text, node.author?.name, ...fields.flatMap((f) => [f.name, f.value])].reduce((sum, text) => sum + [...(text ?? '')].length, 0);
+    if (total > 6000) out.push(`an embed has ${total} characters (the limit is 6000)`);
+  };
+  let v2 = false;
+  for (const node of nodes) {
+    if (!node || typeof node !== 'object') continue;
+    if (node.flags !== undefined && (Number(node.flags) & IS_V2)) v2 = true;
+    if (node.type !== undefined) component(node);
+    else if (Array.isArray(node.components)) node.components.forEach((child) => component(child));
+    if (Array.isArray(node.embeds)) { if (node.embeds.length > 10) out.push(`${node.embeds.length} embeds (the limit is 10)`); node.embeds.forEach(embed); }
+    over('the message content', node.content, 2000);
+    if (node.type === undefined && !node.components && !node.embeds && (node.title || node.description || node.fields)) embed(node);
+  }
+  const topRows = nodes.flatMap((n) => (n?.type === 1 ? [n] : Array.isArray(n?.components) ? n.components.filter((c) => c.type === 1) : []));
+  if (!v2 && !nodes.some((n) => n?.type === 17) && topRows.length > 5) out.push(`${topRows.length} action rows (the limit is 5)`);
+  if (components > 40 && (v2 || nodes.some((n) => n?.type === 17))) out.push(`${components} components (the limit is 40)`);
+  if (componentText > 4000) out.push(`${componentText} characters of text in components (the limit is 4000)`);
+  return out;
+}
+
 const guild = { id: '111111111111111111', name: 'Servidor', iconURL: () => null, members: { me: { id: 'bot' } }, client: { user: { id: 'bot' } } };
 const drawn = []; // [name, lang, payload]
 function draw(name, build) {
@@ -293,6 +372,16 @@ function draw(name, build) {
     if (left.length) problems.push(`${name} [${lang}]: ${left.join(', ')}  <- ${texts(payload).join(' | ').slice(0, 400)}`);
   }
   assert.deepEqual(problems, [], `English words left in translated panels:\n${problems.join('\n')}`);
+
+  // Every panel, in every language, is something Discord accepts: the limits of components, texts and embeds, so a long translation or a
+  // server's own text never makes a message fail to send.
+  const limits = [];
+  for (const [name, lang, payload] of drawn) for (const problem of limitProblems(payload)) limits.push(`${name} [${lang}]: ${problem}`);
+  assert.deepEqual(limits, [], `Panels that Discord would refuse:\n${limits.join('\n')}`);
+  // The check itself sees what it is for: too many buttons in a row, a long label, a repeated id and an overfull embed.
+  const bad = { type: 1, components: Array.from({ length: 6 }, () => ({ type: 2, style: 1, custom_id: 'same', label: 'x'.repeat(81) })) };
+  assert.ok(limitProblems(bad).length >= 3, 'a row with 6 buttons, long labels and one id is refused');
+  assert.ok(limitProblems({ embeds: [{ description: 'x'.repeat(4097) }] }).length === 1, 'an embed description over 4096 is refused');
   // The check reads these cards for real: their English drawings are full of the listed words.
   for (const name of ['votes card', 'partner stats', 'reviews card', 'uploads stats', 'request card (open)', 'counting settings card', 'ticket closed DM', 'confession review card (pending)', 'suggestion card', 'help main menu', 'reaction role buttons']) {
     const english = drawn.find(([drawnName, lang]) => drawnName === name && lang === 'en');
