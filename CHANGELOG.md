@@ -4,6 +4,10 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- **Backups are under maintenance.** For now `!backup` and its panel answer that backups are under maintenance, and the scheduled backups are not taken. The saved backups and the schedules are kept as they are. Setting `BACKUPS_MAINTENANCE=off` brings it all back. The dashboard page of backups shows the same notice.
+
 ### Added
 
 - **More of what happens in a server is logged, in the categories that already exist (no new ones to set up).**

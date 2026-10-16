@@ -52,6 +52,7 @@ module.exports = {
   'backup.restore.invalid': '{emoji} Use a valid server backup number and choose `merge` or `replace`.',
   'backup.restore.typeConfirm': '{emoji} Type `CONFIRM` exactly to authorize the restore.',
   'backup.notYours': '{emoji} This backup panel belongs to someone else.',
+  'backup.maintenance': '{emoji} Backups are under maintenance for now and cannot be used. Your saved backups are kept, and they will come back later.',
   'backup.audit.title': '### Backup activity',
   'backup.audit.backupNumber': 'backup #{number}',
   'backup.audit.empty': '{emoji} No backup activity has been recorded yet.',

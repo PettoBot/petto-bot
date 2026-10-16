@@ -2,6 +2,7 @@ const { MessageFlags } = require('discord.js');
 const backupCommand = require('../commands/config/backup');
 const { EMOJI } = require('../utils/emojis');
 const { t, languageOf } = require('../i18n');
+const { backupsUnderMaintenance } = require('../utils/maintenance');
 
 const V2_EPHEMERAL = MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral;
 
@@ -18,6 +19,7 @@ function ownsPanel(interaction, context) {
 }
 
 async function handleSelect(interaction) {
+  if (backupsUnderMaintenance()) return backupCommand.replyMaintenance(interaction);
   const lang = await languageOf(interaction);
   const context = parseContext(interaction.customId, backupCommand.BACKUP_MENU_PREFIX);
   if (!ownsPanel(interaction, context)) {
@@ -44,6 +46,7 @@ async function handleSelect(interaction) {
 }
 
 async function handleScheduleModal(interaction) {
+  if (backupsUnderMaintenance()) return backupCommand.replyMaintenance(interaction);
   const lang = await languageOf(interaction);
   const context = parseContext(interaction.customId, 'backup_schedule_modal');
   if (!ownsPanel(interaction, context)) {
@@ -62,6 +65,7 @@ async function handleScheduleModal(interaction) {
 }
 
 async function handleRestoreModal(interaction) {
+  if (backupsUnderMaintenance()) return backupCommand.replyMaintenance(interaction);
   const lang = await languageOf(interaction);
   const context = parseContext(interaction.customId, 'backup_restore_modal');
   if (!ownsPanel(interaction, context)) {
