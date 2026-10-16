@@ -269,6 +269,21 @@ async function clearNotification(guildId, source) {
   return rowCount > 0;
 }
 
+// ---- Settings of the rules
+
+const OFFLINE_MODES = ['keep', 'remove'];
+async function getSettings(guildId) {
+  const { rows } = await pool().query('select offline_mode from identity_settings where guild_id = $1', [String(guildId)]);
+  return { offlineMode: OFFLINE_MODES.includes(rows[0]?.offline_mode) ? rows[0].offline_mode : 'keep' };
+}
+async function setSettings(guildId, { offlineMode }) {
+  if (!OFFLINE_MODES.includes(offlineMode)) throw new Error('offline_mode must be keep or remove.'); // i18n-ignore: internal error, callers check first
+  await pool().query(`
+    insert into identity_settings (guild_id, offline_mode, updated_at) values ($1,$2,now())
+    on conflict (guild_id) do update set offline_mode = excluded.offline_mode, updated_at = now()`,
+    [String(guildId), offlineMode]);
+}
+
 async function getLogConfig(guildId) {
   const { rows } = await pool().query('select channel_id, events, embeds from identity_logs where guild_id = $1', [String(guildId)]);
   return rows[0] ? { channelId: rows[0].channel_id, events: rows[0].events ?? {}, embeds: rows[0].embeds ?? {} } : null;
@@ -287,5 +302,5 @@ async function clearLogConfig(guildId) {
 module.exports = {
   newId, listVanityRules, listGuildTagRules, hasActiveRules, managedRoleIds, createRule, updateRule, deleteRule,
   invalidateStaleGrants, managedRolesOfMember, recordGrant, activeCount, getRoleState, observeRolePresence, markBotAdded, markBotRemoved, recordAudit,
-  getNotification, setNotification, clearNotification, getLogConfig, setLogConfig, clearLogConfig,
+  getSettings, setSettings, OFFLINE_MODES, getNotification, setNotification, clearNotification, getLogConfig, setLogConfig, clearLogConfig,
 };

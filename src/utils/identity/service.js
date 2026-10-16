@@ -50,6 +50,8 @@ function memberIdentity(member, { primary } = {}) {
     unknownSources: new Set(['custom_status']),
     primaryGuild: primary !== undefined ? primary : primaryGuildOf(user),
     roleIds: new Set(member.roles.cache.keys()),
+    // Discord itself said they are offline (a presence with that status), as opposed to the bot just having no presence for them.
+    knownOffline: member.presence?.status === 'offline',
   };
   if (member.presence && member.presence.status !== 'offline') {
     identity.customStatus = customStatusOf(member.presence);
@@ -73,6 +75,20 @@ function roleClient(guild, lang = currentLanguage()) {
   };
 }
 
+const SETTINGS_TTL_MS = 30_000;
+const settingsCache = new Map();
+/** The settings of the rules of a server, kept for a few seconds so a burst of presence changes does not ask the database each time. */
+async function settingsOf(guildId) {
+  const hit = settingsCache.get(guildId);
+  if (hit && hit.until > Date.now()) return hit.value;
+  let value = { offlineMode: 'keep' };
+  try { value = await db.getSettings(guildId); } catch { /* the default is the safe one */ }
+  settingsCache.set(guildId, { value, until: Date.now() + SETTINGS_TTL_MS });
+  if (settingsCache.size > 2_000) settingsCache.delete(settingsCache.keys().next().value);
+  return value;
+}
+const forgetSettings = (guildId) => settingsCache.delete(guildId);
+
 /** Which sources to evaluate: `vanity`, `guildtag`, or both. Rules are read once per call. */
 async function loadRules(guildId, source) {
   const [vanity, guildtag] = await Promise.all([
@@ -93,8 +109,10 @@ async function evaluateMember(member, { source = null, rules = null, primary } =
       if (!active && !(await db.hasActiveRules(guildId))) return [];
       // A change of a user reaches every server they share with Petto, so each server's language is looked up here.
       const lang = await guildLanguage(guildId);
+      const settings = await settingsOf(guildId);
       return evaluate(memberIdentity(member, { primary }), loaded, {
         lang,
+        offlineMode: settings.offlineMode,
         roles: roleClient(member.guild, lang),
         onAction: (action) => emitAction(member.guild, action, lang).catch((error) => logger.warn({ guildId }, `Identity log failed: ${error.message}`)),
         onNotify: (action) => emitNotification(member.guild, member, action, lang).catch((error) => logger.warn({ guildId }, `Identity notification failed: ${error.message}`)),
@@ -106,4 +124,4 @@ async function evaluateMember(member, { source = null, rules = null, primary } =
   }
 }
 
-module.exports = { evaluateMember, memberIdentity, primaryGuildOf, customStatusOf, loadRules, withMemberLock, roleClient };
+module.exports = { forgetSettings, settingsOf, evaluateMember, memberIdentity, primaryGuildOf, customStatusOf, loadRules, withMemberLock, roleClient };

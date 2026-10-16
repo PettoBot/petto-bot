@@ -48,7 +48,7 @@ const bad = (interaction, text) => reply(interaction, text, COLORS.RED);
 function addSubcommands(builder, kind) {
   const vanity = kind === 'vanity';
   const thing = vanity ? 'Vanity' : 'Server Tag'; // i18n-ignore: builder descriptions stay in English
-  return builder
+  const built = builder
     .addSubcommand((s) => {
       // i18n-ignore: builder description
       s.setName('add').setDescription(`Create a ${thing} rule that adds or removes a role.`)
@@ -91,6 +91,13 @@ function addSubcommands(builder, kind) {
       .addStringOption((o) => o.setName('embed').setDescription('A saved embed from Embeds (leave empty for the simple message)').setMaxLength(64).setAutocomplete(true))
       .addStringOption((o) => o.setName('ping').setDescription('Ping the member (default) or not').addChoices(...PING_CHOICES)))
     .addSubcommand((s) => s.setName('notify-off').setDescription(`Stop the ${thing} thank-you message.`)); // i18n-ignore: builder description
+  // Only the Custom Status is hidden when a member is offline, so only Vanity has this setting.
+  // i18n-ignore: builder description (the next lines too)
+  if (vanity) {
+    built.addSubcommand((s) => s.setName('offline').setDescription('What to do with a role when its member goes offline (Discord then hides their Custom Status).')
+      .addStringOption((o) => o.setName('mode').setDescription('Keep the role, or take it away (leave empty to see what is set)').addChoices({ name: 'Keep the role (default)', value: 'keep' }, { name: 'Take the role away', value: 'remove' })));
+  }
+  return built;
 }
 
 /** The saved embeds of the server that match what is being typed in the `embed` option: the list that Discord shows under it. */
@@ -274,6 +281,20 @@ async function setNotify(interaction, kind, lang) {
   await ok(interaction, t(lang, `identity.notify.set.${kind}${embedName ? 'Embed' : ''}`, { channel: `${channel}`, name: embedName }));
 }
 
+/** What to do with a role when its member goes offline: shows the setting, or changes it. */
+async function setOffline(interaction, lang) {
+  const mode = interaction.options.getString('mode');
+  const { forgetSettings } = require('./service');
+  if (!mode) {
+    const current = await db.getSettings(interaction.guild.id);
+    return reply(interaction, t(lang, `identity.offline.current.${current.offlineMode}`));
+  }
+  if (!db.OFFLINE_MODES.includes(mode)) return bad(interaction, t(lang, 'identity.offline.invalid'));
+  await db.setSettings(interaction.guild.id, { offlineMode: mode });
+  forgetSettings(interaction.guild.id);
+  await ok(interaction, t(lang, `identity.offline.set.${mode}`));
+}
+
 /** The handler of `!vanity` and `!guildtag`. */
 async function execute(interaction, kind) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
@@ -284,6 +305,7 @@ async function execute(interaction, kind) {
   if (sub === 'test') return testMember(interaction, kind, lang);
   if (sub === 'sync') return syncRules(interaction, kind, lang);
   if (sub === 'notify') return setNotify(interaction, kind, lang);
+  if (sub === 'offline') return setOffline(interaction, lang);
   if (sub === 'notify-off') {
     const removed = await db.clearNotification(interaction.guild.id, kind);
     return removed ? ok(interaction, t(lang, 'identity.notify.off')) : reply(interaction, t(lang, 'identity.notify.none'));

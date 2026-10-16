@@ -31,9 +31,9 @@ const isTextChannel = (channel) => channel && [ChannelType.GuildText, ChannelTyp
 const failure = (res, code, message) => res.status(STATUS[code] ?? 400).json({ ok: false, error: code, message });
 
 async function overview(guild, lang = 'en') {
-  const [vanity, guildtag, notifyVanity, notifyTag, log, templates] = await Promise.all([
+  const [vanity, guildtag, notifyVanity, notifyTag, log, templates, settings] = await Promise.all([
     db.listVanityRules(guild.id, { all: true }), db.listGuildTagRules(guild.id, { all: true }),
-    db.getNotification(guild.id, 'vanity'), db.getNotification(guild.id, 'guildtag'), db.getLogConfig(guild.id), listTemplates(guild.id),
+    db.getNotification(guild.id, 'vanity'), db.getNotification(guild.id, 'guildtag'), db.getLogConfig(guild.id), listTemplates(guild.id), db.getSettings(guild.id),
   ]);
   const notification = (entry) => ({ channel_id: entry?.channelId ?? '', embed: entry?.embedName ?? '', ping: entry?.ping ?? 'user' });
   const group = listVariables(lang).find((entry) => entry.id === 'identity');
@@ -41,6 +41,7 @@ async function overview(guild, lang = 'en') {
     ok: true,
     guild: { id: guild.id, name: guild.name, icon: guild.icon },
     rules: { vanity, guildtag },
+    settings: { offline_mode: settings.offlineMode },
     notifications: { vanity: notification(notifyVanity), guildtag: notification(notifyTag) },
     logs: { channel_id: log?.channelId ?? '', events: LOG_EVENTS.filter((event) => log?.events?.[event]), embeds: log?.embeds ?? {} },
     embeds: templates.map((template) => template.name),
@@ -50,7 +51,7 @@ async function overview(guild, lang = 'en') {
       return { id: role.id, name: role.name, color: role.color, position: role.position, assignable: !problem, ...(problem ? { reason: problem.code === 'role_managed' ? 'managed' : 'above_bot' } : {}) };
     }),
     channels: [...guild.channels.cache.values()].filter(isTextChannel).sort((a, b) => a.rawPosition - b.rawPosition).map((channel) => ({ id: channel.id, name: channel.name, position: channel.rawPosition })),
-    options: { vanity_sources: VANITY_SOURCES, comparisons: COMPARISONS, conditions: CONDITIONS, actions: ACTIONS, log_events: LOG_EVENTS, ping_modes: ['user', 'none'] },
+    options: { vanity_sources: VANITY_SOURCES, comparisons: COMPARISONS, conditions: CONDITIONS, actions: ACTIONS, log_events: LOG_EVENTS, ping_modes: ['user', 'none'], offline_modes: db.OFFLINE_MODES },
   };
 }
 
@@ -82,6 +83,12 @@ async function act(guild, member, body, lang = currentLanguage()) {
     const embedName = body.embed && body.embed !== 'default' ? String(body.embed).toLowerCase() : '';
     if (embedName && !(await getTemplate(guild.id, embedName))) return { ok: false, code: 'embed_not_found', message: t(lang, 'web.identity.embedMissing') };
     await db.setNotification(guild.id, source, { channelId: channel.id, embedName, ping: body.ping === 'none' ? 'none' : 'user' });
+    return { ok: true };
+  }
+  if (action === 'settings_set') {
+    if (!db.OFFLINE_MODES.includes(body.offline_mode)) return { ok: false, code: 'invalid_action', message: t(lang, 'identity.offline.invalid') };
+    await db.setSettings(guild.id, { offlineMode: body.offline_mode });
+    require('../utils/identity/service').forgetSettings(guild.id);
     return { ok: true };
   }
   if (action === 'logs_set') {

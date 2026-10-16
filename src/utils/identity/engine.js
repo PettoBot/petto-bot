@@ -3,13 +3,15 @@
 //  - a role stays while at least one add rule matches and no remove rule does (a remove rule wins);
 //  - the bot only takes a role away when its own record says the bot put it there, so a role given by hand is never touched;
 //  - bots are never evaluated;
-//  - a source that could not be read right now (Custom Status in a sweep without presence) leaves its grants as they are.
+//  - a source that could not be read right now (Custom Status of a member who is offline or in a sweep without presence) leaves its grants as they are,
+//    unless the server chose `offlineMode: 'remove'` and the member is known to have just gone offline: then the status counts as empty;
+//  - a role that several rules manage is one role: it is added or taken away once and the member is thanked once.
 const db = require('../../db/identity');
 const { matchVanity, matchGuildTag, vanityValue, vanitySourceKnown } = require('./compare');
 const { t, currentLanguage } = require('../../i18n');
 
 /** `rules.vanity` / `rules.guildtag`: `null` means "this source was not evaluated"; an empty list means "evaluated, no active rules", which clears its old grants. */
-async function evaluate(member, rules, { roles, onAction, onNotify, lang = currentLanguage() } = {}) {
+async function evaluate(member, rules, { roles, onAction, onNotify, offlineMode = 'keep', lang = currentLanguage() } = {}) {
   if (member.isBot) return [];
   if (!roles) throw new Error('The identity engine needs a role client.'); // i18n-ignore: internal error, never shown
   const { vanity, guildtag } = rules;
@@ -46,17 +48,21 @@ async function evaluate(member, rules, { roles, onAction, onNotify, lang = curre
   for (const rule of vanity ?? []) {
     if (!rule.enabled || !rule.role_id) continue;
     roleIds.add(rule.role_id);
-    // Unknown is not empty: until the value is known, the rule's grant is left as it was.
-    if (!vanitySourceKnown(member, rule.source)) continue;
+    // Unknown is not empty: until the value is known, the rule's grant is left as it was. The one exception is a server that asked for the
+    // role to go when the member goes offline, and only for a member that Discord has just said is offline (not for one the bot simply has
+    // no presence for, which would strip the roles of everyone in a sweep).
+    const known = vanitySourceKnown(member, rule.source);
+    const wentOffline = !known && rule.source === 'custom_status' && offlineMode === 'remove' && member.knownOffline === true;
+    if (!known && !wentOffline) continue;
     let matched = false;
     let evaluationError = null;
-    try { matched = matchVanity(rule, member, lang); } catch (error) { evaluationError = error.message; }
-    const value = vanityValue(member, rule.source);
+    if (!wentOffline) { try { matched = matchVanity(rule, member, lang); } catch (error) { evaluationError = error.message; } }
+    const value = wentOffline ? '' : vanityValue(member, rule.source);
     const context = {
       guildId: member.guildId, userId: member.userId, userName: member.username, userDisplayName: member.displayName, userAvatar: member.avatarUrl,
       roleId: rule.role_id, ruleId: rule.id, ruleName: rule.name, ruleCondition: rule.comparison, matchField: rule.source, matchedValue: value,
       source: 'vanity', action: rule.action, value: rule.word,
-      reason: t(lang, matched ? 'identity.reason.matched' : 'identity.reason.unmatched', { condition: rule.source, value }),
+      reason: wentOffline ? t(lang, 'identity.reason.offline') : t(lang, matched ? 'identity.reason.matched' : 'identity.reason.unmatched', { condition: rule.source, value }),
     };
     await track(rule, 'vanity', matched, context, evaluationError);
   }
@@ -82,7 +88,8 @@ async function evaluate(member, rules, { roles, onAction, onNotify, lang = curre
     guildId: member.guildId, userId: member.userId, userName: member.username, userDisplayName: member.displayName, userAvatar: member.avatarUrl,
     roleId, action, reason: t(lang, 'identity.reason.unjustified'),
   };
-  const notify = (contexts) => { for (const context of contexts ?? []) onNotify?.({ ...context, action: 'add_role', result: 'completed', error: null }); };
+  // One thank-you for the role, even when several rules that manage it match at once.
+  const notify = (contexts) => { const [context] = contexts ?? []; if (context) onNotify?.({ ...context, action: 'add_role', result: 'completed', error: null }); };
   const audit = (roleId, action, result, suffix, error) => ({
     eventType: `identity_role_${action}`, dedupeKey: `${suffix}:${member.guildId}:${member.userId}:${roleId}${error ? ':error' : ''}`,
     guildId: member.guildId, userId: member.userId, roleId, action, result, error: error?.message, metadata: { source: 'shared-role-ledger' },
