@@ -145,6 +145,15 @@ async function countThisSecond(name) {
   }, 0);
 }
 
+/** Adds one to a counter and keeps it `ttlMs` more. Answers the new value, or 0 without Redis. */
+async function incr(key, ttlMs) {
+  return run(async (redis) => {
+    const value = await redis.incr(PREFIX + key);
+    if (ttlMs) await redis.expire(PREFIX + key, Math.max(1, Math.ceil(ttlMs / 1000)));
+    return Number(value) || 0;
+  }, 0);
+}
+
 /** Several JSON values in one round trip: a Map of the keys that are there (none without Redis). */
 async function getJsonMany(keys) {
   const found = new Map();
@@ -177,4 +186,4 @@ function subscribe(channel, handler) {
   return true;
 }
 
-module.exports = { PREFIX, enabled, start, available, getJson, getJsonMany, setJson, del, claim, countThisSecond, publish, subscribe };
+module.exports = { PREFIX, enabled, start, available, getJson, getJsonMany, setJson, del, claim, countThisSecond, incr, publish, subscribe };
