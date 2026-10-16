@@ -96,6 +96,7 @@ module.exports = {
   'web.api.confessions.pickChannel': 'Pick a channel for the panel first.',
   'web.api.confessions.failed': 'The panel could not be posted. Try again.',
   'web.api.verification.failed': 'The verification could not be changed. Try again.',
+  'web.api.resync.failed': 'The server data could not be updated. Try again.',
   'web.api.quests.testing': 'Quest alerts are in testing.',
   'web.api.quests.methodFailed': 'The method could not be sent. Try again.',
   'web.identity.created': 'Members are checked as they change. Use the sync command to apply it to everyone now.',
