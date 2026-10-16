@@ -35,7 +35,7 @@ function customStatusOf(presence) {
  * them. Without one, or when the member is offline or invisible (Discord sends no activities for them, so their Custom Status
  * is not "empty", it is hidden), it is marked unknown and the rules that read it leave their grants as they were.
  */
-function memberIdentity(member, { primary } = {}) {
+function memberIdentity(member, { primary, presenceComplete = false } = {}) {
   const user = member.user;
   const identity = {
     guildId: member.guild.id,
@@ -50,8 +50,9 @@ function memberIdentity(member, { primary } = {}) {
     unknownSources: new Set(['custom_status']),
     primaryGuild: primary !== undefined ? primary : primaryGuildOf(user),
     roleIds: new Set(member.roles.cache.keys()),
-    // Discord itself said they are offline (a presence with that status), as opposed to the bot just having no presence for them.
-    knownOffline: member.presence?.status === 'offline',
+    // Discord itself said they are offline: a presence with that status, or no presence in an answer of Discord that carried every presence
+    // (a sweep that asked for them). Not the bot simply having no presence for them, which is not knowing.
+    knownOffline: member.presence?.status === 'offline' || (presenceComplete && !member.presence),
   };
   if (member.presence && member.presence.status !== 'offline') {
     identity.customStatus = customStatusOf(member.presence);
@@ -99,7 +100,7 @@ async function loadRules(guildId, source) {
 }
 
 /** Evaluates one member for the chosen source (both by default). Errors are logged, never thrown, so an event handler cannot break on it. */
-async function evaluateMember(member, { source = null, rules = null, primary } = {}) {
+async function evaluateMember(member, { source = null, rules = null, primary, presenceComplete = false } = {}) {
   if (!member || member.user?.bot) return [];
   const guildId = member.guild.id;
   try {
@@ -110,7 +111,7 @@ async function evaluateMember(member, { source = null, rules = null, primary } =
       // A change of a user reaches every server they share with Petto, so each server's language is looked up here.
       const lang = await guildLanguage(guildId);
       const settings = await settingsOf(guildId);
-      return evaluate(memberIdentity(member, { primary }), loaded, {
+      return evaluate(memberIdentity(member, { primary, presenceComplete }), loaded, {
         lang,
         offlineMode: settings.offlineMode,
         roles: roleClient(member.guild, lang),

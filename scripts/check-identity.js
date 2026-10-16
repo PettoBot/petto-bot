@@ -63,8 +63,11 @@ const ledger = {
   async recordAudit(audit) { audits.push(audit); },
 };
 const savedRules = { vanity: [], guildtag: [] };
+let offlineModeSetting = 'remove';
 stub('src/db/identity.js', {
   ...ledger,
+  getSettings: async () => ({ offlineMode: offlineModeSetting }),
+  DEFAULT_OFFLINE_MODE: 'remove',
   listVanityRules: async () => savedRules.vanity,
   listGuildTagRules: async () => savedRules.guildtag,
   createRule: async (source, guildId, rule) => { savedRules[source].push({ id: `id${savedRules[source].length}`, ...rule }); },
@@ -200,6 +203,44 @@ function roleClient(log) {
   calls = [];
   await evaluate(person({ customStatus: 'something else' }), { vanity: [vrule()], guildtag: null }, options(calls));
   assert.deepEqual(calls, [], 'back with another status: the role stays off');
+
+  // ---- Who counts as offline: what Discord said, not what the bot happens to lack
+  const guildOfMember = { id: 'g', roles: { cache: new Map() } };
+  const asMember = (presence) => ({ guild: guildOfMember, user: { id: 'u', username: 'liam', bot: false }, roles: { cache: new Map() }, nickname: null, displayName: 'Liam', presence });
+  assert.equal(memberIdentity(asMember({ status: 'offline', activities: [] })).knownOffline, true, 'a presence that says offline');
+  assert.equal(memberIdentity(asMember(null)).knownOffline, false, 'no presence in the cache is not knowing (a start, a missing intent)');
+  assert.equal(memberIdentity(asMember(null), { presenceComplete: true }).knownOffline, true, 'no presence in an answer of Discord that carried all of them is offline');
+  assert.equal(memberIdentity(asMember({ status: 'online', activities: [] }), { presenceComplete: true }).knownOffline, false, 'an online member is not');
+  assert.equal(memberIdentity(asMember({ status: 'online', activities: [] }), { presenceComplete: true }).unknownSources.has('custom_status'), false, 'and their status is known');
+
+  // ---- The sync follows the same rule: whoever is not in Discord's answer (with the presences) is offline
+  {
+    const { syncGuild } = require('../src/utils/identity/sync');
+    const { forgetSettings } = require('../src/utils/identity/service');
+    const changes = [];
+    const syncGuildOf = () => {
+      const guild = { id: 'g', memberCount: 2, members: { cache: new Map(), addRole: async ({ user, role }) => { changes.push(`add:${user}:${role}`); }, removeRole: async ({ user, role }) => { changes.push(`remove:${user}:${role}`); }, fetch: async () => members } };
+      const make = (id, presence, roles) => ({ id, guild, user: { id, username: id, bot: false }, roles: { cache: new Map(roles.map((role) => [role, {}])) }, nickname: null, displayName: id, presence });
+      const members = new Map([['on', make('on', { status: 'online', activities: [{ type: 4, state: 'cinnamochi' }] }, ['role1'])], ['off', make('off', null, ['role1'])]]);
+      return guild;
+    };
+    // Both were given the role by the bot while they were online.
+    reset();
+    savedRules.vanity = [vrule()];
+    for (const user of ['on', 'off']) await evaluate(person({ userId: user, customStatus: 'cinnamochi' }), { vanity: [vrule()], guildtag: null }, options([]));
+    forgetSettings('g'); offlineModeSetting = 'remove';
+    let result = await syncGuild(syncGuildOf());
+    assert.deepEqual(changes, ['remove:off:role1'], 'a sweep takes the role from the member who is offline and leaves the one who is online');
+    assert.equal(result.removed, 1);
+    // With `keep` the sweep leaves everybody as they were.
+    reset(); changes.length = 0;
+    for (const user of ['on', 'off']) await evaluate(person({ userId: user, customStatus: 'cinnamochi' }), { vanity: [vrule()], guildtag: null }, options([]));
+    forgetSettings('g'); offlineModeSetting = 'keep';
+    await syncGuild(syncGuildOf());
+    assert.deepEqual(changes, [], 'keep: nothing is taken away from an offline member');
+    forgetSettings('g'); offlineModeSetting = 'remove';
+    savedRules.vanity = [];
+  }
 
   // ---- Several rules for one role are one role
   reset(); calls = [];
@@ -455,6 +496,14 @@ function roleClient(log) {
 
   // ---- Members for a sync: the ones Petto has, and Discord's limit on asking for them
   const { loadMembers, SyncError } = require('../src/utils/identity/sync');
+  // A server that wants offline members checked asks Discord even when the cache looks complete.
+  let askedFresh = 0;
+  const nearlyAll = { memberCount: 4, members: { cache: new Map(['a', 'b', 'c', 'd'].map((id) => [id, { id }])), fetch: async () => { askedFresh += 1; return new Map([['a', { id: 'a' }]]); } } };
+  assert.equal((await loadMembers(nearlyAll)).from, 'cache', 'by default the cache is used when it has nearly everyone');
+  assert.equal(askedFresh, 0);
+  assert.equal((await loadMembers(nearlyAll, { fresh: true })).from, 'discord', 'fresh: Discord is asked');
+  assert.equal(askedFresh, 1);
+
   const rateLimit = (seconds) => Object.assign(new Error(`Request with opcode 8 was rate limited. Retry after ${seconds} seconds.`), { data: { retry_after: seconds } });
   const guildOf = (cached, memberCount, fetch) => ({ id: 'gm', memberCount, members: { cache: new Map(cached.map((id) => [id, { id }])), fetch } });
   let asked = 0;
