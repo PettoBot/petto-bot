@@ -6,6 +6,17 @@ All notable changes to Petto are documented here.
 
 ### Added
 
+- **More of what happens in a server is logged, in the categories that already exist (no new ones to set up).**
+  - `messages`: votes added or taken back in a poll, and a message published to the servers that follow an announcement channel.
+  - `invites`: an invite link written in a message.
+  - `channels`: the voice region, video quality and status of a voice channel, and the defaults and tags of a forum.
+  - `server`: the boost progress bar, the invite and discovery backgrounds, the owner, the features, the widget and safety alert channels, who is interested in a scheduled event, and the changes of onboarding and the server guide.
+  - `emojis`: the roles that can use an emoji. `integrations`: the permissions of the commands of an app.
+  - `sanctions`: a case edited or deleted, all the cases of a member deleted, and a staff note added.
+  - Petto now asks Discord for the poll events (the `GuildMessagePolls` intent, which needs no switch in the Developer Portal).
+- **`!serverinfo` takes the ID of another server.** `!serverinfo 123456789012345678` tells about a server Petto is in, as long as you are a member of it.
+- **Access to the dashboard by role (needs `schema.sql`).** The `dash_access` table keeps which roles can open the dashboard of a server, all of it or some parts, to look or to change. The dashboard reads it.
+- **Logs: `!logs add` takes `all`.** `!logs add #channel all` sends every kind of event to that channel at once (the ones it already gets are kept), like the "everything to one channel" box of the dashboard.
 - **A language for each server: English, Spanish and Brazilian Portuguese.** Everything members and staff read can now be in English, Spanish (`es`, neutral Latin American) or Brazilian Portuguese (`pt-BR`): replies, cards, buttons, menus, forms, `!help` and the command descriptions it shows, usage cards and errors, default messages (welcome, level-up, giveaways, sanction DMs, bump, birthdays…), DMs a server sends (sanctions, transcripts, verification, giveaways — always in the server's language) and the server logs. English stays exactly as it was and is the default.
   - `!language` (alias `!lang`, Manage Server) shows the language of the server; `!language es`, `!language pt-BR` or `!language en` changes it at once. It is a prefix command only.
   - A server Petto joins for the first time starts in the language of its community (`guild.preferredLocale`: `es-ES`/`es-419` → Spanish, `pt-BR` → Portuguese, anything else → English). Servers Petto already knew keep English until they use `!language`.

@@ -244,6 +244,7 @@ module.exports = {
   'info.roles.sort.colored.menu': 'Só cargos com cor',
   'info.roles.sort.empty.menu': 'Só cargos sem membros',
   'info.serverinfo.verification.none': 'nenhuma',
+  'info.serverinfo.notFound': 'Esse servidor não existe, o Petto não está nele ou você não é membro.',
   'info.serverinfo.verification.low': 'baixa',
   'info.serverinfo.verification.medium': 'média',
   'info.serverinfo.verification.high': 'alta',

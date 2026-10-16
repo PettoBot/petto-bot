@@ -1,5 +1,7 @@
-const { SlashCommandBuilder, ChannelType } = require('discord.js');
+const { SlashCommandBuilder, ChannelType, MessageFlags } = require('discord.js');
 const { serverInfoPayload } = require('../../utils/serverInfoCard');
+const { noticePayload } = require('../../utils/infoCard');
+const { COLORS } = require('../../utils/colors');
 const { t, languageOf } = require('../../i18n');
 
 // The catalog key of each verification level, in Discord's order.
@@ -20,12 +22,26 @@ function premiumTierNumber(tier) {
 }
 
 module.exports = {
-  data: new SlashCommandBuilder().setName('serverinfo').setDescription('Shows information about this server.'),
+  data: new SlashCommandBuilder()
+    .setName('serverinfo')
+    .setDescription('Shows information about this server.')
+    .addStringOption((o) => o.setName('server').setDescription('ID of another server Petto is in').setRequired(false)),
   aliases: ['si', 'server'],
 
   async execute(interaction) {
     const lang = await languageOf(interaction);
-    const guild = interaction.guild;
+    // With an ID it tells about another server, but only one that Petto is in and the person is a member of.
+    const wanted = interaction.options.getString('server')?.trim();
+    let guild = interaction.guild;
+    if (wanted && wanted !== guild?.id) {
+      const other = /^\d{15,25}$/.test(wanted) ? interaction.client.guilds.cache.get(wanted) : null;
+      const member = other ? await other.members.fetch(interaction.user.id).catch(() => null) : null;
+      if (!member) {
+        await interaction.reply({ ...noticePayload(t(lang, 'info.serverinfo.notFound'), COLORS.RED), flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
+        return;
+      }
+      guild = other;
+    }
     // The server's description is not always in the cached copy of the server, so it is read fresh.
     const [owner, fresh] = await Promise.all([guild.fetchOwner().catch(() => null), (typeof guild.fetch === 'function' ? guild.fetch().catch(() => null) : null)]);
     const description = fresh?.description ?? guild.description ?? null;

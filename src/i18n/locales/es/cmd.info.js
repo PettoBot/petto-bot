@@ -72,6 +72,7 @@ module.exports = {
   'cmd.info.roleinfo.opt.role.desc': 'Rol',
   'cmd.info.roles.desc': 'Lista todos los roles de este servidor, una página a la vez.',
   'cmd.info.serverinfo.desc': 'Muestra información sobre este servidor.',
+  'cmd.info.serverinfo.opt.server.desc': 'ID de otro servidor donde está Petto',
   'cmd.info.snowflake.desc': 'Decodifica la fecha de creación que lleva cualquier ID de Discord.',
   'cmd.info.snowflake.opt.id.desc': 'Un ID de Discord (usuario, canal, rol, mensaje, ...)',
   'cmd.info.spotify.desc': 'Mira qué está escuchando un miembro en Spotify ahora mismo.',

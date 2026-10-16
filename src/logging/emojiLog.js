@@ -37,19 +37,35 @@ async function handleEmojiDelete(emoji, client) {
   });
 }
 
+/** The ids of the roles an emoji is limited to (none: everyone can use it). */
+const emojiRoleIds = (emoji) => [...(emoji.roles?.cache?.keys?.() ?? [])].sort();
+
 async function handleEmojiUpdate(oldEmoji, newEmoji, client) {
-  if (oldEmoji.name === newEmoji.name) return;
+  const renamed = oldEmoji.name !== newEmoji.name;
+  const before = emojiRoleIds(oldEmoji);
+  const after = emojiRoleIds(newEmoji);
+  const rolesChanged = before.join() !== after.join();
+  if (!renamed && !rolesChanged) return;
   const lang = await guildLanguage(newEmoji.guild.id);
   const mod = await fetchMod(newEmoji.guild, AuditLogEvent.EmojiUpdate, newEmoji.id);
-  const fields = [
-    { name: t(lang, 'logs.field.before'), value: `\`:${oldEmoji.name}:\``, inline: true },
-    { name: t(lang, 'logs.field.after'), value: `\`:${newEmoji.name}:\``, inline: true },
-  ];
+  const fields = [];
+  if (renamed) {
+    fields.push(
+      { name: t(lang, 'logs.field.before'), value: `\`:${oldEmoji.name}:\``, inline: true },
+      { name: t(lang, 'logs.field.after'), value: `\`:${newEmoji.name}:\``, inline: true },
+    );
+  } else {
+    fields.push({ name: t(lang, 'logs.field.emoji'), value: `\`:${newEmoji.name}:\``, inline: true });
+  }
+  if (rolesChanged) {
+    const list = (ids) => (ids.length ? ids.map((id) => `<@&${id}>`).join(' ') : t(lang, 'logs.emoji.everyone'));
+    fields.push({ name: t(lang, 'logs.emoji.roles'), value: `${list(before)} -> ${list(after)}`, inline: false });
+  }
   if (mod) fields.push({ name: t(lang, 'logs.field.by'), value: mod, inline: true });
 
   await sendLog(client, newEmoji.guild.id, 'emojis', {
-    author: { name: t(lang, 'logs.emoji.renamed.title') },
-    description: t(lang, 'logs.emoji.renamed.description'),
+    author: { name: t(lang, renamed ? 'logs.emoji.renamed.title' : 'logs.emoji.rolesChanged.title') },
+    description: t(lang, renamed ? 'logs.emoji.renamed.description' : 'logs.emoji.rolesChanged.description'),
     fields,
     footer: { text: t(lang, 'logs.emoji.footer', { id: newEmoji.id }) },
     timestamp: new Date().toISOString(),

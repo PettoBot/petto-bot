@@ -167,6 +167,57 @@ function overwriteChanges(oldChannel, newChannel, lang = currentLanguage()) {
   return lines;
 }
 
+// What a channel has besides its name and permissions: the voice region and video quality, the defaults of forums and of their threads, the
+// forum tags and the status of a voice channel. Each one is only told when it changed.
+const SORT_ORDERS = { 0: 'latest', 1: 'created' };
+const FORUM_LAYOUTS = { 0: 'none', 1: 'list', 2: 'gallery' };
+const emojiOf = (reaction) => (reaction?.emojiId ? `<:${reaction.emojiName ?? '_'}:${reaction.emojiId}>` : reaction?.emojiName ?? null);
+
+function channelExtras(oldChannel, newChannel, lang) {
+  const fields = [];
+  const none = t(lang, 'logs.noneItalic');
+  const change = (name, before, after) => fields.push({ name: t(lang, name), value: `${before} -> ${after}`, inline: true });
+  if ('rtcRegion' in newChannel && (oldChannel.rtcRegion ?? null) !== (newChannel.rtcRegion ?? null)) {
+    const automatic = t(lang, 'logs.channel.automatic');
+    change('logs.channel.rtcRegion', oldChannel.rtcRegion ?? automatic, newChannel.rtcRegion ?? automatic);
+  }
+  if ('videoQualityMode' in newChannel && (oldChannel.videoQualityMode ?? null) !== (newChannel.videoQualityMode ?? null)) {
+    const quality = (mode) => t(lang, mode === 2 ? 'logs.channel.video.full' : 'logs.channel.video.auto');
+    change('logs.channel.videoQuality', quality(oldChannel.videoQualityMode), quality(newChannel.videoQualityMode));
+  }
+  if ('defaultAutoArchiveDuration' in newChannel && (oldChannel.defaultAutoArchiveDuration ?? null) !== (newChannel.defaultAutoArchiveDuration ?? null)) {
+    const minutes = (value) => (value ? `${value} min` : none);
+    change('logs.channel.defaultArchive', minutes(oldChannel.defaultAutoArchiveDuration), minutes(newChannel.defaultAutoArchiveDuration));
+  }
+  if ('defaultThreadRateLimitPerUser' in newChannel && (oldChannel.defaultThreadRateLimitPerUser ?? 0) !== (newChannel.defaultThreadRateLimitPerUser ?? 0)) {
+    change('logs.channel.defaultThreadSlowmode', `${oldChannel.defaultThreadRateLimitPerUser ?? 0}s`, `${newChannel.defaultThreadRateLimitPerUser ?? 0}s`);
+  }
+  if ('defaultReactionEmoji' in newChannel && emojiOf(oldChannel.defaultReactionEmoji) !== emojiOf(newChannel.defaultReactionEmoji)) {
+    change('logs.channel.defaultReaction', emojiOf(oldChannel.defaultReactionEmoji) ?? none, emojiOf(newChannel.defaultReactionEmoji) ?? none);
+  }
+  if ('defaultSortOrder' in newChannel && (oldChannel.defaultSortOrder ?? null) !== (newChannel.defaultSortOrder ?? null)) {
+    const sort = (value) => (SORT_ORDERS[value] ? t(lang, `logs.channel.sort.${SORT_ORDERS[value]}`) : none);
+    change('logs.channel.defaultSort', sort(oldChannel.defaultSortOrder), sort(newChannel.defaultSortOrder));
+  }
+  if ('defaultForumLayout' in newChannel && (oldChannel.defaultForumLayout ?? null) !== (newChannel.defaultForumLayout ?? null)) {
+    const layout = (value) => t(lang, `logs.channel.layout.${FORUM_LAYOUTS[value] ?? 'none'}`);
+    change('logs.channel.defaultLayout', layout(oldChannel.defaultForumLayout), layout(newChannel.defaultForumLayout));
+  }
+  if (Array.isArray(newChannel.availableTags)) {
+    const before = new Map((oldChannel.availableTags ?? []).map((tag) => [tag.id, tag.name]));
+    const after = new Map(newChannel.availableTags.map((tag) => [tag.id, tag.name]));
+    const lines = [];
+    for (const [id, name] of after) if (!before.has(id)) lines.push(`+ ${name}`);
+    for (const [id, name] of before) if (!after.has(id)) lines.push(`- ${name}`);
+    for (const [id, name] of after) if (before.has(id) && before.get(id) !== name) lines.push(`${before.get(id)} -> ${name}`);
+    if (lines.length) fields.push({ name: t(lang, 'logs.channel.tags'), value: lines.join('\n').slice(0, 1000), inline: false });
+  }
+  if ('status' in newChannel && (oldChannel.status ?? null) !== (newChannel.status ?? null)) {
+    change('logs.channel.voiceStatus', oldChannel.status || none, newChannel.status || none);
+  }
+  return fields;
+}
+
 async function reportChannelUpdate(oldChannel, newChannel, client) {
   if (!oldChannel.guild) return;
   const lang = await guildLanguage(newChannel.guild.id);
@@ -182,6 +233,7 @@ async function reportChannelUpdate(oldChannel, newChannel, client) {
   if ((oldChannel.rateLimitPerUser ?? 0) !== (newChannel.rateLimitPerUser ?? 0)) fields.push({ name: t(lang, 'logs.field.slowmode'), value: `${oldChannel.rateLimitPerUser ?? 0}s -> ${newChannel.rateLimitPerUser ?? 0}s`, inline: true });
   if ((oldChannel.bitrate ?? null) !== (newChannel.bitrate ?? null) && newChannel.bitrate) fields.push({ name: t(lang, 'logs.channel.bitrate'), value: `${Math.round((oldChannel.bitrate ?? 0) / 1000)} kbps -> ${Math.round(newChannel.bitrate / 1000)} kbps`, inline: true }); // i18n-ignore: units
   if ((oldChannel.userLimit ?? null) !== (newChannel.userLimit ?? null) && newChannel.userLimit !== undefined) fields.push({ name: t(lang, 'logs.channel.userLimit'), value: `${oldChannel.userLimit || unlimited} -> ${newChannel.userLimit || unlimited}`, inline: true });
+  fields.push(...channelExtras(oldChannel, newChannel, lang));
   const overwrites = overwriteChanges(oldChannel, newChannel, lang);
   if (overwrites.length) fields.push({ name: t(lang, 'logs.field.permissions'), value: overwrites.join('\n').slice(0, 1000), inline: false });
   if (!fields.length) return;
@@ -302,6 +354,19 @@ async function handleGuildUpdate(oldGuild, newGuild, client) {
     if ((oldGuild[key] ?? null) !== (newGuild[key] ?? null)) fields.push({ name: t(lang, `logs.server.${label}`), value: `${oldGuild[key] ? `<#${oldGuild[key]}>` : none} -> ${newGuild[key] ? `<#${newGuild[key]}>` : none}`, inline: false });
   }
   if (oldGuild.afkTimeout !== newGuild.afkTimeout) fields.push({ name: t(lang, 'logs.server.afkTimeout'), value: `${oldGuild.afkTimeout / 60} min -> ${newGuild.afkTimeout / 60} min`, inline: true }); // i18n-ignore: units
+  if (Boolean(oldGuild.premiumProgressBarEnabled) !== Boolean(newGuild.premiumProgressBarEnabled)) fields.push({ name: t(lang, 'logs.server.progressBar'), value: t(lang, newGuild.premiumProgressBarEnabled ? 'logs.server.enabled' : 'logs.server.disabled'), inline: true });
+  if (oldGuild.splash !== newGuild.splash) fields.push({ name: t(lang, 'logs.server.splash'), value: t(lang, 'logs.server.imageChanged'), inline: true });
+  if (oldGuild.discoverySplash !== newGuild.discoverySplash) fields.push({ name: t(lang, 'logs.server.discoverySplash'), value: t(lang, 'logs.server.imageChanged'), inline: true });
+  if ((oldGuild.ownerId ?? null) !== (newGuild.ownerId ?? null)) fields.push({ name: t(lang, 'logs.server.owner'), value: `${oldGuild.ownerId ? `<@${oldGuild.ownerId}>` : none} -> ${newGuild.ownerId ? `<@${newGuild.ownerId}>` : none}`, inline: true });
+  for (const [key, label] of [['widgetChannelId', 'widgetChannel'], ['safetyAlertsChannelId', 'safetyChannel']]) {
+    if ((oldGuild[key] ?? null) !== (newGuild[key] ?? null)) fields.push({ name: t(lang, `logs.server.${label}`), value: `${oldGuild[key] ? `<#${oldGuild[key]}>` : none} -> ${newGuild[key] ? `<#${newGuild[key]}>` : none}`, inline: true });
+  }
+  {
+    const before = new Set(oldGuild.features ?? []);
+    const after = new Set(newGuild.features ?? []);
+    const lines = [...after].filter((name) => !before.has(name)).map((name) => `+ ${name}`).concat([...before].filter((name) => !after.has(name)).map((name) => `- ${name}`));
+    if (lines.length) fields.push({ name: t(lang, 'logs.server.features'), value: lines.join('\n').slice(0, 1000), inline: false });
+  }
   if (oldGuild.preferredLocale !== newGuild.preferredLocale) fields.push({ name: t(lang, 'logs.server.language'), value: `${oldGuild.preferredLocale} -> ${newGuild.preferredLocale}`, inline: true });
   if (!fields.length) return;
 
