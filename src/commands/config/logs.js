@@ -69,7 +69,7 @@ module.exports = {
             .setName('event')
             .setDescription('Event category')
             .setRequired(true)
-            .addChoices(...EVENTS.map((e) => ({ name: e, value: e }))),
+            .addChoices({ name: 'all', value: 'all' }, ...EVENTS.map((e) => ({ name: e, value: e }))),
         ),
     )
     .addSubcommand((sub) =>
@@ -172,7 +172,10 @@ module.exports = {
       await interaction.deferReply();
 
       const config = await getLogConfig(guildId);
-      if (config.entries.some((e) => e.channel_id === channel.id && e.event === event)) {
+      // `all` sends every kind of event to the channel; the ones it already gets are left as they are.
+      const wanted = event === 'all' ? EVENTS : [event];
+      const missing = wanted.filter((name) => !config.entries.some((e) => e.channel_id === channel.id && e.event === name));
+      if (!missing.length) {
         await interaction.editReply({ embeds: [errEmbed(t(lang, 'config.logs.already', { event, channel: `<#${channel.id}>` }))] });
         return;
       }
@@ -194,7 +197,7 @@ module.exports = {
         await upsertWebhook(guildId, channel.id, webhook.id, webhook.token);
       }
 
-      await addEntry(guildId, channel.id, event);
+      for (const name of missing) await addEntry(guildId, channel.id, name);
       await interaction.editReply({ embeds: [okEmbed(t(lang, 'config.logs.added', { event, channel: `<#${channel.id}>` }))] });
       return;
     }

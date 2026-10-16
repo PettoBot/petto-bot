@@ -6,6 +6,7 @@ All notable changes to Petto are documented here.
 
 ### Added
 
+- **Logs: `!logs add` takes `all`.** `!logs add #channel all` sends every kind of event to that channel at once (the ones it already gets are kept), like the "everything to one channel" box of the dashboard.
 - **A language for each server: English, Spanish and Brazilian Portuguese.** Everything members and staff read can now be in English, Spanish (`es`, neutral Latin American) or Brazilian Portuguese (`pt-BR`): replies, cards, buttons, menus, forms, `!help` and the command descriptions it shows, usage cards and errors, default messages (welcome, level-up, giveaways, sanction DMs, bump, birthdays…), DMs a server sends (sanctions, transcripts, verification, giveaways — always in the server's language) and the server logs. English stays exactly as it was and is the default.
   - `!language` (alias `!lang`, Manage Server) shows the language of the server; `!language es`, `!language pt-BR` or `!language en` changes it at once. It is a prefix command only.
   - A server Petto joins for the first time starts in the language of its community (`guild.preferredLocale`: `es-ES`/`es-419` → Spanish, `pt-BR` → Portuguese, anything else → English). Servers Petto already knew keep English until they use `!language`.
