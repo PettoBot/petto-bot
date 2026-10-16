@@ -67,11 +67,6 @@ async function evaluate(member, rules, { roles, onAction, onNotify, offlineMode 
       source: 'vanity', action: rule.action, value: rule.word,
       reason: wentOffline ? t(lang, 'identity.reason.offline') : t(lang, matched ? 'identity.reason.matched' : 'identity.reason.unmatched', { condition: rule.source, value }),
     };
-    if (wentOffline) {
-      // What the rule said is not changed (the member did not stop matching, they went away), so coming back is not a new match.
-      if (rule.action === 'add_role') { push(suspended, rule.role_id, rule.id); suspendedContexts.set(rule.role_id, context); }
-      continue;
-    }
     await track(rule, 'vanity', matched, context, evaluationError);
   }
 
