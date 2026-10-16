@@ -3694,3 +3694,14 @@ alter table appeal_forms enable row level security;
 alter table appeal_submissions enable row level security;
 alter table appeal_messages enable row level security;
 alter table appeal_blocks enable row level security;
+
+-- Who besides the managers of a server can open its dashboard: the members of a role, into the parts named (`*` is all of them), to look or to change.
+create table if not exists dash_access (
+  guild_id    text not null,
+  role_id     text not null,
+  sections    text[] not null default '{}',
+  can_edit    boolean not null default false,
+  created_at  timestamptz not null default now(),
+  primary key (guild_id, role_id)
+);
+alter table dash_access enable row level security;

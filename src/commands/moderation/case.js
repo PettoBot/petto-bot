@@ -7,6 +7,7 @@ const { parseDuration } = require('../../utils/duration');
 const { EMOJI } = require('../../utils/emojis');
 const { requireAdministrator } = require('../../utils/moderationCommand');
 const logger = require('../../utils/logger');
+const { handleStaffAction } = require('../../logging/moreLog');
 const { t, tn, languageOf } = require('../../i18n');
 
 const MAX_TIMEOUT_MS = 28 * 24 * 60 * 60 * 1000;
@@ -266,6 +267,7 @@ async function edit(interaction) {
   }
 
   const updated = await updateCase(interaction.guild.id, caseNumber, patch);
+  handleStaffAction('caseEdited', interaction.client, interaction.guild, { moderator: interaction.user, user: row.user_id ? { id: row.user_id } : null, number: caseNumber, type: typeName(row.type, lang) }).catch(() => {});
   const text = `${t(lang, 'moderation.case.updated', { emoji: EMOJI.APPROVE, number: caseNumber })}\n\n${formatCaseDetail(updated, lang)}`;
   await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
@@ -352,6 +354,7 @@ async function del(interaction) {
   }
 
   await deleteCase(interaction.guild.id, caseNumber);
+  handleStaffAction('caseDeleted', interaction.client, interaction.guild, { moderator: interaction.user, user: row.user_id ? { id: row.user_id } : null, number: caseNumber, type: typeName(row.type, lang) }).catch(() => {});
 
   const text = `${t(lang, 'moderation.case.deleted', { emoji: EMOJI.APPROVE, number: caseNumber })}\n\n${formatCaseDetail(row, lang)}`;
   await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
@@ -391,6 +394,7 @@ async function deleteAll(interaction) {
   }
 
   const deleted = await deleteAllForUser(interaction.guild.id, targetUser.id);
+  handleStaffAction('casesCleared', interaction.client, interaction.guild, { moderator: interaction.user, user: targetUser, count: deleted }).catch(() => {});
   await click.update({ components: [textCard(tn(lang, 'moderation.case.deleteAll.done', deleted, { emoji: EMOJI.APPROVE, count: deleted, user: `${targetUser}` }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 

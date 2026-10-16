@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { addNote, getNote, getNotesForUser } = require('../../db/notes');
+const { handleStaffAction } = require('../../logging/moreLog');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { t, languageOf } = require('../../i18n');
@@ -37,6 +38,7 @@ async function add(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const saved = await addNote({ guildId: interaction.guild.id, userId: targetUser.id, moderatorId: interaction.user.id, note });
+  handleStaffAction('noteAdded', interaction.client, interaction.guild, { moderator: interaction.user, user: targetUser, note }).catch(() => {});
 
   const text = [
     t(lang, 'moderation.note.added', { emoji: EMOJI.APPROVE, id: saved.id, user: `${targetUser}` }),

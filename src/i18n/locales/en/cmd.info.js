@@ -72,6 +72,7 @@ module.exports = {
   'cmd.info.roleinfo.opt.role.desc': 'Role',
   'cmd.info.roles.desc': 'Lists every role in this server, a page at a time.',
   'cmd.info.serverinfo.desc': 'Shows information about this server.',
+  'cmd.info.serverinfo.opt.server.desc': 'ID of another server Petto is in',
   'cmd.info.snowflake.desc': 'Decodes the creation timestamp embedded in any Discord ID.',
   'cmd.info.snowflake.opt.id.desc': 'A Discord ID (user, channel, role, message, ...)',
   'cmd.info.spotify.desc': 'See what a member is listening to on Spotify right now.',

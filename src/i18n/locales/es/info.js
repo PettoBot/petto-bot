@@ -244,6 +244,7 @@ module.exports = {
   'info.roles.sort.colored.menu': 'Solo roles con color',
   'info.roles.sort.empty.menu': 'Solo roles sin miembros',
   'info.serverinfo.verification.none': 'ninguna',
+  'info.serverinfo.notFound': 'Ese servidor no existe, Petto no está en él o no eres miembro.',
   'info.serverinfo.verification.low': 'baja',
   'info.serverinfo.verification.medium': 'media',
   'info.serverinfo.verification.high': 'alta',

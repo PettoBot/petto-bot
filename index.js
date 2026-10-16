@@ -68,6 +68,7 @@ const client = new Client({
     GatewayIntentBits.GuildScheduledEvents, // scheduled event logs
     GatewayIntentBits.AutoModerationConfiguration, // AutoMod rule logs
     GatewayIntentBits.GuildMessageReactions, // reaction-mode giveaway entries
+    GatewayIntentBits.GuildMessagePolls, // poll vote logs
     // Privileged — must also be toggled on for this bot application in the Discord Developer
     // Portal (Bot page -> Privileged Gateway Intents -> Presence Intent), or every member's
     // `.presence` stays null and /spotify + /activity can never see what anyone is doing.
