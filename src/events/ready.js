@@ -3,6 +3,7 @@ const { applyStatus, currentStatus } = require('../utils/botPresence');
 const { warmGuild } = require('../utils/inviteCache');
 const logger = require('../utils/logger');
 const { attachDiscordLogger, startDiscordStatusJob } = require('../utils/discordOps');
+const { announceDeployReport } = require('../handlers/deployCommands');
 const config = require('../config');
 const { syncAllGuildsAutoMod } = require('../utils/autoModManager');
 const { forEachWithConcurrency } = require('../utils/concurrency');
@@ -36,6 +37,8 @@ module.exports = {
 
     logger.info(`Petto v${require("../../package.json").version} is online as ${client.user.tag}, serving ${client.guilds.cache.size} guild(s).`);
     attachDiscordLogger(client);
+    // The registration of the slash commands ran before the login: now that the log of Discord is on, it says what it did.
+    announceDeployReport();
     startDiscordStatusJob(client);
 
     // Keep the existing warmup available, but never issue one invite request per guild at once.
