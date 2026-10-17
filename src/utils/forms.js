@@ -3,6 +3,7 @@
 const {
   LabelBuilder, ModalBuilder, StringSelectMenuBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits,
 } = require('discord.js');
+const crypto = require('node:crypto');
 const { t, currentLanguage } = require('../i18n');
 
 const PREFIX = 'fm:';
@@ -297,9 +298,21 @@ function readAll(form, input = {}) {
   return { values, errors };
 }
 
-/** The address of a form on the website. */
+// The id of a form in its web address: 12 random letters and digits (62^12 ≈ 3·10^21), so a link cannot be guessed from another
+// one and the forms of other servers cannot be walked through. The numbers stay for commands and the dashboard.
+const PUBLIC_ID = /^[0-9A-Za-z]{12}$/;
+const PUBLIC_ID_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+
+/** A new id for the web address of a form, like `x7Kp9QzA2mVt`. */
+function newPublicId() {
+  let id = '';
+  for (let i = 0; i < 12; i += 1) id += PUBLIC_ID_ALPHABET[crypto.randomInt(PUBLIC_ID_ALPHABET.length)];
+  return id;
+}
+
+/** The address of a form on the website: petto.sbs/f/<public id>. */
 function webUrl(form) {
-  return `https://petto.sbs/f/${form.id}`;
+  return `https://petto.sbs/f/${form.public_id}`;
 }
 
 /** Every answer of a form, from the values collected page by page, as it is stored: [{ id, label, type, value }]. */
@@ -377,6 +390,6 @@ module.exports = {
   FORM_LIMITS,
   PREFIX, QUESTION_TYPES, CHOICE_TYPES, STATUSES, BUTTON_STYLES, LIMITS, COLORS, NAME, SNOWFLAKE,
   clip, slugName, normalizeQuestion, normalizeQuestions, normalizeForm, checkEligibility, refusalText, isReviewer,
-  pagesOf, pageTitle, buildModal, readPage, readAll, webUrl, collectAnswers, missingRequired, answerText, answersAsText, fillShortcuts,
+  pagesOf, pageTitle, buildModal, readPage, readAll, webUrl, newPublicId, PUBLIC_ID, collectAnswers, missingRequired, answerText, answersAsText, fillShortcuts,
   getDraft, saveDraft, dropDraft, DRAFT_TTL_MS,
 };

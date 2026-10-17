@@ -33,6 +33,7 @@ const QUESTION_FIELDS = ['label', 'type', 'help', 'placeholder', 'required', 'mi
 // With the prefix the types are not checked by Discord, so the usual words are read here.
 const TYPE_WORDS = { short: 'short', text: 'short', line: 'short', paragraph: 'paragraph', long: 'paragraph', number: 'number', num: 'number', yesno: 'yesno', 'yes/no': 'yesno', bool: 'yesno', choice: 'choice', select: 'choice', single: 'choice', one: 'choice', multi: 'multi', multiple: 'multi', many: 'multi', checkbox: 'multi' };
 const STATUS_WORDS = { pending: 'pending', waiting: 'pending', open: 'pending', accepted: 'accepted', accept: 'accepted', approved: 'accepted', denied: 'denied', deny: 'denied', rejected: 'denied', cancelled: 'cancelled', canceled: 'cancelled' };
+const LINK_WORDS = ['new', 'renew', 'regenerate', 'reset', 'nuevo', 'novo'];
 const OFF_WORDS = ['none', 'off', 'reset', 'clear', '-'];
 const ON = ['on', 'yes', 'true', 'enable', 'enabled', '1'];
 const OFF = ['off', 'no', 'false', 'disable', 'disabled', '0'];
@@ -52,6 +53,7 @@ const data = new SlashCommandBuilder()
   .addSubcommand((s) => s.setName('info').setDescription('Everything about a form: settings, rules and counts.').addStringOption(formOption))
   .addSubcommand((s) => s.setName('open').setDescription('Let members fill in a form.').addStringOption(formOption))
   .addSubcommand((s) => s.setName('close').setDescription('Stop taking answers for a form.').addStringOption(formOption))
+  .addSubcommand((s) => s.setName('relink').setDescription('A new web link for a form. The old link stops working.').addStringOption(formOption))
   .addSubcommand((s) => s.setName('set').setDescription('Change a setting of a form. "none" clears it.')
     .addStringOption(formOption)
     .addStringOption((o) => o.setName('setting').setDescription('What to change').setRequired(true).addChoices(...SETTINGS.map((name) => ({ name, value: name }))))
@@ -108,7 +110,7 @@ const data = new SlashCommandBuilder()
     .addIntegerOption((o) => o.setName('number').setDescription('The number of the submission').setRequired(true).setMinValue(1))
     .addStringOption((o) => o.setName('reason').setDescription('Why (the member reads it)').setRequired(false).setMaxLength(1000)));
 
-const MANAGE = new Set(['create', 'delete', 'info', 'open', 'close', 'set', 'message', 'questions', 'add', 'edit', 'move', 'remove', 'panel', 'list', 'retention']);
+const MANAGE = new Set(['create', 'delete', 'info', 'open', 'close', 'relink', 'set', 'message', 'questions', 'add', 'edit', 'move', 'remove', 'panel', 'list', 'retention']);
 const canManage = (member) => Boolean(member?.permissions?.has?.(PermissionFlagsBits.ManageGuild) || member?.permissions?.has?.(PermissionFlagsBits.Administrator));
 
 async function limitsOf(guildId) {
@@ -230,7 +232,7 @@ async function infoText(guild, form, lang) {
     `## ${form.title}`,
     t(lang, 'forms.info.head', { name: form.name, id: form.id, state: t(lang, form.status === 'open' ? 'forms.info.open' : 'forms.info.closed') }),
     form.description ? `> ${forms.clip(form.description, 300).replace(/\n/g, '\n> ')}` : null,
-    t(lang, form.web_enabled === false ? 'forms.info.webOff' : 'forms.info.web', { url: forms.webUrl(form) }),
+    t(lang, form.web_enabled === false ? 'forms.info.webOff' : 'forms.info.web', { url: forms.webUrl(form), name: form.name }),
     `### ${t(lang, 'forms.info.review')}`,
     t(lang, 'forms.info.channel', { channel: form.review_channel_id ? `<#${form.review_channel_id}>` : t(lang, 'forms.info.notSet') }),
     t(lang, 'forms.info.reviewers', { roles: form.reviewer_role_ids?.length ? roleList(form.reviewer_role_ids, lang) : t(lang, 'forms.info.managers') }),
@@ -277,7 +279,7 @@ async function execute(interaction) {
     if (count >= limits.forms) return done(bad(t(lang, 'forms.create.limit', { count: limits.forms })));
     if (await formsDb.getForm(guild.id, name)) return done(bad(t(lang, 'forms.create.taken', { name })));
     const title = interaction.options.getString('title') || name;
-    const form = await formsDb.createForm(guild.id, forms.normalizeForm({ name, title, status: 'closed' }));
+    const form = await formsDb.createForm(guild.id, { ...forms.normalizeForm({ name, title, status: 'closed' }), public_id: forms.newPublicId() });
     return done(ok(t(lang, 'forms.create.done', { name: form.name, title: form.title })));
   }
 
@@ -389,8 +391,18 @@ async function execute(interaction) {
     await formsDb.updateForm(guild.id, form.id, { status: sub === 'open' ? 'open' : 'closed' });
     return done(ok(t(lang, sub === 'open' ? 'forms.open.done' : 'forms.close.done', { name: form.name })));
   }
+  // `!form relink staff` (or `!form set staff link new`): a new random web address; the old one stops working at once.
+  const relink = async () => {
+    const renewed = await formsDb.renewPublicId(guild.id, form.id);
+    return done(ok(t(lang, 'forms.relink.done', { name: form.name, url: forms.webUrl(renewed ?? form) })));
+  };
+  if (sub === 'relink') return relink();
   if (sub === 'set') {
     const setting = interaction.options.getString('setting', true).toLowerCase();
+    if (setting === 'link') {
+      if (!LINK_WORDS.includes(interaction.options.getString('value', true).trim().toLowerCase())) return done(bad(t(lang, 'forms.set.link', { name: form.name })));
+      return relink();
+    }
     const change = settingChange(guild, setting, interaction.options.getString('value', true), lang);
     if (change.error) return done(bad(change.error));
     await formsDb.updateForm(guild.id, form.id, change);
@@ -472,7 +484,7 @@ module.exports = {
   prefixOnly: true,
   aliases: ['forms', 'application', 'applications'],
   // `!form edit staff title Apply` is `!form set`; `!form q add ...` is `!form question add ...`.
-  prefixSubcommandAliases: { new: 'create', edit: 'set', q: 'question', subs: 'submissions', approve: 'accept', reject: 'deny', show: 'view' },
+  prefixSubcommandAliases: { newlink: 'relink', new: 'create', edit: 'set', q: 'question', subs: 'submissions', approve: 'accept', reject: 'deny', show: 'view' },
   // The free text of these runs to the end of the message (other options go as --name value).
   prefixGreedyStringOptions: { add: 'label', message: 'text', panel: 'forms', set: 'value', edit: 'value', accept: 'reason', deny: 'reason' },
   data,

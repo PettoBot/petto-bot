@@ -2,6 +2,7 @@
 // hold are in utils/forms.js; this file only reads and writes.
 const database = require('./database');
 const { getPrimaryPool } = require('./postgres');
+const { newPublicId, PUBLIC_ID } = require('../utils/forms');
 
 const gid = (guildId) => String(guildId);
 const NAME = /^[a-z0-9][a-z0-9_-]{0,31}$/;
@@ -25,10 +26,13 @@ async function getForm(guildId, ref) {
   return data ?? null;
 }
 
-/** A form by its id alone, for the website's page of a form (petto.sbs/f/<id>), which does not know the server. */
-async function getFormById(id) {
-  if (!/^\d{1,15}$/.test(String(id ?? ''))) return null;
-  const { data, error } = await database.from('forms').select('*').eq('id', Number(id)).maybeSingle();
+/**
+ * A form by the random id of its web address, for the website's page of a form (petto.sbs/f/<public id>), which does not know the
+ * server. Numbers are never looked up here, so the forms cannot be walked through one by one.
+ */
+async function getFormByPublicId(publicId) {
+  if (!PUBLIC_ID.test(String(publicId ?? ''))) return null;
+  const { data, error } = await database.from('forms').select('*').eq('public_id', String(publicId)).maybeSingle();
   if (error) throw error;
   return data ?? null;
 }
@@ -40,7 +44,7 @@ async function countForms(guildId) {
 }
 
 async function createForm(guildId, row) {
-  const { data, error } = await database.from('forms').insert({ ...row, guild_id: gid(guildId) }).select('*').single();
+  const { data, error } = await database.from('forms').insert({ ...row, public_id: row.public_id ?? newPublicId(), guild_id: gid(guildId) }).select('*').single();
   if (error) throw error;
   return data;
 }
@@ -133,6 +137,11 @@ async function countStored(guildId) {
   return { total: all.count ?? 0, pending: waiting.count ?? 0 };
 }
 
+/** A new web address for a form: the old link stops working. */
+async function renewPublicId(guildId, id) {
+  return updateForm(guildId, id, { public_id: newPublicId() });
+}
+
 /** Deletes the oldest reviewed submissions of a server until it keeps `keep` at most. Pending ones are never deleted. */
 async function trimOldest(guildId, keep) {
   const { rowCount } = await getPrimaryPool().query(
@@ -210,7 +219,7 @@ async function deletePanel(guildId, id) {
 }
 
 module.exports = {
-  getFormById,
+  getFormByPublicId, renewPublicId,
   NAME, RETENTION_DEFAULT, countStored, trimOldest, compactBefore, getFormConfig, setFormConfig, listRetentionConfigs, listForms, getForm, countForms, createForm, updateForm, deleteForm,
   createSubmission, getSubmission, updateSubmission, resolveSubmission, listSubmissions, memberStats, countFormSubmissions,
   createPanel, updatePanel, getPanel, listPanels, deletePanel,
