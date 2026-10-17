@@ -37,6 +37,7 @@ const { startRequestTimeoutJob } = require('./src/jobs/requestTimeoutJob');
 const { startGlobalStatsJob } = require('./src/jobs/globalStatsJob');
 const { startGuildSnapshotJob } = require('./src/jobs/guildSnapshotJob');
 const { startCommandDataJob } = require('./src/jobs/commandDataJob');
+const { startFormCleanupJob } = require('./src/jobs/formCleanupJob');
 const { startServer } = require('./src/web/server');
 const { startCloudflareTunnel } = require('./src/web/cloudflareTunnel');
 const { attachRestRateLimitTelemetry } = require('./src/utils/restTelemetry');
@@ -156,6 +157,7 @@ async function main() {
   startGlobalStatsJob(client);
   startGuildSnapshotJob(client);
   startCommandDataJob();
+  startFormCleanupJob();
   startServer(client);
   startCloudflareTunnel(config.cloudflareTunnelToken);
 }

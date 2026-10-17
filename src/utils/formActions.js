@@ -16,6 +16,14 @@ const logEngine = lazy('../logging/engine');
 
 const { clip, COLORS } = forms;
 
+const premiumDb = lazy('../db/premium');
+
+/** How many submissions a server keeps (Free and Premium). */
+async function storageCap(guildId) {
+  const premium = await premiumDb.getGuildPremium(guildId).catch(() => ({ active: false }));
+  return premiumDb.getGuildLimits(premium)?.formSubmissions ?? 500;
+}
+
 async function fetchTextChannel(guild, channelId) {
   if (!channelId) return null;
   const channel = guild.channels.cache.get(channelId) ?? await guild.channels.fetch(channelId).catch(() => null);
@@ -62,6 +70,14 @@ async function submitForm({ client, guild, form, member, answers }) {
   if (forms.missingRequired(form, answers).length) return { ok: false, error: 'missing' };
   const channel = await fetchTextChannel(guild, form.review_channel_id);
   if (!channel) return { ok: false, error: 'no_channel' };
+  // Each plan keeps a number of submissions per server: the oldest reviewed ones make room, pending ones never do.
+  const cap = await storageCap(guild.id);
+  let stored = await formsDb.countStored(guild.id);
+  if (stored.total >= cap) {
+    await formsDb.trimOldest(guild.id, cap - 1);
+    stored = await formsDb.countStored(guild.id);
+    if (stored.total >= cap) return { ok: false, error: 'full' };
+  }
   const user = member.user ?? member;
   const submission = await formsDb.createSubmission({
     guild_id: guild.id, form_id: form.id, form_name: form.name, form_title: form.title, user_id: member.id,
@@ -248,4 +264,4 @@ async function postPanel({ guild, channel, formList, style = 'buttons', template
   return { ok: true, panel: saved ?? { ...panel, message_id: message.id }, message };
 }
 
-module.exports = { submitForm, submittedText, reviewSubmission, applyRoles, sendResult, refreshCard, openThread, postPanel, logForm, formVars, fetchMember };
+module.exports = { storageCap, submitForm, submittedText, reviewSubmission, applyRoles, sendResult, refreshCard, openThread, postPanel, logForm, formVars, fetchMember };

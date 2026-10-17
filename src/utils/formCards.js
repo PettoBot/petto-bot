@@ -78,7 +78,7 @@ function reviewCard({ submission, form = null, lang = currentLanguage(), pings =
   else container.addTextDisplayComponents(header);
 
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
-  const { blocks, cut, hidden } = answerBlocks(submission.answers, lang);
+  const { blocks, cut, hidden } = submission.compacted ? { blocks: [`-# ${t(lang, 'forms.card.compacted')}`], cut: false, hidden: 0 } : answerBlocks(submission.answers, lang);
   for (let i = 0; i < blocks.length; i += 5) container.addTextDisplayComponents(new TextDisplayBuilder().setContent(blocks.slice(i, i + 5).join('\n\n')));
   const name = fileName ?? `answers-${submission.number}.txt`;
   if (cut) {

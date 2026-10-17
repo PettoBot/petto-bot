@@ -191,4 +191,10 @@ module.exports = {
   'forms.submissions.none': 'Nothing here.',
   'forms.submissions.card': 'card',
   'forms.submissions.status': 'The state is one of: pending, accepted, denied, cancelled, all.',
+  'forms.retention.show': 'The answers of reviewed submissions are kept **{days}** days. After that only a small row stays (form, member, state, reviewer, dates and the link to the card). Pending ones are always kept.',
+  'forms.retention.set': 'From now on the answers of reviewed submissions are kept **{days}** days.',
+  'forms.retention.stored': 'Stored: {count}/{max} submissions ({pending} pending). When it is full, the oldest reviewed ones make room.',
+  'forms.retention.range': 'Use a number of days from 1 to 365.',
+  'forms.submitError.full': 'This server has too many submissions waiting for a review to take more. Tell the staff.',
+  'forms.card.compacted': 'The answers were removed after the retention time of the server.',
 };

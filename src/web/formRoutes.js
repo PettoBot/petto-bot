@@ -1,10 +1,12 @@
 // Forms (applications) from the dashboard. The forms themselves are saved by the dashboard straight in the database; these two
 // need the bot: accept or deny a submission (roles, the DM, the card in Discord) and post a panel.
 //   POST /api/dashboard/guild/:guildId/forms/review  { number, status: accepted|denied, reason }
+//   POST /api/dashboard/guild/:guildId/forms/submissions { status: pending|accepted|denied|cancelled|all, form_id, q, limit }
+//        -> { ok, submissions, pending: { <form id>: n }, stored, cap, retention_days }
 //   POST /api/dashboard/guild/:guildId/forms/panel   { form_ids: [..], channel_id, style: buttons|select, template, title, description }
 // The same access as the other dashboard routes: the dashboard key and a `user_id` who can manage the server.
 const formsDb = require('../db/forms');
-const { reviewSubmission, postPanel } = require('../utils/formActions');
+const { reviewSubmission, postPanel, storageCap } = require('../utils/formActions');
 const logger = require('../utils/logger');
 const { t, requestLanguage } = require('../i18n');
 
@@ -12,6 +14,35 @@ const SNOWFLAKE = /^\d{15,25}$/;
 
 function registerFormRoutes(app, { authorize, limiter }) {
   const middleware = limiter ? [limiter] : [];
+
+  app.post('/api/dashboard/guild/:guildId/forms/submissions', ...middleware, async (req, res) => {
+    const access = await authorize(req, res);
+    if (!access) return;
+    const lang = requestLanguage(req, access.guild.id);
+    try {
+      const guildId = access.guild.id;
+      const asked = String(req.body?.status ?? 'pending');
+      const status = ['pending', 'accepted', 'denied', 'cancelled'].includes(asked) ? asked : null;
+      const formId = /^\d{1,15}$/.test(String(req.body?.form_id ?? '')) ? String(req.body.form_id) : null;
+      const q = String(req.body?.q ?? '').trim().slice(0, 60);
+      const byId = SNOWFLAKE.test(q) ? q : null;
+      const limit = Math.min(100, Math.max(1, Number(req.body?.limit) || 50));
+      let rows = await formsDb.listSubmissions(guildId, { formId, status, userId: byId, limit: q && !byId ? 200 : limit });
+      if (q && !byId) {
+        const needle = q.toLowerCase().replace(/^#/, '');
+        rows = rows.filter((row) => String(row.username ?? '').toLowerCase().includes(needle) || String(row.number) === needle).slice(0, limit);
+      }
+      const waiting = await formsDb.listSubmissions(guildId, { status: 'pending', limit: 200 });
+      const pending = {};
+      for (const row of waiting) pending[String(row.form_id)] = (pending[String(row.form_id)] ?? 0) + 1;
+      const [stored, cap, setting] = await Promise.all([formsDb.countStored(guildId), storageCap(guildId), formsDb.getFormConfig(guildId)]);
+      res.set('Cache-Control', 'no-store'); // i18n-ignore: HTTP header
+      res.json({ ok: true, submissions: rows, pending, stored: stored.total, cap, retention_days: setting.retention_days });
+    } catch (err) {
+      logger.error(`Dashboard form submissions failed for guild ${req.params.guildId}:`, err);
+      res.status(500).json({ ok: false, message: t(lang, 'web.api.forms.failed') });
+    }
+  });
 
   app.post('/api/dashboard/guild/:guildId/forms/review', ...middleware, async (req, res) => {
     const access = await authorize(req, res);

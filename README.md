@@ -27,6 +27,7 @@ Petto is an English-first Discord bot focused on practical moderation and commun
 - **Moderation:** bans, kicks, mutes, warnings, cases, audit logs, AutoMod, anti-raid, anti-nuke, anti-alt, and honeypots.
 - **Community:** leveling, ranks, leaderboards, giveaways, reaction roles, welcome/leave messages, boosts, and bump reminders.
 - **Support:** tickets, staff controls, reports, and protected HTML transcripts.
+- **Forms:** staff applications, partner requests and sign-ups with paged Discord forms, requirements, review cards, roles and DMs (`!form`). The answers of reviewed submissions are kept 30 days by default (`!form retention`), then only a small record stays.
 - **Configuration:** embeds, custom commands, autoresponders, sticky messages, verification, and a web dashboard.
 - **Recovery:** Petto Vault backups with server-scoped numbers, audited actions, scheduled backups, exports, and safe restores.
 

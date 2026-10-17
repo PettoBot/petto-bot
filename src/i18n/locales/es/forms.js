@@ -190,4 +190,10 @@ module.exports = {
   'forms.submissions.none': 'No hay nada aquí.',
   'forms.submissions.card': 'tarjeta',
   'forms.submissions.status': 'El estado es uno de: pending, accepted, denied, cancelled, all.',
+  'forms.retention.show': 'Las respuestas de los envíos revisados se guardan **{days}** días. Después solo queda una fila pequeña (formulario, miembro, estado, revisor, fechas y el enlace a la tarjeta). Las pendientes siempre se guardan.',
+  'forms.retention.set': 'Desde ahora las respuestas de los envíos revisados se guardan **{days}** días.',
+  'forms.retention.stored': 'Guardados: {count}/{max} envíos ({pending} pendientes). Cuando se llena, los revisados más viejos dejan lugar.',
+  'forms.retention.range': 'Usa un número de días del 1 al 365.',
+  'forms.submitError.full': 'Este servidor tiene demasiados envíos esperando revisión para recibir más. Avísale al staff.',
+  'forms.card.compacted': 'Las respuestas se borraron al pasar el tiempo que el servidor las guarda.',
 };

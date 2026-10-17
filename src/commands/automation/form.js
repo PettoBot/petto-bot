@@ -94,6 +94,8 @@ const data = new SlashCommandBuilder()
     .addStringOption((o) => o.setName('template').setDescription('A saved embed to post the buttons under').setRequired(false))
     .addStringOption((o) => o.setName('title').setDescription('A title for the panel').setRequired(false).setMaxLength(200))
     .addStringOption((o) => o.setName('description').setDescription('The text of the panel').setRequired(false).setMaxLength(2000)))
+  .addSubcommand((s) => s.setName('retention').setDescription('How many days the answers of reviewed submissions are kept (30 by default).')
+    .addIntegerOption((o) => o.setName('days').setDescription('1 to 365; empty shows the current one').setRequired(false).setMinValue(1).setMaxValue(365)))
   .addSubcommand((s) => s.setName('submissions').setDescription('What members sent, newest first.')
     .addStringOption((o) => o.setName('form').setDescription('Only this form').setRequired(false))
     .addStringOption((o) => o.setName('status').setDescription('pending, accepted, denied or cancelled').setRequired(false).addChoices(...forms.STATUSES.map((name) => ({ name, value: name })))))
@@ -106,7 +108,7 @@ const data = new SlashCommandBuilder()
     .addIntegerOption((o) => o.setName('number').setDescription('The number of the submission').setRequired(true).setMinValue(1))
     .addStringOption((o) => o.setName('reason').setDescription('Why (the member reads it)').setRequired(false).setMaxLength(1000)));
 
-const MANAGE = new Set(['create', 'delete', 'info', 'open', 'close', 'set', 'message', 'questions', 'add', 'edit', 'move', 'remove', 'panel', 'list']);
+const MANAGE = new Set(['create', 'delete', 'info', 'open', 'close', 'set', 'message', 'questions', 'add', 'edit', 'move', 'remove', 'panel', 'list', 'retention']);
 const canManage = (member) => Boolean(member?.permissions?.has?.(PermissionFlagsBits.ManageGuild) || member?.permissions?.has?.(PermissionFlagsBits.Administrator));
 
 async function limitsOf(guildId) {
@@ -289,6 +291,15 @@ async function execute(interaction) {
       questions: forms.normalizeQuestions(form.questions).length, pending: pending.filter((row) => String(row.form_id) === String(form.id)).length,
     }));
     return done(note([`### ${t(lang, 'forms.list.title', { count: list.length, max: limits.forms })}`, ...lines].join('\n')));
+  }
+
+  if (sub === 'retention') {
+    const days = interaction.options.getInteger('days');
+    if (days !== null && (days < 1 || days > 365)) return done(bad(t(lang, 'forms.retention.range')));
+    const setting = days !== null ? await formsDb.setFormConfig(guild.id, { retention_days: days }) : await formsDb.getFormConfig(guild.id);
+    const [stored, cap] = await Promise.all([formsDb.countStored(guild.id), actions.storageCap(guild.id)]);
+    const lines = [t(lang, days !== null ? 'forms.retention.set' : 'forms.retention.show', { days: setting.retention_days }), t(lang, 'forms.retention.stored', { count: stored.total, max: cap, pending: stored.pending })];
+    return done(days !== null ? ok(lines.join('\n')) : note(lines.join('\n')));
   }
 
   if (sub === 'submissions') {

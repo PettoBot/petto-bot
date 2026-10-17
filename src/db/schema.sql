@@ -3843,13 +3843,25 @@ create table if not exists form_submissions (
   channel_id     text,
   message_id     text,
   thread_id      text,
+  compacted      boolean not null default false,
   created_at     timestamptz not null default now(),
   reviewed_at    timestamptz,
   unique (guild_id, number)
 );
 create index if not exists idx_form_submissions_guild on form_submissions(guild_id, status, created_at desc);
 create index if not exists idx_form_submissions_member on form_submissions(guild_id, form_id, user_id, status);
+alter table form_submissions add column if not exists compacted boolean not null default false;
+create index if not exists idx_form_submissions_compact on form_submissions(reviewed_at) where status <> 'pending' and not compacted;
 alter table form_submissions enable row level security;
+
+-- How long the answers of reviewed submissions are kept, per server (30 days by default). After that the submission keeps a small
+-- row (form, member, state, reviewer, dates and the link to its card) and its answers are removed.
+create table if not exists form_config (
+  guild_id        text primary key references guilds(guild_id) on delete cascade,
+  retention_days  integer not null default 30 check (retention_days between 1 and 365),
+  updated_at      timestamptz not null default now()
+);
+alter table form_config enable row level security;
 
 -- The messages with the buttons (or the menu) that open the forms. One panel can open several forms.
 create table if not exists form_panels (

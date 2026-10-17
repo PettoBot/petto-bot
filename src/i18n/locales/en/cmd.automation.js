@@ -252,6 +252,8 @@ module.exports = {
   'cmd.automation.form.panel.opt.template.desc': 'A saved embed to post the buttons under',
   'cmd.automation.form.panel.opt.title.desc': 'A title for the panel',
   'cmd.automation.form.panel.opt.description.desc': 'The text of the panel',
+  'cmd.automation.form.retention.desc': 'How many days the answers of reviewed submissions are kept (30 by default).',
+  'cmd.automation.form.retention.opt.days.desc': '1 to 365; empty shows the current one',
   'cmd.automation.form.submissions.desc': 'What members sent, newest first.',
   'cmd.automation.form.submissions.opt.form.desc': 'Only this form',
   'cmd.automation.form.submissions.opt.status.desc': 'pending, accepted, denied or cancelled',

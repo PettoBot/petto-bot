@@ -17,6 +17,7 @@ const FREE_LIMITS = Object.freeze({
   componentPanels: 10,
   forms: 5,
   formQuestions: 10,
+  formSubmissions: 500,
 });
 
 const PREMIUM_LIMITS = Object.freeze({
@@ -34,6 +35,7 @@ const PREMIUM_LIMITS = Object.freeze({
   componentPanels: 50,
   forms: 25,
   formQuestions: 25,
+  formSubmissions: 5000,
 });
 
 /**

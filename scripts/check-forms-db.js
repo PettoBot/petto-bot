@@ -26,7 +26,8 @@ const G2 = '100000000000000002';
   await pool.query(schema);
   await pool.query(schema); // the bot applies it on every start
   await pool.query('delete from forms where guild_id in ($1, $2)', [G1, G2]);
-  await pool.query('delete from form_submissions where guild_id in ($1, $2)', [G1, G2]);
+  const subsPool = pool;
+  await subsPool.query('delete from form_submissions where guild_id in ($1, $2)', [G1, G2]);
   await pool.query('insert into guilds (guild_id) values ($1), ($2) on conflict do nothing', [G1, G2]);
 
   const made = await formsDb.createForm(G1, forms.normalizeForm({ name: 'staff', title: 'Staff', questions: [{ type: 'choice', label: 'Team', options: ['A', 'B'] }], reviewer_role_ids: ['123456789012345678'] }));
@@ -63,11 +64,30 @@ const G2 = '100000000000000002';
   await formsDb.updatePanel(G1, panel.id, { message_id: '423456789012345678' });
   assert.equal((await formsDb.getPanel(G1, panel.id)).message_id, '423456789012345678');
 
+  // Retention: the answers of reviewed submissions older than the setting go, the small row stays; pending ones are never touched.
+  assert.equal((await formsDb.getFormConfig(G1)).retention_days, 30, '30 days by default');
+  await formsDb.setFormConfig(G1, { retention_days: 7 });
+  assert.deepEqual((await formsDb.listRetentionConfigs()).filter((r) => r.guild_id === G1).map((r) => r.retention_days), [7]);
+  await subsPool.query("update form_submissions set reviewed_at = now() - interval '8 days' where guild_id = $1 and number = $2", [G1, first.number]);
+  assert.equal(await formsDb.compactBefore(30, { except: [G1] }), 0, 'a server with its own setting is left to it');
+  assert.equal(await formsDb.compactBefore(7, { guildId: G1 }), 1);
+  const small = await formsDb.getSubmission(G1, first.number);
+  assert.equal(small.compacted, true); assert.deepEqual(small.answers, []); assert.equal(small.status, 'denied'); assert.equal(small.reviewer_id, 'r');
+  assert.equal((await formsDb.getSubmission(G1, first.number === 1 ? 2 : 1)).answers.length, 1, 'a pending one keeps its answers');
+  assert.equal(await formsDb.compactBefore(7, { guildId: G1 }), 0, 'compacted once');
+  // The cap: the oldest reviewed ones go, pending ones stay.
+  assert.deepEqual(await formsDb.countStored(G1), { total: 2, pending: 1 });
+  assert.equal(await formsDb.trimOldest(G1, 1), 1);
+  assert.deepEqual(await formsDb.countStored(G1), { total: 1, pending: 1 });
+  assert.equal(await formsDb.trimOldest(G1, 0), 0, 'a pending submission is never deleted to make room');
+
   await formsDb.deleteForm(G1, made.id);
-  const kept = await formsDb.getSubmission(G1, first.number);
-  assert.equal(kept.form_id, null, 'what was sent stays when its form is deleted'); assert.equal(kept.form_title, 'Staff');
+  const kept = (await formsDb.listSubmissions(G1, {}))[0];
+  assert.equal(kept.form_title, 'Staff', 'what was sent stays when its form is deleted');
+  assert.equal(kept.form_id, null);
+  await subsPool.query('delete from form_submissions where guild_id in ($1, $2)', [G1, G2]);
 
   await pool.query('delete from guilds where guild_id in ($1, $2)', [G1, G2]);
   await closePools();
-  console.log('Checked the forms tables against a real database.');
+  console.log('Checked the forms tables against a real database: numbers, reviews, retention and the cap.');
 })().catch((error) => { console.error(error); process.exit(1); });

@@ -1,6 +1,7 @@
 // Forms (applications): the forms of a server, what members sent, and the panels that open the forms. The rules of what a form may
 // hold are in utils/forms.js; this file only reads and writes.
 const database = require('./database');
+const { getPrimaryPool } = require('./postgres');
 
 const gid = (guildId) => String(guildId);
 const NAME = /^[a-z0-9][a-z0-9_-]{0,31}$/;
@@ -112,6 +113,65 @@ async function countFormSubmissions(guildId, formId) {
   return count ?? 0;
 }
 
+/** How many submissions a server keeps, and how many of them wait for a review (for the cap of each plan). */
+async function countStored(guildId) {
+  const client = database;
+  const [all, waiting] = await Promise.all([
+    client.from('form_submissions').select('id', { count: 'exact', head: true }).eq('guild_id', gid(guildId)),
+    client.from('form_submissions').select('id', { count: 'exact', head: true }).eq('guild_id', gid(guildId)).eq('status', 'pending'),
+  ]);
+  if (all.error) throw all.error;
+  if (waiting.error) throw waiting.error;
+  return { total: all.count ?? 0, pending: waiting.count ?? 0 };
+}
+
+/** Deletes the oldest reviewed submissions of a server until it keeps `keep` at most. Pending ones are never deleted. */
+async function trimOldest(guildId, keep) {
+  const { rowCount } = await getPrimaryPool().query(
+    `delete from form_submissions where id in (
+       select id from form_submissions where guild_id = $1 and status <> 'pending'
+       order by coalesce(reviewed_at, created_at) asc
+       limit greatest(0, (select count(*) from form_submissions where guild_id = $1) - $2)
+     )`,
+    [gid(guildId), Math.max(0, Number(keep) || 0)],
+  );
+  return rowCount ?? 0;
+}
+
+/**
+ * Removes the answers of reviewed submissions older than `days`: the row stays small (form, member, state, reviewer, dates and the
+ * link to its card). With `guildId` only that server; without it every server except `except` (the ones with their own setting).
+ */
+async function compactBefore(days, { guildId = null, except = [] } = {}) {
+  const params = [Math.max(1, Number(days) || 30)];
+  let where = `status <> 'pending' and not compacted and coalesce(reviewed_at, created_at) < now() - ($1::int * interval '1 day')`; // i18n-ignore: SQL
+  if (guildId) { params.push(gid(guildId)); where += ' and guild_id = $2'; } // i18n-ignore: SQL
+  else if (except.length) { params.push(except.map(String)); where += ' and not (guild_id = any($2::text[]))'; } // i18n-ignore: SQL
+  const { rowCount } = await getPrimaryPool().query(`update form_submissions set answers = '[]'::jsonb, avatar_url = null, reason = null, role_changes = '{}'::jsonb, compacted = true where ${where}`, params);
+  return rowCount ?? 0;
+}
+
+const RETENTION_DEFAULT = 30;
+
+async function getFormConfig(guildId) {
+  const { data, error } = await database.from('form_config').select('*').eq('guild_id', gid(guildId)).maybeSingle();
+  if (error) throw error;
+  return { retention_days: RETENTION_DEFAULT, ...(data ?? {}) };
+}
+
+async function setFormConfig(guildId, changes) {
+  const { data, error } = await database.from('form_config').upsert({ guild_id: gid(guildId), ...changes, updated_at: new Date().toISOString() }, { onConflict: 'guild_id' }).select('*').single();
+  if (error) throw error;
+  return data;
+}
+
+/** The servers that chose their own retention (the others use the default). */
+async function listRetentionConfigs() {
+  const { data, error } = await database.from('form_config').select('guild_id,retention_days').neq('retention_days', RETENTION_DEFAULT);
+  if (error) throw error;
+  return data ?? [];
+}
+
 async function createPanel(guildId, row) {
   const { data, error } = await database.from('form_panels').insert({ ...row, guild_id: gid(guildId) }).select('*').single();
   if (error) throw error;
@@ -142,7 +202,7 @@ async function deletePanel(guildId, id) {
 }
 
 module.exports = {
-  NAME, listForms, getForm, countForms, createForm, updateForm, deleteForm,
+  NAME, RETENTION_DEFAULT, countStored, trimOldest, compactBefore, getFormConfig, setFormConfig, listRetentionConfigs, listForms, getForm, countForms, createForm, updateForm, deleteForm,
   createSubmission, getSubmission, updateSubmission, resolveSubmission, listSubmissions, memberStats, countFormSubmissions,
   createPanel, updatePanel, getPanel, listPanels, deletePanel,
 };

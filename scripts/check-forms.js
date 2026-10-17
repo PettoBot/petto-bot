@@ -16,7 +16,8 @@ stub('src/db/database.js', { from() { throw new Error('the database is not used 
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {}, debug() {} });
 stub('src/db/guilds.js', { ensureGuild: async () => ({}) });
 let premiumActive = false;
-stub('src/db/premium.js', { getGuildPremium: async () => ({ active: premiumActive }), getGuildLimits: (p) => (p?.active ? { forms: 25, formQuestions: 25 } : { forms: 5, formQuestions: 10 }) });
+let freeCap = 500;
+stub('src/db/premium.js', { getGuildPremium: async () => ({ active: premiumActive }), getGuildLimits: (p) => (p?.active ? { forms: 25, formQuestions: 25, formSubmissions: 5000 } : { forms: 5, formQuestions: 10, formSubmissions: freeCap }) });
 const templates = new Map();
 stub('src/db/embedTemplates.js', { getTemplate: async (guildId, name) => templates.get(name) ?? null });
 stub('src/utils/templatedMessage.js', { templatePayload: async (guildId, name) => (templates.has(name) ? { content: undefined, embeds: [{ title: name }], components: [], files: [], reactions: [] } : null) });
@@ -51,6 +52,10 @@ stub('src/db/forms.js', {
     return { pending: rows.filter((s) => s.status === 'pending').length, total: rows.filter((s) => s.status !== 'cancelled').length, lastDeniedAt: denied ? denied.reviewed_at : null };
   },
   countFormSubmissions: async (g, formId) => db.subs.filter((s) => s.guild_id === g && s.form_id === Number(formId) && s.status !== 'cancelled').length,
+  countStored: async (g) => ({ total: db.subs.filter((s) => s.guild_id === g).length, pending: db.subs.filter((s) => s.guild_id === g && s.status === 'pending').length }),
+  trimOldest: async (g, keep) => { const mine = db.subs.filter((s) => s.guild_id === g); const extra = mine.length - keep; const old = mine.filter((s) => s.status !== 'pending').slice(0, Math.max(0, extra)); db.subs = db.subs.filter((s) => !old.includes(s)); return old.length; },
+  getFormConfig: async () => ({ retention_days: db.retention ?? 30 }),
+  setFormConfig: async (g, changes) => { db.retention = changes.retention_days; return { retention_days: db.retention }; },
   createPanel: async (g, row) => { const p = { ...copy(row), id: db.nextPanel++, guild_id: g }; db.panels.push(p); return copy(p); },
   updatePanel: async (g, id, changes) => { const p = db.panels.find((x) => x.id === Number(id)); Object.assign(p, changes); return copy(p); },
   getPanel: async (g, id) => copy(db.panels.find((x) => x.id === Number(id))),
@@ -353,7 +358,22 @@ const fieldsOf = (values) => ({
   await handleFormInteraction(interaction(`fm:s:${viaMenu.panel.id}`, 'select', { member: makeMember('u3', { roleIds: ['member'] }), values: [String(id)] }));
   assert.equal(shownModals.at(-1)?.custom_id, `fm:p:${id}:0`);
 
+  // Retention and the cap of stored submissions: the oldest reviewed ones make room, pending ones never do.
+  assert.match(await talk('retention', {}), /kept \*\*30\*\* days[\s\S]*Stored: 3\/500/);
+  assert.match(await talk('retention', { days: 7 }), /kept \*\*7\*\* days/); assert.equal(db.retention, 7);
+  assert.match(await talk('retention', { days: 7 }, plain), /Manage Server/);
+  freeCap = 3;
+  const u4 = makeMember('u4', { roleIds: ['member'] });
+  const fourth = await actions.submitForm({ client, guild, form: staffForm(), member: u4, answers: db.subs[2].answers });
+  assert.equal(fourth.ok, true); assert.equal(db.subs.length, 3, 'the oldest reviewed submission made room'); assert.ok(!db.subs.some((x) => x.number === 1));
+  for (const x of db.subs) x.status = 'pending';
+  const fifth = await actions.submitForm({ client, guild, form: staffForm(), member: makeMember('u5', { roleIds: ['member'] }), answers: db.subs[0].answers });
+  assert.equal(fifth.error, 'full', 'pending submissions are never deleted to make room');
+  freeCap = 500;
+  const compacted = cards.reviewCard({ submission: { ...long, status: 'accepted', compacted: true, answers: [] } });
+  assert.match(JSON.stringify(compacted.container.toJSON()), /answers were removed after the retention/); assert.equal(compacted.file, null);
+
   // Deleting a form keeps what was sent.
-  assert.match(await talk('delete', { form: 'staff' }), /deleted/); assert.equal(db.subs.length, 3); assert.equal(db.subs[0].form_id, null);
+  assert.match(await talk('delete', { form: 'staff' }), /deleted/); assert.equal(db.subs.length, 3); assert.ok(db.subs.every((x) => x.form_id === null));
   console.log('Checked forms: questions, rules, pages with Next, review card, accept and deny with roles and DM, reviewers, panels and !form.');
 })().catch((error) => { console.error(error); process.exit(1); });

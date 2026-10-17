@@ -73,7 +73,7 @@ async function pageSent(interaction, formId, page, lang) {
   const result = await actions.submitForm({ client: interaction.client, guild: interaction.guild, form, member: interaction.member, answers: forms.collectAnswers(form, draft.values) });
   if (!result.ok) {
     if (result.error === 'refused') { forms.dropDraft(interaction.guild.id, interaction.user.id, form.id); return interaction.editReply(card(forms.refusalText(result.refusal, lang), RED)); }
-    return interaction.editReply(card(t(lang, `forms.submitError.${result.error === 'missing' ? 'missing' : result.error === 'no_channel' ? 'noChannel' : 'failed'}`), RED, result.error === 'missing' ? [pageButtons(form.id, 0, lang, { fix: true })] : []));
+    return interaction.editReply(card(t(lang, `forms.submitError.${result.error === 'missing' ? 'missing' : result.error === 'no_channel' ? 'noChannel' : result.error === 'full' ? 'full' : 'failed'}`), RED, result.error === 'missing' ? [pageButtons(form.id, 0, lang, { fix: true })] : []));
   }
   forms.dropDraft(interaction.guild.id, interaction.user.id, form.id);
   return interaction.editReply(card(await actions.submittedText(interaction.guild, form, result.submission, interaction.member, lang), GREEN));
