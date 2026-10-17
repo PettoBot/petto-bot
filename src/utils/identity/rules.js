@@ -10,8 +10,9 @@ const NAME_PATTERN = /^[a-z0-9][a-z0-9_-]{0,39}$/;
 
 const fail = (code, message) => ({ ok: false, code, message });
 
+// Spaces become dashes, so a name written as "vanity 2" is saved (and found again) as "vanity-2" instead of being refused.
 function cleanName(value) {
-  return String(value ?? '').trim().toLowerCase();
+  return String(value ?? '').trim().toLowerCase().replace(/\s+/g, '-');
 }
 
 /**

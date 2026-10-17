@@ -398,6 +398,11 @@ function roleClient(log) {
   assert.equal(made.ok, true);
   made = await rules.createRule(guild, 'vanity', { name: 'REP', word: 'y', source: 'custom_status', comparison: 'contains', role_id: 'low', action: 'add_role' }, admin, 'admin');
   assert.equal(made.code, 'duplicate_name', 'names ignore case');
+  // A name with spaces is saved with dashes (the dashboard's "vanity 2" becomes "vanity-2"), and found again by its spaced form.
+  made = await rules.createRule(guild, 'vanity', { name: ' Vanity  2 ', word: 'z', source: 'custom_status', comparison: 'contains', role_id: 'low', action: 'add_role' }, admin, 'admin');
+  assert.equal(made.ok, true);
+  assert.equal(made.name, 'vanity-2');
+  assert.equal(rules.cleanName('vanity 2'), 'vanity-2');
   made = await rules.createRule(guild, 'vanity', { name: 'bad', word: '(', source: 'custom_status', comparison: 'regex', role_id: 'low', action: 'add_role' }, admin, 'admin');
   assert.equal(made.code, 'invalid_rule');
   let changed = await rules.updateRule(guild, 'vanity', 'rep', { comparison: 'regex', word: '(' }, admin);
