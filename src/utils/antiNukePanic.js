@@ -6,7 +6,7 @@ const { t, guildLanguage } = require('../i18n');
 /**
  * Panic mode: when several protections act in a short time (or Anti Raid sees a raid), the server is locked down at once
  * (channels closed, invites deleted and paused) and opens again by itself after a while. It is off until the server turns it
- * on; the lockdown that starts is a normal one, so `/lockdown end` or the dashboard end it earlier.
+ * on; the lockdown that starts is a normal one, so `!lockdown end` or the dashboard end it earlier.
  */
 const DEFAULTS = { threshold: 2, windowMinutes: 10, lockdownMinutes: 30 };
 const incidentsByGuild = new Map(); // guildId -> [timestamp]

@@ -22,16 +22,16 @@ All notable changes to Petto are documented here.
 
 ### Added
 
-- **Anti-nuke: five new protections, all off until a server turns them on (`/antinuke rule` or the dashboard).**
+- **Anti-nuke: five new protections, all off until a server turns them on (`!antinuke rule` or the dashboard).**
   - **Anti Role Changes** (`role_update`, 3 in 10s): roles edited in a row. A role (or @everyone) given a dangerous permission (Administrator, Manage Server, Manage Roles, Manage Channels, Manage Webhooks, Ban, Kick, Timeout, Mention Everyone) answers **at once**, without waiting for the limit. When it answers, the roles go back to how they were before the first edit.
   - **Anti Channel Changes** (`channel_update`, 4 in 10s): channels renamed or their permissions changed in a row. A channel opened to @everyone with Manage Channels, Manage Roles, Manage Webhooks, Manage Messages or Mention Everyone answers at once. The channels go back to their old name, topic and permissions.
   - **Anti Mass Mention** (`mention_everyone`, 2 in 30s): an account pinging @everyone or @here again and again. The pings are deleted. Bots that announce are left alone.
   - **Anti Webhook Spam** (`webhook_spam`, 8 in 10s): a webhook made by a person flooding messages. The webhook is deleted and the person answers. Webhooks of bots and apps (PluralKit, interactions, followed channels) are not touched, and with the protection off no webhook is looked up.
   - **Anti Prune** (`prune`, 1 in 60s): a member prune, read from the audit log entry itself.
 - **Anti Server Changes now puts the server name and icon back** when it answers, and says the old vanity (a bot cannot set it back).
-- **Panic mode (`/antinuke panic`, off by default).** When several protections act within a few minutes (2 in 10 min by default), or Anti Raid sees a raid, the server is locked down at once: the channels close and the invites are deleted and paused. The lockdown ends by itself (30 min by default), or earlier with `/lockdown end` or the dashboard.
-- **Trusted admins and owner only (`/antinuke admins`, `/antinuke settings`).** The owner can name trusted admins: the protections never touch them and they can change the anti-nuke. With **owner only** on, only the owner and the trusted admins can change the anti-nuke and press Restore (the administrators can still read it).
-- **The owner gets a DM when a protection acts** (on by default, once a minute at most; `/antinuke settings dm_owner:false` turns it off). The alert card also names the account and its ID.
+- **Panic mode (`!antinuke panic`, off by default).** When several protections act within a few minutes (2 in 10 min by default), or Anti Raid sees a raid, the server is locked down at once: the channels close and the invites are deleted and paused. The lockdown ends by itself (30 min by default), or earlier with `!lockdown end` or the dashboard.
+- **Trusted admins and owner only (`!antinuke admins`, `!antinuke settings`).** The owner can name trusted admins: the protections never touch them and they can change the anti-nuke. With **owner only** on, only the owner and the trusted admins can change the anti-nuke and press Restore (the administrators can still read it).
+- **The owner gets a DM when a protection acts** (on by default, once a minute at most; `!antinuke settings dm_owner:false` turns it off). The alert card also names the account and its ID.
 
 - **More of what happens in a server is logged, in the categories that already exist (no new ones to set up).**
   - `messages`: votes added or taken back in a poll, and a message published to the servers that follow an announcement channel.
