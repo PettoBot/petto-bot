@@ -18,6 +18,7 @@ const { countGuild } = require('../utils/counterValues');
 const { createCounter, setupPreset, counterLimits, previewName } = require('../utils/counterSetup');
 const { parseEvery, nextMilestone, announcePayload, announceChannel, MAX_TEXT } = require('../utils/counterAnnounce');
 const { planPositions } = require('../utils/counterOrder');
+const { keptPreview, forgetPreview } = require('../utils/counterPreviewCache');
 const logger = require('../utils/logger');
 const { t, requestLanguage } = require('../i18n');
 
@@ -42,14 +43,54 @@ function createMessage(result, lang) {
   return t(lang, 'counters.add.failed', { error: result.detail || '?' });
 }
 
+// The preview of a server (its values, the state of each counter, its limits and its announcement) is counted from the caches of
+// discord.js only: no member or presence is asked from Discord, and the online counts come from the presences the gateway sends. It is
+// kept a short while per server and language (counterPreviewCache.js); a change made through these routes forgets it.
+async function buildPreview(guild, lang) {
+  // The few values read from the database (each kept a minute, see counterSources.js), the rows, the announcement and the limits, at once.
+  const [rows, config, limits] = await Promise.all([
+    countersDb.list(guild.id),
+    countersDb.getAnnounce(guild.id).catch(() => null),
+    counterLimits(guild.id),
+    ...[...DB_TYPES].map((option) => loadValue(guild.id, option)),
+  ]);
+  const values = {};
+  for (const option of OPTIONS) if (!NEEDS_ROLE.has(option)) values[option] = countGuild(guild, option, lang, {});
+  const rolesOnline = {};
+  const roles = {};
+  const now = Date.now();
+  const counters = rows.map((row) => {
+    if (row.target_id) { roles[row.target_id] = countGuild(guild, 'role_members', lang, row); rolesOnline[row.target_id] = countGuild(guild, 'role_online', lang, row); }
+    const channel = guild.channels.cache.get(row.channel_id);
+    const times = recentRenames(row.rename_times, now);
+    return {
+      channel_id: row.channel_id, name: previewName(guild, row, lang), target: targetOf(row),
+      current_name: (targetOf(row) === 'topic' ? channel?.topic ?? '' : channel?.name) ?? null, channel_name: channel?.name ?? null, exists: Boolean(channel),
+      problem: row.problem ?? null, enabled: row.enabled !== false, renames_left: Math.max(0, 2 - times.length),
+      ...job().counterStatus(guild, row),
+      next_rename_at: job().pendingRenameAt(row.channel_id) ?? (times.length >= 2 ? nextRenameAt(times, now) : null),
+      clock_step: row.counter_option === 'clock' || /^\d{10}$/.test(String(row.counter_option)),
+    };
+  });
+  const announce = config ? {
+    enabled: config.enabled !== false, channel_id: config.channel_id ?? null, message: config.message ?? '', embed_name: config.embed_name ?? null, every: config.every ?? null,
+    use_goals: config.use_goals !== false, last_announced: config.last_announced ?? null,
+    next: nextMilestone({ count: guild.memberCount ?? 0, last: config.last_announced, every: config.every, goalRows: rows, useGoals: config.use_goals !== false }),
+  } : null;
+  return { ok: true, values, roles, roles_online: rolesOnline, presences: Boolean(guild.presences?.cache?.size), counters, limits, announce, default_announce: t(lang, 'counters.announce.default') };
+}
+
 function registerCounterRoutes(app, { authorize, limiter }) {
   const middleware = limiter ? [limiter] : [];
   const route = (name, handler) => app.post(`/api/dashboard/guild/:guildId/counters/${name}`, ...middleware, async (req, res) => {
     const access = await authorize(req, res, { page: 'counters', edit: name !== 'preview' });
     if (!access) return;
     const lang = requestLanguage(req, access.guild.id);
+    // Anything but the preview may change what it shows: it is counted again (also after, for a read that came in meanwhile).
+    if (name !== 'preview') forgetPreview(access.guild.id);
     try {
       await handler(req, res, access, lang);
+      if (name !== 'preview') forgetPreview(access.guild.id);
     } catch (err) {
       logger.error(`Dashboard counters ${name} failed for guild ${req.params.guildId}:`, err);
       res.status(500).json({ ok: false, message: t(lang, 'web.api.forms.failed') });
@@ -57,34 +98,9 @@ function registerCounterRoutes(app, { authorize, limiter }) {
   });
 
   route('preview', async (req, res, { guild }, lang) => {
-    const values = {};
-    for (const option of DB_TYPES) await loadValue(guild.id, option);
-    for (const option of OPTIONS) if (!NEEDS_ROLE.has(option)) values[option] = countGuild(guild, option, lang, {});
-    const rolesOnline = {};
-    const roles = {};
-    const rows = await countersDb.list(guild.id);
-    const now = Date.now();
-    const counters = rows.map((row) => {
-      if (row.target_id) { roles[row.target_id] = countGuild(guild, 'role_members', lang, row); rolesOnline[row.target_id] = countGuild(guild, 'role_online', lang, row); }
-      const channel = guild.channels.cache.get(row.channel_id);
-      const times = recentRenames(row.rename_times, now);
-      return {
-        channel_id: row.channel_id, name: previewName(guild, row, lang), target: targetOf(row),
-        current_name: (targetOf(row) === 'topic' ? channel?.topic ?? '' : channel?.name) ?? null, channel_name: channel?.name ?? null, exists: Boolean(channel),
-        problem: row.problem ?? null, enabled: row.enabled !== false, renames_left: Math.max(0, 2 - times.length),
-        ...job().counterStatus(guild, row),
-        next_rename_at: job().pendingRenameAt(row.channel_id) ?? (times.length >= 2 ? nextRenameAt(times, now) : null),
-        clock_step: row.counter_option === 'clock' || /^\d{10}$/.test(String(row.counter_option)),
-      };
-    });
-    const config = await countersDb.getAnnounce(guild.id).catch(() => null);
-    const announce = config ? {
-      enabled: config.enabled !== false, channel_id: config.channel_id ?? null, message: config.message ?? '', embed_name: config.embed_name ?? null, every: config.every ?? null,
-      use_goals: config.use_goals !== false, last_announced: config.last_announced ?? null,
-      next: nextMilestone({ count: guild.memberCount ?? 0, last: config.last_announced, every: config.every, goalRows: rows, useGoals: config.use_goals !== false }),
-    } : null;
+    const payload = await keptPreview(guild.id, lang, () => buildPreview(guild, lang));
     res.set('Cache-Control', 'no-store'); // i18n-ignore: HTTP header
-    res.json({ ok: true, values, roles, roles_online: rolesOnline, presences: Boolean(guild.presences?.cache?.size), counters, limits: await counterLimits(guild.id), announce, default_announce: t(lang, 'counters.announce.default') });
+    res.json(payload);
   });
 
   route('create', async (req, res, { guild, userId, member }, lang) => {
