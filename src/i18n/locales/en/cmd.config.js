@@ -199,6 +199,7 @@ module.exports = {
   'cmd.config.embed.field.remove.opt.embed.desc': 'Embed name',
   'cmd.config.embed.field.remove.opt.position.desc': 'Field position (1-based)',
   'cmd.config.embedconfig.desc': 'Show the saved embeds settings and how to change them.',
+  'cmd.config.formconfig.desc': 'Show the forms settings and how to change them.',
   'cmd.config.giveawayconfig.desc': 'Show the giveaways settings and how to change them.',
   'cmd.config.giveawaypresetconfig.desc': 'Show the giveaway presets settings and how to change them.',
   'cmd.config.giveawaytemplateconfig.desc': 'Show the giveaway templates settings and how to change them.',

@@ -63,6 +63,7 @@ module.exports = {
   'config.module.permissionconfig.title': 'Permissions',
   'config.module.backupconfig.title': 'Backups',
   'config.module.panelconfig.title': 'Button and menu panels',
+  'config.module.formconfig.title': 'Forms',
   'config.module.responderconfig.title': 'Button responders',
   'config.module.warnconfig.title': 'Warn escalation',
   'config.module.embedconfig.title': 'Saved embeds',
@@ -394,4 +395,5 @@ module.exports = {
   'config.restrict.notRestricted': '{emoji}  `{command}` is not restricted to that role.',
   'config.restrict.removedRole': '{emoji}  {role} was taken off `{command}`; the other roles of the command still can use it.',
   'config.restrict.open': '{emoji}  `{command}` is open again: everyone with the usual permissions can use it.',
+  'config.column.retention_days': 'Answers kept (days)',
 };

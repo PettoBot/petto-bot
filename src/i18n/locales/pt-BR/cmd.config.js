@@ -366,4 +366,5 @@ module.exports = {
   'cmd.config.restrictcommand.remove.opt.role.desc': 'O cargo (vazio: todos os cargos do comando)',
   'cmd.config.restrictcommand.list.desc': 'Veja cada comando restrito e seus cargos.',
   'cmd.config.restrictcommand.reset.desc': 'Abre de novo todos os comandos restritos.',
+  'cmd.config.formconfig.desc': 'Mostra as configurações dos formulários e como alterá-las.',
 };

@@ -3780,3 +3780,103 @@ create table if not exists dash_access (
   primary key (guild_id, role_id)
 );
 alter table dash_access enable row level security;
+
+-- Forms (applications): staff applications, partner requests, event sign-ups... A member presses the button of a panel and
+-- answers the questions in Discord forms of five questions each; the staff reads the answers in a review card and accepts or denies
+-- them from Discord, with `!form`, or from the dashboard. `name` is the short key used in commands; `questions` is a list of
+-- { id, type, label, help, placeholder, required, min_length, max_length, min_value, max_value, options, max_choices }.
+create table if not exists forms (
+  id                      bigserial primary key,
+  guild_id                text not null references guilds(guild_id) on delete cascade,
+  name                    text not null check (name ~ '^[a-z0-9][a-z0-9_-]{0,31}$'),
+  title                   text not null check (char_length(title) between 1 and 45),
+  description             text check (description is null or char_length(description) <= 1000),
+  color                   integer check (color is null or color between 0 and 16777215),
+  status                  text not null default 'closed' check (status in ('open', 'closed')),
+  questions               jsonb not null default '[]'::jsonb,
+  review_channel_id       text,
+  reviewer_role_ids       text[] not null default '{}',
+  ping_role_ids           text[] not null default '{}',
+  auto_thread             boolean not null default false,
+  required_role_ids       text[] not null default '{}',
+  blocked_role_ids        text[] not null default '{}',
+  min_account_days        integer not null default 0 check (min_account_days between 0 and 3650),
+  min_member_days         integer not null default 0 check (min_member_days between 0 and 3650),
+  one_pending             boolean not null default true,
+  deny_cooldown_hours     integer not null default 0 check (deny_cooldown_hours between 0 and 8760),
+  max_per_user            integer not null default 0 check (max_per_user between 0 and 1000),
+  max_total               integer not null default 0 check (max_total between 0 and 100000),
+  closes_at               timestamptz,
+  accept_add_role_ids     text[] not null default '{}',
+  accept_remove_role_ids  text[] not null default '{}',
+  deny_add_role_ids       text[] not null default '{}',
+  deny_remove_role_ids    text[] not null default '{}',
+  dm_results              boolean not null default true,
+  messages                jsonb not null default '{}'::jsonb,
+  button_label            text check (button_label is null or char_length(button_label) <= 80),
+  button_emoji            text,
+  button_style            text not null default 'primary' check (button_style in ('primary', 'secondary', 'success', 'danger')),
+  created_at              timestamptz not null default now(),
+  updated_at              timestamptz not null default now(),
+  unique (guild_id, name)
+);
+create index if not exists idx_forms_guild on forms(guild_id, id);
+alter table forms enable row level security;
+
+create table if not exists form_submissions (
+  id             bigserial primary key,
+  guild_id       text not null references guilds(guild_id) on delete cascade,
+  number         integer not null,
+  form_id        bigint references forms(id) on delete set null,
+  form_name      text not null default '',
+  form_title     text not null default '',
+  user_id        text not null,
+  username       text not null default '',
+  avatar_url     text,
+  answers        jsonb not null default '[]'::jsonb,
+  status         text not null default 'pending' check (status in ('pending', 'accepted', 'denied', 'cancelled')),
+  reviewer_id    text,
+  reviewer_name  text,
+  reason         text check (reason is null or char_length(reason) <= 1000),
+  role_changes   jsonb not null default '{}'::jsonb,
+  dm_sent        boolean,
+  channel_id     text,
+  message_id     text,
+  thread_id      text,
+  compacted      boolean not null default false,
+  created_at     timestamptz not null default now(),
+  reviewed_at    timestamptz,
+  unique (guild_id, number)
+);
+create index if not exists idx_form_submissions_guild on form_submissions(guild_id, status, created_at desc);
+create index if not exists idx_form_submissions_member on form_submissions(guild_id, form_id, user_id, status);
+alter table form_submissions add column if not exists compacted boolean not null default false;
+create index if not exists idx_form_submissions_compact on form_submissions(reviewed_at) where status <> 'pending' and not compacted;
+alter table form_submissions enable row level security;
+
+-- How long the answers of reviewed submissions are kept, per server (30 days by default). After that the submission keeps a small
+-- row (form, member, state, reviewer, dates and the link to its card) and its answers are removed.
+create table if not exists form_config (
+  guild_id        text primary key references guilds(guild_id) on delete cascade,
+  retention_days  integer not null default 30 check (retention_days between 1 and 365),
+  updated_at      timestamptz not null default now()
+);
+alter table form_config enable row level security;
+
+-- The messages with the buttons (or the menu) that open the forms. One panel can open several forms.
+create table if not exists form_panels (
+  id           bigserial primary key,
+  guild_id     text not null references guilds(guild_id) on delete cascade,
+  channel_id   text not null,
+  message_id   text,
+  form_ids     bigint[] not null default '{}',
+  style        text not null default 'buttons' check (style in ('buttons', 'select')),
+  template     text,
+  title        text,
+  description  text,
+  color        integer,
+  created_by   text,
+  created_at   timestamptz not null default now()
+);
+create index if not exists idx_form_panels_guild on form_panels(guild_id, id);
+alter table form_panels enable row level security;

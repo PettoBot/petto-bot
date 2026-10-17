@@ -123,4 +123,13 @@ module.exports = {
   'web.giveaway.nothingToChange': 'Change at least one field.',
   'web.giveaway.stillRunning': 'That giveaway is still running. End it first.',
   'web.giveaway.unknownAction': 'That action does not exist.',
+  'web.api.forms.badStatus': 'Pick accept or deny.',
+  'web.api.forms.notFound': 'That submission does not exist anymore.',
+  'web.api.forms.already': 'Someone already answered that submission.',
+  'web.api.forms.accepted': 'Submission #{number} accepted.',
+  'web.api.forms.denied': 'Submission #{number} denied.',
+  'web.api.forms.failed': 'It could not be done. Try again.',
+  'web.api.forms.pickChannel': 'Pick a channel for the panel first.',
+  'web.api.forms.pickForms': 'Pick at least one form for the panel.',
+  'web.api.forms.panelPosted': 'Panel posted.',
 };

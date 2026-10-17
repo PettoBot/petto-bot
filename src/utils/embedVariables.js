@@ -391,6 +391,12 @@ async function resolve(text, ctx = {}) {
     '{partner.server_day}': ctx.partner?.server_day ?? '',
     '{partner.server_week}': ctx.partner?.server_week ?? '',
     '{partner.server_total}': ctx.partner?.server_total ?? '',
+    // Forms: ctx.form describes one submission of a form (see utils/formActions.js).
+    '{form.name}': ctx.form?.name ?? '',
+    '{form.title}': ctx.form?.title ?? '',
+    '{form.number}': ctx.form?.number ?? '',
+    '{form.status}': ctx.form?.status ?? '',
+    '{form.reason}': ctx.form?.reason ?? '',
     // Requests: ctx.request describes one request (see commands/automation/request.js).
     '{request.number}': ctx.request?.number ?? '',
     '{request.text}': ctx.request?.text ?? '',

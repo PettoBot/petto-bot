@@ -63,6 +63,7 @@ module.exports = {
   'config.module.permissionconfig.title': 'Permissões',
   'config.module.backupconfig.title': 'Backups',
   'config.module.panelconfig.title': 'Painéis de botões e menus',
+  'config.module.formconfig.title': 'Formulários',
   'config.module.responderconfig.title': 'Botões de resposta',
   'config.module.warnconfig.title': 'Escalonamento de advertências',
   'config.module.embedconfig.title': 'Embeds salvos',
@@ -394,4 +395,5 @@ module.exports = {
   'config.restrict.notRestricted': '{emoji}  `{command}` não está restrito a esse cargo.',
   'config.restrict.removedRole': '{emoji}  {role} foi retirado de `{command}`; os outros cargos do comando ainda podem usá-lo.',
   'config.restrict.open': '{emoji}  `{command}` está aberto de novo: todos com as permissões de sempre podem usá-lo.',
+  'config.column.retention_days': 'Respostas guardadas (dias)',
 };

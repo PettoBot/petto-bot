@@ -1,0 +1,351 @@
+// Forms (applications): what a form may hold, who may open it, and how its questions become Discord forms of five questions each.
+// Nothing here talks to Discord or the database; utils/formActions.js does that and the checks of scripts/check-forms.js use this.
+const {
+  LabelBuilder, ModalBuilder, StringSelectMenuBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits,
+} = require('discord.js');
+const { t, currentLanguage } = require('../i18n');
+
+const PREFIX = 'fm:';
+const QUESTION_TYPES = ['short', 'paragraph', 'number', 'yesno', 'choice', 'multi'];
+const CHOICE_TYPES = ['choice', 'multi'];
+const TEXT_TYPES = ['short', 'paragraph', 'number'];
+const STATUSES = ['pending', 'accepted', 'denied', 'cancelled'];
+const BUTTON_STYLES = ['primary', 'secondary', 'success', 'danger'];
+// What Discord allows: 45 characters for the title of a form and the label of a field, 100 for its description and placeholder,
+// 25 options of 100 characters in a menu, 4000 characters in a text field, and five fields in a form.
+const LIMITS = {
+  title: 45, label: 45, help: 100, placeholder: 100, option: 100, options: 25, description: 1000,
+  short: 1000, paragraph: 4000, pageSize: 5, questions: 25, reason: 1000, message: 2000, buttonLabel: 80, roles: 25,
+};
+const DEFAULT_MAX = { short: 200, paragraph: 1000 };
+const SNOWFLAKE = /^\d{15,25}$/;
+const NAME = /^[a-z0-9][a-z0-9_-]{0,31}$/;
+const COLORS = { pending: 0x5865f2, accepted: 0x23a55a, denied: 0xf23f43, cancelled: 0x4b4f59 };
+
+const clip = (value, max) => String(value ?? '').replace(/\u0000/g, '').trim().slice(0, max);
+const whole = (value, min, max, fallback) => {
+  if (value === null || value === undefined || value === '') return fallback;
+  const n = Math.trunc(Number(value));
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+};
+const finite = (value) => {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+};
+const ids = (list, max = LIMITS.roles) => [...new Set((Array.isArray(list) ? list : []).map(String).filter((id) => SNOWFLAKE.test(id)))].slice(0, max);
+
+/** A name for commands: `Staff Apps!` -> `staff-apps`. Empty when nothing usable is left. */
+function slugName(value) {
+  return String(value ?? '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9_-]+/g, '-').replace(/^[-_]+|-+$/g, '').slice(0, 32);
+}
+
+/** One question, cut down to what Discord and Petto allow, or null when it cannot be asked (no label, a list with fewer than two options). */
+function normalizeQuestion(input, index = 0, seen = new Set()) {
+  const type = QUESTION_TYPES.includes(input?.type) ? input.type : 'short';
+  const label = clip(input?.label, LIMITS.label);
+  if (!label) return null;
+  let id = /^[a-z0-9_-]{1,20}$/i.test(String(input?.id ?? '')) ? String(input.id) : `q${index + 1}`;
+  while (seen.has(id)) id = `${id.slice(0, 18)}${seen.size}`;
+  seen.add(id);
+  const question = {
+    id, type, label,
+    help: clip(input?.help, LIMITS.help) || null,
+    placeholder: clip(input?.placeholder, LIMITS.placeholder) || null,
+    required: input?.required !== false,
+  };
+  if (type === 'short' || type === 'paragraph') {
+    const cap = LIMITS[type];
+    const max = whole(input?.max_length, 1, cap, DEFAULT_MAX[type]);
+    question.max_length = max;
+    question.min_length = Math.min(whole(input?.min_length, 0, cap, 0), max);
+  }
+  if (type === 'number') {
+    let min = finite(input?.min_value);
+    let max = finite(input?.max_value);
+    if (min !== null && max !== null && min > max) [min, max] = [max, min];
+    question.min_value = min;
+    question.max_value = max;
+  }
+  if (CHOICE_TYPES.includes(type)) {
+    const options = [...new Set((Array.isArray(input?.options) ? input.options : String(input?.options ?? '').split(/\r?\n|\|/)).map((o) => clip(o, LIMITS.option)).filter(Boolean))].slice(0, LIMITS.options);
+    if (options.length < 2) return null;
+    question.options = options;
+    if (type === 'multi') question.max_choices = whole(input?.max_choices, 1, options.length, options.length);
+  }
+  return question;
+}
+
+/** The questions of a form, checked again (they may come from the dashboard or an older version). */
+function normalizeQuestions(list, max = LIMITS.questions) {
+  const seen = new Set();
+  return (Array.isArray(list) ? list : []).map((q, i) => normalizeQuestion(q, i, seen)).filter(Boolean).slice(0, max);
+}
+
+const cleanMessage = (input) => {
+  const out = {};
+  const text = clip(input?.text, LIMITS.message);
+  const template = clip(input?.template, 100);
+  if (text) out.text = text;
+  if (template) out.template = template;
+  return out;
+};
+
+/** The settings of a form as they are stored, from what a command or the dashboard gives. Unknown fields are dropped. */
+function normalizeForm(input, { maxQuestions = LIMITS.questions } = {}) {
+  const color = finite(input?.color);
+  const closes = input?.closes_at ? new Date(input.closes_at) : null;
+  return {
+    name: slugName(input?.name) || 'form',
+    title: clip(input?.title, LIMITS.title) || clip(input?.name, LIMITS.title) || 'Form', // i18n-ignore: stored default, the server renames it
+    description: clip(input?.description, LIMITS.description) || null,
+    color: color !== null && color >= 0 && color <= 0xffffff ? Math.trunc(color) : null,
+    status: input?.status === 'open' ? 'open' : 'closed',
+    questions: normalizeQuestions(input?.questions, maxQuestions),
+    review_channel_id: SNOWFLAKE.test(String(input?.review_channel_id ?? '')) ? String(input.review_channel_id) : null,
+    reviewer_role_ids: ids(input?.reviewer_role_ids),
+    ping_role_ids: ids(input?.ping_role_ids, 5),
+    auto_thread: input?.auto_thread === true,
+    required_role_ids: ids(input?.required_role_ids),
+    blocked_role_ids: ids(input?.blocked_role_ids),
+    min_account_days: whole(input?.min_account_days, 0, 3650, 0),
+    min_member_days: whole(input?.min_member_days, 0, 3650, 0),
+    one_pending: input?.one_pending !== false,
+    deny_cooldown_hours: whole(input?.deny_cooldown_hours, 0, 8760, 0),
+    max_per_user: whole(input?.max_per_user, 0, 1000, 0),
+    max_total: whole(input?.max_total, 0, 100000, 0),
+    closes_at: closes && !Number.isNaN(closes.getTime()) ? closes.toISOString() : null,
+    accept_add_role_ids: ids(input?.accept_add_role_ids),
+    accept_remove_role_ids: ids(input?.accept_remove_role_ids),
+    deny_add_role_ids: ids(input?.deny_add_role_ids),
+    deny_remove_role_ids: ids(input?.deny_remove_role_ids),
+    dm_results: input?.dm_results !== false,
+    messages: { submitted: cleanMessage(input?.messages?.submitted), accepted: cleanMessage(input?.messages?.accepted), denied: cleanMessage(input?.messages?.denied) },
+    button_label: clip(input?.button_label, LIMITS.buttonLabel) || null,
+    button_emoji: clip(input?.button_emoji, 64) || null,
+    button_style: BUTTON_STYLES.includes(input?.button_style) ? input.button_style : 'primary',
+  };
+}
+
+const DAY = 86_400_000;
+
+/**
+ * Whether a member may open a form now. `stats` is what they already sent ({ pending, total, lastDeniedAt }) and `total` how many
+ * submissions the form has. Returns null when they may, or `{ code, vars }`: closed, ended, empty, full, blocked, roles, account,
+ * member, pending, limit or cooldown.
+ */
+function checkEligibility(form, member, stats = {}, { total = 0, now = Date.now() } = {}) {
+  if (!form || form.status !== 'open') return { code: 'closed', vars: {} };
+  if (form.closes_at && Date.parse(form.closes_at) <= now) return { code: 'ended', vars: {} };
+  if (!normalizeQuestions(form.questions).length) return { code: 'empty', vars: {} };
+  if (form.max_total > 0 && total >= form.max_total) return { code: 'full', vars: {} };
+  const roles = member?.roles?.cache;
+  const has = (id) => Boolean(roles?.has?.(id));
+  const blocked = (form.blocked_role_ids ?? []).find(has);
+  if (blocked) return { code: 'blocked', vars: { role: `<@&${blocked}>` } };
+  const required = form.required_role_ids ?? [];
+  if (required.length && !required.some(has)) return { code: 'roles', vars: { roles: required.map((id) => `<@&${id}>`).join(', ') } };
+  const created = member?.user?.createdTimestamp ?? null;
+  if (form.min_account_days > 0 && created && now - created < form.min_account_days * DAY) {
+    return { code: 'account', vars: { days: form.min_account_days, time: `<t:${Math.ceil((created + form.min_account_days * DAY) / 1000)}:R>` } };
+  }
+  const joined = member?.joinedTimestamp ?? null;
+  if (form.min_member_days > 0 && (!joined || now - joined < form.min_member_days * DAY)) {
+    const ready = (joined ?? now) + form.min_member_days * DAY;
+    return { code: 'member', vars: { days: form.min_member_days, time: `<t:${Math.ceil(ready / 1000)}:R>` } };
+  }
+  if (form.one_pending !== false && (stats.pending ?? 0) > 0) return { code: 'pending', vars: {} };
+  if (form.max_per_user > 0 && (stats.total ?? 0) >= form.max_per_user) return { code: 'limit', vars: { count: form.max_per_user } };
+  if (form.deny_cooldown_hours > 0 && stats.lastDeniedAt) {
+    const until = Date.parse(stats.lastDeniedAt) + form.deny_cooldown_hours * 3_600_000;
+    if (until > now) return { code: 'cooldown', vars: { time: `<t:${Math.ceil(until / 1000)}:R>` } };
+  }
+  return null;
+}
+
+/** The sentence that tells a member why they cannot open a form. */
+function refusalText(refusal, lang = currentLanguage()) {
+  return t(lang, `forms.refuse.${refusal.code}`, refusal.vars);
+}
+
+/** Who may answer the submissions of a form: who manages the server, or a member of one of its reviewer roles. */
+function isReviewer(member, form) {
+  const permissions = member?.permissions;
+  if (permissions?.has?.(PermissionFlagsBits.ManageGuild) || permissions?.has?.(PermissionFlagsBits.Administrator)) return true;
+  return (form?.reviewer_role_ids ?? []).some((id) => member?.roles?.cache?.has?.(id));
+}
+
+/** The questions split in the pages Discord shows: five per form. */
+function pagesOf(form) {
+  const questions = normalizeQuestions(form?.questions);
+  const pages = [];
+  for (let i = 0; i < questions.length; i += LIMITS.pageSize) pages.push(questions.slice(i, i + LIMITS.pageSize));
+  return pages;
+}
+
+const fieldId = (question) => `a_${question.id}`;
+
+/** The title of a page: the form's title, with `(2/3)` when it has more than one page, within Discord's 45 characters. */
+function pageTitle(form, page, count) {
+  const suffix = count > 1 ? ` (${page + 1}/${count})` : '';
+  return `${clip(form.title, LIMITS.title - suffix.length) || 'Form'}${suffix}`; // i18n-ignore: fallback title
+}
+
+/** The Discord form of one page. `values` fills in what the member already wrote, when a page is shown again. */
+function buildModal(form, page, { values = {}, lang = currentLanguage() } = {}) {
+  const pages = pagesOf(form);
+  const questions = pages[page] ?? [];
+  const modal = new ModalBuilder().setCustomId(`${PREFIX}p:${form.id}:${page}`).setTitle(pageTitle(form, page, pages.length));
+  for (const q of questions) {
+    const label = new LabelBuilder().setLabel(q.label);
+    if (q.help) label.setDescription(q.help);
+    const prior = values[q.id];
+    if (TEXT_TYPES.includes(q.type)) {
+      const input = new TextInputBuilder().setCustomId(fieldId(q)).setRequired(q.required)
+        .setStyle(q.type === 'paragraph' ? TextInputStyle.Paragraph : TextInputStyle.Short);
+      if (q.type === 'number') {
+        input.setMaxLength(30);
+        const range = q.min_value !== null && q.max_value !== null ? `${q.min_value} – ${q.max_value}` : null;
+        const placeholder = q.placeholder || range || t(lang, 'forms.modal.number');
+        input.setPlaceholder(clip(placeholder, LIMITS.placeholder));
+      } else {
+        input.setMaxLength(q.max_length);
+        if (q.min_length > 0) input.setMinLength(q.min_length);
+        if (q.placeholder) input.setPlaceholder(q.placeholder);
+      }
+      if (typeof prior === 'string' && prior) input.setValue(prior.slice(0, q.type === 'number' ? 30 : q.max_length));
+      label.setTextInputComponent(input);
+    } else {
+      const options = q.type === 'yesno'
+        ? [{ label: t(lang, 'forms.answer.yes'), value: 'yes' }, { label: t(lang, 'forms.answer.no'), value: 'no' }]
+        : q.options.map((option, index) => ({ label: option, value: `o${index}` }));
+      const chosen = new Set(Array.isArray(prior) ? prior : prior ? [prior] : []);
+      const menu = new StringSelectMenuBuilder().setCustomId(fieldId(q)).setRequired(q.required)
+        .setPlaceholder(clip(q.placeholder || t(lang, q.type === 'multi' ? 'forms.modal.pickMany.menu' : 'forms.modal.pick.menu'), 150))
+        .setMinValues(q.required ? 1 : 0)
+        .setMaxValues(q.type === 'multi' ? (q.max_choices ?? q.options.length) : 1)
+        .addOptions(options.map((option) => ({ ...option, default: chosen.has(option.value) })));
+      label.setStringSelectMenuComponent(menu);
+    }
+    modal.addLabelComponents(label);
+  }
+  return modal;
+}
+
+function readField(fields, question) {
+  try {
+    if (TEXT_TYPES.includes(question.type)) return String(fields.getTextInputValue(fieldId(question)) ?? '');
+    return [...(fields.getStringSelectValues(fieldId(question)) ?? [])].map(String);
+  } catch {
+    return TEXT_TYPES.includes(question.type) ? '' : [];
+  }
+}
+
+/**
+ * The answers of one page as the member gave them (`values`: text, or the values of the menu) and what is wrong with them
+ * (`errors`: [{ id, label, code, vars }], codes required, number, range, short, invalid).
+ */
+function readPage(form, page, fields) {
+  const values = {};
+  const errors = [];
+  for (const q of pagesOf(form)[page] ?? []) {
+    const raw = readField(fields, q);
+    const fail = (code, vars = {}) => errors.push({ id: q.id, label: q.label, code, vars });
+    if (TEXT_TYPES.includes(q.type)) {
+      const text = raw.trim();
+      values[q.id] = text;
+      if (!text) { if (q.required) fail('required'); continue; }
+      if (q.type === 'number') {
+        const normal = text.replace(/\s/g, '').replace(',', '.');
+        if (!/^-?\d{1,15}(\.\d{1,6})?$/.test(normal)) { fail('number'); continue; }
+        const n = Number(normal);
+        if ((q.min_value !== null && n < q.min_value) || (q.max_value !== null && n > q.max_value)) fail('range', { min: q.min_value ?? '…', max: q.max_value ?? '…' });
+      } else if (text.length < (q.min_length ?? 0)) fail('short', { count: q.min_length });
+      continue;
+    }
+    const allowed = q.type === 'yesno' ? ['yes', 'no'] : q.options.map((_o, i) => `o${i}`);
+    const picked = [...new Set(raw)].filter((v) => allowed.includes(v));
+    values[q.id] = q.type === 'multi' ? picked : (picked[0] ?? '');
+    if (!picked.length) { if (q.required) fail('required'); continue; }
+    if (picked.length !== raw.length || (q.type !== 'multi' && picked.length > 1) || (q.type === 'multi' && picked.length > (q.max_choices ?? q.options.length))) fail('invalid');
+  }
+  return { values, errors };
+}
+
+/** Every answer of a form, from the values collected page by page, as it is stored: [{ id, label, type, value }]. */
+function collectAnswers(form, values) {
+  return normalizeQuestions(form?.questions).map((q) => {
+    const raw = values?.[q.id];
+    let value;
+    if (q.type === 'multi') value = (Array.isArray(raw) ? raw : []).map((v) => q.options[Number(String(v).slice(1))]).filter(Boolean);
+    else if (q.type === 'choice') value = q.options[Number(String(raw ?? '').slice(1))] ?? '';
+    else if (q.type === 'yesno') value = raw === 'yes' || raw === 'no' ? raw : '';
+    else value = clip(raw, q.type === 'paragraph' ? LIMITS.paragraph : q.type === 'number' ? 30 : LIMITS.short);
+    return { id: q.id, label: q.label, type: q.type, value };
+  });
+}
+
+/** Whether every required question has an answer (a last check before a submission is stored). */
+function missingRequired(form, answers) {
+  const byId = new Map(answers.map((a) => [a.id, a]));
+  return normalizeQuestions(form?.questions).filter((q) => {
+    const value = byId.get(q.id)?.value;
+    return q.required && (value === undefined || value === '' || (Array.isArray(value) && !value.length));
+  }).map((q) => q.label);
+}
+
+/** An answer as people read it. */
+function answerText(answer, lang = currentLanguage()) {
+  const value = answer?.value;
+  if (Array.isArray(value)) return value.length ? value.map((v) => `• ${v}`).join('\n') : '';
+  if (answer?.type === 'yesno' && (value === 'yes' || value === 'no')) return t(lang, `forms.answer.${value}`);
+  return String(value ?? '');
+}
+
+/** The whole submission as plain text (the file that goes with a review card whose answers did not fit, and the dashboard export). */
+function answersAsText(submission, lang = currentLanguage()) {
+  const head = t(lang, 'forms.file.head', { form: submission.form_title || submission.form_name, number: submission.number, user: submission.username, id: submission.user_id });
+  const body = (submission.answers ?? []).map((a) => `${a.label}\n${answerText(a, lang) || t(lang, 'forms.answer.none')}`).join('\n\n');
+  return `${head}\n\n${body}\n`;
+}
+
+/**
+ * Fills a message for the member: {user}, {form}, {reason}, {number}, {server} (the rest goes to the usual variables).
+ * A reason left empty says nothing.
+ */
+function fillShortcuts(text, vars) {
+  return String(text ?? '').replace(/\{(form|reason|number|server|status)\}/g, (_m, key) => String(vars?.[key] ?? '')).replace(/[ \t]+\n/g, '\n').trim();
+}
+
+/** The member's in-memory progress through the pages of a form. Kept 30 minutes, at most a few thousand at a time. */
+const DRAFT_TTL_MS = 30 * 60_000;
+const MAX_DRAFTS = 5000;
+const drafts = new Map();
+const draftKey = (guildId, userId, formId) => `${guildId}:${userId}:${formId}`;
+function getDraft(guildId, userId, formId, now = Date.now()) {
+  const key = draftKey(guildId, userId, formId);
+  const draft = drafts.get(key);
+  if (!draft) return null;
+  if (now - draft.at > DRAFT_TTL_MS) { drafts.delete(key); return null; }
+  return draft;
+}
+function saveDraft(guildId, userId, formId, values, now = Date.now()) {
+  if (drafts.size >= MAX_DRAFTS) {
+    for (const [key, draft] of drafts) if (now - draft.at > DRAFT_TTL_MS) drafts.delete(key);
+    if (drafts.size >= MAX_DRAFTS) drafts.delete(drafts.keys().next().value);
+  }
+  const key = draftKey(guildId, userId, formId);
+  const draft = { values: { ...(drafts.get(key)?.values ?? {}), ...values }, at: now };
+  drafts.set(key, draft);
+  return draft;
+}
+function dropDraft(guildId, userId, formId) {
+  drafts.delete(draftKey(guildId, userId, formId));
+}
+
+module.exports = {
+  PREFIX, QUESTION_TYPES, CHOICE_TYPES, STATUSES, BUTTON_STYLES, LIMITS, COLORS, NAME, SNOWFLAKE,
+  clip, slugName, normalizeQuestion, normalizeQuestions, normalizeForm, checkEligibility, refusalText, isReviewer,
+  pagesOf, pageTitle, buildModal, readPage, collectAnswers, missingRequired, answerText, answersAsText, fillShortcuts,
+  getDraft, saveDraft, dropDraft, DRAFT_TTL_MS,
+};

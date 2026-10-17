@@ -123,4 +123,13 @@ module.exports = {
   'web.giveaway.nothingToChange': 'Altere pelo menos um campo.',
   'web.giveaway.stillRunning': 'Esse sorteio ainda está ativo. Encerre-o primeiro.',
   'web.giveaway.unknownAction': 'Essa ação não existe.',
+  'web.api.forms.badStatus': 'Escolha aceitar ou recusar.',
+  'web.api.forms.notFound': 'Essa resposta não existe mais.',
+  'web.api.forms.already': 'Alguém já revisou essa resposta.',
+  'web.api.forms.accepted': 'Resposta #{number} aceita.',
+  'web.api.forms.denied': 'Resposta #{number} recusada.',
+  'web.api.forms.failed': 'Não foi possível fazer. Tente de novo.',
+  'web.api.forms.pickChannel': 'Escolha um canal para o painel primeiro.',
+  'web.api.forms.pickForms': 'Escolha pelo menos um formulário para o painel.',
+  'web.api.forms.panelPosted': 'Painel publicado.',
 };

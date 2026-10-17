@@ -63,6 +63,7 @@ module.exports = {
   'config.module.permissionconfig.title': 'Permisos',
   'config.module.backupconfig.title': 'Copias de seguridad',
   'config.module.panelconfig.title': 'Paneles de botones y menús',
+  'config.module.formconfig.title': 'Formularios',
   'config.module.responderconfig.title': 'Botones de respuesta',
   'config.module.warnconfig.title': 'Escalado de advertencias',
   'config.module.embedconfig.title': 'Embeds guardados',
@@ -394,4 +395,5 @@ module.exports = {
   'config.restrict.notRestricted': '{emoji}  `{command}` no está restringido a ese rol.',
   'config.restrict.removedRole': '{emoji}  Se quitó {role} de `{command}`; los otros roles del comando todavía pueden usarlo.',
   'config.restrict.open': '{emoji}  `{command}` vuelve a estar abierto: todos los que tienen los permisos de siempre pueden usarlo.',
+  'config.column.retention_days': 'Respuestas guardadas (días)',
 };

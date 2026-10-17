@@ -639,4 +639,10 @@ module.exports = {
   'embeds.var.functions.separator': 'A decorative divider line',
   'embeds.varGroup.actions': 'Actions',
   'embeds.var.actions.reactreplyEmoji': 'Reacts to the sent message with this emoji. If the response contains only this flag, it reacts to the triggering message instead.',
+  'embeds.varGroup.form': 'Forms',
+  'embeds.var.form.form.name': 'Short name of the form',
+  'embeds.var.form.form.title': 'Title of the form',
+  'embeds.var.form.form.number': 'Number of the submission',
+  'embeds.var.form.form.status': 'State of the submission',
+  'embeds.var.form.form.reason': 'Reason the reviewer gave',
 };

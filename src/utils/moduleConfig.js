@@ -99,6 +99,7 @@ const MODULES = {
   },
   backupconfig: { aliases: [], title: t('en', 'config.module.backupconfig.title'), command: 'backup', sources: [{ table: 'guild_backups', list: true, only: ['backup_number', 'label', 'source'] }] },
   panelconfig: { aliases: [], title: t('en', 'config.module.panelconfig.title'), command: 'panel', sources: [{ table: 'component_panels', list: true, only: ['name', 'kind', 'channel_id'] }] },
+  formconfig: { aliases: ['formsconfig', 'applicationconfig'], title: t('en', 'config.module.formconfig.title'), command: 'form', show: [/^create/, /^question add/, /^set/, /^message/, /^open/, /^panel/, /^submissions/, /^retention/], sources: [{ table: 'form_config', only: ['retention_days'] }, { table: 'forms', list: true, only: ['name', 'status', 'review_channel_id'] }] },
   responderconfig: { aliases: [], title: t('en', 'config.module.responderconfig.title'), command: 'responder', sources: [{ table: 'button_responders', list: true, only: ['name', 'label'] }] },
   warnconfig: { aliases: ['escalationconfig'], title: t('en', 'config.module.warnconfig.title'), command: 'warn', sources: [{ table: 'warn_escalation_rules', list: true, only: ['warn_count', 'action', 'duration_ms'] }] },
   embedconfig: { aliases: ['embedsconfig'], title: t('en', 'config.module.embedconfig.title'), command: 'embed', sources: [{ table: 'embed_templates', list: true, only: ['name'] }] },
