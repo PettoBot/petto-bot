@@ -15,9 +15,7 @@ const FREE_LIMITS = Object.freeze({
   buttonResponders: 20,
   uploadChannels: 20,
   componentPanels: 10,
-  forms: 5,
-  formQuestions: 10,
-  formSubmissions: 500,
+  counters: 6,
 });
 
 const PREMIUM_LIMITS = Object.freeze({
@@ -33,9 +31,7 @@ const PREMIUM_LIMITS = Object.freeze({
   buttonResponders: 250,
   uploadChannels: 100,
   componentPanels: 50,
-  forms: 25,
-  formQuestions: 25,
-  formSubmissions: 5000,
+  counters: 25,
 });
 
 /**

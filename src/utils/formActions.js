@@ -16,12 +16,10 @@ const logEngine = lazy('../logging/engine');
 
 const { clip, COLORS } = forms;
 
-const premiumDb = lazy('../db/premium');
-
-/** How many submissions a server keeps (Free and Premium). */
+/** How many submissions a server keeps: the same for every server. */
 async function storageCap(guildId) {
-  const premium = await premiumDb.getGuildPremium(guildId).catch(() => ({ active: false }));
-  return premiumDb.getGuildLimits(premium)?.formSubmissions ?? 500;
+  void guildId;
+  return forms.FORM_LIMITS.submissions;
 }
 
 async function fetchTextChannel(guild, channelId) {

@@ -1904,6 +1904,18 @@ alter table server_counters add column if not exists parent_id text;
 alter table server_counters add column if not exists interval_seconds integer not null default 60;
 alter table server_counters add column if not exists enabled boolean not null default true;
 alter table server_counters add column if not exists last_updated_at timestamptz;
+-- Counters 2: number format, a role or a goal or a time zone for the types that need one, the renames of the last ten
+-- minutes (so a restart keeps under Discord's limit of two renames per ten minutes), and the problem said to the staff.
+alter table server_counters add column if not exists number_format text not null default 'plain';
+alter table server_counters add column if not exists target_id text;
+alter table server_counters add column if not exists goal integer;
+alter table server_counters add column if not exists timezone text;
+alter table server_counters add column if not exists rename_times jsonb not null default '[]'::jsonb;
+alter table server_counters add column if not exists last_name text;
+alter table server_counters add column if not exists problem text;
+alter table server_counters add column if not exists problem_at timestamptz;
+alter table server_counters drop constraint if exists server_counters_number_format_check;
+alter table server_counters add constraint server_counters_number_format_check check (number_format in ('plain', 'grouped', 'compact'));
 
 create index if not exists idx_server_counters_guild on server_counters(guild_id);
 

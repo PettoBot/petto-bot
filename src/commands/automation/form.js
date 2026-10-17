@@ -5,7 +5,6 @@ const formsDb = require('../../db/forms');
 const forms = require('../../utils/forms');
 const actions = require('../../utils/formActions');
 const { reviewCard } = require('../../utils/formCards');
-const { getGuildPremium, getGuildLimits } = require('../../db/premium');
 const { getTemplate } = require('../../db/embedTemplates');
 const { ensureGuild } = require('../../db/guilds');
 const { resolveRole } = require('../../utils/roleResolve');
@@ -112,9 +111,8 @@ const MANAGE = new Set(['create', 'delete', 'info', 'open', 'close', 'set', 'mes
 const canManage = (member) => Boolean(member?.permissions?.has?.(PermissionFlagsBits.ManageGuild) || member?.permissions?.has?.(PermissionFlagsBits.Administrator));
 
 async function limitsOf(guildId) {
-  const premium = await getGuildPremium(guildId).catch(() => ({ active: false }));
-  const limits = getGuildLimits(premium);
-  return { forms: limits.forms ?? 5, questions: limits.formQuestions ?? 10, premium: Boolean(premium?.active) };
+  void guildId;
+  return { forms: forms.FORM_LIMITS.forms, questions: forms.FORM_LIMITS.questions };
 }
 
 const typeName = (type, lang) => t(lang, `forms.type.${type}`);
@@ -274,7 +272,7 @@ async function execute(interaction) {
     if (!forms.NAME.test(name)) return done(bad(t(lang, 'forms.create.badName')));
     const limits = await limitsOf(guild.id);
     const count = await formsDb.countForms(guild.id);
-    if (count >= limits.forms) return done(bad(t(lang, limits.premium ? 'forms.create.limit' : 'forms.create.limitFree', { count: limits.forms })));
+    if (count >= limits.forms) return done(bad(t(lang, 'forms.create.limit', { count: limits.forms })));
     if (await formsDb.getForm(guild.id, name)) return done(bad(t(lang, 'forms.create.taken', { name })));
     const title = interaction.options.getString('title') || name;
     const form = await formsDb.createForm(guild.id, forms.normalizeForm({ name, title, status: 'closed' }));
@@ -427,7 +425,7 @@ async function execute(interaction) {
     const save = (list) => formsDb.updateForm(guild.id, form.id, { questions: list });
     if (sub === 'add') {
       const limits = await limitsOf(guild.id);
-      if (questions.length >= limits.questions) return done(bad(t(lang, limits.premium ? 'forms.question.limit' : 'forms.question.limitFree', { count: limits.questions })));
+      if (questions.length >= limits.questions) return done(bad(t(lang, 'forms.question.limit', { count: limits.questions })));
       const type = TYPE_WORDS[String(interaction.options.getString('type', true)).toLowerCase()];
       if (!type) return done(bad(t(lang, 'forms.question.type')));
       const min = interaction.options.getNumber('min');

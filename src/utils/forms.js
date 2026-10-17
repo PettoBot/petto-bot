@@ -17,6 +17,8 @@ const LIMITS = {
   title: 45, label: 45, help: 100, placeholder: 100, option: 100, options: 25, description: 1000,
   short: 1000, paragraph: 4000, pageSize: 5, questions: 25, reason: 1000, message: 2000, buttonLabel: 80, roles: 25,
 };
+// One limit for every server: forms are not a Premium module.
+const FORM_LIMITS = { forms: 25, questions: 25, submissions: 2000 };
 const DEFAULT_MAX = { short: 200, paragraph: 1000 };
 const SNOWFLAKE = /^\d{15,25}$/;
 const NAME = /^[a-z0-9][a-z0-9_-]{0,31}$/;
@@ -344,6 +346,7 @@ function dropDraft(guildId, userId, formId) {
 }
 
 module.exports = {
+  FORM_LIMITS,
   PREFIX, QUESTION_TYPES, CHOICE_TYPES, STATUSES, BUTTON_STYLES, LIMITS, COLORS, NAME, SNOWFLAKE,
   clip, slugName, normalizeQuestion, normalizeQuestions, normalizeForm, checkEligibility, refusalText, isReviewer,
   pagesOf, pageTitle, buildModal, readPage, collectAnswers, missingRequired, answerText, answersAsText, fillShortcuts,

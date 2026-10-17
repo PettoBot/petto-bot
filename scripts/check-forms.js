@@ -15,9 +15,6 @@ function stub(relative, exports) {
 stub('src/db/database.js', { from() { throw new Error('the database is not used in this check'); } });
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {}, debug() {} });
 stub('src/db/guilds.js', { ensureGuild: async () => ({}) });
-let premiumActive = false;
-let freeCap = 500;
-stub('src/db/premium.js', { getGuildPremium: async () => ({ active: premiumActive }), getGuildLimits: (p) => (p?.active ? { forms: 25, formQuestions: 25, formSubmissions: 5000 } : { forms: 5, formQuestions: 10, formSubmissions: freeCap }) });
 const templates = new Map();
 stub('src/db/embedTemplates.js', { getTemplate: async (guildId, name) => templates.get(name) ?? null });
 stub('src/utils/templatedMessage.js', { templatePayload: async (guildId, name) => (templates.has(name) ? { content: undefined, embeds: [{ title: name }], components: [], files: [], reactions: [] } : null) });
@@ -221,9 +218,14 @@ const fieldsOf = (values) => ({
   assert.match(await talk('create', { name: 'staff' }, plain), /Manage Server/, 'only managers make forms');
   assert.match(await talk('create', { name: 'Staff', title: 'Staff application' }), /Form `staff` made/);
   assert.match(await talk('create', { name: 'staff' }), /already a form called `staff`/);
+  // One limit for every server, never a Premium one (made small here so the check stays short).
+  assert.deepEqual(require('../src/utils/forms').FORM_LIMITS, { forms: 25, questions: 25, submissions: 2000 });
+  require('../src/utils/forms').FORM_LIMITS.forms = 5;
   for (const n of ['a', 'b', 'c', 'd']) await talk('create', { name: n });
-  assert.match(await talk('create', { name: 'e' }), /most forms it can have for free \(5\)/, 'Free servers have 5 forms');
-  premiumActive = true; assert.match(await talk('create', { name: 'e' }), /made/); premiumActive = false;
+  const full = await talk('create', { name: 'e' });
+  assert.match(full, /most forms it can have \(5\)/); assert.doesNotMatch(full, /Premium|free/i, 'forms never mention Premium');
+  require('../src/utils/forms').FORM_LIMITS.forms = 25;
+  assert.match(await talk('create', { name: 'e' }), /made/);
   assert.match(await talk('open', { form: 'staff' }), /cannot be opened yet[\s\S]*question add[\s\S]*channel/, 'a form opens only with questions and a channel');
   assert.match(await talk('add', { form: 'staff', type: 'choice', label: 'Team', options: 'Only' }, admin, 'question'), /at least 2 options/);
   assert.match(await talk('add', { form: 'staff', type: 'short', label: 'Your name', placeholder: 'Liam', max: 40 }, admin, 'question'), /Question 1 added/);
@@ -235,8 +237,10 @@ const fieldsOf = (values) => ({
   assert.match(await talk('questions', { form: 'staff' }), /1\.\*\* Team[\s\S]*2\.\*\* Your name[\s\S]*optional[\s\S]*3\.\*\* Your age/);
   const staffForm = () => db.forms.find((f) => f.name === 'staff');
   assert.equal(staffForm().questions[1].required, false);
+  require('../src/utils/forms').FORM_LIMITS.questions = 10;
   for (let i = 0; i < 7; i += 1) await talk('add', { form: 'staff', type: 'short', label: `Extra ${i}` }, admin, 'question');
-  assert.match(await talk('add', { form: 'staff', type: 'short', label: 'One too many' }, admin, 'question'), /most questions it can have for free \(10\)/);
+  assert.match(await talk('add', { form: 'staff', type: 'short', label: 'One too many' }, admin, 'question'), /most questions it can have \(10\)/);
+  require('../src/utils/forms').FORM_LIMITS.questions = 25;
   assert.match(await talk('remove', { form: 'staff', position: 10 }, admin, 'question'), /removed/);
   assert.match(await talk('set', { form: 'staff', setting: 'channel', value: '#review' }), /saved/); assert.equal(staffForm().review_channel_id, 'review');
   assert.match(await talk('set', { form: 'staff', setting: 'accept-roles', value: 'staff, trial' }), /saved/); assert.deepEqual(staffForm().accept_add_role_ids, ['staff', 'trial']);
@@ -254,7 +258,7 @@ const fieldsOf = (values) => ({
   assert.match(await talk('message', { form: 'staff', kind: 'denied', template: 'nope' }), /no saved embed called `nope`/);
   assert.match(await talk('open', { form: 'staff' }), /is open/); assert.equal(staffForm().status, 'open');
   assert.match(await talk('info', { form: 'staff' }), /Staff application[\s\S]*<#review>[\s\S]*<@&reviewer>[\s\S]*gives <@&staff> <@&trial>[\s\S]*9 questions in 2 pages/);
-  assert.match(await talk('list', {}), /Forms \(6\/5\)[\s\S]*`staff` · \*\*Staff application\*\* · open · 9 questions/);
+  assert.match(await talk('list', {}), /Forms \(6\/25\)[\s\S]*`staff` · \*\*Staff application\*\* · open · 9 questions/);
   assert.equal(formCommand.prefixOnly, true, '!form is a prefix command, never a slash command');
 
   // ---- A member fills the form in from the panel: two pages with "Next" between them.
@@ -359,17 +363,17 @@ const fieldsOf = (values) => ({
   assert.equal(shownModals.at(-1)?.custom_id, `fm:p:${id}:0`);
 
   // Retention and the cap of stored submissions: the oldest reviewed ones make room, pending ones never do.
-  assert.match(await talk('retention', {}), /kept \*\*30\*\* days[\s\S]*Stored: 3\/500/);
+  assert.match(await talk('retention', {}), /kept \*\*30\*\* days[\s\S]*Stored: 3\/2000/);
   assert.match(await talk('retention', { days: 7 }), /kept \*\*7\*\* days/); assert.equal(db.retention, 7);
   assert.match(await talk('retention', { days: 7 }, plain), /Manage Server/);
-  freeCap = 3;
+  require('../src/utils/forms').FORM_LIMITS.submissions = 3;
   const u4 = makeMember('u4', { roleIds: ['member'] });
   const fourth = await actions.submitForm({ client, guild, form: staffForm(), member: u4, answers: db.subs[2].answers });
   assert.equal(fourth.ok, true); assert.equal(db.subs.length, 3, 'the oldest reviewed submission made room'); assert.ok(!db.subs.some((x) => x.number === 1));
   for (const x of db.subs) x.status = 'pending';
   const fifth = await actions.submitForm({ client, guild, form: staffForm(), member: makeMember('u5', { roleIds: ['member'] }), answers: db.subs[0].answers });
   assert.equal(fifth.error, 'full', 'pending submissions are never deleted to make room');
-  freeCap = 500;
+  require('../src/utils/forms').FORM_LIMITS.submissions = 2000;
   const compacted = cards.reviewCard({ submission: { ...long, status: 'accepted', compacted: true, answers: [] } });
   assert.match(JSON.stringify(compacted.container.toJSON()), /answers were removed after the retention/); assert.equal(compacted.file, null);
 
