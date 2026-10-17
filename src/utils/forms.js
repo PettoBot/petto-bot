@@ -12,6 +12,8 @@ const CHOICE_TYPES = ['choice', 'multi'];
 const TEXT_TYPES = ['short', 'paragraph', 'number'];
 const STATUSES = ['pending', 'accepted', 'denied', 'cancelled'];
 const BUTTON_STYLES = ['primary', 'secondary', 'success', 'danger'];
+// The background of the web page of a form: Petto's own, or a solid tint or a gradient made from the color of the form.
+const PAGE_BACKGROUNDS = ['default', 'solid', 'gradient'];
 // What Discord allows: 45 characters for the title of a form and the label of a field, 100 for its description and placeholder,
 // 25 options of 100 characters in a menu, 4000 characters in a text field, and five fields in a form.
 const LIMITS = {
@@ -43,15 +45,20 @@ const clipText = (value, max) => String(value ?? '').replace(/\u0000/g, '').repl
 
 const IMAGE_PATH = /\.(?:png|jpe?g|gif|webp)$/i;
 /**
- * The link of an image for a question, or null when it is not one Petto shows: an https link with the usual checks of a link a
- * server owner types (utils/safeImage.js: no user, no other port, no private address) to a .png, .jpg, .gif or .webp file.
+ * The link of an image for a question or the banner of the page, or null when it is not one Petto shows: an https link with the
+ * usual checks of a link a server owner types (utils/safeImage.js: no user, no other port, no private address), a public name (not
+ * an address of numbers, not localhost or a name only inside a network, the same as the website's imageUrl) and a .png, .jpg, .gif
+ * or .webp file.
  */
 function imageUrl(value) {
   const text = String(value ?? '').trim();
   if (!text || text.length > LIMITS.image) return null;
   try {
     const url = require('./safeImage').checkUrl(text);
-    return IMAGE_PATH.test(url.pathname) ? url.toString() : null;
+    const host = url.hostname.toLowerCase();
+    if (!host.includes('.') || host.startsWith('[') || /^[\d.]+$/.test(host) || host === 'localhost' || /\.(?:localhost|local|internal)$/.test(host)) return null;
+    // The link as stored (a space becomes %20) still fits in the 500 characters of the database.
+    return IMAGE_PATH.test(url.pathname) && url.toString().length <= LIMITS.image ? url.toString() : null;
   } catch {
     return null;
   }
@@ -165,6 +172,24 @@ function normalizeForm(input, { maxQuestions = LIMITS.questions } = {}) {
     button_emoji: clip(input?.button_emoji, 64) || null,
     button_style: BUTTON_STYLES.includes(input?.button_style) ? input.button_style : 'primary',
     web_enabled: input?.web_enabled !== false,
+    page_banner: imageUrl(input?.page_banner),
+    page_background: PAGE_BACKGROUNDS.includes(input?.page_background) ? input.page_background : 'default',
+    page_show_icon: input?.page_show_icon !== false,
+    page_show_name: input?.page_show_name !== false,
+  };
+}
+
+/**
+ * How the web page of a form looks (petto.sbs/form#<public id>): the banner (an image link checked like the image of a question),
+ * the background and what the header shows of the server. A form saved before these settings gets the defaults: no banner,
+ * Petto's background, the icon and the name of the server.
+ */
+function pageLook(form) {
+  return {
+    banner: imageUrl(form?.page_banner),
+    background: PAGE_BACKGROUNDS.includes(form?.page_background) ? form.page_background : 'default',
+    show_icon: form?.page_show_icon !== false,
+    show_name: form?.page_show_name !== false,
   };
 }
 
@@ -357,6 +382,14 @@ function webUrl(form, lang = 'en') {
   return `https://petto.sbs${WEB_LANG_PATH[lang] ?? ''}/form#${form.public_id}`;
 }
 
+/**
+ * The link of a form to share in a chat: petto.sbs/f/<public id> (/es/f/…, /pt-br/f/…). The website answers it on the server, so
+ * Discord and other apps get the preview of this form (title, description, banner or server icon), and a browser goes on to webUrl.
+ */
+function shareUrl(form, lang = 'en') {
+  return `https://petto.sbs${WEB_LANG_PATH[lang] ?? ''}/f/${form.public_id}`;
+}
+
 /** Every answer of a form, from the values collected page by page, as it is stored: [{ id, label, type, value }]. */
 function collectAnswers(form, values) {
   return normalizeQuestions(form?.questions).map((q) => {
@@ -430,8 +463,8 @@ function dropDraft(guildId, userId, formId) {
 
 module.exports = {
   FORM_LIMITS,
-  PREFIX, QUESTION_TYPES, CHOICE_TYPES, STATUSES, BUTTON_STYLES, LIMITS, COLORS, NAME, SNOWFLAKE,
-  clip, clipText, imageUrl, plainDescription, labelDescription, slugName, normalizeQuestion, normalizeQuestions, normalizeForm, checkEligibility, refusalText, isReviewer,
-  pagesOf, pageTitle, buildModal, readPage, readAll, webUrl, newPublicId, PUBLIC_ID, collectAnswers, missingRequired, answerText, answersAsText, fillShortcuts,
+  PREFIX, QUESTION_TYPES, CHOICE_TYPES, STATUSES, BUTTON_STYLES, PAGE_BACKGROUNDS, LIMITS, COLORS, NAME, SNOWFLAKE,
+  clip, clipText, imageUrl, plainDescription, labelDescription, slugName, normalizeQuestion, normalizeQuestions, normalizeForm, pageLook, checkEligibility, refusalText, isReviewer,
+  pagesOf, pageTitle, buildModal, readPage, readAll, webUrl, shareUrl, newPublicId, PUBLIC_ID, collectAnswers, missingRequired, answerText, answersAsText, fillShortcuts,
   getDraft, saveDraft, dropDraft, DRAFT_TTL_MS,
 };

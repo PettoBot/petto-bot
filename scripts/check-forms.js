@@ -122,6 +122,18 @@ const fieldsOf = (values) => ({
   assert.equal(normal.name, 'staff-apps'); assert.equal(normal.title.length, 45); assert.deepEqual(normal.reviewer_role_ids, ['123456789012345678']);
   assert.equal(normal.min_account_days, 3650); assert.equal(normal.color, null); assert.equal(normal.button_style, 'primary'); assert.deepEqual(normal.messages.accepted, { text: 'Welcome {user}' });
   assert.equal(forms.slugName('  Événement 2026 '), 'evenement-2026');
+  // The look of the web page: a banner checked like the image of a question, a background and the parts of the header.
+  assert.deepEqual([normal.page_banner, normal.page_background, normal.page_show_icon, normal.page_show_name], [null, 'default', true, true], 'a new form has the default page');
+  const styled = forms.normalizeForm({ name: 'x', page_banner: ' https://cdn.discordapp.com/attachments/1/2/banner.png?ex=1 ', page_background: 'gradient', page_show_icon: false, page_show_name: false });
+  assert.equal(styled.page_banner, 'https://cdn.discordapp.com/attachments/1/2/banner.png?ex=1'); assert.equal(styled.page_background, 'gradient');
+  assert.equal(styled.page_show_icon, false); assert.equal(styled.page_show_name, false);
+  for (const bad of ['http://x.example/a.png', 'https://x.example/a.svg', 'https://127.0.0.1/a.png', 'https://localhost/a.png', 'javascript:alert(1)//a.png', `https://x.example/${'a'.repeat(500)}.png`]) {
+    assert.equal(forms.normalizeForm({ name: 'x', page_banner: bad }).page_banner, null, `no banner from ${bad.slice(0, 40)}`);
+  }
+  assert.equal(forms.normalizeForm({ name: 'x', page_background: 'url(evil)' }).page_background, 'default', 'only the known backgrounds');
+  assert.deepEqual(forms.pageLook({ title: 'Saved before the page settings' }), { banner: null, background: 'default', show_icon: true, show_name: true }, 'an older form gets the defaults');
+  assert.deepEqual(forms.pageLook({ page_banner: 'https://x.example/b.webp', page_background: 'solid', page_show_icon: false, page_show_name: true }), { banner: 'https://x.example/b.webp', background: 'solid', show_icon: false, show_name: true });
+  assert.equal(forms.pageLook({ page_banner: 'http://x.example/b.webp', page_background: 'neon' }).banner, null, 'a stored banner is checked again'); assert.equal(forms.pageLook({ page_background: 'neon' }).background, 'default');
   // A description (longer, with lines and simple marks, for the web) and an image over the question (only on the web).
   const described = forms.normalizeQuestion({ type: 'short', label: 'Why', description: `  Tell us **why**.\r\n\n\n\nSee [the rules](https://petto.sbs/rules).${'x'.repeat(1200)}`, image: 'https://i.imgur.com/abc.PNG?size=2' });
   assert.equal(described.description.length, 1000, 'a description keeps 1000 characters'); assert.match(described.description, /^Tell us \*\*why\*\*\.\n\nSee/, 'lines are kept, at most one empty line in a row');
@@ -278,6 +290,27 @@ const fieldsOf = (values) => ({
   assert.match(await talk('set', { form: 'staff', setting: 'closes', value: 'yesterday' }), /when it closes/);
   await talk('set', { form: 'staff', setting: 'closes', value: '30d' }); assert.ok(Date.parse(staffForm().closes_at) > Date.now() + 29 * DAY);
   await talk('set', { form: 'staff', setting: 'closes', value: 'none' }); assert.equal(staffForm().closes_at, null);
+  // The web page of the form: banner, background and the server in the header (read by the prefix, beyond the 25 slash choices).
+  assert.match(await talk('set', { form: 'staff', setting: 'banner', value: '<https://i.imgur.com/banner.png>' }), /saved/); assert.equal(staffForm().page_banner, 'https://i.imgur.com/banner.png', 'a link in <> is the same link');
+  assert.match(await talk('set', { form: 'staff', setting: 'banner', value: 'http://i.imgur.com/banner.png' }), /https link to a picture/); assert.equal(staffForm().page_banner, 'https://i.imgur.com/banner.png', 'a bad link changes nothing');
+  assert.match(await talk('set', { form: 'staff', setting: 'banner', value: 'https://192.168.0.2/banner.png' }), /https link to a picture/);
+  assert.match(await talk('set', { form: 'staff', setting: 'background', value: 'Gradient' }), /saved/); assert.equal(staffForm().page_background, 'gradient');
+  await talk('set', { form: 'staff', setting: 'background', value: 'degradado' }); assert.equal(staffForm().page_background, 'gradient', 'the words of every language');
+  await talk('set', { form: 'staff', setting: 'background', value: 'solid' }); assert.equal(staffForm().page_background, 'solid');
+  assert.match(await talk('set', { form: 'staff', setting: 'background', value: 'rainbow' }), /default.*solid.*gradient/); assert.equal(staffForm().page_background, 'solid');
+  await talk('set', { form: 'staff', setting: 'server-icon', value: 'off' }); assert.equal(staffForm().page_show_icon, false);
+  await talk('set', { form: 'staff', setting: 'server-name', value: 'off' }); assert.equal(staffForm().page_show_name, false);
+  assert.match(await talk('set', { form: 'staff', setting: 'server-name', value: 'maybe' }), /`on` or `off`/);
+  {
+    const info = await talk('info', { form: 'staff' });
+    assert.match(info, /Web page: banner <https:\/\/i\.imgur\.com\/banner\.png> · background solid color · server icon off · server name off/, '!form info shows the page');
+    assert.ok(info.includes(`https://petto.sbs/f/${staffForm().public_id}`), '!form info gives the link with a preview');
+  }
+  await talk('set', { form: 'staff', setting: 'banner', value: 'none' }); assert.equal(staffForm().page_banner, null);
+  await talk('set', { form: 'staff', setting: 'background', value: 'reset' }); assert.equal(staffForm().page_background, 'default');
+  await talk('set', { form: 'staff', setting: 'server-icon', value: 'on' }); await talk('set', { form: 'staff', setting: 'server-name', value: 'on' });
+  assert.match(await talk('set', { form: 'staff', setting: 'wallpaper', value: 'x' }), /button-style, web, banner, background, server-icon, server-name/, 'an unknown setting lists the page ones too');
+  assert.equal(forms.shareUrl({ public_id: 'x7Kp9QzA2mVt' }, 'pt-BR'), 'https://petto.sbs/pt-br/f/x7Kp9QzA2mVt');
   assert.match(await talk('message', { form: 'staff', kind: 'accepted', text: 'Welcome to the team {user}! #{number} {reason}' }), /Message saved/);
   assert.match(await talk('message', { form: 'staff', kind: 'denied', template: 'nope' }), /no saved embed called `nope`/);
   assert.match(await talk('open', { form: 'staff' }), /is open/); assert.equal(staffForm().status, 'open');
@@ -481,6 +514,16 @@ const fieldsOf = (values) => ({
     const ok = await call('public', PID, { user_id: '222222222222222222' });
     assert.equal(ok.can, true); assert.equal(ok.form.id, PID, 'the page gets the public id, not the number'); assert.equal(ok.form.questions.length, 5); assert.equal(ok.form.questions[2].options[1], 'Blue');
     assert.equal(ok.form.review_channel_id, undefined, 'the review settings stay private');
+    assert.deepEqual(ok.form.page, { banner: null, background: 'default', show_icon: true, show_name: true }, 'the page gets its look');
+    assert.equal(ok.server.name, guild.name);
+    // The look alone, without a member: for the page before the login and the link preview of petto.sbs/f/<public id>.
+    db.forms.find((f) => f.id === 900).page_banner = 'https://x.example/top.webp'; db.forms.find((f) => f.id === 900).page_background = 'gradient';
+    assert.equal((await call('look', PID, {}, 'bad')).status, 401, 'the look needs the dashboard key too');
+    assert.equal((await call('look', 900, {})).status, 404, 'not by number'); assert.equal((await call('look', 'x7Kp9QzA2mVu', {})).status, 404);
+    const look = await call('look', PID, {});
+    assert.equal(look.ok, true); assert.equal(look.form.title, 'Event sign-up'); assert.equal(look.server.name, guild.name);
+    assert.deepEqual(look.form.page, { banner: 'https://x.example/top.webp', background: 'gradient', show_icon: true, show_name: true });
+    assert.equal(look.form.questions, undefined, 'no questions without a member'); assert.equal(look.form.required_role_ids, undefined);
     const bad = await call('submit', PID, { user_id: '222222222222222222', values: { name: 'L', age: '7', team: 'o5', days: ['o0', 'o1', 'o2'] } });
     assert.equal(bad.status, 400);
     assert.deepEqual(bad.errors.map((e) => `${e.id}:${e.code}`).sort(), ['age:range', 'days:invalid', 'name:short', 'rules:required', 'team:required'], 'the same checks as in Discord');
@@ -494,6 +537,7 @@ const fieldsOf = (values) => ({
     db.forms.find((f) => f.id === 900).web_enabled = false;
     assert.equal((await call('public', PID, { user_id: '222222222222222222' })).code, 'webOff', 'a server can keep a form in Discord only');
     assert.equal((await call('submit', PID, { user_id: '222222222222222222', values: {} })).status, 403);
+    assert.equal((await call('look', PID, {})).status, 404, 'a form kept in Discord has no page to preview');
     // The panel can add a "Fill on the web" link.
     const rows = cards.panelRows([{ ...webForm, web_enabled: true }], { web: true, lang: 'en' }).map((r) => r.toJSON());
     assert.equal(rows.at(-1).components[0].url, 'https://petto.sbs/form#x7Kp9QzA2mVt'); assert.equal(rows.at(-1).components[0].label, 'Fill on the web');

@@ -45,6 +45,13 @@ const G2 = '100000000000000002';
   assert.notEqual(relinked.public_id, made.public_id); assert.equal(await formsDb.getFormByPublicId(made.public_id), null, 'the old link stops working');
   const { rows: [byDefault] } = await pool.query("insert into forms (guild_id, name, title) values ($1, 'dash', 'Dashboard') returning public_id", [G1]);
   assert.match(byDefault.public_id, forms.PUBLIC_ID, 'forms made by the dashboard get one from the default');
+  // The look of the web page: defaults for a form made without it, the values of normalizeForm, and the database refuses others.
+  const { rows: [pageDefault] } = await pool.query("select page_banner, page_background, page_show_icon, page_show_name from forms where guild_id = $1 and name = 'dash'", [G1]);
+  assert.deepEqual(pageDefault, { page_banner: null, page_background: 'default', page_show_icon: true, page_show_name: true }, 'a form without a look gets the default page');
+  const paged = await formsDb.updateForm(G1, made.id, { page_banner: 'https://x.example/top.webp', page_background: 'gradient', page_show_icon: false });
+  assert.deepEqual(forms.pageLook(paged), { banner: 'https://x.example/top.webp', background: 'gradient', show_icon: false, show_name: true });
+  await assert.rejects(formsDb.updateForm(G1, made.id, { page_background: 'neon' }), (err) => err.code === '23514', 'only the known backgrounds');
+  await assert.rejects(formsDb.updateForm(G1, made.id, { page_banner: `https://x.example/${'a'.repeat(500)}.png` }), (err) => err.code === '23514', 'a banner of 500 characters at most');
   await pool.query("delete from forms where guild_id = $1 and name = 'dash'", [G1]);
   await assert.rejects(pool.query("insert into forms (guild_id, name, title) values ($1, 'Bad Name', 'x')", [G1]), /check/, 'the database refuses a bad name');
   assert.equal(await formsDb.countForms(G1), 1);

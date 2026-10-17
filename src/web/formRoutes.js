@@ -8,6 +8,9 @@
 // the random public id of the form (never its number, so the forms cannot be walked through):
 //   POST /api/dashboard/form/:formId/public  { user_id } -> { ok, form, server, can, reason }
 //   POST /api/dashboard/form/:formId/submit  { user_id, values: { <question id>: text | [values] } } -> { ok, message } or { ok: false, errors }
+//   POST /api/dashboard/form/:formId/look    {} -> { ok, form: { id, title, description, color, page }, server: { id, name, icon } }
+//        Only how the page looks, without a member: for the page before the member logs in and for the link preview of
+//        petto.sbs/f/<public id> in Discord and other apps. A form that cannot be filled on the web is not found.
 // The submission goes through the same checks and the same pipeline as a Discord one (card, roles, DM, log, limits), marked "web".
 // The same access as the other dashboard routes: the dashboard key and a `user_id` who can manage the server, or whose roles open the
 // Forms page through "Dashboard access" (checked again by the bot, see dashboardRoleAccess.js; the list only needs to look).
@@ -29,10 +32,20 @@ function plainText(text, guild, lang) {
     .replace(/<t:(\d+)(?::[a-zA-Z])?>/g, (_m, s) => `${new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }).format(new Date(Number(s) * 1000))} UTC`);
 }
 
+/** The server as the page shows it: its name and its icon (the header and the icon of the tab). */
+function publicServer(guild) {
+  return { id: guild.id, name: guild.name, icon: guild.iconURL?.({ size: 256, extension: 'png' }) ?? null };
+}
+
+/** What the page of a form shows before the questions: title, description, accent color and the look of the page. */
+function formLook(form) {
+  return { id: String(form.public_id), title: form.title, description: form.description ?? null, color: form.color ?? null, page: forms.pageLook(form) };
+}
+
 /** The form as the page shows it: no review settings, no roles, only what a member reads. */
 function publicForm(form) {
   return {
-    id: String(form.public_id), title: form.title, description: form.description ?? null, color: form.color ?? null,
+    ...formLook(form),
     questions: forms.normalizeQuestions(form.questions).map((q) => ({ id: q.id, type: q.type, label: q.label, help: q.help ?? null, description: q.description ?? null, image: q.image ?? null, placeholder: q.placeholder ?? null, required: q.required, min_length: q.min_length ?? null, max_length: q.max_length ?? null, min_value: q.min_value ?? null, max_value: q.max_value ?? null, options: q.options ?? [], max_choices: q.max_choices ?? null })),
   };
 }
@@ -74,9 +87,24 @@ function registerFormRoutes(app, { authorize, limiter, isAuthorized = null, clie
       const refusal = await eligibility(form, guild, member);
       res.set('Cache-Control', 'no-store'); // i18n-ignore: HTTP header
       res.json({
-        ok: true, form: publicForm(form), server: { id: guild.id, name: guild.name, icon: guild.iconURL?.({ size: 128, extension: 'png' }) ?? null },
+        ok: true, form: publicForm(form), server: publicServer(guild),
         can: !refusal, code: refusal?.code ?? null, reason: refusal ? plainText(forms.refusalText(refusal, lang), guild, lang) : null,
       });
+    });
+
+    app.post('/api/dashboard/form/:formId/look', ...middleware, async (req, res) => {
+      if (!isAuthorized(req)) { res.status(401).json({ ok: false, error: 'unauthorized' }); return; }
+      const lang = requestLanguage(req, null);
+      try {
+        const form = await formsDb.getFormByPublicId(req.params.formId);
+        const guild = form ? (client ?? req.app?.locals?.client)?.guilds?.cache?.get(form.guild_id) : null;
+        if (!form || !guild || form.web_enabled === false) { res.status(404).json({ ok: false, code: 'not_found', message: t(lang, 'forms.web.notFound') }); return; }
+        res.set('Cache-Control', 'no-store'); // i18n-ignore: HTTP header
+        res.json({ ok: true, form: formLook(form), server: publicServer(guild) });
+      } catch (err) {
+        logger.error(`Web form look failed for form ${req.params.formId}:`, err);
+        res.status(500).json({ ok: false, message: t(lang, 'forms.web.failed') });
+      }
     });
 
     webRoute('submit', async (req, res, { form, guild, member, lang }) => {
@@ -174,4 +202,4 @@ function registerFormRoutes(app, { authorize, limiter, isAuthorized = null, clie
   });
 }
 
-module.exports = { registerFormRoutes };
+module.exports = { registerFormRoutes, publicForm, formLook };
