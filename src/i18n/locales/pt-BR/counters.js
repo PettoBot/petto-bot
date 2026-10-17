@@ -150,4 +150,6 @@ module.exports = {
   'counters.list.topic': "no tópico",
   'counters.problem.bad_target': "este canal não tem tópico, mostre no nome",
   'counters.topic.channelName': "estatísticas",
+  'counters.reorder.done': "Ordem salva.",
+  'counters.reorder.notMoved': "A ordem foi salva, mas o Petto não conseguiu mover os canais no Discord. Ele precisa de Gerenciar canais.",
 };

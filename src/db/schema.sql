@@ -3942,3 +3942,14 @@ alter table server_counters add column if not exists target text not null defaul
 alter table server_counters drop constraint if exists server_counters_target_check;
 alter table server_counters add constraint server_counters_target_check check (target in ('name', 'topic'));
 alter table server_counters add column if not exists position integer;
+
+-- The member count of each server once a day (the last value of the day, in Colombia's day like the other daily stats), written by the
+-- counter job and drawn as a small line on the dashboard's Counters page. Kept for 90 days.
+create table if not exists guild_member_days (
+  guild_id text not null,
+  day      date not null,
+  members  integer not null check (members >= 0),
+  primary key (guild_id, day)
+);
+create index if not exists idx_guild_member_days_day on guild_member_days(day);
+alter table guild_member_days enable row level security;

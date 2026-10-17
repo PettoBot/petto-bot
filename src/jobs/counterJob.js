@@ -18,6 +18,7 @@ const { countGuild, extrasFor } = require('../utils/counterValues');
 const { milestoneToAnnounce, announcePayload, announceChannel } = require('../utils/counterAnnounce');
 const { createRenameQueue } = require('../utils/renameQueue');
 const { t, guildLanguage } = require('../i18n');
+const { botDay } = require('../utils/botTime');
 
 const INTERVAL_MS = 60_000;
 const RENAME_TIMEOUT_MS = 15_000;
@@ -53,6 +54,9 @@ const state = {
   milestoneTimers: new Map(), // guild id -> timer of the next look after joins
   now: () => Date.now(),
   queue: null, // the line of every rename of the bot (renameQueue.js)
+  lastPassAt: 0, // when the last full pass started
+  memberDaysAt: 0, // when the member counts of the day were last saved
+  prunedDay: null,
 };
 state.queue = createRenameQueue({ now: () => state.now() });
 
@@ -353,6 +357,7 @@ function pendingRenameAt(channelId) {
 
 async function updateCounters(client, { wait = true } = {}) {
   state.client = client;
+  state.lastPassAt = state.now();
   const grouped = await loadRows();
   await forEachWithConcurrency(grouped, async ([guildId]) => {
     const guild = client.guilds.cache.get(guildId);
@@ -365,6 +370,58 @@ async function updateCounters(client, { wait = true } = {}) {
     const guild = client.guilds.cache.get(guildId);
     if (guild) await checkMilestone(guild);
   }
+}
+
+const MEMBER_DAYS_EVERY_MS = 60 * 60_000;
+const MEMBER_DAYS_KEEP = 90;
+
+/**
+ * Saves the member count of every server of the bot for today (one row per server and day, the last value wins), at most once an hour,
+ * and once a day removes the days older than 90. For the small line of members on the dashboard.
+ */
+async function snapshotMembers(client, { force = false } = {}) {
+  const now = state.now();
+  if (!force && now - state.memberDaysAt < MEMBER_DAYS_EVERY_MS) return 0;
+  state.memberDaysAt = now;
+  const day = botDay(new Date(now));
+  const rows = [...(client?.guilds?.cache?.values?.() ?? [])].filter((guild) => typeof guild.memberCount === 'number').map((guild) => ({ guildId: guild.id, members: guild.memberCount }));
+  try {
+    const saved = await countersDb.saveMemberDays(day, rows);
+    if (state.prunedDay !== day) {
+      state.prunedDay = day;
+      await countersDb.pruneMemberDays(botDay(new Date(now - MEMBER_DAYS_KEEP * 86_400_000)));
+    }
+    return saved;
+  } catch (err) {
+    // i18n-ignore: log
+    warnOnce('member-days', { action: 'counter-member-days' }, `Could not save the member counts of the day: ${err.message}`);
+    return 0;
+  }
+}
+
+/**
+ * What the dashboard shows about one counter besides its name: when it changed last, when it changes next, and the small problems that
+ * are not saved on the row (no presences for an online count, a server too big to read every member, a rate limit from Discord).
+ */
+function counterStatus(guild, row) {
+  const now = state.now();
+  const badges = [];
+  if (row.problem) badges.push(row.problem);
+  if (row.enabled === false) badges.push('off');
+  if (NEEDS_PRESENCES.has(row.counter_option) || row.counter_option === 'role_online') {
+    if (!guild.presences?.cache?.size) badges.push('no_presences');
+  }
+  if ((NEEDS_MEMBERS.has(row.counter_option)) && (guild.memberCount ?? 0) > MEMBER_FETCH_MAX_GUILD) badges.push('members_partial');
+  const blocked = state.blockedUntil.get(row.channel_id) ?? 0;
+  if (blocked > now) badges.push('rate_limited');
+  const pending = pendingRenameAt(row.channel_id);
+  return {
+    badges,
+    last_updated_at: row.last_updated_at ? Date.parse(row.last_updated_at) || null : null,
+    next_rename_at: pending,
+    queued: state.queue.queuedAt(row.channel_id) !== null,
+    next_check_at: state.lastPassAt ? state.lastPassAt + INTERVAL_MS : null,
+  };
 }
 
 /** Something a counter of this server may show changed: the counters of those types are looked at after a short wait. */
@@ -433,7 +490,10 @@ function startCounterJob(client) {
   const run = exclusiveTask(() => updateCounters(client, { wait: false }));
   run().catch((err) => logger.error('Initial counter update failed:', err));
   setInterval(() => run().catch((err) => logger.error('Counter job error:', err)), INTERVAL_MS).unref?.();
+  // The member count of the day, for the line on the dashboard: a little after the start, then every hour.
+  setTimeout(() => snapshotMembers(client).catch(() => {}), 90_000).unref?.();
+  setInterval(() => snapshotMembers(client).catch(() => {}), MEMBER_DAYS_EVERY_MS).unref?.();
   logger.info('Counter job started (checking every 60s, renames kept under 2 per 10 minutes per channel and spread out over time).');
 }
 
-module.exports = { startCounterJob, updateCounters, refreshGuildCounters, processCounter, markDirty, pendingRenameAt, attachCounterEvents, countGuild, checkMilestone, scheduleMilestone, reloadAnnounce, _state: state };
+module.exports = { startCounterJob, updateCounters, refreshGuildCounters, processCounter, markDirty, pendingRenameAt, attachCounterEvents, countGuild, checkMilestone, scheduleMilestone, reloadAnnounce, snapshotMembers, counterStatus, _state: state };

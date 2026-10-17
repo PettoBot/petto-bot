@@ -5,15 +5,18 @@
 //   POST /api/dashboard/guild/:guildId/counters/setup   { preset?, goal?, timezone? }  a pack (basic, boosts, online, goal, clock) in its category
 //   POST /api/dashboard/guild/:guildId/counters/refresh { channel_id? }  reads the settings again and renames what the budget allows
 //   POST /api/dashboard/guild/:guildId/counters/delete  { channel_id, delete_channel }
+//   POST /api/dashboard/guild/:guildId/counters/reorder  { channel_ids }  the order of the list, and the channels moved to match in Discord
 //   POST /api/dashboard/guild/:guildId/counters/announce { channel_id, message, embed_name, every, use_goals, enabled, test? }
 //        saves the milestone announcement of the server (or, with `test`, sends the saved one once to its channel)
 // The same access as the other dashboard routes: the dashboard key and a `user_id` who can manage the server, or whose roles open the
 // Counters page through "Dashboard access" (checked again by the bot, see dashboardRoleAccess.js; preview only needs to look).
 const countersDb = require('../db/counters');
 const { OPTIONS, recentRenames, nextRenameAt, targetOf } = require('../utils/counterNames');
+// Also: each counter of `preview` brings `badges`, `last_updated_at`, `next_rename_at`, `queued` and `next_check_at` (see counterStatus).
 const { countGuild } = require('../utils/counterValues');
 const { createCounter, setupPreset, counterLimits, previewName } = require('../utils/counterSetup');
 const { parseEvery, nextMilestone, announcePayload, announceChannel, MAX_TEXT } = require('../utils/counterAnnounce');
+const { planPositions } = require('../utils/counterOrder');
 const logger = require('../utils/logger');
 const { t, requestLanguage } = require('../i18n');
 
@@ -66,7 +69,9 @@ function registerCounterRoutes(app, { authorize, limiter }) {
         channel_id: row.channel_id, name: previewName(guild, row, lang), target: targetOf(row),
         current_name: (targetOf(row) === 'topic' ? channel?.topic ?? '' : channel?.name) ?? null, channel_name: channel?.name ?? null, exists: Boolean(channel),
         problem: row.problem ?? null, enabled: row.enabled !== false, renames_left: Math.max(0, 2 - times.length),
+        ...job().counterStatus(guild, row),
         next_rename_at: job().pendingRenameAt(row.channel_id) ?? (times.length >= 2 ? nextRenameAt(times, now) : null),
+        clock_step: row.counter_option === 'clock' || /^\d{10}$/.test(String(row.counter_option)),
       };
     });
     const config = await countersDb.getAnnounce(guild.id).catch(() => null);
@@ -107,6 +112,27 @@ function registerCounterRoutes(app, { authorize, limiter }) {
     const results = await job().refreshGuildCounters(guild.client, guild.id, { reload: true, channelId: idOrNull(req.body?.channel_id) });
     const count = (what) => results.filter((r) => r.result === what).length;
     res.json({ ok: true, results, message: results.length ? t(lang, 'counters.refresh.done', { emoji: '', renamed: count('renamed'), waiting: count('waiting'), same: count('same') }).trim() : t(lang, 'counters.refresh.none') });
+  });
+
+  route('reorder', async (req, res, { guild }, lang) => {
+    const rows = await countersDb.list(guild.id);
+    const known = new Set(rows.map((row) => row.channel_id));
+    const wanted = (Array.isArray(req.body?.channel_ids) ? req.body.channel_ids : []).map(String).filter((id, i, all) => known.has(id) && all.indexOf(id) === i);
+    // Counters the list did not send keep their place after the others.
+    const order = [...wanted, ...rows.map((row) => row.channel_id).filter((id) => !wanted.includes(id))];
+    await countersDb.setOrder(guild.id, order);
+    const moves = planPositions(order, guild.channels.cache);
+    let moved = 0;
+    if (moves.length) {
+      try {
+        await guild.channels.setPositions(moves);
+        moved = moves.length;
+      } catch (err) {
+        res.status(err?.code === 50013 ? 403 : 502).json({ ok: false, saved: true, message: t(lang, 'counters.reorder.notMoved') });
+        return;
+      }
+    }
+    res.json({ ok: true, moved, message: t(lang, 'counters.reorder.done') });
   });
 
   route('announce', async (req, res, { guild }, lang) => {

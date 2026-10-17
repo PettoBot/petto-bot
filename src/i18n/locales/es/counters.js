@@ -150,4 +150,6 @@ module.exports = {
   'counters.list.topic': "en el tema",
   'counters.problem.bad_target': "este canal no tiene tema, muéstralo en el nombre",
   'counters.topic.channelName': "estadísticas",
+  'counters.reorder.done': "Orden guardado.",
+  'counters.reorder.notMoved': "El orden se guardó, pero Petto no pudo mover los canales en Discord. Necesita Administrar canales.",
 };

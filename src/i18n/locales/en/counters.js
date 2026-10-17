@@ -150,4 +150,6 @@ module.exports = {
   'counters.list.topic': "in the topic",
   'counters.problem.bad_target': "this channel has no topic, show it in the name",
   'counters.topic.channelName': "server-stats",
+  'counters.reorder.done': "Order saved.",
+  'counters.reorder.notMoved': "The order was saved, but Petto could not move the channels in Discord. It needs Manage Channels.",
 };

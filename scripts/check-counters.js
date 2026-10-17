@@ -17,6 +17,8 @@ const warnings = [];
 const added = [];
 let premium = false;
 let announceRows = [];
+const memberDays = [];
+const pruned = [];
 const announced = [];
 stub('src/db/counters.js', {
   listAll: async () => rows,
@@ -25,6 +27,8 @@ stub('src/db/counters.js', {
   get: async (guildId, channelId) => rows.find((r) => r.guild_id === guildId && r.channel_id === channelId) ?? null,
   update: async () => null,
   remove: async () => true,
+  saveMemberDays: async (day, list) => { memberDays.push({ day, list }); return list.length; },
+  pruneMemberDays: async (before) => { pruned.push(before); },
   listAnnounce: async () => announceRows.filter((r) => r.enabled),
   getAnnounce: async (guildId) => announceRows.find((r) => r.guild_id === guildId) ?? null,
   saveAnnounce: async (guildId, patch) => { let row = announceRows.find((r) => r.guild_id === guildId); if (!row) { row = { guild_id: guildId, enabled: true, use_goals: true }; announceRows.push(row); } Object.assign(row, patch); return row; },
@@ -396,6 +400,53 @@ state.queue.configure({ gapMs: 0, guildGapMs: 0, jitterMs: 0 });
     rows = [];
   }
 
+  // ── Dashboard: order by dragging, what each counter says, members per day ──
+  {
+    const { planPositions } = require('../src/utils/counterOrder');
+    const at = (id, parentId, rawPosition, type = 2) => [id, { id, parentId, rawPosition, type }];
+    const chans = new Map([at('a', 'cat1', 1), at('b', 'cat1', 2), at('c', 'cat1', 5), at('d', 'cat2', 0), at('e', 'cat2', 3), at('k1', null, 0, 4), at('k2', null, 4, 4)]);
+    assert.deepEqual(planPositions(['a', 'b', 'c', 'd', 'e', 'k1', 'k2'], chans), [], 'the same order moves nothing');
+    assert.deepEqual(planPositions(['c', 'a', 'b'], chans), [{ channel: 'c', position: 1 }, { channel: 'a', position: 2 }, { channel: 'b', position: 5 }], 'counters swap the places they hold in their category');
+    assert.deepEqual(planPositions(['e', 'b', 'd', 'a', 'c'], chans), [{ channel: 'e', position: 0 }, { channel: 'd', position: 3 }, { channel: 'b', position: 1 }, { channel: 'a', position: 2 }], 'each category on its own');
+    assert.deepEqual(planPositions(['k2', 'k1'], chans), [{ channel: 'k2', position: 0 }, { channel: 'k1', position: 4 }], 'categories among themselves');
+    assert.deepEqual(planPositions(['x', 'a'], chans), [], 'unknown channels are skipped');
+    const same = new Map([at('p', 'c', 3), at('q', 'c', 3)]);
+    assert.deepEqual(planPositions(['q', 'p'], same), [{ channel: 'p', position: 4 }], 'equal positions get places one after another');
+    const { byPosition } = require('../src/db/counters');
+    void byPosition;
+
+    // What the dashboard shows for each counter.
+    const sg = makeGuild(); sg.presences.cache = coll([]);
+    const status = job.counterStatus(sg, { channel_id: '1', counter_option: 'online', enabled: true, last_updated_at: '2026-10-17T10:00:00Z', problem: null });
+    assert.deepEqual(status.badges, ['no_presences'], 'an online count without presences says so');
+    assert.equal(status.last_updated_at, Date.parse('2026-10-17T10:00:00Z'));
+    state.blockedUntil.set('2', clock + 60_000);
+    assert.deepEqual(job.counterStatus(makeGuild(), { channel_id: '2', counter_option: 'members', enabled: false, problem: 'missing_permission' }).badges, ['missing_permission', 'off', 'rate_limited']);
+    state.blockedUntil.delete('2');
+    const big = makeGuild(); big.memberCount = 80_000;
+    assert.deepEqual(job.counterStatus(big, { channel_id: '3', counter_option: 'bots_only', enabled: true }).badges, ['members_partial'], 'too many members to read them all');
+
+    // One row per server and day, at most once an hour, and the old days removed once a day.
+    const g1 = makeGuild(); g1.id = '1'; g1.memberCount = 120;
+    const g2 = makeGuild(); g2.id = '2'; g2.memberCount = 7;
+    const many = { guilds: { cache: new Map([['1', g1], ['2', g2]]) } };
+    const day0 = Date.UTC(2026, 9, 17, 12, 0, 0);
+    clock = day0;
+    state.memberDaysAt = 0; state.prunedDay = null;
+    assert.equal(await job.snapshotMembers(many), 2);
+    assert.deepEqual(memberDays.at(-1), { day: '2026-10-17', list: [{ guildId: '1', members: 120 }, { guildId: '2', members: 7 }] });
+    assert.deepEqual(pruned, ['2026-07-19'], '90 days are kept');
+    clock += 10 * 60_000; g1.memberCount = 121;
+    assert.equal(await job.snapshotMembers(many), 0, 'not again within the hour');
+    clock += 60 * 60_000;
+    assert.equal(await job.snapshotMembers(many), 2); assert.equal(memberDays.at(-1).list[0].members, 121, 'the last value of the day');
+    assert.equal(pruned.length, 1, 'pruned once a day');
+    clock = Date.UTC(2026, 9, 18, 6, 0, 0); // 1:00 on Oct 18 in Colombia
+    await job.snapshotMembers(many);
+    assert.equal(memberDays.at(-1).day, '2026-10-18'); assert.equal(pruned.length, 2);
+    clock = 70_000_000;
+  }
+
   // ── The line of renames: many counters changing at once are spread out ──
   {
     const { createRenameQueue } = require('../src/utils/renameQueue');
@@ -558,6 +609,6 @@ state.queue.configure({ gapMs: 0, guildGapMs: 0, jitterMs: 0 });
     rows = [];
   }
 
-  console.log('Checked counter names, formats, goals, clocks, the rename budget (2 per 10 minutes, merged, kept across restarts), problems, !counter create, the setup and the packs, category and topic counters, the line that spreads renames over time, and milestone announcements.');
+  console.log('Checked counter names, formats, goals, clocks, the rename budget (2 per 10 minutes, merged, kept across restarts), problems, !counter create, the setup and the packs, category and topic counters, the order and status for the dashboard, members per day, the line that spreads renames over time, and milestone announcements.');
   process.exit(0);
 })().catch((error) => { console.error(error); process.exit(1); });

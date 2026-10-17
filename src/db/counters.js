@@ -6,16 +6,58 @@ async function add(row) {
   return data;
 }
 
+/** The order of the dashboard list: the position given by dragging, then the oldest first. */
+function byPosition(a, b) {
+  const pa = a.position ?? Number.MAX_SAFE_INTEGER;
+  const pb = b.position ?? Number.MAX_SAFE_INTEGER;
+  return pa - pb || Number(a.id) - Number(b.id);
+}
+
 async function list(guildId) {
   const { data, error } = await database.from('server_counters').select('*').eq('guild_id', guildId).order('id');
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []).sort(byPosition);
 }
 
 async function listAll() {
   const { data, error } = await database.from('server_counters').select('*').order('guild_id').order('id');
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []).sort((a, b) => String(a.guild_id).localeCompare(String(b.guild_id)) || byPosition(a, b));
+}
+
+/** Saves the order of the counters of a server (the channel ids, first to last). */
+async function setOrder(guildId, channelIds) {
+  for (const [index, channelId] of channelIds.entries()) {
+    const { error } = await database.from('server_counters').update({ position: index }).eq('guild_id', guildId).eq('channel_id', channelId);
+    if (error) throw error;
+  }
+}
+
+/**
+ * The member count of every server of the bot for a day, in one statement (`rows`: [{ guildId, members }]). Raw SQL on the main pool:
+ * it is not a setting, so it does not tell the dashboard that the servers changed.
+ */
+async function saveMemberDays(day, rows) {
+  if (!rows.length) return 0;
+  const { getPrimaryPool } = require('./postgres');
+  const pool = getPrimaryPool();
+  let saved = 0;
+  for (let i = 0; i < rows.length; i += 500) {
+    const chunk = rows.slice(i, i + 500);
+    await pool.query(
+      `insert into guild_member_days (guild_id, day, members)
+       select g, $1::date, m from unnest($2::text[], $3::int[]) as t(g, m)
+       on conflict (guild_id, day) do update set members = excluded.members`,
+      [day, chunk.map((row) => String(row.guildId)), chunk.map((row) => Math.max(0, Math.trunc(Number(row.members) || 0)))],
+    );
+    saved += chunk.length;
+  }
+  return saved;
+}
+
+async function pruneMemberDays(beforeDay) {
+  const { getPrimaryPool } = require('./postgres');
+  await getPrimaryPool().query('delete from guild_member_days where day < $1::date', [beforeDay]);
 }
 
 async function get(guildId, channelId) {
@@ -70,4 +112,4 @@ async function markAnnounced(guildId, number) {
   return (data ?? []).length > 0;
 }
 
-module.exports = { add, get, update, list, listAll, remove, getAnnounce, listAnnounce, saveAnnounce, markAnnounced };
+module.exports = { add, get, update, list, listAll, remove, setOrder, saveMemberDays, pruneMemberDays, byPosition, getAnnounce, listAnnounce, saveAnnounce, markAnnounced };
