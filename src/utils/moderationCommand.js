@@ -79,4 +79,21 @@ function failureDetail(error, lang = currentLanguage()) {
   return t(lang, 'moderation.failure.discordSaid', { text: `${text.slice(0, 160)}${error?.code ? ` (${error.code})` : ''}` });
 }
 
-module.exports = { asSubcommand, confirmBulkAction, requireAdministrator, failureDetail };
+/**
+ * For one target of a bulk action (ban users, kick users...): why it is left alone (the moderator, the owner, Petto, a role at
+ * or above the moderator's or Petto's), or null when it can go ahead. A user who is not in the server is never blocked here.
+ */
+function bulkTargetBlocked(interaction, member, permission, options) {
+  if (!member) return null;
+  // Required here so this file keeps loading without the permission helpers in the scripts that stub them.
+  const { canModerate } = require('./permissions');
+  const check = canModerate(interaction, member, permission, options);
+  return check.ok ? null : check.message;
+}
+
+/** The line of a bulk result that lists the targets that were left alone, or null when there are none. */
+function protectedLine(users, lang) {
+  return users.length ? t(lang, 'moderation.common.protected', { emoji: EMOJI.DENY, list: users.map((user) => `${user}`).join(' ') }) : null;
+}
+
+module.exports = { asSubcommand, confirmBulkAction, requireAdministrator, failureDetail, bulkTargetBlocked, protectedLine };

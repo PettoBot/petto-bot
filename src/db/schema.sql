@@ -279,6 +279,55 @@ create table if not exists hard_bans (
 );
 alter table hard_bans enable row level security;
 
+-- Forced nicknames: Petto puts this nickname back whenever the member (or anyone) changes it, and again when they rejoin.
+create table if not exists forced_nicknames (
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  user_id    text not null,
+  nickname   text not null check (char_length(nickname) between 1 and 32),
+  set_by     text not null,
+  created_at timestamptz not null default now(),
+  primary key (guild_id, user_id)
+);
+alter table forced_nicknames enable row level security;
+
+-- Temporary roles: given by !role temp and taken away by the expiry job when the time is up.
+create table if not exists temp_roles (
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  user_id    text not null,
+  role_id    text not null,
+  set_by     text not null,
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now(),
+  primary key (guild_id, user_id, role_id)
+);
+create index if not exists idx_temp_roles_expires on temp_roles(expires_at);
+alter table temp_roles enable row level security;
+
+-- Restricted commands: when a command has rows here, only members with one of these roles (or an administrator) can use it.
+create table if not exists command_restrictions (
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  command    text not null,
+  role_id    text not null,
+  created_by text,
+  created_at timestamptz not null default now(),
+  primary key (guild_id, command, role_id)
+);
+alter table command_restrictions enable row level security;
+
+-- Join passes: a one-time pass that lets one account join without being stopped by the anti-raid checks (new account, no avatar, raid).
+create table if not exists join_passes (
+  guild_id   text not null references guilds(guild_id) on delete cascade,
+  user_id    text not null,
+  created_by text not null,
+  created_at timestamptz not null default now(),
+  primary key (guild_id, user_id)
+);
+alter table join_passes enable row level security;
+
+-- The roles of !imute (no files or embeds) and !rmute (no reactions or external emojis), made the first time they are used.
+alter table guilds add column if not exists image_mute_role_id text;
+alter table guilds add column if not exists reaction_mute_role_id text;
+
 create index if not exists idx_mod_actions_guild_user on mod_actions(guild_id, user_id);
 create index if not exists idx_mod_actions_guild_created on mod_actions(guild_id, created_at desc);
 create index if not exists idx_mod_actions_expires on mod_actions(expires_at) where expires_at is not null and active;
@@ -584,6 +633,11 @@ alter table automod_config add column if not exists anti_alt_min_age_days intege
 alter table automod_config add column if not exists anti_alt_action text not null default 'kick';
 alter table automod_config drop constraint if exists automod_config_anti_alt_action_check;
 alter table automod_config add constraint automod_config_anti_alt_action_check check (anti_alt_action in ('kick', 'flag'));
+-- Anti-raid: accounts that join with the default avatar (no profile picture).
+alter table automod_config add column if not exists no_avatar_enabled boolean not null default false;
+alter table automod_config add column if not exists no_avatar_action text not null default 'kick';
+alter table automod_config drop constraint if exists automod_config_no_avatar_action_check;
+alter table automod_config add constraint automod_config_no_avatar_action_check check (no_avatar_action in ('kick', 'flag'));
 
 alter table automod_config enable row level security;
 

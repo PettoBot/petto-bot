@@ -1,5 +1,6 @@
 const { getExpiredSanctions, deactivateCase, createCase } = require('../db/modActions');
 const { getExpiredJails, removeJailed } = require('../db/jail');
+const { getExpiredTempRoles, removeTempRole } = require('../db/tempRoles');
 const { unjailMember, JailError } = require('../utils/jail');
 const { sanctionDM } = require('../utils/sanctionTemplates');
 const { logSanction } = require('../utils/caseLog');
@@ -94,13 +95,34 @@ async function processExpiredJails(client) {
   }, config.jobConcurrency);
 }
 
+/** Takes away the temporary roles (!role temp) whose time is up. A member who left, or a role that is gone, just ends the row. */
+async function processExpiredTempRoles(client) {
+  const expired = await getExpiredTempRoles();
+
+  await forEachWithConcurrency(expired, async (row) => {
+    try {
+      const guild = await client.guilds.fetch(row.guild_id).catch(() => null);
+      const member = guild ? await guild.members.fetch(row.user_id).catch(() => null) : null;
+      if (member?.roles.cache.has(row.role_id)) {
+        const lang = await guildLanguage(guild.id);
+        // A role Discord refuses to remove now (Petto lost the permission) is retried on the next poll.
+        await member.roles.remove(row.role_id, t(lang, 'moderation.role.audit.tempEnded'));
+      }
+      await removeTempRole(row.guild_id, row.user_id, row.role_id);
+    } catch (err) {
+      logger.warn(`Temporary role not removed yet (role ${row.role_id}, user ${row.user_id}, guild ${row.guild_id}): ${err.message}`);
+    }
+  }, config.jobConcurrency);
+}
+
 function startExpiryJob(client) {
   const run = exclusiveTask(async () => {
     await processExpiredSanctions(client);
     await processExpiredJails(client);
+    await processExpiredTempRoles(client).catch((err) => logger.error('Temporary role expiry error:', err));
   });
   setInterval(() => run().catch((err) => logger.error('Expiry job error:', err)), POLL_INTERVAL_MS).unref?.();
   logger.info('Sanction expiry job started (checking every 60s).');
 }
 
-module.exports = { startExpiryJob, processExpiredSanctions, processExpiredJails };
+module.exports = { startExpiryJob, processExpiredSanctions, processExpiredJails, processExpiredTempRoles };

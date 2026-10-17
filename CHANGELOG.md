@@ -6,6 +6,12 @@ All notable changes to Petto are documented here.
 
 ### Changed
 
+- **Bulk moderation leaves alone the members you cannot moderate.** `ban users`, `kick users`, `mute users`, `mute remove-users`, `warn users` (and `massban`, `masskick`...) only stopped where Discord itself refused before: now a member at or above your highest role or Petto's, the owner, Petto and yourself are left alone and listed as such.
+- **`!lock` locks the channel you are in**, like the other channel shortcuts. It used to open the lockdown status because the lockdown command had taken the name; the lockdown now answers to `!lockdown`, `!raidmode` and `!raidstate`.
+- **`!role add` / `!role remove` say when Discord refuses** instead of saying the roles were changed, refuse to change the roles of someone at or above you, and a mass role run (`humans`, `has`, `all`) reads every member first and shows how far it is. `!role @member Role` gives it, and `give`, `take`, `rename`, `colour`, `kill` work as in other bots.
+- **`!voice` asks for the permission of each action** (Mute Members for mute, Move Members for move...), not the three voice permissions at once.
+- **A file sent with a prefix command fills its file option**, so `!case evidence 12` with a screenshot attached works.
+
 - **The anti-nuke blames the right account more often, and never twice.** When the audit log is late the bot reads it again a moment later instead of giving up, and an entry already blamed is never counted again (a single webhook created used to count once per webhook event). After a protection answers, what the same account does in that window is still undone, without a second alert.
 - **The anti-nuke never acts on an account whose role is at or above Petto's**, and a quarantine keeps the roles Discord manages (booster, integrations) instead of failing. Restoring rebuilds the roles before the channels and tries once more when Discord asks to slow down.
 
@@ -21,6 +27,24 @@ All notable changes to Petto are documented here.
 - **Backups are under maintenance.** For now `!backup` and its panel answer that backups are under maintenance, and the scheduled backups are not taken. The owner and the developers can still use them. The saved backups and the schedules are kept as they are. Setting `BACKUPS_MAINTENANCE=off` brings it all back. The dashboard page of backups shows the same notice.
 
 ### Added
+
+- **More moderation commands, all prefix only (no new slash commands).** Every one checks your permission, Petto's permission and the role hierarchy: nobody at or above you or Petto, never the owner.
+  - `!nickname` (`!nick`, `!rename`): change or reset a nickname, or **force** one (`!forcenick @member name`, `!forcenick list`) that Petto puts back whenever it changes, also after they rejoin.
+  - `!stripstaff @member` (Administrator): takes away every role with a staff permission at once, for a compromised staff account.
+  - `!imute` / `!iunmute` and `!rmute` / `!runmute`: no files or embeds, or no reactions and external emojis, in every channel, while the member can still talk. The roles are made the first time, and new channels get them too.
+  - `!raid clean 10m [ban|kick]` (`!recentban`): after a raid, bans or kicks everyone (not bots) who joined in that time, after a confirmation, with a case each and one summary in the log. `!raid list 1h` (`!newmembers`) shows who joined.
+  - `!clearinvites`: deletes every invite of the server, after a confirmation.
+  - `!thread rename|lock|unlock|add|remove` for threads and forum posts.
+  - `!restrictcommand <command> <role>` (`!rc`): only members with one of the roles can use that command (as a prefix or a slash command). The owner and administrators always can. `!rc list`, `!rc remove`, `!rc reset`.
+  - `!role temp @member @role 3d` (`!temprole`, `!temprole list`): a role that Petto takes away when the time is up. `!role all @role` for every member, bots included.
+  - `!ban list` and `!hardban list`, `!unbanall cancel` (stops a mass unban that is running), `!timeout list` (`!timeouts`): who is timed out or has the mute role.
+  - `!note remove <id>` and `!note clear @member`; `!notes @member` lists them.
+  - `!modstats @moderator` (`!case stats` with a moderator), and the shortcuts `!mhistory @moderator`, `!warnings @member`, `!caselog 12`, `!reason 12 new reason`, `!proof 12` (with a screenshot attached, or a link).
+  - `!topic`, `!nsfw` (`!naughty`), `!revokefiles off` / `!picperms @member` (files and embeds for everyone, a role or a member), and `!hide` / `!unhide` for a role or a member, not only @everyone.
+  - `!drag @a @b [channel]`: several members to a voice channel (yours by default).
+  - `!purge` finds more: `webhooks`, `stickers`, `emojis`, `reactions` (removes the reactions and keeps the messages), `starts_with`, `ends_with`, `before` and `after` a message. The short forms of other bots work: `!purge bots 50`, `!purge contains free nitro`, `!purge startswith !`, `!purge after <link>`, `!purge between <link> <link>`. The amount is optional (100).
+  - Anti-raid: `!automod no-avatar on` kicks or flags accounts that join without a profile picture, and `!automod join-pass add <id>` lets one account join once without the anti-raid checks stopping it. `!antiraid` works as `!automod` (`!antiraid avatar`, `!antiraid newaccounts`, `!antiraid massjoin`).
+  - Needs the new `forced_nicknames`, `temp_roles`, `command_restrictions` and `join_passes` tables and a few new columns in `schema.sql` (applied at start).
 
 - **Anti-nuke: five new protections, all off until a server turns them on (`!antinuke rule` or the dashboard).**
   - **Anti Role Changes** (`role_update`, 3 in 10s): roles edited in a row. A role (or @everyone) given a dangerous permission (Administrator, Manage Server, Manage Roles, Manage Channels, Manage Webhooks, Ban, Kick, Timeout, Mention Everyone) answers **at once**, without waiting for the limit. When it answers, the roles go back to how they were before the first edit.

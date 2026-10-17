@@ -26,6 +26,7 @@ const reply = (interaction, text, color = GREEN) => interaction.editReply({ comp
 module.exports = {
   aliases: ['an'],
   prefixDefaultSubcommand: 'status',
+  prefixSubcommandAliases: { list: 'status', config: 'status', configuration: 'status' },
   data: new SlashCommandBuilder()
     .setName('antinuke')
     .setDescription('Protect the server from accounts that delete, ban or change too much too fast.')

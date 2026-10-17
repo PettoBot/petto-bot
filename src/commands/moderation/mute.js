@@ -10,7 +10,7 @@ const { resolveUsers } = require('../../utils/userResolve');
 const { parseDuration, formatDuration } = require('../../utils/duration');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
-const { confirmBulkAction, requireAdministrator, failureDetail } = require('../../utils/moderationCommand');
+const { confirmBulkAction, requireAdministrator, failureDetail, bulkTargetBlocked, protectedLine } = require('../../utils/moderationCommand');
 const { reasonText } = require('../../utils/caseFormat');
 const { t, tn, languageOf } = require('../../i18n');
 
@@ -59,7 +59,8 @@ module.exports = {
         .setDescription('Unmute multiple members at once.')
         .addStringOption((opt) => opt.setName('users').setDescription('Mentions, IDs, or exact usernames; separate with spaces or commas').setRequired(true))
         .addStringOption((opt) => opt.setName('reason').setDescription('Reason for the unmutes').setRequired(false)),
-    ),
+    )
+    .addSubcommand((sub) => sub.setName('list').setDescription('List the members who are timed out or have the mute role.')),
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
@@ -67,6 +68,7 @@ module.exports = {
     if (sub === 'users') return muteUsers(interaction);
     if (sub === 'temp') return tempMute(interaction);
     if (sub === 'remove') return unmuteUser(interaction);
+    if (sub === 'list') return listMuted(interaction);
     return unmuteUsers(interaction);
   },
 };
@@ -158,12 +160,17 @@ async function muteUsers(interaction) {
   const succeeded = [];
   const failed = [];
   const skipped = [];
+  const blocked = [];
   const caseNumbers = [];
 
   for (const user of users) {
     const member = await interaction.guild.members.fetch(user.id).catch(() => null);
     if (!member) {
       skipped.push(user);
+      continue;
+    }
+    if (bulkTargetBlocked(interaction, member, PermissionFlagsBits.ModerateMembers, { hierarchy: 'none' })) {
+      blocked.push(user);
       continue;
     }
 
@@ -186,6 +193,7 @@ async function muteUsers(interaction) {
   if (succeeded.length) lines.push(succeeded.map((u) => `${u}`).join(' '));
   if (failed.length) lines.push(t(lang, 'moderation.common.failedList', { emoji: EMOJI.DENY, list: failed.map((u) => `${u}`).join(' ') }));
   if (skipped.length) lines.push(t(lang, 'moderation.common.notInServer', { list: skipped.map((u) => `${u}`).join(' ') }));
+  if (blocked.length) lines.push(protectedLine(blocked, lang));
   if (notFound.length) lines.push(t(lang, 'moderation.common.notFound', { list: notFound.map((id) => `\`${id}\``).join(', ') }));
   lines.push(t(lang, 'moderation.common.reason', { reason: reasonText(reason, lang) }));
 
@@ -311,12 +319,17 @@ async function unmuteUsers(interaction) {
 
   const succeeded = [];
   const skipped = [];
+  const blocked = [];
   const caseNumbers = [];
 
   for (const user of users) {
     const member = await interaction.guild.members.fetch(user.id).catch(() => null);
     if (!member) {
       skipped.push(user);
+      continue;
+    }
+    if (bulkTargetBlocked(interaction, member, PermissionFlagsBits.ModerateMembers, { hierarchy: 'none' })) {
+      blocked.push(user);
       continue;
     }
 
@@ -356,8 +369,36 @@ async function unmuteUsers(interaction) {
   const lines = [tn(lang, 'moderation.unmute.bulkDone', succeeded.length, { emoji: EMOJI.APPROVE, count: succeeded.length, cases: caseNumbers.length ? t(lang, 'moderation.common.cases', { list: caseNumbers.join(', #') }) : '' })];
   if (succeeded.length) lines.push(succeeded.map((u) => `${u}`).join(' '));
   if (skipped.length) lines.push(t(lang, 'moderation.unmute.skipped', { list: skipped.map((u) => `${u}`).join(' ') }));
+  if (blocked.length) lines.push(protectedLine(blocked, lang));
   if (notFound.length) lines.push(t(lang, 'moderation.common.notFound', { list: notFound.map((id) => `\`${id}\``).join(', ') }));
 
   const card = textCard(lines.join('\n'), 0xa5ea7a);
   await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });
+}
+
+/** `mute list` (`!timeout list`): who cannot talk right now, by timeout (with when it ends) or by the mute role. */
+async function listMuted(interaction) {
+  const lang = await languageOf(interaction);
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  const guildConfig = await ensureGuild(interaction.guild.id).catch(() => null);
+  const muteRoleId = guildConfig?.mute_role_id ?? null;
+  const members = await interaction.guild.members.fetch().catch(() => interaction.guild.members.cache);
+  const now = Date.now();
+  const rows = [...members.values()]
+    .map((member) => ({ member, until: member.communicationDisabledUntilTimestamp > now ? member.communicationDisabledUntilTimestamp : null, role: Boolean(muteRoleId && member.roles.cache.has(muteRoleId)) }))
+    .filter((row) => row.until || row.role)
+    .sort((a, b) => (a.until ?? Infinity) - (b.until ?? Infinity));
+
+  if (!rows.length) {
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.mute.listEmpty'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+  const lines = rows.slice(0, 40).map(({ member, until, role }) => [
+    `${member} \`${member.id}\``,
+    until ? t(lang, 'moderation.mute.listUntil', { time: `<t:${Math.floor(until / 1000)}:R>` }) : null,
+    role ? t(lang, 'moderation.mute.listRole') : null,
+  ].filter(Boolean).join(' · '));
+  if (rows.length > 40) lines.push(t(lang, 'moderation.role.more', { count: rows.length - 40 }));
+  const text = [tn(lang, 'moderation.mute.listTitle', rows.length, { count: rows.length }), ...lines].join('\n');
+  await interaction.editReply({ components: [textCard(text.slice(0, 3900), 0x4b4f59)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
 }

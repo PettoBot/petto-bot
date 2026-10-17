@@ -4,6 +4,8 @@ const { asSubcommand } = require('../../utils/moderationCommand');
 
 module.exports = {
   aliases: ['to'],
+  // `!timeout list`: who is timed out or muted.
+  prefixWords: { list: { command: 'mute', args: ['list'] } },
   data: new SlashCommandBuilder()
     .setName('timeout')
     .setDescription('Apply a Discord timeout for up to 28 days.')

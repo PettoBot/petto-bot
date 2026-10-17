@@ -357,4 +357,13 @@ module.exports = {
   'cmd.config.warnconfig.desc': 'Muestra los ajustes del escalado de advertencias y cómo cambiarlos.',
   'cmd.config.webhookconfig.desc': 'Muestra los ajustes de los webhooks y cómo cambiarlos.',
   'cmd.config.welcomeconfig.desc': 'Muestra los ajustes de la bienvenida y cómo cambiarlos.',
+  'cmd.config.restrictcommand.desc': 'Deja que solo algunos roles usen un comando (los administradores siempre pueden).',
+  'cmd.config.restrictcommand.add.desc': 'Solo los miembros con este rol (u otro que agregues) pueden usar el comando.',
+  'cmd.config.restrictcommand.add.opt.command.desc': 'El comando, como lo escribes sin el prefijo',
+  'cmd.config.restrictcommand.add.opt.role.desc': 'El rol que puede usarlo',
+  'cmd.config.restrictcommand.remove.desc': 'Quita un rol de un comando, o todos para abrirlo de nuevo.',
+  'cmd.config.restrictcommand.remove.opt.command.desc': 'El comando',
+  'cmd.config.restrictcommand.remove.opt.role.desc': 'El rol (vacío: todos los roles del comando)',
+  'cmd.config.restrictcommand.list.desc': 'Mira cada comando restringido y sus roles.',
+  'cmd.config.restrictcommand.reset.desc': 'Abre de nuevo todos los comandos restringidos.',
 };

@@ -17,6 +17,7 @@ const { textCard } = require('../utils/caseCard');
 const { EMOJI } = require('../utils/emojis');
 const moderationPermissions = require('../utils/moderationPermissions');
 const { controlAction } = require('../utils/autoModControl');
+const { restrictedFor, applyWordRoute } = require('../utils/commandRestrictions');
 const logger = require('../utils/logger');
 const { logCommandUse } = require('../logging/extraLog');
 const { runCodeCommand } = require('../utils/codeCommands');
@@ -249,12 +250,23 @@ module.exports = {
 
     const prefixRoute = message.client.commandRoutes?.get(commandName);
     if (prefixRoute) {
+      // A route can send some first words elsewhere: `!forcenick list` is `!nickname forced`, `!forcenick @a b` is `!nickname force @a b`.
+      const word = applyWordRoute(prefixRoute.words, prefixRoute.command, argText);
       commandName = prefixRoute.command;
-      argText = [...prefixRoute.args, argText].filter(Boolean).join(' ');
+      argText = word ? word.argText : [...prefixRoute.args, argText].filter(Boolean).join(' ');
     }
 
-    const canonicalName = message.client.commandAliases.get(commandName) ?? commandName;
-    const command = message.client.commands.get(canonicalName);
+    let canonicalName = message.client.commandAliases.get(commandName) ?? commandName;
+    let command = message.client.commands.get(canonicalName);
+    // A command can send a first word to another command (`!timeout list` is `!mute list`, `!hardban list` is `!ban list hard`).
+    const wordRoute = command ? applyWordRoute(command.prefixWords, canonicalName, argText) : null;
+    if (wordRoute) {
+      canonicalName = message.client.commandAliases.get(wordRoute.commandName) ?? wordRoute.commandName;
+      command = message.client.commands.get(canonicalName);
+      argText = wordRoute.argText;
+    }
+    // Shorter ways of writing a command (`!purge bots 50`), turned into its usual form before it is read.
+    if (typeof command?.prefixArgs === 'function') argText = command.prefixArgs(argText);
     const automodControlAction = canonicalName === 'automod' ? controlAction(argText) : null;
     const hiddenAutomodControl = Boolean(automodControlAction && automodControlAction !== 'invalid');
     if (hiddenAutomodControl) argText = `control ${automodControlAction}`;
@@ -322,6 +334,16 @@ module.exports = {
       }
     } catch (err) {
       logger.error('Error checking custom command permission level:', err);
+    }
+
+    // !restrictcommand: only the roles chosen for this command (administrators always can).
+    const restricted = hiddenAutomodControl ? null : await restrictedFor(message.guild.id, canonicalName, message.member).catch((err) => {
+      logger.error('Error checking restricted command:', err);
+      return null;
+    });
+    if (restricted) {
+      await message.reply(warningPayload(message, t(lang, 'core.restricted', { command: canonicalName, roles: restricted.map((id) => `<@&${id}>`).join(', ') }))).catch(() => {});
+      return;
     }
 
     let interaction;

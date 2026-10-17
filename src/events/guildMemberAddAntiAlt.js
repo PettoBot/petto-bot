@@ -3,6 +3,7 @@ const { getConfig } = require('../db/automod');
 const { sendLog } = require('../logging/engine');
 const { EMOJI } = require('../utils/emojis');
 const { applyAutomatedKick } = require('../utils/automodMemberAction');
+const { usePass } = require('../utils/joinPass');
 const logger = require('../utils/logger');
 const { t, tn, currentLanguage } = require('../i18n');
 
@@ -17,6 +18,7 @@ module.exports = {
 
       const ageDays = (Date.now() - member.user.createdTimestamp) / 86_400_000;
       if (ageDays >= config.anti_alt_min_age_days) return;
+      if (await usePass(member)) return;
 
       const lang = currentLanguage();
       const ageText = ageDays < 1 ? t(lang, 'security.antiAlt.log.lessThanDay') : tn(lang, 'security.antiAlt.log.days', Math.floor(ageDays), { count: Math.floor(ageDays) });

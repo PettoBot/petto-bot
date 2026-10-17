@@ -139,7 +139,7 @@ async function handleOnboardingEntry(entry, guild, client) {
 }
 
 // ---- what the staff does with cases and notes of Petto, in `sanctions`
-async function handleStaffAction(kind, client, guild, { moderator, user, number, type, count, note } = {}) {
+async function handleStaffAction(kind, client, guild, { moderator, user, number, type, count, note, detail } = {}) {
   const lang = await guildLanguage(guild.id);
   const fields = [];
   if (user) fields.push({ name: t(lang, 'logs.mod.member'), value: `<@${user.id ?? user}>`, inline: true });
@@ -147,6 +147,8 @@ async function handleStaffAction(kind, client, guild, { moderator, user, number,
   if (count != null) fields.push({ name: t(lang, 'logs.mod.count'), value: String(count), inline: true });
   if (moderator) fields.push({ name: t(lang, 'logs.field.by'), value: `<@${moderator.id ?? moderator}>`, inline: true });
   if (note) fields.push({ name: t(lang, 'logs.mod.note'), value: String(note).slice(0, 800), inline: false });
+  // `detail` is a function of the language, so the log says it in the language of the server.
+  if (detail) fields.push({ name: t(lang, 'logs.mod.detail'), value: String(typeof detail === 'function' ? detail(lang) : detail).slice(0, 1000), inline: false });
   await sendLog(client, guild.id, 'sanctions', {
     author: { name: t(lang, `logs.mod.${kind}.title`) },
     description: t(lang, `logs.mod.${kind}.description`),

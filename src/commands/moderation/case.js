@@ -61,7 +61,7 @@ module.exports = {
         .addStringOption((opt) => opt.setName('link').setDescription('A link (https) to the proof, like a message link').setMaxLength(500))
         .addBooleanOption((opt) => opt.setName('clear').setDescription('Remove all the proof of the case')),
     )
-    .addSubcommand((sub) => sub.setName('stats').setDescription('What the moderators did lately.').addIntegerOption((opt) => opt.setName('days').setDescription('How many days back (default 30)').setMinValue(1).setMaxValue(365)))
+    .addSubcommand((sub) => sub.setName('stats').setDescription('What the moderators did lately, or one moderator.').addIntegerOption((opt) => opt.setName('days').setDescription('How many days back (default 30)').setMinValue(1).setMaxValue(365)).addUserOption((opt) => opt.setName('moderator').setDescription('Only this moderator')))
     .addSubcommand((sub) => sub.setName('delete').setDescription('Delete a single case by number.').addIntegerOption((opt) => opt.setName('case').setDescription('Case number').setRequired(true).setMinValue(1)))
     .addSubcommand((sub) => sub.setName('delete-all').setDescription("Delete a user's entire case history.").addUserOption((opt) => opt.setName('user').setDescription('The user whose cases to wipe').setRequired(true))),
 
@@ -438,6 +438,8 @@ async function stats(interaction) {
   const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const days = interaction.options.getInteger('days') ?? 30;
+  const moderator = interaction.options.getUser('moderator');
+  if (moderator) return moderatorCard(interaction, moderator, days, lang);
   const result = await moderatorStats(interaction.guild.id, days, interaction.client.user.id);
   const types = Object.entries(result.byType).sort((a, b) => b[1] - a[1]).map(([type, n]) => `${typeName(type, lang)} ${n}`).join(' · ') || t(lang, 'moderation.case.stats.noTypes');
   const moderators = result.moderators.slice(0, 10).map((m, i) => `${i + 1}. <@${m.id}> · ${m.count}`).join('\n') || t(lang, 'moderation.case.stats.noModerators');
@@ -447,6 +449,22 @@ async function stats(interaction) {
     t(lang, 'moderation.case.stats.byKind', { types }),
     t(lang, 'moderation.case.stats.moderators'),
     moderators,
+  ].join('\n');
+  await interaction.editReply({ components: [textCard(text.slice(0, 3900), 0x4b4f59)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
+}
+
+/** `case stats <moderator>` (`!modstats`): what one moderator did, by kind, in the last days and in the last 7. */
+async function moderatorCard(interaction, moderator, days, lang) {
+  const [period, week] = await Promise.all([
+    moderatorStats(interaction.guild.id, days, null, moderator.id),
+    moderatorStats(interaction.guild.id, Math.min(days, 7), null, moderator.id),
+  ]);
+  const types = Object.entries(period.byType).sort((a, b) => b[1] - a[1]).map(([type, n]) => `${typeName(type, lang)} ${n}`).join(' · ') || t(lang, 'moderation.case.stats.noTypes');
+  const text = [
+    t(lang, 'moderation.case.stats.moderatorTitle', { moderator: `${moderator}` }),
+    tn(lang, 'moderation.case.stats.moderatorTotal', days, { count: days, total: period.total, week: week.total }),
+    t(lang, 'moderation.case.stats.byKind', { types }),
+    t(lang, 'moderation.case.stats.moderatorHint', { prefix: interaction.typedPrefix ?? '/', id: moderator.id }),
   ].join('\n');
   await interaction.editReply({ components: [textCard(text.slice(0, 3900), 0x4b4f59)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
 }

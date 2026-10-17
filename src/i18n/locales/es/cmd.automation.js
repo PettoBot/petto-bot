@@ -568,4 +568,13 @@ module.exports = {
   'cmd.automation.voicemaster.disconnect.desc': 'Desconecta a un miembro de tu canal.',
   'cmd.automation.voicemaster.disconnect.opt.user.desc': 'Miembro.',
   'cmd.automation.voicemaster.activity.desc': 'Crea una invitación a la actividad Watch Together.',
+  'cmd.automation.automod.no-avatar.desc': 'Marca o expulsa las cuentas que entran sin foto de perfil.',
+  'cmd.automation.automod.no-avatar.opt.enabled.desc': 'Activa o desactiva el control de avatar',
+  'cmd.automation.automod.no-avatar.opt.action.desc': 'Qué hacer (por defecto expulsar)',
+  'cmd.automation.automod.join-pass.desc': 'Pases de un solo uso que dejan entrar a una cuenta sin los controles anti-raid.',
+  'cmd.automation.automod.join-pass.add.desc': 'Deja entrar una vez a una cuenta sin los controles anti-raid.',
+  'cmd.automation.automod.join-pass.add.opt.user.desc': 'La cuenta (sirve un ID)',
+  'cmd.automation.automod.join-pass.remove.desc': 'Quita un pase de entrada.',
+  'cmd.automation.automod.join-pass.remove.opt.user.desc': 'La cuenta',
+  'cmd.automation.automod.join-pass.list.desc': 'Lista los pases de entrada sin usar.',
 };

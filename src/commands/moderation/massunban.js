@@ -3,7 +3,9 @@ const ban = require('./ban');
 const { asSubcommand } = require('../../utils/moderationCommand');
 
 module.exports = {
-  aliases: ['munban'],
+  aliases: ['munban', 'unbanall'],
+  // `!unbanall cancel` stops the one that is running.
+  prefixWords: { cancel: { command: 'ban', args: ['cancel'] }, kill: { command: 'ban', args: ['cancel'] } },
   data: new SlashCommandBuilder()
     .setName('massunban')
     .setDescription('Unban every banned user after administrator confirmation.')

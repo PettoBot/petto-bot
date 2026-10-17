@@ -5,11 +5,16 @@ const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const roleGroupsDb = require('../../db/roleGroups');
 const { requireAdministrator } = require('../../utils/moderationCommand');
+const tempRolesDb = require('../../db/tempRoles');
+const { parseDuration, formatDuration } = require('../../utils/duration');
+const { handleStaffAction } = require('../../logging/moreLog');
 const logger = require('../../utils/logger');
 const { t, tn, languageOf } = require('../../i18n');
 
 const HEX_RE = /^#?[0-9a-f]{6}$/i;
 const MASS_OP_DELAY_MS = 500; // spaced out so a big member list doesn't slam Discord's rate limit
+const MASS_PROGRESS_EVERY = 25; // the progress card is updated every this many members
+const MAX_TEMP_ROLE_MS = 365 * 24 * 60 * 60 * 1000;
 
 // One mass role operation (has/humans/bots) at a time per guild, so /role cancel has something
 // concrete to grab — same trade-off as bli: in-memory only, lost on restart, acceptable since
@@ -18,6 +23,9 @@ const activeMassOps = new Map(); // guildId -> { abort: boolean }
 
 module.exports = {
   aliases: ['r'],
+  // `!role @user Role` gives it; the words other bots use for each subcommand work too.
+  prefixDefaultSubcommand: 'add',
+  prefixSubcommandAliases: { give: 'add', set: 'add', take: 'remove', rmv: 'remove', make: 'create', del: 'delete', rename: 'edit', editname: 'edit', colour: 'color', mention: 'mentionable', kill: 'cancel', templist: 'temp-list', temprole: 'temp' },
   data: new SlashCommandBuilder()
     .setName('role')
     .setDescription('Give, remove, and manage roles.')
@@ -66,7 +74,23 @@ module.exports = {
         .addRoleOption((opt) => opt.setName('role').setDescription('Role to add or remove').setRequired(true))
         .addBooleanOption((opt) => opt.setName('remove').setDescription('Remove instead of add (default: add)').setRequired(false)),
     )
+    .addSubcommand((sub) =>
+      sub
+        .setName('all')
+        .setDescription('Bulk add/remove a role for every member, bots included.')
+        .addRoleOption((opt) => opt.setName('role').setDescription('Role to add or remove').setRequired(true))
+        .addBooleanOption((opt) => opt.setName('remove').setDescription('Remove instead of add (default: add)').setRequired(false)),
+    )
     .addSubcommand((sub) => sub.setName('cancel').setDescription('Cancel the mass role operation currently running in this server.'))
+    .addSubcommand((sub) =>
+      sub
+        .setName('temp')
+        .setDescription('Give a role for a while; Petto takes it away when the time is up.')
+        .addUserOption((opt) => opt.setName('user').setDescription('The member').setRequired(true))
+        .addRoleOption((opt) => opt.setName('role').setDescription('The role').setRequired(true))
+        .addStringOption((opt) => opt.setName('duration').setDescription('For example 1h, 3d or 2w (max 1 year)').setRequired(true)),
+    )
+    .addSubcommand((sub) => sub.setName('temp-list').setDescription('List the temporary roles and when they end.'))
 
     .addSubcommandGroup((g) =>
       g
@@ -101,6 +125,9 @@ module.exports = {
     if (sub === 'in') return inRole(interaction);
     if (sub === 'has') return hasRole(interaction);
     if (sub === 'humans') return humansRole(interaction);
+    if (sub === 'all') return allRole(interaction);
+    if (sub === 'temp') return tempRole(interaction);
+    if (sub === 'temp-list') return tempRoleList(interaction);
     return cancelMassOp(interaction);
   },
 };
@@ -110,6 +137,18 @@ function guardRole(interaction, role, lang) {
   const { assignable, blocked } = filterAssignableRoles(interaction, [role], lang);
   if (assignable.length) return { ok: true };
   return { ok: false, message: blocked[0] ?? t(lang, 'moderation.role.cannotManage') };
+}
+
+/**
+ * Roles of someone at or above the moderator are not theirs to change (the owner can change anyone's). The moderator's own
+ * roles are fine: the roles themselves are still checked against both highest roles.
+ */
+function memberGuard(interaction, member, lang) {
+  const { guild } = interaction;
+  if (member.id === interaction.user.id || interaction.user.id === guild.ownerId) return null;
+  if (member.id === guild.ownerId) return t(lang, 'core.moderate.owner');
+  if (member.roles.highest.position >= interaction.member.roles.highest.position) return t(lang, 'core.moderate.higherRole');
+  return null;
 }
 
 function parseHex(input) {
@@ -133,6 +172,11 @@ async function addRoles(interaction) {
     await interaction.reply({ content: t(lang, 'moderation.role.needsManageRoles'), flags: MessageFlags.Ephemeral });
     return;
   }
+  const guarded = memberGuard(interaction, targetMember, lang);
+  if (guarded) {
+    await interaction.reply({ content: guarded, flags: MessageFlags.Ephemeral });
+    return;
+  }
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
@@ -147,7 +191,12 @@ async function addRoles(interaction) {
     return;
   }
 
-  await targetMember.roles.add(assignable, reason ?? undefined).catch((err) => logger.error('Failed to add roles:', err));
+  const addFailed = await targetMember.roles.add(assignable, reason ?? undefined).then(() => null, (err) => err);
+  if (addFailed) {
+    logger.warn(`Failed to add roles to ${targetMember.id} in ${interaction.guild.id}: ${addFailed.message}`);
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.role.changeFailed'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
 
   const lines = [tn(lang, 'moderation.role.added', assignable.length, { emoji: EMOJI.APPROVE, user: `${targetUser}`, count: assignable.length, roles: assignable.join(' ') })];
   if (unresolved.length) lines.push(t(lang, 'moderation.common.notFound', { list: unresolved.map((token) => `\`${token}\``).join(', ') }));
@@ -172,6 +221,11 @@ async function removeRoles(interaction) {
     await interaction.reply({ content: t(lang, 'moderation.role.needsManageRoles'), flags: MessageFlags.Ephemeral });
     return;
   }
+  const guarded = memberGuard(interaction, targetMember, lang);
+  if (guarded) {
+    await interaction.reply({ content: guarded, flags: MessageFlags.Ephemeral });
+    return;
+  }
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
@@ -186,7 +240,12 @@ async function removeRoles(interaction) {
     return;
   }
 
-  await targetMember.roles.remove(assignable, reason ?? undefined).catch((err) => logger.error('Failed to remove roles:', err));
+  const removeFailed = await targetMember.roles.remove(assignable, reason ?? undefined).then(() => null, (err) => err);
+  if (removeFailed) {
+    logger.warn(`Failed to remove roles from ${targetMember.id} in ${interaction.guild.id}: ${removeFailed.message}`);
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.role.changeFailed'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
 
   const lines = [tn(lang, 'moderation.role.removed', assignable.length, { emoji: EMOJI.APPROVE, user: `${targetUser}`, count: assignable.length, roles: assignable.join(' ') })];
   if (unresolved.length) lines.push(t(lang, 'moderation.common.notFound', { list: unresolved.map((token) => `\`${token}\``).join(', ') }));
@@ -470,14 +529,21 @@ async function runMassOp(interaction, role, members, adding, lang) {
   await interaction.editReply({ components: [textCard(working, 0xfed53c)], flags: MessageFlags.IsComponentsV2 });
 
   let done = 0;
+  let index = 0;
   for (const member of members) {
     if (task.abort) break;
+    index += 1;
     try {
       if (adding) await member.roles.add(role, t(lang, 'moderation.role.audit.mass', { user: interaction.user.tag }));
       else await member.roles.remove(role, t(lang, 'moderation.role.audit.mass', { user: interaction.user.tag }));
       done++;
     } catch (err) {
       logger.warn(`role mass op: failed on ${member.id}:`, err.message);
+    }
+    // A long run shows how far it is, and how to stop it.
+    if (index % MASS_PROGRESS_EVERY === 0 && index < members.length && !task.abort) {
+      const progress = `${working}\n${t(lang, 'moderation.role.mass.progress', { done: index, total: members.length })}`;
+      await interaction.editReply({ components: [textCard(progress, 0xfed53c)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
     }
     await delay(MASS_OP_DELAY_MS);
   }
@@ -508,7 +574,8 @@ async function hasRole(interaction) {
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
-  const members = [...interaction.guild.members.cache.filter((m) => m.roles.cache.has(filterRole.id) && (removing ? m.roles.cache.has(targetRole.id) : !m.roles.cache.has(targetRole.id))).values()];
+  const all = await interaction.guild.members.fetch().catch(() => interaction.guild.members.cache);
+  const members = [...all.filter((m) => m.roles.cache.has(filterRole.id) && (removing ? m.roles.cache.has(targetRole.id) : !m.roles.cache.has(targetRole.id))).values()];
   if (!members.length) {
     await interaction.editReply({ components: [textCard(t(lang, removing ? 'moderation.role.has.noneRemove' : 'moderation.role.has.noneAdd', { filter: `${filterRole}`, role: `${targetRole}` }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
@@ -535,13 +602,99 @@ async function humansRole(interaction) {
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
-  const members = [...interaction.guild.members.cache.filter((m) => !m.user.bot && (removing ? m.roles.cache.has(role.id) : !m.roles.cache.has(role.id))).values()];
+  const all = await interaction.guild.members.fetch().catch(() => interaction.guild.members.cache);
+  const members = [...all.filter((m) => !m.user.bot && (removing ? m.roles.cache.has(role.id) : !m.roles.cache.has(role.id))).values()];
   if (!members.length) {
     await interaction.editReply({ components: [textCard(t(lang, removing ? 'moderation.role.humans.noneRemove' : 'moderation.role.humans.noneAdd', { role: `${role}` }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   await runMassOp(interaction, role, members, !removing, lang);
+}
+
+async function allRole(interaction) {
+  if (!(await requireAdministrator(interaction))) return;
+  const lang = await languageOf(interaction);
+  const role = interaction.options.getRole('role', true);
+  const removing = interaction.options.getBoolean('remove') ?? false;
+
+  const guard = guardRole(interaction, role, lang);
+  if (!guard.ok) {
+    await interaction.reply({ content: guard.message, flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (activeMassOps.has(interaction.guild.id)) {
+    await interaction.reply({ content: t(lang, 'moderation.role.mass.alreadyRunning'), flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+
+  const all = await interaction.guild.members.fetch().catch(() => interaction.guild.members.cache);
+  const members = [...all.filter((m) => (removing ? m.roles.cache.has(role.id) : !m.roles.cache.has(role.id))).values()];
+  if (!members.length) {
+    await interaction.editReply({ components: [textCard(t(lang, removing ? 'moderation.role.all.noneRemove' : 'moderation.role.all.noneAdd', { role: `${role}` }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+
+  await runMassOp(interaction, role, members, !removing, lang);
+}
+
+async function tempRole(interaction) {
+  const lang = await languageOf(interaction);
+  const targetUser = interaction.options.getUser('user', true);
+  const role = interaction.options.getRole('role', true);
+  const durationMs = parseDuration(interaction.options.getString('duration', true));
+
+  if (!durationMs || durationMs > MAX_TEMP_ROLE_MS) {
+    await interaction.reply({ content: t(lang, 'moderation.role.temp.badDuration'), flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
+  if (!targetMember) {
+    await interaction.reply({ content: t(lang, 'moderation.common.notMember'), flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (!interaction.guild.members.me.permissions.has(PermissionFlagsBits.ManageRoles)) {
+    await interaction.reply({ content: t(lang, 'moderation.role.needsManageRoles'), flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const roleCheck = guardRole(interaction, role, lang);
+  const blocked = memberGuard(interaction, targetMember, lang) ?? (roleCheck.ok ? null : roleCheck.message);
+  if (blocked) {
+    await interaction.reply({ content: blocked, flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  const duration = formatDuration(durationMs, lang);
+  try {
+    if (!targetMember.roles.cache.has(role.id)) await targetMember.roles.add(role, t(lang, 'moderation.role.audit.temp', { user: interaction.user.tag, duration }));
+  } catch (err) {
+    logger.warn(`role temp failed for ${targetMember.id} in ${interaction.guild.id}: ${err.message}`);
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.role.changeFailed'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+  const expiresAt = new Date(Date.now() + durationMs);
+  await tempRolesDb.addTempRole(interaction.guild.id, targetMember.id, role.id, interaction.user.id, expiresAt.toISOString());
+  handleStaffAction('tempRole', interaction.client, interaction.guild, { moderator: interaction.user, user: targetUser, detail: `${role} · <t:${Math.floor(expiresAt.getTime() / 1000)}:R>` }).catch(() => {});
+
+  const text = t(lang, 'moderation.role.temp.done', { emoji: EMOJI.APPROVE, user: `${targetUser}`, role: `${role}`, duration, time: `<t:${Math.floor(expiresAt.getTime() / 1000)}:R>` });
+  await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
+}
+
+async function tempRoleList(interaction) {
+  const lang = await languageOf(interaction);
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  const rows = await tempRolesDb.listTempRoles(interaction.guild.id);
+  if (!rows.length) {
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.role.temp.listEmpty'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+  const lines = rows.slice(0, 40).map((row) => `<@${row.user_id}> · <@&${row.role_id}> · <t:${Math.floor(new Date(row.expires_at).getTime() / 1000)}:R>`);
+  if (rows.length > 40) lines.push(t(lang, 'moderation.role.more', { count: rows.length - 40 }));
+  const text = [tn(lang, 'moderation.role.temp.listTitle', rows.length, { count: rows.length }), ...lines].join('\n');
+  await interaction.editReply({ components: [textCard(text.slice(0, 3900), 0x4b4f59)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
 }
 
 async function cancelMassOp(interaction) {
