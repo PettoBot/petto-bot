@@ -3935,3 +3935,10 @@ create table if not exists counter_announce_config (
   updated_at      timestamptz not null default now()
 );
 alter table counter_announce_config enable row level security;
+
+-- Counters 3: where a counter shows its value. `name` is the channel's (or category's) name; `topic` the topic of a text or announcement
+-- channel (topic edits share the channel's budget of two edits every ten minutes). `position` is the order of the dashboard list.
+alter table server_counters add column if not exists target text not null default 'name';
+alter table server_counters drop constraint if exists server_counters_target_check;
+alter table server_counters add constraint server_counters_target_check check (target in ('name', 'topic'));
+alter table server_counters add column if not exists position integer;

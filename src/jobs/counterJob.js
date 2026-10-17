@@ -13,7 +13,7 @@ const database = require('../db/database');
 const logger = require('../utils/logger');
 const config = require('../config');
 const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency');
-const { renderName, planRename, recentRenames, NEEDS_MEMBERS, NEEDS_PRESENCES, RENAME_WINDOW_MS } = require('../utils/counterNames');
+const { renderName, planRename, recentRenames, targetOf, NEEDS_MEMBERS, NEEDS_PRESENCES, RENAME_WINDOW_MS } = require('../utils/counterNames');
 const { countGuild, extrasFor } = require('../utils/counterValues');
 const { milestoneToAnnounce, announcePayload, announceChannel } = require('../utils/counterAnnounce');
 const { createRenameQueue } = require('../utils/renameQueue');
@@ -108,7 +108,9 @@ async function setProblem(guild, row, problem, { disable = false, detail = '' } 
   if (row.problem !== problem || disable) {
     // A permission problem is worded so the server's notices pick it up and tell the staff (once, and again only if it comes back).
     // i18n-ignore: log
-    const text = problem === 'missing_permission' ? `Missing Permissions: Petto needs Manage Channels and View Channel on the counter channel ${row.channel_id}.${detail ? ` ${detail}` : ''}` : `Counter channel ${row.channel_id} is gone; the counter was turned off.`;
+    const text = problem === 'missing_permission' ? `Missing Permissions: Petto needs Manage Channels and View Channel on the counter channel ${row.channel_id}.${detail ? ` ${detail}` : ''}`
+      : problem === 'bad_target' ? `Counter channel ${row.channel_id} has no topic (only text and announcement channels do); the counter waits until it shows in the name.` // i18n-ignore: log
+        : `Counter channel ${row.channel_id} is gone; the counter was turned off.`; // i18n-ignore: log
     logger.warn({ guildId: guild.id, channelId: row.channel_id, action: 'counter' }, text);
   }
   await saveRow(row, patch);
@@ -164,11 +166,14 @@ async function evaluate(guild, row, language) {
   if (!channel) { cancelTimer(row.channel_id); await setProblem(guild, row, 'missing_channel', { disable: true }); return { result: 'problem' }; }
   if (!canManage(guild, channel)) { await setProblem(guild, row, 'missing_permission'); return { result: 'problem' }; }
   if (state.inFlight.has(channel.id)) return { result: 'waiting' };
+  const topic = targetOf(row) === 'topic';
+  // Only text and announcement channels have a topic.
+  if (topic && channel.type !== 0 && channel.type !== 5) { await setProblem(guild, row, 'bad_target'); return { result: 'problem' }; }
   const { name } = await wantedNameOf(guild, row, language);
   const plan = planRename({
-    currentName: channel.name,
+    currentName: topic ? String(channel.topic ?? '') : channel.name,
     wantedName: name,
-    channelType: row.channel_type,
+    channelType: topic ? 'topic' : row.channel_type,
     lastWanted: state.lastWanted.get(channel.id),
     lastStored: state.lastStored.get(channel.id),
     times: timesOf(row),
@@ -191,10 +196,12 @@ async function applyRename(guild, row, channel, name, language) {
   state.inFlight.add(channel.id);
   const times = [...timesOf(row), state.now()];
   state.renameTimes.set(channel.id, times);
+  const topic = targetOf(row) === 'topic';
   try {
-    const renamed = await withTimeout(channel.setName(name, t(language, 'counters.renameReason')), RENAME_TIMEOUT_MS, 'channel rename'); // i18n-ignore: 'channel rename' is a log label
+    const edit = topic ? channel.setTopic(name, t(language, 'counters.renameReason')) : channel.setName(name, t(language, 'counters.renameReason'));
+    const renamed = await withTimeout(edit, RENAME_TIMEOUT_MS, 'channel rename'); // i18n-ignore: 'channel rename' is a log label
     state.lastWanted.set(channel.id, name);
-    state.lastStored.set(channel.id, renamed?.name ?? name);
+    state.lastStored.set(channel.id, (topic ? renamed?.topic : renamed?.name) ?? name);
     state.problems.delete(row.id);
     await saveRow(row, { rename_times: times, last_name: name, last_updated_at: new Date(state.now()).toISOString(), ...(row.problem ? { problem: null, problem_at: null } : {}) });
     return 'renamed';

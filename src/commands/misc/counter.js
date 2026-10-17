@@ -4,16 +4,16 @@ const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, ChannelType } = 
 const countersDb = require('../../db/counters');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
-const { OPTIONS, NEEDS_PRESENCES, resolveOption, resolveFormat, validTimeZone, typeLabel, defaultTemplate, formatCount } = require('../../utils/counterNames');
+const { OPTIONS, NEEDS_PRESENCES, resolveOption, resolveFormat, validTimeZone, typeLabel, defaultTemplate, formatCount, templateMax, targetOf } = require('../../utils/counterNames');
 const { countGuild } = require('../../utils/counterValues');
-const { createCounter, setupPreset, previewName, KINDS } = require('../../utils/counterSetup');
+const { createCounter, setupPreset, previewName, resolveKind, KINDS, KIND_OF_TYPE, TOPIC_TYPES } = require('../../utils/counterSetup');
 const { parseEvery, nextMilestone, announcePayload, announceChannel, MAX_TEXT } = require('../../utils/counterAnnounce');
 const { t, languageOf } = require('../../i18n');
 
 // Loaded when used: the job pulls in the database layer and the scheduler.
 const job = () => require('../../jobs/counterJob');
 
-const EDIT_SETTINGS = ['template', 'format', 'type', 'role', 'goal', 'timezone', 'category', 'prefix', 'suffix', 'interval', 'enabled'];
+const EDIT_SETTINGS = ['template', 'format', 'type', 'role', 'goal', 'timezone', 'category', 'kind', 'prefix', 'suffix', 'interval', 'enabled'];
 const OFF_WORDS = ['none', 'off', 'reset', 'clear', '-', 'auto'];
 const MENTION = /^<#(\d{15,25})>$|^(\d{15,25})$/;
 
@@ -111,6 +111,8 @@ async function reply(interaction, card) {
 function createError(result, lang, prefix) {
   switch (result.error) {
     case 'unknownType': return t(lang, 'counters.create.unknownType', { type: result.type || '?', prefix });
+    case 'unknownKind': return t(lang, 'counters.kind.unknown', { kind: result.kind || '?' });
+    case 'topicNeedsText': return t(lang, 'counters.kind.topicNeedsText');
     case 'needRole': return t(lang, 'counters.create.needRole', { prefix });
     case 'badTimezone': return t(lang, 'counters.create.badTimezone', { zone: result.zone });
     case 'limit': return t(lang, 'counters.create.limit', { count: result.count });
@@ -168,7 +170,7 @@ async function setup(interaction, lang) {
 }
 
 function statusOf(row, lang) {
-  if (row.problem) return `⚠️ ${t(lang, `counters.problem.${['missing_channel', 'missing_permission'].includes(row.problem) ? row.problem : 'rename_failed'}`)}`;
+  if (row.problem) return `⚠️ ${t(lang, `counters.problem.${['missing_channel', 'missing_permission', 'bad_target'].includes(row.problem) ? row.problem : 'rename_failed'}`)}`;
   if (!row.enabled) return t(lang, 'counters.status.off');
   const at = job().pendingRenameAt(row.channel_id);
   return at ? t(lang, 'counters.status.waiting', { time: Math.floor(at / 1000) }) : '';
@@ -178,9 +180,10 @@ async function list(interaction, lang) {
   const rows = await countersDb.list(interaction.guild.id);
   if (!rows.length) return reply(interaction, note(t(lang, 'counters.list.title', { count: 0, body: t(lang, 'counters.list.none') })));
   const lines = rows.map((row) => {
-    const name = previewName(interaction.guild, row, lang).replace(/`/g, "'");
+    const name = previewName(interaction.guild, row, lang).replace(/`/g, "'").slice(0, 120);
     const status = statusOf(row, lang);
-    return `${t(lang, 'counters.list.row', { channel: `<#${row.channel_id}>`, type: typeLabel(row.counter_option, lang), name })}${status ? ` · ${status}` : ''}`;
+    const where = targetOf(row) === 'topic' ? ` · ${t(lang, 'counters.list.topic')}` : '';
+    return `${t(lang, 'counters.list.row', { channel: `<#${row.channel_id}>`, type: typeLabel(row.counter_option, lang), name })}${where}${status ? ` · ${status}` : ''}`;
   });
   return reply(interaction, note(`${t(lang, 'counters.list.title', { count: rows.length, body: lines.join('\n') })}\n-# ${t(lang, 'counters.list.footer')}`));
 }
@@ -207,7 +210,16 @@ async function edit(interaction, lang) {
   const off = OFF_WORDS.includes(value.toLowerCase());
   const patch = {};
   switch (setting) {
-    case 'template': case 'name': patch.name_template = off ? defaultTemplate(current.counter_option, lang) : value.slice(0, 100); break;
+    case 'template': case 'name': patch.name_template = off ? defaultTemplate(current.counter_option, lang) : value.slice(0, templateMax(current)); break;
+    case 'kind': case 'target': {
+      // A channel cannot change its kind; a text or announcement channel can show the value in its name or in its topic.
+      const kind = resolveKind(value) ?? (value.toLowerCase() === 'name' ? 'name' : null);
+      const actual = KIND_OF_TYPE[channel.type] ?? current.channel_type;
+      if (kind === 'topic') { if (!TOPIC_TYPES.includes(channel.type)) return reply(interaction, bad(t(lang, 'counters.kind.topicNeedsText'))); patch.target = 'topic'; }
+      else if (kind === 'name' || kind === actual) patch.target = 'name';
+      else return reply(interaction, bad(t(lang, 'counters.kind.cannotChange', { kind: actual, prefix })));
+      break;
+    }
     case 'format': { const format = resolveFormat(value); if (!format) return reply(interaction, bad(t(lang, 'counters.edit.badFormat'))); patch.number_format = format; break; }
     case 'type': {
       const option = resolveOption(value);

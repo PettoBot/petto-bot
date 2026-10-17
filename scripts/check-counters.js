@@ -349,6 +349,53 @@ state.queue.configure({ gapMs: 0, guildGapMs: 0, jitterMs: 0 });
   assert.deepEqual(command.parseSetupText(''), {});
   assert.equal(command.prefixSubcommandAliases.preset, 'setup');
 
+  // ── Targets: a category's name, a text channel's topic ─────────────────
+  {
+    const { createCounter } = require('../src/utils/counterSetup');
+    const { renderName: draw, normalizeForType: norm } = require('../src/utils/counterNames');
+    assert.equal(draw({ counter_option: 'members', name_template: 'x'.repeat(300), target: 'topic' }, 1).length, 300, 'a topic can be longer than a name');
+    assert.equal(draw({ counter_option: 'members', name_template: 'x'.repeat(300) }, 1).length, 100);
+    assert.equal(norm('Members: 12', 'topic'), 'Members: 12', 'a topic keeps capitals and spaces');
+    assert.deepEqual(counterCommand.parseCreateText('members --kind topic 👥 {count} members'), { type: 'members', kind: 'topic', template: '👥 {count} members' });
+    assert.deepEqual(counterCommand.parseCreateText('members category'), { type: 'members', kind: 'category' });
+    premium = true;
+    const tg = makeGuild(); tg.members.me = { id: 'me' }; rows = [];
+    const topicNew = await createCounter(tg, { type: 'members', kind: 'topic', template: 'We are {count}', createdBy: 'u' }, 'en');
+    assert.equal(topicNew.ok, true);
+    assert.equal(topicNew.channel.options.type, 0, 'a topic counter is a text channel');
+    assert.equal(topicNew.channel.options.name, 'server-stats', 'with a name of its own');
+    assert.equal(topicNew.channel.options.topic, 'We are 3', 'and the value in its topic');
+    assert.equal(topicNew.row.target, 'topic'); assert.equal(topicNew.row.channel_type, 'text');
+    const cat = await createCounter(tg, { type: 'members', kind: 'category', createdBy: 'u' }, 'en');
+    assert.equal(cat.channel.options.type, 4, 'a category counter'); assert.equal(cat.row.target, 'name');
+    const vc = channel('880', 'vc', 2); tg.channels.cache.set(vc.id, vc);
+    assert.equal((await createCounter(tg, { type: 'members', kind: 'topic', channelId: '880', createdBy: 'u' }, 'en')).error, 'topicNeedsText', 'a voice channel has no topic');
+    assert.equal((await createCounter(tg, { type: 'members', kind: 'hologram', createdBy: 'u' }, 'en')).error, 'unknownKind');
+    const general = channel('881', 'general', 0); tg.channels.cache.set(general.id, general);
+    const onGeneral = await createCounter(tg, { type: 'members', kind: 'topic', channelId: '881', template: '{count} members', createdBy: 'u' }, 'en');
+    assert.equal(onGeneral.ok, true); assert.equal(onGeneral.row.target, 'topic');
+    premium = false;
+
+    // The job edits the topic (never the name), with the same budget as names: two edits every ten minutes.
+    general.topics = [];
+    general.topic = 'old topic';
+    general.setTopic = async (next) => { general.topics.push(next); general.topic = next; return general; };
+    const topicRow = { guild_id: '1', channel_type: 'text', target: 'topic', prefix: '', suffix: '', enabled: true, interval_seconds: 60, rename_times: [], id: 881, channel_id: '881', counter_option: 'members', name_template: 'We are {count} 🎉' };
+    tg.id = '1';
+    assert.equal(await job.processCounter(tg, topicRow, { lang: 'en' }), 'renamed');
+    assert.deepEqual(general.topics, ['We are 3 🎉']); assert.deepEqual(general.calls, [], 'the name is left alone');
+    assert.equal(await job.processCounter(tg, topicRow, { lang: 'en' }), 'same', 'the same topic is not sent again');
+    clock += 1_000; tg.memberCount = 4; assert.equal(await job.processCounter(tg, topicRow, { lang: 'en' }), 'renamed');
+    clock += 1_000; tg.memberCount = 5; assert.equal(await job.processCounter(tg, topicRow, { lang: 'en' }), 'waiting', 'a third topic edit within ten minutes waits');
+    assert.equal(general.topics.length, 2);
+    state.timers.forEach((p) => clearTimeout(p.timer)); state.timers.clear();
+    // A topic counter on a channel without a topic says so instead of renaming it.
+    const vRow = { ...topicRow, id: 882, channel_id: '880' };
+    assert.equal(await job.processCounter(tg, vRow, { lang: 'en' }), 'problem');
+    assert.equal(vRow.problem, 'bad_target'); assert.deepEqual(vc.calls, []);
+    rows = [];
+  }
+
   // ── The line of renames: many counters changing at once are spread out ──
   {
     const { createRenameQueue } = require('../src/utils/renameQueue');
@@ -511,6 +558,6 @@ state.queue.configure({ gapMs: 0, guildGapMs: 0, jitterMs: 0 });
     rows = [];
   }
 
-  console.log('Checked counter names, formats, goals, clocks, the rename budget (2 per 10 minutes, merged, kept across restarts), problems, !counter create, the setup and the packs, the line that spreads renames over time, and milestone announcements.');
+  console.log('Checked counter names, formats, goals, clocks, the rename budget (2 per 10 minutes, merged, kept across restarts), problems, !counter create, the setup and the packs, category and topic counters, the line that spreads renames over time, and milestone announcements.');
   process.exit(0);
 })().catch((error) => { console.error(error); process.exit(1); });

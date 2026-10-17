@@ -10,7 +10,7 @@
 // The same access as the other dashboard routes: the dashboard key and a `user_id` who can manage the server, or whose roles open the
 // Counters page through "Dashboard access" (checked again by the bot, see dashboardRoleAccess.js; preview only needs to look).
 const countersDb = require('../db/counters');
-const { OPTIONS, recentRenames, nextRenameAt } = require('../utils/counterNames');
+const { OPTIONS, recentRenames, nextRenameAt, targetOf } = require('../utils/counterNames');
 const { countGuild } = require('../utils/counterValues');
 const { createCounter, setupPreset, counterLimits, previewName } = require('../utils/counterSetup');
 const { parseEvery, nextMilestone, announcePayload, announceChannel, MAX_TEXT } = require('../utils/counterAnnounce');
@@ -24,6 +24,8 @@ const idOrNull = (value) => (SNOWFLAKE.test(String(value ?? '')) ? String(value)
 function createMessage(result, lang) {
   if (result.error === 'limitFree') return t(lang, 'counters.create.limitFree', { count: result.count, premium: result.premium });
   if (result.error === 'limit') return t(lang, 'counters.create.limit', { count: result.count });
+  if (result.error === 'unknownKind') return t(lang, 'counters.kind.unknown', { kind: result.kind || '?' });
+  if (result.error === 'topicNeedsText') return t(lang, 'counters.kind.topicNeedsText');
   if (result.error === 'unknownType') return t(lang, 'counters.create.unknownType', { type: result.type || '?', prefix: '!' });
   if (result.error === 'needRole') return t(lang, 'counters.create.needRole', { prefix: '!' });
   if (result.error === 'badTimezone') return t(lang, 'counters.create.badTimezone', { zone: result.zone });
@@ -61,7 +63,8 @@ function registerCounterRoutes(app, { authorize, limiter }) {
       const channel = guild.channels.cache.get(row.channel_id);
       const times = recentRenames(row.rename_times, now);
       return {
-        channel_id: row.channel_id, name: previewName(guild, row, lang), current_name: channel?.name ?? null, exists: Boolean(channel),
+        channel_id: row.channel_id, name: previewName(guild, row, lang), target: targetOf(row),
+        current_name: (targetOf(row) === 'topic' ? channel?.topic ?? '' : channel?.name) ?? null, channel_name: channel?.name ?? null, exists: Boolean(channel),
         problem: row.problem ?? null, enabled: row.enabled !== false, renames_left: Math.max(0, 2 - times.length),
         next_rename_at: job().pendingRenameAt(row.channel_id) ?? (times.length >= 2 ? nextRenameAt(times, now) : null),
       };
@@ -79,7 +82,7 @@ function registerCounterRoutes(app, { authorize, limiter }) {
   route('create', async (req, res, { guild, userId, member }, lang) => {
     const body = req.body ?? {};
     const result = await createCounter(guild, {
-      type: body.type, template: body.template, format: body.format, kind: body.kind, categoryId: idOrNull(body.category_id), channelId: idOrNull(body.channel_id),
+      type: body.type, template: body.template, format: body.format, kind: body.kind, target: body.target === 'topic' ? 'topic' : 'name', categoryId: idOrNull(body.category_id), channelId: idOrNull(body.channel_id),
       roleId: idOrNull(body.role_id), goal: body.goal, timezone: body.timezone ? String(body.timezone).slice(0, 64) : null, prefix: body.prefix, suffix: body.suffix,
       createdBy: userId, reason: t(lang, 'counters.add.reason', { user: member?.user?.tag ?? member?.user?.username ?? userId }),
     }, lang);

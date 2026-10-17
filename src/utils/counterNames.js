@@ -70,7 +70,8 @@ function validTimeZone(zone) {
  * renamed on every pass. Voice channels, stages and categories keep the name as written.
  */
 function normalizeForType(name, channelType) {
-  if (channelType === 'voice' || channelType === 'category' || channelType === 'stage') return name;
+  // A topic keeps what is written, like the names of voice channels, stages and categories.
+  if (channelType === 'voice' || channelType === 'category' || channelType === 'stage' || channelType === 'topic') return name;
   return name.toLowerCase().replace(/\s+/g, '-');
 }
 
@@ -174,8 +175,24 @@ function renderName(row, value, lang = currentLanguage(), extra = {}) {
   };
   const text = template.replace(/\{(count|value|remaining|option|goal|left|percent|role|tz)\}/g, (whole) => vars[whole]);
   const name = `${row.prefix ?? ''}${text}${row.suffix ?? ''}`.replace(/\s+/g, ' ').trim();
-  // Discord takes at most 100 characters; an emoji is two of them in JavaScript and is never cut in half.
-  return Array.from(name).reduce((out, char) => (out.length + char.length <= 100 ? out + char : out), '') || count;
+  // Discord takes at most 100 characters in a name and 1024 in a topic; an emoji is two of them in JavaScript and is never cut in half.
+  const max = maxLengthOf(row);
+  return Array.from(name).reduce((out, char) => (out.length + char.length <= max ? out + char : out), '') || count;
+}
+
+/** Where a counter shows its value: `topic` (a text channel's topic) or `name`. */
+function targetOf(row) {
+  return row?.target === 'topic' ? 'topic' : 'name';
+}
+
+/** How long the shown text can be: 1024 characters for a topic, 100 for a name. */
+function maxLengthOf(row) {
+  return targetOf(row) === 'topic' ? 1024 : 100;
+}
+
+/** How long a template can be when it is written. */
+function templateMax(row) {
+  return targetOf(row) === 'topic' ? 500 : 100;
 }
 
 function sameName(current, wanted, channelType) {
@@ -220,6 +237,6 @@ function shouldRename({ currentName, wantedName, channelType, lastWanted, lastSt
 module.exports = {
   OPTIONS, LEGACY_OPTIONS, NEW_OPTIONS, NEEDS_MEMBERS, NEEDS_PRESENCES, TEXT_VALUES, FORMATS,
   RENAME_LIMIT, RENAME_WINDOW_MS, MIN_RENAME_GAP_MS, CLOCK_STEP_MS,
-  resolveOption, resolveFormat, validTimeZone, optionLabel, typeLabel, defaultTemplate, normalizeForType,
+  resolveOption, resolveFormat, validTimeZone, optionLabel, typeLabel, defaultTemplate, normalizeForType, targetOf, maxLengthOf, templateMax,
   formatCount, nextGoal, timeValue, zoneLabel, renderName, sameName, recentRenames, nextRenameAt, planRename, shouldRename,
 };
