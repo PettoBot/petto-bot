@@ -407,6 +407,10 @@ async function resolve(text, ctx = {}) {
     '{honeypot.action}': ctx.honeypot?.action ?? '',
     '{honeypot.count}': ctx.honeypot?.count ?? '',
     '{honeypot.channel}': ctx.honeypot?.channel ?? '',
+    // Milestone announcements of counters: ctx.counter has the members now and the number reached (see utils/counterAnnounce.js).
+    '{counter.count}': ctx.counter?.count ?? '',
+    '{counter.goal}': ctx.counter?.goal ?? '',
+    '{counter.server}': ctx.counter?.server ?? '',
     '{nextBump}': ctx.bump?.nextUnix ? `<t:${ctx.bump.nextUnix}:R>` : '',
     '{date}': new Date().toLocaleDateString(dateLocale, { timeZone: 'America/Bogota' }),
     '{date.now}': new Date().toLocaleDateString(dateLocale, { timeZone: 'America/Bogota' }),

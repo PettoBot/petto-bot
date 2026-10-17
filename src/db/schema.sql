@@ -3919,3 +3919,19 @@ create table if not exists form_panels (
 );
 create index if not exists idx_form_panels_guild on form_panels(guild_id, id);
 alter table form_panels enable row level security;
+
+-- Counters 3: a message when the server reaches a member milestone (the goal of a goal counter, and/or every N members). One row per
+-- server. `message` is the text ({count} {goal} {server}); `embed_name` a saved embed used instead. `last_announced` is the last member
+-- number announced, so the same number is never announced twice (null: start from the members of the next look, without announcing).
+create table if not exists counter_announce_config (
+  guild_id        text primary key references guilds(guild_id) on delete cascade,
+  enabled         boolean not null default true,
+  channel_id      text,
+  message         text not null default '' check (char_length(message) <= 2000),
+  embed_name      text,
+  every           integer check (every is null or every between 1 and 100000000),
+  use_goals       boolean not null default true,
+  last_announced  integer,
+  updated_at      timestamptz not null default now()
+);
+alter table counter_announce_config enable row level security;

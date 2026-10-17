@@ -15,6 +15,7 @@ const config = require('../config');
 const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency');
 const { renderName, planRename, recentRenames, NEEDS_MEMBERS, NEEDS_PRESENCES, RENAME_WINDOW_MS } = require('../utils/counterNames');
 const { countGuild, extrasFor } = require('../utils/counterValues');
+const { milestoneToAnnounce, announcePayload, announceChannel } = require('../utils/counterAnnounce');
 const { t, guildLanguage } = require('../i18n');
 
 const INTERVAL_MS = 60_000;
@@ -46,6 +47,9 @@ const state = {
   dirty: new Map(), // guild id -> { timer, at }
   memberFetchedAt: new Map(),
   lastWarnAt: new Map(),
+  announce: new Map(), // guild id -> its milestone announcement settings (enabled ones only)
+  announcing: new Set(), // guild ids whose milestone is being looked at
+  milestoneTimers: new Map(), // guild id -> timer of the next look after joins
   now: () => Date.now(),
 };
 
@@ -212,7 +216,73 @@ async function loadRows() {
     grouped.get(row.guild_id).push(row);
   }
   state.rowsByGuild = grouped;
+  try {
+    state.announce = new Map((await countersDb.listAnnounce()).map((config) => [config.guild_id, config]));
+  } catch (err) {
+    // i18n-ignore: log
+    warnOnce('announce:list', { action: 'counter-announce' }, `Could not read the milestone announcements: ${err.message}`);
+  }
   return grouped;
+}
+
+/**
+ * Looks at the member count of a server and announces the milestone it reached, if any. The number is saved first, so a crash, a
+ * restart or two looks at once never send it twice. Returns the number announced, or null.
+ */
+async function checkMilestone(guild, { lang = null } = {}) {
+  const config = state.announce.get(guild.id);
+  if (!config?.enabled || !config.channel_id || state.announcing.has(guild.id)) return null;
+  state.announcing.add(guild.id);
+  try {
+    const count = guild.memberCount ?? guild.members?.cache?.size ?? 0;
+    const plan = milestoneToAnnounce({ count, last: config.last_announced, every: config.every, goalRows: state.rowsByGuild.get(guild.id) ?? [], useGoals: config.use_goals !== false });
+    if (!plan) return null;
+    if (plan.start !== undefined) {
+      config.last_announced = plan.start;
+      await countersDb.markAnnounced(guild.id, plan.start).catch(() => {});
+      return null;
+    }
+    const channel = announceChannel(guild, config);
+    if (!channel) {
+      // i18n-ignore: log
+      warnOnce(`announce:${guild.id}`, { guildId: guild.id, channelId: config.channel_id, action: 'counter-announce' }, `Missing Permissions: Petto cannot send the milestone announcement in channel ${config.channel_id} (it needs View Channel and Send Messages).`);
+      return null;
+    }
+    config.last_announced = plan.milestone;
+    await countersDb.markAnnounced(guild.id, plan.milestone);
+    const language = lang ?? await guildLanguage(guild.id);
+    const payload = await announcePayload(guild, channel, config, { count, milestone: plan.milestone }, language);
+    await channel.send(payload).catch((err) => {
+      // i18n-ignore: log
+      warnOnce(`announce-send:${guild.id}`, { guildId: guild.id, channelId: channel.id, action: 'counter-announce' }, `Could not send the milestone announcement: ${err.message}`);
+    });
+    return plan.milestone;
+  } catch (err) {
+    logger.error('Counter milestone check failed:', err);
+    return null;
+  } finally {
+    state.announcing.delete(guild.id);
+  }
+}
+
+/** Members joined: the milestone is looked at after a short wait (a raid of joins is one look). */
+function scheduleMilestone(guildId, delay = QUICK_DEBOUNCE_MS) {
+  if (!state.announce.get(guildId)?.enabled || state.milestoneTimers.has(guildId)) return false;
+  const timer = setTimeout(() => {
+    state.milestoneTimers.delete(guildId);
+    const guild = state.client?.guilds?.cache?.get(guildId);
+    if (guild) checkMilestone(guild).catch(() => {});
+  }, delay);
+  timer.unref?.();
+  state.milestoneTimers.set(guildId, timer);
+  return true;
+}
+
+/** Reads the announcement settings of one server again (after a change from `!counter announce` or the dashboard). */
+async function reloadAnnounce(guildId) {
+  const config = await countersDb.getAnnounce(guildId);
+  if (config?.enabled) state.announce.set(guildId, config); else state.announce.delete(guildId);
+  return config;
 }
 
 /** Looks at every counter of one server, reading its rows again first when `reload` is set (after a change from a command or the dashboard). */
@@ -230,6 +300,7 @@ async function refreshGuildCounters(client, guildId, { reload = false, channelId
     if (channelId && row.channel_id !== channelId) continue;
     results.push({ channelId: row.channel_id, result: await processCounter(guild, row, { lang }) });
   }
+  if (!channelId) await checkMilestone(guild, { lang });
   return results;
 }
 
@@ -246,6 +317,12 @@ async function updateCounters(client) {
     if (!guild) return;
     await refreshGuildCounters(client, guildId);
   }, config.jobConcurrency);
+  // Servers that announce milestones without having counters.
+  for (const guildId of state.announce.keys()) {
+    if (grouped.has(guildId)) continue;
+    const guild = client.guilds.cache.get(guildId);
+    if (guild) await checkMilestone(guild);
+  }
 }
 
 /** Something a counter of this server may show changed: the counters of those types are looked at after a short wait. */
@@ -268,7 +345,7 @@ function markDirty(guildId, types, delay = QUICK_DEBOUNCE_MS) {
 /** The events that change what counters show. Each one only wakes up the servers that have a counter of that kind. */
 function attachCounterEvents(client) {
   const on = (event, fn) => client.on(event, (...args) => { try { fn(...args); } catch (err) { logger.error('Counter event failed:', err); } });
-  on(Events.GuildMemberAdd, (member) => markDirty(member.guild.id, MEMBER_TYPES));
+  on(Events.GuildMemberAdd, (member) => { markDirty(member.guild.id, MEMBER_TYPES); scheduleMilestone(member.guild.id); });
   on(Events.GuildMemberRemove, (member) => markDirty(member.guild.id, MEMBER_TYPES));
   on(Events.GuildMemberUpdate, (before, after) => {
     if (before.pending !== after.pending || Boolean(before.premiumSince) !== Boolean(after.premiumSince) || before.roles?.cache?.size !== after.roles?.cache?.size) {
@@ -316,4 +393,4 @@ function startCounterJob(client) {
   logger.info('Counter job started (checking every 60s, renames kept under 2 per 10 minutes per channel).');
 }
 
-module.exports = { startCounterJob, updateCounters, refreshGuildCounters, processCounter, markDirty, pendingRenameAt, attachCounterEvents, countGuild, _state: state };
+module.exports = { startCounterJob, updateCounters, refreshGuildCounters, processCounter, markDirty, pendingRenameAt, attachCounterEvents, countGuild, checkMilestone, scheduleMilestone, reloadAnnounce, _state: state };

@@ -5,12 +5,15 @@
 //   POST /api/dashboard/guild/:guildId/counters/setup   { preset?, goal?, timezone? }  a pack (basic, boosts, online, goal, clock) in its category
 //   POST /api/dashboard/guild/:guildId/counters/refresh { channel_id? }  reads the settings again and renames what the budget allows
 //   POST /api/dashboard/guild/:guildId/counters/delete  { channel_id, delete_channel }
+//   POST /api/dashboard/guild/:guildId/counters/announce { channel_id, message, embed_name, every, use_goals, enabled, test? }
+//        saves the milestone announcement of the server (or, with `test`, sends the saved one once to its channel)
 // The same access as the other dashboard routes: the dashboard key and a `user_id` who can manage the server, or whose roles open the
 // Counters page through "Dashboard access" (checked again by the bot, see dashboardRoleAccess.js; preview only needs to look).
 const countersDb = require('../db/counters');
 const { OPTIONS, recentRenames, nextRenameAt } = require('../utils/counterNames');
 const { countGuild } = require('../utils/counterValues');
 const { createCounter, setupPreset, counterLimits, previewName } = require('../utils/counterSetup');
+const { parseEvery, nextMilestone, announcePayload, announceChannel, MAX_TEXT } = require('../utils/counterAnnounce');
 const logger = require('../utils/logger');
 const { t, requestLanguage } = require('../i18n');
 
@@ -63,8 +66,14 @@ function registerCounterRoutes(app, { authorize, limiter }) {
         next_rename_at: job().pendingRenameAt(row.channel_id) ?? (times.length >= 2 ? nextRenameAt(times, now) : null),
       };
     });
+    const config = await countersDb.getAnnounce(guild.id).catch(() => null);
+    const announce = config ? {
+      enabled: config.enabled !== false, channel_id: config.channel_id ?? null, message: config.message ?? '', embed_name: config.embed_name ?? null, every: config.every ?? null,
+      use_goals: config.use_goals !== false, last_announced: config.last_announced ?? null,
+      next: nextMilestone({ count: guild.memberCount ?? 0, last: config.last_announced, every: config.every, goalRows: rows, useGoals: config.use_goals !== false }),
+    } : null;
     res.set('Cache-Control', 'no-store'); // i18n-ignore: HTTP header
-    res.json({ ok: true, values, roles, presences: Boolean(guild.presences?.cache?.size), counters, limits: await counterLimits(guild.id) });
+    res.json({ ok: true, values, roles, presences: Boolean(guild.presences?.cache?.size), counters, limits: await counterLimits(guild.id), announce, default_announce: t(lang, 'counters.announce.default') });
   });
 
   route('create', async (req, res, { guild, userId, member }, lang) => {
@@ -95,6 +104,33 @@ function registerCounterRoutes(app, { authorize, limiter }) {
     const results = await job().refreshGuildCounters(guild.client, guild.id, { reload: true, channelId: idOrNull(req.body?.channel_id) });
     const count = (what) => results.filter((r) => r.result === what).length;
     res.json({ ok: true, results, message: results.length ? t(lang, 'counters.refresh.done', { emoji: '', renamed: count('renamed'), waiting: count('waiting'), same: count('same') }).trim() : t(lang, 'counters.refresh.none') });
+  });
+
+  route('announce', async (req, res, { guild }, lang) => {
+    const body = req.body ?? {};
+    const current = await countersDb.getAnnounce(guild.id);
+    if (body.test) {
+      const channel = current ? announceChannel(guild, current) : null;
+      const count = guild.memberCount ?? 0;
+      const sent = channel ? await channel.send(await announcePayload(guild, channel, current, { count, milestone: count }, lang)).then(() => true).catch(() => false) : false;
+      res.status(sent ? 200 : 400).json({ ok: sent, message: sent ? t(lang, 'counters.announce.tested', { emoji: '', channel: `#${channel.name}` }).trim() : t(lang, current?.channel_id ? 'counters.announce.testFailed' : 'counters.announce.needChannel', { prefix: '!' }) });
+      return;
+    }
+    const channelId = idOrNull(body.channel_id);
+    const channel = channelId ? guild.channels.cache.get(channelId) : null;
+    const enabled = body.enabled !== false;
+    if (enabled && (!channel || typeof channel.send !== 'function' || channel.type === 2 || channel.type === 13)) { res.status(400).json({ ok: false, message: t(lang, 'counters.announce.badChannel') }); return; }
+    const every = parseEvery(body.every);
+    if (every === undefined) { res.status(400).json({ ok: false, message: t(lang, 'counters.announce.badEvery') }); return; }
+    const embedName = typeof body.embed_name === 'string' && body.embed_name.trim() ? body.embed_name.trim().slice(0, 100) : null;
+    const patch = {
+      enabled, channel_id: channel?.id ?? current?.channel_id ?? null, message: String(body.message ?? '').replace(/\u0000/g, '').slice(0, MAX_TEXT), embed_name: embedName, every, use_goals: body.use_goals !== false,
+    };
+    // Turned on (or set up for the first time): it starts from the members of now, without announcing what was already passed.
+    if (!current || (enabled && !current.enabled)) patch.last_announced = null;
+    await countersDb.saveAnnounce(guild.id, patch);
+    await job().reloadAnnounce(guild.id).catch(() => {});
+    res.json({ ok: true, message: t(lang, 'counters.announce.saved', { emoji: '' }).trim() });
   });
 
   route('delete', async (req, res, { guild, userId }, lang) => {

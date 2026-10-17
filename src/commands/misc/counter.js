@@ -7,6 +7,7 @@ const { EMOJI } = require('../../utils/emojis');
 const { OPTIONS, NEEDS_PRESENCES, resolveOption, resolveFormat, validTimeZone, typeLabel, defaultTemplate, formatCount } = require('../../utils/counterNames');
 const { countGuild } = require('../../utils/counterValues');
 const { createCounter, setupPreset, previewName, KINDS } = require('../../utils/counterSetup');
+const { parseEvery, nextMilestone, announcePayload, announceChannel, MAX_TEXT } = require('../../utils/counterAnnounce');
 const { t, languageOf } = require('../../i18n');
 
 // Loaded when used: the job pulls in the database layer and the scheduler.
@@ -37,7 +38,10 @@ const data = new SlashCommandBuilder()
     .addChannelOption((o) => o.setName('channel').setDescription('The counter channel').setRequired(true))
     .addStringOption((o) => o.setName('keep').setDescription('Write keep to keep the channel').setRequired(false)))
   .addSubcommand((s) => s.setName('refresh').setDescription('Update the counters now, within the rename limit of Discord.')
-    .addChannelOption((o) => o.setName('channel').setDescription('Only this counter').setRequired(false)));
+    .addChannelOption((o) => o.setName('channel').setDescription('Only this counter').setRequired(false)))
+  .addSubcommand((s) => s.setName('announce').setDescription('A message when the server reaches a member goal, or every N members.')
+    .addStringOption((o) => o.setName('setting').setDescription('channel, message, embed, every, goals, on, off or test').setRequired(false))
+    .addStringOption((o) => o.setName('value').setDescription('The new value').setRequired(false)));
 
 /**
  * Reads `!counter create <type> [name...] [category] [--format x --channel #c --kind voice --role @r --goal 500 --timezone Z]`.
@@ -264,15 +268,113 @@ async function refresh(interaction, lang) {
   return reply(interaction, ok(t(lang, 'counters.refresh.done', { emoji: EMOJI.APPROVE, renamed: count('renamed'), waiting: count('waiting'), same: count('same') })));
 }
 
+const ANNOUNCE_SETTINGS = ['channel', 'message', 'embed', 'every', 'goals', 'on', 'off', 'test', 'status']; // i18n-ignore: words people type
+const ANNOUNCE_ALIASES = { canal: 'channel', text: 'message', msg: 'message', mensaje: 'message', mensagem: 'message', template: 'embed', cada: 'every', a_cada: 'every', goal: 'goals', metas: 'goals', enable: 'on', disable: 'off', prueba: 'test', teste: 'test', show: 'status', info: 'status' }; // i18n-ignore: words people type
+
+/**
+ * Reads `!counter announce ...`: `#channel [message]`, `message <text>`, `embed <name>|off`, `every <N>|off`, `goals on|off`, `on`, `off`,
+ * `test`. Without anything it shows the settings.
+ */
+function parseAnnounceText(text) {
+  const raw = String(text ?? '').trim();
+  if (!raw) return {};
+  const [first, ...rest] = raw.split(/\s+/);
+  if (MENTION.test(first)) return { setting: 'channel', value: first, ...(rest.length ? { message: raw.slice(first.length).trim() } : {}) };
+  const word = first.toLowerCase();
+  const setting = ANNOUNCE_SETTINGS.includes(word) ? word : ANNOUNCE_ALIASES[word] ?? word;
+  const value = raw.slice(first.length).trim();
+  if (setting === 'channel' && value) {
+    const [channel, ...words] = value.split(/\s+/);
+    return { setting, value: channel, ...(words.length ? { message: value.slice(channel.length).trim() } : {}) };
+  }
+  return value ? { setting, value } : { setting };
+}
+
+const onOff = (value) => (['on', 'yes', 'true', 'enable', 'enabled', '1', 'si', 'sí', 'sim'].includes(String(value ?? '').toLowerCase()) ? true : ['off', 'no', 'false', 'disable', 'disabled', '0', 'nao', 'não'].includes(String(value ?? '').toLowerCase()) ? false : null);
+
+function announceStatus(guild, config, lang, prefix) {
+  if (!config) return t(lang, 'counters.announce.none', { prefix });
+  const count = guild.memberCount ?? 0;
+  const rows = (job()._state.rowsByGuild.get(guild.id) ?? []);
+  const next = nextMilestone({ count, last: config.last_announced, every: config.every, goalRows: rows, useGoals: config.use_goals !== false });
+  const lines = [
+    t(lang, 'counters.announce.title', { state: t(lang, config.enabled ? 'counters.announce.on' : 'counters.announce.off') }),
+    t(lang, 'counters.announce.channel', { channel: config.channel_id ? `<#${config.channel_id}>` : '—' }),
+    config.every ? t(lang, 'counters.announce.every', { every: formatCount(config.every, 'grouped', lang) }) : t(lang, 'counters.announce.everyOff'),
+    t(lang, 'counters.announce.goals', { state: t(lang, config.use_goals !== false ? 'counters.announce.on' : 'counters.announce.off') }),
+    config.embed_name ? t(lang, 'counters.announce.embed', { name: config.embed_name }) : t(lang, 'counters.announce.message', { message: String(config.message || t(lang, 'counters.announce.default')).replace(/`/g, "'").slice(0, 300) }),
+    t(lang, 'counters.announce.next', { last: config.last_announced == null ? '—' : formatCount(config.last_announced, 'grouped', lang), next: next == null ? '—' : formatCount(next, 'grouped', lang) }),
+  ];
+  return `${lines.join('\n')}\n-# ${t(lang, 'counters.announce.usage', { prefix })}`;
+}
+
+async function announce(interaction, lang) {
+  const { guild } = interaction;
+  const prefix = prefixOf(interaction);
+  const setting = String(interaction.options.getString('setting') ?? '').toLowerCase().trim();
+  const value = String(interaction.options.getString('value') ?? '').trim();
+  const current = await countersDb.getAnnounce(guild.id);
+  if (!setting || setting === 'status') return reply(interaction, note(announceStatus(guild, current, lang, prefix)));
+  const patch = {};
+  switch (setting) {
+    case 'channel': {
+      const channel = channelFrom(guild, value);
+      if (!channel || typeof channel.send !== 'function' || channel.type === ChannelType.GuildVoice || channel.type === ChannelType.GuildStageVoice) return reply(interaction, bad(t(lang, 'counters.announce.badChannel')));
+      patch.channel_id = channel.id;
+      const message = interaction.options.getString('message');
+      if (message) patch.message = String(message).slice(0, MAX_TEXT);
+      if (!current?.enabled) { patch.enabled = true; patch.last_announced = null; }
+      break;
+    }
+    case 'message': patch.message = OFF_WORDS.includes(value.toLowerCase()) ? '' : value.slice(0, MAX_TEXT); break;
+    case 'embed': {
+      if (!value || OFF_WORDS.includes(value.toLowerCase())) { patch.embed_name = null; break; }
+      const template = await require('../../db/embedTemplates').getTemplate(guild.id, value).catch(() => null);
+      if (!template) return reply(interaction, bad(t(lang, 'counters.announce.noEmbed', { name: value.slice(0, 50), prefix })));
+      patch.embed_name = template.name ?? value;
+      break;
+    }
+    case 'every': {
+      const every = parseEvery(value);
+      if (every === undefined) return reply(interaction, bad(t(lang, 'counters.announce.badEvery')));
+      patch.every = every;
+      break;
+    }
+    case 'goals': {
+      const on = onOff(value || 'on');
+      if (on === null) return reply(interaction, note(t(lang, 'counters.announce.usage', { prefix })));
+      patch.use_goals = on;
+      break;
+    }
+    case 'on': if (!current?.channel_id) return reply(interaction, bad(t(lang, 'counters.announce.needChannel', { prefix }))); if (!current.enabled) { patch.enabled = true; patch.last_announced = null; } break;
+    case 'off': patch.enabled = false; break;
+    case 'test': {
+      const channel = current ? announceChannel(guild, current) : null;
+      if (!current?.channel_id) return reply(interaction, bad(t(lang, 'counters.announce.needChannel', { prefix })));
+      const count = guild.memberCount ?? 0;
+      const payload = channel ? await announcePayload(guild, channel, current, { count, milestone: count }, lang) : null;
+      const sent = payload ? await channel.send(payload).then(() => true).catch(() => false) : false;
+      return reply(interaction, sent ? ok(t(lang, 'counters.announce.tested', { emoji: EMOJI.APPROVE, channel: `${channel}` })) : bad(t(lang, 'counters.announce.testFailed')));
+    }
+    default: return reply(interaction, note(t(lang, 'counters.announce.usage', { prefix })));
+  }
+  if (!current && !patch.channel_id) return reply(interaction, bad(t(lang, 'counters.announce.needChannel', { prefix })));
+  if (!current) patch.last_announced = null;
+  const saved = await countersDb.saveAnnounce(guild.id, patch);
+  await job().reloadAnnounce(guild.id).catch(() => {});
+  return reply(interaction, ok(`${t(lang, 'counters.announce.saved', { emoji: EMOJI.APPROVE })}\n${announceStatus(guild, saved, lang, prefix).split('\n').slice(0, -1).join('\n')}`));
+}
+
 module.exports = {
   aliases: ['counters'],
   prefixOnly: true,
   data,
-  prefixSubcommandAliases: { add: 'create', new: 'create', make: 'create', remove: 'delete', del: 'delete', rm: 'delete', stop: 'delete', ls: 'list', update: 'refresh', sync: 'refresh', type: 'types', quick: 'setup', preset: 'setup', presets: 'setup', pack: 'setup' },
+  prefixSubcommandAliases: { milestone: 'announce', milestones: 'announce', announcement: 'announce', anunciar: 'announce', anuncio: 'announce', add: 'create', new: 'create', make: 'create', remove: 'delete', del: 'delete', rm: 'delete', stop: 'delete', ls: 'list', update: 'refresh', sync: 'refresh', type: 'types', quick: 'setup', preset: 'setup', presets: 'setup', pack: 'setup' },
   prefixDefaultSubcommand: 'list',
-  prefixRawOptions: { create: parseCreateText, setup: parseSetupText },
+  prefixRawOptions: { create: parseCreateText, setup: parseSetupText, announce: parseAnnounceText },
   parseCreateText,
   parseSetupText,
+  parseAnnounceText,
   NEEDS_PRESENCES,
 
   async execute(interaction) {
@@ -284,6 +386,7 @@ module.exports = {
     if (sub === 'edit') return edit(interaction, lang);
     if (sub === 'delete') return remove(interaction, lang);
     if (sub === 'refresh') return refresh(interaction, lang);
+    if (sub === 'announce') return announce(interaction, lang);
     return list(interaction, lang);
   },
 };

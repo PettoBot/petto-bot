@@ -16,6 +16,8 @@ const updates = [];
 const warnings = [];
 const added = [];
 let premium = false;
+let announceRows = [];
+const announced = [];
 stub('src/db/counters.js', {
   listAll: async () => rows,
   list: async (guildId) => rows.filter((r) => r.guild_id === guildId),
@@ -23,6 +25,10 @@ stub('src/db/counters.js', {
   get: async (guildId, channelId) => rows.find((r) => r.guild_id === guildId && r.channel_id === channelId) ?? null,
   update: async () => null,
   remove: async () => true,
+  listAnnounce: async () => announceRows.filter((r) => r.enabled),
+  getAnnounce: async (guildId) => announceRows.find((r) => r.guild_id === guildId) ?? null,
+  saveAnnounce: async (guildId, patch) => { let row = announceRows.find((r) => r.guild_id === guildId); if (!row) { row = { guild_id: guildId, enabled: true, use_goals: true }; announceRows.push(row); } Object.assign(row, patch); return row; },
+  markAnnounced: async (guildId, number) => { announced.push([guildId, number]); const row = announceRows.find((r) => r.guild_id === guildId); if (row) row.last_announced = number; return true; },
 });
 stub('src/db/database.js', { from: () => ({ update: (patch) => ({ eq: (column, id) => { updates.push({ id, ...patch }); return Promise.resolve({}); } }) }) });
 stub('src/utils/logger.js', { info() {}, error(...args) { warnings.push(args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ')); }, warn(...args) { warnings.push(args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ')); } });
@@ -341,6 +347,82 @@ state.now = () => clock;
   assert.deepEqual(command.parseSetupText(''), {});
   assert.equal(command.prefixSubcommandAliases.preset, 'setup');
 
-  console.log('Checked counter names, formats, goals, clocks, the rename budget (2 per 10 minutes, merged, kept across restarts), problems, !counter create, the setup and the packs.');
+  // ── Milestone announcements ────────────────────────────────────────────
+  {
+    const { milestoneToAnnounce, nextMilestone, parseEvery, renderAnnounceText, announceVars } = require('../src/utils/counterAnnounce');
+    const goalRow = (goal = null) => ({ counter_option: 'goal', enabled: true, goal });
+    assert.deepEqual(milestoneToAnnounce({ count: 4523, last: null, every: 100 }), { start: 4523 }, 'the first look only sets where to start: nothing already passed is announced');
+    assert.equal(milestoneToAnnounce({ count: 4599, last: 4523, every: 100 }), null);
+    assert.deepEqual(milestoneToAnnounce({ count: 4600, last: 4523, every: 100 }), { milestone: 4600 }, 'every 100 members');
+    assert.equal(milestoneToAnnounce({ count: 4600, last: 4600, every: 100 }), null, 'never twice for the same number');
+    assert.equal(milestoneToAnnounce({ count: 4601, last: 4600, every: 100 }), null);
+    assert.equal(milestoneToAnnounce({ count: 4600, last: 4600, every: 100, goalRows: [goalRow()] }), null, 'members who leave and join again around it do not announce it again');
+    assert.deepEqual(milestoneToAnnounce({ count: 4850, last: 4600, every: 100 }), { milestone: 4800 }, 'a raid of joins announces only the highest number passed');
+    assert.deepEqual(milestoneToAnnounce({ count: 500, last: 480, goalRows: [goalRow(500)] }), { milestone: 500 }, 'the goal of a goal counter');
+    assert.equal(milestoneToAnnounce({ count: 499, last: 480, goalRows: [goalRow(500)] }), null);
+    assert.equal(milestoneToAnnounce({ count: 500, last: 480, goalRows: [goalRow(500)], useGoals: false }), null, 'goals can be left out');
+    assert.deepEqual(milestoneToAnnounce({ count: 90, last: 87, goalRows: [goalRow()] }), { milestone: 90 }, 'an automatic goal: the next round number the counter shows');
+    assert.deepEqual(milestoneToAnnounce({ count: 131, last: 87, goalRows: [goalRow()] }), { milestone: 125 }, 'the highest automatic goal passed (90, 100, 125)');
+    assert.equal(milestoneToAnnounce({ count: 600, last: 480, goalRows: [{ ...goalRow(500), enabled: false }] }), null, 'a counter that is off sets no goal');
+    assert.equal(nextMilestone({ count: 4523, last: 4500, every: 100 }), 4600);
+    assert.equal(nextMilestone({ count: 480, last: 470, every: 1000, goalRows: [goalRow(500)] }), 500);
+    assert.equal(nextMilestone({ count: 480, last: 470 }), null, 'nothing to announce');
+    assert.equal(parseEvery('100'), 100); assert.equal(parseEvery('1.000'), 1000); assert.equal(parseEvery('off'), null); assert.equal(parseEvery('-5'), undefined); assert.equal(parseEvery('abc'), undefined);
+    const vars = announceVars({ name: 'Petto Land' }, { count: 1002, milestone: 1000 }, 'es');
+    assert.equal(renderAnnounceText('🎉 {server} llegó a {goal} ({count}) {counter.goal} {unknown}', vars), '🎉 Petto Land llegó a 1.000 (1.002) 1.000 {unknown}');
+    const parse = counterCommand.parseAnnounceText;
+    assert.deepEqual(parse(''), {});
+    assert.deepEqual(parse('<#123456789012345678> 🎉 {goal} members!'), { setting: 'channel', value: '<#123456789012345678>', message: '🎉 {goal} members!' });
+    assert.deepEqual(parse('every 100'), { setting: 'every', value: '100' });
+    assert.deepEqual(parse('cada 50'), { setting: 'every', value: '50' });
+    assert.deepEqual(parse('message Hello {server}'), { setting: 'message', value: 'Hello {server}' });
+    assert.deepEqual(parse('embed off'), { setting: 'embed', value: 'off' });
+    assert.deepEqual(parse('test'), { setting: 'test' });
+    assert.equal(counterCommand.prefixSubcommandAliases.milestone, 'announce');
+
+    // The job: the first look starts from the members of now, a milestone is saved before it is sent, never sent twice.
+    const g = makeGuild();
+    g.id = '77'; g.name = 'Petto Land'; g.memberCount = 4523;
+    const sent = [];
+    const hall = { id: '500', name: 'hall', type: 0, async send(payload) { sent.push(payload); return payload; } };
+    g.channels.cache.set(hall.id, hall);
+    announceRows = [{ guild_id: '77', enabled: true, channel_id: '500', message: '🎉 {server}: {goal} members (now {count})', embed_name: null, every: 100, use_goals: true, last_announced: null }];
+    rows = [];
+    const announceClient = { guilds: { cache: new Map([['77', g]]) } };
+    await job.updateCounters(announceClient);
+    assert.equal(sent.length, 0, 'the first look announces nothing');
+    assert.deepEqual(announced.at(-1), ['77', 4523]);
+    g.memberCount = 4600;
+    assert.equal(await job.checkMilestone(g, { lang: 'en' }), 4600);
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].content, '🎉 Petto Land: 4,600 members (now 4,600)');
+    assert.deepEqual(sent[0].allowedMentions, { parse: [] }, 'an announcement pings nobody');
+    assert.deepEqual(announced.at(-1), ['77', 4600], 'the number is saved');
+    g.memberCount = 4599; assert.equal(await job.checkMilestone(g, { lang: 'en' }), null);
+    g.memberCount = 4600; assert.equal(await job.checkMilestone(g, { lang: 'en' }), null, 'leaving and joining again does not announce 4,600 twice');
+    // A restart reads the saved number: still not announced again.
+    job._state.announce.clear();
+    await job.updateCounters(announceClient);
+    assert.equal(await job.checkMilestone(g, { lang: 'en' }), null);
+    assert.equal(sent.length, 1);
+    // Two looks at once send one message.
+    g.memberCount = 4700;
+    const both = await Promise.all([job.checkMilestone(g, { lang: 'en' }), job.checkMilestone(g, { lang: 'en' })]);
+    assert.deepEqual(both.filter(Boolean), [4700]); assert.equal(sent.length, 2);
+    // Without the right to write there, nothing is sent and it is said once.
+    hall.permissionsFor = () => ({ has: () => false }); g.members.me = { id: 'me' };
+    g.memberCount = 4800;
+    assert.equal(await job.checkMilestone(g, { lang: 'en' }), null); assert.equal(sent.length, 2);
+    assert.ok(warnings.some((w) => w.includes('milestone announcement') && w.includes('500')));
+    // The default text in each language when the server wrote none.
+    hall.permissionsFor = () => ({ has: () => true });
+    announceRows[0].message = '';
+    job._state.announce.get('77').message = '';
+    assert.equal(await job.checkMilestone(g, { lang: 'es' }), 4800);
+    assert.equal(sent.at(-1).content, '🎉 ¡**Petto Land** acaba de llegar a **4.800** miembros! Gracias a todos.');
+    rows = [];
+  }
+
+  console.log('Checked counter names, formats, goals, clocks, the rename budget (2 per 10 minutes, merged, kept across restarts), problems, !counter create, the setup and the packs, and milestone announcements.');
   process.exit(0);
 })().catch((error) => { console.error(error); process.exit(1); });
