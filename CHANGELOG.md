@@ -65,6 +65,7 @@ All notable changes to Petto are documented here.
 
 ### Fixed
 
+- Opening the dashboard of a server you are not a member of (the read-only view of the Petto developers) filled the error log with "Dashboard could not authorize cards for guild …: Unknown Member". Discord's Unknown Member and Unknown User answers now mean "no access" (`403 no_access`) without an error or a report, and the answer is remembered for a minute so the same page does not ask Discord again for each card.
 - A Vanity or Server Tag rule whose name had a space ("vanity 2") was refused, and the dashboard still said Saved. Spaces in a rule name now become dashes (`vanity-2`), from the dashboard and from the commands.
 - **Appeals: the thread of an appeal closes with it.** When an appeal is accepted, rejected or withdrawn, Petto locks and archives its thread, so nothing more is written there (it needs Manage Threads). The notice that the member cannot be messaged now says why: DMs closed, or no server in common with Petto. The answer is always on the appeal page.
 - Pictures of an appeal page uploaded from the device could look black: a picture with transparent parts and dark art was drawn over the dark page. A banner or link-preview picture with transparency now gets a plain background that contrasts with it (the icon keeps its transparency), and a picture that draws as all black is refused with an error instead of being stored.
