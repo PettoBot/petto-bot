@@ -243,7 +243,7 @@ async function infoText(guild, form, lang) {
     `## ${form.title}`,
     t(lang, 'forms.info.head', { name: form.name, id: form.id, state: t(lang, form.status === 'open' ? 'forms.info.open' : 'forms.info.closed') }),
     form.description ? `> ${forms.clip(form.description, 300).replace(/\n/g, '\n> ')}` : null,
-    t(lang, form.web_enabled === false ? 'forms.info.webOff' : 'forms.info.web', { url: forms.webUrl(form), name: form.name }),
+    t(lang, form.web_enabled === false ? 'forms.info.webOff' : 'forms.info.web', { url: forms.webUrl(form, lang), name: form.name }),
     `### ${t(lang, 'forms.info.review')}`,
     t(lang, 'forms.info.channel', { channel: form.review_channel_id ? `<#${form.review_channel_id}>` : t(lang, 'forms.info.notSet') }),
     t(lang, 'forms.info.reviewers', { roles: form.reviewer_role_ids?.length ? roleList(form.reviewer_role_ids, lang) : t(lang, 'forms.info.managers') }),
@@ -405,7 +405,7 @@ async function execute(interaction) {
   // `!form relink staff` (or `!form set staff link new`): a new random web address; the old one stops working at once.
   const relink = async () => {
     const renewed = await formsDb.renewPublicId(guild.id, form.id);
-    return done(ok(t(lang, 'forms.relink.done', { name: form.name, url: forms.webUrl(renewed ?? form) })));
+    return done(ok(t(lang, 'forms.relink.done', { name: form.name, url: forms.webUrl(renewed ?? form, lang) })));
   };
   if (sub === 'relink') return relink();
   if (sub === 'set') {

@@ -348,9 +348,13 @@ function newPublicId() {
   return id;
 }
 
-/** The address of a form on the website: petto.sbs/f/<public id>. */
-function webUrl(form) {
-  return `https://petto.sbs/f/${form.public_id}`;
+// The language of the page is in the path and the id in the hash (petto.sbs/es/form#x7Kp9QzA2mVt): the hash never reaches a server or a
+// log, and the page loads the form itself.
+const WEB_LANG_PATH = { es: '/es', 'pt-BR': '/pt-br', pt: '/pt-br' };
+
+/** The address of a form on the website, in a language: petto.sbs/form#<public id>, petto.sbs/es/form#…, petto.sbs/pt-br/form#…. */
+function webUrl(form, lang = 'en') {
+  return `https://petto.sbs${WEB_LANG_PATH[lang] ?? ''}/form#${form.public_id}`;
 }
 
 /** Every answer of a form, from the values collected page by page, as it is stored: [{ id, label, type, value }]. */

@@ -10,6 +10,37 @@ const { t } = require('../i18n');
 const KINDS = { voice: ChannelType.GuildVoice, text: ChannelType.GuildText, category: ChannelType.GuildCategory, announce: ChannelType.GuildAnnouncement, stage: ChannelType.GuildStageVoice };
 const KIND_OF_TYPE = { 0: 'text', 2: 'voice', 4: 'category', 5: 'announce', 13: 'stage' };
 const PRESET = ['members', 'users_only', 'bots_only'];
+// One-click packs (`!counter setup <pack>` and the dashboard's gallery): each makes its category with its counters, skipping the types
+// the server already counts and stopping at the plan's limit.
+const PRESETS = {
+  basic: ['members', 'users_only', 'bots_only'],
+  boosts: ['boosts', 'booster_count', 'boost_level'],
+  online: ['online', 'status_online', 'in_voice'],
+  goal: ['goal'],
+  clock: ['clock', 'date'],
+};
+const PRESET_ALIASES = {
+  stats: 'basic', server: 'basic', members: 'basic', default: 'basic', miembros: 'basic', membros: 'basic', basico: 'basic', básico: 'basic',
+  boost: 'boosts', mejoras: 'boosts', impulsos: 'boosts', nitro: 'boosts',
+  activity: 'online', active: 'online', staff: 'online', conectados: 'online', voice: 'online',
+  goals: 'goal', meta: 'goal', objetivo: 'goal', milestone: 'goal',
+  time: 'clock', date: 'clock', hora: 'clock', reloj: 'clock', relogio: 'clock', relógio: 'clock',
+};
+
+/** The pack a name means (`boosts`, `meta`, `time`...), or null. */
+function resolvePreset(name) {
+  const key = String(name ?? '').trim().toLowerCase();
+  if (!key) return null;
+  if (PRESETS[key]) return key;
+  return PRESET_ALIASES[key] ?? null;
+}
+
+/** The next round goal above a count: 87 -> 90, 940 -> 1,000, 5,234 -> 6,000, 48,000 -> 50,000. */
+function nextGoal(count) {
+  const n = Math.max(0, Math.trunc(Number(count) || 0));
+  const step = n < 100 ? 10 : n < 1000 ? 100 : n < 10_000 ? 1000 : n < 100_000 ? 5000 : 10 ** (String(n).length - 2);
+  return Math.floor(n / step) * step + step;
+}
 
 async function counterLimits(guildId) {
   const premium = await getGuildPremium(guildId).catch(() => ({ active: false }));
@@ -81,24 +112,39 @@ async function createCounter(guild, input, lang) {
   return { ok: true, row: saved, channel, name, existing: Boolean(input.channelId) };
 }
 
-/** The quick preset: a "Server stats" category with members, humans and bots, all locked. Skipped when the server already has counters. */
-async function setupPreset(guild, { createdBy, reason }, lang) {
+/**
+ * A pack of counters in its own locked category. Without `preset` it is the first "Server stats" setup, skipped when the server already
+ * has counters. A named pack (basic, boosts, online, goal, clock) adds what the server does not count yet, up to the plan's limit.
+ * `goal` (for the goal pack) defaults to the next round number above the members; `timezone` is for the clock pack.
+ */
+async function setupPreset(guild, { createdBy, reason, preset = null, goal = null, timezone = null }, lang) {
+  const named = preset !== null && preset !== undefined && String(preset).trim() !== '';
+  const pack = named ? resolvePreset(preset) : 'basic';
+  if (!pack) return { ok: false, error: 'unknownPreset', preset: String(preset).slice(0, 30), presets: Object.keys(PRESETS) };
+  if (timezone && !validTimeZone(timezone)) return { ok: false, error: 'badTimezone', zone: timezone };
   const existing = await countersDb.list(guild.id);
-  if (existing.length) return { ok: false, error: 'already', count: existing.length };
+  if (!named && existing.length) return { ok: false, error: 'already', count: existing.length };
   const limits = await counterLimits(guild.id);
+  const counted = new Set(existing.map((row) => row.counter_option));
+  const types = PRESETS[pack].filter((type) => type === 'goal' || !counted.has(type));
+  if (!types.length) return { ok: false, error: 'presetHave', preset: pack };
+  const room = limits.max - existing.length;
+  if (room <= 0) return { ok: false, error: limits.premium ? 'limit' : 'limitFree', count: limits.max, premium: limits.premiumMax };
   let category;
   try {
-    category = await guild.channels.create({ name: t(lang, 'counters.setup.category'), type: ChannelType.GuildCategory, permissionOverwrites: lockedOverwrites(guild, 'category'), position: 0, reason });
+    const name = pack === 'basic' ? t(lang, 'counters.setup.category') : t(lang, `counters.preset.${pack}.category`);
+    category = await guild.channels.create({ name, type: ChannelType.GuildCategory, permissionOverwrites: lockedOverwrites(guild, 'category'), position: 0, reason });
   } catch (err) {
     return { ok: false, error: err?.code === 50013 ? 'permission' : 'discord', detail: err?.message ?? '' };
   }
+  const target = Number.isInteger(Number(goal)) && Number(goal) > 0 ? Number(goal) : nextGoal(guild.memberCount ?? 0);
   const made = [];
-  for (const type of PRESET.slice(0, limits.max)) {
-    const result = await createCounter(guild, { type, kind: 'voice', categoryId: category.id, createdBy, reason }, lang);
+  for (const type of types.slice(0, room)) {
+    const result = await createCounter(guild, { type, kind: 'voice', categoryId: category.id, createdBy, reason, goal: type === 'goal' ? target : null, timezone: type === 'clock' || type === 'date' ? timezone : null, format: type === 'goal' || type === 'members' ? 'grouped' : null }, lang);
     if (!result.ok) return { ok: false, error: result.error, detail: result.detail, made, category };
     made.push(result);
   }
-  return { ok: true, category, made };
+  return { ok: true, category, made, preset: pack, skipped: types.length - made.length };
 }
 
-module.exports = { createCounter, setupPreset, counterLimits, previewName, lockedOverwrites, KINDS, KIND_OF_TYPE, PRESET };
+module.exports = { createCounter, setupPreset, counterLimits, previewName, lockedOverwrites, resolvePreset, nextGoal, KINDS, KIND_OF_TYPE, PRESET, PRESETS };

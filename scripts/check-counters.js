@@ -316,6 +316,31 @@ state.now = () => clock;
   premium = true;
   assert.equal((await createCounter(fresh, { type: 'emojis', createdBy: 'u' }, 'en')).ok, true);
 
-  console.log('Checked counter names, formats, goals, clocks, the rename budget (2 per 10 minutes, merged, kept across restarts), problems, !counter create and the setup.');
+  // ── Packs: !counter setup <pack> and the dashboard gallery ──────────────
+  const { resolvePreset, nextGoal, PRESETS } = require('../src/utils/counterSetup');
+  assert.deepEqual(Object.keys(PRESETS), ['basic', 'boosts', 'online', 'goal', 'clock']);
+  assert.equal(resolvePreset('Meta'), 'goal'); assert.equal(resolvePreset('impulsos'), 'boosts'); assert.equal(resolvePreset('nope'), null);
+  assert.deepEqual([87, 940, 5234, 48000, 0].map(nextGoal), [90, 1000, 6000, 50000, 10], 'the next round goal');
+  premium = false;
+  const packs = makeGuild(); packs.members.me = { id: 'me' }; rows = [];
+  const boosts = await setupPreset(packs, { createdBy: 'u', preset: 'boost' }, 'es');
+  assert.equal(boosts.ok, true); assert.equal(boosts.category.name, '💎 Mejoras');
+  assert.deepEqual(rows.map((r) => r.counter_option), ['boosts', 'booster_count', 'boost_level']);
+  const goalPack = await setupPreset(packs, { createdBy: 'u', preset: 'goal' }, 'en');
+  assert.equal(rows.at(-1).goal, 10, 'the goal pack aims at the next round number'); assert.equal(goalPack.made[0].name, '🎯 Goal: 3/10');
+  assert.equal((await setupPreset(packs, { createdBy: 'u', preset: 'goal', goal: '500' }, 'en')).made[0].name, '🎯 Goal: 3/500', 'or the goal given');
+  assert.equal((await setupPreset(packs, { createdBy: 'u', preset: 'boosts' }, 'en')).error, 'presetHave', 'a pack the server already has adds nothing');
+  assert.equal((await setupPreset(packs, { createdBy: 'u', preset: 'what' }, 'en')).error, 'unknownPreset');
+  assert.equal((await setupPreset(packs, { createdBy: 'u', preset: 'clock', timezone: 'Mars/Base' }, 'en')).error, 'badTimezone');
+  const online = await setupPreset(packs, { createdBy: 'u', preset: 'online' }, 'en');
+  assert.equal(online.ok, true); assert.equal(online.made.length, 1, 'only what fits the free limit of 6'); assert.equal(online.skipped, 2);
+  assert.equal((await setupPreset(packs, { createdBy: 'u', preset: 'clock' }, 'en')).error, 'limitFree');
+  const command = require('../src/commands/misc/counter');
+  assert.deepEqual(command.parseSetupText('goal 1.000'), { preset: 'goal', goal: '1000' });
+  assert.deepEqual(command.parseSetupText('clock America/New_York'), { preset: 'clock', timezone: 'America/New_York' });
+  assert.deepEqual(command.parseSetupText(''), {});
+  assert.equal(command.prefixSubcommandAliases.preset, 'setup');
+
+  console.log('Checked counter names, formats, goals, clocks, the rename budget (2 per 10 minutes, merged, kept across restarts), problems, !counter create, the setup and the packs.');
   process.exit(0);
 })().catch((error) => { console.error(error); process.exit(1); });

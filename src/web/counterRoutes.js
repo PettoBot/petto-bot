@@ -2,10 +2,11 @@
 //   POST /api/dashboard/guild/:guildId/counters/preview { } -> { ok, values: { <type>: value }, presences, counters: [...], limits }
 //        the value of every type now and, for each counter, the name it wants, the name it has, its problem and its next rename
 //   POST /api/dashboard/guild/:guildId/counters/create  { type, template, format, kind, category_id, channel_id, role_id, goal, timezone }
-//   POST /api/dashboard/guild/:guildId/counters/setup   { }   members, humans and bots in a Server stats category
+//   POST /api/dashboard/guild/:guildId/counters/setup   { preset?, goal?, timezone? }  a pack (basic, boosts, online, goal, clock) in its category
 //   POST /api/dashboard/guild/:guildId/counters/refresh { channel_id? }  reads the settings again and renames what the budget allows
 //   POST /api/dashboard/guild/:guildId/counters/delete  { channel_id, delete_channel }
-// The same access as the other dashboard routes: the dashboard key and a `user_id` who can manage the server.
+// The same access as the other dashboard routes: the dashboard key and a `user_id` who can manage the server, or whose roles open the
+// Counters page through "Dashboard access" (checked again by the bot, see dashboardRoleAccess.js; preview only needs to look).
 const countersDb = require('../db/counters');
 const { OPTIONS, recentRenames, nextRenameAt } = require('../utils/counterNames');
 const { countGuild } = require('../utils/counterValues');
@@ -25,6 +26,8 @@ function createMessage(result, lang) {
   if (result.error === 'badTimezone') return t(lang, 'counters.create.badTimezone', { zone: result.zone });
   if (result.error === 'notCategory') return t(lang, 'counters.parentNotCategory');
   if (result.error === 'already') return t(lang, 'counters.setup.already', { count: result.count, prefix: '!' });
+  if (result.error === 'unknownPreset') return t(lang, 'counters.preset.unknown', { preset: result.preset, presets: result.presets.join(', '), prefix: '!' });
+  if (result.error === 'presetHave') return t(lang, 'counters.preset.have', { preset: result.preset, prefix: '!' });
   if (result.error === 'alreadyCounter') return t(lang, 'counters.create.alreadyCounter', { channel: `#${result.channel?.name ?? ''}`, prefix: '!' });
   if (result.error === 'permission') return t(lang, 'counters.add.failedPermission', { permission: t(lang, 'core.perm.ManageChannels') });
   return t(lang, 'counters.add.failed', { error: result.detail || '?' });
@@ -33,7 +36,7 @@ function createMessage(result, lang) {
 function registerCounterRoutes(app, { authorize, limiter }) {
   const middleware = limiter ? [limiter] : [];
   const route = (name, handler) => app.post(`/api/dashboard/guild/:guildId/counters/${name}`, ...middleware, async (req, res) => {
-    const access = await authorize(req, res);
+    const access = await authorize(req, res, { page: 'counters', edit: name !== 'preview' });
     if (!access) return;
     const lang = requestLanguage(req, access.guild.id);
     try {
@@ -77,10 +80,15 @@ function registerCounterRoutes(app, { authorize, limiter }) {
   });
 
   route('setup', async (req, res, { guild, userId, member }, lang) => {
-    const result = await setupPreset(guild, { createdBy: userId, reason: t(lang, 'counters.setup.reason', { user: member?.user?.tag ?? userId }) }, lang);
+    const body = req.body ?? {};
+    const result = await setupPreset(guild, {
+      createdBy: userId, reason: t(lang, 'counters.setup.reason', { user: member?.user?.tag ?? userId }),
+      preset: typeof body.preset === 'string' ? body.preset.slice(0, 30) : null, goal: body.goal ?? null, timezone: body.timezone ? String(body.timezone).slice(0, 64) : null,
+    }, lang);
     if (!result.ok) { res.status(400).json({ ok: false, message: createMessage(result, lang) }); return; }
     job().refreshGuildCounters(guild.client, guild.id, { reload: true }).catch(() => {});
-    res.json({ ok: true, message: t(lang, 'counters.setup.done', { emoji: '', category: result.category.name, channels: result.made.map((m) => `#${m.channel.name}`).join(', ') }).trim() });
+    const done = t(lang, 'counters.setup.done', { emoji: '', category: result.category.name, channels: result.made.map((m) => `#${m.channel.name}`).join(', ') }).trim();
+    res.json({ ok: true, preset: result.preset, message: result.skipped ? `${done} ${t(lang, 'counters.preset.skipped', { count: result.skipped })}` : done });
   });
 
   route('refresh', async (req, res, { guild }, lang) => {
