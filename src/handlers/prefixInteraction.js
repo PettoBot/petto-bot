@@ -92,6 +92,9 @@ async function convertToken(message, def, token, resolveContext = {}) {
     }
     case ApplicationCommandOptionType.Boolean:
       return parseBoolToken(token);
+    // A file is the one sent with the message (see getAttachment); a word typed there belongs to the next option.
+    case ApplicationCommandOptionType.Attachment:
+      return null;
     case ApplicationCommandOptionType.String:
     default:
       return token;
@@ -274,6 +277,12 @@ function buildPseudoInteraction(message, { commandName, subcommand, subcommandGr
       getRole: (name, required) => getOpt(values, name, required),
       getChannel: (name, required) => getOpt(values, name, required),
       getMentionable: (name, required) => getOpt(values, name, required),
+      // A file option is the file sent with the message (`!case evidence 12` with a screenshot attached).
+      getAttachment: (name, required) => {
+        const file = message.attachments?.first?.() ?? null;
+        if (!file && required) throw missingArgError(name);
+        return file;
+      },
     },
     get deferred() {
       return deferredFlag;
@@ -343,7 +352,7 @@ async function buildInteractionFromMessage(message, command, argText) {
       includeBans: json.name === 'unban' || (json.name === 'ban' && resolved.subcommand === 'remove'),
     },
     {
-      greedyStringOption: command.prefixGreedyStringOptions?.[resolved.subcommand] ?? null,
+      greedyStringOption: command.prefixGreedyStringOptions?.[resolved.subcommand ?? '_'] ?? null,
     },
   );
   return buildPseudoInteraction(message, { commandName: json.name, subcommand: resolved.subcommand, subcommandGroup: resolved.subcommandGroup, values });

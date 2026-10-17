@@ -29,4 +29,17 @@ async function getNotesForUser(guildId, userId) {
   return data;
 }
 
-module.exports = { addNote, getNote, getNotesForUser };
+async function removeNote(guildId, noteId) {
+  const { data, error } = await database.from('notes').delete().eq('guild_id', guildId).eq('id', noteId).select('*');
+  if (error) throw error;
+  return data?.[0] ?? null;
+}
+
+/** Deletes every note of a member. Returns how many there were. */
+async function clearNotes(guildId, userId) {
+  const { data, error } = await database.from('notes').delete().eq('guild_id', guildId).eq('user_id', userId).select('id');
+  if (error) throw error;
+  return data?.length ?? 0;
+}
+
+module.exports = { addNote, getNote, getNotesForUser, removeNote, clearNotes };

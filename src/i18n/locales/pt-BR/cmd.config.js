@@ -357,4 +357,13 @@ module.exports = {
   'cmd.config.warnconfig.desc': 'Mostra as configurações do escalonamento de advertências e como alterá-las.',
   'cmd.config.webhookconfig.desc': 'Mostra as configurações dos webhooks e como alterá-las.',
   'cmd.config.welcomeconfig.desc': 'Mostra as configurações das boas-vindas e como alterá-las.',
+  'cmd.config.restrictcommand.desc': 'Deixa só alguns cargos usarem um comando (os administradores sempre podem).',
+  'cmd.config.restrictcommand.add.desc': 'Só os membros com este cargo (ou outro que você adicionar) podem usar o comando.',
+  'cmd.config.restrictcommand.add.opt.command.desc': 'O comando, como você escreve sem o prefixo',
+  'cmd.config.restrictcommand.add.opt.role.desc': 'O cargo que pode usá-lo',
+  'cmd.config.restrictcommand.remove.desc': 'Tira um cargo de um comando, ou todos para abri-lo de novo.',
+  'cmd.config.restrictcommand.remove.opt.command.desc': 'O comando',
+  'cmd.config.restrictcommand.remove.opt.role.desc': 'O cargo (vazio: todos os cargos do comando)',
+  'cmd.config.restrictcommand.list.desc': 'Veja cada comando restrito e seus cargos.',
+  'cmd.config.restrictcommand.reset.desc': 'Abre de novo todos os comandos restritos.',
 };

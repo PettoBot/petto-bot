@@ -13,7 +13,8 @@ const RED = 0xff6b6b;
 const reply = (interaction, text, color = GREEN) => interaction.editReply({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2 });
 
 module.exports = {
-  aliases: ['raidmode', 'lock'],
+  // Not `lock`: `!lock` locks the channel you are in (the `channel lock` shortcut), as in other bots.
+  aliases: ['raidmode', 'raidstate'],
   prefixDefaultSubcommand: 'status',
   data: new SlashCommandBuilder()
     .setName('lockdown')

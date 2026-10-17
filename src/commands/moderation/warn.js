@@ -11,7 +11,7 @@ const { checkAndApplyEscalation } = require('../../utils/escalation');
 const { parseDuration } = require('../../utils/duration');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
-const { confirmBulkAction, requireAdministrator } = require('../../utils/moderationCommand');
+const { confirmBulkAction, requireAdministrator, bulkTargetBlocked, protectedLine } = require('../../utils/moderationCommand');
 const { t, tn, languageOf } = require('../../i18n');
 
 // Discord has no native "warn" permission; Moderate Members (used for timeouts)
@@ -120,12 +120,17 @@ async function warnUsers(interaction) {
 
   const succeeded = [];
   const skipped = [];
+  const blocked = [];
   const caseNumbers = [];
 
   for (const user of users) {
     const member = await interaction.guild.members.fetch(user.id).catch(() => null);
     if (!member) {
       skipped.push(user);
+      continue;
+    }
+    if (bulkTargetBlocked(interaction, member, WARN_PERMISSION, { hierarchy: 'none' })) {
+      blocked.push(user);
       continue;
     }
 
@@ -144,6 +149,7 @@ async function warnUsers(interaction) {
   const lines = [tn(lang, 'moderation.warn.bulkDone', succeeded.length, { emoji: EMOJI.WARNING, count: succeeded.length, cases: caseNumbers.length ? t(lang, 'moderation.common.cases', { list: caseNumbers.join(', #') }) : '' })];
   if (succeeded.length) lines.push(succeeded.map((u) => `${u}`).join(' '));
   if (skipped.length) lines.push(t(lang, 'moderation.common.notInServer', { list: skipped.map((u) => `${u}`).join(' ') }));
+  if (blocked.length) lines.push(protectedLine(blocked, lang));
   if (notFound.length) lines.push(t(lang, 'moderation.common.notFound', { list: notFound.map((id) => `\`${id}\``).join(', ') }));
   lines.push(t(lang, 'moderation.common.reason', { reason }));
 

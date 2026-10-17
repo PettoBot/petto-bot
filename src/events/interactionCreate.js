@@ -42,6 +42,7 @@ const { handleSetupModal } = require('../interactions/setup');
 const { SETUP_BUTTON_PREFIX, handleSetupButton } = require('../interactions/setupPanel');
 const { BUTTON_PREFIX, handleButton: handleReactionRoleButton } = require('../interactions/reactionRoleButton');
 const permissionsDb = require('../db/permissions');
+const { restrictedFor } = require('../utils/commandRestrictions');
 const disabledCommandsDb = require('../db/disabledCommands');
 const logger = require('../utils/logger');
 const { logCommandUse } = require('../logging/extraLog');
@@ -488,6 +489,15 @@ module.exports = {
         // Custom permission levels are opt-in on top of Discord's own permissions, if the check
         // itself fails (DB hiccup) let the command through rather than break it for everyone.
         logger.error('Error checking custom command permission level:', err);
+      }
+    }
+
+    // !restrictcommand: only the roles chosen for this command (administrators always can).
+    if (interaction.guildId && interaction.member) {
+      const restricted = await restrictedFor(interaction.guildId, command.data.name, interaction.member).catch(() => null);
+      if (restricted) {
+        await interaction.reply({ content: t(lang, 'core.restricted', { command: command.data.name, roles: restricted.map((id) => `<@&${id}>`).join(', ') }), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+        return;
       }
     }
 

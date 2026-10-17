@@ -18,12 +18,17 @@ const { parseDuration, formatDuration } = require('../../utils/duration');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
 const { addHardBan, getHardBan, removeHardBan, canLiftHardBan, listHardBanIds } = require('../../db/hardBans');
-const { confirmBulkAction, requireAdministrator, failureDetail } = require('../../utils/moderationCommand');
+const { confirmBulkAction, requireAdministrator, failureDetail, bulkTargetBlocked, protectedLine } = require('../../utils/moderationCommand');
 const { reasonText } = require('../../utils/caseFormat');
 const { t, tn, languageOf } = require('../../i18n');
 
+// The mass unban running in each server, so `ban cancel` (`!unbanall cancel`) can stop it. In memory: it lasts minutes at most.
+const activeUnbans = new Map(); // guildId -> { abort: boolean }
+const LIST_LIMIT = 40;
+
 module.exports = {
   aliases: ['b'],
+  prefixSubcommandAliases: { recent: 'list', kill: 'cancel' },
   prefixDefaultSubcommand: 'user',
   data: new SlashCommandBuilder()
     .setName('ban')
@@ -61,7 +66,9 @@ module.exports = {
         .addUserOption((opt) => opt.setName('user').setDescription('The user to unban (by ID if they left no trace)').setRequired(true))
         .addStringOption((opt) => opt.setName('reason').setDescription('Reason for the unban').setRequired(false)),
     )
-    .addSubcommand((sub) => sub.setName('remove-all').setDescription('Unban every currently banned user (requires Administrator).').addStringOption((opt) => opt.setName('reason').setDescription('Reason for the mass unban').setRequired(false))),
+    .addSubcommand((sub) => sub.setName('remove-all').setDescription('Unban every currently banned user (requires Administrator).').addStringOption((opt) => opt.setName('reason').setDescription('Reason for the mass unban').setRequired(false)))
+    .addSubcommand((sub) => sub.setName('list').setDescription('List the banned users, or only the hard bans.').addBooleanOption((opt) => opt.setName('hard').setDescription('Only the hard bans').setRequired(false)))
+    .addSubcommand((sub) => sub.setName('cancel').setDescription('Stop the mass unban running in this server.')),
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
@@ -70,6 +77,8 @@ module.exports = {
     if (sub === 'temp') return tempBan(interaction);
     if (sub === 'remove') return unban(interaction);
     if (sub === 'remove-all') return unbanAll(interaction);
+    if (sub === 'list') return listBans(interaction);
+    if (sub === 'cancel') return cancelUnbanAll(interaction);
   },
   hardBanUser: (interaction) => banUser(interaction, { hard: true }),
 };
@@ -137,11 +146,16 @@ async function banUsers(interaction) {
 
   const succeeded = [];
   const failed = [];
+  const blocked = [];
   const caseNumbers = [];
 
   for (const user of users) {
     try {
       const member = await interaction.guild.members.fetch(user.id).catch(() => null);
+      if (bulkTargetBlocked(interaction, member, PermissionFlagsBits.BanMembers)) {
+        blocked.push(user);
+        continue;
+      }
       if (member) {
         await member
           .send(await sanctionDM({ type: 'ban', guild: interaction.guild, client: interaction.client, reason, member: member, moderator: interaction.user }))
@@ -161,6 +175,7 @@ async function banUsers(interaction) {
   const lines = [tn(lang, 'moderation.ban.bulkDone', succeeded.length, { emoji: EMOJI.APPROVE, count: succeeded.length, cases: caseNumbers.length ? t(lang, 'moderation.common.cases', { list: caseNumbers.join(', #') }) : '' })];
   if (succeeded.length) lines.push(succeeded.map((u) => `${u}`).join(' '));
   if (failed.length) lines.push(t(lang, 'moderation.common.failedList', { emoji: EMOJI.DENY, list: failed.map((u) => `${u}`).join(' ') }));
+  if (blocked.length) lines.push(protectedLine(blocked, lang));
   if (notFound.length) lines.push(t(lang, 'moderation.common.notFound', { list: notFound.map((id) => `\`${id}\``).join(', ') }));
   lines.push(t(lang, 'moderation.common.reason', { reason: reasonText(reason, lang) }));
 
@@ -271,6 +286,10 @@ async function unbanAll(interaction) {
   }
 
   const reason = interaction.options.getString('reason');
+  if (activeUnbans.has(interaction.guild.id)) {
+    await interaction.reply({ content: t(lang, 'moderation.unbanAll.alreadyRunning'), flags: MessageFlags.Ephemeral });
+    return;
+  }
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
@@ -310,29 +329,36 @@ async function unbanAll(interaction) {
   let succeeded = 0;
   let failed = 0;
   const caseNumbers = [];
+  const task = { abort: false };
+  activeUnbans.set(interaction.guild.id, task);
   // Hard bans stay unless the one running this is the owner or an antinuke admin.
-  const mayLiftHard = await canLiftHardBan(interaction.guild, interaction.user.id);
-  const hardIds = mayLiftHard ? new Set() : await listHardBanIds(interaction.guild.id);
-  for (const userId of bans.keys()) {
-    if (hardIds.has(userId)) continue;
-    let target;
-    try {
-      await interaction.guild.members.unban(userId, reason ?? t(lang, 'moderation.unbanAll.audit'));
-      succeeded += 1;
-      target = bans.get(userId)?.user ?? { id: userId, username: userId };
-    } catch (err) {
-      failed += 1;
-      logger.warn(`unban remove-all: failed to unban ${userId} in ${interaction.guild.id}:`, err.message);
-      continue;
-    }
+  const mayLiftHard = await canLiftHardBan(interaction.guild, interaction.user.id).catch(() => false);
+  const hardIds = mayLiftHard ? new Set() : await listHardBanIds(interaction.guild.id).catch(() => new Set());
+  try {
+    for (const userId of bans.keys()) {
+      if (task.abort) break;
+      if (hardIds.has(userId)) continue;
+      let target;
+      try {
+        await interaction.guild.members.unban(userId, reason ?? t(lang, 'moderation.unbanAll.audit'));
+        succeeded += 1;
+        target = bans.get(userId)?.user ?? { id: userId, username: userId };
+      } catch (err) {
+        failed += 1;
+        logger.warn(`unban remove-all: failed to unban ${userId} in ${interaction.guild.id}:`, err.message);
+        continue;
+      }
 
-    try {
-      const modCase = await createCase({ guildId: interaction.guild.id, userId, moderatorId: interaction.user.id, type: 'unban', reason });
-      caseNumbers.push(modCase.case_number);
-      await logSanction(interaction.client, interaction.guild, { modCase, target, moderator: interaction.user, reason });
-    } catch (err) {
-      logger.error(`unban remove-all: unban succeeded but case logging failed for ${userId}:`, err);
+      try {
+        const modCase = await createCase({ guildId: interaction.guild.id, userId, moderatorId: interaction.user.id, type: 'unban', reason });
+        caseNumbers.push(modCase.case_number);
+        await logSanction(interaction.client, interaction.guild, { modCase, target, moderator: interaction.user, reason });
+      } catch (err) {
+        logger.error(`unban remove-all: unban succeeded but case logging failed for ${userId}:`, err);
+      }
     }
+  } finally {
+    if (activeUnbans.get(interaction.guild.id) === task) activeUnbans.delete(interaction.guild.id);
   }
 
   const resultLines = [
@@ -344,7 +370,8 @@ async function unbanAll(interaction) {
     }),
     t(lang, 'moderation.common.moderator', { moderator: `${interaction.user}` }),
     t(lang, 'moderation.common.reason', { reason: reasonText(reason, lang) }),
-  ];
+    task.abort ? t(lang, 'moderation.unbanAll.stopped', { emoji: EMOJI.DENY }) : null,
+  ].filter(Boolean);
   const resultCard = statusCard(resultLines.join('\n'), 0xa5ea7a);
 
   await interaction.editReply({ components: [resultCard], flags: MessageFlags.IsComponentsV2 });
@@ -360,4 +387,52 @@ async function unbanAll(interaction) {
     footer: { text: interaction.guild.name, icon_url: interaction.guild.iconURL({ extension: 'png', size: 128 }) ?? undefined },
     timestamp: new Date().toISOString(),
   });
+}
+
+async function cancelUnbanAll(interaction) {
+  const lang = await languageOf(interaction);
+  if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+    await interaction.reply({ content: t(lang, 'moderation.unbanAll.needsAdmin'), flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const task = activeUnbans.get(interaction.guild.id);
+  if (!task) {
+    await interaction.reply({ content: t(lang, 'moderation.unbanAll.notRunning'), flags: MessageFlags.Ephemeral });
+    return;
+  }
+  task.abort = true;
+  await interaction.reply({ content: t(lang, 'moderation.unbanAll.stopping', { emoji: EMOJI.APPROVE }), flags: MessageFlags.Ephemeral });
+}
+
+/** `ban list` (`!hardban list` for `hard`): the banned users with their reason, hard bans marked. */
+async function listBans(interaction) {
+  const lang = await languageOf(interaction);
+  const hardOnly = interaction.options.getBoolean('hard') ?? false;
+  const check = canModerate(interaction, null, PermissionFlagsBits.BanMembers);
+  if (!check.ok) {
+    await interaction.reply({ content: check.message, flags: MessageFlags.Ephemeral });
+    return;
+  }
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+
+  const hardIds = await listHardBanIds(interaction.guild.id).catch(() => new Set());
+  const bans = await interaction.guild.bans.fetch().catch(() => null);
+  if (!bans) {
+    await interaction.editReply({ components: [statusCard(t(lang, 'moderation.unbanAll.fetchFailed'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+  const rows = [...bans.values()].filter((ban) => !hardOnly || hardIds.has(ban.user.id));
+  // A hard ban whose user was unbanned by hand is put back by Petto; until then it is listed from the database.
+  if (hardOnly) for (const id of hardIds) if (!bans.has(id)) rows.push({ user: { id, username: id, toString: () => `<@${id}>` }, reason: null });
+  if (!rows.length) {
+    await interaction.editReply({ components: [statusCard(t(lang, hardOnly ? 'moderation.ban.list.noHard' : 'moderation.unbanAll.none'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+  const lines = rows.slice(0, LIST_LIMIT).map((ban) => [
+    `${hardIds.has(ban.user.id) ? `${EMOJI.ALERT} ` : ''}**${ban.user.username}** \`${ban.user.id}\``,
+    ban.reason ? `> ${String(ban.reason).slice(0, 80)}` : null,
+  ].filter(Boolean).join('\n'));
+  if (rows.length > LIST_LIMIT) lines.push(t(lang, 'moderation.role.more', { count: rows.length - LIST_LIMIT }));
+  const title = tn(lang, hardOnly ? 'moderation.ban.list.hardTitle' : 'moderation.ban.list.title', rows.length, { count: rows.length, hard: hardIds.size });
+  await interaction.editReply({ components: [statusCard([title, ...lines].join('\n').slice(0, 3900), 0x4b4f59)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
 }

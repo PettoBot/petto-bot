@@ -3,6 +3,7 @@ const mute = require('./mute');
 const { asSubcommand } = require('../../utils/moderationCommand');
 
 module.exports = {
+  aliases: ['untimeout'],
   data: new SlashCommandBuilder()
     .setName('unmute')
     .setDescription('Remove a timeout and Petto mute role from a member.')

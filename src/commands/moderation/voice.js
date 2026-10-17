@@ -3,10 +3,23 @@ const { canModerate } = require('../../utils/permissions');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
-const { t, languageOf } = require('../../i18n');
+const { resolveUsers } = require('../../utils/userResolve');
+const { t, tn, languageOf } = require('../../i18n');
 
 module.exports = {
   aliases: ['v'],
+  // Each action asks for its own permission, not all three voice permissions at once.
+  prefixPermissionOverrides: {
+    mute: PermissionFlagsBits.MuteMembers,
+    unmute: PermissionFlagsBits.MuteMembers,
+    deafen: PermissionFlagsBits.DeafenMembers,
+    undeafen: PermissionFlagsBits.DeafenMembers,
+    disconnect: PermissionFlagsBits.MoveMembers,
+    kick: PermissionFlagsBits.MoveMembers,
+    move: PermissionFlagsBits.MoveMembers,
+    drag: PermissionFlagsBits.MoveMembers,
+  },
+  prefixSubcommandAliases: { kick: 'disconnect', dc: 'disconnect', deaf: 'deafen', undeaf: 'undeafen' },
   data: new SlashCommandBuilder()
     .setName('voice')
     .setDescription('Moderate members currently in a voice channel.')
@@ -54,6 +67,13 @@ module.exports = {
         .addUserOption((opt) => opt.setName('user').setDescription('The user to move').setRequired(true))
         .addChannelOption((opt) => opt.setName('channel').setDescription('Destination voice channel').addChannelTypes(ChannelType.GuildVoice, ChannelType.GuildStageVoice).setRequired(true))
         .addStringOption((opt) => opt.setName('reason').setDescription('Reason for the move').setRequired(false)),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('drag')
+        .setDescription('Move one or more members to a voice channel (default: yours).')
+        .addStringOption((opt) => opt.setName('users').setDescription('Mentions or IDs, separated by spaces').setRequired(true))
+        .addChannelOption((opt) => opt.setName('channel').setDescription('Destination voice channel (default: the one you are in)').addChannelTypes(ChannelType.GuildVoice, ChannelType.GuildStageVoice).setRequired(false)),
     ),
 
   async execute(interaction) {
@@ -63,6 +83,7 @@ module.exports = {
     if (sub === 'deafen') return setDeaf(interaction, true);
     if (sub === 'undeafen') return setDeaf(interaction, false);
     if (sub === 'disconnect') return disconnect(interaction);
+    if (sub === 'drag') return drag(interaction);
     return move(interaction);
   },
 };
@@ -189,4 +210,43 @@ async function move(interaction) {
 
   const text = `${t(lang, 'moderation.voice.moved', { emoji: EMOJI.APPROVE, user: `${targetUser}`, channel: `${destination}` })}${reasonSuffix(reason, lang)}`;
   await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+}
+
+/** `voice drag` (`!drag`): several members to one voice channel, each one checked like a single move. */
+async function drag(interaction) {
+  const lang = await languageOf(interaction);
+  const destination = interaction.options.getChannel('channel') ?? interaction.member.voice?.channel ?? null;
+  if (!destination) {
+    await interaction.reply({ content: t(lang, 'moderation.voice.dragNoChannel'), flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (!destination.permissionsFor(interaction.guild.members.me)?.has([PermissionFlagsBits.MoveMembers, PermissionFlagsBits.Connect])) {
+    await interaction.reply({ content: t(lang, 'moderation.voice.needsMoveMembers'), flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  const { users, failed: notFound } = await resolveUsers(interaction.client, interaction.options.getString('users', true), interaction.guild);
+  const moved = [];
+  const skipped = [];
+  for (const user of users.slice(0, 25)) {
+    const member = await interaction.guild.members.fetch(user.id).catch(() => null);
+    // Moving yourself is fine; anyone else is checked like a single move.
+    const check = member && member.id !== interaction.user.id ? canModerate(interaction, member, PermissionFlagsBits.MoveMembers, { hierarchy: 'none' }) : { ok: Boolean(member) };
+    if (!member?.voice.channelId || !check.ok || member.voice.channelId === destination.id) {
+      skipped.push(user);
+      continue;
+    }
+    const ok = await member.voice.setChannel(destination.id, t(lang, 'moderation.voice.audit.dragged', { user: interaction.user.tag })).then(() => true, (err) => {
+      logger.warn(`voice drag: could not move ${member.id}: ${err.message}`);
+      return false;
+    });
+    (ok ? moved : skipped).push(user);
+  }
+
+  const lines = [tn(lang, 'moderation.voice.dragged', moved.length, { emoji: moved.length ? EMOJI.APPROVE : EMOJI.DENY, count: moved.length, channel: `${destination}` })];
+  if (moved.length) lines.push(moved.map((user) => `${user}`).join(' '));
+  if (skipped.length) lines.push(t(lang, 'moderation.voice.dragSkipped', { list: skipped.map((user) => `${user}`).join(' ') }));
+  if (notFound.length) lines.push(t(lang, 'moderation.common.notFound', { list: notFound.map((id) => `\`${id}\``).join(', ') }));
+  await interaction.editReply({ components: [textCard(lines.join('\n'), moved.length ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
 }

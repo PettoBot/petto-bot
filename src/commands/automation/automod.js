@@ -8,6 +8,7 @@ const { notifyMaliciousLink } = require('../../utils/maliciousLinkAlerts');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const rulesDb = require('../../db/automodRules');
+const joinPasses = require('../../db/joinPasses');
 const native = require('../../utils/nativeAutomod');
 const { TEMPLATES, TEMPLATE_IDS, PACKS } = require('../../utils/automodTemplates');
 const { syncGuildAutoMod, getAutoModStats } = require('../../utils/autoModManager');
@@ -32,7 +33,9 @@ function actionWord(value, lang) {
 }
 
 module.exports = {
-  aliases: ['am'],
+  aliases: ['am', 'antiraid'],
+  // The words of other bots for the same settings (`!antiraid newaccounts`, `!antiraid avatar`...).
+  prefixSubcommandAliases: { massjoin: 'raid', newaccounts: 'anti-alt', newaccount: 'anti-alt', age: 'anti-alt', avatar: 'no-avatar', defaultpfp: 'no-avatar', whitelist: 'join-pass' },
   hiddenPrefixSubcommands: ['control'],
   data: new SlashCommandBuilder()
     .setName('automod')
@@ -78,6 +81,23 @@ module.exports = {
         .addBooleanOption((opt) => opt.setName('enabled').setDescription('Turn anti-alt on/off').setRequired(true))
         .addIntegerOption((opt) => opt.setName('min_age_days').setDescription('Minimum account age in days (default 7)').setMinValue(1).setMaxValue(365).setRequired(false))
         .addStringOption((opt) => opt.setName('action').setDescription('What to do (default kick)').addChoices({ name: 'kick', value: 'kick' }, { name: 'flag only', value: 'flag' }).setRequired(false)),
+    )
+
+    .addSubcommand((sub) =>
+      sub
+        .setName('no-avatar')
+        .setDescription('Flag or kick accounts that join without a profile picture.')
+        .addBooleanOption((opt) => opt.setName('enabled').setDescription('Turn the no-avatar check on/off').setRequired(true))
+        .addStringOption((opt) => opt.setName('action').setDescription('What to do (default kick)').addChoices({ name: 'kick', value: 'kick' }, { name: 'flag only', value: 'flag' }).setRequired(false)),
+    )
+
+    .addSubcommandGroup((group) =>
+      group
+        .setName('join-pass')
+        .setDescription('One-time passes that let an account join past the anti-raid checks.')
+        .addSubcommand((sub) => sub.setName('add').setDescription('Let an account join once without the anti-raid checks.').addUserOption((opt) => opt.setName('user').setDescription('The account (an ID works)').setRequired(true)))
+        .addSubcommand((sub) => sub.setName('remove').setDescription('Take back a join pass.').addUserOption((opt) => opt.setName('user').setDescription('The account').setRequired(true)))
+        .addSubcommand((sub) => sub.setName('list').setDescription('List the join passes not used yet.')),
     )
 
     .addSubcommand((sub) =>
@@ -209,6 +229,8 @@ module.exports = {
     if (!group && sub === 'strikes') return strikes(interaction, lang);
     if (!group && sub === 'anti-alt') return antiAlt(interaction, lang);
     if (!group && sub === 'antinuke') return antinuke(interaction, lang);
+    if (!group && sub === 'no-avatar') return noAvatar(interaction, lang);
+    if (group === 'join-pass') return joinPass(interaction, sub, lang);
     if (!group && sub === 'control') return officialControl(interaction, lang);
     if (group === 'word-filter') return wordFilter(interaction, sub, lang);
     if (group === 'invites') return invites(interaction, sub, lang);
@@ -464,6 +486,43 @@ async function antiAlt(interaction, lang) {
 
   const text = t(lang, enabled ? 'security.antiAlt.enabled' : 'security.antiAlt.disabled', { emoji: EMOJI.APPROVE, days: saved.anti_alt_min_age_days, action: actionWord(saved.anti_alt_action, lang) });
   await interaction.editReply({ components: [textCard(text, enabled ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+}
+
+async function noAvatar(interaction, lang) {
+  const enabled = interaction.options.getBoolean('enabled', true);
+  const action = interaction.options.getString('action');
+
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  await ensureGuild(interaction.guild.id);
+
+  const patch = { no_avatar_enabled: enabled };
+  if (action) patch.no_avatar_action = action;
+  const saved = await upsertConfig(interaction.guild.id, patch);
+
+  const text = t(lang, enabled ? 'security.noAvatar.enabled' : 'security.noAvatar.disabled', { emoji: EMOJI.APPROVE, action: actionWord(saved.no_avatar_action, lang) });
+  await interaction.editReply({ components: [textCard(text, enabled ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+}
+
+async function joinPass(interaction, sub, lang) {
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  await ensureGuild(interaction.guild.id);
+  const reply = (text, color = 0xa5ea7a) => interaction.editReply({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2 });
+
+  if (sub === 'list') {
+    const rows = await joinPasses.listPasses(interaction.guild.id);
+    if (!rows.length) return reply(t(lang, 'security.joinPass.empty'), 0x4b4f59);
+    const lines = rows.slice(0, 40).map((row) => `<@${row.user_id}> \`${row.user_id}\` · <@${row.created_by}> · <t:${Math.floor(new Date(row.created_at).getTime() / 1000)}:R>`);
+    return reply([t(lang, 'security.joinPass.title', { count: rows.length }), ...lines].join('\n'), 0x4b4f59);
+  }
+
+  const user = interaction.options.getUser('user', true);
+  if (sub === 'add') {
+    if (await interaction.guild.members.fetch(user.id).catch(() => null)) return reply(t(lang, 'security.joinPass.alreadyIn', { emoji: EMOJI.DENY, user: `${user}` }), 0xfe6465);
+    await joinPasses.addPass(interaction.guild.id, user.id, interaction.user.id);
+    return reply(t(lang, 'security.joinPass.added', { emoji: EMOJI.APPROVE, user: `${user}` }));
+  }
+  const removed = await joinPasses.removePass(interaction.guild.id, user.id);
+  return reply(t(lang, removed ? 'security.joinPass.removed' : 'security.joinPass.notFound', { emoji: removed ? EMOJI.APPROVE : EMOJI.DENY, user: `${user}` }), removed ? 0xa5ea7a : 0x4b4f59);
 }
 
 async function antinuke(interaction, lang) {

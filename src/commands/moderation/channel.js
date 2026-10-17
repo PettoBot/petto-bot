@@ -4,6 +4,7 @@ const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
 const config = require('../../config');
+const { resolveRole } = require('../../utils/roleResolve');
 const { t, tn, languageOf } = require('../../i18n');
 
 // The kinds of channel `create` can make. Forum and media channels need the server to be a Community server.
@@ -25,6 +26,8 @@ function canCreateChannels(userId) {
 
 module.exports = {
   aliases: ['ch'],
+  // Written after the prefix, the topic takes every word left (`!topic Rules are in #rules`).
+  prefixGreedyStringOptions: { topic: 'text' },
   prefixPermissionOverrides: {
     clear: PermissionFlagsBits.ManageMessages,
     'move-all': PermissionFlagsBits.MoveMembers,
@@ -39,6 +42,9 @@ module.exports = {
     unlockall: 'unlock-all',
     moveall: 'move-all',
     move_all: 'move-all',
+    naughty: 'nsfw',
+    revokefiles: 'files',
+    pics: 'files',
   },
   data: new SlashCommandBuilder()
     .setName('channel')
@@ -85,8 +91,11 @@ module.exports = {
     )
     .addSubcommand((sub) => sub.setName('lock-all').setDescription('Lock every text channel the bot can manage.'))
     .addSubcommand((sub) => sub.setName('unlock-all').setDescription('Unlock every text channel the bot can manage.'))
-    .addSubcommand((sub) => sub.setName('hide').setDescription('Hide a channel from @everyone (deny View Channel).').addChannelOption((opt) => opt.setName('channel').setDescription('Channel to hide (defaults to this one)').setRequired(false)))
-    .addSubcommand((sub) => sub.setName('unhide').setDescription('Restore visibility for a hidden channel.').addChannelOption((opt) => opt.setName('channel').setDescription('Channel to unhide (defaults to this one)').setRequired(false)))
+    .addSubcommand((sub) => sub.setName('hide').setDescription('Hide a channel from @everyone, a role or a member (deny View Channel).').addChannelOption((opt) => opt.setName('channel').setDescription('Channel to hide (defaults to this one)').setRequired(false)).addStringOption((opt) => opt.setName('target').setDescription('Role or member to hide it from (defaults to @everyone)').setRequired(false)))
+    .addSubcommand((sub) => sub.setName('unhide').setDescription('Restore visibility for a hidden channel.').addChannelOption((opt) => opt.setName('channel').setDescription('Channel to unhide (defaults to this one)').setRequired(false)).addStringOption((opt) => opt.setName('target').setDescription('Role or member to show it to again (defaults to @everyone)').setRequired(false)))
+    .addSubcommand((sub) => sub.setName('topic').setDescription('Change the topic of a channel ("none" clears it).').addStringOption((opt) => opt.setName('text').setDescription('The new topic').setRequired(true).setMaxLength(1024)).addChannelOption((opt) => opt.setName('channel').setDescription('Channel (defaults to this one)').setRequired(false)))
+    .addSubcommand((sub) => sub.setName('nsfw').setDescription('Turn the age-restricted (NSFW) mark of a channel on or off.').addChannelOption((opt) => opt.setName('channel').setDescription('Channel (defaults to this one)').setRequired(false)).addBooleanOption((opt) => opt.setName('value').setDescription('On or off (default: switch it)').setRequired(false)))
+    .addSubcommand((sub) => sub.setName('files').setDescription('Allow or block files and embeds in a channel, for everyone or for a role or member.').addBooleanOption((opt) => opt.setName('enabled').setDescription('Allow (on) or block (off)').setRequired(true)).addStringOption((opt) => opt.setName('target').setDescription('Role or member (defaults to @everyone)').setRequired(false)).addChannelOption((opt) => opt.setName('channel').setDescription('Channel (defaults to this one)').setRequired(false)))
     .addSubcommand((sub) => sub.setName('move-all').setDescription('Move everyone from your voice channel to another.').addChannelOption((opt) => opt.setName('destination').setDescription('Destination voice channel').addChannelTypes(ChannelType.GuildVoice, ChannelType.GuildStageVoice).setRequired(true))),
 
   async execute(interaction) {
@@ -100,6 +109,9 @@ module.exports = {
     if (sub === 'unlock-all') return lockAll(interaction, false);
     if (sub === 'hide') return hide(interaction, true);
     if (sub === 'unhide') return hide(interaction, false);
+    if (sub === 'topic') return topic(interaction);
+    if (sub === 'nsfw') return nsfw(interaction);
+    if (sub === 'files') return files(interaction);
     return moveAll(interaction);
   },
 };
@@ -279,6 +291,31 @@ async function lockAll(interaction, locking) {
   await interaction.editReply({ components: [textCard(done, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
+/**
+ * A role or a member written as a mention, an ID or a role name, for the overwrites of a channel. `@everyone` when nothing is
+ * written. Returns { target } or { error } (the text of what was written, when it is neither).
+ */
+async function overwriteTarget(guild, raw) {
+  const text = String(raw ?? '').trim();
+  if (!text || /^@?everyone$/i.test(text)) return { target: guild.roles.everyone };
+  const userId = /^<@!?(\d{15,25})>$/.exec(text)?.[1] ?? (/^\d{15,25}$/.test(text) && !guild.roles.cache.has(text) ? text : null);
+  if (userId) {
+    const member = await guild.members.fetch(userId).catch(() => null);
+    return member ? { target: member } : { error: text };
+  }
+  const role = resolveRole(guild, text);
+  return role ? { target: role } : { error: text };
+}
+
+/** The bot and the moderator have to be above a role (or the highest role of a member) to change what it can do in a channel. */
+function outranks(interaction, target) {
+  if (target.id === interaction.guild.id) return true;
+  const position = target.roles?.highest?.position ?? target.position ?? 0;
+  if (target.id === interaction.guild.ownerId) return false;
+  if (position >= interaction.guild.members.me.roles.highest.position) return false;
+  return interaction.user.id === interaction.guild.ownerId || position < interaction.member.roles.highest.position;
+}
+
 async function hide(interaction, hiding) {
   const lang = await languageOf(interaction);
   const channel = interaction.options.getChannel('channel') ?? interaction.channel;
@@ -287,12 +324,21 @@ async function hide(interaction, hiding) {
     await interaction.reply({ content: t(lang, 'moderation.channel.needsManageChannels'), flags: MessageFlags.Ephemeral });
     return;
   }
+  const { target, error } = await overwriteTarget(interaction.guild, interaction.options.getString('target'));
+  if (!target) {
+    await interaction.reply({ content: t(lang, 'moderation.channel.targetNotFound', { target: error.slice(0, 60) }), flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (!outranks(interaction, target)) {
+    await interaction.reply({ content: t(lang, 'moderation.channel.targetTooHigh'), flags: MessageFlags.Ephemeral });
+    return;
+  }
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   try {
     await channel.permissionOverwrites.edit(
-      interaction.guild.roles.everyone,
+      target,
       { ViewChannel: hiding ? false : null },
       { reason: t(lang, hiding ? 'moderation.channel.audit.hidden' : 'moderation.channel.audit.unhidden', { user: interaction.user.tag }) },
     );
@@ -302,8 +348,101 @@ async function hide(interaction, hiding) {
     return;
   }
 
-  const text = t(lang, hiding ? 'moderation.channel.hide.done' : 'moderation.channel.unhide.done', { emoji: EMOJI.APPROVE, channel: `${channel}` });
+  const text = target.id === interaction.guild.id
+    ? t(lang, hiding ? 'moderation.channel.hide.done' : 'moderation.channel.unhide.done', { emoji: EMOJI.APPROVE, channel: `${channel}` })
+    : t(lang, hiding ? 'moderation.channel.hide.doneFor' : 'moderation.channel.unhide.doneFor', { emoji: EMOJI.APPROVE, channel: `${channel}`, target: `${target}` });
+  await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
+}
+
+const TOPIC_TYPES = [ChannelType.GuildText, ChannelType.GuildAnnouncement, ChannelType.GuildForum, ChannelType.GuildMedia];
+
+async function topic(interaction) {
+  const lang = await languageOf(interaction);
+  const channel = interaction.options.getChannel('channel') ?? interaction.channel;
+  const raw = interaction.options.getString('text', true).trim();
+  const clearing = /^(none|clear|off|-)$/i.test(raw);
+
+  if (!TOPIC_TYPES.includes(channel.type)) {
+    await interaction.reply({ content: t(lang, 'moderation.channel.topic.wrongType'), flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (!channel.permissionsFor(interaction.guild.members.me)?.has(PermissionFlagsBits.ManageChannels)) {
+    await interaction.reply({ content: t(lang, 'moderation.channel.needsManageChannels'), flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  try {
+    await channel.setTopic(clearing ? null : raw.slice(0, 1024), t(lang, 'moderation.channel.audit.topic', { user: interaction.user.tag }));
+  } catch (err) {
+    logger.warn(`channel topic failed in ${channel.id}: ${err.message}`);
+    // Discord allows two name or topic changes per channel every ten minutes.
+    const text = err.status === 429 || err.code === 429 ? t(lang, 'moderation.channel.topic.rateLimited') : t(lang, 'moderation.channel.topic.failed');
+    await interaction.editReply({ components: [textCard(text, 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+  const text = clearing
+    ? t(lang, 'moderation.channel.topic.cleared', { emoji: EMOJI.APPROVE, channel: `${channel}` })
+    : t(lang, 'moderation.channel.topic.set', { emoji: EMOJI.APPROVE, channel: `${channel}` });
   await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+}
+
+async function nsfw(interaction) {
+  const lang = await languageOf(interaction);
+  const channel = interaction.options.getChannel('channel') ?? interaction.channel;
+  if (typeof channel.setNSFW !== 'function') {
+    await interaction.reply({ content: t(lang, 'moderation.channel.nsfw.wrongType'), flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (!channel.permissionsFor(interaction.guild.members.me)?.has(PermissionFlagsBits.ManageChannels)) {
+    await interaction.reply({ content: t(lang, 'moderation.channel.needsManageChannels'), flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const value = interaction.options.getBoolean('value') ?? !channel.nsfw;
+
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  try {
+    await channel.setNSFW(value, t(lang, 'moderation.channel.audit.nsfw', { user: interaction.user.tag }));
+  } catch (err) {
+    logger.warn(`channel nsfw failed in ${channel.id}: ${err.message}`);
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.channel.permissionsFailed'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+  await interaction.editReply({ components: [textCard(t(lang, value ? 'moderation.channel.nsfw.on' : 'moderation.channel.nsfw.off', { emoji: EMOJI.APPROVE, channel: `${channel}` }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+}
+
+async function files(interaction) {
+  const lang = await languageOf(interaction);
+  const channel = interaction.options.getChannel('channel') ?? interaction.channel;
+  const enabled = interaction.options.getBoolean('enabled', true);
+
+  if (!channel.permissionsFor(interaction.guild.members.me)?.has(PermissionFlagsBits.ManageChannels)) {
+    await interaction.reply({ content: t(lang, 'moderation.channel.needsManageChannels'), flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const { target, error } = await overwriteTarget(interaction.guild, interaction.options.getString('target'));
+  if (!target) {
+    await interaction.reply({ content: t(lang, 'moderation.channel.targetNotFound', { target: error.slice(0, 60) }), flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (!outranks(interaction, target)) {
+    await interaction.reply({ content: t(lang, 'moderation.channel.targetTooHigh'), flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  // For @everyone "on" goes back to what the server allows; a role or member gets an explicit allow, so it works in a blocked channel.
+  const everyone = target.id === interaction.guild.id;
+  const value = enabled ? (everyone ? null : true) : false;
+  try {
+    await channel.permissionOverwrites.edit(target, { AttachFiles: value, EmbedLinks: value }, { reason: t(lang, enabled ? 'moderation.channel.audit.filesOn' : 'moderation.channel.audit.filesOff', { user: interaction.user.tag }) });
+  } catch (err) {
+    logger.error('Failed to change file permissions:', err);
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.channel.permissionsFailed'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+  const text = t(lang, enabled ? 'moderation.channel.files.on' : 'moderation.channel.files.off', { emoji: EMOJI.APPROVE, channel: `${channel}`, target: everyone ? '@everyone' : `${target}` });
+  await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
 }
 
 async function moveAll(interaction) {

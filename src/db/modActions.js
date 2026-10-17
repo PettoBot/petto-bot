@@ -210,9 +210,11 @@ async function clearEvidence(guildId, caseNumber) {
 }
 
 /** What each moderator did in the last `days`: totals by moderator and by type. Automatic cases (the bot itself) are counted apart. */
-async function moderatorStats(guildId, days = 30, botId = null) {
+async function moderatorStats(guildId, days = 30, botId = null, moderatorId = null) {
   const from = new Date(Date.now() - days * 86_400_000).toISOString();
-  const { data, error } = await database.from('mod_actions').select('type, source, moderator_id').eq('guild_id', guildId).gte('created_at', from).limit(20000);
+  let query = database.from('mod_actions').select('type, source, moderator_id').eq('guild_id', guildId);
+  if (moderatorId) query = query.eq('moderator_id', String(moderatorId));
+  const { data, error } = await query.gte('created_at', from).limit(20000);
   if (error) throw error;
   const byModerator = new Map();
   const byType = {};

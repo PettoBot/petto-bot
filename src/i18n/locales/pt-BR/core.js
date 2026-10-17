@@ -112,4 +112,5 @@ module.exports = {
   'core.perm.ManageEvents': 'Gerenciar eventos',
   'core.perm.ManageThreads': 'Gerenciar tópicos',
   'core.perm.ModerateMembers': 'Castigar membros',
+  'core.restricted': 'Só os membros com {roles} podem usar `{command}` neste servidor.',
 };

@@ -8,7 +8,7 @@ const { sanctionDM, sanctionReply } = require('../../utils/sanctionTemplates');
 const { resolveUsers } = require('../../utils/userResolve');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
-const { confirmBulkAction, requireAdministrator, failureDetail } = require('../../utils/moderationCommand');
+const { confirmBulkAction, requireAdministrator, failureDetail, bulkTargetBlocked, protectedLine } = require('../../utils/moderationCommand');
 const { reasonText } = require('../../utils/caseFormat');
 const { t, tn, languageOf } = require('../../i18n');
 
@@ -101,12 +101,17 @@ async function kickUsers(interaction) {
   const succeeded = [];
   const failed = [];
   const skipped = [];
+  const blocked = [];
   const caseNumbers = [];
 
   for (const user of users) {
     const member = await interaction.guild.members.fetch(user.id).catch(() => null);
     if (!member) {
       skipped.push(user);
+      continue;
+    }
+    if (bulkTargetBlocked(interaction, member, PermissionFlagsBits.KickMembers)) {
+      blocked.push(user);
       continue;
     }
 
@@ -129,6 +134,7 @@ async function kickUsers(interaction) {
   if (succeeded.length) lines.push(succeeded.map((u) => `${u}`).join(' '));
   if (failed.length) lines.push(t(lang, 'moderation.common.failedList', { emoji: EMOJI.DENY, list: failed.map((u) => `${u}`).join(' ') }));
   if (skipped.length) lines.push(t(lang, 'moderation.common.notInServer', { list: skipped.map((u) => `${u}`).join(' ') }));
+  if (blocked.length) lines.push(protectedLine(blocked, lang));
   if (notFound.length) lines.push(t(lang, 'moderation.common.notFound', { list: notFound.map((id) => `\`${id}\``).join(', ') }));
   lines.push(t(lang, 'moderation.common.reason', { reason: reasonText(reason, lang) }));
 

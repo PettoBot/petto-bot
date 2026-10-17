@@ -7,6 +7,7 @@ const { applyAutomatedKick } = require('../utils/automodMemberAction');
 const { startLockdown } = require('../utils/lockdown');
 const { getConfig: getAntinukeConfig } = require('../db/antinuke');
 const { noteRaid } = require('../utils/antiNukePanic');
+const { usePass } = require('../utils/joinPass');
 const logger = require('../utils/logger');
 const { t, currentLanguage } = require('../i18n');
 
@@ -45,7 +46,7 @@ module.exports = {
         await noteRaid(member.client, member.guild, antinuke, raid.count).catch(() => false);
       }
 
-      if (config.raid_action === 'kick') {
+      if (config.raid_action === 'kick' && !(await usePass(member))) {
         await applyAutomatedKick(member, t(lang, 'security.raid.kickReason'));
       }
     } catch (err) {
