@@ -128,6 +128,12 @@ async function sendLog(client, guildId, event, embed, { ignoreIds = [], files = 
 
     const config = await getLogConfig(guildId);
     if (ignoreIds.length && ignoreIds.some((id) => id && config.ignored.includes(id))) return;
+    // A role in the ignored list skips everyone who has it (the members the bot has in memory).
+    if (ignoreIds.length && config.ignored.length) {
+      const guild = client.guilds?.cache?.get(guildId);
+      const hasIgnoredRole = (id) => id && guild?.members?.cache?.get(id)?.roles?.cache?.some((role) => config.ignored.includes(role.id));
+      if (ignoreIds.some(hasIgnoredRole)) return;
+    }
 
     const entries = config.entries.filter((e) => e.event === event);
     if (!entries.length) return;
