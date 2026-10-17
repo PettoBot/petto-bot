@@ -30,6 +30,7 @@ const { registerAppealImageRoutes } = require('./appealImageRoutes');
 const { registerCodeRoutes } = require('./codeRoutes');
 const { registerIdentityRoutes } = require('./identityRoutes');
 const { registerMemberRoutes } = require('./memberRoutes');
+const { fetchDashboardMember } = require('./dashboardMember');
 const { registerGuildLanguageRoute } = require('./languageRoutes');
 const { refreshGuildPanels } = require('../utils/panelRefresh');
 const { registerPublicLeaderboardRoute } = require('./publicLeaderboard');
@@ -179,8 +180,9 @@ function startServer(client) {
     }
     try {
       const guild = await client.guilds.fetch(req.params.guildId);
-      const member = await guild.members.fetch(userId);
-      const canManage = member.permissions.has(PermissionFlagsBits.ManageGuild) || member.permissions.has(PermissionFlagsBits.Administrator);
+      // Not in the server (a developer's read-only view of it): no access, quietly.
+      const member = await fetchDashboardMember(guild, userId);
+      const canManage = Boolean(member) && (member.permissions.has(PermissionFlagsBits.ManageGuild) || member.permissions.has(PermissionFlagsBits.Administrator));
       if (!canManage) {
         res.status(403).json({ ok: false, error: 'no_access' });
         return null;
@@ -206,8 +208,9 @@ function startServer(client) {
     }
     try {
       const guild = await client.guilds.fetch(req.params.guildId);
-      const member = await guild.members.fetch(userId);
-      const canManage = member.permissions.has(PermissionFlagsBits.ManageGuild) || member.permissions.has(PermissionFlagsBits.Administrator);
+      // Not in the server (a developer's read-only view of it): no access, quietly.
+      const member = await fetchDashboardMember(guild, userId);
+      const canManage = Boolean(member) && (member.permissions.has(PermissionFlagsBits.ManageGuild) || member.permissions.has(PermissionFlagsBits.Administrator));
       if (!canManage) {
         res.status(403).json({ ok: false, error: 'no_access' });
         return null;
