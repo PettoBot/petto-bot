@@ -21,6 +21,11 @@ const RULES = {
   role_assign:    { label: 'Anti Assign Roles',   description: 'Giving roles with dangerous permissions', legacy: false, threshold: 1, window: 10 }, // i18n-ignore: not shown, see above
   unban:          { label: 'Anti Unban',          description: 'Mass unbans',                       legacy: false, threshold: 5, window: 10 }, // i18n-ignore: not shown, see above
   guild_update:   { label: 'Anti Server Changes', description: 'Changing the name, icon or vanity of the server again and again', legacy: false, threshold: 3, window: 60 }, // i18n-ignore: not shown, see above
+  role_update:    { label: 'Anti Role Changes',   description: 'Editing roles in a row, or giving a role dangerous permissions (that one answers at once)', legacy: false, threshold: 3, window: 10 }, // i18n-ignore: not shown, see above
+  channel_update: { label: 'Anti Channel Changes', description: 'Editing channels in a row, or opening a channel to @everyone with dangerous permissions (at once)', legacy: false, threshold: 4, window: 10 }, // i18n-ignore: not shown, see above
+  mention_everyone: { label: 'Anti Mass Mention', description: 'Pinging @everyone or @here again and again', legacy: false, threshold: 2, window: 30 }, // i18n-ignore: not shown, see above
+  webhook_spam:   { label: 'Anti Webhook Spam',   description: 'A webhook flooding messages', legacy: false, threshold: 8, window: 10 }, // i18n-ignore: not shown, see above
+  prune:          { label: 'Anti Prune',          description: 'Pruning members (a mass kick in one go)', legacy: false, threshold: 1, window: 60 }, // i18n-ignore: not shown, see above
 };
 
 const RULE_IDS = Object.keys(RULES);

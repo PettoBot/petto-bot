@@ -30,10 +30,14 @@ const events = [];
 const logs = [];
 stub('../src/db/antinuke', { getConfig: async () => config, getRules: async () => rules, createEvent: async (e) => { const saved = { id: events.length + 1, ...e }; events.push(saved); return saved; } });
 stub('../src/logging/engine', { sendLog: async (_c, _g, _e, embed, extra) => { logs.push({ embed, extra }); } });
-const { track } = require('../src/utils/antiNuke');
+const { track: trackAction } = require('../src/utils/antiNuke');
+const { Collection } = require('discord.js');
+let entryId = 0;
+let lastTarget = 't';
+const track = (c, g, options) => { lastTarget = options.targetId ?? 't'; return trackAction(c, g, options); };
 
 const calls = [];
-const member = (id, roleIds = [], extra = {}) => ({ id, manageable: true, kickable: true, roles: { cache: { has: (r) => roleIds.includes(r), filter: () => ({ map: (fn) => roleIds.map((r) => fn({ id: r })) }) }, set: async (r) => calls.push(['roles.set', id, r]), remove: async (r) => calls.push(['roles.remove', id, r]) }, kick: async () => calls.push(['kick', id]), ...extra });
+const member = (id, roleIds = [], extra = {}) => ({ id, manageable: true, kickable: true, roles: { cache: new Collection(roleIds.map((r) => [r, { id: r, managed: false }])), set: async (r) => calls.push(['roles.set', id, r]), remove: async (r) => calls.push(['roles.remove', id, r]) }, kick: async () => calls.push(['kick', id]), ...extra });
 function makeGuild(execs) {
   const members = new Map(Object.entries(execs));
   return {
@@ -42,7 +46,8 @@ function makeGuild(execs) {
       ban: async (id) => calls.push(['ban', id]), kick: async (id) => calls.push(['kick', id]),
     },
     channels: { fetch: async () => null },
-    fetchAuditLogs: async () => ({ entries: { find: (fn) => ({ executor: current, targetId: 't', createdTimestamp: Date.now() }) , first: () => ({ executor: current, createdTimestamp: Date.now() }) } }),
+    // Like discord.js: a Collection, and every action has its own entry (one entry is never blamed twice).
+    fetchAuditLogs: async () => { entryId += 1; return { entries: new Collection([[`e${entryId}`, { id: `e${entryId}`, executor: current, targetId: lastTarget, createdTimestamp: Date.now() }]]) }; },
   };
 }
 let current;
@@ -119,7 +124,7 @@ const bot = { id: 'b1', bot: true, username: 'evilbot' };
     executor_id: 'u1', previous_roles: ['rA', 'gone'],
     restorable: [{ kind: 'channel', name: 'general', type: 0, overwrites: [] }, { kind: 'channel', name: 'boom', type: 0, overwrites: [] }, { kind: 'role', name: 'Mods', color: 0, permissions: '8' }, { kind: 'unban', userId: '5' }],
   });
-  assert.deepEqual(made.map((m) => m[0]), ['channel', 'role', 'unban', 'roles.add']);
+  assert.deepEqual(made.map((m) => m[0]), ['role', 'channel', 'unban', 'roles.add'], 'roles come back before channels');
   assert.deepEqual(made[3][1], ['rA'], 'a role that no longer exists is skipped');
   assert.equal(result.failed.length, 1, 'one failure is reported and the rest still come back');
 
