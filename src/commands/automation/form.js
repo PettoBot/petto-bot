@@ -21,13 +21,13 @@ const unix = (value) => Math.floor(new Date(value).getTime() / 1000);
 const SETTINGS = [
   'title', 'description', 'color', 'channel', 'reviewers', 'ping', 'thread', 'required-roles', 'blocked-roles', 'account-age', 'server-age',
   'one-pending', 'cooldown', 'max-per-user', 'max-total', 'closes', 'accept-roles', 'accept-remove-roles', 'deny-roles', 'deny-remove-roles',
-  'dm', 'button-label', 'button-emoji', 'button-style',
+  'dm', 'button-label', 'button-emoji', 'button-style', 'web',
 ];
 const ROLE_SETTINGS = {
   reviewers: 'reviewer_role_ids', ping: 'ping_role_ids', 'required-roles': 'required_role_ids', 'blocked-roles': 'blocked_role_ids',
   'accept-roles': 'accept_add_role_ids', 'accept-remove-roles': 'accept_remove_role_ids', 'deny-roles': 'deny_add_role_ids', 'deny-remove-roles': 'deny_remove_role_ids',
 };
-const SWITCHES = { thread: 'auto_thread', 'one-pending': 'one_pending', dm: 'dm_results' };
+const SWITCHES = { thread: 'auto_thread', 'one-pending': 'one_pending', dm: 'dm_results', web: 'web_enabled' };
 const NUMBERS = { 'account-age': ['min_account_days', 3650, 86_400_000], 'server-age': ['min_member_days', 3650, 86_400_000], cooldown: ['deny_cooldown_hours', 8760, 3_600_000], 'max-per-user': ['max_per_user', 1000, 0], 'max-total': ['max_total', 100000, 0] };
 const QUESTION_FIELDS = ['label', 'type', 'help', 'placeholder', 'required', 'min', 'max', 'options', 'choices'];
 // With the prefix the types are not checked by Discord, so the usual words are read here.
@@ -92,7 +92,8 @@ const data = new SlashCommandBuilder()
     .addStringOption((o) => o.setName('style').setDescription('Buttons or a menu').setRequired(false).addChoices({ name: 'buttons', value: 'buttons' }, { name: 'select', value: 'select' }))
     .addStringOption((o) => o.setName('template').setDescription('A saved embed to post the buttons under').setRequired(false))
     .addStringOption((o) => o.setName('title').setDescription('A title for the panel').setRequired(false).setMaxLength(200))
-    .addStringOption((o) => o.setName('description').setDescription('The text of the panel').setRequired(false).setMaxLength(2000)))
+    .addStringOption((o) => o.setName('description').setDescription('The text of the panel').setRequired(false).setMaxLength(2000))
+    .addBooleanOption((o) => o.setName('web').setDescription('Also a "Fill on the web" link button (--web yes)').setRequired(false)))
   .addSubcommand((s) => s.setName('retention').setDescription('How many days the answers of reviewed submissions are kept (30 by default).')
     .addIntegerOption((o) => o.setName('days').setDescription('1 to 365; empty shows the current one').setRequired(false).setMinValue(1).setMaxValue(365)))
   .addSubcommand((s) => s.setName('submissions').setDescription('What members sent, newest first.')
@@ -229,6 +230,7 @@ async function infoText(guild, form, lang) {
     `## ${form.title}`,
     t(lang, 'forms.info.head', { name: form.name, id: form.id, state: t(lang, form.status === 'open' ? 'forms.info.open' : 'forms.info.closed') }),
     form.description ? `> ${forms.clip(form.description, 300).replace(/\n/g, '\n> ')}` : null,
+    t(lang, form.web_enabled === false ? 'forms.info.webOff' : 'forms.info.web', { url: forms.webUrl(form) }),
     `### ${t(lang, 'forms.info.review')}`,
     t(lang, 'forms.info.channel', { channel: form.review_channel_id ? `<#${form.review_channel_id}>` : t(lang, 'forms.info.notSet') }),
     t(lang, 'forms.info.reviewers', { roles: form.reviewer_role_ids?.length ? roleList(form.reviewer_role_ids, lang) : t(lang, 'forms.info.managers') }),
@@ -362,6 +364,7 @@ async function execute(interaction) {
     const result = await actions.postPanel({
       guild, channel, formList: found, style: (interaction.options.getString('style') ?? 'buttons').toLowerCase() === 'select' ? 'select' : 'buttons',
       template, title: interaction.options.getString('title'), description: interaction.options.getString('description'), createdBy: interaction.user.id,
+      web: interaction.options.getBoolean('web') === true,
     });
     if (!result.ok) return done(bad(t(lang, `forms.panel.error.${result.error}`)));
     const closed = found.filter((f) => f.status !== 'open').map((f) => `\`${f.name}\``);

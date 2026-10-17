@@ -60,10 +60,10 @@ async function logForm(client, guild, { title, description, color, userId = null
  * checked when it was opened and are checked again here, because a member can take their time between the pages.
  * Returns { ok, submission } or { ok: false, error, refusal }.
  */
-async function submitForm({ client, guild, form, member, answers }) {
+async function submitForm({ client, guild, form, member, answers, source = 'discord' }) {
   const lang = await guildLanguage(guild.id);
   const [stats, total] = await Promise.all([formsDb.memberStats(guild.id, form.id, member.id), form.max_total > 0 ? formsDb.countFormSubmissions(guild.id, form.id) : 0]);
-  const refusal = forms.checkEligibility(form, member, stats, { total });
+  const refusal = forms.checkEligibility(form, member, stats, { total, web: source === 'web' });
   if (refusal) return { ok: false, error: 'refused', refusal };
   if (forms.missingRequired(form, answers).length) return { ok: false, error: 'missing' };
   const channel = await fetchTextChannel(guild, form.review_channel_id);
@@ -80,6 +80,7 @@ async function submitForm({ client, guild, form, member, answers }) {
   const submission = await formsDb.createSubmission({
     guild_id: guild.id, form_id: form.id, form_name: form.name, form_title: form.title, user_id: member.id,
     username: clip(user.username ?? member.displayName, 80), avatar_url: user.displayAvatarURL?.({ extension: 'png', size: 128 }) ?? null, answers,
+    ...(source === 'web' ? { source: 'web' } : {}),
   });
   try {
     const pings = (form.ping_role_ids ?? []).filter((id) => guild.roles.cache.has(id));
@@ -237,7 +238,7 @@ async function openThread(guild, submission) {
  * Posts a panel that opens `formList` in `channel`: the server's saved embed (`template`) with the buttons under it, or Petto's card.
  * Returns { ok, panel, message } or { ok: false, error } (no_forms, too_many, no_channel, no_permission, no_template, send_failed).
  */
-async function postPanel({ guild, channel, formList, style = 'buttons', template = null, title = null, description = null, color = null, createdBy = null }) {
+async function postPanel({ guild, channel, formList, style = 'buttons', template = null, title = null, description = null, color = null, createdBy = null, web = false }) {
   const lang = await guildLanguage(guild.id);
   if (!formList.length) return { ok: false, error: 'no_forms' };
   if (formList.length > 25) return { ok: false, error: 'too_many' };
@@ -247,7 +248,7 @@ async function postPanel({ guild, channel, formList, style = 'buttons', template
   if (allowed && !(allowed.has(PermissionFlagsBits.ViewChannel) && allowed.has(PermissionFlagsBits.SendMessages))) return { ok: false, error: 'no_permission' };
   const shape = style === 'select' ? 'select' : 'buttons';
   const panel = await formsDb.createPanel(guild.id, { channel_id: channel.id, form_ids: formList.map((f) => f.id), style: shape, template: clip(template, 100) || null, title: clip(title, 200) || null, description: clip(description, 2000) || null, color, created_by: createdBy });
-  const options = { style: shape, panelId: panel.id, lang };
+  const options = { style: shape, panelId: panel.id, lang, web };
   let payload = null;
   if (panel.template) {
     const saved = await templates.templatePayload(guild.id, panel.template, { guild, lang });

@@ -126,6 +126,7 @@ function normalizeForm(input, { maxQuestions = LIMITS.questions } = {}) {
     button_label: clip(input?.button_label, LIMITS.buttonLabel) || null,
     button_emoji: clip(input?.button_emoji, 64) || null,
     button_style: BUTTON_STYLES.includes(input?.button_style) ? input.button_style : 'primary',
+    web_enabled: input?.web_enabled !== false,
   };
 }
 
@@ -136,8 +137,9 @@ const DAY = 86_400_000;
  * submissions the form has. Returns null when they may, or `{ code, vars }`: closed, ended, empty, full, blocked, roles, account,
  * member, pending, limit or cooldown.
  */
-function checkEligibility(form, member, stats = {}, { total = 0, now = Date.now() } = {}) {
+function checkEligibility(form, member, stats = {}, { total = 0, now = Date.now(), web = false } = {}) {
   if (!form || form.status !== 'open') return { code: 'closed', vars: {} };
+  if (web && form.web_enabled === false) return { code: 'webOff', vars: {} };
   if (form.closes_at && Date.parse(form.closes_at) <= now) return { code: 'ended', vars: {} };
   if (!normalizeQuestions(form.questions).length) return { code: 'empty', vars: {} };
   if (form.max_total > 0 && total >= form.max_total) return { code: 'full', vars: {} };
@@ -274,6 +276,32 @@ function readPage(form, page, fields) {
   return { values, errors };
 }
 
+/**
+ * Every page of a form at once, from plain values (the website sends `{ <question id>: text | [values] }`), with the same checks as
+ * the Discord forms: { values, errors }.
+ */
+function readAll(form, input = {}) {
+  const source = input && typeof input === 'object' ? input : {};
+  const valueOf = (customId) => source[String(customId).replace(/^a_/, '')];
+  const fields = {
+    getTextInputValue: (customId) => { const v = valueOf(customId); return typeof v === 'string' ? v.slice(0, 5000) : ''; },
+    getStringSelectValues: (customId) => { const v = valueOf(customId); return (Array.isArray(v) ? v : typeof v === 'string' && v ? [v] : []).map(String).slice(0, 30); },
+  };
+  const values = {};
+  const errors = [];
+  pagesOf(form).forEach((_page, index) => {
+    const read = readPage(form, index, fields);
+    Object.assign(values, read.values);
+    errors.push(...read.errors);
+  });
+  return { values, errors };
+}
+
+/** The address of a form on the website. */
+function webUrl(form) {
+  return `https://petto.sbs/f/${form.id}`;
+}
+
 /** Every answer of a form, from the values collected page by page, as it is stored: [{ id, label, type, value }]. */
 function collectAnswers(form, values) {
   return normalizeQuestions(form?.questions).map((q) => {
@@ -349,6 +377,6 @@ module.exports = {
   FORM_LIMITS,
   PREFIX, QUESTION_TYPES, CHOICE_TYPES, STATUSES, BUTTON_STYLES, LIMITS, COLORS, NAME, SNOWFLAKE,
   clip, slugName, normalizeQuestion, normalizeQuestions, normalizeForm, checkEligibility, refusalText, isReviewer,
-  pagesOf, pageTitle, buildModal, readPage, collectAnswers, missingRequired, answerText, answersAsText, fillShortcuts,
+  pagesOf, pageTitle, buildModal, readPage, readAll, webUrl, collectAnswers, missingRequired, answerText, answersAsText, fillShortcuts,
   getDraft, saveDraft, dropDraft, DRAFT_TTL_MS,
 };

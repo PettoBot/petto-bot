@@ -645,4 +645,5 @@ module.exports = {
   'cmd.automation.form.question.remove.opt.form.desc': 'O formulário: o nome ou o número',
   'cmd.automation.form.retention.desc': 'Por quantos dias as respostas dos envios revisados ficam guardadas (30 por padrão).',
   'cmd.automation.form.retention.opt.days.desc': 'De 1 a 365; vazio mostra o atual',
+  'cmd.automation.form.panel.opt.web.desc': "Também um botão com link \"Preencher na web\" (--web yes)",
 };

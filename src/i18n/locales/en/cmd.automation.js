@@ -645,4 +645,5 @@ module.exports = {
   'cmd.automation.voicemaster.disconnect.desc': 'Disconnect a member from your channel.',
   'cmd.automation.voicemaster.disconnect.opt.user.desc': 'Member.',
   'cmd.automation.voicemaster.activity.desc': 'Create a Watch Together activity invite.',
+  'cmd.automation.form.panel.opt.web.desc': "Also a \"Fill on the web\" link button (--web yes)",
 };

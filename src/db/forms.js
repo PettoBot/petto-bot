@@ -25,6 +25,14 @@ async function getForm(guildId, ref) {
   return data ?? null;
 }
 
+/** A form by its id alone, for the website's page of a form (petto.sbs/f/<id>), which does not know the server. */
+async function getFormById(id) {
+  if (!/^\d{1,15}$/.test(String(id ?? ''))) return null;
+  const { data, error } = await database.from('forms').select('*').eq('id', Number(id)).maybeSingle();
+  if (error) throw error;
+  return data ?? null;
+}
+
 async function countForms(guildId) {
   const { count, error } = await database.from('forms').select('id', { count: 'exact', head: true }).eq('guild_id', gid(guildId));
   if (error) throw error;
@@ -202,6 +210,7 @@ async function deletePanel(guildId, id) {
 }
 
 module.exports = {
+  getFormById,
   NAME, RETENTION_DEFAULT, countStored, trimOldest, compactBefore, getFormConfig, setFormConfig, listRetentionConfigs, listForms, getForm, countForms, createForm, updateForm, deleteForm,
   createSubmission, getSubmission, updateSubmission, resolveSubmission, listSubmissions, memberStats, countFormSubmissions,
   createPanel, updatePanel, getPanel, listPanels, deletePanel,

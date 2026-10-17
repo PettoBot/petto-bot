@@ -66,6 +66,7 @@ function reviewCard({ submission, form = null, lang = currentLanguage(), pings =
   const created = member?.user?.createdTimestamp;
   if (created) facts.push(t(lang, 'forms.card.created', { time: `<t:${Math.floor(created / 1000)}:R>` }));
   if (member?.joinedTimestamp) facts.push(t(lang, 'forms.card.joined', { time: `<t:${Math.floor(member.joinedTimestamp / 1000)}:R>` }));
+  if (submission.source === 'web') facts.push(t(lang, 'forms.card.web'));
   const head = [
     ...(pings.length ? [pings.map((id) => `<@&${id}>`).join(' ')] : []),
     `## ${t(lang, 'forms.card.title', { form: clip(submission.form_title || form?.title || submission.form_name, 60), number: submission.number })}`,
@@ -102,8 +103,12 @@ function reviewCard({ submission, form = null, lang = currentLanguage(), pings =
 }
 
 /** The buttons (or the menu) that open the forms of a panel. At most 25 forms. */
-function panelRows(forms, { style = 'buttons', panelId = 0, lang = currentLanguage() } = {}) {
+function panelRows(forms, { style = 'buttons', panelId = 0, lang = currentLanguage(), web = false } = {}) {
   const list = forms.slice(0, 25);
+  // "Fill on the web": a link to petto.sbs/f/<id> for each form that allows it (at most five, one row).
+  const webForms = web ? list.filter((form) => form.web_enabled !== false).slice(0, 5) : [];
+  const webRow = webForms.length ? [new ActionRowBuilder().addComponents(webForms.map((form) => new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(`https://petto.sbs/f/${form.id}`)
+    .setLabel(clip(webForms.length === 1 ? t(lang, 'forms.panel.web.button') : t(lang, 'forms.panel.web.buttonFor', { form: form.button_label || form.title }), 80))))] : [];
   if (style === 'select') {
     const menu = new StringSelectMenuBuilder().setCustomId(`${PREFIX}s:${panelId}`).setPlaceholder(t(lang, 'forms.panel.pick.menu')).setMinValues(1).setMaxValues(1)
       .addOptions(list.map((form) => {
@@ -111,7 +116,7 @@ function panelRows(forms, { style = 'buttons', panelId = 0, lang = currentLangua
         if (form.description) option.description = clip(form.description.replace(/\s+/g, ' '), 100);
         return option;
       }));
-    return [new ActionRowBuilder().addComponents(menu)];
+    return [new ActionRowBuilder().addComponents(menu), ...webRow];
   }
   const rows = [];
   for (let i = 0; i < list.length; i += 5) {
@@ -121,7 +126,7 @@ function panelRows(forms, { style = 'buttons', panelId = 0, lang = currentLangua
       return button;
     })));
   }
-  return rows;
+  return rows.length < 5 ? [...rows, ...webRow] : rows;
 }
 
 /** The panel when the server did not pick a saved embed: a card with the title, the text and the buttons. */

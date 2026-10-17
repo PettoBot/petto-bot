@@ -3833,6 +3833,8 @@ create table if not exists forms (
   unique (guild_id, name)
 );
 create index if not exists idx_forms_guild on forms(guild_id, id);
+-- Filling a form on the website (petto.sbs/f/<id>), on unless a server turns it off; and where each submission came from.
+alter table forms add column if not exists web_enabled boolean not null default true;
 alter table forms enable row level security;
 
 create table if not exists form_submissions (
@@ -3863,6 +3865,9 @@ create table if not exists form_submissions (
 create index if not exists idx_form_submissions_guild on form_submissions(guild_id, status, created_at desc);
 create index if not exists idx_form_submissions_member on form_submissions(guild_id, form_id, user_id, status);
 alter table form_submissions add column if not exists compacted boolean not null default false;
+alter table form_submissions add column if not exists source text not null default 'discord';
+alter table form_submissions drop constraint if exists form_submissions_source_check;
+alter table form_submissions add constraint form_submissions_source_check check (source in ('discord', 'web'));
 create index if not exists idx_form_submissions_compact on form_submissions(reviewed_at) where status <> 'pending' and not compacted;
 alter table form_submissions enable row level security;
 
