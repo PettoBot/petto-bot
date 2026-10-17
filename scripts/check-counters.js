@@ -16,6 +16,10 @@ const updates = [];
 const warnings = [];
 const added = [];
 let premium = false;
+let announceRows = [];
+const memberDays = [];
+const pruned = [];
+const announced = [];
 stub('src/db/counters.js', {
   listAll: async () => rows,
   list: async (guildId) => rows.filter((r) => r.guild_id === guildId),
@@ -23,6 +27,12 @@ stub('src/db/counters.js', {
   get: async (guildId, channelId) => rows.find((r) => r.guild_id === guildId && r.channel_id === channelId) ?? null,
   update: async () => null,
   remove: async () => true,
+  saveMemberDays: async (day, list) => { memberDays.push({ day, list }); return list.length; },
+  pruneMemberDays: async (before) => { pruned.push(before); },
+  listAnnounce: async () => announceRows.filter((r) => r.enabled),
+  getAnnounce: async (guildId) => announceRows.find((r) => r.guild_id === guildId) ?? null,
+  saveAnnounce: async (guildId, patch) => { let row = announceRows.find((r) => r.guild_id === guildId); if (!row) { row = { guild_id: guildId, enabled: true, use_goals: true }; announceRows.push(row); } Object.assign(row, patch); return row; },
+  markAnnounced: async (guildId, number) => { announced.push([guildId, number]); const row = announceRows.find((r) => r.guild_id === guildId); if (row) row.last_announced = number; return true; },
 });
 stub('src/db/database.js', { from: () => ({ update: (patch) => ({ eq: (column, id) => { updates.push({ id, ...patch }); return Promise.resolve({}); } }) }) });
 stub('src/utils/logger.js', { info() {}, error(...args) { warnings.push(args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ')); }, warn(...args) { warnings.push(args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ')); } });
@@ -177,6 +187,8 @@ const job = require('../src/jobs/counterJob');
 const state = job._state;
 let clock = 50_000_000;
 state.now = () => clock;
+// The line of renames is checked on its own below; here it sends at once so each step can be looked at.
+state.queue.configure({ gapMs: 0, guildGapMs: 0, jitterMs: 0 });
 
 (async () => {
   const guild = makeGuild();
@@ -341,6 +353,309 @@ state.now = () => clock;
   assert.deepEqual(command.parseSetupText(''), {});
   assert.equal(command.prefixSubcommandAliases.preset, 'setup');
 
-  console.log('Checked counter names, formats, goals, clocks, the rename budget (2 per 10 minutes, merged, kept across restarts), problems, !counter create, the setup and the packs.');
+  // ── New types: online in a role, server tag wearers, Vanity supporters, messages today ──
+  {
+    const { setReader, loadValue } = require('../src/utils/counterSources');
+    const { createCounter } = require('../src/utils/counterSetup');
+    assert.equal(resolveOption('staffonline'), 'role_online'); assert.equal(resolveOption('servertag'), 'tag_users');
+    assert.equal(resolveOption('vanity'), 'vanity_users'); assert.equal(resolveOption('mensajes'), 'messages_today');
+    const ng = makeGuild(); ng.id = '91';
+    // Online in a role: a and the VIP role. a is online, b (VIP too) idle, c offline.
+    ng.members.cache.get('b').roles.cache.set('r1', true);
+    ng.presences.cache = coll([['a', { status: 'online' }], ['b', { status: 'idle' }], ['c', { status: 'offline' }]]);
+    assert.equal(countGuild(ng, 'role_online', 'en', { target_id: 'r1' }), 2, 'online, idle or busy members of the role');
+    ng.presences.cache.set('b', { status: 'offline' });
+    assert.equal(countGuild(ng, 'role_online', 'en', { target_id: 'r1' }), 1);
+    assert.equal(countGuild(ng, 'role_online', 'en', { target_id: 'nope' }), 0);
+    // Server tag: the members whose tag is this server's and is shown.
+    ng.members.cache.get('a').user.primaryGuild = { identityGuildId: '91', identityEnabled: true, tag: 'PET' };
+    ng.members.cache.get('b').user.primaryGuild = { identityGuildId: '91', identityEnabled: false, tag: 'PET' };
+    ng.members.cache.get('c').user.primaryGuild = { identityGuildId: '42', identityEnabled: true, tag: 'XX' };
+    assert.equal(countGuild(ng, 'tag_users', 'en', {}), 1, 'only a tag of this server that is shown');
+    // The database types: read at most once a minute per server, the last value kept when the database fails.
+    const reads = [];
+    let fail = false;
+    setReader(async (guildId, type) => { reads.push(type); if (fail) throw new Error('down'); return type === 'vanity_users' ? 12 : 3456; });
+    assert.equal(await loadValue('91', 'messages_today', { now: 1_000_000 }), 3456);
+    assert.equal(await loadValue('91', 'messages_today', { now: 1_030_000 }), 3456);
+    assert.deepEqual(reads, ['messages_today'], 'not read again within a minute');
+    assert.equal(countGuild(ng, 'messages_today', 'en', {}), 3456);
+    fail = true;
+    assert.equal(await loadValue('91', 'messages_today', { now: 1_100_000 }), 3456, 'the last value when the database does not answer');
+    fail = false;
+    assert.equal(await loadValue('91', 'members', { now: 1_100_000 }), null, 'other types are not read from the database');
+    // The job reads them before it renames.
+    const vch = channel('930', 'old', 2); ng.channels.cache.set(vch.id, vch);
+    const vRow = { guild_id: '91', channel_type: 'voice', prefix: '', suffix: '', enabled: true, interval_seconds: 60, rename_times: [], id: 930, channel_id: '930', counter_option: 'vanity_users', name_template: '💜 {count}' };
+    assert.equal(await job.processCounter(ng, vRow, { lang: 'en' }), 'renamed');
+    assert.deepEqual(vch.calls, ['💜 12']);
+    setReader(null);
+    // A role counter needs its role, the others make their default names.
+    rows = []; ng.members.me = { id: 'me' }; premium = true;
+    assert.equal((await createCounter(ng, { type: 'staffonline', createdBy: 'u' }, 'en')).error, 'needRole');
+    const ro = await createCounter(ng, { type: 'role_online', roleId: 'r1', createdBy: 'u' }, 'es');
+    assert.equal(ro.ok, true); assert.equal(ro.row.target_id, 'r1'); assert.equal(ro.name, '🟢 Staff conectados: 1');
+    assert.equal((await createCounter(ng, { type: 'tag', createdBy: 'u' }, 'en')).name, '🏷️ Tag wearers: 1');
+    assert.equal((await createCounter(ng, { type: 'messages', createdBy: 'u' }, 'pt-BR')).name, '💬 Mensagens hoje: 3456');
+    premium = false; rows = [];
+  }
+
+  // ── Targets: a category's name, a text channel's topic ─────────────────
+  {
+    const { createCounter } = require('../src/utils/counterSetup');
+    const { renderName: draw, normalizeForType: norm } = require('../src/utils/counterNames');
+    assert.equal(draw({ counter_option: 'members', name_template: 'x'.repeat(300), target: 'topic' }, 1).length, 300, 'a topic can be longer than a name');
+    assert.equal(draw({ counter_option: 'members', name_template: 'x'.repeat(300) }, 1).length, 100);
+    assert.equal(norm('Members: 12', 'topic'), 'Members: 12', 'a topic keeps capitals and spaces');
+    assert.deepEqual(counterCommand.parseCreateText('members --kind topic 👥 {count} members'), { type: 'members', kind: 'topic', template: '👥 {count} members' });
+    assert.deepEqual(counterCommand.parseCreateText('members category'), { type: 'members', kind: 'category' });
+    premium = true;
+    const tg = makeGuild(); tg.members.me = { id: 'me' }; rows = [];
+    const topicNew = await createCounter(tg, { type: 'members', kind: 'topic', template: 'We are {count}', createdBy: 'u' }, 'en');
+    assert.equal(topicNew.ok, true);
+    assert.equal(topicNew.channel.options.type, 0, 'a topic counter is a text channel');
+    assert.equal(topicNew.channel.options.name, 'server-stats', 'with a name of its own');
+    assert.equal(topicNew.channel.options.topic, 'We are 3', 'and the value in its topic');
+    assert.equal(topicNew.row.target, 'topic'); assert.equal(topicNew.row.channel_type, 'text');
+    const cat = await createCounter(tg, { type: 'members', kind: 'category', createdBy: 'u' }, 'en');
+    assert.equal(cat.channel.options.type, 4, 'a category counter'); assert.equal(cat.row.target, 'name');
+    const vc = channel('880', 'vc', 2); tg.channels.cache.set(vc.id, vc);
+    assert.equal((await createCounter(tg, { type: 'members', kind: 'topic', channelId: '880', createdBy: 'u' }, 'en')).error, 'topicNeedsText', 'a voice channel has no topic');
+    assert.equal((await createCounter(tg, { type: 'members', kind: 'hologram', createdBy: 'u' }, 'en')).error, 'unknownKind');
+    const general = channel('881', 'general', 0); tg.channels.cache.set(general.id, general);
+    const onGeneral = await createCounter(tg, { type: 'members', kind: 'topic', channelId: '881', template: '{count} members', createdBy: 'u' }, 'en');
+    assert.equal(onGeneral.ok, true); assert.equal(onGeneral.row.target, 'topic');
+    premium = false;
+
+    // The job edits the topic (never the name), with the same budget as names: two edits every ten minutes.
+    general.topics = [];
+    general.topic = 'old topic';
+    general.setTopic = async (next) => { general.topics.push(next); general.topic = next; return general; };
+    const topicRow = { guild_id: '1', channel_type: 'text', target: 'topic', prefix: '', suffix: '', enabled: true, interval_seconds: 60, rename_times: [], id: 881, channel_id: '881', counter_option: 'members', name_template: 'We are {count} 🎉' };
+    tg.id = '1';
+    assert.equal(await job.processCounter(tg, topicRow, { lang: 'en' }), 'renamed');
+    assert.deepEqual(general.topics, ['We are 3 🎉']); assert.deepEqual(general.calls, [], 'the name is left alone');
+    assert.equal(await job.processCounter(tg, topicRow, { lang: 'en' }), 'same', 'the same topic is not sent again');
+    clock += 1_000; tg.memberCount = 4; assert.equal(await job.processCounter(tg, topicRow, { lang: 'en' }), 'renamed');
+    clock += 1_000; tg.memberCount = 5; assert.equal(await job.processCounter(tg, topicRow, { lang: 'en' }), 'waiting', 'a third topic edit within ten minutes waits');
+    assert.equal(general.topics.length, 2);
+    state.timers.forEach((p) => clearTimeout(p.timer)); state.timers.clear();
+    // A topic counter on a channel without a topic says so instead of renaming it.
+    const vRow = { ...topicRow, id: 882, channel_id: '880' };
+    assert.equal(await job.processCounter(tg, vRow, { lang: 'en' }), 'problem');
+    assert.equal(vRow.problem, 'bad_target'); assert.deepEqual(vc.calls, []);
+    rows = [];
+  }
+
+  // ── Dashboard: order by dragging, what each counter says, members per day ──
+  {
+    const { planPositions } = require('../src/utils/counterOrder');
+    const at = (id, parentId, rawPosition, type = 2) => [id, { id, parentId, rawPosition, type }];
+    const chans = new Map([at('a', 'cat1', 1), at('b', 'cat1', 2), at('c', 'cat1', 5), at('d', 'cat2', 0), at('e', 'cat2', 3), at('k1', null, 0, 4), at('k2', null, 4, 4)]);
+    assert.deepEqual(planPositions(['a', 'b', 'c', 'd', 'e', 'k1', 'k2'], chans), [], 'the same order moves nothing');
+    assert.deepEqual(planPositions(['c', 'a', 'b'], chans), [{ channel: 'c', position: 1 }, { channel: 'a', position: 2 }, { channel: 'b', position: 5 }], 'counters swap the places they hold in their category');
+    assert.deepEqual(planPositions(['e', 'b', 'd', 'a', 'c'], chans), [{ channel: 'e', position: 0 }, { channel: 'd', position: 3 }, { channel: 'b', position: 1 }, { channel: 'a', position: 2 }], 'each category on its own');
+    assert.deepEqual(planPositions(['k2', 'k1'], chans), [{ channel: 'k2', position: 0 }, { channel: 'k1', position: 4 }], 'categories among themselves');
+    assert.deepEqual(planPositions(['x', 'a'], chans), [], 'unknown channels are skipped');
+    const same = new Map([at('p', 'c', 3), at('q', 'c', 3)]);
+    assert.deepEqual(planPositions(['q', 'p'], same), [{ channel: 'p', position: 4 }], 'equal positions get places one after another');
+    const { byPosition } = require('../src/db/counters');
+    void byPosition;
+
+    // What the dashboard shows for each counter.
+    const sg = makeGuild(); sg.presences.cache = coll([]);
+    const status = job.counterStatus(sg, { channel_id: '1', counter_option: 'online', enabled: true, last_updated_at: '2026-10-17T10:00:00Z', problem: null });
+    assert.deepEqual(status.badges, ['no_presences'], 'an online count without presences says so');
+    assert.equal(status.last_updated_at, Date.parse('2026-10-17T10:00:00Z'));
+    state.blockedUntil.set('2', clock + 60_000);
+    assert.deepEqual(job.counterStatus(makeGuild(), { channel_id: '2', counter_option: 'members', enabled: false, problem: 'missing_permission' }).badges, ['missing_permission', 'off', 'rate_limited']);
+    state.blockedUntil.delete('2');
+    const big = makeGuild(); big.memberCount = 80_000;
+    assert.deepEqual(job.counterStatus(big, { channel_id: '3', counter_option: 'bots_only', enabled: true }).badges, ['members_partial'], 'too many members to read them all');
+
+    // One row per server and day, at most once an hour, and the old days removed once a day.
+    const g1 = makeGuild(); g1.id = '1'; g1.memberCount = 120;
+    const g2 = makeGuild(); g2.id = '2'; g2.memberCount = 7;
+    const many = { guilds: { cache: new Map([['1', g1], ['2', g2]]) } };
+    const day0 = Date.UTC(2026, 9, 17, 12, 0, 0);
+    clock = day0;
+    state.memberDaysAt = 0; state.prunedDay = null;
+    assert.equal(await job.snapshotMembers(many), 2);
+    assert.deepEqual(memberDays.at(-1), { day: '2026-10-17', list: [{ guildId: '1', members: 120 }, { guildId: '2', members: 7 }] });
+    assert.deepEqual(pruned, ['2026-07-19'], '90 days are kept');
+    clock += 10 * 60_000; g1.memberCount = 121;
+    assert.equal(await job.snapshotMembers(many), 0, 'not again within the hour');
+    clock += 60 * 60_000;
+    assert.equal(await job.snapshotMembers(many), 2); assert.equal(memberDays.at(-1).list[0].members, 121, 'the last value of the day');
+    assert.equal(pruned.length, 1, 'pruned once a day');
+    clock = Date.UTC(2026, 9, 18, 6, 0, 0); // 1:00 on Oct 18 in Colombia
+    await job.snapshotMembers(many);
+    assert.equal(memberDays.at(-1).day, '2026-10-18'); assert.equal(pruned.length, 2);
+    clock = 70_000_000;
+  }
+
+  // ── The line of renames: many counters changing at once are spread out ──
+  {
+    const { createRenameQueue } = require('../src/utils/renameQueue');
+    let qt = 1_000_000;
+    const timers = [];
+    const setTimer = (fn, ms) => { const timer = { at: qt + ms, fn }; timers.push(timer); return timer; };
+    const clearTimer = (timer) => { const i = timers.indexOf(timer); if (i >= 0) timers.splice(i, 1); };
+    const flush = async () => { for (let i = 0; i < 8; i += 1) await new Promise((r) => setImmediate(r)); };
+    const advance = async (until) => {
+      for (;;) {
+        await flush();
+        timers.sort((a, b) => a.at - b.at);
+        if (!timers.length || timers[0].at > until) break;
+        const next = timers.shift();
+        qt = Math.max(qt, next.at);
+        next.fn();
+      }
+      qt = until;
+      await flush();
+    };
+    let rnd = 0;
+    const q = createRenameQueue({ now: () => qt, setTimer, clearTimer, random: () => rnd, gapMs: 300, guildGapMs: 2_500, jitterMs: 400, concurrency: 1 });
+    const ran = [];
+    const job1 = (key, guild) => () => { ran.push({ key, guild, at: qt }); return `done ${key}`; };
+    const results = [];
+    for (const [key, guild] of [['a1', 'A'], ['a2', 'A'], ['a3', 'A'], ['b1', 'B'], ['c1', 'C']]) q.push(key, guild, job1(key, guild)).then((value) => results.push([key, value]));
+    // Asked again while it waits: one rename, with the newest work, and both callers get its result.
+    const merged = q.push('a2', 'A', job1('a2-new', 'A'));
+    assert.equal(q.size(), 4, 'a1 went out at once, a2 is waiting once');
+    await advance(qt + 30_000);
+    assert.equal(await merged, 'done a2-new');
+    assert.deepEqual(ran.map((r) => r.key), ['a1', 'b1', 'c1', 'a2-new', 'a3'], 'other servers go in between, not the same server twice in a row');
+    for (let i = 1; i < ran.length; i += 1) assert.ok(ran[i].at - ran[i - 1].at >= 300, 'a gap between any two renames of the bot');
+    for (const guild of ['A']) {
+      const times = ran.filter((r) => r.guild === guild).map((r) => r.at);
+      for (let i = 1; i < times.length; i += 1) assert.ok(times[i] - times[i - 1] >= 2_500, 'a longer gap between two renames of the same server');
+    }
+    assert.equal(results.length, 5, 'every rename was sent and answered');
+    // The gaps have a random part, so many servers never line up on the same moments.
+    rnd = 0.5; ran.length = 0;
+    for (let i = 0; i < 4; i += 1) q.push(`x${i}`, `G${i}`, job1(`x${i}`, `G${i}`));
+    await advance(qt + 10_000);
+    for (let i = 1; i < ran.length; i += 1) assert.ok(ran[i].at - ran[i - 1].at >= 500, 'gap + jitter');
+    // A lot at once: a hundred counters in twenty servers go out over time, never two of one server within its gap.
+    rnd = 0; ran.length = 0;
+    const big = createRenameQueue({ now: () => qt, setTimer, clearTimer, random: () => 0, concurrency: 2 });
+    const start = qt;
+    for (let i = 0; i < 100; i += 1) big.push(`k${i}`, `S${i % 20}`, job1(`k${i}`, `S${i % 20}`));
+    await advance(qt + 120_000);
+    assert.equal(ran.length, 100);
+    const perSecond = new Map();
+    for (const r of ran) perSecond.set(Math.floor((r.at - start) / 1000), (perSecond.get(Math.floor((r.at - start) / 1000)) ?? 0) + 1);
+    assert.ok(Math.max(...perSecond.values()) <= 5, 'never more than a few renames in one second');
+    for (let s2 = 0; s2 < 20; s2 += 1) {
+      const times = ran.filter((r) => r.guild === `S${s2}`).map((r) => r.at);
+      for (let i = 1; i < times.length; i += 1) assert.ok(times[i] - times[i - 1] >= 2_500);
+    }
+
+    // The job uses the line: a full pass with many counters to rename only puts them in it, and they go out spread over time.
+    const g = makeGuild(); g.id = '55'; g.memberCount = 42;
+    const chans = [];
+    rows = [];
+    for (let i = 0; i < 6; i += 1) {
+      const c = channel(String(600 + i), 'old', 2); const orig = c.setName.bind(c);
+      c.setName = async (next) => { c.at = qt; return orig(next); };
+      g.channels.cache.set(c.id, c); chans.push(c);
+      rows.push({ guild_id: '55', channel_type: 'voice', prefix: '', suffix: '', enabled: true, interval_seconds: 60, rename_times: [], id: 600 + i, channel_id: c.id, counter_option: 'members', name_template: `C${i} {count}` });
+    }
+    const savedNow = state.now;
+    state.now = () => qt;
+    state.queue.clear();
+    state.queue.configure({ gapMs: 300, guildGapMs: 2_500, jitterMs: 400, random: () => 0, now: () => qt, setTimer, clearTimer });
+    const passed = await job.updateCounters({ guilds: { cache: new Map([['55', g]]) } }, { wait: false });
+    assert.equal(chans.filter((c) => c.calls.length).length <= 2, true, 'the pass returns before the renames are sent');
+    assert.ok(job.pendingRenameAt('605') !== null, 'a counter waiting in the line shows as about to change');
+    await advance(qt + 60_000);
+    assert.ok(chans.every((c) => c.calls.length === 1), 'every counter was renamed once');
+    const at = chans.map((c) => c.at).sort((a, b) => a - b);
+    for (let i = 1; i < at.length; i += 1) assert.ok(at[i] - at[i - 1] >= 2_500, 'the renames of one server are spread out');
+    state.now = savedNow;
+    state.queue.clear();
+    state.queue.configure({ gapMs: 0, guildGapMs: 0, jitterMs: 0, now: () => state.now(), setTimer: (fn, ms) => setTimeout(fn, ms), clearTimer: clearTimeout });
+    void passed;
+    rows = [];
+  }
+
+  // ── Milestone announcements ────────────────────────────────────────────
+  {
+    const { milestoneToAnnounce, nextMilestone, parseEvery, renderAnnounceText, announceVars } = require('../src/utils/counterAnnounce');
+    const goalRow = (goal = null) => ({ counter_option: 'goal', enabled: true, goal });
+    assert.deepEqual(milestoneToAnnounce({ count: 4523, last: null, every: 100 }), { start: 4523 }, 'the first look only sets where to start: nothing already passed is announced');
+    assert.equal(milestoneToAnnounce({ count: 4599, last: 4523, every: 100 }), null);
+    assert.deepEqual(milestoneToAnnounce({ count: 4600, last: 4523, every: 100 }), { milestone: 4600 }, 'every 100 members');
+    assert.equal(milestoneToAnnounce({ count: 4600, last: 4600, every: 100 }), null, 'never twice for the same number');
+    assert.equal(milestoneToAnnounce({ count: 4601, last: 4600, every: 100 }), null);
+    assert.equal(milestoneToAnnounce({ count: 4600, last: 4600, every: 100, goalRows: [goalRow()] }), null, 'members who leave and join again around it do not announce it again');
+    assert.deepEqual(milestoneToAnnounce({ count: 4850, last: 4600, every: 100 }), { milestone: 4800 }, 'a raid of joins announces only the highest number passed');
+    assert.deepEqual(milestoneToAnnounce({ count: 500, last: 480, goalRows: [goalRow(500)] }), { milestone: 500 }, 'the goal of a goal counter');
+    assert.equal(milestoneToAnnounce({ count: 499, last: 480, goalRows: [goalRow(500)] }), null);
+    assert.equal(milestoneToAnnounce({ count: 500, last: 480, goalRows: [goalRow(500)], useGoals: false }), null, 'goals can be left out');
+    assert.deepEqual(milestoneToAnnounce({ count: 90, last: 87, goalRows: [goalRow()] }), { milestone: 90 }, 'an automatic goal: the next round number the counter shows');
+    assert.deepEqual(milestoneToAnnounce({ count: 131, last: 87, goalRows: [goalRow()] }), { milestone: 125 }, 'the highest automatic goal passed (90, 100, 125)');
+    assert.equal(milestoneToAnnounce({ count: 600, last: 480, goalRows: [{ ...goalRow(500), enabled: false }] }), null, 'a counter that is off sets no goal');
+    assert.equal(nextMilestone({ count: 4523, last: 4500, every: 100 }), 4600);
+    assert.equal(nextMilestone({ count: 480, last: 470, every: 1000, goalRows: [goalRow(500)] }), 500);
+    assert.equal(nextMilestone({ count: 480, last: 470 }), null, 'nothing to announce');
+    assert.equal(parseEvery('100'), 100); assert.equal(parseEvery('1.000'), 1000); assert.equal(parseEvery('off'), null); assert.equal(parseEvery('-5'), undefined); assert.equal(parseEvery('abc'), undefined);
+    const vars = announceVars({ name: 'Petto Land' }, { count: 1002, milestone: 1000 }, 'es');
+    assert.equal(renderAnnounceText('🎉 {server} llegó a {goal} ({count}) {counter.goal} {unknown}', vars), '🎉 Petto Land llegó a 1.000 (1.002) 1.000 {unknown}');
+    const parse = counterCommand.parseAnnounceText;
+    assert.deepEqual(parse(''), {});
+    assert.deepEqual(parse('<#123456789012345678> 🎉 {goal} members!'), { setting: 'channel', value: '<#123456789012345678>', message: '🎉 {goal} members!' });
+    assert.deepEqual(parse('every 100'), { setting: 'every', value: '100' });
+    assert.deepEqual(parse('cada 50'), { setting: 'every', value: '50' });
+    assert.deepEqual(parse('message Hello {server}'), { setting: 'message', value: 'Hello {server}' });
+    assert.deepEqual(parse('embed off'), { setting: 'embed', value: 'off' });
+    assert.deepEqual(parse('test'), { setting: 'test' });
+    assert.equal(counterCommand.prefixSubcommandAliases.milestone, 'announce');
+
+    // The job: the first look starts from the members of now, a milestone is saved before it is sent, never sent twice.
+    const g = makeGuild();
+    g.id = '77'; g.name = 'Petto Land'; g.memberCount = 4523;
+    const sent = [];
+    const hall = { id: '500', name: 'hall', type: 0, async send(payload) { sent.push(payload); return payload; } };
+    g.channels.cache.set(hall.id, hall);
+    announceRows = [{ guild_id: '77', enabled: true, channel_id: '500', message: '🎉 {server}: {goal} members (now {count})', embed_name: null, every: 100, use_goals: true, last_announced: null }];
+    rows = [];
+    const announceClient = { guilds: { cache: new Map([['77', g]]) } };
+    await job.updateCounters(announceClient);
+    assert.equal(sent.length, 0, 'the first look announces nothing');
+    assert.deepEqual(announced.at(-1), ['77', 4523]);
+    g.memberCount = 4600;
+    assert.equal(await job.checkMilestone(g, { lang: 'en' }), 4600);
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].content, '🎉 Petto Land: 4,600 members (now 4,600)');
+    assert.deepEqual(sent[0].allowedMentions, { parse: [] }, 'an announcement pings nobody');
+    assert.deepEqual(announced.at(-1), ['77', 4600], 'the number is saved');
+    g.memberCount = 4599; assert.equal(await job.checkMilestone(g, { lang: 'en' }), null);
+    g.memberCount = 4600; assert.equal(await job.checkMilestone(g, { lang: 'en' }), null, 'leaving and joining again does not announce 4,600 twice');
+    // A restart reads the saved number: still not announced again.
+    job._state.announce.clear();
+    await job.updateCounters(announceClient);
+    assert.equal(await job.checkMilestone(g, { lang: 'en' }), null);
+    assert.equal(sent.length, 1);
+    // Two looks at once send one message.
+    g.memberCount = 4700;
+    const both = await Promise.all([job.checkMilestone(g, { lang: 'en' }), job.checkMilestone(g, { lang: 'en' })]);
+    assert.deepEqual(both.filter(Boolean), [4700]); assert.equal(sent.length, 2);
+    // Without the right to write there, nothing is sent and it is said once.
+    hall.permissionsFor = () => ({ has: () => false }); g.members.me = { id: 'me' };
+    g.memberCount = 4800;
+    assert.equal(await job.checkMilestone(g, { lang: 'en' }), null); assert.equal(sent.length, 2);
+    assert.ok(warnings.some((w) => w.includes('milestone announcement') && w.includes('500')));
+    // The default text in each language when the server wrote none.
+    hall.permissionsFor = () => ({ has: () => true });
+    announceRows[0].message = '';
+    job._state.announce.get('77').message = '';
+    assert.equal(await job.checkMilestone(g, { lang: 'es' }), 4800);
+    assert.equal(sent.at(-1).content, '🎉 ¡**Petto Land** acaba de llegar a **4.800** miembros! Gracias a todos.');
+    rows = [];
+  }
+
+  console.log('Checked counter names, formats, goals, clocks, the rename budget (2 per 10 minutes, merged, kept across restarts), problems, !counter create, the setup and the packs, the new types (online in a role, server tag, Vanity, messages today), category and topic counters, the order and status for the dashboard, members per day, the line that spreads renames over time, and milestone announcements.');
   process.exit(0);
 })().catch((error) => { console.error(error); process.exit(1); });

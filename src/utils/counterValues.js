@@ -3,6 +3,12 @@
 const { t, currentLanguage } = require('../i18n');
 const { NEEDS_PRESENCES, nextGoal, timeValue } = require('./counterNames');
 
+// What the database said for the types read from it (Vanity members, messages of the day), per server: `${guildId}:${type}` -> { value, at }.
+// The counter job and the dashboard fill it (see counterSources.js); here it is only read, so counting stays without requests.
+const stored = new Map();
+function storeValue(guildId, type, value, at = Date.now()) { stored.set(`${guildId}:${type}`, { value, at }); }
+function storedValue(guildId, type) { return stored.get(`${guildId}:${type}`) ?? null; }
+
 const sizeOf = (collection, fn) => {
   if (!collection) return 0;
   if (typeof collection.filter === 'function') {
@@ -66,6 +72,21 @@ function countGuild(guild, option, lang = currentLanguage(), row = {}, now = Dat
       if (!role) return 0;
       return sizeOf(members, (m) => m.roles?.cache?.has?.(role.id) ?? m._roles?.includes?.(role.id));
     }
+    case 'role_online': {
+      // The members of a role who are online, idle or busy (from the presences, like the online counts).
+      const role = row.target_id ? guild.roles?.cache?.get(row.target_id) : null;
+      if (!role) return 0;
+      return sizeOf(members, (m) => (m.roles?.cache?.has?.(role.id) ?? m._roles?.includes?.(role.id)) && ['online', 'idle', 'dnd'].includes(presences?.get?.(m.id)?.status));
+    }
+    case 'tag_users': {
+      // Members who wear this server's tag (the Server Tag Discord shows next to their name).
+      return sizeOf(members, (m) => {
+        const tag = m.user?.primaryGuild;
+        return Boolean(tag && String(tag.identityGuildId ?? '') === String(guild.id) && tag.identityEnabled !== false && tag.tag);
+      });
+    }
+    case 'vanity_users':
+    case 'messages_today': return Number(storedValue(guild.id, option)?.value ?? 0) || 0;
     case 'clock':
     case 'date': return timeValue(option, { now, timeZone: row.timezone || 'UTC', lang });
     default: return 0;
@@ -85,4 +106,4 @@ function hasPresences(guild) {
   return Boolean(guild.presences?.cache && guild.presences.cache.size > 0);
 }
 
-module.exports = { countGuild, extrasFor, hasPresences, formatDuration, NEEDS_PRESENCES };
+module.exports = { countGuild, extrasFor, hasPresences, formatDuration, storeValue, storedValue, NEEDS_PRESENCES };

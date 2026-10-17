@@ -70,6 +70,7 @@ module.exports = {
   'config.module.webhookconfig.title': 'Webhooks',
   'config.module.stickymessageconfig.title': 'Mensagens fixas',
   'config.source.poj_channels': 'Canais',
+  'config.source.counter_announce_config': 'Anúncios de metas',
   'config.source.automod_config': 'AutoMod',
   'config.source.antinuke_config': 'Anti-nuke',
   'config.source.antinuke_rules': 'Proteções anti-nuke',

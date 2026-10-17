@@ -3919,3 +3919,37 @@ create table if not exists form_panels (
 );
 create index if not exists idx_form_panels_guild on form_panels(guild_id, id);
 alter table form_panels enable row level security;
+
+-- Counters 3: a message when the server reaches a member milestone (the goal of a goal counter, and/or every N members). One row per
+-- server. `message` is the text ({count} {goal} {server}); `embed_name` a saved embed used instead. `last_announced` is the last member
+-- number announced, so the same number is never announced twice (null: start from the members of the next look, without announcing).
+create table if not exists counter_announce_config (
+  guild_id        text primary key references guilds(guild_id) on delete cascade,
+  enabled         boolean not null default true,
+  channel_id      text,
+  message         text not null default '' check (char_length(message) <= 2000),
+  embed_name      text,
+  every           integer check (every is null or every between 1 and 100000000),
+  use_goals       boolean not null default true,
+  last_announced  integer,
+  updated_at      timestamptz not null default now()
+);
+alter table counter_announce_config enable row level security;
+
+-- Counters 3: where a counter shows its value. `name` is the channel's (or category's) name; `topic` the topic of a text or announcement
+-- channel (topic edits share the channel's budget of two edits every ten minutes). `position` is the order of the dashboard list.
+alter table server_counters add column if not exists target text not null default 'name';
+alter table server_counters drop constraint if exists server_counters_target_check;
+alter table server_counters add constraint server_counters_target_check check (target in ('name', 'topic'));
+alter table server_counters add column if not exists position integer;
+
+-- The member count of each server once a day (the last value of the day, in Colombia's day like the other daily stats), written by the
+-- counter job and drawn as a small line on the dashboard's Counters page. Kept for 90 days.
+create table if not exists guild_member_days (
+  guild_id text not null,
+  day      date not null,
+  members  integer not null check (members >= 0),
+  primary key (guild_id, day)
+);
+create index if not exists idx_guild_member_days_day on guild_member_days(day);
+alter table guild_member_days enable row level security;

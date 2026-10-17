@@ -13,9 +13,13 @@ const database = require('../db/database');
 const logger = require('../utils/logger');
 const config = require('../config');
 const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency');
-const { renderName, planRename, recentRenames, NEEDS_MEMBERS, NEEDS_PRESENCES, RENAME_WINDOW_MS } = require('../utils/counterNames');
+const { renderName, planRename, recentRenames, targetOf, NEEDS_MEMBERS, NEEDS_PRESENCES, RENAME_WINDOW_MS } = require('../utils/counterNames');
 const { countGuild, extrasFor } = require('../utils/counterValues');
+const { milestoneToAnnounce, announcePayload, announceChannel } = require('../utils/counterAnnounce');
+const { createRenameQueue } = require('../utils/renameQueue');
+const { loadValue } = require('../utils/counterSources');
 const { t, guildLanguage } = require('../i18n');
+const { botDay } = require('../utils/botTime');
 
 const INTERVAL_MS = 60_000;
 const RENAME_TIMEOUT_MS = 15_000;
@@ -30,7 +34,7 @@ const QUICK_DEBOUNCE_MS = 3_000;
 const SLOW_DEBOUNCE_MS = 20_000;
 
 // Which counters an event can change.
-const MEMBER_TYPES = ['members', 'goal', 'users_only', 'bots_only', 'pending_members', 'booster_count', 'role_members', 'online', 'status_online', 'status_idle', 'status_dnd', 'in_voice'];
+const MEMBER_TYPES = ['members', 'goal', 'users_only', 'bots_only', 'pending_members', 'booster_count', 'role_members', 'role_online', 'tag_users', 'online', 'status_online', 'status_idle', 'status_dnd', 'in_voice'];
 const CHANNEL_TYPES = ['all_channels', 'text_channels', 'voice_channels', 'categories', 'announcement_channels', 'staging_channels'];
 
 const state = {
@@ -46,8 +50,16 @@ const state = {
   dirty: new Map(), // guild id -> { timer, at }
   memberFetchedAt: new Map(),
   lastWarnAt: new Map(),
+  announce: new Map(), // guild id -> its milestone announcement settings (enabled ones only)
+  announcing: new Set(), // guild ids whose milestone is being looked at
+  milestoneTimers: new Map(), // guild id -> timer of the next look after joins
   now: () => Date.now(),
+  queue: null, // the line of every rename of the bot (renameQueue.js)
+  lastPassAt: 0, // when the last full pass started
+  memberDaysAt: 0, // when the member counts of the day were last saved
+  prunedDay: null,
 };
+state.queue = createRenameQueue({ now: () => state.now() });
 
 function withTimeout(promise, ms, label) {
   let timer;
@@ -101,7 +113,9 @@ async function setProblem(guild, row, problem, { disable = false, detail = '' } 
   if (row.problem !== problem || disable) {
     // A permission problem is worded so the server's notices pick it up and tell the staff (once, and again only if it comes back).
     // i18n-ignore: log
-    const text = problem === 'missing_permission' ? `Missing Permissions: Petto needs Manage Channels and View Channel on the counter channel ${row.channel_id}.${detail ? ` ${detail}` : ''}` : `Counter channel ${row.channel_id} is gone; the counter was turned off.`;
+    const text = problem === 'missing_permission' ? `Missing Permissions: Petto needs Manage Channels and View Channel on the counter channel ${row.channel_id}.${detail ? ` ${detail}` : ''}`
+      : problem === 'bad_target' ? `Counter channel ${row.channel_id} has no topic (only text and announcement channels do); the counter waits until it shows in the name.` // i18n-ignore: log
+        : `Counter channel ${row.channel_id} is gone; the counter was turned off.`; // i18n-ignore: log
     logger.warn({ guildId: guild.id, channelId: row.channel_id, action: 'counter' }, text);
   }
   await saveRow(row, patch);
@@ -142,27 +156,30 @@ function canManage(guild, channel) {
 /** The name a counter wants now, with the value it shows. */
 async function wantedNameOf(guild, row, lang) {
   await ensureMembers(guild, row.counter_option);
+  await loadValue(guild.id, row.counter_option, { now: state.now() });
   const now = state.now();
   const value = countGuild(guild, row.counter_option, lang, row, now);
   return { name: renderName(row, value, lang, extrasFor(guild, row, value, now)), value };
 }
 
 /**
- * Looks at one counter: renames it now, plans the rename for when the budget allows, or does nothing.
- * Returns what happened: 'renamed', 'waiting', 'same', 'off', 'problem'.
+ * What a counter needs now: { result } when there is nothing to send ('off', 'problem', 'waiting', 'same'), or { channel, name, plan }
+ * with the plan of the budget ('now' or 'later').
  */
-async function processCounter(guild, row, { lang = null } = {}) {
-  if (!row.enabled) { cancelTimer(row.channel_id); return 'off'; }
+async function evaluate(guild, row, language) {
+  if (!row.enabled) { cancelTimer(row.channel_id); return { result: 'off' }; }
   const channel = guild.channels.cache.get(row.channel_id);
-  if (!channel) { cancelTimer(row.channel_id); await setProblem(guild, row, 'missing_channel', { disable: true }); return 'problem'; }
-  if (!canManage(guild, channel)) { await setProblem(guild, row, 'missing_permission'); return 'problem'; }
-  if (state.inFlight.has(channel.id)) return 'waiting';
-  const language = lang ?? await guildLanguage(guild.id);
+  if (!channel) { cancelTimer(row.channel_id); await setProblem(guild, row, 'missing_channel', { disable: true }); return { result: 'problem' }; }
+  if (!canManage(guild, channel)) { await setProblem(guild, row, 'missing_permission'); return { result: 'problem' }; }
+  if (state.inFlight.has(channel.id)) return { result: 'waiting' };
+  const topic = targetOf(row) === 'topic';
+  // Only text and announcement channels have a topic.
+  if (topic && channel.type !== 0 && channel.type !== 5) { await setProblem(guild, row, 'bad_target'); return { result: 'problem' }; }
   const { name } = await wantedNameOf(guild, row, language);
   const plan = planRename({
-    currentName: channel.name,
+    currentName: topic ? String(channel.topic ?? '') : channel.name,
     wantedName: name,
-    channelType: row.channel_type,
+    channelType: topic ? 'topic' : row.channel_type,
     lastWanted: state.lastWanted.get(channel.id),
     lastStored: state.lastStored.get(channel.id),
     times: timesOf(row),
@@ -173,19 +190,24 @@ async function processCounter(guild, row, { lang = null } = {}) {
   if (plan.action === 'skip') {
     cancelTimer(channel.id);
     if (row.problem && row.problem !== 'missing_channel') await clearProblem(row);
-    return 'same';
+    return { result: 'same' };
   }
-  if (plan.action === 'later') { scheduleLater(guild.id, row, plan.at); return 'waiting'; }
+  if (plan.action === 'later') { scheduleLater(guild.id, row, plan.at); return { result: 'waiting' }; }
+  return { channel, name, plan };
+}
 
+/** Sends one rename to Discord. The budget counts it from the moment it is asked for, whatever Discord answers. */
+async function applyRename(guild, row, channel, name, language) {
   cancelTimer(channel.id);
   state.inFlight.add(channel.id);
-  // The rename counts against the budget from the moment it is asked for, whatever Discord answers.
   const times = [...timesOf(row), state.now()];
   state.renameTimes.set(channel.id, times);
+  const topic = targetOf(row) === 'topic';
   try {
-    const renamed = await withTimeout(channel.setName(name, t(language, 'counters.renameReason')), RENAME_TIMEOUT_MS, 'channel rename'); // i18n-ignore: 'channel rename' is a log label
+    const edit = topic ? channel.setTopic(name, t(language, 'counters.renameReason')) : channel.setName(name, t(language, 'counters.renameReason'));
+    const renamed = await withTimeout(edit, RENAME_TIMEOUT_MS, 'channel rename'); // i18n-ignore: 'channel rename' is a log label
     state.lastWanted.set(channel.id, name);
-    state.lastStored.set(channel.id, renamed?.name ?? name);
+    state.lastStored.set(channel.id, (topic ? renamed?.topic : renamed?.name) ?? name);
     state.problems.delete(row.id);
     await saveRow(row, { rename_times: times, last_name: name, last_updated_at: new Date(state.now()).toISOString(), ...(row.problem ? { problem: null, problem_at: null } : {}) });
     return 'renamed';
@@ -204,6 +226,29 @@ async function processCounter(guild, row, { lang = null } = {}) {
   }
 }
 
+/**
+ * Looks at one counter: renames it (through the line of every rename of the bot), plans the rename for when the budget allows, or does
+ * nothing. Returns what happened: 'renamed', 'waiting', 'same', 'off', 'problem'.
+ */
+async function processCounter(guild, row, { lang = null } = {}) {
+  const started = await startCounter(guild, row, lang ?? await guildLanguage(guild.id));
+  return typeof started === 'string' ? started : started.queued;
+}
+
+/** Looks at a counter and, when it must be renamed, puts the rename in the line. Resolves (the line's promise) when it is done. */
+async function startCounter(guild, row, language) {
+  const first = await evaluate(guild, row, language);
+  if (first.result) return first.result;
+  const done = state.queue.push(first.channel.id, guild.id, async () => {
+    // Its turn came: the value, the channel and the budget are read again, as they are at this moment.
+    const fresh = (state.rowsByGuild.get(guild.id) ?? []).find((r) => r.id === row.id) ?? row;
+    const now = await evaluate(guild, fresh, language);
+    if (now.result) return now.result;
+    return applyRename(guild, fresh, now.channel, now.name, language);
+  });
+  return { queued: done };
+}
+
 async function loadRows() {
   const rows = await countersDb.listAll();
   const grouped = new Map();
@@ -212,11 +257,80 @@ async function loadRows() {
     grouped.get(row.guild_id).push(row);
   }
   state.rowsByGuild = grouped;
+  try {
+    state.announce = new Map((await countersDb.listAnnounce()).map((config) => [config.guild_id, config]));
+  } catch (err) {
+    // i18n-ignore: log
+    warnOnce('announce:list', { action: 'counter-announce' }, `Could not read the milestone announcements: ${err.message}`);
+  }
   return grouped;
 }
 
-/** Looks at every counter of one server, reading its rows again first when `reload` is set (after a change from a command or the dashboard). */
-async function refreshGuildCounters(client, guildId, { reload = false, channelId = null } = {}) {
+/**
+ * Looks at the member count of a server and announces the milestone it reached, if any. The number is saved first, so a crash, a
+ * restart or two looks at once never send it twice. Returns the number announced, or null.
+ */
+async function checkMilestone(guild, { lang = null } = {}) {
+  const config = state.announce.get(guild.id);
+  if (!config?.enabled || !config.channel_id || state.announcing.has(guild.id)) return null;
+  state.announcing.add(guild.id);
+  try {
+    const count = guild.memberCount ?? guild.members?.cache?.size ?? 0;
+    const plan = milestoneToAnnounce({ count, last: config.last_announced, every: config.every, goalRows: state.rowsByGuild.get(guild.id) ?? [], useGoals: config.use_goals !== false });
+    if (!plan) return null;
+    if (plan.start !== undefined) {
+      config.last_announced = plan.start;
+      await countersDb.markAnnounced(guild.id, plan.start).catch(() => {});
+      return null;
+    }
+    const channel = announceChannel(guild, config);
+    if (!channel) {
+      // i18n-ignore: log
+      warnOnce(`announce:${guild.id}`, { guildId: guild.id, channelId: config.channel_id, action: 'counter-announce' }, `Missing Permissions: Petto cannot send the milestone announcement in channel ${config.channel_id} (it needs View Channel and Send Messages).`);
+      return null;
+    }
+    config.last_announced = plan.milestone;
+    await countersDb.markAnnounced(guild.id, plan.milestone);
+    const language = lang ?? await guildLanguage(guild.id);
+    const payload = await announcePayload(guild, channel, config, { count, milestone: plan.milestone }, language);
+    await channel.send(payload).catch((err) => {
+      // i18n-ignore: log
+      warnOnce(`announce-send:${guild.id}`, { guildId: guild.id, channelId: channel.id, action: 'counter-announce' }, `Could not send the milestone announcement: ${err.message}`);
+    });
+    return plan.milestone;
+  } catch (err) {
+    logger.error('Counter milestone check failed:', err);
+    return null;
+  } finally {
+    state.announcing.delete(guild.id);
+  }
+}
+
+/** Members joined: the milestone is looked at after a short wait (a raid of joins is one look). */
+function scheduleMilestone(guildId, delay = QUICK_DEBOUNCE_MS) {
+  if (!state.announce.get(guildId)?.enabled || state.milestoneTimers.has(guildId)) return false;
+  const timer = setTimeout(() => {
+    state.milestoneTimers.delete(guildId);
+    const guild = state.client?.guilds?.cache?.get(guildId);
+    if (guild) checkMilestone(guild).catch(() => {});
+  }, delay);
+  timer.unref?.();
+  state.milestoneTimers.set(guildId, timer);
+  return true;
+}
+
+/** Reads the announcement settings of one server again (after a change from `!counter announce` or the dashboard). */
+async function reloadAnnounce(guildId) {
+  const config = await countersDb.getAnnounce(guildId);
+  if (config?.enabled) state.announce.set(guildId, config); else state.announce.delete(guildId);
+  return config;
+}
+
+/**
+ * Looks at every counter of one server, reading its rows again first when `reload` is set (after a change from a command or the dashboard).
+ * The renames it needs all go in the line at once; with `wait: false` it does not wait for them to be sent (the full pass every minute).
+ */
+async function refreshGuildCounters(client, guildId, { reload = false, channelId = null, wait = true } = {}) {
   if (client) state.client = client;
   const guild = state.client?.guilds?.cache?.get(guildId);
   if (!guild) return [];
@@ -225,27 +339,91 @@ async function refreshGuildCounters(client, guildId, { reload = false, channelId
     if (rows.length) state.rowsByGuild.set(guildId, rows); else state.rowsByGuild.delete(guildId);
   }
   const lang = await guildLanguage(guildId);
-  const results = [];
+  const started = [];
   for (const row of state.rowsByGuild.get(guildId) ?? []) {
     if (channelId && row.channel_id !== channelId) continue;
-    results.push({ channelId: row.channel_id, result: await processCounter(guild, row, { lang }) });
+    started.push({ channelId: row.channel_id, result: await startCounter(guild, row, lang) });
   }
-  return results;
+  if (!channelId) await checkMilestone(guild, { lang });
+  if (!wait) {
+    for (const entry of started) if (typeof entry.result !== 'string') entry.result.queued.catch((err) => logger.error('Counter rename failed:', err));
+    return started.map((entry) => ({ channelId: entry.channelId, result: typeof entry.result === 'string' ? entry.result : 'queued' }));
+  }
+  return Promise.all(started.map(async (entry) => ({ channelId: entry.channelId, result: typeof entry.result === 'string' ? entry.result : await entry.result.queued })));
 }
 
-/** The time of the next rename a counter is waiting for, if any (for the dashboard and the list). */
+/** The time of the next rename a counter is waiting for, if any (for the dashboard and the list). One waiting in the line goes now. */
 function pendingRenameAt(channelId) {
-  return state.timers.get(channelId)?.at ?? null;
+  return state.timers.get(channelId)?.at ?? (state.queue.queuedAt(channelId) !== null ? state.now() : null);
 }
 
-async function updateCounters(client) {
+async function updateCounters(client, { wait = true } = {}) {
   state.client = client;
+  state.lastPassAt = state.now();
   const grouped = await loadRows();
   await forEachWithConcurrency(grouped, async ([guildId]) => {
     const guild = client.guilds.cache.get(guildId);
     if (!guild) return;
-    await refreshGuildCounters(client, guildId);
+    await refreshGuildCounters(client, guildId, { wait });
   }, config.jobConcurrency);
+  // Servers that announce milestones without having counters.
+  for (const guildId of state.announce.keys()) {
+    if (grouped.has(guildId)) continue;
+    const guild = client.guilds.cache.get(guildId);
+    if (guild) await checkMilestone(guild);
+  }
+}
+
+const MEMBER_DAYS_EVERY_MS = 60 * 60_000;
+const MEMBER_DAYS_KEEP = 90;
+
+/**
+ * Saves the member count of every server of the bot for today (one row per server and day, the last value wins), at most once an hour,
+ * and once a day removes the days older than 90. For the small line of members on the dashboard.
+ */
+async function snapshotMembers(client, { force = false } = {}) {
+  const now = state.now();
+  if (!force && now - state.memberDaysAt < MEMBER_DAYS_EVERY_MS) return 0;
+  state.memberDaysAt = now;
+  const day = botDay(new Date(now));
+  const rows = [...(client?.guilds?.cache?.values?.() ?? [])].filter((guild) => typeof guild.memberCount === 'number').map((guild) => ({ guildId: guild.id, members: guild.memberCount }));
+  try {
+    const saved = await countersDb.saveMemberDays(day, rows);
+    if (state.prunedDay !== day) {
+      state.prunedDay = day;
+      await countersDb.pruneMemberDays(botDay(new Date(now - MEMBER_DAYS_KEEP * 86_400_000)));
+    }
+    return saved;
+  } catch (err) {
+    // i18n-ignore: log
+    warnOnce('member-days', { action: 'counter-member-days' }, `Could not save the member counts of the day: ${err.message}`);
+    return 0;
+  }
+}
+
+/**
+ * What the dashboard shows about one counter besides its name: when it changed last, when it changes next, and the small problems that
+ * are not saved on the row (no presences for an online count, a server too big to read every member, a rate limit from Discord).
+ */
+function counterStatus(guild, row) {
+  const now = state.now();
+  const badges = [];
+  if (row.problem) badges.push(row.problem);
+  if (row.enabled === false) badges.push('off');
+  if (NEEDS_PRESENCES.has(row.counter_option) || row.counter_option === 'role_online') {
+    if (!guild.presences?.cache?.size) badges.push('no_presences');
+  }
+  if ((NEEDS_MEMBERS.has(row.counter_option)) && (guild.memberCount ?? 0) > MEMBER_FETCH_MAX_GUILD) badges.push('members_partial');
+  const blocked = state.blockedUntil.get(row.channel_id) ?? 0;
+  if (blocked > now) badges.push('rate_limited');
+  const pending = pendingRenameAt(row.channel_id);
+  return {
+    badges,
+    last_updated_at: row.last_updated_at ? Date.parse(row.last_updated_at) || null : null,
+    next_rename_at: pending,
+    queued: state.queue.queuedAt(row.channel_id) !== null,
+    next_check_at: state.lastPassAt ? state.lastPassAt + INTERVAL_MS : null,
+  };
 }
 
 /** Something a counter of this server may show changed: the counters of those types are looked at after a short wait. */
@@ -258,7 +436,7 @@ function markDirty(guildId, types, delay = QUICK_DEBOUNCE_MS) {
   if (pending) clearTimeout(pending.timer);
   const timer = setTimeout(() => {
     state.dirty.delete(guildId);
-    refreshGuildCounters(state.client, guildId).catch((err) => logger.error('Counter update failed:', err));
+    refreshGuildCounters(state.client, guildId, { wait: false }).catch((err) => logger.error('Counter update failed:', err));
   }, delay);
   timer.unref?.();
   state.dirty.set(guildId, { timer, at });
@@ -268,12 +446,14 @@ function markDirty(guildId, types, delay = QUICK_DEBOUNCE_MS) {
 /** The events that change what counters show. Each one only wakes up the servers that have a counter of that kind. */
 function attachCounterEvents(client) {
   const on = (event, fn) => client.on(event, (...args) => { try { fn(...args); } catch (err) { logger.error('Counter event failed:', err); } });
-  on(Events.GuildMemberAdd, (member) => markDirty(member.guild.id, MEMBER_TYPES));
+  on(Events.GuildMemberAdd, (member) => { markDirty(member.guild.id, MEMBER_TYPES); scheduleMilestone(member.guild.id); });
   on(Events.GuildMemberRemove, (member) => markDirty(member.guild.id, MEMBER_TYPES));
   on(Events.GuildMemberUpdate, (before, after) => {
     if (before.pending !== after.pending || Boolean(before.premiumSince) !== Boolean(after.premiumSince) || before.roles?.cache?.size !== after.roles?.cache?.size) {
-      markDirty(after.guild.id, ['pending_members', 'booster_count', 'role_members']);
+      markDirty(after.guild.id, ['pending_members', 'booster_count', 'role_members', 'role_online']);
     }
+    const tag = (m) => `${m.user?.primaryGuild?.identityGuildId ?? ''}:${m.user?.primaryGuild?.identityEnabled ?? ''}:${m.user?.primaryGuild?.tag ?? ''}`;
+    if (tag(before) !== tag(after)) markDirty(after.guild.id, ['tag_users'], SLOW_DEBOUNCE_MS);
   });
   on(Events.GuildUpdate, (before, after) => {
     if (before.premiumSubscriptionCount !== after.premiumSubscriptionCount || before.premiumTier !== after.premiumTier) markDirty(after.id, ['boosts', 'boost_level']);
@@ -286,7 +466,7 @@ function attachCounterEvents(client) {
     markDirty(channel.guild.id, CHANNEL_TYPES);
   });
   on(Events.GuildRoleCreate, (role) => markDirty(role.guild.id, ['roles']));
-  on(Events.GuildRoleDelete, (role) => markDirty(role.guild.id, ['roles', 'role_members']));
+  on(Events.GuildRoleDelete, (role) => markDirty(role.guild.id, ['roles', 'role_members', 'role_online']));
   on(Events.GuildEmojiCreate, (emoji) => markDirty(emoji.guild.id, ['emojis']));
   on(Events.GuildEmojiDelete, (emoji) => markDirty(emoji.guild.id, ['emojis']));
   on(Events.GuildStickerCreate, (sticker) => sticker.guild && markDirty(sticker.guild.id, ['stickers']));
@@ -296,7 +476,7 @@ function attachCounterEvents(client) {
   });
   on(Events.PresenceUpdate, (before, after) => {
     if (!after?.guild || before?.status === after.status) return;
-    markDirty(after.guild.id, [...NEEDS_PRESENCES], SLOW_DEBOUNCE_MS);
+    markDirty(after.guild.id, [...NEEDS_PRESENCES, 'role_online'], SLOW_DEBOUNCE_MS);
   });
   // A rename Discord made wait: no more renames are asked for that channel until the wait is over.
   client.rest?.on?.('rateLimited', (info) => {
@@ -310,10 +490,14 @@ function attachCounterEvents(client) {
 function startCounterJob(client) {
   state.client = client;
   attachCounterEvents(client);
-  const run = exclusiveTask(() => updateCounters(client));
+  // The pass only puts the renames in the line: a server with many changes never holds up the others.
+  const run = exclusiveTask(() => updateCounters(client, { wait: false }));
   run().catch((err) => logger.error('Initial counter update failed:', err));
   setInterval(() => run().catch((err) => logger.error('Counter job error:', err)), INTERVAL_MS).unref?.();
-  logger.info('Counter job started (checking every 60s, renames kept under 2 per 10 minutes per channel).');
+  // The member count of the day, for the line on the dashboard: a little after the start, then every hour.
+  setTimeout(() => snapshotMembers(client).catch(() => {}), 90_000).unref?.();
+  setInterval(() => snapshotMembers(client).catch(() => {}), MEMBER_DAYS_EVERY_MS).unref?.();
+  logger.info('Counter job started (checking every 60s, renames kept under 2 per 10 minutes per channel and spread out over time).');
 }
 
-module.exports = { startCounterJob, updateCounters, refreshGuildCounters, processCounter, markDirty, pendingRenameAt, attachCounterEvents, countGuild, _state: state };
+module.exports = { startCounterJob, updateCounters, refreshGuildCounters, processCounter, markDirty, pendingRenameAt, attachCounterEvents, countGuild, checkMilestone, scheduleMilestone, reloadAnnounce, snapshotMembers, counterStatus, _state: state };

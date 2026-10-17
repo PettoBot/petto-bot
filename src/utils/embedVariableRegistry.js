@@ -360,6 +360,15 @@ const GROUPS = [
     ],
   },
   {
+    id: 'counter',
+    availability: 'counter',
+    vars: [
+      '{counter.count}',
+      '{counter.goal}',
+      '{counter.server}',
+    ],
+  },
+  {
     id: 'request',
     availability: 'request',
     vars: [

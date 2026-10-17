@@ -3,11 +3,22 @@
 const { ChannelType, PermissionFlagsBits } = require('discord.js');
 const countersDb = require('../db/counters');
 const { getGuildPremium, getGuildLimits } = require('../db/premium');
-const { resolveOption, resolveFormat, validTimeZone, defaultTemplate, renderName } = require('./counterNames');
+const { resolveOption, resolveFormat, validTimeZone, defaultTemplate, renderName, templateMax, NEEDS_ROLE } = require('./counterNames');
 const { countGuild, extrasFor } = require('./counterValues');
 const { t } = require('../i18n');
 
-const KINDS = { voice: ChannelType.GuildVoice, text: ChannelType.GuildText, category: ChannelType.GuildCategory, announce: ChannelType.GuildAnnouncement, stage: ChannelType.GuildStageVoice };
+// `topic` is a text channel whose topic shows the value (its name stays as it is).
+const KINDS = { voice: ChannelType.GuildVoice, text: ChannelType.GuildText, category: ChannelType.GuildCategory, announce: ChannelType.GuildAnnouncement, stage: ChannelType.GuildStageVoice, topic: ChannelType.GuildText };
+const KIND_ALIASES = { vc: 'voice', voz: 'voice', texto: 'text', categoria: 'category', categoría: 'category', cat: 'category', tema: 'topic', topico: 'topic', tópico: 'topic', description: 'topic', news: 'announce', announcement: 'announce', escenario: 'stage', palco: 'stage' }; // i18n-ignore: words people type
+/** The channel kind a word means (`voice`, `topic`, `categoria`...), or null. */
+function resolveKind(word) {
+  const key = String(word ?? '').trim().toLowerCase();
+  if (!key) return null;
+  if (KINDS[key] !== undefined) return key;
+  return KIND_ALIASES[key] ?? null;
+}
+/** Channels whose topic can show a counter: text and announcement channels. */
+const TOPIC_TYPES = [ChannelType.GuildText, ChannelType.GuildAnnouncement];
 const KIND_OF_TYPE = { 0: 'text', 2: 'voice', 4: 'category', 5: 'announce', 13: 'stage' };
 const PRESET = ['members', 'users_only', 'bots_only'];
 // One-click packs (`!counter setup <pack>` and the dashboard's gallery): each makes its category with its counters, skipping the types
@@ -71,7 +82,7 @@ function previewName(guild, row, lang) {
 async function createCounter(guild, input, lang) {
   const option = resolveOption(input.type);
   if (!option) return { ok: false, error: 'unknownType', type: String(input.type ?? '') };
-  if (option === 'role_members' && !(input.roleId && guild.roles.cache.get(input.roleId))) return { ok: false, error: 'needRole' };
+  if (NEEDS_ROLE.has(option) && !(input.roleId && guild.roles.cache.get(input.roleId))) return { ok: false, error: 'needRole' };
   if (input.timezone && !validTimeZone(input.timezone)) return { ok: false, error: 'badTimezone', zone: input.timezone };
   const format = resolveFormat(input.format) ?? 'plain';
   const goal = Number.isInteger(Number(input.goal)) && Number(input.goal) > 0 ? Math.min(2_000_000_000, Number(input.goal)) : null;
@@ -86,10 +97,13 @@ async function createCounter(guild, input, lang) {
     if (!parent || parent.type !== ChannelType.GuildCategory) return { ok: false, error: 'notCategory' };
   }
 
+  const kindWord = input.kind ? resolveKind(input.kind) : null;
+  if (input.kind && !kindWord) return { ok: false, error: 'unknownKind', kind: String(input.kind).slice(0, 30) };
+  const target = kindWord === 'topic' || input.target === 'topic' ? 'topic' : 'name';
   const row = {
-    guild_id: guild.id, counter_option: option, created_by: input.createdBy,
-    name_template: String(input.template ?? '').trim().slice(0, 100) || defaultTemplate(option, lang),
-    number_format: format, target_id: option === 'role_members' ? input.roleId : null, goal, timezone: input.timezone || null,
+    guild_id: guild.id, counter_option: option, created_by: input.createdBy, target,
+    name_template: String(input.template ?? '').trim().slice(0, templateMax({ target })) || defaultTemplate(option, lang),
+    number_format: format, target_id: NEEDS_ROLE.has(option) ? input.roleId : null, goal, timezone: input.timezone || null,
     prefix: String(input.prefix ?? '').slice(0, 30), suffix: String(input.suffix ?? '').slice(0, 30),
     interval_seconds: Math.max(60, Math.min(86400, Number(input.interval) || 60)), parent_id: parent?.id ?? null,
   };
@@ -100,10 +114,13 @@ async function createCounter(guild, input, lang) {
     channel = guild.channels.cache.get(input.channelId);
     if (!channel || !KIND_OF_TYPE[channel.type]) return { ok: false, error: 'notChannel' };
     if (existing.some((r) => r.channel_id === channel.id)) return { ok: false, error: 'alreadyCounter', channel };
+    if (target === 'topic' && !TOPIC_TYPES.includes(channel.type)) return { ok: false, error: 'topicNeedsText' };
   } else {
-    const kind = KINDS[input.kind] !== undefined ? input.kind : 'voice';
+    const kind = kindWord ?? 'voice';
     try {
-      channel = await guild.channels.create({ name, type: KINDS[kind], parent: parent?.id, permissionOverwrites: lockedOverwrites(guild, kind), reason: input.reason });
+      // A topic counter is a text channel with a name of its own; its topic shows the value.
+      const channelName = kind === 'topic' ? t(lang, 'counters.topic.channelName') : name;
+      channel = await guild.channels.create({ name: channelName, type: KINDS[kind], parent: kind === 'category' ? undefined : parent?.id, ...(kind === 'topic' ? { topic: name } : {}), permissionOverwrites: lockedOverwrites(guild, kind === 'topic' ? 'text' : kind), reason: input.reason });
     } catch (err) {
       return { ok: false, error: err?.code === 50013 ? 'permission' : 'discord', detail: err?.message ?? '' };
     }
@@ -147,4 +164,4 @@ async function setupPreset(guild, { createdBy, reason, preset = null, goal = nul
   return { ok: true, category, made, preset: pack, skipped: types.length - made.length };
 }
 
-module.exports = { createCounter, setupPreset, counterLimits, previewName, lockedOverwrites, resolvePreset, nextGoal, KINDS, KIND_OF_TYPE, PRESET, PRESETS };
+module.exports = { createCounter, setupPreset, counterLimits, previewName, lockedOverwrites, resolvePreset, resolveKind, nextGoal, KINDS, KIND_OF_TYPE, TOPIC_TYPES, PRESET, PRESETS };

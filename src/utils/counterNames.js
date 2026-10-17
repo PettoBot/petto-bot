@@ -5,7 +5,7 @@ const { t, currentLanguage } = require('../i18n');
 // What a counter can count. The first twelve are the original ones (their saved rows keep working); `{option}` in an old
 // name shows them in the server's language. A 10-digit unix timestamp is a countdown.
 const LEGACY_OPTIONS = ['members', 'users_only', 'bots_only', 'pending_members', 'all_channels', 'text_channels', 'voice_channels', 'categories', 'announcement_channels', 'staging_channels', 'boosts', 'booster_count'];
-const NEW_OPTIONS = ['online', 'status_online', 'status_idle', 'status_dnd', 'in_voice', 'boost_level', 'roles', 'emojis', 'stickers', 'role_members', 'goal', 'clock', 'date'];
+const NEW_OPTIONS = ['online', 'status_online', 'status_idle', 'status_dnd', 'in_voice', 'boost_level', 'roles', 'emojis', 'stickers', 'role_members', 'goal', 'clock', 'date', 'role_online', 'tag_users', 'vanity_users', 'messages_today'];
 const OPTIONS = [...LEGACY_OPTIONS, ...NEW_OPTIONS];
 
 // The words people type for a type, in the three languages, and the names other counter bots use.
@@ -22,11 +22,18 @@ const ALIASES = {
   role: 'role_members', rolemembers: 'role_members', inrole: 'role_members', rol: 'role_members', cargo: 'role_members',
   emoji: 'emojis', sticker: 'stickers', rolecount: 'roles',
   meta: 'goal', target: 'goal', objetivo: 'goal',
+  roleonline: 'role_online', onlinerole: 'role_online', staffonline: 'role_online', rolonline: 'role_online', cargoonline: 'role_online',
+  tag: 'tag_users', servertag: 'tag_users', guildtag: 'tag_users', tags: 'tag_users', tagusers: 'tag_users',
+  vanity: 'vanity_users', vanityusers: 'vanity_users', status_text: 'vanity_users',
+  messages: 'messages_today', messagestoday: 'messages_today', msgs: 'messages_today', mensajes: 'messages_today', mensagens: 'messages_today', today_messages: 'messages_today',
   time: 'clock', hora: 'clock', fecha: 'date', data: 'date', today: 'date',
 };
 
 // The types that need every member in the cache, the ones read from presences, and the ones that are not a number.
-const NEEDS_MEMBERS = new Set(['users_only', 'bots_only', 'pending_members', 'booster_count', 'role_members']);
+const NEEDS_MEMBERS = new Set(['users_only', 'bots_only', 'pending_members', 'booster_count', 'role_members', 'role_online', 'tag_users']);
+// The types that need a role, and the ones read from the database (Vanity rules, the activity of the day) instead of the caches.
+const NEEDS_ROLE = new Set(['role_members', 'role_online']);
+const DB_TYPES = new Set(['vanity_users', 'messages_today']);
 const NEEDS_PRESENCES = new Set(['online', 'status_online', 'status_idle', 'status_dnd']);
 const TEXT_VALUES = new Set(['clock', 'date']);
 const FORMATS = ['plain', 'grouped', 'compact'];
@@ -70,7 +77,8 @@ function validTimeZone(zone) {
  * renamed on every pass. Voice channels, stages and categories keep the name as written.
  */
 function normalizeForType(name, channelType) {
-  if (channelType === 'voice' || channelType === 'category' || channelType === 'stage') return name;
+  // A topic keeps what is written, like the names of voice channels, stages and categories.
+  if (channelType === 'voice' || channelType === 'category' || channelType === 'stage' || channelType === 'topic') return name;
   return name.toLowerCase().replace(/\s+/g, '-');
 }
 
@@ -174,8 +182,24 @@ function renderName(row, value, lang = currentLanguage(), extra = {}) {
   };
   const text = template.replace(/\{(count|value|remaining|option|goal|left|percent|role|tz)\}/g, (whole) => vars[whole]);
   const name = `${row.prefix ?? ''}${text}${row.suffix ?? ''}`.replace(/\s+/g, ' ').trim();
-  // Discord takes at most 100 characters; an emoji is two of them in JavaScript and is never cut in half.
-  return Array.from(name).reduce((out, char) => (out.length + char.length <= 100 ? out + char : out), '') || count;
+  // Discord takes at most 100 characters in a name and 1024 in a topic; an emoji is two of them in JavaScript and is never cut in half.
+  const max = maxLengthOf(row);
+  return Array.from(name).reduce((out, char) => (out.length + char.length <= max ? out + char : out), '') || count;
+}
+
+/** Where a counter shows its value: `topic` (a text channel's topic) or `name`. */
+function targetOf(row) {
+  return row?.target === 'topic' ? 'topic' : 'name';
+}
+
+/** How long the shown text can be: 1024 characters for a topic, 100 for a name. */
+function maxLengthOf(row) {
+  return targetOf(row) === 'topic' ? 1024 : 100;
+}
+
+/** How long a template can be when it is written. */
+function templateMax(row) {
+  return targetOf(row) === 'topic' ? 500 : 100;
 }
 
 function sameName(current, wanted, channelType) {
@@ -218,8 +242,8 @@ function shouldRename({ currentName, wantedName, channelType, lastWanted, lastSt
 }
 
 module.exports = {
-  OPTIONS, LEGACY_OPTIONS, NEW_OPTIONS, NEEDS_MEMBERS, NEEDS_PRESENCES, TEXT_VALUES, FORMATS,
+  OPTIONS, LEGACY_OPTIONS, NEW_OPTIONS, NEEDS_MEMBERS, NEEDS_PRESENCES, NEEDS_ROLE, DB_TYPES, TEXT_VALUES, FORMATS,
   RENAME_LIMIT, RENAME_WINDOW_MS, MIN_RENAME_GAP_MS, CLOCK_STEP_MS,
-  resolveOption, resolveFormat, validTimeZone, optionLabel, typeLabel, defaultTemplate, normalizeForType,
+  resolveOption, resolveFormat, validTimeZone, optionLabel, typeLabel, defaultTemplate, normalizeForType, targetOf, maxLengthOf, templateMax,
   formatCount, nextGoal, timeValue, zoneLabel, renderName, sameName, recentRenames, nextRenameAt, planRename, shouldRename,
 };

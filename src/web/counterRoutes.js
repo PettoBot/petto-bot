@@ -5,12 +5,19 @@
 //   POST /api/dashboard/guild/:guildId/counters/setup   { preset?, goal?, timezone? }  a pack (basic, boosts, online, goal, clock) in its category
 //   POST /api/dashboard/guild/:guildId/counters/refresh { channel_id? }  reads the settings again and renames what the budget allows
 //   POST /api/dashboard/guild/:guildId/counters/delete  { channel_id, delete_channel }
+//   POST /api/dashboard/guild/:guildId/counters/reorder  { channel_ids }  the order of the list, and the channels moved to match in Discord
+//   POST /api/dashboard/guild/:guildId/counters/announce { channel_id, message, embed_name, every, use_goals, enabled, test? }
+//        saves the milestone announcement of the server (or, with `test`, sends the saved one once to its channel)
 // The same access as the other dashboard routes: the dashboard key and a `user_id` who can manage the server, or whose roles open the
 // Counters page through "Dashboard access" (checked again by the bot, see dashboardRoleAccess.js; preview only needs to look).
 const countersDb = require('../db/counters');
-const { OPTIONS, recentRenames, nextRenameAt } = require('../utils/counterNames');
+const { OPTIONS, recentRenames, nextRenameAt, targetOf, NEEDS_ROLE, DB_TYPES } = require('../utils/counterNames');
+const { loadValue } = require('../utils/counterSources');
+// Also: each counter of `preview` brings `badges`, `last_updated_at`, `next_rename_at`, `queued` and `next_check_at` (see counterStatus).
 const { countGuild } = require('../utils/counterValues');
 const { createCounter, setupPreset, counterLimits, previewName } = require('../utils/counterSetup');
+const { parseEvery, nextMilestone, announcePayload, announceChannel, MAX_TEXT } = require('../utils/counterAnnounce');
+const { planPositions } = require('../utils/counterOrder');
 const logger = require('../utils/logger');
 const { t, requestLanguage } = require('../i18n');
 
@@ -21,6 +28,8 @@ const idOrNull = (value) => (SNOWFLAKE.test(String(value ?? '')) ? String(value)
 function createMessage(result, lang) {
   if (result.error === 'limitFree') return t(lang, 'counters.create.limitFree', { count: result.count, premium: result.premium });
   if (result.error === 'limit') return t(lang, 'counters.create.limit', { count: result.count });
+  if (result.error === 'unknownKind') return t(lang, 'counters.kind.unknown', { kind: result.kind || '?' });
+  if (result.error === 'topicNeedsText') return t(lang, 'counters.kind.topicNeedsText');
   if (result.error === 'unknownType') return t(lang, 'counters.create.unknownType', { type: result.type || '?', prefix: '!' });
   if (result.error === 'needRole') return t(lang, 'counters.create.needRole', { prefix: '!' });
   if (result.error === 'badTimezone') return t(lang, 'counters.create.badTimezone', { zone: result.zone });
@@ -49,28 +58,39 @@ function registerCounterRoutes(app, { authorize, limiter }) {
 
   route('preview', async (req, res, { guild }, lang) => {
     const values = {};
-    for (const option of OPTIONS) if (option !== 'role_members') values[option] = countGuild(guild, option, lang, {});
+    for (const option of DB_TYPES) await loadValue(guild.id, option);
+    for (const option of OPTIONS) if (!NEEDS_ROLE.has(option)) values[option] = countGuild(guild, option, lang, {});
+    const rolesOnline = {};
     const roles = {};
     const rows = await countersDb.list(guild.id);
     const now = Date.now();
     const counters = rows.map((row) => {
-      if (row.target_id) roles[row.target_id] = countGuild(guild, 'role_members', lang, row);
+      if (row.target_id) { roles[row.target_id] = countGuild(guild, 'role_members', lang, row); rolesOnline[row.target_id] = countGuild(guild, 'role_online', lang, row); }
       const channel = guild.channels.cache.get(row.channel_id);
       const times = recentRenames(row.rename_times, now);
       return {
-        channel_id: row.channel_id, name: previewName(guild, row, lang), current_name: channel?.name ?? null, exists: Boolean(channel),
+        channel_id: row.channel_id, name: previewName(guild, row, lang), target: targetOf(row),
+        current_name: (targetOf(row) === 'topic' ? channel?.topic ?? '' : channel?.name) ?? null, channel_name: channel?.name ?? null, exists: Boolean(channel),
         problem: row.problem ?? null, enabled: row.enabled !== false, renames_left: Math.max(0, 2 - times.length),
+        ...job().counterStatus(guild, row),
         next_rename_at: job().pendingRenameAt(row.channel_id) ?? (times.length >= 2 ? nextRenameAt(times, now) : null),
+        clock_step: row.counter_option === 'clock' || /^\d{10}$/.test(String(row.counter_option)),
       };
     });
+    const config = await countersDb.getAnnounce(guild.id).catch(() => null);
+    const announce = config ? {
+      enabled: config.enabled !== false, channel_id: config.channel_id ?? null, message: config.message ?? '', embed_name: config.embed_name ?? null, every: config.every ?? null,
+      use_goals: config.use_goals !== false, last_announced: config.last_announced ?? null,
+      next: nextMilestone({ count: guild.memberCount ?? 0, last: config.last_announced, every: config.every, goalRows: rows, useGoals: config.use_goals !== false }),
+    } : null;
     res.set('Cache-Control', 'no-store'); // i18n-ignore: HTTP header
-    res.json({ ok: true, values, roles, presences: Boolean(guild.presences?.cache?.size), counters, limits: await counterLimits(guild.id) });
+    res.json({ ok: true, values, roles, roles_online: rolesOnline, presences: Boolean(guild.presences?.cache?.size), counters, limits: await counterLimits(guild.id), announce, default_announce: t(lang, 'counters.announce.default') });
   });
 
   route('create', async (req, res, { guild, userId, member }, lang) => {
     const body = req.body ?? {};
     const result = await createCounter(guild, {
-      type: body.type, template: body.template, format: body.format, kind: body.kind, categoryId: idOrNull(body.category_id), channelId: idOrNull(body.channel_id),
+      type: body.type, template: body.template, format: body.format, kind: body.kind, target: body.target === 'topic' ? 'topic' : 'name', categoryId: idOrNull(body.category_id), channelId: idOrNull(body.channel_id),
       roleId: idOrNull(body.role_id), goal: body.goal, timezone: body.timezone ? String(body.timezone).slice(0, 64) : null, prefix: body.prefix, suffix: body.suffix,
       createdBy: userId, reason: t(lang, 'counters.add.reason', { user: member?.user?.tag ?? member?.user?.username ?? userId }),
     }, lang);
@@ -95,6 +115,54 @@ function registerCounterRoutes(app, { authorize, limiter }) {
     const results = await job().refreshGuildCounters(guild.client, guild.id, { reload: true, channelId: idOrNull(req.body?.channel_id) });
     const count = (what) => results.filter((r) => r.result === what).length;
     res.json({ ok: true, results, message: results.length ? t(lang, 'counters.refresh.done', { emoji: '', renamed: count('renamed'), waiting: count('waiting'), same: count('same') }).trim() : t(lang, 'counters.refresh.none') });
+  });
+
+  route('reorder', async (req, res, { guild }, lang) => {
+    const rows = await countersDb.list(guild.id);
+    const known = new Set(rows.map((row) => row.channel_id));
+    const wanted = (Array.isArray(req.body?.channel_ids) ? req.body.channel_ids : []).map(String).filter((id, i, all) => known.has(id) && all.indexOf(id) === i);
+    // Counters the list did not send keep their place after the others.
+    const order = [...wanted, ...rows.map((row) => row.channel_id).filter((id) => !wanted.includes(id))];
+    await countersDb.setOrder(guild.id, order);
+    const moves = planPositions(order, guild.channels.cache);
+    let moved = 0;
+    if (moves.length) {
+      try {
+        await guild.channels.setPositions(moves);
+        moved = moves.length;
+      } catch (err) {
+        res.status(err?.code === 50013 ? 403 : 502).json({ ok: false, saved: true, message: t(lang, 'counters.reorder.notMoved') });
+        return;
+      }
+    }
+    res.json({ ok: true, moved, message: t(lang, 'counters.reorder.done') });
+  });
+
+  route('announce', async (req, res, { guild }, lang) => {
+    const body = req.body ?? {};
+    const current = await countersDb.getAnnounce(guild.id);
+    if (body.test) {
+      const channel = current ? announceChannel(guild, current) : null;
+      const count = guild.memberCount ?? 0;
+      const sent = channel ? await channel.send(await announcePayload(guild, channel, current, { count, milestone: count }, lang)).then(() => true).catch(() => false) : false;
+      res.status(sent ? 200 : 400).json({ ok: sent, message: sent ? t(lang, 'counters.announce.tested', { emoji: '', channel: `#${channel.name}` }).trim() : t(lang, current?.channel_id ? 'counters.announce.testFailed' : 'counters.announce.needChannel', { prefix: '!' }) });
+      return;
+    }
+    const channelId = idOrNull(body.channel_id);
+    const channel = channelId ? guild.channels.cache.get(channelId) : null;
+    const enabled = body.enabled !== false;
+    if (enabled && (!channel || typeof channel.send !== 'function' || channel.type === 2 || channel.type === 13)) { res.status(400).json({ ok: false, message: t(lang, 'counters.announce.badChannel') }); return; }
+    const every = parseEvery(body.every);
+    if (every === undefined) { res.status(400).json({ ok: false, message: t(lang, 'counters.announce.badEvery') }); return; }
+    const embedName = typeof body.embed_name === 'string' && body.embed_name.trim() ? body.embed_name.trim().slice(0, 100) : null;
+    const patch = {
+      enabled, channel_id: channel?.id ?? current?.channel_id ?? null, message: String(body.message ?? '').replace(/\u0000/g, '').slice(0, MAX_TEXT), embed_name: embedName, every, use_goals: body.use_goals !== false,
+    };
+    // Turned on (or set up for the first time): it starts from the members of now, without announcing what was already passed.
+    if (!current || (enabled && !current.enabled)) patch.last_announced = null;
+    await countersDb.saveAnnounce(guild.id, patch);
+    await job().reloadAnnounce(guild.id).catch(() => {});
+    res.json({ ok: true, message: t(lang, 'counters.announce.saved', { emoji: '' }).trim() });
   });
 
   route('delete', async (req, res, { guild, userId }, lang) => {
