@@ -3850,6 +3850,13 @@ update forms set public_id = form_public_id() where public_id is null;
 alter table forms alter column public_id set default form_public_id();
 alter table forms alter column public_id set not null;
 create unique index if not exists idx_forms_public_id on forms(public_id);
+-- The look of the web page of a form (petto.sbs/form#<public id>): a banner on top (an https link to a picture), the background
+-- behind the page (Petto's own, a solid tint or a gradient, both from the color of the form) and whether its header shows the icon
+-- and the name of the server. The color of the form is the accent of the page.
+alter table forms add column if not exists page_banner text check (page_banner is null or char_length(page_banner) <= 500);
+alter table forms add column if not exists page_background text not null default 'default' check (page_background in ('default', 'solid', 'gradient'));
+alter table forms add column if not exists page_show_icon boolean not null default true;
+alter table forms add column if not exists page_show_name boolean not null default true;
 alter table forms enable row level security;
 
 create table if not exists form_submissions (

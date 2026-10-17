@@ -23,11 +23,16 @@ const SETTINGS = [
   'one-pending', 'cooldown', 'max-per-user', 'max-total', 'closes', 'accept-roles', 'accept-remove-roles', 'deny-roles', 'deny-remove-roles',
   'dm', 'button-label', 'button-emoji', 'button-style', 'web',
 ];
+// The look of the web page of the form. Discord takes 25 choices for the slash option, so these are read by the prefix only (the
+// command is prefix only anyway) and listed with the others when a setting is unknown.
+const PAGE_SETTINGS = ['banner', 'background', 'server-icon', 'server-name'];
+// `!form set staff background gradient`: the words for the background of the page, in the languages of Petto.
+const BACKGROUND_WORDS = { default: 'default', petto: 'default', normal: 'default', solid: 'solid', color: 'solid', colour: 'solid', solido: 'solid', 'sólido': 'solid', gradient: 'gradient', degradado: 'gradient', gradiente: 'gradient' };
 const ROLE_SETTINGS = {
   reviewers: 'reviewer_role_ids', ping: 'ping_role_ids', 'required-roles': 'required_role_ids', 'blocked-roles': 'blocked_role_ids',
   'accept-roles': 'accept_add_role_ids', 'accept-remove-roles': 'accept_remove_role_ids', 'deny-roles': 'deny_add_role_ids', 'deny-remove-roles': 'deny_remove_role_ids',
 };
-const SWITCHES = { thread: 'auto_thread', 'one-pending': 'one_pending', dm: 'dm_results', web: 'web_enabled' };
+const SWITCHES = { thread: 'auto_thread', 'one-pending': 'one_pending', dm: 'dm_results', web: 'web_enabled', 'server-icon': 'page_show_icon', 'server-name': 'page_show_name' };
 const NUMBERS = { 'account-age': ['min_account_days', 3650, 86_400_000], 'server-age': ['min_member_days', 3650, 86_400_000], cooldown: ['deny_cooldown_hours', 8760, 3_600_000], 'max-per-user': ['max_per_user', 1000, 0], 'max-total': ['max_total', 100000, 0] };
 const QUESTION_FIELDS = ['label', 'type', 'help', 'description', 'image', 'placeholder', 'required', 'min', 'max', 'options', 'choices'];
 // With the prefix the types are not checked by Discord, so the usual words are read here.
@@ -203,7 +208,17 @@ function settingChange(guild, setting, value, lang) {
   if (setting === 'button-label') return { button_label: off ? null : forms.clip(text, forms.LIMITS.buttonLabel) };
   if (setting === 'button-emoji') return { button_emoji: off ? null : forms.clip(text, 64) };
   if (setting === 'button-style') return forms.BUTTON_STYLES.includes(text.toLowerCase()) ? { button_style: text.toLowerCase() } : { error: t(lang, 'forms.set.style') };
-  return { error: t(lang, 'forms.set.unknown', { settings: SETTINGS.join(', ') }) };
+  if (setting === 'banner') {
+    if (off) return { page_banner: null };
+    // A link wrapped in <…> (so Discord shows no preview of it) is the same link.
+    const url = forms.imageUrl(text.replace(/^<(.*)>$/, '$1'));
+    return url ? { page_banner: url } : { error: t(lang, 'forms.set.banner') };
+  }
+  if (setting === 'background') {
+    const word = off ? 'default' : BACKGROUND_WORDS[text.toLowerCase()];
+    return word ? { page_background: word } : { error: t(lang, 'forms.set.background') };
+  }
+  return { error: t(lang, 'forms.set.unknown', { settings: [...SETTINGS, ...PAGE_SETTINGS].join(', ') }) };
 }
 
 /** A question changed by `!form question edit`, checked like a new one; { error } when it cannot be asked like that. */
@@ -231,6 +246,16 @@ function questionChange(question, field, value, lang) {
   return { question: { ...clean, id: question.id } };
 }
 
+/** The look of the web page of a form, in one line of `!form info`. */
+function pageLine(form, lang) {
+  const look = forms.pageLook(form);
+  return t(lang, 'forms.info.page', {
+    banner: look.banner ? `<${look.banner}>` : t(lang, 'forms.info.none'),
+    background: t(lang, `forms.info.background.${look.background}`),
+    icon: onOff(look.show_icon, lang), name: onOff(look.show_name, lang), form: form.name,
+  });
+}
+
 async function infoText(guild, form, lang) {
   const [pending, all] = await Promise.all([formsDb.listSubmissions(guild.id, { formId: form.id, status: 'pending', limit: 200 }), formsDb.countFormSubmissions(guild.id, form.id)]);
   const questions = forms.normalizeQuestions(form.questions);
@@ -243,7 +268,8 @@ async function infoText(guild, form, lang) {
     `## ${form.title}`,
     t(lang, 'forms.info.head', { name: form.name, id: form.id, state: t(lang, form.status === 'open' ? 'forms.info.open' : 'forms.info.closed') }),
     form.description ? `> ${forms.clip(form.description, 300).replace(/\n/g, '\n> ')}` : null,
-    t(lang, form.web_enabled === false ? 'forms.info.webOff' : 'forms.info.web', { url: forms.webUrl(form, lang), name: form.name }),
+    t(lang, form.web_enabled === false ? 'forms.info.webOff' : 'forms.info.web', { url: forms.webUrl(form, lang), share: forms.shareUrl(form, lang), name: form.name }),
+    form.web_enabled === false ? null : pageLine(form, lang),
     `### ${t(lang, 'forms.info.review')}`,
     t(lang, 'forms.info.channel', { channel: form.review_channel_id ? `<#${form.review_channel_id}>` : t(lang, 'forms.info.notSet') }),
     t(lang, 'forms.info.reviewers', { roles: form.reviewer_role_ids?.length ? roleList(form.reviewer_role_ids, lang) : t(lang, 'forms.info.managers') }),
@@ -508,4 +534,5 @@ module.exports = {
   settingChange,
   questionChange,
   SETTINGS,
+  PAGE_SETTINGS,
 };
