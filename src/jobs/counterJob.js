@@ -18,6 +18,7 @@ const { countGuild, extrasFor } = require('../utils/counterValues');
 const { milestoneToAnnounce, announcePayload, announceChannel } = require('../utils/counterAnnounce');
 const { createRenameQueue } = require('../utils/renameQueue');
 const { loadValue } = require('../utils/counterSources');
+const { forgetPreview } = require('../utils/counterPreviewCache');
 const { t, guildLanguage } = require('../i18n');
 const { botDay } = require('../utils/botTime');
 
@@ -223,6 +224,8 @@ async function applyRename(guild, row, channel, name, language) {
     return 'problem';
   } finally {
     state.inFlight.delete(channel.id);
+    // The dashboard shows the new name (or the problem) at once.
+    forgetPreview(guild.id);
   }
 }
 

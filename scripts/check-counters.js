@@ -656,6 +656,34 @@ state.queue.configure({ gapMs: 0, guildGapMs: 0, jitterMs: 0 });
     rows = [];
   }
 
-  console.log('Checked counter names, formats, goals, clocks, the rename budget (2 per 10 minutes, merged, kept across restarts), problems, !counter create, the setup and the packs, the new types (online in a role, server tag, Vanity, messages today), category and topic counters, the order and status for the dashboard, members per day, the line that spreads renames over time, and milestone announcements.');
+  {
+    // The dashboard preview is counted once per server and language for a while (callers at the same time share it), forgotten on a change.
+    const { keptPreview, forgetPreview, PREVIEW_TTL_MS } = require('../src/utils/counterPreviewCache');
+    let builds = 0;
+    const build = () => { builds += 1; return new Promise((resolve) => setTimeout(() => resolve({ ok: true, n: builds }), 5)); };
+    const t0 = 5_000_000;
+    const [a, b] = await Promise.all([keptPreview('91', 'en', build, t0), keptPreview('91', 'en', build, t0 + 10)]);
+    assert.equal(builds, 1, 'two reads at once count once');
+    assert.equal(a, b);
+    assert.equal((await keptPreview('91', 'en', build, t0 + PREVIEW_TTL_MS - 1)).n, 1, 'kept while fresh');
+    await keptPreview('91', 'es', build, t0 + 20);
+    assert.equal(builds, 2, 'each language has its own');
+    assert.equal((await keptPreview('91', 'en', build, t0 + PREVIEW_TTL_MS + 1)).n, 3, 'counted again once old');
+    forgetPreview('91');
+    await keptPreview('91', 'en', build, t0 + PREVIEW_TTL_MS + 2);
+    assert.equal(builds, 4, 'a change forgets it');
+    let failing = 0;
+    await assert.rejects(keptPreview('92', 'en', () => { failing += 1; return Promise.reject(new Error('db')); }, t0));
+    await new Promise((resolve) => setImmediate(resolve));
+    await keptPreview('92', 'en', () => { failing += 1; return Promise.resolve({ ok: true }); }, t0 + 1);
+    assert.equal(failing, 2, 'a failed count is not kept');
+    assert.ok(PREVIEW_TTL_MS >= 10_000 && PREVIEW_TTL_MS <= 60_000);
+    // The route asks nothing from Discord: no member or presence fetch, only the caches of discord.js.
+    const routes = require('node:fs').readFileSync(path.join(__dirname, '..', 'src', 'web', 'counterRoutes.js'), 'utf8');
+    assert.doesNotMatch(routes, /members\.fetch|presences\.fetch|fetchMembers/);
+    assert.match(routes, /keptPreview\(guild\.id, lang/);
+  }
+
+  console.log('Checked counter names, formats, goals, clocks, the rename budget (2 per 10 minutes, merged, kept across restarts), problems, !counter create, the setup and the packs, the new types (online in a role, server tag, Vanity, messages today), category and topic counters, the order and status for the dashboard, members per day, the line that spreads renames over time, milestone announcements, and the kept dashboard preview.');
   process.exit(0);
 })().catch((error) => { console.error(error); process.exit(1); });

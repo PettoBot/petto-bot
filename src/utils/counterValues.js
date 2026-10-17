@@ -9,14 +9,18 @@ const stored = new Map();
 function storeValue(guildId, type, value, at = Date.now()) { stored.set(`${guildId}:${type}`, { value, at }); }
 function storedValue(guildId, type) { return stored.get(`${guildId}:${type}`) ?? null; }
 
+// Counted by walking the cache: Collection#filter would build a copy of it first (every member of a big server, for each type).
 const sizeOf = (collection, fn) => {
   if (!collection) return 0;
+  let n = 0;
+  if (typeof collection.values === 'function') {
+    for (const item of collection.values()) if (fn(item)) n += 1;
+    return n;
+  }
   if (typeof collection.filter === 'function') {
     const found = collection.filter(fn);
     return typeof found.size === 'number' ? found.size : found.length;
   }
-  let n = 0;
-  for (const item of collection.values()) if (fn(item)) n += 1;
   return n;
 };
 

@@ -28,6 +28,9 @@ async function fetchDashboardMember(guild, userId, now = Date.now()) {
     if (until > now) return null;
     notMembers.delete(key);
   }
+  // A member the gateway already gave is used as it is: Discord is asked only for one the bot has not seen.
+  const cached = guild.members.cache?.get(userId);
+  if (cached && !cached.partial) return cached;
   try {
     return await guild.members.fetch(userId);
   } catch (err) {
