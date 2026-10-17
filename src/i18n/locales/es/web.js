@@ -96,6 +96,7 @@ module.exports = {
   'web.api.confessions.pickChannel': 'Primero elige un canal para el panel.',
   'web.api.confessions.failed': 'No se pudo publicar el panel. Inténtalo de nuevo.',
   'web.api.verification.failed': 'No se pudo cambiar la verificación. Inténtalo de nuevo.',
+  'web.api.resync.failed': 'No se pudieron actualizar los datos del servidor. Inténtalo de nuevo.',
   'web.api.quests.testing': 'Las alertas de misiones están en pruebas.',
   'web.api.quests.methodFailed': 'No se pudo enviar el método. Inténtalo de nuevo.',
   'web.identity.created': 'Los miembros se revisan a medida que cambian. Usa el comando de sincronización para aplicar la regla a todos ahora.',

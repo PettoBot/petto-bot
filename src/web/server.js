@@ -2,6 +2,7 @@ const confessionsDb = require('../db/confessions');
 const suggestionsUtil = require('../utils/suggestions');
 const { postPanel: postConfessionPanel } = require('../interactions/confessions');
 const express = require('express');
+const { saveGuildSnapshot } = require('../utils/guildSnapshots');
 const { rateLimit } = require('express-rate-limit');
 const path = require('path');
 const { MessageFlags, PermissionFlagsBits } = require('discord.js');
@@ -675,6 +676,20 @@ function startServer(client) {
       } catch (err) {
         logger.error(`Dashboard verification ${action} failed for guild ${req.params.guildId}:`, err);
         res.status(500).json({ ok: false, message: t(requestLanguage(req, access.guild.id), 'web.api.verification.failed') });
+      }
+    });
+
+    // Saves the bot's copy of the server (roles, channels) now, so the dashboard lists show a role or channel made a moment ago.
+    app.post('/api/dashboard/guild/:guildId/resync', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await dashboardCardAccess(req, res);
+      if (!access) return;
+      try {
+        await Promise.all([access.guild.channels.fetch(), access.guild.roles.fetch()]);
+        await saveGuildSnapshot(access.guild);
+        res.json({ ok: true, roles: access.guild.roles.cache.size, channels: access.guild.channels.cache.size });
+      } catch (err) {
+        logger.error(`Dashboard resync failed for guild ${req.params.guildId}:`, err);
+        res.status(500).json({ ok: false, message: t(requestLanguage(req, access.guild.id), 'web.api.resync.failed') });
       }
     });
 
