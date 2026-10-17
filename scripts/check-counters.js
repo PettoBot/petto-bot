@@ -183,6 +183,8 @@ const job = require('../src/jobs/counterJob');
 const state = job._state;
 let clock = 50_000_000;
 state.now = () => clock;
+// The line of renames is checked on its own below; here it sends at once so each step can be looked at.
+state.queue.configure({ gapMs: 0, guildGapMs: 0, jitterMs: 0 });
 
 (async () => {
   const guild = makeGuild();
@@ -347,6 +349,92 @@ state.now = () => clock;
   assert.deepEqual(command.parseSetupText(''), {});
   assert.equal(command.prefixSubcommandAliases.preset, 'setup');
 
+  // ── The line of renames: many counters changing at once are spread out ──
+  {
+    const { createRenameQueue } = require('../src/utils/renameQueue');
+    let qt = 1_000_000;
+    const timers = [];
+    const setTimer = (fn, ms) => { const timer = { at: qt + ms, fn }; timers.push(timer); return timer; };
+    const clearTimer = (timer) => { const i = timers.indexOf(timer); if (i >= 0) timers.splice(i, 1); };
+    const flush = async () => { for (let i = 0; i < 8; i += 1) await new Promise((r) => setImmediate(r)); };
+    const advance = async (until) => {
+      for (;;) {
+        await flush();
+        timers.sort((a, b) => a.at - b.at);
+        if (!timers.length || timers[0].at > until) break;
+        const next = timers.shift();
+        qt = Math.max(qt, next.at);
+        next.fn();
+      }
+      qt = until;
+      await flush();
+    };
+    let rnd = 0;
+    const q = createRenameQueue({ now: () => qt, setTimer, clearTimer, random: () => rnd, gapMs: 300, guildGapMs: 2_500, jitterMs: 400, concurrency: 1 });
+    const ran = [];
+    const job1 = (key, guild) => () => { ran.push({ key, guild, at: qt }); return `done ${key}`; };
+    const results = [];
+    for (const [key, guild] of [['a1', 'A'], ['a2', 'A'], ['a3', 'A'], ['b1', 'B'], ['c1', 'C']]) q.push(key, guild, job1(key, guild)).then((value) => results.push([key, value]));
+    // Asked again while it waits: one rename, with the newest work, and both callers get its result.
+    const merged = q.push('a2', 'A', job1('a2-new', 'A'));
+    assert.equal(q.size(), 4, 'a1 went out at once, a2 is waiting once');
+    await advance(qt + 30_000);
+    assert.equal(await merged, 'done a2-new');
+    assert.deepEqual(ran.map((r) => r.key), ['a1', 'b1', 'c1', 'a2-new', 'a3'], 'other servers go in between, not the same server twice in a row');
+    for (let i = 1; i < ran.length; i += 1) assert.ok(ran[i].at - ran[i - 1].at >= 300, 'a gap between any two renames of the bot');
+    for (const guild of ['A']) {
+      const times = ran.filter((r) => r.guild === guild).map((r) => r.at);
+      for (let i = 1; i < times.length; i += 1) assert.ok(times[i] - times[i - 1] >= 2_500, 'a longer gap between two renames of the same server');
+    }
+    assert.equal(results.length, 5, 'every rename was sent and answered');
+    // The gaps have a random part, so many servers never line up on the same moments.
+    rnd = 0.5; ran.length = 0;
+    for (let i = 0; i < 4; i += 1) q.push(`x${i}`, `G${i}`, job1(`x${i}`, `G${i}`));
+    await advance(qt + 10_000);
+    for (let i = 1; i < ran.length; i += 1) assert.ok(ran[i].at - ran[i - 1].at >= 500, 'gap + jitter');
+    // A lot at once: a hundred counters in twenty servers go out over time, never two of one server within its gap.
+    rnd = 0; ran.length = 0;
+    const big = createRenameQueue({ now: () => qt, setTimer, clearTimer, random: () => 0, concurrency: 2 });
+    const start = qt;
+    for (let i = 0; i < 100; i += 1) big.push(`k${i}`, `S${i % 20}`, job1(`k${i}`, `S${i % 20}`));
+    await advance(qt + 120_000);
+    assert.equal(ran.length, 100);
+    const perSecond = new Map();
+    for (const r of ran) perSecond.set(Math.floor((r.at - start) / 1000), (perSecond.get(Math.floor((r.at - start) / 1000)) ?? 0) + 1);
+    assert.ok(Math.max(...perSecond.values()) <= 5, 'never more than a few renames in one second');
+    for (let s2 = 0; s2 < 20; s2 += 1) {
+      const times = ran.filter((r) => r.guild === `S${s2}`).map((r) => r.at);
+      for (let i = 1; i < times.length; i += 1) assert.ok(times[i] - times[i - 1] >= 2_500);
+    }
+
+    // The job uses the line: a full pass with many counters to rename only puts them in it, and they go out spread over time.
+    const g = makeGuild(); g.id = '55'; g.memberCount = 42;
+    const chans = [];
+    rows = [];
+    for (let i = 0; i < 6; i += 1) {
+      const c = channel(String(600 + i), 'old', 2); const orig = c.setName.bind(c);
+      c.setName = async (next) => { c.at = qt; return orig(next); };
+      g.channels.cache.set(c.id, c); chans.push(c);
+      rows.push({ guild_id: '55', channel_type: 'voice', prefix: '', suffix: '', enabled: true, interval_seconds: 60, rename_times: [], id: 600 + i, channel_id: c.id, counter_option: 'members', name_template: `C${i} {count}` });
+    }
+    const savedNow = state.now;
+    state.now = () => qt;
+    state.queue.clear();
+    state.queue.configure({ gapMs: 300, guildGapMs: 2_500, jitterMs: 400, random: () => 0, now: () => qt, setTimer, clearTimer });
+    const passed = await job.updateCounters({ guilds: { cache: new Map([['55', g]]) } }, { wait: false });
+    assert.equal(chans.filter((c) => c.calls.length).length <= 2, true, 'the pass returns before the renames are sent');
+    assert.ok(job.pendingRenameAt('605') !== null, 'a counter waiting in the line shows as about to change');
+    await advance(qt + 60_000);
+    assert.ok(chans.every((c) => c.calls.length === 1), 'every counter was renamed once');
+    const at = chans.map((c) => c.at).sort((a, b) => a - b);
+    for (let i = 1; i < at.length; i += 1) assert.ok(at[i] - at[i - 1] >= 2_500, 'the renames of one server are spread out');
+    state.now = savedNow;
+    state.queue.clear();
+    state.queue.configure({ gapMs: 0, guildGapMs: 0, jitterMs: 0, now: () => state.now(), setTimer: (fn, ms) => setTimeout(fn, ms), clearTimer: clearTimeout });
+    void passed;
+    rows = [];
+  }
+
   // ── Milestone announcements ────────────────────────────────────────────
   {
     const { milestoneToAnnounce, nextMilestone, parseEvery, renderAnnounceText, announceVars } = require('../src/utils/counterAnnounce');
@@ -423,6 +511,6 @@ state.now = () => clock;
     rows = [];
   }
 
-  console.log('Checked counter names, formats, goals, clocks, the rename budget (2 per 10 minutes, merged, kept across restarts), problems, !counter create, the setup and the packs, and milestone announcements.');
+  console.log('Checked counter names, formats, goals, clocks, the rename budget (2 per 10 minutes, merged, kept across restarts), problems, !counter create, the setup and the packs, the line that spreads renames over time, and milestone announcements.');
   process.exit(0);
 })().catch((error) => { console.error(error); process.exit(1); });

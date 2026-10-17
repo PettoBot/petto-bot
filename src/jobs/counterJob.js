@@ -16,6 +16,7 @@ const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency'
 const { renderName, planRename, recentRenames, NEEDS_MEMBERS, NEEDS_PRESENCES, RENAME_WINDOW_MS } = require('../utils/counterNames');
 const { countGuild, extrasFor } = require('../utils/counterValues');
 const { milestoneToAnnounce, announcePayload, announceChannel } = require('../utils/counterAnnounce');
+const { createRenameQueue } = require('../utils/renameQueue');
 const { t, guildLanguage } = require('../i18n');
 
 const INTERVAL_MS = 60_000;
@@ -51,7 +52,9 @@ const state = {
   announcing: new Set(), // guild ids whose milestone is being looked at
   milestoneTimers: new Map(), // guild id -> timer of the next look after joins
   now: () => Date.now(),
+  queue: null, // the line of every rename of the bot (renameQueue.js)
 };
+state.queue = createRenameQueue({ now: () => state.now() });
 
 function withTimeout(promise, ms, label) {
   let timer;
@@ -152,16 +155,15 @@ async function wantedNameOf(guild, row, lang) {
 }
 
 /**
- * Looks at one counter: renames it now, plans the rename for when the budget allows, or does nothing.
- * Returns what happened: 'renamed', 'waiting', 'same', 'off', 'problem'.
+ * What a counter needs now: { result } when there is nothing to send ('off', 'problem', 'waiting', 'same'), or { channel, name, plan }
+ * with the plan of the budget ('now' or 'later').
  */
-async function processCounter(guild, row, { lang = null } = {}) {
-  if (!row.enabled) { cancelTimer(row.channel_id); return 'off'; }
+async function evaluate(guild, row, language) {
+  if (!row.enabled) { cancelTimer(row.channel_id); return { result: 'off' }; }
   const channel = guild.channels.cache.get(row.channel_id);
-  if (!channel) { cancelTimer(row.channel_id); await setProblem(guild, row, 'missing_channel', { disable: true }); return 'problem'; }
-  if (!canManage(guild, channel)) { await setProblem(guild, row, 'missing_permission'); return 'problem'; }
-  if (state.inFlight.has(channel.id)) return 'waiting';
-  const language = lang ?? await guildLanguage(guild.id);
+  if (!channel) { cancelTimer(row.channel_id); await setProblem(guild, row, 'missing_channel', { disable: true }); return { result: 'problem' }; }
+  if (!canManage(guild, channel)) { await setProblem(guild, row, 'missing_permission'); return { result: 'problem' }; }
+  if (state.inFlight.has(channel.id)) return { result: 'waiting' };
   const { name } = await wantedNameOf(guild, row, language);
   const plan = planRename({
     currentName: channel.name,
@@ -177,13 +179,16 @@ async function processCounter(guild, row, { lang = null } = {}) {
   if (plan.action === 'skip') {
     cancelTimer(channel.id);
     if (row.problem && row.problem !== 'missing_channel') await clearProblem(row);
-    return 'same';
+    return { result: 'same' };
   }
-  if (plan.action === 'later') { scheduleLater(guild.id, row, plan.at); return 'waiting'; }
+  if (plan.action === 'later') { scheduleLater(guild.id, row, plan.at); return { result: 'waiting' }; }
+  return { channel, name, plan };
+}
 
+/** Sends one rename to Discord. The budget counts it from the moment it is asked for, whatever Discord answers. */
+async function applyRename(guild, row, channel, name, language) {
   cancelTimer(channel.id);
   state.inFlight.add(channel.id);
-  // The rename counts against the budget from the moment it is asked for, whatever Discord answers.
   const times = [...timesOf(row), state.now()];
   state.renameTimes.set(channel.id, times);
   try {
@@ -206,6 +211,29 @@ async function processCounter(guild, row, { lang = null } = {}) {
   } finally {
     state.inFlight.delete(channel.id);
   }
+}
+
+/**
+ * Looks at one counter: renames it (through the line of every rename of the bot), plans the rename for when the budget allows, or does
+ * nothing. Returns what happened: 'renamed', 'waiting', 'same', 'off', 'problem'.
+ */
+async function processCounter(guild, row, { lang = null } = {}) {
+  const started = await startCounter(guild, row, lang ?? await guildLanguage(guild.id));
+  return typeof started === 'string' ? started : started.queued;
+}
+
+/** Looks at a counter and, when it must be renamed, puts the rename in the line. Resolves (the line's promise) when it is done. */
+async function startCounter(guild, row, language) {
+  const first = await evaluate(guild, row, language);
+  if (first.result) return first.result;
+  const done = state.queue.push(first.channel.id, guild.id, async () => {
+    // Its turn came: the value, the channel and the budget are read again, as they are at this moment.
+    const fresh = (state.rowsByGuild.get(guild.id) ?? []).find((r) => r.id === row.id) ?? row;
+    const now = await evaluate(guild, fresh, language);
+    if (now.result) return now.result;
+    return applyRename(guild, fresh, now.channel, now.name, language);
+  });
+  return { queued: done };
 }
 
 async function loadRows() {
@@ -285,8 +313,11 @@ async function reloadAnnounce(guildId) {
   return config;
 }
 
-/** Looks at every counter of one server, reading its rows again first when `reload` is set (after a change from a command or the dashboard). */
-async function refreshGuildCounters(client, guildId, { reload = false, channelId = null } = {}) {
+/**
+ * Looks at every counter of one server, reading its rows again first when `reload` is set (after a change from a command or the dashboard).
+ * The renames it needs all go in the line at once; with `wait: false` it does not wait for them to be sent (the full pass every minute).
+ */
+async function refreshGuildCounters(client, guildId, { reload = false, channelId = null, wait = true } = {}) {
   if (client) state.client = client;
   const guild = state.client?.guilds?.cache?.get(guildId);
   if (!guild) return [];
@@ -295,27 +326,31 @@ async function refreshGuildCounters(client, guildId, { reload = false, channelId
     if (rows.length) state.rowsByGuild.set(guildId, rows); else state.rowsByGuild.delete(guildId);
   }
   const lang = await guildLanguage(guildId);
-  const results = [];
+  const started = [];
   for (const row of state.rowsByGuild.get(guildId) ?? []) {
     if (channelId && row.channel_id !== channelId) continue;
-    results.push({ channelId: row.channel_id, result: await processCounter(guild, row, { lang }) });
+    started.push({ channelId: row.channel_id, result: await startCounter(guild, row, lang) });
   }
   if (!channelId) await checkMilestone(guild, { lang });
-  return results;
+  if (!wait) {
+    for (const entry of started) if (typeof entry.result !== 'string') entry.result.queued.catch((err) => logger.error('Counter rename failed:', err));
+    return started.map((entry) => ({ channelId: entry.channelId, result: typeof entry.result === 'string' ? entry.result : 'queued' }));
+  }
+  return Promise.all(started.map(async (entry) => ({ channelId: entry.channelId, result: typeof entry.result === 'string' ? entry.result : await entry.result.queued })));
 }
 
-/** The time of the next rename a counter is waiting for, if any (for the dashboard and the list). */
+/** The time of the next rename a counter is waiting for, if any (for the dashboard and the list). One waiting in the line goes now. */
 function pendingRenameAt(channelId) {
-  return state.timers.get(channelId)?.at ?? null;
+  return state.timers.get(channelId)?.at ?? (state.queue.queuedAt(channelId) !== null ? state.now() : null);
 }
 
-async function updateCounters(client) {
+async function updateCounters(client, { wait = true } = {}) {
   state.client = client;
   const grouped = await loadRows();
   await forEachWithConcurrency(grouped, async ([guildId]) => {
     const guild = client.guilds.cache.get(guildId);
     if (!guild) return;
-    await refreshGuildCounters(client, guildId);
+    await refreshGuildCounters(client, guildId, { wait });
   }, config.jobConcurrency);
   // Servers that announce milestones without having counters.
   for (const guildId of state.announce.keys()) {
@@ -335,7 +370,7 @@ function markDirty(guildId, types, delay = QUICK_DEBOUNCE_MS) {
   if (pending) clearTimeout(pending.timer);
   const timer = setTimeout(() => {
     state.dirty.delete(guildId);
-    refreshGuildCounters(state.client, guildId).catch((err) => logger.error('Counter update failed:', err));
+    refreshGuildCounters(state.client, guildId, { wait: false }).catch((err) => logger.error('Counter update failed:', err));
   }, delay);
   timer.unref?.();
   state.dirty.set(guildId, { timer, at });
@@ -387,10 +422,11 @@ function attachCounterEvents(client) {
 function startCounterJob(client) {
   state.client = client;
   attachCounterEvents(client);
-  const run = exclusiveTask(() => updateCounters(client));
+  // The pass only puts the renames in the line: a server with many changes never holds up the others.
+  const run = exclusiveTask(() => updateCounters(client, { wait: false }));
   run().catch((err) => logger.error('Initial counter update failed:', err));
   setInterval(() => run().catch((err) => logger.error('Counter job error:', err)), INTERVAL_MS).unref?.();
-  logger.info('Counter job started (checking every 60s, renames kept under 2 per 10 minutes per channel).');
+  logger.info('Counter job started (checking every 60s, renames kept under 2 per 10 minutes per channel and spread out over time).');
 }
 
 module.exports = { startCounterJob, updateCounters, refreshGuildCounters, processCounter, markDirty, pendingRenameAt, attachCounterEvents, countGuild, checkMilestone, scheduleMilestone, reloadAnnounce, _state: state };
