@@ -645,4 +645,5 @@ module.exports = {
   'cmd.automation.form.question.remove.opt.form.desc': 'El formulario: su nombre o número',
   'cmd.automation.form.retention.desc': 'Cuántos días se guardan las respuestas de los envíos revisados (30 por defecto).',
   'cmd.automation.form.retention.opt.days.desc': 'De 1 a 365; vacío muestra el actual',
+  'cmd.automation.form.panel.opt.web.desc': "También un botón con enlace \"Llenar en la web\" (--web yes)",
 };

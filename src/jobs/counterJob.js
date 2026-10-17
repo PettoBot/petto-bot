@@ -1,10 +1,21 @@
+// Live counters: channels whose name shows a number (members, humans, boosts...) or a clock.
+//
+// Discord lets a channel be renamed twice every ten minutes. Each counter keeps the times of its last renames (in the
+// database too, so a restart does not forget them) and is renamed:
+//   - at once when something it counts changes (a member joins or leaves, a boost, a new channel...) and the budget allows,
+//   - otherwise once, at the moment the budget allows again, with the value of that moment (updates in between are merged),
+//   - never when the name would stay the same.
+// A full pass every minute catches what no event says (a clock, a countdown) and repairs a name changed by hand.
+// A deleted channel turns its counter off; a missing permission is said once (the server's notices and the list show it).
+const { Events, PermissionFlagsBits } = require('discord.js');
 const countersDb = require('../db/counters');
 const database = require('../db/database');
 const logger = require('../utils/logger');
 const config = require('../config');
 const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency');
-const { renderName, shouldRename } = require('../utils/counterNames');
-const { t, currentLanguage, guildLanguage } = require('../i18n');
+const { renderName, planRename, recentRenames, NEEDS_MEMBERS, NEEDS_PRESENCES, RENAME_WINDOW_MS } = require('../utils/counterNames');
+const { countGuild, extrasFor } = require('../utils/counterValues');
+const { t, guildLanguage } = require('../i18n');
 
 const INTERVAL_MS = 60_000;
 const RENAME_TIMEOUT_MS = 15_000;
@@ -13,60 +24,42 @@ const RENAME_TIMEOUT_MS = 15_000;
 const MEMBER_REFRESH_MS = 10 * 60_000;
 const MEMBER_FETCH_TIMEOUT_MS = 60_000;
 const MEMBER_FETCH_MAX_GUILD = 50_000;
-const NEEDS_MEMBERS = new Set(['users_only', 'bots_only', 'pending_members', 'booster_count']);
 const WARN_EVERY_MS = 60 * 60_000;
+// How long events are gathered before the counters of a server are looked at: a raid of 50 joins is one look, not 50.
+const QUICK_DEBOUNCE_MS = 3_000;
+const SLOW_DEBOUNCE_MS = 20_000;
 
-const memberFetchedAt = new Map();
-const lastRenamedAt = new Map();
-const lastWantedName = new Map();
-const lastStoredName = new Map();
-const lastWarnAt = new Map();
+// Which counters an event can change.
+const MEMBER_TYPES = ['members', 'goal', 'users_only', 'bots_only', 'pending_members', 'booster_count', 'role_members', 'online', 'status_online', 'status_idle', 'status_dnd', 'in_voice'];
+const CHANNEL_TYPES = ['all_channels', 'text_channels', 'voice_channels', 'categories', 'announcement_channels', 'staging_channels'];
 
-function countGuild(guild, option, lang = currentLanguage()) {
-  if (/^\d{10}$/.test(option)) {
-    let seconds = Number(option) - Math.floor(Date.now() / 1000);
-    return seconds > 0 ? formatDuration(seconds) : t(lang, 'counters.value.now');
-  }
-  const channels = guild.channels.cache;
-  const members = guild.members.cache;
-  switch (option) {
-    case 'members': return guild.memberCount;
-    case 'users_only': return members.filter((m) => !m.user.bot).size;
-    case 'bots_only': return members.filter((m) => m.user.bot).size;
-    case 'pending_members': return members.filter((m) => m.pending).size;
-    case 'all_channels': return channels.size;
-    case 'text_channels': return channels.filter((c) => c.type === 0).size;
-    case 'voice_channels': return channels.filter((c) => c.type === 2).size;
-    case 'categories': return channels.filter((c) => c.type === 4).size;
-    case 'announcement_channels': return channels.filter((c) => c.type === 5).size;
-    case 'staging_channels': return channels.filter((c) => c.type === 13).size;
-    case 'boosts': return guild.premiumSubscriptionCount ?? 0;
-    case 'booster_count': return members.filter((m) => m.premiumSince).size;
-    default: return 0;
-  }
-}
-
-function formatDuration(seconds) {
-  const days = Math.floor(seconds / 86400); seconds %= 86400;
-  const hours = Math.floor(seconds / 3600); seconds %= 3600;
-  const minutes = Math.floor(seconds / 60); const secs = seconds % 60;
-  if (days) return `${days}d ${hours}h`;
-  if (hours) return `${hours}h ${minutes}m`;
-  if (minutes) return `${minutes}m ${secs}s`;
-  return `${secs}s`;
-}
+const state = {
+  client: null,
+  rowsByGuild: new Map(), // guild id -> rows, from the last read of the database
+  renameTimes: new Map(), // channel id -> the times of its last renames
+  blockedUntil: new Map(), // channel id -> a rate limit Discord gave for it
+  timers: new Map(), // channel id -> { timer, at } of the rename waiting for the budget
+  inFlight: new Set(),
+  lastWanted: new Map(),
+  lastStored: new Map(),
+  problems: new Map(), // row id -> the problem already said
+  dirty: new Map(), // guild id -> { timer, at }
+  memberFetchedAt: new Map(),
+  lastWarnAt: new Map(),
+  now: () => Date.now(),
+};
 
 function withTimeout(promise, ms, label) {
   let timer;
   // i18n-ignore: internal error, only logged
-  const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms / 1000}s`)), ms); });
+  const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error(`${label} timed out after ${ms / 1000}s`), { timedOut: true })), ms); });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 function warnOnce(key, ...args) {
-  const now = Date.now();
-  if (now - (lastWarnAt.get(key) ?? 0) < WARN_EVERY_MS) return;
-  lastWarnAt.set(key, now);
+  const now = state.now();
+  if (now - (state.lastWarnAt.get(key) ?? 0) < WARN_EVERY_MS) return;
+  state.lastWarnAt.set(key, now);
   logger.warn(...args);
 }
 
@@ -75,9 +68,9 @@ async function ensureMembers(guild, option) {
   if (!NEEDS_MEMBERS.has(option)) return;
   if ((guild.memberCount ?? 0) > MEMBER_FETCH_MAX_GUILD) return;
   if (guild.members.cache.size >= (guild.memberCount ?? 0)) return;
-  const last = memberFetchedAt.get(guild.id) ?? 0;
-  if (Date.now() - last < MEMBER_REFRESH_MS) return;
-  memberFetchedAt.set(guild.id, Date.now());
+  const last = state.memberFetchedAt.get(guild.id) ?? 0;
+  if (state.now() - last < MEMBER_REFRESH_MS) return;
+  state.memberFetchedAt.set(guild.id, state.now());
   try {
     await withTimeout(guild.members.fetch(), MEMBER_FETCH_TIMEOUT_MS, 'member fetch'); // i18n-ignore: log label
   } catch (err) {
@@ -86,56 +79,241 @@ async function ensureMembers(guild, option) {
   }
 }
 
-async function updateCounters(client) {
+function timesOf(row) {
+  const known = state.renameTimes.get(row.channel_id) ?? [];
+  const saved = Array.isArray(row.rename_times) ? row.rename_times.map(Number) : [];
+  const merged = recentRenames([...new Set([...known, ...saved])], state.now());
+  state.renameTimes.set(row.channel_id, merged);
+  return merged;
+}
+
+async function saveRow(row, patch) {
+  Object.assign(row, patch);
+  await database.from('server_counters').update(patch).eq('id', row.id).catch(() => {});
+}
+
+/** Says a problem once (a missing channel, a missing permission) and keeps it on the row for `!counter list` and the dashboard. */
+async function setProblem(guild, row, problem, { disable = false, detail = '' } = {}) {
+  if (state.problems.get(row.id) === problem && row.problem === problem && !(disable && row.enabled)) return;
+  state.problems.set(row.id, problem);
+  const patch = { problem, problem_at: new Date(state.now()).toISOString() };
+  if (disable) patch.enabled = false;
+  if (row.problem !== problem || disable) {
+    // A permission problem is worded so the server's notices pick it up and tell the staff (once, and again only if it comes back).
+    // i18n-ignore: log
+    const text = problem === 'missing_permission' ? `Missing Permissions: Petto needs Manage Channels and View Channel on the counter channel ${row.channel_id}.${detail ? ` ${detail}` : ''}` : `Counter channel ${row.channel_id} is gone; the counter was turned off.`;
+    logger.warn({ guildId: guild.id, channelId: row.channel_id, action: 'counter' }, text);
+  }
+  await saveRow(row, patch);
+}
+
+async function clearProblem(row) {
+  state.problems.delete(row.id);
+  if (row.problem) await saveRow(row, { problem: null, problem_at: null });
+}
+
+function cancelTimer(channelId) {
+  const pending = state.timers.get(channelId);
+  if (pending) clearTimeout(pending.timer);
+  state.timers.delete(channelId);
+}
+
+function scheduleLater(guildId, row, at) {
+  const pending = state.timers.get(row.channel_id);
+  if (pending && pending.at <= at) return;
+  if (pending) clearTimeout(pending.timer);
+  const timer = setTimeout(() => {
+    state.timers.delete(row.channel_id);
+    const guild = state.client?.guilds?.cache?.get(guildId);
+    const fresh = (state.rowsByGuild.get(guildId) ?? []).find((r) => r.channel_id === row.channel_id);
+    if (guild && fresh) processCounter(guild, fresh).catch((err) => logger.error('Counter rename failed:', err));
+  }, Math.max(1000, at - state.now()));
+  timer.unref?.();
+  state.timers.set(row.channel_id, { timer, at });
+}
+
+function canManage(guild, channel) {
+  const me = guild.members?.me;
+  if (!me || typeof channel.permissionsFor !== 'function') return true;
+  const perms = channel.permissionsFor(me);
+  return Boolean(perms?.has?.(PermissionFlagsBits.ManageChannels) && perms?.has?.(PermissionFlagsBits.ViewChannel));
+}
+
+/** The name a counter wants now, with the value it shows. */
+async function wantedNameOf(guild, row, lang) {
+  await ensureMembers(guild, row.counter_option);
+  const now = state.now();
+  const value = countGuild(guild, row.counter_option, lang, row, now);
+  return { name: renderName(row, value, lang, extrasFor(guild, row, value, now)), value };
+}
+
+/**
+ * Looks at one counter: renames it now, plans the rename for when the budget allows, or does nothing.
+ * Returns what happened: 'renamed', 'waiting', 'same', 'off', 'problem'.
+ */
+async function processCounter(guild, row, { lang = null } = {}) {
+  if (!row.enabled) { cancelTimer(row.channel_id); return 'off'; }
+  const channel = guild.channels.cache.get(row.channel_id);
+  if (!channel) { cancelTimer(row.channel_id); await setProblem(guild, row, 'missing_channel', { disable: true }); return 'problem'; }
+  if (!canManage(guild, channel)) { await setProblem(guild, row, 'missing_permission'); return 'problem'; }
+  if (state.inFlight.has(channel.id)) return 'waiting';
+  const language = lang ?? await guildLanguage(guild.id);
+  const { name } = await wantedNameOf(guild, row, language);
+  const plan = planRename({
+    currentName: channel.name,
+    wantedName: name,
+    channelType: row.channel_type,
+    lastWanted: state.lastWanted.get(channel.id),
+    lastStored: state.lastStored.get(channel.id),
+    times: timesOf(row),
+    now: state.now(),
+    minGapMs: Math.max(0, (Number(row.interval_seconds) || 60) - 60) * 1000,
+    blockedUntil: state.blockedUntil.get(channel.id) ?? 0,
+  });
+  if (plan.action === 'skip') {
+    cancelTimer(channel.id);
+    if (row.problem && row.problem !== 'missing_channel') await clearProblem(row);
+    return 'same';
+  }
+  if (plan.action === 'later') { scheduleLater(guild.id, row, plan.at); return 'waiting'; }
+
+  cancelTimer(channel.id);
+  state.inFlight.add(channel.id);
+  // The rename counts against the budget from the moment it is asked for, whatever Discord answers.
+  const times = [...timesOf(row), state.now()];
+  state.renameTimes.set(channel.id, times);
+  try {
+    const renamed = await withTimeout(channel.setName(name, t(language, 'counters.renameReason')), RENAME_TIMEOUT_MS, 'channel rename'); // i18n-ignore: 'channel rename' is a log label
+    state.lastWanted.set(channel.id, name);
+    state.lastStored.set(channel.id, renamed?.name ?? name);
+    state.problems.delete(row.id);
+    await saveRow(row, { rename_times: times, last_name: name, last_updated_at: new Date(state.now()).toISOString(), ...(row.problem ? { problem: null, problem_at: null } : {}) });
+    return 'renamed';
+  } catch (err) {
+    const code = err?.code ?? err?.rawError?.code;
+    if (code === 10003) { await setProblem(guild, row, 'missing_channel', { disable: true }); return 'problem'; }
+    if (code === 50013 || code === 50001) { await setProblem(guild, row, 'missing_permission'); return 'problem'; }
+    // A rate limit or a request still waiting in discord.js: nothing is asked again for this channel until the window is over.
+    if (err?.timedOut || err?.status === 429 || code === 429) state.blockedUntil.set(channel.id, state.now() + RENAME_WINDOW_MS);
+    await saveRow(row, { rename_times: times });
+    // i18n-ignore: log
+    warnOnce(`rename:${channel.id}`, { guildId: guild.id, channelId: channel.id, action: 'counter-rename' }, `Could not update counter channel: ${err.message}`);
+    return 'problem';
+  } finally {
+    state.inFlight.delete(channel.id);
+  }
+}
+
+async function loadRows() {
   const rows = await countersDb.listAll();
   const grouped = new Map();
   for (const row of rows) {
     if (!grouped.has(row.guild_id)) grouped.set(row.guild_id, []);
     grouped.get(row.guild_id).push(row);
   }
-  await forEachWithConcurrency(grouped, async ([guildId, guildRows]) => {
+  state.rowsByGuild = grouped;
+  return grouped;
+}
+
+/** Looks at every counter of one server, reading its rows again first when `reload` is set (after a change from a command or the dashboard). */
+async function refreshGuildCounters(client, guildId, { reload = false, channelId = null } = {}) {
+  if (client) state.client = client;
+  const guild = state.client?.guilds?.cache?.get(guildId);
+  if (!guild) return [];
+  if (reload) {
+    const rows = await countersDb.list(guildId);
+    if (rows.length) state.rowsByGuild.set(guildId, rows); else state.rowsByGuild.delete(guildId);
+  }
+  const lang = await guildLanguage(guildId);
+  const results = [];
+  for (const row of state.rowsByGuild.get(guildId) ?? []) {
+    if (channelId && row.channel_id !== channelId) continue;
+    results.push({ channelId: row.channel_id, result: await processCounter(guild, row, { lang }) });
+  }
+  return results;
+}
+
+/** The time of the next rename a counter is waiting for, if any (for the dashboard and the list). */
+function pendingRenameAt(channelId) {
+  return state.timers.get(channelId)?.at ?? null;
+}
+
+async function updateCounters(client) {
+  state.client = client;
+  const grouped = await loadRows();
+  await forEachWithConcurrency(grouped, async ([guildId]) => {
     const guild = client.guilds.cache.get(guildId);
     if (!guild) return;
-    // Jobs run outside any server's language: the names are written in the language of each server.
-    const lang = await guildLanguage(guildId);
-    for (const row of guildRows) {
-      if (!row.enabled) continue;
-      if (row.last_updated_at && Date.now() - Date.parse(row.last_updated_at) < (row.interval_seconds ?? 60) * 1000) continue;
-      const channel = guild.channels.cache.get(row.channel_id);
-      if (!channel) { await countersDb.remove(guildId, row.channel_id).catch(() => {}); continue; }
-      await ensureMembers(guild, row.counter_option);
-      const name = renderName(row, countGuild(guild, row.counter_option, lang), lang);
-      const wanted = shouldRename({
-        currentName: channel.name,
-        wantedName: name,
-        channelType: row.channel_type,
-        lastWanted: lastWantedName.get(channel.id),
-        lastStored: lastStoredName.get(channel.id),
-        renamedAt: lastRenamedAt.get(channel.id),
-        now: Date.now(),
-      });
-      if (wanted) {
-        try {
-          const renamed = await withTimeout(channel.setName(name, t(lang, 'counters.renameReason')), RENAME_TIMEOUT_MS, 'channel rename'); // i18n-ignore: 'channel rename' is a log label
-          lastRenamedAt.set(channel.id, Date.now());
-          lastWantedName.set(channel.id, name);
-          lastStoredName.set(channel.id, renamed?.name ?? name);
-        } catch (err) {
-          // Usually a missing Manage Channels permission or a rename limit. Say so instead of staying silent.
-          // i18n-ignore: log
-          warnOnce(`rename:${channel.id}`, { guildId, channelId: channel.id, action: 'counter-rename' }, `Could not update counter channel: ${err.message}`);
-        }
-      }
-      await database.from('server_counters').update({ last_updated_at: new Date().toISOString() }).eq('id', row.id).catch(() => {});
-    }
+    await refreshGuildCounters(client, guildId);
   }, config.jobConcurrency);
 }
 
+/** Something a counter of this server may show changed: the counters of those types are looked at after a short wait. */
+function markDirty(guildId, types, delay = QUICK_DEBOUNCE_MS) {
+  const rows = state.rowsByGuild.get(guildId);
+  if (!rows?.some((row) => row.enabled && types.includes(row.counter_option))) return false;
+  const pending = state.dirty.get(guildId);
+  const at = state.now() + delay;
+  if (pending && pending.at <= at) return true;
+  if (pending) clearTimeout(pending.timer);
+  const timer = setTimeout(() => {
+    state.dirty.delete(guildId);
+    refreshGuildCounters(state.client, guildId).catch((err) => logger.error('Counter update failed:', err));
+  }, delay);
+  timer.unref?.();
+  state.dirty.set(guildId, { timer, at });
+  return true;
+}
+
+/** The events that change what counters show. Each one only wakes up the servers that have a counter of that kind. */
+function attachCounterEvents(client) {
+  const on = (event, fn) => client.on(event, (...args) => { try { fn(...args); } catch (err) { logger.error('Counter event failed:', err); } });
+  on(Events.GuildMemberAdd, (member) => markDirty(member.guild.id, MEMBER_TYPES));
+  on(Events.GuildMemberRemove, (member) => markDirty(member.guild.id, MEMBER_TYPES));
+  on(Events.GuildMemberUpdate, (before, after) => {
+    if (before.pending !== after.pending || Boolean(before.premiumSince) !== Boolean(after.premiumSince) || before.roles?.cache?.size !== after.roles?.cache?.size) {
+      markDirty(after.guild.id, ['pending_members', 'booster_count', 'role_members']);
+    }
+  });
+  on(Events.GuildUpdate, (before, after) => {
+    if (before.premiumSubscriptionCount !== after.premiumSubscriptionCount || before.premiumTier !== after.premiumTier) markDirty(after.id, ['boosts', 'boost_level']);
+  });
+  on(Events.ChannelCreate, (channel) => channel.guild && markDirty(channel.guild.id, CHANNEL_TYPES));
+  on(Events.ChannelDelete, (channel) => {
+    if (!channel.guild) return;
+    const row = (state.rowsByGuild.get(channel.guild.id) ?? []).find((r) => r.channel_id === channel.id);
+    if (row) { cancelTimer(channel.id); setProblem(channel.guild, row, 'missing_channel', { disable: true }).catch(() => {}); }
+    markDirty(channel.guild.id, CHANNEL_TYPES);
+  });
+  on(Events.GuildRoleCreate, (role) => markDirty(role.guild.id, ['roles']));
+  on(Events.GuildRoleDelete, (role) => markDirty(role.guild.id, ['roles', 'role_members']));
+  on(Events.GuildEmojiCreate, (emoji) => markDirty(emoji.guild.id, ['emojis']));
+  on(Events.GuildEmojiDelete, (emoji) => markDirty(emoji.guild.id, ['emojis']));
+  on(Events.GuildStickerCreate, (sticker) => sticker.guild && markDirty(sticker.guild.id, ['stickers']));
+  on(Events.GuildStickerDelete, (sticker) => sticker.guild && markDirty(sticker.guild.id, ['stickers']));
+  on(Events.VoiceStateUpdate, (before, after) => {
+    if (Boolean(before.channelId) !== Boolean(after.channelId)) markDirty(after.guild.id, ['in_voice'], SLOW_DEBOUNCE_MS);
+  });
+  on(Events.PresenceUpdate, (before, after) => {
+    if (!after?.guild || before?.status === after.status) return;
+    markDirty(after.guild.id, [...NEEDS_PRESENCES], SLOW_DEBOUNCE_MS);
+  });
+  // A rename Discord made wait: no more renames are asked for that channel until the wait is over.
+  client.rest?.on?.('rateLimited', (info) => {
+    const match = /\/channels\/(\d{15,25})$/.exec(String(info?.url ?? info?.route ?? ''));
+    if (!match || String(info?.method ?? '').toUpperCase() !== 'PATCH') return;
+    const wait = Number(info.retryAfter ?? info.timeToReset ?? 0);
+    if (wait > 0) state.blockedUntil.set(match[1], state.now() + wait);
+  });
+}
+
 function startCounterJob(client) {
+  state.client = client;
+  attachCounterEvents(client);
   const run = exclusiveTask(() => updateCounters(client));
   run().catch((err) => logger.error('Initial counter update failed:', err));
   setInterval(() => run().catch((err) => logger.error('Counter job error:', err)), INTERVAL_MS).unref?.();
-  logger.info('Counter job started (checking every 60s).');
+  logger.info('Counter job started (checking every 60s, renames kept under 2 per 10 minutes per channel).');
 }
 
-module.exports = { startCounterJob, updateCounters, countGuild };
+module.exports = { startCounterJob, updateCounters, refreshGuildCounters, processCounter, markDirty, pendingRenameAt, attachCounterEvents, countGuild, _state: state };

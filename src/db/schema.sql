@@ -1904,6 +1904,18 @@ alter table server_counters add column if not exists parent_id text;
 alter table server_counters add column if not exists interval_seconds integer not null default 60;
 alter table server_counters add column if not exists enabled boolean not null default true;
 alter table server_counters add column if not exists last_updated_at timestamptz;
+-- Counters 2: number format, a role or a goal or a time zone for the types that need one, the renames of the last ten
+-- minutes (so a restart keeps under Discord's limit of two renames per ten minutes), and the problem said to the staff.
+alter table server_counters add column if not exists number_format text not null default 'plain';
+alter table server_counters add column if not exists target_id text;
+alter table server_counters add column if not exists goal integer;
+alter table server_counters add column if not exists timezone text;
+alter table server_counters add column if not exists rename_times jsonb not null default '[]'::jsonb;
+alter table server_counters add column if not exists last_name text;
+alter table server_counters add column if not exists problem text;
+alter table server_counters add column if not exists problem_at timestamptz;
+alter table server_counters drop constraint if exists server_counters_number_format_check;
+alter table server_counters add constraint server_counters_number_format_check check (number_format in ('plain', 'grouped', 'compact'));
 
 create index if not exists idx_server_counters_guild on server_counters(guild_id);
 
@@ -3821,6 +3833,8 @@ create table if not exists forms (
   unique (guild_id, name)
 );
 create index if not exists idx_forms_guild on forms(guild_id, id);
+-- Filling a form on the website (petto.sbs/f/<id>), on unless a server turns it off; and where each submission came from.
+alter table forms add column if not exists web_enabled boolean not null default true;
 alter table forms enable row level security;
 
 create table if not exists form_submissions (
@@ -3851,6 +3865,9 @@ create table if not exists form_submissions (
 create index if not exists idx_form_submissions_guild on form_submissions(guild_id, status, created_at desc);
 create index if not exists idx_form_submissions_member on form_submissions(guild_id, form_id, user_id, status);
 alter table form_submissions add column if not exists compacted boolean not null default false;
+alter table form_submissions add column if not exists source text not null default 'discord';
+alter table form_submissions drop constraint if exists form_submissions_source_check;
+alter table form_submissions add constraint form_submissions_source_check check (source in ('discord', 'web'));
 create index if not exists idx_form_submissions_compact on form_submissions(reviewed_at) where status <> 'pending' and not compacted;
 alter table form_submissions enable row level security;
 

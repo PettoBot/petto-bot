@@ -15,9 +15,6 @@ function stub(relative, exports) {
 stub('src/db/database.js', { from() { throw new Error('the database is not used in this check'); } });
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {}, debug() {} });
 stub('src/db/guilds.js', { ensureGuild: async () => ({}) });
-let premiumActive = false;
-let freeCap = 500;
-stub('src/db/premium.js', { getGuildPremium: async () => ({ active: premiumActive }), getGuildLimits: (p) => (p?.active ? { forms: 25, formQuestions: 25, formSubmissions: 5000 } : { forms: 5, formQuestions: 10, formSubmissions: freeCap }) });
 const templates = new Map();
 stub('src/db/embedTemplates.js', { getTemplate: async (guildId, name) => templates.get(name) ?? null });
 stub('src/utils/templatedMessage.js', { templatePayload: async (guildId, name) => (templates.has(name) ? { content: undefined, embeds: [{ title: name }], components: [], files: [], reactions: [] } : null) });
@@ -32,6 +29,7 @@ const copy = (row) => (row ? JSON.parse(JSON.stringify(row)) : null);
 stub('src/db/forms.js', {
   NAME,
   listForms: async (g) => db.forms.filter((f) => f.guild_id === g).map(copy),
+  getFormById: async (id) => copy(db.forms.find((f) => f.id === Number(id))),
   getForm: async (g, ref) => {
     const text = String(ref ?? '').toLowerCase();
     const row = /^\d+$/.test(text) ? db.forms.find((f) => f.guild_id === g && f.id === Number(text)) : db.forms.find((f) => f.guild_id === g && f.name === text);
@@ -221,9 +219,14 @@ const fieldsOf = (values) => ({
   assert.match(await talk('create', { name: 'staff' }, plain), /Manage Server/, 'only managers make forms');
   assert.match(await talk('create', { name: 'Staff', title: 'Staff application' }), /Form `staff` made/);
   assert.match(await talk('create', { name: 'staff' }), /already a form called `staff`/);
+  // One limit for every server, never a Premium one (made small here so the check stays short).
+  assert.deepEqual(require('../src/utils/forms').FORM_LIMITS, { forms: 25, questions: 25, submissions: 2000 });
+  require('../src/utils/forms').FORM_LIMITS.forms = 5;
   for (const n of ['a', 'b', 'c', 'd']) await talk('create', { name: n });
-  assert.match(await talk('create', { name: 'e' }), /most forms it can have for free \(5\)/, 'Free servers have 5 forms');
-  premiumActive = true; assert.match(await talk('create', { name: 'e' }), /made/); premiumActive = false;
+  const full = await talk('create', { name: 'e' });
+  assert.match(full, /most forms it can have \(5\)/); assert.doesNotMatch(full, /Premium|free/i, 'forms never mention Premium');
+  require('../src/utils/forms').FORM_LIMITS.forms = 25;
+  assert.match(await talk('create', { name: 'e' }), /made/);
   assert.match(await talk('open', { form: 'staff' }), /cannot be opened yet[\s\S]*question add[\s\S]*channel/, 'a form opens only with questions and a channel');
   assert.match(await talk('add', { form: 'staff', type: 'choice', label: 'Team', options: 'Only' }, admin, 'question'), /at least 2 options/);
   assert.match(await talk('add', { form: 'staff', type: 'short', label: 'Your name', placeholder: 'Liam', max: 40 }, admin, 'question'), /Question 1 added/);
@@ -235,8 +238,10 @@ const fieldsOf = (values) => ({
   assert.match(await talk('questions', { form: 'staff' }), /1\.\*\* Team[\s\S]*2\.\*\* Your name[\s\S]*optional[\s\S]*3\.\*\* Your age/);
   const staffForm = () => db.forms.find((f) => f.name === 'staff');
   assert.equal(staffForm().questions[1].required, false);
+  require('../src/utils/forms').FORM_LIMITS.questions = 10;
   for (let i = 0; i < 7; i += 1) await talk('add', { form: 'staff', type: 'short', label: `Extra ${i}` }, admin, 'question');
-  assert.match(await talk('add', { form: 'staff', type: 'short', label: 'One too many' }, admin, 'question'), /most questions it can have for free \(10\)/);
+  assert.match(await talk('add', { form: 'staff', type: 'short', label: 'One too many' }, admin, 'question'), /most questions it can have \(10\)/);
+  require('../src/utils/forms').FORM_LIMITS.questions = 25;
   assert.match(await talk('remove', { form: 'staff', position: 10 }, admin, 'question'), /removed/);
   assert.match(await talk('set', { form: 'staff', setting: 'channel', value: '#review' }), /saved/); assert.equal(staffForm().review_channel_id, 'review');
   assert.match(await talk('set', { form: 'staff', setting: 'accept-roles', value: 'staff, trial' }), /saved/); assert.deepEqual(staffForm().accept_add_role_ids, ['staff', 'trial']);
@@ -254,7 +259,7 @@ const fieldsOf = (values) => ({
   assert.match(await talk('message', { form: 'staff', kind: 'denied', template: 'nope' }), /no saved embed called `nope`/);
   assert.match(await talk('open', { form: 'staff' }), /is open/); assert.equal(staffForm().status, 'open');
   assert.match(await talk('info', { form: 'staff' }), /Staff application[\s\S]*<#review>[\s\S]*<@&reviewer>[\s\S]*gives <@&staff> <@&trial>[\s\S]*9 questions in 2 pages/);
-  assert.match(await talk('list', {}), /Forms \(6\/5\)[\s\S]*`staff` · \*\*Staff application\*\* · open · 9 questions/);
+  assert.match(await talk('list', {}), /Forms \(6\/25\)[\s\S]*`staff` · \*\*Staff application\*\* · open · 9 questions/);
   assert.equal(formCommand.prefixOnly, true, '!form is a prefix command, never a slash command');
 
   // ---- A member fills the form in from the panel: two pages with "Next" between them.
@@ -359,21 +364,67 @@ const fieldsOf = (values) => ({
   assert.equal(shownModals.at(-1)?.custom_id, `fm:p:${id}:0`);
 
   // Retention and the cap of stored submissions: the oldest reviewed ones make room, pending ones never do.
-  assert.match(await talk('retention', {}), /kept \*\*30\*\* days[\s\S]*Stored: 3\/500/);
+  assert.match(await talk('retention', {}), /kept \*\*30\*\* days[\s\S]*Stored: 3\/2000/);
   assert.match(await talk('retention', { days: 7 }), /kept \*\*7\*\* days/); assert.equal(db.retention, 7);
   assert.match(await talk('retention', { days: 7 }, plain), /Manage Server/);
-  freeCap = 3;
+  require('../src/utils/forms').FORM_LIMITS.submissions = 3;
   const u4 = makeMember('u4', { roleIds: ['member'] });
   const fourth = await actions.submitForm({ client, guild, form: staffForm(), member: u4, answers: db.subs[2].answers });
   assert.equal(fourth.ok, true); assert.equal(db.subs.length, 3, 'the oldest reviewed submission made room'); assert.ok(!db.subs.some((x) => x.number === 1));
   for (const x of db.subs) x.status = 'pending';
   const fifth = await actions.submitForm({ client, guild, form: staffForm(), member: makeMember('u5', { roleIds: ['member'] }), answers: db.subs[0].answers });
   assert.equal(fifth.error, 'full', 'pending submissions are never deleted to make room');
-  freeCap = 500;
+  require('../src/utils/forms').FORM_LIMITS.submissions = 2000;
   const compacted = cards.reviewCard({ submission: { ...long, status: 'accepted', compacted: true, answers: [] } });
   assert.match(JSON.stringify(compacted.container.toJSON()), /answers were removed after the retention/); assert.equal(compacted.file, null);
 
   // Deleting a form keeps what was sent.
   assert.match(await talk('delete', { form: 'staff' }), /deleted/); assert.equal(db.subs.length, 3); assert.ok(db.subs.every((x) => x.form_id === null));
-  console.log('Checked forms: questions, rules, pages with Next, review card, accept and deny with roles and DM, reviewers, panels and !form.');
+
+  // ---- Filling a form on the website (petto.sbs/f/<id>): the two routes, with the same rules and the same pipeline, marked "web".
+  {
+    const { registerFormRoutes } = require('../src/web/formRoutes');
+    const handlers = {};
+    registerFormRoutes({ post: (path, ...fns) => { handlers[path] = fns.at(-1); } }, { authorize: async () => null, isAuthorized: (req) => req.key === 'ok', client: { guilds: { cache: new Map([['g1', guild]]) } } });
+    const call = async (name, formId, body, key = 'ok') => {
+      let status = 200; let payload = null;
+      const res = { status(code) { status = code; return this; }, json(p) { payload = p; return this; }, set() { return this; } };
+      await handlers[`/api/dashboard/form/:formId/${name}`]({ key, params: { formId: String(formId) }, body, query: {}, get: () => null }, res);
+      return { status, ...payload };
+    };
+    const webForm = { ...forms.normalizeForm({ name: 'event', title: 'Event sign-up', status: 'open', review_channel_id: 'review', required_role_ids: ['member'],
+      questions: [{ id: 'name', type: 'short', label: 'Name', min_length: 2 }, { id: 'age', type: 'number', label: 'Age', min_value: 13, max_value: 99 }, { id: 'team', type: 'choice', label: 'Team', options: ['Red', 'Blue'] },
+        { id: 'days', type: 'multi', label: 'Days', options: ['Fri', 'Sat', 'Sun'], max_choices: 2, required: false }, { id: 'rules', type: 'yesno', label: 'Rules?' }] }), id: 900, guild_id: 'g1' };
+    webForm.required_role_ids = ['member']; webForm.review_channel_id = 'review';
+    db.forms.push(webForm);
+    makeMember('111111111111111111', { roleIds: [] });
+    makeMember('222222222222222222', { roleIds: ['member'] });
+    assert.equal((await call('public', 900, { user_id: '123456789012345678' }, 'bad')).status, 401, 'the dashboard key is needed');
+    assert.equal((await call('public', 999, { user_id: '123456789012345678' })).status, 404);
+    const shown = await call('public', 900, { user_id: '123456789012345678' });
+    assert.equal(shown.can, false); assert.equal(shown.code, 'notMember', 'only members of the server');
+    const outsider = await call('public', 900, { user_id: '111111111111111111' });
+    assert.equal(outsider.code, 'roles'); assert.match(outsider.reason, /@member/, 'role mentions become names on the web');
+    const ok = await call('public', 900, { user_id: '222222222222222222' });
+    assert.equal(ok.can, true); assert.equal(ok.form.questions.length, 5); assert.equal(ok.form.questions[2].options[1], 'Blue');
+    assert.equal(ok.form.review_channel_id, undefined, 'the review settings stay private');
+    const bad = await call('submit', 900, { user_id: '222222222222222222', values: { name: 'L', age: '7', team: 'o5', days: ['o0', 'o1', 'o2'] } });
+    assert.equal(bad.status, 400);
+    assert.deepEqual(bad.errors.map((e) => `${e.id}:${e.code}`).sort(), ['age:range', 'days:invalid', 'name:short', 'rules:required', 'team:required'], 'the same checks as in Discord');
+    const before = sent.length;
+    const done = await call('submit', 900, { user_id: '222222222222222222', values: { name: 'Liam', age: '21', team: 'o1', days: ['o0', 'o2'], rules: 'yes' } });
+    assert.equal(done.ok, true, JSON.stringify(done)); assert.match(done.message, /sent/);
+    const sub = db.subs.at(-1);
+    assert.equal(sub.source, 'web'); assert.deepEqual(sub.answers.map((a) => a.value), ['Liam', '21', 'Blue', ['Fri', 'Sun'], 'yes']);
+    assert.equal(sent.length, before + 1, 'the card goes to the review channel'); assert.match(textOf(sent.at(-1)), /sent on the web/);
+    assert.equal((await call('public', 900, { user_id: '222222222222222222' })).code, 'pending', 'one pending submission, on the web too');
+    db.forms.find((f) => f.id === 900).web_enabled = false;
+    assert.equal((await call('public', 900, { user_id: '222222222222222222' })).code, 'webOff', 'a server can keep a form in Discord only');
+    assert.equal((await call('submit', 900, { user_id: '222222222222222222', values: {} })).status, 403);
+    // The panel can add a "Fill on the web" link.
+    const rows = cards.panelRows([{ ...webForm, web_enabled: true }], { web: true, lang: 'en' }).map((r) => r.toJSON());
+    assert.equal(rows.at(-1).components[0].url, 'https://petto.sbs/f/900'); assert.equal(rows.at(-1).components[0].label, 'Fill on the web');
+    assert.equal(cards.panelRows([webForm], { web: true }).length, 1, 'no link for a form kept in Discord');
+  }
+  console.log('Checked forms: questions, rules, pages with Next, review card, accept and deny with roles and DM, reviewers, panels, !form and filling on the web.');
 })().catch((error) => { console.error(error); process.exit(1); });

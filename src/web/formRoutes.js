@@ -3,17 +3,97 @@
 //   POST /api/dashboard/guild/:guildId/forms/review  { number, status: accepted|denied, reason }
 //   POST /api/dashboard/guild/:guildId/forms/submissions { status: pending|accepted|denied|cancelled|all, form_id, q, limit }
 //        -> { ok, submissions, pending: { <form id>: n }, stored, cap, retention_days }
-//   POST /api/dashboard/guild/:guildId/forms/panel   { form_ids: [..], channel_id, style: buttons|select, template, title, description }
+//   POST /api/dashboard/guild/:guildId/forms/panel   { form_ids: [..], channel_id, style: buttons|select, template, title, description, web }
+// Filling a form on the website (petto.sbs/f/<id>), for any member of the server who logged in with Discord:
+//   POST /api/dashboard/form/:formId/public  { user_id } -> { ok, form, server, can, reason }
+//   POST /api/dashboard/form/:formId/submit  { user_id, values: { <question id>: text | [values] } } -> { ok, message } or { ok: false, errors }
+// The submission goes through the same checks and the same pipeline as a Discord one (card, roles, DM, log, limits), marked "web".
 // The same access as the other dashboard routes: the dashboard key and a `user_id` who can manage the server.
 const formsDb = require('../db/forms');
-const { reviewSubmission, postPanel, storageCap } = require('../utils/formActions');
+const forms = require('../utils/forms');
+const { reviewSubmission, postPanel, storageCap, submitForm, submittedText, fetchMember } = require('../utils/formActions');
 const logger = require('../utils/logger');
 const { t, requestLanguage } = require('../i18n');
 
 const SNOWFLAKE = /^\d{15,25}$/;
 
-function registerFormRoutes(app, { authorize, limiter }) {
+/** A text of Discord for a web page: role and member mentions become names, timestamps a date. */
+function plainText(text, guild, lang) {
+  const locale = lang === 'pt-BR' ? 'pt-BR' : lang === 'es' ? 'es' : 'en';
+  return String(text ?? '')
+    .replace(/<@&(\w+)>/g, (_m, id) => `@${guild?.roles?.cache?.get(id)?.name ?? id}`)
+    .replace(/<#(\w+)>/g, (_m, id) => `#${guild?.channels?.cache?.get(id)?.name ?? id}`)
+    .replace(/<@!?(\w+)>/g, (_m, id) => `@${guild?.members?.cache?.get(id)?.displayName ?? id}`)
+    .replace(/<t:(\d+)(?::[a-zA-Z])?>/g, (_m, s) => `${new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }).format(new Date(Number(s) * 1000))} UTC`);
+}
+
+/** The form as the page shows it: no review settings, no roles, only what a member reads. */
+function publicForm(form) {
+  return {
+    id: String(form.id), title: form.title, description: form.description ?? null, color: form.color ?? null,
+    questions: forms.normalizeQuestions(form.questions).map((q) => ({ id: q.id, type: q.type, label: q.label, help: q.help ?? null, placeholder: q.placeholder ?? null, required: q.required, min_length: q.min_length ?? null, max_length: q.max_length ?? null, min_value: q.min_value ?? null, max_value: q.max_value ?? null, options: q.options ?? [], max_choices: q.max_choices ?? null })),
+  };
+}
+
+/** The form, its server and the member, or an answer already sent. */
+async function webContext(req, res, client, lang0) {
+  const form = await formsDb.getFormById(req.params.formId);
+  const guild = form ? client?.guilds?.cache?.get(form.guild_id) : null;
+  if (!form || !guild) { res.status(404).json({ ok: false, code: 'not_found', message: t(lang0, 'forms.web.notFound') }); return null; }
+  const lang = requestLanguage(req, guild.id);
+  const member = await fetchMember(guild, String(req.body?.user_id ?? ''));
+  return { form, guild, member, lang };
+}
+
+async function eligibility(form, guild, member) {
+  if (!member) return { code: 'notMember', vars: {} };
+  const [stats, total] = await Promise.all([formsDb.memberStats(guild.id, form.id, member.id), form.max_total > 0 ? formsDb.countFormSubmissions(guild.id, form.id) : 0]);
+  return forms.checkEligibility(form, member, stats, { total, web: true });
+}
+
+function registerFormRoutes(app, { authorize, limiter, isAuthorized = null, client = null }) {
   const middleware = limiter ? [limiter] : [];
+
+  if (isAuthorized) {
+    const webRoute = (name, handler) => app.post(`/api/dashboard/form/:formId/${name}`, ...middleware, async (req, res) => {
+      if (!isAuthorized(req)) { res.status(401).json({ ok: false, error: 'unauthorized' }); return; }
+      if (!/^\d{15,25}$/.test(String(req.body?.user_id ?? ''))) { res.status(400).json({ ok: false, error: 'missing_identity' }); return; }
+      const lang0 = requestLanguage(req, null);
+      try {
+        const context = await webContext(req, res, client ?? req.app?.locals?.client, lang0);
+        if (context) await handler(req, res, context);
+      } catch (err) {
+        logger.error(`Web form ${name} failed for form ${req.params.formId}:`, err);
+        res.status(500).json({ ok: false, message: t(lang0, 'forms.web.failed') });
+      }
+    });
+
+    webRoute('public', async (req, res, { form, guild, member, lang }) => {
+      const refusal = await eligibility(form, guild, member);
+      res.set('Cache-Control', 'no-store'); // i18n-ignore: HTTP header
+      res.json({
+        ok: true, form: publicForm(form), server: { id: guild.id, name: guild.name, icon: guild.iconURL?.({ size: 128, extension: 'png' }) ?? null },
+        can: !refusal, code: refusal?.code ?? null, reason: refusal ? plainText(forms.refusalText(refusal, lang), guild, lang) : null,
+      });
+    });
+
+    webRoute('submit', async (req, res, { form, guild, member, lang }) => {
+      const refusal = await eligibility(form, guild, member);
+      if (refusal) { res.status(403).json({ ok: false, code: refusal.code, message: plainText(forms.refusalText(refusal, lang), guild, lang) }); return; }
+      const { values, errors } = forms.readAll(form, req.body?.values);
+      if (errors.length) {
+        res.status(400).json({ ok: false, code: 'invalid', errors: errors.map((e) => ({ id: e.id, code: e.code, message: t(lang, `forms.error.${e.code}`, e.vars) })) });
+        return;
+      }
+      const result = await submitForm({ client: guild.client, guild, form, member, answers: forms.collectAnswers(form, values), source: 'web' });
+      if (!result.ok) {
+        const message = result.error === 'refused' ? forms.refusalText(result.refusal, lang) : t(lang, `forms.submitError.${result.error === 'missing' ? 'missing' : result.error === 'no_channel' ? 'noChannel' : result.error === 'full' ? 'full' : 'failed'}`);
+        res.status(result.error === 'refused' ? 403 : 409).json({ ok: false, code: result.error, message: plainText(message, guild, lang) });
+        return;
+      }
+      res.json({ ok: true, number: result.submission.number, message: plainText(await submittedText(guild, form, result.submission, member, lang), guild, lang) });
+    });
+  }
 
   app.post('/api/dashboard/guild/:guildId/forms/submissions', ...middleware, async (req, res) => {
     const access = await authorize(req, res);

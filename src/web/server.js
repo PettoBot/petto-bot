@@ -31,6 +31,7 @@ const { registerCodeRoutes } = require('./codeRoutes');
 const { registerIdentityRoutes } = require('./identityRoutes');
 const { registerMemberRoutes } = require('./memberRoutes');
 const { registerFormRoutes } = require('./formRoutes');
+const { registerCounterRoutes } = require('./counterRoutes');
 const { fetchDashboardMember } = require('./dashboardMember');
 const { registerGuildLanguageRoute } = require('./languageRoutes');
 const { refreshGuildPanels } = require('../utils/panelRefresh');
@@ -745,7 +746,9 @@ function startServer(client) {
     // Names and avatars of members for the dashboard pages, from the gateway instead of one REST call per person.
     registerMemberRoutes(app, { isAuthorized: dashboardAuthorized, authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
     // Forms: accept or deny a submission and post a panel, from the dashboard.
-    registerFormRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
+    registerFormRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter, isAuthorized: dashboardAuthorized, client });
+    // Live counters: values for the previews, create, quick setup, refresh now and delete.
+    registerCounterRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
     // The public leaderboard page of a server that turned it on, asked for by the website.
     registerPublicLeaderboardRoute(app, { isAuthorized: dashboardAuthorized, limiter: dashboardDatabaseRateLimiter, client });
 
