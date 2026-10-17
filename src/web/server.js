@@ -16,7 +16,7 @@ const { getTicketById, getTicketByNumber } = require('../db/tickets');
 const { logVerification } = require('../utils/verificationLog');
 const { sendVerifiedDM } = require('../utils/verifyMessage');
 const { createBackup, listBackups, getBackup, deleteBackup, deleteAllBackups, recordAudit, vault } = require('../db/backups');
-const { planRestore } = require('../utils/backupRestore');
+const { planRestore, restoreParts, backupContents } = require('../utils/backupRestore');
 const backupJobs = require('../utils/backupJobs');
 const { buildFullSnapshot } = require('../commands/config/backup');
 const { renderVerifyPage } = require('./verifyPage');
@@ -33,6 +33,7 @@ const { registerMemberRoutes } = require('./memberRoutes');
 const { registerFormRoutes } = require('./formRoutes');
 const { registerCounterRoutes } = require('./counterRoutes');
 const { fetchDashboardMember } = require('./dashboardMember');
+const { roleGrantAllows } = require('./dashboardRoleAccess');
 const { registerGuildLanguageRoute } = require('./languageRoutes');
 const { refreshGuildPanels } = require('../utils/panelRefresh');
 const { registerPublicLeaderboardRoute } = require('./publicLeaderboard');
@@ -197,8 +198,10 @@ function startServer(client) {
     }
   }
 
-  // The same check as the Vault routes without needing the Vault: the person must manage the server.
-  async function dashboardCardAccess(req, res) {
+  // The same check as the Vault routes without needing the Vault: the person must manage the server. Routes of a page that "Dashboard
+  // access" by role can open (counters, forms) pass `{ page, edit }`: a member without Manage Server is let in when the site vouches for
+  // them on that page and the bot's own reading of the rules and of their roles agrees (dashboardRoleAccess.js).
+  async function dashboardCardAccess(req, res, { page = null, edit = true } = {}) {
     if (!dashboardAuthorized(req)) {
       res.status(401).json({ ok: false, error: 'unauthorized' });
       return null;
@@ -214,8 +217,12 @@ function startServer(client) {
       const member = await fetchDashboardMember(guild, userId);
       const canManage = Boolean(member) && (member.permissions.has(PermissionFlagsBits.ManageGuild) || member.permissions.has(PermissionFlagsBits.Administrator));
       if (!canManage) {
-        res.status(403).json({ ok: false, error: 'no_access' });
-        return null;
+        const byRole = page && member ? await roleGrantAllows({ guildId: guild.id, member, page, grant: req.get('x-petto-dashboard-grant'), needEdit: edit }) : false;
+        if (!byRole) {
+          res.status(403).json({ ok: false, error: 'no_access' });
+          return null;
+        }
+        return { guild, member, userId, viaRole: true };
       }
       return { guild, member, userId };
     } catch (err) {
@@ -853,7 +860,8 @@ function startServer(client) {
       }
       return authorized;
     };
-    const restoreInput = (source) => ({ number: Number(source?.backup_id), mode: String(source?.mode || 'merge') });
+    // `parts` (optional): only some parts of the backup, like "roles,channels" (backupRestore.js RESTORE_PARTS); none means all of it.
+    const restoreInput = (source) => ({ number: Number(source?.backup_id), mode: String(source?.mode || 'merge'), parts: [...restoreParts(source?.parts)] });
     const validRestoreInput = ({ number, mode }) => Number.isInteger(number) && number >= 1 && ['merge', 'replace'].includes(mode);
 
     app.get('/api/dashboard/vault/:guildId/restore/status', dashboardDatabaseRateLimiter, async (req, res) => {
@@ -871,8 +879,8 @@ function startServer(client) {
         const backup = await getBackup(authorized.guild.id, input.number);
         if (!backup) { res.status(404).json({ ok: false, error: 'backup_not_found' }); return; }
         await Promise.all([authorized.guild.roles.fetch(), authorized.guild.channels.fetch(), authorized.guild.emojis.fetch()]);
-        const plan = planRestore(authorized.guild, backup.snapshot, { mode: input.mode });
-        res.json({ ok: true, plan: { ...plan, deleteChannelCount: plan.deleteChannels.length, deleteRoleCount: plan.deleteRoles.length, deleteChannels: plan.deleteChannels.slice(0, 25), deleteRoles: plan.deleteRoles.slice(0, 25) }, running: backupJobs.isRunning(authorized.guild.id) });
+        const plan = planRestore(authorized.guild, backup.snapshot, { mode: input.mode, parts: input.parts });
+        res.json({ ok: true, contents: backupContents(backup.snapshot), plan: { ...plan, deleteChannelCount: plan.deleteChannels.length, deleteRoleCount: plan.deleteRoles.length, deleteChannels: plan.deleteChannels.slice(0, 25), deleteRoles: plan.deleteRoles.slice(0, 25) }, running: backupJobs.isRunning(authorized.guild.id) });
       } catch (err) {
         logger.error('Dashboard failed to preview a restore:', err);
         res.status(500).json({ ok: false, error: 'restore_preview_failed' });
@@ -906,6 +914,7 @@ function startServer(client) {
           userId,
           number: input.number,
           mode: input.mode,
+          parts: input.parts,
           snapshot: backup.snapshot,
           reason: t(serverLang, 'web.audit.restore', { number: input.number }),
           prepare: async () => {
@@ -914,7 +923,7 @@ function startServer(client) {
             return safety.backup_number;
           },
           finish: async (ended) => {
-            await recordAudit(guild.id, userId, 'backup_restored', input.number, { mode: input.mode, safetyBackupNumber: ended.safetyNumber, status: ended.status, result: ended.result });
+            await recordAudit(guild.id, userId, 'backup_restored', input.number, { mode: input.mode, parts: input.parts, safetyBackupNumber: ended.safetyNumber, status: ended.status, result: ended.result });
           },
         });
         res.json({ ok: true, job: backupJobs.describeJob(job) });

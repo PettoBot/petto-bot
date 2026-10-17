@@ -6,7 +6,7 @@ const stub = (relative, exports) => { const file = require.resolve(relative); re
 const config = { verifyTokenSecret: 'a-secret-for-the-check-of-the-restore-pictures' };
 stub('../src/config', config);
 stub('../src/utils/logger', { warn() {}, info() {}, error() {} });
-const { planRestore, restoreBackup } = require('../src/utils/backupRestore');
+const { planRestore, restoreBackup, restoreParts, backupContents } = require('../src/utils/backupRestore');
 const jobs = require('../src/utils/backupJobs');
 
 function fakeGuild({ failCreate = false } = {}) {
@@ -86,6 +86,32 @@ const snapshot = {
   const failed = await restoreBackup(failing.guild, snapshot, { mode: 'replace' });
   assert.equal(failed.deletionSkipped, 'failures');
   assert.equal(failing.calls.deleted.length, 0);
+
+  // Only some parts: "only the channels" in replace mode creates channels, never touches or deletes a role, and keeps the permissions
+  // pointed at the roles that are still there; "only the roles" deletes no channel.
+  assert.deepEqual([...restoreParts('roles, channels,nope')], ['roles', 'channels']);
+  assert.equal(restoreParts('').size, 6, 'nothing named is everything'); assert.equal(restoreParts(['nope']).size, 6);
+  const onlyChannels = fakeGuild();
+  const channelPlan = planRestore(onlyChannels.guild, snapshot, { mode: 'replace', keepChannelIds: ['c-here'], parts: ['channels'] });
+  assert.deepEqual([channelPlan.parts, channelPlan.roles.create, channelPlan.channels.create, channelPlan.deleteRoles.length, channelPlan.deleteChannels], [['channels'], 0, 3, 0, ['old-channel']], 'the plan only counts the channels');
+  const channelsDone = await restoreBackup(onlyChannels.guild, snapshot, { mode: 'replace', keepChannelIds: ['c-here'], parts: 'channels' });
+  assert.deepEqual(onlyChannels.calls.created.sort(), ['channel:general', 'channel:rules', 'channel:voice'], 'only channels are made');
+  assert.deepEqual(onlyChannels.calls.deleted, ['channel:old-channel'], 'and no role is deleted');
+  assert.deepEqual(channelsDone.parts, ['channels']); assert.equal(channelsDone.roles.created + channelsDone.stickers.created + channelsDone.automod.created, 0);
+  const onlyRoles = fakeGuild();
+  await restoreBackup(onlyRoles.guild, snapshot, { mode: 'replace', parts: ['roles'] });
+  assert.deepEqual(onlyRoles.calls.created.sort(), ['role:Members', 'role:Mods']);
+  assert.deepEqual(onlyRoles.calls.deleted, ['role:old-role'], 'only the roles are replaced; channels stay');
+  // Permissions of channels restored without their roles still point at the roles that exist.
+  const keepPerms = fakeGuild();
+  keepPerms.guild.roles.cache.set('r-1', { id: 'r-1', name: 'Mods', managed: false, edit: async () => {} });
+  let made = null;
+  const create = keepPerms.guild.channels.create;
+  keepPerms.guild.channels.create = async (data) => { if (data.name === 'general') made = data; return create(data); };
+  await restoreBackup(keepPerms.guild, { ...snapshot, channels: [{ ...snapshot.channels[0], permissionOverwrites: [{ id: 'r-1', type: 0, allow: '1024', deny: '0' }, { id: 'r-gone', type: 0, allow: '0', deny: '1024' }] }] }, { parts: ['channels'] });
+  assert.deepEqual(made.permissionOverwrites.map((o) => o.id), ['r-1'], 'an existing role keeps its permission; a missing one is left out');
+  // What a backup holds.
+  assert.deepEqual(backupContents({ ...snapshot, channels: [...snapshot.channels, { id: 'k', name: 'Info', type: 4, permissionOverwrites: [{ id: 'r-1' }] }] }), { roles: 2, categories: 1, channels: 3, overwrites: 1, emojis: 0, stickers: 2, automod: 1, settings: 1 });
 
   // The human check: a picture works once, five wrong answers lock, and a stranger cannot use it.
   const some = fakeGuild().guild;

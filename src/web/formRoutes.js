@@ -4,12 +4,13 @@
 //   POST /api/dashboard/guild/:guildId/forms/submissions { status: pending|accepted|denied|cancelled|all, form_id, q, limit }
 //        -> { ok, submissions, pending: { <form id>: n }, stored, cap, retention_days }
 //   POST /api/dashboard/guild/:guildId/forms/panel   { form_ids: [..], channel_id, style: buttons|select, template, title, description, web }
-// Filling a form on the website (petto.sbs/f/<public id>), for any member of the server who logged in with Discord. `:formId` is
+// Filling a form on the website (petto.sbs/form#<public id>), for any member of the server who logged in with Discord. `:formId` is
 // the random public id of the form (never its number, so the forms cannot be walked through):
 //   POST /api/dashboard/form/:formId/public  { user_id } -> { ok, form, server, can, reason }
 //   POST /api/dashboard/form/:formId/submit  { user_id, values: { <question id>: text | [values] } } -> { ok, message } or { ok: false, errors }
 // The submission goes through the same checks and the same pipeline as a Discord one (card, roles, DM, log, limits), marked "web".
-// The same access as the other dashboard routes: the dashboard key and a `user_id` who can manage the server.
+// The same access as the other dashboard routes: the dashboard key and a `user_id` who can manage the server, or whose roles open the
+// Forms page through "Dashboard access" (checked again by the bot, see dashboardRoleAccess.js; the list only needs to look).
 const formsDb = require('../db/forms');
 const forms = require('../utils/forms');
 const { reviewSubmission, postPanel, storageCap, submitForm, submittedText, fetchMember } = require('../utils/formActions');
@@ -97,7 +98,7 @@ function registerFormRoutes(app, { authorize, limiter, isAuthorized = null, clie
   }
 
   app.post('/api/dashboard/guild/:guildId/forms/submissions', ...middleware, async (req, res) => {
-    const access = await authorize(req, res);
+    const access = await authorize(req, res, { page: 'forms', edit: false });
     if (!access) return;
     const lang = requestLanguage(req, access.guild.id);
     try {
@@ -126,7 +127,7 @@ function registerFormRoutes(app, { authorize, limiter, isAuthorized = null, clie
   });
 
   app.post('/api/dashboard/guild/:guildId/forms/review', ...middleware, async (req, res) => {
-    const access = await authorize(req, res);
+    const access = await authorize(req, res, { page: 'forms', edit: true });
     if (!access) return;
     const lang = requestLanguage(req, access.guild.id);
     try {
@@ -148,7 +149,7 @@ function registerFormRoutes(app, { authorize, limiter, isAuthorized = null, clie
   });
 
   app.post('/api/dashboard/guild/:guildId/forms/panel', ...middleware, async (req, res) => {
-    const access = await authorize(req, res);
+    const access = await authorize(req, res, { page: 'forms', edit: true });
     if (!access) return;
     const lang = requestLanguage(req, access.guild.id);
     try {

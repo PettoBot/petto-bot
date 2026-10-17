@@ -87,7 +87,7 @@ function makeMember(id, { roleIds = [], permissions = [], age = 400, joined = 10
   return member;
 }
 const sent = []; const edits = []; const threads = [];
-const reviewMessage = (n) => ({ id: `msg${n}`, url: `https://discord.com/channels/g1/review/msg${n}`, attachments: new Collection(), edit: async (p) => { edits.push(p); }, startThread: async ({ name }) => { const th = { id: `th${n}`, name }; threads.push(th); return th; } });
+const reviewMessage = (n) => ({ id: `msg${n}`, url: `https://discord.com/channels/g1/review/msg${n}`, attachments: new Collection(), edit: async (p) => { edits.push(p); }, startThread: async ({ name }) => { const th = { id: `th${n}`, name, archived: false, locked: false, said: [], isThread: () => true, send: async (p) => { th.said.push(p); }, edit: async (o) => { Object.assign(th, o); }, setArchived: async (v) => { th.archived = v; } }; threads.push(th); channels.set(th.id, th); return th; } });
 const reviewChannel = { id: 'review', isTextBased: () => true, send: async (payload) => { sent.push(payload); return reviewMessage(sent.length); }, messages: { fetch: async (id) => reviewMessage(Number(String(id).replace('msg', ''))) }, permissionsFor: () => ({ has: () => true }) };
 const panels = [];
 const panelChannel = { id: 'panels', isTextBased: () => true, send: async (payload) => { panels.push(payload); return { id: `p${panels.length}`, url: `https://discord.com/channels/g1/panels/p${panels.length}` }; }, permissionsFor: () => ({ has: () => true }) };
@@ -367,6 +367,31 @@ const fieldsOf = (values) => ({
   // Opening a thread under a card.
   await handleFormInteraction(interaction('fm:t:3', 'button', { member: reviewer }));
   assert.match(textOf(replies.at(-1)), /Thread opened: <#th3>/); assert.equal(db.subs[2].thread_id, 'th3');
+  // A decision closes the thread of the submission: a last message with the result and who decided, then locked and archived.
+  const tc_fourth = await actions.submitForm({ client, guild, form: staffForm(), member: makeMember('u4', { roleIds: ['member'] }), answers: forms.collectAnswers(staffForm(), Object.fromEntries(staffForm().questions.map((qq) => [qq.id, qq.type === 'choice' ? 'o2' : qq.type === 'number' ? '30' : 'y']))) });
+  const tc_n4 = tc_fourth.submission.number;
+  await handleFormInteraction(interaction(`fm:t:${tc_n4}`, 'button', { member: reviewer }));
+  const tc_th4 = channels.get(db.subs.find((x) => x.number === tc_n4).thread_id);
+  assert.ok(tc_th4 && !tc_th4.locked && !tc_th4.archived, 'the thread is open while the submission waits');
+  assert.equal((await actions.reviewSubmission({ client, guild, submission: tc_fourth.submission, status: 'accepted', reviewer: { id: 'rev', name: 'Rev' } })).ok, true);
+  assert.equal(tc_th4.locked, true, 'accepting locks the thread'); assert.equal(tc_th4.archived, true, 'and archives it');
+  assert.match(tc_th4.said.at(-1).content, new RegExp(`#${tc_n4} was \\*\\*accepted\\*\\* by <@rev>`), 'the last message says the result and who decided');
+  assert.deepEqual(tc_th4.said.at(-1).allowedMentions, { parse: [] }, 'nobody is pinged');
+  // Denied from the dashboard (or !form deny), with the reason; a thread that was archived meanwhile is opened to say it, then closed.
+  const tc_fifth = await actions.submitForm({ client, guild, form: staffForm(), member: makeMember('u5', { roleIds: ['member'] }), answers: forms.collectAnswers(staffForm(), Object.fromEntries(staffForm().questions.map((qq) => [qq.id, qq.type === 'choice' ? 'o2' : qq.type === 'number' ? '30' : 'y']))) });
+  const tc_n5 = tc_fifth.submission.number;
+  await handleFormInteraction(interaction(`fm:t:${tc_n5}`, 'button', { member: reviewer }));
+  const tc_th5 = channels.get(db.subs.find((x) => x.number === tc_n5).thread_id);
+  tc_th5.archived = true;
+  assert.match(await talk('deny', { number: tc_n5, reason: 'Not this time' }, reviewer), new RegExp(`#${tc_n5} of <@u5> denied`));
+  assert.equal(tc_th5.locked, true); assert.equal(tc_th5.archived, true); assert.match(tc_th5.said.at(-1).content, /\*\*denied\*\* by <@rev>[\s\S]*> Not this time/);
+  // A thread that is gone is left alone; the review still works.
+  const tc_sixth = await actions.submitForm({ client, guild, form: staffForm(), member: makeMember('u6', { roleIds: ['member'] }), answers: forms.collectAnswers(staffForm(), Object.fromEntries(staffForm().questions.map((qq) => [qq.id, qq.type === 'choice' ? 'o2' : qq.type === 'number' ? '30' : 'y']))) });
+  await handleFormInteraction(interaction(`fm:t:${tc_sixth.submission.number}`, 'button', { member: reviewer }));
+  channels.delete(db.subs.find((x) => x.number === tc_sixth.submission.number).thread_id);
+  assert.equal((await actions.reviewSubmission({ client, guild, submission: tc_sixth.submission, status: 'denied', reviewer: { id: 'rev', name: 'Rev' } })).ok, true, 'a deleted thread does not stop the review');
+  assert.equal(await actions.closeThread(guild, { number: 99, thread_id: null }, { status: 'accepted', reviewer: { id: 'rev' } }), false);
+  db.subs.splice(3); // the rest of the checks count from the three submissions above
 
   // ---- Panels: buttons, a menu, a saved embed.
   const formA = db.forms.find((f) => f.name === 'a');
@@ -409,16 +434,17 @@ const fieldsOf = (values) => ({
     const staff = staffForm();
     assert.match(staff.public_id, /^[0-9A-Za-z]{12}$/, 'a new form gets a public id');
     assert.notEqual(staff.public_id, db.forms.find((f) => f.name === 'a')?.public_id ?? null);
-    assert.equal(forms.webUrl(staff), `https://petto.sbs/f/${staff.public_id}`);
+    assert.equal(forms.webUrl(staff), `https://petto.sbs/form#${staff.public_id}`);
+    assert.equal(forms.webUrl(staff, 'es'), `https://petto.sbs/es/form#${staff.public_id}`); assert.equal(forms.webUrl(staff, 'pt-BR'), `https://petto.sbs/pt-br/form#${staff.public_id}`);
     assert.ok(!forms.webUrl(staff).endsWith(`/${staff.id}`), 'the link never shows the number');
-    assert.ok((await talk('info', { form: 'staff' })).includes(`petto.sbs/f/${staff.public_id}`), '!form info shows the link');
+    assert.ok((await talk('info', { form: 'staff' })).includes(`petto.sbs/form#${staff.public_id}`), '!form info shows the link');
     const old = staff.public_id;
     const relinked = await talk('relink', { form: 'staff' });
-    assert.notEqual(staffForm().public_id, old, 'relink makes a new id'); assert.ok(relinked.includes(`petto.sbs/f/${staffForm().public_id}`)); assert.match(relinked, /old link no longer works/);
+    assert.notEqual(staffForm().public_id, old, 'relink makes a new id'); assert.ok(relinked.includes(`petto.sbs/form#${staffForm().public_id}`)); assert.match(relinked, /old link no longer works/);
     assert.match(await talk('relink', { form: 'staff' }, plain), /Manage Server/, 'only managers change the link');
     const before = staffForm().public_id;
     assert.match(await talk('set', { form: 'staff', setting: 'link', value: 'maybe' }), /link new/); assert.equal(staffForm().public_id, before, 'only "new" changes it');
-    assert.ok((await talk('set', { form: 'staff', setting: 'link', value: 'new' })).includes(`petto.sbs/f/${staffForm().public_id}`)); assert.notEqual(staffForm().public_id, before, '!form set <form> link new');
+    assert.ok((await talk('set', { form: 'staff', setting: 'link', value: 'new' })).includes(`petto.sbs/form#${staffForm().public_id}`)); assert.notEqual(staffForm().public_id, before, '!form set <form> link new');
   }
 
   // Deleting a form keeps what was sent.
@@ -470,7 +496,8 @@ const fieldsOf = (values) => ({
     assert.equal((await call('submit', PID, { user_id: '222222222222222222', values: {} })).status, 403);
     // The panel can add a "Fill on the web" link.
     const rows = cards.panelRows([{ ...webForm, web_enabled: true }], { web: true, lang: 'en' }).map((r) => r.toJSON());
-    assert.equal(rows.at(-1).components[0].url, 'https://petto.sbs/f/x7Kp9QzA2mVt'); assert.equal(rows.at(-1).components[0].label, 'Fill on the web');
+    assert.equal(rows.at(-1).components[0].url, 'https://petto.sbs/form#x7Kp9QzA2mVt'); assert.equal(rows.at(-1).components[0].label, 'Fill on the web');
+    assert.equal(cards.panelRows([{ ...webForm, web_enabled: true }], { web: true, lang: 'es' }).map((r) => r.toJSON()).at(-1).components[0].url, 'https://petto.sbs/es/form#x7Kp9QzA2mVt', 'the link opens the page in the server language');
     assert.equal(cards.panelRows([webForm], { web: true }).length, 1, 'no link for a form kept in Discord');
   }
   console.log('Checked forms: questions, rules, pages with Next, review card, accept and deny with roles and DM, reviewers, panels, !form and filling on the web.');

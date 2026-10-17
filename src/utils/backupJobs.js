@@ -68,6 +68,7 @@ function describeJob(job) {
     userId: job.userId,
     number: job.number,
     mode: job.mode,
+    parts: job.parts ?? null,
     status: job.status === 'running' && job.cancelRequested ? 'cancelling' : job.status,
     phase: job.phase,
     done: job.done,
@@ -112,7 +113,7 @@ function cancelJob(guildId) {
  * Starts a restore and returns at once (the job goes on by itself; read it with `getJob`). `prepare` makes the safety backup and returns
  * its number: when it fails, nothing is restored. `finish(job)` runs after the end, to write the audit and tell the person.
  */
-function startRestoreJob(guild, { userId, number, mode, snapshot, reason, prepare, finish, keepChannelIds = [] }) {
+function startRestoreJob(guild, { userId, number, mode, snapshot, reason, prepare, finish, keepChannelIds = [], parts = null }) {
   if (isRunning(guild.id)) {
     const error = new Error('A restore is already running in this server.'); // i18n-ignore: internal error, callers show their own text
     error.code = 'restore_running';
@@ -127,7 +128,8 @@ function startRestoreJob(guild, { userId, number, mode, snapshot, reason, prepar
     status: 'running',
     phase: 'safety',
     done: 0,
-    total: planRestore(guild, snapshot, { mode, keepChannelIds }).steps,
+    parts: planRestore(guild, snapshot, { mode, keepChannelIds, parts }).parts,
+    total: planRestore(guild, snapshot, { mode, keepChannelIds, parts }).steps,
     startedAt: Date.now(),
     finishedAt: null,
     cancelRequested: false,
@@ -149,6 +151,7 @@ function startRestoreJob(guild, { userId, number, mode, snapshot, reason, prepar
           mode,
           reason,
           keepChannelIds,
+          parts,
           shouldStop: () => job.cancelRequested,
           onProgress: ({ phase, done, total }) => { job.phase = phase; job.done = done; job.total = total; },
         });

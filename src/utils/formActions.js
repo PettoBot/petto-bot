@@ -205,6 +205,7 @@ async function reviewSubmission({ client, guild, submission, status, reviewer, r
   const dm = form?.dm_results === false ? null : await sendResult(client, guild, form, row, lang).catch(() => false);
   const updated = await formsDb.updateSubmission(guild.id, row.number, { role_changes: roles, dm_sent: dm }).catch(() => null) ?? { ...row, role_changes: roles, dm_sent: dm };
   await refreshCard(guild, updated, form, lang);
+  await closeThread(guild, updated, { status, reviewer, lang });
   await logForm(client, guild, {
     title: t(lang, `forms.log.${status}.title`),
     description: t(lang, `forms.log.${status}.description`, { user: `<@${row.user_id}>`, form: row.form_title || row.form_name, number: row.number, reviewer: `<@${reviewer.id}>` }),
@@ -213,6 +214,28 @@ async function reviewSubmission({ client, guild, submission, status, reviewer, r
     fields: row.reason ? [{ name: t(lang, 'forms.log.reason'), value: clip(row.reason, 1000), inline: false }] : [],
   });
   return { ok: true, submission: updated, roles, dm };
+}
+
+/**
+ * After a review, the thread Petto opened for the submission (auto thread or "Open thread") gets a last message with the result and who
+ * decided, and is locked and archived, so the talk about a decided submission ends there. A thread that is gone, or that Petto cannot
+ * manage, is left as it is. Returns whether it was closed.
+ */
+async function closeThread(guild, submission, { status, reviewer, lang = currentLanguage() }) {
+  if (!submission?.thread_id) return false;
+  const thread = guild.channels.cache.get(submission.thread_id) ?? await guild.channels.fetch(submission.thread_id).catch(() => null);
+  if (!thread || typeof thread.isThread !== 'function' || !thread.isThread()) return false;
+  try {
+    if (thread.archived) await thread.setArchived(false, t(lang, 'forms.audit.threadClosed', { number: submission.number }));
+    const lines = [t(lang, `forms.thread.closed.${status}`, { number: submission.number, reviewer: reviewer?.id ? `<@${reviewer.id}>` : clip(reviewer?.name, 80) })];
+    if (submission.reason) lines.push(t(lang, 'forms.thread.closed.reason', { reason: clip(submission.reason, 800).replace(/\n/g, '\n> ') }));
+    await thread.send({ content: lines.join('\n'), allowedMentions: { parse: [] } }).catch(() => null);
+    await thread.edit({ locked: true, archived: true, reason: t(lang, 'forms.audit.threadClosed', { number: submission.number }) });
+    return true;
+  } catch (err) {
+    logger.warn(`Forms: could not close the thread of #${submission.number}: ${err.message}`);
+    return false;
+  }
 }
 
 /** Opens (or finds) the thread under the card of a submission, for the staff to talk about it. Returns { ok, thread } or { ok: false, error }. */
@@ -263,4 +286,4 @@ async function postPanel({ guild, channel, formList, style = 'buttons', template
   return { ok: true, panel: saved ?? { ...panel, message_id: message.id }, message };
 }
 
-module.exports = { storageCap, submitForm, submittedText, reviewSubmission, applyRoles, sendResult, refreshCard, openThread, postPanel, logForm, formVars, fetchMember };
+module.exports = { storageCap, submitForm, submittedText, reviewSubmission, closeThread, applyRoles, sendResult, refreshCard, openThread, postPanel, logForm, formVars, fetchMember };

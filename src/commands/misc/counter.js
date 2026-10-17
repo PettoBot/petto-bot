@@ -25,7 +25,8 @@ const data = new SlashCommandBuilder()
     .addStringOption((o) => o.setName('type').setDescription('What to count: members, humans, bots, online, boosts, role, goal, clock...').setRequired(true))
     .addStringOption((o) => o.setName('template').setDescription('The name, with {count}').setRequired(false))
     .addChannelOption((o) => o.setName('category').setDescription('The category to put it in').setRequired(false)))
-  .addSubcommand((s) => s.setName('setup').setDescription('Quick setup: members, humans and bots in a Server stats category.'))
+  .addSubcommand((s) => s.setName('setup').setDescription('Quick setup: a pack of counters (basic, boosts, online, goal, clock) in its own category.')
+    .addStringOption((o) => o.setName('preset').setDescription('basic, boosts, online, goal or clock').setRequired(false)))
   .addSubcommand((s) => s.setName('list').setDescription('The counters of this server, with what they show.'))
   .addSubcommand((s) => s.setName('types').setDescription('Every counter type, with its value now.'))
   .addSubcommand((s) => s.setName('edit').setDescription('Change a counter: template, format, type, role, goal, timezone...')
@@ -115,6 +116,8 @@ function createError(result, lang, prefix) {
     case 'alreadyCounter': return t(lang, 'counters.create.alreadyCounter', { channel: `${result.channel}`, prefix });
     case 'permission': return t(lang, 'counters.add.failedPermission', { permission: t(lang, 'core.perm.ManageChannels') });
     case 'already': return t(lang, 'counters.setup.already', { count: result.count, prefix });
+    case 'unknownPreset': return t(lang, 'counters.preset.unknown', { preset: result.preset, presets: result.presets.map((name) => `\`${name}\``).join(', '), prefix });
+    case 'presetHave': return t(lang, 'counters.preset.have', { preset: result.preset, prefix });
     default: return t(lang, 'counters.add.failed', { error: result.detail || '?' });
   }
 }
@@ -138,11 +141,26 @@ async function create(interaction, lang) {
   return reply(interaction, ok(t(lang, result.existing ? 'counters.create.existing' : 'counters.create.done', { emoji: EMOJI.APPROVE, channel: `${result.channel}`, name: result.name })));
 }
 
+/** `!counter setup [pack] [goal|timezone]`: basic (members, humans, bots), boosts, online, goal [number], clock [time zone]. */
+function parseSetupText(text) {
+  const [preset, extra] = String(text ?? '').trim().split(/\s+/).filter(Boolean);
+  const values = {};
+  if (preset) values.preset = preset;
+  if (extra && /^\d[\d.,_]*$/.test(extra)) values.goal = extra.replace(/[.,_]/g, '');
+  else if (extra) values.timezone = extra;
+  return values;
+}
+
 async function setup(interaction, lang) {
-  const result = await setupPreset(interaction.guild, { createdBy: interaction.user.id, reason: t(lang, 'counters.setup.reason', { user: interaction.user.tag }) }, lang);
+  const result = await setupPreset(interaction.guild, {
+    createdBy: interaction.user.id, reason: t(lang, 'counters.setup.reason', { user: interaction.user.tag }),
+    preset: interaction.options.getString('preset'), goal: interaction.options.getString('goal'), timezone: interaction.options.getString('timezone'),
+  }, lang);
   if (!result.ok) return reply(interaction, bad(createError(result, lang, prefixOf(interaction))));
   job().refreshGuildCounters(interaction.client, interaction.guild.id, { reload: true }).catch(() => {});
-  return reply(interaction, ok(t(lang, 'counters.setup.done', { emoji: EMOJI.APPROVE, category: result.category.name, channels: result.made.map((m) => `${m.channel}`).join(', ') })));
+  const lines = [t(lang, 'counters.setup.done', { emoji: EMOJI.APPROVE, category: result.category.name, channels: result.made.map((m) => `${m.channel}`).join(', ') })];
+  if (result.skipped) lines.push(t(lang, 'counters.preset.skipped', { count: result.skipped }));
+  return reply(interaction, ok(lines.join('\n')));
 }
 
 function statusOf(row, lang) {
@@ -250,10 +268,11 @@ module.exports = {
   aliases: ['counters'],
   prefixOnly: true,
   data,
-  prefixSubcommandAliases: { add: 'create', new: 'create', make: 'create', remove: 'delete', del: 'delete', rm: 'delete', stop: 'delete', ls: 'list', update: 'refresh', sync: 'refresh', type: 'types', quick: 'setup', preset: 'setup' },
+  prefixSubcommandAliases: { add: 'create', new: 'create', make: 'create', remove: 'delete', del: 'delete', rm: 'delete', stop: 'delete', ls: 'list', update: 'refresh', sync: 'refresh', type: 'types', quick: 'setup', preset: 'setup', presets: 'setup', pack: 'setup' },
   prefixDefaultSubcommand: 'list',
-  prefixRawOptions: { create: parseCreateText },
+  prefixRawOptions: { create: parseCreateText, setup: parseSetupText },
   parseCreateText,
+  parseSetupText,
   NEEDS_PRESENCES,
 
   async execute(interaction) {

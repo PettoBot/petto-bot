@@ -73,6 +73,44 @@ function channelOptions(data, parentId, permissionOverwrites, reason, includeTyp
   return options;
 }
 
+// The parts a restore can bring back on their own ("only the roles", "only the channels"...). Everything, when none is named.
+const RESTORE_PARTS = ['roles', 'channels', 'settings', 'emojis', 'stickers', 'automod'];
+
+/** The parts asked for, as a set: a list or a text like "roles,channels". Unknown names are left out; nothing known means all of them. */
+function restoreParts(parts) {
+  const list = (Array.isArray(parts) ? parts : String(parts ?? '').split(/[\s,]+/)).map((part) => String(part).toLowerCase().trim()).filter((part) => RESTORE_PARTS.includes(part));
+  return new Set(list.length ? list : RESTORE_PARTS);
+}
+
+/** The snapshot with only the parts asked for (the others are empty lists, and the server settings are dropped when not asked for). */
+function selectParts(snapshot, only) {
+  return {
+    ...snapshot,
+    roles: only.has('roles') ? snapshot.roles : [],
+    channels: only.has('channels') ? snapshot.channels : [],
+    emojis: only.has('emojis') ? snapshot.emojis ?? [] : [],
+    stickers: only.has('stickers') ? snapshot.stickers ?? [] : [],
+    automod: only.has('automod') ? snapshot.automod ?? [] : [],
+    guild: only.has('settings') ? snapshot.guild ?? {} : null,
+  };
+}
+
+/** What a backup holds, counted: roles, categories, channels, permission overwrites, emojis, stickers, automod rules and server settings. */
+function backupContents(rawSnapshot) {
+  const snapshot = normaliseSnapshot(rawSnapshot);
+  const channels = snapshot.channels.filter((data) => data && RESTORABLE_CHANNEL_TYPES.has(data.type));
+  return {
+    roles: snapshot.roles.filter((data) => data?.id && !data.managed && data.name !== '@everyone' && String(data.id) !== String(snapshot.guild?.id ?? '')).length,
+    categories: channels.filter((data) => data.type === ChannelType.GuildCategory).length,
+    channels: channels.filter((data) => data.type !== ChannelType.GuildCategory).length,
+    overwrites: channels.reduce((sum, data) => sum + (Array.isArray(data.permissionOverwrites) ? data.permissionOverwrites.length : 0), 0),
+    emojis: (snapshot.emojis ?? []).length,
+    stickers: (snapshot.stickers ?? []).length,
+    automod: (snapshot.automod ?? []).length,
+    settings: snapshot.guild ? Object.keys(snapshot.guild).filter((key) => snapshot.guild[key] !== null && snapshot.guild[key] !== undefined).length : 0,
+  };
+}
+
 function normaliseSnapshot(snapshot) {
   if (!snapshot || snapshot.format !== 'petto-server-backup' || !Array.isArray(snapshot.roles) || !Array.isArray(snapshot.channels)) {
     const error = new Error('Invalid or unsupported Petto backup format.'); // i18n-ignore: internal error, never shown
@@ -91,10 +129,12 @@ function protectedChannelIds(guild, extra = []) {
  * What a restore would do, without touching anything: how many roles, channels and emojis it creates or updates and, in replace mode,
  * the names of what it would delete. The command and the dashboard show it before asking to confirm.
  */
-function planRestore(guild, rawSnapshot, { mode = 'merge', keepChannelIds = [] } = {}) {
-  const snapshot = normaliseSnapshot(rawSnapshot);
+function planRestore(guild, rawSnapshot, { mode = 'merge', keepChannelIds = [], parts = null } = {}) {
+  const only = restoreParts(parts);
+  const snapshot = selectParts(normaliseSnapshot(rawSnapshot), only);
   const plan = {
     mode,
+    parts: RESTORE_PARTS.filter((part) => only.has(part)),
     roles: { create: 0, update: 0, skip: 0 },
     channels: { create: 0, update: 0 },
     emojis: { create: 0, update: 0, skip: 0 },
@@ -130,13 +170,18 @@ function planRestore(guild, rawSnapshot, { mode = 'merge', keepChannelIds = [] }
     if (!data?.name) continue;
     if (guild.autoModerationRules?.cache?.find((rule) => rule.name === data.name)) plan.automod.update++; else plan.automod.create++;
   }
+  // Replace only deletes in the parts it brings back: "only the channels" never deletes a role, and the other way round.
   if (mode === 'replace') {
     const keep = protectedChannelIds(guild, keepChannelIds);
-    for (const channel of guild.channels.cache.values()) {
-      if (isRestorableChannel(channel) && !matchedChannels.has(String(channel.id)) && !keep.has(String(channel.id))) plan.deleteChannels.push(channel.name);
+    if (only.has('channels')) {
+      for (const channel of guild.channels.cache.values()) {
+        if (isRestorableChannel(channel) && !matchedChannels.has(String(channel.id)) && !keep.has(String(channel.id))) plan.deleteChannels.push(channel.name);
+      }
     }
-    for (const role of guild.roles.cache.values()) {
-      if (!role.managed && role.id !== guild.id && !matchedRoles.has(String(role.id))) plan.deleteRoles.push(role.name);
+    if (only.has('roles')) {
+      for (const role of guild.roles.cache.values()) {
+        if (!role.managed && role.id !== guild.id && !matchedRoles.has(String(role.id))) plan.deleteRoles.push(role.name);
+      }
     }
   }
   plan.steps = snapshot.roles.length + 1 + channels.length + 1 + (snapshot.emojis ?? []).length + (snapshot.stickers ?? []).length + (snapshot.automod ?? []).length + plan.deleteChannels.length + plan.deleteRoles.length;
@@ -150,8 +195,10 @@ function planRestore(guild, rawSnapshot, { mode = 'merge', keepChannelIds = [] }
  * `onProgress({ phase, done, total })` is told after every step; `shouldStop()` is asked before each one, and a restore that is
  * stopped leaves what it already did, deletes nothing more and says `cancelled: true`.
  */
-async function restoreBackup(guild, rawSnapshot, { mode = 'merge', reason = 'Petto backup restore', onProgress = null, shouldStop = null, keepChannelIds = [] } = {}) { // i18n-ignore: default only, callers pass a translated reason
-  const snapshot = normaliseSnapshot(rawSnapshot);
+async function restoreBackup(guild, rawSnapshot, { mode = 'merge', reason = 'Petto backup restore', onProgress = null, shouldStop = null, keepChannelIds = [], parts = null } = {}) { // i18n-ignore: default only, callers pass a translated reason
+  const only = restoreParts(parts);
+  const full = normaliseSnapshot(rawSnapshot);
+  const snapshot = selectParts(full, only);
   const replace = mode === 'replace';
   if (!['merge', 'replace'].includes(mode)) {
     const error = new Error('Restore mode must be merge or replace.'); // i18n-ignore: internal error, never shown
@@ -169,9 +216,10 @@ async function restoreBackup(guild, rawSnapshot, { mode = 'merge', reason = 'Pet
     stickers: { created: 0, updated: 0, skipped: 0, failed: 0 },
     automod: { created: 0, updated: 0, skipped: 0, failed: 0 },
     deleted: { roles: 0, channels: 0 },
+    parts: RESTORE_PARTS.filter((part) => only.has(part)),
     errors: [],
   };
-  const plan = planRestore(guild, snapshot, { mode, keepChannelIds });
+  const plan = planRestore(guild, full, { mode, keepChannelIds, parts: [...only] });
   let done = 0;
   const report = (phase) => { done += 1; try { onProgress?.({ phase, done, total: plan.steps }); } catch { /* a progress listener must never stop a restore */ } };
   const stopped = () => {
@@ -181,6 +229,8 @@ async function restoreBackup(guild, rawSnapshot, { mode = 'merge', reason = 'Pet
   };
   const roleMap = new Map([[String(guild.id), String(guild.id)]]);
   const targetRoleIds = new Set([String(guild.id)]);
+  // When the roles are not brought back, the channels still point their permissions at the roles that are still there.
+  if (!only.has('roles')) for (const data of full.roles) if (data?.id && guild.roles.cache.has(String(data.id))) roleMap.set(String(data.id), String(data.id));
 
   const roles = [...snapshot.roles].sort((a, b) => Number(a.position ?? 0) - Number(b.position ?? 0));
   for (const data of roles) {
@@ -234,6 +284,13 @@ async function restoreBackup(guild, rawSnapshot, { mode = 'merge', reason = 'Pet
 
   const channelMap = new Map();
   const targetChannelIds = new Set();
+  // When the channels are not brought back, the settings and the automod rules point at the matching channels that are still there.
+  if (!only.has('channels')) {
+    for (const data of full.channels) {
+      const existing = data && RESTORABLE_CHANNEL_TYPES.has(data.type) ? findChannel(guild, data) : null;
+      if (existing) channelMap.set(String(data.id), String(existing.id));
+    }
+  }
   const channels = [...snapshot.channels]
     .filter((data) => data && RESTORABLE_CHANNEL_TYPES.has(data.type))
     .sort((a, b) => (a.type === ChannelType.GuildCategory ? -1 : 0) - (b.type === ChannelType.GuildCategory ? -1 : 0) || Number(a.position ?? 0) - Number(b.position ?? 0));
@@ -263,6 +320,7 @@ async function restoreBackup(guild, rawSnapshot, { mode = 'merge', reason = 'Pet
 
   if (stopped()) return result;
   const guildData = snapshot.guild ?? {};
+  // (Without the settings part, snapshot.guild is null and nothing of the server itself changes.)
   const guildEdit = {};
   if (guildData.name) guildEdit.name = String(guildData.name).slice(0, 100);
   for (const key of ['verificationLevel', 'defaultMessageNotifications', 'explicitContentFilter', 'afkTimeout']) {
@@ -362,7 +420,7 @@ async function restoreBackup(guild, rawSnapshot, { mode = 'merge', reason = 'Pet
       return result;
     }
     const keep = protectedChannelIds(guild, keepChannelIds);
-    for (const channel of [...guild.channels.cache.values()]) {
+    for (const channel of only.has('channels') ? [...guild.channels.cache.values()] : []) {
       if (!isRestorableChannel(channel) || targetChannelIds.has(String(channel.id)) || keep.has(String(channel.id))) continue;
       if (stopped()) return result;
       try {
@@ -373,7 +431,7 @@ async function restoreBackup(guild, rawSnapshot, { mode = 'merge', reason = 'Pet
       }
       report('cleanup');
     }
-    for (const role of [...guild.roles.cache.values()]) {
+    for (const role of only.has('roles') ? [...guild.roles.cache.values()] : []) {
       if (role.managed || role.id === guild.id || targetRoleIds.has(String(role.id))) continue;
       if (stopped()) return result;
       try {
@@ -389,4 +447,4 @@ async function restoreBackup(guild, rawSnapshot, { mode = 'merge', reason = 'Pet
   return result;
 }
 
-module.exports = { restoreBackup, planRestore, isRestorableChannel };
+module.exports = { restoreBackup, planRestore, isRestorableChannel, restoreParts, backupContents, RESTORE_PARTS };
