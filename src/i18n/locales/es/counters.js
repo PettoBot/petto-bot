@@ -152,4 +152,12 @@ module.exports = {
   'counters.topic.channelName': "estadísticas",
   'counters.reorder.done': "Orden guardado.",
   'counters.reorder.notMoved': "El orden se guardó, pero Petto no pudo mover los canales en Discord. Necesita Administrar canales.",
+  'counters.label.role_online': "Conectados de un rol",
+  'counters.label.tag_users': "Con la etiqueta del servidor",
+  'counters.label.vanity_users': "Apoyos por Vanity",
+  'counters.label.messages_today': "Mensajes de hoy",
+  'counters.default.role_online': "🟢 {role} conectados: {count}",
+  'counters.default.tag_users': "🏷️ Con la etiqueta: {count}",
+  'counters.default.vanity_users': "💜 Apoyos: {count}",
+  'counters.default.messages_today': "💬 Mensajes hoy: {count}",
 };

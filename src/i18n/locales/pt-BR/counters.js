@@ -152,4 +152,12 @@ module.exports = {
   'counters.topic.channelName': "estatísticas",
   'counters.reorder.done': "Ordem salva.",
   'counters.reorder.notMoved': "A ordem foi salva, mas o Petto não conseguiu mover os canais no Discord. Ele precisa de Gerenciar canais.",
+  'counters.label.role_online': "Online de um cargo",
+  'counters.label.tag_users': "Usando a tag do servidor",
+  'counters.label.vanity_users': "Apoios por Vanity",
+  'counters.label.messages_today': "Mensagens de hoje",
+  'counters.default.role_online': "🟢 {role} online: {count}",
+  'counters.default.tag_users': "🏷️ Com a tag: {count}",
+  'counters.default.vanity_users': "💜 Apoios: {count}",
+  'counters.default.messages_today': "💬 Mensagens hoje: {count}",
 };

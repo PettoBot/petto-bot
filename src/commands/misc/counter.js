@@ -4,7 +4,7 @@ const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, ChannelType } = 
 const countersDb = require('../../db/counters');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
-const { OPTIONS, NEEDS_PRESENCES, resolveOption, resolveFormat, validTimeZone, typeLabel, defaultTemplate, formatCount, templateMax, targetOf } = require('../../utils/counterNames');
+const { OPTIONS, NEEDS_PRESENCES, resolveOption, resolveFormat, validTimeZone, typeLabel, defaultTemplate, formatCount, templateMax, targetOf, NEEDS_ROLE, DB_TYPES } = require('../../utils/counterNames');
 const { countGuild } = require('../../utils/counterValues');
 const { createCounter, setupPreset, previewName, resolveKind, KINDS, KIND_OF_TYPE, TOPIC_TYPES } = require('../../utils/counterSetup');
 const { parseEvery, nextMilestone, announcePayload, announceChannel, MAX_TEXT } = require('../../utils/counterAnnounce');
@@ -190,8 +190,9 @@ async function list(interaction, lang) {
 
 async function types(interaction, lang) {
   const { guild } = interaction;
+  for (const option of DB_TYPES) await require('../../utils/counterSources').loadValue(guild.id, option).catch(() => null);
   const lines = OPTIONS.map((option) => {
-    const value = option === 'role_members' ? null : countGuild(guild, option, lang, {});
+    const value = NEEDS_ROLE.has(option) ? null : countGuild(guild, option, lang, {});
     const shown = value === null ? '' : ` · ${typeof value === 'number' ? formatCount(value, 'grouped', lang) : value}`;
     return `\`${option}\` ${typeLabel(option, lang)}${shown}`;
   });
@@ -225,7 +226,7 @@ async function edit(interaction, lang) {
       const option = resolveOption(value);
       if (!option) return reply(interaction, bad(t(lang, 'counters.create.unknownType', { type: value, prefix })));
       patch.counter_option = option;
-      if (option === 'role_members' && !current.target_id) return reply(interaction, bad(t(lang, 'counters.create.needRole', { prefix })));
+      if (NEEDS_ROLE.has(option) && !current.target_id) return reply(interaction, bad(t(lang, 'counters.create.needRole', { prefix })));
       break;
     }
     case 'role': { const role = roleFrom(guild, value); if (!role) return reply(interaction, bad(t(lang, 'counters.create.needRole', { prefix }))); patch.target_id = role.id; break; }

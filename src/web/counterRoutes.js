@@ -11,7 +11,8 @@
 // The same access as the other dashboard routes: the dashboard key and a `user_id` who can manage the server, or whose roles open the
 // Counters page through "Dashboard access" (checked again by the bot, see dashboardRoleAccess.js; preview only needs to look).
 const countersDb = require('../db/counters');
-const { OPTIONS, recentRenames, nextRenameAt, targetOf } = require('../utils/counterNames');
+const { OPTIONS, recentRenames, nextRenameAt, targetOf, NEEDS_ROLE, DB_TYPES } = require('../utils/counterNames');
+const { loadValue } = require('../utils/counterSources');
 // Also: each counter of `preview` brings `badges`, `last_updated_at`, `next_rename_at`, `queued` and `next_check_at` (see counterStatus).
 const { countGuild } = require('../utils/counterValues');
 const { createCounter, setupPreset, counterLimits, previewName } = require('../utils/counterSetup');
@@ -57,12 +58,14 @@ function registerCounterRoutes(app, { authorize, limiter }) {
 
   route('preview', async (req, res, { guild }, lang) => {
     const values = {};
-    for (const option of OPTIONS) if (option !== 'role_members') values[option] = countGuild(guild, option, lang, {});
+    for (const option of DB_TYPES) await loadValue(guild.id, option);
+    for (const option of OPTIONS) if (!NEEDS_ROLE.has(option)) values[option] = countGuild(guild, option, lang, {});
+    const rolesOnline = {};
     const roles = {};
     const rows = await countersDb.list(guild.id);
     const now = Date.now();
     const counters = rows.map((row) => {
-      if (row.target_id) roles[row.target_id] = countGuild(guild, 'role_members', lang, row);
+      if (row.target_id) { roles[row.target_id] = countGuild(guild, 'role_members', lang, row); rolesOnline[row.target_id] = countGuild(guild, 'role_online', lang, row); }
       const channel = guild.channels.cache.get(row.channel_id);
       const times = recentRenames(row.rename_times, now);
       return {
@@ -81,7 +84,7 @@ function registerCounterRoutes(app, { authorize, limiter }) {
       next: nextMilestone({ count: guild.memberCount ?? 0, last: config.last_announced, every: config.every, goalRows: rows, useGoals: config.use_goals !== false }),
     } : null;
     res.set('Cache-Control', 'no-store'); // i18n-ignore: HTTP header
-    res.json({ ok: true, values, roles, presences: Boolean(guild.presences?.cache?.size), counters, limits: await counterLimits(guild.id), announce, default_announce: t(lang, 'counters.announce.default') });
+    res.json({ ok: true, values, roles, roles_online: rolesOnline, presences: Boolean(guild.presences?.cache?.size), counters, limits: await counterLimits(guild.id), announce, default_announce: t(lang, 'counters.announce.default') });
   });
 
   route('create', async (req, res, { guild, userId, member }, lang) => {

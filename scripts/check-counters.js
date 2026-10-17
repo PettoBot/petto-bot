@@ -353,6 +353,53 @@ state.queue.configure({ gapMs: 0, guildGapMs: 0, jitterMs: 0 });
   assert.deepEqual(command.parseSetupText(''), {});
   assert.equal(command.prefixSubcommandAliases.preset, 'setup');
 
+  // ── New types: online in a role, server tag wearers, Vanity supporters, messages today ──
+  {
+    const { setReader, loadValue } = require('../src/utils/counterSources');
+    const { createCounter } = require('../src/utils/counterSetup');
+    assert.equal(resolveOption('staffonline'), 'role_online'); assert.equal(resolveOption('servertag'), 'tag_users');
+    assert.equal(resolveOption('vanity'), 'vanity_users'); assert.equal(resolveOption('mensajes'), 'messages_today');
+    const ng = makeGuild(); ng.id = '91';
+    // Online in a role: a and the VIP role. a is online, b (VIP too) idle, c offline.
+    ng.members.cache.get('b').roles.cache.set('r1', true);
+    ng.presences.cache = coll([['a', { status: 'online' }], ['b', { status: 'idle' }], ['c', { status: 'offline' }]]);
+    assert.equal(countGuild(ng, 'role_online', 'en', { target_id: 'r1' }), 2, 'online, idle or busy members of the role');
+    ng.presences.cache.set('b', { status: 'offline' });
+    assert.equal(countGuild(ng, 'role_online', 'en', { target_id: 'r1' }), 1);
+    assert.equal(countGuild(ng, 'role_online', 'en', { target_id: 'nope' }), 0);
+    // Server tag: the members whose tag is this server's and is shown.
+    ng.members.cache.get('a').user.primaryGuild = { identityGuildId: '91', identityEnabled: true, tag: 'PET' };
+    ng.members.cache.get('b').user.primaryGuild = { identityGuildId: '91', identityEnabled: false, tag: 'PET' };
+    ng.members.cache.get('c').user.primaryGuild = { identityGuildId: '42', identityEnabled: true, tag: 'XX' };
+    assert.equal(countGuild(ng, 'tag_users', 'en', {}), 1, 'only a tag of this server that is shown');
+    // The database types: read at most once a minute per server, the last value kept when the database fails.
+    const reads = [];
+    let fail = false;
+    setReader(async (guildId, type) => { reads.push(type); if (fail) throw new Error('down'); return type === 'vanity_users' ? 12 : 3456; });
+    assert.equal(await loadValue('91', 'messages_today', { now: 1_000_000 }), 3456);
+    assert.equal(await loadValue('91', 'messages_today', { now: 1_030_000 }), 3456);
+    assert.deepEqual(reads, ['messages_today'], 'not read again within a minute');
+    assert.equal(countGuild(ng, 'messages_today', 'en', {}), 3456);
+    fail = true;
+    assert.equal(await loadValue('91', 'messages_today', { now: 1_100_000 }), 3456, 'the last value when the database does not answer');
+    fail = false;
+    assert.equal(await loadValue('91', 'members', { now: 1_100_000 }), null, 'other types are not read from the database');
+    // The job reads them before it renames.
+    const vch = channel('930', 'old', 2); ng.channels.cache.set(vch.id, vch);
+    const vRow = { guild_id: '91', channel_type: 'voice', prefix: '', suffix: '', enabled: true, interval_seconds: 60, rename_times: [], id: 930, channel_id: '930', counter_option: 'vanity_users', name_template: '💜 {count}' };
+    assert.equal(await job.processCounter(ng, vRow, { lang: 'en' }), 'renamed');
+    assert.deepEqual(vch.calls, ['💜 12']);
+    setReader(null);
+    // A role counter needs its role, the others make their default names.
+    rows = []; ng.members.me = { id: 'me' }; premium = true;
+    assert.equal((await createCounter(ng, { type: 'staffonline', createdBy: 'u' }, 'en')).error, 'needRole');
+    const ro = await createCounter(ng, { type: 'role_online', roleId: 'r1', createdBy: 'u' }, 'es');
+    assert.equal(ro.ok, true); assert.equal(ro.row.target_id, 'r1'); assert.equal(ro.name, '🟢 Staff conectados: 1');
+    assert.equal((await createCounter(ng, { type: 'tag', createdBy: 'u' }, 'en')).name, '🏷️ Tag wearers: 1');
+    assert.equal((await createCounter(ng, { type: 'messages', createdBy: 'u' }, 'pt-BR')).name, '💬 Mensagens hoje: 3456');
+    premium = false; rows = [];
+  }
+
   // ── Targets: a category's name, a text channel's topic ─────────────────
   {
     const { createCounter } = require('../src/utils/counterSetup');
@@ -609,6 +656,6 @@ state.queue.configure({ gapMs: 0, guildGapMs: 0, jitterMs: 0 });
     rows = [];
   }
 
-  console.log('Checked counter names, formats, goals, clocks, the rename budget (2 per 10 minutes, merged, kept across restarts), problems, !counter create, the setup and the packs, category and topic counters, the order and status for the dashboard, members per day, the line that spreads renames over time, and milestone announcements.');
+  console.log('Checked counter names, formats, goals, clocks, the rename budget (2 per 10 minutes, merged, kept across restarts), problems, !counter create, the setup and the packs, the new types (online in a role, server tag, Vanity, messages today), category and topic counters, the order and status for the dashboard, members per day, the line that spreads renames over time, and milestone announcements.');
   process.exit(0);
 })().catch((error) => { console.error(error); process.exit(1); });

@@ -17,6 +17,7 @@ const { renderName, planRename, recentRenames, targetOf, NEEDS_MEMBERS, NEEDS_PR
 const { countGuild, extrasFor } = require('../utils/counterValues');
 const { milestoneToAnnounce, announcePayload, announceChannel } = require('../utils/counterAnnounce');
 const { createRenameQueue } = require('../utils/renameQueue');
+const { loadValue } = require('../utils/counterSources');
 const { t, guildLanguage } = require('../i18n');
 const { botDay } = require('../utils/botTime');
 
@@ -33,7 +34,7 @@ const QUICK_DEBOUNCE_MS = 3_000;
 const SLOW_DEBOUNCE_MS = 20_000;
 
 // Which counters an event can change.
-const MEMBER_TYPES = ['members', 'goal', 'users_only', 'bots_only', 'pending_members', 'booster_count', 'role_members', 'online', 'status_online', 'status_idle', 'status_dnd', 'in_voice'];
+const MEMBER_TYPES = ['members', 'goal', 'users_only', 'bots_only', 'pending_members', 'booster_count', 'role_members', 'role_online', 'tag_users', 'online', 'status_online', 'status_idle', 'status_dnd', 'in_voice'];
 const CHANNEL_TYPES = ['all_channels', 'text_channels', 'voice_channels', 'categories', 'announcement_channels', 'staging_channels'];
 
 const state = {
@@ -155,6 +156,7 @@ function canManage(guild, channel) {
 /** The name a counter wants now, with the value it shows. */
 async function wantedNameOf(guild, row, lang) {
   await ensureMembers(guild, row.counter_option);
+  await loadValue(guild.id, row.counter_option, { now: state.now() });
   const now = state.now();
   const value = countGuild(guild, row.counter_option, lang, row, now);
   return { name: renderName(row, value, lang, extrasFor(guild, row, value, now)), value };
@@ -448,8 +450,10 @@ function attachCounterEvents(client) {
   on(Events.GuildMemberRemove, (member) => markDirty(member.guild.id, MEMBER_TYPES));
   on(Events.GuildMemberUpdate, (before, after) => {
     if (before.pending !== after.pending || Boolean(before.premiumSince) !== Boolean(after.premiumSince) || before.roles?.cache?.size !== after.roles?.cache?.size) {
-      markDirty(after.guild.id, ['pending_members', 'booster_count', 'role_members']);
+      markDirty(after.guild.id, ['pending_members', 'booster_count', 'role_members', 'role_online']);
     }
+    const tag = (m) => `${m.user?.primaryGuild?.identityGuildId ?? ''}:${m.user?.primaryGuild?.identityEnabled ?? ''}:${m.user?.primaryGuild?.tag ?? ''}`;
+    if (tag(before) !== tag(after)) markDirty(after.guild.id, ['tag_users'], SLOW_DEBOUNCE_MS);
   });
   on(Events.GuildUpdate, (before, after) => {
     if (before.premiumSubscriptionCount !== after.premiumSubscriptionCount || before.premiumTier !== after.premiumTier) markDirty(after.id, ['boosts', 'boost_level']);
@@ -462,7 +466,7 @@ function attachCounterEvents(client) {
     markDirty(channel.guild.id, CHANNEL_TYPES);
   });
   on(Events.GuildRoleCreate, (role) => markDirty(role.guild.id, ['roles']));
-  on(Events.GuildRoleDelete, (role) => markDirty(role.guild.id, ['roles', 'role_members']));
+  on(Events.GuildRoleDelete, (role) => markDirty(role.guild.id, ['roles', 'role_members', 'role_online']));
   on(Events.GuildEmojiCreate, (emoji) => markDirty(emoji.guild.id, ['emojis']));
   on(Events.GuildEmojiDelete, (emoji) => markDirty(emoji.guild.id, ['emojis']));
   on(Events.GuildStickerCreate, (sticker) => sticker.guild && markDirty(sticker.guild.id, ['stickers']));
@@ -472,7 +476,7 @@ function attachCounterEvents(client) {
   });
   on(Events.PresenceUpdate, (before, after) => {
     if (!after?.guild || before?.status === after.status) return;
-    markDirty(after.guild.id, [...NEEDS_PRESENCES], SLOW_DEBOUNCE_MS);
+    markDirty(after.guild.id, [...NEEDS_PRESENCES, 'role_online'], SLOW_DEBOUNCE_MS);
   });
   // A rename Discord made wait: no more renames are asked for that channel until the wait is over.
   client.rest?.on?.('rateLimited', (info) => {

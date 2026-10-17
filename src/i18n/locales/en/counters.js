@@ -152,4 +152,12 @@ module.exports = {
   'counters.topic.channelName': "server-stats",
   'counters.reorder.done': "Order saved.",
   'counters.reorder.notMoved': "The order was saved, but Petto could not move the channels in Discord. It needs Manage Channels.",
+  'counters.label.role_online': "Online in a role",
+  'counters.label.tag_users': "Wearing the server tag",
+  'counters.label.vanity_users': "Vanity supporters",
+  'counters.label.messages_today': "Messages today",
+  'counters.default.role_online': "🟢 {role} online: {count}",
+  'counters.default.tag_users': "🏷️ Tag wearers: {count}",
+  'counters.default.vanity_users': "💜 Supporters: {count}",
+  'counters.default.messages_today': "💬 Messages today: {count}",
 };

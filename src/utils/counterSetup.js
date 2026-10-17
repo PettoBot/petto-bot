@@ -3,7 +3,7 @@
 const { ChannelType, PermissionFlagsBits } = require('discord.js');
 const countersDb = require('../db/counters');
 const { getGuildPremium, getGuildLimits } = require('../db/premium');
-const { resolveOption, resolveFormat, validTimeZone, defaultTemplate, renderName, templateMax } = require('./counterNames');
+const { resolveOption, resolveFormat, validTimeZone, defaultTemplate, renderName, templateMax, NEEDS_ROLE } = require('./counterNames');
 const { countGuild, extrasFor } = require('./counterValues');
 const { t } = require('../i18n');
 
@@ -82,7 +82,7 @@ function previewName(guild, row, lang) {
 async function createCounter(guild, input, lang) {
   const option = resolveOption(input.type);
   if (!option) return { ok: false, error: 'unknownType', type: String(input.type ?? '') };
-  if (option === 'role_members' && !(input.roleId && guild.roles.cache.get(input.roleId))) return { ok: false, error: 'needRole' };
+  if (NEEDS_ROLE.has(option) && !(input.roleId && guild.roles.cache.get(input.roleId))) return { ok: false, error: 'needRole' };
   if (input.timezone && !validTimeZone(input.timezone)) return { ok: false, error: 'badTimezone', zone: input.timezone };
   const format = resolveFormat(input.format) ?? 'plain';
   const goal = Number.isInteger(Number(input.goal)) && Number(input.goal) > 0 ? Math.min(2_000_000_000, Number(input.goal)) : null;
@@ -103,7 +103,7 @@ async function createCounter(guild, input, lang) {
   const row = {
     guild_id: guild.id, counter_option: option, created_by: input.createdBy, target,
     name_template: String(input.template ?? '').trim().slice(0, templateMax({ target })) || defaultTemplate(option, lang),
-    number_format: format, target_id: option === 'role_members' ? input.roleId : null, goal, timezone: input.timezone || null,
+    number_format: format, target_id: NEEDS_ROLE.has(option) ? input.roleId : null, goal, timezone: input.timezone || null,
     prefix: String(input.prefix ?? '').slice(0, 30), suffix: String(input.suffix ?? '').slice(0, 30),
     interval_seconds: Math.max(60, Math.min(86400, Number(input.interval) || 60)), parent_id: parent?.id ?? null,
   };
