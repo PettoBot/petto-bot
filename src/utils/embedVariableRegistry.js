@@ -371,6 +371,17 @@ const GROUPS = [
     ],
   },
   {
+    id: 'form',
+    availability: 'form',
+    vars: [
+      '{form.name}',
+      '{form.title}',
+      '{form.number}',
+      '{form.status}',
+      '{form.reason}',
+    ],
+  },
+  {
     id: 'poll',
     availability: 'poll',
     vars: [

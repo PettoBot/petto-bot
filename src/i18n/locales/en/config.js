@@ -63,6 +63,7 @@ module.exports = {
   'config.module.permissionconfig.title': 'Permissions',
   'config.module.backupconfig.title': 'Backups',
   'config.module.panelconfig.title': 'Button and menu panels',
+  'config.module.formconfig.title': 'Forms',
   'config.module.responderconfig.title': 'Button responders',
   'config.module.warnconfig.title': 'Warn escalation',
   'config.module.embedconfig.title': 'Saved embeds',

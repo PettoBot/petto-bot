@@ -22,6 +22,8 @@ const SETTINGS_TABLES = new Set([
   'command_permission_levels', 'permission_groups', 'managed_webhooks', 'counters', 'auto_threads', 'log_entries', 'log_ignored',
   'automod_silent_channels', 'sanction_templates', 'poj_channels', 'bump_reminders', 'sender_identities', 'partner_blacklist',
   'appeal_forms', 'giveaway_presets', 'dash_access',
+  // Forms: the forms, their panels, and the submissions the dashboard lists (a review from Discord shows there at once).
+  'forms', 'form_panels', 'form_submissions',
   // The anti-nuke page shows its incidents and the lockdown (a panic lockdown starts and ends by itself).
   'antinuke_events', 'lockdowns',
 ]);

@@ -639,4 +639,10 @@ module.exports = {
   'embeds.var.functions.separator': 'Una línea divisoria decorativa',
   'embeds.varGroup.actions': 'Acciones',
   'embeds.var.actions.reactreplyEmoji': 'Reacciona al mensaje enviado con este emoji. Si la respuesta solo tiene este indicador, reacciona al mensaje que la activó.',
+  'embeds.varGroup.form': 'Formularios',
+  'embeds.var.form.form.name': 'Nombre corto del formulario',
+  'embeds.var.form.form.title': 'Título del formulario',
+  'embeds.var.form.form.number': 'Número de la respuesta',
+  'embeds.var.form.form.status': 'Estado de la respuesta',
+  'embeds.var.form.form.reason': 'Motivo que dio quien revisó',
 };
