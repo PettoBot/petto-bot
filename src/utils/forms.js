@@ -15,7 +15,7 @@ const BUTTON_STYLES = ['primary', 'secondary', 'success', 'danger'];
 // What Discord allows: 45 characters for the title of a form and the label of a field, 100 for its description and placeholder,
 // 25 options of 100 characters in a menu, 4000 characters in a text field, and five fields in a form.
 const LIMITS = {
-  title: 45, label: 45, help: 100, placeholder: 100, option: 100, options: 25, description: 1000,
+  title: 45, label: 45, help: 100, placeholder: 100, option: 100, options: 25, description: 1000, questionDescription: 1000, image: 500,
   short: 1000, paragraph: 4000, pageSize: 5, questions: 25, reason: 1000, message: 2000, buttonLabel: 80, roles: 25,
 };
 // One limit for every server: forms are not a Premium module.
@@ -38,6 +38,41 @@ const finite = (value) => {
 };
 const ids = (list, max = LIMITS.roles) => [...new Set((Array.isArray(list) ? list : []).map(String).filter((id) => SNOWFLAKE.test(id)))].slice(0, max);
 
+/** A longer text that keeps its lines (the description of a question): at most two empty lines in a row. */
+const clipText = (value, max) => String(value ?? '').replace(/\u0000/g, '').replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, max);
+
+const IMAGE_PATH = /\.(?:png|jpe?g|gif|webp)$/i;
+/**
+ * The link of an image for a question, or null when it is not one Petto shows: an https link with the usual checks of a link a
+ * server owner types (utils/safeImage.js: no user, no other port, no private address) to a .png, .jpg, .gif or .webp file.
+ */
+function imageUrl(value) {
+  const text = String(value ?? '').trim();
+  if (!text || text.length > LIMITS.image) return null;
+  try {
+    const url = require('./safeImage').checkUrl(text);
+    return IMAGE_PATH.test(url.pathname) ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A description as plain text: without the marks of bold, italics and links, on one line. */
+function plainDescription(text) {
+  return String(text ?? '')
+    .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, '$1')
+    .replace(/(\*\*|__|\*|_|~~|`)(?=\S)([^\n]*?\S)\1/g, '$2')
+    .replace(/\s+/g, ' ').trim();
+}
+
+/** The line under a question in Discord (100 characters): its help line, or else the start of its description. */
+function labelDescription(question) {
+  if (question?.help) return clip(question.help, LIMITS.help);
+  const plain = plainDescription(question?.description);
+  if (!plain) return null;
+  return plain.length <= LIMITS.help ? plain : `${plain.slice(0, LIMITS.help - 1).trimEnd()}…`;
+}
+
 /** A name for commands: `Staff Apps!` -> `staff-apps`. Empty when nothing usable is left. */
 function slugName(value) {
   return String(value ?? '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9_-]+/g, '-').replace(/^[-_]+|-+$/g, '').slice(0, 32);
@@ -54,6 +89,8 @@ function normalizeQuestion(input, index = 0, seen = new Set()) {
   const question = {
     id, type, label,
     help: clip(input?.help, LIMITS.help) || null,
+    description: clipText(input?.description, LIMITS.questionDescription) || null,
+    image: imageUrl(input?.image),
     placeholder: clip(input?.placeholder, LIMITS.placeholder) || null,
     required: input?.required !== false,
   };
@@ -203,7 +240,8 @@ function buildModal(form, page, { values = {}, lang = currentLanguage() } = {}) 
   const modal = new ModalBuilder().setCustomId(`${PREFIX}p:${form.id}:${page}`).setTitle(pageTitle(form, page, pages.length));
   for (const q of questions) {
     const label = new LabelBuilder().setLabel(q.label);
-    if (q.help) label.setDescription(q.help);
+    const under = labelDescription(q);
+    if (under) label.setDescription(under);
     const prior = values[q.id];
     if (TEXT_TYPES.includes(q.type)) {
       const input = new TextInputBuilder().setCustomId(fieldId(q)).setRequired(q.required)
@@ -389,7 +427,7 @@ function dropDraft(guildId, userId, formId) {
 module.exports = {
   FORM_LIMITS,
   PREFIX, QUESTION_TYPES, CHOICE_TYPES, STATUSES, BUTTON_STYLES, LIMITS, COLORS, NAME, SNOWFLAKE,
-  clip, slugName, normalizeQuestion, normalizeQuestions, normalizeForm, checkEligibility, refusalText, isReviewer,
+  clip, clipText, imageUrl, plainDescription, labelDescription, slugName, normalizeQuestion, normalizeQuestions, normalizeForm, checkEligibility, refusalText, isReviewer,
   pagesOf, pageTitle, buildModal, readPage, readAll, webUrl, newPublicId, PUBLIC_ID, collectAnswers, missingRequired, answerText, answersAsText, fillShortcuts,
   getDraft, saveDraft, dropDraft, DRAFT_TTL_MS,
 };

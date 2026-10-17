@@ -122,6 +122,23 @@ const fieldsOf = (values) => ({
   assert.equal(normal.name, 'staff-apps'); assert.equal(normal.title.length, 45); assert.deepEqual(normal.reviewer_role_ids, ['123456789012345678']);
   assert.equal(normal.min_account_days, 3650); assert.equal(normal.color, null); assert.equal(normal.button_style, 'primary'); assert.deepEqual(normal.messages.accepted, { text: 'Welcome {user}' });
   assert.equal(forms.slugName('  Événement 2026 '), 'evenement-2026');
+  // A description (longer, with lines and simple marks, for the web) and an image over the question (only on the web).
+  const described = forms.normalizeQuestion({ type: 'short', label: 'Why', description: `  Tell us **why**.\r\n\n\n\nSee [the rules](https://petto.sbs/rules).${'x'.repeat(1200)}`, image: 'https://i.imgur.com/abc.PNG?size=2' });
+  assert.equal(described.description.length, 1000, 'a description keeps 1000 characters'); assert.match(described.description, /^Tell us \*\*why\*\*\.\n\nSee/, 'lines are kept, at most one empty line in a row');
+  assert.equal(described.image, 'https://i.imgur.com/abc.PNG?size=2'); assert.equal(described.help, null);
+  for (const bad of ['http://i.imgur.com/a.png', 'https://i.imgur.com/a.svg', 'https://i.imgur.com/page', 'https://user:pw@i.imgur.com/a.png', 'https://127.0.0.1/a.png', 'https://10.0.0.2/a.gif', 'https://i.imgur.com:8443/a.png', 'javascript:alert(1)//a.png', `https://i.imgur.com/${'a'.repeat(500)}.png`, 'not a link']) {
+    assert.equal(forms.normalizeQuestion({ type: 'short', label: 'X', image: bad }).image, null, `no image from ${bad.slice(0, 40)}`);
+  }
+  for (const good of ['https://cdn.discordapp.com/attachments/1/2/a.jpeg?ex=1', 'https://x.example/b.webp', 'https://x.example/c.gif', 'https://x.example/d.jpg']) assert.equal(forms.imageUrl(good), good);
+  assert.equal(forms.normalizeQuestion({ type: 'short', label: 'X' }).description, null);
+  assert.equal(forms.labelDescription({ help: 'Short help', description: 'Long' }), 'Short help', 'Discord shows the help line first');
+  assert.equal(forms.labelDescription({ help: null, description: 'Read **the rules** in [our site](https://petto.sbs).\nThen answer.' }), 'Read the rules in our site. Then answer.', 'or the description, as plain text');
+  const cut = forms.labelDescription({ description: 'word '.repeat(60) });
+  assert.equal(cut.length, 100); assert.ok(cut.endsWith('…'));
+  assert.equal(forms.labelDescription({ help: null, description: null }), null);
+  const descModal = forms.buildModal({ id: 7, title: 'T', questions: [described, { type: 'short', label: 'Plain' }] }, 0).toJSON();
+  assert.equal(descModal.components[0].description, 'Tell us why. See the rules.' + 'x'.repeat(72) + '…', 'the label of the Discord form gets the start of the description');
+  assert.equal(descModal.components[1].description, undefined);
 
   // ---- Who may open a form.
   const base = { status: 'open', questions: [{ id: 'q1', type: 'short', label: 'Name' }], one_pending: true, required_role_ids: [], blocked_role_ids: [], min_account_days: 0, min_member_days: 0, deny_cooldown_hours: 0, max_per_user: 0, max_total: 0 };
@@ -237,6 +254,11 @@ const fieldsOf = (values) => ({
   assert.match(await talk('edit', { form: 'staff', position: 2, field: 'required', value: 'no' }, admin, 'question'), /Question 2 changed/);
   assert.match(await talk('edit', { form: 'staff', position: 9, field: 'label', value: 'x' }, admin, 'question'), /from 1 to 3/);
   assert.match(await talk('questions', { form: 'staff' }), /1\.\*\* Team[\s\S]*2\.\*\* Your name[\s\S]*optional[\s\S]*3\.\*\* Your age/);
+  assert.match(await talk('edit', { form: 'staff', position: 1, field: 'description', value: 'Pick the **team** you like.\nYou can change later.' }, admin, 'question'), /Question 1 changed/);
+  assert.match(await talk('edit', { form: 'staff', position: 1, field: 'image', value: 'http://example.com/a.png' }, admin, 'question'), /https link to a \.png/, 'an image link is checked');
+  assert.match(await talk('edit', { form: 'staff', position: 1, field: 'image', value: 'https://i.imgur.com/team.png' }, admin, 'question'), /Question 1 changed/);
+  assert.match(await talk('questions', { form: 'staff' }), /Team[\s\S]*Description: Pick the team you like\. You can change later\.[\s\S]*Image: i\.imgur\.com/, '!form questions shows the description and the image');
+  assert.match(await talk('add', { form: 'staff', type: 'short', label: 'Bad image', image: 'https://i.imgur.com/a.txt' }, admin, 'question'), /https link/);
   const staffForm = () => db.forms.find((f) => f.name === 'staff');
   assert.equal(staffForm().questions[1].required, false);
   require('../src/utils/forms').FORM_LIMITS.questions = 10;

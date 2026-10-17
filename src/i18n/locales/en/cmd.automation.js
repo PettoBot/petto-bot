@@ -230,6 +230,8 @@ module.exports = {
   'cmd.automation.form.question.add.opt.label.desc': 'The question (45 characters)',
   'cmd.automation.form.question.add.opt.required.desc': 'Whether an answer is needed (yes by default)',
   'cmd.automation.form.question.add.opt.help.desc': 'A line under the question (100 characters)',
+  'cmd.automation.form.question.add.opt.description.desc': 'A longer text under the question on the web (1000 characters)',
+  'cmd.automation.form.question.add.opt.image.desc': 'An image over the question on the web: an https link to a png, jpg, gif or webp',
   'cmd.automation.form.question.add.opt.placeholder.desc': 'The grey text in the empty field (100 characters)',
   'cmd.automation.form.question.add.opt.min.desc': 'Least characters, or the lowest number',
   'cmd.automation.form.question.add.opt.max.desc': 'Most characters, or the highest number',

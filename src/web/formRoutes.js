@@ -32,7 +32,7 @@ function plainText(text, guild, lang) {
 function publicForm(form) {
   return {
     id: String(form.public_id), title: form.title, description: form.description ?? null, color: form.color ?? null,
-    questions: forms.normalizeQuestions(form.questions).map((q) => ({ id: q.id, type: q.type, label: q.label, help: q.help ?? null, placeholder: q.placeholder ?? null, required: q.required, min_length: q.min_length ?? null, max_length: q.max_length ?? null, min_value: q.min_value ?? null, max_value: q.max_value ?? null, options: q.options ?? [], max_choices: q.max_choices ?? null })),
+    questions: forms.normalizeQuestions(form.questions).map((q) => ({ id: q.id, type: q.type, label: q.label, help: q.help ?? null, description: q.description ?? null, image: q.image ?? null, placeholder: q.placeholder ?? null, required: q.required, min_length: q.min_length ?? null, max_length: q.max_length ?? null, min_value: q.min_value ?? null, max_value: q.max_value ?? null, options: q.options ?? [], max_choices: q.max_choices ?? null })),
   };
 }
 

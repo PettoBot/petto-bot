@@ -29,7 +29,7 @@ const ROLE_SETTINGS = {
 };
 const SWITCHES = { thread: 'auto_thread', 'one-pending': 'one_pending', dm: 'dm_results', web: 'web_enabled' };
 const NUMBERS = { 'account-age': ['min_account_days', 3650, 86_400_000], 'server-age': ['min_member_days', 3650, 86_400_000], cooldown: ['deny_cooldown_hours', 8760, 3_600_000], 'max-per-user': ['max_per_user', 1000, 0], 'max-total': ['max_total', 100000, 0] };
-const QUESTION_FIELDS = ['label', 'type', 'help', 'placeholder', 'required', 'min', 'max', 'options', 'choices'];
+const QUESTION_FIELDS = ['label', 'type', 'help', 'description', 'image', 'placeholder', 'required', 'min', 'max', 'options', 'choices'];
 // With the prefix the types are not checked by Discord, so the usual words are read here.
 const TYPE_WORDS = { short: 'short', text: 'short', line: 'short', paragraph: 'paragraph', long: 'paragraph', number: 'number', num: 'number', yesno: 'yesno', 'yes/no': 'yesno', bool: 'yesno', choice: 'choice', select: 'choice', single: 'choice', one: 'choice', multi: 'multi', multiple: 'multi', many: 'multi', checkbox: 'multi' };
 const STATUS_WORDS = { pending: 'pending', waiting: 'pending', open: 'pending', accepted: 'accepted', accept: 'accepted', approved: 'accepted', denied: 'denied', deny: 'denied', rejected: 'denied', cancelled: 'cancelled', canceled: 'cancelled' };
@@ -71,6 +71,8 @@ const data = new SlashCommandBuilder()
       .addStringOption((o) => o.setName('label').setDescription('The question (45 characters)').setRequired(true).setMaxLength(45))
       .addBooleanOption((o) => o.setName('required').setDescription('Whether an answer is needed (yes by default)').setRequired(false))
       .addStringOption((o) => o.setName('help').setDescription('A line under the question (100 characters)').setRequired(false).setMaxLength(100))
+      .addStringOption((o) => o.setName('description').setDescription('A longer text under the question on the web (1000 characters)').setRequired(false).setMaxLength(1000))
+      .addStringOption((o) => o.setName('image').setDescription('An image over the question on the web: an https link to a png, jpg, gif or webp').setRequired(false).setMaxLength(500))
       .addStringOption((o) => o.setName('placeholder').setDescription('The grey text in the empty field (100 characters)').setRequired(false).setMaxLength(100))
       .addNumberOption((o) => o.setName('min').setDescription('Least characters, or the lowest number').setRequired(false))
       .addNumberOption((o) => o.setName('max').setDescription('Most characters, or the highest number').setRequired(false))
@@ -127,7 +129,14 @@ function questionLine(q, index, lang) {
   if (q.type === 'short' || q.type === 'paragraph') extras.push(`${q.min_length}–${q.max_length}`);
   if (q.type === 'number' && (q.min_value !== null || q.max_value !== null)) extras.push(`${q.min_value ?? '…'}–${q.max_value ?? '…'}`);
   if (q.options) extras.push(q.options.join(' | ').slice(0, 200));
-  return `**${index + 1}.** ${q.label}\n-# ${extras.join(' · ')}${q.help ? `\n-# ${q.help}` : ''}`;
+  const lines = [`**${index + 1}.** ${q.label}`, `-# ${extras.join(' · ')}`];
+  if (q.help) lines.push(`-# ${q.help}`);
+  if (q.description) {
+    const plain = forms.plainDescription(q.description);
+    lines.push(`-# ${t(lang, 'forms.questions.description', { text: plain.length > 100 ? `${plain.slice(0, 99)}…` : plain })}`);
+  }
+  if (q.image) lines.push(`-# ${t(lang, 'forms.questions.image', { host: new URL(q.image).hostname })}`);
+  return lines.join('\n');
 }
 
 /** Reads a list of roles: mentions, ids or names, separated by spaces or commas. */
@@ -205,6 +214,8 @@ function questionChange(question, field, value, lang) {
   if (field === 'label') next.label = text;
   else if (field === 'type') { const type = TYPE_WORDS[text.toLowerCase()]; if (!type) return { error: t(lang, 'forms.question.type') }; next.type = type; }
   else if (field === 'help') next.help = off ? null : text;
+  else if (field === 'description') next.description = off ? null : String(value ?? '');
+  else if (field === 'image') { if (!off && !forms.imageUrl(text)) return { error: t(lang, 'forms.question.image') }; next.image = off ? null : text; }
   else if (field === 'placeholder') next.placeholder = off ? null : text;
   else if (field === 'required') { const word = text.toLowerCase(); if (!ON.includes(word) && !OFF.includes(word)) return { error: t(lang, 'forms.set.switch') }; next.required = ON.includes(word); }
   else if (field === 'min' || field === 'max') {
@@ -434,7 +445,10 @@ async function execute(interaction) {
     if (!questions.length) return done(note(t(lang, 'forms.questions.none', { name: form.name })));
     const limits = await limitsOf(guild.id);
     const lines = questions.map((q, i) => questionLine(q, i, lang));
-    return done(note([`### ${t(lang, 'forms.questions.title', { title: form.title, count: questions.length, max: limits.questions })}`, ...lines, `-# ${tn(lang, 'forms.questions.pages', forms.pagesOf(form).length, { count: forms.pagesOf(form).length })}`].join('\n')));
+    const foot = `-# ${tn(lang, 'forms.questions.pages', forms.pagesOf(form).length, { count: forms.pagesOf(form).length })}`;
+    const body = [`### ${t(lang, 'forms.questions.title', { title: form.title, count: questions.length, max: limits.questions })}`, ...lines].join('\n');
+    // A card holds 4000 characters: with many long questions the end of the list is cut, the count of pages always shows.
+    return done(note(`${body.length > 3990 - foot.length ? `${body.slice(0, 3988 - foot.length)}…` : body}\n${foot}`));
   }
   if (group === 'question') {
     const save = (list) => formsDb.updateForm(guild.id, form.id, { questions: list });
@@ -443,11 +457,13 @@ async function execute(interaction) {
       if (questions.length >= limits.questions) return done(bad(t(lang, 'forms.question.limit', { count: limits.questions })));
       const type = TYPE_WORDS[String(interaction.options.getString('type', true)).toLowerCase()];
       if (!type) return done(bad(t(lang, 'forms.question.type')));
+      const image = interaction.options.getString('image');
+      if (image && !isOff(image) && !forms.imageUrl(image)) return done(bad(t(lang, 'forms.question.image')));
       const min = interaction.options.getNumber('min');
       const max = interaction.options.getNumber('max');
       const input = {
         id: `q${Date.now().toString(36)}`, type, label: interaction.options.getString('label', true), required: interaction.options.getBoolean('required') ?? true,
-        help: interaction.options.getString('help'), placeholder: interaction.options.getString('placeholder'), options: (interaction.options.getString('options') ?? '').split('|'),
+        help: interaction.options.getString('help'), description: interaction.options.getString('description'), image, placeholder: interaction.options.getString('placeholder'), options: (interaction.options.getString('options') ?? '').split('|'),
         max_choices: interaction.options.getInteger('choices'),
         ...(type === 'number' ? { min_value: min, max_value: max } : { min_length: min, max_length: max }),
       };
