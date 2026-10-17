@@ -13,6 +13,7 @@ module.exports = {
       auditLogType: AuditLogEvent.MemberKick,
       targetId: member.id,
       rule: 'kick',
+      retries: 1, // every leave reaches here: the log is read twice at most
       actionLabel: t(currentLanguage(), 'security.antinuke.detail.kick'),
     }).catch((err) => logger.error('Anti-nuke member-kick tracking failed:', err));
   },

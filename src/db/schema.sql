@@ -722,6 +722,17 @@ create table if not exists antinuke_config (
 alter table antinuke_config enable row level security;
 alter table antinuke_config add column if not exists whitelist_role_ids text[] not null default '{}';
 alter table antinuke_config add column if not exists alert_channel_id text;
+-- Trusted admins (the owner's: they can change the anti-nuke and are never touched), "owner only" for changing it, the DM to
+-- the owner when a protection acts, and panic mode (a lockdown that starts by itself when several protections act or a raid
+-- starts, and ends by itself). Panic mode starts off; the DM starts on (it only happens when a protection the server turned on acts).
+alter table antinuke_config add column if not exists admin_ids text[] not null default '{}';
+alter table antinuke_config add column if not exists owner_only boolean not null default false;
+alter table antinuke_config add column if not exists dm_owner boolean not null default true;
+alter table antinuke_config add column if not exists panic_enabled boolean not null default false;
+alter table antinuke_config add column if not exists panic_threshold integer not null default 2;
+alter table antinuke_config add column if not exists panic_window_minutes integer not null default 10;
+alter table antinuke_config add column if not exists panic_lockdown_minutes integer not null default 30;
+alter table antinuke_config add column if not exists panic_on_raid boolean not null default true;
 
 -- One row per protection the server tuned. A protection without a row keeps the older behavior (the single switch above
 -- for the protections that existed, off for the new ones), so nothing starts protecting or punishing by surprise.

@@ -98,12 +98,34 @@ async function restoreItem(guild, item, lang) {
  * Puts back what an event kept, plus the roles taken from the account that was quarantined. Answers the lines of what
  * worked and what did not, so the staff knows exactly what is still missing.
  */
+// Roles first (a rebuilt channel can then find them), then channels, then the rest.
+const ORDER = { role: 0, delete_role: 1, channel: 2, delete_channel: 3 };
+const RETRY_DELAY_MS = 2_500;
+
+/** Whether an error is worth one more try a moment later: Discord asked to slow down, or had a hiccup. */
+function retryable(err) {
+  const status = Number(err?.status ?? err?.httpStatus);
+  return status === 429 || status >= 500 || err?.code === 'ECONNRESET' || /rate ?limit/i.test(String(err?.message ?? ''));
+}
+
+async function withRetry(fn) {
+  try {
+    return await fn();
+  } catch (err) {
+    if (!retryable(err)) throw err;
+    await new Promise((resolve) => { setTimeout(resolve, RETRY_DELAY_MS); });
+    return fn();
+  }
+}
+
 async function restoreEvent(guild, event, lang = currentLanguage()) {
   const done = [];
   const failed = [];
-  for (const item of event.restorable ?? []) {
+  const items = [...(event.restorable ?? [])].sort((a, b) => (ORDER[a.kind] ?? 9) - (ORDER[b.kind] ?? 9));
+  for (const item of items) {
     try {
-      const line = await restoreItem(guild, item, lang);
+      // discord.js already waits out the usual rate limits; a request still refused is tried once more before giving up.
+      const line = await withRetry(() => restoreItem(guild, item, lang));
       if (line) done.push(line);
     } catch (err) {
       logger.warn(`Anti-nuke restore (${item.kind}) failed in ${guild.id}: ${err.message}`);
@@ -124,9 +146,15 @@ async function restoreEvent(guild, event, lang = currentLanguage()) {
   return { done, failed };
 }
 
-/** Who may press restore: the owner and the administrators. */
-function canRestore(member) {
-  return member.id === member.guild.ownerId || member.permissions.has(PermissionFlagsBits.Administrator);
+/**
+ * Who may press restore and change the anti-nuke: the owner and the trusted admins of the anti-nuke, plus the administrators
+ * unless the server turned on "owner only" (`config.owner_only`).
+ */
+function canRestore(member, config = null) {
+  if (member.id === member.guild.ownerId) return true;
+  if ((config?.admin_ids ?? []).includes(member.id)) return true;
+  if (config?.owner_only) return false;
+  return member.permissions.has(PermissionFlagsBits.Administrator);
 }
 
 module.exports = { MAX_ITEMS, snapshotChannel, snapshotRole, restoreEvent, canRestore, describeItem };

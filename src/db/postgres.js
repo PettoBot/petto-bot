@@ -160,8 +160,26 @@ function withJsonArrays(row, jsonColumns) {
   return copy ?? row;
 }
 
+// A write to a table of settings tells the dashboard that the server changed (see utils/dashboardVersion.js). Loaded when first used.
+let dashboardVersion = null;
+function announceWrite(table, guildId) {
+  try {
+    dashboardVersion ??= require('../utils/dashboardVersion');
+    dashboardVersion.noteTableWrite(table, guildId);
+  } catch { /* never in the way of a write */ }
+}
+
+function guildOfWrite(query) {
+  const rows = Array.isArray(query.payload) ? query.payload : [query.payload];
+  const fromRow = rows.find((row) => row && typeof row === 'object' && row.guild_id != null)?.guild_id;
+  if (fromRow != null) return String(fromRow);
+  const filter = query.filters.find((item) => item.type === 'eq' && item.column === 'guild_id');
+  return filter ? String(filter.value) : null;
+}
+
 class PostgresQuery {
-  constructor(pool, table) {
+  constructor(pool, table, options = {}) {
+    this.announce = options.announce !== false;
     this.pool = pool;
     this.table = quoteTable(table);
     const parts = String(table).split('.');
@@ -326,6 +344,10 @@ class PostgresQuery {
       await this.prepareJsonArrays();
       const built = this.build();
       const result = await this.pool.query(built.text, built.values);
+      if (this.announce && this.action !== 'select') {
+        const guildId = guildOfWrite(this);
+        if (guildId) announceWrite(this.tableName, guildId);
+      }
       if (built.countOnly) return { data: built.head ? null : [{ count: Number(result.rows[0]?.count || 0) }], count: Number(result.rows[0]?.count || 0), error: null };
 
       let data = this.returning ? result.rows : null;
@@ -381,9 +403,10 @@ class PostgresRpc {
   finally(callback) { return this.execute().finally(callback); }
 }
 
-function createPostgresClient(pool) {
+/** `announce: false` for the dashboard's own route: the dashboard raises the stamp of what it changes itself. */
+function createPostgresClient(pool, options = {}) {
   return {
-    from(table) { return new PostgresQuery(pool, table); },
+    from(table) { return new PostgresQuery(pool, table, options); },
     rpc(name, params) { return new PostgresRpc(pool, name, params); },
   };
 }

@@ -5,6 +5,8 @@ const { sendLog } = require('../logging/engine');
 const { EMOJI } = require('../utils/emojis');
 const { applyAutomatedKick } = require('../utils/automodMemberAction');
 const { startLockdown } = require('../utils/lockdown');
+const { getConfig: getAntinukeConfig } = require('../db/antinuke');
+const { noteRaid } = require('../utils/antiNukePanic');
 const logger = require('../utils/logger');
 const { t, currentLanguage } = require('../i18n');
 
@@ -35,6 +37,12 @@ module.exports = {
         await startLockdown(member.guild, { startedBy: member.client.user.id, reason: t(lang, 'security.raid.lockdownReason', { count: raid.count, seconds: config.raid_window_seconds }) }).catch((err) => {
           if (!err.userFacing) logger.error(`Anti-raid lockdown failed for guild ${member.guild.id}:`, err);
         });
+      }
+
+      // Panic mode of the anti-nuke: a raid locks the server down for a while, invites paused, whatever the raid action is.
+      if (raid.newBurst && config.raid_action !== 'lockdown') {
+        const antinuke = await getAntinukeConfig(member.guild.id).catch(() => null);
+        await noteRaid(member.client, member.guild, antinuke, raid.count).catch(() => false);
       }
 
       if (config.raid_action === 'kick') {

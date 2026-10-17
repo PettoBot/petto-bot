@@ -247,7 +247,8 @@ async function handleDashboardRest(req, res) {
 
   try {
     const primaryPool = getPrimaryPool();
-    const client = createPostgresClient(primaryPool);
+    // The dashboard raises the change stamp of the server itself (petto:ver), so these writes do not raise it again.
+    const client = createPostgresClient(primaryPool, { announce: false });
     const selection = parseSelect(first(req.query.select));
     const preference = preferences(req);
     const countExact = preference.has('count=exact');

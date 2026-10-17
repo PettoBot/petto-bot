@@ -1,16 +1,16 @@
 const { MessageFlags } = require('discord.js');
-const { getEvent, markRestored } = require('../db/antinuke');
+const { getEvent, markRestored, getConfig } = require('../db/antinuke');
 const { restoreEvent, canRestore } = require('../utils/antiNukeRestore');
 const { RESTORE_PREFIX } = require('../utils/antiNuke');
 const logger = require('../utils/logger');
 const { t, languageOf } = require('../i18n');
 
-/** The restore button of an anti-nuke alert, `an_restore::<event id>`. Only the owner and the administrators can press it. */
+/** The restore button of an anti-nuke alert, `an_restore::<event id>`. Only the owner, the trusted admins and (unless "owner only" is on) the administrators can press it. */
 async function handleButton(interaction) {
   const id = Number(interaction.customId.split('::')[1]);
   if (!interaction.guild || !Number.isInteger(id)) return;
   const lang = await languageOf(interaction);
-  if (!canRestore(interaction.member)) {
+  if (!canRestore(interaction.member, await getConfig(interaction.guild.id).catch(() => null))) {
     await interaction.reply({ content: t(lang, 'security.antinuke.button.notAllowed'), flags: MessageFlags.Ephemeral });
     return;
   }

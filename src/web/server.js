@@ -326,7 +326,7 @@ function startServer(client) {
       try {
         const { canRestore, restoreEvent } = require('../utils/antiNukeRestore');
         const antinukeDb = require('../db/antinuke');
-        if (!canRestore(access.member)) { res.status(403).json({ ok: false, message: t(lang, 'web.api.antinuke.ownerOnly') }); return; }
+        if (!canRestore(access.member, await antinukeDb.getConfig(access.guild.id).catch(() => null))) { res.status(403).json({ ok: false, message: t(lang, 'web.api.antinuke.ownerOnly') }); return; }
         const event = await antinukeDb.getEvent(access.guild.id, Number(req.body?.id));
         if (!event) { res.status(404).json({ ok: false, message: t(lang, 'web.api.antinuke.notFound') }); return; }
         if (event.restored_at) { res.status(400).json({ ok: false, message: t(lang, 'web.api.antinuke.alreadyRestored') }); return; }

@@ -35,10 +35,10 @@ function targetChannels(guild, config) {
 }
 
 /**
- * Starts a lockdown. Answers { locked, failed, invitesDeleted }. Errors are in the language of the command that asked for it;
+ * Starts a lockdown (`pauseInvites` true or false overrides the setting of the server for this one). Answers { locked, failed, invitesDeleted }. Errors are in the language of the command that asked for it;
  * the notice, the log and the audit log are in the server's language.
  */
-async function startLockdown(guild, { startedBy, reason = null, minutes = null }) {
+async function startLockdown(guild, { startedBy, reason = null, minutes = null, pauseInvites = null }) {
   const askedLang = currentLanguage();
   if (await db.getActive(guild.id)) throw userError(t(askedLang, 'moderation.lockdown.error.alreadyOn'));
   const me = guild.members.me;
@@ -68,7 +68,8 @@ async function startLockdown(guild, { startedBy, reason = null, minutes = null }
 
   let invitesDeleted = 0;
   let invitesPaused = false;
-  if (config.pause_invites && me.permissions.has(PermissionFlagsBits.ManageGuild)) {
+  // The panic mode of the anti-nuke always pauses the invites; a lockdown started by hand follows the setting.
+  if ((pauseInvites ?? config.pause_invites) && me.permissions.has(PermissionFlagsBits.ManageGuild)) {
     const minutesForInvites = minutes || config.auto_end_minutes || 24 * 60;
     await updateGuild(guild.id, { invites_paused_until: new Date(Date.now() + minutesForInvites * 60_000).toISOString() }).catch(() => {});
     invitesPaused = true;
