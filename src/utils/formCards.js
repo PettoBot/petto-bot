@@ -3,7 +3,7 @@ const {
   ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, FileBuilder, MessageFlags, SectionBuilder, SeparatorBuilder,
   SeparatorSpacingSize, StringSelectMenuBuilder, TextDisplayBuilder, ThumbnailBuilder,
 } = require('discord.js');
-const { PREFIX, COLORS, clip, answerText } = require('./forms');
+const { PREFIX, COLORS, clip, answerText, webUrl } = require('./forms');
 const { t, currentLanguage } = require('../i18n');
 
 // A Components V2 message holds 4000 characters of text: the answers get what the header, the verdict and the buttons leave.
@@ -105,9 +105,9 @@ function reviewCard({ submission, form = null, lang = currentLanguage(), pings =
 /** The buttons (or the menu) that open the forms of a panel. At most 25 forms. */
 function panelRows(forms, { style = 'buttons', panelId = 0, lang = currentLanguage(), web = false } = {}) {
   const list = forms.slice(0, 25);
-  // "Fill on the web": a link to petto.sbs/f/<id> for each form that allows it (at most five, one row).
+  // "Fill on the web": a link to petto.sbs/f/<public id> for each form that allows it (at most five, one row).
   const webForms = web ? list.filter((form) => form.web_enabled !== false).slice(0, 5) : [];
-  const webRow = webForms.length ? [new ActionRowBuilder().addComponents(webForms.map((form) => new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(`https://petto.sbs/f/${form.id}`)
+  const webRow = webForms.length ? [new ActionRowBuilder().addComponents(webForms.map((form) => new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(webUrl(form))
     .setLabel(clip(webForms.length === 1 ? t(lang, 'forms.panel.web.button') : t(lang, 'forms.panel.web.buttonFor', { form: form.button_label || form.title }), 80))))] : [];
   if (style === 'select') {
     const menu = new StringSelectMenuBuilder().setCustomId(`${PREFIX}s:${panelId}`).setPlaceholder(t(lang, 'forms.panel.pick.menu')).setMinValues(1).setMaxValues(1)

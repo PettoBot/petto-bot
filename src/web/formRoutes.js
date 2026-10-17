@@ -4,7 +4,8 @@
 //   POST /api/dashboard/guild/:guildId/forms/submissions { status: pending|accepted|denied|cancelled|all, form_id, q, limit }
 //        -> { ok, submissions, pending: { <form id>: n }, stored, cap, retention_days }
 //   POST /api/dashboard/guild/:guildId/forms/panel   { form_ids: [..], channel_id, style: buttons|select, template, title, description, web }
-// Filling a form on the website (petto.sbs/f/<id>), for any member of the server who logged in with Discord:
+// Filling a form on the website (petto.sbs/f/<public id>), for any member of the server who logged in with Discord. `:formId` is
+// the random public id of the form (never its number, so the forms cannot be walked through):
 //   POST /api/dashboard/form/:formId/public  { user_id } -> { ok, form, server, can, reason }
 //   POST /api/dashboard/form/:formId/submit  { user_id, values: { <question id>: text | [values] } } -> { ok, message } or { ok: false, errors }
 // The submission goes through the same checks and the same pipeline as a Discord one (card, roles, DM, log, limits), marked "web".
@@ -30,14 +31,14 @@ function plainText(text, guild, lang) {
 /** The form as the page shows it: no review settings, no roles, only what a member reads. */
 function publicForm(form) {
   return {
-    id: String(form.id), title: form.title, description: form.description ?? null, color: form.color ?? null,
+    id: String(form.public_id), title: form.title, description: form.description ?? null, color: form.color ?? null,
     questions: forms.normalizeQuestions(form.questions).map((q) => ({ id: q.id, type: q.type, label: q.label, help: q.help ?? null, placeholder: q.placeholder ?? null, required: q.required, min_length: q.min_length ?? null, max_length: q.max_length ?? null, min_value: q.min_value ?? null, max_value: q.max_value ?? null, options: q.options ?? [], max_choices: q.max_choices ?? null })),
   };
 }
 
 /** The form, its server and the member, or an answer already sent. */
 async function webContext(req, res, client, lang0) {
-  const form = await formsDb.getFormById(req.params.formId);
+  const form = await formsDb.getFormByPublicId(req.params.formId);
   const guild = form ? client?.guilds?.cache?.get(form.guild_id) : null;
   if (!form || !guild) { res.status(404).json({ ok: false, code: 'not_found', message: t(lang0, 'forms.web.notFound') }); return null; }
   const lang = requestLanguage(req, guild.id);

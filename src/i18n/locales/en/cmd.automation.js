@@ -207,6 +207,8 @@ module.exports = {
   'cmd.automation.form.info.desc': 'Everything about a form: settings, rules and counts.',
   'cmd.automation.form.info.opt.form.desc': 'The form: its name or number',
   'cmd.automation.form.open.desc': 'Let members fill in a form.',
+  'cmd.automation.form.relink.desc': 'A new web link for a form. The old link stops working.',
+  'cmd.automation.form.relink.opt.form.desc': 'The form: its name or number',
   'cmd.automation.form.open.opt.form.desc': 'The form: its name or number',
   'cmd.automation.form.close.desc': 'Stop taking answers for a form.',
   'cmd.automation.form.close.opt.form.desc': 'The form: its name or number',

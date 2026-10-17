@@ -3835,6 +3835,21 @@ create table if not exists forms (
 create index if not exists idx_forms_guild on forms(guild_id, id);
 -- Filling a form on the website (petto.sbs/f/<id>), on unless a server turns it off; and where each submission came from.
 alter table forms add column if not exists web_enabled boolean not null default true;
+-- The id in the web address of a form (petto.sbs/f/<public id>): 12 random letters and digits, so a link cannot be guessed and
+-- the forms cannot be walked through by number. The bot makes one with each form, the default covers forms made by the dashboard,
+-- and `!form relink` changes it (the old link stops working). Random bytes from gen_random_uuid() (built in), skipping the
+-- bytes that hold its version and variant.
+create or replace function form_public_id() returns text
+language sql volatile as $$
+  select string_agg(substr('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz', (get_byte(b, i) % 62) + 1, 1), '' order by n)
+  from (select uuid_send(gen_random_uuid()) as b) s,
+       unnest(array[0, 1, 2, 3, 4, 5, 7, 9, 10, 11, 12, 13]) with ordinality as k(i, n)
+$$;
+alter table forms add column if not exists public_id text;
+update forms set public_id = form_public_id() where public_id is null;
+alter table forms alter column public_id set default form_public_id();
+alter table forms alter column public_id set not null;
+create unique index if not exists idx_forms_public_id on forms(public_id);
 alter table forms enable row level security;
 
 create table if not exists form_submissions (

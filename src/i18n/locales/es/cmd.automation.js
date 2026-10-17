@@ -585,6 +585,8 @@ module.exports = {
   'cmd.automation.form.list.desc': 'Los formularios de este servidor.',
   'cmd.automation.form.info.desc': 'Todo sobre un formulario: ajustes, reglas y números.',
   'cmd.automation.form.open.desc': 'Deja que los miembros llenen un formulario.',
+  'cmd.automation.form.relink.desc': 'Un nuevo enlace web para un formulario. El anterior deja de funcionar.',
+  'cmd.automation.form.relink.opt.form.desc': 'El formulario: su nombre o número',
   'cmd.automation.form.close.desc': 'Deja de recibir respuestas de un formulario.',
   'cmd.automation.form.set.desc': 'Cambia un ajuste de un formulario. "none" lo borra.',
   'cmd.automation.form.set.opt.setting.desc': 'Qué cambiar',
