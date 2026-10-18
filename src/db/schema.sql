@@ -3857,6 +3857,14 @@ alter table forms add column if not exists page_banner text check (page_banner i
 alter table forms add column if not exists page_background text not null default 'default' check (page_background in ('default', 'solid', 'gradient'));
 alter table forms add column if not exists page_show_icon boolean not null default true;
 alter table forms add column if not exists page_show_name boolean not null default true;
+-- How the link of a form looks when it is shared in Discord or another chat (the preview of petto.sbs/form/<public id>): a title, a
+-- description, an image (an https link to a picture), the color of the side and whether the image is shown small. Empty: the website
+-- uses the title and the description of the form, its banner or the icon of the server, and the color of the form.
+alter table forms add column if not exists embed_title text check (embed_title is null or char_length(embed_title) <= 90);
+alter table forms add column if not exists embed_description text check (embed_description is null or char_length(embed_description) <= 240);
+alter table forms add column if not exists embed_image text check (embed_image is null or char_length(embed_image) <= 500);
+alter table forms add column if not exists embed_color integer check (embed_color is null or embed_color between 0 and 16777215);
+alter table forms add column if not exists embed_thumbnail boolean not null default false;
 alter table forms enable row level security;
 
 create table if not exists form_submissions (

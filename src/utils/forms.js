@@ -19,6 +19,7 @@ const PAGE_BACKGROUNDS = ['default', 'solid', 'gradient'];
 const LIMITS = {
   title: 45, label: 45, help: 100, placeholder: 100, option: 100, options: 25, description: 1000, questionDescription: 1000, image: 500,
   short: 1000, paragraph: 4000, pageSize: 5, questions: 25, reason: 1000, message: 2000, buttonLabel: 80, roles: 25,
+  embedTitle: 90, embedDescription: 240,
 };
 // One limit for every server: forms are not a Premium module.
 const FORM_LIMITS = { forms: 25, questions: 25, submissions: 2000 };
@@ -176,11 +177,38 @@ function normalizeForm(input, { maxQuestions = LIMITS.questions } = {}) {
     page_background: PAGE_BACKGROUNDS.includes(input?.page_background) ? input.page_background : 'default',
     page_show_icon: input?.page_show_icon !== false,
     page_show_name: input?.page_show_name !== false,
+    embed_title: clip(input?.embed_title, LIMITS.embedTitle) || null,
+    embed_description: clipText(input?.embed_description, LIMITS.embedDescription) || null,
+    embed_image: imageUrl(input?.embed_image),
+    embed_color: embedColor(input?.embed_color),
+    embed_thumbnail: input?.embed_thumbnail === true,
+  };
+}
+
+/** A color for the side of the link preview (0x000000 to 0xffffff), or null for the color of the form. */
+function embedColor(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 0 && n <= 0xffffff ? n : null;
+}
+
+/**
+ * How the link of a form looks when it is shared in Discord or another chat (the preview of petto.sbs/form/<public id>): a title,
+ * a description, an image, the color of the side and whether the image is small. Empty settings fall back on the website to the
+ * title of the form and its server, its description, the banner of the page or the icon of the server, and the color of the form.
+ */
+function linkEmbed(form) {
+  return {
+    title: clip(form?.embed_title, LIMITS.embedTitle) || null,
+    description: clipText(form?.embed_description, LIMITS.embedDescription) || null,
+    image: imageUrl(form?.embed_image),
+    color: embedColor(form?.embed_color),
+    thumbnail: form?.embed_thumbnail === true,
   };
 }
 
 /**
- * How the web page of a form looks (petto.sbs/form#<public id>): the banner (an image link checked like the image of a question),
+ * How the web page of a form looks (petto.sbs/form/<public id>): the banner (an image link checked like the image of a question),
  * the background and what the header shows of the server. A form saved before these settings gets the defaults: no banner,
  * Petto's background, the icon and the name of the server.
  */
@@ -373,21 +401,19 @@ function newPublicId() {
   return id;
 }
 
-// The language of the page is in the path and the id in the hash (petto.sbs/es/form#x7Kp9QzA2mVt): the hash never reaches a server or a
-// log, and the page loads the form itself.
+// The language and the id of the form are both in the path (petto.sbs/es/form/x7Kp9QzA2mVt): the website draws the page of that form on
+// the server, so Discord and other apps that read link previews see its title, description and image. The old addresses
+// (petto.sbs/form#<id> and petto.sbs/f/<id>) still open it.
 const WEB_LANG_PATH = { es: '/es', 'pt-BR': '/pt-br', pt: '/pt-br' };
 
-/** The address of a form on the website, in a language: petto.sbs/form#<public id>, petto.sbs/es/form#…, petto.sbs/pt-br/form#…. */
+/** The address of a form on the website, in a language: petto.sbs/form/<public id>, petto.sbs/es/form/…, petto.sbs/pt-br/form/…. */
 function webUrl(form, lang = 'en') {
-  return `https://petto.sbs${WEB_LANG_PATH[lang] ?? ''}/form#${form.public_id}`;
+  return `https://petto.sbs${WEB_LANG_PATH[lang] ?? ''}/form/${form.public_id}`;
 }
 
-/**
- * The link of a form to share in a chat: petto.sbs/f/<public id> (/es/f/…, /pt-br/f/…). The website answers it on the server, so
- * Discord and other apps get the preview of this form (title, description, banner or server icon), and a browser goes on to webUrl.
- */
+/** The link of a form to share in a chat: the same address, which carries the preview of the form (see linkEmbed). */
 function shareUrl(form, lang = 'en') {
-  return `https://petto.sbs${WEB_LANG_PATH[lang] ?? ''}/f/${form.public_id}`;
+  return webUrl(form, lang);
 }
 
 /** Every answer of a form, from the values collected page by page, as it is stored: [{ id, label, type, value }]. */
@@ -464,7 +490,7 @@ function dropDraft(guildId, userId, formId) {
 module.exports = {
   FORM_LIMITS,
   PREFIX, QUESTION_TYPES, CHOICE_TYPES, STATUSES, BUTTON_STYLES, PAGE_BACKGROUNDS, LIMITS, COLORS, NAME, SNOWFLAKE,
-  clip, clipText, imageUrl, plainDescription, labelDescription, slugName, normalizeQuestion, normalizeQuestions, normalizeForm, pageLook, checkEligibility, refusalText, isReviewer,
+  clip, clipText, imageUrl, plainDescription, labelDescription, slugName, normalizeQuestion, normalizeQuestions, normalizeForm, pageLook, linkEmbed, checkEligibility, refusalText, isReviewer,
   pagesOf, pageTitle, buildModal, readPage, readAll, webUrl, shareUrl, newPublicId, PUBLIC_ID, collectAnswers, missingRequired, answerText, answersAsText, fillShortcuts,
   getDraft, saveDraft, dropDraft, DRAFT_TTL_MS,
 };
