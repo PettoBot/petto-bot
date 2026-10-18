@@ -55,7 +55,7 @@ function nextGoal(count) {
 
 async function counterLimits(guildId) {
   const premium = await getGuildPremium(guildId).catch(() => ({ active: false }));
-  return { max: getGuildLimits(premium).counters ?? 6, premium: Boolean(premium?.active), premiumMax: getGuildLimits({ active: true }).counters ?? 25 };
+  return { max: getGuildLimits(premium).counters ?? 12, premium: Boolean(premium?.active), premiumMax: getGuildLimits({ active: true }).counters ?? 50 };
 }
 
 /** Everyone can see a counter, nobody can join, talk or write in it; Petto keeps what it needs to rename it. */

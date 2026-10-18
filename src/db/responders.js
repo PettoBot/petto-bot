@@ -25,8 +25,9 @@ async function getByName(guildId, name) {
   return data ? { ...RESPONDER_DEFAULTS, ...data } : null;
 }
 
+// Read a little past the Premium limits (500 responders, 100 panels in db/premium.js), so a full server lists every row.
 async function listResponders(guildId) {
-  const { data, error } = await database.from('button_responders').select('*').eq('guild_id', String(guildId)).order('name', { ascending: true }).limit(300);
+  const { data, error } = await database.from('button_responders').select('*').eq('guild_id', String(guildId)).order('name', { ascending: true }).limit(600);
   if (error) throw error;
   return (data ?? []).map((row) => ({ ...RESPONDER_DEFAULTS, ...row }));
 }
@@ -66,7 +67,7 @@ async function getPanel(guildId, name) {
 }
 
 async function listPanels(guildId) {
-  const { data, error } = await database.from('component_panels').select('*').eq('guild_id', String(guildId)).order('name', { ascending: true }).limit(100);
+  const { data, error } = await database.from('component_panels').select('*').eq('guild_id', String(guildId)).order('name', { ascending: true }).limit(150);
   if (error) throw error;
   return (data ?? []).map((row) => ({ ...PANEL_DEFAULTS, ...row }));
 }

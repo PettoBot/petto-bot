@@ -18,7 +18,7 @@ const templates = new Map();
 stub('src/db/embedTemplates.js', { getTemplate: async (guildId, name) => templates.get(`${guildId}:${name}`) ?? null });
 stub('src/utils/templatedMessage.js', { templatePayload: async (guildId, name) => (templates.has(`${guildId}:${name}`) ? { content: undefined, embeds: [{ title: name }], components: [], files: [] } : null) });
 let premiumActive = false;
-stub('src/db/premium.js', { getGuildPremium: async () => ({ active: premiumActive }), getGuildLimits: (premium) => ({ buttonResponders: premium?.active ? 250 : 20, componentPanels: premium?.active ? 50 : 10 }) });
+stub('src/db/premium.js', { PREMIUM_LIMITS: { buttonResponders: 250, componentPanels: 50 }, getGuildPremium: async () => ({ active: premiumActive }), getGuildLimits: (premium) => ({ buttonResponders: premium?.active ? 250 : 20, componentPanels: premium?.active ? 50 : 10 }) });
 
 // An in-memory copy of the tables.
 let responders = [];

@@ -28,7 +28,7 @@ module.exports = {
   'uploads.enable.off': 'Las subidas están desactivadas.',
   'uploads.channel.already': '{channel} ya es un canal de subidas.',
   'uploads.channel.limit': 'Este servidor ya tiene {limit} canales de subidas.',
-  'uploads.channel.limitPremium': 'Este servidor ya tiene {limit} canales de subidas. Premium lo sube a 100.',
+  'uploads.channel.limitPremium': 'Este servidor ya tiene {limit} canales de subidas. Premium lo sube a {premium}.',
   'uploads.channel.added': '{channel} ahora es un canal de subidas.',
   'uploads.channel.notOne': '{channel} no es un canal de subidas.',
   'uploads.channel.removed': '{channel} ya no es un canal de subidas.',

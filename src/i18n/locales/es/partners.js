@@ -39,7 +39,7 @@ module.exports = {
   'partners.enable.off': 'Las alianzas están desactivadas.',
   'partners.channel.already': '{channel} ya es un canal de partners.',
   'partners.channel.limit': 'Este servidor ya tiene {limit} canales de partners.',
-  'partners.channel.limitPremium': 'Este servidor ya tiene {limit} canales de partners. Premium lo sube a 25.',
+  'partners.channel.limitPremium': 'Este servidor ya tiene {limit} canales de partners. Premium lo sube a {premium}.',
   'partners.channel.added': '{channel} ahora es un canal de partners.',
   'partners.channel.notOne': '{channel} no es un canal de partners.',
   'partners.channel.removed': '{channel} ya no es un canal de partners.',

@@ -2,36 +2,38 @@ const { Routes } = require('discord.js');
 const database = require('./database');
 const logger = require('../utils/logger');
 
+// What each plan can have per server. The website keeps the same numbers in src/utils/planLimits.ts (petto-web), so the
+// dashboard and the bot block at the same count; change both together.
 const FREE_LIMITS = Object.freeze({
-  customCommands: 50,
-  autoResponders: 15,
-  ticketCategories: 5,
-  levelRewards: 10,
-  giveawayPresets: 3,
-  logRoutes: 8,
-  imageCards: 3,
-  cardAssets: 5,
-  partnerChannels: 6,
-  buttonResponders: 20,
-  uploadChannels: 20,
-  componentPanels: 10,
-  counters: 6,
+  customCommands: 100,
+  autoResponders: 30,
+  ticketCategories: 10,
+  levelRewards: 20,
+  giveawayPresets: 6,
+  logRoutes: 20,
+  imageCards: 6,
+  cardAssets: 10,
+  partnerChannels: 12,
+  buttonResponders: 40,
+  uploadChannels: 40,
+  componentPanels: 20,
+  counters: 12,
 });
 
 const PREMIUM_LIMITS = Object.freeze({
-  customCommands: 100,
-  autoResponders: 75,
-  ticketCategories: 20,
-  levelRewards: 40,
-  giveawayPresets: 15,
+  customCommands: 250,
+  autoResponders: 150,
+  ticketCategories: 50,
+  levelRewards: 100,
+  giveawayPresets: 30,
   logRoutes: Number.POSITIVE_INFINITY,
-  imageCards: 30,
-  cardAssets: 60,
-  partnerChannels: 25,
-  buttonResponders: 250,
-  uploadChannels: 100,
-  componentPanels: 50,
-  counters: 25,
+  imageCards: 60,
+  cardAssets: 120,
+  partnerChannels: 50,
+  buttonResponders: 500,
+  uploadChannels: 200,
+  componentPanels: 100,
+  counters: 50,
 });
 
 /**

@@ -119,7 +119,7 @@ module.exports = {
   'customcommands.export.longFile': 'The share code of `{name}` is long, so it is in this file.',
   'customcommands.export.done': 'Share code of `{name}`. Import it with `!customcommand import <code>`:',
   'customcommands.full': 'This server already has the maximum of {limit} custom commands.',
-  'customcommands.fullFree': 'This server already has the maximum of {limit} custom commands. Premium raises it to 100.',
+  'customcommands.fullFree': 'This server already has the maximum of {limit} custom commands. Premium raises it to {premium}.',
   'customcommands.problem.noCode': 'There is no code. Write it after the name, inside a code block if it has several lines.',
   'customcommands.problem.tooLong': 'The code is too long ({count} of {max} characters).',
   'customcommands.problem.mistake': 'The code has a mistake: {message}',
