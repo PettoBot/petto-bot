@@ -3857,6 +3857,12 @@ alter table forms add column if not exists page_banner text check (page_banner i
 alter table forms add column if not exists page_background text not null default 'default' check (page_background in ('default', 'solid', 'gradient'));
 alter table forms add column if not exists page_show_icon boolean not null default true;
 alter table forms add column if not exists page_show_name boolean not null default true;
+-- Premium touches of the page: two animated backgrounds (aurora, waves) and hiding the small "Forms by Petto" line at the bottom. The
+-- check of the background is made again so it takes the new names; the bot shows the plain gradient and the line while a server has no
+-- Premium, so a saved choice never needs Premium to keep working.
+alter table forms drop constraint if exists forms_page_background_check;
+alter table forms add constraint forms_page_background_check check (page_background in ('default', 'solid', 'gradient', 'aurora', 'waves'));
+alter table forms add column if not exists page_hide_branding boolean not null default false;
 -- How the link of a form looks when it is shared in Discord or another chat (the preview of petto.sbs/form/<public id>): a title, a
 -- description, an image (an https link to a picture), the color of the side and whether the image is shown small. Empty: the website
 -- uses the title and the description of the form, its banner or the icon of the server, and the color of the form.

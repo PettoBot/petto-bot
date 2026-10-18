@@ -11,7 +11,7 @@ const { t, tn, currentLanguage } = require('../i18n');
 const MAX_PER_GUILD = PREMIUM_LIMITS.customCommands; // the most any server can have (Premium); a Free server has less, see commandLimit
 const NAME_SHAPE = /^[a-z0-9_-]{1,32}$/;
 
-/** How many custom commands a server can have: Free 100, Premium 250 (db/premium.js). */
+/** How many custom commands a server can have: Free 125, Premium 250 (db/premium.js). */
 async function commandLimit(guildId) {
   const premium = await getGuildPremium(guildId).catch(() => ({ active: false }));
   return { limit: getGuildLimits(premium).customCommands, premium: Boolean(premium?.active) };

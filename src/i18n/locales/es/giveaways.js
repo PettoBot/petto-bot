@@ -40,6 +40,8 @@ module.exports = {
   'giveaways.messageTemplate.what.noEntries': 'El mensaje de sorteo sin participaciones',
   'giveaways.preset.created': '{emoji}  Preset **{name}** creado. Agrega roles con `giveawaypreset add-role`.',
   'giveaways.preset.exists': 'Ya existe un preset con ese nombre.',
+  'giveaways.preset.limit': "Este servidor ya tiene el máximo de {limit} presets de sorteo.",
+  'giveaways.preset.limitFree': "Este servidor ya tiene {limit} presets de sorteo, lo máximo para un servidor gratis. Premium lo sube a {premium}.",
   'giveaways.preset.notFound': 'Ese preset no existe.',
   'giveaways.preset.removed': '{emoji}  Preset eliminado.',
   'giveaways.preset.view.title': '**Preset: {name}**',

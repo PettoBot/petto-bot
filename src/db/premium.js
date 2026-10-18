@@ -3,30 +3,28 @@ const database = require('./database');
 const logger = require('../utils/logger');
 
 // What each plan can have per server. The website keeps the same numbers in src/utils/planLimits.ts (petto-web), so the
-// dashboard and the bot block at the same count; change both together.
+// dashboard and the bot block at the same count; change both together. Free is generous on purpose and Premium is about
+// twice as much: nothing important needs Premium. Moderation, automod, anti-nuke, verification, logging, level rewards,
+// backups, forms and appeals have no Premium limit at all.
 const FREE_LIMITS = Object.freeze({
-  customCommands: 100,
-  autoResponders: 30,
-  ticketCategories: 10,
-  levelRewards: 20,
-  giveawayPresets: 6,
-  logRoutes: 20,
-  imageCards: 6,
-  cardAssets: 10,
-  partnerChannels: 12,
-  buttonResponders: 40,
-  uploadChannels: 40,
-  componentPanels: 20,
-  counters: 12,
+  customCommands: 125,
+  autoResponders: 75,
+  ticketCategories: 25,
+  giveawayPresets: 15,
+  imageCards: 30,
+  cardAssets: 50,
+  partnerChannels: 25,
+  buttonResponders: 250,
+  uploadChannels: 100,
+  componentPanels: 50,
+  counters: 25,
 });
 
 const PREMIUM_LIMITS = Object.freeze({
   customCommands: 250,
   autoResponders: 150,
   ticketCategories: 50,
-  levelRewards: 100,
   giveawayPresets: 30,
-  logRoutes: Number.POSITIVE_INFINITY,
   imageCards: 60,
   cardAssets: 120,
   partnerChannels: 50,
@@ -79,6 +77,15 @@ async function getGuildPremium(guildId) {
 
 function getGuildLimits(premium) {
   return premium?.active ? PREMIUM_LIMITS : FREE_LIMITS;
+}
+
+/**
+ * One limit of a server, for a command that creates an item: `limit` is what the server can have now, `premium` whether
+ * it has Premium, and `premiumLimit` the number Premium gives (for the "Premium raises it to N" message). Fails to Free.
+ */
+async function guildLimit(guildId, key) {
+  const premium = await getGuildPremium(guildId).catch(() => ({ active: false }));
+  return { limit: getGuildLimits(premium)[key], premium: Boolean(premium?.active), premiumLimit: PREMIUM_LIMITS[key] };
 }
 
 const ENTITLEMENT_COLUMNS = 'id,user_id,provider,provider_subscription_id,plan_key,status,slot_limit,current_period_end,metadata,created_at,updated_at';
@@ -367,6 +374,7 @@ module.exports = {
   PREMIUM_LIMITS,
   getGuildPremium,
   getGuildLimits,
+  guildLimit,
   listUserPremium,
   listActiveEntitlements,
   getUserPremium,

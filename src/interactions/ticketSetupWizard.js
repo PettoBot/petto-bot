@@ -16,6 +16,7 @@ const {
   PermissionFlagsBits,
 } = require('discord.js');
 const db = require('../db/tickets');
+const { guildLimit } = require('../db/premium');
 const settingsDb = require('../db/ticketSettings');
 const { ensureGuild } = require('../db/guilds');
 const { buildPanelRows, buildPanelFallbackCard } = require('../utils/ticketCards');
@@ -195,6 +196,15 @@ async function publish(interaction, uid, draft, lang) {
   if (!channel || !channel.isTextBased() || !channel.permissionsFor(me)?.has(needed)) {
     const permissions = formatList(lang, ['ViewChannel', 'SendMessages', 'EmbedLinks'].map((flag) => t(lang, `core.perm.${flag}`)));
     await interaction.reply({ content: t(lang, 'tickets.setup.cannotPost', { emoji: EMOJI.DENY, channel: draft.channelId, permissions }), flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  // The new types count toward the plan limit of ticket types, the same one the dashboard and `!ticket category add` use.
+  const allowed = await guildLimit(guild.id, 'ticketCategories');
+  const current = (await db.listCategories(guild.id)).length;
+  if (current + draft.types.length > allowed.limit) {
+    const room = Math.max(0, allowed.limit - current);
+    await interaction.reply({ content: t(lang, allowed.premium ? 'tickets.setup.typesOverLimit' : 'tickets.setup.typesOverLimitFree', { emoji: EMOJI.ALERT, limit: allowed.limit, room, premium: allowed.premiumLimit }), flags: MessageFlags.Ephemeral });
     return;
   }
 

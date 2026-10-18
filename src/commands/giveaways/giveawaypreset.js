@@ -2,6 +2,7 @@ const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('disc
 const { parseDuration: parseLength } = require('../../utils/duration');
 const { ensureGuild } = require('../../db/guilds');
 const presetsDb = require('../../db/giveawayPresets');
+const { guildLimit } = require('../../db/premium');
 const { formatDuration } = require('../../utils/duration');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
@@ -74,6 +75,13 @@ async function createCmd(interaction, lang) {
   const existing = await presetsDb.getPreset(interaction.guild.id, name);
   if (existing) {
     await interaction.editReply({ components: [textCard(t(lang, 'giveaways.preset.exists'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+
+  // The same plan limit as the dashboard (db/premium.js giveawayPresets).
+  const allowed = await guildLimit(interaction.guild.id, 'giveawayPresets');
+  if ((await presetsDb.listPresets(interaction.guild.id)).length >= allowed.limit) {
+    await interaction.editReply({ components: [textCard(t(lang, allowed.premium ? 'giveaways.preset.limit' : 'giveaways.preset.limitFree', { limit: allowed.limit, premium: allowed.premiumLimit }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 

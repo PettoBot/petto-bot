@@ -7,6 +7,7 @@ const actions = require('../../utils/formActions');
 const { reviewCard } = require('../../utils/formCards');
 const { getTemplate } = require('../../db/embedTemplates');
 const { ensureGuild } = require('../../db/guilds');
+const { getGuildPremium } = require('../../db/premium');
 const { resolveRole } = require('../../utils/roleResolve');
 const { parseDuration } = require('../../utils/duration');
 const { textCard } = require('../../utils/caseCard');
@@ -25,9 +26,9 @@ const SETTINGS = [
 ];
 // The look of the web page of the form. Discord takes 25 choices for the slash option, so these are read by the prefix only (the
 // command is prefix only anyway) and listed with the others when a setting is unknown.
-const PAGE_SETTINGS = ['banner', 'background', 'server-icon', 'server-name'];
+const PAGE_SETTINGS = ['banner', 'background', 'server-icon', 'server-name', 'branding'];
 // `!form set staff background gradient`: the words for the background of the page, in the languages of Petto.
-const BACKGROUND_WORDS = { default: 'default', petto: 'default', normal: 'default', solid: 'solid', color: 'solid', colour: 'solid', solido: 'solid', 'sólido': 'solid', gradient: 'gradient', degradado: 'gradient', gradiente: 'gradient' };
+const BACKGROUND_WORDS = { default: 'default', petto: 'default', normal: 'default', solid: 'solid', color: 'solid', colour: 'solid', solido: 'solid', 'sólido': 'solid', gradient: 'gradient', degradado: 'gradient', gradiente: 'gradient', aurora: 'aurora', waves: 'waves', ondas: 'waves' };
 const ROLE_SETTINGS = {
   reviewers: 'reviewer_role_ids', ping: 'ping_role_ids', 'required-roles': 'required_role_ids', 'blocked-roles': 'blocked_role_ids',
   'accept-roles': 'accept_add_role_ids', 'accept-remove-roles': 'accept_remove_role_ids', 'deny-roles': 'deny_add_role_ids', 'deny-remove-roles': 'deny_remove_role_ids',
@@ -218,6 +219,13 @@ function settingChange(guild, setting, value, lang) {
     const word = off ? 'default' : BACKGROUND_WORDS[text.toLowerCase()];
     return word ? { page_background: word } : { error: t(lang, 'forms.set.background') };
   }
+  // `branding off` hides the small "Forms by Petto" line at the bottom of the page (Premium); `on` shows it again.
+  if (setting === 'branding') {
+    const word = text.toLowerCase();
+    if (ON.includes(word)) return { page_hide_branding: false };
+    if (OFF.includes(word) || off) return { page_hide_branding: true };
+    return { error: t(lang, 'forms.set.switch') };
+  }
   return { error: t(lang, 'forms.set.unknown', { settings: [...SETTINGS, ...PAGE_SETTINGS].join(', ') }) };
 }
 
@@ -248,11 +256,12 @@ function questionChange(question, field, value, lang) {
 
 /** The look of the web page of a form, in one line of `!form info`. */
 function pageLine(form, lang) {
-  const look = forms.pageLook(form);
+  // What is saved; the page itself shows the plain gradient and the Petto line while the server has no Premium.
+  const look = forms.pageLook(form, { premium: true });
   return t(lang, 'forms.info.page', {
     banner: look.banner ? `<${look.banner}>` : t(lang, 'forms.info.none'),
     background: t(lang, `forms.info.background.${look.background}`),
-    icon: onOff(look.show_icon, lang), name: onOff(look.show_name, lang), form: form.name,
+    icon: onOff(look.show_icon, lang), name: onOff(look.show_name, lang), branding: onOff(!look.hide_branding, lang), form: form.name,
   });
 }
 
@@ -442,6 +451,7 @@ async function execute(interaction) {
     }
     const change = settingChange(guild, setting, interaction.options.getString('value', true), lang);
     if (change.error) return done(bad(change.error));
+    if (forms.usesPremiumLook(change) && !(await getGuildPremium(guild.id).catch(() => ({ active: false }))).active) return done(bad(t(lang, 'forms.set.premiumLook')));
     await formsDb.updateForm(guild.id, form.id, change);
     return done(ok(t(lang, 'forms.set.done', { setting, name: form.name })));
   }
