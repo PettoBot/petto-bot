@@ -1,8 +1,10 @@
 const crypto = require('crypto');
 const database = require('./database');
 const { t, currentLanguage } = require('../i18n');
+const { getGuildPremium, getGuildLimits, PREMIUM_LIMITS } = require('./premium');
 
-const MAX_PER_GUILD = 100;
+// The most any server can have (Premium). A Free server has fewer: see limitFor, which follows the plan of the server.
+const MAX_PER_GUILD = PREMIUM_LIMITS.autoResponders;
 const CACHE_TTL_MS = 15_000;
 const listCache = new Map();
 
@@ -57,10 +59,16 @@ async function getByTrigger(guildId, trigger) {
   return data;
 }
 
+/** How many autoresponders this server can have, by its plan (Free or Premium). */
+async function limitFor(guildId) {
+  const premium = await getGuildPremium(guildId).catch(() => ({ active: false }));
+  return getGuildLimits(premium).autoResponders;
+}
+
 async function create(guildId, patch) {
-  const count = await countForGuild(guildId);
-  if (count >= MAX_PER_GUILD) {
-    const err = new Error(t(currentLanguage(), 'automation.db.autoresponderLimit', { max: MAX_PER_GUILD }));
+  const [count, max] = await Promise.all([countForGuild(guildId), limitFor(guildId)]);
+  if (count >= max) {
+    const err = new Error(t(currentLanguage(), 'automation.db.autoresponderLimit', { max }));
     err.userFacing = true;
     throw err;
   }
@@ -92,4 +100,4 @@ async function removeAllForGuild(guildId) {
   return data.length;
 }
 
-module.exports = { MAX_PER_GUILD, listForGuild, listForGuildCached, invalidateGuildCache, getById, getByTrigger, create, update, removeByTrigger, removeAllForGuild };
+module.exports = { MAX_PER_GUILD, limitFor, listForGuild, listForGuildCached, invalidateGuildCache, getById, getByTrigger, create, update, removeByTrigger, removeAllForGuild };

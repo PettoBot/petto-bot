@@ -17,7 +17,7 @@ stub('src/db/guilds.js', { ensureGuild: async () => {} });
 const templates = new Map();
 stub('src/db/embedTemplates.js', { getTemplate: async (guildId, name) => templates.get(`${guildId}:${name}`) ?? null });
 let premiumActive = false;
-stub('src/db/premium.js', { getGuildPremium: async () => ({ active: premiumActive }), getGuildLimits: (premium) => ({ partnerChannels: premium?.active ? 25 : 6 }) });
+stub('src/db/premium.js', { PREMIUM_LIMITS: { partnerChannels: 25 }, getGuildPremium: async () => ({ active: premiumActive }), getGuildLimits: (premium) => ({ partnerChannels: premium?.active ? 25 : 6 }) });
 
 // An in-memory copy of the partner tables.
 let config = null;

@@ -4,21 +4,21 @@ const { ensureGuild } = require('../db/guilds');
 const ccDb = require('../db/customCommands');
 const { check, parse, closestName, functionNames, MAX_SOURCE_LENGTH } = require('../scripting');
 const { dataFields } = require('./codeCommands');
-const { getGuildPremium, getGuildLimits } = require('../db/premium');
+const { getGuildPremium, getGuildLimits, PREMIUM_LIMITS } = require('../db/premium');
 const { validateTrigger, invalidateTriggers, triggersFor, MAX_TRIGGERS_PER_GUILD } = require('./codeTriggers');
 const { t, tn, currentLanguage } = require('../i18n');
 
-const MAX_PER_GUILD = 100; // the most any server can have (Premium); a Free server has less, see commandLimit
+const MAX_PER_GUILD = PREMIUM_LIMITS.customCommands; // the most any server can have (Premium); a Free server has less, see commandLimit
 const NAME_SHAPE = /^[a-z0-9_-]{1,32}$/;
 
-/** How many custom commands a server can have: Free 50, Premium 100. */
+/** How many custom commands a server can have: Free 100, Premium 250 (db/premium.js). */
 async function commandLimit(guildId) {
   const premium = await getGuildPremium(guildId).catch(() => ({ active: false }));
   return { limit: getGuildLimits(premium).customCommands, premium: Boolean(premium?.active) };
 }
 
 /** What to say when a server is full of custom commands. */
-const fullMessage = ({ limit, premium }, lang = currentLanguage()) => t(lang, premium ? 'customcommands.full' : 'customcommands.fullFree', { limit });
+const fullMessage = ({ limit, premium }, lang = currentLanguage()) => t(lang, premium ? 'customcommands.full' : 'customcommands.fullFree', { limit, premium: PREMIUM_LIMITS.customCommands });
 
 const clip = (text, max) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
 

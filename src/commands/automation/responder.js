@@ -4,7 +4,7 @@ const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('disc
 const { ensureGuild } = require('../../db/guilds');
 const respondersDb = require('../../db/responders');
 const { getTemplate } = require('../../db/embedTemplates');
-const { getGuildPremium, getGuildLimits } = require('../../db/premium');
+const { getGuildPremium, getGuildLimits, PREMIUM_LIMITS } = require('../../db/premium');
 const { normalizeName, emojiOf, STYLES } = require('../../utils/responderEngine');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
@@ -68,7 +68,7 @@ async function save(interaction, name, editing, done, lang) {
   if (!existing) {
     const premium = await getGuildPremium(guildId).catch(() => ({ active: false }));
     const limit = getGuildLimits(premium).buttonResponders;
-    if ((await respondersDb.countResponders(guildId)) >= limit) return done(note(t(lang, premium?.active ? 'automation.responder.full' : 'automation.responder.fullFree', { limit })));
+    if ((await respondersDb.countResponders(guildId)) >= limit) return done(note(t(lang, premium?.active ? 'automation.responder.full' : 'automation.responder.fullFree', { limit, premium: PREMIUM_LIMITS.buttonResponders })));
   }
   const values = { ...(existing ?? respondersDb.RESPONDER_DEFAULTS) };
   delete values.id; delete values.guild_id; delete values.created_at; delete values.name;

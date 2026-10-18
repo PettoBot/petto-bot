@@ -58,7 +58,7 @@ src/
     levelMultipliers.js             role/channel XP multiplier CRUD
     afk.js                           AFK status + mention log (listRecentMentions/countRecentMentions filter to the
                                     last 3 days themselves — no TTL cleanup, same precedent as verification_redemptions)
-    autoResponders.js                trigger/reply CRUD, short random ar_id generation, 100-per-guild cap
+    autoResponders.js                trigger/reply CRUD, short random ar_id generation, per-plan cap (Free 30, Premium 150)
     stickyMessages.js                per-channel sticky content + the currently-live message_id
     poj.js                           ping-on-join config + up to 10 channels per guild
     disabledCommands.js              disabled-command rules (server-wide or per-channel)
@@ -68,7 +68,7 @@ src/
     giveawayTemplates.js               saved full giveaway configs, same get/upsert/delete/list shape as embedTemplates.js
     giveawayConfig.js                  single-row-per-guild defaults (entry mode, reaction, embed, per-event messages)
     reactionRoles.js                    emoji -> role bindings per message (add/remove/list/clear)
-    customCommands.js                   admin-defined command name -> response/embed_template, 100-per-guild cap
+    customCommands.js                   admin-defined command name -> response/embed_template, per-plan cap (Free 100, Premium 250)
     reminders.js                        personal reminders, listDue()/markSent() for the polling job, 25-per-user cap
     inviteTracking.js                    recordJoin()/recordLeave() (both call increment_invite_stat() for an atomic
                                         upsert), plus getStats()/getLeaderboard()/getInviter()
@@ -784,4 +784,4 @@ Two smaller, lower-priority moderation gaps also remain open: `/channel clear` h
 
 `!counter` (prefix only, Manage Channels) keeps channel names showing live numbers. Rows live in `server_counters` (`counter_option` is the type: `members`, `users_only`, `bots_only`, `pending_members`, `online`, `status_online|idle|dnd`, `in_voice`, `boosts`, `booster_count`, `boost_level`, `roles`, `all_channels`, `text_channels`, `voice_channels`, `announcement_channels`, `staging_channels`, `categories`, `emojis`, `stickers`, `role_members` + `target_id`, `goal` + `goal`, `clock` / `date` + `timezone`, or a 10-digit timestamp for a countdown). `name_template` takes `{count}` (`{value}`/`{remaining}`/`{option}` from older rows), `{goal}`, `{left}`, `{percent}`, `{role}`, `{tz}`; `number_format` is `plain`, `grouped` or `compact`.
 
-`src/jobs/counterJob.js` renames at most twice per channel every 10 minutes (`src/utils/counterNames.js` `planRename`): events (joins, leaves, boosts, channels, roles, emojis, stickers, voice, presences) mark a server's counters after a short debounce, a rename beyond the budget is planned once for when it frees up and uses the value of that moment, a full pass runs every minute, and `rename_times` is saved so a restart keeps the budget. A deleted channel sets `problem = 'missing_channel'` and turns the row off; a missing permission sets `missing_permission` and is logged once with the server id (the guild notices pick it up). The dashboard uses `src/web/counterRoutes.js` (`/api/dashboard/guild/:id/counters/preview|create|setup|refresh|delete`). Limits: `counters` in `src/db/premium.js` (Free 6, Premium 25).
+`src/jobs/counterJob.js` renames at most twice per channel every 10 minutes (`src/utils/counterNames.js` `planRename`): events (joins, leaves, boosts, channels, roles, emojis, stickers, voice, presences) mark a server's counters after a short debounce, a rename beyond the budget is planned once for when it frees up and uses the value of that moment, a full pass runs every minute, and `rename_times` is saved so a restart keeps the budget. A deleted channel sets `problem = 'missing_channel'` and turns the row off; a missing permission sets `missing_permission` and is logged once with the server id (the guild notices pick it up). The dashboard uses `src/web/counterRoutes.js` (`/api/dashboard/guild/:id/counters/preview|create|setup|refresh|delete`). Limits: `counters` in `src/db/premium.js` (Free 12, Premium 50).

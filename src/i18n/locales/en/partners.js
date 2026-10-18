@@ -40,7 +40,7 @@ module.exports = {
   'partners.enable.off': 'Partners are off.',
   'partners.channel.already': '{channel} is already a partner channel.',
   'partners.channel.limit': 'This server already has {limit} partner channels.',
-  'partners.channel.limitPremium': 'This server already has {limit} partner channels. Premium raises it to 25.',
+  'partners.channel.limitPremium': 'This server already has {limit} partner channels. Premium raises it to {premium}.',
   'partners.channel.added': '{channel} is now a partner channel.',
   'partners.channel.notOne': '{channel} is not a partner channel.',
   'partners.channel.removed': '{channel} is not a partner channel anymore.',

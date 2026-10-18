@@ -3,7 +3,7 @@ const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = 
 const { ensureGuild } = require('../../db/guilds');
 const uploadsDb = require('../../db/uploads');
 const { getTemplate } = require('../../db/embedTemplates');
-const { getGuildPremium, getGuildLimits } = require('../../db/premium');
+const { getGuildPremium, getGuildLimits, PREMIUM_LIMITS } = require('../../db/premium');
 const { defaultWelcome, MAX_TEXT, textOf } = require('../../utils/uploadMessages');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
@@ -60,7 +60,7 @@ module.exports = {
       if (config.channel_ids.includes(channel.id)) return done(note(t(lang, 'uploads.channel.already', { channel: `${channel}` })));
       const premium = await getGuildPremium(interaction.guild.id).catch(() => ({ active: false }));
       const limit = getGuildLimits(premium).uploadChannels;
-      if (config.channel_ids.length >= limit) return done(note(t(lang, premium?.active ? 'uploads.channel.limit' : 'uploads.channel.limitPremium', { limit })));
+      if (config.channel_ids.length >= limit) return done(note(t(lang, premium?.active ? 'uploads.channel.limit' : 'uploads.channel.limitPremium', { limit, premium: PREMIUM_LIMITS.uploadChannels })));
       await save({ channel_ids: [...config.channel_ids, channel.id] });
       return done(ok(t(lang, 'uploads.channel.added', { channel: `${channel}` })));
     }

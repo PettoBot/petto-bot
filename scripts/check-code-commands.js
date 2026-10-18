@@ -14,7 +14,7 @@ stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
 stub('src/handlers/prefixInteraction.js', { tokenize: (text) => String(text).match(/"[^"]*"|\S+/g)?.map((word) => word.replace(/^"|"$/g, '')) ?? [] });
 const store = new Map();
 stub('src/db/guilds.js', { ensureGuild: async () => {} });
-stub('src/db/premium.js', { getGuildPremium: async () => ({ active: false }), getGuildLimits: (premium) => ({ customCommands: premium?.active ? 100 : 50 }) });
+stub('src/db/premium.js', { PREMIUM_LIMITS: { customCommands: 100 }, getGuildPremium: async () => ({ active: false }), getGuildLimits: (premium) => ({ customCommands: premium?.active ? 100 : 50 }) });
 stub('src/db/embedTemplates.js', { getTemplate: async () => null });
 stub('src/db/customCommands.js', {
   normalizeName: (name) => name.toLowerCase().trim().replace(/\s+/g, ''),

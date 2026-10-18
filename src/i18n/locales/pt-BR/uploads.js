@@ -28,7 +28,7 @@ module.exports = {
   'uploads.enable.off': 'Os envios estão desativados.',
   'uploads.channel.already': '{channel} já é um canal de envios.',
   'uploads.channel.limit': 'Este servidor já tem {limit} canais de envios.',
-  'uploads.channel.limitPremium': 'Este servidor já tem {limit} canais de envios. O Premium aumenta para 100.',
+  'uploads.channel.limitPremium': 'Este servidor já tem {limit} canais de envios. O Premium aumenta para {premium}.',
   'uploads.channel.added': '{channel} agora é um canal de envios.',
   'uploads.channel.notOne': '{channel} não é um canal de envios.',
   'uploads.channel.removed': '{channel} não é mais um canal de envios.',
