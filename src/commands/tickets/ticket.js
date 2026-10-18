@@ -15,6 +15,7 @@ const { build } = require('../../utils/embedBuilder');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
+const { guildLimit } = require('../../db/premium');
 const { t, tn, formatNumber, languageOf, defaultText } = require('../../i18n');
 
 const STYLE_CHOICES = [
@@ -499,6 +500,13 @@ async function categoryCmd(interaction, sub, lang) {
   const panel = await db.getPanel(interaction.guild.id, panelId);
   if (!panel) {
     await interaction.editReply({ components: [textCard(t(lang, 'tickets.panel.notFound', { id: panelId }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+
+  // The same plan limit as the dashboard (db/premium.js ticketCategories).
+  const allowed = await guildLimit(interaction.guild.id, 'ticketCategories');
+  if ((await db.listCategories(interaction.guild.id)).length >= allowed.limit) {
+    await interaction.editReply({ components: [textCard(t(lang, allowed.premium ? 'tickets.category.limit' : 'tickets.category.limitFree', { limit: allowed.limit, premium: allowed.premiumLimit }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 

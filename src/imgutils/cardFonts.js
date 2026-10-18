@@ -7,26 +7,26 @@ const { GlobalFonts } = require('@napi-rs/canvas');
 
 const FONT_DIR = path.join(__dirname, '..', 'assets', 'fonts');
 
-/** `tier` says who can pick it: free servers get a short list, Premium gets all of them. */
+/** `tier` says who can pick it: every server gets the 15 free ones, Premium gets all 40. */
 const CARD_FONTS = [
   { family: 'Poppins', slug: 'poppins', weights: [400, 700, 800], tier: 'free' },
   { family: 'Inter', slug: 'inter', weights: [400, 700, 800], tier: 'free' },
   { family: 'Montserrat', slug: 'montserrat', weights: [400, 700, 800], tier: 'free' },
   { family: 'Bebas Neue', slug: 'bebas-neue', weights: [400], tier: 'free' },
-  { family: 'Oswald', slug: 'oswald', weights: [400, 700], tier: 'premium' },
-  { family: 'Playfair Display', slug: 'playfair-display', weights: [400, 700], tier: 'premium' },
-  { family: 'Roboto Mono', slug: 'roboto-mono', weights: [400, 700], tier: 'premium' },
-  { family: 'Fredoka', slug: 'fredoka', weights: [400, 700], tier: 'premium' },
-  { family: 'Caveat', slug: 'caveat', weights: [400, 700], tier: 'premium' },
-  { family: 'Anton', slug: 'anton', weights: [400], tier: 'premium' },
+  { family: 'Oswald', slug: 'oswald', weights: [400, 700], tier: 'free' },
+  { family: 'Playfair Display', slug: 'playfair-display', weights: [400, 700], tier: 'free' },
+  { family: 'Roboto Mono', slug: 'roboto-mono', weights: [400, 700], tier: 'free' },
+  { family: 'Fredoka', slug: 'fredoka', weights: [400, 700], tier: 'free' },
+  { family: 'Caveat', slug: 'caveat', weights: [400, 700], tier: 'free' },
+  { family: 'Anton', slug: 'anton', weights: [400], tier: 'free' },
   { family: 'Pacifico', slug: 'pacifico', weights: [400], tier: 'premium' },
-  { family: 'Lobster', slug: 'lobster', weights: [400], tier: 'premium' },
-  { family: 'Righteous', slug: 'righteous', weights: [400], tier: 'premium' },
-  { family: 'Bangers', slug: 'bangers', weights: [400], tier: 'premium' },
+  { family: 'Lobster', slug: 'lobster', weights: [400], tier: 'free' },
+  { family: 'Righteous', slug: 'righteous', weights: [400], tier: 'free' },
+  { family: 'Bangers', slug: 'bangers', weights: [400], tier: 'free' },
   { family: 'Permanent Marker', slug: 'permanent-marker', weights: [400], tier: 'premium' },
   { family: 'Press Start 2P', slug: 'press-start-2p', weights: [400], tier: 'premium' },
   { family: 'Nunito', slug: 'nunito', weights: [400, 700, 800], tier: 'free' },
-  { family: 'Quicksand', slug: 'quicksand', weights: [400, 700], tier: 'premium' },
+  { family: 'Quicksand', slug: 'quicksand', weights: [400, 700], tier: 'free' },
   { family: 'Space Grotesk', slug: 'space-grotesk', weights: [400, 700], tier: 'premium' },
   { family: 'Orbitron', slug: 'orbitron', weights: [400, 700, 800], tier: 'premium' },
   { family: 'Dancing Script', slug: 'dancing-script', weights: [400, 700], tier: 'premium' },

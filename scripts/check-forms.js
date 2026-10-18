@@ -131,8 +131,13 @@ const fieldsOf = (values) => ({
     assert.equal(forms.normalizeForm({ name: 'x', page_banner: bad }).page_banner, null, `no banner from ${bad.slice(0, 40)}`);
   }
   assert.equal(forms.normalizeForm({ name: 'x', page_background: 'url(evil)' }).page_background, 'default', 'only the known backgrounds');
-  assert.deepEqual(forms.pageLook({ title: 'Saved before the page settings' }), { banner: null, background: 'default', show_icon: true, show_name: true }, 'an older form gets the defaults');
-  assert.deepEqual(forms.pageLook({ page_banner: 'https://x.example/b.webp', page_background: 'solid', page_show_icon: false, page_show_name: true }), { banner: 'https://x.example/b.webp', background: 'solid', show_icon: false, show_name: true });
+  assert.deepEqual(forms.pageLook({ title: 'Saved before the page settings' }), { banner: null, background: 'default', show_icon: true, show_name: true, hide_branding: false }, 'an older form gets the defaults');
+  assert.deepEqual(forms.pageLook({ page_banner: 'https://x.example/b.webp', page_background: 'solid', page_show_icon: false, page_show_name: true }), { banner: 'https://x.example/b.webp', background: 'solid', show_icon: false, show_name: true, hide_branding: false });
+  // The Premium looks: shown while the server has Premium, the plain gradient and the Petto line without it.
+  assert.deepEqual(forms.pageLook({ page_background: 'aurora', page_hide_branding: true }, { premium: true }), { banner: null, background: 'aurora', show_icon: true, show_name: true, hide_branding: true });
+  assert.deepEqual(forms.pageLook({ page_background: 'waves', page_hide_branding: true }), { banner: null, background: 'gradient', show_icon: true, show_name: true, hide_branding: false }, 'without Premium the look falls back');
+  assert.equal(forms.usesPremiumLook({ page_background: 'aurora' }), true); assert.equal(forms.usesPremiumLook({ page_hide_branding: true }), true);
+  assert.equal(forms.usesPremiumLook({ page_background: 'gradient' }), false); assert.equal(forms.usesPremiumLook({ page_hide_branding: false }), false);
   assert.equal(forms.pageLook({ page_banner: 'http://x.example/b.webp', page_background: 'neon' }).banner, null, 'a stored banner is checked again'); assert.equal(forms.pageLook({ page_background: 'neon' }).background, 'default');
   // The link preview of a form: empty by default (the website falls back to the form), clipped and checked like the banner.
   assert.deepEqual([normal.embed_title, normal.embed_description, normal.embed_image, normal.embed_color, normal.embed_thumbnail], [null, null, null, null, false], 'a new form has no custom preview');
@@ -523,7 +528,7 @@ const fieldsOf = (values) => ({
     const ok = await call('public', PID, { user_id: '222222222222222222' });
     assert.equal(ok.can, true); assert.equal(ok.form.id, PID, 'the page gets the public id, not the number'); assert.equal(ok.form.questions.length, 5); assert.equal(ok.form.questions[2].options[1], 'Blue');
     assert.equal(ok.form.review_channel_id, undefined, 'the review settings stay private');
-    assert.deepEqual(ok.form.page, { banner: null, background: 'default', show_icon: true, show_name: true }, 'the page gets its look');
+    assert.deepEqual(ok.form.page, { banner: null, background: 'default', show_icon: true, show_name: true, hide_branding: false }, 'the page gets its look');
     assert.equal(ok.server.name, guild.name);
     // The look alone, without a member: for the page before the login and the link preview of petto.sbs/f/<public id>.
     db.forms.find((f) => f.id === 900).page_banner = 'https://x.example/top.webp'; db.forms.find((f) => f.id === 900).page_background = 'gradient';
@@ -531,7 +536,7 @@ const fieldsOf = (values) => ({
     assert.equal((await call('look', 900, {})).status, 404, 'not by number'); assert.equal((await call('look', 'x7Kp9QzA2mVu', {})).status, 404);
     const look = await call('look', PID, {});
     assert.equal(look.ok, true); assert.equal(look.form.title, 'Event sign-up'); assert.equal(look.server.name, guild.name);
-    assert.deepEqual(look.form.page, { banner: 'https://x.example/top.webp', background: 'gradient', show_icon: true, show_name: true });
+    assert.deepEqual(look.form.page, { banner: 'https://x.example/top.webp', background: 'gradient', show_icon: true, show_name: true, hide_branding: false });
     assert.deepEqual(look.form.embed, { title: null, description: null, image: null, color: null, thumbnail: false }, 'the look carries the link preview');
     assert.equal(look.form.questions, undefined, 'no questions without a member'); assert.equal(look.form.required_role_ids, undefined);
     const bad = await call('submit', PID, { user_id: '222222222222222222', values: { name: 'L', age: '7', team: 'o5', days: ['o0', 'o1', 'o2'] } });

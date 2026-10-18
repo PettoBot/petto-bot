@@ -40,6 +40,8 @@ module.exports = {
   'giveaways.messageTemplate.what.noEntries': 'The no entries message',
   'giveaways.preset.created': '{emoji}  Preset **{name}** created. Add roles with `giveawaypreset add-role`.',
   'giveaways.preset.exists': 'A preset with that name already exists.',
+  'giveaways.preset.limit': "This server already has the maximum of {limit} giveaway presets.",
+  'giveaways.preset.limitFree': "This server already has {limit} giveaway presets, the most a free server can have. Premium raises it to {premium}.",
   'giveaways.preset.notFound': "That preset doesn't exist.",
   'giveaways.preset.removed': '{emoji}  Preset removed.',
   'giveaways.preset.view.title': '**Preset: {name}**',

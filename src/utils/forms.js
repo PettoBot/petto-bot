@@ -12,8 +12,11 @@ const CHOICE_TYPES = ['choice', 'multi'];
 const TEXT_TYPES = ['short', 'paragraph', 'number'];
 const STATUSES = ['pending', 'accepted', 'denied', 'cancelled'];
 const BUTTON_STYLES = ['primary', 'secondary', 'success', 'danger'];
-// The background of the web page of a form: Petto's own, or a solid tint or a gradient made from the color of the form.
-const PAGE_BACKGROUNDS = ['default', 'solid', 'gradient'];
+// The background of the web page of a form: Petto's own, or a solid tint or a gradient made from the color of the form. `aurora` and
+// `waves` move slowly behind the page (only CSS, still for visitors who ask for less motion); they are a Premium touch, and a page
+// whose server no longer has Premium shows the plain gradient instead.
+const PAGE_BACKGROUNDS = ['default', 'solid', 'gradient', 'aurora', 'waves'];
+const PREMIUM_PAGE_BACKGROUNDS = ['aurora', 'waves'];
 // What Discord allows: 45 characters for the title of a form and the label of a field, 100 for its description and placeholder,
 // 25 options of 100 characters in a menu, 4000 characters in a text field, and five fields in a form.
 const LIMITS = {
@@ -177,6 +180,7 @@ function normalizeForm(input, { maxQuestions = LIMITS.questions } = {}) {
     page_background: PAGE_BACKGROUNDS.includes(input?.page_background) ? input.page_background : 'default',
     page_show_icon: input?.page_show_icon !== false,
     page_show_name: input?.page_show_name !== false,
+    page_hide_branding: input?.page_hide_branding === true,
     embed_title: clip(input?.embed_title, LIMITS.embedTitle) || null,
     embed_description: clipText(input?.embed_description, LIMITS.embedDescription) || null,
     embed_image: imageUrl(input?.embed_image),
@@ -209,16 +213,24 @@ function linkEmbed(form) {
 
 /**
  * How the web page of a form looks (petto.sbs/form/<public id>): the banner (an image link checked like the image of a question),
- * the background and what the header shows of the server. A form saved before these settings gets the defaults: no banner,
- * Petto's background, the icon and the name of the server.
+ * the background, what the header shows of the server and whether the small "Forms by Petto" line is hidden. A form saved before
+ * these settings gets the defaults: no banner, Petto's background, the icon and the name of the server, the line shown.
+ * `premium` is whether the server has Premium now: without it an animated background shows as the gradient and the line stays.
  */
-function pageLook(form) {
+function pageLook(form, { premium = false } = {}) {
+  const background = PAGE_BACKGROUNDS.includes(form?.page_background) ? form.page_background : 'default';
   return {
     banner: imageUrl(form?.page_banner),
-    background: PAGE_BACKGROUNDS.includes(form?.page_background) ? form.page_background : 'default',
+    background: !premium && PREMIUM_PAGE_BACKGROUNDS.includes(background) ? 'gradient' : background,
     show_icon: form?.page_show_icon !== false,
     show_name: form?.page_show_name !== false,
+    hide_branding: premium && form?.page_hide_branding === true,
   };
+}
+
+/** Whether a change to a form uses a Premium look: an animated background or the "Forms by Petto" line hidden. */
+function usesPremiumLook(change) {
+  return PREMIUM_PAGE_BACKGROUNDS.includes(change?.page_background) || change?.page_hide_branding === true;
 }
 
 const DAY = 86_400_000;
@@ -489,8 +501,8 @@ function dropDraft(guildId, userId, formId) {
 
 module.exports = {
   FORM_LIMITS,
-  PREFIX, QUESTION_TYPES, CHOICE_TYPES, STATUSES, BUTTON_STYLES, PAGE_BACKGROUNDS, LIMITS, COLORS, NAME, SNOWFLAKE,
-  clip, clipText, imageUrl, plainDescription, labelDescription, slugName, normalizeQuestion, normalizeQuestions, normalizeForm, pageLook, linkEmbed, checkEligibility, refusalText, isReviewer,
+  PREFIX, QUESTION_TYPES, CHOICE_TYPES, STATUSES, BUTTON_STYLES, PAGE_BACKGROUNDS, PREMIUM_PAGE_BACKGROUNDS, LIMITS, COLORS, NAME, SNOWFLAKE,
+  clip, clipText, imageUrl, plainDescription, labelDescription, slugName, normalizeQuestion, normalizeQuestions, normalizeForm, pageLook, usesPremiumLook, linkEmbed, checkEligibility, refusalText, isReviewer,
   pagesOf, pageTitle, buildModal, readPage, readAll, webUrl, shareUrl, newPublicId, PUBLIC_ID, collectAnswers, missingRequired, answerText, answersAsText, fillShortcuts,
   getDraft, saveDraft, dropDraft, DRAFT_TTL_MS,
 };
