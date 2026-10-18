@@ -4,7 +4,7 @@ const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = 
 const { ensureGuild } = require('../../db/guilds');
 const partnersDb = require('../../db/partners');
 const { getTemplate } = require('../../db/embedTemplates');
-const { getGuildPremium, getGuildLimits } = require('../../db/premium');
+const { getGuildPremium, getGuildLimits, PREMIUM_LIMITS } = require('../../db/premium');
 const { RESPONSE_KEYS, LABELS, MAX_TEXT, labelOf, textOf } = require('../../utils/partnerMessages');
 const { parseSpan, formatSpan, cooldownMinutes } = require('../../utils/partnerEngine');
 const { sendManagerWelcome } = require('../../utils/partnerWelcome');
@@ -75,7 +75,7 @@ module.exports = {
       if (config.channel_ids.includes(channel.id)) return done(note(t(lang, 'partners.channel.already', { channel: `${channel}` })));
       const premium = await getGuildPremium(interaction.guild.id).catch(() => ({ active: false }));
       const limit = getGuildLimits(premium).partnerChannels;
-      if (config.channel_ids.length >= limit) return done(note(t(lang, premium?.active ? 'partners.channel.limit' : 'partners.channel.limitPremium', { limit })));
+      if (config.channel_ids.length >= limit) return done(note(t(lang, premium?.active ? 'partners.channel.limit' : 'partners.channel.limitPremium', { limit, premium: PREMIUM_LIMITS.partnerChannels })));
       await save({ channel_ids: [...config.channel_ids, channel.id] });
       return done(ok(t(lang, 'partners.channel.added', { channel: `${channel}` })));
     }

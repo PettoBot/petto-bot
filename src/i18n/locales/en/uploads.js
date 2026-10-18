@@ -29,7 +29,7 @@ module.exports = {
   'uploads.enable.off': 'Uploads are off.',
   'uploads.channel.already': '{channel} is already an upload channel.',
   'uploads.channel.limit': 'This server already has {limit} upload channels.',
-  'uploads.channel.limitPremium': 'This server already has {limit} upload channels. Premium raises it to 100.',
+  'uploads.channel.limitPremium': 'This server already has {limit} upload channels. Premium raises it to {premium}.',
   'uploads.channel.added': '{channel} is now an upload channel.',
   'uploads.channel.notOne': '{channel} is not an upload channel.',
   'uploads.channel.removed': '{channel} is not an upload channel anymore.',

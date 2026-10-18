@@ -17,7 +17,7 @@ const templates = new Map();
 stub('src/db/embedTemplates.js', { getTemplate: async (guildId, name) => templates.get(`${guildId}:${name}`) ?? null });
 stub('src/utils/templatedMessage.js', { templatePayload: async (guildId, name) => (templates.has(`${guildId}:${name}`) ? { content: undefined, embeds: [{ title: name }], components: [], files: [] } : null) });
 let premiumActive = false;
-stub('src/db/premium.js', { getGuildPremium: async () => ({ active: premiumActive }), getGuildLimits: (premium) => ({ uploadChannels: premium?.active ? 100 : 20 }) });
+stub('src/db/premium.js', { PREMIUM_LIMITS: { uploadChannels: 100 }, getGuildPremium: async () => ({ active: premiumActive }), getGuildLimits: (premium) => ({ uploadChannels: premium?.active ? 100 : 20 }) });
 let config = null;
 let log = [];
 let nextId = 1;

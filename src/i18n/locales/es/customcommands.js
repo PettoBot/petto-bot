@@ -118,7 +118,7 @@ module.exports = {
   'customcommands.export.longFile': 'El código para compartir de `{name}` es largo, así que va en este archivo.',
   'customcommands.export.done': 'Código para compartir de `{name}`. Impórtalo con `!customcommand import <código>`:',
   'customcommands.full': 'Este servidor ya tiene el máximo de {limit} comandos personalizados.',
-  'customcommands.fullFree': 'Este servidor ya tiene el máximo de {limit} comandos personalizados. Premium lo sube a 100.',
+  'customcommands.fullFree': 'Este servidor ya tiene el máximo de {limit} comandos personalizados. Premium lo sube a {premium}.',
   'customcommands.problem.noCode': 'No hay código. Escríbelo después del nombre, dentro de un bloque de código si tiene varias líneas.',
   'customcommands.problem.tooLong': 'El código es demasiado largo ({count} de {max} caracteres).',
   'customcommands.problem.mistake': 'El código tiene un error: {message}',

@@ -77,7 +77,7 @@ module.exports = {
   rolloutTesterIds: envList('ROLLOUTS_TESTER_IDS'),
   rolloutsUrl: String(process.env.ROLLOUTS_URL || '').trim() || null,
   // Custom commands written in code (Petto Code) are open to every server that can manage commands, with the limit of
-  // custom commands of its plan (Free 50, Premium 100). CODE_COMMANDS_DISABLED=true turns writing them off again.
+  // custom commands of its plan (Free 100, Premium 250). CODE_COMMANDS_DISABLED=true turns writing them off again.
   codeCommandsDisabled: process.env.CODE_COMMANDS_DISABLED === 'true',
   // This control token is intentionally required at runtime. Never commit a
   // fallback token: a public repository makes hard-coded controls unsafe.

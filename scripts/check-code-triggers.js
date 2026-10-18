@@ -9,7 +9,7 @@ function stub(relative, exports) {
 }
 const store = new Map();
 let listCalls = 0;
-stub('src/db/premium.js', { getGuildPremium: async () => ({ active: false }), getGuildLimits: () => ({ customCommands: 50 }) });
+stub('src/db/premium.js', { PREMIUM_LIMITS: { customCommands: 100 }, getGuildPremium: async () => ({ active: false }), getGuildLimits: () => ({ customCommands: 50 }) });
 const settings = { ownerId: 'owner', developerIds: [], codeCommandsDisabled: false };
 stub('src/config.js', settings);
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });

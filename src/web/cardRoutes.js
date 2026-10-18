@@ -14,7 +14,7 @@ const cardAssets = require('../db/cardAssets');
 const { getGuildPremium, getGuildLimits } = require('../db/premium');
 const logger = require('../utils/logger');
 
-const UPLOAD = { bytes: 5 * 1024 * 1024, maxSide: 2048, storeFree: 15 * 1024 * 1024, storePremium: 120 * 1024 * 1024 };
+const UPLOAD = { bytes: 5 * 1024 * 1024, maxSide: 2048, storeFree: 30 * 1024 * 1024, storePremium: 240 * 1024 * 1024 };
 // The limiter is built here, in the same file as the routes, so it is plain that every route is limited.
 const cardLimiter = rateLimit({
   windowMs: 60_000,

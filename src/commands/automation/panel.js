@@ -4,7 +4,7 @@ const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = 
 const { ensureGuild } = require('../../db/guilds');
 const respondersDb = require('../../db/responders');
 const { getTemplate } = require('../../db/embedTemplates');
-const { getGuildPremium, getGuildLimits } = require('../../db/premium');
+const { getGuildPremium, getGuildLimits, PREMIUM_LIMITS } = require('../../db/premium');
 const { normalizeName, MAX_ITEMS } = require('../../utils/responderEngine');
 const { panelPayload } = require('../../utils/panelMessage');
 const { applyReactReplies } = require('../../utils/messageFlags');
@@ -81,7 +81,7 @@ async function save(interaction, name, editing, done, lang) {
   if (!existing) {
     const premium = await getGuildPremium(guildId).catch(() => ({ active: false }));
     const limit = getGuildLimits(premium).componentPanels;
-    if ((await respondersDb.countPanels(guildId)) >= limit) return done(note(t(lang, premium?.active ? 'automation.panel.full' : 'automation.panel.fullFree', { limit })));
+    if ((await respondersDb.countPanels(guildId)) >= limit) return done(note(t(lang, premium?.active ? 'automation.panel.full' : 'automation.panel.fullFree', { limit, premium: PREMIUM_LIMITS.componentPanels })));
   }
   const values = { ...(existing ?? respondersDb.PANEL_DEFAULTS) };
   delete values.id; delete values.guild_id; delete values.created_at; delete values.name;

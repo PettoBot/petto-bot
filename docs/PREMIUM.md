@@ -5,6 +5,33 @@ stores the entitlement through the private bot API, and the bot reads the
 selected server slots from Discloud PostgreSQL. Free servers keep the normal
 limits and features.
 
+## Limits per server
+
+`FREE_LIMITS` and `PREMIUM_LIMITS` in `src/db/premium.js` are the source of
+truth. The website keeps the same numbers in `src/utils/planLimits.ts` (the
+dashboard pages and the public Premium page read them from there), so change
+both together.
+
+| Limit | Free | Premium |
+| --- | --- | --- |
+| Custom commands | 100 | 250 |
+| Autoresponders | 30 | 150 |
+| Ticket types (categories) | 10 | 50 |
+| Level rewards | 20 | 100 |
+| Giveaway presets | 6 | 30 |
+| Log routes | 20 | Unlimited |
+| Image cards | 6 | 60 |
+| Uploaded card pictures | 10 (30 MB) | 120 (240 MB) |
+| Partner channels | 12 | 50 |
+| Upload channels | 40 | 200 |
+| Button responders | 40 | 500 |
+| Button panels | 20 | 100 |
+| Counters | 12 | 50 |
+
+Discord's own limits still apply inside each item: a ticket panel shows at most
+5 buttons or 25 dropdown options, a message at most 5 buttons per row, an embed
+at most 25 fields.
+
 ## One time setup
 
 1. Apply `src/db/schema.sql` to the Discloud PostgreSQL database. It creates the
