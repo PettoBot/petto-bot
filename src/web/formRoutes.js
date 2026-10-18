@@ -137,15 +137,19 @@ function registerFormRoutes(app, { authorize, limiter, isAuthorized = null, clie
       const q = String(req.body?.q ?? '').trim().slice(0, 60);
       const byId = SNOWFLAKE.test(q) ? q : null;
       const limit = Math.min(100, Math.max(1, Number(req.body?.limit) || 50));
-      let rows = await formsDb.listSubmissions(guildId, { formId, status, userId: byId, limit: q && !byId ? 200 : limit });
+      // The reads do not depend on each other, so they go at once (the page waited for each one in turn).
+      const [found, waiting, stored, cap, setting] = await Promise.all([
+        formsDb.listSubmissions(guildId, { formId, status, userId: byId, limit: q && !byId ? 200 : limit }),
+        formsDb.listSubmissions(guildId, { status: 'pending', limit: 200 }),
+        formsDb.countStored(guildId), storageCap(guildId), formsDb.getFormConfig(guildId),
+      ]);
+      let rows = found;
       if (q && !byId) {
         const needle = q.toLowerCase().replace(/^#/, '');
         rows = rows.filter((row) => String(row.username ?? '').toLowerCase().includes(needle) || String(row.number) === needle).slice(0, limit);
       }
-      const waiting = await formsDb.listSubmissions(guildId, { status: 'pending', limit: 200 });
       const pending = {};
       for (const row of waiting) pending[String(row.form_id)] = (pending[String(row.form_id)] ?? 0) + 1;
-      const [stored, cap, setting] = await Promise.all([formsDb.countStored(guildId), storageCap(guildId), formsDb.getFormConfig(guildId)]);
       res.set('Cache-Control', 'no-store'); // i18n-ignore: HTTP header
       res.json({ ok: true, submissions: rows, pending, stored: stored.total, cap, retention_days: setting.retention_days });
     } catch (err) {

@@ -27,6 +27,12 @@ function fakeGuild(id, answer) {
   assert.equal(await fetchDashboardMember(g1, member.id), member);
   assert.equal(g1.calls, 2);
 
+  // A member already in the cache of discord.js is used without asking Discord.
+  const g0 = fakeGuild('100000000000000009', () => { throw new Error('not asked'); });
+  g0.members.cache = new Map([[member.id, member]]);
+  assert.equal(await fetchDashboardMember(g0, member.id), member);
+  assert.equal(g0.calls, 0);
+
   // Unknown Member: null, and Discord is not asked again inside the minute; after it, it is.
   const now = 1_000_000;
   const g2 = fakeGuild('100000000000000002', () => { throw discordError(10007); });
