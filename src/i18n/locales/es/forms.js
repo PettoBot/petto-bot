@@ -208,7 +208,7 @@ module.exports = {
   'forms.panel.web.buttonFor': "{form} en la web",
   'forms.refuse.webOff': "Este formulario solo se puede llenar en Discord.",
   'forms.refuse.notMember': "Tienes que ser miembro del servidor para llenar este formulario.",
-  'forms.info.web': "En la web: {url}\n-# Para compartirlo con una vista previa del formulario: {share} · `!form relink {name}` crea un enlace nuevo (el anterior deja de funcionar)",
+  'forms.info.web': "En la web: {url}\n-# Compartido en un chat, este enlace muestra una vista previa del formulario · `!form relink {name}` crea un enlace nuevo (el anterior deja de funcionar)",
   'forms.info.page': "Página web: banner {banner} · fondo {background} · icono del servidor {icon} · nombre del servidor {name}\n-# `!form set {form} banner <enlace>`, `background default|solid|gradient`, `server-icon on|off`, `server-name on|off`; el color del formulario es el acento de la página",
   'forms.info.background.default': 'el de Petto',
   'forms.info.background.solid': 'color sólido',

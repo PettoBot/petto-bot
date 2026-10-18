@@ -31,7 +31,7 @@ module.exports = {
   'verify.setup.disabled': '{emoji}  Verification disabled.',
   'verify.bonusRole': '**Bonus role on success:** {role}',
   'verify.check': '**Check:** {method}',
-  'verify.status.never': 'Verification has never been configured in this server. Use `!verify setup enabled:true`.',
+  'verify.status.never': 'Verification has never been configured in this server. Use `!verify setup true`.',
   'verify.status.title': '### Verification status',
   'verify.status.enabled': '**Enabled:** {value}',
   'verify.status.yes': '{emoji} Yes',

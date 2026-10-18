@@ -134,6 +134,15 @@ const fieldsOf = (values) => ({
   assert.deepEqual(forms.pageLook({ title: 'Saved before the page settings' }), { banner: null, background: 'default', show_icon: true, show_name: true }, 'an older form gets the defaults');
   assert.deepEqual(forms.pageLook({ page_banner: 'https://x.example/b.webp', page_background: 'solid', page_show_icon: false, page_show_name: true }), { banner: 'https://x.example/b.webp', background: 'solid', show_icon: false, show_name: true });
   assert.equal(forms.pageLook({ page_banner: 'http://x.example/b.webp', page_background: 'neon' }).banner, null, 'a stored banner is checked again'); assert.equal(forms.pageLook({ page_background: 'neon' }).background, 'default');
+  // The link preview of a form: empty by default (the website falls back to the form), clipped and checked like the banner.
+  assert.deepEqual([normal.embed_title, normal.embed_description, normal.embed_image, normal.embed_color, normal.embed_thumbnail], [null, null, null, null, false], 'a new form has no custom preview');
+  const embedded = forms.normalizeForm({ name: 'x', embed_title: ` ${'T'.repeat(120)} `, embed_description: 'Join the staff.\r\n\n\n\nWe read every answer.', embed_image: 'https://i.imgur.com/og.png', embed_color: 0x5865f2, embed_thumbnail: true });
+  assert.equal(embedded.embed_title.length, 90); assert.equal(embedded.embed_description, 'Join the staff.\n\nWe read every answer.'); assert.equal(embedded.embed_image, 'https://i.imgur.com/og.png');
+  assert.equal(embedded.embed_color, 0x5865f2); assert.equal(embedded.embed_thumbnail, true);
+  assert.equal(forms.normalizeForm({ name: 'x', embed_image: 'http://i.imgur.com/og.png', embed_color: 0x1000000 }).embed_image, null, 'only https pictures');
+  assert.equal(forms.normalizeForm({ name: 'x', embed_color: -1 }).embed_color, null); assert.equal(forms.normalizeForm({ name: 'x', embed_color: 0 }).embed_color, 0, 'black is a color');
+  assert.deepEqual(forms.linkEmbed({ title: 'Saved before the preview settings' }), { title: null, description: null, image: null, color: null, thumbnail: false }, 'an older form gets no custom preview');
+  assert.deepEqual(forms.linkEmbed({ embed_title: 'Apply', embed_image: 'javascript:alert(1)//a.png', embed_color: 16777215 }), { title: 'Apply', description: null, image: null, color: 0xffffff, thumbnail: false }, 'a stored preview is checked again');
   // A description (longer, with lines and simple marks, for the web) and an image over the question (only on the web).
   const described = forms.normalizeQuestion({ type: 'short', label: 'Why', description: `  Tell us **why**.\r\n\n\n\nSee [the rules](https://petto.sbs/rules).${'x'.repeat(1200)}`, image: 'https://i.imgur.com/abc.PNG?size=2' });
   assert.equal(described.description.length, 1000, 'a description keeps 1000 characters'); assert.match(described.description, /^Tell us \*\*why\*\*\.\n\nSee/, 'lines are kept, at most one empty line in a row');
@@ -304,13 +313,13 @@ const fieldsOf = (values) => ({
   {
     const info = await talk('info', { form: 'staff' });
     assert.match(info, /Web page: banner <https:\/\/i\.imgur\.com\/banner\.png> · background solid color · server icon off · server name off/, '!form info shows the page');
-    assert.ok(info.includes(`https://petto.sbs/f/${staffForm().public_id}`), '!form info gives the link with a preview');
+    assert.ok(info.includes(`https://petto.sbs/form/${staffForm().public_id}`), '!form info gives the link with a preview'); assert.match(info, /shows a preview of the form/);
   }
   await talk('set', { form: 'staff', setting: 'banner', value: 'none' }); assert.equal(staffForm().page_banner, null);
   await talk('set', { form: 'staff', setting: 'background', value: 'reset' }); assert.equal(staffForm().page_background, 'default');
   await talk('set', { form: 'staff', setting: 'server-icon', value: 'on' }); await talk('set', { form: 'staff', setting: 'server-name', value: 'on' });
   assert.match(await talk('set', { form: 'staff', setting: 'wallpaper', value: 'x' }), /button-style, web, banner, background, server-icon, server-name/, 'an unknown setting lists the page ones too');
-  assert.equal(forms.shareUrl({ public_id: 'x7Kp9QzA2mVt' }, 'pt-BR'), 'https://petto.sbs/pt-br/f/x7Kp9QzA2mVt');
+  assert.equal(forms.shareUrl({ public_id: 'x7Kp9QzA2mVt' }, 'pt-BR'), 'https://petto.sbs/pt-br/form/x7Kp9QzA2mVt', 'the link to share is the page, which carries the preview');
   assert.match(await talk('message', { form: 'staff', kind: 'accepted', text: 'Welcome to the team {user}! #{number} {reason}' }), /Message saved/);
   assert.match(await talk('message', { form: 'staff', kind: 'denied', template: 'nope' }), /no saved embed called `nope`/);
   assert.match(await talk('open', { form: 'staff' }), /is open/); assert.equal(staffForm().status, 'open');
@@ -467,17 +476,17 @@ const fieldsOf = (values) => ({
     const staff = staffForm();
     assert.match(staff.public_id, /^[0-9A-Za-z]{12}$/, 'a new form gets a public id');
     assert.notEqual(staff.public_id, db.forms.find((f) => f.name === 'a')?.public_id ?? null);
-    assert.equal(forms.webUrl(staff), `https://petto.sbs/form#${staff.public_id}`);
-    assert.equal(forms.webUrl(staff, 'es'), `https://petto.sbs/es/form#${staff.public_id}`); assert.equal(forms.webUrl(staff, 'pt-BR'), `https://petto.sbs/pt-br/form#${staff.public_id}`);
+    assert.equal(forms.webUrl(staff), `https://petto.sbs/form/${staff.public_id}`);
+    assert.equal(forms.webUrl(staff, 'es'), `https://petto.sbs/es/form/${staff.public_id}`); assert.equal(forms.webUrl(staff, 'pt-BR'), `https://petto.sbs/pt-br/form/${staff.public_id}`);
     assert.ok(!forms.webUrl(staff).endsWith(`/${staff.id}`), 'the link never shows the number');
-    assert.ok((await talk('info', { form: 'staff' })).includes(`petto.sbs/form#${staff.public_id}`), '!form info shows the link');
+    assert.ok((await talk('info', { form: 'staff' })).includes(`petto.sbs/form/${staff.public_id}`), '!form info shows the link');
     const old = staff.public_id;
     const relinked = await talk('relink', { form: 'staff' });
-    assert.notEqual(staffForm().public_id, old, 'relink makes a new id'); assert.ok(relinked.includes(`petto.sbs/form#${staffForm().public_id}`)); assert.match(relinked, /old link no longer works/);
+    assert.notEqual(staffForm().public_id, old, 'relink makes a new id'); assert.ok(relinked.includes(`petto.sbs/form/${staffForm().public_id}`)); assert.match(relinked, /old link no longer works/);
     assert.match(await talk('relink', { form: 'staff' }, plain), /Manage Server/, 'only managers change the link');
     const before = staffForm().public_id;
     assert.match(await talk('set', { form: 'staff', setting: 'link', value: 'maybe' }), /link new/); assert.equal(staffForm().public_id, before, 'only "new" changes it');
-    assert.ok((await talk('set', { form: 'staff', setting: 'link', value: 'new' })).includes(`petto.sbs/form#${staffForm().public_id}`)); assert.notEqual(staffForm().public_id, before, '!form set <form> link new');
+    assert.ok((await talk('set', { form: 'staff', setting: 'link', value: 'new' })).includes(`petto.sbs/form/${staffForm().public_id}`)); assert.notEqual(staffForm().public_id, before, '!form set <form> link new');
   }
 
   // Deleting a form keeps what was sent.
@@ -523,6 +532,7 @@ const fieldsOf = (values) => ({
     const look = await call('look', PID, {});
     assert.equal(look.ok, true); assert.equal(look.form.title, 'Event sign-up'); assert.equal(look.server.name, guild.name);
     assert.deepEqual(look.form.page, { banner: 'https://x.example/top.webp', background: 'gradient', show_icon: true, show_name: true });
+    assert.deepEqual(look.form.embed, { title: null, description: null, image: null, color: null, thumbnail: false }, 'the look carries the link preview');
     assert.equal(look.form.questions, undefined, 'no questions without a member'); assert.equal(look.form.required_role_ids, undefined);
     const bad = await call('submit', PID, { user_id: '222222222222222222', values: { name: 'L', age: '7', team: 'o5', days: ['o0', 'o1', 'o2'] } });
     assert.equal(bad.status, 400);
@@ -540,8 +550,8 @@ const fieldsOf = (values) => ({
     assert.equal((await call('look', PID, {})).status, 404, 'a form kept in Discord has no page to preview');
     // The panel can add a "Fill on the web" link.
     const rows = cards.panelRows([{ ...webForm, web_enabled: true }], { web: true, lang: 'en' }).map((r) => r.toJSON());
-    assert.equal(rows.at(-1).components[0].url, 'https://petto.sbs/form#x7Kp9QzA2mVt'); assert.equal(rows.at(-1).components[0].label, 'Fill on the web');
-    assert.equal(cards.panelRows([{ ...webForm, web_enabled: true }], { web: true, lang: 'es' }).map((r) => r.toJSON()).at(-1).components[0].url, 'https://petto.sbs/es/form#x7Kp9QzA2mVt', 'the link opens the page in the server language');
+    assert.equal(rows.at(-1).components[0].url, 'https://petto.sbs/form/x7Kp9QzA2mVt'); assert.equal(rows.at(-1).components[0].label, 'Fill on the web');
+    assert.equal(cards.panelRows([{ ...webForm, web_enabled: true }], { web: true, lang: 'es' }).map((r) => r.toJSON()).at(-1).components[0].url, 'https://petto.sbs/es/form/x7Kp9QzA2mVt', 'the link opens the page in the server language');
     assert.equal(cards.panelRows([webForm], { web: true }).length, 1, 'no link for a form kept in Discord');
   }
   console.log('Checked forms: questions, rules, pages with Next, review card, accept and deny with roles and DM, reviewers, panels, !form and filling on the web.');

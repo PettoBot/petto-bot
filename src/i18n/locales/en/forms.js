@@ -209,7 +209,7 @@ module.exports = {
   'forms.panel.web.buttonFor': "{form} on the web",
   'forms.refuse.webOff': "This form can only be filled in Discord.",
   'forms.refuse.notMember': "You have to be a member of the server to fill in this form.",
-  'forms.info.web': "On the web: {url}\n-# To share it with a preview of the form: {share} · `!form relink {name}` makes a new link (the old one stops working)",
+  'forms.info.web': "On the web: {url}\n-# Shared in a chat, this link shows a preview of the form · `!form relink {name}` makes a new link (the old one stops working)",
   'forms.info.page': "Web page: banner {banner} · background {background} · server icon {icon} · server name {name}\n-# `!form set {form} banner <link>`, `background default|solid|gradient`, `server-icon on|off`, `server-name on|off`; the color of the form is the accent of the page",
   'forms.info.background.default': "Petto's",
   'forms.info.background.solid': 'solid color',

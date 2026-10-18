@@ -27,7 +27,7 @@ async function getForm(guildId, ref) {
 }
 
 /**
- * A form by the random id of its web address, for the website's page of a form (petto.sbs/form#<public id>), which does not know the
+ * A form by the random id of its web address, for the website's page of a form (petto.sbs/form/<public id>), which does not know the
  * server. Numbers are never looked up here, so the forms cannot be walked through one by one.
  */
 async function getFormByPublicId(publicId) {

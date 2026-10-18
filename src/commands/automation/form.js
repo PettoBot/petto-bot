@@ -268,7 +268,7 @@ async function infoText(guild, form, lang) {
     `## ${form.title}`,
     t(lang, 'forms.info.head', { name: form.name, id: form.id, state: t(lang, form.status === 'open' ? 'forms.info.open' : 'forms.info.closed') }),
     form.description ? `> ${forms.clip(form.description, 300).replace(/\n/g, '\n> ')}` : null,
-    t(lang, form.web_enabled === false ? 'forms.info.webOff' : 'forms.info.web', { url: forms.webUrl(form, lang), share: forms.shareUrl(form, lang), name: form.name }),
+    t(lang, form.web_enabled === false ? 'forms.info.webOff' : 'forms.info.web', { url: forms.webUrl(form, lang), name: form.name }),
     form.web_enabled === false ? null : pageLine(form, lang),
     `### ${t(lang, 'forms.info.review')}`,
     t(lang, 'forms.info.channel', { channel: form.review_channel_id ? `<#${form.review_channel_id}>` : t(lang, 'forms.info.notSet') }),
