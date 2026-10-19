@@ -8,6 +8,7 @@ const {
   getHoneypot,
   listHoneypots,
   removeHoneypot,
+  setMemberSettings,
   setPanelSettings,
   upsertHoneypot,
 } = require('../../db/honeypot');
@@ -81,6 +82,22 @@ module.exports = {
         .setDescription('For custom: the name of a saved embed to post, or "none" to stop using one.')
         .setRequired(false)))
     .addSubcommand((sub) => sub
+      .setName('dm')
+      .setDescription('Choose whether the caught member gets a DM and, for a softban, a single-use invite back.')
+      .addChannelOption((option) => option
+        .setName('channel')
+        .setDescription('The configured honeypot channel.')
+        .addChannelTypes(...CHANNEL_TYPES)
+        .setRequired(true))
+      .addBooleanOption((option) => option
+        .setName('enabled')
+        .setDescription('on: the caught member gets the sanction DM. off: nothing is sent.')
+        .setRequired(true))
+      .addBooleanOption((option) => option
+        .setName('reinvite')
+        .setDescription('For a softban: on adds an invite back (one use, 7 days) to the DM.')
+        .setRequired(false)))
+    .addSubcommand((sub) => sub
       .setName('list')
       .setDescription('List this server\'s configured honeypot channels.')),
 
@@ -90,6 +107,7 @@ module.exports = {
     if (subcommand === 'add') return addHoneypot(interaction, lang);
     if (subcommand === 'remove') return removeConfiguredHoneypot(interaction, lang);
     if (subcommand === 'panel') return configurePanel(interaction, lang);
+    if (subcommand === 'dm') return configureMemberDM(interaction, lang);
     return listConfiguredHoneypots(interaction, lang);
   },
 };
@@ -180,6 +198,38 @@ async function configurePanel(interaction, lang) {
   }
 }
 
+function memberDMText(row, lang) {
+  if (row.dm_member === false) return t(lang, 'security.honeypot.dm.off');
+  if (row.punishment !== 'softban') return t(lang, 'security.honeypot.dm.on');
+  return t(lang, row.reinvite === false ? 'security.honeypot.dm.onNoInvite' : 'security.honeypot.dm.onInvite');
+}
+
+async function configureMemberDM(interaction, lang) {
+  const channel = interaction.options.getChannel('channel', true);
+  const enabled = interaction.options.getBoolean('enabled', true);
+  const reinvite = interaction.options.getBoolean('reinvite');
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  try {
+    const existing = await getHoneypot(interaction.guild.id, channel.id);
+    if (!existing) {
+      return interaction.editReply({ components: [textCard(t(lang, 'security.honeypot.panel.notHoneypot', { channel: `${channel}` }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    }
+    const changes = { dm_member: Boolean(enabled) };
+    if (reinvite !== null && reinvite !== undefined) changes.reinvite = Boolean(reinvite);
+    const row = await setMemberSettings(interaction.guild.id, channel.id, changes);
+    invalidateHoneypotCache(interaction.guild.id);
+    const lines = [t(lang, 'security.honeypot.dm.done', { emoji: EMOJI.APPROVE, channel: `${channel}`, what: memberDMText(row, lang) })];
+    if (row.dm_member !== false && row.punishment === 'softban' && row.reinvite !== false) {
+      const me = interaction.guild.members.me;
+      if (me && !me.permissions?.has?.(PermissionFlagsBits.CreateInstantInvite)) lines.push(t(lang, 'security.honeypot.dm.needInvite', { perm: t(lang, 'core.perm.CreateInstantInvite') }));
+    }
+    return interaction.editReply({ components: [textCard(lines.join('\n'), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+  } catch (error) {
+    logger.error('Honeypot DM configuration failed:', error);
+    return interaction.editReply({ components: [textCard(t(lang, 'security.honeypot.dm.failed', { emoji: EMOJI.DENY }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+  }
+}
+
 async function removeConfiguredHoneypot(interaction, lang) {
   const channel = interaction.options.getChannel('channel', true);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
@@ -221,6 +271,7 @@ async function listConfiguredHoneypots(interaction, lang) {
       channel: `<#${row.channel_id}>`,
       action: punishmentText(row.punishment, lang),
       message: panelModeText(row, lang),
+      dm: memberDMText(row, lang),
     });
     const content = rows.length
       ? [

@@ -150,4 +150,6 @@ module.exports = {
   'web.api.honeypot.nothingToPost': 'Este honeypot no publica nada. Elige primero un mensaje.',
   'web.api.honeypot.posted': 'El mensaje está publicado en {channel}.',
   'web.api.honeypot.failed': 'No se pudo cambiar el Honeypot. Revisa mis permisos en el canal e inténtalo de nuevo.',
+  'web.api.honeypot.dm.on': 'Guardado. Los miembros atrapados en {channel} reciben un MD.',
+  'web.api.honeypot.dm.off': 'Guardado. Los miembros atrapados en {channel} no reciben MD.',
 };

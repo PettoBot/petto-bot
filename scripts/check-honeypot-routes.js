@@ -22,6 +22,7 @@ stub('src/db/honeypot.js', {
     rows.set(channelId, row); return { ...row };
   },
   setPanelSettings: async (guildId, channelId, changes) => { rows.set(channelId, { ...rows.get(channelId), ...changes }); return { ...rows.get(channelId) }; },
+  setMemberSettings: async (guildId, channelId, changes) => { rows.set(channelId, { ...rows.get(channelId), ...changes }); return { ...rows.get(channelId) }; },
   setPanelMessage: async (guildId, channelId, id) => { rows.set(channelId, { ...rows.get(channelId), panel_message_id: id }); return { ...rows.get(channelId) }; },
   removeHoneypot: async (guildId, channelId) => { const row = rows.get(channelId); rows.delete(channelId); return row ?? null; },
 });
@@ -89,8 +90,16 @@ async function call(action, body, member = admin) {
   r = await call('post', { channel_id: BAIT, fresh: true });
   assert.equal(r.ok, true); assert.ok(removedPanels.includes(before), 'posting again as a new message removes the old one'); assert.equal(posted.at(-1).had, null);
 
+  const postedBefore = posted.length;
+  r = await call('dm', { channel_id: BAIT, dm: false, reinvite: false });
+  assert.equal(r.ok, true); assert.equal(r.honeypot.dm_member, false); assert.equal(r.honeypot.reinvite, false); assert.equal(posted.length, postedBefore, 'the DM settings post nothing');
+  r = await call('dm', { channel_id: BAIT, dm: true });
+  assert.equal(r.honeypot.dm_member, true); assert.equal(r.honeypot.reinvite, false, 'what is not sent is kept');
+  r = await call('dm', { channel_id: BAIT, dm: 'yes' }); assert.equal(r.honeypot.dm_member, true, 'only true or false change it');
+  r = await call('dm', { channel_id: '100000000000000009', dm: false }); assert.equal(r.code, 'not_honeypot');
+
   r = await call('remove', { channel_id: '100000000000000009' }); assert.equal(r.code, 'not_honeypot');
   r = await call('remove', { channel_id: BAIT }); assert.equal(r.ok, true); assert.equal(rows.has(BAIT), false);
 
-  console.log('Honeypot routes: admin only, channel and permission checks, messages, posting again and removing work.');
+  console.log('Honeypot routes: admin only, channel and permission checks, messages, posting again, the DM settings and removing work.');
 })().catch((err) => { console.error(err); process.exit(1); });

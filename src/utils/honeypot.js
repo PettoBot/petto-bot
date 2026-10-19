@@ -1,4 +1,4 @@
-const { PermissionFlagsBits, MessageFlags } = require('discord.js');
+const { ChannelType, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { ensureGuild } = require('../db/guilds');
 const { getHoneypot, listHoneypots, setPanelMessage, claimHoneypotUser } = require('../db/honeypot');
 const { createCase } = require('../db/modActions');
@@ -147,6 +147,76 @@ async function deletePanel(client, row) {
   if (panel?.author?.id === client.user?.id) await panel.delete().catch(() => {});
 }
 
+// A softban lets the member come back; the re-invite sent with the DM is how they find their way: one use, a week.
+const REINVITE_MAX_AGE_S = 7 * 24 * 3600;
+const TEXT_TYPES = new Set([ChannelType.GuildText, ChannelType.GuildAnnouncement]);
+
+/**
+ * The channel the re-invite opens on: the rules or system channel, otherwise the first text channel everyone can see. Never a bait
+ * channel (a member who comes back must not land in the trap), and only where Petto can make invites. Null when there is none.
+ */
+async function reinviteChannel(guild, baitIds = new Set()) {
+  const me = guild.members?.me;
+  if (!me) return null;
+  const everyone = guild.roles?.everyone ?? null;
+  const usable = (channel) => channel && TEXT_TYPES.has(channel.type) && !baitIds.has(channel.id)
+    && channel.permissionsFor?.(me)?.has(PermissionFlagsBits.CreateInstantInvite);
+  const visible = (channel) => !everyone || channel.permissionsFor?.(everyone)?.has(PermissionFlagsBits.ViewChannel);
+  const ordered = [guild.rulesChannel, guild.systemChannel, ...[...(guild.channels?.cache?.values?.() ?? [])].sort((a, b) => (a.rawPosition ?? a.position ?? 0) - (b.rawPosition ?? b.position ?? 0))];
+  return ordered.find((channel) => usable(channel) && visible(channel)) ?? null;
+}
+
+/** A single-use invite that lasts a week, or null (with the reason) when Petto can not make one. */
+async function createReinvite(guild, reason) {
+  const baitIds = new Set((await listHoneypots(guild.id).catch(() => [])).map((row) => row.channel_id));
+  const channel = await reinviteChannel(guild, baitIds);
+  if (!channel) return { invite: null, problem: 'noPermission' };
+  try {
+    const invite = await channel.createInvite({ maxAge: REINVITE_MAX_AGE_S, maxUses: 1, unique: true, reason });
+    return { invite, problem: null };
+  } catch (err) {
+    logger.warn(`Honeypot: could not create a re-invite in ${guild.id}/${channel.id}:`, err.message);
+    return { invite: null, problem: 'failed' };
+  }
+}
+
+/**
+ * Writes to the member the honeypot caught (when the honeypot is set to): the sanction DM of the server and, for a softban with the
+ * re-invite on, a single-use link back. Answers what happened, for the log: `off`, `sent`, `sentInvite`, `noInvite` (sent, but no
+ * invite could be made), or `closed` (their DMs are closed; the invite made for it is deleted again).
+ */
+async function messageCaughtMember({ guild, client, author, member, config, punishment, reason, lang }) {
+  if (config.dm_member === false) return 'off';
+  let payload;
+  try {
+    payload = await sanctionDM({ type: punishment, guild, client, reason, user: author, member, source: 'honeypot' });
+  } catch (err) {
+    logger.warn(`Honeypot: the DM of ${author.id} in ${guild.id} could not be drawn:`, err.message);
+    return 'closed';
+  }
+  const wantsInvite = punishment === 'softban' && config.reinvite !== false;
+  const { invite, problem } = wantsInvite ? await createReinvite(guild, t(lang, 'security.honeypot.reinvite.audit')) : { invite: null, problem: null };
+  if (problem === 'noPermission') logger.info(`Honeypot: no channel where I can create invites in ${guild.id}; the softbanned member gets no re-invite.`);
+  try {
+    await author.send(payload);
+  } catch (err) {
+    logger.info(`Honeypot: could not DM ${author.id} in ${guild.id} (${err.message}).`);
+    if (invite) await invite.delete().catch(() => {});
+    return 'closed';
+  }
+  if (!wantsInvite) return 'sent';
+  if (!invite) return 'noInvite';
+  const dmLang = await guildLanguage(guild.id).catch(() => lang);
+  try {
+    await author.send({ content: t(dmLang, 'security.honeypot.reinvite.dm', { server: guild.name, url: invite.url ?? `https://discord.gg/${invite.code}` }), allowedMentions: { parse: [] } });
+    return 'sentInvite';
+  } catch (err) {
+    logger.info(`Honeypot: the re-invite could not be sent to ${author.id} in ${guild.id} (${err.message}).`);
+    await invite.delete().catch(() => {});
+    return 'noInvite';
+  }
+}
+
 async function applyHoneypotAction(message, config) {
   const { guild, author } = message;
   const client = message.client;
@@ -178,9 +248,12 @@ async function applyHoneypotAction(message, config) {
     caught_count: (config.caught_count ?? 0) + 1,
   });
 
+  // The member is written to before the punishment: once they are out of the server Discord no longer lets Petto reach them.
+  const dm = await messageCaughtMember({ guild, client, author, member: message.member, config, punishment, reason: fullReason, lang });
+
   await sendLog(client, guild.id, 'automod', {
     author: { name: author.username, icon_url: author.displayAvatarURL?.() ?? undefined },
-    description: t(lang, 'security.honeypot.log', { emoji: EMOJI.ALERT, channel: `<#${message.channel.id}>`, user: `<@${author.id}>`, action: actionWord(punishment, lang), reason }),
+    description: t(lang, 'security.honeypot.log', { emoji: EMOJI.ALERT, channel: `<#${message.channel.id}>`, user: `<@${author.id}>`, action: actionWord(punishment, lang), reason }) + `\n${t(lang, `security.honeypot.logDm.${dm}`)}`,
     color: 0xfe6465,
     footer: { text: t(lang, 'security.log.userId', { id: author.id }) },
     timestamp: new Date().toISOString(),
@@ -188,7 +261,6 @@ async function applyHoneypotAction(message, config) {
 
   try {
     await ensureGuild(guild.id);
-    await author.send(await sanctionDM({ type: punishment, guild, client, reason: fullReason, user: author, member: message.member, source: 'honeypot' })).catch(() => {});
 
     if (punishment === 'ban') {
       await guild.members.ban(author.id, { reason: fullReason, deleteMessageSeconds: 86400 });
@@ -248,5 +320,7 @@ module.exports = {
   createOrUpdatePanel,
   deletePanel,
   applyHoneypotAction,
+  messageCaughtMember,
+  reinviteChannel,
   handleHoneypotMessage,
 };

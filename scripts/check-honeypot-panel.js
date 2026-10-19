@@ -23,6 +23,7 @@ stub('src/db/honeypot.js', {
   listHoneypots: async () => [{ ...row }],
   upsertHoneypot: async () => ({ ...row }),
   setPanelSettings: async (guildId, channelId, changes) => { row = { ...row, ...changes }; return { ...row }; },
+  setMemberSettings: async (guildId, channelId, changes) => { row = { ...row, ...changes }; return { ...row }; },
   setPanelMessage: async (guildId, channelId, id) => { row = { ...row, panel_message_id: id }; return { ...row }; },
   claimHoneypotUser: async () => true, incrementTrigger: async () => 1, clearHoneypotUser: async () => {}, removeHoneypot: async () => true,
 });
@@ -104,5 +105,37 @@ const client = { user: { id: 'bot' } };
   assert.match(await talkIn('es', { channel, mode: 'loud' }), /El mensaje puede ser `default`, `custom` o `none`\./);
   assert.match(await talkIn('pt-BR', { channel, mode: 'none' }), /Nada é publicado em <#bait>/);
   command.execute = original;
-  console.log('Checked the honeypot message: Petto\'s panel, the text or embed of the server, nothing, and the command.');
+
+  // What the caught member gets: the DM, and for a softban a single-use invite back made outside the bait channels.
+  const { ChannelType, PermissionFlagsBits } = require('discord.js');
+  const can = (flags) => ({ has: (flag) => flags.includes(flag) });
+  const invites = [];
+  const textChannel = (id, position, botFlags, everyoneSees = true) => ({
+    id, type: ChannelType.GuildText, rawPosition: position,
+    permissionsFor: (who) => (who === 'everyone' ? can(everyoneSees ? [PermissionFlagsBits.ViewChannel] : []) : can(botFlags)),
+    createInvite: async (options) => { const invite = { channel: id, options, url: `https://discord.gg/i${invites.length + 1}`, deleted: false, delete: async () => { invite.deleted = true; } }; invites.push(invite); return invite; },
+  });
+  const INVITE = [PermissionFlagsBits.CreateInstantInvite];
+  const dmGuild = (list) => ({ id: 'g1', name: 'Mine', members: { me: { id: 'bot' } }, roles: { everyone: 'everyone' }, rulesChannel: null, systemChannel: null, channels: { cache: new Map(list.map((c) => [c.id, c])) } });
+  const author = (closed = false) => { const got = []; return { id: 'u1', got, send: async (payload) => { if (closed) throw new Error('Cannot send messages to this user'); got.push(payload); return {}; } }; };
+  const send = (guildRow, member, g) => honeypot.messageCaughtMember({ guild: g, client, author: member, member: null, config: guildRow, punishment: guildRow.punishment, reason: 'r', lang: 'en' });
+
+  let member = author();
+  const g = dmGuild([textChannel('bait', 0, INVITE), textChannel('staff', 1, INVITE, false), textChannel('general', 2, INVITE)]);
+  assert.equal(await send({ punishment: 'softban' }, member, g), 'sentInvite', 'softban: the DM and an invite back by default');
+  assert.equal(member.got.length, 2); assert.match(member.got[1].content, /join \*\*Mine\*\* again[\s\S]*https:\/\/discord\.gg\/i1/);
+  assert.equal(invites[0].channel, 'general', 'never the bait channel, nor a channel members can not see');
+  assert.deepEqual([invites[0].options.maxUses, invites[0].options.maxAge, invites[0].options.unique], [1, 7 * 24 * 3600, true]);
+  member = author();
+  assert.equal(await send({ punishment: 'softban', reinvite: false }, member, g), 'sent'); assert.equal(member.got.length, 1, 'no invite when it is off');
+  member = author();
+  assert.equal(await send({ punishment: 'ban' }, member, g), 'sent'); assert.equal(invites.length, 1, 'a ban never gets an invite back');
+  member = author();
+  assert.equal(await send({ punishment: 'softban', dm_member: false }, member, g), 'off'); assert.equal(member.got.length, 0, 'the DM can be turned off');
+  member = author(true);
+  assert.equal(await send({ punishment: 'softban' }, member, g), 'closed', 'closed DMs are reported'); assert.equal(invites.at(-1).deleted, true, 'and the unused invite is deleted');
+  member = author();
+  assert.equal(await send({ punishment: 'softban' }, member, dmGuild([textChannel('general', 0, [])])), 'noInvite', 'without Create Invite the DM still goes');
+  assert.equal(member.got.length, 1);
+  console.log('Checked the honeypot message: Petto\'s panel, the text or embed of the server, nothing, the command, and the DM with its invite back.');
 })().catch((error) => { console.error(error); process.exit(1); });
