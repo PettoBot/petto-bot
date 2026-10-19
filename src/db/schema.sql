@@ -3967,3 +3967,6 @@ create table if not exists guild_member_days (
 );
 create index if not exists idx_guild_member_days_day on guild_member_days(day);
 alter table guild_member_days enable row level security;
+
+-- The Honeypot page of the dashboard lists the latest members the honeypot caught (the cases it applied, newest first).
+create index if not exists idx_mod_actions_guild_source_created on mod_actions(guild_id, source, created_at desc);
