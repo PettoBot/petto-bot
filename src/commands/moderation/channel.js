@@ -25,6 +25,8 @@ function canCreateChannels(userId) {
 }
 
 module.exports = {
+  // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
+  registerSlash: true,
   aliases: ['ch'],
   // Written after the prefix, the topic takes every word left (`!topic Rules are in #rules`).
   prefixGreedyStringOptions: { topic: 'text' },

@@ -129,6 +129,17 @@ function loadCommands(client) {
 }
 
 /**
+ * Whether a loaded command (or one required with its `category`) is registered with Discord as a slash command: the roleplay
+ * commands, the slash-only ones and the ones marked `registerSlash` (they work with the prefix and as a slash command), never a
+ * prefix-only or private one. Context menus are registered too, but they are not chat commands.
+ */
+function isSlashCommand(command, category = command?.category) {
+  if (!command?.data || command.prefixOnly || command.privateGuildId) return false;
+  if ((command.data.toJSON().type ?? 1) !== 1) return false;
+  return Boolean(command.slashOnly || command.registerSlash || category === 'roleplay');
+}
+
+/**
  * Reads every command's `data` (used by deploy-commands.js), without needing a client.
  * Roleplay chat-input commands and explicitly marked slash-only commands are
  * registered with Discord, with their descriptions localized from the catalogs. Other chat-input builders stay available only to the
@@ -144,10 +155,7 @@ function collectCommandData() {
     // Prefix-only commands keep a SlashCommandBuilder for the shared parser,
     // but must never be registered as Discord slash commands.
     .filter(({ command }) => !command.prefixOnly)
-    .filter(({ filePath, command }) => {
-      const type = command.data.toJSON().type ?? 1;
-      return type !== 1 || command.slashOnly || command.registerSlash || categoryFromPath(filePath) === 'roleplay';
-    })
+    .filter(({ filePath, command }) => (command.data.toJSON().type ?? 1) !== 1 || isSlashCommand(command, categoryFromPath(filePath)))
     // The descriptions go to Discord in Spanish and Portuguese too (names are never translated).
     .map(({ filePath, command }) => localizeCommandJson(categoryFromPath(filePath), command.data.toJSON()));
 }
@@ -164,4 +172,4 @@ function collectPrivateGuildCommandData() {
     .map(({ command }) => ({ guildId: String(command.privateGuildId), data: command.data.toJSON() }));
 }
 
-module.exports = { loadCommands, commandKey, collectCommandData, collectPrivateGuildCommandData, findCommandFiles, COMMANDS_DIR };
+module.exports = { loadCommands, commandKey, isSlashCommand, collectCommandData, collectPrivateGuildCommandData, findCommandFiles, COMMANDS_DIR };

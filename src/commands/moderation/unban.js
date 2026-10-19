@@ -3,6 +3,8 @@ const ban = require('./ban');
 const { asSubcommand } = require('../../utils/moderationCommand');
 
 module.exports = {
+  // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
+  registerSlash: true,
   data: new SlashCommandBuilder()
     .setName('unban')
     .setDescription('Remove a ban from a user.')

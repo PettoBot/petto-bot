@@ -3,8 +3,11 @@ const { INFO_ACCENT, infoPayload } = require('../../utils/infoCard');
 const { t, languageOf } = require('../../i18n');
 
 module.exports = {
+  // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
+  registerSlash: true,
   data: new SlashCommandBuilder()
     .setName('avatar')
+    .setDMPermission(false)
     .setDescription("Shows a member's avatar.")
     .addUserOption((o) => o.setName('user').setDescription('User (default: you)').setRequired(false)),
   aliases: ['av', 'pfp'],

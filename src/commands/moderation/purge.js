@@ -17,6 +17,8 @@ const RESULT_LIFETIME_MS = 8_000;
 const NEEDED = ['ViewChannel', 'ReadMessageHistory', 'ManageMessages'];
 
 module.exports = {
+  // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
+  registerSlash: true,
   aliases: ['prune'],
   prefixArgs: purgePrefixArgs,
   // Written after the prefix, the text takes every word left; the other text options are given with --starts_with, --before...

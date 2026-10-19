@@ -26,6 +26,8 @@ const STYLE_CHOICES = [
 ];
 
 module.exports = {
+  // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
+  registerSlash: true,
   aliases: ['t', 'tickets'],
   data: new SlashCommandBuilder()
     .setName('ticket')

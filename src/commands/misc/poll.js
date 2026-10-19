@@ -4,6 +4,8 @@ const { renderPanel } = require('../../interactions/pollPanel');
 const { languageOf } = require('../../i18n');
 
 module.exports = {
+  // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
+  registerSlash: true,
   aliases: ['pl'],
   data: new SlashCommandBuilder().setName('poll').setDescription('Build a poll members can vote on with buttons.').setDMPermission(false),
   interactive: true,

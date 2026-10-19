@@ -27,6 +27,8 @@ const activeUnbans = new Map(); // guildId -> { abort: boolean }
 const LIST_LIMIT = 40;
 
 module.exports = {
+  // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
+  registerSlash: true,
   aliases: ['b'],
   prefixSubcommandAliases: { recent: 'list', kill: 'cancel' },
   prefixDefaultSubcommand: 'user',

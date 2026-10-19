@@ -20,6 +20,8 @@ const WARN_PERMISSION = PermissionFlagsBits.ModerateMembers;
 const MAX_TIMEOUT_MS = 28 * 24 * 60 * 60 * 1000;
 
 module.exports = {
+  // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
+  registerSlash: true,
   aliases: ['w'],
   prefixDefaultSubcommand: 'user',
   data: new SlashCommandBuilder()

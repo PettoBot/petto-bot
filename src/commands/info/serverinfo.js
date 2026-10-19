@@ -22,8 +22,11 @@ function premiumTierNumber(tier) {
 }
 
 module.exports = {
+  // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
+  registerSlash: true,
   data: new SlashCommandBuilder()
     .setName('serverinfo')
+    .setDMPermission(false)
     .setDescription('Shows information about this server.')
     .addStringOption((o) => o.setName('server').setDescription('ID of another server Petto is in').setRequired(false)),
   aliases: ['si', 'server'],

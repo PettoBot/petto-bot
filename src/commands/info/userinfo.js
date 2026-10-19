@@ -30,8 +30,11 @@ function roleList(roles, lang) {
 }
 
 module.exports = {
+  // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
+  registerSlash: true,
   data: new SlashCommandBuilder()
     .setName('userinfo')
+    .setDMPermission(false)
     .setDescription('Shows information about a member.')
     .addUserOption((o) => o.setName('user').setDescription('User (default: you)').setRequired(false)),
   aliases: ['ui', 'whois'],

@@ -18,7 +18,8 @@ const { textCard } = require('../../utils/caseCard');
 const { describePermissions } = require('../../utils/permissionLabels');
 const { EMOJI } = require('../../utils/emojis');
 const { isPettoOperator } = require('../../utils/autoModControl');
-const { helpLinksLine } = require('../../utils/links');
+const { helpLinksLine, DASHBOARD_URL, SUPPORT_URL, WIKI_URL } = require('../../utils/links');
+const { isSlashCommand } = require('../../handlers/commandHandler');
 const { t, tn, commandDescription, languageOf, currentLanguage, LANGUAGES, LANGUAGE_NAMES } = require('../../i18n');
 
 const TIMEOUT_MS = 120_000;
@@ -103,6 +104,18 @@ function groupByCategory(commands) {
     map.get(cat).push(cmd);
   }
   return map;
+}
+
+/** The commands of a list that also work as slash commands, by name. */
+const slashNames = (commands) => commands.filter((command) => isSlashCommand(command)).map((command) => command.data.name).sort();
+
+/** The dashboard, the docs and the support server, as link buttons under the menus. */
+function linksRow(lang) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setLabel(t(lang, 'core.join.dashboard.button')).setStyle(ButtonStyle.Link).setURL(DASHBOARD_URL),
+    new ButtonBuilder().setLabel(t(lang, 'core.join.docs.button')).setStyle(ButtonStyle.Link).setURL(WIKI_URL),
+    new ButtonBuilder().setLabel(t(lang, 'core.join.support.button')).setStyle(ButtonStyle.Link).setURL(SUPPORT_URL),
+  );
 }
 
 /** One command's option tree walked into a flat list of { path: [subGroup?, sub?], description, options } — one entry per leaf (sub)command, matching how bli's registry had one entry per full command path. */
@@ -225,6 +238,8 @@ function entryDetailCard(client, guild, prefix, command, entry, page = 0, total 
   const aliases = aliasesList.length ? aliasesList.map((a) => `\`${prefix}${a}\``).join(', ') : t(lang, 'help.detail.none');
   const syntax = buildSyntax(commandPrefix, json.name, entry);
   const example = buildExample(commandPrefix, json.name, entry, lang);
+  // A command that works both ways shows its slash form too.
+  const slash = !command.slashOnly && isSlashCommand(command) ? buildSyntax('/', json.name, entry) : null;
   const params = buildParams(entry, lang);
   const information = json.default_member_permissions == null ? t(lang, 'help.detail.anyone') : `${EMOJI.WARNING} ${describePermissions(json.default_member_permissions, lang)}`;
   const title = [json.name, ...entry.path].join(' ');
@@ -240,7 +255,7 @@ function entryDetailCard(client, guild, prefix, command, entry, page = 0, total 
     buildMetadata(aliases, params, information, lang),
     '',
     `**${t(lang, 'help.detail.usage')}**`,
-    t(lang, 'help.detail.usageBlock', { syntax, example }),
+    slash ? t(lang, 'help.detail.usageBlockSlash', { syntax, slash, example }) : t(lang, 'help.detail.usageBlock', { syntax, example }),
     total > 1 ? t(lang, 'help.detail.footerPaged', { page: page + 1, total, module: moduleLabel }) : t(lang, 'help.detail.footer', { module: moduleLabel }),
   ].join('\n');
 
@@ -265,7 +280,7 @@ function mainView(client, guild, prefix, includeHidden = false, lang = currentLa
   const categories = groupByCategory(commands);
 
   const section = new SectionBuilder()
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'help.main.intro', { count: commands.length, prefix })))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`${t(lang, 'help.main.intro', { count: commands.length, prefix })}\n${t(lang, 'help.main.slash', { count: slashNames(commands).length, prefix })}`))
     .setThumbnailAccessory(new ThumbnailBuilder().setURL(botAvatarURL(client, guild)));
 
   const options = [...categories.entries()].map(([id, cmds]) => {
@@ -280,7 +295,8 @@ function mainView(client, guild, prefix, includeHidden = false, lang = currentLa
     .addSectionComponents(section)
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`${t(lang, 'help.main.footer', { links: helpLinksLine(lang) })}\n${t(lang, 'help.main.languages', { language: LANGUAGE_NAMES[lang], list: LANGUAGES.map((code) => LANGUAGE_NAMES[code]).join(', '), prefix })}`))
-    .addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('help_cat').setPlaceholder(t(lang, 'help.main.placeholder.menu')).addOptions(options)));
+    .addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('help_cat').setPlaceholder(t(lang, 'help.main.placeholder.menu')).addOptions(options)))
+    .addActionRowComponents(linksRow(lang));
 
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
@@ -288,11 +304,17 @@ function mainView(client, guild, prefix, includeHidden = false, lang = currentLa
 function categoryView(client, guild, categoryId, includeHidden = false, lang = currentLanguage()) {
   const meta = categoryMeta(categoryId, lang);
   const commands = (groupByCategory(getChatInputCommands(client, includeHidden)).get(categoryId) ?? []).sort((a, b) => a.data.name.localeCompare(b.data.name));
+  // Which of them also work with `/`: all of them, some (named) or none (nothing is said).
+  const slash = slashNames(commands);
+  const slashLine = !slash.length ? '' : slash.length === commands.length
+    ? `\n${t(lang, 'help.category.slashAll')}`
+    : `\n${t(lang, 'help.category.slash', { list: slash.map((name) => `\`/${name}\``).join(', ') })}`;
 
   const section = new SectionBuilder()
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         tn(lang, 'help.category.text', commands.length, { icon: meta.icon, label: meta.label, blurb: categoryBlurb(categoryId, lang) ?? t(lang, 'help.category.fallbackBlurb') })
+          + slashLine
           + (categoryId === 'config' ? `\n${t(lang, 'help.category.languages', { language: LANGUAGE_NAMES[lang], list: LANGUAGES.map((code) => LANGUAGE_NAMES[code]).join(', ') })}` : ''),
       ),
     )
@@ -351,8 +373,11 @@ function detailView(client, guild, prefix, command, entry, categoryId, includeHi
 }
 
 module.exports = {
+  // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
+  registerSlash: true,
   data: new SlashCommandBuilder()
     .setName('help')
+    .setDMPermission(false)
     .setDescription('Browse commands, or look one up directly.')
     .addStringOption((o) => o.setName('query').setDescription('A command (and optionally subcommand) to look up, e.g. "ticket category add"').setRequired(false)),
   aliases: ['h', 'hlp'],
@@ -368,6 +393,8 @@ module.exports = {
     // configured through PETTO_DEVELOPER_IDS need to discover every tool.
     const includeHidden = isPettoOperator(interaction.user?.id);
 
+    // As a slash command the menus are private (only the person who asked can use them anyway); the prefix drops the flag.
+    const PRIVATE = MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral;
     const input = interaction.options.getString('query')?.trim();
     if (input) {
       const tokens = input.toLowerCase().split(/\s+/);
@@ -376,17 +403,17 @@ module.exports = {
       if (!command || !entries.length) {
         const suggestions = suggestCommands(client, tokens[0], includeHidden).map((name) => `\`${prefix}help ${name}\``).join(', ');
         const vars = { emoji: EMOJI.WARNING, command: tokens[0], prefix, suggestions };
-        await interaction.reply({ components: [textCard(t(lang, suggestions ? 'help.notFoundSuggest' : 'help.notFound', vars), 0xfed53c)], flags: MessageFlags.IsComponentsV2 });
+        await interaction.reply({ components: [textCard(t(lang, suggestions ? 'help.notFoundSuggest' : 'help.notFound', vars), 0xfed53c)], flags: PRIVATE });
         return;
       }
 
       if (entries.length === 1) {
-        await interaction.reply({ components: [entryDetailCard(client, interaction.guild, prefix, command, entries[0], 0, 1, lang)], flags: MessageFlags.IsComponentsV2 });
+        await interaction.reply({ components: [entryDetailCard(client, interaction.guild, prefix, command, entries[0], 0, 1, lang)], flags: PRIVATE });
         return;
       }
 
       let page = 0;
-      const msg = await interaction.reply({ components: [entryDetailCard(client, interaction.guild, prefix, command, entries[0], 0, entries.length, lang), navRow(0, entries.length)], flags: MessageFlags.IsComponentsV2 });
+      const msg = await interaction.reply({ components: [entryDetailCard(client, interaction.guild, prefix, command, entries[0], 0, entries.length, lang), navRow(0, entries.length)], flags: PRIVATE });
       const collector = msg.createMessageComponentCollector({ filter: (i) => i.user.id === interaction.user.id, time: TIMEOUT_MS });
 
       collector.on('collect', async (i) => {
@@ -405,7 +432,7 @@ module.exports = {
       });
       return;
     }
-    const msg = await interaction.reply(mainView(client, interaction.guild, prefix, includeHidden, lang));
+    const msg = await interaction.reply({ ...mainView(client, interaction.guild, prefix, includeHidden, lang), flags: PRIVATE });
     let currentCategory = null;
     let currentCommand = null;
 
