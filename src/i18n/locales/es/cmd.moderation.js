@@ -1,6 +1,8 @@
 // Descripciones de los comandos de moderación (mismas claves que en/cmd.moderation.js).
 module.exports = {
   'cmd.moderation.appeals.desc': 'Muestra la página de apelaciones del servidor y cuántas apelaciones esperan respuesta.',
+  'cmd.moderation.appeals.opt.setting.desc': 'Un ajuste para cambiar: types, dmlink, note o wait',
+  'cmd.moderation.appeals.opt.value.desc': 'El nuevo valor del ajuste',
   'cmd.moderation.ban.desc': 'Banea miembros del servidor.',
   'cmd.moderation.ban.user.desc': 'Banea a un solo miembro.',
   'cmd.moderation.ban.user.opt.user.desc': 'El usuario que quieres banear',

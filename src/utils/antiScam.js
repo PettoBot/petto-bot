@@ -81,12 +81,22 @@ async function deleteRecent(guild, userId, entries, currentMessage) {
 // The DM says what happened to the account; `flagged` is for an action the server has not chosen.
 const DM_OUTCOMES = { ban: 'banned', kick: 'kicked', timeout: 'muted' };
 
-function dmCard(guild, action, lang = currentLanguage()) {
+function dmCard(guild, action, lang = currentLanguage(), appeal = null) {
   return textCard([
     t(lang, 'security.antiscam.dm.title', { emoji: EMOJI.ALERT }),
     t(lang, `security.antiscam.dm.outcome.${DM_OUTCOMES[action] ?? 'flagged'}`, { server: guild.name }),
     t(lang, 'security.antiscam.dm.steps'),
+    ...(appeal ? ['', appeal] : []),
   ].join('\n'), 0xffd563);
+}
+
+/** The appeal line of the DM, when the server sends the appeal link for this sanction (the same rule as every sanction DM). */
+async function appealLine(guild, action, lang) {
+  try {
+    const { url, note } = await require('./appeals').appealDmFor(guild.id, action);
+    if (!url) return null;
+    return require('./sanctionMessage').appealNoteText(note, url, guild.name) ?? t(lang, 'moderation.dm.appeal', { url });
+  } catch { return null; }
 }
 
 // The reasons Petto gives itself when it cannot act on the account (the staff reads them in the alert). i18n-ignore: matched
@@ -101,7 +111,7 @@ async function applyAction(message, config, detection, lang = currentLanguage())
 
   if (config.action !== 'alert' && member) {
     if (config.dm_user) {
-      await author.send({ components: [dmCard(guild, config.action, lang)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+      await author.send({ components: [dmCard(guild, config.action, lang, await appealLine(guild, config.action, lang))], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
     }
     try {
       await ensureGuild(guild.id);
