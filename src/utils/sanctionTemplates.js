@@ -78,8 +78,10 @@ function sanctionContext({ type, guild, user, member = null, moderator, reason, 
 async function sanctionDM({ type, guild, client, reason, duration, user = null, member = null, moderator = null, source = 'moderator' }) {
   const lang = await guildLanguage(guild.id);
   let appealUrl = null;
-  try { appealUrl = await require('./appeals').appealLinkFor(guild.id, type); } catch { /* No appeal link: the sanction DM still goes out. */ }
-  const fallback = () => buildSanctionDM({ type, guild, client, reason, duration, appealUrl, lang });
+  let appealNote = null;
+  // The one place every sanction DM learns about appeals (the server chooses if and for which sanctions the link goes, and its own line).
+  try { ({ url: appealUrl, note: appealNote } = await require('./appeals').appealDmFor(guild.id, type)); } catch { /* No appeal link: the sanction DM still goes out. */ }
+  const fallback = () => buildSanctionDM({ type, guild, client, reason, duration, appealUrl, appealNote, lang });
   try {
     const name = await templateFor(guild.id, type, 'dm');
     if (!name) return fallback();

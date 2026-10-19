@@ -4,6 +4,16 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **Softbans can be appealed.** `softban` is a new punishment type of appeals, off by default and turned on per server like the others (dashboard, Appeals → Settings, or `!appeals types ban, mute, softban`). The appeal page lists the member's recent softbans (from `!softban` or the Honeypot) with their case number, a form can be only for softbans, and accepting the appeal clears the softban case (nothing is left to undo in Discord) and gives the member an invite back, the same as an accepted ban appeal. The appeal page now shows the case number of every Petto punishment.
+- **Choose whether sanction DMs carry the appeal link.** A new appeal setting: `always` (the default, what Petto did until now: the sanctions members can appeal), `never`, or only for some sanctions (ban, tempban, softban, kick, timeout, warn). It applies to every sanction DM that offers the link: moderation commands, AutoMod, anti-scam, the Honeypot and warning escalation, through one helper (`appealDmFor` / `appealLinkFor` in `src/utils/appeals.js`); `{case.appeal}` in custom sanction messages follows it too. The anti-scam DM ("your account may be hacked") now carries the appeal link as well, under the same rule. `!appeals dmlink always|never|<list>`.
+- **Your own line about appeals in sanction DMs.** Up to 300 characters, with `{link}` (the appeal link, added at the end when the line has none) and `{server}`, in place of Petto's "Think this is a mistake? Appeal here". `!appeals note <text>|off`.
+- **Wait before appealing.** Members can be asked to wait 1 to 720 hours after their latest punishment before they send an appeal (0, the default, is no wait). The appeal page says from when they can appeal and the forms stay locked until then. `!appeals wait <hours>|off`.
+- **`!appeals` shows and changes these settings** (prefix only, Manage Server: `!appeals <types|dmlink|note|wait> <value>`; the slash commands are unchanged). The number of appeals waiting for an answer now counts the whole server.
+
+Needs `schema.sql` (four new columns on `appeal_config`: `dm_link_mode`, `dm_link_types`, `dm_note`, `min_wait_hours`). Deploy the bot before the website.
+
 ## [0.7.7] — 2026-10-19 · Tiramisu
 
 ### Added

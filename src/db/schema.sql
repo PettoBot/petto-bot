@@ -3781,6 +3781,19 @@ alter table appeal_forms enable row level security;
 alter table appeal_submissions enable row level security;
 alter table appeal_messages enable row level security;
 alter table appeal_blocks enable row level security;
+-- Appeals 2: whether the DM of a sanction carries the appeal link (`always` = for the sanctions members can appeal, as before; `never`; `types` =
+-- only for the sanctions in `dm_link_types`), the server's own line about appeals in that DM (`{link}`, `{server}`), and how many hours a member
+-- waits after their latest punishment before appealing (0 = none). Softbans can be appealed too (`softban` in `punishment_types`).
+alter table appeal_config add column if not exists dm_link_mode text not null default 'always';
+alter table appeal_config drop constraint if exists appeal_config_dm_link_mode_check;
+alter table appeal_config add constraint appeal_config_dm_link_mode_check check (dm_link_mode in ('always', 'never', 'types'));
+alter table appeal_config add column if not exists dm_link_types text[] not null default '{ban,tempban,softban,kick,timeout,warn}';
+alter table appeal_config add column if not exists dm_note text;
+alter table appeal_config drop constraint if exists appeal_config_dm_note_check;
+alter table appeal_config add constraint appeal_config_dm_note_check check (dm_note is null or char_length(dm_note) <= 300);
+alter table appeal_config add column if not exists min_wait_hours integer not null default 0;
+alter table appeal_config drop constraint if exists appeal_config_min_wait_hours_check;
+alter table appeal_config add constraint appeal_config_min_wait_hours_check check (min_wait_hours between 0 and 720);
 
 -- Who besides the managers of a server can open its dashboard: the members of a role, into the parts named (`*` is all of them), to look or to change.
 create table if not exists dash_access (

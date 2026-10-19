@@ -31,7 +31,10 @@ stub('src/db/appealFiles.js', {
   deleteLooseBefore: async () => 0,
 });
 const lifted = [];
-stub('src/db/modActions.js', { getUserHistory: async () => [
+const extraHistory = [];
+const deactivated = [];
+stub('src/db/modActions.js', { deactivateCase: async (_g, n) => { deactivated.push(n); }, getUserHistory: async () => [
+  ...extraHistory,
   { type: 'tempban', case_number: 7, active: true, reason: 'spam', expires_at: new Date(Date.now() + 86400000).toISOString(), created_at: new Date().toISOString(), moderator_id: '999' },
   { type: 'warn', case_number: 5, active: true, reason: 'old', created_at: new Date(Date.now() - 90 * 86400000).toISOString() },
   { type: 'kick', case_number: 4, active: true, created_at: new Date().toISOString() },
@@ -206,6 +209,50 @@ const A = require(path.join(root, 'src/utils/appeals.js'));
   assert.deepEqual(freed.map((f) => `${f.slug}:${f.reason}`).sort(), ['gone:left', 'idle:idle', 'off-old:off']);
   assert.deepEqual(store.cleared.sort(), ['A', 'C', 'E']);
   assert.ok(A.messageFor({ language: 'es' }, null, 'submitted').includes('Tu apelación') && A.messageFor({}, null, 'submitted').startsWith('Your appeal') && A.messageFor({ language: 'pt-BR' }, null, 'accepted').includes('aceita'), 'default texts follow the language of the page');
+
+  // Softbans: listed with their case when the server lets them be appealed (recent ones only), and an accepted appeal clears the case.
+  extraHistory.push({ type: 'softban', case_number: 9, active: true, reason: 'raid', created_at: new Date().toISOString(), moderator_id: '999' });
+  extraHistory.push({ type: 'softban', case_number: 2, active: true, reason: 'old', created_at: new Date(Date.now() - 90 * 86400000).toISOString() });
+  assert.ok(!(await A.fetchPunishments(guild, 'U1', config)).some((r) => r.type === 'softban'), 'softbans are not shown while the server does not allow them');
+  const softConfig = { ...config, punishment_types: ['ban', 'softban'] };
+  const softRows = await A.fetchPunishments(guild, 'U1', softConfig);
+  assert.deepEqual(softRows.filter((r) => r.type === 'softban').map((r) => r.caseNumber), [9], 'only the recent softban is shown');
+  assert.equal(A.shapePunishment(softRows.find((r) => r.type === 'softban'), softConfig).case, 9, 'the member sees the case number');
+  assert.ok(A.meetsRequirement({ requirement_types: ['softban'] }, softRows.map((r) => A.shapePunishment(r, softConfig))), 'a form can be for softbans');
+  store.blocks.clear(); store.submissions.clear(); store.config = { punishment_types: ['ban', 'softban'] };
+  const softSent = await A.submitAppeal({ client, guild, config: softConfig, form, user, rawAnswers: { [qs[0].id]: 'sorry', [qs[1].id]: 'a', [qs[2].id]: 'x' } });
+  assert.ok(softSent.ok, JSON.stringify(softSent));
+  const softAccepted = await A.resolveAppeal({ client, guild, submission: softSent.submission, status: 'accepted', moderatorId: 'M1' });
+  assert.ok(softAccepted.ok && deactivated.includes(9) && softAccepted.lifted.some((l) => l === 'softban #9'), 'accepting clears the softban case');
+  assert.ok(softAccepted.invite?.url, 'and gives an invite like for a ban');
+
+  // Waiting before appealing: counted from the newest punishment.
+  assert.equal(A.appealOpensAt(softRows, { min_wait_hours: 0 }), null);
+  const opens = A.appealOpensAt(softRows, { min_wait_hours: 24 });
+  assert.ok(opens && Date.parse(opens) > Date.now() + 23 * 3_600_000, 'the member waits a day after the softban');
+  assert.equal(A.appealOpensAt([{ at: null }], { min_wait_hours: 24 }), null, 'a punishment without a date does not make anyone wait');
+  store.submissions.clear(); store.config = { punishment_types: ['ban', 'softban'], min_wait_hours: 24 };
+  const early = await A.submitAppeal({ client, guild, config: { ...softConfig, min_wait_hours: 24 }, form, user, rawAnswers: { [qs[0].id]: 'now', [qs[1].id]: 'a', [qs[2].id]: 'x' } });
+  assert.equal(early.error, 'too_soon'); assert.ok(Date.parse(early.until) >= Date.parse(opens), 'with the time it opens');
+
+  // The appeal link in sanction DMs: as before by default, never, or only for the chosen sanctions; the server's own line.
+  const allow = (patch, type) => A.dmLinkAllowed({ enabled: true, punishment_types: ['ban', 'mute'], ...patch }, type);
+  assert.ok(allow({}, 'tempban') && allow({}, 'timeout') && !allow({}, 'warn') && !allow({}, 'softban'), 'always: the sanctions that can be appealed');
+  assert.ok(allow({ punishment_types: ['kick'] }, 'softban'), 'a softban keeps its link where kicks could be appealed');
+  assert.ok(!allow({ dm_link_mode: 'never' }, 'ban'), 'never');
+  assert.ok(allow({ dm_link_mode: 'types', dm_link_types: ['tempban', 'softban'] }, 'softban') && !allow({ dm_link_mode: 'types', dm_link_types: ['tempban'] }, 'ban'), 'only the chosen ones');
+  assert.ok(!A.dmLinkAllowed({ enabled: false, punishment_types: ['ban'] }, 'ban'), 'appeals off: no link');
+  store.config = { slug: 'petto', dm_note: 'Read the rules of {server} first: {link}' };
+  assert.deepEqual(await A.appealDmFor('G1', 'ban'), { url: 'https://petto.sbs/appeal/petto', note: 'Read the rules of {server} first: {link}' });
+  assert.equal(await A.appealLinkFor('G1', 'warn'), 'https://petto.sbs/appeal/petto', 'warns can be appealed in this test server');
+  store.config = { dm_link_mode: 'never' };
+  assert.equal(await A.appealLinkFor('G1', 'ban'), null);
+  store.config = {};
+  const { appealNoteText, buildSanctionDM } = require(path.join(root, 'src/utils/sanctionMessage.js'));
+  assert.equal(appealNoteText('Appeal at {link} ({server})', 'https://x', 'Petto'), 'Appeal at https://x (Petto)');
+  assert.equal(appealNoteText('Read the rules, then appeal:', 'https://x'), 'Read the rules, then appeal: https://x', 'the link goes at the end when the line has none');
+  const dmText = buildSanctionDM({ type: 'softban', guild: { name: 'Petto', id: 'G1', memberCount: 3 }, client: { user: { username: 'Petto' } }, reason: null, duration: null, appealUrl: 'https://x', appealNote: 'Talk to us at {link}' });
+  assert.ok(dmText.includes('Talk to us at https://x') && !dmText.includes('Appeal here'), 'the line of the server replaces Petto\'s sentence');
   console.log('appeals OK');
 })().catch((err) => { console.error(err); process.exit(1); });
 
