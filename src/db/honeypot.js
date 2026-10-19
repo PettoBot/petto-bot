@@ -56,6 +56,23 @@ async function setPanelSettings(guildId, channelId, changes) {
   return data;
 }
 
+/** What the caught member gets: `{ dm_member, reinvite }` (the sanction DM, and for a softban a single-use invite back), whatever is given. */
+async function setMemberSettings(guildId, channelId, changes) {
+  const allowed = {};
+  if (typeof changes.dm_member === 'boolean') allowed.dm_member = changes.dm_member;
+  if (typeof changes.reinvite === 'boolean') allowed.reinvite = changes.reinvite;
+  const { data, error } = await database
+    .from('honeypots')
+    .update({ ...allowed, updated_at: new Date().toISOString() })
+    .eq('guild_id', guildId)
+    .eq('channel_id', channelId)
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
 async function setPanelMessage(guildId, channelId, panelMessageId) {
   const { data, error } = await database
     .from('honeypots')
@@ -124,6 +141,7 @@ module.exports = {
   listHoneypots,
   upsertHoneypot,
   setPanelSettings,
+  setMemberSettings,
   setPanelMessage,
   incrementTrigger,
   claimHoneypotUser,

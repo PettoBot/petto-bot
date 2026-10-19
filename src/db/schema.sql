@@ -3970,3 +3970,8 @@ alter table guild_member_days enable row level security;
 
 -- The Honeypot page of the dashboard lists the latest members the honeypot caught (the cases it applied, newest first).
 create index if not exists idx_mod_actions_guild_source_created on mod_actions(guild_id, source, created_at desc);
+
+-- Honeypot: what the caught member gets. `dm_member` sends them the server's sanction DM (as before); `reinvite`, for a softban only,
+-- adds a single-use invite that lasts a week, so a real member whose account was hacked can come back. Both on by default.
+alter table honeypots add column if not exists dm_member boolean not null default true;
+alter table honeypots add column if not exists reinvite boolean not null default true;

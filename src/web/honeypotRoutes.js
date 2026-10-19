@@ -6,10 +6,12 @@
 //   POST /api/dashboard/guild/:guildId/honeypot/panel   { channel_id, mode, text, template }  what is posted in the channel:
 //        `default` (Petto's panel), `custom` (the text and/or a saved embed) or `none`; posted again at once
 //   POST /api/dashboard/guild/:guildId/honeypot/post    { channel_id, fresh }  posts the panel again (`fresh`: a new message at the bottom)
+//   POST /api/dashboard/guild/:guildId/honeypot/dm      { channel_id, dm, reinvite }  whether the caught member gets the sanction DM, and
+//        for a softban a single-use invite back (nothing is posted)
 // Access: the dashboard key and a `user_id` who manages the server, like the other routes, and Administrator, like the command.
 // Every answer is `{ ok, message, code?, honeypot? }`, the message in the language of the request.
 const { ChannelType, PermissionFlagsBits } = require('discord.js');
-const { PUNISHMENTS, getHoneypot, upsertHoneypot, setPanelSettings, setPanelMessage, removeHoneypot } = require('../db/honeypot');
+const { PUNISHMENTS, getHoneypot, upsertHoneypot, setPanelSettings, setMemberSettings, setPanelMessage, removeHoneypot } = require('../db/honeypot');
 const { getTemplate } = require('../db/embedTemplates');
 const { ensureGuild } = require('../db/guilds');
 const { createOrUpdatePanel, deletePanel, invalidateHoneypotCache } = require('../utils/honeypot');
@@ -17,7 +19,7 @@ const logger = require('../utils/logger');
 const { t, requestLanguage, guildLanguage } = require('../i18n');
 
 const SNOWFLAKE = /^\d{15,25}$/;
-const ACTIONS = new Set(['add', 'remove', 'panel', 'post']);
+const ACTIONS = new Set(['add', 'remove', 'panel', 'post', 'dm']);
 const CHANNEL_TYPES = new Set([ChannelType.GuildText, ChannelType.GuildAnnouncement]);
 // The same permissions `!honeypot add` asks for in the bait channel.
 const NEEDED = [
@@ -33,7 +35,7 @@ function shape(row) {
   return {
     channel_id: row.channel_id, punishment: row.punishment, caught_count: Math.max(0, Number(row.caught_count) || 0),
     panel_mode: row.panel_mode ?? 'default', panel_text: row.panel_text ?? '', panel_template: row.panel_template ?? null,
-    panel_message_id: row.panel_message_id ?? null,
+    panel_message_id: row.panel_message_id ?? null, dm_member: row.dm_member !== false, reinvite: row.reinvite !== false,
   };
 }
 
@@ -96,6 +98,18 @@ function registerHoneypotRoutes(app, { authorize, limiter }) {
         await removeHoneypot(guild.id, existing.channel_id);
         invalidateHoneypotCache(guild.id);
         res.json({ ok: true, message: t(lang, 'web.api.honeypot.removed') });
+        return;
+      }
+
+      if (action === 'dm') {
+        // Only what the caught member gets: nothing in the channel changes, so it works even while the channel is gone.
+        const changes = {};
+        if (typeof body.dm === 'boolean') changes.dm_member = body.dm;
+        if (typeof body.reinvite === 'boolean') changes.reinvite = body.reinvite;
+        const row = Object.keys(changes).length ? await setMemberSettings(guild.id, existing.channel_id, changes) : existing;
+        invalidateHoneypotCache(guild.id);
+        const name = channel ? `#${channel.name}` : `#${existing.channel_id}`;
+        res.json({ ok: true, message: t(lang, row.dm_member === false ? 'web.api.honeypot.dm.off' : 'web.api.honeypot.dm.on', { channel: name }), honeypot: shape(row) });
         return;
       }
 
