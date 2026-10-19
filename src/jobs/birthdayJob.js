@@ -37,8 +37,8 @@ async function celebrate(client, config, local) {
     if (!member || member.user.bot) continue;
     const age = ageOn(row, local);
     if (channel?.isTextBased?.()) {
-      // {age} is the age they turn, left out when they did not say the year.
-      const text = message.replaceAll('{age}', age === null ? '' : String(age));
+      // {age} is the age they turn, left out when they did not say the year. {EMOJI} (in the usual message) is a cake.
+      const text = message.replaceAll('{age}', age === null ? '' : String(age)).replace(/\{emoji\}/gi, '🎂');
       await sendMemberEvent({
         guild, channel, kind: 'birthday', messageText: text, embedTemplateName: config.embed_template,
         // The message nobody changed is sent as a pink card; one the server wrote stays as it wrote it.

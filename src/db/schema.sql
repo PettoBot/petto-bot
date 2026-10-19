@@ -452,17 +452,17 @@ alter table log_webhooks enable row level security;
 create table if not exists log_entries (
   guild_id   text not null references guilds(guild_id) on delete cascade,
   channel_id text not null,
-  event      text not null check (event in ('messages', 'members', 'roles', 'channels', 'invites', 'emojis', 'voice', 'server', 'sanctions', 'verification', 'automod', 'tickets', 'webhooks', 'threads', 'integrations', 'commands')),
+  event      text not null check (event in ('messages', 'members', 'roles', 'channels', 'invites', 'emojis', 'voice', 'server', 'sanctions', 'verification', 'automod', 'tickets', 'webhooks', 'threads', 'integrations', 'commands', 'forms')),
   color      integer,
   created_at timestamptz not null default now(),
   primary key (guild_id, channel_id, event)
 );
 
 -- `create table if not exists` above is a no-op against an already-migrated database, so the
--- CHECK constraint (added here for the 'sanctions'/'verification'/'automod'/'tickets' categories) needs its own idempotent migration step.
+-- CHECK constraint (added here for the 'sanctions'/'verification'/'automod'/'tickets'/'forms' categories) needs its own idempotent migration step.
 alter table log_entries drop constraint if exists log_entries_event_check;
 alter table log_entries add constraint log_entries_event_check
-  check (event in ('messages', 'members', 'roles', 'channels', 'invites', 'emojis', 'voice', 'server', 'sanctions', 'verification', 'automod', 'tickets', 'webhooks', 'threads', 'integrations', 'commands'));
+  check (event in ('messages', 'members', 'roles', 'channels', 'invites', 'emojis', 'voice', 'server', 'sanctions', 'verification', 'automod', 'tickets', 'webhooks', 'threads', 'integrations', 'commands', 'forms'));
 
 create index if not exists idx_log_entries_guild_event on log_entries(guild_id, event);
 
