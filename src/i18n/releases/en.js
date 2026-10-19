@@ -1,5 +1,56 @@
 // The release notes of `!version` in English: label, summary and sections of each release (src/utils/releases.js holds the rest).
 module.exports = {
+  'v0.7.7': {
+    label: 'v0.7.7 · Tiramisu: forms, live counters, Spanish & Portuguese and slash commands',
+    summary: 'Forms with their own web page, live counters rebuilt, Petto in Spanish and Portuguese, a stronger anti-nuke, everyday slash commands, generous Free limits and a faster dashboard.',
+    sections: [
+      {
+        title: 'Forms',
+        items: [
+          'Forms and applications with `!form`: up to 25 questions, rules (roles, account age, cooldowns, limits, a closing date), panels, and a review card with **Accept**, **Deny** and **Open thread** that gives the roles and DMs the result.',
+          'Each form has its own web page (`petto.sbs/form/<id>`) with a link nobody can guess: members sign in with Discord and answer there. The page wears the color, banner and background of the form, and its link shows a preview you can customize.',
+          'Questions can have a description and a picture, deciding an answer closes its thread, and the dashboard has a Forms page with the submissions and the panels.',
+        ],
+      },
+      {
+        title: 'Counters and community',
+        items: [
+          'Live counters, rebuilt: many more types (online, a role, boosts, a member goal, a clock, messages today…), names with `{count}`, packs with `!counter setup`, counters in a category name or a channel topic, and milestone announcements with `!counter announce`.',
+          'Renames respect the limit of Discord (two every 10 minutes) and are spread out, and the dashboard has a Counters page with previews, drag to reorder and renames in place.',
+        ],
+      },
+      {
+        title: 'Moderation',
+        items: [
+          '70 new moderation commands, subcommands and shortcuts: forced nicknames, `!stripstaff`, image and reaction mutes, `!raid clean`, temporary roles, `!restrictcommand`, more `!purge` filters and more.',
+          'Anti-nuke: five new protections (role and channel changes, mass mentions, webhook spam, prune), panic mode, trusted admins, owner only and a DM to the owner when a protection acts.',
+          'Bulk moderation leaves alone the members you cannot moderate, `!lock` locks the channel you are in, and the Honeypot can be set up from the dashboard.',
+        ],
+      },
+      {
+        title: 'Languages and slash commands',
+        items: [
+          'Petto speaks English, Spanish and Brazilian Portuguese: replies, cards, panels, DMs and logs follow the language of the server. Change it with `!language`.',
+          '21 everyday commands also work as slash commands (`/help`, `/ping`, `/userinfo`, `/warn`, `/ban`, `/purge`, `/ticket`…) and `/help` shows both forms. `/embed` joins them, and slash commands no longer show twice.',
+          'More events are logged in the categories you already have, a role can be ignored in the logs, and `!serverinfo` takes the ID of another server.',
+        ],
+      },
+      {
+        title: 'Dashboard and Premium',
+        items: [
+          'Free is generous and Premium is about twice as much: 125 custom commands (250 with Premium), 75 autoresponders (150), 25 counters (50) and more. Level rewards and logs have no limit, and 15 card fonts are free.',
+          'Dashboard access by role, faster Counters and Forms pages, a Sync button, a Honeypot page, and the Permissions and Command coverage pages rebuilt.',
+          'Restoring a backup asks first, shows its progress, can be stopped and can bring back only some parts (backups are still under maintenance).',
+        ],
+      },
+      {
+        title: 'Fixes',
+        items: [
+          'VoiceMaster buttons no longer fail when the bot is slow, Vanity rule names with spaces work, the Forms page of the dashboard loads again, and the logs use the name and picture the server gave Petto.',
+        ],
+      },
+    ],
+  },
   'v0.7.6': {
     label: 'v0.7.6 · Macaron: appeals, stronger moderation & more community tools',
     summary: 'A full appeals system with its own page, stronger moderation (anti scam, lockdown, anti-nuke per protection), better tickets, suggestions, counting and confessions, and a new look for the dashboard.',
