@@ -1,8 +1,8 @@
 name: Release
 
 # Creates the tag and the GitHub release of the version in package.json when it is not released yet, with the notes of
-# that version from CHANGELOG.md. It runs on every push to main and does nothing when the release already exists, so the
-# order of merging a version bump and this workflow does not matter. It can also be started by hand.
+# that version from CHANGELOG.md. It runs on every push to main; when the release already exists, its notes are brought in
+# line with CHANGELOG.md, so the order of merging a version bump and this workflow does not matter. It can also be started by hand.
 on:
   push:
     branches: [main]
@@ -25,13 +25,17 @@ jobs:
         run: |
           version="$(node -p "require('./package.json').version")"
           tag="v${version}"
-          if gh release view "$tag" >/dev/null 2>&1; then
-            echo "Release $tag already exists."
-            exit 0
-          fi
           awk -v heading="## [${version}]" 'index($0, heading) == 1 { found = 1; next } found && /^## \[/ { exit } found { print }' CHANGELOG.md > notes.md
           if [ ! -s notes.md ]; then
             echo "No notes for ${version} in CHANGELOG.md, using a short note."
             echo "Petto ${tag}. See CHANGELOG.md for the changes." > notes.md
+          fi
+          # GitHub turns a bare @name into a mention of the account with that name (@everyone and @here are real accounts), and
+          # lists it as a contributor of the release. Outside code spans, such a name is put in a code span.
+          node scripts/release-notes.js notes.md
+          if gh release view "$tag" >/dev/null 2>&1; then
+            # The release exists: its notes follow CHANGELOG.md, so a fix there reaches the release too.
+            gh release edit "$tag" --notes-file notes.md
+            exit 0
           fi
           gh release create "$tag" --target "$GITHUB_SHA" --title "Petto ${tag}" --notes-file notes.md
