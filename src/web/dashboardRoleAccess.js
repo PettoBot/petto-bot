@@ -4,7 +4,7 @@
 // member's roles from Discord, so the site's word alone never opens anything. The same sections as the site (petto-web src/utils/dashAccess.ts).
 const database = require('../db/database');
 
-const PAGE_SECTIONS = { counters: 'automation', forms: 'community' };
+const PAGE_SECTIONS = { counters: 'automation', forms: 'community', stats: 'dashboard', moderation: 'moderation' };
 const GRANT = /^([a-z-]{1,30}):(view|edit)$/;
 const RULES_TTL_MS = 10_000;
 const cache = new Map();
