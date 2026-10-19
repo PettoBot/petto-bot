@@ -32,6 +32,7 @@ const { registerIdentityRoutes } = require('./identityRoutes');
 const { registerMemberRoutes } = require('./memberRoutes');
 const { registerFormRoutes } = require('./formRoutes');
 const { registerCounterRoutes } = require('./counterRoutes');
+const { registerHoneypotRoutes } = require('./honeypotRoutes');
 const { fetchDashboardMember } = require('./dashboardMember');
 const { roleGrantAllows } = require('./dashboardRoleAccess');
 const { registerGuildLanguageRoute } = require('./languageRoutes');
@@ -756,6 +757,8 @@ function startServer(client) {
     registerFormRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter, isAuthorized: dashboardAuthorized, client });
     // Live counters: values for the previews, create, quick setup, refresh now and delete.
     registerCounterRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
+    // Honeypot: add, remove, choose the message of the bait channel and post it again, from the dashboard (administrators, like the command).
+    registerHoneypotRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
     // The public leaderboard page of a server that turned it on, asked for by the website.
     registerPublicLeaderboardRoute(app, { isAuthorized: dashboardAuthorized, limiter: dashboardDatabaseRateLimiter, client });
 

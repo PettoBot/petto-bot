@@ -26,6 +26,8 @@ const SETTINGS_TABLES = new Set([
   'forms', 'form_panels', 'form_submissions',
   // The anti-nuke page shows its incidents and the lockdown (a panic lockdown starts and ends by itself).
   'antinuke_events', 'lockdowns',
+  // The Honeypot page: its bait channels, the message of each one and the number caught.
+  'honeypots',
 ]);
 
 /** Whether a write to this table changes something the dashboard shows as a setting. */
