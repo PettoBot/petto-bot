@@ -29,83 +29,160 @@ async function rememberDeployed(settings, key, hash) {
   try { await settings.setSetting(key, hash); } catch { /* the next start just registers again */ }
 }
 
+const devGuildIdsOf = () => config.devGuildIds ?? (config.devGuildId ? [config.devGuildId] : []);
+const sameNames = (live, body) => {
+  const a = namesOf(live).sort(); const b = namesOf(body).sort();
+  return a.length === b.length && a.every((name, i) => name === b[i]);
+};
+// Set once the guild-scoped copies of the commands were removed while the commands are global (see cleanupGuildCommands).
+const CLEANUP_KEY = 'commands_cleanup:guild_scoped';
+
+/** The private commands (a command with `privateGuildId`), grouped by the one server each belongs to. */
+function privateCommandsByGuild() {
+  const byGuild = new Map();
+  for (const registration of collectPrivateGuildCommandData()) {
+    const list = byGuild.get(registration.guildId) ?? [];
+    list.push(registration.data);
+    byGuild.set(registration.guildId, list);
+  }
+  return byGuild;
+}
+
 /**
  * Registers every command in src/commands/** with Discord (PUT replaces the whole set), but only when the commands
  * changed since the last time. A failure here (a rate limit, Discord being down) never stops the bot from starting: the
  * commands that were registered before keep working.
+ *
+ * One scope only: global, or, when DISCORD_DEV_GUILD_ID is set, only in those test servers. A command registered in both
+ * scopes shows twice in Discord, so a server never receives the global commands as guild commands: a server with private
+ * commands gets only its private commands (plus the whole set when it is a test server).
  */
 async function deployCommands({ force = false, strict = false, rest = new REST({ globalRequestsPerSecond: config.restRequestsPerSecond ?? 8 }).setToken(config.token), settings = null } = {}) {
   const commands = collectCommandData();
   settings ??= defaultSettings();
+  const privateByGuild = privateCommandsByGuild();
 
   // One target per test server when there are some (a list of ids works), or the global one.
-  const devGuildIds = config.devGuildIds ?? (config.devGuildId ? [config.devGuildId] : []);
+  const devGuildIds = devGuildIdsOf();
   const targets = devGuildIds.length
-    ? devGuildIds.map((guildId) => ({ guildId, route: Routes.applicationGuildCommands(config.clientId, guildId), key: `commands_hash:${guildId}` }))
-    : [{ guildId: null, route: Routes.applicationCommands(config.clientId), key: 'commands_hash:global' }];
-  const hash = hashOf(commands);
+    ? devGuildIds.map((guildId) => ({ guildId, route: Routes.applicationGuildCommands(config.clientId, guildId), key: `commands_hash:${guildId}`, body: [...commands, ...(privateByGuild.get(guildId) ?? [])], scope: 'dev' }))
+    : [{ guildId: null, route: Routes.applicationCommands(config.clientId), key: 'commands_hash:global', body: commands, scope: 'global' }];
+  // The servers with private commands that are not a test server: only their private commands, never a copy of the global ones.
+  const privateTargets = [...privateByGuild].filter(([guildId]) => !devGuildIds.includes(guildId))
+    .map(([guildId, list]) => ({ guildId, route: Routes.applicationGuildCommands(config.clientId, guildId), key: `private_commands_hash:${guildId}`, body: list, scope: 'private', private: true }));
+
   let result = null;
-  const report = { at: Date.now(), targets: [] };
+  const report = { at: Date.now(), scope: devGuildIds.length ? 'dev' : 'global', targets: [] };
   lastReport = report;
-  for (const target of targets) {
-    const entry = { guildId: target.guildId, status: 'unchanged', total: commands.length, created: [], removed: [], error: null };
-    report.targets.push(entry);
-    if (!force && await lastDeployed(settings, target.key) === hash) {
-      logger.info(`The ${commands.length} command(s) did not change since the last start: not registering them again${target.guildId ? ` in ${target.guildId}` : ''}.`);
-      continue;
-    }
-    // What Discord has now, to say what is new and what is gone.
+  for (const target of [...targets, ...privateTargets]) {
+    // The application and the scope are part of the hash: another bot on the same database, or a switch between the global and the
+    // test-server registration, always registers again.
+    const hash = hashOf({ app: config.clientId, scope: target.scope, commands: target.body });
+    const entry = { guildId: target.guildId, private: Boolean(target.private), status: 'unchanged', total: target.body.length, created: [], removed: [], error: null };
+    if (!target.private) report.targets.push(entry);
+    // What Discord has now: it says what is new and what is gone, and checks that a matching hash really means nothing to send.
     let before = null;
-    try { before = namesOf(await rest.get(target.route)); } catch { /* the report then just says how many */ }
+    if (!force && await lastDeployed(settings, target.key) === hash) {
+      let live = null;
+      try { live = await rest.get(target.route); } catch { /* cannot check: trust the hash */ }
+      if (!Array.isArray(live) || sameNames(live, target.body)) {
+        if (!target.private) logger.info(`The ${target.body.length} command(s) did not change since the last start: not registering them again${target.guildId ? ` in ${target.guildId}` : ''}.`);
+        continue;
+      }
+      logger.warn(`The saved hash says the commands${target.guildId ? ` of ${target.guildId}` : ''} are registered, but Discord has ${live.length} instead of ${target.body.length} with the same names: registering them again.`);
+      before = namesOf(live);
+    }
+    if (!before) {
+      try { before = namesOf(await rest.get(target.route)); } catch { /* the report then just says how many */ }
+    }
     try {
-      result = await rest.put(target.route, { body: commands });
+      const registered = await rest.put(target.route, { body: target.body });
+      if (!target.private) result = registered;
       await rememberDeployed(settings, target.key, hash);
       entry.status = 'registered';
       if (before) {
-        const now = namesOf(commands);
+        const now = namesOf(target.body);
         entry.created = now.filter((name) => !before.includes(name));
         entry.removed = before.filter((name) => !now.includes(name));
       }
       logger.info(
-        target.guildId
-          ? `Registered ${result.length} command(s) to dev guild ${target.guildId}.` // i18n-ignore: a log
-          : `Registered ${result.length} command(s) globally (can take up to 1 hour to propagate).`, // i18n-ignore: a log
+        target.private
+          ? `Registered ${target.body.length} private command(s) to guild ${target.guildId}${entry.removed.length ? ` (removed there: ${entry.removed.join(', ')})` : ''}.` // i18n-ignore: a log
+          : target.guildId
+            ? `Registered ${registered.length} command(s) to dev guild ${target.guildId}.` // i18n-ignore: a log
+            : `Registered ${registered.length} command(s) globally (can take up to 1 hour to propagate).`, // i18n-ignore: a log
       );
     } catch (error) {
       entry.status = 'failed';
       entry.error = describeError(error);
       if (strict) throw error;
       const wait = error?.retryAfter ?? error?.rawError?.retry_after;
-      logger.warn(`The commands could not be registered${target.guildId ? ` in ${target.guildId}` : ''} (${error?.status ?? ''} ${error?.message ?? error}${wait ? `, Discord asks to wait ${wait}s` : ''}). Starting anyway with the ones registered before; the next start tries again.`);
+      logger.warn(`The ${target.private ? 'private ' : ''}commands could not be registered${target.guildId ? ` in ${target.guildId}` : ''} (${error?.status ?? ''} ${error?.message ?? error}${wait ? `, Discord asks to wait ${wait}s` : ''}). Starting anyway with the ones registered before; the next start tries again.`);
     }
   }
 
-  const privateCommandsByGuild = new Map();
-  for (const registration of collectPrivateGuildCommandData()) {
-    const commands = privateCommandsByGuild.get(registration.guildId) ?? [];
-    commands.push(registration.data);
-    privateCommandsByGuild.set(registration.guildId, commands);
-  }
-
-  for (const [guildId, privateCommands] of privateCommandsByGuild) {
-    const privateKey = `private_commands_hash:${guildId}`;
-    const privateHash = hashOf(privateCommands);
-    if (!force && await lastDeployed(settings, privateKey) === privateHash) continue;
+  if (devGuildIds.length) {
+    // In test-server mode the global commands are not touched: when some exist, every command shows twice in the test servers.
+    await rememberDeployed(settings, CLEANUP_KEY, ''); // going back to global cleans the test servers again
     try {
-      const privateRoute = Routes.applicationGuildCommands(config.clientId, guildId);
-      const existing = await rest.get(privateRoute);
-      const privateNames = new Set(privateCommands.map((command) => command.name));
-      const merged = existing.filter((command) => !privateNames.has(command.name));
-      const privateResult = await rest.put(privateRoute, { body: [...merged, ...privateCommands] });
-      await rememberDeployed(settings, privateKey, privateHash);
-      logger.info(`Registered ${privateCommands.length} private command(s) to guild ${guildId}; guild now has ${privateResult.length} command(s).`);
-    } catch (error) {
-      if (strict) throw error;
-      logger.warn(`The private commands of guild ${guildId} could not be registered: ${error?.message ?? error}`);
-    }
+      const global = await rest.get(Routes.applicationCommands(config.clientId));
+      if (Array.isArray(global) && global.length) {
+        report.globalAlso = global.length;
+        logger.warn(`DISCORD_DEV_GUILD_ID is set, so the commands are registered only in ${devGuildIds.join(', ')}, but ${global.length} global command(s) exist too: in those servers each command shows twice. Leave DISCORD_DEV_GUILD_ID empty in production.`);
+      }
+    } catch { /* nothing to say */ }
   }
 
   return result;
+}
+
+const pause = (ms) => (ms > 0 ? new Promise((resolve) => { setTimeout(resolve, ms); }) : Promise.resolve());
+
+/**
+ * Removes the guild-scoped copies of Petto's commands, left from a time the commands were registered per server (DISCORD_DEV_GUILD_ID
+ * set): with the global ones they show twice. Only while the commands are global and their registration did not fail, once (a
+ * bot_settings flag), one server at a time and in the background. Each server is read first and overwritten with an empty list only
+ * when it has commands of Petto; the servers with private commands are left to deployCommands, which keeps only those there.
+ */
+async function cleanupGuildCommands(client, { rest = null, settings = null, delayMs = 300, force = false, guildIds: givenIds = null } = {}) {
+  if (devGuildIdsOf().length) return null;
+  const global = lastReport?.targets?.find((entry) => !entry.guildId);
+  if (!force && (!global || global.status === 'failed')) return null;
+  settings ??= defaultSettings();
+  const marker = `done:${config.clientId}`;
+  if (!force && await lastDeployed(settings, CLEANUP_KEY) === marker) return null;
+  rest ??= new REST({ globalRequestsPerSecond: Math.max(1, Math.floor((config.restRequestsPerSecond ?? 8) / 2)) }).setToken(config.token);
+  const privateGuilds = new Set(privateCommandsByGuild().keys());
+  const guildIds = [...(givenIds ?? client?.guilds?.cache?.keys?.() ?? [])].map(String).filter((id) => !privateGuilds.has(id));
+  const summary = { checked: 0, cleaned: [], failed: 0 };
+  for (const guildId of guildIds) {
+    const route = Routes.applicationGuildCommands(config.clientId, guildId);
+    summary.checked += 1;
+    let existing;
+    try {
+      existing = await rest.get(route);
+    } catch (error) {
+      // 403/404: Petto cannot have commands there (no access, or it left).
+      if (![403, 404].includes(error?.status)) summary.failed += 1;
+      await pause(delayMs);
+      continue;
+    }
+    if (Array.isArray(existing) && existing.length) {
+      try {
+        await rest.put(route, { body: [] });
+        summary.cleaned.push(`${guildId} (${existing.length})`);
+        // A later test-server registration there must not be skipped by an old hash.
+        await rememberDeployed(settings, `commands_hash:${guildId}`, '');
+      } catch (error) {
+        summary.failed += 1;
+        logger.warn(`The old server commands of ${guildId} could not be removed: ${describeError(error)}`);
+      }
+    }
+    await pause(delayMs);
+  }
+  if (!summary.failed) await rememberDeployed(settings, CLEANUP_KEY, marker);
+  logger.info(`Old server-only copies of the slash commands: checked ${summary.checked} server(s), ${summary.cleaned.length ? `removed them in ${summary.cleaned.join(', ')}` : 'none had any'}${summary.failed ? `; ${summary.failed} could not be checked, the next start tries again` : ''}.`);
+  return summary;
 }
 
 /**
@@ -124,6 +201,7 @@ function announceDeployReport(report = lastReport) {
       logger.info(`Slash commands unchanged${where}: the ${entry.total} that are registered already match, so nothing was sent.`);
     }
   }
+  if (report.globalAlso) logger.warn(`DISCORD_DEV_GUILD_ID is set and ${report.globalAlso} global command(s) exist too, so in the test servers every command shows twice. Leave DISCORD_DEV_GUILD_ID empty in production and restart.`);
 }
 
-module.exports = { deployCommands, announceDeployReport, getDeployReport: () => lastReport };
+module.exports = { deployCommands, cleanupGuildCommands, announceDeployReport, getDeployReport: () => lastReport };
