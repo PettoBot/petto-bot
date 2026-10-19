@@ -113,6 +113,11 @@ async function shutdown(signal) {
       resolve();
     }, 10_000)),
   ]);
+  // Omniplex shows the status Petto posts last: it says offline now, at most a few seconds.
+  await Promise.race([
+    require('./src/jobs/omniplexStatsJob').postOffline(client),
+    new Promise((resolve) => setTimeout(resolve, 3_000)),
+  ]);
   client.destroy();
   process.exit(0);
 }

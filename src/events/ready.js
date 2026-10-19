@@ -5,6 +5,7 @@ const logger = require('../utils/logger');
 const { attachDiscordLogger, startDiscordStatusJob } = require('../utils/discordOps');
 const { announceDeployReport, cleanupGuildCommands } = require('../handlers/deployCommands');
 const config = require('../config');
+const { startOmniplexStatsJob } = require('../jobs/omniplexStatsJob');
 const { syncAllGuildsAutoMod } = require('../utils/autoModManager');
 const { forEachWithConcurrency } = require('../utils/concurrency');
 const { startGuildLanguageRefresh } = require('../i18n');
@@ -42,6 +43,8 @@ module.exports = {
     // Once, in the background: the server-only copies of the commands left from a registration per server (they showed twice).
     cleanupGuildCommands(client).catch((err) => logger.warn(`The old server-only slash commands could not be cleaned: ${err?.message ?? err}`));
     startDiscordStatusJob(client);
+    // The server count and status on Omniplex (only with OMNIPLEX_TOKEN).
+    startOmniplexStatsJob(client);
 
     // Keep the existing warmup available, but never issue one invite request per guild at once.
     // At very large scale it can be disabled with INVITE_CACHE_WARM_ON_READY=false; joins still

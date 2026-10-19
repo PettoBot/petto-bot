@@ -106,6 +106,8 @@ module.exports = {
   // Optional Redis (the one Discloud offers, for example `redis://default:password@host:port`). Without it everything works from memory as
   // before; with it the bot keeps its short-lived caches and command cooldowns across restarts and shares the request limit.
   redisUrl: String(process.env.DISCLOUD_REDIS_URL || process.env.REDIS_URL || '').trim() || null,
+  // The bot's token on Omniplex (omniplex.gg, shown in the bot's settings there): with it, Petto posts its server count and status to its listing.
+  omniplexToken: String(process.env.OMNIPLEX_TOKEN || '').trim() || null,
   // Votes for the bot on top.gg: the secret (starts with whs_) that top.gg shows when the webhook URL is saved, and the channel where each vote is thanked.
   topggWebhookSecret: String(process.env.TOPGG_WEBHOOK_SECRET || '').trim() || null,
   voteChannelId: /^\d{15,25}$/.test(process.env.VOTE_CHANNEL_ID || '') ? process.env.VOTE_CHANNEL_ID : null,
