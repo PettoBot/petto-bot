@@ -1,6 +1,7 @@
 const { isPermissionError, permissionHelp } = require('../utils/permissionErrors');
 const { Events, MessageFlags } = require('discord.js');
 const { getRemainingCooldownShared } = require('../utils/sharedCooldown');
+const moderationPermissions = require('../utils/moderationPermissions');
 const { handleButton: handleEmbedPanelButton, handleModal: handleEmbedPanelModal } = require('../interactions/embedPanel');
 const { handleModal: handleReportModal } = require('../interactions/reportModal');
 const { handleModal: handleReportConfigModal } = require('../interactions/reportConfigModal');
@@ -523,6 +524,11 @@ module.exports = {
     logCommandUse({ guild: interaction.guild, user: interaction.user, channel: interaction.channel, name: interaction.commandName, prefix: '/', subcommand: interaction.options?.getSubcommand?.(false) ?? null }, client);
 
     interaction.pettoLang = lang;
+    // A member with a role chosen for this moderation command passes its permission check, the same as with the prefix (Discord only
+    // shows the command to them when the server allows it in Integrations).
+    if (command.category === 'moderation' && interaction.guildId && interaction.member) {
+      interaction.pettoModerationRoleAllowed = await moderationPermissions.hasConfiguredRole(interaction.guildId, command.data.name, interaction.member).catch(() => false);
+    }
     try {
       await command.execute(interaction, client);
     } catch (err) {

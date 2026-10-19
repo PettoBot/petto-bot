@@ -5,7 +5,9 @@ const { version: pettoVersion } = require('../../../package.json');
 const { t, formatDecimal, languageOf } = require('../../i18n');
 
 module.exports = {
-  data: new SlashCommandBuilder().setName('botinfo').setDescription('Shows information about Petto.'),
+  // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
+  registerSlash: true,
+  data: new SlashCommandBuilder().setName('botinfo').setDescription('Shows information about Petto.').setDMPermission(false),
   aliases: ['about'],
 
   async execute(interaction) {

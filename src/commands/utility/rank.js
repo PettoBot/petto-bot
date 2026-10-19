@@ -8,6 +8,8 @@ const { getVoiceConfig } = require('../../utils/levelSource');
 const { t, languageOf } = require('../../i18n');
 
 module.exports = {
+  // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
+  registerSlash: true,
   data: new SlashCommandBuilder()
     .setName('rank')
     .setDescription('View your level/XP rank, or someone else\'s.')

@@ -4,7 +4,14 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **The everyday commands also work as slash commands.** Not everyone uses the prefix, so 21 commands are now in Discord's `/` menu too, with the same answers as their prefix form (which keeps working): `/help`, `/ping`, `/botinfo`, `/serverinfo`, `/userinfo`, `/avatar`, `/rank`, `/top`, `/remind`, `/afk`, `/suggest`, `/poll`, `/warn`, `/kick`, `/ban`, `/unban`, `/timeout`, `/purge`, `/channel` (lock, unlock, slowmode...), `/giveaway` and `/ticket`. Their descriptions are in English, Spanish and Portuguese, the moderation ones are only shown to members with the permission they need, and none is offered in DMs. Petto now registers 64 commands (61 slash commands and 3 context menus); they are sent to Discord on the next start, and can take a moment to show (reloading Discord helps). Configuration and the rest of the commands stay prefix only.
+- **`/help` shows both ways of using a command.** As a slash command the menu is private. The main page says how many commands also work with `/`, each category names the ones that do, a command's card shows its slash form next to the prefix syntax, and buttons open the dashboard (petto.sbs/dash), the docs (wiki.petto.sbs) and the support server.
+
 ### Changed
+
+- **A slash command names other commands the way they can be used.** When a slash command points to a command that only has a prefix form (such as `!embed create` from `/giveaway`), it is written with the server's prefix instead of a `/` that would not work.
 
 - **Free is generous and Premium is about twice as much, never more.** Petto stays free for almost everything; Premium only adds room and small touches. Free → Premium per server: custom commands 125 → 250, autoresponders 75 → 150, ticket types 25 → 50, giveaway presets 15 → 30, image cards 30 → 60, uploaded card pictures 50 in 100 MB → 120 in 240 MB, partner channels 25 → 50, upload channels 100 → 200, button responders 250 → 500, button panels 50 → 100, counters 25 → 50. Premium servers keep every number they had; only Free went up. Autoresponders used to stop at 100 for every server whatever its plan; they now follow the plan like the rest. The messages that say how far Premium goes read the number from the limits instead of having it written in, so they can no longer disagree with them.
 - **Level rewards and logging have no Premium limit.** The Premium page listed "level rewards" (20, Premium 100) and "log routes" (20, Premium unlimited), but neither was ever counted anywhere: a server could always add a reward role for every level and send every log event where it wanted. Both are gone from the limits; they are free and unlimited, as they already were in practice.

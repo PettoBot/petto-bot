@@ -5,6 +5,8 @@ const { EMOJI } = require('../../utils/emojis');
 const { t, languageOf } = require('../../i18n');
 
 module.exports = {
+  // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
+  registerSlash: true,
   aliases: ['away'],
   // Prefix usage can be `!afk <reason>`; `!afk set <reason>` remains valid.
   prefixDefaultSubcommand: 'set',

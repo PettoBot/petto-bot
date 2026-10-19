@@ -35,6 +35,8 @@ const MESSAGE_CHOICES = [
 ];
 
 module.exports = {
+  // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
+  registerSlash: true,
   data: new SlashCommandBuilder()
     .setName('giveaway')
     .setDescription('Run and manage giveaways.')
@@ -186,7 +188,7 @@ async function startCmd(interaction, lang) {
   const entryMode = interaction.options.getString('entry_mode');
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
-  await ensureGuild(interaction.guild.id);
+  const { prefix } = await ensureGuild(interaction.guild.id);
   const config = await configDb.ensureConfig(interaction.guild.id);
 
   let presetId = null;
@@ -203,7 +205,7 @@ async function startCmd(interaction, lang) {
     const template = await embedTemplatesDb.getTemplate(interaction.guild.id, embedTemplate);
     if (!template) {
       await interaction.editReply({
-        components: [textCard(t(lang, 'giveaways.embedMissing', { name: embedTemplate, command: commandRef(interaction, `embed create ${embedTemplate}`) }), 0xfe6465)],
+        components: [textCard(t(lang, 'giveaways.embedMissing', { name: embedTemplate, command: commandRef(interaction, `embed create ${embedTemplate}`, prefix) }), 0xfe6465)],
         flags: MessageFlags.IsComponentsV2,
       });
       return;
@@ -390,7 +392,7 @@ async function setEmbedCmd(interaction, lang) {
   const rawName = interaction.options.getString('template', true).trim();
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
-  await ensureGuild(interaction.guild.id);
+  const { prefix } = await ensureGuild(interaction.guild.id);
 
   if (['clear', 'none'].includes(rawName.toLowerCase())) {
     await configDb.updateConfig(interaction.guild.id, { embed_template: null });
@@ -404,7 +406,7 @@ async function setEmbedCmd(interaction, lang) {
   const doc = await embedTemplatesDb.getTemplate(interaction.guild.id, rawName);
   if (!doc) {
     await interaction.editReply({
-      components: [textCard(t(lang, 'giveaways.embed.missing', { name: rawName, command: commandRef(interaction, `embed create ${rawName}`) }), 0xfe6465)],
+      components: [textCard(t(lang, 'giveaways.embed.missing', { name: rawName, command: commandRef(interaction, `embed create ${rawName}`, prefix) }), 0xfe6465)],
       flags: MessageFlags.IsComponentsV2,
     });
     return;
@@ -419,7 +421,7 @@ async function setEmbedCmd(interaction, lang) {
 
 async function messageTemplateCmd(interaction, lang) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
-  await ensureGuild(interaction.guild.id);
+  const { prefix } = await ensureGuild(interaction.guild.id);
   const which = interaction.options.getString('message', true).trim().toLowerCase().replace(/[\s-]+/g, '_');
   if (!MESSAGE_CHOICES.some((choice) => choice.value === which)) {
     return interaction.editReply({ components: [textCard(t(lang, 'giveaways.messageTemplate.choose', { list: MESSAGE_CHOICES.map((choice) => `\`${choice.value}\``).join(', ') }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
@@ -438,7 +440,7 @@ async function messageTemplateCmd(interaction, lang) {
     return done(t(lang, 'giveaways.messageTemplate.cleared', { emoji: EMOJI.APPROVE, what }));
   }
   const doc = await embedTemplatesDb.getTemplate(interaction.guild.id, name);
-  if (!doc) return done(t(lang, 'giveaways.embed.missing', { name, command: commandRef(interaction, `embed create ${name}`) }), 0xfe6465);
+  if (!doc) return done(t(lang, 'giveaways.embed.missing', { name, command: commandRef(interaction, `embed create ${name}`, prefix) }), 0xfe6465);
   await configDb.updateConfig(interaction.guild.id, { [column]: doc.name });
   return done(t(lang, 'giveaways.messageTemplate.set', { emoji: EMOJI.APPROVE, what, name: doc.name }));
 }

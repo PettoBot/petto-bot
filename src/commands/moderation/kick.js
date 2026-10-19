@@ -13,6 +13,8 @@ const { reasonText } = require('../../utils/caseFormat');
 const { t, tn, languageOf } = require('../../i18n');
 
 module.exports = {
+  // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
+  registerSlash: true,
   aliases: ['k'],
   prefixDefaultSubcommand: 'user',
   data: new SlashCommandBuilder()

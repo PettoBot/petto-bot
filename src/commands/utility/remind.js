@@ -9,6 +9,8 @@ const { COLORS } = require('../../utils/colors');
 const { t, languageOf } = require('../../i18n');
 
 module.exports = {
+  // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
+  registerSlash: true,
   aliases: ['rem'],
   // `!remind 2h text` is shorthand for `!remind add 2h text`.
   prefixDefaultSubcommand: 'add',

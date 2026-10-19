@@ -17,7 +17,7 @@ The code is licensed under [AGPL-3.0-only](../LICENSE). Contributions are attrib
 ## Stack
 
 - Node.js 18+, discord.js v14, PostgreSQL on Discloud via `pg`
-- Prefix commands (default `!`, configurable per guild) — see "Command system" below for why, and how the same command files serve both without being rewritten. Slash is reserved for future interactive/game commands.
+- Prefix commands (default `!`, configurable per guild) — see "Command system" below for why, and how the same command files serve both without being rewritten. A short list of everyday commands (`/help`, `/ban`, `/purge`, `/rank`...) and the roleplay commands are also registered as slash commands.
 - Dynamically loaded from `src/commands/**`
 - All per-guild config lives in the database — nothing is hardcoded
 - Brand palette (`src/utils/colors.js`): green `#a5ea7a` (success), yellow `#fed53c` (warning/pending), red `#fe6465` (error/destructive), blue `#8399ff` (neutral/informational, the default accent). Every status-colored card/embed across the bot draws from this set — previously a handful of one-off hex values (Discord's default blurple, a semi-random pink/orange here and there).
@@ -74,8 +74,8 @@ src/
                                         upsert), plus getStats()/getLeaderboard()/getInviter()
   handlers/
     commandHandler.js         recursively loads src/commands/** into client.commands; collectCommandData() (used only
-                              for slash deployment) filters out regular chat-input commands, now prefix-only — see
-                              "Command system" below
+                              for slash deployment) keeps the commands isSlashCommand() accepts (roleplay, slashOnly,
+                              registerSlash) and the context menus — see "Command system" below
     prefixInteraction.js       the prefix parser: tokenizer, subcommand/option resolution off a command's existing
                               `data`, and the pseudo-interaction shim that lets every command run unmodified
     eventHandler.js            loads src/events/*.js onto the client
@@ -118,7 +118,7 @@ src/
     verifyPage.js                self-contained HTML/CSS/JS for the verification page (Discord-dark theme, inline SVGs)
   events/
     ready.js
-    interactionCreate.js       dispatches slash commands (dormant — nothing's registered right now, see "Command
+    interactionCreate.js       dispatches slash commands (the registered ones, see "Command
                               system" below), button/select/modal component interactions, applies cooldowns, catches errors
     messageCreateCommands.js   the prefix command dispatcher: resolves the guild's prefix (or the bot's own mention,
                               always accepted as a fallback), tokenizes, looks up the command, enforces cooldowns +
@@ -317,11 +317,23 @@ src/
 
 Commands and events are **dynamically loaded** — drop a new file in `src/commands/<category>/` or `src/events/` and it's picked up automatically on the next start, no manual registration in code.
 
-## Command system: prefix, with slash reserved for interactive commands
+## Command system: prefix first, slash for the essentials
 
-Every command below is invoked with a **prefix** (default `!`, changeable per guild with `!prefix <new_prefix>` — and the bot always additionally answers to `@Petto <command>` as a fallback so a server can never lock itself out by forgetting a custom prefix). Discord's slash command menu is intentionally left with just one entry (`Report Message`, since context-menu commands have no prefix equivalent) — it's reserved for future interactive/game-style commands, which don't exist yet.
+Every command below is invoked with a **prefix** (default `!`, changeable per guild with `!prefix <new_prefix>` — and the bot always additionally answers to `@Petto <command>` as a fallback so a server can never lock itself out by forgetting a custom prefix). Not everyone uses a prefix, so the everyday commands are **also** registered as slash commands, with the same file and the same texts; the prefix keeps working for all of them.
 
-This wasn't the original design (everything up through the ticket system above was built slash-first) — it's a deliberate switch. The mechanism is what makes it cheap: every command file still exports the exact same `{ data: SlashCommandBuilder, execute(interaction) }` shape as before, completely unmodified. `src/handlers/prefixInteraction.js` reads a command's `data` purely for introspection (subcommand/subcommand-group structure, each option's name/type/required-ness — never sent to Discord anymore) and builds a **pseudo-interaction** from the raw message: same `.options.getUser()/.getString()/.getInteger()/...`, same `.member`/`.guild`/`.user`/`.client`, same `.reply()`/`.deferReply()`/`.editReply()` (the latter two collapse into an immediate real send, since a prefix command has no 3-second ack window or ephemeral concept to route around — `MessageFlags.Ephemeral` is stripped, everything else including `IsComponentsV2` passes through untouched). Every command's actual logic — permission checks, DB calls, Components V2 cards — runs completely unaware it's not a real slash interaction. `src/events/messageCreateCommands.js` is the dispatcher: resolves the prefix, tokenizes, looks up the command in the same `client.commands` collection the (dormant) slash path uses, enforces cooldowns and `default_member_permissions` (Discord no longer does this for us since the command isn't registered), and calls `execute()`.
+What Discord gets (`collectCommandData()`, checked by `scripts/check-slash-commands.js`, which pins the list and validates every command's JSON):
+
+- **Everyday commands, both ways** (`registerSlash: true`): `/help`, `/ping`, `/botinfo`, `/serverinfo`, `/userinfo`, `/avatar`, `/rank`, `/top`, `/remind`, `/afk`, `/suggest`, `/poll`, `/warn`, `/kick`, `/ban`, `/unban`, `/timeout`, `/purge`, `/channel` (lock, unlock, slowmode...), `/giveaway`, `/ticket`, plus `/vanity` and `/guildtag`.
+- **Slash only**: `/setup` and `/report` (they open native forms), and the `Report Message` / `Report User` context menus.
+- **Roleplay**: the 36 gif commands (`/hug`, `/pat`...).
+
+That is 64 commands (61 slash commands and 3 context menus), well under Discord's 100. Their descriptions are sent in English with Spanish and Portuguese `description_localizations` from the `cmd.<category>` catalogs; names are never translated. The moderation ones keep their `default_member_permissions`, so Discord hides them from members who cannot use them; a member with a role chosen for the command in `!moderation` also passes Petto's own check when the server allows the command for them in **Server Settings > Integrations**. Everything else (configuration, `!<module>config` cards, the many admin tools) stays prefix only; a new slash command is added on purpose by setting `registerSlash: true` and adding it to the list in the check.
+
+**Registration** happens on every start (`src/handlers/deployCommands.js`, before login): the list is hashed and compared with the hash saved in `bot_settings` (`commands_hash:global`, or one per test server); when it changed, the whole set is sent with one PUT and the log of Discord says which commands were created or removed. Global commands can take a while to show in Discord; reloading Discord helps. `npm run deploy-commands` forces it without starting the bot.
+
+`/help` is private when used as a slash command (the prefix one answers in the channel), shows how many commands also work with `/`, lists them in each category, shows the slash form next to the prefix syntax of a command, and has link buttons to the dashboard (petto.sbs/dash), the docs (wiki.petto.sbs) and the support server.
+
+This wasn't the original design (everything up through the ticket system above was built slash-first) — it's a deliberate switch. The mechanism is what makes it cheap: every command file still exports the exact same `{ data: SlashCommandBuilder, execute(interaction) }` shape as before, completely unmodified. `src/handlers/prefixInteraction.js` reads a command's `data` purely for introspection (subcommand/subcommand-group structure, each option's name/type/required-ness — sent to Discord only for the registered slash commands) and builds a **pseudo-interaction** from the raw message: same `.options.getUser()/.getString()/.getInteger()/...`, same `.member`/`.guild`/`.user`/`.client`, same `.reply()`/`.deferReply()`/`.editReply()` (the latter two collapse into an immediate real send, since a prefix command has no 3-second ack window or ephemeral concept to route around — `MessageFlags.Ephemeral` is stripped, everything else including `IsComponentsV2` passes through untouched). Every command's actual logic — permission checks, DB calls, Components V2 cards — runs completely unaware it's not a real slash interaction. `src/events/messageCreateCommands.js` is the dispatcher: resolves the prefix, tokenizes, looks up the command in the same `client.commands` collection the slash path uses, enforces cooldowns and `default_member_permissions` (Discord only does this for us for a registered slash command), and calls `execute()`.
 
 **Argument parsing**, since raw text has no labeled fields the way a slash command does:
 - Required options are matched positionally, in the order they're declared (Discord itself requires required-before-optional in a `SlashCommandBuilder`, so that ordering was already fixed).
@@ -353,7 +365,7 @@ Each detail card mirrors bli's own field layout: `### Command: <path>`, descript
 3. Copy the **Bot Token** and the application's **Client ID** into `.env`.
 4. Invite the bot with the `bot` and `applications.commands` scopes and at least: Ban Members, Kick Members, Moderate Members, Move Members, Mute Members, Deafen Members, Manage Roles, Manage Channels, Manage Webhooks, Send Messages, Read Message History.
 
-Slash commands and the "Report Message" context-menu command are registered together, so no separate step is needed for the app command.
+The slash commands (see "Command system") and the "Report Message" / "Report User" context menus are registered together on start, so no separate step is needed.
 
 ### 2. Discloud PostgreSQL
 
@@ -397,7 +409,7 @@ npm install
 npm start
 ```
 
-On every boot the bot applies pending migrations to Discloud PostgreSQL, re-registers slash commands, then logs in — no separate deploy step needed. `npm run deploy-commands` still exists standalone if you just want to (re-)register commands without starting the bot.
+On every boot the bot applies pending migrations to Discloud PostgreSQL, re-registers the slash commands when they changed since the last start (a hash kept in the database), then logs in — no separate deploy step needed. `npm run deploy-commands` still exists standalone if you just want to (re-)register commands without starting the bot.
 
 For production on a VPS, run it under pm2 so it survives crashes and reboots:
 

@@ -68,6 +68,8 @@ async function buildPeriodPage(guild, page, source, period, lang = currentLangua
 }
 
 module.exports = {
+  // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
+  registerSlash: true,
   data: new SlashCommandBuilder()
     .setName('top')
     .setDescription('Server XP leaderboard.')

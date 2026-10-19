@@ -26,10 +26,13 @@ function buildPingCard({ guildMs, apiMs, shard, shardCount, guilds, members, lan
 }
 
 module.exports = {
+  // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
+  registerSlash: true,
   aliases: ['p'],
   buildPingCard,
   data: new SlashCommandBuilder()
     .setName('ping')
+    .setDMPermission(false)
     .setDescription("Shows Petto's latency and how big it is."),
 
   async execute(interaction) {
