@@ -1,5 +1,56 @@
 // Las notas de versión de `!version` en español: etiqueta, resumen y secciones de cada versión (src/utils/releases.js guarda el resto).
 module.exports = {
+  'v0.7.7': {
+    label: 'v0.7.7 · Tiramisu: formularios, contadores en vivo, español y portugués y comandos de barra',
+    summary: 'Formularios con su propia página web, contadores en vivo renovados, Petto en español y portugués, un anti-nuke más fuerte, comandos de barra para el día a día, límites gratis generosos y un panel más rápido.',
+    sections: [
+      {
+        title: 'Formularios',
+        items: [
+          'Formularios y postulaciones con `!form`: hasta 25 preguntas, reglas (roles, edad de la cuenta, esperas, límites, una fecha de cierre), paneles y una tarjeta de revisión con **Aceptar**, **Rechazar** y **Abrir hilo** que da los roles y avisa el resultado por MD.',
+          'Cada formulario tiene su propia página web (`petto.sbs/form/<id>`) con un enlace que nadie puede adivinar: los miembros entran con Discord y responden ahí. La página lleva el color, el banner y el fondo del formulario, y su enlace muestra una vista previa que puedes personalizar.',
+          'Las preguntas pueden tener una descripción y una imagen, decidir una respuesta cierra su hilo, y el panel tiene una página de Formularios con las respuestas y los paneles.',
+        ],
+      },
+      {
+        title: 'Contadores y comunidad',
+        items: [
+          'Contadores en vivo, renovados: muchos más tipos (en línea, un rol, mejoras, una meta de miembros, un reloj, mensajes de hoy…), nombres con `{count}`, paquetes con `!counter setup`, contadores en el nombre de una categoría o el tema de un canal, y anuncios de metas con `!counter announce`.',
+          'Los cambios de nombre respetan el límite de Discord (dos cada 10 minutos) y se reparten en el tiempo, y el panel tiene una página de Contadores con vistas previas, arrastrar para ordenar y cambiar nombres ahí mismo.',
+        ],
+      },
+      {
+        title: 'Moderación',
+        items: [
+          '70 comandos, subcomandos y atajos de moderación nuevos: apodos forzados, `!stripstaff`, silencios de imágenes y reacciones, `!raid clean`, roles temporales, `!restrictcommand`, más filtros de `!purge` y más.',
+          'Anti-nuke: cinco protecciones nuevas (cambios de roles y canales, menciones masivas, spam de webhooks, prune), modo pánico, administradores de confianza, solo el dueño y un MD al dueño cuando una protección actúa.',
+          'La moderación masiva deja en paz a los miembros que no puedes moderar, `!lock` bloquea el canal donde estás, y el Honeypot se puede configurar desde el panel.',
+        ],
+      },
+      {
+        title: 'Idiomas y comandos de barra',
+        items: [
+          'Petto habla inglés, español y portugués de Brasil: las respuestas, las tarjetas, los paneles, los MD y los registros siguen el idioma del servidor. Cámbialo con `!language`.',
+          '21 comandos del día a día también funcionan como comandos de barra (`/help`, `/ping`, `/userinfo`, `/warn`, `/ban`, `/purge`, `/ticket`…) y `/help` muestra las dos formas. `/embed` se suma, y los comandos de barra ya no aparecen dos veces.',
+          'Se registran más eventos en las categorías que ya tienes, se puede ignorar un rol en los registros, y `!serverinfo` acepta el ID de otro servidor.',
+        ],
+      },
+      {
+        title: 'Panel y Premium',
+        items: [
+          'Gratis es generoso y Premium es más o menos el doble: 125 comandos personalizados (250 con Premium), 75 respuestas automáticas (150), 25 contadores (50) y más. Las recompensas de nivel y los registros no tienen límite, y 15 fuentes de tarjetas son gratis.',
+          'Acceso al panel por rol, páginas de Contadores y Formularios más rápidas, un botón de Sincronizar, una página de Honeypot, y las páginas de Permisos y Cobertura de comandos rehechas.',
+          'Restaurar una copia de seguridad pregunta primero, muestra su progreso, se puede detener y puede traer solo algunas partes (las copias siguen en mantenimiento).',
+        ],
+      },
+      {
+        title: 'Correcciones',
+        items: [
+          'Los botones de VoiceMaster ya no fallan cuando el bot va lento, los nombres de reglas de Vanity con espacios funcionan, la página de Formularios del panel vuelve a cargar, y los registros usan el nombre y la imagen que el servidor le dio a Petto.',
+        ],
+      },
+    ],
+  },
   'v0.7.6': {
     label: 'v0.7.6 · Macaron: apelaciones, moderación más fuerte y más herramientas para la comunidad',
     summary: 'Un sistema completo de apelaciones con su propia página, moderación más fuerte (antiestafas, lockdown, anti-nuke por protección), mejores tickets, sugerencias, conteo y confesiones, y un nuevo aspecto para el panel.',
