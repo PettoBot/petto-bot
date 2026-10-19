@@ -15,7 +15,11 @@ const LIMITS = { forms: 10, sections: 6, questions: 12, options: 20, label: 200,
 const QUESTION_TYPES = ['short', 'paragraph', 'choice', 'multi', 'yesno', 'number', 'dropdown', 'scale', 'date', 'link', 'file', 'confirm'];
 const LIST_TYPES = ['choice', 'multi', 'dropdown']; // the types that have a list of options
 const clampInt = (value, min, max, fallback) => { const n = Math.trunc(Number(value)); return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback; };
-const PUNISHMENT_TYPES = ['ban', 'mute', 'warn', 'kick'];
+const PUNISHMENT_TYPES = ['ban', 'mute', 'warn', 'kick', 'softban'];
+// The sanctions a server can choose to point to the appeal page in their DM (`dm_link_mode` = `types`).
+const DM_LINK_TYPES = ['ban', 'tempban', 'softban', 'kick', 'timeout', 'warn'];
+const DM_LINK_MODES = ['always', 'never', 'types'];
+const LIMITS_EXTRA = { dmNote: 300, minWaitHours: 720 };
 const DETAILS = ['reason', 'duration', 'moderator'];
 const BLOCKS = { none: 0, day: 86_400_000, week: 7 * 86_400_000, month: 30 * 86_400_000, forever: -1 };
 // What the members read when the server wrote nothing: in the language the server chose for its appeal page (English when it chose none).
@@ -178,10 +182,11 @@ function shapePunishment(row, config) {
   if (details.has('reason')) out.reason = row.reason ? clip(row.reason, 400) : null;
   if (details.has('duration')) out.until = row.until ?? null;
   if (details.has('moderator')) out.moderator = row.moderator ?? null;
+  if (row.caseNumber) out.case = row.caseNumber;
   return out;
 }
 
-const caseType = (type) => (['ban', 'tempban', 'hardban'].includes(type) ? 'ban' : ['mute', 'tempmute', 'jail'].includes(type) ? 'mute' : type === 'warn' ? 'warn' : type === 'kick' ? 'kick' : null);
+const caseType = (type) => (['ban', 'tempban', 'hardban'].includes(type) ? 'ban' : ['mute', 'tempmute', 'jail'].includes(type) ? 'mute' : ['warn', 'kick', 'softban'].includes(type) ? type : null);
 
 /** The punishments a member has right now in a server (Petto cases and, when asked, what Discord itself says), as the server wants them shown. */
 async function fetchPunishments(guild, userId, config) {
@@ -198,7 +203,8 @@ async function fetchPunishments(guild, userId, config) {
       if (!type || !wanted.has(type)) continue;
       if (c.active === false) continue;
       if (c.expires_at && Date.parse(c.expires_at) <= Date.now()) continue;
-      if (type === 'warn' && Date.parse(c.created_at) < maxAge) continue;
+      // Warns and softbans have no end: only the recent ones are shown (a softban is cleared when its appeal is accepted).
+      if ((type === 'warn' || type === 'softban') && Date.parse(c.created_at) < maxAge) continue;
       if (type === 'kick') continue; // a kick ends by itself, there is nothing to lift
       rows.push({ source: 'petto', type, reason: c.reason, at: c.created_at, until: c.expires_at, moderator: c.moderator_id ? `<@${c.moderator_id}>` : null, caseNumber: c.case_number });
     }
@@ -215,6 +221,19 @@ async function fetchPunishments(guild, userId, config) {
     }
   }
   return rows;
+}
+
+/**
+ * When the member may appeal, if the server asks them to wait after a punishment (`min_wait_hours`): the newest punishment with a known
+ * date plus the wait. Null when they can appeal now.
+ */
+function appealOpensAt(punishments, config, now = Date.now()) {
+  const hours = clampInt(config?.min_wait_hours, 0, LIMITS_EXTRA.minWaitHours, 0);
+  if (!hours) return null;
+  const newest = Math.max(0, ...punishments.map((p) => Date.parse(p.at ?? '') || 0));
+  if (!newest) return null;
+  const opens = newest + hours * 3_600_000;
+  return opens > now ? new Date(opens).toISOString() : null;
 }
 
 /** Whether a member may open a form: the form can ask for a punishment of some type first. */
@@ -235,15 +254,38 @@ function siteLink(guildId, slug = null) {
   return `https://petto.sbs/appeal/${slug || guildId}`;
 }
 
-const APPEAL_KIND = { ban: 'ban', tempban: 'ban', mute: 'mute', tempmute: 'mute', timeout: 'mute', warn: 'warn', kick: 'kick', softban: 'kick', jail: 'jail' };
+const APPEAL_KIND = { ban: 'ban', tempban: 'ban', mute: 'mute', tempmute: 'mute', timeout: 'mute', warn: 'warn', kick: 'kick', softban: 'softban', jail: 'jail' };
+// A sanction as the server names it when it picks which DMs carry the link.
+const DM_KIND = { ban: 'ban', hardban: 'ban', tempban: 'tempban', softban: 'softban', kick: 'kick', mute: 'timeout', tempmute: 'timeout', timeout: 'timeout', warn: 'warn' };
 
-/** The appeal page to point a sanctioned member to, or null when the server has appeals off or this sanction cannot be appealed. */
-async function appealLinkFor(guildId, type) {
+/**
+ * Whether the DM of a sanction carries the appeal link. `always` (the default) is what Petto always did: the sanctions members can appeal
+ * (a softban also counts as appealable when kicks are), `never` leaves it out, `types` only for the sanctions the server picked.
+ */
+function dmLinkAllowed(config, type) {
+  if (!config?.enabled) return false;
+  const mode = DM_LINK_MODES.includes(config.dm_link_mode) ? config.dm_link_mode : 'always';
+  if (mode === 'never') return false;
+  if (mode === 'types') return Boolean(DM_KIND[type]) && (config.dm_link_types ?? []).includes(DM_KIND[type]);
   const kind = APPEAL_KIND[type];
-  if (!kind) return null;
+  const types = config.punishment_types ?? [];
+  return Boolean(kind) && (types.includes(kind) || (kind === 'softban' && types.includes('kick')));
+}
+
+/**
+ * What the DM of a sanction says about appeals: the link (null when there is none: appeals off, a sanction that cannot be appealed or
+ * a server that chose not to send it) and the server's own line about it (null for Petto's usual sentence). The one helper every
+ * sanction DM uses (commands, AutoMod, anti-scam, honeypot, escalation...).
+ */
+async function appealDmFor(guildId, type) {
   const config = await db.getConfig(guildId);
-  if (!config.enabled || !(config.punishment_types ?? []).includes(kind)) return null;
-  return siteLink(guildId, config.slug);
+  if (!dmLinkAllowed(config, type)) return { url: null, note: null };
+  return { url: siteLink(guildId, config.slug), note: clip(config.dm_note, LIMITS_EXTRA.dmNote) || null };
+}
+
+/** The appeal page to point a sanctioned member to, or null when there is none for this sanction (see `appealDmFor`). */
+async function appealLinkFor(guildId, type) {
+  return (await appealDmFor(guildId, type)).url;
 }
 
 // The kinds of punishment and of lifted sanction, as the staff read them (the stored values stay in English).
@@ -375,7 +417,10 @@ async function submitAppeal({ client, guild, config, form, user, rawAnswers }) {
   if (!config.enabled) return { ok: false, error: 'disabled' };
   if (!form || form.status !== 'live') return { ok: false, error: 'form_unavailable' };
   if (await db.getBlock(guild.id, user.id)) return { ok: false, error: 'blocked' };
-  const punishments = (await fetchPunishments(guild, user.id, config)).map((p) => shapePunishment(p, config));
+  const found = await fetchPunishments(guild, user.id, config);
+  const opensAt = appealOpensAt(found, config);
+  if (opensAt) return { ok: false, error: 'too_soon', until: opensAt };
+  const punishments = found.map((p) => shapePunishment(p, config));
   if (!meetsRequirement(form, punishments)) return { ok: false, error: 'requirement' };
   if (await db.countPending(guild.id, user.id, form.id) > 0) return { ok: false, error: 'already_pending' };
   const checked = validateAnswers(form, rawAnswers, await loadAnswerFiles(guild.id, user.id, form, rawAnswers));
@@ -442,8 +487,11 @@ async function inviteFor(guild, config, form, lang = currentLanguage()) {
   return { url: invite.url, note: t(lang, 'appeals.invite.created', { channel: channel.name }) };
 }
 
-/** Lifts what the member was appealing: the ban and the timeout. Petto cases are lifted through the same path as the dashboard. */
-async function liftPunishments(guild, submission, moderatorId, lang = currentLanguage()) {
+/**
+ * Lifts what the member was appealing: the ban and the timeout. Petto cases are lifted through the same path as the dashboard. A softban
+ * has nothing left to undo in Discord (the member was banned and unbanned at once): its case is cleared, so it stops counting against them.
+ */
+async function liftPunishments(guild, submission, moderatorId, lang = currentLanguage(), config = null) {
   const reason = t(lang, 'appeals.audit.accepted');
   const done = [];
   const user = { id: moderatorId, username: moderatorId };
@@ -452,6 +500,12 @@ async function liftPunishments(guild, submission, moderatorId, lang = currentLan
   const history = await getUserHistory(guild.id, submission.user_id, { limit: 50 }).catch(() => []);
   for (const row of history.filter(isLiftable)) {
     await liftSanction(guild, row.case_number, user, reason).then(() => done.push(`${row.type} #${row.case_number}`)).catch((err) => logger.warn(`Appeals: could not lift case ${row.case_number}: ${err.message}`));
+  }
+  if ((config?.punishment_types ?? []).includes('softban')) {
+    const { deactivateCase } = require('../db/modActions');
+    for (const row of history.filter((r) => r.type === 'softban' && r.active !== false)) {
+      await deactivateCase(guild.id, row.case_number).then(() => done.push(`softban #${row.case_number}`)).catch((err) => logger.warn(`Appeals: could not clear softban case ${row.case_number}: ${err.message}`));
+    }
   }
   if (await guild.bans.fetch({ user: submission.user_id, force: true }).catch(() => null)) {
     const { getHardBan } = require('../db/hardBans');
@@ -486,7 +540,7 @@ async function resolveAppeal({ client, guild, submission, status, moderatorId, m
   let invite = null;
   let lifted = [];
   if (status === 'accepted') {
-    lifted = await liftPunishments(guild, row, moderatorId, lang);
+    lifted = await liftPunishments(guild, row, moderatorId, lang, config);
     invite = await inviteFor(guild, config, form, lang);
     // The staff can see which invite was made, or why there is none.
     row.invite_url = invite.url; row.invite_note = invite.note;
@@ -595,7 +649,8 @@ async function cleanup() {
 }
 
 module.exports = {
-  PREFIX, LIMITS, QUESTION_TYPES, PUNISHMENT_TYPES, DETAILS, BLOCKS, DEFAULT_MESSAGES,
-  renderTemplate, messageFor, normalizeForm, validateAnswers, shapePunishment, fetchPunishments, meetsRequirement, blockUntil, siteLink, appealLinkFor, releaseIdleNames,
+  PREFIX, LIMITS, LIMITS_EXTRA, QUESTION_TYPES, PUNISHMENT_TYPES, DM_LINK_TYPES, DM_LINK_MODES, DETAILS, BLOCKS, DEFAULT_MESSAGES,
+  renderTemplate, messageFor, normalizeForm, validateAnswers, shapePunishment, fetchPunishments, meetsRequirement, appealOpensAt, blockUntil, siteLink,
+  appealLinkFor, appealDmFor, dmLinkAllowed, releaseIdleNames,
   buildStaffCard, planAttachments, loadAnswerFiles, liftedText, submitAppeal, resolveAppeal, staffReply, userReply, withdrawAppeal, cleanup,
 };

@@ -396,10 +396,11 @@ function startServer(client) {
       if (!access) return;
       try {
         const appealsDb = require('../db/appeals');
-        const { fetchPunishments, shapePunishment } = require('../utils/appeals');
+        const { fetchPunishments, shapePunishment, appealOpensAt } = require('../utils/appeals');
         const rows = await fetchPunishments(access.guild, access.user.id, access.config);
         const block = await appealsDb.getBlock(access.guild.id, access.user.id);
-        res.json({ ok: true, punishments: rows.map((p) => shapePunishment(p, access.config)), blocked: Boolean(block), blockedUntil: block?.until ?? null });
+        // `opensAt`: the server asks to wait after a punishment before appealing it, and the member can appeal from then.
+        res.json({ ok: true, punishments: rows.map((p) => shapePunishment(p, access.config)), blocked: Boolean(block), blockedUntil: block?.until ?? null, opensAt: appealOpensAt(rows, access.config) });
       } catch (err) {
         logger.error(`Appeals punishments failed for guild ${req.params.guildId}:`, err);
         res.status(500).json({ ok: false, error: 'failed' });

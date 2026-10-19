@@ -6,6 +6,9 @@ const CONFIG_DEFAULTS = {
   punishment_types: ['ban', 'mute'], punishment_details: ['reason', 'duration'], punishment_source: 'both', warns_max_age_days: 30,
   anonymous_messages: false, allow_replies: true, store_days: 7, submission_channel_id: null, log_channel_id: null, auto_thread: false,
   thread_name: 'Appeal by {username}', ping_role_ids: [], messages: {}, brand: {}, embed: {}, // i18n-ignore: English default kept in the database, shown translated (defaultText)
+  // The appeal link in sanction DMs (`always` = for the sanctions members can appeal), the server's own line about it, and how long a
+  // member waits after a punishment before appealing (0 = no wait).
+  dm_link_mode: 'always', dm_link_types: ['ban', 'tempban', 'softban', 'kick', 'timeout', 'warn'], dm_note: null, min_wait_hours: 0,
 };
 
 async function getConfig(guildId) {
@@ -50,6 +53,19 @@ async function countPending(guildId, userId, formId) {
     .eq('guild_id', guildId).eq('user_id', userId).eq('form_id', formId).eq('status', 'pending');
   if (error) throw error;
   return count ?? 0;
+}
+
+/** The appeals of a whole server that wait for an answer. */
+async function countPendingAll(guildId) {
+  const { count, error } = await database.from('appeal_submissions').select('id', { count: 'exact', head: true }).eq('guild_id', guildId).eq('status', 'pending');
+  if (error) throw error;
+  return count ?? 0;
+}
+
+/** Changes some settings of a server's appeals (the row is made when it has none). */
+async function updateConfig(guildId, patch) {
+  const { error } = await database.from('appeal_config').upsert({ guild_id: guildId, ...patch, updated_at: new Date().toISOString() }, { onConflict: 'guild_id' });
+  if (error) throw error;
 }
 
 async function addMessage(row) {
@@ -107,4 +123,4 @@ async function deleteExpiredReservations(beforeIso) {
   return data?.length ?? 0;
 }
 
-module.exports = { deleteExpiredReservations, listNamed, clearSlug, lastSubmissionAt, CONFIG_DEFAULTS, getConfig, getForm, getSubmission, createSubmission, updateSubmission, resolveSubmission, countPending, addMessage, getBlock, setBlock, deleteResolvedBefore, listEnabledConfigs };
+module.exports = { deleteExpiredReservations, listNamed, clearSlug, lastSubmissionAt, CONFIG_DEFAULTS, getConfig, getForm, getSubmission, createSubmission, updateSubmission, resolveSubmission, countPending, countPendingAll, updateConfig, addMessage, getBlock, setBlock, deleteResolvedBefore, listEnabledConfigs };

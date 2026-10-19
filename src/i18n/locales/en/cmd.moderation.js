@@ -1,6 +1,8 @@
 // Descriptions of the moderation commands, written by scripts/i18n-commands.js from the builders: change the builder, then run it.
 module.exports = {
   'cmd.moderation.appeals.desc': 'See the appeal page of this server and how many appeals wait for an answer.',
+  'cmd.moderation.appeals.opt.setting.desc': 'A setting to change: types, dmlink, note or wait',
+  'cmd.moderation.appeals.opt.value.desc': 'The new value of the setting',
   'cmd.moderation.ban.desc': 'Ban members from the server.',
   'cmd.moderation.ban.user.desc': 'Ban a single member.',
   'cmd.moderation.ban.user.opt.user.desc': 'The user to ban',
