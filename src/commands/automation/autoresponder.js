@@ -47,7 +47,7 @@ module.exports = {
       s
         .setName('edit')
         .setDescription('Edit an existing autoresponder.')
-        .addStringOption((o) => o.setName('id').setDescription('Autoresponder ID (see /autoresponder list)').setRequired(true))
+        .addStringOption((o) => o.setName('id').setDescription('Autoresponder ID (see !autoresponder list)').setRequired(true))
         .addStringOption((o) => o.setName('mode').setDescription('New match mode').setRequired(false).addChoices(...MODE_CHOICES))
         .addBooleanOption((o) => o.setName('embed').setDescription('New reply type').setRequired(false))
         .addBooleanOption((o) => o.setName('delete_trigger').setDescription('New delete-trigger setting').setRequired(false))

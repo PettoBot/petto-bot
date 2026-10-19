@@ -88,6 +88,8 @@ module.exports = {
 
     if (group === 'admin') return adminCmd(interaction, sub);
     if (group === 'filter') return filterCmd(interaction, sub);
+    // Turned off on the dashboard: boosters cannot make or change a role, but can still remove theirs and see or end its sharing.
+    if (SELF_CHANGES.has(sub) && !(await boosterRolesOn(interaction))) return;
 
     switch (sub) {
       case 'create':
@@ -111,6 +113,28 @@ module.exports = {
     }
   },
 };
+
+const SELF_CHANGES = new Set(['create', 'color', 'rename', 'icon', 'random', 'share']);
+
+/** The server's settings without creating its row (a server that never set anything has every default). */
+async function settingsOf(guildId) {
+  return (await db.getConfig(guildId).catch(() => null)) ?? {};
+}
+
+async function boosterRolesOn(interaction) {
+  if ((await settingsOf(interaction.guild.id)).enabled !== false) return true;
+  const lang = await languageOf(interaction);
+  await interaction.reply({ content: t(lang, 'utility.boosterrole.disabled'), flags: MessageFlags.Ephemeral });
+  return false;
+}
+
+/** A second color for members is allowed unless the dashboard turned gradients off (staff with `admin set` are not limited). */
+async function gradientAllowed(interaction, hex2) {
+  if (!hex2 || (await settingsOf(interaction.guild.id)).allow_gradient !== false) return true;
+  const lang = await languageOf(interaction);
+  await interaction.reply({ content: t(lang, 'utility.boosterrole.gradientOff'), flags: MessageFlags.Ephemeral });
+  return false;
+}
 
 function isBoosting(member) {
   return Boolean(member.premiumSince);
@@ -145,6 +169,7 @@ async function selfCreate(interaction) {
     await interaction.reply({ content: t(lang, 'utility.boosterrole.badHex2'), flags: MessageFlags.Ephemeral });
     return;
   }
+  if (!(await gradientAllowed(interaction, hex2))) return;
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
@@ -186,6 +211,7 @@ async function selfColor(interaction) {
     await interaction.reply({ content: t(lang, 'utility.boosterrole.badHex2'), flags: MessageFlags.Ephemeral });
     return;
   }
+  if (!(await gradientAllowed(interaction, hex2))) return;
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
@@ -255,6 +281,10 @@ async function selfIcon(interaction) {
   const lang = await languageOf(interaction);
   if (!isBoosting(interaction.member)) {
     await interaction.reply({ content: t(lang, 'utility.boosterrole.notBooster'), flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if ((await settingsOf(interaction.guild.id)).allow_icon === false) {
+    await interaction.reply({ content: t(lang, 'utility.boosterrole.iconOff'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -605,18 +635,7 @@ async function adminCleanup(interaction) {
   const lang = await languageOf(interaction);
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
-  const all = await db.listBoosterRoles(interaction.guild.id);
-  let deleted = 0;
-
-  for (const br of all) {
-    const member = await interaction.guild.members.fetch(br.user_id).catch(() => null);
-    if (member?.premiumSince) continue;
-
-    const role = interaction.guild.roles.cache.get(br.role_id);
-    if (role) await role.delete(t(lang, 'utility.boosterrole.audit.cleanup')).catch(() => {});
-    await db.deleteBoosterRole(interaction.guild.id, br.user_id);
-    deleted++;
-  }
+  const deleted = await actions.cleanupBoosterRoles(interaction.guild, t(lang, 'utility.boosterrole.audit.cleanup'));
 
   await interaction.editReply({ components: [textCard(tn(lang, 'utility.boosterrole.admin.cleanedUp', deleted, { emoji: EMOJI.APPROVE, count: deleted }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }

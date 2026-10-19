@@ -11,7 +11,7 @@ module.exports = {
   'cmd.welcome.boost.status.desc': 'Show the current boost configuration.',
   'cmd.welcome.boost.test.desc': 'Send a test boost message using your own account.',
   'cmd.welcome.boost.disable.desc': 'Turn off boost announcements.',
-  'cmd.welcome.dmonjoin.desc': 'DM new members a message when they join (separate from the /welcome channel message).',
+  'cmd.welcome.dmonjoin.desc': 'DM new members a message when they join (separate from the !welcome channel message).',
   'cmd.welcome.dmonjoin.setup.desc': 'Set the direct message new members get when they join.',
   'cmd.welcome.dmonjoin.setup.opt.embed.desc': 'Use a saved /embed template instead of plain text',
   'cmd.welcome.dmonjoin.setup.opt.message.desc': 'Plain text (supports /embed variables, e.g. {user}, {server_name})',

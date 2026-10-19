@@ -120,4 +120,57 @@ async function applyRole({ guild, member, colorInt, color2Int, name, bypassLimit
   return { role, boosterRole, updated: false };
 }
 
-module.exports = { parseHex, randomColorInt, filterCheck, resolveIconInput, getRemainingCooldown, formatDuration, getTargetPosition, applyRole };
+/** Deletes a member's booster role in Discord (when it is still there) and its row. Returns whether there was a row. */
+async function removeBoosterRole(guild, userId, reason) {
+  const existing = await db.getBoosterRole(guild.id, userId);
+  if (!existing) return false;
+  const role = guild.roles.cache.get(existing.role_id);
+  if (role) await role.delete(reason).catch(() => {});
+  await db.deleteBoosterRole(guild.id, userId);
+  return true;
+}
+
+/** Deletes the booster roles of members who no longer boost (or left the server). Returns how many went. */
+async function cleanupBoosterRoles(guild, reason) {
+  const all = await db.listBoosterRoles(guild.id);
+  let deleted = 0;
+  for (const br of all) {
+    const member = await guild.members.fetch(br.user_id).catch(() => null);
+    if (member?.premiumSince) continue;
+    const role = guild.roles.cache.get(br.role_id);
+    if (role) await role.delete(reason).catch(() => {});
+    await db.deleteBoosterRole(guild.id, br.user_id);
+    deleted++;
+  }
+  return deleted;
+}
+
+/**
+ * What the server chose for a booster role when its owner stops boosting (`on_unboost`): `keep` does nothing, `remove` takes the
+ * role off the owner and the people it is shared with (and gives it back when they boost again), `delete` deletes it.
+ */
+async function applyBoostChange(member, boosting, lang = currentLanguage()) {
+  const guild = member.guild;
+  const config = await db.getConfig(guild.id);
+  const mode = config?.on_unboost ?? 'keep';
+  if (mode === 'keep') return null;
+  const existing = await db.getBoosterRole(guild.id, member.id);
+  if (!existing) return null;
+  if (!boosting && mode === 'delete') {
+    await removeBoosterRole(guild, member.id, t(lang, 'utility.boosterrole.audit.unboost', { user: member.user?.tag ?? member.id }));
+    return 'deleted';
+  }
+  if (mode !== 'remove') return null;
+  const role = guild.roles.cache.get(existing.role_id);
+  if (!role || !role.editable) return null;
+  const reason = t(lang, boosting ? 'utility.boosterrole.audit.reboost' : 'utility.boosterrole.audit.unboost', { user: member.user?.tag ?? member.id });
+  for (const id of [member.id, ...(existing.shared_with ?? [])]) {
+    const holder = id === member.id ? member : await guild.members.fetch(id).catch(() => null);
+    if (!holder) continue;
+    if (boosting) await holder.roles.add(role, reason).catch(() => {});
+    else await holder.roles.remove(role, reason).catch(() => {});
+  }
+  return boosting ? 'restored' : 'removed';
+}
+
+module.exports = { parseHex, randomColorInt, filterCheck, resolveIconInput, getRemainingCooldown, formatDuration, getTargetPosition, applyRole, removeBoosterRole, cleanupBoosterRoles, applyBoostChange };

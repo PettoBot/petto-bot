@@ -4,6 +4,7 @@ const db = require('../../db/reputation');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { formatDuration } = require('../../utils/duration');
+const logger = require('../../utils/logger');
 const { t, tn, languageOf } = require('../../i18n');
 
 module.exports = {
@@ -53,6 +54,30 @@ async function giveCmd(interaction) {
     return;
   }
 
+  // Where and by whom, as set on the dashboard: the channel (a thread counts as its parent), the roles that may give, the blocked roles.
+  const channelIds = config.channel_ids ?? [];
+  const channel = interaction.channel;
+  if (channelIds.length && !channelIds.includes(interaction.channelId) && !(channel?.isThread?.() && channelIds.includes(channel.parentId))) {
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.rep.wrongChannel', { channels: channelIds.map((id) => `<#${id}>`).join(', ') }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+  const giverRoles = roleIdsOf(interaction.member);
+  const blocked = config.blocked_role_ids ?? [];
+  if (blocked.some((id) => giverRoles.has(id))) {
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.rep.blocked'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+  const giverRoleIds = config.giver_role_ids ?? [];
+  if (giverRoleIds.length && !giverRoleIds.some((id) => giverRoles.has(id))) {
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.rep.noRole', { roles: giverRoleIds.map((id) => `<@&${id}>`).join(', ') }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+  const targetMember = await interaction.guild.members.fetch(target.id).catch(() => null);
+  if (targetMember && blocked.some((id) => targetMember.roles.cache.has(id))) {
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.rep.targetBlocked', { user: `${target}` }), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
+  }
+
   const giver = await db.getUser(interaction.guild.id, interaction.user.id);
   if (config.cooldown_hours > 0 && giver.last_given_at) {
     const cooldownMs = config.cooldown_hours * 3600_000;
@@ -65,12 +90,35 @@ async function giveCmd(interaction) {
   }
 
   await db.giveRep(interaction.guild.id, interaction.user.id, target.id);
+  await db.logRep(interaction.guild.id, interaction.user.id, target.id, interaction.channelId).catch((err) => logger.warn('Reputation log failed:', err.message));
   const receiver = await db.getUser(interaction.guild.id, target.id);
+  const earned = targetMember ? await giveRewards(interaction.guild, targetMember, db.rewardsFor(config, receiver.points), lang) : [];
 
+  let text = t(lang, 'utility.rep.given', { emoji: EMOJI.APPROVE, user: `${target}`, points: receiver.points });
+  if (earned.length) text += `\n${t(lang, 'utility.rep.reward', { user: `${target}`, roles: earned.map((id) => `<@&${id}>`).join(', ') })}`;
   await interaction.editReply({
-    components: [textCard(t(lang, 'utility.rep.given', { emoji: EMOJI.APPROVE, user: `${target}`, points: receiver.points }), 0xa5ea7a)],
+    components: [textCard(text, 0xa5ea7a)],
     flags: MessageFlags.IsComponentsV2,
   });
+}
+
+/** The role ids of a member, from a cached member or the raw one Discord sends with an interaction. */
+function roleIdsOf(member) {
+  if (member?.roles?.cache) return new Set(member.roles.cache.keys());
+  return new Set(Array.isArray(member?.roles) ? member.roles : []);
+}
+
+/** Gives the reward roles the member does not have yet and returns the ones given (a role Petto cannot give is skipped). */
+async function giveRewards(guild, member, rewards, lang) {
+  const given = [];
+  for (const reward of rewards) {
+    if (member.roles.cache.has(reward.roleId)) continue;
+    const role = guild.roles.cache.get(reward.roleId);
+    if (!role || role.managed || !role.editable) continue;
+    const ok = await member.roles.add(role, t(lang, 'utility.rep.rewardReason', { points: reward.points })).then(() => true, () => false);
+    if (ok) given.push(role.id);
+  }
+  return given;
 }
 
 async function viewCmd(interaction) {
