@@ -15,7 +15,7 @@ const { collectCommandData, findCommandFiles, COMMANDS_DIR, isSlashCommand } = r
 const ROLEPLAY = 36;
 const ESSENTIAL = [
   // Everyday commands that also work with `/` (they keep working with the prefix).
-  'afk', 'avatar', 'ban', 'botinfo', 'channel', 'giveaway', 'help', 'kick', 'ping', 'poll', 'purge', 'rank', 'remind',
+  'afk', 'avatar', 'ban', 'botinfo', 'channel', 'embed', 'giveaway', 'help', 'kick', 'ping', 'poll', 'purge', 'rank', 'remind',
   'serverinfo', 'suggest', 'ticket', 'timeout', 'top', 'unban', 'userinfo', 'warn',
   // Registered before for their own reasons.
   'guildtag', 'report', 'setup', 'vanity',
@@ -111,9 +111,19 @@ for (const name of ESSENTIAL.filter((name) => !['setup'].includes(name))) {
   assert.equal(command.data.toJSON().dm_permission, false, `/${name} is not offered in DMs`);
 }
 const byName = new Map(chat.map((json) => [json.name, json]));
-for (const name of ['ban', 'unban', 'kick', 'warn', 'timeout', 'purge', 'channel', 'giveaway']) {
+for (const name of ['ban', 'unban', 'kick', 'warn', 'timeout', 'purge', 'channel', 'giveaway', 'embed']) {
   assert.ok(byName.get(name).default_member_permissions != null, `/${name} asks for a permission`);
 }
+// /embed: the saved embed is picked from a list, and its descriptions are translated like the rest.
+const embedJson = byName.get('embed');
+const embedLeaves = embedJson.options.flatMap((option) => (option.type === ApplicationCommandOptionType.SubcommandGroup ? option.options : [option]));
+assert.deepEqual(embedLeaves.map((sub) => sub.name).sort(), ['add', 'author', 'color', 'create', 'delete', 'description', 'footer', 'image', 'list', 'preview', 'remove', 'send', 'thumbnail', 'timestamp', 'title', 'vars'].sort(), '/embed keeps every subcommand of the prefix form');
+for (const sub of embedLeaves) {
+  const option = (sub.options ?? []).find((o) => o.name === 'embed');
+  if (option) assert.equal(option.autocomplete, true, `/embed ${sub.name} lists the saved embeds as they are typed`);
+}
+assert.ok(embedJson.description_localizations?.['es-ES'] && embedJson.description_localizations?.['es-419'] && embedJson.description_localizations?.['pt-BR'], '/embed is described in Spanish and Portuguese');
+assert.equal(typeof require(findCommandFiles(COMMANDS_DIR).find((file) => file.endsWith('/config/embed.js'))).autocomplete, 'function', '/embed answers the autocomplete');
 assert.ok(byName.get('help').options.some((option) => option.name === 'query'), '/help can look a command up');
 assert.ok(byName.get('help').description_localizations?.['es-ES'] && byName.get('help').description_localizations?.['pt-BR'], '/help is described in Spanish and Portuguese');
 
