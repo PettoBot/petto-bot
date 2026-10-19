@@ -1,6 +1,6 @@
 const database = require('./database');
 
-const DEFAULT_CONFIG = { enabled: true, cooldown_hours: 24 };
+const DEFAULT_CONFIG = { enabled: true, cooldown_hours: 24, giver_role_ids: [], blocked_role_ids: [], channel_ids: [], rewards: [] };
 
 async function getConfig(guildId) {
   const { data, error } = await database.from('reputation_config').select('*').eq('guild_id', guildId).maybeSingle();
@@ -35,6 +35,23 @@ async function giveRep(guildId, giverId, receiverId) {
   if (e2) throw e2;
 }
 
+const LOG_DAYS = 90;
+
+/** One line in the log of points given; rows older than 90 days go at the same time. Failures never stop the point itself. */
+async function logRep(guildId, giverId, receiverId, channelId) {
+  const { error } = await database.from('reputation_log').insert({ guild_id: guildId, giver_id: giverId, receiver_id: receiverId, channel_id: channelId ?? null });
+  if (error) throw error;
+  await database.from('reputation_log').delete().eq('guild_id', guildId).lt('created_at', new Date(Date.now() - LOG_DAYS * 86400_000).toISOString());
+}
+
+/** The reward roles a number of points has reached, from the saved list (bad entries are skipped). */
+function rewardsFor(config, points) {
+  const list = Array.isArray(config?.rewards) ? config.rewards : [];
+  return list
+    .map((reward) => ({ points: Number(reward?.points), roleId: String(reward?.role_id ?? '') }))
+    .filter((reward) => Number.isInteger(reward.points) && reward.points > 0 && /^\d{15,25}$/.test(reward.roleId) && points >= reward.points);
+}
+
 async function getLeaderboard(guildId, limit = 10) {
   const { data, error } = await database.from('reputation').select('*').eq('guild_id', guildId).order('points', { ascending: false }).limit(limit);
   if (error) throw error;
@@ -46,4 +63,4 @@ async function resetUser(guildId, userId) {
   if (error) throw error;
 }
 
-module.exports = { getConfig, upsertConfig, getUser, giveRep, getLeaderboard, resetUser };
+module.exports = { getConfig, upsertConfig, getUser, giveRep, logRep, rewardsFor, getLeaderboard, resetUser };

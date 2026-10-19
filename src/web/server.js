@@ -33,6 +33,7 @@ const { registerMemberRoutes } = require('./memberRoutes');
 const { registerFormRoutes } = require('./formRoutes');
 const { registerCounterRoutes } = require('./counterRoutes');
 const { registerHoneypotRoutes } = require('./honeypotRoutes');
+const { registerBoosterRoleRoutes } = require('./boosterRoleRoutes');
 const { fetchDashboardMember } = require('./dashboardMember');
 const { roleGrantAllows } = require('./dashboardRoleAccess');
 const { registerGuildLanguageRoute } = require('./languageRoutes');
@@ -760,6 +761,8 @@ function startServer(client) {
     registerCounterRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
     // Honeypot: add, remove, choose the message of the bait channel and post it again, from the dashboard (administrators, like the command).
     registerHoneypotRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
+    // Booster roles: list them with their owners, and create, change, link, delete or clean them up, from the dashboard (Manage Server, like `!boosterrole admin`).
+    registerBoosterRoleRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
     // The public leaderboard page of a server that turned it on, asked for by the website.
     registerPublicLeaderboardRoute(app, { isAuthorized: dashboardAuthorized, limiter: dashboardDatabaseRateLimiter, client });
 

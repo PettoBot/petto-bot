@@ -11,7 +11,7 @@ const { t, languageOf } = require('../../i18n');
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('dmonjoin')
-    .setDescription('DM new members a message when they join (separate from the /welcome channel message).')
+    .setDescription('DM new members a message when they join (separate from the !welcome channel message).')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false)
     .addSubcommand((s) =>

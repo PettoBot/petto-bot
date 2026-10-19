@@ -1396,6 +1396,14 @@ create table if not exists booster_role_config (
 
 alter table booster_role_config enable row level security;
 
+-- Set from the dashboard's Booster roles page: whether boosters may make their own role at all, whether they may use a second color
+-- (gradient) and a role icon, and what happens to a booster role when its owner stops boosting: `keep` (nothing; `cleanup` by hand),
+-- `remove` (the role is taken off the owner and the people it is shared with, and given back if they boost again) or `delete`.
+alter table booster_role_config add column if not exists enabled boolean not null default true;
+alter table booster_role_config add column if not exists allow_gradient boolean not null default true;
+alter table booster_role_config add column if not exists allow_icon boolean not null default true;
+alter table booster_role_config add column if not exists on_unboost text not null default 'keep';
+
 -- ---------------------------------------------------------------------------
 -- Leveling / XP / rank / leaderboard. Ported from "bli" (LevelConfig/LevelUser,
 -- the a*x^3+b*x^2+c*x XP curve, the embed-style rank/leaderboard — no image
@@ -2437,6 +2445,26 @@ create table if not exists reputation (
 );
 create index if not exists idx_reputation_guild_points on reputation(guild_id, points desc);
 alter table reputation enable row level security;
+
+-- Who may give reputation and where, set from the dashboard: `giver_role_ids` (empty = everyone), `blocked_role_ids` (members with one
+-- of these roles can neither give nor receive), `channel_ids` (empty = every channel), and `rewards`, roles given at a number of
+-- points ([{ "points": 10, "role_id": "..." }], kept when the points are reset).
+alter table reputation_config add column if not exists giver_role_ids text[] not null default '{}';
+alter table reputation_config add column if not exists blocked_role_ids text[] not null default '{}';
+alter table reputation_config add column if not exists channel_ids text[] not null default '{}';
+alter table reputation_config add column if not exists rewards jsonb not null default '[]'::jsonb;
+
+-- Every point given, for the dashboard's "Recent reputation" list (rows older than 90 days are pruned when new ones come in).
+create table if not exists reputation_log (
+  id          bigserial primary key,
+  guild_id    text not null references guilds(guild_id) on delete cascade,
+  giver_id    text not null,
+  receiver_id text not null,
+  channel_id  text,
+  created_at  timestamptz not null default now()
+);
+create index if not exists idx_reputation_log_guild_time on reputation_log(guild_id, created_at desc);
+alter table reputation_log enable row level security;
 
 -- /poll: a button-voted poll. `options` is the ordered list of choice labels; a user's vote is
 -- their chosen index into that array. One row in poll_votes per (poll, user) so re-voting just
