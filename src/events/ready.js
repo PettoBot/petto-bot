@@ -3,7 +3,7 @@ const { applyStatus, currentStatus } = require('../utils/botPresence');
 const { warmGuild } = require('../utils/inviteCache');
 const logger = require('../utils/logger');
 const { attachDiscordLogger, startDiscordStatusJob } = require('../utils/discordOps');
-const { announceDeployReport } = require('../handlers/deployCommands');
+const { announceDeployReport, cleanupGuildCommands } = require('../handlers/deployCommands');
 const config = require('../config');
 const { syncAllGuildsAutoMod } = require('../utils/autoModManager');
 const { forEachWithConcurrency } = require('../utils/concurrency');
@@ -39,6 +39,8 @@ module.exports = {
     attachDiscordLogger(client);
     // The registration of the slash commands ran before the login: now that the log of Discord is on, it says what it did.
     announceDeployReport();
+    // Once, in the background: the server-only copies of the commands left from a registration per server (they showed twice).
+    cleanupGuildCommands(client).catch((err) => logger.warn(`The old server-only slash commands could not be cleaned: ${err?.message ?? err}`));
     startDiscordStatusJob(client);
 
     // Keep the existing warmup available, but never issue one invite request per guild at once.

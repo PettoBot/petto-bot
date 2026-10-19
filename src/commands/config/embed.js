@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType } = require('discord.js');
 const { getTemplate, upsertTemplate, deleteTemplate, listTemplates, normalizeName } = require('../../db/embedTemplates');
 const { ensureGuild } = require('../../db/guilds');
 const { parseColor, build, hasSendablePayload, formatEmbedError } = require('../../utils/embedBuilder');
@@ -301,10 +301,27 @@ async function createFromCode(interaction, guildId, name, code, ctx) {
   await interaction.editReply({ content: `${notes.join('\n')}\n\n${payload.content ?? ''}`.slice(0, 2000), embeds: payload.embeds, components: payload.components });
 }
 
+/** The saved embeds of the server that match what is typed in an `embed` option of `/embed`: the list Discord shows under it. */
+async function autocomplete(interaction) {
+  const focused = interaction.options.getFocused(true);
+  if (focused.name !== 'embed' || !interaction.guildId) return interaction.respond([]);
+  const typed = String(focused.value ?? '').trim().toLowerCase();
+  let rows = [];
+  try { rows = await listTemplates(interaction.guildId); } catch { rows = []; }
+  const choices = rows
+    .filter((row) => row?.name && (!typed || String(row.name).toLowerCase().includes(typed)))
+    .slice(0, 25)
+    .map((row) => ({ name: String(row.name).slice(0, 100), value: String(row.name).slice(0, 100) }));
+  return interaction.respond(choices);
+}
+
 module.exports = {
   createFromCode,
   readV2Code,
   aliases: ['em'],
+  // Works with the prefix (the subcommands are written as words) and as a slash command; `/embed create` opens the same editor.
+  registerSlash: true,
+  autocomplete,
   data: new SlashCommandBuilder()
     .setName('embed')
     .setDescription('Build and manage named, reusable embeds.')
@@ -312,15 +329,16 @@ module.exports = {
     .setDMPermission(false)
 
     .addSubcommand((s) => s.setName('create').setDescription('Create a new named embed, with the editor or from a code.').addStringOption((o) => o.setName('name').setDescription('Embed name (e.g. rules_embed)').setRequired(true)).addStringOption((o) => o.setName('code').setDescription('Optional: the whole embed as one code ({embed}&v{title: Hi}...), or a p2. code for a V2 design').setRequired(false).setMaxLength(6000)))
-    .addSubcommand((s) => s.setName('preview').setDescription('Preview a saved embed with variables resolved.').addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true)))
+    .addSubcommand((s) => s.setName('preview').setDescription('Preview a saved embed with variables resolved.').addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true).setAutocomplete(true)))
     .addSubcommand((s) =>
       s
         .setName('send')
         .setDescription('Send a saved embed to a channel.')
-        .addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true))
-        .addChannelOption((o) => o.setName('channel').setDescription('Target channel (default: current)').setRequired(false)),
+        .addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true).setAutocomplete(true))
+        .addChannelOption((o) => o.setName('channel').setDescription('Target channel (default: current)').setRequired(false)
+          .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement, ChannelType.GuildVoice, ChannelType.PublicThread, ChannelType.PrivateThread, ChannelType.AnnouncementThread)),
     )
-    .addSubcommand((s) => s.setName('delete').setDescription('Delete a saved embed.').addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true)))
+    .addSubcommand((s) => s.setName('delete').setDescription('Delete a saved embed.').addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true).setAutocomplete(true)))
     .addSubcommand((s) => s.setName('list').setDescription('List all saved embeds in this server.'))
     .addSubcommand((s) => s.setName('vars').setDescription('Show available variables/placeholders for embed fields.').addIntegerOption((o) => o.setName('page').setDescription('Page number').setRequired(false).setMinValue(1).setMaxValue(VAR_PAGES.length)))
 
@@ -332,7 +350,7 @@ module.exports = {
           s
             .setName('title')
             .setDescription('Edit the embed title.')
-            .addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true))
+            .addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true).setAutocomplete(true))
             .addStringOption((o) => o.setName('title').setDescription('Title text (supports variables)').setRequired(true))
             .addStringOption((o) => o.setName('url').setDescription('Clickable title URL').setRequired(false)),
         )
@@ -340,21 +358,21 @@ module.exports = {
           s
             .setName('description')
             .setDescription('Edit the embed description.')
-            .addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true))
+            .addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true).setAutocomplete(true))
             .addStringOption((o) => o.setName('description').setDescription('Description (supports variables, {newline} for line breaks)').setRequired(true)),
         )
         .addSubcommand((s) =>
           s
             .setName('color')
             .setDescription('Edit the embed color.')
-            .addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true))
+            .addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true).setAutocomplete(true))
             .addStringOption((o) => o.setName('color').setDescription('Hex color e.g. #ff91c2').setRequired(true)),
         )
         .addSubcommand((s) =>
           s
             .setName('author')
             .setDescription('Edit the embed author.')
-            .addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true))
+            .addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true).setAutocomplete(true))
             .addStringOption((o) => o.setName('text').setDescription('Author name (supports variables)').setRequired(true))
             .addStringOption((o) => o.setName('icon').setDescription('Icon URL (supports {user_avatar}, {server_icon})').setRequired(false))
             .addStringOption((o) => o.setName('url').setDescription('Author URL').setRequired(false)),
@@ -363,7 +381,7 @@ module.exports = {
           s
             .setName('footer')
             .setDescription('Edit the embed footer.')
-            .addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true))
+            .addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true).setAutocomplete(true))
             .addStringOption((o) => o.setName('text').setDescription('Footer text (supports variables)').setRequired(true))
             .addStringOption((o) => o.setName('icon').setDescription('Icon URL').setRequired(false)),
         )
@@ -371,21 +389,21 @@ module.exports = {
           s
             .setName('thumbnail')
             .setDescription('Edit the embed thumbnail (small image, top-right).')
-            .addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true))
+            .addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true).setAutocomplete(true))
             .addStringOption((o) => o.setName('image').setDescription('Image URL (supports {user_avatar}, {server_icon})').setRequired(true)),
         )
         .addSubcommand((s) =>
           s
             .setName('image')
             .setDescription('Edit the embed large image.')
-            .addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true))
+            .addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true).setAutocomplete(true))
             .addStringOption((o) => o.setName('image').setDescription('Image URL').setRequired(true)),
         )
         .addSubcommand((s) =>
           s
             .setName('timestamp')
             .setDescription('Toggle the embed timestamp on/off.')
-            .addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true))
+            .addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true).setAutocomplete(true))
             .addBooleanOption((o) => o.setName('timestamp').setDescription('Enable timestamp?').setRequired(true)),
         ),
     )
@@ -398,7 +416,7 @@ module.exports = {
           s
             .setName('add')
             .setDescription('Add a field to an embed.')
-            .addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true))
+            .addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true).setAutocomplete(true))
             .addStringOption((o) => o.setName('name').setDescription('Field name').setRequired(true))
             .addStringOption((o) => o.setName('value').setDescription('Field value').setRequired(true))
             .addBooleanOption((o) => o.setName('inline').setDescription('Display inline?').setRequired(false)),
@@ -407,7 +425,7 @@ module.exports = {
           s
             .setName('remove')
             .setDescription('Remove a field by position.')
-            .addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true))
+            .addStringOption((o) => o.setName('embed').setDescription('Embed name').setRequired(true).setAutocomplete(true))
             .addIntegerOption((o) => o.setName('position').setDescription('Field position (1-based)').setRequired(true).setMinValue(1)),
         ),
     ),
