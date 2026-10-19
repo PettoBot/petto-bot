@@ -108,7 +108,7 @@ module.exports = {
   'cmd.automation.autoresponder.remove.desc': 'Remove an autoresponder by its trigger text.',
   'cmd.automation.autoresponder.remove.opt.trigger.desc': 'Trigger text',
   'cmd.automation.autoresponder.edit.desc': 'Edit an existing autoresponder.',
-  'cmd.automation.autoresponder.edit.opt.id.desc': 'Autoresponder ID (see /autoresponder list)',
+  'cmd.automation.autoresponder.edit.opt.id.desc': 'Autoresponder ID (see !autoresponder list)',
   'cmd.automation.autoresponder.edit.opt.mode.desc': 'New match mode',
   'cmd.automation.autoresponder.edit.opt.embed.desc': 'New reply type',
   'cmd.automation.autoresponder.edit.opt.delete_trigger.desc': 'New delete-trigger setting',
