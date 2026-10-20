@@ -64,7 +64,7 @@ function download(url, hops, request = https.request, maxBytes = LIMITS.bytes) {
         try { next = checkUrl(new URL(res.headers.location, url).toString()); } catch (error) { return reject(error); }
         return resolve(download(next, hops + 1, request, maxBytes));
       }
-      if (status !== 200) { res.resume(); return reject(new Error(`The image server answered ${status}.`)); }
+      if (status !== 200) { res.resume(); return reject(Object.assign(new Error(`The image server answered ${status}.`), { status })); }
       if (!TYPES.test(String(res.headers['content-type'] ?? ''))) { res.resume(); return reject(new Error('That link is not a PNG, JPEG, WebP or GIF image.')); }
       const declared = Number(res.headers['content-length']);
       if (Number.isFinite(declared) && declared > maxBytes) { res.resume(); return reject(new Error('That image is too large.')); }

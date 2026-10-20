@@ -114,7 +114,7 @@ module.exports = {
   'utility.history.cleared.all.one': '{emoji}  Se borró {count} registro guardado. {status}',
   'utility.history.cleared.all.other': '{emoji}  Se borraron {count} registros guardados. {status}',
   'utility.history.recordOn': '{emoji}  Tus avatares, nombres y apodos se vuelven a guardar.',
-  'utility.history.recordOff': '{emoji}  Petto deja de guardar tu historial y nadie más puede verlo. Lo que ya está guardado se queda hasta que lo borres con `clear`.',
+  'utility.history.recordOff': '{emoji}  Petto deja de guardar tu historial y nadie más puede verlo. Las copias de tus avatares antiguos se borran ya; el resto de lo guardado se queda hasta que lo borres con `clear`.',
   'utility.history.bot': 'Los bots no tienen historial.',
   'utility.history.offSelf': 'Tu historial está desactivado. Usa `profilehistory record true` para volver a guardarlo.',
   'utility.history.offOther': '{user} desactivó su historial.',

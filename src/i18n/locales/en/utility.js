@@ -114,7 +114,7 @@ module.exports = {
   'utility.history.cleared.all.one': '{emoji}  Deleted {count} saved entries. {status}',
   'utility.history.cleared.all.other': '{emoji}  Deleted {count} saved entries. {status}',
   'utility.history.recordOn': '{emoji}  Your avatars, names and nicknames are saved again.',
-  'utility.history.recordOff': '{emoji}  Petto stops saving your history, and others cannot see it. What is saved stays until you `clear` it.',
+  'utility.history.recordOff': '{emoji}  Petto stops saving your history, and others cannot see it. The copies of your old avatars are deleted now; the rest of what is saved stays until you `clear` it.',
   'utility.history.bot': 'Bots do not have a history.',
   'utility.history.offSelf': 'Your history is turned off. Use `profilehistory record true` to save it again.',
   'utility.history.offOther': '{user} turned their history off.',

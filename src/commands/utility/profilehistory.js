@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, MessageFlags, AttachmentBuilder, ContainerBuilder, TextDisplayBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, SeparatorBuilder, SeparatorSpacingSize } = require('discord.js');
 const history = require('../../db/identityHistory');
-const { noteUser, noteMember, recordingOn, forgetOptOut } = require('../../utils/identityHistory');
+const { noteUser, noteMember, recordingOn, setRecording, clearHistory } = require('../../utils/identityHistory');
+const images = require('../../db/profileHistoryImages');
 const { renderAvatarSheet, MAX_TILES } = require('../../utils/avatarSheet');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
@@ -46,7 +47,7 @@ async function clearCmd(interaction) {
   const lang = await languageOf(interaction);
   const what = interaction.options.getString('what', true);
   const kind = { avatars: 'avatar', names: 'name', nicknames: 'nickname', all: null }[what];
-  const removed = await history.clear(interaction.user.id, kind);
+  const removed = await clearHistory(interaction.user.id, kind);
   const status = t(lang, await recordingOn(interaction.user.id) ? 'utility.history.stillSaving' : 'utility.history.savingOff');
   return say(interaction, tn(lang, `utility.history.cleared.${what}`, removed, { emoji: EMOJI.APPROVE, count: removed, status }), COLORS.GREEN, true);
 }
@@ -54,8 +55,7 @@ async function clearCmd(interaction) {
 async function recordCmd(interaction) {
   const lang = await languageOf(interaction);
   const enabled = interaction.options.getBoolean('enabled', true);
-  await history.setOptOut(interaction.user.id, !enabled);
-  forgetOptOut(interaction.user.id);
+  await setRecording(interaction.user.id, enabled);
   if (enabled) await noteUser(interaction.user);
   return say(interaction, t(lang, enabled ? 'utility.history.recordOn' : 'utility.history.recordOff', { emoji: EMOJI.APPROVE }), COLORS.GREEN, true);
 }
@@ -94,7 +94,9 @@ async function showCmd(interaction, kindName) {
 async function showAvatars(interaction, user, lang) {
   const rows = await history.list(user.id, 'avatar');
   if (!rows.length) return interaction.editReply({ components: [textCard(t(lang, 'utility.history.empty.avatars'), 0x4b4f59)], flags: V2 });
-  const sheet = await renderAvatarSheet(user.id, rows);
+  // The kept copies first (Discord no longer serves most old avatars), the Discord link for the rest.
+  const stored = await images.getMany(user.id, rows.slice(0, MAX_TILES).map((row) => row.value)).catch(() => new Map());
+  const sheet = await renderAvatarSheet(user.id, rows, { stored });
   const saved = rows.length > MAX_TILES ? t(lang, 'utility.history.avatarsSavedMore', { count: rows.length, shown: MAX_TILES }) : tn(lang, 'utility.history.avatarsSaved', rows.length, { count: rows.length });
   const container = new ContainerBuilder().setAccentColor(ACCENT)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### ${t(lang, 'utility.history.avatarsTitle', { name: user.username })}\n${saved}`))

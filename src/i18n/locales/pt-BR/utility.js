@@ -114,7 +114,7 @@ module.exports = {
   'utility.history.cleared.all.one': '{emoji}  {count} registro salvo foi apagado. {status}',
   'utility.history.cleared.all.other': '{emoji}  {count} registros salvos foram apagados. {status}',
   'utility.history.recordOn': '{emoji}  Seus avatares, nomes e apelidos voltam a ser salvos.',
-  'utility.history.recordOff': '{emoji}  O Petto para de salvar seu histórico, e os outros não podem vê-lo. O que já foi salvo fica até você apagar com `clear`.',
+  'utility.history.recordOff': '{emoji}  O Petto para de salvar seu histórico, e os outros não podem vê-lo. As cópias dos seus avatares antigos são apagadas agora; o resto do que foi salvo fica até você apagar com `clear`.',
   'utility.history.bot': 'Bots não têm histórico.',
   'utility.history.offSelf': 'Seu histórico está desativado. Use `profilehistory record true` para voltar a salvá-lo.',
   'utility.history.offOther': '{user} desativou o próprio histórico.',

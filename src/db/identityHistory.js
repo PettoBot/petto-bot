@@ -1,4 +1,5 @@
 const database = require('./database');
+const images = require('./profileHistoryImages');
 
 const KINDS = ['avatar', 'name', 'nickname'];
 const KEEP_PER_KIND = 200; // the newest this many of each kind (and of each server, for nicknames) are kept
@@ -49,6 +50,8 @@ async function clear(userId, kind = null) {
   if (kind) query = query.eq('kind', kind);
   const { data, error } = await query.select('id');
   if (error) throw error;
+  // The copies of the avatars go too (a trigger of schema.sql does the same for the dashboard's deletes).
+  if (!kind || kind === 'avatar') await images.clearUser(userId);
   return (data ?? []).length;
 }
 
@@ -62,6 +65,7 @@ async function setOptOut(userId, optedOut) {
   if (optedOut) {
     const { error } = await database.from('identity_history_optout').upsert({ user_id: userId }, { onConflict: 'user_id' });
     if (error) throw error;
+    await images.clearUser(userId); // the copies of the avatars are not kept for someone who turned it off (a trigger does it as well)
   } else {
     const { error } = await database.from('identity_history_optout').delete().eq('user_id', userId);
     if (error) throw error;
