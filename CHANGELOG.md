@@ -24,6 +24,8 @@ Needs `schema.sql` (four new columns on `appeal_config`: `dm_link_mode`, `dm_lin
 
 ### Fixed
 
+- **The profile history keeps the old avatars themselves, not just their names.** Discord stops serving an avatar soon after it is changed, so the history showed old avatars as broken pictures (or, since the website's last update, as "Discord no longer has this picture"). Now Petto downloads each new avatar the moment it records it and keeps a 256 px copy (WebP; an animated avatar keeps its first frame), so the website's history page and `!profilehistory avatars` show it for good. The downloads wait in a small queue (two at a time, a failure tried once more) so a burst of profile changes does not flood Discord. After a restart Petto also tries, slowly, the avatars recorded before this update: the current ones and recently changed ones are usually still there; the ones Discord no longer has are marked and not asked again (those cannot be recovered). Up to 100 copies per person, the newest. Deleting your avatars (`profilehistory clear avatars`, or on the website) deletes their copies, and turning the history off (`profilehistory record false`) deletes all of your copies at once. Needs `schema.sql` (new table `profile_history_images` and two triggers). Deploy the bot before the website.
+
 - **`/channel clear` no longer fails.** As a slash command its "thinking" answer is a message in the same channel, and the clear deleted it, so the answer could not be edited (Unknown Message, 10008) and the error was logged twice. That answer is now left out of the clear, and if the answer is gone anyway the result is sent as a new message.
 
 ## [0.7.7] — 2026-10-19 · Tiramisu

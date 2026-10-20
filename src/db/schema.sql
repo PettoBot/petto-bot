@@ -4039,3 +4039,45 @@ create unique index if not exists idx_pagination_messages_message on pagination_
 create index if not exists idx_pagination_messages_guild on pagination_messages(guild_id, created_at);
 create index if not exists idx_pagination_messages_channel on pagination_messages(channel_id);
 alter table pagination_messages enable row level security;
+
+-- Profile history: a copy of each avatar, taken when Petto records it (Discord stops serving an old avatar soon after it is changed, so
+-- the hash alone is not enough to show it later). One 256 px still per person and hash (an animated avatar keeps its first frame), at
+-- most 100 per person (the newest of the history) and 256 KB each. `bytes` is null and `size` 0 while there is no copy: `missing` = Discord
+-- answered that it no longer has it (not asked again), otherwise `attempts` counts the failed tries (given up after 3).
+create table if not exists profile_history_images (
+  user_id       text not null,
+  hash          text not null,
+  content_type  text not null default 'image/webp',
+  size          integer not null default 0,
+  bytes         bytea,
+  missing       boolean not null default false,
+  attempts      integer not null default 0,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now(),
+  primary key (user_id, hash)
+);
+alter table profile_history_images enable row level security;
+-- The copies follow the history whoever changes it (the bot, the dashboard's REST client or its direct connection): a deleted avatar
+-- entry takes its copy with it (unless the same hash is still saved), and turning the history off deletes every copy of that person.
+create or replace function profile_history_images_forget_entry() returns trigger
+language plpgsql
+as $$
+begin
+  if old.kind = 'avatar' and not exists (select 1 from identity_history where user_id = old.user_id and kind = 'avatar' and value = old.value) then
+    delete from profile_history_images where user_id = old.user_id and hash = old.value;
+  end if;
+  return null;
+end;
+$$;
+drop trigger if exists identity_history_forget_image on identity_history;
+create trigger identity_history_forget_image after delete on identity_history for each row execute function profile_history_images_forget_entry();
+create or replace function profile_history_images_forget_user() returns trigger
+language plpgsql
+as $$
+begin
+  delete from profile_history_images where user_id = new.user_id;
+  return null;
+end;
+$$;
+drop trigger if exists identity_history_optout_forget_images on identity_history_optout;
+create trigger identity_history_optout_forget_images after insert or update on identity_history_optout for each row execute function profile_history_images_forget_user();

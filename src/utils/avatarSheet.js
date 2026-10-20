@@ -1,7 +1,7 @@
 // One picture with every avatar a person has had, newest first, each with the date it was seen.
 const { createCanvas } = require('@napi-rs/canvas');
 const { registerCardFonts, canvasFont } = require('../imgutils/cardFonts');
-const { loadImageFromLink } = require('./safeImage');
+const { loadImageFromLink, decode } = require('./safeImage');
 const { avatarUrl } = require('./identityHistory');
 
 const COLUMNS = 6;
@@ -30,13 +30,15 @@ function roundRect(ctx, x, y, w, h, r) {
 }
 
 /**
- * `rows` are `{ value (the avatar hash), seen_at }` newest first. Returns `{ buffer, shown }`: a PNG and how many avatars it holds
+ * `rows` are `{ value (the avatar hash), seen_at }` newest first. `stored` (hash -> bytes) are the kept copies, drawn instead of asking
+ * Discord, which no longer serves most old avatars. Returns `{ buffer, shown }`: a PNG and how many avatars it holds
  * (a picture that could not be loaded is drawn as an empty tile). `loader` lets a test replace the download.
  */
-async function renderAvatarSheet(userId, rows, { loader = loadImageFromLink } = {}) {
+async function renderAvatarSheet(userId, rows, { loader = loadImageFromLink, stored = new Map() } = {}) {
   registerCardFonts();
   const list = rows.slice(0, MAX_TILES);
-  const images = await Promise.all(list.map((row) => loader(avatarUrl(userId, row.value, TILE))));
+  const fromCopy = async (bytes) => { try { return await decode(bytes); } catch { return null; } };
+  const images = await Promise.all(list.map(async (row) => (stored.has(row.value) ? await fromCopy(stored.get(row.value)) : null) ?? loader(avatarUrl(userId, row.value, TILE))));
   const rowsCount = Math.max(1, Math.ceil(list.length / COLUMNS));
   const columns = Math.min(COLUMNS, Math.max(1, list.length));
   const width = PAD * 2 + columns * TILE + (columns - 1) * GAP;
