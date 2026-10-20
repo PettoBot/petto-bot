@@ -250,18 +250,32 @@ async function clear(interaction) {
   }
 
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+  // As a slash command the "thinking" answer is already a message in this channel: it is left out of the clear, or the clear would
+  // delete it and the answer could not be edited afterwards (Unknown Message).
+  const ownReply = await interaction.fetchReply().catch(() => null);
+  // The answer is edited; if it is gone anyway (someone deleted it), it is sent again as a new message.
+  const answer = async (payload) => {
+    try {
+      await interaction.editReply(payload);
+    } catch (err) {
+      if (err?.code !== 10008) throw err;
+      await interaction.followUp(payload).catch(() => null);
+    }
+  };
 
+  let deletedCount;
   try {
-    const messages = await collectMessages(interaction.channel, { amount, userId: user?.id ?? null });
-    const deletedCount = await deleteMessages(interaction.channel, messages);
-    const text = user
-      ? tn(lang, 'moderation.channel.clear.doneFrom', deletedCount, { emoji: EMOJI.APPROVE, count: deletedCount, user: `${user}` })
-      : tn(lang, 'moderation.channel.clear.done', deletedCount, { emoji: EMOJI.APPROVE, count: deletedCount });
-    await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
+    const messages = await collectMessages(interaction.channel, { amount, userId: user?.id ?? null, skipIds: [ownReply?.id] });
+    deletedCount = await deleteMessages(interaction.channel, messages);
   } catch (err) {
     logger.error('Failed to bulk delete:', err);
-    await interaction.editReply({ components: [textCard(t(lang, 'moderation.channel.clear.failed'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    await answer({ components: [textCard(t(lang, 'moderation.channel.clear.failed'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
+    return;
   }
+  const text = user
+    ? tn(lang, 'moderation.channel.clear.doneFrom', deletedCount, { emoji: EMOJI.APPROVE, count: deletedCount, user: `${user}` })
+    : tn(lang, 'moderation.channel.clear.done', deletedCount, { emoji: EMOJI.APPROVE, count: deletedCount });
+  await answer({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
 
 const LOCKABLE_TYPES = [ChannelType.GuildText, ChannelType.GuildAnnouncement, ChannelType.GuildForum];
