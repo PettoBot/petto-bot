@@ -22,6 +22,10 @@ All notable changes to Petto are documented here.
 
 Needs `schema.sql` (four new columns on `appeal_config`: `dm_link_mode`, `dm_link_types`, `dm_note`, `min_wait_hours`). Deploy the bot before the website.
 
+### Fixed
+
+- **`/channel clear` no longer fails.** As a slash command its "thinking" answer is a message in the same channel, and the clear deleted it, so the answer could not be edited (Unknown Message, 10008) and the error was logged twice. That answer is now left out of the clear, and if the answer is gone anyway the result is sent as a new message.
+
 ## [0.7.7] — 2026-10-19 · Tiramisu
 
 ### Added

@@ -34,5 +34,9 @@ const channel = {
   assert.equal((await collectMessages(channel, { amount: 5000, now: NOW })).length, 300, 'the amount is capped');
   assert.equal(await deleteMessages(channel, await collectMessages(channel, { amount: 250, now: NOW })), 250, 'deleted in groups');
   assert.equal(await deleteMessages(channel, []), 0);
-  console.log('Checked clear: pages of 100, the 14 days limit and groups of 100.');
+  // The answer of the slash command (already in the channel) is never part of what is cleared.
+  picked = await collectMessages(channel, { amount: 5, skipIds: ['10000', undefined], now: NOW });
+  assert.equal(picked.length, 5); assert.ok(picked.every((m) => m.id !== '10000'), 'the own answer is skipped');
+  assert.equal(picked[0].id, '9999');
+  console.log('Checked clear: pages of 100, the 14 days limit and groups of 100, the own answer skipped.');
 })();

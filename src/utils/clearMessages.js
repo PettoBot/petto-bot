@@ -6,7 +6,8 @@ const MAX_SCANNED = 1500; // when only one member's messages are wanted, how far
 const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000 - 60_000;
 
 /** The messages to delete, newest first. `channel.messages.fetch` is asked for 100 at most each time. */
-async function collectMessages(channel, { amount, userId = null, now = Date.now() }) {
+async function collectMessages(channel, { amount, userId = null, skipIds = [], now = Date.now() }) {
+  const skip = new Set(skipIds.filter(Boolean));
   const wanted = Math.max(1, Math.min(MAX_AMOUNT, amount));
   const picked = [];
   let before;
@@ -17,6 +18,7 @@ async function collectMessages(channel, { amount, userId = null, now = Date.now(
     scanned += page.size;
     for (const message of page.values()) {
       if (now - message.createdTimestamp > TWO_WEEKS_MS) return picked; // the rest is older still
+      if (skip.has(message.id)) continue; // e.g. the answer of the command itself, which is edited when the clear is done
       if (userId && message.author?.id !== userId) continue;
       picked.push(message);
       if (picked.length >= wanted) return picked;
