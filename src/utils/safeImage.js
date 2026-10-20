@@ -53,7 +53,7 @@ function checkUrl(value) {
   return url;
 }
 
-function download(url, hops, request = https.request) {
+function download(url, hops, request = https.request, maxBytes = LIMITS.bytes) {
   return new Promise((resolve, reject) => {
     const req = request(url, { method: 'GET', lookup: safeLookup, timeout: LIMITS.timeoutMs, headers: { 'User-Agent': 'PettoCards/1.0', Accept: 'image/*' } }, (res) => {
       const status = res.statusCode ?? 0;
@@ -62,17 +62,17 @@ function download(url, hops, request = https.request) {
         if (hops >= LIMITS.redirects) return reject(new Error('Too many redirects.'));
         let next;
         try { next = checkUrl(new URL(res.headers.location, url).toString()); } catch (error) { return reject(error); }
-        return resolve(download(next, hops + 1, request));
+        return resolve(download(next, hops + 1, request, maxBytes));
       }
       if (status !== 200) { res.resume(); return reject(new Error(`The image server answered ${status}.`)); }
       if (!TYPES.test(String(res.headers['content-type'] ?? ''))) { res.resume(); return reject(new Error('That link is not a PNG, JPEG, WebP or GIF image.')); }
       const declared = Number(res.headers['content-length']);
-      if (Number.isFinite(declared) && declared > LIMITS.bytes) { res.resume(); return reject(new Error('That image is too large.')); }
+      if (Number.isFinite(declared) && declared > maxBytes) { res.resume(); return reject(new Error('That image is too large.')); }
       const chunks = [];
       let size = 0;
       res.on('data', (chunk) => {
         size += chunk.length;
-        if (size > LIMITS.bytes) { req.destroy(new Error('That image is too large.')); return; }
+        if (size > maxBytes) { req.destroy(new Error('That image is too large.')); return; }
         chunks.push(chunk);
       });
       res.on('end', () => resolve(Buffer.concat(chunks)));
@@ -97,11 +97,11 @@ function remember(key, buffer) {
   }
 }
 
-/** The bytes of an image link, from the cache when it was fetched recently. */
-async function fetchImageBuffer(link, request) {
+/** The bytes of an image link, from the cache when it was fetched recently. `maxBytes` raises or lowers the size limit for one call. */
+async function fetchImageBuffer(link, request, { maxBytes = LIMITS.bytes } = {}) {
   const hit = cache.get(link);
-  if (hit && Date.now() - hit.at < LIMITS.cacheTtlMs) return hit.buffer;
-  const buffer = await download(checkUrl(link), 0, request);
+  if (hit && Date.now() - hit.at < LIMITS.cacheTtlMs && hit.buffer.length <= maxBytes) return hit.buffer;
+  const buffer = await download(checkUrl(link), 0, request, maxBytes);
   remember(link, buffer);
   return buffer;
 }

@@ -24,7 +24,7 @@ module.exports = {
   'help.blurb.utility.menu': 'Reminders, polls, quests, booster roles and tools',
   'help.blurb.misc.menu': 'Smaller commands that do not fit anywhere else',
   'help.blurb.roleplay.menu': 'Hugs, pats and other reactions with a gif',
-  'help.blurb.fun.menu': 'Games and light-hearted commands',
+  'help.blurb.fun.menu': 'Games, quotes and image effects',
   'help.blurb.other.menu': 'Everything else',
   'help.main.intro': '**Petto has {count} commands.** Pick a category below, or look one up directly:\n```lua\n{prefix}help [category | command]\n```\n-# For example `{prefix}help ban` or `{prefix}help ticket category add`. Aliases work too.',
   'help.main.slash': '-# **{count}** of them also work as slash commands: type `/` in the chat, or use `/help` to open this menu just for you.',

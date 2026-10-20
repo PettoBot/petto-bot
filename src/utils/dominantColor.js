@@ -6,7 +6,11 @@ const SIZE = 32;
 /** The color most of an image's pixels share, as a number, favoring vivid colors over grays. Null when it cannot be read. */
 async function dominantColor(link) {
   const image = link ? await loadImageFromLink(link) : null;
-  if (!image) return null;
+  return image ? dominantColorOf(image) : null;
+}
+
+/** The same for an image (or canvas) already loaded. Null when every pixel is near black, near white or transparent. */
+function dominantColorOf(image) {
   const canvas = createCanvas(SIZE, SIZE);
   const ctx = canvas.getContext('2d');
   ctx.drawImage(image, 0, 0, SIZE, SIZE);
@@ -33,4 +37,4 @@ async function dominantColor(link) {
   return (Math.round(best.r / best.n) << 16) | (Math.round(best.g / best.n) << 8) | Math.round(best.b / best.n);
 }
 
-module.exports = { dominantColor };
+module.exports = { dominantColor, dominantColorOf };

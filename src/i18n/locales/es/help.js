@@ -24,7 +24,7 @@ module.exports = {
   'help.blurb.utility.menu': 'Recordatorios, encuestas, misiones, roles de booster y herramientas',
   'help.blurb.misc.menu': 'Comandos más pequeños que no encajan en otro lugar',
   'help.blurb.roleplay.menu': 'Abrazos, caricias y otras reacciones con un gif',
-  'help.blurb.fun.menu': 'Juegos y comandos para divertirse',
+  'help.blurb.fun.menu': 'Juegos, citas y efectos de imagen',
   'help.blurb.other.menu': 'Todo lo demás',
   'help.main.intro': '**Petto tiene {count} comandos.** Elige una categoría abajo o busca uno directamente:\n```lua\n{prefix}help [categoría | comando]\n```\n-# Por ejemplo `{prefix}help ban` o `{prefix}help ticket category add`. Los alias también funcionan.',
   'help.main.slash': '-# **{count}** también funcionan como comandos de barra: escribe `/` en el chat, o usa `/help` para abrir este menú solo para ti.',

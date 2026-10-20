@@ -2,6 +2,9 @@ const { SlashCommandBuilder } = require('discord.js');
 const { infoPayload, noticePayload, line } = require('../../utils/infoCard');
 const { COLORS } = require('../../utils/colors');
 const { t, languageOf } = require('../../i18n');
+const { runHex } = require('../../utils/imageCommands');
+
+const HEX = /^#?[0-9a-f]{1,6}$/i;
 
 function toHsl(r, g, b) {
   const rn = r / 255;
@@ -22,14 +25,22 @@ function toHsl(r, g, b) {
 
 module.exports = {
   aliases: ['clr', 'hex'],
+  // Finding the color of a picture draws one.
+  cooldownMs: 4000,
   data: new SlashCommandBuilder()
     .setName('color')
-    .setDescription('Previews a hex color.')
-    .addStringOption((o) => o.setName('hex').setDescription('e.g. #ff91c2 or ff91c2').setRequired(true)),
+    .setDescription('Previews a hex color, or finds the main color of an image or avatar.')
+    .addStringOption((o) => o.setName('hex').setDescription('e.g. #ff91c2, or an image link or a member (or attach or reply to an image)').setRequired(false)),
 
   async execute(interaction) {
     const lang = await languageOf(interaction);
-    const input = interaction.options.getString('hex', true).replace('#', '').trim();
+    const typed = interaction.options.getString('hex')?.trim() ?? '';
+    // Anything that is not a hex code (nothing, a picture, a link, a member) asks for the main color of that picture.
+    if (!HEX.test(typed) && interaction.rawMessage) {
+      await runHex(interaction, lang, typed || null);
+      return;
+    }
+    const input = typed.replace('#', '').trim();
     const num = parseInt(input, 16);
 
     if (!/^[0-9a-f]{1,6}$/i.test(input) || Number.isNaN(num)) {
