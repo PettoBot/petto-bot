@@ -208,4 +208,16 @@ function hasV2Content(data) {
   return isV2(data) && walk(data.v2.components);
 }
 
-module.exports = { DISPLAY_BUTTON_PREFIX, LIMITS, TYPES, isV2, buildV2, hasV2Content };
+/** Reads a `p2.` share code: base64url of `{ components: [...] }`. Returns null for anything else. */
+function readV2Code(code) {
+  const text = String(code ?? '').trim();
+  if (!text.startsWith('p2.') || text.length > 40000) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(text.slice(3).replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
+    return Array.isArray(parsed?.components) && parsed.components.every((node) => node && typeof node === 'object') ? { components: parsed.components } : null;
+  } catch {
+    return null;
+  }
+}
+
+module.exports = { DISPLAY_BUTTON_PREFIX, LIMITS, TYPES, isV2, buildV2, hasV2Content, readV2Code };

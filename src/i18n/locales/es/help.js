@@ -20,7 +20,7 @@ module.exports = {
   'help.blurb.leveling.menu': 'XP, niveles, tarjetas de rango, recompensas y tablas de clasificación',
   'help.blurb.giveaways.menu': 'Organiza sorteos, preajustes y plantillas',
   'help.blurb.tickets.menu': 'Tickets de soporte, categorías, formularios y transcripciones',
-  'help.blurb.config.menu': 'Prefijo, idioma, alias, permisos y la apariencia de Petto',
+  'help.blurb.config.menu': 'Prefijo, idioma, permisos, embeds y mensajes con páginas',
   'help.blurb.utility.menu': 'Recordatorios, encuestas, misiones, roles de booster y herramientas',
   'help.blurb.misc.menu': 'Comandos más pequeños que no encajan en otro lugar',
   'help.blurb.roleplay.menu': 'Abrazos, caricias y otras reacciones con un gif',

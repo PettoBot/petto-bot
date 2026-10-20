@@ -5,6 +5,7 @@ const { parseColor, build, hasSendablePayload, formatEmbedError } = require('../
 const { extractReactRepliesFromTemplate, applyReactReplies, uniqueReactions } = require('../../utils/messageFlags');
 const { renderPanel } = require('../../interactions/embedPanel');
 const { parseEmbedScript, toTemplateData } = require('../../utils/embedScript');
+const { readV2Code } = require('../../utils/embedV2');
 const { commandRef } = require('../../utils/commandRef');
 const logger = require('../../utils/logger');
 const { t, languageOf, currentLanguage } = require('../../i18n');
@@ -224,18 +225,6 @@ async function getOrFail(interaction, name, lang) {
     return null;
   }
   return doc;
-}
-
-/** Reads a `p2.` share code: base64url of `{ components: [...] }`. Returns null for anything else. */
-function readV2Code(code) {
-  const text = String(code ?? '').trim();
-  if (!text.startsWith('p2.') || text.length > 40000) return null;
-  try {
-    const parsed = JSON.parse(Buffer.from(text.slice(3).replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
-    return Array.isArray(parsed?.components) && parsed.components.every((node) => node && typeof node === 'object') ? { components: parsed.components } : null;
-  } catch {
-    return null;
-  }
 }
 
 /** `/embed create name code:p2....` saves a Components V2 design from its code, checked the way a send is. */

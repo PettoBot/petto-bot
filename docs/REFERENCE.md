@@ -178,6 +178,8 @@ src/
       logs.js                  /logs — configure the audit-log system
       automod.js                !automod — link (public threat-feed check)
       embed.js                  /embed — create / preview / send / delete / list / edit / field / vars
+      pagination.js             !pagination (aliases `pn`, `pages`, prefix only) — messages with several pages of embeds and
+                                 buttons; see "Paginated messages" below
       verify.js                 /verify — setup / status / send (Cloudflare Turnstile join-verification gate)
       welcome.js                /welcome — setup / status / test / disable
       leave.js                  /leave — setup / status / test / disable
@@ -803,6 +805,45 @@ Ported from an earlier bot's embed system — specifically its **slash-command**
 Variables (`src/utils/embedVariables.js`) cover the user (`{user}`, `{user_avatar}`, `{user.join_position}`, ...), the server (`{server_name}`, `{server_membercount}`, `{server_randommember}`, ...), the channel, the date, and a couple of functions (`{choose:a|b|c}`, `{range:1-100}`, `{newline}`). Not ported: the original's `{level}`/`{xp}`/`{rank}` (no leveling system yet), `{message_*}` variables resolve empty since slash commands have no triggering message to point at, and the whole `{noping}`/`{dm}`/`{sendto:}`/`{react:}`/behavior-flag mini-language — those were parsed by the `$b` raw-code parser specifically, which wasn't ported.
 
 Storage is one `embed_templates` row per `(guild_id, name)`, with the whole embed (`title`, `description`, `color`, `author`, `footer`, `fields`, ...) as a single JSONB `data` column, mirroring the original's flexible Mongo document shape.
+
+## Paginated messages (`!pagination`, aliases `pn`, `pages`)
+
+Prefix only (not a slash command), in the **Configuration** category, for members with **Manage Messages** (`reset`: Administrator). One message of Petto with up to **25 pages**, and buttons under it to turn them — the "embed pagination" of other bots, with buttons instead of reactions (they need no Add Reactions permission, show the page number, work on phones without a long press, and keep working after a restart). Each page is a **saved embed** (`!embed`, by name: it is drawn when it is shown, so its variables are filled then and an edit of the embed shows at once), an **embed code** (`{embed}$v{title: ...}`, read by the same parser as `!embed create` and `!editembed`, warnings shown), a **`p2.` code** (a Components V2 design), or — for `set` — what the message already showed.
+
+`<message>` is a message link (right click → Copy Message Link), `#channel <id>`, an id in this channel, or nothing when the command **replies** to the message. Only messages Petto sent can have pages (a bot cannot edit the messages of others).
+
+| Command | What it does |
+| --- | --- |
+| `!pagination create [#channel] <embed or code> [--private]` | Posts a new message (here when no channel) with its first page. |
+| `!pagination set <message> [--private]` | A message Petto already sent (for example with `!embed send`) becomes page 1, as it is. |
+| `!pagination add <message> <embed or code>` | Adds a page at the end. |
+| `!pagination update <message> <page> <embed or code>` (alias `edit`) | Another embed for one page. |
+| `!pagination remove <message> <page>` | Removes a page (not the last one: use `delete`). |
+| `!pagination move <message> <from> <to>` | Moves a page. |
+| `!pagination list` | Every paginated message of the server: channel, pages, private or not, link (10 a page). |
+| `!pagination view <message>` (aliases `show`, `info`) | Its pages in order, their kind and mode. |
+| `!pagination mode <message> shared\|private` | Who sees a click (see below). |
+| `!pagination restore <message>` (aliases `restorereactions`, `rr`) | Draws page 1 again with the buttons (after they were removed, or after editing the message with something else). |
+| `!pagination delete <message> [--message]` (alias `del`) | Stops it: the buttons come off and the message keeps the page it shows; `--message` deletes the message. |
+| `!pagination reset` | Administrator: stops every pagination of the server, after a confirmation button. |
+
+After a change the message shows page 1 again with the new number of pages.
+
+**Buttons.** With 2–5 pages: ◀ · `Page X/Y` (disabled) · ▶. With 6 or more: ⏮ ◀ `Page X/Y` ▶ ⏭ and a second row with a **Jump to a page…** menu (each option says which embed it is). A single page has no buttons. Ids: `pgm::<record id>::<page>::<f|p|n|l>`, `pgm::<id>::label`, `pgm::<id>::jump`, `pgm::reset::<user>::yes|no` (`utils/pagination.js` `parseCustomId`). A click reads the record from the database, so nothing is lost on a restart; a page number past the end (a page was removed since) shows the last page.
+
+**Shared or private.** By default anyone can turn the pages and a click changes the message **for everyone** (what other bots do); the variables of a shared page are filled for the member who made the pagination, so the message does not change with each clicker (when they left, the clicker). With `--private` (or `mode private`), a click answers **only the member who clicked** with their own copy of the page (an ephemeral message, its variables filled for them, in its own language), whose buttons then turn that copy in place; the message in the channel stays on page 1. Private suits rules or guides read by many people at once; shared suits a message a moderator presents.
+
+**One kind per message.** A classic message (text and embeds) cannot become a Components V2 one or the other way round, so all the pages of a message are of one kind (`kind` = `embed` or `v2`, taken from its first page). Adding a page of the other kind is refused with a clear message; if a saved embed used by a page is later turned into a V2 design (or back), that page answers with an error and asks for `update`. A classic page keeps at most 3 rows of its own buttons (link buttons of the embed), as the page buttons need the other 2 rows. A page with an image card replaces the files of the message; a message taken by `set` with files of its own keeps them.
+
+**Clean-up.** A deleted message (`messageDelete`, `messageDeleteBulk`) or channel (`channelDelete`) removes its record (`events/*Pagination.js`; the ids of a server's paginated messages are cached for a minute, so other deletions cost no database read beyond that). `list` also drops records of channels Discord says are gone (an archived thread that is only not cached is kept), and any subcommand that finds the message or channel deleted removes it and says so. Missing permissions of Petto (View Channel, Read Message History; for `create` also Send Messages and Embed Links) are named.
+
+**Limits.** 25 pages per message. Paginated messages per server: **Free 25, Premium 50** (`paginationMessages` in `db/premium.js` FREE_LIMITS/PREMIUM_LIMITS and petto-web `src/utils/planLimits.ts`, shown on the Premium page) — like the other "how many of a thing" limits; a message is cheap but each one is a row read on every click.
+
+**Storage.** `pagination_messages` (schema.sql): `id` (bigserial, carried by the buttons), `guild_id`, `channel_id`, `message_id` (unique), `kind`, `pages` (JSONB list: `{type:'embed',name}`, `{type:'code',code}`, `{type:'message',content,embeds,components,v2?,keepFiles}`), `private`, `posted_by_petto`, `created_by`, timestamps. `db/paginations.js` reads and writes it; `utils/pagination.js` holds the rules (pure: ids, page numbers, buttons, sources, rendering), `utils/paginationActions.js` what is done in Discord (find the message, draw a page, post a new one, take the buttons off), `interactions/pagination.js` the clicks and the reset confirmation. The table is a dashboard settings table (`utils/dashboardVersion.js`), so an open Embeds page updates by itself.
+
+**Dashboard.** The Embeds page lists the paginated messages (channel, pages, private, V2, link) with **Put the buttons back**, **Stop** and **Delete message**, and a builder that posts a new one from saved embeds in the order picked (channel, pages, private). Its actions go through `POST /api/dashboard/guild/:guildId/pagination/create|delete|restore` (`web/paginationRoutes.js`: dashboard key, a member who manages the server or has the Embeds page by role, and **Manage Messages**, like the command; answers `{ ok, message, code?, pagination? }` in the language of the request).
+
+`scripts/check-pagination.js` (in `npm run check`) checks the records against an in-memory database, the button ids, page clamping, the buttons and the jump menu, the refusal to mix kinds, rendering, what `set` keeps, the prefix text of every subcommand, clicks on a shared and a private message, and the dashboard routes.
 
 ## Not built yet
 

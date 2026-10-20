@@ -18,6 +18,7 @@ const FREE_LIMITS = Object.freeze({
   uploadChannels: 100,
   componentPanels: 50,
   counters: 25,
+  paginationMessages: 25,
 });
 
 const PREMIUM_LIMITS = Object.freeze({
@@ -32,6 +33,7 @@ const PREMIUM_LIMITS = Object.freeze({
   uploadChannels: 200,
   componentPanels: 100,
   counters: 50,
+  paginationMessages: 50,
 });
 
 /**
