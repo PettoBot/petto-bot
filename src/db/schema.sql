@@ -4016,3 +4016,26 @@ create index if not exists idx_mod_actions_guild_source_created on mod_actions(g
 -- adds a single-use invite that lasts a week, so a real member whose account was hacked can come back. Both on by default.
 alter table honeypots add column if not exists dm_member boolean not null default true;
 alter table honeypots add column if not exists reinvite boolean not null default true;
+
+-- Paginated messages (`!pagination`, Embeds page of the dashboard): one message of Petto with several pages and buttons to turn them.
+-- `pages` is the list of pages in order, each `{ "type": "embed", "name": ... }` (a saved embed, drawn when it is shown), `{ "type": "code",
+-- "code": ... }` (an embed code or a p2. code) or `{ "type": "message", ... }` (what the message showed when `!pagination set` took it).
+-- `kind` is `embed` or `v2`: all pages are of the same kind, as one message cannot switch between the two. `private`: a click answers only
+-- the member who clicked instead of turning the page for everyone. The buttons carry the id, so they keep working after a restart.
+create table if not exists pagination_messages (
+  id            bigserial primary key,
+  guild_id      text not null references guilds(guild_id) on delete cascade,
+  channel_id    text not null,
+  message_id    text not null,
+  kind          text not null default 'embed' check (kind in ('embed', 'v2')),
+  pages         jsonb not null default '[]'::jsonb,
+  private       boolean not null default false,
+  posted_by_petto boolean not null default false,
+  created_by    text,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
+);
+create unique index if not exists idx_pagination_messages_message on pagination_messages(message_id);
+create index if not exists idx_pagination_messages_guild on pagination_messages(guild_id, created_at);
+create index if not exists idx_pagination_messages_channel on pagination_messages(channel_id);
+alter table pagination_messages enable row level security;

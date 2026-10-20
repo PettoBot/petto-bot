@@ -33,6 +33,7 @@ const { registerMemberRoutes } = require('./memberRoutes');
 const { registerFormRoutes } = require('./formRoutes');
 const { registerCounterRoutes } = require('./counterRoutes');
 const { registerHoneypotRoutes } = require('./honeypotRoutes');
+const { registerPaginationRoutes } = require('./paginationRoutes');
 const { registerInviteRoutes } = require('./inviteRoutes');
 const { registerCaseRoutes } = require('./caseRoutes');
 const { registerBoosterRoleRoutes } = require('./boosterRoleRoutes');
@@ -763,6 +764,8 @@ function startServer(client) {
     registerCounterRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
     // Honeypot: add, remove, choose the message of the bait channel and post it again, from the dashboard (administrators, like the command).
     registerHoneypotRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
+    // Paginated messages (Embeds page): post one from saved embeds, take its buttons off or delete it, put the buttons back (Manage Messages, like the command).
+    registerPaginationRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
     // Invite tracking (Statistics, Invites): rewards by invites, bonus invites, resets and fake joins, with the checks of /invites.
     registerInviteRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
     // Case log (Moderation): a new reason for a case or delete it, like /case edit and /case delete, written to the sanctions log.

@@ -28,6 +28,8 @@ const SETTINGS_TABLES = new Set([
   'antinuke_events', 'lockdowns',
   // The Honeypot page: its bait channels, the message of each one and the number caught.
   'honeypots',
+  // The paginated messages of the Embeds page.
+  'pagination_messages',
 ]);
 
 /** Whether a write to this table changes something the dashboard shows as a setting. */

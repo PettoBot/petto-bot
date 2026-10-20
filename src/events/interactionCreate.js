@@ -20,6 +20,8 @@ const {
 } = require('../interactions/ticketControls');
 const { handleButton: handleGiveawayButton } = require('../interactions/giveawayButton');
 const { handlePager, isPagerId } = require('../utils/pager');
+const { handlePaginationInteraction } = require('../interactions/pagination');
+const { isPaginationId } = require('../utils/pagination');
 const { handleButton: handlePollButton } = require('../interactions/pollButton');
 const { handleButton: handlePollPanelButton, handleModal: handlePollPanelModal } = require('../interactions/pollPanel');
 const { HONEYPOT_COUNT_BUTTON_ID, handleButton: handleHoneypotButton } = require('../interactions/honeypot');
@@ -414,6 +416,12 @@ module.exports = {
           await interaction.reply({ content: t(await languageOf(interaction), 'core.reactionRoleError'), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } }).catch(() => {});
         }
       }
+      return;
+    }
+
+    // Paginated messages (`!pagination`): anyone turns the pages, and the reset confirmation.
+    if ((interaction.isButton() || interaction.isStringSelectMenu()) && isPaginationId(interaction.customId)) {
+      await handlePaginationInteraction(interaction);
       return;
     }
 
