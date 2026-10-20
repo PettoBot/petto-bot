@@ -54,7 +54,22 @@ const DEFAULT_PREFIX_ROUTES = [
   { alias: 'forcenickname', command: 'nickname', args: ['force'], subcommand: 'force', words: { list: { args: ['forced'] }, view: { args: ['forced'] } } },
   { alias: 'forcenick', command: 'nickname', args: ['force'], subcommand: 'force', words: { list: { args: ['forced'] }, view: { args: ['forced'] } } },
   { alias: 'freezenick', command: 'nickname', args: ['force'], subcommand: 'force', words: { list: { args: ['forced'] }, view: { args: ['forced'] } } },
-  { alias: 'fn', command: 'nickname', args: ['force'], subcommand: 'force', words: { list: { args: ['forced'] }, view: { args: ['forced'] } } },
+  { alias: 'fn', command: 'nickname', args: ['force'], subcommand: 'force', words: { list: { args: ['forced'] }, view: { args: ['forced'] } } },  // Image effects: `!invert`, `!blur 10 @member`, `!rotate 45 <link>`... are `!image <effect> ...` (the `!hex` of a picture is !color's).
+  { alias: 'invert', command: 'image', args: ['invert'], subcommand: 'invert' },
+  { alias: 'grayscale', command: 'image', args: ['grayscale'], subcommand: 'grayscale' },
+  { alias: 'greyscale', command: 'image', args: ['grayscale'], subcommand: 'grayscale' },
+  { alias: 'bw', command: 'image', args: ['grayscale'], subcommand: 'grayscale' },
+  { alias: 'sepia', command: 'image', args: ['sepia'], subcommand: 'sepia' },
+  { alias: 'blur', command: 'image', args: ['blur'], subcommand: 'blur' },
+  { alias: 'pixelate', command: 'image', args: ['pixelate'], subcommand: 'pixelate' },
+  { alias: 'rotate', command: 'image', args: ['rotate'], subcommand: 'rotate' },
+  { alias: 'flip', command: 'image', args: ['flip'], subcommand: 'flip' },
+  { alias: 'mirror', command: 'image', args: ['mirror'], subcommand: 'mirror' },
+  { alias: 'circle', command: 'image', args: ['circle'], subcommand: 'circle' },
+  { alias: 'deepfry', command: 'image', args: ['deepfry'], subcommand: 'deepfry' },
+  { alias: 'compress', command: 'image', args: ['compress'], subcommand: 'compress' },
+  { alias: 'dominant', command: 'image', args: ['hex'], subcommand: 'hex' },
+  { alias: 'dominantcolor', command: 'image', args: ['hex'], subcommand: 'hex' },
 ];
 
 function aliasesFor(commandName) {

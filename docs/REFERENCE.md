@@ -170,7 +170,8 @@ src/
       jail.js / unjail.js       jail — user / remove / list / setup; `unjail` is the shortcut for `jail remove`
       purge.js                  scan the last N messages and delete the ones matching a member / type / text filter
       history.js                a member's whole moderation record in one card (status, totals, reports, notes, latest cases)
-    fun/                       small public games: 8ball / ship / rps
+    fun/                       small public games: 8ball / ship / rps, plus quote.js (`!quote`) and image.js (`!image <effect>`) —
+                                see "Quotes and image effects" below
     config/
       setup.js                  /setup — a status panel (what is configured, which bot permissions are missing) with a
                                  pre-filled quick setup form; answers immediately and never waits on a slow database
@@ -268,6 +269,11 @@ src/
     purgeFilters.js                which messages a purge selects (pure, unit-checked)
     dice.js                        dice notation parser and roller for /roll (pure, unit-checked)
     funGames.js                    choose / 8ball / ship / rps logic (pure, unit-checked)
+    quoteText.js                   a message's text as the pieces of a quote picture: mentions as names, links short, Markdown
+                                    marks gone, custom and Unicode emojis as pieces of their own (pure, unit-checked)
+    imageInput.js                  finds the picture an image command works on (attachment, replied message, link, member,
+                                    avatar) and loads it within the limits (8 MB, 8192 px a side, 16 MP, size read before decoding)
+    imageCommands.js               what !quote, !image and !hex share: Attach Files check, two drawings at once, the answers
     ticketActions.js               all ticket business logic (openTicket, claim/unclaim, closeTicket, reopenTicket,
                                     deleteTicketChannel, add/removeMember, renameTicket, postTranscript) — shared by
                                     both the /ticket slash command and the panel/control buttons, so the two paths
@@ -729,7 +735,17 @@ The original spec's plain lookup-command category, consolidated where several wo
 **`/choose options`** (aliases `pick`, `decide`) — picks one of two to 25 options separated by commas or " or ".
 **`/8ball question`**, **`/ship first [second]`** (the same pair always gets the same score) and **`/rps choice`** are in the **Fun** category. They answer with plain messages, not embeds. `/ship` attaches an image drawn by `src/imgutils/shipCard.js` (both avatars on a rose picture, a heart with the score, a bar); if it cannot be drawn, the text result is sent alone.
 **`/inviteinfo code`** — looks up any invite code's server/channel/inviter/expiry, even for servers Petto isn't in.
-**`/color hex`** — previews a hex color as the card's accent bar, plus its RGB, HSL and decimal values.
+**`/color hex`** (aliases `clr`, `hex`, `hexcolor`) — previews a hex color as the card's accent bar, plus its RGB, HSL and decimal values. Given anything that is not a hex code (nothing, an attached or replied image, a link, a member), it finds the **main color of that picture** instead (`!image hex`) and answers with a swatch.
+
+## Quotes and image effects (`!quote`, `!image`)
+
+Prefix only (neither is a slash command), in the **Fun** category, with a 5 second cooldown per member. Both need the Attach Files permission, for Petto and for the member, in the channel (a plain text answer says which is missing). Drawing happens on the main thread, so at most two pictures are drawn at once, eight more wait, and the rest are told to try again; every picture is fitted inside 2048 pixels first.
+
+**`!quote`** (aliases `q`, `miq`) — "Make it a Quote": a 1200×630 PNG with the author's avatar on the left in black and white, fading into black, and the words on the right in Playfair Display, centered, as large as they fit (88 down to 26 px, lines balanced, the last line ending in "…" when even the smallest size is too long), then "— Display Name" and "@username", smaller and dimmer. What is quoted: the message the command replies to; or a message link (this server only, and only from a channel the member and Petto can read) or a message ID (in this channel); or text, with an optional member at its start or end (`!quote hello @member`), else the author. Mentions become @names, #channels and @roles, links are shortened to their host, Markdown marks are removed, custom emojis and Unicode emojis (Twemoji) are drawn as images (written as `:name:` or the character when they cannot be had within 5 seconds). `--color` keeps the avatar in color, `--light` draws on white, `--bold` writes heavier. Drawn by `src/imgutils/quoteCard.js` from the pieces of `src/utils/quoteText.js`.
+
+**`!image <effect> [number] [picture]`** (alias `img`) — effects drawn by `src/imgutils/imageEffects.js`: `invert`, `grayscale`, `sepia`, `blur [1-50]`, `pixelate [2-100]`, `rotate [-360..360]` (default 90, the picture grows to hold a turned one, transparent corners), `flip` (upside down), `mirror` (left to right), `circle`, `deepfry` (JPEG), `compress [1-100]` (JPEG quality, default 5) and `hex` (main color). Each also has its own shortcut: `!invert`, `!grayscale`/`!greyscale`/`!bw`, `!sepia`, `!blur`, `!pixelate`, `!rotate`, `!flip`, `!mirror`, `!circle`, `!deepfry`, `!compress`, `!dominant`/`!dominantcolor` (prefix routes in `utils/defaultCommandAliases.js`). The picture is, in order: a file sent with the command; a file, embed image or sticker of the replied message; an `https://` link typed after it (downloaded through `utils/safeImage.js`: public addresses only, redirects checked, 8 second limit, image content types only); a member (mention, ID or name); the author of the replied message; your own avatar. A short number first is the amount (`!blur 20 @member`), a long one is a member ID. Downloads stop at 8 MB, and the size of a PNG, JPEG, GIF or WebP is read from its first bytes so anything over 8192 px a side or 16 megapixels is refused before it is decoded. A GIF uses its first frame, and the answer says so. Output is PNG (JPEG for `compress` and `deepfry`).
+
+`scripts/check-images.js` (in `npm run check`) draws the quote in five texts and three looks and every effect from a generated picture, and checks their size and format, the order of the sources, the limits and the options read from the prefix text.
 
 ## Reaction roles (`/reactionrole`, alias `rr`)
 
