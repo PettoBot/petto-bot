@@ -1,6 +1,6 @@
 // i18n-ignore-file: draws a picture; the only words on it are the quoted message and the names of its author
 // Draws the picture of !quote: the avatar of the author on the left, in black and white, fading into a black background, and the
-// words of the message on the right in a large serif font, with "— Name" and "@username" under them.
+// words of the message on the right in a large serif font, with the name and "@username" under them.
 const { createCanvas } = require('@napi-rs/canvas');
 const { registerCardFonts, canvasFont } = require('./cardFonts');
 
@@ -239,14 +239,14 @@ async function renderQuote({ pieces, emojis = new Map(), avatar = null, displayN
     drawLine(ctx, line, baseline, fit.size, fit.emojiSize, emojis, theme);
   });
 
-  // A short rule, then "— Name" and "@username", smaller and dimmer.
+  // A short rule, then the name and "@username", smaller and dimmer.
   const authorTop = blockTop + textHeight + GAP;
   ctx.fillStyle = theme.rule;
   ctx.fillRect(TEXT_CENTER - 28, authorTop, 56, 2);
   ctx.textAlign = 'center';
   ctx.fillStyle = theme.name;
   ctx.font = canvasFont(NAME_FONT, 700, 30);
-  ctx.fillText(clipLine(ctx, `— ${displayName || username}`, TEXT_WIDTH), TEXT_CENTER, authorTop + 46);
+  ctx.fillText(clipLine(ctx, displayName || username, TEXT_WIDTH), TEXT_CENTER, authorTop + 46);
   if (username) {
     ctx.fillStyle = theme.username;
     ctx.font = canvasFont(NAME_FONT, 400, 22);
