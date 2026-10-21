@@ -104,8 +104,8 @@ const EMOJI = {
   TICKET_ADD: '<:pe_ticket_add:1562517637668540456>',
   TICKET_REMOVE: '<:pe_ticket_remove:1562517632412950619>',
   TICKET_DELETE: '<:pe_ticket_delete:1562517646539497512>',
-  STAR_EMPTY_RATE: '<:pe_star_empty_rate:1562518892272820275>',
-  STAR_FULL: '<:pe_star_full:1562518954965073920>',
+  STAR_EMPTY_RATE: '<:pe_star_empty:1562518954965073920>',
+  STAR_FULL: '<:pe_star_full_rate:1562518892272820275>',
 };
 
 // Which emoji represents each mod_actions.type, for DMs and case embeds.
