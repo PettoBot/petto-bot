@@ -86,6 +86,7 @@ module.exports = {
   'tickets.buttonMismatch': 'Este botón ya no corresponde a este ticket.',
   'tickets.alreadyClaimed': '<@{user}> ya reclamó este ticket.',
   'tickets.claim.released': 'Ticket liberado.',
+  'tickets.live.replyHeader': '-# {name} · desde el panel',
   'tickets.requestClose.openerOnly': 'Solo quien abrió este ticket puede responder.',
   'tickets.requestClose.keptOpen': '{emoji} <@{user}> quiere dejarlo abierto.',
   'tickets.requestClose.agreed': '{emoji} <@{user}> aceptó cerrarlo.',

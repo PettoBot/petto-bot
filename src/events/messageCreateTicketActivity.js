@@ -2,11 +2,14 @@ const { Events } = require('discord.js');
 const db = require('../db/tickets');
 const settingsDb = require('../db/ticketSettings');
 const actions = require('../utils/ticketActions');
+const ticketLive = require('../utils/ticketLive');
 const logger = require('../utils/logger');
 
 module.exports = {
   name: Events.MessageCreate,
   async execute(message) {
+    // A server whose live tickets are open on the dashboard hears of every message in its tickets, Petto's own too (memory only).
+    if (message.guild) ticketLive.noteMessage(message);
     if (message.author.bot || !message.guild) return;
 
     try {

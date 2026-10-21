@@ -40,6 +40,7 @@ const { registerPaginationRoutes } = require('./paginationRoutes');
 const { registerInviteRoutes } = require('./inviteRoutes');
 const { registerCaseRoutes } = require('./caseRoutes');
 const { registerBoosterRoleRoutes } = require('./boosterRoleRoutes');
+const { registerTicketLiveRoutes } = require('./ticketLiveRoutes');
 const { fetchDashboardMember } = require('./dashboardMember');
 const { roleGrantAllows } = require('./dashboardRoleAccess');
 const { registerGuildLanguageRoute } = require('./languageRoutes');
@@ -798,6 +799,9 @@ function startServer(client) {
     registerCaseRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
     // Booster roles: list them with their owners, and create, change, link, delete or clean them up, from the dashboard (Manage Server, like `!boosterrole admin`).
     registerBoosterRoleRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
+    // Live tickets: the open tickets of a server, the last messages of one, and reply, claim, add/remove a member and close from the
+    // dashboard (Manage Server, or a role with the Tickets section of Dashboard access; the actions also need the ticket's staff).
+    registerTicketLiveRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
     // The public leaderboard page of a server that turned it on, asked for by the website.
     registerPublicLeaderboardRoute(app, { isAuthorized: dashboardAuthorized, limiter: dashboardDatabaseRateLimiter, client });
 
