@@ -2,7 +2,7 @@ const { MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowB
 const db = require('../db/tickets');
 const settingsDb = require('../db/ticketSettings');
 const actions = require('../utils/ticketActions');
-const { buildTranscriptLinkRow } = require('../utils/ticketCards');
+const { buildTranscriptLinkRow, componentsAfterRating, starsText } = require('../utils/ticketCards');
 const { EMOJI } = require('../utils/emojis');
 const logger = require('../utils/logger');
 const { t, languageOf, guildLanguage } = require('../i18n');
@@ -73,8 +73,9 @@ async function handleButton(interaction) {
           await interaction.reply({ content: t(lang, 'tickets.alreadyClaimed', { user: ticket.claimed_by }), flags: MessageFlags.Ephemeral });
           return;
         }
-        await actions.claimTicket(ctx);
-        await interaction.reply({ content: t(lang, 'tickets.claim.claimedBy', { emoji: EMOJI.STAR, user: interaction.user.id }) });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        await actions.claimTicket(ctx); // posts the claim notice in the ticket
+        await interaction.editReply({ content: t(lang, 'tickets.claim.youClaimed', { emoji: EMOJI.STAR }) });
         return;
       }
 
@@ -203,30 +204,71 @@ async function handleCloseModal(interaction) {
   }
 }
 
-/** Rating-button click on the closed-ticket DM — customId `tk_rate::<ticketId>::<1-5>`. Only the ticket's own opener can rate it. */
-async function handleRatingButton(interaction) {
-  const [, ticketId, ratingRaw] = interaction.customId.split('::');
-  const rating = Number(ratingRaw);
-  const ticket = await db.getTicketById(Number(ticketId));
+function ratingDeps(deps = {}) {
+  return {
+    db: deps.db ?? db,
+    ratingsDb: deps.ratingsDb ?? require('../db/ticketRatings'),
+    settingsDb: deps.settingsDb ?? settingsDb,
+    rateTicket: deps.rateTicket ?? actions.rateTicket,
+    guildLanguage: deps.guildLanguage ?? guildLanguage,
+    languageOf: deps.languageOf ?? languageOf,
+  };
+}
+
+/** The ticket and language behind a rating click or modal, or null after answering why it cannot be rated. */
+async function loadRatingContext(interaction, rating, d) {
+  const [, ticketId] = interaction.customId.split('::');
+  const ticket = await d.db.getTicketById(Number(ticketId));
   if (!ticket) {
-    await interaction.reply({ content: t(await languageOf(interaction), 'tickets.gone'), flags: MessageFlags.Ephemeral });
-    return;
+    await interaction.reply({ content: t(await d.languageOf(interaction), 'tickets.gone'), flags: MessageFlags.Ephemeral });
+    return null;
   }
   // Pressed in the member's DMs: answered in the language of the server the ticket belongs to.
-  const lang = await guildLanguage(ticket.guild_id);
+  const lang = await d.guildLanguage(ticket.guild_id);
   if (interaction.user.id !== ticket.opener_id || !Number.isInteger(rating) || rating < 1 || rating > 5) {
     await interaction.reply({ content: t(lang, 'tickets.rating.openerOnly'), flags: MessageFlags.Ephemeral });
-    return;
+    return null;
   }
+  return { ticket, lang };
+}
 
-  const guild = await interaction.client.guilds.fetch(ticket.guild_id).catch(() => null);
-  if (!guild) {
-    await interaction.reply({ content: t(lang, 'tickets.rating.failed'), flags: MessageFlags.Ephemeral });
+/**
+ * The message with the rating buttons, updated in place: the buttons become the "thanks" card (or are disabled in an older message),
+ * so they cannot be pressed again. Then a private line for the member. Works for a button and for the modal opened from it.
+ */
+async function finishRating(interaction, rating, { lang, already }) {
+  const message = interaction.message;
+  const content = t(lang, already ? 'tickets.rating.already' : 'tickets.rating.thanks', { stars: starsText(rating) });
+  if (message?.components?.length && typeof interaction.update === 'function') {
+    const v2 = Boolean(message.flags?.has?.(MessageFlags.IsComponentsV2));
+    await interaction.update({ components: componentsAfterRating(message.components, rating, { v2, lang }) });
+    await interaction.followUp({ content, flags: MessageFlags.Ephemeral }).catch(() => {});
     return;
   }
+  await interaction.reply({ content, flags: MessageFlags.Ephemeral });
+}
+
+/** Rating-button click on the closed-ticket DM — customId `tk_rate::<ticketId>::<1-5>`. Only the ticket's own opener can rate it, once. */
+async function handleRatingButton(interaction, deps = {}) {
+  const d = ratingDeps(deps);
+  const rating = Number(interaction.customId.split('::')[2]);
+  const context = await loadRatingContext(interaction, rating, d);
+  if (!context) return;
+  const { ticket, lang } = context;
 
   try {
-    const settings = await settingsDb.getSettings(ticket.guild_id);
+    // Rated already (a second click, another device): the buttons go away and the member sees what they gave.
+    const existing = await d.ratingsDb.getRating(ticket.id);
+    if (existing) {
+      await finishRating(interaction, existing.rating, { lang, already: true });
+      return;
+    }
+    const guild = await interaction.client.guilds.fetch(ticket.guild_id).catch(() => null);
+    if (!guild) {
+      await interaction.reply({ content: t(lang, 'tickets.rating.failed'), flags: MessageFlags.Ephemeral });
+      return;
+    }
+    const settings = await d.settingsDb.getSettings(ticket.guild_id);
     if (settings.rating_mode === 'rating_comment') {
       const modal = new ModalBuilder()
         .setCustomId(`tk_ratemodal::${ticket.id}::${rating}`)
@@ -244,43 +286,35 @@ async function handleRatingButton(interaction) {
       await interaction.showModal(modal);
       return;
     }
-    await actions.rateTicket({ guild, client: interaction.client, ticket, user: interaction.user, rating });
-    // Not interaction.update(): the original DM is Components V2 (card + this row), which can't mix
-    // with a plain `content` reply, easier to just send a fresh reply than rebuild the V2 tree minus this row.
-    await interaction.reply({ content: t(lang, 'tickets.rating.thanks', { stars: '⭐'.repeat(rating) }), flags: MessageFlags.Ephemeral });
+    const result = await d.rateTicket({ guild, client: interaction.client, ticket, user: interaction.user, rating });
+    await finishRating(interaction, result?.rating?.rating ?? rating, { lang, already: result?.created === false });
   } catch (err) {
     logger.error('Ticket rating failed:', err);
-    await interaction.reply({ content: t(lang, 'tickets.rating.failed'), flags: MessageFlags.Ephemeral }).catch(() => {});
+    const payload = { content: t(lang, 'tickets.rating.failed'), flags: MessageFlags.Ephemeral };
+    await (interaction.replied || interaction.deferred ? interaction.followUp(payload) : interaction.reply(payload)).catch(() => {});
   }
 }
 
-/** Optional-comment follow-up for the closed-ticket DM rating flow. */
-async function handleRatingModal(interaction) {
-  const [, ticketId, ratingRaw] = interaction.customId.split('::');
-  const rating = Number(ratingRaw);
-  const ticket = await db.getTicketById(Number(ticketId));
-  if (!ticket) {
-    await interaction.reply({ content: t(await languageOf(interaction), 'tickets.gone'), flags: MessageFlags.Ephemeral });
-    return;
-  }
-  const lang = await guildLanguage(ticket.guild_id);
-  if (interaction.user.id !== ticket.opener_id || !Number.isInteger(rating) || rating < 1 || rating > 5) {
-    await interaction.reply({ content: t(lang, 'tickets.rating.openerOnly'), flags: MessageFlags.Ephemeral });
-    return;
-  }
+/** Optional-comment follow-up for the closed-ticket DM rating flow (the modal opened from a rating button). */
+async function handleRatingModal(interaction, deps = {}) {
+  const d = ratingDeps(deps);
+  const rating = Number(interaction.customId.split('::')[2]);
+  const context = await loadRatingContext(interaction, rating, d);
+  if (!context) return;
+  const { ticket, lang } = context;
   const guild = await interaction.client.guilds.fetch(ticket.guild_id).catch(() => null);
   if (!guild) {
     await interaction.reply({ content: t(lang, 'tickets.rating.failed'), flags: MessageFlags.Ephemeral });
     return;
   }
   const comment = interaction.fields.getTextInputValue('comment').trim() || null;
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   try {
-    await actions.rateTicket({ guild, client: interaction.client, ticket, user: interaction.user, rating, comment });
-    await interaction.editReply({ content: t(lang, 'tickets.rating.thanks', { stars: '⭐'.repeat(rating) }) });
+    const result = await d.rateTicket({ guild, client: interaction.client, ticket, user: interaction.user, rating, comment });
+    await finishRating(interaction, result?.rating?.rating ?? rating, { lang, already: result?.created === false });
   } catch (err) {
     logger.error('Ticket rating with comment failed:', err);
-    await interaction.editReply({ content: t(lang, 'tickets.rating.feedbackFailed') }).catch(() => {});
+    const payload = { content: t(lang, 'tickets.rating.feedbackFailed'), flags: MessageFlags.Ephemeral };
+    await (interaction.replied || interaction.deferred ? interaction.followUp(payload) : interaction.reply(payload)).catch(() => {});
   }
 }
 

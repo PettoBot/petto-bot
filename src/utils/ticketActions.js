@@ -10,10 +10,10 @@ const ratingsDb = require('../db/ticketRatings');
 const { getTemplate } = require('../db/embedTemplates');
 const { build } = require('./embedBuilder');
 const { formatTicketChannelName, sanitizeChannelName } = require('./ticketName');
-const { buildTranscript } = require('./ticketTranscript');
+const { buildTranscript, personOf } = require('./ticketTranscript');
 const { transcriptParts } = require('./transcriptDelivery');
 const { createTranscriptToken } = require('./transcriptToken');
-const { buildTicketControlRow, buildTicketMemberRow, buildClosedControlRow, buildWelcomeFallbackCard, buildTranscriptLinkRow, buildTicketClosedCard, buildRatingRow } = require('./ticketCards');
+const { buildTicketControlRow, buildTicketMemberRow, buildClosedControlRow, buildWelcomeFallbackCard, buildTranscriptLinkRow, buildTicketClosedCard, buildTicketClosedNotice, buildClaimCard, buildUnclaimCard, buildRatingRow } = require('./ticketCards');
 const { textCard } = require('./caseCard');
 const { sendLog } = require('../logging/engine');
 const { EMOJI } = require('./emojis');
@@ -198,8 +198,9 @@ async function claimTicket({ guild, client, channel, ticket, actor }) {
       await channel.permissionOverwrites.edit(roleId, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }).catch(() => {});
     }
   }
-  if (channel && settings.ping_on_claim) {
-    await sendAs(channel, 'tickets', { content: t(lang, 'tickets.claim.ping', { opener: ticket.opener_id, user: actor.id }), allowedMentions: { users: [ticket.opener_id] } })
+  // The notice in the ticket: who handles it now. The member who opened it is pinged only when the server asked for it.
+  if (channel) {
+    await sendAs(channel, 'tickets', { components: [buildClaimCard({ staffId: actor.id, openerId: ticket.opener_id, lang })], flags: MessageFlags.IsComponentsV2, allowedMentions: { users: settings.ping_on_claim ? [ticket.opener_id] : [] } })
       .catch(() => {});
   }
 
@@ -211,9 +212,10 @@ async function claimTicket({ guild, client, channel, ticket, actor }) {
   return updated;
 }
 
-async function unclaimTicket({ guild, client, ticket, actor }) {
+async function unclaimTicket({ guild, client, channel = null, ticket, actor }) {
   const lang = await guildLanguage(guild.id);
   const updated = await db.setClaim(ticket.id, null);
+  if (channel) await sendAs(channel, 'tickets', { components: [buildUnclaimCard({ staffId: actor.id, lang })], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
   await sendLog(client, guild.id, 'tickets', {
     description: t(lang, 'tickets.log.unclaimed', { number: ticket.ticket_number, user: actor.id }),
     color: 0x4b4f59,
@@ -230,9 +232,26 @@ function buildTranscriptLink({ guild, ticket }) {
   return `${baseUrl}/transcript/${guild.id}/${ticket.ticket_number}/${token}`;
 }
 
+/** What the header of a transcript shows: the opener, the category, who claimed and closed it, the times and the reason. */
+async function transcriptInfo({ guild, client, ticket, opener, closer = null, hideCloser = false, lang }) {
+  const category = ticket.category_id ? await db.getCategoryById(ticket.category_id).catch(() => null) : null;
+  const claimer = ticket.claimed_by ? await client?.users?.fetch(ticket.claimed_by).catch(() => null) : null;
+  const closedBy = hideCloser ? { name: t(lang, 'tickets.html.staff') } : personOf(closer, guild);
+  return {
+    opener: personOf(opener, guild) ?? { name: String(ticket.opener_id) },
+    category: category?.label ?? null,
+    claimedBy: personOf(claimer, guild),
+    closedBy,
+    openedAt: ticket.created_at ?? null,
+    closedAt: ticket.status === 'closed' ? ticket.closed_at ?? null : null,
+    reason: ticket.status === 'closed' ? ticket.close_reason ?? null : null,
+  };
+}
+
 /** Builds the transcript HTML, persists it (so the web viewer survives channel deletion), and returns it plus a shareable link. */
-async function generateAndStoreTranscript({ guild, channel, ticket, opener, lang }) {
-  const { html, messageCount } = await buildTranscript(channel, { ticketNumber: ticket.ticket_number, openerTag: opener?.username, lang });
+async function generateAndStoreTranscript({ guild, channel, ticket, opener, lang, closer = null, hideCloser = false }) {
+  const info = await transcriptInfo({ guild, client: channel.client ?? guild.client, ticket, opener, closer, hideCloser, lang });
+  const { html, messageCount } = await buildTranscript(channel, { ticketNumber: ticket.ticket_number, lang, info, homeUrl: config.transcriptBaseUrl ?? config.verifyBaseUrl ?? null });
   await db.saveTranscriptHtml(ticket.id, html).catch((err) => logger.error(`Ticket #${ticket.ticket_number}: failed to persist transcript:`, err));
   const link = buildTranscriptLink({ guild, ticket });
   return { html, messageCount, link };
@@ -315,7 +334,7 @@ async function closeTicket({ guild, client, channel, ticket, actor, reason }) {
 
   const closed = await db.closeTicket(ticket.id, { closedBy: actor.id, reason: finalReason });
 
-  const { html, messageCount, link } = await generateAndStoreTranscript({ guild, channel, ticket, opener, lang });
+  const { html, messageCount, link } = await generateAndStoreTranscript({ guild, channel, ticket: { ...ticket, ...closed }, opener, lang, closer: actor, hideCloser: settings.hide_closing_user });
   const delivery = transcriptDelivery(settings, link, html, ticket.ticket_number, lang);
 
   const closedByLine = settings.hide_closing_user ? t(lang, 'tickets.close.byStaff') : t(lang, 'tickets.close.byUser', { user: actor.id });
@@ -358,7 +377,8 @@ async function closeTicket({ guild, client, channel, ticket, actor, reason }) {
 
   if (opener && settings.dm_user_on_close) {
     const linkRow = delivery.linkRow;
-    const card = buildTicketClosedCard({ ticket, guild, actor, reason: finalReason, channel, hideCloser: settings.hide_closing_user, lang });
+    const category = await db.getCategoryById(ticket.category_id).catch(() => null);
+    const card = buildTicketClosedCard({ ticket, guild, actor, reason: finalReason, channel, hideCloser: settings.hide_closing_user, category: category?.label ?? null, rating: Boolean(settings.rating_enabled), transcript: Boolean(delivery.linkRow || delivery.fileBuffer), lang });
     const rows = [card];
     if (settings.rating_enabled) rows.push(buildRatingRow(ticket.id));
     if (linkRow) rows.push(linkRow);
@@ -370,20 +390,20 @@ async function closeTicket({ guild, client, channel, ticket, actor, reason }) {
     await opener.send(dmPayload).catch(() => logger.warn(`Ticket #${ticket.ticket_number}: could not DM transcript to opener.`));
   }
 
-  const closeCard = textCard(
-    [t(lang, 'tickets.close.card', { emoji: EMOJI.DENY, closedBy: closedByLine }), t(lang, 'tickets.log.reason', { reason: finalReason }), t(lang, 'tickets.close.cardHint')].join('\n'),
-    0xfe6465,
-  );
+  const closeCard = buildTicketClosedNotice({ ticketNumber: ticket.ticket_number, closedByLine, reason: finalReason, lang });
   await sendAs(channel, 'tickets', { components: [closeCard, buildClosedControlRow(ticket.id, link, lang)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
 
   return closed;
 }
 
 /** Records a member's 1-5 star rating for a closed ticket (from the DM rating buttons), and best-effort logs it if a rating log channel is configured. */
-async function rateTicket({ guild, client, ticket, user, rating, comment }) {
-  await ratingsDb.addRating(guild.id, ticket.id, user.id, rating, comment);
+async function rateTicket({ guild, client, ticket, user, rating, comment }, deps = {}) {
+  const store = deps.ratingsDb ?? ratingsDb;
+  const result = await store.addRating(guild.id, ticket.id, user.id, rating, comment);
+  // Rated already (a second click, or two clicks at once): nothing changes and nothing is logged again.
+  if (!result.created) return result;
 
-  const settings = await settingsDb.getSettings(guild.id);
+  const settings = await (deps.settingsDb ?? settingsDb).getSettings(guild.id);
   if (settings.rating_log_channel_id) {
     const logChannel = await guild.channels.fetch(settings.rating_log_channel_id).catch(() => null);
     if (logChannel) {
@@ -397,6 +417,7 @@ async function rateTicket({ guild, client, ticket, user, rating, comment }) {
         .catch(() => {});
     }
   }
+  return result;
 }
 
 async function reopenTicket({ guild, client, channel, ticket, actor }) {
@@ -430,6 +451,15 @@ async function deleteTicketChannel({ guild, client, channel, ticket, actor }) {
     timestamp: new Date().toISOString(),
   }).catch(() => {});
 
+  // Deleting an open ticket closes it as well: before, it stayed open with no channel and kept the member's open ticket slot.
+  // Its messages are saved first, so the transcript is not lost with the channel.
+  if (ticket.status === 'open') {
+    const closed = await db.closeOpenTicket(ticket.id, { closedBy: actor.id, reason: t(lang, 'tickets.channelGone.deletedReason') }).catch((err) => { logger.warn(`Ticket #${ticket.ticket_number}: could not close before deleting: ${err.message}`); return null; });
+    if (closed) {
+      const opener = await client.users.fetch(ticket.opener_id).catch(() => null);
+      await generateAndStoreTranscript({ guild, channel, ticket: closed, opener, lang, closer: actor }).catch((err) => logger.warn(`Ticket #${ticket.ticket_number}: no transcript before deleting: ${err.message}`));
+    }
+  }
   await db.setTicketChannel(ticket.id, null);
   await channel.delete(t(lang, 'tickets.audit.deleted', { number: ticket.ticket_number, user: actor.tag ?? actor.username }));
 }
