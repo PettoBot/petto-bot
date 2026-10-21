@@ -823,10 +823,10 @@ async function ticketActionCmd(interaction, sub, lang) {
       }
       case 'reopen':
         await actions.reopenTicket(ctx);
-        await interaction.editReply({ content: t(lang, 'tickets.reopened', { emoji: EMOJI.APPROVE }) });
+        await interaction.editReply({ content: t(lang, 'tickets.reopened', { emoji: EMOJI.TICKET_REOPEN }) });
         return;
       case 'delete':
-        await interaction.editReply({ content: t(lang, 'tickets.deleting', { emoji: EMOJI.HAMMER }) });
+        await interaction.editReply({ content: t(lang, 'tickets.deleting', { emoji: EMOJI.TICKET_DELETE }) });
         await actions.deleteTicketChannel(ctx);
         return;
       case 'claim':
@@ -835,7 +835,7 @@ async function ticketActionCmd(interaction, sub, lang) {
           return;
         }
         await actions.claimTicket(ctx);
-        await interaction.editReply({ content: t(lang, 'tickets.claim.youClaimed', { emoji: EMOJI.STAR }) });
+        await interaction.editReply({ content: t(lang, 'tickets.claim.youClaimed', { emoji: EMOJI.TICKET_CLAIM }) });
         return;
       case 'unclaim':
         await actions.unclaimTicket(ctx);
@@ -874,7 +874,7 @@ async function ticketActionCmd(interaction, sub, lang) {
           return;
         }
         await db.setClaim(ticket.id, target.id);
-        await interaction.channel.send({ content: t(lang, 'tickets.transfer.notice', { emoji: EMOJI.STAR, user: interaction.user.id, target: `${target}` }), allowedMentions: { users: [target.id] } }).catch(() => {});
+        await interaction.channel.send({ content: t(lang, 'tickets.transfer.notice', { emoji: EMOJI.TICKET_CLAIM, user: interaction.user.id, target: `${target}` }), allowedMentions: { users: [target.id] } }).catch(() => {});
         await interaction.editReply({ content: t(lang, 'tickets.transfer.done', { emoji: EMOJI.APPROVE, target: `${target}` }) });
         return;
       }

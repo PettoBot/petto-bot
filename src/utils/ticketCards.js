@@ -47,7 +47,7 @@ function buildPanelFallbackCard({ title, description, color = null, imageUrl = n
   if (imageUrl && /^https:\/\//i.test(imageUrl)) container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(imageUrl)));
   const lines = [];
   if (title) lines.push(`### ${title}`);
-  lines.push(description || t(lang, 'tickets.panel.defaultDescription'));
+  lines.push(description || t(lang, 'tickets.panel.defaultDescription', { emoji: EMOJI.TICKET }));
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
   // A footer the server wrote, or (only on the usual panel, with no text of its own) a short line on how tickets work.
   const small = footer ? String(footer).slice(0, 300) : description ? null : t(lang, 'tickets.panel.defaultHint');
@@ -92,17 +92,17 @@ function buildWelcomeFallbackCard({ opener, categoryLabel, pingText, welcomeMess
   const text = welcomeMessage
     ? renderWelcomeText(welcomeMessage, { opener, categoryLabel, guildName, ticketNumber })
     : t(lang, 'tickets.welcome.default', { user: String(opener) });
-  const heading = ticketNumber != null ? t(lang, 'tickets.welcome.title', { category: categoryLabel, number: padNumber(ticketNumber) }) : `### 🎫 ${categoryLabel}`;
+  const heading = ticketNumber != null ? t(lang, 'tickets.welcome.title', { emoji: EMOJI.TICKET, category: categoryLabel, number: padNumber(ticketNumber) }) : `### ${EMOJI.TICKET} ${categoryLabel}`;
   withThumbnail(container, `${heading}\n${text}`, pictureOf(opener));
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${t(lang, 'tickets.welcome.facts', { user: String(opener), category: categoryLabel })}\n-# ${t(lang, 'tickets.welcome.hint')}`));
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${t(lang, 'tickets.welcome.facts', { user: String(opener), category: categoryLabel })}\n-# ${t(lang, 'tickets.welcome.hint', { claim: EMOJI.TICKET_CLAIM, close: EMOJI.TICKET_CLOSE })}`));
   return container;
 }
 
 /** The notice in the ticket when a staff member claims it: who handles it now, for the member who opened it. */
 function buildClaimCard({ staffId, openerId, lang = currentLanguage() }) {
   return new ContainerBuilder().setAccentColor(0xfed53c).addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(`${t(lang, 'tickets.claim.cardTitle', { emoji: EMOJI.STAR })}\n${t(lang, 'tickets.claim.cardText', { user: staffId })}${openerId ? `\n-# ${t(lang, 'tickets.claim.cardHint', { opener: openerId })}` : ''}`),
+    new TextDisplayBuilder().setContent(`${t(lang, 'tickets.claim.cardTitle', { emoji: EMOJI.TICKET_CLAIM })}\n${t(lang, 'tickets.claim.cardText', { user: staffId })}${openerId ? `\n-# ${t(lang, 'tickets.claim.cardHint', { opener: openerId })}` : ''}`),
   );
 }
 
@@ -117,7 +117,7 @@ function buildUnclaimCard({ staffId, lang = currentLanguage() }) {
 function buildTicketClosedNotice({ ticketNumber, closedByLine, reason, lang = currentLanguage() }) {
   return new ContainerBuilder().setAccentColor(0xfe6465).addTextDisplayComponents(
     new TextDisplayBuilder().setContent([
-      t(lang, 'tickets.close.cardTitle', { number: padNumber(ticketNumber) }),
+      t(lang, 'tickets.close.cardTitle', { emoji: EMOJI.TICKET_CLOSE, number: padNumber(ticketNumber) }),
       closedByLine,
       t(lang, 'tickets.log.reason', { reason }),
       `-# ${t(lang, 'tickets.close.cardHint')}`,
@@ -128,9 +128,9 @@ function buildTicketClosedNotice({ ticketNumber, closedByLine, reason, lang = cu
 /** Control row for an open ticket: claim, close, on-demand transcript. */
 function buildTicketControlRow(ticketId, lang = currentLanguage()) {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`tk_claim::${ticketId}`).setLabel(t(lang, 'tickets.controls.claim.button')).setEmoji(EMOJI.STAR).setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`tk_close::${ticketId}`).setLabel(t(lang, 'tickets.controls.close.button')).setEmoji('🔒').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(`tk_transcript::${ticketId}`).setLabel(t(lang, 'tickets.controls.transcript.button')).setEmoji('📄').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`tk_claim::${ticketId}`).setLabel(t(lang, 'tickets.controls.claim.button')).setEmoji(EMOJI.TICKET_CLAIM).setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`tk_close::${ticketId}`).setLabel(t(lang, 'tickets.controls.close.button')).setEmoji(EMOJI.TICKET_CLOSE).setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`tk_transcript::${ticketId}`).setLabel(t(lang, 'tickets.controls.transcript.button')).setEmoji(EMOJI.TICKET_TRANSCRIPT).setStyle(ButtonStyle.Secondary),
   );
 }
 
@@ -145,8 +145,8 @@ function buildCloseRequestRow(ticketId, lang = currentLanguage()) {
 /** Second control row for an open ticket: staff-only member management (enforced on click, not by hiding). */
 function buildTicketMemberRow(ticketId, lang = currentLanguage()) {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`tk_addmember::${ticketId}`).setLabel(t(lang, 'tickets.controls.addMember.button')).setEmoji('➕').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`tk_removemember::${ticketId}`).setLabel(t(lang, 'tickets.controls.removeMember.button')).setEmoji('➖').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`tk_addmember::${ticketId}`).setLabel(t(lang, 'tickets.controls.addMember.button')).setEmoji(EMOJI.TICKET_ADD).setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`tk_removemember::${ticketId}`).setLabel(t(lang, 'tickets.controls.removeMember.button')).setEmoji(EMOJI.TICKET_REMOVE).setStyle(ButtonStyle.Secondary),
   );
 }
 
@@ -172,7 +172,7 @@ function buildTicketClosedCard({ ticket, guild, actor, reason, channel, hideClos
   ];
   const picture = hideCloser ? guild.iconURL?.({ extension: 'png', size: 256 }) : pictureOf(actor);
   const container = new ContainerBuilder().setAccentColor(0xfe6465);
-  withThumbnail(container, `${t(lang, 'tickets.closedDm.title', { emoji: '🔒', number: padNumber(ticket.ticket_number) })}\n${facts.join('\n')}`, picture);
+  withThumbnail(container, `${t(lang, 'tickets.closedDm.title', { emoji: EMOJI.TICKET_CLOSE, number: padNumber(ticket.ticket_number) })}\n${facts.join('\n')}`, picture);
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(hints.map((line) => `-# ${line}`).join('\n')));
   return container;
@@ -182,21 +182,25 @@ function buildTicketClosedCard({ ticket, guild, actor, reason, channel, hideClos
 function buildRatingRow(ticketId) {
   const row = new ActionRowBuilder();
   for (let n = 1; n <= 5; n++) {
-    row.addComponents(new ButtonBuilder().setCustomId(`tk_rate::${ticketId}::${n}`).setLabel(String(n)).setEmoji('⭐').setStyle(n >= 4 ? ButtonStyle.Success : ButtonStyle.Secondary));
+    row.addComponents(new ButtonBuilder().setCustomId(`tk_rate::${ticketId}::${n}`).setLabel(String(n)).setEmoji(EMOJI.STAR_FULL).setStyle(n >= 4 ? ButtonStyle.Success : ButtonStyle.Secondary));
   }
   return row;
 }
 
-/** ★★★★☆ for a rating of 4. */
-function starsText(rating) {
+/**
+ * The stars of a rating of 4: four full stars of Petto and one empty one. `plain` gives ★★★★☆ instead, for the places where
+ * an emoji of Petto cannot show (plain text, labels, pages outside Discord).
+ */
+function starsText(rating, { plain = false } = {}) {
   const n = Math.max(0, Math.min(5, Number(rating) || 0));
-  return `${'★'.repeat(n)}${'☆'.repeat(5 - n)}`;
+  if (plain) return `${'★'.repeat(n)}${'☆'.repeat(5 - n)}`;
+  return `${EMOJI.STAR_FULL.repeat(n)}${EMOJI.STAR_EMPTY_RATE.repeat(5 - n)}`;
 }
 
 /** The card that takes the place of the rating buttons once the member rated (or had rated already). */
 function buildRatedCard(rating, lang = currentLanguage()) {
   return new ContainerBuilder().setAccentColor(0xfed53c).addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(`${t(lang, 'tickets.rating.doneCard', { stars: starsText(rating) })}
+    new TextDisplayBuilder().setContent(`${t(lang, 'tickets.rating.doneCard', { emoji: EMOJI.STAR_FULL, stars: starsText(rating) })}
 -# ${t(lang, 'tickets.rating.doneHint')}`),
   );
 }
@@ -222,16 +226,16 @@ function componentsAfterRating(components, rating, { v2 = true, lang = currentLa
 /** A single Link-style button pointing at the web transcript viewer, or null if no link is available (web server not configured). Link buttons need no customId — clicking just navigates, no interaction fires. */
 function buildTranscriptLinkRow(link, lang = currentLanguage()) {
   if (!link) return null;
-  return new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel(t(lang, 'tickets.controls.viewTranscript.button')).setEmoji('📄').setStyle(ButtonStyle.Link).setURL(link));
+  return new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel(t(lang, 'tickets.controls.viewTranscript.button')).setEmoji(EMOJI.TICKET_TRANSCRIPT).setStyle(ButtonStyle.Link).setURL(link));
 }
 
 /** Control row shown once a ticket is closed (locked): reopen, hard-delete, and (if available) view the transcript online. */
 function buildClosedControlRow(ticketId, transcriptLink, lang = currentLanguage()) {
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`tk_reopen::${ticketId}`).setLabel(t(lang, 'tickets.controls.reopen.button')).setEmoji('🔓').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`tk_delete::${ticketId}`).setLabel(t(lang, 'tickets.controls.delete.button')).setEmoji(EMOJI.HAMMER).setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`tk_reopen::${ticketId}`).setLabel(t(lang, 'tickets.controls.reopen.button')).setEmoji(EMOJI.TICKET_REOPEN).setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`tk_delete::${ticketId}`).setLabel(t(lang, 'tickets.controls.delete.button')).setEmoji(EMOJI.TICKET_DELETE).setStyle(ButtonStyle.Danger),
   );
-  if (transcriptLink) row.addComponents(new ButtonBuilder().setLabel(t(lang, 'tickets.controls.viewTranscript.button')).setStyle(ButtonStyle.Link).setURL(transcriptLink));
+  if (transcriptLink) row.addComponents(new ButtonBuilder().setLabel(t(lang, 'tickets.controls.viewTranscript.button')).setEmoji(EMOJI.TICKET_TRANSCRIPT).setStyle(ButtonStyle.Link).setURL(transcriptLink));
   return row;
 }
 

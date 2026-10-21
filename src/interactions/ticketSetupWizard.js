@@ -57,7 +57,7 @@ function startDraft(userId, { guildId, channelId, lang = currentLanguage() }) {
     buttonStyle: 'primary',
     title: t(lang, 'tickets.setup.default.title'),
     description: t(lang, 'tickets.setup.default.description'),
-    types: [{ label: t(lang, 'tickets.setup.default.typeLabel'), emoji: '🎫', description: t(lang, 'tickets.setup.default.typeDescription') }],
+    types: [{ label: t(lang, 'tickets.setup.default.typeLabel'), emoji: EMOJI.TICKET, description: t(lang, 'tickets.setup.default.typeDescription') }],
   });
 }
 
@@ -90,7 +90,7 @@ function renderWizard(uid, draft, lang = currentLanguage()) {
     t(lang, 'tickets.setup.supportRoles', { mark: mark(draft.supportRoleIds.length), roles: draft.supportRoleIds.length ? draft.supportRoleIds.map((r) => `<@&${r}>`).join(' ') : t(lang, 'tickets.setup.supportRolesEmpty') }),
     t(lang, 'tickets.setup.logChannel', { mark: mark(draft.logChannelId), channel: draft.logChannelId ? `<#${draft.logChannelId}>` : t(lang, 'tickets.setup.logChannelEmpty') }),
     '',
-    `### 🎫 ${draft.title}`,
+    `### ${EMOJI.TICKET} ${draft.title}`,
     draft.description,
     '',
     ...draft.types.map((type) => `${COLOR_DOT[draft.buttonStyle]} ${type.emoji ? `${type.emoji} ` : ''}**${type.label}**${type.description ? ` — ${type.description}` : ''}`),

@@ -12,6 +12,7 @@ const cards = require('../src/utils/ticketCards');
 const controls = require('../src/interactions/ticketControls');
 const actions = require('../src/utils/ticketActions');
 const { t } = require('../src/i18n');
+const { EMOJI } = require('../src/utils/emojis');
 
 const GUILD_AVATAR = 'https://cdn.discordapp.com/guilds/10/users/99/avatars/a1b2c3.png?size=128';
 const GLOBAL_AVATAR = 'https://cdn.discordapp.com/avatars/99/global.png?size=128';
@@ -155,7 +156,9 @@ async function checkRating() {
   const after = cards.componentsAfterRating(before, 4, { v2: true, lang: 'en' });
   assert.equal(after.length, 3);
   assert.equal(after[1].type, 17, 'the row of stars is now a card');
-  assert.ok(JSON.stringify(after[1]).includes('★★★★☆'));
+  const fourStars = `${EMOJI.STAR_FULL.repeat(4)}${EMOJI.STAR_EMPTY_RATE}`;
+  assert.ok(JSON.stringify(after[1]).includes(fourStars), 'the thanks card shows the stars of Petto, four full and one empty');
+  assert.equal(cards.starsText(4, { plain: true }), '★★★★☆', 'the plain text stars stay for where an emoji cannot show');
   assert.ok(!JSON.stringify(after).includes('tk_rate::'), 'no rating button is left');
   assert.deepEqual(after[2], before[2], 'the transcript button stays');
   const legacy = cards.componentsAfterRating([cards.buildRatingRow(3).toJSON()], 2, { v2: false });
@@ -206,7 +209,7 @@ async function checkRating() {
   await controls.handleRatingButton(firstClick, deps);
   assert.equal(firstClick.said.updates.length, 1, 'the message is updated');
   assert.ok(!JSON.stringify(firstClick.said.updates[0]).includes('tk_rate::'));
-  assert.ok(firstClick.said.followUps[0].content.includes('★★★★★'));
+  assert.ok(firstClick.said.followUps[0].content.includes(EMOJI.STAR_FULL.repeat(5)));
   assert.equal(firstClick.said.followUps[0].flags, MessageFlags.Ephemeral);
   const secondClick = interaction('tk_rate::3::1', before);
   await controls.handleRatingButton(secondClick, deps);
@@ -218,12 +221,40 @@ async function checkRating() {
   assert.equal(stranger.said.updates.length, 0, 'only the opener can rate');
 }
 
+/** The id of a custom emoji written as <:name:id>. */
+const idOf = (emoji) => String(emoji).match(/:(\d+)>$/)[1];
+
+/** The buttons and the cards of a ticket use the ticket emojis of Petto, not the usual ones. */
+function checkEmojis() {
+  const buttons = (row) => row.toJSON().components;
+  const byId = (row) => Object.fromEntries(buttons(row).map((button) => [String(button.custom_id ?? 'link').split('::')[0], button.emoji?.id ?? null]));
+  assert.deepEqual(byId(cards.buildTicketControlRow(1, 'en')), { tk_claim: idOf(EMOJI.TICKET_CLAIM), tk_close: idOf(EMOJI.TICKET_CLOSE), tk_transcript: idOf(EMOJI.TICKET_TRANSCRIPT) });
+  assert.deepEqual(byId(cards.buildTicketMemberRow(1, 'en')), { tk_addmember: idOf(EMOJI.TICKET_ADD), tk_removemember: idOf(EMOJI.TICKET_REMOVE) });
+  assert.deepEqual(byId(cards.buildClosedControlRow(1, 'https://petto.sbs/t/1', 'en')), { tk_reopen: idOf(EMOJI.TICKET_REOPEN), tk_delete: idOf(EMOJI.TICKET_DELETE), link: idOf(EMOJI.TICKET_TRANSCRIPT) });
+  assert.equal(buttons(cards.buildTranscriptLinkRow('https://petto.sbs/t/1', 'en'))[0].emoji.id, idOf(EMOJI.TICKET_TRANSCRIPT));
+  assert.ok(buttons(cards.buildRatingRow(1)).every((button) => button.emoji?.id === idOf(EMOJI.STAR_FULL)), 'the rating buttons use the full star of Petto');
+  // The cards: the ticket icon in the welcome and the panel, the close icon on the closed notice and the DM, the claim icon.
+  for (const lang of ['en', 'es', 'pt-BR']) {
+    const welcome = JSON.stringify(cards.buildWelcomeFallbackCard({ opener: { toString: () => '<@5>', displayAvatarURL: () => null }, categoryLabel: 'Help', ticketNumber: 7, lang }).toJSON());
+    assert.ok(welcome.includes(EMOJI.TICKET) && welcome.includes(EMOJI.TICKET_CLAIM) && welcome.includes(EMOJI.TICKET_CLOSE), `${lang}: the welcome card uses the ticket emojis`);
+    assert.ok(JSON.stringify(cards.buildPanelFallbackCard({ title: 'Support', lang }).toJSON()).includes(EMOJI.TICKET), `${lang}: the usual panel text has the ticket emoji`);
+    assert.ok(JSON.stringify(cards.buildTicketClosedNotice({ ticketNumber: 7, closedByLine: 'x', reason: 'ok', lang }).toJSON()).includes(EMOJI.TICKET_CLOSE));
+    assert.ok(JSON.stringify(cards.buildClaimCard({ staffId: '6', openerId: '5', lang }).toJSON()).includes(EMOJI.TICKET_CLAIM));
+    assert.equal(JSON.stringify(cards.buildRatedCard(5, lang).toJSON()).split(EMOJI.STAR_FULL).length - 1, 6, `${lang}: the thanks card starts with a star and shows five`);
+  }
+  const dm = JSON.stringify(cards.buildTicketClosedCard({ ticket: { ticket_number: 3 }, guild: { name: 'Luna', iconURL: () => null }, actor: { toString: () => '<@6>', displayAvatarURL: () => null }, reason: 'ok', channel: null, lang: 'en' }).toJSON());
+  assert.ok(dm.includes(EMOJI.TICKET_CLOSE), 'the closed DM uses the close emoji');
+  const all = JSON.stringify([cards.buildTicketControlRow(1, 'en'), cards.buildTicketMemberRow(1, 'en'), cards.buildClosedControlRow(1, null, 'en'), cards.buildRatingRow(1)].map((row) => row.toJSON()));
+  for (const stock of ['🎫', '🔒', '🔓', '📄', '⭐', '➕', '➖', '🗑']) assert.ok(!all.includes(stock), `no ${stock} left on the ticket buttons`);
+}
+
 (async () => {
+  checkEmojis();
   await checkTranscript();
   await checkChannelDelete();
   await checkReconcile();
   await checkRating();
-  console.log('Checked tickets: transcript identity, deleted channels, the channel check and ratings.');
+  console.log('Checked tickets: the ticket emojis, transcript identity, deleted channels, the channel check and ratings.');
   process.exit(0);
 })().catch((error) => {
   console.error(error);

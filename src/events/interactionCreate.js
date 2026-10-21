@@ -48,8 +48,7 @@ const { BUTTON_PREFIX, handleButton: handleReactionRoleButton } = require('../in
 const permissionsDb = require('../db/permissions');
 const { restrictedFor } = require('../utils/commandRestrictions');
 const disabledCommandsDb = require('../db/disabledCommands');
-const { noticePayload } = require('../utils/infoCard');
-const { COLORS } = require('../utils/colors');
+const { textCard } = require('../utils/caseCard');
 const { EMOJI } = require('../utils/emojis');
 const logger = require('../utils/logger');
 const { logCommandUse } = require('../logging/extraLog');
@@ -525,9 +524,10 @@ module.exports = {
       const disabled = await disabledCommandsDb.findCached(interaction.guildId, command.data.name, interaction.channelId).catch(() => null);
       if (disabled) {
         const text = disabled.channel_id
-          ? t(lang, 'core.disabled.channel', { emoji: EMOJI.DENY, command: `/${command.data.name}`, channel: `<#${disabled.channel_id}>` })
-          : t(lang, 'core.disabled.server', { emoji: EMOJI.DENY, command: `/${command.data.name}` });
-        await interaction.reply({ ...noticePayload(text, COLORS.RED), flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
+          ? t(lang, 'core.disabled.channel', { emoji: EMOJI.WARNING, command: `/${command.data.name}`, channel: `<#${disabled.channel_id}>` })
+          : t(lang, 'core.disabled.server', { emoji: EMOJI.WARNING, command: `/${command.data.name}` });
+        // A private card with no colored side bar, the same look as the prefix notice.
+        await interaction.reply({ components: [textCard(text, null)], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
         return;
       }
     }

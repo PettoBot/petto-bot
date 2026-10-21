@@ -75,7 +75,7 @@ async function handleButton(interaction) {
         }
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         await actions.claimTicket(ctx); // posts the claim notice in the ticket
-        await interaction.editReply({ content: t(lang, 'tickets.claim.youClaimed', { emoji: EMOJI.STAR }) });
+        await interaction.editReply({ content: t(lang, 'tickets.claim.youClaimed', { emoji: EMOJI.TICKET_CLAIM }) });
         return;
       }
 
@@ -142,7 +142,7 @@ async function handleButton(interaction) {
 
       case 'tk_delete': {
         if (!(await requireStaff(interaction, category, ticket, lang))) return;
-        await interaction.reply({ content: t(lang, 'tickets.deleting', { emoji: EMOJI.HAMMER }) });
+        await interaction.reply({ content: t(lang, 'tickets.deleting', { emoji: EMOJI.TICKET_DELETE }) });
         await actions.deleteTicketChannel(ctx);
         return;
       }
