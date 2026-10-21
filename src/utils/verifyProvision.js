@@ -11,20 +11,24 @@ const hasPermission = (guild, flag) => guild.members.me?.permissions.has(flag);
 
 // The dashboard shows these messages as they are, so they are in the language of the server.
 
-/** Switches the verification on or off. Turning it on makes sure the gate role exists. */
-async function setEnabled(guild, enabled) {
+/**
+ * Switches the verification on or off. Turning it on makes sure the gate role exists (the first time that edits every channel, which is
+ * what `onProgress({ phase, done, total })` follows).
+ */
+async function setEnabled(guild, enabled, { onProgress } = {}) {
   await ensureGuild(guild.id);
   const lang = await guildLanguage(guild.id);
   if (enabled && !hasPermission(guild, PermissionFlagsBits.ManageRoles)) return { ok: false, message: t(lang, 'verify.provision.needRoles') };
   const settings = await upsertConfig(guild.id, { enabled });
   if (enabled) {
-    try { await ensureUnverifiedRole(guild, settings ?? {}); } catch (err) { return { ok: false, message: t(lang, 'verify.provision.gateFailed', { error: err.message }) }; }
+    try { await ensureUnverifiedRole(guild, settings ?? {}, { onProgress }); } catch (err) { return { ok: false, message: t(lang, 'verify.provision.gateFailed', { error: err.message }) }; }
   }
   return { ok: true, message: t(lang, enabled ? 'verify.provision.on' : 'verify.provision.off') };
 }
 
 /** Posts the panel of the chosen channel now. */
-async function sendPanelNow(guild) {
+async function sendPanelNow(guild, { onProgress } = {}) {
+  onProgress?.({ phase: 'panel', done: 0, total: 0 });
   const settings = (await getConfig(guild.id)) ?? {};
   const lang = await guildLanguage(guild.id);
   if (!settings.panel_channel_id) return { ok: false, message: t(lang, 'verify.provision.pickChannel') };
@@ -39,21 +43,23 @@ async function sendPanelNow(guild) {
 
 /**
  * Sets the verification up from nothing: the gate role (and the one for who passes), a channel to verify in if none was chosen, the
- * panel in it, and the verification on. What the server already picked is kept.
+ * panel in it, and the verification on. What the server already picked is kept. On a big server a new gate role means editing every channel
+ * (one request each), so the dashboard runs this as a job (verifyJobs.js) and `onProgress({ phase, done, total })` says how far it is.
  */
-async function setupEverything(guild) {
+async function setupEverything(guild, { onProgress } = {}) {
   await ensureGuild(guild.id);
   const lang = await guildLanguage(guild.id);
   if (!hasPermission(guild, PermissionFlagsBits.ManageRoles)) return { ok: false, message: t(lang, 'verify.provision.needRoles') };
   let settings = (await getConfig(guild.id)) ?? {};
   const made = [];
   try {
+    onProgress?.({ phase: 'roles', done: 0, total: 0 });
     if (!settings.verified_role_id || !guild.roles.cache.has(settings.verified_role_id)) {
       const role = await guild.roles.create({ name: t(lang, 'verify.role.verified'), color: 0x57f287, permissions: [], reason: t(lang, 'verify.reason.dashboard') });
       settings = (await upsertConfig(guild.id, { verified_role_id: role.id })) ?? { ...settings, verified_role_id: role.id };
       made.push(t(lang, 'verify.provision.madeRole', { name: role.name }));
     }
-    const gate = await ensureUnverifiedRole(guild, settings);
+    const gate = await ensureUnverifiedRole(guild, settings, { onProgress });
     if (!settings.unverified_role_id) made.push(t(lang, 'verify.provision.madeRole', { name: gate.name }));
     let channel = settings.panel_channel_id ? await guild.channels.fetch(settings.panel_channel_id).catch(() => null) : null;
     if (!channel) {
@@ -67,6 +73,7 @@ async function setupEverything(guild) {
       });
       made.push(t(lang, 'verify.provision.madeChannel', { name: channel.name }));
     }
+    onProgress?.({ phase: 'panel', done: 0, total: 0 });
     settings = (await upsertConfig(guild.id, { enabled: true, panel_channel_id: channel.id })) ?? { ...settings, enabled: true, panel_channel_id: channel.id };
     await postPanel(guild, settings, channel);
     return { ok: true, message: made.length ? t(lang, 'verify.provision.readyMade', { made: made.join(', '), channel: channel.name }) : t(lang, 'verify.provision.ready', { channel: channel.name }) };

@@ -48,4 +48,4 @@ function verifyToken(token) {
   return { userId: payload.uid, guildId: payload.gid, jti: payload.jti };
 }
 
-module.exports = { createToken, verifyToken };
+module.exports = { createToken, verifyToken, DEFAULT_TTL_SECONDS };

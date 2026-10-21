@@ -4,7 +4,7 @@ const { getConfig, upsertConfig } = require('../../db/verificationConfig');
 const { getTemplate } = require('../../db/embedTemplates');
 const { ensureUnverifiedRole } = require('../../utils/verifyRole');
 const { postPanel } = require('../../utils/verifyPanel');
-const { createToken } = require('../../utils/verifyToken');
+const { linkProblem, verifyLinkFor } = require('../../utils/verifyLink');
 const { sendVerifyDM } = require('../../utils/verifyMessage');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
@@ -14,10 +14,13 @@ const { t, languageOf } = require('../../i18n');
 
 const { methodOf, usesTurnstile, usesLink } = require('../../utils/verifyMethod');
 
+// How often the answer of `/verify setup` shows the channels done while a new gate role is set up (each edit is a request too).
+const PROGRESS_EVERY_MS = 3_000;
+
 const methodLabel = (lang, method) => t(lang, `verify.method.${method}`);
 
 // The link and its secret are always needed; the Cloudflare keys only for the servers that use that check.
-const LINK_CONFIGURED = () => Boolean(config.verifyBaseUrl && config.verifyTokenSecret);
+const LINK_CONFIGURED = () => !linkProblem();
 // Inside Discord there is no link: only the secret that signs the picture is needed.
 const SECRET_CONFIGURED = () => Boolean(config.verifyTokenSecret);
 const TURNSTILE_CONFIGURED = () => Boolean(config.turnstileSiteKey && config.turnstileSecretKey);
@@ -122,7 +125,14 @@ async function setup(interaction, lang) {
   let roleLine = '';
   if (enabled) {
     try {
-      const role = await ensureUnverifiedRole(interaction.guild, { ...existing, ...saved });
+      // A new gate role edits every channel (one request each): on a big server that takes a while, so the answer says how far it is.
+      let shownAt = Date.now();
+      const onProgress = ({ phase, done, total }) => {
+        if (phase !== 'channels' || !total || done >= total || Date.now() - shownAt < PROGRESS_EVERY_MS) return;
+        shownAt = Date.now();
+        interaction.editReply({ components: [textCard(t(lang, 'verify.job.channels', { done, total }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+      };
+      const role = await ensureUnverifiedRole(interaction.guild, { ...existing, ...saved }, { onProgress });
       roleLine = t(lang, 'verify.setup.gateRole', { role: `${role}` });
     } catch (err) {
       logger.error('Failed to provision unverified role:', err);
@@ -192,7 +202,7 @@ async function send(interaction, lang) {
     }
   }
 
-  const link = usesLink(methodOf(verifyConfig)) ? `${config.verifyBaseUrl}/verify/${createToken({ userId: targetUser.id, guildId: interaction.guild.id })}` : null;
+  const link = usesLink(methodOf(verifyConfig)) ? verifyLinkFor(targetUser.id, interaction.guild.id).url ?? null : null;
 
   const dmSent = await sendVerifyDM(targetMember, { guild: interaction.guild, link, lang })
     .then(() => true)

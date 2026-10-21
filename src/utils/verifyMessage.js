@@ -3,8 +3,9 @@ const config = require('../config');
 const { MessageFlags } = require('discord.js');
 const { templatePayload } = require('./templatedMessage');
 const { getConfig } = require('../db/verificationConfig');
-const { ActionRowBuilder } = require('discord.js');
-const { methodOf, inDiscord } = require('./verifyMethod');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { methodOf } = require('./verifyMethod');
+const { canDoLetters } = require('./verifyLink');
 const { t, guildLanguage, currentLanguage } = require('../i18n');
 const ACCENT_COLOR = 0x4b4f59; // matches the verification page's accent
 const SUCCESS_COLOR = 0xa5ea7a;
@@ -31,7 +32,11 @@ function buildVerifyDM({ guild, link, discordButton = false, lang = currentLangu
     container.addTextDisplayComponents(text);
   }
 
-  if (discordButton) container.addActionRowComponents(new ActionRowBuilder().addComponents(require('../interactions/verifyLetters').startButton(guild.id, lang)));
+  // The link as a button too: a link inside the text is easy to miss on a phone.
+  const row = new ActionRowBuilder();
+  if (link) row.addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(link).setLabel(t(lang, 'verify.link.open')).setEmoji('🔗'));
+  if (discordButton) row.addComponents(require('../interactions/verifyLetters').startButton(guild.id, lang));
+  if (row.components.length) container.addActionRowComponents(row);
   return container;
 }
 
@@ -59,7 +64,7 @@ function buildVerifiedDM({ guild, lang = currentLanguage() }) {
 async function sendVerifyDM(member, { guild, link, lang }) {
   const language = lang ?? await guildLanguage(guild.id);
   const settings = await getConfig(guild.id).catch(() => null);
-  const discordButton = inDiscord(methodOf(settings));
+  const discordButton = canDoLetters(methodOf(settings));
   const custom = await templatePayload(guild.id, settings?.prompt_embed_template, { guild, user: member.user ?? member, member, verify: { link: link ?? '' } });
   if (custom) {
     const payload = { ...custom, allowedMentions: { parse: [] } };
