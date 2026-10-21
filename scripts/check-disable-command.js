@@ -80,6 +80,7 @@ async function dc(args, lang = undefined) {
   interaction.pettoLang = lang;
   interaction.typedPrefix = '!';
   await disablecommand.execute(interaction);
+  for (const payload of sent) for (const card of payload.components ?? []) assert.equal((card.toJSON ? card.toJSON() : card).accent_color, undefined, `"!dc ${args}" answers with no colored side bar`);
   return sent[0];
 }
 const saved = () => rules.map((r) => `${r.command}@${r.channel_id ? channels.find((c) => c.id === r.channel_id).name : 'server'}`).sort();
@@ -103,7 +104,8 @@ const saved = () => rules.map((r) => `${r.command}@${r.channel_id ? channels.fin
   assert.match(out, /Turned off in <#700000000000000001>/);
   assert.match(out, /`suggest`/);
   assert.match(out, /Undo: `!dc enable suggest #cmds`/);
-  assert.equal(accent(reply), 0xa5ea7a, 'a colored card, never the plain one');
+  assert.equal(reply.components[0].toJSON().type, 17, 'a card (Components V2), not plain text');
+  assert.equal(accent(reply), undefined, 'the card has no colored side bar');
   assert.deepEqual(saved(), ['suggest@cmds']);
 
   // The channel first, the same rule again, an alias and a mention.
@@ -129,7 +131,7 @@ const saved = () => rules.map((r) => `${r.command}@${r.channel_id ? channels.fin
   assert.match(out, /Did you mean `suggestion`/);
   reply = await dc('rank #nowhere');
   assert.match(text(reply), /can't find these channels: `#nowhere`/);
-  assert.equal(accent(reply), 0xfe6465);
+  assert.equal(accent(reply), undefined, 'errors have no colored side bar either');
   assert.match(text(await dc('disable all')), /Tell me which commands/);
   assert.match(text(await dc('server')), /Turned off on the whole server/, '`server` alone is the alias of serverinfo');
   assert.ok(saved().includes('serverinfo@server'));
@@ -143,9 +145,10 @@ const saved = () => rules.map((r) => `${r.command}@${r.channel_id ? channels.fin
   assert.match(text(await dc('category:nope')), /don't know these commands: `category:nope`/);
 
   // The list, grouped by channel with counts; and only what applies in one channel.
-  out = text(await dc('list'));
-  assert.match(out, /Disabled commands/);
-  assert.match(out, /9 rules in 4 places/);
+  reply = await dc('list');
+  out = text(reply);
+  assert.match(out, /## Disabled commands \(9\)\\nTest/, 'the old header: the title with the count, the server name under it');
+  assert.equal(accent(reply), undefined, 'the list has no colored side bar (not the purple of the other lists)');
   assert.match(out, /The whole server\*\* · 2 commands\\n`rank` · `suggest`/);
   assert.match(out, /<#700000000000000001> · 3 commands/);
   assert.match(out, /<#700000000000000002> · 2 commands/);
@@ -170,23 +173,35 @@ const saved = () => rules.map((r) => `${r.command}@${r.channel_id ? channels.fin
   out = text(await dc('enable all'));
   assert.match(out, /every command works again/);
   assert.deepEqual(saved(), []);
-  assert.match(text(await dc('list')), /No commands are disabled/);
+  reply = await dc('list');
+  assert.match(text(reply), /No commands are disabled/);
+  assert.equal(accent(reply), undefined, 'the empty list has no color either');
 
   // Spanish and Portuguese.
   assert.match(text(await dc('suggest #cmds', 'es')), /Desactivados en <#700000000000000001>/);
   assert.match(text(await dc('nothing', 'pt-BR')), /Não conheço estes comandos: `nothing`/);
-  assert.match(text(await dc('list', 'es')), /1 regla en 1 sitio/);
+  assert.match(text(await dc('list', 'es')), /Comandos desactivados \(1\)/);
   assert.match(text(await dc('enable all', 'pt-BR')), /1 regra removida/);
 
-  // The notice a member sees, prefix and slash: red, short, with the command and the channel.
+  // The other lists of the pager keep their purple; only !dc asks for none.
+  const pager = require('../src/utils/pager');
+  pager.register('dc-check-colored', { load: async () => ({ title: 'x', items: ['a'] }) });
+  assert.equal((await pager.buildPage('dc-check-colored', { guild, userId: '9', lang: 'en' })).components[0].toJSON().accent_color, 0x8c7cff);
+
+  // The notice a member sees, prefix and slash: short, with the command and the channel, and no colored side bar.
   const { t } = require('../src/i18n');
   assert.match(t('en', 'core.disabled.channel', { emoji: 'x', command: '!suggest', channel: '<#1>' }), /`!suggest` is turned off in <#1>/);
   assert.match(t('es', 'core.disabled.server', { emoji: 'x', command: '/rank' }), /`\/rank` está desactivado en este servidor/);
   const fs = require('node:fs');
   const events = fs.readFileSync(path.join(__dirname, '../src/events/messageCreateCommands.js'), 'utf8');
-  assert.match(events, /core\.disabled\.channel[\s\S]{0,400}noticePayload\(text, COLORS\.RED\)[\s\S]{0,200}setTimeout\(\(\) => notice\.delete/, 'the prefix notice is a red card that deletes itself');
+  assert.match(events, /core\.disabled\.channel[\s\S]{0,400}warningPayload\(message, text\.trim\(\), null\)[\s\S]{0,200}setTimeout\(\(\) => notice\.delete/, 'the prefix notice is the warning card with no color, and it deletes itself');
+  assert.ok(!/core\.disabled[\s\S]{0,600}COLORS\.RED/.test(events), 'no red bar on the prefix notice');
   const slash = fs.readFileSync(path.join(__dirname, '../src/events/interactionCreate.js'), 'utf8');
-  assert.match(slash, /core\.disabled\.channel[\s\S]{0,400}MessageFlags\.Ephemeral \| MessageFlags\.IsComponentsV2/, 'the slash notice is private');
+  assert.match(slash, /core\.disabled\.channel[\s\S]{0,400}textCard\(text, null\)[\s\S]{0,80}MessageFlags\.Ephemeral \| MessageFlags\.IsComponentsV2/, 'the slash notice is private and has no color');
+  const { textCard } = require('../src/utils/caseCard');
+  assert.equal(textCard('x', null).toJSON().accent_color, undefined);
+  const { noticePayload } = require('../src/utils/infoCard');
+  assert.equal(noticePayload('x', null).components[0].toJSON().accent_color, undefined, 'noticePayload can draw a card with no color');
 
   console.log('disablecommand ok');
 })().catch((error) => { console.error(error); process.exit(1); });

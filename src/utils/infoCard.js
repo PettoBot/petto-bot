@@ -54,7 +54,7 @@ function snowflakeTime(id) {
  * Components V2 card shared by the info commands.
  *
  * @param {object} options
- * @param {number} [options.accent]
+ * @param {number|null} [options.accent]  The color of the side bar; null for a card with no color.
  * @param {string} options.title          Large heading.
  * @param {string[]} [options.subtitle]   Lines shown under the heading.
  * @param {string} [options.thumbnail]    Picture next to the heading.
@@ -74,7 +74,8 @@ function buildInfoCard({ accent = INFO_ACCENT, title, subtitle = [], thumbnail =
   };
 
   const headerText = new TextDisplayBuilder().setContent(take([`## ${clip(title, 200)}`, ...subtitle.filter(Boolean)].join('\n'), 1200));
-  const card = new ContainerBuilder().setAccentColor(accent);
+  const card = new ContainerBuilder();
+  if (accent !== null) card.setAccentColor(accent); // null: a card with no color
   if (thumbnail) card.addSectionComponents(new SectionBuilder().addTextDisplayComponents(headerText).setThumbnailAccessory(new ThumbnailBuilder().setURL(thumbnail)));
   else card.addTextDisplayComponents(headerText);
 
@@ -114,9 +115,11 @@ function infoPayload(options) {
   return { components: [buildInfoCard(options)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } };
 }
 
-/** Small one-block card for "nothing found" and similar answers. */
+/** Small one-block card for "nothing found" and similar answers. `color` null: a card with no color. */
 function noticePayload(text, color = COLORS.DEFAULT) {
-  const card = new ContainerBuilder().setAccentColor(color).addTextDisplayComponents(new TextDisplayBuilder().setContent(clip(text, 1500)));
+  const card = new ContainerBuilder();
+  if (color !== null) card.setAccentColor(color);
+  card.addTextDisplayComponents(new TextDisplayBuilder().setContent(clip(text, 1500)));
   return { components: [card], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } };
 }
 

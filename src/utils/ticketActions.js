@@ -13,7 +13,7 @@ const { formatTicketChannelName, sanitizeChannelName } = require('./ticketName')
 const { buildTranscript, personOf } = require('./ticketTranscript');
 const { transcriptParts } = require('./transcriptDelivery');
 const { createTranscriptToken } = require('./transcriptToken');
-const { buildTicketControlRow, buildTicketMemberRow, buildClosedControlRow, buildWelcomeFallbackCard, buildTranscriptLinkRow, buildTicketClosedCard, buildTicketClosedNotice, buildClaimCard, buildUnclaimCard, buildRatingRow } = require('./ticketCards');
+const { buildTicketControlRow, buildTicketMemberRow, buildClosedControlRow, buildWelcomeFallbackCard, buildTranscriptLinkRow, buildTicketClosedCard, buildTicketClosedNotice, buildClaimCard, buildUnclaimCard, buildRatingRow, starsText } = require('./ticketCards');
 const { textCard } = require('./caseCard');
 const { sendLog } = require('../logging/engine');
 const { EMOJI } = require('./emojis');
@@ -205,7 +205,7 @@ async function claimTicket({ guild, client, channel, ticket, actor }) {
   }
 
   await sendLog(client, guild.id, 'tickets', {
-    description: t(lang, 'tickets.log.claimed', { emoji: EMOJI.STAR, number: ticket.ticket_number, user: actor.id }),
+    description: t(lang, 'tickets.log.claimed', { emoji: EMOJI.TICKET_CLAIM, number: ticket.ticket_number, user: actor.id }),
     color: 0x4b4f59,
     timestamp: new Date().toISOString(),
   }).catch(() => {});
@@ -273,7 +273,7 @@ async function sendToTranscriptChannel({ guild, settings, ticket, messageCount, 
   if (!settings.transcript_channel_id) return;
   const channel = await guild.channels.fetch(settings.transcript_channel_id).catch(() => null);
   if (!channel?.isTextBased?.()) return;
-  const desc = `${t(lang, 'tickets.transcript.channelPost', { emoji: EMOJI.STAR, number: ticket.ticket_number, count: messageCount, opener: `<@${opener ? opener.id : ticket.opener_id}>` })}${link && delivery.linkRow ? `\n${t(lang, 'tickets.transcript.viewOnline', { link })}` : ''}`;
+  const desc = `${t(lang, 'tickets.transcript.channelPost', { emoji: EMOJI.TICKET_TRANSCRIPT, number: ticket.ticket_number, count: messageCount, opener: `<@${opener ? opener.id : ticket.opener_id}>` })}${link && delivery.linkRow ? `\n${t(lang, 'tickets.transcript.viewOnline', { link })}` : ''}`;
   await channel
     .send({
       components: [textCard(desc, 0xffd563), ...(delivery.linkRow ? [delivery.linkRow] : [])],
@@ -296,7 +296,7 @@ async function postTranscript({ guild, client, channel, ticket }) {
     guild.id,
     'tickets',
     {
-      description: `${t(lang, 'tickets.log.transcript', { emoji: EMOJI.STAR, number: ticket.ticket_number, count: messageCount })}${link ? `\n${t(lang, 'tickets.transcript.viewOnline', { link })}` : ''}`,
+      description: `${t(lang, 'tickets.log.transcript', { emoji: EMOJI.TICKET_TRANSCRIPT, number: ticket.ticket_number, count: messageCount })}${link ? `\n${t(lang, 'tickets.transcript.viewOnline', { link })}` : ''}`,
       color: 0x4b4f59,
       timestamp: new Date().toISOString(),
     },
@@ -408,7 +408,7 @@ async function rateTicket({ guild, client, ticket, user, rating, comment }, deps
     const logChannel = await guild.channels.fetch(settings.rating_log_channel_id).catch(() => null);
     if (logChannel) {
       const lang = await guildLanguage(guild.id);
-      const stars = '⭐'.repeat(rating) + '☆'.repeat(5 - rating);
+      const stars = starsText(rating);
       await logChannel
         .send({
           components: [textCard(`${t(lang, 'tickets.log.rated', { number: ticket.ticket_number, stars, user: user.id })}${comment ? `\n${t(lang, 'tickets.log.comment', { comment })}` : ''}`, 0xfed53c)],
@@ -432,12 +432,12 @@ async function reopenTicket({ guild, client, channel, ticket, actor }) {
   const reopened = await db.reopenTicket(ticket.id);
 
   await sendLog(client, guild.id, 'tickets', {
-    description: t(lang, 'tickets.log.reopened', { emoji: EMOJI.APPROVE, number: ticket.ticket_number, user: actor.id }),
+    description: t(lang, 'tickets.log.reopened', { emoji: EMOJI.TICKET_REOPEN, number: ticket.ticket_number, user: actor.id }),
     color: 0xa5ea7a,
     timestamp: new Date().toISOString(),
   }).catch(() => {});
 
-  const card = textCard(t(lang, 'tickets.reopen.card', { emoji: EMOJI.APPROVE, user: actor.id }), 0xa5ea7a);
+  const card = textCard(t(lang, 'tickets.reopen.card', { emoji: EMOJI.TICKET_REOPEN, user: actor.id }), 0xa5ea7a);
   await channel.send({ components: [card, buildTicketControlRow(ticket.id, lang), buildTicketMemberRow(ticket.id, lang)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
 
   return reopened;
@@ -446,7 +446,7 @@ async function reopenTicket({ guild, client, channel, ticket, actor }) {
 async function deleteTicketChannel({ guild, client, channel, ticket, actor }) {
   const lang = await guildLanguage(guild.id);
   await sendLog(client, guild.id, 'tickets', {
-    description: t(lang, 'tickets.log.deleted', { emoji: EMOJI.HAMMER, number: ticket.ticket_number, user: actor.id }),
+    description: t(lang, 'tickets.log.deleted', { emoji: EMOJI.TICKET_DELETE, number: ticket.ticket_number, user: actor.id }),
     color: 0xfe6465,
     timestamp: new Date().toISOString(),
   }).catch(() => {});

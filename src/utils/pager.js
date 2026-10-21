@@ -16,7 +16,8 @@ const kinds = new Map();
 /**
  * Teaches the pager a list.
  * @param {string} kind  Short name without `::`.
- * @param {{ perPage?: number, load: (guild: import('discord.js').Guild, state: { option: string, arg: string, lang: string }) => Promise<{
+ * `accent` is the color of the card's side bar (the info purple when left out); null draws the list with no color at all.
+ * @param {{ perPage?: number, accent?: number|null, load: (guild: import('discord.js').Guild, state: { option: string, arg: string, lang: string }) => Promise<{
  *   items: string[], title: string, subtitle?: string[], thumbnail?: string|null, footer?: string, empty?: string,
  *   options?: { label: string, value: string }[], placeholder?: string }> }} definition
  */
@@ -49,7 +50,8 @@ async function buildPage(kind, { guild, userId, page = 0, option = '', arg = '',
   if (!definition) return noticePayload(t(lang, 'core.pager.gone'));
 
   const data = await definition.load(guild, { option, arg, lang });
-  if (!data.items.length) return noticePayload(data.empty ?? t(lang, 'core.pager.empty'));
+  const colorless = definition.accent === null;
+  if (!data.items.length) return noticePayload(data.empty ?? t(lang, 'core.pager.empty'), colorless ? null : undefined);
 
   const perPage = definition.perPage ?? PER_PAGE;
   const pages = Math.max(1, Math.ceil(data.items.length / perPage));
@@ -82,6 +84,7 @@ async function buildPage(kind, { guild, userId, page = 0, option = '', arg = '',
 
   const counted = tn(lang, 'core.pager.entries', data.items.length);
   return infoPayload({
+    ...(definition.accent !== undefined ? { accent: definition.accent } : {}),
     title: data.title,
     thumbnail: data.thumbnail,
     subtitle: data.subtitle,

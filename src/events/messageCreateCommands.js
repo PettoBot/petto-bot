@@ -15,8 +15,6 @@ const { resolve } = require('../utils/embedVariables');
 const { extractReactReplies, extractReactRepliesFromTemplate, applyReactReplies } = require('../utils/messageFlags');
 const { textCard } = require('../utils/caseCard');
 const { EMOJI } = require('../utils/emojis');
-const { noticePayload } = require('../utils/infoCard');
-const { COLORS } = require('../utils/colors');
 const moderationPermissions = require('../utils/moderationPermissions');
 const { controlAction } = require('../utils/autoModControl');
 const { restrictedFor, applyWordRoute } = require('../utils/commandRestrictions');
@@ -71,9 +69,10 @@ function permissionKey(json) {
   return names.join(', ') || 'n/a';
 }
 
-function warningPayload(message, text) {
+/** `color` null: the same card with no colored side bar (the "command is turned off" notice). */
+function warningPayload(message, text, color = 0xfed53c) {
   return {
-    components: [textCard(`${EMOJI.WARNING} ${message.author}: ${text}`, 0xfed53c)],
+    components: [textCard(`${EMOJI.WARNING} ${message.author}: ${text}`, color)],
     flags: MessageFlags.IsComponentsV2,
     allowedMentions: { repliedUser: false, parse: [] },
   };
@@ -294,11 +293,12 @@ module.exports = {
 
     const disabled = hiddenAutomodControl ? null : await disabledDb.findCached(message.guild.id, canonicalName, message.channel.id).catch(() => null);
     if (disabled) {
-      // A short red notice that clears itself out, like the "unknown command" one.
+      // The usual warning card (the warning icon and who asked) with no colored side bar, that clears itself out like the
+      // "unknown command" one. The icon comes from warningPayload, so the text goes without its own.
       const text = disabled.channel_id
-        ? t(lang, 'core.disabled.channel', { emoji: EMOJI.DENY, command: `${prefix}${canonicalName}`, channel: `<#${disabled.channel_id}>` })
-        : t(lang, 'core.disabled.server', { emoji: EMOJI.DENY, command: `${prefix}${canonicalName}` });
-      const notice = await message.reply({ ...noticePayload(text, COLORS.RED), allowedMentions: { parse: [], repliedUser: false } }).catch(() => null);
+        ? t(lang, 'core.disabled.channel', { emoji: '', command: `${prefix}${canonicalName}`, channel: `<#${disabled.channel_id}>` })
+        : t(lang, 'core.disabled.server', { emoji: '', command: `${prefix}${canonicalName}` });
+      const notice = await message.reply(warningPayload(message, text.trim(), null)).catch(() => null);
       if (notice) setTimeout(() => notice.delete().catch(() => {}), UNKNOWN_COMMAND_DELETE_MS);
       return;
     }

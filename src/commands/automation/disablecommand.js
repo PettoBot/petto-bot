@@ -10,8 +10,7 @@ const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('disc
 const { ensureGuild } = require('../../db/guilds');
 const disabledDb = require('../../db/disabledCommands');
 const commandAliasesDb = require('../../db/commandAliases');
-const { noticePayload } = require('../../utils/infoCard');
-const { COLORS } = require('../../utils/colors');
+const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { register, sendPager } = require('../../utils/pager');
 const { t, tn, languageOf, formatNumber } = require('../../i18n');
@@ -177,13 +176,18 @@ const tick = (list) => list.map((name) => `\`${name}\``).join(' · ');
 const where = (lang, channels) => (channels.length ? channels.map((c) => `<#${c.id}>`).join(', ') : t(lang, 'automation.disable.wholeServer'));
 const prefixOf = (interaction) => interaction.typedPrefix ?? '!';
 
-function send(interaction, lines, color) {
-  const text = lines.filter(Boolean).join('\n');
-  return interaction.editReply(noticePayload(text, color));
+/** The answers of !dc: a plain card with no colored side bar (the look the owner asked for). */
+function plainCard(text) {
+  return { components: [textCard(text, null)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } };
+}
+
+function send(interaction, lines) {
+  return interaction.editReply(plainCard(lines.filter(Boolean).join('\n')));
 }
 
 register('blocked', {
   perPage: 4,
+  accent: null, // the list has no colored side bar either
   async load(guild, { option, arg, lang }) {
     let rules = await disabledDb.listForGuild(guild.id);
     if (arg) rules = rules.filter((rule) => !rule.channel_id || rule.channel_id === arg);
@@ -212,10 +216,9 @@ register('blocked', {
       if (shown < commands.length) body += ` ${t(lang, 'automation.disable.list.more', { count: formatNumber(lang, commands.length - shown) })}`;
       return `${heading}\n${body}`;
     });
-    const places = groups.size;
     return {
-      title: t(lang, 'automation.disable.list.title', { emoji: EMOJI.DENY }),
-      subtitle: [rules.length ? t(lang, 'automation.disable.list.summary', { rules: tn(lang, 'automation.disable.list.rules', rules.length, { count: formatNumber(lang, rules.length) }), places: tn(lang, 'automation.disable.list.places', places, { count: formatNumber(lang, places) }) }) : guild.name],
+      title: t(lang, 'automation.disable.list.title', { count: formatNumber(lang, rules.length) }),
+      subtitle: [guild.name],
       thumbnail: guild.iconURL?.({ size: 256 }) ?? null,
       items,
       footer: t(lang, 'automation.disable.list.footer'),
@@ -248,8 +251,8 @@ module.exports = {
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
     const lang = await languageOf(interaction);
     const { channels, missing } = readChannels(interaction);
-    if (missing.length) return send(interaction, [t(lang, 'automation.disable.noChannel', { emoji: EMOJI.DENY, channels: tick(missing) })], COLORS.RED);
-    if (channels.length > MAX_CHANNELS) return send(interaction, [t(lang, 'automation.disable.tooManyChannels', { emoji: EMOJI.DENY, max: MAX_CHANNELS })], COLORS.RED);
+    if (missing.length) return send(interaction, [t(lang, 'automation.disable.noChannel', { emoji: EMOJI.DENY, channels: tick(missing) })]);
+    if (channels.length > MAX_CHANNELS) return send(interaction, [t(lang, 'automation.disable.tooManyChannels', { emoji: EMOJI.DENY, max: MAX_CHANNELS })]);
     await ensureGuild(interaction.guild.id);
     if (sub === 'clear') return clearCmd(interaction, lang, channels);
     if (sub === 'enable') return enableCmd(interaction, lang, channels);
@@ -267,9 +270,9 @@ function commandWords(interaction) {
 async function disableCmd(interaction, lang, channels) {
   const prefix = prefixOf(interaction);
   const words = commandWords(interaction);
-  if (!words.length || (words.length === 1 && ALL_WORDS.has(words[0]))) return send(interaction, [t(lang, 'automation.disable.needName', { emoji: EMOJI.WARNING }), t(lang, 'automation.disable.usage', { prefix })], COLORS.YELLOW);
+  if (!words.length || (words.length === 1 && ALL_WORDS.has(words[0]))) return send(interaction, [t(lang, 'automation.disable.needName', { emoji: EMOJI.WARNING }), t(lang, 'automation.disable.usage', { prefix })]);
   const { names, refused, unknown, hints, fromCategory } = await resolveNames(interaction, words);
-  if (!fromCategory && names.length > MAX_AT_ONCE) return send(interaction, [t(lang, 'automation.disable.tooMany', { emoji: EMOJI.WARNING, max: MAX_AT_ONCE })], COLORS.YELLOW);
+  if (!fromCategory && names.length > MAX_AT_ONCE) return send(interaction, [t(lang, 'automation.disable.tooMany', { emoji: EMOJI.WARNING, max: MAX_AT_ONCE })]);
 
   const added = await disabledDb.disableMany(interaction.guild.id, names, channels.length ? channels.map((c) => c.id) : [null]);
   const done = [...new Set(added.map((row) => row.command))];
@@ -285,13 +288,13 @@ async function disableCmd(interaction, lang, channels) {
   if (unknown.length) lines.push(t(lang, 'automation.disable.unknown', { commands: tick(unknown) }));
   if (hints.length) lines.push(t(lang, 'automation.disable.didYouMean', { commands: tick(hints) }));
   if (done.length) lines.push(`-# ${t(lang, 'automation.disable.undoHint', { prefix, command: done.length > 5 ? done.slice(0, 5).join(',') + ',…' : done.join(','), channel: channels[0] ? ` #${channels[0].name}` : '' })}`);
-  return send(interaction, lines, done.length ? COLORS.GREEN : unknown.length || refused.length ? COLORS.RED : COLORS.DEFAULT);
+  return send(interaction, lines);
 }
 
 async function enableCmd(interaction, lang, channels) {
   const words = commandWords(interaction);
   if (words.length === 1 && ALL_WORDS.has(words[0])) return clearCmd(interaction, lang, channels);
-  if (!words.length) return send(interaction, [t(lang, 'automation.disable.needName', { emoji: EMOJI.WARNING }), t(lang, 'automation.disable.usage', { prefix: prefixOf(interaction) })], COLORS.YELLOW);
+  if (!words.length) return send(interaction, [t(lang, 'automation.disable.needName', { emoji: EMOJI.WARNING }), t(lang, 'automation.disable.usage', { prefix: prefixOf(interaction) })]);
   const { names, unknown, hints } = await resolveNames(interaction, words, { forEnable: true });
 
   // No channel: every rule of the command goes (it works everywhere again). With channels: only their rules.
@@ -313,20 +316,20 @@ async function enableCmd(interaction, lang, channels) {
   }
   if (unknown.length) lines.push(t(lang, 'automation.disable.unknown', { commands: tick(unknown) }));
   if (hints.length) lines.push(t(lang, 'automation.disable.didYouMean', { commands: tick(hints) }));
-  return send(interaction, lines, done.length ? COLORS.GREEN : COLORS.DEFAULT);
+  return send(interaction, lines);
 }
 
 async function clearCmd(interaction, lang, channels) {
   let count = 0;
   if (channels.length) for (const channel of channels) count += await disabledDb.clear(interaction.guild.id, channel.id);
   else count = await disabledDb.clear(interaction.guild.id);
-  if (!count) return send(interaction, [channels.length ? t(lang, 'automation.disable.noneIn', { emoji: EMOJI.APPROVE, channel: where(lang, channels) }) : t(lang, 'automation.disable.none', { emoji: EMOJI.APPROVE })], COLORS.DEFAULT);
-  return send(interaction, [tn(lang, channels.length ? 'automation.disable.clearedChannel' : 'automation.disable.cleared', count, { count: formatNumber(lang, count), emoji: EMOJI.APPROVE, channel: where(lang, channels) })], COLORS.GREEN);
+  if (!count) return send(interaction, [channels.length ? t(lang, 'automation.disable.noneIn', { emoji: EMOJI.APPROVE, channel: where(lang, channels) }) : t(lang, 'automation.disable.none', { emoji: EMOJI.APPROVE })]);
+  return send(interaction, [tn(lang, channels.length ? 'automation.disable.clearedChannel' : 'automation.disable.cleared', count, { count: formatNumber(lang, count), emoji: EMOJI.APPROVE, channel: where(lang, channels) })]);
 }
 
 async function listCmd(interaction) {
   const lang = await languageOf(interaction);
   const { channels, missing } = readChannels(interaction);
-  if (missing.length) return interaction.reply(noticePayload(t(lang, 'automation.disable.noChannel', { emoji: EMOJI.DENY, channels: tick(missing) }), COLORS.RED));
+  if (missing.length) return interaction.reply(plainCard(t(lang, 'automation.disable.noChannel', { emoji: EMOJI.DENY, channels: tick(missing) })));
   return sendPager(interaction, 'blocked', { arg: channels[0]?.id ?? '' });
 }

@@ -94,6 +94,18 @@ const EMOJI = {
   CLOSE: '<:40:1529270174086336747>',
   SEARCH: '<:39:1529270171573682266>',
   CHECK: '<:38:1529270147464954097>',
+  // Tickets: the icons of the ticket cards and of their buttons (claim, close, reopen, transcript, members, delete) and the
+  // rating stars, full and empty.
+  TICKET: '<:pe_ticket:1562517615056920699>',
+  TICKET_CLOSE: '<:pe_ticket_close:1562517624305483806>',
+  TICKET_REOPEN: '<:pe_ticket_reopen:1562518213278044182>',
+  TICKET_TRANSCRIPT: '<:pe_ticket_transcript:1562517628625490043>',
+  TICKET_CLAIM: '<:pe_ticket_claim:1562517641703456868>',
+  TICKET_ADD: '<:pe_ticket_add:1562517637668540456>',
+  TICKET_REMOVE: '<:pe_ticket_remove:1562517632412950619>',
+  TICKET_DELETE: '<:pe_ticket_delete:1562517646539497512>',
+  STAR_EMPTY_RATE: '<:pe_star_empty_rate:1562518892272820275>',
+  STAR_FULL: '<:pe_star_full:1562518954965073920>',
 };
 
 // Which emoji represents each mod_actions.type, for DMs and case embeds.
