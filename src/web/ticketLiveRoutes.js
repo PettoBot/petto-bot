@@ -13,6 +13,7 @@
 // as one closed in Discord. Replies never ping anyone. Every answer is `{ ok, message?, code? ... }`, the message in the language of the
 // request. Reads are kept short: one database read, Discord's cache, and at most one fetch of 50 messages per ticket.
 const { PermissionFlagsBits, SnowflakeUtil, OverwriteType } = require('discord.js');
+const { rateLimit } = require('express-rate-limit');
 const logger = require('../utils/logger');
 const { EMOJI } = require('../utils/emojis');
 const { t, requestLanguage, guildLanguage } = require('../i18n');
@@ -198,8 +199,12 @@ function registerTicketLiveRoutes(app, { authorize, limiter = null, deps = {} })
     fail: (status, code, key = code, vars = {}) => res.status(status).json({ ok: false, code, message: t(lang, `web.api.ticketLive.${key}`, vars) }),
   });
 
+  // A wide limit for the reads, per address: every dashboard request comes from the website's one address, so the real limits are
+  // the ones per member and server below; this one only stops a flood.
+  const readLimiter = rateLimit({ windowMs: 60_000, limit: 1200, standardHeaders: true, legacyHeaders: false });
+
   // ── the open tickets
-  app.post('/api/dashboard/guild/:guildId/tickets/live/list', async (req, res) => {
+  app.post('/api/dashboard/guild/:guildId/tickets/live/list', readLimiter, async (req, res) => {
     const access = await authorize(req, res, { page: 'tickets', edit: false });
     if (!access) return;
     const { guild, userId } = access;
@@ -265,7 +270,7 @@ function registerTicketLiveRoutes(app, { authorize, limiter = null, deps = {} })
   }
 
   // ── one ticket and its last messages
-  app.post('/api/dashboard/guild/:guildId/tickets/live/messages', async (req, res) => {
+  app.post('/api/dashboard/guild/:guildId/tickets/live/messages', readLimiter, async (req, res) => {
     const access = await authorize(req, res, { page: 'tickets', edit: false });
     if (!access) return;
     const { guild, userId } = access;
