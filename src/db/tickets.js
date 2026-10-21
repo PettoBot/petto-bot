@@ -217,6 +217,25 @@ async function closeTicket(ticketId, { closedBy, reason }) {
   return data;
 }
 
+/**
+ * Closes a ticket only if it is still open (a close by hand and a deleted channel can race); returns the closed row, or null when
+ * it was already closed. `clearChannel` forgets the channel id, for a channel that no longer exists.
+ */
+async function closeOpenTicket(ticketId, { closedBy = null, reason = null, clearChannel = false } = {}) {
+  const patch = { status: 'closed', closed_by: closedBy, close_reason: reason, closed_at: new Date().toISOString() };
+  if (clearChannel) patch.channel_id = null;
+  const { data, error } = await database.from('tickets').update(patch).eq('id', ticketId).eq('status', 'open').select('*').maybeSingle();
+  if (error) throw error;
+  return data ?? null;
+}
+
+/** The open tickets of every server, with only what the channel check needs (the oldest first, up to `limit`). */
+async function listAllOpenTickets(limit = 5000) {
+  const { data, error } = await database.from('tickets').select('id,guild_id,ticket_number,channel_id,opener_id,category_id,claimed_by,status,created_at').eq('status', 'open').order('id', { ascending: true }).limit(limit);
+  if (error) throw error;
+  return data ?? [];
+}
+
 async function reopenTicket(ticketId) {
   const { data, error } = await database.from('tickets').update({ status: 'open', closed_by: null, close_reason: null, closed_at: null }).eq('id', ticketId).select('*').single();
   if (error) throw error;
@@ -307,6 +326,8 @@ module.exports = {
   addNote,
   listNotes,
   closeTicket,
+  closeOpenTicket,
+  listAllOpenTickets,
   reopenTicket,
   touchActivity,
   listOpenTicketsByOpener,
