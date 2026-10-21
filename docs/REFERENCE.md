@@ -196,8 +196,9 @@ src/
                                  DMs the member directly instead of posting in a channel
       poj.js                      /poj — add / remove / list / enable / clear ("ping on join": mentions a new member in
                                  specific channels, then deletes the ping after a delay)
-      disablecommand.js           /disablecommand (alias `dc`) — disable / enable / list; per-command, server-wide or
-                                 per-channel, enforced in messageCreateCommands.js before a resolved command ever runs
+      disablecommand.js           !disablecommand (alias `dc`) — disable / enable / list / clear; per-command (or a whole
+                                 category), server-wide or per-channel, enforced in messageCreateCommands.js and
+                                 interactionCreate.js before a resolved command ever runs
       giveaway.js                 /giveaway (alias `gw`) — quick / start / template / reroll / end / edit, plus
                                  embed/reaction/entry-mode/*-message config subcommands — see "Giveaways" below
       giveawaypreset.js           /giveawaypreset (alias `gwp`) — create / view / remove / add-role / remove-role
@@ -704,7 +705,20 @@ The rest of "bli"'s standalone systems. Not ported: `disabledms` — bli has a c
 
 **`/steal emoji:<string>?`** — paste a custom emoji (or several) to add them to this server, or reply to a message with a sticker to steal that instead. The sticker-via-reply path needs the real message object (`message.reference`/`message.stickers`), which a genuine slash interaction has no equivalent of — see `rawMessage` under "Command system" above; this command only works right when invoked via prefix, which is fine since everything currently is.
 
-**`/disablecommand disable command:<string> channel:<#channel>?`** (alias `dc`) — turns a command off, server-wide or in one channel. Enforced in `messageCreateCommands.js`, checked right after a command resolves (by canonical name, so disabling it also blocks every alias) and before cooldown/permission checks — a disabled command is silently ignored, same as bli, no "this is disabled" message that would just be noise. `enable` / `list`.
+**`!disablecommand`** (alias `dc`, prefix only; Manage Server) — turns commands off for the whole server or in some channels. The words go in any order and the subcommand can be left out (it is `disable`):
+
+- `!dc suggest #cmds` · `!dc #cmds suggest` · `!dc suggest,rank,8ball #cmds #memes` (commas or spaces, up to 25 commands and 10 channels) · `!dc suggest all` (`all`/`server`/`everywhere` = the whole server, also the default without a channel) · `!dc category:fun #general` (`category:`/`cat:`/`module:` + a `!help` category: every command in it, no 25 limit).
+- A channel is a mention, an id or `#name`; a `#name` that does not exist is refused (it never falls back to the whole server).
+- Names are read like the command line reads them: an alias (`sug`), a shortcut (`lock` → `channel`) or one of the server's own aliases (`!alias`) is saved as the real command, and a typo gets a "did you mean". `help` and `disablecommand` always stay on.
+- `!dc enable <commands> [#channel]` (also `on`/`remove`): without a channel every rule of the command goes (it works everywhere again); with one, only that channel's rule (and it says when a server-wide rule still applies). `!dc enable all` = `!dc clear`.
+- `!dc list [#channel]` (or just `!dc` / `!dc #channel`): a pager card grouped by place (the whole server first, then each channel) with a command count per group and a menu to show only server-wide or only channel rules; with a channel, only what applies there.
+- `!dc clear [#channel]` (also `reset`): every rule, or only those of a channel.
+
+Words for the subcommand in Spanish and Portuguese work too (`desactivar`, `activar`, `lista`, `limpiar`, `desativar`, `ativar`, `limpar`…). Replies are small Components V2 cards (`noticePayload`) with the accent color of the result: green done, yellow nothing to do, red refused.
+
+**Storage** (`disabled_commands`, the same rows as the dashboard's Automation → Disabled commands): `guild_id`, `command` (the real command name in lower case, never an alias or with a prefix), `channel_id` (null = the whole server); unique on `(guild_id, command, coalesce(channel_id, ''))`. `schema.sql` lower-cases, trims prefixes and removes repeats of older rows before it adds the unique index (idempotent); on start the bot rewrites rows saved with an alias to the real name (`disabledCommands.canonicalizeStored`, also idempotent). The dashboard resolves aliases with the command catalog before it saves.
+
+**Enforcement**: checked right after a command resolves (by canonical name, so disabling it blocks every alias) and before cooldown/permission checks, with the rules of a server cached for 5 minutes (changes from the bot clear the cache at once). A blocked prefix command gets a short red card (`⛔ \`!suggest\` is turned off in #cmds`) that deletes itself after 10 seconds, like the unknown-command nudge; a blocked slash command gets the same card privately (ephemeral).
 
 ## Giveaways (`/giveaway`, `/giveawaypreset`, `/giveawaytemplate`)
 

@@ -5,6 +5,7 @@ const logger = require('../utils/logger');
 const { attachDiscordLogger, startDiscordStatusJob } = require('../utils/discordOps');
 const { announceDeployReport, cleanupGuildCommands } = require('../handlers/deployCommands');
 const config = require('../config');
+const disabledCommandsDb = require('../db/disabledCommands');
 const { startOmniplexStatsJob } = require('../jobs/omniplexStatsJob');
 const { syncAllGuildsAutoMod } = require('../utils/autoModManager');
 const { forEachWithConcurrency } = require('../utils/concurrency');
@@ -43,6 +44,13 @@ module.exports = {
     // Once, in the background: the server-only copies of the commands left from a registration per server (they showed twice).
     cleanupGuildCommands(client).catch((err) => logger.warn(`The old server-only slash commands could not be cleaned: ${err?.message ?? err}`));
     startDiscordStatusJob(client);
+    // Once, in the background: disabled-command rules saved with an alias (`sug`) take the real name (`suggest`), the only one checked.
+    disabledCommandsDb.canonicalizeStored((name) => {
+      const word = String(name ?? '').trim().replace(/^[^\p{L}\p{N}]+/u, '').toLowerCase();
+      if (client.commands.has(word)) return word;
+      return client.commandAliases?.get(word) ?? client.commandRoutes?.get(word)?.command ?? null;
+    }).then((changed) => { if (changed) logger.info(`Disabled-command rules: ${changed} saved with an alias now use the real command name.`); })
+      .catch((err) => logger.warn(`The disabled-command rules could not be tidied: ${err?.message ?? err}`));
     // The server count and status on Omniplex (only with OMNIPLEX_TOKEN).
     startOmniplexStatsJob(client);
 
