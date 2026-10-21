@@ -4,7 +4,9 @@
 // member's roles from Discord, so the site's word alone never opens anything. The same sections as the site (petto-web src/utils/dashAccess.ts).
 const database = require('../db/database');
 
-const PAGE_SECTIONS = { counters: 'automation', forms: 'community', stats: 'dashboard', moderation: 'moderation' };
+const PAGE_SECTIONS = { counters: 'automation', forms: 'community', stats: 'dashboard', moderation: 'moderation', tickets: 'tickets' };
+// Tickets were part of Community before they had a section of their own: a rule that opens Community still opens them.
+const ALSO_OPENED_BY = { tickets: ['community'] };
 const GRANT = /^([a-z-]{1,30}):(view|edit)$/;
 const RULES_TTL_MS = 10_000;
 const cache = new Map();
@@ -26,7 +28,8 @@ function rulesAllow(rules, roleIds, page, edit) {
   const section = PAGE_SECTIONS[page];
   if (!section) return false;
   const roles = new Set(roleIds);
-  return rules.some((rule) => roles.has(rule.role_id) && (rule.sections.includes('*') || rule.sections.includes(section)) && (!edit || rule.can_edit));
+  const names = [section, ...(ALSO_OPENED_BY[section] ?? [])];
+  return rules.some((rule) => roles.has(rule.role_id) && (rule.sections.includes('*') || names.some((name) => rule.sections.includes(name))) && (!edit || rule.can_edit));
 }
 
 /**

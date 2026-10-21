@@ -169,6 +169,15 @@ function announceWrite(table, guildId) {
   } catch { /* never in the way of a write */ }
 }
 
+// A write to `tickets` (opened, claimed, closed) tells a dashboard that shows the live tickets of its server (see utils/ticketLive.js).
+let ticketLive = null;
+function announceTicketWrite(query, guildId) {
+  try {
+    ticketLive ??= require('../utils/ticketLive');
+    ticketLive.noteTicketWrite(query, guildId);
+  } catch { /* never in the way of a write */ }
+}
+
 function guildOfWrite(query) {
   const rows = Array.isArray(query.payload) ? query.payload : [query.payload];
   const fromRow = rows.find((row) => row && typeof row === 'object' && row.guild_id != null)?.guild_id;
@@ -347,6 +356,7 @@ class PostgresQuery {
       if (this.announce && this.action !== 'select') {
         const guildId = guildOfWrite(this);
         if (guildId) announceWrite(this.tableName, guildId);
+        if (this.tableName === 'tickets') announceTicketWrite(this, guildId);
       }
       if (built.countOnly) return { data: built.head ? null : [{ count: Number(result.rows[0]?.count || 0) }], count: Number(result.rows[0]?.count || 0), error: null };
 
