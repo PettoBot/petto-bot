@@ -7,7 +7,9 @@ const { rateLimit } = require('express-rate-limit');
 const path = require('path');
 const { MessageFlags, PermissionFlagsBits } = require('discord.js');
 const config = require('../config');
-const { setupEverything, sendPanelNow, setEnabled } = require('../utils/verifyProvision');
+const { setEnabled } = require('../utils/verifyProvision');
+const verifyJobs = require('../utils/verifyJobs');
+const { linkProblem, warnOperator } = require('../utils/verifyLink');
 const { verifyToken } = require('../utils/verifyToken');
 const { verifyTranscriptToken } = require('../utils/transcriptToken');
 const { getConfig } = require('../db/verificationConfig');
@@ -148,6 +150,8 @@ function startServer(client) {
   const verificationEnabled = Boolean(config.verifyBaseUrl && config.verifyTokenSecret);
   const dashboardEnabled = Boolean(config.dashboardApiSecret);
   const votesEnabled = Boolean(config.topggWebhookSecret);
+  // Said once at start when members cannot be given a verification link that opens (also on the dashboard's verification card).
+  if (linkProblem()) warnOperator(linkProblem());
   if (!verificationEnabled && !dashboardEnabled && !votesEnabled) {
     logger.warn('Verification and dashboard API env vars are not fully set, web server not started.');
     return null;
@@ -680,21 +684,40 @@ function startServer(client) {
       }
     });
 
-    // The verification, done now instead of waiting for the panel job: `setup` makes the roles, the channel and the panel; `panel` posts it; `enable` / `disable` switch it.
+    // The verification from the dashboard, done now instead of waiting for the panel job: `setup` makes the roles, the channel and the panel;
+    // `panel` posts it; `enable` / `disable` switch it. All but `disable` run as a job (verifyJobs.js): setting it up on a big server edits
+    // every channel and takes longer than the website waits. The answer comes when the job ends within a moment, otherwise
+    // `{ ok: true, status: 'running', job }` and the page asks GET .../verification/job until it ends. One job per server: a second press
+    // while one runs gets that one.
+    const VERIFY_JOB_WAIT_MS = 1_500;
+    app.get('/api/dashboard/guild/:guildId/verification/job', dashboardDatabaseRateLimiter, async (req, res) => {
+      const access = await dashboardCardAccess(req, res);
+      if (!access) return;
+      res.set('Cache-Control', 'no-store');
+      // `link`: whether members can get a verification link (VERIFY_BASE_URL a public address, VERIFY_TOKEN_SECRET set), so the page can warn.
+      const problem = linkProblem();
+      res.json({ ok: true, job: verifyJobs.describeJob(verifyJobs.getJob(access.guild.id), requestLanguage(req, access.guild.id)), link: { ok: !problem, problem, lettersInstead: Boolean(problem && config.verifyTokenSecret) } });
+    });
     app.post('/api/dashboard/guild/:guildId/verification/:action', dashboardDatabaseRateLimiter, async (req, res) => {
       const access = await dashboardCardAccess(req, res);
       if (!access) return;
       const action = String(req.params.action);
+      const lang = requestLanguage(req, access.guild.id);
       try {
-        let result;
-        if (action === 'setup') result = await setupEverything(access.guild);
-        else if (action === 'panel') result = await sendPanelNow(access.guild);
-        else if (action === 'enable' || action === 'disable') result = await setEnabled(access.guild, action === 'enable');
-        else { res.status(404).json({ ok: false, error: 'unknown_action' }); return; }
-        res.status(result.ok ? 200 : 400).json(result);
+        if (action === 'disable') {
+          const result = await setEnabled(access.guild, false);
+          res.status(result.ok ? 200 : 400).json(result);
+          return;
+        }
+        if (!verifyJobs.JOB_ACTIONS.has(action)) { res.status(404).json({ ok: false, error: 'unknown_action' }); return; }
+        const { job, already } = verifyJobs.startVerifyJob(access.guild, action, { userId: access.userId ?? null });
+        const ended = await verifyJobs.waitForJob(job, VERIFY_JOB_WAIT_MS);
+        const described = verifyJobs.describeJob(job, lang);
+        if (!ended) { res.status(202).json({ ok: true, status: 'running', already, job: described, message: described.progress }); return; }
+        res.status(job.ok ? 200 : 400).json({ ok: Boolean(job.ok), status: job.status, already, job: described, message: job.message ?? t(lang, 'web.api.verification.failed') });
       } catch (err) {
         logger.error(`Dashboard verification ${action} failed for guild ${req.params.guildId}:`, err);
-        res.status(500).json({ ok: false, message: t(requestLanguage(req, access.guild.id), 'web.api.verification.failed') });
+        res.status(500).json({ ok: false, message: t(lang, 'web.api.verification.failed') });
       }
     });
 

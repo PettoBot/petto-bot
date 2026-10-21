@@ -8,7 +8,7 @@ function stub(relative, exports) {
   require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports };
 }
 const configPath = require.resolve(path.join(__dirname, '..', 'src/config.js'));
-require.cache[configPath] = { id: configPath, filename: configPath, loaded: true, exports: { verifyTokenSecret: 'secret-for-the-test' } };
+require.cache[configPath] = { id: configPath, filename: configPath, loaded: true, exports: { verifyTokenSecret: 'secret-for-the-test', verifyBaseUrl: 'https://verify.example.com' } };
 let settings = { enabled: true, method: 'discord', unverified_role_id: 'role-un', verified_role_id: 'role-ok' };
 let everVerified = false;
 const applied = [];
@@ -124,6 +124,47 @@ const text = (payload) => JSON.stringify(payload.components?.map((component) => 
   assert.ok(text(replies.at(-1)).includes('Esas letras no son correctas'), 'a wrong answer in Spanish');
   assert.ok(JSON.stringify(verifyLetters.buildPanel({ guild, method: 'letters', lang: 'pt-BR' }).components[0].toJSON()).includes('Verificar aqui no Discord'), 'the panel in Portuguese');
   i18n.setCachedGuildLanguage(GUILD, 'en');
+
+  // The panel: the server's name, the steps and the buttons with an emoji.
+  const look = JSON.stringify(verifyLetters.buildPanel({ guild, method: 'turnstile' }).components[0].toJSON());
+  assert.ok(look.includes('Welcome to **Petto HQ**') && look.includes('**1.**') && look.includes('🔗'), 'the panel has the server, the steps and the emoji');
+  assert.ok(look.includes('verify.example.com/assets/favicon.png'), 'a server without an icon gets Petto\'s picture');
+  assert.ok(JSON.stringify(verifyLetters.buildPanel({ guild: { ...guild, iconURL: () => 'https://cdn.discordapp.com/icons/1/a.png' }, method: 'turnstile' }).components[0].toJSON()).includes('cdn.discordapp.com/icons/1/a.png'), 'or its own icon');
+
+  // The link: a card with a link button to the page, when it expires and the address written out.
+  const config = require('../src/config');
+  settings = { enabled: true, method: 'turnstile', unverified_role_id: 'role-un', verified_role_id: 'role-ok' };
+  await verifyLetters.handleButton({ ...interaction(`vfy:link:${GUILD}`), inGuild: () => true });
+  const answer = replies.at(-1).components[0].toJSON();
+  const linkButton = JSON.stringify(answer).match(/"url":"(https:\/\/verify\.example\.com\/verify\/[^"]+)"/);
+  assert.ok(linkButton && JSON.stringify(answer).includes('"style":5'), 'a link button with the address');
+  assert.ok(JSON.stringify(answer).includes(`copy this link: ${linkButton[1]}`.replace('copy', 'Copy')), 'and the address written out');
+  assert.ok(/Open verification/.test(JSON.stringify(answer)) && /<t:\d+:R>/.test(JSON.stringify(answer)), 'the button and when it expires');
+  assert.ok(replies.at(-1).flags & 64, 'only for the member');
+  // A base address with a slash at the end or without its scheme still makes a good link.
+  config.verifyBaseUrl = 'verify.example.com/';
+  await verifyLetters.handleButton({ ...interaction(`vfy:link:${GUILD}`), inGuild: () => true });
+  assert.ok(JSON.stringify(replies.at(-1).components[0].toJSON()).includes('"https://verify.example.com/verify/'), 'cleaned address');
+
+  // No address that opens: the panel and the button give the letters inside Discord instead, and the letters work for a Cloudflare server.
+  config.verifyBaseUrl = 'http://localhost:3000';
+  const fallbackPanel = JSON.stringify(verifyLetters.buildPanel({ guild, method: 'turnstile' }).components[0].toJSON());
+  assert.ok(fallbackPanel.includes(`vfy:start:${GUILD}`) && !fallbackPanel.includes(`vfy:link:${GUILD}`), 'the panel offers the letters');
+  await verifyLetters.handleButton({ ...interaction(`vfy:link:${GUILD}`), inGuild: () => true });
+  assert.ok(text(replies.at(-1)).includes('not available right now') && text(replies.at(-1)).includes(`vfy:start:${GUILD}`), 'an old panel button says so and offers the letters');
+  await verifyLetters.handleButton({ ...interaction(`vfy:start:${GUILD}`), inGuild: () => true });
+  assert.ok(replies.at(-1).files?.length, 'and the letters picture comes');
+  // Without the secret either, the member is told it is not set up.
+  config.verifyTokenSecret = null;
+  await verifyLetters.handleButton({ ...interaction(`vfy:link:${GUILD}`), inGuild: () => true });
+  assert.ok(text(replies.at(-1)).includes('not set up'));
+  config.verifyTokenSecret = 'secret-for-the-test';
+  config.verifyBaseUrl = 'https://verify.example.com';
+
+  // A panel message of this server is found among the messages of the channel (to delete a second copy).
+  assert.equal(verifyLetters.isPanelMessage({ components: verifyLetters.buildPanel({ guild, method: 'both' }).components }, GUILD), true);
+  assert.equal(verifyLetters.isPanelMessage({ components: [] }, GUILD), false);
+  assert.equal(verifyLetters.isPanelMessage({ components: verifyLetters.buildPanel({ guild: { ...guild, id: '333333333333333333' }, method: 'both' }).components }, GUILD), false);
   console.log('verify panel checks passed');
   console.log('Checked the letters check inside Discord: the button, the picture, the form and the pass.');
 })().catch((error) => { console.error(error); process.exit(1); });
