@@ -1680,6 +1680,16 @@ create table if not exists disabled_commands (
 
 create index if not exists idx_disabled_commands_lookup on disabled_commands(guild_id, command);
 
+-- One spelling for the bot and the dashboard: the real command name in lower case, without a prefix, and each rule once.
+-- Older rows written by hand on the dashboard (`Suggest`, `!suggest`, twice) are tidied before the unique index; rows saved
+-- with an alias (`sug`) are rewritten to the real name by the bot when it starts (src/db/disabledCommands.js canonicalizeStored).
+delete from disabled_commands where btrim(command, E' \t!/.?$') = '';
+delete from disabled_commands a using disabled_commands b
+ where a.guild_id = b.guild_id and a.channel_id is not distinct from b.channel_id and a.id > b.id
+   and lower(btrim(a.command, E' \t!/.?$')) = lower(btrim(b.command, E' \t!/.?$'));
+update disabled_commands set command = lower(btrim(command, E' \t!/.?$')) where command <> lower(btrim(command, E' \t!/.?$'));
+create unique index if not exists uq_disabled_commands_rule on disabled_commands (guild_id, command, (coalesce(channel_id, '')));
+
 alter table disabled_commands enable row level security;
 
 -- DM-on-join reuses member_events_config (welcome/leave/boost already live there).
