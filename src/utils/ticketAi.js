@@ -90,10 +90,7 @@ function takeGuildSlot(guildId, now = Date.now()) {
   return true;
 }
 
-/** Whether a message is one of the assistant's own replies (it ends with the AI line). */
-const isAssistantReply = (message, botId) => message.author?.id === botId && String(message.content ?? '').includes(`\n${MARK}`);
-
 /** The text of an assistant reply without its AI line. */
 const stripMark = (content) => String(content ?? '').split(`\n${MARK}`)[0].trim();
 
-module.exports = { CFG, MARK, isConfigured, chat, takeGuildSlot, isAssistantReply, stripMark };
+module.exports = { CFG, MARK, isConfigured, chat, takeGuildSlot, stripMark };

@@ -19,8 +19,12 @@ stub('src/db/tickets.js', { getTicketByChannel: async () => ticket, getCategoryB
 stub('src/utils/ticketActions.js', { isStaffForCategory: (member) => Boolean(member?.staff) });
 
 const ai = require('../src/utils/ticketAi');
+const flow = require('../src/utils/ticketAiFlow');
+const { MessageFlags } = require('discord.js');
 const prompt = require('../src/utils/ticketAiPrompt');
 ai.CFG.debounceMs = 0;
+/** The whole text of what was sent: a card's JSON, or a plain content. */
+const said = (payload) => JSON.stringify((payload.components ?? []).map((card) => (card.toJSON ? card.toJSON() : card))) + String(payload.content ?? '');
 let modelCalls = 0;
 let modelAnswer = { ok: true, content: 'We open at 9.' };
 ai.chat = async (messages) => { modelCalls += 1; lastMessages = messages; return modelAnswer; };
@@ -54,7 +58,7 @@ let lastMessages = null;
     return { id: `m${n}`, content, system: false, guild, channel: ch, client, author: { id: author, bot: false }, member: { staff }, delete: async () => { deleted.push(true); }, deleted };
   };
   // The event keeps its state in a module Map; a fresh copy of the module per case keeps cases apart.
-  const fresh = () => { delete require.cache[require.resolve('../src/events/messageCreateTicketAi')]; return require('../src/events/messageCreateTicketAi'); };
+  const fresh = () => { flow.states.clear(); delete require.cache[require.resolve('../src/events/messageCreateTicketAi')]; return require('../src/events/messageCreateTicketAi'); };
 
   // 1. off: nothing
   let ev = fresh(); settings = { ...settings, enabled: false };
@@ -65,7 +69,10 @@ let lastMessages = null;
   // 2. on: it answers the opener, says it is an AI, never mentions anyone, and counts it
   ev = fresh(); counted.length = 0; modelCalls = 0; ch = channel(); await ev.execute(msg(ch));
   assert.equal(modelCalls, 1); assert.equal(ch.sent.length, 1);
-  assert.ok(ch.sent[0].content.includes('We open at 9.') && ch.sent[0].content.includes('\n-# 🤖 '), 'the reply ends with the AI line');
+  assert.ok(said(ch.sent[0]).includes('We open at 9.') && said(ch.sent[0]).includes('-# 🤖 '), 'the card has the answer and the AI line');
+  assert.ok(said(ch.sent[0]).includes('ticketai:human'), 'the card has the Talk to a person button');
+  assert.ok(said(ch.sent[0]).includes('Reply** to'), 'the card says who the reply is for');
+  assert.equal(ch.sent[0].flags, MessageFlags.IsComponentsV2, 'the reply is a Components V2 card');
   assert.deepEqual(ch.sent[0].allowedMentions.parse, [], 'the reply mentions nobody');
   assert.deepEqual(counted, ['guild'], 'one reply is counted');
   assert.equal(lastMessages[0].role, 'system'); assert.equal(lastMessages.at(-1).content, 'what time do you open?');
@@ -88,7 +95,7 @@ let lastMessages = null;
   // 4. a hand-over topic: no model call, the team is told and pinged
   ev = fresh(); modelCalls = 0; ch = channel(); await ev.execute(msg(ch, { content: 'I want a refund please' }));
   assert.equal(modelCalls, 0, 'a hand-over keyword never reaches the model');
-  assert.equal(ch.sent.length, 1); assert.ok(ch.sent[0].content.includes('<@&staffRole>')); assert.deepEqual(ch.sent[0].allowedMentions.roles, ['staffRole']);
+  assert.equal(ch.sent.length, 1); assert.ok(said(ch.sent[0]).includes('<@&staffRole>')); assert.deepEqual(ch.sent[0].allowedMentions.roles, ['staffRole']);
   await ev.execute(msg(ch)); assert.equal(modelCalls, 0, 'after the hand-over it stays quiet');
 
   // 5. a card number: the message is deleted and never sent to the model
@@ -107,14 +114,30 @@ let lastMessages = null;
 
   // 8. the model asks to hand over
   ev = fresh(); modelCalls = 0; ch = channel(); modelAnswer = { ok: true, content: 'I am not sure about that. [HANDOFF]' }; await ev.execute(msg(ch));
-  assert.equal(ch.sent.length, 2, 'the answer and the hand-over'); assert.ok(!ch.sent[0].content.includes('[HANDOFF]'));
+  assert.equal(ch.sent.length, 1, 'the answer and the hand-over notice are one card'); assert.ok(!said(ch.sent[0]).includes('[HANDOFF]')); assert.ok(!said(ch.sent[0]).includes('ticketai:human'), 'no button once it went to the team'); assert.ok(said(ch.sent[0]).includes('<@&staffRole>'));
 
   // 9. mass mentions never go out
   ev = fresh(); ch = channel(); modelAnswer = { ok: true, content: 'ping @everyone and <@&123>' }; await ev.execute(msg(ch));
-  assert.ok(!/@everyone/.test(ch.sent[0].content) && !ch.sent[0].content.includes('<@&123>'), 'mentions are defused');
+  assert.ok(!/@everyone/.test(said(ch.sent[0])) && !said(ch.sent[0]).includes('<@&123>'), 'mentions are defused');
 
   // 10. a ticket type that is not in the list
   ev = fresh(); settings = { ...settings, categoryIds: ['99'] }; modelCalls = 0; ch = channel(); await ev.execute(msg(ch)); assert.equal(modelCalls, 0, 'only the chosen ticket types'); settings = { ...settings, categoryIds: [] };
+
+  // 11. the card can be read back: it is recognized as the assistant's, and its answer is what goes into the next prompt
+  const card = flow.replyCard({ lang: 'en', user: { id: 'opener', username: 'ana' }, text: 'Use the shop link.', roleIds: [], handoffText: null });
+  const readBack = { author: { id: 'bot' }, content: '', components: [card.toJSON()] };
+  assert.ok(flow.isAssistantReply(readBack, 'bot'), 'a card of the assistant is recognized'); assert.ok(!flow.isAssistantReply({ ...readBack, author: { id: 'someone' } }, 'bot'));
+  assert.equal(flow.replyText(readBack), 'Use the shop link.', 'only the answer is read back, not the header or the AI line');
+  assert.ok(!flow.isAssistantReply({ author: { id: 'bot' }, content: 'a normal bot message', components: [] }, 'bot'));
+
+  // 12. the Talk to a person button: only the opener, once, and the team is pinged
+  const { handleButton } = require('../src/interactions/ticketAi');
+  const press = (userId) => { const replies = []; return { replies, customId: flow.HUMAN_BUTTON, channelId: 'chan2', user: { id: userId }, guild, channel: { send: async (p) => { replies.push(['send', p]); } }, locale: 'en', guildLocale: 'en', reply: async (p) => { replies.push(['reply', p]); } }; };
+  flow.states.clear();
+  let click = press('stranger'); await handleButton(click); assert.equal(click.replies.length, 1); assert.equal(click.replies[0][1].flags, MessageFlags.Ephemeral, 'someone else gets a private refusal');
+  click = press('opener'); await handleButton(click);
+  assert.equal(click.replies.filter(([k]) => k === 'send').length, 1, 'the team is told once'); assert.ok(said(click.replies.find(([k]) => k === 'send')[1]).includes('<@&staffRole>'));
+  click = press('opener'); await handleButton(click); assert.equal(click.replies.filter(([k]) => k === 'send').length, 0, 'pressing again does not ping again');
 
   console.log('Checked the AI assistant of the tickets: the fixed rules, who is answered, hand-over, secrets, limits and failures.');
 })().catch((error) => { console.error(error); process.exit(1); });

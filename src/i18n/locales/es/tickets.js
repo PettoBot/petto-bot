@@ -389,4 +389,10 @@ module.exports = {
   'tickets.ai.label': 'Asistente de IA (beta). Un miembro del staff puede tomar el ticket en cualquier momento.',
   'tickets.ai.handoff': '¡Gracias! Pasé tu ticket al equipo. Un miembro del staff te responderá aquí lo antes posible.',
   'tickets.ai.handoffSecret': 'Por favor, nunca compartas contraseñas, tokens ni números de tarjeta. Borré ese mensaje y pasé tu ticket al equipo, que te ayudará aquí.',
+  'tickets.ai.replyTo': '**Respuesta** para {user}',
+  'tickets.ai.human': 'Hablar con una persona',
+  'tickets.ai.humanDone': 'Listo. Un miembro del staff te responderá aquí.',
+  'tickets.ai.humanAlready': 'Este ticket ya se pasó al equipo.',
+  'tickets.ai.onlyOpener': 'Solo la persona que abrió este ticket puede usar este botón.',
+  'tickets.ai.buttonGone': 'Este ticket ya no está abierto.',
 };
