@@ -69,7 +69,7 @@ let lastMessages = null;
   // 2. on: it answers the opener, says it is an AI, never mentions anyone, and counts it
   ev = fresh(); counted.length = 0; modelCalls = 0; ch = channel(); await ev.execute(msg(ch));
   assert.equal(modelCalls, 1); assert.equal(ch.sent.length, 1);
-  assert.ok(said(ch.sent[0]).includes('We open at 9.') && said(ch.sent[0]).includes('-# 🤖 '), 'the card has the answer and the AI line');
+  assert.ok(said(ch.sent[0]).includes('We open at 9.') && said(ch.sent[0]).includes(ai.MARK), 'the card has the answer and the AI line');
   assert.ok(said(ch.sent[0]).includes('ticketai:human'), 'the card has the Talk to a person button');
   assert.ok(said(ch.sent[0]).includes('Reply** to'), 'the card says who the reply is for');
   assert.equal(ch.sent[0].flags, MessageFlags.IsComponentsV2, 'the reply is a Components V2 card');

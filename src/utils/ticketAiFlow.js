@@ -3,6 +3,7 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, SeparatorBuilder, SeparatorSpacingSize, TextDisplayBuilder, MessageFlags } = require('discord.js');
 const { t } = require('../i18n');
 const ai = require('./ticketAi');
+const { EMOJI } = require('./emojis');
 
 const ACCENT = 0xf0a88f;
 /** customId of the "Talk to a person" button of a reply. */
@@ -40,7 +41,7 @@ function textsOf(message) {
 /** Whether a message is one of the assistant's own replies (a card whose last text is the AI line, or an older plain reply). */
 function isAssistantReply(message, botId) {
   if (message.author?.id !== botId) return false;
-  return textsOf(message).some((text) => text.startsWith(ai.MARK) || text.includes(`\n${ai.MARK}`));
+  return textsOf(message).some((text) => [ai.MARK, ai.LEGACY_MARK].some((mark) => text.startsWith(mark) || text.includes(`\n${mark}`)));
 }
 
 /** What the assistant said in one of its replies: the answer, without the header line, the AI line and the hand-over notice. */
@@ -70,15 +71,15 @@ function rolePing(ids) {
  */
 function replyCard({ lang, user, text, roleIds = [], handoffText = null }) {
   const container = new ContainerBuilder().setAccentColor(ACCENT)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# 🤖 ${t(lang, 'tickets.ai.replyTo', { user: personLink(user) })}`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${EMOJI.RELEASE_MAGIC} ${t(lang, 'tickets.ai.replyTo', { user: personLink(user) })}`))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(String(text).slice(0, 1900)))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`${ai.MARK}${t(lang, 'tickets.ai.label')}`));
   if (handoffText) {
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`🙋 ${handoffText}${roleIds.length ? `\n${rolePing(roleIds)}` : ''}`));
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${EMOJI.MEMBERS} ${handoffText}${roleIds.length ? `\n${rolePing(roleIds)}` : ''}`));
   } else {
     container.addActionRowComponents(new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(HUMAN_BUTTON).setStyle(ButtonStyle.Secondary).setLabel(t(lang, 'tickets.ai.human')).setEmoji('🙋'),
+      new ButtonBuilder().setCustomId(HUMAN_BUTTON).setStyle(ButtonStyle.Secondary).setLabel(t(lang, 'tickets.ai.human')).setEmoji(EMOJI.MEMBERS),
     ));
   }
   return container;
@@ -87,7 +88,7 @@ function replyCard({ lang, user, text, roleIds = [], handoffText = null }) {
 /** The card for a hand-over with no answer of its own (a keyword, the limit, a secret, or the person asked for a human). */
 function handoffCard({ lang, handoffText, roleIds = [] }) {
   return new ContainerBuilder().setAccentColor(ACCENT)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`🙋 ${handoffText}${roleIds.length ? `\n${rolePing(roleIds)}` : ''}`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`${EMOJI.MEMBERS} ${handoffText}${roleIds.length ? `\n${rolePing(roleIds)}` : ''}`))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`${ai.MARK}${t(lang, 'tickets.ai.label')}`));
 }
 
