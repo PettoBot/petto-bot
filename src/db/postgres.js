@@ -10,6 +10,7 @@ const RPC_SIGNATURES = {
   create_mod_case: { args: ['p_guild_id', 'p_user_id', 'p_moderator_id', 'p_type', 'p_reason', 'p_expires_at', 'p_source'] },
   create_report: { args: ['p_guild_id', 'p_reporter_id', 'p_reported_user_id', 'p_category', 'p_reason', 'p_source_channel_id', 'p_message_link', 'p_message_content', 'p_image_urls', 'p_anonymous', 'p_urgent'] },
   create_ticket: { args: ['p_guild_id', 'p_category_id', 'p_opener_id'] },
+  ticket_ai_count_reply: { args: ['p_guild_id'] },
   increment_activity_hourly: { args: ['p_guild_id', 'p_day', 'p_hour', 'p_messages', 'p_voice_seconds'], returnsVoid: true },
   increment_activity_member: { args: ['p_guild_id', 'p_day', 'p_user_id', 'p_messages', 'p_voice_seconds'], returnsVoid: true },
   increment_member_flow: { args: ['p_guild_id', 'p_day', 'p_joins', 'p_leaves', 'p_invited'], returnsVoid: true },
