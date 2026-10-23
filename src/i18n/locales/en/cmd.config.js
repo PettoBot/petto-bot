@@ -113,6 +113,7 @@ module.exports = {
   'cmd.config.bumpreminder.autoclean.desc': 'Delete non-bump chatter in the bump channel.',
   'cmd.config.bumpreminder.autoclean.opt.enabled.desc': 'Enable?',
   'cmd.config.bumpreminder.status.desc': 'Show the current bump reminder configuration.',
+  'cmd.config.clownboardconfig.desc': 'Show the clownboard settings and how to change them.',
   'cmd.config.confession.desc': 'Set up the confessions of this server and moderate them.',
   'cmd.config.confession.setup.desc': 'Turn confessions on in a channel.',
   'cmd.config.confession.setup.opt.channel.desc': 'Where the confessions go',

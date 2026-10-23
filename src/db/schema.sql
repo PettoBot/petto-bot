@@ -4179,3 +4179,44 @@ create table if not exists media_only_channels (
   primary key (guild_id, channel_id)
 );
 alter table media_only_channels enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- Clownboard: the same board as the starboard and the monkeyboard, with the clown (🤡). And every board can count more than one emoji.
+-- ---------------------------------------------------------------------------
+create table if not exists clownboards (
+  guild_id            text primary key references guilds(guild_id) on delete cascade,
+  channel_id          text,
+  threshold           integer not null default 3 check (threshold between 1 and 100),
+  emoji               text not null default '🤡',
+  extra_emojis        text[] not null default '{}',
+  selfstar            boolean not null default false,
+  color               integer not null default 15227215,
+  timestamp           boolean not null default true,
+  jumpurl             boolean not null default true,
+  attachments         boolean not null default true,
+  ignored_channel_ids text[] not null default '{}',
+  ignored_role_ids    text[] not null default '{}',
+  ignored_user_ids    text[] not null default '{}',
+  embed_template      text,
+  created_at          timestamptz not null default now(),
+  updated_at          timestamptz not null default now()
+);
+
+create table if not exists clownboard_entries (
+  guild_id             text not null references guilds(guild_id) on delete cascade,
+  source_message_id    text not null,
+  starboard_message_id text not null,
+  count                integer not null default 0,
+  updated_at           timestamptz not null default now(),
+  primary key (guild_id, source_message_id)
+);
+
+create index if not exists idx_clownboard_entries_guild on clownboard_entries(guild_id);
+
+alter table clownboards enable row level security;
+alter table clownboard_entries enable row level security;
+
+-- Extra emojis a board counts besides its main one (at most four; checked by the bot and the dashboard).
+alter table starboards add column if not exists extra_emojis text[] not null default '{}';
+alter table monkeyboards add column if not exists extra_emojis text[] not null default '{}';
+alter table clownboards add column if not exists extra_emojis text[] not null default '{}';

@@ -18,7 +18,7 @@ const SETTINGS_SUFFIX = /_(?:config|settings|rules)$/;
 const SETTINGS_TABLES = new Set([
   'guilds', 'custom_commands', 'auto_responders', 'reaction_roles', 'reaction_triggers', 'embed_templates', 'image_cards',
   'ticket_categories', 'ticket_panels', 'level_rewards', 'level_multipliers', 'xp_events', 'join_roles', 'sticky_messages',
-  'starboards', 'monkeyboards', 'button_responders', 'component_panels', 'command_aliases', 'disabled_commands',
+  'starboards', 'monkeyboards', 'clownboards', 'button_responders', 'component_panels', 'command_aliases', 'disabled_commands',
   'command_permission_levels', 'permission_groups', 'managed_webhooks', 'counters', 'auto_threads', 'log_entries', 'log_ignored',
   'automod_silent_channels', 'sanction_templates', 'poj_channels', 'bump_reminders', 'sender_identities', 'partner_blacklist',
   'appeal_forms', 'giveaway_presets', 'dash_access',

@@ -36,6 +36,7 @@ module.exports = {
   'config.module.starboardconfig.title': 'Starboard',
   'config.module.suggestionconfig.title': 'Sugestões',
   'config.module.monkeyboardconfig.title': 'Monkeyboard',
+  'config.module.clownboardconfig.title': 'Clownboard',
   'config.module.giveawayconfig.title': 'Sorteios',
   'config.module.ticketconfig.title': 'Tickets',
   'config.module.verifyconfig.title': 'Verificação',

@@ -237,6 +237,7 @@ module.exports = {
   'automation.board.templateMissing': 'No saved embed named `{name}` was found. Make one in the dashboard, under Embeds.',
   'automation.board.template': 'The {board} reposts now use `{name}`. Its variables start with `{example}`.',
   'automation.board.badTarget': 'Use a valid channel, role, or member mention/ID.',
+  'automation.board.badEmoji': 'Send at least one emoji, like ⭐ or a custom emoji of this server.',
   'automation.board.ignoreAdded': 'Added {target} to {board} ignores.',
   'automation.board.ignoreRemoved': 'Removed {target} from {board} ignores.',
   'automation.board.isDisabled': '{label} is disabled.',

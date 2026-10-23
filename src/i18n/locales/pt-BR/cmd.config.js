@@ -399,4 +399,5 @@ module.exports = {
   'cmd.config.pagination.delete.opt.message.desc': 'Link da mensagem, ou responda à mensagem',
   'cmd.config.pagination.reset.desc': 'Para todas as paginações deste servidor (Administrador).',
   'cmd.config.mediaonlyconfig.desc': 'Mostra as configurações dos canais de mídia e como alterá-las.',
+  'cmd.config.clownboardconfig.desc': 'Mostra as configurações do clownboard e como alterá-las.',
 };

@@ -2,6 +2,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { getTemplate } = require('../db/embedTemplates');
 const { textCard } = require('./caseCard');
+const { parseEmojiList, emojisOf } = require('./boardEmojis');
 const { t, languageOf } = require('../i18n');
 
 const GREEN = 0xa5ea7a;
@@ -29,7 +30,7 @@ function createBoardCommand({ name, label, aliases = [], db, description, selfNa
 
   async function update(interaction, changes, lang) {
     const row = await db.updateConfig(interaction.guild.id, changes);
-    const vars = { label, threshold: row.threshold, emoji: row.emoji, channel: `<#${row.channel_id}>` };
+    const vars = { label, threshold: row.threshold, emoji: emojisOf(row).join(' '), channel: `<#${row.channel_id}>` };
     return reply(interaction, t(lang, row.channel_id ? 'automation.board.updatedChannel' : 'automation.board.updated', vars), GREEN);
   }
 
@@ -70,7 +71,7 @@ function createBoardCommand({ name, label, aliases = [], db, description, selfNa
     const text = t(lang, 'automation.board.view', {
       channel: row.channel_id ? `<#${row.channel_id}>` : t(lang, 'automation.board.notSet'),
       threshold: row.threshold,
-      emoji: row.emoji,
+      emoji: emojisOf(row).join(' '),
       self: t(lang, row.selfstar ? 'automation.board.on' : 'automation.board.off'),
       message: row.embed_template ? `\`${row.embed_template}\`` : t(lang, 'automation.board.usualMessage'),
       channels: row.ignored_channel_ids?.length ?? 0,
@@ -93,7 +94,7 @@ function createBoardCommand({ name, label, aliases = [], db, description, selfNa
       .addSubcommand((s) => s.setName('disable').setDescription(`Disable ${lower}.`)) // i18n-ignore: builder description (translated in cmd.automation)
       .addSubcommand((s) => s.setName('set').setDescription('Set the destination channel.').addChannelOption((o) => o.setName('channel').setDescription('Destination text channel.').setRequired(true)))
       .addSubcommand((s) => s.setName('threshold').setDescription('Set required reactions.').addIntegerOption((o) => o.setName('count').setDescription('Number of reactions.').setMinValue(1).setMaxValue(100).setRequired(true)))
-      .addSubcommand((s) => s.setName('emoji').setDescription('Set the reaction emoji.').addStringOption((o) => o.setName('emoji').setDescription('Unicode or custom emoji.').setRequired(true)))
+      .addSubcommand((s) => s.setName('emoji').setDescription('Set the reaction emoji, or several (up to 5, the first is the main one).').addStringOption((o) => o.setName('emoji').setDescription('Unicode or custom emojis, separated by spaces.').setRequired(true)))
       .addSubcommand((s) => s.setName(selfName).setDescription('Allow the message author to count their own reaction.').addBooleanOption((o) => o.setName('enabled').setDescription('Enabled?').setRequired(true)))
       .addSubcommand((s) => s.setName('ignore').setDescription('Ignore a channel, role, or member.').addStringOption((o) => o.setName('type').setDescription('What to ignore.').setRequired(true).addChoices(...ignoreChoices)).addStringOption((o) => o.setName('target').setDescription('Mention or ID.').setRequired(true)))
       .addSubcommand((s) => s.setName('unignore').setDescription('Remove an ignored channel, role, or member.').addStringOption((o) => o.setName('type').setDescription('What to unignore.').setRequired(true).addChoices(...ignoreChoices)).addStringOption((o) => o.setName('target').setDescription('Mention or ID.').setRequired(true)))
@@ -108,7 +109,11 @@ function createBoardCommand({ name, label, aliases = [], db, description, selfNa
       if (sub === 'disable') return disable(interaction, lang);
       if (sub === 'set') return update(interaction, { channel_id: interaction.options.getChannel('channel', true).id }, lang);
       if (sub === 'threshold') return update(interaction, { threshold: interaction.options.getInteger('count', true) }, lang);
-      if (sub === 'emoji') return update(interaction, { emoji: interaction.options.getString('emoji', true).trim() }, lang);
+      if (sub === 'emoji') {
+        const list = parseEmojiList(interaction.options.getString('emoji', true));
+        if (!list.length) return interaction.reply({ content: t(lang, 'automation.board.badEmoji'), flags: MessageFlags.Ephemeral });
+        return update(interaction, { emoji: list[0], extra_emojis: list.slice(1) }, lang);
+      }
       if (sub === selfName) return update(interaction, { selfstar: interaction.options.getBoolean('enabled', true) }, lang);
       if (sub === 'message') return setMessage(interaction, lang);
       if (sub === 'ignore' || sub === 'unignore') return changeIgnore(interaction, sub === 'ignore', lang);

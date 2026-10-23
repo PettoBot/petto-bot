@@ -64,6 +64,7 @@ const MODULES = {
   starboardconfig: { aliases: [], title: t('en', 'config.module.starboardconfig.title'), command: 'starboard', sources: [{ table: 'starboards' }] },
   suggestionconfig: { aliases: [], title: t('en', 'config.module.suggestionconfig.title'), command: 'suggestion', sources: [{ table: 'suggestion_config' }] },
   monkeyboardconfig: { aliases: [], title: t('en', 'config.module.monkeyboardconfig.title'), command: 'monkeyboard', sources: [{ table: 'monkeyboards' }] },
+  clownboardconfig: { aliases: [], title: t('en', 'config.module.clownboardconfig.title'), command: 'clownboard', sources: [{ table: 'clownboards' }] },
   giveawayconfig: { aliases: [], title: t('en', 'config.module.giveawayconfig.title'), command: 'giveaway', show: [/^embed/, /^reaction/, /^entry-mode/, /^template/, /^winner-message/, /^deny-message/, /^accept-message/, /^no-entries-message/, /^claim-time/, /^message-template/], sources: [{ table: 'giveaway_config', only: ['reaction', 'entry_mode', 'embed_template'] }] },
   ticketconfig: { aliases: [], title: t('en', 'config.module.ticketconfig.title'), command: 'ticket', show: [/^setup/, /^panel create/, /^category (add|edit)/, /^support-role add/, /^ping-role add/, /^required-role add/, /^form create/, /^blacklist add/, /^panel (resend|delete)/, /^category remove/], sources: [{ table: 'ticket_settings' }] },
   verifyconfig: { aliases: [], title: t('en', 'config.module.verifyconfig.title'), command: 'verify', sources: [{ table: 'verification_config' }] },

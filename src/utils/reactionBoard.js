@@ -5,6 +5,7 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('
 const logger = require('./logger');
 const { templatePayload } = require('./templatedMessage');
 const { t, currentLanguage } = require('../i18n');
+const { bare, MAX_EMOJIS, parseEmojiList, emojisOf } = require('./boardEmojis');
 
 // Messages being synced, per board, so two reactions at once do not post the same message twice.
 const busyByBoard = new WeakMap();
@@ -17,7 +18,8 @@ async function syncBoard(reaction, board) {
   if (reaction.partial) await reaction.fetch().catch(() => null);
   const message = reaction.message;
   const row = await starboardDb.getConfig(message.guild.id);
-  if (!row?.channel_id || reaction.emoji.toString() !== row.emoji) return;
+  const counted = emojisOf(row ?? {}).map(bare);
+  if (!row?.channel_id || !counted.includes(bare(reaction.emoji.toString()))) return;
   if (busy.has(message.id)) return;
   busy.add(message.id);
   try {
@@ -26,8 +28,16 @@ async function syncBoard(reaction, board) {
     const ignoredRole = member?.roles.cache.some((role) => row.ignored_role_ids?.includes(role.id));
     if (ignored || ignoredRole) return;
 
-    const users = await reaction.users.fetch();
-    const count = users.filter((memberUser) => !memberUser.bot && (row.selfstar || memberUser.id !== message.author?.id)).size;
+    // Each person counts once, whichever of the board's emojis they used.
+    const voters = new Set();
+    const reactions = message.reactions?.cache?.filter?.((r) => counted.includes(bare(r.emoji.toString()))) ?? new Map([[reaction.emoji.toString(), reaction]]);
+    for (const each of reactions.values()) {
+      const users = await each.users.fetch().catch(() => null);
+      for (const memberUser of users?.values?.() ?? []) {
+        if (!memberUser.bot && (row.selfstar || memberUser.id !== message.author?.id)) voters.add(memberUser.id);
+      }
+    }
+    const count = voters.size;
     const entry = await starboardDb.getEntry(message.guild.id, message.id);
     const destination = await message.guild.channels.fetch(row.channel_id).catch(() => null);
     if (!destination?.isTextBased()) return;
@@ -102,4 +112,4 @@ function buildPayload(message, row, count, lang = currentLanguage()) {
   return payload;
 }
 
-module.exports = { syncBoard, buildCustomPayload, buildPayload };
+module.exports = { syncBoard, buildCustomPayload, buildPayload, parseEmojiList, emojisOf, MAX_EMOJIS };

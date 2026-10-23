@@ -236,6 +236,7 @@ module.exports = {
   'automation.board.templateMissing': 'No encontré ningún embed guardado llamado `{name}`. Crea uno en el panel, en Embeds.',
   'automation.board.template': 'Las publicaciones del {board} ahora usan `{name}`. Sus variables empiezan por `{example}`.',
   'automation.board.badTarget': 'Usa una mención o un ID válido de canal, rol o miembro.',
+  'automation.board.badEmoji': 'Envía al menos un emoji, como ⭐ o un emoji personalizado de este servidor.',
   'automation.board.ignoreAdded': 'Se agregó {target} a los ignorados del {board}.',
   'automation.board.ignoreRemoved': 'Se quitó {target} de los ignorados del {board}.',
   'automation.board.isDisabled': '{label} está desactivado.',
