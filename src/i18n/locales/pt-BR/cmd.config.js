@@ -398,4 +398,5 @@ module.exports = {
   'cmd.config.pagination.delete.desc': 'Para uma paginação e remove os botões; --message apaga a mensagem.',
   'cmd.config.pagination.delete.opt.message.desc': 'Link da mensagem, ou responda à mensagem',
   'cmd.config.pagination.reset.desc': 'Para todas as paginações deste servidor (Administrador).',
+  'cmd.config.mediaonlyconfig.desc': 'Mostra as configurações dos canais de mídia e como alterá-las.',
 };
