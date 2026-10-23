@@ -2,7 +2,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { getTemplate } = require('../db/embedTemplates');
 const { textCard } = require('./caseCard');
-const { parseEmojiList, emojisOf } = require('./reactionBoard');
+const { parseEmojiList, emojisOf } = require('./boardEmojis');
 const { t, languageOf } = require('../i18n');
 
 const GREEN = 0xa5ea7a;

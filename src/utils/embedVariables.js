@@ -198,7 +198,7 @@ async function resolve(text, ctx = {}) {
     // lines (using {role.mention}/{role.entries}/{role.claim_time}/{role.id}) are built by
     // the caller (see utils/giveawayEngine.js) and passed in pre-joined as ctx.giveaway.presetText.
     '{gw.preset}': ctx.giveaway?.presetText ?? '',
-    // Moderation: ctx.sanction describes one case (see utils/sanctionTemplates.js), ctx.star one starred message and ctx.monkey one monkeyed message (see
+    // Moderation: ctx.sanction describes one case (see utils/sanctionTemplates.js), ctx.star one starred message and ctx.monkey one monkeyed message, ctx.clown one clowned message (see
     // events/starboardReaction.js) and ctx.verify the verification link.
     '{case.id}': ctx.sanction?.caseNumber != null ? String(ctx.sanction.caseNumber) : '',
     '{case.type}': ctx.sanction?.type ?? '',
@@ -280,6 +280,20 @@ async function resolve(text, ctx = {}) {
     '{monkey.image}': ctx.monkey?.image ?? '',
     '{monkey.attachments}': ctx.monkey?.attachments ?? '',
     '{monkey.time}': ctx.monkey?.unix ? `<t:${ctx.monkey.unix}:f>` : '',
+    '{clown.count}': ctx.clown?.count != null ? String(ctx.clown.count) : '',
+    '{clown.emoji}': ctx.clown?.emoji ?? '',
+    '{clown.channel}': ctx.clown?.channelId ? `<#${ctx.clown.channelId}>` : '',
+    '{clown.channel_name}': ctx.clown?.channelName ?? '',
+    '{clown.link}': ctx.clown?.link ?? '',
+    '{clown.message_id}': ctx.clown?.messageId ?? '',
+    '{clown.author}': ctx.clown?.author?.id ? `<@${ctx.clown.author.id}>` : '',
+    '{clown.author_name}': ctx.clown?.author?.name ?? '',
+    '{clown.author_id}': ctx.clown?.author?.id ?? '',
+    '{clown.author_avatar}': ctx.clown?.author?.avatar ?? '',
+    '{clown.content}': ctx.clown ? (ctx.clown.content || word('noText')) : '',
+    '{clown.image}': ctx.clown?.image ?? '',
+    '{clown.attachments}': ctx.clown?.attachments ?? '',
+    '{clown.time}': ctx.clown?.unix ? `<t:${ctx.clown.unix}:f>` : '',
     '{suggestion.id}': ctx.suggestion?.id ?? '',
     '{suggestion.number}': ctx.suggestion?.number != null ? String(ctx.suggestion.number) : '',
     '{suggestion.content}': ctx.suggestion?.content ?? '',
