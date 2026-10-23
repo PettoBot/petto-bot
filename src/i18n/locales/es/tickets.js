@@ -386,7 +386,7 @@ module.exports = {
   'tickets.db.form.fieldType': 'El campo {number} debe usar short_text o long_text.',
   'tickets.db.form.fieldLabel': 'El campo {number} necesita un id y una etiqueta.',
   'tickets.db.form.nameRequired': 'El formulario necesita un nombre.',
-  'tickets.ai.label': 'Asistente de IA (beta). Un miembro del staff puede tomar el ticket en cualquier momento.',
+  'tickets.ai.label': 'Asistente de IA. Puede cometer errores.',
   'tickets.ai.handoff': '¡Gracias! Pasé tu ticket al equipo. Un miembro del staff te responderá aquí lo antes posible.',
   'tickets.ai.handoffSecret': 'Por favor, nunca compartas contraseñas, tokens ni números de tarjeta. Borré ese mensaje y pasé tu ticket al equipo, que te ayudará aquí.',
   'tickets.ai.replyTo': '**Respuesta** para {user}',
