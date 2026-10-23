@@ -69,9 +69,9 @@ const GREET_MARK = `-# ${EMOJI.RELEASE_EYES} `;
 
 /** The buttons or the hand-over notice that close a reply or a first message. */
 function closing({ lang, roleIds, handoffText }) {
-  if (handoffText) return [new TextDisplayBuilder().setContent(`${EMOJI.MEMBERS} ${handoffText}${roleIds.length ? `\n${rolePing(roleIds)}` : ''}`)];
+  if (handoffText) return [new TextDisplayBuilder().setContent(`${handoffText}${roleIds.length ? `\n${rolePing(roleIds)}` : ''}`)];
   return [new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(HUMAN_BUTTON).setStyle(ButtonStyle.Secondary).setLabel(t(lang, 'tickets.ai.human')).setEmoji(EMOJI.MEMBERS),
+    new ButtonBuilder().setCustomId(HUMAN_BUTTON).setStyle(ButtonStyle.Secondary).setLabel(t(lang, 'tickets.ai.human')),
   )];
 }
 
@@ -93,7 +93,7 @@ function replyCard({ lang, user, text, roleIds = [], handoffText = null, avatarU
     new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small),
     ...answerParts(text, avatarUrl),
     new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small),
-    new TextDisplayBuilder().setContent(`${ai.MARK}${t(lang, 'tickets.ai.label')}`),
+    new TextDisplayBuilder().setContent(`-# ${t(lang, 'tickets.ai.label')}`),
     ...closing({ lang, roleIds, handoffText }),
   ];
 }
@@ -105,7 +105,7 @@ function greetingCard({ lang, user, typeLabel, avatarUrl = null }) {
     new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small),
     ...answerParts(t(lang, 'tickets.ai.greeting', { type: String(typeLabel ?? '').replace(/[*_`~|\\]/g, '').slice(0, 80) }), avatarUrl),
     new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small),
-    new TextDisplayBuilder().setContent(`${GREET_MARK}${t(lang, 'tickets.ai.label')}`),
+    new TextDisplayBuilder().setContent(`-# ${t(lang, 'tickets.ai.label')}`),
     ...closing({ lang, roleIds: [], handoffText: null }),
   ];
 }
@@ -113,7 +113,7 @@ function greetingCard({ lang, user, typeLabel, avatarUrl = null }) {
 /** The card for a hand-over with no answer of its own (a keyword, the limit, a secret, or the person asked for a human). */
 function handoffCard({ lang, handoffText, roleIds = [] }) {
   return new ContainerBuilder().setAccentColor(ACCENT)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`${EMOJI.MEMBERS} ${handoffText}${roleIds.length ? `\n${rolePing(roleIds)}` : ''}`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`${handoffText}${roleIds.length ? `\n${rolePing(roleIds)}` : ''}`))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`${ai.MARK}${t(lang, 'tickets.ai.label')}`));
 }
 

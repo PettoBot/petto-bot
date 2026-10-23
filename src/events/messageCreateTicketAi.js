@@ -10,6 +10,7 @@ const flow = require('../utils/ticketAiFlow');
 const prompt = require('../utils/ticketAiPrompt');
 const { t, guildLanguage } = require('../i18n');
 const logger = require('../utils/logger');
+const context = require('../utils/ticketAiContext');
 
 /** Reads the last messages of the channel once: how many replies the assistant sent and whether staff already answered. */
 async function loadState(message, ticket, category) {
@@ -52,7 +53,8 @@ async function handOver(message, category, state, reason) {
 async function answer(message, ticket, category, settings, state) {
   const lang = await guildLanguage(message.guild.id);
   const history = await conversation(message, ticket);
-  const turn = prompt.buildTicketTurn({ settings: { instructions: settings.instructions, knowledge: settings.knowledge, handoff: settings.handoff, tone: settings.tone, language_mode: settings.language_mode, max_replies: settings.max_replies }, history, message: message.content, ticketType: { label: category.label, description: category.description } });
+  const discord = await context.build(message, settings);
+  const turn = prompt.buildTicketTurn({ settings: { instructions: settings.instructions, knowledge: settings.knowledge, handoff: settings.handoff, reply_style: settings.reply_style, tone: settings.tone, language_mode: settings.language_mode, max_replies: settings.max_replies }, history, message: message.content, ticketType: { label: category.label, description: category.description }, discord });
   if (turn.kind === 'handoff') {
     // A token or a card number is never kept in the channel.
     if (turn.reason === 'secret') await message.delete().catch(() => {});
@@ -64,7 +66,7 @@ async function answer(message, ticket, category, settings, state) {
   const result = await ai.chat(turn.messages);
   if (!result.ok) return; // staff will answer; nothing is said about the failure
   const reply = prompt.detectHandoff(result.content);
-  const text = prompt.defuseMentions(reply.text);
+  const text = prompt.limitChannelMentions(prompt.defuseMentions(reply.text), context.allowedChannelIds(discord, settings.instructions, settings.knowledge, settings.reply_style));
   if (!text) { if (reply.handoff) await handOver(message, category, state, 'model'); return; }
 
   const roles = reply.handoff ? flow.pingRoles(message.guild, category) : [];

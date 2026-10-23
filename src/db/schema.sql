@@ -4106,6 +4106,12 @@ create table if not exists public.ticket_ai_settings (
   knowledge     text        not null default '',
   -- one keyword or situation per line (commas and semicolons also separate keywords)
   handoff       text        not null default '',
+  -- how the answers should look (length, format, wording, examples); at most 2500 characters, checked by the bot and the dashboard
+  reply_style   text        not null default '',
+  -- links of Discord messages of this server (its rules, for example) that the bot reads live and gives to the assistant; at most 10
+  message_links text[]      not null default '{}',
+  -- the assistant knows the channels the ticket user can see (names and topics) and can point to them
+  channel_guide boolean     not null default true,
   tone          text        not null default 'friendly' check (tone in ('friendly', 'neutral', 'formal')),
   max_replies   integer     not null default 3 check (max_replies between 1 and 10),
   -- 'auto' = the ticket user's language, or a fixed one
@@ -4115,6 +4121,11 @@ create table if not exists public.ticket_ai_settings (
   updated_by    text,
   constraint ticket_ai_settings_sizes check (char_length(instructions) <= 6000 and char_length(knowledge) <= 8000 and char_length(handoff) <= 1000)
 );
+
+-- Servers that already have the table get the column too.
+alter table public.ticket_ai_settings add column if not exists reply_style text not null default '';
+alter table public.ticket_ai_settings add column if not exists message_links text[] not null default '{}';
+alter table public.ticket_ai_settings add column if not exists channel_guide boolean not null default true;
 
 alter table public.ticket_ai_settings enable row level security;
 -- No policy on purpose: only the service key (dashboard and bot) reads or writes it.
