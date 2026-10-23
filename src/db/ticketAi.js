@@ -6,7 +6,7 @@ const { normalizeSettings } = require('../utils/ticketAiPrompt');
 const logger = require('../utils/logger');
 
 const cache = createExpiringCache(30_000, { name: 'ticket-ai' });
-const OFF = Object.freeze({ enabled: false, categoryIds: [], instructions: '', knowledge: '', handoff: '', reply_style: '', tone: 'friendly', language_mode: 'auto', max_replies: 3 });
+const OFF = Object.freeze({ enabled: false, categoryIds: [], instructions: '', knowledge: '', handoff: '', reply_style: '', messageLinks: [], channelGuide: true, tone: 'friendly', language_mode: 'auto', max_replies: 3 });
 
 const missingTable = (error) => ['PGRST205', '42P01'].includes(String(error?.code ?? '')) || /does not exist|schema cache/i.test(String(error?.message ?? ''));
 
@@ -23,7 +23,8 @@ async function getSettings(guildId) {
     return {
       enabled: data.enabled === true,
       categoryIds: Array.isArray(data.category_ids) ? data.category_ids.map(String) : [],
-      instructions: s.instructions, knowledge: s.knowledge, handoff: s.handoff, reply_style: s.reply_style, tone: s.tone, language_mode: s.language_mode, max_replies: s.max_replies,
+      instructions: s.instructions, knowledge: s.knowledge, handoff: s.handoff, reply_style: s.reply_style, messageLinks: Array.isArray(data.message_links) ? data.message_links.map(String).slice(0, 10) : [], channelGuide: data.channel_guide !== false,
+      tone: s.tone, language_mode: s.language_mode, max_replies: s.max_replies,
     };
   }, { staleIfError: true });
 }

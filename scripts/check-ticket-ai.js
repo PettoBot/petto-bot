@@ -61,7 +61,10 @@ let lastMessages = null;
     };
     return ch;
   }
-  const guild = { id: 'guild', roles: { cache: new Map([['staffRole', {}]]) }, members: { cache: new Map(), fetch: async () => null } };
+  const RULES_CH = '111111111111111111'; const STAFF_CH = '222222222222222222'; const RULES_MSG = '333333333333333333';
+  const fakeChannel = (id, name, topic, visible) => ({ id, name, topic, type: 0, rawPosition: Number(id[0]), permissionsFor: () => ({ has: () => visible }) });
+  const rulesChannel = { ...fakeChannel(RULES_CH, 'rules', 'Read before talking', true), isTextBased: () => true, messages: { fetch: async (id) => { assert.equal(id, RULES_MSG); return { content: 'Rule 1: be kind', embeds: [{ data: { description: 'Rule 2: no spam' } }], components: [] }; } } };
+  const guild = { id: 'guild', roles: { cache: new Map([['staffRole', {}]]) }, members: { cache: new Map(), fetch: async () => null }, channels: { cache: new Map([[RULES_CH, rulesChannel], [STAFF_CH, fakeChannel(STAFF_CH, 'staff-only', 'Secret', false)]]), fetch: async () => null } };
   const client = { user: { id: 'bot', displayAvatarURL: () => 'https://cdn.example.com/a.png' } };
   let n = 0;
   const msg = (ch, { author = 'opener', content = 'what time do you open?', staff = false } = {}) => {
@@ -155,6 +158,21 @@ let lastMessages = null;
   settings = { ...settings, enabled: false }; sentGreetings.length = 0;
   await greet({ guild, client, channel: { send: async (p) => { sentGreetings.push(p); } }, category: { id: 1, label: 'Help' }, opener: { id: 'opener', username: 'ana' } });
   assert.equal(sentGreetings.length, 0, 'no greeting when the assistant is off'); settings = { ...settings, enabled: true, language_mode: 'auto' };
+
+  // 11c. Discord context: linked messages are read (their own server only), the channel list has only what the person can see
+  const context = require('../src/utils/ticketAiContext');
+  const opener = { id: 'opener' };
+  const ctxGuild = { ...guild, id: '555555555555555555' };
+  const ctxMessage = { guild: ctxGuild, member: opener, channel: { id: 'chan' } };
+  const link = `https://discord.com/channels/${ctxGuild.id}/${RULES_CH}/${RULES_MSG}`;
+  const built = await context.build(ctxMessage, { messageLinks: [link, `https://discord.com/channels/other/${RULES_CH}/${RULES_MSG}`, 'not a link'], channelGuide: true });
+  assert.equal(built.messages.length, 1, 'only the link of this server is read'); assert.ok(built.messages[0].text.includes('Rule 1') && built.messages[0].text.includes('Rule 2'), 'the message and its embed are read');
+  assert.deepEqual(built.channels.map((c) => c.name), ['rules'], 'only the channels the person can see are listed');
+  assert.deepEqual((await context.build(ctxMessage, { messageLinks: [], channelGuide: false })).channels, [], 'the channel list can be turned off');
+  const withCtx = prompt.buildSystemPrompt({ instructions: 'x', knowledge: '', handoff: '' }, { tag: 'abc', discord: built });
+  assert.ok(withCtx.includes('<<<DISCORD MESSAGES abc BEGIN>>>') && withCtx.includes(`<#${RULES_CH}> rules: Read before talking`), 'the prompt has the messages and the channel with its mention');
+  const ids = context.allowedChannelIds(built, 'see <#444444444444444444>');
+  assert.equal(prompt.limitChannelMentions(`go to <#${RULES_CH}> or <#999999999999999999> or <#444444444444444444>`, ids), `go to <#${RULES_CH}> or #channel or <#444444444444444444>`, 'only listed or written channels can be mentioned');
 
   // 12. the Talk to a person button: only the opener, once, and the team is pinged
   const { handleButton } = require('../src/interactions/ticketAi');
