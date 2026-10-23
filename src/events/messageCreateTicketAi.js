@@ -52,7 +52,7 @@ async function handOver(message, category, state, reason) {
 async function answer(message, ticket, category, settings, state) {
   const lang = await guildLanguage(message.guild.id);
   const history = await conversation(message, ticket);
-  const turn = prompt.buildTicketTurn({ settings: { instructions: settings.instructions, knowledge: settings.knowledge, handoff: settings.handoff, tone: settings.tone, language_mode: settings.language_mode, max_replies: settings.max_replies }, history, message: message.content });
+  const turn = prompt.buildTicketTurn({ settings: { instructions: settings.instructions, knowledge: settings.knowledge, handoff: settings.handoff, tone: settings.tone, language_mode: settings.language_mode, max_replies: settings.max_replies }, history, message: message.content, ticketType: { label: category.label, description: category.description } });
   if (turn.kind === 'handoff') {
     // A token or a card number is never kept in the channel.
     if (turn.reason === 'secret') await message.delete().catch(() => {});
