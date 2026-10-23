@@ -19,7 +19,10 @@ stub('src/db/autoMessages.js', {
   setLastMessage: async (id, messageId) => { stored.push([id, messageId]); },
 });
 let sendCount = 0;
-stub('src/utils/senderIdentity.js', { sendAs: async (channel) => channel.send({ content: 'hi' }) });
+stub('src/utils/senderIdentity.js', { sendAs: async (channel, feature, payload) => channel.send(payload) });
+const reacted = [];
+stub('src/utils/templatedMessage.js', { templatePayload: async (guildId, name) => (name === 'ok' ? { reactions: ['🌸'], content: undefined, embeds: [{ title: 'T' }], components: [], files: [] } : null) });
+stub('src/utils/messageFlags.js', { extractReactReplies: (text) => ({ text, emojis: [] }), extractReactRepliesFromTemplate: () => ({}), applyReactReplies: async (message, emojis) => { reacted.push([message.id, emojis]); } });
 stub('src/i18n/index.js', { runWithLanguage: async (lang, fn) => fn(), guildLanguage: async () => 'en' });
 
 function fakeChannel(id = 'c1') {
@@ -28,7 +31,8 @@ function fakeChannel(id = 'c1') {
     id,
     deleted,
     isTextBased: () => true,
-    send: async () => ({ id: `m${++sendCount}` }),
+    sent: [],
+    send: async function (payload) { this.sent.push(payload); return { id: `m${++sendCount}` }; },
     messages: { delete: async (messageId) => { deleted.push(messageId); } },
   };
 }
@@ -62,12 +66,27 @@ function fakeChannel(id = 'c1') {
   await replacePrevious(gone, { id: 9, last_message_id: 'x' }, null);
   assert.notDeepEqual(stored.at(-1), [9, undefined], 'a failed send remembers nothing');
 
+  // A timer with a saved embed.
+  const { timerPayload } = require('../src/jobs/autoMessageJob');
+  const withEmbed = await timerPayload(channel, { guild_id: 'g', message: 'above', embed_template: 'ok' });
+  assert.deepEqual(withEmbed.message.embeds, [{ title: 'T' }]);
+  assert.equal(withEmbed.message.content, 'above', 'the text goes above the embed');
+  assert.deepEqual(withEmbed.reactions, ['🌸']);
+  assert.equal((await timerPayload(channel, { guild_id: 'g', message: '', embed_template: 'ok' })).message.content, undefined, 'a timer with only an embed has no text');
+  const gone2 = await timerPayload(channel, { guild_id: 'g', message: 'fallback', embed_template: 'deleted' });
+  assert.equal(gone2.message.content, 'fallback', 'a saved embed that is gone falls back to the text');
+  assert.equal(gone2.message.embeds, undefined);
+  assert.deepEqual((await timerPayload(channel, { guild_id: 'g', message: 'plain', embed_template: null })).message, { content: 'plain', allowedMentions: { parse: [] } });
+  rows.splice(0, rows.length, { id: 11, guild_id: 'g', channel_id: 'c1', interval_ms: 600000, message: '', next_run_at: 'x', delete_previous: false, embed_template: 'ok' });
+  await processDueAutoMessages(client);
+  assert.deepEqual(channel.sent.at(-1).embeds, [{ title: 'T' }], 'the timer sends its embed');
+  assert.deepEqual(reacted.at(-1)[1], ['🌸'], 'and puts the reactions the embed asks for');
+
   // Autoresponders.
   stub('src/db/autoResponders.js', {});
   for (const file of ['src/utils/cardService.js', 'src/db/embedTemplates.js', 'src/utils/embedBuilder.js', 'src/utils/embedVariables.js', 'src/utils/embedScript.js', 'src/utils/embedCodeMessage.js']) {
     stub(file, new Proxy({}, { get: () => async () => ({}) }));
   }
-  stub('src/utils/messageFlags.js', { extractReactReplies: (text) => ({ text, emojis: [] }), extractReactRepliesFromTemplate: () => ({}), applyReactReplies: async () => {} });
   stub('src/handlers/prefixInteraction.js', { tokenize: () => [] });
   stub('src/events/messageCreateCommands.js', { isCommandMessage: async () => false });
   const { replacePreviousReply } = require('../src/events/messageCreateAutoresponder');
@@ -87,5 +106,5 @@ function fakeChannel(id = 'c1') {
   await replacePreviousReply(ar, room, null);
   assert.deepEqual(room.deleted, ['r1', 'r2'], 'a reply that failed to send deletes nothing');
 
-  console.log('Checked deleting the previous message of timers and autoresponders.');
+  console.log('Checked deleting the previous message of timers and autoresponders, and the saved embed of a timer.');
 })().catch((err) => { console.error(err); process.exit(1); });

@@ -2013,6 +2013,8 @@ create index if not exists idx_auto_messages_due on auto_messages(next_run_at);
 -- A timer can delete the message it sent the time before, so the channel only ever has the latest one.
 alter table auto_messages add column if not exists delete_previous boolean not null default false;
 alter table auto_messages add column if not exists last_message_id text;
+-- A timer can send a saved embed (also a Components V2 design) instead of, or with, its text.
+alter table auto_messages add column if not exists embed_template text;
 
 alter table auto_messages enable row level security;
 

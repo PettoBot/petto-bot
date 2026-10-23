@@ -18,8 +18,8 @@ async function listDue() {
   return data;
 }
 
-async function add({ guildId, channelId, intervalMs, message, deletePrevious = false }) {
-  const { data, error } = await database.from('auto_messages').insert({ guild_id: guildId, channel_id: channelId, interval_ms: intervalMs, message, delete_previous: deletePrevious, next_run_at: new Date(Date.now() + intervalMs).toISOString() }).select('*').single();
+async function add({ guildId, channelId, intervalMs, message, deletePrevious = false, embedTemplate = null }) {
+  const { data, error } = await database.from('auto_messages').insert({ guild_id: guildId, channel_id: channelId, interval_ms: intervalMs, message, delete_previous: deletePrevious, ...(embedTemplate ? { embed_template: embedTemplate } : {}), next_run_at: new Date(Date.now() + intervalMs).toISOString() }).select('*').single();
   if (error) throw error;
   return data;
 }
@@ -43,10 +43,17 @@ async function setDeletePrevious(guildId, id, enabled) {
   return data;
 }
 
+/** Chooses the saved embed a timer sends (null takes it off). Returns the timer, or null when it does not exist. */
+async function setEmbedTemplate(guildId, id, embedTemplate) {
+  const { data, error } = await database.from('auto_messages').update({ embed_template: embedTemplate }).eq('guild_id', guildId).eq('id', id).select('*').maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
 /** Remembers the message a timer just sent, so the next run can delete it. */
 async function setLastMessage(id, messageId) {
   const { error } = await database.from('auto_messages').update({ last_message_id: messageId }).eq('id', id);
   if (error) throw error;
 }
 
-module.exports = { get, list, listDue, add, remove, scheduleNext, setDeletePrevious, setLastMessage };
+module.exports = { get, list, listDue, add, remove, scheduleNext, setDeletePrevious, setEmbedTemplate, setLastMessage };
