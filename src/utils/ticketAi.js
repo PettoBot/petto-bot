@@ -2,6 +2,7 @@
 // The prompt is built by ticketAiPrompt.js (the same rules the dashboard's test chat uses). The key is GROQ_API_KEY (never logged or sent
 // anywhere but Groq); the model is GROQ_MODEL, or the first preferred one that Groq lists.
 const logger = require('./logger');
+const { EMOJI } = require('./emojis');
 
 const CFG = {
   base: 'https://api.groq.com/openai/v1',
@@ -21,7 +22,9 @@ const CFG = {
 };
 
 /** The line that ends every reply of the assistant: it says it is an AI and lets the bot recognize its own replies later (after a restart). */
-const MARK = '-# 🤖 ';
+const MARK = `-# ${EMOJI.RELEASE_MAGIC} `;
+/** The line of the first replies, before the bot's own emoji: still recognized in tickets that already have them. */
+const LEGACY_MARK = '-# 🤖 ';
 
 const isConfigured = () => Boolean(String(process.env.GROQ_API_KEY ?? '').trim());
 
@@ -90,10 +93,7 @@ function takeGuildSlot(guildId, now = Date.now()) {
   return true;
 }
 
-/** Whether a message is one of the assistant's own replies (it ends with the AI line). */
-const isAssistantReply = (message, botId) => message.author?.id === botId && String(message.content ?? '').includes(`\n${MARK}`);
-
 /** The text of an assistant reply without its AI line. */
-const stripMark = (content) => String(content ?? '').split(`\n${MARK}`)[0].trim();
+const stripMark = (content) => String(content ?? '').split(`\n${MARK}`)[0].split(`\n${LEGACY_MARK}`)[0].trim();
 
-module.exports = { CFG, MARK, isConfigured, chat, takeGuildSlot, isAssistantReply, stripMark };
+module.exports = { CFG, MARK, LEGACY_MARK, isConfigured, chat, takeGuildSlot, stripMark };

@@ -19,6 +19,8 @@ const {
   handleRatingModal: handleTicketRatingModal,
 } = require('../interactions/ticketControls');
 const { handleButton: handleGiveawayButton } = require('../interactions/giveawayButton');
+const { handleButton: handleTicketAiButton } = require('../interactions/ticketAi');
+const { HUMAN_BUTTON: TICKET_AI_BUTTON } = require('../utils/ticketAiFlow');
 const { handlePager, isPagerId } = require('../utils/pager');
 const { handlePaginationInteraction } = require('../interactions/pagination');
 const { isPaginationId } = require('../utils/pagination');
@@ -433,6 +435,15 @@ module.exports = {
       } catch (err) {
         logger.error('Error handling list page:', err);
         if (!interaction.replied && !interaction.deferred) await interaction.reply({ content: t(await languageOf(interaction), 'core.pagerError'), flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId === TICKET_AI_BUTTON) {
+      try {
+        await handleTicketAiButton(interaction);
+      } catch (err) {
+        logger.error('Error handling the ticket AI button:', err);
       }
       return;
     }
