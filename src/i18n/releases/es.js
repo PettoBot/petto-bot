@@ -1,5 +1,55 @@
 // Las notas de versión de `!version` en español: etiqueta, resumen y secciones de cada versión (src/utils/releases.js guarda el resto).
 module.exports = {
+  'v0.7.8': {
+    label: 'v0.7.8 · Mochi: IA para tickets, canales de medios, tableros y herramientas nuevas',
+    summary: 'Un asistente de IA para tickets (beta), tickets en vivo y mejores transcripciones, canales de medios, un clownboard y tableros con varios emojis, temporizadores con embed, comandos nuevos (páginas, citas, efectos de imagen), más control sobre las apelaciones y una dashboard cuyas tarjetas muestran lo que envía el bot.',
+    sections: [
+      {
+        title: 'Comandos y herramientas nuevas',
+        items: [
+          '`!pagination` crea un mensaje con hasta 25 páginas y botones para pasarlas. `!quote` convierte un mensaje en una imagen de cita en blanco y negro, `!image <efecto>` cambia una imagen (invertir, desenfocar, pixelar, deep fry…) y `!hex` encuentra el color principal de una imagen.',
+          '`!imgonly` y `!urlonly` crean canales de medios: solo imágenes y videos, o solo enlaces de los sitios que elijas. Lo que no encaja se borra, con un aviso que se borra solo.',
+          'Bloquear comandos es más fácil: `!dc suggest #cmds` funciona, con varios comandos y canales a la vez, una categoría entera y `!dc list`. Petto también puede publicar sus estadísticas en Omniplex.',
+        ],
+      },
+      {
+        title: 'Tickets y el asistente de IA',
+        items: [
+          'Un asistente de IA para tickets (beta): responde a quien abrió el ticket con las instrucciones y el conocimiento que escribió el dueño, puede leer mensajes del servidor como sus reglas, conoce los canales y responde con tarjetas que tienen un botón **Hablar con una persona**.',
+          'Tickets en vivo en la dashboard: los tickets abiertos, sus mensajes y las respuestas del staff.',
+          'Las transcripciones se ven como Discord y muestran a Petto como se ve en tu servidor, un canal de ticket borrado cierra su ticket, las valoraciones se dan una sola vez, y los mensajes de tickets por defecto son tarjetas más cálidas con sus propios emojis.',
+        ],
+      },
+      {
+        title: 'Apelaciones',
+        items: [
+          'Los softbans se pueden apelar (actívalo en Apelaciones → Ajustes o con `!appeals types ban, mute, softban`).',
+          'Elige si los MD de sanción llevan el enlace de apelación, escribe tu propia línea sobre apelaciones y pide a los miembros esperar hasta 720 horas antes de apelar, todo con `!appeals`.',
+        ],
+      },
+      {
+        title: 'Tableros, temporizadores y mensajes',
+        items: [
+          'Un clownboard (`!clownboard`) se une al starboard y al monkeyboard, y cada tablero puede contar hasta cinco emojis (`!starboard emoji ⭐ 🍌`).',
+          'Los temporizadores pueden enviar un embed guardado, borrar el mensaje de la vez anterior (`!timer previous`) y repetirse cada tantos segundos, minutos, horas, días, semanas, meses o años. Las autorespuestas también pueden borrar su respuesta anterior.',
+        ],
+      },
+      {
+        title: 'Dashboard',
+        items: [
+          'Páginas nuevas de Boards y Canales de medios, con una tarjeta por cada tablero o canal y una muestra de cómo se ve.',
+          'Las autorespuestas, los comandos propios, los temporizadores y los mensajes fijos son tarjetas con un pequeño chat que muestra lo que envía el bot: formato, emojis, embeds guardados y GIFs.',
+          'Un nuevo aspecto para el panel de verificación, y configurar la verificación ya no se agota en servidores grandes.',
+        ],
+      },
+      {
+        title: 'Correcciones',
+        items: [
+          '`!dc suggest #cmds` no hacía nada, `/channel clear` fallaba, el panel de verificación podía publicarse dos veces, y el historial de perfil ahora guarda los avatares antiguos para siempre.',
+        ],
+      },
+    ],
+  },
   'v0.7.7': {
     label: 'v0.7.7 · Tiramisu: formularios, contadores en vivo, español y portugués y comandos de barra',
     summary: 'Formularios con su propia página web, contadores en vivo renovados, Petto en español y portugués, un anti-nuke más fuerte, comandos de barra para el día a día, límites gratis generosos y un panel más rápido.',

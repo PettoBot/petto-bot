@@ -4,6 +4,8 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+## [0.7.8] — 2026-10-23 · Mochi
+
 ### Added
 
 - **Delete the previous message: repeating timers and autoresponders.** A repeating timer can delete the message it sent the time before, so the channel only ever has the latest one (`timer add ... delete_previous:true`, or `timer previous <id> <enabled>` for one that exists). An autoresponder can delete its own previous reply in the channel before sending the new one (`autoresponder add|edit ... delete_previous:true`, or `--previous` with the prefix). Both are off by default, need Manage Messages in the channel, and ignore a message that is already gone. A timer remembers its last message in the new `auto_messages.last_message_id` column; an autoresponder remembers it in memory, so after a restart its first reply deletes nothing. The interval of a timer takes seconds, minutes, hours, days, weeks, months and years (`10m`, `2h`, `1d`, `2w`, `1mo`, `1y`, or together like `3d 4h`), never less than 10 minutes. A timer can also send a saved embed (also a Components V2 design), with its text above it or without text: `timer add ... embed_template:name`, or `timer embed <id> <name|none>` for one that exists; if the embed is gone the timer sends its text. New columns: `auto_messages.delete_previous`, `auto_messages.last_message_id`, `auto_messages.embed_template`, `auto_responders.delete_previous`.

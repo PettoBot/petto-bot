@@ -1,5 +1,55 @@
 // The release notes of `!version` in English: label, summary and sections of each release (src/utils/releases.js holds the rest).
 module.exports = {
+  'v0.7.8': {
+    label: 'v0.7.8 · Mochi: AI for tickets, media channels, boards and new tools',
+    summary: 'An AI assistant for tickets (beta), live tickets and better transcripts, media channels, a clownboard and boards with several emojis, repeating timers with an embed, new commands (pages, quotes, image effects), more control over appeals and a dashboard whose cards show what the bot sends.',
+    sections: [
+      {
+        title: 'New commands and tools',
+        items: [
+          '`!pagination` makes one message with up to 25 pages and buttons to turn them. `!quote` turns a message into a black and white quote picture, `!image <effect>` changes a picture (invert, blur, pixelate, deep fry…) and `!hex` finds the main color of a picture.',
+          '`!imgonly` and `!urlonly` make media channels: only pictures and videos, or only links from the sites you choose. What does not fit is deleted, with a notice that deletes itself.',
+          'Easier command blocking: `!dc suggest #cmds` works, with several commands and channels at once, a whole category, and `!dc list`. Petto can also post its stats on Omniplex.',
+        ],
+      },
+      {
+        title: 'Tickets and the AI assistant',
+        items: [
+          'An AI assistant for tickets (beta): it answers the person who opened a ticket from the instructions and knowledge the owner wrote, can read messages of the server such as its rules, knows the channels, and answers with cards that have a **Talk to a person** button.',
+          'Live tickets in the dashboard: the open tickets, their messages and replies from the staff.',
+          'Transcripts look like Discord and show Petto as it looks in your server, a deleted ticket channel closes its ticket, ratings can be given once, and the default ticket messages are warmer cards with their own emojis.',
+        ],
+      },
+      {
+        title: 'Appeals',
+        items: [
+          'Softbans can be appealed (turn it on in Appeals → Settings or with `!appeals types ban, mute, softban`).',
+          'Choose whether sanction DMs carry the appeal link, write your own line about appeals, and ask members to wait up to 720 hours before appealing, all with `!appeals`.',
+        ],
+      },
+      {
+        title: 'Boards, timers and messages',
+        items: [
+          'A clownboard (`!clownboard`) joins the starboard and the monkeyboard, and every board can count up to five emojis (`!starboard emoji ⭐ 🍌`).',
+          'Repeating timers can send a saved embed, delete the message of the time before (`!timer previous`) and repeat every so many seconds, minutes, hours, days, weeks, months or years. Autoresponders can delete their previous reply too.',
+        ],
+      },
+      {
+        title: 'Dashboard',
+        items: [
+          'New Boards and Media channels pages, with a card for each board or channel and a sample of how it looks.',
+          'Autoresponders, custom commands, timers and sticky messages are cards with a small chat that shows what the bot sends: formatting, emojis, saved embeds and GIFs.',
+          'A new look for the verification panel, and setting up verification no longer times out on big servers.',
+        ],
+      },
+      {
+        title: 'Fixes',
+        items: [
+          '`!dc suggest #cmds` did nothing, `/channel clear` failed, the verification panel could be posted twice, and the profile history now keeps old avatars for good.',
+        ],
+      },
+    ],
+  },
   'v0.7.7': {
     label: 'v0.7.7 · Tiramisu: forms, live counters, Spanish & Portuguese and slash commands',
     summary: 'Forms with their own web page, live counters rebuilt, Petto in Spanish and Portuguese, a stronger anti-nuke, everyday slash commands, generous Free limits and a faster dashboard.',
