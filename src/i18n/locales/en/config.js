@@ -44,6 +44,7 @@ module.exports = {
   'config.module.stickyrolesconfig.title': 'Sticky roles',
   'config.module.honeypotconfig.title': 'Honeypots',
   'config.module.countingconfig.title': 'Counting',
+  'config.module.mediaonlyconfig.title': 'Media channels',
   'config.module.counterconfig.title': 'Counters',
   'config.module.jailconfig.title': 'Jail',
   'config.module.autothreadconfig.title': 'Auto threads',

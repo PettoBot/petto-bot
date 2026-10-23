@@ -4153,3 +4153,29 @@ as $$
   returning replies;
 $$;
 -- security invoker: it runs with the caller's rights, so RLS (no policy) still keeps every key but the service key out.
+
+-- ---------------------------------------------------------------------------
+-- Media channels: a channel where only pictures, videos or links of some sites can be posted (!imgonly, !urlonly and the dashboard)
+-- ---------------------------------------------------------------------------
+create table if not exists media_only_channels (
+  guild_id            text not null references guilds(guild_id) on delete cascade,
+  channel_id          text not null,
+  -- imgonly: the channel accepts attachments (the kinds below); urlonly: it accepts links (the sites below). One channel can have both.
+  attachments_enabled boolean not null default false,
+  links_enabled       boolean not null default false,
+  allow_images        boolean not null default true,
+  allow_videos        boolean not null default true,
+  allow_audio         boolean not null default false,
+  allow_files         boolean not null default false,
+  -- site ids of src/utils/mediaOnly.js (youtube, twitter, instagram...); empty = any link
+  networks            text[] not null default '{}',
+  -- text next to the picture or the link is fine
+  allow_caption       boolean not null default true,
+  -- say why a message was deleted (the notice deletes itself)
+  notice              boolean not null default true,
+  -- members with these roles can write anything (who has Manage Messages always can)
+  bypass_role_ids     text[] not null default '{}',
+  updated_at          timestamptz not null default now(),
+  primary key (guild_id, channel_id)
+);
+alter table media_only_channels enable row level security;

@@ -231,6 +231,7 @@ module.exports = {
   'cmd.config.logs.ignore.toggle.opt.channel.desc': 'Channel to ignore/unignore',
   'cmd.config.logs.ignore.list.desc': 'List ignored users/channels.',
   'cmd.config.logsconfig.desc': 'Show the logs settings and how to change them.',
+  'cmd.config.mediaonlyconfig.desc': 'Show the media channels settings and how to change them.',
   'cmd.config.moderation.desc': 'Choose which roles may use individual moderation actions.',
   'cmd.config.moderation.allow.desc': 'Allow a role to use an action.',
   'cmd.config.moderation.allow.opt.action.desc': 'Moderation action to configure.',

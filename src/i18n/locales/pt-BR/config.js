@@ -44,6 +44,7 @@ module.exports = {
   'config.module.stickyrolesconfig.title': 'Cargos persistentes',
   'config.module.honeypotconfig.title': 'Honeypots',
   'config.module.countingconfig.title': 'Contagem',
+  'config.module.mediaonlyconfig.title': 'Canais de mídia',
   'config.module.counterconfig.title': 'Contadores',
   'config.module.jailconfig.title': 'Prisão',
   'config.module.autothreadconfig.title': 'Tópicos automáticos',
