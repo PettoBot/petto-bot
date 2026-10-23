@@ -39,6 +39,7 @@ module.exports = {
         .addBooleanOption((o) => o.setName('delete_trigger').setDescription('Delete the triggering message').setRequired(false))
         .addBooleanOption((o) => o.setName('reply_to_message').setDescription('Reply directly to (quote) the triggering message instead of sending a new one').setRequired(false))
         .addBooleanOption((o) => o.setName('ping_user').setDescription('Notify the triggering user (as a reply, no ugly @mention text stuffed in)').setRequired(false))
+        .addBooleanOption((o) => o.setName('delete_previous').setDescription('Delete its own previous reply in the channel before sending the new one').setRequired(false))
         .addStringOption((o) => o.setName('channels').setDescription('Restrict to these channels (space-separated mentions; default: all channels)').setRequired(false))
         .addStringOption((o) => o.setName('roles').setDescription('Only trigger for members with one of these roles (space-separated mentions; default: everyone)').setRequired(false)),
     )
@@ -53,6 +54,7 @@ module.exports = {
         .addBooleanOption((o) => o.setName('delete_trigger').setDescription('New delete-trigger setting').setRequired(false))
         .addBooleanOption((o) => o.setName('reply_to_message').setDescription('New reply-to-trigger setting').setRequired(false))
         .addBooleanOption((o) => o.setName('ping_user').setDescription('New ping-user setting').setRequired(false))
+        .addBooleanOption((o) => o.setName('delete_previous').setDescription('New delete-previous-reply setting').setRequired(false))
         .addStringOption((o) => o.setName('reply').setDescription('New reply text/flags; use clear to remove').setRequired(false))
         .addStringOption((o) => o.setName('embed_template').setDescription('Saved !embed template; use clear to remove').setRequired(false)),
     )
@@ -140,6 +142,7 @@ async function addCmd(interaction) {
   const deleteTrigger = interaction.options.getBoolean('delete_trigger') ?? false;
   const replyToMessage = interaction.options.getBoolean('reply_to_message') ?? false;
   const pingUser = interaction.options.getBoolean('ping_user') ?? false;
+  const deletePrevious = interaction.options.getBoolean('delete_previous') ?? false;
   const channelsInput = interaction.options.getString('channels');
   const rolesInput = interaction.options.getString('roles');
 
@@ -197,6 +200,7 @@ async function addCmd(interaction) {
       delete_trigger: deleteTrigger,
       reply_to_trigger: replyToMessage,
       ping_user: pingUser,
+      delete_previous: deletePrevious,
       channel_ids: channelIds,
       role_ids: roleIds,
     });
@@ -210,6 +214,7 @@ async function addCmd(interaction) {
     settingsLine(lang, { mode, type: embedTemplate ? t(lang, 'automation.autoresponder.type.savedEmbed', { name: embedTemplate }) : t(lang, reply && looksLikeScript(reply) ? 'automation.autoresponder.type.embedCode' : (embed ? 'automation.autoresponder.type.embed' : 'automation.autoresponder.type.text')), deleteTrigger, replyToMessage, pingUser }),
     t(lang, 'automation.autoresponder.channels', { channels: channelIds.length ? channelIds.map((id) => `<#${id}>`).join(' ') : t(lang, 'automation.autoresponder.allChannels') }),
     t(lang, 'automation.autoresponder.roles', { roles: roleIds.length ? roleIds.map((id) => `<@&${id}>`).join(' ') : t(lang, 'automation.autoresponder.everyone') }),
+    ...(deletePrevious ? [t(lang, 'automation.autoresponder.previousOn')] : []),
     t(lang, 'automation.autoresponder.trigger', { trigger }),
     t(lang, 'automation.autoresponder.replyFlags', { reply: reply ? (reply.length > 300 ? `${reply.slice(0, 300)}…` : reply) : t(lang, 'automation.common.none') }),
     ...code.notes.map((line) => `- ${line}`),
@@ -234,10 +239,11 @@ async function editCmd(interaction) {
   const deleteTrigger = interaction.options.getBoolean('delete_trigger');
   const replyToMessage = interaction.options.getBoolean('reply_to_message');
   const pingUser = interaction.options.getBoolean('ping_user');
+  const deletePrevious = interaction.options.getBoolean('delete_previous');
   const reply = interaction.options.getString('reply');
   const embedTemplateInput = interaction.options.getString('embed_template');
 
-  if (!mode && embed == null && deleteTrigger == null && replyToMessage == null && pingUser == null && reply == null && embedTemplateInput == null) {
+  if (!mode && embed == null && deleteTrigger == null && replyToMessage == null && pingUser == null && deletePrevious == null && reply == null && embedTemplateInput == null) {
     await interaction.reply({ content: t(lang, 'automation.autoresponder.needField'), flags: MessageFlags.Ephemeral });
     return;
   }
@@ -250,6 +256,7 @@ async function editCmd(interaction) {
   if (deleteTrigger != null) patch.delete_trigger = deleteTrigger;
   if (replyToMessage != null) patch.reply_to_trigger = replyToMessage;
   if (pingUser != null) patch.ping_user = pingUser;
+  if (deletePrevious != null) patch.delete_previous = deletePrevious;
   if (reply != null) patch.reply = reply.trim().toLowerCase() === 'clear' ? '' : reply;
 
   let notes = [];
@@ -292,7 +299,7 @@ async function listCmd(interaction) {
   const lines = list.map((a) => {
     const reply = a.reply ?? '';
     const output = a.embed_template ? `embed:\`${a.embed_template}\`` : (reply.length > 60 ? `${reply.slice(0, 60)}…` : (reply || t(lang, 'automation.autoresponder.noText')));
-    return `\`${a.ar_id}\` ${modeTag(a.match_mode)}${(a.reply_type === 'embed' || a.embed_template) ? ' 🖼️' : ''}${a.delete_trigger ? ' 🗑️' : ''}${a.role_ids?.length ? ' 🎭' : ''}${a.ping_user ? ' 🔔' : ''} · **${a.trigger}** → ${output}`;
+    return `\`${a.ar_id}\` ${modeTag(a.match_mode)}${(a.reply_type === 'embed' || a.embed_template) ? ' 🖼️' : ''}${a.delete_trigger ? ' 🗑️' : ''}${a.role_ids?.length ? ' 🎭' : ''}${a.ping_user ? ' 🔔' : ''}${a.delete_previous ? ' ♻️' : ''} · **${a.trigger}** → ${output}`;
   });
   await interaction.editReply({ components: [textCard(`${t(lang, 'automation.autoresponder.listTitle', { count: list.length, max: await arDb.limitFor(interaction.guild.id) })}\n${lines.join('\n')}`.slice(0, 3900), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
 }

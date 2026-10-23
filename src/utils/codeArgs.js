@@ -65,12 +65,13 @@ function splitTrigger(text) {
 const FLAG_VALUES = ['mode', 'embed_template'];
 const FLAG_MODES = new Set(['contains', 'startsWith', 'endsWith', 'exact', 'regex']);
 
-/** The options of `autoresponder add` or `edit` from the raw text. Flags: --reply --delete --ping --strict --not_strict --mode x --embed_template x */
+/** The options of `autoresponder add` or `edit` from the raw text. Flags: --reply --delete --ping --previous --strict --not_strict --mode x --embed_template x */
 function autoresponderFlags(flags) {
   const values = {};
   if (flags.reply) values.reply_to_message = true;
   if (flags.delete) values.delete_trigger = true;
   if (flags.ping) values.ping_user = true;
+  if (flags.previous) values.delete_previous = true;
   if (flags.strict) values.mode = 'exact';
   if (flags.not_strict) values.mode = 'contains';
   const mode = typeof flags.mode === 'string' ? [...FLAG_MODES].find((each) => each.toLowerCase() === flags.mode.toLowerCase()) : null;

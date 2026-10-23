@@ -1618,6 +1618,8 @@ alter table auto_responders add column if not exists embed_template text;
 alter table auto_responders add column if not exists reply_to_trigger boolean not null default false;
 alter table auto_responders add column if not exists role_ids text[] not null default '{}';
 alter table auto_responders add column if not exists ping_user boolean not null default false;
+-- An autoresponder can delete its own previous reply in the channel before sending the new one.
+alter table auto_responders add column if not exists delete_previous boolean not null default false;
 
 alter table auto_responders enable row level security;
 
@@ -2007,6 +2009,12 @@ create table if not exists auto_messages (
 );
 
 create index if not exists idx_auto_messages_due on auto_messages(next_run_at);
+
+-- A timer can delete the message it sent the time before, so the channel only ever has the latest one.
+alter table auto_messages add column if not exists delete_previous boolean not null default false;
+alter table auto_messages add column if not exists last_message_id text;
+-- A timer can send a saved embed (also a Components V2 design) instead of, or with, its text.
+alter table auto_messages add column if not exists embed_template text;
 
 alter table auto_messages enable row level security;
 

@@ -19,6 +19,22 @@ function extractMentions(text) {
   return { users, roles };
 }
 
+// The last reply of an autoresponder in each channel, for the ones that delete their previous reply. It lives in memory: after a restart the
+// first reply of each one goes out without deleting anything. The map is capped so a busy bot does not grow it without end.
+const lastReplies = new Map();
+const MAX_LAST_REPLIES = 2000;
+
+/** Deletes the previous reply of `ar` in the channel (when there is one) and remembers `sent` as the new one. */
+async function replacePreviousReply(ar, channel, sent) {
+  if (!sent?.id) return;
+  const key = `${ar.ar_id}:${channel.id}`;
+  const previous = lastReplies.get(key);
+  if (previous && previous !== sent.id) await channel.messages.delete(previous).catch(() => {});
+  lastReplies.delete(key);
+  lastReplies.set(key, sent.id);
+  if (lastReplies.size > MAX_LAST_REPLIES) lastReplies.delete(lastReplies.keys().next().value);
+}
+
 function matchDetails(ar, content) {
   const lower = content.toLowerCase();
   const trigger = ar.trigger.toLowerCase();
@@ -56,6 +72,7 @@ function matchDetails(ar, content) {
 }
 
 module.exports = {
+  replacePreviousReply,
   name: Events.MessageCreate,
   async execute(message) {
     if (message.author.bot || !message.guild || !message.member) return;
@@ -144,6 +161,7 @@ module.exports = {
         } else {
           sent = await message.channel.send({ ...payload, allowedMentions }).catch((err) => logger.warn(`Autoresponder ${ar.ar_id} send failed:`, err.message));
         }
+        if (ar.delete_previous) await replacePreviousReply(ar, message.channel, sent);
         if (sent && (reactReplies.length || templateReactReplies.length)) await applyReactReplies(sent, [...reactReplies, ...templateReactReplies]);
         if (ar.delete_trigger) await message.delete().catch(() => {});
       }
