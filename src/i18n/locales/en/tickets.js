@@ -390,6 +390,8 @@ module.exports = {
   'tickets.ai.handoff': 'Thanks! I passed your ticket to the team. A staff member will answer you here as soon as possible.',
   'tickets.ai.handoffSecret': 'Please never share passwords, tokens or card numbers. I removed that message and passed your ticket to the team, who will help you here.',
   'tickets.ai.replyTo': '**Reply** to {user}',
+  'tickets.ai.greetTo': '**Hello** {user}',
+  'tickets.ai.greeting': 'I am the AI assistant of this server. Tell me what you need about **{type}** and I will try to help right away. If you prefer a person, press the button and the team will be told.',
   'tickets.ai.human': 'Talk to a person',
   'tickets.ai.humanDone': 'Done. A staff member will answer you here.',
   'tickets.ai.humanAlready': 'This ticket was already passed to the team.',

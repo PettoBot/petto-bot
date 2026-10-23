@@ -57,7 +57,7 @@ let lastMessages = null;
     return ch;
   }
   const guild = { id: 'guild', roles: { cache: new Map([['staffRole', {}]]) }, members: { cache: new Map(), fetch: async () => null } };
-  const client = { user: { id: 'bot' } };
+  const client = { user: { id: 'bot', displayAvatarURL: () => 'https://cdn.example.com/a.png' } };
   let n = 0;
   const msg = (ch, { author = 'opener', content = 'what time do you open?', staff = false } = {}) => {
     n += 1;
@@ -131,11 +131,25 @@ let lastMessages = null;
   ev = fresh(); settings = { ...settings, categoryIds: ['99'] }; modelCalls = 0; ch = channel(); await ev.execute(msg(ch)); assert.equal(modelCalls, 0, 'only the chosen ticket types'); settings = { ...settings, categoryIds: [] };
 
   // 11. the card can be read back: it is recognized as the assistant's, and its answer is what goes into the next prompt
-  const card = flow.replyCard({ lang: 'en', user: { id: 'opener', username: 'ana' }, text: 'Use the shop link.', roleIds: [], handoffText: null });
-  const readBack = { author: { id: 'bot' }, content: '', components: [card.toJSON()] };
+  const card = flow.replyCard({ lang: 'en', user: { id: 'opener', username: 'ana' }, text: 'Use the shop link.', roleIds: [], handoffText: null, avatarUrl: 'https://cdn.example.com/a.png' });
+  const readBack = { author: { id: 'bot' }, content: '', components: card.map((c) => c.toJSON()) };
+  assert.ok(JSON.stringify(readBack.components).includes('"accessory"'), 'the answer sits in a section next to the picture of the bot');
   assert.ok(flow.isAssistantReply(readBack, 'bot'), 'a card of the assistant is recognized'); assert.ok(!flow.isAssistantReply({ ...readBack, author: { id: 'someone' } }, 'bot'));
   assert.equal(flow.replyText(readBack), 'Use the shop link.', 'only the answer is read back, not the header or the AI line');
   assert.ok(!flow.isAssistantReply({ author: { id: 'bot' }, content: 'a normal bot message', components: [] }, 'bot'));
+
+  // 11b. the first message of a ticket greets in the chosen language and is not counted as a reply
+  const greeting = flow.greetingCard({ lang: 'es', user: { id: 'opener', username: 'ana' }, typeLabel: 'Ban *appeal*', avatarUrl: null });
+  const greetRead = { author: { id: 'bot' }, content: '', components: greeting.map((c) => c.toJSON()) };
+  assert.ok(JSON.stringify(greetRead.components).includes('Hola') && JSON.stringify(greetRead.components).includes('Ban appeal'), 'the greeting is in the language asked and names the ticket type');
+  assert.ok(!flow.isAssistantReply(greetRead, 'bot'), 'the greeting is not one of the replies');
+  const { greet } = require('../src/utils/ticketAiGreeting');
+  const sentGreetings = []; settings = { ...settings, language_mode: 'pt-BR' };
+  await greet({ guild, client, channel: { send: async (p) => { sentGreetings.push(p); } }, category: { id: 1, label: 'Help' }, opener: { id: 'opener', username: 'ana' } });
+  assert.equal(sentGreetings.length, 1); assert.ok(JSON.stringify(sentGreetings[0].components.map((c) => c.toJSON())).includes('Olá'), 'the greeting follows the language of the assistant');
+  settings = { ...settings, enabled: false }; sentGreetings.length = 0;
+  await greet({ guild, client, channel: { send: async (p) => { sentGreetings.push(p); } }, category: { id: 1, label: 'Help' }, opener: { id: 'opener', username: 'ana' } });
+  assert.equal(sentGreetings.length, 0, 'no greeting when the assistant is off'); settings = { ...settings, enabled: true, language_mode: 'auto' };
 
   // 12. the Talk to a person button: only the opener, once, and the team is pinged
   const { handleButton } = require('../src/interactions/ticketAi');

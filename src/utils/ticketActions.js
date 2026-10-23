@@ -168,6 +168,9 @@ async function openTicket({ guild, client, category, opener, formAnswers = null 
     await sendAs(channel, 'tickets', { components: [textCard(`${t(lang, 'tickets.open.submittedForm')}\n${answerLines.join('\n')}`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
   }
 
+  // The AI assistant (beta, off unless the server switched it on) says hello in the ticket.
+  await require('./ticketAiGreeting').greet({ guild, client, channel, category, opener });
+
   await sendLog(client, guild.id, 'tickets', {
     author: { name: t(lang, 'tickets.log.opened.title', { number: ticket.ticket_number }) },
     description: t(lang, 'tickets.log.opened.description', { emoji: EMOJI.APPROVE, user: opener.id, category: category.label, channel: channel.id }),

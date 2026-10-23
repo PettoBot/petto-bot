@@ -68,7 +68,7 @@ async function answer(message, ticket, category, settings, state) {
   if (!text) { if (reply.handoff) await handOver(message, category, state, 'model'); return; }
 
   const roles = reply.handoff ? flow.pingRoles(message.guild, category) : [];
-  const card = flow.replyCard({ lang, user: message.author, text, roleIds: roles, handoffText: reply.handoff ? t(lang, 'tickets.ai.handoff') : null });
+  const card = flow.replyCard({ lang, user: message.author, text, roleIds: roles, handoffText: reply.handoff ? t(lang, 'tickets.ai.handoff') : null, avatarUrl: message.client.user.displayAvatarURL({ extension: 'png', size: 256 }) });
   const sent = await message.channel.send(flow.cardMessage(card, roles, { reply: { messageReference: message.id, failIfNotExists: false } }))
     .catch((error) => { logger.warn(`[ticket-ai] reply failed: ${error.message}`); return null; });
   if (!sent) return;
