@@ -344,6 +344,26 @@ const GROUPS = [
     ],
   },
   {
+    id: 'clownboard',
+    availability: 'clownboard',
+    vars: [
+      '{clown.count}',
+      '{clown.emoji}',
+      '{clown.channel}',
+      '{clown.channel_name}',
+      '{clown.link}',
+      '{clown.message_id}',
+      '{clown.author}',
+      '{clown.author_name}',
+      '{clown.author_id}',
+      '{clown.author_avatar}',
+      '{clown.content}',
+      '{clown.image}',
+      '{clown.attachments}',
+      '{clown.time}',
+    ],
+  },
+  {
     id: 'verification',
     availability: 'verification',
     vars: [

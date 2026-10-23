@@ -6,6 +6,22 @@ const logger = require('./logger');
 const { templatePayload } = require('./templatedMessage');
 const { t, currentLanguage } = require('../i18n');
 
+// The emojis of a board: the main one and up to four more (a star board that also counts bananas). Compared without the variation selector.
+const bare = (emoji) => String(emoji ?? '').replace(/\uFE0F/g, '');
+const MAX_EMOJIS = 5;
+const EMOJI_TOKEN = /<a?:\w+:\d+>|\p{Extended_Pictographic}(?:\u200d\p{Extended_Pictographic})*\uFE0F?|[\u{1F1E6}-\u{1F1FF}]{2}|[#*0-9]\uFE0F?\u20E3/gu;
+
+/** `"⭐ 🍌 <:wow:123>"` (or run together) → the emojis in it, without repeats, at most five. */
+function parseEmojiList(text) {
+  const found = String(text ?? '').match(EMOJI_TOKEN) ?? [];
+  return [...new Map(found.map((e) => [bare(e), e])).values()].slice(0, MAX_EMOJIS);
+}
+
+/** Every emoji a board counts: its main emoji first. */
+function emojisOf(row) {
+  return [row.emoji, ...(Array.isArray(row.extra_emojis) ? row.extra_emojis : [])].filter(Boolean);
+}
+
 // Messages being synced, per board, so two reactions at once do not post the same message twice.
 const busyByBoard = new WeakMap();
 
@@ -17,7 +33,8 @@ async function syncBoard(reaction, board) {
   if (reaction.partial) await reaction.fetch().catch(() => null);
   const message = reaction.message;
   const row = await starboardDb.getConfig(message.guild.id);
-  if (!row?.channel_id || reaction.emoji.toString() !== row.emoji) return;
+  const counted = emojisOf(row ?? {}).map(bare);
+  if (!row?.channel_id || !counted.includes(bare(reaction.emoji.toString()))) return;
   if (busy.has(message.id)) return;
   busy.add(message.id);
   try {
@@ -26,8 +43,16 @@ async function syncBoard(reaction, board) {
     const ignoredRole = member?.roles.cache.some((role) => row.ignored_role_ids?.includes(role.id));
     if (ignored || ignoredRole) return;
 
-    const users = await reaction.users.fetch();
-    const count = users.filter((memberUser) => !memberUser.bot && (row.selfstar || memberUser.id !== message.author?.id)).size;
+    // Each person counts once, whichever of the board's emojis they used.
+    const voters = new Set();
+    const reactions = message.reactions?.cache?.filter?.((r) => counted.includes(bare(r.emoji.toString()))) ?? new Map([[reaction.emoji.toString(), reaction]]);
+    for (const each of reactions.values()) {
+      const users = await each.users.fetch().catch(() => null);
+      for (const memberUser of users?.values?.() ?? []) {
+        if (!memberUser.bot && (row.selfstar || memberUser.id !== message.author?.id)) voters.add(memberUser.id);
+      }
+    }
+    const count = voters.size;
     const entry = await starboardDb.getEntry(message.guild.id, message.id);
     const destination = await message.guild.channels.fetch(row.channel_id).catch(() => null);
     if (!destination?.isTextBased()) return;
@@ -102,4 +127,4 @@ function buildPayload(message, row, count, lang = currentLanguage()) {
   return payload;
 }
 
-module.exports = { syncBoard, buildCustomPayload, buildPayload };
+module.exports = { syncBoard, buildCustomPayload, buildPayload, parseEmojiList, emojisOf, MAX_EMOJIS };

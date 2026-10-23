@@ -3,6 +3,7 @@ const { createBoardStore } = require('./boardStore');
 const DEFAULTS = {
   threshold: 3,
   emoji: '⭐',
+  extra_emojis: [],
   selfstar: false,
   color: 0xffc107,
   timestamp: true,
