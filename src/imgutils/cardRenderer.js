@@ -2,13 +2,18 @@
 // caller passes the functions that turn text variables into values and pictures into images.
 const { createCanvas: napiCreateCanvas } = require('@napi-rs/canvas');
 const { registerCardFonts, canvasFont } = require('./cardFonts');
+const { encodeApng } = require('./apng');
 
 const MAX_TEXT_LINES = 12;
+// An animated card is an APNG: a message takes up to 10 MB, and a card that moves is kept well under that.
+const MAX_FRAMES = 40;
+const MAX_ANIMATED_BYTES = 7 * 1024 * 1024;
 
 /**
  * deps:
  *  - resolveText(text): the text with its variables filled in, such as {user.display_name}
  *  - loadSource(src):   an image for an https link, an `asset:` id or a variable, or null when it cannot be loaded
+ *  - loadFrames(src):   only when a picture may move: the frames of an animated picture as `[{ canvas, delayMs }]`, or null for a still one
  *  - avatar(kind):      the image of the member (`user`) or of the server (`server`), or null
  *  - createCanvas:      only for tests
  */
@@ -16,36 +21,101 @@ async function renderCard(card, deps = {}) {
   registerCardFonts();
   const createCanvas = deps.createCanvas ?? napiCreateCanvas;
   const resolveText = deps.resolveText ?? (async (value) => value);
-  const loadSource = deps.loadSource ?? (async () => null);
-  const avatar = deps.avatar ?? (async () => null);
+  let loadSource = deps.loadSource ?? (async () => null);
+  let avatar = deps.avatar ?? (async () => null);
 
-  const canvas = createCanvas(card.width, card.height);
-  const ctx = canvas.getContext('2d');
-  await drawBackground(ctx, card, resolveText, loadSource);
-  // The right edge of every layer that was drawn, by id, for the layers that follow one.
-  const edges = new Map();
-  for (const layer of card.layers) {
-    if (layer.showIf && !String(await resolveText(layer.showIf)).trim()) continue;
-    let x = layer.x;
-    const anchor = layer.follow ? layer.follow.split(',').find((id) => edges.has(id)) : null;
-    if (anchor) x = edges.get(anchor) + layer.gap + leftReach(layer);
-    ctx.save();
-    try {
-      ctx.globalAlpha = layer.opacity;
-      ctx.translate(x, layer.y);
-      if (layer.rotation) ctx.rotate((layer.rotation * Math.PI) / 180);
-      let right = null;
-      if (layer.type === 'shape') { drawShape(ctx, layer); right = x + layer.w / 2; }
-      else if (layer.type === 'image') { if (await drawImage(ctx, layer, resolveText, loadSource)) right = x + layer.w / 2; }
-      else if (layer.type === 'avatar') { drawAvatar(ctx, layer, await avatar(layer.source)); right = x + layer.size / 2; }
-      else if (layer.type === 'bar') { await drawBar(ctx, layer, resolveText); right = x + layer.w / 2; }
-      else if (layer.type === 'text') { const width = await drawText(ctx, layer, resolveText); if (width !== null) right = x + rightReach(layer, width); }
-      if (right !== null) edges.set(layer.id, right);
-    } finally {
-      ctx.restore();
-    }
+  const motion = deps.loadFrames ? await findMotion(card, resolveText, deps.loadFrames) : null;
+  if (motion) {
+    // The card is drawn once for every frame, so what it loads is loaded once.
+    const pictures = new Map();
+    const once = (load) => async (key) => { if (!pictures.has(key)) pictures.set(key, load(key)); return pictures.get(key); };
+    loadSource = once(loadSource);
+    avatar = once(avatar);
   }
-  return canvas.toBuffer('image/png');
+
+  /** The whole card with `frame` (a picture) in the place of the layer that moves, and where that layer was drawn. */
+  const paint = async (frame = null) => {
+    const canvas = createCanvas(card.width, card.height);
+    const ctx = canvas.getContext('2d');
+    await drawBackground(ctx, card, resolveText, loadSource);
+    // The right edge of every layer that was drawn, by id, for the layers that follow one.
+    const edges = new Map();
+    let box = null;
+    for (const layer of card.layers) {
+      if (layer.showIf && !String(await resolveText(layer.showIf)).trim()) continue;
+      let x = layer.x;
+      const anchor = layer.follow ? layer.follow.split(',').find((id) => edges.has(id)) : null;
+      if (anchor) x = edges.get(anchor) + layer.gap + leftReach(layer);
+      ctx.save();
+      try {
+        ctx.globalAlpha = layer.opacity;
+        ctx.translate(x, layer.y);
+        if (layer.rotation) ctx.rotate((layer.rotation * Math.PI) / 180);
+        let right = null;
+        if (layer.type === 'shape') { drawShape(ctx, layer); right = x + layer.w / 2; }
+        else if (layer.type === 'image') {
+          const moving = frame && layer.id === motion.layerId;
+          if (await drawImage(ctx, layer, resolveText, moving ? async () => frame : loadSource)) {
+            right = x + layer.w / 2;
+            if (moving) box = { x: x - layer.w / 2, y: layer.y - layer.h / 2, w: layer.w, h: layer.h };
+          }
+        }
+        else if (layer.type === 'avatar') { drawAvatar(ctx, layer, await avatar(layer.source)); right = x + layer.size / 2; }
+        else if (layer.type === 'bar') { await drawBar(ctx, layer, resolveText); right = x + layer.w / 2; }
+        else if (layer.type === 'text') { const width = await drawText(ctx, layer, resolveText); if (width !== null) right = x + rightReach(layer, width); }
+        if (right !== null) edges.set(layer.id, right);
+      } finally {
+        ctx.restore();
+      }
+    }
+    return { canvas, box };
+  };
+
+  if (!motion) return (await paint()).canvas.toBuffer('image/png');
+
+  // A picture that moves: the first frame is the whole card, and each next one is only the square around that picture.
+  const still = await paint(motion.frames[0].canvas);
+  if (!still.box) return (await paint()).canvas.toBuffer('image/png');
+  const pad = 2;
+  const left = Math.max(0, Math.floor(still.box.x) - pad);
+  const top = Math.max(0, Math.floor(still.box.y) - pad);
+  const region = {
+    x: left, y: top,
+    w: Math.min(card.width, Math.ceil(still.box.x + still.box.w) + pad) - left,
+    h: Math.min(card.height, Math.ceil(still.box.y + still.box.h) + pad) - top,
+  };
+  const parts = [];
+  for (const frame of motion.frames.slice(1)) {
+    const next = await paint(frame.canvas);
+    const piece = createCanvas(region.w, region.h);
+    piece.getContext('2d').drawImage(next.canvas, region.x, region.y, region.w, region.h, 0, 0, region.w, region.h);
+    parts.push({ png: piece.toBuffer('image/png'), x: region.x, y: region.y, delayMs: frame.delayMs });
+  }
+  const animated = encodeApng({ png: still.canvas.toBuffer('image/png'), delayMs: motion.frames[0].delayMs }, parts);
+  // A card too big for a message goes out still.
+  return animated.length <= MAX_ANIMATED_BYTES ? animated : (await paint()).canvas.toBuffer('image/png');
+}
+
+/**
+ * The layer of a card that moves and its frames, or null. A picture layer with `animate` moves when its picture is an animation
+ * (`loadFrames` gives its frames, or null for a still one). Only a plain layer is animated: not turned, no shadow. Long
+ * animations are cut down to `MAX_FRAMES` frames.
+ */
+async function findMotion(card, resolveText, loadFrames) {
+  for (const layer of card.layers) {
+    if (layer.type !== 'image' || !layer.animate || layer.rotation || layer.shadow || !layer.src) continue;
+    if (layer.showIf && !String(await resolveText(layer.showIf)).trim()) continue;
+    const frames = await loadFrames(await resolveText(layer.src));
+    if (!frames || frames.length < 2) continue;
+    const step = Math.max(1, Math.ceil(frames.length / MAX_FRAMES));
+    const picked = [];
+    for (let at = 0; at < frames.length; at += step) {
+      const group = frames.slice(at, at + step);
+      picked.push({ canvas: group[0].canvas, delayMs: group.reduce((sum, f) => sum + f.delayMs, 0) });
+    }
+    return { layerId: layer.id, frames: picked };
+  }
+  return null;
 }
 
 /** How far a layer reaches to the left of its x, so a layer that follows another one starts after it (shapes and pictures are centered, a text with a pill starts at its padding). */
