@@ -9,6 +9,7 @@ const { drawCard } = require('../utils/cardService');
 const { decode } = require('../utils/safeImage');
 const { CARD_FONTS } = require('../imgutils/cardFonts');
 const { PRESETS, RANK_PRESETS } = require('../utils/cardPresets');
+const { decorationUrl, animatedDecorationUrl, nameplateUrl, serverTag } = require('../utils/profileLook');
 const imageCards = require('../db/imageCards');
 const cardAssets = require('../db/cardAssets');
 const { getGuildPremium, getGuildLimits } = require('../db/premium');
@@ -112,6 +113,9 @@ function registerCardRoutes(app, { authorize }) {
     const png = await drawCard(req.body?.data, { guild, member, user: member?.user, levelData: SAMPLE_LEVEL_DATA }, { guildId: guild.id, premium });
     res.set('Content-Type', 'image/png').set('Cache-Control', 'no-store');
     res.set('X-Card-Problems', String(checked.problems.length));
+    // What the person who asked has around their profile, so the dashboard can say why the preview shows it or not.
+    const user = member?.user;
+    res.set('X-Card-Look', [decorationUrl(user) && 'decoration', animatedDecorationUrl(user) && 'moving', nameplateUrl(user) && 'nameplate', serverTag(user) && 'tag'].filter(Boolean).join(',') || 'none');
     res.send(png);
   }));
 

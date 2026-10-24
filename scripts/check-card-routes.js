@@ -103,6 +103,7 @@ function call(port, method, url, { body, type } = {}) {
 
     r = await call(port, 'POST', `${base}/preview`, { body: { data: { mode: 'basic', basic: { preset: 'side' } } } });
     assert.equal(r.status, 200); assert.equal(r.headers['content-type'], 'image/png'); assert.equal(r.raw.subarray(1, 4).toString(), 'PNG');
+    assert.ok(['none', 'decoration', 'nameplate', 'tag'].some((word) => (r.headers['x-card-look'] ?? '').includes(word)), 'the preview says what the person has around their profile');
     r = await call(port, 'POST', `${base}/preview`, { body: { data: { mode: 'advanced', layers: [{ type: 'text', text: 'x' }] } } });
     assert.equal(r.status, 200, 'a free server previews an advanced card with the basic fallback, like a message would');
 

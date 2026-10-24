@@ -2,6 +2,7 @@ const { SlashCommandBuilder } = require('discord.js');
 const { INFO_ACCENT, infoPayload, clip, stamp, line } = require('../../utils/infoCard');
 const { badgeList, badgeText } = require('../../utils/userBadges');
 const { dominantColor } = require('../../utils/dominantColor');
+const { decorationUrl, animatedDecorationUrl, nameplateUrl, serverTag } = require('../../utils/profileLook');
 const { t, languageOf } = require('../../i18n');
 
 const ROLE_LIST_LIMIT = 800;
@@ -70,6 +71,22 @@ module.exports = {
         ],
       },
     ];
+
+    // What Discord shows around the person: only the parts they have. The decoration also has its moving picture when it moves.
+    const decoration = decorationUrl(user);
+    const moving = animatedDecorationUrl(user);
+    const nameplate = nameplateUrl(user);
+    const tag = serverTag(user);
+    if (decoration || nameplate || tag) {
+      sections.push({
+        title: t(lang, 'info.userinfo.look'),
+        lines: [
+          decoration ? line(t(lang, 'info.userinfo.decoration'), moving ? `[${t(lang, 'info.userinfo.lookStill')}](${decoration}) · [${t(lang, 'info.userinfo.lookAnimated')}](${moving})` : `[${t(lang, 'info.userinfo.lookView')}](${decoration})`) : null,
+          nameplate ? line(t(lang, 'info.userinfo.nameplate'), `[${t(lang, 'info.userinfo.lookView')}](${nameplate})`) : null,
+          tag ? line(t(lang, 'info.userinfo.serverTag'), `\`${tag}\``) : null,
+        ],
+      });
+    }
 
     if (member) {
       const joinPos = joinPosition(interaction.guild, member);
