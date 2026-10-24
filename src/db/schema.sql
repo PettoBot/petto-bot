@@ -2652,6 +2652,13 @@ begin
 end
 $$;
 alter table level_config add column if not exists voice_ignore_muted boolean not null default false;
+-- The share of the voice XP (0 to 100) someone earns while they are the only person in the channel. 100 changes nothing. It only matters
+-- when "people needed in voice" is 1; with more, being alone earns nothing at all.
+alter table level_config add column if not exists voice_alone_percent integer not null default 100 check (voice_alone_percent between 0 and 100);
+-- The most XP a member can earn from messages in one day (the day changes at midnight in Colombia). 0 turns the limit off.
+alter table level_config add column if not exists daily_xp_cap integer not null default 0 check (daily_xp_cap between 0 and 1000000);
+alter table level_users add column if not exists day_xp bigint not null default 0;
+alter table level_users add column if not exists day_xp_on date;
 -- Bonus XP for the first activity of each day, and extra per consecutive day (up to streak_max_days).
 alter table level_config add column if not exists daily_bonus_xp integer not null default 0 check (daily_bonus_xp between 0 and 100000);
 alter table level_config add column if not exists streak_bonus_xp integer not null default 0 check (streak_bonus_xp between 0 and 10000);
@@ -2738,6 +2745,36 @@ begin
     set last_active_day = p_today, streak = v_streak, best_streak = greatest(best_streak, v_streak)
     where guild_id = p_guild_id and user_id = p_user_id;
   return query select true, v_streak;
+end;
+$$;
+
+-- Takes `p_gain` XP from a member's allowance for `p_today` and says how much of it fits under `p_cap` (the rest is lost). One statement at a
+-- time per member, so two messages at once cannot both pass the limit.
+create or replace function take_daily_xp(
+  p_guild_id text,
+  p_user_id  text,
+  p_today    date,
+  p_gain     bigint,
+  p_cap      bigint
+) returns bigint
+language plpgsql
+as $$
+declare
+  v_used    bigint;
+  v_granted bigint;
+begin
+  update level_users
+    set day_xp = case when day_xp_on = p_today then day_xp else 0 end, day_xp_on = p_today
+    where guild_id = p_guild_id and user_id = p_user_id
+    returning day_xp into v_used;
+  if not found then
+    return greatest(0, least(p_gain, p_cap));
+  end if;
+  v_granted := greatest(0, least(p_gain, p_cap - v_used));
+  if v_granted > 0 then
+    update level_users set day_xp = day_xp + v_granted where guild_id = p_guild_id and user_id = p_user_id;
+  end if;
+  return v_granted;
 end;
 $$;
 

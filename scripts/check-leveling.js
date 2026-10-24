@@ -56,6 +56,10 @@ assert.equal(rules.voiceEligible({ humans: 3, deaf: true, muted: false }, { voic
 assert.equal(rules.voiceEligible({ humans: 3, deaf: false, muted: true }, { voice_min_members: 2, voice_ignore_muted: true }), false);
 assert.equal(rules.voiceEligible({ humans: 3, deaf: false, muted: true }, { voice_min_members: 2 }), true, 'muted counts unless the server turns that on');
 assert.equal(rules.voiceEligible({ humans: 1, deaf: false, muted: false }, {}), true, 'with no settings a single person is enough, as before');
+assert.equal(rules.voiceShare(10, 1, { voice_alone_percent: 50 }), 5, 'alone earns the share the server set');
+assert.equal(rules.voiceShare(10, 2, { voice_alone_percent: 50 }), 10, 'with company it is all of it');
+assert.equal(rules.voiceShare(10, 1, {}), 10, 'with no setting alone earns it all');
+assert.equal(rules.voiceShare(10, 1, { voice_alone_percent: 0 }), 0, '0 means nothing while alone');
 assert.equal(rules.voiceActiveCount([{ bot: false }, { bot: true }, { bot: false, deaf: true }], {}), 1, 'bots and deafened members do not count as company');
 assert.equal(rules.voiceActiveCount([{ bot: false }, { bot: false, muted: true }], {}), 2, 'muted members count unless the server ignores them');
 assert.equal(rules.voiceActiveCount([{ bot: false }, { bot: false, muted: true }], { voice_ignore_muted: true }), 1, 'muted members do not count when the server ignores them');
@@ -87,6 +91,16 @@ async function databaseChecks(url) {
   const row = (await pool.query('select streak, best_streak from level_users where guild_id = $1 and user_id = $2', [guild, 'u1'])).rows[0];
   assert.deepEqual([row.streak, row.best_streak], [1, 3], 'the best streak is kept');
   assert.deepEqual(await levelUsers.touchStreak(guild, 'nobody', '2026-10-01'), { newDay: false, streak: 0 }, 'a member with no row is left alone');
+
+  // The daily limit on message XP: what fits under it, per day, per member.
+  await pool.query('insert into level_users (guild_id, user_id) values ($1, $2)', [guild, 'cap1']);
+  assert.equal(await levelUsers.takeDailyXp(guild, 'cap1', '2026-10-01', 30, 50), 30, 'the first XP of the day fits');
+  assert.equal(await levelUsers.takeDailyXp(guild, 'cap1', '2026-10-01', 30, 50), 20, 'only what is left fits under the limit');
+  assert.equal(await levelUsers.takeDailyXp(guild, 'cap1', '2026-10-01', 30, 50), 0, 'nothing is left once the limit is reached');
+  assert.equal(await levelUsers.takeDailyXp(guild, 'cap1', '2026-10-02', 30, 50), 30, 'a new day starts again');
+  const both = await Promise.all([levelUsers.takeDailyXp(guild, 'cap1', '2026-10-02', 15, 50), levelUsers.takeDailyXp(guild, 'cap1', '2026-10-02', 15, 50), levelUsers.takeDailyXp(guild, 'cap1', '2026-10-02', 15, 50)]);
+  assert.equal(both.reduce((a, b) => a + b, 0), 20, 'messages at the same moment cannot pass the limit together');
+  assert.equal(await levelUsers.takeDailyXp(guild, 'nobody-here', '2026-10-01', 80, 50), 50, 'a member with no row yet gets what fits');
 
   // Weekly and monthly boards.
   const at = new Date('2026-10-14T10:00:00Z');
