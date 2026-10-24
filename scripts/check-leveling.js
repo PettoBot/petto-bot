@@ -56,6 +56,9 @@ assert.equal(rules.voiceEligible({ humans: 3, deaf: true, muted: false }, { voic
 assert.equal(rules.voiceEligible({ humans: 3, deaf: false, muted: true }, { voice_min_members: 2, voice_ignore_muted: true }), false);
 assert.equal(rules.voiceEligible({ humans: 3, deaf: false, muted: true }, { voice_min_members: 2 }), true, 'muted counts unless the server turns that on');
 assert.equal(rules.voiceEligible({ humans: 1, deaf: false, muted: false }, {}), true, 'with no settings a single person is enough, as before');
+assert.equal(rules.voiceActiveCount([{ bot: false }, { bot: true }, { bot: false, deaf: true }], {}), 1, 'bots and deafened members do not count as company');
+assert.equal(rules.voiceActiveCount([{ bot: false }, { bot: false, muted: true }], {}), 2, 'muted members count unless the server ignores them');
+assert.equal(rules.voiceActiveCount([{ bot: false }, { bot: false, muted: true }], { voice_ignore_muted: true }), 1, 'muted members do not count when the server ignores them');
 
 async function databaseChecks(url) {
   const { Pool } = require('pg');

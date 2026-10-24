@@ -4,6 +4,11 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- **Voice XP no longer needs a second person by default.** "People needed in voice" (`voice_min_members`) started at 2, so someone alone in a voice channel earned nothing and it looked broken. It is 1 now for new servers, and servers that still had the old 2 are moved to 1 once (they can set 2 again from Rules and events or `/level rules`; a later restart does not reset it). The rule is still there.
+- **"People needed" counts people who could earn XP themselves.** Bots and deafened members (and muted ones when the server ignores muted members) no longer count as company, so one person with someone deafened next to them is still one.
+
 ## [0.7.8] — 2026-10-23 · Mochi
 
 ### Added

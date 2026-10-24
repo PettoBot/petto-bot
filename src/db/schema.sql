@@ -2640,7 +2640,17 @@ alter table level_config add column if not exists min_message_chars integer not 
 -- The same text again within a minute gives no XP.
 alter table level_config add column if not exists anti_repeat boolean not null default true;
 -- Voice XP only while at least this many people (not bots) are in the channel, and optionally not while muted.
-alter table level_config add column if not exists voice_min_members integer not null default 2 check (voice_min_members between 1 and 20);
+-- It was 2 at first, so someone alone in a channel earned nothing and it looked broken; it is 1 now. A server that still has the
+-- old 2 (the column's default is read to know this has not run yet) is moved to 1 once, and can set 2 again from Rules and events.
+alter table level_config add column if not exists voice_min_members integer not null default 1 check (voice_min_members between 1 and 20);
+do $$
+begin
+  if (select column_default from information_schema.columns where table_schema = current_schema() and table_name = 'level_config' and column_name = 'voice_min_members') = '2' then
+    alter table level_config alter column voice_min_members set default 1;
+    update level_config set voice_min_members = 1 where voice_min_members = 2;
+  end if;
+end
+$$;
 alter table level_config add column if not exists voice_ignore_muted boolean not null default false;
 -- Bonus XP for the first activity of each day, and extra per consecutive day (up to streak_max_days).
 alter table level_config add column if not exists daily_bonus_xp integer not null default 0 check (daily_bonus_xp between 0 and 100000);
