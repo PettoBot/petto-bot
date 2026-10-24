@@ -6,6 +6,7 @@
 // Message-scoped variables resolve empty when there's no triggering message in ctx.
 
 const { parseWhen, discordTimestamp } = require('./when');
+const { decorationUrl, nameplateUrl, serverTag, serverTagBadge } = require('./profileLook');
 const { QUEST_EXTRA_KEYS } = require('./questTime');
 const { buildProgressBar } = require('./levelProgressBar');
 const { t, currentLanguage, formatNumber } = require('../i18n');
@@ -25,29 +26,6 @@ function ordinal(n, lang = 'en') {
 
 const BOOST_THRESHOLDS = [0, 2, 7, 14];
 
-// What Discord shows around a person (decoration of the avatar, nameplate and server tag) as pictures and text for the cards. Each
-// one is empty when the person has none, so a layer that uses it is simply not drawn. Only addresses of Discord's own CDN are built,
-// from ids and paths that are checked first.
-const CDN = 'https://cdn.discordapp.com';
-const SAFE_PATH = /^[A-Za-z0-9_\-/]+$/;
-function decorationUrl(user) {
-  const url = user?.avatarDecorationURL?.();
-  // `passthrough=false` is the still picture (the first frame) of a decoration that moves.
-  return typeof url === 'string' && url.startsWith(`${CDN}/`) ? `${url}${url.includes('?') ? '&' : '?'}size=256&passthrough=false` : '';
-}
-function nameplateUrl(user) {
-  const asset = user?.collectibles?.nameplate?.asset;
-  return typeof asset === 'string' && SAFE_PATH.test(asset) ? `${CDN}/assets/collectibles/${asset.replace(/\/?$/, '/')}static.png` : '';
-}
-function serverTag(user) {
-  const guild = user?.primaryGuild;
-  return guild?.identityEnabled && typeof guild.tag === 'string' ? guild.tag.slice(0, 4) : '';
-}
-function serverTagBadge(user) {
-  const guild = user?.primaryGuild;
-  return guild?.identityEnabled && /^\d{15,25}$/.test(String(guild.identityGuildId)) && /^[a-f0-9]{8,64}$/i.test(String(guild.badge ?? ''))
-    ? `${CDN}/guild-tag-badges/${guild.identityGuildId}/${guild.badge}.png?size=64` : '';
-}
 /** "2.1" for a member in position 1 of 48: where they are in the ranking, as a percent with one decimal (never 0, never over 100). */
 function topPercent(levelData, locale) {
   const rank = Number(levelData?.rank);

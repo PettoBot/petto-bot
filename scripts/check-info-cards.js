@@ -67,6 +67,18 @@ async function run(file, label, g, options) {
   await run('serverinfo', 'complete cache', g);
   await run('serverinfo', 'partial cache', guild(10, false));
   await run('userinfo', 'in server', g);
+  {
+    // A member with a decoration that moves, a nameplate and a server tag: the card says so, with links to the pictures.
+    const { out, interaction } = fake(g);
+    const rich = user({ avatarDecorationURL: () => 'https://cdn.discordapp.com/avatar-decoration-presets/a_abc.png', avatarDecorationData: { asset: 'a_abc' }, collectibles: { nameplate: { asset: 'nameplates/nameplates/twilight/' } }, primaryGuild: { identityEnabled: true, tag: 'PTT' } });
+    interaction.client.users.fetch = async () => rich;
+    await require(`${root}/src/commands/info/userinfo`).execute(interaction);
+    const text = JSON.stringify(out.payload.components[0].toJSON());
+    assert.ok(text.includes('passthrough=false') && text.includes('passthrough=true') && text.includes('nameplates/nameplates/twilight/static.png') && text.includes('PTT'), 'userinfo shows the decoration, the nameplate and the tag');
+    check('userinfo (profile look)', out.payload);
+    const plain = await run('userinfo', 'no look', g);
+    assert.ok(!JSON.stringify(plain.components[0].toJSON()).includes('nameplates'), 'and shows nothing for a member without them');
+  }
   const hundreds = guild(250);
   const big = hundreds.members.cache.get('293504726505357312'); big.roles.cache = roles(250);
   await run('userinfo', '250 roles', hundreds);
