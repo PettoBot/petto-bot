@@ -22,22 +22,44 @@ async function renderCard(card, deps = {}) {
   const canvas = createCanvas(card.width, card.height);
   const ctx = canvas.getContext('2d');
   await drawBackground(ctx, card, resolveText, loadSource);
+  // The right edge of every layer that was drawn, by id, for the layers that follow one.
+  const edges = new Map();
   for (const layer of card.layers) {
+    if (layer.showIf && !String(await resolveText(layer.showIf)).trim()) continue;
+    let x = layer.x;
+    const anchor = layer.follow ? layer.follow.split(',').find((id) => edges.has(id)) : null;
+    if (anchor) x = edges.get(anchor) + layer.gap + leftReach(layer);
     ctx.save();
     try {
       ctx.globalAlpha = layer.opacity;
-      ctx.translate(layer.x, layer.y);
+      ctx.translate(x, layer.y);
       if (layer.rotation) ctx.rotate((layer.rotation * Math.PI) / 180);
-      if (layer.type === 'shape') drawShape(ctx, layer);
-      else if (layer.type === 'image') await drawImage(ctx, layer, resolveText, loadSource);
-      else if (layer.type === 'avatar') drawAvatar(ctx, layer, await avatar(layer.source));
-      else if (layer.type === 'bar') await drawBar(ctx, layer, resolveText);
-      else if (layer.type === 'text') await drawText(ctx, layer, resolveText);
+      let right = null;
+      if (layer.type === 'shape') { drawShape(ctx, layer); right = x + layer.w / 2; }
+      else if (layer.type === 'image') { if (await drawImage(ctx, layer, resolveText, loadSource)) right = x + layer.w / 2; }
+      else if (layer.type === 'avatar') { drawAvatar(ctx, layer, await avatar(layer.source)); right = x + layer.size / 2; }
+      else if (layer.type === 'bar') { await drawBar(ctx, layer, resolveText); right = x + layer.w / 2; }
+      else if (layer.type === 'text') { const width = await drawText(ctx, layer, resolveText); if (width !== null) right = x + rightReach(layer, width); }
+      if (right !== null) edges.set(layer.id, right);
     } finally {
       ctx.restore();
     }
   }
   return canvas.toBuffer('image/png');
+}
+
+/** How far a layer reaches to the left of its x, so a layer that follows another one starts after it (shapes and pictures are centered, a text with a pill starts at its padding). */
+function leftReach(layer) {
+  if (layer.type === 'shape' || layer.type === 'image' || layer.type === 'bar') return layer.w / 2;
+  if (layer.type === 'avatar') return layer.size / 2;
+  return layer.type === 'text' && layer.align === 'left' && layer.pill ? layer.pill.padX : 0;
+}
+/** How far a text of `width` reaches to the right of its x (with the padding of its pill). */
+function rightReach(layer, width) {
+  const pad = layer.pill ? layer.pill.padX : 0;
+  if (layer.align === 'center') return width / 2 + pad;
+  if (layer.align === 'right') return pad;
+  return width + pad;
 }
 
 function setShadow(ctx, shadow) {
@@ -112,12 +134,35 @@ async function drawBackground(ctx, card, resolveText, loadSource) {
   }
 }
 
+/** A hexagon with its point up that fills `w` by `h`, with its corners rounded by `radius`. */
+function hexagonPath(ctx, w, h, radius) {
+  const points = [];
+  for (let i = 0; i < 6; i += 1) {
+    const angle = (Math.PI / 3) * i - Math.PI / 2;
+    points.push([Math.cos(angle) * (w / 2), Math.sin(angle) * (h / 2)]);
+  }
+  const r = Math.max(0, Math.min(radius, Math.min(w, h) / 4));
+  ctx.beginPath();
+  points.forEach((point, i) => {
+    const prev = points[(i + 5) % 6];
+    const next = points[(i + 1) % 6];
+    const toward = (a, b, d) => { const dx = b[0] - a[0]; const dy = b[1] - a[1]; const len = Math.hypot(dx, dy) || 1; return [a[0] + (dx / len) * d, a[1] + (dy / len) * d]; };
+    const start = toward(point, prev, r);
+    const end = toward(point, next, r);
+    if (i === 0) ctx.moveTo(start[0], start[1]); else ctx.lineTo(start[0], start[1]);
+    ctx.quadraticCurveTo(point[0], point[1], end[0], end[1]);
+  });
+  ctx.closePath();
+}
+
 function drawShape(ctx, layer) {
   setShadow(ctx, layer.shadow);
   ctx.fillStyle = layer.fill;
   if (layer.shape === 'circle') {
     ctx.beginPath();
     ctx.ellipse(0, 0, layer.w / 2, layer.h / 2, 0, 0, Math.PI * 2);
+  } else if (layer.shape === 'hexagon') {
+    hexagonPath(ctx, layer.w, layer.h, layer.radius);
   } else {
     roundedPath(ctx, -layer.w / 2, -layer.h / 2, layer.w, layer.h, layer.radius);
   }
@@ -131,9 +176,9 @@ function drawShape(ctx, layer) {
 }
 
 async function drawImage(ctx, layer, resolveText, loadSource) {
-  if (!layer.src) return;
+  if (!layer.src) return false;
   const image = await loadSource(await resolveText(layer.src));
-  if (!image) return;
+  if (!image) return false;
   setShadow(ctx, layer.shadow);
   if (layer.shadow) {
     // The shadow is cast by a filled shape of the same outline, because a clipped image casts none.
@@ -148,6 +193,7 @@ async function drawImage(ctx, layer, resolveText, loadSource) {
   const box = fitRect(image.width, image.height, -layer.w / 2, -layer.h / 2, layer.w, layer.h, layer.fit);
   ctx.drawImage(image, box.x, box.y, box.w, box.h);
   ctx.restore();
+  return true;
 }
 
 /** A progress bar: a track and a fill as wide as `value` percent of it. `value` is a number or a variable that gives one. */
@@ -244,17 +290,41 @@ function wrapLines(ctx, value, maxWidth) {
   return lines.slice(0, MAX_TEXT_LINES);
 }
 
+/** The first `max` lines, with the last one shortened (and an ellipsis at its end) so that it fits `maxWidth`. */
+function ellipsize(ctx, lines, max, maxWidth) {
+  const kept = lines.slice(0, max);
+  let last = `${kept[max - 1]}…`;
+  while (maxWidth && last.length > 1 && ctx.measureText(last).width > maxWidth) last = `${last.slice(0, -2).trimEnd()}…`;
+  kept[max - 1] = last;
+  return kept;
+}
+
+/** Draws a text and gives back the width of its widest line, or null when there was nothing to draw. */
 async function drawText(ctx, layer, resolveText) {
   let value = await resolveText(layer.text);
   if (layer.upper) value = value.toUpperCase();
-  if (!value) return;
+  if (!value) return null;
   ctx.font = canvasFont(layer.font, layer.weight, layer.size);
   ctx.textAlign = layer.align;
   ctx.textBaseline = 'middle';
   if ('letterSpacing' in ctx) ctx.letterSpacing = `${layer.spacing}px`;
-  const lines = wrapLines(ctx, value.replace(/\r/g, ''), layer.w);
+  let lines = wrapLines(ctx, value.replace(/\r/g, ''), layer.w);
+  if (layer.maxLines > 0 && lines.length > layer.maxLines) lines = ellipsize(ctx, lines, layer.maxLines, layer.w);
   const lineHeight = layer.size * layer.lineHeight;
   const top = -((lines.length - 1) * lineHeight) / 2;
+  const width = Math.max(...lines.map((line) => ctx.measureText(line).width));
+  if (layer.pill) {
+    const { padX, padY } = layer.pill;
+    const boxW = width + padX * 2;
+    const boxH = lines.length * lineHeight + padY * 2 - (lineHeight - layer.size);
+    const left = layer.align === 'center' ? -boxW / 2 : layer.align === 'right' ? -width - padX : -padX;
+    ctx.save();
+    ctx.globalAlpha *= layer.pill.opacity;
+    ctx.fillStyle = layer.pill.color;
+    roundedPath(ctx, left, -boxH / 2, boxW, boxH, layer.pill.radius);
+    ctx.fill();
+    ctx.restore();
+  }
   lines.forEach((line, index) => {
     const y = top + index * lineHeight;
     if (layer.stroke) {
@@ -268,6 +338,7 @@ async function drawText(ctx, layer, resolveText) {
     ctx.fillText(line, 0, y);
     clearShadow(ctx);
   });
+  return width;
 }
 
 module.exports = { renderCard, fitRect, wrapLines };

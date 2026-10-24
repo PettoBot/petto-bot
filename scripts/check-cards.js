@@ -50,7 +50,7 @@ for (const preset of PRESETS) {
 }
 for (const preset of RANK_PRESETS) {
   pinned[preset] = buildBasicLayers({ ...RANK_DEFAULTS, preset, font: 'Poppins' }, 1024, 320, 'rank');
-  assert.ok(pinned[preset].some((layer) => layer.type === 'bar'), `${preset} has a progress bar`);
+  if (preset !== 'levelup') assert.ok(pinned[preset].some((layer) => layer.type === 'bar'), `${preset} has a progress bar`);
   assert.ok(pinned[preset].length <= LIMITS.layersBasic);
 }
 if (process.env.WRITE_CARD_FIXTURE === '1') fs.writeFileSync(fixturePath, `${JSON.stringify(pinned, null, 2)}\n`);
@@ -221,5 +221,62 @@ const near = (actual, expected, tolerance = 6) => actual.every((value, index) =>
   assert.ok(warnings.some((line) => line.includes('boom')), 'a card that could not be drawn is logged');
   require.cache[require.resolve('../src/imgutils/cardRenderer')].exports.renderCard = original;
 
+
+  // The engine of the level-up layout: a layer that is only drawn when a variable has a value, layers that follow another one, the pill
+  // behind a text, the hexagon, and a text that is cut after its lines.
+  {
+    const base = { mode: 'advanced', width: 800, height: 200, background: { color: '#000000' } };
+    const text = (id, value, x, o = {}) => ({ id, type: 'text', text: value, x, y: 100, size: 40, color: '#ffffff', align: 'left', shadow: null, ...o });
+    const draw = (layers, vars = {}) => renderCard(normalizeCard({ ...base, layers }, { premium: true }).card, { resolveText: async (value) => value.replace(/\{[a-z_.]+\}/g, (match) => vars[match] ?? ''), avatar: async () => null, loadSource: async () => null });
+    const filled = async (buffer, x, y) => (await pixel(buffer, x, y)).some((value) => value > 30);
+    const box = (id, x, o = {}) => ({ id, type: 'shape', shape: 'rect', x, y: 100, w: 40, h: 40, fill: '#ff0000', ...o });
+
+    const shown = await draw([box('a', 100, { showIf: '{user.server_tag}' })], { '{user.server_tag}': 'PETO' });
+    const hidden = await draw([box('a', 100, { showIf: '{user.server_tag}' })], {});
+    assert.ok(near(await pixel(shown, 100, 100), [255, 0, 0]), 'a layer with a value in its showIf is drawn');
+    assert.ok(!(await filled(hidden, 100, 100)), 'a layer whose showIf is empty is not drawn');
+
+    const follows = await draw([box('first', 100), box('second', 0, { follow: 'first', gap: 30, fill: '#00ff00' })]);
+    assert.ok(near(await pixel(follows, 170, 100), [0, 255, 0]), 'a layer that follows another starts after its right edge and its gap (120 + 30, a box of 40 centered at 170)');
+    assert.ok(!(await filled(follows, 140, 100)), 'and not before it');
+    const lost = await draw([box('second', 300, { follow: 'missing', gap: 30, fill: '#00ff00' })]);
+    assert.ok(near(await pixel(lost, 300, 100), [0, 255, 0]), 'a layer that follows one that does not exist stays where it is');
+    const list = await draw([box('x', 100, { showIf: '{nothing}' }), box('y', 200), box('z', 0, { follow: 'x,y', gap: 10, fill: '#00ff00' })]);
+    assert.ok(near(await pixel(list, 250, 100), [0, 255, 0]), 'with several ids the first one that was drawn is followed (220 + 10, a box of 40 centered at 250)');
+
+    const pilled = await draw([text('t', 'Hi', 100, { pill: { color: '#ff0000', opacity: 1, padX: 30, padY: 10, radius: 0 } })]);
+    assert.ok(near(await pixel(pilled, 85, 100), [255, 0, 0]), 'a pill is drawn behind the text, with its padding');
+    const afterPill = await draw([text('t', 'Hi', 100, { pill: { color: '#ff0000', opacity: 1, padX: 30, padY: 10, radius: 0 } }), box('n', 0, { follow: 't', gap: 20, fill: '#00ff00' })]);
+    const probe = createCanvas(10, 10).getContext('2d');
+    probe.font = canvasFont('Poppins', 700, 40);
+    const tw = probe.measureText('Hi').width;
+    assert.ok(near(await pixel(afterPill, Math.round(100 + tw + 30 + 20 + 20), 100), [0, 255, 0], 12), 'a layer that follows a text with a pill starts after the pill');
+
+    const hexagon = await draw([{ id: 'h', type: 'shape', shape: 'hexagon', x: 400, y: 100, w: 120, h: 140, fill: '#ff0000' }]);
+    assert.ok(near(await pixel(hexagon, 400, 100), [255, 0, 0]), 'a hexagon is filled in its middle');
+    assert.ok(near(await pixel(hexagon, 400, 36), [0, 0, 0], 12) || !(await filled(hexagon, 345, 40)), 'and not at its corners');
+    assert.ok(!(await filled(hexagon, 330, 100)), 'nor outside it');
+
+    const cut = normalizeCard({ ...base, layers: [text('c', 'one two three four five six seven eight nine ten', 20, { w: 300, maxLines: 1 })] }, { premium: true }).card;
+    assert.equal(cut.layers[0].maxLines, 1);
+    assert.equal(normalizeCard({ ...base, layers: [text('c', 'x', 20, { maxLines: 99 })] }, { premium: true }).card.layers[0].maxLines, 12, 'maxLines has a limit');
+    assert.equal(normalizeCard({ ...base, layers: [text('c', 'x', 20)] }, { premium: true }).card.layers[0].maxLines, 0, 'and defaults to no limit');
+    const cutPng = await renderCard(cut, { resolveText: async (value) => value, avatar: async () => null, loadSource: async () => null });
+    assert.equal(cutPng.subarray(1, 4).toString(), 'PNG');
+    assert.ok(!(await filled(cutPng, 330, 100)), 'a text cut to one line stays inside its width');
+    assert.deepEqual(normalizeCard({ ...base, layers: [text('s', 'x', 20, { showIf: ' {a} ', follow: 'a b!', gap: 9999 })] }, { premium: true }).card.layers.map((layer) => [layer.showIf, layer.follow, layer.gap]), [['{a}', 'a-b-', 400]], 'showIf, follow and gap are cleaned');
+
+    // The level-up layout: it draws with everything missing (no decoration, no tag, no nameplate), and with them.
+    const levelUp = normalizeCard({ kind: 'rank', mode: 'basic', width: 1024, height: 240, basic: { preset: 'levelup', showNameplate: true } }).card;
+    assert.ok(levelUp.layers.length <= LIMITS.layersBasic, 'the level-up layout fits the layers of a basic card');
+    assert.ok(levelUp.layers.some((layer) => layer.shape === 'hexagon') && levelUp.layers.some((layer) => layer.id === 'decoration') && levelUp.layers.some((layer) => layer.id === 'nameplate'));
+    const lvPng = await renderCard(levelUp, { resolveText: async (value) => value.replace('{level}', '31').replace('{level_previous}', '30').replace('{user.display_name}', 'liam').replace(/\{[a-z_.]+\}/g, ''), avatar: async () => avatar, loadSource: async () => null });
+    assert.equal(lvPng.subarray(1, 4).toString(), 'PNG');
+    const plain = normalizeCard({ kind: 'rank', mode: 'basic', basic: { preset: 'levelup', showDecoration: false, showNameplate: false, showTag: false } }).card;
+    assert.ok(!plain.layers.some((layer) => ['decoration', 'nameplate', 'badge', 'tag'].includes(layer.id)), 'the switches take those layers out');
+    const texts = normalizeCard({ kind: 'rank', mode: 'basic', basic: { preset: 'levelup', extra: 'RANK #{level_rank}', subtitle: '{level_xp_current} / {level_xp_needed} XP' } }).card.basic;
+    assert.deepEqual([texts.extra, texts.subtitle], ['#{level_rank}', 'You are now in Top {level_top_percent}%'], 'a level-up card that still has the rank texts gets its own');
+    assert.equal(normalizeCard({ kind: 'rank', mode: 'basic', basic: { preset: 'levelup', extra: 'Mine' } }).card.basic.extra, 'Mine', 'what the server wrote is kept');
+  }
   console.log('Checked the image cards: schema, presets, drawing, safe downloads, Premium rules and messages.');
 })().catch((error) => { console.error(error); process.exit(1); });

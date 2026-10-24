@@ -190,6 +190,7 @@ async function notifyLevelUp({ client, guild, member, config, level, channel, me
   const voice = source === 'voice';
   const xp = voice ? userData?.voice_xp ?? 0 : userData?.xp ?? 0;
   const rank = voice ? await levelUsersDb.getVoiceRank(guild.id, xp) : await levelUsersDb.getRank(guild.id, xp);
+  const total = voice ? await levelUsersDb.countVoiceRanked(guild.id) : await levelUsersDb.countRanked(guild.id);
 
   const ctx = {
     member,
@@ -197,7 +198,7 @@ async function notifyLevelUp({ client, guild, member, config, level, channel, me
     channel,
     message: message ?? undefined,
     user: member.user,
-    levelData: { ...buildLevelData({ config, userData, source: voice ? 'voice' : 'messages', rank }), level },
+    levelData: { ...buildLevelData({ config, userData, source: voice ? 'voice' : 'messages', rank, total }), level },
     levelReward: earnedRole ? { id: earnedRole.id, name: earnedRole.name } : null,
   };
 
