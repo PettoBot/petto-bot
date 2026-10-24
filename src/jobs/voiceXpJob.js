@@ -1,7 +1,7 @@
 const { getConfig } = require('../db/levelConfig');
 const { getMultiplier, canEarnXp, grantVoiceXp } = require('../utils/levelActions');
 const { getVoiceConfig } = require('../utils/levelSource');
-const { voiceEligible } = require('../utils/levelRules');
+const { voiceEligible, voiceActiveCount } = require('../utils/levelRules');
 const { pruneOldPeriods } = require('../db/levelPeriods');
 const logger = require('../utils/logger');
 const config = require('../config');
@@ -23,14 +23,12 @@ async function grantGuildVoiceXp(client, guild, config, voiceConfig) {
   for (const channel of guild.channels.cache.values()) {
     if (!channel.isVoiceBased?.() || channel.id === guild.afkChannelId) continue;
 
-    const humans = [...channel.members.values()].filter((member) => !member.user.bot).length;
+    const stateOf = (member) => ({ bot: member.user.bot, deaf: member.voice.selfDeaf || member.voice.serverDeaf, muted: member.voice.selfMute || member.voice.serverMute });
+    const humans = voiceActiveCount([...channel.members.values()].map(stateOf), voiceConfig);
     for (const member of channel.members.values()) {
       if (member.user.bot) continue;
-      const eligible = voiceEligible({
-        humans,
-        deaf: member.voice.selfDeaf || member.voice.serverDeaf,
-        muted: member.voice.selfMute || member.voice.serverMute,
-      }, voiceConfig);
+      const { deaf, muted } = stateOf(member);
+      const eligible = voiceEligible({ humans, deaf, muted }, voiceConfig);
       if (!eligible) continue;
       if (!canEarnXp({ member, channel, config: voiceConfig })) continue;
 

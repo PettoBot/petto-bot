@@ -88,4 +88,13 @@ function voiceEligible({ humans, deaf, muted }, config) {
   return humans >= Math.max(1, Number(config?.voice_min_members ?? 1));
 }
 
-module.exports = { REPEAT_WINDOW_MS, periodKeys, utcDay, meaningfulText, longEnough, createRepeatGuard, eventMultiplier, dailyBonus, voiceEligible };
+/**
+ * How many people in a voice channel count towards "people needed": the members who are not bots and could earn XP themselves
+ * (not deafened, and not muted when the server ignores muted members), so one person plus someone deafened is still one.
+ * `members` is a list of `{ bot, deaf, muted }`.
+ */
+function voiceActiveCount(members, config) {
+  return members.filter((member) => !member.bot && !member.deaf && !(config?.voice_ignore_muted && member.muted)).length;
+}
+
+module.exports = { voiceActiveCount, REPEAT_WINDOW_MS, periodKeys, utcDay, meaningfulText, longEnough, createRepeatGuard, eventMultiplier, dailyBonus, voiceEligible };
