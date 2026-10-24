@@ -114,8 +114,9 @@ function buildLevelUpLayers(b, width, height) {
   const panelW = width - margin * 2;
   const panelH = height - margin * 2;
   const radius = height * 0.2;
+  // The dark panel is under the nameplate, like Discord's own: the nameplate fades out on the left, where the name is.
+  layers.push({ id: 'panel', type: 'shape', shape: 'rect', x: width / 2, y: height / 2, w: panelW, h: panelH, fill: '#000000', radius, opacity: 0.5 });
   if (b.showNameplate) layers.push({ id: 'nameplate', type: 'image', src: '{user.nameplate}', x: width / 2, y: height / 2, w: panelW, h: panelH, fit: 'cover', radius, opacity: 1, showIf: '{user.nameplate}' });
-  layers.push({ id: 'panel', type: 'shape', shape: 'rect', x: width / 2, y: height / 2, w: panelW, h: panelH, fill: '#000000', radius, opacity: b.showNameplate ? 0.42 : 0.5 });
 
   const avatar = height * 0.5;
   const avatarX = margin + height * 0.1 + avatar * 0.6;
