@@ -6,7 +6,7 @@ const { t, currentLanguage } = require('../i18n');
 
 const LIMITS = {
   minWidth: 400, maxWidth: 1600, minHeight: 160, maxHeight: 900,
-  layersBasic: 12, layersAdvanced: 40,
+  layersBasic: 20, layersAdvanced: 40,
   text: 300, src: 500, id: 40,
   coordinate: 4000, size: 4000, fontMin: 8, fontMax: 400,
 };
@@ -57,6 +57,14 @@ function shadow(value) {
   return { color: color(value.color, '#000000'), blur, x, y };
 }
 
+/** A rounded box drawn behind a text, as big as the text plus the padding. */
+function pill(value) {
+  if (!value || typeof value !== 'object') return null;
+  const opacity = num(value.opacity, 0, 1, 0.25);
+  if (opacity <= 0) return null;
+  return { color: color(value.color, '#ffffff'), opacity, padX: num(value.padX, 0, 100, 14), padY: num(value.padY, 0, 60, 6), radius: num(value.radius, 0, 200, 999) };
+}
+
 function normalizeLayer(raw, index, problems, lang) {
   if (!raw || typeof raw !== 'object' || !LAYER_TYPES.has(raw.type)) {
     problems.push(t(lang, 'embeds.card.unknownLayer', { number: index + 1 }));
@@ -69,6 +77,12 @@ function normalizeLayer(raw, index, problems, lang) {
     y: num(raw.y, -LIMITS.coordinate, LIMITS.coordinate, 0),
     rotation: num(raw.rotation, -360, 360, 0),
     opacity: num(raw.opacity, 0, 1, 1),
+    // The layer is only drawn when this text (usually a variable such as {user.server_tag}) is not empty.
+    showIf: text(raw.showIf, 60).trim(),
+    // The layer starts after the right edge of an earlier layer (by its id; several ids separated by commas, the first one that was
+    // drawn is used), `gap` pixels away. Without any of them it stays where it is.
+    follow: text(raw.follow, 80).replace(/[^a-zA-Z0-9_,-]/g, '-'),
+    gap: num(raw.gap, 0, 400, 12),
   };
   if (raw.type === 'text') {
     const family = fontExists(raw.font) ? raw.font : DEFAULT_FONT;
@@ -83,10 +97,13 @@ function normalizeLayer(raw, index, problems, lang) {
       align: ALIGNS.has(raw.align) ? raw.align : 'center',
       w: num(raw.w, 0, LIMITS.size, 0),
       lineHeight: num(raw.lineHeight, 0.8, 2.5, 1.15),
+      // More lines than this are cut and end in an ellipsis. 0 is no limit.
+      maxLines: Math.round(num(raw.maxLines, 0, 12, 0)),
       spacing: num(raw.spacing, -5, 40, 0),
       upper: bool(raw.upper),
       stroke: stroke(raw.stroke),
       shadow: shadow(raw.shadow),
+      pill: pill(raw.pill),
     };
   }
   if (raw.type === 'avatar') {
@@ -130,7 +147,7 @@ function normalizeLayer(raw, index, problems, lang) {
   }
   return {
     ...base,
-    shape: raw.shape === 'circle' ? 'circle' : 'rect',
+    shape: raw.shape === 'circle' || raw.shape === 'hexagon' ? raw.shape : 'rect',
     w: num(raw.w, 1, LIMITS.size, 200),
     h: num(raw.h, 1, LIMITS.size, 100),
     fill: color(raw.fill, '#ffffff'),

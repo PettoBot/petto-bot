@@ -10,7 +10,7 @@ function stub(relative, exports) {
 }
 let multipliers = [];
 let rewards = [];
-stub('src/db/levelUsers.js', { getUser: async () => ({ xp: 500, voice_xp: 300 }), getRank: async () => 2, getVoiceRank: async () => 1 });
+stub('src/db/levelUsers.js', { getUser: async () => ({ xp: 500, voice_xp: 300 }), getRank: async () => 2, getVoiceRank: async () => 1, countRanked: async () => 20, countVoiceRanked: async () => 10 });
 stub('src/db/levelRewards.js', { listRewards: async (guildId, source = 'text') => rewards.filter((r) => source === 'all' || r.source === source) });
 stub('src/db/levelMultipliers.js', { listMultipliers: async () => multipliers });
 stub('src/db/xpEvents.js', { listEvents: async () => [] });

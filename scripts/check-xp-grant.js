@@ -16,7 +16,7 @@ stub('src/db/levelUsers.js', {
   addXp: async (g, id, { xpGain }) => { calls.addXp.push(xpGain); users[id].xp += xpGain; return users[id]; },
   addVoiceXp: async (g, id, { xpGain }) => { calls.addVoiceXp.push(xpGain); users[id].voice_xp += xpGain; return users[id]; },
   touchStreak: async () => { calls.touch += 1; return streakAnswer; },
-  setLevel: async () => {}, setVoiceLevel: async () => {}, getUser: async (g, id) => users[id], getRank: async () => 1, getVoiceRank: async () => 1,
+  setLevel: async () => {}, setVoiceLevel: async () => {}, getUser: async (g, id) => users[id], getRank: async () => 1, getVoiceRank: async () => 1, countRanked: async () => 1, countVoiceRanked: async () => 1,
 });
 stub('src/db/levelRewards.js', { listRewards: async () => [] });
 stub('src/db/levelMultipliers.js', { listMultipliers: async () => [] });

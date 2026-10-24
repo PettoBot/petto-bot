@@ -111,7 +111,7 @@ function call(port, method, url, { body, type } = {}) {
     r = await call(port, 'POST', `${base}/normalize`, { body: { data: { kind: 'rank', mode: 'basic' } } });
     assert.equal(r.json.card.kind, 'rank'); assert.ok(r.json.card.layers.some((layer) => layer.type === 'bar'), 'a rank card has its progress bar');
     r = await call(port, 'GET', base);
-    assert.deepEqual(r.json.rankPresets, ['rank', 'rankBottom']);
+    assert.deepEqual(r.json.rankPresets, ['rank', 'rankBottom', 'levelup']);
     r = await call(port, 'POST', `${base}/assets?name=my%20pic.png`, { body: png(3000, 1000), type: 'image/png' });
     assert.equal(r.status, 200); assert.equal(r.json.asset.width, 2048, 'a large upload is scaled down'); assert.equal(r.json.asset.name, 'my pic.png');
     r = await call(port, 'POST', `${base}/assets`, { body: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>'), type: 'image/svg+xml' });

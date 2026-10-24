@@ -4,7 +4,7 @@
 
 const PRESETS = ['classic', 'side', 'bars', 'panel'];
 // The layouts of a rank card: they show the level, the rank and a progress bar.
-const RANK_PRESETS = ['rank', 'rankBottom'];
+const RANK_PRESETS = ['rank', 'rankBottom', 'levelup'];
 // The defaults below are the dashboard's starting values and are pinned by scripts/fixtures/card-presets.json, so they stay in
 // English here; the cards the bot draws without texts of their own get them translated (utils/cardService.js, embeds.card.*).
 const RANK_DEFAULTS = {
@@ -22,6 +22,11 @@ const RANK_DEFAULTS = {
   showName: true,
   showSubtitle: true,
   showExtra: true,
+};
+// The texts of the level-up layout (the rank layout keeps its own): the chip of the position and the line under the name.
+const LEVELUP_DEFAULTS = {
+  extra: '#{level_rank}', // i18n-ignore: variables only
+  subtitle: 'You are now in Top {level_top_percent}%', // i18n-ignore: dashboard default (see above)
 };
 const BASIC_DEFAULTS = {
   preset: 'classic',
@@ -46,12 +51,16 @@ function normalizeBasic(raw, kind = 'welcome') {
   const input = raw && typeof raw === 'object' ? raw : {};
   if (kind === 'rank') {
     const hex = (value, fallback) => (typeof value === 'string' && HEX.test(value.trim()) ? value.trim().toLowerCase() : fallback);
+    const preset = RANK_PRESETS.includes(input.preset) ? input.preset : RANK_DEFAULTS.preset;
+    // The level-up layout has texts of its own: a card that still has the rank texts (the dashboard did not change them) gets those.
+    const levelUp = preset === 'levelup';
+    const texts = (value, rankDefault, levelUpDefault) => (levelUp && (value === undefined || value === rankDefault) ? levelUpDefault : value);
     return {
-      preset: RANK_PRESETS.includes(input.preset) ? input.preset : RANK_DEFAULTS.preset,
+      preset,
       title: cap(input.title, 60, RANK_DEFAULTS.title),
       name: cap(input.name, 80, RANK_DEFAULTS.name),
-      subtitle: cap(input.subtitle, 120, RANK_DEFAULTS.subtitle),
-      extra: cap(input.extra, 40, RANK_DEFAULTS.extra),
+      subtitle: cap(texts(input.subtitle, RANK_DEFAULTS.subtitle, LEVELUP_DEFAULTS.subtitle), 120, levelUp ? LEVELUP_DEFAULTS.subtitle : RANK_DEFAULTS.subtitle),
+      extra: cap(texts(input.extra, RANK_DEFAULTS.extra, LEVELUP_DEFAULTS.extra), 40, levelUp ? LEVELUP_DEFAULTS.extra : RANK_DEFAULTS.extra),
       textColor: hex(input.textColor, RANK_DEFAULTS.textColor),
       accent: hex(input.accent, RANK_DEFAULTS.accent),
       font: typeof input.font === 'string' ? input.font : RANK_DEFAULTS.font,
@@ -61,6 +70,11 @@ function normalizeBasic(raw, kind = 'welcome') {
       showName: flag(input.showName, true),
       showSubtitle: flag(input.showSubtitle, true),
       showExtra: flag(input.showExtra, true),
+      // What Discord shows around the person, on the level-up layout: the decoration of the avatar, the nameplate behind the card and
+      // the server tag next to the name. Each one is only drawn when the person has it.
+      showDecoration: flag(input.showDecoration, true),
+      showNameplate: flag(input.showNameplate, false),
+      showTag: flag(input.showTag, true),
     };
   }
   const hex = (value, fallback) => (typeof value === 'string' && HEX.test(value.trim()) ? value.trim().toLowerCase() : fallback);
@@ -80,16 +94,69 @@ function normalizeBasic(raw, kind = 'welcome') {
   };
 }
 
-const text = (id, value, x, y, size, o = {}) => ({
+const textLayer = (id, value, x, y, size, o = {}) => ({
   id, type: 'text', text: value, x, y, size, font: o.font, weight: o.weight ?? 700, color: o.color, align: o.align ?? 'center',
   w: o.w ?? 0, opacity: o.opacity ?? 1, spacing: o.spacing ?? 0, upper: o.upper ?? false,
   shadow: o.shadow ?? { color: '#000000', blur: 8, x: 0, y: 2 },
+  ...(o.maxLines ? { maxLines: o.maxLines } : {}),
 });
+
+/**
+ * The layers of a level-up card: the person (avatar with its decoration, name with the chip of the position and the server tag, and
+ * the line under it) and, on the right, the level they were at going to the one they reached, each in a hexagon.
+ */
+function buildLevelUpLayers(b, width, height) {
+  const layers = [];
+  const text = (id, show, value, x, y, size, o) => { if (show && value) layers.push({ ...textLayer(id, value, x, y, size, { font: b.font, color: b.textColor, ...o }) }); };
+  const margin = height * 0.075;
+  const panelW = width - margin * 2;
+  const panelH = height - margin * 2;
+  const radius = height * 0.2;
+  if (b.showNameplate) layers.push({ id: 'nameplate', type: 'image', src: '{user.nameplate}', x: width / 2, y: height / 2, w: panelW, h: panelH, fit: 'cover', radius, opacity: 1, showIf: '{user.nameplate}' });
+  layers.push({ id: 'panel', type: 'shape', shape: 'rect', x: width / 2, y: height / 2, w: panelW, h: panelH, fill: '#000000', radius, opacity: b.showNameplate ? 0.42 : 0.5 });
+
+  const avatar = height * 0.5;
+  const avatarX = margin + height * 0.1 + avatar * 0.6;
+  if (b.showAvatar) {
+    layers.push({ id: 'avatar', type: 'avatar', source: 'user', x: avatarX, y: height / 2, size: avatar, shape: b.avatarShape, border: null, shadow: { color: '#000000', blur: 16, x: 0, y: 4 } });
+    if (b.showDecoration) layers.push({ id: 'decoration', type: 'image', src: '{user.avatar_decoration}', x: avatarX, y: height / 2, w: avatar * 1.2, h: avatar * 1.2, fit: 'contain', radius: 0, opacity: 1, showIf: '{user.avatar_decoration}' });
+  }
+  const x = (b.showAvatar ? avatarX + avatar * 0.6 : margin + height * 0.1) + height * 0.16;
+  const nameSize = height * 0.2;
+  const chip = height * 0.11;
+  const pill = { color: '#ffffff', opacity: 0.22, padX: chip * 0.55, padY: chip * 0.22, radius: 999 };
+  text('name', b.showName, b.name, x, height * 0.37, nameSize, { align: 'left', weight: 800, w: width * 0.3, maxLines: 1 });
+  if (b.showName && b.showExtra) layers.push({ ...textLayer('rank', b.extra, x, height * 0.37, chip, { font: b.font, color: b.textColor, align: 'left', weight: 700, shadow: false }), follow: 'name', gap: chip * 0.9, pill });
+  if (b.showName && b.showTag) {
+    layers.push({ id: 'badge', type: 'image', src: '{user.server_tag_badge}', x: x, y: height * 0.37, w: chip * 1.5, h: chip * 1.5, fit: 'contain', radius: 0, opacity: 1, showIf: '{user.server_tag_badge}', follow: b.showExtra ? 'rank,name' : 'name', gap: chip * 0.6 });
+    layers.push({ ...textLayer('tag', '{user.server_tag}', x, height * 0.37, chip, { font: b.font, color: b.textColor, align: 'left', weight: 700, shadow: false }), showIf: '{user.server_tag}', follow: 'badge,rank,name', gap: chip * 0.4, pill });
+  }
+  text('subtitle', b.showSubtitle, b.subtitle, x, height * 0.64, height * 0.115, { align: 'left', weight: 400, opacity: 0.92, w: width * 0.4, maxLines: 1 });
+
+  // The levels: the one before (dim) and the one reached, in hexagons.
+  const newH = height * 0.56;
+  const newW = newH * 0.866;
+  const oldH = newH * 0.76;
+  const oldW = oldH * 0.866;
+  const newX = width - margin - height * 0.12 - newW / 2;
+  const arrowX = newX - newW / 2 - height * 0.2;
+  const oldX = arrowX - height * 0.2 - oldW / 2;
+  layers.push({ id: 'hex-old', type: 'shape', shape: 'hexagon', x: oldX, y: height / 2, w: oldW, h: oldH, fill: '#000000', radius: oldH * 0.1, opacity: 0.55, stroke: { color: '#9a9ca3', width: Math.max(3, height * 0.02) } });
+  text('level-old', true, '{level_previous}', oldX, height / 2, oldH * 0.4, { color: '#9a9ca3', weight: 800, shadow: false, w: oldW });
+  const shaft = height * 0.2;
+  layers.push({ id: 'arrow', type: 'shape', shape: 'rect', x: arrowX, y: height / 2, w: shaft, h: Math.max(3, height * 0.02), fill: '#ffffff', radius: 3, opacity: 0.9 });
+  layers.push({ id: 'arrow-up', type: 'shape', shape: 'rect', x: arrowX + shaft * 0.36, y: height / 2 - shaft * 0.13, w: shaft * 0.38, h: Math.max(3, height * 0.02), fill: '#ffffff', radius: 3, opacity: 0.9, rotation: 40 });
+  layers.push({ id: 'arrow-down', type: 'shape', shape: 'rect', x: arrowX + shaft * 0.36, y: height / 2 + shaft * 0.13, w: shaft * 0.38, h: Math.max(3, height * 0.02), fill: '#ffffff', radius: 3, opacity: 0.9, rotation: -40 });
+  layers.push({ id: 'hex-new', type: 'shape', shape: 'hexagon', x: newX, y: height / 2, w: newW, h: newH, fill: '#000000', radius: newH * 0.1, opacity: 0.75, stroke: { color: b.accent, width: Math.max(4, height * 0.03) }, shadow: { color: '#000000', blur: 14, x: 0, y: 4 } });
+  text('level-new', true, '{level}', newX, height / 2, newH * 0.42, { weight: 800, shadow: false, w: newW });
+  return layers;
+}
 
 /** The layers of a rank card: the avatar, the name, the level and rank texts, and the progress bar of `{level_progress}`. */
 function buildRankLayers(b, width, height) {
+  if (b.preset === 'levelup') return buildLevelUpLayers(b, width, height);
   const layers = [];
-  const line = (id, show, value, x, y, size, o) => { if (show && value) layers.push(text(id, value, x, y, size, { font: b.font, color: b.textColor, ...o })); };
+  const line = (id, show, value, x, y, size, o) => { if (show && value) layers.push(textLayer(id, value, x, y, size, { font: b.font, color: b.textColor, ...o })); };
   const bar = (x, y, w, h) => layers.push({
     id: 'bar', type: 'bar', x, y, w, h, radius: h / 2, fill: b.accent, fill2: '', track: '#000000', trackOpacity: 0.45, value: '{level_progress}', shadow: null,
   });
@@ -128,7 +195,7 @@ function buildBasicLayers(rawBasic, width = 1024, height = 500, kind = 'welcome'
   const avatar = (x, y, size) => {
     if (b.showAvatar) layers.push({ id: 'avatar', type: 'avatar', source: 'user', x, y, size, shape: b.avatarShape, border: { color: b.accent, width: 8 }, shadow: { color: '#000000', blur: 24, x: 0, y: 6 } });
   };
-  const line = (id, show, value, x, y, size, o) => { if (show && value) layers.push(text(id, value, x, y, size, { font: b.font, color: b.textColor, ...o })); };
+  const line = (id, show, value, x, y, size, o) => { if (show && value) layers.push(textLayer(id, value, x, y, size, { font: b.font, color: b.textColor, ...o })); };
 
   if (b.preset === 'side') {
     avatar(height * 0.52, height / 2, height * 0.52);
@@ -161,4 +228,4 @@ function buildBasicLayers(rawBasic, width = 1024, height = 500, kind = 'welcome'
   return layers;
 }
 
-module.exports = { PRESETS, RANK_PRESETS, BASIC_DEFAULTS, RANK_DEFAULTS, normalizeBasic, buildBasicLayers };
+module.exports = { PRESETS, RANK_PRESETS, BASIC_DEFAULTS, RANK_DEFAULTS, LEVELUP_DEFAULTS, normalizeBasic, buildBasicLayers };

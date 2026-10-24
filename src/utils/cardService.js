@@ -2,7 +2,7 @@
 // variables for the member and the server, and draws it.
 const { renderCard } = require('../imgutils/cardRenderer');
 const { normalizeCard } = require('./cardSchema');
-const { BASIC_DEFAULTS, RANK_DEFAULTS } = require('./cardPresets');
+const { BASIC_DEFAULTS, RANK_DEFAULTS, LEVELUP_DEFAULTS } = require('./cardPresets');
 const { loadImageFromLink, decode } = require('./safeImage');
 const { resolve } = require('./embedVariables');
 const imageCards = require('../db/imageCards');
@@ -65,6 +65,11 @@ const DEFAULT_TEXTS = {
 /** The basic settings of a card with Petto's default texts in `lang`; what the server wrote is kept. */
 function localizedBasic(basic, kind, lang) {
   const result = basic && typeof basic === 'object' && !Array.isArray(basic) ? { ...basic } : {};
+  // The level-up layout has one text to translate: the line under the name (the chip of the position is only a variable).
+  if (kind === 'rank' && result.preset === 'levelup') {
+    if (result.subtitle === undefined || result.subtitle === LEVELUP_DEFAULTS.subtitle || result.subtitle === RANK_DEFAULTS.subtitle) result.subtitle = t(lang, 'embeds.card.levelUpSubtitle');
+    return result;
+  }
   for (const [field, english, key] of DEFAULT_TEXTS[kind]) {
     if (result[field] === undefined || result[field] === english) result[field] = t(lang, key);
   }

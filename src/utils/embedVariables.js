@@ -25,6 +25,38 @@ function ordinal(n, lang = 'en') {
 
 const BOOST_THRESHOLDS = [0, 2, 7, 14];
 
+// What Discord shows around a person (decoration of the avatar, nameplate and server tag) as pictures and text for the cards. Each
+// one is empty when the person has none, so a layer that uses it is simply not drawn. Only addresses of Discord's own CDN are built,
+// from ids and paths that are checked first.
+const CDN = 'https://cdn.discordapp.com';
+const SAFE_PATH = /^[A-Za-z0-9_\-/]+$/;
+function decorationUrl(user) {
+  const url = user?.avatarDecorationURL?.();
+  // `passthrough=false` is the still picture (the first frame) of a decoration that moves.
+  return typeof url === 'string' && url.startsWith(`${CDN}/`) ? `${url}${url.includes('?') ? '&' : '?'}size=256&passthrough=false` : '';
+}
+function nameplateUrl(user) {
+  const asset = user?.collectibles?.nameplate?.asset;
+  return typeof asset === 'string' && SAFE_PATH.test(asset) ? `${CDN}/assets/collectibles/${asset.replace(/\/?$/, '/')}static.png` : '';
+}
+function serverTag(user) {
+  const guild = user?.primaryGuild;
+  return guild?.identityEnabled && typeof guild.tag === 'string' ? guild.tag.slice(0, 4) : '';
+}
+function serverTagBadge(user) {
+  const guild = user?.primaryGuild;
+  return guild?.identityEnabled && /^\d{15,25}$/.test(String(guild.identityGuildId)) && /^[a-f0-9]{8,64}$/i.test(String(guild.badge ?? ''))
+    ? `${CDN}/guild-tag-badges/${guild.identityGuildId}/${guild.badge}.png?size=64` : '';
+}
+/** "2.1" for a member in position 1 of 48: where they are in the ranking, as a percent with one decimal (never 0, never over 100). */
+function topPercent(levelData, locale) {
+  const rank = Number(levelData?.rank);
+  const total = Number(levelData?.total);
+  if (!Number.isFinite(rank) || !Number.isFinite(total) || rank < 1 || total < 1) return '';
+  const percent = Math.min(100, Math.max(0.1, (rank / total) * 100));
+  return new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(percent);
+}
+
 async function resolve(text, ctx = {}) {
   const { member, guild, channel, message } = ctx;
   const lang = DATE_LOCALES[ctx.lang] ? ctx.lang : currentLanguage();
@@ -93,6 +125,10 @@ async function resolve(text, ctx = {}) {
     '{user.id}': user?.id ?? '',
     '{user.avatar}': user?.displayAvatarURL({ size: 512 }) ?? '',
     '{user.display_avatar}': member?.displayAvatarURL({ size: 512 }) ?? user?.displayAvatarURL({ size: 512 }) ?? '',
+    '{user.avatar_decoration}': decorationUrl(user),
+    '{user.nameplate}': nameplateUrl(user),
+    '{user.server_tag}': serverTag(user),
+    '{user.server_tag_badge}': serverTagBadge(user),
     '{user.display_name}': member?.displayName ?? user?.username ?? '',
     '{user.joined_at}': member?.joinedAt?.toLocaleDateString(dateLocale) ?? '',
     '{user.joined_at_timestamp}': member?.joinedTimestamp ? String(Math.floor(member.joinedTimestamp / 1000)) : '',
@@ -178,6 +214,7 @@ async function resolve(text, ctx = {}) {
     '{level_bar}': ctx.levelData?.progress != null ? buildProgressBar(ctx.levelData.progress) : '',
     '{level_role}': ctx.levelReward?.id ? `<@&${ctx.levelReward.id}>` : '',
     '{level_role_name}': ctx.levelReward?.name ?? '',
+    '{level_top_percent}': topPercent(ctx.levelData, dateLocale),
     '{level_previous}': ctx.levelData?.level != null ? String(Math.max(0, ctx.levelData.level - 1)) : '',
     '{gw.prize}': ctx.giveaway?.prize ?? '',
     '{gw.winners}': ctx.giveaway?.winnersCount != null ? String(ctx.giveaway.winnersCount) : '',
