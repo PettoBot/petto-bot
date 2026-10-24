@@ -3,7 +3,8 @@
 const { renderCard } = require('../imgutils/cardRenderer');
 const { normalizeCard } = require('./cardSchema');
 const { BASIC_DEFAULTS, RANK_DEFAULTS, LEVELUP_DEFAULTS } = require('./cardPresets');
-const { loadImageFromLink, decode } = require('./safeImage');
+const { loadImageFromLink, fetchImageBuffer, decode } = require('./safeImage');
+const { decodeApng } = require('../imgutils/apng');
 const { resolve } = require('./embedVariables');
 const imageCards = require('../db/imageCards');
 const cardAssets = require('../db/cardAssets');
@@ -33,9 +34,23 @@ function avatarUrl(kind, ctx) {
   return target?.displayAvatarURL?.({ extension: 'png', size: 512, forceStatic: true }) ?? null;
 }
 
-/** The functions the renderer needs, wired to one guild and one message. */
-function depsFor(ctx, guildId) {
+// The decoration of an avatar that moves, as the animated picture of Discord's own CDN (the variable gives the still one).
+const DECORATION_LINK = /^https:\/\/cdn\.discordapp\.com\/avatar-decoration-presets\/[A-Za-z0-9_\-]+\.png\?/;
+const MAX_ANIMATION_BYTES = 2 * 1024 * 1024;
+async function loadDecorationFrames(src) {
+  if (!DECORATION_LINK.test(src)) return null;
+  try {
+    const link = src.replace(/([?&])passthrough=false/, '$1passthrough=true');
+    return await decodeApng(await fetchImageBuffer(link, undefined, { maxBytes: MAX_ANIMATION_BYTES }));
+  } catch {
+    return null;
+  }
+}
+
+/** The functions the renderer needs, wired to one guild and one message. A picture only moves for a Premium server. */
+function depsFor(ctx, guildId, { premium = false } = {}) {
   return {
+    loadFrames: premium ? loadDecorationFrames : undefined,
     resolveText: (text) => resolve(text, ctx),
     avatar: async (kind) => {
       const url = avatarUrl(kind, ctx);
@@ -89,7 +104,7 @@ async function drawCard(rawCard, ctx, { guildId, premium, lang = ctx?.lang ?? cu
     const basic = localizedBasic(rawCard?.basic, 'welcome', lang);
     ({ card } = normalizeCard({ mode: 'basic', width: card.width, height: card.height, background: card.background, basic }, { premium: false, lang }));
   }
-  return renderCard(card, depsFor(ctx, guildId));
+  return renderCard(card, depsFor(ctx, guildId, { premium }));
 }
 
 /**

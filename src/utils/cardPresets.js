@@ -75,6 +75,8 @@ function normalizeBasic(raw, kind = 'welcome') {
       showDecoration: flag(input.showDecoration, true),
       showNameplate: flag(input.showNameplate, false),
       showTag: flag(input.showTag, true),
+      // The decoration moves (Premium) when it is an animated one; without it, or without Premium, it is the still picture.
+      animateDecoration: flag(input.animateDecoration, false),
     };
   }
   const hex = (value, fallback) => (typeof value === 'string' && HEX.test(value.trim()) ? value.trim().toLowerCase() : fallback);
@@ -112,14 +114,15 @@ function buildLevelUpLayers(b, width, height) {
   const panelW = width - margin * 2;
   const panelH = height - margin * 2;
   const radius = height * 0.2;
+  // The dark panel is under the nameplate, like Discord's own: the nameplate fades out on the left, where the name is.
+  layers.push({ id: 'panel', type: 'shape', shape: 'rect', x: width / 2, y: height / 2, w: panelW, h: panelH, fill: '#000000', radius, opacity: 0.5 });
   if (b.showNameplate) layers.push({ id: 'nameplate', type: 'image', src: '{user.nameplate}', x: width / 2, y: height / 2, w: panelW, h: panelH, fit: 'cover', radius, opacity: 1, showIf: '{user.nameplate}' });
-  layers.push({ id: 'panel', type: 'shape', shape: 'rect', x: width / 2, y: height / 2, w: panelW, h: panelH, fill: '#000000', radius, opacity: b.showNameplate ? 0.42 : 0.5 });
 
   const avatar = height * 0.5;
   const avatarX = margin + height * 0.1 + avatar * 0.6;
   if (b.showAvatar) {
     layers.push({ id: 'avatar', type: 'avatar', source: 'user', x: avatarX, y: height / 2, size: avatar, shape: b.avatarShape, border: null, shadow: { color: '#000000', blur: 16, x: 0, y: 4 } });
-    if (b.showDecoration) layers.push({ id: 'decoration', type: 'image', src: '{user.avatar_decoration}', x: avatarX, y: height / 2, w: avatar * 1.2, h: avatar * 1.2, fit: 'contain', radius: 0, opacity: 1, showIf: '{user.avatar_decoration}' });
+    if (b.showDecoration) layers.push({ id: 'decoration', type: 'image', src: '{user.avatar_decoration}', x: avatarX, y: height / 2, w: avatar * 1.2, h: avatar * 1.2, fit: 'contain', radius: 0, opacity: 1, showIf: '{user.avatar_decoration}', ...(b.animateDecoration ? { animate: true } : {}) });
   }
   const x = (b.showAvatar ? avatarX + avatar * 0.6 : margin + height * 0.1) + height * 0.16;
   const nameSize = height * 0.2;

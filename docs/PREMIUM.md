@@ -55,6 +55,7 @@ when Premium ends (nothing breaks and nothing is deleted).
 | Touch | Where | Without Premium |
 | --- | --- | --- |
 | Advanced layer editor and the 25 extra fonts for image cards (15 are free) | dashboard Cards | the card is drawn with its basic settings |
+| Moving avatar decoration on the level-up card (`animateDecoration`) | dashboard Cards, Level-up layout | the decoration is the still picture |
 | Server avatar, banner, bio and name style (gradient, neon, glow) of Petto | dashboard Customize | reset to the defaults; the nickname is free and kept |
 | Animated backgrounds `aurora` and `waves` for the web page of a form | dashboard Forms, `!form set <form> background` | shown as the plain gradient |
 | Hide the "Forms by Petto" line at the bottom of a form page | dashboard Forms, `!form set <form> branding off` | the line is shown |

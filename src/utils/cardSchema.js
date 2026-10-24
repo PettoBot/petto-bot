@@ -127,6 +127,8 @@ function normalizeLayer(raw, index, problems, lang) {
       fit: FITS.has(raw.fit) ? raw.fit : 'cover',
       radius: num(raw.radius, 0, 2000, 0),
       shadow: shadow(raw.shadow),
+      // The picture moves when it is an animation and the card is drawn for a Premium server.
+      ...(raw.animate === true ? { animate: true } : {}),
     };
   }
   if (raw.type === 'bar') {
