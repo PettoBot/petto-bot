@@ -57,12 +57,12 @@ function buildServerInfoCard(d) {
   if (d.bannerUrl) card.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(d.bannerUrl)));
 
   const members = [
-    row(EMOJI.MEMBERS, t(lang, 'info.label.members'), joinParts([
+    row(EMOJI.FIELD_DOT, t(lang, 'info.label.members'), joinParts([
       `${n(d.memberCount)}`,
       d.humans === null ? null : tn(lang, 'info.serverinfo.people', d.humans),
       d.bots === null ? null : tn(lang, 'info.serverinfo.bots', d.bots),
     ])),
-    d.boosters === null ? null : row(EMOJI.STAR, t(lang, 'info.serverinfo.boosters'), n(d.boosters)),
+    d.boosters === null ? null : row(EMOJI.FIELD_DOT, t(lang, 'info.serverinfo.boosters'), n(d.boosters)),
   ].filter(Boolean);
 
   const channelTotal = d.textChannels + d.forumChannels + d.voiceChannels + d.categories;
@@ -75,20 +75,20 @@ function buildServerInfoCard(d) {
 
   const features = featureList(d.features, 6, lang);
   const server = [
-    row(EMOJI.STAR, t(lang, 'info.serverinfo.boost'), boostText(d.tier, d.boosts, lang)),
-    row(EMOJI.SAFETY, t(lang, 'info.serverinfo.safety'), joinParts([t(lang, 'info.serverinfo.verificationLevel', { level: d.verification }), d.locale])),
+    row(EMOJI.FIELD_DOT, t(lang, 'info.serverinfo.boost'), boostText(d.tier, d.boosts, lang)),
+    row(EMOJI.FIELD_DOT, t(lang, 'info.serverinfo.safety'), joinParts([t(lang, 'info.serverinfo.verificationLevel', { level: d.verification }), d.locale])),
     row(EMOJI.FIELD_DOT, t(lang, 'info.serverinfo.content'), joinParts([
       t(lang, 'info.serverinfo.roles', { count: n(d.roles) }),
       t(lang, 'info.serverinfo.emojis', { count: n(d.emojis), max: n(d.emojiLimit) }),
       t(lang, 'info.serverinfo.stickers', { count: n(d.stickers), max: n(d.stickerLimit) }),
     ])),
-    features ? row(EMOJI.APPROVE, t(lang, 'info.serverinfo.features'), features) : null,
+    features ? row(EMOJI.FIELD_DOT, t(lang, 'info.serverinfo.features'), features) : null,
   ].filter(Boolean);
 
   card.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Large));
-  card.addTextDisplayComponents(new TextDisplayBuilder().setContent([`### ${EMOJI.MEMBERS} ${t(lang, 'info.serverinfo.sectionPeople')}`, ...members, channels].join('\n')));
+  card.addTextDisplayComponents(new TextDisplayBuilder().setContent([`### ${t(lang, 'info.serverinfo.sectionPeople')}`, ...members, channels].join('\n')));
   card.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
-  card.addTextDisplayComponents(new TextDisplayBuilder().setContent([`### ${EMOJI.SAFETY} ${t(lang, 'info.serverinfo.sectionServer')}`, ...server].join('\n')));
+  card.addTextDisplayComponents(new TextDisplayBuilder().setContent([`### ${t(lang, 'info.serverinfo.sectionServer')}`, ...server].join('\n')));
   // The invite splash (the picture of the invite page) is shown too, under the details.
   if (d.splashUrl) card.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(d.splashUrl)));
   card.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Large));

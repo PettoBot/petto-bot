@@ -70,9 +70,9 @@ module.exports = {
         title: t(lang, 'info.userinfo.account'),
         lines: [
           row(EMOJI.FIELD_DOT, t(lang, 'info.userinfo.username'), `\`${user.username}\``),
-          row(EMOJI.MEMBERS, t(lang, 'info.label.type'), t(lang, user.bot ? 'info.userinfo.botAccount' : 'info.userinfo.userAccount')),
+          row(EMOJI.FIELD_DOT, t(lang, 'info.label.type'), t(lang, user.bot ? 'info.userinfo.botAccount' : 'info.userinfo.userAccount')),
           row(EMOJI.FIELD_CALENDAR, t(lang, 'info.label.created'), stamp(user.createdTimestamp)),
-          badges.length ? row(EMOJI.STAR, t(lang, 'info.userinfo.badges'), badgeText(badges)) : null,
+          badges.length ? row(EMOJI.FIELD_DOT, t(lang, 'info.userinfo.badges'), badgeText(badges)) : null,
         ],
       },
     ];
@@ -84,9 +84,9 @@ module.exports = {
         lines: [
           row(EMOJI.FIELD_CALENDAR, t(lang, 'info.label.joined'), member.joinedTimestamp ? `${stamp(member.joinedTimestamp)}${joinPos ? ` · #${joinPos}` : ''}` : null),
           row(EMOJI.FIELD_NOTES, t(lang, 'info.userinfo.nickname'), member.nickname ? clip(member.nickname, 64) : null),
-          member.premiumSinceTimestamp ? row(EMOJI.STAR, t(lang, 'info.userinfo.boostingSince'), `<t:${Math.floor(member.premiumSinceTimestamp / 1000)}:R>`) : null,
+          member.premiumSinceTimestamp ? row(EMOJI.FIELD_DOT, t(lang, 'info.userinfo.boostingSince'), `<t:${Math.floor(member.premiumSinceTimestamp / 1000)}:R>`) : null,
           member.communicationDisabledUntilTimestamp && member.communicationDisabledUntilTimestamp > Date.now()
-            ? row(EMOJI.SAFETY, t(lang, 'info.userinfo.timedOutUntil'), `<t:${Math.floor(member.communicationDisabledUntilTimestamp / 1000)}:R>`)
+            ? row(EMOJI.FIELD_DOT, t(lang, 'info.userinfo.timedOutUntil'), `<t:${Math.floor(member.communicationDisabledUntilTimestamp / 1000)}:R>`)
             : null,
         ],
       });
@@ -106,7 +106,6 @@ module.exports = {
         title: displayName,
         thumbnail: look ? `attachment://${look.name}` : shownAvatar,
         banner,
-        gallery: nameplate ? [nameplate] : [],
         subtitle: [[`<@${user.id}>${user.bot ? ' · Bot' : ''}`, tag ? `\`${tag}\`` : null].filter(Boolean).join('  ·  ')],
         sections,
         footer: t(lang, 'info.card.id', { id: user.id }),

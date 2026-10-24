@@ -4,7 +4,9 @@
 const { createCanvas } = require('@napi-rs/canvas');
 const { fetchImageBuffer, decode, loadImageFromLink } = require('./safeImage');
 const { decodeApng, encodeApng } = require('../imgutils/apng');
-const { decorationUrl, animatedDecorationUrl } = require('./profileLook');
+const { decorationUrl, animatedDecorationUrl, nameplateUrl, serverTag, serverTagBadge } = require('./profileLook');
+const { normalizeCard } = require('./cardSchema');
+const { renderCard } = require('../imgutils/cardRenderer');
 
 const AVATAR = 240;
 // The decoration is a fifth bigger than the avatar, like in Discord.
@@ -64,4 +66,58 @@ async function renderProfileLook(user, { member = null, moving = false } = {}) {
   }
 }
 
-module.exports = { renderProfileLook, FILE_NAME };
+// The row of a profile as Discord shows it, in one wide picture: the nameplate behind, the avatar with its decoration on the left, then the
+// name with the server tag. It is drawn with the image card engine, so a decoration that moves gives an animated PNG.
+const ROW = { width: 1200, height: 300, background: '#2b2d31' };
+const ROW_FILE = 'cosmetics.png';
+
+function rowCard({ name, nameplate, decoration, tag, badge, moving }) {
+  const margin = 24;
+  const w = ROW.width - margin * 2;
+  const h = ROW.height - margin * 2;
+  const avatarX = margin + 40 + 90;
+  const nameX = avatarX + 90 + 56;
+  const layers = [{ id: 'panel', type: 'shape', shape: 'rect', x: ROW.width / 2, y: ROW.height / 2, w, h, fill: '#1e1f22', radius: 44, opacity: 1 }];
+  if (nameplate) layers.push({ id: 'nameplate', type: 'image', src: nameplate, x: ROW.width / 2, y: ROW.height / 2, w, h, fit: 'cover', radius: 44, opacity: 1 });
+  layers.push({ id: 'avatar', type: 'avatar', source: 'user', x: avatarX, y: ROW.height / 2, size: 180, shape: 'circle', border: null, shadow: { color: '#000000', blur: 16, x: 0, y: 4 } });
+  if (decoration) layers.push({ id: 'decoration', type: 'image', src: decoration, x: avatarX, y: ROW.height / 2, w: 216, h: 216, fit: 'contain', radius: 0, opacity: 1, ...(moving ? { animate: true } : {}) });
+  layers.push({ id: 'name', type: 'text', text: name, x: nameX, y: ROW.height / 2, size: 56, font: 'Poppins', weight: 800, color: '#ffffff', align: 'left', w: 520, maxLines: 1 });
+  if (badge) layers.push({ id: 'badge', type: 'image', src: badge, x: nameX, y: ROW.height / 2, w: 58, h: 58, fit: 'contain', radius: 0, opacity: 1, follow: 'name', gap: 22 });
+  if (tag) layers.push({ id: 'tag', type: 'text', text: tag, x: nameX, y: ROW.height / 2, size: 34, font: 'Poppins', weight: 700, color: '#ffffff', align: 'left', shadow: null, follow: badge ? 'badge,name' : 'name', gap: 18, pill: { color: '#ffffff', opacity: 0.2, padX: 20, padY: 8, radius: 999 } });
+  return { mode: 'advanced', width: ROW.width, height: ROW.height, background: { color: ROW.background }, layers };
+}
+
+/**
+ * `{ buffer, name, moving }`: the whole row of a profile in one picture, with the nameplate, the avatar with its decoration, the name and
+ * the server tag. Each part is only drawn when the person has it. `moving` asks for the animated PNG when the decoration moves.
+ * It returns null when the picture cannot be drawn.
+ */
+async function renderCosmeticsImage(user, { member = null, moving = false, name = null } = {}) {
+  try {
+    const target = member ?? user;
+    const decoration = decorationUrl(user);
+    const animates = moving && Boolean(animatedDecorationUrl(user));
+    const { card } = normalizeCard(rowCard({
+      name: String(name ?? member?.displayName ?? user.globalName ?? user.username ?? '').slice(0, 60),
+      nameplate: nameplateUrl(user), decoration, tag: serverTag(user), badge: serverTagBadge(user), moving: animates,
+    }), { premium: true });
+    const buffer = await renderCard(card, {
+      resolveText: async (value) => value,
+      avatar: async () => loadImageFromLink(target.displayAvatarURL({ extension: 'png', size: 256, forceStatic: true })),
+      loadSource: async (src) => loadImageFromLink(src),
+      loadFrames: animates ? async (src) => {
+        try { return await decodeApng(await fetchImageBuffer(src.replace('passthrough=false', 'passthrough=true'), undefined, { maxBytes: MAX_BYTES })); } catch { return null; }
+      } : undefined,
+    });
+    return { buffer, name: ROW_FILE, moving: animates && readsAsAnimation(buffer) };
+  } catch {
+    return null;
+  }
+}
+
+/** True when the PNG has the animation chunk, so the caller can say whether it moves. */
+function readsAsAnimation(buffer) {
+  try { return require('../imgutils/apng').readChunks(buffer).some((chunk) => chunk.type === 'acTL'); } catch { return false; }
+}
+
+module.exports = { renderProfileLook, renderCosmeticsImage, FILE_NAME, ROW_FILE };
