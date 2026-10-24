@@ -75,6 +75,8 @@ function normalizeBasic(raw, kind = 'welcome') {
       showDecoration: flag(input.showDecoration, true),
       showNameplate: flag(input.showNameplate, false),
       showTag: flag(input.showTag, true),
+      // The decoration moves (Premium) when it is an animated one; without it, or without Premium, it is the still picture.
+      animateDecoration: flag(input.animateDecoration, false),
     };
   }
   const hex = (value, fallback) => (typeof value === 'string' && HEX.test(value.trim()) ? value.trim().toLowerCase() : fallback);
@@ -119,7 +121,7 @@ function buildLevelUpLayers(b, width, height) {
   const avatarX = margin + height * 0.1 + avatar * 0.6;
   if (b.showAvatar) {
     layers.push({ id: 'avatar', type: 'avatar', source: 'user', x: avatarX, y: height / 2, size: avatar, shape: b.avatarShape, border: null, shadow: { color: '#000000', blur: 16, x: 0, y: 4 } });
-    if (b.showDecoration) layers.push({ id: 'decoration', type: 'image', src: '{user.avatar_decoration}', x: avatarX, y: height / 2, w: avatar * 1.2, h: avatar * 1.2, fit: 'contain', radius: 0, opacity: 1, showIf: '{user.avatar_decoration}' });
+    if (b.showDecoration) layers.push({ id: 'decoration', type: 'image', src: '{user.avatar_decoration}', x: avatarX, y: height / 2, w: avatar * 1.2, h: avatar * 1.2, fit: 'contain', radius: 0, opacity: 1, showIf: '{user.avatar_decoration}', ...(b.animateDecoration ? { animate: true } : {}) });
   }
   const x = (b.showAvatar ? avatarX + avatar * 0.6 : margin + height * 0.1) + height * 0.16;
   const nameSize = height * 0.2;

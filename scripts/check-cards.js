@@ -277,6 +277,41 @@ const near = (actual, expected, tolerance = 6) => actual.every((value, index) =>
     const texts = normalizeCard({ kind: 'rank', mode: 'basic', basic: { preset: 'levelup', extra: 'RANK #{level_rank}', subtitle: '{level_xp_current} / {level_xp_needed} XP' } }).card.basic;
     assert.deepEqual([texts.extra, texts.subtitle], ['#{level_rank}', 'You are now in Top {level_top_percent}%'], 'a level-up card that still has the rank texts gets its own');
     assert.equal(normalizeCard({ kind: 'rank', mode: 'basic', basic: { preset: 'levelup', extra: 'Mine' } }).card.basic.extra, 'Mine', 'what the server wrote is kept');
+
+    // A decoration that moves: the card goes out as an APNG, only for a server that can (the renderer is given `loadFrames` only then).
+    const { encodeApng, decodeApng } = require('../src/imgutils/apng');
+    const solid = (w, h, color) => { const c = createCanvas(w, h); const g = c.getContext('2d'); g.fillStyle = color; g.fillRect(0, 0, w, h); return c; };
+    const apng = encodeApng({ png: solid(40, 20, '#ff0000').toBuffer('image/png'), delayMs: 100 }, [{ png: solid(10, 10, '#00ff00').toBuffer('image/png'), x: 5, y: 5, delayMs: 200 }]);
+    const decoded = await decodeApng(apng);
+    assert.equal(decoded.length, 2);
+    assert.deepEqual(decoded.map((frame) => frame.delayMs), [100, 200]);
+    assert.deepEqual([...decoded[1].canvas.getContext('2d').getImageData(8, 8, 1, 1).data], [0, 255, 0, 255], 'a frame that is a part replaces that part');
+    assert.deepEqual([...decoded[1].canvas.getContext('2d').getImageData(30, 15, 1, 1).data], [255, 0, 0, 255], 'and keeps the rest');
+    assert.equal(await decodeApng(solid(8, 8, '#000').toBuffer('image/png')), null, 'a still PNG has no frames');
+    await assert.rejects(decodeApng(Buffer.from('not a picture at all, really not')), 'garbage is refused');
+    const moving = normalizeCard({ kind: 'rank', mode: 'basic', width: 1024, height: 240, basic: { preset: 'levelup', animateDecoration: true } }).card;
+    assert.equal(moving.layers.find((layer) => layer.id === 'decoration').animate, true, 'the switch makes the decoration layer move');
+    assert.ok(!normalizeCard({ kind: 'rank', mode: 'basic', basic: { preset: 'levelup' } }).card.layers.find((layer) => layer.id === 'decoration').animate, 'and it is off by default');
+    let loaded = 0;
+    const movingDeps = {
+      resolveText: async (value) => value.replace('{user.avatar_decoration}', 'https://cdn.discordapp.com/avatar-decoration-presets/a_x.png?size=256&passthrough=false').replace('{level}', '5').replace(/\{[a-z_.]+\}/g, 'x'),
+      avatar: async () => avatar,
+      loadSource: async (src) => { loaded += 1; return src.includes('avatar-decoration') ? solid(256, 256, '#ffffff') : null; },
+    };
+    const frames = [solid(256, 256, '#ff0000'), solid(256, 256, '#00ff00'), solid(256, 256, '#0000ff')].map((canvas, i) => ({ canvas, delayMs: 50 + i }));
+    const still = await renderCard(moving, movingDeps);
+    assert.ok(!readChunksOf(still).includes('acTL'), 'without frames to load (a free server) the card is a plain PNG');
+    const animated = await renderCard(moving, { ...movingDeps, loadFrames: async () => frames });
+    assert.ok(readChunksOf(animated).includes('acTL'), 'with frames the card is an APNG');
+    const playback = await decodeApng(animated, { maxSide: 2048 });
+    assert.equal(playback.length, 3);
+    assert.ok(playback[0].canvas.width === 1024 && playback[2].canvas.height === 240, 'every frame is the whole card');
+    assert.notDeepEqual([...playback[0].canvas.getContext('2d').getImageData(130, 120, 1, 1).data], [...playback[2].canvas.getContext('2d').getImageData(130, 120, 1, 1).data], 'the decoration changes between frames');
+    assert.deepEqual([...playback[0].canvas.getContext('2d').getImageData(900, 30, 1, 1).data], [...playback[2].canvas.getContext('2d').getImageData(900, 30, 1, 1).data], 'and the rest of the card does not');
+    assert.ok(animated.length < 40 * 1024 + still.length, 'only the decoration is stored again for each frame');
+    const oneFrame = await renderCard(moving, { ...movingDeps, loadFrames: async () => null });
+    assert.ok(!readChunksOf(oneFrame).includes('acTL'), 'a decoration that does not move leaves a plain PNG');
+    function readChunksOf(buffer) { return require('../src/imgutils/apng').readChunks(buffer).map((c) => c.type); }
   }
   console.log('Checked the image cards: schema, presets, drawing, safe downloads, Premium rules and messages.');
 })().catch((error) => { console.error(error); process.exit(1); });
