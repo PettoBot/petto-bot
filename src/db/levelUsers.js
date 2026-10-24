@@ -118,4 +118,10 @@ async function touchStreak(guildId, userId, day) {
   return { newDay: Boolean(rows[0]?.new_day), streak: Number(rows[0]?.streak ?? 0) };
 }
 
-module.exports = { touchStreak, getUser, getUsers, listWithLevels, ensureUser, addXp, addVoiceXp, setLevel, setVoiceLevel, setXpAndLevel, resetUser, getRank, countRanked, getLeaderboardPage, getVoiceRank, countVoiceRanked, getVoiceLeaderboardPage };
+/** How much of `gain` fits in the member's allowance for `day` under `cap` XP a day. The member must already have a row. */
+async function takeDailyXp(guildId, userId, day, gain, cap) {
+  const { rows } = await getPrimaryPool().query('select take_daily_xp($1, $2, $3::date, $4, $5) as granted', [String(guildId), String(userId), day, Math.max(0, Math.floor(gain)), Math.max(0, Math.floor(cap))]);
+  return Number(rows[0]?.granted ?? 0);
+}
+
+module.exports = { takeDailyXp, touchStreak, getUser, getUsers, listWithLevels, ensureUser, addXp, addVoiceXp, setLevel, setVoiceLevel, setXpAndLevel, resetUser, getRank, countRanked, getLeaderboardPage, getVoiceRank, countVoiceRanked, getVoiceLeaderboardPage };

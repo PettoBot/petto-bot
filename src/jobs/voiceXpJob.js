@@ -1,7 +1,7 @@
 const { getConfig } = require('../db/levelConfig');
 const { getMultiplier, canEarnXp, grantVoiceXp } = require('../utils/levelActions');
 const { getVoiceConfig } = require('../utils/levelSource');
-const { voiceEligible, voiceActiveCount } = require('../utils/levelRules');
+const { voiceEligible, voiceActiveCount, voiceShare } = require('../utils/levelRules');
 const { pruneOldPeriods } = require('../db/levelPeriods');
 const logger = require('../utils/logger');
 const config = require('../config');
@@ -34,7 +34,8 @@ async function grantGuildVoiceXp(client, guild, config, voiceConfig) {
 
       try {
         const multi = await getMultiplier(guild.id, channel, member, voiceConfig);
-        const xpGain = Math.round(config.xp_per_vc_minute * multi);
+        const xpGain = voiceShare(Math.round(config.xp_per_vc_minute * multi), humans, voiceConfig);
+        if (xpGain <= 0) continue;
 
         await grantVoiceXp({ client, guild, member, config: voiceConfig, xpGain, vcInc: 1, channel });
       } catch (err) {

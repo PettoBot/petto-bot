@@ -4,6 +4,10 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **XP rules: two new limits.** `daily_xp_cap` is the most XP a member can earn from messages in a day (the day changes at midnight in Colombia; 0 turns it off; the daily and streak bonus come on top of it), and it holds even when several messages arrive at the same moment. `voice_alone_percent` is the share of the voice XP someone earns while they are the only person in the channel (100 changes nothing, 0 gives nothing while alone). Both are in `/level rules` and `!level rules`, in the summary it shows and in the dashboard's Rules page.
+
 ### Changed
 
 - **Voice XP no longer needs a second person by default.** "People needed in voice" (`voice_min_members`) started at 2, so someone alone in a voice channel earned nothing and it looked broken. It is 1 now for new servers, and servers that still had the old 2 are moved to 1 once (they can set 2 again from Rules and events or `/level rules`; a later restart does not reset it). The rule is still there.

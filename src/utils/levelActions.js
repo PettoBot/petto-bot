@@ -279,6 +279,15 @@ async function grantXp({ client, guild, member, config, xpGain, messageInc = 0, 
   const oldLevel = before.level;
 
   const award = await applyXpRules({ guild, member, config, xpGain, source: 'text' });
+  // The daily limit is on what messages earn; the daily and streak bonus come on top of it.
+  if (Number(config.daily_xp_cap) > 0) {
+    try {
+      const fits = await levelUsersDb.takeDailyXp(guild.id, member.id, utcDay(), award.xp - award.bonus, config.daily_xp_cap);
+      award.xp = fits + award.bonus;
+    } catch (err) {
+      logger.warn(`The daily XP limit could not be applied for ${member.id} in ${guild.id}: ${err.message}`);
+    }
+  }
   const updated = await levelUsersDb.addXp(guild.id, member.id, { xpGain: award.xp, messageInc, vcInc });
   addPeriodXp(guild.id, member.id, { textXp: award.xp }).catch((err) => logger.warn(`Weekly XP could not be saved for ${member.id}: ${err.message}`));
   const newLevel = Math.min(levelForXp(updated.xp, config), config.max_level);

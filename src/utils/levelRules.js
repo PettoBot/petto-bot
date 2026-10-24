@@ -97,4 +97,11 @@ function voiceActiveCount(members, config) {
   return members.filter((member) => !member.bot && !member.deaf && !(config?.voice_ignore_muted && member.muted)).length;
 }
 
-module.exports = { voiceActiveCount, REPEAT_WINDOW_MS, periodKeys, utcDay, meaningfulText, longEnough, createRepeatGuard, eventMultiplier, dailyBonus, voiceEligible };
+/** The XP of a voice minute for the person: the share the server set for being alone (`voice_alone_percent`), or all of it with company. */
+function voiceShare(xp, activePeople, config) {
+  const percent = Number(config?.voice_alone_percent ?? 100);
+  if (activePeople > 1 || !(percent < 100)) return xp;
+  return Math.round(xp * Math.max(0, percent) / 100);
+}
+
+module.exports = { voiceShare, voiceActiveCount, REPEAT_WINDOW_MS, periodKeys, utcDay, meaningfulText, longEnough, createRepeatGuard, eventMultiplier, dailyBonus, voiceEligible };

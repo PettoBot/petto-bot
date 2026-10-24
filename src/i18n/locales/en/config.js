@@ -185,6 +185,8 @@ module.exports = {
   'config.column.anti_repeat': 'Anti repeat',
   'config.column.voice_min_members': 'Voice min members',
   'config.column.voice_ignore_muted': 'Voice ignore muted',
+  'config.column.voice_alone_percent': 'Voice alone percent',
+  'config.column.daily_xp_cap': 'Daily xp cap',
   'config.column.daily_bonus_xp': 'Daily bonus xp',
   'config.column.streak_bonus_xp': 'Streak bonus xp',
   'config.column.streak_max_days': 'Streak max',
