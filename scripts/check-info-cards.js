@@ -74,8 +74,10 @@ async function run(file, label, g, options) {
     interaction.client.users.fetch = async () => rich;
     await require(`${root}/src/commands/info/userinfo`).execute(interaction);
     const text = JSON.stringify(out.payload.components[0].toJSON());
-    assert.ok(text.includes('passthrough=false') && text.includes('passthrough=true') && text.includes('nameplates/nameplates/twilight/static.png') && text.includes('PTT'), 'userinfo shows the decoration, the nameplate and the tag');
+    assert.ok(text.includes('nameplates/nameplates/twilight/static.png') && text.includes('PTT') && text.includes('/usercosmetics'), 'userinfo shows the nameplate as a picture, the tag and where to see more');
+    assert.ok(!text.includes('accent_color'), 'and the card has no color');
     check('userinfo (profile look)', out.payload);
+    assert.ok(out.payload.components[0].toJSON().components.some((c) => c.type === 12 && JSON.stringify(c).includes('twilight')), 'the nameplate is in a gallery of the card');
     const plain = await run('userinfo', 'no look', g);
     assert.ok(!JSON.stringify(plain.components[0].toJSON()).includes('nameplates'), 'and shows nothing for a member without them');
   }
