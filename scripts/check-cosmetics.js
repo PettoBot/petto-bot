@@ -17,7 +17,7 @@ require.cache[require.resolve(safePath)].exports = {
   loadImageFromLink: async () => loadImage(ring('#888888')),
   decode: (buffer) => loadImage(buffer),
 };
-const { renderProfileLook } = require('../src/utils/profileLookImage');
+const { renderProfileLook, renderCosmeticsImage } = require('../src/utils/profileLookImage');
 
 const user = (over = {}) => ({
   id: '293504726505357312', username: 'liam', globalName: 'Liam', displayAvatarURL: () => 'https://cdn.discordapp.com/avatars/1/a.png',
@@ -43,6 +43,18 @@ const user = (over = {}) => ({
   assert.ok(!types(notMoving.buffer).includes('acTL'), 'a decoration that does not move stays still');
   assert.equal(await renderProfileLook(user({ avatarDecorationURL: () => null }), { moving: true }), null, 'no decoration, no picture');
 
+  // The row of a profile in one picture: nameplate, avatar with its decoration, name and tag.
+  const row = await renderCosmeticsImage(user(), { moving: false });
+  assert.equal(row.name, 'cosmetics.png');
+  const rowImage = await loadImage(row.buffer);
+  assert.deepEqual([rowImage.width, rowImage.height], [1200, 300]);
+  assert.ok(!types(row.buffer).includes('acTL') && row.moving === false);
+  const rowMoving = await renderCosmeticsImage(user(), { moving: true });
+  assert.ok(types(rowMoving.buffer).includes('acTL') && rowMoving.moving, 'the row moves when the decoration moves');
+  assert.equal((await decodeApng(rowMoving.buffer, { maxSide: 2048 })).length, 3);
+  const bare = await renderCosmeticsImage(user({ avatarDecorationURL: () => null, collectibles: null, primaryGuild: null }));
+  assert.ok(bare.buffer.length > 1000, 'a member with nothing still gets the row with the avatar and the name');
+
   // The card of !usercosmetics.
   const cmd = require('../src/commands/info/usercosmetics');
   assert.deepEqual(cmd.aliases.slice(0, 1), ['uc']);
@@ -56,8 +68,10 @@ const user = (over = {}) => ({
   };
   const rich = await run(user());
   const json = JSON.stringify(rich.components[0].toJSON());
-  for (const part of ['PTT', 'Twilight', 'cobalt', 'twilight/static.png', 'attachment://look.png', 'passthrough=true', 'guild-tag-badges']) assert.ok(json.includes(part), `the card says ${part}`);
+  for (const part of ['PTT', 'Twilight', 'cobalt', 'attachment://cosmetics.png', 'passthrough=true', 'guild-tag-badges']) assert.ok(json.includes(part), `the card says ${part}`);
   assert.ok(!json.includes('accent_color'), 'no color on the side');
+  const gallery = rich.components[0].toJSON().components.filter((c) => c.type === 12);
+  assert.deepEqual(gallery.map((g) => g.items.length), [1], 'one picture, not two');
   assert.equal(rich.files.length, 1, 'the look is attached');
   assert.equal(rich.flags, 32768);
   const buttons = rich.components[0].toJSON().components.find((c) => c.type === 1).components;
