@@ -70,11 +70,10 @@ function normalizeBasic(raw, kind = 'welcome') {
       showName: flag(input.showName, true),
       showSubtitle: flag(input.showSubtitle, true),
       showExtra: flag(input.showExtra, true),
-      // What Discord shows around the person, on the level-up layout: the decoration of the avatar, the nameplate behind the card and
-      // the server tag next to the name. Each one is only drawn when the person has it.
+      // What Discord shows around the person, on the level-up layout: the decoration of the avatar and the nameplate behind the card.
+      // Each one is only drawn when the person has it.
       showDecoration: flag(input.showDecoration, true),
       showNameplate: flag(input.showNameplate, false),
-      showTag: flag(input.showTag, true),
       // The decoration moves (Premium) when it is an animated one; without it, or without Premium, it is the still picture.
       animateDecoration: flag(input.animateDecoration, false),
     };
@@ -130,27 +129,23 @@ function buildLevelUpLayers(b, width, height) {
   const pill = { color: '#ffffff', opacity: 0.22, padX: chip * 0.55, padY: chip * 0.22, radius: 999 };
   text('name', b.showName, b.name, x, height * 0.37, nameSize, { align: 'left', weight: 800, w: width * 0.3, maxLines: 1 });
   if (b.showName && b.showExtra) layers.push({ ...textLayer('rank', b.extra, x, height * 0.37, chip, { font: b.font, color: b.textColor, align: 'left', weight: 700, shadow: false }), follow: 'name', gap: chip * 0.9, pill });
-  if (b.showName && b.showTag) {
-    layers.push({ id: 'badge', type: 'image', src: '{user.server_tag_badge}', x: x, y: height * 0.37, w: chip * 1.5, h: chip * 1.5, fit: 'contain', radius: 0, opacity: 1, showIf: '{user.server_tag_badge}', follow: b.showExtra ? 'rank,name' : 'name', gap: chip * 0.6 });
-    layers.push({ ...textLayer('tag', '{user.server_tag}', x, height * 0.37, chip, { font: b.font, color: b.textColor, align: 'left', weight: 700, shadow: false }), showIf: '{user.server_tag}', follow: 'badge,rank,name', gap: chip * 0.4, pill });
-  }
   text('subtitle', b.showSubtitle, b.subtitle, x, height * 0.64, height * 0.115, { align: 'left', weight: 400, opacity: 0.92, w: width * 0.4, maxLines: 1 });
 
   // The levels: the one before (dim) and the one reached, in hexagons.
   const newH = height * 0.56;
-  const newW = newH * 0.866;
+  const newW = newH * 0.98;
   const oldH = newH * 0.76;
-  const oldW = oldH * 0.866;
+  const oldW = oldH * 0.98;
   const newX = width - margin - height * 0.12 - newW / 2;
   const arrowX = newX - newW / 2 - height * 0.2;
   const oldX = arrowX - height * 0.2 - oldW / 2;
-  layers.push({ id: 'hex-old', type: 'shape', shape: 'hexagon', x: oldX, y: height / 2, w: oldW, h: oldH, fill: '#000000', radius: oldH * 0.1, opacity: 0.55, stroke: { color: '#9a9ca3', width: Math.max(3, height * 0.02) } });
+  layers.push({ id: 'hex-old', type: 'shape', shape: 'hexagon', x: oldX, y: height / 2, w: oldW, h: oldH, fill: '#000000', radius: oldH * 0.1, opacity: 0.7, stroke: { color: '#9a9ca3', width: Math.max(5, height * 0.04) } });
   text('level-old', true, '{level_previous}', oldX, height / 2, oldH * 0.4, { color: '#9a9ca3', weight: 800, shadow: false, w: oldW });
   const shaft = height * 0.2;
   layers.push({ id: 'arrow', type: 'shape', shape: 'rect', x: arrowX, y: height / 2, w: shaft, h: Math.max(3, height * 0.02), fill: '#ffffff', radius: 3, opacity: 0.9 });
   layers.push({ id: 'arrow-up', type: 'shape', shape: 'rect', x: arrowX + shaft * 0.36, y: height / 2 - shaft * 0.13, w: shaft * 0.38, h: Math.max(3, height * 0.02), fill: '#ffffff', radius: 3, opacity: 0.9, rotation: 40 });
   layers.push({ id: 'arrow-down', type: 'shape', shape: 'rect', x: arrowX + shaft * 0.36, y: height / 2 + shaft * 0.13, w: shaft * 0.38, h: Math.max(3, height * 0.02), fill: '#ffffff', radius: 3, opacity: 0.9, rotation: -40 });
-  layers.push({ id: 'hex-new', type: 'shape', shape: 'hexagon', x: newX, y: height / 2, w: newW, h: newH, fill: '#000000', radius: newH * 0.1, opacity: 0.75, stroke: { color: b.accent, width: Math.max(4, height * 0.03) }, shadow: { color: '#000000', blur: 14, x: 0, y: 4 } });
+  layers.push({ id: 'hex-new', type: 'shape', shape: 'hexagon', x: newX, y: height / 2, w: newW, h: newH, fill: '#000000', radius: newH * 0.1, opacity: 0.9, stroke: { color: b.accent, width: Math.max(7, height * 0.06) }, shadow: { color: '#000000', blur: 14, x: 0, y: 4 } });
   text('level-new', true, '{level}', newX, height / 2, newH * 0.42, { weight: 800, shadow: false, w: newW });
   return layers;
 }

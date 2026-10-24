@@ -59,13 +59,14 @@ function snowflakeTime(id) {
  * @param {string[]} [options.subtitle]   Lines shown under the heading.
  * @param {string} [options.thumbnail]    Picture next to the heading.
  * @param {string} [options.banner]       Wide picture shown under the heading.
+ * @param {string[]} [options.gallery]    More pictures in a gallery of their own under the banner, side by side (up to 4), such as a nameplate.
  * @param {{title?: string, lines: (string|null)[], limit?: number}[]} [options.sections]  `limit` raises the per-section text cap
  *   for long lists that the command already cuts on a whole entry.
  * @param {string} [options.footer]       Small text at the bottom.
  * @param {{label: string, url: string}[]} [options.buttons]  Link buttons.
  * @param {ActionRowBuilder[]} [options.rows]  Extra action rows (buttons, selects) shown under the card text.
  */
-function buildInfoCard({ accent = INFO_ACCENT, title, subtitle = [], thumbnail = null, banner = null, sections = [], footer = null, buttons = [], rows = [] }) {
+function buildInfoCard({ accent = INFO_ACCENT, title, subtitle = [], thumbnail = null, banner = null, gallery = [], sections = [], footer = null, buttons = [], rows = [] }) {
   let budget = TEXT_BUDGET;
   const take = (text, max = SECTION_LIMIT) => {
     const value = clip(text, Math.min(max, Math.max(0, budget)));
@@ -80,6 +81,8 @@ function buildInfoCard({ accent = INFO_ACCENT, title, subtitle = [], thumbnail =
   else card.addTextDisplayComponents(headerText);
 
   if (banner) card.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(banner)));
+  const more = gallery.filter(Boolean).slice(0, 4);
+  if (more.length) card.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(...more.map((url) => new MediaGalleryItemBuilder().setURL(url))));
 
   const shown = sections
     .map((section) => ({ title: section.title, limit: section.limit, lines: (section.lines ?? []).filter(Boolean) }))

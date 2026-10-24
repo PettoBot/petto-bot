@@ -272,8 +272,9 @@ const near = (actual, expected, tolerance = 6) => actual.every((value, index) =>
     assert.ok(levelUp.layers.some((layer) => layer.shape === 'hexagon') && levelUp.layers.some((layer) => layer.id === 'decoration') && levelUp.layers.some((layer) => layer.id === 'nameplate'));
     const lvPng = await renderCard(levelUp, { resolveText: async (value) => value.replace('{level}', '31').replace('{level_previous}', '30').replace('{user.display_name}', 'liam').replace(/\{[a-z_.]+\}/g, ''), avatar: async () => avatar, loadSource: async () => null });
     assert.equal(lvPng.subarray(1, 4).toString(), 'PNG');
-    const plain = normalizeCard({ kind: 'rank', mode: 'basic', basic: { preset: 'levelup', showDecoration: false, showNameplate: false, showTag: false } }).card;
-    assert.ok(!plain.layers.some((layer) => ['decoration', 'nameplate', 'badge', 'tag'].includes(layer.id)), 'the switches take those layers out');
+    const plain = normalizeCard({ kind: 'rank', mode: 'basic', basic: { preset: 'levelup', showDecoration: false, showNameplate: false } }).card;
+    assert.ok(!plain.layers.some((layer) => ['decoration', 'nameplate'].includes(layer.id)), 'the switches take those layers out');
+    assert.ok(!levelUp.layers.some((layer) => ['badge', 'tag'].includes(layer.id)), 'the level-up layout does not draw the server tag');
     const texts = normalizeCard({ kind: 'rank', mode: 'basic', basic: { preset: 'levelup', extra: 'RANK #{level_rank}', subtitle: '{level_xp_current} / {level_xp_needed} XP' } }).card.basic;
     assert.deepEqual([texts.extra, texts.subtitle], ['#{level_rank}', 'You are now in Top {level_top_percent}%'], 'a level-up card that still has the rank texts gets its own');
     assert.equal(normalizeCard({ kind: 'rank', mode: 'basic', basic: { preset: 'levelup', extra: 'Mine' } }).card.basic.extra, 'Mine', 'what the server wrote is kept');

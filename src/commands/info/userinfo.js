@@ -1,8 +1,9 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, AttachmentBuilder } = require('discord.js');
 const { INFO_ACCENT, infoPayload, clip, stamp, line } = require('../../utils/infoCard');
 const { badgeList, badgeText } = require('../../utils/userBadges');
-const { dominantColor } = require('../../utils/dominantColor');
-const { decorationUrl, animatedDecorationUrl, nameplateUrl, serverTag } = require('../../utils/profileLook');
+const { EMOJI } = require('../../utils/emojis');
+const { renderProfileLook } = require('../../utils/profileLookImage');
+const { decorationUrl, nameplateUrl, serverTag } = require('../../utils/profileLook');
 const { t, languageOf } = require('../../i18n');
 
 const ROLE_LIST_LIMIT = 800;
@@ -56,48 +57,36 @@ module.exports = {
     const globalBanner = user.bannerURL?.({ size: 1024 }) ?? null;
     const banner = serverBanner ?? globalBanner;
     const shownAvatar = serverAvatar ?? globalAvatar;
-    const accent = (await dominantColor(member?.avatar ? member.displayAvatarURL({ extension: 'png', size: 128 }) : user.displayAvatarURL({ extension: 'png', size: 128 })))
-      ?? (member?.displayColor || user.accentColor || INFO_ACCENT);
     const displayName = member?.displayName ?? user.globalName ?? user.username;
+
+    // One row of a section: a small Petto icon, the label in bold and the value.
+    const row = (icon, label, value) => (value === null || value === undefined || value === '' ? null : `${icon} **${label}** ${value}`);
+    const tag = serverTag(user);
+    const decoration = decorationUrl(user);
+    const nameplate = nameplateUrl(user);
 
     const sections = [
       {
         title: t(lang, 'info.userinfo.account'),
         lines: [
-          line(t(lang, 'info.userinfo.username'), `\`${user.username}\``),
-          line(t(lang, 'info.label.type'), t(lang, user.bot ? 'info.userinfo.botAccount' : 'info.userinfo.userAccount')),
-          line(t(lang, 'info.label.created'), stamp(user.createdTimestamp)),
-          badges.length ? line(t(lang, 'info.userinfo.badges'), badgeText(badges)) : null,
+          row(EMOJI.FIELD_DOT, t(lang, 'info.userinfo.username'), `\`${user.username}\``),
+          row(EMOJI.MEMBERS, t(lang, 'info.label.type'), t(lang, user.bot ? 'info.userinfo.botAccount' : 'info.userinfo.userAccount')),
+          row(EMOJI.FIELD_CALENDAR, t(lang, 'info.label.created'), stamp(user.createdTimestamp)),
+          badges.length ? row(EMOJI.STAR, t(lang, 'info.userinfo.badges'), badgeText(badges)) : null,
         ],
       },
     ];
-
-    // What Discord shows around the person: only the parts they have. The decoration also has its moving picture when it moves.
-    const decoration = decorationUrl(user);
-    const moving = animatedDecorationUrl(user);
-    const nameplate = nameplateUrl(user);
-    const tag = serverTag(user);
-    if (decoration || nameplate || tag) {
-      sections.push({
-        title: t(lang, 'info.userinfo.look'),
-        lines: [
-          decoration ? line(t(lang, 'info.userinfo.decoration'), moving ? `[${t(lang, 'info.userinfo.lookStill')}](${decoration}) · [${t(lang, 'info.userinfo.lookAnimated')}](${moving})` : `[${t(lang, 'info.userinfo.lookView')}](${decoration})`) : null,
-          nameplate ? line(t(lang, 'info.userinfo.nameplate'), `[${t(lang, 'info.userinfo.lookView')}](${nameplate})`) : null,
-          tag ? line(t(lang, 'info.userinfo.serverTag'), `\`${tag}\``) : null,
-        ],
-      });
-    }
 
     if (member) {
       const joinPos = joinPosition(interaction.guild, member);
       sections.push({
         title: t(lang, 'info.userinfo.inServer'),
         lines: [
-          line(t(lang, 'info.label.joined'), member.joinedTimestamp ? `${stamp(member.joinedTimestamp)}${joinPos ? ` · #${joinPos}` : ''}` : null),
-          line(t(lang, 'info.userinfo.nickname'), member.nickname ? clip(member.nickname, 64) : null),
-          member.premiumSinceTimestamp ? line(t(lang, 'info.userinfo.boostingSince'), `<t:${Math.floor(member.premiumSinceTimestamp / 1000)}:R>`) : null,
+          row(EMOJI.FIELD_CALENDAR, t(lang, 'info.label.joined'), member.joinedTimestamp ? `${stamp(member.joinedTimestamp)}${joinPos ? ` · #${joinPos}` : ''}` : null),
+          row(EMOJI.FIELD_NOTES, t(lang, 'info.userinfo.nickname'), member.nickname ? clip(member.nickname, 64) : null),
+          member.premiumSinceTimestamp ? row(EMOJI.STAR, t(lang, 'info.userinfo.boostingSince'), `<t:${Math.floor(member.premiumSinceTimestamp / 1000)}:R>`) : null,
           member.communicationDisabledUntilTimestamp && member.communicationDisabledUntilTimestamp > Date.now()
-            ? line(t(lang, 'info.userinfo.timedOutUntil'), `<t:${Math.floor(member.communicationDisabledUntilTimestamp / 1000)}:R>`)
+            ? row(EMOJI.SAFETY, t(lang, 'info.userinfo.timedOutUntil'), `<t:${Math.floor(member.communicationDisabledUntilTimestamp / 1000)}:R>`)
             : null,
         ],
       });
@@ -106,20 +95,29 @@ module.exports = {
       sections.push({ title: t(lang, 'info.userinfo.roles', { count: roles.length }), lines: [roles.length ? roleList(roles, lang) : t(lang, 'info.userinfo.noRoles')] });
     }
 
-    await interaction.reply(infoPayload({
-      accent,
-      title: displayName,
-      thumbnail: shownAvatar,
-      banner,
-      subtitle: [`<@${user.id}>${user.bot ? ' · Bot' : ''}`],
-      sections,
-      footer: t(lang, 'info.card.id', { id: user.id }),
-      buttons: [
-        { label: t(lang, serverAvatar ? 'info.button.globalAvatar.button' : 'info.button.avatar.button'), url: globalAvatar },
-        { label: t(lang, 'info.button.serverAvatar.button'), url: serverAvatar },
-        { label: t(lang, serverBanner ? 'info.button.globalBanner.button' : 'info.button.banner.button'), url: globalBanner },
-        { label: t(lang, 'info.button.serverBanner.button'), url: serverBanner },
-      ],
-    }));
+    // The decoration is drawn on the avatar, as Discord shows it, and the nameplate is a picture of its own: both are seen in the card.
+    const look = decoration ? await renderProfileLook(user, { member }) : null;
+    const files = look ? [new AttachmentBuilder(look.buffer, { name: look.name })] : [];
+    if (tag || decoration || nameplate) sections.push({ title: t(lang, 'info.userinfo.cosmetics'), lines: [t(lang, 'info.userinfo.cosmeticsHint', { command: '/usercosmetics' })] });
+
+    await interaction.reply({
+      ...infoPayload({
+        accent: null,
+        title: displayName,
+        thumbnail: look ? `attachment://${look.name}` : shownAvatar,
+        banner,
+        gallery: nameplate ? [nameplate] : [],
+        subtitle: [[`<@${user.id}>${user.bot ? ' · Bot' : ''}`, tag ? `\`${tag}\`` : null].filter(Boolean).join('  ·  ')],
+        sections,
+        footer: t(lang, 'info.card.id', { id: user.id }),
+        buttons: [
+          { label: t(lang, serverAvatar ? 'info.button.globalAvatar.button' : 'info.button.avatar.button'), url: globalAvatar },
+          { label: t(lang, 'info.button.serverAvatar.button'), url: serverAvatar },
+          { label: t(lang, serverBanner ? 'info.button.globalBanner.button' : 'info.button.banner.button'), url: globalBanner },
+          { label: t(lang, 'info.button.serverBanner.button'), url: serverBanner },
+        ],
+      }),
+      files,
+    });
   },
 };

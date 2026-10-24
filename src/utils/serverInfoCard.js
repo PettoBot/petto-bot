@@ -6,7 +6,6 @@ const {
 const { EMOJI } = require('./emojis');
 const { t, tn, formatNumber, currentLanguage } = require('../i18n');
 
-const ACCENT = 0xf0a88f;
 const BOOSTS_FOR_LEVEL = [0, 2, 7, 14];
 // The features worth showing, with the words people know them by (catalog keys).
 const FEATURE_NAMES = {
@@ -50,7 +49,8 @@ function buildServerInfoCard(d) {
     row(EMOJI.FIELD_DOT, t(lang, 'info.serverinfo.owner'), d.ownerId ? `<@${d.ownerId}>` : t(lang, 'info.unknown')),
   ].filter(Boolean).join('\n');
 
-  const card = new ContainerBuilder().setAccentColor(ACCENT);
+  // No color on the side: the card is organized by its separators and icons.
+  const card = new ContainerBuilder();
   const headerText = new TextDisplayBuilder().setContent(header);
   if (d.iconUrl) card.addSectionComponents(new SectionBuilder().addTextDisplayComponents(headerText).setThumbnailAccessory(new ThumbnailBuilder().setURL(d.iconUrl)));
   else card.addTextDisplayComponents(headerText);
@@ -85,11 +85,13 @@ function buildServerInfoCard(d) {
     features ? row(EMOJI.APPROVE, t(lang, 'info.serverinfo.features'), features) : null,
   ].filter(Boolean);
 
+  card.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Large));
+  card.addTextDisplayComponents(new TextDisplayBuilder().setContent([`### ${EMOJI.MEMBERS} ${t(lang, 'info.serverinfo.sectionPeople')}`, ...members, channels].join('\n')));
   card.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
-  card.addTextDisplayComponents(new TextDisplayBuilder().setContent([...members, channels].join('\n')));
-  card.addSeparatorComponents(new SeparatorBuilder().setDivider(false).setSpacing(SeparatorSpacingSize.Small));
-  card.addTextDisplayComponents(new TextDisplayBuilder().setContent(server.join('\n')));
-  card.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
+  card.addTextDisplayComponents(new TextDisplayBuilder().setContent([`### ${EMOJI.SAFETY} ${t(lang, 'info.serverinfo.sectionServer')}`, ...server].join('\n')));
+  // The invite splash (the picture of the invite page) is shown too, under the details.
+  if (d.splashUrl) card.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(d.splashUrl)));
+  card.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Large));
   card.addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'info.serverinfo.footer', { id: d.id, shard: d.shard, shards: d.shards })));
 
   const links = [
