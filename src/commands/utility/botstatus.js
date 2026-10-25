@@ -30,7 +30,7 @@ module.exports = {
     const requested = interaction.options.getString('status');
     if (!requested) {
       const status = await currentStatus();
-      return reply(interaction, `${EMOJI.STAR} Petto's status is **${LABELS[status]}**.\n-# Change it with \`!botstatus online\`, \`idle\`, \`dnd\` or \`invisible\`. The phone icon only shows with online.${config.mobileStatus ? '' : ' The phone app mode is off (PETTO_MOBILE_STATUS=false).'}`, 0x4b4f59);
+      return reply(interaction, `${EMOJI.STAR} Petto's status is **${LABELS[status]}**.\n-# Change it with \`!botstatus online\`, \`idle\`, \`dnd\` or \`invisible\`. The phone icon only shows with online.${config.mobileStatus ? '' : ' The phone app mode is off (PETTO_MOBILE_STATUS=false).'}`);
     }
 
     try {

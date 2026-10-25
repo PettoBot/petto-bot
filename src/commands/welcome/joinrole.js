@@ -72,12 +72,12 @@ async function listCmd(interaction) {
 
   const roles = await db.listRoles(interaction.guild.id);
   if (!roles.length) {
-    await interaction.editReply({ components: [textCard(t(lang, 'welcome.joinRole.empty'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'welcome.joinRole.empty'))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const lines = roles.map((r) => `<@&${r.role_id}> — ${targetLabel(r.target, lang)}`);
-  await interaction.editReply({ components: [textCard(`${t(lang, 'welcome.joinRole.listTitle', { count: roles.length })}\n${lines.join('\n')}`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(`${t(lang, 'welcome.joinRole.listTitle', { count: roles.length })}\n${lines.join('\n')}`)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function clearCmd(interaction) {

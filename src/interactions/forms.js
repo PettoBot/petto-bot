@@ -15,8 +15,8 @@ const { t, languageOf } = require('../i18n');
 
 const { PREFIX } = forms;
 const EPHEMERAL_V2 = MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral;
-const RED = 0xf23f43;
-const GREEN = 0x23a55a;
+const RED = 0xfe6465;
+const GREEN = 0xa5ea7a;
 
 // `card` is for edits and updates (an edit cannot change whether a message is ephemeral); `reply` adds it for new answers.
 const card = (text, color, rows = []) => ({ components: [textCard(text, color), ...rows], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
@@ -149,7 +149,7 @@ async function handle(interaction) {
   if (action === 'n') return showPage(interaction, first, Number(second) || 0, lang);
   if (action === 'x') {
     forms.dropDraft(interaction.guild.id, interaction.user.id, first);
-    return interaction.update(card(t(lang, 'forms.stopped'), 0x4b4f59));
+    return interaction.update(card(t(lang, 'forms.stopped')));
   }
   if (action === 'a' || action === 'd') return askReason(interaction, action, number, lang);
   if (action === 't') return threadPressed(interaction, number, lang);

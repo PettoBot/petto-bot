@@ -53,7 +53,7 @@ module.exports = {
     ]);
     const summary = buildSummary({ days, channelRows, hourlyRows, flowRows, memberRows, caseRows, botId: interaction.client.user.id });
 
-    const container = new ContainerBuilder().setAccentColor(ACCENTS[metric] ?? COLORS.DEFAULT);
+    const container = new ContainerBuilder();
     container.addTextDisplayComponents(new TextDisplayBuilder().setContent(tn(lang, 'info.summary.header', days, { title: t(lang, `info.summary.title.${metric}`), server: guild.name, count: days })));
 
     let files;
@@ -73,4 +73,4 @@ module.exports = {
   },
 };
 
-const notice = (text) => new ContainerBuilder().setAccentColor(COLORS.DEFAULT).addTextDisplayComponents(new TextDisplayBuilder().setContent(text));
+const notice = (text) => new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(text));

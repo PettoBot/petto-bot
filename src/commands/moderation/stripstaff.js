@@ -49,7 +49,7 @@ module.exports = {
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
     const staff = staffRolesOf(member);
     if (!staff.length) {
-      await interaction.editReply({ components: [textCard(t(lang, 'moderation.stripstaff.none', { user: `${user}` }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
+      await interaction.editReply({ components: [textCard(t(lang, 'moderation.stripstaff.none', { user: `${user}` }))], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
       return;
     }
     const { assignable, blocked } = filterAssignableRoles(interaction, staff, lang);

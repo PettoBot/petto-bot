@@ -50,7 +50,7 @@ module.exports = {
     if (setting && setting !== 'settings') {
       if (!SETTINGS.includes(setting)) return reply(t(lang, 'moderation.appeals.settings.usage'), 0xfe6465);
       const config = await getConfig(guildId);
-      if (!value) return reply(`${t(lang, `moderation.appeals.settings.help.${setting}`)}\n\n${summary(config, lang)}`, 0x4b4f59);
+      if (!value) return reply(`${t(lang, `moderation.appeals.settings.help.${setting}`)}\n\n${summary(config, lang)}`);
       let patch = null;
       if (setting === 'types') {
         const types = OFF.includes(value.toLowerCase()) ? [] : listOf(value, PUNISHMENT_TYPES, TYPE_ALIASES);
@@ -80,7 +80,7 @@ module.exports = {
     const config = await getConfig(guildId);
     const link = siteLink(guildId, config.slug);
     if (!config.enabled) {
-      return reply(`${t(lang, 'moderation.appeals.off', { link })}\n\n${summary(config, lang)}`, 0x4b4f59);
+      return reply(`${t(lang, 'moderation.appeals.off', { link })}\n\n${summary(config, lang)}`);
     }
     let pending = 0;
     try { pending = await countPendingAll(guildId); } catch { /* The count is a bonus. */ }

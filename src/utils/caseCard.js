@@ -10,6 +10,7 @@ const {
   ThumbnailBuilder,
 } = require('discord.js');
 const { EMOJI, TYPE_EMOJI } = require('./emojis');
+const { semanticColor, colorFromText } = require('./colors');
 const { t, tn, currentLanguage } = require('../i18n');
 const { typeName, displayReason, reasonText, capitalize } = require('./caseFormat');
 
@@ -42,12 +43,15 @@ function buildCaseCard({ caseNumber, type, target, reason, duration, lang = curr
 }
 
 /** A single-block Components V2 card for plain status text (errors, confirmations) once a reply is already in V2 mode. */
-function textCard(text, color = 0x4b4f59) {
+function textCard(text, color = null, { keep = false } = {}) {
   const container = new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(text));
-  return color === null ? container : container.setAccentColor(color); // null: a card with no color
+  // Only green and red (given, or from the icon the text starts with); `keep` is for the sanction cards, which keep their own colors.
+  const accent = keep && Number.isInteger(color) ? color : (semanticColor(color) ?? colorFromText(text));
+  return accent === null ? container : container.setAccentColor(accent);
 }
 
-const LIST_ACCENT = 0x8c7cff;
+// The list of cases has no color, except when it is the list of one member: it then takes the color of their latest sanction.
+const LIST_ACCENT = null;
 const REASON_PREVIEW_LENGTH = 180;
 
 function unixSeconds(value) {
@@ -91,7 +95,7 @@ function buildCaseListCard({ rows, count, page, perPage, guild, user = null, ids
     : guild.iconURL?.({ extension: 'png', size: 256 });
 
   const headerText = new TextDisplayBuilder().setContent([
-    `## ${EMOJI.HAMMER} ${title}`,
+    `### ${EMOJI.HAMMER} ${title}`,
     subject,
     tn(lang, 'moderation.caseList.summary', count, { count, page: page + 1, pages: totalPages }),
   ].join('\n'));

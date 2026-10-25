@@ -7,7 +7,7 @@ const { t, currentLanguage } = require('../i18n');
 const { deleteLater } = require('../utils/counting');
 
 async function tell(guild, channel, text, seconds = 0) {
-  const sent = await channel.send({ ...plainCard(text, 0xffd563), allowedMentions: { parse: [], users: [] } }).catch(() => null);
+  const sent = await channel.send({ ...plainCard(text), allowedMentions: { parse: [], users: [] } }).catch(() => null);
   deleteLater(sent, seconds);
 }
 

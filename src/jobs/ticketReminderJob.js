@@ -29,7 +29,7 @@ async function checkTicketReminders(client) {
       const roles = (category?.support_role_ids ?? []).filter((id) => guild.roles.cache.has(id));
       const ping = roles.map((id) => `<@&${id}>`).join(' ');
       await channel.send({
-        components: [textCard(`${ping ? `${ping}\n` : ''}${t(lang, 'tickets.reminder.unclaimed', { minutes: row.unclaimed_reminder_minutes })}`, 0xffd563)],
+        components: [textCard(`${ping ? `${ping}\n` : ''}${t(lang, 'tickets.reminder.unclaimed', { minutes: row.unclaimed_reminder_minutes })}`)],
         flags: MessageFlags.IsComponentsV2,
         allowedMentions: { roles },
       }).catch((err) => logger.warn(`Ticket #${ticket.ticket_number}: the reminder could not be sent: ${err.message}`));

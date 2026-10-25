@@ -39,7 +39,7 @@ module.exports = {
     );
 
     if (!activity) {
-      await interaction.editReply({ components: [textCard(t(lang, 'info.activity.none', { name: target.displayName }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'info.activity.none', { name: target.displayName }))], flags: MessageFlags.IsComponentsV2 });
       return;
     }
 

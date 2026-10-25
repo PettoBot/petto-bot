@@ -105,12 +105,13 @@ function aggregateGatewayState(client) {
   return 'idle';
 }
 
-const STATE_COLORS = { online: 0xa5ea7a, idle: 0xfed53c, outage: 0xfe6465, offline: 0x4b4f59 };
+// Only an outage is red and only a healthy service is green; the other states have no color.
+const STATE_COLORS = { online: 0xa5ea7a, idle: null, outage: 0xfe6465, offline: 0xfe6465 };
 const STATE_LABELS = { online: 'All services operational', idle: 'Service degradation detected', outage: 'Partial outage detected', offline: 'Petto is offline' };
 
 /** A card with a title, some text under a line and a small footer. */
 function statusCard({ color, title, lines, footer }) {
-  const card = new ContainerBuilder().setAccentColor(color)
+  const card = new ContainerBuilder().setAccentColor(color ?? null)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### ${title}`))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
@@ -286,7 +287,7 @@ const LOG_MESSAGE_LIMIT = 1900;
 let logLines = []; // { level, text }
 let logTimer = null;
 
-const LEVEL_COLORS = { error: 0xfe6465, warn: 0xfed53c, info: 0x8799ff };
+const LEVEL_COLORS = { error: 0xfe6465, warn: null, info: null };
 const LEVEL_RANK = { info: 0, warn: 1, error: 2 };
 
 function flushLogLines(client) {
@@ -303,7 +304,7 @@ function flushLogLines(client) {
   if (current.text) groups.push(current);
   // At most three cards per flush; the rest of a flood is dropped from the channel (it is still in the host log).
   for (const group of groups.slice(0, 3)) {
-    const card = new ContainerBuilder().setAccentColor(LEVEL_COLORS[group.level]).addTextDisplayComponents(new TextDisplayBuilder().setContent(group.text));
+    const card = new ContainerBuilder().setAccentColor(LEVEL_COLORS[group.level] ?? null).addTextDisplayComponents(new TextDisplayBuilder().setContent(group.text));
     sendToChannel(client, channelIdFor('general'), { components: [card], flags: MessageFlags.IsComponentsV2 | MessageFlags.SuppressNotifications, allowedMentions: { parse: [] } }).catch(() => {});
   }
 }

@@ -718,7 +718,7 @@ async function eventCmd(interaction, sub, lang) {
         when: t(lang, running ? 'leveling.event.ends' : 'leveling.event.starts', { time: `<t:${unix}:R>` }),
       });
     });
-    await reply(interaction, lines.length ? lines.join('\n') : t(lang, 'leveling.event.none'), 0x4b4f59);
+    await reply(interaction, lines.length ? lines.join('\n') : t(lang, 'leveling.event.none'));
     return;
   }
 
@@ -825,7 +825,7 @@ async function statusCmd(interaction, lang) {
     t(lang, 'leveling.status.multipliers', { list: multipliers.length ? multipliers.map((m) => `${m.target_type === 'role' ? `<@&${m.target_id}>` : `<#${m.target_id}>`} ×${m.multiplier}`).join(', ') : t(lang, 'leveling.status.noneMultipliers') }),
   ];
 
-  await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(lines.join('\n'))], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function rewardCmd(interaction, sub, lang) {
@@ -837,7 +837,7 @@ async function rewardCmd(interaction, sub, lang) {
     const text = rewards.length
       ? [lines('text').length ? t(lang, 'leveling.reward.listMessages', { lines: lines('text').join('\n') }) : '', lines('voice').length ? t(lang, 'leveling.reward.listVoice', { lines: lines('voice').join('\n') }) : ''].filter(Boolean).join('\n\n')
       : t(lang, 'leveling.reward.none');
-    await reply(interaction, text, 0x4b4f59);
+    await reply(interaction, text);
     return;
   }
 
@@ -866,7 +866,7 @@ async function multiplierCmd(interaction, sub, lang) {
       value: m.multiplier,
     });
     const text = multipliers.length ? multipliers.map(item).join('\n') : t(lang, 'leveling.multiplier.none');
-    await reply(interaction, text, 0x4b4f59);
+    await reply(interaction, text);
     return;
   }
 

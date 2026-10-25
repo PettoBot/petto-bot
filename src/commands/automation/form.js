@@ -15,8 +15,8 @@ const { EMOJI } = require('../../utils/emojis');
 const { t, tn, languageOf } = require('../../i18n');
 
 const ok = (text) => textCard(`${EMOJI.APPROVE}  ${text}`, 0xa5ea7a);
-const note = (text) => textCard(text, 0x4b4f59);
-const bad = (text) => textCard(text, 0xf23f43);
+const note = (text) => textCard(text);
+const bad = (text) => textCard(text, 0xfe6465);
 const unix = (value) => Math.floor(new Date(value).getTime() / 1000);
 
 const SETTINGS = [
@@ -274,7 +274,7 @@ async function infoText(guild, form, lang) {
     return t(lang, own.text ? 'forms.info.messageOwn' : 'forms.info.messageDefault');
   };
   return [
-    `## ${form.title}`,
+    `### ${form.title}`,
     t(lang, 'forms.info.head', { name: form.name, id: form.id, state: t(lang, form.status === 'open' ? 'forms.info.open' : 'forms.info.closed') }),
     form.description ? `> ${forms.clip(form.description, 300).replace(/\n/g, '\n> ')}` : null,
     t(lang, form.web_enabled === false ? 'forms.info.webOff' : 'forms.info.web', { url: forms.webUrl(form, lang), name: form.name }),
@@ -395,7 +395,7 @@ async function execute(interaction) {
     });
     if (!result.ok) return done(bad(t(lang, 'forms.review.already')));
     const { reviewSummary } = require('../../interactions/forms');
-    return done(textCard(reviewSummary(result, lang), result.submission.status === 'accepted' ? 0x23a55a : 0xf23f43));
+    return done(textCard(reviewSummary(result, lang), result.submission.status === 'accepted' ? 0xa5ea7a : 0xfe6465));
   }
 
   if (sub === 'panel') {

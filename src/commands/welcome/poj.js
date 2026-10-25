@@ -81,7 +81,7 @@ async function listCmd(interaction) {
 
   const lines = [config.enabled ? t(lang, 'welcome.poj.status.enabled', { emoji: EMOJI.APPROVE }) : t(lang, 'welcome.poj.status.disabled', { emoji: EMOJI.DENY })];
   lines.push(channels.length ? channels.map((c) => t(lang, 'welcome.poj.listLine', { channel: `<#${c.channel_id}>`, duration: formatDuration(c.delete_after_ms, lang) })).join('\n') : t(lang, 'welcome.poj.noChannels'));
-  await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(lines.join('\n'))], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function enableCmd(interaction) {

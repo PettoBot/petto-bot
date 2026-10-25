@@ -23,7 +23,6 @@ const OWNER_ID = '293504726505357312';
 /** Public-facing thank-you sent to whoever added the bot, no internal server data in it. */
 function buildThanksMessage(guildName, setupMention, prefix, lang = currentLanguage()) {
   const container = new ContainerBuilder()
-    .setAccentColor(0x4b4f59)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(t(lang, 'core.join.thanks', { emoji: EMOJI.STAR, server: guildName })),
       new TextDisplayBuilder().setContent(t(lang, 'core.join.howToStart', { setup: setupMention, prefix })),

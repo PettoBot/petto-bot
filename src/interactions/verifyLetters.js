@@ -25,8 +25,6 @@ function startButton(guildId, lang = currentLanguage()) {
   return new ButtonBuilder().setCustomId(ids.start(guildId)).setLabel(t(lang, 'verify.letters.start.button')).setEmoji('🔤').setStyle(ButtonStyle.Primary);
 }
 
-const PANEL_COLOR = 0xffb86c;
-const LINK_COLOR = 0x5865f2;
 
 /** The picture of the server for the cards (its icon), or Petto's when it has none, or null. */
 function serverPicture(guild) {
@@ -68,7 +66,7 @@ async function lockPicture(interaction) {
 }
 
 const reply = (interaction, container) => (interaction.replied || interaction.deferred ? interaction.followUp : interaction.reply).call(interaction, { components: [container], flags: flagsFor(interaction) });
-const say = (interaction, text) => reply(interaction, new ContainerBuilder().setAccentColor(0x4b4f59).addTextDisplayComponents(new TextDisplayBuilder().setContent(text)));
+const say = (interaction, text) => reply(interaction, new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(text)));
 
 /** Whether this member still has to verify in that server, with the settings; or `{ error }` with what to tell them. */
 async function situation(client, guildId, userId, lang) {
@@ -92,7 +90,7 @@ async function showPicture(interaction, guildId, lang, { replace = false } = {})
   const challenge = captcha.createChallenge(jti);
   tickets.set(key(guildId, interaction.user.id), { ticket: challenge.ticket, jti, until: Date.now() + TICKET_TTL_SECONDS * 1000 });
   if (tickets.size > 2_000) tickets.delete(tickets.keys().next().value);
-  const container = new ContainerBuilder().setAccentColor(0xffb86c)
+  const container = new ContainerBuilder()
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'verify.letters.picture', { server: state.guild.name, minutes: Math.round(TICKET_TTL_SECONDS / 60) })))
     .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://verify.png')))
     .addActionRowComponents(new ActionRowBuilder().addComponents(
@@ -116,7 +114,7 @@ function buildPanel({ guild, method, lang = currentLanguage() }) {
   if (letters) row.addComponents(startButton(guild.id, lang));
   const steps = link && letters ? 'both' : letters ? 'letters' : 'link';
   const text = [t(lang, 'verify.panel.title'), t(lang, 'verify.panel.welcome', { server: guild.name }), '', t(lang, `verify.panel.steps.${steps}`)].join('\n');
-  const container = withPicture(new ContainerBuilder().setAccentColor(PANEL_COLOR), text, serverPicture(guild))
+  const container = withPicture(new ContainerBuilder(), text, serverPicture(guild))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small))
     .addActionRowComponents(row)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'verify.panel.footer')));
@@ -137,13 +135,13 @@ async function sendLink(interaction, guildId, lang) {
   const made = verifyLinkFor(interaction.user.id, guildId);
   if (!made.url) {
     if (!config.verifyTokenSecret) return say(interaction, t(lang, 'verify.link.notSetUp'));
-    const container = new ContainerBuilder().setAccentColor(PANEL_COLOR)
+    const container = new ContainerBuilder()
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'verify.link.useLetters')))
       .addActionRowComponents(new ActionRowBuilder().addComponents(startButton(guildId, lang)));
     return reply(interaction, container);
   }
   const text = [t(lang, 'verify.link.title'), t(lang, 'verify.link.body', { server: guild.name, expires: `<t:${made.expiresAt}:R>` })].join('\n');
-  const container = withPicture(new ContainerBuilder().setAccentColor(LINK_COLOR), text, serverPicture(guild))
+  const container = withPicture(new ContainerBuilder(), text, serverPicture(guild))
     .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(made.url).setLabel(t(lang, 'verify.link.open')).setEmoji('🔗')))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'verify.link.fallback', { link: made.url })));
   return reply(interaction, container);

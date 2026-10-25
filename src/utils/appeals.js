@@ -9,6 +9,7 @@ const { ACCEPT_KEYS, MAX_FILES_LIMIT } = require('./appealFile');
 const { textCard } = require('./caseCard');
 const logger = require('./logger');
 const { t, guildLanguage, normalizeLanguage, currentLanguage, defaultText } = require('../i18n');
+const { semanticColor } = require('./colors');
 
 const PREFIX = 'appeal';
 const LIMITS = { forms: 10, sections: 6, questions: 12, options: 20, label: 200, help: 300, short: 300, paragraph: 1500, number: 20, reply: 1500, greeting: 600, link: 300 };
@@ -308,7 +309,8 @@ const answerValue = (answer, lang) => {
   return Array.isArray(answer.value) ? answer.value.join(', ') : String(answer.value);
 };
 
-const STATUS_COLORS = { pending: 0xfed53c, accepted: 0xa5ea7a, rejected: 0xfe6465, withdrawn: 0x4b4f59 };
+// Only an answer has a color: accepted is green and rejected is red; pending and withdrawn have none.
+const STATUS_COLORS = { pending: null, accepted: 0xa5ea7a, rejected: 0xfe6465, withdrawn: null };
 
 async function fetchChannel(guild, channelId) {
   if (!channelId) return null;
@@ -340,10 +342,10 @@ const dashboardUrl = (guildId) => `https://petto.sbs/dash/guild/${guildId}/appea
  */
 function buildStaffCard({ submission, form, config, lang = currentLanguage(), files = [], pings = [], moderatorId = null }) {
   const status = submission.status ?? 'pending';
-  const container = new ContainerBuilder().setAccentColor(STATUS_COLORS[status] ?? STATUS_COLORS.pending);
+  const container = new ContainerBuilder().setAccentColor(semanticColor(STATUS_COLORS[status] ?? STATUS_COLORS.pending));
   const head = [
     ...(pings.length ? [pings.map((r) => `<@&${r}>`).join(' ')] : []),
-    `## ${t(lang, 'appeals.card.title', { form: clip(submission.form_name || form?.name, 80) })}`,
+    `### ${t(lang, 'appeals.card.title', { form: clip(submission.form_name || form?.name, 80) })}`,
     `<@${submission.user_id}> · \`${clip(submission.username, 60)}\` · \`${submission.user_id}\``,
     `-# ${t(lang, `appeals.card.status.${status}`)}`,
   ].join('\n');

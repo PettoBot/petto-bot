@@ -43,7 +43,7 @@ function buildServerInfoCard(d) {
   const lang = d.lang ?? currentLanguage();
   const n = (value) => formatNumber(lang, value);
   const header = [
-    `## ${clip(d.name, 100)}`,
+    `### ${clip(d.name, 100)}`,
     d.description ? `> ${clip(d.description, 280)}` : null,
     row(EMOJI.FIELD_DOT, t(lang, 'info.label.created'), `<t:${unix(d.createdTimestamp)}:D> (<t:${unix(d.createdTimestamp)}:R>)`),
     row(EMOJI.FIELD_DOT, t(lang, 'info.serverinfo.owner'), d.ownerId ? `<@${d.ownerId}>` : t(lang, 'info.unknown')),

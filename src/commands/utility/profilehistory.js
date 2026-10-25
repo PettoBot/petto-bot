@@ -8,7 +8,6 @@ const { EMOJI } = require('../../utils/emojis');
 const { COLORS } = require('../../utils/colors');
 const { t, tn, languageOf } = require('../../i18n');
 
-const ACCENT = 0x8c7cff;
 const MAX_LINES = 40;
 const V2 = MessageFlags.IsComponentsV2;
 const unix = (value) => Math.floor(new Date(value).getTime() / 1000);
@@ -79,12 +78,12 @@ async function showCmd(interaction, kindName) {
   const rows = await history.list(user.id, kind, { guildId: kind === 'nickname' ? interaction.guild.id : null });
   const total = rows.length;
   const title = kind === 'name' ? t(lang, 'utility.history.namesTitle', { name: user.username }) : t(lang, 'utility.history.nicknamesTitle', { name: member?.displayName ?? user.username });
-  if (!total) return interaction.editReply({ components: [textCard(t(lang, `utility.history.empty.${kindName}`), 0x4b4f59)], flags: V2 });
+  if (!total) return interaction.editReply({ components: [textCard(t(lang, `utility.history.empty.${kindName}`))], flags: V2 });
   const now = `**${t(lang, 'utility.history.now')}**`;
   // \x60 is the backtick: written so, the text scanner of scripts/find-hardcoded-text.js does not read a template there.
   const lines = rows.slice(0, MAX_LINES).map((row, index) => `${index === 0 ? now : `${index + 1}.`} ${String(row.value).replace(/[\\\x60*_~|>]/g, '\\$&')} · <t:${unix(row.seen_at)}:R>`);
   const saved = total > MAX_LINES ? t(lang, 'utility.history.savedMore', { count: total, shown: MAX_LINES }) : tn(lang, 'utility.history.saved', total, { count: total });
-  const container = new ContainerBuilder().setAccentColor(ACCENT)
+  const container = new ContainerBuilder()
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### ${title}\n${saved}`))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n').slice(0, 3500)));
@@ -93,12 +92,12 @@ async function showCmd(interaction, kindName) {
 
 async function showAvatars(interaction, user, lang) {
   const rows = await history.list(user.id, 'avatar');
-  if (!rows.length) return interaction.editReply({ components: [textCard(t(lang, 'utility.history.empty.avatars'), 0x4b4f59)], flags: V2 });
+  if (!rows.length) return interaction.editReply({ components: [textCard(t(lang, 'utility.history.empty.avatars'))], flags: V2 });
   // The kept copies first (Discord no longer serves most old avatars), the Discord link for the rest.
   const stored = await images.getMany(user.id, rows.slice(0, MAX_TILES).map((row) => row.value)).catch(() => new Map());
   const sheet = await renderAvatarSheet(user.id, rows, { stored });
   const saved = rows.length > MAX_TILES ? t(lang, 'utility.history.avatarsSavedMore', { count: rows.length, shown: MAX_TILES }) : tn(lang, 'utility.history.avatarsSaved', rows.length, { count: rows.length });
-  const container = new ContainerBuilder().setAccentColor(ACCENT)
+  const container = new ContainerBuilder()
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### ${t(lang, 'utility.history.avatarsTitle', { name: user.username })}\n${saved}`))
     .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://avatars.png')));
   return interaction.editReply({ components: [container], files: [new AttachmentBuilder(sheet.buffer, { name: 'avatars.png' })], flags: V2, allowedMentions: { parse: [] } });

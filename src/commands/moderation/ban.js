@@ -257,7 +257,7 @@ async function unban(interaction) {
     await interaction.guild.members.unban(targetUser.id, reason ?? undefined);
   } catch (err) {
     if (err.code === 10026) {
-      await interaction.editReply({ components: [textCard(t(lang, 'moderation.unban.notBanned'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'moderation.unban.notBanned'))], flags: MessageFlags.IsComponentsV2 });
     } else {
       logger.error('Failed to unban member:', err);
       await interaction.editReply({ components: [textCard(t(lang, 'moderation.unban.failed'), 0xfe6465)], flags: MessageFlags.IsComponentsV2 });
@@ -301,7 +301,7 @@ async function unbanAll(interaction) {
     return;
   }
   if (!bans.size) {
-    await interaction.editReply({ components: [statusCard(t(lang, 'moderation.unbanAll.none'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [statusCard(t(lang, 'moderation.unbanAll.none'))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -317,16 +317,16 @@ async function unbanAll(interaction) {
   try {
     click = await promptMessage.awaitMessageComponent({ filter: (i) => i.user.id === interaction.user.id, time: 30_000 });
   } catch {
-    await interaction.editReply({ components: [statusCard(t(lang, 'moderation.unbanAll.timedOut', { emoji: EMOJI.DENY }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [statusCard(t(lang, 'moderation.unbanAll.timedOut', { emoji: EMOJI.DENY }))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   if (click.customId === 'unbanall_cancel') {
-    await click.update({ components: [statusCard(t(lang, 'moderation.unbanAll.cancelled', { emoji: EMOJI.DENY }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await click.update({ components: [statusCard(t(lang, 'moderation.unbanAll.cancelled', { emoji: EMOJI.DENY }))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
-  await click.update({ components: [statusCard(tn(lang, 'moderation.unbanAll.working', bans.size, { emoji: EMOJI.LOAD, count: bans.size }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await click.update({ components: [statusCard(tn(lang, 'moderation.unbanAll.working', bans.size, { emoji: EMOJI.LOAD, count: bans.size }))], flags: MessageFlags.IsComponentsV2 });
 
   let succeeded = 0;
   let failed = 0;
@@ -427,7 +427,7 @@ async function listBans(interaction) {
   // A hard ban whose user was unbanned by hand is put back by Petto; until then it is listed from the database.
   if (hardOnly) for (const id of hardIds) if (!bans.has(id)) rows.push({ user: { id, username: id, toString: () => `<@${id}>` }, reason: null });
   if (!rows.length) {
-    await interaction.editReply({ components: [statusCard(t(lang, hardOnly ? 'moderation.ban.list.noHard' : 'moderation.unbanAll.none'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [statusCard(t(lang, hardOnly ? 'moderation.ban.list.noHard' : 'moderation.unbanAll.none'))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
   const lines = rows.slice(0, LIST_LIMIT).map((ban) => [
@@ -436,5 +436,5 @@ async function listBans(interaction) {
   ].filter(Boolean).join('\n'));
   if (rows.length > LIST_LIMIT) lines.push(t(lang, 'moderation.role.more', { count: rows.length - LIST_LIMIT }));
   const title = tn(lang, hardOnly ? 'moderation.ban.list.hardTitle' : 'moderation.ban.list.title', rows.length, { count: rows.length, hard: hardIds.size });
-  await interaction.editReply({ components: [statusCard([title, ...lines].join('\n').slice(0, 3900), 0x4b4f59)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
+  await interaction.editReply({ components: [statusCard([title, ...lines].join('\n').slice(0, 3900))], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
 }

@@ -90,7 +90,7 @@ async function setTemplate(interaction, lang) {
   if (!name) {
     const { templateHint } = require('../../utils/templateHint');
     const current = await getConfig(interaction.guild.id).catch(() => null);
-    return done(await templateHint(interaction.guild.id, { current: current?.[column] ?? null, usage: t(lang, 'verify.template.usage', { which }), what: t(lang, `verify.template.what.${which}`), lang }), 0x4b4f59);
+    return done(await templateHint(interaction.guild.id, { current: current?.[column] ?? null, usage: t(lang, 'verify.template.usage', { which }), what: t(lang, `verify.template.what.${which}`), lang }));
   }
   if (name.toLowerCase() === 'none') {
     await upsertConfig(interaction.guild.id, { [column]: null });
@@ -130,7 +130,7 @@ async function setup(interaction, lang) {
       const onProgress = ({ phase, done, total }) => {
         if (phase !== 'channels' || !total || done >= total || Date.now() - shownAt < PROGRESS_EVERY_MS) return;
         shownAt = Date.now();
-        interaction.editReply({ components: [textCard(t(lang, 'verify.job.channels', { done, total }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+        interaction.editReply({ components: [textCard(t(lang, 'verify.job.channels', { done, total }))], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
       };
       const role = await ensureUnverifiedRole(interaction.guild, { ...existing, ...saved }, { onProgress });
       roleLine = t(lang, 'verify.setup.gateRole', { role: `${role}` });
@@ -159,7 +159,7 @@ async function status(interaction, lang) {
 
   const verifyConfig = await getConfig(interaction.guild.id);
   if (!verifyConfig) {
-    await interaction.editReply({ components: [textCard(t(lang, 'verify.status.never'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'verify.status.never'))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -172,7 +172,7 @@ async function status(interaction, lang) {
     t(lang, 'verify.status.panelChannel', { channel: verifyConfig.panel_channel_id ? `<#${verifyConfig.panel_channel_id}>` : t(lang, 'verify.status.noPanel') }),
     t(lang, 'verify.status.env', { value: ENV_CONFIGURED(methodOf(verifyConfig)) ? t(lang, 'verify.status.configured', { emoji: EMOJI.APPROVE }) : t(lang, 'verify.status.missing', { emoji: EMOJI.DENY }) }),
   ];
-  await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(lines.join('\n'))], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function send(interaction, lang) {

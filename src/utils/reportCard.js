@@ -11,7 +11,7 @@ const {
   TextDisplayBuilder,
 } = require('discord.js');
 const { EMOJI } = require('./emojis');
-const { COLORS } = require('./colors');
+const { COLORS, semanticColor } = require('./colors');
 const { categoryLabel } = require('./reportCategories');
 const { t, currentLanguage } = require('../i18n');
 
@@ -87,7 +87,7 @@ function buildReportCard(row, { pingRoleIds = [], withActions = true, lang = cur
   lines.push(`-# ${t(lang, 'reports.card.reportedAt', { time: `<t:${unix(row.created_at)}:R>` })}`);
 
   const card = new ContainerBuilder()
-    .setAccentColor(row.urgent && row.status === 'open' ? 0xff2d2d : style.color)
+    .setAccentColor(row.urgent && row.status === 'open' ? 0xff2d2d : semanticColor(style.color))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
 
   const images = [...new Set(row.image_urls ?? [])].filter(Boolean).slice(0, 10);

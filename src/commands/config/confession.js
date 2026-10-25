@@ -188,7 +188,7 @@ async function reveal(interaction, lang) {
   const row = await db.getById(id);
   if (!row || row.guild_id !== interaction.guild.id) return reply(interaction, t(lang, 'confessions.notFound', { emoji: EMOJI.DENY, id }), RED, true);
   if (!row.author_id) return reply(interaction, t(lang, 'confessions.notKept', { emoji: EMOJI.DENY }), RED, true);
-  await confessions.logAction(interaction.guild, await db.getConfig(interaction.guild.id), t(lang, 'confessions.log.revealed', { staff: `${interaction.user}`, id: row.id, number: row.number }), 0xffd563);
+  await confessions.logAction(interaction.guild, await db.getConfig(interaction.guild.id), t(lang, 'confessions.log.revealed', { staff: `${interaction.user}`, id: row.id, number: row.number }));
   return reply(interaction, t(lang, 'confessions.reveal', { number: row.number, id: row.id, author: `<@${row.author_id}>`, authorId: row.author_id, content: String(row.content).slice(0, 400) }), GREY, true);
 }
 

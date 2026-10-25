@@ -8,9 +8,9 @@ const { isWithinHours, outsideHoursText, isValidTimezone, toMinutes } = require(
 
 const json = (card) => JSON.parse(JSON.stringify(card.toJSON ? card.toJSON() : card));
 
-// The usual card is green; a picture goes on top, the footer under a line.
+// The usual card has no color; a picture goes on top, the footer under a line.
 let card = json(cards.buildPanelFallbackCard({ title: 'Tickets', description: 'Press a button.' }));
-assert.equal(card.accent_color, 0xa5ea7a, 'the green of Petto when no color is chosen');
+assert.equal(card.accent_color ?? null, null, 'no color when none is chosen');
 assert.ok(JSON.stringify(card).includes('### Tickets') && JSON.stringify(card).includes('Press a button.'));
 card = json(cards.buildPanelFallbackCard({ title: 'T', description: 'D', color: 0xff6b6b, imageUrl: 'https://example.com/banner.png', footer: 'Answers in 24h' }));
 assert.equal(card.accent_color, 0xff6b6b);

@@ -67,7 +67,7 @@ async function status(interaction) {
     t(lang, 'welcome.common.status.embedTemplate', { value: config?.dm_join_embed_template ? `\`${config.dm_join_embed_template}\`` : t(lang, 'welcome.common.none.embed') }),
     t(lang, 'welcome.common.status.plainMessage', { value: config?.dm_join_message ? localizeDefaultText('welcome', config.dm_join_message, lang) : t(lang, 'welcome.common.none.message') }),
   ];
-  await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(lines.join('\n'))], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function test(interaction) {
@@ -102,5 +102,5 @@ async function disable(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
   await upsertConfig(interaction.guild.id, { dm_join_message: null, dm_join_embed_template: null });
-  await interaction.editReply({ components: [textCard(t(lang, 'welcome.dmonjoin.disabled', { emoji: EMOJI.APPROVE }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'welcome.dmonjoin.disabled', { emoji: EMOJI.APPROVE }))], flags: MessageFlags.IsComponentsV2 });
 }

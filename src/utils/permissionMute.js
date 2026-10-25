@@ -95,7 +95,7 @@ async function run(interaction, kind, muting) {
     return reply(t(lang, 'moderation.pmute.roleFailed', { detail: failureDetail(err, lang) }), 0xfe6465);
   }
   const has = Boolean(role && member.roles.cache.has(role.id));
-  if (muting === has) return reply(t(lang, `moderation.pmute.${kind}.${muting ? 'already' : 'notMuted'}`, { emoji: EMOJI.DENY, user: `${user}` }), 0x4b4f59);
+  if (muting === has) return reply(t(lang, `moderation.pmute.${kind}.${muting ? 'already' : 'notMuted'}`, { emoji: EMOJI.DENY, user: `${user}` }));
 
   const audit = reason ?? t(lang, muting ? 'moderation.pmute.audit.on' : 'moderation.pmute.audit.off', { user: interaction.user.tag });
   try {

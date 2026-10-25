@@ -116,7 +116,7 @@ async function viewCmd(interaction, lang) {
   if (preset.min_voice_level) lines.push(t(lang, 'giveaways.preset.view.minVoiceLevel', { level: preset.min_voice_level }));
   if (!lines.length) lines.push(t(lang, 'giveaways.preset.view.empty'));
 
-  await interaction.editReply({ components: [textCard([t(lang, 'giveaways.preset.view.title', { name: preset.name }), ...lines].join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard([t(lang, 'giveaways.preset.view.title', { name: preset.name }), ...lines].join('\n'))], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function removeCmd(interaction, lang) {

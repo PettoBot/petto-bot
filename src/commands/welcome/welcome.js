@@ -66,7 +66,7 @@ async function status(interaction) {
     t(lang, 'welcome.common.status.embedTemplate', { value: config?.welcome_embed_template ? `\`${config.welcome_embed_template}\`` : t(lang, 'welcome.common.none.embed') }),
     t(lang, 'welcome.common.status.plainMessage', { value: config?.welcome_message ? localizeDefaultText('welcome', config.welcome_message, lang) : t(lang, 'welcome.common.none.message') }),
   ];
-  await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(lines.join('\n'))], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function test(interaction) {
@@ -101,5 +101,5 @@ async function disable(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
   await upsertConfig(interaction.guild.id, { welcome_channel_id: null });
-  await interaction.editReply({ components: [textCard(t(lang, 'welcome.welcome.disabled', { emoji: EMOJI.APPROVE }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'welcome.welcome.disabled', { emoji: EMOJI.APPROVE }))], flags: MessageFlags.IsComponentsV2 });
 }

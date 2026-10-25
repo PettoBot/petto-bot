@@ -117,7 +117,7 @@ module.exports = {
 
     if (kind === 'scan') {
       await interaction.reply({
-        components: [textCard(`${EMOJI.WARNING} Running a **read-only** compliance scan for \`${guildId}\`…`, 0xfed53c)],
+        components: [textCard(`${EMOJI.WARNING} Running a **read-only** compliance scan for \`${guildId}\`…`)],
         flags: MessageFlags.IsComponentsV2,
       });
 
@@ -151,7 +151,7 @@ module.exports = {
     }
 
     await interaction.reply({
-      components: [textCard(`${EMOJI.WARNING} Sending **${kind}** notice to \`${guildId}\`…`, 0xfed53c)],
+      components: [textCard(`${EMOJI.WARNING} Sending **${kind}** notice to \`${guildId}\`…`)],
       flags: MessageFlags.IsComponentsV2,
     });
 

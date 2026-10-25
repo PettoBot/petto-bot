@@ -50,7 +50,7 @@ async function setCmd(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
   if (templateName && !(await getTemplate(interaction.guild.id, templateName).catch(() => null))?.data) {
-    await interaction.editReply({ components: [textCard(t(lang, 'automation.sticky.templateMissing', { name: templateName }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'automation.sticky.templateMissing', { name: templateName }))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -83,7 +83,7 @@ async function removeCmd(interaction) {
 
   const existing = await stickyDb.getSticky(interaction.guild.id, channel.id);
   if (!existing) {
-    await interaction.editReply({ components: [textCard(t(lang, 'automation.sticky.none', { channel: `${channel}` }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'automation.sticky.none', { channel: `${channel}` }))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -102,5 +102,5 @@ async function listCmd(interaction) {
 
   const list = await stickyDb.listForGuild(interaction.guild.id);
   const text = list.length ? list.map((s) => `<#${s.channel_id}> — ${s.embed_template ? t(lang, 'automation.sticky.embed', { name: s.embed_template }) : `${s.content.slice(0, 60)}${s.content.length > 60 ? '…' : ''}`}`).join('\n') : t(lang, 'automation.sticky.listEmpty');
-  await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(text)], flags: MessageFlags.IsComponentsV2 });
 }

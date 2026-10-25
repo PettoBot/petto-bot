@@ -169,7 +169,7 @@ async function configurePanel(interaction, lang) {
   const text = interaction.options.getString('text');
   const template = (interaction.options.getString('template') ?? '').trim();
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
-  const fail = (message) => interaction.editReply({ components: [textCard(message, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  const fail = (message) => interaction.editReply({ components: [textCard(message)], flags: MessageFlags.IsComponentsV2 });
 
   try {
     if (!['default', 'custom', 'none'].includes(mode)) return fail(t(lang, 'security.honeypot.panel.badMode'));
@@ -212,7 +212,7 @@ async function configureMemberDM(interaction, lang) {
   try {
     const existing = await getHoneypot(interaction.guild.id, channel.id);
     if (!existing) {
-      return interaction.editReply({ components: [textCard(t(lang, 'security.honeypot.panel.notHoneypot', { channel: `${channel}` }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+      return interaction.editReply({ components: [textCard(t(lang, 'security.honeypot.panel.notHoneypot', { channel: `${channel}` }))], flags: MessageFlags.IsComponentsV2 });
     }
     const changes = { dm_member: Boolean(enabled) };
     if (reinvite !== null && reinvite !== undefined) changes.reinvite = Boolean(reinvite);
@@ -238,7 +238,7 @@ async function removeConfiguredHoneypot(interaction, lang) {
     const existing = await getHoneypot(interaction.guild.id, channel.id);
     if (!existing) {
       await interaction.editReply({
-        components: [textCard(t(lang, 'security.honeypot.remove.missing', { emoji: EMOJI.WARNING, channel: `${channel}` }), 0xfed53c)],
+        components: [textCard(t(lang, 'security.honeypot.remove.missing', { emoji: EMOJI.WARNING, channel: `${channel}` }))],
         flags: MessageFlags.IsComponentsV2,
       });
       return;
@@ -283,7 +283,7 @@ async function listConfiguredHoneypots(interaction, lang) {
       : t(lang, 'security.honeypot.list.empty', { emoji: EMOJI.STAR });
 
     await interaction.editReply({
-      components: [textCard(content, 0x4b4f59)],
+      components: [textCard(content)],
       flags: MessageFlags.IsComponentsV2,
     });
   } catch (error) {

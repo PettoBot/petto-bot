@@ -70,7 +70,7 @@ function parseCreateText(text) {
 }
 
 const ok = (text) => textCard(text, 0xa5ea7a);
-const note = (text) => textCard(text, 0x4b4f59);
+const note = (text) => textCard(text);
 const bad = (text) => textCard(text, 0xfe6465);
 
 function prefixOf(interaction) {

@@ -61,12 +61,12 @@ async function list(interaction, windowMs, lang) {
   const joined = recentJoins(members, windowMs);
   const span = formatDuration(windowMs, lang);
   if (!joined.length) {
-    await interaction.editReply({ components: [textCard(t(lang, 'moderation.raid.none', { span }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.raid.none', { span }))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
   const lines = joined.slice(0, LIST_LIMIT).map((member) => `${member} \`${member.id}\` · <t:${Math.floor(member.joinedTimestamp / 1000)}:R> · ${t(lang, 'moderation.raid.created', { time: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>` })}`);
   if (joined.length > LIST_LIMIT) lines.push(t(lang, 'moderation.role.more', { count: joined.length - LIST_LIMIT }));
-  await interaction.editReply({ components: [textCard([tn(lang, 'moderation.raid.listTitle', joined.length, { count: joined.length, span }), ...lines].join('\n').slice(0, 3900), 0x4b4f59)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
+  await interaction.editReply({ components: [textCard([tn(lang, 'moderation.raid.listTitle', joined.length, { count: joined.length, span }), ...lines].join('\n').slice(0, 3900))], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
 }
 
 async function clean(interaction, windowMs, lang) {
@@ -85,7 +85,7 @@ async function clean(interaction, windowMs, lang) {
   const span = formatDuration(windowMs, lang);
   const joined = recentJoins(members, windowMs);
   if (!joined.length) {
-    await interaction.editReply({ components: [textCard(t(lang, 'moderation.raid.none', { span }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.raid.none', { span }))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
   if (joined.length > MAX_TARGETS) {

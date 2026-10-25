@@ -48,7 +48,7 @@ module.exports = {
     if (sub === 'list') {
       const all = await sanctionTemplates.listTemplates(interaction.guild.id, { force: true });
       const lines = [...all.entries()].map(([type, set]) => `**${type}** · ${SLOTS.filter((slot) => set[slot]).map((slot) => t(lang, 'moderation.sanctionMessage.listEntry', { label: t(lang, `moderation.sanctionMessage.slot.${slot}`), name: set[slot] })).join(' · ')}`);
-      return reply(lines.length ? lines.join('\n') : t(lang, 'moderation.sanctionMessage.none'), 0x4b4f59);
+      return reply(lines.length ? lines.join('\n') : t(lang, 'moderation.sanctionMessage.none'));
     }
 
     const type = interaction.options.getString('type', true).trim().toLowerCase();
@@ -64,7 +64,7 @@ module.exports = {
     const name = String(interaction.options.getString('template') ?? '').trim();
     if (!name) {
       const { templateHint } = require('../../utils/templateHint');
-      return reply(await templateHint(interaction.guild.id, { usage: `sanctionmessage set ${type} ${slot} <name>`, what: t(lang, `moderation.sanctionMessage.what.${slot}`, { type }), lang }), 0x4b4f59);
+      return reply(await templateHint(interaction.guild.id, { usage: `sanctionmessage set ${type} ${slot} <name>`, what: t(lang, `moderation.sanctionMessage.what.${slot}`, { type }), lang }));
     }
     const doc = await getTemplate(interaction.guild.id, name).catch(() => null);
     if (!doc) return reply(t(lang, 'moderation.sanctionMessage.noEmbed', { name }), 0xfe6465);

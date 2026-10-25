@@ -25,7 +25,7 @@ module.exports = {
 
     const invites = await interaction.guild.invites.fetch().catch(() => null);
     if (!invites) return show(t(lang, 'moderation.clearInvites.fetchFailed'), 0xfe6465);
-    if (!invites.size) return show(t(lang, 'moderation.clearInvites.none'), 0x4b4f59);
+    if (!invites.size) return show(t(lang, 'moderation.clearInvites.none'));
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('clearinvites_confirm').setLabel(t(lang, 'moderation.bulk.confirm.button')).setStyle(ButtonStyle.Danger),
@@ -36,12 +36,12 @@ module.exports = {
     try {
       click = await prompt.awaitMessageComponent({ filter: (i) => i.user.id === interaction.user.id, time: 30_000 });
     } catch {
-      return show(t(lang, 'moderation.clearInvites.timedOut', { emoji: EMOJI.DENY }), 0x4b4f59);
+      return show(t(lang, 'moderation.clearInvites.timedOut', { emoji: EMOJI.DENY }));
     }
     if (click.customId !== 'clearinvites_confirm') {
-      return click.update({ components: [textCard(t(lang, 'moderation.clearInvites.cancelled', { emoji: EMOJI.DENY }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+      return click.update({ components: [textCard(t(lang, 'moderation.clearInvites.cancelled', { emoji: EMOJI.DENY }))], flags: MessageFlags.IsComponentsV2 });
     }
-    await click.update({ components: [textCard(t(lang, 'moderation.bulk.confirmed', { emoji: EMOJI.APPROVE }), 0xfed53c)], flags: MessageFlags.IsComponentsV2 });
+    await click.update({ components: [textCard(t(lang, 'moderation.bulk.confirmed', { emoji: EMOJI.APPROVE }))], flags: MessageFlags.IsComponentsV2 });
 
     let deleted = 0;
     const audit = t(lang, 'moderation.clearInvites.audit', { user: interaction.user.tag });

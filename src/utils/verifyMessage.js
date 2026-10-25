@@ -23,7 +23,7 @@ function buildVerifyDM({ guild, link, discordButton = false, lang = currentLangu
   if (discordButton) lines.push(t(lang, link ? 'verify.dm.orHere' : 'verify.dm.pressButton'));
   const text = new TextDisplayBuilder().setContent(lines.join('\n'));
 
-  const container = new ContainerBuilder().setAccentColor(ACCENT_COLOR);
+  const container = new ContainerBuilder();
   const logo = assetUrl('favicon.png');
 
   if (logo) {

@@ -2,9 +2,11 @@
 const { ContainerBuilder, TextDisplayBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits } = require('discord.js');
 
 const { t, currentLanguage } = require('../i18n');
+const { semanticColor } = require('./colors');
 
 const PREFIX = 'rq:';
-const COLORS = { open: 0x5865f2, claimed: 0xf0b232, done: 0x23a55a, cancelled: 0x4b4f59 };
+// A request has no color, except when it is done (green) or cancelled (red).
+const COLORS = { open: null, claimed: null, done: 0xa5ea7a, cancelled: 0xfe6465 };
 const STATUSES = ['open', 'claimed', 'done', 'cancelled'];
 
 const unix = (value) => Math.floor(new Date(value).getTime() / 1000);
@@ -25,7 +27,7 @@ function statusLine(request, lang = currentLanguage()) {
 /** The Components V2 card. Open and claimed requests have buttons; finished ones do not. */
 function requestCard(request, lang = currentLanguage()) {
   const container = new ContainerBuilder()
-    .setAccentColor(COLORS[request.status] ?? COLORS.open)
+    .setAccentColor(semanticColor(COLORS[request.status] ?? COLORS.open))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent([t(lang, 'requests.card.title', { number: request.number, status: statusLabel(request.status, lang) }), t(lang, 'requests.card.asks', { user: `<@${request.user_id}>` }), request.content.split('\n').map((line) => `> ${line}`).join('\n'), statusLine(request, lang)].join('\n')));
   const button = (action, style) => new ButtonBuilder().setCustomId(`${PREFIX}${action}:${request.number}`).setLabel(t(lang, `requests.${action}.button`)).setStyle(style);
   if (request.status === 'open') container.addActionRowComponents(new ActionRowBuilder().addComponents(button('claim', ButtonStyle.Success), button('cancel', ButtonStyle.Danger)));

@@ -98,7 +98,7 @@ async function status(interaction) {
     t(lang, 'welcome.boost.status.levelUpEmbed', { value: config?.boost_level_embed_template ? `\`${config.boost_level_embed_template}\`` : t(lang, 'welcome.common.none.embed') }),
     t(lang, 'welcome.boost.status.levelUpMessage', { value: config?.boost_level_message ? config.boost_level_message : t(lang, 'welcome.common.none.message') }),
   ];
-  await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(lines.join('\n'))], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function test(interaction) {
@@ -133,5 +133,5 @@ async function disable(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
   await upsertConfig(interaction.guild.id, { boost_channel_id: null });
-  await interaction.editReply({ components: [textCard(t(lang, 'welcome.boost.disabled', { emoji: EMOJI.APPROVE }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'welcome.boost.disabled', { emoji: EMOJI.APPROVE }))], flags: MessageFlags.IsComponentsV2 });
 }

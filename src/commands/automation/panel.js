@@ -13,7 +13,7 @@ const { EMOJI } = require('../../utils/emojis');
 const { t, tn, languageOf } = require('../../i18n');
 
 const ok = (text) => textCard(`${EMOJI.APPROVE}  ${text}`, 0xa5ea7a);
-const note = (text) => textCard(text, 0x4b4f59);
+const note = (text) => textCard(text);
 const textChannels = [ChannelType.GuildText, ChannelType.GuildAnnouncement];
 
 function shared(builder) {

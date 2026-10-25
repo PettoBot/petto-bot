@@ -36,7 +36,7 @@ module.exports = {
   'voicemaster.memberGone': 'Esse membro não está mais neste servidor.',
   'voicemaster.permitted': '{user} agora pode entrar neste canal.',
   'voicemaster.rejected': '{user} está bloqueado neste canal.',
-  'voicemaster.panel.title': '## Painel do canal de voz',
+  'voicemaster.panel.title': '### Painel do canal de voz',
   'voicemaster.panel.subtitle': '-# Use os botões abaixo para gerenciar seu canal de voz temporário.',
   'voicemaster.panel.lock': '{emoji} · **Trancar** o canal de voz',
   'voicemaster.panel.unlock': '{emoji} · **Destrancar** o canal de voz',

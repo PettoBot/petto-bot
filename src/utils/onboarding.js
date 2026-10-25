@@ -177,7 +177,6 @@ function buildAdminSetupMessage({ botId, setupMention, reportConfigMention, pref
 
 function buildOwnerGuide({ guild, setupChannel, setupMention, prefix, lang = currentLanguage() }) {
   const container = new ContainerBuilder()
-    .setAccentColor(0x4b4f59)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(t(lang, 'core.join.thanks', { emoji: EMOJI.STAR, server: guild.name })),
       new TextDisplayBuilder().setContent(t(lang, 'setup.owner.howToStart', { prefix })),

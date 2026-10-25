@@ -1,11 +1,11 @@
 // The setup of a server: the message when Petto joins, /setup, its panel and its form. Reference catalog: es and pt-BR must have the same keys and placeholders.
 module.exports = {
-  'setup.intro': '## What is Petto?\n\nPetto is a multipurpose Discord bot designed to help communities manage, protect, and improve their servers.\n\nPetto provides tools for moderation, security, tickets, automation, utilities, and community management, all configurable for different types of servers.\n\nServer administrators can use Petto to automate repetitive tasks, manage members, protect their community from unwanted activity, and provide a smoother experience for both staff and users.',
+  'setup.intro': '### What is Petto?\n\nPetto is a multipurpose Discord bot designed to help communities manage, protect, and improve their servers.\n\nPetto provides tools for moderation, security, tickets, automation, utilities, and community management, all configurable for different types of servers.\n\nServer administrators can use Petto to automate repetitive tasks, manage members, protect their community from unwanted activity, and provide a smoother experience for both staff and users.',
   'setup.invite.button': 'Invite bot',
   'setup.docs.button': 'Documentation',
   'setup.web.button': 'Web',
   'setup.dashboard.button': 'Dashboard',
-  'setup.admin.heading': '## Petto setup',
+  'setup.admin.heading': '### Petto setup',
   'setup.admin.welcomeFallback': '{emoji} Welcome to Petto!',
   'setup.admin.welcome': '{emoji} Welcome to Petto\'s admin setup channel!',
   'setup.admin.fallbackNote': 'Petto could not make its private setup channel, so the setup is here. Administrators can move it to a private channel and delete this message.',

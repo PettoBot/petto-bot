@@ -29,7 +29,7 @@ module.exports = {
     if (sub === 'view') return viewTimer(interaction, lang);
     const rows = await autoMessagesDb.list(interaction.guild.id);
     const body = rows.length ? rows.map((row) => formatRow(row, lang)).join('\n') : t(lang, 'automation.timer.listEmpty');
-    return interaction.reply({ components: [textCard(body, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    return interaction.reply({ components: [textCard(body)], flags: MessageFlags.IsComponentsV2 });
   },
 };
 

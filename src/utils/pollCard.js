@@ -9,8 +9,6 @@ const { t, tn, currentLanguage } = require('../i18n');
 
 const LETTERS = ['🇦', '🇧', '🇨', '🇩', '🇪', '🇫', '🇬', '🇭', '🇮', '🇯'];
 const BAR_LENGTH = 12;
-const OPEN_COLOR = 0xf0a88f;
-const CLOSED_COLOR = 0x8b8fa3;
 
 function bar(pct) {
   const filled = Math.round((pct / 100) * BAR_LENGTH);
@@ -57,7 +55,6 @@ function buildPollCard(poll, results, lang = currentLanguage()) {
   const meta = [typeText(poll, lang), poll.closed ? t(lang, 'polls.card.closed') : ends ? t(lang, 'polls.card.closes', { time: `<t:${ends}:R>` }) : null].filter(Boolean).join(' · ');
 
   const container = new ContainerBuilder()
-    .setAccentColor(poll.closed ? CLOSED_COLOR : OPEN_COLOR)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### 📊 ${poll.question}\n-# ${meta}`))
     .addSeparatorComponents(divider())
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(resultBlocks(poll, results).join('\n\n')));

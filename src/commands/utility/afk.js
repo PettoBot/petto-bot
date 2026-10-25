@@ -29,7 +29,7 @@ async function setCmd(interaction) {
   // The default reason is saved and shown to others; "AFK" reads the same in every language.
   const reason = interaction.options.getString('reason') || 'AFK';
   await afkDb.setStatus(interaction.guild.id, interaction.user.id, reason);
-  await interaction.reply({ components: [textCard(t(lang, 'utility.afk.set', { emoji: EMOJI.STAR, user: `${interaction.user}`, reason }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.reply({ components: [textCard(t(lang, 'utility.afk.set', { emoji: EMOJI.STAR, user: `${interaction.user}`, reason }))], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function mentionsCmd(interaction) {

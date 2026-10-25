@@ -50,7 +50,7 @@ async function giveCmd(interaction) {
 
   const config = await db.getConfig(interaction.guild.id);
   if (!config.enabled) {
-    await interaction.editReply({ components: [textCard(t(lang, 'utility.rep.disabled'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.rep.disabled'))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -127,7 +127,7 @@ async function viewCmd(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
 
   const row = await db.getUser(interaction.guild.id, target.id);
-  await interaction.editReply({ components: [textCard(tn(lang, 'utility.rep.points', row.points, { user: `${target}`, count: row.points }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(tn(lang, 'utility.rep.points', row.points, { user: `${target}`, count: row.points }))], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function leaderboardCmd(interaction) {
@@ -136,13 +136,13 @@ async function leaderboardCmd(interaction) {
 
   const top = await db.getLeaderboard(interaction.guild.id, 10);
   if (!top.length) {
-    await interaction.editReply({ components: [textCard(t(lang, 'utility.rep.empty'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.rep.empty'))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const medals = ['🥇', '🥈', '🥉'];
   const lines = top.map((row, i) => `${medals[i] ?? `**${i + 1}.**`} <@${row.user_id}> — **${row.points}**`);
-  await interaction.editReply({ components: [textCard(`**${t(lang, 'utility.rep.leaderboard')}**\n${lines.join('\n')}`, 0xfed53c)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(`**${t(lang, 'utility.rep.leaderboard')}**\n${lines.join('\n')}`)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function resetCmd(interaction) {

@@ -12,11 +12,11 @@ const {
   TextDisplayBuilder,
   ThumbnailBuilder,
 } = require('discord.js');
-const { COLORS } = require('./colors');
+const { semanticColor, colorFromText } = require('./colors');
 const { t, currentLanguage } = require('../i18n');
 
 // Accent shared by the info commands; individual commands override it when the subject has its own color.
-const INFO_ACCENT = 0x8c7cff;
+const INFO_ACCENT = null;
 // Discord allows 4000 characters of text per message across every text display, and 5 buttons per row.
 const TEXT_BUDGET = 3800;
 const SECTION_LIMIT = 1000;
@@ -74,9 +74,9 @@ function buildInfoCard({ accent = INFO_ACCENT, title, subtitle = [], thumbnail =
     return value;
   };
 
-  const headerText = new TextDisplayBuilder().setContent(take([`## ${clip(title, 200)}`, ...subtitle.filter(Boolean)].join('\n'), 1200));
+  const headerText = new TextDisplayBuilder().setContent(take([`### ${clip(title, 200)}`, ...subtitle.filter(Boolean)].join('\n'), 1200));
   const card = new ContainerBuilder();
-  if (accent !== null) card.setAccentColor(accent); // null: a card with no color
+  if (semanticColor(accent) !== null) card.setAccentColor(accent); // only green and red; any other is a card with no color
   if (thumbnail) card.addSectionComponents(new SectionBuilder().addTextDisplayComponents(headerText).setThumbnailAccessory(new ThumbnailBuilder().setURL(thumbnail)));
   else card.addTextDisplayComponents(headerText);
 
@@ -119,9 +119,10 @@ function infoPayload(options) {
 }
 
 /** Small one-block card for "nothing found" and similar answers. `color` null: a card with no color. */
-function noticePayload(text, color = COLORS.DEFAULT) {
+function noticePayload(text, color = null) {
   const card = new ContainerBuilder();
-  if (color !== null) card.setAccentColor(color);
+  const accent = semanticColor(color) ?? colorFromText(text);
+  if (accent !== null) card.setAccentColor(accent);
   card.addTextDisplayComponents(new TextDisplayBuilder().setContent(clip(text, 1500)));
   return { components: [card], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } };
 }

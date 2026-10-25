@@ -95,7 +95,7 @@ async function check(message, lang = currentLanguage()) {
   // The same person twice in a row is not a mistake of the number: the count stays where it was.
   if (verdict.kind === 'double') {
     await react(message, config.react_bad);
-    await alert(message, t(lang, 'counting.double', { user: who, next: verdict.expected }), config, 0xffd563);
+    await alert(message, t(lang, 'counting.double', { user: who, next: verdict.expected }), config);
     if (config.delete_wrong && canDelete) await message.delete().catch(() => {});
     return;
   }

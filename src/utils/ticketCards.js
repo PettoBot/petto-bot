@@ -43,7 +43,7 @@ const DEFAULT_PANEL_COLOR = 0xa5ea7a;
  * menu go under the card. `color` is the stripe of the card (a number, or null for the green of Petto).
  */
 function buildPanelFallbackCard({ title, description, color = null, imageUrl = null, footer = null, lang = currentLanguage() }) {
-  const container = new ContainerBuilder().setAccentColor(Number.isInteger(color) ? color : DEFAULT_PANEL_COLOR);
+  const container = new ContainerBuilder().setAccentColor(Number.isInteger(color) ? color : null);
   if (imageUrl && /^https:\/\//i.test(imageUrl)) container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(imageUrl)));
   const lines = [];
   if (title) lines.push(`### ${title}`);
@@ -101,14 +101,14 @@ function buildWelcomeFallbackCard({ opener, categoryLabel, pingText, welcomeMess
 
 /** The notice in the ticket when a staff member claims it: who handles it now, for the member who opened it. */
 function buildClaimCard({ staffId, openerId, lang = currentLanguage() }) {
-  return new ContainerBuilder().setAccentColor(0xfed53c).addTextDisplayComponents(
+  return new ContainerBuilder().addTextDisplayComponents(
     new TextDisplayBuilder().setContent(`${t(lang, 'tickets.claim.cardTitle', { emoji: EMOJI.TICKET_CLAIM })}\n${t(lang, 'tickets.claim.cardText', { user: staffId })}${openerId ? `\n-# ${t(lang, 'tickets.claim.cardHint', { opener: openerId })}` : ''}`),
   );
 }
 
 /** The notice when the claim is released: any staff member can take the ticket again. */
 function buildUnclaimCard({ staffId, lang = currentLanguage() }) {
-  return new ContainerBuilder().setAccentColor(0x4b4f59).addTextDisplayComponents(
+  return new ContainerBuilder().addTextDisplayComponents(
     new TextDisplayBuilder().setContent(`${t(lang, 'tickets.unclaim.cardTitle')}\n${t(lang, 'tickets.unclaim.cardText', { user: staffId })}`),
   );
 }
@@ -199,7 +199,7 @@ function starsText(rating, { plain = false } = {}) {
 
 /** The card that takes the place of the rating buttons once the member rated (or had rated already). */
 function buildRatedCard(rating, lang = currentLanguage()) {
-  return new ContainerBuilder().setAccentColor(0xfed53c).addTextDisplayComponents(
+  return new ContainerBuilder().addTextDisplayComponents(
     new TextDisplayBuilder().setContent(`${t(lang, 'tickets.rating.doneCard', { emoji: EMOJI.STAR_FULL, stars: starsText(rating) })}
 -# ${t(lang, 'tickets.rating.doneHint')}`),
   );

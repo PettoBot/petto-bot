@@ -65,7 +65,7 @@ async function status(interaction) {
     t(lang, 'welcome.common.status.embedTemplate', { value: config?.leave_embed_template ? `\`${config.leave_embed_template}\`` : t(lang, 'welcome.common.none.embed') }),
     t(lang, 'welcome.common.status.plainMessage', { value: config?.leave_message ? config.leave_message : t(lang, 'welcome.common.none.message') }),
   ];
-  await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(lines.join('\n'))], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function test(interaction) {
@@ -100,5 +100,5 @@ async function disable(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await ensureGuild(interaction.guild.id);
   await upsertConfig(interaction.guild.id, { leave_channel_id: null });
-  await interaction.editReply({ components: [textCard(t(lang, 'welcome.leave.disabled', { emoji: EMOJI.APPROVE }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'welcome.leave.disabled', { emoji: EMOJI.APPROVE }))], flags: MessageFlags.IsComponentsV2 });
 }

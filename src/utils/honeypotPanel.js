@@ -55,7 +55,7 @@ function buildHoneypotStatsPanel({ punishment = 'softban', caughtCount, caught_c
     .setThumbnailAccessory(new ThumbnailBuilder().setURL(HONEYPOT_IMAGE_URL));
 
   return new ContainerBuilder()
-    .setAccentColor(0xd99a3d)
+    .setAccentColor(0xfe6465)
     .addSectionComponents(section);
 }
 

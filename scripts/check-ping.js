@@ -16,7 +16,7 @@ assert.match(text(card), /Status Page/);
 assert.match(text(card), /Support Server/);
 assert.match(text(card), /Shard 1\/1 • Guilds: 15,535 • Members: 4,891,774/, 'the size has thousands separators');
 assert.equal(card.accent_color, 0xa5ea7a, '254ms is still fast');
-assert.equal(json(buildPingCard({ guildMs: 400, apiMs: 100, shard: 1, shardCount: 1, guilds: 1, members: 1 })).accent_color, 0xffd563, 'a slow guild ping is yellow');
+assert.equal(json(buildPingCard({ guildMs: 400, apiMs: 100, shard: 1, shardCount: 1, guilds: 1, members: 1 })).accent_color, undefined, 'a slow guild ping has no color');
 
 assert.equal(json(buildPingCard({ guildMs: 90, apiMs: 60, shard: 1, shardCount: 1, guilds: 1, members: 1 })).accent_color, 0xa5ea7a, 'fast is green');
 assert.equal(json(buildPingCard({ guildMs: 90, apiMs: 900, shard: 1, shardCount: 1, guilds: 1, members: 1 })).accent_color, 0xff6b6b, 'a slow API makes it red');

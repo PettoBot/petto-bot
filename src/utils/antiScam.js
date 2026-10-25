@@ -87,7 +87,7 @@ function dmCard(guild, action, lang = currentLanguage(), appeal = null) {
     t(lang, `security.antiscam.dm.outcome.${DM_OUTCOMES[action] ?? 'flagged'}`, { server: guild.name }),
     t(lang, 'security.antiscam.dm.steps'),
     ...(appeal ? ['', appeal] : []),
-  ].join('\n'), 0xffd563);
+  ].join('\n'));
 }
 
 /** The appeal line of the DM, when the server sends the appeal link for this sanction (the same rule as every sanction DM). */
@@ -247,7 +247,7 @@ async function handleButton(interaction) {
   }
   // The alert stays, without its buttons, and says what was done.
   const cards = interaction.message.components.map((c) => c.toJSON()).filter((c) => c.type === 17);
-  await interaction.editReply({ components: [...cards, textCard(line, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 }).catch((err) => logger.warn(`Anti scam: could not update the alert: ${err.message}`));
+  await interaction.editReply({ components: [...cards, textCard(line)], flags: MessageFlags.IsComponentsV2 }).catch((err) => logger.warn(`Anti scam: could not update the alert: ${err.message}`));
 }
 
 module.exports = { PREFIX, detect, handleMessage, handleButton, isExempt };

@@ -11,7 +11,7 @@ module.exports = {
   'verify.panel.posted.both': '{emoji}  El panel de verificación está en {channel}. Los miembros que no se han verificado pueden ver ese canal y presionar el botón allí (para obtener su enlace o hacer las letras ahí mismo).',
   'verify.panel.failed': '{emoji}  No pude publicar el panel: {error}',
   'verify.panel.cannotPost': 'Necesito ver y escribir en ese canal, y el permiso Gestionar roles.',
-  'verify.panel.title': '## 🛡️ Verificación',
+  'verify.panel.title': '### 🛡️ Verificación',
   'verify.panel.welcome': '¡Bienvenido a **{server}**! Demuestra que eres humano para ver el resto del servidor.',
   'verify.panel.steps.link': '**1.** Presiona **Obtener mi enlace de verificación**.\n**2.** Abre tu enlace (solo tú lo ves) y completa la verificación rápida.\n**3.** Listo: los canales se abren solos.',
   'verify.panel.steps.letters': '**1.** Presiona **Verificar aquí en Discord**.\n**2.** Escribe las letras de la imagen que verás.\n**3.** Listo: los canales se abren solos.',

@@ -182,7 +182,7 @@ async function disconnect(interaction) {
   }
 
   const text = `${t(lang, 'moderation.voice.disconnected', { emoji: EMOJI.HAMMER, user: `${targetUser}` })}${reasonSuffix(reason, lang)}`;
-  await interaction.editReply({ components: [textCard(text, 0xfed53c)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(text, 0xfed53c, { keep: true })], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function move(interaction) {

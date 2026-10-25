@@ -20,7 +20,7 @@ function lineFor(entitlement) {
 
 /** The cards to post: the list split in parts that fit in a message. */
 function buildPremiumCards(entitlements) {
-  const header = `## Premium active at start\n**${entitlements.length}** active subscription${entitlements.length === 1 ? '' : 's'}.`;
+  const header = `### Premium active at start\n**${entitlements.length}** active subscription${entitlements.length === 1 ? '' : 's'}.`;
   if (!entitlements.length) return [textCard(`${header}\nNone right now.`, PEACH)];
   const parts = [];
   let current = [];
@@ -34,7 +34,7 @@ function buildPremiumCards(entitlements) {
   return parts.map((lines, index) => textCard(`${index === 0 ? `${header}\n` : ''}${lines.join('\n')}`, PEACH));
 }
 
-const HEADER = '## Premium active at start';
+const HEADER = '### Premium active at start';
 
 /** Every piece of text in a card or message (a Components V2 tree), in order. */
 function textOf(node) {

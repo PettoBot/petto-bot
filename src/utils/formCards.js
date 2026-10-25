@@ -4,6 +4,7 @@ const {
   SeparatorSpacingSize, StringSelectMenuBuilder, TextDisplayBuilder, ThumbnailBuilder,
 } = require('discord.js');
 const { PREFIX, COLORS, clip, answerText, webUrl } = require('./forms');
+const { semanticColor } = require('./colors');
 const { t, currentLanguage } = require('../i18n');
 
 // A Components V2 message holds 4000 characters of text: the answers get what the header, the verdict and the buttons leave.
@@ -61,7 +62,7 @@ function verdictText(submission, lang = currentLanguage()) {
  */
 function reviewCard({ submission, form = null, lang = currentLanguage(), pings = [], member = null, fileName = null }) {
   const status = submission.status ?? 'pending';
-  const container = new ContainerBuilder().setAccentColor(status === 'pending' ? (form?.color ?? COLORS.pending) : COLORS[status] ?? COLORS.pending);
+  const container = new ContainerBuilder().setAccentColor(status === 'pending' ? (form?.color ?? null) : semanticColor(COLORS[status]));
   const facts = [];
   const created = member?.user?.createdTimestamp;
   if (created) facts.push(t(lang, 'forms.card.created', { time: `<t:${Math.floor(created / 1000)}:R>` }));
@@ -69,7 +70,7 @@ function reviewCard({ submission, form = null, lang = currentLanguage(), pings =
   if (submission.source === 'web') facts.push(t(lang, 'forms.card.web'));
   const head = [
     ...(pings.length ? [pings.map((id) => `<@&${id}>`).join(' ')] : []),
-    `## ${t(lang, 'forms.card.title', { form: clip(submission.form_title || form?.title || submission.form_name, 60), number: submission.number })}`,
+    `### ${t(lang, 'forms.card.title', { form: clip(submission.form_title || form?.title || submission.form_name, 60), number: submission.number })}`,
     `<@${submission.user_id}> · \`${clip(submission.username, 40)}\` · \`${submission.user_id}\``,
     ...(facts.length ? [`-# ${facts.join(' · ')}`] : []),
   ].join('\n');
@@ -135,8 +136,8 @@ function panelCard(forms, { title = null, description = null, color = null, styl
   const heading = clip(title, 200) || (single ? single.title : t(lang, 'forms.panel.title'));
   let text = clip(description, 2000);
   if (!text) text = single ? (single.description || t(lang, 'forms.panel.single')) : forms.map((form) => `**${form.title}**${form.description ? ` — ${clip(form.description.replace(/\s+/g, ' '), 140)}` : ''}`).join('\n');
-  const container = new ContainerBuilder().setAccentColor(color ?? single?.color ?? COLORS.pending)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ${heading}\n${text}`));
+  const container = new ContainerBuilder().setAccentColor(color ?? single?.color ?? null)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### ${heading}\n${text}`));
   for (const row of panelRows(forms, { style, panelId, lang })) container.addActionRowComponents(row);
   return { components: [container], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } };
 }

@@ -324,7 +324,6 @@ function createConfigCommand(name, module = MODULES[name]) {
       const guildConfig = await ensureGuild(interaction.guild.id).catch(() => null);
       const text = await buildCardText(module, { guildId: interaction.guild.id, prefix: guildConfig?.prefix || '!', commands: interaction.client.commands, lang });
       const container = new ContainerBuilder()
-        .setAccentColor(0x4b4f59)
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(text))
         .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
         .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel(t(lang, 'config.card.docs.button')).setStyle(ButtonStyle.Link).setURL(WIKI_URL)));

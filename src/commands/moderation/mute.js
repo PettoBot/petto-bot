@@ -197,7 +197,7 @@ async function muteUsers(interaction) {
   if (notFound.length) lines.push(t(lang, 'moderation.common.notFound', { list: notFound.map((id) => `\`${id}\``).join(', ') }));
   lines.push(t(lang, 'moderation.common.reason', { reason: reasonText(reason, lang) }));
 
-  const card = textCard(lines.join('\n'), 0xfed53c);
+  const card = textCard(lines.join('\n'), 0xfed53c, { keep: true });
   await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });
 }
 
@@ -290,7 +290,7 @@ async function unmuteUser(interaction) {
   }
 
   if (!didSomething) {
-    await interaction.editReply({ components: [textCard(t(lang, 'moderation.unmute.notMuted'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.unmute.notMuted'))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -390,7 +390,7 @@ async function listMuted(interaction) {
     .sort((a, b) => (a.until ?? Infinity) - (b.until ?? Infinity));
 
   if (!rows.length) {
-    await interaction.editReply({ components: [textCard(t(lang, 'moderation.mute.listEmpty'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.mute.listEmpty'))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
   const lines = rows.slice(0, 40).map(({ member, until, role }) => [
@@ -400,5 +400,5 @@ async function listMuted(interaction) {
   ].filter(Boolean).join(' · '));
   if (rows.length > 40) lines.push(t(lang, 'moderation.role.more', { count: rows.length - 40 }));
   const text = [tn(lang, 'moderation.mute.listTitle', rows.length, { count: rows.length }), ...lines].join('\n');
-  await interaction.editReply({ components: [textCard(text.slice(0, 3900), 0x4b4f59)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
+  await interaction.editReply({ components: [textCard(text.slice(0, 3900))], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
 }

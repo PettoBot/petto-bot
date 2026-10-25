@@ -15,7 +15,7 @@ const { t, formatNumber, languageOf } = require('../../i18n');
 const textChannels = [ChannelType.GuildText, ChannelType.GuildAnnouncement];
 const keyChoices = RESPONSE_KEYS.map((key) => ({ name: LABELS[key], value: key }));
 const ok = (text) => textCard(`${EMOJI.APPROVE}  ${text}`, 0xa5ea7a);
-const note = (text) => textCard(text, 0x4b4f59);
+const note = (text) => textCard(text);
 
 module.exports = {
   prefixOnly: true,

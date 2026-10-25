@@ -79,10 +79,10 @@ async function listCmd(interaction) {
 
   const threads = await db.listThreads(interaction.guild.id);
   if (!threads.length) {
-    await interaction.editReply({ components: [textCard(t(lang, 'automation.autothread.listEmpty'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'automation.autothread.listEmpty'))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const lines = threads.map((row) => t(lang, row.message_text || row.embed_template ? 'automation.autothread.listLineStarter' : 'automation.autothread.listLine', { channel: `<#${row.channel_id}>`, name: row.name_template }));
-  await interaction.editReply({ components: [textCard(`${t(lang, 'automation.autothread.listTitle', { count: threads.length })}\n${lines.join('\n')}`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(`${t(lang, 'automation.autothread.listTitle', { count: threads.length })}\n${lines.join('\n')}`)], flags: MessageFlags.IsComponentsV2 });
 }
