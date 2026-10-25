@@ -16,20 +16,22 @@ const caseCard = require('../src/utils/caseCard');
 const infoCard = require('../src/utils/infoCard');
 const { plainCard } = require('../src/utils/plainCard');
 
-// The rule: green and red only.
+// The rule: green, red and the yellow of the warnings only.
 assert.equal(semanticColor(COLORS.GREEN), COLORS.GREEN);
 assert.equal(semanticColor(COLORS.RED), COLORS.RED);
-for (const other of [COLORS.YELLOW, COLORS.DEFAULT, 0x5865f2, 0xf0a88f, 0x8c7cff, null, undefined, 'x']) assert.equal(semanticColor(other), null, `${other} is not a color of a card`);
+assert.equal(semanticColor(COLORS.YELLOW), COLORS.YELLOW);
+for (const other of [COLORS.DEFAULT, 0x5865f2, 0xf0a88f, 0x8c7cff, null, undefined, 'x']) assert.equal(semanticColor(other), null, `${other} is not a color of a card`);
 assert.equal(colorFromText(`${EMOJI.APPROVE} Done`), COLORS.GREEN);
 assert.equal(colorFromText(`${EMOJI.DENY} No`), COLORS.RED);
-assert.equal(colorFromText(`${EMOJI.WARNING} Careful`), COLORS.RED);
+assert.equal(colorFromText(`${EMOJI.WARNING} Careful`), COLORS.YELLOW, 'a warning is yellow, not red');
 assert.equal(colorFromText(`Something ${EMOJI.APPROVE} in the middle`), null, 'only the icon that starts the text counts');
 assert.equal(colorFromText('Plain text'), null);
 
 const accentOf = (container) => container.toJSON().accent_color ?? null;
 assert.equal(accentOf(caseCard.textCard('Plain', 0x4b4f59)), null, 'a grey card has no color');
 assert.equal(accentOf(caseCard.textCard(`${EMOJI.APPROVE} Saved`, null)), null, 'null is a card with no color, whatever the text');
-assert.equal(accentOf(caseCard.textCard('Plain', 0xfed53c)), null, 'a yellow card has no color');
+assert.equal(accentOf(caseCard.textCard('Plain', 0xffd563)), null, 'a card of another yellow has no color');
+assert.equal(accentOf(caseCard.textCard(`${EMOJI.WARNING} Unknown command`)), COLORS.YELLOW, 'the unknown command card is the yellow of the warnings');
 assert.equal(accentOf(caseCard.textCard('Plain', COLORS.GREEN)), COLORS.GREEN);
 assert.equal(accentOf(caseCard.textCard(`${EMOJI.APPROVE} Saved`)), COLORS.GREEN, 'a confirmation is green');
 assert.equal(accentOf(caseCard.textCard(`${EMOJI.DENY} Refused`)), COLORS.RED, 'a refusal is red');

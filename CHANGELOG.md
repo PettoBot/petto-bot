@@ -20,6 +20,8 @@ All notable changes to Petto are documented here.
 
 ### Changed
 
+- **The Steal button of `!jumbo` answers and locks.** It failed with "Invalid Form Body" because the answer did not say it was a Components V2 message. Now the button is locked as soon as it is pressed (it says Adding… and then Stolen, or is free again if it failed), a second press at the same time is told to wait, and the result is a private message.
+- **Warnings are yellow again, not red.** A card that starts with the warning icon (such as the one of an unknown command) has the yellow-orange side bar it had before the redesign. Red stays for refusals, and green for confirmations.
 - **Dividers between the parts of a card.** A text card with a `###` heading in the middle (such as `!appeals`, with its settings under the intro) now puts a divider before that heading, and the cards that stacked several blocks with nothing between them (the backup panel, the owner guide, the verification link) have their dividers too.
 - **Voice XP no longer needs a second person by default.** "People needed in voice" (`voice_min_members`) started at 2, so someone alone in a voice channel earned nothing and it looked broken. It is 1 now for new servers, and servers that still had the old 2 are moved to 1 once (they can set 2 again from Rules and events or `/level rules`; a later restart does not reset it). The rule is still there.
 - **"People needed" counts people who could earn XP themselves.** Bots and deafened members (and muted ones when the server ignores muted members) no longer count as company, so one person with someone deafened next to them is still one.
