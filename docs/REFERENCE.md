@@ -226,6 +226,7 @@ src/
       afk.js                     /afk — set / mentions — see "AFK / autoresponder / sticky / join extras" below
       steal.js                   /steal — add an emoji/sticker from elsewhere; the sticker-from-a-reply case only
                                  works via prefix (needs the real message's .reference/.stickers, see rawMessage below)
+      jumbo.js                   /jumbo (aliases `bigemoji`/`enlarge`) — an emoji or a sticker big, with a button to steal it; reads the replied message, so it works via prefix
       remind.js                  /remind — add / list / cancel — see "Reminders" below
     tickets/
       ticket.js                 /ticket — see "Ticket system" below: panel/category/support-role/ping-role admin groups
@@ -708,6 +709,8 @@ The rest of "bli"'s standalone systems. Not ported: `disabledms` — bli has a c
 **`/poj add channel:<#channel> delete_after?`** ("ping on join") — mentions a brand-new member in up to 10 configured channels, then deletes that ping after `delete_after` (default `5s`). No persisted "pending delete" table or polling job like bli had — the delete is just an in-memory `setTimeout` set when the ping is sent, since these messages live at most a couple minutes; the only trade-off is a delete getting missed if the bot restarts mid-window, which is an acceptable rarity for a message this short-lived. `remove` / `list` / `enable enabled:<bool>` / `clear`.
 
 **`/steal emoji:<string>?`** — paste a custom emoji (or several) to add them to this server, or reply to a message with a sticker to steal that instead. The sticker-via-reply path needs the real message object (`message.reference`/`message.stickers`), which a genuine slash interaction has no equivalent of — see `rawMessage` under "Command system" above; this command only works right when invoked via prefix, which is fine since everything currently is.
+
+**`/jumbo emoji:<string>?`** (aliases `bigemoji`, `enlarge`) — shows a custom emoji (moving ones too), an ordinary emoji (Twemoji, 72 px) or a sticker big, in a card with no color: name, kind, creation date and ID, plus a link to the original picture. The emoji can be typed after the command or taken from the message that is replied to (its sticker first, then the emojis of its text, embeds and reactions; the first one is shown and the rest are counted). When it is a custom emoji or sticker this server does not have, the card has a **Steal** button (`interactions/jumbo.js`, custom id `jumbo:e:<id>:<a|s>:<name>` or `jumbo:s:<id>`) that adds it for whoever presses it, if they and the bot have Manage Expressions. Lottie stickers have no picture, so they are told and not shown. The shared parts (finding emojis and stickers, the picture addresses) are in `utils/expressions.js`, which `/steal` uses too.
 
 **`!disablecommand`** (alias `dc`, prefix only; Manage Server) — turns commands off for the whole server or in some channels. The words go in any order and the subcommand can be left out (it is `disable`):
 

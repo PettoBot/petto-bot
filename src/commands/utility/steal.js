@@ -1,42 +1,12 @@
-const { SlashCommandBuilder, PermissionFlagsBits, StickerFormatType, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
+const { emojisInText, emojisOfMessage, emojiUrl, stickerUrl } = require('../../utils/expressions');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
 const { permissionName } = require('../../utils/permissionLabels');
 const { t, languageOf } = require('../../i18n');
 
-const EMOJI_RE = /<(a?):(\w+):(\d+)>/g;
-
 const MAX_EMOJIS = 20;
-
-/** The custom emojis written in a text, in order. */
-function emojisInText(text) {
-  return [...String(text ?? '').matchAll(EMOJI_RE)].map((match) => ({ animated: Boolean(match[1]), name: match[2], id: match[3] }));
-}
-
-/** Every custom emoji of a message: in its text, in its embeds, and the ones people reacted with. */
-function emojisOfMessage(message) {
-  const pieces = [message?.content];
-  for (const embed of message?.embeds ?? []) {
-    pieces.push(embed.title, embed.description, embed.footer?.text, embed.author?.name);
-    for (const field of embed.fields ?? []) pieces.push(field.name, field.value);
-  }
-  const found = emojisInText(pieces.filter(Boolean).join('\n'));
-  for (const reaction of message?.reactions?.cache?.values?.() ?? []) {
-    if (reaction.emoji?.id) found.push({ animated: Boolean(reaction.emoji.animated), name: reaction.emoji.name ?? 'emoji', id: reaction.emoji.id });
-  }
-  return found;
-}
-
-function emojiUrl(id, animated) {
-  return `https://cdn.discordapp.com/emojis/${id}.${animated ? 'gif' : 'png'}?size=512`;
-}
-
-function stickerUrl(sticker) {
-  if (sticker.format === StickerFormatType.Lottie) return null;
-  const ext = sticker.format === StickerFormatType.GIF ? 'gif' : 'png';
-  return `https://media.discordapp.net/stickers/${sticker.id}.${ext}`;
-}
 
 module.exports = {
   aliases: ['stl'],

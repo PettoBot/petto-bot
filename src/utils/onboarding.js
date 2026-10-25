@@ -4,6 +4,8 @@ const {
   ContainerBuilder,
   SectionBuilder,
   ThumbnailBuilder,
+  SeparatorBuilder,
+  SeparatorSpacingSize,
   TextDisplayBuilder,
   ActionRowBuilder,
   ButtonBuilder,
@@ -177,10 +179,9 @@ function buildAdminSetupMessage({ botId, setupMention, reportConfigMention, pref
 
 function buildOwnerGuide({ guild, setupChannel, setupMention, prefix, lang = currentLanguage() }) {
   const container = new ContainerBuilder()
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(t(lang, 'core.join.thanks', { emoji: EMOJI.STAR, server: guild.name })),
-      new TextDisplayBuilder().setContent(t(lang, 'setup.owner.howToStart', { prefix })),
-    );
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'core.join.thanks', { emoji: EMOJI.STAR, server: guild.name })))
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Large))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'setup.owner.howToStart', { prefix })));
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setLabel(t(lang, 'core.join.website.button')).setStyle(ButtonStyle.Link).setURL('https://petto.sbs'),

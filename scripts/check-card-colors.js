@@ -80,4 +80,11 @@ for (const lang of ['en', 'es', 'pt-BR']) {
   }
   for (const type of timed) for (const kind of ['card', 'dm']) assert.ok(strings[`moderation.${kind}.${type}Timed`] || strings[`moderation.${kind}.${type}`], `${lang}: the timed sentence of ${type}`);
 }
+// A heading that does not open the text starts a new part with a divider; a text with one heading stays in one part.
+const { splitBlocks } = require('../src/utils/cardBlocks');
+assert.deepEqual(splitBlocks('### A\nx\n\n0 waiting\n\n### B\n**k:** v'), ['### A\nx\n\n0 waiting', '### B\n**k:** v']);
+assert.equal(splitBlocks('### Only\nbody').length, 1);
+assert.equal(splitBlocks('```\n### not a title\n```').length, 1);
+const parts = caseCard.textCard('### A\nx\n\n### B\ny', null).toJSON().components.map((c) => c.type);
+assert.deepEqual(parts, [10, 14, 10], 'two titles of a text are told apart by a divider');
 console.log('Checked the colors and titles of the cards, and that every sanction type has its parts.');

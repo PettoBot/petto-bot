@@ -251,6 +251,8 @@ module.exports = {
   'cmd.utility.snipe.edited.opt.index.desc': '1 es el más reciente, hasta 10',
   'cmd.utility.steal.desc': 'Agrega a este servidor un emoji o sticker de otro lugar.',
   'cmd.utility.steal.opt.emoji.desc': 'Un emoji personalizado que robar (o responde a un mensaje con emojis, reacciones o un sticker)',
+  'cmd.utility.jumbo.desc': 'Muestra un emoji o un sticker en grande y te deja robarlo para este servidor.',
+  'cmd.utility.jumbo.opt.emoji.desc': 'Un emoji (o responde a un mensaje con un emoji o un sticker)',
   'cmd.utility.suggest.desc': 'Haz una sugerencia para este servidor. El servidor vota sobre ella.',
   'cmd.utility.suggest.opt.text.desc': 'Tu sugerencia (puede incluir un enlace a una imagen)',
   'cmd.utility.time.desc': 'Muestra la hora actual en una zona horaria.',

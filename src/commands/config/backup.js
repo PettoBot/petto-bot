@@ -11,6 +11,8 @@ const {
   PermissionFlagsBits,
   SlashCommandBuilder,
   StringSelectMenuBuilder,
+  SeparatorBuilder,
+  SeparatorSpacingSize,
   TextDisplayBuilder,
   TextInputBuilder,
   TextInputStyle,
@@ -487,19 +489,13 @@ function buildPanel(guild, userId, rows, scheduleRow, lang = currentLanguage()) 
 
   return new ContainerBuilder()
     .setAccentColor(COLORS.DEFAULT)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent([
-      t(lang, 'backup.panel.title', { emoji: EMOJI.STAR }),
-      t(lang, 'backup.panel.intro', { server: guild.name }),
-      '',
-      t(lang, 'backup.panel.recent'),
-      recent,
-      '',
-      `${t(lang, 'backup.panel.scheduleHeading')}\n${scheduleText}`,
-      '',
-      t(lang, 'backup.panel.data'),
-      '',
-      t(lang, 'backup.panel.footer'),
-    ].join('\n')))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent([t(lang, 'backup.panel.title', { emoji: EMOJI.STAR }), t(lang, 'backup.panel.intro', { server: guild.name })].join('\n')))
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Large))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent([t(lang, 'backup.panel.recent'), recent].join('\n')))
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`${t(lang, 'backup.panel.scheduleHeading')}\n${scheduleText}`))
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent([t(lang, 'backup.panel.data'), '', t(lang, 'backup.panel.footer')].join('\n')))
     .addActionRowComponents(buildBackupMenuRow(guild.id, userId, lang));
 }
 
