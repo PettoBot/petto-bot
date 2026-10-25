@@ -10,7 +10,7 @@ const {
   commandMention,
   commandSubcommandMention,
   ensureAdminSetupChannel,
-  findFallbackChannel,
+  findPrivateChannel,
   buildAdminSetupMessage,
   buildOwnerGuide,
   sendSetupMessage,
@@ -92,26 +92,31 @@ async function welcomeGuild(guild, guildConfig) {
     const setupMention = await commandMention(guild.client, 'setup', guild);
     const reportConfigMention = await commandSubcommandMention(guild.client, 'report', 'config', guild);
 
-    const setupPayload = (fallback) => buildAdminSetupMessage({
+    const setupPayload = (options = {}) => buildAdminSetupMessage({
       botId: guild.client.user.id,
       setupMention,
       reportConfigMention,
       prefix: guildConfig.prefix || '!',
-      fallback,
+      ...options,
     });
-    // The private channel is the first choice; when it could not be made (or written to), the message goes to a public channel, or a private one.
+    // The private channel is the first choice. When it could not be made (or written to), the setup is never put in a public channel and is not
+    // sent to the owner out of the blue: it goes by direct message to whoever added Petto (they asked for it), and if that is not possible
+    // to a channel that the whole server cannot see.
     let setupTarget = setupChannel;
     if (setupTarget) {
-      const sent = await sendSetupMessage(setupTarget, setupPayload(false)).catch((err) => {
+      const sent = await sendSetupMessage(setupTarget, setupPayload()).catch((err) => {
         logger.error(`Could not send setup welcome message in guild ${guild.id}:`, err);
         return null;
       });
       if (!sent) setupTarget = null;
     }
     if (!setupTarget) {
-      const fallbackChannel = findFallbackChannel(guild);
-      const sent = fallbackChannel ? await sendSetupMessage(fallbackChannel, setupPayload(true)).catch(() => null) : null;
-      if (sent) setupTarget = fallbackChannel;
+      const byDm = inviter ? await inviter.send(setupPayload({ dm: true, guildName: guild.name })).then(() => true).catch(() => false) : false;
+      if (!byDm) {
+        const privateChannel = findPrivateChannel(guild);
+        const sent = privateChannel ? await sendSetupMessage(privateChannel, setupPayload({ fallback: true })).catch(() => null) : null;
+        if (sent) setupTarget = privateChannel;
+      }
     }
 
     const ownerUser = await guild.client.users.fetch(OWNER_ID).catch(() => null);

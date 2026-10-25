@@ -301,7 +301,7 @@ const json = (component) => JSON.parse(JSON.stringify(component.toJSON ? compone
   stub('src/db/guilds.js', { createGuildIfMissing: async (id, defaults) => { joins.push([id, defaults]); return { row: { guild_id: id, prefix: '!', ...defaults }, created: true }; } });
   stub('src/utils/discordOps.js', { sendGuildLifecycleLog: async () => { joins.push(['language during the join', currentLanguage()]); } });
   stub('src/utils/autoModManager.js', { syncGuildAutoMod: async () => {} });
-  stub('src/utils/onboarding.js', { commandMention: async () => '</setup:1>', commandSubcommandMention: async () => '', ensureAdminSetupChannel: async () => null, findFallbackChannel: () => null, buildAdminSetupMessage: () => ({}), buildOwnerGuide: () => ({}), sendSetupMessage: async () => null });
+  stub('src/utils/onboarding.js', { commandMention: async () => '</setup:1>', commandSubcommandMention: async () => '', ensureAdminSetupChannel: async () => null, findPrivateChannel: () => null, buildAdminSetupMessage: () => ({}), buildOwnerGuide: () => ({}), sendSetupMessage: async () => null });
   delete require.cache[require.resolve('../src/events/guildCreate')];
   const guildCreate = require('../src/events/guildCreate');
   const fakeGuild = { id: 'joined', preferredLocale: 'pt-BR', name: 'Servidor', memberCount: 3, createdTimestamp: 0, client: { user: { id: '1' }, users: { fetch: async () => null } }, fetchOwner: async () => null, fetchAuditLogs: async () => { throw new Error('no access'); } };
