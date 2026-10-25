@@ -2,7 +2,7 @@
 // ordinary one, a sticker, a Lottie sticker and nothing; that the button is only there when this server lacks it; and who may press it.
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const { Collection, PermissionFlagsBits, StickerFormatType } = require('discord.js');
+const { Collection, MessageFlags, PermissionFlagsBits, StickerFormatType } = require('discord.js');
 
 function stub(relative, exports) {
   const resolved = require.resolve(path.join(__dirname, '..', relative));
@@ -67,23 +67,41 @@ const message = (extra = {}) => ({ content: '', embeds: [], stickers: new Collec
   assert.equal(unicodeEmojiUrl('👨‍👩‍👧').split('/').pop(), '1f468-200d-1f469-200d-1f467.png');
   assert.equal(unicodeEmojiIn('<:custom:1> 123 #'), null);
 
-  // The button: needs the permission in the person and in the bot, and adds the emoji or the sticker.
-  const press = async (customId, { member = true, g = guild() } = {}) => {
-    const replies = [];
+  // The button: needs the permission in the person and in the bot, locks itself at once, adds the emoji or the sticker, says Stolen, and
+  // every edit of the message says it is a Components V2 one (Discord refuses the edit otherwise).
+  const V2 = MessageFlags.IsComponentsV2;
+  const press = async (customId, { member = true, g = guild(), failWith = null } = {}) => {
+    const log = { updates: [], edits: [], follows: [], replies: [] };
+    const card = { type: 17, components: [{ type: 10, content: 'x' }, { type: 1, components: [{ type: 2, custom_id: customId, label: 'Steal', disabled: false }, { type: 2, style: 5, url: 'https://x', label: 'Open' }] }] };
+    if (failWith) g.emojis.create = async () => { throw new Error(failWith); };
     await button.handleButton({
       customId, guild: g, client: { fetchSticker: async (id) => ({ id, name: 'hello', tags: 'wave', description: 'hi', format: StickerFormatType.PNG }) },
-      member: { permissions: { has: () => member } },
-      reply: async (payload) => replies.push(plain(payload)), deferReply: async () => {}, editReply: async (payload) => replies.push(plain(payload)),
+      member: { permissions: { has: () => member } }, message: { components: [{ toJSON: () => card }] },
+      update: async (payload) => log.updates.push(payload), editReply: async (payload) => log.edits.push(payload), followUp: async (payload) => log.follows.push(payload),
+      reply: async (payload) => log.replies.push(payload), deferReply: async () => {},
     });
-    return replies.join(' ');
+    log.text = plain([log.replies, log.follows]);
+    return log;
   };
-  assert.match(await press('jumbo:e:111:s:wave', { member: false }), /need the/);
-  assert.equal(guild.made, undefined, 'nothing was added without the permission');
-  assert.match(await press('jumbo:e:111:s:wave'), /added as/);
+  const buttonOf = (payload) => payload.components[0].components[1].components[0];
+  let log = await press('jumbo:e:111:s:wave', { member: false });
+  assert.match(log.text, /need the/); assert.equal(guild.made, undefined, 'nothing was added without the permission'); assert.equal(log.updates.length, 0);
+  log = await press('jumbo:e:111:s:wave');
+  assert.equal(log.updates.length, 1, 'the button is locked at once'); assert.equal(buttonOf(log.updates[0]).disabled, true); assert.match(buttonOf(log.updates[0]).label, /Adding/);
+  assert.equal(log.updates[0].flags & V2, V2, 'the update says it is a V2 message'); assert.equal(log.edits[0].flags & V2, V2, 'so does the edit');
+  assert.equal(buttonOf(log.edits[0]).disabled, true); assert.equal(buttonOf(log.edits[0]).label, 'Stolen');
+  assert.match(log.text, /added as/); assert.equal(log.follows[0].flags & MessageFlags.Ephemeral, MessageFlags.Ephemeral, 'the answer is private');
   assert.equal(guild.made.name, 'wave'); assert.ok(guild.made.attachment.endsWith('/111.png?size=512'));
-  assert.match(await press('jumbo:e:222:a:dance'), /added as/); assert.ok(guild.made.attachment.includes('222.gif'));
-  assert.match(await press('jumbo:s:555'), /Sticker \*\*hello\*\* added/); assert.equal(guild.made.name, 'hello'); assert.equal(guild.made.tags, 'wave');
-  assert.match(await press('jumbo:e:111:s:wave', { g: guild({ emojis: { 111: {} } }) }), /already in this server/);
+  log = await press('jumbo:e:222:a:dance'); assert.match(log.text, /added as/); assert.ok(guild.made.attachment.includes('222.gif'));
+  log = await press('jumbo:s:555'); assert.match(log.text, /Sticker \*\*hello\*\* added/); assert.equal(guild.made.name, 'hello'); assert.equal(guild.made.tags, 'wave');
+  assert.match((await press('jumbo:e:111:s:wave', { g: guild({ emojis: { 111: {} } }) })).text, /already in this server/);
+  // When it fails, the button is free again and the answer says why.
+  log = await press('jumbo:e:333:s:fail', { failWith: 'Maximum number of emojis reached' });
+  assert.match(log.text, /Maximum number of emojis reached/); assert.equal(buttonOf(log.edits[0]).disabled, false, 'a failed steal can be tried again');
+  // Two presses at once: the second one is told to wait, and only one emoji is made.
+  let made = 0; const slow = guild(); slow.emojis.create = async () => { made += 1; await new Promise((r) => setTimeout(r, 30)); return { name: 'n', toString: () => '<:n:1>' }; };
+  const [first, second] = await Promise.all([press('jumbo:e:444:s:n', { g: slow }), press('jumbo:e:444:s:n', { g: slow })]);
+  assert.equal(made, 1, 'only one is added'); assert.match(first.text + second.text, /already adding/);
 
   console.log('Checked !jumbo and its steal button.');
 })().catch((err) => { console.error(err); process.exit(1); });
