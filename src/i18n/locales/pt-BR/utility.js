@@ -217,6 +217,7 @@ module.exports = {
   'utility.jumbo.unicodeNote': 'Um emoji que todos os servidores já têm, então não há nada para roubar.',
   'utility.jumbo.needYou': 'Você precisa da permissão **{permission}** para roubar emojis e stickers.',
   'utility.jumbo.already': 'Esse já está neste servidor.',
+  'utility.jumbo.here': 'Este servidor já tem, então não há nada para roubar.',
   'utility.jumbo.stealing': 'Roubando…',
   'utility.jumbo.done': 'Roubado',
   'utility.jumbo.working': 'Alguém já está adicionando esse, espere um momento.',

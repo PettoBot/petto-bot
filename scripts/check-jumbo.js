@@ -41,6 +41,8 @@ const message = (extra = {}) => ({ content: '', embeds: [], stickers: new Collec
   // One this server already has: no steal button.
   out = await run({ typed: '<:wave:111>', have: { emojis: { 111: {} } } });
   assert.ok(!buttonsOf(out).some((b) => String(b.custom_id).startsWith('jumbo:')), 'nothing to steal when the server has it');
+  assert.match(plain(out), /already has it/, 'and the card says why');
+  assert.doesNotMatch(plain(await run({ typed: '<:wave:111>' })), /already has it/, 'but only when it does');
   // Several in the text: the first, and the others are counted.
   out = await run({ typed: '<:a:1> <:b:2> <:c:3>' });
   assert.match(plain(out), /2 more in that message/);
