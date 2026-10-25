@@ -1,0 +1,59 @@
+name: Deploy to Discloud
+
+# A button to put the code of main in the bot of Discloud when its own Auto Deploy does not do it. It packs the code the same way an upload
+# does (without .github) and sends it with the API of Discloud. It never runs alone: start it from the Actions tab (Run workflow).
+# It needs two secrets of the repository (Settings > Secrets and variables > Actions):
+#   DISCLOUD_TOKEN   the API token of the account (discloud.com/dashboard > Tools > API keys)
+#   DISCLOUD_APP_ID  the ID of the bot app (the ID in the Details of the app in the Discloud panel)
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-discloud
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Pack the code
+        env:
+          APP_ID: ${{ secrets.DISCLOUD_APP_ID }}
+        run: |
+          set -euo pipefail
+          if ! [[ "${APP_ID}" =~ ^[0-9]+$ ]]; then
+            echo "The secret DISCLOUD_APP_ID is missing or is not a number."
+            exit 1
+          fi
+          mkdir pack
+          git archive HEAD | tar -x -C pack
+          rm -rf pack/.github
+          # The ID of the config must be the one of the app that receives the code.
+          sed -i "s/^ID=.*/ID=${APP_ID}/" pack/discloud.config
+          (cd pack && zip -qr ../app.zip .)
+          ls -l app.zip
+      - name: Send it to Discloud
+        env:
+          DISCLOUD_TOKEN: ${{ secrets.DISCLOUD_TOKEN }}
+          APP_ID: ${{ secrets.DISCLOUD_APP_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DISCLOUD_TOKEN}" ]; then
+            echo "The secret DISCLOUD_TOKEN is missing."
+            exit 1
+          fi
+          status=$(curl -sS -o response.json -w '%{http_code}' -X PUT \
+            -H "api-token: ${DISCLOUD_TOKEN}" \
+            -F "app.zip=@app.zip" \
+            "https://api.discloud.app/v2/app/${APP_ID}/commit")
+          echo "Discloud answered ${status}"
+          cat response.json
+          echo
+          if [ "${status}" -lt 200 ] || [ "${status}" -ge 300 ]; then
+            exit 1
+          fi
