@@ -29,6 +29,7 @@ const { handleButton: handlePollPanelButton, handleModal: handlePollPanelModal }
 const { HONEYPOT_COUNT_BUTTON_ID, handleButton: handleHoneypotButton } = require('../interactions/honeypot');
 const { ROLEPLAY_BUTTON_PREFIX, handleButton: handleRoleplayButton } = require('../interactions/roleplay');
 const { handleSelect: handleBackupSelect, handleScheduleModal, handleRestoreModal, handleRestoreButton, handleRestoreCodeModal, handleDeleteModal, handleDeleteButton } = require('../interactions/backup');
+const { STEAL_PREFIX: JUMBO_PREFIX, handleButton: handleJumboButton } = require('../interactions/jumbo');
 const { VERSION_SELECT_ID, handleButton: handleVersionButton, handleSelect: handleVersionSelect } = require('../interactions/version');
 const { handleButton: handleVoiceMasterButton, handleModal: handleVoiceMasterModal, handleSelect: handleVoiceMasterSelect } = require('../interactions/voiceMaster');
 const { SELECT_ID: QUEST_SELECT_ID, PAGE_ID: QUEST_PAGE_ID, handleSelect: handleQuestSelect, handleButton: handleQuestButton } = require('../interactions/quests');
@@ -182,6 +183,11 @@ module.exports = {
 
     if (interaction.isStringSelectMenu() && interaction.customId === VERSION_SELECT_ID) {
       try { await handleVersionSelect(interaction); } catch (err) { logger.error('Error handling version select:', err); }
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith(`${JUMBO_PREFIX}:`)) {
+      try { await handleJumboButton(interaction); } catch (err) { logger.error('Error handling the jumbo steal button:', err); }
       return;
     }
 
