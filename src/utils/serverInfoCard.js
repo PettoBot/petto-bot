@@ -45,7 +45,7 @@ function buildServerInfoCard(d) {
   const header = [
     `## ${clip(d.name, 100)}`,
     d.description ? `> ${clip(d.description, 280)}` : null,
-    row(EMOJI.FIELD_CALENDAR, t(lang, 'info.label.created'), `<t:${unix(d.createdTimestamp)}:D> (<t:${unix(d.createdTimestamp)}:R>)`),
+    row(EMOJI.FIELD_DOT, t(lang, 'info.label.created'), `<t:${unix(d.createdTimestamp)}:D> (<t:${unix(d.createdTimestamp)}:R>)`),
     row(EMOJI.FIELD_DOT, t(lang, 'info.serverinfo.owner'), d.ownerId ? `<@${d.ownerId}>` : t(lang, 'info.unknown')),
   ].filter(Boolean).join('\n');
 
@@ -66,7 +66,7 @@ function buildServerInfoCard(d) {
   ].filter(Boolean);
 
   const channelTotal = d.textChannels + d.forumChannels + d.voiceChannels + d.categories;
-  const channels = row(EMOJI.FIELD_NOTES, t(lang, 'info.serverinfo.channels', { count: n(channelTotal) }), joinParts([
+  const channels = row(EMOJI.FIELD_DOT, t(lang, 'info.serverinfo.channels', { count: n(channelTotal) }), joinParts([
     tn(lang, 'info.serverinfo.text', d.textChannels),
     d.forumChannels ? tn(lang, 'info.serverinfo.forums', d.forumChannels) : null,
     tn(lang, 'info.serverinfo.voice', d.voiceChannels),

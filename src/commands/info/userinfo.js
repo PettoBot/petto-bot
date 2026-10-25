@@ -71,7 +71,7 @@ module.exports = {
         lines: [
           row(EMOJI.FIELD_DOT, t(lang, 'info.userinfo.username'), `\`${user.username}\``),
           row(EMOJI.FIELD_DOT, t(lang, 'info.label.type'), t(lang, user.bot ? 'info.userinfo.botAccount' : 'info.userinfo.userAccount')),
-          row(EMOJI.FIELD_CALENDAR, t(lang, 'info.label.created'), stamp(user.createdTimestamp)),
+          row(EMOJI.FIELD_DOT, t(lang, 'info.label.created'), stamp(user.createdTimestamp)),
           badges.length ? row(EMOJI.FIELD_DOT, t(lang, 'info.userinfo.badges'), badgeText(badges)) : null,
         ],
       },
@@ -82,8 +82,8 @@ module.exports = {
       sections.push({
         title: t(lang, 'info.userinfo.inServer'),
         lines: [
-          row(EMOJI.FIELD_CALENDAR, t(lang, 'info.label.joined'), member.joinedTimestamp ? `${stamp(member.joinedTimestamp)}${joinPos ? ` · #${joinPos}` : ''}` : null),
-          row(EMOJI.FIELD_NOTES, t(lang, 'info.userinfo.nickname'), member.nickname ? clip(member.nickname, 64) : null),
+          row(EMOJI.FIELD_DOT, t(lang, 'info.label.joined'), member.joinedTimestamp ? `${stamp(member.joinedTimestamp)}${joinPos ? ` · #${joinPos}` : ''}` : null),
+          row(EMOJI.FIELD_DOT, t(lang, 'info.userinfo.nickname'), member.nickname ? clip(member.nickname, 64) : null),
           member.premiumSinceTimestamp ? row(EMOJI.FIELD_DOT, t(lang, 'info.userinfo.boostingSince'), `<t:${Math.floor(member.premiumSinceTimestamp / 1000)}:R>`) : null,
           member.communicationDisabledUntilTimestamp && member.communicationDisabledUntilTimestamp > Date.now()
             ? row(EMOJI.FIELD_DOT, t(lang, 'info.userinfo.timedOutUntil'), `<t:${Math.floor(member.communicationDisabledUntilTimestamp / 1000)}:R>`)
