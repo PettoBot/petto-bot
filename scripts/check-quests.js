@@ -196,10 +196,10 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
   const card = buildQuestCard({ ...orbs, rewards: [{ kind: 'orbs', name: '200 Orbs', amount: 200, premiumAmount: 240, image: null }] }, { hide_sections: [], role_id: '999' }, { rolePing: '<@&999>' });
   assert.equal(card.flags, MessageFlags.IsComponentsV2); assert.equal(card.components.length, 2, 'the card and a row of link buttons');
   const text = texts(card);
-  assert.ok(text.startsWith(`-# <@&999>\n### ${EMOJI.QUEST_BADGE} [Watch the trailer](https://discord.com/quests/${ids.orbs})`), 'the role ping and the linked title come first');
+  assert.ok(text.startsWith(`-# <@&999>\n# ${EMOJI.QUEST_BADGE} [Watch the trailer](https://discord.com/quests/${ids.orbs})`), 'the role ping and the linked title come first');
   assert.ok(text.includes('**Starts:** <t:') && text.includes('**Ends:** <t:') && text.includes('**Platforms:** Desktop') && text.includes('**Task:** Watch a video (2:00)'));
-  assert.ok(text.includes('### 🎁 Rewards') && text.includes('**Type:** Virtual currency') && text.includes(`**Amount:** 200 Orbs | ${EMOJI.QUEST_NITRO} 240`));
-  assert.ok(text.includes(`### ${EMOJI.QUEST_ALERT} Limitations`) && text.includes('Users residing in United States 🇺🇸') && text.includes('Users over 18 🔞'));
+  assert.ok(text.includes('## 🎁 Rewards') && text.includes('**Type:** Virtual currency') && text.includes(`**Amount:** 200 Orbs | ${EMOJI.QUEST_NITRO} 240`));
+  assert.ok(text.includes(`## ${EMOJI.QUEST_ALERT} Limitations`) && text.includes('Users residing in United States 🇺🇸') && text.includes('Users over 18 🔞'));
   assert.ok(!text.includes('Data from'), 'the default card has no credit line');
   const row = card.components[1].toJSON();
   assert.deepEqual(row.components.map((button) => [button.label, button.url]), [['Accept Quest', `https://discord.com/quests/${ids.orbs}`], ['Game page', 'https://example.com/game']]);

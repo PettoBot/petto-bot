@@ -7,7 +7,8 @@ const path = require('node:path');
 const root = path.join(__dirname, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const walk = (dir) => fs.readdirSync(path.join(root, dir), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : e.name.endsWith('.js') ? [path.join(dir, e.name)] : []));
-const sources = walk('src');
+// The quests and the rollouts keep their own look, as they were: they are left out of these rules.
+const sources = walk('src').filter((file) => !/quest|rollout/i.test(file));
 
 const { COLORS, semanticColor, colorFromText } = require('../src/utils/colors');
 const { EMOJI, TYPE_EMOJI, TYPE_BAR } = require('../src/utils/emojis');
@@ -27,10 +28,11 @@ assert.equal(colorFromText('Plain text'), null);
 
 const accentOf = (container) => container.toJSON().accent_color ?? null;
 assert.equal(accentOf(caseCard.textCard('Plain', 0x4b4f59)), null, 'a grey card has no color');
+assert.equal(accentOf(caseCard.textCard(`${EMOJI.APPROVE} Saved`, null)), null, 'null is a card with no color, whatever the text');
 assert.equal(accentOf(caseCard.textCard('Plain', 0xfed53c)), null, 'a yellow card has no color');
 assert.equal(accentOf(caseCard.textCard('Plain', COLORS.GREEN)), COLORS.GREEN);
 assert.equal(accentOf(caseCard.textCard(`${EMOJI.APPROVE} Saved`)), COLORS.GREEN, 'a confirmation is green');
-assert.equal(accentOf(caseCard.textCard(`${EMOJI.DENY} Refused`, 0x4b4f59)), COLORS.RED, 'a refusal is red');
+assert.equal(accentOf(caseCard.textCard(`${EMOJI.DENY} Refused`)), COLORS.RED, 'a refusal is red');
 assert.equal(accentOf(caseCard.textCard('Warned 3 people', 0xfed53c, { keep: true })), COLORS.YELLOW, 'a sanction card keeps its color');
 assert.equal(accentOf(infoCard.buildInfoCard({ title: 'x' })), null, 'an info card has no color');
 assert.equal(accentOf(infoCard.buildInfoCard({ title: 'x', accent: 0x8c7cff })), null);

@@ -128,7 +128,7 @@ function buildQuestCard(quest, config = {}, { kind = 'new', rolePing = null, lan
   const accent = accentOf(quest, config);
   if (accent !== null) container.setAccentColor(accent);
   const name = kind === 'expiring' ? t(lang, 'quests.card.endingSoon', { name: quest.name }) : quest.name;
-  const title = `### ${EMOJI.QUEST_BADGE} [${name}](${quest.url})`;
+  const title = `# ${EMOJI.QUEST_BADGE} [${name}](${quest.url})`;
   container.addTextDisplayComponents(text(`${rolePing ? `-# ${rolePing}\n` : ''}${title}`));
   if (mediaUrl(quest.image) && !hidden.has('image')) container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(quest.image)));
   container.addSeparatorComponents(divider());
@@ -138,7 +138,7 @@ function buildQuestCard(quest, config = {}, { kind = 'new', rolePing = null, lan
   container.addTextDisplayComponents(text(info.join('\n')));
   if (!hidden.has('rewards') && quest.rewards.length) {
     container.addSeparatorComponents(divider());
-    const reward = text(`### 🎁 ${t(lang, 'quests.card.rewards')}\n${rewardLines(quest, lang).join('\n')}`);
+    const reward = text(`## 🎁 ${t(lang, 'quests.card.rewards')}\n${rewardLines(quest, lang).join('\n')}`);
     const picture = mediaUrl(quest.rewards.find((entry) => mediaUrl(entry.image))?.image);
     if (picture) container.addSectionComponents(new SectionBuilder().addTextDisplayComponents(reward).setThumbnailAccessory(new ThumbnailBuilder().setURL(picture)));
     else container.addTextDisplayComponents(reward);
@@ -146,7 +146,7 @@ function buildQuestCard(quest, config = {}, { kind = 'new', rolePing = null, lan
   const limits = limitLines(quest, lang);
   if (!hidden.has('limits') && limits.length) {
     container.addSeparatorComponents(divider());
-    container.addTextDisplayComponents(text(`### ${EMOJI.QUEST_ALERT} ${t(lang, 'quests.card.limitations')}\n${limits.map((line) => `* ${line}`).join('\n')}`));
+    container.addTextDisplayComponents(text(`## ${EMOJI.QUEST_ALERT} ${t(lang, 'quests.card.limitations')}\n${limits.map((line) => `* ${line}`).join('\n')}`));
   }
   // Discord refuses a link button whose address is longer than 512 characters, and with it the whole message, so a button
   // whose address does not fit is left out (the title of the card still links to the quest).
@@ -199,7 +199,7 @@ function buildQuestList(quests, { page = 1, lang = currentLanguage() } = {}) {
   const container = new ContainerBuilder();
   const count = tn(lang, 'quests.list.count', quests.length, { count: quests.length });
   const subtitle = pages > 1 ? t(lang, 'quests.list.subtitlePages', { count, page: current, pages }) : t(lang, 'quests.list.subtitle', { count });
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`### ${t(lang, 'quests.list.title', { emoji: EMOJI.QUEST_BADGE })}\n-# ${subtitle}`));
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${t(lang, 'quests.list.title', { emoji: EMOJI.QUEST_BADGE })}\n-# ${subtitle}`));
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(slice.map((quest) => listEntry(quest, lang)).join('\n')));
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
