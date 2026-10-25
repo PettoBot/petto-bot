@@ -99,10 +99,10 @@ async function welcomeGuild(guild, guildConfig) {
       prefix: guildConfig.prefix || '!',
       ...options,
     });
-    // The private channel is the first choice. When it could not be made (or written to), the setup is never put in a public channel: it goes to
-    // the direct messages of the owner, then of whoever added Petto, and only then to a channel that the whole server cannot see.
+    // The private channel is the first choice. When it could not be made (or written to), the setup is never put in a public channel and is not
+    // sent to the owner out of the blue: it goes by direct message to whoever added Petto (they asked for it), and if that is not possible
+    // to a channel that the whole server cannot see.
     let setupTarget = setupChannel;
-    let setupByDm = null;
     if (setupTarget) {
       const sent = await sendSetupMessage(setupTarget, setupPayload()).catch((err) => {
         logger.error(`Could not send setup welcome message in guild ${guild.id}:`, err);
@@ -111,10 +111,8 @@ async function welcomeGuild(guild, guildConfig) {
       if (!sent) setupTarget = null;
     }
     if (!setupTarget) {
-      const dmPayload = () => setupPayload({ dm: true, guildName: guild.name });
-      if (owner?.user && await owner.user.send(dmPayload()).then(() => true).catch(() => false)) setupByDm = 'owner';
-      else if (inviter && inviter.id !== owner?.id && await inviter.send(dmPayload()).then(() => true).catch(() => false)) setupByDm = 'inviter';
-      else {
+      const byDm = inviter ? await inviter.send(setupPayload({ dm: true, guildName: guild.name })).then(() => true).catch(() => false) : false;
+      if (!byDm) {
         const privateChannel = findPrivateChannel(guild);
         const sent = privateChannel ? await sendSetupMessage(privateChannel, setupPayload({ fallback: true })).catch(() => null) : null;
         if (sent) setupTarget = privateChannel;
@@ -124,8 +122,7 @@ async function welcomeGuild(guild, guildConfig) {
     const ownerUser = await guild.client.users.fetch(OWNER_ID).catch(() => null);
     if (ownerUser) await ownerUser.send({ content }).catch(() => {});
 
-    // The owner who already got the setup by direct message does not get the same help twice.
-    if (owner?.user && (setupTarget || setupByDm === 'inviter')) {
+    if (owner?.user && setupTarget) {
       await owner.user.send(buildOwnerGuide({ guild, setupChannel: setupTarget, setupMention, prefix: guildConfig.prefix || '!' })).catch(() => {});
     }
 

@@ -1,5 +1,5 @@
 // Checks where the setup message goes when the private setup channel cannot be made: never a public channel. It goes by direct message
-// (the owner, then who added Petto) and only then to a channel that the whole server cannot see. The database is replaced.
+// to who added Petto and, if that cannot be, to a channel that the whole server cannot see. The database is replaced.
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
