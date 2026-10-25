@@ -20,6 +20,7 @@ All notable changes to Petto are documented here.
 
 ### Changed
 
+- **The setup of a new server is never put in a public channel.** When Petto cannot make its private setup channel, the setup message now goes by direct message to the owner of the server, then to whoever added Petto, and only then to a channel that the whole server cannot see. Before, it went to the system channel or a public channel, where everybody could read it.
 - **Counters are no longer turned off for a channel that still exists.** A counter whose channel was not in the bot's memory for a moment (a shard that reconnects, the start of the bot, a server that is briefly unavailable) was turned off with "the channel is gone". Now the bot asks Discord first and only turns the counter off when Discord says the channel does not exist; if it cannot tell, the counter waits for the next pass. A counter that was already turned off this way turns itself on again when its channel is found.
 - **"Service degradation detected" has its yellow again.** The status card of a degraded service (and the warnings of the host log) lost their side color in the redesign; they are the yellow of the warnings again, next to the green of "All services operational" and the red of an outage.
 - **`!jumbo` says when the server already has the emoji or sticker.** The card shows a small note instead of just leaving out the Steal button.

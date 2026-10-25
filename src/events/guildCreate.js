@@ -10,7 +10,7 @@ const {
   commandMention,
   commandSubcommandMention,
   ensureAdminSetupChannel,
-  findFallbackChannel,
+  findPrivateChannel,
   buildAdminSetupMessage,
   buildOwnerGuide,
   sendSetupMessage,
@@ -92,32 +92,40 @@ async function welcomeGuild(guild, guildConfig) {
     const setupMention = await commandMention(guild.client, 'setup', guild);
     const reportConfigMention = await commandSubcommandMention(guild.client, 'report', 'config', guild);
 
-    const setupPayload = (fallback) => buildAdminSetupMessage({
+    const setupPayload = (options = {}) => buildAdminSetupMessage({
       botId: guild.client.user.id,
       setupMention,
       reportConfigMention,
       prefix: guildConfig.prefix || '!',
-      fallback,
+      ...options,
     });
-    // The private channel is the first choice; when it could not be made (or written to), the message goes to a public channel, or a private one.
+    // The private channel is the first choice. When it could not be made (or written to), the setup is never put in a public channel: it goes to
+    // the direct messages of the owner, then of whoever added Petto, and only then to a channel that the whole server cannot see.
     let setupTarget = setupChannel;
+    let setupByDm = null;
     if (setupTarget) {
-      const sent = await sendSetupMessage(setupTarget, setupPayload(false)).catch((err) => {
+      const sent = await sendSetupMessage(setupTarget, setupPayload()).catch((err) => {
         logger.error(`Could not send setup welcome message in guild ${guild.id}:`, err);
         return null;
       });
       if (!sent) setupTarget = null;
     }
     if (!setupTarget) {
-      const fallbackChannel = findFallbackChannel(guild);
-      const sent = fallbackChannel ? await sendSetupMessage(fallbackChannel, setupPayload(true)).catch(() => null) : null;
-      if (sent) setupTarget = fallbackChannel;
+      const dmPayload = () => setupPayload({ dm: true, guildName: guild.name });
+      if (owner?.user && await owner.user.send(dmPayload()).then(() => true).catch(() => false)) setupByDm = 'owner';
+      else if (inviter && inviter.id !== owner?.id && await inviter.send(dmPayload()).then(() => true).catch(() => false)) setupByDm = 'inviter';
+      else {
+        const privateChannel = findPrivateChannel(guild);
+        const sent = privateChannel ? await sendSetupMessage(privateChannel, setupPayload({ fallback: true })).catch(() => null) : null;
+        if (sent) setupTarget = privateChannel;
+      }
     }
 
     const ownerUser = await guild.client.users.fetch(OWNER_ID).catch(() => null);
     if (ownerUser) await ownerUser.send({ content }).catch(() => {});
 
-    if (owner?.user && setupTarget) {
+    // The owner who already got the setup by direct message does not get the same help twice.
+    if (owner?.user && (setupTarget || setupByDm === 'inviter')) {
       await owner.user.send(buildOwnerGuide({ guild, setupChannel: setupTarget, setupMention, prefix: guildConfig.prefix || '!' })).catch(() => {});
     }
 

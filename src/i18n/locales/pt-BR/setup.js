@@ -9,6 +9,7 @@ module.exports = {
   'setup.admin.welcomeFallback': '{emoji} Boas-vindas ao Petto!',
   'setup.admin.welcome': '{emoji} Boas-vindas ao canal de configuração para administradores do Petto!',
   'setup.admin.fallbackNote': 'O Petto não conseguiu criar seu canal privado de configuração, então a configuração está aqui. Os administradores podem movê-la para um canal privado e apagar esta mensagem.',
+  'setup.admin.dmNote': 'O Petto não conseguiu criar seu canal privado de configuração em {server}, então a configuração chega a você por mensagem direta. Os administradores podem usá-la no servidor quando quiserem.',
   'setup.admin.privateNote': 'Este canal privado só pode ser visto pelos administradores do servidor e pelo Petto.',
   'setup.admin.openSetup': '- Abra {setup} para configurar o servidor em um único formulário.',
   'setup.admin.help': '- Use `{prefix}help` para ver os comandos com prefixo do Petto.',
