@@ -6,11 +6,12 @@ const confessions = require('../utils/confessions');
 const logger = require('../utils/logger');
 const { t, languageOf } = require('../i18n');
 
+const { semanticColor } = require('../utils/colors');
 const PREFIX = confessions.BUTTON_PREFIX;
 const V2 = MessageFlags.IsComponentsV2;
 
-const say = (interaction, text, color = 0x4b4f59) => interaction.reply({
-  components: [new ContainerBuilder().setAccentColor(color).addTextDisplayComponents(new TextDisplayBuilder().setContent(text))],
+const say = (interaction, text, color = null) => interaction.reply({
+  components: [new ContainerBuilder().setAccentColor(semanticColor(color)).addTextDisplayComponents(new TextDisplayBuilder().setContent(text))],
   flags: V2 | MessageFlags.Ephemeral,
   allowedMentions: { parse: [] },
 });

@@ -98,7 +98,7 @@ async function list(interaction) {
     const emptyText = targetUser
       ? t(lang, 'moderation.case.noInfractions', { user: `${targetUser}` })
       : t(lang, 'moderation.case.noCases');
-    await interaction.editReply({ components: [textCard(emptyText, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(emptyText)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -109,7 +109,7 @@ async function list(interaction) {
   function renderPage(rows, count, currentPage, includeControls = true) {
     if (!rows.length) {
       const emptyText = targetUser ? t(lang, 'moderation.case.noInfractions', { user: `${targetUser}` }) : t(lang, 'moderation.case.noCases');
-      return { components: [textCard(emptyText, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 };
+      return { components: [textCard(emptyText)], flags: MessageFlags.IsComponentsV2 };
     }
     const card = buildCaseListCard({
       rows,
@@ -173,11 +173,11 @@ async function last(interaction) {
 
   const row = await getLastCase(interaction.guild.id, targetUser.id);
   if (!row) {
-    await interaction.editReply({ components: [textCard(t(lang, 'moderation.case.noInfractions', { user: `${targetUser}` }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.case.noInfractions', { user: `${targetUser}` }))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
-  await interaction.editReply({ components: [textCard(formatCaseDetail(row, lang), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(formatCaseDetail(row, lang))], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function lastMany(interaction) {
@@ -194,7 +194,7 @@ async function lastMany(interaction) {
   }
   if (notFound.length) lines.push(t(lang, 'moderation.common.notFound', { list: notFound.map((id) => `\`${id}\``).join(', ') }));
 
-  await interaction.editReply({ components: [textCard(lines.join('\n\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(lines.join('\n\n'))], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function view(interaction) {
@@ -208,7 +208,7 @@ async function view(interaction) {
     return;
   }
 
-  await interaction.editReply({ components: [textCard(formatCaseDetail(row, lang), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(formatCaseDetail(row, lang))], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function edit(interaction) {
@@ -368,7 +368,7 @@ async function deleteAll(interaction) {
 
   const history = await getUserHistory(interaction.guild.id, targetUser.id, { limit: 1000 });
   if (!history.length) {
-    await interaction.editReply({ components: [textCard(t(lang, 'moderation.case.noInfractions', { user: `${targetUser}` }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.case.noInfractions', { user: `${targetUser}` }))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -384,12 +384,12 @@ async function deleteAll(interaction) {
   try {
     click = await promptMessage.awaitMessageComponent({ filter: (i) => i.user.id === interaction.user.id, time: 30_000 });
   } catch {
-    await interaction.editReply({ components: [textCard(t(lang, 'moderation.case.deleteAll.timedOut', { emoji: EMOJI.DENY }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.case.deleteAll.timedOut', { emoji: EMOJI.DENY }))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   if (click.customId === 'case_deleteall_cancel') {
-    await click.update({ components: [textCard(t(lang, 'moderation.case.deleteAll.cancelled', { emoji: EMOJI.DENY }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await click.update({ components: [textCard(t(lang, 'moderation.case.deleteAll.cancelled', { emoji: EMOJI.DENY }))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -414,7 +414,7 @@ async function search(interaction) {
   }
   const rows = await searchCases(interaction.guild.id, filters);
   const text = rows.length ? [t(lang, 'moderation.case.search.title'), ...rows.map((row) => formatCaseLine(row, lang))].join('\n') : t(lang, 'moderation.case.search.none');
-  await interaction.editReply({ components: [textCard(text.slice(0, 3900), 0x4b4f59)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
+  await interaction.editReply({ components: [textCard(text.slice(0, 3900))], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
 }
 
 async function evidence(interaction) {
@@ -450,7 +450,7 @@ async function stats(interaction) {
     t(lang, 'moderation.case.stats.moderators'),
     moderators,
   ].join('\n');
-  await interaction.editReply({ components: [textCard(text.slice(0, 3900), 0x4b4f59)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
+  await interaction.editReply({ components: [textCard(text.slice(0, 3900))], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
 }
 
 /** `case stats <moderator>` (`!modstats`): what one moderator did, by kind, in the last days and in the last 7. */
@@ -466,5 +466,5 @@ async function moderatorCard(interaction, moderator, days, lang) {
     t(lang, 'moderation.case.stats.byKind', { types }),
     t(lang, 'moderation.case.stats.moderatorHint', { prefix: interaction.typedPrefix ?? '/', id: moderator.id }),
   ].join('\n');
-  await interaction.editReply({ components: [textCard(text.slice(0, 3900), 0x4b4f59)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
+  await interaction.editReply({ components: [textCard(text.slice(0, 3900))], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
 }

@@ -283,7 +283,7 @@ module.exports = {
       }
       if (!handled) {
         const warning = await message
-          .reply({ components: [textCard(t(lang, 'core.unknownCommand', { emoji: EMOJI.WARNING, command: canonicalName, prefix }), 0xfed53c)], flags: MessageFlags.IsComponentsV2, allowedMentions: { repliedUser: false } })
+          .reply({ components: [textCard(t(lang, 'core.unknownCommand', { emoji: EMOJI.WARNING, command: canonicalName, prefix }))], flags: MessageFlags.IsComponentsV2, allowedMentions: { repliedUser: false } })
           .catch(() => null);
         // Matches bli: the "unknown command" nudge clears itself out instead of cluttering chat.
         if (warning) setTimeout(() => warning.delete().catch(() => {}), UNKNOWN_COMMAND_DELETE_MS);

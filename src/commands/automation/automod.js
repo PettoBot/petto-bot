@@ -414,7 +414,7 @@ async function wordFilter(interaction, sub, lang) {
     t(lang, 'security.wordFilter.list.action', { action: actionLabel }),
     words.length ? t(lang, 'security.wordFilter.list.words', { count: words.length, words: words.map((w) => `\`${w}\``).join(', ') }) : t(lang, 'security.wordFilter.list.empty'),
   ];
-  await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(lines.join('\n'))], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function invites(interaction, sub, lang) {
@@ -425,7 +425,7 @@ async function invites(interaction, sub, lang) {
     const config = await getConfig(interaction.guild.id);
     const codes = config?.allowed_invite_codes ?? [];
     const text = codes.length ? t(lang, 'security.invites.list', { count: codes.length, codes: codes.map((c) => `\`${c}\``).join(', ') }) : t(lang, 'security.invites.empty');
-    await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(text)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -468,7 +468,7 @@ async function silentChannel(interaction, sub, lang) {
   // list
   const channels = await listSilentChannels(interaction.guild.id);
   const text = channels.length ? channels.map((c) => `<#${c.channel_id}> · ${actionWord(c.action, lang)}`).join('\n') : t(lang, 'security.silent.empty');
-  await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(text)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function antiAlt(interaction, lang) {
@@ -510,9 +510,9 @@ async function joinPass(interaction, sub, lang) {
 
   if (sub === 'list') {
     const rows = await joinPasses.listPasses(interaction.guild.id);
-    if (!rows.length) return reply(t(lang, 'security.joinPass.empty'), 0x4b4f59);
+    if (!rows.length) return reply(t(lang, 'security.joinPass.empty'));
     const lines = rows.slice(0, 40).map((row) => `<@${row.user_id}> \`${row.user_id}\` · <@${row.created_by}> · <t:${Math.floor(new Date(row.created_at).getTime() / 1000)}:R>`);
-    return reply([t(lang, 'security.joinPass.title', { count: rows.length }), ...lines].join('\n'), 0x4b4f59);
+    return reply([t(lang, 'security.joinPass.title', { count: rows.length }), ...lines].join('\n'));
   }
 
   const user = interaction.options.getUser('user', true);
@@ -555,7 +555,7 @@ async function immune(interaction, sub, lang) {
     const config = await getConfig(interaction.guild.id);
     const ids = config?.immune_role_ids ?? [];
     const text = ids.length ? ids.map((id) => `<@&${id}>`).join(' ') : t(lang, 'security.immune.empty');
-    await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(text)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -577,7 +577,7 @@ async function antinukeWhitelist(interaction, sub, lang) {
     const config = await getAntinukeConfig(interaction.guild.id);
     const ids = config?.whitelist_ids ?? [];
     const text = ids.length ? ids.map((id) => `<@${id}>`).join(' ') : t(lang, 'security.antinukeWhitelist.empty');
-    await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(text)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -601,7 +601,7 @@ async function templateFilters(interaction, sub, lang) {
 
   if (sub === 'list') {
     const rows = await rulesDb.listRules(guildId);
-    if (!rows.length) return show(t(lang, 'security.template.list.empty'), 0x4b4f59);
+    if (!rows.length) return show(t(lang, 'security.template.list.empty'));
     const line = (r) => t(lang, 'security.template.list.line', {
       id: r.id,
       status: r.enabled ? EMOJI.APPROVE : '▫️',
@@ -609,7 +609,7 @@ async function templateFilters(interaction, sub, lang) {
       action: `${actionWord(r.action, lang)}${r.action === 'mute' ? ` ${r.mute_minutes}m` : ''}`,
       hits: tn(lang, 'security.template.list.hits', r.hits, { count: r.hits }),
     });
-    return show([t(lang, 'security.template.list.title'), ...rows.map(line)].join('\n'), 0x4b4f59);
+    return show([t(lang, 'security.template.list.title'), ...rows.map(line)].join('\n'));
   }
   if (sub === 'remove') {
     const removed = await rulesDb.deleteRule(guildId, interaction.options.getInteger('id', true));
@@ -646,7 +646,7 @@ async function nativeRules(interaction, sub, lang) {
     if (sub === 'list') {
       const { rules, used, limits } = await native.listNative(interaction.guild);
       const lines = rules.map((r) => t(lang, r.official ? 'security.native.list.lineOfficial' : 'security.native.list.line', { status: r.enabled ? EMOJI.APPROVE : '▫️', name: r.name, id: r.id }));
-      return show([t(lang, 'security.native.list.title'), t(lang, 'security.native.list.keywordRules', { used: used.keyword, limit: limits.keyword }), ...lines].join('\n').slice(0, 3800), 0x4b4f59);
+      return show([t(lang, 'security.native.list.title'), t(lang, 'security.native.list.keywordRules', { used: used.keyword, limit: limits.keyword }), ...lines].join('\n').slice(0, 3800));
     }
     if (sub === 'remove') {
       await native.deleteNative(interaction.guild, interaction.options.getString('rule', true).trim(), lang);

@@ -34,7 +34,7 @@ module.exports = {
     const userData = await levelUsersDb.getUser(interaction.guild.id, target.id);
     const xp = Number(voice ? userData?.voice_xp ?? 0 : userData?.xp ?? 0);
     if (!userData || xp <= 0) {
-      await interaction.reply({ components: [textCard(t(lang, voice ? 'leveling.rank.noVoiceXp' : 'leveling.rank.noXp', { user: `${target}` }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.reply({ components: [textCard(t(lang, voice ? 'leveling.rank.noVoiceXp' : 'leveling.rank.noXp', { user: `${target}` }))], flags: MessageFlags.IsComponentsV2 });
       return;
     }
 

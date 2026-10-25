@@ -292,7 +292,7 @@ async function listCmd(interaction) {
 
   const list = await arDb.listForGuild(interaction.guild.id);
   if (!list.length) {
-    await interaction.editReply({ components: [textCard(t(lang, 'automation.autoresponder.listEmpty'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'automation.autoresponder.listEmpty'))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -301,7 +301,7 @@ async function listCmd(interaction) {
     const output = a.embed_template ? `embed:\`${a.embed_template}\`` : (reply.length > 60 ? `${reply.slice(0, 60)}…` : (reply || t(lang, 'automation.autoresponder.noText')));
     return `\`${a.ar_id}\` ${modeTag(a.match_mode)}${(a.reply_type === 'embed' || a.embed_template) ? ' 🖼️' : ''}${a.delete_trigger ? ' 🗑️' : ''}${a.role_ids?.length ? ' 🎭' : ''}${a.ping_user ? ' 🔔' : ''}${a.delete_previous ? ' ♻️' : ''} · **${a.trigger}** → ${output}`;
   });
-  await interaction.editReply({ components: [textCard(`${t(lang, 'automation.autoresponder.listTitle', { count: list.length, max: await arDb.limitFor(interaction.guild.id) })}\n${lines.join('\n')}`.slice(0, 3900), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(`${t(lang, 'automation.autoresponder.listTitle', { count: list.length, max: await arDb.limitFor(interaction.guild.id) })}\n${lines.join('\n')}`.slice(0, 3900))], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function showCmd(interaction) {
@@ -324,7 +324,7 @@ async function showCmd(interaction) {
     t(lang, 'automation.autoresponder.embedTemplate', { template: ar.embed_template ? `\`${ar.embed_template}\`` : t(lang, 'automation.common.none') }),
     t(lang, 'automation.autoresponder.replyFlags', { reply: ar.reply || t(lang, 'automation.common.none') }),
   ];
-  await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(lines.join('\n'))], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function resetCmd(interaction) {

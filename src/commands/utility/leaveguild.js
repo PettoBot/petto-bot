@@ -53,7 +53,7 @@ module.exports = {
 
     const targetName = target.name || 'Unknown server';
     await interaction.reply({
-      components: [textCard(`${EMOJI.WARNING} Leaving **${targetName}** (\`${targetId}\`)…`, 0xfed53c)],
+      components: [textCard(`${EMOJI.WARNING} Leaving **${targetName}** (\`${targetId}\`)…`)],
       flags: MessageFlags.IsComponentsV2,
     });
 

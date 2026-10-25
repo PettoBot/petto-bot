@@ -140,6 +140,6 @@ async function kickUsers(interaction) {
   if (notFound.length) lines.push(t(lang, 'moderation.common.notFound', { list: notFound.map((id) => `\`${id}\``).join(', ') }));
   lines.push(t(lang, 'moderation.common.reason', { reason: reasonText(reason, lang) }));
 
-  const card = textCard(lines.join('\n'), 0xfed53c);
+  const card = textCard(lines.join('\n'), 0xfed53c, { keep: true });
   await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });
 }

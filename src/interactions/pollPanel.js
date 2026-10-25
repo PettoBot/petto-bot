@@ -66,7 +66,7 @@ function renderPanel(uid, draft, lang = currentLanguage()) {
   ].filter(Boolean);
   lines.push('', `-# ${meta.join(' · ')}`);
 
-  const container = new ContainerBuilder().setAccentColor(0x4b4f59).addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
+  const container = new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
   if (draft.image) {
     container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(draft.image)));
   }
@@ -93,7 +93,7 @@ async function handleButton(interaction) {
 
   if (type === 'pl_cancel') {
     deleteDraft(uid);
-    await interaction.update({ components: [textCard(t(lang, 'polls.panel.cancelled', { emoji: EMOJI.DENY }), 0x8b8fa3)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.update({ components: [textCard(t(lang, 'polls.panel.cancelled', { emoji: EMOJI.DENY }))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 

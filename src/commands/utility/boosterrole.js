@@ -361,7 +361,7 @@ async function selfRemove(interaction) {
 
   const existing = await db.getBoosterRole(interaction.guild.id, interaction.user.id);
   if (!existing) {
-    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.none'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.none'))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -398,7 +398,7 @@ async function selfShare(interaction) {
     return;
   }
   if (existing.shared_with.includes(target.id)) {
-    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.share.already'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.share.already'))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -445,12 +445,12 @@ async function selfShared(interaction) {
 
   const existing = await db.getBoosterRole(interaction.guild.id, interaction.user.id);
   if (!existing) {
-    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.noneYet'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.noneYet'))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const shared = existing.shared_with.length ? existing.shared_with.map((id) => `<@${id}>`).join(', ') : t(lang, 'utility.boosterrole.shared.none');
-  await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.shared.text', { role: `<@&${existing.role_id}>`, users: shared }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.shared.text', { role: `<@&${existing.role_id}>`, users: shared }))], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function requireManageGuild(interaction) {
@@ -589,7 +589,7 @@ async function adminRemove(interaction) {
 
   const existing = await db.getBoosterRole(interaction.guild.id, targetUser.id);
   if (!existing) {
-    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.admin.none'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.admin.none'))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -606,7 +606,7 @@ async function adminList(interaction) {
 
   const all = await db.listBoosterRoles(interaction.guild.id);
   if (!all.length) {
-    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.list.empty'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'utility.boosterrole.list.empty'))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -616,7 +616,7 @@ async function adminList(interaction) {
     return `<@${br.user_id}> → ${role ? `<@&${br.role_id}>` : t(lang, 'utility.boosterrole.list.deleted', { id: br.role_id })}${br.color ? ` \`${br.color}\`` : ''}${shared}`;
   });
 
-  await interaction.editReply({ components: [textCard(`${t(lang, 'utility.boosterrole.list.title', { count: all.length })}\n${lines.join('\n').slice(0, 3800)}`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(`${t(lang, 'utility.boosterrole.list.title', { count: all.length })}\n${lines.join('\n').slice(0, 3800)}`)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function adminLink(interaction) {
@@ -697,7 +697,7 @@ async function filterCmd(interaction, sub) {
 
   if (sub === 'list') {
     const text = config.filtered_words.length ? config.filtered_words.map((w) => `\`${w}\``).join(', ') : t(lang, 'utility.boosterrole.filter.empty');
-    await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(text)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 

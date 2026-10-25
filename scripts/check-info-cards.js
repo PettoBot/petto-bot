@@ -92,7 +92,7 @@ async function run(file, label, g, options) {
   await run('roleinfo', '', g, { role: mkRole(3, { iconURL: () => avatar('r') }) });
   await run('roleinfo', 'no perms', g, { role: mkRole(4, { color: 0, permissions: new PermissionsBitField(), members: undefined }) });
   await run('emojiinfo', 'static', g, { emoji: '<:petto_star:1527894282135146516>' });
-  await run('emojiinfo', 'animated', g, { emoji: '<a:peto_load:1527894241290883152>' });
+  await run('emojiinfo', 'animated', g, { emoji: '<a:petto_loading:1541481906468814880>' });
   await run('emojiinfo', 'not custom', g, { emoji: 'hi' });
   await run('inviteinfo', '', g, { code: 'https://discord.gg/abc' });
   await run('inviteinfo', 'invalid', g, { code: 'bad' });

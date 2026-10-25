@@ -39,7 +39,7 @@ async function confirmBulkAction(interaction, action, targets) {
   ].join('\n');
 
   const message = await interaction.editReply({
-    components: [textCard(prompt, 0xfed53c), row],
+    components: [textCard(prompt), row],
     flags: MessageFlags.IsComponentsV2,
   });
 
@@ -51,7 +51,7 @@ async function confirmBulkAction(interaction, action, targets) {
     });
   } catch {
     await interaction.editReply({
-      components: [textCard(t(lang, 'moderation.bulk.timedOut', { emoji: EMOJI.DENY }), 0x4b4f59)],
+      components: [textCard(t(lang, 'moderation.bulk.timedOut', { emoji: EMOJI.DENY }))],
       flags: MessageFlags.IsComponentsV2,
     }).catch(() => {});
     return false;
@@ -59,14 +59,14 @@ async function confirmBulkAction(interaction, action, targets) {
 
   if (click.customId !== 'modbulk_confirm') {
     await click.update({
-      components: [textCard(t(lang, 'moderation.bulk.cancelled', { emoji: EMOJI.DENY }), 0x4b4f59)],
+      components: [textCard(t(lang, 'moderation.bulk.cancelled', { emoji: EMOJI.DENY }))],
       flags: MessageFlags.IsComponentsV2,
     });
     return false;
   }
 
   await click.update({
-    components: [textCard(t(lang, 'moderation.bulk.confirmed', { emoji: EMOJI.APPROVE }), 0xfed53c)],
+    components: [textCard(t(lang, 'moderation.bulk.confirmed', { emoji: EMOJI.APPROVE }))],
     flags: MessageFlags.IsComponentsV2,
   });
   return true;

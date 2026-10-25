@@ -58,7 +58,7 @@ async function update(interaction, sub) {
     const name = String(interaction.options.getString('template') ?? '').trim();
     if (!name) {
       const current = await ensureConfig(interaction.guild.id);
-      return interaction.editReply({ components: [textCard(await templateHint(interaction.guild.id, { current: current[column] ?? null, usage: `bumpreminder template ${which} <name>`, what: t(lang, `welcome.bump.what.${which}`), lang }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+      return interaction.editReply({ components: [textCard(await templateHint(interaction.guild.id, { current: current[column] ?? null, usage: `bumpreminder template ${which} <name>`, what: t(lang, `welcome.bump.what.${which}`), lang }))], flags: MessageFlags.IsComponentsV2 });
     }
     if (name.toLowerCase() === 'none') {
       patch[column] = null;
@@ -107,5 +107,5 @@ async function status(interaction) {
     t(lang, 'welcome.bump.status.reminder', { text: shownText('reminder', config.message, lang) }),
     t(lang, 'welcome.bump.status.thankyou', { text: shownText('thankyou', config.thankyou, lang) }),
   ];
-  await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(lines.join('\n'))], flags: MessageFlags.IsComponentsV2 });
 }

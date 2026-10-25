@@ -5,10 +5,10 @@ const { t, formatNumber, languageOf } = require('../../i18n');
 
 const STATUS_URL = 'https://petto.sbs/status';
 const GREEN = 0xa5ea7a;
-const YELLOW = 0xffd563;
+const YELLOW = null;
 const RED = 0xff6b6b;
 
-/** The color follows the slowest of the two latencies: green is fast, yellow is slow, red is bad. */
+/** The color follows the slowest of the two latencies: green is fast, no color is slow, red is bad. */
 function colorFor(guildMs, apiMs) {
   const worst = Math.max(guildMs, Number.isFinite(apiMs) ? apiMs : 0);
   return worst < 300 ? GREEN : worst < 700 ? YELLOW : RED;
@@ -38,7 +38,7 @@ module.exports = {
   async execute(interaction) {
     const lang = await languageOf(interaction);
     const startedAt = Date.now();
-    await interaction.reply({ components: [textCard(t(lang, 'info.ping.pinging'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.reply({ components: [textCard(t(lang, 'info.ping.pinging'))], flags: MessageFlags.IsComponentsV2 });
     const sent = await interaction.fetchReply().catch(() => null);
     const guildMs = Math.max(0, (sent?.createdTimestamp ?? Date.now()) - startedAt);
     const { client } = interaction;

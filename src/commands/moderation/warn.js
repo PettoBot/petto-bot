@@ -155,7 +155,7 @@ async function warnUsers(interaction) {
   if (notFound.length) lines.push(t(lang, 'moderation.common.notFound', { list: notFound.map((id) => `\`${id}\``).join(', ') }));
   lines.push(t(lang, 'moderation.common.reason', { reason }));
 
-  const card = textCard(lines.join('\n'), 0xfed53c);
+  const card = textCard(lines.join('\n'), 0xfed53c, { keep: true });
   await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });
 }
 
@@ -172,11 +172,11 @@ async function escalation(interaction, sub) {
   if (sub === 'list') {
     const rules = await getRules(interaction.guild.id);
     if (!rules.length) {
-      await interaction.editReply({ components: [textCard(t(lang, 'moderation.escalation.none'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'moderation.escalation.none'))], flags: MessageFlags.IsComponentsV2 });
       return;
     }
     const lines = rules.map((r) => tn(lang, 'moderation.escalation.rule', r.warn_count, { count: r.warn_count, action: ruleAction(r.action, lang), duration: r.duration_ms ? ` (${Math.round(r.duration_ms / 60000)}m)` : '' }));
-    await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(lines.join('\n'))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 

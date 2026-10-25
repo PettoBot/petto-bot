@@ -50,7 +50,7 @@ async function listCmd(interaction, lang) {
   const text = templates.length
     ? templates.map((row) => tn(lang, 'giveaways.template.listLine', row.data.winners, { count: row.data.winners, name: row.name, prize: row.data.prize })).join('\n')
     : t(lang, 'giveaways.template.none');
-  await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(text)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function saveCmd(interaction, isEdit, lang) {

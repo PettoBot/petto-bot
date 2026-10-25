@@ -11,7 +11,7 @@ module.exports = {
   'verify.panel.posted.both': '{emoji}  The verification panel is in {channel}. Members who have not verified can see that channel and press the button there (to get their link) (to do the letters right there).',
   'verify.panel.failed': '{emoji}  I could not post the panel: {error}',
   'verify.panel.cannotPost': 'I need to see and write in that channel, and the Manage Roles permission.',
-  'verify.panel.title': '## 🛡️ Verification',
+  'verify.panel.title': '### 🛡️ Verification',
   'verify.panel.welcome': 'Welcome to **{server}**! Prove you\'re human to see the rest of the server.',
   'verify.panel.steps.link': '**1.** Press **Get my verification link**.\n**2.** Open your link (only you see it) and complete the quick check.\n**3.** Done: the channels open by themselves.',
   'verify.panel.steps.letters': '**1.** Press **Verify here in Discord**.\n**2.** Type the letters of the picture you will see.\n**3.** Done: the channels open by themselves.',

@@ -160,12 +160,12 @@ async function openTicket({ guild, client, category, opener, formAnswers = null 
   await sendAs(channel, 'tickets', { ...welcome, allowedMentions: { roles: pingRoleIds } }).catch((err) => logger.warn(`Ticket #${ticket.ticket_number}: failed to send welcome message:`, err.message));
 
   if (!onDuty) {
-    await sendAs(channel, 'tickets', { components: [textCard(`${EMOJI.WARNING}  ${outsideHoursText(settings, lang)}`, 0xffd563)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+    await sendAs(channel, 'tickets', { components: [textCard(`${EMOJI.WARNING}  ${outsideHoursText(settings, lang)}`)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
   }
 
   if (formAnswers && Object.keys(formAnswers).length) {
     const answerLines = Object.entries(formAnswers).map(([label, answer]) => `**${label}:** ${String(answer).slice(0, 1000)}`);
-    await sendAs(channel, 'tickets', { components: [textCard(`${t(lang, 'tickets.open.submittedForm')}\n${answerLines.join('\n')}`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+    await sendAs(channel, 'tickets', { components: [textCard(`${t(lang, 'tickets.open.submittedForm')}\n${answerLines.join('\n')}`)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
   }
 
   // The AI assistant (beta, off unless the server switched it on) says hello in the ticket.
@@ -279,7 +279,7 @@ async function sendToTranscriptChannel({ guild, settings, ticket, messageCount, 
   const desc = `${t(lang, 'tickets.transcript.channelPost', { emoji: EMOJI.TICKET_TRANSCRIPT, number: ticket.ticket_number, count: messageCount, opener: `<@${opener ? opener.id : ticket.opener_id}>` })}${link && delivery.linkRow ? `\n${t(lang, 'tickets.transcript.viewOnline', { link })}` : ''}`;
   await channel
     .send({
-      components: [textCard(desc, 0xffd563), ...(delivery.linkRow ? [delivery.linkRow] : [])],
+      components: [textCard(desc), ...(delivery.linkRow ? [delivery.linkRow] : [])],
       flags: MessageFlags.IsComponentsV2,
       ...(delivery.fileBuffer ? { files: [{ attachment: delivery.fileBuffer, name: delivery.fileName }] } : {}),
     })
@@ -414,7 +414,7 @@ async function rateTicket({ guild, client, ticket, user, rating, comment }, deps
       const stars = starsText(rating);
       await logChannel
         .send({
-          components: [textCard(`${t(lang, 'tickets.log.rated', { number: ticket.ticket_number, stars, user: user.id })}${comment ? `\n${t(lang, 'tickets.log.comment', { comment })}` : ''}`, 0xfed53c)],
+          components: [textCard(`${t(lang, 'tickets.log.rated', { number: ticket.ticket_number, stars, user: user.id })}${comment ? `\n${t(lang, 'tickets.log.comment', { comment })}` : ''}`)],
           flags: MessageFlags.IsComponentsV2,
         })
         .catch(() => {});

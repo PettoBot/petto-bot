@@ -52,7 +52,6 @@ module.exports = {
     const guildConfig = await ensureGuild(interaction.guild.id).catch(() => null);
     const prefix = guildConfig?.prefix || '!';
     const container = new ContainerBuilder()
-      .setAccentColor(0x4b4f59)
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(buildConfigText(prefix, lang)))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
       .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel(t(lang, 'info.cmdconfig.docs.button')).setStyle(ButtonStyle.Link).setURL(WIKI_URL)));

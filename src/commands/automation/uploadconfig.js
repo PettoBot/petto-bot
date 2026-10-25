@@ -11,7 +11,7 @@ const { t, languageOf } = require('../../i18n');
 
 const textChannels = [ChannelType.GuildText, ChannelType.GuildAnnouncement, ChannelType.PublicThread, ChannelType.GuildForum];
 const ok = (text) => textCard(`${EMOJI.APPROVE}  ${text}`, 0xa5ea7a);
-const note = (text) => textCard(text, 0x4b4f59);
+const note = (text) => textCard(text);
 
 module.exports = {
   prefixOnly: true,

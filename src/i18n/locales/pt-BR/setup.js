@@ -1,11 +1,11 @@
 // A configuração de um servidor: a mensagem quando o Petto entra, o /setup, seu painel e seu formulário.
 module.exports = {
-  'setup.intro': '## O que é o Petto?\n\nO Petto é um bot multiuso do Discord feito para ajudar comunidades a gerenciar, proteger e melhorar seus servidores.\n\nO Petto oferece ferramentas de moderação, segurança, tickets, automação, utilidades e gestão de comunidades, tudo configurável para diferentes tipos de servidores.\n\nOs administradores podem usar o Petto para automatizar tarefas repetitivas, gerenciar membros, proteger a comunidade de atividades indesejadas e oferecer uma experiência mais tranquila tanto para a equipe quanto para os usuários.',
+  'setup.intro': '### O que é o Petto?\n\nO Petto é um bot multiuso do Discord feito para ajudar comunidades a gerenciar, proteger e melhorar seus servidores.\n\nO Petto oferece ferramentas de moderação, segurança, tickets, automação, utilidades e gestão de comunidades, tudo configurável para diferentes tipos de servidores.\n\nOs administradores podem usar o Petto para automatizar tarefas repetitivas, gerenciar membros, proteger a comunidade de atividades indesejadas e oferecer uma experiência mais tranquila tanto para a equipe quanto para os usuários.',
   'setup.invite.button': 'Convidar bot',
   'setup.docs.button': 'Documentação',
   'setup.web.button': 'Site',
   'setup.dashboard.button': 'Painel',
-  'setup.admin.heading': '## Configuração do Petto',
+  'setup.admin.heading': '### Configuração do Petto',
   'setup.admin.welcomeFallback': '{emoji} Boas-vindas ao Petto!',
   'setup.admin.welcome': '{emoji} Boas-vindas ao canal de configuração para administradores do Petto!',
   'setup.admin.fallbackNote': 'O Petto não conseguiu criar seu canal privado de configuração, então a configuração está aqui. Os administradores podem movê-la para um canal privado e apagar esta mensagem.',

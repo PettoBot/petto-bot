@@ -99,7 +99,7 @@ module.exports = {
       ? (source === 'voice' ? await levelUsersDb.countVoiceRanked(interaction.guild.id) : await levelUsersDb.countRanked(interaction.guild.id))
       : await periods.boardCount(interaction.guild.id, period, source === 'voice' ? 'voice' : 'text');
     if (!total) {
-      await interaction.editReply({ components: [textCard(t(lang, period === 'all' ? 'leveling.top.nobody' : period === 'week' ? 'leveling.top.nobodyWeek' : 'leveling.top.nobodyMonth'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, period === 'all' ? 'leveling.top.nobody' : period === 'week' ? 'leveling.top.nobodyWeek' : 'leveling.top.nobodyMonth'))], flags: MessageFlags.IsComponentsV2 });
       return;
     }
 

@@ -78,7 +78,7 @@ function renderPanel(uid, draft, lang = currentLanguage()) {
     ),
   ];
 
-  const container = new ContainerBuilder().setAccentColor(0x4b4f59).addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
+  const container = new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
   return { components: [container, ...rows], flags: MessageFlags.IsComponentsV2 };
 }
 
@@ -95,7 +95,7 @@ function ownerOnly(interaction, uid, lang) {
 }
 
 async function expired(interaction, lang) {
-  await interaction.update({ components: [textCard(t(lang, 'tickets.formBuilder.expired'), 0x8b8fa3)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.update({ components: [textCard(t(lang, 'tickets.formBuilder.expired'))], flags: MessageFlags.IsComponentsV2 });
 }
 
 function fieldModal(uid, type, lang) {
@@ -150,7 +150,7 @@ async function handleButton(interaction) {
 
   if (type === 'tf_cancel') {
     deleteDraft(uid);
-    await interaction.update({ components: [textCard(t(lang, 'tickets.formBuilder.cancelled', { emoji: EMOJI.DENY }), 0x8b8fa3)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.update({ components: [textCard(t(lang, 'tickets.formBuilder.cancelled', { emoji: EMOJI.DENY }))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 

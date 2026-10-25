@@ -22,7 +22,7 @@ module.exports = {
 
     if (requestedPrefix == null) {
       const text = t(lang, 'core.prefix.current', { prefix: guildConfig.prefix, bot: `${interaction.client.user}` });
-      await interaction.reply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.reply({ components: [textCard(text)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
 

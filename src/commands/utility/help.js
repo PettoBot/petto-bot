@@ -403,7 +403,7 @@ module.exports = {
       if (!command || !entries.length) {
         const suggestions = suggestCommands(client, tokens[0], includeHidden).map((name) => `\`${prefix}help ${name}\``).join(', ');
         const vars = { emoji: EMOJI.WARNING, command: tokens[0], prefix, suggestions };
-        await interaction.reply({ components: [textCard(t(lang, suggestions ? 'help.notFoundSuggest' : 'help.notFound', vars), 0xfed53c)], flags: PRIVATE });
+        await interaction.reply({ components: [textCard(t(lang, suggestions ? 'help.notFoundSuggest' : 'help.notFound', vars))], flags: PRIVATE });
         return;
       }
 

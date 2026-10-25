@@ -217,7 +217,7 @@ async function panelCmd(interaction, sub, lang) {
   if (sub === 'list') {
     const panels = await db.listPanels(interaction.guild.id);
     if (!panels.length) {
-      await interaction.editReply({ components: [textCard(t(lang, 'tickets.panel.none'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'tickets.panel.none'))], flags: MessageFlags.IsComponentsV2 });
       return;
     }
     const lines = await Promise.all(
@@ -226,7 +226,7 @@ async function panelCmd(interaction, sub, lang) {
         return tn(lang, 'tickets.panel.listLine', cats.length, { id: p.id, channel: p.channel_id, style: ['button', 'select'].includes(p.style) ? t(lang, `tickets.panel.style.${p.style}`) : p.style });
       }),
     );
-    await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(lines.join('\n'))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -432,11 +432,11 @@ async function categoryCmd(interaction, sub, lang) {
   if (sub === 'list') {
     const categories = await db.listCategories(interaction.guild.id);
     if (!categories.length) {
-      await interaction.editReply({ components: [textCard(t(lang, 'tickets.category.none'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'tickets.category.none'))], flags: MessageFlags.IsComponentsV2 });
       return;
     }
     const lines = categories.map((c) => t(lang, 'tickets.category.listLine', { key: c.key, label: c.label, panel: c.panel_id ?? t(lang, 'tickets.none'), parent: c.parent_channel_id, count: c.support_role_ids.length }));
-    await interaction.editReply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(lines.join('\n'))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -617,7 +617,7 @@ async function formCmd(interaction, sub, lang) {
     if (sub === 'list') {
       const forms = await formsDb.listForms(interaction.guild.id);
       const text = forms.length ? forms.map((form) => t(lang, 'tickets.form.listLine', { name: form.name, count: form.fields.length, title: form.title })).join('\n') : t(lang, 'tickets.form.none');
-      await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(text)], flags: MessageFlags.IsComponentsV2 });
       return;
     }
 
@@ -656,7 +656,7 @@ async function blacklistCmd(interaction, sub, lang) {
     const text = entries.length
       ? entries.map((entry) => `${entry.target_type === 'user' ? `<@${entry.target_id}>` : `<@&${entry.target_id}>`}${entry.reason ? ` — ${entry.reason}` : ''}`).join('\n')
       : t(lang, 'tickets.blacklist.empty');
-    await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(text)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -687,7 +687,7 @@ async function roleListCmd(interaction, sub, column, lang) {
   if (sub === 'list') {
     const ids = category[column] ?? [];
     const text = ids.length ? ids.map((id) => `<@&${id}>`).join(' ') : t(lang, 'tickets.roles.none');
-    await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(text)], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -752,7 +752,7 @@ async function infoCmd(interaction, lang) {
     lines.push(t(lang, 'tickets.info.closedBy', { user: ticket.closed_by }), t(lang, 'tickets.info.closeReason', { reason: ticket.close_reason || t(lang, 'tickets.close.noReason') }));
   }
 
-  await interaction.reply({ components: [textCard(lines.join('\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
+  await interaction.reply({ components: [textCard(lines.join('\n'))], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
 }
 
 /** Shared entry point for close/reopen/delete/claim/unclaim/add/remove/rename/transcript — all operate on "the ticket in this channel". */

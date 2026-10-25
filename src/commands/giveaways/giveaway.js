@@ -433,7 +433,7 @@ async function messageTemplateCmd(interaction, lang) {
   if (!name) {
     const { templateHint } = require('../../utils/templateHint');
     const current = await configDb.ensureConfig(interaction.guild.id);
-    return done(await templateHint(interaction.guild.id, { current: current[column] ?? null, usage: t(lang, 'giveaways.messageTemplate.usage', { which }), what, lang }), 0x4b4f59);
+    return done(await templateHint(interaction.guild.id, { current: current[column] ?? null, usage: t(lang, 'giveaways.messageTemplate.usage', { which }), what, lang }));
   }
   if (['none', 'clear'].includes(name.toLowerCase())) {
     await configDb.updateConfig(interaction.guild.id, { [column]: null });

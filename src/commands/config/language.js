@@ -14,7 +14,7 @@ function buildCurrentCard(lang, prefix) {
     t(lang, 'config.language.current', { language: LANGUAGE_NAMES[lang], command: `${prefix}language <${LANGUAGES.join('|')}>` }),
     t(lang, 'config.language.redrawHint', { command: `${prefix}language ${lang}` }),
     t(lang, 'config.language.available', { list: languageList() }),
-  ].join('\n'), 0x4b4f59);
+  ].join('\n'));
 }
 
 /** The answer after a change, already in the new language, with how many standing messages of Petto were redrawn in it. */

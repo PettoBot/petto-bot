@@ -29,7 +29,8 @@ const FORM_LIMITS = { forms: 25, questions: 25, submissions: 2000 };
 const DEFAULT_MAX = { short: 200, paragraph: 1000 };
 const SNOWFLAKE = /^\d{15,25}$/;
 const NAME = /^[a-z0-9][a-z0-9_-]{0,31}$/;
-const COLORS = { pending: 0x5865f2, accepted: 0x23a55a, denied: 0xf23f43, cancelled: 0x4b4f59 };
+// Only an answer has a color: accepted is green and denied is red.
+const COLORS = { pending: null, accepted: 0xa5ea7a, denied: 0xfe6465, cancelled: null };
 
 const clip = (value, max) => String(value ?? '').replace(/\u0000/g, '').trim().slice(0, max);
 const whole = (value, min, max, fallback) => {

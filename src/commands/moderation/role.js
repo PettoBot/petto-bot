@@ -482,7 +482,7 @@ async function listRoles(interaction) {
 
   const roles = [...interaction.guild.roles.cache.filter((r) => r.id !== interaction.guild.id).values()].sort((a, b) => b.position - a.position);
   if (!roles.length) {
-    await interaction.editReply({ components: [textCard(t(lang, 'moderation.role.listEmpty'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.role.listEmpty'))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -492,7 +492,7 @@ async function listRoles(interaction) {
   const header = `${t(lang, 'moderation.role.listHeader', { count: roles.length })}\n`;
   const text = header + lines.join('\n') + (extra > 0 ? `\n${t(lang, 'moderation.role.more', { count: extra })}` : '');
 
-  await interaction.editReply({ components: [textCard(text.slice(0, 3900), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(text.slice(0, 3900))], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function inRole(interaction) {
@@ -502,7 +502,7 @@ async function inRole(interaction) {
 
   const members = [...role.members.values()].sort((a, b) => a.displayName.localeCompare(b.displayName));
   if (!members.length) {
-    await interaction.editReply({ components: [textCard(t(lang, 'moderation.role.inEmpty', { role: `${role}` }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.role.inEmpty', { role: `${role}` }))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -512,7 +512,7 @@ async function inRole(interaction) {
   const header = `${t(lang, 'moderation.role.inHeader', { role: `${role}`, count: members.length })}\n`;
   const text = header + lines.join('\n') + (extra > 0 ? `\n${t(lang, 'moderation.role.more', { count: extra })}` : '');
 
-  await interaction.editReply({ components: [textCard(text.slice(0, 3900), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(text.slice(0, 3900))], flags: MessageFlags.IsComponentsV2 });
 }
 
 function delay(ms) {
@@ -526,7 +526,7 @@ async function runMassOp(interaction, role, members, adding, lang) {
   activeMassOps.set(guildId, task);
 
   const working = tn(lang, adding ? 'moderation.role.mass.adding' : 'moderation.role.mass.removing', members.length, { emoji: EMOJI.WARNING, role: `${role}`, count: members.length });
-  await interaction.editReply({ components: [textCard(working, 0xfed53c)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(working)], flags: MessageFlags.IsComponentsV2 });
 
   let done = 0;
   let index = 0;
@@ -543,7 +543,7 @@ async function runMassOp(interaction, role, members, adding, lang) {
     // A long run shows how far it is, and how to stop it.
     if (index % MASS_PROGRESS_EVERY === 0 && index < members.length && !task.abort) {
       const progress = `${working}\n${t(lang, 'moderation.role.mass.progress', { done: index, total: members.length })}`;
-      await interaction.editReply({ components: [textCard(progress, 0xfed53c)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+      await interaction.editReply({ components: [textCard(progress)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
     }
     await delay(MASS_OP_DELAY_MS);
   }
@@ -577,7 +577,7 @@ async function hasRole(interaction) {
   const all = await interaction.guild.members.fetch().catch(() => interaction.guild.members.cache);
   const members = [...all.filter((m) => m.roles.cache.has(filterRole.id) && (removing ? m.roles.cache.has(targetRole.id) : !m.roles.cache.has(targetRole.id))).values()];
   if (!members.length) {
-    await interaction.editReply({ components: [textCard(t(lang, removing ? 'moderation.role.has.noneRemove' : 'moderation.role.has.noneAdd', { filter: `${filterRole}`, role: `${targetRole}` }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, removing ? 'moderation.role.has.noneRemove' : 'moderation.role.has.noneAdd', { filter: `${filterRole}`, role: `${targetRole}` }))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -605,7 +605,7 @@ async function humansRole(interaction) {
   const all = await interaction.guild.members.fetch().catch(() => interaction.guild.members.cache);
   const members = [...all.filter((m) => !m.user.bot && (removing ? m.roles.cache.has(role.id) : !m.roles.cache.has(role.id))).values()];
   if (!members.length) {
-    await interaction.editReply({ components: [textCard(t(lang, removing ? 'moderation.role.humans.noneRemove' : 'moderation.role.humans.noneAdd', { role: `${role}` }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, removing ? 'moderation.role.humans.noneRemove' : 'moderation.role.humans.noneAdd', { role: `${role}` }))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -633,7 +633,7 @@ async function allRole(interaction) {
   const all = await interaction.guild.members.fetch().catch(() => interaction.guild.members.cache);
   const members = [...all.filter((m) => (removing ? m.roles.cache.has(role.id) : !m.roles.cache.has(role.id))).values()];
   if (!members.length) {
-    await interaction.editReply({ components: [textCard(t(lang, removing ? 'moderation.role.all.noneRemove' : 'moderation.role.all.noneAdd', { role: `${role}` }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, removing ? 'moderation.role.all.noneRemove' : 'moderation.role.all.noneAdd', { role: `${role}` }))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -688,13 +688,13 @@ async function tempRoleList(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const rows = await tempRolesDb.listTempRoles(interaction.guild.id);
   if (!rows.length) {
-    await interaction.editReply({ components: [textCard(t(lang, 'moderation.role.temp.listEmpty'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.role.temp.listEmpty'))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
   const lines = rows.slice(0, 40).map((row) => `<@${row.user_id}> · <@&${row.role_id}> · <t:${Math.floor(new Date(row.expires_at).getTime() / 1000)}:R>`);
   if (rows.length > 40) lines.push(t(lang, 'moderation.role.more', { count: rows.length - 40 }));
   const text = [tn(lang, 'moderation.role.temp.listTitle', rows.length, { count: rows.length }), ...lines].join('\n');
-  await interaction.editReply({ components: [textCard(text.slice(0, 3900), 0x4b4f59)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
+  await interaction.editReply({ components: [textCard(text.slice(0, 3900))], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
 }
 
 async function cancelMassOp(interaction) {
@@ -759,7 +759,7 @@ async function groupView(interaction) {
   }
 
   const text = group.role_ids.length ? group.role_ids.map((id, i) => `${i + 1}. <@&${id}>`).join('\n') : t(lang, 'moderation.role.group.empty');
-  await interaction.editReply({ components: [textCard(`${t(lang, 'moderation.role.group.title', { name: group.name })}\n${text}`, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(`${t(lang, 'moderation.role.group.title', { name: group.name })}\n${text}`)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function groupList(interaction) {
@@ -768,12 +768,12 @@ async function groupList(interaction) {
 
   const groups = await roleGroupsDb.listGroups(interaction.guild.id);
   if (!groups.length) {
-    await interaction.editReply({ components: [textCard(t(lang, 'moderation.role.group.none'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.role.group.none'))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
   const lines = groups.map((g) => `**${g.name}** (${g.role_ids.length}) — ${g.role_ids.length ? g.role_ids.map((id) => `<@&${id}>`).join(', ') : t(lang, 'moderation.role.group.noneTag')}`);
-  await interaction.editReply({ components: [textCard(lines.join('\n').slice(0, 3900), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(lines.join('\n').slice(0, 3900))], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function groupGive(interaction) {
@@ -825,7 +825,7 @@ async function groupTake(interaction) {
 
   const roles = group.role_ids.map((id) => interaction.guild.roles.cache.get(id)).filter(Boolean).filter((r) => targetMember.roles.cache.has(r.id));
   if (!roles.length) {
-    await interaction.editReply({ components: [textCard(t(lang, 'moderation.role.group.noneHeld', { user: `${targetUser}`, name }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.role.group.noneHeld', { user: `${targetUser}`, name }))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 

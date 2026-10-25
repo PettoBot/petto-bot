@@ -9,7 +9,7 @@ const PREFIX = suggestions.BUTTON_PREFIX;
 const V2 = MessageFlags.IsComponentsV2;
 
 const say = (interaction, text) => interaction.reply({
-  components: [new ContainerBuilder().setAccentColor(0x4b4f59).addTextDisplayComponents(new TextDisplayBuilder().setContent(text))],
+  components: [new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(text))],
   flags: V2 | MessageFlags.Ephemeral,
   allowedMentions: { parse: [] },
 });

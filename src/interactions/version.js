@@ -29,15 +29,15 @@ function buildReleaseCard(release, lang) {
   const header = new SectionBuilder()
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent([
-        `# ${EMOJI.RELEASE_ROCKET} Petto ${release.display ?? release.version}${release.name ? ` “${release.name}”` : ''}`,
-        `${release.status}  ·  ${EMOJI.RELEASE_NOTE} ${release.date}`,
+        `### Petto ${release.display ?? release.version}${release.name ? ` “${release.name}”` : ''}`,
+        `${release.status}  ·  ${release.date}`,
         t(lang, 'info.version.position', { position, total: RELEASES.length }),
       ].join('\n')),
     )
     .setThumbnailAccessory(new ThumbnailBuilder().setURL(PETTO_IMAGE_URL));
 
+  // No color on the side: the release is read from its text.
   const card = new ContainerBuilder()
-    .setAccentColor(release.accent)
     .addSectionComponents(header)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`> ${release.summary}`))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Large));

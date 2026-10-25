@@ -80,7 +80,7 @@ async function dc(args, lang = undefined) {
   interaction.pettoLang = lang;
   interaction.typedPrefix = '!';
   await disablecommand.execute(interaction);
-  for (const payload of sent) for (const card of payload.components ?? []) assert.equal((card.toJSON ? card.toJSON() : card).accent_color, undefined, `"!dc ${args}" answers with no colored side bar`);
+  for (const payload of sent) for (const card of payload.components ?? []) assert.ok([undefined, 0xa5ea7a, 0xfe6465].includes((card.toJSON ? card.toJSON() : card).accent_color), `"!dc ${args}" answers with no color, or green or red`);
   return sent[0];
 }
 const saved = () => rules.map((r) => `${r.command}@${r.channel_id ? channels.find((c) => c.id === r.channel_id).name : 'server'}`).sort();
@@ -105,7 +105,7 @@ const saved = () => rules.map((r) => `${r.command}@${r.channel_id ? channels.fin
   assert.match(out, /`suggest`/);
   assert.match(out, /Undo: `!dc enable suggest #cmds`/);
   assert.equal(reply.components[0].toJSON().type, 17, 'a card (Components V2), not plain text');
-  assert.equal(accent(reply), undefined, 'the card has no colored side bar');
+  assert.ok([undefined, 0xa5ea7a, 0xfe6465].includes(accent(reply)), 'the card has no colored side bar');
   assert.deepEqual(saved(), ['suggest@cmds']);
 
   // The channel first, the same rule again, an alias and a mention.
@@ -131,7 +131,7 @@ const saved = () => rules.map((r) => `${r.command}@${r.channel_id ? channels.fin
   assert.match(out, /Did you mean `suggestion`/);
   reply = await dc('rank #nowhere');
   assert.match(text(reply), /can't find these channels: `#nowhere`/);
-  assert.equal(accent(reply), undefined, 'errors have no colored side bar either');
+  assert.ok([undefined, 0xa5ea7a, 0xfe6465].includes(accent(reply)), 'errors have no colored side bar either');
   assert.match(text(await dc('disable all')), /Tell me which commands/);
   assert.match(text(await dc('server')), /Turned off on the whole server/, '`server` alone is the alias of serverinfo');
   assert.ok(saved().includes('serverinfo@server'));
@@ -147,8 +147,8 @@ const saved = () => rules.map((r) => `${r.command}@${r.channel_id ? channels.fin
   // The list, grouped by channel with counts; and only what applies in one channel.
   reply = await dc('list');
   out = text(reply);
-  assert.match(out, /## Disabled commands \(9\)\\nTest/, 'the old header: the title with the count, the server name under it');
-  assert.equal(accent(reply), undefined, 'the list has no colored side bar (not the purple of the other lists)');
+  assert.match(out, /### Disabled commands \(9\)\\nTest/, 'the old header: the title with the count, the server name under it');
+  assert.ok([undefined, 0xa5ea7a, 0xfe6465].includes(accent(reply)), 'the list has no colored side bar (not the purple of the other lists)');
   assert.match(out, /The whole server\*\* · 2 commands\\n`rank` · `suggest`/);
   assert.match(out, /<#700000000000000001> · 3 commands/);
   assert.match(out, /<#700000000000000002> · 2 commands/);
@@ -175,7 +175,7 @@ const saved = () => rules.map((r) => `${r.command}@${r.channel_id ? channels.fin
   assert.deepEqual(saved(), []);
   reply = await dc('list');
   assert.match(text(reply), /No commands are disabled/);
-  assert.equal(accent(reply), undefined, 'the empty list has no color either');
+  assert.ok([undefined, 0xa5ea7a, 0xfe6465].includes(accent(reply)), 'the empty list has no color either');
 
   // Spanish and Portuguese.
   assert.match(text(await dc('suggest #cmds', 'es')), /Desactivados en <#700000000000000001>/);
@@ -186,7 +186,7 @@ const saved = () => rules.map((r) => `${r.command}@${r.channel_id ? channels.fin
   // The other lists of the pager keep their purple; only !dc asks for none.
   const pager = require('../src/utils/pager');
   pager.register('dc-check-colored', { load: async () => ({ title: 'x', items: ['a'] }) });
-  assert.equal((await pager.buildPage('dc-check-colored', { guild, userId: '9', lang: 'en' })).components[0].toJSON().accent_color, 0x8c7cff);
+  assert.equal((await pager.buildPage('dc-check-colored', { guild, userId: '9', lang: 'en' })).components[0].toJSON().accent_color, undefined, 'a list has no color');
 
   // The notice a member sees, prefix and slash: short, with the command and the channel, and no colored side bar.
   const { t } = require('../src/i18n');

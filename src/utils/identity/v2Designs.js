@@ -88,7 +88,7 @@ function toV2(name, data, lang = currentLanguage()) {
   const author = embed.author?.name?.trim();
   if (author) inner.push(text(`-# ${author}`));
   const head = [];
-  if (embed.title?.trim()) head.push(`## ${embed.title.trim()}`);
+  if (embed.title?.trim()) head.push(`### ${embed.title.trim()}`);
   if (embed.description?.trim()) head.push(embed.description.trim());
   const thumb = embed.thumbnail?.trim();
   if (head.length && thumb) inner.push(section(head, thumb));

@@ -74,7 +74,7 @@ async function view(interaction) {
     t(lang, 'moderation.note.when', { full: `<t:${ts}:F>`, relative: `<t:${ts}:R>` }),
     t(lang, 'moderation.note.note', { note: note.note }),
   ].join('\n');
-  await interaction.editReply({ components: [textCard(text, 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(text)], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function list(interaction) {
@@ -84,7 +84,7 @@ async function list(interaction) {
 
   const notes = await getNotesForUser(interaction.guild.id, targetUser.id);
   if (!notes.length) {
-    await interaction.editReply({ components: [textCard(t(lang, 'moderation.note.none', { user: `${targetUser}` }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.note.none', { user: `${targetUser}` }))], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -94,7 +94,7 @@ async function list(interaction) {
     lines.push(`\`#${note.id}\` <@${note.moderator_id}> · <t:${ts}:R>\n> ${note.note}`);
   }
 
-  await interaction.editReply({ components: [textCard(lines.join('\n\n'), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+  await interaction.editReply({ components: [textCard(lines.join('\n\n'))], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function remove(interaction) {
@@ -118,7 +118,7 @@ async function clear(interaction) {
 
   const count = await clearNotes(interaction.guild.id, targetUser.id);
   if (!count) {
-    await interaction.editReply({ components: [textCard(t(lang, 'moderation.note.none', { user: `${targetUser}` }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
+    await interaction.editReply({ components: [textCard(t(lang, 'moderation.note.none', { user: `${targetUser}` }))], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
     return;
   }
   handleStaffAction('notesCleared', interaction.client, interaction.guild, { moderator: interaction.user, user: targetUser, detail: (l) => tn(l, 'moderation.note.clearedLog', count, { count }) }).catch(() => {});

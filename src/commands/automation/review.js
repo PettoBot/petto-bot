@@ -23,7 +23,7 @@ async function give(interaction, config, lang) {
   if (config.review_channel_id) {
     const channel = await interaction.guild.channels.fetch(config.review_channel_id).catch(() => null);
     const post = t(lang, existing ? 'reviews.post.changed' : 'reviews.post.new', { stars: starsText(stars), reviewer: `<@${interaction.user.id}>`, target: `<@${target.id}>` });
-    await channel?.send?.({ components: [textCard(`${post}${comment ? `\n> ${comment}` : ''}`, 0xf0b232)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } }).catch(() => null);
+    await channel?.send?.({ components: [textCard(`${post}${comment ? `\n> ${comment}` : ''}`)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } }).catch(() => null);
   }
   const vars = { emoji: EMOJI.APPROVE, count: summary.count, user: target.username, stars: starsText(summary.average), average: formatNumber(lang, summary.average) };
   return reply(interaction, textCard(tn(lang, existing ? 'reviews.give.changed' : 'reviews.give.saved', summary.count, vars), 0xa5ea7a));

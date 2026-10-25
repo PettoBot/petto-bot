@@ -112,7 +112,7 @@ function greetingCard({ lang, user, typeLabel, avatarUrl = null }) {
 
 /** The card for a hand-over with no answer of its own (a keyword, the limit, a secret, or the person asked for a human). */
 function handoffCard({ lang, handoffText, roleIds = [] }) {
-  return new ContainerBuilder().setAccentColor(ACCENT)
+  return new ContainerBuilder()
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`${handoffText}${roleIds.length ? `\n${rolePing(roleIds)}` : ''}`))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`${ai.MARK}${t(lang, 'tickets.ai.label')}`));
 }

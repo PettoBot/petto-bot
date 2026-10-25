@@ -36,7 +36,7 @@ module.exports = {
 
     const activity = target.presence?.activities?.find((a) => a.name === 'Spotify' && a.syncId);
     if (!activity) {
-      await interaction.editReply({ components: [textCard(t(lang, 'info.spotify.none', { name: target.displayName }), 0x4b4f59)], flags: MessageFlags.IsComponentsV2 });
+      await interaction.editReply({ components: [textCard(t(lang, 'info.spotify.none', { name: target.displayName }))], flags: MessageFlags.IsComponentsV2 });
       return;
     }
 
