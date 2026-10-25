@@ -5,10 +5,10 @@ const { t, formatNumber, languageOf } = require('../../i18n');
 
 const STATUS_URL = 'https://petto.sbs/status';
 const GREEN = 0xa5ea7a;
-const YELLOW = null;
+const YELLOW = 0xfed53c;
 const RED = 0xff6b6b;
 
-/** The color follows the slowest of the two latencies: green is fast, no color is slow, red is bad. */
+/** The color follows the slowest of the two latencies: green is fast, yellow is slow, red is bad. */
 function colorFor(guildMs, apiMs) {
   const worst = Math.max(guildMs, Number.isFinite(apiMs) ? apiMs : 0);
   return worst < 300 ? GREEN : worst < 700 ? YELLOW : RED;

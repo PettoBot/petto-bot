@@ -93,4 +93,14 @@ assert.deepEqual(parts, [10, 14, 10], 'two titles of a text are told apart by a 
 const ops = read('src/utils/discordOps.js');
 assert.match(ops, /STATE_COLORS = \{ online: 0xa5ea7a, idle: 0xfed53c, outage: 0xfe6465, offline: 0xfe6465 \}/, 'a degraded service is yellow');
 assert.match(ops, /LEVEL_COLORS = \{ error: 0xfe6465, warn: 0xfed53c, info: null \}/, 'a warning of the host log is yellow');
+// The alerts and refusals keep their colors: the usage card, the help that finds nothing, the counting alerts, the partner replies and the ping.
+const usage = require('../src/utils/usageCard');
+const usageCommand = { data: { toJSON: () => ({ options: [{ type: 1, name: 'add', description: 'x', options: [] }] }) } };
+assert.equal(accentOf(usage.unknownSubcommandCard({ command: usageCommand, prefix: ',', name: 'autoresponder', typed: '--previous', lang: 'en' }).components[0]), COLORS.YELLOW, 'a subcommand that does not exist is a warning');
+assert.equal(accentOf(usage.missingOptionCard({ command: usageCommand, prefix: ',', name: 'autoresponder', argText: '', lang: 'en' }).components[0]), COLORS.YELLOW, 'a missing option is a warning');
+const { TONES } = require('../src/utils/plainCard');
+assert.equal(TONES.yellow, COLORS.YELLOW); assert.equal(TONES.orange, COLORS.YELLOW);
+assert.equal(accentOf(plainCard('Wait', TONES.yellow).components[0]), COLORS.YELLOW, 'a yellow tone is the yellow of the warnings');
+for (const [icon, color] of [['✅', COLORS.GREEN], ['❌', COLORS.RED], ['⚠️', COLORS.YELLOW]]) assert.equal(colorFromText(`${icon} Text`), color, `${icon} at the start of a text gives its color`);
+assert.match(read('src/commands/info/ping.js'), /const YELLOW = 0xfed53c;/, 'a slow ping is yellow');
 console.log('Checked the colors and titles of the cards, and that every sanction type has its parts.');

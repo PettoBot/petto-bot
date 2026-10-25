@@ -1,6 +1,7 @@
 // The counting channel: each message that is a number is checked against the one that had to come next. Messages that are not numbers are
 // chat and are left alone. The numbers of one server are checked one at a time, so two people writing together cannot both be right.
 const { Events, PermissionFlagsBits } = require('discord.js');
+const { COLORS } = require('../utils/colors');
 const db = require('../db/counting');
 const { judge, afterCorrect, afterWrong, readNumber, deleteLater, trackTop } = require('../utils/counting');
 const { plainCard } = require('../utils/plainCard');
@@ -95,7 +96,7 @@ async function check(message, lang = currentLanguage()) {
   // The same person twice in a row is not a mistake of the number: the count stays where it was.
   if (verdict.kind === 'double') {
     await react(message, config.react_bad);
-    await alert(message, t(lang, 'counting.double', { user: who, next: verdict.expected }), config);
+    await alert(message, t(lang, 'counting.double', { user: who, next: verdict.expected }), config, COLORS.YELLOW);
     if (config.delete_wrong && canDelete) await message.delete().catch(() => {});
     return;
   }
@@ -106,7 +107,7 @@ async function check(message, lang = currentLanguage()) {
   await react(message, config.react_bad);
   await giveWrongRole(message, config, lang);
   const vars = { user: who, number: verdict.number, expected: verdict.expected };
-  if (result.saved) await alert(message, t(lang, 'counting.saved', { ...vars, left: result.patch.saves }), config, 0xffb86c);
+  if (result.saved) await alert(message, t(lang, 'counting.saved', { ...vars, left: result.patch.saves }), config, COLORS.YELLOW);
   else if (result.reset) await alert(message, t(lang, 'counting.reset', { ...vars, at: verdict.expected - 1, start: Number(config.start_number ?? 0) + 1 }), config);
   else await alert(message, t(lang, 'counting.wrong', vars), config);
   if (config.delete_wrong && canDelete) await message.delete().catch(() => {});

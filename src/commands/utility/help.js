@@ -14,6 +14,7 @@ const {
   MessageFlags,
 } = require('discord.js');
 const { ensureGuild } = require('../../db/guilds');
+const { COLORS } = require('../../utils/colors');
 const { textCard } = require('../../utils/caseCard');
 const { describePermissions } = require('../../utils/permissionLabels');
 const { EMOJI } = require('../../utils/emojis');
@@ -403,7 +404,7 @@ module.exports = {
       if (!command || !entries.length) {
         const suggestions = suggestCommands(client, tokens[0], includeHidden).map((name) => `\`${prefix}help ${name}\``).join(', ');
         const vars = { emoji: EMOJI.WARNING, command: tokens[0], prefix, suggestions };
-        await interaction.reply({ components: [textCard(t(lang, suggestions ? 'help.notFoundSuggest' : 'help.notFound', vars))], flags: PRIVATE });
+        await interaction.reply({ components: [textCard(t(lang, suggestions ? 'help.notFoundSuggest' : 'help.notFound', vars), COLORS.YELLOW)], flags: PRIVATE });
         return;
       }
 

@@ -4,7 +4,7 @@ const { ContainerBuilder, MessageFlags, TextDisplayBuilder } = require('discord.
 const { EMOJI } = require('./emojis');
 const { resolveSubcommandOptions, tokenize } = require('../handlers/prefixInteraction');
 const { t, currentLanguage, commandDescription } = require('../i18n');
-const { semanticColor } = require('./colors');
+const { COLORS, semanticColor } = require('./colors');
 
 const ACCENT = 0xf5c26b;
 const SUBCOMMAND = 1;
@@ -65,7 +65,8 @@ function syntaxOf(prefix, name, path, options) {
   return [`${prefix}${name}`, path, ...parts].filter(Boolean).join(' ');
 }
 
-function card(lines, accent = null) {
+// Both cards are warnings: the yellow of the warnings.
+function card(lines, accent = COLORS.YELLOW) {
   const container = new ContainerBuilder().setAccentColor(semanticColor(accent));
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.filter(Boolean).join('\n')));
   return { components: [container], flags: MessageFlags.IsComponentsV2, allowedMentions: { repliedUser: false, parse: [] } };
