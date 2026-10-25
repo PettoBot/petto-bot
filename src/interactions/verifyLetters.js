@@ -143,6 +143,7 @@ async function sendLink(interaction, guildId, lang) {
   const text = [t(lang, 'verify.link.title'), t(lang, 'verify.link.body', { server: guild.name, expires: `<t:${made.expiresAt}:R>` })].join('\n');
   const container = withPicture(new ContainerBuilder(), text, serverPicture(guild))
     .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(made.url).setLabel(t(lang, 'verify.link.open')).setEmoji('🔗')))
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'verify.link.fallback', { link: made.url })));
   return reply(interaction, container);
 }

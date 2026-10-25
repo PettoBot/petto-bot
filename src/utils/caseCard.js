@@ -10,6 +10,7 @@ const {
   ThumbnailBuilder,
 } = require('discord.js');
 const { EMOJI, TYPE_EMOJI } = require('./emojis');
+const { addBlocks } = require('./cardBlocks');
 const { semanticColor, colorFromText } = require('./colors');
 const { t, tn, currentLanguage } = require('../i18n');
 const { typeName, displayReason, reasonText, capitalize } = require('./caseFormat');
@@ -44,7 +45,7 @@ function buildCaseCard({ caseNumber, type, target, reason, duration, lang = curr
 
 /** A single-block Components V2 card for plain status text (errors, confirmations) once a reply is already in V2 mode. */
 function textCard(text, color, { keep = false } = {}) {
-  const container = new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(text));
+  const container = addBlocks(new ContainerBuilder(), text);
   // Only green and red (given, or from the icon the text starts with); `keep` is for the sanction cards, which keep their own colors.
   // `null` is a card with no color at all; with no color given, the icon the text starts with decides.
   const accent = keep && Number.isInteger(color) ? color : (semanticColor(color) ?? (color === undefined ? colorFromText(text) : null));

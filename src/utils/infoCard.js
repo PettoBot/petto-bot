@@ -13,6 +13,7 @@ const {
   ThumbnailBuilder,
 } = require('discord.js');
 const { semanticColor, colorFromText } = require('./colors');
+const { addBlocks } = require('./cardBlocks');
 const { t, currentLanguage } = require('../i18n');
 
 // Accent shared by the info commands; individual commands override it when the subject has its own color.
@@ -123,7 +124,7 @@ function noticePayload(text, color = null) {
   const card = new ContainerBuilder();
   const accent = semanticColor(color) ?? colorFromText(text);
   if (accent !== null) card.setAccentColor(accent);
-  card.addTextDisplayComponents(new TextDisplayBuilder().setContent(clip(text, 1500)));
+  addBlocks(card, clip(text, 1500));
   return { components: [card], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } };
 }
 
