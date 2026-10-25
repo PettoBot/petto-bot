@@ -9,6 +9,7 @@ module.exports = {
   'setup.admin.welcomeFallback': '{emoji} Welcome to Petto!',
   'setup.admin.welcome': '{emoji} Welcome to Petto\'s admin setup channel!',
   'setup.admin.fallbackNote': 'Petto could not make its private setup channel, so the setup is here. Administrators can move it to a private channel and delete this message.',
+  'setup.admin.dmNote': 'Petto could not make its private setup channel in {server}, so the setup comes to you by direct message. Administrators can use it in the server whenever they want.',
   'setup.admin.privateNote': 'This private channel is visible to server administrators and Petto.',
   'setup.admin.openSetup': '- Open {setup} to configure the server in one form.',
   'setup.admin.help': '- Use `{prefix}help` to browse Petto\'s prefix commands.',

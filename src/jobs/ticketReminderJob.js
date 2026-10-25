@@ -1,5 +1,6 @@
 // Reminds the support roles of a ticket that nobody has claimed after the minutes the server chose. Once per ticket.
 const { MessageFlags } = require('discord.js');
+const { COLORS } = require('../utils/colors');
 const db = require('../db/tickets');
 const settingsDb = require('../db/ticketSettings');
 const { dueForReminder } = require('../utils/ticketReminders');
@@ -29,7 +30,7 @@ async function checkTicketReminders(client) {
       const roles = (category?.support_role_ids ?? []).filter((id) => guild.roles.cache.has(id));
       const ping = roles.map((id) => `<@&${id}>`).join(' ');
       await channel.send({
-        components: [textCard(`${ping ? `${ping}\n` : ''}${t(lang, 'tickets.reminder.unclaimed', { minutes: row.unclaimed_reminder_minutes })}`)],
+        components: [textCard(`${ping ? `${ping}\n` : ''}${t(lang, 'tickets.reminder.unclaimed', { minutes: row.unclaimed_reminder_minutes })}`, COLORS.YELLOW)],
         flags: MessageFlags.IsComponentsV2,
         allowedMentions: { roles },
       }).catch((err) => logger.warn(`Ticket #${ticket.ticket_number}: the reminder could not be sent: ${err.message}`));

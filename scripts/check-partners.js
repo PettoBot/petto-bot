@@ -118,7 +118,7 @@ const fakeGuild = (id, extra = {}) => ({ id, name: 'Mine', ownerId: 'owner', mem
   let payload = await messages.responsePayload('mine', { messages: {} }, 'completed', partnerCtx());
   assert.match(textOf(payload), /<@7> thanks for the partnership with \*\*Partner\*\*/); assert.match(textOf(payload), /3 in total \(2 this week\)/); assert.equal(accentOf(payload), 0xa5ea7a, 'a partnership that counts is a green card'); assert.equal(payload.flags, 1 << 15, 'it is a Components V2 message');
   assert.equal(accentOf(await messages.responsePayload('mine', { messages: {} }, 'invalid_invite', partnerCtx())), 0xff6b6b, 'a no is a red card');
-  assert.equal(accentOf(await messages.responsePayload('mine', { messages: {} }, 'cooldown', partnerCtx())), undefined, 'a wait is a card with no color');
+  assert.equal(accentOf(await messages.responsePayload('mine', { messages: {} }, 'cooldown', partnerCtx())), 0xfed53c, 'a wait is a yellow card');
   payload = await messages.responsePayload('mine', { messages: { member_requirement: { text: 'Too small: {partner.members}/{partner.min_members}' } } }, 'member_requirement', partnerCtx());
   assert.match(textOf(payload), /Too small: 1,234\/100/);
   payload = await messages.responsePayload('mine', { messages: { completed: { template: 'gone' } } }, 'completed', partnerCtx());

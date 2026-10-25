@@ -1,4 +1,5 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, PermissionFlagsBits } = require('discord.js');
+const { COLORS } = require('./colors');
 const scamDb = require('../db/scamConfig');
 const checks = require('./antiScamChecks');
 const { ensureGuild } = require('../db/guilds');
@@ -87,7 +88,7 @@ function dmCard(guild, action, lang = currentLanguage(), appeal = null) {
     t(lang, `security.antiscam.dm.outcome.${DM_OUTCOMES[action] ?? 'flagged'}`, { server: guild.name }),
     t(lang, 'security.antiscam.dm.steps'),
     ...(appeal ? ['', appeal] : []),
-  ].join('\n'));
+  ].join('\n'), COLORS.YELLOW);
 }
 
 /** The appeal line of the DM, when the server sends the appeal link for this sanction (the same rule as every sanction DM). */

@@ -1,5 +1,6 @@
 // Someone edits or deletes the last number: the channel is told what the number was, so nobody counts from a wrong one.
 const { Events } = require('discord.js');
+const { COLORS } = require('../utils/colors');
 const db = require('../db/counting');
 const { plainCard } = require('../utils/plainCard');
 const logger = require('../utils/logger');
@@ -7,7 +8,7 @@ const { t, currentLanguage } = require('../i18n');
 const { deleteLater } = require('../utils/counting');
 
 async function tell(guild, channel, text, seconds = 0) {
-  const sent = await channel.send({ ...plainCard(text), allowedMentions: { parse: [], users: [] } }).catch(() => null);
+  const sent = await channel.send({ ...plainCard(text, COLORS.YELLOW), allowedMentions: { parse: [], users: [] } }).catch(() => null);
   deleteLater(sent, seconds);
 }
 

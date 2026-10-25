@@ -30,9 +30,9 @@ function startsWithIcon(text, icons) {
 /** The color a card of this text should have: green, red, yellow or null (the text does not start with such an icon). */
 function colorFromText(text) {
   const { EMOJI } = require('./emojis');
-  if (startsWithIcon(text, [EMOJI.APPROVE, EMOJI.RELEASE_APPROVED])) return COLORS.GREEN;
-  if (startsWithIcon(text, [EMOJI.DENY, EMOJI.RELEASE_DENIED])) return COLORS.RED;
-  if (startsWithIcon(text, [EMOJI.ALERT, EMOJI.WARNING, EMOJI.RELEASE_ALERT])) return COLORS.YELLOW;
+  if (startsWithIcon(text, [EMOJI.APPROVE, EMOJI.RELEASE_APPROVED, '✅', '✔️', '☑️'])) return COLORS.GREEN;
+  if (startsWithIcon(text, [EMOJI.DENY, EMOJI.RELEASE_DENIED, '❌', '⛔', '🚫', '✖️'])) return COLORS.RED;
+  if (startsWithIcon(text, [EMOJI.ALERT, EMOJI.WARNING, EMOJI.RELEASE_ALERT, '⚠️', '⚠'])) return COLORS.YELLOW;
   return null;
 }
 

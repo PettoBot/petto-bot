@@ -1,4 +1,5 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, PermissionFlagsBits } = require('discord.js');
+const { COLORS } = require('./colors');
 const { textCard } = require('./caseCard');
 const { EMOJI } = require('./emojis');
 const { t, currentLanguage, languageOf } = require('../i18n');
@@ -39,7 +40,7 @@ async function confirmBulkAction(interaction, action, targets) {
   ].join('\n');
 
   const message = await interaction.editReply({
-    components: [textCard(prompt), row],
+    components: [textCard(prompt, COLORS.YELLOW), row],
     flags: MessageFlags.IsComponentsV2,
   });
 

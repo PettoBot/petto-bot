@@ -26,7 +26,7 @@ async function thank(client, vote) {
     t(lang, `votes.thanks.total.${form(total)}`, { count: total }),
   ].join('\n');
   const body = new TextDisplayBuilder().setContent(text);
-  const container = new ContainerBuilder();
+  const container = new ContainerBuilder().setAccentColor(0xa5ea7a);
   const avatar = user?.displayAvatarURL?.({ size: 128 });
   if (avatar) container.addSectionComponents(new SectionBuilder().addTextDisplayComponents(body).setThumbnailAccessory(new ThumbnailBuilder().setURL(avatar)));
   else container.addTextDisplayComponents(body);

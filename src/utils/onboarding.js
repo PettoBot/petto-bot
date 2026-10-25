@@ -104,18 +104,16 @@ async function ensureAdminSetupChannel(guild, lang = currentLanguage()) {
 }
 
 /**
- * A channel to send the setup message to when the private one could not be made: the system channel, then a public text channel
- * where Petto can write, then any text channel where it can (a private one). Null when there is none.
+ * A channel to send the setup message to when the private one could not be made and nobody could be written to: a text channel where Petto
+ * can write and that the whole server cannot see. A public channel is never chosen (the setup would be there for everybody). Null when there is none.
  */
-function findFallbackChannel(guild) {
+function findPrivateChannel(guild) {
   const me = guild.members.me;
   if (!me) return null;
   const canWrite = (channel) => channel.type === ChannelType.GuildText
     && channel.permissionsFor(me)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages]);
   const isPublic = (channel) => channel.permissionsFor(guild.roles.everyone)?.has(PermissionFlagsBits.ViewChannel);
-  const texts = [...guild.channels.cache.values()].filter(canWrite).sort((a, b) => a.rawPosition - b.rawPosition);
-  const system = guild.systemChannel && canWrite(guild.systemChannel) ? guild.systemChannel : null;
-  return system ?? texts.find(isPublic) ?? texts[0] ?? null;
+  return [...guild.channels.cache.values()].filter((channel) => canWrite(channel) && !isPublic(channel)).sort((x, y) => x.rawPosition - y.rawPosition)[0] ?? null;
 }
 
 async function commandMention(client, commandName, guild = null) {
@@ -137,7 +135,8 @@ async function commandSubcommandMention(client, commandName, subcommandName, gui
   return `</${commandName} ${subcommandName}:${mention.slice(commandPrefix.length)}`;
 }
 
-function buildAdminSetupMessage({ botId, setupMention, reportConfigMention, prefix, fallback = false, lang = currentLanguage() }) {
+// `fallback`: it goes to a private channel that was not made for it; `dm`: it goes to a person's direct messages (with the name of the server).
+function buildAdminSetupMessage({ botId, setupMention, reportConfigMention, prefix, fallback = false, dm = false, guildName = '', lang = currentLanguage() }) {
   const inviteUrl = `https://discord.com/oauth2/authorize?client_id=${botId}&permissions=8&scope=bot%20applications.commands`;
   const intro = new ContainerBuilder()
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'setup.intro')))
@@ -161,13 +160,13 @@ function buildAdminSetupMessage({ botId, setupMention, reportConfigMention, pref
         new TextDisplayBuilder().setContent([
           t(lang, 'setup.admin.heading'),
           '',
-          fallback ? t(lang, 'setup.admin.welcomeFallback', { emoji: EMOJI.RELEASE_MAGIC }) : t(lang, 'setup.admin.welcome', { emoji: EMOJI.RELEASE_MAGIC }),
-          fallback ? t(lang, 'setup.admin.fallbackNote') : t(lang, 'setup.admin.privateNote'),
+          fallback || dm ? t(lang, 'setup.admin.welcomeFallback', { emoji: EMOJI.RELEASE_MAGIC }) : t(lang, 'setup.admin.welcome', { emoji: EMOJI.RELEASE_MAGIC }),
+          dm ? t(lang, 'setup.admin.dmNote', { server: guildName }) : fallback ? t(lang, 'setup.admin.fallbackNote') : t(lang, 'setup.admin.privateNote'),
           '',
           t(lang, 'setup.admin.openSetup', { setup: setupMention }),
           t(lang, 'setup.admin.help', { prefix }),
           t(lang, 'setup.admin.detailed', { prefix }),
-          ...(fallback ? [] : [t(lang, 'setup.admin.doNotShare')]),
+          ...(fallback || dm ? [] : [t(lang, 'setup.admin.doNotShare')]),
           t(lang, 'setup.admin.reports', { reportConfig }),
         ].join('\n')),
       )
@@ -200,7 +199,7 @@ async function sendSetupMessage(channel, payload) {
 module.exports = {
   SETUP_CHANNEL_TOPIC,
   ensureAdminSetupChannel,
-  findFallbackChannel,
+  findPrivateChannel,
   commandMention,
   commandSubcommandMention,
   buildAdminSetupMessage,

@@ -265,7 +265,7 @@ async function showRestoreChallenge(interaction, { guildId, userId, number, mode
   const lang = await languageOf(interaction);
   const challenge = jobs.createRestoreChallenge(interaction.guild, interaction.user.id);
   const minutes = Math.round(challenge.seconds / 60);
-  const card = new ContainerBuilder().setAccentColor(mode === 'replace' ? COLORS.RED : null)
+  const card = new ContainerBuilder().setAccentColor(mode === 'replace' ? COLORS.RED : COLORS.YELLOW)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(challenge.kind === 'letters'
       ? t(lang, 'backup.restore.captcha.letters', { emoji: EMOJI.WARNING, number, mode, minutes })
       : t(lang, 'backup.restore.captcha.name', { emoji: EMOJI.WARNING, number, mode, name: challenge.name })));
