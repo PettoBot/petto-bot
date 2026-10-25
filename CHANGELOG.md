@@ -20,6 +20,7 @@ All notable changes to Petto are documented here.
 
 ### Changed
 
+- **Newer packages and Node 24 in the checks.** `@napi-rs/canvas` goes from 1.0.8 to 1.0.13 (it draws text and gradients like Chrome; the text of the image cards sits about 3 pixels higher) and `dotenv` from 17 to 18 (fixes in the `.env` reader). The GitHub checks run on Node 24 instead of Node 20, which stopped receiving fixes in April 2026, and `engines` asks for Node 22 or newer.
 - **The Steal button of `!jumbo` answers and locks.** It failed with "Invalid Form Body" because the answer did not say it was a Components V2 message. Now the button is locked as soon as it is pressed (it says Adding… and then Stolen, or is free again if it failed), a second press at the same time is told to wait, and the result is a private message.
 - **Warnings are yellow again, not red.** A card that starts with the warning icon (such as the one of an unknown command) has the yellow-orange side bar it had before the redesign. Red stays for refusals, and green for confirmations.
 - **Dividers between the parts of a card.** A text card with a `###` heading in the middle (such as `!appeals`, with its settings under the intro) now puts a divider before that heading, and the cards that stacked several blocks with nothing between them (the backup panel, the owner guide, the verification link) have their dividers too.
