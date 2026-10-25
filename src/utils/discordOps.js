@@ -105,8 +105,8 @@ function aggregateGatewayState(client) {
   return 'idle';
 }
 
-// Only an outage is red and only a healthy service is green; the other states have no color.
-const STATE_COLORS = { online: 0xa5ea7a, idle: null, outage: 0xfe6465, offline: 0xfe6465 };
+// A healthy service is green, a degraded one has the yellow of the warnings, and an outage or offline is red.
+const STATE_COLORS = { online: 0xa5ea7a, idle: 0xfed53c, outage: 0xfe6465, offline: 0xfe6465 };
 const STATE_LABELS = { online: 'All services operational', idle: 'Service degradation detected', outage: 'Partial outage detected', offline: 'Petto is offline' };
 
 /** A card with a title, some text under a line and a small footer. */
@@ -287,7 +287,7 @@ const LOG_MESSAGE_LIMIT = 1900;
 let logLines = []; // { level, text }
 let logTimer = null;
 
-const LEVEL_COLORS = { error: 0xfe6465, warn: null, info: null };
+const LEVEL_COLORS = { error: 0xfe6465, warn: 0xfed53c, info: null };
 const LEVEL_RANK = { info: 0, warn: 1, error: 2 };
 
 function flushLogLines(client) {

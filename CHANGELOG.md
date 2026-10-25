@@ -20,6 +20,7 @@ All notable changes to Petto are documented here.
 
 ### Changed
 
+- **"Service degradation detected" has its yellow again.** The status card of a degraded service (and the warnings of the host log) lost their side color in the redesign; they are the yellow of the warnings again, next to the green of "All services operational" and the red of an outage.
 - **`!jumbo` says when the server already has the emoji or sticker.** The card shows a small note instead of just leaving out the Steal button.
 - **Newer packages and Node 24 in the checks.** `@napi-rs/canvas` goes from 1.0.8 to 1.0.13 (it draws text and gradients like Chrome; the text of the image cards sits about 3 pixels higher) and `dotenv` from 17 to 18 (fixes in the `.env` reader). The GitHub checks run on Node 24 instead of Node 20, which stopped receiving fixes in April 2026, and `engines` asks for Node 22 or newer.
 - **The Steal button of `!jumbo` answers and locks.** It failed with "Invalid Form Body" because the answer did not say it was a Components V2 message. Now the button is locked as soon as it is pressed (it says Adding… and then Stolen, or is free again if it failed), a second press at the same time is told to wait, and the result is a private message.

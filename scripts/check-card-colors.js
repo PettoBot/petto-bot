@@ -89,4 +89,8 @@ assert.equal(splitBlocks('### Only\nbody').length, 1);
 assert.equal(splitBlocks('```\n### not a title\n```').length, 1);
 const parts = caseCard.textCard('### A\nx\n\n### B\ny', null).toJSON().components.map((c) => c.type);
 assert.deepEqual(parts, [10, 14, 10], 'two titles of a text are told apart by a divider');
+// The status cards keep their colors: green when all is well, the yellow of the warnings when a service is degraded, red when it is down.
+const ops = read('src/utils/discordOps.js');
+assert.match(ops, /STATE_COLORS = \{ online: 0xa5ea7a, idle: 0xfed53c, outage: 0xfe6465, offline: 0xfe6465 \}/, 'a degraded service is yellow');
+assert.match(ops, /LEVEL_COLORS = \{ error: 0xfe6465, warn: 0xfed53c, info: null \}/, 'a warning of the host log is yellow');
 console.log('Checked the colors and titles of the cards, and that every sanction type has its parts.');
