@@ -138,7 +138,7 @@ function makeGuild() {
     id: '1', memberCount: 3, premiumSubscriptionCount: 4, premiumTier: 1,
     roles: { cache: roles, everyone: { id: '1' } },
     members: { cache: members, me: null, fetchCalls: 0, async fetch() { this.fetchCalls += 1; return members; } },
-    channels: { cache: channels, async create(options) { const c = channel(String(900 + channels.size), options.name, { 0: 0, 2: 2, 4: 4 }[options.type] ?? 2); c.options = options; channels.set(c.id, c); return c; } },
+    channels: { cache: channels, async fetch(id) { const c = channels.get(id); if (c) return c; throw Object.assign(new Error('Unknown Channel'), { code: 10003 }); }, async create(options) { const c = channel(String(900 + channels.size), options.name, { 0: 0, 2: 2, 4: 4 }[options.type] ?? 2); c.options = options; channels.set(c.id, c); return c; } },
     presences: { cache: coll([['a', { status: 'online' }], ['b', { status: 'idle' }], ['c', { status: 'dnd' }], ['d', { status: 'offline' }]]) },
     voiceStates: { cache: coll([['a', { channelId: 'v' }], ['b', { channelId: null }]]) },
     emojis: { cache: coll([['e', {}], ['f', {}]]) }, stickers: { cache: coll([['s', {}]]) },
@@ -293,6 +293,42 @@ state.queue.configure({ gapMs: 0, guildGapMs: 0, jitterMs: 0 });
   assert.equal(await job.processCounter(guild, slowRow), 'problem');
   assert.ok(state.blockedUntil.get('15') >= clock + RENAME_WINDOW_MS - 1);
   assert.equal(await job.processCounter(guild, slowRow), 'waiting', 'no new rename while Discord makes it wait');
+  state.timers.forEach((p) => clearTimeout(p.timer)); state.timers.clear();
+
+  // A channel that is only missing from the cache (a shard that reconnects, a start before the cache is full) still exists: Discord is asked,
+  // and the counter is renamed, not turned off.
+  const hidden = channel('16', 'old', 2);
+  const hiddenRow = { ...base, id: 8, channel_id: '16', counter_option: 'members', name_template: '' };
+  guild.channels.fetch = async (id) => { if (id === '16') return hidden; throw Object.assign(new Error('Unknown Channel'), { code: 10003 }); };
+  assert.equal(await job.processCounter(guild, hiddenRow), 'renamed');
+  assert.equal(hiddenRow.enabled, true); assert.ok(!hiddenRow.problem); assert.equal(hidden.calls.length, 1);
+  // When Discord cannot be asked (a network error, a timeout, the server unavailable) nothing is decided: the counter waits and stays on.
+  const unsure = { ...base, id: 9, channel_id: '17', counter_option: 'members', name_template: '' };
+  guild.channels.fetch = async () => { throw Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }); };
+  assert.equal(await job.processCounter(guild, unsure), 'waiting');
+  assert.equal(unsure.enabled, true); assert.ok(!unsure.problem, 'no problem is saved for a channel that could not be looked up');
+  guild.channels.fetch = async () => { throw Object.assign(new Error('Internal Server Error'), { status: 500 }); };
+  assert.equal(await job.processCounter(guild, unsure), 'waiting'); assert.equal(unsure.enabled, true);
+  guild.available = false; let asked = 0;
+  guild.channels.fetch = async () => { asked += 1; return null; };
+  assert.equal(await job.processCounter(guild, unsure), 'waiting'); assert.equal(asked, 0, 'an unavailable server is not asked');
+  guild.available = true;
+  guild.channels.fetch = async () => null;
+  assert.equal(await job.processCounter(guild, unsure), 'waiting', 'an empty answer is not "it does not exist"');
+  // Only Discord saying Unknown Channel turns it off.
+  guild.channels.fetch = async () => { throw Object.assign(new Error('Unknown Channel'), { code: 10003 }); };
+  assert.equal(await job.processCounter(guild, unsure), 'problem');
+  assert.equal(unsure.enabled, false); assert.equal(unsure.problem, 'missing_channel');
+  // A counter turned off by mistake before (its channel exists) turns itself on again, and is renamed.
+  const mistaken = channel('18', 'old', 2);
+  guild.channels.cache.set(mistaken.id, mistaken);
+  const mistakenRow = { ...base, id: 10, channel_id: '18', counter_option: 'members', name_template: '', enabled: false, problem: 'missing_channel' };
+  assert.equal(await job.processCounter(guild, mistakenRow), 'renamed');
+  assert.equal(mistakenRow.enabled, true); assert.equal(mistakenRow.problem, null);
+  assert.ok(updates.some((u) => u.id === 10 && u.enabled === true && u.problem === null), 'and it is saved');
+  // One turned off by the person stays off (it has no problem), and a missing one stays off.
+  const byHand = { ...base, id: 11, channel_id: '18', counter_option: 'members', name_template: '', enabled: false, problem: null };
+  assert.equal(await job.processCounter(guild, byHand), 'off'); assert.equal(byHand.enabled, false);
   state.timers.forEach((p) => clearTimeout(p.timer)); state.timers.clear();
 
   // ── Setup: locked channels, limits ─────────────────────────────────────

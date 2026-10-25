@@ -6,7 +6,7 @@
 //   - otherwise once, at the moment the budget allows again, with the value of that moment (updates in between are merged),
 //   - never when the name would stay the same.
 // A full pass every minute catches what no event says (a clock, a countdown) and repairs a name changed by hand.
-// A deleted channel turns its counter off; a missing permission is said once (the server's notices and the list show it).
+// A channel that Discord says does not exist turns its counter off (a channel only missing from the cache does not); a missing permission is said once (the server's notices and the list show it).
 const { Events, PermissionFlagsBits } = require('discord.js');
 const countersDb = require('../db/counters');
 const database = require('../db/database');
@@ -24,6 +24,7 @@ const { botDay } = require('../utils/botTime');
 
 const INTERVAL_MS = 60_000;
 const RENAME_TIMEOUT_MS = 15_000;
+const CHANNEL_FETCH_TIMEOUT_MS = 10_000;
 // Counting bots, pending members or boosters needs every member, and the cache only holds the ones that
 // were seen. A full fetch is heavy, so it is repeated at most this often and skipped for very large servers.
 const MEMBER_REFRESH_MS = 10 * 60_000;
@@ -164,13 +165,46 @@ async function wantedNameOf(guild, row, lang) {
 }
 
 /**
+ * The channel of a counter. It is read from the cache; when it is not there (a shard that reconnects, a start before the cache is full, a
+ * server that is unavailable for a moment) Discord is asked, because a channel that is only missing from the cache still exists.
+ * Returns { channel }, { gone: true } when Discord says it does not exist (10003), or { unknown: true } when it could not be told: the
+ * counter then waits for the next pass and is never turned off for it.
+ */
+async function findChannel(guild, row) {
+  const cached = guild.channels.cache.get(row.channel_id);
+  if (cached) return { channel: cached };
+  if (guild.available === false) return { unknown: true };
+  try {
+    const fetched = await withTimeout(guild.channels.fetch(row.channel_id), CHANNEL_FETCH_TIMEOUT_MS, 'counter channel fetch'); // i18n-ignore: log label
+    return fetched ? { channel: fetched } : { unknown: true };
+  } catch (err) {
+    const code = err?.code ?? err?.rawError?.code;
+    if (code === 10003) return { gone: true };
+    return { unknown: true };
+  }
+}
+
+/**
  * What a counter needs now: { result } when there is nothing to send ('off', 'problem', 'waiting', 'same'), or { channel, name, plan }
  * with the plan of the budget ('now' or 'later').
  */
 async function evaluate(guild, row, language) {
-  if (!row.enabled) { cancelTimer(row.channel_id); return { result: 'off' }; }
-  const channel = guild.channels.cache.get(row.channel_id);
-  if (!channel) { cancelTimer(row.channel_id); await setProblem(guild, row, 'missing_channel', { disable: true }); return { result: 'problem' }; }
+  if (!row.enabled) {
+    // A counter that was turned off because its channel "was gone" while the channel is there again was turned off by mistake: it is turned on.
+    if (row.problem === 'missing_channel' && guild.channels.cache.has(row.channel_id)) {
+      state.problems.delete(row.id);
+      await saveRow(row, { enabled: true, problem: null, problem_at: null });
+    } else { cancelTimer(row.channel_id); return { result: 'off' }; }
+  }
+  const found = await findChannel(guild, row);
+  if (found.gone) { cancelTimer(row.channel_id); await setProblem(guild, row, 'missing_channel', { disable: true }); return { result: 'problem' }; }
+  if (found.unknown) {
+    // i18n-ignore: log
+    warnOnce(`channel-unknown:${row.id}`, { guildId: guild.id, channelId: row.channel_id, action: 'counter' }, `Could not tell if counter channel ${row.channel_id} exists; the counter waits.`);
+    return { result: 'waiting' };
+  }
+  const { channel } = found;
+  if (row.problem === 'missing_channel') await clearProblem(row);
   if (!canManage(guild, channel)) { await setProblem(guild, row, 'missing_permission'); return { result: 'problem' }; }
   if (state.inFlight.has(channel.id)) return { result: 'waiting' };
   const topic = targetOf(row) === 'topic';
