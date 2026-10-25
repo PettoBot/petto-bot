@@ -55,6 +55,7 @@ module.exports = {
       lines.unshift(row(t(lang, 'utility.jumbo.name'), `\`${found.name}\``));
       lines.push(row(t(lang, 'utility.jumbo.created'), stamp(snowflakeTime(found.id))));
     }
+    if (found.here) lines.push(`-# ${t(lang, 'utility.jumbo.here')}`);
     if (more > 0) lines.push(`-# ${t(lang, 'utility.jumbo.more', { count: more })}`);
 
     const buttons = [{ label: t(lang, 'utility.jumbo.open'), url: found.url }];
