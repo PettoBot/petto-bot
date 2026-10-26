@@ -11,6 +11,7 @@ const card = require('../src/feeds/card');
 const { PLATFORMS, PLATFORM_IDS, TYPES } = require('../src/feeds/platforms');
 const youtube = require('../src/feeds/providers/youtube');
 const twitch = require('../src/feeds/providers/twitch');
+const kick = require('../src/feeds/providers/kick');
 const bluesky = require('../src/feeds/providers/bluesky');
 const modrinth = require('../src/feeds/providers/modrinth');
 const pokemon = require('../src/feeds/providers/pokemon');
@@ -91,6 +92,10 @@ const allText = (message) => JSON.stringify(json(message.components));
   assert.equal(youtube.parseChannel(''), null);
   assert.equal(twitch.parseLogin('https://www.twitch.tv/Some_Name'), 'some_name');
   assert.equal(twitch.parseLogin('a b'), null);
+  assert.equal(kick.parseSlug('https://kick.com/Some-Name?x=1'), 'some-name');
+  assert.equal(kick.parseSlug('@someone'), 'someone');
+  assert.equal(kick.parseSlug('a b'), null);
+  assert.equal(kick.parseSlug('x'.repeat(26)), null, 'Kick names have at most 25 characters');
   assert.equal(bluesky.parseActor('https://bsky.app/profile/jay.bsky.team'), 'jay.bsky.team');
   assert.equal(bluesky.parseActor('@name'), 'name.bsky.social');
   assert.equal(modrinth.parseProject('https://modrinth.com/mod/sodium/versions'), 'sodium');
@@ -155,6 +160,42 @@ const allText = (message) => JSON.stringify(json(message.components));
   assert.equal(results.get('UCx').items.length, 4);
   globalThis.fetch = realFetch;
   config.youtubeApiKey = null;
+
+  // --- Kick: the answers of its API written out ------------------------------------------------------------------------------------------------
+  {
+    config.kickClientId = 'id';
+    config.kickClientSecret = 'secret';
+    const kickCalls = [];
+    const channels = { 1: { broadcaster_user_id: 1, slug: 'live-one', stream_title: 'Hello', category: { name: 'Minecraft' }, stream: { is_live: true, start_time: '2026-10-26T20:00:00Z', viewer_count: 1234, thumbnail: 'https://images.kick.com/t.jpg' } },
+      2: { broadcaster_user_id: 2, slug: 'quiet', stream_title: '', stream: { is_live: false } } };
+    globalThis.fetch = async (url, options) => {
+      kickCalls.push(String(url));
+      if (String(url).includes('id.kick.com/oauth/token')) return new Response(JSON.stringify({ access_token: 'tok', expires_in: 3600 }), { status: 200 });
+      assert.equal(options.headers.Authorization, 'Bearer tok');
+      const u = new URL(url);
+      if (u.pathname.endsWith('/users')) return new Response(JSON.stringify({ data: [{ user_id: 1, name: 'Live_One', profile_picture: 'https://kick.example/p.png' }] }), { status: 200 });
+      const slugs = u.searchParams.getAll('slug');
+      const ids = u.searchParams.getAll('broadcaster_user_id');
+      const data = slugs.length ? Object.values(channels).filter((c) => slugs.includes(c.slug)) : Object.values(channels).filter((c) => ids.includes(String(c.broadcaster_user_id)));
+      return new Response(JSON.stringify({ data }), { status: 200 });
+    };
+    const found = await PROVIDERS.kick.resolve('https://kick.com/live-one');
+    assert.deepEqual([found.id, found.name, found.url], ['1', 'Live_One', 'https://kick.com/live-one']);
+    await assert.rejects(PROVIDERS.kick.resolve('nobody-here'), (error) => error.kind === 'notFound');
+    const results = await PROVIDERS.kick.poll([{ id: '1', name: 'Live_One', avatar: found.avatar, url: found.url }, { id: '2', name: 'quiet', avatar: null, url: 'https://kick.com/quiet' }]);
+    assert.equal(results.get('1').items.length, 1);
+    assert.equal(results.get('1').items[0].type, 'live');
+    assert.equal(results.get('1').items[0].id, '2026-10-26T20:00:00Z', 'a stream is told apart by when it started');
+    assert.match(results.get('1').items[0].extra, /Minecraft/);
+    assert.deepEqual([...results.get('1').stillLive], ['2026-10-26T20:00:00Z']);
+    assert.deepEqual(results.get('2'), { items: [], stillLive: new Set() }, 'a quiet channel has no stream and nothing is open');
+    assert.equal(kickCalls.filter((url) => url.includes('/channels?') && url.includes('broadcaster_user_id')).length, 1, 'both accounts are asked in one call');
+    config.kickClientId = null;
+    kickCalls.length = 0;
+    await assert.rejects(PROVIDERS.kick.resolve('live-one'), (error) => error.kind === 'notConfigured', 'without the keys Kick says it is not set up');
+    globalThis.fetch = realFetch;
+    config.kickClientSecret = null;
+  }
 
   // --- the engine ----------------------------------------------------------------------------------------------------------------------------
   const engine = require('../src/feeds/engine');

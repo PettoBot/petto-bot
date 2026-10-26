@@ -10,6 +10,7 @@
 const { forEachWithConcurrency } = require('../../utils/concurrency');
 const youtube = require('./youtube');
 const twitch = require('./twitch');
+const kick = require('./kick');
 const bluesky = require('./bluesky');
 const modrinth = require('./modrinth');
 const pokemon = require('./pokemon');
@@ -87,6 +88,27 @@ const PROVIDERS = {
     async baselineItems(account) {
       const live = await twitch.liveStreams([account.id]);
       return live[account.id] ? [{ id: live[account.id].id, live: true }] : [];
+    },
+  },
+
+  kick: {
+    interval: 2 * 60_000, perTick: 2000, concurrency: 1,
+    async resolve(text) {
+      const channel = await kick.resolveChannel(text);
+      return { id: channel.id, name: channel.name, avatar: channel.avatar, url: channel.url };
+    },
+    async poll(accounts) {
+      const live = await kick.liveChannels(accounts.map((account) => account.id)); // 50 accounts in each call
+      const results = new Map();
+      for (const account of accounts) {
+        const channel = live[account.id];
+        results.set(account.id, { items: channel ? [kick.toItem(channel, account)] : [], stillLive: new Set(channel ? [kick.streamId(channel)] : []) });
+      }
+      return results;
+    },
+    async baselineItems(account) {
+      const live = await kick.liveChannels([account.id]);
+      return live[account.id] ? [{ id: kick.streamId(live[account.id]), live: true }] : [];
     },
   },
 

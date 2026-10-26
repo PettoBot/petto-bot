@@ -11,7 +11,7 @@ const { EMOJI } = require('../../utils/emojis');
 const { t, languageOf } = require('../../i18n');
 
 const V2 = MessageFlags.IsComponentsV2;
-const COMMAND_PLATFORMS = ['youtube', 'twitch', 'bluesky', 'modrinth', 'pokemon'];
+const COMMAND_PLATFORMS = ['youtube', 'twitch', 'kick', 'bluesky', 'modrinth', 'pokemon'];
 const platformChoices = COMMAND_PLATFORMS.map((id) => ({ name: PLATFORMS[id].name, value: id }));
 const idOption = (o) => o.setName('id').setDescription('The number of the feed (see the list)').setMinValue(1).setRequired(true);
 
