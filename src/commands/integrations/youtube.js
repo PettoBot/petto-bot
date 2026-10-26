@@ -103,6 +103,14 @@ module.exports = {
       .addStringOption((o) => o.setName('channel').setDescription('The @handle, the link or the id of the channel').setMaxLength(200).setRequired(true))),
 
   // The short words people type after the command.
+  // A link to a video, or several words, is a video; a @handle, a channel link or a single word is a channel (`!yt urugodd`).
+  prefixDefaultSubcommand: (tokens) => {
+    if (!tokens.length) return null;
+    if (tokens.length > 1) return 'video';
+    const [word] = tokens;
+    if (parseVideo(word)?.id) return 'video';
+    return parseChannel(word) ? 'channel' : 'video';
+  },
   prefixSubcommandAliases: { v: 'video', c: 'channel' },
 
   async execute(interaction) {

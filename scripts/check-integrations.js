@@ -10,7 +10,8 @@ function stub(relative, exports) {
   const resolved = require.resolve(path.join(__dirname, '..', relative));
   require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports };
 }
-stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
+const logged = [];
+stub('src/utils/logger.js', { info() {}, warn() {}, error(...args) { logged.push(args); } });
 const links = new Map();
 stub('src/db/lastfmLinks.js', {
   getLink: async (id) => links.get(id) ?? null,
@@ -48,7 +49,10 @@ function fake({ sub = null, strings = {}, users = {}, lang = 'en' } = {}) {
   return {
     pettoLang: lang,
     user: { id: `user${nextUser += 1}`, username: 'liam' },
-    options: { getSubcommand: () => sub, getString: (name) => strings[name] ?? null, getUser: (name) => users[name] ?? null },
+    options: { getSubcommand: () => sub, getString: (name, required) => {
+      if (strings[name] === undefined && required) { const error = new Error(`missing ${name}`); error.userFacing = true; error.missingOption = name; throw error; }
+      return strings[name] ?? null;
+    }, getUser: (name) => users[name] ?? null },
     reply: async (payload) => { sent.replies.push(payload); },
     deferReply: async () => { sent.deferred = true; },
     editReply: async (payload) => { sent.edits.push(payload); },
@@ -365,6 +369,41 @@ const red = (text) => /16671844|0xfe6465/i.test(text) || text.includes('"accent_
   await lastfm.execute(priv);
   assert.match(textOf(priv.sent.edits.at(-1)), /profile is private/);
   config.lastfmApiKey = null;
+
+
+  // --- an argument left out is for the command handler to explain, not an error of the lookup ----------------------------------------------
+  for (const [command, option, sub] of [[roblox, 'user'], [steam, 'user'], [twitch, 'channel'], [minecraft, 'player', 'user'], [github, 'name', 'user'], [youtube, 'video', 'video']]) {
+    const interaction = fake({ sub });
+    await assert.rejects(command.execute(interaction), (error) => error.missingOption === option, `${command.data.name} without ${option}`);
+  }
+  assert.equal(logged.length, 0, 'and nothing was logged as an error');
+
+  // --- typed after the prefix: the subcommand can be left out ----------------------------------------------------------------------------------
+  const { buildInteractionFromMessage } = require('../src/handlers/prefixInteraction');
+  const typed = async (command, text) => {
+    const message = { guild: { id: 'g' }, channel: { id: 'c' }, author: { id: 'u' }, client: {}, content: text, attachments: { first: () => null } };
+    const built = await buildInteractionFromMessage(message, command, text);
+    if (!built) return null;
+    return { sub: built.options.getSubcommand(false), strings: Object.fromEntries(['player', 'name', 'repository', 'video', 'channel', 'username', 'period', 'user'].map((n) => [n, built.options.getString(n)]).filter(([, v]) => v !== null)) };
+  };
+  assert.deepEqual(await typed(minecraft, 'Notch'), { sub: 'user', strings: { player: 'Notch' } });
+  assert.deepEqual(await typed(minecraft, 'skin Notch'), { sub: 'skin', strings: { player: 'Notch' } });
+  assert.deepEqual(await typed(minecraft, 'avatar Notch'), { sub: 'head', strings: { player: 'Notch' } }, 'a short word for a subcommand');
+  assert.equal(await typed(minecraft, ''), null, 'with nothing typed the usage card is shown');
+  assert.deepEqual(await typed(github, 'octocat'), { sub: 'user', strings: { name: 'octocat' } });
+  assert.deepEqual(await typed(github, 'PettoBot/petto-bot'), { sub: 'repo', strings: { repository: 'PettoBot/petto-bot' } });
+  assert.deepEqual(await typed(github, 'https://github.com/PettoBot/petto-bot'), { sub: 'repo', strings: { repository: 'https://github.com/PettoBot/petto-bot' } });
+  assert.deepEqual(await typed(github, 'release PettoBot/petto-bot'), { sub: 'release', strings: { repository: 'PettoBot/petto-bot' } });
+  assert.deepEqual(await typed(youtube, 'urugodd'), { sub: 'channel', strings: { channel: 'urugodd' } }, 'one word is a channel');
+  assert.deepEqual(await typed(youtube, '@MrBeast'), { sub: 'channel', strings: { channel: '@MrBeast' } });
+  assert.deepEqual(await typed(youtube, 'never gonna give you up'), { sub: 'video', strings: { video: 'never gonna give you up' } }, 'several words are a search');
+  assert.deepEqual(await typed(youtube, 'https://youtu.be/dQw4w9WgXcQ'), { sub: 'video', strings: { video: 'https://youtu.be/dQw4w9WgXcQ' } });
+  assert.deepEqual(await typed(youtube, 'dQw4w9WgXcQ'), { sub: 'video', strings: { video: 'dQw4w9WgXcQ' } });
+  assert.deepEqual(await typed(youtube, 'channel urugodd'), { sub: 'channel', strings: { channel: 'urugodd' } });
+  assert.deepEqual(await typed(lastfm, ''), { sub: 'now', strings: {} }, '!lfm alone is now');
+  assert.equal((await typed(lastfm, 'recent')).sub, 'recent');
+  assert.equal((await typed(lastfm, 'songs')).sub, 'toptracks', 'a short word for a subcommand');
+  assert.equal((await typed(lastfm, 'link rj')).sub, 'link');
 
   // --- the three languages -----------------------------------------------------------------------------------------------------------------
   config.githubToken = null;

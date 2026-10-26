@@ -58,6 +58,8 @@ module.exports = {
       .addStringOption((o) => o.setName('repository').setDescription('owner/name, or the link to the repository').setMaxLength(200).setRequired(true))),
 
   // The short words people type after the command.
+  // `!gh octocat` is the user, `!gh PettoBot/petto-bot` (or a link to a repository) is the repository.
+  prefixDefaultSubcommand: (tokens) => (tokens.length ? (parseRepo(tokens[0]) ? 'repo' : 'user') : null),
   prefixSubcommandAliases: { u: 'user', profile: 'user', r: 'repo', rel: 'release', latest: 'release' },
 
   async execute(interaction) {

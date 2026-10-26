@@ -73,6 +73,8 @@ module.exports = {
       .addStringOption((o) => o.setName('player').setDescription('The name or the UUID of the player').setMaxLength(36).setRequired(true))),
 
   // The short words people type after the command.
+  // `!mc Notch` is `!mc user Notch`.
+  prefixDefaultSubcommand: (tokens) => (tokens.length ? 'user' : null),
   prefixSubcommandAliases: { profile: 'user', uuid: 'user', avatar: 'head', body: 'skin' },
 
   async execute(interaction) {

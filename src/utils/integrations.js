@@ -100,6 +100,8 @@ async function lookup(interaction, lang, service, build, cooldown = null) {
   try {
     await interaction.editReply(await build());
   } catch (error) {
+    // A missing argument is the member's to fix: it goes back to the command handler, which shows how to write the command.
+    if (error?.userFacing || error?.missingOption) throw error;
     if (!(error instanceof IntegrationError)) logger.error(`Lookup on ${service} failed: ${error?.message ?? error}`);
     await interaction.editReply(failurePayload(error, lang, service)).catch(() => {});
   }

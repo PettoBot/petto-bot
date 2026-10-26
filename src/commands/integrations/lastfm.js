@@ -106,6 +106,9 @@ module.exports = {
       .addUserOption((o) => o.setName('user').setDescription('The member (default: you)').setRequired(false))
       .addStringOption((o) => o.setName('period').setDescription('How far back: week, month, 3 months, 6 months, year or all (default: a month)').setMaxLength(20).setRequired(false))),
 
+  // `!lfm` alone, or with a member (`!lfm @liam`), is `now`.
+  prefixDefaultSubcommand: (tokens) => (!tokens.length || /^<@!?\d+>$|^\d{15,25}$/.test(tokens[0]) ? 'now' : null),
+
   // The short words people type after the command: `!lastfm songs`, `!lastfm me`...
   prefixSubcommandAliases: { np: 'now', playing: 'now', last: 'recent', me: 'profile', artists: 'topartists', top: 'topartists', tracks: 'toptracks', songs: 'toptracks' },
 
