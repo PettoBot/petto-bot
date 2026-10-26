@@ -4275,3 +4275,11 @@ alter table clownboard_entries enable row level security;
 alter table starboards add column if not exists extra_emojis text[] not null default '{}';
 alter table monkeyboards add column if not exists extra_emojis text[] not null default '{}';
 alter table clownboards add column if not exists extra_emojis text[] not null default '{}';
+
+-- The Last.fm name a person linked to their Discord account (`/lastfm link`). It works in every server.
+create table if not exists lastfm_links (
+  user_id    text primary key,
+  username   text not null,
+  updated_at timestamptz not null default now()
+);
+alter table lastfm_links enable row level security;

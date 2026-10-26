@@ -179,6 +179,14 @@ module.exports = {
   turnstileSecretKey: process.env.TURNSTILE_SECRET_KEY || null,
   verifyTokenSecret: process.env.VERIFY_TOKEN_SECRET || null,
   webPort: Number(process.env.WEB_PORT) || 8787,
+  // Optional: keys of the services the lookup commands (/github, /lastfm, /steam, /twitch, /youtube) call. Each command that needs one answers
+  // "not set up" until it is set; /minecraft and /roblox need none. A key is never logged or shown.
+  githubToken: process.env.PETTO_GITHUB_TOKEN || null, // optional: without it GitHub allows 60 calls an hour for the whole bot
+  lastfmApiKey: process.env.LASTFM_API_KEY || null,
+  steamApiKey: process.env.STEAM_API_KEY || null,
+  twitchClientId: process.env.TWITCH_CLIENT_ID || null,
+  twitchClientSecret: process.env.TWITCH_CLIENT_SECRET || null,
+  youtubeApiKey: process.env.YOUTUBE_API_KEY || null,
   // Optional: dedicated domain for ticket transcript links. Falls back to VERIFY_BASE_URL —
   // both point at the same Express process/port, this just lets it have its own hostname.
   transcriptBaseUrl: process.env.TRANSCRIPT_BASE_URL || null,
