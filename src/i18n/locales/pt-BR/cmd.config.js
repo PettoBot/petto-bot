@@ -400,4 +400,13 @@ module.exports = {
   'cmd.config.pagination.reset.desc': 'Para todas as paginações deste servidor (Administrador).',
   'cmd.config.mediaonlyconfig.desc': 'Mostra as configurações dos canais de mídia e como alterá-las.',
   'cmd.config.clownboardconfig.desc': 'Mostra as configurações do clownboard e como alterá-las.',
+  'cmd.config.statsconfig.desc': 'O que este servidor conta para suas estatísticas, e apagar o contado.',
+  'cmd.config.statsconfig.view.desc': 'Ver o que é contado e o que é guardado.',
+  'cmd.config.statsconfig.enable.desc': 'Contar a atividade deste servidor para suas estatísticas.',
+  'cmd.config.statsconfig.disable.desc': 'Parar de contar qualquer coisa neste servidor.',
+  'cmd.config.statsconfig.members.desc': 'Guardar contagens por membro (rankings de membros e !stats member).',
+  'cmd.config.statsconfig.members.opt.mode.desc': 'on ou off',
+  'cmd.config.statsconfig.content.desc': 'Contar quantas mensagens têm link, arquivo, resposta ou menção (nunca o texto).',
+  'cmd.config.statsconfig.content.opt.mode.desc': 'on ou off',
+  'cmd.config.statsconfig.delete.desc': 'Apagar todos os contadores deste servidor.',
 };

@@ -1,11 +1,13 @@
 const { Events } = require('discord.js');
 const { queueActivity } = require('../db/activityStats');
+const statsRules = require('../db/statsRules');
 const logger = require('../utils/logger');
 
 module.exports = {
   name: Events.MessageReactionAdd,
   async execute(reaction, user) {
     if (user.bot || !reaction.message.guild) return;
+    if (!statsRules.allowed(reaction.message.guild.id, user.id)) return;
 
     try {
       if (reaction.partial) await reaction.fetch().catch(() => null);

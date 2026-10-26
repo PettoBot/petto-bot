@@ -2,6 +2,7 @@ const { Events } = require('discord.js');
 const { resolveJoinInvite, wasVanityJoin } = require('../utils/inviteResolve');
 const inviteTrackingDb = require('../db/inviteTracking');
 const { queueFlow } = require('../db/activityDetail');
+const statsRules = require('../db/statsRules');
 const { ensureGuild } = require('../db/guilds');
 const { applyRewards } = require('../utils/inviteRewards');
 const logger = require('../utils/logger');
@@ -11,7 +12,8 @@ module.exports = {
   async execute(member) {
     const guild = member.guild;
     if (member.user.bot) return;
-    queueFlow(guild.id, { joins: 1 });
+    const counted = Boolean(statsRules.allowed(guild.id, member.id));
+    if (counted) queueFlow(guild.id, { joins: 1 });
     if (!guild.members.me.permissions.has('ManageGuild')) return; // can't fetch invite uses without it
 
     try {
@@ -23,7 +25,7 @@ module.exports = {
         source: vanity ? 'vanity' : null,
       });
       if (usedInvite?.inviter?.id && !result.fake) {
-        queueFlow(guild.id, { invited: 1 });
+        if (counted) queueFlow(guild.id, { invited: 1 });
         await applyRewards(guild, usedInvite.inviter.id);
       }
     } catch (err) {

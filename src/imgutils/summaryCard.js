@@ -23,13 +23,16 @@ const FONT = (weight, size) => `${weight} ${size}px "Poppins ${weight}", "Poppin
 
 const compact = (value) => {
   const abs = Math.abs(value);
-  if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(1).replace('.0', '')}m`;
-  if (abs >= 1_000) return `${(value / 1_000).toFixed(1).replace('.0', '')}k`;
+  const unit = (divisor, suffix) => `${(value / divisor).toFixed(1).replace('.0', '')}${suffix}`;
+  if (abs >= 1_000_000_000) return unit(1_000_000_000, 'b');
+  if (abs >= 1_000_000) return unit(1_000_000, 'm');
+  if (abs >= 1_000) return unit(1_000, 'k');
   return String(Math.round(value));
 };
 const duration = (seconds) => {
   const minutes = Math.floor(seconds / 60);
   const hours = Math.floor(minutes / 60);
+  if (hours >= 10_000) return `${compact(hours)} h`; // a number of hours that would not fit is shortened
   return hours ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
 };
 
@@ -220,4 +223,7 @@ function buildSummaryCard({ guildName, days, metric = 'overview', summary, lang 
   return canvas.toBuffer('image/png');
 }
 
-module.exports = { buildSummaryCard };
+// The drawing pieces, shared with the cards of `!stats` (src/imgutils/statsCards.js) so that all of them look alike.
+const kit = { W, H, BG, PANEL, BORDER, TEXT, MUTED, GRID, ACCENT, COLORS, WEEKDAYS, FONT, compact, duration, panel, text, niceMax, formatDay };
+
+module.exports = { buildSummaryCard, kit };

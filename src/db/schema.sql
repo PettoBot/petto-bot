@@ -4283,3 +4283,64 @@ create table if not exists lastfm_links (
   updated_at timestamptz not null default now()
 );
 alter table lastfm_links enable row level security;
+
+-- Statistics v2. What a server counts, and the people who chose not to be counted anywhere.
+-- Only counts are kept (messages, voice time, joins), never what was written. `enabled` turns every counter of the server off; `members_enabled` stops the
+-- counters per member (top members, personal statistics); `content_enabled` stops the counters of the shape of messages (with a link, a picture, a reply).
+create table if not exists stats_config (
+  guild_id        text primary key references guilds(guild_id) on delete cascade,
+  enabled         boolean not null default true,
+  members_enabled boolean not null default true,
+  content_enabled boolean not null default true,
+  updated_at      timestamptz not null default now()
+);
+alter table stats_config enable row level security;
+
+-- A person here is not counted in any server (`!stats privacy`): their messages, reactions, voice time and joins are left out, and what was
+-- counted per member about them is deleted when they join this list.
+create table if not exists stats_optout (
+  user_id    text primary key,
+  created_at timestamptz not null default now()
+);
+alter table stats_optout enable row level security;
+
+-- How many messages of a day carried a link, a picture, a reply or a mention. Only the number: the text of the messages is never kept.
+create table if not exists activity_content (
+  guild_id    text not null references guilds(guild_id) on delete cascade,
+  day         date not null,
+  links       integer not null default 0,
+  attachments integer not null default 0,
+  replies     integer not null default 0,
+  mentions    integer not null default 0,
+  primary key (guild_id, day)
+);
+alter table activity_content enable row level security;
+
+create or replace function increment_activity_content(p_guild_id text, p_day date, p_links integer, p_attachments integer, p_replies integer, p_mentions integer)
+returns void language plpgsql as $$
+begin
+  insert into activity_content (guild_id, day, links, attachments, replies, mentions) values (p_guild_id, p_day, p_links, p_attachments, p_replies, p_mentions)
+  on conflict (guild_id, day) do update
+    set links = activity_content.links + excluded.links, attachments = activity_content.attachments + excluded.attachments,
+        replies = activity_content.replies + excluded.replies, mentions = activity_content.mentions + excluded.mentions;
+end;
+$$;
+
+-- How long the members who left had been in the server, in groups: 0 = under a day, 1 = under a week, 2 = under a month, 3 = under three months,
+-- 4 = longer. Nobody is named: it is a number per day of leaving.
+create table if not exists member_lifespan (
+  guild_id text not null references guilds(guild_id) on delete cascade,
+  day      date not null,
+  bucket   smallint not null check (bucket between 0 and 4),
+  members  integer not null default 0,
+  primary key (guild_id, day, bucket)
+);
+alter table member_lifespan enable row level security;
+
+create or replace function increment_member_lifespan(p_guild_id text, p_day date, p_bucket integer, p_members integer)
+returns void language plpgsql as $$
+begin
+  insert into member_lifespan (guild_id, day, bucket, members) values (p_guild_id, p_day, p_bucket, p_members)
+  on conflict (guild_id, day, bucket) do update set members = member_lifespan.members + excluded.members;
+end;
+$$;
