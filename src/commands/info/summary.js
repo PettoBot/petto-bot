@@ -17,7 +17,7 @@ const TITLES = { overview: 'Summary', messages: 'Messages', voice: 'Voice', join
 const ACCENTS = { overview: 0xf0a88f, messages: 0xf0a88f, voice: 0x9bd0f5, joins: 0x8fdca8, leaves: 0xf08fa0, invites: 0xc6a8f5, sanctions: 0xf5c26b };
 
 module.exports = {
-  aliases: ['digest', 'weekly', 'stats'],
+  aliases: ['digest', 'weekly'],
   data: new SlashCommandBuilder()
     .setName('summary')
     .setDescription('Activity of this server: messages, voice, joins, leaves and invites, with the busiest hour.')

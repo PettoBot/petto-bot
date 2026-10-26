@@ -220,4 +220,7 @@ function buildSummaryCard({ guildName, days, metric = 'overview', summary, lang 
   return canvas.toBuffer('image/png');
 }
 
-module.exports = { buildSummaryCard };
+// The drawing pieces, shared with the cards of `!stats` (src/imgutils/statsCards.js) so that all of them look alike.
+const kit = { W, H, BG, PANEL, BORDER, TEXT, MUTED, GRID, ACCENT, COLORS, WEEKDAYS, FONT, compact, duration, panel, text, niceMax, formatDay };
+
+module.exports = { buildSummaryCard, kit };

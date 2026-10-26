@@ -39,6 +39,7 @@ const { handleButton: handleResponderButton, handleSelect: handleResponderSelect
 const { PREFIX: REQUEST_PREFIX } = require('../utils/requestCards');
 const { handleButton: handleRequestButton } = require('../interactions/requests');
 const { PREFIX: SCAM_PREFIX, handleButton: handleScamButton } = require('../utils/antiScam');
+const { PREFIX: STATS_PREFIX, handleButton: handleStatsButton } = require('../interactions/stats');
 const { PREFIX: ANTINUKE_PREFIX, handleButton: handleAntiNukeButton } = require('../interactions/antiNuke');
 const { PREFIX: APPEAL_PREFIX, handleButton: handleAppealButton, handleModal: handleAppealModal } = require('../interactions/appeals');
 const { PREFIX: CONFESSION_PREFIX, handleButton: handleConfessionButton, handleModal: handleConfessionModal } = require('../interactions/confessions');
@@ -66,6 +67,12 @@ module.exports = {
   async execute(interaction, client) {
     if ((interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) && interaction.customId.startsWith(CODE_COMMAND_PREFIX)) {
       try { await handleCodeCommandComponent(interaction); } catch (err) { logger.error('Error handling a custom command button or menu:', err); }
+      return;
+    }
+
+    // The buttons of `!stats privacy` and the confirmation of `!statsconfig delete`.
+    if (interaction.isButton() && interaction.customId.startsWith(`${STATS_PREFIX}:`)) {
+      try { await handleStatsButton(interaction); } catch (err) { logger.error('Error handling a statistics button:', err); }
       return;
     }
 

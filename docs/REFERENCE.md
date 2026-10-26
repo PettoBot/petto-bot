@@ -800,6 +800,33 @@ The original spec's plain lookup-command category, consolidated where several wo
 **`/inviteinfo code`** — looks up any invite code's server/channel/inviter/expiry, even for servers Petto isn't in.
 **`/color hex`** (aliases `clr`, `hex`, `hexcolor`) — previews a hex color as the card's accent bar, plus its RGB, HSL and decimal values. Given anything that is not a hex code (nothing, an attached or replied image, a link, a member), it finds the **main color of that picture** instead (`!image hex`) and answers with a swatch.
 
+## Statistics (`!stats`, `!statsconfig`, `!summary`)
+
+`!summary` (aliases `digest`, `weekly`) is the quick picture of a server. `!stats` (aliases `analytics`, `analysis`) is the analysis: each subcommand answers with a picture drawn by `src/imgutils/statsCards.js` (same colors and fonts as the summary) and a few lines (`src/utils/statsLines.js`). Everything is counted per server, in the time of Colombia (GMT-5); nothing is global. Days are 1 to 180 (`!stats 30`, `!stats heatmap 30d`); the period is always set against the one just before it.
+
+| Command | What it shows |
+|---|---|
+| `!stats [days]` (`!stats server`) | six numbers with their change in percent (messages, active members, voice time, joins, leaves, per day) and three line charts (messages, voice hours, active members), each with the period before as a dashed line |
+| `!stats channels` (`channel`) | the channels with the most messages and voice time with their share, and the text channels that had no message |
+| `!stats members` (`top`, `users`) | the members with the most messages and voice time with their share, and how much of the messages the top tenth of the members wrote |
+| `!stats heatmap` (`heat`, `hours`, `week`) | messages by weekday and hour (a cell each), the part of the day (night, morning, afternoon, evening) and the share of each weekday |
+| `!stats growth` (`joins`, `retention`) | joins, leaves and net change, the members line, and how long the members who left had stayed (under a day, a week, a month, three months, longer) |
+| `!stats compare` (`vs`, `versus`) | every number next to the period before, and how messages are made: how many of every 100 carry a link, a file, a reply or a mention |
+| `!stats @member [days]` (`member`, `me`) | messages, voice time, active days, days in a row, the best day, the place among the members and the share of the server |
+| `!stats privacy` | the panel to stop being counted, be counted again or delete what was counted about you (see below) |
+
+`!stats` alone is the overview, `!stats 30` the overview of 30 days and `!stats @liam` is `!stats member @liam`. The words in brackets are `prefixSubcommandAliases`; `prefixDefaultSubcommand` is a function that reads the first word.
+
+**What is kept, and for how long.** Only counts, never what was written: `activity_stats` (per channel and day: messages, reactions, voice seconds), `activity_hourly` (per hour), `activity_members` (per member and day: messages, voice seconds), `member_flow` (joins, leaves and joins through invites per day), `activity_content` (per day: how many messages carried a link, a file, a reply or a mention) and `member_lifespan` (per day of leaving: how many members had stayed under a day, a week, a month, three months or longer; nobody is named). `src/db/statsRules.js` deletes the counters per member after 13 months and the others after two years (a job, every day).
+
+**What can be turned off.**
+- A **server** (`!statsconfig`, Manage Server; the dashboard has the same switches): `enable` / `disable` (nothing is counted), `members on|off` (no counts per member: the member rankings and `!stats member` have nothing), `content on|off` (no counters of the shape of messages) and `delete` (every counter of the server, behind a button that only the person who asked can press). The rules are in `stats_config` (`enabled`, `members_enabled`, `content_enabled`).
+- A **person** (`!stats privacy`): a button writes the person into `stats_optout`. From then on their messages, reactions, voice time, joins and leaves are not counted in any server, and the counts per member that existed about them are deleted at that moment. The panel also has "Delete my counts" (without opting out) and "Count me again".
+
+`statsRules.allowed(guildId, userId)` is what every counter asks first: it answers `null` when nothing may be counted, else `{ members, content }`. The rules are read into memory when the bot starts and every minute (they are small), so asking costs nothing; **until they have been read the first time nothing is counted**, so a person who opted out is never counted for the first seconds after a restart. The counters are written by `messageCreateActivityStats`, `messageReactionAddActivityStats`, `activityStatsJob` (voice), `guildMemberAddInviteTracking` and `guildMemberRemoveInviteTracking`.
+
+**Reading.** `src/db/statsQueries.js` reads the small counters with a plain select and adds up what is per member in SQL (one row per member, not one per member and day), so a big server does not send millions of rows. `src/utils/statsV2.js` has no database: it builds the periods, the heat map, the tops, the growth and one member from rows. `scripts/check-stats-v2.js` checks the numbers, the pictures in three languages, the rules (a server that is off, a person who opted out, no counts per member) and, with `PETTO_TEST_DATABASE_URL`, the tables, the delete, the pruning and the reads against PostgreSQL.
+
 ## Profile history (`!profilehistory`, alias `phist`)
 
 `avatars|names|nicknames [user]` shows what a person has had (`identity_history`, newest first, 200 per kind); `clear <avatars|names|nicknames|all>` deletes your own and `record <true|false>` turns the saving on or off (`identity_history_optout`; somebody else cannot see a history that is off). Values are recorded by `src/utils/identityHistory.js` (`noteUser`, `noteMember`) from `UserUpdate` (`events/identityHistoryUser.js`), `GuildMemberUpdate` (nicknames, `events/identityHistoryMember.js`), `GuildMemberAdd` (`events/identityHistoryJoin.js`), the command itself and `record true`. The dashboard shows the same at `/dash/history` and clears or turns it off straight in the tables.

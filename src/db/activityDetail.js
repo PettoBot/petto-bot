@@ -64,18 +64,43 @@ async function flush() {
   }
 }
 
-/** A message by a member (hour of the day and member counters). */
-function queueMessage(guildId, userId, now = new Date()) {
+/** A message by a member (hour of the day, and the member's counters unless the server keeps none per member). */
+function queueMessage(guildId, userId, { member = true, now = new Date() } = {}) {
   const day = dayOf(now);
   queue(`h:${guildId}:${day}:${botHour(now)}`, 'increment_activity_hourly', { p_guild_id: guildId, p_day: day, p_hour: botHour(now) }, { p_messages: 1, p_voice_seconds: 0 });
-  queue(`m:${guildId}:${day}:${userId}`, 'increment_activity_member', { p_guild_id: guildId, p_day: day, p_user_id: userId }, { p_messages: 1, p_voice_seconds: 0 });
+  if (member) queue(`m:${guildId}:${day}:${userId}`, 'increment_activity_member', { p_guild_id: guildId, p_day: day, p_user_id: userId }, { p_messages: 1, p_voice_seconds: 0 });
 }
 
 /** Voice time of one member in this minute. */
-function queueVoice(guildId, userId, seconds, now = new Date()) {
+function queueVoice(guildId, userId, seconds, { member = true, now = new Date() } = {}) {
   const day = dayOf(now);
   queue(`h:${guildId}:${day}:${botHour(now)}`, 'increment_activity_hourly', { p_guild_id: guildId, p_day: day, p_hour: botHour(now) }, { p_messages: 0, p_voice_seconds: seconds });
-  queue(`m:${guildId}:${day}:${userId}`, 'increment_activity_member', { p_guild_id: guildId, p_day: day, p_user_id: userId }, { p_messages: 0, p_voice_seconds: seconds });
+  if (member) queue(`m:${guildId}:${day}:${userId}`, 'increment_activity_member', { p_guild_id: guildId, p_day: day, p_user_id: userId }, { p_messages: 0, p_voice_seconds: seconds });
+}
+
+/** How many messages of this day carried a link, a picture, a reply or a mention (only the numbers; nothing of the message is kept). */
+function queueContent(guildId, { links = 0, attachments = 0, replies = 0, mentions = 0 }, now = new Date()) {
+  if (!links && !attachments && !replies && !mentions) return;
+  const day = dayOf(now);
+  queue(`c:${guildId}:${day}`, 'increment_activity_content', { p_guild_id: guildId, p_day: day }, { p_links: links, p_attachments: attachments, p_replies: replies, p_mentions: mentions });
+}
+
+const DAY_MS = 86_400_000;
+/** The group of a stay: 0 under a day, 1 under a week, 2 under a month, 3 under three months, 4 longer. */
+function lifespanBucket(stayMs) {
+  if (stayMs < DAY_MS) return 0;
+  if (stayMs < 7 * DAY_MS) return 1;
+  if (stayMs < 30 * DAY_MS) return 2;
+  if (stayMs < 90 * DAY_MS) return 3;
+  return 4;
+}
+
+/** A member left after being in the server since `joinedTimestamp` (ms; unknown when it is not a number). */
+function queueLifespan(guildId, joinedTimestamp, now = new Date()) {
+  if (!Number.isFinite(joinedTimestamp) || joinedTimestamp <= 0) return;
+  const day = dayOf(now);
+  const bucket = lifespanBucket(Math.max(0, now.getTime() - joinedTimestamp));
+  queue(`l:${guildId}:${day}:${bucket}`, 'increment_member_lifespan', { p_guild_id: guildId, p_day: day, p_bucket: bucket }, { p_members: 1 });
 }
 
 /** A member joined (`invited` when a tracked invite brought them) or left. */
@@ -105,5 +130,7 @@ async function getCases(guildId, days) {
 }
 
 const getMembers = (guildId, days) => select('activity_members', 'day, user_id, messages, voice_seconds', guildId, days);
+const getContent = (guildId, days) => select('activity_content', 'day, links, attachments, replies, mentions', guildId, days);
+const getLifespan = (guildId, days) => select('member_lifespan', 'day, bucket, members', guildId, days);
 
-module.exports = { queueMessage, queueVoice, queueFlow, flush, getHourly, getFlow, getMembers, getCases };
+module.exports = { queueMessage, queueVoice, queueFlow, queueContent, queueLifespan, lifespanBucket, flush, getHourly, getFlow, getMembers, getContent, getLifespan, getCases };
