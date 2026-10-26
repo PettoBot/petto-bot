@@ -1,5 +1,6 @@
 const database = require('./database');
 
+// How long a mention is kept: what `/afk mentions` shows, and what the hourly job (jobs/afkMentionsJob.js) leaves in the table.
 const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
 
 async function getStatus(guildId, userId) {
@@ -40,4 +41,10 @@ async function countRecentMentions(guildId, afkUserId) {
   return count ?? 0;
 }
 
-module.exports = { getStatus, setStatus, clearStatus, recordMention, listRecentMentions, countRecentMentions };
+/** Deletes every mention older than three days (the ones no list shows any more). */
+async function deleteExpiredMentions(now = Date.now()) {
+  const { error } = await database.from('afk_mentions').delete().lt('created_at', new Date(now - THREE_DAYS_MS).toISOString());
+  if (error) throw error;
+}
+
+module.exports = { THREE_DAYS_MS, getStatus, setStatus, clearStatus, recordMention, listRecentMentions, countRecentMentions, deleteExpiredMentions };
