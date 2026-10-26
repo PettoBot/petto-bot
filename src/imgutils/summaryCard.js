@@ -23,13 +23,16 @@ const FONT = (weight, size) => `${weight} ${size}px "Poppins ${weight}", "Poppin
 
 const compact = (value) => {
   const abs = Math.abs(value);
-  if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(1).replace('.0', '')}m`;
-  if (abs >= 1_000) return `${(value / 1_000).toFixed(1).replace('.0', '')}k`;
+  const unit = (divisor, suffix) => `${(value / divisor).toFixed(1).replace('.0', '')}${suffix}`;
+  if (abs >= 1_000_000_000) return unit(1_000_000_000, 'b');
+  if (abs >= 1_000_000) return unit(1_000_000, 'm');
+  if (abs >= 1_000) return unit(1_000, 'k');
   return String(Math.round(value));
 };
 const duration = (seconds) => {
   const minutes = Math.floor(seconds / 60);
   const hours = Math.floor(minutes / 60);
+  if (hours >= 10_000) return `${compact(hours)} h`; // a number of hours that would not fit is shortened
   return hours ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
 };
 
