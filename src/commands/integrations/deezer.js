@@ -1,5 +1,6 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { infoPayload } = require('../../utils/infoCard');
+const { songPayload } = require('../../utils/songPayload');
 const { IntegrationError, fetchJson, cached, lookup, row, plain, clock, dateTag } = require('../../utils/integrations');
 const { t, formatNumber, languageOf } = require('../../i18n');
 
@@ -57,11 +58,11 @@ module.exports = {
         const [top, ...others] = await search('track', query);
         const buttons = [{ label: t(lang, 'integrations.deezer.open'), url: top.link }];
         if (top.preview) buttons.unshift({ label: t(lang, 'integrations.deezer.preview'), url: top.preview });
-        return infoPayload({
-          accent: null,
-          title: plain(top.title, 120),
-          subtitle: [`${plain(top.artist?.name, 80)} · ${plain(top.album?.title, 80)}`],
-          banner: top.album?.cover_xl ?? top.album?.cover_big ?? null,
+        return songPayload({
+          title: top.title,
+          artist: top.artist?.name,
+          detail: top.album?.title,
+          cover: top.album?.cover_xl ?? top.album?.cover_big ?? null,
           sections: [
             {
               lines: [
@@ -81,10 +82,11 @@ module.exports = {
         const [found] = await search('artist', query);
         const [artist, top] = await Promise.all([get(`/artist/${found.id}`), get(`/artist/${found.id}/top?limit=5`).catch(() => null)]);
         const songs = (top?.data ?? []).map((track, index) => `**${index + 1}.** [${plain(track.title, 70)}](${track.link}) · ${clock(track.duration)}`);
-        return infoPayload({
-          accent: null,
-          title: plain(artist.name, 100),
-          thumbnail: artist.picture_xl ?? artist.picture_big ?? null,
+        return songPayload({
+          title: artist.name,
+          artist: t(lang, 'integrations.deezer.artistLabel'),
+          cover: artist.picture_xl ?? artist.picture_big ?? null,
+          round: true,
           sections: [
             { lines: [row(t(lang, 'integrations.deezer.fans'), number(artist.nb_fan)), artist.nb_album !== undefined ? row(t(lang, 'integrations.deezer.albums'), number(artist.nb_album)) : null] },
             songs.length ? { title: t(lang, 'integrations.deezer.topSongs'), lines: songs, limit: 1200 } : null,
@@ -99,11 +101,11 @@ module.exports = {
       const tracks = (album.tracks?.data ?? []).slice(0, TRACKS_SHOWN).map((track, index) => `**${index + 1}.** ${plain(track.title, 70)} · ${clock(track.duration)}`);
       const more = Math.max(0, Number(album.nb_tracks ?? 0) - tracks.length);
       const genres = (album.genres?.data ?? []).map((genre) => plain(genre.name, 30)).join(', ');
-      return infoPayload({
-        accent: null,
-        title: plain(album.title, 120),
-        subtitle: [plain(album.artist?.name, 80)],
-        banner: album.cover_xl ?? album.cover_big ?? null,
+      return songPayload({
+        title: album.title,
+        artist: album.artist?.name,
+        detail: album.release_date ? album.release_date.slice(0, 4) : '',
+        cover: album.cover_xl ?? album.cover_big ?? null,
         sections: [
           {
             lines: [

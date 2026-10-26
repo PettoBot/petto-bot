@@ -21,11 +21,17 @@ stub('src/db/lastfmLinks.js', {
   removeLink: async (id) => links.delete(id),
 });
 
+// The covers are not downloaded: a plain square stands for each one.
+const { createCanvas, loadImage } = require('@napi-rs/canvas');
+const coversAsked = [];
+stub('src/utils/safeImage.js', {
+  loadImageFromLink: async (url) => { coversAsked.push(url); const canvas = createCanvas(300, 300); const ctx = canvas.getContext('2d'); ctx.fillStyle = '#c0392b'; ctx.fillRect(0, 0, 300, 300); return canvas; },
+});
 const config = require('../src/config');
 const integrations = require('../src/utils/integrations');
 const { buildInteractionFromMessage } = require('../src/handlers/prefixInteraction');
 const cmd = (name) => require(`../src/commands/integrations/${name}`);
-const [minecraft, github, roblox, steam, twitch, youtube, lastfm, deezer, itunes, wikipedia, anilist, pokemon, pkg, tmdb] = ['minecraft', 'github', 'roblox', 'steam', 'twitch', 'youtube', 'lastfm', 'deezer', 'itunes', 'wikipedia', 'anilist', 'pokemon', 'package', 'tmdb'].map(cmd);
+const [minecraft, github, roblox, steam, twitch, youtube, lastfm, deezer, itunes, wikipedia, anilist, pokemon, pkg, tmdb, chess, modrinth, crypto, currency, animal] = ['minecraft', 'github', 'roblox', 'steam', 'twitch', 'youtube', 'lastfm', 'deezer', 'itunes', 'wikipedia', 'anilist', 'pokemon', 'package', 'tmdb', 'chess', 'modrinth', 'crypto', 'currency', 'animal'].map(cmd);
 for (const key of ['githubToken', 'lastfmApiKey', 'steamApiKey', 'twitchClientId', 'twitchClientSecret', 'youtubeApiKey', 'tmdbApiKey']) config[key] = null; // whatever the machine has
 
 // --- the fake internet ---------------------------------------------------------------------------------------------------------------------
@@ -79,6 +85,12 @@ async function ask(command, options) {
   const card = payload.components[0].toJSON();
   assert.ok(card.accent_color === undefined || [0xa5ea7a, 0xfe6465, 0xfed53c].includes(card.accent_color), 'a card has no color except green, red or yellow');
   assert.ok(text.length < 7000, 'the card fits in a message');
+  // A song, album or artist card has its picture attached: one PNG, as wide as the card is drawn.
+  if (payload.files?.length) {
+    assert.equal(payload.files.length, 1); assert.equal(payload.files[0].name, 'song.png');
+    const picture = await loadImage(payload.files[0].attachment);
+    assert.equal(picture.width, 1000); assert.equal(picture.height, 260);
+  }
   return { text, payload, card };
 }
 const buttonsOf = (payload) => payload.components[0].toJSON().components.filter((component) => component.type === 1).flatMap((component) => component.components);
@@ -274,10 +286,10 @@ const typed = async (command, text) => {
     [/api\.deezer\.com\/search\/track\?q=broken/, json({ error: { type: 'Exception', code: 4 } })],
   ];
   out = await ask(deezer, { sub: 'track', strings: { query: 'creep radiohead' } });
-  assert.match(out.text, /Creep/); assert.match(out.text, /3:58/); assert.match(out.text, /978,547/); assert.match(out.text, /Pablo Honey/); assert.match(out.text, /Creep \(Acoustic\)/); assert.match(out.text, /Explicit lyrics/);
+  assert.match(out.text, /"description":"Creep"/, 'the title is on the picture'); assert.equal(out.payload.files.length, 1); assert.ok(coversAsked.includes('https://cdn/cover.jpg'), 'the cover of the album is drawn'); assert.match(out.text, /3:58/); assert.match(out.text, /978,547/); assert.match(out.text, /Creep \(Acoustic\)/); assert.match(out.text, /Explicit lyrics/);
   assert.ok(buttonsOf(out.payload).some((button) => button.url === 'https://cdn/p1.mp3'), 'the 30 second preview'); assert.ok(buttonsOf(out.payload).some((button) => button.url === 'https://www.deezer.com/track/1'));
   out = await ask(deezer, { sub: 'artist', strings: { query: 'radiohead' } });
-  assert.match(out.text, /6,000,000/); assert.match(out.text, /Karma Police/);
+  assert.match(out.text, /"description":"Radiohead"/); assert.match(out.text, /6,000,000/); assert.match(out.text, /Karma Police/); assert.ok(coversAsked.includes('https://cdn/a.jpg'), 'the photo of the artist');
   out = await ask(deezer, { sub: 'album', strings: { query: 'ok computer' } });
   assert.match(out.text, /Parlophone/); assert.match(out.text, /Alternative/); assert.match(out.text, /Paranoid Android · 6:23/); assert.match(out.text, /and 10 more/); assert.match(out.text, /Tracks \(12\)/);
   out = await ask(deezer, { sub: 'track', strings: { query: 'nothing' } });
@@ -297,9 +309,9 @@ const typed = async (command, text) => {
   ];
   routes.unshift([/itunes\.apple\.com\/search\?.*term=nothing/, json({ resultCount: 0, results: [] })]);
   out = await ask(itunes, { sub: 'song', strings: { query: 'creep' } });
-  assert.match(out.text, /Creep 1/); assert.match(out.text, /3:58/); assert.match(out.text, /600x600bb\.jpg/); assert.match(out.text, /Creep 2/); assert.ok(buttonsOf(out.payload).some((button) => button.url.includes('p1.m4a')));
+  assert.match(out.text, /"description":"Creep 1"/); assert.match(out.text, /3:58/); assert.ok(coversAsked.includes('https://is1/x/600x600bb.jpg'), 'the big cover'); assert.equal(out.payload.files.length, 1); assert.match(out.text, /Creep 2/); assert.ok(buttonsOf(out.payload).some((button) => button.url.includes('p1.m4a')));
   out = await ask(itunes, { sub: 'album', strings: { query: 'ok computer' } });
-  assert.match(out.text, /OK Computer/); assert.match(out.text, /12/);
+  assert.match(out.text, /"description":"OK Computer"/); assert.match(out.text, /12/);
   out = await ask(itunes, { sub: 'artist', strings: { query: 'radiohead' } });
   assert.match(out.text, /Radiohead Tribute/);
   out = await ask(itunes, { sub: 'app', strings: { query: 'minecraft' } });
@@ -417,6 +429,93 @@ const typed = async (command, text) => {
   out = await ask(tmdb, { sub: 'movie', strings: { title: 'Interstellar' } });
   assert.match(out.text, /Interstellar/, 'a v4 token goes in a header and never in the address');
   config.tmdbApiKey = null;
+
+
+  // --- Chess ---------------------------------------------------------------------------------------------------------------------------------
+  assert.equal(chess.parsePlayer('Hikaru'), 'Hikaru'); assert.equal(chess.parsePlayer('https://www.chess.com/member/hikaru'), 'hikaru'); assert.equal(chess.parsePlayer('https://lichess.org/@/DrNykterstein'), 'DrNykterstein'); assert.equal(chess.parsePlayer('a'), null); assert.equal(chess.parsePlayer('bad name'), null);
+  assert.equal(chess.flagOf('us'), '🇺🇸'); assert.equal(chess.flagOf('x'), '');
+  assert.equal(await typed(chess, 'hikaru'), 'chesscom'); assert.equal(await typed(chess, 'li DrNykterstein'), 'lichess');
+  routes = [
+    [/api\.chess\.com\/pub\/player\/hikaru\/stats$/, json({ chess_rapid: { last: { rating: 2838 } }, chess_blitz: { last: { rating: 3470 } }, chess_bullet: { last: { rating: 3397 } }, tactics: { highest: { rating: 2730 } }, fide: 2814 })],
+    [/api\.chess\.com\/pub\/player\/hikaru$/, json({ username: 'hikaru', name: 'Hikaru Nakamura', title: 'GM', avatar: 'https://images/a.png', url: 'https://www.chess.com/member/Hikaru', followers: 1419989, country: 'https://api.chess.com/pub/country/US', joined: 1389043258, last_online: 1792968511, league: 'Legend', is_streamer: true })],
+    [/lichess\.org\/api\/user\/DrNykterstein$/, json({ id: 'drnykterstein', username: 'DrNykterstein', title: 'GM', perfs: { ultraBullet: { rating: 2406, games: 5 }, bullet: { rating: 3263, games: 4000 }, blitz: { rating: 3194, games: 3000 }, rapid: { rating: 2500, games: 0 } }, count: { all: 10455, win: 7212, loss: 2409, draw: 834 }, createdAt: 1544100290814, seenAt: 1792000750356, url: 'https://lichess.org/@/DrNykterstein' })],
+    [/lichess\.org\/api\/user\/Closed$/, json({ id: 'closed', username: 'Closed', closed: true })],
+  ];
+  out = await ask(chess, { sub: 'chesscom', strings: { player: 'Hikaru' } });
+  assert.match(out.text, /GM Hikaru Nakamura 🇺🇸/); assert.match(out.text, /Blitz\*\* 3,470/); assert.match(out.text, /Rapid\*\* 2,838/); assert.match(out.text, /FIDE\*\* 2,814/); assert.match(out.text, /1,419,989/); assert.match(out.text, /Legend/); assert.match(out.text, /streams/);
+  out = await ask(chess, { sub: 'lichess', strings: { player: 'DrNykterstein' } });
+  assert.ok(out.text.indexOf('Bullet') < out.text.indexOf('Blitz'), 'the mode played most first'); assert.doesNotMatch(out.text, /Rapid\*\*/, 'a mode never played is not shown'); assert.match(out.text, /10,455 \(7,212 wins · 834 draws · 2,409 losses\)/);
+  out = await ask(chess, { sub: 'lichess', strings: { player: 'Closed' } });
+  assert.match(out.text, /Nothing found on Lichess/);
+  out = await ask(chess, { sub: 'chesscom', strings: { player: 'nobodyhere' } });
+  assert.match(out.text, /Nothing found on Chess\.com/);
+
+  // --- Modrinth ------------------------------------------------------------------------------------------------------------------------------
+  routes = [
+    [/api\.modrinth\.com\/v2\/search\?query=sodium&limit=1$/, json({ hits: [{ slug: 'sodium', title: 'Sodium', description: 'A performance-focused rendering engine.', downloads: 254921362, follows: 42176, icon_url: 'https://cdn/icon.webp', project_type: 'mod', display_categories: ['fabric', 'optimization'], author: 'jellysquid3', versions: ['1.20', '1.21', '1.21.1', '1.21.2', '1.21.3'], client_side: 'required', server_side: 'unsupported', date_modified: '2026-10-15T17:51:36Z', gallery: ['https://cdn/g.webp'] }] })],
+    [/api\.modrinth\.com\/v2\/search\?query=bsl&limit=1&facets=%5B%5B%22project_type%3Ashader%22%5D%5D$/, json({ hits: [{ slug: 'bsl-shaders', title: 'BSL Shaders', description: 'Shaders.', downloads: 5, follows: 1, project_type: 'shader', versions: ['1.21'], client_side: 'required', server_side: 'unsupported' }] })],
+    [/api\.modrinth\.com\/v2\/search\?query=nothing/, json({ hits: [] })],
+  ];
+  out = await ask(modrinth, { strings: { query: 'sodium' } });
+  assert.match(out.text, /Sodium/); assert.match(out.text, /254,921,362/); assert.match(out.text, /`1\.21\.3` `1\.21\.2` `1\.21\.1` `1\.21`/); assert.match(out.text, /Client\*\* Required/); assert.match(out.text, /Server\*\* Not supported/); assert.ok(buttonsOf(out.payload).some((button) => button.url === 'https://modrinth.com/mod/sodium'));
+  out = await ask(modrinth, { strings: { query: 'shader bsl' } });
+  assert.match(out.text, /BSL Shaders/); assert.match(out.text, /Shader/); assert.ok(buttonsOf(out.payload).some((button) => button.url === 'https://modrinth.com/shader/bsl-shaders'));
+  out = await ask(modrinth, { strings: { query: 'nothing here' } });
+  assert.match(out.text, /Nothing found on Modrinth/);
+
+  // --- Crypto --------------------------------------------------------------------------------------------------------------------------------
+  assert.equal(crypto.dollars('en', 67234.5), '$67,234.5'); assert.equal(crypto.dollars('en', 1), '$1'); assert.equal(crypto.dollars('en', 0.0000123), '$0.0000123'); assert.equal(crypto.dollars('en', 0.5), '$0.5');
+  routes = [
+    [/api\.coingecko\.com\/api\/v3\/search\?query=bitcoin$/, json({ coins: [{ id: 'bitcoin', name: 'Bitcoin', symbol: 'BTC' }] })],
+    [/api\.coingecko\.com\/api\/v3\/search\?query=dumpcoin$/, json({ coins: [{ id: 'dumpcoin' }] })],
+    [/coins\/markets\?vs_currency=usd&ids=bitcoin&/, json([{ id: 'bitcoin', symbol: 'btc', name: 'Bitcoin', image: 'https://cg/b.png', current_price: 67234.5, market_cap: 1330000000000, market_cap_rank: 1, total_volume: 30000000000, high_24h: 68000, low_24h: 66000, price_change_percentage_24h: 2.345, ath: 73000, ath_date: '2024-03-14T00:00:00Z', circulating_supply: 19700000.4, last_updated: '2026-10-26T00:00:00Z' }])],
+    [/coins\/markets\?vs_currency=usd&ids=dumpcoin&/, json([{ id: 'dumpcoin', symbol: 'dmp', name: 'Dump', current_price: 0.000051, price_change_percentage_24h: -12.5 }])],
+    [/api\.coingecko\.com\/api\/v3\/search\?query=limited$/, json({}, 429)],
+    [/api\.coingecko\.com\/api\/v3\/search\?query=nothing$/, json({ coins: [] })],
+  ];
+  out = await ask(crypto, { strings: { coin: 'bitcoin' } });
+  assert.match(out.text, /Bitcoin \(BTC\)/); assert.match(out.text, /\*\*\$67,234\.5\*\* ▲ 2\.35%/); assert.match(out.text, /#1/); assert.match(out.text, /\$1,330,000,000,000/); assert.match(out.text, /\$66,000 – \$68,000/); assert.match(out.text, /coingecko\.com\/en\/coins\/bitcoin/);
+  out = await ask(crypto, { strings: { coin: 'dumpcoin' } });
+  assert.match(out.text, /\$0\.000051\*\* ▼ 12\.50%/); assert.doesNotMatch(out.text, /Rank/, 'a coin with no rank shows none');
+  out = await ask(crypto, { strings: { coin: 'limited' } });
+  assert.match(out.text, /too many requests/);
+  out = await ask(crypto, { strings: { coin: 'nothing' } });
+  assert.match(out.text, /Nothing found on CoinGecko/);
+
+  // --- Currency ------------------------------------------------------------------------------------------------------------------------------
+  assert.deepEqual(currency.parseConversion('100 usd cop'), { amount: 100, from: 'USD', to: ['COP'] });
+  assert.deepEqual(currency.parseConversion('1,5 eur to mxn brl'), { amount: 1.5, from: 'EUR', to: ['MXN', 'BRL'] });
+  assert.deepEqual(currency.parseConversion('usd'), { amount: 1, from: 'USD', to: ['EUR', 'COP', 'MXN'] });
+  assert.deepEqual(currency.parseConversion('50 cop -> usd'), { amount: 50, from: 'COP', to: ['USD'] });
+  assert.deepEqual(currency.parseConversion('10 usd usd eur'), { amount: 10, from: 'USD', to: ['EUR'] }, 'the same currency and repeats are dropped');
+  assert.equal(currency.parseConversion('0 usd cop'), null); assert.equal(currency.parseConversion('hello world'), null); assert.equal(currency.parseConversion(''), null); assert.equal(currency.parseConversion('100 us cop'), null);
+  routes = [
+    [/open\.er-api\.com\/v6\/latest\/USD$/, json({ result: 'success', time_last_update_unix: 1792900000, base_code: 'USD', rates: { USD: 1, COP: 3170.487231, EUR: 0.89213, MXN: 18.723111 } })],
+    [/open\.er-api\.com\/v6\/latest\/ZZZ$/, json({ result: 'error', 'error-type': 'unsupported-code' })],
+  ];
+  out = await ask(currency, { strings: { conversion: '100 usd cop eur' } });
+  assert.match(out.text, /100 USD/); assert.match(out.text, /COP\*\* 317,048\.72/); assert.match(out.text, /EUR\*\* 89\.213/); assert.match(out.text, /Rates updated <t:/); assert.ok(buttonsOf(out.payload).some((button) => button.url === 'https://www.exchangerate-api.com'), 'the provider is credited');
+  out = await ask(currency, { strings: { conversion: '100 usd xyz' } });
+  assert.match(out.text, /Nothing found on ExchangeRate-API/);
+  out = await ask(currency, { strings: { conversion: '100 zzz cop' } });
+  assert.match(out.text, /Nothing found on ExchangeRate-API/);
+  out = await ask(currency, { strings: { conversion: 'what is this' } });
+  assert.match(out.text, /does not look right/);
+  assert.equal(await typed(currency, '100 usd cop'), null, 'a command with no subcommands is typed as it is');
+
+  // --- Animals -------------------------------------------------------------------------------------------------------------------------------
+  assert.equal(await typed(animal, 'gato'), 'cat'); assert.equal(await typed(animal, 'perro'), 'dog');
+  routes = [
+    [/thecatapi\.com\/v1\/images\/search$/, json([{ id: 'x', url: 'https://cdn2.thecatapi.com/images/x.jpg', width: 500, height: 400 }])],
+    [/dog\.ceo\/api\/breeds\/image\/random$/, json({ message: 'https://images.dog.ceo/breeds/spitz-japanese/tofu.jpg', status: 'success' })],
+    [/randomfox\.ca\/floof\/$/, json({ image: 'http://insecure.example/fox.jpg', link: 'https://randomfox.ca' })],
+  ];
+  out = await ask(animal, { sub: 'cat' });
+  assert.match(out.text, /A cat/); assert.match(out.text, /thecatapi\.com\/images\/x\.jpg/);
+  out = await ask(animal, { sub: 'dog' });
+  assert.match(out.text, /A dog/); assert.match(out.text, /tofu\.jpg/);
+  out = await ask(animal, { sub: 'fox' });
+  assert.match(out.text, /not answering/, 'a picture that is not https is not used');
 
   // --- nothing was reported as an error ------------------------------------------------------------------------------------------------------
   assert.equal(logged.length, 0, `nothing was logged as a bug: ${JSON.stringify(logged).slice(0, 300)}`);

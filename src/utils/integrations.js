@@ -130,6 +130,13 @@ function clock(seconds) {
   return h ? `${h}:${two(m)}:${two(total % 60)}` : `${m}:${two(total % 60)}`;
 }
 
+const NUMBER_LOCALES = { en: 'en-US', es: 'es-419', 'pt-BR': 'pt-BR' };
+
+/** A number with the separators of the language and at most `digits` decimals (none when they are zeros). */
+function formatMoney(lang, value, digits = 2) {
+  return new Intl.NumberFormat(NUMBER_LOCALES[lang] ?? 'en-US', { maximumFractionDigits: digits }).format(Number(value));
+}
+
 /** `<t:…:D>` for an ISO date or a timestamp in ms, or null when it is not a date. */
 function dateTag(value, style = 'D') {
   const ms = typeof value === 'number' ? value : Date.parse(value);
@@ -139,4 +146,4 @@ function dateTag(value, style = 'D') {
 /** Forgets everything cached and every cooldown (the checks start each case clean). */
 const clearCache = () => { cache.clear(); lastUse.clear(); };
 
-module.exports = { USER_AGENT, IntegrationError, fetchJson, cached, clearCache, cooldownLeft, failurePayload, lookup, row, short, plain, clock, dateTag };
+module.exports = { USER_AGENT, IntegrationError, fetchJson, cached, clearCache, cooldownLeft, failurePayload, lookup, row, short, plain, clock, formatMoney, dateTag };

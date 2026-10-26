@@ -19,6 +19,10 @@ stub('src/db/lastfmLinks.js', {
   removeLink: async (id) => links.delete(id),
 });
 
+// The covers are not downloaded: a plain square stands for each one.
+const { createCanvas } = require('@napi-rs/canvas');
+const coversAsked = [];
+stub('src/utils/safeImage.js', { loadImageFromLink: async (url) => { coversAsked.push(url); return createCanvas(300, 300); } });
 const config = require('../src/config');
 const integrations = require('../src/utils/integrations');
 const minecraft = require('../src/commands/integrations/minecraft');
@@ -331,7 +335,7 @@ const red = (text) => /16671844|0xfe6465/i.test(text) || text.includes('"accent_
   };
   const run = async (sub, extra) => { integrations.cooldownLeft('reset', 'reset', 0); integrations.clearCache(); const interaction = asMe(sub, extra); await lastfm.execute(interaction); return textOf(interaction.sent.edits.at(-1) ?? interaction.sent.replies.at(-1)); };
   let text = await run('now');
-  assert.match(text, /Karma Police/); assert.match(text, /Playing now/); assert.match(text, /OK Computer/); assert.match(text, /cover\.png/); assert.doesNotMatch(text, /2a96cbd8/, 'the empty picture of Last.fm is not shown');
+  assert.match(text, /"description":"Karma Police"/); assert.match(text, /Playing now/); assert.deepEqual(coversAsked, ['https://lastfm/cover.png'], 'the cover is drawn, and the empty picture of Last.fm is not used');
   text = await run('recent');
   assert.match(text, /▶ \*\*Karma Police\*\*/); assert.match(text, /Creep/); assert.match(text, /<t:1760000000:R>/);
   text = await run('profile');

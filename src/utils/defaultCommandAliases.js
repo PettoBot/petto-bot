@@ -109,6 +109,11 @@ const DEFAULT_PREFIX_ROUTES = [
   { alias: 'song', command: 'deezer', args: ['track'], subcommand: 'track' },
   { alias: 'itunesapp', command: 'itunes', args: ['app'], subcommand: 'app' },
   { alias: 'podcast', command: 'itunes', args: ['podcast'], subcommand: 'podcast' },
+  { alias: 'cat', command: 'animal', args: ['cat'], subcommand: 'cat' },
+  { alias: 'dog', command: 'animal', args: ['dog'], subcommand: 'dog' },
+  { alias: 'fox', command: 'animal', args: ['fox'], subcommand: 'fox' },
+  { alias: 'chesscom', command: 'chess', args: ['chesscom'], subcommand: 'chesscom' },
+  { alias: 'lichess', command: 'chess', args: ['lichess'], subcommand: 'lichess' },
   { alias: 'dominant', command: 'image', args: ['hex'], subcommand: 'hex' },
   { alias: 'dominantcolor', command: 'image', args: ['hex'], subcommand: 'hex' },
 ];

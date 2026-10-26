@@ -59,6 +59,7 @@ function snowflakeTime(id) {
  * @param {string} options.title          Large heading.
  * @param {string[]} [options.subtitle]   Lines shown under the heading.
  * @param {string} [options.thumbnail]    Picture next to the heading.
+ * @param {string} [options.hero]         A picture that is the heading itself (it already has the title written on it): it goes first and there is no heading text.
  * @param {string} [options.banner]       Wide picture shown under the heading.
  * @param {string[]} [options.gallery]    More pictures in a gallery of their own under the banner, side by side (up to 4), such as a nameplate.
  * @param {{title?: string, lines: (string|null)[], limit?: number}[]} [options.sections]  `limit` raises the per-section text cap
@@ -67,7 +68,7 @@ function snowflakeTime(id) {
  * @param {{label: string, url: string}[]} [options.buttons]  Link buttons.
  * @param {ActionRowBuilder[]} [options.rows]  Extra action rows (buttons, selects) shown under the card text.
  */
-function buildInfoCard({ accent = INFO_ACCENT, title, subtitle = [], thumbnail = null, banner = null, gallery = [], sections = [], footer = null, buttons = [], rows = [] }) {
+function buildInfoCard({ accent = INFO_ACCENT, title, subtitle = [], thumbnail = null, hero = null, banner = null, gallery = [], sections = [], footer = null, buttons = [], rows = [] }) {
   let budget = TEXT_BUDGET;
   const take = (text, max = SECTION_LIMIT) => {
     const value = clip(text, Math.min(max, Math.max(0, budget)));
@@ -78,7 +79,9 @@ function buildInfoCard({ accent = INFO_ACCENT, title, subtitle = [], thumbnail =
   const headerText = new TextDisplayBuilder().setContent(take([`### ${clip(title, 200)}`, ...subtitle.filter(Boolean)].join('\n'), 1200));
   const card = new ContainerBuilder();
   if (semanticColor(accent) !== null) card.setAccentColor(accent); // only green and red; any other is a card with no color
-  if (thumbnail) card.addSectionComponents(new SectionBuilder().addTextDisplayComponents(headerText).setThumbnailAccessory(new ThumbnailBuilder().setURL(thumbnail)));
+  if (hero) {
+    card.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(hero).setDescription(clip(title, 200))));
+  } else if (thumbnail) card.addSectionComponents(new SectionBuilder().addTextDisplayComponents(headerText).setThumbnailAccessory(new ThumbnailBuilder().setURL(thumbnail)));
   else card.addTextDisplayComponents(headerText);
 
   if (banner) card.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(banner)));

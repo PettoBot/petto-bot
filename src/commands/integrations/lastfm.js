@@ -2,6 +2,7 @@ const { SlashCommandBuilder } = require('discord.js');
 const config = require('../../config');
 const lastfmLinks = require('../../db/lastfmLinks');
 const { infoPayload, noticePayload } = require('../../utils/infoCard');
+const { songPayload } = require('../../utils/songPayload');
 const { COLORS } = require('../../utils/colors');
 const { IntegrationError, fetchJson, cached, lookup, row, plain, dateTag } = require('../../utils/integrations');
 const { t, tn, formatNumber, languageOf } = require('../../i18n');
@@ -281,12 +282,12 @@ module.exports = {
         if (sub === 'now') {
           const [track] = tracks;
           const album = track.album?.['#text'];
-          return infoPayload({
-            accent: null,
-            title: describe(track),
-            subtitle: [playing(track) ? `**${t(lang, 'integrations.lastfm.playingNow')}**` : t(lang, 'integrations.lastfm.lastPlayed', { when: dateTag(Number(track.date?.uts) * 1000, 'R') ?? '' })],
-            thumbnail: pictureOf(track.image),
-            sections: [{ lines: [album ? row(t(lang, 'integrations.lastfm.album'), plain(album, 100)) : null, row(t(lang, 'integrations.lastfm.listener'), `@${plain(username, 40)}`)] }],
+          return songPayload({
+            title: track.name,
+            artist: track.artist?.['#text'] ?? track.artist?.name,
+            detail: album,
+            cover: pictureOf(track.image),
+            sections: [{ lines: [playing(track) ? `**${t(lang, 'integrations.lastfm.playingNow')}**` : t(lang, 'integrations.lastfm.lastPlayed', { when: dateTag(Number(track.date?.uts) * 1000, 'R') ?? '' }), row(t(lang, 'integrations.lastfm.listener'), `@${plain(username, 40)}`)] }],
             footer: 'Last.fm',
             buttons: [...(track.url ? [{ label: t(lang, 'integrations.lastfm.openTrack'), url: track.url }] : []), ...open],
           });

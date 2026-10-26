@@ -1,5 +1,6 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { infoPayload } = require('../../utils/infoCard');
+const { songPayload } = require('../../utils/songPayload');
 const { IntegrationError, fetchJson, cached, lookup, row, plain, clock, dateTag } = require('../../utils/integrations');
 const { t, formatNumber, formatDecimal, languageOf } = require('../../i18n');
 
@@ -71,11 +72,11 @@ module.exports = {
       if (sub === 'song') {
         const buttons = open(top.trackViewUrl);
         if (top.previewUrl) buttons.unshift({ label: t(lang, 'integrations.deezer.preview'), url: top.previewUrl });
-        return infoPayload({
-          accent: null,
-          title: plain(top.trackName, 120),
-          subtitle: [`${plain(top.artistName, 80)} · ${plain(top.collectionName, 80)}`],
-          banner: bigger(top.artworkUrl100),
+        return songPayload({
+          title: top.trackName,
+          artist: top.artistName,
+          detail: top.collectionName,
+          cover: bigger(top.artworkUrl100),
           sections: [
             {
               lines: [
@@ -93,11 +94,11 @@ module.exports = {
       }
 
       if (sub === 'album') {
-        return infoPayload({
-          accent: null,
-          title: plain(top.collectionName, 120),
-          subtitle: [plain(top.artistName, 80)],
-          banner: bigger(top.artworkUrl100),
+        return songPayload({
+          title: top.collectionName,
+          artist: top.artistName,
+          detail: top.releaseDate ? String(top.releaseDate).slice(0, 4) : '',
+          cover: bigger(top.artworkUrl100),
           sections: [
             {
               lines: [
