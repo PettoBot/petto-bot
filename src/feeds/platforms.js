@@ -3,9 +3,9 @@
 const PLATFORMS = {
   youtube: { name: 'YouTube', color: 0xff0000, site: 'https://www.youtube.com', types: ['video', 'short', 'live'], defaultTypes: ['video', 'short', 'live'] },
   twitch: { name: 'Twitch', color: 0x9146ff, site: 'https://www.twitch.tv', types: ['live', 'clip'], defaultTypes: ['live'] },
-  kick: { name: 'Kick', color: 0x53fc18, site: 'https://kick.com', types: ['live'], defaultTypes: ['live'] },
+  kick: { name: 'Kick', color: 0x53fc18, site: 'https://kick.com', types: ['live'], defaultTypes: ['live'] }, // i18n-ignore: the name of a brand
   bluesky: { name: 'Bluesky', color: 0x1185fe, site: 'https://bsky.app', types: ['post'], defaultTypes: ['post'] },
-  pinterest: { name: 'Pinterest', color: 0xe60023, site: 'https://www.pinterest.com', types: ['pin'], defaultTypes: ['pin'] },
+  pinterest: { name: 'Pinterest', color: 0xe60023, site: 'https://www.pinterest.com', types: ['pin'], defaultTypes: ['pin'] }, // i18n-ignore: the name of a brand
   modrinth: { name: 'Modrinth', color: 0x1bd96a, site: 'https://modrinth.com', types: ['update'], defaultTypes: ['update'] },
   pokemon: { name: 'Pokémon', color: 0xffcb05, site: 'https://pokeapi.co', types: ['daily'], defaultTypes: ['daily'] },
   rss: { name: 'RSS', color: 0xf26522, site: null, types: ['post'], defaultTypes: ['post'] },

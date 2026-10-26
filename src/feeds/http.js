@@ -20,13 +20,13 @@ async function request(url, { headers = {}, method = 'GET', body } = {}) {
 
 async function readText(response) {
   const text = await response.text();
-  if (text.length > MAX_BYTES) throw new IntegrationError('unavailable', 'too big');
+  if (text.length > MAX_BYTES) throw new IntegrationError('unavailable', 'too big'); // i18n-ignore: internal detail of an error, never shown
   return text;
 }
 
 /** A text (an XML feed, a page). */
 async function fetchText(url, options) {
-  return readText(await request(url, { ...options, headers: { Accept: 'application/xml, text/xml, text/html, */*', ...options?.headers } }));
+  return readText(await request(url, { ...options, headers: { Accept: 'application/xml, text/xml, text/html, */*', ...options?.headers } })); // i18n-ignore: a header sent to the services
 }
 
 /** A JSON answer. */
@@ -35,7 +35,7 @@ async function fetchJsonBody(url, options) {
   try {
     return JSON.parse(text);
   } catch {
-    throw new IntegrationError('unavailable', 'not json');
+    throw new IntegrationError('unavailable', 'not json'); // i18n-ignore: internal detail of an error, never shown
   }
 }
 

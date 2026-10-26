@@ -11,15 +11,25 @@ function parseProject(input) {
   return SLUG.test(text) ? text : null;
 }
 
+// A project hardly changes: its name, icon and picture are kept for six hours, so each pass over the feeds does not ask for them again.
+const PROJECT_KEEP_MS = 6 * 3_600_000;
+const projects = new Map();
+
 async function resolveProject(input) {
   const slug = parseProject(input);
   if (!slug) throw new IntegrationError('badInput');
+  const kept = projects.get(slug.toLowerCase());
+  if (kept && kept.until > Date.now()) return kept.value;
   const project = await fetchJsonBody(`${API}/project/${encodeURIComponent(slug)}`);
   const gallery = (project.gallery ?? []).find((picture) => picture.featured) ?? project.gallery?.[0];
-  return {
+  const value = {
     id: project.id, slug: project.slug, name: project.title, avatar: project.icon_url ?? null, type: project.project_type,
     url: `https://modrinth.com/${project.project_type}/${project.slug}`, image: gallery?.url ?? null, summary: project.description ?? '',
   };
+  if (projects.size > 2000) projects.clear();
+  projects.set(value.id.toLowerCase(), { value, until: Date.now() + PROJECT_KEEP_MS });
+  projects.set(value.slug.toLowerCase(), { value, until: Date.now() + PROJECT_KEEP_MS });
+  return value;
 }
 
 /** The newest versions of a project, newest first (a `release` is a final one; `beta` and `alpha` are tests). */

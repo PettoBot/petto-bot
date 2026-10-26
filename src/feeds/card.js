@@ -20,6 +20,8 @@ const { t } = require('../i18n');
  *   platform, type, title, url, description?, image?, avatar?, author?, authorUrl?, publishedAt? (ms or ISO), extra? (a line of its own: the game, the viewers…)
  */
 
+const ENDED_COLOR = 0x4f545c; // a stream that is over goes grey
+
 const VARIABLES = {
   'feed.title': (item) => plainText(item.title, 200),
   'feed.url': (item) => safeUrl(item.url) ?? '',
@@ -71,7 +73,8 @@ function buildFeedMessage(feed, item, { lang, test = false } = {}) {
   if (description) lines.push(`-# ${description}`);
   if (item.extra) lines.push(`-# ${plainText(item.extra, 160)}`);
 
-  const card = new ContainerBuilder().setAccentColor(Number.isInteger(options.color) ? options.color : platform.color);
+  const ended = item.type === 'ended';
+  const card = new ContainerBuilder().setAccentColor(ended ? ENDED_COLOR : Number.isInteger(options.color) ? options.color : platform.color);
   const section = new SectionBuilder()
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')))
     .setThumbnailAccessory(new ThumbnailBuilder().setURL(safeUrl(item.avatar) ?? fallbackPicture(item.platform)));
@@ -89,7 +92,13 @@ function buildFeedMessage(feed, item, { lang, test = false } = {}) {
   const meta = [`${emojis.TYPE[item.type] ?? ''} ${t(lang, `feeds.type.${item.type}`)}`.trim(), plainText(item.author, 80), when ? `<t:${Math.floor(when / 1000)}:R>` : null].filter(Boolean).join(' · ');
   card.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${meta}`));
 
-  if (options.button && url) {
+  if (ended) {
+    // A stream that is over keeps two ways out: the channel, and the replay when the platform has one.
+    const buttons = [];
+    if (safeUrl(item.authorUrl)) buttons.push(new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(safeUrl(item.authorUrl)).setLabel(clip(t(lang, 'feeds.button.channel'), 80)));
+    if (safeUrl(item.vodUrl)) buttons.push(new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(safeUrl(item.vodUrl)).setLabel(clip(t(lang, 'feeds.button.replay'), 80)));
+    if (buttons.length) card.addActionRowComponents(new ActionRowBuilder().addComponents(buttons));
+  } else if (options.button && url) {
     card.addActionRowComponents(new ActionRowBuilder().addComponents(
       new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(url).setLabel(clip(t(lang, `feeds.button.${item.type}`, { platform: platform.name }), 80)),
     ));
