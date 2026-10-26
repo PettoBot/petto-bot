@@ -229,6 +229,21 @@ const day = (back) => botDay(new Date(NOW.getTime() - back * 86_400_000));
   }
 
   // --- the database --------------------------------------------------------------------------------------------------------------------------
+  // --- the functions the counters call must be known to the database layer (the real database is reached only through it) --------------------------
+  {
+    const { createPostgresClient } = require('../src/db/postgres');
+    const queries = [];
+    const client = createPostgresClient({ query: async (text, values) => { queries.push({ text, values }); return { rows: [] }; } });
+    const used = [...fs.readFileSync(path.join(__dirname, '../src/db/activityDetail.js'), 'utf8').matchAll(/'(increment_[a-z_]+)'/g)].map((match) => match[1]);
+    assert.ok(used.includes('increment_activity_content') && used.includes('increment_member_lifespan'));
+    for (const name of new Set(used)) {
+      const { error } = await client.rpc(name, { p_guild_id: 'g', p_day: '2026-10-26' });
+      assert.equal(error, null, `${name} is known to the database layer`);
+    }
+    const content = queries.find((query) => query.text.includes('increment_activity_content'));
+    assert.deepEqual(content.values, ['g', '2026-10-26', null, null, null, null]);
+  }
+
   if (!process.env.PETTO_TEST_DATABASE_URL) {
     console.log('check-stats-v2: ok (the database part was skipped: set PETTO_TEST_DATABASE_URL to a test database to run it)');
     process.exit(0);
