@@ -55,7 +55,7 @@ function registerFeedRoutes(app, { authorize, limiter }) {
   route('resolve', async (req, res, { guild }, lang) => {
     const platform = String(req.body?.platform ?? '').toLowerCase();
     const text = String(req.body?.account ?? '').trim().slice(0, 200);
-    if (!isProvider(platform) || (!text && platform !== 'pokemon')) { res.status(400).json({ ok: false, message: t(lang, 'feeds.add.error.badInput', { emoji: '', platform: PLATFORMS[platform]?.name ?? '' }).trim() }); return; }
+    if (!isProvider(platform) || (!text && !PROVIDERS[platform]?.noAccount)) { res.status(400).json({ ok: false, message: t(lang, 'feeds.add.error.badInput', { emoji: '', platform: PLATFORMS[platform]?.name ?? '' }).trim() }); return; }
     const key = `${platform}:${text.toLowerCase()}`;
     const kept = resolved.get(key);
     if (kept && kept.until > Date.now()) { res.json({ ok: true, account: kept.value }); return; }

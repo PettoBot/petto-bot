@@ -9,6 +9,14 @@ const PLATFORM = {
   modrinth: '🧱',
   pokemon: '⚪',
   rss: '📰',
+  reddit: '🟠',
+  github: '🐙',
+  npm: '📦',
+  pypi: '🐍',
+  steam: '🎮',
+  anilist: '🍥',
+  wikipedia: '📖',
+  chess: '♟️',
 };
 
 const TYPE = {
@@ -19,6 +27,7 @@ const TYPE = {
   post: '💬',
   pin: '📌',
   update: '⬆️',
+  episode: '📺',
   daily: '🎲',
   ended: '⚫',
 };

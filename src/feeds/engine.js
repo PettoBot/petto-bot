@@ -132,8 +132,8 @@ async function tick(client, { now = Date.now(), providers = PROVIDERS } = {}) {
     }
     const accountOf = (id, list) => ({ id, name: list[0].account_name, avatar: list[0].account_avatar, url: list[0].account_url });
 
-    // Some platforms answer in the language of the reader (the Pokémon's entry): one question for each language in use.
-    const languages = platform === 'pokemon' ? [...new Set(due.flatMap(([, list]) => list.map((feed) => peekGuildLanguage(feed.guild_id))))] : [null];
+    // Some platforms answer in the language of the reader (the Pokémon's entry, the article of Wikipedia): one question for each language in use.
+    const languages = provider.perLanguage ? [...new Set(due.flatMap(([, list]) => list.map((feed) => peekGuildLanguage(feed.guild_id))))] : [null];
     for (const lang of languages) {
       let results;
       try {

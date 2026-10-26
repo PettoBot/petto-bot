@@ -197,6 +197,139 @@ const allText = (message) => JSON.stringify(json(message.components));
     config.kickClientSecret = null;
   }
 
+  // --- the other platforms: the answers of the services written out ------------------------------------------------------------------------------
+  {
+    const { publicUrl, fetchPublicText } = require('../src/feeds/http');
+    const { parseFeed, discoverFeed } = require('../src/feeds/feedparse');
+    const rssProviders = require('../src/feeds/providers/rss');
+    const github = require('../src/feeds/providers/github');
+    const packages = require('../src/feeds/providers/packages');
+    const steam = require('../src/feeds/providers/steam');
+    const anilist = require('../src/feeds/providers/anilist');
+    const now = Date.parse('2026-10-26T15:00:00Z');
+    const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), { status, headers });
+
+    // A link a person typed cannot reach the bot's own network.
+    for (const bad of ['http://localhost/feed', 'https://127.0.0.1/x', 'http://10.0.0.5/x', 'https://169.254.169.254/latest', 'https://[::1]/x', 'ftp://example.com/x', 'https://user:pass@example.com/x', 'https://example.com:8080/x', 'https://intranet.internal/x', 'not a link']) {
+      assert.equal(publicUrl(bad), null, `${bad} is not public`);
+    }
+    assert.ok(publicUrl('https://example.com/feed.xml'));
+    assert.ok(publicUrl('http://example.com/feed.xml'));
+    await assert.rejects(fetchPublicText('http://127.0.0.1/secret'), (error) => error.kind === 'badInput', 'a private address is refused before any connection');
+    await assert.rejects(PROVIDERS.rss.resolve('localhost:8787/api'), (error) => error.kind === 'badInput');
+    assert.equal(rssProviders.normalizeUrl('example.com/feed#top'), 'https://example.com/feed');
+
+    // RSS and Atom, with CDATA, entities and pictures.
+    const rssXml = '<rss><channel><title>My &amp; Blog</title><link>https://ex.com/</link><item><title><![CDATA[Hello *world*]]></title><link>http://ex.com/a</link><guid>g1</guid><pubDate>Mon, 26 Oct 2026 10:00:00 GMT</pubDate><description><![CDATA[<p>Some <b>text</b> <img src="https://ex.com/p.jpg"></p>]]></description></item></channel></rss>';
+    let parsed = parseFeed(rssXml);
+    assert.deepEqual([parsed.title, parsed.entries[0].id, parsed.entries[0].title, parsed.entries[0].summary, parsed.entries[0].image, parsed.entries[0].url], ['My & Blog', 'g1', 'Hello *world*', 'Some text', 'https://ex.com/p.jpg', 'https://ex.com/a']);
+    parsed = parseFeed('<feed><title>r/x</title><entry><id>t3_1</id><title>One</title><link rel="alternate" href="https://r.com/p1"/><updated>2026-10-26T10:00:00+00:00</updated><author><name>/u/a</name></author><content type="html">&lt;img src=&quot;https://i.r/x.jpg&quot;&gt; hi</content></entry></feed>');
+    assert.deepEqual([parsed.entries[0].id, parsed.entries[0].author, parsed.entries[0].image, parsed.entries[0].summary], ['t3_1', '/u/a', 'https://i.r/x.jpg', 'hi']);
+    assert.equal(parseFeed('<html>not a feed</html>').entries.length, 0);
+    assert.equal(discoverFeed('<head><link rel="alternate" type="application/rss+xml" href="/feed.xml"></head>', 'https://ex.com/blog/'), 'https://ex.com/feed.xml');
+    assert.equal(parseFeed('<rss><channel><title>t</title><item><title>only</title><guid>1</guid></item></channel></rss>').entries.length, 1);
+
+    // Reddit and Pinterest.
+    assert.equal(rssProviders.parseSubreddit('https://www.reddit.com/r/Minecraft/comments/abc'), 'Minecraft');
+    assert.equal(rssProviders.parseSubreddit('r/a b'), null);
+    assert.equal(rssProviders.parsePinterest('https://www.pinterest.com/Some_User/my-board/'), 'some_user/my-board');
+    assert.equal(rssProviders.parsePinterest('https://www.pinterest.com/pin/12345/'), null);
+    assert.equal(rssProviders.bigPin('https://i.pinimg.com/236x/aa/bb.jpg'), 'https://i.pinimg.com/736x/aa/bb.jpg');
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('reddit.com/r/zzz')) return new Response('', { status: 404 });
+      if (String(url).includes('reddit.com')) return new Response('<feed><title>r/minecraft</title><entry><id>t3_9</id><title>A &amp; B</title><link href="https://www.reddit.com/r/minecraft/comments/9"/><updated>2026-10-26T14:00:00+00:00</updated></entry></feed>', { status: 200 });
+      return new Response('<rss><channel><title>user on Pinterest</title><item><title>Pin</title><link>https://www.pinterest.com/pin/1/</link><guid>p1</guid><description><![CDATA[<a><img src="https://i.pinimg.com/236x/a/b.jpg"></a>]]></description></item></channel></rss>', { status: 200 });
+    };
+    const reddit = await PROVIDERS.reddit.resolve('r/minecraft');
+    assert.deepEqual([reddit.id, reddit.name], ['minecraft', 'r/minecraft']);
+    await assert.rejects(PROVIDERS.reddit.resolve('zzz'), (error) => error.kind === 'notFound');
+    let polled = await PROVIDERS.reddit.poll([reddit], new Map(), { now });
+    assert.equal(polled.get('minecraft').items[0].title, 'A & B');
+    assert.equal(polled.get('minecraft').items[0].type, 'post');
+    polled = await PROVIDERS.pinterest.poll([{ id: 'user', name: 'user', avatar: null, url: 'https://www.pinterest.com/user/' }], new Map(), { now: Date.parse('2026-10-26T15:00:00Z') });
+    assert.equal(polled.get('user').items[0].type, 'pin');
+    assert.equal(polled.get('user').items[0].image, 'https://i.pinimg.com/736x/a/b.jpg');
+
+    // GitHub: the tag of the last answer is sent, and a 304 gives the same releases without a new reading.
+    assert.equal(github.parseRepo('https://github.com/PettoBot/petto-bot/releases/tag/v1'), 'PettoBot/petto-bot');
+    assert.equal(github.parseRepo('nonsense'), null);
+    const seenHeaders = [];
+    globalThis.fetch = async (url, options) => {
+      if (String(url).endsWith('/repos/o/r')) return json({ full_name: 'o/r', owner: { avatar_url: 'https://a/x.png' }, html_url: 'https://github.com/o/r', description: 'd' });
+      seenHeaders.push(options.headers['If-None-Match'] ?? null);
+      if (options.headers['If-None-Match'] === '"abc"') return new Response(null, { status: 304 });
+      return json([{ id: 7, tag_name: 'v2.0.0', name: 'v2.0.0', html_url: 'https://github.com/o/r/releases/tag/v2.0.0', body: '## What is new\nA big feature', draft: false, prerelease: false, published_at: '2026-10-26T13:00:00Z', author: { login: 'a' } }, { id: 8, tag_name: 'v3', draft: true }], 200, { etag: '"abc"' });
+    };
+    const repo = await PROVIDERS.github.resolve('o/r');
+    assert.equal(repo.id, 'o/r');
+    polled = await PROVIDERS.github.poll([repo], new Map(), { now });
+    assert.deepEqual(polled.get('o/r').items.map((item) => [item.id, item.type, item.title, item.description]), [['7', 'update', 'r v2.0.0', 'What is new']], 'a draft is not a release');
+    polled = await PROVIDERS.github.poll([repo], new Map(), { now });
+    assert.deepEqual(seenHeaders, [null, '"abc"']);
+    assert.equal(polled.get('o/r').items.length, 1, 'a 304 keeps the releases already read');
+    globalThis.fetch = async () => new Response('', { status: 403 });
+    polled = await PROVIDERS.github.poll([{ id: 'x/y', name: 'x/y', avatar: null, url: 'u' }], new Map(), { now });
+    assert.equal(polled.get('x/y').error, 'rateLimited');
+
+    // npm and PyPI.
+    assert.equal(packages.parseNpm('https://www.npmjs.com/package/@scope/pkg/v/1.0.0'), '@scope/pkg');
+    assert.equal(packages.parseNpm('Discord.js'), 'discord.js');
+    assert.equal(packages.parsePypi('https://pypi.org/project/Requests/'), 'requests');
+    globalThis.fetch = async (url) => (String(url).includes('npmjs.org')
+      ? json({ name: 'pkg', version: '1.2.3', description: 'A package' })
+      : json({ info: { name: 'requests', version: '2.0.0', summary: 'HTTP for humans' }, releases: { '2.0.0': [{ upload_time_iso_8601: '2026-10-26T12:00:00Z' }] } }));
+    polled = await PROVIDERS.npm.poll([{ id: 'pkg', name: 'pkg', avatar: null, url: 'u' }], new Map(), { now });
+    assert.deepEqual([polled.get('pkg').items[0].id, polled.get('pkg').items[0].title], ['pkg@1.2.3', 'pkg 1.2.3']);
+    polled = await PROVIDERS.pypi.poll([{ id: 'requests', name: 'requests', avatar: null, url: 'u' }], new Map(), { now });
+    assert.deepEqual([polled.get('requests').items[0].id, polled.get('requests').items[0].publishedAt], ['requests@2.0.0', Date.parse('2026-10-26T12:00:00Z')]);
+
+    // Steam.
+    assert.equal(steam.parseApp('https://store.steampowered.com/app/730/CounterStrike_2/'), '730');
+    assert.equal(steam.parseApp('abc'), null);
+    globalThis.fetch = async (url) => (String(url).includes('appdetails')
+      ? json({ 730: { success: true, data: { name: 'Counter-Strike 2', header_image: 'https://cdn/h.jpg' } } })
+      : json({ appnews: { newsitems: [{ gid: '55', title: 'Update', url: 'https://steamcommunity.com/n/55', contents: '[h1]Hi[/h1] [img]https://cdn/i.png[/img] Fixes and more', date: Math.floor(now / 1000) - 3600, author: 'Valve', feedlabel: 'Community Announcements' }] } }));
+    const app = await PROVIDERS.steam.resolve('730');
+    assert.equal(app.name, 'Counter-Strike 2');
+    polled = await PROVIDERS.steam.poll([app], new Map(), { now });
+    assert.deepEqual([polled.get('730').items[0].id, polled.get('730').items[0].image, polled.get('730').items[0].description], ['55', 'https://cdn/i.png', 'Hi Fixes and more']);
+
+    // AniList: all the anime in one call.
+    assert.deepEqual(anilist.parseAnime('https://anilist.co/anime/21/One-Piece/'), { id: 21 });
+    assert.deepEqual(anilist.parseAnime('one piece'), { search: 'one piece' });
+    let anilistCalls = 0;
+    globalThis.fetch = async (url, options) => {
+      anilistCalls += 1;
+      const { query, variables } = JSON.parse(options.body);
+      if (query.includes('Media(')) return json({ data: { Media: { id: 21, title: { romaji: 'One Piece', english: null }, coverImage: { large: 'https://cdn/c.jpg' }, siteUrl: 'https://anilist.co/anime/21' } } });
+      return json({ data: { Page: { airingSchedules: variables.ids.map((id) => ({ id: 900 + id, episode: 1100, airingAt: Math.floor(now / 1000) - 600, mediaId: id })) } } });
+    };
+    const anime = await PROVIDERS.anilist.resolve('one piece');
+    assert.equal(anime.id, '21');
+    anilistCalls = 0;
+    polled = await PROVIDERS.anilist.poll([anime, { id: '5', name: 'Other', avatar: null, url: 'u' }], new Map(), { now });
+    assert.equal(anilistCalls, 1, 'two anime, one call');
+    assert.deepEqual([polled.get('21').items[0].type, polled.get('21').items[0].id, polled.get('21').items[0].title], ['episode', '921', 'One Piece · 1100']);
+
+    // Wikipedia (the article of the day, once a day for each language) and the puzzle of Chess.com.
+    let wikiCalls = 0;
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('wikipedia.org')) { wikiCalls += 1; return json({ tfa: { titles: { normalized: 'Duck' }, extract: 'A bird.', thumbnail: { source: 'https://up/d.jpg' }, content_urls: { desktop: { page: 'https://en.wikipedia.org/wiki/Duck' } } } }); }
+      return json({ title: 'Mate in 2', url: 'https://www.chess.com/forum/view/daily-puzzles/1', image: 'https://i/p.png', publish_time: 1793000000 });
+    };
+    const wiki = { id: 'featured', name: 'Wikipedia', avatar: null, url: 'u' };
+    assert.equal((await PROVIDERS.wikipedia.poll([wiki], new Map(), { now: Date.parse('2026-10-26T03:00:00Z'), lang: 'en' })).get('featured').items.length, 0, 'before the article of the day is chosen nothing is posted');
+    polled = await PROVIDERS.wikipedia.poll([wiki], new Map(), { now, lang: 'en' });
+    await PROVIDERS.wikipedia.poll([wiki], new Map(), { now, lang: 'en' });
+    assert.equal(wikiCalls, 1, 'the article of a day is asked once for each language');
+    assert.deepEqual([polled.get('featured').items[0].title, polled.get('featured').items[0].type], ['Duck', 'daily']);
+    polled = await PROVIDERS.chess.poll([{ id: 'puzzle', name: 'Chess.com', avatar: null, url: 'u' }], new Map(), { now });
+    assert.deepEqual([polled.get('puzzle').items[0].id, polled.get('puzzle').items[0].title], ['1793000000', 'Mate in 2']);
+    assert.ok(PROVIDERS.chess.noAccount && PROVIDERS.wikipedia.noAccount && PROVIDERS.pokemon.noAccount);
+    assert.ok(PROVIDERS.wikipedia.perLanguage && PROVIDERS.pokemon.perLanguage && !PROVIDERS.chess.perLanguage);
+    globalThis.fetch = realFetch;
+  }
+
   // --- the engine ----------------------------------------------------------------------------------------------------------------------------
   const engine = require('../src/feeds/engine');
   const feedsDb = require('../src/db/feeds');
