@@ -618,6 +618,7 @@ module.exports = {
   'moderation.unbanAll.notRunning': 'No hay ningún desbaneo masivo en marcha en este servidor.',
   'moderation.unbanAll.stopping': '{emoji}  Deteniendo el desbaneo masivo. Los usuarios ya desbaneados siguen desbaneados.',
   'moderation.unbanAll.stopped': '{emoji}  Se detuvo antes de terminar.',
+  'moderation.unbanAll.unavailable': '{emoji}  Se detuvo: Petto perdió el acceso al servidor o el permiso de Banear miembros, así que no se pudo desbanear al resto.',
   'moderation.ban.list.title.one': '**{count} usuario baneado** ({hard} baneos permanentes)',
   'moderation.ban.list.title.other': '**{count} usuarios baneados** ({hard} baneos permanentes)',
   'moderation.ban.list.hardTitle.one': '**{count} baneo permanente**: solo el dueño y los admins del antinuke pueden quitarlo.',

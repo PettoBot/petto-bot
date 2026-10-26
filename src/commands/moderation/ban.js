@@ -280,6 +280,9 @@ function statusCard(text, color) {
   return textCard(text, color);
 }
 
+// Unknown Guild, Missing Access and Missing Permissions: every other unban of the list would fail the same way, so the list stops there.
+const UNBAN_ALL_STOP_CODES = new Set([10004, 50001, 50013]);
+
 async function unbanAll(interaction) {
   const lang = await languageOf(interaction);
   if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
@@ -330,6 +333,7 @@ async function unbanAll(interaction) {
 
   let succeeded = 0;
   let failed = 0;
+  let unavailable = false; // the server is gone, or Petto lost access or the permission, in the middle of the list
   const caseNumbers = [];
   const task = { abort: false };
   activeUnbans.set(interaction.guild.id, task);
@@ -339,6 +343,7 @@ async function unbanAll(interaction) {
   try {
     for (const userId of bans.keys()) {
       if (task.abort) break;
+      if (!interaction.client.guilds.cache.has(interaction.guild.id)) { unavailable = true; break; }
       if (hardIds.has(userId)) continue;
       let target;
       try {
@@ -347,6 +352,11 @@ async function unbanAll(interaction) {
         target = bans.get(userId)?.user ?? { id: userId, username: userId };
       } catch (err) {
         failed += 1;
+        if (UNBAN_ALL_STOP_CODES.has(err?.code)) {
+          unavailable = true;
+          logger.warn(`unban remove-all: stopped in ${interaction.guild.id} after ${succeeded} unbans, the rest would fail the same way:`, err.message);
+          break;
+        }
         logger.warn(`unban remove-all: failed to unban ${userId} in ${interaction.guild.id}:`, err.message);
         continue;
       }
@@ -373,10 +383,13 @@ async function unbanAll(interaction) {
     t(lang, 'moderation.common.moderator', { moderator: `${interaction.user}` }),
     t(lang, 'moderation.common.reason', { reason: reasonText(reason, lang) }),
     task.abort ? t(lang, 'moderation.unbanAll.stopped', { emoji: EMOJI.DENY }) : null,
+    unavailable ? t(lang, 'moderation.unbanAll.unavailable', { emoji: EMOJI.DENY }) : null,
   ].filter(Boolean);
-  const resultCard = statusCard(resultLines.join('\n'), 0xa5ea7a);
+  const resultCard = statusCard(resultLines.join('\n'), unavailable ? 0xfe6465 : 0xa5ea7a);
 
-  await interaction.editReply({ components: [resultCard], flags: MessageFlags.IsComponentsV2 });
+  // When the server or the channel is gone there is nobody left to answer; that is not an error of the command.
+  await interaction.editReply({ components: [resultCard], flags: MessageFlags.IsComponentsV2 }).catch((err) => logger.warn(`unban remove-all: could not show the result in ${interaction.guild.id}:`, err.message));
+  if (unavailable && !interaction.client.guilds.cache.has(interaction.guild.id)) return;
 
   await sendLog(interaction.client, interaction.guild.id, 'sanctions', {
     author: { name: tn(lang, 'moderation.unbanAll.log.author', succeeded, { name: interaction.user.username, count: succeeded }) },

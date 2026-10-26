@@ -61,6 +61,7 @@ All notable changes to Petto are documented here.
 ### Fixed
 
 - **The statistics counters filled the error channel with `Unsupported PostgreSQL RPC`.** The two counters added with Statistics v2 (`increment_activity_content` and `increment_member_lifespan`) were not in the list of functions the database layer knows (`RPC_SIGNATURES`), so what they count was kept for retry and never saved. They are in the list now, and `scripts/check-stats-v2.js` checks that every counter function it calls is known to the layer.
+- **`!massunban` kept going after the server was gone.** When the server disappeared (or Petto lost access or the Ban Members permission) in the middle of the list, it tried every ban and failed the same way each time (300 warnings in the log, one call to Discord for each), and then failed again when there was no channel left to answer in. It now stops at the first `Unknown Guild`, `Missing Access` or `Missing Permissions`, checks that the server is still there before each unban, says why it stopped, and does not fail when it cannot show the result. A single failed unban still goes on with the list. New `scripts/check-massunban-gone.js`.
 
 ## [0.7.8] — 2026-10-23 · Mochi
 
