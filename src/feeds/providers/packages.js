@@ -16,7 +16,7 @@ function parsePypi(input) {
 }
 
 async function npmLatest(name) {
-  const body = await fetchJsonBody(`https://registry.npmjs.org/${name.replace('/', '%2F')}/latest`);
+  const body = await fetchJsonBody(`https://registry.npmjs.org/${name.replace(/\//g, '%2F')}/latest`);
   if (!body?.version) throw new IntegrationError('notFound');
   return { name: body.name ?? name, version: String(body.version), description: String(body.description ?? ''), url: `https://www.npmjs.com/package/${name}`, published: null };
 }

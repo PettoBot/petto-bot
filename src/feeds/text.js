@@ -15,7 +15,7 @@ function clip(text, max) {
 }
 
 /** Plain text: HTML tags and entities out, links shortened to their words, one line, and nothing that could mention or format by accident. */
-function plainText(text, max = MAX_DESCRIPTION) {
+function plainText(text, max = MAX_DESCRIPTION, { link = false } = {}) {
   let value = String(text ?? '')
     .replace(/<br\s*\/?>/gi, ' ')
     .replace(/<[^<>]*>/g, ' ')
@@ -25,12 +25,12 @@ function plainText(text, max = MAX_DESCRIPTION) {
     .replace(/[\r\n\t]+/g, ' ')
     .replace(/\s{2,}/g, ' ')
     .trim();
-  value = value.replace(/@(everyone|here)/gi, '@​$1').replace(/<@/g, '<​@').replace(/[*_~`|>]/g, (char) => `\\${char}`);
+  value = value.replace(/@(everyone|here)/gi, '@​$1').replace(/<@/g, '<​@').replace(link ? /[\\[\]*_~`|>]/g : /[\\*_~`|>]/g, (char) => `\\${char}`); // the backslash too, so a backslash in the text cannot undo an escape
   return clip(value, max);
 }
 
 /** The text of a link in markdown: its brackets cannot end it early. */
-const linkText = (text) => plainText(text, MAX_TITLE).replace(/\[/g, '\\[').replace(/\]/g, '\\]');
+const linkText = (text) => plainText(text, MAX_TITLE, { link: true });
 
 /** A link Discord can open (http or https), or null. */
 function safeUrl(url) {

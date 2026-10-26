@@ -254,7 +254,7 @@ const allText = (message) => JSON.stringify(json(message.components));
     assert.equal(rssProviders.bigPin('https://i.pinimg.com/236x/aa/bb.jpg'), 'https://i.pinimg.com/736x/aa/bb.jpg');
     globalThis.fetch = async (url) => {
       if (String(url).includes('reddit.com/r/zzz')) return new Response('', { status: 404 });
-      if (String(url).includes('reddit.com')) return new Response('<feed><title>r/minecraft</title><entry><id>t3_9</id><title>A &amp; B</title><link href="https://www.reddit.com/r/minecraft/comments/9"/><updated>2026-10-26T14:00:00+00:00</updated></entry></feed>', { status: 200 });
+      if (new URL(url).hostname === 'www.reddit.com') return new Response('<feed><title>r/minecraft</title><entry><id>t3_9</id><title>A &amp; B</title><link href="https://www.reddit.com/r/minecraft/comments/9"/><updated>2026-10-26T14:00:00+00:00</updated></entry></feed>', { status: 200 });
       return new Response('<rss><channel><title>user on Pinterest</title><item><title>Pin</title><link>https://www.pinterest.com/pin/1/</link><guid>p1</guid><description><![CDATA[<a><img src="https://i.pinimg.com/236x/a/b.jpg"></a>]]></description></item></channel></rss>', { status: 200 });
     };
     const reddit = await PROVIDERS.reddit.resolve('r/minecraft');
@@ -292,7 +292,7 @@ const allText = (message) => JSON.stringify(json(message.components));
     assert.equal(packages.parseNpm('https://www.npmjs.com/package/@scope/pkg/v/1.0.0'), '@scope/pkg');
     assert.equal(packages.parseNpm('Discord.js'), 'discord.js');
     assert.equal(packages.parsePypi('https://pypi.org/project/Requests/'), 'requests');
-    globalThis.fetch = async (url) => (String(url).includes('npmjs.org')
+    globalThis.fetch = async (url) => (new URL(url).hostname === 'registry.npmjs.org'
       ? json({ name: 'pkg', version: '1.2.3', description: 'A package' })
       : json({ info: { name: 'requests', version: '2.0.0', summary: 'HTTP for humans' }, releases: { '2.0.0': [{ upload_time_iso_8601: '2026-10-26T12:00:00Z' }] } }));
     polled = await PROVIDERS.npm.poll([{ id: 'pkg', name: 'pkg', avatar: null, url: 'u' }], new Map(), { now });
@@ -331,7 +331,7 @@ const allText = (message) => JSON.stringify(json(message.components));
     // Wikipedia (the article of the day, once a day for each language) and the puzzle of Chess.com.
     let wikiCalls = 0;
     globalThis.fetch = async (url) => {
-      if (String(url).includes('wikipedia.org')) { wikiCalls += 1; return json({ tfa: { titles: { normalized: 'Duck' }, extract: 'A bird.', thumbnail: { source: 'https://up/d.jpg' }, content_urls: { desktop: { page: 'https://en.wikipedia.org/wiki/Duck' } } } }); }
+      if (new URL(url).hostname.endsWith('.wikipedia.org')) { wikiCalls += 1; return json({ tfa: { titles: { normalized: 'Duck' }, extract: 'A bird.', thumbnail: { source: 'https://up/d.jpg' }, content_urls: { desktop: { page: 'https://en.wikipedia.org/wiki/Duck' } } } }); }
       return json({ title: 'Mate in 2', url: 'https://www.chess.com/forum/view/daily-puzzles/1', image: 'https://i/p.png', publish_time: 1793000000 });
     };
     const wiki = { id: 'featured', name: 'Wikipedia', avatar: null, url: 'u' };
