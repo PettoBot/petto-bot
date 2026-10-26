@@ -618,6 +618,7 @@ module.exports = {
   'moderation.unbanAll.notRunning': 'No mass unban is running in this server.',
   'moderation.unbanAll.stopping': '{emoji}  Stopping the mass unban. The users already unbanned stay unbanned.',
   'moderation.unbanAll.stopped': '{emoji}  Stopped before the end.',
+  'moderation.unbanAll.unavailable': '{emoji}  Stopped: Petto lost access to the server or to the Ban Members permission, so the rest could not be unbanned.',
   'moderation.ban.list.title.one': '**{count} banned user** ({hard} hard bans)',
   'moderation.ban.list.title.other': '**{count} banned users** ({hard} hard bans)',
   'moderation.ban.list.hardTitle.one': '**{count} hard ban**: only the owner and the antinuke admins can lift it.',
