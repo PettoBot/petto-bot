@@ -2,7 +2,7 @@ const { SlashCommandBuilder } = require('discord.js');
 const config = require('../../config');
 const { infoPayload } = require('../../utils/infoCard');
 const { IntegrationError, fetchJson, cached, lookup, row, plain, dateTag } = require('../../utils/integrations');
-const { t, formatNumber, languageOf } = require('../../i18n');
+const { t, formatNumber, formatDecimal, languageOf } = require('../../i18n');
 
 const API = 'https://api.steampowered.com';
 const CACHE_MS = 5 * 60_000;
@@ -11,6 +11,7 @@ const STEAM_ID = /^7656119\d{10}$/;
 const VANITY = /^[\w-]{2,32}$/;
 const PERSONA_STATES = ['offline', 'online', 'busy', 'away', 'snooze', 'lookingToTrade', 'lookingToPlay'];
 const GAMES_SHOWN = 5;
+const GAMES_TOP = 10;
 
 /** `{ id }` (a 64-bit Steam id) or `{ vanity }` from an id, a profile link or the custom name, or null. */
 function parseProfile(input) {
@@ -67,16 +68,45 @@ async function findProfile(target) {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('steam')
-    .setDescription('Look up a Steam profile: level, games and what they are playing.')
-    .addStringOption((o) => o.setName('user').setDescription('The custom name, the Steam id or the link to the profile').setMaxLength(150).setRequired(true)),
+    .setDescription('Look up a Steam profile or the games someone has played the most.')
+    .addSubcommand((s) => s
+      .setName('profile')
+      .setDescription('A profile: level, games and what they are playing.')
+      .addStringOption((o) => o.setName('user').setDescription('The custom name, the Steam id or the link to the profile').setMaxLength(150).setRequired(true)))
+    .addSubcommand((s) => s
+      .setName('games')
+      .setDescription('The games someone has played the most.')
+      .addStringOption((o) => o.setName('user').setDescription('The custom name, the Steam id or the link to the profile').setMaxLength(150).setRequired(true))),
+
+  // `!steam gaben` is the profile.
+  prefixDefaultSubcommand: (tokens) => (tokens.length ? 'profile' : null),
+  prefixSubcommandAliases: { user: 'profile', p: 'profile', top: 'games', library: 'games' },
 
   async execute(interaction) {
     const lang = await languageOf(interaction);
     const number = (value) => formatNumber(lang, value);
+    const sub = interaction.options.getSubcommand();
     await lookup(interaction, lang, 'Steam', async () => {
       const target = parseProfile(interaction.options.getString('user', true));
       if (!target) throw new IntegrationError('badInput');
       const profile = await findProfile(target);
+      if (sub === 'games') {
+        if (!profile.isPublic) throw new IntegrationError('private');
+        const owned = await cached(`steam:owned:${profile.id}`, CACHE_MS, () => call('/IPlayerService/GetOwnedGames/v1/', { steamid: profile.id, include_appinfo: '1' }));
+        const games = (owned?.response?.games ?? []).filter((game) => game.playtime_forever > 0).sort((a, b) => b.playtime_forever - a.playtime_forever);
+        if (!games.length) throw new IntegrationError('private'); // the list of games is hidden even when the profile is public
+        const hours = (minutes) => formatDecimal(lang, minutes / 60, 1);
+        const total = games.reduce((sum, game) => sum + game.playtime_forever, 0);
+        return infoPayload({
+          accent: null,
+          title: t(lang, 'integrations.steam.gamesTitle', { name: plain(profile.name, 60) }),
+          subtitle: [t(lang, 'integrations.steam.gamesTotal', { games: number(owned.response.game_count ?? games.length), hours: hours(total) })],
+          thumbnail: profile.avatar,
+          sections: [{ lines: games.slice(0, GAMES_TOP).map((game, index) => `**${index + 1}.** ${plain(game.name, 60)} · ${t(lang, 'integrations.steam.hoursTotal', { hours: hours(game.playtime_forever) })}`), limit: 1500 }],
+          footer: t(lang, 'info.card.id', { id: profile.id }),
+          buttons: [{ label: t(lang, 'integrations.steam.open'), url: profile.url }],
+        });
+      }
       const recent = profile.recent.map((game) => `${plain(game.name, 60)} · ${t(lang, 'integrations.steam.hours', { hours: game.hours })}`);
       return infoPayload({
         accent: null,

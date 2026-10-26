@@ -13,6 +13,8 @@ const USERNAME = /^[a-z][\w-]{1,14}$/i;
 const PERIODS = ['7day', '1month', '3month', '6month', '12month', 'overall'];
 const TOP_SHOWN = 10;
 const RECENT_SHOWN = 10;
+const WHOKNOWS_MAX = 30;
+const WHOKNOWS_BATCH = 5;
 // The picture Last.fm gives to what has none.
 const NO_PICTURE = /2a96cbd8b46e442fc41c2b86b821562f/;
 
@@ -65,6 +67,13 @@ const pictureOf = (images) => {
   return url ?? null;
 };
 
+/** About an artist, with how many times `username` played them when a name is given (Last.fm corrects the spelling of the artist). */
+const artistInfo = (name, username) => cached(`fm:artist:${name.toLowerCase()}:${(username ?? '').toLowerCase()}`, 5 * 60_000, async () => {
+  const body = await fm('artist.getinfo', { artist: name, autocorrect: '1', ...(username ? { username } : {}) });
+  if (!body?.artist?.name) throw new IntegrationError('notFound');
+  return body.artist;
+});
+
 const getProfile = (username) => cached(`fm:info:${username.toLowerCase()}`, CACHE_MS, async () => (await fm('user.getinfo', { user: username })).user);
 
 /** Who to look up: the member that was given, or the one who asked; null when they have not linked a name. */
@@ -104,13 +113,30 @@ module.exports = {
       .setName('toptracks')
       .setDescription('The songs someone listens to most.')
       .addUserOption((o) => o.setName('user').setDescription('The member (default: you)').setRequired(false))
-      .addStringOption((o) => o.setName('period').setDescription('How far back: week, month, 3 months, 6 months, year or all (default: a month)').setMaxLength(20).setRequired(false))),
+      .addStringOption((o) => o.setName('period').setDescription('How far back: week, month, 3 months, 6 months, year or all (default: a month)').setMaxLength(20).setRequired(false)))
+    .addSubcommand((s) => s
+      .setName('topalbums')
+      .setDescription('The albums someone listens to most.')
+      .addUserOption((o) => o.setName('user').setDescription('The member (default: you)').setRequired(false))
+      .addStringOption((o) => o.setName('period').setDescription('How far back: week, month, 3 months, 6 months, year or all (default: a month)').setMaxLength(20).setRequired(false)))
+    .addSubcommand((s) => s
+      .setName('artist')
+      .setDescription('About an artist: listeners, plays, tags and similar artists, and how many times you played them.')
+      .addStringOption((o) => o.setName('name').setDescription('The name of the artist').setMaxLength(100).setRequired(true)))
+    .addSubcommand((s) => s
+      .setName('compare')
+      .setDescription('How alike your music is with another member who linked Last.fm.')
+      .addUserOption((o) => o.setName('user').setDescription('The member to compare with').setRequired(true)))
+    .addSubcommand((s) => s
+      .setName('whoknows')
+      .setDescription('Who in this server listens to an artist the most (default: the one you are playing).')
+      .addStringOption((o) => o.setName('artist').setDescription('The name of the artist').setMaxLength(100).setRequired(false))),
 
   // `!lfm` alone, or with a member (`!lfm @liam`), is `now`.
   prefixDefaultSubcommand: (tokens) => (!tokens.length || /^<@!?\d+>$|^\d{15,25}$/.test(tokens[0]) ? 'now' : null),
 
   // The short words people type after the command: `!lastfm songs`, `!lastfm me`...
-  prefixSubcommandAliases: { np: 'now', playing: 'now', last: 'recent', me: 'profile', artists: 'topartists', top: 'topartists', tracks: 'toptracks', songs: 'toptracks' },
+  prefixSubcommandAliases: { np: 'now', playing: 'now', last: 'recent', me: 'profile', artists: 'topartists', top: 'topartists', tracks: 'toptracks', songs: 'toptracks', albums: 'topalbums', info: 'artist', match: 'compare', taste: 'compare', wk: 'whoknows', who: 'whoknows' },
 
   async execute(interaction) {
     const lang = await languageOf(interaction);
@@ -130,6 +156,90 @@ module.exports = {
         const user = await getProfile(username);
         await lastfmLinks.setLink(interaction.user.id, user.name);
         return noticePayload(t(lang, 'integrations.lastfm.linked', { name: plain(user.name, 40) }), COLORS.GREEN);
+      }
+
+      if (sub === 'artist') {
+        const asked = interaction.options.getString('name', true).trim();
+        if (!asked) throw new IntegrationError('badInput');
+        const mine = await lastfmLinks.getLink(interaction.user.id);
+        const info = await artistInfo(asked, mine);
+        const tags = asList(info.tags?.tag).slice(0, 5).map((tag) => `\`${plain(tag.name, 30)}\``).join(' ');
+        const similar = asList(info.similar?.artist).slice(0, 5).map((artist) => plain(artist.name, 40)).join(', ');
+        const bio = String(info.bio?.summary ?? '').replace(/<a [^>]*>.*?<\/a>/gis, '').replace(/<[^>]+>/g, '').trim();
+        return infoPayload({
+          accent: null,
+          title: plain(info.name, 100),
+          subtitle: bio ? [plain(bio, 400)] : [],
+          thumbnail: pictureOf(info.image),
+          sections: [{
+            lines: [
+              row(t(lang, 'integrations.lastfm.listeners'), number(info.stats?.listeners)),
+              row(t(lang, 'integrations.lastfm.scrobbles'), number(info.stats?.playcount)),
+              mine && info.stats?.userplaycount !== undefined ? row(t(lang, 'integrations.lastfm.yourPlays'), number(info.stats.userplaycount)) : null,
+              tags ? row(t(lang, 'integrations.lastfm.tags'), tags) : null,
+              similar ? row(t(lang, 'integrations.lastfm.similar'), similar) : null,
+            ],
+          }],
+          footer: 'Last.fm',
+          buttons: [{ label: t(lang, 'integrations.lastfm.openArtist'), url: info.url ?? `https://www.last.fm/music/${encodeURIComponent(info.name)}` }],
+        });
+      }
+
+      if (sub === 'compare') {
+        const other = interaction.options.getUser('user', true);
+        const links = await lastfmLinks.getLinks([interaction.user.id, other.id]);
+        const mine = links.get(interaction.user.id);
+        const theirs = links.get(other.id);
+        if (!mine) return noticePayload(t(lang, 'integrations.lastfm.notLinkedSelf'), COLORS.RED);
+        if (!theirs) return noticePayload(t(lang, 'integrations.lastfm.notLinkedOther', { name: other.displayName ?? other.username }), COLORS.RED);
+        if (mine.toLowerCase() === theirs.toLowerCase()) return noticePayload(t(lang, 'integrations.lastfm.compareSelf'), COLORS.RED);
+        const body = await cached(`fm:taste:${mine.toLowerCase()}:${theirs.toLowerCase()}`, 5 * 60_000, () => fm('tasteometer.compare', { type1: 'user', type2: 'user', value1: mine, value2: theirs, limit: '5' }));
+        const result = body?.comparison?.result;
+        const score = Math.round(Number(result?.score ?? 0) * 100);
+        const filled = Math.round(score / 10);
+        const common = asList(result?.artists?.artist).map((artist) => plain(artist.name, 40));
+        return infoPayload({
+          accent: null,
+          title: t(lang, 'integrations.lastfm.compareTitle', { a: plain(mine, 30), b: plain(theirs, 30) }),
+          subtitle: [`**${score}%** ${t(lang, 'integrations.lastfm.compatible')}`],
+          sections: [{ lines: [`${'▰'.repeat(filled)}${'▱'.repeat(10 - filled)}`, common.length ? row(t(lang, 'integrations.lastfm.inCommon'), common.join(', ')) : `-# ${t(lang, 'integrations.lastfm.noCommon')}`] }],
+          footer: 'Last.fm',
+        });
+      }
+
+      if (sub === 'whoknows') {
+        if (!interaction.guild) return noticePayload(t(lang, 'integrations.lastfm.serverOnly'), COLORS.RED);
+        let asked = interaction.options.getString('artist')?.trim();
+        if (!asked) {
+          const mine = await lastfmLinks.getLink(interaction.user.id);
+          if (!mine) return noticePayload(t(lang, 'integrations.lastfm.notLinkedSelf'), COLORS.RED);
+          const recent = await fm('user.getrecenttracks', { user: mine, limit: '1' });
+          const [track] = asList(recent?.recenttracks?.track);
+          asked = track?.artist?.['#text'] ?? track?.artist?.name;
+          if (!asked) return noticePayload(t(lang, 'integrations.lastfm.nothing', { name: plain(mine, 40) }), COLORS.RED);
+        }
+        const links = await lastfmLinks.getLinks([...interaction.guild.members.cache.keys()]);
+        if (!links.size) return noticePayload(t(lang, 'integrations.lastfm.nobodyLinked'), COLORS.RED);
+        const entries = [...links.entries()].slice(0, WHOKNOWS_MAX);
+        const info = await artistInfo(asked, null);
+        const counts = [];
+        for (let i = 0; i < entries.length; i += WHOKNOWS_BATCH) {
+          const batch = await Promise.all(entries.slice(i, i + WHOKNOWS_BATCH).map(async ([id, name]) => {
+            const own = await artistInfo(info.name, name).catch(() => null);
+            return { id, plays: Number(own?.stats?.userplaycount ?? 0) };
+          }));
+          counts.push(...batch);
+        }
+        const ranked = counts.filter((entry) => entry.plays > 0).sort((a, b) => b.plays - a.plays).slice(0, 10);
+        if (!ranked.length) return noticePayload(t(lang, 'integrations.lastfm.nobodyKnows', { artist: plain(info.name, 60) }), COLORS.RED);
+        return infoPayload({
+          accent: null,
+          title: t(lang, 'integrations.lastfm.whoKnowsTitle', { artist: plain(info.name, 60) }),
+          thumbnail: pictureOf(info.image),
+          sections: [{ lines: ranked.map((entry, index) => `**${index + 1}.** <@${entry.id}> · ${tn(lang, 'integrations.lastfm.plays', entry.plays)}`), limit: 1500 }],
+          footer: 'Last.fm',
+          buttons: [{ label: t(lang, 'integrations.lastfm.openArtist'), url: info.url ?? `https://www.last.fm/music/${encodeURIComponent(info.name)}` }],
+        });
       }
 
       const { member, username } = await targetOf(interaction);
@@ -193,18 +303,20 @@ module.exports = {
       }
 
       const period = normalizePeriod(interaction.options.getString('period'));
-      const artists = sub === 'topartists';
-      const body = await cached(`fm:${sub}:${username.toLowerCase()}:${period}`, 5 * 60_000, () => fm(artists ? 'user.gettopartists' : 'user.gettoptracks', { user: username, period, limit: String(TOP_SHOWN) }));
-      const list = asList(artists ? body?.topartists?.artist : body?.toptracks?.track);
+      const kind = { topartists: 'artist', toptracks: 'track', topalbums: 'album' }[sub];
+      const method = { artist: 'user.gettopartists', track: 'user.gettoptracks', album: 'user.gettopalbums' }[kind];
+      const body = await cached(`fm:${sub}:${username.toLowerCase()}:${period}`, 5 * 60_000, () => fm(method, { user: username, period, limit: String(TOP_SHOWN) }));
+      const list = asList(body?.[`top${kind}s`]?.[kind]);
       if (!list.length) return noticePayload(t(lang, 'integrations.lastfm.nothing', { name: plain(username, 40) }), COLORS.RED);
       const lines = list.map((entry, index) => {
         const plays = tn(lang, 'integrations.lastfm.plays', Number(entry.playcount));
-        return artists ? `**${index + 1}.** ${plain(entry.name, 80)} · ${plays}` : `**${index + 1}.** **${plain(entry.name, 100)}** — ${plain(entry.artist?.name, 80)} · ${plays}`;
+        return kind === 'artist' ? `**${index + 1}.** ${plain(entry.name, 80)} · ${plays}` : `**${index + 1}.** **${plain(entry.name, 100)}** — ${plain(entry.artist?.name, 80)} · ${plays}`;
       });
       return infoPayload({
         accent: null,
-        title: t(lang, artists ? 'integrations.lastfm.topArtistsTitle' : 'integrations.lastfm.topTracksTitle', { name: plain(username, 40) }),
+        title: t(lang, { artist: 'integrations.lastfm.topArtistsTitle', track: 'integrations.lastfm.topTracksTitle', album: 'integrations.lastfm.topAlbumsTitle' }[kind], { name: plain(username, 40) }),
         subtitle: [t(lang, `integrations.lastfm.period.${period}`)],
+        thumbnail: kind === 'album' ? pictureOf(list[0]?.image) : null,
         sections: [{ lines }],
         footer: 'Last.fm',
         buttons: open,

@@ -121,6 +121,15 @@ function plain(text, max = 200) {
   return short(text, max).replace(/[<>@`*_~|\\[\]]/g, (char) => `\\${char}`).replace(/https?:\/\//gi, '');
 }
 
+/** `1:02:03` or `4:05` for a number of seconds. */
+function clock(seconds) {
+  const total = Math.max(0, Math.round(Number(seconds) || 0));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const two = (n) => String(n).padStart(2, '0');
+  return h ? `${h}:${two(m)}:${two(total % 60)}` : `${m}:${two(total % 60)}`;
+}
+
 /** `<t:…:D>` for an ISO date or a timestamp in ms, or null when it is not a date. */
 function dateTag(value, style = 'D') {
   const ms = typeof value === 'number' ? value : Date.parse(value);
@@ -130,4 +139,4 @@ function dateTag(value, style = 'D') {
 /** Forgets everything cached and every cooldown (the checks start each case clean). */
 const clearCache = () => { cache.clear(); lastUse.clear(); };
 
-module.exports = { USER_AGENT, IntegrationError, fetchJson, cached, clearCache, cooldownLeft, failurePayload, lookup, row, short, plain, dateTag };
+module.exports = { USER_AGENT, IntegrationError, fetchJson, cached, clearCache, cooldownLeft, failurePayload, lookup, row, short, plain, clock, dateTag };
