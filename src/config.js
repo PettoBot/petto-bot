@@ -71,6 +71,10 @@ module.exports = {
   // again, so only the owner, the developers and these testers can set them up.
   questsPublic: process.env.QUESTS_PUBLIC !== 'false',
   questTesterIds: envList('QUESTS_TESTER_IDS'),
+  // Feeds (follow accounts of other services) are being tested: only the owner, the developers and these testers can set them up until
+  // FEEDS_PUBLIC=true opens them to every server.
+  feedsPublic: process.env.FEEDS_PUBLIC === 'true',
+  feedTesterIds: envList('FEEDS_TESTER_IDS'),
   // Discord rollout alerts: open to everyone with Manage Server; ROLLOUTS_PUBLIC=false limits them to the owner, the developers and these testers.
   // The list is a community copy of Discord's experiments; ROLLOUTS_URL points to another file with the same shape.
   rolloutsPublic: process.env.ROLLOUTS_PUBLIC !== 'false',
@@ -186,6 +190,8 @@ module.exports = {
   steamApiKey: process.env.STEAM_API_KEY || null,
   twitchClientId: process.env.TWITCH_CLIENT_ID || null,
   twitchClientSecret: process.env.TWITCH_CLIENT_SECRET || null,
+  kickClientId: process.env.KICK_CLIENT_ID || null, // the app of the bot in kick.com (Settings > Developer), for the Kick feeds
+  kickClientSecret: process.env.KICK_CLIENT_SECRET || null,
   youtubeApiKey: process.env.YOUTUBE_API_KEY || null,
   tmdbApiKey: process.env.TMDB_API_KEY || null, // a v3 key, or the v4 read access token
   // Optional: dedicated domain for ticket transcript links. Falls back to VERIFY_BASE_URL —

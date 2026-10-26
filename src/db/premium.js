@@ -19,6 +19,7 @@ const FREE_LIMITS = Object.freeze({
   componentPanels: 50,
   counters: 25,
   paginationMessages: 25,
+  feeds: 3,
 });
 
 const PREMIUM_LIMITS = Object.freeze({
@@ -34,6 +35,7 @@ const PREMIUM_LIMITS = Object.freeze({
   componentPanels: 100,
   counters: 50,
   paginationMessages: 50,
+  feeds: 10,
 });
 
 /**

@@ -4345,3 +4345,65 @@ begin
   on conflict (guild_id, day, bucket) do update set members = member_lifespan.members + excluded.members;
 end;
 $$;
+
+-- ---------------------------------------------------------------------------
+-- Feeds: notices that follow an account of another service (YouTube, Twitch,
+-- Bluesky, Modrinth, a Pokémon of the day…) and post them in a channel.
+-- One row per account followed in a channel; `feed_seen` remembers what was
+-- already posted (so a restart posts nothing twice) and `feed_live` the open
+-- messages of the streams that are on, so they can be edited when they end.
+-- ---------------------------------------------------------------------------
+
+create table if not exists feeds (
+  id             bigserial primary key,
+  guild_id       text not null references guilds(guild_id) on delete cascade,
+  platform       text not null,
+  account_id     text not null,
+  account_name   text not null,
+  account_avatar text,
+  account_url    text,
+  channel_id     text not null,
+  types          text[] not null default '{}',
+  message        text not null default '',
+  ping_roles     text[] not null default '{}',
+  ping_everyone  boolean not null default false,
+  options        jsonb not null default '{}'::jsonb,
+  filters        jsonb not null default '{}'::jsonb,
+  enabled        boolean not null default true,
+  ready          boolean not null default true,
+  failures       integer not null default 0,
+  last_sent_at   timestamptz,
+  last_error     text,
+  last_error_at  timestamptz,
+  created_by     text,
+  created_at     timestamptz not null default now(),
+  unique (guild_id, platform, account_id, channel_id)
+);
+
+create index if not exists idx_feeds_guild on feeds(guild_id);
+create index if not exists idx_feeds_account on feeds(platform, account_id) where enabled;
+
+alter table feeds enable row level security;
+
+create table if not exists feed_seen (
+  feed_id bigint not null references feeds(id) on delete cascade,
+  item_id text not null,
+  seen_at timestamptz not null default now(),
+  primary key (feed_id, item_id)
+);
+
+create index if not exists idx_feed_seen_age on feed_seen(seen_at);
+
+alter table feed_seen enable row level security;
+
+create table if not exists feed_live (
+  feed_id    bigint not null references feeds(id) on delete cascade,
+  item_id    text not null,
+  channel_id text not null,
+  message_id text not null,
+  item       jsonb not null,
+  started_at timestamptz not null default now(),
+  primary key (feed_id, item_id)
+);
+
+alter table feed_live enable row level security;
