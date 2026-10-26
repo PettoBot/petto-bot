@@ -1,0 +1,21 @@
+// Feeds: the notices that follow an account of another service (YouTube, Twitch, Bluesky…), their cards and their commands.
+module.exports = {
+  'feeds.type.video': 'New video',
+  'feeds.type.short': 'New Short',
+  'feeds.type.live': 'Live now',
+  'feeds.type.clip': 'New clip',
+  'feeds.type.post': 'New post',
+  'feeds.type.pin': 'New pin',
+  'feeds.type.update': 'New version',
+  'feeds.type.daily': 'Of the day',
+  'feeds.type.ended': 'Stream ended',
+  'feeds.button.video': 'Watch on {platform}',
+  'feeds.button.short': 'Watch on {platform}',
+  'feeds.button.live': 'Watch live',
+  'feeds.button.clip': 'Watch the clip',
+  'feeds.button.post': 'Read on {platform}',
+  'feeds.button.pin': 'See on {platform}',
+  'feeds.button.update': 'See on {platform}',
+  'feeds.button.daily': 'See more',
+  'feeds.test.badge': 'Test notice: this is how it will look',
+};
