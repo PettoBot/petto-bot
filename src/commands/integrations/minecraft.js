@@ -1,7 +1,7 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { infoPayload } = require('../../utils/infoCard');
-const { IntegrationError, fetchJson, cached, lookup, row } = require('../../utils/integrations');
-const { t, languageOf } = require('../../i18n');
+const { IntegrationError, fetchJson, cached, lookup, row, plain } = require('../../utils/integrations');
+const { t, formatNumber, languageOf } = require('../../i18n');
 
 const PROFILE_URL = 'https://api.mojang.com/users/profiles/minecraft/';
 const SESSION_URL = 'https://sessionserver.mojang.com/session/minecraft/profile/';
@@ -9,6 +9,9 @@ const SESSION_URL = 'https://sessionserver.mojang.com/session/minecraft/profile/
 const RENDER_URL = 'https://mc-heads.net';
 const NAMEMC_URL = 'https://namemc.com/profile/';
 const CACHE_MS = 5 * 60_000;
+const SERVER_URL = 'https://api.mcsrvstat.us';
+const SERVER_CACHE_MS = 60_000;
+const PLAYERS_SHOWN = 10;
 const COOLDOWN = { name: 'minecraft', ms: 3000 };
 
 const NAME_PATTERN = /^\w{1,16}$/;
@@ -20,6 +23,14 @@ function parsePlayer(input) {
   if (UUID_PATTERN.test(text)) return { kind: 'uuid', value: text.replace(/-/g, '').toLowerCase() };
   if (NAME_PATTERN.test(text)) return { kind: 'name', value: text };
   return null;
+}
+
+/** The address of a server (`hypixel.net`, `play.example.com:25566`, an IPv4), or null. */
+function parseAddress(input) {
+  const text = String(input ?? '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+  if (text.length > 253 || !/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:\d{1,5})?$/.test(text)) return null;
+  const port = /:(\d{1,5})$/.exec(text)?.[1];
+  return port && Number(port) > 65535 ? null : text;
 }
 
 const dashed = (id) => `${id.slice(0, 8)}-${id.slice(8, 12)}-${id.slice(12, 16)}-${id.slice(16, 20)}-${id.slice(20)}`;
@@ -54,6 +65,36 @@ async function findPlayer(input) {
   });
 }
 
+/** The card of a server: online or not, players, version and its message of the day. */
+async function serverCard(typed, lang) {
+  const address = parseAddress(typed);
+  if (!address) throw new IntegrationError('badInput');
+  const status = await cached(`mcserver:${address}`, SERVER_CACHE_MS, () => fetchJson(`${SERVER_URL}/3/${encodeURIComponent(address)}`));
+  const motd = (status.motd?.clean ?? []).map((line) => plain(line, 100)).filter(Boolean).join('\n');
+  const names = (status.players?.list ?? []).map((player) => plain(player.name, 20)).slice(0, PLAYERS_SHOWN);
+  const online = Boolean(status.online);
+  return infoPayload({
+    accent: null,
+    title: plain(status.hostname || address, 100),
+    subtitle: online && motd ? [motd] : [],
+    thumbnail: online ? `${SERVER_URL}/icon/${encodeURIComponent(address)}` : null,
+    sections: [
+      {
+        lines: [
+          row(t(lang, 'integrations.minecraft.status'), t(lang, online ? 'integrations.minecraft.online' : 'integrations.minecraft.offline')),
+          online && status.players ? row(t(lang, 'integrations.minecraft.players'), `${formatNumber(lang, status.players.online ?? 0)} / ${formatNumber(lang, status.players.max ?? 0)}`) : null,
+          online && status.version ? row(t(lang, 'integrations.minecraft.version'), plain(status.version, 60)) : null,
+          online && status.software ? row(t(lang, 'integrations.minecraft.software'), plain(status.software, 40)) : null,
+          status.ip ? row(t(lang, 'integrations.minecraft.address'), `\`${status.ip}${status.port ? `:${status.port}` : ''}\``) : null,
+          status.eula_blocked ? `-# ${t(lang, 'integrations.minecraft.blocked')}` : null,
+        ],
+      },
+      names.length ? { title: t(lang, 'integrations.minecraft.playing'), lines: [names.map((name) => `\`${name}\``).join(' ')] } : null,
+    ].filter(Boolean),
+    footer: t(lang, 'integrations.minecraft.footer'),
+  });
+}
+
 module.exports = {
   aliases: ['mc'],
   data: new SlashCommandBuilder()
@@ -70,14 +111,25 @@ module.exports = {
     .addSubcommand((s) => s
       .setName('head')
       .setDescription('The head of a Minecraft Java player, big.')
-      .addStringOption((o) => o.setName('player').setDescription('The name or the UUID of the player').setMaxLength(36).setRequired(true))),
+      .addStringOption((o) => o.setName('player').setDescription('The name or the UUID of the player').setMaxLength(36).setRequired(true)))
+    .addSubcommand((s) => s
+      .setName('server')
+      .setDescription('The status of a Minecraft Java server: players, version and message of the day.')
+      .addStringOption((o) => o.setName('address').setDescription('The address of the server, for example mc.hypixel.net').setMaxLength(260).setRequired(true))),
 
   // The short words people type after the command.
-  prefixSubcommandAliases: { profile: 'user', uuid: 'user', avatar: 'head', body: 'skin' },
+  // `!mc Notch` is `!mc user Notch`, and `!mc hypixel.net` (a name with a dot, which no player has) is the server.
+  prefixDefaultSubcommand: (tokens) => (tokens.length ? (parseAddress(tokens[0]) && /[.:]/.test(tokens[0]) ? 'server' : 'user') : null),
+  prefixSubcommandAliases: { profile: 'user', uuid: 'user', avatar: 'head', body: 'skin', status: 'server', ip: 'server' },
 
   async execute(interaction) {
     const lang = await languageOf(interaction);
     const sub = interaction.options.getSubcommand();
+    if (sub === 'server') {
+      const typed = interaction.options.getString('address', true);
+      await lookup(interaction, lang, 'Minecraft', () => serverCard(typed, lang), { name: 'minecraft', ms: 4000 });
+      return;
+    }
     const input = interaction.options.getString('player', true);
     await lookup(interaction, lang, 'Minecraft', async () => {
       const player = await findPlayer(input);
@@ -123,5 +175,7 @@ module.exports = {
 };
 
 module.exports.parsePlayer = parsePlayer;
+module.exports.parseAddress = parseAddress;
+module.exports.serverCard = serverCard;
 module.exports.texturesOf = texturesOf;
 module.exports.findPlayer = findPlayer;

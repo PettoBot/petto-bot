@@ -1,12 +1,14 @@
 const { SlashCommandBuilder } = require('discord.js');
 const config = require('../../config');
-const { infoPayload } = require('../../utils/infoCard');
+const { infoPayload, noticePayload } = require('../../utils/infoCard');
+const { COLORS } = require('../../utils/colors');
 const { IntegrationError, fetchJson, cached, lookup, row, short, plain, dateTag } = require('../../utils/integrations');
-const { t, formatNumber, languageOf } = require('../../i18n');
+const { t, tn, formatNumber, formatDecimal, languageOf } = require('../../i18n');
 
 const API = 'https://api.github.com';
 const CACHE_MS = 5 * 60_000;
 const COOLDOWN = { name: 'github', ms: 3000 };
+const LIST_SHOWN = 5;
 const USER_PATTERN = /^[a-z\d](?:[a-z\d-]{0,38})$/i;
 const REPO_PATTERN = /^[\w.-]{1,100}$/;
 
@@ -55,10 +57,32 @@ module.exports = {
     .addSubcommand((s) => s
       .setName('release')
       .setDescription('The latest release of a repository.')
+      .addStringOption((o) => o.setName('repository').setDescription('owner/name, or the link to the repository').setMaxLength(200).setRequired(true)))
+    .addSubcommand((s) => s
+      .setName('commits')
+      .setDescription('The latest commits of a repository.')
+      .addStringOption((o) => o.setName('repository').setDescription('owner/name, or the link to the repository').setMaxLength(200).setRequired(true)))
+    .addSubcommand((s) => s
+      .setName('issues')
+      .setDescription('The open issues of a repository.')
+      .addStringOption((o) => o.setName('repository').setDescription('owner/name, or the link to the repository').setMaxLength(200).setRequired(true)))
+    .addSubcommand((s) => s
+      .setName('pulls')
+      .setDescription('The open pull requests of a repository.')
+      .addStringOption((o) => o.setName('repository').setDescription('owner/name, or the link to the repository').setMaxLength(200).setRequired(true)))
+    .addSubcommand((s) => s
+      .setName('languages')
+      .setDescription('The languages of a repository, as a share of its code.')
+      .addStringOption((o) => o.setName('repository').setDescription('owner/name, or the link to the repository').setMaxLength(200).setRequired(true)))
+    .addSubcommand((s) => s
+      .setName('contributors')
+      .setDescription('Who has contributed the most to a repository.')
       .addStringOption((o) => o.setName('repository').setDescription('owner/name, or the link to the repository').setMaxLength(200).setRequired(true))),
 
   // The short words people type after the command.
-  prefixSubcommandAliases: { u: 'user', profile: 'user', r: 'repo', rel: 'release', latest: 'release' },
+  // `!gh octocat` is the user, `!gh PettoBot/petto-bot` (or a link to a repository) is the repository.
+  prefixDefaultSubcommand: (tokens) => (tokens.length ? (parseRepo(tokens[0]) ? 'repo' : 'user') : null),
+  prefixSubcommandAliases: { u: 'user', profile: 'user', r: 'repo', rel: 'release', latest: 'release', commit: 'commits', log: 'commits', issue: 'issues', pr: 'pulls', prs: 'pulls', pull: 'pulls', lang: 'languages', langs: 'languages', top: 'contributors', people: 'contributors' },
 
   async execute(interaction) {
     const lang = await languageOf(interaction);
@@ -92,6 +116,62 @@ module.exports = {
       const target = parseRepo(interaction.options.getString('repository', true));
       if (!target) throw new IntegrationError('badInput');
       const path = `/repos/${target.owner}/${target.repo}`;
+
+      if (sub === 'commits') {
+        const commits = (await github(`${path}/commits?per_page=${LIST_SHOWN}`)) ?? [];
+        if (!commits.length) return noticePayload(t(lang, 'integrations.github.none'), COLORS.RED);
+        return infoPayload({
+          accent: null,
+          title: t(lang, 'integrations.github.commitsTitle', { repo: `${target.owner}/${target.repo}` }),
+          sections: [{ lines: commits.map((entry) => `[\`${String(entry.sha).slice(0, 7)}\`](${entry.html_url}) ${plain(String(entry.commit?.message ?? '').split('\n')[0], 90)} · ${plain(entry.author?.login ?? entry.commit?.author?.name ?? '', 30)} · ${dateTag(entry.commit?.author?.date, 'R')}`), limit: 1500 }],
+          footer: 'GitHub',
+          buttons: [{ label: t(lang, 'integrations.github.open'), url: `https://github.com/${target.owner}/${target.repo}/commits` }],
+        });
+      }
+
+      if (sub === 'issues' || sub === 'pulls') {
+        const pulls = sub === 'pulls';
+        const list = (await github(pulls ? `${path}/pulls?state=open&per_page=${LIST_SHOWN}` : `${path}/issues?state=open&per_page=30`)) ?? [];
+        const items = (pulls ? list : list.filter((entry) => !entry.pull_request)).slice(0, LIST_SHOWN);
+        if (!items.length) return noticePayload(t(lang, pulls ? 'integrations.github.noPulls' : 'integrations.github.noIssues'), COLORS.GREEN);
+        return infoPayload({
+          accent: null,
+          title: t(lang, pulls ? 'integrations.github.pullsTitle' : 'integrations.github.issuesTitle', { repo: `${target.owner}/${target.repo}` }),
+          sections: [{ lines: items.map((entry) => `[#${entry.number}](${entry.html_url}) ${plain(entry.title, 90)} · ${plain(entry.user?.login ?? '', 30)} · ${dateTag(entry.created_at, 'R')}`), limit: 1500 }],
+          footer: 'GitHub',
+          buttons: [{ label: t(lang, 'integrations.github.open'), url: `https://github.com/${target.owner}/${target.repo}/${pulls ? 'pulls' : 'issues'}` }],
+        });
+      }
+
+      if (sub === 'languages') {
+        const languages = (await github(`${path}/languages`)) ?? {};
+        const total = Object.values(languages).reduce((sum, bytes) => sum + Number(bytes), 0);
+        if (!total) return noticePayload(t(lang, 'integrations.github.none'), COLORS.RED);
+        const lines = Object.entries(languages).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name, bytes]) => {
+          const percent = (Number(bytes) / total) * 100;
+          const filled = Math.max(percent > 0 ? 1 : 0, Math.round(percent / 10));
+          return `${'▰'.repeat(filled)}${'▱'.repeat(10 - filled)} **${plain(name, 30)}** ${formatDecimal(lang, percent, 1)}%`;
+        });
+        return infoPayload({
+          accent: null,
+          title: t(lang, 'integrations.github.languagesTitle', { repo: `${target.owner}/${target.repo}` }),
+          sections: [{ lines }],
+          footer: 'GitHub',
+          buttons: [{ label: t(lang, 'integrations.github.open'), url: `https://github.com/${target.owner}/${target.repo}` }],
+        });
+      }
+
+      if (sub === 'contributors') {
+        const people = (await github(`${path}/contributors?per_page=${LIST_SHOWN * 2}`)) ?? [];
+        if (!people.length) return noticePayload(t(lang, 'integrations.github.none'), COLORS.RED);
+        return infoPayload({
+          accent: null,
+          title: t(lang, 'integrations.github.contributorsTitle', { repo: `${target.owner}/${target.repo}` }),
+          sections: [{ lines: people.map((person, index) => `**${index + 1}.** [${plain(person.login, 40)}](${person.html_url}) · ${tn(lang, 'integrations.github.commitCount', Number(person.contributions))}`), limit: 1500 }],
+          footer: 'GitHub',
+          buttons: [{ label: t(lang, 'integrations.github.open'), url: `https://github.com/${target.owner}/${target.repo}/graphs/contributors` }],
+        });
+      }
 
       if (sub === 'repo') {
         const repo = await github(path);

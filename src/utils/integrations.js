@@ -100,6 +100,8 @@ async function lookup(interaction, lang, service, build, cooldown = null) {
   try {
     await interaction.editReply(await build());
   } catch (error) {
+    // A missing argument is the member's to fix: it goes back to the command handler, which shows how to write the command.
+    if (error?.userFacing || error?.missingOption) throw error;
     if (!(error instanceof IntegrationError)) logger.error(`Lookup on ${service} failed: ${error?.message ?? error}`);
     await interaction.editReply(failurePayload(error, lang, service)).catch(() => {});
   }
@@ -107,6 +109,19 @@ async function lookup(interaction, lang, service, build, cooldown = null) {
 
 /** One line of a card: the dot, the label in bold and the value. */
 const row = (label, value) => `${EMOJI.FIELD_DOT} **${label}** ${value}`;
+
+/**
+ * A text from a service with its HTML tags taken out (`<br>` is a line break first). The tags are taken out until none is left, so text
+ * like `<scr<b>ipt>` does not turn into a tag, and a `<` or `>` that stays is removed too.
+ */
+function stripHtml(text) {
+  let value = String(text ?? '').replace(/<br\s*\/?>/gi, '\n');
+  for (let previous = null; previous !== value;) {
+    previous = value;
+    value = value.replace(/<[^<>]*>/g, '');
+  }
+  return value.replace(/[<>]/g, '');
+}
 
 /** Cuts a text to `max` characters, one line. */
 function short(text, max = 200) {
@@ -119,6 +134,22 @@ function plain(text, max = 200) {
   return short(text, max).replace(/[<>@`*_~|\\[\]]/g, (char) => `\\${char}`).replace(/https?:\/\//gi, '');
 }
 
+/** `1:02:03` or `4:05` for a number of seconds. */
+function clock(seconds) {
+  const total = Math.max(0, Math.round(Number(seconds) || 0));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const two = (n) => String(n).padStart(2, '0');
+  return h ? `${h}:${two(m)}:${two(total % 60)}` : `${m}:${two(total % 60)}`;
+}
+
+const NUMBER_LOCALES = { en: 'en-US', es: 'es-419', 'pt-BR': 'pt-BR' };
+
+/** A number with the separators of the language and at most `digits` decimals (none when they are zeros). */
+function formatMoney(lang, value, digits = 2) {
+  return new Intl.NumberFormat(NUMBER_LOCALES[lang] ?? 'en-US', { maximumFractionDigits: digits }).format(Number(value));
+}
+
 /** `<t:…:D>` for an ISO date or a timestamp in ms, or null when it is not a date. */
 function dateTag(value, style = 'D') {
   const ms = typeof value === 'number' ? value : Date.parse(value);
@@ -128,4 +159,4 @@ function dateTag(value, style = 'D') {
 /** Forgets everything cached and every cooldown (the checks start each case clean). */
 const clearCache = () => { cache.clear(); lastUse.clear(); };
 
-module.exports = { USER_AGENT, IntegrationError, fetchJson, cached, clearCache, cooldownLeft, failurePayload, lookup, row, short, plain, dateTag };
+module.exports = { USER_AGENT, IntegrationError, fetchJson, cached, clearCache, cooldownLeft, failurePayload, lookup, row, short, plain, stripHtml, clock, formatMoney, dateTag };

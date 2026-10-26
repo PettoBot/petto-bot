@@ -330,9 +330,12 @@ async function buildInteractionFromMessage(message, command, argText) {
     normalizedTokens[0] = subcommandAliases[normalizedTokens[0].toLowerCase()] ?? normalizedTokens[0];
   }
 
+  // The subcommand to use when the first word is not one: a name, or a function of the words typed (`!github PettoBot/petto-bot`
+  // is `repo`, `!github octocat` is `user`) that returns a name or null.
+  const defaultSubcommand = typeof command.prefixDefaultSubcommand === 'function' ? command.prefixDefaultSubcommand(normalizedTokens) : command.prefixDefaultSubcommand;
   const resolved = resolveSubcommandOptions(json, normalizedTokens) ?? (
-    command.prefixDefaultSubcommand
-      ? resolveSubcommandOptions(json, [command.prefixDefaultSubcommand, ...normalizedTokens])
+    defaultSubcommand
+      ? resolveSubcommandOptions(json, [defaultSubcommand, ...normalizedTokens])
       : null
   );
   if (!resolved) return null;

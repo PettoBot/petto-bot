@@ -1,14 +1,17 @@
 const { SlashCommandBuilder } = require('discord.js');
 const config = require('../../config');
-const { infoPayload } = require('../../utils/infoCard');
+const { infoPayload, noticePayload } = require('../../utils/infoCard');
+const { COLORS } = require('../../utils/colors');
 const { IntegrationError, fetchJson, cached, lookup, row, plain, dateTag } = require('../../utils/integrations');
-const { t, formatNumber, languageOf } = require('../../i18n');
+const { t, tn, formatNumber, languageOf } = require('../../i18n');
 
 const HELIX = 'https://api.twitch.tv/helix';
 const TOKEN_URL = 'https://id.twitch.tv/oauth2/token';
 const CACHE_MS = 60_000;
 const COOLDOWN = { name: 'twitch', ms: 3000 };
 const LOGIN = /^\w{3,25}$/;
+const CLIPS_SHOWN = 5;
+const TOP_SHOWN = 10;
 
 let token = null; // { value, until }
 
@@ -53,6 +56,12 @@ async function helix(path, retry = true) {
   }
 }
 
+/** The streams with the most viewers now (Twitch lists them by viewers when no channel is asked for). */
+async function topStreams() {
+  if (!config.twitchClientId || !config.twitchClientSecret) throw new IntegrationError('notConfigured');
+  return cached('twitch:top', CACHE_MS, async () => (await helix(`/streams?first=${TOP_SHOWN}`))?.data ?? []);
+}
+
 /** The channel and, when it is live, its stream: { user, stream }. */
 async function findChannel(login) {
   if (!config.twitchClientId || !config.twitchClientSecret) throw new IntegrationError('notConfigured');
@@ -70,15 +79,52 @@ async function findChannel(login) {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('twitch')
-    .setDescription('See if a Twitch channel is live, what it plays and how many are watching.')
-    .addStringOption((o) => o.setName('channel').setDescription('The channel name or the link to the channel').setMaxLength(100).setRequired(true)),
+    .setDescription('Look up a Twitch channel, its clips, or what is most watched now.')
+    .addSubcommand((s) => s
+      .setName('channel')
+      .setDescription('See if a channel is live, what it plays and how many are watching.')
+      .addStringOption((o) => o.setName('channel').setDescription('The channel name or the link to the channel').setMaxLength(100).setRequired(true)))
+    .addSubcommand((s) => s
+      .setName('clips')
+      .setDescription('The most watched clips of a channel.')
+      .addStringOption((o) => o.setName('channel').setDescription('The channel name or the link to the channel').setMaxLength(100).setRequired(true)))
+    .addSubcommand((s) => s.setName('top').setDescription('The streams with the most viewers right now.')),
+
+  // `!twitch ibai` is the channel.
+  prefixDefaultSubcommand: (tokens) => (tokens.length ? 'channel' : null),
+  prefixSubcommandAliases: { live: 'channel', stream: 'channel', clip: 'clips', popular: 'top', trending: 'top' },
 
   async execute(interaction) {
     const lang = await languageOf(interaction);
+    const sub = interaction.options.getSubcommand();
     await lookup(interaction, lang, 'Twitch', async () => {
+      if (sub === 'top') {
+        const top = await topStreams();
+        if (!top.length) return noticePayload(t(lang, 'integrations.twitch.nobody'), COLORS.RED);
+        return infoPayload({
+          accent: null,
+          title: t(lang, 'integrations.twitch.topTitle'),
+          sections: [{ lines: top.map((stream, index) => `**${index + 1}.** [${plain(stream.user_name, 40)}](https://www.twitch.tv/${encodeURIComponent(stream.user_login)}) · ${plain(stream.game_name || '—', 50)} · ${tn(lang, 'integrations.twitch.viewerCount', Number(stream.viewer_count))}`), limit: 1500 }], // i18n-ignore: a list of links
+          footer: 'Twitch', // i18n-ignore: a brand name
+          buttons: [{ label: t(lang, 'integrations.twitch.browse'), url: 'https://www.twitch.tv/directory' }],
+        });
+      }
       const login = parseChannel(interaction.options.getString('channel', true));
       if (!login) throw new IntegrationError('badInput');
       const { user, stream } = await findChannel(login);
+      if (sub === 'clips') {
+        const clips = await cached(`twitch:clips:${user.id}`, 5 * 60_000, async () => (await helix(`/clips?broadcaster_id=${encodeURIComponent(user.id)}&first=${CLIPS_SHOWN}`))?.data ?? []);
+        if (!clips.length) return noticePayload(t(lang, 'integrations.twitch.noClips', { name: plain(user.display_name, 40) }), COLORS.RED);
+        return infoPayload({
+          accent: null,
+          title: t(lang, 'integrations.twitch.clipsTitle', { name: plain(user.display_name, 40) }),
+          thumbnail: user.profile_image_url,
+          banner: clips[0].thumbnail_url,
+          sections: [{ lines: clips.map((clip, index) => `**${index + 1}.** [${plain(clip.title, 80)}](${clip.url}) · ${tn(lang, 'integrations.twitch.viewCount', Number(clip.view_count))} · ${plain(clip.creator_name, 30)} · ${dateTag(clip.created_at, 'R')}`), limit: 1500 }],
+          footer: 'Twitch', // i18n-ignore: a brand name
+          buttons: [{ label: t(lang, 'integrations.twitch.open'), url: `https://www.twitch.tv/${user.login}/clips` }],
+        });
+      }
       const kind = { partner: 'partner', affiliate: 'affiliate' }[user.broadcaster_type];
       const preview = stream?.thumbnail_url ? stream.thumbnail_url.replace('{width}', '640').replace('{height}', '360') : null;
       return infoPayload({
