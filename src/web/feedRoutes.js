@@ -15,6 +15,7 @@ const { PLATFORMS } = require('../feeds/platforms');
 const { buildFeedMessage } = require('../feeds/card');
 const { sampleNotice } = require('../feeds/samples');
 const { IntegrationError } = require('../utils/integrations');
+const { canUseFeeds } = require('../feeds/access');
 const logger = require('../utils/logger');
 const { t, requestLanguage } = require('../i18n');
 
@@ -44,6 +45,7 @@ function registerFeedRoutes(app, { authorize, limiter }) {
     const access = await authorize(req, res, { page: 'feeds', edit: !['resolve', 'preview'].includes(name) });
     if (!access) return;
     const lang = requestLanguage(req, access.guild.id);
+    if (!canUseFeeds(access.userId)) { res.status(403).json({ ok: false, error: 'no_access', message: t(lang, 'feeds.testing', { emoji: '' }).trim() }); return; } // being tested with the team
     try {
       await handler(req, res, access, lang);
     } catch (err) {

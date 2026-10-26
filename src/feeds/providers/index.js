@@ -24,6 +24,11 @@ const daily = require('./daily');
 const { fetchPublicText } = require('../http');
 const { parseFeed } = require('../feedparse');
 
+/** The videos that were seen live or about to be: when they end they are a recording of a stream, and are not posted as a new video. */
+const wasLive = new Set();
+const WAS_LIVE_LIMIT = 20_000;
+const rememberLive = (id) => { if (wasLive.size >= WAS_LIVE_LIMIT) wasLive.delete(wasLive.values().next().value); wasLive.add(id); };
+
 const HOUR = 3_600_000;
 const MAX_AGE_MS = 3 * 24 * HOUR; // an old item that shows up again (a feed that is cleaned up, a long downtime) is not news
 const fresh = (item, now) => !item.publishedAt || now - Number(item.publishedAt) <= MAX_AGE_MS;
@@ -53,7 +58,13 @@ const PROVIDERS = {
         const ids = new Set();
         for (const list of entries.values()) for (const entry of list) if (fresh({ publishedAt: entry.published }, now) && !notLive.has(entry.videoId)) ids.add(entry.videoId);
         for (const set of tracked.values()) for (const id of set) ids.add(id);
-        try { states = ids.size ? await youtube.liveStates([...ids]) : {}; } catch { states = null; } // without the key (or when the call fails) every video is just a video
+        try { states = ids.size ? await youtube.liveStates([...ids]) : {}; } catch { states = null; }
+        // When it cannot be told whether the videos are live (no key, the call failed), nothing is posted this time: a stream must never go out as a
+        // video. Nothing is marked as seen either, so the next pass tries again.
+        if (states === null) {
+          for (const account of accounts) if (entries.has(account.id)) results.set(account.id, { items: [], error: 'unavailable' });
+          return results;
+        }
       }
 
       for (const account of accounts) {
@@ -62,8 +73,9 @@ const PROVIDERS = {
         const stillLive = new Set();
         for (const entry of entries.get(account.id)) {
           const state = states?.[entry.videoId]?.state;
-          if (state === 'live') { stillLive.add(entry.videoId); items.push(youtube.toItem(entry, 'live', account)); continue; }
-          if (state === 'upcoming') continue; // announced, not started: it is posted when it starts
+          if (state === 'live') { rememberLive(entry.videoId); stillLive.add(entry.videoId); items.push(youtube.toItem(entry, 'live', account)); continue; }
+          if (state === 'upcoming') { rememberLive(entry.videoId); continue; } // announced, not started: it is posted when it starts
+          if (state === 'none' && wasLive.has(entry.videoId)) continue; // a stream that already ended: its recording is not a new video
           if (state === 'none') rememberNotLive(entry.videoId);
           if (fresh({ publishedAt: entry.published }, now)) items.push(youtube.toItem(entry, entry.short ? 'short' : 'video', account));
         }
@@ -321,4 +333,4 @@ const PROVIDERS = {
 
 const isProvider = (platform) => Object.hasOwn(PROVIDERS, platform);
 
-module.exports = { PROVIDERS, isProvider, MAX_AGE_MS, fresh, notLive };
+module.exports = { PROVIDERS, isProvider, MAX_AGE_MS, fresh, notLive, wasLive };

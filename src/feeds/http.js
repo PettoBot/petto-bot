@@ -77,6 +77,8 @@ function getOnce(url) {
       res.on('error', () => reject(new IntegrationError('unavailable')));
     });
     req.on('timeout', () => req.destroy(new IntegrationError('unavailable', 'timeout'))); // i18n-ignore: internal detail of an error, never shown
+    const deadline = setTimeout(() => req.destroy(new IntegrationError('unavailable', 'too slow')), 3 * TIMEOUT_MS); // a site that answers a drop at a time // i18n-ignore: internal detail of an error, never shown
+    req.on('close', () => clearTimeout(deadline));
     req.on('error', (error) => reject(error instanceof IntegrationError ? error : new IntegrationError('unavailable')));
     req.end();
   });

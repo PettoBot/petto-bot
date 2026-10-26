@@ -71,6 +71,10 @@ module.exports = {
   // again, so only the owner, the developers and these testers can set them up.
   questsPublic: process.env.QUESTS_PUBLIC !== 'false',
   questTesterIds: envList('QUESTS_TESTER_IDS'),
+  // Feeds (follow accounts of other services) are being tested: only the owner, the developers and these testers can set them up until
+  // FEEDS_PUBLIC=true opens them to every server.
+  feedsPublic: process.env.FEEDS_PUBLIC === 'true',
+  feedTesterIds: envList('FEEDS_TESTER_IDS'),
   // Discord rollout alerts: open to everyone with Manage Server; ROLLOUTS_PUBLIC=false limits them to the owner, the developers and these testers.
   // The list is a community copy of Discord's experiments; ROLLOUTS_URL points to another file with the same shape.
   rolloutsPublic: process.env.ROLLOUTS_PUBLIC !== 'false',

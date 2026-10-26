@@ -150,9 +150,26 @@ const allText = (message) => JSON.stringify(json(message.components));
   config.youtubeApiKey = null;
   notLive.clear();
   results = await PROVIDERS.youtube.poll([account], new Map([['UCx', new Set(['liv1'])]]), { now });
-  assert.ok(results.get('UCx').items.every((item) => item.type !== 'live'));
+  assert.deepEqual(results.get('UCx').items, [], 'without the key nothing is posted: a stream must never go out as a video');
+  assert.equal(results.get('UCx').error, 'unavailable', 'and the feed is tried again later');
   assert.equal(results.get('UCx').stillLive, undefined, 'without the key nothing is closed by mistake');
+  await assert.rejects(PROVIDERS.youtube.resolve('UCaaaaaaaaaaaaaaaaaaaaaa'), (error) => error.kind === 'notConfigured', 'a YouTube feed is not made without the key');
   config.youtubeApiKey = 'key';
+  // The key is set but the call fails: nothing is posted either (a stream could be among the videos).
+  globalThis.fetch = async (url) => (String(url).includes('/feeds/videos.xml') ? new Response(rss(entries), { status: 200 }) : new Response('{}', { status: 500 }));
+  notLive.clear();
+  results = await PROVIDERS.youtube.poll([account], new Map(), { now });
+  assert.deepEqual([results.get('UCx').items.length, results.get('UCx').error], [0, 'unavailable']);
+  // A stream that was seen live and has ended since is not posted as a new video.
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('/feeds/videos.xml')) return new Response(rss(entries), { status: 200 });
+    const ids = new URL(url).searchParams.get('id').split(',');
+    return new Response(JSON.stringify({ items: ids.map((id) => ({ id, snippet: { liveBroadcastContent: 'none' } })) }), { status: 200 });
+  };
+  notLive.clear();
+  results = await PROVIDERS.youtube.poll([account], new Map(), { now });
+  assert.ok(!results.get('UCx').items.some((item) => item.id === 'liv1'), 'the recording of a stream that was live is not a new video');
+  assert.ok(results.get('UCx').items.some((item) => item.id === 'vid1'), 'a real video still is');
   // The feed fails for one channel and not for the others.
   globalThis.fetch = async (url) => (String(url).includes('channel_id=bad') ? new Response('', { status: 404 }) : new Response(rss(entries), { status: 200 }));
   results = await PROVIDERS.youtube.poll([{ ...account, id: 'bad' }, account], new Map(), { now, withLive: false });
@@ -488,6 +505,7 @@ const allText = (message) => JSON.stringify(json(message.components));
 
   // The routes of the dashboard.
   const { registerFeedRoutes } = require('../src/web/feedRoutes');
+  config.feedsPublic = true;
   const handlers = {};
   registerFeedRoutes({ post: (route, ...fns) => { handlers[route.split('/').pop()] = fns.at(-1); } }, { authorize: async () => ({ guild, userId: 'u', member: null }) });
   const call = async (name, body) => {
@@ -525,6 +543,20 @@ const allText = (message) => JSON.stringify(json(message.components));
   assert.equal((await call('delete', { id: routeFeed.id })).status, 404);
 
   await clean();
+  // While the feeds are being tested only the team and the testers can use them (FEEDS_PUBLIC=true opens them to everybody).
+  const { canUseFeeds } = require('../src/feeds/access');
+  config.feedsPublic = false;
+  assert.equal(canUseFeeds('u'), false, 'a member is not in the team');
+  assert.equal(canUseFeeds(config.ownerId), true, 'the owner is');
+  config.feedTesterIds.push('tester1');
+  assert.equal(canUseFeeds('tester1'), true, 'a tester is');
+  answer = await call('create', { platform: 'youtube', account: 'x', channel_id: '1' });
+  assert.equal(answer.status, 403, 'the dashboard refuses a member while the feeds are in test');
+  assert.equal(answer.body.error, 'no_access');
+  config.feedsPublic = true;
+  assert.equal(canUseFeeds('u'), true, 'public: everybody');
+  config.feedsPublic = false;
+  config.feedTesterIds.pop();
   await closePools();
   console.log('check-feeds: ok');
   process.exit(0);

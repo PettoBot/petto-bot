@@ -56,6 +56,9 @@ async function api(path, params) {
 async function resolveChannel(input) {
   const target = parseChannel(input);
   if (!target) throw new IntegrationError('badInput');
+  // Without the key a live stream cannot be told from a video (the feed of the channel lists both the same way), so a YouTube feed is not made
+  // at all rather than posting a stream as a video.
+  if (!config.youtubeApiKey) throw new IntegrationError('notConfigured');
   if (config.youtubeApiKey) {
     const body = await api('/channels', { part: 'snippet', ...(target.id ? { id: target.id } : { forHandle: `@${target.handle}` }) });
     const found = body?.items?.[0];

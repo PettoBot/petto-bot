@@ -21,6 +21,7 @@ module.exports = {
   'feeds.button.daily': 'Ver más',
   'feeds.button.channel': 'Abrir el canal',
   'feeds.button.replay': 'Ver la repetición',
+  'feeds.testing': '{emoji}  Los feeds se están probando con el equipo de Petto y se abrirán pronto para todos los servidores.',
   'feeds.test.badge': 'Aviso de prueba: así se verá',
   'feeds.list.empty': 'Este servidor aún no tiene feeds. Sigue una cuenta con `{prefix}feed add youtube @nombre #canal` (hasta {max} por servidor).',
   'feeds.list.title': '**Feeds de este servidor ({count}/{max}):**',

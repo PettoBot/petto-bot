@@ -9,14 +9,14 @@ const PLATFORM = {
   modrinth: '<:pe_f_modrinth:1564404650755751997>',
   pokemon: '<:pe_f_pokemon:1564406028442017973>',
   rss: '<:pe_f_rss:1564405447048298647>',
-  reddit: '🟠',
-  github: '🐙',
-  npm: '📦',
-  pypi: '🐍',
-  steam: '🎮',
-  anilist: '🍥',
-  wikipedia: '📖',
-  chess: '♟️',
+  reddit: '<:pe_f_Reddit:1564413384114446366>',
+  github: '<:pe_f_GitHub:1564413388048826583>',
+  npm: '<:pe_f_npm:1564413631020531722>',
+  pypi: '<:pe_f_pypi:1564415143578964088>',
+  steam: '<:pe_f_steam:1564413385687175280>',
+  anilist: '<:pe_f_anilist:1564413683747262475>',
+  wikipedia: '<:pe_f_wikipedia:1564415088608288889>',
+  chess: '<:pe_f_chess:1564413774314602626>',
 };
 
 const TYPE = {
@@ -27,7 +27,7 @@ const TYPE = {
   post: '<:pe_f_post:1564405577092964444>',
   pin: '<:pe_f_pin:1564404654643879966>',
   update: '<:pe_f_update:1564405656780275852>',
-  episode: '📺',
+  episode: '<:pe_f_episode:1564413566851743924>',
   daily: '🎲',
   ended: '⚫',
 };

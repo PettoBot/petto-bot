@@ -4,6 +4,7 @@ const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, ChannelType } = 
 const feedsDb = require('../../db/feeds');
 const { guildLimit } = require('../../db/premium');
 const service = require('../../feeds/service');
+const { canUseFeeds } = require('../../feeds/access');
 const { PLATFORMS } = require('../../feeds/platforms');
 const emojis = require('../../feeds/emojis');
 const { textCard } = require('../../utils/caseCard');
@@ -48,6 +49,7 @@ module.exports = {
     const reply = (text, color = null) => interaction.reply({ components: [textCard(text, color)], flags: V2 });
     const ok = (key, values = {}) => reply(t(lang, key, { emoji: EMOJI.APPROVE, ...values }), 0xa5ea7a);
     const fail = (key, values = {}) => reply(t(lang, key, { emoji: EMOJI.DENY, ...values }), 0xfe6465);
+    if (!canUseFeeds(interaction.user.id)) return fail('feeds.testing'); // being tested with the team
     const channelOf = (feed) => `<#${feed.channel_id}>`;
 
     if (sub === 'list') {
