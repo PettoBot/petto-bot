@@ -15,6 +15,8 @@ const RPC_SIGNATURES = {
   increment_activity_member: { args: ['p_guild_id', 'p_day', 'p_user_id', 'p_messages', 'p_voice_seconds'], returnsVoid: true },
   increment_member_flow: { args: ['p_guild_id', 'p_day', 'p_joins', 'p_leaves', 'p_invited'], returnsVoid: true },
   increment_activity_stat: { args: ['p_guild_id', 'p_channel_id', 'p_day', 'p_messages_inc', 'p_reactions_inc', 'p_voice_seconds_inc'], returnsVoid: true },
+  increment_activity_content: { args: ['p_guild_id', 'p_day', 'p_links', 'p_attachments', 'p_replies', 'p_mentions'], returnsVoid: true },
+  increment_member_lifespan: { args: ['p_guild_id', 'p_day', 'p_bucket', 'p_members'], returnsVoid: true },
   increment_honeypot_trigger: { args: ['p_guild_id', 'p_channel_id'] },
   increment_invite_stat: { args: ['p_guild_id', 'p_inviter_id', 'p_joins_delta', 'p_leaves_delta', 'p_fake_delta', 'p_bonus_delta'], returnsVoid: true },
   record_roleplay_response: { args: ['p_request_id', 'p_guild_id', 'p_message_id', 'p_channel_id', 'p_actor_id', 'p_target_id', 'p_action', 'p_response'] },
