@@ -10,8 +10,11 @@ async function listForGuild(guildId) {
   return data ?? [];
 }
 
-async function countForGuild(guildId) {
-  const { count, error } = await database.from('feeds').select('id', { count: 'exact', head: true }).eq('guild_id', guildId);
+/** How many feeds a server has: all of them, or those of one platform (the limits are for each platform). */
+async function countForGuild(guildId, platform = null) {
+  let query = database.from('feeds').select('id', { count: 'exact', head: true }).eq('guild_id', guildId);
+  if (platform) query = query.eq('platform', platform);
+  const { count, error } = await query;
   if (error) throw error;
   return count ?? 0;
 }
