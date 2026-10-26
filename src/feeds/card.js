@@ -96,7 +96,7 @@ function buildFeedMessage(feed, item, { lang, test = false } = {}) {
     // A stream that is over keeps two ways out: the channel, and the replay when the platform has one.
     const buttons = [];
     if (safeUrl(item.authorUrl)) buttons.push(new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(safeUrl(item.authorUrl)).setLabel(clip(t(lang, 'feeds.button.channel'), 80)));
-    if (safeUrl(item.vodUrl)) buttons.push(new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(safeUrl(item.vodUrl)).setLabel(clip(t(lang, 'feeds.button.replay'), 80)));
+    if (safeUrl(item.vodUrl)) buttons.push(new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(safeUrl(item.vodUrl)).setEmoji(emojis.forButton(emojis.VOD)).setLabel(clip(t(lang, 'feeds.button.replay'), 80)));
     if (buttons.length) card.addActionRowComponents(new ActionRowBuilder().addComponents(buttons));
   } else if (options.button && url) {
     card.addActionRowComponents(new ActionRowBuilder().addComponents(

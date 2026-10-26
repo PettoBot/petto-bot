@@ -51,7 +51,7 @@ const allText = (message) => JSON.stringify(json(message.components));
   assert.match(container.components[0].components[0].content, /\*\*\[A \\\[new\\\] video\]\(https:\/\/youtu\.be\/x\)\*\*\n-# What it is about$/);
   assert.equal(container.components[1].type, 14, 'a separator, then the cover');
   assert.equal(container.components[2].items[0].media.url, 'https://i.ytimg.com/vi/x/hq.jpg');
-  assert.match(container.components.at(-1).content, /^-# 🎬 New video · Channel · <t:\d+:R>$/);
+  assert.match(container.components.at(-1).content, /^-# <:pe_f_video_short:\d+> New video · Channel · <t:\d+:R>$/);
   assert.ok(message.flags);
 
   message = card.buildFeedMessage({ message: '', ping_roles: [], options: {} }, { ...base, avatar: null }, { lang: 'es' });
