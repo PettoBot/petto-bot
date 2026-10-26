@@ -33,7 +33,7 @@ function repositoryLink(repository) {
 async function findNpm(name) {
   return cached(`npm:${name.toLowerCase()}`, CACHE_MS, async () => {
     const [latest, downloads] = await Promise.all([
-      fetchJson(`https://registry.npmjs.org/${name.replace('/', '%2f')}/latest`),
+      fetchJson(`https://registry.npmjs.org/${name.replace(/\//g, '%2f')}/latest`),
       fetchJson(`https://api.npmjs.org/downloads/point/last-week/${name}`).catch(() => null),
     ]);
     if (!latest?.name) throw new IntegrationError('notFound');

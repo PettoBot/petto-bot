@@ -4,7 +4,7 @@ const lastfmLinks = require('../../db/lastfmLinks');
 const { infoPayload, noticePayload } = require('../../utils/infoCard');
 const { songPayload } = require('../../utils/songPayload');
 const { COLORS } = require('../../utils/colors');
-const { IntegrationError, fetchJson, cached, lookup, row, plain, dateTag } = require('../../utils/integrations');
+const { IntegrationError, fetchJson, cached, lookup, row, plain, stripHtml, dateTag } = require('../../utils/integrations');
 const { t, tn, formatNumber, languageOf } = require('../../i18n');
 
 const API = 'https://ws.audioscrobbler.com/2.0/';
@@ -166,7 +166,7 @@ module.exports = {
         const info = await artistInfo(asked, mine);
         const tags = asList(info.tags?.tag).slice(0, 5).map((tag) => `\`${plain(tag.name, 30)}\``).join(' ');
         const similar = asList(info.similar?.artist).slice(0, 5).map((artist) => plain(artist.name, 40)).join(', ');
-        const bio = String(info.bio?.summary ?? '').replace(/<a [^>]*>.*?<\/a>/gis, '').replace(/<[^>]+>/g, '').trim();
+        const bio = stripHtml(String(info.bio?.summary ?? '').replace(/<a [^>]*>.*?<\/a>/gis, '')).trim();
         return infoPayload({
           accent: null,
           title: plain(info.name, 100),

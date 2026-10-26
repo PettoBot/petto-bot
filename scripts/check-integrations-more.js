@@ -334,14 +334,14 @@ const typed = async (command, text) => {
   out = await ask(wikipedia, { strings: { query: 'Minecraft' } });
   assert.match(out.text, /Sandbox video game/); assert.match(out.text, /developed by Mojang Studios/); assert.match(out.text, /mc\.png/); assert.match(out.text, /Wikipedia · updated <t:/); assert.match(out.text, /Read the article/);
   out = await ask(wikipedia, { strings: { query: 'mercurio' }, lang: 'es' });
-  assert.match(out.text, /Mercurio puede referirse a/); assert.match(out.text, /Hay varios artículos/); assert.match(out.text, /Leer el artículo/); assert.ok(calls.some((call) => call.url.startsWith('https://es.wikipedia.org')), 'the encyclopedia of the language of the server');
+  assert.match(out.text, /Mercurio puede referirse a/); assert.match(out.text, /Hay varios artículos/); assert.match(out.text, /Leer el artículo/); assert.ok(calls.some((call) => new URL(call.url).hostname === 'es.wikipedia.org'), 'the encyclopedia of the language of the server');
   out = await ask(wikipedia, { strings: { query: 'zzzz' } });
   assert.match(out.text, /Nothing found on Wikipedia/);
   out = await ask(wikipedia, { strings: { query: 'empty' } });
   assert.match(out.text, /has no summary to show/);
 
   // --- AniList -------------------------------------------------------------------------------------------------------------------------------
-  assert.equal(anilist.cleanDescription('Hello<br>world ~!a secret!~ <i>end</i>'), 'Hello world end'); assert.ok(anilist.cleanDescription('x'.repeat(900)).length <= 450);
+  assert.equal(anilist.cleanDescription('Hello<br>world ~!a secret!~ <i>end</i>'), 'Hello world end'); assert.equal(anilist.cleanDescription('a <scr<b>ipt>x</scr</b>ipt> b'), 'a x b'); assert.doesNotMatch(anilist.cleanDescription('1 < 2 > 0 <script'), /[<>]/); assert.ok(anilist.cleanDescription('x'.repeat(900)).length <= 450);
   assert.equal(await typed(anilist, 'frieren'), 'anime'); assert.equal(await typed(anilist, 'char Frieren'), 'character');
   const media = (extra = {}) => ({ id: 1, title: { romaji: 'Sousou no Frieren', english: 'Frieren: Beyond Journey\'s End' }, format: 'TV', status: 'FINISHED', episodes: 28, chapters: 140, volumes: 14, averageScore: 91, genres: ['Adventure', 'Fantasy'], startDate: { year: 2023, month: 9, day: 29 }, description: 'An elf <br>goes on a journey. ~!She dies!~', coverImage: { extraLarge: 'https://s4/cover.png' }, bannerImage: 'https://s4/banner.png', siteUrl: 'https://anilist.co/anime/1', isAdult: false, studios: { nodes: [{ name: 'Madhouse' }] }, ...extra });
   let mediaAnswer = media();

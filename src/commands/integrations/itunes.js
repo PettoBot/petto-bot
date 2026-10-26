@@ -1,7 +1,7 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { infoPayload } = require('../../utils/infoCard');
 const { songPayload } = require('../../utils/songPayload');
-const { IntegrationError, fetchJson, cached, lookup, row, plain, clock, dateTag } = require('../../utils/integrations');
+const { IntegrationError, fetchJson, cached, lookup, row, plain, stripHtml, clock, dateTag } = require('../../utils/integrations');
 const { t, formatNumber, formatDecimal, languageOf } = require('../../i18n');
 
 const API = 'https://itunes.apple.com/search';
@@ -28,7 +28,6 @@ const search = (kind, query) => cached(`it:${kind}:${query.toLowerCase()}`, CACH
 
 /** Apple gives a 100 pixel picture; the same file exists bigger when the size in its name is changed. */
 const bigger = (url, size = 600) => (url ? String(url).replace(/\/\d+x\d+(bb|-\d+)?\.(jpg|png)$/i, `/${size}x${size}bb.$2`) : null);
-const stripHtml = (text) => String(text ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 
 module.exports = {
   aliases: ['apple'],
@@ -130,7 +129,7 @@ module.exports = {
         return infoPayload({
           accent: null,
           title: plain(top.trackName, 100),
-          subtitle: [plain(top.sellerName ?? top.artistName, 80), plain(stripHtml(top.description), 350)].filter(Boolean),
+          subtitle: [plain(top.sellerName ?? top.artistName, 80), plain(stripHtml(top.description).replace(/\s+/g, ' ').trim(), 350)].filter(Boolean),
           thumbnail: top.artworkUrl512 ?? top.artworkUrl100,
           sections: [{
             lines: [

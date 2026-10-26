@@ -1,7 +1,7 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { infoPayload, noticePayload } = require('../../utils/infoCard');
 const { COLORS } = require('../../utils/colors');
-const { IntegrationError, fetchJson, cached, lookup, row, plain, short } = require('../../utils/integrations');
+const { IntegrationError, fetchJson, cached, lookup, row, plain, short, stripHtml } = require('../../utils/integrations');
 const { t, formatNumber, languageOf } = require('../../i18n');
 
 const API = 'https://graphql.anilist.co';
@@ -33,12 +33,7 @@ const ask = (key, query, variables) => cached(`ani:${key}`, CACHE_MS, async () =
 
 /** The description of AniList as plain text: no HTML, no spoilers (they are written between `~!` and `!~`), no extra blank lines. */
 function cleanDescription(text, max = 450) {
-  const clean = String(text ?? '')
-    .replace(/~!.*?!~/gs, '')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/\n{2,}/g, '\n')
-    .trim();
+  const clean = stripHtml(String(text ?? '').replace(/~!.*?!~/gs, '')).replace(/\n{2,}/g, '\n').trim();
   return short(clean, max);
 }
 

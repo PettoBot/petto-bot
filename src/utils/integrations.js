@@ -110,6 +110,19 @@ async function lookup(interaction, lang, service, build, cooldown = null) {
 /** One line of a card: the dot, the label in bold and the value. */
 const row = (label, value) => `${EMOJI.FIELD_DOT} **${label}** ${value}`;
 
+/**
+ * A text from a service with its HTML tags taken out (`<br>` is a line break first). The tags are taken out until none is left, so text
+ * like `<scr<b>ipt>` does not turn into a tag, and a `<` or `>` that stays is removed too.
+ */
+function stripHtml(text) {
+  let value = String(text ?? '').replace(/<br\s*\/?>/gi, '\n');
+  for (let previous = null; previous !== value;) {
+    previous = value;
+    value = value.replace(/<[^<>]*>/g, '');
+  }
+  return value.replace(/[<>]/g, '');
+}
+
 /** Cuts a text to `max` characters, one line. */
 function short(text, max = 200) {
   const value = String(text ?? '').replace(/\s+/g, ' ').trim();
@@ -146,4 +159,4 @@ function dateTag(value, style = 'D') {
 /** Forgets everything cached and every cooldown (the checks start each case clean). */
 const clearCache = () => { cache.clear(); lastUse.clear(); };
 
-module.exports = { USER_AGENT, IntegrationError, fetchJson, cached, clearCache, cooldownLeft, failurePayload, lookup, row, short, plain, clock, formatMoney, dateTag };
+module.exports = { USER_AGENT, IntegrationError, fetchJson, cached, clearCache, cooldownLeft, failurePayload, lookup, row, short, plain, stripHtml, clock, formatMoney, dateTag };
