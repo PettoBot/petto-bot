@@ -56,7 +56,8 @@ async function createFeed(guild, input) {
   if (problem) return { ok: false, error: problem };
 
   const { limit, premium, premiumLimit } = await guildLimit(guild.id, 'feeds');
-  if ((await feedsDb.countForGuild(guild.id)) >= limit) return { ok: false, error: premium ? 'limit' : 'limitFree', count: limit, premium: premiumLimit };
+  // The limit is for each platform: 3 accounts of YouTube, 3 of Twitch... (Premium: 10 of each).
+  if ((await feedsDb.countForGuild(guild.id, platform)) >= limit) return { ok: false, error: premium ? 'limit' : 'limitFree', count: limit, premium: premiumLimit, platform: PLATFORMS[platform].name };
 
   let account;
   try {
