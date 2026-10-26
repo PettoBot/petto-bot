@@ -1578,8 +1578,8 @@ create table if not exists afk_status (
 
 alter table afk_status enable row level security;
 
--- No TTL/cleanup job — read queries filter to the last 3 days themselves,
--- same "don't bother expiring old rows" precedent as verification_redemptions.
+-- Read queries only look at the last 3 days, and jobs/afkMentionsJob.js deletes
+-- what is older once an hour (idx_afk_mentions_created makes that cheap).
 create table if not exists afk_mentions (
   id           bigserial primary key,
   guild_id     text not null references guilds(guild_id) on delete cascade,
@@ -1592,6 +1592,7 @@ create table if not exists afk_mentions (
 );
 
 create index if not exists idx_afk_mentions_lookup on afk_mentions(guild_id, afk_user_id, created_at desc);
+create index if not exists idx_afk_mentions_created on afk_mentions(created_at);
 
 alter table afk_mentions enable row level security;
 
