@@ -35,6 +35,7 @@ const { registerHistoryImageRoutes } = require('./historyImageRoutes');
 const { registerMemberRoutes } = require('./memberRoutes');
 const { registerFormRoutes } = require('./formRoutes');
 const { registerCounterRoutes } = require('./counterRoutes');
+const { registerFeedRoutes } = require('./feedRoutes');
 const { registerHoneypotRoutes } = require('./honeypotRoutes');
 const { registerPaginationRoutes } = require('./paginationRoutes');
 const { registerInviteRoutes } = require('./inviteRoutes');
@@ -789,6 +790,8 @@ function startServer(client) {
     registerFormRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter, isAuthorized: dashboardAuthorized, client });
     // Live counters: values for the previews, create, quick setup, refresh now and delete.
     registerCounterRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
+    // Feeds: look up an account, follow it, change a feed, delete it, post a test notice and preview the card.
+    registerFeedRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
     // Honeypot: add, remove, choose the message of the bait channel and post it again, from the dashboard (administrators, like the command).
     registerHoneypotRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
     // Paginated messages (Embeds page): post one from saved embeds, take its buttons off or delete it, put the buttons back (Manage Messages, like the command).

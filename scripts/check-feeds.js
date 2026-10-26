@@ -312,6 +312,44 @@ const allText = (message) => JSON.stringify(json(message.components));
   assert.equal(await feedsDb.remove(G, a.id), true);
   assert.equal((await pool.query('select count(*)::int as n from feed_seen where feed_id = $1', [a.id])).rows[0].n, 0, 'removing a feed removes what it remembered');
 
+  // The routes of the dashboard.
+  const { registerFeedRoutes } = require('../src/web/feedRoutes');
+  const handlers = {};
+  registerFeedRoutes({ post: (route, ...fns) => { handlers[route.split('/').pop()] = fns.at(-1); } }, { authorize: async () => ({ guild, userId: 'u', member: null }) });
+  const call = async (name, body) => {
+    const out = { status: 200, body: null };
+    const res = { status(code) { out.status = code; return this; }, json(value) { out.body = value; return this; }, set() { return this; } };
+    await handlers[name]({ body, params: { guildId: G }, headers: {}, query: {} }, res);
+    return out;
+  };
+  let answer = await call('resolve', { platform: 'youtube', account: 'route-one' });
+  assert.equal(answer.body.account.name, 'Account route-one');
+  const asks = [];
+  PROVIDERS.youtube.resolve = async (input) => { asks.push(input); return { id: `acc-${input}`, name: input, avatar: null, url: null }; };
+  await call('resolve', { platform: 'youtube', account: 'cached' });
+  await call('resolve', { platform: 'youtube', account: 'cached' });
+  assert.equal(asks.length, 1, 'an account looked up twice is asked about once');
+  let blocked = 0;
+  for (let i = 0; i < 20; i += 1) if ((await call('resolve', { platform: 'youtube', account: `many-${i}` })).status === 429) blocked += 1;
+  assert.ok(blocked > 0, 'a server cannot spend all the quota of a platform');
+  assert.equal((await call('resolve', { platform: 'nope', account: 'x' })).status, 400);
+  answer = await call('create', { platform: 'youtube', account: 'by-route', channel_id: CH2, types: ['video'], message: 'Hello', ping_roles: [], options: { image: false } });
+  assert.equal(answer.body.ok, true);
+  const routeFeed = answer.body.feed;
+  assert.deepEqual(routeFeed.options, { image: false });
+  answer = await call('update', { id: routeFeed.id, message: 'Changed', types: ['video', 'short'], enabled: false });
+  assert.equal(answer.body.feed.message, 'Changed');
+  assert.equal(answer.body.feed.enabled, false);
+  assert.equal((await call('update', { id: 99999999, message: 'x' })).status, 404);
+  assert.equal((await call('test', { id: routeFeed.id })).body.ok, true);
+  answer = await call('preview', { platform: 'twitch', type: 'live', message: 'Live: {feed.title}', ping_roles: ['223456789012345678'], options: {}, account: { name: 'Somebody', avatar: null, url: 'https://www.twitch.tv/somebody' } });
+  assert.equal(answer.body.ok, true);
+  assert.ok(JSON.stringify(answer.body.messages).includes('Somebody'), 'the preview has the name of the account chosen');
+  assert.ok(JSON.stringify(answer.body.messages[0][0]).startsWith('{"type":10,"content":"<@&223456789012345678> Live: '), 'with the ping and the words');
+  assert.equal((await call('preview', { platform: 'nope' })).status, 400);
+  assert.equal((await call('delete', { id: routeFeed.id })).body.ok, true);
+  assert.equal((await call('delete', { id: routeFeed.id })).status, 404);
+
   await clean();
   await closePools();
   console.log('check-feeds: ok');
