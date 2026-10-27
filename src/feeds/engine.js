@@ -67,6 +67,7 @@ async function processFeed(client, feed, result, liveRows, seen, now) {
   }
 
   const wanted = new Set(feed.types ?? []);
+  if (feed.platform === 'modrinth' && String(feed.account_id).startsWith('new:')) wanted.add('project'); // a list of the newest projects (made before that kind of notice existed) posts them
   const unseen = result.items.filter((item) => !seen.has(`${feed.id}:${item.id}`));
   const toPost = unseen.filter((item) => wanted.has(item.type) && passes(feed, item)).sort((a, b) => (a.publishedAt ?? 0) - (b.publishedAt ?? 0)).slice(-MAX_PER_PASS);
 

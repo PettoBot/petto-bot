@@ -32,6 +32,7 @@ const PLATFORM = {
   capybara: '🦫', // until `pe_f_capybara` is uploaded
   bunny: '🐰', // until `pe_f_bunny` is uploaded
   animals: '🐾', // until `pe_f_animals` is uploaded
+  pictures: '🖼️', // until `pe_f_pictures` is uploaded
   randommusic: '🎲', // until `pe_f_randommusic` is uploaded
 };
 
@@ -43,6 +44,7 @@ const TYPE = {
   post: '<:pe_f_post:1564405577092964444>',
   pin: '<:pe_f_pin:1564404654643879966>',
   update: '<:pe_f_update:1564405656780275852>',
+  project: '📦', // until `pe_f_project` is uploaded
   episode: '<:pe_f_episode:1564413566851743924>',
   release: '<:pe_f_release:1564471999835668572>',
   game: '<:pe_f_game:1564469175487959050>',

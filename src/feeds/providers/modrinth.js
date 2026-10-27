@@ -55,24 +55,41 @@ function toItem(project, version) {
   };
 }
 
-// --- The newest projects of a kind (not the versions of one project): `new:mod`, `new:modpack`, `new:resourcepack`, `new:shader`, `new:plugin`, `new:datapack`.
+// --- The newest projects of one kind or of several in one feed: `new:mod`, `new:mod+shader`, `new:all` (mods, modpacks, resource packs, shaders, plugins and data packs).
 const NEW_KINDS = { mod: 1, modpack: 1, resourcepack: 1, shader: 1, plugin: 1, datapack: 1 };
+const ALL_KINDS = Object.keys(NEW_KINDS);
 
-/** `new:mod` and the like (what the search gives), or null. */
-const parseNew = (input) => { const kind = /^new:([a-z]+)$/.exec(String(input ?? '').trim().toLowerCase())?.[1]; return kind in NEW_KINDS ? kind : null; };
+/** The kinds of an account that is a list (`new:mod+shader`, `new:all`), in order, or null when it is not one. */
+function parseNew(input) {
+  const match = /^new:([a-z+]+)$/.exec(String(input ?? '').trim().toLowerCase());
+  if (!match) return null;
+  const words = match[1].split('+').filter(Boolean);
+  if (words.includes('all')) return ALL_KINDS;
+  const kinds = ALL_KINDS.filter((kind) => words.includes(kind));
+  return kinds.length && kinds.length === new Set(words).size ? kinds : null;
+}
 
-/** The account of the new projects of a kind. */
-const newAccount = (kind, lang) => ({ id: `new:${kind}`, name: t(lang, `feeds.list.modrinth.${kind}`), avatar: null, url: `https://modrinth.com/discover/${kind}s` });
+/** The account of a list of the newest projects of those kinds: one feed can follow several kinds, so a server does not use up its places on one kind each. */
+function newAccount(kinds, lang) {
+  const list = Array.isArray(kinds) ? kinds : [kinds];
+  const all = list.length === ALL_KINDS.length;
+  return {
+    id: `new:${all ? 'all' : list.join('+')}`,
+    name: all ? t(lang, 'feeds.list.modrinth.all') : list.map((kind) => t(lang, `feeds.list.modrinth.${kind}`)).join(' + '),
+    avatar: null, url: list.length === 1 ? `https://modrinth.com/discover/${list[0]}s` : 'https://modrinth.com/discover/mods',
+  };
+}
 
-/** The 10 newest projects of a kind, newest first. */
-async function fetchNewProjects(kind) {
-  const facets = encodeURIComponent(JSON.stringify([[`project_type:${kind}`]]));
-  const body = await fetchJsonBody(`${API}/search?limit=10&index=newest&facets=${facets}`);
+/** The newest projects of those kinds, newest first (`kinds` can be one or several). */
+async function fetchNewProjects(kinds) {
+  const list = Array.isArray(kinds) ? kinds : [kinds];
+  const facets = encodeURIComponent(JSON.stringify([list.map((kind) => `project_type:${kind}`)]));
+  const body = await fetchJsonBody(`${API}/search?limit=${Math.min(20, 8 + list.length * 2)}&index=newest&facets=${facets}`);
   return (body?.hits ?? []).map((hit) => ({
-    platform: 'modrinth', type: 'post', id: hit.project_id, title: String(hit.title ?? hit.slug).slice(0, 200), url: `https://modrinth.com/${hit.project_type}/${hit.slug}`, description: String(hit.description ?? '').slice(0, 300),
+    platform: 'modrinth', type: 'project', id: hit.project_id, title: String(hit.title ?? hit.slug).slice(0, 200), url: `https://modrinth.com/${hit.project_type}/${hit.slug}`, description: String(hit.description ?? '').slice(0, 300),
     image: /^https:\/\//.test(hit.featured_gallery ?? '') ? hit.featured_gallery : (hit.gallery ?? []).find((url) => /^https:\/\//.test(url)) ?? null, avatar: hit.icon_url ?? null, author: hit.author ?? '', authorUrl: hit.author ? `https://modrinth.com/user/${hit.author}` : null,
-    publishedAt: Date.parse(hit.date_created) || null, extra: (hit.versions ?? []).at(-1) ?? '',
+    publishedAt: Date.parse(hit.date_created) || null, extra: [String(hit.project_type ?? '').toUpperCase(), (hit.versions ?? []).at(-1)].filter(Boolean).join(' · '),
   }));
 }
 
-module.exports = { parseProject, resolveProject, fetchVersions, toItem, NEW_KINDS, parseNew, newAccount, fetchNewProjects };
+module.exports = { parseProject, resolveProject, fetchVersions, toItem, NEW_KINDS, ALL_KINDS, parseNew, newAccount, fetchNewProjects };

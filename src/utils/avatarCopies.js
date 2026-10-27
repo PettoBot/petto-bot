@@ -11,8 +11,10 @@ const { createCanvas } = require('@napi-rs/canvas');
 const logger = require('./logger');
 
 const SIZE = 256;
+const WEBP_QUALITY = 72; // 90 made copies twice as heavy for a difference nobody sees in an avatar
 const DOWNLOAD_LIMIT = 2 * 1024 * 1024;
-const TOTAL_LIMIT = 1024 * 1024 * 1024; // 1 GiB of copies in all: past it no new copy is made (a sanity limit, not a quota)
+// Past this no new copy is made (AVATAR_COPIES_MAX_MB). It is read from the environment when needed, so this file (and its checks) does not need the bot's settings.
+const defaultTotalLimit = () => Math.max(20, Number(process.env.AVATAR_COPIES_MAX_MB) || 300) * 1024 * 1024;
 const TOTAL_CHECK_MS = 10 * 60_000;
 
 const sourceUrl = (userId, hash) => `https://cdn.discordapp.com/avatars/${userId}/${hash}.png?size=${SIZE}`;
@@ -25,14 +27,14 @@ function toWebp(image) {
   const width = image.width * scale;
   const height = image.height * scale;
   ctx.drawImage(image, (SIZE - width) / 2, (SIZE - height) / 2, width, height);
-  return canvas.toBuffer('image/webp', 90);
+  return canvas.toBuffer('image/webp', WEBP_QUALITY);
 }
 
 /**
  * `db` is src/db/profileHistoryImages.js (or a stand-in), `fetchBuffer(link, request, { maxBytes })` and `decode(bytes)` those of
  * src/utils/safeImage.js. Returns the queue: `enqueue(userId, hash)`, `forgetUser(userId)`, `idle()`, `stats()`.
  */
-function createAvatarCopies({ db, fetchBuffer, decode, concurrency = 2, maxQueue = 300, retryDelayMs = 20_000, gapMs = 500, totalLimit = TOTAL_LIMIT } = {}) {
+function createAvatarCopies({ db, fetchBuffer, decode, concurrency = 2, maxQueue = 300, retryDelayMs = 20_000, gapMs = 500, totalLimit = null } = {}) {
   const queue = [];
   const keys = new Set(); // queued, running or waiting for their retry
   const forgotten = new Set(); // people whose history was turned off or cleared while a download of theirs was running
@@ -45,7 +47,7 @@ function createAvatarCopies({ db, fetchBuffer, decode, concurrency = 2, maxQueue
 
   async function overLimit() {
     if (Date.now() - total.at > TOTAL_CHECK_MS) total = { bytes: await db.totalSize(), at: Date.now() };
-    return total.bytes >= totalLimit;
+    return total.bytes >= (totalLimit ?? defaultTotalLimit());
   }
 
   function settle() {
@@ -162,4 +164,4 @@ function avatarCopies() {
   return shared;
 }
 
-module.exports = { createAvatarCopies, avatarCopies, sourceUrl, toWebp, SIZE, TOTAL_LIMIT };
+module.exports = { createAvatarCopies, avatarCopies, sourceUrl, toWebp, SIZE, WEBP_QUALITY };

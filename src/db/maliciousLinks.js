@@ -1,4 +1,7 @@
-const database = require('./database');
+// The public threat lists live in the second database when there is one (db/secondary.js), else in the main one.
+const secondary = require('./secondary');
+
+const database = secondary.database;
 
 const POSITIVE_TTL_MS = 5 * 60_000;
 const NEGATIVE_TTL_MS = 30_000;
@@ -181,7 +184,19 @@ async function markDeveloperAlerted(url) {
   return data;
 }
 
-module.exports = {
+/**
+ * Forgets the entries of a public feed that the feed has not listed for `days` days (it lists what is still live: the rest was taken down), after a
+ * refresh that worked. What a person reported is never deleted. Returns how many.
+ */
+async function pruneStaleFeedLinks(source, days = 14) {
+  const { rowCount } = await secondary.pool.query(
+    `delete from malicious_links where source = $1 and reported_by is null and dev_alerted_at is null and last_checked_at < now() - make_interval(days => $2)`,
+    [String(source), days]);
+  if (rowCount) cache.clear();
+  return rowCount;
+}
+
+module.exports = { pruneStaleFeedLinks,
   getKnownMalicious,
   findKnownMalicious,
   recordMaliciousLink,

@@ -76,7 +76,7 @@ function registerFeedRoutes(app, { authorize, limiter }) {
       res.json({ ok: true, account: value });
     } catch (error) {
       if (!(error instanceof IntegrationError)) throw error;
-      const kind = ['notFound', 'badInput', 'notConfigured', 'unsupported'].includes(error.kind) ? error.kind : 'unavailable';
+      const kind = ['notFound', 'badInput', 'notConfigured', 'unsupported', 'badTags'].includes(error.kind) ? error.kind : 'unavailable';
       res.status(kind === 'unavailable' ? 502 : 404).json({ ok: false, error: kind, message: t(lang, `feeds.add.error.${kind}`, { emoji: '', platform: PLATFORMS[platform].name }).trim() });
     }
   });
@@ -87,7 +87,7 @@ function registerFeedRoutes(app, { authorize, limiter }) {
     if (!isProvider(platform)) { res.status(400).json({ ok: false, message: t(lang, 'feeds.add.error.unknownPlatform', { emoji: '', platform: platform.slice(0, 30) }).trim() }); return; }
     if (!takeSearchTurn(guild.id)) { res.status(429).json({ ok: false, error: 'rateLimited', message: t(lang, 'feeds.add.error.unavailable', { emoji: '', platform: PLATFORMS[platform].name }).trim() }); return; }
     try {
-      res.json({ ok: true, results: await searchAccounts(platform, query, lang) });
+      res.json({ ok: true, results: await searchAccounts(platform, query, lang, guild.id) });
     } catch (error) {
       if (!(error instanceof IntegrationError)) throw error;
       const kind = ['notConfigured', 'badInput', 'unsupported'].includes(error.kind) ? error.kind : 'unavailable';
@@ -149,7 +149,10 @@ function registerFeedRoutes(app, { authorize, limiter }) {
       if (saved) item = await service.sampleItem({ ...saved, types: body.type ? [String(body.type)] : saved.types }, lang);
     }
     item ??= sampleNotice(platform, String(body.type ?? PLATFORMS[platform].defaultTypes[0]), lang, body.account);
-    res.json({ ok: true, lang, messages: [buildFeedMessage(feed, item, { lang }).components.map((component) => component.toJSON())] });
+    const message = buildFeedMessage(feed, item, { lang });
+    // The player of a video is a plain message (its link), shown here as the text it sends.
+    const parts = message.components ? message.components.map((component) => component.toJSON()) : [{ type: 10, content: message.content }];
+    res.json({ ok: true, lang, messages: [parts] });
   });
 }
 

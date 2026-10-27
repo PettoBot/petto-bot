@@ -23,8 +23,10 @@ const anilist = require('./anilist');
 const daily = require('./daily');
 const music = require('./music');
 const animals = require('./animals');
+const pictures = require('./pictures');
 const websub = require('../websub');
 const redis = require('../../utils/redis');
+const logger = require('../../utils/logger');
 const social = require('./social');
 const epic = require('./epic');
 const schedule = require('../schedule');
@@ -54,6 +56,8 @@ const fresh = (item, now) => !item.publishedAt || now - Number(item.publishedAt)
 const notLive = new Set();
 const NOT_LIVE_LIMIT = 50_000;
 const PUSHED_INTERVAL_MS = 30 * 60_000;
+const PUSHED_FEW = 1500; // up to this many followed channels, the ones that are pushed are still looked at every 10 minutes: a push that never arrives costs a few minutes, not half an hour
+const pushedInterval = () => (websub.known.size <= PUSHED_FEW ? 10 * 60_000 : PUSHED_INTERVAL_MS);
 const busyChannels = new Map(); // channelId -> true while it has a stream announced or on
 const rememberNotLive = (id) => { if (notLive.size >= NOT_LIVE_LIMIT) notLive.delete(notLive.values().next().value); notLive.add(id); stateDirty = true; };
 
@@ -86,29 +90,66 @@ const listPoll = (read, concurrency = 3) => async function poll(accounts, _track
 
 /** A cat, a dog, a fox or any of them (`animals`): a picture for each slot of time of the pace of the account (once a day to every 5 minutes), the same for every server of that pace. */
 function animalFeed(animal) {
+  const mixed = animal === 'animals'; // the one feed of the animals: any of them, or only the ones asked for (`15m cat dog`)
+  const names = { cat: 'Cats', dog: 'Dogs', fox: 'Foxes', bird: 'Birds', duck: 'Ducks', capybara: 'Capybaras', bunny: 'Bunnies', animals: 'Animals' }; // i18n-ignore: the name of what is posted
+  const keyOf = (account, minutes, slot) => `${minutes}:${slot}${mixed ? animals.suffixOf(animals.kindsOf(account.id)) : ''}`;
   return {
     interval: 60_000, perTick: 5000, concurrency: 1, perLanguage: true, noAccount: true,
-    async resolve(text) {
-      const minutes = schedule.parseMinutes(text);
+    async resolve(text, { lang } = {}) {
+      const { tokens, kinds } = mixed ? animals.parseAnimalInput(text) : { tokens: [String(text ?? '')], kinds: [] };
+      const minutes = schedule.parseMinutes(tokens.join(' '));
       if (minutes === null) throw new IntegrationError('badInput');
-      return { id: schedule.accountIdFor(animal, minutes), name: { cat: 'Cats', dog: 'Dogs', fox: 'Foxes', bird: 'Birds', duck: 'Ducks', capybara: 'Capybaras', bunny: 'Bunnies', animals: 'Animals' }[animal], avatar: null, url: null }; // i18n-ignore: the name of what is posted
+      const suffix = mixed ? animals.suffixOf(kinds) : '';
+      const id = suffix ? `every:${minutes}${suffix}` : schedule.accountIdFor(animal, minutes);
+      const name = mixed && kinds.length && kinds.length < animals.KINDS.length ? kinds.map((kind) => t(lang, `feeds.animals.name.${kind}`)).join(' + ') : (mixed ? t(lang, 'feeds.animals.name.all') : names[animal]);
+      return { id, name, avatar: null, url: null };
     },
     async poll(accounts, _tracked, { now = Date.now(), lang = 'en' } = {}) {
       const results = new Map();
       for (const account of accounts) {
         const minutes = schedule.minutesOf(account.id);
         const slot = schedule.slotOf(now, minutes);
-        const found = await animals.pictureOf(animal, `${minutes}:${slot}`);
-        results.set(account.id, { items: found ? [animals.toItem(animal, found, { id: `${minutes}:${slot}`, at: schedule.slotStart(slot, minutes), lang })] : [] });
+        const key = keyOf(account, minutes, slot);
+        const found = await animals.pictureOf(animal, key);
+        results.set(account.id, { items: found ? [animals.toItem(animal, found, { id: key, at: schedule.slotStart(slot, minutes), lang })] : [] });
       }
       return results;
     },
     async baselineItems(account, now = Date.now()) {
       const minutes = schedule.minutesOf(account.id);
-      return [{ id: `${minutes}:${schedule.slotOf(now, minutes)}` }];
+      return [{ id: keyOf(account, minutes, schedule.slotOf(now, minutes)) }];
     },
   };
 }
+
+/** Pictures by tags (`15m pink cat`): a picture for each slot of time of the pace of the account, the same for every server that wrote the same tags and the same pace. */
+const picturesFeed = {
+  interval: 60_000, perTick: 5000, concurrency: 1, noAccount: true,
+  async resolve(text) {
+    const tags = pictures.parseTags(String(text ?? '').split(/\s+/).filter((word) => !/^(?:every:)?\d{1,4}\s*(?:m|min|mins|minutes?|h|hrs?|hours?|d|days?)?$/i.test(word)).join(' '));
+    if (!tags.length || pictures.refused(tags)) throw new IntegrationError('badTags');
+    const pace = String(text ?? '').split(/\s+/).find((word) => /^(?:every:)?\d{1,4}\s*(?:m|min|mins|minutes?|h|hrs?|hours?|d|days?)?$/i.test(word)) ?? '';
+    const minutes = schedule.parseMinutes(pace);
+    if (minutes === null) throw new IntegrationError('badInput'); // the pace (what the service turns into the message about the pace)
+    return { id: `every:${minutes}:${pictures.joinTags(tags)}`, name: tags.map((tag) => `#${tag}`).join(' '), avatar: null, url: null };
+  },
+  async poll(accounts, _tracked, { now = Date.now() } = {}) {
+    const results = new Map();
+    for (const account of accounts) {
+      const minutes = schedule.minutesOf(account.id);
+      const slot = schedule.slotOf(now, minutes);
+      try {
+        const item = await pictures.pictureOf(pictures.tagsOf(account.id), `${minutes}:${slot}`, schedule.slotStart(slot, minutes));
+        results.set(account.id, { items: item ? [item] : [] });
+      } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
+    }
+    return results;
+  },
+  async baselineItems(account, now = Date.now()) {
+    const minutes = schedule.minutesOf(account.id);
+    return [{ id: `${minutes}:${schedule.slotOf(now, minutes)}` }];
+  },
+};
 
 /** A song at random, at the pace of the account (once a day to every 5 minutes), the same for every server of that pace. */
 const randomMusicFeed = {
@@ -124,7 +165,7 @@ const randomMusicFeed = {
       const minutes = schedule.minutesOf(account.id);
       const slot = schedule.slotOf(now, minutes);
       try {
-        const item = await music.deezerRandomSong(`${minutes}:${slot}`, schedule.slotStart(slot, minutes));
+        const item = await music.randomSong(`${minutes}:${slot}`, schedule.slotStart(slot, minutes));
         results.set(account.id, { items: item ? [item] : [] });
       } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
     }
@@ -136,12 +177,21 @@ const randomMusicFeed = {
   },
 };
 
+/** A video that reaches the channel long after it was published is said in the log, with whether YouTube pushed it: that tells a late push from one that never came. */
+function logLate(entry, account, now) {
+  const published = Number(entry.published);
+  if (!Number.isFinite(published) || now - published < 8 * 60_000) return;
+  const pushedAt = websub.known.get(account.id)?.lastPushAt;
+  const push = pushedAt && pushedAt >= published ? `a push arrived ${Math.round((pushedAt - published) / 60_000)} min after it was published` : 'no push arrived for it'; // i18n-ignore: part of a log line for the operator
+  logger.info(`YouTube: "${String(entry.title ?? entry.videoId).slice(0, 60)}" of ${account.name ?? account.id} reached the notice ${Math.round((now - published) / 60_000)} min after it was published (${push}).`); // i18n-ignore: log for the operator
+}
+
 const PROVIDERS = {
   youtube: {
     interval: 5 * 60_000, perTick: 600, concurrency: 12, // 600 channels a minute: ten thousand pushed channels (a look every 30 minutes) need about 330
     // A channel that YouTube pushes to the bot (see feeds/websub.js) only needs a look now and then, to catch what a push missed; one with a stream announced or on is
     // looked at as often as ever, because the start of a stream is not always pushed.
-    intervalFor(channelId, now = Date.now()) { return websub.isHealthy(channelId, now) && !busyChannels.has(channelId) ? PUSHED_INTERVAL_MS : 5 * 60_000; },
+    intervalFor(channelId, now = Date.now()) { return websub.isHealthy(channelId, now) && !busyChannels.has(channelId) ? pushedInterval() : 5 * 60_000; },
     async resolve(text) {
       const channel = await youtube.resolveChannel(text);
       return { id: channel.id, name: channel.name, avatar: channel.avatar, url: channel.url };
@@ -185,7 +235,10 @@ const PROVIDERS = {
           if (state === 'upcoming') { rememberLive(entry.videoId); continue; } // announced, not started: it is posted when it starts
           if (state === 'none' && wasLive.has(entry.videoId)) { rememberNotLive(entry.videoId); continue; } // a stream that already ended: its recording is not a new video, and it is not asked about again
           if (state === 'none') rememberNotLive(entry.videoId);
-          if (fresh({ publishedAt: entry.published }, now)) items.push(youtube.toItem(entry, entry.short ? 'short' : 'video', account));
+          if (fresh({ publishedAt: entry.published }, now)) {
+            items.push(youtube.toItem(entry, entry.short ? 'short' : 'video', account));
+            logLate(entry, account, now);
+          }
         }
         for (const id of tracked.get(account.id) ?? []) if (states?.[id]?.state === 'live') stillLive.add(id);
         // A channel with a stream announced or on (or one that cannot be told about) is kept on the fast pace.
@@ -486,6 +539,7 @@ const PROVIDERS = {
   bunny: animalFeed('bunny'),
   animals: animalFeed('animals'),
   randommusic: randomMusicFeed,
+  pictures: picturesFeed,
 
   wikipedia: {
     interval: 60_000, perTick: 5000, concurrency: 1, perLanguage: true, noAccount: true,

@@ -64,6 +64,13 @@ const allText = (message) => JSON.stringify(json(message.components));
   assert.ok(shortWith.components.some((child) => child.type === 12), 'unless the server asks for it');
   const noImage = json(card.buildFeedMessage({ message: '', options: { image: false } }, base, { lang: 'en' }).components)[0];
   assert.ok(!noImage.components.some((child) => child.type === 12));
+  // The player: a plain message with the link (Discord draws the video), only for the videos and Shorts of YouTube.
+  const player = card.buildFeedMessage({ message: 'New one!', ping_roles: [], options: { player: true } }, { ...base, type: 'short' }, { lang: 'en' });
+  assert.equal(player.content, 'New one!\nhttps://youtu.be/x');
+  assert.ok(!player.components && !player.flags, 'no card: Discord only draws the video for a plain message');
+  assert.ok(card.buildFeedMessage({ message: '', options: { player: true } }, { ...base, type: 'live' }, { lang: 'en' }).components, 'a live stream keeps its card');
+  assert.ok(card.buildFeedMessage({ message: '', options: { player: true } }, { ...base, platform: 'twitch', type: 'live' }, { lang: 'en' }).components, 'and so does everything that is not a video of YouTube');
+  assert.deepEqual(require('../src/feeds/service').cleanOptions({ player: true, image: 'x', other: 1 }), { player: true }, 'the option is kept, nothing else');
   const withButton = json(card.buildFeedMessage({ message: '', options: { button: true } }, base, { lang: 'en' }).components)[0];
   assert.equal(withButton.components.at(-1).components[0].url, 'https://youtu.be/x');
   assert.equal(withButton.components.at(-1).components[0].label, 'Watch on YouTube');
@@ -423,7 +430,11 @@ const allText = (message) => JSON.stringify(json(message.components));
     const shaders = await PROVIDERS.modrinth.resolve('new:shader');
     assert.deepEqual([shaders.id, shaders.name], ['new:shader', 'New shaders']);
     const projects = (await PROVIDERS.modrinth.poll([shaders], new Map(), { now })).get('new:shader').items;
-    assert.deepEqual([projects.length, projects[0].title, projects[0].type, projects[0].extra, projects[0].author], [1, 'Glow', 'post', '1.21', 'someone']);
+    assert.deepEqual([projects.length, projects[0].title, projects[0].type, projects[0].extra, projects[0].author], [1, 'Glow', 'project', 'SHADER · 1.21', 'someone']);
+    const several = await PROVIDERS.modrinth.resolve('new:shader+mod', { lang: 'es' });
+    assert.deepEqual([several.id, several.name], ['new:mod+shader', 'Mods nuevos + Shaders nuevos'], 'several kinds in one feed (always in the same order)');
+    assert.deepEqual([(await PROVIDERS.modrinth.resolve('new:all')).id, (await PROVIDERS.modrinth.resolve('new:all', { lang: 'pt-BR' })).name], ['new:all', 'Novidades do Modrinth']);
+    await assert.rejects(PROVIDERS.modrinth.resolve('new:nonsense'), () => true, 'a kind that does not exist is not a list');
     assert.deepEqual((await PROVIDERS.modrinth.baselineItems(shaders)).map((item) => item.id), ['sh1']);
     const top = await PROVIDERS.steam.resolve('store:top');
     assert.equal(top.name, 'Steam · Top sellers');
@@ -433,7 +444,10 @@ const allText = (message) => JSON.stringify(json(message.components));
     forgetAll();
     assert.deepEqual((await search('modrinth', 'new shaders')).map((entry) => entry.value), ['new:shader']);
     forgetAll();
-    assert.deepEqual((await search('modrinth', 'nuevos')).length, 6, 'new alone offers every kind');
+    const everything = await search('modrinth', 'nuevos');
+    assert.deepEqual([everything.length, everything[0].value], [7, 'new:all'], 'new alone offers every kind together first, then each one');
+    forgetAll();
+    assert.equal((await search('modrinth', 'new mods shaders'))[0].value, 'new:mod+shader', 'two kinds written offer them in one feed');
     forgetAll();
     assert.deepEqual((await search('steam', 'top')).map((entry) => entry.value), ['store:top']);
     forgetAll();
@@ -560,6 +574,40 @@ const allText = (message) => JSON.stringify(json(message.components));
     globalThis.fetch = realFetch;
   }
 
+  // --- The animals are one feed: any of them, or only the ones asked for (in three languages), each choice a feed of its own -------------------------------------
+  {
+    const animals = require('../src/feeds/providers/animals');
+    assert.deepEqual(animals.parseAnimalInput('15m cat dog'), { tokens: ['15m'], kinds: ['cat', 'dog'] });
+    assert.deepEqual(animals.parseAnimalInput('gatos, perritos 1h'), { tokens: ['1h'], kinds: ['cat', 'dog'] }, 'in Spanish');
+    assert.deepEqual(animals.parseAnimalInput('capivara coelhinho'), { tokens: [], kinds: ['bunny', 'capybara'] }, 'in Portuguese');
+    assert.deepEqual(animals.parseAnimalInput('30m all'), { tokens: ['30m'], kinds: [] }, 'all is no choice at all');
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      const host = new URL(String(url)).host;
+      const ok = (body) => new Response(JSON.stringify(body), { status: 200 });
+      if (host === 'api.thecatapi.com') return ok([{ url: 'https://cdn2.thecatapi.com/images/c1.jpg' }]);
+      if (host === 'dog.ceo') return ok({ message: 'https://images.dog.ceo/breeds/chow/n1.jpg' });
+      if (host === 'randomfox.ca') return ok({ image: 'https://randomfox.ca/images/7.jpg' });
+      return new Response('{}', { status: 404 });
+    };
+    const both = await PROVIDERS.animals.resolve('15m cat dog', { lang: 'es' });
+    assert.deepEqual([both.id, both.name], ['every:15:cat+dog', 'Gatos + Perros'], 'the choice is part of the account, and its name is in the language of who follows it');
+    assert.equal((await PROVIDERS.animals.resolve('15m cat dog')).id, both.id, 'the same choice is the same account');
+    assert.equal((await PROVIDERS.animals.resolve('15m')).id, 'every:15', 'no choice is every animal');
+    assert.equal((await PROVIDERS.animals.resolve('')).id, 'daily', 'and nothing at all is once a day');
+    assert.equal((await PROVIDERS.animals.resolve('cat')).id, 'every:1440:cat', 'a choice without a pace is once a day');
+    await assert.rejects(PROVIDERS.animals.resolve('4m cat'), (error) => error.kind === 'badInput');
+    const when = Date.UTC(2026, 9, 27, 10, 7, 30);
+    const titles = new Set();
+    for (let slot = 0; slot < 8; slot += 1) {
+      const item = (await PROVIDERS.animals.poll([both], new Map(), { now: when + slot * 15 * 60_000, lang: 'en' })).get(both.id).items[0];
+      titles.add(item.title);
+    }
+    assert.deepEqual([...titles].sort(), ['A cat for you', 'A dog for you'], 'only the animals asked for come up');
+    assert.equal(require('../src/feeds/schedule').minutesOf('every:15:cat+dog'), 15, 'the pace is read from an account with a choice');
+    globalThis.fetch = realFetch;
+  }
+
   // --- Random music: a song of the charts of a random genre for each slot of time, the same for everybody -----------------------------------------------
   {
     const realFetch = globalThis.fetch;
@@ -587,6 +635,86 @@ const allText = (message) => JSON.stringify(json(message.components));
     const songCard = JSON.parse(JSON.stringify(card.buildFeedMessage({ message: '', options: {}, ping_roles: [] }, song, { lang: 'es', hero: { name: 'release.png' } }).components));
     assert.equal(songCard[0].components.at(-1).components[0].label, 'Escuchar en Deezer');
     assert.ok(JSON.stringify(songCard).includes('Una canción para ti'), 'and says what it is');
+    globalThis.fetch = realFetch;
+  }
+
+  // --- Pictures by tags: a few tags and a pace, a picture of what is tagged that way (Flickr's public feed of tags), the same for everybody -------------------------
+  {
+    const pictures = require('../src/feeds/providers/pictures');
+    assert.deepEqual(pictures.parseTags('Rosa #Estética, gatos'), ['pink', 'aesthetic', 'cats'], 'accents and signs go, and the common words of Spanish become the English ones');
+    assert.deepEqual(pictures.parseTags('a b pink pink blue green red'), ['pink', 'blue', 'green'], 'one letter is no tag, a tag twice is one, and three at most');
+    assert.equal(pictures.refused(['pink', 'nsfw']), true, 'some words are never followed');
+    const asked = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      const u = String(url);
+      asked.push(u);
+      if (!u.startsWith('https://www.flickr.com/services/feeds/photos_public.gne')) return new Response('{}', { status: 404 });
+      const mode = /tagmode=(\w+)/.exec(u)[1];
+      const items = mode === 'all' && u.includes('pink%2Cunicorn') ? [] : [1, 2, 3].map((n) => ({ title: `Photo ${n}`, link: `https://www.flickr.com/photos/someone/${n}/`, media: { m: `https://live.staticflickr.com/65535/${n}_abc_m.jpg` }, author: 'nobody@flickr.com ("someone")' }));
+      return new Response(JSON.stringify({ items }), { status: 200 });
+    };
+    const account = await PROVIDERS.pictures.resolve('30m rosa', { lang: 'es' });
+    assert.deepEqual([account.id, account.name], ['every:30:pink', '#pink'], 'the tags are part of the account, with the pace');
+    assert.equal((await PROVIDERS.pictures.resolve('rosa')).id, 'every:1440:pink', 'a pace of nothing is once a day');
+    await assert.rejects(PROVIDERS.pictures.resolve('30m'), (error) => error.kind === 'badTags', 'a pace without tags is no feed');
+    await assert.rejects(PROVIDERS.pictures.resolve('30m nsfw'), (error) => error.kind === 'badTags');
+    await assert.rejects(PROVIDERS.pictures.resolve('3m rosa'), (error) => error.kind === 'badInput', 'and a pace that is too short is refused');
+    const when = Date.UTC(2026, 9, 27, 10, 7, 30);
+    const first = (await PROVIDERS.pictures.poll([account], new Map(), { now: when })).get(account.id).items[0];
+    assert.deepEqual([first.type, first.platform, first.url.startsWith('https://www.flickr.com/photos/'), first.image.endsWith('_b.jpg'), first.extra, first.author], ['photo', 'pictures', true, true, '#pink', 'someone']);
+    const before = asked.length;
+    const again = (await PROVIDERS.pictures.poll([account], new Map(), { now: when + 60_000 })).get(account.id).items[0];
+    assert.deepEqual([again.id, asked.length], [first.id, before], 'a minute later it is the same picture and Flickr is not asked again');
+    const two = await PROVIDERS.pictures.resolve('15m pink unicorn');
+    assert.equal((await PROVIDERS.pictures.poll([two], new Map(), { now: when })).get(two.id).items.length, 1, 'when no picture has all the tags, one with any of them is used');
+    globalThis.fetch = realFetch;
+  }
+
+  // --- Random music comes from Deezer, Apple Music and (with the keys of the bot) Spotify; Spotify that rejects the keys says so ---------------------------------
+  {
+    config.spotifyClientId = 'id';
+    config.spotifyClientSecret = 'secret';
+    const realFetch = globalThis.fetch;
+    let down = new Set();
+    const ok = (body) => new Response(JSON.stringify(body), { status: 200 });
+    globalThis.fetch = async (url) => {
+      const u = String(url);
+      const host = new URL(u).host;
+      if (down.has(host)) return new Response('{}', { status: 500 });
+      if (u === 'https://api.deezer.com/genre') return ok({ data: [{ id: 152, name: 'Rock' }] });
+      if (/api\.deezer\.com\/chart\/\d+\/tracks/.test(u)) return ok({ data: [1, 2, 3].map((n) => ({ id: n, title: `Dz ${n}`, link: `https://www.deezer.com/track/${n}`, artist: { name: 'Singer' }, album: { cover_xl: 'https://cdn.dz/c.jpg' } })) });
+      if (host === 'rss.marketingtools.apple.com') return ok({ feed: { results: [1, 2, 3].map((n) => ({ id: String(n), name: `Ap ${n}`, artistName: 'Star', url: `https://music.apple.com/x/${n}`, artworkUrl100: 'https://is1.mzstatic.com/i/100x100bb.jpg' })) } });
+      if (u === 'https://accounts.spotify.com/api/token') return ok({ access_token: 'sp-token', expires_in: 3600 });
+      if (u.startsWith('https://api.spotify.com/v1/search')) return ok({ tracks: { items: [1, 2, 3].map((n) => ({ id: `s${n}`, name: `Sp ${n}`, artists: [{ name: 'Band' }], album: { images: [{ url: 'https://i.scdn.co/a.jpg' }] }, external_urls: { spotify: `https://open.spotify.com/track/s${n}` } })) } });
+      return new Response('{}', { status: 404 });
+    };
+    const when = Date.UTC(2026, 9, 27, 10, 7, 30);
+    const account = await PROVIDERS.randommusic.resolve('5m');
+    const platforms = new Set();
+    for (let slot = 0; slot < 12; slot += 1) {
+      const item = (await PROVIDERS.randommusic.poll([account], new Map(), { now: when + slot * 5 * 60_000 })).get(account.id).items[0];
+      platforms.add(item.platform);
+      assert.equal(item.type, 'track');
+    }
+    assert.deepEqual([...platforms].sort(), ['applemusic', 'deezer', 'spotify'], 'the songs come from the three services, a different one in each slot');
+    // When a service is down the next one answers.
+    down = new Set(['api.deezer.com', 'rss.marketingtools.apple.com']);
+    const via = (await PROVIDERS.randommusic.poll([account], new Map(), { now: when + 100 * 5 * 60_000 })).get(account.id).items[0];
+    assert.equal(via.platform, 'spotify', 'with Deezer and Apple down it is Spotify');
+    down = new Set();
+    // Without the keys of the bot there is no Spotify in it.
+    config.spotifyClientId = null;
+    const without = new Set();
+    for (let slot = 200; slot < 212; slot += 1) without.add((await PROVIDERS.randommusic.poll([account], new Map(), { now: when + slot * 5 * 60_000 })).get(account.id).items[0].platform);
+    assert.equal(without.has('spotify'), false);
+    // Spotify that rejects the id or the secret is a bot that is not set up.
+    config.spotifyClientId = 'wrong';
+    require('../src/feeds/providers/music').forgetSpotifyToken();
+    globalThis.fetch = async (url) => (String(url) === 'https://accounts.spotify.com/api/token' ? new Response('{"error":"invalid_client"}', { status: 400 }) : new Response('{}', { status: 404 }));
+    await assert.rejects(PROVIDERS.spotify.resolve('Artist'), (error) => error.kind === 'notConfigured', 'wrong keys say that Spotify is not set up (and the log says what it answered)');
+    config.spotifyClientId = null;
+    config.spotifyClientSecret = null;
     globalThis.fetch = realFetch;
   }
 
@@ -825,6 +953,7 @@ const allText = (message) => JSON.stringify(json(message.components));
       if (u.hostname === 'public.api.bsky.app') return json({ actors: [{ did: 'd', handle: 'jay.bsky.team', displayName: 'Jay', avatar: 'https://cdn.bsky/a.jpg' }] });
       if (u.hostname === 'store.steampowered.com') return json({ items: [{ id: 730, name: 'Counter-Strike 2', tiny_image: 'https://cdn/t.jpg' }] });
       if (u.hostname === 'www.googleapis.com' && u.pathname.endsWith('/search')) return json({ items: [{ id: { channelId: 'UC' + 'a'.repeat(22) }, snippet: { channelTitle: 'Chan', description: 'About', thumbnails: { default: { url: 'https://yt/a.jpg' } } } }] });
+      if (u.hostname === 'www.googleapis.com' && u.pathname.endsWith('/channels') && u.searchParams.get('forHandle') === '@known') return json({ items: [{ id: 'UC' + 'b'.repeat(22), snippet: { title: 'Known', customUrl: '@known', thumbnails: { medium: { url: 'https://yt/b.jpg' } } } }] });
       return json({}, 404);
     };
     assert.deepEqual(await searchAccounts('bluesky', 'j'), [], 'a single letter is not searched');
@@ -843,6 +972,20 @@ const allText = (message) => JSON.stringify(json(message.components));
     for (let i = 0; i < 70; i += 1) await searchAccounts('youtube', `chan${i}`).catch(() => null);
     await assert.rejects(searchAccounts('youtube', 'one more'), (error) => error.kind === 'rateLimited', 'YouTube has a daily budget of searches');
     forgetSearches();
+    // A name written as one word is tried as an @name first (a unit): when it exists, the search of a hundred units is not made. One server cannot spend the day's searches.
+    {
+      let searchCalls = 0;
+      const dailyQuota = config.youtubeDailyQuota; config.youtubeDailyQuota = 10_000_000; // the earlier searches used up the share of the day
+      const before = globalThis.fetch;
+      globalThis.fetch = async (url) => { if (new URL(url).pathname.endsWith('/search')) searchCalls += 1; return before(url); };
+      const known = await searchAccounts('youtube', 'known', 'en', 'guildA');
+      assert.deepEqual([known[0].name, searchCalls], ['Known', 0], 'the @name exists: no search of a hundred units');
+      assert.equal((await searchAccounts('youtube', 'Known', 'en', 'guildA')).length, 1, 'and the answer is kept whatever the case');
+      for (let i = 0; i < 10; i += 1) await searchAccounts('youtube', `nothing${i}`, 'en', 'guildB');
+      await assert.rejects(searchAccounts('youtube', 'nothing99', 'en', 'guildB'), (error) => error.kind === 'rateLimited', 'a server has 10 searches a day');
+      assert.equal((await searchAccounts('youtube', 'other one', 'en', 'guildC')).length, 1, 'another server still can');
+      globalThis.fetch = before; config.youtubeDailyQuota = dailyQuota;
+    }
 
     // The feed of a channel answers 404 but the channel exists: its uploads list from the API is used.
     const channelId = 'UC' + 'b'.repeat(22);
@@ -1169,9 +1312,13 @@ const allText = (message) => JSON.stringify(json(message.components));
     assert.equal(websub.signatureOk(secret, Buffer.from(atom), websub.sign(secret, atom)), true);
     assert.deepEqual(websub.channelsOf(`<yt:channelId>${CHANNEL}</yt:channelId><yt:channelId>${CHANNEL}</yt:channelId>`), [CHANNEL]);
 
-    // A channel that pushes is looked at every 30 minutes; with a stream announced it keeps the fast pace; without push it is every 5 minutes.
+    // A channel that pushes is looked at every 10 minutes (every 30 when more than 1500 channels are followed); with a stream announced it keeps the fast pace; without push it is every 5 minutes.
     const yt = PROVIDERS.youtube;
-    assert.equal(yt.intervalFor(CHANNEL), 30 * 60_000, 'a channel that pushes needs a look only now and then');
+    assert.equal(yt.intervalFor(CHANNEL), 10 * 60_000, 'a channel that pushes needs a look only now and then');
+    const filler = Array.from({ length: 1501 }, (_, index) => `filler${index}`);
+    for (const id of filler) websub.known.set(id, { status: 'subscribed', expiresAt: 0, secret: 'x', fails: 0, requestedAt: 0 });
+    assert.equal(yt.intervalFor(CHANNEL), 30 * 60_000, 'with a lot of channels the look is every 30 minutes, so the job keeps up');
+    for (const id of filler) websub.known.delete(id);
     assert.equal(yt.intervalFor(OTHER), 5 * 60_000, 'one that does not push is looked at as before');
     assert.equal(websub.isHealthy(CHANNEL, Date.now() + 6 * 86_400_000), false, 'and one whose subscription ran out goes back to the fast pace');
 

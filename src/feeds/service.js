@@ -29,11 +29,12 @@ function channelProblem(guild, channel) {
 const ids = (list, max = 10) => [...new Set((Array.isArray(list) ? list : []).map(String).filter((id) => SNOWFLAKE.test(id)))].slice(0, max);
 const words = (list) => [...new Set((Array.isArray(list) ? list : []).map((word) => String(word).trim().toLowerCase()).filter((word) => word && word.length <= 40))].slice(0, MAX_KEYWORDS);
 
-/** What a feed keeps of its options, and nothing else: `image`, `button` and a `color` the dashboard may set. */
+/** What a feed keeps of its options, and nothing else: `image`, `button`, `player` and a `color` the dashboard may set. */
 function cleanOptions(options = {}) {
   const out = {};
   if (typeof options.image === 'boolean') out.image = options.image;
   if (typeof options.button === 'boolean') out.button = options.button;
+  if (typeof options.player === 'boolean') out.player = options.player;
   if (Number.isInteger(options.color) && options.color >= 0 && options.color <= 0xffffff) out.color = options.color;
   return out;
 }
@@ -63,7 +64,7 @@ async function createFeed(guild, input) {
   try {
     account = await PROVIDERS[platform].resolve(String(input.account ?? '').trim(), { lang: input.lang });
   } catch (error) {
-    if (error instanceof IntegrationError) return { ok: false, error: error.kind === 'badInput' && PROVIDERS[platform].noAccount ? 'badPace' : error.kind === 'notFound' || error.kind === 'badInput' || error.kind === 'notConfigured' || error.kind === 'unsupported' ? error.kind : 'unavailable' };
+    if (error instanceof IntegrationError) return { ok: false, error: error.kind === 'badInput' && PROVIDERS[platform].noAccount ? 'badPace' : error.kind === 'notFound' || error.kind === 'badInput' || error.kind === 'notConfigured' || error.kind === 'unsupported' || error.kind === 'badTags' ? error.kind : 'unavailable' };
     throw error;
   }
 
@@ -114,7 +115,7 @@ async function updateFeed(guild, id, patch) {
     try {
       account = await PROVIDERS[current.platform].resolve(String(patch.every).trim());
     } catch (error) {
-      if (error instanceof IntegrationError) return { ok: false, error: error.kind === 'badInput' ? 'badPace' : 'unavailable' };
+      if (error instanceof IntegrationError) return { ok: false, error: error.kind === 'badInput' ? 'badPace' : error.kind === 'badTags' ? 'badTags' : 'unavailable' };
       throw error;
     }
     if (account.id !== current.account_id) {

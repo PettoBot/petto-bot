@@ -165,6 +165,10 @@ module.exports = {
   codeDatabaseUrl: process.env.PETTO_CODE_DATABASE_URL?.trim() || null,
   // Like the main database: no SSL unless asked. Discloud's databases do not support it.
   codeDatabaseSsl: envBool('PETTO_CODE_DATABASE_SSL', envBool('DISCLOUD_DATABASE_SSL', false)),
+  // Optional second PostgreSQL database for the heavy data that can be rebuilt or is only copies (the avatar copies of the profile history and the public
+  // threat lists), so the main database keeps the settings. Without it everything stays in the main database.
+  data2DatabaseUrl: process.env.PETTO_DATA2_DATABASE_URL?.trim() || null,
+  data2DatabaseSsl: envBool('PETTO_DATA2_DATABASE_SSL', envBool('DISCLOUD_DATABASE_SSL', false)),
   // Shared secret for server-side dashboard requests. Keep this identical to the
   // web worker secret, but never send it to the browser.
   dashboardApiSecret: process.env.PETTO_DASHBOARD_API_SECRET || null,
@@ -200,6 +204,10 @@ module.exports = {
   // needs a public address that reaches the bot: YOUTUBE_WEBSUB_URL, or VERIFY_BASE_URL when that is not set. YOUTUBE_WEBSUB=false turns it off (the channels are looked at as before).
   youtubeWebsub: process.env.YOUTUBE_WEBSUB !== 'false',
   youtubeWebsubUrl: (process.env.YOUTUBE_WEBSUB_URL || '').trim().replace(/\/+$/, '') || null,
+  // What Petto has stored for a server it is no longer in is deleted this many days after it left (GUILD_PURGE=false turns it off, GUILD_PURGE_DRY_RUN=true only says what would go).
+  guildPurge: process.env.GUILD_PURGE !== 'false',
+  guildPurgeDays: Math.max(1, Number(process.env.GUILD_PURGE_DAYS) || 3),
+  guildPurgeDryRun: process.env.GUILD_PURGE_DRY_RUN === 'true',
   youtubeDailyQuota: Math.max(1000, Number(process.env.YOUTUBE_DAILY_QUOTA) || 10_000),
   tmdbApiKey: process.env.TMDB_API_KEY || null, // a v3 key, or the v4 read access token
   // Optional: dedicated domain for ticket transcript links. Falls back to VERIFY_BASE_URL —

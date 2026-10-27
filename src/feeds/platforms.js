@@ -6,7 +6,7 @@ const PLATFORMS = {
   kick: { name: 'Kick', color: 0x53fc18, site: 'https://kick.com', types: ['live'], defaultTypes: ['live'] }, // i18n-ignore: the name of a brand
   bluesky: { name: 'Bluesky', color: 0x1185fe, site: 'https://bsky.app', types: ['post'], defaultTypes: ['post'] }, // i18n-ignore: the name of a brand
   pinterest: { name: 'Pinterest', color: 0xe60023, site: 'https://www.pinterest.com', types: ['pin'], defaultTypes: ['pin'] }, // i18n-ignore: the name of a brand
-  modrinth: { name: 'Modrinth', color: 0x1bd96a, site: 'https://modrinth.com', types: ['update'], defaultTypes: ['update'] }, // i18n-ignore: the name of a brand
+  modrinth: { name: 'Modrinth', color: 0x1bd96a, site: 'https://modrinth.com', types: ['update', 'project'], defaultTypes: ['update', 'project'] }, // i18n-ignore: the name of a brand
   pokemon: { name: 'Pokémon', color: 0xffcb05, site: 'https://pokeapi.co', types: ['daily'], defaultTypes: ['daily'] }, // i18n-ignore: the name of a brand
   reddit: { name: 'Reddit', color: 0xff4500, site: 'https://www.reddit.com', types: ['post'], defaultTypes: ['post'] }, // i18n-ignore: the name of a brand
   github: { name: 'GitHub', color: 0x8b949e, site: 'https://github.com', types: ['update'], defaultTypes: ['update'] }, // i18n-ignore: the name of a brand
@@ -31,6 +31,7 @@ const PLATFORMS = {
   capybara: { name: 'Capybaras', color: 0xa16207, site: null, types: ['photo'], defaultTypes: ['photo'] }, // i18n-ignore: the name of what is posted
   bunny: { name: 'Bunnies', color: 0xf9a8d4, site: null, types: ['photo'], defaultTypes: ['photo'] }, // i18n-ignore: the name of what is posted
   animals: { name: 'Animals', color: 0x9b7bff, site: null, types: ['photo'], defaultTypes: ['photo'] }, // i18n-ignore: the name of what is posted
+  pictures: { name: 'Pictures', color: 0xff6fa5, site: null, types: ['photo'], defaultTypes: ['photo'] }, // i18n-ignore: the name of what is posted
   randommusic: { name: 'Random music', color: 0xa238ff, site: 'https://www.deezer.com', types: ['track'], defaultTypes: ['track'] }, // i18n-ignore: the name of what is posted
   rss: { name: 'RSS', color: 0xf26522, site: null, types: ['post'], defaultTypes: ['post'] }, // i18n-ignore: the name of a brand
 };
@@ -38,7 +39,7 @@ const PLATFORMS = {
 const PLATFORM_IDS = Object.keys(PLATFORMS);
 
 /** Every kind of notice a card can be: the same word in the labels, the emoji and the dashboard. */
-const TYPES = ['video', 'short', 'live', 'clip', 'post', 'pin', 'update', 'episode', 'release', 'track', 'game', 'photo', 'daily', 'ended'];
+const TYPES = ['video', 'short', 'live', 'clip', 'post', 'pin', 'update', 'episode', 'release', 'track', 'project', 'game', 'photo', 'daily', 'ended'];
 
 const isPlatform = (id) => Object.hasOwn(PLATFORMS, id);
 

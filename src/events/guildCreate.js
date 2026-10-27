@@ -3,6 +3,7 @@ const { EMOJI } = require('../utils/emojis');
 const logger = require('../utils/logger');
 const { sendGuildLifecycleLog } = require('../utils/discordOps');
 const { createGuildIfMissing } = require('../db/guilds');
+const guildDepartures = require('../db/guildDepartures');
 const { languageFromLocale, setCachedGuildLanguage, runWithLanguage, t, currentLanguage } = require('../i18n');
 const config = require('../config');
 const { syncGuildAutoMod } = require('../utils/autoModManager');
@@ -50,6 +51,8 @@ module.exports = {
   name: Events.GuildCreate,
   buildThanksMessage,
   async execute(guild) {
+    // Petto is in the server: what is stored for it is not going to be deleted (a server that left and came back in time).
+    await guildDepartures.clear(guild.id).catch((err) => logger.warn(`Could not clear the departure of server ${guild.id}: ${err.message}`));
     // First of all, before anything else can make the row: a server Petto never saw starts in the language of its community
     // (es-ES / es-419 -> es, pt-BR -> pt-BR, else en). A server that already has a row keeps its language; `!language` always decides.
     const guildConfig = await createGuildIfMissing(guild.id, { language: languageFromLocale(guild.preferredLocale) })
