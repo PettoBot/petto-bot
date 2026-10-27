@@ -55,7 +55,7 @@ function allowedMentionsOf(feed) {
 
 /**
  * The message of a feed for an item.
- * `feed`: { message, ping_roles, ping_everyone, options: { image, button, player, color } }. `test` puts a small "test" mark on the top line.
+ * `feed`: { message, ping_roles, ping_everyone, options: { image, button (on unless false), player, color } }. `test` puts a small "test" mark on the top line.
  */
 function buildFeedMessage(feed, item, { lang, test = false, hero = null } = {}) {
   const platform = PLATFORMS[item.platform] ?? PLATFORMS.rss;
@@ -126,9 +126,10 @@ function buildFeedMessage(feed, item, { lang, test = false, hero = null } = {}) 
     if (safeUrl(item.authorUrl)) buttons.push(new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(safeUrl(item.authorUrl)).setLabel(clip(t(lang, 'feeds.button.channel'), 80)));
     if (safeUrl(item.vodUrl)) buttons.push(new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(safeUrl(item.vodUrl)).setEmoji(emojis.forButton(emojis.VOD)).setLabel(clip(t(lang, 'feeds.button.replay'), 80)));
     if (buttons.length) card.addActionRowComponents(new ActionRowBuilder().addComponents(buttons));
-  } else if (options.button && url) {
+  } else if (options.button !== false && url) {
+    // On unless the server turned it off: when the title is lost to Discord's formatting, the button still opens the notice.
     card.addActionRowComponents(new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(url).setLabel(clip(t(lang, `feeds.button.${item.type}`, { platform: platform.name }), 80)),
+      new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(url).setEmoji(emojis.forButton(emojis.PLATFORM[item.platform] ?? emojis.PLATFORM.rss)).setLabel(clip(t(lang, `feeds.button.${item.type}`, { platform: platform.name }), 80)),
     ));
   }
   components.push(card);
