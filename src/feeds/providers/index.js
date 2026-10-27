@@ -22,6 +22,7 @@ const steam = require('./steam');
 const anilist = require('./anilist');
 const daily = require('./daily');
 const { fetchPublicText } = require('../http');
+const { fallbackPicture } = require('../platforms');
 const { parseFeed } = require('../feedparse');
 
 /** The videos that were seen live or about to be: when they end they are a recording of a stream, and are not posted as a new video. */
@@ -56,7 +57,9 @@ const PROVIDERS = {
       let states = {};
       if (withLive) {
         const ids = new Set();
-        for (const list of entries.values()) for (const entry of list) if (fresh({ publishedAt: entry.published }, now) && !notLive.has(entry.videoId)) ids.add(entry.videoId);
+        // Every entry of the feed that is not known to be a plain video, old ones too: a stream is often scheduled days before it starts, so it is not "new"
+        // by the date it was published, and it must be seen the moment it goes live. A video found not to be live is asked about only once.
+        for (const list of entries.values()) for (const entry of list) if (!notLive.has(entry.videoId)) ids.add(entry.videoId);
         for (const set of tracked.values()) for (const id of set) ids.add(id);
         try { states = ids.size ? await youtube.liveStates([...ids]) : {}; } catch { states = null; }
         // When it cannot be told whether the videos are live (no key, the call failed), nothing is posted this time: a stream must never go out as a
@@ -73,9 +76,14 @@ const PROVIDERS = {
         const stillLive = new Set();
         for (const entry of entries.get(account.id)) {
           const state = states?.[entry.videoId]?.state;
-          if (state === 'live') { rememberLive(entry.videoId); stillLive.add(entry.videoId); items.push(youtube.toItem(entry, 'live', account)); continue; }
+          if (state === 'live') {
+            rememberLive(entry.videoId); stillLive.add(entry.videoId);
+            // The notice says when the stream began, not when its page was made (a scheduled stream can have been made hours or days before).
+            items.push({ ...youtube.toItem(entry, 'live', account), publishedAt: states[entry.videoId].startedAt ?? entry.published });
+            continue;
+          }
           if (state === 'upcoming') { rememberLive(entry.videoId); continue; } // announced, not started: it is posted when it starts
-          if (state === 'none' && wasLive.has(entry.videoId)) continue; // a stream that already ended: its recording is not a new video
+          if (state === 'none' && wasLive.has(entry.videoId)) { rememberNotLive(entry.videoId); continue; } // a stream that already ended: its recording is not a new video, and it is not asked about again
           if (state === 'none') rememberNotLive(entry.videoId);
           if (fresh({ publishedAt: entry.published }, now)) items.push(youtube.toItem(entry, entry.short ? 'short' : 'video', account));
         }
@@ -92,7 +100,7 @@ const PROVIDERS = {
   },
 
   twitch: {
-    interval: 2 * 60_000, perTick: 2000, concurrency: 1,
+    interval: 60_000, perTick: 5000, concurrency: 1, // 100 accounts in each call: 50 calls a minute at most, far from the limit of Twitch
     async resolve(text) {
       const user = await twitch.resolveUser(text);
       return { id: user.id, name: user.name, avatar: user.avatar, url: user.url };
@@ -113,7 +121,7 @@ const PROVIDERS = {
   },
 
   kick: {
-    interval: 2 * 60_000, perTick: 2000, concurrency: 1,
+    interval: 60_000, perTick: 2000, concurrency: 1, // a live notice goes out within a minute or two of the start
     async resolve(text) {
       const channel = await kick.resolveChannel(text);
       return { id: channel.id, name: channel.name, avatar: channel.avatar, url: channel.url };
@@ -124,11 +132,9 @@ const PROVIDERS = {
       for (const account of accounts) {
         const channel = live[account.id];
         let item = channel ? kick.toItem(channel, account) : null;
-        // The picture of a stream that just began is not made yet: the notice waits for it (the next pass), and goes without it after a few minutes.
-        if (item?.image && !(await kick.imageReady(item.image))) {
-          if (Date.now() - (item.publishedAt ?? 0) < kick.THUMBNAIL_WAIT_MS) item = null;
-          else item.image = null;
-        }
+        // Kick makes the picture of a stream a little after it starts, and a notice must not wait for it (Discord shows a broken picture for one that
+        // is not made yet): it goes out at once with a picture of Kick, marked as a stand-in, and the engine swaps in the real one when it exists.
+        if (item && !(item.image && await kick.imageReady(item.image))) item = { ...item, placeholder: Boolean(item.image), image: fallbackPicture('kick-live') };
         results.set(account.id, { items: item ? [item] : [], stillLive: new Set(channel ? [kick.streamId(channel)] : []) });
       }
       return results;

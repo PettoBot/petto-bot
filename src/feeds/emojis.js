@@ -22,7 +22,7 @@ const PLATFORM = {
 const TYPE = {
   video: '<:pe_f_video_short:1564405498906812426>',
   short: '<:pe_f_video_short:1564405498906812426>', // the same picture as a video: there is no Short one yet
-  live: '<:pe_f_live:1564405931364843602>',
+  live: '<:pe_f_live:1564446746652966924>',
   clip: '<:pe_f_clip:1564404652496134294>',
   post: '<:pe_f_post:1564405577092964444>',
   pin: '<:pe_f_pin:1564404654643879966>',

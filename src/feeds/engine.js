@@ -96,14 +96,25 @@ async function processFeed(client, feed, result, liveRows, seen, now) {
   if (result.stillLive) {
     for (const row of liveRows.get(feed.id) ?? []) if (!result.stillLive.has(row.item_id)) await closeLive(client, feed, row, lang);
   }
+  // A live notice that went out with a stand-in picture (the stream's own was not made yet) gets the real one as soon as it exists.
+  for (const row of liveRows.get(feed.id) ?? []) {
+    if (!row.item?.placeholder) continue;
+    const current = result.items.find((item) => String(item.id) === row.item_id);
+    if (!current || current.placeholder) continue;
+    const channel = client.channels.cache.get(row.channel_id) ?? await client.channels.fetch(row.channel_id).catch(() => null);
+    const message = channel?.messages ? await channel.messages.fetch(row.message_id).catch(() => null) : null;
+    if (message) await message.edit({ ...buildFeedMessage(feed, current, { lang }), allowedMentions: { parse: [] } }).catch((error) => logger.warn(`Feed ${feed.id}: could not update the picture of its live message: ${error.message}`));
+    await feedsDb.saveLive({ feed_id: feed.id, item_id: row.item_id, channel_id: row.channel_id, message_id: row.message_id, item: current }).catch(() => {});
+    row.item = current; // once is enough
+  }
 }
 
 /** One pass of the job. `client` is the discord.js client. Returns the number of accounts asked about (for the checks). */
 async function tick(client, { now = Date.now(), providers = PROVIDERS } = {}) {
-  const feeds = await feedsDb.listEnabled();
+  const feeds = await feedsDb.listEnabled({ now });
   if (!feeds.length) return 0;
   const liveByFeed = new Map();
-  for (const row of await feedsDb.liveRowsFor(feeds.map((feed) => feed.id))) {
+  for (const row of await feedsDb.liveRowsAll()) {
     if (!liveByFeed.has(row.feed_id)) liveByFeed.set(row.feed_id, []);
     liveByFeed.get(row.feed_id).push(row);
   }
@@ -164,6 +175,6 @@ async function tick(client, { now = Date.now(), providers = PROVIDERS } = {}) {
   return asked;
 }
 
-const forgetSchedule = () => schedule.clear(); // for the checks
+const forgetSchedule = () => { schedule.clear(); feedsDb.forgetList(); }; // for the checks
 
 module.exports = { tick, processFeed, passes, forgetSchedule, MAX_PER_PASS, FAILURES_TO_STOP };

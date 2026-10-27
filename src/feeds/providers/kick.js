@@ -8,8 +8,6 @@ const API = 'https://api.kick.com/public/v1';
 const TOKEN_URL = 'https://id.kick.com/oauth/token';
 const SLUG = /^[\w-]{1,25}$/;
 const BATCH = 50;
-/** Kick makes the picture of a stream a little after it starts: a notice that comes sooner waits for it (this long at most). */
-const THUMBNAIL_WAIT_MS = 4 * 60_000;
 const readyPictures = new Map();
 
 let token = null;
@@ -102,4 +100,4 @@ function toItem(channel, account = {}) {
   };
 }
 
-module.exports = { parseSlug, resolveChannel, liveChannels, streamId, toItem, imageReady, THUMBNAIL_WAIT_MS };
+module.exports = { parseSlug, resolveChannel, liveChannels, streamId, toItem, imageReady };

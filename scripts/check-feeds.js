@@ -112,12 +112,13 @@ const allText = (message) => JSON.stringify(json(message.components));
     { id: 'liv1', title: 'Live now', at: now - 600_000 },
     { id: 'upc1', title: 'Soon', at: now - 300_000 },
     { id: 'old1', title: 'Old one', at: now - MAX_AGE_MS - 86_400_000 },
+    { id: 'sch1', title: 'Scheduled days ago', at: now - 5 * 86_400_000 },
   ];
   const parsed = youtube.parseFeed(rss(entries));
-  assert.equal(parsed.length, 5);
+  assert.equal(parsed.length, 6);
   assert.equal(parsed[0].title, 'A video & more');
   assert.equal(parsed[0].views, 5);
-  assert.deepEqual(parsed.map((entry) => entry.short), [false, true, false, false, false], 'a Short has /shorts/ in its link');
+  assert.deepEqual(parsed.map((entry) => entry.short), [false, true, false, false, false, false], 'a Short has /shorts/ in its link');
 
   // The platform of YouTube with the answers of the services written out: the feed, and the call that says who is live.
   const calls = [];
@@ -128,21 +129,22 @@ const allText = (message) => JSON.stringify(json(message.components));
     if (String(url).includes('/feeds/videos.xml')) return new Response(rss(entries), { status: 200 });
     if (String(url).includes('/youtube/v3/videos')) {
       const ids = new URL(url).searchParams.get('id').split(',');
-      const state = { liv1: 'live', upc1: 'upcoming' };
-      return new Response(JSON.stringify({ items: ids.map((id) => ({ id, snippet: { liveBroadcastContent: state[id] ?? 'none' }, liveStreamingDetails: {} })) }), { status: 200 });
+      const state = { liv1: 'live', upc1: 'upcoming', sch1: 'live' };
+      return new Response(JSON.stringify({ items: ids.map((id) => ({ id, snippet: { liveBroadcastContent: state[id] ?? 'none' }, liveStreamingDetails: id === 'sch1' ? { actualStartTime: new Date(now - 90_000).toISOString() } : {} })) }), { status: 200 });
     }
     return new Response('{}', { status: 404 });
   };
   const account = { id: 'UCx', name: 'Chan', avatar: 'https://yt3.example/a.jpg', url: 'https://www.youtube.com/channel/UCx' };
   let results = await PROVIDERS.youtube.poll([account], new Map(), { now });
   let result = results.get('UCx');
-  assert.deepEqual(result.items.map((item) => `${item.id}:${item.type}`).sort(), ['liv1:live', 'sho1:short', 'vid1:video'], 'a live is a live, an upcoming one waits, an old one is not news');
-  assert.deepEqual([...result.stillLive], ['liv1']);
+  assert.deepEqual(result.items.map((item) => `${item.id}:${item.type}`).sort(), ['liv1:live', 'sch1:live', 'sho1:short', 'vid1:video'], 'a live is a live (also one scheduled days before), an upcoming one waits, an old one is not news');
+  assert.deepEqual([...result.stillLive].sort(), ['liv1', 'sch1']);
+  assert.ok(Math.abs(result.items.find((item) => item.id === 'sch1').publishedAt - (now - 90_000)) < 1000, 'a stream says when it began, not when its page was made');
   const apiCalls = () => calls.filter((url) => url.includes('/youtube/v3/videos')).length;
   assert.equal(apiCalls(), 1, 'one call for all the videos');
   results = await PROVIDERS.youtube.poll([account], new Map(), { now });
   const second = new URL(calls.filter((url) => url.includes('/youtube/v3/videos')).at(-1)).searchParams.get('id').split(',').sort();
-  assert.deepEqual(second, ['liv1', 'upc1'], 'what is known not to be live is not asked about again, a live and an upcoming one are');
+  assert.deepEqual(second, ['liv1', 'sch1', 'upc1'], 'what is known not to be live is not asked about again, a live and an upcoming one are');
   // A stream being followed that ended: it is not in `stillLive` any more.
   results = await PROVIDERS.youtube.poll([account], new Map([['UCx', new Set(['gone1'])]]), { now });
   assert.ok(!results.get('UCx').stillLive.has('gone1'), 'a followed stream that is not live now has ended');
@@ -210,16 +212,17 @@ const allText = (message) => JSON.stringify(json(message.components));
     assert.deepEqual(results.get('2'), { items: [], stillLive: new Set() }, 'a quiet channel has no stream and nothing is open');
     assert.equal(results.get('1').items[0].image, 'https://images.kick.com/t.jpg', 'a picture that loads is posted');
     assert.equal(kickCalls.filter((url) => url.includes('/channels?') && url.includes('broadcaster_user_id')).length, 1, 'both accounts are asked in one call');
-    // A stream that just began has no picture yet: the notice waits; an old stream goes without the picture.
+    // A stream that just began has no picture yet: the notice goes out at once with a stand-in picture of Kick, marked so the real one is swapped in later.
     channels[1].stream.thumbnail = 'https://images.kick.com/new.jpg';
     channels[1].stream.start_time = new Date(Date.now() - 20_000).toISOString();
-    const early = await PROVIDERS.kick.poll([{ id: '1', name: 'Live_One', avatar: null, url: found.url }]);
-    assert.deepEqual([early.get('1').items.length, early.get('1').stillLive.size], [0, 1], 'a stream with no picture yet waits, and is still counted as live');
+    const early = (await PROVIDERS.kick.poll([{ id: '1', name: 'Live_One', avatar: null, url: found.url }])).get('1');
+    assert.deepEqual([early.items.length, early.items[0].placeholder, early.items[0].image.endsWith('/kick-live.png')], [1, true, true], 'it does not wait for the picture');
     pictures['https://images.kick.com/new.jpg'] = true;
-    assert.equal((await PROVIDERS.kick.poll([{ id: '1', name: 'Live_One', avatar: null, url: found.url }])).get('1').items[0].image, 'https://images.kick.com/new.jpg', 'it is posted as soon as the picture loads');
-    channels[1].stream.thumbnail = 'https://images.kick.com/gone.jpg';
-    channels[1].stream.start_time = new Date(Date.now() - 10 * 60_000).toISOString();
-    assert.equal((await PROVIDERS.kick.poll([{ id: '1', name: 'Live_One', avatar: null, url: found.url }])).get('1').items[0].image, null, 'after some minutes it is posted without the picture');
+    const later = (await PROVIDERS.kick.poll([{ id: '1', name: 'Live_One', avatar: null, url: found.url }])).get('1').items[0];
+    assert.deepEqual([later.image, Boolean(later.placeholder)], ['https://images.kick.com/new.jpg', false], 'the real picture is used as soon as it loads');
+    channels[1].stream.thumbnail = '';
+    const none = (await PROVIDERS.kick.poll([{ id: '1', name: 'Live_One', avatar: null, url: found.url }])).get('1').items[0];
+    assert.deepEqual([none.image.endsWith('/kick-live.png'), none.placeholder], [true, false], 'a stream with no picture at all keeps the one of Kick');
     config.kickClientId = null;
     kickCalls.length = 0;
     await assert.rejects(PROVIDERS.kick.resolve('live-one'), (error) => error.kind === 'notConfigured', 'without the keys Kick says it is not set up');
@@ -481,7 +484,7 @@ const allText = (message) => JSON.stringify(json(message.components));
   const fourth = await service.createFeed(guild, { platform: 'youtube', account: 'four', channelId: CH });
   assert.equal(fourth.error, 'limitFree', 'Free follows up to three accounts of a platform');
   assert.equal(fourth.count, 3);
-  assert.equal(fourth.premium, 10, 'and Premium up to ten');
+  assert.equal(fourth.premium, 25, 'and Premium up to twenty-five');
   assert.equal(fourth.platform, 'YouTube');
   // The limit is for each platform: the three of YouTube do not use the room of Reddit.
   PROVIDERS.reddit = { ...PROVIDERS.youtube };
@@ -525,7 +528,8 @@ const allText = (message) => JSON.stringify(json(message.components));
   assert.equal((await feedsDb.seenAmong([a.id], ['burst-a', 'burst-b'])).size, 2, 'and all of them are marked as seen');
 
   // A stream: posted when it starts, its message is kept, and it is edited (grey, with buttons) when it ends.
-  queue = [{ id: 'live1', type: 'live', title: 'Streaming', url: 'https://y.t/live1', authorUrl: 'https://y.t/chan', publishedAt: at }];
+  const standIn = 'https://petto.sbs/assets/feeds/kick-live.png';
+  queue = [{ id: 'live1', type: 'live', title: 'Streaming', url: 'https://y.t/live1', authorUrl: 'https://y.t/chan', publishedAt: at, image: standIn, placeholder: true }];
   liveNow = new Set(['live1']);
   engine.forgetSchedule();
   await engine.tick(client, { now: at + 480_000 });
@@ -533,12 +537,24 @@ const allText = (message) => JSON.stringify(json(message.components));
   assert.ok(allText(liveMessage.payload).includes('Streaming'));
   assert.equal((await pool.query('select count(*)::int as n from feed_live where feed_id = $1', [a.id])).rows[0].n, 1);
   assert.equal(edits.length, 0);
+  // It went out with a stand-in picture; once the real one exists the same message is edited to show it (once).
+  engine.forgetSchedule();
+  await engine.tick(client, { now: at + 540_000 });
+  assert.equal(edits.length, 0, 'while the stand-in is all there is, nothing is edited');
+  queue = [{ ...queue[0], image: 'https://images.kick.com/real.jpg', placeholder: undefined }];
+  engine.forgetSchedule();
+  await engine.tick(client, { now: at + 560_000 });
+  assert.equal(edits.length, 1, 'the real picture replaced the stand-in');
+  assert.ok(JSON.stringify(edits[0].payload).includes('images.kick.com/real.jpg'));
+  engine.forgetSchedule();
+  await engine.tick(client, { now: at + 570_000 });
+  assert.equal(edits.length, 1, 'and it is not edited again');
   liveNow = new Set();
   engine.forgetSchedule();
   await engine.tick(client, { now: at + 600_000 });
-  assert.equal(edits.length, 1, 'the message of the stream was edited when it ended');
-  assert.equal(JSON.parse(JSON.stringify(edits[0].payload.components.at(-1))).accent_color, 0x4f545c);
-  assert.deepEqual(edits[0].payload.allowedMentions, { parse: [] }, 'and it does not mention anyone again');
+  assert.equal(edits.length, 2, 'the message of the stream was edited when it ended');
+  assert.equal(JSON.parse(JSON.stringify(edits[1].payload.components.at(-1))).accent_color, 0x4f545c);
+  assert.deepEqual(edits[1].payload.allowedMentions, { parse: [] }, 'and it does not mention anyone again');
   assert.equal((await pool.query('select count(*)::int as n from feed_live where feed_id = $1', [a.id])).rows[0].n, 0);
 
   // A feed that cannot post: the failure is written down and, five times in a row, it is turned off.

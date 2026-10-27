@@ -25,8 +25,8 @@ async function get(guildId, id) {
   return data;
 }
 
-/** Every feed that is on, for the job (one read; it is a small row per account followed). */
-async function listEnabled() {
+/** Every feed that is on, read from the database (one row per account followed, in pages). */
+async function readEnabled() {
   const rows = [];
   for (let from = 0; ; from += 1000) {
     const { data, error } = await database.from('feeds').select(COLUMNS).eq('enabled', true).order('id', { ascending: true }).range(from, from + 999);
@@ -36,22 +36,42 @@ async function listEnabled() {
   }
 }
 
+// The job asks for the feeds every minute: with many thousands of them that is a lot to read again and again, so the list is kept in memory. Every
+// change made here (a feed made, changed, turned off or deleted) is applied to the kept list at once; a full read every few minutes also brings in
+// what another process or a person changed in the database.
+const KEEP_LIST_MS = 5 * 60_000;
+let kept = null; // { rows: Map(id -> row), at }
+
+/** Every feed that is on, for the job. */
+async function listEnabled({ now = Date.now() } = {}) {
+  if (kept && now - kept.at < KEEP_LIST_MS) return [...kept.rows.values()];
+  const rows = await readEnabled();
+  kept = { rows: new Map(rows.map((row) => [row.id, row])), at: now };
+  return rows;
+}
+
+const forgetList = () => { kept = null; }; // for the checks, and for whoever writes to the table by hand
+const keepRow = (row) => { if (!kept || !row) return; if (row.enabled) kept.rows.set(row.id, row); else kept.rows.delete(row.id); };
+
 async function create(row) {
   await ensureGuild(row.guild_id);
   const { data, error } = await database.from('feeds').insert(row).select(COLUMNS).single();
   if (error) throw error;
+  keepRow(data);
   return data;
 }
 
 async function update(guildId, id, patch) {
   const { data, error } = await database.from('feeds').update(patch).eq('guild_id', guildId).eq('id', id).select(COLUMNS).maybeSingle();
   if (error) throw error;
+  keepRow(data);
   return data;
 }
 
 async function remove(guildId, id) {
   const { data, error } = await database.from('feeds').delete().eq('guild_id', guildId).eq('id', id).select('id');
   if (error) throw error;
+  if (kept) kept.rows.delete(Number(id));
   return (data ?? []).length > 0;
 }
 
@@ -85,6 +105,17 @@ async function liveRowsFor(feedIds) {
   return rows;
 }
 
+/** Every open stream message of every feed (a row only exists while a stream is on, so there are few): the job reads them in one go. */
+async function liveRowsAll() {
+  const rows = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await database.from('feed_live').select('feed_id,item_id,channel_id,message_id,item,started_at').order('feed_id', { ascending: true }).range(from, from + 999);
+    if (error) throw error;
+    rows.push(...(data ?? []));
+    if ((data ?? []).length < 1000) return rows;
+  }
+}
+
 async function saveLive(row) {
   const { error } = await database.from('feed_live').upsert(row, { onConflict: 'feed_id,item_id' });
   if (error) throw error;
@@ -104,4 +135,4 @@ async function pruneOld(now = Date.now()) {
   if (b.error) throw b.error;
 }
 
-module.exports = { SEEN_KEEP_DAYS, listForGuild, countForGuild, get, listEnabled, create, update, remove, seenAmong, markSeen, liveRowsFor, saveLive, deleteLive, pruneOld };
+module.exports = { SEEN_KEEP_DAYS, listForGuild, countForGuild, get, listEnabled, forgetList, create, update, remove, seenAmong, markSeen, liveRowsFor, liveRowsAll, saveLive, deleteLive, pruneOld };
