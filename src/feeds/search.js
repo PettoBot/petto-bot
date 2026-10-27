@@ -78,7 +78,9 @@ async function searchModrinth(query, lang) {
   if (rest !== null && !/^(?:top|tops|ranking|coming soon|pronto|em breve)\b/i.test(query)) {
     const names = { mod: /mod/, modpack: /modpack|pack de mods/, resourcepack: /resource|texture|textura/, shader: /shader/, plugin: /plugin/, datapack: /data\s?pack/ };
     const kinds = Object.keys(modrinthList.NEW_KINDS).filter((kind) => !rest || names[kind].test(rest));
-    return kinds.map((kind) => { const account = modrinthList.newAccount(kind, lang); return { value: account.id, name: account.name, avatar: null, url: account.url, detail: t(lang, 'feeds.list.detail.newProjects') }; });
+    // The kinds together in one feed come first (a server has a few places for each platform: one feed can cover several kinds), then each kind alone.
+    const accounts = [...(kinds.length > 1 ? [modrinthList.newAccount(kinds, lang)] : []), ...kinds.map((kind) => modrinthList.newAccount(kind, lang))];
+    return accounts.map((account) => ({ value: account.id, name: account.name, avatar: null, url: account.url, detail: t(lang, 'feeds.list.detail.newProjects') }));
   }
   const body = await fetchJsonBody(`https://api.modrinth.com/v2/search?query=${encodeURIComponent(query)}&limit=${MAX_RESULTS}`);
   return (body?.hits ?? []).map((hit) => ({ value: hit.slug, name: clean(hit.title, 80), avatar: https(hit.icon_url), url: `https://modrinth.com/${hit.project_type}/${hit.slug}`, detail: clean(hit.description, 90) }));

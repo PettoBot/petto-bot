@@ -23,6 +23,7 @@ const anilist = require('./anilist');
 const daily = require('./daily');
 const music = require('./music');
 const animals = require('./animals');
+const pictures = require('./pictures');
 const websub = require('../websub');
 const redis = require('../../utils/redis');
 const social = require('./social');
@@ -86,29 +87,66 @@ const listPoll = (read, concurrency = 3) => async function poll(accounts, _track
 
 /** A cat, a dog, a fox or any of them (`animals`): a picture for each slot of time of the pace of the account (once a day to every 5 minutes), the same for every server of that pace. */
 function animalFeed(animal) {
+  const mixed = animal === 'animals'; // the one feed of the animals: any of them, or only the ones asked for (`15m cat dog`)
+  const names = { cat: 'Cats', dog: 'Dogs', fox: 'Foxes', bird: 'Birds', duck: 'Ducks', capybara: 'Capybaras', bunny: 'Bunnies', animals: 'Animals' }; // i18n-ignore: the name of what is posted
+  const keyOf = (account, minutes, slot) => `${minutes}:${slot}${mixed ? animals.suffixOf(animals.kindsOf(account.id)) : ''}`;
   return {
     interval: 60_000, perTick: 5000, concurrency: 1, perLanguage: true, noAccount: true,
-    async resolve(text) {
-      const minutes = schedule.parseMinutes(text);
+    async resolve(text, { lang } = {}) {
+      const { tokens, kinds } = mixed ? animals.parseAnimalInput(text) : { tokens: [String(text ?? '')], kinds: [] };
+      const minutes = schedule.parseMinutes(tokens.join(' '));
       if (minutes === null) throw new IntegrationError('badInput');
-      return { id: schedule.accountIdFor(animal, minutes), name: { cat: 'Cats', dog: 'Dogs', fox: 'Foxes', bird: 'Birds', duck: 'Ducks', capybara: 'Capybaras', bunny: 'Bunnies', animals: 'Animals' }[animal], avatar: null, url: null }; // i18n-ignore: the name of what is posted
+      const suffix = mixed ? animals.suffixOf(kinds) : '';
+      const id = suffix ? `every:${minutes}${suffix}` : schedule.accountIdFor(animal, minutes);
+      const name = mixed && kinds.length && kinds.length < animals.KINDS.length ? kinds.map((kind) => t(lang, `feeds.animals.name.${kind}`)).join(' + ') : (mixed ? t(lang, 'feeds.animals.name.all') : names[animal]);
+      return { id, name, avatar: null, url: null };
     },
     async poll(accounts, _tracked, { now = Date.now(), lang = 'en' } = {}) {
       const results = new Map();
       for (const account of accounts) {
         const minutes = schedule.minutesOf(account.id);
         const slot = schedule.slotOf(now, minutes);
-        const found = await animals.pictureOf(animal, `${minutes}:${slot}`);
-        results.set(account.id, { items: found ? [animals.toItem(animal, found, { id: `${minutes}:${slot}`, at: schedule.slotStart(slot, minutes), lang })] : [] });
+        const key = keyOf(account, minutes, slot);
+        const found = await animals.pictureOf(animal, key);
+        results.set(account.id, { items: found ? [animals.toItem(animal, found, { id: key, at: schedule.slotStart(slot, minutes), lang })] : [] });
       }
       return results;
     },
     async baselineItems(account, now = Date.now()) {
       const minutes = schedule.minutesOf(account.id);
-      return [{ id: `${minutes}:${schedule.slotOf(now, minutes)}` }];
+      return [{ id: keyOf(account, minutes, schedule.slotOf(now, minutes)) }];
     },
   };
 }
+
+/** Pictures by tags (`15m pink cat`): a picture for each slot of time of the pace of the account, the same for every server that wrote the same tags and the same pace. */
+const picturesFeed = {
+  interval: 60_000, perTick: 5000, concurrency: 1, noAccount: true,
+  async resolve(text) {
+    const tags = pictures.parseTags(String(text ?? '').split(/\s+/).filter((word) => !/^(?:every:)?\d{1,4}\s*(?:m|min|mins|minutes?|h|hrs?|hours?|d|days?)?$/i.test(word)).join(' '));
+    if (!tags.length || pictures.refused(tags)) throw new IntegrationError('badTags');
+    const pace = String(text ?? '').split(/\s+/).find((word) => /^(?:every:)?\d{1,4}\s*(?:m|min|mins|minutes?|h|hrs?|hours?|d|days?)?$/i.test(word)) ?? '';
+    const minutes = schedule.parseMinutes(pace);
+    if (minutes === null) throw new IntegrationError('badInput'); // the pace (what the service turns into the message about the pace)
+    return { id: `every:${minutes}:${pictures.joinTags(tags)}`, name: tags.map((tag) => `#${tag}`).join(' '), avatar: null, url: null };
+  },
+  async poll(accounts, _tracked, { now = Date.now() } = {}) {
+    const results = new Map();
+    for (const account of accounts) {
+      const minutes = schedule.minutesOf(account.id);
+      const slot = schedule.slotOf(now, minutes);
+      try {
+        const item = await pictures.pictureOf(pictures.tagsOf(account.id), `${minutes}:${slot}`, schedule.slotStart(slot, minutes));
+        results.set(account.id, { items: item ? [item] : [] });
+      } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
+    }
+    return results;
+  },
+  async baselineItems(account, now = Date.now()) {
+    const minutes = schedule.minutesOf(account.id);
+    return [{ id: `${minutes}:${schedule.slotOf(now, minutes)}` }];
+  },
+};
 
 /** A song at random, at the pace of the account (once a day to every 5 minutes), the same for every server of that pace. */
 const randomMusicFeed = {
@@ -124,7 +162,7 @@ const randomMusicFeed = {
       const minutes = schedule.minutesOf(account.id);
       const slot = schedule.slotOf(now, minutes);
       try {
-        const item = await music.deezerRandomSong(`${minutes}:${slot}`, schedule.slotStart(slot, minutes));
+        const item = await music.randomSong(`${minutes}:${slot}`, schedule.slotStart(slot, minutes));
         results.set(account.id, { items: item ? [item] : [] });
       } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
     }
@@ -486,6 +524,7 @@ const PROVIDERS = {
   bunny: animalFeed('bunny'),
   animals: animalFeed('animals'),
   randommusic: randomMusicFeed,
+  pictures: picturesFeed,
 
   wikipedia: {
     interval: 60_000, perTick: 5000, concurrency: 1, perLanguage: true, noAccount: true,

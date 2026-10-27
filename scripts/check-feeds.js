@@ -423,7 +423,11 @@ const allText = (message) => JSON.stringify(json(message.components));
     const shaders = await PROVIDERS.modrinth.resolve('new:shader');
     assert.deepEqual([shaders.id, shaders.name], ['new:shader', 'New shaders']);
     const projects = (await PROVIDERS.modrinth.poll([shaders], new Map(), { now })).get('new:shader').items;
-    assert.deepEqual([projects.length, projects[0].title, projects[0].type, projects[0].extra, projects[0].author], [1, 'Glow', 'post', '1.21', 'someone']);
+    assert.deepEqual([projects.length, projects[0].title, projects[0].type, projects[0].extra, projects[0].author], [1, 'Glow', 'project', 'SHADER · 1.21', 'someone']);
+    const several = await PROVIDERS.modrinth.resolve('new:shader+mod', { lang: 'es' });
+    assert.deepEqual([several.id, several.name], ['new:mod+shader', 'Mods nuevos + Shaders nuevos'], 'several kinds in one feed (always in the same order)');
+    assert.deepEqual([(await PROVIDERS.modrinth.resolve('new:all')).id, (await PROVIDERS.modrinth.resolve('new:all', { lang: 'pt-BR' })).name], ['new:all', 'Novidades do Modrinth']);
+    await assert.rejects(PROVIDERS.modrinth.resolve('new:nonsense'), () => true, 'a kind that does not exist is not a list');
     assert.deepEqual((await PROVIDERS.modrinth.baselineItems(shaders)).map((item) => item.id), ['sh1']);
     const top = await PROVIDERS.steam.resolve('store:top');
     assert.equal(top.name, 'Steam · Top sellers');
@@ -433,7 +437,10 @@ const allText = (message) => JSON.stringify(json(message.components));
     forgetAll();
     assert.deepEqual((await search('modrinth', 'new shaders')).map((entry) => entry.value), ['new:shader']);
     forgetAll();
-    assert.deepEqual((await search('modrinth', 'nuevos')).length, 6, 'new alone offers every kind');
+    const everything = await search('modrinth', 'nuevos');
+    assert.deepEqual([everything.length, everything[0].value], [7, 'new:all'], 'new alone offers every kind together first, then each one');
+    forgetAll();
+    assert.equal((await search('modrinth', 'new mods shaders'))[0].value, 'new:mod+shader', 'two kinds written offer them in one feed');
     forgetAll();
     assert.deepEqual((await search('steam', 'top')).map((entry) => entry.value), ['store:top']);
     forgetAll();
@@ -560,6 +567,40 @@ const allText = (message) => JSON.stringify(json(message.components));
     globalThis.fetch = realFetch;
   }
 
+  // --- The animals are one feed: any of them, or only the ones asked for (in three languages), each choice a feed of its own -------------------------------------
+  {
+    const animals = require('../src/feeds/providers/animals');
+    assert.deepEqual(animals.parseAnimalInput('15m cat dog'), { tokens: ['15m'], kinds: ['cat', 'dog'] });
+    assert.deepEqual(animals.parseAnimalInput('gatos, perritos 1h'), { tokens: ['1h'], kinds: ['cat', 'dog'] }, 'in Spanish');
+    assert.deepEqual(animals.parseAnimalInput('capivara coelhinho'), { tokens: [], kinds: ['bunny', 'capybara'] }, 'in Portuguese');
+    assert.deepEqual(animals.parseAnimalInput('30m all'), { tokens: ['30m'], kinds: [] }, 'all is no choice at all');
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      const host = new URL(String(url)).host;
+      const ok = (body) => new Response(JSON.stringify(body), { status: 200 });
+      if (host === 'api.thecatapi.com') return ok([{ url: 'https://cdn2.thecatapi.com/images/c1.jpg' }]);
+      if (host === 'dog.ceo') return ok({ message: 'https://images.dog.ceo/breeds/chow/n1.jpg' });
+      if (host === 'randomfox.ca') return ok({ image: 'https://randomfox.ca/images/7.jpg' });
+      return new Response('{}', { status: 404 });
+    };
+    const both = await PROVIDERS.animals.resolve('15m cat dog', { lang: 'es' });
+    assert.deepEqual([both.id, both.name], ['every:15:cat+dog', 'Gatos + Perros'], 'the choice is part of the account, and its name is in the language of who follows it');
+    assert.equal((await PROVIDERS.animals.resolve('15m cat dog')).id, both.id, 'the same choice is the same account');
+    assert.equal((await PROVIDERS.animals.resolve('15m')).id, 'every:15', 'no choice is every animal');
+    assert.equal((await PROVIDERS.animals.resolve('')).id, 'daily', 'and nothing at all is once a day');
+    assert.equal((await PROVIDERS.animals.resolve('cat')).id, 'every:1440:cat', 'a choice without a pace is once a day');
+    await assert.rejects(PROVIDERS.animals.resolve('4m cat'), (error) => error.kind === 'badInput');
+    const when = Date.UTC(2026, 9, 27, 10, 7, 30);
+    const titles = new Set();
+    for (let slot = 0; slot < 8; slot += 1) {
+      const item = (await PROVIDERS.animals.poll([both], new Map(), { now: when + slot * 15 * 60_000, lang: 'en' })).get(both.id).items[0];
+      titles.add(item.title);
+    }
+    assert.deepEqual([...titles].sort(), ['A cat for you', 'A dog for you'], 'only the animals asked for come up');
+    assert.equal(require('../src/feeds/schedule').minutesOf('every:15:cat+dog'), 15, 'the pace is read from an account with a choice');
+    globalThis.fetch = realFetch;
+  }
+
   // --- Random music: a song of the charts of a random genre for each slot of time, the same for everybody -----------------------------------------------
   {
     const realFetch = globalThis.fetch;
@@ -587,6 +628,86 @@ const allText = (message) => JSON.stringify(json(message.components));
     const songCard = JSON.parse(JSON.stringify(card.buildFeedMessage({ message: '', options: {}, ping_roles: [] }, song, { lang: 'es', hero: { name: 'release.png' } }).components));
     assert.equal(songCard[0].components.at(-1).components[0].label, 'Escuchar en Deezer');
     assert.ok(JSON.stringify(songCard).includes('Una canción para ti'), 'and says what it is');
+    globalThis.fetch = realFetch;
+  }
+
+  // --- Pictures by tags: a few tags and a pace, a picture of what is tagged that way (Flickr's public feed of tags), the same for everybody -------------------------
+  {
+    const pictures = require('../src/feeds/providers/pictures');
+    assert.deepEqual(pictures.parseTags('Rosa #Estética, gatos'), ['pink', 'aesthetic', 'cats'], 'accents and signs go, and the common words of Spanish become the English ones');
+    assert.deepEqual(pictures.parseTags('a b pink pink blue green red'), ['pink', 'blue', 'green'], 'one letter is no tag, a tag twice is one, and three at most');
+    assert.equal(pictures.refused(['pink', 'nsfw']), true, 'some words are never followed');
+    const asked = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      const u = String(url);
+      asked.push(u);
+      if (!u.startsWith('https://www.flickr.com/services/feeds/photos_public.gne')) return new Response('{}', { status: 404 });
+      const mode = /tagmode=(\w+)/.exec(u)[1];
+      const items = mode === 'all' && u.includes('pink%2Cunicorn') ? [] : [1, 2, 3].map((n) => ({ title: `Photo ${n}`, link: `https://www.flickr.com/photos/someone/${n}/`, media: { m: `https://live.staticflickr.com/65535/${n}_abc_m.jpg` }, author: 'nobody@flickr.com ("someone")' }));
+      return new Response(JSON.stringify({ items }), { status: 200 });
+    };
+    const account = await PROVIDERS.pictures.resolve('30m rosa', { lang: 'es' });
+    assert.deepEqual([account.id, account.name], ['every:30:pink', '#pink'], 'the tags are part of the account, with the pace');
+    assert.equal((await PROVIDERS.pictures.resolve('rosa')).id, 'every:1440:pink', 'a pace of nothing is once a day');
+    await assert.rejects(PROVIDERS.pictures.resolve('30m'), (error) => error.kind === 'badTags', 'a pace without tags is no feed');
+    await assert.rejects(PROVIDERS.pictures.resolve('30m nsfw'), (error) => error.kind === 'badTags');
+    await assert.rejects(PROVIDERS.pictures.resolve('3m rosa'), (error) => error.kind === 'badInput', 'and a pace that is too short is refused');
+    const when = Date.UTC(2026, 9, 27, 10, 7, 30);
+    const first = (await PROVIDERS.pictures.poll([account], new Map(), { now: when })).get(account.id).items[0];
+    assert.deepEqual([first.type, first.platform, first.url.startsWith('https://www.flickr.com/photos/'), first.image.endsWith('_b.jpg'), first.extra, first.author], ['photo', 'pictures', true, true, '#pink', 'someone']);
+    const before = asked.length;
+    const again = (await PROVIDERS.pictures.poll([account], new Map(), { now: when + 60_000 })).get(account.id).items[0];
+    assert.deepEqual([again.id, asked.length], [first.id, before], 'a minute later it is the same picture and Flickr is not asked again');
+    const two = await PROVIDERS.pictures.resolve('15m pink unicorn');
+    assert.equal((await PROVIDERS.pictures.poll([two], new Map(), { now: when })).get(two.id).items.length, 1, 'when no picture has all the tags, one with any of them is used');
+    globalThis.fetch = realFetch;
+  }
+
+  // --- Random music comes from Deezer, Apple Music and (with the keys of the bot) Spotify; Spotify that rejects the keys says so ---------------------------------
+  {
+    config.spotifyClientId = 'id';
+    config.spotifyClientSecret = 'secret';
+    const realFetch = globalThis.fetch;
+    let down = new Set();
+    const ok = (body) => new Response(JSON.stringify(body), { status: 200 });
+    globalThis.fetch = async (url) => {
+      const u = String(url);
+      const host = new URL(u).host;
+      if (down.has(host)) return new Response('{}', { status: 500 });
+      if (u === 'https://api.deezer.com/genre') return ok({ data: [{ id: 152, name: 'Rock' }] });
+      if (/api\.deezer\.com\/chart\/\d+\/tracks/.test(u)) return ok({ data: [1, 2, 3].map((n) => ({ id: n, title: `Dz ${n}`, link: `https://www.deezer.com/track/${n}`, artist: { name: 'Singer' }, album: { cover_xl: 'https://cdn.dz/c.jpg' } })) });
+      if (host === 'rss.marketingtools.apple.com') return ok({ feed: { results: [1, 2, 3].map((n) => ({ id: String(n), name: `Ap ${n}`, artistName: 'Star', url: `https://music.apple.com/x/${n}`, artworkUrl100: 'https://is1.mzstatic.com/i/100x100bb.jpg' })) } });
+      if (u === 'https://accounts.spotify.com/api/token') return ok({ access_token: 'sp-token', expires_in: 3600 });
+      if (u.startsWith('https://api.spotify.com/v1/search')) return ok({ tracks: { items: [1, 2, 3].map((n) => ({ id: `s${n}`, name: `Sp ${n}`, artists: [{ name: 'Band' }], album: { images: [{ url: 'https://i.scdn.co/a.jpg' }] }, external_urls: { spotify: `https://open.spotify.com/track/s${n}` } })) } });
+      return new Response('{}', { status: 404 });
+    };
+    const when = Date.UTC(2026, 9, 27, 10, 7, 30);
+    const account = await PROVIDERS.randommusic.resolve('5m');
+    const platforms = new Set();
+    for (let slot = 0; slot < 12; slot += 1) {
+      const item = (await PROVIDERS.randommusic.poll([account], new Map(), { now: when + slot * 5 * 60_000 })).get(account.id).items[0];
+      platforms.add(item.platform);
+      assert.equal(item.type, 'track');
+    }
+    assert.deepEqual([...platforms].sort(), ['applemusic', 'deezer', 'spotify'], 'the songs come from the three services, a different one in each slot');
+    // When a service is down the next one answers.
+    down = new Set(['api.deezer.com', 'rss.marketingtools.apple.com']);
+    const via = (await PROVIDERS.randommusic.poll([account], new Map(), { now: when + 100 * 5 * 60_000 })).get(account.id).items[0];
+    assert.equal(via.platform, 'spotify', 'with Deezer and Apple down it is Spotify');
+    down = new Set();
+    // Without the keys of the bot there is no Spotify in it.
+    config.spotifyClientId = null;
+    const without = new Set();
+    for (let slot = 200; slot < 212; slot += 1) without.add((await PROVIDERS.randommusic.poll([account], new Map(), { now: when + slot * 5 * 60_000 })).get(account.id).items[0].platform);
+    assert.equal(without.has('spotify'), false);
+    // Spotify that rejects the id or the secret is a bot that is not set up.
+    config.spotifyClientId = 'wrong';
+    require('../src/feeds/providers/music').forgetSpotifyToken();
+    globalThis.fetch = async (url) => (String(url) === 'https://accounts.spotify.com/api/token' ? new Response('{"error":"invalid_client"}', { status: 400 }) : new Response('{}', { status: 404 }));
+    await assert.rejects(PROVIDERS.spotify.resolve('Artist'), (error) => error.kind === 'notConfigured', 'wrong keys say that Spotify is not set up (and the log says what it answered)');
+    config.spotifyClientId = null;
+    config.spotifyClientSecret = null;
     globalThis.fetch = realFetch;
   }
 

@@ -56,15 +56,48 @@ async function fetchKind(kind, seed) {
   return null;
 }
 
-/** The picture of a slot of time for an animal (one of `KINDS`, or `animals` for any of them), the same for everybody; null when no service has one. */
+/** The kinds a key or an account asks for (`30:123456:cat+dog`, `every:30:cat+dog`): only the ones that exist; none means all of them. */
+const kindsIn = (text) => String(text ?? '').split(':').slice(2).join(':').split('+').filter((kind) => KINDS.includes(kind));
+const kindsOf = (accountId) => [...new Set(kindsIn(accountId))].sort();
+
+/**
+ * What a person wrote for the animals: the pace and, if they want only some, which (`15m`, `15m cat dog`, `gatos perros 1h`, `all`). Words in English, Spanish and
+ * Portuguese. Returns `{ tokens, kinds }`: the words that are not an animal (the pace) and the animals.
+ */
+const ALIASES = {
+  cat: ['cat', 'cats', 'gato', 'gatos', 'gatito', 'gatitos', 'gata', 'gatinho', 'gatinhos'],
+  dog: ['dog', 'dogs', 'perro', 'perros', 'perrito', 'perritos', 'cachorro', 'cachorros', 'cachorrinho', 'cachorrinhos', 'cao', 'cão'],
+  fox: ['fox', 'foxes', 'zorro', 'zorros', 'zorrito', 'zorritos', 'raposa', 'raposas', 'raposinha'],
+  bird: ['bird', 'birds', 'pajaro', 'pajaros', 'pájaro', 'pájaros', 'pajarito', 'ave', 'aves', 'passaro', 'passaros', 'pássaro', 'pássaros'],
+  duck: ['duck', 'ducks', 'pato', 'patos', 'patito', 'patitos', 'patinho', 'patinhos'],
+  capybara: ['capybara', 'capybaras', 'capibara', 'capibaras', 'carpincho', 'capivara', 'capivaras'],
+  bunny: ['bunny', 'bunnies', 'rabbit', 'rabbits', 'conejo', 'conejos', 'conejito', 'conejitos', 'coelho', 'coelhos', 'coelhinho'],
+};
+const ALL_WORDS = new Set(['all', 'any', 'animals', 'animal', 'animales', 'animais', 'todos', 'todo', 'todas']);
+function parseAnimalInput(text) {
+  const kinds = new Set();
+  const rest = [];
+  for (const token of String(text ?? '').toLowerCase().split(/[\s,+;]+/).filter(Boolean)) {
+    const kind = Object.keys(ALIASES).find((key) => ALIASES[key].includes(token));
+    if (kind) kinds.add(kind);
+    else if (!ALL_WORDS.has(token)) rest.push(token);
+  }
+  return { tokens: rest, kinds: [...kinds].sort() };
+}
+/** The part of an account id that says which animals (nothing when it is all of them). */
+const suffixOf = (kinds) => (kinds.length && kinds.length < KINDS.length ? `:${kinds.join('+')}` : '');
+
+/** The picture of a slot of time for an animal (one of `KINDS`, or `animals` for any of them, or for some: `30:123456:cat+dog`), the same for everybody; null when no service has one. */
 async function pictureOf(animal, key) {
   const id = `${animal}:${key}`;
   if (slots.has(id)) return slots.get(id);
   const seed = seedOf(key);
   if (animal !== 'animals') return keep(id, await fetchKind(animal, seed));
-  // Any animal: the one of the slot, and the next ones if its services are down.
-  for (let step = 0; step < KINDS.length; step += 1) {
-    const found = await fetchKind(KINDS[(seed + step) % KINDS.length], Math.floor(seed / KINDS.length));
+  // Any animal (or some): the one of the slot, and the next ones if its services are down.
+  const wanted = kindsIn(`x:x:${String(key).split(':').slice(2).join(':')}`);
+  const pool = wanted.length ? wanted : KINDS;
+  for (let step = 0; step < pool.length; step += 1) {
+    const found = await fetchKind(pool[(seed + step) % pool.length], Math.floor(seed / pool.length));
     if (found) return keep(id, found);
   }
   return keep(id, null);
@@ -76,4 +109,4 @@ const toItem = (animal, found, { id, at, lang }) => ({
   author: null, authorUrl: null, publishedAt: at, extra: '',
 });
 
-module.exports = { pictureOf, toItem, SOURCES, KINDS };
+module.exports = { pictureOf, toItem, parseAnimalInput, kindsOf, suffixOf, SOURCES, KINDS };

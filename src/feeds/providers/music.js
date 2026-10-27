@@ -6,6 +6,7 @@ const config = require('../../config');
 const { fetchJsonBody } = require('../http');
 const { IntegrationError } = require('../../utils/integrations');
 const { t } = require('../../i18n');
+const logger = require('../../utils/logger');
 
 const L = (lang, key, vars) => t(lang, `feeds.list.${key}`, vars);
 
@@ -157,15 +158,54 @@ async function deezerChart(account, now) {
 }
 
 const randomSongs = new Map(); // `${minutes}:${slot}` -> item | null
-/** A song picked at random from the charts of a random genre of Deezer, the same for everybody in a slot of time (`30:123456`); null when Deezer has none. */
-async function deezerRandomSong(key, at) {
-  if (randomSongs.has(key)) return randomSongs.get(key);
-  const hash = (Math.abs(Number(String(key).split(':')[1]) || 0) * 2654435761) >>> 0;
+const hashOf = (key) => (Math.abs(Number(String(key).split(':')[1]) || 0) * 2654435761) >>> 0; // the same number for everybody in a slot of time, a different one in the next
+
+/** A song picked at random from the charts of a random genre of Deezer; null when Deezer has none. */
+async function deezerRandomSong(key, at, hash = hashOf(key)) {
   const genres = [{ id: '0', name: '' }, ...(await deezerGenres())];
   const genre = genres[hash % genres.length];
   const list = (await deezerGet(`/chart/${genre.id}/tracks?limit=100`))?.data ?? [];
   const track = list.length ? list[(hash >>> 8) % list.length] : null;
-  const item = track ? { ...deezerTrackItem(track, { avatar: null }, { extra: genre.name, at }), type: 'track', id: key } : null;
+  return track ? { ...deezerTrackItem(track, { avatar: null }, { extra: genre.name, at }), type: 'track', id: key } : null;
+}
+
+/** A song picked at random from the top 100 songs of a random country of Apple Music (no key); null when Apple has none. */
+async function appleRandomSong(key, at, hash = hashOf(key)) {
+  const country = COUNTRIES[hash % COUNTRIES.length];
+  const body = await fetchJsonBody(`${APPLE_CHARTS}/${country}/music/most-played/100/songs.json`);
+  const list = body?.feed?.results ?? [];
+  const entry = list.length ? list[(hash >>> 8) % list.length] : null;
+  return entry ? {
+    platform: 'applemusic', type: 'track', id: key, title: clean(entry.name, 200), url: String(entry.url ?? 'https://music.apple.com/'), description: '', image: appleCover(entry.artworkUrl100), avatar: null,
+    author: clean(entry.artistName, 120), authorUrl: entry.artistUrl ?? null, publishedAt: at, extra: clean(entry.genres?.[0]?.name, 40),
+  } : null;
+}
+
+const SPOTIFY_GENRES = ['pop', 'rock', 'hip hop', 'latin', 'reggaeton', 'dance', 'electronic', 'indie', 'r&b', 'jazz', 'metal', 'k-pop', 'country', 'soul', 'classical', 'reggae', 'salsa', 'punk', 'blues', 'folk']; // i18n-ignore: names of genres sent to Spotify
+/** A song picked at random from the search of a genre of Spotify (needs the keys of the bot); null when there is none. */
+async function spotifyRandomSong(key, at, hash = hashOf(key)) {
+  const genre = SPOTIFY_GENRES[hash % SPOTIFY_GENRES.length];
+  const body = await spotifyApi(`/search?q=${encodeURIComponent(`genre:"${genre}"`)}&type=track&limit=10&offset=${(hash >>> 8) % 400}&market=US`);
+  const list = (body?.tracks?.items ?? []).filter((track) => track?.id);
+  const track = list.length ? list[(hash >>> 4) % list.length] : null;
+  return track ? {
+    platform: 'spotify', type: 'track', id: key, title: clean(track.name, 200), url: track.external_urls?.spotify ?? 'https://open.spotify.com/', description: '', image: spotifyPicture(track.album?.images), avatar: null,
+    author: clean((track.artists ?? []).map((artist) => artist.name).join(', '), 120), authorUrl: track.artists?.[0]?.external_urls?.spotify ?? null, publishedAt: at, extra: genre,
+  } : null;
+}
+
+/**
+ * A song at random for a slot of time, the same for everybody: from Deezer, Apple Music or Spotify (when the bot has its keys), a different service for each slot, and
+ * the next one when a service does not answer. null when none has a song.
+ */
+async function randomSong(key, at) {
+  if (randomSongs.has(key)) return randomSongs.get(key);
+  const sources = [deezerRandomSong, appleRandomSong, ...(config.spotifyClientId && config.spotifyClientSecret ? [spotifyRandomSong] : [])];
+  const hash = hashOf(key);
+  let item = null;
+  for (let step = 0; step < sources.length && !item; step += 1) {
+    try { item = await sources[(hash + step) % sources.length](key, at, hash >>> 2); } catch { /* the next service */ }
+  }
   if (randomSongs.size > 200) randomSongs.clear();
   randomSongs.set(key, item);
   return item;
@@ -288,8 +328,23 @@ async function spotifyAppToken(force = false) {
     if (!body?.access_token) throw new IntegrationError('unavailable');
     spotifyToken = { value: body.access_token, until: Date.now() + Math.max(60, (Number(body.expires_in) || 3600) - 60) * 1000 };
     return spotifyToken.value;
+  }).catch((error) => {
+    // Spotify answers 400 or 401 when the id or the secret is wrong: that is a bot that is not set up, not a Spotify that is down. The log says what it answered.
+    const rejected = /\b(400|401|403)\b/.test(String(error?.message));
+    logSpotify(rejected ? `it rejected the keys of the bot (${error.message}): check SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET` : `the token could not be asked for (${error?.message ?? error})`); // i18n-ignore: a line of the log
+    throw rejected ? new IntegrationError('notConfigured') : error;
   }).finally(() => { spotifyPending = null; });
   return spotifyPending;
+}
+
+const forgetSpotifyToken = () => { spotifyToken = null; spotifyPending = null; }; // for the checks
+
+let spotifyLoggedAt = 0;
+/** What Spotify answers when it fails, in the log (once in ten minutes): the dashboard only says that it did not answer. */
+function logSpotify(message) {
+  if (Date.now() - spotifyLoggedAt < 10 * 60_000) return;
+  spotifyLoggedAt = Date.now();
+  logger.warn(`Spotify: ${message}.`);
 }
 
 async function spotifyApi(path) {
@@ -298,6 +353,7 @@ async function spotifyApi(path) {
     return await ask();
   } catch (error) {
     if (String(error.message).includes('401')) { await spotifyAppToken(true); return ask(); } // the token ran out early
+    if (error instanceof IntegrationError && error.kind !== 'notConfigured' && error.kind !== 'notFound') logSpotify(`${path.split('?')[0]} failed (${error.message})`);
     throw error;
   }
 }
@@ -395,5 +451,5 @@ module.exports = {
   parseDeezerArtist, parseDeezerLink, deezerSearch, deezerResolve, deezerReleases,
   parseAppleArtist, parseAppleLink, appleSearch, appleResolve, appleReleases,
   parseSpotify, spotifySearch, spotifyResolve, spotifyReleases,
-  deezerRandomSong, chartWords, newWords, countryOf,
+  forgetSpotifyToken, randomSong, deezerRandomSong, chartWords, newWords, countryOf,
 };
