@@ -174,6 +174,7 @@ async function liveStates(ids) {
         scheduledAt: Date.parse(details.scheduledStartTime) || null,
         viewers: Number(details.concurrentViewers) || null,
         avatarless: true,
+        description: video.snippet?.description ?? '', // a video that came with a push has none from the feed: the call that says whether it is live brings it, at no extra cost
       };
     }
   }

@@ -99,10 +99,15 @@ function buildFeedMessage(feed, item, { lang, test = false, hero = null } = {}) 
 
   const ended = item.type === 'ended';
   const card = new ContainerBuilder().setAccentColor(ended ? ENDED_COLOR : Number.isInteger(options.color) ? options.color : platform.color);
-  const section = new SectionBuilder()
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')))
-    .setThumbnailAccessory(new ThumbnailBuilder().setURL(safeUrl(item.avatar) ?? fallbackPicture(item.platform)));
-  card.addSectionComponents(section);
+  if (lines.length === 1) {
+    // Only the title: a section with the picture of the account is as tall as the picture and would leave an empty space under one line, so it goes as plain text.
+    card.addTextDisplayComponents(new TextDisplayBuilder().setContent(heading));
+  } else {
+    const section = new SectionBuilder()
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')))
+      .setThumbnailAccessory(new ThumbnailBuilder().setURL(safeUrl(item.avatar) ?? fallbackPicture(item.platform)));
+    card.addSectionComponents(section);
+  }
 
   // A Short is vertical: its picture is a small frame on black bars, so it goes without the big picture unless the server asks for it.
   const wantImage = options.image === true || (options.image !== false && item.type !== 'short');
