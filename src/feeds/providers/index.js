@@ -237,6 +237,7 @@ const PROVIDERS = {
         const items = [];
         const stillLive = new Set();
         for (const entry of entries.get(account.id)) {
+          if (!entry.description && states?.[entry.videoId]?.description) entry.description = states[entry.videoId].description;
           const state = states?.[entry.videoId]?.state;
           if (state === 'live') {
             rememberLive(entry.videoId); stillLive.add(entry.videoId);
