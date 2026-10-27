@@ -127,8 +127,10 @@ async function pushHandler(req, res) {
       const entry = known.get(channelId);
       if (!entry || !signatureOk(entry.secret, body, req.get('x-hub-signature'))) continue; // not asked for, or not signed with its secret: ignored
       await store.markPush(channelId).catch(() => {});
+      entry.lastPushAt = Date.now();
       wake(channelId);
-      for (const delay of [90_000, 300_000]) setTimeout(() => wake(channelId), delay).unref?.();
+      // The feed of a channel can take many minutes to show a new video, so the channel is looked at again several times after the push.
+      for (const delay of [90_000, 300_000, 600_000, 1_200_000]) setTimeout(() => wake(channelId), delay).unref?.();
     }
   } catch (error) {
     logger.warn(`YouTube push: a notice could not be handled: ${error.message}`);

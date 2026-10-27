@@ -64,6 +64,13 @@ const allText = (message) => JSON.stringify(json(message.components));
   assert.ok(shortWith.components.some((child) => child.type === 12), 'unless the server asks for it');
   const noImage = json(card.buildFeedMessage({ message: '', options: { image: false } }, base, { lang: 'en' }).components)[0];
   assert.ok(!noImage.components.some((child) => child.type === 12));
+  // The player: a plain message with the link (Discord draws the video), only for the videos and Shorts of YouTube.
+  const player = card.buildFeedMessage({ message: 'New one!', ping_roles: [], options: { player: true } }, { ...base, type: 'short' }, { lang: 'en' });
+  assert.equal(player.content, 'New one!\nhttps://youtu.be/x');
+  assert.ok(!player.components && !player.flags, 'no card: Discord only draws the video for a plain message');
+  assert.ok(card.buildFeedMessage({ message: '', options: { player: true } }, { ...base, type: 'live' }, { lang: 'en' }).components, 'a live stream keeps its card');
+  assert.ok(card.buildFeedMessage({ message: '', options: { player: true } }, { ...base, platform: 'twitch', type: 'live' }, { lang: 'en' }).components, 'and so does everything that is not a video of YouTube');
+  assert.deepEqual(require('../src/feeds/service').cleanOptions({ player: true, image: 'x', other: 1 }), { player: true }, 'the option is kept, nothing else');
   const withButton = json(card.buildFeedMessage({ message: '', options: { button: true } }, base, { lang: 'en' }).components)[0];
   assert.equal(withButton.components.at(-1).components[0].url, 'https://youtu.be/x');
   assert.equal(withButton.components.at(-1).components[0].label, 'Watch on YouTube');
@@ -1290,9 +1297,13 @@ const allText = (message) => JSON.stringify(json(message.components));
     assert.equal(websub.signatureOk(secret, Buffer.from(atom), websub.sign(secret, atom)), true);
     assert.deepEqual(websub.channelsOf(`<yt:channelId>${CHANNEL}</yt:channelId><yt:channelId>${CHANNEL}</yt:channelId>`), [CHANNEL]);
 
-    // A channel that pushes is looked at every 30 minutes; with a stream announced it keeps the fast pace; without push it is every 5 minutes.
+    // A channel that pushes is looked at every 10 minutes (every 30 when more than 1500 channels are followed); with a stream announced it keeps the fast pace; without push it is every 5 minutes.
     const yt = PROVIDERS.youtube;
-    assert.equal(yt.intervalFor(CHANNEL), 30 * 60_000, 'a channel that pushes needs a look only now and then');
+    assert.equal(yt.intervalFor(CHANNEL), 10 * 60_000, 'a channel that pushes needs a look only now and then');
+    const filler = Array.from({ length: 1501 }, (_, index) => `filler${index}`);
+    for (const id of filler) websub.known.set(id, { status: 'subscribed', expiresAt: 0, secret: 'x', fails: 0, requestedAt: 0 });
+    assert.equal(yt.intervalFor(CHANNEL), 30 * 60_000, 'with a lot of channels the look is every 30 minutes, so the job keeps up');
+    for (const id of filler) websub.known.delete(id);
     assert.equal(yt.intervalFor(OTHER), 5 * 60_000, 'one that does not push is looked at as before');
     assert.equal(websub.isHealthy(CHANNEL, Date.now() + 6 * 86_400_000), false, 'and one whose subscription ran out goes back to the fast pace');
 

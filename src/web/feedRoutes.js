@@ -149,7 +149,10 @@ function registerFeedRoutes(app, { authorize, limiter }) {
       if (saved) item = await service.sampleItem({ ...saved, types: body.type ? [String(body.type)] : saved.types }, lang);
     }
     item ??= sampleNotice(platform, String(body.type ?? PLATFORMS[platform].defaultTypes[0]), lang, body.account);
-    res.json({ ok: true, lang, messages: [buildFeedMessage(feed, item, { lang }).components.map((component) => component.toJSON())] });
+    const message = buildFeedMessage(feed, item, { lang });
+    // The player of a video is a plain message (its link), shown here as the text it sends.
+    const parts = message.components ? message.components.map((component) => component.toJSON()) : [{ type: 10, content: message.content }];
+    res.json({ ok: true, lang, messages: [parts] });
   });
 }
 

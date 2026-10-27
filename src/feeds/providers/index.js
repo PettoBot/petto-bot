@@ -26,6 +26,7 @@ const animals = require('./animals');
 const pictures = require('./pictures');
 const websub = require('../websub');
 const redis = require('../../utils/redis');
+const logger = require('../../utils/logger');
 const social = require('./social');
 const epic = require('./epic');
 const schedule = require('../schedule');
@@ -55,6 +56,8 @@ const fresh = (item, now) => !item.publishedAt || now - Number(item.publishedAt)
 const notLive = new Set();
 const NOT_LIVE_LIMIT = 50_000;
 const PUSHED_INTERVAL_MS = 30 * 60_000;
+const PUSHED_FEW = 1500; // up to this many followed channels, the ones that are pushed are still looked at every 10 minutes: a push that never arrives costs a few minutes, not half an hour
+const pushedInterval = () => (websub.known.size <= PUSHED_FEW ? 10 * 60_000 : PUSHED_INTERVAL_MS);
 const busyChannels = new Map(); // channelId -> true while it has a stream announced or on
 const rememberNotLive = (id) => { if (notLive.size >= NOT_LIVE_LIMIT) notLive.delete(notLive.values().next().value); notLive.add(id); stateDirty = true; };
 
@@ -174,12 +177,21 @@ const randomMusicFeed = {
   },
 };
 
+/** A video that reaches the channel long after it was published is said in the log, with whether YouTube pushed it: that tells a late push from one that never came. */
+function logLate(entry, account, now) {
+  const published = Number(entry.published);
+  if (!Number.isFinite(published) || now - published < 8 * 60_000) return;
+  const pushedAt = websub.known.get(account.id)?.lastPushAt;
+  const push = pushedAt && pushedAt >= published ? `a push arrived ${Math.round((pushedAt - published) / 60_000)} min after it was published` : 'no push arrived for it'; // i18n-ignore: part of a log line for the operator
+  logger.info(`YouTube: "${String(entry.title ?? entry.videoId).slice(0, 60)}" of ${account.name ?? account.id} reached the notice ${Math.round((now - published) / 60_000)} min after it was published (${push}).`); // i18n-ignore: log for the operator
+}
+
 const PROVIDERS = {
   youtube: {
     interval: 5 * 60_000, perTick: 600, concurrency: 12, // 600 channels a minute: ten thousand pushed channels (a look every 30 minutes) need about 330
     // A channel that YouTube pushes to the bot (see feeds/websub.js) only needs a look now and then, to catch what a push missed; one with a stream announced or on is
     // looked at as often as ever, because the start of a stream is not always pushed.
-    intervalFor(channelId, now = Date.now()) { return websub.isHealthy(channelId, now) && !busyChannels.has(channelId) ? PUSHED_INTERVAL_MS : 5 * 60_000; },
+    intervalFor(channelId, now = Date.now()) { return websub.isHealthy(channelId, now) && !busyChannels.has(channelId) ? pushedInterval() : 5 * 60_000; },
     async resolve(text) {
       const channel = await youtube.resolveChannel(text);
       return { id: channel.id, name: channel.name, avatar: channel.avatar, url: channel.url };
@@ -223,7 +235,10 @@ const PROVIDERS = {
           if (state === 'upcoming') { rememberLive(entry.videoId); continue; } // announced, not started: it is posted when it starts
           if (state === 'none' && wasLive.has(entry.videoId)) { rememberNotLive(entry.videoId); continue; } // a stream that already ended: its recording is not a new video, and it is not asked about again
           if (state === 'none') rememberNotLive(entry.videoId);
-          if (fresh({ publishedAt: entry.published }, now)) items.push(youtube.toItem(entry, entry.short ? 'short' : 'video', account));
+          if (fresh({ publishedAt: entry.published }, now)) {
+            items.push(youtube.toItem(entry, entry.short ? 'short' : 'video', account));
+            logLate(entry, account, now);
+          }
         }
         for (const id of tracked.get(account.id) ?? []) if (states?.[id]?.state === 'live') stillLive.add(id);
         // A channel with a stream announced or on (or one that cannot be told about) is kept on the fast pace.

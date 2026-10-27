@@ -29,11 +29,12 @@ function channelProblem(guild, channel) {
 const ids = (list, max = 10) => [...new Set((Array.isArray(list) ? list : []).map(String).filter((id) => SNOWFLAKE.test(id)))].slice(0, max);
 const words = (list) => [...new Set((Array.isArray(list) ? list : []).map((word) => String(word).trim().toLowerCase()).filter((word) => word && word.length <= 40))].slice(0, MAX_KEYWORDS);
 
-/** What a feed keeps of its options, and nothing else: `image`, `button` and a `color` the dashboard may set. */
+/** What a feed keeps of its options, and nothing else: `image`, `button`, `player` and a `color` the dashboard may set. */
 function cleanOptions(options = {}) {
   const out = {};
   if (typeof options.image === 'boolean') out.image = options.image;
   if (typeof options.button === 'boolean') out.button = options.button;
+  if (typeof options.player === 'boolean') out.player = options.player;
   if (Number.isInteger(options.color) && options.color >= 0 && options.color <= 0xffffff) out.color = options.color;
   return out;
 }
