@@ -29,7 +29,7 @@ const allText = (message) => JSON.stringify(json(message.components));
   assert.equal(text.plainText('Hello <b>world</b> &amp; friends https://x.test/a'), 'Hello world & friends');
   assert.ok(!text.plainText('@everyone and <@123456789012345678>').includes('@everyone'), 'a mention in the words of a service is neutralized');
   assert.ok(!/(^|[^\u200b])<@/.test(text.plainText('<@123456789012345678>')));
-  assert.equal(text.linkText('A [test] **video**'), 'A \\[test\\] \\*\\*video\\*\\*');
+  assert.equal(text.linkText('A [test] **video**'), 'A ［test］ \\*\\*video\\*\\*', 'brackets in the words of a link cannot end it, and Discord does not read an escaped one');
   assert.equal(text.safeUrl('javascript:alert(1)'), null);
   assert.equal(text.safeUrl('https://youtu.be/x'), 'https://youtu.be/x');
   assert.ok(text.clip('word '.repeat(100), 50).length <= 50);
@@ -48,7 +48,7 @@ const allText = (message) => JSON.stringify(json(message.components));
   assert.equal(container.accent_color, PLATFORMS.youtube.color, 'the side bar has the color of the platform');
   assert.equal(container.components[0].type, 9, 'a section: the title and a picture at the right');
   assert.equal(container.components[0].accessory.media.url, 'https://yt3.example/a.jpg');
-  assert.match(container.components[0].components[0].content, /\*\*\[A \\\[new\\\] video\]\(https:\/\/youtu\.be\/x\)\*\*\n-# What it is about$/);
+  assert.match(container.components[0].components[0].content, /\*\*\[A ［new］ video\]\(https:\/\/youtu\.be\/x\)\*\*\n-# What it is about$/);
   assert.equal(container.components[1].type, 14, 'a separator, then the cover');
   assert.equal(container.components[2].items[0].media.url, 'https://i.ytimg.com/vi/x/hq.jpg');
   assert.match(container.components.at(-1).content, /^-# <:pe_f_video_short:\d+> New video · Channel · <t:\d+:R>$/);
@@ -112,12 +112,13 @@ const allText = (message) => JSON.stringify(json(message.components));
     { id: 'liv1', title: 'Live now', at: now - 600_000 },
     { id: 'upc1', title: 'Soon', at: now - 300_000 },
     { id: 'old1', title: 'Old one', at: now - MAX_AGE_MS - 86_400_000 },
+    { id: 'sch1', title: 'Scheduled days ago', at: now - 5 * 86_400_000 },
   ];
   const parsed = youtube.parseFeed(rss(entries));
-  assert.equal(parsed.length, 5);
+  assert.equal(parsed.length, 6);
   assert.equal(parsed[0].title, 'A video & more');
   assert.equal(parsed[0].views, 5);
-  assert.deepEqual(parsed.map((entry) => entry.short), [false, true, false, false, false], 'a Short has /shorts/ in its link');
+  assert.deepEqual(parsed.map((entry) => entry.short), [false, true, false, false, false, false], 'a Short has /shorts/ in its link');
 
   // The platform of YouTube with the answers of the services written out: the feed, and the call that says who is live.
   const calls = [];
@@ -128,21 +129,22 @@ const allText = (message) => JSON.stringify(json(message.components));
     if (String(url).includes('/feeds/videos.xml')) return new Response(rss(entries), { status: 200 });
     if (String(url).includes('/youtube/v3/videos')) {
       const ids = new URL(url).searchParams.get('id').split(',');
-      const state = { liv1: 'live', upc1: 'upcoming' };
-      return new Response(JSON.stringify({ items: ids.map((id) => ({ id, snippet: { liveBroadcastContent: state[id] ?? 'none' }, liveStreamingDetails: {} })) }), { status: 200 });
+      const state = { liv1: 'live', upc1: 'upcoming', sch1: 'live' };
+      return new Response(JSON.stringify({ items: ids.map((id) => ({ id, snippet: { liveBroadcastContent: state[id] ?? 'none' }, liveStreamingDetails: id === 'sch1' ? { actualStartTime: new Date(now - 90_000).toISOString() } : {} })) }), { status: 200 });
     }
     return new Response('{}', { status: 404 });
   };
   const account = { id: 'UCx', name: 'Chan', avatar: 'https://yt3.example/a.jpg', url: 'https://www.youtube.com/channel/UCx' };
   let results = await PROVIDERS.youtube.poll([account], new Map(), { now });
   let result = results.get('UCx');
-  assert.deepEqual(result.items.map((item) => `${item.id}:${item.type}`).sort(), ['liv1:live', 'sho1:short', 'vid1:video'], 'a live is a live, an upcoming one waits, an old one is not news');
-  assert.deepEqual([...result.stillLive], ['liv1']);
+  assert.deepEqual(result.items.map((item) => `${item.id}:${item.type}`).sort(), ['liv1:live', 'sch1:live', 'sho1:short', 'vid1:video'], 'a live is a live (also one scheduled days before), an upcoming one waits, an old one is not news');
+  assert.deepEqual([...result.stillLive].sort(), ['liv1', 'sch1']);
+  assert.ok(Math.abs(result.items.find((item) => item.id === 'sch1').publishedAt - (now - 90_000)) < 1000, 'a stream says when it began, not when its page was made');
   const apiCalls = () => calls.filter((url) => url.includes('/youtube/v3/videos')).length;
   assert.equal(apiCalls(), 1, 'one call for all the videos');
   results = await PROVIDERS.youtube.poll([account], new Map(), { now });
   const second = new URL(calls.filter((url) => url.includes('/youtube/v3/videos')).at(-1)).searchParams.get('id').split(',').sort();
-  assert.deepEqual(second, ['liv1', 'upc1'], 'what is known not to be live is not asked about again, a live and an upcoming one are');
+  assert.deepEqual(second, ['liv1', 'sch1', 'upc1'], 'what is known not to be live is not asked about again, a live and an upcoming one are');
   // A stream being followed that ended: it is not in `stillLive` any more.
   results = await PROVIDERS.youtube.poll([account], new Map([['UCx', new Set(['gone1'])]]), { now });
   assert.ok(!results.get('UCx').stillLive.has('gone1'), 'a followed stream that is not live now has ended');
@@ -178,6 +180,209 @@ const allText = (message) => JSON.stringify(json(message.components));
   globalThis.fetch = realFetch;
   config.youtubeApiKey = null;
 
+  // --- The auto feeds: a pace in minutes, the same content for everybody in a slot -----------------------------------------------------------------
+  {
+    const schedule = require('../src/feeds/schedule');
+    assert.deepEqual(['', 'daily', '1d', '24h', '1440', 'https://www.wikipedia.org'].map(schedule.parseMinutes), [1440, 1440, 1440, 1440, 1440, 1440], 'nothing, or the old page of the platform, is once a day');
+    assert.deepEqual(['15', '15m', '30 min', '2h', 'every:45'].map(schedule.parseMinutes), [15, 15, 30, 120, 45]);
+    assert.deepEqual(['5', '14', '1441', '48h'].map(schedule.parseMinutes), [null, null, null, null], 'less than 15 minutes (spam) or more than a day is refused');
+    assert.deepEqual([schedule.accountIdFor('pokemon', 1440), schedule.accountIdFor('chess', 1440), schedule.accountIdFor('wikipedia', 1440), schedule.accountIdFor('pokemon', 15)], ['daily', 'puzzle', 'featured', 'every:15']);
+    assert.deepEqual(['daily', 'featured', 'every:15'].map(schedule.minutesOf), [1440, 1440, 15]);
+    const realFetch = globalThis.fetch;
+    const asked = [];
+    globalThis.fetch = async (url) => {
+      asked.push(String(url));
+      const u = String(url);
+      if (u.includes('/page/random/summary')) return new Response(JSON.stringify({ title: 'Random page', titles: { normalized: 'Random page' }, extract: 'About it.', content_urls: { desktop: { page: 'https://en.wikipedia.org/wiki/Random_page' } }, thumbnail: { source: 'https://upload.wikimedia.org/t.jpg' } }), { status: 200 });
+      if (u.includes('/pub/puzzle/random')) return new Response(JSON.stringify({ title: 'A puzzle', url: 'https://www.chess.com/forum/view/x', image: 'https://images.chesscomfiles.com/p.png' }), { status: 200 });
+      if (u.includes('/pokemon-species/')) return new Response(JSON.stringify({ flavor_text_entries: [{ language: { name: 'en' }, flavor_text: 'It is a Pokémon.' }], names: [{ language: { name: 'en' }, name: 'Testmon' }] }), { status: 200 });
+      if (u.includes('/pokemon/')) return new Response(JSON.stringify({ id: 7, name: 'testmon', types: [{ type: { name: 'water' } }], height: 5, weight: 90, sprites: { front_default: 'https://sprite.example/s.png', other: { 'official-artwork': { front_default: 'https://art.example/a.png' } } } }), { status: 200 });
+      return new Response('{}', { status: 404 });
+    };
+    const when = Date.UTC(2026, 9, 27, 10, 7, 30); // a Tuesday, 10:07 UTC
+    const slot15 = Math.floor(when / (15 * 60_000));
+    for (const platform of ['wikipedia', 'chess', 'pokemon']) {
+      const quarter = await PROVIDERS[platform].resolve('15m');
+      assert.equal(quarter.id, 'every:15');
+      await assert.rejects(PROVIDERS[platform].resolve('3'), (error) => error.kind === 'badInput', `${platform}: a pace under 15 minutes is refused`);
+      const accounts = [{ id: 'every:15', name: 'x', url: null }, { id: 'every:60', name: 'x', url: null }];
+      const results = await PROVIDERS[platform].poll(accounts, new Map(), { now: when, lang: 'en' });
+      const a = results.get('every:15').items[0];
+      const b = results.get('every:60').items[0];
+      assert.ok(a && b && a.id === `15:${slot15}` && b.id === `60:${Math.floor(when / 3_600_000)}`, `${platform}: each pace has its own slot`);
+      assert.equal(a.publishedAt, slot15 * 15 * 60_000, `${platform}: the notice is dated at the start of its slot`);
+      const again = (await PROVIDERS[platform].poll([accounts[0]], new Map(), { now: when + 60_000, lang: 'en' })).get('every:15').items[0];
+      assert.equal(again.id, a.id, `${platform}: a minute later it is the same notice, so it is not posted twice`);
+      const next = (await PROVIDERS[platform].poll([accounts[0]], new Map(), { now: when + 15 * 60_000, lang: 'en' })).get('every:15').items[0];
+      assert.equal(next.id, `15:${slot15 + 1}`, `${platform}: the next slot is a new notice`);
+      assert.deepEqual((await PROVIDERS[platform].baselineItems(accounts[0], when)).map((item) => item.id), [`15:${slot15}`], `${platform}: a new feed starts at the next slot`);
+      assert.deepEqual(await PROVIDERS[platform].baselineItems({ id: 'daily' }, when), [], `${platform}: the once-a-day feed has no baseline`);
+    }
+    assert.equal(asked.filter((url) => url.includes('/page/random/summary')).length, 3, 'Wikipedia is asked once for each slot, not once for each server');
+    globalThis.fetch = realFetch;
+  }
+
+  // --- The music, social and game platforms: names, links, and the answers of each service written out -----------------------------------------------
+  {
+    const music = require('../src/feeds/providers/music');
+    const social = require('../src/feeds/providers/social');
+    assert.equal(music.parseDeezerArtist('https://www.deezer.com/en/artist/27'), '27');
+    assert.equal(music.parseDeezerArtist('27'), '27');
+    assert.equal(music.parseDeezerArtist('daft punk'), null);
+    assert.equal(music.parseAppleArtist('https://music.apple.com/us/artist/daft-punk/5468295'), '5468295');
+    assert.equal(music.parseAppleArtist('5468295'), '5468295');
+    assert.equal(music.parseSpotify('https://open.spotify.com/intl-es/artist/4tZwfgrHOc3mvqYlEYSvVi?si=x'), 'artist:4tZwfgrHOc3mvqYlEYSvVi');
+    assert.equal(music.parseSpotify('spotify:show:4rOoJ6Egrf8K2IrywzwOMk'), 'show:4rOoJ6Egrf8K2IrywzwOMk');
+    assert.equal(music.parseSpotify('daft punk'), null);
+    assert.equal(social.parseMastodon('@Gargron@Mastodon.Social'), 'gargron@mastodon.social');
+    assert.equal(social.parseMastodon('https://mastodon.social/@Gargron/123'), 'gargron@mastodon.social');
+    assert.equal(social.parseMastodon('gargron'), null, 'a Mastodon account needs its server');
+    assert.equal(social.parseMastodon('a@localhost'), null, 'and the server must be a real domain');
+    assert.equal(social.parseTumblr('https://staff.tumblr.com/post/1'), 'staff');
+    assert.equal(social.parseTumblr('Staff.tumblr.com'), 'staff');
+    assert.equal(social.parseLetterboxd('https://letterboxd.com/DavidEhrlich/films/'), 'davidehrlich');
+    assert.equal(social.parseLetterboxd('https://letterboxd.com/films/'), null);
+
+    config.spotifyClientId = 'id';
+    config.spotifyClientSecret = 'secret';
+    const day = 86_400_000;
+    const now = Date.now();
+    const iso = (offset) => new Date(now + offset).toISOString().slice(0, 10);
+    const asked = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url, options = {}) => {
+      const u = String(url);
+      asked.push(u);
+      if (u.startsWith('https://api.deezer.com/artist/27/albums')) return new Response(JSON.stringify({ data: [
+        { id: 1, title: 'Old album', release_date: iso(-400 * day), cover_xl: 'https://cdn.dz/old.jpg', link: 'https://www.deezer.com/album/1', record_type: 'album' },
+        { id: 2, title: 'New single', release_date: iso(-day), cover_xl: 'https://cdn.dz/new.jpg', link: 'https://www.deezer.com/album/2', record_type: 'single' },
+        { id: 3, title: 'Pre-save', release_date: iso(20 * day), cover_xl: 'https://cdn.dz/future.jpg', link: 'https://www.deezer.com/album/3', record_type: 'album' },
+      ] }), { status: 200 });
+      if (u.startsWith('https://api.deezer.com/artist/404')) return new Response(JSON.stringify({ error: { type: 'DataException', code: 800 } }), { status: 200 });
+      if (u.startsWith('https://itunes.apple.com/lookup')) return new Response(JSON.stringify({ results: [
+        { wrapperType: 'artist', artistId: 5468295, artistName: 'Artist', artistLinkUrl: 'https://music.apple.com/us/artist/artist/5468295' },
+        { wrapperType: 'collection', collectionId: 11, collectionName: 'Newest', artworkUrl100: 'https://is1.mzstatic.com/i/100x100bb.jpg', releaseDate: new Date(now - day).toISOString(), collectionViewUrl: 'https://music.apple.com/us/album/11', trackCount: 1 },
+        { wrapperType: 'collection', collectionId: 10, collectionName: 'Older', artworkUrl100: 'https://is1.mzstatic.com/i/100x100bb.jpg', releaseDate: new Date(now - 90 * day).toISOString(), collectionViewUrl: 'https://music.apple.com/us/album/10', trackCount: 12 },
+      ] }), { status: 200 });
+      if (u === 'https://accounts.spotify.com/api/token') { assert.match(options.headers.Authorization, /^Basic /); return new Response(JSON.stringify({ access_token: 'sp-token', expires_in: 3600 }), { status: 200 }); }
+      if (u.startsWith('https://api.spotify.com/v1/')) {
+        assert.equal(options.headers.Authorization, 'Bearer sp-token');
+        if (u.includes('/artists/AAAAAAAAAAAAAAAAAAAAAA/albums')) return new Response(JSON.stringify({ items: [{ id: 'alb1', name: 'Fresh album', album_type: 'album', total_tracks: 9, release_date: iso(-day), images: [{ url: 'https://i.scdn.co/a.jpg' }], external_urls: { spotify: 'https://open.spotify.com/album/alb1' } }] }), { status: 200 });
+        if (u.includes('/shows/BBBBBBBBBBBBBBBBBBBBBB/episodes')) return new Response(JSON.stringify({ items: [{ id: 'ep1', name: 'Episode one', description: 'About it', duration_ms: 3_600_000, release_date: iso(-day), images: [{ url: 'https://i.scdn.co/e.jpg' }], external_urls: { spotify: 'https://open.spotify.com/episode/ep1' } }] }), { status: 200 });
+        if (u.includes('/search?')) return new Response(JSON.stringify({ artists: { items: [{ id: 'AAAAAAAAAAAAAAAAAAAAAA', name: 'Artist', images: [{ url: 'https://i.scdn.co/p.jpg' }], followers: { total: 1500 } }] }, shows: { items: [{ id: 'BBBBBBBBBBBBBBBBBBBBBB', name: 'A show', publisher: 'Pub', images: [] }] } }), { status: 200 });
+        return new Response(JSON.stringify({ name: u.includes('/shows/') ? 'A show' : 'Artist', images: [{ url: 'https://i.scdn.co/p.jpg' }], external_urls: { spotify: 'https://open.spotify.com/x' } }), { status: 200 });
+      }
+      if (u.includes('freeGamesPromotions')) return new Response(JSON.stringify({ data: { Catalog: { searchStore: { elements: [
+        { id: 'g1', title: 'Free Game', description: 'Fun.', productSlug: 'free-game/home', price: { totalPrice: { discountPrice: 0 } }, keyImages: [{ type: 'OfferImageWide', url: 'https://cdn1.epicgames.com/w.jpg' }, { type: 'Thumbnail', url: 'https://cdn1.epicgames.com/t.jpg' }], promotions: { promotionalOffers: [{ promotionalOffers: [{ startDate: new Date(now - day).toISOString(), endDate: new Date(now + 6 * day).toISOString() }] }] } },
+        { id: 'g2', title: 'Next week', price: { totalPrice: { discountPrice: 0 } }, keyImages: [], promotions: { promotionalOffers: [], upcomingPromotionalOffers: [{ promotionalOffers: [{ startDate: new Date(now + 6 * day).toISOString() }] }] } },
+        { id: 'g3', title: 'Just a discount', price: { totalPrice: { discountPrice: 500 } }, keyImages: [], promotions: { promotionalOffers: [{ promotionalOffers: [{ startDate: new Date(now - day).toISOString() }] }] } },
+      ] } } } }), { status: 200 });
+      if (u === 'https://staff.tumblr.com/rss') return new Response('<?xml version="1.0"?><rss><channel><title>Tumblr Staff</title><item><title>A post</title><link>https://staff.tumblr.com/post/1</link><guid>https://staff.tumblr.com/post/1</guid><description>&lt;p&gt;Hello&lt;/p&gt;</description><pubDate>' + new Date(now - 3600_000).toUTCString() + '</pubDate></item></channel></rss>', { status: 200 });
+      return new Response('{}', { status: 404 });
+    };
+
+    // Deezer: newest first, a release dated far in the future waits, an artist that does not exist is not found.
+    const deezerAccount = { id: '27', name: 'Daft', avatar: null, url: 'https://www.deezer.com/artist/27' };
+    const deezer = (await PROVIDERS.deezer.poll([deezerAccount], new Map(), { now })).get('27');
+    assert.deepEqual(deezer.items.map((item) => [item.id, item.type]), [['2', 'release']], 'only the release of this week is news: not the old one, not the one that is still to come');
+    assert.equal(deezer.items[0].image, 'https://cdn.dz/new.jpg');
+    assert.equal(deezer.items[0].extra, 'SINGLE');
+    await assert.rejects(PROVIDERS.deezer.resolve('404'), (error) => error.kind === 'notFound');
+    // Apple Music: the newest first, with the cover in a good size.
+    const apple = (await PROVIDERS.applemusic.poll([{ id: '5468295', name: 'Artist', avatar: null, url: 'https://music.apple.com/us/artist/artist/5468295' }], new Map(), { now })).get('5468295');
+    assert.deepEqual(apple.items.map((item) => item.id), ['11']);
+    assert.ok(apple.items[0].image.includes('600x600bb'), 'the cover is asked in a big size');
+    // Spotify: with the app keys, artists give releases and podcasts give episodes.
+    const spotifyResolved = await PROVIDERS.spotify.resolve('https://open.spotify.com/artist/AAAAAAAAAAAAAAAAAAAAAA');
+    assert.deepEqual([spotifyResolved.id, spotifyResolved.name], ['artist:AAAAAAAAAAAAAAAAAAAAAA', 'Artist']);
+    const spotify = (await PROVIDERS.spotify.poll([{ ...spotifyResolved }, { id: 'show:BBBBBBBBBBBBBBBBBBBBBB', name: 'A show', avatar: null, url: 'https://open.spotify.com/show/B' }], new Map(), { now }));
+    assert.deepEqual([spotify.get('artist:AAAAAAAAAAAAAAAAAAAAAA').items[0].type, spotify.get('show:BBBBBBBBBBBBBBBBBBBBBB').items[0].type], ['release', 'episode']);
+    assert.equal(spotify.get('show:BBBBBBBBBBBBBBBBBBBBBB').items[0].extra, '60 min');
+    assert.equal(asked.filter((url) => url === 'https://accounts.spotify.com/api/token').length, 1, 'the token is asked once and kept');
+    const { searchAccounts: search, forgetSearches: forgetAll } = require('../src/feeds/search');
+    forgetAll();
+    const found = await search('spotify', 'artist');
+    assert.deepEqual(found.map((entry) => entry.value), ['artist:AAAAAAAAAAAAAAAAAAAAAA', 'show:BBBBBBBBBBBBBBBBBBBBBB'], 'a search of Spotify finds artists and podcasts');
+    config.spotifyClientId = null;
+    await assert.rejects(PROVIDERS.spotify.resolve('Artist'), (error) => error.kind === 'notConfigured', 'without the keys Spotify says it is not set up');
+    config.spotifyClientSecret = null;
+    // Epic Games: only the game that is free now, in its own language, with the day it ends.
+    const epic = (await PROVIDERS.epic.poll([{ id: 'free' }], new Map(), { now, lang: 'es' })).get('free').items;
+    assert.deepEqual(epic.map((item) => [item.id.split(':')[0], item.type]), [['g1', 'game']], 'an upcoming offer and a plain discount are not free games');
+    assert.ok(epic[0].url.endsWith('/p/free-game') && epic[0].url.includes('es-ES'));
+    assert.match(epic[0].extra, /^Gratis hasta el /);
+    assert.ok(asked.some((url) => url.includes('locale=es-ES') && url.includes('country=ES')));
+    // Tumblr through the reader of RSS.
+    const tumblr = await PROVIDERS.tumblr.resolve('staff.tumblr.com');
+    assert.deepEqual([tumblr.id, tumblr.name], ['staff', 'Tumblr Staff']);
+    const posts = (await PROVIDERS.tumblr.poll([tumblr], new Map(), { now })).get('staff').items;
+    assert.deepEqual([posts.length, posts[0].type, posts[0].platform], [1, 'post', 'tumblr']);
+    globalThis.fetch = realFetch;
+  }
+
+  // --- A release is headed by a picture drawn for it (cover + title), the rest of the kinds are not -----------------------------------------------------
+  {
+    const { heroFor } = require('../src/feeds/hero');
+    assert.equal(await heroFor({ type: 'video', image: 'https://i.ytimg.com/vi/x/hq.jpg', title: 'A video' }), null, 'only a release gets the picture');
+    assert.equal(await heroFor({ type: 'release', image: null, title: 'No cover' }), null, 'and only when it has a cover');
+    const release = { platform: 'deezer', type: 'release', id: '9', title: 'An album', url: 'https://www.deezer.com/album/9', image: 'https://cdn.dz/a.jpg', author: 'An artist', extra: 'ALBUM', publishedAt: Date.now() };
+    const withHero = JSON.parse(JSON.stringify(card.buildFeedMessage({ message: '', options: {}, ping_roles: [] }, release, { lang: 'en', hero: { name: 'release.png' } }).components));
+    assert.equal(withHero[0].components[0].items[0].media.url, 'attachment://release.png', 'the picture of the release is the head of the card');
+    assert.equal(withHero[0].components.at(-1).components[0].label, 'Listen on Deezer', 'and the button opens the release');
+    const plain = JSON.stringify(card.buildFeedMessage({ message: '', options: {}, ping_roles: [] }, release, { lang: 'en' }).components);
+    assert.ok(plain.includes('https://cdn.dz/a.jpg') && !plain.includes('attachment://'), 'without the picture it is the ordinary card with the cover');
+  }
+
+  // --- Cats and foxes: a picture for each slot of time, the same for everybody, at the pace of the account ----------------------------------------------
+  {
+    const realFetch = globalThis.fetch;
+    const asked = [];
+    globalThis.fetch = async (url) => {
+      asked.push(String(url));
+      if (String(url).includes('thecatapi')) return new Response(JSON.stringify([{ id: 'c1', url: 'https://cdn2.thecatapi.com/images/c1.jpg' }]), { status: 200 });
+      if (String(url).includes('randomfox')) return new Response(JSON.stringify({ image: 'https://randomfox.ca/images/7.jpg', link: 'https://randomfox.ca/?i=7' }), { status: 200 });
+      return new Response('{}', { status: 404 });
+    };
+    const when = Date.UTC(2026, 9, 27, 10, 7, 30);
+    for (const [animal, es] of [['cat', 'Un gatito para ti'], ['fox', 'Un zorrito para ti']]) {
+      const account = await PROVIDERS[animal].resolve('30m');
+      assert.equal(account.id, 'every:30');
+      assert.equal((await PROVIDERS[animal].resolve('')).id, 'daily', 'nothing is once a day');
+      await assert.rejects(PROVIDERS[animal].resolve('5m'), (error) => error.kind === 'badInput');
+      const first = (await PROVIDERS[animal].poll([account, { id: 'every:30' }], new Map(), { now: when, lang: 'es' })).get('every:30').items[0];
+      assert.deepEqual([first.type, first.title, first.platform], ['photo', es, animal]);
+      assert.ok(first.image.startsWith('https://'));
+      const again = (await PROVIDERS[animal].poll([account], new Map(), { now: when + 60_000, lang: 'en' })).get('every:30').items[0];
+      assert.equal(again.id, first.id, 'a minute later it is the same picture');
+      assert.equal(asked.filter((url) => url.includes(animal === 'cat' ? 'thecatapi' : 'randomfox')).length, 1, 'the service is asked once for each slot');
+    }
+    globalThis.fetch = realFetch;
+  }
+
+  // --- Twitch: a live notice goes out at once, with a stand-in picture until the preview of the stream exists ----------------------------------------------
+  {
+    config.twitchClientId = 'tid';
+    config.twitchClientSecret = 'tsecret';
+    const pictures = {};
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url, options = {}) => {
+      const u = String(url);
+      if (u.startsWith('https://static-cdn.jtvnw.net/')) return pictures[u.split('?')[0]] ? new Response('', { status: 200, headers: { 'content-type': 'image/jpeg' } }) : new Response('', { status: 404 });
+      if (u.includes('id.twitch.tv/oauth2/token')) return new Response(JSON.stringify({ access_token: 'tw', expires_in: 3600 }), { status: 200 });
+      if (u.includes('/helix/streams')) return new Response(JSON.stringify({ data: [{ id: 's1', user_id: '7', user_login: 'streamer', user_name: 'Streamer', type: 'live', title: 'Hello', game_name: 'Minecraft', viewer_count: 12, started_at: new Date().toISOString(), thumbnail_url: 'https://static-cdn.jtvnw.net/previews-ttv/live_user_streamer-{width}x{height}.jpg' }] }), { status: 200 });
+      return new Response('{}', { status: 404 });
+    };
+    const account = { id: '7', name: 'Streamer', avatar: null, url: 'https://www.twitch.tv/streamer' };
+    const early = (await PROVIDERS.twitch.poll([account, { id: '8', name: 'Quiet', avatar: null, url: 'x' }], new Map())).get('7').items[0];
+    assert.deepEqual([early.placeholder, early.image.endsWith('/twitch-live.png')], [true, true], 'a stream whose preview does not exist yet goes out with the stand-in');
+    pictures['https://static-cdn.jtvnw.net/previews-ttv/live_user_streamer-1280x720.jpg'] = true;
+    const later = (await PROVIDERS.twitch.poll([account], new Map())).get('7').items[0];
+    assert.deepEqual([Boolean(later.placeholder), later.image.includes('live_user_streamer-1280x720.jpg')], [false, true], 'the real preview is used as soon as it loads');
+    globalThis.fetch = realFetch;
+    config.twitchClientId = null;
+    config.twitchClientSecret = null;
+  }
+
   // --- Kick: the answers of its API written out ------------------------------------------------------------------------------------------------
   {
     config.kickClientId = 'id';
@@ -210,16 +415,17 @@ const allText = (message) => JSON.stringify(json(message.components));
     assert.deepEqual(results.get('2'), { items: [], stillLive: new Set() }, 'a quiet channel has no stream and nothing is open');
     assert.equal(results.get('1').items[0].image, 'https://images.kick.com/t.jpg', 'a picture that loads is posted');
     assert.equal(kickCalls.filter((url) => url.includes('/channels?') && url.includes('broadcaster_user_id')).length, 1, 'both accounts are asked in one call');
-    // A stream that just began has no picture yet: the notice waits; an old stream goes without the picture.
+    // A stream that just began has no picture yet: the notice goes out at once with a stand-in picture of Kick, marked so the real one is swapped in later.
     channels[1].stream.thumbnail = 'https://images.kick.com/new.jpg';
     channels[1].stream.start_time = new Date(Date.now() - 20_000).toISOString();
-    const early = await PROVIDERS.kick.poll([{ id: '1', name: 'Live_One', avatar: null, url: found.url }]);
-    assert.deepEqual([early.get('1').items.length, early.get('1').stillLive.size], [0, 1], 'a stream with no picture yet waits, and is still counted as live');
+    const early = (await PROVIDERS.kick.poll([{ id: '1', name: 'Live_One', avatar: null, url: found.url }])).get('1');
+    assert.deepEqual([early.items.length, early.items[0].placeholder, early.items[0].image.endsWith('/kick-live.png')], [1, true, true], 'it does not wait for the picture');
     pictures['https://images.kick.com/new.jpg'] = true;
-    assert.equal((await PROVIDERS.kick.poll([{ id: '1', name: 'Live_One', avatar: null, url: found.url }])).get('1').items[0].image, 'https://images.kick.com/new.jpg', 'it is posted as soon as the picture loads');
-    channels[1].stream.thumbnail = 'https://images.kick.com/gone.jpg';
-    channels[1].stream.start_time = new Date(Date.now() - 10 * 60_000).toISOString();
-    assert.equal((await PROVIDERS.kick.poll([{ id: '1', name: 'Live_One', avatar: null, url: found.url }])).get('1').items[0].image, null, 'after some minutes it is posted without the picture');
+    const later = (await PROVIDERS.kick.poll([{ id: '1', name: 'Live_One', avatar: null, url: found.url }])).get('1').items[0];
+    assert.deepEqual([later.image, Boolean(later.placeholder)], ['https://images.kick.com/new.jpg', false], 'the real picture is used as soon as it loads');
+    channels[1].stream.thumbnail = '';
+    const none = (await PROVIDERS.kick.poll([{ id: '1', name: 'Live_One', avatar: null, url: found.url }])).get('1').items[0];
+    assert.deepEqual([none.image.endsWith('/kick-live.png'), none.placeholder], [true, false], 'a stream with no picture at all keeps the one of Kick');
     config.kickClientId = null;
     kickCalls.length = 0;
     await assert.rejects(PROVIDERS.kick.resolve('live-one'), (error) => error.kind === 'notConfigured', 'without the keys Kick says it is not set up');
@@ -481,7 +687,7 @@ const allText = (message) => JSON.stringify(json(message.components));
   const fourth = await service.createFeed(guild, { platform: 'youtube', account: 'four', channelId: CH });
   assert.equal(fourth.error, 'limitFree', 'Free follows up to three accounts of a platform');
   assert.equal(fourth.count, 3);
-  assert.equal(fourth.premium, 10, 'and Premium up to ten');
+  assert.equal(fourth.premium, 25, 'and Premium up to twenty-five');
   assert.equal(fourth.platform, 'YouTube');
   // The limit is for each platform: the three of YouTube do not use the room of Reddit.
   PROVIDERS.reddit = { ...PROVIDERS.youtube };
@@ -491,6 +697,21 @@ const allText = (message) => JSON.stringify(json(message.components));
   assert.equal(await feedsDb.countForGuild(G, 'youtube'), 3);
   assert.equal(await feedsDb.remove(G, other.feed.id), true);
   delete PROVIDERS.reddit;
+  // An auto feed: the pace is part of the account, a new pace starts at its next slot, and a pace under 15 minutes is refused.
+  {
+    const auto = await service.createFeed(guild, { platform: 'pokemon', account: '30m', channelId: CH });
+    assert.equal(auto.ok, true);
+    assert.equal(auto.feed.account_id, 'every:30');
+    const slot = Math.floor(Date.now() / (30 * 60_000));
+    assert.ok((await feedsDb.seenAmong([auto.feed.id], [`30:${slot}`])).has(`${auto.feed.id}:30:${slot}`), 'the slot running now is the past: it is marked as seen');
+    assert.equal((await service.createFeed(guild, { platform: 'pokemon', account: '5', channelId: CH })).error, 'badPace');
+    const paced = await service.updateFeed(guild, auto.feed.id, { every: '2h' });
+    assert.equal(paced.ok && paced.feed.account_id, 'every:120', 'the pace of a feed can change');
+    assert.equal((await service.updateFeed(guild, auto.feed.id, { every: '1' })).error, 'badPace');
+    const daily = await service.updateFeed(guild, auto.feed.id, { every: '1d' });
+    assert.equal(daily.feed.account_id, 'daily', 'once a day is the old account');
+    assert.equal(await feedsDb.remove(G, auto.feed.id), true);
+  }
   const [a, b, c] = await rows();
   await service.updateFeed(guild, b.id, { enabled: false });
   await service.updateFeed(guild, c.id, { enabled: false });
@@ -525,7 +746,8 @@ const allText = (message) => JSON.stringify(json(message.components));
   assert.equal((await feedsDb.seenAmong([a.id], ['burst-a', 'burst-b'])).size, 2, 'and all of them are marked as seen');
 
   // A stream: posted when it starts, its message is kept, and it is edited (grey, with buttons) when it ends.
-  queue = [{ id: 'live1', type: 'live', title: 'Streaming', url: 'https://y.t/live1', authorUrl: 'https://y.t/chan', publishedAt: at }];
+  const standIn = 'https://petto.sbs/assets/feeds/kick-live.png';
+  queue = [{ id: 'live1', type: 'live', title: 'Streaming', url: 'https://y.t/live1', authorUrl: 'https://y.t/chan', publishedAt: at, image: standIn, placeholder: true }];
   liveNow = new Set(['live1']);
   engine.forgetSchedule();
   await engine.tick(client, { now: at + 480_000 });
@@ -533,12 +755,24 @@ const allText = (message) => JSON.stringify(json(message.components));
   assert.ok(allText(liveMessage.payload).includes('Streaming'));
   assert.equal((await pool.query('select count(*)::int as n from feed_live where feed_id = $1', [a.id])).rows[0].n, 1);
   assert.equal(edits.length, 0);
+  // It went out with a stand-in picture; once the real one exists the same message is edited to show it (once).
+  engine.forgetSchedule();
+  await engine.tick(client, { now: at + 540_000 });
+  assert.equal(edits.length, 0, 'while the stand-in is all there is, nothing is edited');
+  queue = [{ ...queue[0], image: 'https://images.kick.com/real.jpg', placeholder: undefined }];
+  engine.forgetSchedule();
+  await engine.tick(client, { now: at + 560_000 });
+  assert.equal(edits.length, 1, 'the real picture replaced the stand-in');
+  assert.ok(JSON.stringify(edits[0].payload).includes('images.kick.com/real.jpg'));
+  engine.forgetSchedule();
+  await engine.tick(client, { now: at + 570_000 });
+  assert.equal(edits.length, 1, 'and it is not edited again');
   liveNow = new Set();
   engine.forgetSchedule();
   await engine.tick(client, { now: at + 600_000 });
-  assert.equal(edits.length, 1, 'the message of the stream was edited when it ended');
-  assert.equal(JSON.parse(JSON.stringify(edits[0].payload.components.at(-1))).accent_color, 0x4f545c);
-  assert.deepEqual(edits[0].payload.allowedMentions, { parse: [] }, 'and it does not mention anyone again');
+  assert.equal(edits.length, 2, 'the message of the stream was edited when it ended');
+  assert.equal(JSON.parse(JSON.stringify(edits[1].payload.components.at(-1))).accent_color, 0x4f545c);
+  assert.deepEqual(edits[1].payload.allowedMentions, { parse: [] }, 'and it does not mention anyone again');
   assert.equal((await pool.query('select count(*)::int as n from feed_live where feed_id = $1', [a.id])).rows[0].n, 0);
 
   // A feed that cannot post: the failure is written down and, five times in a row, it is turned off.

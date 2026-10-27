@@ -35,4 +35,11 @@ function toItem(pokemon, now = Date.now()) {
   };
 }
 
-module.exports = { pokemonOfDay, fetchPokemon, toItem, dayNumber, TOTAL };
+const fetched = new Map(); // `${number}:${lang}` -> pokemon (the same few are asked for by every pace)
+async function fetchPokemonKept(number, lang) {
+  const key = `${number}:${lang}`;
+  if (!fetched.has(key)) { if (fetched.size > 400) fetched.clear(); fetched.set(key, await fetchPokemon(number, lang)); }
+  return fetched.get(key);
+}
+
+module.exports = { pokemonOfDay, fetchPokemon, fetchPokemonKept, toItem, dayNumber, TOTAL };

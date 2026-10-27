@@ -35,7 +35,7 @@ const PREMIUM_LIMITS = Object.freeze({
   componentPanels: 100,
   counters: 50,
   paginationMessages: 50,
-  feeds: 10,
+  feeds: 25,
 });
 
 /**

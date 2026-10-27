@@ -12,7 +12,7 @@ const { EMOJI } = require('../../utils/emojis');
 const { t, languageOf } = require('../../i18n');
 
 const V2 = MessageFlags.IsComponentsV2;
-const COMMAND_PLATFORMS = ['youtube', 'twitch', 'kick', 'bluesky', 'reddit', 'steam', 'github', 'modrinth', 'npm', 'pypi', 'anilist', 'pinterest', 'rss', 'wikipedia', 'chess', 'pokemon'];
+const COMMAND_PLATFORMS = ['youtube', 'twitch', 'kick', 'bluesky', 'reddit', 'steam', 'github', 'modrinth', 'npm', 'pypi', 'anilist', 'pinterest', 'rss', 'wikipedia', 'chess', 'pokemon', 'spotify', 'deezer', 'applemusic', 'mastodon', 'tumblr', 'letterboxd', 'epic', 'cat', 'fox'];
 const platformChoices = COMMAND_PLATFORMS.map((id) => ({ name: PLATFORMS[id].name, value: id }));
 const idOption = (o) => o.setName('id').setDescription('The number of the feed (see the list)').setMinValue(1).setRequired(true);
 
@@ -27,7 +27,7 @@ module.exports = {
     .setDMPermission(false)
     .addSubcommand((s) => s.setName('add').setDescription('Follow an account and post its news in a channel.')
       .addStringOption((o) => o.setName('platform').setDescription('Where the account is').setRequired(true).addChoices(...platformChoices))
-      .addStringOption((o) => o.setName('account').setDescription('The link, the @name or the id of the account (a Pokémon feed needs none)').setMaxLength(200).setRequired(false))
+      .addStringOption((o) => o.setName('account').setDescription('The link, @name or id of the account. Pokémon, Wikipedia, Chess: how often (15m, 2h, 1d)').setMaxLength(200).setRequired(false))
       .addChannelOption((o) => o.setName('channel').setDescription('Where to post it (default: this channel)').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement).setRequired(false)))
     .addSubcommand((s) => s.setName('list').setDescription('The feeds of this server and how each one is doing.'))
     .addSubcommand((s) => s.setName('remove').setDescription('Stop following an account.').addIntegerOption(idOption))

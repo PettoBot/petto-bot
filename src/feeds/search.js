@@ -6,6 +6,7 @@ const { fetchJsonBody } = require('./http');
 const { PROVIDERS, isProvider } = require('./providers');
 const { IntegrationError, USER_AGENT } = require('../utils/integrations');
 const youtube = require('./providers/youtube');
+const music = require('./providers/music');
 
 const MIN_CHARS = 2;
 const MAX_RESULTS = 8;
@@ -89,7 +90,15 @@ async function searchExact(platform, query) {
   }
 }
 
-const SEARCHES = { youtube: searchYoutube, twitch: searchTwitch, bluesky: searchBluesky, steam: searchSteam, github: searchGithub, modrinth: searchModrinth, npm: searchNpm, anilist: searchAnilist };
+/** The music platforms: a link points at one artist, anything else is a name to look for. */
+const searchMusic = (platform, searcher, parser) => (query) => (parser(query) || /^https?:\/\//i.test(query) ? searchExact(platform, query) : searcher(query));
+
+const SEARCHES = {
+  deezer: searchMusic('deezer', music.deezerSearch, music.parseDeezerArtist),
+  applemusic: searchMusic('applemusic', music.appleSearch, music.parseAppleArtist),
+  spotify: searchMusic('spotify', music.spotifySearch, music.parseSpotify),
+  youtube: searchYoutube,
+  twitch: searchTwitch, bluesky: searchBluesky, steam: searchSteam, github: searchGithub, modrinth: searchModrinth, npm: searchNpm, anilist: searchAnilist };
 
 /** The accounts of a platform that match what a person typed (up to eight), kept five minutes (six hours for YouTube, which has a daily budget). */
 async function searchAccounts(platform, text) {

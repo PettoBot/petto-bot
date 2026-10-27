@@ -2,15 +2,13 @@
 // accounts in one call. A channel has no id for each stream: the moment it started is what tells one stream from the next.
 const config = require('../../config');
 const { fetchJsonBody } = require('../http');
-const { IntegrationError, USER_AGENT } = require('../../utils/integrations');
+const { IntegrationError } = require('../../utils/integrations');
+const { imageReady } = require('../picture');
 
 const API = 'https://api.kick.com/public/v1';
 const TOKEN_URL = 'https://id.kick.com/oauth/token';
 const SLUG = /^[\w-]{1,25}$/;
 const BATCH = 50;
-/** Kick makes the picture of a stream a little after it starts: a notice that comes sooner waits for it (this long at most). */
-const THUMBNAIL_WAIT_MS = 4 * 60_000;
-const readyPictures = new Map();
 
 let token = null;
 let pending = null;
@@ -69,23 +67,6 @@ async function liveChannels(ids) {
   return out;
 }
 
-/** Whether the picture of a stream can be loaded yet (Discord shows a broken picture for one that is not made). A picture that loads is remembered. */
-async function imageReady(url) {
-  if (readyPictures.has(url) && readyPictures.get(url) > Date.now()) return true;
-  try {
-    const response = await globalThis.fetch(url, { method: 'HEAD', headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(5000), redirect: 'follow' });
-    const type = response.headers.get('content-type');
-    const ok = response.ok && (!type || /^image\//i.test(type));
-    if (ok) {
-      readyPictures.set(url, Date.now() + 30 * 60_000);
-      for (const [key, until] of readyPictures) if (until < Date.now()) readyPictures.delete(key);
-    }
-    return ok;
-  } catch {
-    return false;
-  }
-}
-
 /** The id of a stream: when it started. */
 const streamId = (channel) => String(channel.stream?.start_time ?? '');
 
@@ -102,4 +83,4 @@ function toItem(channel, account = {}) {
   };
 }
 
-module.exports = { parseSlug, resolveChannel, liveChannels, streamId, toItem, imageReady, THUMBNAIL_WAIT_MS };
+module.exports = { parseSlug, resolveChannel, liveChannels, streamId, toItem, imageReady };

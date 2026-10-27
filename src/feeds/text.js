@@ -25,11 +25,13 @@ function plainText(text, max = MAX_DESCRIPTION, { link = false } = {}) {
     .replace(/[\r\n\t]+/g, ' ')
     .replace(/\s{2,}/g, ' ')
     .trim();
-  value = value.replace(/@(everyone|here)/gi, '@​$1').replace(/<@/g, '<​@').replace(link ? /[\\[\]*_~`|>]/g : /[\\*_~`|>]/g, (char) => `\\${char}`); // the backslash too, so a backslash in the text cannot undo an escape
+  value = value.replace(/@(everyone|here)/gi, '@​$1').replace(/<@/g, '<​@').replace(/[\\*_~`|>]/g, (char) => `\\${char}`); // the backslash too, so a backslash in the text cannot undo an escape
+  // Discord does not read a link whose words hold an escaped bracket (it shows the markdown as it is), so there the brackets are written as the full-width ones.
+  if (link) value = value.replace(/\[/g, '［').replace(/\]/g, '］');
   return clip(value, max);
 }
 
-/** The text of a link in markdown: its brackets cannot end it early. */
+/** The text of a link in markdown: its brackets cannot end it early (they are written as the full-width ones). */
 const linkText = (text) => plainText(text, MAX_TITLE, { link: true });
 
 /** A link Discord can open (http or https), or null. */

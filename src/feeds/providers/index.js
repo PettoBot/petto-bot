@@ -21,7 +21,16 @@ const packages = require('./packages');
 const steam = require('./steam');
 const anilist = require('./anilist');
 const daily = require('./daily');
+const music = require('./music');
+const animals = require('./animals');
+const social = require('./social');
+const epic = require('./epic');
+const schedule = require('../schedule');
+const { t } = require('../../i18n');
+const { IntegrationError } = require('../../utils/integrations');
 const { fetchPublicText } = require('../http');
+const { fallbackPicture } = require('../platforms');
+const { withStandIn } = require('../picture');
 const { parseFeed } = require('../feedparse');
 
 /** The videos that were seen live or about to be: when they end they are a recording of a stream, and are not posted as a new video. */
@@ -37,6 +46,41 @@ const fresh = (item, now) => !item.publishedAt || now - Number(item.publishedAt)
 const notLive = new Set();
 const NOT_LIVE_LIMIT = 50_000;
 const rememberNotLive = (id) => { if (notLive.size >= NOT_LIVE_LIMIT) notLive.delete(notLive.values().next().value); notLive.add(id); };
+
+/** A platform whose account has a list of items it reads one by one: the same poll for all of them. `read(account, now)` -> items; failures are told apart. */
+const listPoll = (read, concurrency = 3) => async function poll(accounts, _tracked, { now = Date.now() } = {}) {
+  const results = new Map();
+  await forEachWithConcurrency(accounts, async (account) => {
+    try { results.set(account.id, { items: (await read(account, now)).filter((item) => fresh(item, now)) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
+  }, concurrency);
+  return results;
+};
+
+/** A cat or a fox: a picture for each slot of time of the pace of the account (once a day to every 15 minutes), the same for every server of that pace. */
+function animalFeed(animal) {
+  return {
+    interval: 60_000, perTick: 5000, concurrency: 1, perLanguage: true, noAccount: true,
+    async resolve(text) {
+      const minutes = schedule.parseMinutes(text);
+      if (minutes === null) throw new IntegrationError('badInput');
+      return { id: schedule.accountIdFor(animal, minutes), name: animal === 'cat' ? 'Cats' : 'Foxes', avatar: null, url: animals.SOURCES[animal].url }; // i18n-ignore: the name of what is posted
+    },
+    async poll(accounts, _tracked, { now = Date.now(), lang = 'en' } = {}) {
+      const results = new Map();
+      for (const account of accounts) {
+        const minutes = schedule.minutesOf(account.id);
+        const slot = schedule.slotOf(now, minutes);
+        const found = await animals.pictureOf(animal, `${minutes}:${slot}`);
+        results.set(account.id, { items: found ? [animals.toItem(animal, found, { id: `${minutes}:${slot}`, at: schedule.slotStart(slot, minutes), lang })] : [] });
+      }
+      return results;
+    },
+    async baselineItems(account, now = Date.now()) {
+      const minutes = schedule.minutesOf(account.id);
+      return [{ id: `${minutes}:${schedule.slotOf(now, minutes)}` }];
+    },
+  };
+}
 
 const PROVIDERS = {
   youtube: {
@@ -56,7 +100,9 @@ const PROVIDERS = {
       let states = {};
       if (withLive) {
         const ids = new Set();
-        for (const list of entries.values()) for (const entry of list) if (fresh({ publishedAt: entry.published }, now) && !notLive.has(entry.videoId)) ids.add(entry.videoId);
+        // Every entry of the feed that is not known to be a plain video, old ones too: a stream is often scheduled days before it starts, so it is not "new"
+        // by the date it was published, and it must be seen the moment it goes live. A video found not to be live is asked about only once.
+        for (const list of entries.values()) for (const entry of list) if (!notLive.has(entry.videoId)) ids.add(entry.videoId);
         for (const set of tracked.values()) for (const id of set) ids.add(id);
         try { states = ids.size ? await youtube.liveStates([...ids]) : {}; } catch { states = null; }
         // When it cannot be told whether the videos are live (no key, the call failed), nothing is posted this time: a stream must never go out as a
@@ -73,9 +119,14 @@ const PROVIDERS = {
         const stillLive = new Set();
         for (const entry of entries.get(account.id)) {
           const state = states?.[entry.videoId]?.state;
-          if (state === 'live') { rememberLive(entry.videoId); stillLive.add(entry.videoId); items.push(youtube.toItem(entry, 'live', account)); continue; }
+          if (state === 'live') {
+            rememberLive(entry.videoId); stillLive.add(entry.videoId);
+            // The notice says when the stream began, not when its page was made (a scheduled stream can have been made hours or days before).
+            items.push({ ...youtube.toItem(entry, 'live', account), publishedAt: states[entry.videoId].startedAt ?? entry.published });
+            continue;
+          }
           if (state === 'upcoming') { rememberLive(entry.videoId); continue; } // announced, not started: it is posted when it starts
-          if (state === 'none' && wasLive.has(entry.videoId)) continue; // a stream that already ended: its recording is not a new video
+          if (state === 'none' && wasLive.has(entry.videoId)) { rememberNotLive(entry.videoId); continue; } // a stream that already ended: its recording is not a new video, and it is not asked about again
           if (state === 'none') rememberNotLive(entry.videoId);
           if (fresh({ publishedAt: entry.published }, now)) items.push(youtube.toItem(entry, entry.short ? 'short' : 'video', account));
         }
@@ -92,7 +143,7 @@ const PROVIDERS = {
   },
 
   twitch: {
-    interval: 2 * 60_000, perTick: 2000, concurrency: 1,
+    interval: 60_000, perTick: 5000, concurrency: 1, // 100 accounts in each call: 50 calls a minute at most, far from the limit of Twitch
     async resolve(text) {
       const user = await twitch.resolveUser(text);
       return { id: user.id, name: user.name, avatar: user.avatar, url: user.url };
@@ -100,9 +151,12 @@ const PROVIDERS = {
     async poll(accounts) {
       const live = await twitch.liveStreams(accounts.map((account) => account.id)); // 100 accounts in each call
       const results = new Map();
+      // The preview of a stream is made a little after it starts: until it loads the notice carries a picture of Twitch (see picture.js).
+      const items = new Map();
+      await forEachWithConcurrency(accounts.filter((account) => live[account.id]), async (account) => { items.set(account.id, await withStandIn(twitch.toItem(live[account.id], account), fallbackPicture('twitch-live'))); }, 8);
       for (const account of accounts) {
         const stream = live[account.id];
-        results.set(account.id, { items: stream ? [twitch.toItem(stream, account)] : [], stillLive: new Set(stream ? [stream.id] : []) });
+        results.set(account.id, { items: stream ? [items.get(account.id)] : [], stillLive: new Set(stream ? [stream.id] : []) });
       }
       return results;
     },
@@ -113,7 +167,7 @@ const PROVIDERS = {
   },
 
   kick: {
-    interval: 2 * 60_000, perTick: 2000, concurrency: 1,
+    interval: 60_000, perTick: 2000, concurrency: 1, // a live notice goes out within a minute or two of the start
     async resolve(text) {
       const channel = await kick.resolveChannel(text);
       return { id: channel.id, name: channel.name, avatar: channel.avatar, url: channel.url };
@@ -124,11 +178,9 @@ const PROVIDERS = {
       for (const account of accounts) {
         const channel = live[account.id];
         let item = channel ? kick.toItem(channel, account) : null;
-        // The picture of a stream that just began is not made yet: the notice waits for it (the next pass), and goes without it after a few minutes.
-        if (item?.image && !(await kick.imageReady(item.image))) {
-          if (Date.now() - (item.publishedAt ?? 0) < kick.THUMBNAIL_WAIT_MS) item = null;
-          else item.image = null;
-        }
+        // Kick makes the picture of a stream a little after it starts, and a notice must not wait for it (Discord shows a broken picture for one that
+        // is not made yet): it goes out at once with a picture of Kick, marked as a stand-in, and the engine swaps in the real one when it exists.
+        item = await withStandIn(item, fallbackPicture('kick-live'));
         results.set(account.id, { items: item ? [item] : [], stillLive: new Set(channel ? [kick.streamId(channel)] : []) });
       }
       return results;
@@ -300,40 +352,153 @@ const PROVIDERS = {
     async baselineItems(account) { return ((await anilist.recentEpisodes([account.id]))[account.id] ?? []).map((episode) => ({ id: episode.id })); },
   },
 
-  wikipedia: {
-    interval: HOUR, perTick: 5000, concurrency: 1, perLanguage: true, noAccount: true,
-    async resolve() { return { id: 'featured', name: 'Wikipedia', avatar: null, url: 'https://www.wikipedia.org' }; }, // i18n-ignore: the name of a brand
-    /** The featured article of the day, from 6:00 UTC (the article of the day is chosen by then in every Wikipedia). */
+  deezer: {
+    interval: 30 * 60_000, perTick: 120, concurrency: 4,
+    resolve: async (text) => { const artist = await music.deezerResolve(text); return { id: artist.id, name: artist.name, avatar: artist.avatar, url: artist.url }; },
+    poll: listPoll((account, now) => music.deezerReleases(account, now), 4),
+    async baselineItems(account) { return (await music.deezerReleases(account, Date.now())).map((item) => ({ id: item.id })); },
+  },
+
+  applemusic: {
+    interval: 60 * 60_000, perTick: 15, concurrency: 1, // Apple asks for about 20 calls a minute
+    resolve: (text) => music.appleResolve(text),
+    poll: listPoll((account) => music.appleReleases(account), 1),
+    async baselineItems(account) { return (await music.appleReleases(account)).map((item) => ({ id: item.id })); },
+  },
+
+  spotify: {
+    interval: 30 * 60_000, perTick: 100, concurrency: 3,
+    resolve: (text) => music.spotifyResolve(text),
+    poll: listPoll((account) => music.spotifyReleases(account), 3),
+    async baselineItems(account) { return (await music.spotifyReleases(account)).map((item) => ({ id: item.id })); },
+  },
+
+  mastodon: {
+    interval: 10 * 60_000, perTick: 100, concurrency: 4,
+    resolve: (text) => social.resolveMastodon(text),
+    poll: listPoll(async (account) => (await social.readMastodon(account.id)).entries.map((entry) => social.toItem('mastodon', 'post', entry, account, { keepTitle: false })), 4),
+    async baselineItems(account) { return (await social.readMastodon(account.id)).entries.map((entry) => ({ id: entry.id })); },
+  },
+
+  tumblr: {
+    interval: 15 * 60_000, perTick: 100, concurrency: 4,
+    resolve: (text) => social.resolveTumblr(text),
+    poll: listPoll(async (account) => (await social.readTumblr(account.id)).entries.map((entry) => social.toItem('tumblr', 'post', entry, account)), 4),
+    async baselineItems(account) { return (await social.readTumblr(account.id)).entries.map((entry) => ({ id: entry.id })); },
+  },
+
+  letterboxd: {
+    interval: 30 * 60_000, perTick: 100, concurrency: 3,
+    resolve: (text) => social.resolveLetterboxd(text),
+    poll: listPoll(async (account) => (await social.readLetterboxd(account.id)).entries.map((entry) => social.toItem('letterboxd', 'post', entry, account)), 3),
+    async baselineItems(account) { return (await social.readLetterboxd(account.id)).entries.map((entry) => ({ id: entry.id })); },
+  },
+
+  epic: {
+    interval: 30 * 60_000, perTick: 5000, concurrency: 1, perLanguage: true, noAccount: true,
+    async resolve() { return { id: 'free', name: 'Epic Games', avatar: null, url: 'https://store.epicgames.com/free-games' }; }, // i18n-ignore: the name of a brand
+    /** The games that are free this week, in the language and country of each server. */
     async poll(accounts, _tracked, { now = Date.now(), lang = 'en' } = {}) {
-      if (new Date(now).getUTCHours() < 6) return new Map(accounts.map((account) => [account.id, { items: [] }]));
-      const article = await daily.featuredArticle(lang, now);
-      return new Map(accounts.map((account) => [account.id, { items: article ? [daily.wikipediaItem(article, now)] : [] }]));
+      const games = await epic.freeGames(lang);
+      const dateFormat = new Intl.DateTimeFormat({ en: 'en-US', es: 'es-ES', 'pt-BR': 'pt-BR' }[lang] ?? 'en-US', { dateStyle: 'medium', timeZone: 'UTC' });
+      const items = games.map((game) => ({
+        platform: 'epic', type: 'game', id: game.id, title: game.title, url: game.url, description: game.description, image: game.image, avatar: game.thumb, author: 'Epic Games', // i18n-ignore: the name of a brand
+        authorUrl: 'https://store.epicgames.com/free-games', publishedAt: game.startsAt, extra: game.endsAt ? t(lang, 'feeds.epic.until', { date: dateFormat.format(game.endsAt) }) : '',
+      }));
+      return new Map(accounts.map((account) => [account.id, { items }])); // no age filter: what is free now is news to a feed that has not seen it, and a new feed starts after these
     },
-    async baselineItems() { return []; },
+    async baselineItems() { return (await epic.freeGames('en')).map((game) => ({ id: game.id })); },
+  },
+
+  cat: animalFeed('cat'),
+  fox: animalFeed('fox'),
+
+  wikipedia: {
+    interval: 60_000, perTick: 5000, concurrency: 1, perLanguage: true, noAccount: true,
+    // The account is the pace: `featured` (once a day) or `every:N` minutes. `text` is what the dashboard or a command sent (`15`, `2h`...).
+    async resolve(text) {
+      const minutes = schedule.parseMinutes(text);
+      if (minutes === null) throw new IntegrationError('badInput');
+      return { id: schedule.accountIdFor('wikipedia', minutes), name: 'Wikipedia', avatar: null, url: 'https://www.wikipedia.org' }; // i18n-ignore: the name of a brand
+    },
+    /** Once a day: the featured article, from 6:00 UTC (it is chosen by then in every Wikipedia). Every N minutes: a random article for each slot. */
+    async poll(accounts, _tracked, { now = Date.now(), lang = 'en' } = {}) {
+      const results = new Map();
+      for (const account of accounts) {
+        const minutes = schedule.minutesOf(account.id);
+        if (minutes === schedule.DAY_MINUTES) {
+          const article = new Date(now).getUTCHours() < 6 ? null : await daily.featuredArticle(lang, now);
+          results.set(account.id, { items: article ? [daily.wikipediaItem(article, now)] : [] });
+          continue;
+        }
+        const slot = schedule.slotOf(now, minutes);
+        const article = await daily.randomArticle(lang, `${minutes}:${slot}`);
+        results.set(account.id, { items: article ? [{ ...daily.wikipediaItem(article, now), publishedAt: schedule.slotStart(slot, minutes) }] : [] });
+      }
+      return results;
+    },
+    /** A pace of minutes starts at the next slot: the one running now is the past. */
+    async baselineItems(account, now = Date.now()) {
+      const minutes = schedule.minutesOf(account.id);
+      return minutes === schedule.DAY_MINUTES ? [] : [{ id: `${minutes}:${schedule.slotOf(now, minutes)}` }];
+    },
   },
 
   chess: {
-    interval: HOUR, perTick: 5000, concurrency: 1, noAccount: true,
-    async resolve() { return { id: 'puzzle', name: 'Chess.com', avatar: null, url: 'https://www.chess.com/daily-chess-puzzle' }; }, // i18n-ignore: the name of a brand
-    async poll(accounts) {
-      const puzzle = await daily.chessPuzzle();
-      return new Map(accounts.map((account) => [account.id, { items: puzzle ? [daily.chessItem(puzzle)] : [] }]));
+    interval: 60_000, perTick: 5000, concurrency: 1, noAccount: true,
+    async resolve(text) {
+      const minutes = schedule.parseMinutes(text);
+      if (minutes === null) throw new IntegrationError('badInput');
+      return { id: schedule.accountIdFor('chess', minutes), name: 'Chess.com', avatar: null, url: 'https://www.chess.com/daily-chess-puzzle' }; // i18n-ignore: the name of a brand
     },
-    async baselineItems() { return []; },
+    async poll(accounts, _tracked, { now = Date.now() } = {}) {
+      const results = new Map();
+      for (const account of accounts) {
+        const minutes = schedule.minutesOf(account.id);
+        if (minutes === schedule.DAY_MINUTES) {
+          const puzzle = await daily.chessPuzzle();
+          results.set(account.id, { items: puzzle ? [daily.chessItem(puzzle)] : [] });
+          continue;
+        }
+        const slot = schedule.slotOf(now, minutes);
+        const puzzle = await daily.randomPuzzle(`${minutes}:${slot}`);
+        results.set(account.id, { items: puzzle ? [{ ...daily.chessItem(puzzle), publishedAt: schedule.slotStart(slot, minutes) }] : [] });
+      }
+      return results;
+    },
+    async baselineItems(account, now = Date.now()) {
+      const minutes = schedule.minutesOf(account.id);
+      return minutes === schedule.DAY_MINUTES ? [] : [{ id: `${minutes}:${schedule.slotOf(now, minutes)}` }];
+    },
   },
 
   pokemon: {
-    interval: HOUR, perTick: 5000, concurrency: 1, perLanguage: true, noAccount: true,
-    async resolve() { return { id: 'daily', name: 'Pokédex', avatar: null, url: 'https://www.pokemon.com/us/pokedex' }; }, // i18n-ignore: the name of a brand
-    /** One Pokémon a day for everybody, from 14:00 UTC (9 in the morning in Colombia). The text is in the language of each server by the card. */
+    interval: 60_000, perTick: 5000, concurrency: 1, perLanguage: true, noAccount: true,
+    async resolve(text) {
+      const minutes = schedule.parseMinutes(text);
+      if (minutes === null) throw new IntegrationError('badInput');
+      return { id: schedule.accountIdFor('pokemon', minutes), name: 'Pokédex', avatar: null, url: 'https://www.pokemon.com/us/pokedex' }; // i18n-ignore: the name of a brand
+    },
+    /** Once a day: one Pokémon for everybody, from 14:00 UTC (9 in the morning in Colombia). Every N minutes: the next one of the dex for each slot. */
     async poll(accounts, _tracked, { now = Date.now(), lang = 'en' } = {}) {
       const results = new Map();
-      if (new Date(now).getUTCHours() < 14) return new Map(accounts.map((account) => [account.id, { items: [] }]));
-      const item = pokemon.toItem(await pokemon.fetchPokemon(pokemon.pokemonOfDay(pokemon.dayNumber(now)), lang), now);
-      for (const account of accounts) results.set(account.id, { items: [item] });
+      for (const account of accounts) {
+        const minutes = schedule.minutesOf(account.id);
+        if (minutes === schedule.DAY_MINUTES) {
+          if (new Date(now).getUTCHours() < 14) { results.set(account.id, { items: [] }); continue; }
+          results.set(account.id, { items: [pokemon.toItem(await pokemon.fetchPokemonKept(pokemon.pokemonOfDay(pokemon.dayNumber(now)), lang), now)] });
+          continue;
+        }
+        const slot = schedule.slotOf(now, minutes);
+        const entry = await pokemon.fetchPokemonKept(pokemon.pokemonOfDay(slot), lang);
+        results.set(account.id, { items: [{ ...pokemon.toItem(entry, now), id: `${minutes}:${slot}`, publishedAt: schedule.slotStart(slot, minutes) }] });
+      }
       return results;
     },
-    async baselineItems() { return []; },
+    async baselineItems(account, now = Date.now()) {
+      const minutes = schedule.minutesOf(account.id);
+      return minutes === schedule.DAY_MINUTES ? [] : [{ id: `${minutes}:${schedule.slotOf(now, minutes)}` }];
+    },
   },
 };
 

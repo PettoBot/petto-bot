@@ -14,6 +14,7 @@ const { PLATFORMS, fallbackPicture } = require('./platforms');
 const emojis = require('./emojis');
 const { plainText, linkText, safeUrl, clip, MAX_DESCRIPTION, MAX_TOP } = require('./text');
 const { t } = require('../i18n');
+const { heroFor } = require('./hero');
 
 /**
  * What a feed knows about one notice. `item`:
@@ -57,7 +58,7 @@ function allowedMentionsOf(feed) {
  * The message of a feed for an item.
  * `feed`: { message, ping_roles, ping_everyone, options: { image, button, color } }. `test` puts a small "test" mark on the top line.
  */
-function buildFeedMessage(feed, item, { lang, test = false } = {}) {
+function buildFeedMessage(feed, item, { lang, test = false, hero = null } = {}) {
   const platform = PLATFORMS[item.platform] ?? PLATFORMS.rss;
   const options = feed.options ?? {};
   const components = [];
@@ -67,6 +68,24 @@ function buildFeedMessage(feed, item, { lang, test = false } = {}) {
   if (top) components.push(new TextDisplayBuilder().setContent(top));
 
   const url = safeUrl(item.url);
+
+  // A release with its own picture (the cover and the title drawn together): the picture, the kind of notice with the time, and a button.
+  if (hero) {
+    const card = new ContainerBuilder().setAccentColor(Number.isInteger(options.color) ? options.color : platform.color);
+    card.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(`attachment://${hero.name}`)));
+    card.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
+    const when = toMs(item.publishedAt);
+    const meta = [`${emojis.PLATFORM[item.platform] ?? ''} ${t(lang, `feeds.type.${item.type}`)}`.trim(), when ? `<t:${Math.floor(when / 1000)}:R>` : null].filter(Boolean).join(' · ');
+    card.addTextDisplayComponents(new TextDisplayBuilder().setContent([`-# ${meta}`, item.description ? `-# ${plainText(item.description, 200)}` : ''].filter(Boolean).join('\n')));
+    if (url) {
+      card.addActionRowComponents(new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(url).setEmoji(emojis.forButton(emojis.PLATFORM[item.platform] ?? '🎵')).setLabel(clip(t(lang, 'feeds.button.release', { platform: platform.name }), 80)),
+      ));
+    }
+    components.push(card);
+    return { flags: MessageFlags.IsComponentsV2, components, allowedMentions: allowedMentionsOf(feed) };
+  }
+
   const heading = `${emojis.PLATFORM[item.platform] ?? emojis.PLATFORM.rss} ${url ? `**[${linkText(item.title) || platform.name}](${url})**` : `**${linkText(item.title) || platform.name}**`}`;
   const lines = [heading];
   const description = plainText(item.description, MAX_DESCRIPTION);
@@ -107,4 +126,10 @@ function buildFeedMessage(feed, item, { lang, test = false } = {}) {
   return { flags: MessageFlags.IsComponentsV2, components, allowedMentions: allowedMentionsOf(feed) };
 }
 
-module.exports = { buildFeedMessage, renderMessage, pingLine, allowedMentionsOf, VARIABLES };
+/** The message ready to send: for a release it carries the picture drawn for it (`files`); for everything else it is `buildFeedMessage`. */
+async function buildFeedPayload(feed, item, options = {}) {
+  const hero = options.hero === undefined ? await heroFor(item) : options.hero;
+  return { ...buildFeedMessage(feed, item, { ...options, hero }), ...(hero ? { files: hero.files } : {}) };
+}
+
+module.exports = { buildFeedMessage, buildFeedPayload, renderMessage, pingLine, allowedMentionsOf, VARIABLES };

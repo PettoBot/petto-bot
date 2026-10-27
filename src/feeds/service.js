@@ -5,7 +5,7 @@ const feedsDb = require('../db/feeds');
 const { guildLimit } = require('../db/premium');
 const { PROVIDERS, isProvider } = require('./providers');
 const { PLATFORMS } = require('./platforms');
-const { buildFeedMessage } = require('./card');
+const { buildFeedPayload } = require('./card');
 const { MAX_TOP } = require('./text');
 const { IntegrationError } = require('../utils/integrations');
 const logger = require('../utils/logger');
@@ -63,7 +63,7 @@ async function createFeed(guild, input) {
   try {
     account = await PROVIDERS[platform].resolve(String(input.account ?? '').trim());
   } catch (error) {
-    if (error instanceof IntegrationError) return { ok: false, error: error.kind === 'notFound' || error.kind === 'badInput' || error.kind === 'notConfigured' ? error.kind : 'unavailable' };
+    if (error instanceof IntegrationError) return { ok: false, error: error.kind === 'badInput' && PROVIDERS[platform].noAccount ? 'badPace' : error.kind === 'notFound' || error.kind === 'badInput' || error.kind === 'notConfigured' ? error.kind : 'unavailable' };
     throw error;
   }
 
@@ -90,7 +90,7 @@ async function createFeed(guild, input) {
   return { ok: true, feed };
 }
 
-/** Changes what a person may change of a feed. `patch`: { channelId, types, message, pingRoles, pingEveryone, options, filters, enabled }. */
+/** Changes what a person may change of a feed. `patch`: { channelId, types, message, pingRoles, pingEveryone, options, filters, enabled, every }. */
 async function updateFeed(guild, id, patch) {
   const current = await feedsDb.get(guild.id, id);
   if (!current) return { ok: false, error: 'notFound' };
@@ -108,8 +108,31 @@ async function updateFeed(guild, id, patch) {
   if (patch.options !== undefined) row.options = { ...current.options, ...cleanOptions(patch.options) };
   if (patch.filters !== undefined) row.filters = { include: words(patch.filters.include), exclude: words(patch.filters.exclude) };
   if (patch.enabled !== undefined) { row.enabled = Boolean(patch.enabled); if (row.enabled) { row.failures = 0; row.last_error = null; } }
+  // The pace of an auto feed (the Pokémon, Wikipedia, Chess.com) is part of its account: a new pace is a new account that starts at its next slot.
+  if (patch.every !== undefined && PROVIDERS[current.platform]?.noAccount) {
+    let account;
+    try {
+      account = await PROVIDERS[current.platform].resolve(String(patch.every).trim());
+    } catch (error) {
+      if (error instanceof IntegrationError) return { ok: false, error: error.kind === 'badInput' ? 'badPace' : 'unavailable' };
+      throw error;
+    }
+    if (account.id !== current.account_id) {
+      try {
+        await feedsDb.markSeen((await PROVIDERS[current.platform].baselineItems(account)).map((item) => [current.id, String(item.id)]));
+      } catch (error) {
+        logger.warn(`Feed ${current.id}: could not mark what the new pace already has: ${error.message}`);
+      }
+      Object.assign(row, { account_id: account.id, account_name: String(account.name).slice(0, 100), account_url: account.url ?? null });
+    }
+  }
   if (!Object.keys(row).length) return { ok: true, feed: current };
-  return { ok: true, feed: await feedsDb.update(guild.id, id, row) };
+  try {
+    return { ok: true, feed: await feedsDb.update(guild.id, id, row) };
+  } catch (error) {
+    if (error?.code === '23505') return { ok: false, error: 'already', account: current.account_name }; // the same pace in the same channel is already followed
+    throw error;
+  }
 }
 
 /** A notice to show how a feed looks: the newest thing of the account, or an example when it has nothing. */
@@ -132,7 +155,7 @@ async function sendTest(guild, feed, lang) {
   const problem = channelProblem(guild, channel);
   if (problem) return { ok: false, error: problem };
   const item = await sampleItem(feed, lang);
-  const message = await channel.send(buildFeedMessage(feed, item, { lang, test: true })).catch((error) => ({ error }));
+  const message = await channel.send(await buildFeedPayload(feed, item, { lang, test: true })).catch((error) => ({ error }));
   if (message?.error) return { ok: false, error: 'permission', detail: message.error.message };
   return { ok: true, channel, message };
 }
