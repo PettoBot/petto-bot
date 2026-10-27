@@ -3,6 +3,9 @@ const MAX_TITLE = 200;
 const MAX_DESCRIPTION = 220;
 const MAX_TOP = 1500;
 
+// Emojis: the pictographs with their joiners and variation marks, flags, keycaps and the custom ones (`<:name:id>`).
+const EMOJI = /<a?:\w+:\d+>|[\p{Extended_Pictographic}\p{Regional_Indicator}\u200D\uFE0F\u20E3\u{E0020}-\u{E007F}]/gu;
+
 const entities = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'", '&apos;': "'", '&nbsp;': ' ' };
 
 /** Cuts a text to `max` characters on a word, with an ellipsis. */
@@ -28,8 +31,8 @@ function plainText(text, max = MAX_DESCRIPTION, { link = false } = {}) {
   value = value.replace(/@(everyone|here)/gi, '@​$1').replace(/<@/g, '<​@').replace(/[\\*_~`|>]/g, (char) => `\\${char}`); // the backslash too, so a backslash in the text cannot undo an escape
   // Discord does not read a link whose words hold an escaped bracket (it shows the markdown as it is), so there the brackets are written as the full-width ones.
   if (link) value = value.replace(/\[/g, '［').replace(/\]/g, '］');
-  // A number with a dot in a title ("26.4 Snapshot") can read as an address to Discord, which then shows the link as raw markdown: an invisible space after the dot avoids it.
-  if (link) value = value.replace(/(\w)\.(?=\w)/g, '$1.\u200b');
+  // Discord shows the markdown as it is (no blue link) when the words of a link hold an emoji, so the emojis of a title are left out of the link; the button of the card still opens it.
+  if (link) value = value.replace(EMOJI, '').replace(/\s{2,}/g, ' ').trim();
   return clip(value, max);
 }
 
