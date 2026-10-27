@@ -10,13 +10,15 @@ const store = require('../db/youtubeWebsub');
 const feedsDb = require('../db/feeds');
 const logger = require('../utils/logger');
 const { USER_AGENT } = require('../utils/integrations');
+const { forEachWithConcurrency } = require('../utils/concurrency');
 
 const HUB = 'https://pubsubhubbub.appspot.com/subscribe';
 const TOPIC = (channelId) => `https://www.youtube.com/xml/feeds/videos.xml?channel_id=${channelId}`;
 const LEASE_SECONDS = 5 * 24 * 3600;
 const RENEW_BEFORE_MS = 24 * 3_600_000;
 const RETRY_BASE_MS = 15 * 60_000;
-const PER_RUN = 60; // subscriptions asked in one pass: a hub is not a place to flood
+const PER_RUN = 250; // subscriptions asked in one pass (ten thousand channels are all asked for in about an hour); a hub is not a place to flood
+const ASK_WORKERS = 5;
 const CHANNEL_ID = /^UC[\w-]{22}$/;
 
 /** channelId -> { status, expiresAt, secret, fails, requestedAt }: what the database says, kept in memory (the push handler reads it on every call). */
@@ -81,16 +83,23 @@ async function maintain({ now = Date.now() } = {}) {
   if (!enabled()) return { followed: 0, healthy: 0, asked: 0 };
   const channelIds = [...new Set((await feedsDb.listEnabled({ now })).filter((feed) => feed.platform === 'youtube' && CHANNEL_ID.test(feed.account_id)).map((feed) => feed.account_id))];
   let asked = 0;
-  for (const id of needing(channelIds, now).slice(0, PER_RUN)) { await subscribe(id, now); asked += 1; }
+  const due = needing(channelIds, now).slice(0, PER_RUN);
+  await forEachWithConcurrency(due, async (id) => { await subscribe(id, now); asked += 1; }, ASK_WORKERS);
   await store.removeExcept(channelIds).catch(() => {});
   return { followed: channelIds.length, healthy: channelIds.filter((id) => isHealthy(id, now)).length, asked };
+}
+
+/** The challenge goes back as bytes of plain text, with the type fixed so a browser never reads it as HTML. */
+function answerChallenge(res, challenge) {
+  res.status(200).set({ 'Content-Type': 'text/plain; charset=utf-8', 'X-Content-Type-Options': 'nosniff' }).end(Buffer.from(challenge, 'utf8')); // i18n-ignore: a header for a machine
 }
 
 /** The hub confirms a subscription (GET with `hub.challenge`): it is answered only for a channel that was asked for. */
 async function verifyHandler(req, res) {
   const mode = String(req.query['hub.mode'] ?? '');
   const topic = String(req.query['hub.topic'] ?? '');
-  const challenge = String(req.query['hub.challenge'] ?? '');
+  // The challenge is a random string the hub makes up: only letters, digits and a few signs are accepted, and it is sent back as plain bytes that cannot be taken for a page.
+  const challenge = /^[\w.~-]{1,200}$/.exec(String(req.query['hub.challenge'] ?? ''))?.[0] ?? '';
   const channelId = /channel_id=(UC[\w-]{22})$/.exec(topic)?.[1];
   const entry = channelId ? known.get(channelId) : null;
   if (!challenge || !channelId || !entry || topic !== TOPIC(channelId)) { res.status(404).send('not found'); return; } // i18n-ignore: an answer to a machine
@@ -99,10 +108,10 @@ async function verifyHandler(req, res) {
     const expiresAt = Date.now() + lease * 1000;
     await store.markVerified(channelId, expiresAt);
     entry.status = 'active'; entry.expiresAt = expiresAt; entry.fails = 0;
-    res.status(200).type('text/plain').send(challenge);
+    answerChallenge(res, challenge);
     return;
   }
-  if (mode === 'unsubscribe') { res.status(200).type('text/plain').send(challenge); return; }
+  if (mode === 'unsubscribe') { answerChallenge(res, challenge); return; }
   res.status(404).send('not found'); // i18n-ignore: an answer to a machine
 }
 

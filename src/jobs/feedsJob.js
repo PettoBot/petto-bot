@@ -6,11 +6,12 @@ const { exclusiveTask } = require('../utils/concurrency');
 const websub = require('../feeds/websub');
 const youtube = require('../feeds/providers/youtube');
 const config = require('../config');
+const { restoreYoutubeState } = require('../feeds/providers');
 
 const TICK_MS = 60_000;
 const DAY_MS = 24 * 60 * 60_000;
 
-const WEBSUB_MS = 10 * 60_000;
+const WEBSUB_MS = 5 * 60_000;
 const REPORT_MS = 60 * 60_000;
 let runSoon = () => {};
 
@@ -35,7 +36,8 @@ function startFeedsJob(client) {
     setTimeout(report, 5 * 60_000).unref?.();
     setInterval(report, REPORT_MS).unref?.();
   }
-  setTimeout(tick, 45_000).unref?.(); // after the bot has its servers
+  // After the bot has its servers (and its Redis, if there is one), what it had learned about the YouTube videos is read back and the first pass is made.
+  setTimeout(() => { restoreYoutubeState().catch(() => {}).then(tick); }, 45_000).unref?.();
   setInterval(tick, TICK_MS).unref?.();
   const prune = () => feedsDb.pruneOld().catch((error) => logger.error('Feeds cleanup failed:', error));
   setTimeout(prune, 10 * 60_000).unref?.();
