@@ -881,17 +881,19 @@ const allText = (message) => JSON.stringify(json(message.components));
   assert.equal((await service.createFeed(guild, { platform: 'youtube', account: 'one', channelId: CH })).error, 'already');
   assert.equal((await service.createFeed(guild, { platform: 'youtube', account: 'two', channelId: CH })).ok, true);
   assert.equal((await service.createFeed(guild, { platform: 'youtube', account: 'three', channelId: CH })).ok, true);
-  const fourth = await service.createFeed(guild, { platform: 'youtube', account: 'four', channelId: CH });
-  assert.equal(fourth.error, 'limitFree', 'Free follows up to three accounts of a platform');
-  assert.equal(fourth.count, 3);
-  assert.equal(fourth.premium, 25, 'and Premium up to twenty-five');
-  assert.equal(fourth.platform, 'YouTube');
-  // The limit is for each platform: the three of YouTube do not use the room of Reddit.
+  assert.equal((await service.createFeed(guild, { platform: 'youtube', account: 'four', channelId: CH })).ok, true);
+  assert.equal((await service.createFeed(guild, { platform: 'youtube', account: 'five', channelId: CH })).ok, true);
+  const sixth = await service.createFeed(guild, { platform: 'youtube', account: 'six', channelId: CH });
+  assert.equal(sixth.error, 'limitFree', 'Free follows up to five accounts of a platform');
+  assert.equal(sixth.count, 5);
+  assert.equal(sixth.premium, 25, 'and Premium up to twenty-five');
+  assert.equal(sixth.platform, 'YouTube');
+  // The limit is for each platform: the five of YouTube do not use the room of Reddit.
   PROVIDERS.reddit = { ...PROVIDERS.youtube };
   const other = await service.createFeed(guild, { platform: 'reddit', account: 'r/other', channelId: CH });
-  assert.equal(other.ok, true, 'a fourth feed of another platform is fine');
-  assert.equal(await feedsDb.countForGuild(G), 4);
-  assert.equal(await feedsDb.countForGuild(G, 'youtube'), 3);
+  assert.equal(other.ok, true, 'a sixth feed of another platform is fine');
+  assert.equal(await feedsDb.countForGuild(G), 6);
+  assert.equal(await feedsDb.countForGuild(G, 'youtube'), 5);
   assert.equal(await feedsDb.remove(G, other.feed.id), true);
   delete PROVIDERS.reddit;
   // An auto feed: the pace is part of the account, a new pace starts at its next slot, and a pace under 15 minutes is refused.
@@ -909,9 +911,8 @@ const allText = (message) => JSON.stringify(json(message.components));
     assert.equal(daily.feed.account_id, 'daily', 'once a day is the old account');
     assert.equal(await feedsDb.remove(G, auto.feed.id), true);
   }
-  const [a, b, c] = await rows();
-  await service.updateFeed(guild, b.id, { enabled: false });
-  await service.updateFeed(guild, c.id, { enabled: false });
+  const [a, b, c, d, e] = await rows();
+  for (const extra of [b, c, d, e]) await service.updateFeed(guild, extra.id, { enabled: false });
 
   // What is new is posted, once.
   const at = Date.now();
