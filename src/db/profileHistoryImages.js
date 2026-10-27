@@ -19,9 +19,9 @@ const ALLOWED = `exists (select 1 from identity_history where user_id = $1 and k
 async function store(userId, hash, { contentType, bytes }) {
   if (!HASH.test(hash) || !bytes?.length || bytes.length > MAX_BYTES) return false;
   const { rowCount } = await pool().query(
-    `insert into profile_history_images (user_id, hash, content_type, size, bytes, missing, attempts, updated_at)
-     select $1, $2, $3, $4, $5, false, 0, now() where ${ALLOWED}
-     on conflict (user_id, hash) do update set content_type = excluded.content_type, size = excluded.size, bytes = excluded.bytes, missing = false, updated_at = now()`,
+    `insert into profile_history_images (user_id, hash, content_type, size, bytes, missing, attempts, packed, updated_at)
+     select $1, $2, $3, $4, $5, false, 0, true, now() where ${ALLOWED}
+     on conflict (user_id, hash) do update set content_type = excluded.content_type, size = excluded.size, bytes = excluded.bytes, missing = false, packed = true, updated_at = now()`,
     [String(userId), hash, contentType, bytes.length, bytes],
   );
   if (rowCount) await trim(userId);
@@ -110,4 +110,16 @@ async function backfillCandidates(beforeId = null, chunk = 50) {
   return { rows: rows[0]?.rows ?? [], cursor: rows[0]?.cursor ?? null };
 }
 
-module.exports = { KEEP_PER_USER, MAX_BYTES, MAX_ATTEMPTS, HASH, store, markFailed, trim, status, recorded, get, getMany, clearUser, totalSize, backfillCandidates };
+/** The next copies made when the quality was higher (not packed yet), with their bytes. */
+async function unpacked(limit = 40) {
+  const { rows } = await pool().query('select user_id, hash, size, bytes from profile_history_images where not packed and bytes is not null order by updated_at limit $1', [limit]);
+  return rows;
+}
+
+/** Writes the smaller copy (`bytes` null keeps the old one) and marks it as packed, whatever happened, so it is not tried again. Keeps updated_at. */
+async function markPacked(userId, hash, bytes = null) {
+  if (bytes) await pool().query('update profile_history_images set bytes = $3, size = $4, packed = true where user_id = $1 and hash = $2', [String(userId), String(hash), bytes, bytes.length]);
+  else await pool().query('update profile_history_images set packed = true where user_id = $1 and hash = $2', [String(userId), String(hash)]);
+}
+
+module.exports = { unpacked, markPacked, KEEP_PER_USER, MAX_BYTES, MAX_ATTEMPTS, HASH, store, markFailed, trim, status, recorded, get, getMany, clearUser, totalSize, backfillCandidates };

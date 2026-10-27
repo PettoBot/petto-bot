@@ -4439,3 +4439,6 @@ create table if not exists guild_departures (
 );
 
 alter table guild_departures enable row level security;
+
+-- Copies of avatars made at the old quality are rewritten smaller in the background (jobs/avatarPackJob.js).
+alter table profile_history_images add column if not exists packed boolean not null default false;

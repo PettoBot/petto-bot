@@ -10,9 +10,12 @@
 const { createCanvas } = require('@napi-rs/canvas');
 const logger = require('./logger');
 
+const config = require('../config');
+
 const SIZE = 256;
+const WEBP_QUALITY = 72; // 90 made copies twice as heavy for a difference nobody sees in an avatar
 const DOWNLOAD_LIMIT = 2 * 1024 * 1024;
-const TOTAL_LIMIT = 1024 * 1024 * 1024; // 1 GiB of copies in all: past it no new copy is made (a sanity limit, not a quota)
+const TOTAL_LIMIT = config.avatarCopiesMaxMb * 1024 * 1024; // past it no new copy is made (AVATAR_COPIES_MAX_MB)
 const TOTAL_CHECK_MS = 10 * 60_000;
 
 const sourceUrl = (userId, hash) => `https://cdn.discordapp.com/avatars/${userId}/${hash}.png?size=${SIZE}`;
@@ -25,7 +28,7 @@ function toWebp(image) {
   const width = image.width * scale;
   const height = image.height * scale;
   ctx.drawImage(image, (SIZE - width) / 2, (SIZE - height) / 2, width, height);
-  return canvas.toBuffer('image/webp', 90);
+  return canvas.toBuffer('image/webp', WEBP_QUALITY);
 }
 
 /**
@@ -162,4 +165,4 @@ function avatarCopies() {
   return shared;
 }
 
-module.exports = { createAvatarCopies, avatarCopies, sourceUrl, toWebp, SIZE, TOTAL_LIMIT };
+module.exports = { createAvatarCopies, avatarCopies, sourceUrl, toWebp, SIZE, TOTAL_LIMIT, WEBP_QUALITY };

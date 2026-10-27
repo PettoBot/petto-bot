@@ -200,6 +200,8 @@ module.exports = {
   // needs a public address that reaches the bot: YOUTUBE_WEBSUB_URL, or VERIFY_BASE_URL when that is not set. YOUTUBE_WEBSUB=false turns it off (the channels are looked at as before).
   youtubeWebsub: process.env.YOUTUBE_WEBSUB !== 'false',
   youtubeWebsubUrl: (process.env.YOUTUBE_WEBSUB_URL || '').trim().replace(/\/+$/, '') || null,
+  // The copies of avatars of the profile history stop growing at this size (they were the biggest table of the database).
+  avatarCopiesMaxMb: Math.max(20, Number(process.env.AVATAR_COPIES_MAX_MB) || 300),
   // What Petto has stored for a server it is no longer in is deleted this many days after it left (GUILD_PURGE=false turns it off, GUILD_PURGE_DRY_RUN=true only says what would go).
   guildPurge: process.env.GUILD_PURGE !== 'false',
   guildPurgeDays: Math.max(1, Number(process.env.GUILD_PURGE_DAYS) || 3),

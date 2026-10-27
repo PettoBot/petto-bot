@@ -1,11 +1,13 @@
 // i18n-ignore-file: internal threat-feed sync (HTTP headers and logs).
 const config = require('../config');
-const { upsertMaliciousLinks } = require('../db/maliciousLinks');
+const { upsertMaliciousLinks, pruneStaleFeedLinks } = require('../db/maliciousLinks');
 const { normalizeUrl } = require('../utils/safeBrowsing');
 const logger = require('../utils/logger');
 
 const FETCH_TIMEOUT_MS = 5 * 60_000;
 const MAX_FEED_BYTES = 512 * 1024 * 1024;
+const STALE_DAYS = 14;
+const MIN_FOR_PRUNE = 100; // a feed that came back (almost) empty is not a reason to forget anything
 const OPENPHISH_SOURCE = 'openphish';
 const URLHAUS_SOURCE = 'urlhaus';
 const PHISHING_FILTER_SOURCE = 'phishing_filter_domains';
@@ -114,6 +116,11 @@ async function syncFeed(feed) {
   const text = await fetchText(feed.url);
   const count = await upsertMaliciousLinks(feed.parser(text));
   logger.info({ source: feed.source, count }, `Synchronized ${count} public malicious feed entry/entries from ${feed.source}.`);
+  // Only after a refresh that brought a real list: what the feed stopped listing two weeks ago is gone from the database too.
+  if (count >= MIN_FOR_PRUNE) {
+    const removed = await pruneStaleFeedLinks(feed.source, STALE_DAYS).catch((error) => { logger.warn(`Could not forget old entries of ${feed.source}: ${error.message}`); return 0; });
+    if (removed) logger.info({ source: feed.source, removed }, `Forgot ${removed} entry/entries of ${feed.source} that the feed no longer lists.`);
+  }
   return count;
 }
 
