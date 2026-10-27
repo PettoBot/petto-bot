@@ -3,7 +3,7 @@
 // stream when it ends. What was posted is remembered in `feed_seen`, so a restart posts nothing twice.
 const feedsDb = require('../db/feeds');
 const { PROVIDERS } = require('./providers');
-const { buildFeedMessage } = require('./card');
+const { buildFeedMessage, buildFeedPayload } = require('./card');
 const { channelProblem } = require('./service');
 const { forEachWithConcurrency } = require('../utils/concurrency');
 const { peekGuildLanguage } = require('../i18n');
@@ -79,7 +79,7 @@ async function processFeed(client, feed, result, liveRows, seen, now) {
     } else {
       for (const item of toPost) {
         try {
-          const message = await channel.send(buildFeedMessage(feed, item, { lang }));
+          const message = await channel.send(await buildFeedPayload(feed, item, { lang }));
           posted += 1;
           if (item.type === 'live') await feedsDb.saveLive({ feed_id: feed.id, item_id: String(item.id), channel_id: channel.id, message_id: message.id, item });
         } catch (error) {

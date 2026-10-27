@@ -17,14 +17,15 @@ const PLATFORM = {
   anilist: '<:pe_f_anilist:1564413683747262475>',
   wikipedia: '<:pe_f_wikipedia:1564415088608288889>',
   chess: '<:pe_f_chess:1564413774314602626>',
-  // New: until their emojis are uploaded (`pe_f_spotify`, `pe_f_deezer`, `pe_f_applemusic`, `pe_f_mastodon`, `pe_f_tumblr`, `pe_f_letterboxd`, `pe_f_epic`) each is a plain one.
-  spotify: '🟢',
-  deezer: '🟣',
-  applemusic: '🔴',
-  mastodon: '🐘',
-  tumblr: '🔷',
-  letterboxd: '🎞️',
-  epic: '🎮',
+  spotify: '<:pe_f_spotify:1564469167208534177>',
+  deezer: '<:pe_f_dezzer:1564472069448663070>',
+  applemusic: '<:pe_f_applemusic:1564472178374610974>',
+  mastodon: '<:pe_f_mastodon:1564469171214094356>',
+  tumblr: '<:pe_f_tmbrl:1564472157231120565>',
+  letterboxd: '<:pe_f_letterborxd:1564472136838545628>',
+  epic: '<:pe_f_epic:1564472096141222039>',
+  cat: '🐱', // until `pe_f_cat` is uploaded
+  fox: '🦊', // until `pe_f_fox` is uploaded
 };
 
 const TYPE = {
@@ -36,9 +37,10 @@ const TYPE = {
   pin: '<:pe_f_pin:1564404654643879966>',
   update: '<:pe_f_update:1564405656780275852>',
   episode: '<:pe_f_episode:1564413566851743924>',
-  release: '🎵', // until `pe_f_release` is uploaded
-  game: '🎁', // until `pe_f_game` is uploaded
-  daily: '🎲',
+  release: '<:pe_f_release:1564471999835668572>',
+  game: '<:pe_f_game:1564469175487959050>',
+  photo: '📷', // until `pe_f_photo` is uploaded
+  daily: '<:pe_f_dayli:1564471998443430008>',
   ended: '⚫',
 };
 

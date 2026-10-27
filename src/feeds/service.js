@@ -5,7 +5,7 @@ const feedsDb = require('../db/feeds');
 const { guildLimit } = require('../db/premium');
 const { PROVIDERS, isProvider } = require('./providers');
 const { PLATFORMS } = require('./platforms');
-const { buildFeedMessage } = require('./card');
+const { buildFeedPayload } = require('./card');
 const { MAX_TOP } = require('./text');
 const { IntegrationError } = require('../utils/integrations');
 const logger = require('../utils/logger');
@@ -155,7 +155,7 @@ async function sendTest(guild, feed, lang) {
   const problem = channelProblem(guild, channel);
   if (problem) return { ok: false, error: problem };
   const item = await sampleItem(feed, lang);
-  const message = await channel.send(buildFeedMessage(feed, item, { lang, test: true })).catch((error) => ({ error }));
+  const message = await channel.send(await buildFeedPayload(feed, item, { lang, test: true })).catch((error) => ({ error }));
   if (message?.error) return { ok: false, error: 'permission', detail: message.error.message };
   return { ok: true, channel, message };
 }

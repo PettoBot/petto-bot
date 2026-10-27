@@ -22,6 +22,7 @@ const steam = require('./steam');
 const anilist = require('./anilist');
 const daily = require('./daily');
 const music = require('./music');
+const animals = require('./animals');
 const social = require('./social');
 const epic = require('./epic');
 const schedule = require('../schedule');
@@ -29,6 +30,7 @@ const { t } = require('../../i18n');
 const { IntegrationError } = require('../../utils/integrations');
 const { fetchPublicText } = require('../http');
 const { fallbackPicture } = require('../platforms');
+const { withStandIn } = require('../picture');
 const { parseFeed } = require('../feedparse');
 
 /** The videos that were seen live or about to be: when they end they are a recording of a stream, and are not posted as a new video. */
@@ -53,6 +55,32 @@ const listPoll = (read, concurrency = 3) => async function poll(accounts, _track
   }, concurrency);
   return results;
 };
+
+/** A cat or a fox: a picture for each slot of time of the pace of the account (once a day to every 15 minutes), the same for every server of that pace. */
+function animalFeed(animal) {
+  return {
+    interval: 60_000, perTick: 5000, concurrency: 1, perLanguage: true, noAccount: true,
+    async resolve(text) {
+      const minutes = schedule.parseMinutes(text);
+      if (minutes === null) throw new IntegrationError('badInput');
+      return { id: schedule.accountIdFor(animal, minutes), name: animal === 'cat' ? 'Cats' : 'Foxes', avatar: null, url: animals.SOURCES[animal].url }; // i18n-ignore: the name of what is posted
+    },
+    async poll(accounts, _tracked, { now = Date.now(), lang = 'en' } = {}) {
+      const results = new Map();
+      for (const account of accounts) {
+        const minutes = schedule.minutesOf(account.id);
+        const slot = schedule.slotOf(now, minutes);
+        const found = await animals.pictureOf(animal, `${minutes}:${slot}`);
+        results.set(account.id, { items: found ? [animals.toItem(animal, found, { id: `${minutes}:${slot}`, at: schedule.slotStart(slot, minutes), lang })] : [] });
+      }
+      return results;
+    },
+    async baselineItems(account, now = Date.now()) {
+      const minutes = schedule.minutesOf(account.id);
+      return [{ id: `${minutes}:${schedule.slotOf(now, minutes)}` }];
+    },
+  };
+}
 
 const PROVIDERS = {
   youtube: {
@@ -123,9 +151,12 @@ const PROVIDERS = {
     async poll(accounts) {
       const live = await twitch.liveStreams(accounts.map((account) => account.id)); // 100 accounts in each call
       const results = new Map();
+      // The preview of a stream is made a little after it starts: until it loads the notice carries a picture of Twitch (see picture.js).
+      const items = new Map();
+      await forEachWithConcurrency(accounts.filter((account) => live[account.id]), async (account) => { items.set(account.id, await withStandIn(twitch.toItem(live[account.id], account), fallbackPicture('twitch-live'))); }, 8);
       for (const account of accounts) {
         const stream = live[account.id];
-        results.set(account.id, { items: stream ? [twitch.toItem(stream, account)] : [], stillLive: new Set(stream ? [stream.id] : []) });
+        results.set(account.id, { items: stream ? [items.get(account.id)] : [], stillLive: new Set(stream ? [stream.id] : []) });
       }
       return results;
     },
@@ -149,7 +180,7 @@ const PROVIDERS = {
         let item = channel ? kick.toItem(channel, account) : null;
         // Kick makes the picture of a stream a little after it starts, and a notice must not wait for it (Discord shows a broken picture for one that
         // is not made yet): it goes out at once with a picture of Kick, marked as a stand-in, and the engine swaps in the real one when it exists.
-        if (item && !(item.image && await kick.imageReady(item.image))) item = { ...item, placeholder: Boolean(item.image), image: fallbackPicture('kick-live') };
+        item = await withStandIn(item, fallbackPicture('kick-live'));
         results.set(account.id, { items: item ? [item] : [], stillLive: new Set(channel ? [kick.streamId(channel)] : []) });
       }
       return results;
@@ -378,6 +409,9 @@ const PROVIDERS = {
     },
     async baselineItems() { return (await epic.freeGames('en')).map((game) => ({ id: game.id })); },
   },
+
+  cat: animalFeed('cat'),
+  fox: animalFeed('fox'),
 
   wikipedia: {
     interval: 60_000, perTick: 5000, concurrency: 1, perLanguage: true, noAccount: true,

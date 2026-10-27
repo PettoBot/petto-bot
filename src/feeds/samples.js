@@ -9,7 +9,7 @@ const EXTRA = ['live', 'update', 'daily', 'release', 'game'];
 function sampleNotice(platform, type, lang, account = null) {
   const word = (key) => t(lang, `feeds.sample.${key}`);
   const name = account?.name ? String(account.name).slice(0, 100) : word('author');
-  const titleKey = ['video', 'short', 'live', 'clip', 'post', 'pin', 'update', 'release', 'game', 'daily', 'ended'].includes(type) ? type : 'video';
+  const titleKey = ['video', 'short', 'live', 'clip', 'post', 'pin', 'update', 'release', 'game', 'photo', 'daily', 'ended'].includes(type) ? type : 'video';
   return {
     platform, type, id: 'sample', title: word(titleKey), url: account?.url ?? PLATFORMS[platform]?.site ?? 'https://petto.sbs', description: type === 'short' || type === 'ended' ? '' : word('about'),
     image: type === 'short' ? null : 'https://petto.sbs/assets/duck-purple.png', avatar: account?.avatar ?? fallbackPicture(platform), author: name, authorUrl: account?.url ?? null,

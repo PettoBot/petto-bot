@@ -23,13 +23,15 @@ const PLATFORMS = {
   tumblr: { name: 'Tumblr', color: 0x36465d, site: 'https://www.tumblr.com', types: ['post'], defaultTypes: ['post'] }, // i18n-ignore: the name of a brand
   letterboxd: { name: 'Letterboxd', color: 0x00e054, site: 'https://letterboxd.com', types: ['post'], defaultTypes: ['post'] }, // i18n-ignore: the name of a brand
   epic: { name: 'Epic Games', color: 0xffffff, site: 'https://store.epicgames.com', types: ['game'], defaultTypes: ['game'] }, // i18n-ignore: the name of a brand
+  cat: { name: 'Cats', color: 0xf5a524, site: 'https://thecatapi.com', types: ['photo'], defaultTypes: ['photo'] },
+  fox: { name: 'Foxes', color: 0xff7a1a, site: 'https://randomfox.ca', types: ['photo'], defaultTypes: ['photo'] },
   rss: { name: 'RSS', color: 0xf26522, site: null, types: ['post'], defaultTypes: ['post'] },
 };
 
 const PLATFORM_IDS = Object.keys(PLATFORMS);
 
 /** Every kind of notice a card can be: the same word in the labels, the emoji and the dashboard. */
-const TYPES = ['video', 'short', 'live', 'clip', 'post', 'pin', 'update', 'episode', 'release', 'game', 'daily', 'ended'];
+const TYPES = ['video', 'short', 'live', 'clip', 'post', 'pin', 'update', 'episode', 'release', 'game', 'photo', 'daily', 'ended'];
 
 const isPlatform = (id) => Object.hasOwn(PLATFORMS, id);
 

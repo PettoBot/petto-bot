@@ -320,6 +320,69 @@ const allText = (message) => JSON.stringify(json(message.components));
     globalThis.fetch = realFetch;
   }
 
+  // --- A release is headed by a picture drawn for it (cover + title), the rest of the kinds are not -----------------------------------------------------
+  {
+    const { heroFor } = require('../src/feeds/hero');
+    assert.equal(await heroFor({ type: 'video', image: 'https://i.ytimg.com/vi/x/hq.jpg', title: 'A video' }), null, 'only a release gets the picture');
+    assert.equal(await heroFor({ type: 'release', image: null, title: 'No cover' }), null, 'and only when it has a cover');
+    const release = { platform: 'deezer', type: 'release', id: '9', title: 'An album', url: 'https://www.deezer.com/album/9', image: 'https://cdn.dz/a.jpg', author: 'An artist', extra: 'ALBUM', publishedAt: Date.now() };
+    const withHero = JSON.parse(JSON.stringify(card.buildFeedMessage({ message: '', options: {}, ping_roles: [] }, release, { lang: 'en', hero: { name: 'release.png' } }).components));
+    assert.equal(withHero[0].components[0].items[0].media.url, 'attachment://release.png', 'the picture of the release is the head of the card');
+    assert.equal(withHero[0].components.at(-1).components[0].label, 'Listen on Deezer', 'and the button opens the release');
+    const plain = JSON.stringify(card.buildFeedMessage({ message: '', options: {}, ping_roles: [] }, release, { lang: 'en' }).components);
+    assert.ok(plain.includes('https://cdn.dz/a.jpg') && !plain.includes('attachment://'), 'without the picture it is the ordinary card with the cover');
+  }
+
+  // --- Cats and foxes: a picture for each slot of time, the same for everybody, at the pace of the account ----------------------------------------------
+  {
+    const realFetch = globalThis.fetch;
+    const asked = [];
+    globalThis.fetch = async (url) => {
+      asked.push(String(url));
+      if (String(url).includes('thecatapi')) return new Response(JSON.stringify([{ id: 'c1', url: 'https://cdn2.thecatapi.com/images/c1.jpg' }]), { status: 200 });
+      if (String(url).includes('randomfox')) return new Response(JSON.stringify({ image: 'https://randomfox.ca/images/7.jpg', link: 'https://randomfox.ca/?i=7' }), { status: 200 });
+      return new Response('{}', { status: 404 });
+    };
+    const when = Date.UTC(2026, 9, 27, 10, 7, 30);
+    for (const [animal, es] of [['cat', 'Un gatito para ti'], ['fox', 'Un zorrito para ti']]) {
+      const account = await PROVIDERS[animal].resolve('30m');
+      assert.equal(account.id, 'every:30');
+      assert.equal((await PROVIDERS[animal].resolve('')).id, 'daily', 'nothing is once a day');
+      await assert.rejects(PROVIDERS[animal].resolve('5m'), (error) => error.kind === 'badInput');
+      const first = (await PROVIDERS[animal].poll([account, { id: 'every:30' }], new Map(), { now: when, lang: 'es' })).get('every:30').items[0];
+      assert.deepEqual([first.type, first.title, first.platform], ['photo', es, animal]);
+      assert.ok(first.image.startsWith('https://'));
+      const again = (await PROVIDERS[animal].poll([account], new Map(), { now: when + 60_000, lang: 'en' })).get('every:30').items[0];
+      assert.equal(again.id, first.id, 'a minute later it is the same picture');
+      assert.equal(asked.filter((url) => url.includes(animal === 'cat' ? 'thecatapi' : 'randomfox')).length, 1, 'the service is asked once for each slot');
+    }
+    globalThis.fetch = realFetch;
+  }
+
+  // --- Twitch: a live notice goes out at once, with a stand-in picture until the preview of the stream exists ----------------------------------------------
+  {
+    config.twitchClientId = 'tid';
+    config.twitchClientSecret = 'tsecret';
+    const pictures = {};
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url, options = {}) => {
+      const u = String(url);
+      if (u.startsWith('https://static-cdn.jtvnw.net/')) return pictures[u.split('?')[0]] ? new Response('', { status: 200, headers: { 'content-type': 'image/jpeg' } }) : new Response('', { status: 404 });
+      if (u.includes('id.twitch.tv/oauth2/token')) return new Response(JSON.stringify({ access_token: 'tw', expires_in: 3600 }), { status: 200 });
+      if (u.includes('/helix/streams')) return new Response(JSON.stringify({ data: [{ id: 's1', user_id: '7', user_login: 'streamer', user_name: 'Streamer', type: 'live', title: 'Hello', game_name: 'Minecraft', viewer_count: 12, started_at: new Date().toISOString(), thumbnail_url: 'https://static-cdn.jtvnw.net/previews-ttv/live_user_streamer-{width}x{height}.jpg' }] }), { status: 200 });
+      return new Response('{}', { status: 404 });
+    };
+    const account = { id: '7', name: 'Streamer', avatar: null, url: 'https://www.twitch.tv/streamer' };
+    const early = (await PROVIDERS.twitch.poll([account, { id: '8', name: 'Quiet', avatar: null, url: 'x' }], new Map())).get('7').items[0];
+    assert.deepEqual([early.placeholder, early.image.endsWith('/twitch-live.png')], [true, true], 'a stream whose preview does not exist yet goes out with the stand-in');
+    pictures['https://static-cdn.jtvnw.net/previews-ttv/live_user_streamer-1280x720.jpg'] = true;
+    const later = (await PROVIDERS.twitch.poll([account], new Map())).get('7').items[0];
+    assert.deepEqual([Boolean(later.placeholder), later.image.includes('live_user_streamer-1280x720.jpg')], [false, true], 'the real preview is used as soon as it loads');
+    globalThis.fetch = realFetch;
+    config.twitchClientId = null;
+    config.twitchClientSecret = null;
+  }
+
   // --- Kick: the answers of its API written out ------------------------------------------------------------------------------------------------
   {
     config.kickClientId = 'id';
