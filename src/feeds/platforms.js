@@ -16,13 +16,20 @@ const PLATFORMS = {
   anilist: { name: 'AniList', color: 0x02a9ff, site: 'https://anilist.co', types: ['episode'], defaultTypes: ['episode'] },
   wikipedia: { name: 'Wikipedia', color: 0x636466, site: 'https://www.wikipedia.org', types: ['daily'], defaultTypes: ['daily'] },
   chess: { name: 'Chess.com', color: 0x81b64c, site: 'https://www.chess.com', types: ['daily'], defaultTypes: ['daily'] },
+  spotify: { name: 'Spotify', color: 0x1db954, site: 'https://open.spotify.com', types: ['release', 'episode'], defaultTypes: ['release', 'episode'] }, // i18n-ignore: the name of a brand
+  deezer: { name: 'Deezer', color: 0xa238ff, site: 'https://www.deezer.com', types: ['release'], defaultTypes: ['release'] }, // i18n-ignore: the name of a brand
+  applemusic: { name: 'Apple Music', color: 0xfa243c, site: 'https://music.apple.com', types: ['release'], defaultTypes: ['release'] }, // i18n-ignore: the name of a brand
+  mastodon: { name: 'Mastodon', color: 0x6364ff, site: 'https://joinmastodon.org', types: ['post'], defaultTypes: ['post'] }, // i18n-ignore: the name of a brand
+  tumblr: { name: 'Tumblr', color: 0x36465d, site: 'https://www.tumblr.com', types: ['post'], defaultTypes: ['post'] }, // i18n-ignore: the name of a brand
+  letterboxd: { name: 'Letterboxd', color: 0x00e054, site: 'https://letterboxd.com', types: ['post'], defaultTypes: ['post'] }, // i18n-ignore: the name of a brand
+  epic: { name: 'Epic Games', color: 0xffffff, site: 'https://store.epicgames.com', types: ['game'], defaultTypes: ['game'] }, // i18n-ignore: the name of a brand
   rss: { name: 'RSS', color: 0xf26522, site: null, types: ['post'], defaultTypes: ['post'] },
 };
 
 const PLATFORM_IDS = Object.keys(PLATFORMS);
 
 /** Every kind of notice a card can be: the same word in the labels, the emoji and the dashboard. */
-const TYPES = ['video', 'short', 'live', 'clip', 'post', 'pin', 'update', 'episode', 'daily', 'ended'];
+const TYPES = ['video', 'short', 'live', 'clip', 'post', 'pin', 'update', 'episode', 'release', 'game', 'daily', 'ended'];
 
 const isPlatform = (id) => Object.hasOwn(PLATFORMS, id);
 

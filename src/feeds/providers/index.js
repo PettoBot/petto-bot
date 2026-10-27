@@ -21,7 +21,11 @@ const packages = require('./packages');
 const steam = require('./steam');
 const anilist = require('./anilist');
 const daily = require('./daily');
+const music = require('./music');
+const social = require('./social');
+const epic = require('./epic');
 const schedule = require('../schedule');
+const { t } = require('../../i18n');
 const { IntegrationError } = require('../../utils/integrations');
 const { fetchPublicText } = require('../http');
 const { fallbackPicture } = require('../platforms');
@@ -40,6 +44,15 @@ const fresh = (item, now) => !item.publishedAt || now - Number(item.publishedAt)
 const notLive = new Set();
 const NOT_LIVE_LIMIT = 50_000;
 const rememberNotLive = (id) => { if (notLive.size >= NOT_LIVE_LIMIT) notLive.delete(notLive.values().next().value); notLive.add(id); };
+
+/** A platform whose account has a list of items it reads one by one: the same poll for all of them. `read(account, now)` -> items; failures are told apart. */
+const listPoll = (read, concurrency = 3) => async function poll(accounts, _tracked, { now = Date.now() } = {}) {
+  const results = new Map();
+  await forEachWithConcurrency(accounts, async (account) => {
+    try { results.set(account.id, { items: (await read(account, now)).filter((item) => fresh(item, now)) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
+  }, concurrency);
+  return results;
+};
 
 const PROVIDERS = {
   youtube: {
@@ -306,6 +319,64 @@ const PROVIDERS = {
       return new Map(accounts.map((account) => [account.id, { items: (episodes[account.id] ?? []).map((episode) => anilist.toItem(account, episode)) }]));
     },
     async baselineItems(account) { return ((await anilist.recentEpisodes([account.id]))[account.id] ?? []).map((episode) => ({ id: episode.id })); },
+  },
+
+  deezer: {
+    interval: 30 * 60_000, perTick: 120, concurrency: 4,
+    resolve: async (text) => { const artist = await music.deezerResolve(text); return { id: artist.id, name: artist.name, avatar: artist.avatar, url: artist.url }; },
+    poll: listPoll((account, now) => music.deezerReleases(account, now), 4),
+    async baselineItems(account) { return (await music.deezerReleases(account, Date.now())).map((item) => ({ id: item.id })); },
+  },
+
+  applemusic: {
+    interval: 60 * 60_000, perTick: 15, concurrency: 1, // Apple asks for about 20 calls a minute
+    resolve: (text) => music.appleResolve(text),
+    poll: listPoll((account) => music.appleReleases(account), 1),
+    async baselineItems(account) { return (await music.appleReleases(account)).map((item) => ({ id: item.id })); },
+  },
+
+  spotify: {
+    interval: 30 * 60_000, perTick: 100, concurrency: 3,
+    resolve: (text) => music.spotifyResolve(text),
+    poll: listPoll((account) => music.spotifyReleases(account), 3),
+    async baselineItems(account) { return (await music.spotifyReleases(account)).map((item) => ({ id: item.id })); },
+  },
+
+  mastodon: {
+    interval: 10 * 60_000, perTick: 100, concurrency: 4,
+    resolve: (text) => social.resolveMastodon(text),
+    poll: listPoll(async (account) => (await social.readMastodon(account.id)).entries.map((entry) => social.toItem('mastodon', 'post', entry, account, { keepTitle: false })), 4),
+    async baselineItems(account) { return (await social.readMastodon(account.id)).entries.map((entry) => ({ id: entry.id })); },
+  },
+
+  tumblr: {
+    interval: 15 * 60_000, perTick: 100, concurrency: 4,
+    resolve: (text) => social.resolveTumblr(text),
+    poll: listPoll(async (account) => (await social.readTumblr(account.id)).entries.map((entry) => social.toItem('tumblr', 'post', entry, account)), 4),
+    async baselineItems(account) { return (await social.readTumblr(account.id)).entries.map((entry) => ({ id: entry.id })); },
+  },
+
+  letterboxd: {
+    interval: 30 * 60_000, perTick: 100, concurrency: 3,
+    resolve: (text) => social.resolveLetterboxd(text),
+    poll: listPoll(async (account) => (await social.readLetterboxd(account.id)).entries.map((entry) => social.toItem('letterboxd', 'post', entry, account)), 3),
+    async baselineItems(account) { return (await social.readLetterboxd(account.id)).entries.map((entry) => ({ id: entry.id })); },
+  },
+
+  epic: {
+    interval: 30 * 60_000, perTick: 5000, concurrency: 1, perLanguage: true, noAccount: true,
+    async resolve() { return { id: 'free', name: 'Epic Games', avatar: null, url: 'https://store.epicgames.com/free-games' }; }, // i18n-ignore: the name of a brand
+    /** The games that are free this week, in the language and country of each server. */
+    async poll(accounts, _tracked, { now = Date.now(), lang = 'en' } = {}) {
+      const games = await epic.freeGames(lang);
+      const dateFormat = new Intl.DateTimeFormat({ en: 'en-US', es: 'es-ES', 'pt-BR': 'pt-BR' }[lang] ?? 'en-US', { dateStyle: 'medium', timeZone: 'UTC' });
+      const items = games.map((game) => ({
+        platform: 'epic', type: 'game', id: game.id, title: game.title, url: game.url, description: game.description, image: game.image, avatar: game.thumb, author: 'Epic Games', // i18n-ignore: the name of a brand
+        authorUrl: 'https://store.epicgames.com/free-games', publishedAt: game.startsAt, extra: game.endsAt ? t(lang, 'feeds.epic.until', { date: dateFormat.format(game.endsAt) }) : '',
+      }));
+      return new Map(accounts.map((account) => [account.id, { items }])); // no age filter: what is free now is news to a feed that has not seen it, and a new feed starts after these
+    },
+    async baselineItems() { return (await epic.freeGames('en')).map((game) => ({ id: game.id })); },
   },
 
   wikipedia: {

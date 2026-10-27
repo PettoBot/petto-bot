@@ -192,6 +192,8 @@ module.exports = {
   twitchClientSecret: process.env.TWITCH_CLIENT_SECRET || null,
   kickClientId: process.env.KICK_CLIENT_ID || null, // the app of the bot in kick.com (Settings > Developer), for the Kick feeds
   kickClientSecret: process.env.KICK_CLIENT_SECRET || null,
+  spotifyClientId: process.env.SPOTIFY_CLIENT_ID || null, // the app of the bot in developer.spotify.com, for the Spotify feeds (artists and podcasts)
+  spotifyClientSecret: process.env.SPOTIFY_CLIENT_SECRET || null,
   youtubeApiKey: process.env.YOUTUBE_API_KEY || null,
   tmdbApiKey: process.env.TMDB_API_KEY || null, // a v3 key, or the v4 read access token
   // Optional: dedicated domain for ticket transcript links. Falls back to VERIFY_BASE_URL —

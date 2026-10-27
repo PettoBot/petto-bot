@@ -17,6 +17,14 @@ const PLATFORM = {
   anilist: '<:pe_f_anilist:1564413683747262475>',
   wikipedia: '<:pe_f_wikipedia:1564415088608288889>',
   chess: '<:pe_f_chess:1564413774314602626>',
+  // New: until their emojis are uploaded (`pe_f_spotify`, `pe_f_deezer`, `pe_f_applemusic`, `pe_f_mastodon`, `pe_f_tumblr`, `pe_f_letterboxd`, `pe_f_epic`) each is a plain one.
+  spotify: '🟢',
+  deezer: '🟣',
+  applemusic: '🔴',
+  mastodon: '🐘',
+  tumblr: '🔷',
+  letterboxd: '🎞️',
+  epic: '🎮',
 };
 
 const TYPE = {
@@ -28,6 +36,8 @@ const TYPE = {
   pin: '<:pe_f_pin:1564404654643879966>',
   update: '<:pe_f_update:1564405656780275852>',
   episode: '<:pe_f_episode:1564413566851743924>',
+  release: '🎵', // until `pe_f_release` is uploaded
+  game: '🎁', // until `pe_f_game` is uploaded
   daily: '🎲',
   ended: '⚫',
 };

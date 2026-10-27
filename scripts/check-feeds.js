@@ -222,6 +222,104 @@ const allText = (message) => JSON.stringify(json(message.components));
     globalThis.fetch = realFetch;
   }
 
+  // --- The music, social and game platforms: names, links, and the answers of each service written out -----------------------------------------------
+  {
+    const music = require('../src/feeds/providers/music');
+    const social = require('../src/feeds/providers/social');
+    assert.equal(music.parseDeezerArtist('https://www.deezer.com/en/artist/27'), '27');
+    assert.equal(music.parseDeezerArtist('27'), '27');
+    assert.equal(music.parseDeezerArtist('daft punk'), null);
+    assert.equal(music.parseAppleArtist('https://music.apple.com/us/artist/daft-punk/5468295'), '5468295');
+    assert.equal(music.parseAppleArtist('5468295'), '5468295');
+    assert.equal(music.parseSpotify('https://open.spotify.com/intl-es/artist/4tZwfgrHOc3mvqYlEYSvVi?si=x'), 'artist:4tZwfgrHOc3mvqYlEYSvVi');
+    assert.equal(music.parseSpotify('spotify:show:4rOoJ6Egrf8K2IrywzwOMk'), 'show:4rOoJ6Egrf8K2IrywzwOMk');
+    assert.equal(music.parseSpotify('daft punk'), null);
+    assert.equal(social.parseMastodon('@Gargron@Mastodon.Social'), 'gargron@mastodon.social');
+    assert.equal(social.parseMastodon('https://mastodon.social/@Gargron/123'), 'gargron@mastodon.social');
+    assert.equal(social.parseMastodon('gargron'), null, 'a Mastodon account needs its server');
+    assert.equal(social.parseMastodon('a@localhost'), null, 'and the server must be a real domain');
+    assert.equal(social.parseTumblr('https://staff.tumblr.com/post/1'), 'staff');
+    assert.equal(social.parseTumblr('Staff.tumblr.com'), 'staff');
+    assert.equal(social.parseLetterboxd('https://letterboxd.com/DavidEhrlich/films/'), 'davidehrlich');
+    assert.equal(social.parseLetterboxd('https://letterboxd.com/films/'), null);
+
+    config.spotifyClientId = 'id';
+    config.spotifyClientSecret = 'secret';
+    const day = 86_400_000;
+    const now = Date.now();
+    const iso = (offset) => new Date(now + offset).toISOString().slice(0, 10);
+    const asked = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url, options = {}) => {
+      const u = String(url);
+      asked.push(u);
+      if (u.startsWith('https://api.deezer.com/artist/27/albums')) return new Response(JSON.stringify({ data: [
+        { id: 1, title: 'Old album', release_date: iso(-400 * day), cover_xl: 'https://cdn.dz/old.jpg', link: 'https://www.deezer.com/album/1', record_type: 'album' },
+        { id: 2, title: 'New single', release_date: iso(-day), cover_xl: 'https://cdn.dz/new.jpg', link: 'https://www.deezer.com/album/2', record_type: 'single' },
+        { id: 3, title: 'Pre-save', release_date: iso(20 * day), cover_xl: 'https://cdn.dz/future.jpg', link: 'https://www.deezer.com/album/3', record_type: 'album' },
+      ] }), { status: 200 });
+      if (u.startsWith('https://api.deezer.com/artist/404')) return new Response(JSON.stringify({ error: { type: 'DataException', code: 800 } }), { status: 200 });
+      if (u.startsWith('https://itunes.apple.com/lookup')) return new Response(JSON.stringify({ results: [
+        { wrapperType: 'artist', artistId: 5468295, artistName: 'Artist', artistLinkUrl: 'https://music.apple.com/us/artist/artist/5468295' },
+        { wrapperType: 'collection', collectionId: 11, collectionName: 'Newest', artworkUrl100: 'https://is1.mzstatic.com/i/100x100bb.jpg', releaseDate: new Date(now - day).toISOString(), collectionViewUrl: 'https://music.apple.com/us/album/11', trackCount: 1 },
+        { wrapperType: 'collection', collectionId: 10, collectionName: 'Older', artworkUrl100: 'https://is1.mzstatic.com/i/100x100bb.jpg', releaseDate: new Date(now - 90 * day).toISOString(), collectionViewUrl: 'https://music.apple.com/us/album/10', trackCount: 12 },
+      ] }), { status: 200 });
+      if (u === 'https://accounts.spotify.com/api/token') { assert.match(options.headers.Authorization, /^Basic /); return new Response(JSON.stringify({ access_token: 'sp-token', expires_in: 3600 }), { status: 200 }); }
+      if (u.startsWith('https://api.spotify.com/v1/')) {
+        assert.equal(options.headers.Authorization, 'Bearer sp-token');
+        if (u.includes('/artists/AAAAAAAAAAAAAAAAAAAAAA/albums')) return new Response(JSON.stringify({ items: [{ id: 'alb1', name: 'Fresh album', album_type: 'album', total_tracks: 9, release_date: iso(-day), images: [{ url: 'https://i.scdn.co/a.jpg' }], external_urls: { spotify: 'https://open.spotify.com/album/alb1' } }] }), { status: 200 });
+        if (u.includes('/shows/BBBBBBBBBBBBBBBBBBBBBB/episodes')) return new Response(JSON.stringify({ items: [{ id: 'ep1', name: 'Episode one', description: 'About it', duration_ms: 3_600_000, release_date: iso(-day), images: [{ url: 'https://i.scdn.co/e.jpg' }], external_urls: { spotify: 'https://open.spotify.com/episode/ep1' } }] }), { status: 200 });
+        if (u.includes('/search?')) return new Response(JSON.stringify({ artists: { items: [{ id: 'AAAAAAAAAAAAAAAAAAAAAA', name: 'Artist', images: [{ url: 'https://i.scdn.co/p.jpg' }], followers: { total: 1500 } }] }, shows: { items: [{ id: 'BBBBBBBBBBBBBBBBBBBBBB', name: 'A show', publisher: 'Pub', images: [] }] } }), { status: 200 });
+        return new Response(JSON.stringify({ name: u.includes('/shows/') ? 'A show' : 'Artist', images: [{ url: 'https://i.scdn.co/p.jpg' }], external_urls: { spotify: 'https://open.spotify.com/x' } }), { status: 200 });
+      }
+      if (u.includes('freeGamesPromotions')) return new Response(JSON.stringify({ data: { Catalog: { searchStore: { elements: [
+        { id: 'g1', title: 'Free Game', description: 'Fun.', productSlug: 'free-game/home', price: { totalPrice: { discountPrice: 0 } }, keyImages: [{ type: 'OfferImageWide', url: 'https://cdn1.epicgames.com/w.jpg' }, { type: 'Thumbnail', url: 'https://cdn1.epicgames.com/t.jpg' }], promotions: { promotionalOffers: [{ promotionalOffers: [{ startDate: new Date(now - day).toISOString(), endDate: new Date(now + 6 * day).toISOString() }] }] } },
+        { id: 'g2', title: 'Next week', price: { totalPrice: { discountPrice: 0 } }, keyImages: [], promotions: { promotionalOffers: [], upcomingPromotionalOffers: [{ promotionalOffers: [{ startDate: new Date(now + 6 * day).toISOString() }] }] } },
+        { id: 'g3', title: 'Just a discount', price: { totalPrice: { discountPrice: 500 } }, keyImages: [], promotions: { promotionalOffers: [{ promotionalOffers: [{ startDate: new Date(now - day).toISOString() }] }] } },
+      ] } } } }), { status: 200 });
+      if (u === 'https://staff.tumblr.com/rss') return new Response('<?xml version="1.0"?><rss><channel><title>Tumblr Staff</title><item><title>A post</title><link>https://staff.tumblr.com/post/1</link><guid>https://staff.tumblr.com/post/1</guid><description>&lt;p&gt;Hello&lt;/p&gt;</description><pubDate>' + new Date(now - 3600_000).toUTCString() + '</pubDate></item></channel></rss>', { status: 200 });
+      return new Response('{}', { status: 404 });
+    };
+
+    // Deezer: newest first, a release dated far in the future waits, an artist that does not exist is not found.
+    const deezerAccount = { id: '27', name: 'Daft', avatar: null, url: 'https://www.deezer.com/artist/27' };
+    const deezer = (await PROVIDERS.deezer.poll([deezerAccount], new Map(), { now })).get('27');
+    assert.deepEqual(deezer.items.map((item) => [item.id, item.type]), [['2', 'release']], 'only the release of this week is news: not the old one, not the one that is still to come');
+    assert.equal(deezer.items[0].image, 'https://cdn.dz/new.jpg');
+    assert.equal(deezer.items[0].extra, 'SINGLE');
+    await assert.rejects(PROVIDERS.deezer.resolve('404'), (error) => error.kind === 'notFound');
+    // Apple Music: the newest first, with the cover in a good size.
+    const apple = (await PROVIDERS.applemusic.poll([{ id: '5468295', name: 'Artist', avatar: null, url: 'https://music.apple.com/us/artist/artist/5468295' }], new Map(), { now })).get('5468295');
+    assert.deepEqual(apple.items.map((item) => item.id), ['11']);
+    assert.ok(apple.items[0].image.includes('600x600bb'), 'the cover is asked in a big size');
+    // Spotify: with the app keys, artists give releases and podcasts give episodes.
+    const spotifyResolved = await PROVIDERS.spotify.resolve('https://open.spotify.com/artist/AAAAAAAAAAAAAAAAAAAAAA');
+    assert.deepEqual([spotifyResolved.id, spotifyResolved.name], ['artist:AAAAAAAAAAAAAAAAAAAAAA', 'Artist']);
+    const spotify = (await PROVIDERS.spotify.poll([{ ...spotifyResolved }, { id: 'show:BBBBBBBBBBBBBBBBBBBBBB', name: 'A show', avatar: null, url: 'https://open.spotify.com/show/B' }], new Map(), { now }));
+    assert.deepEqual([spotify.get('artist:AAAAAAAAAAAAAAAAAAAAAA').items[0].type, spotify.get('show:BBBBBBBBBBBBBBBBBBBBBB').items[0].type], ['release', 'episode']);
+    assert.equal(spotify.get('show:BBBBBBBBBBBBBBBBBBBBBB').items[0].extra, '60 min');
+    assert.equal(asked.filter((url) => url === 'https://accounts.spotify.com/api/token').length, 1, 'the token is asked once and kept');
+    const { searchAccounts: search, forgetSearches: forgetAll } = require('../src/feeds/search');
+    forgetAll();
+    const found = await search('spotify', 'artist');
+    assert.deepEqual(found.map((entry) => entry.value), ['artist:AAAAAAAAAAAAAAAAAAAAAA', 'show:BBBBBBBBBBBBBBBBBBBBBB'], 'a search of Spotify finds artists and podcasts');
+    config.spotifyClientId = null;
+    await assert.rejects(PROVIDERS.spotify.resolve('Artist'), (error) => error.kind === 'notConfigured', 'without the keys Spotify says it is not set up');
+    config.spotifyClientSecret = null;
+    // Epic Games: only the game that is free now, in its own language, with the day it ends.
+    const epic = (await PROVIDERS.epic.poll([{ id: 'free' }], new Map(), { now, lang: 'es' })).get('free').items;
+    assert.deepEqual(epic.map((item) => [item.id.split(':')[0], item.type]), [['g1', 'game']], 'an upcoming offer and a plain discount are not free games');
+    assert.ok(epic[0].url.endsWith('/p/free-game') && epic[0].url.includes('es-ES'));
+    assert.match(epic[0].extra, /^Gratis hasta el /);
+    assert.ok(asked.some((url) => url.includes('locale=es-ES') && url.includes('country=ES')));
+    // Tumblr through the reader of RSS.
+    const tumblr = await PROVIDERS.tumblr.resolve('staff.tumblr.com');
+    assert.deepEqual([tumblr.id, tumblr.name], ['staff', 'Tumblr Staff']);
+    const posts = (await PROVIDERS.tumblr.poll([tumblr], new Map(), { now })).get('staff').items;
+    assert.deepEqual([posts.length, posts[0].type, posts[0].platform], [1, 'post', 'tumblr']);
+    globalThis.fetch = realFetch;
+  }
+
   // --- Kick: the answers of its API written out ------------------------------------------------------------------------------------------------
   {
     config.kickClientId = 'id';
