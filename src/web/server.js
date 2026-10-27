@@ -2,6 +2,7 @@ const confessionsDb = require('../db/confessions');
 const suggestionsUtil = require('../utils/suggestions');
 const { postPanel: postConfessionPanel } = require('../interactions/confessions');
 const express = require('express');
+const websub = require('../feeds/websub');
 const { saveGuildSnapshot } = require('../utils/guildSnapshots');
 const { rateLimit } = require('express-rate-limit');
 const path = require('path');
@@ -102,6 +103,17 @@ const verifyCaptchaRateLimiter = rateLimit({
 const topggRateLimiter = rateLimit({
   windowMs: 60_000,
   limit: 120,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).json({ ok: false, error: 'rate_limited' });
+  },
+});
+
+// YouTube push: the hub calls once for each new entry of the channels followed (and once to confirm each subscription), so a few hundred a minute can be normal.
+const youtubePushRateLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 600,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   handler: (_req, res) => {
@@ -1006,6 +1018,12 @@ function startServer(client) {
         res.status(500).json({ ok: false, error: 'backup_export_failed' });
       }
     });
+  }
+
+  if (websub.enabled()) {
+    // YouTube push: the hub confirms a subscription (GET) and sends the new entries of the channels followed (POST, signed). The URL is https://<this host>/webhooks/youtube.
+    app.get('/webhooks/youtube', youtubePushRateLimiter, (req, res) => { websub.verifyHandler(req, res).catch((error) => { logger.warn(`YouTube push: a confirmation failed: ${error.message}`); if (!res.headersSent) res.status(500).send('error'); }); });
+    app.post('/webhooks/youtube', youtubePushRateLimiter, express.raw({ type: () => true, limit: '200kb' }), (req, res) => { websub.pushHandler(req, res).catch(() => { if (!res.headersSent) res.status(204).end(); }); });
   }
 
   if (votesEnabled) {

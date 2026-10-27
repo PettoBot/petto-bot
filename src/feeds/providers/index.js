@@ -23,6 +23,7 @@ const anilist = require('./anilist');
 const daily = require('./daily');
 const music = require('./music');
 const animals = require('./animals');
+const websub = require('../websub');
 const social = require('./social');
 const epic = require('./epic');
 const schedule = require('../schedule');
@@ -45,6 +46,8 @@ const fresh = (item, now) => !item.publishedAt || now - Number(item.publishedAt)
 /** The video ids that are known not to be live (and never will be): asking about them again would only spend quota. */
 const notLive = new Set();
 const NOT_LIVE_LIMIT = 50_000;
+const PUSHED_INTERVAL_MS = 30 * 60_000;
+const busyChannels = new Map(); // channelId -> true while it has a stream announced or on
 const rememberNotLive = (id) => { if (notLive.size >= NOT_LIVE_LIMIT) notLive.delete(notLive.values().next().value); notLive.add(id); };
 
 /** A platform whose account has a list of items it reads one by one: the same poll for all of them. `read(account, now)` -> items; failures are told apart. */
@@ -111,6 +114,9 @@ const randomMusicFeed = {
 const PROVIDERS = {
   youtube: {
     interval: 5 * 60_000, perTick: 300, concurrency: 12,
+    // A channel that YouTube pushes to the bot (see feeds/websub.js) only needs a look now and then, to catch what a push missed; one with a stream announced or on is
+    // looked at as often as ever, because the start of a stream is not always pushed.
+    intervalFor(channelId, now = Date.now()) { return websub.isHealthy(channelId, now) && !busyChannels.has(channelId) ? PUSHED_INTERVAL_MS : 5 * 60_000; },
     async resolve(text) {
       const channel = await youtube.resolveChannel(text);
       return { id: channel.id, name: channel.name, avatar: channel.avatar, url: channel.url };
@@ -157,6 +163,9 @@ const PROVIDERS = {
           if (fresh({ publishedAt: entry.published }, now)) items.push(youtube.toItem(entry, entry.short ? 'short' : 'video', account));
         }
         for (const id of tracked.get(account.id) ?? []) if (states?.[id]?.state === 'live') stillLive.add(id);
+        // A channel with a stream announced or on (or one that cannot be told about) is kept on the fast pace.
+        const busy = !states || stillLive.size > 0 || entries.get(account.id).some((entry) => states[entry.videoId]?.state === 'upcoming');
+        if (busy) busyChannels.set(account.id, true); else busyChannels.delete(account.id);
         results.set(account.id, { items, ...(states ? { stillLive } : {}) });
       }
       return results;

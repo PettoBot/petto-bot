@@ -196,6 +196,10 @@ module.exports = {
   spotifyClientSecret: process.env.SPOTIFY_CLIENT_SECRET || null,
   youtubeApiKey: process.env.YOUTUBE_API_KEY || null,
   // The units the YouTube key can spend in a day (10,000 unless Google gave the project more). The feeds keep inside it: see src/feeds/providers/youtube.js.
+  // YouTube push (WebSub): YouTube tells the bot at once when a channel it follows publishes, and the channel is looked at now and then instead of every few minutes. It
+  // needs a public address that reaches the bot: YOUTUBE_WEBSUB_URL, or VERIFY_BASE_URL when that is not set. YOUTUBE_WEBSUB=false turns it off (the channels are looked at as before).
+  youtubeWebsub: process.env.YOUTUBE_WEBSUB !== 'false',
+  youtubeWebsubUrl: (process.env.YOUTUBE_WEBSUB_URL || '').trim().replace(/\/+$/, '') || null,
   youtubeDailyQuota: Math.max(1000, Number(process.env.YOUTUBE_DAILY_QUOTA) || 10_000),
   tmdbApiKey: process.env.TMDB_API_KEY || null, // a v3 key, or the v4 read access token
   // Optional: dedicated domain for ticket transcript links. Falls back to VERIFY_BASE_URL —

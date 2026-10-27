@@ -4407,3 +4407,24 @@ create table if not exists feed_live (
 );
 
 alter table feed_live enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- YouTube push (WebSub): the channels the bot asked YouTube to tell it about,
+-- so a new video or stream is known in seconds and the channel only needs to be
+-- looked at now and then. `secret` signs what YouTube sends; `status` is
+-- 'pending' until YouTube confirms the subscription, then 'active' until
+-- `expires_at` (the bot renews it a day before).
+-- ---------------------------------------------------------------------------
+
+create table if not exists youtube_websub (
+  channel_id   text primary key,
+  secret       text not null,
+  status       text not null default 'pending',
+  expires_at   timestamptz,
+  requested_at timestamptz,
+  verified_at  timestamptz,
+  last_push_at timestamptz,
+  fails        integer not null default 0
+);
+
+alter table youtube_websub enable row level security;
