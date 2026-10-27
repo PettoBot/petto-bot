@@ -87,7 +87,7 @@ function registerFeedRoutes(app, { authorize, limiter }) {
     if (!isProvider(platform)) { res.status(400).json({ ok: false, message: t(lang, 'feeds.add.error.unknownPlatform', { emoji: '', platform: platform.slice(0, 30) }).trim() }); return; }
     if (!takeSearchTurn(guild.id)) { res.status(429).json({ ok: false, error: 'rateLimited', message: t(lang, 'feeds.add.error.unavailable', { emoji: '', platform: PLATFORMS[platform].name }).trim() }); return; }
     try {
-      res.json({ ok: true, results: await searchAccounts(platform, query, lang) });
+      res.json({ ok: true, results: await searchAccounts(platform, query, lang, guild.id) });
     } catch (error) {
       if (!(error instanceof IntegrationError)) throw error;
       const kind = ['notConfigured', 'badInput', 'unsupported'].includes(error.kind) ? error.kind : 'unavailable';

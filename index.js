@@ -41,6 +41,7 @@ const { startCommandDataJob } = require('./src/jobs/commandDataJob');
 const { startFormCleanupJob } = require('./src/jobs/formCleanupJob');
 const { startAfkMentionsJob } = require('./src/jobs/afkMentionsJob');
 const { startFeedsJob } = require('./src/jobs/feedsJob');
+const { startGuildPurgeJob } = require('./src/jobs/guildPurgeJob');
 const { startProfileHistoryBackfillJob } = require('./src/jobs/profileHistoryBackfillJob');
 const { startServer } = require('./src/web/server');
 const { startCloudflareTunnel } = require('./src/web/cloudflareTunnel');
@@ -170,6 +171,7 @@ async function main() {
   startFormCleanupJob();
   startAfkMentionsJob();
   startFeedsJob(client);
+  startGuildPurgeJob(client);
   startProfileHistoryBackfillJob();
   startServer(client);
   startCloudflareTunnel(config.cloudflareTunnelToken);

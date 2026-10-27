@@ -14,23 +14,31 @@ const steamList = require('./providers/steam');
 const MIN_CHARS = 2;
 const MAX_RESULTS = 10;
 const KEEP_MS = 5 * 60_000;
-const YOUTUBE_KEEP_MS = 6 * 3_600_000;
+const YOUTUBE_KEEP_MS = 24 * 3_600_000;
 const YOUTUBE_SEARCHES_A_DAY = 60; // a search of channels costs 100 units of the 10,000 a day of the key
+const YOUTUBE_SEARCHES_PER_SERVER = 10; // and one server cannot spend them all
 const cache = new Map(); // `${platform}:${text}` -> { until, results }
-const youtubeDay = { day: '', used: 0 };
+const youtubeDay = { day: '', used: 0, servers: new Map() };
 
 const clean = (text, max = 120) => String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 const https = (value) => (/^https:\/\//i.test(String(value ?? '')) ? String(value) : (/^\/\//.test(String(value ?? '')) ? `https:${value}` : null));
 const compact = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1).replace(/\.0$/, '')}k` : String(n));
 
-async function searchYoutube(query) {
+async function searchYoutube(query, lang, scope = '') {
   if (!config.youtubeApiKey) throw new IntegrationError('notConfigured');
   // A link, an @name or a channel id points at one channel: one unit instead of a hundred.
   if (youtube.parseChannel(query) && (/^@/.test(query) || /youtube\.com|^UC[\w-]{22}$/.test(query))) return searchExact('youtube', query);
+  // What is written like a name (one word) is tried as the @name of a channel first, for one unit: most people write the name of the channel as it is.
+  if (/^[\w.-]{3,30}$/.test(query)) {
+    const exact = await searchExact('youtube', `@${query}`, lang).catch(() => []);
+    if (exact.length) return exact;
+  }
   const today = new Date().toISOString().slice(0, 10);
-  if (youtubeDay.day !== today) { youtubeDay.day = today; youtubeDay.used = 0; }
-  if (youtubeDay.used >= YOUTUBE_SEARCHES_A_DAY || !youtube.canSpend(100, 0.5)) throw new IntegrationError('rateLimited'); // a search is 100 units: they stop at half of the day
+  if (youtubeDay.day !== today) { youtubeDay.day = today; youtubeDay.used = 0; youtubeDay.servers.clear(); }
+  const server = youtubeDay.servers.get(scope) ?? 0;
+  if (youtubeDay.used >= YOUTUBE_SEARCHES_A_DAY || (scope && server >= YOUTUBE_SEARCHES_PER_SERVER) || !youtube.canSpend(100, 0.5)) throw new IntegrationError('rateLimited'); // a search is 100 units: they stop at half of the day
   youtubeDay.used += 1;
+  if (scope) youtubeDay.servers.set(scope, server + 1);
   youtube.spend(100);
   const url = new URL('https://www.googleapis.com/youtube/v3/search');
   for (const [key, value] of Object.entries({ part: 'snippet', type: 'channel', q: query, maxResults: 6, key: config.youtubeApiKey })) url.searchParams.set(key, String(value));
@@ -119,20 +127,20 @@ const SEARCHES = {
   youtube: searchYoutube,
   twitch: searchTwitch, bluesky: searchBluesky, steam: searchSteam, github: searchGithub, modrinth: searchModrinth, npm: searchNpm, anilist: searchAnilist };
 
-/** The accounts of a platform that match what a person typed (up to eight), kept five minutes (six hours for YouTube, which has a daily budget). */
-async function searchAccounts(platform, text, lang = 'en') {
+/** The accounts of a platform that match what a person typed (up to eight), kept five minutes (a day for YouTube, which has a daily budget). */
+async function searchAccounts(platform, text, lang = 'en', scope = '') {
   if (!isProvider(platform) || PROVIDERS[platform].noAccount) return [];
   const query = clean(text, 100);
   if (query.length < MIN_CHARS) return [];
   const key = `${platform}:${lang}:${query.toLowerCase()}`;
   const kept = cache.get(key);
   if (kept && kept.until > Date.now()) return kept.results;
-  const results = (await (SEARCHES[platform] ?? ((q, l) => searchExact(platform, q, l)))(query, lang)).filter((entry) => entry.value && entry.name).slice(0, MAX_RESULTS);
+  const results = (await (SEARCHES[platform] ?? ((q, l) => searchExact(platform, q, l)))(query, lang, scope)).filter((entry) => entry.value && entry.name).slice(0, MAX_RESULTS);
   if (cache.size > 3000) cache.clear();
   cache.set(key, { until: Date.now() + (platform === 'youtube' ? YOUTUBE_KEEP_MS : KEEP_MS), results });
   return results;
 }
 
-const forgetSearches = () => { cache.clear(); youtubeDay.day = ''; youtubeDay.used = 0; }; // for the checks
+const forgetSearches = () => { cache.clear(); youtubeDay.day = ''; youtubeDay.used = 0; youtubeDay.servers.clear(); }; // for the checks
 
 module.exports = { searchAccounts, forgetSearches, MIN_CHARS };

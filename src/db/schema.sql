@@ -4428,3 +4428,14 @@ create table if not exists youtube_websub (
 );
 
 alter table youtube_websub enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- When Petto left a server: what it stored for the server is deleted a few days later (jobs/guildPurgeJob.js).
+-- ---------------------------------------------------------------------------
+
+create table if not exists guild_departures (
+  guild_id text primary key,
+  left_at  timestamptz not null default now()
+);
+
+alter table guild_departures enable row level security;

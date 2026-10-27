@@ -953,6 +953,7 @@ const allText = (message) => JSON.stringify(json(message.components));
       if (u.hostname === 'public.api.bsky.app') return json({ actors: [{ did: 'd', handle: 'jay.bsky.team', displayName: 'Jay', avatar: 'https://cdn.bsky/a.jpg' }] });
       if (u.hostname === 'store.steampowered.com') return json({ items: [{ id: 730, name: 'Counter-Strike 2', tiny_image: 'https://cdn/t.jpg' }] });
       if (u.hostname === 'www.googleapis.com' && u.pathname.endsWith('/search')) return json({ items: [{ id: { channelId: 'UC' + 'a'.repeat(22) }, snippet: { channelTitle: 'Chan', description: 'About', thumbnails: { default: { url: 'https://yt/a.jpg' } } } }] });
+      if (u.hostname === 'www.googleapis.com' && u.pathname.endsWith('/channels') && u.searchParams.get('forHandle') === '@known') return json({ items: [{ id: 'UC' + 'b'.repeat(22), snippet: { title: 'Known', customUrl: '@known', thumbnails: { medium: { url: 'https://yt/b.jpg' } } } }] });
       return json({}, 404);
     };
     assert.deepEqual(await searchAccounts('bluesky', 'j'), [], 'a single letter is not searched');
@@ -971,6 +972,20 @@ const allText = (message) => JSON.stringify(json(message.components));
     for (let i = 0; i < 70; i += 1) await searchAccounts('youtube', `chan${i}`).catch(() => null);
     await assert.rejects(searchAccounts('youtube', 'one more'), (error) => error.kind === 'rateLimited', 'YouTube has a daily budget of searches');
     forgetSearches();
+    // A name written as one word is tried as an @name first (a unit): when it exists, the search of a hundred units is not made. One server cannot spend the day's searches.
+    {
+      let searchCalls = 0;
+      const dailyQuota = config.youtubeDailyQuota; config.youtubeDailyQuota = 10_000_000; // the earlier searches used up the share of the day
+      const before = globalThis.fetch;
+      globalThis.fetch = async (url) => { if (new URL(url).pathname.endsWith('/search')) searchCalls += 1; return before(url); };
+      const known = await searchAccounts('youtube', 'known', 'en', 'guildA');
+      assert.deepEqual([known[0].name, searchCalls], ['Known', 0], 'the @name exists: no search of a hundred units');
+      assert.equal((await searchAccounts('youtube', 'Known', 'en', 'guildA')).length, 1, 'and the answer is kept whatever the case');
+      for (let i = 0; i < 10; i += 1) await searchAccounts('youtube', `nothing${i}`, 'en', 'guildB');
+      await assert.rejects(searchAccounts('youtube', 'nothing99', 'en', 'guildB'), (error) => error.kind === 'rateLimited', 'a server has 10 searches a day');
+      assert.equal((await searchAccounts('youtube', 'other one', 'en', 'guildC')).length, 1, 'another server still can');
+      globalThis.fetch = before; config.youtubeDailyQuota = dailyQuota;
+    }
 
     // The feed of a channel answers 404 but the channel exists: its uploads list from the API is used.
     const channelId = 'UC' + 'b'.repeat(22);
