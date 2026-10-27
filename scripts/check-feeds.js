@@ -264,6 +264,7 @@ const allText = (message) => JSON.stringify(json(message.components));
     assert.equal(rssProviders.parseSubreddit('r/a b'), null);
     assert.equal(rssProviders.parsePinterest('https://www.pinterest.com/Some_User/my-board/'), 'some_user/my-board');
     assert.equal(rssProviders.parsePinterest('https://www.pinterest.com/pin/12345/'), null);
+    assert.equal(rssProviders.parsePinterest('https://www.pinterest.com/emstunes/%E0%B1%A8%E0%A7%8E-k-pop/'), 'emstunes/%e0%b1%a8%e0%a7%8e-k-pop', 'a board with letters of another alphabet (written as %XX in its link) is accepted');
     assert.equal(rssProviders.bigPin('https://i.pinimg.com/236x/aa/bb.jpg'), 'https://i.pinimg.com/736x/aa/bb.jpg');
     globalThis.fetch = async (url) => {
       if (String(url).includes('reddit.com/r/zzz')) return new Response('', { status: 404 });
