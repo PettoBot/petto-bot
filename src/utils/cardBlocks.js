@@ -20,11 +20,14 @@ function splitBlocks(text) {
   return blocks.length ? blocks : [String(text ?? '')];
 }
 
+const MAX_TEXT = 4000;
+
 /** Adds the text to a container as one text display per part, with a divider between them. */
 function addBlocks(container, text) {
   splitBlocks(text).forEach((block, index) => {
     if (index > 0) container.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Large));
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(block));
+    // A text display holds 4000 characters at most: a longer part (a long list) is cut instead of making the whole card fail.
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(block.length > MAX_TEXT ? `${block.slice(0, MAX_TEXT - 1)}…` : block));
   });
   return container;
 }

@@ -6,6 +6,7 @@ process.env.DISCLOUD_DATABASE_URL ||= 'postgres://check:check@127.0.0.1:1/check'
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
+let caseCounter = 0;
 const stub = (relative, exports) => {
   const resolved = require.resolve(path.join(__dirname, '..', relative));
   require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports };
@@ -13,7 +14,7 @@ const stub = (relative, exports) => {
 const warnings = [];
 stub('src/utils/logger.js', { info() {}, debug() {}, error() {}, warn: (...args) => warnings.push(args.join(' ')) });
 stub('src/db/hardBans.js', { addHardBan: async () => {}, getHardBan: async () => null, removeHardBan: async () => {}, canLiftHardBan: async () => true, listHardBanIds: async () => new Set() });
-stub('src/db/modActions.js', { createCase: async () => ({ case_number: 1 }), getActiveSanction: async () => null, deactivateCase: async () => {} });
+stub('src/db/modActions.js', { createCase: async () => ({ case_number: ++caseCounter }), getActiveSanction: async () => null, deactivateCase: async () => {} });
 stub('src/utils/caseLog.js', { logSanction: async () => {} });
 stub('src/logging/engine.js', { sendLog: async () => {} });
 const ban = require('../src/commands/moderation/ban');
@@ -21,11 +22,12 @@ const ban = require('../src/commands/moderation/ban');
 const GONE = 'Stopped: Petto lost access';
 
 /** Runs `!massunban` in a server with five bans; `unban(userId, calls)` decides what each unban does. */
-async function run({ unban, failFinalReply = false }) {
+async function run({ unban, failFinalReply = false, bansCount = 5 }) {
   const calls = [];
   const replies = [];
   const guilds = new Map([['1', {}]]);
-  const bans = new Map(['a', 'b', 'c', 'd', 'e'].map((id) => [id, { user: { id, username: id } }]));
+  const ids = bansCount === 5 ? ['a', 'b', 'c', 'd', 'e'] : Array.from({ length: bansCount }, (_, index) => `u${index}`);
+  const bans = new Map(ids.map((id) => [id, { user: { id, username: id } }]));
   const guild = {
     id: '1', name: 'Test', iconURL: () => null, bans: { fetch: async () => bans },
     members: { unban: async (userId) => { calls.push(userId); return unban(userId, calls, guilds); } },
@@ -75,6 +77,17 @@ async function run({ unban, failFinalReply = false }) {
   // The channel is gone when the result is shown: the command ends without an error.
   await run({ unban: async () => { throw Object.assign(new Error('Unknown Guild'), { code: 10004 }); }, failFinalReply: true });
   assert.ok(warnings.some((line) => line.includes('could not show the result')));
+  // Thousands of bans: the result lists the first and the last case and how many, not every number (a list of 4000 characters broke the card and the command ended with an error).
+  caseCounter = 100;
+  ({ calls, replies } = await run({ unban: async () => {}, bansCount: 3000 }));
+  assert.equal(calls.length, 3000);
+  const result = replies.at(-1);
+  assert.ok(result.includes('Cases #101 to #3100 (3000 in all)'), 'the result says the first and the last case and how many');
+  assert.ok(!result.includes('#102,'), 'and not the whole list');
+  const { addBlocks } = require('../src/utils/cardBlocks');
+  const { ContainerBuilder } = require('discord.js');
+  assert.doesNotThrow(() => addBlocks(new ContainerBuilder(), 'x'.repeat(9000)), 'a text longer than 4000 characters is cut, it does not make the card fail');
+  assert.equal(JSON.stringify(addBlocks(new ContainerBuilder(), 'y'.repeat(9000)).toJSON()).includes('y'.repeat(4001)), false);
   console.log('check-massunban-gone: ok');
   process.exit(0);
 })().catch((error) => { console.error(error); process.exit(1); });

@@ -174,7 +174,7 @@ async function banUsers(interaction) {
     }
   }
 
-  const lines = [tn(lang, 'moderation.ban.bulkDone', succeeded.length, { emoji: EMOJI.APPROVE, count: succeeded.length, cases: caseNumbers.length ? t(lang, 'moderation.common.cases', { list: caseNumbers.join(', #') }) : '' })];
+  const lines = [tn(lang, 'moderation.ban.bulkDone', succeeded.length, { emoji: EMOJI.APPROVE, count: succeeded.length, cases: casesText(lang, caseNumbers, 'moderation.common.cases', 'moderation.common.casesRange') })];
   if (succeeded.length) lines.push(succeeded.map((u) => `${u}`).join(' '));
   if (failed.length) lines.push(t(lang, 'moderation.common.failedList', { emoji: EMOJI.DENY, list: failed.map((u) => `${u}`).join(' ') }));
   if (blocked.length) lines.push(protectedLine(blocked, lang));
@@ -280,6 +280,17 @@ function statusCard(text, color) {
   return textCard(text, color);
 }
 
+const MAX_LISTED_CASES = 12;
+/** The case numbers for a result: all of them when they are a few; when they are a lot, the first, the last and how many (a long list does not fit in a message). */
+function casesText(lang, numbers, listKey, rangeKey) {
+  if (!numbers.length) return '';
+  if (numbers.length <= MAX_LISTED_CASES) return t(lang, listKey, { list: numbers.join(', #') });
+  let first = numbers[0];
+  let last = numbers[0];
+  for (const number of numbers) { if (number < first) first = number; if (number > last) last = number; }
+  return t(lang, rangeKey, { first, last, count: numbers.length });
+}
+
 // Unknown Guild, Missing Access and Missing Permissions: every other unban of the list would fail the same way, so the list stops there.
 const UNBAN_ALL_STOP_CODES = new Set([10004, 50001, 50013]);
 
@@ -378,7 +389,7 @@ async function unbanAll(interaction) {
       emoji: EMOJI.APPROVE,
       count: succeeded,
       failed: failed ? t(lang, 'moderation.unbanAll.failedCount', { count: failed }) : '',
-      cases: caseNumbers.length ? t(lang, 'moderation.unbanAll.cases', { list: caseNumbers.join(', #') }) : '',
+      cases: casesText(lang, caseNumbers, 'moderation.unbanAll.cases', 'moderation.unbanAll.casesRange'),
     }),
     t(lang, 'moderation.common.moderator', { moderator: `${interaction.user}` }),
     t(lang, 'moderation.common.reason', { reason: reasonText(reason, lang) }),
