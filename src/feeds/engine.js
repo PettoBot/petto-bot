@@ -6,7 +6,7 @@ const { PROVIDERS, noteLate } = require('./providers');
 const { buildFeedMessage, buildFeedPayload } = require('./card');
 const { channelProblem } = require('./service');
 const { forEachWithConcurrency } = require('../utils/concurrency');
-const { peekGuildLanguage } = require('../i18n');
+const { peekGuildLanguage, t } = require('../i18n');
 const logger = require('../utils/logger');
 
 const MAX_PER_PASS = 3; // after a long silence (or a first look) only the newest are posted; the rest are marked as seen
@@ -39,14 +39,25 @@ async function recordFailure(feed, kind) {
   await feedsDb.update(feed.guild_id, feed.id, patch).catch((error) => logger.warn(`Feed ${feed.id}: could not write its failure: ${error.message}`));
 }
 
-/** What a stream looks like when it is over: the same card, grey, with its two buttons. */
-const endedItem = (item) => ({ ...item, type: 'ended', vodUrl: item.platform === 'youtube' ? item.url : item.vodUrl ?? null });
+/** The replay of a stream: YouTube keeps it at the same link; Kick gives no link to a single replay, so it is the list of videos of the channel. */
+function replayUrl(item) {
+  if (item.platform === 'youtube') return item.url;
+  if (item.vodUrl) return item.vodUrl;
+  return item.platform === 'kick' && item.authorUrl ? `${String(item.authorUrl).replace(/\/+$/, '')}/videos` : null;
+}
+
+/** What a stream looks like when it is over: the same card, in the same color, with its two buttons and the most viewers it had (no platform gives the total of a stream). */
+function endedItem(item, lang) {
+  const extra = String(item.extra ?? '').split(' · ').filter((part) => part && !part.startsWith('👁'));
+  if (item.peak > 0) extra.push(`👁 ${t(lang, 'feeds.ended.peak', { count: item.peak.toLocaleString('en-US') })}`);
+  return { ...item, type: 'ended', vodUrl: replayUrl(item), extra: extra.join(' · ') };
+}
 
 async function closeLive(client, feed, row, lang) {
   const channel = client.channels.cache.get(row.channel_id) ?? await client.channels.fetch(row.channel_id).catch(() => null);
   const message = channel?.messages ? await channel.messages.fetch(row.message_id).catch(() => null) : null;
   if (message) {
-    const payload = buildFeedMessage(feed, endedItem(row.item), { lang });
+    const payload = buildFeedMessage(feed, endedItem(row.item, lang), { lang });
     await message.edit({ ...payload, allowedMentions: { parse: [] } }).catch((error) => logger.warn(`Feed ${feed.id}: could not close its live message: ${error.message}`));
   }
   await feedsDb.deleteLive(feed.id, row.item_id);
@@ -98,6 +109,13 @@ async function processFeed(client, feed, result, liveRows, seen, now) {
   if (result.stillLive) {
     for (const row of liveRows.get(feed.id) ?? []) if (!result.stillLive.has(row.item_id)) await closeLive(client, feed, row, lang);
   }
+  // The most viewers a stream had is kept (written down only when it grows), for the card that closes it.
+  for (const row of liveRows.get(feed.id) ?? []) {
+    const viewers = result.items.find((item) => String(item.id) === row.item_id)?.viewers;
+    if (!(viewers > (row.item?.peak ?? 0))) continue;
+    row.item = { ...row.item, peak: viewers };
+    await feedsDb.saveLive({ feed_id: feed.id, item_id: row.item_id, channel_id: row.channel_id, message_id: row.message_id, item: row.item }).catch(() => {});
+  }
   // A live notice that went out with a stand-in picture (the stream's own was not made yet) gets the real one as soon as it exists.
   for (const row of liveRows.get(feed.id) ?? []) {
     if (!row.item?.placeholder) continue;
@@ -106,8 +124,9 @@ async function processFeed(client, feed, result, liveRows, seen, now) {
     const channel = client.channels.cache.get(row.channel_id) ?? await client.channels.fetch(row.channel_id).catch(() => null);
     const message = channel?.messages ? await channel.messages.fetch(row.message_id).catch(() => null) : null;
     if (message) await message.edit({ ...buildFeedMessage(feed, current, { lang }), allowedMentions: { parse: [] } }).catch((error) => logger.warn(`Feed ${feed.id}: could not update the picture of its live message: ${error.message}`));
-    await feedsDb.saveLive({ feed_id: feed.id, item_id: row.item_id, channel_id: row.channel_id, message_id: row.message_id, item: current }).catch(() => {});
-    row.item = current; // once is enough
+    const kept = { ...current, peak: row.item.peak };
+    await feedsDb.saveLive({ feed_id: feed.id, item_id: row.item_id, channel_id: row.channel_id, message_id: row.message_id, item: kept }).catch(() => {});
+    row.item = kept; // once is enough
   }
 }
 
@@ -182,4 +201,4 @@ const wake = (platform, accountId) => { schedule.set(keyOf(platform, accountId),
 
 const forgetSchedule = () => { schedule.clear(); feedsDb.forgetList(); }; // for the checks
 
-module.exports = { tick, wake, processFeed, passes, forgetSchedule, MAX_PER_PASS, FAILURES_TO_STOP };
+module.exports = { tick, wake, processFeed, passes, forgetSchedule, replayUrl, MAX_PER_PASS, FAILURES_TO_STOP };

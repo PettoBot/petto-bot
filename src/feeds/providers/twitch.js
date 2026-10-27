@@ -64,7 +64,7 @@ async function liveStreams(userIds) {
 function toItem(stream, account = {}) {
   const viewers = Number(stream.viewer_count) || 0;
   return {
-    platform: 'twitch', type: 'live', id: stream.id, title: stream.title || stream.user_name, url: `https://www.twitch.tv/${stream.user_login}`,
+    platform: 'twitch', type: 'live', viewers, id: stream.id, title: stream.title || stream.user_name, url: `https://www.twitch.tv/${stream.user_login}`,
     description: '', image: String(stream.thumbnail_url ?? '').replace('{width}', '1280').replace('{height}', '720') + `?t=${Math.floor(Date.now() / 600000)}` || null,
     avatar: account.avatar ?? null, author: stream.user_name, authorUrl: `https://www.twitch.tv/${stream.user_login}`, publishedAt: Date.parse(stream.started_at) || null,
     extra: [stream.game_name ? `🎮 ${stream.game_name}` : null, viewers ? `👁 ${viewers.toLocaleString('en-US')}` : null].filter(Boolean).join(' · '),
