@@ -1,5 +1,7 @@
-const database = require('./database');
-const { getPrimaryPool } = require('./postgres');
+// The public threat lists live in the second database when there is one (db/secondary.js), else in the main one.
+const secondary = require('./secondary');
+
+const database = secondary.database;
 
 const POSITIVE_TTL_MS = 5 * 60_000;
 const NEGATIVE_TTL_MS = 30_000;
@@ -187,7 +189,7 @@ async function markDeveloperAlerted(url) {
  * refresh that worked. What a person reported is never deleted. Returns how many.
  */
 async function pruneStaleFeedLinks(source, days = 14) {
-  const { rowCount } = await getPrimaryPool().query(
+  const { rowCount } = await secondary.pool.query(
     `delete from malicious_links where source = $1 and reported_by is null and dev_alerted_at is null and last_checked_at < now() - make_interval(days => $2)`,
     [String(source), days]);
   if (rowCount) cache.clear();
