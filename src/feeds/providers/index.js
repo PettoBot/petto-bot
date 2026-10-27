@@ -177,13 +177,19 @@ const randomMusicFeed = {
   },
 };
 
-/** A video that reaches the channel long after it was published is said in the log, with whether YouTube pushed it: that tells a late push from one that never came. */
-function logLate(entry, account, now) {
-  const published = Number(entry.published);
-  if (!Number.isFinite(published) || now - published < 8 * 60_000) return;
-  const pushedAt = websub.known.get(account.id)?.lastPushAt;
+/**
+ * A video that is posted long after it was published is said in the log, with whether YouTube pushed it: that tells a late push from one that never came.
+ * Called by the engine when a notice is really sent (once for each video, however many servers follow the channel), never for what was only looked at.
+ */
+const lateNoted = new Set();
+function noteLate(channelId, item, now = Date.now()) {
+  const published = Number(item.publishedAt);
+  if (!Number.isFinite(published) || now - published < 8 * 60_000 || lateNoted.has(item.id)) return;
+  if (lateNoted.size > 5000) lateNoted.clear();
+  lateNoted.add(item.id);
+  const pushedAt = websub.known.get(channelId)?.lastPushAt;
   const push = pushedAt && pushedAt >= published ? `a push arrived ${Math.round((pushedAt - published) / 60_000)} min after it was published` : 'no push arrived for it'; // i18n-ignore: part of a log line for the operator
-  logger.info(`YouTube: "${String(entry.title ?? entry.videoId).slice(0, 60)}" of ${account.name ?? account.id} reached the notice ${Math.round((now - published) / 60_000)} min after it was published (${push}).`); // i18n-ignore: log for the operator
+  logger.info(`YouTube: "${String(item.title ?? item.id).slice(0, 60)}" of ${item.author ?? channelId} reached the notice ${Math.round((now - published) / 60_000)} min after it was published (${push}).`); // i18n-ignore: log line for the operator
 }
 
 const PROVIDERS = {
@@ -235,10 +241,7 @@ const PROVIDERS = {
           if (state === 'upcoming') { rememberLive(entry.videoId); continue; } // announced, not started: it is posted when it starts
           if (state === 'none' && wasLive.has(entry.videoId)) { rememberNotLive(entry.videoId); continue; } // a stream that already ended: its recording is not a new video, and it is not asked about again
           if (state === 'none') rememberNotLive(entry.videoId);
-          if (fresh({ publishedAt: entry.published }, now)) {
-            items.push(youtube.toItem(entry, entry.short ? 'short' : 'video', account));
-            logLate(entry, account, now);
-          }
+          if (fresh({ publishedAt: entry.published }, now)) items.push(youtube.toItem(entry, entry.short ? 'short' : 'video', account));
         }
         for (const id of tracked.get(account.id) ?? []) if (states?.[id]?.state === 'live') stillLive.add(id);
         // A channel with a stream announced or on (or one that cannot be told about) is kept on the fast pace.
@@ -632,4 +635,4 @@ const PROVIDERS = {
 
 const isProvider = (platform) => Object.hasOwn(PROVIDERS, platform);
 
-module.exports = { PROVIDERS, isProvider, MAX_AGE_MS, fresh, notLive, wasLive, saveYoutubeState, restoreYoutubeState, rememberNotLive };
+module.exports = { noteLate, PROVIDERS, isProvider, MAX_AGE_MS, fresh, notLive, wasLive, saveYoutubeState, restoreYoutubeState, rememberNotLive };

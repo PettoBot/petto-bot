@@ -2,7 +2,7 @@
 // them (the same account followed by many servers is one request), posts what is new in each feed's channel, and edits the message of a
 // stream when it ends. What was posted is remembered in `feed_seen`, so a restart posts nothing twice.
 const feedsDb = require('../db/feeds');
-const { PROVIDERS } = require('./providers');
+const { PROVIDERS, noteLate } = require('./providers');
 const { buildFeedMessage, buildFeedPayload } = require('./card');
 const { channelProblem } = require('./service');
 const { forEachWithConcurrency } = require('../utils/concurrency');
@@ -82,6 +82,7 @@ async function processFeed(client, feed, result, liveRows, seen, now) {
         try {
           const message = await channel.send(await buildFeedPayload(feed, item, { lang }));
           posted += 1;
+          if (feed.platform === 'youtube' && (item.type === 'video' || item.type === 'short')) noteLate(feed.account_id, item);
           if (item.type === 'live') await feedsDb.saveLive({ feed_id: feed.id, item_id: String(item.id), channel_id: channel.id, message_id: message.id, item });
         } catch (error) {
           await recordFailure(feed, error?.code === 10003 ? 'channelGone' : error?.code === 50001 || error?.code === 50013 ? 'permission' : 'send');
