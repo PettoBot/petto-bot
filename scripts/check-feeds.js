@@ -183,10 +183,12 @@ const allText = (message) => JSON.stringify(json(message.components));
     config.kickClientId = 'id';
     config.kickClientSecret = 'secret';
     const kickCalls = [];
+    const pictures = { 'https://images.kick.com/t.jpg': true };
     const channels = { 1: { broadcaster_user_id: 1, slug: 'live-one', stream_title: 'Hello', category: { name: 'Minecraft' }, stream: { is_live: true, start_time: '2026-10-26T20:00:00Z', viewer_count: 1234, thumbnail: 'https://images.kick.com/t.jpg' } },
       2: { broadcaster_user_id: 2, slug: 'quiet', stream_title: '', stream: { is_live: false } } };
     globalThis.fetch = async (url, options) => {
       kickCalls.push(String(url));
+      if (String(url).startsWith('https://images.kick.com/')) return pictures[String(url)] ? new Response('', { status: 200, headers: { 'content-type': 'image/jpeg' } }) : new Response('', { status: 404 });
       if (String(url).includes('id.kick.com/oauth/token')) return new Response(JSON.stringify({ access_token: 'tok', expires_in: 3600 }), { status: 200 });
       assert.equal(options.headers.Authorization, 'Bearer tok');
       const u = new URL(url);
@@ -206,7 +208,18 @@ const allText = (message) => JSON.stringify(json(message.components));
     assert.match(results.get('1').items[0].extra, /Minecraft/);
     assert.deepEqual([...results.get('1').stillLive], ['2026-10-26T20:00:00Z']);
     assert.deepEqual(results.get('2'), { items: [], stillLive: new Set() }, 'a quiet channel has no stream and nothing is open');
+    assert.equal(results.get('1').items[0].image, 'https://images.kick.com/t.jpg', 'a picture that loads is posted');
     assert.equal(kickCalls.filter((url) => url.includes('/channels?') && url.includes('broadcaster_user_id')).length, 1, 'both accounts are asked in one call');
+    // A stream that just began has no picture yet: the notice waits; an old stream goes without the picture.
+    channels[1].stream.thumbnail = 'https://images.kick.com/new.jpg';
+    channels[1].stream.start_time = new Date(Date.now() - 20_000).toISOString();
+    const early = await PROVIDERS.kick.poll([{ id: '1', name: 'Live_One', avatar: null, url: found.url }]);
+    assert.deepEqual([early.get('1').items.length, early.get('1').stillLive.size], [0, 1], 'a stream with no picture yet waits, and is still counted as live');
+    pictures['https://images.kick.com/new.jpg'] = true;
+    assert.equal((await PROVIDERS.kick.poll([{ id: '1', name: 'Live_One', avatar: null, url: found.url }])).get('1').items[0].image, 'https://images.kick.com/new.jpg', 'it is posted as soon as the picture loads');
+    channels[1].stream.thumbnail = 'https://images.kick.com/gone.jpg';
+    channels[1].stream.start_time = new Date(Date.now() - 10 * 60_000).toISOString();
+    assert.equal((await PROVIDERS.kick.poll([{ id: '1', name: 'Live_One', avatar: null, url: found.url }])).get('1').items[0].image, null, 'after some minutes it is posted without the picture');
     config.kickClientId = null;
     kickCalls.length = 0;
     await assert.rejects(PROVIDERS.kick.resolve('live-one'), (error) => error.kind === 'notConfigured', 'without the keys Kick says it is not set up');

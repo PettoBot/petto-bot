@@ -123,7 +123,13 @@ const PROVIDERS = {
       const results = new Map();
       for (const account of accounts) {
         const channel = live[account.id];
-        results.set(account.id, { items: channel ? [kick.toItem(channel, account)] : [], stillLive: new Set(channel ? [kick.streamId(channel)] : []) });
+        let item = channel ? kick.toItem(channel, account) : null;
+        // The picture of a stream that just began is not made yet: the notice waits for it (the next pass), and goes without it after a few minutes.
+        if (item?.image && !(await kick.imageReady(item.image))) {
+          if (Date.now() - (item.publishedAt ?? 0) < kick.THUMBNAIL_WAIT_MS) item = null;
+          else item.image = null;
+        }
+        results.set(account.id, { items: item ? [item] : [], stillLive: new Set(channel ? [kick.streamId(channel)] : []) });
       }
       return results;
     },
