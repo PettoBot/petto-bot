@@ -71,4 +71,4 @@ function toItem(stream, account = {}) {
   };
 }
 
-module.exports = { parseLogin, resolveUser, liveStreams, toItem };
+module.exports = { parseLogin, resolveUser, liveStreams, toItem, api: helix };

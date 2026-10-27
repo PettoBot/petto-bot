@@ -6,6 +6,8 @@ const { IntegrationError } = require('../../utils/integrations');
 
 const REDDIT = /^[A-Za-z0-9_]{2,21}$/;
 const PINTEREST = /^[\w.\-]{3,30}$/;
+// The name of a board is its address: it can hold letters of other alphabets, written as %XX in a link.
+const PINTEREST_BOARD = /^[\w.\-%]{1,200}$/;
 
 /** The account of a generic feed is its address, without the fragment and with the host in lower case. */
 function normalizeUrl(input) {
@@ -54,7 +56,7 @@ async function readReddit(name) {
 /** `user` or `user/board` from a name or a Pinterest link. */
 function parsePinterest(input) {
   const parts = String(input ?? '').trim().replace(/^https?:\/\/([a-z]{2,3}\.)?(www\.)?pinterest\.[a-z.]+\//i, '').replace(/^@/, '').split(/[?#]/)[0].split('/').filter(Boolean);
-  if (!parts.length || !PINTEREST.test(parts[0]) || (parts[1] && !PINTEREST.test(parts[1])) || parts[0].toLowerCase() === 'pin') return null;
+  if (!parts.length || !PINTEREST.test(parts[0]) || (parts[1] && !PINTEREST_BOARD.test(parts[1])) || parts[0].toLowerCase() === 'pin') return null;
   return parts[1] ? `${parts[0]}/${parts[1]}`.toLowerCase() : parts[0].toLowerCase();
 }
 

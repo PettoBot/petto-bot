@@ -40,7 +40,7 @@ module.exports = {
   'feeds.add.error.limit': '{emoji}  Este servidor já segue as **{count}** contas de {platform} que pode.',
   'feeds.add.error.notFound': '{emoji}  Não encontrei essa conta no {platform}. Confira o link ou o nome.',
   'feeds.add.error.badInput': '{emoji}  Escreva o link, o @nome ou o id da conta no {platform}.',
-  'feeds.add.error.notConfigured': '{emoji}  O {platform} ainda não está configurado neste bot, ou precisa do id do canal (não do @nome).',
+  'feeds.add.error.notConfigured': '{emoji}  {platform} ainda não está configurado neste bot: faltam as chaves de acesso. O dono do bot precisa adicioná-las.',
   'feeds.add.error.unavailable': '{emoji}  O {platform} não respondeu. Tente de novo em instantes.',
   'feeds.add.error.already': '{emoji}  **{account}** já é seguido nesse canal.',
   'feeds.notFound': '{emoji}  Não há um feed `#{id}` neste servidor. Veja `{prefix}feed list`.',
