@@ -468,6 +468,40 @@ const allText = (message) => JSON.stringify(json(message.components));
     youtube.spend(-(youtube.quotaUsed() - before)); // back to where the day was
   }
 
+  // --- What the bot learned about the YouTube videos is kept in Redis, so a restart does not forget it (and does not spend the quota again) --------------------
+  {
+    const redis = require('../src/utils/redis');
+    const providers = require('../src/feeds/providers');
+    const youtube = require('../src/feeds/providers/youtube');
+    const kept = new Map();
+    const original = { getJson: redis.getJson, setJson: redis.setJson, incr: redis.incr };
+    redis.setJson = async (key, value) => { kept.set(key, JSON.parse(JSON.stringify(value))); return true; };
+    redis.getJson = async (key) => (kept.has(key) ? { hit: true, value: kept.get(key) } : { hit: false });
+    redis.incr = async (key) => { kept.set(key, (kept.get(key) ?? 0) + 1); return kept.get(key); };
+    providers.notLive.clear(); providers.wasLive.clear();
+    providers.rememberNotLive('vid-a');
+    providers.wasLive.add('live-b');
+    youtube.importLengths([['vid-a', 42]]);
+    assert.equal(await providers.saveYoutubeState(Date.now() + 120_000), true, 'what changed is written');
+    assert.deepEqual([kept.get('feeds:youtube:state').notLive, kept.get('feeds:youtube:state').lengths], [['vid-a'], [['vid-a', 42]]]);
+    assert.equal(await providers.saveYoutubeState(Date.now() + 121_000), false, 'and nothing is written again when nothing changed');
+    const quotaBefore = youtube.quotaUsed();
+    youtube.spend(7);
+    assert.equal([...kept.keys()].some((key) => key.startsWith('feeds:youtube:quota:')), true, 'the units spent are counted in Redis');
+    providers.notLive.clear(); providers.wasLive.clear();
+    kept.set('feeds:youtube:state', { notLive: ['vid-a'], wasLive: ['live-b'], lengths: [['vid-a', 42]], at: Date.now() });
+    assert.equal(await providers.restoreYoutubeState(), true, 'the state is read back after a restart');
+    assert.deepEqual([providers.notLive.has('vid-a'), providers.wasLive.has('live-b')], [true, true]);
+    kept.set(`feeds:youtube:quota:${[...kept.keys()].find((key) => key.startsWith('feeds:youtube:quota:')).split(':').pop()}`, quotaBefore + 500);
+    assert.ok((await youtube.restoreQuota()) >= quotaBefore + 500, 'and so are the units already spent today');
+    youtube.spend(-(youtube.quotaUsed() - quotaBefore));
+    // Without Redis nothing breaks: the answers are "nothing there".
+    redis.getJson = async () => ({ hit: false });
+    assert.equal(await providers.restoreYoutubeState(), false);
+    Object.assign(redis, original);
+    providers.notLive.clear(); providers.wasLive.clear();
+  }
+
   // --- Animals: a picture for each slot of time, the same for everybody, at the pace of the account; several services each, the next one when one is down ---
   {
     const realFetch = globalThis.fetch;
@@ -1079,6 +1113,81 @@ const allText = (message) => JSON.stringify(json(message.components));
   assert.equal(canUseFeeds('u'), true, 'public: everybody');
   config.feedsPublic = false;
   config.feedTesterIds.pop();
+  // --- YouTube push (WebSub): subscribe, confirm, push (signed), and a channel that pushes is looked at less often ------------------------------------------------
+  {
+    const websub = require('../src/feeds/websub');
+    const store = require('../src/db/youtubeWebsub');
+    const database = require('../src/db/database');
+    config.youtubeApiKey = 'key';
+    config.youtubeWebsubUrl = 'https://bot.example';
+    await database.from('youtube_websub').delete().neq('channel_id', '');
+    await websub.load();
+    assert.equal(websub.enabled(), true);
+    assert.equal(websub.callbackUrl(), 'https://bot.example/webhooks/youtube');
+    const CHANNEL = 'UC_x5XG1OV2P6uZZ5FSM9Ttw';
+    const OTHER = 'UCBJycsmduvYEL83R_U4JriQ';
+    const hubCalls = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url, options = {}) => { hubCalls.push({ url: String(url), body: new URLSearchParams(String(options.body ?? '')) }); return new Response('', { status: 202 }); };
+    // A channel that is followed gets asked for; one that is not followed does not.
+    await feedsDb.create({ guild_id: G, platform: 'youtube', account_id: CHANNEL, account_name: 'Push channel', channel_id: CH, types: ['video'], message: '', ping_roles: [], ping_everyone: false, options: {}, filters: {}, enabled: true, ready: true });
+    feedsDb.forgetList();
+    const upkeep = await websub.maintain();
+    assert.deepEqual([upkeep.followed, upkeep.asked, upkeep.healthy], [1, 1, 0], 'the channel is asked for, and is not healthy until YouTube confirms it');
+    const ask = hubCalls[0];
+    assert.equal(ask.url, 'https://pubsubhubbub.appspot.com/subscribe');
+    assert.deepEqual([ask.body.get('hub.mode'), ask.body.get('hub.topic'), ask.body.get('hub.callback'), ask.body.get('hub.verify')], ['subscribe', `https://www.youtube.com/xml/feeds/videos.xml?channel_id=${CHANNEL}`, 'https://bot.example/webhooks/youtube', 'async']);
+    const secret = ask.body.get('hub.secret');
+    assert.ok(secret && secret.length >= 32, 'each channel has a secret of its own');
+    assert.equal((await websub.maintain()).asked, 0, 'a subscription waiting for its confirmation is not asked for again at once');
+    assert.equal(websub.isHealthy(CHANNEL), false);
+
+    const reply = () => { const out = { status: 0, text: '', headers: {} }; return Object.assign(out, { status(code) { out.status = code; return out; }, type() { return out; }, set(headers) { Object.assign(out.headers, headers); return out; }, send(text) { out.text = text; return out; }, end(body) { if (body) out.text = Buffer.from(body).toString('utf8'); return out; } }); };
+    const verify = async (query) => { const res = reply(); await websub.verifyHandler({ query }, res); return res; };
+    let res = await verify({ 'hub.mode': 'subscribe', 'hub.topic': `https://www.youtube.com/xml/feeds/videos.xml?channel_id=${OTHER}`, 'hub.challenge': 'abc' });
+    assert.equal(res.status, 404, 'a channel nobody asked for is not confirmed');
+    res = await verify({ 'hub.mode': 'subscribe', 'hub.topic': `https://www.youtube.com/xml/feeds/videos.xml?channel_id=${CHANNEL}`, 'hub.challenge': 'abc123', 'hub.lease_seconds': '432000' });
+    assert.deepEqual([res.status, res.text], [200, 'abc123'], 'the confirmation is answered with the challenge');
+    assert.deepEqual([res.headers['Content-Type'], res.headers['X-Content-Type-Options']], ['text/plain; charset=utf-8', 'nosniff'], 'as plain text that is never read as a page');
+    res = await verify({ 'hub.mode': 'subscribe', 'hub.topic': `https://www.youtube.com/xml/feeds/videos.xml?channel_id=${CHANNEL}`, 'hub.challenge': '<script>alert(1)</script>' });
+    assert.equal(res.status, 404, 'a challenge with anything but letters, digits and a few signs is refused');
+    assert.equal(websub.isHealthy(CHANNEL), true);
+    assert.equal((await store.get(CHANNEL)).status, 'active');
+    assert.equal((await websub.maintain()).healthy, 1);
+    assert.equal(websub.needing([CHANNEL], Date.now() + 4.5 * 86_400_000).length, 1, 'it is renewed when less than a day is left');
+
+    // What YouTube sends: signed with the secret of the channel; the engine is woken for the channel, and not for a bad signature.
+    const woken = [];
+    websub.setWake((id) => woken.push(id));
+    const atom = `<?xml version="1.0"?><feed xmlns:yt="http://www.youtube.com/xml/schemas/2015"><entry><yt:videoId>vid1</yt:videoId><yt:channelId>${CHANNEL}</yt:channelId><title>New</title></entry></feed>`;
+    const push = async (signature, body = atom) => { const res = reply(); await websub.pushHandler({ body: Buffer.from(body), get: (name) => (name === 'x-hub-signature' ? signature : undefined) }, res); return res; };
+    assert.equal((await push('sha1=wrong')).status, 204, 'the hub is always answered');
+    assert.deepEqual(woken, [], 'but a notice with a bad signature does nothing');
+    await push(websub.sign(secret, atom));
+    assert.deepEqual(woken, [CHANNEL], 'a signed notice makes the channel be looked at at once');
+    assert.ok((await store.get(CHANNEL)).last_push_at, 'and the push is written down');
+    assert.equal(websub.signatureOk(secret, Buffer.from(atom), websub.sign(secret, atom)), true);
+    assert.deepEqual(websub.channelsOf(`<yt:channelId>${CHANNEL}</yt:channelId><yt:channelId>${CHANNEL}</yt:channelId>`), [CHANNEL]);
+
+    // A channel that pushes is looked at every 30 minutes; with a stream announced it keeps the fast pace; without push it is every 5 minutes.
+    const yt = PROVIDERS.youtube;
+    assert.equal(yt.intervalFor(CHANNEL), 30 * 60_000, 'a channel that pushes needs a look only now and then');
+    assert.equal(yt.intervalFor(OTHER), 5 * 60_000, 'one that does not push is looked at as before');
+    assert.equal(websub.isHealthy(CHANNEL, Date.now() + 6 * 86_400_000), false, 'and one whose subscription ran out goes back to the fast pace');
+
+    // When push cannot be set up (no public address, or turned off) nothing changes.
+    config.youtubeWebsubUrl = null; const verifyBase = config.verifyBaseUrl; config.verifyBaseUrl = null;
+    assert.equal(websub.enabled(), false);
+    config.verifyBaseUrl = verifyBase;
+    config.youtubeWebsub = false;
+    assert.equal(websub.enabled(), false, 'YOUTUBE_WEBSUB=false turns it off');
+    config.youtubeWebsub = true;
+    globalThis.fetch = realFetch;
+    await database.from('youtube_websub').delete().neq('channel_id', '');
+    await clean();
+    config.youtubeApiKey = null;
+  }
+
   await closePools();
   console.log('check-feeds: ok');
   process.exit(0);

@@ -167,7 +167,7 @@ async function tick(client, { now = Date.now(), providers = PROVIDERS } = {}) {
           if (result.error === 'notFound' && previous + 1 >= 6) for (const feed of list) await recordFailure(feed, 'accountGone');
           continue;
         }
-        schedule.set(keyOf(platform, id), { at: now + provider.interval + Math.floor(Math.random() * 15_000), fails: 0 });
+        schedule.set(keyOf(platform, id), { at: now + (provider.intervalFor?.(id, now) ?? provider.interval) + Math.floor(Math.random() * 15_000), fails: 0 });
         await forEachWithConcurrency(list.filter(forLang), (feed) => processFeed(client, feed, result, liveByFeed, seen, now).catch((error) => logger.error(`Feed ${feed.id} failed:`, error)), SEND_WORKERS);
       }
     }
@@ -175,6 +175,9 @@ async function tick(client, { now = Date.now(), providers = PROVIDERS } = {}) {
   return asked;
 }
 
+/** Makes an account due at the next pass (YouTube told the bot something new is there): it is looked at at once instead of when its turn comes. */
+const wake = (platform, accountId) => { schedule.set(keyOf(platform, accountId), { at: 0, fails: 0 }); };
+
 const forgetSchedule = () => { schedule.clear(); feedsDb.forgetList(); }; // for the checks
 
-module.exports = { tick, processFeed, passes, forgetSchedule, MAX_PER_PASS, FAILURES_TO_STOP };
+module.exports = { tick, wake, processFeed, passes, forgetSchedule, MAX_PER_PASS, FAILURES_TO_STOP };

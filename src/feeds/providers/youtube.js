@@ -4,6 +4,7 @@ const config = require('../../config');
 const { fetchText, fetchJsonBody } = require('../http');
 const { IntegrationError } = require('../../utils/integrations');
 const logger = require('../../utils/logger');
+const redis = require('../../utils/redis');
 
 const FEED = 'https://www.youtube.com/feeds/videos.xml';
 const API = 'https://www.googleapis.com/youtube/v3';
@@ -57,6 +58,7 @@ function rollQuota() {
 function spend(units) {
   rollQuota();
   quota.used += units;
+  if (units > 0) redis.incr(`feeds:youtube:quota:${quota.day}`, 2 * 86_400_000).catch(() => {}); // the day's count survives a restart (Redis, when there is one)
   const share = quota.used / config.youtubeDailyQuota;
   const level = share >= 0.95 ? 95 : share >= 0.8 ? 80 : 0;
   if (level > quota.warned) { quota.warned = level; logger.warn(`The YouTube key has used ${Math.round(share * 100)}% of its daily units (${quota.used} of ${config.youtubeDailyQuota}).`); }
@@ -67,6 +69,14 @@ function canSpend(units, share = 1) {
   return quota.used + units <= config.youtubeDailyQuota * share;
 }
 const quotaUsed = () => { rollQuota(); return quota.used; };
+
+/** After a restart: the units already spent today are read back from Redis (the bot would count from zero while Google counts from the start of the day). */
+async function restoreQuota() {
+  rollQuota();
+  const saved = await redis.getJson(`feeds:youtube:quota:${quota.day}`);
+  if (saved.hit && Number(saved.value) > quota.used) quota.used = Number(saved.value);
+  return quota.used;
+}
 const UNITS = { '/search': 100 }; // everything else the feeds ask for costs one
 
 async function api(path, params) {
@@ -104,6 +114,8 @@ const seconds = (iso) => { const found = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/
  * says it by the link; the API does not).
  */
 const lengths = new Map(); // videoId -> seconds
+const exportLengths = () => [...lengths].slice(-20_000);
+const importLengths = (pairs) => { for (const [id, length] of pairs ?? []) if (typeof id === 'string' && (length === null || Number.isFinite(length))) lengths.set(id, length); };
 
 async function fetchChannelFromApi(channelId) {
   if (!CHANNEL_ID.test(channelId)) throw new IntegrationError('notFound');
@@ -179,4 +191,4 @@ function toItem(entry, kind, channel = {}) {
   };
 }
 
-module.exports = { spend, canSpend, quotaUsed, parseChannel, parseFeed, fetchChannel, fetchChannelFromApi, resolveChannel, liveStates, toItem, CHANNEL_ID };
+module.exports = { spend, canSpend, quotaUsed, restoreQuota, exportLengths, importLengths, parseChannel, parseFeed, fetchChannel, fetchChannelFromApi, resolveChannel, liveStates, toItem, CHANNEL_ID };
