@@ -9,9 +9,9 @@ const INTERVAL_MS = 6 * 60 * 60_000;
 const PER_RUN = 25; // servers deleted in one pass, so a big backlog does not keep the database busy
 const LOADED_SHARE = 0.9; // the list of servers of the bot must have at least this share of the servers Discord says the bot is in, or it is not trusted (an outage, not people leaving)
 
-/** One pass. Returns { noted, erased, held }. */
+/** One pass. Returns { noted, erased, held, would } (`would`: the servers a dry run would have deleted). */
 async function purgeLeftGuilds(client) {
-  const result = { noted: 0, erased: 0, held: 0 };
+  const result = { noted: 0, erased: 0, held: 0, would: 0 };
   // Nothing is decided while the bot is not ready or the list of its servers is empty: that looks like a bot that has not loaded them yet.
   if (!config.guildPurge || !client.isReady?.() || !client.guilds.cache.size) return result;
 
@@ -31,7 +31,7 @@ async function purgeLeftGuilds(client) {
     if (client.guilds.cache.has(guildId)) { await departures.clear(guildId); continue; } // it came back in the meantime
     const reason = await departures.holdReason(guildId);
     if (reason) { result.held += 1; continue; }
-    if (config.guildPurgeDryRun) { logger.info(`Servers cleanup (dry run): would delete what is stored for server ${guildId}.`); continue; }
+    if (config.guildPurgeDryRun) { result.would += 1; logger.info(`Servers cleanup (dry run): would delete what is stored for server ${guildId}.`); continue; }
     try {
       await departures.erase(guildId);
       result.erased += 1;
@@ -39,6 +39,7 @@ async function purgeLeftGuilds(client) {
       logger.warn(`Servers cleanup: could not delete the data of server ${guildId}: ${error.message}`);
     }
   }
+  if (result.would) logger.info(`Servers cleanup (dry run): ${result.would} server(s) are past the ${config.guildPurgeDays} days and would be deleted; nothing was deleted.`);
   if (result.erased || result.held) logger.info(`Servers cleanup: deleted what was stored for ${result.erased} server(s) Petto left more than ${config.guildPurgeDays} days ago${result.held ? `; ${result.held} kept for now (Premium in use or backups)` : ''}.`);
   return result;
 }

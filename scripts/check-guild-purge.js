@@ -54,7 +54,7 @@ const clientWith = (ids, expected = 0) => ({ isReady: () => true, guilds: { cach
   config.guildPurgeDryRun = true;
   const dry = await purgeLeftGuilds(client);
   assert.equal(await count('guilds', G(2)), 1, 'a dry run deletes nothing');
-  assert.equal(dry.erased, 0);
+  assert.deepEqual([dry.erased, dry.would], [0, 1], 'and it says how many it would delete');
   config.guildPurgeDryRun = false;
 
   const result = await purgeLeftGuilds(client);
