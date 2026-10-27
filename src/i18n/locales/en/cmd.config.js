@@ -203,7 +203,7 @@ module.exports = {
   'cmd.config.feed.desc': 'Post in a channel what an account publishes: videos, streams, posts, new versions.',
   'cmd.config.feed.add.desc': 'Follow an account and post its news in a channel.',
   'cmd.config.feed.add.opt.platform.desc': 'Where the account is',
-  'cmd.config.feed.add.opt.account.desc': 'The link, the @name or the id of the account (a Pokémon feed needs none)',
+  'cmd.config.feed.add.opt.account.desc': 'The link, @name or id of the account. Pokémon, Wikipedia, Chess: how often (15m, 2h, 1d)',
   'cmd.config.feed.add.opt.channel.desc': 'Where to post it (default: this channel)',
   'cmd.config.feed.list.desc': 'The feeds of this server and how each one is doing.',
   'cmd.config.feed.remove.desc': 'Stop following an account.',

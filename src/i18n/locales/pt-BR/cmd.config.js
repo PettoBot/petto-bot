@@ -412,7 +412,7 @@ module.exports = {
   'cmd.config.feed.desc': 'Publica em um canal o que uma conta publica: vídeos, lives, posts, versões novas.',
   'cmd.config.feed.add.desc': 'Siga uma conta e publique as novidades dela em um canal.',
   'cmd.config.feed.add.opt.platform.desc': 'Onde está a conta',
-  'cmd.config.feed.add.opt.account.desc': 'O link, o @nome ou o id da conta (um feed de Pokémon não precisa de nenhum)',
+  'cmd.config.feed.add.opt.account.desc': 'O link, @nome ou id da conta. Pokémon, Wikipedia, Chess: a cada quanto (15m, 2h, 1d)',
   'cmd.config.feed.add.opt.channel.desc': 'Onde publicar (padrão: este canal)',
   'cmd.config.feed.list.desc': 'Os feeds deste servidor e como está cada um.',
   'cmd.config.feed.remove.desc': 'Deixe de seguir uma conta.',
