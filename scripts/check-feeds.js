@@ -16,6 +16,7 @@ const bluesky = require('../src/feeds/providers/bluesky');
 const modrinth = require('../src/feeds/providers/modrinth');
 const pokemon = require('../src/feeds/providers/pokemon');
 const { PROVIDERS, MAX_AGE_MS, notLive } = require('../src/feeds/providers');
+const REAL_YOUTUBE = PROVIDERS.youtube; // the engine checks replace PROVIDERS.youtube with a stand-in later
 const config = require('../src/config');
 const { t } = require('../src/i18n');
 const { IntegrationError } = require('../src/utils/integrations');
@@ -142,8 +143,19 @@ const allText = (message) => JSON.stringify(json(message.components));
     return new Response('{}', { status: 404 });
   };
   const account = { id: 'UCx', name: 'Chan', avatar: 'https://yt3.example/a.jpg', url: 'https://www.youtube.com/channel/UCx' };
+  const logger = require('../src/utils/logger');
+  const infoLines = [];
+  const realInfo = logger.info;
+  logger.info = (...args) => { infoLines.push(args.join(' ')); };
   let results = await PROVIDERS.youtube.poll([account], new Map(), { now });
   let result = results.get('UCx');
+  assert.ok(!infoLines.some((line) => line.includes('reached the notice')), 'looking at a channel says nothing about late videos: only a notice that is really sent does');
+  const { noteLate } = require('../src/feeds/providers');
+  noteLate('UCx', { id: 'late1', title: 'Late one', author: 'Chan', publishedAt: now - 40 * 60_000 }, now);
+  noteLate('UCx', { id: 'late1', title: 'Late one', author: 'Chan', publishedAt: now - 40 * 60_000 }, now); // the second server that follows the channel
+  noteLate('UCx', { id: 'ontime', title: 'Fast', author: 'Chan', publishedAt: now - 2 * 60_000 }, now);
+  assert.deepEqual(infoLines.filter((line) => line.includes('reached the notice')).map((line) => line.replace(/^.*YouTube: /, 'YouTube: ')), ['YouTube: "Late one" of Chan reached the notice 40 min after it was published (no push arrived for it).'], 'one line for a late video (once, whatever the servers) and none for a prompt one');
+  logger.info = realInfo;
   assert.deepEqual(result.items.map((item) => `${item.id}:${item.type}`).sort(), ['liv1:live', 'sch1:live', 'sho1:short', 'vid1:video'], 'a live is a live (also one scheduled days before), an upcoming one waits, an old one is not news');
   assert.deepEqual([...result.stillLive].sort(), ['liv1', 'sch1']);
   assert.ok(Math.abs(result.items.find((item) => item.id === 'sch1').publishedAt - (now - 90_000)) < 1000, 'a stream says when it began, not when its page was made');
@@ -1256,6 +1268,16 @@ const allText = (message) => JSON.stringify(json(message.components));
   assert.equal(canUseFeeds('u'), true, 'public: everybody');
   config.feedsPublic = false;
   config.feedTesterIds.pop();
+  {
+    // The service of a slot of time: the hash must be exact at the size of a 5-minute slot (6 million), where a plain product lost its last bit and always chose the same service.
+    const { hashOf } = require('../src/feeds/providers/music');
+    const first = 5_977_072;
+    const two = new Set(); const three = new Set();
+    for (let slot = first; slot < first + 40; slot += 1) { two.add((hashOf(`5:${slot}`) >>> 16) % 2); three.add((hashOf(`5:${slot}`) >>> 16) % 3); }
+    assert.deepEqual([...two].sort(), [0, 1], 'with two services (no Spotify keys) both are chosen at a 5-minute pace');
+    assert.deepEqual([...three].sort(), [0, 1, 2], 'and with three, all of them');
+    assert.equal(hashOf('5:5977072'), hashOf('5:5977072'), 'the same slot gives the same service for every server');
+  }
   // --- YouTube push (WebSub): subscribe, confirm, push (signed), and a channel that pushes is looked at less often ------------------------------------------------
   {
     const websub = require('../src/feeds/websub');
@@ -1312,13 +1334,31 @@ const allText = (message) => JSON.stringify(json(message.components));
     assert.equal(websub.signatureOk(secret, Buffer.from(atom), websub.sign(secret, atom)), true);
     assert.deepEqual(websub.channelsOf(`<yt:channelId>${CHANNEL}</yt:channelId><yt:channelId>${CHANNEL}</yt:channelId>`), [CHANNEL]);
 
-    // A channel that pushes is looked at every 10 minutes (every 30 when more than 1500 channels are followed); with a stream announced it keeps the fast pace; without push it is every 5 minutes.
+    // What the hub sent is kept and added to what the feed shows: the feed of a channel can take minutes to show a new video, the push already says it.
+    assert.deepEqual(websub.pushedFor(CHANNEL).map((entry) => [entry.videoId, entry.title]), [['vid1', 'New']], 'the entries of a signed push are kept');
+    assert.deepEqual(websub.pushedFor(CHANNEL, Date.now() + 31 * 60_000), [], 'for half an hour');
+    await push(websub.sign(secret, atom)); // the same push again (the hub repeats)
+    assert.equal(websub.pushedFor(CHANNEL).length, 1, 'a video is kept once');
+    const afterPush = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('/feeds/videos.xml')) return new Response(`<?xml version="1.0"?><feed xmlns:yt="http://www.youtube.com/xml/schemas/2015"><title>Push channel</title></feed>`, { status: 200 }); // the feed does not show the video yet
+      if (String(url).includes('/youtube/v3/videos')) return new Response(JSON.stringify({ items: [{ id: 'vid1', snippet: { liveBroadcastContent: 'none' } }] }), { status: 200 });
+      return new Response('{}', { status: 404 });
+    };
+    const polled = (await REAL_YOUTUBE.poll([{ id: CHANNEL, name: 'Push channel', avatar: null, url: `https://www.youtube.com/channel/${CHANNEL}` }], new Map(), { now: Date.now() })).get(CHANNEL);
+    globalThis.fetch = afterPush;
+    assert.deepEqual(polled.items.map((item) => `${item.id}:${item.type}`), ['vid1:video'], 'a video the push brought is posted although the feed does not show it yet');
+
+    // A channel that pushes is looked at every 3 minutes (every 10 with more than 300 channels followed, every 30 with more than 1500); with a stream announced it keeps the fast pace; without push it is every 5 minutes.
     const yt = PROVIDERS.youtube;
-    assert.equal(yt.intervalFor(CHANNEL), 10 * 60_000, 'a channel that pushes needs a look only now and then');
-    const filler = Array.from({ length: 1501 }, (_, index) => `filler${index}`);
+    assert.equal(yt.intervalFor(CHANNEL), 3 * 60_000, 'a channel that pushes needs a look only now and then');
+    const filler = Array.from({ length: 301 }, (_, index) => `filler${index}`);
     for (const id of filler) websub.known.set(id, { status: 'subscribed', expiresAt: 0, secret: 'x', fails: 0, requestedAt: 0 });
+    assert.equal(yt.intervalFor(CHANNEL), 10 * 60_000, 'with a few hundred channels, every 10 minutes');
+    const more = Array.from({ length: 1200 }, (_, index) => `more${index}`);
+    for (const id of more) websub.known.set(id, { status: 'subscribed', expiresAt: 0, secret: 'x', fails: 0, requestedAt: 0 });
     assert.equal(yt.intervalFor(CHANNEL), 30 * 60_000, 'with a lot of channels the look is every 30 minutes, so the job keeps up');
-    for (const id of filler) websub.known.delete(id);
+    for (const id of [...filler, ...more]) websub.known.delete(id);
     assert.equal(yt.intervalFor(OTHER), 5 * 60_000, 'one that does not push is looked at as before');
     assert.equal(websub.isHealthy(CHANNEL, Date.now() + 6 * 86_400_000), false, 'and one whose subscription ran out goes back to the fast pace');
 

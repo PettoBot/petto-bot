@@ -11,6 +11,7 @@ const feedsDb = require('../db/feeds');
 const logger = require('../utils/logger');
 const { USER_AGENT } = require('../utils/integrations');
 const { forEachWithConcurrency } = require('../utils/concurrency');
+const youtube = require('./providers/youtube');
 
 const HUB = 'https://pubsubhubbub.appspot.com/subscribe';
 const TOPIC = (channelId) => `https://www.youtube.com/xml/feeds/videos.xml?channel_id=${channelId}`;
@@ -24,6 +25,18 @@ const CHANNEL_ID = /^UC[\w-]{22}$/;
 /** channelId -> { status, expiresAt, secret, fails, requestedAt }: what the database says, kept in memory (the push handler reads it on every call). */
 const known = new Map();
 let wake = () => {}; // set by the job: looks at a channel at once
+
+// What the hub sent for each channel (its new or changed entries), kept a while: the feed of the channel can take minutes to show a new video, and the push already says it.
+const PUSHED_KEEP_MS = 30 * 60_000;
+const pushed = new Map(); // channelId -> { at, entries }
+const pushedFor = (channelId, now = Date.now()) => {
+  const found = pushed.get(channelId);
+  if (!found) return [];
+  if (now - found.at > PUSHED_KEEP_MS) { pushed.delete(channelId); return []; }
+  return found.entries;
+};
+let lastRejectedLog = 0;
+const noteRejected = (text) => { if (Date.now() - lastRejectedLog > 60_000) { lastRejectedLog = Date.now(); logger.warn(`YouTube push: ${text}`); } };
 
 const enabled = () => Boolean(config.youtubeWebsub && config.youtubeApiKey && baseUrl());
 const baseUrl = () => config.youtubeWebsubUrl || String(config.verifyBaseUrl ?? '').replace(/\/+$/, '') || null;
@@ -125,9 +138,18 @@ async function pushHandler(req, res) {
   try {
     for (const channelId of channelsOf(body.toString('utf8'))) {
       const entry = known.get(channelId);
-      if (!entry || !signatureOk(entry.secret, body, req.get('x-hub-signature'))) continue; // not asked for, or not signed with its secret: ignored
+      if (!entry) { noteRejected(`a push arrived for ${channelId}, which is not followed; ignored.`); continue; } // i18n-ignore: log line for the operator
+      if (!signatureOk(entry.secret, body, req.get('x-hub-signature'))) { noteRejected(`a push for ${channelId} did not have the signature of its subscription; ignored.`); continue; } // not asked for, or not signed with its secret: ignored // i18n-ignore: log line for the operator
       await store.markPush(channelId).catch(() => {});
       entry.lastPushAt = Date.now();
+      // The entries of the push itself are used (a few of them can be old: the hub also sends a video whose title was changed; they are judged like the others).
+      const entries = youtube.parseFeed(body.toString('utf8')).filter((item) => item.channelId === channelId || !item.channelId);
+      if (entries.length) {
+        const seen = new Set();
+        const merged = [...entries, ...pushedFor(channelId)].filter((item) => !seen.has(item.videoId) && seen.add(item.videoId));
+        pushed.set(channelId, { at: Date.now(), entries: merged.slice(0, 15) });
+      }
+      if (known.size <= 300) logger.info(`YouTube push: ${channelId} sent ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}${entries[0] ? ` (${String(entries[0].title).slice(0, 50)})` : ''}.`); // i18n-ignore: log line for the operator
       wake(channelId);
       // The feed of a channel can take many minutes to show a new video, so the channel is looked at again several times after the push.
       for (const delay of [90_000, 300_000, 600_000, 1_200_000]) setTimeout(() => wake(channelId), delay).unref?.();
@@ -139,4 +161,4 @@ async function pushHandler(req, res) {
 
 const setWake = (fn) => { wake = fn; };
 
-module.exports = { enabled, load, isHealthy, maintain, subscribe, needing, verifyHandler, pushHandler, setWake, sign, signatureOk, channelsOf, callbackUrl, known, TOPIC, LEASE_SECONDS };
+module.exports = { pushedFor, enabled, load, isHealthy, maintain, subscribe, needing, verifyHandler, pushHandler, setWake, sign, signatureOk, channelsOf, callbackUrl, known, TOPIC, LEASE_SECONDS };
