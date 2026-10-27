@@ -454,6 +454,20 @@ const allText = (message) => JSON.stringify(json(message.components));
     assert.ok(plain.includes('https://cdn.dz/a.jpg') && !plain.includes('attachment://'), 'without the picture it is the ordinary card with the cover');
   }
 
+  // --- The YouTube key has a daily budget: the search and the way out of a failing feed stop early so the live check never runs dry ---------------------------
+  {
+    const youtube = require('../src/feeds/providers/youtube');
+    const before = youtube.quotaUsed();
+    assert.equal(youtube.canSpend(100, 0.5), before + 100 <= config.youtubeDailyQuota * 0.5, 'a search is allowed while the day is under half of the budget');
+    youtube.spend(Math.ceil(config.youtubeDailyQuota * 0.6) - before);
+    assert.equal(youtube.canSpend(100, 0.5), false, 'past half of the day the searches stop');
+    assert.equal(youtube.canSpend(2, 0.7), true, 'but the way out of a failing feed still has room until 70%');
+    youtube.spend(Math.ceil(config.youtubeDailyQuota * 0.15));
+    assert.equal(youtube.canSpend(2, 0.7), false, 'and past 70% it stops too');
+    assert.equal(youtube.canSpend(1), true, 'the live check keeps its room until the budget is gone');
+    youtube.spend(-(youtube.quotaUsed() - before)); // back to where the day was
+  }
+
   // --- Animals: a picture for each slot of time, the same for everybody, at the pace of the account; several services each, the next one when one is down ---
   {
     const realFetch = globalThis.fetch;

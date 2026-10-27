@@ -195,6 +195,8 @@ module.exports = {
   spotifyClientId: process.env.SPOTIFY_CLIENT_ID || null, // the app of the bot in developer.spotify.com, for the Spotify feeds (artists and podcasts)
   spotifyClientSecret: process.env.SPOTIFY_CLIENT_SECRET || null,
   youtubeApiKey: process.env.YOUTUBE_API_KEY || null,
+  // The units the YouTube key can spend in a day (10,000 unless Google gave the project more). The feeds keep inside it: see src/feeds/providers/youtube.js.
+  youtubeDailyQuota: Math.max(1000, Number(process.env.YOUTUBE_DAILY_QUOTA) || 10_000),
   tmdbApiKey: process.env.TMDB_API_KEY || null, // a v3 key, or the v4 read access token
   // Optional: dedicated domain for ticket transcript links. Falls back to VERIFY_BASE_URL —
   // both point at the same Express process/port, this just lets it have its own hostname.

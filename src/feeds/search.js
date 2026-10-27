@@ -29,8 +29,9 @@ async function searchYoutube(query) {
   if (youtube.parseChannel(query) && (/^@/.test(query) || /youtube\.com|^UC[\w-]{22}$/.test(query))) return searchExact('youtube', query);
   const today = new Date().toISOString().slice(0, 10);
   if (youtubeDay.day !== today) { youtubeDay.day = today; youtubeDay.used = 0; }
-  if (youtubeDay.used >= YOUTUBE_SEARCHES_A_DAY) throw new IntegrationError('rateLimited');
+  if (youtubeDay.used >= YOUTUBE_SEARCHES_A_DAY || !youtube.canSpend(100, 0.5)) throw new IntegrationError('rateLimited'); // a search is 100 units: they stop at half of the day
   youtubeDay.used += 1;
+  youtube.spend(100);
   const url = new URL('https://www.googleapis.com/youtube/v3/search');
   for (const [key, value] of Object.entries({ part: 'snippet', type: 'channel', q: query, maxResults: 6, key: config.youtubeApiKey })) url.searchParams.set(key, String(value));
   const body = await fetchJsonBody(url.toString());
