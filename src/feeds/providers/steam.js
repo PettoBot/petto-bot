@@ -1,6 +1,7 @@
 // Steam: the news of a game (its announcements). Public API, no key.
 const { fetchJsonBody } = require('../http');
 const { IntegrationError } = require('../../utils/integrations');
+const { t } = require('../../i18n');
 const { clip } = require('../text');
 
 /** The app id from a number or a link to the store page (`store.steampowered.com/app/730/...`). */
@@ -37,4 +38,21 @@ const toItem = (account, entry) => ({
   author: account.name, authorUrl: account.url, publishedAt: entry.published, extra: entry.feed && entry.feed !== 'Community Announcements' ? entry.feed : '',
 });
 
-module.exports = { parseApp, resolveApp, fetchNews, toItem };
+// --- Lists of the store (not the news of one game): `store:new` (new releases), `store:top` (top sellers) and `store:soon` (coming soon).
+const STORE_LISTS = { new: { key: 'new_releases' }, top: { key: 'top_sellers' }, soon: { key: 'coming_soon' } };
+
+/** `store:new` and the like (what the search gives), or null. */
+const parseStore = (input) => { const kind = /^store:([a-z]+)$/.exec(String(input ?? '').trim().toLowerCase())?.[1]; return kind in STORE_LISTS ? kind : null; };
+
+const storeAccount = (kind, lang) => ({ id: `store:${kind}`, name: t(lang, `feeds.list.steam.${kind}`), avatar: null, url: 'https://store.steampowered.com/' });
+
+/** The first 10 games of a list of the store; the ones that were not there before are the news (the engine remembers what it posted). */
+async function fetchStoreList(kind, now = Date.now()) {
+  const body = await fetchJsonBody('https://store.steampowered.com/api/featuredcategories?cc=us&l=english');
+  return (body?.[STORE_LISTS[kind].key]?.items ?? []).filter((app) => app?.id && app.name).slice(0, 10).map((app, index) => ({
+    platform: 'steam', type: 'post', id: String(app.id), title: String(app.name).slice(0, 200), url: `https://store.steampowered.com/app/${app.id}`, description: '',
+    image: /^https:\/\//.test(app.header_image ?? '') ? app.header_image : null, avatar: null, author: '', authorUrl: null, publishedAt: now, extra: kind === 'top' ? `TOP ${index + 1}` : '',
+  }));
+}
+
+module.exports = { parseApp, resolveApp, fetchNews, toItem, STORE_LISTS, parseStore, storeAccount, fetchStoreList };

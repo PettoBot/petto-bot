@@ -185,7 +185,7 @@ const allText = (message) => JSON.stringify(json(message.components));
     const schedule = require('../src/feeds/schedule');
     assert.deepEqual(['', 'daily', '1d', '24h', '1440', 'https://www.wikipedia.org'].map(schedule.parseMinutes), [1440, 1440, 1440, 1440, 1440, 1440], 'nothing, or the old page of the platform, is once a day');
     assert.deepEqual(['15', '15m', '30 min', '2h', 'every:45'].map(schedule.parseMinutes), [15, 15, 30, 120, 45]);
-    assert.deepEqual(['5', '14', '1441', '48h'].map(schedule.parseMinutes), [null, null, null, null], 'less than 15 minutes (spam) or more than a day is refused');
+    assert.deepEqual(['4', '1441', '48h'].map(schedule.parseMinutes), [null, null, null], 'less than 5 minutes (spam) or more than a day is refused');
     assert.deepEqual([schedule.accountIdFor('pokemon', 1440), schedule.accountIdFor('chess', 1440), schedule.accountIdFor('wikipedia', 1440), schedule.accountIdFor('pokemon', 15)], ['daily', 'puzzle', 'featured', 'every:15']);
     assert.deepEqual(['daily', 'featured', 'every:15'].map(schedule.minutesOf), [1440, 1440, 15]);
     const realFetch = globalThis.fetch;
@@ -204,7 +204,7 @@ const allText = (message) => JSON.stringify(json(message.components));
     for (const platform of ['wikipedia', 'chess', 'pokemon']) {
       const quarter = await PROVIDERS[platform].resolve('15m');
       assert.equal(quarter.id, 'every:15');
-      await assert.rejects(PROVIDERS[platform].resolve('3'), (error) => error.kind === 'badInput', `${platform}: a pace under 15 minutes is refused`);
+      await assert.rejects(PROVIDERS[platform].resolve('3'), (error) => error.kind === 'badInput', `${platform}: a pace under 5 minutes is refused`);
       const accounts = [{ id: 'every:15', name: 'x', url: null }, { id: 'every:60', name: 'x', url: null }];
       const results = await PROVIDERS[platform].poll(accounts, new Map(), { now: when, lang: 'en' });
       const a = results.get('every:15').items[0];
@@ -320,6 +320,127 @@ const allText = (message) => JSON.stringify(json(message.components));
     globalThis.fetch = realFetch;
   }
 
+  // --- Music beyond one artist: playlists, charts, the new albums of a country, and the link of a song or an album ----------------------------------------
+  {
+    config.spotifyClientId = 'id';
+    config.spotifyClientSecret = 'secret';
+    const day = 86_400_000;
+    const now = Date.now();
+    const realFetch = globalThis.fetch;
+    const asked = [];
+    const deezerTrack = (id, title, added) => ({ id, title, title_short: title, link: `https://www.deezer.com/track/${id}`, time_add: Math.floor((now - added * day) / 1000), artist: { id: 7, name: 'Singer', link: 'https://www.deezer.com/artist/7' }, album: { cover_xl: `https://cdn.dz/${id}.jpg` } });
+    globalThis.fetch = async (url, options = {}) => {
+      const u = String(url);
+      asked.push(u);
+      if (u === 'https://api.deezer.com/playlist/55') return new Response(JSON.stringify({ id: 55, title: 'My list', public: true, picture_xl: 'https://cdn.dz/pl.jpg', link: 'https://www.deezer.com/playlist/55' }), { status: 200 });
+      if (u === 'https://api.deezer.com/playlist/55/tracks?limit=1') return new Response(JSON.stringify({ data: [], total: 3 }), { status: 200 });
+      if (u.startsWith('https://api.deezer.com/playlist/55/tracks?index=0&limit=30')) return new Response(JSON.stringify({ data: [deezerTrack(1, 'Old song', 90), deezerTrack(2, 'Newer song', 1), deezerTrack(3, 'Mid song', 2)] }), { status: 200 });
+      if (u === 'https://api.deezer.com/genre') return new Response(JSON.stringify({ data: [{ id: 0, name: 'All' }, { id: 152, name: 'Rock', picture_xl: 'https://cdn.dz/rock.jpg' }] }), { status: 200 });
+      if (u.startsWith('https://api.deezer.com/chart/152/tracks')) return new Response(JSON.stringify({ data: [{ ...deezerTrack(9, 'On top', 0), position: 1 }, { ...deezerTrack(8, 'Second', 0), position: 2 }] }), { status: 200 });
+      if (u.startsWith('https://api.deezer.com/search/playlist')) return new Response(JSON.stringify({ data: [{ id: 55, title: 'My list', public: true, nb_tracks: 3, picture_medium: 'https://cdn.dz/pl.jpg', link: 'https://www.deezer.com/playlist/55' }, { id: 56, title: 'Private', public: false }] }), { status: 200 });
+      if (u.startsWith('https://api.deezer.com/search/artist')) return new Response(JSON.stringify({ data: [{ id: 7, name: 'Singer', nb_fan: 2500, picture_medium: 'https://cdn.dz/s.jpg', link: 'https://www.deezer.com/artist/7' }] }), { status: 200 });
+      if (u === 'https://api.deezer.com/album/12') return new Response(JSON.stringify({ id: 12, artist: { id: 7 } }), { status: 200 });
+      if (u === 'https://api.deezer.com/artist/7') return new Response(JSON.stringify({ id: 7, name: 'Singer', picture_xl: 'https://cdn.dz/s.jpg', link: 'https://www.deezer.com/artist/7' }), { status: 200 });
+      if (u.startsWith('https://rss.marketingtools.apple.com/api/v2/co/music/most-played/10/songs.json')) return new Response(JSON.stringify({ feed: { results: [{ id: '501', name: 'Hit', artistName: 'Star', artistUrl: 'https://music.apple.com/co/artist/star/1', url: 'https://music.apple.com/co/album/hit/500?i=501', artworkUrl100: 'https://is1.mzstatic.com/i/100x100bb.jpg' }] } }), { status: 200 });
+      if (u.startsWith('https://itunes.apple.com/lookup?id=777')) return new Response(JSON.stringify({ results: [{ wrapperType: 'collection', collectionId: 777, artistId: 5468295 }] }), { status: 200 });
+      if (u.startsWith('https://itunes.apple.com/lookup?id=5468295')) return new Response(JSON.stringify({ results: [{ wrapperType: 'artist', artistId: 5468295, artistName: 'Apple Artist', artistLinkUrl: 'https://music.apple.com/us/artist/a/5468295' }, { wrapperType: 'collection', collectionId: 1, artworkUrl100: 'https://is1.mzstatic.com/i/100x100bb.jpg' }] }), { status: 200 });
+      if (u === 'https://accounts.spotify.com/api/token') return new Response(JSON.stringify({ access_token: 'sp-token', expires_in: 3600 }), { status: 200 });
+      if (u.startsWith('https://api.spotify.com/v1/playlists/PPPPPPPPPPPPPPPPPPPPPP/tracks?limit=1')) return new Response(JSON.stringify({ total: 2 }), { status: 200 });
+      if (u.startsWith('https://api.spotify.com/v1/playlists/PPPPPPPPPPPPPPPPPPPPPP/tracks?offset=0')) return new Response(JSON.stringify({ items: [
+        { added_at: new Date(now - 40 * day).toISOString(), track: { id: 't1', name: 'Older', type: 'track', artists: [{ name: 'A' }], album: { images: [{ url: 'https://i.scdn.co/1.jpg' }] } } },
+        { added_at: new Date(now - day).toISOString(), track: { id: 't2', name: 'Fresh track', type: 'track', external_urls: { spotify: 'https://open.spotify.com/track/t2' }, artists: [{ name: 'B', external_urls: { spotify: 'https://open.spotify.com/artist/b' } }], album: { images: [{ url: 'https://i.scdn.co/2.jpg' }] } } },
+        { added_at: new Date(now - day).toISOString(), track: { id: 'e1', name: 'An episode', type: 'episode' } },
+      ] }), { status: 200 });
+      if (u.startsWith('https://api.spotify.com/v1/playlists/PPPPPPPPPPPPPPPPPPPPPP?')) return new Response(JSON.stringify({ name: 'Spotify list', images: [{ url: 'https://i.scdn.co/pl.jpg' }], external_urls: { spotify: 'https://open.spotify.com/playlist/PPPPPPPPPPPPPPPPPPPPPP' } }), { status: 200 });
+      if (u.startsWith('https://api.spotify.com/v1/browse/new-releases?country=CO')) return new Response(JSON.stringify({ albums: { items: [{ id: 'n1', name: 'Fresh', album_type: 'album', release_date: new Date(now - day).toISOString().slice(0, 10), artists: [{ name: 'Z', external_urls: { spotify: 'https://open.spotify.com/artist/z' } }], images: [{ url: 'https://i.scdn.co/n.jpg' }], external_urls: { spotify: 'https://open.spotify.com/album/n1' } }, { id: 'n2', name: 'Compilation', album_type: 'compilation', release_date: new Date(now - day).toISOString().slice(0, 10), artists: [] }] } }), { status: 200 });
+      if (u.startsWith('https://api.spotify.com/v1/albums/AAAAAAAAAAAAAAAAAAAAAA')) return new Response(JSON.stringify({ artists: [{ id: 'ZZZZZZZZZZZZZZZZZZZZZZ' }] }), { status: 200 });
+      if (u.startsWith('https://api.spotify.com/v1/artists/ZZZZZZZZZZZZZZZZZZZZZZ')) return new Response(JSON.stringify({ name: 'Z', images: [], external_urls: { spotify: 'https://open.spotify.com/artist/z' } }), { status: 200 });
+      return new Response('{}', { status: 404 });
+    };
+
+    // Deezer: a playlist gives its newest songs (the list is read from its end), a chart gives the ones on top, a song or an album gives its artist.
+    const list = await PROVIDERS.deezer.resolve('https://www.deezer.com/en/playlist/55');
+    assert.deepEqual([list.id, list.name], ['playlist:55', 'My list']);
+    const songs = (await PROVIDERS.deezer.poll([list], new Map(), { now })).get('playlist:55').items;
+    assert.deepEqual(songs.map((item) => item.title), ['Newer song', 'Mid song'], 'newest first, and a song added 90 days ago is not news');
+    assert.deepEqual([songs[0].type, songs[0].extra, songs[0].author], ['release', 'My list', 'Singer']);
+    const chart = await PROVIDERS.deezer.resolve('chart:152:tracks');
+    assert.deepEqual([chart.id, chart.name], ['chart:152:tracks', 'Top 10 · Rock']);
+    const top = (await PROVIDERS.deezer.poll([chart], new Map(), { now })).get('chart:152:tracks').items;
+    assert.deepEqual(top.map((item) => [item.title, item.extra]), [['On top', 'TOP 1'], ['Second', 'TOP 2']]);
+    assert.equal((await PROVIDERS.deezer.resolve('https://www.deezer.com/album/12')).id, '7', 'the link of an album follows its artist');
+    const baseline = await PROVIDERS.deezer.baselineItems(chart);
+    assert.deepEqual(baseline.map((item) => item.id), ['9', '8'], 'what is on top when the feed is made is not news');
+    const { searchAccounts: search, forgetSearches: forgetAll } = require('../src/feeds/search');
+    forgetAll();
+    assert.deepEqual((await search('deezer', 'top rock')).map((entry) => entry.value), ['chart:152:tracks', 'chart:152:albums'], 'typing top and a genre offers its charts');
+    forgetAll();
+    assert.deepEqual((await search('deezer', 'singer')).map((entry) => entry.value), ['7', 'playlist:55'], 'a search finds artists and the public playlists (not the private ones)');
+
+    // Apple Music: the chart of a country, the artist of an album, and a playlist is not possible.
+    forgetAll();
+    assert.deepEqual((await search('applemusic', 'top colombia')).map((entry) => entry.value), ['chart:co:songs', 'chart:co:albums']);
+    const apple = await PROVIDERS.applemusic.resolve('chart:co:songs');
+    const hits = (await PROVIDERS.applemusic.poll([apple], new Map(), { now })).get('chart:co:songs').items;
+    assert.deepEqual([hits[0].title, hits[0].extra, hits[0].author], ['Hit', 'TOP 1', 'Star']);
+    assert.equal((await PROVIDERS.applemusic.resolve('https://music.apple.com/us/album/name/777')).id, '5468295', 'the link of an album follows its artist');
+    await assert.rejects(PROVIDERS.applemusic.resolve('https://music.apple.com/us/playlist/todays-hits/pl.f4d106fed2bd41149aaacabb233eb5eb'), (error) => error.kind === 'unsupported');
+
+    // Spotify: a playlist, the new albums of a country, and the artist of an album or a song.
+    const spotifyList = await PROVIDERS.spotify.resolve('https://open.spotify.com/playlist/PPPPPPPPPPPPPPPPPPPPPP?si=1');
+    assert.deepEqual([spotifyList.id, spotifyList.name], ['playlist:PPPPPPPPPPPPPPPPPPPPPP', 'Spotify list']);
+    const tracks = (await PROVIDERS.spotify.poll([spotifyList], new Map(), { now })).get(spotifyList.id).items;
+    assert.deepEqual(tracks.map((item) => [item.id, item.extra]), [['t2', 'Spotify list']], 'only the song added this week; the old one and the episode are not news');
+    const fresh = await PROVIDERS.spotify.resolve('new:CO');
+    assert.equal(fresh.id, 'new:CO');
+    const albums = (await PROVIDERS.spotify.poll([fresh], new Map(), { now })).get('new:CO').items;
+    assert.deepEqual(albums.map((item) => [item.id, item.author, item.extra]), [['n1', 'Z', 'ALBUM']], 'the new albums of the country, without the compilations');
+    assert.equal((await PROVIDERS.spotify.resolve('https://open.spotify.com/album/AAAAAAAAAAAAAAAAAAAAAA')).id, 'artist:ZZZZZZZZZZZZZZZZZZZZZZ', 'the link of an album follows its artist');
+    forgetAll();
+    assert.deepEqual((await search('spotify', 'new colombia')).map((entry) => entry.value), ['new:CO']);
+
+    const musicHelpers = require('../src/feeds/providers/music');
+    assert.deepEqual(['top', 'Top Rock', 'charts colombia', 'hello'].map(musicHelpers.chartWords), ['', 'Rock', 'colombia', null]);
+    assert.deepEqual(['colombia', 'CO', 'United States', 'EEUU', 'atlantis'].map(musicHelpers.countryOf), ['co', 'co', 'us', 'us', null]);
+    config.spotifyClientId = null;
+    config.spotifyClientSecret = null;
+    globalThis.fetch = realFetch;
+  }
+
+  // --- Lists of what is new: the newest projects of Modrinth and the lists of the Steam store -------------------------------------------------------------
+  {
+    const now = Date.now();
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      const u = String(url);
+      if (u.startsWith('https://api.modrinth.com/v2/search?limit=10&index=newest')) {
+        assert.ok(decodeURIComponent(u).includes('project_type:shader'), 'the kind is asked for');
+        return new Response(JSON.stringify({ hits: [{ project_id: 'sh1', slug: 'glow', title: 'Glow', description: 'Light it up', project_type: 'shader', icon_url: 'https://cdn.modrinth.com/i.webp', author: 'someone', date_created: new Date(now - 3600_000).toISOString(), versions: ['1.20', '1.21'], gallery: ['https://cdn.modrinth.com/g.png'] }] }), { status: 200 });
+      }
+      if (u.startsWith('https://store.steampowered.com/api/featuredcategories')) return new Response(JSON.stringify({ top_sellers: { items: [{ id: 10, name: 'Big Game', header_image: 'https://cdn.steam/h.jpg' }, { id: 11, name: 'Other' }] }, new_releases: { items: [{ id: 20, name: 'Fresh' }] } }), { status: 200 });
+      return new Response('{}', { status: 404 });
+    };
+    const shaders = await PROVIDERS.modrinth.resolve('new:shader');
+    assert.deepEqual([shaders.id, shaders.name], ['new:shader', 'New shaders']);
+    const projects = (await PROVIDERS.modrinth.poll([shaders], new Map(), { now })).get('new:shader').items;
+    assert.deepEqual([projects.length, projects[0].title, projects[0].type, projects[0].extra, projects[0].author], [1, 'Glow', 'post', '1.21', 'someone']);
+    assert.deepEqual((await PROVIDERS.modrinth.baselineItems(shaders)).map((item) => item.id), ['sh1']);
+    const top = await PROVIDERS.steam.resolve('store:top');
+    assert.equal(top.name, 'Steam · Top sellers');
+    const sellers = (await PROVIDERS.steam.poll([top], new Map(), { now })).get('store:top').items;
+    assert.deepEqual(sellers.map((item) => [item.title, item.extra]), [['Big Game', 'TOP 1'], ['Other', 'TOP 2']]);
+    const { searchAccounts: search, forgetSearches: forgetAll } = require('../src/feeds/search');
+    forgetAll();
+    assert.deepEqual((await search('modrinth', 'new shaders')).map((entry) => entry.value), ['new:shader']);
+    forgetAll();
+    assert.deepEqual((await search('modrinth', 'nuevos')).length, 6, 'new alone offers every kind');
+    forgetAll();
+    assert.deepEqual((await search('steam', 'top')).map((entry) => entry.value), ['store:top']);
+    forgetAll();
+    assert.deepEqual((await search('steam', 'new')).map((entry) => entry.value), ['store:new', 'store:top', 'store:soon'], 'new alone offers the three lists');
+    globalThis.fetch = realFetch;
+  }
+
   // --- A release is headed by a picture drawn for it (cover + title), the rest of the kinds are not -----------------------------------------------------
   {
     const { heroFor } = require('../src/feeds/hero');
@@ -333,29 +454,119 @@ const allText = (message) => JSON.stringify(json(message.components));
     assert.ok(plain.includes('https://cdn.dz/a.jpg') && !plain.includes('attachment://'), 'without the picture it is the ordinary card with the cover');
   }
 
-  // --- Cats and foxes: a picture for each slot of time, the same for everybody, at the pace of the account ----------------------------------------------
+  // --- The YouTube key has a daily budget: the search and the way out of a failing feed stop early so the live check never runs dry ---------------------------
+  {
+    const youtube = require('../src/feeds/providers/youtube');
+    const before = youtube.quotaUsed();
+    assert.equal(youtube.canSpend(100, 0.5), before + 100 <= config.youtubeDailyQuota * 0.5, 'a search is allowed while the day is under half of the budget');
+    youtube.spend(Math.ceil(config.youtubeDailyQuota * 0.6) - before);
+    assert.equal(youtube.canSpend(100, 0.5), false, 'past half of the day the searches stop');
+    assert.equal(youtube.canSpend(2, 0.7), true, 'but the way out of a failing feed still has room until 70%');
+    youtube.spend(Math.ceil(config.youtubeDailyQuota * 0.15));
+    assert.equal(youtube.canSpend(2, 0.7), false, 'and past 70% it stops too');
+    assert.equal(youtube.canSpend(1), true, 'the live check keeps its room until the budget is gone');
+    youtube.spend(-(youtube.quotaUsed() - before)); // back to where the day was
+  }
+
+  // --- Animals: a picture for each slot of time, the same for everybody, at the pace of the account; several services each, the next one when one is down ---
+  {
+    const realFetch = globalThis.fetch;
+    const asked = [];
+    const down = new Set(); // hosts that do not answer
+    const ok = (body) => new Response(JSON.stringify(body), { status: 200 });
+    globalThis.fetch = async (url) => {
+      const u = String(url);
+      asked.push(u);
+      const host = new URL(u).host;
+      if (down.has(host)) return new Response('{}', { status: 500 });
+      if (host === 'api.thecatapi.com') return ok([{ id: 'c1', url: 'https://cdn2.thecatapi.com/images/c1.jpg' }]);
+      if (host === 'cataas.com') return ok({ url: 'https://cataas.com/cat/c2?position=center' });
+      if (host === 'dog.ceo') return ok({ message: 'https://images.dog.ceo/breeds/chow/n1.jpg', status: 'success' });
+      if (host === 'api.thedogapi.com') return ok([{ url: 'https://cdn2.thedogapi.com/images/d2.jpg' }]);
+      if (host === 'randomfox.ca') return ok({ image: 'https://randomfox.ca/images/7.jpg', link: 'https://randomfox.ca/?i=7' });
+      if (host === 'api.sefinek.net') return ok({ message: `https://cdn.sefinek.net/images/animals/${u.split('/').pop()}/x.jpg` });
+      if (host === 'random-d.uk') return ok({ url: 'http://random-d.uk/api/483.JPG' });
+      if (host === 'api.capy.lol') return ok({ data: { url: 'http://api.capy.lol/v1/capybara/45' } });
+      if (host === 'api.bunnies.io') return ok({ media: { poster: 'https://bunnies.media/poster/76.png' } });
+      return new Response('{}', { status: 404 });
+    };
+    const when = Date.UTC(2026, 9, 27, 10, 7, 30);
+    const titles = { cat: ['Un gatito para ti', 'A cat for you'], dog: ['Un perrito para ti', 'A dog for you'], fox: ['Un zorrito para ti', 'A fox for you'], bird: ['Un pajarito para ti', 'A bird for you'], duck: ['Un patito para ti', 'A duck for you'], capybara: ['Una capibara para ti', 'A capybara for you'], bunny: ['Un conejito para ti', 'A bunny for you'] };
+    for (const [animal, [es]] of Object.entries(titles)) {
+      const account = await PROVIDERS[animal].resolve('30m');
+      assert.equal(account.id, 'every:30');
+      assert.equal((await PROVIDERS[animal].resolve('')).id, 'daily', 'nothing is once a day');
+      await assert.rejects(PROVIDERS[animal].resolve('4m'), (error) => error.kind === 'badInput');
+      assert.equal((await PROVIDERS[animal].resolve('5m')).id, 'every:5', 'five minutes is the shortest pace');
+      const before = asked.length;
+      const first = (await PROVIDERS[animal].poll([account, { id: 'every:30' }], new Map(), { now: when, lang: 'es' })).get('every:30').items[0];
+      assert.deepEqual([first.type, first.title, first.platform], ['photo', es, animal]);
+      assert.ok(first.image.startsWith('https://'), 'a service that answers with http is used over https');
+      assert.ok(!first.author && !first.authorUrl && !account.url, 'the notice does not say where the picture comes from');
+      const again = (await PROVIDERS[animal].poll([account], new Map(), { now: when + 60_000, lang: 'en' })).get('every:30').items[0];
+      assert.equal(again.id, first.id, 'a minute later it is the same picture');
+      assert.equal(asked.length - before, 1, 'the service is asked once for each slot');
+    }
+    // When the service of a slot is down the next one answers.
+    down.add('api.thecatapi.com'); down.add('cataas.com');
+    const catAccount = await PROVIDERS.cat.resolve('15m');
+    const viaSefinek = (await PROVIDERS.cat.poll([catAccount], new Map(), { now: when + 7 * 15 * 60_000, lang: 'en' })).get('every:15').items[0];
+    assert.ok(viaSefinek.image.includes('sefinek'), 'the third service of cats answers when the other two are down');
+    down.clear();
+    // `animals` is any of them, one for each slot, the same for everybody.
+    const mixed = await PROVIDERS.animals.resolve('15m');
+    assert.equal(mixed.id, 'every:15');
+    const kinds = new Set();
+    for (let slot = 0; slot < 14; slot += 1) {
+      const item = (await PROVIDERS.animals.poll([mixed], new Map(), { now: when + slot * 15 * 60_000, lang: 'en' })).get('every:15').items[0];
+      kinds.add(item.title);
+      assert.equal(item.platform, 'animals');
+    }
+    assert.deepEqual([...kinds].sort(), Object.values(titles).map(([, en]) => en).sort(), 'every kind of animal comes up');
+    globalThis.fetch = realFetch;
+  }
+
+  // --- Random music: a song of the charts of a random genre for each slot of time, the same for everybody -----------------------------------------------
   {
     const realFetch = globalThis.fetch;
     const asked = [];
     globalThis.fetch = async (url) => {
-      asked.push(String(url));
-      if (String(url).includes('thecatapi')) return new Response(JSON.stringify([{ id: 'c1', url: 'https://cdn2.thecatapi.com/images/c1.jpg' }]), { status: 200 });
-      if (String(url).includes('randomfox')) return new Response(JSON.stringify({ image: 'https://randomfox.ca/images/7.jpg', link: 'https://randomfox.ca/?i=7' }), { status: 200 });
+      const u = String(url);
+      asked.push(u);
+      if (u === 'https://api.deezer.com/genre') return new Response(JSON.stringify({ data: [{ id: 0, name: 'All' }, { id: 152, name: 'Rock' }] }), { status: 200 });
+      const chart = /chart\/(\d+)\/tracks/.exec(u);
+      if (chart) return new Response(JSON.stringify({ data: [1, 2, 3, 4].map((n) => ({ id: Number(chart[1]) * 10 + n, title: `Song ${chart[1]}-${n}`, link: `https://www.deezer.com/track/${n}`, artist: { name: 'Singer', link: 'https://www.deezer.com/artist/7' }, album: { cover_xl: 'https://cdn.dz/c.jpg' } })) }), { status: 200 });
       return new Response('{}', { status: 404 });
     };
     const when = Date.UTC(2026, 9, 27, 10, 7, 30);
-    for (const [animal, es] of [['cat', 'Un gatito para ti'], ['fox', 'Un zorrito para ti']]) {
-      const account = await PROVIDERS[animal].resolve('30m');
-      assert.equal(account.id, 'every:30');
-      assert.equal((await PROVIDERS[animal].resolve('')).id, 'daily', 'nothing is once a day');
-      await assert.rejects(PROVIDERS[animal].resolve('5m'), (error) => error.kind === 'badInput');
-      const first = (await PROVIDERS[animal].poll([account, { id: 'every:30' }], new Map(), { now: when, lang: 'es' })).get('every:30').items[0];
-      assert.deepEqual([first.type, first.title, first.platform], ['photo', es, animal]);
-      assert.ok(first.image.startsWith('https://'));
-      const again = (await PROVIDERS[animal].poll([account], new Map(), { now: when + 60_000, lang: 'en' })).get('every:30').items[0];
-      assert.equal(again.id, first.id, 'a minute later it is the same picture');
-      assert.equal(asked.filter((url) => url.includes(animal === 'cat' ? 'thecatapi' : 'randomfox')).length, 1, 'the service is asked once for each slot');
-    }
+    const account = await PROVIDERS.randommusic.resolve('10m');
+    assert.equal(account.id, 'every:10');
+    await assert.rejects(PROVIDERS.randommusic.resolve('3m'), (error) => error.kind === 'badInput');
+    const song = (await PROVIDERS.randommusic.poll([account], new Map(), { now: when })).get('every:10').items[0];
+    assert.deepEqual([song.type, song.platform, song.author], ['track', 'deezer', 'Singer'], 'a song that opens on Deezer, with its own kind of notice');
+    const before = asked.length;
+    const again = (await PROVIDERS.randommusic.poll([account], new Map(), { now: when + 60_000 })).get('every:10').items[0];
+    assert.equal(again.id, song.id);
+    assert.equal(asked.length, before, 'the same slot is not asked again');
+    const next = (await PROVIDERS.randommusic.poll([account], new Map(), { now: when + 10 * 60_000 })).get('every:10').items[0];
+    assert.notEqual(next.id, song.id, 'the next slot is another song');
+    const songCard = JSON.parse(JSON.stringify(card.buildFeedMessage({ message: '', options: {}, ping_roles: [] }, song, { lang: 'es', hero: { name: 'release.png' } }).components));
+    assert.equal(songCard[0].components.at(-1).components[0].label, 'Escuchar en Deezer');
+    assert.ok(JSON.stringify(songCard).includes('Una canción para ti'), 'and says what it is');
+    globalThis.fetch = realFetch;
+  }
+
+  // --- The names of the lists come in the language of who follows them --------------------------------------------------------------------------------------
+  {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response('{}', { status: 404 });
+    const steam = await PROVIDERS.steam.resolve('store:top', { lang: 'es' });
+    assert.equal(steam.name, 'Steam · Los más vendidos');
+    assert.equal((await PROVIDERS.modrinth.resolve('new:shader', { lang: 'pt-BR' })).name, 'Shaders novos');
+    assert.equal((await PROVIDERS.applemusic.resolve('chart:co:albums', { lang: 'es' })).name, 'Top 10 álbumes · Colombia');
+    assert.equal((await PROVIDERS.applemusic.resolve('chart:co:songs', { lang: 'en' })).name, 'Top 10 · Colombia');
+    config.spotifyClientId = null;
+    assert.equal((await PROVIDERS.spotify.resolve('new:CO', { lang: 'pt-BR' })).name, 'Álbuns novos · Colômbia');
     globalThis.fetch = realFetch;
   }
 
@@ -684,17 +895,19 @@ const allText = (message) => JSON.stringify(json(message.components));
   assert.equal((await service.createFeed(guild, { platform: 'youtube', account: 'one', channelId: CH })).error, 'already');
   assert.equal((await service.createFeed(guild, { platform: 'youtube', account: 'two', channelId: CH })).ok, true);
   assert.equal((await service.createFeed(guild, { platform: 'youtube', account: 'three', channelId: CH })).ok, true);
-  const fourth = await service.createFeed(guild, { platform: 'youtube', account: 'four', channelId: CH });
-  assert.equal(fourth.error, 'limitFree', 'Free follows up to three accounts of a platform');
-  assert.equal(fourth.count, 3);
-  assert.equal(fourth.premium, 25, 'and Premium up to twenty-five');
-  assert.equal(fourth.platform, 'YouTube');
-  // The limit is for each platform: the three of YouTube do not use the room of Reddit.
+  assert.equal((await service.createFeed(guild, { platform: 'youtube', account: 'four', channelId: CH })).ok, true);
+  assert.equal((await service.createFeed(guild, { platform: 'youtube', account: 'five', channelId: CH })).ok, true);
+  const sixth = await service.createFeed(guild, { platform: 'youtube', account: 'six', channelId: CH });
+  assert.equal(sixth.error, 'limitFree', 'Free follows up to five accounts of a platform');
+  assert.equal(sixth.count, 5);
+  assert.equal(sixth.premium, 25, 'and Premium up to twenty-five');
+  assert.equal(sixth.platform, 'YouTube');
+  // The limit is for each platform: the five of YouTube do not use the room of Reddit.
   PROVIDERS.reddit = { ...PROVIDERS.youtube };
   const other = await service.createFeed(guild, { platform: 'reddit', account: 'r/other', channelId: CH });
-  assert.equal(other.ok, true, 'a fourth feed of another platform is fine');
-  assert.equal(await feedsDb.countForGuild(G), 4);
-  assert.equal(await feedsDb.countForGuild(G, 'youtube'), 3);
+  assert.equal(other.ok, true, 'a sixth feed of another platform is fine');
+  assert.equal(await feedsDb.countForGuild(G), 6);
+  assert.equal(await feedsDb.countForGuild(G, 'youtube'), 5);
   assert.equal(await feedsDb.remove(G, other.feed.id), true);
   delete PROVIDERS.reddit;
   // An auto feed: the pace is part of the account, a new pace starts at its next slot, and a pace under 15 minutes is refused.
@@ -704,7 +917,7 @@ const allText = (message) => JSON.stringify(json(message.components));
     assert.equal(auto.feed.account_id, 'every:30');
     const slot = Math.floor(Date.now() / (30 * 60_000));
     assert.ok((await feedsDb.seenAmong([auto.feed.id], [`30:${slot}`])).has(`${auto.feed.id}:30:${slot}`), 'the slot running now is the past: it is marked as seen');
-    assert.equal((await service.createFeed(guild, { platform: 'pokemon', account: '5', channelId: CH })).error, 'badPace');
+    assert.equal((await service.createFeed(guild, { platform: 'pokemon', account: '4', channelId: CH })).error, 'badPace');
     const paced = await service.updateFeed(guild, auto.feed.id, { every: '2h' });
     assert.equal(paced.ok && paced.feed.account_id, 'every:120', 'the pace of a feed can change');
     assert.equal((await service.updateFeed(guild, auto.feed.id, { every: '1' })).error, 'badPace');
@@ -712,9 +925,8 @@ const allText = (message) => JSON.stringify(json(message.components));
     assert.equal(daily.feed.account_id, 'daily', 'once a day is the old account');
     assert.equal(await feedsDb.remove(G, auto.feed.id), true);
   }
-  const [a, b, c] = await rows();
-  await service.updateFeed(guild, b.id, { enabled: false });
-  await service.updateFeed(guild, c.id, { enabled: false });
+  const [a, b, c, d, e] = await rows();
+  for (const extra of [b, c, d, e]) await service.updateFeed(guild, extra.id, { enabled: false });
 
   // What is new is posted, once.
   const at = Date.now();

@@ -3,6 +3,7 @@
 const config = require('../../config');
 const { fetchText, fetchJsonBody } = require('../http');
 const { IntegrationError } = require('../../utils/integrations');
+const logger = require('../../utils/logger');
 
 const FEED = 'https://www.youtube.com/feeds/videos.xml';
 const API = 'https://www.googleapis.com/youtube/v3';
@@ -45,8 +46,32 @@ function parseFeed(xml) {
   }).filter((entry) => entry.videoId);
 }
 
+// The key can spend a budget of units a day (10,000 by default, renewed at midnight of the Pacific time). The live check of the videos (one unit for 50 of them) is what makes
+// every notice possible, so it must never run dry: the things that can wait (the search of the dashboard, the way out when the feed of a channel fails) only use a share of it.
+const quota = { day: '', used: 0, warned: 0 };
+function rollQuota() {
+  const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
+  if (quota.day !== day) { quota.day = day; quota.used = 0; quota.warned = 0; }
+}
+/** Writes down units spent, and says it in the log when the day passes 80% and 95% of the budget. */
+function spend(units) {
+  rollQuota();
+  quota.used += units;
+  const share = quota.used / config.youtubeDailyQuota;
+  const level = share >= 0.95 ? 95 : share >= 0.8 ? 80 : 0;
+  if (level > quota.warned) { quota.warned = level; logger.warn(`The YouTube key has used ${Math.round(share * 100)}% of its daily units (${quota.used} of ${config.youtubeDailyQuota}).`); }
+}
+/** Whether `units` more can be spent and still stay under `share` (0 to 1) of the daily budget. */
+function canSpend(units, share = 1) {
+  rollQuota();
+  return quota.used + units <= config.youtubeDailyQuota * share;
+}
+const quotaUsed = () => { rollQuota(); return quota.used; };
+const UNITS = { '/search': 100 }; // everything else the feeds ask for costs one
+
 async function api(path, params) {
   if (!config.youtubeApiKey) throw new IntegrationError('notConfigured');
+  spend(UNITS[path] ?? 1);
   const url = new URL(`${API}${path}`);
   for (const [key, value] of Object.entries({ ...params, key: config.youtubeApiKey })) url.searchParams.set(key, String(value));
   return fetchJsonBody(url.toString());
@@ -78,13 +103,20 @@ const seconds = (iso) => { const found = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/
  * sometimes answers 404 or 500 for a channel that exists, so this is the way out. A video of a minute or less is taken for a Short (the feed
  * says it by the link; the API does not).
  */
+const lengths = new Map(); // videoId -> seconds
+
 async function fetchChannelFromApi(channelId) {
   if (!CHANNEL_ID.test(channelId)) throw new IntegrationError('notFound');
   const list = await api('/playlistItems', { part: 'snippet', playlistId: `UU${channelId.slice(2)}`, maxResults: 15 });
   const items = (list?.items ?? []).filter((item) => item.snippet?.resourceId?.videoId);
   if (!items.length) return { name: '', entries: [] };
-  const details = await api('/videos', { part: 'contentDetails', id: items.map((item) => item.snippet.resourceId.videoId).join(',') });
-  const length = new Map((details?.items ?? []).map((video) => [video.id, seconds(video.contentDetails?.duration)]));
+  // The length of a video never changes: it is asked once, so the usual pass over a channel costs one unit (the list) and not two.
+  const unknown = items.map((item) => item.snippet.resourceId.videoId).filter((id) => !lengths.has(id));
+  if (unknown.length) {
+    const details = await api('/videos', { part: 'contentDetails', id: unknown.join(',') });
+    for (const video of details?.items ?? []) { if (lengths.size >= 50_000) lengths.delete(lengths.keys().next().value); lengths.set(video.id, seconds(video.contentDetails?.duration)); }
+  }
+  const length = lengths;
   return {
     name: items[0].snippet.channelTitle ?? '',
     entries: items.map((item) => {
@@ -107,6 +139,7 @@ async function fetchChannel(channelId) {
     return { name: tag(xml.split('<entry>')[0], 'title'), entries: parseFeed(xml) };
   } catch (error) {
     if (!(error instanceof IntegrationError) || !config.youtubeApiKey || !['notFound', 'unavailable', 'rateLimited'].includes(error.kind)) throw error;
+    if (!canSpend(2, 0.7)) throw error; // the way out costs a unit or two a channel: it stops at 70% of the day so the live check keeps its room
     try {
       return await fetchChannelFromApi(channelId);
     } catch (second) {
@@ -146,4 +179,4 @@ function toItem(entry, kind, channel = {}) {
   };
 }
 
-module.exports = { parseChannel, parseFeed, fetchChannel, fetchChannelFromApi, resolveChannel, liveStates, toItem, CHANNEL_ID };
+module.exports = { spend, canSpend, quotaUsed, parseChannel, parseFeed, fetchChannel, fetchChannelFromApi, resolveChannel, liveStates, toItem, CHANNEL_ID };

@@ -25,7 +25,14 @@ const PLATFORM = {
   letterboxd: '<:pe_f_letterborxd:1564472136838545628>',
   epic: '<:pe_f_epic:1564472096141222039>',
   cat: '🐱', // until `pe_f_cat` is uploaded
+  dog: '🐶', // until `pe_f_dog` is uploaded
   fox: '🦊', // until `pe_f_fox` is uploaded
+  bird: '🐦', // until `pe_f_bird` is uploaded
+  duck: '🦆', // until `pe_f_duck` is uploaded
+  capybara: '🦫', // until `pe_f_capybara` is uploaded
+  bunny: '🐰', // until `pe_f_bunny` is uploaded
+  animals: '🐾', // until `pe_f_animals` is uploaded
+  randommusic: '🎲', // until `pe_f_randommusic` is uploaded
 };
 
 const TYPE = {
@@ -40,6 +47,7 @@ const TYPE = {
   release: '<:pe_f_release:1564471999835668572>',
   game: '<:pe_f_game:1564469175487959050>',
   photo: '📷', // until `pe_f_photo` is uploaded
+  track: '🎵', // until `pe_f_track` is uploaded
   daily: '<:pe_f_dayli:1564471998443430008>',
   ended: '⚫',
 };

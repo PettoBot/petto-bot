@@ -56,14 +56,14 @@ async function createFeed(guild, input) {
   if (problem) return { ok: false, error: problem };
 
   const { limit, premium, premiumLimit } = await guildLimit(guild.id, 'feeds');
-  // The limit is for each platform: 3 accounts of YouTube, 3 of Twitch... (Premium: 10 of each).
+  // The limit is for each platform: 5 accounts of YouTube, 5 of Twitch... (Premium: 25 of each).
   if ((await feedsDb.countForGuild(guild.id, platform)) >= limit) return { ok: false, error: premium ? 'limit' : 'limitFree', count: limit, premium: premiumLimit, platform: PLATFORMS[platform].name };
 
   let account;
   try {
-    account = await PROVIDERS[platform].resolve(String(input.account ?? '').trim());
+    account = await PROVIDERS[platform].resolve(String(input.account ?? '').trim(), { lang: input.lang });
   } catch (error) {
-    if (error instanceof IntegrationError) return { ok: false, error: error.kind === 'badInput' && PROVIDERS[platform].noAccount ? 'badPace' : error.kind === 'notFound' || error.kind === 'badInput' || error.kind === 'notConfigured' ? error.kind : 'unavailable' };
+    if (error instanceof IntegrationError) return { ok: false, error: error.kind === 'badInput' && PROVIDERS[platform].noAccount ? 'badPace' : error.kind === 'notFound' || error.kind === 'badInput' || error.kind === 'notConfigured' || error.kind === 'unsupported' ? error.kind : 'unavailable' };
     throw error;
   }
 

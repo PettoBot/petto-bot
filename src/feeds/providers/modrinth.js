@@ -1,6 +1,7 @@
 // Modrinth: the versions of a project (a mod, plugin, modpack, resource pack or shader). Public API, no key.
 const { fetchJsonBody } = require('../http');
 const { IntegrationError } = require('../../utils/integrations');
+const { t } = require('../../i18n');
 
 const API = 'https://api.modrinth.com/v2';
 const SLUG = /^[\w!@$()`.+,"\-']{3,64}$/;
@@ -54,4 +55,24 @@ function toItem(project, version) {
   };
 }
 
-module.exports = { parseProject, resolveProject, fetchVersions, toItem };
+// --- The newest projects of a kind (not the versions of one project): `new:mod`, `new:modpack`, `new:resourcepack`, `new:shader`, `new:plugin`, `new:datapack`.
+const NEW_KINDS = { mod: 1, modpack: 1, resourcepack: 1, shader: 1, plugin: 1, datapack: 1 };
+
+/** `new:mod` and the like (what the search gives), or null. */
+const parseNew = (input) => { const kind = /^new:([a-z]+)$/.exec(String(input ?? '').trim().toLowerCase())?.[1]; return kind in NEW_KINDS ? kind : null; };
+
+/** The account of the new projects of a kind. */
+const newAccount = (kind, lang) => ({ id: `new:${kind}`, name: t(lang, `feeds.list.modrinth.${kind}`), avatar: null, url: `https://modrinth.com/discover/${kind}s` });
+
+/** The 10 newest projects of a kind, newest first. */
+async function fetchNewProjects(kind) {
+  const facets = encodeURIComponent(JSON.stringify([[`project_type:${kind}`]]));
+  const body = await fetchJsonBody(`${API}/search?limit=10&index=newest&facets=${facets}`);
+  return (body?.hits ?? []).map((hit) => ({
+    platform: 'modrinth', type: 'post', id: hit.project_id, title: String(hit.title ?? hit.slug).slice(0, 200), url: `https://modrinth.com/${hit.project_type}/${hit.slug}`, description: String(hit.description ?? '').slice(0, 300),
+    image: /^https:\/\//.test(hit.featured_gallery ?? '') ? hit.featured_gallery : (hit.gallery ?? []).find((url) => /^https:\/\//.test(url)) ?? null, avatar: hit.icon_url ?? null, author: hit.author ?? '', authorUrl: hit.author ? `https://modrinth.com/user/${hit.author}` : null,
+    publishedAt: Date.parse(hit.date_created) || null, extra: (hit.versions ?? []).at(-1) ?? '',
+  }));
+}
+
+module.exports = { parseProject, resolveProject, fetchVersions, toItem, NEW_KINDS, parseNew, newAccount, fetchNewProjects };

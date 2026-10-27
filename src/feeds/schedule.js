@@ -1,9 +1,9 @@
-// The auto feeds (the Pokémon, an article of Wikipedia, a puzzle of Chess.com, a cat or a fox) have nothing to wait for: they post at a pace the server chooses, from once a
-// day to every 15 minutes. The pace is part of the account (`every:15`), so the engine treats each pace as one account and asks for its content once for every
+// The auto feeds (the Pokémon, an article of Wikipedia, a puzzle of Chess.com, a cat, a dog or a fox) have nothing to wait for: they post at a pace the server chooses, from once a
+// day to every 5 minutes. The pace is part of the account (`every:15`), so the engine treats each pace as one account and asks for its content once for every
 // server that uses it. The slots are counted from the clock (the Unix epoch), so every server that picked 15 minutes gets the same notice at the same time.
-const MIN_MINUTES = 15; // less would only be spam, and the public APIs behind these feeds are for fair use
+const MIN_MINUTES = 5; // less would only flood a channel; the content of a slot is asked once for every server, so a short pace costs the public APIs nothing extra
 const DAY_MINUTES = 1440;
-const LEGACY = { pokemon: 'daily', wikipedia: 'featured', chess: 'puzzle', cat: 'daily', fox: 'daily' }; // the account of the once-a-day feeds made before there was a pace to pick
+const LEGACY = { pokemon: 'daily', wikipedia: 'featured', chess: 'puzzle', cat: 'daily', dog: 'daily', fox: 'daily', bird: 'daily', duck: 'daily', capybara: 'daily', bunny: 'daily', animals: 'daily', randommusic: 'daily' }; // the account of the once-a-day feeds made before there was a pace to pick
 const MINUTE_MS = 60_000;
 
 /** The pace a person wrote (`15`, `30m`, `2h`, `1d`, `every:45`, or nothing for once a day) in minutes, or null when it is out of range. */

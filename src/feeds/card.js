@@ -79,7 +79,7 @@ function buildFeedMessage(feed, item, { lang, test = false, hero = null } = {}) 
     card.addTextDisplayComponents(new TextDisplayBuilder().setContent([`-# ${meta}`, item.description ? `-# ${plainText(item.description, 200)}` : ''].filter(Boolean).join('\n')));
     if (url) {
       card.addActionRowComponents(new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(url).setEmoji(emojis.forButton(emojis.PLATFORM[item.platform] ?? '🎵')).setLabel(clip(t(lang, 'feeds.button.release', { platform: platform.name }), 80)),
+        new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(url).setEmoji(emojis.forButton(emojis.PLATFORM[item.platform] ?? '🎵')).setLabel(clip(t(lang, item.type === 'track' ? 'feeds.button.track' : 'feeds.button.release', { platform: platform.name }), 80)),
       ));
     }
     components.push(card);

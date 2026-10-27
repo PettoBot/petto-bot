@@ -7,9 +7,12 @@ const { PROVIDERS, isProvider } = require('./providers');
 const { IntegrationError, USER_AGENT } = require('../utils/integrations');
 const youtube = require('./providers/youtube');
 const music = require('./providers/music');
+const { t } = require('../i18n');
+const modrinthList = require('./providers/modrinth');
+const steamList = require('./providers/steam');
 
 const MIN_CHARS = 2;
-const MAX_RESULTS = 8;
+const MAX_RESULTS = 10;
 const KEEP_MS = 5 * 60_000;
 const YOUTUBE_KEEP_MS = 6 * 3_600_000;
 const YOUTUBE_SEARCHES_A_DAY = 60; // a search of channels costs 100 units of the 10,000 a day of the key
@@ -26,8 +29,9 @@ async function searchYoutube(query) {
   if (youtube.parseChannel(query) && (/^@/.test(query) || /youtube\.com|^UC[\w-]{22}$/.test(query))) return searchExact('youtube', query);
   const today = new Date().toISOString().slice(0, 10);
   if (youtubeDay.day !== today) { youtubeDay.day = today; youtubeDay.used = 0; }
-  if (youtubeDay.used >= YOUTUBE_SEARCHES_A_DAY) throw new IntegrationError('rateLimited');
+  if (youtubeDay.used >= YOUTUBE_SEARCHES_A_DAY || !youtube.canSpend(100, 0.5)) throw new IntegrationError('rateLimited'); // a search is 100 units: they stop at half of the day
   youtubeDay.used += 1;
+  youtube.spend(100);
   const url = new URL('https://www.googleapis.com/youtube/v3/search');
   for (const [key, value] of Object.entries({ part: 'snippet', type: 'channel', q: query, maxResults: 6, key: config.youtubeApiKey })) url.searchParams.set(key, String(value));
   const body = await fetchJsonBody(url.toString());
@@ -51,7 +55,14 @@ async function searchBluesky(query) {
   return (body?.actors ?? []).map((actor) => ({ value: actor.handle, name: clean(actor.displayName || actor.handle, 80), avatar: https(actor.avatar), url: `https://bsky.app/profile/${actor.handle}`, detail: `@${actor.handle}` }));
 }
 
-async function searchSteam(query) {
+/** What a person typed when they want a list of what is new, not one account: `new`, `new mods`, `nuevos shaders`; the words after it or ''. null otherwise. */
+const newListWords = (text) => { const match = /^(?:new|news|nuevo|nuevos|nueva|nuevas|novo|novos|nova|novas|novedades|novidades|lanzamientos|lançamentos|releases|top|tops|ranking|coming soon|pronto|em breve)(?:\s+(.*))?$/i.exec(String(text ?? '').trim()); return match ? String(match[1] ?? '').trim().toLowerCase() : null; };
+
+async function searchSteam(query, lang) {
+  if (newListWords(query) !== null) {
+    const wanted = /^(?:top|tops|ranking)\b/i.test(query) ? 'top' : /^(?:coming soon|pronto|em breve)/i.test(query) ? 'soon' : 'new';
+    return Object.keys(steamList.STORE_LISTS).filter((kind) => kind === wanted || wanted === 'new' && newListWords(query) === '').map((kind) => { const account = steamList.storeAccount(kind, lang); return { value: account.id, name: account.name, avatar: null, url: account.url, detail: t(lang, 'feeds.list.detail.store') }; });
+  }
   const body = await fetchJsonBody(`https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(query)}&l=english&cc=US`);
   return (body?.items ?? []).slice(0, MAX_RESULTS).map((game) => ({ value: String(game.id), name: clean(game.name, 80), avatar: https(game.tiny_image), url: `https://store.steampowered.com/app/${game.id}`, detail: '' }));
 }
@@ -62,7 +73,13 @@ async function searchGithub(query) {
   return (body?.items ?? []).map((repo) => ({ value: repo.full_name, name: repo.full_name, avatar: https(repo.owner?.avatar_url), url: repo.html_url, detail: `⭐ ${compact(repo.stargazers_count ?? 0)}${repo.description ? ` · ${clean(repo.description, 70)}` : ''}` }));
 }
 
-async function searchModrinth(query) {
+async function searchModrinth(query, lang) {
+  const rest = newListWords(query);
+  if (rest !== null && !/^(?:top|tops|ranking|coming soon|pronto|em breve)\b/i.test(query)) {
+    const names = { mod: /mod/, modpack: /modpack|pack de mods/, resourcepack: /resource|texture|textura/, shader: /shader/, plugin: /plugin/, datapack: /data\s?pack/ };
+    const kinds = Object.keys(modrinthList.NEW_KINDS).filter((kind) => !rest || names[kind].test(rest));
+    return kinds.map((kind) => { const account = modrinthList.newAccount(kind, lang); return { value: account.id, name: account.name, avatar: null, url: account.url, detail: t(lang, 'feeds.list.detail.newProjects') }; });
+  }
   const body = await fetchJsonBody(`https://api.modrinth.com/v2/search?query=${encodeURIComponent(query)}&limit=${MAX_RESULTS}`);
   return (body?.hits ?? []).map((hit) => ({ value: hit.slug, name: clean(hit.title, 80), avatar: https(hit.icon_url), url: `https://modrinth.com/${hit.project_type}/${hit.slug}`, detail: clean(hit.description, 90) }));
 }
@@ -80,9 +97,9 @@ async function searchAnilist(query) {
 }
 
 /** The platforms with no search answer with the account the text points at (a link, a name), or with nothing. */
-async function searchExact(platform, query) {
+async function searchExact(platform, query, lang) {
   try {
-    const account = await PROVIDERS[platform].resolve(query);
+    const account = await PROVIDERS[platform].resolve(query, { lang });
     return [{ value: query, name: clean(account.name, 80), avatar: https(account.avatar), url: account.url ?? null, detail: '' }];
   } catch (error) {
     if (error instanceof IntegrationError && ['notFound', 'badInput'].includes(error.kind)) return [];
@@ -90,8 +107,8 @@ async function searchExact(platform, query) {
   }
 }
 
-/** The music platforms: a link points at one artist, anything else is a name to look for. */
-const searchMusic = (platform, searcher, parser) => (query) => (parser(query) || /^https?:\/\//i.test(query) ? searchExact(platform, query) : searcher(query));
+/** The music platforms: a link (of an artist, a song, an album or a playlist) or an id of the lists is looked up as it is, anything else is a name to look for. */
+const searchMusic = (platform, searcher, parser) => (query, lang) => (parser(query) || /^https?:\/\//i.test(query) || /^(?:playlist|chart|new):/i.test(query) ? searchExact(platform, query, lang) : searcher(query, lang));
 
 const SEARCHES = {
   deezer: searchMusic('deezer', music.deezerSearch, music.parseDeezerArtist),
@@ -101,14 +118,14 @@ const SEARCHES = {
   twitch: searchTwitch, bluesky: searchBluesky, steam: searchSteam, github: searchGithub, modrinth: searchModrinth, npm: searchNpm, anilist: searchAnilist };
 
 /** The accounts of a platform that match what a person typed (up to eight), kept five minutes (six hours for YouTube, which has a daily budget). */
-async function searchAccounts(platform, text) {
+async function searchAccounts(platform, text, lang = 'en') {
   if (!isProvider(platform) || PROVIDERS[platform].noAccount) return [];
   const query = clean(text, 100);
   if (query.length < MIN_CHARS) return [];
-  const key = `${platform}:${query.toLowerCase()}`;
+  const key = `${platform}:${lang}:${query.toLowerCase()}`;
   const kept = cache.get(key);
   if (kept && kept.until > Date.now()) return kept.results;
-  const results = (await (SEARCHES[platform] ?? ((q) => searchExact(platform, q)))(query)).filter((entry) => entry.value && entry.name).slice(0, MAX_RESULTS);
+  const results = (await (SEARCHES[platform] ?? ((q, l) => searchExact(platform, q, l)))(query, lang)).filter((entry) => entry.value && entry.name).slice(0, MAX_RESULTS);
   if (cache.size > 3000) cache.clear();
   cache.set(key, { until: Date.now() + (platform === 'youtube' ? YOUTUBE_KEEP_MS : KEEP_MS), results });
   return results;
