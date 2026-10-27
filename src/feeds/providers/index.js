@@ -57,7 +57,8 @@ const notLive = new Set();
 const NOT_LIVE_LIMIT = 50_000;
 const PUSHED_INTERVAL_MS = 30 * 60_000;
 const PUSHED_FEW = 1500; // up to this many followed channels, the ones that are pushed are still looked at every 10 minutes: a push that never arrives costs a few minutes, not half an hour
-const pushedInterval = () => (websub.known.size <= PUSHED_FEW ? 10 * 60_000 : PUSHED_INTERVAL_MS);
+const PUSHED_VERY_FEW = 300; // and up to this many every 3 minutes (the feed of a channel costs no quota)
+const pushedInterval = () => (websub.known.size <= PUSHED_VERY_FEW ? 3 * 60_000 : websub.known.size <= PUSHED_FEW ? 10 * 60_000 : PUSHED_INTERVAL_MS);
 const busyChannels = new Map(); // channelId -> true while it has a stream announced or on
 const rememberNotLive = (id) => { if (notLive.size >= NOT_LIVE_LIMIT) notLive.delete(notLive.values().next().value); notLive.add(id); stateDirty = true; };
 
@@ -206,7 +207,12 @@ const PROVIDERS = {
       const results = new Map();
       const entries = new Map(); // accountId -> entries
       await forEachWithConcurrency(accounts, async (account) => {
-        try { entries.set(account.id, (await youtube.fetchChannel(account.id)).entries); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
+        try {
+          const fromFeed = (await youtube.fetchChannel(account.id)).entries;
+          // What YouTube pushed is added to what the feed shows: the feed can take minutes to show a new video, the push does not.
+          const known = new Set(fromFeed.map((entry) => entry.videoId));
+          entries.set(account.id, [...websub.pushedFor(account.id).filter((entry) => !known.has(entry.videoId)), ...fromFeed]);
+        } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
       }, this.concurrency);
 
       // One call (a unit for up to 50 videos) says which new videos are live or about to be, and whether the streams being followed are still on.

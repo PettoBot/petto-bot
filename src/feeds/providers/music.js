@@ -158,7 +158,9 @@ async function deezerChart(account, now) {
 }
 
 const randomSongs = new Map(); // `${minutes}:${slot}` -> item | null
-const hashOf = (key) => (Math.abs(Number(String(key).split(':')[1]) || 0) * 2654435761) >>> 0; // the same number for everybody in a slot of time, a different one in the next
+// The same number for everybody in a slot of time, a different one in the next. Math.imul keeps it exact in 32 bits: a plain product of the slot (about 6 million for a
+// 5-minute pace) and this constant is past what a JavaScript number holds exactly, and its last bit was always 0, so the same service was always chosen.
+const hashOf = (key) => Math.imul(Math.abs(Number(String(key).split(':')[1]) || 0), 0x9E3779B1) >>> 0;
 
 /** A song picked at random from the charts of a random genre of Deezer; null when Deezer has none. */
 async function deezerRandomSong(key, at, hash = hashOf(key)) {
@@ -204,7 +206,7 @@ async function randomSong(key, at) {
   const hash = hashOf(key);
   let item = null;
   for (let step = 0; step < sources.length && !item; step += 1) {
-    try { item = await sources[(hash + step) % sources.length](key, at, hash >>> 2); } catch { /* the next service */ }
+    try { item = await sources[((hash >>> 16) + step) % sources.length](key, at, hash >>> 2); } catch { /* the next service */ } // the high bits of the hash choose the service: they are the best mixed
   }
   if (randomSongs.size > 200) randomSongs.clear();
   randomSongs.set(key, item);
@@ -451,5 +453,5 @@ module.exports = {
   parseDeezerArtist, parseDeezerLink, deezerSearch, deezerResolve, deezerReleases,
   parseAppleArtist, parseAppleLink, appleSearch, appleResolve, appleReleases,
   parseSpotify, spotifySearch, spotifyResolve, spotifyReleases,
-  forgetSpotifyToken, randomSong, deezerRandomSong, chartWords, newWords, countryOf,
+  forgetSpotifyToken, randomSong, deezerRandomSong, hashOf, chartWords, newWords, countryOf,
 };
