@@ -56,14 +56,14 @@ const listPoll = (read, concurrency = 3) => async function poll(accounts, _track
   return results;
 };
 
-/** A cat or a fox: a picture for each slot of time of the pace of the account (once a day to every 15 minutes), the same for every server of that pace. */
+/** A cat, a dog, a fox or any of them (`animals`): a picture for each slot of time of the pace of the account (once a day to every 5 minutes), the same for every server of that pace. */
 function animalFeed(animal) {
   return {
     interval: 60_000, perTick: 5000, concurrency: 1, perLanguage: true, noAccount: true,
     async resolve(text) {
       const minutes = schedule.parseMinutes(text);
       if (minutes === null) throw new IntegrationError('badInput');
-      return { id: schedule.accountIdFor(animal, minutes), name: animal === 'cat' ? 'Cats' : 'Foxes', avatar: null, url: animals.SOURCES[animal].url }; // i18n-ignore: the name of what is posted
+      return { id: schedule.accountIdFor(animal, minutes), name: { cat: 'Cats', dog: 'Dogs', fox: 'Foxes', animals: 'Animals' }[animal], avatar: null, url: null }; // i18n-ignore: the name of what is posted
     },
     async poll(accounts, _tracked, { now = Date.now(), lang = 'en' } = {}) {
       const results = new Map();
@@ -411,7 +411,9 @@ const PROVIDERS = {
   },
 
   cat: animalFeed('cat'),
+  dog: animalFeed('dog'),
   fox: animalFeed('fox'),
+  animals: animalFeed('animals'),
 
   wikipedia: {
     interval: 60_000, perTick: 5000, concurrency: 1, perLanguage: true, noAccount: true,

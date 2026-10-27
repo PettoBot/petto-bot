@@ -12,7 +12,8 @@ const { EMOJI } = require('../../utils/emojis');
 const { t, languageOf } = require('../../i18n');
 
 const V2 = MessageFlags.IsComponentsV2;
-const COMMAND_PLATFORMS = ['youtube', 'twitch', 'kick', 'bluesky', 'reddit', 'steam', 'github', 'modrinth', 'npm', 'pypi', 'anilist', 'pinterest', 'rss', 'wikipedia', 'chess', 'pokemon', 'spotify', 'deezer', 'applemusic', 'mastodon', 'tumblr', 'letterboxd', 'epic', 'cat', 'fox'];
+const COMMAND_PLATFORMS = ['youtube', 'twitch', 'kick', 'bluesky', 'reddit', 'steam', 'github', 'modrinth', 'npm', 'pypi', 'anilist', 'pinterest', 'rss', 'wikipedia', 'chess', 'pokemon', 'spotify', 'deezer', 'applemusic', 'mastodon', 'tumblr', 'letterboxd', 'epic', 'cat', 'dog', 'fox', 'animals'];
+// Discord shows 25 choices at most and there are more platforms than that, so the platform is picked from a list that filters while it is typed.
 const platformChoices = COMMAND_PLATFORMS.map((id) => ({ name: PLATFORMS[id].name, value: id }));
 const idOption = (o) => o.setName('id').setDescription('The number of the feed (see the list)').setMinValue(1).setRequired(true);
 
@@ -26,7 +27,7 @@ module.exports = {
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false)
     .addSubcommand((s) => s.setName('add').setDescription('Follow an account and post its news in a channel.')
-      .addStringOption((o) => o.setName('platform').setDescription('Where the account is').setRequired(true).addChoices(...platformChoices))
+      .addStringOption((o) => o.setName('platform').setDescription('Where the account is').setRequired(true).setAutocomplete(true))
       .addStringOption((o) => o.setName('account').setDescription('The link, @name or id of the account. Pokémon, Wikipedia, Chess: how often (15m, 2h, 1d)').setMaxLength(200).setRequired(false))
       .addChannelOption((o) => o.setName('channel').setDescription('Where to post it (default: this channel)').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement).setRequired(false)))
     .addSubcommand((s) => s.setName('list').setDescription('The feeds of this server and how each one is doing.'))
@@ -41,6 +42,14 @@ module.exports = {
       .addIntegerOption(idOption)
       .addRoleOption((o) => o.setName('role').setDescription('The role to mention (leave empty to stop mentioning)').setRequired(false))
       .addBooleanOption((o) => o.setName('everyone').setDescription('Mention @everyone instead').setRequired(false))),
+
+  async autocomplete(interaction) {
+    const focused = interaction.options.getFocused(true);
+    if (focused.name !== 'platform') return interaction.respond([]);
+    const typed = String(focused.value ?? '').toLowerCase().trim();
+    const list = platformChoices.filter((choice) => !typed || choice.name.toLowerCase().includes(typed) || choice.value.includes(typed));
+    return interaction.respond(list.slice(0, 25));
+  },
 
   async execute(interaction) {
     const lang = await languageOf(interaction);

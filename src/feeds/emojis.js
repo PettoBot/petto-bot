@@ -25,7 +25,9 @@ const PLATFORM = {
   letterboxd: '<:pe_f_letterborxd:1564472136838545628>',
   epic: '<:pe_f_epic:1564472096141222039>',
   cat: '🐱', // until `pe_f_cat` is uploaded
+  dog: '🐶', // until `pe_f_dog` is uploaded
   fox: '🦊', // until `pe_f_fox` is uploaded
+  animals: '🐾', // until `pe_f_animals` is uploaded
 };
 
 const TYPE = {

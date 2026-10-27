@@ -185,7 +185,7 @@ const allText = (message) => JSON.stringify(json(message.components));
     const schedule = require('../src/feeds/schedule');
     assert.deepEqual(['', 'daily', '1d', '24h', '1440', 'https://www.wikipedia.org'].map(schedule.parseMinutes), [1440, 1440, 1440, 1440, 1440, 1440], 'nothing, or the old page of the platform, is once a day');
     assert.deepEqual(['15', '15m', '30 min', '2h', 'every:45'].map(schedule.parseMinutes), [15, 15, 30, 120, 45]);
-    assert.deepEqual(['5', '14', '1441', '48h'].map(schedule.parseMinutes), [null, null, null, null], 'less than 15 minutes (spam) or more than a day is refused');
+    assert.deepEqual(['4', '1441', '48h'].map(schedule.parseMinutes), [null, null, null], 'less than 5 minutes (spam) or more than a day is refused');
     assert.deepEqual([schedule.accountIdFor('pokemon', 1440), schedule.accountIdFor('chess', 1440), schedule.accountIdFor('wikipedia', 1440), schedule.accountIdFor('pokemon', 15)], ['daily', 'puzzle', 'featured', 'every:15']);
     assert.deepEqual(['daily', 'featured', 'every:15'].map(schedule.minutesOf), [1440, 1440, 15]);
     const realFetch = globalThis.fetch;
@@ -204,7 +204,7 @@ const allText = (message) => JSON.stringify(json(message.components));
     for (const platform of ['wikipedia', 'chess', 'pokemon']) {
       const quarter = await PROVIDERS[platform].resolve('15m');
       assert.equal(quarter.id, 'every:15');
-      await assert.rejects(PROVIDERS[platform].resolve('3'), (error) => error.kind === 'badInput', `${platform}: a pace under 15 minutes is refused`);
+      await assert.rejects(PROVIDERS[platform].resolve('3'), (error) => error.kind === 'badInput', `${platform}: a pace under 5 minutes is refused`);
       const accounts = [{ id: 'every:15', name: 'x', url: null }, { id: 'every:60', name: 'x', url: null }];
       const results = await PROVIDERS[platform].poll(accounts, new Map(), { now: when, lang: 'en' });
       const a = results.get('every:15').items[0];
@@ -341,21 +341,34 @@ const allText = (message) => JSON.stringify(json(message.components));
       asked.push(String(url));
       if (String(url).includes('thecatapi')) return new Response(JSON.stringify([{ id: 'c1', url: 'https://cdn2.thecatapi.com/images/c1.jpg' }]), { status: 200 });
       if (String(url).includes('randomfox')) return new Response(JSON.stringify({ image: 'https://randomfox.ca/images/7.jpg', link: 'https://randomfox.ca/?i=7' }), { status: 200 });
+      if (String(url).includes('dog.ceo')) return new Response(JSON.stringify({ message: 'https://images.dog.ceo/breeds/chow/n1.jpg', status: 'success' }), { status: 200 });
       return new Response('{}', { status: 404 });
     };
     const when = Date.UTC(2026, 9, 27, 10, 7, 30);
-    for (const [animal, es] of [['cat', 'Un gatito para ti'], ['fox', 'Un zorrito para ti']]) {
+    for (const [animal, es] of [['cat', 'Un gatito para ti'], ['dog', 'Un perrito para ti'], ['fox', 'Un zorrito para ti']]) {
       const account = await PROVIDERS[animal].resolve('30m');
       assert.equal(account.id, 'every:30');
       assert.equal((await PROVIDERS[animal].resolve('')).id, 'daily', 'nothing is once a day');
-      await assert.rejects(PROVIDERS[animal].resolve('5m'), (error) => error.kind === 'badInput');
+      await assert.rejects(PROVIDERS[animal].resolve('4m'), (error) => error.kind === 'badInput');
+      assert.equal((await PROVIDERS[animal].resolve('5m')).id, 'every:5', 'five minutes is the shortest pace');
       const first = (await PROVIDERS[animal].poll([account, { id: 'every:30' }], new Map(), { now: when, lang: 'es' })).get('every:30').items[0];
       assert.deepEqual([first.type, first.title, first.platform], ['photo', es, animal]);
       assert.ok(first.image.startsWith('https://'));
+      assert.ok(!first.author && !first.authorUrl && !account.url, 'the notice does not say where the picture comes from');
       const again = (await PROVIDERS[animal].poll([account], new Map(), { now: when + 60_000, lang: 'en' })).get('every:30').items[0];
       assert.equal(again.id, first.id, 'a minute later it is the same picture');
-      assert.equal(asked.filter((url) => url.includes(animal === 'cat' ? 'thecatapi' : 'randomfox')).length, 1, 'the service is asked once for each slot');
+      assert.equal(asked.filter((url) => url.includes({ cat: 'thecatapi', dog: 'dog.ceo', fox: 'randomfox' }[animal])).length, 1, 'the service is asked once for each slot');
     }
+    // `animals` is any of the three, one for each slot, the same for everybody.
+    const mixed = await PROVIDERS.animals.resolve('15m');
+    assert.equal(mixed.id, 'every:15');
+    const kinds = new Set();
+    for (let slot = 0; slot < 6; slot += 1) {
+      const item = (await PROVIDERS.animals.poll([mixed], new Map(), { now: when + slot * 15 * 60_000, lang: 'en' })).get('every:15').items[0];
+      kinds.add(item.title);
+      assert.equal(item.platform, 'animals');
+    }
+    assert.deepEqual([...kinds].sort(), ['A cat for you', 'A dog for you', 'A fox for you'], 'every kind of animal comes up');
     globalThis.fetch = realFetch;
   }
 
@@ -704,7 +717,7 @@ const allText = (message) => JSON.stringify(json(message.components));
     assert.equal(auto.feed.account_id, 'every:30');
     const slot = Math.floor(Date.now() / (30 * 60_000));
     assert.ok((await feedsDb.seenAmong([auto.feed.id], [`30:${slot}`])).has(`${auto.feed.id}:30:${slot}`), 'the slot running now is the past: it is marked as seen');
-    assert.equal((await service.createFeed(guild, { platform: 'pokemon', account: '5', channelId: CH })).error, 'badPace');
+    assert.equal((await service.createFeed(guild, { platform: 'pokemon', account: '4', channelId: CH })).error, 'badPace');
     const paced = await service.updateFeed(guild, auto.feed.id, { every: '2h' });
     assert.equal(paced.ok && paced.feed.account_id, 'every:120', 'the pace of a feed can change');
     assert.equal((await service.updateFeed(guild, auto.feed.id, { every: '1' })).error, 'badPace');
