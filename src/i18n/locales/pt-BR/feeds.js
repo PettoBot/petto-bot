@@ -13,6 +13,7 @@ module.exports = {
   'feeds.type.photo': 'Uma foto',
   'feeds.type.daily': 'Do dia',
   'feeds.type.ended': 'Live encerrada',
+  'feeds.ended.peak': 'Pico: {count} espectadores',
   'feeds.button.video': 'Assistir no {platform}',
   'feeds.button.short': 'Assistir no {platform}',
   'feeds.button.live': 'Assistir ao vivo',

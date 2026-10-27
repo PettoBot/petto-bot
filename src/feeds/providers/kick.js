@@ -76,7 +76,7 @@ function toItem(channel, account = {}) {
   const category = channel.category?.name;
   const thumbnail = String(channel.stream?.thumbnail ?? '');
   return {
-    platform: 'kick', type: 'live', id: streamId(channel), title: channel.stream_title || account.name || channel.slug, url: `https://kick.com/${channel.slug}`,
+    platform: 'kick', type: 'live', viewers, id: streamId(channel), title: channel.stream_title || account.name || channel.slug, url: `https://kick.com/${channel.slug}`,
     description: '', image: /^https:\/\//i.test(thumbnail) ? thumbnail : null, avatar: account.avatar ?? null, author: account.name || channel.slug,
     authorUrl: `https://kick.com/${channel.slug}`, publishedAt: Date.parse(channel.stream?.start_time) || null,
     extra: [category ? `🎮 ${category}` : null, viewers ? `👁 ${viewers.toLocaleString('en-US')}` : null].filter(Boolean).join(' · '),

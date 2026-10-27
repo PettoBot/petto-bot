@@ -13,6 +13,7 @@ module.exports = {
   'feeds.type.photo': 'A photo',
   'feeds.type.daily': 'Of the day',
   'feeds.type.ended': 'Stream ended',
+  'feeds.ended.peak': 'Peak: {count} viewers',
   'feeds.button.video': 'Watch on {platform}',
   'feeds.button.short': 'Watch on {platform}',
   'feeds.button.live': 'Watch live',

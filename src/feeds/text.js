@@ -28,6 +28,8 @@ function plainText(text, max = MAX_DESCRIPTION, { link = false } = {}) {
   value = value.replace(/@(everyone|here)/gi, '@​$1').replace(/<@/g, '<​@').replace(/[\\*_~`|>]/g, (char) => `\\${char}`); // the backslash too, so a backslash in the text cannot undo an escape
   // Discord does not read a link whose words hold an escaped bracket (it shows the markdown as it is), so there the brackets are written as the full-width ones.
   if (link) value = value.replace(/\[/g, '［').replace(/\]/g, '］');
+  // A number with a dot in a title ("26.4 Snapshot") can read as an address to Discord, which then shows the link as raw markdown: an invisible space after the dot avoids it.
+  if (link) value = value.replace(/(\w)\.(?=\w)/g, '$1.\u200b');
   return clip(value, max);
 }
 

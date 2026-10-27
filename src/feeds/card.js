@@ -21,7 +21,6 @@ const { heroFor } = require('./hero');
  *   platform, type, title, url, description?, image?, avatar?, author?, authorUrl?, publishedAt? (ms or ISO), extra? (a line of its own: the game, the viewers…)
  */
 
-const ENDED_COLOR = 0x4f545c; // a stream that is over goes grey
 
 const VARIABLES = {
   'feed.title': (item) => plainText(item.title, 200),
@@ -98,7 +97,7 @@ function buildFeedMessage(feed, item, { lang, test = false, hero = null } = {}) 
   if (item.extra) lines.push(`-# ${plainText(item.extra, 160)}`);
 
   const ended = item.type === 'ended';
-  const card = new ContainerBuilder().setAccentColor(ended ? ENDED_COLOR : Number.isInteger(options.color) ? options.color : platform.color);
+  const card = new ContainerBuilder().setAccentColor(Number.isInteger(options.color) ? options.color : platform.color);
   if (lines.length === 1) {
     // Only the title: a section with the picture of the account is as tall as the picture and would leave an empty space under one line, so it goes as plain text.
     card.addTextDisplayComponents(new TextDisplayBuilder().setContent(heading));

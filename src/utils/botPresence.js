@@ -6,7 +6,7 @@ const botSettings = require('../db/botSettings');
 
 const STATUSES = ['online', 'idle', 'dnd', 'invisible'];
 const SETTING_KEY = 'presence_status';
-const CUSTOM_STATUS = { name: 'Custom Status', type: ActivityType.Custom, state: 'Keeping the server safe', emoji: { name: '🦆' } };
+const CUSTOM_STATUS = { name: 'Custom Status', type: ActivityType.Custom, state: 'Multipurpose bot for your server', emoji: { name: '🦆' } };
 
 function normalizeStatus(value) {
   const status = String(value ?? '').trim().toLowerCase();
