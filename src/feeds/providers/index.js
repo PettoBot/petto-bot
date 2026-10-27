@@ -210,6 +210,8 @@ const PROVIDERS = {
   modrinth: {
     interval: 10 * 60_000, perTick: 100, concurrency: 4,
     async resolve(text) {
+      const kind = modrinth.parseNew(text);
+      if (kind) return modrinth.newAccount(kind);
       const project = await modrinth.resolveProject(text);
       return { id: project.id, name: project.name, avatar: project.avatar, url: project.url, project };
     },
@@ -217,13 +219,15 @@ const PROVIDERS = {
       const results = new Map();
       await forEachWithConcurrency(accounts, async (account) => {
         try {
+          const newKind = modrinth.parseNew(account.id);
+          if (newKind) { results.set(account.id, { items: (await modrinth.fetchNewProjects(newKind)).filter((item) => fresh(item, now)) }); return; }
           const project = await modrinth.resolveProject(account.id);
           results.set(account.id, { items: (await modrinth.fetchVersions(account.id, 6)).map((version) => modrinth.toItem(project, version)).filter((item) => fresh(item, now)) });
         } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
       }, this.concurrency);
       return results;
     },
-    async baselineItems(account) { return (await modrinth.fetchVersions(account.id, 10)).map((version) => ({ id: version.id })); },
+    async baselineItems(account) { const newKind = modrinth.parseNew(account.id); return newKind ? (await modrinth.fetchNewProjects(newKind)).map((item) => ({ id: item.id })) : (await modrinth.fetchVersions(account.id, 10)).map((version) => ({ id: version.id })); },
   },
 
   // ---- Feeds read as RSS / Atom ------------------------------------------------------------------------------------------------------------
@@ -331,15 +335,17 @@ const PROVIDERS = {
   // ---- Games, anime, knowledge -------------------------------------------------------------------------------------------------------------
   steam: {
     interval: 10 * 60_000, perTick: 100, concurrency: 4,
-    resolve: (text) => steam.resolveApp(text),
+    resolve: (text) => (steam.parseStore(text) ? steam.storeAccount(steam.parseStore(text)) : steam.resolveApp(text)),
     async poll(accounts, _tracked, { now = Date.now() } = {}) {
       const results = new Map();
       await forEachWithConcurrency(accounts, async (account) => {
+        const list = steam.parseStore(account.id);
+        if (list) { try { results.set(account.id, { items: await steam.fetchStoreList(list, now) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); } return; }
         try { results.set(account.id, { items: (await steam.fetchNews(account.id)).map((entry) => steam.toItem(account, entry)).filter((item) => fresh(item, now)) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
       }, this.concurrency);
       return results;
     },
-    async baselineItems(account) { return (await steam.fetchNews(account.id, 10)).map((entry) => ({ id: entry.id })); },
+    async baselineItems(account) { const list = steam.parseStore(account.id); return list ? (await steam.fetchStoreList(list)).map((item) => ({ id: item.id })) : (await steam.fetchNews(account.id, 10)).map((entry) => ({ id: entry.id })); },
   },
 
   anilist: {
@@ -362,7 +368,7 @@ const PROVIDERS = {
   applemusic: {
     interval: 60 * 60_000, perTick: 15, concurrency: 1, // Apple asks for about 20 calls a minute
     resolve: (text) => music.appleResolve(text),
-    poll: listPoll((account) => music.appleReleases(account), 1),
+    poll: listPoll((account, now) => music.appleReleases(account, now), 1),
     async baselineItems(account) { return (await music.appleReleases(account)).map((item) => ({ id: item.id })); },
   },
 

@@ -320,6 +320,127 @@ const allText = (message) => JSON.stringify(json(message.components));
     globalThis.fetch = realFetch;
   }
 
+  // --- Music beyond one artist: playlists, charts, the new albums of a country, and the link of a song or an album ----------------------------------------
+  {
+    config.spotifyClientId = 'id';
+    config.spotifyClientSecret = 'secret';
+    const day = 86_400_000;
+    const now = Date.now();
+    const realFetch = globalThis.fetch;
+    const asked = [];
+    const deezerTrack = (id, title, added) => ({ id, title, title_short: title, link: `https://www.deezer.com/track/${id}`, time_add: Math.floor((now - added * day) / 1000), artist: { id: 7, name: 'Singer', link: 'https://www.deezer.com/artist/7' }, album: { cover_xl: `https://cdn.dz/${id}.jpg` } });
+    globalThis.fetch = async (url, options = {}) => {
+      const u = String(url);
+      asked.push(u);
+      if (u === 'https://api.deezer.com/playlist/55') return new Response(JSON.stringify({ id: 55, title: 'My list', public: true, picture_xl: 'https://cdn.dz/pl.jpg', link: 'https://www.deezer.com/playlist/55' }), { status: 200 });
+      if (u === 'https://api.deezer.com/playlist/55/tracks?limit=1') return new Response(JSON.stringify({ data: [], total: 3 }), { status: 200 });
+      if (u.startsWith('https://api.deezer.com/playlist/55/tracks?index=0&limit=30')) return new Response(JSON.stringify({ data: [deezerTrack(1, 'Old song', 90), deezerTrack(2, 'Newer song', 1), deezerTrack(3, 'Mid song', 2)] }), { status: 200 });
+      if (u === 'https://api.deezer.com/genre') return new Response(JSON.stringify({ data: [{ id: 0, name: 'All' }, { id: 152, name: 'Rock', picture_xl: 'https://cdn.dz/rock.jpg' }] }), { status: 200 });
+      if (u.startsWith('https://api.deezer.com/chart/152/tracks')) return new Response(JSON.stringify({ data: [{ ...deezerTrack(9, 'On top', 0), position: 1 }, { ...deezerTrack(8, 'Second', 0), position: 2 }] }), { status: 200 });
+      if (u.startsWith('https://api.deezer.com/search/playlist')) return new Response(JSON.stringify({ data: [{ id: 55, title: 'My list', public: true, nb_tracks: 3, picture_medium: 'https://cdn.dz/pl.jpg', link: 'https://www.deezer.com/playlist/55' }, { id: 56, title: 'Private', public: false }] }), { status: 200 });
+      if (u.startsWith('https://api.deezer.com/search/artist')) return new Response(JSON.stringify({ data: [{ id: 7, name: 'Singer', nb_fan: 2500, picture_medium: 'https://cdn.dz/s.jpg', link: 'https://www.deezer.com/artist/7' }] }), { status: 200 });
+      if (u === 'https://api.deezer.com/album/12') return new Response(JSON.stringify({ id: 12, artist: { id: 7 } }), { status: 200 });
+      if (u === 'https://api.deezer.com/artist/7') return new Response(JSON.stringify({ id: 7, name: 'Singer', picture_xl: 'https://cdn.dz/s.jpg', link: 'https://www.deezer.com/artist/7' }), { status: 200 });
+      if (u.startsWith('https://rss.marketingtools.apple.com/api/v2/co/music/most-played/10/songs.json')) return new Response(JSON.stringify({ feed: { results: [{ id: '501', name: 'Hit', artistName: 'Star', artistUrl: 'https://music.apple.com/co/artist/star/1', url: 'https://music.apple.com/co/album/hit/500?i=501', artworkUrl100: 'https://is1.mzstatic.com/i/100x100bb.jpg' }] } }), { status: 200 });
+      if (u.startsWith('https://itunes.apple.com/lookup?id=777')) return new Response(JSON.stringify({ results: [{ wrapperType: 'collection', collectionId: 777, artistId: 5468295 }] }), { status: 200 });
+      if (u.startsWith('https://itunes.apple.com/lookup?id=5468295')) return new Response(JSON.stringify({ results: [{ wrapperType: 'artist', artistId: 5468295, artistName: 'Apple Artist', artistLinkUrl: 'https://music.apple.com/us/artist/a/5468295' }, { wrapperType: 'collection', collectionId: 1, artworkUrl100: 'https://is1.mzstatic.com/i/100x100bb.jpg' }] }), { status: 200 });
+      if (u === 'https://accounts.spotify.com/api/token') return new Response(JSON.stringify({ access_token: 'sp-token', expires_in: 3600 }), { status: 200 });
+      if (u.startsWith('https://api.spotify.com/v1/playlists/PPPPPPPPPPPPPPPPPPPPPP/tracks?limit=1')) return new Response(JSON.stringify({ total: 2 }), { status: 200 });
+      if (u.startsWith('https://api.spotify.com/v1/playlists/PPPPPPPPPPPPPPPPPPPPPP/tracks?offset=0')) return new Response(JSON.stringify({ items: [
+        { added_at: new Date(now - 40 * day).toISOString(), track: { id: 't1', name: 'Older', type: 'track', artists: [{ name: 'A' }], album: { images: [{ url: 'https://i.scdn.co/1.jpg' }] } } },
+        { added_at: new Date(now - day).toISOString(), track: { id: 't2', name: 'Fresh track', type: 'track', external_urls: { spotify: 'https://open.spotify.com/track/t2' }, artists: [{ name: 'B', external_urls: { spotify: 'https://open.spotify.com/artist/b' } }], album: { images: [{ url: 'https://i.scdn.co/2.jpg' }] } } },
+        { added_at: new Date(now - day).toISOString(), track: { id: 'e1', name: 'An episode', type: 'episode' } },
+      ] }), { status: 200 });
+      if (u.startsWith('https://api.spotify.com/v1/playlists/PPPPPPPPPPPPPPPPPPPPPP?')) return new Response(JSON.stringify({ name: 'Spotify list', images: [{ url: 'https://i.scdn.co/pl.jpg' }], external_urls: { spotify: 'https://open.spotify.com/playlist/PPPPPPPPPPPPPPPPPPPPPP' } }), { status: 200 });
+      if (u.startsWith('https://api.spotify.com/v1/browse/new-releases?country=CO')) return new Response(JSON.stringify({ albums: { items: [{ id: 'n1', name: 'Fresh', album_type: 'album', release_date: new Date(now - day).toISOString().slice(0, 10), artists: [{ name: 'Z', external_urls: { spotify: 'https://open.spotify.com/artist/z' } }], images: [{ url: 'https://i.scdn.co/n.jpg' }], external_urls: { spotify: 'https://open.spotify.com/album/n1' } }, { id: 'n2', name: 'Compilation', album_type: 'compilation', release_date: new Date(now - day).toISOString().slice(0, 10), artists: [] }] } }), { status: 200 });
+      if (u.startsWith('https://api.spotify.com/v1/albums/AAAAAAAAAAAAAAAAAAAAAA')) return new Response(JSON.stringify({ artists: [{ id: 'ZZZZZZZZZZZZZZZZZZZZZZ' }] }), { status: 200 });
+      if (u.startsWith('https://api.spotify.com/v1/artists/ZZZZZZZZZZZZZZZZZZZZZZ')) return new Response(JSON.stringify({ name: 'Z', images: [], external_urls: { spotify: 'https://open.spotify.com/artist/z' } }), { status: 200 });
+      return new Response('{}', { status: 404 });
+    };
+
+    // Deezer: a playlist gives its newest songs (the list is read from its end), a chart gives the ones on top, a song or an album gives its artist.
+    const list = await PROVIDERS.deezer.resolve('https://www.deezer.com/en/playlist/55');
+    assert.deepEqual([list.id, list.name], ['playlist:55', 'My list']);
+    const songs = (await PROVIDERS.deezer.poll([list], new Map(), { now })).get('playlist:55').items;
+    assert.deepEqual(songs.map((item) => item.title), ['Newer song', 'Mid song'], 'newest first, and a song added 90 days ago is not news');
+    assert.deepEqual([songs[0].type, songs[0].extra, songs[0].author], ['release', 'My list', 'Singer']);
+    const chart = await PROVIDERS.deezer.resolve('chart:152:tracks');
+    assert.deepEqual([chart.id, chart.name], ['chart:152:tracks', 'Top 10 · Rock']);
+    const top = (await PROVIDERS.deezer.poll([chart], new Map(), { now })).get('chart:152:tracks').items;
+    assert.deepEqual(top.map((item) => [item.title, item.extra]), [['On top', 'TOP 1'], ['Second', 'TOP 2']]);
+    assert.equal((await PROVIDERS.deezer.resolve('https://www.deezer.com/album/12')).id, '7', 'the link of an album follows its artist');
+    const baseline = await PROVIDERS.deezer.baselineItems(chart);
+    assert.deepEqual(baseline.map((item) => item.id), ['9', '8'], 'what is on top when the feed is made is not news');
+    const { searchAccounts: search, forgetSearches: forgetAll } = require('../src/feeds/search');
+    forgetAll();
+    assert.deepEqual((await search('deezer', 'top rock')).map((entry) => entry.value), ['chart:152:tracks', 'chart:152:albums'], 'typing top and a genre offers its charts');
+    forgetAll();
+    assert.deepEqual((await search('deezer', 'singer')).map((entry) => entry.value), ['7', 'playlist:55'], 'a search finds artists and the public playlists (not the private ones)');
+
+    // Apple Music: the chart of a country, the artist of an album, and a playlist is not possible.
+    forgetAll();
+    assert.deepEqual((await search('applemusic', 'top colombia')).map((entry) => entry.value), ['chart:co:songs', 'chart:co:albums']);
+    const apple = await PROVIDERS.applemusic.resolve('chart:co:songs');
+    const hits = (await PROVIDERS.applemusic.poll([apple], new Map(), { now })).get('chart:co:songs').items;
+    assert.deepEqual([hits[0].title, hits[0].extra, hits[0].author], ['Hit', 'TOP 1', 'Star']);
+    assert.equal((await PROVIDERS.applemusic.resolve('https://music.apple.com/us/album/name/777')).id, '5468295', 'the link of an album follows its artist');
+    await assert.rejects(PROVIDERS.applemusic.resolve('https://music.apple.com/us/playlist/todays-hits/pl.f4d106fed2bd41149aaacabb233eb5eb'), (error) => error.kind === 'unsupported');
+
+    // Spotify: a playlist, the new albums of a country, and the artist of an album or a song.
+    const spotifyList = await PROVIDERS.spotify.resolve('https://open.spotify.com/playlist/PPPPPPPPPPPPPPPPPPPPPP?si=1');
+    assert.deepEqual([spotifyList.id, spotifyList.name], ['playlist:PPPPPPPPPPPPPPPPPPPPPP', 'Spotify list']);
+    const tracks = (await PROVIDERS.spotify.poll([spotifyList], new Map(), { now })).get(spotifyList.id).items;
+    assert.deepEqual(tracks.map((item) => [item.id, item.extra]), [['t2', 'Spotify list']], 'only the song added this week; the old one and the episode are not news');
+    const fresh = await PROVIDERS.spotify.resolve('new:CO');
+    assert.equal(fresh.id, 'new:CO');
+    const albums = (await PROVIDERS.spotify.poll([fresh], new Map(), { now })).get('new:CO').items;
+    assert.deepEqual(albums.map((item) => [item.id, item.author, item.extra]), [['n1', 'Z', 'ALBUM']], 'the new albums of the country, without the compilations');
+    assert.equal((await PROVIDERS.spotify.resolve('https://open.spotify.com/album/AAAAAAAAAAAAAAAAAAAAAA')).id, 'artist:ZZZZZZZZZZZZZZZZZZZZZZ', 'the link of an album follows its artist');
+    forgetAll();
+    assert.deepEqual((await search('spotify', 'new colombia')).map((entry) => entry.value), ['new:CO']);
+
+    const musicHelpers = require('../src/feeds/providers/music');
+    assert.deepEqual(['top', 'Top Rock', 'charts colombia', 'hello'].map(musicHelpers.chartWords), ['', 'Rock', 'colombia', null]);
+    assert.deepEqual(['colombia', 'CO', 'United States', 'EEUU', 'atlantis'].map(musicHelpers.countryOf), ['co', 'co', 'us', 'us', null]);
+    config.spotifyClientId = null;
+    config.spotifyClientSecret = null;
+    globalThis.fetch = realFetch;
+  }
+
+  // --- Lists of what is new: the newest projects of Modrinth and the lists of the Steam store -------------------------------------------------------------
+  {
+    const now = Date.now();
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      const u = String(url);
+      if (u.startsWith('https://api.modrinth.com/v2/search?limit=10&index=newest')) {
+        assert.ok(decodeURIComponent(u).includes('project_type:shader'), 'the kind is asked for');
+        return new Response(JSON.stringify({ hits: [{ project_id: 'sh1', slug: 'glow', title: 'Glow', description: 'Light it up', project_type: 'shader', icon_url: 'https://cdn.modrinth.com/i.webp', author: 'someone', date_created: new Date(now - 3600_000).toISOString(), versions: ['1.20', '1.21'], gallery: ['https://cdn.modrinth.com/g.png'] }] }), { status: 200 });
+      }
+      if (u.startsWith('https://store.steampowered.com/api/featuredcategories')) return new Response(JSON.stringify({ top_sellers: { items: [{ id: 10, name: 'Big Game', header_image: 'https://cdn.steam/h.jpg' }, { id: 11, name: 'Other' }] }, new_releases: { items: [{ id: 20, name: 'Fresh' }] } }), { status: 200 });
+      return new Response('{}', { status: 404 });
+    };
+    const shaders = await PROVIDERS.modrinth.resolve('new:shader');
+    assert.deepEqual([shaders.id, shaders.name], ['new:shader', 'New shaders']);
+    const projects = (await PROVIDERS.modrinth.poll([shaders], new Map(), { now })).get('new:shader').items;
+    assert.deepEqual([projects.length, projects[0].title, projects[0].type, projects[0].extra, projects[0].author], [1, 'Glow', 'post', 'Shader · 1.21', 'someone']);
+    assert.deepEqual((await PROVIDERS.modrinth.baselineItems(shaders)).map((item) => item.id), ['sh1']);
+    const top = await PROVIDERS.steam.resolve('store:top');
+    assert.equal(top.name, 'Steam · Top sellers');
+    const sellers = (await PROVIDERS.steam.poll([top], new Map(), { now })).get('store:top').items;
+    assert.deepEqual(sellers.map((item) => [item.title, item.extra]), [['Big Game', 'TOP 1'], ['Other', 'TOP 2']]);
+    const { searchAccounts: search, forgetSearches: forgetAll } = require('../src/feeds/search');
+    forgetAll();
+    assert.deepEqual((await search('modrinth', 'new shaders')).map((entry) => entry.value), ['new:shader']);
+    forgetAll();
+    assert.deepEqual((await search('modrinth', 'nuevos')).length, 6, 'new alone offers every kind');
+    forgetAll();
+    assert.deepEqual((await search('steam', 'top')).map((entry) => entry.value), ['store:top']);
+    forgetAll();
+    assert.deepEqual((await search('steam', 'new')).map((entry) => entry.value), ['store:new', 'store:top', 'store:soon'], 'new alone offers the three lists');
+    globalThis.fetch = realFetch;
+  }
+
   // --- A release is headed by a picture drawn for it (cover + title), the rest of the kinds are not -----------------------------------------------------
   {
     const { heroFor } = require('../src/feeds/hero');

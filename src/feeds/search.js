@@ -7,9 +7,11 @@ const { PROVIDERS, isProvider } = require('./providers');
 const { IntegrationError, USER_AGENT } = require('../utils/integrations');
 const youtube = require('./providers/youtube');
 const music = require('./providers/music');
+const modrinthList = require('./providers/modrinth');
+const steamList = require('./providers/steam');
 
 const MIN_CHARS = 2;
-const MAX_RESULTS = 8;
+const MAX_RESULTS = 10;
 const KEEP_MS = 5 * 60_000;
 const YOUTUBE_KEEP_MS = 6 * 3_600_000;
 const YOUTUBE_SEARCHES_A_DAY = 60; // a search of channels costs 100 units of the 10,000 a day of the key
@@ -51,7 +53,14 @@ async function searchBluesky(query) {
   return (body?.actors ?? []).map((actor) => ({ value: actor.handle, name: clean(actor.displayName || actor.handle, 80), avatar: https(actor.avatar), url: `https://bsky.app/profile/${actor.handle}`, detail: `@${actor.handle}` }));
 }
 
+/** What a person typed when they want a list of what is new, not one account: `new`, `new mods`, `nuevos shaders`; the words after it or ''. null otherwise. */
+const newListWords = (text) => { const match = /^(?:new|news|nuevo|nuevos|nueva|nuevas|novedades|lanzamientos|releases|top|tops|ranking|coming soon|pronto)(?:\s+(.*))?$/i.exec(String(text ?? '').trim()); return match ? String(match[1] ?? '').trim().toLowerCase() : null; };
+
 async function searchSteam(query) {
+  if (newListWords(query) !== null) {
+    const wanted = /^(?:top|tops|ranking)\b/i.test(query) ? 'top' : /^(?:coming soon|pronto)/i.test(query) ? 'soon' : 'new';
+    return Object.keys(steamList.STORE_LISTS).filter((kind) => kind === wanted || wanted === 'new' && newListWords(query) === '').map((kind) => { const account = steamList.storeAccount(kind); return { value: account.id, name: account.name, avatar: null, url: account.url, detail: 'Store' }; }); // i18n-ignore: a label beside a result
+  }
   const body = await fetchJsonBody(`https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(query)}&l=english&cc=US`);
   return (body?.items ?? []).slice(0, MAX_RESULTS).map((game) => ({ value: String(game.id), name: clean(game.name, 80), avatar: https(game.tiny_image), url: `https://store.steampowered.com/app/${game.id}`, detail: '' }));
 }
@@ -63,6 +72,12 @@ async function searchGithub(query) {
 }
 
 async function searchModrinth(query) {
+  const rest = newListWords(query);
+  if (rest !== null && !/^(?:top|tops|ranking|coming soon|pronto)\b/i.test(query)) {
+    const names = { mod: /mod/, modpack: /modpack|pack de mods/, resourcepack: /resource|texture|textura/, shader: /shader/, plugin: /plugin/, datapack: /data\s?pack/ };
+    const kinds = Object.keys(modrinthList.NEW_KINDS).filter((kind) => !rest || names[kind].test(rest));
+    return kinds.map((kind) => { const account = modrinthList.newAccount(kind); return { value: account.id, name: account.name, avatar: null, url: account.url, detail: 'New projects' }; }); // i18n-ignore: a label beside a result
+  }
   const body = await fetchJsonBody(`https://api.modrinth.com/v2/search?query=${encodeURIComponent(query)}&limit=${MAX_RESULTS}`);
   return (body?.hits ?? []).map((hit) => ({ value: hit.slug, name: clean(hit.title, 80), avatar: https(hit.icon_url), url: `https://modrinth.com/${hit.project_type}/${hit.slug}`, detail: clean(hit.description, 90) }));
 }
@@ -90,8 +105,8 @@ async function searchExact(platform, query) {
   }
 }
 
-/** The music platforms: a link points at one artist, anything else is a name to look for. */
-const searchMusic = (platform, searcher, parser) => (query) => (parser(query) || /^https?:\/\//i.test(query) ? searchExact(platform, query) : searcher(query));
+/** The music platforms: a link (of an artist, a song, an album or a playlist) or an id of the lists is looked up as it is, anything else is a name to look for. */
+const searchMusic = (platform, searcher, parser) => (query) => (parser(query) || /^https?:\/\//i.test(query) || /^(?:playlist|chart|new):/i.test(query) ? searchExact(platform, query) : searcher(query));
 
 const SEARCHES = {
   deezer: searchMusic('deezer', music.deezerSearch, music.parseDeezerArtist),

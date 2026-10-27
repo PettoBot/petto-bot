@@ -48,6 +48,7 @@ module.exports = {
   'feeds.add.error.badInput': '{emoji}  Write the link, the @name or the id of the account on {platform}.',
   'feeds.add.error.badPace': '{emoji}  Pick how often it posts: every 5 minutes at the most, up to once a day.',
   'feeds.add.error.notConfigured': '{emoji}  {platform} is not set up on this bot yet: its access keys are missing. The owner of the bot has to add them.',
+  'feeds.add.error.unsupported': '{emoji}  {platform} does not let bots follow that one. Try an artist, or a playlist from Deezer or Spotify.',
   'feeds.add.error.unavailable': '{emoji}  {platform} did not answer. Try again in a moment.',
   'feeds.add.error.already': '{emoji}  **{account}** is already followed in that channel.',
   'feeds.notFound': '{emoji}  There is no feed `#{id}` in this server. See `{prefix}feed list`.',

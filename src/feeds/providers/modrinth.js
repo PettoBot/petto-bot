@@ -54,4 +54,24 @@ function toItem(project, version) {
   };
 }
 
-module.exports = { parseProject, resolveProject, fetchVersions, toItem };
+// --- The newest projects of a kind (not the versions of one project): `new:mod`, `new:modpack`, `new:resourcepack`, `new:shader`, `new:plugin`, `new:datapack`.
+const NEW_KINDS = { mod: 'Mods', modpack: 'Modpacks', resourcepack: 'Resource packs', shader: 'Shaders', plugin: 'Plugins', datapack: 'Data packs' }; // i18n-ignore: the names of what Modrinth hosts
+
+/** `new:mod` and the like (what the search gives), or null. */
+const parseNew = (input) => { const kind = /^new:([a-z]+)$/.exec(String(input ?? '').trim().toLowerCase())?.[1]; return kind in NEW_KINDS ? kind : null; };
+
+/** The account of the new projects of a kind. */
+const newAccount = (kind) => ({ id: `new:${kind}`, name: `New ${NEW_KINDS[kind].toLowerCase()}`, avatar: null, url: `https://modrinth.com/discover/${kind}s` }); // i18n-ignore: the name of a list
+
+/** The 10 newest projects of a kind, newest first. */
+async function fetchNewProjects(kind) {
+  const facets = encodeURIComponent(JSON.stringify([[`project_type:${kind}`]]));
+  const body = await fetchJsonBody(`${API}/search?limit=10&index=newest&facets=${facets}`);
+  return (body?.hits ?? []).map((hit) => ({
+    platform: 'modrinth', type: 'post', id: hit.project_id, title: String(hit.title ?? hit.slug).slice(0, 200), url: `https://modrinth.com/${hit.project_type}/${hit.slug}`, description: String(hit.description ?? '').slice(0, 300),
+    image: /^https:\/\//.test(hit.featured_gallery ?? '') ? hit.featured_gallery : (hit.gallery ?? []).find((url) => /^https:\/\//.test(url)) ?? null, avatar: hit.icon_url ?? null, author: hit.author ?? '', authorUrl: hit.author ? `https://modrinth.com/user/${hit.author}` : null,
+    publishedAt: Date.parse(hit.date_created) || null, extra: [NEW_KINDS[kind].replace(/s$/, ''), (hit.versions ?? []).at(-1)].filter(Boolean).join(' · '),
+  }));
+}
+
+module.exports = { parseProject, resolveProject, fetchVersions, toItem, NEW_KINDS, parseNew, newAccount, fetchNewProjects };

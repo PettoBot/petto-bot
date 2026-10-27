@@ -63,7 +63,7 @@ async function createFeed(guild, input) {
   try {
     account = await PROVIDERS[platform].resolve(String(input.account ?? '').trim());
   } catch (error) {
-    if (error instanceof IntegrationError) return { ok: false, error: error.kind === 'badInput' && PROVIDERS[platform].noAccount ? 'badPace' : error.kind === 'notFound' || error.kind === 'badInput' || error.kind === 'notConfigured' ? error.kind : 'unavailable' };
+    if (error instanceof IntegrationError) return { ok: false, error: error.kind === 'badInput' && PROVIDERS[platform].noAccount ? 'badPace' : error.kind === 'notFound' || error.kind === 'badInput' || error.kind === 'notConfigured' || error.kind === 'unsupported' ? error.kind : 'unavailable' };
     throw error;
   }
 

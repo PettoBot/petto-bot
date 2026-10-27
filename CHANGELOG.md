@@ -6,6 +6,8 @@ All notable changes to Petto are documented here.
 
 ### Added
 
+- **Feeds: music is not only about one artist.** On Deezer, Apple Music and Spotify, **playlists** (Deezer and Spotify: the songs added to them are posted), **charts** (Deezer by genre, Apple Music by country: a song or album that enters the top 10 is posted; type `top rock` or `top colombia` in the dashboard) and, on Spotify, the **new albums of a country** (`new colombia`). The link of a **song or an album** follows its artist. Apple Music playlists are not possible (Apple does not let bots read them). The search of the dashboard finds public playlists next to the artists.
+- **Feeds: lists of what is new.** Modrinth can follow the newest projects of a kind (`new mods`, `new shaders`, modpacks, resource packs, plugins, data packs) and Steam the lists of its store (`new` releases, `top` sellers, `coming soon`), next to the accounts and games it already followed. These lists can be busy.
 - **Feeds: dogs and a mix of animals, every 5 minutes.** Two new auto feeds, `dog` and `animals` (a cat, a dog or a fox, a different one each time), next to `cat` and `fox`. All the auto feeds (Pokémon, Wikipedia, Chess.com and the animals) can now post as often as **every 5 minutes** (`!feed add dog 5m #perritos`). The animal notices no longer say where the picture comes from, it is only the picture.
 - **Feeds: `/feed add` lists the platforms while you type.** Discord shows 25 choices at most and there are more platforms than that, so the platform is now picked from a list that filters as it is typed.
 - **Feeds are open to every server.** They no longer need `FEEDS_PUBLIC=true`; `FEEDS_PUBLIC=false` limits them again to the owner, the developers and `FEEDS_TESTER_IDS`.

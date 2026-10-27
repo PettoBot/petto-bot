@@ -48,6 +48,7 @@ module.exports = {
   'feeds.add.error.badInput': '{emoji}  Escribe el enlace, el @nombre o el id de la cuenta en {platform}.',
   'feeds.add.error.badPace': '{emoji}  Elige cada cuánto publica: como mucho cada 5 minutos y como poco una vez al día.',
   'feeds.add.error.notConfigured': '{emoji}  {platform} aún no está configurado en este bot: faltan sus claves de acceso. El dueño del bot tiene que añadirlas.',
+  'feeds.add.error.unsupported': '{emoji}  {platform} no deja que los bots sigan eso. Prueba con un artista, o con una playlist de Deezer o Spotify.',
   'feeds.add.error.unavailable': '{emoji}  {platform} no respondió. Inténtalo de nuevo en un momento.',
   'feeds.add.error.already': '{emoji}  **{account}** ya se sigue en ese canal.',
   'feeds.notFound': '{emoji}  No hay un feed `#{id}` en este servidor. Mira `{prefix}feed list`.',
