@@ -55,7 +55,7 @@ function allowedMentionsOf(feed) {
 
 /**
  * The message of a feed for an item.
- * `feed`: { message, ping_roles, ping_everyone, options: { image, button (on unless false), player, color } }. `test` puts a small "test" mark on the top line.
+ * `feed`: { message, ping_roles, ping_everyone, options: { image, button (on unless false), player (Shorts: on unless false), color } }. `test` puts a small "test" mark on the top line.
  */
 function buildFeedMessage(feed, item, { lang, test = false, hero = null } = {}) {
   const platform = PLATFORMS[item.platform] ?? PLATFORMS.rss;
@@ -68,8 +68,8 @@ function buildFeedMessage(feed, item, { lang, test = false, hero = null } = {}) 
 
   const url = safeUrl(item.url);
 
-  // The player of the video, like a person pasting the link: a plain message (Discord draws the playable video itself), not a card. Only for the videos and Shorts of YouTube.
-  if (options.player && item.platform === 'youtube' && (item.type === 'video' || item.type === 'short') && url) {
+  // The player of the video, like a person pasting the link: a plain message (Discord draws the playable video itself), not a card. Only for the videos and Shorts of YouTube; a Short comes this way unless the feed says `player: false` (its own picture is a small frame, the player shows the Short itself).
+  if ((options.player === true || (item.type === 'short' && options.player !== false)) && item.platform === 'youtube' && (item.type === 'video' || item.type === 'short') && url) {
     return { content: [top, url].filter(Boolean).join('\n'), allowedMentions: allowedMentionsOf(feed) };
   }
 
