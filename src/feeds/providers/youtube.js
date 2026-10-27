@@ -103,13 +103,20 @@ const seconds = (iso) => { const found = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/
  * sometimes answers 404 or 500 for a channel that exists, so this is the way out. A video of a minute or less is taken for a Short (the feed
  * says it by the link; the API does not).
  */
+const lengths = new Map(); // videoId -> seconds
+
 async function fetchChannelFromApi(channelId) {
   if (!CHANNEL_ID.test(channelId)) throw new IntegrationError('notFound');
   const list = await api('/playlistItems', { part: 'snippet', playlistId: `UU${channelId.slice(2)}`, maxResults: 15 });
   const items = (list?.items ?? []).filter((item) => item.snippet?.resourceId?.videoId);
   if (!items.length) return { name: '', entries: [] };
-  const details = await api('/videos', { part: 'contentDetails', id: items.map((item) => item.snippet.resourceId.videoId).join(',') });
-  const length = new Map((details?.items ?? []).map((video) => [video.id, seconds(video.contentDetails?.duration)]));
+  // The length of a video never changes: it is asked once, so the usual pass over a channel costs one unit (the list) and not two.
+  const unknown = items.map((item) => item.snippet.resourceId.videoId).filter((id) => !lengths.has(id));
+  if (unknown.length) {
+    const details = await api('/videos', { part: 'contentDetails', id: unknown.join(',') });
+    for (const video of details?.items ?? []) { if (lengths.size >= 50_000) lengths.delete(lengths.keys().next().value); lengths.set(video.id, seconds(video.contentDetails?.duration)); }
+  }
+  const length = lengths;
   return {
     name: items[0].snippet.channelTitle ?? '',
     entries: items.map((item) => {
@@ -132,7 +139,7 @@ async function fetchChannel(channelId) {
     return { name: tag(xml.split('<entry>')[0], 'title'), entries: parseFeed(xml) };
   } catch (error) {
     if (!(error instanceof IntegrationError) || !config.youtubeApiKey || !['notFound', 'unavailable', 'rateLimited'].includes(error.kind)) throw error;
-    if (!canSpend(2, 0.7)) throw error; // the way out costs two units a channel: it stops at 70% of the day so the live check keeps its room
+    if (!canSpend(2, 0.7)) throw error; // the way out costs a unit or two a channel: it stops at 70% of the day so the live check keeps its room
     try {
       return await fetchChannelFromApi(channelId);
     } catch (second) {
