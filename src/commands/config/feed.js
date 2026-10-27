@@ -12,7 +12,7 @@ const { EMOJI } = require('../../utils/emojis');
 const { t, languageOf } = require('../../i18n');
 
 const V2 = MessageFlags.IsComponentsV2;
-const COMMAND_PLATFORMS = ['youtube', 'twitch', 'kick', 'bluesky', 'reddit', 'steam', 'github', 'modrinth', 'npm', 'pypi', 'anilist', 'pinterest', 'rss', 'wikipedia', 'chess', 'pokemon', 'spotify', 'deezer', 'applemusic', 'mastodon', 'tumblr', 'letterboxd', 'epic', 'cat', 'dog', 'fox', 'animals'];
+const COMMAND_PLATFORMS = ['youtube', 'twitch', 'kick', 'bluesky', 'reddit', 'steam', 'github', 'modrinth', 'npm', 'pypi', 'anilist', 'pinterest', 'rss', 'wikipedia', 'chess', 'pokemon', 'spotify', 'deezer', 'applemusic', 'mastodon', 'tumblr', 'letterboxd', 'epic', 'cat', 'dog', 'fox', 'bird', 'duck', 'capybara', 'bunny', 'animals', 'randommusic'];
 // Discord shows 25 choices at most and there are more platforms than that, so the platform is picked from a list that filters while it is typed.
 const platformChoices = COMMAND_PLATFORMS.map((id) => ({ name: PLATFORMS[id].name, value: id }));
 const idOption = (o) => o.setName('id').setDescription('The number of the feed (see the list)').setMinValue(1).setRequired(true);
@@ -75,7 +75,7 @@ module.exports = {
       const platform = interaction.options.getString('platform');
       const channel = interaction.options.getChannel('channel') ?? interaction.channel;
       await interaction.deferReply({ flags: V2 });
-      const result = await service.createFeed(guild, { platform, account: interaction.options.getString('account') ?? '', channelId: channel?.id, createdBy: interaction.user.id });
+      const result = await service.createFeed(guild, { platform, account: interaction.options.getString('account') ?? '', channelId: channel?.id, createdBy: interaction.user.id, lang });
       const send = (text, color) => interaction.editReply({ components: [textCard(text, color)], flags: V2 });
       if (!result.ok) {
         const key = `feeds.add.error.${result.error}`;

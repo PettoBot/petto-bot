@@ -63,7 +63,7 @@ function animalFeed(animal) {
     async resolve(text) {
       const minutes = schedule.parseMinutes(text);
       if (minutes === null) throw new IntegrationError('badInput');
-      return { id: schedule.accountIdFor(animal, minutes), name: { cat: 'Cats', dog: 'Dogs', fox: 'Foxes', animals: 'Animals' }[animal], avatar: null, url: null }; // i18n-ignore: the name of what is posted
+      return { id: schedule.accountIdFor(animal, minutes), name: { cat: 'Cats', dog: 'Dogs', fox: 'Foxes', bird: 'Birds', duck: 'Ducks', capybara: 'Capybaras', bunny: 'Bunnies', animals: 'Animals' }[animal], avatar: null, url: null }; // i18n-ignore: the name of what is posted
     },
     async poll(accounts, _tracked, { now = Date.now(), lang = 'en' } = {}) {
       const results = new Map();
@@ -81,6 +81,32 @@ function animalFeed(animal) {
     },
   };
 }
+
+/** A song at random, at the pace of the account (once a day to every 5 minutes), the same for every server of that pace. */
+const randomMusicFeed = {
+  interval: 60_000, perTick: 5000, concurrency: 1, noAccount: true,
+  async resolve(text) {
+    const minutes = schedule.parseMinutes(text);
+    if (minutes === null) throw new IntegrationError('badInput');
+    return { id: schedule.accountIdFor('randommusic', minutes), name: 'Random music', avatar: null, url: null }; // i18n-ignore: the name of what is posted
+  },
+  async poll(accounts, _tracked, { now = Date.now() } = {}) {
+    const results = new Map();
+    for (const account of accounts) {
+      const minutes = schedule.minutesOf(account.id);
+      const slot = schedule.slotOf(now, minutes);
+      try {
+        const item = await music.deezerRandomSong(`${minutes}:${slot}`, schedule.slotStart(slot, minutes));
+        results.set(account.id, { items: item ? [item] : [] });
+      } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
+    }
+    return results;
+  },
+  async baselineItems(account, now = Date.now()) {
+    const minutes = schedule.minutesOf(account.id);
+    return [{ id: `${minutes}:${schedule.slotOf(now, minutes)}` }];
+  },
+};
 
 const PROVIDERS = {
   youtube: {
@@ -209,9 +235,9 @@ const PROVIDERS = {
 
   modrinth: {
     interval: 10 * 60_000, perTick: 100, concurrency: 4,
-    async resolve(text) {
+    async resolve(text, { lang } = {}) {
       const kind = modrinth.parseNew(text);
-      if (kind) return modrinth.newAccount(kind);
+      if (kind) return modrinth.newAccount(kind, lang);
       const project = await modrinth.resolveProject(text);
       return { id: project.id, name: project.name, avatar: project.avatar, url: project.url, project };
     },
@@ -335,7 +361,7 @@ const PROVIDERS = {
   // ---- Games, anime, knowledge -------------------------------------------------------------------------------------------------------------
   steam: {
     interval: 10 * 60_000, perTick: 100, concurrency: 4,
-    resolve: (text) => (steam.parseStore(text) ? steam.storeAccount(steam.parseStore(text)) : steam.resolveApp(text)),
+    resolve: (text, { lang } = {}) => (steam.parseStore(text) ? steam.storeAccount(steam.parseStore(text), lang) : steam.resolveApp(text)),
     async poll(accounts, _tracked, { now = Date.now() } = {}) {
       const results = new Map();
       await forEachWithConcurrency(accounts, async (account) => {
@@ -360,21 +386,21 @@ const PROVIDERS = {
 
   deezer: {
     interval: 30 * 60_000, perTick: 120, concurrency: 4,
-    resolve: async (text) => { const artist = await music.deezerResolve(text); return { id: artist.id, name: artist.name, avatar: artist.avatar, url: artist.url }; },
+    resolve: async (text, { lang } = {}) => { const artist = await music.deezerResolve(text, lang); return { id: artist.id, name: artist.name, avatar: artist.avatar, url: artist.url }; },
     poll: listPoll((account, now) => music.deezerReleases(account, now), 4),
     async baselineItems(account) { return (await music.deezerReleases(account, Date.now())).map((item) => ({ id: item.id })); },
   },
 
   applemusic: {
     interval: 60 * 60_000, perTick: 15, concurrency: 1, // Apple asks for about 20 calls a minute
-    resolve: (text) => music.appleResolve(text),
+    resolve: (text, { lang } = {}) => music.appleResolve(text, lang),
     poll: listPoll((account, now) => music.appleReleases(account, now), 1),
     async baselineItems(account) { return (await music.appleReleases(account)).map((item) => ({ id: item.id })); },
   },
 
   spotify: {
     interval: 30 * 60_000, perTick: 100, concurrency: 3,
-    resolve: (text) => music.spotifyResolve(text),
+    resolve: (text, { lang } = {}) => music.spotifyResolve(text, lang),
     poll: listPoll((account) => music.spotifyReleases(account), 3),
     async baselineItems(account) { return (await music.spotifyReleases(account)).map((item) => ({ id: item.id })); },
   },
@@ -419,7 +445,12 @@ const PROVIDERS = {
   cat: animalFeed('cat'),
   dog: animalFeed('dog'),
   fox: animalFeed('fox'),
+  bird: animalFeed('bird'),
+  duck: animalFeed('duck'),
+  capybara: animalFeed('capybara'),
+  bunny: animalFeed('bunny'),
   animals: animalFeed('animals'),
+  randommusic: randomMusicFeed,
 
   wikipedia: {
     interval: 60_000, perTick: 5000, concurrency: 1, perLanguage: true, noAccount: true,

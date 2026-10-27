@@ -64,12 +64,12 @@ function registerFeedRoutes(app, { authorize, limiter }) {
     const platform = String(req.body?.platform ?? '').toLowerCase();
     const text = String(req.body?.account ?? '').trim().slice(0, 200);
     if (!isProvider(platform) || (!text && !PROVIDERS[platform]?.noAccount)) { res.status(400).json({ ok: false, message: t(lang, 'feeds.add.error.badInput', { emoji: '', platform: PLATFORMS[platform]?.name ?? '' }).trim() }); return; }
-    const key = `${platform}:${text.toLowerCase()}`;
+    const key = `${platform}:${lang}:${text.toLowerCase()}`;
     const kept = resolved.get(key);
     if (kept && kept.until > Date.now()) { res.json({ ok: true, account: kept.value }); return; }
     if (!takeResolveTurn(guild.id)) { res.status(429).json({ ok: false, message: t(lang, 'feeds.add.error.unavailable', { emoji: '', platform: PLATFORMS[platform].name }).trim() }); return; }
     try {
-      const { id, name, avatar, url } = await PROVIDERS[platform].resolve(text);
+      const { id, name, avatar, url } = await PROVIDERS[platform].resolve(text, { lang });
       const value = { id, name, avatar: avatar ?? null, url: url ?? null };
       if (resolved.size > 2000) resolved.clear();
       resolved.set(key, { until: Date.now() + KEEP_MS, value });
@@ -87,7 +87,7 @@ function registerFeedRoutes(app, { authorize, limiter }) {
     if (!isProvider(platform)) { res.status(400).json({ ok: false, message: t(lang, 'feeds.add.error.unknownPlatform', { emoji: '', platform: platform.slice(0, 30) }).trim() }); return; }
     if (!takeSearchTurn(guild.id)) { res.status(429).json({ ok: false, error: 'rateLimited', message: t(lang, 'feeds.add.error.unavailable', { emoji: '', platform: PLATFORMS[platform].name }).trim() }); return; }
     try {
-      res.json({ ok: true, results: await searchAccounts(platform, query) });
+      res.json({ ok: true, results: await searchAccounts(platform, query, lang) });
     } catch (error) {
       if (!(error instanceof IntegrationError)) throw error;
       const kind = ['notConfigured', 'badInput', 'unsupported'].includes(error.kind) ? error.kind : 'unavailable';
@@ -99,7 +99,7 @@ function registerFeedRoutes(app, { authorize, limiter }) {
     const body = req.body ?? {};
     const result = await service.createFeed(guild, {
       platform: body.platform, account: body.account, channelId: body.channel_id, types: body.types, message: body.message, pingRoles: body.ping_roles,
-      pingEveryone: body.ping_everyone, options: body.options, filters: body.filters, createdBy: userId,
+      pingEveryone: body.ping_everyone, options: body.options, filters: body.filters, createdBy: userId, lang,
     });
     if (!result.ok) { res.status(400).json({ ok: false, error: result.error, message: errorText(lang, result, String(body.platform ?? '')) }); return; }
     res.json({ ok: true, feed: result.feed, message: t(lang, 'feeds.add.ok', { emoji: '', account: result.feed.account_name, platform: PLATFORMS[result.feed.platform].name, channel: `#${guild.channels.cache.get(result.feed.channel_id)?.name ?? ''}`, id: result.feed.id, prefix: '!' }).trim() });

@@ -423,7 +423,7 @@ const allText = (message) => JSON.stringify(json(message.components));
     const shaders = await PROVIDERS.modrinth.resolve('new:shader');
     assert.deepEqual([shaders.id, shaders.name], ['new:shader', 'New shaders']);
     const projects = (await PROVIDERS.modrinth.poll([shaders], new Map(), { now })).get('new:shader').items;
-    assert.deepEqual([projects.length, projects[0].title, projects[0].type, projects[0].extra, projects[0].author], [1, 'Glow', 'post', 'Shader · 1.21', 'someone']);
+    assert.deepEqual([projects.length, projects[0].title, projects[0].type, projects[0].extra, projects[0].author], [1, 'Glow', 'post', '1.21', 'someone']);
     assert.deepEqual((await PROVIDERS.modrinth.baselineItems(shaders)).map((item) => item.id), ['sh1']);
     const top = await PROVIDERS.steam.resolve('store:top');
     assert.equal(top.name, 'Steam · Top sellers');
@@ -454,42 +454,105 @@ const allText = (message) => JSON.stringify(json(message.components));
     assert.ok(plain.includes('https://cdn.dz/a.jpg') && !plain.includes('attachment://'), 'without the picture it is the ordinary card with the cover');
   }
 
-  // --- Cats and foxes: a picture for each slot of time, the same for everybody, at the pace of the account ----------------------------------------------
+  // --- Animals: a picture for each slot of time, the same for everybody, at the pace of the account; several services each, the next one when one is down ---
   {
     const realFetch = globalThis.fetch;
     const asked = [];
+    const down = new Set(); // hosts that do not answer
+    const ok = (body) => new Response(JSON.stringify(body), { status: 200 });
     globalThis.fetch = async (url) => {
-      asked.push(String(url));
-      if (String(url).includes('thecatapi')) return new Response(JSON.stringify([{ id: 'c1', url: 'https://cdn2.thecatapi.com/images/c1.jpg' }]), { status: 200 });
-      if (String(url).includes('randomfox')) return new Response(JSON.stringify({ image: 'https://randomfox.ca/images/7.jpg', link: 'https://randomfox.ca/?i=7' }), { status: 200 });
-      if (String(url).includes('dog.ceo')) return new Response(JSON.stringify({ message: 'https://images.dog.ceo/breeds/chow/n1.jpg', status: 'success' }), { status: 200 });
+      const u = String(url);
+      asked.push(u);
+      const host = new URL(u).host;
+      if (down.has(host)) return new Response('{}', { status: 500 });
+      if (host === 'api.thecatapi.com') return ok([{ id: 'c1', url: 'https://cdn2.thecatapi.com/images/c1.jpg' }]);
+      if (host === 'cataas.com') return ok({ url: 'https://cataas.com/cat/c2?position=center' });
+      if (host === 'dog.ceo') return ok({ message: 'https://images.dog.ceo/breeds/chow/n1.jpg', status: 'success' });
+      if (host === 'api.thedogapi.com') return ok([{ url: 'https://cdn2.thedogapi.com/images/d2.jpg' }]);
+      if (host === 'randomfox.ca') return ok({ image: 'https://randomfox.ca/images/7.jpg', link: 'https://randomfox.ca/?i=7' });
+      if (host === 'api.sefinek.net') return ok({ message: `https://cdn.sefinek.net/images/animals/${u.split('/').pop()}/x.jpg` });
+      if (host === 'random-d.uk') return ok({ url: 'http://random-d.uk/api/483.JPG' });
+      if (host === 'api.capy.lol') return ok({ data: { url: 'http://api.capy.lol/v1/capybara/45' } });
+      if (host === 'api.bunnies.io') return ok({ media: { poster: 'https://bunnies.media/poster/76.png' } });
       return new Response('{}', { status: 404 });
     };
     const when = Date.UTC(2026, 9, 27, 10, 7, 30);
-    for (const [animal, es] of [['cat', 'Un gatito para ti'], ['dog', 'Un perrito para ti'], ['fox', 'Un zorrito para ti']]) {
+    const titles = { cat: ['Un gatito para ti', 'A cat for you'], dog: ['Un perrito para ti', 'A dog for you'], fox: ['Un zorrito para ti', 'A fox for you'], bird: ['Un pajarito para ti', 'A bird for you'], duck: ['Un patito para ti', 'A duck for you'], capybara: ['Una capibara para ti', 'A capybara for you'], bunny: ['Un conejito para ti', 'A bunny for you'] };
+    for (const [animal, [es]] of Object.entries(titles)) {
       const account = await PROVIDERS[animal].resolve('30m');
       assert.equal(account.id, 'every:30');
       assert.equal((await PROVIDERS[animal].resolve('')).id, 'daily', 'nothing is once a day');
       await assert.rejects(PROVIDERS[animal].resolve('4m'), (error) => error.kind === 'badInput');
       assert.equal((await PROVIDERS[animal].resolve('5m')).id, 'every:5', 'five minutes is the shortest pace');
+      const before = asked.length;
       const first = (await PROVIDERS[animal].poll([account, { id: 'every:30' }], new Map(), { now: when, lang: 'es' })).get('every:30').items[0];
       assert.deepEqual([first.type, first.title, first.platform], ['photo', es, animal]);
-      assert.ok(first.image.startsWith('https://'));
+      assert.ok(first.image.startsWith('https://'), 'a service that answers with http is used over https');
       assert.ok(!first.author && !first.authorUrl && !account.url, 'the notice does not say where the picture comes from');
       const again = (await PROVIDERS[animal].poll([account], new Map(), { now: when + 60_000, lang: 'en' })).get('every:30').items[0];
       assert.equal(again.id, first.id, 'a minute later it is the same picture');
-      assert.equal(asked.filter((url) => url.includes({ cat: 'thecatapi', dog: 'dog.ceo', fox: 'randomfox' }[animal])).length, 1, 'the service is asked once for each slot');
+      assert.equal(asked.length - before, 1, 'the service is asked once for each slot');
     }
-    // `animals` is any of the three, one for each slot, the same for everybody.
+    // When the service of a slot is down the next one answers.
+    down.add('api.thecatapi.com'); down.add('cataas.com');
+    const catAccount = await PROVIDERS.cat.resolve('15m');
+    const viaSefinek = (await PROVIDERS.cat.poll([catAccount], new Map(), { now: when + 7 * 15 * 60_000, lang: 'en' })).get('every:15').items[0];
+    assert.ok(viaSefinek.image.includes('sefinek'), 'the third service of cats answers when the other two are down');
+    down.clear();
+    // `animals` is any of them, one for each slot, the same for everybody.
     const mixed = await PROVIDERS.animals.resolve('15m');
     assert.equal(mixed.id, 'every:15');
     const kinds = new Set();
-    for (let slot = 0; slot < 6; slot += 1) {
+    for (let slot = 0; slot < 14; slot += 1) {
       const item = (await PROVIDERS.animals.poll([mixed], new Map(), { now: when + slot * 15 * 60_000, lang: 'en' })).get('every:15').items[0];
       kinds.add(item.title);
       assert.equal(item.platform, 'animals');
     }
-    assert.deepEqual([...kinds].sort(), ['A cat for you', 'A dog for you', 'A fox for you'], 'every kind of animal comes up');
+    assert.deepEqual([...kinds].sort(), Object.values(titles).map(([, en]) => en).sort(), 'every kind of animal comes up');
+    globalThis.fetch = realFetch;
+  }
+
+  // --- Random music: a song of the charts of a random genre for each slot of time, the same for everybody -----------------------------------------------
+  {
+    const realFetch = globalThis.fetch;
+    const asked = [];
+    globalThis.fetch = async (url) => {
+      const u = String(url);
+      asked.push(u);
+      if (u === 'https://api.deezer.com/genre') return new Response(JSON.stringify({ data: [{ id: 0, name: 'All' }, { id: 152, name: 'Rock' }] }), { status: 200 });
+      const chart = /chart\/(\d+)\/tracks/.exec(u);
+      if (chart) return new Response(JSON.stringify({ data: [1, 2, 3, 4].map((n) => ({ id: Number(chart[1]) * 10 + n, title: `Song ${chart[1]}-${n}`, link: `https://www.deezer.com/track/${n}`, artist: { name: 'Singer', link: 'https://www.deezer.com/artist/7' }, album: { cover_xl: 'https://cdn.dz/c.jpg' } })) }), { status: 200 });
+      return new Response('{}', { status: 404 });
+    };
+    const when = Date.UTC(2026, 9, 27, 10, 7, 30);
+    const account = await PROVIDERS.randommusic.resolve('10m');
+    assert.equal(account.id, 'every:10');
+    await assert.rejects(PROVIDERS.randommusic.resolve('3m'), (error) => error.kind === 'badInput');
+    const song = (await PROVIDERS.randommusic.poll([account], new Map(), { now: when })).get('every:10').items[0];
+    assert.deepEqual([song.type, song.platform, song.author], ['track', 'deezer', 'Singer'], 'a song that opens on Deezer, with its own kind of notice');
+    const before = asked.length;
+    const again = (await PROVIDERS.randommusic.poll([account], new Map(), { now: when + 60_000 })).get('every:10').items[0];
+    assert.equal(again.id, song.id);
+    assert.equal(asked.length, before, 'the same slot is not asked again');
+    const next = (await PROVIDERS.randommusic.poll([account], new Map(), { now: when + 10 * 60_000 })).get('every:10').items[0];
+    assert.notEqual(next.id, song.id, 'the next slot is another song');
+    const songCard = JSON.parse(JSON.stringify(card.buildFeedMessage({ message: '', options: {}, ping_roles: [] }, song, { lang: 'es', hero: { name: 'release.png' } }).components));
+    assert.equal(songCard[0].components.at(-1).components[0].label, 'Escuchar en Deezer');
+    assert.ok(JSON.stringify(songCard).includes('Una canción para ti'), 'and says what it is');
+    globalThis.fetch = realFetch;
+  }
+
+  // --- The names of the lists come in the language of who follows them --------------------------------------------------------------------------------------
+  {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response('{}', { status: 404 });
+    const steam = await PROVIDERS.steam.resolve('store:top', { lang: 'es' });
+    assert.equal(steam.name, 'Steam · Los más vendidos');
+    assert.equal((await PROVIDERS.modrinth.resolve('new:shader', { lang: 'pt-BR' })).name, 'Shaders novos');
+    assert.equal((await PROVIDERS.applemusic.resolve('chart:co:albums', { lang: 'es' })).name, 'Top 10 álbumes · Colombia');
+    assert.equal((await PROVIDERS.applemusic.resolve('chart:co:songs', { lang: 'en' })).name, 'Top 10 · Colombia');
+    config.spotifyClientId = null;
+    assert.equal((await PROVIDERS.spotify.resolve('new:CO', { lang: 'pt-BR' })).name, 'Álbuns novos · Colômbia');
     globalThis.fetch = realFetch;
   }
 

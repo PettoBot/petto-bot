@@ -26,14 +26,19 @@ const PLATFORMS = {
   cat: { name: 'Cats', color: 0xf5a524, site: null, types: ['photo'], defaultTypes: ['photo'] }, // i18n-ignore: the name of what is posted
   dog: { name: 'Dogs', color: 0xb7791f, site: null, types: ['photo'], defaultTypes: ['photo'] }, // i18n-ignore: the name of what is posted
   fox: { name: 'Foxes', color: 0xff7a1a, site: null, types: ['photo'], defaultTypes: ['photo'] }, // i18n-ignore: the name of what is posted
+  bird: { name: 'Birds', color: 0x38bdf8, site: null, types: ['photo'], defaultTypes: ['photo'] }, // i18n-ignore: the name of what is posted
+  duck: { name: 'Ducks', color: 0xfacc15, site: null, types: ['photo'], defaultTypes: ['photo'] }, // i18n-ignore: the name of what is posted
+  capybara: { name: 'Capybaras', color: 0xa16207, site: null, types: ['photo'], defaultTypes: ['photo'] }, // i18n-ignore: the name of what is posted
+  bunny: { name: 'Bunnies', color: 0xf9a8d4, site: null, types: ['photo'], defaultTypes: ['photo'] }, // i18n-ignore: the name of what is posted
   animals: { name: 'Animals', color: 0x9b7bff, site: null, types: ['photo'], defaultTypes: ['photo'] }, // i18n-ignore: the name of what is posted
+  randommusic: { name: 'Random music', color: 0xa238ff, site: 'https://www.deezer.com', types: ['track'], defaultTypes: ['track'] }, // i18n-ignore: the name of what is posted
   rss: { name: 'RSS', color: 0xf26522, site: null, types: ['post'], defaultTypes: ['post'] }, // i18n-ignore: the name of a brand
 };
 
 const PLATFORM_IDS = Object.keys(PLATFORMS);
 
 /** Every kind of notice a card can be: the same word in the labels, the emoji and the dashboard. */
-const TYPES = ['video', 'short', 'live', 'clip', 'post', 'pin', 'update', 'episode', 'release', 'game', 'photo', 'daily', 'ended'];
+const TYPES = ['video', 'short', 'live', 'clip', 'post', 'pin', 'update', 'episode', 'release', 'track', 'game', 'photo', 'daily', 'ended'];
 
 const isPlatform = (id) => Object.hasOwn(PLATFORMS, id);
 

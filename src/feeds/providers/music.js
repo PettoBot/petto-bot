@@ -5,6 +5,9 @@
 const config = require('../../config');
 const { fetchJsonBody } = require('../http');
 const { IntegrationError } = require('../../utils/integrations');
+const { t } = require('../../i18n');
+
+const L = (lang, key, vars) => t(lang, `feeds.list.${key}`, vars);
 
 const clean = (text, max = 120) => String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 const https = (value) => (/^https:\/\//i.test(String(value ?? '')) ? String(value) : null);
@@ -13,9 +16,9 @@ const compact = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M
 const dateMs = (value) => { const text = String(value ?? ''); const full = /^\d{4}$/.test(text) ? `${text}-01-01` : /^\d{4}-\d{2}$/.test(text) ? `${text}-01` : text; return Date.parse(full) || null; };
 
 /** What a person typed when they want a chart: `top`, `charts`, `top rock`, `top colombia`; the rest of the words ("rock", "colombia") or ''. null when it is not a chart. */
-const chartWords = (text) => { const match = /^(?:top|tops|chart|charts|ranking|hits|exitos|éxitos|populares)(?:\s+(.*))?$/i.exec(String(text ?? '').trim()); return match ? String(match[1] ?? '').trim() : null; };
+const chartWords = (text) => { const match = /^(?:top|tops|chart|charts|ranking|hits|exitos|éxitos|sucessos|parada|paradas|populares)(?:\s+(.*))?$/i.exec(String(text ?? '').trim()); return match ? String(match[1] ?? '').trim() : null; };
 /** What a person typed when they want the new albums of a country: `new`, `new colombia`, `nuevos`, `lanzamientos`; the rest of the words or ''. null otherwise. */
-const newWords = (text) => { const match = /^(?:new|news|nuevo|nuevos|novedades|lanzamientos|releases|new releases)(?:\s+(.*))?$/i.exec(String(text ?? '').trim()); return match ? String(match[1] ?? '').trim() : null; };
+const newWords = (text) => { const match = /^(?:new|news|nuevo|nuevos|novo|novos|novedades|novidades|lanzamientos|lançamentos|releases|new releases)(?:\s+(.*))?$/i.exec(String(text ?? '').trim()); return match ? String(match[1] ?? '').trim() : null; };
 
 // The storefronts that have charts and new releases, by two letters; a person can write the name of the country in English or Spanish, or its two letters.
 const COUNTRIES = ['us', 'co', 'mx', 'es', 'ar', 'cl', 'pe', 've', 'ec', 'uy', 'py', 'bo', 'cr', 'pa', 'do', 'gt', 'hn', 'sv', 'ni', 'pr', 'br', 'pt', 'gb', 'ie', 'fr', 'de', 'it', 'nl', 'be', 'ch', 'at', 'se', 'no', 'dk', 'fi', 'pl', 'tr', 'gr', 'ca', 'au', 'nz', 'jp', 'kr', 'in', 'id', 'ph', 'th', 'za', 'ng', 'eg', 'ae', 'sa'];
@@ -35,7 +38,7 @@ function countryOf(text) {
   }
   return countryNames.get(value) ?? null;
 }
-const COUNTRY_LABEL = (code) => { try { return new Intl.DisplayNames(['en'], { type: 'region' }).of(code.toUpperCase()); } catch { return code.toUpperCase(); } };
+const COUNTRY_LABEL = (code, lang = 'en') => { try { return new Intl.DisplayNames([String(lang).slice(0, 2) || 'en'], { type: 'region' }).of(code.toUpperCase()); } catch { return code.toUpperCase(); } };
 
 // --- Deezer -----------------------------------------------------------------------------------------------------------------------------------------
 const DEEZER = 'https://api.deezer.com';
@@ -62,17 +65,17 @@ async function deezerGet(path) {
   return body;
 }
 
-async function deezerSearch(query) {
+async function deezerSearch(query, lang) {
   const chartText = chartWords(query);
   if (chartText !== null) {
     const wanted = chartText.toLowerCase();
     const genres = wanted ? (await deezerGenres()).filter((genre) => genre.name.toLowerCase().includes(wanted)).slice(0, 4) : [{ id: '0', name: 'All genres', picture: null }]; // i18n-ignore: the name of a chart
-    const accounts = await Promise.all(genres.flatMap((genre) => [deezerChartAccount(genre.id, 'tracks'), deezerChartAccount(genre.id, 'albums')]));
-    return accounts.map((account) => ({ value: account.id, name: account.name, avatar: account.avatar, url: account.url, detail: account.id.endsWith(':albums') ? 'Chart · albums' : 'Chart · songs' })); // i18n-ignore: a label beside a result
+    const accounts = await Promise.all(genres.flatMap((genre) => [deezerChartAccount(genre.id, 'tracks', lang), deezerChartAccount(genre.id, 'albums', lang)]));
+    return accounts.map((account) => ({ value: account.id, name: account.name, avatar: account.avatar, url: account.url, detail: L(lang, account.id.endsWith(':albums') ? 'detail.chartAlbums' : 'detail.chartSongs') }));
   }
   const [artists, playlists] = await Promise.all([deezerGet(`/search/artist?q=${encodeURIComponent(query)}&limit=6`), deezerGet(`/search/playlist?q=${encodeURIComponent(query)}&limit=4`).catch(() => ({ data: [] }))]);
-  const people = (artists?.data ?? []).map((artist) => ({ value: String(artist.id), name: clean(artist.name, 80), avatar: https(artist.picture_medium || artist.picture_big), url: artist.link, detail: Number.isFinite(artist.nb_fan) ? `${compact(artist.nb_fan)} fans` : '' })); // i18n-ignore: a count beside a result
-  const lists = (playlists?.data ?? []).filter((playlist) => playlist.public !== false).map((playlist) => ({ value: `playlist:${playlist.id}`, name: clean(playlist.title, 80), avatar: https(playlist.picture_medium || playlist.picture_big), url: playlist.link, detail: ['Playlist', Number.isFinite(playlist.nb_tracks) ? `${playlist.nb_tracks} songs` : null].filter(Boolean).join(' · ') })); // i18n-ignore: labels beside a result
+  const people = (artists?.data ?? []).map((artist) => ({ value: String(artist.id), name: clean(artist.name, 80), avatar: https(artist.picture_medium || artist.picture_big), url: artist.link, detail: Number.isFinite(artist.nb_fan) ? L(lang, 'detail.fans', { count: compact(artist.nb_fan) }) : '' }));
+  const lists = (playlists?.data ?? []).filter((playlist) => playlist.public !== false).map((playlist) => ({ value: `playlist:${playlist.id}`, name: clean(playlist.title, 80), avatar: https(playlist.picture_medium || playlist.picture_big), url: playlist.link, detail: [L(lang, 'detail.playlist'), Number.isFinite(playlist.nb_tracks) ? L(lang, 'detail.playlistSongs', { count: playlist.nb_tracks }) : null].filter(Boolean).join(' · ') }));
   return [...people, ...lists];
 }
 
@@ -89,16 +92,16 @@ async function deezerGenres() {
 }
 
 /** The chart account of a genre (`0` is all of them): the 10 songs or albums on top; a new one entering the top is what gets posted. */
-async function deezerChartAccount(genreId, kind) {
-  const genre = genreId === '0' ? { id: '0', name: 'All genres', picture: null } : (await deezerGenres()).find((entry) => entry.id === String(genreId)); // i18n-ignore: the name of a chart
+async function deezerChartAccount(genreId, kind, lang) {
+  const genre = genreId === '0' ? { id: '0', name: L(lang, 'allGenres'), picture: null } : (await deezerGenres()).find((entry) => entry.id === String(genreId)); // i18n-ignore: the name of a chart
   if (!genre) throw new IntegrationError('notFound');
-  return { id: `chart:${genre.id}:${kind}`, name: `${kind === 'albums' ? 'Top 10 albums' : 'Top 10'} · ${genre.name}`, avatar: genre.picture, url: 'https://www.deezer.com/' }; // i18n-ignore: the name of a chart
+  return { id: `chart:${genre.id}:${kind}`, name: L(lang, kind === 'albums' ? 'chartAlbums' : 'chartSongs', { name: genre.name }), avatar: genre.picture, url: 'https://www.deezer.com/' };
 }
 
-async function deezerResolve(input) {
+async function deezerResolve(input, lang) {
   const text = String(input ?? '').trim();
   const chart = /^chart:(\d{1,4}):(tracks|albums)$/.exec(text);
-  if (chart) return deezerChartAccount(chart[1], chart[2]);
+  if (chart) return deezerChartAccount(chart[1], chart[2], lang);
   const playlistId = /^playlist:(\d{1,14})$/.exec(text)?.[1];
   const link = parseDeezerLink(text);
   if (playlistId || link?.kind === 'playlist') {
@@ -153,6 +156,21 @@ async function deezerChart(account, now) {
   });
 }
 
+const randomSongs = new Map(); // `${minutes}:${slot}` -> item | null
+/** A song picked at random from the charts of a random genre of Deezer, the same for everybody in a slot of time (`30:123456`); null when Deezer has none. */
+async function deezerRandomSong(key, at) {
+  if (randomSongs.has(key)) return randomSongs.get(key);
+  const hash = (Math.abs(Number(String(key).split(':')[1]) || 0) * 2654435761) >>> 0;
+  const genres = [{ id: '0', name: '' }, ...(await deezerGenres())];
+  const genre = genres[hash % genres.length];
+  const list = (await deezerGet(`/chart/${genre.id}/tracks?limit=100`))?.data ?? [];
+  const track = list.length ? list[(hash >>> 8) % list.length] : null;
+  const item = track ? { ...deezerTrackItem(track, { avatar: null }, { extra: genre.name, at }), type: 'track', id: key } : null;
+  if (randomSongs.size > 200) randomSongs.clear();
+  randomSongs.set(key, item);
+  return item;
+}
+
 /** The newest releases of an artist (albums, singles, EPs), newest first. A release dated in the future (pre-saves) waits for its day. */
 async function deezerReleases(account, now = Date.now()) {
   if (account.id.startsWith('playlist:')) return deezerPlaylistTracks(account);
@@ -187,14 +205,14 @@ function parseAppleLink(input) {
 }
 
 const APPLE_CHARTS = 'https://rss.marketingtools.apple.com/api/v2';
-const appleChartAccount = (country, kind) => ({ id: `chart:${country}:${kind}`, name: `${kind === 'albums' ? 'Top 10 albums' : 'Top 10'} · ${COUNTRY_LABEL(country)}`, avatar: null, url: 'https://music.apple.com/' }); // i18n-ignore: the name of a chart
+const appleChartAccount = (country, kind, lang) => ({ id: `chart:${country}:${kind}`, name: L(lang, kind === 'albums' ? 'chartAlbums' : 'chartSongs', { name: COUNTRY_LABEL(country, lang) }), avatar: null, url: 'https://music.apple.com/' });
 
-async function appleSearch(query) {
+async function appleSearch(query, lang) {
   const chartText = chartWords(query);
   if (chartText !== null) {
     const country = countryOf(chartText) ?? (chartText ? null : 'us');
     if (!country) return [];
-    return ['songs', 'albums'].map((kind) => { const account = appleChartAccount(country, kind); return { value: account.id, name: account.name, avatar: null, url: account.url, detail: kind === 'albums' ? 'Chart · albums' : 'Chart · songs' }; }); // i18n-ignore: a label beside a result
+    return ['songs', 'albums'].map((kind) => { const account = appleChartAccount(country, kind, lang); return { value: account.id, name: account.name, avatar: null, url: account.url, detail: L(lang, kind === 'albums' ? 'detail.chartAlbums' : 'detail.chartSongs') }; });
   }
   const body = await fetchJsonBody(`${ITUNES}/search?term=${encodeURIComponent(query)}&entity=musicArtist&limit=8`);
   return (body?.results ?? []).filter((artist) => artist.artistId).map((artist) => ({ value: String(artist.artistId), name: clean(artist.artistName, 80), avatar: null, url: artist.artistLinkUrl ?? null, detail: clean(artist.primaryGenreName, 40) }));
@@ -211,10 +229,10 @@ async function appleLookup(id, limit = 12) {
 
 const appleCover = (url) => https(String(url ?? '').replace(/\/\d+x\d+(bb)?\.(jpg|png)/, '/600x600bb.$2'));
 
-async function appleResolve(input) {
+async function appleResolve(input, lang) {
   const text = String(input ?? '').trim();
   const chart = /^chart:([a-z]{2}):(songs|albums)$/.exec(text);
-  if (chart) { if (!COUNTRIES.includes(chart[1])) throw new IntegrationError('notFound'); return appleChartAccount(chart[1], chart[2]); }
+  if (chart) { if (!COUNTRIES.includes(chart[1])) throw new IntegrationError('notFound'); return appleChartAccount(chart[1], chart[2], lang); }
   const link = parseAppleLink(text);
   if (link?.kind === 'playlist') throw new IntegrationError('unsupported'); // Apple Music only lets its own apps and developers with a paid key read a playlist
   if (link) { // the link of a song or an album follows its artist
@@ -294,32 +312,32 @@ function parseSpotify(input) {
 
 const spotifyPicture = (images) => https((images ?? [])[0]?.url);
 
-const spotifyNewAccount = (country) => ({ id: `new:${country.toUpperCase()}`, name: `New albums · ${COUNTRY_LABEL(country)}`, avatar: null, url: 'https://open.spotify.com/' }); // i18n-ignore: the name of a list
+const spotifyNewAccount = (country, lang) => ({ id: `new:${country.toUpperCase()}`, name: L(lang, 'newAlbums', { country: COUNTRY_LABEL(country, lang) }), avatar: null, url: 'https://open.spotify.com/' });
 
-async function spotifySearch(query) {
+async function spotifySearch(query, lang) {
   const fresh = newWords(query);
   if (fresh !== null) {
     const country = countryOf(fresh) ?? (fresh ? null : 'us');
     if (!country) return [];
-    const account = spotifyNewAccount(country);
-    return [{ value: account.id, name: account.name, avatar: null, url: account.url, detail: 'New releases' }]; // i18n-ignore: a label beside a result
+    const account = spotifyNewAccount(country, lang);
+    return [{ value: account.id, name: account.name, avatar: null, url: account.url, detail: L(lang, 'detail.newReleases') }];
   }
   const body = await spotifyApi(`/search?q=${encodeURIComponent(query)}&type=artist,show,playlist&limit=5&market=US`);
-  const artists = (body?.artists?.items ?? []).filter(Boolean).map((artist) => ({ value: `artist:${artist.id}`, name: clean(artist.name, 80), avatar: spotifyPicture(artist.images), url: artist.external_urls?.spotify ?? null, detail: Number.isFinite(artist.followers?.total) ? `${compact(artist.followers.total)} followers` : '' })); // i18n-ignore: a count beside a result
-  const shows = (body?.shows?.items ?? []).filter(Boolean).map((show) => ({ value: `show:${show.id}`, name: clean(show.name, 80), avatar: spotifyPicture(show.images), url: show.external_urls?.spotify ?? null, detail: ['Podcast', clean(show.publisher, 40)].filter(Boolean).join(' · ') })); // i18n-ignore: labels beside a result
-  const lists = (body?.playlists?.items ?? []).filter(Boolean).map((list) => ({ value: `playlist:${list.id}`, name: clean(list.name, 80), avatar: spotifyPicture(list.images), url: list.external_urls?.spotify ?? null, detail: ['Playlist', clean(list.owner?.display_name, 40)].filter(Boolean).join(' · ') })); // i18n-ignore: labels beside a result
+  const artists = (body?.artists?.items ?? []).filter(Boolean).map((artist) => ({ value: `artist:${artist.id}`, name: clean(artist.name, 80), avatar: spotifyPicture(artist.images), url: artist.external_urls?.spotify ?? null, detail: Number.isFinite(artist.followers?.total) ? L(lang, 'detail.followers', { count: compact(artist.followers.total) }) : '' }));
+  const shows = (body?.shows?.items ?? []).filter(Boolean).map((show) => ({ value: `show:${show.id}`, name: clean(show.name, 80), avatar: spotifyPicture(show.images), url: show.external_urls?.spotify ?? null, detail: [L(lang, 'detail.podcast'), clean(show.publisher, 40)].filter(Boolean).join(' · ') }));
+  const lists = (body?.playlists?.items ?? []).filter(Boolean).map((list) => ({ value: `playlist:${list.id}`, name: clean(list.name, 80), avatar: spotifyPicture(list.images), url: list.external_urls?.spotify ?? null, detail: [L(lang, 'detail.playlist'), clean(list.owner?.display_name, 40)].filter(Boolean).join(' · ') }));
   return [...artists, ...shows, ...lists].slice(0, 10);
 }
 
-async function spotifyResolve(input) {
+async function spotifyResolve(input, lang) {
   const text = String(input ?? '').trim();
   const fresh = /^new:([A-Za-z]{2})$/.exec(text);
-  if (fresh) { if (!COUNTRIES.includes(fresh[1].toLowerCase())) throw new IntegrationError('notFound'); return spotifyNewAccount(fresh[1]); }
+  if (fresh) { if (!COUNTRIES.includes(fresh[1].toLowerCase())) throw new IntegrationError('notFound'); return spotifyNewAccount(fresh[1], lang); }
   let id = parseSpotify(text);
   if (!id) {
     const name = clean(text, 100);
     if (!name) throw new IntegrationError('badInput');
-    id = (await spotifySearch(name)).find((entry) => !entry.value.startsWith('playlist:'))?.value;
+    id = (await spotifySearch(name, lang)).find((entry) => !entry.value.startsWith('playlist:'))?.value;
     if (!id) throw new IntegrationError('notFound');
   }
   let [kind, raw] = id.split(':');
@@ -377,5 +395,5 @@ module.exports = {
   parseDeezerArtist, parseDeezerLink, deezerSearch, deezerResolve, deezerReleases,
   parseAppleArtist, parseAppleLink, appleSearch, appleResolve, appleReleases,
   parseSpotify, spotifySearch, spotifyResolve, spotifyReleases,
-  chartWords, newWords, countryOf,
+  deezerRandomSong, chartWords, newWords, countryOf,
 };

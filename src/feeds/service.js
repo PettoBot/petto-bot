@@ -61,7 +61,7 @@ async function createFeed(guild, input) {
 
   let account;
   try {
-    account = await PROVIDERS[platform].resolve(String(input.account ?? '').trim());
+    account = await PROVIDERS[platform].resolve(String(input.account ?? '').trim(), { lang: input.lang });
   } catch (error) {
     if (error instanceof IntegrationError) return { ok: false, error: error.kind === 'badInput' && PROVIDERS[platform].noAccount ? 'badPace' : error.kind === 'notFound' || error.kind === 'badInput' || error.kind === 'notConfigured' || error.kind === 'unsupported' ? error.kind : 'unavailable' };
     throw error;

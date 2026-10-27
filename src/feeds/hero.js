@@ -6,7 +6,7 @@ const { buildSongCard } = require('../imgutils/songCard');
 const logger = require('../utils/logger');
 
 const FILE_NAME = 'release.png';
-const HERO_TYPES = new Set(['release']);
+const HERO_TYPES = new Set(['release', 'track']);
 
 /** `{ name, files }` for an item that gets the picture, or null (another kind of notice, or no cover, or it could not be drawn). */
 async function heroFor(item) {

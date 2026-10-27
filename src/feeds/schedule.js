@@ -3,7 +3,7 @@
 // server that uses it. The slots are counted from the clock (the Unix epoch), so every server that picked 15 minutes gets the same notice at the same time.
 const MIN_MINUTES = 5; // less would only flood a channel; the content of a slot is asked once for every server, so a short pace costs the public APIs nothing extra
 const DAY_MINUTES = 1440;
-const LEGACY = { pokemon: 'daily', wikipedia: 'featured', chess: 'puzzle', cat: 'daily', dog: 'daily', fox: 'daily', animals: 'daily' }; // the account of the once-a-day feeds made before there was a pace to pick
+const LEGACY = { pokemon: 'daily', wikipedia: 'featured', chess: 'puzzle', cat: 'daily', dog: 'daily', fox: 'daily', bird: 'daily', duck: 'daily', capybara: 'daily', bunny: 'daily', animals: 'daily', randommusic: 'daily' }; // the account of the once-a-day feeds made before there was a pace to pick
 const MINUTE_MS = 60_000;
 
 /** The pace a person wrote (`15`, `30m`, `2h`, `1d`, `every:45`, or nothing for once a day) in minutes, or null when it is out of range. */
