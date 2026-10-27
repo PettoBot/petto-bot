@@ -1,5 +1,5 @@
-// Who can use the feeds. While they are being tested only the team (the owner, the developers) and the testers can follow accounts or change a
-// feed; the feeds already made keep posting. Set FEEDS_PUBLIC=true in the environment to open them to every server (the dashboard has the same switch).
+// Who can use the feeds. They are open to every server; set FEEDS_PUBLIC=false in the environment and only the team (the owner, the developers)
+// and the testers can follow accounts or change a feed (the feeds already made keep posting). The dashboard has the same switch.
 const config = require('../config');
 
 function canUseFeeds(userId) {
