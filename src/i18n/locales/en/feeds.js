@@ -40,6 +40,7 @@ module.exports = {
   'feeds.add.error.limit': '{emoji}  This server already follows the **{count}** {platform} accounts it can.',
   'feeds.add.error.notFound': '{emoji}  I could not find that account on {platform}. Check the link or the name.',
   'feeds.add.error.badInput': '{emoji}  Write the link, the @name or the id of the account on {platform}.',
+  'feeds.add.error.badPace': '{emoji}  Pick how often it posts: every 15 minutes at the most, up to once a day.',
   'feeds.add.error.notConfigured': '{emoji}  {platform} is not set up on this bot yet: its access keys are missing. The owner of the bot has to add them.',
   'feeds.add.error.unavailable': '{emoji}  {platform} did not answer. Try again in a moment.',
   'feeds.add.error.already': '{emoji}  **{account}** is already followed in that channel.',

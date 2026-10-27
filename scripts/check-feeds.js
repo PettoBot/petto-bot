@@ -180,6 +180,48 @@ const allText = (message) => JSON.stringify(json(message.components));
   globalThis.fetch = realFetch;
   config.youtubeApiKey = null;
 
+  // --- The auto feeds: a pace in minutes, the same content for everybody in a slot -----------------------------------------------------------------
+  {
+    const schedule = require('../src/feeds/schedule');
+    assert.deepEqual(['', 'daily', '1d', '24h', '1440', 'https://www.wikipedia.org'].map(schedule.parseMinutes), [1440, 1440, 1440, 1440, 1440, 1440], 'nothing, or the old page of the platform, is once a day');
+    assert.deepEqual(['15', '15m', '30 min', '2h', 'every:45'].map(schedule.parseMinutes), [15, 15, 30, 120, 45]);
+    assert.deepEqual(['5', '14', '1441', '48h'].map(schedule.parseMinutes), [null, null, null, null], 'less than 15 minutes (spam) or more than a day is refused');
+    assert.deepEqual([schedule.accountIdFor('pokemon', 1440), schedule.accountIdFor('chess', 1440), schedule.accountIdFor('wikipedia', 1440), schedule.accountIdFor('pokemon', 15)], ['daily', 'puzzle', 'featured', 'every:15']);
+    assert.deepEqual(['daily', 'featured', 'every:15'].map(schedule.minutesOf), [1440, 1440, 15]);
+    const realFetch = globalThis.fetch;
+    const asked = [];
+    globalThis.fetch = async (url) => {
+      asked.push(String(url));
+      const u = String(url);
+      if (u.includes('/page/random/summary')) return new Response(JSON.stringify({ title: 'Random page', titles: { normalized: 'Random page' }, extract: 'About it.', content_urls: { desktop: { page: 'https://en.wikipedia.org/wiki/Random_page' } }, thumbnail: { source: 'https://upload.wikimedia.org/t.jpg' } }), { status: 200 });
+      if (u.includes('/pub/puzzle/random')) return new Response(JSON.stringify({ title: 'A puzzle', url: 'https://www.chess.com/forum/view/x', image: 'https://images.chesscomfiles.com/p.png' }), { status: 200 });
+      if (u.includes('/pokemon-species/')) return new Response(JSON.stringify({ flavor_text_entries: [{ language: { name: 'en' }, flavor_text: 'It is a Pokémon.' }], names: [{ language: { name: 'en' }, name: 'Testmon' }] }), { status: 200 });
+      if (u.includes('/pokemon/')) return new Response(JSON.stringify({ id: 7, name: 'testmon', types: [{ type: { name: 'water' } }], height: 5, weight: 90, sprites: { front_default: 'https://sprite.example/s.png', other: { 'official-artwork': { front_default: 'https://art.example/a.png' } } } }), { status: 200 });
+      return new Response('{}', { status: 404 });
+    };
+    const when = Date.UTC(2026, 9, 27, 10, 7, 30); // a Tuesday, 10:07 UTC
+    const slot15 = Math.floor(when / (15 * 60_000));
+    for (const platform of ['wikipedia', 'chess', 'pokemon']) {
+      const quarter = await PROVIDERS[platform].resolve('15m');
+      assert.equal(quarter.id, 'every:15');
+      await assert.rejects(PROVIDERS[platform].resolve('3'), (error) => error.kind === 'badInput', `${platform}: a pace under 15 minutes is refused`);
+      const accounts = [{ id: 'every:15', name: 'x', url: null }, { id: 'every:60', name: 'x', url: null }];
+      const results = await PROVIDERS[platform].poll(accounts, new Map(), { now: when, lang: 'en' });
+      const a = results.get('every:15').items[0];
+      const b = results.get('every:60').items[0];
+      assert.ok(a && b && a.id === `15:${slot15}` && b.id === `60:${Math.floor(when / 3_600_000)}`, `${platform}: each pace has its own slot`);
+      assert.equal(a.publishedAt, slot15 * 15 * 60_000, `${platform}: the notice is dated at the start of its slot`);
+      const again = (await PROVIDERS[platform].poll([accounts[0]], new Map(), { now: when + 60_000, lang: 'en' })).get('every:15').items[0];
+      assert.equal(again.id, a.id, `${platform}: a minute later it is the same notice, so it is not posted twice`);
+      const next = (await PROVIDERS[platform].poll([accounts[0]], new Map(), { now: when + 15 * 60_000, lang: 'en' })).get('every:15').items[0];
+      assert.equal(next.id, `15:${slot15 + 1}`, `${platform}: the next slot is a new notice`);
+      assert.deepEqual((await PROVIDERS[platform].baselineItems(accounts[0], when)).map((item) => item.id), [`15:${slot15}`], `${platform}: a new feed starts at the next slot`);
+      assert.deepEqual(await PROVIDERS[platform].baselineItems({ id: 'daily' }, when), [], `${platform}: the once-a-day feed has no baseline`);
+    }
+    assert.equal(asked.filter((url) => url.includes('/page/random/summary')).length, 3, 'Wikipedia is asked once for each slot, not once for each server');
+    globalThis.fetch = realFetch;
+  }
+
   // --- Kick: the answers of its API written out ------------------------------------------------------------------------------------------------
   {
     config.kickClientId = 'id';
@@ -494,6 +536,21 @@ const allText = (message) => JSON.stringify(json(message.components));
   assert.equal(await feedsDb.countForGuild(G, 'youtube'), 3);
   assert.equal(await feedsDb.remove(G, other.feed.id), true);
   delete PROVIDERS.reddit;
+  // An auto feed: the pace is part of the account, a new pace starts at its next slot, and a pace under 15 minutes is refused.
+  {
+    const auto = await service.createFeed(guild, { platform: 'pokemon', account: '30m', channelId: CH });
+    assert.equal(auto.ok, true);
+    assert.equal(auto.feed.account_id, 'every:30');
+    const slot = Math.floor(Date.now() / (30 * 60_000));
+    assert.ok((await feedsDb.seenAmong([auto.feed.id], [`30:${slot}`])).has(`${auto.feed.id}:30:${slot}`), 'the slot running now is the past: it is marked as seen');
+    assert.equal((await service.createFeed(guild, { platform: 'pokemon', account: '5', channelId: CH })).error, 'badPace');
+    const paced = await service.updateFeed(guild, auto.feed.id, { every: '2h' });
+    assert.equal(paced.ok && paced.feed.account_id, 'every:120', 'the pace of a feed can change');
+    assert.equal((await service.updateFeed(guild, auto.feed.id, { every: '1' })).error, 'badPace');
+    const daily = await service.updateFeed(guild, auto.feed.id, { every: '1d' });
+    assert.equal(daily.feed.account_id, 'daily', 'once a day is the old account');
+    assert.equal(await feedsDb.remove(G, auto.feed.id), true);
+  }
   const [a, b, c] = await rows();
   await service.updateFeed(guild, b.id, { enabled: false });
   await service.updateFeed(guild, c.id, { enabled: false });

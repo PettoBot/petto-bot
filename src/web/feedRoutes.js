@@ -3,7 +3,7 @@
 //   POST /api/dashboard/guild/:guildId/feeds/resolve { platform, account }  -> { ok, account: { id, name, avatar, url } }
 //   POST /api/dashboard/guild/:guildId/feeds/search  { platform, query }   -> { ok, results: [{ value, name, avatar, url, detail }] } (what matches what was typed)
 //   POST /api/dashboard/guild/:guildId/feeds/create  { platform, account, channel_id, types, message, ping_roles, ping_everyone, options, filters }
-//   POST /api/dashboard/guild/:guildId/feeds/update  { id, channel_id?, types?, message?, ping_roles?, ping_everyone?, options?, filters?, enabled? }
+//   POST /api/dashboard/guild/:guildId/feeds/update  { id, channel_id?, types?, message?, ping_roles?, ping_everyone?, options?, filters?, enabled?, every? }
 //   POST /api/dashboard/guild/:guildId/feeds/delete  { id }
 //   POST /api/dashboard/guild/:guildId/feeds/test    { id }                 posts a test notice in the channel of the feed
 //   POST /api/dashboard/guild/:guildId/feeds/preview { platform, type, message, ping_roles, ping_everyone, options, id?, account? }
@@ -111,7 +111,7 @@ function registerFeedRoutes(app, { authorize, limiter }) {
     if (!id) { res.status(400).json({ ok: false, message: t(lang, 'feeds.notFound', { emoji: '', id: '?', prefix: '!' }).trim() }); return; }
     const patch = {};
     if (body.channel_id !== undefined) patch.channelId = body.channel_id;
-    for (const key of ['types', 'message', 'options', 'filters', 'enabled']) if (body[key] !== undefined) patch[key] = body[key];
+    for (const key of ['types', 'message', 'options', 'filters', 'enabled', 'every']) if (body[key] !== undefined) patch[key] = body[key];
     if (body.ping_roles !== undefined) patch.pingRoles = body.ping_roles;
     if (body.ping_everyone !== undefined) patch.pingEveryone = body.ping_everyone;
     const result = await service.updateFeed(guild, id, patch);

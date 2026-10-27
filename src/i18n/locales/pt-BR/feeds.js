@@ -40,6 +40,7 @@ module.exports = {
   'feeds.add.error.limit': '{emoji}  Este servidor já segue as **{count}** contas de {platform} que pode.',
   'feeds.add.error.notFound': '{emoji}  Não encontrei essa conta no {platform}. Confira o link ou o nome.',
   'feeds.add.error.badInput': '{emoji}  Escreva o link, o @nome ou o id da conta no {platform}.',
+  'feeds.add.error.badPace': '{emoji}  Escolha com que frequência publica: no mínimo a cada 15 minutos e no máximo uma vez por dia.',
   'feeds.add.error.notConfigured': '{emoji}  {platform} ainda não está configurado neste bot: faltam as chaves de acesso. O dono do bot precisa adicioná-las.',
   'feeds.add.error.unavailable': '{emoji}  O {platform} não respondeu. Tente de novo em instantes.',
   'feeds.add.error.already': '{emoji}  **{account}** já é seguido nesse canal.',

@@ -21,6 +21,8 @@ const packages = require('./packages');
 const steam = require('./steam');
 const anilist = require('./anilist');
 const daily = require('./daily');
+const schedule = require('../schedule');
+const { IntegrationError } = require('../../utils/integrations');
 const { fetchPublicText } = require('../http');
 const { fallbackPicture } = require('../platforms');
 const { parseFeed } = require('../feedparse');
@@ -307,39 +309,91 @@ const PROVIDERS = {
   },
 
   wikipedia: {
-    interval: HOUR, perTick: 5000, concurrency: 1, perLanguage: true, noAccount: true,
-    async resolve() { return { id: 'featured', name: 'Wikipedia', avatar: null, url: 'https://www.wikipedia.org' }; }, // i18n-ignore: the name of a brand
-    /** The featured article of the day, from 6:00 UTC (the article of the day is chosen by then in every Wikipedia). */
-    async poll(accounts, _tracked, { now = Date.now(), lang = 'en' } = {}) {
-      if (new Date(now).getUTCHours() < 6) return new Map(accounts.map((account) => [account.id, { items: [] }]));
-      const article = await daily.featuredArticle(lang, now);
-      return new Map(accounts.map((account) => [account.id, { items: article ? [daily.wikipediaItem(article, now)] : [] }]));
+    interval: 60_000, perTick: 5000, concurrency: 1, perLanguage: true, noAccount: true,
+    // The account is the pace: `featured` (once a day) or `every:N` minutes. `text` is what the dashboard or a command sent (`15`, `2h`...).
+    async resolve(text) {
+      const minutes = schedule.parseMinutes(text);
+      if (minutes === null) throw new IntegrationError('badInput');
+      return { id: schedule.accountIdFor('wikipedia', minutes), name: 'Wikipedia', avatar: null, url: 'https://www.wikipedia.org' }; // i18n-ignore: the name of a brand
     },
-    async baselineItems() { return []; },
+    /** Once a day: the featured article, from 6:00 UTC (it is chosen by then in every Wikipedia). Every N minutes: a random article for each slot. */
+    async poll(accounts, _tracked, { now = Date.now(), lang = 'en' } = {}) {
+      const results = new Map();
+      for (const account of accounts) {
+        const minutes = schedule.minutesOf(account.id);
+        if (minutes === schedule.DAY_MINUTES) {
+          const article = new Date(now).getUTCHours() < 6 ? null : await daily.featuredArticle(lang, now);
+          results.set(account.id, { items: article ? [daily.wikipediaItem(article, now)] : [] });
+          continue;
+        }
+        const slot = schedule.slotOf(now, minutes);
+        const article = await daily.randomArticle(lang, `${minutes}:${slot}`);
+        results.set(account.id, { items: article ? [{ ...daily.wikipediaItem(article, now), publishedAt: schedule.slotStart(slot, minutes) }] : [] });
+      }
+      return results;
+    },
+    /** A pace of minutes starts at the next slot: the one running now is the past. */
+    async baselineItems(account, now = Date.now()) {
+      const minutes = schedule.minutesOf(account.id);
+      return minutes === schedule.DAY_MINUTES ? [] : [{ id: `${minutes}:${schedule.slotOf(now, minutes)}` }];
+    },
   },
 
   chess: {
-    interval: HOUR, perTick: 5000, concurrency: 1, noAccount: true,
-    async resolve() { return { id: 'puzzle', name: 'Chess.com', avatar: null, url: 'https://www.chess.com/daily-chess-puzzle' }; }, // i18n-ignore: the name of a brand
-    async poll(accounts) {
-      const puzzle = await daily.chessPuzzle();
-      return new Map(accounts.map((account) => [account.id, { items: puzzle ? [daily.chessItem(puzzle)] : [] }]));
+    interval: 60_000, perTick: 5000, concurrency: 1, noAccount: true,
+    async resolve(text) {
+      const minutes = schedule.parseMinutes(text);
+      if (minutes === null) throw new IntegrationError('badInput');
+      return { id: schedule.accountIdFor('chess', minutes), name: 'Chess.com', avatar: null, url: 'https://www.chess.com/daily-chess-puzzle' }; // i18n-ignore: the name of a brand
     },
-    async baselineItems() { return []; },
+    async poll(accounts, _tracked, { now = Date.now() } = {}) {
+      const results = new Map();
+      for (const account of accounts) {
+        const minutes = schedule.minutesOf(account.id);
+        if (minutes === schedule.DAY_MINUTES) {
+          const puzzle = await daily.chessPuzzle();
+          results.set(account.id, { items: puzzle ? [daily.chessItem(puzzle)] : [] });
+          continue;
+        }
+        const slot = schedule.slotOf(now, minutes);
+        const puzzle = await daily.randomPuzzle(`${minutes}:${slot}`);
+        results.set(account.id, { items: puzzle ? [{ ...daily.chessItem(puzzle), publishedAt: schedule.slotStart(slot, minutes) }] : [] });
+      }
+      return results;
+    },
+    async baselineItems(account, now = Date.now()) {
+      const minutes = schedule.minutesOf(account.id);
+      return minutes === schedule.DAY_MINUTES ? [] : [{ id: `${minutes}:${schedule.slotOf(now, minutes)}` }];
+    },
   },
 
   pokemon: {
-    interval: HOUR, perTick: 5000, concurrency: 1, perLanguage: true, noAccount: true,
-    async resolve() { return { id: 'daily', name: 'Pokédex', avatar: null, url: 'https://www.pokemon.com/us/pokedex' }; }, // i18n-ignore: the name of a brand
-    /** One Pokémon a day for everybody, from 14:00 UTC (9 in the morning in Colombia). The text is in the language of each server by the card. */
+    interval: 60_000, perTick: 5000, concurrency: 1, perLanguage: true, noAccount: true,
+    async resolve(text) {
+      const minutes = schedule.parseMinutes(text);
+      if (minutes === null) throw new IntegrationError('badInput');
+      return { id: schedule.accountIdFor('pokemon', minutes), name: 'Pokédex', avatar: null, url: 'https://www.pokemon.com/us/pokedex' }; // i18n-ignore: the name of a brand
+    },
+    /** Once a day: one Pokémon for everybody, from 14:00 UTC (9 in the morning in Colombia). Every N minutes: the next one of the dex for each slot. */
     async poll(accounts, _tracked, { now = Date.now(), lang = 'en' } = {}) {
       const results = new Map();
-      if (new Date(now).getUTCHours() < 14) return new Map(accounts.map((account) => [account.id, { items: [] }]));
-      const item = pokemon.toItem(await pokemon.fetchPokemon(pokemon.pokemonOfDay(pokemon.dayNumber(now)), lang), now);
-      for (const account of accounts) results.set(account.id, { items: [item] });
+      for (const account of accounts) {
+        const minutes = schedule.minutesOf(account.id);
+        if (minutes === schedule.DAY_MINUTES) {
+          if (new Date(now).getUTCHours() < 14) { results.set(account.id, { items: [] }); continue; }
+          results.set(account.id, { items: [pokemon.toItem(await pokemon.fetchPokemonKept(pokemon.pokemonOfDay(pokemon.dayNumber(now)), lang), now)] });
+          continue;
+        }
+        const slot = schedule.slotOf(now, minutes);
+        const entry = await pokemon.fetchPokemonKept(pokemon.pokemonOfDay(slot), lang);
+        results.set(account.id, { items: [{ ...pokemon.toItem(entry, now), id: `${minutes}:${slot}`, publishedAt: schedule.slotStart(slot, minutes) }] });
+      }
       return results;
     },
-    async baselineItems() { return []; },
+    async baselineItems(account, now = Date.now()) {
+      const minutes = schedule.minutesOf(account.id);
+      return minutes === schedule.DAY_MINUTES ? [] : [{ id: `${minutes}:${schedule.slotOf(now, minutes)}` }];
+    },
   },
 };
 

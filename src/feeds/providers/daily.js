@@ -38,4 +38,30 @@ const chessItem = (puzzle) => ({
   platform: 'chess', type: 'daily', id: puzzle.id, title: puzzle.title, url: puzzle.url, description: '', image: puzzle.image, avatar: null, author: 'Chess.com', publishedAt: puzzle.published, extra: '',
 });
 
-module.exports = { featuredArticle, wikipediaItem, chessPuzzle, chessItem };
+// For the auto feeds that post every few minutes: one random article / puzzle for each slot of time, kept so every server of that pace gets the same one.
+const slots = new Map();
+const keepSlot = (key, value) => { if (slots.size > 200) slots.clear(); slots.set(key, value); return value; };
+
+/** A random article of Wikipedia in a language, the same for everybody in a slot (`key`). */
+async function randomArticle(lang, key) {
+  const code = WIKI_LANG[lang] ?? 'en';
+  const kept = `w:${code}:${key}`;
+  if (slots.has(kept)) return slots.get(kept);
+  const page = await fetchJsonBody(`https://${code}.wikipedia.org/api/rest_v1/page/random/summary`);
+  const article = page?.title ? {
+    id: key, title: page.titles?.normalized ?? page.title, summary: String(page.extract ?? ''), url: page.content_urls?.desktop?.page ?? `https://${code}.wikipedia.org/`,
+    image: page.originalimage?.source ?? page.thumbnail?.source ?? null, thumb: page.thumbnail?.source ?? null,
+  } : null;
+  return keepSlot(kept, article);
+}
+
+/** A random puzzle of Chess.com, the same for everybody in a slot (`key`). */
+async function randomPuzzle(key) {
+  const kept = `c:${key}`;
+  if (slots.has(kept)) return slots.get(kept);
+  const body = await fetchJsonBody('https://api.chess.com/pub/puzzle/random');
+  const puzzle = body?.url ? { id: key, title: String(body.title || 'Chess.com'), url: body.url, image: body.image ?? null, published: null } : null;
+  return keepSlot(kept, puzzle);
+}
+
+module.exports = { featuredArticle, wikipediaItem, chessPuzzle, chessItem, randomArticle, randomPuzzle };
