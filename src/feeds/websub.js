@@ -138,8 +138,8 @@ async function pushHandler(req, res) {
   try {
     for (const channelId of channelsOf(body.toString('utf8'))) {
       const entry = known.get(channelId);
-      if (!entry) { noteRejected(`a push arrived for ${channelId}, which is not followed; ignored.`); continue; }
-      if (!signatureOk(entry.secret, body, req.get('x-hub-signature'))) { noteRejected(`a push for ${channelId} did not have the signature of its subscription; ignored.`); continue; } // not asked for, or not signed with its secret: ignored
+      if (!entry) { noteRejected(`a push arrived for ${channelId}, which is not followed; ignored.`); continue; } // i18n-ignore: log line for the operator
+      if (!signatureOk(entry.secret, body, req.get('x-hub-signature'))) { noteRejected(`a push for ${channelId} did not have the signature of its subscription; ignored.`); continue; } // not asked for, or not signed with its secret: ignored // i18n-ignore: log line for the operator
       await store.markPush(channelId).catch(() => {});
       entry.lastPushAt = Date.now();
       // The entries of the push itself are used (a few of them can be old: the hub also sends a video whose title was changed; they are judged like the others).
