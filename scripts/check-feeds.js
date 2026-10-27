@@ -72,6 +72,11 @@ const allText = (message) => JSON.stringify(json(message.components));
   assert.ok(card.buildFeedMessage({ message: '', options: { player: true } }, { ...base, type: 'live' }, { lang: 'en' }).components, 'a live stream keeps its card');
   assert.ok(card.buildFeedMessage({ message: '', options: { player: true } }, { ...base, platform: 'twitch', type: 'live' }, { lang: 'en' }).components, 'and so does everything that is not a video of YouTube');
   assert.deepEqual(require('../src/feeds/service').cleanOptions({ player: true, image: 'x', other: 1 }), { player: true }, 'the option is kept, nothing else');
+  // Only a title: no section with the picture of the account (it would leave an empty space under one line); with a description the section stays.
+  const bare = json(card.buildFeedMessage({ message: '', options: {} }, { ...base, description: '' }, { lang: 'en' }).components)[0];
+  assert.deepEqual([bare.components[0].type, bare.components.some((child) => child.type === 9)], [10, false], 'a title alone is plain text');
+  const described = json(card.buildFeedMessage({ message: '', options: {} }, base, { lang: 'en' }).components)[0];
+  assert.equal(described.components[0].type, 9, 'with a description it is a section with the picture of the account');
   const withButton = json(card.buildFeedMessage({ message: '', options: { button: true } }, base, { lang: 'en' }).components)[0];
   assert.equal(withButton.components.at(-1).components[0].url, 'https://youtu.be/x');
   assert.equal(withButton.components.at(-1).components[0].label, 'Watch on YouTube');
@@ -1342,12 +1347,13 @@ const allText = (message) => JSON.stringify(json(message.components));
     const afterPush = globalThis.fetch;
     globalThis.fetch = async (url) => {
       if (String(url).includes('/feeds/videos.xml')) return new Response(`<?xml version="1.0"?><feed xmlns:yt="http://www.youtube.com/xml/schemas/2015"><title>Push channel</title></feed>`, { status: 200 }); // the feed does not show the video yet
-      if (String(url).includes('/youtube/v3/videos')) return new Response(JSON.stringify({ items: [{ id: 'vid1', snippet: { liveBroadcastContent: 'none' } }] }), { status: 200 });
+      if (String(url).includes('/youtube/v3/videos')) return new Response(JSON.stringify({ items: [{ id: 'vid1', snippet: { liveBroadcastContent: 'none', description: 'About this video\nand more' } }] }), { status: 200 });
       return new Response('{}', { status: 404 });
     };
     const polled = (await REAL_YOUTUBE.poll([{ id: CHANNEL, name: 'Push channel', avatar: null, url: `https://www.youtube.com/channel/${CHANNEL}` }], new Map(), { now: Date.now() })).get(CHANNEL);
     globalThis.fetch = afterPush;
     assert.deepEqual(polled.items.map((item) => `${item.id}:${item.type}`), ['vid1:video'], 'a video the push brought is posted although the feed does not show it yet');
+    assert.equal(polled.items[0].description, 'About this video', 'and its description comes from the call that says whether it is live (the push does not carry it)');
 
     // A channel that pushes is looked at every 3 minutes (every 10 with more than 300 channels followed, every 30 with more than 1500); with a stream announced it keeps the fast pace; without push it is every 5 minutes.
     const yt = PROVIDERS.youtube;
