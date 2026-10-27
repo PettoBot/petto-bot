@@ -70,10 +70,50 @@ async function resolveChannel(input) {
   return { id: target.id, name: entries.name, avatar: null, url: `https://www.youtube.com/channel/${target.id}`, handle: null };
 }
 
-/** The feed of a channel: `{ name, entries }`. A channel that does not exist is `notFound`. */
+/** The ISO 8601 length of a video (`PT1M5S`) in seconds. */
+const seconds = (iso) => { const found = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(String(iso ?? '')); return found ? Number(found[1] ?? 0) * 3600 + Number(found[2] ?? 0) * 60 + Number(found[3] ?? 0) : null; };
+
+/**
+ * The newest videos of a channel from the API (the "uploads" list of the channel, two units): the same entries as its feed. YouTube's feed
+ * sometimes answers 404 or 500 for a channel that exists, so this is the way out. A video of a minute or less is taken for a Short (the feed
+ * says it by the link; the API does not).
+ */
+async function fetchChannelFromApi(channelId) {
+  if (!CHANNEL_ID.test(channelId)) throw new IntegrationError('notFound');
+  const list = await api('/playlistItems', { part: 'snippet', playlistId: `UU${channelId.slice(2)}`, maxResults: 15 });
+  const items = (list?.items ?? []).filter((item) => item.snippet?.resourceId?.videoId);
+  if (!items.length) return { name: '', entries: [] };
+  const details = await api('/videos', { part: 'contentDetails', id: items.map((item) => item.snippet.resourceId.videoId).join(',') });
+  const length = new Map((details?.items ?? []).map((video) => [video.id, seconds(video.contentDetails?.duration)]));
+  return {
+    name: items[0].snippet.channelTitle ?? '',
+    entries: items.map((item) => {
+      const videoId = item.snippet.resourceId.videoId;
+      const long = length.get(videoId);
+      const thumbs = item.snippet.thumbnails ?? {};
+      return {
+        videoId, title: item.snippet.title ?? '', short: long !== null && long !== undefined && long <= 60, published: Date.parse(item.snippet.publishedAt) || null,
+        url: `https://www.youtube.com/${long !== null && long !== undefined && long <= 60 ? `shorts/${videoId}` : `watch?v=${videoId}`}`, description: item.snippet.description ?? '',
+        image: (thumbs.maxres ?? thumbs.high ?? thumbs.medium ?? thumbs.default)?.url ?? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`, author: item.snippet.channelTitle ?? '', channelId, views: null,
+      };
+    }),
+  };
+}
+
+/** The feed of a channel: `{ name, entries }`. When YouTube's feed fails for a channel that exists, the API gives the same list. */
 async function fetchChannel(channelId) {
-  const xml = await fetchText(`${FEED}?channel_id=${encodeURIComponent(channelId)}`);
-  return { name: tag(xml.split('<entry>')[0], 'title'), entries: parseFeed(xml) };
+  try {
+    const xml = await fetchText(`${FEED}?channel_id=${encodeURIComponent(channelId)}`);
+    return { name: tag(xml.split('<entry>')[0], 'title'), entries: parseFeed(xml) };
+  } catch (error) {
+    if (!(error instanceof IntegrationError) || !config.youtubeApiKey || !['notFound', 'unavailable', 'rateLimited'].includes(error.kind)) throw error;
+    try {
+      return await fetchChannelFromApi(channelId);
+    } catch (second) {
+      // The channel was found when the feed was made (by its id or by the API): a failure of both is a failure of YouTube, not a channel that is gone.
+      throw second instanceof IntegrationError && second.kind === 'rateLimited' ? second : new IntegrationError('unavailable');
+    }
+  }
 }
 
 /** For some video ids: `{ [id]: { state: 'live' | 'upcoming' | 'none', startedAt, scheduledAt, viewers } }` (needs the key; one unit for up to 50). */
@@ -106,4 +146,4 @@ function toItem(entry, kind, channel = {}) {
   };
 }
 
-module.exports = { parseChannel, parseFeed, fetchChannel, resolveChannel, liveStates, toItem, CHANNEL_ID };
+module.exports = { parseChannel, parseFeed, fetchChannel, fetchChannelFromApi, resolveChannel, liveStates, toItem, CHANNEL_ID };

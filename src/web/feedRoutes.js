@@ -1,6 +1,7 @@
 // Feeds from the dashboard. The dashboard reads the feeds straight from the database; these routes need the bot (the account to look up, the
 // checks of the channel, the limits, the first look, a test notice and the card as it will be posted):
 //   POST /api/dashboard/guild/:guildId/feeds/resolve { platform, account }  -> { ok, account: { id, name, avatar, url } }
+//   POST /api/dashboard/guild/:guildId/feeds/search  { platform, query }   -> { ok, results: [{ value, name, avatar, url, detail }] } (what matches what was typed)
 //   POST /api/dashboard/guild/:guildId/feeds/create  { platform, account, channel_id, types, message, ping_roles, ping_everyone, options, filters }
 //   POST /api/dashboard/guild/:guildId/feeds/update  { id, channel_id?, types?, message?, ping_roles?, ping_everyone?, options?, filters?, enabled? }
 //   POST /api/dashboard/guild/:guildId/feeds/delete  { id }
@@ -13,6 +14,7 @@ const service = require('../feeds/service');
 const { PROVIDERS, isProvider } = require('../feeds/providers');
 const { PLATFORMS } = require('../feeds/platforms');
 const { buildFeedMessage } = require('../feeds/card');
+const { searchAccounts } = require('../feeds/search');
 const { sampleNotice } = require('../feeds/samples');
 const { IntegrationError } = require('../utils/integrations');
 const { canUseFeeds } = require('../feeds/access');
@@ -23,16 +25,20 @@ const RESOLVE_PER_MINUTE = 12; // each search of a YouTube channel costs quota: 
 const KEEP_MS = 10 * 60_000;
 const resolved = new Map(); // `${platform}:${text}` -> { until, value }
 const perGuild = new Map(); // guildId -> { minute, count }
+const searchesPerGuild = new Map(); // guildId -> { minute, count }
+const SEARCH_PER_MINUTE = 40;
 
 const idOf = (value) => (Number.isInteger(Number(value)) && Number(value) > 0 ? Number(value) : null);
 
-function takeResolveTurn(guildId, now = Date.now()) {
+function takeTurn(counters, limit, guildId, now = Date.now()) {
   const minute = Math.floor(now / 60_000);
-  const entry = perGuild.get(guildId);
-  if (!entry || entry.minute !== minute) { perGuild.set(guildId, { minute, count: 1 }); return true; }
+  const entry = counters.get(guildId);
+  if (!entry || entry.minute !== minute) { counters.set(guildId, { minute, count: 1 }); return true; }
   entry.count += 1;
-  return entry.count <= RESOLVE_PER_MINUTE;
+  return entry.count <= limit;
 }
+const takeResolveTurn = (guildId, now) => takeTurn(perGuild, RESOLVE_PER_MINUTE, guildId, now);
+const takeSearchTurn = (guildId, now) => takeTurn(searchesPerGuild, SEARCH_PER_MINUTE, guildId, now);
 
 /** The text of an error of `createFeed`/`sendTest`, without the emoji the chat messages carry. */
 function errorText(lang, result, platform) {
@@ -42,7 +48,7 @@ function errorText(lang, result, platform) {
 function registerFeedRoutes(app, { authorize, limiter }) {
   const middleware = limiter ? [limiter] : [];
   const route = (name, handler) => app.post(`/api/dashboard/guild/:guildId/feeds/${name}`, ...middleware, async (req, res) => {
-    const access = await authorize(req, res, { page: 'feeds', edit: !['resolve', 'preview'].includes(name) });
+    const access = await authorize(req, res, { page: 'feeds', edit: !['resolve', 'preview', 'search'].includes(name) });
     if (!access) return;
     const lang = requestLanguage(req, access.guild.id);
     if (!canUseFeeds(access.userId)) { res.status(403).json({ ok: false, error: 'no_access', message: t(lang, 'feeds.testing', { emoji: '' }).trim() }); return; } // being tested with the team
@@ -71,6 +77,20 @@ function registerFeedRoutes(app, { authorize, limiter }) {
     } catch (error) {
       if (!(error instanceof IntegrationError)) throw error;
       const kind = ['notFound', 'badInput', 'notConfigured'].includes(error.kind) ? error.kind : 'unavailable';
+      res.status(kind === 'unavailable' ? 502 : 404).json({ ok: false, error: kind, message: t(lang, `feeds.add.error.${kind}`, { emoji: '', platform: PLATFORMS[platform].name }).trim() });
+    }
+  });
+
+  route('search', async (req, res, { guild }, lang) => {
+    const platform = String(req.body?.platform ?? '').toLowerCase();
+    const query = String(req.body?.query ?? '').trim().slice(0, 100);
+    if (!isProvider(platform)) { res.status(400).json({ ok: false, message: t(lang, 'feeds.add.error.unknownPlatform', { emoji: '', platform: platform.slice(0, 30) }).trim() }); return; }
+    if (!takeSearchTurn(guild.id)) { res.status(429).json({ ok: false, error: 'rateLimited', message: t(lang, 'feeds.add.error.unavailable', { emoji: '', platform: PLATFORMS[platform].name }).trim() }); return; }
+    try {
+      res.json({ ok: true, results: await searchAccounts(platform, query) });
+    } catch (error) {
+      if (!(error instanceof IntegrationError)) throw error;
+      const kind = ['notConfigured', 'badInput'].includes(error.kind) ? error.kind : 'unavailable';
       res.status(kind === 'unavailable' ? 502 : 404).json({ ok: false, error: kind, message: t(lang, `feeds.add.error.${kind}`, { emoji: '', platform: PLATFORMS[platform].name }).trim() });
     }
   });

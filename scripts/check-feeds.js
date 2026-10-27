@@ -173,7 +173,7 @@ const allText = (message) => JSON.stringify(json(message.components));
   // The feed fails for one channel and not for the others.
   globalThis.fetch = async (url) => (String(url).includes('channel_id=bad') ? new Response('', { status: 404 }) : new Response(rss(entries), { status: 200 }));
   results = await PROVIDERS.youtube.poll([{ ...account, id: 'bad' }, account], new Map(), { now, withLive: false });
-  assert.equal(results.get('bad').error, 'notFound');
+  assert.equal(results.get('bad').error, 'unavailable', 'a feed that fails for a channel that was found is YouTube having trouble, not a channel that is gone');
   assert.equal(results.get('UCx').items.length, 4);
   globalThis.fetch = realFetch;
   config.youtubeApiKey = null;
@@ -344,6 +344,59 @@ const allText = (message) => JSON.stringify(json(message.components));
     assert.deepEqual([polled.get('puzzle').items[0].id, polled.get('puzzle').items[0].title], ['1793000000', 'Mate in 2']);
     assert.ok(PROVIDERS.chess.noAccount && PROVIDERS.wikipedia.noAccount && PROVIDERS.pokemon.noAccount);
     assert.ok(PROVIDERS.wikipedia.perLanguage && PROVIDERS.pokemon.perLanguage && !PROVIDERS.chess.perLanguage);
+    globalThis.fetch = realFetch;
+  }
+
+  // --- the search of the dashboard and the way out when YouTube's feed fails --------------------------------------------------------------------
+  {
+    const { searchAccounts, forgetSearches } = require('../src/feeds/search');
+    const youtubeProvider = require('../src/feeds/providers/youtube');
+    const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
+    forgetSearches();
+    let asked = 0;
+    globalThis.fetch = async (url) => {
+      asked += 1;
+      const u = new URL(url);
+      if (u.hostname === 'public.api.bsky.app') return json({ actors: [{ did: 'd', handle: 'jay.bsky.team', displayName: 'Jay', avatar: 'https://cdn.bsky/a.jpg' }] });
+      if (u.hostname === 'store.steampowered.com') return json({ items: [{ id: 730, name: 'Counter-Strike 2', tiny_image: 'https://cdn/t.jpg' }] });
+      if (u.hostname === 'www.googleapis.com' && u.pathname.endsWith('/search')) return json({ items: [{ id: { channelId: 'UC' + 'a'.repeat(22) }, snippet: { channelTitle: 'Chan', description: 'About', thumbnails: { default: { url: 'https://yt/a.jpg' } } } }] });
+      return json({}, 404);
+    };
+    assert.deepEqual(await searchAccounts('bluesky', 'j'), [], 'a single letter is not searched');
+    assert.equal(asked, 0);
+    const found = await searchAccounts('bluesky', 'jay');
+    assert.deepEqual([found[0].value, found[0].name, found[0].avatar], ['jay.bsky.team', 'Jay', 'https://cdn.bsky/a.jpg']);
+    await searchAccounts('bluesky', 'JAY');
+    assert.equal(asked, 1, 'the same search is asked once');
+    assert.equal((await searchAccounts('steam', 'counter'))[0].value, '730');
+    assert.deepEqual(await searchAccounts('pokemon', 'anything'), [], 'a platform with no account has nothing to search');
+    config.youtubeApiKey = null;
+    await assert.rejects(searchAccounts('youtube', 'chan'), (error) => error.kind === 'notConfigured');
+    config.youtubeApiKey = 'key';
+    const yt = await searchAccounts('youtube', 'chan');
+    assert.deepEqual([yt[0].name, yt[0].value.length], ['Chan', 24]);
+    for (let i = 0; i < 70; i += 1) await searchAccounts('youtube', `chan${i}`).catch(() => null);
+    await assert.rejects(searchAccounts('youtube', 'one more'), (error) => error.kind === 'rateLimited', 'YouTube has a daily budget of searches');
+    forgetSearches();
+
+    // The feed of a channel answers 404 but the channel exists: its uploads list from the API is used.
+    const channelId = 'UC' + 'b'.repeat(22);
+    globalThis.fetch = async (url) => {
+      const u = new URL(url);
+      if (u.pathname.endsWith('/feeds/videos.xml')) return new Response('', { status: 404 });
+      if (u.pathname.endsWith('/playlistItems')) return json({ items: [
+        { snippet: { title: 'A long one', publishedAt: '2026-10-26T10:00:00Z', channelTitle: 'Chan', description: 'd', resourceId: { videoId: 'v1' }, thumbnails: { high: { url: 'https://yt/h.jpg' } } } },
+        { snippet: { title: 'A short', publishedAt: '2026-10-26T11:00:00Z', channelTitle: 'Chan', description: '', resourceId: { videoId: 's1' }, thumbnails: {} } }] });
+      if (u.pathname.endsWith('/videos')) return json({ items: [{ id: 'v1', contentDetails: { duration: 'PT12M3S' } }, { id: 's1', contentDetails: { duration: 'PT45S' } }] });
+      return json({}, 404);
+    };
+    const viaApi = await youtubeProvider.fetchChannel(channelId);
+    assert.deepEqual(viaApi.entries.map((entry) => [entry.videoId, entry.short, entry.url.includes('/shorts/')]), [['v1', false, false], ['s1', true, true]]);
+    assert.equal(viaApi.name, 'Chan');
+    // Both fail: YouTube is having trouble, the channel is not gone.
+    globalThis.fetch = async () => new Response('', { status: 404 });
+    await assert.rejects(youtubeProvider.fetchChannel(channelId), (error) => error.kind === 'unavailable');
+    config.youtubeApiKey = null;
     globalThis.fetch = realFetch;
   }
 

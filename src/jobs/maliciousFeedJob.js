@@ -20,8 +20,9 @@ const PUBLIC_FEEDS = [
   },
   {
     source: URLHAUS_SOURCE,
-    url: 'https://urlhaus.abuse.ch/downloads/text/',
-    parser: (text) => parsePlainUrlList(text, URLHAUS_SOURCE, ['MALWARE']),
+    // abuse.ch closed its public text downloads (HTTP 410, they now ask for a key); this list is made from URLhaus every twelve hours and needs none.
+    url: 'https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-domains-online.txt',
+    parser: (text) => parseDomainList(text, URLHAUS_SOURCE, ['MALWARE']),
   },
   {
     source: PHISHING_FILTER_SOURCE,
