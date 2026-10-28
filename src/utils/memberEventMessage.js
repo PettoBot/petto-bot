@@ -1,6 +1,8 @@
 const { getTemplate } = require('../db/embedTemplates');
 const { build } = require('./embedBuilder');
 const { plainMessage } = require('./cardService');
+const { looksLikeScript, parseEmbedScript } = require('./embedScript');
+const { payloadFromCode } = require('./embedCodeMessage');
 const { resolve } = require('./embedVariables');
 const { extractReactReplies, applyReactReplies } = require('./messageFlags');
 const logger = require('./logger');
@@ -53,6 +55,18 @@ async function sendMemberEvent({ guild, channel, kind, messageText: storedText, 
       logger.warn(`Member event "${kind}" in guild ${guild.id}: embed template "${embedTemplateName}" not found, falling back to plain text.`);
     }
 
+    // The message can be an embed code (`{embed}$v{description: ...}$v{button: ...}`): the embed and its buttons are built from it.
+    if (cleanedText && looksLikeScript(cleanedText)) {
+      const { payload, error } = await payloadFromCode(cleanedText, { ...ctx, lang });
+      if (payload) {
+        const sent = await deliver(channel, kind, { content: payload.content, embeds: payload.embeds, components: payload.components, files: payload.files, allowedMentions: ANNOUNCEMENT_MENTIONS });
+        if (emojis.length) await applyReactReplies(sent, emojis);
+        return;
+      }
+      logger.warn(`Member event "${kind}" in guild ${guild.id}: the embed code could not be built${error ? `: ${error}` : ''}.`);
+      return;
+    }
+
     if (cleanedText) {
       const plain = await plainMessage(cleanedText, ctx);
       // The usual look of a message the server did not write itself: a card (`asCard` can be its color), with the same text and the same files.
@@ -69,4 +83,17 @@ async function sendMemberEvent({ guild, channel, kind, messageText: storedText, 
   }
 }
 
-module.exports = { sendMemberEvent, localizeDefaultText };
+/** A long message cut short, to show it in a status. */
+function shortMessage(text, max = 300) {
+  const value = String(text ?? '');
+  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+}
+
+/** What a setup answers about the message it saved: the text, or how many embeds and buttons an embed code has and what in it was not understood. */
+function describeMessage(message, lang = currentLanguage()) {
+  if (!looksLikeScript(message)) return t(lang, 'welcome.common.message', { message: shortMessage(message) });
+  const parsed = parseEmbedScript(message, lang);
+  return [t(lang, 'welcome.common.code', { embeds: parsed.embeds.length, buttons: parsed.buttons.length }), ...parsed.warnings.map((line) => `- ${line}`)].join('\n');
+}
+
+module.exports = { sendMemberEvent, localizeDefaultText, shortMessage, describeMessage };

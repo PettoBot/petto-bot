@@ -73,6 +73,9 @@ if (problems.length) {
   assert.equal(await resolve('{user.bot}', { user: bot }), 'Yes');
   assert.equal(await resolve('{user.bot}', { user: bot, lang: 'es' }), 'Sí');
   assert.equal(await resolve('{user.bot} {inviter}', { user: bot, lang: 'pt-BR' }), 'Sim Desconhecido');
+  // The names other bots use for boosts and levels work too.
+  const levelled = { guild: { premiumSubscriptionCount: 7, premiumTier: 1, members: { cache: new Map() }, iconURL: () => null, bannerURL: () => null, emojis: { cache: new Map() }, roles: { cache: new Map() }, channels: { cache: new Map() } }, levelData: { level: 5, xp: 1234 } };
+  assert.equal(await resolve('{boost.count} {Level.New_Rank} {level.user_xp}', levelled), '7 5 1,234');
   const { listVariables } = require('../src/utils/embedVariableRegistry');
   const spanish = listVariables('es');
   assert.deepEqual(spanish.map((group) => group.vars.map((variable) => variable.tok)), VARIABLE_GROUPS.map((group) => group.vars.map((variable) => variable.tok)), 'the tokens never change');

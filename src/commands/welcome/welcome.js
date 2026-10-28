@@ -3,7 +3,7 @@ const { commandRef } = require('../../utils/commandRef');
 const { ensureGuild } = require('../../db/guilds');
 const { getConfig, upsertConfig } = require('../../db/memberEvents');
 const { getTemplate } = require('../../db/embedTemplates');
-const { sendMemberEvent, localizeDefaultText } = require('../../utils/memberEventMessage');
+const { sendMemberEvent, localizeDefaultText, describeMessage, shortMessage } = require('../../utils/memberEventMessage');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { t, languageOf } = require('../../i18n');
@@ -26,6 +26,9 @@ module.exports = {
     .addSubcommand((s) => s.setName('status').setDescription('Show the current welcome configuration.'))
     .addSubcommand((s) => s.setName('test').setDescription('Send a test welcome message using your own account.'))
     .addSubcommand((s) => s.setName('disable').setDescription('Turn off welcome messages.')),
+
+  // `!welcome setup` takes an embed code as its message, with its line breaks and buttons.
+  prefixCodeOptions: { setup: 'message' },
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
@@ -51,7 +54,7 @@ async function setup(interaction) {
   await ensureGuild(interaction.guild.id);
   await upsertConfig(interaction.guild.id, { welcome_channel_id: channel.id, welcome_message: message ?? null, welcome_embed_template: embed ?? null });
 
-  const detail = embed ? t(lang, 'welcome.common.embed', { name: embed }) : message ? t(lang, 'welcome.common.message', { message }) : t(lang, 'welcome.common.nothingYet', { emoji: EMOJI.ALERT });
+  const detail = embed ? t(lang, 'welcome.common.embed', { name: embed }) : message ? describeMessage(message, lang) : t(lang, 'welcome.common.nothingYet', { emoji: EMOJI.ALERT });
   const text = `${t(lang, 'welcome.welcome.setup.done', { emoji: EMOJI.APPROVE, channel: `${channel}` })}\n${detail}`;
   await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
@@ -64,7 +67,7 @@ async function status(interaction) {
   const lines = [
     t(lang, 'welcome.common.status.channel', { value: config?.welcome_channel_id ? `<#${config.welcome_channel_id}>` : t(lang, 'welcome.common.notSet') }),
     t(lang, 'welcome.common.status.embedTemplate', { value: config?.welcome_embed_template ? `\`${config.welcome_embed_template}\`` : t(lang, 'welcome.common.none.embed') }),
-    t(lang, 'welcome.common.status.plainMessage', { value: config?.welcome_message ? localizeDefaultText('welcome', config.welcome_message, lang) : t(lang, 'welcome.common.none.message') }),
+    t(lang, 'welcome.common.status.plainMessage', { value: config?.welcome_message ? shortMessage(localizeDefaultText('welcome', config.welcome_message, lang)) : t(lang, 'welcome.common.none.message') }),
   ];
   await interaction.editReply({ components: [textCard(lines.join('\n'))], flags: MessageFlags.IsComponentsV2 });
 }

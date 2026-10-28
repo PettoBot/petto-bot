@@ -470,6 +470,10 @@ async function resolve(text, ctx = {}) {
     'level.total': 'level_rank_total', 'level.streak': 'level_streak', 'level.messages': 'level_messages', 'level.voice_minutes': 'level_voice_minutes', 'level.type': 'level_type',
     'level.bar': 'level_bar', 'level.role': 'level_role', 'level.role_name': 'level_role_name', 'level.previous': 'level_previous',
     server: 'server_name', 'server.name': 'server_name', 'server.id': 'server_id', 'server.members': 'server_membercount', 'server.icon': 'server_icon', guild: 'server_name',
+    'boost.count': 'server_boostcount', 'boost.level': 'server_boostlevel', 'boost.tier': 'server_boostlevel', 'boost.next_level': 'server_nextboostlevel',
+    'boost.required': 'server_nextboostlevel_required', 'boost.remaining': 'server_nextboostlevel_until_required', 'boost.until_next': 'server_nextboostlevel_until_required',
+    'level.new_rank': 'level', 'level.new_level': 'level', 'level.old_rank': 'level_previous', 'level.old_level': 'level_previous', 'level.user_xp': 'level_xp', 'level.user_rank': 'level_rank',
+    'guild.members': 'guild.count', 'guild.member_count': 'guild.count', 'server.member_count': 'server_membercount', 'user.joined': 'user.joined_at', 'user.created': 'user.created_at',
     'message.link': 'message_link', 'message.id': 'message_id', 'message.content': 'message_content', 'channel.link': 'channel',
   };
   // A variable is found whatever its case and with spaces inside the braces (`{ User.Mention }`), in one pass, so what a variable gives is never read as a variable again.

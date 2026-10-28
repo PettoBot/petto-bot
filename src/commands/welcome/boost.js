@@ -2,7 +2,7 @@ const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = 
 const { ensureGuild } = require('../../db/guilds');
 const { getConfig, upsertConfig } = require('../../db/memberEvents');
 const { getTemplate } = require('../../db/embedTemplates');
-const { sendMemberEvent } = require('../../utils/memberEventMessage');
+const { sendMemberEvent, describeMessage, shortMessage } = require('../../utils/memberEventMessage');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { t, languageOf } = require('../../i18n');
@@ -33,6 +33,9 @@ module.exports = {
     .addSubcommand((s) => s.setName('test').setDescription('Send a test boost message using your own account.'))
     .addSubcommand((s) => s.setName('disable').setDescription('Turn off boost announcements.')),
 
+  // `!boost setup` takes an embed code as its message, with its line breaks and buttons.
+  prefixCodeOptions: { setup: 'message', 'level-up': 'message' },
+
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
     if (sub === 'setup') return setup(interaction);
@@ -61,7 +64,7 @@ async function setup(interaction) {
   await ensureGuild(interaction.guild.id);
   await upsertConfig(interaction.guild.id, { boost_channel_id: channel.id, boost_message: message ?? null, boost_embed_template: embed ?? null });
 
-  const detail = embed ? t(lang, 'welcome.common.embed', { name: embed }) : message ? t(lang, 'welcome.common.message', { message }) : t(lang, 'welcome.common.nothingYet', { emoji: EMOJI.ALERT });
+  const detail = embed ? t(lang, 'welcome.common.embed', { name: embed }) : message ? describeMessage(message, lang) : t(lang, 'welcome.common.nothingYet', { emoji: EMOJI.ALERT });
   const text = `${t(lang, 'welcome.boost.setup.done', { emoji: EMOJI.APPROVE, channel: `${channel}` })}\n${detail}`;
   await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
@@ -81,7 +84,7 @@ async function levelUp(interaction) {
   await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   await upsertConfig(interaction.guild.id, { boost_level_message: message ?? null, boost_level_embed_template: embed ?? null });
 
-  const detail = embed ? t(lang, 'welcome.common.embed', { name: embed }) : message ? t(lang, 'welcome.common.message', { message }) : t(lang, 'welcome.boost.levelUp.nothing', { emoji: EMOJI.ALERT });
+  const detail = embed ? t(lang, 'welcome.common.embed', { name: embed }) : message ? describeMessage(message, lang) : t(lang, 'welcome.boost.levelUp.nothing', { emoji: EMOJI.ALERT });
   const text = `${t(lang, 'welcome.boost.levelUp.done', { emoji: EMOJI.APPROVE, channel: `<#${existing.boost_channel_id}>` })}\n${detail}`;
   await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }
@@ -94,9 +97,9 @@ async function status(interaction) {
   const lines = [
     t(lang, 'welcome.common.status.channel', { value: config?.boost_channel_id ? `<#${config.boost_channel_id}>` : t(lang, 'welcome.common.notSet') }),
     t(lang, 'welcome.boost.status.perBoostEmbed', { value: config?.boost_embed_template ? `\`${config.boost_embed_template}\`` : t(lang, 'welcome.common.none.embed') }),
-    t(lang, 'welcome.boost.status.perBoostMessage', { value: config?.boost_message ? config.boost_message : t(lang, 'welcome.common.none.message') }),
+    t(lang, 'welcome.boost.status.perBoostMessage', { value: config?.boost_message ? shortMessage(config.boost_message) : t(lang, 'welcome.common.none.message') }),
     t(lang, 'welcome.boost.status.levelUpEmbed', { value: config?.boost_level_embed_template ? `\`${config.boost_level_embed_template}\`` : t(lang, 'welcome.common.none.embed') }),
-    t(lang, 'welcome.boost.status.levelUpMessage', { value: config?.boost_level_message ? config.boost_level_message : t(lang, 'welcome.common.none.message') }),
+    t(lang, 'welcome.boost.status.levelUpMessage', { value: config?.boost_level_message ? shortMessage(config.boost_level_message) : t(lang, 'welcome.common.none.message') }),
   ];
   await interaction.editReply({ components: [textCard(lines.join('\n'))], flags: MessageFlags.IsComponentsV2 });
 }

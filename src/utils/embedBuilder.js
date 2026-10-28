@@ -4,6 +4,7 @@ const { renderCardForMessage, normalizeCardRef, CARD_FILE_NAME } = require('./ca
 const { pullImgCards } = require('./imgCardTokens');
 const { isV2, buildV2, hasV2Content, TYPES, LIMITS } = require('./embedV2');
 const { t, currentLanguage } = require('../i18n');
+const { encodeActions, STYLES } = require('./embedActions');
 
 function parseColor(input, lang = currentLanguage()) {
   const hex = input.replace('#', '');
@@ -160,25 +161,35 @@ async function buildOneEmbed(e, ctx) {
   return embed;
 }
 
-function buildButtonRows(buttons) {
+/**
+ * The rows of buttons of a message. A button with a `url` is a link; one with `actions` (give or take a role, answer with a
+ * saved embed) is a coloured button that the bot answers when it is clicked, so it needs the server in `guild`.
+ */
+function buildButtonRows(buttons, guild = null) {
+  let index = 0;
   return (buttons ?? [])
     .map((row) => {
-      const btns = (Array.isArray(row) ? row : []).filter((b) => b && textValue(b.label).trim() && validUrl(urlValue(b.url)));
-      if (!btns.length) return null;
-      return new ActionRowBuilder().addComponents(
-        btns.map((b) => {
-          const button = new ButtonBuilder()
-            .setLabel(textValue(b.label).trim())
-            .setURL(validUrl(urlValue(b.url)))
-            .setStyle(ButtonStyle.Link)
-            .setDisabled(booleanValue(b.disabled));
-          const emoji = textValue(b.emoji).trim();
-          if (emoji) button.setEmoji(emoji);
-          return button;
-        }),
-      );
+      const built = (Array.isArray(row) ? row : []).map((b) => {
+        const label = b ? textValue(b.label).trim() : '';
+        if (!label) return null;
+        const button = new ButtonBuilder().setLabel(label).setDisabled(booleanValue(b.disabled));
+        if (Array.isArray(b.actions) && b.actions.length) {
+          const customId = encodeActions(b.actions, guild, index++);
+          if (!customId) return null;
+          button.setCustomId(customId).setStyle(STYLES[String(b.style ?? '').toLowerCase()] ?? ButtonStyle.Secondary);
+        } else {
+          const url = validUrl(urlValue(b.url));
+          if (!url) return null;
+          button.setURL(url).setStyle(ButtonStyle.Link);
+        }
+        const emoji = textValue(b.emoji).trim();
+        if (emoji) button.setEmoji(emoji);
+        return button;
+      }).filter(Boolean).slice(0, 5);
+      return built.length ? new ActionRowBuilder().addComponents(built) : null;
     })
-    .filter(Boolean);
+    .filter(Boolean)
+    .slice(0, 5);
 }
 
 /** Turns Discord.js' nested validation errors into a short, useful message. */
@@ -256,7 +267,7 @@ async function build(data, ctx = {}) {
   return {
     content: content ? await resolve(content, ctx) : undefined,
     embeds: builtEmbeds,
-    components: buildButtonRows(buttons),
+    components: buildButtonRows(buttons, ctx.guild),
     files,
   };
 }
