@@ -291,7 +291,7 @@ const PROVIDERS = {
   },
 
   kick: {
-    interval: 60_000, perTick: 2000, concurrency: 1, // a live notice goes out within a minute or two of the start
+    interval: 60_000, perTick: 2000, concurrency: 1, // a live notice goes out within a minute or so of the start
     async resolve(text) {
       const channel = await kick.resolveChannel(text);
       return { id: channel.id, name: channel.name, avatar: channel.avatar, url: channel.url };
@@ -302,9 +302,9 @@ const PROVIDERS = {
       for (const account of accounts) {
         const channel = live[account.id];
         let item = channel ? kick.toItem(channel, account) : null;
-        // Kick makes the picture of a stream a little after it starts, and a notice must not wait for it (Discord shows a broken picture for one that
-        // is not made yet): it goes out at once with a picture of Kick, marked as a stand-in, and the engine swaps in the real one when it exists.
-        item = await withStandIn(item, fallbackPicture('kick-live'));
+        // The preview of a Kick stream is made a few minutes after it starts, and even when its address answers Discord can fail to draw it (a broken picture
+        // that stays), so a Kick notice always carries the picture of Kick and goes out the moment the stream is seen.
+        if (item) item = { ...item, image: fallbackPicture('kick-live') };
         results.set(account.id, { items: item ? [item] : [], stillLive: new Set(channel ? [kick.streamId(channel)] : []) });
       }
       return results;
