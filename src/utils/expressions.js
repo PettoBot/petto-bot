@@ -10,14 +10,34 @@ function emojisInText(text) {
   return [...String(text ?? '').matchAll(EMOJI_RE)].map((match) => ({ animated: Boolean(match[1]), name: match[2], id: match[3] }));
 }
 
-/** Every custom emoji of a message: in its text, in its embeds, and the ones people reacted with. */
+/**
+ * The custom emojis of the components of a message (the new cards and the old rows): the texts of its text displays, and the emoji of a button or a
+ * menu option. Read from the raw form, which is the same for every kind of component.
+ */
+function emojisOfComponents(components) {
+  const found = [];
+  const texts = [];
+  const walk = (node, depth = 0) => {
+    if (!node || depth > 8) return;
+    const raw = typeof node.toJSON === 'function' ? node.toJSON() : node;
+    if (Array.isArray(raw)) { raw.forEach((entry) => walk(entry, depth + 1)); return; }
+    if (typeof raw !== 'object') return;
+    if (raw.emoji?.id) found.push({ animated: Boolean(raw.emoji.animated), name: raw.emoji.name ?? 'emoji', id: String(raw.emoji.id) });
+    for (const key of ['content', 'label', 'description', 'placeholder']) if (typeof raw[key] === 'string') texts.push(raw[key]);
+    for (const key of ['components', 'accessory', 'options']) walk(raw[key], depth + 1);
+  };
+  walk([...(components?.values?.() ?? components ?? [])]);
+  return [...emojisInText(texts.join('\n')), ...found];
+}
+
+/** Every custom emoji of a message: in its text, in its embeds, in its cards and buttons, and the ones people reacted with. */
 function emojisOfMessage(message) {
   const pieces = [message?.content];
   for (const embed of message?.embeds ?? []) {
     pieces.push(embed.title, embed.description, embed.footer?.text, embed.author?.name);
     for (const field of embed.fields ?? []) pieces.push(field.name, field.value);
   }
-  const found = emojisInText(pieces.filter(Boolean).join('\n'));
+  const found = [...emojisInText(pieces.filter(Boolean).join('\n')), ...emojisOfComponents(message?.components)];
   for (const reaction of message?.reactions?.cache?.values?.() ?? []) {
     if (reaction.emoji?.id) found.push({ animated: Boolean(reaction.emoji.animated), name: reaction.emoji.name ?? 'emoji', id: reaction.emoji.id });
   }
@@ -49,4 +69,4 @@ function unicodeEmojiUrl(emoji) {
   return `https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/72x72/${joined.join('-')}.png`;
 }
 
-module.exports = { emojisInText, emojisOfMessage, emojiUrl, stickerUrl, unicodeEmojiIn, unicodeEmojiUrl };
+module.exports = { emojisInText, emojisOfComponents, emojisOfMessage, emojiUrl, stickerUrl, unicodeEmojiIn, unicodeEmojiUrl };
