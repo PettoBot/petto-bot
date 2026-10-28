@@ -103,6 +103,12 @@ function hooksFor(session) {
       logger.warn(`Music: ${item?.title ?? 'a song'} could not be played (${error})`);
       say(bad(t(langOf(session.guildId), 'music.failedTrack', { title: title(item) })));
     },
+    onException(music, event) {
+      const message = clip(plainText(event?.exception?.message, 200), 200);
+      const cause = clip(plainText(event?.exception?.cause, 120), 120);
+      logger.warn(`Music: Lavalink could not load ${music.current?.title ?? 'a song'}: ${message}${cause ? ` (${cause})` : ''}`);
+      if (music.current?.source === 'youtube' && /sign in|log in|login|not a bot|confirm you/i.test(`${event?.exception?.message ?? ''} ${event?.exception?.cause ?? ''}`)) resolver.markYoutubeDown();
+    },
     onGiveUp() { say(bad(t(langOf(session.guildId), 'music.gaveUp'))); },
     onQueueEnd() {
       closePanel(session, t(langOf(session.guildId), 'music.ended'));

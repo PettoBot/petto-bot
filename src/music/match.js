@@ -128,6 +128,23 @@ function order(tracks, wanted) {
   return { list: trusted.slice(0, 3), how: trusted.length ? 'trusted' : 'none' };
 }
 
+const sourceOf = (track) => String(track?.info?.sourceName ?? '').toLowerCase();
+
+/**
+ * The order to try the recordings in. The second one is from another service than the first: when YouTube asks for a login (or blocks the address of the node),
+ * a second recording of YouTube fails the same way, and a SoundCloud one does not. `preferNot`: a service to leave for last (YouTube, while it is failing).
+ */
+function diversify(tracks, { preferNot = null } = {}) {
+  let list = [...(tracks ?? [])];
+  if (preferNot) list = [...list.filter((track) => sourceOf(track) !== preferNot), ...list.filter((track) => sourceOf(track) === preferNot)];
+  if (list.length < 3) return list;
+  const other = list.findIndex((track, index) => index > 0 && sourceOf(track) !== sourceOf(list[0]));
+  if (other <= 1) return list;
+  const [pick] = list.splice(other, 1);
+  list.splice(1, 0, pick);
+  return list;
+}
+
 const SPOTIFY_LINK = /^(?:https?:\/\/)?open\.spotify\.com\/(?:intl-[a-z-]+\/)?(track|album|playlist|artist)\/([A-Za-z0-9]+)/i;
 const SPOTIFY_URI = /^spotify:(track|album|playlist|artist):([A-Za-z0-9]+)$/i;
 const YOUTUBE_LINK = /^(?:https?:\/\/)?(?:www\.|m\.|music\.)?(?:youtube\.com|youtu\.be)\//i;
@@ -144,4 +161,4 @@ function kindOfInput(input) {
   return { kind: 'text', query: text };
 }
 
-module.exports = { BAD_TERMS, normalize, tokensOf, badTermsIn, coreTitle, artistNamed, scoreOne, rank, order, kindOfInput };
+module.exports = { BAD_TERMS, normalize, tokensOf, badTermsIn, coreTitle, artistNamed, scoreOne, rank, order, diversify, kindOfInput };
