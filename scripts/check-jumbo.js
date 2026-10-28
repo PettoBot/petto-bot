@@ -11,7 +11,7 @@ function stub(relative, exports) {
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
 const jumbo = require('../src/commands/utility/jumbo');
 const button = require('../src/interactions/jumbo');
-const { unicodeEmojiIn, unicodeEmojiUrl } = require('../src/utils/expressions');
+const { unicodeEmojiIn, unicodeEmojiUrl, emojisOfMessage } = require('../src/utils/expressions');
 
 const guild = (have = {}) => ({
   emojis: { cache: new Map(Object.entries(have.emojis ?? {})), create: async ({ attachment, name }) => { guild.made = { attachment, name }; return { name, toString: () => `<:${name}:9>` }; } },
@@ -104,6 +104,22 @@ const message = (extra = {}) => ({ content: '', embeds: [], stickers: new Collec
   let made = 0; const slow = guild(); slow.emojis.create = async () => { made += 1; await new Promise((r) => setTimeout(r, 30)); return { name: 'n', toString: () => '<:n:1>' }; };
   const [first, second] = await Promise.all([press('jumbo:e:444:s:n', { g: slow }), press('jumbo:e:444:s:n', { g: slow })]);
   assert.equal(made, 1, 'only one is added'); assert.match(first.text + second.text, /already adding/);
+
+  // The emojis of a card (Components V2) and of its buttons are found too: the text of a text display, a section with a button, a row of buttons, a menu.
+  const { ContainerBuilder, TextDisplayBuilder, SectionBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
+  const cardMessage = message({
+    components: [new ContainerBuilder()
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent('hello <:one:111> and <a:two:222>'))
+      .addSectionComponents(new SectionBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent('<:three:333>')).setButtonAccessory(new ButtonBuilder().setCustomId('x').setStyle(ButtonStyle.Secondary).setEmoji({ id: '444', name: 'four' })))
+      .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('y').setStyle(ButtonStyle.Primary).setEmoji({ id: '555', name: 'five', animated: true }).setLabel('Five'), new ButtonBuilder().setCustomId('z').setStyle(ButtonStyle.Secondary).setEmoji('👋')))
+      .addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('m').addOptions({ label: 'Opt', value: 'o', emoji: { id: '666', name: 'six' } })))],
+  });
+  const found = emojisOfMessage(cardMessage);
+  assert.deepEqual(found.map((entry) => entry.id).sort(), ['111', '222', '333', '444', '555', '666'], 'the emojis of the text, the section button, the row and the menu are found');
+  assert.equal(found.find((entry) => entry.id === '222').animated, true);
+  assert.equal(found.find((entry) => entry.id === '555').animated, true);
+  assert.deepEqual(emojisOfMessage(message({ components: [] })), [], 'a message with no cards has none');
+  assert.deepEqual(emojisOfMessage(message()), [], 'and a message without components at all');
 
   console.log('Checked !jumbo and its steal button.');
 })().catch((err) => { console.error(err); process.exit(1); });
