@@ -75,6 +75,14 @@ module.exports = {
   // the developers and these testers can set them up.
   feedsPublic: process.env.FEEDS_PUBLIC !== 'false',
   feedTesterIds: envList('FEEDS_TESTER_IDS'),
+  // Music plays through a Lavalink node (the Pettolava repository, on Discloud). While it is being tested only the owner, the developers and these
+  // testers can use it; MUSIC_PUBLIC=true opens it to every server. LAVALINK_HOST is the subdomain without the port (`name.discloud.app`).
+  musicPublic: process.env.MUSIC_PUBLIC === 'true',
+  musicTesterIds: envList('MUSIC_TESTER_IDS'),
+  lavalinkHost: String(process.env.LAVALINK_HOST || '').trim().replace(/^https?:\/\//, '').replace(/\/+$/, '') || null,
+  lavalinkPort: Number(process.env.LAVALINK_PORT) || 443,
+  lavalinkSecure: process.env.LAVALINK_SECURE !== 'false',
+  lavalinkPassword: process.env.LAVALINK_PASSWORD || null,
   // Discord rollout alerts: open to everyone with Manage Server; ROLLOUTS_PUBLIC=false limits them to the owner, the developers and these testers.
   // The list is a community copy of Discord's experiments; ROLLOUTS_URL points to another file with the same shape.
   rolloutsPublic: process.env.ROLLOUTS_PUBLIC !== 'false',

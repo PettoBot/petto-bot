@@ -943,6 +943,20 @@ After a change the message shows page 1 again with the new number of pages.
 
 `scripts/check-pagination.js` (in `npm run check`) checks the records against an in-memory database, the button ids, page clamping, the buttons and the jump menu, the refusal to mix kinds, rendering, what `set` keeps, the prefix text of every subcommand, clicks on a shared and a private message, and the dashboard routes.
 
+## Music (`/music`, `!play`, `!skip`, `!queue`...)
+
+Songs in a voice channel, from a name or a link (Spotify song, album, playlist or artist, YouTube, SoundCloud). The audio comes from a Lavalink node, the one in the
+[Pettolava](https://github.com/PettoBot/Pettolava) repository, which runs as its own app on Discloud. While it is tested only the owner, the developers and
+`MUSIC_TESTER_IDS` can use it; `MUSIC_PUBLIC=true` opens it to every server.
+
+- **Environment:** `LAVALINK_HOST` (the subdomain, for example `pettolava.discloud.app`), `LAVALINK_PORT` (443), `LAVALINK_SECURE` (`true`), `LAVALINK_PASSWORD`. Without host and password the music is off and says so.
+- **Commands:** `/music play | playnext | skip | previous | stop | pause | resume | queue | nowplaying | volume | loop | shuffle | seek | remove | clear | leave`. In prefix form `!play`, `!playnext`, `!skip`, `!previous`, `!stop`, `!resume`, `!queue`, `!volume`, `!loop`, `!shuffle`, `!seek` and `!disconnect` go straight to the subcommand (`!pause` is the one of the invites, so the music is paused with `!music pause` or the button of the card).
+- **Which recording plays** (`src/music/match.js`): a name is searched on YouTube Music and SoundCloud together; remixes, covers, slowed, sped up, live, karaoke, instrumental and acoustic versions are left out unless the words are in what was asked; the artist has to be named, and when the length of the song is known (Spotify) the recording has to be about as long; the "- Topic" channels and "official audio" come first. If nothing passes, a looser look follows, and only then the first result that is not a remix or a cover.
+- **Spotify:** Lavalink (LavaSrc) reads the name, artist, length and ISRC; the recording of each song is chosen when it is about to play (and the next one while the current plays), so a playlist of hundreds of songs does not search them all at once. Up to 200 songs are queued by command.
+- **It does not stop:** a recording that fails goes to the next one of the same song, a song with none goes to the next song, five in a row stop the player and say so; the node resumes its session when the connection drops and moves the players to another node if there is one.
+- **The card:** the picture of `!deezer` (cover, title, artist), the time with a bar (refreshed every 30 seconds), and buttons: previous, pause, stop, skip, repeat / queue, volume down and up, shuffle, leave. Only people in the voice channel where it plays can press them. The status of the voice channel shows the song (the bot needs the permission "Set Voice Channel Status").
+- The bot leaves 3 minutes after the queue ends, and 2 minutes after the last person leaves.
+
 ## Not built yet
 
 `/config`/`/settings` (a single catch-all settings command — most of what it would cover already has its own dedicated command instead, e.g. `/prefix`, `/welcome`, `!automod`) and `/poll` remain out of scope. `whitelist.js` (bot-owner cross-guild access control from an earlier bot) and `customrole.js` (redundant with `/boosterrole`) and `nuke.js` (destructive channel-clone utility) were flagged during the bli inventory but deliberately not ported. The structure (dynamic command/event loading, DB-backed guild config, shared permission/embed/modlog utils, and the 100-command-cap-aware subcommand grouping) is built so each of those is a new file or a new subcommand, not a rearchitecture.

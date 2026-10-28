@@ -1,0 +1,20 @@
+// The icons of the music card and its buttons. Plain emojis for now: put the custom ones (`<:name:id>`) here and nothing else has to change.
+module.exports = {
+  NOTE: '🎵',
+  CLOCK: '⏱',
+  VOLUME: '🔊',
+  VOLUME_DOWN: '🔉',
+  USER: '👤',
+  PREVIOUS: '⏮',
+  PLAY: '▶️',
+  PAUSE: '⏸',
+  STOP: '⏹',
+  SKIP: '⏭',
+  LOOP: '🔁',
+  LOOP_TRACK: '🔂',
+  QUEUE: '📜',
+  SHUFFLE: '🔀',
+  LEAVE: '👋',
+  KNOB: '🔘',
+  BAR: '▬',
+};
