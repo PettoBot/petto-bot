@@ -35,6 +35,7 @@ const { IntegrationError } = require('../../utils/integrations');
 const { fetchPublicText } = require('../http');
 const { fallbackPicture } = require('../platforms');
 const { withStandIn } = require('../picture');
+const KICK_PREVIEW_MS = 4 * 60_000; // how long Kick takes, at the most, to make the preview of a stream
 const { parseFeed } = require('../feedparse');
 
 /** The videos that were seen live or about to be: when they end they are a recording of a stream, and are not posted as a new video. */
@@ -291,20 +292,21 @@ const PROVIDERS = {
   },
 
   kick: {
-    interval: 60_000, perTick: 2000, concurrency: 1, // a live notice goes out within a minute or two of the start
+    interval: 60_000, perTick: 2000, concurrency: 1, // a live notice goes out within a minute or so of the start
     async resolve(text) {
       const channel = await kick.resolveChannel(text);
       return { id: channel.id, name: channel.name, avatar: channel.avatar, url: channel.url };
     },
-    async poll(accounts) {
+    async poll(accounts, _tracked, { now = Date.now() } = {}) {
       const live = await kick.liveChannels(accounts.map((account) => account.id)); // 50 accounts in each call
       const results = new Map();
       for (const account of accounts) {
         const channel = live[account.id];
         let item = channel ? kick.toItem(channel, account) : null;
         // Kick makes the picture of a stream a little after it starts, and a notice must not wait for it (Discord shows a broken picture for one that
-        // is not made yet): it goes out at once with a picture of Kick, marked as a stand-in, and the engine swaps in the real one when it exists.
-        item = await withStandIn(item, fallbackPicture('kick-live'));
+        // is not made yet, even when its address already answers): until the stream is a few minutes old it goes out with a picture of Kick, marked as
+        // a stand-in, and the engine swaps in the real one when it exists.
+        item = await withStandIn(item, fallbackPicture('kick-live'), { minAgeMs: KICK_PREVIEW_MS, now });
         results.set(account.id, { items: item ? [item] : [], stillLive: new Set(channel ? [kick.streamId(channel)] : []) });
       }
       return results;

@@ -1,4 +1,4 @@
-// Feeds: every minute the engine looks at which accounts are due (see feeds/engine.js), and once a day what was posted long ago is forgotten.
+// Feeds: every few seconds the engine looks at which accounts are due (see feeds/engine.js), and once a day what was posted long ago is forgotten.
 const feedsDb = require('../db/feeds');
 const engine = require('../feeds/engine');
 const logger = require('../utils/logger');
@@ -8,7 +8,9 @@ const youtube = require('../feeds/providers/youtube');
 const config = require('../config');
 const { restoreYoutubeState } = require('../feeds/providers');
 
-const TICK_MS = 60_000;
+// A pass costs almost nothing when no account is due, and an account that is asked every minute is due again a little after one (its next turn carries a few seconds
+// of spread), so with a pass every minute it was asked every two. Every 15 seconds each one is asked when its turn comes.
+const TICK_MS = 15_000;
 const DAY_MS = 24 * 60 * 60_000;
 
 const WEBSUB_MS = 5 * 60_000;
@@ -16,7 +18,7 @@ const REPORT_MS = 60 * 60_000;
 let runSoon = () => {};
 
 function startFeedsJob(client) {
-  const run = exclusiveTask(() => engine.tick(client));
+  const run = exclusiveTask(() => engine.tick(client, { passMs: TICK_MS }));
   const tick = () => run().catch((error) => logger.error('Feeds job failed:', error));
   runSoon = tick;
   // YouTube push: the channels are subscribed (and renewed) in the background; when YouTube says a channel has news, it is looked at at once.

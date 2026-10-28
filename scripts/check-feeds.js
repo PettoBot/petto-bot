@@ -7,6 +7,9 @@ process.env.DISCLOUD_DATABASE_URL = process.env.PETTO_TEST_DATABASE_URL || 'post
 const assert = require('node:assert/strict');
 
 const text = require('../src/feeds/text');
+// A picture that has bytes (the check of a stand-in looks at them, as Discord does).
+const emptyAnswer = () => new Response(Buffer.alloc(40), { status: 200, headers: { 'content-type': 'image/png' } });
+const fakeImage = () => new Response(Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(3000)]), { status: 200, headers: { 'content-type': 'image/jpeg' } });
 const card = require('../src/feeds/card');
 const { PLATFORMS, PLATFORM_IDS, TYPES } = require('../src/feeds/platforms');
 const youtube = require('../src/feeds/providers/youtube');
@@ -760,6 +763,17 @@ const allText = (message) => JSON.stringify(json(message.components));
     globalThis.fetch = realFetch;
   }
 
+  // --- The check of a picture: bytes of a real image, not only a good answer ----------------------------------------------------------------------
+  {
+    const { imageReady } = require('../src/feeds/picture');
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => (String(url).endsWith('/empty.png') ? emptyAnswer() : String(url).endsWith('/ok.jpg') ? fakeImage() : new Response('<html></html>', { status: 200, headers: { 'content-type': 'text/html' } }));
+    assert.equal(await imageReady('https://images.example/ok.jpg'), true);
+    assert.equal(await imageReady('https://images.example/empty.png'), false, 'a few bytes is what a CDN answers while it makes the picture');
+    assert.equal(await imageReady('https://images.example/page.html'), false);
+    globalThis.fetch = realFetch;
+  }
+
   // --- Twitch: a live notice goes out at once, with a stand-in picture until the preview of the stream exists ----------------------------------------------
   {
     config.twitchClientId = 'tid';
@@ -768,7 +782,7 @@ const allText = (message) => JSON.stringify(json(message.components));
     const realFetch = globalThis.fetch;
     globalThis.fetch = async (url, options = {}) => {
       const u = String(url);
-      if (u.startsWith('https://static-cdn.jtvnw.net/')) return pictures[u.split('?')[0]] ? new Response('', { status: 200, headers: { 'content-type': 'image/jpeg' } }) : new Response('', { status: 404 });
+      if (u.startsWith('https://static-cdn.jtvnw.net/')) return pictures[u.split('?')[0]] ? fakeImage() : new Response('', { status: 404 });
       if (u.includes('id.twitch.tv/oauth2/token')) return new Response(JSON.stringify({ access_token: 'tw', expires_in: 3600 }), { status: 200 });
       if (u.includes('/helix/streams')) return new Response(JSON.stringify({ data: [{ id: 's1', user_id: '7', user_login: 'streamer', user_name: 'Streamer', type: 'live', title: 'Hello', game_name: 'Minecraft', viewer_count: 12, started_at: new Date().toISOString(), thumbnail_url: 'https://static-cdn.jtvnw.net/previews-ttv/live_user_streamer-{width}x{height}.jpg' }] }), { status: 200 });
       return new Response('{}', { status: 404 });
@@ -794,7 +808,7 @@ const allText = (message) => JSON.stringify(json(message.components));
       2: { broadcaster_user_id: 2, slug: 'quiet', stream_title: '', stream: { is_live: false } } };
     globalThis.fetch = async (url, options) => {
       kickCalls.push(String(url));
-      if (String(url).startsWith('https://images.kick.com/')) return pictures[String(url)] ? new Response('', { status: 200, headers: { 'content-type': 'image/jpeg' } }) : new Response('', { status: 404 });
+      if (String(url).startsWith('https://images.kick.com/')) return pictures[String(url)] ? fakeImage() : new Response('', { status: 404 });
       if (String(url).includes('id.kick.com/oauth/token')) return new Response(JSON.stringify({ access_token: 'tok', expires_in: 3600 }), { status: 200 });
       assert.equal(options.headers.Authorization, 'Bearer tok');
       const u = new URL(url);
@@ -822,11 +836,13 @@ const allText = (message) => JSON.stringify(json(message.components));
     const early = (await PROVIDERS.kick.poll([{ id: '1', name: 'Live_One', avatar: null, url: found.url }])).get('1');
     assert.deepEqual([early.items.length, early.items[0].placeholder, early.items[0].image.endsWith('/kick-live.png')], [1, true, true], 'it does not wait for the picture');
     pictures['https://images.kick.com/new.jpg'] = true;
-    const later = (await PROVIDERS.kick.poll([{ id: '1', name: 'Live_One', avatar: null, url: found.url }])).get('1').items[0];
-    assert.deepEqual([later.image, Boolean(later.placeholder)], ['https://images.kick.com/new.jpg', false], 'the real picture is used as soon as it loads');
+    const tooSoon = (await PROVIDERS.kick.poll([{ id: '1', name: 'Live_One', avatar: null, url: found.url }], new Map(), { now: Date.now() })).get('1').items[0];
+    assert.deepEqual([tooSoon.placeholder, tooSoon.image.endsWith('/kick-live.png')], [true, true], 'a stream of seconds keeps the stand-in even if its address answers (Discord would show it broken)');
+    const later = (await PROVIDERS.kick.poll([{ id: '1', name: 'Live_One', avatar: null, url: found.url }], new Map(), { now: Date.now() + 5 * 60_000 })).get('1').items[0];
+    assert.deepEqual([later.image, Boolean(later.placeholder)], ['https://images.kick.com/new.jpg', false], 'the real picture is used once the stream is old enough and it loads');
     channels[1].stream.thumbnail = '';
     const none = (await PROVIDERS.kick.poll([{ id: '1', name: 'Live_One', avatar: null, url: found.url }])).get('1').items[0];
-    assert.deepEqual([none.image.endsWith('/kick-live.png'), none.placeholder], [true, false], 'a stream with no picture at all keeps the one of Kick');
+    assert.equal(none.image.endsWith('/kick-live.png'), true, 'a stream with no picture at all keeps the one of Kick');
     config.kickClientId = null;
     kickCalls.length = 0;
     await assert.rejects(PROVIDERS.kick.resolve('live-one'), (error) => error.kind === 'notConfigured', 'without the keys Kick says it is not set up');

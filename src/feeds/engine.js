@@ -63,6 +63,17 @@ async function closeLive(client, feed, row, lang) {
   await feedsDb.deleteLive(feed.id, row.item_id);
 }
 
+const LATE_LIVE_MS = 150_000;
+const lateLogged = new Set();
+/** A stream that started a while before its notice went out: said once (in the log), so a slow platform is told apart from a slow bot. */
+function noteLateLive(feed, item, now) {
+  if (now - item.publishedAt < LATE_LIVE_MS || lateLogged.has(`${item.platform}:${item.id}`)) return;
+  if (lateLogged.size > 500) lateLogged.clear();
+  lateLogged.add(`${item.platform}:${item.id}`);
+  // i18n-ignore: a line of the log
+  logger.info(`Feeds: the ${item.platform} stream of ${item.author} started ${Math.round((now - item.publishedAt) / 60_000)} min before its notice went out (the bot asks every minute; the rest is the platform taking time to say it is live).`);
+}
+
 /** Posts the new notices of one feed (and closes its streams that ended). */
 async function processFeed(client, feed, result, liveRows, seen, now) {
   const guild = client.guilds.cache.get(feed.guild_id);
@@ -94,6 +105,7 @@ async function processFeed(client, feed, result, liveRows, seen, now) {
           const message = await channel.send(await buildFeedPayload(feed, item, { lang }));
           posted += 1;
           if (feed.platform === 'youtube' && (item.type === 'video' || item.type === 'short')) noteLate(feed.account_id, item);
+          if (item.type === 'live' && item.publishedAt) noteLateLive(feed, item, now);
           if (item.type === 'live') await feedsDb.saveLive({ feed_id: feed.id, item_id: String(item.id), channel_id: channel.id, message_id: message.id, item });
         } catch (error) {
           await recordFailure(feed, error?.code === 10003 ? 'channelGone' : error?.code === 50001 || error?.code === 50013 ? 'permission' : 'send');
@@ -130,8 +142,11 @@ async function processFeed(client, feed, result, liveRows, seen, now) {
   }
 }
 
-/** One pass of the job. `client` is the discord.js client. Returns the number of accounts asked about (for the checks). */
-async function tick(client, { now = Date.now(), providers = PROVIDERS } = {}) {
+/**
+ * One pass of the job. `client` is the discord.js client. Returns the number of accounts asked about (for the checks).
+ * `passMs`: how often the job makes a pass; the `perTick` of a provider is what it can be asked in a minute, so a shorter pass takes a smaller share of it.
+ */
+async function tick(client, { now = Date.now(), providers = PROVIDERS, passMs = 60_000 } = {}) {
   const feeds = await feedsDb.listEnabled({ now });
   if (!feeds.length) return 0;
   const liveByFeed = new Map();
@@ -152,7 +167,7 @@ async function tick(client, { now = Date.now(), providers = PROVIDERS } = {}) {
   let asked = 0;
   for (const [platform, accounts] of byPlatform) {
     const provider = providers[platform];
-    const due = [...accounts.entries()].filter(([id]) => (schedule.get(keyOf(platform, id))?.at ?? 0) <= now).slice(0, provider.perTick);
+    const due = [...accounts.entries()].filter(([id]) => (schedule.get(keyOf(platform, id))?.at ?? 0) <= now).slice(0, Math.max(1, Math.ceil(provider.perTick * Math.min(1, passMs / 60_000))));
     if (!due.length) continue;
     asked += due.length;
 
