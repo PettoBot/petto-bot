@@ -945,7 +945,7 @@ After a change the message shows page 1 again with the new number of pages.
 
 ## Music (`/music`, `!play`, `!skip`, `!queue`...)
 
-**The music is turned off** (`MUSIC_ENABLED` is not `true`): the code stays, nothing connects to the node and every command, button and menu answers that it is off; `MUSIC_ENABLED=true` turns it on again. What follows describes how it works when it is on.
+**The music is turned off** (`MUSIC_ENABLED` is not `true`): the code stays, nothing connects to the node (the Shoukaku library is not even loaded), `/music` is not registered with Discord and the prefix forms, buttons and menus answer that it is off; `MUSIC_ENABLED=true` turns it on again. What follows describes how it works when it is on.
 
 Songs in a voice channel, from a name or a link (Spotify song, album, playlist or artist, YouTube, SoundCloud). The audio comes from a Lavalink node, the one in the
 [Pettolava](https://github.com/PettoBot/Pettolava) repository, which runs as its own app on Discloud. While it is tested only the owner, the developers and

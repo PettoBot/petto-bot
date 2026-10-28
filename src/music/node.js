@@ -1,6 +1,5 @@
 // i18n-ignore-file: lines of the log; no message of Petto is written here.
 // The connection to the Lavalink node (Pettolava). It has to be made before the bot logs in: Shoukaku waits for the `clientReady` event by itself.
-const shoukakuLib = require('shoukaku');
 const config = require('../config');
 const logger = require('../utils/logger');
 
@@ -31,8 +30,9 @@ function revive() {
   return true;
 }
 
-function init(client, { lib = shoukakuLib, reviveMs = REVIVE_MS } = {}) {
-  if (shoukaku || !enabled()) return shoukaku;
+function init(client, { lib = null, reviveMs = REVIVE_MS } = {}) {
+  if (shoukaku || !enabled()) return shoukaku; // off: nothing is loaded or connected
+  lib ??= require('shoukaku'); // the library is only loaded when the music is on (it takes memory)
   nodeOptions = { name: NAME, url: `${config.lavalinkHost}:${config.lavalinkPort}`, auth: config.lavalinkPassword, secure: config.lavalinkSecure };
   shoukaku = new lib.Shoukaku(
     new lib.Connectors.DiscordJS(client),

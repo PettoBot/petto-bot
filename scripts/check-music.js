@@ -1045,6 +1045,9 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
   {
     // `/music` is registered with Discord (it was not: without `registerSlash` a command only works with the prefix) and fits what Discord accepts
     const { collectCommandData } = require('../src/handlers/commandHandler');
+    config.musicEnabled = false;
+    assert.equal(collectCommandData().some((command) => command.name === 'music'), false, 'with the music off, /music is not registered with Discord (it is taken out of the list of commands)');
+    config.musicEnabled = true;
     const registered = collectCommandData().find((command) => command.name === 'music');
     assert.ok(registered, '/music is in the commands that are registered');
     assert.ok(registered.options.length <= 25 && registered.options.every((sub) => sub.type === 1), 'subcommands, at most 25');
