@@ -15,6 +15,7 @@ const resolvedDb = require.resolve('../src/db/database');
 require.cache[resolvedDb] = { id: resolvedDb, filename: resolvedDb, loaded: true, exports: { from: () => ({}) } };
 
 const config = require('../src/config');
+config.musicEnabled = true; // the music is off by default: the checks turn it on (and one of them turns it off again)
 const match = require('../src/music/match');
 const resolver = require('../src/music/resolver');
 const { GuildMusic, MAX_FAILURES } = require('../src/music/queue');
@@ -792,6 +793,27 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
     assert.equal(players.size, 0);
 
     const owner = config.ownerId;
+    {
+      // turned off (MUSIC_ENABLED not true): every way in answers that it is off, nothing joins, nothing is searched, nothing is suggested
+      config.musicEnabled = false;
+      const askedBefore = asked.length;
+      await service.play(makeInteraction(owner), 'radiohead creep');
+      assert.ok(say().includes(t('en', 'music.disabled')), 'play says it is off');
+      await service.search(makeInteraction(owner), 'radiohead creep');
+      assert.ok(say().includes(t('en', 'music.disabled')), 'search too');
+      await service.command(makeInteraction(owner), 'skip');
+      assert.ok(say().includes(t('en', 'music.disabled')), 'and the other commands');
+      const replied = [];
+      const press = { ...makeInteraction(owner), reply: async (payload) => { replied.push(payload); } };
+      await service.button(press, 'pause');
+      await service.pick({ ...press, customId: 'music:pick:x', values: ['0'] }, 'x');
+      assert.equal(replied.length, 2);
+      assert.ok(replied.every((payload) => payload.flags & 64 && textOf(payload).includes(t('en', 'music.disabled'))), 'a button and a menu answer in private');
+      assert.deepEqual(await service.suggest(owner, 'radiohead creep'), [], 'no suggestions');
+      assert.equal(players.size, 0, 'nothing joined');
+      assert.equal(asked.length, askedBefore, 'nothing was searched');
+      config.musicEnabled = true;
+    }
     await service.play(makeInteraction(owner, { inVoice: null }), 'radiohead creep');
     assert.ok(say().includes(t('en', 'music.joinFirst')));
     nodeOn = false;
@@ -992,6 +1014,11 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
       getIdealNode() { return pool.size ? {} : undefined; }
     }
     const fakeLib = { Shoukaku: FakeShoukaku, Connectors: { DiscordJS: class {} } };
+    config.musicEnabled = false;
+    assert.equal(realNode.enabled(), false, 'with the music off there is no node to talk to');
+    assert.equal(realNode.init({}, { lib: fakeLib, reviveMs: 1_000_000 }), null, 'and no connection is made');
+    assert.equal(added.length, 0);
+    config.musicEnabled = true;
     realNode.init({}, { lib: fakeLib, reviveMs: 1_000_000 });
     assert.deepEqual(added[0], ['start', 'node.example.com:443']);
     // the times of Shoukaku are in seconds: a value in milliseconds waits for hours
@@ -1018,6 +1045,9 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
   {
     // `/music` is registered with Discord (it was not: without `registerSlash` a command only works with the prefix) and fits what Discord accepts
     const { collectCommandData } = require('../src/handlers/commandHandler');
+    config.musicEnabled = false;
+    assert.equal(collectCommandData().some((command) => command.name === 'music'), false, 'with the music off, /music is not registered with Discord (it is taken out of the list of commands)');
+    config.musicEnabled = true;
     const registered = collectCommandData().find((command) => command.name === 'music');
     assert.ok(registered, '/music is in the commands that are registered');
     assert.ok(registered.options.length <= 25 && registered.options.every((sub) => sub.type === 1), 'subcommands, at most 25');

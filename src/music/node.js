@@ -1,6 +1,5 @@
 // i18n-ignore-file: lines of the log; no message of Petto is written here.
 // The connection to the Lavalink node (Pettolava). It has to be made before the bot logs in: Shoukaku waits for the `clientReady` event by itself.
-const shoukakuLib = require('shoukaku');
 const config = require('../config');
 const logger = require('../utils/logger');
 
@@ -17,8 +16,8 @@ const resetHandlers = [];
 let lastWarn = 0;
 const warn = (message) => { if (Date.now() - lastWarn > 60_000) { lastWarn = Date.now(); logger.warn(message); } };
 
-/** Whether the bot has what it needs to talk to a node (host and password). */
-const enabled = () => Boolean(config.lavalinkHost && config.lavalinkPassword);
+/** Whether the music is on and the bot has what it needs to talk to a node (host and password). */
+const enabled = () => Boolean(config.musicEnabled && config.lavalinkHost && config.lavalinkPassword);
 
 /**
  * Shoukaku tries to reconnect a number of times and then DROPS the node from its pool for good: a node that restarts (Lavalink takes about a minute and a half to start)
@@ -31,8 +30,9 @@ function revive() {
   return true;
 }
 
-function init(client, { lib = shoukakuLib, reviveMs = REVIVE_MS } = {}) {
-  if (shoukaku || !enabled()) return shoukaku;
+function init(client, { lib = null, reviveMs = REVIVE_MS } = {}) {
+  if (shoukaku || !enabled()) return shoukaku; // off: nothing is loaded or connected
+  lib ??= require('shoukaku'); // the library is only loaded when the music is on (it takes memory)
   nodeOptions = { name: NAME, url: `${config.lavalinkHost}:${config.lavalinkPort}`, auth: config.lavalinkPassword, secure: config.lavalinkSecure };
   shoukaku = new lib.Shoukaku(
     new lib.Connectors.DiscordJS(client),

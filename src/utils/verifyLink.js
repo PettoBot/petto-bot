@@ -6,6 +6,7 @@ const config = require('../config');
 const { createToken, DEFAULT_TTL_SECONDS } = require('./verifyToken');
 const logger = require('./logger');
 const { inDiscord, usesLink } = require('./verifyMethod');
+const { normalizeLanguage, peekGuildLanguage } = require('../i18n');
 
 const LOCAL_HOSTS = /^(?:localhost|127\.\d+\.\d+\.\d+|0\.0\.0\.0|\[::1\]|::1)$/i;
 
@@ -51,10 +52,12 @@ function warnOperator(problem, guildId) {
 }
 
 /** `{ url, expiresAt }` (seconds) for this member, or `{ problem }`. */
-function verifyLinkFor(userId, guildId) {
+function verifyLinkFor(userId, guildId, lang = null) {
   const problem = linkProblem();
   if (problem) { warnOperator(problem, guildId); return { problem }; }
-  return { url: `${baseUrl()}/verify/${createToken({ userId, guildId })}`, expiresAt: Math.floor(Date.now() / 1000) + DEFAULT_TTL_SECONDS };
+  // The page opens in the language of the server (the one of the message that carries the link), not in the one of the browser of whoever opens it.
+  const language = normalizeLanguage(lang) ?? peekGuildLanguage(String(guildId));
+  return { url: `${baseUrl()}/verify/${createToken({ userId, guildId })}?lang=${encodeURIComponent(language)}`, expiresAt: Math.floor(Date.now() / 1000) + DEFAULT_TTL_SECONDS };
 }
 
 /**

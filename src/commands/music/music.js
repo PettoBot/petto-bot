@@ -3,11 +3,13 @@
 // the person asks for it. While it is tested only the team can use it (MUSIC_PUBLIC).
 const { SlashCommandBuilder } = require('discord.js');
 const service = require('../../music/service');
+const config = require('../../config');
 
 const queryOption = (o, { suggest = false } = {}) => o.setName('query').setDescription('A song and artist, or a link of Spotify (song, album, playlist), YouTube or SoundCloud').setMaxLength(300).setAutocomplete(suggest).setRequired(true);
 
 module.exports = {
-  registerSlash: true, // `/music` is registered with Discord (without this it only worked with the prefix: `!play`, `!music ...`)
+  // `/music` is registered with Discord only while the music is on (MUSIC_ENABLED); off, it is not in the list of commands (the prefix forms still answer that it is off).
+  get registerSlash() { return config.musicEnabled; },
   // `!music creep radiohead` is a song; `!music` alone is the queue.
   prefixDefaultSubcommand: (tokens) => (tokens.length ? 'play' : 'queue'),
   prefixSubcommandAliases: { p: 'play', add: 'play', next: 'playnext', find: 'search', pick: 'search', s: 'skip', back: 'previous', prev: 'previous', q: 'queue', list: 'queue', np: 'nowplaying', now: 'nowplaying', vol: 'volume', repeat: 'loop', mix: 'shuffle', auto: 'autoplay', jump: 'seek', rm: 'remove', delete: 'remove', disconnect: 'leave', dc: 'leave', unpause: 'resume' },

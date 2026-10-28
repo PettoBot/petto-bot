@@ -12,6 +12,7 @@ const { canUseMusic } = require('./access');
 const { plainText, clip } = require('../feeds/text');
 const { peekGuildLanguage, t, tn } = require('../i18n');
 const logger = require('../utils/logger');
+const config = require('../config');
 
 const IDLE_MS = 3 * 60_000; // the voice channel is left this long after the queue ended
 const ALONE_MS = 2 * 60_000; // ... and this long after the last person left
@@ -249,6 +250,7 @@ async function enqueue(interaction, lang, session, found, { next = false } = {})
 /** `!play` / `/music play`. */
 async function play(interaction, query, { next = false } = {}) {
   const lang = langOf(interaction.guildId);
+  if (!config.musicEnabled) return replyTo(interaction, bad(t(lang, 'music.disabled')));
   const ready = await preflight(interaction, lang);
   if (!ready) return null;
   const { voice, existing, lavalink } = ready;
@@ -287,7 +289,7 @@ function suggestionOf(item) {
 /** The suggestions for what a person has typed so far (up to 10), or `[]` when there are none, it is too soon, or the node is too slow. Never throws. */
 async function suggest(userId, text) {
   const query = String(text ?? '').trim();
-  if (query.length < 2 || /^(https?:|spotify:)/i.test(query) || !canUseMusic(userId) || !node.enabled()) return [];
+  if (!config.musicEnabled || query.length < 2 || /^(https?:|spotify:)/i.test(query) || !canUseMusic(userId) || !node.enabled()) return [];
   const key = query.toLowerCase();
   const hit = SUGGESTIONS.get(key);
   if (hit && hit.until > Date.now()) return hit.choices;
@@ -316,6 +318,7 @@ const MAX_CHOICES = 200;
 /** `/music search`: the five best results in a menu; the one who searched picks. */
 async function search(interaction, query) {
   const lang = langOf(interaction.guildId);
+  if (!config.musicEnabled) return replyTo(interaction, bad(t(lang, 'music.disabled')));
   const ready = await preflight(interaction, lang);
   if (!ready) return null;
   await interaction.deferReply();
@@ -338,6 +341,7 @@ async function search(interaction, query) {
 /** The choice made in the menu of a search: the song is added like `play` does. */
 async function pick(interaction, token) {
   const lang = langOf(interaction.guildId);
+  if (!config.musicEnabled) { await interaction.reply(ephemeral(bad(t(lang, 'music.disabled')))); return; }
   const entry = CHOICES.get(token);
   if (!entry || entry.until < Date.now()) { await interaction.reply(ephemeral(bad(t(lang, 'music.search.expired')))); return; }
   if (interaction.user.id !== entry.userId) { await interaction.reply(ephemeral(bad(t(lang, 'music.search.notYours', { user: `<@${entry.userId}>` })))); return; }
@@ -407,6 +411,7 @@ async function run(session, action, args, lang) {
 /** A command (not a button) that acts on the session: checks, runs and answers. */
 async function command(interaction, action, args = {}) {
   const lang = langOf(interaction.guildId);
+  if (!config.musicEnabled) return replyTo(interaction, bad(t(lang, 'music.disabled')));
   const session = await needSession(interaction, lang, action);
   if (!session) return null;
   const result = await run(session, action, args, lang);
@@ -417,6 +422,7 @@ async function command(interaction, action, args = {}) {
 /** A button of the card. */
 async function button(interaction, action) {
   const lang = langOf(interaction.guildId);
+  if (!config.musicEnabled) { await interaction.reply(ephemeral(bad(t(lang, 'music.disabled')))); return; }
   const session = await needSession(interaction, lang, action === 'queue' || action === 'leave' ? action : '');
   if (!session) return;
   const map = { prev: ['previous', {}], pause: ['toggle', {}], stop: ['stop', {}], skip: ['skip', {}], loop: ['cycleLoop', {}], queue: ['queue', { page: 1 }], voldown: ['volume', { delta: -10 }], /* the card no longer has it; the cards sent before do */ volup: ['volume', { delta: 10 }], shuffle: ['shuffle', {}], autoplay: ['autoplay', {}], leave: ['leave', {}] };
