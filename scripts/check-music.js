@@ -127,7 +127,7 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
     const chosenList = await resolver.recordingsFor(fakeNode, bare.items[0]);
     assert.equal(chosenList[0], 'enc:Radiohead - Creep:Radiohead - Topic', 'the recording of a song read from a page is chosen like any other');
     assert.equal(chosenList.length, 1, 'and there is no mirror of the node after it (it has none)');
-    assert.ok(String(bare.items[0].artwork).includes('i.ytimg.com'), 'its cover is the one of the recording when the page had none');
+    assert.equal(new URL(bare.items[0].artwork).hostname, 'i.ytimg.com', 'its cover is the one of the recording when the page had none');
     spotifyPages.read = realRead;
   }
 
