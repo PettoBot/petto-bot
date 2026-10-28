@@ -5,6 +5,7 @@ const feedsDb = require('../db/feeds');
 const { PROVIDERS, noteLate } = require('./providers');
 const { buildFeedMessage, buildFeedPayload } = require('./card');
 const { channelProblem } = require('./service');
+const { fallbackPicture } = require('./platforms');
 const { forEachWithConcurrency } = require('../utils/concurrency');
 const { peekGuildLanguage, t } = require('../i18n');
 const logger = require('../utils/logger');
@@ -13,6 +14,8 @@ const MAX_PER_PASS = 3; // after a long silence (or a first look) only the newes
 const SEND_WORKERS = 6;
 const FAILURES_TO_STOP = 5;
 const MAX_BACKOFF_MS = 30 * 60_000;
+const KICK_PICTURE = () => fallbackPicture('kick-live');
+let kickRepaired = false; // the notices of Kick that are open are repaired once, at the first pass after the bot starts
 const schedule = new Map(); // `${platform}:${accountId}` -> { at, fails }
 
 const keyOf = (platform, accountId) => `${platform}:${accountId}`;
@@ -50,7 +53,9 @@ function replayUrl(item) {
 function endedItem(item, lang) {
   const extra = String(item.extra ?? '').split(' · ').filter((part) => part && !part.startsWith('👁'));
   if (item.peak > 0) extra.push(`👁 ${t(lang, 'feeds.ended.peak', { count: item.peak.toLocaleString('en-US') })}`);
-  return { ...item, type: 'ended', vodUrl: replayUrl(item), extra: extra.join(' · ') };
+  const ended = { ...item, type: 'ended', vodUrl: replayUrl(item), extra: extra.join(' · ') };
+  if (item.platform === 'kick') ended.image = KICK_PICTURE(); // the preview of a Kick stream can be a broken picture in Discord (see `repairKickPictures`)
+  return ended;
 }
 
 async function closeLive(client, feed, row, lang) {
@@ -143,6 +148,33 @@ async function processFeed(client, feed, result, liveRows, seen, now) {
 }
 
 /**
+ * The live notices of Kick that were posted with its preview (before a Kick notice always carried the picture of Kick) may show a broken picture that never
+ * fixes itself: they are edited once, when the bot starts, to carry the picture of Kick. Returns how many were edited.
+ */
+async function repairKickPictures(client, feeds, liveByFeed) {
+  let repaired = 0;
+  for (const feed of feeds) {
+    if (feed.platform !== 'kick') continue;
+    for (const row of liveByFeed.get(feed.id) ?? []) {
+      if (!row.item || row.item.image === KICK_PICTURE()) continue;
+      const item = { ...row.item, image: KICK_PICTURE(), placeholder: undefined };
+      try {
+        const channel = client.channels.cache.get(row.channel_id) ?? await client.channels.fetch(row.channel_id).catch(() => null);
+        const message = channel?.messages ? await channel.messages.fetch(row.message_id).catch(() => null) : null;
+        if (message) await message.edit({ ...buildFeedMessage(feed, item, { lang: peekGuildLanguage(feed.guild_id) }), allowedMentions: { parse: [] } });
+        await feedsDb.saveLive({ feed_id: feed.id, item_id: row.item_id, channel_id: row.channel_id, message_id: row.message_id, item });
+        row.item = item;
+        repaired += 1;
+      } catch (error) {
+        logger.warn(`Feed ${feed.id}: could not repair the picture of a Kick notice: ${error.message}`);
+      }
+    }
+  }
+  if (repaired) logger.info(`Feeds: ${repaired} live notice(s) of Kick got the picture of Kick back.`);
+  return repaired;
+}
+
+/**
  * One pass of the job. `client` is the discord.js client. Returns the number of accounts asked about (for the checks).
  * `passMs`: how often the job makes a pass; the `perTick` of a provider is what it can be asked in a minute, so a shorter pass takes a smaller share of it.
  */
@@ -154,6 +186,8 @@ async function tick(client, { now = Date.now(), providers = PROVIDERS, passMs = 
     if (!liveByFeed.has(row.feed_id)) liveByFeed.set(row.feed_id, []);
     liveByFeed.get(row.feed_id).push(row);
   }
+
+  if (!kickRepaired) { kickRepaired = true; await repairKickPictures(client, feeds, liveByFeed); }
 
   const byPlatform = new Map();
   for (const feed of feeds) {
@@ -214,6 +248,6 @@ async function tick(client, { now = Date.now(), providers = PROVIDERS, passMs = 
 /** Makes an account due at the next pass (YouTube told the bot something new is there): it is looked at at once instead of when its turn comes. */
 const wake = (platform, accountId) => { schedule.set(keyOf(platform, accountId), { at: 0, fails: 0 }); };
 
-const forgetSchedule = () => { schedule.clear(); feedsDb.forgetList(); }; // for the checks
+const forgetSchedule = () => { schedule.clear(); feedsDb.forgetList(); kickRepaired = true; }; // for the checks (the repair is checked by itself)
 
-module.exports = { tick, wake, processFeed, passes, forgetSchedule, replayUrl, MAX_PER_PASS, FAILURES_TO_STOP };
+module.exports = { tick, wake, processFeed, passes, forgetSchedule, replayUrl, repairKickPictures, MAX_PER_PASS, FAILURES_TO_STOP };

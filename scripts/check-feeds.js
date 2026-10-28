@@ -1204,6 +1204,26 @@ const allText = (message) => JSON.stringify(json(message.components));
   assert.deepEqual(edits[1].payload.allowedMentions, { parse: [] }, 'and it does not mention anyone again');
   assert.equal((await pool.query('select count(*)::int as n from feed_live where feed_id = $1', [a.id])).rows[0].n, 0);
 
+  // The live notices of Kick that were posted with its preview (a picture that can stay broken in Discord) are edited once, when the bot starts, to carry the picture of Kick.
+  {
+    const kickFeed = { ...a, platform: 'kick' };
+    const base = { platform: 'kick', type: 'live', title: 'Old', url: 'https://kick.com/x', author: 'X', publishedAt: at };
+    const broken = { feed_id: a.id, item_id: 'old1', channel_id: CH, message_id: 'm-old', item: { ...base, id: 'old1', image: 'https://images.kick.com/broken.jpg' } };
+    const fine = { feed_id: a.id, item_id: 'old2', channel_id: CH, message_id: 'm-fine', item: { ...base, id: 'old2', image: standIn } };
+    await feedsDb.saveLive(broken);
+    await feedsDb.saveLive(fine);
+    const editsBefore = edits.length;
+    const done = await engine.repairKickPictures(client, [kickFeed, { ...a, id: a.id + 1000, platform: 'twitch' }], new Map([[a.id, [broken, fine]]]));
+    assert.equal(done, 1, 'only the notice that has the preview is repaired');
+    assert.equal(edits.length - editsBefore, 1);
+    assert.deepEqual([edits.at(-1).messageId, JSON.stringify(edits.at(-1).payload).includes('kick-live.png'), edits.at(-1).payload.allowedMentions], ['m-old', true, { parse: [] }], 'its message now has the picture of Kick and mentions nobody again');
+    const saved = (await pool.query('select item from feed_live where feed_id = $1 and item_id = $2', [a.id, 'old1'])).rows[0].item;
+    assert.equal(saved.image, standIn, 'and it is written down');
+    assert.equal(await engine.repairKickPictures(client, [kickFeed], new Map([[a.id, [broken]]])), 0, 'a repaired one is not touched again');
+    await feedsDb.deleteLive(a.id, 'old1');
+    await feedsDb.deleteLive(a.id, 'old2');
+  }
+
   // A feed that cannot post: the failure is written down and, five times in a row, it is turned off.
   await service.updateFeed(guild, a.id, { enabled: true });
   failSend = 50013;
