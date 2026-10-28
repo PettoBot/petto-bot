@@ -18,7 +18,6 @@ module.exports = {
   'music.btn.skip': 'Saltar',
   'music.btn.loop': 'Repetir',
   'music.btn.queue': 'Cola',
-  'music.btn.voldown': 'Vol −',
   'music.btn.volup': 'Vol +',
   'music.btn.shuffle': 'Mezclar',
   'music.btn.leave': 'Salir',

@@ -363,7 +363,7 @@ async function button(interaction, action) {
   const lang = langOf(interaction.guildId);
   const session = await needSession(interaction, lang, action === 'queue' || action === 'leave' ? action : '');
   if (!session) return;
-  const map = { prev: ['previous', {}], pause: ['toggle', {}], stop: ['stop', {}], skip: ['skip', {}], loop: ['cycleLoop', {}], queue: ['queue', { page: 1 }], voldown: ['volume', { delta: -10 }], volup: ['volume', { delta: 10 }], shuffle: ['shuffle', {}], leave: ['leave', {}] };
+  const map = { prev: ['previous', {}], pause: ['toggle', {}], stop: ['stop', {}], skip: ['skip', {}], loop: ['cycleLoop', {}], queue: ['queue', { page: 1 }], voldown: ['volume', { delta: -10 }], /* the card no longer has it; the cards sent before do */ volup: ['volume', { delta: 10 }], shuffle: ['shuffle', {}], leave: ['leave', {}] };
   const [name, args] = map[action] ?? [];
   if (!name) return;
   if (name === 'queue') {

@@ -543,7 +543,7 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
       assert.ok(!body.includes('@everyone') || body.includes('@​everyone'), 'a name cannot mention');
       assert.ok(!/\[.*🎵.*\]\(/.test(body), 'the emojis of a title are left out of its link');
       const rows = flat(json(payload.components)).filter((part) => part.type === 1);
-      assert.deepEqual(rows.map((row) => row.components.length), [5, 5]);
+      assert.deepEqual(rows.map((row) => row.components.length), [5, 4]);
       assert.deepEqual(rows[0].components.map((button) => button.custom_id), ['music:prev', 'music:pause', 'music:stop', 'music:skip', 'music:loop']);
       assert.equal(rows[0].components[0].disabled, true, 'nothing before the first song');
       assert.ok(rows.flatMap((row) => row.components).every((button) => button.label && button.label.length <= 8 && button.emoji), `every button has a short name next to its icon in ${lang}`);
@@ -554,10 +554,10 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
       // the buttons use the emojis of the music set; the plain card (when Discord does not take them) uses ordinary ones
       const buttonsOf = (payload) => flat(json(payload.components)).filter((part) => part.type === 1).flatMap((row) => row.components);
       const withIds = buttonsOf(await card.nowPlaying(music, 'en'));
-      assert.deepEqual([withIds.length, withIds.filter((button) => /^\d{17,20}$/.test(String(button.emoji?.id))).length], [10, 10], 'every button has a custom emoji');
+      assert.deepEqual([withIds.length, withIds.filter((button) => /^\d{17,20}$/.test(String(button.emoji?.id))).length], [9, 9], 'every button has a custom emoji');
       assert.ok(withIds.every((button) => String(button.emoji.name).startsWith('pe_')), 'of the music set, and leave of the main set of Petto');
       assert.equal(withIds.find((button) => button.custom_id === 'music:leave').emoji.id, '1533576199354454197');
-      assert.equal(withIds.find((button) => button.custom_id === 'music:voldown').disabled, true, 'the volume of 50 is the lowest: no way down');
+      assert.ok(!withIds.some((button) => button.custom_id === 'music:voldown'), 'there is no button to lower the volume (50 is the lowest)');
       assert.equal(withIds.find((button) => button.custom_id === 'music:volup').disabled, false);
       const plainCard = await card.nowPlaying(music, 'en', { plain: true });
       assert.ok(buttonsOf(plainCard).every((button) => !button.emoji?.id), 'the plain card has no custom emoji in its buttons');
