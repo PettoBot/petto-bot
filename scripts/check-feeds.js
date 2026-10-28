@@ -7,6 +7,9 @@ process.env.DISCLOUD_DATABASE_URL = process.env.PETTO_TEST_DATABASE_URL || 'post
 const assert = require('node:assert/strict');
 
 const text = require('../src/feeds/text');
+// A picture that has bytes (the check of a stand-in looks at them, as Discord does).
+const emptyAnswer = () => new Response(Buffer.alloc(40), { status: 200, headers: { 'content-type': 'image/png' } });
+const fakeImage = () => new Response(Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(3000)]), { status: 200, headers: { 'content-type': 'image/jpeg' } });
 const card = require('../src/feeds/card');
 const { PLATFORMS, PLATFORM_IDS, TYPES } = require('../src/feeds/platforms');
 const youtube = require('../src/feeds/providers/youtube');
@@ -42,8 +45,10 @@ const allText = (message) => JSON.stringify(json(message.components));
   let parts = json(message.components);
   assert.equal(parts[0].type, 10, 'the words above the card are a text of their own');
   assert.equal(parts[0].content, '<@&223456789012345678> New from Channel: https://youtu.be/x');
-  assert.deepEqual(message.allowedMentions.roles, ['223456789012345678']);
-  assert.equal(message.allowedMentions.parse.length, 0, 'only the roles named are mentioned');
+  assert.deepEqual(message.allowedMentions.parse, ['users', 'roles'], 'the users and roles written in the words of the feed are real mentions');
+  assert.equal(message.allowedMentions.roles, undefined);
+  const hostileTitle = card.buildFeedMessage({ message: '{feed.title}', ping_roles: [], ping_everyone: false, options: {} }, { ...base, title: 'Hi <@123456789012345678> <@&223456789012345678> @everyone' }, { lang: 'en' });
+  assert.ok(!/<@/.test(json(hostileTitle.components).map((part) => part.content ?? '').join('')) || json(hostileTitle.components).map((part) => part.content ?? '').join('').includes('<\u200b@'), 'what a platform sends cannot mention anyone, even though mentions are allowed');
   const container = parts[1];
   assert.equal(container.type, 17);
   assert.equal(container.accent_color, PLATFORMS.youtube.color, 'the side bar has the color of the platform');
@@ -91,7 +96,7 @@ const allText = (message) => JSON.stringify(json(message.components));
   const colored = json(card.buildFeedMessage({ message: '', options: { color: 0x123456 } }, base, { lang: 'en' }).components)[0];
   assert.equal(colored.accent_color, 0x123456);
   const everyone = card.buildFeedMessage({ message: '', ping_everyone: true, ping_roles: [] }, base, { lang: 'en' });
-  assert.deepEqual(everyone.allowedMentions.parse, ['everyone']);
+  assert.deepEqual(everyone.allowedMentions.parse, ['users', 'roles', 'everyone']);
   assert.ok(json(everyone.components)[0].content.startsWith('@everyone'));
   assert.equal(text.linkText('✅ LADRILLOS DE NIEVE 👉 26.4 Snapshot 6 Minecraft'), 'LADRILLOS DE NIEVE 26.4 Snapshot 6 Minecraft', 'the emojis of a title are left out of its link (Discord would not draw it)');
   assert.equal(text.linkText('Mix 🇨🇴 <:pe_f_video:123456789012345678> 👨‍👩‍👧 end'), 'Mix end', 'flags, custom emojis and joined emojis too');
@@ -760,6 +765,17 @@ const allText = (message) => JSON.stringify(json(message.components));
     globalThis.fetch = realFetch;
   }
 
+  // --- The check of a picture: bytes of a real image, not only a good answer ----------------------------------------------------------------------
+  {
+    const { imageReady } = require('../src/feeds/picture');
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => (String(url).endsWith('/empty.png') ? emptyAnswer() : String(url).endsWith('/ok.jpg') ? fakeImage() : new Response('<html></html>', { status: 200, headers: { 'content-type': 'text/html' } }));
+    assert.equal(await imageReady('https://images.example/ok.jpg'), true);
+    assert.equal(await imageReady('https://images.example/empty.png'), false, 'a few bytes is what a CDN answers while it makes the picture');
+    assert.equal(await imageReady('https://images.example/page.html'), false);
+    globalThis.fetch = realFetch;
+  }
+
   // --- Twitch: a live notice goes out at once, with a stand-in picture until the preview of the stream exists ----------------------------------------------
   {
     config.twitchClientId = 'tid';
@@ -768,7 +784,7 @@ const allText = (message) => JSON.stringify(json(message.components));
     const realFetch = globalThis.fetch;
     globalThis.fetch = async (url, options = {}) => {
       const u = String(url);
-      if (u.startsWith('https://static-cdn.jtvnw.net/')) return pictures[u.split('?')[0]] ? new Response('', { status: 200, headers: { 'content-type': 'image/jpeg' } }) : new Response('', { status: 404 });
+      if (u.startsWith('https://static-cdn.jtvnw.net/')) return pictures[u.split('?')[0]] ? fakeImage() : new Response('', { status: 404 });
       if (u.includes('id.twitch.tv/oauth2/token')) return new Response(JSON.stringify({ access_token: 'tw', expires_in: 3600 }), { status: 200 });
       if (u.includes('/helix/streams')) return new Response(JSON.stringify({ data: [{ id: 's1', user_id: '7', user_login: 'streamer', user_name: 'Streamer', type: 'live', title: 'Hello', game_name: 'Minecraft', viewer_count: 12, started_at: new Date().toISOString(), thumbnail_url: 'https://static-cdn.jtvnw.net/previews-ttv/live_user_streamer-{width}x{height}.jpg' }] }), { status: 200 });
       return new Response('{}', { status: 404 });
@@ -794,7 +810,7 @@ const allText = (message) => JSON.stringify(json(message.components));
       2: { broadcaster_user_id: 2, slug: 'quiet', stream_title: '', stream: { is_live: false } } };
     globalThis.fetch = async (url, options) => {
       kickCalls.push(String(url));
-      if (String(url).startsWith('https://images.kick.com/')) return pictures[String(url)] ? new Response('', { status: 200, headers: { 'content-type': 'image/jpeg' } }) : new Response('', { status: 404 });
+      if (String(url).startsWith('https://images.kick.com/')) return pictures[String(url)] ? fakeImage() : new Response('', { status: 404 });
       if (String(url).includes('id.kick.com/oauth/token')) return new Response(JSON.stringify({ access_token: 'tok', expires_in: 3600 }), { status: 200 });
       assert.equal(options.headers.Authorization, 'Bearer tok');
       const u = new URL(url);
@@ -814,19 +830,10 @@ const allText = (message) => JSON.stringify(json(message.components));
     assert.match(results.get('1').items[0].extra, /Minecraft/);
     assert.deepEqual([...results.get('1').stillLive], ['2026-10-26T20:00:00Z']);
     assert.deepEqual(results.get('2'), { items: [], stillLive: new Set() }, 'a quiet channel has no stream and nothing is open');
-    assert.equal(results.get('1').items[0].image, 'https://images.kick.com/t.jpg', 'a picture that loads is posted');
+    assert.equal(results.get('1').items[0].image.endsWith('/kick-live.png'), true, 'a Kick notice always carries the picture of Kick: its preview can fail to draw in Discord and stay broken');
+    assert.equal(results.get('1').items[0].placeholder, undefined, 'and it is never swapped for the real one');
     assert.equal(kickCalls.filter((url) => url.includes('/channels?') && url.includes('broadcaster_user_id')).length, 1, 'both accounts are asked in one call');
-    // A stream that just began has no picture yet: the notice goes out at once with a stand-in picture of Kick, marked so the real one is swapped in later.
-    channels[1].stream.thumbnail = 'https://images.kick.com/new.jpg';
-    channels[1].stream.start_time = new Date(Date.now() - 20_000).toISOString();
-    const early = (await PROVIDERS.kick.poll([{ id: '1', name: 'Live_One', avatar: null, url: found.url }])).get('1');
-    assert.deepEqual([early.items.length, early.items[0].placeholder, early.items[0].image.endsWith('/kick-live.png')], [1, true, true], 'it does not wait for the picture');
-    pictures['https://images.kick.com/new.jpg'] = true;
-    const later = (await PROVIDERS.kick.poll([{ id: '1', name: 'Live_One', avatar: null, url: found.url }])).get('1').items[0];
-    assert.deepEqual([later.image, Boolean(later.placeholder)], ['https://images.kick.com/new.jpg', false], 'the real picture is used as soon as it loads');
-    channels[1].stream.thumbnail = '';
-    const none = (await PROVIDERS.kick.poll([{ id: '1', name: 'Live_One', avatar: null, url: found.url }])).get('1').items[0];
-    assert.deepEqual([none.image.endsWith('/kick-live.png'), none.placeholder], [true, false], 'a stream with no picture at all keeps the one of Kick');
+    assert.equal(kickCalls.some((url) => url.startsWith('https://images.kick.com/')), false, 'and the preview is not even asked for');
     config.kickClientId = null;
     kickCalls.length = 0;
     await assert.rejects(PROVIDERS.kick.resolve('live-one'), (error) => error.kind === 'notConfigured', 'without the keys Kick says it is not set up');
@@ -1196,6 +1203,26 @@ const allText = (message) => JSON.stringify(json(message.components));
   assert.equal(engine.replayUrl({ platform: 'twitch', authorUrl: 'https://twitch.tv/x' }), null);
   assert.deepEqual(edits[1].payload.allowedMentions, { parse: [] }, 'and it does not mention anyone again');
   assert.equal((await pool.query('select count(*)::int as n from feed_live where feed_id = $1', [a.id])).rows[0].n, 0);
+
+  // The live notices of Kick that were posted with its preview (a picture that can stay broken in Discord) are edited once, when the bot starts, to carry the picture of Kick.
+  {
+    const kickFeed = { ...a, platform: 'kick' };
+    const base = { platform: 'kick', type: 'live', title: 'Old', url: 'https://kick.com/x', author: 'X', publishedAt: at };
+    const broken = { feed_id: a.id, item_id: 'old1', channel_id: CH, message_id: 'm-old', item: { ...base, id: 'old1', image: 'https://images.kick.com/broken.jpg' } };
+    const fine = { feed_id: a.id, item_id: 'old2', channel_id: CH, message_id: 'm-fine', item: { ...base, id: 'old2', image: standIn } };
+    await feedsDb.saveLive(broken);
+    await feedsDb.saveLive(fine);
+    const editsBefore = edits.length;
+    const done = await engine.repairKickPictures(client, [kickFeed, { ...a, id: a.id + 1000, platform: 'twitch' }], new Map([[a.id, [broken, fine]]]));
+    assert.equal(done, 1, 'only the notice that has the preview is repaired');
+    assert.equal(edits.length - editsBefore, 1);
+    assert.deepEqual([edits.at(-1).messageId, JSON.stringify(edits.at(-1).payload).includes('kick-live.png'), edits.at(-1).payload.allowedMentions], ['m-old', true, { parse: [] }], 'its message now has the picture of Kick and mentions nobody again');
+    const saved = (await pool.query('select item from feed_live where feed_id = $1 and item_id = $2', [a.id, 'old1'])).rows[0].item;
+    assert.equal(saved.image, standIn, 'and it is written down');
+    assert.equal(await engine.repairKickPictures(client, [kickFeed], new Map([[a.id, [broken]]])), 0, 'a repaired one is not touched again');
+    await feedsDb.deleteLive(a.id, 'old1');
+    await feedsDb.deleteLive(a.id, 'old2');
+  }
 
   // A feed that cannot post: the failure is written down and, five times in a row, it is turned off.
   await service.updateFeed(guild, a.id, { enabled: true });

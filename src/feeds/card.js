@@ -50,7 +50,9 @@ function pingLine(feed) {
 }
 
 function allowedMentionsOf(feed) {
-  return { parse: feed.ping_everyone ? ['everyone'] : [], roles: (feed.ping_roles ?? []).filter((id) => /^\d{15,25}$/.test(String(id))), users: [], repliedUser: false };
+  // The words of the feed are written by the server, so the users and roles in them are real mentions; what the platforms send has its mentions broken
+  // (see `plainText`), so a title or a post cannot ping anyone. `@everyone` only when the feed asks for it.
+  return { parse: ['users', 'roles', ...(feed.ping_everyone ? ['everyone'] : [])], repliedUser: false };
 }
 
 /**

@@ -43,6 +43,7 @@ const CATEGORY_ICONS = {
   roleplay: '<:011Heart:1556773944336580720>',
   fun: '<:Icon_Dice:1556773972442349568>',
   integrations: '🔗',
+  music: '🎵',
   other: '📄',
 };
 

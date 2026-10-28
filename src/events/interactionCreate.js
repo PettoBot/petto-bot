@@ -40,6 +40,7 @@ const { PREFIX: REQUEST_PREFIX } = require('../utils/requestCards');
 const { handleButton: handleRequestButton } = require('../interactions/requests');
 const { PREFIX: SCAM_PREFIX, handleButton: handleScamButton } = require('../utils/antiScam');
 const { PREFIX: STATS_PREFIX, handleButton: handleStatsButton } = require('../interactions/stats');
+const { PREFIX: MUSIC_PREFIX, handleButton: handleMusicButton } = require('../interactions/music');
 const { PREFIX: ANTINUKE_PREFIX, handleButton: handleAntiNukeButton } = require('../interactions/antiNuke');
 const { PREFIX: APPEAL_PREFIX, handleButton: handleAppealButton, handleModal: handleAppealModal } = require('../interactions/appeals');
 const { PREFIX: CONFESSION_PREFIX, handleButton: handleConfessionButton, handleModal: handleConfessionModal } = require('../interactions/confessions');
@@ -73,6 +74,12 @@ module.exports = {
     // The buttons of `!stats privacy` and the confirmation of `!statsconfig delete`.
     if (interaction.isButton() && interaction.customId.startsWith(`${STATS_PREFIX}:`)) {
       try { await handleStatsButton(interaction); } catch (err) { logger.error('Error handling a statistics button:', err); }
+      return;
+    }
+
+    // The buttons of the music card.
+    if (interaction.isButton() && interaction.customId.startsWith(`${MUSIC_PREFIX}:`)) {
+      try { await handleMusicButton(interaction); } catch (err) { logger.error('Error handling a music button:', err); }
       return;
     }
 

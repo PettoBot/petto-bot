@@ -41,6 +41,7 @@ const { startCommandDataJob } = require('./src/jobs/commandDataJob');
 const { startFormCleanupJob } = require('./src/jobs/formCleanupJob');
 const { startAfkMentionsJob } = require('./src/jobs/afkMentionsJob');
 const { startFeedsJob } = require('./src/jobs/feedsJob');
+const music = require('./src/music/node');
 const { startGuildPurgeJob } = require('./src/jobs/guildPurgeJob');
 const { startAvatarPackJob } = require('./src/jobs/avatarPackJob');
 const { startDataMoveJob } = require('./src/jobs/dataMoveJob');
@@ -135,6 +136,7 @@ process.once('SIGINT', () => { shutdown('SIGINT').catch(() => process.exit(1)); 
 async function main() {
   loadCommands(client);
   loadEvents(client);
+  music.init(client); // before the login: the connection to the node waits for the client to be ready by itself
 
   await runMigrations();
   await deployCommands();
