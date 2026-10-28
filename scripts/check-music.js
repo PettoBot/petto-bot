@@ -330,6 +330,30 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
   }
 
   {
+    // A timeout of the network is tried once more with the same recording; any other failure goes to the next one
+    const player = makePlayer();
+    const music = create(player);
+    music.add([song('net', 200_000, ['e:net1', 'e:net2']), song('after')]);
+    await music.startIfIdle();
+    await settle();
+    player.calls.length = 0;
+    player.emit('exception', { exception: { message: '(yts.version: x) All clients failed to load the item. Client [TVHTML5] failed: Read timed out' } });
+    player.emit('end', { reason: 'loadFailed', track: { encoded: 'e:net1' } });
+    await settle();
+    assert.deepEqual(player.calls.filter((call) => call[0] === 'play'), [['play', 'e:net1']], 'the same recording once more after a timeout');
+    player.emit('exception', { exception: { message: 'Read timed out' } });
+    player.emit('end', { reason: 'loadFailed', track: { encoded: 'e:net1' } });
+    await settle();
+    assert.equal(player.loaded, 'e:net2', 'a second timeout of the same recording goes to the next one');
+    player.emit('exception', { exception: { message: 'This video requires login.' } });
+    player.emit('end', { reason: 'loadFailed', track: { encoded: 'e:net2' } });
+    await settle();
+    assert.equal(music.current.title, 'after', 'a failure that is not a timeout is not asked again');
+    music.destroy();
+    events.length = 0;
+  }
+
+  {
     // How long a change took is told with its parts: choosing the recording and the node
     let timing = null;
     const player = makePlayer();

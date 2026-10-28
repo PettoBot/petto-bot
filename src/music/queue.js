@@ -10,6 +10,7 @@ const MIN_VOLUME = 50; // half is the lowest: a song starts there and the bot is
 const MAX_VOLUME = 150;
 const DEFAULT_VOLUME = 50; // a song starts at half: 100 is loud for a voice channel and leaves no room to go up
 const STUCK_AGAIN_MS = 60_000; // a second freeze of the same song within this time is not a hiccup
+const TRANSIENT = /timed out|timeout|connection reset|connection refused|unreachable|temporar/i; // what Lavalink says when the network failed for a moment
 const QUIET_MS = 25_000; // a playing song with no word from the player this long is not playing (Lavalink sends the position every 5 seconds)
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
@@ -149,6 +150,11 @@ class GuildMusic {
   /** The next recording of the same song, or the next song when there is none. */
   async retry(item, error) {
     if (this.current !== item) return false;
+    // A failure of the network for a moment (a timeout) is tried once more with the same recording before changing it: the next one would meet the same hiccup.
+    if (TRANSIENT.test(String(error)) && item.list?.[item.index] && !item.transientTried?.has(item.index)) {
+      (item.transientTried ??= new Set()).add(item.index);
+      return this.playRecording(item);
+    }
     if (item.list && item.index + 1 < item.list.length) {
       item.index += 1;
       return this.playRecording(item);
