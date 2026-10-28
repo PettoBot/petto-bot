@@ -23,17 +23,37 @@ class IntegrationError extends Error {
  * GET (or POST) a JSON answer; a 204 (nothing there) is null. 404 is `notFound`, 429 (or GitHub's exhausted limit) is `rateLimited`, any other failure, a
  * timeout or an answer that is not JSON is `unavailable`. `ok404` returns null for a 404 instead of throwing.
  */
+/** Why a request got no answer, in a word for the log: `timeout`, the code of the network error (`ENOTFOUND`, `ECONNRESET`...) or its message. */
+function whyNoAnswer(error) {
+  if (error?.name === 'TimeoutError' || error?.name === 'AbortError') return 'timeout';
+  return String(error?.cause?.code ?? error?.code ?? error?.message ?? 'no answer').slice(0, 80); // i18n-ignore: a word for the log
+}
+
+/**
+ * Asks once more when the network failed at once (a DNS or connection blip: it costs nothing); a timeout is not asked again, it already took its time.
+ * `send` makes the request.
+ */
+async function withOneRetry(send) {
+  try {
+    return await send();
+  } catch (error) {
+    if (whyNoAnswer(error) === 'timeout') throw error;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    return send();
+  }
+}
+
 async function fetchJson(url, { method = 'GET', headers = {}, body, timeoutMs = TIMEOUT_MS, ok404 = false } = {}) {
   let response;
   try {
-    response = await globalThis.fetch(url, {
+    response = await withOneRetry(() => globalThis.fetch(url, {
       method,
       headers: { Accept: 'application/json', 'User-Agent': USER_AGENT, ...headers },
       body,
       signal: AbortSignal.timeout(timeoutMs),
-    });
-  } catch {
-    throw new IntegrationError('unavailable');
+    }));
+  } catch (error) {
+    throw new IntegrationError('unavailable', whyNoAnswer(error));
   }
   if (response.status === 204) return null;
   if (response.status === 404) {
@@ -103,6 +123,7 @@ async function lookup(interaction, lang, service, build, cooldown = null) {
     // A missing argument is the member's to fix: it goes back to the command handler, which shows how to write the command.
     if (error?.userFacing || error?.missingOption) throw error;
     if (!(error instanceof IntegrationError)) logger.error(`Lookup on ${service} failed: ${error?.message ?? error}`);
+    else if (error.kind === 'unavailable') logger.warn(`Lookup on ${service} was unavailable (${error.message})`); // i18n-ignore: a line of the log, it says why (timeout, DNS, a status)
     await interaction.editReply(failurePayload(error, lang, service)).catch(() => {});
   }
 }
@@ -159,4 +180,4 @@ function dateTag(value, style = 'D') {
 /** Forgets everything cached and every cooldown (the checks start each case clean). */
 const clearCache = () => { cache.clear(); lastUse.clear(); };
 
-module.exports = { USER_AGENT, IntegrationError, fetchJson, cached, clearCache, cooldownLeft, failurePayload, lookup, row, short, plain, stripHtml, clock, formatMoney, dateTag };
+module.exports = { USER_AGENT, IntegrationError, whyNoAnswer, withOneRetry, fetchJson, cached, clearCache, cooldownLeft, failurePayload, lookup, row, short, plain, stripHtml, clock, formatMoney, dateTag };

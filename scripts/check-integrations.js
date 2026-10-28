@@ -91,8 +91,17 @@ const red = (text) => /16671844|0xfe6465/i.test(text) || text.includes('"accent_
   assert.equal(await kindOf('https://x.test/broken'), 'unavailable');
   assert.equal(await kindOf('https://x.test/html'), 'unavailable', 'an answer that is not JSON');
   const original = globalThis.fetch;
-  globalThis.fetch = async () => { throw new Error('offline'); };
+  let attempts = 0;
+  globalThis.fetch = async () => { attempts += 1; throw new Error('offline'); };
   assert.equal(await kindOf('https://x.test/ok'), 'unavailable', 'no connection');
+  assert.equal(attempts, 2, 'a network failure at once is asked again one time');
+  assert.match(await integrations.fetchJson('https://x.test/ok').catch((error) => error.message), /unavailable: offline/, 'and the error says why');
+  attempts = 0;
+  globalThis.fetch = async () => { attempts += 1; throw Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' }); };
+  assert.match(await integrations.fetchJson('https://x.test/ok').catch((error) => error.message), /unavailable: timeout/, 'a timeout is told as such');
+  assert.equal(attempts, 1, 'and it is not asked again (it already took its time)');
+  globalThis.fetch = async () => { throw Object.assign(new Error('fetch failed'), { cause: { code: 'ENOTFOUND' } }); };
+  assert.match(await integrations.fetchJson('https://x.test/ok').catch((error) => error.message), /unavailable: ENOTFOUND/, 'the code of a network error is kept');
   globalThis.fetch = original;
   assert.match(calls.at(0).init.headers['User-Agent'], /Petto/, 'every call says who it is');
 
