@@ -154,7 +154,7 @@ const SOUNDCLOUD_LINK = /^(?:https?:\/\/)?(?:www\.|m\.|on\.)?soundcloud\.com\//i
 function kindOfInput(input) {
   const text = String(input ?? '').trim();
   const spotify = SPOTIFY_LINK.exec(text) ?? SPOTIFY_URI.exec(text);
-  if (spotify) return { kind: 'spotify', what: spotify[1].toLowerCase(), url: /^spotify:/i.test(text) ? `https://open.spotify.com/${spotify[1].toLowerCase()}/${spotify[2]}` : text.split(/[?#]/)[0] };
+  if (spotify) return { kind: 'spotify', what: spotify[1].toLowerCase(), id: spotify[2], url: /^spotify:/i.test(text) ? `https://open.spotify.com/${spotify[1].toLowerCase()}/${spotify[2]}` : text.split(/[?#]/)[0] };
   if (YOUTUBE_LINK.test(text)) return { kind: 'youtube', url: text };
   if (SOUNDCLOUD_LINK.test(text)) return { kind: 'soundcloud', url: text };
   if (/^https?:\/\//i.test(text)) return { kind: 'other', url: text };

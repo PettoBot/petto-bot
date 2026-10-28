@@ -29,7 +29,7 @@ function progressBar(position, length) {
   return icons.BAR.repeat(at) + icons.KNOB + icons.BAR.repeat(BAR_WIDTH - at - 1);
 }
 
-const button = (action, emoji, { style = ButtonStyle.Secondary, disabled = false } = {}) => new ButtonBuilder().setCustomId(`${BUTTON_PREFIX}:${action}`).setEmoji(emoji).setStyle(style).setDisabled(disabled);
+const button = (action, emoji, label, { style = ButtonStyle.Secondary, disabled = false } = {}) => new ButtonBuilder().setCustomId(`${BUTTON_PREFIX}:${action}`).setEmoji(emoji).setLabel(label).setStyle(style).setDisabled(disabled);
 
 /** The picture of the song, drawn once (and kept in the item) so the refreshes of the card do not draw it again. */
 async function imageOf(item) {
@@ -84,19 +84,20 @@ async function nowPlaying(music, lang, { first = false } = {}) {
   }
 
   card.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
+  const label = (name) => t(lang, `music.btn.${name}`); // a name on each button: the icons alone were not clear
   card.addActionRowComponents(new ActionRowBuilder().addComponents(
-    button('prev', icons.PREVIOUS, { disabled: !music.history.length }),
-    button('pause', music.paused ? icons.PLAY : icons.PAUSE),
-    button('stop', icons.STOP),
-    button('skip', icons.SKIP),
-    button('loop', music.loop === 'track' ? icons.LOOP_TRACK : icons.LOOP, { style: music.loop === 'off' ? ButtonStyle.Secondary : ButtonStyle.Success }),
+    button('prev', icons.PREVIOUS, label('prev'), { disabled: !music.history.length }),
+    music.paused ? button('pause', icons.PLAY, label('resume')) : button('pause', icons.PAUSE, label('pause')),
+    button('stop', icons.STOP, label('stop')),
+    button('skip', icons.SKIP, label('skip')),
+    button('loop', music.loop === 'track' ? icons.LOOP_TRACK : icons.LOOP, label('loop'), { style: music.loop === 'off' ? ButtonStyle.Secondary : ButtonStyle.Success }),
   ));
   card.addActionRowComponents(new ActionRowBuilder().addComponents(
-    button('queue', icons.QUEUE),
-    button('voldown', icons.VOLUME_DOWN),
-    button('volup', icons.VOLUME),
-    button('shuffle', icons.SHUFFLE),
-    button('leave', icons.LEAVE),
+    button('queue', icons.QUEUE, label('queue')),
+    button('voldown', icons.VOLUME_DOWN, label('voldown')),
+    button('volup', icons.VOLUME, label('volup')),
+    button('shuffle', icons.SHUFFLE, label('shuffle')),
+    button('leave', icons.LEAVE, label('leave')),
   ));
   const payload = { flags: V2, components: [card], allowedMentions: { parse: [] } };
   if (files.length) payload.files = files; // a refresh leaves the picture the message already has

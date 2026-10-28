@@ -12,6 +12,8 @@ const SHOUKAKU_OPTIONS = { moveOnDisconnect: true, resume: true, resumeTimeout: 
 let shoukaku = null;
 let nodeOptions = null;
 let timer = null;
+let connectedBefore = false; // the node answered once: a later `ready` that is not a resumed session means Lavalink lost the players
+const resetHandlers = [];
 let lastWarn = 0;
 const warn = (message) => { if (Date.now() - lastWarn > 60_000) { lastWarn = Date.now(); logger.warn(message); } };
 
@@ -37,7 +39,12 @@ function init(client, { lib = shoukakuLib, reviveMs = REVIVE_MS } = {}) {
     [nodeOptions],
     SHOUKAKU_OPTIONS,
   );
-  shoukaku.on('ready', (name, resumed) => logger.info(`Music: connected to the node ${name}${resumed ? ' (the session was resumed)' : ''}`));
+  shoukaku.on('ready', (name, resumed) => {
+    logger.info(`Music: connected to the node ${name}${resumed ? ' (the session was resumed)' : ''}`);
+    const restarted = connectedBefore && !resumed;
+    connectedBefore = true;
+    if (restarted) for (const handler of resetHandlers) { try { handler(); } catch (error) { logger.warn(`Music: ${error?.message ?? error}`); } }
+  });
   shoukaku.on('error', (name, error) => warn(`Music: the node ${name} failed: ${error?.message ?? error}`));
   shoukaku.on('close', (name, code, reason) => warn(`Music: the connection to the node ${name} closed (${code}${reason ? `: ${reason}` : ''})`));
   shoukaku.on('disconnect', (name) => { warn(`Music: the node ${name} disconnected`); setTimeout(revive, 3_000).unref?.(); });
@@ -48,6 +55,9 @@ function init(client, { lib = shoukakuLib, reviveMs = REVIVE_MS } = {}) {
 }
 
 const get = () => shoukaku;
+
+/** `handler` is called when the node came back WITHOUT the players it had (it restarted, or was gone longer than the session lasts): nothing plays any more. */
+const onReset = (handler) => { resetHandlers.push(handler); };
 
 /** The node to ask for songs, or undefined while none is connected. */
 const idealNode = () => shoukaku?.getIdealNode();
@@ -60,6 +70,6 @@ function health() {
 }
 
 /** For the checks. */
-const stop = () => { clearInterval(timer); timer = null; shoukaku = null; nodeOptions = null; };
+const stop = () => { clearInterval(timer); timer = null; shoukaku = null; nodeOptions = null; connectedBefore = false; };
 
-module.exports = { SHOUKAKU_OPTIONS, enabled, init, get, idealNode, health, revive, stop };
+module.exports = { SHOUKAKU_OPTIONS, enabled, init, get, onReset, idealNode, health, revive, stop };

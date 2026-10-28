@@ -6,6 +6,7 @@
 const MAX_FAILURES = 5; // songs in a row that could not be played
 const HISTORY = 20;
 const MAX_VOLUME = 150;
+const QUIET_MS = 25_000; // a playing song with no word from the player this long is not playing (Lavalink sends the position every 5 seconds)
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 
@@ -173,6 +174,25 @@ class GuildMusic {
       this.lastException = null;
       await this.retry(this.current, reason);
     } // 'stopped', 'replaced' and 'cleanup' come from what this object did itself
+  }
+
+  /**
+   * Whether the song that should be playing has no player behind it: `'ended'` when it must have finished (its end never came: Lavalink restarted or the
+   * connection was cut) and `'lost'` when it stopped before its end. `null` when all is well.
+   */
+  stale() {
+    if (!this.current || !this.playing || this.paused || !this.current.lengthMs) return null;
+    const quiet = this.now() - this.position.at;
+    if (quiet < QUIET_MS) return null;
+    return this.position.ms + quiet >= this.current.lengthMs - 5000 ? 'ended' : 'lost';
+  }
+
+  /** Moves on from a song whose player is gone: the next song after one that ended, the next recording of the song after one that was lost. */
+  async unstick() {
+    const verdict = this.stale();
+    if (verdict === 'ended') await this.playNext();
+    else if (verdict === 'lost') await this.retry(this.current, 'lost');
+    return verdict;
   }
 
   async onStuck() {

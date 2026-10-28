@@ -13,6 +13,7 @@ const logger = require('../utils/logger');
 
 const IDLE_MS = 3 * 60_000; // the voice channel is left this long after the queue ended
 const ALONE_MS = 2 * 60_000; // ... and this long after the last person left
+const WATCH_MS = 10_000; // how often a session looks whether its song still has a player behind it
 const REFRESH_MS = 30_000; // the time and the bar of the card are refreshed this often while a song plays
 const GREEN = 0xa5ea7a;
 const RED = 0xfe6465;
@@ -133,6 +134,8 @@ async function connect(interaction, voiceChannel) {
   const session = { client: interaction.client, guildId: guild.id, voiceChannelId: voiceChannel.id, textChannelId: interaction.channelId, panel: null, timers: {}, music: null };
   session.music = new GuildMusic({ guildId: guild.id, player, recordingsFor: (item) => resolver.recordingsFor(node.idealNode(), item), hooks: hooksFor(session) });
   sessions.set(guild.id, session);
+  session.timers.watch = setInterval(() => { session.music.unstick().catch(() => {}); }, WATCH_MS); // a song whose end never came is moved on from
+  session.timers.watch.unref?.();
   return session;
 }
 
@@ -146,6 +149,20 @@ async function leave(session) {
   await setVoiceStatus(session.client, session.voiceChannelId, null);
   await node.get()?.leaveVoiceChannel(session.guildId).catch(() => {});
 }
+
+/** Lavalink came back without its players (it restarted): what was playing is gone, so the servers are told and forgotten instead of showing a dead card. */
+async function resetAll() {
+  for (const session of [...sessions.values()]) {
+    sessions.delete(session.guildId);
+    for (const name of Object.keys(session.timers)) { clearTimeout(session.timers[name]); clearInterval(session.timers[name]); }
+    session.music.destroy();
+    const lang = langOf(session.guildId);
+    await closePanel(session, t(lang, 'music.nodeReset'));
+    setVoiceStatus(session.client, session.voiceChannelId, null);
+    await node.get()?.leaveVoiceChannel(session.guildId).catch(() => {});
+  }
+}
+node.onReset(() => { resetAll().catch((error) => logger.warn(`Music: ${error?.message ?? error}`)); });
 
 // --- What the commands and the buttons ask for ------------------------------------------------------------------------------------------------------------
 
@@ -176,24 +193,19 @@ async function play(interaction, query, { next = false } = {}) {
   if (!lavalink) return replyTo(interaction, bad(t(lang, 'music.nodeDown')));
 
   await interaction.deferReply();
-  let found;
-  try {
-    found = await resolver.resolveInput(lavalink, query, { requestedBy: interaction.user.id });
-  } catch (error) {
+  // The voice channel is joined while the song is searched (they do not depend on each other), so the song starts as soon as it is found.
+  const joining = existing ? Promise.resolve(existing) : connect(interaction, voice).catch((error) => { logger.warn(`Music: could not join the voice channel: ${error?.message ?? error}`); return null; });
+  const searching = resolver.resolveInput(lavalink, query, { requestedBy: interaction.user.id }).catch((error) => {
     logger.warn(`Music: the search failed: ${error?.message ?? error}`);
-    found = { type: 'error', items: [], error: 'unavailable' };
-  }
+    return { type: 'error', items: [], error: 'unavailable' };
+  });
+  const [found, session] = await Promise.all([searching, joining]);
+  const nothing = found.type === 'unsupported' || found.type === 'error' || !found.items.length;
+  if (nothing && session && session !== existing) await leave(session).catch(() => {}); // joined for nothing
   if (found.type === 'unsupported') return replyTo(interaction, bad(t(lang, 'music.unsupported')));
   if (found.type === 'error') return replyTo(interaction, bad(t(lang, 'music.error', { reason: clip(plainText(found.error, 150), 150) })));
   if (!found.items.length) return replyTo(interaction, bad(t(lang, 'music.notFound', { query: clip(plainText(query, 80), 80) })));
-
-  let session = existing;
-  try {
-    session ??= await connect(interaction, voice);
-  } catch (error) {
-    logger.warn(`Music: could not join the voice channel: ${error?.message ?? error}`);
-    return replyTo(interaction, bad(t(lang, 'music.joinFailed')));
-  }
+  if (!session) return replyTo(interaction, bad(t(lang, 'music.joinFailed')));
   session.textChannelId = interaction.channelId;
   clearTimer(session, 'idle');
 
@@ -207,8 +219,7 @@ async function play(interaction, query, { next = false } = {}) {
   } else {
     text = idle ? t(lang, 'music.added.now', { title: title(found.items[0]) }) : t(lang, 'music.added.track', { title: title(found.items[0]), position });
   }
-  await replyTo(interaction, good(text));
-  await session.music.startIfIdle();
+  await Promise.all([replyTo(interaction, good(text)), session.music.startIfIdle()]); // the song starts without waiting for the answer to be sent
   return null;
 }
 
