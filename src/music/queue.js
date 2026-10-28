@@ -30,6 +30,7 @@ class GuildMusic {
     this.playing = null; // the recording loaded in the player
     this.position = { at: 0, ms: 0 };
     this.stuckAt = 0;
+    this.lastException = null;
     this.destroyed = false;
     this.listeners = [];
     this.bind();
@@ -39,7 +40,7 @@ class GuildMusic {
     const on = (event, handler) => { this.player.on(event, handler); this.listeners.push([event, handler]); };
     on('end', (event) => { this.onEnd(event).catch((error) => this.hooks.onError?.(this, error)); });
     on('stuck', () => { this.onStuck().catch((error) => this.hooks.onError?.(this, error)); });
-    on('exception', (event) => this.hooks.onException?.(this, event));
+    on('exception', (event) => { this.lastException = event?.exception ?? null; this.hooks.onException?.(this, event); });
     on('start', (event) => {
       if (event?.track?.encoded && event.track.encoded !== this.playing) return; // the start of a recording that is not the one loaded
       this.failures = 0;
@@ -168,7 +169,9 @@ class GuildMusic {
       await this.playNext();
     } else if (event.reason === 'loadFailed') {
       if (event.track?.encoded && event.track.encoded !== this.playing) return;
-      await this.retry(this.current, 'loadFailed');
+      const reason = this.lastException?.message ?? 'loadFailed'; // what Lavalink said (it sends the exception just before this end)
+      this.lastException = null;
+      await this.retry(this.current, reason);
     } // 'stopped', 'replaced' and 'cleanup' come from what this object did itself
   }
 

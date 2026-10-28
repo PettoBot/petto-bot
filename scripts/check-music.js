@@ -52,6 +52,15 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
     ['spotify', 'spotify', 'youtube', 'youtube', 'soundcloud', 'other', 'text']);
   assert.equal(match.kindOfInput('spotify:playlist:37i9dQZF1DXcBWIGoYBM5M').url, 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M');
 
+  {
+    const yt = (name) => T(name, 'A - Topic', 200_000);
+    const sc = (name) => T(name, 'A', 200_000, { sourceName: 'soundcloud' });
+    assert.deepEqual(match.diversify([yt('1'), yt('2'), sc('3')]).map((track) => track.info.title), ['1', '3', '2'], 'the second try is from another service than the first');
+    assert.deepEqual(match.diversify([yt('1'), yt('2')]).map((track) => track.info.title), ['1', '2'], 'with only one service there is nothing to change');
+    assert.deepEqual(match.diversify([yt('1'), sc('2'), yt('3')]).map((track) => track.info.title), ['1', '2', '3']);
+    assert.deepEqual(match.diversify([yt('1'), yt('2'), sc('3')], { preferNot: 'youtube' }).map((track) => track.info.title), ['3', '1', '2'], 'while YouTube fails the other services go first');
+  }
+
   // --- The resolver, with a stand-in node -----------------------------------------------------------------------------------------------------------
   const asked = [];
   const answers = {
@@ -95,6 +104,23 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
   const before = asked.length;
   await resolver.recordingsFor(fakeNode, track.items[0]);
   assert.equal(asked.length, before, 'the choice is remembered');
+
+  {
+    // YouTube asks for a login: the second recording is from SoundCloud, and for a while SoundCloud goes first.
+    const ask = { rest: { resolve: async (identifier) => ({
+      'ytmsearch:login song': { loadType: 'search', data: [T('Login Song', 'A - Topic', 200_000), T('Login Song (audio)', 'A - Topic', 200_500)] },
+      'scsearch:login song': { loadType: 'search', data: [T('Login Song', 'A', 201_000, { sourceName: 'soundcloud' })] },
+    }[identifier] ?? { loadType: 'search', data: [] }) } };
+    resolver.forgetChosen();
+    const first = await resolver.searchText(ask, 'login song', '1');
+    assert.deepEqual(first.items[0].candidates.map((encoded) => encoded.endsWith(':A') ? 'sc' : 'yt'), ['yt', 'sc', 'yt'], 'YouTube, then SoundCloud, then the rest');
+    resolver.markYoutubeDown();
+    assert.equal(resolver.youtubeDown(), true);
+    const second = await resolver.searchText(ask, 'login song', '1');
+    assert.equal(second.items[0].source, 'soundcloud', 'while YouTube fails, SoundCloud is the first one');
+    resolver.forgetChosen();
+    assert.equal(resolver.youtubeDown(), false);
+  }
 
   // --- The queue and its player ---------------------------------------------------------------------------------------------------------------------
   const makePlayer = () => {
@@ -286,6 +312,20 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
     assert.deepEqual(started, ['quiet']);
   }
 
+  {
+    // What Lavalink says about a track that cannot load goes with the failure, and a login asked by YouTube is remembered.
+    const player = makePlayer();
+    const failed = [];
+    const exceptions = [];
+    const music = new GuildMusic({ guildId: 'g', player, recordingsFor: async (item) => item.list, hooks: { onTrackFailed: (m, item, error) => failed.push(error), onException: (m, event) => exceptions.push(event.exception.message) }, now: () => clockNow });
+    music.add([{ ...song('y', 1000, ['y1']), source: 'youtube' }]);
+    await music.startIfIdle();
+    player.emit('exception', { exception: { message: 'This video requires login.', cause: 'x', severity: 'common' } });
+    player.emit('end', { reason: 'loadFailed', track: { encoded: 'y1' } });
+    await settle();
+    assert.deepEqual([failed, exceptions], [['This video requires login.'], ['This video requires login.']], 'the real reason, not only "loadFailed"');
+  }
+
   // --- The card -------------------------------------------------------------------------------------------------------------------------------------
   assert.deepEqual([card.clock(83_000), card.clock(3_725_000), card.clock(0), card.clock(-5)], ['1:23', '1:02:05', '0:00', '0:00']);
   assert.equal(card.progressBar(0, 100).startsWith('🔘'), true);
@@ -407,6 +447,9 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
     assert.ok(sent.length >= 1 && sent.at(-1).payload.components, 'the card of the song is sent');
     assert.deepEqual(rest.at(-1), ['/channels/voice/voice-status', '🎵 Radiohead - Creep - Radiohead - Topic'], 'the status of the voice channel is the song');
     const firstCard = sent.at(-1);
+    players.get('g1').emit('exception', { exception: { message: 'Sign in to confirm you are not a bot', cause: '' } });
+    assert.equal(resolver.youtubeDown(), true, 'a login asked by YouTube is remembered, and the recordings of other services go first for a while');
+    resolver.forgetChosen();
 
     await service.play(makeInteraction(owner), 'https://open.spotify.com/playlist/pl');
     assert.ok(say().includes('My list') && say().includes('**2**'), 'a playlist adds its songs');
@@ -486,6 +529,29 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
     service.onVoiceState({ id: 'bot', guild: { id: 'g1' }, channelId: 'voice' }, { id: 'bot', guild: { id: 'g1' }, channelId: null });
     await settle();
     assert.equal(service.sessionOf('g1'), null, 'taken out of the channel: the server is forgotten');
+  }
+
+  {
+    // Shoukaku drops a node for good when its reconnect tries run out: it is put back.
+    const nodeModule = path.resolve(__dirname, '../src/music/node.js');
+    delete require.cache[nodeModule];
+    const realNode = require('../src/music/node');
+    const pool = new Map();
+    const added = [];
+    class FakeShoukaku extends EventEmitter {
+      constructor(connector, nodes) { super(); this.nodes = pool; this.players = new Map(); nodes.forEach((node) => pool.set(node.name, node)); added.push(['start', nodes[0].url]); }
+      addNode(options) { pool.set(options.name, options); added.push(['add', options.name]); }
+      getIdealNode() { return pool.size ? {} : undefined; }
+    }
+    const fakeLib = { Shoukaku: FakeShoukaku, Connectors: { DiscordJS: class {} } };
+    realNode.init({}, { lib: fakeLib, reviveMs: 1_000_000 });
+    assert.deepEqual(added[0], ['start', 'node.example.com:443']);
+    assert.equal(realNode.revive(), false, 'a node that is in the pool is left alone');
+    pool.clear(); // what Shoukaku does when it gives up
+    assert.equal(realNode.revive(), true);
+    assert.deepEqual(added.at(-1), ['add', 'pettolava'], 'it is added again');
+    assert.equal(realNode.revive(), false);
+    realNode.stop();
   }
 
   console.log('check-music: ok');

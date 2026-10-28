@@ -9,6 +9,13 @@ const MAX_ADDED = 200; // songs one command can add (a playlist is cut there)
 const CACHE_LIMIT = 500;
 const CACHE_MS = 6 * 3_600_000;
 const chosen = new Map(); // key of a song -> { until, list: [encoded...] }
+const YOUTUBE_DOWN_MS = 10 * 60_000;
+let youtubeDownUntil = 0;
+
+/** YouTube asked for a login or blocked the node: for a while the recordings of other services are tried first. */
+const markYoutubeDown = () => { youtubeDownUntil = Date.now() + YOUTUBE_DOWN_MS; };
+const youtubeDown = () => Date.now() < youtubeDownUntil;
+const arrange = (tracks) => match.diversify(tracks, { preferNot: youtubeDown() ? 'youtube' : null });
 
 const thumbnailOf = (info) => info.artworkUrl || (String(info.sourceName).toLowerCase() === 'youtube' && info.identifier ? `https://i.ytimg.com/vi/${info.identifier}/hqdefault.jpg` : null);
 
@@ -53,7 +60,8 @@ async function searchAll(node, query) {
 async function searchText(node, query, requestedBy) {
   const tracks = await searchAll(node, query);
   if (!tracks.length) return { type: 'none', items: [] };
-  const { list } = match.order(tracks, { query });
+  const { list: ordered } = match.order(tracks, { query });
+  const list = arrange(ordered);
   if (!list.length) return { type: 'none', items: [] };
   const [best, ...rest] = list;
   const item = itemFromTrack(best, requestedBy);
@@ -103,8 +111,8 @@ async function recordingsFor(node, item) {
 
   const first = String(meta.artist ?? '').split(/,|&/)[0].trim();
   const tracks = await searchAll(node, `${first} ${meta.title}`.trim());
-  const { list } = match.order(tracks, { title: meta.title, artist: meta.artist, lengthMs: meta.lengthMs, isrc: meta.isrc, query: `${first} ${meta.title}` });
-  const encoded = list.slice(0, 4).map((track) => track.encoded);
+  const { list: ordered } = match.order(tracks, { title: meta.title, artist: meta.artist, lengthMs: meta.lengthMs, isrc: meta.isrc, query: `${first} ${meta.title}` });
+  const encoded = arrange(ordered).slice(0, 4).map((track) => track.encoded);
   if (encoded.length) {
     if (chosen.size >= CACHE_LIMIT) chosen.delete(chosen.keys().next().value);
     chosen.set(key, { until: Date.now() + CACHE_MS, list: encoded });
@@ -112,6 +120,6 @@ async function recordingsFor(node, item) {
   return [...encoded, ...(item.fallback ? [item.fallback] : [])];
 }
 
-const forgetChosen = () => chosen.clear(); // for the checks
+const forgetChosen = () => { chosen.clear(); youtubeDownUntil = 0; }; // for the checks
 
-module.exports = { MAX_ADDED, itemFromTrack, lazyItem, searchAll, searchText, resolveInput, recordingsFor, forgetChosen };
+module.exports = { MAX_ADDED, itemFromTrack, lazyItem, searchAll, searchText, resolveInput, recordingsFor, markYoutubeDown, youtubeDown, forgetChosen };
