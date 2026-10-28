@@ -3,6 +3,7 @@
 // `match.js`; a Spotify link only gives the name, artist, length and ISRC of its songs (Lavalink reads them with LavaSrc), and the recording is chosen
 // when the song is about to play, so a playlist of 300 songs does not make 300 searches at once.
 const match = require('./match');
+const spotify = require('./spotify');
 const logger = require('../utils/logger');
 
 const MAX_ADDED = 200; // songs one command can add (a playlist is cut there)
@@ -32,6 +33,24 @@ function itemFromTrack(track, requestedBy) {
 function lazyItem(track, requestedBy) {
   const item = itemFromTrack(track, requestedBy);
   return { ...item, encoded: null, fallback: track.encoded, lazy: true, meta: { title: item.title, artist: item.author, lengthMs: item.lengthMs, isrc: item.isrc } };
+}
+
+/** A song read from the embed page of Spotify (no Lavalink track): its recording is chosen when it is about to play, like the lazy ones. */
+function scrapedItem(song, cover, requestedBy) {
+  return {
+    encoded: null, fallback: null, title: song.title, author: song.artist, lengthMs: song.lengthMs, uri: song.uri ? `https://open.spotify.com/track/${String(song.uri).split(':').pop()}` : null,
+    artwork: cover, isrc: null, source: 'spotify', requestedBy, lazy: true, candidates: null,
+    meta: { title: song.title, artist: song.artist, lengthMs: song.lengthMs, isrc: null },
+  };
+}
+
+/** What to queue for a Spotify link when Lavalink could not read it (no keys): its embed page. Returns the same shape as `resolveInput`, or null. */
+async function resolveSpotifyPage(kind, requestedBy, limit) {
+  const page = await spotify.read(kind.what, kind.id);
+  if (!page) return null;
+  const items = page.tracks.slice(0, limit).map((song) => scrapedItem(song, page.cover, requestedBy));
+  if (kind.what === 'track') return { type: 'track', items: items.slice(0, 1) };
+  return { type: 'playlist', name: page.name, items, cut: Math.max(0, page.tracks.length - limit) };
 }
 
 async function lookup(node, identifier) {
@@ -79,6 +98,10 @@ async function resolveInput(node, input, { requestedBy = null, limit = MAX_ADDED
   if (kind.kind === 'other') return { type: 'unsupported', items: [] };
 
   const result = await lookup(node, kind.url);
+  if (kind.kind === 'spotify' && !['track', 'playlist', 'search'].includes(result?.loadType)) {
+    const page = await resolveSpotifyPage(kind, requestedBy, limit); // Lavalink has no Spotify keys (or Spotify refused them): the public page of the link
+    if (page) return page;
+  }
   if (!result) return { type: 'error', items: [], error: 'unavailable' };
   const make = kind.kind === 'spotify' ? lazyItem : itemFromTrack;
   switch (result.loadType) {
@@ -112,7 +135,9 @@ async function recordingsFor(node, item) {
   const first = String(meta.artist ?? '').split(/,|&/)[0].trim();
   const tracks = await searchAll(node, `${first} ${meta.title}`.trim());
   const { list: ordered } = match.order(tracks, { title: meta.title, artist: meta.artist, lengthMs: meta.lengthMs, isrc: meta.isrc, query: `${first} ${meta.title}` });
-  const encoded = arrange(ordered).slice(0, 4).map((track) => track.encoded);
+  const best = arrange(ordered).slice(0, 4);
+  const encoded = best.map((track) => track.encoded);
+  if (!item.artwork && best[0]) item.artwork = thumbnailOf(best[0].info ?? {}); // a song read from a page has no cover of its own: the one of the recording
   if (encoded.length) {
     if (chosen.size >= CACHE_LIMIT) chosen.delete(chosen.keys().next().value);
     chosen.set(key, { until: Date.now() + CACHE_MS, list: encoded });
@@ -122,4 +147,4 @@ async function recordingsFor(node, item) {
 
 const forgetChosen = () => { chosen.clear(); youtubeDownUntil = 0; }; // for the checks
 
-module.exports = { MAX_ADDED, itemFromTrack, lazyItem, searchAll, searchText, resolveInput, recordingsFor, markYoutubeDown, youtubeDown, forgetChosen };
+module.exports = { MAX_ADDED, itemFromTrack, lazyItem, scrapedItem, searchAll, searchText, resolveInput, recordingsFor, markYoutubeDown, youtubeDown, forgetChosen };

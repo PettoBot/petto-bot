@@ -74,7 +74,8 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
     'https://soundcloud.com/bad': { loadType: 'error', data: { message: 'Something broke', severity: 'common' } },
     'https://soundcloud.com/none': { loadType: 'empty', data: {} },
   };
-  const fakeNode = { rest: { resolve: async (identifier) => { asked.push(identifier); return answers[identifier] ?? { loadType: 'search', data: [] }; } } };
+  const order = []; // what happened first: used to check that the voice channel is joined while the song is searched
+  const fakeNode = { rest: { resolve: async (identifier) => { asked.push(identifier); order.push('search'); return answers[identifier] ?? { loadType: 'search', data: [] }; } } };
 
   const text = await resolver.resolveInput(fakeNode, 'radiohead creep', { requestedBy: '7' });
   assert.equal(text.type, 'track');
@@ -83,6 +84,7 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
   assert.ok(text.items[0].candidates.length >= 2 && text.items[0].candidates[0] === text.items[0].encoded, 'the other good recordings are kept in case the first one fails');
   assert.ok(!text.items[0].candidates.some((encoded) => encoded.includes('cover')), 'a cover is not kept');
 
+  assert.deepEqual([match.kindOfInput('https://open.spotify.com/playlist/6rWn7A?si=x').id, match.kindOfInput('spotify:album:4LH4d3').id], ['6rWn7A', '4LH4d3'], 'the id of a Spotify link');
   const track = await resolver.resolveInput(fakeNode, 'https://open.spotify.com/track/abc', { requestedBy: '7' });
   assert.deepEqual([track.type, track.items[0].lazy, track.items[0].meta.isrc, track.items[0].artwork], ['track', true, 'GBAYE9200070', 'https://i.scdn.co/a.jpg'], 'a Spotify song is only its data; the recording is chosen later');
   const list = await resolver.resolveInput(fakeNode, 'https://open.spotify.com/playlist/pl');
@@ -95,6 +97,61 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
   assert.equal((await resolver.resolveInput(fakeNode, 'https://soundcloud.com/none')).type, 'none');
   assert.equal((await resolver.resolveInput(fakeNode, '   ')).type, 'none');
   assert.equal((await resolver.resolveInput({ rest: { resolve: async () => { throw new Error('down'); } } }, 'https://youtu.be/abc')).error, 'unavailable', 'a node that fails is an error, not a crash');
+
+  // A Spotify link that Lavalink cannot read (no keys): the embed page of the link gives the songs.
+  {
+    const spotifyPages = require('../src/music/spotify');
+    const realRead = spotifyPages.read;
+    const reads = [];
+    let page = { name: 'Page list', cover: 'https://img.example/c.jpg', tracks: [{ title: 'Creep', artist: 'Radiohead', lengthMs: 238_000, uri: 'spotify:track:abc' }, { title: 'Karma Police', artist: 'Radiohead', lengthMs: 264_000, uri: 'spotify:track:def' }] };
+    spotifyPages.read = async (what, id) => { reads.push([what, id]); return page; };
+    answers['https://open.spotify.com/playlist/nokeys'] = { loadType: 'error', data: { message: 'Something went wrong while looking up the track.' } };
+    answers['https://open.spotify.com/track/nokeys'] = { loadType: 'empty', data: {} };
+    const fromPage = await resolver.resolveInput(fakeNode, 'https://open.spotify.com/playlist/nokeys?si=x', { requestedBy: '9' });
+    assert.deepEqual([fromPage.type, fromPage.name, fromPage.items.length, fromPage.items.every((item) => item.lazy && !item.fallback && item.requestedBy === '9')], ['playlist', 'Page list', 2, true], 'a playlist Lavalink cannot read is read from its page');
+    assert.deepEqual(reads[0], ['playlist', 'nokeys']);
+    assert.equal(fromPage.items[0].artwork, 'https://img.example/c.jpg');
+    assert.equal(fromPage.items[0].uri, 'https://open.spotify.com/track/abc');
+    const single = await resolver.resolveInput(fakeNode, 'https://open.spotify.com/track/nokeys');
+    assert.deepEqual([single.type, single.items.length], ['track', 1], 'a song too');
+    const cappedPage = await resolver.resolveInput(fakeNode, 'https://open.spotify.com/playlist/nokeys', { limit: 1 });
+    assert.deepEqual([cappedPage.items.length, cappedPage.cut], [1, 1]);
+    reads.length = 0;
+    await resolver.resolveInput(fakeNode, 'https://open.spotify.com/playlist/pl');
+    assert.equal(reads.length, 0, 'when Lavalink reads the link, the page is not used');
+    page = null;
+    assert.equal((await resolver.resolveInput(fakeNode, 'https://open.spotify.com/playlist/nokeys')).type, 'error', 'when neither can, it is an error');
+    page = { name: 'No cover', cover: null, tracks: [{ title: 'Creep', artist: 'Radiohead', lengthMs: 238_000, uri: null }] };
+    const bare = await resolver.resolveInput(fakeNode, 'https://open.spotify.com/playlist/nokeys');
+    resolver.forgetChosen();
+    const chosenList = await resolver.recordingsFor(fakeNode, bare.items[0]);
+    assert.equal(chosenList[0], 'enc:Radiohead - Creep:Radiohead - Topic', 'the recording of a song read from a page is chosen like any other');
+    assert.equal(chosenList.length, 1, 'and there is no mirror of the node after it (it has none)');
+    assert.equal(new URL(bare.items[0].artwork).hostname, 'i.ytimg.com', 'its cover is the one of the recording when the page had none');
+    spotifyPages.read = realRead;
+  }
+
+  // The page of Spotify itself: what is read from it and what happens when it cannot be read.
+  {
+    const { read, songsOf, entityOf } = require('../src/music/spotify');
+    const html = (entity) => `<html><script id="__NEXT_DATA__" type="application/json">${JSON.stringify({ props: { pageProps: { state: { data: { entity } } } } })}</script></html>`;
+    const playlist = { type: 'playlist', name: 'Gus', coverArt: { sources: [{ url: 'https://c/1.jpg' }] }, trackList: [{ uri: 'spotify:track:1', title: 'Es Épico', subtitle: 'Canserbero', duration: 361_978 }, { uri: 'spotify:track:2', title: 'B', subtitle: 'X,\u00a0Y', duration: 1000, isPlayable: false }, { title: '' }] };
+    const parsed = songsOf(entityOf(html(playlist)));
+    assert.deepEqual([parsed.name, parsed.cover, parsed.tracks.length], ['Gus', 'https://c/1.jpg', 2], 'the songs of a playlist (one with no title is left out)');
+    assert.deepEqual(parsed.tracks[0], { title: 'Es Épico', artist: 'Canserbero', lengthMs: 361_978, uri: 'spotify:track:1' });
+    assert.equal(parsed.tracks[1].artist, 'X, Y', 'a song Spotify calls unplayable is still searched elsewhere');
+    const one = songsOf(entityOf(html({ type: 'track', name: 'Knights', title: 'Knights', artists: [{ name: 'Muse' }, { name: 'Other' }], duration: 366_213, uri: 'spotify:track:7' })));
+    assert.deepEqual([one.tracks.length, one.tracks[0].artist, one.tracks[0].lengthMs], [1, 'Muse, Other', 366_213], 'a single song');
+    assert.equal(songsOf(entityOf('<html>nothing</html>')), null, 'a page that changed gives nothing');
+    assert.equal(songsOf(entityOf(html({ type: 'playlist', name: 'Empty', trackList: [] }))), null);
+    const answer = (status, body) => async (url) => { answer.url = url; return { ok: status === 200, status, text: async () => body }; };
+    assert.equal((await read('playlist', 'abc123', { fetchImpl: answer(200, html(playlist)) })).tracks.length, 2);
+    assert.equal(answer.url, 'https://open.spotify.com/embed/playlist/abc123');
+    assert.equal(await read('playlist', 'abc123', { fetchImpl: answer(404, '') }), null, 'a page that is not there');
+    assert.equal(await read('playlist', 'abc123', { fetchImpl: async () => { throw new Error('offline'); } }), null, 'and one that cannot be reached: no crash');
+    assert.equal(await read('podcast', 'abc123', { fetchImpl: answer(200, '') }), null, 'only songs, albums, playlists and artists');
+    assert.equal(await read('playlist', '../etc', { fetchImpl: answer(200, '') }), null, 'the id is only letters and numbers');
+  }
 
   resolver.forgetChosen();
   asked.length = 0;
@@ -141,6 +198,40 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
   const settle = () => new Promise((resolve) => setImmediate(resolve));
   const until = async (condition) => { for (let i = 0; i < 100 && !condition(); i += 1) await new Promise((resolve) => setTimeout(resolve, 50)); };
   const finished = (player, name) => { player.emit('end', { reason: 'finished', track: { encoded: `e:${name}` } }); return settle(); };
+
+  {
+    // The end of a song never came (Lavalink restarted, the connection was cut): the session moves on by itself.
+    const player = makePlayer();
+    events.length = 0;
+    const music = create(player);
+    music.add([song('one', 100_000), song('two', 100_000), song('live', 0)]);
+    await music.startIfIdle();
+    await settle();
+    assert.equal(music.stale(), null, 'a song that just started is fine');
+    clockNow += 20_000;
+    assert.equal(music.stale(), null, '20 seconds without word from the player is still fine');
+    music.mark(50_000);
+    clockNow += 30_000;
+    assert.equal(music.stale(), 'lost', 'no word for 30 seconds in the middle of a song: the player is gone');
+    music.paused = true;
+    assert.equal(music.stale(), null, 'a paused song has nothing to say');
+    music.paused = false;
+    assert.equal(await music.unstick(), 'lost');
+    await settle();
+    assert.deepEqual(events.filter((event) => event[0] === 'failed').map((event) => event.slice(1)), [['one', 'lost']], 'a lost song is a failed one: the next goes on');
+    assert.equal(music.current.title, 'two');
+    music.mark(95_000);
+    clockNow += 30_000;
+    assert.equal(music.stale(), 'ended', 'no word after the end of the song: it ended (its end never came)');
+    assert.equal(await music.unstick(), 'ended');
+    await settle();
+    assert.equal(music.current.title, 'live', 'and the next one plays');
+    assert.equal(music.history.at(-1).title, 'two', 'a song that ended goes to the history');
+    clockNow += 600_000;
+    assert.equal(music.stale(), null, 'a stream has no end to wait for');
+    music.destroy();
+    events.length = 0;
+  }
 
   {
     const player = makePlayer();
@@ -347,12 +438,15 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
       assert.deepEqual(rows.map((row) => row.components.length), [5, 5]);
       assert.deepEqual(rows[0].components.map((button) => button.custom_id), ['music:prev', 'music:pause', 'music:stop', 'music:skip', 'music:loop']);
       assert.equal(rows[0].components[0].disabled, true, 'nothing before the first song');
+      assert.ok(rows.flatMap((row) => row.components).every((button) => button.label && button.label.length <= 8 && button.emoji), `every button has a short name next to its icon in ${lang}`);
+      assert.equal(rows[0].components[1].label, t(lang, 'music.btn.pause'));
       assert.equal(payload.allowedMentions.parse.length, 0);
     }
     const refreshed = await card.nowPlaying(music, 'en');
     assert.equal(refreshed.files, undefined, 'a refresh does not send the picture again');
     await music.pause();
     assert.ok(textOf(await card.nowPlaying(music, 'en')).includes(t('en', 'music.card.paused')));
+    assert.equal(flat(json((await card.nowPlaying(music, 'en')).components)).filter((part) => part.type === 1)[0].components[1].label, t('en', 'music.btn.resume'), 'while paused the button says what it does: play');
     const queued = card.queuePage(music, 'en', 1);
     assert.ok(textOf(queued).includes('Next one') && textOf(queued).includes(t('en', 'music.queue.title')));
     assert.ok(textOf(card.queuePage(create(makePlayer()), 'es', 1)).includes(t('es', 'music.queue.empty')));
@@ -397,11 +491,12 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
     const left = [];
     const fakeShoukaku = {
       players,
-      joinVoiceChannel: async ({ guildId }) => { const player = makePlayer(); players.set(guildId, player); return player; },
+      joinVoiceChannel: async ({ guildId }) => { order.push('join:start'); await new Promise((resolve) => setTimeout(resolve, 30)); const player = makePlayer(); players.set(guildId, player); order.push('join:done'); return player; },
       leaveVoiceChannel: async (guildId) => { left.push(guildId); players.delete(guildId); },
     };
     let nodeOn = true;
-    require.cache[nodeModule] = { id: nodeModule, filename: nodeModule, loaded: true, exports: { enabled: () => true, get: () => fakeShoukaku, idealNode: () => (nodeOn ? fakeNode : undefined), init: () => {}, health: () => ({}) } };
+    let resetNode = null;
+    require.cache[nodeModule] = { id: nodeModule, filename: nodeModule, loaded: true, exports: { enabled: () => true, get: () => fakeShoukaku, idealNode: () => (nodeOn ? fakeNode : undefined), init: () => {}, health: () => ({}), onReset: (handler) => { resetNode = handler; } } };
     delete require.cache[path.resolve(__dirname, '../src/music/service.js')];
     const service = require('../src/music/service');
 
@@ -442,6 +537,8 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
     await service.play(makeInteraction(owner), 'radiohead creep');
     assert.ok(say().includes('Radiohead - Creep') && say().includes(t('en', 'music.added.now', { title: '' }).slice(0, 7)), 'the first song plays at once');
     const session = service.sessionOf('g1');
+    const joinSpan = order.slice(order.lastIndexOf('join:start'), order.lastIndexOf('join:done') + 1);
+    assert.ok(joinSpan.includes('search'), 'the voice channel is joined while the song is searched, not before');
     assert.equal(session.music.current.title, 'Radiohead - Creep');
     await until(() => sent.length >= 1 && rest.length >= 1);
     assert.ok(sent.length >= 1 && sent.at(-1).payload.components, 'the card of the song is sent');
@@ -529,6 +626,21 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
     service.onVoiceState({ id: 'bot', guild: { id: 'g1' }, channelId: 'voice' }, { id: 'bot', guild: { id: 'g1' }, channelId: null });
     await settle();
     assert.equal(service.sessionOf('g1'), null, 'taken out of the channel: the server is forgotten');
+
+    // Lavalink came back without its players: what was playing is gone, the card says so and the server is forgotten
+    await service.play(makeInteraction(owner), 'radiohead creep');
+    assert.ok(service.sessionOf('g1'));
+    await until(() => service.sessionOf('g1')?.panel);
+    const panel = service.sessionOf('g1').panel;
+    left.length = 0;
+    assert.equal(typeof resetNode, 'function', 'the service asks the node to tell it');
+    resetNode();
+    await until(() => left.includes('g1'));
+    assert.equal(service.sessionOf('g1'), null, 'the server is forgotten');
+    assert.ok(left.includes('g1'), 'and the dead player is dropped');
+    assert.ok(textOf(panel.edits.at(-1)).includes(t('en', 'music.nodeReset')), 'the card of the song says what happened');
+    resetNode();
+    await settle();
   }
 
   {
@@ -540,7 +652,7 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
     const added = [];
     const seen = {};
     class FakeShoukaku extends EventEmitter {
-      constructor(connector, nodes, options) { super(); seen.options = options; this.nodes = pool; this.players = new Map(); nodes.forEach((node) => pool.set(node.name, node)); added.push(['start', nodes[0].url]); }
+      constructor(connector, nodes, options) { super(); seen.options = options; seen.instance = this; this.nodes = pool; this.players = new Map(); nodes.forEach((node) => pool.set(node.name, node)); added.push(['start', nodes[0].url]); }
       addNode(options) { pool.set(options.name, options); added.push(['add', options.name]); }
       getIdealNode() { return pool.size ? {} : undefined; }
     }
@@ -552,6 +664,15 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
     assert.ok(seen.options.restTimeout <= 60, 'a request to a dead node is given up within a minute');
     assert.ok(seen.options.reconnectTries * seen.options.reconnectInterval >= 180, 'it keeps trying for as long as Lavalink takes to start');
     assert.equal(realNode.revive(), false, 'a node that is in the pool is left alone');
+    // the node came back: only a session that is not the resumed one means the players are gone
+    let resets = 0;
+    realNode.onReset(() => { resets += 1; });
+    seen.instance.emit('ready', 'pettolava', false);
+    assert.equal(resets, 0, 'the first connection is not a restart');
+    seen.instance.emit('ready', 'pettolava', true);
+    assert.equal(resets, 0, 'a session that was resumed kept its players');
+    seen.instance.emit('ready', 'pettolava', false);
+    assert.equal(resets, 1, 'a new session after a connection: the players are gone');
     pool.clear(); // what Shoukaku does when it gives up
     assert.equal(realNode.revive(), true);
     assert.deepEqual(added.at(-1), ['add', 'pettolava'], 'it is added again');
