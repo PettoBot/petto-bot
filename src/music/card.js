@@ -80,12 +80,14 @@ async function nowPlaying(music, lang, { first = false, plain = false } = {}) {
   if (music.paused) details.push(`${ic.PAUSE} ${t(lang, 'music.card.paused')}`);
   if (music.loop === 'track') details.push(`${ic.LOOP_TRACK} ${t(lang, 'music.card.loop.track')}`);
   if (music.loop === 'queue') details.push(`${ic.LOOP} ${t(lang, 'music.card.loop.queue')}`);
+  if (music.autoplay) details.push(`${ic.AUTOPLAY} ${t(lang, 'music.card.autoplay')}`);
   const next = music.queue[0];
   if (next) details.push(`${ic.PLAY} ${t(lang, 'music.card.next', { title: clip(plainText(next.title, 80), 80) })}`);
 
   const lines = [`### ${title}`, plainText(item?.author, 80) || '—', details.join('  ·  ')];
   if (item?.lengthMs) lines.push(progressBar(position, item.lengthMs, ic));
   if (item?.requestedBy) lines.push(`-# ${t(lang, 'music.card.requestedBy', { user: `<@${item.requestedBy}>` })}`);
+  else if (item?.autoplay) lines.push(`-# ${t(lang, 'music.card.byAutoplay')}`);
 
   if (!image && safeUrl(item?.artwork)) {
     card.addSectionComponents(new SectionBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n'))).setThumbnailAccessory(new ThumbnailBuilder().setURL(safeUrl(item.artwork))));
@@ -106,6 +108,7 @@ async function nowPlaying(music, lang, { first = false, plain = false } = {}) {
     button('queue', ic.QUEUE, label('queue')),
     button('volup', ic.VOLUME, label('volup'), { disabled: music.volume >= MAX_VOLUME }),
     button('shuffle', ic.SHUFFLE, label('shuffle')),
+    button('autoplay', ic.AUTOPLAY, label('autoplay'), { style: music.autoplay ? ButtonStyle.Success : ButtonStyle.Secondary }),
     button('leave', ic.LEAVE, label('leave')),
   ));
   const payload = { flags: V2, components: [card], allowedMentions: { parse: [] } };
@@ -134,7 +137,7 @@ const SOURCE_NAMES = { youtube: 'YouTube', soundcloud: 'SoundCloud', deezer: 'De
 
 /** The results of a search in a menu: the one who searched picks one (`music:pick:<token>`). */
 function choiceMenu(items, token, lang) {
-  const lines = [`### ${icons.QUEUE} ${t(lang, 'music.search.title')}`, t(lang, 'music.search.hint')];
+  const lines = [`### ${icons.QUEUE} ${t(lang, 'music.search.title')}`, `${icons.INFO} ${t(lang, 'music.search.hint')}`];
   const menu = new StringSelectMenuBuilder()
     .setCustomId(`${BUTTON_PREFIX}:pick:${token}`)
     .setPlaceholder(t(lang, 'music.search.placeholder'))

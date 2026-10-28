@@ -29,6 +29,8 @@ class GuildMusic {
     this.history = [];
     this.current = null;
     this.loop = 'off'; // 'off' | 'track' | 'queue'
+    this.autoplay = false; // when on, songs like the last one are added as the queue runs out (`hooks.onNeedMore`)
+    this.loadingMore = null; // the promise of the search for songs in progress
     this.volume = DEFAULT_VOLUME;
     this.paused = false;
     this.failures = 0;
@@ -91,6 +93,7 @@ class GuildMusic {
   async playNext({ skipped = false } = {}) {
     if (this.destroyed) return false;
     let item = null;
+    const finished = this.current;
     if (this.current && this.loop === 'track' && !skipped) {
       item = this.current;
     } else {
@@ -100,6 +103,10 @@ class GuildMusic {
         if (this.loop === 'queue') this.queue.push(this.current);
       }
       item = this.queue.shift() ?? null;
+      if (!item && finished && this.autoplay && this.loop === 'off') { // nothing left: autoplay, if it was not quick enough, is waited for
+        await this.more(finished);
+        item = this.queue.shift() ?? null;
+      }
     }
     this.current = item;
     this.playing = null;
@@ -171,6 +178,38 @@ class GuildMusic {
   /** The recordings of the next songs are chosen while this one plays, so the change from one to the next only waits for the node to load the audio. */
   prefetch() {
     for (const next of this.queue.slice(0, PREFETCH_AHEAD)) this.prepare(next);
+    if (this.autoplay && !this.queue.length) this.more().catch(() => {}); // the last song is playing: songs like it are looked for now, not when it ends
+  }
+
+  /** Autoplay: asks the hook for songs like `seed` (the song that plays by default) and queues them; a second call waits for the one in progress. Never throws. */
+  more(seed = this.current) {
+    if (this.loadingMore) return this.loadingMore;
+    if (!this.autoplay || this.loop !== 'off' || !seed || this.queue.length || this.destroyed) return Promise.resolve(0); // a repeat is already what plays next
+    this.loadingMore = (async () => {
+      try {
+        const items = (await this.hooks.onNeedMore?.(this, seed)) ?? [];
+        if (!items.length || this.queue.length || !this.autoplay || this.destroyed) return 0;
+        const { added } = this.add(items);
+        if (added) {
+          this.prefetch();
+          this.hooks.onAutoplayAdded?.(this, items.slice(0, added), seed);
+        }
+        return added;
+      } catch (error) {
+        this.hooks.onError?.(this, error);
+        return 0;
+      } finally {
+        this.loadingMore = null;
+      }
+    })();
+    return this.loadingMore;
+  }
+
+  /** Turns autoplay on or off. Returns the new state. */
+  setAutoplay(on) {
+    this.autoplay = Boolean(on);
+    if (this.autoplay) this.more().catch(() => {});
+    return this.autoplay;
   }
 
   async onEnd(event) {

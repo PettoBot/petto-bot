@@ -16,6 +16,8 @@ const PLAIN = {
   QUEUE: '📜',
   SHUFFLE: '🔀',
   LEAVE: '👋',
+  AUTOPLAY: '🔄',
+  INFO: 'ℹ️',
   KNOB: '🔘',
   BAR: '▬',
 };
@@ -35,6 +37,8 @@ const CUSTOM = {
   QUEUE: custom('queue', '1564868926444408952'),
   SHUFFLE: custom('shuffle', '1564869826290384943'),
   LEAVE: '<:pe_leave:1533576199354454197>', // of the main emoji set of Petto
+  AUTOPLAY: custom('autoplay', '1564869824109092894'),
+  INFO: custom('information', '1564884026337271808'),
 };
 
 // The bar of progress is made of three pieces that the card arranges (the bar of Flamey is the same): a grey pill with a white knob (`KNOB_CELL`) that moves

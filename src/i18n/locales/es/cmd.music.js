@@ -20,6 +20,7 @@ module.exports = {
   'cmd.music.music.volume.opt.percent.desc': 'De 50 a 150 (una canción empieza en 50)',
   'cmd.music.music.loop.desc': 'Repite la canción o toda la cola.',
   'cmd.music.music.loop.opt.mode.desc': 'Qué repetir',
+  'cmd.music.music.autoplay.desc': 'Activa o desactiva las canciones parecidas a la última cuando se acaba la cola.',
   'cmd.music.music.shuffle.desc': 'Mezcla la cola.',
   'cmd.music.music.seek.desc': 'Salta a un momento de la canción.',
   'cmd.music.music.seek.opt.time.desc': 'Por ejemplo 1:30 o 90',

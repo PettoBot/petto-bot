@@ -20,6 +20,7 @@ module.exports = {
   'cmd.music.music.volume.opt.percent.desc': 'From 50 to 150 (a song starts at 50)',
   'cmd.music.music.loop.desc': 'Repeat the song or the whole queue.',
   'cmd.music.music.loop.opt.mode.desc': 'What to repeat',
+  'cmd.music.music.autoplay.desc': 'Turn on or off the songs like the last one when the queue runs out.',
   'cmd.music.music.shuffle.desc': 'Shuffle the queue.',
   'cmd.music.music.seek.desc': 'Jump to a moment of the song.',
   'cmd.music.music.seek.opt.time.desc': 'For example 1:30 or 90',

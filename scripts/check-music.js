@@ -213,6 +213,41 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
     assert.equal(resolver.youtubeDown(), false);
   }
 
+  {
+    // Autoplay: what Last.fm says is like the song that plays
+    const autoplayModule = require('../src/music/autoplay');
+    assert.equal(autoplayModule.cleanArtist({ author: 'Radiohead - Topic' }), 'Radiohead');
+    assert.equal(autoplayModule.cleanArtist({ author: 'AdeleVEVO' }), 'Adele');
+    assert.equal(autoplayModule.cleanArtist({ author: 'Bad Bunny, Jhay Cortez' }), 'Bad Bunny');
+    assert.equal(autoplayModule.cleanArtist({ author: 'x', meta: { artist: 'Muse' } }), 'Muse', 'the artist of Spotify, when there is one');
+    assert.equal(autoplayModule.cleanTitle({ title: 'Radiohead - Creep (Official Video)' }, 'Radiohead'), 'Creep');
+    assert.equal(autoplayModule.cleanTitle({ title: 'Karma Police - Remastered' }, 'Radiohead'), 'Karma Police', 'what comes after a dash that is not the artist stays only if the artist was not in front');
+    const calls = [];
+    const lastfm = (answers) => async (url) => {
+      const query = new URL(url).searchParams;
+      calls.push(`${query.get('method')}:${query.get('artist')}:${query.get('track') ?? ''}`);
+      const body = answers[query.get('method')] ?? {};
+      return { ok: true, json: async () => body };
+    };
+    config.lastfmApiKey = null;
+    assert.deepEqual(await autoplayModule.similarTo({ title: 'Creep', author: 'Radiohead' }, { fetchImpl: lastfm({}) }), [], 'no key: nothing');
+    config.lastfmApiKey = 'key';
+    const similar = await autoplayModule.similarTo({ title: 'Radiohead - Creep', author: 'Radiohead - Topic' }, { fetchImpl: lastfm({ 'track.getsimilar': { similartracks: { track: [
+      { name: 'Karma Police', artist: { name: 'Radiohead' } }, { name: 'Zombie', artist: { name: 'The Cranberries' } }, { name: 'Karma Police', artist: { name: 'Radiohead' } }, { name: 'Yellow', artist: { name: 'Coldplay' } },
+    ] } } }) });
+    assert.deepEqual(similar.map((song) => `${song.artist} - ${song.title}`), ['Radiohead - Karma Police', 'The Cranberries - Zombie', 'Coldplay - Yellow'], 'in the order of Last.fm, without repeats');
+    assert.equal(calls[0], 'track.getsimilar:Radiohead:Creep', 'it asks with the clean artist and title');
+    calls.length = 0;
+    const viaArtists = await autoplayModule.similarTo({ title: 'Obscure', author: 'Nobody' }, { fetchImpl: lastfm({
+      'track.getsimilar': { similartracks: { track: [] } },
+      'artist.getsimilar': { similarartists: { artist: [{ name: 'A1' }, { name: 'A2' }] } },
+      'artist.gettoptracks': { toptracks: { track: [{ name: 'Top 1' }, { name: 'Top 2' }] } },
+    }) });
+    assert.ok(viaArtists.length >= 2 && calls.some((call) => call.startsWith('artist.getsimilar')), 'with few similar songs it goes through similar artists');
+    assert.deepEqual(await autoplayModule.similarTo({ title: 'Creep', author: 'Radiohead' }, { fetchImpl: async () => { throw new Error('offline'); } }), [], 'Last.fm down: nothing, no crash');
+    config.lastfmApiKey = null;
+  }
+
   // --- The queue and its player ---------------------------------------------------------------------------------------------------------------------
   const makePlayer = () => {
     const player = new EventEmitter();
@@ -232,6 +267,67 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
   const settle = () => new Promise((resolve) => setImmediate(resolve));
   const until = async (condition) => { for (let i = 0; i < 100 && !condition(); i += 1) await new Promise((resolve) => setTimeout(resolve, 50)); };
   const finished = (player, name) => { player.emit('end', { reason: 'finished', track: { encoded: `e:${name}` } }); return settle(); };
+
+  {
+    // Autoplay: while the last song plays, songs like it are added; it waits for them when the song ends first; loops and "off" leave it alone
+    const asked = [];
+    const hooks = (extra) => ({ ...hooksFor(), onNeedMore: async (m, seed) => { asked.push(seed.title); await new Promise((resolve) => setTimeout(resolve, 15)); return [song('like1'), song('like2')]; }, onAutoplayAdded: (m, items, seed) => events.push(['autoplay', items.length, seed.title]), ...extra });
+    const make = (extra) => new GuildMusic({ guildId: 'g', player: makePlayer(), recordingsFor: async (item) => item.list ?? [item.encoded], hooks: hooks(extra), now: () => clockNow, maxQueue: 10 });
+    {
+      const music = make();
+      music.add([song('only')]);
+      await music.startIfIdle();
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      assert.deepEqual(asked, [], 'off: nothing is asked');
+      assert.equal(music.queue.length, 0);
+      assert.equal(music.setAutoplay(true), true);
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      assert.deepEqual(asked, ['only'], 'turned on while the last song plays: songs like it are looked for at once');
+      assert.deepEqual(music.queue.map((item) => item.title), ['like1', 'like2']);
+      assert.deepEqual(events.find((event) => event[0] === 'autoplay'), ['autoplay', 2, 'only']);
+      music.setAutoplay(false);
+      music.destroy();
+    }
+    {
+      // the song ends before autoplay answered: the end waits for it and the next one plays
+      events.length = 0;
+      const player = makePlayer();
+      const music = new GuildMusic({ guildId: 'g', player, recordingsFor: async (item) => item.list ?? [item.encoded], hooks: { ...hooksFor(), onNeedMore: async () => { await new Promise((resolve) => setTimeout(resolve, 40)); return [song('late')]; } }, now: () => clockNow, maxQueue: 10 });
+      music.autoplay = true;
+      music.add([song('last')]);
+      await music.startIfIdle();
+      await settle();
+      await finished(player, 'last');
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      assert.equal(music.current?.title, 'late', 'the queue did not end: the song of autoplay plays');
+      assert.ok(!events.some((event) => event[0] === 'ended'));
+      music.destroy();
+    }
+    {
+      // with nothing to add, or with a repeat on, the queue ends as always
+      events.length = 0;
+      const player = makePlayer();
+      const music = new GuildMusic({ guildId: 'g', player, recordingsFor: async (item) => item.list ?? [item.encoded], hooks: { ...hooksFor(), onNeedMore: async () => [] }, now: () => clockNow, maxQueue: 10 });
+      music.autoplay = true;
+      music.add([song('z')]);
+      await music.startIfIdle();
+      await settle();
+      await finished(player, 'z');
+      await settle();
+      assert.ok(events.some((event) => event[0] === 'ended'), 'autoplay found nothing: the queue ends');
+      music.destroy();
+      asked.length = 0;
+      const looping = make();
+      looping.autoplay = true;
+      looping.setLoop('queue');
+      looping.add([song('w')]);
+      await looping.startIfIdle();
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      assert.equal(looping.queue.length, 0, 'songs added to a repeating queue are not wanted');
+      looping.destroy();
+    }
+    events.length = 0;
+  }
 
   {
     // The volume: it starts at 50, which is also the lowest; 150 is the highest
@@ -543,7 +639,7 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
       assert.ok(!body.includes('@everyone') || body.includes('@​everyone'), 'a name cannot mention');
       assert.ok(!/\[.*🎵.*\]\(/.test(body), 'the emojis of a title are left out of its link');
       const rows = flat(json(payload.components)).filter((part) => part.type === 1);
-      assert.deepEqual(rows.map((row) => row.components.length), [5, 4]);
+      assert.deepEqual(rows.map((row) => row.components.length), [5, 5]);
       assert.deepEqual(rows[0].components.map((button) => button.custom_id), ['music:prev', 'music:pause', 'music:stop', 'music:skip', 'music:loop']);
       assert.equal(rows[0].components[0].disabled, true, 'nothing before the first song');
       assert.ok(rows.flatMap((row) => row.components).every((button) => button.label && button.label.length <= 8 && button.emoji), `every button has a short name next to its icon in ${lang}`);
@@ -554,7 +650,7 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
       // the buttons use the emojis of the music set; the plain card (when Discord does not take them) uses ordinary ones
       const buttonsOf = (payload) => flat(json(payload.components)).filter((part) => part.type === 1).flatMap((row) => row.components);
       const withIds = buttonsOf(await card.nowPlaying(music, 'en'));
-      assert.deepEqual([withIds.length, withIds.filter((button) => /^\d{17,20}$/.test(String(button.emoji?.id))).length], [9, 9], 'every button has a custom emoji');
+      assert.deepEqual([withIds.length, withIds.filter((button) => /^\d{17,20}$/.test(String(button.emoji?.id))).length], [10, 10], 'every button has a custom emoji');
       assert.ok(withIds.every((button) => String(button.emoji.name).startsWith('pe_')), 'of the music set, and leave of the main set of Petto');
       assert.equal(withIds.find((button) => button.custom_id === 'music:leave').emoji.id, '1533576199354454197');
       assert.ok(!withIds.some((button) => button.custom_id === 'music:voldown'), 'there is no button to lower the volume (50 is the lowest)');
@@ -767,6 +863,34 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
     assert.ok(say().includes(t('en', 'music.search.expired')), 'a menu is used once');
     await service.command(makeInteraction(owner), 'leave');
     assert.equal(service.sessionOf('g1'), null);
+
+    // autoplay: turned on and off by the command and by the button; it needs the Last.fm key of the bot
+    const realFetch = global.fetch;
+    global.fetch = async () => ({ ok: true, json: async () => ({ similartracks: { track: [] } }) }); // Last.fm is not asked for real
+    await service.play(makeInteraction(owner), 'radiohead creep');
+    const autoSession = service.sessionOf('g1');
+    config.lastfmApiKey = null;
+    await service.command(makeInteraction(owner), 'autoplay');
+    assert.ok(say().includes(t('en', 'music.autoplay.noKey')) && !autoSession.music.autoplay, 'without the Last.fm key it cannot be turned on');
+    config.lastfmApiKey = 'key';
+    await service.command(makeInteraction(owner), 'autoplay');
+    assert.ok(say().includes(t('en', 'music.autoplay.on')) && autoSession.music.autoplay, 'the command turns it on');
+    assert.ok(textOf(await card.nowPlaying(autoSession.music, 'en')).includes(t('en', 'music.card.autoplay')), 'and the card says so');
+    const autoButton = flat(json((await card.nowPlaying(autoSession.music, 'en')).components)).filter((part) => part.type === 2).find((button) => button.custom_id === 'music:autoplay');
+    assert.equal(autoButton.style, 3, 'its button is green while it is on');
+    await press('autoplay');
+    assert.equal(autoSession.music.autoplay, false, 'the button turns it off');
+    await service.command(makeInteraction(owner), 'leave');
+    config.lastfmApiKey = null;
+    global.fetch = realFetch;
+
+    // the list under the option of /music play
+    const typed = await service.suggest(owner, 'radiohead creep');
+    assert.ok(typed.length >= 1 && typed.every((choice) => choice.name.length <= 100 && choice.value.length <= 100), 'suggestions fit what Discord accepts');
+    assert.equal(typed[0].name, 'Creep - Radiohead', 'each one reads "Title - Artist"');
+    assert.deepEqual(await service.suggest(owner, 'a'), [], 'too soon: nothing');
+    assert.deepEqual(await service.suggest(owner, 'https://youtu.be/abc'), [], 'a link is not searched');
+    assert.deepEqual(await service.suggest('anyone', 'radiohead creep'), [], 'only the team gets them while it is tested');
 
     // alone in the channel / taken out of it
     await service.play(makeInteraction(owner), 'radiohead creep');

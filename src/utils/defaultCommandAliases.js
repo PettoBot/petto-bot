@@ -126,6 +126,7 @@ const DEFAULT_PREFIX_ROUTES = [
   { alias: 'loop', command: 'music', args: ['loop'], subcommand: 'loop' },
   { alias: 'shuffle', command: 'music', args: ['shuffle'], subcommand: 'shuffle' },
   { alias: 'seek', command: 'music', args: ['seek'], subcommand: 'seek' },
+  { alias: 'autoplay', command: 'music', args: ['autoplay'], subcommand: 'autoplay' },
   { alias: 'disconnect', command: 'music', args: ['leave'], subcommand: 'leave' },
   // The shortest ways to write a lookup: `!mu Notch` is `!minecraft user Notch`, `!gr discordjs/discord.js` is `!github repo ...`.
   { alias: 'mu', command: 'minecraft', args: ['user'], subcommand: 'user' },

@@ -3,6 +3,8 @@
 const { ChannelType, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const node = require('./node');
 const resolver = require('./resolver');
+const autoplay = require('./autoplay');
+const match = require('./match');
 const card = require('./card');
 const { GuildMusic } = require('./queue');
 const { setVoiceStatus, statusOf } = require('./status');
@@ -13,13 +15,14 @@ const logger = require('../utils/logger');
 
 const IDLE_MS = 3 * 60_000; // the voice channel is left this long after the queue ended
 const ALONE_MS = 2 * 60_000; // ... and this long after the last person left
+const AUTOPLAY_BATCH = 5; // songs added each time autoplay looks
 const WATCH_MS = 10_000; // how often a session looks whether its song still has a player behind it
 const REFRESH_MS = 30_000; // the time and the bar of the card are refreshed this often while a song plays
 const GREEN = 0xa5ea7a;
 const RED = 0xfe6465;
 const DISCONNECTED = 4014; // the code of Discord when the bot was removed from the voice channel
 
-const IDLE_OK = new Set(['leave', 'queue', 'volume', 'loop']); // what still makes sense when nothing plays but the bot is in the channel
+const IDLE_OK = new Set(['leave', 'queue', 'volume', 'loop', 'autoplay']); // what still makes sense when nothing plays but the bot is in the channel
 
 const sessions = new Map();
 
@@ -27,6 +30,8 @@ const sessionOf = (guildId) => sessions.get(guildId) ?? null;
 const langOf = (guildId) => peekGuildLanguage(guildId);
 const good = (text) => card.notice(text, GREEN);
 const bad = (text) => card.notice(text, RED);
+/** What makes two songs the same one, for autoplay not to repeat what was heard. */
+const songKey = (item) => `${match.normalize(autoplay.cleanArtist(item))}|${match.normalize(autoplay.cleanTitle(item, autoplay.cleanArtist(item)))}`;
 const title = (item) => clip(plainText(item?.title, 100) || '—', 100);
 
 /** "1:30", "90", "1m30s" or "1:02:03" in milliseconds, or null. */
@@ -124,6 +129,15 @@ function hooksFor(session) {
       const cause = clip(plainText(event?.exception?.cause, 120), 120);
       logger.warn(`Music: Lavalink could not load ${music.current?.title ?? 'a song'}: ${message}${cause ? ` (${cause})` : ''}`);
       if (music.current?.source === 'youtube' && /sign in|log in|login|not a bot|confirm you/i.test(`${event?.exception?.message ?? ''} ${event?.exception?.cause ?? ''}`)) resolver.markYoutubeDown();
+    },
+    async onNeedMore(music, seed) {
+      const similar = await autoplay.similarTo(seed);
+      const heard = new Set([...music.history, ...music.queue, music.current, seed].filter(Boolean).map((item) => songKey(item)));
+      return similar.filter((song) => !heard.has(songKey({ title: song.title, author: song.artist }))).slice(0, AUTOPLAY_BATCH).map((song) => ({ ...resolver.scrapedItem(song, null, null), autoplay: true }));
+    },
+    onAutoplayAdded(music, items, seed) {
+      const lang = langOf(session.guildId);
+      say(good(tn(lang, 'music.autoplay.added', items.length, { count: items.length, title: title(items[0]), seed: title(seed) })));
     },
     onGiveUp() { say(bad(t(langOf(session.guildId), 'music.gaveUp'))); },
     onQueueEnd() {
@@ -256,6 +270,43 @@ async function play(interaction, query, { next = false } = {}) {
   return enqueue(interaction, lang, session, found, { next });
 }
 
+// --- The list under the option of `/music play` while it is typed ------------------------------------------------------------------------------------
+
+const SUGGESTIONS = new Map(); // what was typed (lower case) -> { choices, until }
+const SUGGEST_MS = 60_000;
+const SUGGEST_WAIT_MS = 2500; // Discord waits 3 seconds for the list
+
+/** One entry of the list: "Title - Artist", and what to play when it is chosen (the link of that recording, or its name when the link is too long). */
+function suggestionOf(item) {
+  const artist = autoplay.cleanArtist(item);
+  const name = clip(`${autoplay.cleanTitle(item, artist) || plainText(item.title, 60)} - ${artist || plainText(item.author, 40)}`, 100);
+  const link = typeof item.uri === 'string' && item.uri.length <= 100 && /^https:\/\//.test(item.uri) ? item.uri : null;
+  return { name, value: link ?? clip(`${artist} ${autoplay.cleanTitle(item, artist)}`.trim() || plainText(item.title, 100), 100) };
+}
+
+/** The suggestions for what a person has typed so far (up to 10), or `[]` when there are none, it is too soon, or the node is too slow. Never throws. */
+async function suggest(userId, text) {
+  const query = String(text ?? '').trim();
+  if (query.length < 2 || /^(https?:|spotify:)/i.test(query) || !canUseMusic(userId) || !node.enabled()) return [];
+  const key = query.toLowerCase();
+  const hit = SUGGESTIONS.get(key);
+  if (hit && hit.until > Date.now()) return hit.choices;
+  const lavalink = node.idealNode();
+  if (!lavalink) return [];
+  const search = resolver.searchChoices(lavalink, query, { limit: 10 }).then((items) => {
+    const seen = new Set();
+    return items.map(suggestionOf).filter((choice) => choice.name && !seen.has(choice.value) && seen.add(choice.value));
+  }).catch(() => []);
+  let timer = null;
+  const slow = new Promise((resolve) => { timer = setTimeout(() => resolve(null), SUGGEST_WAIT_MS); timer.unref?.(); });
+  const choices = await Promise.race([search, slow]);
+  clearTimeout(timer);
+  if (!choices) return [];
+  if (SUGGESTIONS.size >= 300) SUGGESTIONS.delete(SUGGESTIONS.keys().next().value);
+  SUGGESTIONS.set(key, { choices, until: Date.now() + SUGGEST_MS });
+  return choices;
+}
+
 // --- Search: five results to choose from -------------------------------------------------------------------------------------------------------------
 
 const CHOICES = new Map(); // token -> { userId, items, until }: the results of a search that wait for a choice
@@ -326,6 +377,11 @@ async function run(session, action, args, lang) {
     case 'stop': await music.stop(); return { text: t(lang, 'music.stopped'), ok: true };
     case 'loop': music.setLoop(args.mode); return { text: t(lang, `music.loop.${music.loop}`), ok: true };
     case 'cycleLoop': music.setLoop({ off: 'track', track: 'queue', queue: 'off' }[music.loop]); return { text: t(lang, `music.loop.${music.loop}`), ok: true };
+    case 'autoplay': {
+      if (!music.autoplay && !autoplay.available()) return { text: t(lang, 'music.autoplay.noKey'), ok: false };
+      const on = music.setAutoplay(!music.autoplay);
+      return { text: t(lang, on ? 'music.autoplay.on' : 'music.autoplay.off'), ok: true };
+    }
     case 'shuffle': return { text: tn(lang, 'music.shuffled', music.shuffle(), { count: music.queue.length }), ok: true };
     case 'volume': {
       const volume = await music.setVolume(args.delta ? music.volume + args.delta : args.value);
@@ -363,7 +419,7 @@ async function button(interaction, action) {
   const lang = langOf(interaction.guildId);
   const session = await needSession(interaction, lang, action === 'queue' || action === 'leave' ? action : '');
   if (!session) return;
-  const map = { prev: ['previous', {}], pause: ['toggle', {}], stop: ['stop', {}], skip: ['skip', {}], loop: ['cycleLoop', {}], queue: ['queue', { page: 1 }], voldown: ['volume', { delta: -10 }], /* the card no longer has it; the cards sent before do */ volup: ['volume', { delta: 10 }], shuffle: ['shuffle', {}], leave: ['leave', {}] };
+  const map = { prev: ['previous', {}], pause: ['toggle', {}], stop: ['stop', {}], skip: ['skip', {}], loop: ['cycleLoop', {}], queue: ['queue', { page: 1 }], voldown: ['volume', { delta: -10 }], /* the card no longer has it; the cards sent before do */ volup: ['volume', { delta: 10 }], shuffle: ['shuffle', {}], autoplay: ['autoplay', {}], leave: ['leave', {}] };
   const [name, args] = map[action] ?? [];
   if (!name) return;
   if (name === 'queue') {
@@ -399,4 +455,4 @@ function onVoiceState(oldState, newState) {
 /** For the checks. */
 const _sessions = sessions;
 
-module.exports = { play, search, pick, command, button, onVoiceState, parseTime, sessionOf, leave, _sessions, IDLE_MS, ALONE_MS };
+module.exports = { play, search, pick, suggest, command, button, onVoiceState, parseTime, sessionOf, leave, _sessions, IDLE_MS, ALONE_MS };
