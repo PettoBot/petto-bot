@@ -23,16 +23,20 @@ function clock(ms) {
   return hours ? `${hours}:${String(minutes).padStart(2, '0')}:${seconds}` : `${minutes}:${seconds}`;
 }
 
-const BAR_CELLS = 5; // the pieces of the bar are wide: five fit in a line of a phone
+const BAR_CELLS = 12; // square pieces: twelve make a bar as wide as a phone shows in one line
 
 /**
- * The bar of progress. With the pieces of the music set: a pill that moves along a track, `[pill][track][track][track][end]`; with a plain set,
- * ▬▬▬🔘▬▬▬▬▬▬▬▬.
+ * The bar of progress. With the pieces of the music set: filled cells up to a pill with a knob, then dark cells to a rounded end (the bar of Flamey);
+ * with a plain set, ▬▬▬🔘▬▬▬▬▬▬▬▬.
  */
 function progressBar(position, length, set = icons) {
   if (set.KNOB_CELL) {
     const at = length > 0 ? Math.min(BAR_CELLS - 1, Math.max(0, Math.floor((position / length) * BAR_CELLS))) : 0;
-    return Array.from({ length: BAR_CELLS }, (_, index) => (index === at ? set.KNOB_CELL : index === BAR_CELLS - 1 ? set.END_CELL : set.TRACK_CELL)).join('');
+    return Array.from({ length: BAR_CELLS }, (_, index) => {
+      if (index === at) return set.KNOB_CELL;
+      if (index < at) return index === 0 ? set.FILLED_START : set.FILLED;
+      return index === BAR_CELLS - 1 ? set.END_CELL : set.TRACK_CELL;
+    }).join('');
   }
   if (!(length > 0)) return set.BAR.repeat(BAR_WIDTH);
   const at = Math.min(BAR_WIDTH - 1, Math.max(0, Math.floor((position / length) * BAR_WIDTH)));
@@ -84,16 +88,19 @@ async function nowPlaying(music, lang, { first = false, plain = false } = {}) {
   const next = music.queue[0];
   if (next) details.push(`${ic.PLAY} ${t(lang, 'music.card.next', { title: clip(plainText(next.title, 80), 80) })}`);
 
-  const lines = [`### ${title}`, plainText(item?.author, 80) || '—', details.join('  ·  ')];
-  if (item?.lengthMs) lines.push(progressBar(position, item.lengthMs, ic));
-  if (item?.requestedBy) lines.push(`-# ${t(lang, 'music.card.requestedBy', { user: `<@${item.requestedBy}>` })}`);
-  else if (item?.autoplay) lines.push(`-# ${t(lang, 'music.card.byAutoplay')}`);
+  const head = [`### ${title}`, plainText(item?.author, 80) || '—', details.join('  ·  ')];
+  const foot = [];
+  if (item?.requestedBy) foot.push(`-# ${t(lang, 'music.card.requestedBy', { user: `<@${item.requestedBy}>` })}`);
+  else if (item?.autoplay) foot.push(`-# ${t(lang, 'music.card.byAutoplay')}`);
 
   if (!image && safeUrl(item?.artwork)) {
-    card.addSectionComponents(new SectionBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n'))).setThumbnailAccessory(new ThumbnailBuilder().setURL(safeUrl(item.artwork))));
+    card.addSectionComponents(new SectionBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(head.join('\n'))).setThumbnailAccessory(new ThumbnailBuilder().setURL(safeUrl(item.artwork))));
   } else {
-    card.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
+    card.addTextDisplayComponents(new TextDisplayBuilder().setContent(head.join('\n')));
   }
+  // The bar is alone in its own text: a text of only emojis is shown with big ones (as the bar of Flamey is)
+  if (item?.lengthMs) card.addTextDisplayComponents(new TextDisplayBuilder().setContent(progressBar(position, item.lengthMs, ic)));
+  if (foot.length) card.addTextDisplayComponents(new TextDisplayBuilder().setContent(foot.join('\n')));
 
   card.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
   const label = (name) => t(lang, `music.btn.${name}`); // a name on each button: the icons alone were not clear

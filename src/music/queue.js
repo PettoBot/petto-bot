@@ -38,6 +38,8 @@ class GuildMusic {
     this.position = { at: 0, ms: 0 };
     this.stuckAt = 0;
     this.changeAt = 0; // when the change to the current song began, to tell how long it took to start
+    this.preparedAt = 0; // when its recordings were known
+    this.requestedAt = 0; // when the node was asked to play it
     this.lastException = null;
     this.destroyed = false;
     this.listeners = [];
@@ -52,7 +54,7 @@ class GuildMusic {
     on('start', (event) => {
       if (event?.track?.encoded && event.track.encoded !== this.playing) return; // the start of a recording that is not the one loaded
       this.failures = 0;
-      if (this.current) this.hooks.onTrackStart?.(this, this.current, this.changeAt ? this.now() - this.changeAt : null); // told when Lavalink really has it, not when it was asked to (a recording can fail to load)
+      if (this.current) this.hooks.onTrackStart?.(this, this.current, this.changeAt ? { total: this.now() - this.changeAt, recordings: this.preparedAt - this.changeAt, node: this.now() - this.requestedAt } : null); // told when Lavalink really has it, not when it was asked to (a recording can fail to load)
     });
     on('update', (update) => { if (Number.isFinite(update?.state?.position)) this.mark(update.state.position); });
     on('closed', (event) => this.hooks.onClosed?.(this, event));
@@ -117,7 +119,8 @@ class GuildMusic {
     }
     item.index = 0;
     this.changeAt = this.now();
-    await this.prepare(item); // already chosen while the last song played, or in the middle of it (then it is waited for, not asked again)
+    await this.prepare(item);
+    this.preparedAt = this.now(); // (it was chosen while the last song played, or in the middle of it: then it is waited for, not asked again)
     item.list ??= [];
     if (!item.list.length) return this.fail(item, 'notFound');
     return this.playRecording(item);
@@ -128,6 +131,7 @@ class GuildMusic {
     const encoded = item.list[item.index];
     const wasPaused = this.paused;
     this.playing = encoded; // before asking: the start event can arrive before the answer
+    this.requestedAt = this.now();
     item.encoded = encoded;
     this.paused = false;
     this.mark(0);

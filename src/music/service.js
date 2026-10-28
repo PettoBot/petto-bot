@@ -112,8 +112,8 @@ async function closePanel(session, text) {
 function hooksFor(session) {
   const say = (payload) => textChannelOf(session)?.send(payload).catch(() => {});
   return {
-    onTrackStart(music, item, ms) {
-      if (ms !== null && ms !== undefined) logger.info(`Music: ${item?.title ?? 'a song'} started ${ms} ms after the change began`); // the number to look at when the change between songs is slow
+    onTrackStart(music, item, timing) {
+      if (timing) logger.info(`Music: ${item?.title ?? 'a song'} started ${timing.total} ms after the change began (choosing the recording ${timing.recordings} ms, the node ${timing.node} ms)`); // what to look at when a change between songs is slow
       clearTimer(session, 'idle');
       if (session.announced === item && session.panel) updatePanel(session); // the same song again (repeat): the card is refreshed, not sent again
       else announce(session).catch(() => {});

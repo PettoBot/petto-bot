@@ -330,6 +330,20 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
   }
 
   {
+    // How long a change took is told with its parts: choosing the recording and the node
+    let timing = null;
+    const player = makePlayer();
+    const music = new GuildMusic({ guildId: 'g', player, recordingsFor: async (item) => { clockNow += 700; return [item.encoded]; }, hooks: { onTrackStart: (m, item, told) => { timing = told; } }, now: () => clockNow, maxQueue: 5 });
+    const originalPlay = player.playTrack;
+    player.playTrack = async (options) => { clockNow += 50; return originalPlay(options); };
+    music.add([{ title: 't1', author: 'A', lengthMs: 200_000, encoded: 'e:t1', requestedBy: '1' }]);
+    await music.startIfIdle();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.ok(timing && timing.recordings === 700 && timing.total >= 750 && timing.node >= 0 && timing.node <= timing.total, 'the start is told with the time of each part');
+    music.destroy();
+  }
+
+  {
     // The volume: it starts at 50, which is also the lowest; 150 is the highest
     const player = makePlayer();
     const music = create(player);
@@ -614,16 +628,19 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
   assert.equal(card.progressBar(100, 100, iconSets.plain).endsWith('🔘'), true);
   assert.equal(card.progressBar(50, 0, iconSets.plain).includes('🔘'), false, 'a stream has no knob');
   {
-    // the bar of the music set: a pill that moves along a track that ends in a rounded end
-    const cells = (bar) => [...bar.matchAll(/<:(\w+):\d+>/g)].map((match) => match[1]);
-    assert.deepEqual(cells(card.progressBar(0, 100)), ['pe_s_progressbarfilledleftstartw', 'pe_s_progressbarempty', 'pe_s_progressbarempty', 'pe_s_progressbarempty', 'pe_s_progressbaremptyrightrounde'], 'at the start the pill is first');
-    const middle = cells(card.progressBar(50, 100));
-    assert.equal(middle.indexOf('pe_s_progressbarfilledleftstartw'), 2, 'half way it is in the middle');
-    assert.equal(middle.at(-1), 'pe_s_progressbaremptyrightrounde', 'the track ends in the rounded end');
+    // the bar of the music set: filled cells up to a pill with a knob, then dark cells to a rounded end
+    const cells = (bar) => [...bar.matchAll(/<:(\w+):\d+>/g)].map((match) => match[1].replace('pe_s_progressbar', ''));
+    const start = cells(card.progressBar(0, 100));
+    assert.equal(start.length, 12, 'twelve pieces');
+    assert.deepEqual([start[0], start[1], start.at(-1)], ['filledleftstartw', 'empty', 'emptyrightrounde'], 'at the start the pill is first and the end is rounded');
+    const half = cells(card.progressBar(50, 100));
+    assert.deepEqual([half[0], half[1], half.indexOf('filledleftstartw'), half.at(-1)], ['filledleftrounde', 'filled', 6, 'emptyrightrounde'], 'half way: filled from a rounded start, the pill in the middle, dark after it');
+    assert.ok(half.slice(1, 6).every((piece) => piece === 'filled') && half.slice(7, -1).every((piece) => piece === 'empty'));
     const last = cells(card.progressBar(100, 100));
-    assert.equal(last.length, 5);
-    assert.equal(last.at(-1), 'pe_s_progressbarfilledleftstartw', 'at the end the pill is last');
-    assert.equal(new Set(Array.from({ length: 11 }, (_, i) => cells(card.progressBar(i * 10, 100)).indexOf('pe_s_progressbarfilledleftstartw'))).size, 5, 'it takes every place on its way');
+    assert.equal(last.length, 12);
+    assert.equal(last.at(-1), 'filledleftstartw', 'at the end the pill is last');
+    assert.equal(new Set(Array.from({ length: 101 }, (_, i) => cells(card.progressBar(i, 100)).indexOf('filledleftstartw'))).size, 12, 'it takes every place on its way');
+    assert.ok(Array.from({ length: 12 }, (_, i) => card.progressBar(i * 8, 100)).every((bar) => cells(bar).length === 12), 'always twelve pieces');
     assert.ok(!card.progressBar(40, 100).includes('🔘'));
   }
   {
@@ -659,6 +676,8 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
       assert.ok(buttonsOf(plainCard).every((button) => !button.emoji?.id), 'the plain card has no custom emoji in its buttons');
       assert.ok(!textOf(plainCard).includes('pe_s_') && textOf(plainCard).includes('🎵'), 'nor in its text');
       assert.ok(textOf(await card.nowPlaying(music, 'en')).includes('<:pe_s_musicnote:'), 'the card says the title with the custom note');
+      const bigBar = flat(json((await card.nowPlaying(music, 'en')).components)).filter((part) => typeof part.content === 'string').find((part) => /^(<:pe_s_progressbar\w+:\d+>)+$/.test(part.content));
+      assert.ok(bigBar, 'the bar is alone in its own text, so it is shown with big emojis');
     }
     const refreshed = await card.nowPlaying(music, 'en');
     assert.equal(refreshed.files, undefined, 'a refresh does not send the picture again');
