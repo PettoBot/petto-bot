@@ -17,8 +17,8 @@ const resetHandlers = [];
 let lastWarn = 0;
 const warn = (message) => { if (Date.now() - lastWarn > 60_000) { lastWarn = Date.now(); logger.warn(message); } };
 
-/** Whether the bot has what it needs to talk to a node (host and password). */
-const enabled = () => Boolean(config.lavalinkHost && config.lavalinkPassword);
+/** Whether the music is on and the bot has what it needs to talk to a node (host and password). */
+const enabled = () => Boolean(config.musicEnabled && config.lavalinkHost && config.lavalinkPassword);
 
 /**
  * Shoukaku tries to reconnect a number of times and then DROPS the node from its pool for good: a node that restarts (Lavalink takes about a minute and a half to start)

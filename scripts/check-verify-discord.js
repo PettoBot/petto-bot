@@ -141,6 +141,14 @@ const text = (payload) => JSON.stringify(payload.components?.map((component) => 
   assert.ok(JSON.stringify(answer).includes(`copy this link: ${linkButton[1]}`.replace('copy', 'Copy')), 'and the address written out');
   assert.ok(/Open verification/.test(JSON.stringify(answer)) && /<t:\d+:R>/.test(JSON.stringify(answer)), 'the button and when it expires');
   assert.ok(replies.at(-1).flags & 64, 'only for the member');
+  assert.match(linkButton[1], /\?lang=en$/, 'the link carries the language of the server, so the page opens in the language of the message');
+  {
+    const i18n = require('../src/i18n');
+    i18n.setCachedGuildLanguage(GUILD, 'pt-BR');
+    await verifyLetters.handleButton({ ...interaction(`vfy:link:${GUILD}`), inGuild: () => true });
+    assert.match(JSON.stringify(replies.at(-1).components[0].toJSON()), /\/verify\/[^"?]+\?lang=pt-BR"/, 'a server in Portuguese: a link in Portuguese');
+    i18n.setCachedGuildLanguage(GUILD, 'en');
+  }
   // A base address with a slash at the end or without its scheme still makes a good link.
   config.verifyBaseUrl = 'verify.example.com/';
   await verifyLetters.handleButton({ ...interaction(`vfy:link:${GUILD}`), inGuild: () => true });

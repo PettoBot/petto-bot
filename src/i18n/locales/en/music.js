@@ -36,6 +36,7 @@ module.exports = {
   'music.autoplay.noKey': 'Autoplay needs the Last.fm key of the bot, which is not set up.',
   'music.autoplay.added.one': 'Autoplay added **{title}**, like **{seed}**.',
   'music.autoplay.added.other': 'Autoplay added **{count} songs**, like **{seed}**, starting with **{title}**.',
+  'music.disabled': 'The music is turned off for now.',
   'music.testing': 'The music commands are being tested with the team.',
   'music.notConfigured': 'The music is not set up on this bot yet.',
   'music.nodeDown': 'The music server does not answer right now. Try again in a minute.',

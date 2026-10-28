@@ -78,6 +78,8 @@ module.exports = {
   // Music plays through a Lavalink node (the Pettolava repository, on Discloud). While it is being tested only the owner, the developers and these
   // testers can use it; MUSIC_PUBLIC=true opens it to every server. LAVALINK_HOST is the subdomain without the port (`name.discloud.app`).
   musicPublic: process.env.MUSIC_PUBLIC === 'true',
+  // The music is turned off: the code stays, nothing connects to the node and every command, button and menu answers that it is off. MUSIC_ENABLED=true turns it on again.
+  musicEnabled: process.env.MUSIC_ENABLED === 'true',
   musicTesterIds: envList('MUSIC_TESTER_IDS'),
   // MUSIC_DEEZER=true: songs are also searched on Deezer (and its links played). Pettolava needs its Deezer variables for it (its README says what that involves).
   musicDeezer: process.env.MUSIC_DEEZER === 'true',
