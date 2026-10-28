@@ -330,8 +330,9 @@ const row = (code, name = `c${(rowCount += 1)}`) => ({ name, code });
   assert.equal(opened.modals.length, 1, 'a button can open a modal');
   assert.equal(opened.modals[0].custom_id, 'cc:suggest:send::', 'the modal carries the command and its handler');
   assert.equal(opened.modals[0].title, 'Your suggestion');
-  assert.deepEqual(opened.modals[0].components.map((row) => row.components[0].custom_id), ['title', 'details']);
-  assert.equal(opened.modals[0].components[1].components[0].required, false);
+  assert.deepEqual(opened.modals[0].components.map((row) => row.component.custom_id), ['title', 'details']);
+  assert.equal(opened.modals[0].components[1].component.required, false);
+  assert.deepEqual(opened.modals[0].components.map((row) => row.label), ['Title', 'Details'], 'every part has its label above it');
   clock += 5000;
   const formBits = makeGuild();
   const formMade = makeMessage({ guildBits: formBits });
@@ -339,7 +340,7 @@ const row = (code, name = `c${(rowCount += 1)}`) => ({ name, code });
   await codeCommands.runComponent({
     customId: 'cc:suggest:send::', guild: formMade.message.guild, guildId: formMade.message.guild.id, channel: formMade.message.channel, member: formMade.message.member, user: formMade.message.author,
     isStringSelectMenu: () => false, isModalSubmit: () => true, isFromMessage: () => false,
-    fields: { fields: new Collection([['title', { customId: 'title', value: 'More music' }], ['details', { customId: 'details', value: '' }]]) },
+    fields: { fields: new Collection([['title', { type: 4, customId: 'title', value: 'More music' }], ['details', { type: 4, customId: 'details', value: '' }]]) },
     reply: async (payload) => { submitLog.replies.push(payload); }, update: async (payload) => { submitLog.updates.push(payload); }, deferUpdate: async () => {},
   }, suggestRow, codeCommands.parseComponentId('cc:suggest:send::'));
   assert.equal(submitLog.replies.length, 1, 'sending the modal is answered');
