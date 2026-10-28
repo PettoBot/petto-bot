@@ -3,6 +3,8 @@
 const { ChannelType, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const node = require('./node');
 const resolver = require('./resolver');
+const autoplay = require('./autoplay');
+const match = require('./match');
 const card = require('./card');
 const { GuildMusic } = require('./queue');
 const { setVoiceStatus, statusOf } = require('./status');
@@ -13,13 +15,14 @@ const logger = require('../utils/logger');
 
 const IDLE_MS = 3 * 60_000; // the voice channel is left this long after the queue ended
 const ALONE_MS = 2 * 60_000; // ... and this long after the last person left
+const AUTOPLAY_BATCH = 5; // songs added each time autoplay looks
 const WATCH_MS = 10_000; // how often a session looks whether its song still has a player behind it
 const REFRESH_MS = 30_000; // the time and the bar of the card are refreshed this often while a song plays
 const GREEN = 0xa5ea7a;
 const RED = 0xfe6465;
 const DISCONNECTED = 4014; // the code of Discord when the bot was removed from the voice channel
 
-const IDLE_OK = new Set(['leave', 'queue', 'volume', 'loop']); // what still makes sense when nothing plays but the bot is in the channel
+const IDLE_OK = new Set(['leave', 'queue', 'volume', 'loop', 'autoplay']); // what still makes sense when nothing plays but the bot is in the channel
 
 const sessions = new Map();
 
@@ -27,6 +30,8 @@ const sessionOf = (guildId) => sessions.get(guildId) ?? null;
 const langOf = (guildId) => peekGuildLanguage(guildId);
 const good = (text) => card.notice(text, GREEN);
 const bad = (text) => card.notice(text, RED);
+/** What makes two songs the same one, for autoplay not to repeat what was heard. */
+const songKey = (item) => `${match.normalize(autoplay.cleanArtist(item))}|${match.normalize(autoplay.cleanTitle(item, autoplay.cleanArtist(item)))}`;
 const title = (item) => clip(plainText(item?.title, 100) || '—', 100);
 
 /** "1:30", "90", "1m30s" or "1:02:03" in milliseconds, or null. */
@@ -55,11 +60,18 @@ function startIdle(session, ms = IDLE_MS) {
   session.timers.idle.unref?.();
 }
 
+/** Discord did not take the custom emojis (a deleted emoji, a server the bot left): the card goes on with plain ones. */
+const emojiRejected = (error) => error?.code === 50035 || error?.status === 400;
+
 async function updatePanel(session) {
   if (!session.panel || !session.music.current) return;
   try {
-    await session.panel.edit(await card.nowPlaying(session.music, langOf(session.guildId)));
-  } catch {
+    await session.panel.edit(await card.nowPlaying(session.music, langOf(session.guildId), { plain: session.plain }));
+  } catch (error) {
+    if (!session.plain && emojiRejected(error)) {
+      session.plain = true;
+      try { await session.panel.edit(await card.nowPlaying(session.music, langOf(session.guildId), { plain: true })); return; } catch { /* gone */ }
+    }
     session.panel = null; // the message is gone
   }
 }
@@ -71,7 +83,14 @@ async function announce(session) {
   session.panel = null;
   old?.delete().catch(() => {});
   try {
-    session.panel = await channel.send(await card.nowPlaying(session.music, langOf(session.guildId), { first: true }));
+    try {
+      session.panel = await channel.send(await card.nowPlaying(session.music, langOf(session.guildId), { first: true, plain: session.plain }));
+    } catch (error) {
+      if (session.plain || !emojiRejected(error)) throw error;
+      session.plain = true;
+      logger.warn(`Music: Discord did not take the custom emojis of the card, the plain ones are used: ${error?.message ?? error}`);
+      session.panel = await channel.send(await card.nowPlaying(session.music, langOf(session.guildId), { first: true, plain: true }));
+    }
   } catch (error) {
     logger.warn(`Music: the card could not be sent: ${error?.message ?? error}`);
     return;
@@ -93,12 +112,13 @@ async function closePanel(session, text) {
 function hooksFor(session) {
   const say = (payload) => textChannelOf(session)?.send(payload).catch(() => {});
   return {
-    onTrackStart(music, item) {
+    onTrackStart(music, item, ms) {
+      if (ms !== null && ms !== undefined) logger.info(`Music: ${item?.title ?? 'a song'} started ${ms} ms after the change began`); // the number to look at when the change between songs is slow
       clearTimer(session, 'idle');
       if (session.announced === item && session.panel) updatePanel(session); // the same song again (repeat): the card is refreshed, not sent again
       else announce(session).catch(() => {});
       session.announced = item;
-      setVoiceStatus(session.client, session.voiceChannelId, statusOf(item));
+      setVoiceStatus(session.client, session.voiceChannelId, statusOf(item, { plain: session.plain }), statusOf(item, { plain: true }));
     },
     onTrackFailed(music, item, error) {
       logger.warn(`Music: ${item?.title ?? 'a song'} could not be played (${error})`);
@@ -109,6 +129,15 @@ function hooksFor(session) {
       const cause = clip(plainText(event?.exception?.cause, 120), 120);
       logger.warn(`Music: Lavalink could not load ${music.current?.title ?? 'a song'}: ${message}${cause ? ` (${cause})` : ''}`);
       if (music.current?.source === 'youtube' && /sign in|log in|login|not a bot|confirm you/i.test(`${event?.exception?.message ?? ''} ${event?.exception?.cause ?? ''}`)) resolver.markYoutubeDown();
+    },
+    async onNeedMore(music, seed) {
+      const similar = await autoplay.similarTo(seed);
+      const heard = new Set([...music.history, ...music.queue, music.current, seed].filter(Boolean).map((item) => songKey(item)));
+      return similar.filter((song) => !heard.has(songKey({ title: song.title, author: song.artist }))).slice(0, AUTOPLAY_BATCH).map((song) => ({ ...resolver.scrapedItem(song, null, null), autoplay: true }));
+    },
+    onAutoplayAdded(music, items, seed) {
+      const lang = langOf(session.guildId);
+      say(good(tn(lang, 'music.autoplay.added', items.length, { count: items.length, title: title(items[0]), seed: title(seed) })));
     },
     onGiveUp() { say(bad(t(langOf(session.guildId), 'music.gaveUp'))); },
     onQueueEnd() {
@@ -133,6 +162,7 @@ async function connect(interaction, voiceChannel) {
   const player = await shoukaku.joinVoiceChannel({ guildId: guild.id, channelId: voiceChannel.id, shardId: guild.shardId ?? 0, deaf: true });
   const session = { client: interaction.client, guildId: guild.id, voiceChannelId: voiceChannel.id, textChannelId: interaction.channelId, panel: null, timers: {}, music: null };
   session.music = new GuildMusic({ guildId: guild.id, player, recordingsFor: (item) => resolver.recordingsFor(node.idealNode(), item), hooks: hooksFor(session) });
+  await player.setGlobalVolume(session.music.volume).catch(() => {}); // the player starts at 100: the default of the session is applied
   sessions.set(guild.id, session);
   session.timers.watch = setInterval(() => { session.music.unstick().catch(() => {}); }, WATCH_MS); // a song whose end never came is moved on from
   session.timers.watch.unref?.();
@@ -179,33 +209,26 @@ async function needSession(interaction, lang, action = '') {
   return session;
 }
 
-/** `!play` / `/music play`. */
-async function play(interaction, query, { next = false } = {}) {
-  const lang = langOf(interaction.guildId);
-  if (!canUseMusic(interaction.user.id)) return replyTo(interaction, bad(t(lang, 'music.testing')));
-  if (!node.enabled()) return replyTo(interaction, bad(t(lang, 'music.notConfigured')));
+/**
+ * What a person needs to play: the permission, the node, a voice channel where the bot can speak, and the same one as the bot when it is playing.
+ * Returns `{ voice, existing, lavalink }`, or null after answering.
+ */
+async function preflight(interaction, lang) {
+  const say = (payload) => replyTo(interaction, interaction.isStringSelectMenu?.() ? ephemeral(payload) : payload); // the menu of a search answers in private
+  if (!canUseMusic(interaction.user.id)) { await say(bad(t(lang, 'music.testing'))); return null; }
+  if (!node.enabled()) { await say(bad(t(lang, 'music.notConfigured'))); return null; }
   const voice = interaction.member?.voice?.channel;
-  if (!voice || voice.type !== ChannelType.GuildVoice) return replyTo(interaction, bad(t(lang, 'music.joinFirst')));
+  if (!voice || voice.type !== ChannelType.GuildVoice) { await say(bad(t(lang, 'music.joinFirst'))); return null; }
   const existing = sessionOf(interaction.guildId);
-  if (existing && existing.voiceChannelId !== voice.id) return replyTo(interaction, bad(t(lang, 'music.sameChannel', { channel: `<#${existing.voiceChannelId}>` })));
-  if (!voice.permissionsFor(interaction.guild.members.me)?.has([PermissionFlagsBits.Connect, PermissionFlagsBits.Speak])) return replyTo(interaction, bad(t(lang, 'music.noPermission', { channel: `<#${voice.id}>` })));
+  if (existing && existing.voiceChannelId !== voice.id) { await say(bad(t(lang, 'music.sameChannel', { channel: `<#${existing.voiceChannelId}>` }))); return null; }
+  if (!voice.permissionsFor(interaction.guild.members.me)?.has([PermissionFlagsBits.Connect, PermissionFlagsBits.Speak])) { await say(bad(t(lang, 'music.noPermission', { channel: `<#${voice.id}>` }))); return null; }
   const lavalink = node.idealNode();
-  if (!lavalink) return replyTo(interaction, bad(t(lang, 'music.nodeDown')));
+  if (!lavalink) { await say(bad(t(lang, 'music.nodeDown'))); return null; }
+  return { voice, existing, lavalink };
+}
 
-  await interaction.deferReply();
-  // The voice channel is joined while the song is searched (they do not depend on each other), so the song starts as soon as it is found.
-  const joining = existing ? Promise.resolve(existing) : connect(interaction, voice).catch((error) => { logger.warn(`Music: could not join the voice channel: ${error?.message ?? error}`); return null; });
-  const searching = resolver.resolveInput(lavalink, query, { requestedBy: interaction.user.id }).catch((error) => {
-    logger.warn(`Music: the search failed: ${error?.message ?? error}`);
-    return { type: 'error', items: [], error: 'unavailable' };
-  });
-  const [found, session] = await Promise.all([searching, joining]);
-  const nothing = found.type === 'unsupported' || found.type === 'error' || !found.items.length;
-  if (nothing && session && session !== existing) await leave(session).catch(() => {}); // joined for nothing
-  if (found.type === 'unsupported') return replyTo(interaction, bad(t(lang, 'music.unsupported')));
-  if (found.type === 'error') return replyTo(interaction, bad(t(lang, 'music.error', { reason: clip(plainText(found.error, 150), 150) })));
-  if (!found.items.length) return replyTo(interaction, bad(t(lang, 'music.notFound', { query: clip(plainText(query, 80), 80) })));
-  if (!session) return replyTo(interaction, bad(t(lang, 'music.joinFailed')));
+/** Puts what was found in the queue of the session, answers, and starts it when nothing was playing. */
+async function enqueue(interaction, lang, session, found, { next = false } = {}) {
   session.textChannelId = interaction.channelId;
   clearTimer(session, 'idle');
 
@@ -221,6 +244,118 @@ async function play(interaction, query, { next = false } = {}) {
   }
   await Promise.all([replyTo(interaction, good(text)), session.music.startIfIdle()]); // the song starts without waiting for the answer to be sent
   return null;
+}
+
+/** `!play` / `/music play`. */
+async function play(interaction, query, { next = false } = {}) {
+  const lang = langOf(interaction.guildId);
+  const ready = await preflight(interaction, lang);
+  if (!ready) return null;
+  const { voice, existing, lavalink } = ready;
+
+  await interaction.deferReply();
+  // The voice channel is joined while the song is searched (they do not depend on each other), so the song starts as soon as it is found.
+  const joining = existing ? Promise.resolve(existing) : connect(interaction, voice).catch((error) => { logger.warn(`Music: could not join the voice channel: ${error?.message ?? error}`); return null; });
+  const searching = resolver.resolveInput(lavalink, query, { requestedBy: interaction.user.id }).catch((error) => {
+    logger.warn(`Music: the search failed: ${error?.message ?? error}`);
+    return { type: 'error', items: [], error: 'unavailable' };
+  });
+  const [found, session] = await Promise.all([searching, joining]);
+  const nothing = found.type === 'unsupported' || found.type === 'error' || !found.items.length;
+  if (nothing && session && session !== existing) await leave(session).catch(() => {}); // joined for nothing
+  if (found.type === 'unsupported') return replyTo(interaction, bad(t(lang, 'music.unsupported')));
+  if (found.type === 'error') return replyTo(interaction, bad(t(lang, 'music.error', { reason: clip(plainText(found.error, 150), 150) })));
+  if (!found.items.length) return replyTo(interaction, bad(t(lang, 'music.notFound', { query: clip(plainText(query, 80), 80) })));
+  if (!session) return replyTo(interaction, bad(t(lang, 'music.joinFailed')));
+  return enqueue(interaction, lang, session, found, { next });
+}
+
+// --- The list under the option of `/music play` while it is typed ------------------------------------------------------------------------------------
+
+const SUGGESTIONS = new Map(); // what was typed (lower case) -> { choices, until }
+const SUGGEST_MS = 60_000;
+const SUGGEST_WAIT_MS = 2500; // Discord waits 3 seconds for the list
+
+/** One entry of the list: "Title - Artist", and what to play when it is chosen (the link of that recording, or its name when the link is too long). */
+function suggestionOf(item) {
+  const artist = autoplay.cleanArtist(item);
+  const name = clip(`${autoplay.cleanTitle(item, artist) || plainText(item.title, 60)} - ${artist || plainText(item.author, 40)}`, 100);
+  const link = typeof item.uri === 'string' && item.uri.length <= 100 && /^https:\/\//.test(item.uri) ? item.uri : null;
+  return { name, value: link ?? clip(`${artist} ${autoplay.cleanTitle(item, artist)}`.trim() || plainText(item.title, 100), 100) };
+}
+
+/** The suggestions for what a person has typed so far (up to 10), or `[]` when there are none, it is too soon, or the node is too slow. Never throws. */
+async function suggest(userId, text) {
+  const query = String(text ?? '').trim();
+  if (query.length < 2 || /^(https?:|spotify:)/i.test(query) || !canUseMusic(userId) || !node.enabled()) return [];
+  const key = query.toLowerCase();
+  const hit = SUGGESTIONS.get(key);
+  if (hit && hit.until > Date.now()) return hit.choices;
+  const lavalink = node.idealNode();
+  if (!lavalink) return [];
+  const search = resolver.searchChoices(lavalink, query, { limit: 10 }).then((items) => {
+    const seen = new Set();
+    return items.map(suggestionOf).filter((choice) => choice.name && !seen.has(choice.value) && seen.add(choice.value));
+  }).catch(() => []);
+  let timer = null;
+  const slow = new Promise((resolve) => { timer = setTimeout(() => resolve(null), SUGGEST_WAIT_MS); timer.unref?.(); });
+  const choices = await Promise.race([search, slow]);
+  clearTimeout(timer);
+  if (!choices) return [];
+  if (SUGGESTIONS.size >= 300) SUGGESTIONS.delete(SUGGESTIONS.keys().next().value);
+  SUGGESTIONS.set(key, { choices, until: Date.now() + SUGGEST_MS });
+  return choices;
+}
+
+// --- Search: five results to choose from -------------------------------------------------------------------------------------------------------------
+
+const CHOICES = new Map(); // token -> { userId, items, until }: the results of a search that wait for a choice
+const CHOICE_MS = 5 * 60_000;
+const MAX_CHOICES = 200;
+
+/** `/music search`: the five best results in a menu; the one who searched picks. */
+async function search(interaction, query) {
+  const lang = langOf(interaction.guildId);
+  const ready = await preflight(interaction, lang);
+  if (!ready) return null;
+  await interaction.deferReply();
+  let items = [];
+  try {
+    items = await resolver.searchChoices(ready.lavalink, query, { requestedBy: interaction.user.id });
+  } catch (error) {
+    logger.warn(`Music: the search failed: ${error?.message ?? error}`);
+    return replyTo(interaction, bad(t(lang, 'music.error', { reason: 'unavailable' })));
+  }
+  if (!items.length) return replyTo(interaction, bad(t(lang, 'music.notFound', { query: clip(plainText(query, 80), 80) })));
+  const now = Date.now();
+  for (const [token, entry] of CHOICES) if (entry.until < now) CHOICES.delete(token);
+  if (CHOICES.size >= MAX_CHOICES) CHOICES.delete(CHOICES.keys().next().value);
+  const token = Math.random().toString(36).slice(2, 10);
+  CHOICES.set(token, { userId: interaction.user.id, items, until: now + CHOICE_MS });
+  return replyTo(interaction, card.choiceMenu(items, token, lang));
+}
+
+/** The choice made in the menu of a search: the song is added like `play` does. */
+async function pick(interaction, token) {
+  const lang = langOf(interaction.guildId);
+  const entry = CHOICES.get(token);
+  if (!entry || entry.until < Date.now()) { await interaction.reply(ephemeral(bad(t(lang, 'music.search.expired')))); return; }
+  if (interaction.user.id !== entry.userId) { await interaction.reply(ephemeral(bad(t(lang, 'music.search.notYours', { user: `<@${entry.userId}>` })))); return; }
+  const chosen = entry.items[Number(interaction.values?.[0])];
+  if (!chosen) { await interaction.reply(ephemeral(bad(t(lang, 'music.search.expired')))); return; }
+  const ready = await preflight(interaction, lang).catch(() => null); // answers by itself when something is missing
+  if (!ready) return;
+  CHOICES.delete(token);
+  await interaction.deferUpdate();
+  let session = ready.existing;
+  try {
+    session ??= await connect(interaction, ready.voice);
+  } catch (error) {
+    logger.warn(`Music: could not join the voice channel: ${error?.message ?? error}`);
+    await replyTo(interaction, bad(t(lang, 'music.joinFailed')));
+    return;
+  }
+  await enqueue(interaction, lang, session, { type: 'track', items: [chosen] });
 }
 
 /**
@@ -242,6 +377,11 @@ async function run(session, action, args, lang) {
     case 'stop': await music.stop(); return { text: t(lang, 'music.stopped'), ok: true };
     case 'loop': music.setLoop(args.mode); return { text: t(lang, `music.loop.${music.loop}`), ok: true };
     case 'cycleLoop': music.setLoop({ off: 'track', track: 'queue', queue: 'off' }[music.loop]); return { text: t(lang, `music.loop.${music.loop}`), ok: true };
+    case 'autoplay': {
+      if (!music.autoplay && !autoplay.available()) return { text: t(lang, 'music.autoplay.noKey'), ok: false };
+      const on = music.setAutoplay(!music.autoplay);
+      return { text: t(lang, on ? 'music.autoplay.on' : 'music.autoplay.off'), ok: true };
+    }
     case 'shuffle': return { text: tn(lang, 'music.shuffled', music.shuffle(), { count: music.queue.length }), ok: true };
     case 'volume': {
       const volume = await music.setVolume(args.delta ? music.volume + args.delta : args.value);
@@ -279,7 +419,7 @@ async function button(interaction, action) {
   const lang = langOf(interaction.guildId);
   const session = await needSession(interaction, lang, action === 'queue' || action === 'leave' ? action : '');
   if (!session) return;
-  const map = { prev: ['previous', {}], pause: ['toggle', {}], stop: ['stop', {}], skip: ['skip', {}], loop: ['cycleLoop', {}], queue: ['queue', { page: 1 }], voldown: ['volume', { delta: -10 }], volup: ['volume', { delta: 10 }], shuffle: ['shuffle', {}], leave: ['leave', {}] };
+  const map = { prev: ['previous', {}], pause: ['toggle', {}], stop: ['stop', {}], skip: ['skip', {}], loop: ['cycleLoop', {}], queue: ['queue', { page: 1 }], voldown: ['volume', { delta: -10 }], /* the card no longer has it; the cards sent before do */ volup: ['volume', { delta: 10 }], shuffle: ['shuffle', {}], autoplay: ['autoplay', {}], leave: ['leave', {}] };
   const [name, args] = map[action] ?? [];
   if (!name) return;
   if (name === 'queue') {
@@ -315,4 +455,4 @@ function onVoiceState(oldState, newState) {
 /** For the checks. */
 const _sessions = sessions;
 
-module.exports = { play, command, button, onVoiceState, parseTime, sessionOf, leave, _sessions, IDLE_MS, ALONE_MS };
+module.exports = { play, search, pick, suggest, command, button, onVoiceState, parseTime, sessionOf, leave, _sessions, IDLE_MS, ALONE_MS };

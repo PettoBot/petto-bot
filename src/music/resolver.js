@@ -4,6 +4,7 @@
 // when the song is about to play, so a playlist of 300 songs does not make 300 searches at once.
 const match = require('./match');
 const spotify = require('./spotify');
+const config = require('../config');
 const logger = require('../utils/logger');
 
 const MAX_ADDED = 200; // songs one command can add (a playlist is cut there)
@@ -67,10 +68,17 @@ async function searchPrefix(node, prefix, query) {
   return result?.loadType === 'search' ? result.data : [];
 }
 
-/** The results of the searches for a text: YouTube Music (the official recordings) and SoundCloud together; YouTube itself only when those two give nothing. */
+/**
+ * The results of the searches for a text: YouTube Music (the official recordings) and SoundCloud together, and Deezer when the bot has it on
+ * (`MUSIC_DEEZER`); YouTube itself only when those give nothing.
+ */
 async function searchAll(node, query) {
-  const [music, cloud] = await Promise.all([searchPrefix(node, 'ytmsearch', query), searchPrefix(node, 'scsearch', query)]);
-  let tracks = [...music, ...cloud];
+  const [music, cloud, deezer] = await Promise.all([
+    searchPrefix(node, 'ytmsearch', query),
+    searchPrefix(node, 'scsearch', query),
+    config.musicDeezer ? searchPrefix(node, 'dzsearch', query) : [],
+  ]);
+  let tracks = [...deezer, ...music, ...cloud];
   if (!tracks.length) tracks = await searchPrefix(node, 'ytsearch', query);
   return tracks;
 }
@@ -88,6 +96,22 @@ async function searchText(node, query, requestedBy) {
   return { type: 'track', items: [item], alternatives: rest.slice(0, 4).map((track) => itemFromTrack(track, requestedBy)) };
 }
 
+/** The best recordings for a text, one for each song (a different length or a repeat of the same upload is left out), to choose from. */
+async function searchChoices(node, query, { requestedBy = null, limit = 5 } = {}) {
+  const tracks = await searchAll(node, query);
+  const { list } = match.order(tracks, { query });
+  const seen = new Set();
+  const items = [];
+  for (const track of list) {
+    const key = `${match.normalize(match.coreTitle(track.info?.title))}:${match.normalize(track.info?.author)}:${Math.round((Number(track.info?.length) || 0) / 5000)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    items.push(itemFromTrack(track, requestedBy));
+    if (items.length >= limit) break;
+  }
+  return items;
+}
+
 /**
  * What to queue for what a person wrote.
  * Returns `{ type: 'track' | 'playlist' | 'none' | 'error' | 'unsupported', items, name?, alternatives?, error? }`.
@@ -95,7 +119,7 @@ async function searchText(node, query, requestedBy) {
 async function resolveInput(node, input, { requestedBy = null, limit = MAX_ADDED } = {}) {
   const kind = match.kindOfInput(input);
   if (kind.kind === 'text') return kind.query ? searchText(node, kind.query, requestedBy) : { type: 'none', items: [] };
-  if (kind.kind === 'other') return { type: 'unsupported', items: [] };
+  if (kind.kind === 'other' || (kind.kind === 'deezer' && !config.musicDeezer)) return { type: 'unsupported', items: [] };
 
   const result = await lookup(node, kind.url);
   if (kind.kind === 'spotify' && !['track', 'playlist', 'search'].includes(result?.loadType)) {
@@ -147,4 +171,4 @@ async function recordingsFor(node, item) {
 
 const forgetChosen = () => { chosen.clear(); youtubeDownUntil = 0; }; // for the checks
 
-module.exports = { MAX_ADDED, itemFromTrack, lazyItem, scrapedItem, searchAll, searchText, resolveInput, recordingsFor, markYoutubeDown, youtubeDown, forgetChosen };
+module.exports = { MAX_ADDED, itemFromTrack, lazyItem, scrapedItem, searchAll, searchText, searchChoices, resolveInput, recordingsFor, markYoutubeDown, youtubeDown, forgetChosen };
