@@ -234,6 +234,18 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
   const finished = (player, name) => { player.emit('end', { reason: 'finished', track: { encoded: `e:${name}` } }); return settle(); };
 
   {
+    // The volume: it starts at 50, which is also the lowest; 150 is the highest
+    const player = makePlayer();
+    const music = create(player);
+    assert.equal(music.volume, 50);
+    assert.equal(await music.setVolume(10), 50, 'nothing quieter than 50');
+    assert.equal(await music.setVolume(120), 120);
+    assert.equal(await music.setVolume(500), 150, 'and nothing louder than 150');
+    assert.deepEqual(player.calls.filter((call) => call[0] === 'volume').map((call) => call[1]), [50, 120, 150]);
+    music.destroy();
+  }
+
+  {
     // The recordings of the next three songs are chosen while one plays (each one once), so a change only waits for the node to load the audio.
     const asks = [];
     const player = makePlayer();
@@ -374,7 +386,7 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
     assert.equal(await music.seek(999_999_999), true);
     assert.equal(player.calls.at(-1)[1], 199_000, 'a jump past the end stays inside the song');
     assert.equal(await music.setVolume(500), 150);
-    assert.equal(await music.setVolume(0), 1);
+    assert.equal(await music.setVolume(0), 50, 'the lowest is 50');
     assert.equal(music.remove(0), null);
     assert.equal(music.remove(9), null);
     assert.equal(music.remove(1).title, 'b');
@@ -542,8 +554,11 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
       // the buttons use the emojis of the music set; the plain card (when Discord does not take them) uses ordinary ones
       const buttonsOf = (payload) => flat(json(payload.components)).filter((part) => part.type === 1).flatMap((row) => row.components);
       const withIds = buttonsOf(await card.nowPlaying(music, 'en'));
-      assert.deepEqual([withIds.length, withIds.filter((button) => /^\d{17,20}$/.test(String(button.emoji?.id))).length], [10, 9], 'nine buttons have a custom emoji (leave has the plain wave)');
-      assert.ok(withIds.every((button) => !button.emoji?.id || String(button.emoji.name).startsWith('pe_s_')), 'and they are of the music set');
+      assert.deepEqual([withIds.length, withIds.filter((button) => /^\d{17,20}$/.test(String(button.emoji?.id))).length], [10, 10], 'every button has a custom emoji');
+      assert.ok(withIds.every((button) => String(button.emoji.name).startsWith('pe_')), 'of the music set, and leave of the main set of Petto');
+      assert.equal(withIds.find((button) => button.custom_id === 'music:leave').emoji.id, '1533576199354454197');
+      assert.equal(withIds.find((button) => button.custom_id === 'music:voldown').disabled, true, 'the volume of 50 is the lowest: no way down');
+      assert.equal(withIds.find((button) => button.custom_id === 'music:volup').disabled, false);
       const plainCard = await card.nowPlaying(music, 'en', { plain: true });
       assert.ok(buttonsOf(plainCard).every((button) => !button.emoji?.id), 'the plain card has no custom emoji in its buttons');
       assert.ok(!textOf(plainCard).includes('pe_s_') && textOf(plainCard).includes('🎵'), 'nor in its text');

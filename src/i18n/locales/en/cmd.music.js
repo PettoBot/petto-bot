@@ -17,7 +17,7 @@ module.exports = {
   'cmd.music.music.queue.opt.page.desc': 'The page of the queue',
   'cmd.music.music.nowplaying.desc': 'Show the card of the song that is playing.',
   'cmd.music.music.volume.desc': 'Change the volume.',
-  'cmd.music.music.volume.opt.percent.desc': 'From 1 to 150 (a song starts at 50)',
+  'cmd.music.music.volume.opt.percent.desc': 'From 50 to 150 (a song starts at 50)',
   'cmd.music.music.loop.desc': 'Repeat the song or the whole queue.',
   'cmd.music.music.loop.opt.mode.desc': 'What to repeat',
   'cmd.music.music.shuffle.desc': 'Shuffle the queue.',

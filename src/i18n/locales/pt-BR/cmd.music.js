@@ -17,7 +17,7 @@ module.exports = {
   'cmd.music.music.queue.opt.page.desc': 'A página da fila',
   'cmd.music.music.nowplaying.desc': 'Mostra o cartão da música que está tocando.',
   'cmd.music.music.volume.desc': 'Muda o volume.',
-  'cmd.music.music.volume.opt.percent.desc': 'De 1 a 150 (uma música começa em 50)',
+  'cmd.music.music.volume.opt.percent.desc': 'De 50 a 150 (uma música começa em 50)',
   'cmd.music.music.loop.desc': 'Repete a música ou a fila toda.',
   'cmd.music.music.loop.opt.mode.desc': 'O que repetir',
   'cmd.music.music.shuffle.desc': 'Embaralha a fila.',

@@ -5,6 +5,7 @@ const { linkText, plainText, clip, safeUrl } = require('../feeds/text');
 const { textCard } = require('../utils/caseCard');
 const logger = require('../utils/logger');
 const { t, tn } = require('../i18n');
+const { MIN_VOLUME, MAX_VOLUME } = require('./queue');
 const icons = require('./icons');
 
 const V2 = MessageFlags.IsComponentsV2;
@@ -103,8 +104,8 @@ async function nowPlaying(music, lang, { first = false, plain = false } = {}) {
   ));
   card.addActionRowComponents(new ActionRowBuilder().addComponents(
     button('queue', ic.QUEUE, label('queue')),
-    button('voldown', ic.VOLUME_DOWN, label('voldown')),
-    button('volup', ic.VOLUME, label('volup')),
+    button('voldown', ic.VOLUME_DOWN, label('voldown'), { disabled: music.volume <= MIN_VOLUME }), // 50 is the lowest
+    button('volup', ic.VOLUME, label('volup'), { disabled: music.volume >= MAX_VOLUME }),
     button('shuffle', ic.SHUFFLE, label('shuffle')),
     button('leave', ic.LEAVE, label('leave')),
   ));

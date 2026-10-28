@@ -6,6 +6,7 @@
 const MAX_FAILURES = 5; // songs in a row that could not be played
 const HISTORY = 20;
 const PREFETCH_AHEAD = 3; // songs whose recordings are chosen while the current one plays
+const MIN_VOLUME = 50; // half is the lowest: a song starts there and the bot is not made to play quieter
 const MAX_VOLUME = 150;
 const DEFAULT_VOLUME = 50; // a song starts at half: 100 is loud for a voice channel and leaves no room to go up
 const STUCK_AGAIN_MS = 60_000; // a second freeze of the same song within this time is not a hiccup
@@ -264,7 +265,7 @@ class GuildMusic {
   }
 
   async setVolume(percent) {
-    this.volume = clamp(Math.round(percent), 1, MAX_VOLUME);
+    this.volume = clamp(Math.round(percent), MIN_VOLUME, MAX_VOLUME);
     await this.player.setGlobalVolume(this.volume);
     return this.volume;
   }
@@ -306,4 +307,4 @@ class GuildMusic {
   }
 }
 
-module.exports = { GuildMusic, MAX_FAILURES, MAX_VOLUME, DEFAULT_VOLUME };
+module.exports = { GuildMusic, MAX_FAILURES, MIN_VOLUME, MAX_VOLUME, DEFAULT_VOLUME };

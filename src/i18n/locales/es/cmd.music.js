@@ -17,7 +17,7 @@ module.exports = {
   'cmd.music.music.queue.opt.page.desc': 'La página de la cola',
   'cmd.music.music.nowplaying.desc': 'Muestra la tarjeta de la canción que suena.',
   'cmd.music.music.volume.desc': 'Cambia el volumen.',
-  'cmd.music.music.volume.opt.percent.desc': 'De 1 a 150 (una canción empieza en 50)',
+  'cmd.music.music.volume.opt.percent.desc': 'De 50 a 150 (una canción empieza en 50)',
   'cmd.music.music.loop.desc': 'Repite la canción o toda la cola.',
   'cmd.music.music.loop.opt.mode.desc': 'Qué repetir',
   'cmd.music.music.shuffle.desc': 'Mezcla la cola.',
