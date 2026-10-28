@@ -538,14 +538,19 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
     const realNode = require('../src/music/node');
     const pool = new Map();
     const added = [];
+    const seen = {};
     class FakeShoukaku extends EventEmitter {
-      constructor(connector, nodes) { super(); this.nodes = pool; this.players = new Map(); nodes.forEach((node) => pool.set(node.name, node)); added.push(['start', nodes[0].url]); }
+      constructor(connector, nodes, options) { super(); seen.options = options; this.nodes = pool; this.players = new Map(); nodes.forEach((node) => pool.set(node.name, node)); added.push(['start', nodes[0].url]); }
       addNode(options) { pool.set(options.name, options); added.push(['add', options.name]); }
       getIdealNode() { return pool.size ? {} : undefined; }
     }
     const fakeLib = { Shoukaku: FakeShoukaku, Connectors: { DiscordJS: class {} } };
     realNode.init({}, { lib: fakeLib, reviveMs: 1_000_000 });
     assert.deepEqual(added[0], ['start', 'node.example.com:443']);
+    // the times of Shoukaku are in seconds: a value in milliseconds waits for hours
+    assert.ok(seen.options.reconnectInterval <= 30, 'it tries again within seconds, not hours');
+    assert.ok(seen.options.restTimeout <= 60, 'a request to a dead node is given up within a minute');
+    assert.ok(seen.options.reconnectTries * seen.options.reconnectInterval >= 180, 'it keeps trying for as long as Lavalink takes to start');
     assert.equal(realNode.revive(), false, 'a node that is in the pool is left alone');
     pool.clear(); // what Shoukaku does when it gives up
     assert.equal(realNode.revive(), true);

@@ -6,6 +6,9 @@ const logger = require('../utils/logger');
 
 const NAME = 'pettolava';
 const REVIVE_MS = 20_000; // how often it looks whether the node is still in the pool
+// Every time of Shoukaku is in SECONDS (not milliseconds): 5_000 for the interval made it wait 83 minutes between tries, and 15_000 for the REST timeout
+// let a request to a dead node hang for hours. Lavalink takes up to two minutes to start, so it tries for 5 minutes.
+const SHOUKAKU_OPTIONS = { moveOnDisconnect: true, resume: true, resumeTimeout: 60, reconnectTries: 60, reconnectInterval: 5, restTimeout: 15, userAgent: 'Petto/music' };
 let shoukaku = null;
 let nodeOptions = null;
 let timer = null;
@@ -32,7 +35,7 @@ function init(client, { lib = shoukakuLib, reviveMs = REVIVE_MS } = {}) {
   shoukaku = new lib.Shoukaku(
     new lib.Connectors.DiscordJS(client),
     [nodeOptions],
-    { moveOnDisconnect: true, resume: true, resumeTimeout: 60, reconnectTries: 30, reconnectInterval: 5_000, restTimeout: 15_000, userAgent: 'Petto/music' },
+    SHOUKAKU_OPTIONS,
   );
   shoukaku.on('ready', (name, resumed) => logger.info(`Music: connected to the node ${name}${resumed ? ' (the session was resumed)' : ''}`));
   shoukaku.on('error', (name, error) => warn(`Music: the node ${name} failed: ${error?.message ?? error}`));
@@ -59,4 +62,4 @@ function health() {
 /** For the checks. */
 const stop = () => { clearInterval(timer); timer = null; shoukaku = null; nodeOptions = null; };
 
-module.exports = { enabled, init, get, idealNode, health, revive, stop };
+module.exports = { SHOUKAKU_OPTIONS, enabled, init, get, idealNode, health, revive, stop };
