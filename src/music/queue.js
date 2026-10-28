@@ -6,6 +6,8 @@
 const MAX_FAILURES = 5; // songs in a row that could not be played
 const HISTORY = 20;
 const MAX_VOLUME = 150;
+const DEFAULT_VOLUME = 50; // a song starts at half: 100 is loud for a voice channel and leaves no room to go up
+const STUCK_AGAIN_MS = 60_000; // a second freeze of the same song within this time is not a hiccup
 const QUIET_MS = 25_000; // a playing song with no word from the player this long is not playing (Lavalink sends the position every 5 seconds)
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
@@ -25,7 +27,7 @@ class GuildMusic {
     this.history = [];
     this.current = null;
     this.loop = 'off'; // 'off' | 'track' | 'queue'
-    this.volume = 100;
+    this.volume = DEFAULT_VOLUME;
     this.paused = false;
     this.failures = 0;
     this.playing = null; // the recording loaded in the player
@@ -197,8 +199,20 @@ class GuildMusic {
 
   async onStuck() {
     if (this.destroyed || !this.current) return;
+    const item = this.current;
+    const at = Math.floor(this.positionMs());
+    const recent = item.stuckAt && this.now() - item.stuckAt < STUCK_AGAIN_MS;
+    item.stuckAt = this.now();
+    // The first time a song freezes, the same recording goes on from where it was (a hiccup of the network); a second freeze soon after moves to the next one.
+    if (!recent && this.playing && at > 0 && item.lengthMs && at < item.lengthMs - 3000) {
+      this.stuckAt = this.now();
+      try {
+        await this.player.playTrack({ track: { encoded: this.playing }, position: at });
+        return;
+      } catch { /* it could not: the next recording */ }
+    }
     this.stuckAt = this.now();
-    await this.retry(this.current, 'stuck');
+    await this.retry(item, 'stuck');
   }
 
   async skip(count = 1) {
@@ -284,4 +298,4 @@ class GuildMusic {
   }
 }
 
-module.exports = { GuildMusic, MAX_FAILURES, MAX_VOLUME };
+module.exports = { GuildMusic, MAX_FAILURES, MAX_VOLUME, DEFAULT_VOLUME };

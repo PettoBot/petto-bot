@@ -79,6 +79,8 @@ module.exports = {
   // testers can use it; MUSIC_PUBLIC=true opens it to every server. LAVALINK_HOST is the subdomain without the port (`name.discloud.app`).
   musicPublic: process.env.MUSIC_PUBLIC === 'true',
   musicTesterIds: envList('MUSIC_TESTER_IDS'),
+  // MUSIC_DEEZER=true: songs are also searched on Deezer (and its links played). Pettolava needs its Deezer variables for it (its README says what that involves).
+  musicDeezer: process.env.MUSIC_DEEZER === 'true',
   lavalinkHost: String(process.env.LAVALINK_HOST || '').trim().replace(/^https?:\/\//, '').replace(/\/+$/, '') || null,
   lavalinkPort: Number(process.env.LAVALINK_PORT) || 443,
   lavalinkSecure: process.env.LAVALINK_SECURE !== 'false',

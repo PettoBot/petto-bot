@@ -93,6 +93,25 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
   assert.deepEqual([capped.items.length, capped.cut], [1, 1]);
   assert.equal((await resolver.resolveInput(fakeNode, 'https://youtu.be/abc')).items[0].lazy, false, 'a link of YouTube is played as it is');
   assert.equal((await resolver.resolveInput(fakeNode, 'https://example.com/a.mp3')).type, 'unsupported');
+  {
+    // Deezer, when the bot has it on (MUSIC_DEEZER): searched with the others and its links played; off, its links are not supported
+    assert.equal((await resolver.resolveInput(fakeNode, 'https://www.deezer.com/en/track/3135556')).type, 'unsupported', 'a Deezer link while Deezer is off');
+    config.musicDeezer = true;
+    answers['dzsearch:radiohead creep'] = { loadType: 'search', data: [T('Creep', 'Radiohead', 238_000, { sourceName: 'deezer', isrc: 'GBAYE9200070' })] };
+    answers['https://www.deezer.com/en/track/3135556'] = { loadType: 'track', data: T('Creep', 'Radiohead', 238_000, { sourceName: 'deezer' }) };
+    asked.length = 0;
+    const withDeezer = await resolver.resolveInput(fakeNode, 'radiohead creep');
+    assert.ok(asked.includes('dzsearch:radiohead creep'), 'Deezer is searched with YouTube Music and SoundCloud');
+    assert.equal(withDeezer.items[0].source, 'deezer', 'and its studio recording goes first');
+    const deezerLink = await resolver.resolveInput(fakeNode, 'https://www.deezer.com/en/track/3135556');
+    assert.deepEqual([deezerLink.type, deezerLink.items[0].lazy, deezerLink.items[0].source], ['track', false, 'deezer'], 'a Deezer link is played as it is');
+    config.musicDeezer = false;
+    asked.length = 0;
+    await resolver.resolveInput(fakeNode, 'radiohead creep');
+    assert.ok(!asked.some((identifier) => identifier.startsWith('dzsearch:')), 'with Deezer off it is not asked');
+    assert.equal(match.kindOfInput('https://link.deezer.com/s/abc').kind, 'deezer');
+    delete answers['dzsearch:radiohead creep'];
+  }
   assert.deepEqual(await resolver.resolveInput(fakeNode, 'https://soundcloud.com/bad'), { type: 'error', items: [], error: 'Something broke' });
   assert.equal((await resolver.resolveInput(fakeNode, 'https://soundcloud.com/none')).type, 'none');
   assert.equal((await resolver.resolveInput(fakeNode, '   ')).type, 'none');
@@ -349,6 +368,25 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
     await settle();
     assert.equal(events.filter((event) => event[0] === 'failed').length, 2, 'a stuck song with no other recording is skipped');
     assert.equal(music.current, null, 'the queue had nothing else');
+    // a song that freezes in the middle goes on from where it was; a second freeze soon after goes to the next recording
+    {
+      const stuckPlayer = makePlayer();
+      const stuckMusic = create(stuckPlayer);
+      stuckMusic.add([song('mid', 200_000, ['e:mid1', 'e:mid2']), song('after')]);
+      await stuckMusic.startIfIdle();
+      await settle();
+      stuckMusic.mark(60_000);
+      stuckPlayer.calls.length = 0;
+      stuckPlayer.emit('stuck', { thresholdMs: 10_000 });
+      await settle();
+      assert.deepEqual(stuckPlayer.calls, [['play', 'e:mid1']], 'the same recording is played again');
+      assert.equal(stuckMusic.current.title, 'mid', 'and the song is still the same');
+      stuckPlayer.emit('stuck', { thresholdMs: 10_000 });
+      await settle();
+      assert.equal(stuckPlayer.loaded, 'e:mid2', 'frozen again soon after: the next recording');
+      stuckMusic.destroy();
+    }
+    events.length = 0;
     // a song with no recordings at all
     const quiet = create(makePlayer(), async () => []);
     quiet.add([song('lost', 200_000, [])]);
@@ -442,6 +480,17 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
       assert.equal(rows[0].components[1].label, t(lang, 'music.btn.pause'));
       assert.equal(payload.allowedMentions.parse.length, 0);
     }
+    {
+      // the buttons use the emojis of the music set; the plain card (when Discord does not take them) uses ordinary ones
+      const buttonsOf = (payload) => flat(json(payload.components)).filter((part) => part.type === 1).flatMap((row) => row.components);
+      const withIds = buttonsOf(await card.nowPlaying(music, 'en'));
+      assert.deepEqual([withIds.length, withIds.filter((button) => /^\d{17,20}$/.test(String(button.emoji?.id))).length], [10, 9], 'nine buttons have a custom emoji (leave has the plain wave)');
+      assert.ok(withIds.every((button) => !button.emoji?.id || String(button.emoji.name).startsWith('pe_s_')), 'and they are of the music set');
+      const plainCard = await card.nowPlaying(music, 'en', { plain: true });
+      assert.ok(buttonsOf(plainCard).every((button) => !button.emoji?.id), 'the plain card has no custom emoji in its buttons');
+      assert.ok(!textOf(plainCard).includes('pe_s_') && textOf(plainCard).includes('🎵'), 'nor in its text');
+      assert.ok(textOf(await card.nowPlaying(music, 'en')).includes('<:pe_s_musicnote:'), 'the card says the title with the custom note');
+    }
     const refreshed = await card.nowPlaying(music, 'en');
     assert.equal(refreshed.files, undefined, 'a refresh does not send the picture again');
     await music.pause();
@@ -463,7 +512,15 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
     let failWith = null;
     const client = { rest: { put: async (route, options) => { if (failWith) throw failWith; puts.push([route, options.body.status]); } } };
     assert.equal(await setVoiceStatus(client, '55', statusOf({ title: 'Creep', author: 'Radiohead' })), true);
-    assert.deepEqual(puts[0], ['/channels/55/voice-status', '🎵 Creep - Radiohead']);
+    assert.deepEqual(puts[0], ['/channels/55/voice-status', '<:pe_s_musicnote:1564869235774197841> Creep - Radiohead'], 'the status starts with the custom note of the music set');
+    assert.equal(statusOf({ title: 'Creep', author: 'Radiohead' }, { plain: true }), '🎵 Creep - Radiohead');
+    {
+      // Discord does not take the custom emoji: the plain status is written instead
+      const seen = [];
+      const strict = { rest: { put: async (route, options) => { seen.push(options.body.status); if (options.body.status.includes('<:')) throw Object.assign(new Error('Invalid Form Body'), { status: 400, code: 50035 }); } } };
+      assert.equal(await setVoiceStatus(strict, '77', statusOf({ title: 'A', author: 'B' }), statusOf({ title: 'A', author: 'B' }, { plain: true })), true);
+      assert.deepEqual(seen.map((status) => status.includes('<:')), [true, false], 'it tried the custom one and then the plain one');
+    }
     assert.equal(await setVoiceStatus(client, '55', null), true);
     assert.equal(puts[1][1], '', 'cleared');
     await setVoiceStatus(client, '55', 'x'.repeat(900));
@@ -542,7 +599,9 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
     assert.equal(session.music.current.title, 'Radiohead - Creep');
     await until(() => sent.length >= 1 && rest.length >= 1);
     assert.ok(sent.length >= 1 && sent.at(-1).payload.components, 'the card of the song is sent');
-    assert.deepEqual(rest.at(-1), ['/channels/voice/voice-status', '🎵 Radiohead - Creep - Radiohead - Topic'], 'the status of the voice channel is the song');
+    assert.deepEqual(rest.at(-1), ['/channels/voice/voice-status', '<:pe_s_musicnote:1564869235774197841> Radiohead - Creep - Radiohead - Topic'], 'the status of the voice channel is the song');
+    assert.ok(players.get('g1').calls.some((call) => call[0] === 'volume' && call[1] === 50), 'a session starts at 50% of volume');
+    assert.equal(session.music.volume, 50);
     const firstCard = sent.at(-1);
     players.get('g1').emit('exception', { exception: { message: 'Sign in to confirm you are not a bot', cause: '' } });
     assert.equal(resolver.youtubeDown(), true, 'a login asked by YouTube is remembered, and the recordings of other services go first for a while');
@@ -641,6 +700,20 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
     assert.ok(textOf(panel.edits.at(-1)).includes(t('en', 'music.nodeReset')), 'the card of the song says what happened');
     resetNode();
     await settle();
+
+    // Discord does not take the custom emojis (deleted, or a server the bot is not in): the card is sent again with plain ones
+    const realSend = textChannel.send;
+    textChannel.send = async (payload) => {
+      if (JSON.stringify(json(payload.components)).includes('pe_s_')) throw Object.assign(new Error('Invalid emoji'), { status: 400, code: 50035 });
+      return realSend(payload);
+    };
+    await service.play(makeInteraction(owner), 'radiohead creep');
+    await until(() => service.sessionOf('g1')?.panel);
+    const plainSession = service.sessionOf('g1');
+    assert.equal(plainSession.plain, true, 'the session remembers that the custom emojis do not work');
+    assert.ok(plainSession.panel && !JSON.stringify(json(plainSession.panel.payload.components)).includes('pe_s_'), 'and the card was sent with plain ones');
+    textChannel.send = realSend;
+    await service.command(makeInteraction(owner), 'leave');
   }
 
   {

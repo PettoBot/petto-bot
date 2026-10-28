@@ -55,11 +55,18 @@ function startIdle(session, ms = IDLE_MS) {
   session.timers.idle.unref?.();
 }
 
+/** Discord did not take the custom emojis (a deleted emoji, a server the bot left): the card goes on with plain ones. */
+const emojiRejected = (error) => error?.code === 50035 || error?.status === 400;
+
 async function updatePanel(session) {
   if (!session.panel || !session.music.current) return;
   try {
-    await session.panel.edit(await card.nowPlaying(session.music, langOf(session.guildId)));
-  } catch {
+    await session.panel.edit(await card.nowPlaying(session.music, langOf(session.guildId), { plain: session.plain }));
+  } catch (error) {
+    if (!session.plain && emojiRejected(error)) {
+      session.plain = true;
+      try { await session.panel.edit(await card.nowPlaying(session.music, langOf(session.guildId), { plain: true })); return; } catch { /* gone */ }
+    }
     session.panel = null; // the message is gone
   }
 }
@@ -71,7 +78,14 @@ async function announce(session) {
   session.panel = null;
   old?.delete().catch(() => {});
   try {
-    session.panel = await channel.send(await card.nowPlaying(session.music, langOf(session.guildId), { first: true }));
+    try {
+      session.panel = await channel.send(await card.nowPlaying(session.music, langOf(session.guildId), { first: true, plain: session.plain }));
+    } catch (error) {
+      if (session.plain || !emojiRejected(error)) throw error;
+      session.plain = true;
+      logger.warn(`Music: Discord did not take the custom emojis of the card, the plain ones are used: ${error?.message ?? error}`);
+      session.panel = await channel.send(await card.nowPlaying(session.music, langOf(session.guildId), { first: true, plain: true }));
+    }
   } catch (error) {
     logger.warn(`Music: the card could not be sent: ${error?.message ?? error}`);
     return;
@@ -98,7 +112,7 @@ function hooksFor(session) {
       if (session.announced === item && session.panel) updatePanel(session); // the same song again (repeat): the card is refreshed, not sent again
       else announce(session).catch(() => {});
       session.announced = item;
-      setVoiceStatus(session.client, session.voiceChannelId, statusOf(item));
+      setVoiceStatus(session.client, session.voiceChannelId, statusOf(item, { plain: session.plain }), statusOf(item, { plain: true }));
     },
     onTrackFailed(music, item, error) {
       logger.warn(`Music: ${item?.title ?? 'a song'} could not be played (${error})`);
@@ -133,6 +147,7 @@ async function connect(interaction, voiceChannel) {
   const player = await shoukaku.joinVoiceChannel({ guildId: guild.id, channelId: voiceChannel.id, shardId: guild.shardId ?? 0, deaf: true });
   const session = { client: interaction.client, guildId: guild.id, voiceChannelId: voiceChannel.id, textChannelId: interaction.channelId, panel: null, timers: {}, music: null };
   session.music = new GuildMusic({ guildId: guild.id, player, recordingsFor: (item) => resolver.recordingsFor(node.idealNode(), item), hooks: hooksFor(session) });
+  await player.setGlobalVolume(session.music.volume).catch(() => {}); // the player starts at 100: the default of the session is applied
   sessions.set(guild.id, session);
   session.timers.watch = setInterval(() => { session.music.unstick().catch(() => {}); }, WATCH_MS); // a song whose end never came is moved on from
   session.timers.watch.unref?.();

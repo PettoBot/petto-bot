@@ -42,7 +42,7 @@ function artistNamed(hay, artists) {
   });
 }
 
-const SOURCE_WEIGHT = { youtube: 0, soundcloud: -8, bandcamp: -4, twitch: -20 };
+const SOURCE_WEIGHT = { youtube: 0, deezer: 35, soundcloud: -8, bandcamp: -4, twitch: -20 }; // Deezer gives the studio recording, with its exact data and a better format: it counts like the "- Topic" channels (+30) and a little more
 
 /**
  * How good a result of a search is for what was wanted, or why it is not.
@@ -148,6 +148,7 @@ function diversify(tracks, { preferNot = null } = {}) {
 const SPOTIFY_LINK = /^(?:https?:\/\/)?open\.spotify\.com\/(?:intl-[a-z-]+\/)?(track|album|playlist|artist)\/([A-Za-z0-9]+)/i;
 const SPOTIFY_URI = /^spotify:(track|album|playlist|artist):([A-Za-z0-9]+)$/i;
 const YOUTUBE_LINK = /^(?:https?:\/\/)?(?:www\.|m\.|music\.)?(?:youtube\.com|youtu\.be)\//i;
+const DEEZER_LINK = /^(?:https?:\/\/)?(?:www\.)?(?:deezer\.com\/(?:[a-z]{2}\/)?(?:track|album|playlist|artist)\/|link\.deezer\.com\/|deezer\.page\.link\/)/i;
 const SOUNDCLOUD_LINK = /^(?:https?:\/\/)?(?:www\.|m\.|on\.)?soundcloud\.com\//i;
 
 /** What a person wrote: a link of a service the node reads, a link of another one, or a text to search. */
@@ -156,6 +157,7 @@ function kindOfInput(input) {
   const spotify = SPOTIFY_LINK.exec(text) ?? SPOTIFY_URI.exec(text);
   if (spotify) return { kind: 'spotify', what: spotify[1].toLowerCase(), id: spotify[2], url: /^spotify:/i.test(text) ? `https://open.spotify.com/${spotify[1].toLowerCase()}/${spotify[2]}` : text.split(/[?#]/)[0] };
   if (YOUTUBE_LINK.test(text)) return { kind: 'youtube', url: text };
+  if (DEEZER_LINK.test(text)) return { kind: 'deezer', url: text };
   if (SOUNDCLOUD_LINK.test(text)) return { kind: 'soundcloud', url: text };
   if (/^https?:\/\//i.test(text)) return { kind: 'other', url: text };
   return { kind: 'text', query: text };
