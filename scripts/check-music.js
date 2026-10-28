@@ -330,6 +330,44 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
   }
 
   {
+    // A timeout of the network is tried once more with the same recording; any other failure goes to the next one
+    const player = makePlayer();
+    const music = create(player);
+    music.add([song('net', 200_000, ['e:net1', 'e:net2']), song('after')]);
+    await music.startIfIdle();
+    await settle();
+    player.calls.length = 0;
+    player.emit('exception', { exception: { message: '(yts.version: x) All clients failed to load the item. Client [TVHTML5] failed: Read timed out' } });
+    player.emit('end', { reason: 'loadFailed', track: { encoded: 'e:net1' } });
+    await settle();
+    assert.deepEqual(player.calls.filter((call) => call[0] === 'play'), [['play', 'e:net1']], 'the same recording once more after a timeout');
+    player.emit('exception', { exception: { message: 'Read timed out' } });
+    player.emit('end', { reason: 'loadFailed', track: { encoded: 'e:net1' } });
+    await settle();
+    assert.equal(player.loaded, 'e:net2', 'a second timeout of the same recording goes to the next one');
+    player.emit('exception', { exception: { message: 'This video requires login.' } });
+    player.emit('end', { reason: 'loadFailed', track: { encoded: 'e:net2' } });
+    await settle();
+    assert.equal(music.current.title, 'after', 'a failure that is not a timeout is not asked again');
+    music.destroy();
+    events.length = 0;
+  }
+
+  {
+    // How long a change took is told with its parts: choosing the recording and the node
+    let timing = null;
+    const player = makePlayer();
+    const music = new GuildMusic({ guildId: 'g', player, recordingsFor: async (item) => { clockNow += 700; return [item.encoded]; }, hooks: { onTrackStart: (m, item, told) => { timing = told; } }, now: () => clockNow, maxQueue: 5 });
+    const originalPlay = player.playTrack;
+    player.playTrack = async (options) => { clockNow += 50; return originalPlay(options); };
+    music.add([{ title: 't1', author: 'A', lengthMs: 200_000, encoded: 'e:t1', requestedBy: '1' }]);
+    await music.startIfIdle();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.ok(timing && timing.recordings === 700 && timing.total >= 750 && timing.node >= 0 && timing.node <= timing.total, 'the start is told with the time of each part');
+    music.destroy();
+  }
+
+  {
     // The volume: it starts at 50, which is also the lowest; 150 is the highest
     const player = makePlayer();
     const music = create(player);
@@ -614,16 +652,19 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
   assert.equal(card.progressBar(100, 100, iconSets.plain).endsWith('🔘'), true);
   assert.equal(card.progressBar(50, 0, iconSets.plain).includes('🔘'), false, 'a stream has no knob');
   {
-    // the bar of the music set: a pill that moves along a track that ends in a rounded end
-    const cells = (bar) => [...bar.matchAll(/<:(\w+):\d+>/g)].map((match) => match[1]);
-    assert.deepEqual(cells(card.progressBar(0, 100)), ['pe_s_progressbarfilledleftstartw', 'pe_s_progressbarempty', 'pe_s_progressbarempty', 'pe_s_progressbarempty', 'pe_s_progressbaremptyrightrounde'], 'at the start the pill is first');
-    const middle = cells(card.progressBar(50, 100));
-    assert.equal(middle.indexOf('pe_s_progressbarfilledleftstartw'), 2, 'half way it is in the middle');
-    assert.equal(middle.at(-1), 'pe_s_progressbaremptyrightrounde', 'the track ends in the rounded end');
+    // the bar of the music set: filled cells up to a pill with a knob, then dark cells to a rounded end
+    const cells = (bar) => [...bar.matchAll(/<:(\w+):\d+>/g)].map((match) => match[1].replace('pe_s_progressbar', ''));
+    const start = cells(card.progressBar(0, 100));
+    assert.equal(start.length, 12, 'twelve pieces');
+    assert.deepEqual([start[0], start[1], start.at(-1)], ['filledleftstartw', 'empty', 'emptyrightrounde'], 'at the start the pill is first and the end is rounded');
+    const half = cells(card.progressBar(50, 100));
+    assert.deepEqual([half[0], half[1], half.indexOf('filledleftstartw'), half.at(-1)], ['filledleftrounde', 'filled', 6, 'emptyrightrounde'], 'half way: filled from a rounded start, the pill in the middle, dark after it');
+    assert.ok(half.slice(1, 6).every((piece) => piece === 'filled') && half.slice(7, -1).every((piece) => piece === 'empty'));
     const last = cells(card.progressBar(100, 100));
-    assert.equal(last.length, 5);
-    assert.equal(last.at(-1), 'pe_s_progressbarfilledleftstartw', 'at the end the pill is last');
-    assert.equal(new Set(Array.from({ length: 11 }, (_, i) => cells(card.progressBar(i * 10, 100)).indexOf('pe_s_progressbarfilledleftstartw'))).size, 5, 'it takes every place on its way');
+    assert.equal(last.length, 12);
+    assert.equal(last.at(-1), 'filledleftstartw', 'at the end the pill is last');
+    assert.equal(new Set(Array.from({ length: 101 }, (_, i) => cells(card.progressBar(i, 100)).indexOf('filledleftstartw'))).size, 12, 'it takes every place on its way');
+    assert.ok(Array.from({ length: 12 }, (_, i) => card.progressBar(i * 8, 100)).every((bar) => cells(bar).length === 12), 'always twelve pieces');
     assert.ok(!card.progressBar(40, 100).includes('🔘'));
   }
   {
@@ -659,6 +700,8 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
       assert.ok(buttonsOf(plainCard).every((button) => !button.emoji?.id), 'the plain card has no custom emoji in its buttons');
       assert.ok(!textOf(plainCard).includes('pe_s_') && textOf(plainCard).includes('🎵'), 'nor in its text');
       assert.ok(textOf(await card.nowPlaying(music, 'en')).includes('<:pe_s_musicnote:'), 'the card says the title with the custom note');
+      const bigBar = flat(json((await card.nowPlaying(music, 'en')).components)).filter((part) => typeof part.content === 'string').find((part) => /^(<:pe_s_progressbar\w+:\d+>)+$/.test(part.content));
+      assert.ok(bigBar, 'the bar is alone in its own text, so it is shown with big emojis');
     }
     const refreshed = await card.nowPlaying(music, 'en');
     assert.equal(refreshed.files, undefined, 'a refresh does not send the picture again');
@@ -970,6 +1013,27 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
     assert.deepEqual(added.at(-1), ['add', 'pettolava'], 'it is added again');
     assert.equal(realNode.revive(), false);
     realNode.stop();
+  }
+
+  {
+    // `/music` is registered with Discord (it was not: without `registerSlash` a command only works with the prefix) and fits what Discord accepts
+    const { collectCommandData } = require('../src/handlers/commandHandler');
+    const registered = collectCommandData().find((command) => command.name === 'music');
+    assert.ok(registered, '/music is in the commands that are registered');
+    assert.ok(registered.options.length <= 25 && registered.options.every((sub) => sub.type === 1), 'subcommands, at most 25');
+    for (const name of ['play', 'search', 'playnext', 'skip', 'previous', 'stop', 'pause', 'resume', 'queue', 'nowplaying', 'volume', 'loop', 'autoplay', 'shuffle', 'seek', 'remove', 'clear', 'leave']) {
+      assert.ok(registered.options.some((sub) => sub.name === name), `/music ${name} exists`);
+    }
+    const tooLong = [];
+    const walk = (node, path) => {
+      if (String(node.description ?? '').length > 100) tooLong.push(path);
+      for (const [locale, text] of Object.entries(node.description_localizations ?? {})) if (String(text).length > 100) tooLong.push(`${path} (${locale})`);
+      for (const child of node.options ?? []) walk(child, `${path} ${child.name}`);
+    };
+    walk(registered, 'music');
+    assert.deepEqual(tooLong, [], 'every description (and its translations) fits the 100 characters of Discord');
+    const play = registered.options.find((sub) => sub.name === 'play').options[0];
+    assert.equal(play.autocomplete, true, 'the song is suggested while it is typed');
   }
 
   console.log('check-music: ok');

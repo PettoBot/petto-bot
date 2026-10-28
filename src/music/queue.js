@@ -10,6 +10,7 @@ const MIN_VOLUME = 50; // half is the lowest: a song starts there and the bot is
 const MAX_VOLUME = 150;
 const DEFAULT_VOLUME = 50; // a song starts at half: 100 is loud for a voice channel and leaves no room to go up
 const STUCK_AGAIN_MS = 60_000; // a second freeze of the same song within this time is not a hiccup
+const TRANSIENT = /timed out|timeout|connection reset|connection refused|unreachable|temporar/i; // what Lavalink says when the network failed for a moment
 const QUIET_MS = 25_000; // a playing song with no word from the player this long is not playing (Lavalink sends the position every 5 seconds)
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
@@ -38,6 +39,8 @@ class GuildMusic {
     this.position = { at: 0, ms: 0 };
     this.stuckAt = 0;
     this.changeAt = 0; // when the change to the current song began, to tell how long it took to start
+    this.preparedAt = 0; // when its recordings were known
+    this.requestedAt = 0; // when the node was asked to play it
     this.lastException = null;
     this.destroyed = false;
     this.listeners = [];
@@ -52,7 +55,7 @@ class GuildMusic {
     on('start', (event) => {
       if (event?.track?.encoded && event.track.encoded !== this.playing) return; // the start of a recording that is not the one loaded
       this.failures = 0;
-      if (this.current) this.hooks.onTrackStart?.(this, this.current, this.changeAt ? this.now() - this.changeAt : null); // told when Lavalink really has it, not when it was asked to (a recording can fail to load)
+      if (this.current) this.hooks.onTrackStart?.(this, this.current, this.changeAt ? { total: this.now() - this.changeAt, recordings: this.preparedAt - this.changeAt, node: this.now() - this.requestedAt } : null); // told when Lavalink really has it, not when it was asked to (a recording can fail to load)
     });
     on('update', (update) => { if (Number.isFinite(update?.state?.position)) this.mark(update.state.position); });
     on('closed', (event) => this.hooks.onClosed?.(this, event));
@@ -117,7 +120,8 @@ class GuildMusic {
     }
     item.index = 0;
     this.changeAt = this.now();
-    await this.prepare(item); // already chosen while the last song played, or in the middle of it (then it is waited for, not asked again)
+    await this.prepare(item);
+    this.preparedAt = this.now(); // (it was chosen while the last song played, or in the middle of it: then it is waited for, not asked again)
     item.list ??= [];
     if (!item.list.length) return this.fail(item, 'notFound');
     return this.playRecording(item);
@@ -128,6 +132,7 @@ class GuildMusic {
     const encoded = item.list[item.index];
     const wasPaused = this.paused;
     this.playing = encoded; // before asking: the start event can arrive before the answer
+    this.requestedAt = this.now();
     item.encoded = encoded;
     this.paused = false;
     this.mark(0);
@@ -145,6 +150,11 @@ class GuildMusic {
   /** The next recording of the same song, or the next song when there is none. */
   async retry(item, error) {
     if (this.current !== item) return false;
+    // A failure of the network for a moment (a timeout) is tried once more with the same recording before changing it: the next one would meet the same hiccup.
+    if (TRANSIENT.test(String(error)) && item.list?.[item.index] && !item.transientTried?.has(item.index)) {
+      (item.transientTried ??= new Set()).add(item.index);
+      return this.playRecording(item);
+    }
     if (item.list && item.index + 1 < item.list.length) {
       item.index += 1;
       return this.playRecording(item);

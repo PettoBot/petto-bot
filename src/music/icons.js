@@ -41,12 +41,15 @@ const CUSTOM = {
   INFO: custom('information', '1564884026337271808'),
 };
 
-// The bar of progress is made of three pieces that the card arranges (the bar of Flamey is the same): a grey pill with a white knob (`KNOB_CELL`) that moves
-// along a dark track (`TRACK_CELL`) that ends in a rounded end (`END_CELL`). A set without them (the plain one) draws it with `BAR` and `KNOB`.
+// The bar of progress is made of five square pieces that the card arranges (the bar of Flamey is the same): a filled left end (`FILLED_START`) and filled
+// cells (`FILLED`) up to a grey pill with a white knob (`KNOB_CELL`), then dark cells (`TRACK_CELL`) to a rounded end (`END_CELL`). A set without them (the
+// plain one) draws the bar with `BAR` and `KNOB`.
 const BAR_PIECES = {
   KNOB_CELL: custom('progressbarfilledleftstartw', '1564868908937388183'),
   TRACK_CELL: custom('progressbarempty', '1564868910535286784'),
   END_CELL: custom('progressbaremptyrightrounde', '1564868912246685727'),
+  FILLED_START: custom('progressbarfilledleftrounde', '1564894583035527199'),
+  FILLED: custom('progressbarfilled', '1564894584801067080'),
 };
 
 module.exports = { ...CUSTOM, ...BAR_PIECES, plain: PLAIN };
