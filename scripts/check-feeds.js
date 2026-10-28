@@ -733,12 +733,12 @@ const allText = (message) => JSON.stringify(json(message.components));
     // Anime: Wallhaven and Safebooru, searched with what is left of the words (`anime roses` is `roses` in the anime places); a sample of a big picture is used.
     let item = await pick('anime rosas');
     assert.ok(asked[0].startsWith('https://wallhaven.cc/api/v1/search?q=roses&categories=010&purity=100'), 'the anime word chooses the anime category and the rest is searched');
-    assert.ok(asked.some((u) => u.includes('safebooru.org') && u.includes('tags=rose')) || item.extra.includes('Wallhaven'), 'the booru tag is the singular word');
+    assert.ok(asked.some((u) => new URL(u).host === 'safebooru.org' && new URL(u).searchParams.get('tags') === 'rose') || item.extra.includes('Wallhaven'), 'the booru tag is the singular word');
     assert.ok(['Wallhaven', 'Safebooru'].some((name) => item.extra.endsWith(name)) && item.image.startsWith('https://'), item.extra);
     // Without an anime word, with no key: Openverse, then Flickr.
     item = await pick('flores', 'x:2');
     assert.ok(asked[0].startsWith('https://api.openverse.org/') && asked[0].includes('q=flowers') && asked[0].includes('mature=false'), 'the free searcher is asked for pictures without adult content');
-    assert.equal(asked.some((u) => u.includes('wallhaven')), false, 'anime places are only for anime words');
+    assert.equal(asked.some((u) => new URL(u).host === 'wallhaven.cc'), false, 'anime places are only for anime words');
     assert.ok(item.extra.endsWith('Openverse'));
     // With the keys, the search by meaning comes first, Google before the others, and the picture says where it is from.
     config.pixabayApiKey = 'pixabay-key'; config.pexelsApiKey = 'pexels-key'; config.unsplashAccessKey = 'unsplash-key';
