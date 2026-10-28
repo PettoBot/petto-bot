@@ -78,7 +78,7 @@ module.exports = {
     }
 
     // The buttons of the music card.
-    if (interaction.isButton() && interaction.customId.startsWith(`${MUSIC_PREFIX}:`)) {
+    if ((interaction.isButton() || interaction.isStringSelectMenu()) && interaction.customId.startsWith(`${MUSIC_PREFIX}:`)) {
       try { await handleMusicButton(interaction); } catch (err) { logger.error('Error handling a music button:', err); }
       return;
     }

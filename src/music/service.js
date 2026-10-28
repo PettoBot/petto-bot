@@ -107,7 +107,8 @@ async function closePanel(session, text) {
 function hooksFor(session) {
   const say = (payload) => textChannelOf(session)?.send(payload).catch(() => {});
   return {
-    onTrackStart(music, item) {
+    onTrackStart(music, item, ms) {
+      if (ms !== null && ms !== undefined) logger.info(`Music: ${item?.title ?? 'a song'} started ${ms} ms after the change began`); // the number to look at when the change between songs is slow
       clearTimer(session, 'idle');
       if (session.announced === item && session.panel) updatePanel(session); // the same song again (repeat): the card is refreshed, not sent again
       else announce(session).catch(() => {});
@@ -194,33 +195,26 @@ async function needSession(interaction, lang, action = '') {
   return session;
 }
 
-/** `!play` / `/music play`. */
-async function play(interaction, query, { next = false } = {}) {
-  const lang = langOf(interaction.guildId);
-  if (!canUseMusic(interaction.user.id)) return replyTo(interaction, bad(t(lang, 'music.testing')));
-  if (!node.enabled()) return replyTo(interaction, bad(t(lang, 'music.notConfigured')));
+/**
+ * What a person needs to play: the permission, the node, a voice channel where the bot can speak, and the same one as the bot when it is playing.
+ * Returns `{ voice, existing, lavalink }`, or null after answering.
+ */
+async function preflight(interaction, lang) {
+  const say = (payload) => replyTo(interaction, interaction.isStringSelectMenu?.() ? ephemeral(payload) : payload); // the menu of a search answers in private
+  if (!canUseMusic(interaction.user.id)) { await say(bad(t(lang, 'music.testing'))); return null; }
+  if (!node.enabled()) { await say(bad(t(lang, 'music.notConfigured'))); return null; }
   const voice = interaction.member?.voice?.channel;
-  if (!voice || voice.type !== ChannelType.GuildVoice) return replyTo(interaction, bad(t(lang, 'music.joinFirst')));
+  if (!voice || voice.type !== ChannelType.GuildVoice) { await say(bad(t(lang, 'music.joinFirst'))); return null; }
   const existing = sessionOf(interaction.guildId);
-  if (existing && existing.voiceChannelId !== voice.id) return replyTo(interaction, bad(t(lang, 'music.sameChannel', { channel: `<#${existing.voiceChannelId}>` })));
-  if (!voice.permissionsFor(interaction.guild.members.me)?.has([PermissionFlagsBits.Connect, PermissionFlagsBits.Speak])) return replyTo(interaction, bad(t(lang, 'music.noPermission', { channel: `<#${voice.id}>` })));
+  if (existing && existing.voiceChannelId !== voice.id) { await say(bad(t(lang, 'music.sameChannel', { channel: `<#${existing.voiceChannelId}>` }))); return null; }
+  if (!voice.permissionsFor(interaction.guild.members.me)?.has([PermissionFlagsBits.Connect, PermissionFlagsBits.Speak])) { await say(bad(t(lang, 'music.noPermission', { channel: `<#${voice.id}>` }))); return null; }
   const lavalink = node.idealNode();
-  if (!lavalink) return replyTo(interaction, bad(t(lang, 'music.nodeDown')));
+  if (!lavalink) { await say(bad(t(lang, 'music.nodeDown'))); return null; }
+  return { voice, existing, lavalink };
+}
 
-  await interaction.deferReply();
-  // The voice channel is joined while the song is searched (they do not depend on each other), so the song starts as soon as it is found.
-  const joining = existing ? Promise.resolve(existing) : connect(interaction, voice).catch((error) => { logger.warn(`Music: could not join the voice channel: ${error?.message ?? error}`); return null; });
-  const searching = resolver.resolveInput(lavalink, query, { requestedBy: interaction.user.id }).catch((error) => {
-    logger.warn(`Music: the search failed: ${error?.message ?? error}`);
-    return { type: 'error', items: [], error: 'unavailable' };
-  });
-  const [found, session] = await Promise.all([searching, joining]);
-  const nothing = found.type === 'unsupported' || found.type === 'error' || !found.items.length;
-  if (nothing && session && session !== existing) await leave(session).catch(() => {}); // joined for nothing
-  if (found.type === 'unsupported') return replyTo(interaction, bad(t(lang, 'music.unsupported')));
-  if (found.type === 'error') return replyTo(interaction, bad(t(lang, 'music.error', { reason: clip(plainText(found.error, 150), 150) })));
-  if (!found.items.length) return replyTo(interaction, bad(t(lang, 'music.notFound', { query: clip(plainText(query, 80), 80) })));
-  if (!session) return replyTo(interaction, bad(t(lang, 'music.joinFailed')));
+/** Puts what was found in the queue of the session, answers, and starts it when nothing was playing. */
+async function enqueue(interaction, lang, session, found, { next = false } = {}) {
   session.textChannelId = interaction.channelId;
   clearTimer(session, 'idle');
 
@@ -236,6 +230,81 @@ async function play(interaction, query, { next = false } = {}) {
   }
   await Promise.all([replyTo(interaction, good(text)), session.music.startIfIdle()]); // the song starts without waiting for the answer to be sent
   return null;
+}
+
+/** `!play` / `/music play`. */
+async function play(interaction, query, { next = false } = {}) {
+  const lang = langOf(interaction.guildId);
+  const ready = await preflight(interaction, lang);
+  if (!ready) return null;
+  const { voice, existing, lavalink } = ready;
+
+  await interaction.deferReply();
+  // The voice channel is joined while the song is searched (they do not depend on each other), so the song starts as soon as it is found.
+  const joining = existing ? Promise.resolve(existing) : connect(interaction, voice).catch((error) => { logger.warn(`Music: could not join the voice channel: ${error?.message ?? error}`); return null; });
+  const searching = resolver.resolveInput(lavalink, query, { requestedBy: interaction.user.id }).catch((error) => {
+    logger.warn(`Music: the search failed: ${error?.message ?? error}`);
+    return { type: 'error', items: [], error: 'unavailable' };
+  });
+  const [found, session] = await Promise.all([searching, joining]);
+  const nothing = found.type === 'unsupported' || found.type === 'error' || !found.items.length;
+  if (nothing && session && session !== existing) await leave(session).catch(() => {}); // joined for nothing
+  if (found.type === 'unsupported') return replyTo(interaction, bad(t(lang, 'music.unsupported')));
+  if (found.type === 'error') return replyTo(interaction, bad(t(lang, 'music.error', { reason: clip(plainText(found.error, 150), 150) })));
+  if (!found.items.length) return replyTo(interaction, bad(t(lang, 'music.notFound', { query: clip(plainText(query, 80), 80) })));
+  if (!session) return replyTo(interaction, bad(t(lang, 'music.joinFailed')));
+  return enqueue(interaction, lang, session, found, { next });
+}
+
+// --- Search: five results to choose from -------------------------------------------------------------------------------------------------------------
+
+const CHOICES = new Map(); // token -> { userId, items, until }: the results of a search that wait for a choice
+const CHOICE_MS = 5 * 60_000;
+const MAX_CHOICES = 200;
+
+/** `/music search`: the five best results in a menu; the one who searched picks. */
+async function search(interaction, query) {
+  const lang = langOf(interaction.guildId);
+  const ready = await preflight(interaction, lang);
+  if (!ready) return null;
+  await interaction.deferReply();
+  let items = [];
+  try {
+    items = await resolver.searchChoices(ready.lavalink, query, { requestedBy: interaction.user.id });
+  } catch (error) {
+    logger.warn(`Music: the search failed: ${error?.message ?? error}`);
+    return replyTo(interaction, bad(t(lang, 'music.error', { reason: 'unavailable' })));
+  }
+  if (!items.length) return replyTo(interaction, bad(t(lang, 'music.notFound', { query: clip(plainText(query, 80), 80) })));
+  const now = Date.now();
+  for (const [token, entry] of CHOICES) if (entry.until < now) CHOICES.delete(token);
+  if (CHOICES.size >= MAX_CHOICES) CHOICES.delete(CHOICES.keys().next().value);
+  const token = Math.random().toString(36).slice(2, 10);
+  CHOICES.set(token, { userId: interaction.user.id, items, until: now + CHOICE_MS });
+  return replyTo(interaction, card.choiceMenu(items, token, lang));
+}
+
+/** The choice made in the menu of a search: the song is added like `play` does. */
+async function pick(interaction, token) {
+  const lang = langOf(interaction.guildId);
+  const entry = CHOICES.get(token);
+  if (!entry || entry.until < Date.now()) { await interaction.reply(ephemeral(bad(t(lang, 'music.search.expired')))); return; }
+  if (interaction.user.id !== entry.userId) { await interaction.reply(ephemeral(bad(t(lang, 'music.search.notYours', { user: `<@${entry.userId}>` })))); return; }
+  const chosen = entry.items[Number(interaction.values?.[0])];
+  if (!chosen) { await interaction.reply(ephemeral(bad(t(lang, 'music.search.expired')))); return; }
+  const ready = await preflight(interaction, lang).catch(() => null); // answers by itself when something is missing
+  if (!ready) return;
+  CHOICES.delete(token);
+  await interaction.deferUpdate();
+  let session = ready.existing;
+  try {
+    session ??= await connect(interaction, ready.voice);
+  } catch (error) {
+    logger.warn(`Music: could not join the voice channel: ${error?.message ?? error}`);
+    await replyTo(interaction, bad(t(lang, 'music.joinFailed')));
+    return;
+  }
+  await enqueue(interaction, lang, session, { type: 'track', items: [chosen] });
 }
 
 /**
@@ -330,4 +399,4 @@ function onVoiceState(oldState, newState) {
 /** For the checks. */
 const _sessions = sessions;
 
-module.exports = { play, command, button, onVoiceState, parseTime, sessionOf, leave, _sessions, IDLE_MS, ALONE_MS };
+module.exports = { play, search, pick, command, button, onVoiceState, parseTime, sessionOf, leave, _sessions, IDLE_MS, ALONE_MS };

@@ -1,5 +1,5 @@
 // The messages of the music: the card of the song that plays (the picture of `!deezer`, the title, the time, the buttons), the queue and the short notices.
-const { ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, TextDisplayBuilder, SeparatorBuilder, SeparatorSpacingSize, ActionRowBuilder, ButtonBuilder, ButtonStyle, SectionBuilder, ThumbnailBuilder, AttachmentBuilder, MessageFlags } = require('discord.js');
+const { StringSelectMenuBuilder, ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, TextDisplayBuilder, SeparatorBuilder, SeparatorSpacingSize, ActionRowBuilder, ButtonBuilder, ButtonStyle, SectionBuilder, ThumbnailBuilder, AttachmentBuilder, MessageFlags } = require('discord.js');
 const { buildSongCard } = require('../imgutils/songCard');
 const { linkText, plainText, clip, safeUrl } = require('../feeds/text');
 const { textCard } = require('../utils/caseCard');
@@ -22,8 +22,17 @@ function clock(ms) {
   return hours ? `${hours}:${String(minutes).padStart(2, '0')}:${seconds}` : `${minutes}:${seconds}`;
 }
 
-/** ▬▬▬🔘▬▬▬▬▬▬▬▬ */
+const BAR_CELLS = 5; // the pieces of the bar are wide: five fit in a line of a phone
+
+/**
+ * The bar of progress. With the pieces of the music set: a pill that moves along a track, `[pill][track][track][track][end]`; with a plain set,
+ * ▬▬▬🔘▬▬▬▬▬▬▬▬.
+ */
 function progressBar(position, length, set = icons) {
+  if (set.KNOB_CELL) {
+    const at = length > 0 ? Math.min(BAR_CELLS - 1, Math.max(0, Math.floor((position / length) * BAR_CELLS))) : 0;
+    return Array.from({ length: BAR_CELLS }, (_, index) => (index === at ? set.KNOB_CELL : index === BAR_CELLS - 1 ? set.END_CELL : set.TRACK_CELL)).join('');
+  }
   if (!(length > 0)) return set.BAR.repeat(BAR_WIDTH);
   const at = Math.min(BAR_WIDTH - 1, Math.max(0, Math.floor((position / length) * BAR_WIDTH)));
   return set.BAR.repeat(at) + set.KNOB + set.BAR.repeat(BAR_WIDTH - at - 1);
@@ -121,7 +130,26 @@ function queuePage(music, lang, page = 1) {
   return { flags: V2, components: [textCard(lines.join('\n'), null)], allowedMentions: { parse: [] } };
 }
 
+const SOURCE_NAMES = { youtube: 'YouTube', soundcloud: 'SoundCloud', deezer: 'Deezer', spotify: 'Spotify', bandcamp: 'Bandcamp' };
+
+/** The results of a search in a menu: the one who searched picks one (`music:pick:<token>`). */
+function choiceMenu(items, token, lang) {
+  const lines = [`### ${icons.QUEUE} ${t(lang, 'music.search.title')}`, t(lang, 'music.search.hint')];
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(`${BUTTON_PREFIX}:pick:${token}`)
+    .setPlaceholder(t(lang, 'music.search.placeholder'))
+    .addOptions(items.slice(0, 25).map((item, index) => ({
+      label: clip(plainText(item.title, 100) || '—', 100),
+      description: clip([plainText(item.author, 60), item.lengthMs ? clock(item.lengthMs) : t(lang, 'music.card.live'), SOURCE_NAMES[item.source] ?? ''].filter(Boolean).join(' · '), 100),
+      value: String(index),
+    })));
+  const box = new ContainerBuilder()
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')))
+    .addActionRowComponents(new ActionRowBuilder().addComponents(menu));
+  return { flags: V2, components: [box], allowedMentions: { parse: [] } };
+}
+
 /** A short notice in a card (green for good news, red for a problem, no color for the rest). */
 const notice = (text, color = null) => ({ flags: V2, components: [textCard(text, color)], allowedMentions: { parse: [] } });
 
-module.exports = { nowPlaying, queuePage, notice, clock, progressBar, BUTTON_PREFIX, FILE_NAME, QUEUE_PAGE };
+module.exports = { nowPlaying, queuePage, choiceMenu, notice, clock, progressBar, BUTTON_PREFIX, FILE_NAME, QUEUE_PAGE };

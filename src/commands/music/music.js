@@ -9,12 +9,13 @@ const queryOption = (o) => o.setName('query').setDescription('A song and artist,
 module.exports = {
   // `!music creep radiohead` is a song; `!music` alone is the queue.
   prefixDefaultSubcommand: (tokens) => (tokens.length ? 'play' : 'queue'),
-  prefixSubcommandAliases: { p: 'play', add: 'play', next: 'playnext', s: 'skip', back: 'previous', prev: 'previous', q: 'queue', list: 'queue', np: 'nowplaying', now: 'nowplaying', vol: 'volume', repeat: 'loop', mix: 'shuffle', jump: 'seek', rm: 'remove', delete: 'remove', disconnect: 'leave', dc: 'leave', unpause: 'resume' },
+  prefixSubcommandAliases: { p: 'play', add: 'play', next: 'playnext', find: 'search', pick: 'search', s: 'skip', back: 'previous', prev: 'previous', q: 'queue', list: 'queue', np: 'nowplaying', now: 'nowplaying', vol: 'volume', repeat: 'loop', mix: 'shuffle', jump: 'seek', rm: 'remove', delete: 'remove', disconnect: 'leave', dc: 'leave', unpause: 'resume' },
   data: new SlashCommandBuilder()
     .setName('music')
     .setDescription('Play songs in your voice channel from a name or a link.')
     .setDMPermission(false)
     .addSubcommand((s) => s.setName('play').setDescription('Play a song or add it to the queue.').addStringOption(queryOption))
+    .addSubcommand((s) => s.setName('search').setDescription('Search a song and choose it from a list of results.').addStringOption(queryOption))
     .addSubcommand((s) => s.setName('playnext').setDescription('Add a song to the front of the queue.').addStringOption(queryOption))
     .addSubcommand((s) => s.setName('skip').setDescription('Skip the song that is playing.')
       .addIntegerOption((o) => o.setName('count').setDescription('How many songs to skip (default 1)').setMinValue(1).setMaxValue(50).setRequired(false)))
@@ -26,7 +27,7 @@ module.exports = {
       .addIntegerOption((o) => o.setName('page').setDescription('The page of the queue').setMinValue(1).setRequired(false)))
     .addSubcommand((s) => s.setName('nowplaying').setDescription('Show the card of the song that is playing.'))
     .addSubcommand((s) => s.setName('volume').setDescription('Change the volume.')
-      .addIntegerOption((o) => o.setName('percent').setDescription('From 1 to 150 (100 is normal)').setMinValue(1).setMaxValue(150).setRequired(true)))
+      .addIntegerOption((o) => o.setName('percent').setDescription('From 1 to 150 (a song starts at 50)').setMinValue(1).setMaxValue(150).setRequired(true)))
     .addSubcommand((s) => s.setName('loop').setDescription('Repeat the song or the whole queue.')
       .addStringOption((o) => o.setName('mode').setDescription('What to repeat').setRequired(true).addChoices({ name: 'off', value: 'off' }, { name: 'song', value: 'track' }, { name: 'queue', value: 'queue' })))
     .addSubcommand((s) => s.setName('shuffle').setDescription('Shuffle the queue.'))
@@ -41,6 +42,7 @@ module.exports = {
     const options = interaction.options;
     switch (options.getSubcommand()) {
       case 'play': return service.play(interaction, options.getString('query', true));
+      case 'search': return service.search(interaction, options.getString('query', true));
       case 'playnext': return service.play(interaction, options.getString('query', true), { next: true });
       case 'skip': return service.command(interaction, 'skip', { count: options.getInteger('count') ?? 1 });
       case 'previous': return service.command(interaction, 'previous');

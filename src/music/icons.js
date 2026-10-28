@@ -38,4 +38,12 @@ const CUSTOM = {
   SHUFFLE: custom('shuffle', '1564869826290384943'),
 };
 
-module.exports = { ...CUSTOM, plain: PLAIN };
+// The bar of progress is made of three pieces that the card arranges (the bar of Flamey is the same): a grey pill with a white knob (`KNOB_CELL`) that moves
+// along a dark track (`TRACK_CELL`) that ends in a rounded end (`END_CELL`). A set without them (the plain one) draws it with `BAR` and `KNOB`.
+const BAR_PIECES = {
+  KNOB_CELL: custom('progressbarfilledleftstartw', '1564868908937388183'),
+  TRACK_CELL: custom('progressbarempty', '1564868910535286784'),
+  END_CELL: custom('progressbaremptyrightrounde', '1564868912246685727'),
+};
+
+module.exports = { ...CUSTOM, ...BAR_PIECES, plain: PLAIN };

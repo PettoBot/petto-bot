@@ -172,6 +172,21 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
     assert.equal(await read('playlist', '../etc', { fetchImpl: answer(200, '') }), null, 'the id is only letters and numbers');
   }
 
+  {
+    // The choices of a search: one for each song, no cover, at most five
+    answers['ytmsearch:many songs'] = { loadType: 'search', data: [
+      T('Many Songs', 'Band - Topic', 200_000), T('Many Songs', 'Band - Topic', 200_500), T('Many Songs (cover)', 'Cover Guy', 200_000), T('Many Songs - Live', 'Band', 260_000),
+      T('Many Songs', 'Band', 300_000), T('Many Songs (Official Audio)', 'Band Official', 199_000), T('Many Songs', 'Other Band', 150_000), T('Many Songs', 'Third Band', 120_000),
+    ] };
+    const choices = await resolver.searchChoices(fakeNode, 'many songs', { requestedBy: '5' });
+    assert.ok(choices.length >= 3 && choices.length <= 5, 'up to five choices');
+    assert.ok(choices.every((item) => item.requestedBy === '5' && !item.lazy && item.encoded), 'each one is ready to play');
+    assert.ok(!choices.some((item) => /cover|live/i.test(item.title)), 'no cover and no live version');
+    assert.equal(choices.filter((item) => item.author === 'Band - Topic').length, 1, 'the same song of the same channel appears once');
+    assert.deepEqual(await resolver.searchChoices(fakeNode, 'zzz nothing found'), [], 'nothing found: no choices');
+    delete answers['ytmsearch:many songs'];
+  }
+
   resolver.forgetChosen();
   asked.length = 0;
   const recordings = await resolver.recordingsFor(fakeNode, track.items[0]);
@@ -217,6 +232,35 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
   const settle = () => new Promise((resolve) => setImmediate(resolve));
   const until = async (condition) => { for (let i = 0; i < 100 && !condition(); i += 1) await new Promise((resolve) => setTimeout(resolve, 50)); };
   const finished = (player, name) => { player.emit('end', { reason: 'finished', track: { encoded: `e:${name}` } }); return settle(); };
+
+  {
+    // The recordings of the next three songs are chosen while one plays (each one once), so a change only waits for the node to load the audio.
+    const asks = [];
+    const player = makePlayer();
+    const music = create(player, async (item) => { asks.push(item.title); await new Promise((resolve) => setTimeout(resolve, 20)); return [`e:${item.title}`]; });
+    music.add(['a', 'b', 'c', 'd', 'e'].map((name) => ({ title: name, author: 'A', lengthMs: 200_000, encoded: `e:${name}`, requestedBy: '1' })));
+    await music.startIfIdle();
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    assert.deepEqual(asks, ['a', 'b', 'c', 'd'], 'the song and the three after it are prepared, and no more');
+    await finished(player, 'a');
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    assert.deepEqual(asks, ['a', 'b', 'c', 'd', 'e'], 'one song later the next one is prepared; the others are not asked again');
+    assert.equal(music.current.title, 'b');
+    assert.equal(player.loaded, 'e:b');
+    // a change in the middle of a preparation waits for it instead of asking again
+    const quick = create(makePlayer(), async (item) => { asks.push(`quick:${item.title}`); await new Promise((resolve) => setTimeout(resolve, 40)); return [`e:${item.title}`]; });
+    quick.add([{ title: 'x', author: 'A', lengthMs: 100_000, encoded: 'e:x', requestedBy: '1' }]);
+    const first = quick.startIfIdle();
+    await settle();
+    quick.queue.push({ title: 'y', author: 'A', lengthMs: 100_000, encoded: 'e:y', requestedBy: '1' });
+    quick.prefetch();
+    await first;
+    await quick.skip();
+    assert.deepEqual(asks.filter((ask) => ask.startsWith('quick:')), ['quick:x', 'quick:y'], 'a song asked for while it was being prepared is not asked twice');
+    music.destroy();
+    quick.destroy();
+    events.length = 0;
+  }
 
   {
     // The end of a song never came (Lavalink restarted, the connection was cut): the session moves on by itself.
@@ -457,9 +501,23 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
 
   // --- The card -------------------------------------------------------------------------------------------------------------------------------------
   assert.deepEqual([card.clock(83_000), card.clock(3_725_000), card.clock(0), card.clock(-5)], ['1:23', '1:02:05', '0:00', '0:00']);
-  assert.equal(card.progressBar(0, 100).startsWith('🔘'), true);
-  assert.equal(card.progressBar(100, 100).endsWith('🔘'), true);
-  assert.equal(card.progressBar(50, 0).includes('🔘'), false, 'a stream has no knob');
+  const iconSets = require('../src/music/icons');
+  assert.equal(card.progressBar(0, 100, iconSets.plain).startsWith('🔘'), true);
+  assert.equal(card.progressBar(100, 100, iconSets.plain).endsWith('🔘'), true);
+  assert.equal(card.progressBar(50, 0, iconSets.plain).includes('🔘'), false, 'a stream has no knob');
+  {
+    // the bar of the music set: a pill that moves along a track that ends in a rounded end
+    const cells = (bar) => [...bar.matchAll(/<:(\w+):\d+>/g)].map((match) => match[1]);
+    assert.deepEqual(cells(card.progressBar(0, 100)), ['pe_s_progressbarfilledleftstartw', 'pe_s_progressbarempty', 'pe_s_progressbarempty', 'pe_s_progressbarempty', 'pe_s_progressbaremptyrightrounde'], 'at the start the pill is first');
+    const middle = cells(card.progressBar(50, 100));
+    assert.equal(middle.indexOf('pe_s_progressbarfilledleftstartw'), 2, 'half way it is in the middle');
+    assert.equal(middle.at(-1), 'pe_s_progressbaremptyrightrounde', 'the track ends in the rounded end');
+    const last = cells(card.progressBar(100, 100));
+    assert.equal(last.length, 5);
+    assert.equal(last.at(-1), 'pe_s_progressbarfilledleftstartw', 'at the end the pill is last');
+    assert.equal(new Set(Array.from({ length: 11 }, (_, i) => cells(card.progressBar(i * 10, 100)).indexOf('pe_s_progressbarfilledleftstartw'))).size, 5, 'it takes every place on its way');
+    assert.ok(!card.progressBar(40, 100).includes('🔘'));
+  }
   {
     const player = makePlayer();
     const music = create(player);
@@ -672,6 +730,28 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
     assert.ok(say().includes(t('en', 'music.nothing')), 'with nothing playing there is nothing to skip');
     await service.command(makeInteraction(owner), 'leave');
     assert.ok(say().includes(t('en', 'music.left')) && left.includes('g1') && !service.sessionOf('g1'), 'it leaves and forgets the server');
+
+    // search: the best results in a menu, and only the one who searched picks
+    await service.search(makeInteraction(owner), 'radiohead creep');
+    const menuPayload = replies.at(-1);
+    const menu = flat(json(menuPayload.components)).find((part) => part.type === 3);
+    assert.ok(menu && menu.options.length >= 1 && menu.options.length <= 5 && menu.custom_id.startsWith('music:pick:'), 'a menu of results');
+    assert.ok(menu.options.every((option) => option.label.length <= 100 && option.description.length <= 100), 'its options fit');
+    assert.ok(textOf(menuPayload).includes(t('en', 'music.search.title')));
+    assert.equal(service.sessionOf('g1'), null, 'searching does not join the voice channel');
+    const token = menu.custom_id.split(':')[2];
+    const pickBy = (userId, value = '0', tokenOf = token) => ({ ...makeInteraction(userId), customId: `music:pick:${tokenOf}`, values: [value], isStringSelectMenu: () => true, isButton: () => false, deferUpdate: async function deferUpdate() { this.deferred = true; } });
+    await service.pick(pickBy('someone'), token);
+    assert.ok(say().includes('<@' + owner + '>') && service.sessionOf('g1') === null, 'somebody else is told the menu is not theirs');
+    await service.pick(pickBy(owner, '9'), token);
+    assert.ok(say().includes(t('en', 'music.search.expired')) && service.sessionOf('g1') === null, 'a choice that is not in the menu does nothing');
+    await service.pick(pickBy(owner), token);
+    assert.ok(service.sessionOf('g1')?.music.current, 'the song that was picked plays');
+    assert.ok(say().includes(menu.options[0].label.slice(0, 10)), 'and the menu turns into the answer');
+    await service.pick(pickBy(owner), token);
+    assert.ok(say().includes(t('en', 'music.search.expired')), 'a menu is used once');
+    await service.command(makeInteraction(owner), 'leave');
+    assert.equal(service.sessionOf('g1'), null);
 
     // alone in the channel / taken out of it
     await service.play(makeInteraction(owner), 'radiohead creep');

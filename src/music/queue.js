@@ -5,6 +5,7 @@
 
 const MAX_FAILURES = 5; // songs in a row that could not be played
 const HISTORY = 20;
+const PREFETCH_AHEAD = 3; // songs whose recordings are chosen while the current one plays
 const MAX_VOLUME = 150;
 const DEFAULT_VOLUME = 50; // a song starts at half: 100 is loud for a voice channel and leaves no room to go up
 const STUCK_AGAIN_MS = 60_000; // a second freeze of the same song within this time is not a hiccup
@@ -33,6 +34,7 @@ class GuildMusic {
     this.playing = null; // the recording loaded in the player
     this.position = { at: 0, ms: 0 };
     this.stuckAt = 0;
+    this.changeAt = 0; // when the change to the current song began, to tell how long it took to start
     this.lastException = null;
     this.destroyed = false;
     this.listeners = [];
@@ -47,7 +49,7 @@ class GuildMusic {
     on('start', (event) => {
       if (event?.track?.encoded && event.track.encoded !== this.playing) return; // the start of a recording that is not the one loaded
       this.failures = 0;
-      if (this.current) this.hooks.onTrackStart?.(this, this.current); // told when Lavalink really has it, not when it was asked to (a recording can fail to load)
+      if (this.current) this.hooks.onTrackStart?.(this, this.current, this.changeAt ? this.now() - this.changeAt : null); // told when Lavalink really has it, not when it was asked to (a recording can fail to load)
     });
     on('update', (update) => { if (Number.isFinite(update?.state?.position)) this.mark(update.state.position); });
     on('closed', (event) => this.hooks.onClosed?.(this, event));
@@ -106,11 +108,9 @@ class GuildMusic {
       return false;
     }
     item.index = 0;
-    try {
-      item.list ??= await this.recordingsFor(item);
-    } catch {
-      item.list = [];
-    }
+    this.changeAt = this.now();
+    await this.prepare(item); // already chosen while the last song played, or in the middle of it (then it is waited for, not asked again)
+    item.list ??= [];
     if (!item.list.length) return this.fail(item, 'notFound');
     return this.playRecording(item);
   }
@@ -156,12 +156,20 @@ class GuildMusic {
     return this.playNext({ skipped: true });
   }
 
-  /** The recording of the next song is chosen while this one plays, so there is no wait between them. */
+  /** Chooses the recordings of a song (once: a second call gets the same answer). Never rejects; `item.list` is left empty when it could not. */
+  prepare(item) {
+    if (!item || item.list) return Promise.resolve();
+    item.preparing ??= Promise.resolve()
+      .then(() => this.recordingsFor(item))
+      .then((list) => { item.list ??= list; })
+      .catch(() => {})
+      .finally(() => { item.preparing = null; });
+    return item.preparing;
+  }
+
+  /** The recordings of the next songs are chosen while this one plays, so the change from one to the next only waits for the node to load the audio. */
   prefetch() {
-    const next = this.queue[0];
-    if (!next || next.list) return;
-    next.list = null;
-    Promise.resolve(this.recordingsFor(next)).then((list) => { if (!next.list) next.list = list; }).catch(() => {});
+    for (const next of this.queue.slice(0, PREFETCH_AHEAD)) this.prepare(next);
   }
 
   async onEnd(event) {

@@ -96,6 +96,22 @@ async function searchText(node, query, requestedBy) {
   return { type: 'track', items: [item], alternatives: rest.slice(0, 4).map((track) => itemFromTrack(track, requestedBy)) };
 }
 
+/** The best recordings for a text, one for each song (a different length or a repeat of the same upload is left out), to choose from. */
+async function searchChoices(node, query, { requestedBy = null, limit = 5 } = {}) {
+  const tracks = await searchAll(node, query);
+  const { list } = match.order(tracks, { query });
+  const seen = new Set();
+  const items = [];
+  for (const track of list) {
+    const key = `${match.normalize(match.coreTitle(track.info?.title))}:${match.normalize(track.info?.author)}:${Math.round((Number(track.info?.length) || 0) / 5000)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    items.push(itemFromTrack(track, requestedBy));
+    if (items.length >= limit) break;
+  }
+  return items;
+}
+
 /**
  * What to queue for what a person wrote.
  * Returns `{ type: 'track' | 'playlist' | 'none' | 'error' | 'unsupported', items, name?, alternatives?, error? }`.
@@ -155,4 +171,4 @@ async function recordingsFor(node, item) {
 
 const forgetChosen = () => { chosen.clear(); youtubeDownUntil = 0; }; // for the checks
 
-module.exports = { MAX_ADDED, itemFromTrack, lazyItem, scrapedItem, searchAll, searchText, resolveInput, recordingsFor, markYoutubeDown, youtubeDown, forgetChosen };
+module.exports = { MAX_ADDED, itemFromTrack, lazyItem, scrapedItem, searchAll, searchText, searchChoices, resolveInput, recordingsFor, markYoutubeDown, youtubeDown, forgetChosen };
