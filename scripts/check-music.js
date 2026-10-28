@@ -991,6 +991,27 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
     realNode.stop();
   }
 
+  {
+    // `/music` is registered with Discord (it was not: without `registerSlash` a command only works with the prefix) and fits what Discord accepts
+    const { collectCommandData } = require('../src/handlers/commandHandler');
+    const registered = collectCommandData().find((command) => command.name === 'music');
+    assert.ok(registered, '/music is in the commands that are registered');
+    assert.ok(registered.options.length <= 25 && registered.options.every((sub) => sub.type === 1), 'subcommands, at most 25');
+    for (const name of ['play', 'search', 'playnext', 'skip', 'previous', 'stop', 'pause', 'resume', 'queue', 'nowplaying', 'volume', 'loop', 'autoplay', 'shuffle', 'seek', 'remove', 'clear', 'leave']) {
+      assert.ok(registered.options.some((sub) => sub.name === name), `/music ${name} exists`);
+    }
+    const tooLong = [];
+    const walk = (node, path) => {
+      if (String(node.description ?? '').length > 100) tooLong.push(path);
+      for (const [locale, text] of Object.entries(node.description_localizations ?? {})) if (String(text).length > 100) tooLong.push(`${path} (${locale})`);
+      for (const child of node.options ?? []) walk(child, `${path} ${child.name}`);
+    };
+    walk(registered, 'music');
+    assert.deepEqual(tooLong, [], 'every description (and its translations) fits the 100 characters of Discord');
+    const play = registered.options.find((sub) => sub.name === 'play').options[0];
+    assert.equal(play.autocomplete, true, 'the song is suggested while it is typed');
+  }
+
   console.log('check-music: ok');
   process.exit(0);
 })().catch((error) => { console.error(error); process.exit(1); });
