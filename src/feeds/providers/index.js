@@ -32,10 +32,8 @@ const epic = require('./epic');
 const schedule = require('../schedule');
 const { t } = require('../../i18n');
 const { IntegrationError } = require('../../utils/integrations');
-const { fetchPublicText } = require('../http');
 const { fallbackPicture } = require('../platforms');
 const { withStandIn } = require('../picture');
-const { parseFeed } = require('../feedparse');
 
 /** The videos that were seen live or about to be: when they end they are a recording of a stream, and are not posted as a new video. */
 const wasLive = new Set();
@@ -126,13 +124,17 @@ function animalFeed(animal) {
 /** Pictures by tags (`15m pink cat`): a picture for each slot of time of the pace of the account, the same for every server that wrote the same tags and the same pace. */
 const picturesFeed = {
   interval: 60_000, perTick: 5000, concurrency: 1, noAccount: true,
-  async resolve(text) {
-    const tags = pictures.parseTags(String(text ?? '').split(/\s+/).filter((word) => !/^(?:every:)?\d{1,4}\s*(?:m|min|mins|minutes?|h|hrs?|hours?|d|days?)?$/i.test(word)).join(' '));
+  // A word with several meanings (`rosa`: the flower, the color, the mountain) is asked about (`ambiguous`, with the choices) unless the other words say
+  // which one; the name of the account is what is searched (`pink · flower · anime style`), so the list of feeds shows it.
+  async resolve(text, { lang = 'en' } = {}) {
+    const isPace = (word) => /^(?:every:)?\d{1,4}\s*(?:m|min|mins|minutes?|h|hrs?|hours?|d|days?)?$/i.test(word);
+    const { tags, ambiguous } = pictures.parseQuery(String(text ?? '').split(/\s+/).filter((word) => !isPace(word)).join(' '));
     if (!tags.length || pictures.refused(tags)) throw new IntegrationError('badTags');
-    const pace = String(text ?? '').split(/\s+/).find((word) => /^(?:every:)?\d{1,4}\s*(?:m|min|mins|minutes?|h|hrs?|hours?|d|days?)?$/i.test(word)) ?? '';
+    const pace = String(text ?? '').split(/\s+/).find(isPace) ?? '';
     const minutes = schedule.parseMinutes(pace);
     if (minutes === null) throw new IntegrationError('badInput'); // the pace (what the service turns into the message about the pace)
-    return { id: `every:${minutes}:${pictures.joinTags(tags)}`, name: tags.map((tag) => `#${tag}`).join(' '), avatar: null, url: null };
+    if (ambiguous) throw pictures.ambiguousError(String(text ?? '').trim(), ambiguous);
+    return { id: `every:${minutes}:${pictures.joinTags(tags)}`, name: pictures.queryLabel(tags, t(lang, 'feeds.pictures.animeStyle')).slice(0, 100), avatar: null, url: null };
   },
   async poll(accounts, _tracked, { now = Date.now() } = {}) {
     const results = new Map();
@@ -361,11 +363,11 @@ const PROVIDERS = {
     async poll(accounts, _tracked, { now = Date.now() } = {}) {
       const results = new Map();
       await forEachWithConcurrency(accounts, async (account) => {
-        try { results.set(account.id, { items: parseFeed((await fetchPublicText(account.id)).text, { max: 15 }).entries.map((entry) => rss.toItem('rss', 'post', entry, account)).filter((item) => fresh(item, now)) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
+        try { results.set(account.id, { items: (await rss.readRss(account.id, 15)).entries.map((entry) => rss.toItem('rss', 'post', entry, account)).filter((item) => fresh(item, now)) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
       }, this.concurrency);
       return results;
     },
-    async baselineItems(account) { return parseFeed((await fetchPublicText(account.id)).text, { max: 20 }).entries.map((entry) => ({ id: entry.id })); },
+    async baselineItems(account) { return (await rss.readRss(account.id, 20)).entries.map((entry) => ({ id: entry.id })); },
   },
 
   reddit: {

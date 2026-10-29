@@ -396,9 +396,11 @@ function formOptions(value, { min, max, key }) {
 def('cmenu', 3, 16, (env, ...pairs) => {
   const map = flatPairs(pairs, 'cmenu');
   const field = formPart(map, 'cmenu', [...FORM_SELECT_KEYS, 'options'], 'menu');
-  const { options } = formOptions(map.get('options'), { min: 1, max: 25, key: 'menuOptions' });
+  const { options, selected } = formOptions(map.get('options'), { min: 1, max: 25, key: 'menuOptions' });
   field.options = options;
   pickRange(map, field, options.length);
+  // Discord refuses a form whose menu starts with more choices selected than it lets pick.
+  if (selected > field.max) fail('formTooManyDefaults', { max: field.max });
   if (map.get('placeholder') !== undefined && map.get('placeholder') !== null) field.placeholder = limitText(map.get('placeholder'), 150, 'placeholder');
   TEXT_INPUTS.add(field);
   return field;
@@ -441,9 +443,10 @@ def('cradio', 3, 10, (env, ...pairs) => {
 def('cchecks', 3, 14, (env, ...pairs) => {
   const map = flatPairs(pairs, 'cchecks');
   const field = formPart(map, 'cchecks', ['id', 'label', 'description', 'options', 'min', 'max', 'required'], 'checks');
-  const { options } = formOptions(map.get('options'), { min: 1, max: 10, key: 'checksOptions' });
+  const { options, selected } = formOptions(map.get('options'), { min: 1, max: 10, key: 'checksOptions' });
   field.options = options;
   pickRange(map, field, options.length, options.length);
+  if (selected > field.max) fail('formTooManyDefaults', { max: field.max });
   TEXT_INPUTS.add(field);
   return field;
 });

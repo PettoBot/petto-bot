@@ -34,12 +34,28 @@ function imageOf(entry, html) {
 }
 
 /**
- * `{ title, link, image, entries: [{ id, title, url, summary, image, published, author }] }`, newest first as the feed gives them.
+ * What kind of feed a text is, by its first element: `rss` (RSS 2.0 or 0.9x), `rdf` (RSS 1.0), `atom`, or null for anything else (a web page,
+ * an error page, JSON). The XML declaration, comments, a doctype and processing instructions (a stylesheet) before it are skipped.
+ */
+function feedKind(text) {
+  const start = String(text ?? '').replace(/^﻿/, '').replace(/^(?:\s+|<\?[\s\S]*?\?>|<!--[\s\S]*?-->|<!DOCTYPE[^>]*>)*/i, '');
+  const root = /^<([A-Za-z][\w.-]*(?::[\w.-]+)?)[\s>/]/.exec(start)?.[1]?.toLowerCase();
+  if (root === 'rss') return 'rss';
+  if (root === 'rdf:rdf') return 'rdf';
+  if (root === 'feed' || root === 'atom:feed') return 'atom';
+  return null;
+}
+
+/**
+ * `{ isFeed, title, link, image, entries: [{ id, title, url, summary, image, published, author }] }`, newest first as the feed gives them.
  * A text that is not a feed gives no entries and no title.
  */
 function parseFeed(xml, { max = 20 } = {}) {
   const text = String(xml ?? '');
-  const atom = /<feed\b/i.test(text);
+  // Only a document that is a feed is read as one: a web page has a <title> too, and was taken for a feed with no entries that never posted.
+  const kind = feedKind(text);
+  if (!kind) return { isFeed: false, title: '', link: '', image: '', entries: [] };
+  const atom = kind === 'atom';
   const pieces = text.split(atom ? /<entry[\s>]/i : /<item[\s>]/i);
   const head = pieces[0];
   const entries = pieces.slice(1, max + 1).map((piece) => {
@@ -57,6 +73,7 @@ function parseFeed(xml, { max = 20 } = {}) {
   const channel = head.split(/<(?:item|entry)[\s>]/i)[0];
   const imageBlock = /<image[^>]*>([\s\S]*?)<\/image>/i.exec(channel)?.[1] ?? '';
   return {
+    isFeed: true,
     title: clean(tag(channel, 'title'), 120), link: httpsOnly(atom ? linkOf(channel) : tag(channel.replace(/<image[\s\S]*?<\/image>/i, ''), 'link')),
     image: httpsOnly(tag(imageBlock, 'url') || tag(channel, 'logo') || tag(channel, 'icon')), entries,
   };
@@ -73,4 +90,4 @@ function discoverFeed(html, base) {
   return null;
 }
 
-module.exports = { parseFeed, discoverFeed, tag, attr, decode };
+module.exports = { parseFeed, discoverFeed, feedKind, tag, attr, decode };

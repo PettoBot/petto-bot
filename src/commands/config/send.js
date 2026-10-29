@@ -42,14 +42,26 @@ async function buttonProblem(member, guild, buttons, lang) {
   return null;
 }
 
+/**
+ * The channel to send to, as a channel of discord.js: the slash option gives one (or, for a thread that is not in the cache, only its data),
+ * the prefix gives an id. Null when the server has no such channel.
+ */
+async function channelOf(guild, picked) {
+  const id = typeof picked === 'string' ? picked : picked?.id;
+  if (!id) return null;
+  if (typeof picked === 'object' && typeof picked.isTextBased === 'function') return picked;
+  return guild.channels.cache.get(id) ?? await guild.channels.fetch(id).catch(() => null);
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('send')
     .setDescription('Send a message as Petto: text, links, files, role mentions or an embed code.')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
     .setDMPermission(false)
+    // The channel goes first: it is the order the help shows (`send [channel] [message]`), and the order the prefix reads.
+    .addChannelOption((o) => o.setName('channel').setDescription('Where to send it. The current channel when you leave it out.').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement, ChannelType.GuildVoice, ChannelType.AnnouncementThread, ChannelType.PublicThread, ChannelType.PrivateThread))
     .addStringOption((o) => o.setName('message').setDescription('The message: text, links, role mentions or an embed code.').setMaxLength(6000))
-    .addChannelOption((o) => o.setName('channel').setDescription('Where to send it. The current channel when you leave it out.').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement, ChannelType.PublicThread, ChannelType.PrivateThread))
     .addAttachmentOption((o) => o.setName('file').setDescription('A picture, video or file to send with it.')),
   // The text keeps its line breaks and quotes, so it is read raw: `!send #channel the message`.
   prefixRawOptions: { _: sendMessage },
@@ -60,20 +72,29 @@ module.exports = {
     const fail = (key, vars) => interaction.editReply({ components: [textCard(t(lang, key, vars), RED)], flags: REPLY_FLAGS });
     const guild = interaction.guild;
 
+    // A channel that was written but cannot be found is said, never replaced by the channel of the command.
+    const missing = interaction.options.getString('channel_missing');
+    if (missing) return fail('embeds.send.channelNotFound', { channel: missing.replace(/[`*_~|]/g, '').slice(0, 100) });
     const picked = interaction.options.getChannel('channel');
-    const channel = (typeof picked === 'string' ? await guild.channels.fetch(picked).catch(() => null) : picked) ?? interaction.channel;
-    if (!channel?.isTextBased?.() || channel.guildId !== guild.id) return fail('embeds.send.noChannel');
+    const channel = picked ? await channelOf(guild, picked) : interaction.channel;
+    if (picked && !channel) return fail('embeds.send.channelNotFound', { channel: typeof picked === 'string' ? `<#${picked}>` : `<#${picked.id}>` });
+    if (!channel || channel.guildId !== guild.id) return fail('embeds.send.noChannel');
+    if (!channel.isTextBased?.()) return fail('embeds.send.notText', { channel: `<#${channel.id}>` });
+    const thread = channel.isThread?.() ?? false;
+    const write = thread ? PermissionFlagsBits.SendMessagesInThreads : PermissionFlagsBits.SendMessages;
     const text = (interaction.options.getString('message') ?? '').trim();
     const attachments = interaction.rawMessage?.attachments ? [...interaction.rawMessage.attachments.values()] : [interaction.options.getAttachment('file')].filter(Boolean);
     if (!text && !attachments.length) return fail('embeds.send.nothing');
     if (attachments.length > MAX_FILES) return fail('embeds.send.tooManyFiles', { max: MAX_FILES });
 
     const mine = channel.permissionsFor(interaction.member);
-    if (!mine?.has(PermissionFlagsBits.ViewChannel) || !mine.has(PermissionFlagsBits.SendMessages) || !mine.has(PermissionFlagsBits.ManageMessages)) {
+    if (!mine?.has(PermissionFlagsBits.ViewChannel) || !mine.has(write) || !mine.has(PermissionFlagsBits.ManageMessages)) {
       return fail('embeds.send.noPermission', { channel: `<#${channel.id}>`, permission: t(lang, 'core.perm.ManageMessages') });
     }
     const bots = channel.permissionsFor(guild.members.me);
-    if (!bots?.has(PermissionFlagsBits.ViewChannel) || !bots.has(PermissionFlagsBits.SendMessages)) return fail('embeds.send.botCannot', { channel: `<#${channel.id}>` });
+    if (!bots?.has(PermissionFlagsBits.ViewChannel) || !bots.has(write)) return fail('embeds.send.botCannot', { channel: `<#${channel.id}>` });
+    // A thread that is locked and archived, or a private one Petto is not in, does not take messages even with the permissions.
+    if (thread && channel.sendable === false) return fail('embeds.send.botCannot', { channel: `<#${channel.id}>` });
     if (attachments.length && !bots.has(PermissionFlagsBits.AttachFiles)) return fail('embeds.send.botNoFiles', { channel: `<#${channel.id}>` });
 
     const ctx = { member: interaction.member, user: interaction.user, guild, channel, message: interaction.rawMessage, args: '', argTokens: [], commandName: 'send', lang };
@@ -110,6 +131,8 @@ module.exports = {
       return fail('embeds.send.failed', { error: err.message });
     }
     const lines = [t(lang, 'embeds.send.done', { emoji: EMOJI.APPROVE, channel: `<#${channel.id}>`, url: sent.url }), ...warnings.map((line) => `- ${line}`)];
+    // Sent where the command was typed: how to choose another channel, in case that was meant.
+    if (!picked && interaction.rawMessage) lines.push(`-# ${t(lang, 'embeds.send.hint')}`);
     return interaction.editReply({ components: [textCard(lines.join('\n'), 0xa5ea7a)], flags: REPLY_FLAGS });
   },
 };

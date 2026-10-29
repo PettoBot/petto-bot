@@ -61,6 +61,7 @@ const { commandKey } = require('../handlers/commandHandler');
 const { DISPLAY_BUTTON_PREFIX } = require('../utils/embedV2');
 const { PREFIX: EMBED_BUTTON_PREFIX } = require('../utils/embedActions');
 const { handleButton: handleEmbedButton } = require('../interactions/embedButtons');
+const { PREFIX: FEED_SENSE_PREFIX, handleButton: handleFeedSense } = require('../interactions/feedSense');
 const { t, formatDecimal, languageOf } = require('../i18n');
 
 const DEFAULT_COOLDOWN_MS = 3000;
@@ -144,6 +145,11 @@ module.exports = {
 
     if (interaction.isButton() && interaction.customId.startsWith(REQUEST_PREFIX)) {
       try { await handleRequestButton(interaction); } catch (err) { logger.error('Error handling a request button:', err); }
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith(FEED_SENSE_PREFIX)) {
+      try { await handleFeedSense(interaction); } catch (err) { logger.error('Error handling the meaning of a word of a feed:', err); }
       return;
     }
 

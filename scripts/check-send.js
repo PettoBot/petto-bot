@@ -118,6 +118,59 @@ const textOf = (replies) => JSON.stringify(replies[replies.length - 1]);
   await send.execute(await buildInteractionFromMessage(w.message, send, code('embed:rules:dm')));
   assert.equal(w.sent.length, 1, 'showing a saved embed needs no role permission');
 
+  // The channel in every way it is written, from another channel: a mention, an ID, a link, `#name`, a name with emojis around it,
+  // at the end (the order the help showed), and a thread. A channel that is written but does not exist is said, never replaced.
+  const OTHER = '555555555555555555';
+  const THREAD = '666666666666666666';
+  function twoChannels(options) {
+    const w2 = world(options);
+    const there = [];
+    const bits = w2.channel.permissionsFor(null);
+    const botBits = w2.channel.permissionsFor(w2.message.guild.members.me);
+    const make = (id, name, extra = {}) => ({ id, name, guildId: '1', isTextBased: () => true, permissionsFor: (who) => (who === w2.message.guild.members.me ? botBits : bits), send: async (payload) => { there.push({ id, payload }); return { url: 'https://discord.com/channels/1/5/6' }; }, ...extra });
+    w2.channel.name = 'general';
+    w2.message.guild.channels.cache.set(OTHER, make(OTHER, '📢・anuncios'));
+    w2.message.guild.channels.cache.set(THREAD, make(THREAD, 'hilo', { isThread: () => true, sendable: true }));
+    return { ...w2, there };
+  }
+  for (const [typed, expected, rest] of [
+    [`<#${OTHER}> hola`, OTHER, 'hola'], [`${OTHER} hola`, OTHER, 'hola'], [`https://discord.com/channels/1/${OTHER} hola`, OTHER, 'hola'],
+    ['#anuncios hola', OTHER, 'hola'], ['anuncios hola\nmundo', OTHER, 'hola\nmundo'], [`hola <#${OTHER}>`, OTHER, 'hola'], ['hola #anuncios', OTHER, 'hola'],
+  ]) {
+    w = twoChannels();
+    await send.execute(await buildInteractionFromMessage(w.message, send, typed));
+    assert.equal(w.sent.length, 0, `${typed}: nothing is sent where the command was typed`);
+    assert.equal(w.there[0]?.id, expected, `${typed}: sent to the channel written`);
+    if (rest) assert.equal(w.there[0].payload.content, rest, `${typed}: the message without the channel`);
+  }
+  w = twoChannels();
+  await send.execute(await buildInteractionFromMessage(w.message, send, 'anuncios'));
+  assert.equal(w.sent[0].content, 'anuncios', 'a single word that is the name of a channel is the message');
+  for (const typed of ['<#777777777777777777> hola', '#nada hola']) {
+    w = twoChannels();
+    await send.execute(await buildInteractionFromMessage(w.message, send, typed));
+    assert.equal(w.sent.length + w.there.length, 0, `${typed}: a channel that does not exist sends nothing`);
+    assert.ok(textOf(w.replies).includes('cannot find the channel'), `${typed}: and says so`);
+  }
+  // A thread asks for Send Messages in Threads, not Send Messages.
+  w = twoChannels({ permissions: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessagesInThreads, PermissionFlagsBits.ManageMessages] });
+  await send.execute(await buildInteractionFromMessage(w.message, send, `<#${THREAD}> hola`));
+  assert.equal(w.there.length, 0, 'the bot without Send Messages in Threads sends nothing');
+  w.message.guild.members.me.permissions.add(PermissionFlagsBits.SendMessagesInThreads);
+  await send.execute(await buildInteractionFromMessage(w.message, send, `<#${THREAD}> hola`));
+  assert.equal(w.there[0]?.id, THREAD, 'a thread takes the message with Send Messages in Threads');
+  // The slash command: the option gives a channel, or only its data for a thread out of the cache.
+  w = twoChannels();
+  const slash = (picked) => ({
+    guild: w.message.guild, channel: w.channel, channelId: CHANNEL, member: w.message.member, user: { id: '2' },
+    options: { getChannel: () => picked, getString: (name) => (name === 'message' ? 'hola' : null), getAttachment: () => null },
+    deferReply: async () => {}, editReply: async (payload) => { w.replies.push(payload); },
+  });
+  await send.execute(slash({ id: OTHER, type: 0, name: 'anuncios' }));
+  assert.equal(w.there[0]?.id, OTHER, 'a channel given only as data is found');
+  // The help of the command shows the channel first.
+  assert.equal(send.data.toJSON().options[0].name, 'channel');
+
   // `!welcome setup #channel {embed}...`: the code is the message, not the name of a saved embed.
   w = world();
   w.message.guild.channels.cache.set(CHANNEL, w.channel);

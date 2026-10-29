@@ -7,7 +7,7 @@
 // The side bar has the color of the platform. Nothing here reads the network: the services give `item`, and the same builder makes the
 // answer of the real feeds, the test of the dashboard and the screenshots of the site.
 const {
-  ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, MessageFlags,
+  ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, MessageFlags,
   SectionBuilder, SeparatorBuilder, SeparatorSpacingSize, TextDisplayBuilder, ThumbnailBuilder,
 } = require('discord.js');
 const { PLATFORMS, fallbackPicture } = require('./platforms');
@@ -15,6 +15,8 @@ const emojis = require('./emojis');
 const { plainText, linkText, safeUrl, clip, MAX_DESCRIPTION, MAX_TOP } = require('./text');
 const { t } = require('../i18n');
 const { heroFor } = require('./hero');
+const { queryLabel } = require('./providers/pictures');
+const { fetchImageBuffer } = require('../utils/safeImage');
 
 /**
  * What a feed knows about one notice. `item`:
@@ -96,7 +98,11 @@ function buildFeedMessage(feed, item, { lang, test = false, hero = null } = {}) 
   const lines = [heading];
   const description = plainText(item.description, MAX_DESCRIPTION);
   if (description) lines.push(`-# ${description}`);
-  if (item.extra) lines.push(`-# ${plainText(item.extra, 160)}`);
+  // A picture says what was searched (in the language of the server) and where it was found, never the title it has on its site.
+  const extra = item.platform === 'pictures' && Array.isArray(item.query?.tags)
+    ? [t(lang, 'feeds.pictures.searching', { query: queryLabel(item.query.tags, t(lang, 'feeds.pictures.animeStyle')) }), item.source].filter(Boolean).join(' · ')
+    : item.extra;
+  if (extra) lines.push(`-# ${plainText(extra, 160)}`);
 
   const ended = item.type === 'ended';
   const card = new ContainerBuilder().setAccentColor(Number.isInteger(options.color) ? options.color : platform.color);
@@ -112,7 +118,8 @@ function buildFeedMessage(feed, item, { lang, test = false, hero = null } = {}) 
 
   // A Short is vertical: its picture is a small frame on black bars, so it goes without the big picture unless the server asks for it.
   const wantImage = options.image === true || (options.image !== false && item.type !== 'short');
-  const image = wantImage ? safeUrl(item.image) : null;
+  // `attachment://` is a picture sent with the message as a file (see `buildFeedPayload`).
+  const image = wantImage ? (ATTACHMENT.test(String(item.image ?? '')) ? item.image : safeUrl(item.image)) : null;
   if (image) {
     card.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
     card.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(image)));
@@ -138,10 +145,34 @@ function buildFeedMessage(feed, item, { lang, test = false, hero = null } = {}) 
   return { flags: MessageFlags.IsComponentsV2, components, allowedMentions: allowedMentionsOf(feed) };
 }
 
-/** The message ready to send: for a release it carries the picture drawn for it (`files`); for everything else it is `buildFeedMessage`. */
+const ATTACHMENT = /^attachment:\/\/[\w.-]{1,64}$/;
+const REHOST_MAX_BYTES = 8 * 1024 * 1024; // what a bot can send in any server
+const EXTENSIONS = [[[0x89, 0x50, 0x4e, 0x47], 'png'], [[0xff, 0xd8, 0xff], 'jpg'], [[0x47, 0x49, 0x46, 0x38], 'gif'], [[0x52, 0x49, 0x46, 0x46], 'webp']];
+
+/**
+ * A picture whose link expires or that its site refuses to show elsewhere (`item.rehost`, the feed of pictures) goes with the message as a file, so
+ * Discord never shows a broken picture for it. It is downloaded only from public addresses, and only when it is a real PNG, JPEG, GIF or WebP; when it
+ * cannot be, the link is used.
+ */
+async function rehosted(item, download) {
+  if (!item?.rehost || !/^https:\/\//i.test(String(item.image ?? ''))) return null;
+  try {
+    const buffer = await download(item.image, undefined, { maxBytes: REHOST_MAX_BYTES });
+    const ext = EXTENSIONS.find(([magic]) => magic.every((byte, i) => buffer[i] === byte))?.[1];
+    if (!ext) return null;
+    const name = `picture.${ext}`;
+    return { item: { ...item, image: `attachment://${name}` }, files: [new AttachmentBuilder(buffer, { name })] };
+  } catch {
+    return null;
+  }
+}
+
+/** The message ready to send: for a release it carries the picture drawn for it (`files`), a picture to send as a file goes as one; for everything else it is `buildFeedMessage`. */
 async function buildFeedPayload(feed, item, options = {}) {
   const hero = options.hero === undefined ? await heroFor(item) : options.hero;
-  return { ...buildFeedMessage(feed, item, { ...options, hero }), ...(hero ? { files: hero.files } : {}) };
+  const file = hero ? null : await rehosted(item, options.download ?? fetchImageBuffer);
+  const files = [...(hero?.files ?? []), ...(file?.files ?? [])];
+  return { ...buildFeedMessage(feed, file?.item ?? item, { ...options, hero }), ...(files.length ? { files } : {}) };
 }
 
 module.exports = { buildFeedMessage, buildFeedPayload, renderMessage, pingLine, allowedMentionsOf, VARIABLES };

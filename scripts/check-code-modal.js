@@ -60,6 +60,8 @@ const refused = async (fields, what) => assert.rejects(modalOf(fields), (error) 
   await refused('(cradio "id" "r" "label" "R" "options" (cslice (cslice "One" "1")))', '2 to 10');
   await refused('(cradio "id" "r" "label" "R" "options" (cslice (cslice "One" "1" "" true) (cslice "Two" "2" "" true)))', 'Only one radio');
   await refused('(cmenu "id" "m" "label" "M" "options" (cslice (cslice "A" "x") (cslice "B" "x")))', 'the value "x"');
+  await refused('(cmenu "id" "m" "label" "M" "options" (cslice (cslice "A" "a" "" true) (cslice "B" "b" "" true)))', 'at most 1 choices');
+  await refused('(cchecks "id" "k" "label" "K" "max" 1 "options" (cslice (cslice "A" "a" "" true) (cslice "B" "b" "" true)))', 'at most 1 choices');
   await refused('(cchannels "id" "c" "label" "C" "types" (cslice "sofa"))', 'kinds of channel');
   await refused('(cfile "id" "f" "label" "F" "max" 11)', 'max is from 1 to 10');
   await refused('(cusers "id" "u" "label" "U" "color" "red")', 'does not know "color"');

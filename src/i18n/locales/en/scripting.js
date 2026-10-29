@@ -164,6 +164,7 @@ module.exports = {
   'scripting.fn.channelKinds': 'The kinds of channel are: {known}',
   'scripting.fn.radioOptions': 'A group of radio buttons holds from {min} to {max} options',
   'scripting.fn.radioOneDefault': 'Only one radio button can be selected from the start',
+  'scripting.fn.formTooManyDefaults': 'A part of a form can start with at most {max} choices selected (its max)',
   'scripting.fn.checksOptions': 'A group of checkboxes holds from {min} to {max} options',
   'scripting.fn.optionSameValue': 'Two options have the value "{value}"',
   'scripting.fn.displayEmpty': 'A text of a form cannot be empty',

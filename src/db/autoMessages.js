@@ -7,14 +7,21 @@ async function get(guildId, id) {
   return data;
 }
 
+/** A timer by the number its server sees (1, 2, 3...), or null. */
+async function getByNumber(guildId, number) {
+  const { data, error } = await database.from('auto_messages').select('*').eq('guild_id', guildId).eq('number', number).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
 async function list(guildId) {
-  const { data, error } = await database.from('auto_messages').select('*').eq('guild_id', guildId).order('channel_id');
+  const { data, error } = await database.from('auto_messages').select('*').eq('guild_id', guildId).order('number');
   if (error) throw error;
   return data;
 }
 
 async function listDue() {
-  const { data, error } = await database.from('auto_messages').select('*').lte('next_run_at', new Date().toISOString()).order('next_run_at').limit(100);
+  const { data, error } = await database.from('auto_messages').select('*').lte('next_run_at', new Date().toISOString()).eq('paused', false).order('next_run_at').limit(100);
   if (error) throw error;
   return data;
 }
@@ -59,10 +66,26 @@ async function setEmbedTemplate(guildId, id, embedTemplate) {
   return data;
 }
 
+/**
+ * Changes some fields of a timer (`message`, `channel_id`, `paused`, the schedule fields with `next_run_at`...). Returns the timer, or null
+ * when it does not exist.
+ */
+async function update(guildId, id, fields) {
+  const { data, error } = await database.from('auto_messages').update(fields).eq('guild_id', guildId).eq('id', id).select('*').maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+/** Remembers why the last send failed (null clears it). */
+async function setLastError(id, text) {
+  const { error } = await database.from('auto_messages').update({ last_error: text ? String(text).slice(0, 500) : null }).eq('id', id);
+  if (error) throw error;
+}
+
 /** Remembers the message a timer just sent, so the next run can delete it. */
 async function setLastMessage(id, messageId) {
   const { error } = await database.from('auto_messages').update({ last_message_id: messageId }).eq('id', id);
   if (error) throw error;
 }
 
-module.exports = { get, list, listDue, add, remove, scheduleNext, setDeletePrevious, setEmbedTemplate, setLastMessage };
+module.exports = { get, getByNumber, list, listDue, add, remove, scheduleNext, setDeletePrevious, setEmbedTemplate, setLastMessage, update, setLastError };

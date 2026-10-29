@@ -42,7 +42,7 @@ const takeSearchTurn = (guildId, now) => takeTurn(searchesPerGuild, SEARCH_PER_M
 
 /** The text of an error of `createFeed`/`sendTest`, without the emoji the chat messages carry. */
 function errorText(lang, result, platform) {
-  return t(lang, `feeds.add.error.${result.error}`, { emoji: '', platform: result.platform ?? PLATFORMS[platform]?.name ?? '', count: result.count, premium: result.premium, account: result.account, prefix: '!' }).trim();
+  return t(lang, `feeds.add.error.${result.error}`, { emoji: '', platform: result.platform ?? PLATFORMS[platform]?.name ?? '', count: result.count, premium: result.premium, account: result.account, word: result.word ?? '', prefix: '!' }).trim();
 }
 
 function registerFeedRoutes(app, { authorize, limiter }) {
@@ -76,7 +76,9 @@ function registerFeedRoutes(app, { authorize, limiter }) {
       res.json({ ok: true, account: value });
     } catch (error) {
       if (!(error instanceof IntegrationError)) throw error;
-      const kind = ['notFound', 'badInput', 'notConfigured', 'unsupported', 'badTags'].includes(error.kind) ? error.kind : 'unavailable';
+      // A word with several meanings: the dashboard shows the choices and sends the one picked as the account (`choices[].account`).
+      if (error.kind === 'ambiguous') { res.status(409).json({ ok: false, error: 'ambiguous', word: error.word, choices: service.labelChoices(lang, error.word, error.choices), message: t(lang, 'feeds.add.error.ambiguous', { emoji: '', word: error.word }).trim() }); return; }
+      const kind = ['notFound', 'badInput', 'notConfigured', 'unsupported', 'badTags', 'noFeed'].includes(error.kind) ? error.kind : 'unavailable';
       res.status(kind === 'unavailable' ? 502 : 404).json({ ok: false, error: kind, message: t(lang, `feeds.add.error.${kind}`, { emoji: '', platform: PLATFORMS[platform].name }).trim() });
     }
   });
@@ -101,7 +103,7 @@ function registerFeedRoutes(app, { authorize, limiter }) {
       platform: body.platform, account: body.account, channelId: body.channel_id, types: body.types, message: body.message, pingRoles: body.ping_roles,
       pingEveryone: body.ping_everyone, options: body.options, filters: body.filters, createdBy: userId, lang,
     });
-    if (!result.ok) { res.status(400).json({ ok: false, error: result.error, message: errorText(lang, result, String(body.platform ?? '')) }); return; }
+    if (!result.ok) { res.status(result.error === 'ambiguous' ? 409 : 400).json({ ok: false, error: result.error, message: errorText(lang, result, String(body.platform ?? '')), ...(result.error === 'ambiguous' ? { word: result.word, choices: service.labelChoices(lang, result.word, result.choices) } : {}) }); return; }
     res.json({ ok: true, feed: result.feed, message: t(lang, 'feeds.add.ok', { emoji: '', account: result.feed.account_name, platform: PLATFORMS[result.feed.platform].name, channel: `#${guild.channels.cache.get(result.feed.channel_id)?.name ?? ''}`, id: result.feed.id, prefix: '!' }).trim() });
   });
 
@@ -115,7 +117,7 @@ function registerFeedRoutes(app, { authorize, limiter }) {
     if (body.ping_roles !== undefined) patch.pingRoles = body.ping_roles;
     if (body.ping_everyone !== undefined) patch.pingEveryone = body.ping_everyone;
     const result = await service.updateFeed(guild, id, patch);
-    if (!result.ok) { res.status(result.error === 'notFound' ? 404 : 400).json({ ok: false, error: result.error, message: result.error === 'notFound' ? t(lang, 'feeds.notFound', { emoji: '', id, prefix: '!' }).trim() : errorText(lang, result, '') }); return; }
+    if (!result.ok) { res.status(result.error === 'notFound' ? 404 : 400).json({ ok: false, error: result.error, message: result.error === 'notFound' ? t(lang, 'feeds.notFound', { emoji: '', id, prefix: '!' }).trim() : errorText(lang, result, ''), ...(result.error === 'ambiguous' ? { word: result.word, choices: service.labelChoices(lang, result.word, result.choices) } : {}) }); return; }
     res.json({ ok: true, feed: result.feed });
   });
 

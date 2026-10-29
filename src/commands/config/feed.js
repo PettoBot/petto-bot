@@ -10,14 +10,23 @@ const emojis = require('../../feeds/emojis');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { t, languageOf } = require('../../i18n');
+const feedSense = require('../../interactions/feedSense');
 
 const V2 = MessageFlags.IsComponentsV2;
 const COMMAND_PLATFORMS = ['youtube', 'twitch', 'kick', 'bluesky', 'reddit', 'steam', 'github', 'modrinth', 'npm', 'pypi', 'anilist', 'pinterest', 'rss', 'wikipedia', 'chess', 'pokemon', 'spotify', 'deezer', 'applemusic', 'mastodon', 'tumblr', 'letterboxd', 'epic', 'animals', 'randommusic', 'pictures'];
 // Discord shows 25 choices at most and there are more platforms than that, so the platform is picked from a list that filters while it is typed.
 const platformChoices = COMMAND_PLATFORMS.map((id) => ({ name: PLATFORMS[id].name, value: id }));
+/** The card of what `createFeed` answered: the feed that is followed now, or why not. */
+function resultCard(lang, platform, result) {
+  if (!result.ok) {
+    return textCard(t(lang, `feeds.add.error.${result.error}`, { emoji: EMOJI.DENY, platform: result.platform ?? PLATFORMS[platform]?.name, count: result.count, premium: result.premium, account: result.account, word: result.word ?? '', prefix: '!' }), 0xfe6465);
+  }
+  return textCard(t(lang, 'feeds.add.ok', { emoji: EMOJI.APPROVE, account: result.feed.account_name, platform: PLATFORMS[platform].name, channel: `<#${result.feed.channel_id}>`, id: result.feed.id, prefix: '!' }), 0xa5ea7a);
+}
 const idOption = (o) => o.setName('id').setDescription('The number of the feed (see the list)').setMinValue(1).setRequired(true);
 
 module.exports = {
+  resultCard,
   aliases: ['feeds', 'notify', 'notifications'],
   prefixDefaultSubcommand: 'list',
   prefixSubcommandAliases: { follow: 'add', create: 'add', delete: 'remove', rm: 'remove', del: 'remove', stop: 'pause', start: 'resume', on: 'resume', off: 'pause', msg: 'message', text: 'message', mention: 'ping', ls: 'list' }, // i18n-ignore: the words people type after the command
@@ -75,13 +84,11 @@ module.exports = {
       const platform = interaction.options.getString('platform');
       const channel = interaction.options.getChannel('channel') ?? interaction.channel;
       await interaction.deferReply({ flags: V2 });
-      const result = await service.createFeed(guild, { platform, account: interaction.options.getString('account') ?? '', channelId: channel?.id, createdBy: interaction.user.id, lang });
-      const send = (text, color) => interaction.editReply({ components: [textCard(text, color)], flags: V2 });
-      if (!result.ok) {
-        const key = `feeds.add.error.${result.error}`;
-        return send(t(lang, key, { emoji: EMOJI.DENY, platform: result.platform ?? PLATFORMS[platform]?.name, count: result.count, premium: result.premium, account: result.account, prefix: '!' }), 0xfe6465);
-      }
-      return send(t(lang, 'feeds.add.ok', { emoji: EMOJI.APPROVE, account: result.feed.account_name, platform: PLATFORMS[platform].name, channel: channelOf(result.feed), id: result.feed.id, prefix: '!' }), 0xa5ea7a);
+      const input = { platform, account: interaction.options.getString('account') ?? '', channelId: channel?.id, createdBy: interaction.user.id, lang };
+      const result = await service.createFeed(guild, input);
+      // A word of a feed of pictures with several meanings: the feed is saved when one is picked.
+      if (result.error === 'ambiguous') return interaction.editReply(feedSense.question({ lang, userId: interaction.user.id, guildId: guild.id, input, result }));
+      return interaction.editReply({ components: [resultCard(lang, platform, result)], flags: V2 });
     }
 
     const id = interaction.options.getInteger('id');

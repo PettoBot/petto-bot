@@ -1,5 +1,34 @@
 // As notas de versão do `!version` em português do Brasil: rótulo, resumo e seções de cada versão (src/utils/releases.js guarda o resto).
 module.exports = {
+  'v0.7.9-1': {
+    label: 'v0.7.9~1 · Donut: imagens que combinam, !send e RSS corrigidos',
+    summary: 'Uma correção do Donut: feeds de imagens que seguem todas as palavras e perguntam o que uma palavra quer dizer, `!send` que acha o seu canal, e feeds RSS que avisam quando um link não é um feed.',
+    sections: [
+      {
+        title: 'Temporizadores',
+        items: [
+          'Temporizadores: todo dia ou semana em um horário e fuso, numerados 1, 2, 3 em cada servidor, e `!timer run`, `edit`, `message`, `channel`, `pause` e `resume`.',
+        ],
+      },
+      {
+        title: 'Feeds de imagens',
+        items: [
+          'Toda palavra conta: `flor rosa anime` só traz desenhos de flores rosa, nunca uma montanha ou uma foto.',
+          'Uma palavra com vários significados (`rosa`: a flor, a cor ou a montanha) é perguntada com um botão para cada um antes de salvar o feed.',
+          'O feed e cada imagem dizem o que é buscado, e as imagens são conferidas antes, então nenhuma aparece quebrada.',
+        ],
+      },
+      {
+        title: 'Correções',
+        items: [
+          '`!send` acha o canal no começo ou no fim, por menção, ID, link ou nome, e avisa quando ele não existe.',
+          'Um feed RSS que aponta para uma página web não é salvo como um feed vazio: o Petto procura o feed de verdade ou avisa que não há.',
+          'A DM de entrada mantém só os botões de link, e um formulário do Petto Code com opções marcadas demais é avisado como um erro.',
+          'Um temporizador com um embed salvo V2 volta a publicar (o texto dele não quebra mais a mensagem), e um envio que falha aparece no `!timer view` e no dashboard.',
+        ],
+      },
+    ],
+  },
   'v0.7.9': {
     label: 'v0.7.9 · Donut: feeds para todos, !send, botões com ação e buscas novas',
     summary: 'Feeds abertos a todos os servidores, `!send`, botões que fazem coisas, formulários com todas as partes do Discord, buscas novas, `!stats`, um cartão de subida de nível novo e um banco de dados mais leve.',

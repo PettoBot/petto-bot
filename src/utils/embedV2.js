@@ -110,7 +110,7 @@ function makeBuilder(ctx) {
     const label = (await text(raw?.label)).replace(/\*\*/g, '').trim().slice(0, LIMITS.buttonLabel);
     const emoji = emojiOf(raw?.emoji);
     if (!label && !emoji) return null;
-    const customId = encodeActions(raw.actions, ctx?.guild, actionButtons);
+    const customId = encodeActions(raw.actions, ctx?.channel?.isDMBased?.() ? null : ctx?.guild, actionButtons); // none in a DM: it is answered in a server
     if (!customId) return null;
     actionButtons += 1;
     const named = ACTION_STYLES[String(raw.style ?? '').toLowerCase()];

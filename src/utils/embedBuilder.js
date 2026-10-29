@@ -267,7 +267,8 @@ async function build(data, ctx = {}) {
   return {
     content: content ? await resolve(content, ctx) : undefined,
     embeds: builtEmbeds,
-    components: buildButtonRows(buttons, ctx.guild),
+    // A button with actions is answered in a server: a message for a DM (the join DM) leaves it out.
+    components: buildButtonRows(buttons, ctx.channel?.isDMBased?.() ? null : ctx.guild),
     files,
   };
 }

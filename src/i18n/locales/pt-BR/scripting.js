@@ -164,6 +164,7 @@ module.exports = {
   'scripting.fn.channelKinds': 'Os tipos de canal são: {known}',
   'scripting.fn.radioOptions': 'Um grupo de botões de opção tem de {min} a {max} opções',
   'scripting.fn.radioOneDefault': 'Só um botão de opção pode vir marcado',
+  'scripting.fn.formTooManyDefaults': 'Uma parte de um formulário pode vir com no máximo {max} opções marcadas (o seu max)',
   'scripting.fn.checksOptions': 'Um grupo de caixas tem de {min} a {max} opções',
   'scripting.fn.optionSameValue': 'Duas opções têm o valor "{value}"',
   'scripting.fn.displayEmpty': 'Um texto de um formulário não pode estar vazio',

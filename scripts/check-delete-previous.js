@@ -9,6 +9,7 @@ function stub(relative, exports) {
 }
 
 const stored = [];
+const lastErrors = [];
 const rows = [];
 stub('src/config.js', { jobConcurrency: 1 });
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
@@ -17,6 +18,7 @@ stub('src/db/autoMessages.js', {
   listDue: async () => rows,
   scheduleNext: async () => {},
   setLastMessage: async (id, messageId) => { stored.push([id, messageId]); },
+  setLastError: async (id, text) => { lastErrors.push([id, text]); },
 });
 let sendCount = 0;
 stub('src/utils/senderIdentity.js', { sendAs: async (channel, feature, payload) => channel.send(payload) });
@@ -81,6 +83,16 @@ function fakeChannel(id = 'c1') {
   await processDueAutoMessages(client);
   assert.deepEqual(channel.sent.at(-1).embeds, [{ title: 'T' }], 'the timer sends its embed');
   assert.deepEqual(reacted.at(-1)[1], ['🌸'], 'and puts the reactions the embed asks for');
+
+  // A send Discord refuses is not swallowed: it is kept in last_error (and logged), the timer still moves on, and a send that works clears it.
+  const refusing = fakeChannel('c3');
+  refusing.send = async () => { const error = new Error('Invalid Form Body'); error.code = 50035; throw error; };
+  rows.splice(0, rows.length, { id: 12, guild_id: 'g', channel_id: 'c3', interval_ms: 600000, message: 'x', next_run_at: 'x', delete_previous: false });
+  await processDueAutoMessages({ channels: { fetch: async () => refusing } });
+  assert.deepEqual(lastErrors.at(-1), [12, 'Invalid Form Body (50035)']);
+  const { sendTimer } = require('../src/jobs/autoMessageJob');
+  assert.equal((await sendTimer(client, { ...rows[0], channel_id: 'c1', last_error: 'Invalid Form Body (50035)' })).ok, true);
+  assert.deepEqual(lastErrors.at(-1), [12, null], 'a send that works clears the error');
 
   // Autoresponders.
   stub('src/db/autoResponders.js', {});

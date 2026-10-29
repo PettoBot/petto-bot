@@ -9,12 +9,21 @@ const { buildFeedPayload } = require('./card');
 const { MAX_TOP } = require('./text');
 const { IntegrationError } = require('../utils/integrations');
 const logger = require('../utils/logger');
+const { t } = require('../i18n');
 
 const SNOWFLAKE = /^\d{15,25}$/;
 const MAX_KEYWORDS = 10;
 
 /** The permissions Petto needs in a channel to post a feed there. */
 const NEEDED = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages];
+
+/**
+ * The meanings of a word a feed of pictures asked about, to show: `[{ key, label, account }]`. `account` is what to send again (as the account of the
+ * feed, or its `every`) to follow that meaning.
+ */
+function labelChoices(lang, word, choices) {
+  return (choices ?? []).map(({ key, account }) => ({ key, account, label: t(lang, `feeds.pictures.sense.${key}`, { word }) }));
+}
 
 /** Why Petto cannot post in a channel, or null when it can. */
 function channelProblem(guild, channel) {
@@ -64,7 +73,8 @@ async function createFeed(guild, input) {
   try {
     account = await PROVIDERS[platform].resolve(String(input.account ?? '').trim(), { lang: input.lang });
   } catch (error) {
-    if (error instanceof IntegrationError) return { ok: false, error: error.kind === 'badInput' && PROVIDERS[platform].noAccount ? 'badPace' : error.kind === 'notFound' || error.kind === 'badInput' || error.kind === 'notConfigured' || error.kind === 'unsupported' || error.kind === 'badTags' ? error.kind : 'unavailable' };
+    if (error instanceof IntegrationError && error.kind === 'ambiguous') return { ok: false, error: 'ambiguous', word: error.word, choices: error.choices }; // which meaning of a word (see providers/pictures.js)
+    if (error instanceof IntegrationError) return { ok: false, error: error.kind === 'badInput' && PROVIDERS[platform].noAccount ? 'badPace' : error.kind === 'notFound' || error.kind === 'badInput' || error.kind === 'notConfigured' || error.kind === 'unsupported' || error.kind === 'badTags' || error.kind === 'noFeed' ? error.kind : 'unavailable' };
     throw error;
   }
 
@@ -115,6 +125,7 @@ async function updateFeed(guild, id, patch) {
     try {
       account = await PROVIDERS[current.platform].resolve(String(patch.every).trim());
     } catch (error) {
+      if (error instanceof IntegrationError && error.kind === 'ambiguous') return { ok: false, error: 'ambiguous', word: error.word, choices: error.choices };
       if (error instanceof IntegrationError) return { ok: false, error: error.kind === 'badInput' ? 'badPace' : error.kind === 'badTags' ? 'badTags' : 'unavailable' };
       throw error;
     }
@@ -161,4 +172,4 @@ async function sendTest(guild, feed, lang) {
   return { ok: true, channel, message };
 }
 
-module.exports = { createFeed, updateFeed, sendTest, sampleItem, channelProblem, cleanOptions, cleanTypes, NEEDED };
+module.exports = { createFeed, updateFeed, sendTest, sampleItem, channelProblem, cleanOptions, cleanTypes, labelChoices, NEEDED };
