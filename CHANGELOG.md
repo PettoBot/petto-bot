@@ -4,6 +4,8 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+## [0.7.9] — 2026-10-29 · Donut
+
 ### Added
 
 - **Buttons with actions in Components V2 designs.** A button of a V2 design (in a row of buttons or as the button of a section) can have the same actions as in an embed code: give, take or toggle a role, or show a saved embed (privately, in the channel or in the DMs). It has a color (blurple, green, grey or red) and keeps what it does in its id, so nothing is stored. A button whose role does not exist, or a design sent where there is no server, leaves it out.

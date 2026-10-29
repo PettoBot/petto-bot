@@ -1,5 +1,50 @@
 // As notas de versão do `!version` em português do Brasil: rótulo, resumo e seções de cada versão (src/utils/releases.js guarda o resto).
 module.exports = {
+  'v0.7.9': {
+    label: 'v0.7.9 · Donut: feeds para todos, !send, botões com ação e buscas novas',
+    summary: 'Feeds abertos a todos os servidores, `!send`, botões que fazem coisas, formulários com todas as partes do Discord, buscas novas, `!stats`, um cartão de subida de nível novo e um banco de dados mais leve.',
+    sections: [
+      {
+        title: 'Feeds',
+        items: [
+          'Os feeds estão abertos a todos os servidores. `!feed add` segue YouTube, Twitch, Kick, Bluesky, Reddit, Steam, GitHub, npm, PyPI, AniList, Pinterest, Spotify, Deezer, Apple Music, Mastodon, Tumblr, Letterboxd, os jogos grátis da Epic e qualquer blog, buscando enquanto você digita. O Premium segue 25 contas de cada plataforma (Free, 5).',
+          'Feeds automáticos com ritmo próprio, de cada 15 minutos a uma vez por dia: um único feed de **Animais**, imagens por etiquetas (`15m anime roses`), uma música aleatória dos charts do Deezer, Apple Music e Spotify, Pokémon, Wikipédia e Chess.com.',
+          'O YouTube avisa quando um canal publica, então um vídeo sai em segundos, e um Short é publicado como player. Os avisos de live da Kick saem em um minuto, e uma live encerrada mantém o verde com um botão de reprise.',
+        ],
+      },
+      {
+        title: 'Códigos de embed e Petto Code',
+        items: [
+          '`!send` envia uma mensagem como o Petto, e `!welcome`, `!leave`, `!boost` e `!dmonjoin` podem usar um código de embed como mensagem.',
+          'Botões que fazem coisas, em códigos de embed, designs de Components V2 e no editor do dashboard: dão, tiram ou alternam um cargo, ou mostram um embed salvo (em privado, no canal ou na mensagem direta).',
+          'Os formulários do Petto Code (`cmodal`) podem ter todas as partes do Discord: menus, seletores de membros, cargos e canais, envio de arquivos, botões de opção e caixas de seleção.',
+          '`!steal` e `!jumbo` encontram os emojis de um cartão de Components V2.',
+        ],
+      },
+      {
+        title: 'Buscas, estatísticas e cartões',
+        items: [
+          'Buscas em outros serviços: `!minecraft`, `!github`, `!roblox`, `!steam`, `!twitch`, `!youtube`, `!lastfm` e mais, com formas curtas de escrevê-las (`!mu Notch`).',
+          '`!stats` analisa um servidor só com números (nunca o que foi escrito), com um painel de privacidade.',
+          'Um cartão de subida de nível no estilo do Petto, `!userinfo` e `!serverinfo` redesenhados, `!usercosmetics`, e cartões sem cor exceto para dizer sim ou não.',
+        ],
+      },
+      {
+        title: 'Servidores e ajustes',
+        items: [
+          'O XP de voz não precisa mais de uma segunda pessoa por padrão, e há dois novos limites de XP em `/level rules`.',
+          'O que o Petto guardou de um servidor que saiu é apagado 3 dias depois, e os dados pesados podem viver em um segundo banco de dados.',
+          'A configuração de um servidor novo nunca é colocada em um canal público. A música continua desligada por enquanto.',
+        ],
+      },
+      {
+        title: 'Correções',
+        items: [
+          'A página de verificação abre no idioma do servidor, `!massunban` para quando o servidor não existe mais, as menções de AFK são apagadas, e a lista de links maliciosos do URLhaus volta a ser lida.',
+        ],
+      },
+    ],
+  },
   'v0.7.8': {
     label: 'v0.7.8 · Mochi: IA para tickets, canais de mídia, quadros e ferramentas novas',
     summary: 'Um assistente de IA para tickets (beta), tickets ao vivo e transcrições melhores, canais de mídia, um clownboard e quadros com vários emojis, temporizadores com embed, comandos novos (páginas, citações, efeitos de imagem), mais controle sobre as apelações e um dashboard cujos cartões mostram o que o bot envia.',
