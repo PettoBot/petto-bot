@@ -66,6 +66,8 @@ guild.roles.cache.find = (fn) => [...guild.roles.cache.values()].find(fn);
   assert.notEqual(buttons[0].data.custom_id, buttons[1].data.custom_id, 'two buttons of a message never share an id');
   assert.equal(buttons[2].data.style, ButtonStyle.Link);
   const noGuild = await build({ content: '', embeds: [], buttons: [parsed.buttons] });
+  const inDm = await build({ content: '', embeds: [], buttons: [parsed.buttons.map((b) => ({ ...b }))] }, { guild, channel: { isDMBased: () => true } });
+  assert.equal(inDm.components[0].components.length, 1, 'a message for a DM (the join DM) keeps only the link button: the others are answered in a server');
   assert.equal(noGuild.components[0].components.length, 1, 'without a server only the link button is left');
 
   // A click: a toggled role is taken when the member has it, given when not; give and take only do what is needed.
