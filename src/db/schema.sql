@@ -2016,6 +2016,21 @@ alter table auto_messages add column if not exists delete_previous boolean not n
 alter table auto_messages add column if not exists last_message_id text;
 -- A timer can send a saved embed (also a Components V2 design) instead of, or with, its text.
 alter table auto_messages add column if not exists embed_template text;
+-- A timer can also post at a time of day instead of every N minutes: every day, or every week on one weekday (0 = Sunday), at `at_time`
+-- ('HH:MM', 24-hour) in `timezone` (an IANA name like 'America/Bogota', 'UTC', or an offset like 'UTC-5'). Scheduled timers keep
+-- `interval_ms` at a day or a week, and the bot works out `next_run_at` from the schedule after each run (src/utils/timerSchedule.js).
+alter table auto_messages add column if not exists schedule text not null default 'interval';
+alter table auto_messages add column if not exists at_time text;
+alter table auto_messages add column if not exists timezone text not null default 'UTC';
+alter table auto_messages add column if not exists weekday smallint;
+alter table auto_messages drop constraint if exists auto_messages_schedule_check;
+alter table auto_messages add constraint auto_messages_schedule_check check (
+  schedule in ('interval', 'daily', 'weekly')
+  and (schedule = 'interval' or at_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$')
+  and (schedule <> 'weekly' or weekday between 0 and 6)
+  and (weekday is null or weekday between 0 and 6)
+  and char_length(timezone) between 1 and 64
+);
 
 alter table auto_messages enable row level security;
 
