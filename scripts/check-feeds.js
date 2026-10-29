@@ -39,6 +39,7 @@ const allText = (message) => JSON.stringify(json(message.components));
   assert.ok(text.clip('word '.repeat(100), 50).length <= 50);
 
   // --- the card ------------------------------------------------------------------------------------------------------------------------------
+  const cardOf = (list) => list.find((part) => part.type === 17) ?? list[0];
   const base = { platform: 'youtube', type: 'video', title: 'A [new] video', url: 'https://youtu.be/x', description: 'What it is about', image: 'https://i.ytimg.com/vi/x/hq.jpg', avatar: 'https://yt3.example/a.jpg', author: 'Channel', publishedAt: Date.now() };
   const feed = { message: 'New from {feed.author}: {feed.url}', ping_roles: ['223456789012345678'], ping_everyone: false, options: {} };
   let message = card.buildFeedMessage(feed, base, { lang: 'en' });
@@ -62,38 +63,49 @@ const allText = (message) => JSON.stringify(json(message.components));
 
   message = card.buildFeedMessage({ message: '', ping_roles: [], options: {} }, { ...base, avatar: null }, { lang: 'es' });
   parts = json(message.components);
-  assert.equal(parts[0].type, 17, 'no words and no ping: only the card');
-  assert.ok(parts[0].components[0].accessory.media.url.endsWith('/youtube.png'), 'an account with no picture shows the one of the platform');
-  const short = json(card.buildFeedMessage({ message: '', options: { player: false } }, { ...base, type: 'short' }, { lang: 'en' }).components)[0];
+  assert.equal(parts[0].type, 10, 'no words of its own: the account says who posted what');
+  assert.match(parts[0].content, /^¡Hola a todos! \*\*Channel\*\* acaba de subir un video nuevo\.$/);
+  assert.equal(parts[1].type, 17);
+  assert.ok(parts[1].components[0].accessory.media.url.endsWith('/youtube.png'), 'an account with no picture shows the one of the platform');
+  const own = json(card.buildFeedMessage({ message: 'Look!', ping_roles: [], options: {} }, base, { lang: 'en' }).components);
+  assert.equal(own[0].content, 'Look!', 'a feed with words of its own keeps them, with nothing added');
+  const pinged = json(card.buildFeedMessage({ message: '', ping_roles: ['123456789012345678'], options: {} }, base, { lang: 'en' }).components);
+  assert.equal(pinged[0].content, '<@&123456789012345678> Hey everyone! **Channel** just uploaded a new video.', 'the ping goes first');
+  for (const platform of ['pictures', 'animals', 'pokemon', 'epic', 'rss']) {
+    assert.equal(json(card.buildFeedMessage({ message: '', ping_roles: [], options: {} }, { ...base, platform, type: 'photo' }, { lang: 'en' }).components)[0].type, 17, `${platform}: only the card`);
+  }
+  assert.equal(json(card.buildFeedMessage({ message: '', ping_roles: [], options: {} }, { ...base, platform: 'twitch', type: 'ended' }, { lang: 'en' }).components)[0].type, 17, 'a stream that ended is not announced as live');
+  assert.match(json(card.buildFeedMessage({ message: '', ping_roles: [], options: {} }, { ...base, platform: 'twitch', type: 'live' }, { lang: 'en' }).components)[0].content, /^Hey everyone! \*\*Channel\*\* is live now\.$/);
+  const short = json(card.buildFeedMessage({ message: '', options: { player: false } }, { ...base, type: 'short' }, { lang: 'en' }).components).find((part) => part.type === 17);
   assert.ok(!short.components.some((child) => child.type === 12), 'a Short goes without the big picture');
-  const shortWith = json(card.buildFeedMessage({ message: '', options: { image: true, player: false } }, { ...base, type: 'short' }, { lang: 'en' }).components)[0];
+  const shortWith = json(card.buildFeedMessage({ message: '', options: { image: true, player: false } }, { ...base, type: 'short' }, { lang: 'en' }).components).find((part) => part.type === 17);
   assert.ok(shortWith.components.some((child) => child.type === 12), 'unless the server asks for it');
-  const noImage = json(card.buildFeedMessage({ message: '', options: { image: false } }, base, { lang: 'en' }).components)[0];
+  const noImage = json(card.buildFeedMessage({ message: '', options: { image: false } }, base, { lang: 'en' }).components).find((part) => part.type === 17);
   assert.ok(!noImage.components.some((child) => child.type === 12));
   // The player: a plain message with the link (Discord draws the video), only for the videos and Shorts of YouTube.
   const player = card.buildFeedMessage({ message: 'New one!', ping_roles: [], options: { player: true } }, { ...base, type: 'short' }, { lang: 'en' });
   assert.equal(player.content, 'New one!\nhttps://youtu.be/x');
   assert.ok(!player.components && !player.flags, 'no card: Discord only draws the video for a plain message');
-  assert.equal(card.buildFeedMessage({ message: '', options: {} }, { ...base, type: 'short' }, { lang: 'en' }).content, 'https://youtu.be/x', 'a Short is the player by default');
+  assert.equal(card.buildFeedMessage({ message: '', options: {} }, { ...base, type: 'short' }, { lang: 'en' }).content, 'Hey everyone! **Channel** just posted a new Short.\nhttps://youtu.be/x', 'a Short is the player by default, with the words of an account without its own');
   assert.ok(card.buildFeedMessage({ message: '', options: { player: false } }, { ...base, type: 'short' }, { lang: 'en' }).components, 'unless the feed says no');
   assert.ok(card.buildFeedMessage({ message: '', options: {} }, { ...base, type: 'video' }, { lang: 'en' }).components, 'a video keeps its card by default');
   assert.ok(card.buildFeedMessage({ message: '', options: { player: true } }, { ...base, type: 'live' }, { lang: 'en' }).components, 'a live stream keeps its card');
   assert.ok(card.buildFeedMessage({ message: '', options: { player: true } }, { ...base, platform: 'twitch', type: 'live' }, { lang: 'en' }).components, 'and so does everything that is not a video of YouTube');
   assert.deepEqual(require('../src/feeds/service').cleanOptions({ player: true, image: 'x', other: 1 }), { player: true }, 'the option is kept, nothing else');
   // Only a title: no section with the picture of the account (it would leave an empty space under one line); with a description the section stays.
-  const bare = json(card.buildFeedMessage({ message: '', options: {} }, { ...base, description: '' }, { lang: 'en' }).components)[0];
+  const bare = cardOf(json(card.buildFeedMessage({ message: '', options: {} }, { ...base, description: '' }, { lang: 'en' }).components));
   assert.deepEqual([bare.components[0].type, bare.components.some((child) => child.type === 9)], [10, false], 'a title alone is plain text');
-  const described = json(card.buildFeedMessage({ message: '', options: {} }, base, { lang: 'en' }).components)[0];
+  const described = cardOf(json(card.buildFeedMessage({ message: '', options: {} }, base, { lang: 'en' }).components));
   assert.equal(described.components[0].type, 9, 'with a description it is a section with the picture of the account');
-  const withButton = json(card.buildFeedMessage({ message: '', options: { button: true } }, base, { lang: 'en' }).components)[0];
+  const withButton = cardOf(json(card.buildFeedMessage({ message: '', options: { button: true } }, base, { lang: 'en' }).components));
   assert.equal(withButton.components.at(-1).components[0].url, 'https://youtu.be/x');
   assert.equal(withButton.components.at(-1).components[0].label, 'Watch on YouTube');
   assert.ok(withButton.components.at(-1).components[0].emoji, 'the button carries the icon of the platform');
-  const byDefault = json(card.buildFeedMessage({ message: '', options: {} }, base, { lang: 'en' }).components)[0];
+  const byDefault = cardOf(json(card.buildFeedMessage({ message: '', options: {} }, base, { lang: 'en' }).components));
   assert.equal(byDefault.components.at(-1).components[0].url, 'https://youtu.be/x', 'the button is on unless the server turned it off');
-  const buttonOff = json(card.buildFeedMessage({ message: '', options: { button: false } }, base, { lang: 'en' }).components)[0];
+  const buttonOff = cardOf(json(card.buildFeedMessage({ message: '', options: { button: false } }, base, { lang: 'en' }).components));
   assert.notEqual(buttonOff.components.at(-1).type, 1, 'and it can be turned off');
-  const colored = json(card.buildFeedMessage({ message: '', options: { color: 0x123456 } }, base, { lang: 'en' }).components)[0];
+  const colored = cardOf(json(card.buildFeedMessage({ message: '', options: { color: 0x123456 } }, base, { lang: 'en' }).components));
   assert.equal(colored.accent_color, 0x123456);
   const everyone = card.buildFeedMessage({ message: '', ping_everyone: true, ping_roles: [] }, base, { lang: 'en' });
   assert.deepEqual(everyone.allowedMentions.parse, ['users', 'roles', 'everyone']);
@@ -103,13 +115,13 @@ const allText = (message) => JSON.stringify(json(message.components));
   assert.equal(text.linkText('Top 1️⃣0 songs'), 'Top 10 songs', 'a keycap keeps its digit');
   const tested = json(card.buildFeedMessage({ message: '', options: {} }, base, { lang: 'en', test: true }).components);
   assert.ok(tested[0].content.includes(t('en', 'feeds.test.badge')));
-  const ended = json(card.buildFeedMessage({ message: '', options: {} }, { ...base, type: 'ended', vodUrl: 'https://youtu.be/x', authorUrl: 'https://youtube.com/channel/UCx' }, { lang: 'en' }).components)[0];
+  const ended = cardOf(json(card.buildFeedMessage({ message: '', options: {} }, { ...base, type: 'ended', vodUrl: 'https://youtu.be/x', authorUrl: 'https://youtube.com/channel/UCx' }, { lang: 'en' }).components));
   assert.equal(ended.accent_color, 0xff0000, 'a stream that is over keeps the color of its platform');
   assert.deepEqual(ended.components.at(-1).components.map((button) => button.label), ['Open the channel', 'Watch the replay']);
   for (const lang of ['en', 'es', 'pt-BR']) for (const type of TYPES) assert.ok(!t(lang, `feeds.type.${type}`).startsWith('feeds.type.'), `${type} has a label in ${lang}`);
-  for (const platform of PLATFORM_IDS) assert.ok(card.buildFeedMessage({ message: '', options: {} }, { ...base, platform }, { lang: 'en' }).components.length === 1);
+  for (const platform of PLATFORM_IDS) assert.ok(json(card.buildFeedMessage({ message: '', options: {} }, { ...base, platform }, { lang: 'en' }).components).at(-1).type === 17, `${platform} ends with its card`);
   // A hostile text cannot make a link or a mention out of the card.
-  const hostile = json(card.buildFeedMessage({ message: '', options: {} }, { ...base, title: '](https://evil.test) @everyone', url: 'javascript:alert(1)', description: '@everyone <@123456789012345678>', image: 'javascript:1' }, { lang: 'en' }).components)[0];
+  const hostile = cardOf(json(card.buildFeedMessage({ message: '', options: {} }, { ...base, title: '](https://evil.test) @everyone', url: 'javascript:alert(1)', description: '@everyone <@123456789012345678>', image: 'javascript:1' }, { lang: 'en' }).components));
   assert.ok(!JSON.stringify(hostile).includes('(javascript:'));
   assert.ok(JSON.stringify(hostile).includes('@\u200beveryone') && !/@everyone/.test(JSON.stringify(hostile)), 'a mention in the text of a service is made harmless');
   assert.ok(!hostile.components.some((child) => child.type === 12), 'a picture that is not a web link is not shown');
@@ -495,8 +507,9 @@ const allText = (message) => JSON.stringify(json(message.components));
     assert.equal(await heroFor({ type: 'release', image: null, title: 'No cover' }), null, 'and only when it has a cover');
     const release = { platform: 'deezer', type: 'release', id: '9', title: 'An album', url: 'https://www.deezer.com/album/9', image: 'https://cdn.dz/a.jpg', author: 'An artist', extra: 'ALBUM', publishedAt: Date.now() };
     const withHero = JSON.parse(JSON.stringify(card.buildFeedMessage({ message: '', options: {}, ping_roles: [] }, release, { lang: 'en', hero: { name: 'release.png' } }).components));
-    assert.equal(withHero[0].components[0].items[0].media.url, 'attachment://release.png', 'the picture of the release is the head of the card');
-    assert.equal(withHero[0].components.at(-1).components[0].label, 'Listen on Deezer', 'and the button opens the release');
+    const heroCard = withHero.find((part) => part.type === 17);
+    assert.equal(heroCard.components[0].items[0].media.url, 'attachment://release.png', 'the picture of the release is the head of the card');
+    assert.equal(heroCard.components.at(-1).components[0].label, 'Listen on Deezer', 'and the button opens the release');
     const plain = JSON.stringify(card.buildFeedMessage({ message: '', options: {}, ping_roles: [] }, release, { lang: 'en' }).components);
     assert.ok(plain.includes('https://cdn.dz/a.jpg') && !plain.includes('attachment://'), 'without the picture it is the ordinary card with the cover');
   }
