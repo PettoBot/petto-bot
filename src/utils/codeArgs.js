@@ -125,6 +125,14 @@ function editMessage(text) {
   return { code: body };
 }
 
+/** `!send [#channel] the message`: the channel when the text starts with one (a mention or an ID), and the message with its line breaks. */
+function sendMessage(text) {
+  const body = String(text ?? '').trim();
+  const channel = /^(?:<#(\d{15,25})>|(\d{15,25}))(?:\s+|$)/.exec(body);
+  if (channel) return { channel: channel[1] ?? channel[2], message: body.slice(channel[0].length).trim() };
+  return { message: body };
+}
+
 /** `action rest of the text`, keeping the line breaks of the rest (for `quests method text ...` and `quests thread name ...`). */
 function actionAndText(text) {
   const match = /^(\S+)(?:\s+([\s\S]*))?$/.exec(String(text ?? '').trim());
@@ -132,4 +140,4 @@ function actionAndText(text) {
   return match[2]?.trim() ? { action: match[1], value: match[2].trim() } : { action: match[1] };
 }
 
-module.exports = { actionAndText, dropTokens, takeFlags, splitTrigger, autoresponderAdd, autoresponderEdit, messageTarget, editMessage };
+module.exports = { actionAndText, dropTokens, takeFlags, splitTrigger, autoresponderAdd, autoresponderEdit, messageTarget, editMessage, sendMessage };

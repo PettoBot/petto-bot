@@ -4,6 +4,7 @@ module.exports = {
   'welcome.common.noEmbed': 'No embed named `{name}` found. Create it with `{command}` first.',
   'welcome.common.embed': '**Embed:** `{name}`',
   'welcome.common.message': '**Message:** {message}',
+  'welcome.common.code': '**Message:** an embed code ({embeds} embeds, {buttons} buttons)',
   'welcome.common.nothingYet': '{emoji}  No message or embed set yet — nothing will send until you add one.',
   'welcome.common.notSet': 'Not set',
   'welcome.common.none.embed': 'None',

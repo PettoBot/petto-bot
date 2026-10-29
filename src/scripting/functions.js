@@ -12,7 +12,7 @@ const COMPLEX = new WeakSet(); // the maps made by complexMessage
 const BUTTONS = new WeakSet(); // the maps made by cbutton
 const SELECTS = new WeakSet(); // the maps made by cselect
 const ROWS = new WeakSet(); // the maps made by crow
-const TEXT_INPUTS = new WeakSet(); // the maps made by ctext
+const TEXT_INPUTS = new WeakSet(); // the maps made by ctext and the other functions that make a part of a form (cmenu, cusers, croles...)
 const MODALS = new WeakSet(); // the maps made by cmodal
 const SNOWFLAKE = /^\d{15,22}$/;
 const MAX_FIELD_NAME = 256;
@@ -327,7 +327,7 @@ const FIELD_ID_SHAPE = /^[A-Za-z0-9_]{1,20}$/;
 
 def('ctext', 2, 14, (env, ...pairs) => {
   const map = flatPairs(pairs, 'ctext');
-  const known = ['id', 'label', 'style', 'placeholder', 'value', 'required', 'min', 'max'];
+  const known = ['id', 'label', 'description', 'style', 'placeholder', 'value', 'required', 'min', 'max'];
   for (const key of map.keys()) if (!known.includes(key)) fail('unknownKey', { name: 'ctext', key, known: known.join(', ') });
   const id = map.get('id');
   if (typeof id !== 'string' || !FIELD_ID_SHAPE.test(id)) fail('fieldId');
@@ -336,12 +336,131 @@ def('ctext', 2, 14, (env, ...pairs) => {
   const styleName = map.has('style') ? text(map.get('style')).toLowerCase() : 'short';
   if (!['short', 'paragraph'].includes(styleName)) fail('fieldStyle');
   const field = { type: 'textInput', id, label, style: styleName === 'paragraph' ? 2 : 1, required: map.has('required') ? isTruthy(map.get('required')) : true };
+  if (map.get('description') !== undefined && map.get('description') !== null) field.description = limitText(map.get('description'), 100, 'fieldDescription');
   if (map.get('placeholder') !== undefined && map.get('placeholder') !== null) field.placeholder = limitText(map.get('placeholder'), 100, 'placeholder');
   if (map.get('value') !== undefined && map.get('value') !== null) field.value = limitText(map.get('value'), 4000, 'value');
   const min = map.has('min') ? Math.trunc(num(map.get('min'))) : 0;
   const max = map.has('max') ? Math.trunc(num(map.get('max'))) : 4000;
   if (min < 0 || max < 1 || max > 4000 || min > max) fail('fieldMinMax');
   field.min = min; field.max = max;
+  TEXT_INPUTS.add(field);
+  return field;
+});
+
+// The other parts a form can have, each with a label (and a description) above it: a menu of choices, a pick of users, roles, mentions
+// or channels, a file to upload, a group of radio buttons or of checkboxes, one checkbox, and a text that only informs.
+const FORM_SELECT_KEYS = ['id', 'label', 'description', 'placeholder', 'min', 'max', 'required'];
+const CHANNEL_KINDS = { text: [0], voice: [2], category: [4], announcement: [5], stage: [13], forum: [15], media: [16], thread: [10, 11, 12] };
+
+/** What every part of a form has: the id, the label and its description, and whether it is required. */
+function formPart(map, name, known, type) {
+  for (const key of map.keys()) if (!known.includes(key)) fail('unknownKey', { name, key, known: known.join(', ') });
+  const id = map.get('id');
+  if (typeof id !== 'string' || !FIELD_ID_SHAPE.test(id)) fail('fieldId');
+  const label = limitText(map.get('label'), 45, 'fieldLabel');
+  if (!label) fail('fieldLabel');
+  const field = { type, id, label, required: map.has('required') ? isTruthy(map.get('required')) : true };
+  if (map.get('description') !== undefined && map.get('description') !== null) field.description = limitText(map.get('description'), 100, 'fieldDescription');
+  return field;
+}
+
+/** The min and the max of a part that picks several things: min from 0 (1 when it is required), max from 1 to `top`. */
+function pickRange(map, field, top, fallbackMax = 1) {
+  const min = map.has('min') ? Math.trunc(num(map.get('min'))) : (field.required ? 1 : 0);
+  const max = map.has('max') ? Math.trunc(num(map.get('max'))) : fallbackMax;
+  if (min < 0 || max < 1 || max > top || min > max) fail('formPickRange', { top });
+  // Discord does not take a part that is required and may be left empty.
+  field.min = field.required ? Math.max(min, 1) : min; field.max = max;
+}
+
+/** The options of a menu, of radio buttons or of checkboxes: each one is (cslice "label" "value" "description" selected). */
+function formOptions(value, { min, max, key }) {
+  const rows = list(value, what('aListOfOptions'));
+  if (rows.length < min || rows.length > max) fail(key, { min, max });
+  const seen = new Set();
+  let selected = 0;
+  const options = rows.map((row, n) => {
+    const parts = list(row, what('optionAsCslice', { n: n + 1 }));
+    if (parts.length < 2) fail('optionNeedsLabel', { n: n + 1 });
+    const option = { label: limitText(parts[0], 100, 'optionLabel') || '\u200b', value: limitText(parts[1], 100, 'optionValue') };
+    if (!option.value) fail('optionNeedsValue', { n: n + 1 });
+    if (seen.has(option.value)) fail('optionSameValue', { value: option.value });
+    seen.add(option.value);
+    if (parts[2] !== undefined && parts[2] !== null && parts[2] !== '') option.description = limitText(parts[2], 100, 'optionDescription');
+    if (parts[3] !== undefined && isTruthy(parts[3])) { option.default = true; selected += 1; }
+    return option;
+  });
+  return { options, selected };
+}
+
+def('cmenu', 3, 16, (env, ...pairs) => {
+  const map = flatPairs(pairs, 'cmenu');
+  const field = formPart(map, 'cmenu', [...FORM_SELECT_KEYS, 'options'], 'menu');
+  const { options } = formOptions(map.get('options'), { min: 1, max: 25, key: 'menuOptions' });
+  field.options = options;
+  pickRange(map, field, options.length);
+  if (map.get('placeholder') !== undefined && map.get('placeholder') !== null) field.placeholder = limitText(map.get('placeholder'), 150, 'placeholder');
+  TEXT_INPUTS.add(field);
+  return field;
+});
+
+for (const [name, type] of [['cusers', 'users'], ['croles', 'roles'], ['cmentions', 'mentions'], ['cchannels', 'channels']]) {
+  def(name, 2, 16, (env, ...pairs) => {
+    const map = flatPairs(pairs, name);
+    const field = formPart(map, name, type === 'channels' ? [...FORM_SELECT_KEYS, 'types'] : FORM_SELECT_KEYS, type);
+    pickRange(map, field, 25);
+    if (map.get('placeholder') !== undefined && map.get('placeholder') !== null) field.placeholder = limitText(map.get('placeholder'), 150, 'placeholder');
+    if (type === 'channels' && map.get('types') !== undefined && map.get('types') !== null) {
+      const names = list(map.get('types'), what('aListOfChannelKinds')).map((kind) => text(kind).toLowerCase());
+      if (!names.length || names.some((kind) => !(kind in CHANNEL_KINDS))) fail('channelKinds', { known: Object.keys(CHANNEL_KINDS).join(', ') });
+      field.channelTypes = [...new Set(names.flatMap((kind) => CHANNEL_KINDS[kind]))];
+    }
+    TEXT_INPUTS.add(field);
+    return field;
+  });
+}
+
+def('cfile', 2, 12, (env, ...pairs) => {
+  const map = flatPairs(pairs, 'cfile');
+  const field = formPart(map, 'cfile', ['id', 'label', 'description', 'min', 'max', 'required'], 'file');
+  pickRange(map, field, 10);
+  TEXT_INPUTS.add(field);
+  return field;
+});
+
+def('cradio', 3, 10, (env, ...pairs) => {
+  const map = flatPairs(pairs, 'cradio');
+  const field = formPart(map, 'cradio', ['id', 'label', 'description', 'options', 'required'], 'radio');
+  const { options, selected } = formOptions(map.get('options'), { min: 2, max: 10, key: 'radioOptions' });
+  if (selected > 1) fail('radioOneDefault');
+  field.options = options;
+  TEXT_INPUTS.add(field);
+  return field;
+});
+
+def('cchecks', 3, 14, (env, ...pairs) => {
+  const map = flatPairs(pairs, 'cchecks');
+  const field = formPart(map, 'cchecks', ['id', 'label', 'description', 'options', 'min', 'max', 'required'], 'checks');
+  const { options } = formOptions(map.get('options'), { min: 1, max: 10, key: 'checksOptions' });
+  field.options = options;
+  pickRange(map, field, options.length, options.length);
+  TEXT_INPUTS.add(field);
+  return field;
+});
+
+def('ccheck', 2, 8, (env, ...pairs) => {
+  const map = flatPairs(pairs, 'ccheck');
+  const field = formPart(map, 'ccheck', ['id', 'label', 'description', 'default'], 'check');
+  field.default = map.has('default') ? isTruthy(map.get('default')) : false;
+  delete field.required;
+  TEXT_INPUTS.add(field);
+  return field;
+});
+
+def('cdisplay', 1, 1, (env, value) => {
+  const content = limitText(value, 4000, 'displayText');
+  if (!content.trim()) fail('displayEmpty');
+  const field = { type: 'display', content };
   TEXT_INPUTS.add(field);
   return field;
 });
@@ -359,9 +478,11 @@ def('cmodal', 3, 8, (env, ...pairs) => {
   const seen = new Set();
   for (const field of fields) {
     if (!TEXT_INPUTS.has(field)) fail('modalFieldsCtext');
+    if (field.type === 'display') continue;
     if (seen.has(field.id)) fail('modalSameId', { id: field.id });
     seen.add(field.id);
   }
+  if (!seen.size) fail('modalNeedsInput');
   const data = map.has('data') && map.get('data') !== null ? text(map.get('data')) : '';
   if (!DATA_SHAPE.test(data)) fail('modalData');
   const modal = { type: 'modal', handler: id, title, fields, data };

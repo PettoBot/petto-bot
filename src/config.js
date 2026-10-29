@@ -211,6 +211,13 @@ module.exports = {
   spotifyClientId: process.env.SPOTIFY_CLIENT_ID || null, // the app of the bot in developer.spotify.com, for the Spotify feeds (artists and podcasts)
   spotifyClientSecret: process.env.SPOTIFY_CLIENT_SECRET || null,
   youtubeApiKey: process.env.YOUTUBE_API_KEY || null,
+  // Where the feed of pictures searches (src/feeds/providers/pictures.js), each one optional: a Programmable Search Engine of Google with images on (the key and the engine id), and the keys of
+  // Pixabay, Pexels and Unsplash. Wallhaven, Safebooru, Openverse and Flickr need none.
+  googleCseKey: process.env.GOOGLE_CSE_KEY || null,
+  googleCseCx: process.env.GOOGLE_CSE_CX || null,
+  pixabayApiKey: process.env.PIXABAY_API_KEY || null,
+  pexelsApiKey: process.env.PEXELS_API_KEY || null,
+  unsplashAccessKey: process.env.UNSPLASH_ACCESS_KEY || null,
   // The units the YouTube key can spend in a day (10,000 unless Google gave the project more). The feeds keep inside it: see src/feeds/providers/youtube.js.
   // YouTube push (WebSub): YouTube tells the bot at once when a channel it follows publishes, and the channel is looked at now and then instead of every few minutes. It
   // needs a public address that reaches the bot: YOUTUBE_WEBSUB_URL, or VERIFY_BASE_URL when that is not set. YOUTUBE_WEBSUB=false turns it off (the channels are looked at as before).

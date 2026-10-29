@@ -3,7 +3,7 @@ const { commandRef } = require('../../utils/commandRef');
 const { ensureGuild } = require('../../db/guilds');
 const { getConfig, upsertConfig } = require('../../db/memberEvents');
 const { getTemplate } = require('../../db/embedTemplates');
-const { sendMemberEvent, localizeDefaultText } = require('../../utils/memberEventMessage');
+const { sendMemberEvent, localizeDefaultText, describeMessage, shortMessage } = require('../../utils/memberEventMessage');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { t, languageOf } = require('../../i18n');
@@ -25,6 +25,9 @@ module.exports = {
     .addSubcommand((s) => s.setName('test').setDescription('DM yourself a preview.'))
     .addSubcommand((s) => s.setName('disable').setDescription('Turn off the join DM.')),
   aliases: ['dmjoin'],
+
+  // `!dmonjoin setup` takes an embed code as its message, with its line breaks and buttons.
+  prefixCodeOptions: { setup: 'message' },
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
@@ -53,7 +56,7 @@ async function setup(interaction) {
   await ensureGuild(interaction.guild.id);
   await upsertConfig(interaction.guild.id, { dm_join_message: message ?? null, dm_join_embed_template: embed ?? null });
 
-  const detail = embed ? t(lang, 'welcome.common.embed', { name: embed }) : t(lang, 'welcome.common.message', { message });
+  const detail = embed ? t(lang, 'welcome.common.embed', { name: embed }) : describeMessage(message, lang);
   const text = `${t(lang, 'welcome.dmonjoin.setup.done', { emoji: EMOJI.APPROVE })}\n${detail}`;
   await interaction.editReply({ components: [textCard(text, 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }

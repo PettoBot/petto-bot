@@ -50,7 +50,7 @@ module.exports = {
   'feeds.add.error.badPace': '{emoji}  Escolha com que frequência publica: no mínimo a cada 5 minutos e no máximo uma vez por dia.',
   'feeds.add.error.notConfigured': '{emoji}  {platform} ainda não está configurado neste bot: faltam as chaves de acesso. O dono do bot precisa adicioná-las.',
   'feeds.add.error.unsupported': '{emoji}  {platform} não deixa bots seguirem isso. Tente um artista, ou uma playlist do Deezer ou do Spotify.',
-  'feeds.add.error.badTags': '{emoji}  Escreva de uma a três etiquetas para as imagens, como `rosa` ou `gatos aesthetic`, e a cada quanto tempo (`30m`). Algumas palavras não são permitidas.',
+  'feeds.add.error.badTags': '{emoji}  Escreva de uma a quatro palavras para as imagens, como `rosa` ou `gatos aesthetic`, e a cada quanto tempo (`30m`). Algumas palavras não são permitidas.',
   'feeds.add.error.unavailable': '{emoji}  O {platform} não respondeu. Tente de novo em instantes.',
   'feeds.add.error.already': '{emoji}  **{account}** já é seguido nesse canal.',
   'feeds.notFound': '{emoji}  Não há um feed `#{id}` neste servidor. Veja `{prefix}feed list`.',

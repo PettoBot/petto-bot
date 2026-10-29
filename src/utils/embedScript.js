@@ -9,9 +9,11 @@
 //   {color: #8399ff}              {thumbnail: https://...}        {image: https://...}
 //   {author: name && icon && url} {footer: text && icon}          {timestamp}
 //   {field: name && value}  or  {field: name && value && inline}
-//   {button: link && label && url}  (link buttons only)           {message: text}  (same as text before {embed})
+//   {button: link && label && url}                                {message: text}  (same as text before {embed})
+//   {button: green && label && role:@Role}  (a button that gives or takes a role, or answers with a saved embed: see utils/embedActions.js)
 
 const { t, currentLanguage } = require('../i18n');
+const { parseAction, MAX_ACTIONS } = require('./embedActions');
 
 const SEPARATORS = ['&v', '$v'];
 const KNOWN_KEYS = new Set(['embed', 'content', 'message', 'text', 'title', 'url', 'description', 'desc', 'thumbnail', 'image', 'timestamp', 'color', 'colour', 'author', 'footer', 'field', 'button']);
@@ -160,15 +162,30 @@ function parseEmbedScript(code, lang = currentLanguage()) {
       case 'button': {
         let [first, ...rest] = parts(value);
         const kind = (first ?? '').toLowerCase();
-        if (BUTTON_KINDS.has(kind)) {
-          if (kind !== 'link') warnings.push(t(lang, 'embeds.script.linkOnly', { kind }));
-        } else {
-          rest = [first ?? '', ...rest];
+        const styled = BUTTON_KINDS.has(kind);
+        if (!styled) rest = [first ?? '', ...rest];
+        const actions = [];
+        const plain = [];
+        let disabled = false;
+        let emoji = '';
+        for (const piece of rest.slice(1)) {
+          const action = parseAction(piece);
+          if (action) { if (actions.length < MAX_ACTIONS) actions.push(action); else warnings.push(t(lang, 'embeds.script.maxActions', { max: MAX_ACTIONS })); }
+          else if (/^disabled$/i.test(piece)) disabled = true;
+          else if (/^emoji\s*:/i.test(piece)) emoji = piece.replace(/^emoji\s*:\s*/i, '');
+          else plain.push(piece);
         }
-        const disabled = rest.length > 2 && /^disabled$/i.test(rest[rest.length - 1] ?? '');
-        const [label, url] = rest;
+        const label = rest[0];
+        if (actions.length) {
+          if (!label) { warnings.push(t(lang, 'embeds.script.buttonNeeds')); break; }
+          buttons.push({ label, style: styled && kind !== 'link' ? kind : 'grey', actions, emoji, disabled });
+          break;
+        }
+        // Anything that is not an action is a link button, as before: a colour does not apply to it.
+        if (styled && kind !== 'link') warnings.push(t(lang, 'embeds.script.linkOnly', { kind }));
+        const url = plain[0];
         if (!label || !url) { warnings.push(t(lang, 'embeds.script.buttonNeeds')); break; }
-        buttons.push({ label, url, emoji: '', disabled });
+        buttons.push({ label, url, emoji, disabled });
         break;
       }
       default:

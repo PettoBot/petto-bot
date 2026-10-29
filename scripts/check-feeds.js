@@ -675,7 +675,7 @@ const allText = (message) => JSON.stringify(json(message.components));
   {
     const pictures = require('../src/feeds/providers/pictures');
     assert.deepEqual(pictures.parseTags('Rosa #Estética, gatos'), ['pink', 'aesthetic', 'cats'], 'accents and signs go, and the common words of Spanish become the English ones');
-    assert.deepEqual(pictures.parseTags('a b pink pink blue green red'), ['pink', 'blue', 'green'], 'one letter is no tag, a tag twice is one, and three at most');
+    assert.deepEqual(pictures.parseTags('a b pink pink blue green red gold'), ['pink', 'blue', 'green', 'red'], 'one letter is no tag, a tag twice is one, and four at most');
     assert.equal(pictures.refused(['pink', 'nsfw']), true, 'some words are never followed');
     const asked = [];
     const realFetch = globalThis.fetch;
@@ -695,12 +695,67 @@ const allText = (message) => JSON.stringify(json(message.components));
     await assert.rejects(PROVIDERS.pictures.resolve('3m rosa'), (error) => error.kind === 'badInput', 'and a pace that is too short is refused');
     const when = Date.UTC(2026, 9, 27, 10, 7, 30);
     const first = (await PROVIDERS.pictures.poll([account], new Map(), { now: when })).get(account.id).items[0];
-    assert.deepEqual([first.type, first.platform, first.url.startsWith('https://www.flickr.com/photos/'), first.image.endsWith('_b.jpg'), first.extra, first.author], ['photo', 'pictures', true, true, '#pink', 'someone']);
+    assert.deepEqual([first.type, first.platform, first.url.startsWith('https://www.flickr.com/photos/'), first.image.endsWith('_b.jpg'), first.extra, first.author], ['photo', 'pictures', true, true, '#pink · Flickr', 'someone']);
     const before = asked.length;
     const again = (await PROVIDERS.pictures.poll([account], new Map(), { now: when + 60_000 })).get(account.id).items[0];
     assert.deepEqual([again.id, asked.length], [first.id, before], 'a minute later it is the same picture and Flickr is not asked again');
     const two = await PROVIDERS.pictures.resolve('15m pink unicorn');
     assert.equal((await PROVIDERS.pictures.poll([two], new Map(), { now: when })).get(two.id).items.length, 1, 'when no picture has all the tags, one with any of them is used');
+    globalThis.fetch = realFetch;
+  }
+
+  // --- Pictures are searched in several places: anime words go to Wallhaven and Safebooru, a key opens the others, and one that fails is skipped -----------------------
+  {
+    const pictures = require('../src/feeds/providers/pictures');
+    const realFetch = globalThis.fetch;
+    const realConfig = { ...config };
+    const asked = [];
+    let down = new Set();
+    const ok = (body) => new Response(JSON.stringify(body), { status: 200 });
+    globalThis.fetch = async (url, options) => {
+      const u = String(url);
+      const host = new URL(u).host;
+      asked.push(u);
+      if (down.has(host)) return new Response('{}', { status: 500 });
+      if (host === 'wallhaven.cc') return ok({ data: [1, 2, 3].map((n) => ({ path: `https://w.wallhaven.cc/full/aa/wallhaven-${n}.jpg`, url: `https://wallhaven.cc/w/${n}` })) });
+      if (host === 'safebooru.org') return ok([{ id: 7, directory: '12', image: 'x.png', sample: true }, { id: 8, directory: '13', image: 'y.jpg', sample: false }]);
+      if (host === 'pixabay.com') return ok({ hits: [1, 2, 3].map((n) => ({ largeImageURL: `https://pixabay.com/get/${n}.jpg`, pageURL: `https://pixabay.com/photos/${n}/`, tags: 'rose, flower', user: 'Ann' })) });
+      if (host === 'api.pexels.com') { assert.equal(options.headers.Authorization, 'pexels-key'); return ok({ photos: [{ src: { large2x: 'https://images.pexels.com/1.jpg' }, url: 'https://www.pexels.com/photo/1/', alt: 'Roses', photographer: 'Bo' }] }); }
+      if (host === 'api.unsplash.com') { assert.equal(options.headers.Authorization, 'Client-ID unsplash-key'); return ok({ results: [{ urls: { regular: 'https://images.unsplash.com/1' }, links: { html: 'https://unsplash.com/photos/1' }, alt_description: 'a rose', user: { name: 'Cy' } }] }); }
+      if (host === 'www.googleapis.com') return ok({ items: [{ link: 'https://img.example/rose.jpg', title: 'Rose', image: { contextLink: 'https://example.com/rose' } }] });
+      if (host === 'api.openverse.org') return ok({ results: [1, 2].map((n) => ({ url: `https://live.staticflickr.com/${n}.jpg`, foreign_landing_url: `https://www.flickr.com/photos/x/${n}`, title: 'Rose', creator: 'Di' })) });
+      if (host === 'www.flickr.com') return ok({ items: [{ title: 'Photo', link: 'https://www.flickr.com/photos/someone/1/', media: { m: 'https://live.staticflickr.com/1_abc_m.jpg' }, author: 'nobody@flickr.com ("Ed")' }] });
+      return new Response('{}', { status: 404 });
+    };
+    const pick = async (words, key = 'x:1') => { asked.length = 0; return pictures.pictureOf(pictures.parseTags(words), key, 0); };
+    for (const name of ['googleCseKey', 'googleCseCx', 'pixabayApiKey', 'pexelsApiKey', 'unsplashAccessKey']) config[name] = null;
+
+    // Anime: Wallhaven and Safebooru, searched with what is left of the words (`anime roses` is `roses` in the anime places); a sample of a big picture is used.
+    let item = await pick('anime rosas');
+    assert.ok(asked[0].startsWith('https://wallhaven.cc/api/v1/search?q=roses&categories=010&purity=100'), 'the anime word chooses the anime category and the rest is searched');
+    assert.ok(asked.some((u) => new URL(u).host === 'safebooru.org' && new URL(u).searchParams.get('tags') === 'rose') || item.extra.includes('Wallhaven'), 'the booru tag is the singular word');
+    assert.ok(['Wallhaven', 'Safebooru'].some((name) => item.extra.endsWith(name)) && item.image.startsWith('https://'), item.extra);
+    // Without an anime word, with no key: Openverse, then Flickr.
+    item = await pick('flores', 'x:2');
+    assert.ok(asked[0].startsWith('https://api.openverse.org/') && asked[0].includes('q=flowers') && asked[0].includes('mature=false'), 'the free searcher is asked for pictures without adult content');
+    assert.equal(asked.some((u) => new URL(u).host === 'wallhaven.cc'), false, 'anime places are only for anime words');
+    assert.ok(item.extra.endsWith('Openverse'));
+    // With the keys, the search by meaning comes first, Google before the others, and the picture says where it is from.
+    config.pixabayApiKey = 'pixabay-key'; config.pexelsApiKey = 'pexels-key'; config.unsplashAccessKey = 'unsplash-key';
+    item = await pick('rose pink', 'x:3');
+    assert.ok(asked[0].startsWith('https://pixabay.com/api/') && asked[0].includes('safesearch=true') && asked[0].includes('q=rose%20pink'));
+    config.googleCseKey = 'google-key'; config.googleCseCx = 'cx';
+    item = await pick('rose pink wallpaper', 'x:4');
+    assert.ok(asked[0].startsWith('https://www.googleapis.com/customsearch/v1') && asked[0].includes('safe=active') && asked[0].includes('searchType=image'));
+    assert.deepEqual([item.platform, item.type, item.title.length > 0], ['pictures', 'photo', true]);
+    // A place that fails is skipped; when every place fails the feed gets the error, and a word that is never followed is refused before asking anything.
+    down = new Set(['www.googleapis.com', 'pixabay.com']);
+    item = await pick('rose pink wallpaper', 'x:5');
+    assert.ok(item && (item.extra.endsWith('Pexels') || item.extra.endsWith('Unsplash') || item.extra.endsWith('Openverse')), `the next place answers: ${item?.extra}`);
+    down = new Set(['wallhaven.cc', 'safebooru.org', 'www.googleapis.com', 'pixabay.com', 'api.pexels.com', 'api.unsplash.com', 'api.openverse.org', 'www.flickr.com']);
+    await assert.rejects(pick('anime stars', 'x:6'), (error) => error.kind === 'unavailable', 'with every place down the feed says it is unavailable');
+    assert.equal(pictures.refused(pictures.parseTags('anime nsfw')), true);
+    Object.assign(config, realConfig);
     globalThis.fetch = realFetch;
   }
 

@@ -4,6 +4,7 @@ const ms = require('ms');
 const { resolveRole } = require('../utils/roleResolve');
 const { resolveUser } = require('../utils/userResolve');
 const { dropTokens } = require('../utils/codeArgs');
+const { looksLikeScript } = require('../utils/embedScript');
 const { t, currentLanguage } = require('../i18n');
 
 /** Splits a command's argument text into tokens, treating "quoted strings" and 'single-quoted' as one token each. */
@@ -345,6 +346,26 @@ async function buildInteractionFromMessage(message, command, argText) {
   if (raw) {
     const consumed = normalizedTokens.length - resolved.remainingTokens.length;
     return buildPseudoInteraction(message, { commandName: json.name, subcommand: resolved.subcommand, subcommandGroup: resolved.subcommandGroup, values: raw(dropTokens(argText, consumed)) });
+  }
+
+  // A command that takes a message (`!welcome setup #general {embed}$v{...}`) reads an embed code whole, after the channel or
+  // other mentions that come first: the usual reader would take the first word of the code as the name of a saved embed.
+  const codeOption = command.prefixCodeOptions?.[resolved.subcommand ?? '_'];
+  const afterCommand = dropTokens(argText, normalizedTokens.length - resolved.remainingTokens.length);
+  if (codeOption && looksLikeScript(afterCommand)) {
+    const codeValues = {};
+    let rest = afterCommand;
+    for (const def of resolved.optionDefs) {
+      if (def.type === ApplicationCommandOptionType.String) continue;
+      const token = /^\s*(\S+)/.exec(rest)?.[1];
+      if (!token || token.startsWith('{')) break;
+      const value = await convertToken(message, def, token, {});
+      if (value === null) continue;
+      codeValues[def.name] = value;
+      rest = rest.replace(/^\s*\S+/, '').trim();
+    }
+    codeValues[codeOption] = rest.trim();
+    return buildPseudoInteraction(message, { commandName: json.name, subcommand: resolved.subcommand, subcommandGroup: resolved.subcommandGroup, values: codeValues });
   }
 
   const values = await parseOptions(
