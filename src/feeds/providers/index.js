@@ -124,13 +124,17 @@ function animalFeed(animal) {
 /** Pictures by tags (`15m pink cat`): a picture for each slot of time of the pace of the account, the same for every server that wrote the same tags and the same pace. */
 const picturesFeed = {
   interval: 60_000, perTick: 5000, concurrency: 1, noAccount: true,
-  async resolve(text) {
-    const tags = pictures.parseTags(String(text ?? '').split(/\s+/).filter((word) => !/^(?:every:)?\d{1,4}\s*(?:m|min|mins|minutes?|h|hrs?|hours?|d|days?)?$/i.test(word)).join(' '));
+  // A word with several meanings (`rosa`: the flower, the color, the mountain) is asked about (`ambiguous`, with the choices) unless the other words say
+  // which one; the name of the account is what is searched (`pink · flower · anime style`), so the list of feeds shows it.
+  async resolve(text, { lang = 'en' } = {}) {
+    const isPace = (word) => /^(?:every:)?\d{1,4}\s*(?:m|min|mins|minutes?|h|hrs?|hours?|d|days?)?$/i.test(word);
+    const { tags, ambiguous } = pictures.parseQuery(String(text ?? '').split(/\s+/).filter((word) => !isPace(word)).join(' '));
     if (!tags.length || pictures.refused(tags)) throw new IntegrationError('badTags');
-    const pace = String(text ?? '').split(/\s+/).find((word) => /^(?:every:)?\d{1,4}\s*(?:m|min|mins|minutes?|h|hrs?|hours?|d|days?)?$/i.test(word)) ?? '';
+    const pace = String(text ?? '').split(/\s+/).find(isPace) ?? '';
     const minutes = schedule.parseMinutes(pace);
     if (minutes === null) throw new IntegrationError('badInput'); // the pace (what the service turns into the message about the pace)
-    return { id: `every:${minutes}:${pictures.joinTags(tags)}`, name: tags.map((tag) => `#${tag}`).join(' '), avatar: null, url: null };
+    if (ambiguous) throw pictures.ambiguousError(String(text ?? '').trim(), ambiguous);
+    return { id: `every:${minutes}:${pictures.joinTags(tags)}`, name: pictures.queryLabel(tags, t(lang, 'feeds.pictures.animeStyle')).slice(0, 100), avatar: null, url: null };
   },
   async poll(accounts, _tracked, { now = Date.now() } = {}) {
     const results = new Map();
