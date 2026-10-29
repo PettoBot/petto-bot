@@ -43,6 +43,18 @@ const toMs = (value) => {
   return Number.isFinite(ms) ? ms : null;
 };
 
+// The platforms where a person or a project posts (a channel, a streamer, a project...): without words of its own a feed says who posted and what, so the card is not alone.
+// The ones that post on their own (pictures, animals, the Pokémon of the day, free games, music for you, RSS) keep only the card.
+const ANNOUNCED = new Set(['youtube', 'twitch', 'kick', 'bluesky', 'pinterest', 'modrinth', 'reddit', 'github', 'npm', 'pypi', 'steam', 'anilist', 'spotify', 'deezer', 'applemusic', 'mastodon', 'tumblr', 'letterboxd']);
+const ANNOUNCED_TYPES = new Set(['video', 'short', 'live', 'clip', 'post', 'pin', 'update', 'project', 'episode', 'release']);
+
+/** "Hey everyone, **name** has published a new video": what a feed of an account says when its server wrote no words for it. Empty when it does not apply. */
+function defaultMessage(feed, item, lang) {
+  if (!ANNOUNCED.has(item.platform) || !ANNOUNCED_TYPES.has(item.type)) return '';
+  const name = plainText(item.author || feed.account_name || PLATFORMS[item.platform]?.name || '', 100);
+  return name ? t(lang, `feeds.default.${item.type}`, { name: `**${name}**` }) : '';
+}
+
 /** The pings of a feed: the roles it names, and `@everyone` when it was asked for. */
 function pingLine(feed) {
   const parts = [];
@@ -66,7 +78,8 @@ function buildFeedMessage(feed, item, { lang, test = false, hero = null } = {}) 
   const options = feed.options ?? {};
   const components = [];
 
-  const top = [pingLine(feed), clip(renderMessage(feed.message, item).trim(), MAX_TOP), test ? `-# ${emojis.TYPE.ended} ${t(lang, 'feeds.test.badge')}` : '']
+  const written = renderMessage(feed.message, item).trim() || defaultMessage(feed, item, lang);
+  const top = [pingLine(feed), clip(written, MAX_TOP), test ? `-# ${emojis.TYPE.ended} ${t(lang, 'feeds.test.badge')}` : '']
     .filter(Boolean).join(' ').trim();
   if (top) components.push(new TextDisplayBuilder().setContent(top));
 
@@ -175,4 +188,4 @@ async function buildFeedPayload(feed, item, options = {}) {
   return { ...buildFeedMessage(feed, file?.item ?? item, { ...options, hero }), ...(files.length ? { files } : {}) };
 }
 
-module.exports = { buildFeedMessage, buildFeedPayload, renderMessage, pingLine, allowedMentionsOf, VARIABLES };
+module.exports = { defaultMessage, buildFeedMessage, buildFeedPayload, renderMessage, pingLine, allowedMentionsOf, VARIABLES };
