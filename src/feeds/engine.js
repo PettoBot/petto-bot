@@ -14,6 +14,10 @@ const MAX_PER_PASS = 3; // after a long silence (or a first look) only the newes
 const SEND_WORKERS = 6;
 const FAILURES_TO_STOP = 5;
 const MAX_BACKOFF_MS = 30 * 60_000;
+// The feeds that post at their own pace (pictures, animals, a song, the Pokémon of the day...) have a new item in each slot of time and no account that can be gone:
+// they are asked again soon after a failure, never after half an hour (that was many slots with nothing posted).
+const AUTO_BACKOFF_MS = 2 * 60_000;
+const POLL_LIMIT_MS = 90_000; // a look that takes longer is given up, so one stuck service never holds back every feed
 const KICK_PICTURE = () => fallbackPicture('kick-live');
 let kickRepaired = false; // the notices of Kick that are open are repaired once, at the first pass after the bot starts
 const schedule = new Map(); // `${platform}:${accountId}` -> { at, fails }
@@ -224,6 +228,7 @@ async function tick(client, { now = Date.now(), providers = PROVIDERS, passMs = 
   let asked = 0;
   for (const [platform, accounts] of byPlatform) {
     const provider = providers[platform];
+    const backoffCap = provider.noAccount ? AUTO_BACKOFF_MS : MAX_BACKOFF_MS;
     const due = [...accounts.entries()].filter(([id]) => (schedule.get(keyOf(platform, id))?.at ?? 0) <= now).slice(0, Math.max(1, Math.ceil(provider.perTick * Math.min(1, passMs / 60_000))));
     if (!due.length) continue;
     asked += due.length;
@@ -241,10 +246,14 @@ async function tick(client, { now = Date.now(), providers = PROVIDERS, passMs = 
     for (const lang of languages) {
       let results;
       try {
-        results = await provider.poll(due.map(([id, list]) => accountOf(id, list)), tracked, { now, lang: lang ?? 'en' });
+        let timer;
+        const limit = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`it took more than ${POLL_LIMIT_MS / 1000} seconds`)), POLL_LIMIT_MS); }); // i18n-ignore: the reason shown in a log line
+        try {
+          results = await Promise.race([provider.poll(due.map(([id, list]) => accountOf(id, list)), tracked, { now, lang: lang ?? 'en' }), limit]);
+        } finally { clearTimeout(timer); }
       } catch (error) {
         logger.warn(`Feeds: ${platform} could not be asked: ${error.message}`);
-        for (const [id] of due) schedule.set(keyOf(platform, id), { at: now + Math.min(MAX_BACKOFF_MS, provider.interval * 2), fails: (schedule.get(keyOf(platform, id))?.fails ?? 0) + 1 });
+        for (const [id] of due) schedule.set(keyOf(platform, id), { at: now + Math.min(backoffCap, provider.interval * 2), fails: (schedule.get(keyOf(platform, id))?.fails ?? 0) + 1 });
         continue;
       }
 
@@ -256,7 +265,7 @@ async function tick(client, { now = Date.now(), providers = PROVIDERS, passMs = 
         const result = results.get(id) ?? { items: [] };
         const previous = schedule.get(keyOf(platform, id))?.fails ?? 0;
         if (result.error) {
-          schedule.set(keyOf(platform, id), { at: now + Math.min(MAX_BACKOFF_MS, provider.interval * 2 ** Math.min(previous + 1, 5)), fails: previous + 1 });
+          schedule.set(keyOf(platform, id), { at: now + Math.min(backoffCap, provider.interval * 2 ** Math.min(previous + 1, 5)), fails: previous + 1 });
           if (result.error === 'notFound' && previous + 1 >= 6) for (const feed of list) await recordFailure(feed, 'accountGone');
           // An account that cannot be read time after time is shown in the list of feeds (`!feed list`, the dashboard) with why, instead of
           // staying "on" and silent. It is not turned off: it posts again by itself when the account answers.
@@ -265,7 +274,7 @@ async function tick(client, { now = Date.now(), providers = PROVIDERS, passMs = 
         }
         await clearPollError(list);
         schedule.set(keyOf(platform, id), { at: now + (provider.intervalFor?.(id, now) ?? provider.interval) + Math.floor(Math.random() * 15_000), fails: 0 });
-        await forEachWithConcurrency(list.filter(forLang), (feed) => processFeed(client, feed, result, liveByFeed, seen, now).catch((error) => logger.error(`Feed ${feed.id} failed:`, error)), SEND_WORKERS);
+        await forEachWithConcurrency(list.filter(forLang), (feed) => processFeed(client, feed, result, liveByFeed, seen, now).catch((error) => (error?.code === '23503' ? logger.info(`Feed ${feed.id}: it was deleted while a notice was being posted.`) : logger.error(`Feed ${feed.id} failed:`, error))), SEND_WORKERS);
       }
     }
   }

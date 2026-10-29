@@ -508,6 +508,8 @@ async function pictureOf(tags, key, at, { check = imageReady } = {}) {
     platform: 'pictures', type: 'photo', id: key, title: '', url: entry.url, description: '', image: entry.image, avatar: null, rehost: entry.rehost,
     author: entry.author, authorUrl: null, publishedAt: at, query: { tags }, source: entry.source, extra: `Searching: ${query} · ${entry.source}`, // i18n-ignore: the English line, the card writes it in the language of the server
   } : null;
+  // A slot with no picture is not kept (the next look tries again), so one bad moment of the services does not leave the slot empty.
+  if (!item) return null;
   if (slots.size > 300) slots.clear();
   slots.set(id, item);
   return item;

@@ -145,6 +145,7 @@ const picturesFeed = {
       const slot = schedule.slotOf(now, minutes);
       try {
         const item = await pictures.pictureOf(pictures.tagsOf(account.id), `${minutes}:${slot}`, schedule.slotStart(slot, minutes));
+        if (!item) logger.warn(`Pictures: no picture passed the check for "${pictures.tagsOf(account.id).join(' ')}" (slot ${slot} of ${minutes} minutes); the next look tries again.`);
         results.set(account.id, { items: item ? [item] : [] });
       } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
     }

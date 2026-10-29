@@ -4428,6 +4428,42 @@ create index if not exists idx_feeds_account on feeds(platform, account_id) wher
 
 alter table feeds enable row level security;
 
+-- Each server numbers its own feeds 1, 2, 3... (`number`; `id` stays the internal key the job and the dashboard use). A new feed gets the next number of its
+-- server, and when one is deleted the ones after it move down (delete 2 of 1, 2, 3, 4 and the old 3 and 4 are 2 and 3), so the numbers never have holes.
+-- Rows from before get their number in the order they were made.
+alter table feeds add column if not exists number integer;
+with numbered as (
+  select f.id, row_number() over (partition by f.guild_id order by f.id) as n from feeds f where f.number is null
+)
+update feeds t set number = numbered.n from numbered where t.id = numbered.id;
+create unique index if not exists feeds_guild_number on feeds (guild_id, number);
+create or replace function feeds_set_number() returns trigger
+language plpgsql
+as $$
+begin
+  if new.number is null then
+    perform pg_advisory_xact_lock(hashtext('feeds:' || new.guild_id));
+    select coalesce(max(number), 0) + 1 into new.number from feeds where guild_id = new.guild_id;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists feeds_number on feeds;
+create trigger feeds_number before insert on feeds for each row execute function feeds_set_number();
+-- The ones after a deleted feed move down by one. Two steps (to negative numbers and back) so the unique index never sees two rows with the same number.
+create or replace function feeds_close_number() returns trigger
+language plpgsql
+as $$
+begin
+  perform pg_advisory_xact_lock(hashtext('feeds:' || old.guild_id));
+  update feeds set number = -(number - 1) where guild_id = old.guild_id and number > old.number;
+  update feeds set number = -number where guild_id = old.guild_id and number < 0;
+  return null;
+end;
+$$;
+drop trigger if exists feeds_number_close on feeds;
+create trigger feeds_number_close after delete on feeds for each row execute function feeds_close_number();
+
 create table if not exists feed_seen (
   feed_id bigint not null references feeds(id) on delete cascade,
   item_id text not null,

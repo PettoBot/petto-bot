@@ -21,7 +21,7 @@ function resultCard(lang, platform, result) {
   if (!result.ok) {
     return textCard(t(lang, `feeds.add.error.${result.error}`, { emoji: EMOJI.DENY, platform: result.platform ?? PLATFORMS[platform]?.name, count: result.count, premium: result.premium, account: result.account, word: result.word ?? '', prefix: '!' }), 0xfe6465);
   }
-  return textCard(t(lang, 'feeds.add.ok', { emoji: EMOJI.APPROVE, account: result.feed.account_name, platform: PLATFORMS[platform].name, channel: `<#${result.feed.channel_id}>`, id: result.feed.id, prefix: '!' }), 0xa5ea7a);
+  return textCard(t(lang, 'feeds.add.ok', { emoji: EMOJI.APPROVE, account: result.feed.account_name, platform: PLATFORMS[platform].name, channel: `<#${result.feed.channel_id}>`, id: result.feed.number ?? result.feed.id, prefix: '!' }), 0xa5ea7a);
 }
 const idOption = (o) => o.setName('id').setDescription('The number of the feed (see the list)').setMinValue(1).setRequired(true);
 
@@ -74,7 +74,7 @@ module.exports = {
       const [rows, limit] = await Promise.all([feedsDb.listForGuild(guild.id), guildLimit(guild.id, 'feeds')]);
       if (!rows.length) return reply(t(lang, 'feeds.list.empty', { max: limit.limit, prefix: '!' }));
       const lines = rows.map((feed) => t(lang, 'feeds.list.line', {
-        id: feed.id, platform: emojis.PLATFORM[feed.platform] ?? '', account: feed.account_name, channel: channelOf(feed),
+        id: feed.number, platform: emojis.PLATFORM[feed.platform] ?? '', account: feed.account_name, channel: channelOf(feed),
         state: feed.enabled ? (feed.last_error ? t(lang, `feeds.error.${feed.last_error}`) : t(lang, 'feeds.state.on')) : (feed.last_error ? `${t(lang, 'feeds.state.off')} · ${t(lang, `feeds.error.${feed.last_error}`)}` : t(lang, 'feeds.state.off')),
       }));
       return reply([t(lang, 'feeds.list.title', { count: rows.length, max: limit.limit }), ...lines].join('\n'));
@@ -91,13 +91,15 @@ module.exports = {
       return interaction.editReply({ components: [resultCard(lang, platform, result)], flags: V2 });
     }
 
-    const id = interaction.options.getInteger('id');
-    const feed = await feedsDb.get(guild.id, id);
-    if (!feed) return fail('feeds.notFound', { id, prefix: '!' });
+    // The number is the one of this server (1, 2, 3...); the internal key of the feed is `feed.id`.
+    const number = interaction.options.getInteger('id');
+    const feed = await feedsDb.getByNumber(guild.id, number);
+    if (!feed) return fail('feeds.notFound', { id: number, prefix: '!' });
+    const id = feed.id;
 
     if (sub === 'remove') {
       await feedsDb.remove(guild.id, id);
-      return ok('feeds.remove.ok', { account: feed.account_name, id });
+      return ok('feeds.remove.ok', { account: feed.account_name, id: number });
     }
     if (sub === 'test') {
       await interaction.deferReply({ flags: V2 | MessageFlags.Ephemeral });
@@ -106,19 +108,19 @@ module.exports = {
     }
     if (sub === 'pause' || sub === 'resume') {
       await service.updateFeed(guild, id, { enabled: sub === 'resume' });
-      return ok(`feeds.${sub}.ok`, { account: feed.account_name, id });
+      return ok(`feeds.${sub}.ok`, { account: feed.account_name, id: number });
     }
     if (sub === 'message') {
       const text = String(interaction.options.getString('text') ?? '').trim();
       const clear = /^(clear|none|-|off|borrar|limpiar|nada)$/i.test(text);
       await service.updateFeed(guild, id, { message: clear ? '' : text });
-      return ok(clear ? 'feeds.message.cleared' : 'feeds.message.ok', { id });
+      return ok(clear ? 'feeds.message.cleared' : 'feeds.message.ok', { id: number });
     }
     if (sub === 'ping') {
       const role = interaction.options.getRole('role');
       const everyone = interaction.options.getBoolean('everyone') ?? false;
       await service.updateFeed(guild, id, { pingRoles: role ? [role.id] : [], pingEveryone: everyone });
-      return ok(everyone ? 'feeds.ping.everyone' : role ? 'feeds.ping.role' : 'feeds.ping.none', { id, role: role ? `<@&${role.id}>` : '' });
+      return ok(everyone ? 'feeds.ping.everyone' : role ? 'feeds.ping.role' : 'feeds.ping.none', { id: number, role: role ? `<@&${role.id}>` : '' });
     }
     return null;
   },
