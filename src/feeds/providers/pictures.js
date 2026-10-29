@@ -1,6 +1,8 @@
 // Pictures by tags, as an auto feed: a person writes a few words (`pink`, `cats aesthetic`, `anime roses`) and how often, and the channel gets a picture of what was asked, the same
 // for every server that wrote the same words at the same pace. Pinterest has no public way to search, so the pictures are searched in several places, the best one first:
-//   - anime, manga and the like (a word such as `anime`): only Wallhaven (its anime category, safe only) and Safebooru, no key, so no photo comes for an anime search;
+//   - drawings (a word such as `anime`, or the name of a character that is only drawn, such as `cinnamoroll`): Konachan, Yande.re (safe only, the best scored first),
+//     Safebooru and Wallhaven (its anime category, safe only), all without a key, so no photo comes for them; every one of them is asked until there are 160 pictures, and the
+//     pictures of the slots go one after the other along that list (always in the same order), so a picture does not come again until all of them were posted;
 //   - with the keys of the bot (config.js): Google Images (a Programmable Search Engine), Pixabay, Pexels and Unsplash, which search by meaning, not by tag;
 //   - with no key: Openverse (free pictures, no adult content) and the public tags of Flickr.
 // Every word asked for has to be in what a place says of a picture (its tags, its title or its description; a color can also be the color filter of the place), so

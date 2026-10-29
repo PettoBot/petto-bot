@@ -4,6 +4,10 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Feeds: the pictures of a feed no longer repeat, and they come from more places.** A feed of pictures (`!feed add pictures 15m anime pink`) took the first twenty or so pictures of Wallhaven and chose among them with a number that repeated, so the same pictures came again and again, all from the same place. Drawings (the word `anime`, or the name of a character that is only drawn: `cinnamoroll`, `sanrio`, `kuromi`, `pompompurin`, `pochacco`, `chiikawa`, `totoro`, `pikachu`, `pokemon`, `vocaloid`, `miku`, `genshin`, `touhou`) are now asked in **Konachan** and **Yande.re** (safe pictures only, the best scored first), **Safebooru** (two pages) and **Wallhaven** (two pages), all without a key, until there are 160 pictures; the same picture on two sites (same source) counts once, big pictures go first, and a huge file without a sample is left out. The pictures are put in an order that is always the same for those tags (it does not change while the list is kept, 30 minutes) and the slots of time go along it one after the other: the next picture is never the one before, and a picture comes again only after all the others were posted. The same goes for photos, with up to 30 pictures. A booru tag is written as the booru writes it (`hello-kitty` is `hello_kitty`), and a search with only a color (`anime pink`) also looks for `pink_theme` and `pink_flower`. Nothing needs a key.
+
 ## [0.7.9-1] — 2026-10-29 · Donut
 
 A patch of 0.7.9, shown as **0.7.9~1**.
