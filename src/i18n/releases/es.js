@@ -1,5 +1,55 @@
 // Las notas de versión de `!version` en español: etiqueta, resumen y secciones de cada versión (src/utils/releases.js guarda el resto).
 module.exports = {
+  'v0.7.9': {
+    label: 'v0.7.9 · Donut: feeds para todos, !send, botones con acción y búsquedas nuevas',
+    summary: 'Feeds abiertos a todos los servidores, `!send`, botones que hacen cosas, formularios con todas las partes de Discord, búsquedas nuevas, `!stats`, una tarjeta de subida de nivel nueva y una base de datos más ligera.',
+    sections: [
+      {
+        title: 'Feeds',
+        items: [
+          'Los feeds están abiertos a todos los servidores. `!feed add` sigue YouTube, Twitch, Kick, Bluesky, Reddit, Steam, GitHub, npm, PyPI, AniList, Pinterest, Spotify, Deezer, Apple Music, Mastodon, Tumblr, Letterboxd, los juegos gratis de Epic y cualquier blog, buscando mientras escribes. Premium sigue 25 cuentas de cada plataforma (Free, 5).',
+          'Feeds automáticos con su propio ritmo, de cada 15 minutos a una vez al día: un solo feed de **Animales**, imágenes por etiquetas (`15m anime roses`), una canción al azar de los charts de Deezer, Apple Music y Spotify, Pokémon, Wikipedia y Chess.com.',
+          'YouTube avisa cuando un canal publica, así que un video sale en segundos, y un Short se publica como reproductor. Los avisos de directo de Kick salen en un minuto, y un directo terminado conserva su verde con un botón de repetición.',
+          'Los feeds de música siguen listas, charts y los álbumes nuevos de un país, y las listas de Modrinth siguen los mods, shaders o plugins más nuevos en un solo feed. Los avisos tienen un botón que los abre (activado por defecto), y los usuarios y roles de sus palabras reciben el aviso de verdad.',
+        ],
+      },
+      {
+        title: 'Códigos de embed y Petto Code',
+        items: [
+          '`!send` envía un mensaje como Petto, y `!welcome`, `!leave`, `!boost` y `!dmonjoin` pueden usar un código de embed como mensaje.',
+          'Botones que hacen cosas, en códigos de embed, diseños de Components V2 y el editor de la dashboard: dan, quitan o alternan un rol, o muestran un embed guardado (en privado, en el canal o por mensaje directo).',
+          'Los formularios de Petto Code (`cmodal`) pueden tener todas las partes de Discord: menús, selectores de miembros, roles y canales, subida de archivos, botones de opción y casillas.',
+          '`!steal` y `!jumbo` encuentran los emojis de una tarjeta de Components V2.',
+          '`!jumbo` avisa cuando el servidor ya tiene el emoji o el sticker.',
+        ],
+      },
+      {
+        title: 'Búsquedas, estadísticas y tarjetas',
+        items: [
+          'Búsquedas en otros servicios: `!minecraft`, `!github`, `!roblox`, `!steam`, `!twitch`, `!youtube`, `!lastfm` y más, con formas cortas de escribirlas (`!mu Notch`).',
+          '`!stats` analiza un servidor solo con números (nunca lo que se escribió), con un panel de privacidad.',
+          'Una tarjeta de subida de nivel al estilo de Petto, `!userinfo` y `!serverinfo` rediseñados, `!usercosmetics`, y tarjetas sin color salvo para decir sí o no.',
+          'Más búsquedas con una imagen para canciones, álbumes y artistas, y tarjetas con divisores, iconos planos y sin títulos grandes.',
+        ],
+      },
+      {
+        title: 'Servidores y ajustes',
+        items: [
+          'La XP de voz ya no necesita una segunda persona por defecto, y hay dos límites de XP nuevos en `/level rules`.',
+          'Lo que Petto guardó de un servidor que dejó se borra 3 días después, y los datos pesados pueden vivir en una segunda base de datos.',
+          'Las copias de avatares del historial de perfil pesan la mitad, las listas públicas de amenazas olvidan lo que dejaron de listar, y los contadores ya no se apagan por un canal que sigue existiendo.',
+          'La configuración de un servidor nuevo nunca se pone en un canal público. La música sigue apagada por ahora.',
+        ],
+      },
+      {
+        title: 'Correcciones',
+        items: [
+          'La página de verificación se abre en el idioma del servidor, `!massunban` se detiene cuando el servidor ya no existe, las menciones de AFK se borran, y la lista de enlaces maliciosos de URLhaus se vuelve a leer.',
+          'Un título con corchetes se muestra como enlace, se pueden seguir tableros de Pinterest con nombres en otros alfabetos, y un canal de YouTube cuyo feed responde 404 o 500 sigue funcionando.',
+        ],
+      },
+    ],
+  },
   'v0.7.8': {
     label: 'v0.7.8 · Mochi: IA para tickets, canales de medios, tableros y herramientas nuevas',
     summary: 'Un asistente de IA para tickets (beta), tickets en vivo y mejores transcripciones, canales de medios, un clownboard y tableros con varios emojis, temporizadores con embed, comandos nuevos (páginas, citas, efectos de imagen), más control sobre las apelaciones y una dashboard cuyas tarjetas muestran lo que envía el bot.',

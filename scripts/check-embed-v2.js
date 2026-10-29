@@ -62,6 +62,28 @@ const design = {
   assert.deepEqual((await buildV2({ components: [{ type: 17, components: [{ type: 14 }] }] }, ctx)).components.length, 1, 'a container with only a divider still has a component');
   assert.equal((await buildV2({ components: [{ type: 17, components: [{ type: 10, content: '   ' }] }] }, ctx)).components.length, 0, 'a container with nothing in it is left out');
 
+  // A button with actions keeps them in its custom id, takes its color by number or by name, needs the server, and a role that is gone leaves it out.
+  const ROLE = '111111111111111111';
+  const roles = new Map([[ROLE, { id: ROLE, name: 'Members' }]]);
+  roles.find = (fn) => [...roles.values()].find(fn);
+  const guild = { id: '9', roles: { cache: roles }, members: { cache: new Map() }, channels: { cache: new Map() }, emojis: { cache: new Map() }, iconURL: () => null, bannerURL: () => null };
+  const withActions = await buildV2({ components: [{ type: 17, components: [
+    { type: 1, components: [
+      { type: 2, style: 3, label: 'Get **it**', emoji: { name: '✅' }, actions: [{ type: 'role', ref: '@Members' }] },
+      { type: 2, style: 'blurple', label: 'Rules', actions: [{ type: 'embed', ref: 'rules', mode: 'dm' }, { type: 'addrole', ref: ROLE }] },
+      { type: 2, style: 3, label: 'Ghost', actions: [{ type: 'role', ref: '@Nobody' }] },
+      { type: 2, style: 5, label: 'Docs', url: 'https://petto.sbs' },
+    ] },
+    { type: 9, components: [{ type: 10, content: 'Pick' }], accessory: { type: 2, style: 4, label: 'Leave', actions: [{ type: 'removerole', ref: ROLE }] } },
+  ] }] }, { ...ctx, guild });
+  const rowButtons = withActions.components[0].components[0].components;
+  assert.deepEqual(rowButtons.map((b) => [b.style, b.label]), [[3, 'Get it'], [1, 'Rules'], [5, 'Docs']], 'a role that does not exist leaves its button out');
+  assert.equal(rowButtons[0].custom_id, `eb:t${ROLE}#0`);
+  assert.equal(rowButtons[1].custom_id, `eb:edrules;a${ROLE}#1`);
+  assert.equal(withActions.components[0].components[1].accessory.custom_id, `eb:r${ROLE}#2`, 'in a section too, with an id of its own');
+  const noServer = await buildV2({ components: [{ type: 1, components: [{ type: 2, style: 3, label: 'Get', actions: [{ type: 'role', ref: ROLE }] }] }] }, ctx);
+  assert.equal(noServer.components.length, 0, 'without a server a button with actions has nothing to point to');
+
   // The limits.
   const many = { components: [{ type: 17, components: Array.from({ length: 60 }, (_, n) => ({ type: 10, content: `line ${n}` })) }] };
   const limited = await buildV2(many, ctx);
