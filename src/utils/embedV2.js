@@ -1,11 +1,12 @@
 // Saved messages made in the dashboard's Components V2 editor. A V2 message is a list of components (containers, text,
-// pictures, sections, dividers and rows of link buttons) with no `content` and no embeds, and it needs the
+// pictures, sections, dividers and rows of buttons: links, or buttons with actions that give roles or show a saved embed) with no `content` and no embeds, and it needs the
 // IsComponentsV2 flag when it is sent. The saved shape follows Discord's own JSON, so the Embed Builder can read it:
 //   { v2: { components: [ { type: 17, accent_color, components: [ { type: 10, content } ... ] } ] } }
 // Every text and link can hold `{variables}`. They are resolved here, and anything that would make Discord refuse the
 // message is cleaned or left out: an empty text, a picture whose link ended up empty, a button without a label or link.
 const { MessageFlags } = require('discord.js');
 const { resolve } = require('./embedVariables');
+const { encodeActions, STYLES: ACTION_STYLES } = require('./embedActions');
 
 const LIMITS = { components: 40, text: 4000, buttonLabel: 80, url: 512, galleryItems: 10, rowButtons: 5, sectionTexts: 3, description: 1024 };
 const TYPES = { ROW: 1, BUTTON: 2, SECTION: 9, TEXT: 10, THUMBNAIL: 11, GALLERY: 12, SEPARATOR: 14, CONTAINER: 17 };
@@ -99,7 +100,26 @@ function makeBuilder(ctx) {
     return { type: TYPES.BUTTON, style: [1, 2, 3, 4].includes(Number(raw.style)) ? Number(raw.style) : 2, custom_id: `${DISPLAY_BUTTON_PREFIX}:${displayButtons}`, ...(label ? { label } : {}), ...(emoji ? { emoji } : {}) };
   };
 
+  let actionButtons = 0;
+  /**
+   * A button with actions (`actions: [{ type: 'role' | 'addrole' | 'removerole' | 'embed', ref, mode }]`): the same ones as in an embed code, kept in
+   * its custom id (see utils/embedActions.js). It needs the server, and a role that does not exist leaves the button out. The color is a number
+   * of Discord (1 to 4) or a name (`green`).
+   */
+  const actionButton = async (raw) => {
+    const label = (await text(raw?.label)).replace(/\*\*/g, '').trim().slice(0, LIMITS.buttonLabel);
+    const emoji = emojiOf(raw?.emoji);
+    if (!label && !emoji) return null;
+    const customId = encodeActions(raw.actions, ctx?.guild, actionButtons);
+    if (!customId) return null;
+    actionButtons += 1;
+    const named = ACTION_STYLES[String(raw.style ?? '').toLowerCase()];
+    const style = [1, 2, 3, 4].includes(Number(raw.style)) ? Number(raw.style) : named ?? 2;
+    return { type: TYPES.BUTTON, style, custom_id: customId, ...(label ? { label } : {}), ...(emoji ? { emoji } : {}), ...(raw.disabled ? { disabled: true } : {}) };
+  };
+
   const button = async (raw) => {
+    if (Array.isArray(raw?.actions) && raw.actions.length) return actionButton(raw);
     if ([1, 2, 3, 4].includes(Number(raw?.style))) return displayButton(raw);
     const label = (await text(raw?.label)).slice(0, LIMITS.buttonLabel);
     const url = await link(raw?.url);
