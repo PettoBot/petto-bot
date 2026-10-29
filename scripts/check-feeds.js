@@ -826,6 +826,9 @@ const allText = (message) => JSON.stringify(json(message.components));
     assert.ok(cycle >= 80, `every picture of the list is posted: ${cycle}`);
     assert.equal(new Set(posted.slice(0, cycle)).size, cycle, 'one cycle of slots in a row: not one picture twice');
     assert.equal(posted[cycle], posted[0], 'and then it begins again');
+    // A slot where no picture passes the check is not kept as empty: the next look of the same slot tries again.
+    assert.equal(await pictures.pictureOf(pictures.parseTags('cinnamoroll many'), '15:900', 0, { check: async () => false }), null, 'no picture loads');
+    assert.ok(await pictures.pictureOf(pictures.parseTags('cinnamoroll many'), '15:900', 0, { check: async () => true }), 'and a minute later the same slot has one');
     assert.equal(pictures.refused(pictures.parseTags('anime nsfw')), true);
     Object.assign(config, realConfig);
     globalThis.fetch = realFetch;
