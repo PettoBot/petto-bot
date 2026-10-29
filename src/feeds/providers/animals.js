@@ -51,7 +51,7 @@ const ASKED_ONLY = new Set(MEME_KINDS);
 const PLAIN = KINDS.filter((kind) => !ASKED_ONLY.has(kind));
 
 const slots = new Map(); // `${animal}:${key}` -> { image, link, kind } | null
-const keep = (key, value) => { if (slots.size > 200) slots.clear(); slots.set(key, value); return value; };
+const keep = (key, value) => { if (!value) return value; if (slots.size > 200) slots.clear(); slots.set(key, value); return value; }; // an empty slot is not kept: the next look tries again
 
 /** A number that is the same for everybody in a slot of time (`30:123456`) and changes from one slot to the next. */
 const seedOf = (key) => Math.abs(Number(String(key).split(':')[1]) || 0);
