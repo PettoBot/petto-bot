@@ -100,7 +100,7 @@ function animalFeed(animal) {
       if (minutes === null) throw new IntegrationError('badInput');
       const suffix = mixed ? animals.suffixOf(kinds) : '';
       const id = suffix ? `every:${minutes}${suffix}` : schedule.accountIdFor(animal, minutes);
-      const name = mixed && kinds.length && kinds.length < animals.KINDS.length ? kinds.map((kind) => t(lang, `feeds.animals.name.${kind}`)).join(' + ') : (mixed ? t(lang, 'feeds.animals.name.all') : names[animal]);
+      const name = mixed && kinds.length && (kinds.length < animals.PLAIN.length || kinds.some((kind) => !animals.PLAIN.includes(kind))) ? kinds.map((kind) => t(lang, `feeds.animals.name.${kind}`)).join(' + ') : (mixed ? t(lang, 'feeds.animals.name.all') : names[animal]);
       return { id, name, avatar: null, url: null };
     },
     async poll(accounts, _tracked, { now = Date.now(), lang = 'en' } = {}) {
@@ -129,11 +129,13 @@ const picturesFeed = {
   async resolve(text, { lang = 'en' } = {}) {
     const isPace = (word) => /^(?:every:)?\d{1,4}\s*(?:m|min|mins|minutes?|h|hrs?|hours?|d|days?)?$/i.test(word);
     const { tags, ambiguous } = pictures.parseQuery(String(text ?? '').split(/\s+/).filter((word) => !isPace(word)).join(' '));
-    if (!tags.length || pictures.refused(tags)) throw new IntegrationError('badTags');
+    if (!pictures.hasWanted(tags) || pictures.refused(tags)) throw new IntegrationError('badTags');
     const pace = String(text ?? '').split(/\s+/).find(isPace) ?? '';
     const minutes = schedule.parseMinutes(pace);
     if (minutes === null) throw new IntegrationError('badInput'); // the pace (what the service turns into the message about the pace)
     if (ambiguous) throw pictures.ambiguousError(String(text ?? '').trim(), ambiguous);
+    // Words that find nothing (not in English, a typo, too many words that never go together) are told now, not after a feed that never posts.
+    if (!(await pictures.hasAny(tags))) throw new IntegrationError('noPictures');
     return { id: `every:${minutes}:${pictures.joinTags(tags)}`, name: pictures.queryLabel(tags, t(lang, 'feeds.pictures.animeStyle')).slice(0, 100), avatar: null, url: null };
   },
   async poll(accounts, _tracked, { now = Date.now() } = {}) {

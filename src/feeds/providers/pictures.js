@@ -16,6 +16,7 @@ const { IntegrationError } = require('../../utils/integrations');
 
 const FEED = 'https://www.flickr.com/services/feeds/photos_public.gne';
 const MAX_TAGS = 4;
+const MAX_NOT = 3; // words that a picture must not have (`-character`)
 const WANTED = 30; // pictures of photos to have before asking one more place
 const POOL = 160; // drawings to have before the anime places stop being asked (they are asked one after the other until there are this many)
 const MAX_IMAGE_URL = 2000; // Discord refuses a longer link for a picture
@@ -149,7 +150,17 @@ function senseFromContext(senses, others) {
  * meanings and the others do not say which one (its first meaning is in `tags` meanwhile).
  */
 function parseQuery(text) {
-  const words = wordsOf(text);
+  const all = wordsOf(text);
+  // A word with a dash before it (`-character`) is a word the pictures must not have; it goes along the tags with its dash.
+  const without = [];
+  const words = [];
+  for (const word of all) {
+    if (/^-[a-z0-9]/.test(word)) {
+      const bare = word.slice(1);
+      const tag = `-${ANIME.has(bare) ? 'anime' : TRANSLATIONS[bare] ?? bare}`;
+      if (tag !== '-anime' && !without.includes(tag)) without.push(tag);
+    } else words.push(word.replace(/^-+/, ''));
+  }
   const plain = words.map((word) => (ANIME.has(word) ? 'anime' : TRANSLATIONS[word] ?? word));
   const tags = [];
   let ambiguous = null;
@@ -163,13 +174,30 @@ function parseQuery(text) {
     }
     if (!tags.includes(tag)) tags.push(tag);
   });
-  return { tags: tags.slice(0, MAX_TAGS), ambiguous };
+  return { tags: [...tags.slice(0, MAX_TAGS), ...without.slice(0, MAX_NOT)], ambiguous };
 }
 
 /** The tags of what a person wrote (see `parseQuery`). */
 const parseTags = (text) => parseQuery(text).tags;
 
-const refused = (tags) => tags.some((tag) => partsOf(tag).some((part) => REFUSED.test(part)) || REFUSED.test(tag));
+const isNot = (tag) => String(tag).startsWith('-');
+/** The tags that are asked for, and the words that are not wanted (without the dash). */
+const wantedOf = (tags) => tags.filter((tag) => !isNot(tag));
+const unwantedOf = (tags) => tags.filter(isNot).map((tag) => tag.slice(1));
+// Words that mean "no people in the picture" (`-character`, `-girl`): a booru is asked to leave out the tags of a person (`no_humans` is too strict: few pictures have it).
+const NO_PEOPLE_TAGS = ['-1girl', '-1boy', '-multiple_girls', '-2girls', '-girl', '-boy', '-face', '-2boys', '-multiple_boys']; // the most useful first: a booru takes only so many tags
+const PEOPLE = new Set(['character', 'characters', 'person', 'people', 'human', 'humans', 'girl', 'girls', 'boy', 'boys', 'woman', 'women', 'man', 'men', 'face', 'faces']);
+
+// Memes: pictures of the funny kind, from the animal communities of Reddit (through meme-api.com, no key): `cat memes`, `dog meme`, or only `memes` for any animal.
+const MEME_WORDS = new Set(['meme', 'memes']);
+const isMeme = (tag) => MEME_WORDS.has(tag);
+const MEME_PLACES = [[['cat', 'cats', 'kitten', 'kittens', 'kitty'], ['catmeme', 'cat_memes', 'catmemes']], [['dog', 'dogs', 'puppy', 'puppies', 'doggo'], ['dogmeme', 'dogmemes']]];
+const MEME_ANY = ['AnimalMemes', 'catmeme', 'dogmeme']; // each one gives only a few different pictures, so several are asked
+const memePlaces = (tags) => MEME_PLACES.find(([words]) => tags.some((tag) => words.includes(tag)))?.[1] ?? MEME_ANY;
+const used = new Map(); // the pictures that were posted of the places that give different ones every time (memes): the ones not posted yet go first
+const markUsed = (image) => { used.delete(image); used.set(image, true); if (used.size > 600) used.delete(used.keys().next().value); };
+
+const refused = (tags) => wantedOf(tags).some((tag) => partsOf(tag).some((part) => REFUSED.test(part)) || REFUSED.test(tag));
 
 /** `pink+cat` (the part of the account that says which tags). */
 const joinTags = (tags) => tags.join('+');
@@ -179,8 +207,8 @@ const tagsOf = (accountId) => String(accountId ?? '').split(':').slice(2).join('
 const tagLabel = (tag) => partsOf(tag).join(' ');
 /** What is searched, to show: `pink · flower · anime style` (`animeLabel` is "anime style" in the language of the server). */
 function queryLabel(tags, animeLabel = 'anime style') { // i18n-ignore: the English default, the card and the account pass the words of the server
-  const things = tags.filter((tag) => !isAnime(tag)).map(tagLabel);
-  return [...things, ...(tags.some(isAnime) ? [animeLabel] : [])].join(' · ');
+  const things = wantedOf(tags).filter((tag) => !isAnime(tag)).map(tagLabel);
+  return [...things, ...(tags.some(isAnime) ? [animeLabel] : []), ...unwantedOf(tags).map((word) => `-${word}`)].join(' · ');
 }
 
 const kept = new Map(); // words -> { until, items }
@@ -198,7 +226,7 @@ const booruTag = (word) => word.replace(/ies$/, 'y').replace(/([^s])s$/, '$1').r
  * place filters by it), `color` (what the place calls the color, or null), `nouns` (the tags that are not colors or the anime word).
  */
 function planFor(source, tags) {
-  const content = tags.filter((tag) => !isAnime(tag));
+  const content = wantedOf(tags).filter((tag) => !isAnime(tag));
   const color = content.map(colorOf).find(Boolean) ?? null;
   const filter = color && source.colorKey ? COLORS[color]?.[source.colorKey] ?? null : null;
   const colorTag = content.find((tag) => colorOf(tag) === color);
@@ -206,7 +234,7 @@ function planFor(source, tags) {
   const words = [...new Set(searched.flatMap((tag) => (colorOf(tag) ? [colorOf(tag)] : partsOf(tag))))];
   if (!words.length && color) words.push(color); // only a color: it is also the word searched
   const nouns = content.filter((tag) => !colorOf(tag));
-  return { words, color: filter, colorName: filter ? color : null, nouns, colorWord: color };
+  return { words, color: filter, colorName: filter ? color : null, nouns, colorWord: color, not: unwantedOf(tags) };
 }
 
 /**
@@ -220,15 +248,20 @@ function booruTries(plan) {
   if (color && nouns.length === 1) tries.push([`${color}_${nouns[0]}`]);
   if (color) tries.push([...nouns, `${color}_theme`]);
   tries.push(color ? [...nouns, color] : nouns);
-  return tries;
+  // What must not be there: a person (`-character`, `-girl`...) leaves out the tags of a person; any other word is a tag with a dash before it.
+  const out = [...new Set(plan.not.flatMap((word) => (PEOPLE.has(word) ? NO_PEOPLE_TAGS : [`-${booruTag(word)}`])).filter((tag) => tag !== '-'))];
+  return tries.map((each) => [...each, ...out]);
 }
 
 /** The pictures of a Moebooru site (Konachan, Yande.re), safe only, the best scored first: up to two pages of a hundred for each search. */
 async function moebooru(host, plan) {
   const found = [];
-  for (const tags of booruTries(plan)) {
+  let failure = null; // one search that fails (a booru is busy) does not leave out the others
+  for (const asked of booruTries(plan)) {
+    // A Moebooru site takes at most six tags (the ones that leave something out are the first to go).
+    const tags = [...asked.filter((tag) => !tag.startsWith('-')), ...asked.filter((tag) => tag.startsWith('-'))].slice(0, 6);
     for (let page = 1; page <= 2; page += 1) {
-      const list = await fetchJsonBody(`${host}/post.json?limit=100&page=${page}&tags=${encode([...tags, 'rating:safe', 'order:score'].join(' '))}`);
+      const list = await fetchJsonBody(`${host}/post.json?limit=100&page=${page}&tags=${encode([...tags, 'rating:safe', 'order:score'].join(' '))}`).catch((error) => { failure ??= error; return null; });
       for (const entry of Array.isArray(list) ? list : []) {
         if (!entry || entry.rating !== 's') continue;
         // The sample is a jpg that Discord shows fast; a file over 8 MB without one is left out.
@@ -239,6 +272,7 @@ async function moebooru(host, plan) {
     }
     if (found.length >= POOL) break;
   }
+  if (!found.length && failure) throw failure;
   return found;
 }
 
@@ -259,9 +293,10 @@ const SOURCES = [
     name: 'Safebooru', anime: true, needs: () => true, // i18n-ignore: the name of a service
     async search(plan) {
       const found = [];
+      let failure = null;
       for (const tags of booruTries(plan)) {
         for (let page = 0; page < 2; page += 1) {
-          const data = await fetchJsonBody(`https://safebooru.org/index.php?page=dapi&s=post&q=index&json=1&limit=100&pid=${page}${tags.length ? `&tags=${encode(tags.join(' '))}` : ''}`);
+          const data = await fetchJsonBody(`https://safebooru.org/index.php?page=dapi&s=post&q=index&json=1&limit=100&pid=${page}${tags.length ? `&tags=${encode(tags.join(' '))}` : ''}`).catch((error) => { failure ??= error; return null; });
           const list = (Array.isArray(data) ? data : []).filter((entry) => entry && entry.rating !== 'questionable' && entry.rating !== 'explicit');
           for (const entry of list) {
             // A huge picture without a sample (a png of many megabytes) is left out: Discord may not show it.
@@ -274,6 +309,7 @@ const SOURCES = [
         }
         if (found.length >= POOL) break;
       }
+      if (!found.length && failure) throw failure;
       return found;
     },
   },
@@ -281,12 +317,28 @@ const SOURCES = [
     name: 'Wallhaven', anime: true, trusted: true, colorKey: 'wallhaven', needs: () => true, // i18n-ignore: the name of a service
     async search(plan, tags) {
       // `+word` must be in the picture; the other parts of a tag only help.
-      const query = tags.filter((tag) => !isDrawn(tag) && !(plan.color && colorOf(tag) === plan.colorName)).map((tag) => (colorOf(tag) ? `+${colorOf(tag)}` : partsOf(tag).map((part, i) => (i ? part : `+${part}`)).join(' '))).join(' ');
+      const query = wantedOf(tags).filter((tag) => !isDrawn(tag) && !(plan.color && colorOf(tag) === plan.colorName)).map((tag) => (colorOf(tag) ? `+${colorOf(tag)}` : partsOf(tag).map((part, i) => (i ? part : `+${part}`)).join(' '))).concat(plan.not.map((word) => `-${word}`)).join(' ');
       const found = [];
       for (let page = 1; page <= 2; page += 1) {
         const data = await fetchJsonBody(`https://wallhaven.cc/api/v1/search?q=${encode(query)}&categories=010&purity=100&sorting=relevance&atleast=1280x720&page=${page}${plan.color ? `&colors=${plan.color}` : ''}`);
         for (const entry of data?.data ?? []) found.push({ image: https(entry.path), url: https(entry.url), author: '', text: '', size: Math.max(Number(entry.dimension_x) || 0, Number(entry.dimension_y) || 0) });
         if (page >= Number(data?.meta?.last_page ?? 1)) break;
+      }
+      return found;
+    },
+  },
+  {
+    name: 'Memes', memes: true, trusted: true, needs: () => true, // i18n-ignore: the name of a service
+    // meme-api.com gives fifty random posts of a community each time: a few asks make a list; only pictures that are not marked adult or spoiler.
+    async search(plan, tags) {
+      const places = memePlaces(tags);
+      const found = [];
+      for (let ask = 0; ask < places.length * 2; ask += 1) {
+        const data = await fetchJsonBody(`https://meme-api.com/gimme/${places[ask % places.length]}/50`).catch((error) => { if (!found.length && ask === places.length * 2 - 1) throw error; return null; });
+        for (const entry of data?.memes ?? []) {
+          if (!entry || entry.nsfw || entry.spoiler || !/\.(?:jpe?g|png|webp|gif)$/i.test(String(entry.url ?? ''))) continue;
+          found.push({ image: https(entry.url), url: https(entry.postLink), author: '', text: clip(entry.title, 200), random: true });
+        }
       }
       return found;
     },
@@ -345,8 +397,9 @@ const SOURCES = [
 
 /** The places to ask for a picture of those tags, best first: only the anime ones when a word asks for anime; otherwise the ones with a key, then the free ones. */
 function sourcesFor(tags) {
+  if (wantedOf(tags).some(isMeme)) return SOURCES.filter((source) => source.memes);
   const anime = tags.some(isDrawn);
-  return SOURCES.filter((source) => source.needs() && (anime ? source.anime : !source.anime));
+  return SOURCES.filter((source) => source.needs() && !source.memes && (anime ? source.anime : !source.anime));
 }
 
 /** The words of a text, each one also without its plural, to look for the words asked. */
@@ -363,9 +416,12 @@ function textWords(text) {
 
 /** Does a picture have every word asked? A color the place filtered by counts as there; a `trusted` place only gives what has them. */
 function hasEveryTag(entry, tags, source, plan) {
-  if (source.trusted) return true;
   const words = textWords(entry.text);
-  return tags.every((tag) => {
+  // A word that was left out (`-character`) is not in what the place says of the picture; for the people, any word of a person is not (their hair, a girl, a boy).
+  const unwanted = unwantedOf(tags).flatMap((word) => (PEOPLE.has(word) ? ['girl', 'boy', 'woman', 'man', 'people', 'person', 'hair', '1girl', '1boy', '2girls'] : [word, word.replace(/s$/, '')]));
+  if (unwanted.some((word) => words.has(word))) return false;
+  if (source.trusted) return true;
+  return wantedOf(tags).every((tag) => {
     if (isAnime(tag)) return true; // only anime places are asked for anime, and they have nothing else
     const color = colorOf(tag);
     if (color && plan.colorName === color) return true;
@@ -409,7 +465,7 @@ async function latest(tags) {
         if (!entry.image || !entry.url || seen.has(entry.image) || (same && seen.has(same)) || !hasEveryTag(entry, tags, source, plan)) continue;
         seen.add(entry.image);
         if (same) seen.add(same);
-        items.push({ image: entry.image, url: entry.url, author: entry.author, source: source.name, rehost: Boolean(source.rehost), size: Number(entry.size) || 0 });
+        items.push({ image: entry.image, url: entry.url, author: entry.author, source: source.name, rehost: Boolean(source.rehost), size: Number(entry.size) || 0, random: Boolean(entry.random) });
       }
     } catch (error) {
       failure ??= error;
@@ -419,10 +475,15 @@ async function latest(tags) {
   // Big drawings first choice; with few of them, all.
   const big = items.filter((item) => item.size >= BIG || !item.size);
   const chosen = (big.length >= 24 ? big : items).slice(0, POOL * 2);
-  chosen.sort((a, b) => hashOf(`${key}|${a.image}`) - hashOf(`${key}|${b.image}`));
+  chosen.sort((a, b) => (Number(a.random && used.has(a.image)) - Number(b.random && used.has(b.image))) || hashOf(`${key}|${a.image}`) - hashOf(`${key}|${b.image}`));
   if (kept.size > 300) kept.clear();
   kept.set(key, { until: Date.now() + KEEP_MS, items: chosen });
   return chosen;
+}
+
+/** Are there pictures for those tags? True too when every place is down (the feed is not refused for that). */
+async function hasAny(tags) {
+  try { return (await latest(tags)).length > 0; } catch { return true; }
 }
 
 /**
@@ -439,7 +500,7 @@ async function pictureOf(tags, key, at, { check = imageReady } = {}) {
   const start = items.length ? slot % items.length : 0;
   for (let step = 0; step < Math.min(PROBES, items.length); step += 1) {
     const candidate = items[(start + step) % items.length];
-    if (await check(candidate.image)) { entry = candidate; break; }
+    if (await check(candidate.image)) { entry = candidate; markUsed(candidate.image); break; }
   }
   const query = queryLabel(tags);
   // The title of the picture on its site (a file name, a caption in any language) is not shown: the notice says what was searched and where it was found.
@@ -470,4 +531,4 @@ function ambiguousError(text, ambiguous) {
   return error;
 }
 
-module.exports = { parseQuery, parseTags, refused, joinTags, tagsOf, tagLabel, queryLabel, pictureOf, ambiguousError, choicesFor, hasEveryTag, planFor, SENSES, SOURCES, MAX_TAGS };
+module.exports = { hasWanted: (tags) => wantedOf(tags).length > 0, hasAny, parseQuery, parseTags, refused, joinTags, tagsOf, tagLabel, queryLabel, pictureOf, ambiguousError, choicesFor, hasEveryTag, planFor, SENSES, SOURCES, MAX_TAGS };

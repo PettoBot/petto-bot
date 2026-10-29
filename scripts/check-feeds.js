@@ -678,6 +678,15 @@ const allText = (message) => JSON.stringify(json(message.components));
     assert.deepEqual(pictures.parseTags('a b pink pink blue green red gold'), ['pink', 'blue', 'green', 'red'], 'one letter is no tag, a tag twice is one, and four at most');
     assert.equal(pictures.refused(['pink', 'nsfw']), true, 'some words are never followed');
     // A word with several meanings is asked about, unless the other words say which one.
+    // A word with a minus sign is left out (`pink flower anime -character`); the words are checked for spelling elsewhere (noPictures), here only the reading.
+    assert.deepEqual(pictures.parseQuery('pink flower anime -character'), { tags: ['pink', 'flower', 'anime', '-character'], ambiguous: null }, 'a minus leaves a word out');
+    assert.equal(pictures.hasEveryTag({ text: 'anime girl with a flower' }, ['flower', '-girl'], { trusted: false }, {}), false, 'a picture that says girl is not wanted');
+    assert.equal(pictures.hasEveryTag({ text: 'a flower in the garden' }, ['flower', '-girl'], { trusted: false }, {}), true, 'a picture that does not say it is');
+    assert.ok(pictures.hasWanted(['pink', '-girl']) && !pictures.hasWanted(['-girl']), 'only words left out is no search');
+    const animals = require('../src/feeds/providers/animals');
+    assert.deepEqual(animals.parseAnimalInput('15m cat memes'), { tokens: ['15m'], kinds: ['catmeme'] }, 'funny cats');
+    assert.deepEqual(animals.parseAnimalInput('memes 1h'), { tokens: ['1h'], kinds: ['meme'] }, 'funny animals');
+    assert.equal(animals.suffixOf(['meme']), ':meme', 'the funny ones are never in "all"');
     assert.deepEqual(pictures.parseQuery('rosa').ambiguous?.senses.map((each) => each.key), ['flower', 'color', 'mountain'], '`rosa` alone: the flower, the color or the mountain');
     assert.deepEqual(pictures.parseQuery('flor rosa anime'), { tags: ['flower', 'pink', 'anime'], ambiguous: null }, 'a pink flower, drawn');
     assert.deepEqual(pictures.parseTags('rosa roja'), ['rose-flower', 'red'], 'a red rose');
