@@ -113,7 +113,7 @@ function buildFeedMessage(feed, item, { lang, test = false, hero = null } = {}) 
   if (description) lines.push(`-# ${description}`);
   // A picture says what was searched (in the language of the server) and where it was found, never the title it has on its site.
   const extra = item.platform === 'pictures' && Array.isArray(item.query?.tags)
-    ? [t(lang, 'feeds.pictures.searching', { query: queryLabel(item.query.tags, t(lang, 'feeds.pictures.animeStyle')) }), item.source].filter(Boolean).join(' · ')
+    ? [t(lang, 'feeds.pictures.searching', { query: queryLabel(item.query.tags, t(lang, 'feeds.pictures.animeStyle'), t(lang, 'feeds.pictures.without', { word: '{word}' })) }), item.source].filter(Boolean).join(' · ')
     : item.extra;
   if (extra) lines.push(`-# ${plainText(extra, 160)}`);
 

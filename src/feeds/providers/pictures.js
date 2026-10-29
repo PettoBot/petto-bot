@@ -206,12 +206,13 @@ const tagsOf = (accountId) => String(accountId ?? '').split(':').slice(2).join('
 /** How a tag is shown: `rose-flower` is "rose flower". */
 const tagLabel = (tag) => partsOf(tag).join(' ');
 /** What is searched, to show: `pink · flower · anime style` (`animeLabel` is "anime style" in the language of the server). */
-function queryLabel(tags, animeLabel = 'anime style') { // i18n-ignore: the English default, the card and the account pass the words of the server
+function queryLabel(tags, animeLabel = 'anime style', withoutLabel = 'without {word}') { // i18n-ignore: the English default, the card and the account pass the words of the server
   const things = wantedOf(tags).filter((tag) => !isAnime(tag)).map(tagLabel);
-  return [...things, ...(tags.some(isAnime) ? [animeLabel] : []), ...unwantedOf(tags).map((word) => `-${word}`)].join(' · ');
+  return [...things, ...(tags.some(isAnime) ? [animeLabel] : []), ...unwantedOf(tags).map((word) => withoutLabel.replace('{word}', word))].join(' · ');
 }
 
 const kept = new Map(); // words -> { until, items }
+const CURATED_ENOUGH = 40; // pictures of the best scored places that are enough to post from, without the rest
 const KEEP_MS = 30 * 60_000; // a list of pictures is kept this long: the order of the pictures does not change while it is kept, so the pictures of the slots never repeat
 const slots = new Map(); // `${tags}:${slot}` -> item | null
 
@@ -415,7 +416,22 @@ function textWords(text) {
 }
 
 /** Does a picture have every word asked? A color the place filtered by counts as there; a `trusted` place only gives what has them. */
+// The bot is for everybody: a picture whose tags say something sexual, violent or sad is never posted, whatever was searched (a booru that calls it "safe" can still
+// have a hand squeezing a crying creature, a bruise, a swimsuit...). The words are those of the tags and titles of the places.
+const UNSAFE_WORDS = new Set([
+  'nsfw', 'nude', 'naked', 'topless', 'nipples', 'breasts', 'cleavage', 'underwear', 'panties', 'bra', 'lingerie', 'bikini', 'swimsuit', 'suggestive', 'ecchi', 'sexy', 'fetish', 'bondage', 'bdsm', 'lewd', 'erotic', 'sex',
+  'blood', 'bloody', 'gore', 'guro', 'injury', 'injured', 'wound', 'wounded', 'bruise', 'bruised', 'violence', 'violent', 'torture', 'strangling', 'choking', 'strangle', 'choke', 'death', 'dead', 'corpse', 'suicide', 'abuse', 'abused', 'drowning', 'weapon', 'gun', 'knife',
+  'crying', 'tears', 'tear', 'sobbing', 'sad', 'screaming', 'pain', 'scared', 'fear', 'squeezing', 'squished', 'squeezed', 'pinned', 'trapped', 'bound', 'restrained', 'kidnapped',
+]);
+const UNSAFE_PHRASES = ['black eye', 'hand on another', 'hand on face', 'grabbing', 'held captive', 'hand around', 'self harm', 'blood on']; // i18n-ignore: tags of the places, compared as they are written
+const isUnsafe = (text) => {
+  const words = textWords(text);
+  const lower = ` ${strip(text)} `.replace(/[^a-z0-9]+/g, ' ');
+  return [...UNSAFE_WORDS].some((word) => words.has(word)) || UNSAFE_PHRASES.some((phrase) => lower.includes(` ${phrase} `));
+};
+
 function hasEveryTag(entry, tags, source, plan) {
+  if (isUnsafe(entry.text)) return false;
   const words = textWords(entry.text);
   // A word that was left out (`-character`) is not in what the place says of the picture; for the people, any word of a person is not (their hair, a girl, a boy).
   const unwanted = unwantedOf(tags).flatMap((word) => (PEOPLE.has(word) ? ['girl', 'boy', 'woman', 'man', 'people', 'person', 'hair', '1girl', '1boy', '2girls'] : [word, word.replace(/s$/, '')]));
@@ -465,13 +481,16 @@ async function latest(tags) {
         if (!entry.image || !entry.url || seen.has(entry.image) || (same && seen.has(same)) || !hasEveryTag(entry, tags, source, plan)) continue;
         seen.add(entry.image);
         if (same) seen.add(same);
-        items.push({ image: entry.image, url: entry.url, author: entry.author, source: source.name, rehost: Boolean(source.rehost), size: Number(entry.size) || 0, random: Boolean(entry.random) });
+        items.push({ image: entry.image, url: entry.url, author: entry.author, source: source.name, rehost: Boolean(source.rehost), curated: Boolean(source.trusted && source.anime), size: Number(entry.size) || 0, random: Boolean(entry.random) });
       }
     } catch (error) {
       failure ??= error;
     }
   }
   if (!items.length && failure) throw failure;
+  // The places that give the best scored first (Konachan, Yande.re, Wallhaven) are the ones to post from; the others (Safebooru) only fill in when those have few.
+  const best = items.filter((item) => item.curated);
+  if (drawn && best.length >= CURATED_ENOUGH) items.splice(0, items.length, ...best);
   // Big drawings first choice; with few of them, all.
   const big = items.filter((item) => item.size >= BIG || !item.size);
   const chosen = (big.length >= 24 ? big : items).slice(0, POOL * 2);
