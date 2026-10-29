@@ -265,7 +265,7 @@ async function tick(client, { now = Date.now(), providers = PROVIDERS, passMs = 
         }
         await clearPollError(list);
         schedule.set(keyOf(platform, id), { at: now + (provider.intervalFor?.(id, now) ?? provider.interval) + Math.floor(Math.random() * 15_000), fails: 0 });
-        await forEachWithConcurrency(list.filter(forLang), (feed) => processFeed(client, feed, result, liveByFeed, seen, now).catch((error) => logger.error(`Feed ${feed.id} failed:`, error)), SEND_WORKERS);
+        await forEachWithConcurrency(list.filter(forLang), (feed) => processFeed(client, feed, result, liveByFeed, seen, now).catch((error) => (error?.code === '23503' ? logger.info(`Feed ${feed.id}: it was deleted while a notice was being posted.`) : logger.error(`Feed ${feed.id} failed:`, error))), SEND_WORKERS);
       }
     }
   }

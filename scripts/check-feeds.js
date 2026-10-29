@@ -1283,7 +1283,25 @@ const allText = (message) => JSON.stringify(json(message.components));
   assert.equal(other.ok, true, 'a sixth feed of another platform is fine');
   assert.equal(await feedsDb.countForGuild(G), 6);
   assert.equal(await feedsDb.countForGuild(G, 'youtube'), 5);
+  assert.equal(other.feed.number, 6, 'each server numbers its own feeds: the next one is the sixth');
+  // The numbers of a server never have holes: the ones after a deleted feed move down by one, and a new feed takes the next number.
+  {
+    const made = [other];
+    for (const name of ['r/n1', 'r/n2', 'r/n3']) made.push(await service.createFeed(guild, { platform: 'reddit', account: name, channelId: CH }));
+    assert.deepEqual((await feedsDb.listForGuild(G)).map((feed) => feed.number), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    assert.equal(await feedsDb.remove(G, made[1].feed.id), true, 'delete the seventh');
+    assert.deepEqual((await feedsDb.listForGuild(G)).map((feed) => feed.number), [1, 2, 3, 4, 5, 6, 7, 8], 'the eighth and the ninth are the seventh and the eighth');
+    assert.equal((await feedsDb.getByNumber(G, 7)).id, made[2].feed.id, 'the one that was the eighth answers to 7');
+    assert.equal(await feedsDb.getByNumber(G, 9), null);
+    const again = await service.createFeed(guild, { platform: 'reddit', account: 'r/n4', channelId: CH });
+    assert.equal(again.feed.number, 9, 'a new feed takes the next number');
+    assert.equal(await feedsDb.remove(G, again.feed.id), true);
+    const next = await service.createFeed(guild, { platform: 'reddit', account: 'r/n5', channelId: CH });
+    assert.equal(next.feed.number, 9, 'after deleting the last one its number is free again');
+    for (const feed of [next, made[2], made[3]]) assert.equal(await feedsDb.remove(G, feed.feed.id), true);
+  }
   assert.equal(await feedsDb.remove(G, other.feed.id), true);
+  assert.deepEqual((await feedsDb.listForGuild(G)).map((feed) => feed.number), [1, 2, 3, 4, 5], 'back to the five of YouTube');
   delete PROVIDERS.reddit;
   // An auto feed: the pace is part of the account, a new pace starts at its next slot, and a pace under 15 minutes is refused.
   {

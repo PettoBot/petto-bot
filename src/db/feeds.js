@@ -1,11 +1,11 @@
 const database = require('./database');
 const { ensureGuild } = require('./guilds');
 
-const COLUMNS = 'id,guild_id,platform,account_id,account_name,account_avatar,account_url,channel_id,types,message,ping_roles,ping_everyone,options,filters,enabled,ready,failures,last_sent_at,last_error,last_error_at,created_by,created_at';
+const COLUMNS = 'id,number,guild_id,platform,account_id,account_name,account_avatar,account_url,channel_id,types,message,ping_roles,ping_everyone,options,filters,enabled,ready,failures,last_sent_at,last_error,last_error_at,created_by,created_at';
 const SEEN_KEEP_DAYS = 60;
 
 async function listForGuild(guildId) {
-  const { data, error } = await database.from('feeds').select(COLUMNS).eq('guild_id', guildId).order('id', { ascending: true }).limit(500);
+  const { data, error } = await database.from('feeds').select(COLUMNS).eq('guild_id', guildId).order('number', { ascending: true }).limit(500);
   if (error) throw error;
   return data ?? [];
 }
@@ -21,6 +21,13 @@ async function countForGuild(guildId, platform = null) {
 
 async function get(guildId, id) {
   const { data, error } = await database.from('feeds').select(COLUMNS).eq('guild_id', guildId).eq('id', id).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+/** A feed by the number its server sees (1, 2, 3...), or null. */
+async function getByNumber(guildId, number) {
+  const { data, error } = await database.from('feeds').select(COLUMNS).eq('guild_id', guildId).eq('number', number).maybeSingle();
   if (error) throw error;
   return data;
 }
@@ -135,4 +142,4 @@ async function pruneOld(now = Date.now()) {
   if (b.error) throw b.error;
 }
 
-module.exports = { SEEN_KEEP_DAYS, listForGuild, countForGuild, get, listEnabled, forgetList, create, update, remove, seenAmong, markSeen, liveRowsFor, liveRowsAll, saveLive, deleteLive, pruneOld };
+module.exports = { SEEN_KEEP_DAYS, listForGuild, countForGuild, get, getByNumber, listEnabled, forgetList, create, update, remove, seenAmong, markSeen, liveRowsFor, liveRowsAll, saveLive, deleteLive, pruneOld };
