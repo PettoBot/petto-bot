@@ -45,10 +45,11 @@ async function processDueAutoMessages(client) {
         if (sent && payload.reactions.length) await applyReactReplies(sent, payload.reactions).catch(() => {});
         if (row.delete_previous) await replacePrevious(channel, row, sent);
       }
-      await autoMessagesDb.scheduleNext(row.id, row.next_run_at, row.interval_ms);
+      // A run missed while the bot was off is sent once (above); the next one is the next future time, so there is no catch-up.
+      await autoMessagesDb.scheduleNext(row);
     } catch (err) {
       logger.error(`Failed to process timer #${row.id}:`, err);
-      await autoMessagesDb.scheduleNext(row.id, row.next_run_at, row.interval_ms).catch(() => {});
+      await autoMessagesDb.scheduleNext(row).catch(() => {});
     }
   }, config.jobConcurrency);
 }

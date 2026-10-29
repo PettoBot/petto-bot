@@ -6,6 +6,7 @@ const secondary = require('../db/secondary');
 const SECONDARY_TABLES = new Set(['profile_history_images', 'malicious_links']);
 const logger = require('../utils/logger');
 const rateLimit = require('express-rate-limit');
+const { normalizeScheduleFields } = require('../utils/timerSchedule');
 
 const IDENTIFIER = /^[a-z_][a-z0-9_]*$/i;
 const FILTER_OPERATORS = new Set(['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'like', 'ilike', 'in', 'is']);
@@ -224,6 +225,29 @@ function responseError(res, error) {
   res.status(status).json({ code: error?.code || 'dashboard_database_error', message: 'Database request could not be completed.' }); // i18n-ignore: PostgREST-shaped answer for the dashboard's database client, English like PostgREST
 }
 
+const TIMER_SCHEDULE_FIELDS = ['schedule', 'at_time', 'timezone', 'weekday'];
+
+/**
+ * A timer written from the dashboard with a schedule (every day or week at a time, in a time zone): checks the time, weekday and
+ * zone, writes them the way the bot reads them, and works out `next_run_at` from the schedule. Rows without schedule fields are
+ * left as they are (interval timers, or a change of only the message). Returns the body to write, or { error }.
+ */
+function prepareTimerWrite(body) {
+  const one = (row) => {
+    if (!row || typeof row !== 'object' || !TIMER_SCHEDULE_FIELDS.some((field) => field in row)) return { row };
+    // The fields go together: a part of a schedule cannot be checked (or a next run worked out) without the rest.
+    if (!('schedule' in row)) return { error: 'schedule' };
+    return normalizeScheduleFields(row);
+  };
+  if (Array.isArray(body)) {
+    const rows = body.map(one);
+    const failed = rows.find((result) => result.error);
+    return failed ? { error: failed.error } : { body: rows.map((result) => result.row) };
+  }
+  const result = one(body);
+  return result.error ? { error: result.error } : { body: result.row };
+}
+
 function dashboardAuthorized(req) {
   const explicit = req.get('x-petto-dashboard-key');
   const apiKey = req.get('apikey');
@@ -265,7 +289,15 @@ async function handleDashboardRest(req, res) {
       query.select(selection.databaseSelect, { count: countExact ? 'exact' : undefined, head: method === 'HEAD' });
     } else {
       mutation = true;
-      const body = req.body;
+      let body = req.body;
+      if (table === 'auto_messages' && (method === 'POST' || method === 'PATCH')) {
+        const prepared = prepareTimerWrite(body);
+        if (prepared.error) {
+          res.status(400).json({ code: 'PETTO_TIMER_SCHEDULE', message: `Invalid timer ${prepared.error}.`, field: prepared.error }); // i18n-ignore: PostgREST-shaped answer for the dashboard's database client, English like PostgREST
+          return;
+        }
+        body = prepared.body;
+      }
       if (method === 'POST') {
         const resolution = [...preference].some((item) => item === 'resolution=merge-duplicates');
         if (resolution) query.upsert(body, { onConflict: onConflict.join(',') });
@@ -336,4 +368,4 @@ function registerDashboardRestRoutes(app, rateLimiter) {
   app.all('/rest/v1/:table', effectiveLimiter, handleDashboardRest);
 }
 
-module.exports = { registerDashboardRestRoutes, parseFilter, isExpectedConflict };
+module.exports = { registerDashboardRestRoutes, parseFilter, isExpectedConflict, prepareTimerWrite };
