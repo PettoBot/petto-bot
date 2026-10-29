@@ -171,7 +171,8 @@ const es = getRelease('v0.7.6', 'es');
 assert.equal(es.name, 'Macaron');
 assert.equal(es.date, '2026-10-15');
 assert.equal(es.status, `${EMOJI.RELEASE_APPROVED} Publicada`);
-assert.equal(getRelease('v0.7.9', 'es').status, `${EMOJI.RELEASE_APPROVED} Última versión`, 'the latest release is the first one');
+assert.equal(getRelease('v0.7.9-1', 'es').status, `${EMOJI.RELEASE_APPROVED} Última versión`, 'the latest release is the first one');
+assert.equal(getRelease('v0.7.9', 'es').status, `${EMOJI.RELEASE_APPROVED} Publicada`);
 assert.equal(getRelease('v0.7.8', 'es').status, `${EMOJI.RELEASE_APPROVED} Publicada`);
 assert.equal(getRelease('v0.7.7', 'es').status, `${EMOJI.RELEASE_APPROVED} Publicada`);
 assert.equal(es.sections[0].title, `${EMOJI.RELEASE_ROCKET} Apelaciones`);
@@ -182,9 +183,9 @@ assert.equal(pt.sections[0].title, `${EMOJI.RELEASE_ROCKET} Novidades`);
 assert.match(pt.summary, /^Aniversários/);
 assert.equal(getRelease('v0.7.6', 'pt').label, getRelease('v0.7.6', 'pt-BR').label, '"pt" is read as pt-BR');
 assert.equal(getRelease('v0.7.6', 'fr').label, getRelease('v0.7.6', 'en').label, 'an unknown language is English');
-assert.equal(runWithLanguage('es', () => getLatestRelease().summary), getRelease('v0.7.9', 'es').summary, 'the language of the running command by default');
+assert.equal(runWithLanguage('es', () => getLatestRelease().summary), getRelease('v0.7.9-1', 'es').summary, 'the language of the running command by default');
 assert.equal(getRelease('v0.0.0', 'es'), null);
-assert.equal(getReleaseIndex('v0.7.5'), 4);
+assert.equal(getReleaseIndex('v0.7.5'), 5);
 
 // A language that lacks a release shows it in English instead of breaking.
 {
@@ -237,17 +238,51 @@ for (const lang of LANGUAGES) {
 const card = (version, lang) => JSON.stringify(buildVersionPayload(version, lang).components.map((component) => component.toJSON()));
 assert.match(card('v0.7.6', 'es'), /Petto v0\.7\.6 “Macaron”/, 'the codename is never translated');
 assert.match(card('v0.7.9', 'es'), /Petto v0\.7\.9 “Donut”/);
-assert.match(card('v0.7.9', 'es'), /Última versión  ·  /);
-assert.match(card('v0.7.9', 'es'), /Versión 1 de \d+/);
+assert.match(card('v0.7.9-1', 'es'), /Petto v0\.7\.9~1 “Donut”/, 'a patch is shown with ~');
+assert.match(card('v0.7.9-1', 'es'), /Última versión  ·  /);
+assert.match(card('v0.7.9-1', 'es'), /Versión 1 de \d+/);
+assert.match(card('v0.7.9', 'es'), /Publicada  ·  /);
 assert.match(card('v0.7.8', 'es'), /Petto v0\.7\.8 “Mochi”/);
 assert.match(card('v0.7.7', 'es'), /Petto v0\.7\.7 “Tiramisu”/);
 assert.match(card('v0.7.7', 'es'), /Publicada  ·  /);
 assert.match(card('v0.7.6', 'es'), /Publicada  ·  /);
-assert.match(card('v0.7.6', 'es'), /Versión 4 de \d+/);
+assert.match(card('v0.7.6', 'es'), /Versión 5 de \d+/);
 assert.match(card('v0.7.6', 'es'), /"label":"v0\.7\.5 · Waffle: cumpleaños/, 'the menu lists the releases in Spanish');
 assert.match(card('v0.7.0', 'pt-BR'), /https:\/\/code\.petto\.sbs/, 'links are kept');
 assert.match(card('v0.7.0', 'pt-BR'), /### <:\w+:\d+> Alertas de missões/);
 assert.match(card('v0.7.6', 'en'), /"label":"v0\.7\.5 · Waffle: birthdays, verification in a channel & a faster dashboard"/);
 assert.equal(card(undefined, 'pt-BR'), card(RELEASES[0].version, 'pt-BR'), 'without a version, the latest');
+
+// The version of package.json is a release: package-lock.json says the same, `!version` shows it first, CHANGELOG.md has its notes (read the
+// way .github/workflows/release.yml reads them), and the workflow makes it a normal release and the latest one, also for a patch (0.7.9-1),
+// which semver would take for a prerelease older than 0.7.9.
+{
+  const root = path.join(__dirname, '..');
+  const { version } = require('../package.json');
+  const lock = require('../package-lock.json');
+  assert.equal(lock.version, version, 'package-lock.json has the version of package.json');
+  assert.equal(lock.packages?.['']?.version, version, 'and so does its root package');
+  assert.match(version, /^\d+\.\d+\.\d+(?:-\d+)?$/, 'a version is x.y.z, or x.y.z-n for a patch');
+  assert.equal(RELEASES[0].version, `v${version}`, '!version shows the version of package.json first');
+  if (version.includes('-')) assert.equal(RELEASES[0].display, `v${version.replace('-', '~')}`, 'a patch is shown with ~');
+  const notesOf = (changelog, wanted) => {
+    const lines = [];
+    let found = false;
+    for (const line of changelog.split('\n')) {
+      if (line.startsWith(`## [${wanted}]`)) { found = true; continue; }
+      if (found && /^## \[/.test(line)) break;
+      if (found) lines.push(line);
+    }
+    return lines.join('\n').trim();
+  };
+  const changelog = fs.readFileSync(path.join(root, 'CHANGELOG.md'), 'utf8');
+  assert.ok(notesOf(changelog, version).length > 50, `CHANGELOG.md has the notes of ${version}`);
+  assert.ok(!notesOf(changelog, version).includes(`## [${version.split('-')[0]}]`), 'the notes of a patch stop before the version it patches');
+  const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'release.yml'), 'utf8');
+  for (const command of ['gh release create', 'gh release edit']) {
+    const line = workflow.split('\n').find((each) => each.includes(command)) ?? '';
+    assert.ok(line.includes('--prerelease=false') && line.includes('--latest'), `${command} makes a normal release and the latest one`);
+  }
+}
 
 console.log(`release notes ok (${RELEASES.length} releases in ${LANGUAGES.join(', ')})`);

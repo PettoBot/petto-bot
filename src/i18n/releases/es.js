@@ -1,5 +1,27 @@
 // Las notas de versión de `!version` en español: etiqueta, resumen y secciones de cada versión (src/utils/releases.js guarda el resto).
 module.exports = {
+  'v0.7.9-1': {
+    label: 'v0.7.9~1 · Donut: imágenes que coinciden, !send y RSS arreglados',
+    summary: 'Un parche de Donut: feeds de imágenes que cumplen todas las palabras y preguntan qué significa una palabra, `!send` que encuentra su canal, y feeds RSS que avisan cuando un enlace no es un feed.',
+    sections: [
+      {
+        title: 'Feeds de imágenes',
+        items: [
+          'Cuenta cada palabra: `flor rosa anime` solo da dibujos de flores rosas, nunca una montaña ni una foto.',
+          'Una palabra con varios significados (`rosa`: la flor, el color o la montaña) se pregunta con un botón para cada uno antes de guardar el feed.',
+          'El feed y cada imagen dicen qué se busca, y las imágenes se revisan antes, así que ninguna sale rota.',
+        ],
+      },
+      {
+        title: 'Arreglos',
+        items: [
+          '`!send` encuentra el canal al principio o al final, por mención, ID, enlace o nombre, y avisa cuando no existe.',
+          'Un feed RSS que apunta a una página web no se guarda como un feed vacío: Petto busca el feed de verdad o avisa que no hay.',
+          'El DM de bienvenida conserva solo sus botones de enlace, y un formulario de Petto Code con demasiadas opciones marcadas se avisa como un error.',
+        ],
+      },
+    ],
+  },
   'v0.7.9': {
     label: 'v0.7.9 · Donut: feeds para todos, !send, botones con acción y búsquedas nuevas',
     summary: 'Feeds abiertos a todos los servidores, `!send`, botones que hacen cosas, formularios con todas las partes de Discord, búsquedas nuevas, `!stats`, una tarjeta de subida de nivel nueva y una base de datos más ligera.',

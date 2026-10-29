@@ -33,9 +33,11 @@ jobs:
           # GitHub turns a bare @name into a mention of the account with that name (@everyone and @here are real accounts), and
           # lists it as a contributor of the release. Outside code spans, such a name is put in a code span.
           node scripts/release-notes.js notes.md
+          # A patch of a version is written 0.7.9-1 (shown as 0.7.9~1). For semver that is a prerelease that comes before 0.7.9, so
+          # GitHub would leave 0.7.9 as the latest release: it is said on purpose that this one is a normal release and the latest.
           if gh release view "$tag" >/dev/null 2>&1; then
             # The release exists: its notes follow CHANGELOG.md, so a fix there reaches the release too.
-            gh release edit "$tag" --notes-file notes.md
+            gh release edit "$tag" --notes-file notes.md --prerelease=false --latest
             exit 0
           fi
-          gh release create "$tag" --target "$GITHUB_SHA" --title "Petto ${tag}" --notes-file notes.md
+          gh release create "$tag" --target "$GITHUB_SHA" --title "Petto ${tag}" --notes-file notes.md --prerelease=false --latest

@@ -4,6 +4,25 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+## [0.7.9-1] — 2026-10-29 · Donut
+
+A patch of 0.7.9, shown as **0.7.9~1**.
+
+### Changed
+
+- **Feeds of pictures: every word counts.** `flor rosa anime` only gives drawings of pink flowers: every word has to be in the tags, the title or the description of a picture (a color can also be the color filter of the place it comes from), and a word such as `anime` only asks the places of anime pictures, so no photo, mountain or pink car comes in. Spanish and Portuguese words are turned into the English tags the places use.
+- **Feeds of pictures: a word with more than one meaning is asked about.** `!feed add pictures 30m rosa` asks whether you mean the flower, the color or the mountain (Monte Rosa) with a button for each, and the feed is saved with what you pick; the other words also say it (`flor rosa` is a pink flower, `rosa roja` a red rose). The same happens for `naranja`, `lima`, `violeta`, `llama`, `vela`, `mono`, `sierra`, `jaguar`, `mouse` and a few more. The dashboard gets the same choices.
+- **Feeds of pictures say what they search.** The feed and each picture show it ("Searching: pink · flower · anime style · Wallhaven") instead of the title the picture had on its site.
+- `!send` reads the channel however it is written: a mention, an ID, a link, `#name` or the name of the channel (also without the emojis around it), at the start or at the end of the message. Its help shows `send [channel] [message]`.
+
+### Fixed
+
+- `!send` sent the message to the channel where it was typed when the channel came after the text (the order its help showed) or was written by name. A channel that does not exist is now told, never replaced, and a thread asks for Send Messages in Threads.
+- An RSS feed pointing to a web page (such as the changelog of the site, which has no feed) was saved as an empty feed and never posted. Adding one now looks for the feed the page announces or where sites usually keep it (`/rss.xml`, `/feed`...), and says when there is none. A feed that cannot be read several times in a row shows why in `!feed list`.
+- Pictures of the picture feeds no longer show as broken: each one is checked before it is posted (a real picture that loads, not a page or a format Discord does not show), the next one is used when it fails, and the pictures from Pixabay, Google and Openverse are sent as a file so they do not break later. Openverse gave no picture at all, and now does.
+- The join DM (`!dmonjoin`) no longer has buttons with actions, which only work in a server; its link buttons stay.
+- A Petto Code form whose menu or checkboxes start with more choices selected than its `max` is told as a mistake instead of being refused by Discord.
+
 ## [0.7.9] — 2026-10-29 · Donut
 
 ### Added
