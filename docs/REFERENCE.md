@@ -398,6 +398,8 @@ instant command registration while developing (global registration can take up
 to an hour to propagate). Never copy production secrets into a local example,
 issue, log, screenshot, or pull request.
 
+Optional keys of the feed of pictures (`src/feeds/providers/pictures.js`). Each one only adds a place to search; with none of them the feed still works with Wallhaven and Safebooru (anime words), Openverse and Flickr: `PIXABAY_API_KEY`, `UNSPLASH_ACCESS_KEY`, `PEXELS_API_KEY`, and `GOOGLE_CSE_KEY` with `GOOGLE_CSE_CX` (a Programmable Search Engine of Google with image search on).
+
 **Privacy-safe guild lifecycle:** when Petto joins a server, it records the server name, ID, member count, owner, and inviter in the private operations log and owner notification. It does **not** create an invite automatically. The existing invite-tracking feature only reads invite usage when attributing a member join; it does not create a server invite. `PETTO_SUPPORT_GUILD_ID` can explicitly identify the official support server for private support controls; if left empty, Petto resolves it from `PETTO_JOIN_LOG_CHANNEL_ID`.
 
 The hidden prefix-only `!leaveguild <guild_id>` control is restricted to Petto operators (`PETTO_OWNER_ID` or `PETTO_DEVELOPER_IDS`) in the official support server. It makes Petto leave a server where Petto is installed; it cannot remove another bot from a server where Petto is not present, and it cannot leave the official support server itself.

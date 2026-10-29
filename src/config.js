@@ -212,7 +212,7 @@ module.exports = {
   spotifyClientSecret: process.env.SPOTIFY_CLIENT_SECRET || null,
   youtubeApiKey: process.env.YOUTUBE_API_KEY || null,
   // Where the feed of pictures searches (src/feeds/providers/pictures.js), each one optional: a Programmable Search Engine of Google with images on (the key and the engine id), and the keys of
-  // Pixabay, Pexels and Unsplash. Wallhaven, Safebooru, Openverse and Flickr need none.
+  // Pixabay, Pexels and Unsplash. Wallhaven, Safebooru, Openverse and Flickr need none. Set them in the environment of the host, like the other keys, and restart the bot.
   googleCseKey: process.env.GOOGLE_CSE_KEY || null,
   googleCseCx: process.env.GOOGLE_CSE_CX || null,
   pixabayApiKey: process.env.PIXABAY_API_KEY || null,
