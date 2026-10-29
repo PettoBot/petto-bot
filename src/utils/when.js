@@ -59,7 +59,7 @@ function parseWhen(input, { now = Date.now() } = {}) {
   if (iso) {
     const written = Date.UTC(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]), Number(iso[4] ?? 0), Number(iso[5] ?? 0));
     const moment = iso[6] ? written : written - OFFSET_MS; // without z or utc it is the clock of Colombia
-    const check = new Date(moment);
+    const check = new Date(written); // the date as it was written (the moment can fall on the next day in UTC, from 19:00 in Colombia)
     return check.getUTCMonth() === Number(iso[2]) - 1 && check.getUTCDate() === Number(iso[3]) ? moment : null;
   }
 

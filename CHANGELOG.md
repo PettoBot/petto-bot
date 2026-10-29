@@ -4,6 +4,15 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A date written with a time from 19:00 to 23:59 was not understood.** `!remind 2026-10-12 21:00 ...` (and every command that reads a moment) said it did not understand the date when the time, in Colombia, was 19:00 or later: that moment is already the next day in UTC and the date was checked against that day.
+- **Feeds: the pictures of a feed no longer repeat, and they come from more places.** A feed of pictures (`!feed add pictures 15m anime pink`) took the first twenty or so pictures of Wallhaven and chose among them with a number that repeated, so the same pictures came again and again, all from the same place. Drawings (the word `anime`, or the name of a character that is only drawn: `cinnamoroll`, `sanrio`, `kuromi`, `pompompurin`, `pochacco`, `chiikawa`, `totoro`, `pikachu`, `pokemon`, `vocaloid`, `miku`, `genshin`, `touhou`) are now asked in **Konachan** and **Yande.re** (safe pictures only, the best scored first), **Safebooru** (two pages) and **Wallhaven** (two pages), all without a key, until there are 160 pictures; the same picture on two sites (same source) counts once, big pictures go first, and a huge file without a sample is left out. The pictures are put in an order that is always the same for those tags (it does not change while the list is kept, 30 minutes) and the slots of time go along it one after the other: the next picture is never the one before, and a picture comes again only after all the others were posted. The same goes for photos, with up to 30 pictures. A booru tag is written as the booru writes it (`hello-kitty` is `hello_kitty`), and a search with only a color (`anime pink`) also looks for `pink_theme` and `pink_flower`. Nothing needs a key.
+
+### Added
+
+- **Feeds: leave a word out of a pictures feed, and funny animals.** A word with a minus sign is left out: `!feed add pictures 15m pink flower anime -character` posts pink flowers drawn, without a character (up to 3 words; `-character`, `-person` or `-girl` also leave out the pictures of people). The tags have to be in **English** and well written: a word that no place knows now says so when the feed is added (`noPictures`) instead of posting nothing. Funny animals, like the pictures of memes of cats or dogs: `!feed add pictures 15m cat memes` (or `dog memes`, or only `memes`) and `!feed add animals 15m cat memes`; the ones that were not posted yet go first. The feed preview of the dashboard now shows a real picture of the search (the dashboard sends the account that was chosen), and the animals feed no longer posts the same picture twice in a row.
+
 ## [0.7.9-1] — 2026-10-29 · Donut
 
 A patch of 0.7.9, shown as **0.7.9~1**.

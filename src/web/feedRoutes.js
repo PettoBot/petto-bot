@@ -78,7 +78,7 @@ function registerFeedRoutes(app, { authorize, limiter }) {
       if (!(error instanceof IntegrationError)) throw error;
       // A word with several meanings: the dashboard shows the choices and sends the one picked as the account (`choices[].account`).
       if (error.kind === 'ambiguous') { res.status(409).json({ ok: false, error: 'ambiguous', word: error.word, choices: service.labelChoices(lang, error.word, error.choices), message: t(lang, 'feeds.add.error.ambiguous', { emoji: '', word: error.word }).trim() }); return; }
-      const kind = ['notFound', 'badInput', 'notConfigured', 'unsupported', 'badTags', 'noFeed'].includes(error.kind) ? error.kind : 'unavailable';
+      const kind = ['notFound', 'badInput', 'notConfigured', 'unsupported', 'badTags', 'noPictures', 'noFeed'].includes(error.kind) ? error.kind : 'unavailable';
       res.status(kind === 'unavailable' ? 502 : 404).json({ ok: false, error: kind, message: t(lang, `feeds.add.error.${kind}`, { emoji: '', platform: PLATFORMS[platform].name }).trim() });
     }
   });
@@ -150,7 +150,14 @@ function registerFeedRoutes(app, { authorize, limiter }) {
       const saved = await feedsDb.get(guild.id, id);
       if (saved) item = await service.sampleItem({ ...saved, types: body.type ? [String(body.type)] : saved.types }, lang);
     }
-    item ??= sampleNotice(platform, String(body.type ?? PLATFORMS[platform].defaultTypes[0]), lang, body.account);
+    // What the dashboard sends is the account that was chosen (`{ id, name, avatar, url }`; an older page sent only its name).
+    const account = body.account && typeof body.account === 'object' ? body.account : body.account ? { name: String(body.account) } : null;
+    // The pictures and the animals have no account to look at: their preview is a real picture of what was asked, the one of the current slot of time (when none can be had, the example).
+    if (!item && ['pictures', 'animals'].includes(platform) && account?.id) {
+      const real = await service.sampleItem({ platform, account_id: String(account.id).slice(0, 300), account_name: String(account.name ?? '').slice(0, 100), account_avatar: account.avatar ?? null, account_url: account.url ?? null, types: ['photo'] }, lang);
+      if (real?.image) item = real;
+    }
+    item ??= sampleNotice(platform, String(body.type ?? PLATFORMS[platform].defaultTypes[0]), lang, account);
     const message = buildFeedMessage(feed, item, { lang });
     // The player of a video is a plain message (its link), shown here as the text it sends.
     const parts = message.components ? message.components.map((component) => component.toJSON()) : [{ type: 10, content: message.content }];
