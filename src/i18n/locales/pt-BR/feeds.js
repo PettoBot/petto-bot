@@ -72,6 +72,7 @@ module.exports = {
   'feeds.pictures.expired': 'Esta pergunta expirou. Adicione o feed de novo.',
   'feeds.pictures.notYours': 'Só quem adicionou o feed pode escolher.',
   'feeds.pictures.animeStyle': 'estilo anime',
+  'feeds.pictures.without': 'sem {word}',
   'feeds.pictures.searching': 'Buscando: {query}',
   'feeds.pictures.sense.flower': 'A flor',
   'feeds.pictures.sense.color': 'A cor',

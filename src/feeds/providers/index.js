@@ -136,7 +136,7 @@ const picturesFeed = {
     if (ambiguous) throw pictures.ambiguousError(String(text ?? '').trim(), ambiguous);
     // Words that find nothing (not in English, a typo, too many words that never go together) are told now, not after a feed that never posts.
     if (!(await pictures.hasAny(tags))) throw new IntegrationError('noPictures');
-    return { id: `every:${minutes}:${pictures.joinTags(tags)}`, name: pictures.queryLabel(tags, t(lang, 'feeds.pictures.animeStyle')).slice(0, 100), avatar: null, url: null };
+    return { id: `every:${minutes}:${pictures.joinTags(tags)}`, name: pictures.queryLabel(tags, t(lang, 'feeds.pictures.animeStyle'), t(lang, 'feeds.pictures.without', { word: '{word}' })).slice(0, 100), avatar: null, url: null };
   },
   async poll(accounts, _tracked, { now = Date.now() } = {}) {
     const results = new Map();
