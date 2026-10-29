@@ -125,11 +125,58 @@ function editMessage(text) {
   return { code: body };
 }
 
-/** `!send [#channel] the message`: the channel when the text starts with one (a mention or an ID), and the message with its line breaks. */
-function sendMessage(text) {
+const CHANNEL_LINK = /^https?:\/\/(?:(?:canary|ptb)\.)?discord(?:app)?\.com\/channels\/\d+\/(\d{15,25})\/?$/i;
+/** A name as people write it: lower case, without accents, emojis or the signs servers put around names (`📢・anuncios` is `anuncios`). */
+const looseName = (name) => String(name ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+
+/** The channel of the server named `name` (exactly, or the same letters without the emojis and signs around them), or null. */
+function channelByName(guild, name) {
+  const channels = guild?.channels?.cache;
+  if (!channels || !name) return null;
+  const wanted = String(name).toLowerCase();
+  const loose = looseName(name);
+  const usable = [...channels.values()].filter((channel) => channel?.isTextBased?.() && !channel.isDMBased?.());
+  return usable.find((channel) => String(channel.name).toLowerCase() === wanted) ?? (loose ? usable.find((channel) => looseName(channel.name) === loose) : null) ?? null;
+}
+
+/**
+ * The channel a word points at: `<#id>`, an id, a link to the channel, `#name` or a name. A mention, an id, a link or `#name` is always taken
+ * as a channel (`resolved` false when the server has none of that); a bare word only when the server has a channel of that name.
+ */
+function channelWord(word, guild) {
+  const value = String(word ?? '').trim();
+  const id = /^<#(\d{15,25})>$/.exec(value)?.[1] ?? /^(\d{15,25})$/.exec(value)?.[1] ?? CHANNEL_LINK.exec(value)?.[1];
+  if (id) return { id, explicit: true };
+  if (/^#[^\s#]{1,100}$/.test(value)) {
+    const found = channelByName(guild, value.slice(1));
+    return { id: found?.id ?? null, explicit: true };
+  }
+  const found = /^[^\s{}<>@]{1,100}$/.test(value) ? channelByName(guild, value) : null;
+  return found ? { id: found.id, explicit: false } : null;
+}
+
+/**
+ * `!send [#channel] the message` (and `!send the message #channel`, the order the help of the command showed): the channel and the message
+ * with its line breaks. The channel is a mention, an id, a link, `#name` or the name of a channel of the server (`message` is the Discord
+ * message, to find the names). A channel that was written but does not exist comes back as `channel_missing`, so the command says so
+ * instead of sending to the channel it was typed in.
+ */
+function sendMessage(text, message = null) {
   const body = String(text ?? '').trim();
-  const channel = /^(?:<#(\d{15,25})>|(\d{15,25}))(?:\s+|$)/.exec(body);
-  if (channel) return { channel: channel[1] ?? channel[2], message: body.slice(channel[0].length).trim() };
+  const guild = message?.guild ?? null;
+  const first = /^(\S+)(?:\s+|$)/.exec(body);
+  const leading = first ? channelWord(first[1], guild) : null;
+  // A bare word that is the name of a channel only counts when something follows it (or files go with it): `!send hola` is a message.
+  if (leading && (leading.explicit || body.slice(first[0].length).trim() || message?.attachments?.size)) {
+    const rest = body.slice(first[0].length).trim();
+    return leading.id ? { channel: leading.id, message: rest } : { channel_missing: first[1], message: rest };
+  }
+  // The channel at the end, outside of an embed code: a mention, a link or `#name`.
+  const last = /\s(\S+)$/.exec(body);
+  if (last && !/[{}]/.test(body.slice(last.index))) {
+    const trailing = channelWord(last[1], guild);
+    if (trailing?.explicit && trailing.id && !/^\d+$/.test(last[1])) return { channel: trailing.id, message: body.slice(0, last.index).trim() };
+  }
   return { message: body };
 }
 
@@ -140,4 +187,4 @@ function actionAndText(text) {
   return match[2]?.trim() ? { action: match[1], value: match[2].trim() } : { action: match[1] };
 }
 
-module.exports = { actionAndText, dropTokens, takeFlags, splitTrigger, autoresponderAdd, autoresponderEdit, messageTarget, editMessage, sendMessage };
+module.exports = { actionAndText, dropTokens, takeFlags, splitTrigger, autoresponderAdd, autoresponderEdit, messageTarget, editMessage, sendMessage, channelWord, channelByName };

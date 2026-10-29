@@ -3,7 +3,7 @@ const { ApplicationCommandOptionType, MessageFlags } = require('discord.js');
 const ms = require('ms');
 const { resolveRole } = require('../utils/roleResolve');
 const { resolveUser } = require('../utils/userResolve');
-const { dropTokens } = require('../utils/codeArgs');
+const { dropTokens, channelByName } = require('../utils/codeArgs');
 const { looksLikeScript } = require('../utils/embedScript');
 const { t, currentLanguage } = require('../i18n');
 
@@ -65,7 +65,8 @@ function resolveChannelToken(guild, token) {
   const channelName = token.startsWith('#') ? token.slice(1) : token;
   const id = channelName.replace(/[<#>]/g, '');
   if (SNOWFLAKE_RE.test(id)) return guild.channels.cache.get(id) ?? null;
-  return guild.channels.cache.find((c) => c.name.toLowerCase() === channelName.toLowerCase()) ?? null;
+  // The exact name first, then the same letters without the emojis and signs servers put around names (`📢・anuncios`).
+  return guild.channels.cache.find((c) => c.name.toLowerCase() === channelName.toLowerCase()) ?? channelByName(guild, channelName);
 }
 
 function parseBoolToken(token) {
@@ -345,7 +346,7 @@ async function buildInteractionFromMessage(message, command, argText) {
   const raw = command.prefixRawOptions?.[resolved.subcommand ?? '_'];
   if (raw) {
     const consumed = normalizedTokens.length - resolved.remainingTokens.length;
-    return buildPseudoInteraction(message, { commandName: json.name, subcommand: resolved.subcommand, subcommandGroup: resolved.subcommandGroup, values: raw(dropTokens(argText, consumed)) });
+    return buildPseudoInteraction(message, { commandName: json.name, subcommand: resolved.subcommand, subcommandGroup: resolved.subcommandGroup, values: raw(dropTokens(argText, consumed), message) });
   }
 
   // A command that takes a message (`!welcome setup #general {embed}$v{...}`) reads an embed code whole, after the channel or
