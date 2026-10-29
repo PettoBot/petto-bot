@@ -14,7 +14,8 @@ const { IntegrationError } = require('../../utils/integrations');
 
 const FEED = 'https://www.flickr.com/services/feeds/photos_public.gne';
 const MAX_TAGS = 4;
-const WANTED = 8; // pictures to have before asking one more place
+const WANTED = 30; // pictures of photos to have before asking one more place
+const POOL = 160; // drawings to have before the anime places stop being asked (they are asked one after the other until there are this many)
 const MAX_IMAGE_URL = 2000; // Discord refuses a longer link for a picture
 const PROBES = 6; // pictures looked at before a slot goes without one
 
@@ -116,6 +117,11 @@ const SENSES = {
 const REFUSED = /^(?:nsfw|nude|nudes|naked|nudity|porn|porno|xxx|sex|sexy|erotic|erotica|lingerie|topless|bikini|fetish|boudoir|adult|gore|desnudo|desnuda|desnudos|sexo|erotico|nu|nua|pelada|pelado)$/;
 
 const isAnime = (tag) => ANIME.has(tag);
+// Names that are only found drawn (the characters of Sanrio, Pokémon...): asking for them goes to the places of drawings, as `anime` does, and the word stays in the search.
+const DRAWN = new Set(['sanrio', 'cinnamoroll', 'kuromi', 'pompompurin', 'pochacco', 'chiikawa', 'totoro', 'pikachu', 'pokemon', 'vocaloid', 'miku', 'genshin', 'touhou']);
+const isDrawn = (tag) => ANIME.has(tag) || DRAWN.has(tag);
+// The tags that are the meaning of a word with several (`rose-flower`): only their first part is the word of a picture; any other tag with a dash is one name (`hello-kitty`).
+const SENSE_TAGS = new Set(Object.values(SENSES).flat().map((each) => each.tag));
 const headOf = (tag) => String(tag).split('-')[0];
 const partsOf = (tag) => String(tag).split('-').filter(Boolean);
 
@@ -176,7 +182,7 @@ function queryLabel(tags, animeLabel = 'anime style') { // i18n-ignore: the Engl
 }
 
 const kept = new Map(); // words -> { until, items }
-const KEEP_MS = 10 * 60_000;
+const KEEP_MS = 30 * 60_000; // a list of pictures is kept this long: the order of the pictures does not change while it is kept, so the pictures of the slots never repeat
 const slots = new Map(); // `${tags}:${slot}` -> item | null
 
 const https = (url) => (/^https:\/\/[^\s]+$/i.test(String(url ?? '')) && String(url).length <= MAX_IMAGE_URL ? String(url) : null);
@@ -201,40 +207,86 @@ function planFor(source, tags) {
   return { words, color: filter, colorName: filter ? color : null, nouns, colorWord: color };
 }
 
+/**
+ * The searches a booru is asked for the plan, the most exact first (a booru tags a pink flower `pink_flower`). A name that is one tag (`hello-kitty`) is written
+ * as the booru writes it (`hello_kitty`); the tag of a meaning (`rose-flower`) is only its first word. With nothing to search, the empty search: the best of the place.
+ */
+function booruTries(plan) {
+  const nouns = plan.nouns.map((tag) => (SENSE_TAGS.has(tag) ? booruTag(headOf(tag)) : booruTag(tag.replace(/-/g, '_')))).filter(Boolean);
+  const color = plan.colorWord ? booruTag(plan.colorWord) : null;
+  const tries = [];
+  if (color && nouns.length === 1) tries.push([`${color}_${nouns[0]}`]);
+  if (color) tries.push([...nouns, `${color}_theme`]);
+  tries.push(color ? [...nouns, color] : nouns);
+  return tries;
+}
+
+/** The pictures of a Moebooru site (Konachan, Yande.re), safe only, the best scored first: up to two pages of a hundred for each search. */
+async function moebooru(host, plan) {
+  const found = [];
+  for (const tags of booruTries(plan)) {
+    for (let page = 1; page <= 2; page += 1) {
+      const list = await fetchJsonBody(`${host}/post.json?limit=100&page=${page}&tags=${encode([...tags, 'rating:safe', 'order:score'].join(' '))}`);
+      for (const entry of Array.isArray(list) ? list : []) {
+        if (!entry || entry.rating !== 's') continue;
+        // The sample is a jpg that Discord shows fast; a file over 8 MB without one is left out.
+        const image = entry.sample_url || entry.jpeg_url || (Number(entry.file_size) < 8_000_000 ? entry.file_url : null);
+        found.push({ image: https(image), url: https(`${host}/post/show/${entry.id}`), author: '', text: String(entry.tags ?? '').replace(/_/g, ' '), size: Math.max(Number(entry.width) || 0, Number(entry.height) || 0), from: String(entry.source ?? '') });
+      }
+      if (!Array.isArray(list) || list.length < 100) break;
+    }
+    if (found.length >= POOL) break;
+  }
+  return found;
+}
+
 // Each source gives `[{ image, url, author, text }]` for a plan, or throws when it cannot answer. `needs` says what it has to have: a key, or nothing.
 // `text` is what the place says of the picture (its tags, title, description), where the words asked are looked for; `trusted` places only give what has
 // every word asked (their search requires them). `rehost`: its links expire or refuse other sites, so the picture is sent as a file.
 const SOURCES = [
   {
-    name: 'Wallhaven', anime: true, trusted: true, colorKey: 'wallhaven', needs: () => true, // i18n-ignore: the name of a service
-    async search(plan, tags) {
-      // `+word` must be in the picture; the other parts of a tag only help.
-      const query = tags.filter((tag) => !isAnime(tag) && !(plan.color && colorOf(tag) === plan.colorName)).map((tag) => (colorOf(tag) ? `+${colorOf(tag)}` : partsOf(tag).map((part, i) => (i ? part : `+${part}`)).join(' '))).join(' ');
-      const data = await fetchJsonBody(`https://wallhaven.cc/api/v1/search?q=${encode(query)}&categories=010&purity=100&sorting=relevance&atleast=1280x720${plan.color ? `&colors=${plan.color}` : ''}`);
-      return (data?.data ?? []).map((entry) => ({ image: https(entry.path), url: https(entry.url), author: '', text: '' }));
-    },
+    name: 'Konachan', anime: true, trusted: true, needs: () => true, // i18n-ignore: the name of a service
+    // konachan.net only has pictures for everybody. Moebooru gives the best scored first, a hundred a page.
+    search: (plan, tags) => moebooru('https://konachan.net', plan, tags),
+  },
+  {
+    name: 'Yande.re', anime: true, trusted: true, needs: () => true, // i18n-ignore: the name of a service
+    search: (plan, tags) => moebooru('https://yande.re', plan, tags),
   },
   {
     name: 'Safebooru', anime: true, needs: () => true, // i18n-ignore: the name of a service
     async search(plan) {
-      const nouns = plan.nouns.map((tag) => booruTag(headOf(tag))).filter(Boolean);
-      const color = plan.colorWord ? booruTag(plan.colorWord) : null;
-      // A booru tags a pink flower `pink_flower`: that first, then the color as the theme of the picture.
-      const tries = [];
-      if (color && nouns.length === 1) tries.push([`${color}_${nouns[0]}`]);
-      if (color) tries.push([...nouns, `${color}_theme`]);
-      tries.push(color ? [...nouns, color] : nouns);
-      for (const tags of tries) {
-        if (!tags.length) continue;
-        const data = await fetchJsonBody(`https://safebooru.org/index.php?page=dapi&s=post&q=index&json=1&limit=60&tags=${encode(tags.join(' '))}`);
-        const found = (Array.isArray(data) ? data : []).filter((entry) => entry && entry.rating !== 'questionable' && entry.rating !== 'explicit').map((entry) => ({
-          // A big picture has a sample (a smaller jpg) that Discord shows faster; the rest are shown as they are.
-          image: https(entry.sample ? `https://safebooru.org/samples/${entry.directory}/sample_${String(entry.image).replace(/\.[a-z0-9]+$/i, '')}.jpg` : `https://safebooru.org/images/${entry.directory}/${entry.image}`),
-          url: https(`https://safebooru.org/index.php?page=post&s=view&id=${entry.id}`), author: '', text: String(entry.tags ?? '').replace(/_/g, ' '),
-        }));
-        if (found.length) return found;
+      const found = [];
+      for (const tags of booruTries(plan)) {
+        for (let page = 0; page < 2; page += 1) {
+          const data = await fetchJsonBody(`https://safebooru.org/index.php?page=dapi&s=post&q=index&json=1&limit=100&pid=${page}${tags.length ? `&tags=${encode(tags.join(' '))}` : ''}`);
+          const list = (Array.isArray(data) ? data : []).filter((entry) => entry && entry.rating !== 'questionable' && entry.rating !== 'explicit');
+          for (const entry of list) {
+            // A huge picture without a sample (a png of many megabytes) is left out: Discord may not show it.
+            if (!entry.sample_url && !entry.sample && Math.max(Number(entry.width) || 0, Number(entry.height) || 0) > 3000) continue;
+            // A big picture has a sample (a smaller jpg) that Discord shows faster; the rest are shown as they are.
+            const image = entry.sample_url ?? (entry.sample ? `https://safebooru.org/samples/${entry.directory}/sample_${String(entry.image).replace(/\.[a-z0-9]+$/i, '')}.jpg` : `https://safebooru.org/images/${entry.directory}/${entry.image}`);
+            found.push({ image: https(image), url: https(`https://safebooru.org/index.php?page=post&s=view&id=${entry.id}`), author: '', text: String(entry.tags ?? '').replace(/_/g, ' '), size: Math.max(Number(entry.width) || 0, Number(entry.height) || 0), from: String(entry.source ?? '') });
+          }
+          if (list.length < 100) break;
+        }
+        if (found.length >= POOL) break;
       }
-      return [];
+      return found;
+    },
+  },
+  {
+    name: 'Wallhaven', anime: true, trusted: true, colorKey: 'wallhaven', needs: () => true, // i18n-ignore: the name of a service
+    async search(plan, tags) {
+      // `+word` must be in the picture; the other parts of a tag only help.
+      const query = tags.filter((tag) => !isDrawn(tag) && !(plan.color && colorOf(tag) === plan.colorName)).map((tag) => (colorOf(tag) ? `+${colorOf(tag)}` : partsOf(tag).map((part, i) => (i ? part : `+${part}`)).join(' '))).join(' ');
+      const found = [];
+      for (let page = 1; page <= 2; page += 1) {
+        const data = await fetchJsonBody(`https://wallhaven.cc/api/v1/search?q=${encode(query)}&categories=010&purity=100&sorting=relevance&atleast=1280x720&page=${page}${plan.color ? `&colors=${plan.color}` : ''}`);
+        for (const entry of data?.data ?? []) found.push({ image: https(entry.path), url: https(entry.url), author: '', text: '', size: Math.max(Number(entry.dimension_x) || 0, Number(entry.dimension_y) || 0) });
+        if (page >= Number(data?.meta?.last_page ?? 1)) break;
+      }
+      return found;
     },
   },
   {
@@ -291,7 +343,7 @@ const SOURCES = [
 
 /** The places to ask for a picture of those tags, best first: only the anime ones when a word asks for anime; otherwise the ones with a key, then the free ones. */
 function sourcesFor(tags) {
-  const anime = tags.some(isAnime);
+  const anime = tags.some(isDrawn);
   return SOURCES.filter((source) => source.needs() && (anime ? source.anime : !source.anime));
 }
 
@@ -321,32 +373,54 @@ function hasEveryTag(entry, tags, source, plan) {
   });
 }
 
-/** The pictures found for those tags, as `[{ image, url, author, source, rehost }]` (no repeats). Throws when no place had any and one failed, so the feed says so. */
+/** A number from a text, always the same (FNV-1a): what orders the pictures. */
+function hashOf(text) {
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619) >>> 0;
+  return hash;
+}
+
+const BIG = 900; // the longest side a drawing has to have to be preferred (a small one is only used when there are too few big ones)
+
+/**
+ * The pictures found for those tags, as `[{ image, url, author, source, rehost }]`, with no repeats and in an order that is always the same for those tags (a shuffle
+ * that does not change while the list is kept): the pictures of the slots go one after the other along it, so a picture does not come again until all were posted.
+ * Drawings are asked in every place until there are `POOL`; photos in each place until there are `WANTED`. Throws when no place had any and one failed, so the feed says so.
+ */
 async function latest(tags) {
   const key = tags.join(',');
   const cached = kept.get(key);
   if (cached && cached.until > Date.now()) return cached.items;
+  const drawn = tags.some(isDrawn);
+  const wanted = drawn ? POOL : WANTED;
   const items = [];
   const seen = new Set();
   let failure = null;
   for (const source of sourcesFor(tags)) {
-    if (items.length >= WANTED) break;
+    if (items.length >= wanted) break;
     const plan = planFor(source, tags);
     if (!plan.words.length && !source.anime) continue;
     try {
       for (const entry of await source.search(plan, tags)) {
-        if (!entry.image || !entry.url || seen.has(entry.image) || !hasEveryTag(entry, tags, source, plan)) continue;
+        // The same picture is on several sites with the same source (its page on Pixiv): once.
+        const same = entry.from && /^https?:\/\//.test(entry.from) ? `from:${entry.from}` : null;
+        if (!entry.image || !entry.url || seen.has(entry.image) || (same && seen.has(same)) || !hasEveryTag(entry, tags, source, plan)) continue;
         seen.add(entry.image);
-        items.push({ image: entry.image, url: entry.url, author: entry.author, source: source.name, rehost: Boolean(source.rehost) });
+        if (same) seen.add(same);
+        items.push({ image: entry.image, url: entry.url, author: entry.author, source: source.name, rehost: Boolean(source.rehost), size: Number(entry.size) || 0 });
       }
     } catch (error) {
       failure ??= error;
     }
   }
   if (!items.length && failure) throw failure;
+  // Big drawings first choice; with few of them, all.
+  const big = items.filter((item) => item.size >= BIG || !item.size);
+  const chosen = (big.length >= 24 ? big : items).slice(0, POOL * 2);
+  chosen.sort((a, b) => hashOf(`${key}|${a.image}`) - hashOf(`${key}|${b.image}`));
   if (kept.size > 300) kept.clear();
-  kept.set(key, { until: Date.now() + KEEP_MS, items });
-  return items;
+  kept.set(key, { until: Date.now() + KEEP_MS, items: chosen });
+  return chosen;
 }
 
 /**
@@ -357,9 +431,10 @@ async function pictureOf(tags, key, at, { check = imageReady } = {}) {
   const id = `${tags.join('+')}:${key}`;
   if (slots.has(id)) return slots.get(id);
   const items = await latest(tags);
-  const seed = Math.abs(Number(String(key).split(':')[1]) || 0);
+  // The slot number says which one: one after the other along the list, so two slots in a row never have the same picture.
+  const slot = Math.abs(Number(String(key).split(':')[1]) || 0);
   let entry = null;
-  const start = items.length ? (seed * 2654435761 >>> 0) % items.length : 0;
+  const start = items.length ? slot % items.length : 0;
   for (let step = 0; step < Math.min(PROBES, items.length); step += 1) {
     const candidate = items[(start + step) % items.length];
     if (await check(candidate.image)) { entry = candidate; break; }
