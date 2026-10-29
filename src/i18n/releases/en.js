@@ -10,6 +10,7 @@ module.exports = {
           'Feeds are open to every server. `!feed add` follows YouTube, Twitch, Kick, Bluesky, Reddit, Steam, GitHub, npm, PyPI, AniList, Pinterest, Spotify, Deezer, Apple Music, Mastodon, Tumblr, Letterboxd, Epic\'s free games and any blog, searching while you type. Premium follows 25 accounts of each platform (Free, 5).',
           'Auto feeds with their own pace, from every 15 minutes to once a day: one **Animals** feed, pictures by tags (`15m anime roses`), a random song from the charts of Deezer, Apple Music and Spotify, Pokémon, Wikipedia and Chess.com.',
           'YouTube is told when a channel publishes, so a video goes out within seconds, and a Short is posted as the player. Kick live notices go out within a minute, and a stream that ended keeps its green with a replay button.',
+          'Music feeds follow playlists, charts and the new albums of a country, and Modrinth lists follow the newest mods, shaders or plugins in one feed. Notices have a button that opens them (on by default), and the users and roles in their words are really notified.',
         ],
       },
       {
@@ -19,6 +20,7 @@ module.exports = {
           'Buttons that do things, in embed codes, Components V2 designs and the dashboard editor: they give, take or toggle a role, or show a saved embed (privately, in the channel or in the DMs).',
           'Petto Code forms (`cmodal`) can hold every part Discord has: menus, pickers of members, roles and channels, file uploads, radio buttons and checkboxes.',
           '`!steal` and `!jumbo` find the emojis of a Components V2 card.',
+          '`!jumbo` says when the server already has the emoji or sticker.',
         ],
       },
       {
@@ -27,6 +29,7 @@ module.exports = {
           'Lookups on other services: `!minecraft`, `!github`, `!roblox`, `!steam`, `!twitch`, `!youtube`, `!lastfm` and more, with short ways to write them (`!mu Notch`).',
           '`!stats` analyzes a server with numbers only (never what was written), with a privacy panel.',
           'A level-up card in the Petto style, `!userinfo` and `!serverinfo` redesigned, `!usercosmetics`, and cards without color except to say yes or no.',
+          'More lookups with a picture for songs, albums and artists, and cards with dividers, flat icons and no big titles.',
         ],
       },
       {
@@ -34,6 +37,7 @@ module.exports = {
         items: [
           'Voice XP no longer needs a second person by default, and there are two new XP limits in `/level rules`.',
           'What Petto stored for a server it left is deleted 3 days later, and the heavy data can live in a second database.',
+          'The copies of avatars of the profile history weigh half, the public threat lists forget what they stopped listing, and counters are no longer turned off for a channel that still exists.',
           'The setup of a new server is never put in a public channel. The music stays turned off for now.',
         ],
       },
@@ -41,6 +45,7 @@ module.exports = {
         title: 'Fixes',
         items: [
           'The verification page opens in the language of the server, `!massunban` stops when the server is gone, AFK mentions are deleted, and the URLhaus list of malicious links is read again.',
+          'A title with square brackets shows as a link, Pinterest boards with names in other alphabets can be followed, and a YouTube channel whose feed answers 404 or 500 keeps working.',
         ],
       },
     ],
