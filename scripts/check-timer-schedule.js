@@ -93,5 +93,24 @@ assert.equal(prepareTimerWrite({ schedule: 'daily', at_time: '10:00', timezone: 
 const schema = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'src', 'db', 'schema.sql'), 'utf8');
 for (const column of ['schedule', 'at_time', 'timezone', 'weekday']) assert.match(schema, new RegExp(`alter table auto_messages add column if not exists ${column} `));
 assert.match(schema, /alter table auto_messages drop constraint if exists auto_messages_schedule_check;/);
+for (const column of ['number', 'last_error', 'paused']) assert.match(schema, new RegExp(`alter table auto_messages add column if not exists ${column} `));
+assert.match(schema, /create unique index if not exists auto_messages_guild_number on auto_messages \(guild_id, number\);/);
+assert.match(schema, /row_number\(\) over \(partition by a\.guild_id order by a\.id\)/, 'old timers are numbered per server in the order they were made');
+
+// A Components V2 saved embed with the timer's text: never `content` (Discord refuses the whole message), the text goes in as its first text.
+const { withLeadingText, isRealText } = require('../src/utils/leadingText');
+const v2 = { content: undefined, embeds: [], components: [{ type: 17, components: [{ type: 10, content: 'Eliana' }] }], files: [], flags: 1 << 15 };
+for (const message of ['.', ',', ' ', '', null]) {
+  const sent = withLeadingText(v2, message);
+  assert.equal('content' in sent, false, `a V2 timer with "${message}" sends no content`);
+  assert.equal(sent.components.length, 1, `"${message}" says nothing, so nothing is added`);
+}
+const withWords = withLeadingText({ ...v2, content: 'from the design' }, 'Good morning <@&123456789012345678>');
+assert.equal('content' in withWords, false, 'a V2 design never keeps content');
+assert.deepEqual(withWords.components[0], { type: 10, content: 'Good morning <@&123456789012345678>' });
+const full = { ...v2, components: Array.from({ length: 40 }, () => ({ type: 10, content: 'x' })) };
+assert.equal(withLeadingText(full, 'hello').components.length, 40, 'no text is added past the 40 components of a V2 message');
+assert.equal(withLeadingText({ content: undefined, embeds: [{}], components: [] }, 'above').content, 'above', 'a classic embed keeps the text above it');
+assert.ok(isRealText('🌸') && isRealText('hola') && isRealText('5') && !isRealText('.,!') && !isRealText(''));
 
 console.log('Checked scheduled timers: next runs in time zones and across daylight saving, the command text and dashboard writes.');

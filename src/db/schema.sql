@@ -2032,6 +2032,34 @@ alter table auto_messages add constraint auto_messages_schedule_check check (
   and char_length(timezone) between 1 and 64
 );
 
+-- Each server numbers its own timers 1, 2, 3... (`number`; `id` stays the internal key). Rows from before get their number in the order they
+-- were made; a new row (from the bot or the dashboard) gets the next one of its server.
+alter table auto_messages add column if not exists number integer;
+with numbered as (
+  select a.id, coalesce((select max(m.number) from auto_messages m where m.guild_id = a.guild_id), 0)
+    + row_number() over (partition by a.guild_id order by a.id) as n
+  from auto_messages a where a.number is null
+)
+update auto_messages t set number = numbered.n from numbered where t.id = numbered.id;
+create unique index if not exists auto_messages_guild_number on auto_messages (guild_id, number);
+create or replace function auto_messages_set_number() returns trigger
+language plpgsql
+as $$
+begin
+  if new.number is null then
+    perform pg_advisory_xact_lock(hashtext('auto_messages:' || new.guild_id));
+    select coalesce(max(number), 0) + 1 into new.number from auto_messages where guild_id = new.guild_id;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists auto_messages_number on auto_messages;
+create trigger auto_messages_number before insert on auto_messages for each row execute function auto_messages_set_number();
+-- Why the last send failed (Discord's answer), shown in !timer view/list and the dashboard; cleared by the next send that works.
+alter table auto_messages add column if not exists last_error text;
+-- A paused timer keeps its settings and sends nothing until it is resumed.
+alter table auto_messages add column if not exists paused boolean not null default false;
+
 alter table auto_messages enable row level security;
 
 -- ── Starboard ─────────────────────────────────────────────────────────────

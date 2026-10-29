@@ -70,6 +70,13 @@ guild.roles.cache.find = (fn) => [...guild.roles.cache.values()].find(fn);
   assert.equal(inDm.components[0].components.length, 1, 'a message for a DM (the join DM) keeps only the link button: the others are answered in a server');
   assert.equal(noGuild.components[0].components.length, 1, 'without a server only the link button is left');
 
+  // A V2 design keeps its buttons too: the link one and the one with actions, inside the container's row.
+  const { buildV2 } = require('../src/utils/embedV2');
+  const v2 = await buildV2({ components: [{ type: 17, components: [{ type: 1, components: [{ type: 2, label: 'Docs', url: 'https://petto.sbs' }, { type: 2, label: 'Get it', style: 3, actions: [{ type: 'role', ref: '@Members' }] }] }] }] }, { guild: { ...guild, name: 'G', iconURL: () => null, bannerURL: () => null, splashURL: () => null, emojis: { cache: new Map() } }, channel: { isDMBased: () => false } });
+  const v2Row = v2.components[0].components[0];
+  assert.equal(v2Row.type, 1);
+  assert.deepEqual(v2Row.components.map((b) => b.url ?? b.custom_id), ['https://petto.sbs', `eb:t${ROLE}#0`], 'a sent V2 design keeps its link and action buttons');
+
   // A click: a toggled role is taken when the member has it, given when not; give and take only do what is needed.
   assert.deepEqual(planRoles({ toggle: [ROLE], add: [], remove: [] }, []), { add: [ROLE], remove: [] });
   assert.deepEqual(planRoles({ toggle: [ROLE], add: [], remove: [] }, [ROLE]), { add: [], remove: [ROLE] });

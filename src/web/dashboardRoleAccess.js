@@ -4,7 +4,7 @@
 // member's roles from Discord, so the site's word alone never opens anything. The same sections as the site (petto-web src/utils/dashAccess.ts).
 const database = require('../db/database');
 
-const PAGE_SECTIONS = { counters: 'automation', feeds: 'community', forms: 'community', stats: 'dashboard', moderation: 'moderation', tickets: 'tickets' };
+const PAGE_SECTIONS = { automation: 'automation', counters: 'automation', feeds: 'community', forms: 'community', stats: 'dashboard', moderation: 'moderation', tickets: 'tickets' };
 // Tickets were part of Community before they had a section of their own: a rule that opens Community still opens them.
 const ALSO_OPENED_BY = { tickets: ['community'] };
 const GRANT = /^([a-z-]{1,30}):(view|edit)$/;

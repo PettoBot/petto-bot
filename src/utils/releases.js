@@ -16,7 +16,7 @@ const RELEASES = [
     date: '2026-10-29',
     accent: 0xe8b4d8,
     status: 'latest',
-    sectionEmojis: [EMOJI.RELEASE_MAGIC, EMOJI.RELEASE_BUG],
+    sectionEmojis: [EMOJI.RELEASE_ROCKET, EMOJI.RELEASE_MAGIC, EMOJI.RELEASE_BUG],
   },
   {
     version: 'v0.7.9',

@@ -8,6 +8,10 @@ All notable changes to Petto are documented here.
 
 A patch of 0.7.9, shown as **0.7.9~1**.
 
+### Added
+
+- **Timers at a time of day, and new `!timer` subcommands.** A timer can post every day or every week at a time, in a time zone (`!timer add #news daily 18:00 America/Bogota Hello`, `weekly monday 09:30 UTC`). Each server numbers its own timers 1, 2, 3 (the commands and the dashboard use that number). New: `!timer run 1` sends a timer now without moving its schedule; `!timer edit 1 daily 07:00 America/Bogota` (or `!timer edit 1 2h`) changes when it posts; `!timer message 1 <text>` (`none` takes the text off when it has a saved embed); `!timer channel 1 #channel`; `!timer pause 1` and `!timer resume 1`. The dashboard shows the number, a "Send now" button and a "Paused" switch.
+
 ### Changed
 
 - **Feeds of pictures: every word counts.** `flor rosa anime` only gives drawings of pink flowers: every word has to be in the tags, the title or the description of a picture (a color can also be the color filter of the place it comes from), and a word such as `anime` only asks the places of anime pictures, so no photo, mountain or pink car comes in. Spanish and Portuguese words are turned into the English tags the places use.
@@ -22,6 +26,8 @@ A patch of 0.7.9, shown as **0.7.9~1**.
 - Pictures of the picture feeds no longer show as broken: each one is checked before it is posted (a real picture that loads, not a page or a format Discord does not show), the next one is used when it fails, and the pictures from Pixabay, Google and Openverse are sent as a file so they do not break later. Openverse gave no picture at all, and now does.
 - The join DM (`!dmonjoin`) no longer has buttons with actions, which only work in a server; its link buttons stay.
 - A Petto Code form whose menu or checkboxes start with more choices selected than its `max` is told as a mistake instead of being refused by Discord.
+- **A timer with a Components V2 saved embed never posted.** Its text (even a lone `.`) was sent as `content` next to the V2 design, Discord refused the whole message, the error was swallowed and the timer moved on to the next day. A V2 design never gets `content` now: the timer's text goes in as the first text of the design when it says something (a lone `.` or `,` is left out). A send that fails is logged with the timer and Discord's answer, kept in the timer (`!timer view`, `!timer list` and the dashboard show it) and cleared by the next send that works.
+- A saved embed sent from the dashboard (the embed builder's "Send") lost its buttons that give a role or show a saved embed; they are sent now, in a classic embed and in a V2 design, and a coloured button of a V2 design that only shows something is kept too.
 
 ## [0.7.9] — 2026-10-29 · Donut
 

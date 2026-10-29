@@ -5,6 +5,12 @@ module.exports = {
     summary: 'Un parche de Donut: feeds de imágenes que cumplen todas las palabras y preguntan qué significa una palabra, `!send` que encuentra su canal, y feeds RSS que avisan cuando un enlace no es un feed.',
     sections: [
       {
+        title: 'Temporizadores',
+        items: [
+          'Temporizadores: cada día o semana a una hora en una zona horaria, numerados 1, 2, 3 en cada servidor, y `!timer run`, `edit`, `message`, `channel`, `pause` y `resume`.',
+        ],
+      },
+      {
         title: 'Feeds de imágenes',
         items: [
           'Cuenta cada palabra: `flor rosa anime` solo da dibujos de flores rosas, nunca una montaña ni una foto.',
@@ -18,6 +24,7 @@ module.exports = {
           '`!send` encuentra el canal al principio o al final, por mención, ID, enlace o nombre, y avisa cuando no existe.',
           'Un feed RSS que apunta a una página web no se guarda como un feed vacío: Petto busca el feed de verdad o avisa que no hay.',
           'El DM de bienvenida conserva solo sus botones de enlace, y un formulario de Petto Code con demasiadas opciones marcadas se avisa como un error.',
+          'Un temporizador con un embed guardado V2 vuelve a publicar (su texto ya no rompe el mensaje), y un envío que falla se ve en `!timer view` y en el dashboard.',
         ],
       },
     ],

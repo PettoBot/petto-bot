@@ -41,6 +41,7 @@ const { registerHoneypotRoutes } = require('./honeypotRoutes');
 const { registerPaginationRoutes } = require('./paginationRoutes');
 const { registerInviteRoutes } = require('./inviteRoutes');
 const { registerCaseRoutes } = require('./caseRoutes');
+const { registerTimerRoutes } = require('./timerRoutes');
 const { registerBoosterRoleRoutes } = require('./boosterRoleRoutes');
 const { registerTicketLiveRoutes } = require('./ticketLiveRoutes');
 const { fetchDashboardMember } = require('./dashboardMember');
@@ -812,6 +813,8 @@ function startServer(client) {
     registerInviteRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
     // Case log (Moderation): a new reason for a case or delete it, like /case edit and /case delete, written to the sanctions log.
     registerCaseRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
+    // Timers (Automation): "Send now", like `!timer run`; the schedule does not change.
+    registerTimerRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
     // Booster roles: list them with their owners, and create, change, link, delete or clean them up, from the dashboard (Manage Server, like `!boosterrole admin`).
     registerBoosterRoleRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
     // Live tickets: the open tickets of a server, the last messages of one, and reply, claim, add/remove a member and close from the

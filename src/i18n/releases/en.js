@@ -5,6 +5,12 @@ module.exports = {
     summary: 'A patch of Donut: feeds of pictures that match every word and ask what a word means, `!send` that finds its channel, and RSS feeds that say when a link is not a feed.',
     sections: [
       {
+        title: 'Timers',
+        items: [
+          'Timers: every day or week at a time in a time zone, numbered 1, 2, 3 in each server, and `!timer run`, `edit`, `message`, `channel`, `pause` and `resume`.',
+        ],
+      },
+      {
         title: 'Feeds of pictures',
         items: [
           'Every word counts: `flor rosa anime` only gives drawings of pink flowers, never a mountain or a photo.',
@@ -18,6 +24,7 @@ module.exports = {
           '`!send` finds the channel at the start or at the end, by mention, ID, link or name, and says when it does not exist.',
           'An RSS feed that points to a web page is not saved as an empty feed: Petto looks for the real feed or says there is none.',
           'The join DM keeps only its link buttons, and a Petto Code form with too many choices selected is told as a mistake.',
+          'A timer with a V2 saved embed posts again (its text no longer breaks the message), and a failed send is shown in `!timer view` and the dashboard.',
         ],
       },
     ],
