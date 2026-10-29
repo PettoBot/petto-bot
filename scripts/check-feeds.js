@@ -925,6 +925,18 @@ const allText = (message) => JSON.stringify(json(message.components));
     parsed = parseFeed('<feed><title>r/x</title><entry><id>t3_1</id><title>One</title><link rel="alternate" href="https://r.com/p1"/><updated>2026-10-26T10:00:00+00:00</updated><author><name>/u/a</name></author><content type="html">&lt;img src=&quot;https://i.r/x.jpg&quot;&gt; hi</content></entry></feed>');
     assert.deepEqual([parsed.entries[0].id, parsed.entries[0].author, parsed.entries[0].image, parsed.entries[0].summary], ['t3_1', '/u/a', 'https://i.r/x.jpg', 'hi']);
     assert.equal(parseFeed('<html>not a feed</html>').entries.length, 0);
+    // A web page has a <title> too: it is not a feed (the changelog page of a site was taken for an empty feed that never posted).
+    const page = parseFeed('<!doctype html><html><head><title>Changelog · Petto</title></head><body><article><h2>0.7.9</h2></article></body></html>');
+    assert.deepEqual([page.isFeed, page.title, page.entries.length], [false, '', 0]);
+    const { feedKind } = require('../src/feeds/feedparse');
+    assert.equal(feedKind('﻿<?xml version="1.0"?>\n<?xml-stylesheet href="/rss.xsl"?>\n<!-- made by hand -->\n<rss version="2.0"><channel/></rss>'), 'rss');
+    assert.equal(feedKind('<rdf:RDF xmlns:rdf="x"><item/></rdf:RDF>'), 'rdf');
+    assert.equal(feedKind('<feed xmlns="http://www.w3.org/2005/Atom"></feed>'), 'atom');
+    assert.equal(feedKind('{"items":[]}'), null);
+    parsed = parseFeed('<?xml version="1.0"?><rss version="2.0"><channel><title><![CDATA[Petto · Changelog]]></title><link>https://petto.sbs/changelog</link><item><title><![CDATA[0.7.9-1]]></title><link>https://petto.sbs/changelog/0.7.9-1</link><guid isPermaLink="false">0.7.9-1</guid><pubDate>Thu, 29 Oct 2026 12:00:00 +0000</pubDate></item></channel></rss>');
+    assert.deepEqual([parsed.isFeed, parsed.title, parsed.entries[0].id, parsed.entries[0].url, parsed.entries[0].published], [true, 'Petto · Changelog', '0.7.9-1', 'https://petto.sbs/changelog/0.7.9-1', Date.UTC(2026, 9, 29, 12)]);
+    assert.deepEqual(rssProviders.usualFeedUrls('https://petto.sbs/changelog').slice(0, 2), ['https://petto.sbs/changelog/rss.xml', 'https://petto.sbs/changelog/feed.xml'], 'a page without a feed link is looked at where sites keep their feed');
+    assert.ok(rssProviders.usualFeedUrls('https://petto.sbs/changelog').includes('https://petto.sbs/rss.xml'));
     assert.equal(discoverFeed('<head><link rel="alternate" type="application/rss+xml" href="/feed.xml"></head>', 'https://ex.com/blog/'), 'https://ex.com/feed.xml');
     assert.equal(parseFeed('<rss><channel><title>t</title><item><title>only</title><guid>1</guid></item></channel></rss>').entries.length, 1);
 

@@ -76,7 +76,7 @@ function registerFeedRoutes(app, { authorize, limiter }) {
       res.json({ ok: true, account: value });
     } catch (error) {
       if (!(error instanceof IntegrationError)) throw error;
-      const kind = ['notFound', 'badInput', 'notConfigured', 'unsupported', 'badTags'].includes(error.kind) ? error.kind : 'unavailable';
+      const kind = ['notFound', 'badInput', 'notConfigured', 'unsupported', 'badTags', 'noFeed'].includes(error.kind) ? error.kind : 'unavailable';
       res.status(kind === 'unavailable' ? 502 : 404).json({ ok: false, error: kind, message: t(lang, `feeds.add.error.${kind}`, { emoji: '', platform: PLATFORMS[platform].name }).trim() });
     }
   });

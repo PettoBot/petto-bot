@@ -32,10 +32,8 @@ const epic = require('./epic');
 const schedule = require('../schedule');
 const { t } = require('../../i18n');
 const { IntegrationError } = require('../../utils/integrations');
-const { fetchPublicText } = require('../http');
 const { fallbackPicture } = require('../platforms');
 const { withStandIn } = require('../picture');
-const { parseFeed } = require('../feedparse');
 
 /** The videos that were seen live or about to be: when they end they are a recording of a stream, and are not posted as a new video. */
 const wasLive = new Set();
@@ -361,11 +359,11 @@ const PROVIDERS = {
     async poll(accounts, _tracked, { now = Date.now() } = {}) {
       const results = new Map();
       await forEachWithConcurrency(accounts, async (account) => {
-        try { results.set(account.id, { items: parseFeed((await fetchPublicText(account.id)).text, { max: 15 }).entries.map((entry) => rss.toItem('rss', 'post', entry, account)).filter((item) => fresh(item, now)) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
+        try { results.set(account.id, { items: (await rss.readRss(account.id, 15)).entries.map((entry) => rss.toItem('rss', 'post', entry, account)).filter((item) => fresh(item, now)) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
       }, this.concurrency);
       return results;
     },
-    async baselineItems(account) { return parseFeed((await fetchPublicText(account.id)).text, { max: 20 }).entries.map((entry) => ({ id: entry.id })); },
+    async baselineItems(account) { return (await rss.readRss(account.id, 20)).entries.map((entry) => ({ id: entry.id })); },
   },
 
   reddit: {

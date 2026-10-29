@@ -19,19 +19,52 @@ function normalizeUrl(input) {
   return url.toString().slice(0, 300);
 }
 
+/** Where sites usually keep their feed when a page does not announce it: next to the page (`/changelog/rss.xml`), then at the root. */
+function usualFeedUrls(pageUrl) {
+  let url;
+  try { url = new URL(pageUrl); } catch { return []; }
+  const path = url.pathname.replace(/\/+$/, '');
+  const names = ['rss.xml', 'feed.xml', 'atom.xml', 'feed', 'rss'];
+  const bases = [...new Set([path ? `${path}/` : null, path ? `${path}.` : null, '/'].filter(Boolean))];
+  const out = [];
+  for (const base of bases) {
+    if (base.endsWith('.')) { out.push(`${url.origin}${base}xml`, `${url.origin}${base}rss`); continue; }
+    for (const name of names) out.push(`${url.origin}${base}${name}`);
+  }
+  return [...new Set(out)].slice(0, 10);
+}
+
+/** The first of the links that is a feed, as `{ answer, feed }`, or null. */
+async function firstFeed(links) {
+  for (const link of links) {
+    const url = normalizeUrl(link);
+    if (!url) continue;
+    const answer = await fetchPublicText(url).catch(() => null);
+    const feed = answer ? parseFeed(answer.text) : null;
+    if (feed?.isFeed) return { answer, feed };
+  }
+  return null;
+}
+
+/** The feed at the address of an `rss` account. A page that is not (or no longer) a feed is an error the feed list shows, not an empty feed. */
+async function readRss(url, max) {
+  const feed = parseFeed((await fetchPublicText(url)).text, { max });
+  if (!feed.isFeed) throw new IntegrationError('noFeed');
+  return feed;
+}
+
 async function resolveRss(input) {
   const start = normalizeUrl(input);
   if (!start) throw new IntegrationError('badInput');
   let answer = await fetchPublicText(start);
   let feed = parseFeed(answer.text);
-  if (!feed.entries.length && !feed.title) {
-    // A page of a site: its feed is announced in the page.
+  if (!feed.isFeed) {
+    // A page of a site: its feed is announced in the page, or kept where sites usually keep it. A page with neither is said to have no feed
+    // (it was taken for an empty feed before, which never posted).
     const found = discoverFeed(answer.text, answer.url);
-    const link = found ? normalizeUrl(found) : null;
-    if (!link) throw new IntegrationError('notFound');
-    answer = await fetchPublicText(link);
-    feed = parseFeed(answer.text);
-    if (!feed.entries.length && !feed.title) throw new IntegrationError('notFound');
+    const hit = await firstFeed([...(found ? [found] : []), ...usualFeedUrls(answer.url)]);
+    if (!hit) throw new IntegrationError('noFeed');
+    ({ answer, feed } = hit);
   }
   const site = publicUrl(feed.link) ?? publicUrl(answer.url);
   const favicon = site ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(site.hostname)}&sz=128` : null;
@@ -69,4 +102,4 @@ async function readPinterest(id) {
   return { ...feed, entries: feed.entries.map((entry) => ({ ...entry, image: bigPin(entry.image) })) };
 }
 
-module.exports = { normalizeUrl, resolveRss, toItem, parseSubreddit, readReddit, parsePinterest, readPinterest, bigPin };
+module.exports = { normalizeUrl, usualFeedUrls, readRss, resolveRss, toItem, parseSubreddit, readReddit, parsePinterest, readPinterest, bigPin };

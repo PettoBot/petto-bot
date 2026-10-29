@@ -42,6 +42,29 @@ async function recordFailure(feed, kind) {
   await feedsDb.update(feed.guild_id, feed.id, patch).catch((error) => logger.warn(`Feed ${feed.id}: could not write its failure: ${error.message}`));
 }
 
+const POLL_ERROR_AFTER = 3; // failed looks in a row (each one later than the last) before the feed shows the error
+// What a failed look at an account is shown as: the feed is not a feed (a web page), the site asks to slow down, or anything else.
+const POLL_ERRORS = new Set(['noFeed', 'rateLimited', 'unavailable']);
+const pollErrorOf = (kind) => (POLL_ERRORS.has(kind) ? kind : 'unavailable');
+
+async function notePollError(feeds, kind, now) {
+  const label = pollErrorOf(kind);
+  for (const feed of feeds) {
+    if (feed.last_error === label) continue;
+    feed.last_error = label;
+    await feedsDb.update(feed.guild_id, feed.id, { last_error: label, last_error_at: new Date(now).toISOString() }).catch((error) => logger.warn(`Feed ${feed.id}: could not write its error: ${error.message}`));
+  }
+}
+
+/** A look that worked again takes away the error of the looks that failed (the errors of posting stay until something is posted). */
+async function clearPollError(feeds) {
+  for (const feed of feeds) {
+    if (!POLL_ERRORS.has(feed.last_error)) continue;
+    feed.last_error = null;
+    await feedsDb.update(feed.guild_id, feed.id, { last_error: null, last_error_at: null }).catch(() => {});
+  }
+}
+
 /** The replay of a stream: YouTube keeps it at the same link; Kick gives no link to a single replay, so it is the list of videos of the channel. */
 function replayUrl(item) {
   if (item.platform === 'youtube') return item.url;
@@ -235,8 +258,12 @@ async function tick(client, { now = Date.now(), providers = PROVIDERS, passMs = 
         if (result.error) {
           schedule.set(keyOf(platform, id), { at: now + Math.min(MAX_BACKOFF_MS, provider.interval * 2 ** Math.min(previous + 1, 5)), fails: previous + 1 });
           if (result.error === 'notFound' && previous + 1 >= 6) for (const feed of list) await recordFailure(feed, 'accountGone');
+          // An account that cannot be read time after time is shown in the list of feeds (`!feed list`, the dashboard) with why, instead of
+          // staying "on" and silent. It is not turned off: it posts again by itself when the account answers.
+          else if (previous + 1 >= POLL_ERROR_AFTER) await notePollError(list, result.error, now);
           continue;
         }
+        await clearPollError(list);
         schedule.set(keyOf(platform, id), { at: now + (provider.intervalFor?.(id, now) ?? provider.interval) + Math.floor(Math.random() * 15_000), fails: 0 });
         await forEachWithConcurrency(list.filter(forLang), (feed) => processFeed(client, feed, result, liveByFeed, seen, now).catch((error) => logger.error(`Feed ${feed.id} failed:`, error)), SEND_WORKERS);
       }
