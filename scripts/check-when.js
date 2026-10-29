@@ -21,6 +21,8 @@ assert.equal(at('tonight'), '2026-10-06T02:00:00.000Z');
 assert.equal(at('2026-10-12 18:00'), '2026-10-12T23:00:00.000Z');
 assert.equal(at('2026-10-12 18:00 utc'), '2026-10-12T18:00:00.000Z', 'utc or z keeps the written time as UTC');
 assert.equal(at('2026-10-12'), '2026-10-12T05:00:00.000Z');
+assert.equal(at('2026-10-12 19:00'), '2026-10-13T00:00:00.000Z', 'from 19:00 in Colombia it is already the next day in UTC and the date is still valid');
+assert.equal(at('2026-12-31 23:59'), '2027-01-01T04:59:00.000Z');
 assert.equal(at('at 8pm'), '2026-10-06T01:00:00.000Z', 'a time of day is the next time the clock shows it');
 assert.equal(at('at 9am'), '2026-10-05T14:00:00.000Z');
 assert.equal(at('at 6am'), '2026-10-06T11:00:00.000Z', 'it is 07:00 in Colombia, so 6am is tomorrow');
