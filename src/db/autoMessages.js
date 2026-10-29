@@ -1,4 +1,5 @@
 const database = require('./database');
+const { nextRunAt } = require('../utils/timerSchedule');
 
 async function get(guildId, id) {
   const { data, error } = await database.from('auto_messages').select('*').eq('guild_id', guildId).eq('id', id).maybeSingle();
@@ -18,8 +19,15 @@ async function listDue() {
   return data;
 }
 
-async function add({ guildId, channelId, intervalMs, message, deletePrevious = false, embedTemplate = null }) {
-  const { data, error } = await database.from('auto_messages').insert({ guild_id: guildId, channel_id: channelId, interval_ms: intervalMs, message, delete_previous: deletePrevious, ...(embedTemplate ? { embed_template: embedTemplate } : {}), next_run_at: new Date(Date.now() + intervalMs).toISOString() }).select('*').single();
+/**
+ * Creates a timer. `schedule` is 'interval' (every `intervalMs`, the default), 'daily' or 'weekly' (at `atTime` in `timezone`, weekly on
+ * `weekday`); the caller has already checked those (src/utils/timerSchedule.js).
+ */
+async function add({ guildId, channelId, intervalMs, message, deletePrevious = false, embedTemplate = null, schedule = 'interval', atTime = null, timezone = 'UTC', weekday = null }) {
+  const scheduled = schedule === 'daily' || schedule === 'weekly';
+  const fields = scheduled ? { schedule, at_time: atTime, timezone, weekday: schedule === 'weekly' ? weekday : null } : {};
+  const nextRun = nextRunAt({ ...fields, interval_ms: intervalMs });
+  const { data, error } = await database.from('auto_messages').insert({ guild_id: guildId, channel_id: channelId, interval_ms: intervalMs, message, delete_previous: deletePrevious, ...(embedTemplate ? { embed_template: embedTemplate } : {}), ...fields, next_run_at: nextRun.toISOString() }).select('*').single();
   if (error) throw error;
   return data;
 }
@@ -30,9 +38,10 @@ async function remove(guildId, id) {
   return data.length > 0;
 }
 
-async function scheduleNext(id, _expectedRunAt, intervalMs) {
-  const next = new Date(Date.now() + intervalMs).toISOString();
-  const { error } = await database.from('auto_messages').update({ next_run_at: next }).eq('id', id);
+/** Moves a timer to its next run: the next time of its schedule (daily/weekly), or now + its interval. `timer` is its row. */
+async function scheduleNext(timer) {
+  const next = nextRunAt(timer).toISOString();
+  const { error } = await database.from('auto_messages').update({ next_run_at: next }).eq('id', timer.id);
   if (error) throw error;
 }
 
