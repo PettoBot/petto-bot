@@ -118,7 +118,11 @@ const match = (content, prefixes = ['!', 'petto'], personal = null) => gp.matchP
   assert.equal(gp.answersUnknown(await match('!!!', ['!'])), false, 'something that is not written like a command is silent');
   assert.equal(gp.answersUnknown(await match('...', ['.'])), false);
   assert.equal(gp.answersUnknown(await match('petto help')), false, 'a word prefix never answers');
-  assert.equal(gp.answersUnknown(await match('p!nothing', ['!'], 'p!')), false, 'a personal prefix stays silent');
+  assert.equal(gp.answersUnknown(await match('p!nothing', ['!'], 'p!')), true, 'a personal prefix answers its owner, who chose it');
+  assert.equal(gp.answersUnknown(await match(',nothing', ['!'], ',')), true, 'a personal comma answers an unknown command');
+  assert.equal(gp.answersUnknown(await match(', nothing', ['!'], ',')), false, 'a comma followed by a space is chat, also when it is personal');
+  assert.equal(gp.answersUnknown(await match(',nothing', ['!', ','], ',')), false, 'a comma that is also a second prefix of the server stays silent');
+  assert.equal(gp.answersUnknown(await match(',...', ['!'], ',')), false, 'a personal prefix followed by symbols is chat');
   assert.equal(gp.answersUnknown(await match(',es el mejor', [',', '!'])), true, 'the main one is the first of the list, whichever it is');
 
   await handler();
@@ -204,7 +208,12 @@ async function handler() {
   // A person with a prefix of their own: it works, and it is silent for an unknown word.
   personal = 'p!';
   assert.deepEqual((await send('p!help')).ran, ['p!']);
-  assert.deepEqual(await send('p!es el mejor'), { sent: [], ran: [] });
+  // The personal prefix answers its owner when the word is not a command: the person chose it, and the answer is only for them.
+  const own = await send('p!es el mejor');
+  assert.deepEqual(own.ran, [], 'nothing runs');
+  assert.equal(own.sent.length, 1, 'the personal prefix says it does not know the command');
+  assert.match(JSON.stringify(own.sent[0]), /p!help/, 'and shows its own prefix');
+  assert.deepEqual(await send('p! es el mejor'), { sent: [], ran: [] }, 'a space after it is chat');
   assert.deepEqual((await send('!help')).ran, ['!'], 'the prefixes of the server still work');
   personal = null;
   // A server with one custom prefix keeps exactly that one.
