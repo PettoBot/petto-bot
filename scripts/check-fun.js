@@ -109,5 +109,73 @@ for (const [typed, move] of [['rock', 'rock'], ['Piedra', 'rock'], ['pedra', 'ro
   assert.match(await run('rps', 'pt-BR', 'tesoura'), /^✌️ \*\*tesoura\*\* {2}vs /, 'the Portuguese word is a move');
   assert.equal(await run('ship', 'es', ''), '💞 **a** × **a**: **100%** · Almas gemelas', 'a member with themselves, in Spanish');
 
+  // coinflip, wouldyourather, neverhaveiever, truthordare: the prompts, the words they read and the answers.
+  const prompts = require('../src/utils/funPrompts');
+  const { CATALOGS, LANGUAGES } = require('../src/i18n');
+  for (const lang of LANGUAGES) {
+    for (let n = 1; n <= prompts.PROMPT_COUNTS.wyr; n += 1) assert.ok(CATALOGS[lang][`fun.wyr.${n}.a`] && CATALOGS[lang][`fun.wyr.${n}.b`], `${lang} wyr ${n}`);
+    for (const kind of ['nhie', 'truth', 'dare']) for (let n = 1; n <= prompts.PROMPT_COUNTS[kind]; n += 1) assert.ok(CATALOGS[lang][`fun.${kind}.${n}`], `${lang} ${kind} ${n}`);
+    assert.equal(Object.keys(CATALOGS[lang]).filter((key) => /^fun\.wyr\.\d+\.a$/.test(key)).length, prompts.PROMPT_COUNTS.wyr, `${lang} has no extra wyr prompts`);
+    assert.ok(Object.keys(CATALOGS[lang]).filter((key) => /^fun\.(nhie|truth|dare)\.\d+$/.test(key)).length === prompts.PROMPT_COUNTS.nhie + prompts.PROMPT_COUNTS.truth + prompts.PROMPT_COUNTS.dare);
+  }
+  assert.equal(prompts.pickPromptNumber('wyr', (min, max) => max - 1), prompts.PROMPT_COUNTS.wyr);
+  assert.equal(prompts.pickPromptNumber('dare', (min) => min), 1);
+  assert.throws(() => prompts.pickPromptNumber('nothing'), RangeError);
+  assert.equal(prompts.flipCoin(() => 0), 'heads');
+  assert.equal(prompts.flipCoin(() => 1), 'tails');
+  assert.deepEqual(new Set(Array.from({ length: 200 }, () => prompts.flipCoin())), new Set(['heads', 'tails']));
+  for (const [word, kind] of [['truth', 'truth'], ['DARE', 'dare'], ['verdad', 'truth'], ['reto', 'dare'], ['verdade', 'truth'], ['desafio', 'dare'], [' t ', 'truth']]) assert.equal(prompts.readTruthOrDare(word), kind, word);
+  assert.equal(prompts.readTruthOrDare('maybe'), null);
+  assert.equal(prompts.readTwoOptions(['a', 'b']).length, 2);
+  assert.equal(prompts.readTwoOptions(['a']), null);
+  assert.equal(prompts.readTwoOptions(['a', 'b', 'c']), null);
+  // A member's own words: Markdown escaped, no mention, cut to the limit.
+  assert.equal(prompts.plainText('**hi** _there_'), '\\*\\*hi\\*\\* \\_there\\_');
+  assert.ok(!/@(everyone|here)/.test(prompts.plainText('@everyone @here')), 'no ping from a written option');
+  assert.ok(!prompts.plainText('<@123456789012345678> <@&1> <#2>').includes('<@'), 'mentions are broken');
+  assert.ok(prompts.plainText('x'.repeat(500), 20).length <= 20);
+
+  const react = [];
+  const answerOf = async (name, lang, values) => {
+    replies.length = 0;
+    react.length = 0;
+    await require(`../src/commands/fun/${name}`).execute({
+      ...interaction, pettoLang: lang, options: { getString: (key) => values?.[key] ?? null, getUser: interaction.options.getUser },
+      fetchReply: async () => ({ react: async (emoji) => { react.push(emoji); } }),
+    });
+    return replies[0];
+  };
+  assert.match((await answerOf('coinflip', 'en')).content, /^🪙 .+ flips a coin: \*\*(Heads|Tails)!\*\*$/);
+  assert.match((await answerOf('coinflip', 'es')).content, /lanza una moneda: \*\*(¡Cara!|¡Cruz!)\*\*$/);
+  assert.match((await answerOf('coinflip', 'pt-BR')).content, /joga uma moeda: \*\*(Cara!|Coroa!)\*\*$/);
+  const wyr = await answerOf('wouldyourather', 'en');
+  assert.match(wyr.content, /^\*\*Would you rather\.\.\.\*\*\n🅰️ .+\n🅱️ .+$/);
+  assert.deepEqual(react, ['🅰️', '🅱️'], 'the vote is two reactions');
+  assert.deepEqual(wyr.allowedMentions.parse, []);
+  const own = await answerOf('wouldyourather', 'es', { options: '**tacos**, @everyone pizza' });
+  assert.ok(own.content.includes('🅰️ \\*\\*tacos\\*\\*') && !/@(everyone|here)/.test(own.content), own.content);
+  assert.ok(replies[0].components || own.content, 'a custom question is posted');
+  const bad = await answerOf('wouldyourather', 'en', { options: 'only one' });
+  assert.ok(bad.components && JSON.stringify(bad.components).includes('wouldyourather'), 'two options are needed');
+  assert.ok((await answerOf('wouldyourather', 'en', { options: 'a, b, c' })).components);
+  assert.ok((await answerOf('wouldyourather', 'en', { options: `${'x'.repeat(200)}, b` })).components, 'an option that is too long is refused');
+  const nhie = await answerOf('neverhaveiever', 'pt-BR');
+  assert.match(nhie.content, /^\*\*Eu nunca\.\.\.\*\*\nEu nunca .+\n-# /);
+  assert.deepEqual(react, ['✅', '❌']);
+  assert.match((await answerOf('neverhaveiever', 'es')).content, /^\*\*Yo nunca\.\.\.\*\*\nYo nunca /);
+  assert.match((await answerOf('truthordare', 'en', { type: 'truth' })).content, /^🎲 \*\*Truth\*\* · .+\n.+/);
+  assert.match((await answerOf('truthordare', 'es', { type: 'reto' })).content, /^🎲 \*\*Reto\*\* · /);
+  assert.match((await answerOf('truthordare', 'pt-BR', { type: 'desafio' })).content, /^🎲 \*\*Desafio\*\* · /);
+  assert.match((await answerOf('truthordare', 'en')).content, /^🎲 \*\*(Truth|Dare)\*\* · /);
+  assert.ok((await answerOf('truthordare', 'en', { type: 'banana' })).components, 'an unknown choice says how to write it');
+  // None of them is a slash command, all of them are fun commands with the usual cooldown.
+  const { isSlashCommand } = require('../src/handlers/commandHandler');
+  for (const name of ['uwu', 'coinflip', 'wouldyourather', 'neverhaveiever', 'truthordare']) {
+    const command = require(`../src/commands/fun/${name}`);
+    assert.equal(isSlashCommand({ ...command, category: 'fun' }), false, `${name} is a prefix command`);
+    assert.equal(command.cooldownMs, 3000);
+    assert.ok(command.data.description.length <= 100);
+  }
+
   console.log('Checked the fun command logic.');
 })().catch((err) => { console.error(err); process.exit(1); });

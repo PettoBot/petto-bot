@@ -38,4 +38,12 @@ module.exports = {
   'cmd.fun.image.hex.opt.source.desc': 'Um link, um membro ou nada (uma imagem anexada ou respondida, ou seu avatar)',
   'cmd.fun.quote.desc': 'Transforma uma mensagem em uma imagem de citação em preto e branco.',
   'cmd.fun.quote.opt.text.desc': 'Um link ou ID de mensagem, ou um texto (e um membro); ou responda a uma mensagem',
+  'cmd.fun.uwu.desc': 'Transforme um texto, ou a mensagem que você responde, em fala uwu.',
+  'cmd.fun.uwu.opt.text.desc': 'O texto a mudar (ou responda a uma mensagem)',
+  'cmd.fun.coinflip.desc': 'Jogue uma moeda: cara ou coroa.',
+  'cmd.fun.wouldyourather.desc': 'Receba uma pergunta de você prefere, ou escreva suas duas opções.',
+  'cmd.fun.wouldyourather.opt.options.desc': 'Suas duas opções, separadas por vírgula',
+  'cmd.fun.neverhaveiever.desc': 'Receba uma frase de "eu nunca" para o canal.',
+  'cmd.fun.truthordare.desc': 'Receba uma verdade ou um desafio para jogar com amigos.',
+  'cmd.fun.truthordare.opt.type.desc': 'verdade ou desafio (aleatório se deixar vazio)',
 };
