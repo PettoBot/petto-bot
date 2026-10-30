@@ -17,11 +17,11 @@ const { DEFAULT_PREFIX_ROUTES } = require('../src/utils/defaultCommandAliases');
 const GUILD = { id: '100000000000000001' };
 const message = (id, content, extra = {}) => ({
   id, guild: GUILD, channelId: extra.channelId ?? 'c1', content, createdTimestamp: 1_700_000_000_000 + Number(id),
-  author: { id: 'u1', username: 'ana', globalName: 'Ana', bot: false, displayAvatarURL: () => 'https://cdn.example/a.png' },
+  author: { id: 'u1', username: 'ana', globalName: 'Ana', bot: false, avatar: 'abc123' },
   member: { displayName: 'Ana' }, attachments: new Map(), embeds: [], ...extra,
 });
 const reaction = (emoji, msg, extra = {}) => ({ emoji, message: msg, ...extra });
-const person = (id, name, bot = false) => ({ id, username: name, globalName: name, bot, displayAvatarURL: () => `https://cdn.example/${id}.png` });
+const person = (id, name, bot = false) => ({ id, username: name, globalName: name, bot, avatar: `hash${id}` });
 
 // ---- the memory ---------------------------------------------------------------------------------------------------------------------
 for (let i = 1; i <= 12; i += 1) cache.rememberDeleted(message(String(i), `text ${i}`));
@@ -50,6 +50,8 @@ const last = cache.getReaction('c1', 1);
 assert.equal(last.emoji.display, '<a:party:555>', 'a custom emoji is kept so it can be shown again');
 assert.equal(last.emoji.url, 'https://cdn.discordapp.com/emojis/555.gif?size=96');
 assert.equal(last.user.name, 'Cy');
+assert.equal(cache.avatarUrl(last.user), 'https://cdn.discordapp.com/avatars/u3/hashu3.png?size=128', 'the avatar is kept as its hash');
+assert.equal(cache.avatarUrl({ id: 'u1', avatar: null }), null);
 assert.equal(last.message.url, 'https://discord.com/channels/100000000000000001/c1/70');
 assert.equal(cache.getReaction('c1', 2).emoji.display, '👍');
 assert.equal(cache.getReaction('c1', 3), null);
@@ -119,6 +121,7 @@ let r = await run('snipe');
 assert.equal(r.sub, 'deleted');
 assert.equal(r.payload.embeds[0].toJSON().description, 'second', '!snipe is the latest deleted message');
 assert.deepEqual(r.payload.allowedMentions, { parse: [] }, 'nothing is pinged');
+assert.equal(r.payload.embeds[0].toJSON().author.icon_url, 'https://cdn.discordapp.com/avatars/u1/abc123.png?size=128');
 r = await run('snipe', '2');
 assert.equal(r.payload.embeds[0].toJSON().description, 'first', '!snipe 2 is the one before');
 r = await run('snipe', 'deleted 2');

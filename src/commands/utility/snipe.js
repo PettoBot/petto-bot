@@ -1,5 +1,5 @@
 const { EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } = require('discord.js');
-const { getDeleted, getEdited, getReaction, clearChannel, MAX_ENTRIES_PER_CHANNEL } = require('../../utils/snipeCache');
+const { getDeleted, getEdited, getReaction, clearChannel, avatarUrl, MAX_ENTRIES_PER_CHANNEL } = require('../../utils/snipeCache');
 const { COLORS } = require('../../utils/colors');
 const { t, tn, languageOf } = require('../../i18n');
 
@@ -17,7 +17,7 @@ function baseEmbed(entry, label, lang) {
   const noText = t(lang, 'utility.snipe.noText');
   const embed = new EmbedBuilder()
     .setColor(COLORS.DEFAULT)
-    .setAuthor({ name: `${message.author.name ?? t(lang, 'utility.snipe.unknownUser')} · ${label}`, ...(message.author.avatar ? { iconURL: message.author.avatar } : {}) })
+    .setAuthor({ name: `${message.author.name ?? t(lang, 'utility.snipe.unknownUser')} · ${label}`, ...(avatarUrl(message.author) ? { iconURL: avatarUrl(message.author) } : {}) })
     .setTimestamp(message.createdTimestamp)
     .setFooter({ text: t(lang, 'utility.snipe.footer', { label: label.toLowerCase(), time: new Date(entry.capturedAt).toISOString() }) });
 
@@ -26,7 +26,7 @@ function baseEmbed(entry, label, lang) {
 
   const files = attachmentLines(message.attachments, lang);
   if (files) embed.addFields({ name: t(lang, 'utility.snipe.attachments'), value: clip(files, 1024), inline: false });
-  if (message.embeds?.length) embed.addFields({ name: t(lang, 'utility.snipe.richContent'), value: tn(lang, 'utility.snipe.embeds', message.embeds.length), inline: false });
+  if (message.embedCount) embed.addFields({ name: t(lang, 'utility.snipe.richContent'), value: tn(lang, 'utility.snipe.embeds', message.embedCount), inline: false });
   return embed;
 }
 
@@ -40,7 +40,7 @@ function reactionEmbed(entry, lang) {
   if (message.preview) lines.push(`> ${clip(message.preview, 200).replace(/\n+/g, ' ')}`);
   const embed = new EmbedBuilder()
     .setColor(COLORS.DEFAULT)
-    .setAuthor({ name: `${user.name ?? t(lang, 'utility.snipe.unknownUser')} · ${label}`, ...(user.avatar ? { iconURL: user.avatar } : {}) })
+    .setAuthor({ name: `${user.name ?? t(lang, 'utility.snipe.unknownUser')} · ${label}`, ...(avatarUrl(user) ? { iconURL: avatarUrl(user) } : {}) })
     .setDescription(clip(lines.join('\n'), 4096))
     .setFooter({ text: t(lang, 'utility.snipe.footer', { label: label.toLowerCase(), time: new Date(entry.capturedAt).toISOString() }) });
   if (emoji.url) embed.setThumbnail(emoji.url);
