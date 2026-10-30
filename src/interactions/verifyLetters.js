@@ -102,11 +102,23 @@ async function showPicture(interaction, guildId, lang, { replace = false } = {})
   return interaction.reply({ components: [container], files: [file], flags: flagsFor(interaction) });
 }
 
+/** The picture of the panel when it is a link Petto shows (https, no user or password, at most 500 characters), else null. */
+function panelImage(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw || raw.length > 500) return null;
+  try {
+    const url = new URL(raw);
+    return url.protocol === 'https:' && !url.username && !url.password ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * The panel of a channel: what to do to get in, with a button for each way the server allows. The server's name and icon on top, three
  * short steps, the buttons (with an emoji) and a note at the bottom. When the link cannot be given, the letters inside Discord take its place.
  */
-function buildPanel({ guild, method, lang = currentLanguage() }) {
+function buildPanel({ guild, method, lang = currentLanguage(), imageUrl = null }) {
   const letters = canDoLetters(method);
   const link = usesLink(method) && !lettersInstead(method);
   const row = new ActionRowBuilder();
@@ -114,7 +126,11 @@ function buildPanel({ guild, method, lang = currentLanguage() }) {
   if (letters) row.addComponents(startButton(guild.id, lang));
   const steps = link && letters ? 'both' : letters ? 'letters' : 'link';
   const text = [t(lang, 'verify.panel.title'), t(lang, 'verify.panel.welcome', { server: guild.name }), '', t(lang, `verify.panel.steps.${steps}`)].join('\n');
-  const container = withPicture(new ContainerBuilder(), text, serverPicture(guild))
+  // The picture the server chose goes on top as a media gallery; with none, the panel is what it always was.
+  const container = new ContainerBuilder();
+  const banner = panelImage(imageUrl);
+  if (banner) container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(banner)));
+  withPicture(container, text, serverPicture(guild))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small))
     .addActionRowComponents(row)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'verify.panel.footer')));
@@ -202,4 +218,4 @@ function isPanelMessage(message, guildId) {
   return (message?.components ?? []).some(walk);
 }
 
-module.exports = { PREFIX, startButton, buildPanel, handleButton, handleModal, ids, canDoLetters, isPanelMessage };
+module.exports = { PREFIX, startButton, buildPanel, panelImage, handleButton, handleModal, ids, canDoLetters, isPanelMessage };

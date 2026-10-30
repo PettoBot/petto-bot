@@ -131,9 +131,13 @@ async function matchPrefix(content, { prefixes, personal = null, isKnown = async
   return null;
 }
 
-/** Whether an unknown word after a prefix gets the "I don't know that command" answer: only from the main prefix of the server, written like a command. */
+/**
+ * Whether an unknown word after a prefix gets the "I don't know that command" answer: from the main prefix of the server, and from the
+ * personal prefix of the person (they chose it for themselves, and the answer is only for them), written like a command and never after
+ * a word prefix. The other prefixes of the server (`petto`, a `,` that was added) leave it as chat.
+ */
 function answersUnknown(way) {
-  return Boolean(way?.main && !way.word && /^[\p{L}\p{N}]/u.test(way.commandName));
+  return Boolean(way && (way.main || way.source === 'personal') && !way.word && /^[\p{L}\p{N}]/u.test(way.commandName));
 }
 
 module.exports = {

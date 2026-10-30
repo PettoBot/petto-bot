@@ -9,6 +9,7 @@ const webhooksDb = require('../../db/managedWebhooks');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { t, languageOf } = require('../../i18n');
+const { applySilentMentions } = require('../../utils/silentMentions');
 
 module.exports = {
   aliases: ['wh'],
@@ -365,7 +366,7 @@ async function send(interaction, lang) {
 
         token:
           row.webhook_token,
-      }).send(payload);
+      }).send(applySilentMentions(payload, interaction.guild)); // a client of its own: the server is given so `!@Role` finds its role
 
     const jumpUrl =
       messageUrl(
@@ -442,10 +443,10 @@ async function edit(interaction, lang) {
         }).editMessage(
           link[3],
 
-          {
+          applySilentMentions({
             content: message,
             embeds: [],
-          }
+          }, interaction.guild)
         );
 
       const jumpUrl =

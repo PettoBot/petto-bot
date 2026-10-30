@@ -963,6 +963,8 @@ const allText = (message) => JSON.stringify(json(message.components));
   {
     config.kickClientId = 'id';
     config.kickClientSecret = 'secret';
+    kick.forget();
+    kick.pace.gapMs = 0;
     const kickCalls = [];
     const pictures = { 'https://images.kick.com/t.jpg': true };
     const channels = { 1: { broadcaster_user_id: 1, slug: 'live-one', stream_title: 'Hello', category: { name: 'Minecraft' }, stream: { is_live: true, start_time: '2026-10-26T20:00:00Z', viewer_count: 1234, thumbnail: 'https://images.kick.com/t.jpg' } },
@@ -993,11 +995,248 @@ const allText = (message) => JSON.stringify(json(message.components));
     assert.equal(results.get('1').items[0].placeholder, undefined, 'and it is never swapped for the real one');
     assert.equal(kickCalls.filter((url) => url.includes('/channels?') && url.includes('broadcaster_user_id')).length, 1, 'both accounts are asked in one call');
     assert.equal(kickCalls.some((url) => url.startsWith('https://images.kick.com/')), false, 'and the preview is not even asked for');
-    config.kickClientId = null;
-    kickCalls.length = 0;
-    await assert.rejects(PROVIDERS.kick.resolve('live-one'), (error) => error.kind === 'notConfigured', 'without the keys Kick says it is not set up');
     globalThis.fetch = realFetch;
+    config.kickClientId = null;
     config.kickClientSecret = null;
+    kick.forget();
+  }
+
+  // --- Kick: the fallbacks (the public API, then the web endpoints of kick.com), the real reason, the cache ------------------------------------------
+  {
+    const log = require('../src/utils/logger');
+    const lines = [];
+    const realLogInfo = log.info;
+    log.info = (...args) => { lines.push(args.join(' ')); };
+    const calls = [];
+    const answer = (plan) => async (url, options) => {
+      const u = new URL(url);
+      calls.push({ url: String(url), host: u.hostname, path: u.pathname, agent: options.headers['User-Agent'], at: Date.now(), signal: options.signal });
+      const step = plan[Math.min(calls.length - 1, plan.length - 1)];
+      if (typeof step === 'object' && !(step instanceof Error) && step !== null && !(step instanceof Response)) { // answers by address
+        const byPath = step[u.pathname] ?? step[u.hostname] ?? step.default;
+        if (!byPath) throw new Error(`unexpected ${url}`);
+        return byPath instanceof Error ? (() => { throw byPath; })() : byPath();
+      }
+      if (step instanceof Error) throw step;
+      return step();
+    };
+    const status = (code, headers = {}) => () => new Response('', { status: code, headers });
+    const body = (value) => () => new Response(JSON.stringify(value), { status: 200 });
+    const html = () => new Response('<html><title>Just a moment...</title></html>', { status: 200 });
+    // What kick.com/api/v2 and v1 answer for a channel (the real ones, trimmed): offline, and live.
+    const USER = { username: 'Live_One', profile_pic: 'https://files.kick.com/images/user/1/p.webp' };
+    const OFFLINE = { id: 668, user_id: 1, slug: 'live-one', is_banned: false, livestream: null, user: USER };
+    const LIVE_V2 = { id: 668, user_id: 1, slug: 'live-one', livestream: { id: 9, session_title: 'Hello world', is_live: true, start_time: '2026-10-26 20:00:00', viewer_count: 321, thumbnail: { srcset: 'a 1w', src: 'https://images.kick.com/video_thumbnails/a/720.webp' }, categories: [{ id: 2, name: 'Minecraft' }] }, user: USER };
+    const LIVE_V1 = { id: 668, user_id: 1, slug: 'live-one', livestream: { id: 9, session_title: 'Hello world', is_live: true, start_time: '2026-10-26 20:00:00', viewers: 321, viewer_count: 321, thumbnail: { responsive: 'a 1w', url: 'https://images.kick.com/video_thumbnails/a/720.webp' }, categories: [{ id: 2, name: 'Minecraft' }] }, user: USER };
+    const start = () => { calls.length = 0; lines.length = 0; kick.forget(); };
+    const realFetchKick = globalThis.fetch;
+    kick.pace.gapMs = 0;
+    config.kickClientId = null;
+    config.kickClientSecret = null;
+    try {
+      // Without keys the web endpoints answer, v2 first, with the plain User-Agent; the answer has the shape of the public API.
+      start();
+      globalThis.fetch = answer([body(LIVE_V2)]);
+      let read = await kick.resolveChannel('https://kick.com/Live-One');
+      assert.deepEqual(calls.map((call) => call.url), ['https://kick.com/api/v2/channels/live-one']);
+      assert.equal(calls[0].agent, 'Petto-Discord-Bot/1.0 (+https://petto.sbs)', 'the plain User-Agent first');
+      assert.deepEqual(read, { id: '1', slug: 'live-one', name: 'Live_One', avatar: 'https://files.kick.com/images/user/1/p.webp', url: 'https://kick.com/live-one' });
+      assert.ok(calls.every((call) => call.signal), 'every attempt carries its time limit');
+
+      // A second read inside the cache window sends no request (a lookup followed by the follow), and the polling job always reads anew.
+      globalThis.fetch = answer([() => { throw new Error('must not be asked'); }]);
+      assert.equal((await kick.resolveChannel('live-one')).id, '1');
+      const calm = await kick.liveChannel({ id: '1', url: 'https://kick.com/live-one' });
+      assert.equal(calm.stream.is_live, true, 'the first look of a new feed shares the read too');
+      assert.equal(calls.length, 1);
+      globalThis.fetch = answer([body(OFFLINE)]);
+      const freshRead = await kick.liveChannels([{ id: '1', url: 'https://kick.com/live-one' }]);
+      assert.equal(calls.length, 2, 'the job reads anew');
+      assert.deepEqual(freshRead, { live: {}, failed: {} });
+
+      // The same live state from v1, and offline, in the shape of the public API; the id of the stream is the same from both addresses.
+      for (const [name, live] of [['v2', LIVE_V2], ['v1', LIVE_V1]]) {
+        const parsed = kick.parseWebChannel(live);
+        assert.deepEqual(parsed.channel, { broadcaster_user_id: 1, slug: 'live-one', stream_title: 'Hello world', category: { name: 'Minecraft' }, stream: { is_live: true, start_time: '2026-10-26T20:00:00Z', viewer_count: 321, thumbnail: 'https://images.kick.com/video_thumbnails/a/720.webp' } }, name);
+        assert.equal(kick.streamId(parsed.channel), '2026-10-26T20:00:00Z', `the id of a stream is when it started, ${name}`);
+        const item = kick.toItem(parsed.channel, { name: parsed.name, avatar: parsed.avatar });
+        assert.deepEqual([item.type, item.id, item.title, item.url, item.viewers, item.author, item.publishedAt, item.extra], ['live', '2026-10-26T20:00:00Z', 'Hello world', 'https://kick.com/live-one', 321, 'Live_One', Date.parse('2026-10-26T20:00:00Z'), '🎮 Minecraft · 👁 321'], name);
+      }
+      assert.deepEqual(kick.parseWebChannel(OFFLINE).channel, { broadcaster_user_id: 1, slug: 'live-one', stream_title: '', stream: { is_live: false } });
+      assert.equal(kick.parseWebChannel({ ...LIVE_V2, livestream: { ...LIVE_V2.livestream, thumbnail: null } }).channel.stream.thumbnail, '', 'a stream without preview yet');
+      assert.throws(() => kick.parseWebChannel({ message: 'nope' }), (error) => error.kind === 'unavailable');
+      assert.throws(() => kick.parseWebChannel([]), (error) => error.kind === 'unavailable');
+
+      // 403 on the first address, then the second answers; the log says what failed and where it goes next.
+      start();
+      globalThis.fetch = answer([status(403), status(403), body(LIVE_V1)]);
+      read = await kick.resolveChannel('live-one');
+      assert.equal(read.name, 'Live_One');
+      assert.deepEqual(calls.map((call) => call.url), ['https://kick.com/api/v2/channels/live-one', 'https://kick.com/api/v2/channels/live-one', 'https://kick.com/api/v1/channels/live-one']);
+      assert.equal(calls[1].agent, kick.BROWSER_USER_AGENT, 'a refused address is asked once more with a browser-like User-Agent');
+      assert.match(kick.BROWSER_USER_AGENT, /^Mozilla\/5\.0 \(compatible; Petto-Discord-Bot\/1\.0; \+https:\/\/petto\.sbs\)/, 'that still names the bot and its site');
+      assert.deepEqual(lines, ['feed kick live-one: kick.com/api/v2 403, asking again with a browser-like User-Agent', 'feed kick live-one: kick.com/api/v2 403, trying kick.com/api/v1']);
+      // The browser-like one is remembered when it worked.
+      start();
+      globalThis.fetch = answer([status(403), body(LIVE_V2), body(LIVE_V2)]);
+      await kick.resolveChannel('live-one');
+      assert.equal(calls.length, 2);
+      globalThis.fetch = answer([body(LIVE_V2)]);
+      await kick.liveChannels([{ id: '1', url: 'https://kick.com/live-one' }]);
+      assert.equal(calls.at(-1).agent, kick.BROWSER_USER_AGENT);
+
+      // A page that is not JSON (a challenge that answers 200) is a refusal, then the second address answers.
+      start();
+      globalThis.fetch = answer([html, html, body(LIVE_V1)]);
+      read = await kick.resolveChannel('live-one');
+      assert.equal(read.id, '1');
+      assert.deepEqual(calls.map((call) => new URL(call.url).pathname), ['/api/v2/channels/live-one', '/api/v2/channels/live-one', '/api/v1/channels/live-one']);
+      // JSON that is not a channel is the same.
+      start();
+      globalThis.fetch = answer([body({ message: 'Forbidden' }), body({ message: 'Forbidden' }), body(LIVE_V1)]);
+      assert.equal((await kick.resolveChannel('live-one')).id, '1');
+
+      // A 5xx, then a network error, then (with keys) all of them failed: the reason that people can act on.
+      start();
+      globalThis.fetch = answer([status(503), Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNRESET' } })]);
+      await assert.rejects(kick.resolveChannel('live-one'), (error) => error.kind === 'unavailable' && /ECONNRESET/.test(error.message));
+      assert.deepEqual(lines, ['feed kick live-one: kick.com/api/v2 503, trying kick.com/api/v1', 'feed kick live-one: kick.com/api/v1 ECONNRESET, giving up']);
+      start();
+      globalThis.fetch = answer([status(403)]);
+      await assert.rejects(kick.resolveChannel('live-one'), (error) => error.kind === 'blocked');
+      start();
+      globalThis.fetch = answer([html]);
+      await assert.rejects(kick.resolveChannel('live-one'), (error) => error.kind === 'blocked', 'a page that is not JSON everywhere is a refusal');
+      start();
+      globalThis.fetch = answer([status(429, { 'retry-after': '30' }), status(429)]);
+      await assert.rejects(kick.resolveChannel('live-one'), (error) => error.kind === 'rateLimited' && error.retryAfterMs === 30_000);
+      assert.match(lines[0], /^feed kick live-one: kick\.com\/api\/v2 429 \(retry-after 30s\), trying kick\.com\/api\/v1$/);
+      // The wait Kick asked for is respected (no request until it passes), and it is capped at a minute.
+      calls.length = 0;
+      await assert.rejects(kick.resolveChannel('other-one'), (error) => error.kind === 'rateLimited' && error.retryAfterMs > 0 && error.retryAfterMs <= 30_000);
+      assert.equal(calls.length, 0);
+      start();
+      globalThis.fetch = answer([status(429, { 'retry-after': '99999' })]);
+      await assert.rejects(kick.resolveChannel('live-one'), (error) => error.retryAfterMs === 60_000);
+      // A refusal that is not a block of the bot (a 400) does not try the others.
+      start();
+      globalThis.fetch = answer([status(400)]);
+      await assert.rejects(kick.resolveChannel('live-one'), (error) => error.kind === 'unavailable');
+      assert.equal(calls.length, 1);
+      // A timeout is a failure of that address: the next one is tried.
+      start();
+      globalThis.fetch = answer([Object.assign(new Error('timed out'), { name: 'TimeoutError' }), body(LIVE_V2)]);
+      assert.equal((await kick.resolveChannel('live-one')).id, '1');
+      assert.deepEqual(lines, ['feed kick live-one: kick.com/api/v2 timeout, trying kick.com/api/v1']);
+
+      // A 404 is not found, and no other address is asked (a fallback never turns it into success).
+      start();
+      globalThis.fetch = answer([status(404), body(LIVE_V2)]);
+      await assert.rejects(kick.resolveChannel('gone-one'), (error) => error.kind === 'notFound');
+      assert.equal(calls.length, 1);
+      start();
+      globalThis.fetch = answer([status(403), status(403), status(404), body(LIVE_V2)]);
+      await assert.rejects(kick.resolveChannel('gone-one'), (error) => error.kind === 'notFound');
+      assert.equal(calls.length, 3, 'a 404 from the last address stays not found');
+      await assert.rejects(kick.resolveChannel('not a name'), (error) => error.kind === 'badInput');
+
+      // With the keys: the public API first, then the web endpoints; an empty list from the API is a channel that does not exist.
+      config.kickClientId = 'id';
+      config.kickClientSecret = 'secret';
+      const official = { broadcaster_user_id: 1, slug: 'live-one', stream_title: 'Hello', category: { name: 'Minecraft' }, stream: { is_live: true, start_time: '2026-10-26T20:00:00Z', viewer_count: 5, thumbnail: '' } };
+      const token = body({ access_token: 'tok', expires_in: 3600 });
+      start();
+      globalThis.fetch = answer([{ 'id.kick.com': token, 'api.kick.com': body({ data: [official] }) }]);
+      read = await kick.resolveChannel('live-one');
+      assert.deepEqual(calls.map((call) => call.host), ['id.kick.com', 'api.kick.com', 'api.kick.com']);
+      assert.equal(read.id, '1');
+      start();
+      globalThis.fetch = answer([{ 'id.kick.com': token, 'api.kick.com': status(403), 'kick.com': body(LIVE_V2) }]);
+      read = await kick.resolveChannel('live-one');
+      assert.deepEqual(calls.map((call) => call.host), ['id.kick.com', 'api.kick.com', 'kick.com']);
+      assert.equal(read.name, 'Live_One');
+      assert.deepEqual(lines, ['feed kick live-one: api.kick.com 403, trying kick.com/api/v2']);
+      start();
+      globalThis.fetch = answer([{ 'id.kick.com': status(503), 'kick.com': body(LIVE_V1) }]);
+      assert.equal((await kick.resolveChannel('live-one')).id, '1', 'a token that cannot be asked does not stop the web endpoints');
+      start();
+      globalThis.fetch = answer([{ 'id.kick.com': token, 'api.kick.com': body({ data: [] }), 'kick.com': body(LIVE_V2) }]);
+      await assert.rejects(kick.resolveChannel('gone-one'), (error) => error.kind === 'notFound');
+      assert.deepEqual(calls.map((call) => call.host), ['id.kick.com', 'api.kick.com']);
+      start();
+      globalThis.fetch = answer([{ 'id.kick.com': token, 'api.kick.com': status(404), 'kick.com': body(LIVE_V2) }]);
+      await assert.rejects(kick.resolveChannel('gone-one'), (error) => error.kind === 'notFound');
+      assert.equal(calls.length, 2);
+      start();
+      globalThis.fetch = answer([{ 'id.kick.com': token, 'api.kick.com': status(429, { 'retry-after': '20' }), 'kick.com': status(403) }]);
+      await assert.rejects(kick.resolveChannel('live-one'), (error) => error.kind === 'rateLimited', 'a limit on any address is told as a limit');
+
+      // The polling job: the public API for all the accounts in one call; when it fails the accounts are read from the web endpoints, one by one, and the
+      // ones that could not be read are failures (never offline), told with their reason.
+      const accounts = [{ id: '1', name: 'Live_One', avatar: null, url: 'https://kick.com/live-one' }, { id: '2', name: 'quiet', avatar: null, url: 'https://kick.com/quiet' }];
+      start();
+      globalThis.fetch = answer([{ 'id.kick.com': token, 'api.kick.com': body({ data: [official, { broadcaster_user_id: 2, slug: 'quiet', stream: { is_live: false } }] }) }]);
+      let results = await PROVIDERS.kick.poll(accounts);
+      assert.deepEqual(calls.map((call) => call.host), ['id.kick.com', 'api.kick.com'], 'two accounts, one call');
+      assert.equal(results.get('1').items.length, 1);
+      assert.deepEqual(results.get('2'), { items: [], stillLive: new Set() });
+      start();
+      globalThis.fetch = answer([{ 'id.kick.com': token, 'api.kick.com': status(403), 'kick.com': (() => { let n = 0; return () => new Response(JSON.stringify(n++ === 0 ? LIVE_V2 : { ...OFFLINE, user_id: 2, slug: 'quiet' }), { status: 200 }); })() }]);
+      results = await PROVIDERS.kick.poll(accounts);
+      assert.deepEqual(calls.map((call) => call.url).slice(2), ['https://kick.com/api/v2/channels/live-one', 'https://kick.com/api/v2/channels/quiet'], 'the web endpoints, one account each');
+      assert.deepEqual([results.get('1').items[0].id, results.get('1').items[0].extra, [...results.get('1').stillLive]], ['2026-10-26T20:00:00Z', '🎮 Minecraft · 👁 321', ['2026-10-26T20:00:00Z']], 'the same notice from the fallback');
+      assert.deepEqual(results.get('2'), { items: [], stillLive: new Set() });
+      assert.match(lines[0], /^feed kick: api\.kick\.com 403 for 2 account\(s\), trying kick\.com\/api$/);
+      // Everything fails: every account is a failure with the reason, nothing is closed, the wait Kick asked for goes to the schedule.
+      start();
+      globalThis.fetch = answer([{ 'id.kick.com': token, 'api.kick.com': status(403), 'kick.com': status(403) }]);
+      results = await PROVIDERS.kick.poll(accounts);
+      assert.deepEqual([results.get('1').error, results.get('2').error, results.get('1').items.length], ['blocked', 'blocked', 0]);
+      start();
+      globalThis.fetch = answer([{ 'id.kick.com': token, 'api.kick.com': status(500), 'kick.com': status(429, { 'retry-after': '45' }) }]);
+      results = await PROVIDERS.kick.poll(accounts);
+      assert.deepEqual([results.get('1').error, results.get('1').retryAfter], ['rateLimited', 45_000]);
+      assert.equal(results.get('2').error, 'rateLimited', 'the wait is for all of Kick\'s web addresses');
+      // A channel that does not exist is not found for that account only.
+      start();
+      globalThis.fetch = answer([{ 'id.kick.com': token, 'api.kick.com': status(500), 'kick.com/api/v2/channels/live-one': body(LIVE_V2), 'kick.com': status(404) }]);
+      globalThis.fetch = (inner => async (url, options) => (String(url).includes('/live-one') ? new Response(JSON.stringify(LIVE_V2), { status: 200 }) : inner(url, options)))(globalThis.fetch);
+      results = await PROVIDERS.kick.poll(accounts);
+      assert.equal(results.get('1').items.length, 1);
+      assert.equal(results.get('2').error, 'notFound');
+      // A bare list of accounts without keys still reads the web endpoints, and one account that is refused does not hide the next one.
+      config.kickClientId = null;
+      config.kickClientSecret = null;
+      start();
+      globalThis.fetch = async (url) => (String(url).includes('/live-one') ? new Response('', { status: 403 }) : new Response(JSON.stringify({ ...OFFLINE, user_id: 2, slug: 'quiet' }), { status: 200 }));
+      results = await PROVIDERS.kick.poll(accounts);
+      assert.equal(results.get('1').error, 'blocked');
+      assert.deepEqual(results.get('2'), { items: [], stillLive: new Set() });
+      // The first look of a new feed (baseline) is the live stream, or nothing.
+      start();
+      globalThis.fetch = answer([body(LIVE_V2)]);
+      assert.deepEqual(await PROVIDERS.kick.baselineItems(accounts[0]), [{ id: '2026-10-26T20:00:00Z', live: true }]);
+      start();
+      globalThis.fetch = answer([body(OFFLINE)]);
+      assert.deepEqual(await PROVIDERS.kick.baselineItems(accounts[0]), []);
+      start();
+      globalThis.fetch = answer([status(403)]);
+      await assert.rejects(PROVIDERS.kick.baselineItems(accounts[0]), (error) => error.kind === 'blocked');
+
+      // The texts: the platform's name is in them, in the three languages.
+      assert.match(t('en', 'feeds.add.error.blocked', { emoji: '', platform: 'Kick' }), /^\s*Kick is refusing Petto's requests right now\. Try again later\.$/);
+      assert.match(t('en', 'feeds.add.error.rateLimited', { emoji: '', platform: 'Kick' }), /Kick is limiting Petto's requests/);
+      assert.match(t('es', 'feeds.add.error.blocked', { emoji: '', platform: 'Kick' }), /Kick está rechazando/);
+      assert.match(t('pt-BR', 'feeds.add.error.rateLimited', { emoji: '', platform: 'Kick' }), /Kick está limitando/);
+      assert.match(t('en', 'feeds.add.error.unavailable', { emoji: '', platform: 'Kick' }), /Kick did not answer/);
+    } finally {
+      globalThis.fetch = realFetchKick;
+      log.info = realLogInfo;
+      config.kickClientId = null;
+      config.kickClientSecret = null;
+      kick.pace.gapMs = 400;
+      kick.forget();
+    }
   }
 
   // --- the other platforms: the answers of the services written out ------------------------------------------------------------------------------
@@ -1056,12 +1295,253 @@ const allText = (message) => JSON.stringify(json(message.components));
       if (new URL(url).hostname === 'www.reddit.com') return new Response('<feed><title>r/minecraft</title><entry><id>t3_9</id><title>A &amp; B</title><link href="https://www.reddit.com/r/minecraft/comments/9"/><updated>2026-10-26T14:00:00+00:00</updated></entry></feed>', { status: 200 });
       return new Response('<rss><channel><title>user on Pinterest</title><item><title>Pin</title><link>https://www.pinterest.com/pin/1/</link><guid>p1</guid><description><![CDATA[<a><img src="https://i.pinimg.com/236x/a/b.jpg"></a>]]></description></item></channel></rss>', { status: 200 });
     };
+    rssProviders.redditPace.gapMs = 0; // the queue of Reddit's requests is checked below
     const reddit = await PROVIDERS.reddit.resolve('r/minecraft');
     assert.deepEqual([reddit.id, reddit.name], ['minecraft', 'r/minecraft']);
     await assert.rejects(PROVIDERS.reddit.resolve('zzz'), (error) => error.kind === 'notFound');
     let polled = await PROVIDERS.reddit.poll([reddit], new Map(), { now });
     assert.equal(polled.get('minecraft').items[0].title, 'A & B');
     assert.equal(polled.get('minecraft').items[0].type, 'post');
+
+    // Reddit: the main address, then the fallbacks, the real reason when all fail, one request to follow an account, the queue and the wait Reddit asks for.
+    {
+      const log = require('../src/utils/logger');
+      const lines = [];
+      const realLogInfo = log.info;
+      const fetchBefore = globalThis.fetch; // the Pinterest checks after this block use the stand-in set above
+      log.info = (...args) => { lines.push(args.join(' ')); };
+      const ATOM = '<feed><title>r/bonded</title><entry><id>t3_9</id><title>A</title><link href="https://www.reddit.com/r/bonded/comments/9"/><updated>2026-10-26T14:00:00+00:00</updated></entry></feed>';
+      const LISTING = { data: { children: [
+        { kind: 't3', data: { name: 't3_j1', id: 'j1', title: 'Json & post', selftext: 'Body\n text https://x.y/z', permalink: '/r/bonded/comments/j1/x/', author: 'bob', created_utc: 1792000000, thumbnail: 'self', preview: { images: [{ source: { url: 'https://preview.redd.it/a.jpg?x=1&y=2' } }] } } },
+        { kind: 't3', data: { name: 't3_j2', title: 'Two', selftext: '', permalink: '/r/bonded/comments/j2/', author: 'al', created_utc: 1792000100, thumbnail: 'https://b.thumbs.redditmedia.com/t.jpg' } },
+        { kind: 't3', data: { name: 't3_j3', title: 'Three', permalink: '/r/bonded/comments/j3/', created_utc: 1792000200, thumbnail: 'nsfw', url: 'https://i.redd.it/z.png' } },
+        { kind: 't3', data: { name: 't3_j4', title: 'Four', permalink: '/r/bonded/comments/j4/', thumbnail: 'default', url: 'https://www.reddit.com/r/bonded/comments/j4/' } },
+      ] } };
+      const calls = [];
+      const answer = (plan) => async (url, options) => {
+        calls.push({ url: String(url), host: new URL(url).hostname, agent: options.headers['User-Agent'], at: Date.now(), signal: options.signal });
+        const step = plan[Math.min(calls.length - 1, plan.length - 1)];
+        if (step instanceof Error) throw step;
+        return step();
+      };
+      const status = (code, headers = {}) => () => new Response('', { status: code, headers });
+      const atom = () => new Response(ATOM, { status: 200 });
+      const listing = () => new Response(JSON.stringify(LISTING), { status: 200 });
+      const start = () => { calls.length = 0; lines.length = 0; rssProviders.forgetReddit(); };
+      rssProviders.redditPace.gapMs = 0;
+
+      // A descriptive User-Agent, for Reddit only.
+      assert.match(rssProviders.REDDIT_USER_AGENT, /^nodejs:petto-discord-bot:v\d[\w.-]* \(\+https:\/\/petto\.sbs\)$/);
+
+      // The main address answers: one request, no fallback.
+      start();
+      globalThis.fetch = answer([atom]);
+      let feed = await rssProviders.readReddit('bonded');
+      assert.deepEqual(calls.map((call) => call.url), ['https://www.reddit.com/r/bonded/new/.rss']);
+      assert.equal(calls[0].agent, rssProviders.REDDIT_USER_AGENT);
+      assert.equal(feed.entries[0].id, 't3_9');
+
+      // 403 on the main address, then old.reddit.com answers; the log says what failed and where it goes next.
+      start();
+      globalThis.fetch = answer([status(403), atom]);
+      feed = await rssProviders.readReddit('bonded');
+      assert.deepEqual(calls.map((call) => call.host), ['www.reddit.com', 'old.reddit.com']);
+      assert.equal(feed.entries[0].id, 't3_9');
+      assert.deepEqual(lines, ['feed reddit r/bonded: www.reddit.com 403, trying old.reddit.com']);
+
+      // A 5xx and a network error, then the JSON answers: the same entries as the RSS gives.
+      start();
+      globalThis.fetch = answer([status(503), Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNRESET' } }), listing]);
+      feed = await rssProviders.readReddit('bonded');
+      assert.deepEqual(calls.map((call) => call.host), ['www.reddit.com', 'old.reddit.com', 'www.reddit.com']);
+      assert.equal(calls[2].url, 'https://www.reddit.com/r/bonded/new.json?limit=15&raw_json=1');
+      assert.deepEqual(lines, ['feed reddit r/bonded: www.reddit.com 503, trying old.reddit.com', 'feed reddit r/bonded: old.reddit.com ECONNRESET, trying www.reddit.com (json)']);
+      assert.deepEqual(feed.entries.map((entry) => entry.id), ['t3_j1', 't3_j2', 't3_j3', 't3_j4']);
+
+      // A page that is not a feed (a block page that answers 200) is a refusal too, not a subreddit that does not exist.
+      start();
+      globalThis.fetch = answer([() => new Response('<html><title>Blocked</title></html>', { status: 200 }), atom]);
+      feed = await rssProviders.readReddit('bonded');
+      assert.equal(feed.entries.length, 1);
+
+      // Everything refuses: the reason people can act on, and the log tells each attempt.
+      start();
+      globalThis.fetch = answer([status(403)]);
+      await assert.rejects(rssProviders.readReddit('bonded'), (error) => error.kind === 'blocked');
+      assert.equal(calls.length, 3);
+      assert.equal(lines.length, 3);
+      assert.match(lines[2], /^feed reddit r\/bonded: www\.reddit\.com \(json\) 403, giving up$/);
+      // Everything fails without a refusal: it stays unavailable.
+      start();
+      globalThis.fetch = answer([status(500)]);
+      await assert.rejects(rssProviders.readReddit('bonded'), (error) => error.kind === 'unavailable');
+      // A status that is not a refusal or a failure of Reddit (a 400) does not try the others.
+      start();
+      globalThis.fetch = answer([status(400)]);
+      await assert.rejects(rssProviders.readReddit('bonded'), (error) => error.kind === 'unavailable');
+      assert.equal(calls.length, 1);
+
+      // A 404 keeps its meaning and is not looked for elsewhere.
+      start();
+      globalThis.fetch = answer([status(404)]);
+      await assert.rejects(rssProviders.readReddit('gone'), (error) => error.kind === 'notFound');
+      assert.equal(calls.length, 1);
+      // A name that does not exist answers the JSON with a list of subreddits (t5): not found too.
+      start();
+      globalThis.fetch = answer([status(403), status(403), () => new Response(JSON.stringify({ data: { children: [{ kind: 't5', data: { display_name: 'other' } }] } }), { status: 200 })]);
+      await assert.rejects(rssProviders.readReddit('gone'), (error) => error.kind === 'notFound');
+
+      // A 429 is tried on the other addresses (after the gap of the queue); when all say it, it is `rateLimited` with what Reddit asked for (at most a minute).
+      start();
+      globalThis.fetch = answer([status(429, { 'retry-after': '30' })]);
+      await assert.rejects(rssProviders.readReddit('bonded'), (error) => error.kind === 'rateLimited' && error.retryAfterMs === 30_000);
+      assert.equal(calls.length, 3);
+      assert.match(lines[0], /^feed reddit r\/bonded: www\.reddit\.com 429 \(retry-after 30s\), trying old\.reddit\.com$/);
+      // Until then nothing is sent to Reddit (not even by the polling job), and the wait is told.
+      const before = calls.length;
+      await assert.rejects(rssProviders.readReddit('bonded', { fresh: true }), (error) => error.kind === 'rateLimited' && error.retryAfterMs > 25_000);
+      assert.equal(calls.length, before, 'no request while Reddit asked to wait');
+      const waited = await PROVIDERS.reddit.poll([{ id: 'bonded', name: 'r/bonded', avatar: null, url: 'u' }], new Map(), { now });
+      assert.equal(waited.get('bonded').error, 'rateLimited');
+      assert.ok(waited.get('bonded').retryAfter > 25_000, 'the engine is told how long to wait');
+      assert.equal(calls.length, before);
+      // A Retry-After above a minute is cut to a minute; a date is read.
+      start();
+      globalThis.fetch = answer([status(429, { 'retry-after': '600' })]);
+      await assert.rejects(rssProviders.readReddit('bonded'), (error) => error.retryAfterMs === 60_000);
+      start();
+      globalThis.fetch = answer([status(429, { 'retry-after': new Date(Date.now() + 20_000).toUTCString() })]);
+      await assert.rejects(rssProviders.readReddit('bonded'), (error) => error.retryAfterMs > 15_000 && error.retryAfterMs <= 20_000);
+      // A 429 on the main address and an answer from the next one is an answer.
+      start();
+      globalThis.fetch = answer([status(429), atom]);
+      assert.equal((await rssProviders.readReddit('bonded')).entries.length, 1);
+      // Without Retry-After there is no wait of its own: the next read goes out.
+      start();
+      globalThis.fetch = answer([status(429)]);
+      await assert.rejects(rssProviders.readReddit('bonded'), (error) => error.kind === 'rateLimited' && error.retryAfterMs === 0);
+      globalThis.fetch = answer([atom]);
+      assert.equal((await rssProviders.readReddit('bonded')).entries.length, 1);
+
+      // The polling job goes through the same fallbacks, and reads anew each time.
+      start();
+      globalThis.fetch = answer([status(403), atom]);
+      polled = await PROVIDERS.reddit.poll([{ id: 'bonded', name: 'r/bonded', avatar: null, url: 'https://www.reddit.com/r/bonded' }], new Map(), { now });
+      assert.equal(polled.get('bonded').items[0].id, 't3_9', 'an existing feed does not go quiet when the main address is refused');
+      globalThis.fetch = answer([atom]);
+      calls.length = 0;
+      await PROVIDERS.reddit.poll([{ id: 'bonded', name: 'r/bonded', avatar: null, url: 'u' }], new Map(), { now });
+      await PROVIDERS.reddit.poll([{ id: 'bonded', name: 'r/bonded', avatar: null, url: 'u' }], new Map(), { now });
+      assert.equal(calls.length, 2, 'two looks of the job are two readings');
+
+      // The JSON as entries: id, title, url, author, date, a real picture and the self text.
+      const mapped = rssProviders.parseRedditJson(LISTING, 'bonded');
+      assert.deepEqual(mapped.entries[0], { id: 't3_j1', title: 'Json & post', url: 'https://www.reddit.com/r/bonded/comments/j1/x/', summary: 'Body text', image: 'https://preview.redd.it/a.jpg?x=1&y=2', published: 1792000000000, author: '/u/bob' });
+      assert.equal(mapped.entries[1].image, 'https://b.thumbs.redditmedia.com/t.jpg', 'a thumbnail that is a real address');
+      assert.equal(mapped.entries[2].image, 'https://i.redd.it/z.png', '`nsfw` is not a picture, the picture of the post is');
+      assert.equal(mapped.entries[3].image, '', '`default` is not a picture and a link to a page is not one either');
+      assert.equal(mapped.entries[3].author, '');
+      assert.throws(() => rssProviders.parseRedditJson({ nope: 1 }, 'bonded'), (error) => error.kind === 'unavailable');
+
+      // Looking an account up and then following it asks Reddit once (the lookup is kept for two minutes).
+      start();
+      globalThis.fetch = answer([atom]);
+      await PROVIDERS.reddit.resolve('r/bonded');
+      assert.equal(calls.length, 1);
+      assert.equal((await PROVIDERS.reddit.baselineItems({ id: 'bonded' })).length, 1);
+      await PROVIDERS.reddit.resolve('https://www.reddit.com/r/Bonded/');
+      assert.equal(calls.length, 1, 'resolve, resolve again and the first look of the feed: one request in all');
+      // At the same time: a reading in progress is shared.
+      start();
+      globalThis.fetch = answer([atom]);
+      await Promise.all([PROVIDERS.reddit.resolve('r/bonded'), PROVIDERS.reddit.resolve('r/bonded'), rssProviders.readReddit('bonded')]);
+      assert.equal(calls.length, 1);
+
+      // Following it (`createFeed`) after the lookup: still one request, and when Reddit limits the first look the feed is saved without posting the past.
+      {
+        const feedsDb = require('../src/db/feeds');
+        const premium = require('../src/db/premium');
+        const realLimit = premium.guildLimit;
+        const realDb = { countForGuild: feedsDb.countForGuild, create: feedsDb.create, update: feedsDb.update, markSeen: feedsDb.markSeen };
+        const servicePath = require.resolve('../src/feeds/service');
+        premium.guildLimit = async () => ({ limit: 5, premium: false, premiumLimit: 25 });
+        delete require.cache[servicePath];
+        const stubbed = require('../src/feeds/service');
+        premium.guildLimit = realLimit;
+        delete require.cache[servicePath]; // the real one is loaded again where it is needed
+        const rows = [];
+        const marked = [];
+        feedsDb.countForGuild = async () => 0;
+        feedsDb.create = async (row) => { const made = { id: 77, ...row }; rows.push(made); return made; };
+        feedsDb.update = async (_guild, id, patch) => Object.assign(rows.find((row) => row.id === id), patch);
+        feedsDb.markSeen = async (pairs) => { marked.push(...pairs); };
+        const sentTo = [];
+        const channel = { id: '2', isTextBased: () => true, isDMBased: () => false, send: async (payload) => { sentTo.push(payload); return { id: 'm' }; } };
+        const guild = { id: '1', channels: { cache: new Map([['2', channel]]) }, members: {} };
+        try {
+          start();
+          globalThis.fetch = answer([atom]);
+          await PROVIDERS.reddit.resolve('r/bonded'); // what the dashboard did when the account was typed
+          const made = await stubbed.createFeed(guild, { platform: 'reddit', account: 'r/bonded', channelId: '2', lang: 'en' });
+          assert.equal(made.ok, true);
+          assert.equal(calls.length, 1, 'the lookup and the follow ask Reddit once');
+          assert.equal(made.waiting, null);
+          assert.deepEqual(marked, [[77, 't3_9']], 'what the account has is marked as seen');
+          assert.equal(rows[0].ready, true);
+
+          // Reddit limits the first look: the feed is saved, not ready, says so, and the posts that exist are not announced when it is read.
+          rows.length = 0; marked.length = 0;
+          start();
+          globalThis.fetch = answer([atom]);
+          const realBaseline = PROVIDERS.reddit.baselineItems;
+          PROVIDERS.reddit.baselineItems = async () => { throw new IntegrationError('rateLimited'); };
+          const limitedMade = await stubbed.createFeed(guild, { platform: 'reddit', account: 'r/bonded', channelId: '2', lang: 'en' });
+          PROVIDERS.reddit.baselineItems = realBaseline;
+          assert.equal(limitedMade.ok, true, 'the feed is created anyway');
+          assert.equal(limitedMade.waiting, 'rateLimited');
+          assert.equal(rows[0].ready, false);
+          assert.deepEqual(marked, []);
+          const limitedCard = require('../src/commands/config/feed').resultCard('en', 'reddit', limitedMade);
+          assert.match(allText({ components: [limitedCard] }), /Reddit is limiting Petto's requests right now\. The feed is saved and will start posting when Reddit allows it\./);
+          const posts = new Map([[guild.id, guild]]);
+          const looked = [{ id: 't3_9', type: 'post', title: 'A', url: 'https://www.reddit.com/r/bonded/comments/9', publishedAt: now, platform: 'reddit', author: 'r/bonded' }];
+          await require('../src/feeds/engine').processFeed({ guilds: { cache: posts } }, rows[0], { items: looked }, new Map(), new Set(), now);
+          assert.deepEqual(marked, [[77, 't3_9']], 'its first successful look only marks what the account has');
+          assert.equal(rows[0].ready, true);
+          assert.equal(sentTo.length, 0, 'and posts none of it');
+
+          // The lookup itself limited (nothing was saved): the plain limited text, in the three languages, and the refusal says so too.
+          start();
+          globalThis.fetch = answer([status(429)]);
+          const refused = await stubbed.createFeed(guild, { platform: 'reddit', account: 'r/another', channelId: '2', lang: 'en' });
+          assert.equal(refused.error, 'rateLimited');
+          start();
+          globalThis.fetch = answer([status(403)]);
+          assert.equal((await stubbed.createFeed(guild, { platform: 'reddit', account: 'r/another2', channelId: '2', lang: 'en' })).error, 'blocked');
+          assert.equal(rows.length, 1, 'nothing is saved when the account could not be looked up');
+        } finally {
+          Object.assign(feedsDb, realDb);
+        }
+      }
+      assert.match(t('en', 'feeds.add.error.blocked', { emoji: '', platform: 'Reddit' }), /^\s*Reddit is refusing Petto's requests right now\. Try again later\.$/);
+      for (const lang of ['en', 'es', 'pt-BR']) {
+        for (const key of ['feeds.add.error.blocked', 'feeds.add.error.rateLimited', 'feeds.add.savedRateLimited', 'feeds.error.blocked']) assert.ok(!t(lang, key, { emoji: '', platform: 'Reddit' }).includes('feeds.'), `${key} in ${lang}`);
+      }
+
+      // The queue: Reddit's requests are sent at most one for each gap, one after the other.
+      start();
+      rssProviders.redditPace.gapMs = 80;
+      globalThis.fetch = answer([atom]);
+      await Promise.all(['one', 'two', 'three'].map((name) => rssProviders.readReddit(name)));
+      assert.equal(calls.length, 3);
+      assert.ok(calls[1].at - calls[0].at >= 70 && calls[2].at - calls[1].at >= 70, 'a gap between the requests');
+      // Each attempt has a time limit.
+      assert.ok(calls.every((call) => call.signal), 'every attempt carries its time limit');
+      rssProviders.redditPace.gapMs = 0;
+      log.info = realLogInfo;
+      globalThis.fetch = fetchBefore;
+      rssProviders.forgetReddit();
+    }
     polled = await PROVIDERS.pinterest.poll([{ id: 'user', name: 'user', avatar: null, url: 'https://www.pinterest.com/user/' }], new Map(), { now: Date.parse('2026-10-26T15:00:00Z') });
     assert.equal(polled.get('user').items[0].type, 'pin');
     assert.equal(polled.get('user').items[0].image, 'https://i.pinimg.com/736x/a/b.jpg');

@@ -10,18 +10,23 @@ const INTERVAL_MS = 10 * 60_000;
 
 function startGuildSnapshotJob(client) {
   const guildOf = (value) => value?.guild ?? null;
-  for (const event of [Events.ChannelCreate, Events.ChannelDelete, Events.RoleCreate, Events.RoleDelete]) {
+  for (const event of [Events.ChannelCreate, Events.ChannelDelete]) {
     client.on(event, (item) => scheduleGuildSnapshot(guildOf(item)));
   }
-  for (const event of [Events.ChannelUpdate, Events.RoleUpdate, Events.GuildEmojiUpdate]) {
+  // A role that changes or goes away can change what the bot may do in every channel: the bot's own roles are read from Discord again with the save.
+  for (const event of [Events.RoleCreate, Events.RoleDelete]) {
+    client.on(event, (item) => scheduleGuildSnapshot(guildOf(item), { refreshMe: true }));
+  }
+  client.on(Events.RoleUpdate, (_before, after) => scheduleGuildSnapshot(guildOf(after), { refreshMe: true }));
+  for (const event of [Events.ChannelUpdate, Events.GuildEmojiUpdate]) {
     client.on(event, (_before, after) => scheduleGuildSnapshot(guildOf(after)));
   }
   for (const event of [Events.GuildEmojiCreate, Events.GuildEmojiDelete]) {
     client.on(event, (emoji) => scheduleGuildSnapshot(guildOf(emoji)));
   }
-  // How the bot looks in a server (its nickname and server avatar) is part of the copy.
+  // How the bot looks in a server (its nickname and server avatar) is part of the copy, and so are its roles (they decide where it may post).
   client.on(Events.GuildMemberUpdate, (_before, member) => {
-    if (member?.id && member.id === client.user?.id) scheduleGuildSnapshot(member.guild);
+    if (member?.id && member.id === client.user?.id) scheduleGuildSnapshot(member.guild, { refreshMe: true });
   });
   client.on(Events.GuildCreate, (guild) => {
     scheduleGuildSnapshot(guild);

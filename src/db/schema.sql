@@ -1117,8 +1117,10 @@ create index if not exists idx_ticket_panels_guild on ticket_panels(guild_id);
 
 alter table ticket_panels enable row level security;
 
--- Reusable ticket intake forms. Discord modals support up to five text inputs;
--- the field schema is kept as JSONB so the form can evolve without another table.
+-- Reusable ticket intake forms. A Discord modal holds up to five parts; the field schema is kept as JSONB so the form can evolve without
+-- another table or column. Each field is { id, type, label, required, ... }: type is short_text or long_text (placeholder), select (options, max),
+-- radio (options), checkboxes (options, max), check, file (accept "images" or "any", max 1-5), user, role or channel (max), or display (content).
+-- A field with no other key is a text question exactly as forms have always stored it (see src/utils/ticketFormFields.js).
 create table if not exists ticket_forms (
   id                 bigserial primary key,
   guild_id           text not null references guilds(guild_id) on delete cascade,
@@ -3590,6 +3592,8 @@ alter table verification_config add constraint verification_config_method_check 
 alter table verification_config add column if not exists panel_channel_id text;
 alter table verification_config add column if not exists panel_message_id text;
 alter table verification_config add column if not exists panel_posted_channel_id text;
+-- An optional picture shown at the top of the verification panel (an https link; the panel has none when it is empty).
+alter table verification_config add column if not exists panel_image_url text;
 
 -- Suggestions: members suggest things, the server votes with two buttons and the staff answers.
 create table if not exists suggestion_config (

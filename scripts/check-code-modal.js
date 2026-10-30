@@ -91,5 +91,10 @@ const refused = async (fields, what) => assert.rejects(modalOf(fields), (error) 
   const printed = await run('{{ .Fields.name }} {{ index .Fields.color 1 }} {{ .FieldText.friends }} {{ if .Fields.agree }}agreed{{ end }} {{ (index .Files 0).Name }}', { Trigger: 'modal', ...got }, {});
   assert.equal(printed.output, 'Liam blue <@111> <@222> agreed proof.png');
   assert.ok(codeCommands.dataFields().top.includes('FieldText') && codeCommands.dataFields().top.includes('Files'), 'the editor knows the new names');
+  // The same builders and readers are what the questions of a ticket form use (one implementation, not two).
+  const parts = require('../src/utils/modalParts');
+  assert.equal(codeCommands.submittedFields, parts.submittedFields, 'Petto Code and the tickets read a submitted form with the same code');
+  const ticketModal = require('../src/utils/ticketFormFields').buildFormModal({ customId: 'tk_form::1::1', title: 'Ticket', fields: [{ id: 'proof', type: 'file', label: 'Proof', accept: 'images', max: 2, required: true }, { id: 'topic', type: 'select', label: 'Topic', options: ['A', 'B'], max: 1, required: false }] }).toJSON();
+  assert.deepEqual(ticketModal.components.map((part) => part.component.type), [ComponentType.FileUpload, ComponentType.StringSelect]);
   console.log('Checked the parts of a form of Petto Code and what a submitted form gives back.');
 })().catch((error) => { console.error(error); process.exit(1); });

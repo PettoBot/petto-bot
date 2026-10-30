@@ -173,6 +173,31 @@ const text = (payload) => JSON.stringify(payload.components?.map((component) => 
   assert.equal(verifyLetters.isPanelMessage({ components: verifyLetters.buildPanel({ guild, method: 'both' }).components }, GUILD), true);
   assert.equal(verifyLetters.isPanelMessage({ components: [] }, GUILD), false);
   assert.equal(verifyLetters.isPanelMessage({ components: verifyLetters.buildPanel({ guild: { ...guild, id: '333333333333333333' }, method: 'both' }).components }, GUILD), false);
+  // A picture for the panel: a media gallery on top; with none (or a link Petto does not show) the panel is exactly what it was.
+  const plain = verifyLetters.buildPanel({ guild, method: 'letters' }).components[0].toJSON();
+  const withImage = verifyLetters.buildPanel({ guild, method: 'letters', imageUrl: 'https://cdn.example.com/banner.png?size=2' }).components[0].toJSON();
+  assert.deepEqual(withImage.components[0], { type: 12, items: [{ media: { url: 'https://cdn.example.com/banner.png?size=2' } }] }, 'the picture is the first part of the panel');
+  assert.deepEqual(withImage.components.slice(1), plain.components, 'and the rest of the panel is the same');
+  assert.equal(plain.components.some((part) => part.type === 12), false, 'no picture, no gallery');
+  for (const bad of ['http://cdn.example.com/a.png', 'javascript:alert(1)', 'https://user:pass@example.com/a.png', 'nonsense', '   ', `https://example.com/${'a'.repeat(500)}.png`]) {
+    assert.deepEqual(verifyLetters.buildPanel({ guild, method: 'letters', imageUrl: bad }).components[0].toJSON(), plain, `${bad.slice(0, 40)} is not shown`);
+  }
+  assert.equal(verifyLetters.isPanelMessage({ components: verifyLetters.buildPanel({ guild, method: 'both', imageUrl: 'https://cdn.example.com/banner.png' }).components }, GUILD), true, 'a panel with a picture is still found as the panel');
+  // The panel posted from the settings of the server carries its picture, and an edit of the panel that stands brings it in place.
+  stub('src/utils/verifyRole.js', { ensureUnverifiedRole: async () => ({ id: 'role-un' }) });
+  const posted = [];
+  const channel = {
+    id: 'c1', isTextBased: () => true, permissionsFor: () => ({ has: () => true }),
+    permissionOverwrites: { cache: new Map([['role-un', { allow: { has: () => true }, deny: { has: () => true } }]]) },
+    messages: { fetch: async () => null },
+    send: async (payload) => { posted.push(payload); return { id: 'm1' }; },
+  };
+  const fakeGuild = { id: GUILD, name: 'Petto HQ', members: { me: { id: '99' } }, client: { user: { id: '99' } }, channels: { fetch: async () => null } };
+  settings = { enabled: true, method: 'letters', unverified_role_id: 'role-un', panel_image_url: 'https://cdn.example.com/banner.png' };
+  stub('src/db/verificationConfig.js', { getConfig: async () => settings, upsertConfig: async () => ({}) });
+  delete require.cache[require.resolve('../src/utils/verifyPanel')];
+  await require('../src/utils/verifyPanel').postPanel(fakeGuild, settings, channel);
+  assert.equal(posted[0].components[0].toJSON().components[0].type, 12, 'the panel that is posted has the picture of the server on top');
   console.log('verify panel checks passed');
   console.log('Checked the letters check inside Discord: the button, the picture, the form and the pass.');
 })().catch((error) => { console.error(error); process.exit(1); });

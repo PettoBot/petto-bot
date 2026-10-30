@@ -202,8 +202,8 @@ function renderComponent(component, guild, lang) {
   if (c.type === 10 && c.content) return `<div class="component-text">${renderRichText(c.content, guild, lang)}</div>`;
   if (c.type === 9) return `<div class="component-section">${(c.components ?? []).map((child) => renderComponent(child, guild, lang)).join('')}${c.accessory ? `<div class="component-accessory">${renderComponent(c.accessory, guild, lang)}</div>` : ''}</div>`;
   if (c.type === 17) return `<div class="component-container">${(c.components ?? []).map((child) => renderComponent(child, guild, lang)).join('')}</div>`;
-  if (c.type === 12) return `<div class="media-gallery">${(c.items ?? []).map((item) => { const url = safeUrl(item.media?.url || item.url); return url ? `<img src="${url}" alt="${escapeHtml(item.description || '')}" loading="lazy">` : ''; }).join('')}</div>`;
-  if (c.type === 13) { const url = safeUrl(c.file?.url || c.url); return url ? `<div class="attachment"><span class="file-icon" aria-hidden="true">↗</span><a href="${url}" target="_blank" rel="noopener">${escapeHtml(c.name || t(lang, 'tickets.html.file'))}</a></div>` : ''; }
+  if (c.type === 12) return `<div class="media-gallery${(c.items ?? []).length === 1 ? ' single' : ''}">${(c.items ?? []).map((item) => { const url = safeUrl(item.media?.url || item.url); return url ? `<a href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="${escapeHtml(item.description || '')}" loading="lazy"></a>` : ''; }).join('')}</div>`;
+  if (c.type === 13) { const url = safeUrl(c.file?.url || c.url); const size = fileSize(c.size); return url ? `<div class="attachment"><span class="file-icon" aria-hidden="true">↗</span><a href="${url}" target="_blank" rel="noopener">${escapeHtml(c.name || t(lang, 'tickets.html.file'))}</a>${size ? ` <span class="media-link">${escapeHtml(size)}</span>` : ''}</div>` : ''; }
   if (c.type === 11) { const url = safeUrl(c.media?.url || c.url); return url ? `<img class="component-thumb" src="${url}" alt="${escapeHtml(c.description || '')}" loading="lazy">` : ''; }
   if (c.type === 14) return '<div class="component-separator" aria-hidden="true"></div>';
   if (c.type === 2) {
@@ -213,6 +213,46 @@ function renderComponent(component, guild, lang) {
   }
   if (Array.isArray(c.components)) return c.components.map((child) => renderComponent(child, guild, lang)).join('');
   return '';
+}
+
+/** A link without what comes after `?` or `#`: Discord signs its file links differently each time, the path is what stays. */
+function linkKey(raw) {
+  try {
+    const url = new URL(String(raw ?? ''));
+    return `${url.host}${url.pathname}`;
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * The files a message already shows inside its components (the pictures of a media gallery, a file card, a thumbnail), as the keys of their
+ * links. A message that carries files for its components (the answers of a ticket form) lists them again among its attachments, and the
+ * transcript would draw each one twice.
+ */
+function shownByComponents(components) {
+  const keys = new Set();
+  const visit = (component) => {
+    const c = typeof component?.toJSON === 'function' ? component.toJSON() : component;
+    if (!c) return;
+    if (c.type === 12) for (const item of c.items ?? []) keys.add(linkKey(item.media?.url || item.url));
+    if (c.type === 13) keys.add(linkKey(c.file?.url || c.url));
+    if (c.type === 11) keys.add(linkKey(c.media?.url || c.url));
+    if (c.accessory) visit(c.accessory);
+    for (const child of c.components ?? []) visit(child);
+  };
+  for (const component of collectionValues(components)) visit(component);
+  keys.delete('');
+  return keys;
+}
+
+/** A size for people: 512 B, 1.5 KB, 3.2 MB. */
+function fileSize(bytes) {
+  const n = Number(bytes);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(n < 10 * 1024 ? 1 : 0)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function renderComponents(components, guild, lang) {
@@ -332,7 +372,8 @@ function renderMessage(msg, previous, messageMap, bot, lang) {
   const rawText = msg.content || '';
   const content = rawText ? `<div class="content">${renderRichText(rawText, msg.guild, lang)}</div>` : '';
   const components = renderComponents(msg.components, msg.guild, lang);
-  const attachments = collectionValues(msg.attachments).map((attachment) => renderAttachment(attachment, lang)).join('');
+  const shown = shownByComponents(msg.components);
+  const attachments = collectionValues(msg.attachments).filter((attachment) => !shown.has(linkKey(attachment.url))).map((attachment) => renderAttachment(attachment, lang)).join('');
   const embeds = (msg.embeds ?? []).map((embed) => renderEmbed(embed, msg.guild, lang)).join('');
   const stickers = collectionValues(msg.stickers).map((sticker) => renderSticker(sticker, lang)).join('');
   const reactions = collectionValues(msg.reactions?.cache).map(renderReaction).join('');
@@ -435,7 +476,7 @@ const STYLE = `
   .attachment,.audio-attachment { display:flex; align-items:center; gap:8px; width:fit-content; max-width:100%; margin-top:6px; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); overflow-wrap:anywhere; } .file-icon { display:grid; place-items:center; width:26px; height:26px; border-radius:6px; color:var(--accent); background:var(--accent-soft); } audio { max-width:min(420px,100%); } .media { width:fit-content; max-width:100%; margin:6px 0 0; } .media img,.media video { display:block; max-width:min(520px,100%); max-height:380px; border-radius:8px; object-fit:contain; } .media figcaption,.sticker figcaption,.media-link { display:block; margin-top:4px; color:var(--dim); font-size:11px; }
   .embed { display:flex; gap:14px; max-width:520px; margin-top:6px; padding:10px 14px 14px 12px; border-left:4px solid var(--embed-color); border-radius:4px; background:var(--surface-2); } .embed-main { min-width:0; flex:1; } .embed-author { display:flex; align-items:center; gap:7px; margin-top:4px; font-size:13px; font-weight:600; } .embed-author img,.embed-footer img { width:20px; height:20px; border-radius:50%; object-fit:cover; } .embed-title { margin-top:6px; font-size:15px; font-weight:700; } .embed-title a { color:var(--accent); } .embed-provider,.embed-timestamp { color:var(--dim); font-size:12px; } .embed-description { margin-top:6px; font-size:14px; white-space:pre-wrap; overflow-wrap:anywhere; } .embed-fields { display:flex; flex-wrap:wrap; gap:8px 16px; margin-top:8px; } .embed-field { flex:1 1 100%; min-width:120px; white-space:pre-wrap; overflow-wrap:anywhere; font-size:14px; } .embed-field.inline { flex-basis:28%; } .embed-field-name { margin-bottom:2px; font-weight:600; } .embed-image { display:block; max-width:100%; max-height:300px; margin-top:12px; border-radius:4px; object-fit:contain; } .embed-thumbnail { width:80px; height:80px; flex:0 0 80px; margin-top:8px; border-radius:4px; object-fit:cover; } .embed-video { display:inline-block; margin-top:8px; } .embed-footer { display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-top:8px; color:var(--dim); font-size:12px; }
   .sticker { width:fit-content; margin:6px 0 0; color:var(--dim); font-size:11px; } .sticker img { display:block; max-width:160px; max-height:160px; object-fit:contain; }
-  .component-container { max-width:520px; margin-top:6px; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); } .component-text + .component-text { margin-top:8px; } .component-text { white-space:pre-wrap; overflow-wrap:anywhere; } .component-section { display:flex; align-items:center; gap:14px; } .component-section > :first-child { flex:1; } .component-thumb { width:72px; height:72px; border-radius:8px; object-fit:cover; } .component-separator { height:1px; margin:10px 0; background:var(--border); } .component-button { display:inline-block; margin:6px 6px 0 0; padding:6px 14px; border-radius:8px; color:var(--text); background:var(--surface-3); border:1px solid var(--border); font-size:14px; font-weight:500; } .component-button.disabled { opacity:.6; } .media-gallery { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:4px; margin-top:6px; max-width:520px; } .media-gallery img { width:100%; aspect-ratio:16/10; object-fit:cover; border-radius:4px; }
+  .component-container { max-width:520px; margin-top:6px; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); } .component-text + .component-text { margin-top:8px; } .component-text { white-space:pre-wrap; overflow-wrap:anywhere; } .component-section { display:flex; align-items:center; gap:14px; } .component-section > :first-child { flex:1; } .component-thumb { width:72px; height:72px; border-radius:8px; object-fit:cover; } .component-separator { height:1px; margin:10px 0; background:var(--border); } .component-button { display:inline-block; margin:6px 6px 0 0; padding:6px 14px; border-radius:8px; color:var(--text); background:var(--surface-3); border:1px solid var(--border); font-size:14px; font-weight:500; } .component-button.disabled { opacity:.6; } .media-gallery { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:4px; margin-top:6px; max-width:520px; } .media-gallery img { width:100%; aspect-ratio:16/10; object-fit:cover; border-radius:4px; } .media-gallery a { display:block; } .media-gallery.single img { aspect-ratio:auto; max-height:380px; object-fit:contain; }
   .poll { max-width:520px; margin-top:6px; padding:12px 14px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); } .poll-answer { display:flex; justify-content:space-between; gap:12px; margin-top:8px; padding:8px 10px; border-radius:6px; background:var(--surface-3); color:var(--muted); } .poll-answer b { color:var(--text); }
   .reactions { display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; } .reaction { display:inline-flex; align-items:center; gap:5px; padding:2px 7px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); font-size:13px; } .reaction b { font-weight:600; }
   .empty { padding:38px 18px; color:var(--muted); text-align:center; } footer { padding:16px 2px 0; color:var(--dim); font-size:12px; } footer b { color:var(--muted); }

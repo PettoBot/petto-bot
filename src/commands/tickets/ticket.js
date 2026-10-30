@@ -6,6 +6,7 @@ const { ensureGuild } = require('../../db/guilds');
 const { getTemplate } = require('../../db/embedTemplates');
 const db = require('../../db/tickets');
 const formsDb = require('../../db/ticketForms');
+const { usableFields, typeOf: typeOfField } = require('../../utils/ticketFormFields');
 const { renderWizard, startDraft: startSetupDraft } = require('../../interactions/ticketSetupWizard');
 const { renderPanel: renderFormPanel, startDraft } = require('../../interactions/ticketFormPanel');
 const accessDb = require('../../db/ticketAccess');
@@ -575,14 +576,26 @@ async function resyncPanelsForCategoryChange(guild, categoryKey, lang) {
   }
 }
 
+/**
+ * The questions written as `type|id|label|placeholder|required|extra;...`. `extra` is the choices separated by commas for `select`, `radio` and
+ * `checkboxes` (`select|topic|Topic||required|Bug,Billing`), `images` or `any` and a number for `file` (`file|proof|Screenshot||required|images,3`),
+ * the most to pick for `user`, `role` and `channel`, and the text of a `display`.
+ */
 function parseFormFields(spec) {
   const fields = String(spec ?? '')
     .split(';')
     .map((part) => part.trim())
     .filter(Boolean)
     .map((part, index) => {
-      const [type, id, label, placeholder, required] = part.split('|').map((value) => value?.trim());
-      return { type: type || 'short_text', id: id || `field_${index + 1}`, label, placeholder, required: required !== 'optional' && required !== 'false' };
+      const [type, id, label, placeholder, required, extra = ''] = part.split('|').map((value) => value?.trim());
+      const field = { type: type || 'short_text', id: id || `field_${index + 1}`, label, placeholder, required: required !== 'optional' && required !== 'false' };
+      const kind = typeOfField(field.type);
+      const items = extra.split(',').map((item) => item.trim()).filter(Boolean);
+      if (['select', 'radio', 'checkboxes'].includes(kind)) field.options = items;
+      else if (kind === 'file') Object.assign(field, { accept: items.includes('images') ? 'images' : 'any', max: Number(items.find((item) => /^\d+$/.test(item))) || 1 });
+      else if (['user', 'role', 'channel'].includes(kind)) field.max = Number(items[0]) || 1;
+      else if (kind === 'display') field.content = extra || label;
+      return field;
     });
   return formsDb.normalizeFields(fields);
 }
@@ -601,7 +614,7 @@ async function formCmd(interaction, sub, lang) {
           await interaction.reply({ content: t(lang, 'tickets.form.notFound', { name: panelName }), flags: MessageFlags.Ephemeral });
           return;
         }
-        draft = startDraft(interaction.user.id, { guildId: interaction.guild.id, mode: 'edit', name: existing.name, title: existing.title, fields: existing.fields ?? [] });
+        draft = startDraft(interaction.user.id, { guildId: interaction.guild.id, mode: 'edit', name: existing.name, title: existing.title, fields: usableFields(existing.fields) });
       } else {
         draft = startDraft(interaction.user.id, { guildId: interaction.guild.id, mode: 'create', name: panelName.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50) || 'form', title, lang });
       }

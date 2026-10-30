@@ -248,13 +248,52 @@ function checkEmojis() {
   for (const stock of ['🎫', '🔒', '🔓', '📄', '⭐', '➕', '➖', '🗑']) assert.ok(!all.includes(stock), `no ${stock} left on the ticket buttons`);
 }
 
+/** The transcript draws the pictures and lists the files of the answers of a ticket form, once, and the answers card is in it. */
+async function checkFormAnswersInTranscript() {
+  const answers = require('../src/utils/ticketAnswers');
+  const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(40, 1)]);
+  const JPG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(40, 2)]);
+  const PDF = Buffer.from('%PDF-1.7 hello pdf hello pdf');
+  const cdn = (name, id = '1') => `https://cdn.discordapp.com/attachments/10/${id}/${name}?ex=1&is=2&hm=3`;
+  const guild = { id: '10', premiumTier: 0 };
+  const entries = [
+    { id: 'subject', type: 'short_text', label: 'Subject', value: 'Cannot log in' },
+    { id: 'agree', type: 'check', label: 'Rules read', value: true },
+    { id: 'proof', type: 'file', label: 'Screenshots', accept: 'images', value: [{ id: '1', name: 'screen*shot [1].png', url: cdn('screen.png', '1'), size: 2048, type: 'image/png', image: true, data: PNG }, { id: '2', name: 'second.jpg', url: cdn('second.jpg', '2'), size: 4096, type: 'image/jpeg', image: true, data: JPG }] },
+    { id: 'docs', type: 'file', label: 'Documents', accept: 'any', value: [{ id: '3', name: 'report (final).pdf', url: cdn('report.pdf', '3'), size: 1536, type: 'application/pdf', image: false, data: PDF }] },
+  ];
+  const guildStub = { id: '10', name: 'Luna', members: { cache: new Map(), me: null }, roles: { cache: new Map() }, channels: { cache: new Map() }, iconURL: () => null, bannerURL: () => null, client: { user: { id: '99' } } };
+  const card = answers.buildAnswerMessages(entries, { guild })[0];
+  const apiJson = card.components[0].toJSON();
+  // What Discord gives back for that message: the components with the real links of the uploaded files, and the files themselves.
+  const link = (name, id) => `https://cdn.discordapp.com/attachments/900/${id}/${name}?ex=9&is=8&hm=7`;
+  const live = JSON.parse(JSON.stringify(apiJson));
+  const live12 = live.components.find((part) => part.type === 12);
+  live12.items[0].media.url = link('screen_shot_1.png', '11');
+  live12.items[1].media.url = link('second.jpg', '12');
+  const live13 = live.components.find((part) => part.type === 13);
+  live13.file.url = link('report_final.pdf', '13');
+  Object.assign(live13, { name: 'report_final.pdf', size: 1536 });
+  const attachments = new Map([['11', { name: 'screen_shot_1.png', url: link('screen_shot_1.png', '11'), contentType: 'image/png' }], ['12', { name: 'second.jpg', url: link('second.jpg', '12'), contentType: 'image/jpeg' }], ['13', { name: 'report_final.pdf', url: link('report_final.pdf', '13'), contentType: 'application/pdf' }]]);
+  const message = { id: '1', author: { id: '99', username: 'Petto', bot: true, displayAvatarURL: () => 'https://cdn.discordapp.com/avatars/99/p.png' }, member: null, content: '', createdTimestamp: Date.parse('2026-10-20T15:00:00Z'), guild: guildStub, attachments, embeds: [], components: [live] };
+  const { html } = renderTranscriptHtml({ messages: [message], guild: guildStub, channelName: 'ticket-0001', lang: 'en', info: { number: 1, opener: { name: 'Liam' } } });
+  assert.ok(html.includes('Submitted form') && html.includes('Cannot log in') && html.includes('Rules read'), 'the answers card is in the transcript');
+  assert.equal(html.split(link('screen_shot_1.png', '11').replace(/&/g, '&amp;')).length - 1, 2, 'the picture is drawn once (its picture and the link around it), not again as an attachment');
+  assert.ok(html.includes('class="media-gallery'), 'the pictures are a gallery');
+  assert.ok(html.includes(`href="${link('report_final.pdf', '13').replace(/&/g, '&amp;')}"`) && html.includes('report_final.pdf') && html.includes('1.5 KB'), 'the other file is a link with its name and size');
+  assert.equal(html.split(link('report_final.pdf', '13').replace(/&/g, '&amp;')).length - 1, 1, 'and also only once');
+  const plainAttachment = renderTranscriptHtml({ messages: [{ ...message, components: [], attachments }], guild: guildStub, lang: 'en', info: { number: 1 } }).html;
+  assert.equal(plainAttachment.split(link('second.jpg', '12').replace(/&/g, '&amp;')).length - 1, 2, 'a message with plain attachments still shows them (the picture and its caption link)');
+}
+
 (async () => {
   checkEmojis();
   await checkTranscript();
+  await checkFormAnswersInTranscript();
   await checkChannelDelete();
   await checkReconcile();
   await checkRating();
-  console.log('Checked tickets: the ticket emojis, transcript identity, deleted channels, the channel check and ratings.');
+  console.log('Checked tickets: the ticket emojis, transcript identity (and the pictures and files of a form), deleted channels, the channel check and ratings.');
   process.exit(0);
 })().catch((error) => {
   console.error(error);

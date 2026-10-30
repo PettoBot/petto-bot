@@ -47,8 +47,8 @@ async function recordFailure(feed, kind) {
 }
 
 const POLL_ERROR_AFTER = 3; // failed looks in a row (each one later than the last) before the feed shows the error
-// What a failed look at an account is shown as: the feed is not a feed (a web page), the site asks to slow down, or anything else.
-const POLL_ERRORS = new Set(['noFeed', 'rateLimited', 'unavailable']);
+// What a failed look at an account is shown as: the feed is not a feed (a web page), the site asks to slow down, it refuses the bot, or anything else.
+const POLL_ERRORS = new Set(['noFeed', 'rateLimited', 'blocked', 'unavailable']);
 const pollErrorOf = (kind) => (POLL_ERRORS.has(kind) ? kind : 'unavailable');
 
 async function notePollError(feeds, kind, now) {
@@ -265,7 +265,7 @@ async function tick(client, { now = Date.now(), providers = PROVIDERS, passMs = 
         const result = results.get(id) ?? { items: [] };
         const previous = schedule.get(keyOf(platform, id))?.fails ?? 0;
         if (result.error) {
-          schedule.set(keyOf(platform, id), { at: now + Math.min(backoffCap, provider.interval * 2 ** Math.min(previous + 1, 5)), fails: previous + 1 });
+          schedule.set(keyOf(platform, id), { at: now + Math.max(Math.min(backoffCap, provider.interval * 2 ** Math.min(previous + 1, 5)), result.retryAfter ?? 0), fails: previous + 1 }); // `retryAfter`: what the service asked for (Reddit)
           if (result.error === 'notFound' && previous + 1 >= 6) for (const feed of list) await recordFailure(feed, 'accountGone');
           // An account that cannot be read time after time is shown in the list of feeds (`!feed list`, the dashboard) with why, instead of
           // staying "on" and silent. It is not turned off: it posts again by itself when the account answers.

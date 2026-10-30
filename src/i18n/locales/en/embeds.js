@@ -256,6 +256,7 @@ module.exports = {
   'embeds.vars.code.button': 'A link button, up to 5',
   'embeds.vars.code.message': 'Message text, the same as writing it before `{embed}`',
   'embeds.vars.code.newline': 'A line break. Discord does not allow real line breaks in a command, so write `{newline}` where one goes',
+  'embeds.vars.code.silent': 'Silent mention: a `!` right before a mention (`!@everyone`, `!@here`, `!@Role`, `!<@&id>`, `!{user.mention}`) shows it as a mention without notifying anyone. `\\!@everyone` shows it as plain text',
   'embeds.vars.code.example': 'Example: {code}',
   'embeds.vars.code.exampleHi': 'Hi',
   'embeds.vars.code.exampleWelcome': 'Welcome',

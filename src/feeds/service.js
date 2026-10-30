@@ -74,7 +74,7 @@ async function createFeed(guild, input) {
     account = await PROVIDERS[platform].resolve(String(input.account ?? '').trim(), { lang: input.lang });
   } catch (error) {
     if (error instanceof IntegrationError && error.kind === 'ambiguous') return { ok: false, error: 'ambiguous', word: error.word, choices: error.choices }; // which meaning of a word (see providers/pictures.js)
-    if (error instanceof IntegrationError) return { ok: false, error: error.kind === 'badInput' && PROVIDERS[platform].noAccount ? 'badPace' : error.kind === 'notFound' || error.kind === 'badInput' || error.kind === 'notConfigured' || error.kind === 'unsupported' || error.kind === 'badTags' || error.kind === 'noPictures' || error.kind === 'noFeed' ? error.kind : 'unavailable' };
+    if (error instanceof IntegrationError) return { ok: false, error: error.kind === 'badInput' && PROVIDERS[platform].noAccount ? 'badPace' : error.kind === 'notFound' || error.kind === 'badInput' || error.kind === 'notConfigured' || error.kind === 'unsupported' || error.kind === 'badTags' || error.kind === 'noPictures' || error.kind === 'noFeed' || error.kind === 'blocked' || error.kind === 'rateLimited' ? error.kind : 'unavailable' };
     throw error;
   }
 
@@ -91,14 +91,17 @@ async function createFeed(guild, input) {
   }
 
   // The past is not news: what the account already has is marked as seen. A stream that is on now is marked too, but without a message.
+  // When the service cannot be read now, the feed is kept as it is (`ready: false`): its first successful look only marks what the account has, and posts nothing.
+  let waiting = null;
   try {
     const items = await PROVIDERS[platform].baselineItems(account);
     await feedsDb.markSeen(items.map((item) => [feed.id, String(item.id)]));
     feed = await feedsDb.update(guild.id, feed.id, { ready: true });
   } catch (error) {
+    if (error instanceof IntegrationError && error.kind === 'rateLimited') waiting = 'rateLimited'; // the answer says the feed is saved and starts when the service allows it
     logger.warn(`Feed ${feed.id}: could not read what ${platform}/${account.id} already has: ${error.message}`);
   }
-  return { ok: true, feed };
+  return { ok: true, feed, waiting };
 }
 
 /** Changes what a person may change of a feed. `patch`: { channelId, types, message, pingRoles, pingEveryone, options, filters, enabled, every }. */

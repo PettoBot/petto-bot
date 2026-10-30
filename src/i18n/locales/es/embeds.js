@@ -256,6 +256,7 @@ module.exports = {
   'embeds.vars.code.button': 'Un botón de enlace, hasta 5',
   'embeds.vars.code.message': 'Texto del mensaje, igual que escribirlo antes de `{embed}`',
   'embeds.vars.code.newline': 'Un salto de línea. Discord no permite saltos de línea reales en un comando, así que escribe `{newline}` donde vaya uno',
+  'embeds.vars.code.silent': 'Mención silenciosa: un `!` justo antes de una mención (`!@everyone`, `!@here`, `!@Rol`, `!<@&id>`, `!{user.mention}`) la muestra como mención sin avisar a nadie. `\\!@everyone` la muestra como texto normal',
   'embeds.vars.code.example': 'Ejemplo: {code}',
   'embeds.vars.code.exampleHi': 'Hola',
   'embeds.vars.code.exampleWelcome': 'Bienvenido',

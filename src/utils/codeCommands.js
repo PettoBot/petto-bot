@@ -1,10 +1,9 @@
 // Runs custom commands written in code (Petto Code). The code only says what it wants (see src/scripting); this file
 // is where the bot decides what it will really do, so a command can never do more than its member could.
 const {
-  EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, MessageFlags, ComponentType,
-  LabelBuilder, TextDisplayBuilder, UserSelectMenuBuilder, RoleSelectMenuBuilder, MentionableSelectMenuBuilder, ChannelSelectMenuBuilder,
-  FileUploadBuilder, RadioGroupBuilder, CheckboxGroupBuilder, CheckboxBuilder,
+  EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, StringSelectMenuBuilder, ModalBuilder, MessageFlags,
 } = require('discord.js');
+const { addModalParts, submittedFields } = require('./modalParts');
 const config = require('../config');
 const logger = require('./logger');
 const { run, check, PettoCodeError, CodeProblem, phrase, MAX_SOURCE_LENGTH } = require('../scripting');
@@ -214,91 +213,9 @@ function buildComponents(rows, commandName) {
   });
 }
 
-/** The part of a form that people fill in, as discord.js builds it (the label and the description go above it, see buildModal). */
-function formInput(field, customId = field.id) {
-  const options = (list) => list.map((option) => ({ label: option.label, value: option.value, ...(option.description ? { description: option.description } : {}), ...(option.default ? { default: true } : {}) }));
-  const picker = (builder) => {
-    builder.setCustomId(customId).setMinValues(field.min).setMaxValues(field.max).setRequired(field.required);
-    if (field.placeholder) builder.setPlaceholder(field.placeholder);
-    return builder;
-  };
-  switch (field.type) {
-    case 'menu': return picker(new StringSelectMenuBuilder()).addOptions(options(field.options));
-    case 'users': return picker(new UserSelectMenuBuilder());
-    case 'roles': return picker(new RoleSelectMenuBuilder());
-    case 'mentions': return picker(new MentionableSelectMenuBuilder());
-    case 'channels': {
-      const menu = picker(new ChannelSelectMenuBuilder());
-      if (field.channelTypes?.length) menu.setChannelTypes(...field.channelTypes);
-      return menu;
-    }
-    case 'file': return new FileUploadBuilder().setCustomId(customId).setMinValues(field.min).setMaxValues(field.max).setRequired(field.required);
-    case 'radio': return new RadioGroupBuilder().setCustomId(customId).setRequired(field.required).setOptions(options(field.options));
-    case 'checks': return new CheckboxGroupBuilder().setCustomId(customId).setMinValues(field.min).setMaxValues(field.max).setRequired(field.required).setOptions(options(field.options));
-    case 'check': return new CheckboxBuilder().setCustomId(customId).setDefault(Boolean(field.default));
-    default: {
-      const input = new TextInputBuilder().setCustomId(customId).setStyle(field.style).setRequired(field.required).setMinLength(field.min).setMaxLength(field.max);
-      if (field.placeholder) input.setPlaceholder(field.placeholder);
-      if (field.value) input.setValue(field.value);
-      return input;
-    }
-  }
-}
-
-const LABEL_SETTERS = {
-  menu: 'setStringSelectMenuComponent', users: 'setUserSelectMenuComponent', roles: 'setRoleSelectMenuComponent', mentions: 'setMentionableSelectMenuComponent', channels: 'setChannelSelectMenuComponent',
-  file: 'setFileUploadComponent', radio: 'setRadioGroupComponent', checks: 'setCheckboxGroupComponent', check: 'setCheckboxComponent',
-};
-
 /** A modal (a form that pops up) as discord.js builds it: every part under its label, a text that only informs on its own. Sending it runs the same command again with .Trigger "modal". */
 function buildModal(modal, commandName) {
-  const built = new ModalBuilder().setCustomId(componentId(commandName, modal)).setTitle(modal.title);
-  for (const field of modal.fields) {
-    if (field.type === 'display') { built.addTextDisplayComponents(new TextDisplayBuilder().setContent(field.content)); continue; }
-    const label = new LabelBuilder().setLabel(field.label);
-    if (field.description) label.setDescription(field.description);
-    label[LABEL_SETTERS[field.type] ?? 'setTextInputComponent'](formInput(field));
-    built.addLabelComponents(label);
-  }
-  return built;
-}
-
-const FIELD_TEXT_MAX = 4000;
-const clipField = (value) => String(value ?? '').slice(0, FIELD_TEXT_MAX);
-
-/**
- * What a submitted form holds, for the code: `Fields` (what each part gave: a text, a list of values or of ids, true or false, a list of files), `FieldText`
- * (the same as text to print: ids as mentions, lists joined, ✅ or ❌) and `Files` (every uploaded file of the form, in one list).
- */
-function submittedFields(fields) {
-  const out = { Fields: {}, FieldText: {}, Files: [] };
-  for (const field of fields.values()) {
-    const id = field.customId;
-    switch (field.type) {
-      case ComponentType.TextInput:
-        out.Fields[id] = clipField(field.value); out.FieldText[id] = out.Fields[id]; break;
-      case ComponentType.RadioGroup:
-        out.Fields[id] = clipField(field.value ?? ''); out.FieldText[id] = out.Fields[id]; break;
-      case ComponentType.StringSelect: case ComponentType.CheckboxGroup:
-        out.Fields[id] = [...field.values].map(clipField); out.FieldText[id] = clipField(out.Fields[id].join(', ')); break;
-      case ComponentType.UserSelect:
-        out.Fields[id] = [...field.values]; out.FieldText[id] = clipField(out.Fields[id].map((value) => `<@${value}>`).join(' ')); break;
-      case ComponentType.RoleSelect:
-        out.Fields[id] = [...field.values]; out.FieldText[id] = clipField(out.Fields[id].map((value) => `<@&${value}>`).join(' ')); break;
-      case ComponentType.ChannelSelect:
-        out.Fields[id] = [...field.values]; out.FieldText[id] = clipField(out.Fields[id].map((value) => `<#${value}>`).join(' ')); break;
-      case ComponentType.MentionableSelect:
-        out.Fields[id] = [...field.values]; out.FieldText[id] = clipField(out.Fields[id].map((value) => (field.roles?.has(value) ? `<@&${value}>` : `<@${value}>`)).join(' ')); break;
-      case ComponentType.Checkbox:
-        out.Fields[id] = Boolean(field.value); out.FieldText[id] = field.value ? '✅' : '❌'; break;
-      case ComponentType.FileUpload: {
-        const files = [...(field.attachments?.values() ?? [])].map((file) => ({ ID: file.id, Name: file.name, URL: file.url, Size: file.size, Type: file.contentType ?? '', Description: file.description ?? '' }));
-        out.Fields[id] = files; out.FieldText[id] = clipField(files.map((file) => file.URL).join('\n')); out.Files.push(...files); break;
-      }
-      default: break;
-    }
-  }
-  return out;
+  return addModalParts(new ModalBuilder().setCustomId(componentId(commandName, modal)).setTitle(modal.title), modal.fields);
 }
 
 /** The ids a text mentions on purpose, so only those can be pinged. */
