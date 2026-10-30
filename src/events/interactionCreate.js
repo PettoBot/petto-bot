@@ -53,7 +53,7 @@ const { maybeHintLanguage } = require('../utils/languageHint');
 const { PREFIX: LANGUAGE_CHOICE_PREFIX, handleButton: handleLanguageChoice } = require('../interactions/languageChoice');
 const { BUTTON_PREFIX, handleButton: handleReactionRoleButton } = require('../interactions/reactionRoleButton');
 const permissionsDb = require('../db/permissions');
-const { restrictedFor } = require('../utils/commandRestrictions');
+const commandRules = require('../utils/commandRules');
 const disabledCommandsDb = require('../db/disabledCommands');
 const { textCard } = require('../utils/caseCard');
 const { EMOJI } = require('../utils/emojis');
@@ -562,22 +562,28 @@ module.exports = {
       }
     }
 
+    // The rules of a server are the same ones the prefix checks (utils/commandRules.js): an action of /act (`hug`) or the whole command
+    // (`act`) can be restricted or turned off.
+    const ruleNames = commandRules.ruleNames(command, { subcommand: interaction.options?.getSubcommand?.(false) ?? null });
     // !restrictcommand: only the roles chosen for this command (administrators always can).
     if (interaction.guildId && interaction.member) {
-      const restricted = await restrictedFor(interaction.guildId, command.data.name, interaction.member).catch(() => null);
+      const restricted = await commandRules.restrictedForNames(interaction.guildId, ruleNames, interaction.member).catch(() => null);
       if (restricted) {
-        await interaction.reply({ content: t(lang, 'core.restricted', { command: command.data.name, roles: restricted.map((id) => `<@&${id}>`).join(', ') }), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+        await interaction.reply({ content: t(lang, 'core.restricted', { command: restricted.name, roles: restricted.roles.map((id) => `<@&${id}>`).join(', ') }), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
         return;
       }
     }
 
     // The same rules as !disablecommand: a command switched off for the server or this channel does not run as a slash command either.
     if (interaction.guildId && interaction.channelId) {
-      const disabled = await disabledCommandsDb.findCached(interaction.guildId, command.data.name, interaction.channelId).catch(() => null);
-      if (disabled) {
+      const found = await commandRules.disabledFor(interaction.guildId, ruleNames, interaction.channelId, disabledCommandsDb);
+      if (found) {
+        const disabled = found.row;
+        // `/act love hug` when the rule is for the action, `/act` when it is for the whole command.
+        const shown = found.name === command.data.name ? `/${command.data.name}` : `/${[command.data.name, interaction.options.getSubcommandGroup?.(false), found.name].filter(Boolean).join(' ')}`;
         const text = disabled.channel_id
-          ? t(lang, 'core.disabled.channel', { emoji: EMOJI.WARNING, command: `/${command.data.name}`, channel: `<#${disabled.channel_id}>` })
-          : t(lang, 'core.disabled.server', { emoji: EMOJI.WARNING, command: `/${command.data.name}` });
+          ? t(lang, 'core.disabled.channel', { emoji: EMOJI.WARNING, command: shown, channel: `<#${disabled.channel_id}>` })
+          : t(lang, 'core.disabled.server', { emoji: EMOJI.WARNING, command: shown });
         // A private card with no colored side bar, the same look as the prefix notice.
         await interaction.reply({ components: [textCard(text, null)], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
         return;

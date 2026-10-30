@@ -6,7 +6,6 @@ const { buildInteractionFromMessage, tokenize } = require('../handlers/prefixInt
 const { unknownSubcommandCard, missingOptionCard } = require('../utils/usageCard');
 const commandAliasesDb = require('../db/commandAliases');
 const { getRemainingCooldownShared } = require('../utils/sharedCooldown');
-const disabledDb = require('../db/disabledCommands');
 const permissionsDb = require('../db/permissions');
 const customCommandsDb = require('../db/customCommands');
 const { getTemplate } = require('../db/embedTemplates');
@@ -17,7 +16,8 @@ const { textCard } = require('../utils/caseCard');
 const { EMOJI } = require('../utils/emojis');
 const moderationPermissions = require('../utils/moderationPermissions');
 const { controlAction } = require('../utils/autoModControl');
-const { restrictedFor, applyWordRoute } = require('../utils/commandRestrictions');
+const { applyWordRoute } = require('../utils/commandRestrictions');
+const commandRules = require('../utils/commandRules');
 const logger = require('../utils/logger');
 const { logCommandUse } = require('../logging/extraLog');
 const { runCodeCommand } = require('../utils/codeCommands');
@@ -326,14 +326,13 @@ module.exports = {
       return;
     }
 
-    // A route can stand for one action of a command (`!hug` is `/act` hug): `!disablecommand hug` turns off that action only.
-    // Turning off the whole command (`!disablecommand act`, or its category) turns off every action too.
-    let disableName = prefixRoute?.disableName ?? canonicalName;
-    let disabled = hiddenAutomodControl ? null : await disabledDb.findCached(message.guild.id, disableName, message.channel.id).catch(() => null);
-    if (!disabled && !hiddenAutomodControl && disableName !== canonicalName) {
-      disabled = await disabledDb.findCached(message.guild.id, canonicalName, message.channel.id).catch(() => null);
-      if (disabled) disableName = canonicalName;
-    }
+    // A route can stand for one action of a command (`!hug` is `/act` hug): `!disablecommand hug` turns off that action only, and
+    // turning off the whole command (`!disablecommand act`, or its category) turns off every action too. The slash command asks
+    // the same function (utils/commandRules.js).
+    const ruleNames = commandRules.ruleNames(command, { route: prefixRoute, subcommand: commandRules.subcommandOfText(command, argText) });
+    const found = hiddenAutomodControl ? null : await commandRules.disabledFor(message.guild.id, ruleNames, message.channel.id);
+    const disabled = found?.row ?? null;
+    const disableName = found?.name ?? canonicalName;
     if (disabled) {
       // The usual warning card (the warning icon and who asked) with no colored side bar, that clears itself out like the
       // "unknown command" one. The icon comes from warningPayload, so the text goes without its own.
@@ -383,12 +382,12 @@ module.exports = {
     }
 
     // !restrictcommand: only the roles chosen for this command (administrators always can).
-    const restricted = hiddenAutomodControl ? null : await restrictedFor(message.guild.id, canonicalName, message.member).catch((err) => {
+    const restricted = hiddenAutomodControl ? null : await commandRules.restrictedForNames(message.guild.id, ruleNames, message.member).catch((err) => {
       logger.error('Error checking restricted command:', err);
       return null;
     });
     if (restricted) {
-      await message.reply(warningPayload(message, t(lang, 'core.restricted', { command: canonicalName, roles: restricted.map((id) => `<@&${id}>`).join(', ') }))).catch(() => {});
+      await message.reply(warningPayload(message, t(lang, 'core.restricted', { command: restricted.name, roles: restricted.roles.map((id) => `<@&${id}>`).join(', ') }))).catch(() => {});
       return;
     }
 

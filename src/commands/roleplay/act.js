@@ -42,6 +42,8 @@ for (const group of GROUPS) {
 }
 
 module.exports = {
+  // The rules of a server (!disablecommand, !restrictcommand) can name one action (`hug`) as well as the command (`act`).
+  rulesBySubcommand: true,
   cooldownMs: 2_500,
   data,
   execute: executeAction,
