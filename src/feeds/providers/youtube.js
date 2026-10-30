@@ -2,7 +2,7 @@
 // the bot already has for `!youtube`, one cheap call (1 unit for up to 50 videos) says which of them are live or about to be.
 const config = require('../../config');
 const { fetchText, fetchJsonBody } = require('../http');
-const { IntegrationError } = require('../../utils/integrations');
+const { IntegrationError, USER_AGENT } = require('../../utils/integrations');
 const logger = require('../../utils/logger');
 const redis = require('../../utils/redis');
 
@@ -110,12 +110,25 @@ const seconds = (iso) => { const found = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/
 
 /**
  * The newest videos of a channel from the API (the "uploads" list of the channel, two units): the same entries as its feed. YouTube's feed
- * sometimes answers 404 or 500 for a channel that exists, so this is the way out. A video of a minute or less is taken for a Short (the feed
- * says it by the link; the API does not).
+ * sometimes answers 404 or 500 for a channel that exists, so this is the way out. A video of a minute or less is a candidate for a Short (the feed
+ * says it by the link; the API does not), and YouTube's own address of a Short says whether it is one (`confirmShort`).
  */
 const lengths = new Map(); // videoId -> seconds
 const exportLengths = () => [...lengths].slice(-20_000);
 const importLengths = (pairs) => { for (const [id, length] of pairs ?? []) if (typeof id === 'string' && (length === null || Number.isFinite(length))) lengths.set(id, length); };
+
+// A video of a minute or less is only a candidate for a Short (a landscape clip can be that short too). YouTube itself says which: the address of a Short as
+// /shorts/ID answers 200, and the one of a normal video redirects to /watch. The answer never changes, so it is asked once for each video.
+const shortChecks = new Map(); // videoId -> true (a Short) | false (a video)
+async function confirmShort(videoId) {
+  if (shortChecks.has(videoId)) return shortChecks.get(videoId);
+  try {
+    const response = await globalThis.fetch(`https://www.youtube.com/shorts/${videoId}`, { method: 'HEAD', redirect: 'manual', headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(6000) });
+    const verdict = response.status === 200 ? true : response.status >= 300 && response.status < 400 ? false : null;
+    if (verdict !== null) { if (shortChecks.size >= 50_000) shortChecks.delete(shortChecks.keys().next().value); shortChecks.set(videoId, verdict); }
+    return verdict;
+  } catch { return null; } // no answer: it stays a Short, as a video of that length was before
+}
 
 async function fetchChannelFromApi(channelId) {
   if (!CHANNEL_ID.test(channelId)) throw new IntegrationError('notFound');
@@ -129,15 +142,17 @@ async function fetchChannelFromApi(channelId) {
     for (const video of details?.items ?? []) { if (lengths.size >= 50_000) lengths.delete(lengths.keys().next().value); lengths.set(video.id, seconds(video.contentDetails?.duration)); }
   }
   const length = lengths;
+  await Promise.all(items.map((item) => item.snippet.resourceId.videoId).filter((id) => length.get(id) != null && length.get(id) <= 60).map(confirmShort));
+  const isShort = (videoId) => length.get(videoId) != null && length.get(videoId) <= 60 && shortChecks.get(videoId) !== false;
   return {
     name: items[0].snippet.channelTitle ?? '',
     entries: items.map((item) => {
       const videoId = item.snippet.resourceId.videoId;
-      const long = length.get(videoId);
+      const short = isShort(videoId);
       const thumbs = item.snippet.thumbnails ?? {};
       return {
-        videoId, title: item.snippet.title ?? '', short: long !== null && long !== undefined && long <= 60, published: Date.parse(item.snippet.publishedAt) || null,
-        url: `https://www.youtube.com/${long !== null && long !== undefined && long <= 60 ? `shorts/${videoId}` : `watch?v=${videoId}`}`, description: item.snippet.description ?? '',
+        videoId, title: item.snippet.title ?? '', short, published: Date.parse(item.snippet.publishedAt) || null,
+        url: `https://www.youtube.com/${short ? `shorts/${videoId}` : `watch?v=${videoId}`}`, description: item.snippet.description ?? '',
         image: (thumbs.maxres ?? thumbs.high ?? thumbs.medium ?? thumbs.default)?.url ?? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`, author: item.snippet.channelTitle ?? '', channelId, views: null,
       };
     }),

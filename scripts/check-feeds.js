@@ -1202,10 +1202,22 @@ const allText = (message) => JSON.stringify(json(message.components));
         { snippet: { title: 'A long one', publishedAt: '2026-10-26T10:00:00Z', channelTitle: 'Chan', description: 'd', resourceId: { videoId: 'v1' }, thumbnails: { high: { url: 'https://yt/h.jpg' } } } },
         { snippet: { title: 'A short', publishedAt: '2026-10-26T11:00:00Z', channelTitle: 'Chan', description: '', resourceId: { videoId: 's1' }, thumbnails: {} } }] });
       if (u.pathname.endsWith('/videos')) return json({ items: [{ id: 'v1', contentDetails: { duration: 'PT12M3S' } }, { id: 's1', contentDetails: { duration: 'PT45S' } }] });
+      if (u.pathname === '/shorts/s1') return new Response('', { status: 200 }); // YouTube says it is a Short
       return json({}, 404);
     };
     const viaApi = await youtubeProvider.fetchChannel(channelId);
     assert.deepEqual(viaApi.entries.map((entry) => [entry.videoId, entry.short, entry.url.includes('/shorts/')]), [['v1', false, false], ['s1', true, true]]);
+    // A landscape clip of less than a minute is a video: the address of a Short redirects to /watch.
+    globalThis.fetch = async (url) => {
+      const u = new URL(url);
+      if (u.pathname.endsWith('/feeds/videos.xml')) return new Response('', { status: 404 });
+      if (u.pathname.endsWith('/playlistItems')) return json({ items: [{ snippet: { title: 'A clip', publishedAt: '2026-10-26T12:00:00Z', channelTitle: 'Chan', description: '', resourceId: { videoId: 'c1' }, thumbnails: {} } }] });
+      if (u.pathname.endsWith('/videos')) return json({ items: [{ id: 'c1', contentDetails: { duration: 'PT40S' } }] });
+      if (u.pathname === '/shorts/c1') return new Response('', { status: 303, headers: { location: 'https://www.youtube.com/watch?v=c1' } });
+      return json({}, 404);
+    };
+    const clip = await youtubeProvider.fetchChannel('UC' + 'c'.repeat(22));
+    assert.deepEqual(clip.entries.map((entry) => [entry.videoId, entry.short, entry.url]), [['c1', false, 'https://www.youtube.com/watch?v=c1']], 'a video of 40 seconds that YouTube does not call a Short is a video');
     assert.equal(viaApi.name, 'Chan');
     // Both fail: YouTube is having trouble, the channel is not gone.
     globalThis.fetch = async () => new Response('', { status: 404 });
