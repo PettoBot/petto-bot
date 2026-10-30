@@ -963,6 +963,8 @@ const allText = (message) => JSON.stringify(json(message.components));
   {
     config.kickClientId = 'id';
     config.kickClientSecret = 'secret';
+    kick.forget();
+    kick.pace.gapMs = 0;
     const kickCalls = [];
     const pictures = { 'https://images.kick.com/t.jpg': true };
     const channels = { 1: { broadcaster_user_id: 1, slug: 'live-one', stream_title: 'Hello', category: { name: 'Minecraft' }, stream: { is_live: true, start_time: '2026-10-26T20:00:00Z', viewer_count: 1234, thumbnail: 'https://images.kick.com/t.jpg' } },
@@ -993,11 +995,248 @@ const allText = (message) => JSON.stringify(json(message.components));
     assert.equal(results.get('1').items[0].placeholder, undefined, 'and it is never swapped for the real one');
     assert.equal(kickCalls.filter((url) => url.includes('/channels?') && url.includes('broadcaster_user_id')).length, 1, 'both accounts are asked in one call');
     assert.equal(kickCalls.some((url) => url.startsWith('https://images.kick.com/')), false, 'and the preview is not even asked for');
-    config.kickClientId = null;
-    kickCalls.length = 0;
-    await assert.rejects(PROVIDERS.kick.resolve('live-one'), (error) => error.kind === 'notConfigured', 'without the keys Kick says it is not set up');
     globalThis.fetch = realFetch;
+    config.kickClientId = null;
     config.kickClientSecret = null;
+    kick.forget();
+  }
+
+  // --- Kick: the fallbacks (the public API, then the web endpoints of kick.com), the real reason, the cache ------------------------------------------
+  {
+    const log = require('../src/utils/logger');
+    const lines = [];
+    const realLogInfo = log.info;
+    log.info = (...args) => { lines.push(args.join(' ')); };
+    const calls = [];
+    const answer = (plan) => async (url, options) => {
+      const u = new URL(url);
+      calls.push({ url: String(url), host: u.hostname, path: u.pathname, agent: options.headers['User-Agent'], at: Date.now(), signal: options.signal });
+      const step = plan[Math.min(calls.length - 1, plan.length - 1)];
+      if (typeof step === 'object' && !(step instanceof Error) && step !== null && !(step instanceof Response)) { // answers by address
+        const byPath = step[u.pathname] ?? step[u.hostname] ?? step.default;
+        if (!byPath) throw new Error(`unexpected ${url}`);
+        return byPath instanceof Error ? (() => { throw byPath; })() : byPath();
+      }
+      if (step instanceof Error) throw step;
+      return step();
+    };
+    const status = (code, headers = {}) => () => new Response('', { status: code, headers });
+    const body = (value) => () => new Response(JSON.stringify(value), { status: 200 });
+    const html = () => new Response('<html><title>Just a moment...</title></html>', { status: 200 });
+    // What kick.com/api/v2 and v1 answer for a channel (the real ones, trimmed): offline, and live.
+    const USER = { username: 'Live_One', profile_pic: 'https://files.kick.com/images/user/1/p.webp' };
+    const OFFLINE = { id: 668, user_id: 1, slug: 'live-one', is_banned: false, livestream: null, user: USER };
+    const LIVE_V2 = { id: 668, user_id: 1, slug: 'live-one', livestream: { id: 9, session_title: 'Hello world', is_live: true, start_time: '2026-10-26 20:00:00', viewer_count: 321, thumbnail: { srcset: 'a 1w', src: 'https://images.kick.com/video_thumbnails/a/720.webp' }, categories: [{ id: 2, name: 'Minecraft' }] }, user: USER };
+    const LIVE_V1 = { id: 668, user_id: 1, slug: 'live-one', livestream: { id: 9, session_title: 'Hello world', is_live: true, start_time: '2026-10-26 20:00:00', viewers: 321, viewer_count: 321, thumbnail: { responsive: 'a 1w', url: 'https://images.kick.com/video_thumbnails/a/720.webp' }, categories: [{ id: 2, name: 'Minecraft' }] }, user: USER };
+    const start = () => { calls.length = 0; lines.length = 0; kick.forget(); };
+    const realFetchKick = globalThis.fetch;
+    kick.pace.gapMs = 0;
+    config.kickClientId = null;
+    config.kickClientSecret = null;
+    try {
+      // Without keys the web endpoints answer, v2 first, with the plain User-Agent; the answer has the shape of the public API.
+      start();
+      globalThis.fetch = answer([body(LIVE_V2)]);
+      let read = await kick.resolveChannel('https://kick.com/Live-One');
+      assert.deepEqual(calls.map((call) => call.url), ['https://kick.com/api/v2/channels/live-one']);
+      assert.equal(calls[0].agent, 'Petto-Discord-Bot/1.0 (+https://petto.sbs)', 'the plain User-Agent first');
+      assert.deepEqual(read, { id: '1', slug: 'live-one', name: 'Live_One', avatar: 'https://files.kick.com/images/user/1/p.webp', url: 'https://kick.com/live-one' });
+      assert.ok(calls.every((call) => call.signal), 'every attempt carries its time limit');
+
+      // A second read inside the cache window sends no request (a lookup followed by the follow), and the polling job always reads anew.
+      globalThis.fetch = answer([() => { throw new Error('must not be asked'); }]);
+      assert.equal((await kick.resolveChannel('live-one')).id, '1');
+      const calm = await kick.liveChannel({ id: '1', url: 'https://kick.com/live-one' });
+      assert.equal(calm.stream.is_live, true, 'the first look of a new feed shares the read too');
+      assert.equal(calls.length, 1);
+      globalThis.fetch = answer([body(OFFLINE)]);
+      const freshRead = await kick.liveChannels([{ id: '1', url: 'https://kick.com/live-one' }]);
+      assert.equal(calls.length, 2, 'the job reads anew');
+      assert.deepEqual(freshRead, { live: {}, failed: {} });
+
+      // The same live state from v1, and offline, in the shape of the public API; the id of the stream is the same from both addresses.
+      for (const [name, live] of [['v2', LIVE_V2], ['v1', LIVE_V1]]) {
+        const parsed = kick.parseWebChannel(live);
+        assert.deepEqual(parsed.channel, { broadcaster_user_id: 1, slug: 'live-one', stream_title: 'Hello world', category: { name: 'Minecraft' }, stream: { is_live: true, start_time: '2026-10-26T20:00:00Z', viewer_count: 321, thumbnail: 'https://images.kick.com/video_thumbnails/a/720.webp' } }, name);
+        assert.equal(kick.streamId(parsed.channel), '2026-10-26T20:00:00Z', `the id of a stream is when it started, ${name}`);
+        const item = kick.toItem(parsed.channel, { name: parsed.name, avatar: parsed.avatar });
+        assert.deepEqual([item.type, item.id, item.title, item.url, item.viewers, item.author, item.publishedAt, item.extra], ['live', '2026-10-26T20:00:00Z', 'Hello world', 'https://kick.com/live-one', 321, 'Live_One', Date.parse('2026-10-26T20:00:00Z'), '🎮 Minecraft · 👁 321'], name);
+      }
+      assert.deepEqual(kick.parseWebChannel(OFFLINE).channel, { broadcaster_user_id: 1, slug: 'live-one', stream_title: '', stream: { is_live: false } });
+      assert.equal(kick.parseWebChannel({ ...LIVE_V2, livestream: { ...LIVE_V2.livestream, thumbnail: null } }).channel.stream.thumbnail, '', 'a stream without preview yet');
+      assert.throws(() => kick.parseWebChannel({ message: 'nope' }), (error) => error.kind === 'unavailable');
+      assert.throws(() => kick.parseWebChannel([]), (error) => error.kind === 'unavailable');
+
+      // 403 on the first address, then the second answers; the log says what failed and where it goes next.
+      start();
+      globalThis.fetch = answer([status(403), status(403), body(LIVE_V1)]);
+      read = await kick.resolveChannel('live-one');
+      assert.equal(read.name, 'Live_One');
+      assert.deepEqual(calls.map((call) => call.url), ['https://kick.com/api/v2/channels/live-one', 'https://kick.com/api/v2/channels/live-one', 'https://kick.com/api/v1/channels/live-one']);
+      assert.equal(calls[1].agent, kick.BROWSER_USER_AGENT, 'a refused address is asked once more with a browser-like User-Agent');
+      assert.match(kick.BROWSER_USER_AGENT, /^Mozilla\/5\.0 \(compatible; Petto-Discord-Bot\/1\.0; \+https:\/\/petto\.sbs\)/, 'that still names the bot and its site');
+      assert.deepEqual(lines, ['feed kick live-one: kick.com/api/v2 403, asking again with a browser-like User-Agent', 'feed kick live-one: kick.com/api/v2 403, trying kick.com/api/v1']);
+      // The browser-like one is remembered when it worked.
+      start();
+      globalThis.fetch = answer([status(403), body(LIVE_V2), body(LIVE_V2)]);
+      await kick.resolveChannel('live-one');
+      assert.equal(calls.length, 2);
+      globalThis.fetch = answer([body(LIVE_V2)]);
+      await kick.liveChannels([{ id: '1', url: 'https://kick.com/live-one' }]);
+      assert.equal(calls.at(-1).agent, kick.BROWSER_USER_AGENT);
+
+      // A page that is not JSON (a challenge that answers 200) is a refusal, then the second address answers.
+      start();
+      globalThis.fetch = answer([html, html, body(LIVE_V1)]);
+      read = await kick.resolveChannel('live-one');
+      assert.equal(read.id, '1');
+      assert.deepEqual(calls.map((call) => new URL(call.url).pathname), ['/api/v2/channels/live-one', '/api/v2/channels/live-one', '/api/v1/channels/live-one']);
+      // JSON that is not a channel is the same.
+      start();
+      globalThis.fetch = answer([body({ message: 'Forbidden' }), body({ message: 'Forbidden' }), body(LIVE_V1)]);
+      assert.equal((await kick.resolveChannel('live-one')).id, '1');
+
+      // A 5xx, then a network error, then (with keys) all of them failed: the reason that people can act on.
+      start();
+      globalThis.fetch = answer([status(503), Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNRESET' } })]);
+      await assert.rejects(kick.resolveChannel('live-one'), (error) => error.kind === 'unavailable' && /ECONNRESET/.test(error.message));
+      assert.deepEqual(lines, ['feed kick live-one: kick.com/api/v2 503, trying kick.com/api/v1', 'feed kick live-one: kick.com/api/v1 ECONNRESET, giving up']);
+      start();
+      globalThis.fetch = answer([status(403)]);
+      await assert.rejects(kick.resolveChannel('live-one'), (error) => error.kind === 'blocked');
+      start();
+      globalThis.fetch = answer([html]);
+      await assert.rejects(kick.resolveChannel('live-one'), (error) => error.kind === 'blocked', 'a page that is not JSON everywhere is a refusal');
+      start();
+      globalThis.fetch = answer([status(429, { 'retry-after': '30' }), status(429)]);
+      await assert.rejects(kick.resolveChannel('live-one'), (error) => error.kind === 'rateLimited' && error.retryAfterMs === 30_000);
+      assert.match(lines[0], /^feed kick live-one: kick\.com\/api\/v2 429 \(retry-after 30s\), trying kick\.com\/api\/v1$/);
+      // The wait Kick asked for is respected (no request until it passes), and it is capped at a minute.
+      calls.length = 0;
+      await assert.rejects(kick.resolveChannel('other-one'), (error) => error.kind === 'rateLimited' && error.retryAfterMs > 0 && error.retryAfterMs <= 30_000);
+      assert.equal(calls.length, 0);
+      start();
+      globalThis.fetch = answer([status(429, { 'retry-after': '99999' })]);
+      await assert.rejects(kick.resolveChannel('live-one'), (error) => error.retryAfterMs === 60_000);
+      // A refusal that is not a block of the bot (a 400) does not try the others.
+      start();
+      globalThis.fetch = answer([status(400)]);
+      await assert.rejects(kick.resolveChannel('live-one'), (error) => error.kind === 'unavailable');
+      assert.equal(calls.length, 1);
+      // A timeout is a failure of that address: the next one is tried.
+      start();
+      globalThis.fetch = answer([Object.assign(new Error('timed out'), { name: 'TimeoutError' }), body(LIVE_V2)]);
+      assert.equal((await kick.resolveChannel('live-one')).id, '1');
+      assert.deepEqual(lines, ['feed kick live-one: kick.com/api/v2 timeout, trying kick.com/api/v1']);
+
+      // A 404 is not found, and no other address is asked (a fallback never turns it into success).
+      start();
+      globalThis.fetch = answer([status(404), body(LIVE_V2)]);
+      await assert.rejects(kick.resolveChannel('gone-one'), (error) => error.kind === 'notFound');
+      assert.equal(calls.length, 1);
+      start();
+      globalThis.fetch = answer([status(403), status(403), status(404), body(LIVE_V2)]);
+      await assert.rejects(kick.resolveChannel('gone-one'), (error) => error.kind === 'notFound');
+      assert.equal(calls.length, 3, 'a 404 from the last address stays not found');
+      await assert.rejects(kick.resolveChannel('not a name'), (error) => error.kind === 'badInput');
+
+      // With the keys: the public API first, then the web endpoints; an empty list from the API is a channel that does not exist.
+      config.kickClientId = 'id';
+      config.kickClientSecret = 'secret';
+      const official = { broadcaster_user_id: 1, slug: 'live-one', stream_title: 'Hello', category: { name: 'Minecraft' }, stream: { is_live: true, start_time: '2026-10-26T20:00:00Z', viewer_count: 5, thumbnail: '' } };
+      const token = body({ access_token: 'tok', expires_in: 3600 });
+      start();
+      globalThis.fetch = answer([{ 'id.kick.com': token, 'api.kick.com': body({ data: [official] }) }]);
+      read = await kick.resolveChannel('live-one');
+      assert.deepEqual(calls.map((call) => call.host), ['id.kick.com', 'api.kick.com', 'api.kick.com']);
+      assert.equal(read.id, '1');
+      start();
+      globalThis.fetch = answer([{ 'id.kick.com': token, 'api.kick.com': status(403), 'kick.com': body(LIVE_V2) }]);
+      read = await kick.resolveChannel('live-one');
+      assert.deepEqual(calls.map((call) => call.host), ['id.kick.com', 'api.kick.com', 'kick.com']);
+      assert.equal(read.name, 'Live_One');
+      assert.deepEqual(lines, ['feed kick live-one: api.kick.com 403, trying kick.com/api/v2']);
+      start();
+      globalThis.fetch = answer([{ 'id.kick.com': status(503), 'kick.com': body(LIVE_V1) }]);
+      assert.equal((await kick.resolveChannel('live-one')).id, '1', 'a token that cannot be asked does not stop the web endpoints');
+      start();
+      globalThis.fetch = answer([{ 'id.kick.com': token, 'api.kick.com': body({ data: [] }), 'kick.com': body(LIVE_V2) }]);
+      await assert.rejects(kick.resolveChannel('gone-one'), (error) => error.kind === 'notFound');
+      assert.deepEqual(calls.map((call) => call.host), ['id.kick.com', 'api.kick.com']);
+      start();
+      globalThis.fetch = answer([{ 'id.kick.com': token, 'api.kick.com': status(404), 'kick.com': body(LIVE_V2) }]);
+      await assert.rejects(kick.resolveChannel('gone-one'), (error) => error.kind === 'notFound');
+      assert.equal(calls.length, 2);
+      start();
+      globalThis.fetch = answer([{ 'id.kick.com': token, 'api.kick.com': status(429, { 'retry-after': '20' }), 'kick.com': status(403) }]);
+      await assert.rejects(kick.resolveChannel('live-one'), (error) => error.kind === 'rateLimited', 'a limit on any address is told as a limit');
+
+      // The polling job: the public API for all the accounts in one call; when it fails the accounts are read from the web endpoints, one by one, and the
+      // ones that could not be read are failures (never offline), told with their reason.
+      const accounts = [{ id: '1', name: 'Live_One', avatar: null, url: 'https://kick.com/live-one' }, { id: '2', name: 'quiet', avatar: null, url: 'https://kick.com/quiet' }];
+      start();
+      globalThis.fetch = answer([{ 'id.kick.com': token, 'api.kick.com': body({ data: [official, { broadcaster_user_id: 2, slug: 'quiet', stream: { is_live: false } }] }) }]);
+      let results = await PROVIDERS.kick.poll(accounts);
+      assert.deepEqual(calls.map((call) => call.host), ['id.kick.com', 'api.kick.com'], 'two accounts, one call');
+      assert.equal(results.get('1').items.length, 1);
+      assert.deepEqual(results.get('2'), { items: [], stillLive: new Set() });
+      start();
+      globalThis.fetch = answer([{ 'id.kick.com': token, 'api.kick.com': status(403), 'kick.com': (() => { let n = 0; return () => new Response(JSON.stringify(n++ === 0 ? LIVE_V2 : { ...OFFLINE, user_id: 2, slug: 'quiet' }), { status: 200 }); })() }]);
+      results = await PROVIDERS.kick.poll(accounts);
+      assert.deepEqual(calls.map((call) => call.url).slice(2), ['https://kick.com/api/v2/channels/live-one', 'https://kick.com/api/v2/channels/quiet'], 'the web endpoints, one account each');
+      assert.deepEqual([results.get('1').items[0].id, results.get('1').items[0].extra, [...results.get('1').stillLive]], ['2026-10-26T20:00:00Z', '🎮 Minecraft · 👁 321', ['2026-10-26T20:00:00Z']], 'the same notice from the fallback');
+      assert.deepEqual(results.get('2'), { items: [], stillLive: new Set() });
+      assert.match(lines[0], /^feed kick: api\.kick\.com 403 for 2 account\(s\), trying kick\.com\/api$/);
+      // Everything fails: every account is a failure with the reason, nothing is closed, the wait Kick asked for goes to the schedule.
+      start();
+      globalThis.fetch = answer([{ 'id.kick.com': token, 'api.kick.com': status(403), 'kick.com': status(403) }]);
+      results = await PROVIDERS.kick.poll(accounts);
+      assert.deepEqual([results.get('1').error, results.get('2').error, results.get('1').items.length], ['blocked', 'blocked', 0]);
+      start();
+      globalThis.fetch = answer([{ 'id.kick.com': token, 'api.kick.com': status(500), 'kick.com': status(429, { 'retry-after': '45' }) }]);
+      results = await PROVIDERS.kick.poll(accounts);
+      assert.deepEqual([results.get('1').error, results.get('1').retryAfter], ['rateLimited', 45_000]);
+      assert.equal(results.get('2').error, 'rateLimited', 'the wait is for all of Kick\'s web addresses');
+      // A channel that does not exist is not found for that account only.
+      start();
+      globalThis.fetch = answer([{ 'id.kick.com': token, 'api.kick.com': status(500), 'kick.com/api/v2/channels/live-one': body(LIVE_V2), 'kick.com': status(404) }]);
+      globalThis.fetch = (inner => async (url, options) => (String(url).includes('/live-one') ? new Response(JSON.stringify(LIVE_V2), { status: 200 }) : inner(url, options)))(globalThis.fetch);
+      results = await PROVIDERS.kick.poll(accounts);
+      assert.equal(results.get('1').items.length, 1);
+      assert.equal(results.get('2').error, 'notFound');
+      // A bare list of accounts without keys still reads the web endpoints, and one account that is refused does not hide the next one.
+      config.kickClientId = null;
+      config.kickClientSecret = null;
+      start();
+      globalThis.fetch = async (url) => (String(url).includes('/live-one') ? new Response('', { status: 403 }) : new Response(JSON.stringify({ ...OFFLINE, user_id: 2, slug: 'quiet' }), { status: 200 }));
+      results = await PROVIDERS.kick.poll(accounts);
+      assert.equal(results.get('1').error, 'blocked');
+      assert.deepEqual(results.get('2'), { items: [], stillLive: new Set() });
+      // The first look of a new feed (baseline) is the live stream, or nothing.
+      start();
+      globalThis.fetch = answer([body(LIVE_V2)]);
+      assert.deepEqual(await PROVIDERS.kick.baselineItems(accounts[0]), [{ id: '2026-10-26T20:00:00Z', live: true }]);
+      start();
+      globalThis.fetch = answer([body(OFFLINE)]);
+      assert.deepEqual(await PROVIDERS.kick.baselineItems(accounts[0]), []);
+      start();
+      globalThis.fetch = answer([status(403)]);
+      await assert.rejects(PROVIDERS.kick.baselineItems(accounts[0]), (error) => error.kind === 'blocked');
+
+      // The texts: the platform's name is in them, in the three languages.
+      assert.match(t('en', 'feeds.add.error.blocked', { emoji: '', platform: 'Kick' }), /^\s*Kick is refusing Petto's requests right now\. Try again later\.$/);
+      assert.match(t('en', 'feeds.add.error.rateLimited', { emoji: '', platform: 'Kick' }), /Kick is limiting Petto's requests/);
+      assert.match(t('es', 'feeds.add.error.blocked', { emoji: '', platform: 'Kick' }), /Kick está rechazando/);
+      assert.match(t('pt-BR', 'feeds.add.error.rateLimited', { emoji: '', platform: 'Kick' }), /Kick está limitando/);
+      assert.match(t('en', 'feeds.add.error.unavailable', { emoji: '', platform: 'Kick' }), /Kick did not answer/);
+    } finally {
+      globalThis.fetch = realFetchKick;
+      log.info = realLogInfo;
+      config.kickClientId = null;
+      config.kickClientSecret = null;
+      kick.pace.gapMs = 400;
+      kick.forget();
+    }
   }
 
   // --- the other platforms: the answers of the services written out ------------------------------------------------------------------------------

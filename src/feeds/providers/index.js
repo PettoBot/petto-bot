@@ -302,9 +302,11 @@ const PROVIDERS = {
       return { id: channel.id, name: channel.name, avatar: channel.avatar, url: channel.url };
     },
     async poll(accounts) {
-      const live = await kick.liveChannels(accounts.map((account) => account.id)); // 50 accounts in each call
+      const { live, failed } = await kick.liveChannels(accounts); // the public API (50 accounts in each call), then the web endpoints of Kick for what it could not answer
       const results = new Map();
       for (const account of accounts) {
+        // An account that could not be read is not offline: its notice stays open and the look is told as a failure (with the wait Kick asked for).
+        if (failed[account.id]) { results.set(account.id, { items: [], error: failed[account.id].kind ?? 'unavailable', retryAfter: failed[account.id].retryAfterMs }); continue; }
         const channel = live[account.id];
         let item = channel ? kick.toItem(channel, account) : null;
         // The preview of a Kick stream is made a few minutes after it starts, and even when its address answers Discord can fail to draw it (a broken picture
@@ -315,8 +317,8 @@ const PROVIDERS = {
       return results;
     },
     async baselineItems(account) {
-      const live = await kick.liveChannels([account.id]);
-      return live[account.id] ? [{ id: kick.streamId(live[account.id]), live: true }] : [];
+      const channel = await kick.liveChannel(account); // shares the read of the lookup made a moment before
+      return channel ? [{ id: kick.streamId(channel), live: true }] : [];
     },
   },
 
