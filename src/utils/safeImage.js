@@ -53,19 +53,19 @@ function checkUrl(value) {
   return url;
 }
 
-function download(url, hops, request = https.request, maxBytes = LIMITS.bytes) {
+function download(url, hops, request = https.request, maxBytes = LIMITS.bytes, anyType = false) {
   return new Promise((resolve, reject) => {
-    const req = request(url, { method: 'GET', lookup: safeLookup, timeout: LIMITS.timeoutMs, headers: { 'User-Agent': 'PettoCards/1.0', Accept: 'image/*' } }, (res) => {
+    const req = request(url, { method: 'GET', lookup: safeLookup, timeout: LIMITS.timeoutMs, headers: { 'User-Agent': 'PettoCards/1.0', Accept: anyType ? '*/*' : 'image/*' } }, (res) => {
       const status = res.statusCode ?? 0;
       if (status >= 300 && status < 400 && res.headers.location) {
         res.resume();
         if (hops >= LIMITS.redirects) return reject(new Error('Too many redirects.'));
         let next;
         try { next = checkUrl(new URL(res.headers.location, url).toString()); } catch (error) { return reject(error); }
-        return resolve(download(next, hops + 1, request, maxBytes));
+        return resolve(download(next, hops + 1, request, maxBytes, anyType));
       }
       if (status !== 200) { res.resume(); return reject(Object.assign(new Error(`The image server answered ${status}.`), { status })); }
-      if (!TYPES.test(String(res.headers['content-type'] ?? ''))) { res.resume(); return reject(new Error('That link is not a PNG, JPEG, WebP or GIF image.')); }
+      if (!anyType && !TYPES.test(String(res.headers['content-type'] ?? ''))) { res.resume(); return reject(new Error('That link is not a PNG, JPEG, WebP or GIF image.')); }
       const declared = Number(res.headers['content-length']);
       if (Number.isFinite(declared) && declared > maxBytes) { res.resume(); return reject(new Error('That image is too large.')); }
       const chunks = [];
@@ -106,6 +106,14 @@ async function fetchImageBuffer(link, request, { maxBytes = LIMITS.bytes } = {})
   return buffer;
 }
 
+/**
+ * The bytes of any file at a public https link (a file a member uploaded to a form), with the same protection as a picture: no private
+ * address, redirects checked by hand, a time limit and `maxBytes` as the size limit. Not cached (files are not pictures for a card).
+ */
+async function fetchFileBuffer(link, request, { maxBytes = LIMITS.bytes } = {}) {
+  return download(checkUrl(link), 0, request, maxBytes, true);
+}
+
 /** Decodes bytes into an image, refusing one whose pixels would be too many to draw. */
 async function decode(buffer) {
   const image = await loadImage(buffer);
@@ -118,4 +126,4 @@ async function loadImageFromLink(link, request) {
   try { return await decode(await fetchImageBuffer(link, request)); } catch { return null; }
 }
 
-module.exports = { LIMITS, isPrivateAddress, checkUrl, safeLookup, fetchImageBuffer, loadImageFromLink, decode };
+module.exports = { LIMITS, isPrivateAddress, checkUrl, safeLookup, fetchImageBuffer, fetchFileBuffer, loadImageFromLink, decode };

@@ -1,6 +1,10 @@
 // Button-driven builder for reusable ticket forms, so no one has to type the field syntax.
 const {
   ModalBuilder,
+  LabelBuilder,
+  RadioGroupBuilder,
+  CheckboxBuilder,
+  StringSelectMenuBuilder,
   TextInputBuilder,
   TextInputStyle,
   ActionRowBuilder,
@@ -12,6 +16,7 @@ const {
   PermissionFlagsBits,
 } = require('discord.js');
 const formsDb = require('../db/ticketForms');
+const { normalizeField, optionsOf, LIMITS } = require('../utils/ticketFormFields');
 const { textCard } = require('../utils/caseCard');
 const { EMOJI } = require('../utils/emojis');
 const { t, currentLanguage, languageOf } = require('../i18n');
@@ -42,6 +47,17 @@ function startDraft(userId, { guildId, mode, name, title, fields = [], lang = cu
   return setDraft(userId, { guildId, mode, name, title: title === undefined ? t(lang, 'tickets.form.defaultTitle') : title, fields: fields.map((f) => ({ ...f })) });
 }
 
+/** What kind of question a line of the builder is: its type and, where it matters, how many choices or files. */
+function kindText(field, lang) {
+  switch (field.type) {
+    case 'long_text': return t(lang, 'tickets.formBuilder.paragraph');
+    case 'short_text': return t(lang, 'tickets.formBuilder.shortAnswer');
+    case 'select': return t(lang, 'tickets.formBuilder.kind.select', { count: field.options?.length ?? 0, max: field.max ?? 1 });
+    case 'file': return t(lang, `tickets.formBuilder.kind.file.${field.accept === 'images' ? 'images' : 'any'}`, { max: field.max ?? 1 });
+    default: return t(lang, `tickets.formBuilder.kind.${field.type}`, { count: field.options?.length ?? 0 });
+  }
+}
+
 function renderPanel(uid, draft, lang = currentLanguage()) {
   const lines = [
     t(lang, draft.mode === 'edit' ? 'tickets.formBuilder.editing' : 'tickets.formBuilder.building', { emoji: EMOJI.STAR, name: draft.name }),
@@ -51,8 +67,8 @@ function renderPanel(uid, draft, lang = currentLanguage()) {
   ];
   if (draft.fields.length) {
     draft.fields.forEach((f, i) => {
-      const kind = t(lang, f.type === 'long_text' ? 'tickets.formBuilder.paragraph' : 'tickets.formBuilder.shortAnswer');
-      lines.push(`${i + 1}. **${f.label}**${f.required === false ? '' : ' *'}\n-# ${kind}${f.placeholder ? ` · ${t(lang, 'tickets.formBuilder.hint', { hint: f.placeholder })}` : ''}`);
+      const asked = f.type === 'check' ? f.required === true : f.type !== 'display' && f.required !== false;
+      lines.push(`${i + 1}. **${f.label}**${asked ? ' *' : ''}\n-# ${kindText(f, lang)}${f.placeholder ? ` · ${t(lang, 'tickets.formBuilder.hint', { hint: f.placeholder })}` : ''}`);
     });
   } else {
     lines.push(t(lang, 'tickets.formBuilder.empty'));
@@ -71,6 +87,12 @@ function renderPanel(uid, draft, lang = currentLanguage()) {
       btn('tf_add_long', t(lang, 'tickets.formBuilder.addLong.button'), ButtonStyle.Primary).setDisabled(full),
       btn('tf_remove', t(lang, 'tickets.formBuilder.removeLast.button')).setDisabled(!draft.fields.length),
       btn('tf_title', t(lang, 'tickets.formBuilder.title.button')),
+    ),
+    new ActionRowBuilder().addComponents(
+      btn('tf_add_choice', t(lang, 'tickets.formBuilder.addChoice.button'), ButtonStyle.Primary).setDisabled(full),
+      btn('tf_add_file', t(lang, 'tickets.formBuilder.addFile.button'), ButtonStyle.Primary).setDisabled(full),
+      btn('tf_add_pick', t(lang, 'tickets.formBuilder.addPick.button'), ButtonStyle.Primary).setDisabled(full),
+      btn('tf_add_info', t(lang, 'tickets.formBuilder.addInfo.button')).setDisabled(full),
     ),
     new ActionRowBuilder().addComponents(
       btn('tf_save', t(lang, 'tickets.formBuilder.save.button'), ButtonStyle.Success, EMOJI.APPROVE).setDisabled(!draft.fields.length),
@@ -114,6 +136,51 @@ function fieldModal(uid, type, lang) {
     );
 }
 
+const yesNo = (builder, value) => builder.setDefault(value);
+
+/** The window that asks for a question with choices: the question, the choices (one per line), how they are picked and whether it is required. */
+function choiceModal(uid, lang) {
+  const option = (value) => ({ label: t(lang, `tickets.formBuilder.modal.choice.kind.${value}`), value });
+  return new ModalBuilder().setCustomId(`tfm_choice::${uid}`).setTitle(t(lang, 'tickets.formBuilder.modal.choice.title')).addLabelComponents(
+    new LabelBuilder().setLabel(t(lang, 'tickets.formBuilder.modal.question')).setTextInputComponent(new TextInputBuilder().setCustomId('label').setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(LIMITS.label).setPlaceholder(t(lang, 'tickets.formBuilder.modal.choice.questionPlaceholder'))),
+    new LabelBuilder().setLabel(t(lang, 'tickets.formBuilder.modal.choice.options')).setTextInputComponent(new TextInputBuilder().setCustomId('options').setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(2500).setPlaceholder(t(lang, 'tickets.formBuilder.modal.choice.optionsPlaceholder'))),
+    new LabelBuilder().setLabel(t(lang, 'tickets.formBuilder.modal.choice.kind')).setRadioGroupComponent(new RadioGroupBuilder().setCustomId('kind').setRequired(true).addOptions({ ...option('select'), default: true }, option('radio'), option('checks'))),
+    new LabelBuilder().setLabel(t(lang, 'tickets.formBuilder.modal.choice.many')).setCheckboxComponent(new CheckboxBuilder().setCustomId('many')),
+    new LabelBuilder().setLabel(t(lang, 'tickets.formBuilder.modal.mustAnswer')).setCheckboxComponent(yesNo(new CheckboxBuilder().setCustomId('required'), true)),
+  );
+}
+
+/** The window that asks for a file upload: the question, what it takes (pictures or any file), how many files and whether it is required. */
+function fileModal(uid, lang) {
+  const accept = (value, on) => ({ label: t(lang, `tickets.formBuilder.modal.file.accept.${value}`), value, default: on });
+  const count = (n) => ({ label: String(n), value: String(n), default: n === 1 });
+  return new ModalBuilder().setCustomId(`tfm_file::${uid}`).setTitle(t(lang, 'tickets.formBuilder.modal.file.title')).addLabelComponents(
+    new LabelBuilder().setLabel(t(lang, 'tickets.formBuilder.modal.question')).setTextInputComponent(new TextInputBuilder().setCustomId('label').setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(LIMITS.label).setPlaceholder(t(lang, 'tickets.formBuilder.modal.file.questionPlaceholder'))),
+    new LabelBuilder().setLabel(t(lang, 'tickets.formBuilder.modal.file.accept')).setRadioGroupComponent(new RadioGroupBuilder().setCustomId('accept').setRequired(true).addOptions(accept('images', true), accept('any', false))),
+    new LabelBuilder().setLabel(t(lang, 'tickets.formBuilder.modal.file.max', { max: LIMITS.files })).setStringSelectMenuComponent(new StringSelectMenuBuilder().setCustomId('max').setMinValues(1).setMaxValues(1).setRequired(true).addOptions(...Array.from({ length: LIMITS.files }, (_unused, i) => count(i + 1)))),
+    new LabelBuilder().setLabel(t(lang, 'tickets.formBuilder.modal.mustAnswer')).setCheckboxComponent(yesNo(new CheckboxBuilder().setCustomId('required'), true)),
+  );
+}
+
+/** The window that asks for a member, role or channel picker, or one checkbox. */
+function pickModal(uid, lang) {
+  const option = (value, on) => ({ label: t(lang, `tickets.formBuilder.modal.pick.kind.${value}`), value, default: on });
+  return new ModalBuilder().setCustomId(`tfm_pick::${uid}`).setTitle(t(lang, 'tickets.formBuilder.modal.pick.title')).addLabelComponents(
+    new LabelBuilder().setLabel(t(lang, 'tickets.formBuilder.modal.question')).setTextInputComponent(new TextInputBuilder().setCustomId('label').setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(LIMITS.label).setPlaceholder(t(lang, 'tickets.formBuilder.modal.pick.questionPlaceholder'))),
+    new LabelBuilder().setLabel(t(lang, 'tickets.formBuilder.modal.pick.kind')).setRadioGroupComponent(new RadioGroupBuilder().setCustomId('kind').setRequired(true).addOptions(option('user', true), option('role', false), option('channel', false), option('check', false))),
+    new LabelBuilder().setLabel(t(lang, 'tickets.formBuilder.modal.mustAnswer')).setDescription(t(lang, 'tickets.formBuilder.modal.pick.mustHint')).setCheckboxComponent(yesNo(new CheckboxBuilder().setCustomId('required'), true)),
+  );
+}
+
+/** The window that asks for a text that only informs (shown above the questions or between them). */
+function infoModal(uid, lang) {
+  return new ModalBuilder().setCustomId(`tfm_info::${uid}`).setTitle(t(lang, 'tickets.formBuilder.modal.info.title')).addLabelComponents(
+    new LabelBuilder().setLabel(t(lang, 'tickets.formBuilder.modal.info.text')).setTextInputComponent(new TextInputBuilder().setCustomId('content').setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(LIMITS.content)),
+  );
+}
+
+const NEW_MODALS = { tf_add_choice: choiceModal, tf_add_file: fileModal, tf_add_pick: pickModal, tf_add_info: infoModal };
+
 async function handleButton(interaction) {
   const [type, uid] = interaction.customId.split('::');
   const lang = await languageOf(interaction);
@@ -128,6 +195,15 @@ async function handleButton(interaction) {
       return;
     }
     await interaction.showModal(fieldModal(uid, type === 'tf_add_long' ? 'long' : 'short', lang));
+    return;
+  }
+
+  if (NEW_MODALS[type]) {
+    if (draft.fields.length >= MAX_FIELDS) {
+      await interaction.reply({ content: t(lang, 'tickets.formBuilder.full', { max: MAX_FIELDS }), flags: MessageFlags.Ephemeral });
+      return;
+    }
+    await interaction.showModal(NEW_MODALS[type](uid, lang));
     return;
   }
 
@@ -173,6 +249,34 @@ async function handleButton(interaction) {
 // "no" also in Portuguese ("não"), since the question is asked in the language of the server.
 const NO_ANSWERS = ['no', 'n', 'false', 'optional', 'não', 'nao'];
 
+const NEW_TYPES = ['tfm_choice', 'tfm_file', 'tfm_pick', 'tfm_info'];
+const radioOf = (fields, id) => { try { return fields.getRadioGroup(id) ?? null; } catch { return null; } };
+const boxOf = (fields, id) => { try { return fields.getCheckbox(id) === true; } catch { return false; } };
+
+/** The number for the id of the next question: field_1, field_2... the first one no question of the draft has. */
+function nextNumber(draft) {
+  let n = draft.fields.length + 1;
+  while (draft.fields.some((f) => f.id === `field_${n}`)) n++;
+  return n;
+}
+
+/** The question a window of the builder describes, as a stored question (checked afterwards by normalizeField). */
+function newQuestion(type, fields, text) {
+  if (type === 'tfm_info') return { type: 'display', content: text('content') };
+  const base = { label: text('label'), required: boxOf(fields, 'required') };
+  if (type === 'tfm_choice') {
+    const kind = { radio: 'radio', checks: 'checkboxes' }[radioOf(fields, 'kind')] ?? 'select';
+    const options = optionsOf(text('options'));
+    return { ...base, type: kind, options, ...(kind === 'select' && boxOf(fields, 'many') ? { max: options.length } : {}) };
+  }
+  if (type === 'tfm_file') {
+    const max = Number([...(fields.getStringSelectValues('max') ?? [])][0]);
+    return { ...base, type: 'file', accept: radioOf(fields, 'accept') === 'any' ? 'any' : 'images', max: Number.isFinite(max) ? max : 1 };
+  }
+  const kind = radioOf(fields, 'kind');
+  return { ...base, type: ['role', 'channel', 'check'].includes(kind) ? kind : 'user' };
+}
+
 async function handleModal(interaction) {
   const [type, uid] = interaction.customId.split('::');
   const lang = await languageOf(interaction);
@@ -187,6 +291,20 @@ async function handleModal(interaction) {
 
   if (type === 'tfm_title') {
     draft.title = g('title').slice(0, 45) || draft.title;
+  } else if (NEW_TYPES.includes(type)) {
+    if (draft.fields.length >= MAX_FIELDS) {
+      await interaction.reply({ content: t(lang, 'tickets.formBuilder.full', { max: MAX_FIELDS }), flags: MessageFlags.Ephemeral });
+      return;
+    }
+    let field;
+    try {
+      field = normalizeField(newQuestion(type, interaction.fields, g), { lang });
+    } catch (err) {
+      await interaction.reply({ content: `${EMOJI.DENY} ${err.message}`, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    field.id = `field_${nextNumber(draft)}`;
+    draft.fields.push(field);
   } else {
     if (draft.fields.length >= MAX_FIELDS) {
       await interaction.reply({ content: t(lang, 'tickets.formBuilder.full', { max: MAX_FIELDS }), flags: MessageFlags.Ephemeral });
@@ -198,10 +316,8 @@ async function handleModal(interaction) {
       return;
     }
     const answer = g('required').toLowerCase();
-    let n = draft.fields.length + 1;
-    while (draft.fields.some((f) => f.id === `field_${n}`)) n++;
     draft.fields.push({
-      id: `field_${n}`,
+      id: `field_${nextNumber(draft)}`,
       type: type === 'tfm_long' ? 'long_text' : 'short_text',
       label,
       placeholder: g('hint') || undefined,

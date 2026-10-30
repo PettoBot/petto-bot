@@ -1,28 +1,13 @@
 const database = require('./database');
 const { t, currentLanguage } = require('../i18n');
 
-const FIELD_TYPES = new Set(['short_text', 'long_text']);
+// The questions of a form (their types, limits and checks) are in utils/ticketFormFields.js; here they are only saved and read.
+const { FIELD_TYPES: TYPES, normalizeFields } = require('../utils/ticketFormFields');
+
+const FIELD_TYPES = new Set(TYPES);
 
 function normalizeName(name) {
   return String(name ?? '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50);
-}
-
-function normalizeFields(fields) {
-  if (!Array.isArray(fields) || fields.length < 1 || fields.length > 5) throw new Error(t(currentLanguage(), 'tickets.db.form.fieldCount'));
-  return fields.map((field, index) => {
-    const type = String(field.type ?? 'short_text').trim().toLowerCase();
-    if (!FIELD_TYPES.has(type)) throw new Error(t(currentLanguage(), 'tickets.db.form.fieldType', { number: index + 1 }));
-    const id = String(field.id ?? field.label ?? `field_${index + 1}`).trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_').slice(0, 40);
-    const label = String(field.label ?? '').trim().slice(0, 45);
-    if (!id || !label) throw new Error(t(currentLanguage(), 'tickets.db.form.fieldLabel', { number: index + 1 }));
-    return {
-      id,
-      type,
-      label,
-      placeholder: String(field.placeholder ?? '').trim().slice(0, 100) || undefined,
-      required: field.required !== false,
-    };
-  });
 }
 
 async function createForm({ guildId, name, title, fields }) {

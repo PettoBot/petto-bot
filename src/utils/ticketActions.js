@@ -15,6 +15,8 @@ const { transcriptParts } = require('./transcriptDelivery');
 const { createTranscriptToken } = require('./transcriptToken');
 const { buildTicketControlRow, buildTicketMemberRow, buildClosedControlRow, buildWelcomeFallbackCard, buildTranscriptLinkRow, buildTicketClosedCard, buildTicketClosedNotice, buildClaimCard, buildUnclaimCard, buildRatingRow, starsText } = require('./ticketCards');
 const { textCard } = require('./caseCard');
+const { usableFields, buildFormModal } = require('./ticketFormFields');
+const { postAnswers } = require('./ticketAnswers');
 const { sendLog } = require('../logging/engine');
 const { EMOJI } = require('./emojis');
 const config = require('../config');
@@ -79,7 +81,7 @@ async function buildWelcomePayload({ category, guild, channel, opener, ticketId,
 }
 
 /** Creates the ticket's private channel, DB row, and welcome message. Throws on failure (caller replies with the error). */
-async function openTicket({ guild, client, category, opener, formAnswers = null }) {
+async function openTicket({ guild, client, category, opener, formAnswers = null, formEntries = null }) {
   const lang = await guildLanguage(guild.id);
   const settings = await settingsDb.getSettings(guild.id);
   const member = await guild.members.fetch(opener.id).catch(() => null);
@@ -163,9 +165,11 @@ async function openTicket({ guild, client, category, opener, formAnswers = null 
     await sendAs(channel, 'tickets', { components: [textCard(`${EMOJI.WARNING}  ${outsideHoursText(settings, lang)}`)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
   }
 
-  if (formAnswers && Object.keys(formAnswers).length) {
-    const answerLines = Object.entries(formAnswers).map(([label, answer]) => `**${label}:** ${String(answer).slice(0, 1000)}`);
-    await sendAs(channel, 'tickets', { components: [textCard(`${t(lang, 'tickets.open.submittedForm')}\n${answerLines.join('\n')}`)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+  // The answers of the form: text, choices, marks, mentions (that notify nobody), pictures and files (copied into this channel, see utils/ticketAnswers.js).
+  // A caller that only has { question: text } still gets its card.
+  const shown = formEntries?.length ? formEntries : Object.entries(formAnswers ?? {}).map(([label, value]) => ({ type: 'short_text', label, value: String(value ?? '') }));
+  if (shown.length) {
+    await postAnswers(shown, { send: (payload) => sendAs(channel, 'tickets', payload), lang, guild, log: (err) => logger.warn(`Ticket #${ticket.ticket_number}: the answers of the form could not be sent: ${err.message}`) });
   }
 
   // The AI assistant (beta, off unless the server switched it on) says hello in the ticket.
@@ -508,13 +512,12 @@ async function openTicketInteractive(interaction, category, lang) {
       await interaction.reply({ content: t(lang, 'tickets.open.formMissing'), flags: MessageFlags.Ephemeral });
       return;
     }
-    const { ModalBuilder, ActionRowBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
-    const modal = new ModalBuilder().setCustomId(`tk_form::${category.id}::${form.id}`).setTitle(defaultText(lang, form.title, 'tickets.form.defaultTitle') || t(lang, 'tickets.form.defaultTitle'));
-    for (const field of form.fields ?? []) {
-      const input = new TextInputBuilder().setCustomId(`field::${field.id}`).setLabel(field.label).setStyle(field.type === 'long_text' ? TextInputStyle.Paragraph : TextInputStyle.Short).setRequired(field.required !== false);
-      if (field.placeholder) input.setPlaceholder(field.placeholder);
-      modal.addComponents(new ActionRowBuilder().addComponents(input));
+    const fields = usableFields(form.fields);
+    if (!fields.length) {
+      await interaction.reply({ content: t(lang, 'tickets.open.formMissing'), flags: MessageFlags.Ephemeral });
+      return;
     }
+    const modal = buildFormModal({ customId: `tk_form::${category.id}::${form.id}`, title: defaultText(lang, form.title, 'tickets.form.defaultTitle') || t(lang, 'tickets.form.defaultTitle'), fields });
     await interaction.showModal(modal);
     return;
   }
