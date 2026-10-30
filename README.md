@@ -77,4 +77,4 @@ Feature ideas and behavior changes should be discussed and accepted before imple
 
 ## License
 
-Petto is licensed under the [AGPL-3.0-only license](LICENSE), see the LICENSE file for the full text.
+Petto is licensed under the [AGPL-3.0-only license](LICENSE). The LICENSE file has the full text.
