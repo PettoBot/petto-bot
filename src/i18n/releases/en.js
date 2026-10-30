@@ -1,5 +1,41 @@
 // The release notes of `!version` in English: label, summary and sections of each release (src/utils/releases.js holds the rest).
 module.exports = {
+  'v0.7.9-2': {
+    label: 'v0.7.9~2 · Donut: /act, 43 new interactions, !uwu and more',
+    summary: 'A patch of Donut: all the interaction commands in one `/act` command, 43 new ones, `!uwu` and four small games, several prefixes, new ticket forms and silent mentions.',
+    sections: [
+      {
+        title: 'Interactions',
+        items: [
+          '`/act` holds every interaction command (`hug`, `pat`, `slap`...) in five groups, so they take one slash command instead of 36. With the prefix nothing changes: `!hug @Ana` and every other word work as before.',
+          '43 new interactions with their gif, button and counter: `cheers`, `clap`, `nuzzle`, `sleep`, `thumbsup`, `yay` and many more.',
+          'The message mentions both people when you use `/act` and uses names when you use the prefix. Nobody is notified, and a gif that cannot be loaded is replaced by a note.',
+        ],
+      },
+      {
+        title: 'Fun',
+        items: [
+          '`!uwu` turns a text, or the message you reply to, into uwu speak without breaking mentions, links, code or emojis.',
+          '`!coinflip`, `!wouldyourather`, `!neverhaveiever` and `!truthordare`, in English, Spanish and Portuguese.',
+        ],
+      },
+      {
+        title: 'Servers and tickets',
+        items: [
+          'Several prefixes per server with `!prefix add` and `!prefix remove`, and a new server starts in its own language.',
+          'Ticket forms with dropdowns, checkboxes, pickers, pictures and files, and a `!` before a mention shows it without notifying.',
+          'Support mode for the owner of Petto, and feeds numbered per server.',
+        ],
+      },
+      {
+        title: 'Fixes',
+        items: [
+          'Long ticket form answers appear, Kick and Reddit feeds say what happened, and a time from 19:00 to 23:59 is understood again.',
+          '`!act` is no longer a short word for `!activity` (it is `/act` now).',
+        ],
+      },
+    ],
+  },
   'v0.7.9-1': {
     label: 'v0.7.9~1 · Donut: pictures that match, !send and RSS fixed',
     summary: 'A patch of Donut: feeds of pictures that match every word and ask what a word means, `!send` that finds its channel, and RSS feeds that say when a link is not a feed.',

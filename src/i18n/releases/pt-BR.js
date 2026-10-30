@@ -1,5 +1,41 @@
 // As notas de versão do `!version` em português do Brasil: rótulo, resumo e seções de cada versão (src/utils/releases.js guarda o resto).
 module.exports = {
+  'v0.7.9-2': {
+    label: 'v0.7.9~2 · Donut: /act, 43 interações novas, !uwu e mais',
+    summary: 'Uma correção do Donut: todos os comandos de interação em um só comando `/act`, 43 novos, `!uwu` e quatro joguinhos, vários prefixos, formulários de tickets novos e menções silenciosas.',
+    sections: [
+      {
+        title: 'Interações',
+        items: [
+          '`/act` reúne todos os comandos de interação (`hug`, `pat`, `slap`...) em cinco grupos, então ocupam um comando de barra em vez de 36. Com o prefixo nada muda: `!hug @Ana` e cada palavra continuam funcionando.',
+          '43 interações novas com gif, botão e contador: `cheers`, `clap`, `nuzzle`, `sleep`, `thumbsup`, `yay` e muitas outras.',
+          'A mensagem menciona as duas pessoas com `/act` e usa nomes com o prefixo. Ninguém é notificado, e um gif que não carrega é trocado por uma nota.',
+        ],
+      },
+      {
+        title: 'Diversão',
+        items: [
+          '`!uwu` transforma um texto, ou a mensagem que você responde, em fala uwu sem quebrar menções, links, código nem emojis.',
+          '`!coinflip`, `!wouldyourather`, `!neverhaveiever` e `!truthordare`, em português, inglês e espanhol.',
+        ],
+      },
+      {
+        title: 'Servidores e tickets',
+        items: [
+          'Vários prefixos por servidor com `!prefix add` e `!prefix remove`, e um servidor novo começa no seu próprio idioma.',
+          'Formulários de tickets com menus, caixas de seleção, seletores, imagens e arquivos, e um `!` antes de uma menção a mostra sem notificar.',
+          'Modo de suporte para o dono do Petto, e feeds numerados por servidor.',
+        ],
+      },
+      {
+        title: 'Correções',
+        items: [
+          'As respostas longas de um formulário de tickets aparecem, os feeds do Kick e do Reddit dizem o que aconteceu, e um horário de 19:00 a 23:59 volta a ser entendido.',
+          '`!act` deixou de ser uma palavra curta de `!activity` (agora é `/act`).',
+        ],
+      },
+    ],
+  },
   'v0.7.9-1': {
     label: 'v0.7.9~1 · Donut: imagens que combinam, !send e RSS corrigidos',
     summary: 'Uma correção do Donut: feeds de imagens que seguem todas as palavras e perguntam o que uma palavra quer dizer, `!send` que acha o seu canal, e feeds RSS que avisam quando um link não é um feed.',
