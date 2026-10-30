@@ -21,6 +21,7 @@ All notable changes to Petto are documented here.
 
 ### Changed
 
+- **The ticket transcript draws a picture or a file once and lets you open the picture.** A message with files for its components (the answers of a form) was drawn twice, as a gallery or file card and again among its attachments; now each file appears once, the pictures of a gallery are a link to the full picture (a single picture is shown whole, not cropped), and a file card shows its size.
 - **A message that only looks like a command stays silent.** `, es el mejor`, `! hola` and `petto es el mejor` are chat: a prefix that is a symbol needs the command right after it, and a word prefix only starts a command when the next word is a real command, alias, server alias or custom command. Only the main prefix of the server answers "I don't know that command" to an unknown word written like a command (`!es el mejor`); the other prefixes, the word ones, the prefix of a person and a message like `!!!` do nothing. `p! help` (a space after a symbol prefix) is no longer a command: write `p!help`.
 - The prefix of a server can have up to 12 characters (it was 5), and the quick setup form no longer cuts a longer prefix to 5. A custom command cannot take a prefix of its own that is one of the prefixes of the server. The suggestions channel and the autoresponders read the whole list.
 
