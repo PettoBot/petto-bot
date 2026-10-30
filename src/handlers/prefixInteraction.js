@@ -6,6 +6,7 @@ const { resolveUser } = require('../utils/userResolve');
 const { dropTokens, channelByName } = require('../utils/codeArgs');
 const { looksLikeScript } = require('../utils/embedScript');
 const { t, currentLanguage } = require('../i18n');
+const { sendWithPlainFallback } = require('../utils/payloadFallback');
 
 /** Splits a command's argument text into tokens, treating "quoted strings" and 'single-quoted' as one token each. */
 function tokenize(content) {
@@ -246,8 +247,10 @@ function liveChannel(message) {
 function buildPseudoInteraction(message, { commandName, subcommand, subcommandGroup, values }) {
   let repliedMessage = null;
   let deferredFlag = false;
+  // An answer that Discord refuses for its size is told once as a short text (the language is set by the dispatcher after this is built).
+  const fallback = (send, payload) => sendWithPlainFallback(send, sanitizePayload(payload), { lang: () => pseudo.pettoLang, context: `!${commandName}` });
 
-  return {
+  const pseudo = {
     isChatInputCommand: () => true,
     isMessageContextMenuCommand: () => false,
     commandName,
@@ -299,25 +302,26 @@ function buildPseudoInteraction(message, { commandName, subcommand, subcommandGr
       deferredFlag = true;
     },
     async reply(payload) {
-      repliedMessage = await message.reply(sanitizePayload(payload));
+      repliedMessage = await fallback((options) => message.reply(options), payload);
       return repliedMessage;
     },
     async editReply(payload) {
-      if (repliedMessage) return repliedMessage.edit(sanitizePayload(payload));
+      if (repliedMessage) return fallback((options) => repliedMessage.edit(options), payload);
       // A command that deletes its own channel (nuke) leaves no channel to answer in: there is nobody to tell, so it is not an error.
       const channel = liveChannel(message);
       if (!channel) return null;
-      repliedMessage = await channel.send(sanitizePayload(payload));
+      repliedMessage = await fallback((options) => channel.send(options), payload);
       return repliedMessage;
     },
     async followUp(payload) {
       const channel = liveChannel(message);
-      return channel ? channel.send(sanitizePayload(payload)) : null;
+      return channel ? fallback((options) => channel.send(options), payload) : null;
     },
     async fetchReply() {
       return repliedMessage;
     },
   };
+  return pseudo;
 }
 
 /**

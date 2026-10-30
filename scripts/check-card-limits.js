@@ -7,6 +7,7 @@ process.env.DISCLOUD_DATABASE_URL ||= 'postgres://check:check@127.0.0.1:1/check'
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
+const errors = []; // what the stubbed logger was told as an error
 const stub = (relative, exports) => {
   const resolved = require.resolve(path.join(__dirname, '..', relative));
   require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports };
@@ -36,7 +37,7 @@ function checkLists() {
 // ---------------------------------------------------------------------------------------------------------------------
 async function checkUnbanAll() {
   const warnings = [];
-  stub('src/utils/logger.js', { info() {}, debug() {}, error() {}, warn: (...args) => warnings.push(args.join(' ')) });
+  stub('src/utils/logger.js', { info() {}, debug() {}, error: (...args) => errors.push(args.join(' ')), warn: (...args) => warnings.push(args.join(' ')) });
   stub('src/db/hardBans.js', { addHardBan: async () => {}, getHardBan: async () => null, removeHardBan: async () => {}, canLiftHardBan: async () => true, listHardBanIds: async () => new Set() });
   let caseCounter = 100000;
   stub('src/db/modActions.js', { createCase: async () => ({ case_number: caseCounter++ }), getActiveSanction: async () => null, deactivateCase: async () => {} });
@@ -252,12 +253,111 @@ function checkDisplayGuard() {
   assert.equal(new TextDisplayBuilder().setContent(`${'z'.repeat(3990)} <@123456789012345678>`).toJSON().content.length <= 4000, true);
 }
 
+// ---------------------------------------------------------------------------------------------------------------------
+// The last resort: an answer that Discord refuses for its content is told once as a short text; nothing else is retried.
+// ---------------------------------------------------------------------------------------------------------------------
+async function checkFallback() {
+  const { MessageFlags } = require('discord.js');
+  const { isPayloadError, sendWithPlainFallback, plainPayload, PLAIN_LIMIT } = require('../src/utils/payloadFallback');
+  const { buildPseudoInteraction } = require('../src/handlers/prefixInteraction');
+  const refused = (code = 50035, rawError = { errors: { components: {} } }) => Object.assign(new Error('Invalid Form Body'), { code, rawError });
+
+  assert.equal(isPayloadError(refused()), true);
+  for (const other of [refused(50013), refused(10003), refused(50001), refused(160002), refused(10062), new Error('boom'), null, undefined]) assert.equal(isPayloadError(other), false);
+
+  // A card Discord refuses: one retry, a plain short text, nothing that can mention or show a component, one line in the log.
+  const sent = [];
+  let failures = 1;
+  const send = async (payload) => { sent.push(payload); if (failures-- > 0) throw refused(); return { id: 'ok' }; };
+  const card = { components: [new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent('hello'))], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral };
+  errors.length = 0;
+  const result = await sendWithPlainFallback(send, card, { lang: 'es', context: '!massban' });
+  assert.deepEqual(result, { id: 'ok' });
+  assert.equal(sent.length, 2, 'one try and one retry');
+  assert.equal(sent[0], card, 'the first try is the card as it was');
+  const retry = sent[1].components[0].toJSON();
+  assert.equal(retry.type, 10, 'in Components V2 the short text is a text display (content is not allowed there)');
+  assert.ok(retry.content.length <= PLAIN_LIMIT && retry.content.includes('demasiado larga'), 'in the language of the server');
+  assert.equal(sent[1].flags, MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral, 'private stays private');
+  assert.deepEqual(sent[1].allowedMentions, { parse: [] });
+  assert.equal(errors.length, 1, 'the failure is logged once');
+  assert.ok(errors[0].includes('50035') && errors[0].includes('!massban'));
+
+  // Not in Components V2: a plain `content`, with no components, embeds or files.
+  sent.length = 0;
+  failures = 1;
+  await sendWithPlainFallback(send, { embeds: [{ title: 'x' }], components: [{}], files: ['a'], content: undefined }, { lang: 'pt-BR' });
+  assert.equal(sent[1].content.includes('longa demais'), true);
+  assert.deepEqual([sent[1].components, sent[1].embeds, sent[1].files, sent[1].flags], [[], [], [], undefined]);
+  assert.ok(sent[1].content.length <= 1900);
+  // An error card that is short text of its own is kept as it is; Discord's own words about Components V2 make it a text display.
+  const v2Conflict = refused(50035, { errors: { content: { _errors: [{ code: 'MESSAGE_CANNOT_USE_LEGACY_FIELDS_WITH_COMPONENTS_V2' }] } } });
+  const sentConflict = [];
+  await sendWithPlainFallback(async (payload) => { sentConflict.push(payload); if (sentConflict.length === 1) throw v2Conflict; }, { content: 'Something went wrong while running that command.', flags: MessageFlags.Ephemeral }, { lang: 'en' });
+  assert.equal(sentConflict[1].components[0].toJSON().content, 'Something went wrong while running that command.');
+  assert.equal(sentConflict[1].flags, MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral);
+  assert.ok(plainPayload('a'.repeat(5000), 'en').content.length <= PLAIN_LIMIT, 'whatever the text, the short text is at most 1900 characters');
+
+  // A permission or an unknown channel is not about the answer: no retry, the same error.
+  for (const code of [50013, 10003, 50001, 160002, 10062, 10008]) {
+    const calls = [];
+    const error = refused(code);
+    await assert.rejects(() => sendWithPlainFallback(async (payload) => { calls.push(payload); throw error; }, card, { lang: 'en' }), (thrown) => thrown === error);
+    assert.equal(calls.length, 1, `code ${code} is not retried`);
+  }
+  // No loop: when the short text is refused too, the error goes up after two tries.
+  const always = [];
+  await assert.rejects(() => sendWithPlainFallback(async (payload) => { always.push(payload); throw refused(); }, card, { lang: 'en' }), (error) => error.code === 50035);
+  assert.equal(always.length, 2, 'two tries, never more');
+
+  // The prefix commands: the same thing through the fake interaction every `!command` runs with, for reply, editReply and followUp.
+  const log = [];
+  let failNext = 0;
+  const channel = { id: 'c1', send: async (options) => { log.push(['send', options]); if (failNext-- > 0) throw refused(); return { id: 'sent', edit: async (o) => { log.push(['edit', o]); if (failNext-- > 0) throw refused(); return { id: 'edited' }; } }; } };
+  const message = {
+    guild: { id: 'g1' }, channel, author: { id: 'u1' }, member: {}, client: {}, channelId: 'c1',
+    reply: async (options) => {
+      log.push(['reply', options]);
+      if (failNext-- > 0) throw refused();
+      return { id: 'r', edit: async (o) => { log.push(['edit', o]); if (failNext-- > 0) throw refused(); return { id: 'edited' }; } };
+    },
+  };
+  const pseudo = buildPseudoInteraction(message, { commandName: 'massban', subcommand: null, subcommandGroup: null, values: {} });
+  pseudo.pettoLang = 'es';
+  failNext = 1;
+  log.length = 0;
+  await pseudo.reply(card);
+  assert.equal(log[0][0], 'reply');
+  assert.equal(log[1][0], 'reply');
+  assert.ok(log[1][1].components[0].toJSON().content.includes('demasiado larga'), 'the language of the server');
+  failNext = 1;
+  log.length = 0;
+  await pseudo.editReply(card);
+  assert.deepEqual(log.map((entry) => entry[0]), ['edit', 'edit'], 'an edit that Discord refuses is retried once as an edit');
+  failNext = 1;
+  log.length = 0;
+  await pseudo.followUp(card);
+  assert.deepEqual(log.map((entry) => entry[0]), ['send', 'send'], 'and a follow up too');
+  // A refusal that is not about the answer still reaches the command.
+  message.reply = async () => { throw refused(50013); };
+  await assert.rejects(() => pseudo.reply(card), (error) => error.code === 50013);
+
+  // The whole chain for the case of the report: a card that Discord refuses never ends as a generic error.
+  const guarded = await (async () => {
+    const tries = [];
+    await sendWithPlainFallback(async (payload) => { tries.push(payload); if (tries.length === 1) throw refused(); }, { components: [], flags: MessageFlags.IsComponentsV2 }, { lang: 'en' });
+    return tries;
+  })();
+  assert.equal(guarded.length, 2);
+}
+
 (async () => {
   checkLists();
   await checkUnbanAll();
   checkAddBlocks();
   checkFuzz();
   checkDisplayGuard();
+  await checkFallback();
   console.log('check-card-limits: ok');
   process.exit(0);
 })().catch((error) => { console.error(error); process.exit(1); });

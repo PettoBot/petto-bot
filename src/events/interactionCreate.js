@@ -1,4 +1,5 @@
 const { isPermissionError, permissionHelp } = require('../utils/permissionErrors');
+const { isPayloadError, sendWithPlainFallback } = require('../utils/payloadFallback');
 const { Events, MessageFlags } = require('discord.js');
 const { getRemainingCooldownShared } = require('../utils/sharedCooldown');
 const moderationPermissions = require('../utils/moderationPermissions');
@@ -610,12 +611,10 @@ module.exports = {
       if (isPermissionError(err)) logger.warn(`Missing permission running /${interaction.commandName}: ${err.message} (code ${err.code})`);
       else logger.error(`Error executing /${interaction.commandName}:`, err);
 
-      const errorReply = { content: isPermissionError(err) ? permissionHelp(err, lang) : t(lang, 'core.error'), flags: MessageFlags.Ephemeral };
-      if (interaction.deferred || interaction.replied) {
-        await interaction.editReply(errorReply).catch(() => {});
-      } else {
-        await interaction.reply(errorReply).catch(() => {});
-      }
+      const errorReply = { content: isPermissionError(err) ? permissionHelp(err, lang) : isPayloadError(err) ? t(lang, 'core.replyTooLong') : t(lang, 'core.error'), flags: MessageFlags.Ephemeral };
+      // If Discord refuses the error card itself for what it is made of (a deferred answer in Components V2 does not take `content`), a short text is sent once.
+      const send = (payload) => (interaction.deferred || interaction.replied ? interaction.editReply(payload) : interaction.reply(payload));
+      await sendWithPlainFallback(send, errorReply, { lang, context: `/${interaction.commandName}` }).catch(() => {});
     }
   },
 };

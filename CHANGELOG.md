@@ -4,6 +4,10 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A long result no longer ends a command with an error.** A mass unban of thousands of users listed every case number, passed the 4000 characters Discord accepts in a text display, and failed with "Something went wrong" after the unbans were done and before they were logged. It now lists the first 20 cases and "and N more" (the same cap is on the lists of the bulk ban, kick, mute, unmute and warn, and a few others), the log is sent before the result, every card keeps its text inside 1 to 4000 characters per text display and 4000 in all (cut at a line or word, never inside a code fence, mention, emoji or link), and if Discord still refuses an answer for its size the member gets one short text that says what happened.
+
 ## [0.7.9-2] — 2026-10-30 · Donut
 
 A patch of 0.7.9, shown as **0.7.9~2**.
