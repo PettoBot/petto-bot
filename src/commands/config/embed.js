@@ -121,6 +121,7 @@ const VAR_PAGES = [
     id: 'functions',
     fields: [
       ['`{newline}`', 'newline'], // i18n-ignore: variables as they are typed
+      ['`!@everyone`', 'silent'], // i18n-ignore: a silent mention as it is typed
       ['`{separator}`', 'separator'], // i18n-ignore: variables as they are typed
       ['`{choose:a|b|c}`', 'choose'], // i18n-ignore: variables as they are typed
       ['`{range:1-100}`', 'range'], // i18n-ignore: variables as they are typed

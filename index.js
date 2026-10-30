@@ -99,6 +99,8 @@ client.setMaxListeners(30);
 // The first row of every server is made with the language Petto detects for it, whichever part of Petto needs the row first.
 require('./src/db/guilds').setGuildLookup((guildId) => client.guilds.cache.get(guildId));
 attachRestRateLimitTelemetry(client);
+// A `!` right before a mention (`!@everyone`, `!<@&id>`, `!@Role`) makes it show without notifying: done once, where every send meets.
+require('./src/utils/silentMentionsHook').installSilentMentions(client);
 require('./src/utils/redis').start();
 // The dashboard says on Redis when it changes a setting, so the caches forget it at once instead of when they expire.
 require('./src/utils/cacheInvalidation').startCacheInvalidation();
