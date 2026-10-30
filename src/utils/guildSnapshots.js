@@ -8,7 +8,10 @@ const redis = require('./redis');
 
 const FETCH_ME_MS = 4_000; // the bot's own member is asked from Discord for at most this long
 const ME_CHECK_MS = 3_600_000; // a server where the bot cannot post somewhere has the roles of the bot checked against Discord at most this often
-const MISSING_SHOWN = 6; // channels named in the line of the log
+const MISSING_SHOWN = 3; // channels named in the line of the log, the rest is counted
+const LOG_EVERY_MS = 3_600_000; // the line about the channels the bot cannot post in is said again for a server at most this often
+const LOG_MIN_CHANGE = 10; // ... and only when this many channels (or LOG_MIN_PERCENT of the ones last said, if that is more) were closed or opened since it was said
+const LOG_MIN_PERCENT = 10;
 // Forum and media channels are not posted in like a text channel (a post starts a thread): the answer there is "unknown", never "cannot".
 const NOT_POSTABLE_TYPES = new Set([ChannelType.GuildForum, ChannelType.GuildMedia, ChannelType.GuildDirectory, ChannelType.GuildCategory]);
 const permissionName = (flag) => Object.entries(PermissionFlagsBits).find(([, value]) => value === flag)?.[0] ?? String(flag);
@@ -137,17 +140,40 @@ async function loadBotMember(guild, { force = false } = {}) {
 }
 
 const memberCheckedAt = new Map(); // guild id -> when the roles of the bot were last read from Discord because a channel was closed to it
-const lastClosed = new Map(); // guild id -> the channels the bot cannot post in, as the log last said
+const lastClosed = new Map(); // guild id -> { at, closed: Map(channel id -> missing permission) } as the log last said it
 
-/** One line of the log when the channels the bot cannot post in change (and the first time they are known), naming the first permission each one lacks. */
+/** How many channels differ between two sets of closed channels: opened, closed, or closed for another permission. */
+function closedChange(before, now) {
+  let changed = 0;
+  for (const [id, missing] of now) if (before.get(id) !== missing) changed += 1;
+  for (const id of before.keys()) if (!now.has(id)) changed += 1;
+  return changed;
+}
+
+/**
+ * One line of the log about the channels the bot cannot post in: how many, the first few with the permission each lacks, and "and N more". A server with
+ * private channels hidden from the bot has hundreds of them, so the line is short, it is said the first time the server is looked at, and after that only
+ * when the set changed by at least 10 channels or 10 percent (whichever is more) since it was last said, and never more than once an hour for a server.
+ * The set last said is kept until then, so many small changes add up to one line instead of being forgotten.
+ */
 function logClosedChannels(guild, notes) {
-  const key = notes.map((note) => `${note.id}:${note.missing}`).join(',');
-  if ((lastClosed.get(guild.id) ?? '') === key) return;
-  const first = !lastClosed.has(guild.id);
-  lastClosed.set(guild.id, key);
-  if (!notes.length) { if (!first) logger.info(`[snapshots] ${guild.name} (${guild.id}): Petto can post in every channel again.`); return; } // i18n-ignore: a line of the log
+  const id = String(guild.id);
+  const now = new Map(notes.map((note) => [note.id, note.missing]));
+  const last = lastClosed.get(id);
+  if (!last && !notes.length) { lastClosed.set(id, { at: Date.now(), closed: now }); return; } // nothing closed at the first look: nothing to say
+  if (last) {
+    const changed = closedChange(last.closed, now);
+    if (!changed) return;
+    if (changed < Math.max(LOG_MIN_CHANGE, Math.ceil(Math.max(last.closed.size, now.size) * LOG_MIN_PERCENT / 100))) return;
+    if (Date.now() - last.at < LOG_EVERY_MS) return;
+  }
+  lastClosed.set(id, { at: Date.now(), closed: now });
+  const where = `[snapshots] ${guild.name} (${id})`; // i18n-ignore: a line of the log
+  if (!notes.length) { logger.info(`${where}: Petto can post in every channel again.`); return; } // i18n-ignore: a line of the log
   const shown = notes.slice(0, MISSING_SHOWN).map((note) => `#${note.name} (${note.missing})`).join(', ');
-  logger.info(`[snapshots] ${guild.name} (${guild.id}): Petto cannot post in ${notes.length} channel(s), missing permission: ${shown}${notes.length > MISSING_SHOWN ? ', ...' : ''}.`); // i18n-ignore: a line of the log
+  const more = notes.length > MISSING_SHOWN ? ` and ${notes.length - MISSING_SHOWN} more` : ''; // i18n-ignore: a line of the log
+  const normal = notes.every((note) => note.missing === 'ViewChannel') ? ' (normal when private channels hide from Petto)' : ''; // i18n-ignore: a line of the log
+  logger.info(`${where}: Petto cannot post in ${notes.length} channel(s), missing permission: ${shown}${more}${normal}.`); // i18n-ignore: a line of the log
 }
 
 /**
