@@ -1,4 +1,4 @@
-// Node 18 has Web Crypto only under require; Petto Code takes its random numbers from globalThis.crypto (it is read once, at startup).
+// Node 18 has Web Crypto only under require; Petto Code takes its random numbers from globalThis.crypto (it is read once, at startup, before any module runs).
 if (!globalThis.crypto) globalThis.crypto = require('node:crypto').webcrypto;
 
 const { Client, GatewayIntentBits, Partials } = require('discord.js');
