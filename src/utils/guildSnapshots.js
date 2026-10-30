@@ -1,10 +1,12 @@
 const crypto = require('node:crypto');
+const { PermissionFlagsBits } = require('discord.js');
 const config = require('../config');
 const logger = require('./logger');
 const { forEachWithConcurrency } = require('./concurrency');
 const snapshotsDb = require('../db/guildSnapshots');
 const redis = require('./redis');
 
+const POST_PERMISSIONS = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages]; // what a feed needs to post in a channel (see feeds/service.js)
 const DEBOUNCE_MS = 3_000;
 const SYNC_CONCURRENCY = 4;
 // The dashboard reads a server from Redis first (`petto:snap:<id>`, the same row as the table) and hears on `petto:snap` when one
@@ -26,6 +28,8 @@ function buildSnapshot(guild) {
       parent_id: channel.parentId ?? null,
       topic: channel.topic ?? null,
       nsfw: Boolean(channel.nsfw),
+      // Whether the bot can see the channel and write in it: the dashboard says so where a channel is picked for something the bot posts (the feeds).
+      bot_can_send: channel.isTextBased?.() && !channel.isDMBased?.() ? Boolean(guild.members?.me && channel.permissionsFor?.(guild.members.me)?.has(POST_PERMISSIONS)) : null,
     }));
   const roles = [...guild.roles.cache.values()].map((role) => ({
     id: String(role.id),
