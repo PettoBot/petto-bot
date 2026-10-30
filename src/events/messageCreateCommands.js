@@ -326,13 +326,20 @@ module.exports = {
       return;
     }
 
-    const disabled = hiddenAutomodControl ? null : await disabledDb.findCached(message.guild.id, canonicalName, message.channel.id).catch(() => null);
+    // A route can stand for one action of a command (`!hug` is `/act` hug): `!disablecommand hug` turns off that action only.
+    // Turning off the whole command (`!disablecommand act`, or its category) turns off every action too.
+    let disableName = prefixRoute?.disableName ?? canonicalName;
+    let disabled = hiddenAutomodControl ? null : await disabledDb.findCached(message.guild.id, disableName, message.channel.id).catch(() => null);
+    if (!disabled && !hiddenAutomodControl && disableName !== canonicalName) {
+      disabled = await disabledDb.findCached(message.guild.id, canonicalName, message.channel.id).catch(() => null);
+      if (disabled) disableName = canonicalName;
+    }
     if (disabled) {
       // The usual warning card (the warning icon and who asked) with no colored side bar, that clears itself out like the
       // "unknown command" one. The icon comes from warningPayload, so the text goes without its own.
       const text = disabled.channel_id
-        ? t(lang, 'core.disabled.channel', { emoji: '', command: `${prefix}${canonicalName}`, channel: `<#${disabled.channel_id}>` })
-        : t(lang, 'core.disabled.server', { emoji: '', command: `${prefix}${canonicalName}` });
+        ? t(lang, 'core.disabled.channel', { emoji: '', command: `${prefix}${disableName}`, channel: `<#${disabled.channel_id}>` })
+        : t(lang, 'core.disabled.server', { emoji: '', command: `${prefix}${disableName}` });
       const notice = await message.reply(warningPayload(message, text.trim(), null)).catch(() => null);
       if (notice) setTimeout(() => notice.delete().catch(() => {}), UNKNOWN_COMMAND_DELETE_MS);
       return;

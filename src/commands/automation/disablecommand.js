@@ -77,7 +77,9 @@ async function realName(client, guildId, raw) {
   const name = String(raw ?? '').trim().replace(/^[^\p{L}\p{N}]+/u, '').toLowerCase();
   if (!name) return null;
   if (client.commands.has(name)) return name;
-  const known = client.commandAliases?.get(name) ?? client.commandRoutes?.get(name)?.command;
+  // A shortcut of one action of a command (`hug` of /act) is disabled on its own, under its own name.
+  const route = client.commandRoutes?.get(name);
+  const known = client.commandAliases?.get(name) ?? route?.disableName ?? route?.command;
   if (known) return known;
   const custom = guildId ? await commandAliasesDb.get(guildId, name).catch(() => null) : null;
   const target = custom?.command?.trim().split(/\s+/)[0]?.toLowerCase();

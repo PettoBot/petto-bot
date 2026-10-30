@@ -3,8 +3,10 @@
  * Explicit aliases on a command file still win; commandHandler skips collisions.
  * This never creates or deploys slash commands.
  */
+const { actionRoutes } = require('./actions');
+
 const DEFAULT_COMMAND_ALIASES = {
-  activity: ['act'], avatar: ['av', 'pfp'], banner: ['bnr'], botinfo: ['bi'], calc: ['c', 'calculate'], channelinfo: ['ci'],
+  avatar: ['av', 'pfp'], banner: ['bnr'], botinfo: ['bi'], calc: ['c', 'calculate'], channelinfo: ['ci'],
   color: ['hexcolor'], emojiinfo: ['ei'], firstmessage: ['fm'], inviteinfo: ['ii'], invites: ['invs'],
   roleinfo: ['ri'], roles: ['rolelist'], serverinfo: ['si'], snipe: ['sniped'], snowflake: ['sf'], spotify: ['sp'], time: ['tz', 'clock'], uptime: ['up'], userinfo: ['ui'], usercosmetics: ['uc'], wiki: ['wk'],
   autothread: ['at'], reaction: ['react'], reactionrole: ['rr'], stickymessage: ['sticky'], stickyroles: ['sr'], timer: ['tmr'], voicemaster: ['vm'],
@@ -172,6 +174,8 @@ const DEFAULT_PREFIX_ROUTES = [
   { alias: 'lic', command: 'chess', args: ['lichess'], subcommand: 'lichess' },
   { alias: 'dominant', command: 'image', args: ['hex'], subcommand: 'hex' },
   { alias: 'dominantcolor', command: 'image', args: ['hex'], subcommand: 'hex' },
+  // Every action of /act is its own word with the prefix: `!hug @member` is `!act love hug @member`.
+  ...actionRoutes(),
 ];
 
 function aliasesFor(commandName) {

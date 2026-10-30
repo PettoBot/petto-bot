@@ -17,7 +17,7 @@ The code is licensed under [AGPL-3.0-only](../LICENSE). Contributions are attrib
 ## Stack
 
 - Node.js 18+, discord.js v14, PostgreSQL on Discloud via `pg`
-- Prefix commands (a list of up to 10 prefixes per guild, default `!` and `petto`) — see "Command system" below for why, and how the same command files serve both without being rewritten. A short list of everyday commands (`/help`, `/ban`, `/purge`, `/rank`...) and the roleplay commands are also registered as slash commands.
+- Prefix commands (a list of up to 10 prefixes per guild, default `!` and `petto`) — see "Command system" below for why, and how the same command files serve both without being rewritten. A short list of everyday commands (`/help`, `/ban`, `/purge`, `/rank`...) and the interaction commands (hug, pat, slap...) are also registered as slash commands: all of them are subcommands of the one command `/act`, and each keeps its own word with the prefix (`!hug`).
 - Dynamically loaded from `src/commands/**`
 - All per-guild config lives in the database — nothing is hardcoded
 - Brand palette (`src/utils/colors.js`): green `#a5ea7a` (success), yellow `#fed53c` (warning/pending), red `#fe6465` (error/destructive), blue `#8399ff` (neutral/informational, the default accent). Every status-colored card/embed across the bot draws from this set — previously a handful of one-off hex values (Discord's default blurple, a semi-random pink/orange here and there).

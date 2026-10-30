@@ -31,7 +31,8 @@ for (const [name, { aliases }] of commands) {
 for (const route of DEFAULT_PREFIX_ROUTES) {
   const command = commands.get(route.command);
   assert.ok(command, `route ${route.alias}: the command ${route.command} does not exist`);
-  const subcommands = (command.data.options ?? []).filter((option) => option.type === 1).map((option) => option.name);
+  // A subcommand of a group is written `group subcommand` (`love hug` of /act).
+  const subcommands = (command.data.options ?? []).flatMap((option) => (option.type === 1 ? [option.name] : option.type === 2 ? (option.options ?? []).map((sub) => `${option.name} ${sub.name}`) : []));
   if (route.subcommand) assert.ok(subcommands.includes(route.subcommand), `route ${route.alias}: ${route.command} has no subcommand ${route.subcommand}`);
 }
 

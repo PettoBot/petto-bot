@@ -16,36 +16,8 @@ export interface RoleplayButtonInput {
   targetId: string;
 }
 
-const RESPONSE_EMOJIS: Record<string, string> = {
-  airkiss: '💋',
-  angry: '😠',
-  angrystare: '😤',
-  bleh: '😛',
-  blush: '😊',
-  bite: '🦷',
-  boop: '👉',
-  brofist: '👊',
-  cuddle: '🫂',
-  cry: '😭',
-  dance: '💃',
-  glomp: '🫂',
-  highfive: '🙌',
-  hi: '👋',
-  hug: '🤗',
-  kiss: '💋',
-  laugh: '😂',
-  pat: '🫳',
-  poke: '👉',
-  punch: '🥊',
-  sad: '😭',
-  slap: '🖐️',
-  smile: '😊',
-  smug: '😏',
-  wave: '👋',
-  wink: '😉',
-  yes: '✅',
-  no: '❌',
-};
+// The emoji of each action's response button lives with the actions of /act.
+const { EMOJIS: RESPONSE_EMOJIS } = require('./actions') as { EMOJIS: Record<string, string> };
 
 // Actions with their own texts in the roleplay catalog; any other action (an old or hand-made button) gets the generic ones.
 function hasTexts(action: string): boolean {
