@@ -747,7 +747,7 @@ function startServer(client) {
       if (!access) return;
       try {
         await Promise.all([access.guild.channels.fetch(), access.guild.roles.fetch()]);
-        await saveGuildSnapshot(access.guild);
+        await saveGuildSnapshot(access.guild, { refreshMe: true }); // the bot's own roles are read again too: they decide where it may post
         res.json({ ok: true, roles: access.guild.roles.cache.size, channels: access.guild.channels.cache.size });
       } catch (err) {
         logger.error(`Dashboard resync failed for guild ${req.params.guildId}:`, err);

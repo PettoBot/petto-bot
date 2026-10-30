@@ -1,12 +1,43 @@
 const crypto = require('node:crypto');
-const { PermissionFlagsBits } = require('discord.js');
+const { PermissionFlagsBits, ChannelType } = require('discord.js');
 const config = require('../config');
 const logger = require('./logger');
 const { forEachWithConcurrency } = require('./concurrency');
 const snapshotsDb = require('../db/guildSnapshots');
 const redis = require('./redis');
 
-const POST_PERMISSIONS = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages]; // what a feed needs to post in a channel (see feeds/service.js)
+const FETCH_ME_MS = 4_000; // the bot's own member is asked from Discord for at most this long
+const ME_CHECK_MS = 3_600_000; // a server where the bot cannot post somewhere has the roles of the bot checked against Discord at most this often
+const MISSING_SHOWN = 6; // channels named in the line of the log
+// Forum and media channels are not posted in like a text channel (a post starts a thread): the answer there is "unknown", never "cannot".
+const NOT_POSTABLE_TYPES = new Set([ChannelType.GuildForum, ChannelType.GuildMedia, ChannelType.GuildDirectory, ChannelType.GuildCategory]);
+const permissionName = (flag) => Object.entries(PermissionFlagsBits).find(([, value]) => value === flag)?.[0] ?? String(flag);
+
+/**
+ * What the bot needs to post in a channel: see it and write in it (`SendMessages`, which is also what the text chat of a voice or stage channel asks for;
+ * a thread asks for `SendMessagesInThreads`). null for a channel that is not one to post in (a category, a forum, a media channel, a DM).
+ */
+function postPermissionsFor(channel) {
+  if (!channel?.isTextBased?.() || channel.isDMBased?.() || NOT_POSTABLE_TYPES.has(channel.type)) return null;
+  return [PermissionFlagsBits.ViewChannel, channel.isThread?.() ? PermissionFlagsBits.SendMessagesInThreads : PermissionFlagsBits.SendMessages];
+}
+
+/**
+ * Whether the bot (`me`, its member) can see a channel and post in it: `{ send, view, missing }`. `true` or `false` only when it is known: a bot that is
+ * not loaded (`me` is null), a channel that is not one to post in and a channel whose permissions cannot be computed are `null`, never `false`, because
+ * the dashboard marks a `false` as "Petto cannot post here". A bot with the Administrator permission can see and post everywhere (it ignores overwrites).
+ * `missing` is the first permission the bot lacks, for the log.
+ */
+function botAccess(channel, me) {
+  const needs = postPermissionsFor(channel);
+  if (!needs || !me) return { send: null, view: null, missing: null };
+  if (me.permissions?.has?.(PermissionFlagsBits.Administrator)) return { send: true, view: true, missing: null };
+  const permissions = channel.permissionsFor?.(me);
+  if (!permissions?.has) return { send: null, view: null, missing: null };
+  if (permissions.has(PermissionFlagsBits.Administrator)) return { send: true, view: true, missing: null };
+  const missing = needs.find((flag) => !permissions.has(flag));
+  return { send: missing === undefined, view: permissions.has(PermissionFlagsBits.ViewChannel), missing: missing === undefined ? null : permissionName(missing) };
+}
 const DEBOUNCE_MS = 3_000;
 const SYNC_CONCURRENCY = 4;
 // The dashboard reads a server from Redis first (`petto:snap:<id>`, the same row as the table) and hears on `petto:snap` when one
@@ -16,23 +47,32 @@ const SNAPSHOT_CHANNEL = 'snap'; // petto:snap
 const GUILDS_CHANNEL = 'guilds'; // petto:guilds, a server was added or removed
 const snapshotKey = (guildId) => `snap:${guildId}`;
 
-/** The saved copy of one server, with channels and roles shaped like Discord's REST answers (the dashboard reads them as such), and its emojis. */
-function buildSnapshot(guild) {
+/**
+ * The saved copy of one server, with channels and roles shaped like Discord's REST answers (the dashboard reads them as such), and its emojis. `notes`, when
+ * given, receives `{ id, name, missing }` for each channel the bot cannot post in, so the log can say why.
+ */
+function buildSnapshot(guild, { notes = null } = {}) {
+  const me = guild.members?.me ?? null;
   const channels = [...guild.channels.cache.values()]
     .filter((channel) => !channel.isThread?.())
-    .map((channel) => ({
-      id: String(channel.id),
-      name: channel.name,
-      type: channel.type,
-      position: channel.rawPosition ?? channel.position ?? 0,
-      parent_id: channel.parentId ?? null,
-      topic: channel.topic ?? null,
-      nsfw: Boolean(channel.nsfw),
-      // Whether the bot can see the channel and write in it: the dashboard says so where a channel is picked for something the bot posts (the feeds).
-      bot_can_send: channel.isTextBased?.() && !channel.isDMBased?.() ? Boolean(guild.members?.me && channel.permissionsFor?.(guild.members.me)?.has(POST_PERMISSIONS)) : null,
-      // Whether it can see the channel at all, so the dashboard can say "cannot see" apart from "cannot write".
-      bot_can_view: channel.isTextBased?.() && !channel.isDMBased?.() ? Boolean(guild.members?.me && channel.permissionsFor?.(guild.members.me)?.has(PermissionFlagsBits.ViewChannel)) : null,
-    }));
+    .map((channel) => {
+      const access = botAccess(channel, me);
+      if (access.send === false) notes?.push({ id: String(channel.id), name: channel.name, missing: access.missing });
+      return {
+        id: String(channel.id),
+        name: channel.name,
+        type: channel.type,
+        position: channel.rawPosition ?? channel.position ?? 0,
+        parent_id: channel.parentId ?? null,
+        topic: channel.topic ?? null,
+        nsfw: Boolean(channel.nsfw),
+        // Whether the bot can see the channel and write in it: the dashboard says so where a channel is picked for something the bot posts (the feeds).
+        // null is "not known" (the bot's member is not loaded, a forum): the dashboard treats anything but false as postable.
+        bot_can_send: access.send,
+        // Whether it can see the channel at all, so the dashboard can say "cannot see" apart from "cannot write".
+        bot_can_view: access.view,
+      };
+    });
   const roles = [...guild.roles.cache.values()].map((role) => ({
     id: String(role.id),
     name: role.name,
@@ -79,9 +119,55 @@ async function shareSnapshot(row, { announce }) {
   if (stored && announce) await redis.publish(SNAPSHOT_CHANNEL, row.guild_id);
 }
 
-/** Saves the server unless nothing changed since the last save. Either way the Redis copy is written again, so it does not expire. */
-async function saveGuildSnapshot(guild) {
-  const row = buildSnapshot(guild);
+/** The bot's own member of a server, loaded from Discord when it is not in memory (or `force`d: its roles are read again). Null when it cannot be had in a few seconds. */
+async function loadBotMember(guild, { force = false } = {}) {
+  const cached = guild.members?.me ?? null;
+  if ((cached && !force) || typeof guild.members?.fetchMe !== 'function') return cached;
+  let timer;
+  try {
+    const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`no answer in ${FETCH_ME_MS / 1000} seconds`)), FETCH_ME_MS); }); // i18n-ignore: a line of the log
+    timer.unref?.();
+    return (await Promise.race([guild.members.fetchMe(force ? { force: true } : undefined), timeout])) ?? guild.members.me ?? null;
+  } catch (error) {
+    logger.warn(`[snapshots] could not load the bot's member of ${guild.id}: ${error.message}`); // i18n-ignore: a line of the log
+    return guild.members?.me ?? cached;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const memberCheckedAt = new Map(); // guild id -> when the roles of the bot were last read from Discord because a channel was closed to it
+const lastClosed = new Map(); // guild id -> the channels the bot cannot post in, as the log last said
+
+/** One line of the log when the channels the bot cannot post in change (and the first time they are known), naming the first permission each one lacks. */
+function logClosedChannels(guild, notes) {
+  const key = notes.map((note) => `${note.id}:${note.missing}`).join(',');
+  if ((lastClosed.get(guild.id) ?? '') === key) return;
+  const first = !lastClosed.has(guild.id);
+  lastClosed.set(guild.id, key);
+  if (!notes.length) { if (!first) logger.info(`[snapshots] ${guild.name} (${guild.id}): Petto can post in every channel again.`); return; } // i18n-ignore: a line of the log
+  const shown = notes.slice(0, MISSING_SHOWN).map((note) => `#${note.name} (${note.missing})`).join(', ');
+  logger.info(`[snapshots] ${guild.name} (${guild.id}): Petto cannot post in ${notes.length} channel(s), missing permission: ${shown}${notes.length > MISSING_SHOWN ? ', ...' : ''}.`); // i18n-ignore: a line of the log
+}
+
+/**
+ * Saves the server unless nothing changed since the last save. Either way the Redis copy is written again, so it does not expire. The bot's own member is
+ * loaded first when it is missing (without it nothing can be said about a channel, and the copy says "not known"). `refreshMe` reads the bot's member from
+ * Discord again (a role or its permissions changed, or the dashboard asked for a resync); otherwise it is read again, at most once an hour, only when some
+ * channel looks closed to the bot, since a copy of its roles that is behind is the usual reason a server where the bot is an Administrator says "cannot".
+ */
+async function saveGuildSnapshot(guild, { refreshMe = false } = {}) {
+  const id = String(guild.id);
+  await loadBotMember(guild, { force: refreshMe });
+  let notes = [];
+  let row = buildSnapshot(guild, { notes });
+  if (!refreshMe && notes.length && guild.members?.me && Date.now() - (memberCheckedAt.get(id) ?? 0) > ME_CHECK_MS) {
+    memberCheckedAt.set(id, Date.now());
+    await loadBotMember(guild, { force: true });
+    notes = [];
+    row = buildSnapshot(guild, { notes });
+  }
+  logClosedChannels(guild, notes);
   const hash = crypto.createHash('md5').update(JSON.stringify(row)).digest('hex');
   const previous = lastSaved.get(row.guild_id);
   if (previous?.hash === hash) {
@@ -95,12 +181,16 @@ async function saveGuildSnapshot(guild) {
   return true;
 }
 
-/** A burst of channel or role changes (a server being set up) becomes one save a few seconds later. */
-function scheduleGuildSnapshot(guild) {
-  if (!guild?.id || timers.has(guild.id)) return;
+const refreshNext = new Set(); // servers whose save must read the bot's member from Discord again
+
+/** A burst of channel or role changes (a server being set up) becomes one save a few seconds later. `refreshMe`: the bot's roles or permissions may have changed. */
+function scheduleGuildSnapshot(guild, { refreshMe = false } = {}) {
+  if (!guild?.id) return;
+  if (refreshMe) refreshNext.add(guild.id);
+  if (timers.has(guild.id)) return;
   const timer = setTimeout(() => {
     timers.delete(guild.id);
-    saveGuildSnapshot(guild).catch((error) => logger.error(`[snapshots] saving ${guild.id} failed:`, error));
+    saveGuildSnapshot(guild, { refreshMe: refreshNext.delete(guild.id) }).catch((error) => logger.error(`[snapshots] saving ${guild.id} failed:`, error));
   }, DEBOUNCE_MS);
   timer.unref?.();
   timers.set(guild.id, timer);
@@ -108,6 +198,8 @@ function scheduleGuildSnapshot(guild) {
 
 async function removeGuildSnapshot(guildId) {
   lastSaved.delete(String(guildId));
+  lastClosed.delete(String(guildId));
+  memberCheckedAt.delete(String(guildId));
   await snapshotsDb.deleteSnapshots([guildId]);
   await redis.del(snapshotKey(guildId));
 }
@@ -145,6 +237,9 @@ async function syncAllGuildSnapshots(client) {
 
 module.exports = {
   SNAPSHOT_TTL_MS,
+  botAccess,
+  postPermissionsFor,
+  loadBotMember,
   buildSnapshot,
   saveGuildSnapshot,
   scheduleGuildSnapshot,
