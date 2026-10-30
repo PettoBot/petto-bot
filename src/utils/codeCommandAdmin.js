@@ -222,7 +222,7 @@ function prefixHint(name, code) {
   return null;
 }
 
-const isRealCommand = (client, name) => client.commands.has(name) || client.commandAliases.has(name) || Boolean(client.commandRoutes?.has(name));
+const isRealCommand = (client, name) => client.commands.has(name) || client.commandAliases.has(name) || Boolean(client.commandRoutes?.has(name) && !client.commandRoutes.get(name).short); // a short alias (`!is`) gives way to a word the server chose
 
 /**
  * Saves the code of a command after checking everything. Returns { ok: true, created } or { ok: false, message, field? }.

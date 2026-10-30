@@ -66,17 +66,31 @@ async function send(content) {
 }
 
 (async () => {
-  // The short aliases run the real command and subcommand.
+  // Every short alias of the table is read by the command parser as the subcommand it stands for (and, with the handler below, a good
+  // sample of them runs: the others need an argument, which would only be asked for).
+  const { SHORT_ALIAS_TABLE } = require('../src/utils/shortAliases');
+  const { shortAliasRoutes } = require('../src/utils/shortAliases');
+  const { resolveSubcommandOptions } = require('../src/handlers/prefixInteraction');
+  const aliasOf = (target) => Object.keys(SHORT_ALIAS_TABLE).find((alias) => SHORT_ALIAS_TABLE[alias] === target);
+  let count = 0;
+  for (const route of shortAliasRoutes()) {
+    const command = client.commands.get(route.command);
+    assert.ok(command, `${route.alias}: ${route.command} is loaded`);
+    const resolved = resolveSubcommandOptions(command.data.toJSON(), [...route.args]);
+    const reached = [resolved?.subcommandGroup, resolved?.subcommand].filter(Boolean).join(' ');
+    assert.equal(reached, route.subcommand ?? '', `!${route.alias} reaches ${SHORT_ALIAS_TABLE[route.alias]}`);
+    count += 1;
+  }
+  assert.ok(count > 500, `${count} short aliases tried`);
+  // Resolving a word is one Map lookup: the loader holds the routes in a Map (the Collection of client.commandRoutes).
+  assert.ok(client.commandRoutes instanceof Map, 'the routes are in a Map');
+  for (const route of shortAliasRoutes()) assert.equal(client.commandRoutes.get(route.alias), route, `${route.alias} is one Map.get away`);
   for (const [text, expected] of [
-    ['!is', 'image sepia'], ['!is @someone', 'image sepia'], ['!iro 90', 'image rotate'], ['!ib', 'image blur'], ['!if', 'image flip'], ['!inv', 'image invert'],
-    ['!tko', 'ticket open'], ['!tkc', 'ticket close'], ['!tma', 'timer add'], ['!fdl', 'feed list'], ['!gwq', 'giveaway quick'],
-    ['!wcs', 'welcome setup'], ['!bkc', 'backup create'], ['!amr', 'automod raid'], ['!cnl', 'counter list'], ['!afm', 'afk mentions'],
-    ['!rml', 'remind list'], ['!bdv', 'birthday view'], ['!xps', 'level status'], ['!stbe', 'starboard enable'], ['!sgl', 'suggestion list'],
-    ['!vfs', 'verify setup'], ['!amwa', 'automod word-filter add'], ['!xpra', 'level reward add'], ['!sn', 'snipe deleted'], ['!sne', 'snipe edited'],
-    ['!snr', 'snipe reactions'], ['!snc', 'snipe clear'], ['!editsnipe', 'snipe edited'], ['!esnipe', 'snipe edited'],
-    ['!reactionsnipe', 'snipe reactions'], ['!clearsnipe', 'snipe clear'],
+    ['!is', 'image sepia'], ['!is @someone', 'image sepia'], ['!iro 90', 'image rotate'], ['!ib', 'image blur'], ['!if', 'image flip'],
+    ['!tko', 'ticket open'], [`!${aliasOf('afk set')}`, 'afk set'], [`!${aliasOf('welcome status')}`, 'welcome status'], [`!${aliasOf('feed list')}`, 'feed list'],
     // A symbol prefix that is not the main one, and the long forms, still work.
     [',is', 'image sepia'], ['!image sepia', 'image sepia'], ['!sepia', 'image sepia'], ['!ticket open', 'ticket open'],
+    ['!editsnipe', 'snipe edited'], ['!esnipe', 'snipe edited'], ['!reactionsnipe', 'snipe reactions'], ['!clearsnipe', 'snipe clear'],
   ]) {
     const result = await send(text);
     assert.deepEqual(result.ran, [expected], `${text} runs ${expected}`);
@@ -101,6 +115,17 @@ async function send(content) {
   assert.equal(await known('image'), true);
   assert.equal(await known('help'), true);
   assert.equal(await known('iro'), true);
+
+  // A word the server chose wins over a short alias: its custom command, or its own alias.
+  custom.set('is', { name: 'is', response: 'mine', trigger_type: null });
+  let own = await send('!is');
+  assert.deepEqual([own.ran, own.sent.length], [[], 1], 'a custom command called is answers instead of image sepia');
+  assert.deepEqual((await send('!ib')).ran, ['image blur'], 'the others are not touched');
+  custom.delete('is');
+  serverAliases.set('tko', { command: 'ping' });
+  assert.deepEqual((await send('!tko')).ran, ['ping'], 'a server alias called tko runs what the server said');
+  serverAliases.delete('tko');
+  assert.deepEqual((await send('!tko')).ran, ['ticket open'], 'and the short alias is back when it goes');
 
   // `!disablecommand image` and `!restrictcommand image` apply to the short alias of its subcommands.
   disabled.push({ command: 'image', channel_id: null });

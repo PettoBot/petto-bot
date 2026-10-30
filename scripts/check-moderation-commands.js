@@ -156,7 +156,7 @@ const lastText = (interaction) => {
     const command = client.commands.get(route.command);
     assert.ok(command, `${route.alias} goes to a loaded command`);
     const json = command.data.toJSON();
-    const subArgs = route.args.filter((arg) => !arg.startsWith('--') && !['on', 'warn'].includes(arg));
+    const subArgs = route.short ? route.args : route.args.filter((arg) => !arg.startsWith('--') && !['on', 'warn'].includes(arg)); // a short alias names its subcommand, `on` included
     assert.ok(resolveSubcommandOptions(json, subArgs), `${route.alias} reaches ${route.command} ${subArgs.join(' ')}`);
     for (const [word, target] of Object.entries(route.words ?? {})) assert.ok(resolveSubcommandOptions(json, target.args), `${route.alias} ${word} reaches ${route.command} ${target.args.join(' ')}`);
   }

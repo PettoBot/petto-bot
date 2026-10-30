@@ -18,7 +18,7 @@ const DEFAULT_COMMAND_ALIASES = {
 // Prefix-only shortcuts for high-frequency channel actions. These expand to the
 // existing `channel` command, so the old `!channel ...` and `!ch ...` forms stay
 // valid while common moderation actions can be typed directly.
-const DEFAULT_PREFIX_ROUTES = [
+const BASE_PREFIX_ROUTES = [
   { alias: 'lock', command: 'channel', args: ['lock'], subcommand: 'lock' },
   { alias: 'unlock', command: 'channel', args: ['unlock'], subcommand: 'unlock' },
   { alias: 'slowmode', command: 'channel', args: ['slowmode'], subcommand: 'slowmode' },
@@ -183,12 +183,14 @@ const DEFAULT_PREFIX_ROUTES = [
   { alias: 'rsnipe', command: 'snipe', args: ['reactions'], subcommand: 'reactions' },
   { alias: 'clearsnipe', command: 'snipe', args: ['clear'], subcommand: 'clear' },
   { alias: 'csnipe', command: 'snipe', args: ['clear'], subcommand: 'clear' },
-  // `!is` is `!image sepia`, `!tko` is `!ticket open`: the table is in shortAliases.js.
-  ...shortAliasRoutes(),
 ];
+
+// The routes written by hand above, then the short aliases of the subcommands (src/utils/short-aliases.json, made by
+// scripts/gen-short-aliases.js and read once here): `!is` is `!image sepia`, `!tko` is `!ticket open`.
+const DEFAULT_PREFIX_ROUTES = [...BASE_PREFIX_ROUTES, ...shortAliasRoutes()];
 
 function aliasesFor(commandName) {
   return DEFAULT_COMMAND_ALIASES[commandName] ?? [];
 }
 
-module.exports = { DEFAULT_COMMAND_ALIASES, DEFAULT_PREFIX_ROUTES, aliasesFor };
+module.exports = { DEFAULT_COMMAND_ALIASES, BASE_PREFIX_ROUTES, DEFAULT_PREFIX_ROUTES, aliasesFor };

@@ -74,6 +74,15 @@ clock += 5000;
 limiter.tryStart('later');
 assert.equal(limiter.size(), 1, 'when the cooldowns are over the map empties');
 
+// The short aliases: one table of strings, read once into routes (the Map of the loader holds them), nothing per message.
+const fs = require('node:fs');
+const { shortAliasRoutes, SHORT_ALIAS_TABLE } = require('../src/utils/shortAliases');
+const tableBytes = fs.statSync(path.join(__dirname, '..', 'src', 'utils', 'short-aliases.json')).size;
+assert.ok(tableBytes < 40_000, `the table of short aliases is ${tableBytes} bytes of text`);
+assert.equal(shortAliasRoutes(), shortAliasRoutes(), 'the routes are made once');
+assert.equal(shortAliasRoutes().length, Object.keys(SHORT_ALIAS_TABLE).length);
+assert.ok(Object.values(SHORT_ALIAS_TABLE).every((target) => typeof target === 'string'), 'strings only');
+
 // The switch of each server: small, and a server that has it off is only `false`.
 (async () => {
   for (let i = 0; i < settings.MAX_GUILDS + 2000; i += 1) await settings.getSettings(String(100000 + i));

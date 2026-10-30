@@ -114,7 +114,7 @@ async function addCmd(interaction, isEdit) {
   const embedInput = interaction.options.getString('embed_template');
   const requestedEmbedTemplate = embedInput?.trim().toLowerCase() === 'clear' ? null : embedInput;
 
-  if (interaction.client.commands.has(name) || interaction.client.commandAliases.has(name) || interaction.client.commandRoutes?.has(name)) {
+  if (interaction.client.commands.has(name) || interaction.client.commandAliases.has(name) || (interaction.client.commandRoutes?.has(name) && !interaction.client.commandRoutes.get(name).short)) {
     await interaction.reply({ content: t(lang, 'customcommands.add.realCommand', { name }), flags: MessageFlags.Ephemeral });
     return;
   }

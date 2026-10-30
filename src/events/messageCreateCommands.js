@@ -126,6 +126,13 @@ function knownNameChecker(client, guildId) {
   };
 }
 
+/** Whether the server has an alias or a custom command with this word (they win over the short aliases, which are Petto's own). */
+async function serverUsesWord(guildId, name) {
+  if (await commandAliasesDb.get(guildId, name).catch(() => null)) return true;
+  const row = await customCommandsDb.getCommand(guildId, name).catch(() => null);
+  return Boolean(row && (!row.trigger_type || row.trigger_type === 'command'));
+}
+
 /**
  * How a message starts a command, or null: an @mention of the bot (always works), or a prefix of the server (any of its list) or the
  * personal prefix of the author. See guildPrefixes.matchPrefix for the rules; `main` and `word` tell if an unknown word may be answered.
@@ -265,7 +272,10 @@ module.exports = {
 
     // Server-defined aliases are prefix-only, matching the rest of Petto's configurable
     // command surface. `{0}`, `{1}`, ... refer to arguments supplied after the alias.
-    if (!message.client.commands.has(commandName) && !message.client.commandAliases.has(commandName) && !message.client.commandRoutes?.has(commandName)) {
+    // A short alias (`!is`) never takes a word from the server: an alias or a custom command the server wrote with that word wins.
+    const shortRoute = message.client.commandRoutes?.get(commandName)?.short ? message.client.commandRoutes.get(commandName) : null;
+    const serverOwnsIt = shortRoute ? await serverUsesWord(message.guild.id, commandName) : false;
+    if (serverOwnsIt || (!message.client.commands.has(commandName) && !message.client.commandAliases.has(commandName) && !message.client.commandRoutes?.has(commandName))) {
       const configuredAlias = await commandAliasesDb.get(message.guild.id, commandName).catch(() => null);
       if (configuredAlias) {
         const targetTokens = tokenize(configuredAlias.command);
@@ -287,7 +297,7 @@ module.exports = {
       argText = `clear ${/^name/.test(what) ? 'names' : /^nick/.test(what) ? 'nicknames' : 'all'}`;
     }
 
-    const prefixRoute = message.client.commandRoutes?.get(commandName);
+    const prefixRoute = serverOwnsIt ? undefined : message.client.commandRoutes?.get(commandName);
     if (prefixRoute) {
       // A route can send some first words elsewhere: `!forcenick list` is `!nickname forced`, `!forcenick @a b` is `!nickname force @a b`.
       const word = applyWordRoute(prefixRoute.words, prefixRoute.command, argText);
