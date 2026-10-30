@@ -1,26 +1,5 @@
 // Las notas de versión de `!version` en español: etiqueta, resumen y secciones de cada versión (src/utils/releases.js guarda el resto).
 module.exports = {
-  'v0.7.10': {
-    label: 'v0.7.10 · Churro: varios prefijos en cada servidor',
-    summary: 'Un servidor puede tener varios prefijos de comandos (`!` y `petto` para empezar), se manejan con `!prefix` o desde el panel, y un mensaje que solo parece un comando se queda en silencio.',
-    sections: [
-      {
-        title: 'Prefijos',
-        items: [
-          'Hasta 10 prefijos en cada servidor, el primero es el principal. Los servidores con el `!` de siempre ahora también responden a la palabra `petto` (`petto help`); un servidor con prefijo propio conserva solo ese. Un símbolo se escribe pegado (`,help`), una palabra necesita un espacio (`petto help`) y el prefijo más largo va primero.',
-          '`!prefix` muestra la lista, `!prefix add <prefijo>`, `!prefix remove <prefijo>` y `!prefix reset` la cambian, y `!prefix <prefijo>` sigue dejándolo como único. El panel tiene una ventana **Gestionar prefijos** en la página General.',
-          'Tu prefijo propio (`!myprefix`) y los comandos personalizados funcionan con todos los prefijos del servidor.',
-        ],
-      },
-      {
-        title: 'Más silencioso',
-        items: [
-          '`, es el mejor`, `! hola` y `petto es el mejor` son charla: un prefijo de símbolo necesita el comando justo después, y un prefijo de palabra solo cuenta delante de un comando de verdad.',
-          'Solo el prefijo principal responde "No conozco ese comando"; los demás prefijos se quedan en silencio.',
-        ],
-      },
-    ],
-  },
   'v0.7.9-1': {
     label: 'v0.7.9~1 · Donut: imágenes que coinciden, !send y RSS arreglados',
     summary: 'Un parche de Donut: feeds de imágenes que cumplen todas las palabras y preguntan qué significa una palabra, `!send` que encuentra su canal, y feeds RSS que avisan cuando un enlace no es un feed.',

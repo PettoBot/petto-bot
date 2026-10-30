@@ -1,26 +1,5 @@
 // As notas de versão do `!version` em português do Brasil: rótulo, resumo e seções de cada versão (src/utils/releases.js guarda o resto).
 module.exports = {
-  'v0.7.10': {
-    label: 'v0.7.10 · Churro: vários prefixos em cada servidor',
-    summary: 'Um servidor pode ter vários prefixos de comandos (`!` e `petto` para começar), gerenciados com `!prefix` ou pelo painel, e uma mensagem que só parece um comando fica em silêncio.',
-    sections: [
-      {
-        title: 'Prefixos',
-        items: [
-          'Até 10 prefixos em cada servidor, o primeiro é o principal. Servidores com o `!` de sempre agora também respondem à palavra `petto` (`petto help`); um servidor com prefixo próprio mantém só esse. Um símbolo se escreve colado (`,help`), uma palavra precisa de um espaço (`petto help`) e o prefixo mais longo vai primeiro.',
-          '`!prefix` mostra a lista, `!prefix add <prefixo>`, `!prefix remove <prefixo>` e `!prefix reset` a alteram, e `!prefix <prefixo>` continua deixando só ele. O painel tem uma janela **Gerenciar prefixos** na página Geral.',
-          'Seu prefixo próprio (`!myprefix`) e os comandos personalizados funcionam com todos os prefixos do servidor.',
-        ],
-      },
-      {
-        title: 'Mais quieto',
-        items: [
-          '`, es el mejor`, `! hola` e `petto es el mejor` são conversa: um prefixo de símbolo precisa do comando logo depois, e um prefixo de palavra só vale antes de um comando de verdade.',
-          'Só o prefixo principal responde "Não conheço esse comando"; os outros prefixos ficam em silêncio.',
-        ],
-      },
-    ],
-  },
   'v0.7.9-1': {
     label: 'v0.7.9~1 · Donut: imagens que combinam, !send e RSS corrigidos',
     summary: 'Uma correção do Donut: feeds de imagens que seguem todas as palavras e perguntam o que uma palavra quer dizer, `!send` que acha o seu canal, e feeds RSS que avisam quando um link não é um feed.',

@@ -4,10 +4,6 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
-## [0.7.10] — 2026-10-30 · Churro
-
-A server can have several command prefixes, a new server starts in its own language, and the owner can fix errors on other servers.
-
 ### Added
 
 - **Several prefixes per server.** A server now has a list of up to 10 prefixes (1 to 12 characters, no spaces, no `@` and no backticks), and the first one is the main prefix: the one cards, help and examples show. Servers that still used the default `!` now have `!` and `petto` (`!help` and `petto help` both work), and every server that created from now on starts the same way; a server with a prefix of its own keeps exactly that one. `,` is not a default (other bots use it) but any server can add it. A prefix that is a symbol (`!`, `,`, `?`, `p!`) is typed attached to the command (`,help`); a prefix that is a word (it ends in a letter or a number, like `petto`) is not case sensitive and needs a space (`Petto help`). The longest prefix is tried first, so `!!help` is read with `!!` when a server has both `!!` and `!`; the prefix of a person (`!myprefix`) and the custom commands that follow the prefix work with every prefix of the list. The list is kept in the new `guilds.prefixes` column and the old `prefix` keeps the main one, so older code keeps working.
