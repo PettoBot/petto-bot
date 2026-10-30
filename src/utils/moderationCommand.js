@@ -3,6 +3,7 @@ const { COLORS } = require('./colors');
 const { textCard } = require('./caseCard');
 const { EMOJI } = require('./emojis');
 const { t, currentLanguage, languageOf } = require('../i18n');
+const { mentionList } = require('./listCap');
 
 function asSubcommand(interaction, subcommand) {
   const proxy = Object.create(interaction);
@@ -94,7 +95,7 @@ function bulkTargetBlocked(interaction, member, permission, options) {
 
 /** The line of a bulk result that lists the targets that were left alone, or null when there are none. */
 function protectedLine(users, lang) {
-  return users.length ? t(lang, 'moderation.common.protected', { emoji: EMOJI.DENY, list: users.map((user) => `${user}`).join(' ') }) : null;
+  return users.length ? t(lang, 'moderation.common.protected', { emoji: EMOJI.DENY, list: mentionList(lang, users) }) : null;
 }
 
 module.exports = { asSubcommand, confirmBulkAction, requireAdministrator, failureDetail, bulkTargetBlocked, protectedLine };

@@ -11,6 +11,7 @@ const logger = require('../../utils/logger');
 const { confirmBulkAction, requireAdministrator, failureDetail, bulkTargetBlocked, protectedLine } = require('../../utils/moderationCommand');
 const { reasonText } = require('../../utils/caseFormat');
 const { t, tn, languageOf } = require('../../i18n');
+const { caseNumberList, mentionList, listWithMore } = require('../../utils/listCap');
 
 module.exports = {
   // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
@@ -132,12 +133,12 @@ async function kickUsers(interaction) {
     }
   }
 
-  const lines = [tn(lang, 'moderation.kick.bulkDone', succeeded.length, { emoji: EMOJI.APPROVE, count: succeeded.length, cases: caseNumbers.length ? t(lang, 'moderation.common.cases', { list: caseNumbers.join(', #') }) : '' })];
-  if (succeeded.length) lines.push(succeeded.map((u) => `${u}`).join(' '));
-  if (failed.length) lines.push(t(lang, 'moderation.common.failedList', { emoji: EMOJI.DENY, list: failed.map((u) => `${u}`).join(' ') }));
-  if (skipped.length) lines.push(t(lang, 'moderation.common.notInServer', { list: skipped.map((u) => `${u}`).join(' ') }));
+  const lines = [tn(lang, 'moderation.kick.bulkDone', succeeded.length, { emoji: EMOJI.APPROVE, count: succeeded.length, cases: caseNumbers.length ? t(lang, 'moderation.common.cases', { list: caseNumberList(lang, caseNumbers) }) : '' })];
+  if (succeeded.length) lines.push(mentionList(lang, succeeded));
+  if (failed.length) lines.push(t(lang, 'moderation.common.failedList', { emoji: EMOJI.DENY, list: mentionList(lang, failed) }));
+  if (skipped.length) lines.push(t(lang, 'moderation.common.notInServer', { list: mentionList(lang, skipped) }));
   if (blocked.length) lines.push(protectedLine(blocked, lang));
-  if (notFound.length) lines.push(t(lang, 'moderation.common.notFound', { list: notFound.map((id) => `\`${id}\``).join(', ') }));
+  if (notFound.length) lines.push(t(lang, 'moderation.common.notFound', { list: listWithMore(lang, notFound, { format: (id) => `\`${id}\`` }) }));
   lines.push(t(lang, 'moderation.common.reason', { reason: reasonText(reason, lang) }));
 
   const card = textCard(lines.join('\n'), 0xfed53c, { keep: true });

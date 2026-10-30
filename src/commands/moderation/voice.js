@@ -5,6 +5,7 @@ const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
 const { resolveUsers } = require('../../utils/userResolve');
 const { t, tn, languageOf } = require('../../i18n');
+const { mentionList, listWithMore } = require('../../utils/listCap');
 
 module.exports = {
   aliases: ['v'],
@@ -245,8 +246,8 @@ async function drag(interaction) {
   }
 
   const lines = [tn(lang, 'moderation.voice.dragged', moved.length, { emoji: moved.length ? EMOJI.APPROVE : EMOJI.DENY, count: moved.length, channel: `${destination}` })];
-  if (moved.length) lines.push(moved.map((user) => `${user}`).join(' '));
-  if (skipped.length) lines.push(t(lang, 'moderation.voice.dragSkipped', { list: skipped.map((user) => `${user}`).join(' ') }));
-  if (notFound.length) lines.push(t(lang, 'moderation.common.notFound', { list: notFound.map((id) => `\`${id}\``).join(', ') }));
+  if (moved.length) lines.push(mentionList(lang, moved));
+  if (skipped.length) lines.push(t(lang, 'moderation.voice.dragSkipped', { list: mentionList(lang, skipped) }));
+  if (notFound.length) lines.push(t(lang, 'moderation.common.notFound', { list: listWithMore(lang, notFound, { format: (id) => `\`${id}\`` }) }));
   await interaction.editReply({ components: [textCard(lines.join('\n'), moved.length ? 0xa5ea7a : 0x4b4f59)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
 }

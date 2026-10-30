@@ -9,6 +9,8 @@ const { requireAdministrator } = require('../../utils/moderationCommand');
 const logger = require('../../utils/logger');
 const { handleStaffAction } = require('../../logging/moreLog');
 const { t, tn, languageOf } = require('../../i18n');
+const { caseNumberList, listWithMore } = require('../../utils/listCap');
+const LAST_MANY_LIMIT = 15;
 
 const MAX_TIMEOUT_MS = 28 * 24 * 60 * 60 * 1000;
 const CASES_PER_PAGE = 10;
@@ -188,11 +190,13 @@ async function lastMany(interaction) {
   const { users, failed: notFound } = await resolveUsers(interaction.client, usersInput, interaction.guild);
 
   const lines = [t(lang, 'moderation.case.lastManyTitle')];
-  for (const user of users) {
+  // One line per member: the first ones are shown and the rest are counted, so the card never passes the limit of a message.
+  for (const user of users.slice(0, LAST_MANY_LIMIT)) {
     const row = await getLastCase(interaction.guild.id, user.id);
     lines.push(row ? formatCaseLine(row, lang) : t(lang, 'moderation.case.lastManyNone', { user: `${user}` }));
   }
-  if (notFound.length) lines.push(t(lang, 'moderation.common.notFound', { list: notFound.map((id) => `\`${id}\``).join(', ') }));
+  if (users.length > LAST_MANY_LIMIT) lines.push(tn(lang, 'moderation.common.andMore', users.length - LAST_MANY_LIMIT));
+  if (notFound.length) lines.push(t(lang, 'moderation.common.notFound', { list: listWithMore(lang, notFound, { format: (id) => `\`${id}\`` }) }));
 
   await interaction.editReply({ components: [textCard(lines.join('\n\n'))], flags: MessageFlags.IsComponentsV2 });
 }
@@ -334,8 +338,8 @@ async function editMany(interaction) {
     updated.push(caseNumber);
   }
 
-  const lines = [tn(lang, 'moderation.case.updatedMany', updated.length, { emoji: EMOJI.APPROVE, count: updated.length, list: updated.length ? `: #${updated.join(', #')}` : '' })];
-  if (skipped.length) lines.push(t(lang, 'moderation.common.skipped', { list: skipped.join(', ') }));
+  const lines = [tn(lang, 'moderation.case.updatedMany', updated.length, { emoji: EMOJI.APPROVE, count: updated.length, list: updated.length ? `: #${caseNumberList(lang, updated)}` : '' })];
+  if (skipped.length) lines.push(t(lang, 'moderation.common.skipped', { list: listWithMore(lang, skipped) }));
   if (reason) lines.push(t(lang, 'moderation.case.newReason', { reason }));
   if (durationStr) lines.push(t(lang, 'moderation.case.newDuration', { duration: durationStr }));
 

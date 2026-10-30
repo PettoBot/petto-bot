@@ -21,6 +21,7 @@ const { addHardBan, getHardBan, removeHardBan, canLiftHardBan, listHardBanIds } 
 const { confirmBulkAction, requireAdministrator, failureDetail, bulkTargetBlocked, protectedLine } = require('../../utils/moderationCommand');
 const { reasonText } = require('../../utils/caseFormat');
 const { t, tn, languageOf } = require('../../i18n');
+const { caseNumberList, mentionList, listWithMore } = require('../../utils/listCap');
 
 // The mass unban running in each server, so `ban cancel` (`!unbanall cancel`) can stop it. In memory: it lasts minutes at most.
 const activeUnbans = new Map(); // guildId -> { abort: boolean }
@@ -174,11 +175,11 @@ async function banUsers(interaction) {
     }
   }
 
-  const lines = [tn(lang, 'moderation.ban.bulkDone', succeeded.length, { emoji: EMOJI.APPROVE, count: succeeded.length, cases: caseNumbers.length ? t(lang, 'moderation.common.cases', { list: caseNumbers.join(', #') }) : '' })];
-  if (succeeded.length) lines.push(succeeded.map((u) => `${u}`).join(' '));
-  if (failed.length) lines.push(t(lang, 'moderation.common.failedList', { emoji: EMOJI.DENY, list: failed.map((u) => `${u}`).join(' ') }));
+  const lines = [tn(lang, 'moderation.ban.bulkDone', succeeded.length, { emoji: EMOJI.APPROVE, count: succeeded.length, cases: caseNumbers.length ? t(lang, 'moderation.common.cases', { list: caseNumberList(lang, caseNumbers) }) : '' })];
+  if (succeeded.length) lines.push(mentionList(lang, succeeded));
+  if (failed.length) lines.push(t(lang, 'moderation.common.failedList', { emoji: EMOJI.DENY, list: mentionList(lang, failed) }));
   if (blocked.length) lines.push(protectedLine(blocked, lang));
-  if (notFound.length) lines.push(t(lang, 'moderation.common.notFound', { list: notFound.map((id) => `\`${id}\``).join(', ') }));
+  if (notFound.length) lines.push(t(lang, 'moderation.common.notFound', { list: listWithMore(lang, notFound, { format: (id) => `\`${id}\`` }) }));
   lines.push(t(lang, 'moderation.common.reason', { reason: reasonText(reason, lang) }));
 
   const card = textCard(lines.join('\n'), 0xfe6465);
@@ -378,19 +379,29 @@ async function unbanAll(interaction) {
       emoji: EMOJI.APPROVE,
       count: succeeded,
       failed: failed ? t(lang, 'moderation.unbanAll.failedCount', { count: failed }) : '',
-      cases: caseNumbers.length ? t(lang, 'moderation.unbanAll.cases', { list: caseNumbers.join(', #') }) : '',
+      cases: caseNumbers.length ? t(lang, 'moderation.unbanAll.cases', { list: caseNumberList(lang, caseNumbers) }) : '',
     }),
     t(lang, 'moderation.common.moderator', { moderator: `${interaction.user}` }),
     t(lang, 'moderation.common.reason', { reason: reasonText(reason, lang) }),
     task.abort ? t(lang, 'moderation.unbanAll.stopped', { emoji: EMOJI.DENY }) : null,
     unavailable ? t(lang, 'moderation.unbanAll.unavailable', { emoji: EMOJI.DENY }) : null,
   ].filter(Boolean);
-  const resultCard = statusCard(resultLines.join('\n'), unavailable ? 0xfe6465 : 0xa5ea7a);
+  // The log goes first: the unbans already happened, so a result that cannot be shown must never lose the record of them.
+  if (!(unavailable && !interaction.client.guilds.cache.has(interaction.guild.id))) {
+    await sendUnbanAllLog(interaction, lang, { succeeded, failed, reason }).catch((err) => logger.warn(`unban remove-all: could not log the result in ${interaction.guild.id}:`, err.message));
+  }
 
   // When the server or the channel is gone there is nobody left to answer; that is not an error of the command.
-  await interaction.editReply({ components: [resultCard], flags: MessageFlags.IsComponentsV2 }).catch((err) => logger.warn(`unban remove-all: could not show the result in ${interaction.guild.id}:`, err.message));
-  if (unavailable && !interaction.client.guilds.cache.has(interaction.guild.id)) return;
+  try {
+    const resultCard = statusCard(resultLines.join('\n'), unavailable ? 0xfe6465 : 0xa5ea7a);
+    await interaction.editReply({ components: [resultCard], flags: MessageFlags.IsComponentsV2 });
+  } catch (err) {
+    logger.warn(`unban remove-all: could not show the result in ${interaction.guild.id}:`, err.message);
+  }
+}
 
+/** The line of the `sanctions` log for a finished mass unban. */
+async function sendUnbanAllLog(interaction, lang, { succeeded, failed, reason }) {
   await sendLog(interaction.client, interaction.guild.id, 'sanctions', {
     author: { name: tn(lang, 'moderation.unbanAll.log.author', succeeded, { name: interaction.user.username, count: succeeded }) },
     description: [
