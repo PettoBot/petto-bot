@@ -34,6 +34,9 @@ module.exports = {
         items: [
           'As respostas longas de um formulário de tickets aparecem, os feeds do Kick e do Reddit dizem o que aconteceu, e um horário de 19:00 a 23:59 volta a ser entendido.',
           '`!act` deixou de ser uma palavra curta de `!activity` (agora é `/act`).',
+          'O `!snipe` também mostra a última reação removida (`!reactionsnipe`) e esquece o que está salvo do canal (`!clearsnipe`); `!editsnipe` e `!esnipe` são `!snipe edited`, e `!snipe 3` lê uma entrada mais antiga. Tudo fica na memória.',
+          'Embeds de links de mensagens, desligados até você ligá-los com `/messagelinks` (`!messagelinks`) ou o dashboard: o link de uma mensagem do servidor recebe um embed dessa mensagem, só com o que o membro que o postou já pode ver. Não avisa ninguém e não guarda nada.',
+          'Aliases curtos só com o prefixo: `!is` é `!image sepia`, `!tko` é `!ticket open`, para a maioria dos comandos com subcomandos. Depois de um prefixo de palavra como `petto`, palavras do dia a dia como `is` nunca iniciam um comando.',
         ],
       },
     ],
