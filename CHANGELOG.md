@@ -4,6 +4,10 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **`!botstatus device normal|phone|android|ios` for the team.** It chooses what Petto shows next to its status dot: `normal` (also `default` and `desktop`) is the plain dot, `phone` (also `mobile`) is the phone app of `PETTO_MOBILE_CLIENT` (Android by default), and `android` and `ios` force that app. The choice is saved (`presence_device` in `bot_settings`) and wins over `PETTO_MOBILE_STATUS` at startup; with nothing saved, or a database that cannot be read, the environment decides as before. Discord reads it when the bot connects, so a change answers first and then restarts Petto after a few seconds (the host starts it again); the same device again restarts nothing. `!botstatus` alone shows the status and the device.
+
 ### Fixed
 
 - **A long result no longer ends a command with an error.** A mass unban of thousands of users listed every case number, passed the 4000 characters Discord accepts in a text display, and failed with "Something went wrong" after the unbans were done and before they were logged. It now lists the first 20 cases and "and N more" (the same cap is on the lists of the bulk ban, kick, mute, unmute and warn, and a few others), the log is sent before the result, every card keeps its text inside 1 to 4000 characters per text display and 4000 in all (cut at a line or word, never inside a code fence, mention, emoji or link), and if Discord still refuses an answer for its size the member gets one short text that says what happened.
