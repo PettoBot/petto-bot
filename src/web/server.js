@@ -46,6 +46,7 @@ const { registerBoosterRoleRoutes } = require('./boosterRoleRoutes');
 const { registerTicketLiveRoutes } = require('./ticketLiveRoutes');
 const { fetchDashboardMember } = require('./dashboardMember');
 const { roleGrantAllows } = require('./dashboardRoleAccess');
+const { supportOwnerAllows } = require('./supportOwner');
 const { registerGuildLanguageRoute } = require('./languageRoutes');
 const { refreshGuildPanels } = require('../utils/panelRefresh');
 const { registerPublicLeaderboardRoute } = require('./publicLeaderboard');
@@ -242,6 +243,8 @@ function startServer(client) {
       const member = await fetchDashboardMember(guild, userId);
       const canManage = Boolean(member) && (member.permissions.has(PermissionFlagsBits.ManageGuild) || member.permissions.has(PermissionFlagsBits.Administrator));
       if (!canManage) {
+        // The Petto owner's support mode: only the routes of supportOwner.js, never a general bypass.
+        if (supportOwnerAllows(req, userId, guild.id)) return { guild, member, userId, viaSupport: true };
         const byRole = page && member ? await roleGrantAllows({ guildId: guild.id, member, page, grant: req.get('x-petto-dashboard-grant'), needEdit: edit }) : false;
         if (!byRole) {
           res.status(403).json({ ok: false, error: 'no_access' });
