@@ -3592,6 +3592,8 @@ alter table verification_config add constraint verification_config_method_check 
 alter table verification_config add column if not exists panel_channel_id text;
 alter table verification_config add column if not exists panel_message_id text;
 alter table verification_config add column if not exists panel_posted_channel_id text;
+-- An optional picture shown at the top of the verification panel (an https link; the panel has none when it is empty).
+alter table verification_config add column if not exists panel_image_url text;
 
 -- Suggestions: members suggest things, the server votes with two buttons and the staff answers.
 create table if not exists suggestion_config (

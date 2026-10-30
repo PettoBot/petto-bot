@@ -49,7 +49,7 @@ async function postPanelNow(guild, given, channel) {
   if (!openedToGate(channel, role.id)) {
     await channel.permissionOverwrites.edit(role, { ViewChannel: true, ReadMessageHistory: true, SendMessages: false, AddReactions: false, CreatePublicThreads: false, CreatePrivateThreads: false }, { reason: t(lang, 'verify.reason.panel') });
   }
-  const payload = buildPanel({ guild, method: methodOf(settings), lang });
+  const payload = buildPanel({ guild, method: methodOf(settings), lang, imageUrl: settings.panel_image_url });
   let sent = null;
   const where = settings.panel_posted_channel_id ?? settings.panel_channel_id;
   if (settings.panel_message_id && where === channel.id) {
