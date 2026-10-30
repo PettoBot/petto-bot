@@ -4,6 +4,7 @@
  * This never creates or deploys slash commands.
  */
 const { actionRoutes } = require('./actions');
+const { shortAliasRoutes } = require('./shortAliases');
 
 const DEFAULT_COMMAND_ALIASES = {
   avatar: ['av', 'pfp'], banner: ['bnr'], botinfo: ['bi'], calc: ['c', 'calculate'], channelinfo: ['ci'],
@@ -175,6 +176,15 @@ const DEFAULT_PREFIX_ROUTES = [
   { alias: 'dominantcolor', command: 'image', args: ['hex'], subcommand: 'hex' },
   // Every action of /act is its own word with the prefix: `!hug @member` is `!act love hug @member`.
   ...actionRoutes(),
+  // The snipe family: `!editsnipe` is `!snipe edited`, `!reactionsnipe` is `!snipe reactions`, `!clearsnipe` is `!snipe clear`.
+  { alias: 'editsnipe', command: 'snipe', args: ['edited'], subcommand: 'edited' },
+  { alias: 'esnipe', command: 'snipe', args: ['edited'], subcommand: 'edited' },
+  { alias: 'reactionsnipe', command: 'snipe', args: ['reactions'], subcommand: 'reactions' },
+  { alias: 'rsnipe', command: 'snipe', args: ['reactions'], subcommand: 'reactions' },
+  { alias: 'clearsnipe', command: 'snipe', args: ['clear'], subcommand: 'clear' },
+  { alias: 'csnipe', command: 'snipe', args: ['clear'], subcommand: 'clear' },
+  // `!is` is `!image sepia`, `!tko` is `!ticket open`: the table is in shortAliases.js.
+  ...shortAliasRoutes(),
 ];
 
 function aliasesFor(commandName) {

@@ -1,5 +1,5 @@
 const { EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } = require('discord.js');
-const { getDeleted, getEdited, MAX_ENTRIES_PER_CHANNEL } = require('../../utils/snipeCache');
+const { getDeleted, getEdited, getReaction, clearChannel, MAX_ENTRIES_PER_CHANNEL } = require('../../utils/snipeCache');
 const { COLORS } = require('../../utils/colors');
 const { t, tn, languageOf } = require('../../i18n');
 
@@ -30,21 +30,60 @@ function baseEmbed(entry, label, lang) {
   return embed;
 }
 
+function reactionEmbed(entry, lang) {
+  const { emoji, user, message } = entry;
+  const label = t(lang, 'utility.snipe.label.reaction');
+  const lines = [
+    t(lang, 'utility.snipe.reaction.line', { emoji: emoji.display, user: user.name ?? t(lang, 'utility.snipe.unknownUser') }),
+    t(lang, 'utility.snipe.reaction.message', { url: message.url, author: message.authorName ?? t(lang, 'utility.snipe.unknownUser') }),
+  ];
+  if (message.preview) lines.push(`> ${clip(message.preview, 200).replace(/\n+/g, ' ')}`);
+  const embed = new EmbedBuilder()
+    .setColor(COLORS.DEFAULT)
+    .setAuthor({ name: `${user.name ?? t(lang, 'utility.snipe.unknownUser')} · ${label}`, ...(user.avatar ? { iconURL: user.avatar } : {}) })
+    .setDescription(clip(lines.join('\n'), 4096))
+    .setFooter({ text: t(lang, 'utility.snipe.footer', { label: label.toLowerCase(), time: new Date(entry.capturedAt).toISOString() }) });
+  if (emoji.url) embed.setThumbnail(emoji.url);
+  return embed;
+}
+
+const INDEX_OPTION = (option) => option.setName('index').setDescription('1 is the latest, up to 10').setMinValue(1).setMaxValue(MAX_ENTRIES_PER_CHANNEL).setRequired(false);
+
 module.exports = {
   aliases: ['sniped'],
   prefixDefaultSubcommand: 'deleted',
+  // The words people type: `!snipe edit 2`, `!snipe reaction`, `!snipe reset`.
+  prefixSubcommandAliases: { edit: 'edited', del: 'deleted', delete: 'deleted', reaction: 'reactions', react: 'reactions', reset: 'clear', clean: 'clear' },
   data: new SlashCommandBuilder()
     .setName('snipe')
-    .setDescription('View a recently deleted or edited message in this channel.')
+    .setDescription('View a recently deleted or edited message, or a removed reaction, in this channel.')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
     .setDMPermission(false)
-    .addSubcommand((sub) => sub.setName('deleted').setDescription('View a deleted message.').addIntegerOption((option) => option.setName('index').setDescription('1 is the latest, up to 10').setMinValue(1).setMaxValue(MAX_ENTRIES_PER_CHANNEL).setRequired(false)))
-    .addSubcommand((sub) => sub.setName('edited').setDescription('View a previous version of an edited message.').addIntegerOption((option) => option.setName('index').setDescription('1 is the latest, up to 10').setMinValue(1).setMaxValue(MAX_ENTRIES_PER_CHANNEL).setRequired(false))),
+    .addSubcommand((sub) => sub.setName('deleted').setDescription('View a deleted message.').addIntegerOption(INDEX_OPTION))
+    .addSubcommand((sub) => sub.setName('edited').setDescription('View a previous version of an edited message.').addIntegerOption(INDEX_OPTION))
+    .addSubcommand((sub) => sub.setName('reactions').setDescription('View a reaction that was taken off a message.').addIntegerOption(INDEX_OPTION))
+    .addSubcommand((sub) => sub.setName('clear').setDescription('Forget what is saved in this channel.').addStringOption((option) => option.setName('what').setDescription('What to forget (default: all of it)').setRequired(false).addChoices({ name: 'all', value: 'all' }, { name: 'deleted', value: 'deleted' }, { name: 'edited', value: 'edited' }, { name: 'reactions', value: 'reactions' }))),
 
   async execute(interaction) {
     const lang = await languageOf(interaction);
     const subcommand = interaction.options.getSubcommand();
     const index = interaction.options.getInteger('index') ?? 1;
+
+    if (subcommand === 'clear') {
+      const removed = clearChannel(interaction.channel.id, interaction.options.getString('what') ?? 'all');
+      await interaction.reply({ content: removed ? tn(lang, 'utility.snipe.cleared', removed) : t(lang, 'utility.snipe.clearedNothing'), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+      return;
+    }
+    if (subcommand === 'reactions') {
+      const found = getReaction(interaction.channel.id, index);
+      if (!found) {
+        await interaction.reply({ content: t(lang, 'utility.snipe.noneReactions', { index }), flags: MessageFlags.Ephemeral });
+        return;
+      }
+      await interaction.reply({ embeds: [reactionEmbed(found, lang)], allowedMentions: { parse: [] } });
+      return;
+    }
+
     const entry = subcommand === 'edited' ? getEdited(interaction.channel.id, index) : getDeleted(interaction.channel.id, index);
 
     if (!entry) {
