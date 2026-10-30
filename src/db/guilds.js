@@ -1,4 +1,57 @@
 const database = require('./database');
+const logger = require('../utils/logger');
+const { detectGuildLanguage, describeDetection } = require('../i18n/detect');
+
+// Every row of a server that Petto never saw is made here, by `ensureGuild` (the first command, message or dashboard visit that needs it) or by
+// `createGuildIfMissing` (the join). Both give it the language Petto detects for the server, whichever of them is first: a row made with the
+// default 'en' by a message that came in before the join was finished would keep that language forever.
+let guildLookup = null;
+
+/** Tells this module where to find the discord.js guild of an id (`(id) => client.guilds.cache.get(id)`), so every first row can detect its language. */
+function setGuildLookup(lookup) {
+  guildLookup = typeof lookup === 'function' ? lookup : null;
+}
+
+function detectFor(guildId, guild) {
+  try {
+    const found = guild ?? guildLookup?.(guildId) ?? null;
+    return found ? detectGuildLanguage(found) : null;
+  } catch (err) {
+    logger.warn(`Could not detect the language of server ${guildId}: ${err.message}`);
+    return null;
+  }
+}
+
+/**
+ * Inserts the row of a server that has none. The language Petto detects goes in with `language_source: 'auto'`; `defaults` (a join) can set
+ * other columns. When the insert fails because another part of Petto made the row at the same moment, that row is read and returned; when it
+ * fails for another reason (a database without the new column), the plain row is tried once. Returns { row, created }.
+ */
+async function insertNewGuild(guildId, defaults = {}, guild = null) {
+  const detection = detectFor(guildId, guild);
+  const detected = detection ? { language: detection.language, language_source: 'auto' } : {};
+  const { data, error } = await database
+    .from('guilds')
+    .insert({ ...detected, ...defaults, guild_id: guildId })
+    .select('*')
+    .single();
+  if (!error) {
+    // Once for each new server, with what was looked at (the words of the list that matched, never a member or a message).
+    if (detection) {
+      logger.info(`language of ${guildId}: ${describeDetection(detection)}`);
+      require('../i18n').setCachedGuildLanguage(guildId, detection.language); // used at once, not when the next load of the languages runs
+    }
+    return { row: data, created: true };
+  }
+
+  // Another part of Petto made the row at the same moment: that one stays.
+  const { data: existing } = await database.from('guilds').select('*').eq('guild_id', guildId).maybeSingle();
+  if (existing) return { row: existing, created: false };
+  if (!detection) throw error;
+  const { data: plain, error: plainError } = await database.from('guilds').insert({ guild_id: guildId }).select('*').single();
+  if (plainError) throw plainError;
+  return { row: plain, created: true };
+}
 
 /**
  * Fetches a guild's config row, creating it with defaults on first use.
@@ -15,14 +68,7 @@ async function ensureGuild(guildId) {
   if (selectError) throw selectError;
   if (existing) return existing;
 
-  const { data: created, error: insertError } = await database
-    .from('guilds')
-    .insert({ guild_id: guildId })
-    .select('*')
-    .single();
-
-  if (insertError) throw insertError;
-  return created;
+  return (await insertNewGuild(guildId)).row;
 }
 
 /** The language saved for a server, or null when it has no row yet (read only: it never creates the row). */
@@ -49,10 +95,10 @@ async function listGuildLanguages() {
 }
 
 /**
- * Creates the config row of a server that has none, with `defaults` (used when Petto joins a server). A server that already
- * has a row keeps it untouched. Returns { row, created }.
+ * Creates the config row of a server that has none (used when Petto joins a server), with the language detected for `guild` and `defaults` on
+ * top. A server that already has a row keeps it untouched. Returns { row, created }.
  */
-async function createGuildIfMissing(guildId, defaults = {}) {
+async function createGuildIfMissing(guildId, defaults = {}, guild = null) {
   const { data: existing, error: selectError } = await database
     .from('guilds')
     .select('*')
@@ -61,16 +107,7 @@ async function createGuildIfMissing(guildId, defaults = {}) {
 
   if (selectError) throw selectError;
   if (existing) return { row: existing, created: false };
-
-  const { data: created, error: insertError } = await database
-    .from('guilds')
-    .insert({ ...defaults, guild_id: guildId })
-    .select('*')
-    .single();
-
-  // Another part of Petto made the row at the same moment: that one stays.
-  if (insertError) return { row: await ensureGuild(guildId), created: false };
-  return { row: created, created: true };
+  return insertNewGuild(guildId, defaults, guild);
 }
 
 async function updateGuild(guildId, patch) {
@@ -85,4 +122,4 @@ async function updateGuild(guildId, patch) {
   return data;
 }
 
-module.exports = { ensureGuild, findGuildLanguage, listGuildLanguages, createGuildIfMissing, updateGuild };
+module.exports = { ensureGuild, findGuildLanguage, listGuildLanguages, createGuildIfMissing, updateGuild, setGuildLookup };

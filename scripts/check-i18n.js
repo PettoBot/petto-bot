@@ -280,10 +280,10 @@ const json = (component) => JSON.parse(JSON.stringify(component.toJSON ? compone
     return api;
   };
   const guildsDb = require('../src/db/guilds');
-  let created = await guildsDb.createGuildIfMissing('new-es', { language: languageFromLocale('es-419') });
+  let created = await guildsDb.createGuildIfMissing('new-es', {}, { id: 'new-es', preferredLocale: 'es-419' });
   assert.equal(created.created, true);
   assert.equal(table.get('new-es').language, 'es', 'a new Spanish-speaking server starts in Spanish');
-  created = await guildsDb.createGuildIfMissing('old', { language: languageFromLocale('pt-BR') });
+  created = await guildsDb.createGuildIfMissing('old', {}, { id: 'old', preferredLocale: 'pt-BR' });
   assert.equal(created.created, false);
   assert.equal(table.get('old').language, 'en', 'a server Petto already knew keeps its language');
   assert.equal(await guildsDb.findGuildLanguage('nobody'), null, 'reading the language never makes a row');
@@ -298,7 +298,8 @@ const json = (component) => JSON.parse(JSON.stringify(component.toJSON ? compone
     require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports };
   };
   const joins = [];
-  stub('src/db/guilds.js', { createGuildIfMissing: async (id, defaults) => { joins.push([id, defaults]); return { row: { guild_id: id, prefix: '!', ...defaults }, created: true }; } });
+  const { detectGuildLanguage } = require('../src/i18n/detect');
+  stub('src/db/guilds.js', { createGuildIfMissing: async (id, defaults, guild) => { const language = detectGuildLanguage(guild).language; joins.push([id, language]); return { row: { guild_id: id, prefix: '!', language, language_source: 'auto', created_at: new Date() }, created: true }; } });
   stub('src/utils/discordOps.js', { sendGuildLifecycleLog: async () => { joins.push(['language during the join', currentLanguage()]); } });
   stub('src/utils/autoModManager.js', { syncGuildAutoMod: async () => {} });
   stub('src/utils/onboarding.js', { commandMention: async () => '</setup:1>', commandSubcommandMention: async () => '', ensureAdminSetupChannel: async () => null, findPrivateChannel: () => null, buildAdminSetupMessage: () => ({}), buildOwnerGuide: () => ({}), sendSetupMessage: async () => null });
@@ -306,7 +307,7 @@ const json = (component) => JSON.parse(JSON.stringify(component.toJSON ? compone
   const guildCreate = require('../src/events/guildCreate');
   const fakeGuild = { id: 'joined', preferredLocale: 'pt-BR', name: 'Servidor', memberCount: 3, createdTimestamp: 0, client: { user: { id: '1' }, users: { fetch: async () => null } }, fetchOwner: async () => null, fetchAuditLogs: async () => { throw new Error('no access'); } };
   await guildCreate.execute(fakeGuild);
-  assert.deepEqual(joins[0], ['joined', { language: 'pt-BR' }], 'guildCreate saves the language of preferredLocale');
+  assert.deepEqual(joins[0], ['joined', 'pt-BR'], 'guildCreate makes the row with the language it detects (here from preferredLocale)');
   assert.deepEqual(joins[1], ['language during the join', 'pt-BR'], 'and runs the rest of the join in it');
   assert.equal(await i18n.guildLanguage('joined'), 'pt-BR', 'used at once');
   const thanks = guildCreate.buildThanksMessage('S', '</setup:1>', '!', 'es');
@@ -385,7 +386,7 @@ const json = (component) => JSON.parse(JSON.stringify(component.toJSON ? compone
   assert.equal(typeof refresher, 'number', 'started with a first load');
   assert.equal(await i18n.guildLanguage('broken'), 'en', 'a database error answers in English');
   assert.equal(await i18n.setGuildLanguage('g3', 'español'), 'es');
-  assert.deepEqual(updates, [['g3', { language: 'es' }]], 'saved as the code');
+  assert.deepEqual(updates, [['g3', { language: 'es', language_source: 'manual' }]], 'saved as the code, as chosen by a person');
   assert.equal(await i18n.guildLanguage('g3'), 'es', 'used at once');
   i18n.setCachedGuildLanguage('g1', 'pt-BR');
   await assert.rejects(() => i18n.setGuildLanguage('g3', 'klingon'));

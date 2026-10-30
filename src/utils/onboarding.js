@@ -16,6 +16,7 @@ const { ensureGuild, updateGuild } = require('../db/guilds');
 const { EMOJI } = require('./emojis');
 const logger = require('./logger');
 const { t, currentLanguage } = require('../i18n');
+const { buildLanguageSection } = require('./languageChoice');
 
 const SETUP_CHANNEL_NAME = 'petto-setup';
 // i18n-ignore-next-line: the topic is how Petto finds its channel again, so it never changes with the language
@@ -136,7 +137,9 @@ async function commandSubcommandMention(client, commandName, subcommandName, gui
 }
 
 // `fallback`: it goes to a private channel that was not made for it; `dm`: it goes to a person's direct messages (with the name of the server).
-function buildAdminSetupMessage({ botId, setupMention, reportConfigMention, prefix, fallback = false, dm = false, guildName = '', lang = currentLanguage() }) {
+// `languageChoice` (what Petto detected for a new server: { language, source, words }) adds the language it chose, why, and the buttons to change
+// it (`languageDone`: after one was pressed); without it, or without `guildId`, nothing about the language is added.
+function buildAdminSetupMessage({ botId, setupMention, reportConfigMention, prefix, fallback = false, dm = false, guildName = '', guildId = null, languageChoice = null, languageDone = false, lang = currentLanguage() }) {
   const inviteUrl = `https://discord.com/oauth2/authorize?client_id=${botId}&permissions=8&scope=bot%20applications.commands`;
   const intro = new ContainerBuilder()
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'setup.intro')))
@@ -173,10 +176,11 @@ function buildAdminSetupMessage({ botId, setupMention, reportConfigMention, pref
       .setThumbnailAccessory(new ThumbnailBuilder().setURL(PETTO_IMAGE_URL)),
   );
 
-  return { components: [intro, setup], flags: MessageFlags.IsComponentsV2 };
+  const language = guildId ? buildLanguageSection({ guildId, kind: dm ? 'dm' : fallback ? 'fallback' : 'admin', choice: languageChoice, done: languageDone, prefix, lang }) : null;
+  return { components: [intro, setup, ...(language ? [language] : [])], flags: MessageFlags.IsComponentsV2 };
 }
 
-function buildOwnerGuide({ guild, setupChannel, setupMention, prefix, lang = currentLanguage() }) {
+function buildOwnerGuide({ guild, setupChannel, setupMention, prefix, languageChoice = null, languageDone = false, lang = currentLanguage() }) {
   const container = new ContainerBuilder()
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(t(lang, 'core.join.thanks', { emoji: EMOJI.STAR, server: guild.name })))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Large))
@@ -189,7 +193,8 @@ function buildOwnerGuide({ guild, setupChannel, setupMention, prefix, lang = cur
     new ButtonBuilder().setLabel(t(lang, 'core.join.support.button')).setStyle(ButtonStyle.Link).setURL('https://petto.sbs/support'),
   );
 
-  return { components: [container, row], flags: MessageFlags.IsComponentsV2 };
+  const language = guild?.id ? buildLanguageSection({ guildId: guild.id, kind: 'owner', choice: languageChoice, done: languageDone, prefix, lang }) : null;
+  return { components: [container, ...(language ? [language] : []), row], flags: MessageFlags.IsComponentsV2 };
 }
 
 async function sendSetupMessage(channel, payload) {
