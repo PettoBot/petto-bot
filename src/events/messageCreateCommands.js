@@ -24,6 +24,7 @@ const { runCodeCommand } = require('../utils/codeCommands');
 const { findTrigger } = require('../utils/codeTriggers');
 const { peekGuildLanguage, t, formatDecimal } = require('../i18n');
 const guildPrefixes = require('../utils/guildPrefixes');
+const { isCommonWord } = require('../utils/commonWords');
 // Loaded when a message comes in: it reaches for the configuration and the database, which the checks do without.
 const activeUserPrefix = async (...args) => require('../utils/userPrefixAccess').activeUserPrefix(...args);
 
@@ -115,7 +116,10 @@ function setCachedPrefix(guildId, prefixes) {
  */
 function knownNameChecker(client, guildId) {
   return async (name) => {
-    if (client.commands?.has(name) || client.commandAliases?.has(name) || client.commandRoutes?.has(name)) return true;
+    if (client.commands?.has(name)) return true;
+    // An everyday word (`is`, `si`, `um`) that is also a short alias is a command with a symbol prefix (`!is`) but chat after a word
+    // prefix: `petto is the best` is not `!image sepia`. A server alias or a custom command was chosen by the server, so it stays.
+    if (client.commandAliases?.has(name) || client.commandRoutes?.has(name)) return !isCommonWord(name);
     if (await commandAliasesDb.get(guildId, name).catch(() => null)) return true;
     const row = await customCommandsDb.getCommand(guildId, name).catch(() => null);
     return Boolean(row && (!row.trigger_type || row.trigger_type === 'command'));
@@ -234,6 +238,7 @@ async function isCommandMessage(message) {
 module.exports = {
   name: Events.MessageCreate,
   isCommandMessage,
+  knownNameChecker,
   setCachedPrefix,
   getPrefixes,
   normalizePrefix,
