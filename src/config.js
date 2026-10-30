@@ -177,8 +177,8 @@ module.exports = {
   codeDatabaseUrl: process.env.PETTO_CODE_DATABASE_URL?.trim() || null,
   // Like the main database: no SSL unless asked. Discloud's databases do not support it.
   codeDatabaseSsl: envBool('PETTO_CODE_DATABASE_SSL', envBool('DISCLOUD_DATABASE_SSL', false)),
-  // Optional second PostgreSQL database for the heavy data that can be rebuilt or is only copies (the avatar copies of the profile history and the public
-  // threat lists), so the main database keeps the settings. Without it everything stays in the main database.
+  // Optional second PostgreSQL database for the heavy data that can be rebuilt or is only copies (today the public threat lists; it stays
+  // for the support data the bot may keep there later), so the main database keeps the settings. Without it everything stays in the main database.
   data2DatabaseUrl: process.env.PETTO_DATA2_DATABASE_URL?.trim() || null,
   data2DatabaseSsl: envBool('PETTO_DATA2_DATABASE_SSL', envBool('DISCLOUD_DATABASE_SSL', false)),
   // Shared secret for server-side dashboard requests. Keep this identical to the

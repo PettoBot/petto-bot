@@ -21,6 +21,7 @@ const INVALIDATION_TABLES = Object.freeze([
   'button_responders', // src/db/responders.js, button responders (cached by responder id)
   'counting_config', // src/db/counting.js, the counting game of a server
   'media_only_channels', // src/db/mediaOnly.js, the media and link channels (cached by server)
+  'message_link_settings', // src/db/messageLinks.js, the message link embeds (on or off, ignored channels)
   'level_config', // src/db/levelConfig.js
   'level_multipliers', // src/db/levelMultipliers.js
   'partner_config', // src/db/partners.js

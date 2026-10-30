@@ -107,12 +107,20 @@ for (const [category, list] of Object.entries(entries)) {
 }
 
 // (c) And the descriptions as Discord gets them, every language of every command, subcommand and option.
+// Names are never translated, except /act and its groups: the owner chose to show them as `accion` and `acao` (checked below).
+const MAY_HAVE_LOCAL_NAMES = /^(roleplay\/act\.js|registered \/act)(\/(love|play|fight|feel|react))?$/;
+const DISCORD_NAME = /^[-_\u02BC\p{L}\p{N}\p{sc=Deva}\p{sc=Thai}]{1,32}$/u;
 const tooLong = (node, trail) => {
   const found = [];
   for (const [locale, text] of Object.entries({ default: node.description ?? '', ...(node.description_localizations ?? {}) })) {
     if (text.length > 100) found.push(`${trail} [${locale}] description is ${text.length} characters (max 100)`);
   }
-  if (node.name_localizations && Object.keys(node.name_localizations).length) found.push(`${trail} has name_localizations: names of commands, subcommands and options are never translated`);
+  if (node.name_localizations && Object.keys(node.name_localizations).length) {
+    if (!MAY_HAVE_LOCAL_NAMES.test(trail)) found.push(`${trail} has name_localizations: names of commands, subcommands and options are never translated`);
+    for (const [locale, name] of Object.entries(node.name_localizations)) {
+      if (!DISCORD_NAME.test(name) || name !== name.toLowerCase()) found.push(`${trail} [${locale}] name "${name}" is not a name Discord accepts (lowercase, 1-32 letters, digits, - or _)`);
+    }
+  }
   for (const option of node.options ?? []) found.push(...tooLong(option, `${trail}/${option.name}`));
   return found;
 };

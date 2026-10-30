@@ -10,36 +10,8 @@ exports.buildRoleplayButtonRow = buildRoleplayButtonRow;
 const discord_js_1 = require("discord.js");
 const { CATALOGS, currentLanguage, t, tn } = require('../i18n');
 exports.ROLEPLAY_BUTTON_PREFIX = 'rp:';
-const RESPONSE_EMOJIS = {
-    airkiss: '💋',
-    angry: '😠',
-    angrystare: '😤',
-    bleh: '😛',
-    blush: '😊',
-    bite: '🦷',
-    boop: '👉',
-    brofist: '👊',
-    cuddle: '🫂',
-    cry: '😭',
-    dance: '💃',
-    glomp: '🫂',
-    highfive: '🙌',
-    hi: '👋',
-    hug: '🤗',
-    kiss: '💋',
-    laugh: '😂',
-    pat: '🫳',
-    poke: '👉',
-    punch: '🥊',
-    sad: '😭',
-    slap: '🖐️',
-    smile: '😊',
-    smug: '😏',
-    wave: '👋',
-    wink: '😉',
-    yes: '✅',
-    no: '❌',
-};
+// The emoji of each action's response button lives with the actions of /act.
+const { EMOJIS: RESPONSE_EMOJIS } = require('./actions');
 // Actions with their own texts in the roleplay catalog; any other action (an old or hand-made button) gets the generic ones.
 function hasTexts(action) {
     return Object.hasOwn(CATALOGS.en, `roleplay.${action}.accepted`);

@@ -53,7 +53,6 @@ const TEMPLATES = {
   permissions: template('permissions', 'warning'),
   logs: template('logs', 'warning'),
   policy: template('policy', 'critical'),
-  shop: template('shop', 'critical'),
   maintenance: template('maintenance', 'info'),
 };
 
@@ -192,15 +191,6 @@ function teamActionRow(guildId, kind, severity) {
       .setStyle(ButtonStyle.Primary),
   );
 
-  if (kind === 'shop') {
-    row.addComponents(
-      new ButtonBuilder()
-        .setCustomId(`gops_ignore_prepare:${guildId}`)
-        .setLabel('Ignore server') // i18n-ignore: team channel
-        .setStyle(ButtonStyle.Secondary),
-    );
-  }
-
   if (severity === 'critical') {
     row.addComponents(
       new ButtonBuilder()
@@ -230,22 +220,6 @@ function describeDelivery({ deliveredChannel = null, deliveryType = null, delive
   return 'Not delivered'; // i18n-ignore: team channel
 }
 
-function formatEvidence(evidence) {
-  if (!evidence?.content) return null;
-
-  const snippet = truncate(evidence.content, 650)
-    .replace(/```/g, 'ˋˋˋ')
-    .replace(/\r?\n/g, ' ')
-    .replace(/@/g, '@\u200b');
-
-  const lines = [];
-  if (evidence.channelId) lines.push(`Channel: <#${evidence.channelId}>`); // i18n-ignore: team channel
-  if (evidence.authorId) lines.push(`Author: <@${evidence.authorId}> (\`${evidence.authorId}\`)`); // i18n-ignore: team channel
-  lines.push(`> ${snippet}`);
-  if (evidence.url) lines.push(`[Jump to message](${evidence.url})`); // i18n-ignore: team channel
-  return lines.join('\n').slice(0, 1_024);
-}
-
 /** The alert in the Petto team's own channel, in English (the team reads it). */
 async function sendTeamAlert(client, {
   guild,
@@ -258,7 +232,6 @@ async function sendTeamAlert(client, {
   deliveredRecipientId = null,
   requestedBy = null,
   force = false,
-  evidence = null,
 }) {
   if (!guild) return null;
   const template = TEMPLATES[kind] ?? TEMPLATES.diagnostic;
@@ -291,11 +264,6 @@ async function sendTeamAlert(client, {
     )
     .setFooter({ text: requestedBy ? `Requested by ${requestedBy}` : 'Petto automated guild diagnostics' }) // i18n-ignore: team channel
     .setTimestamp();
-
-  const evidenceValue = formatEvidence(evidence);
-  if (evidenceValue) {
-    embed.addFields({ name: 'Detected message', value: evidenceValue, inline: false }); // i18n-ignore: team channel
-  }
 
   const mentionOwner = effectiveSeverity === 'critical' && config.ownerId ? `<@${config.ownerId}>` : null;
   const sent = await channel.send({
@@ -407,10 +375,6 @@ function compactLogText(args) {
 
 function classifyDiagnostic(text) {
   const lower = String(text).toLowerCase();
-
-  if (/\[(?:guildpolicy|discordcompliance|shopdetector)\]/i.test(text) || /explicit policy violation signal/i.test(text)) {
-    return { kind: lower.includes('shop') ? 'shop' : 'policy', details: truncate(text, 650), teamAlert: true };
-  }
 
   if (lower.includes('[logengine] no webhook found for configured log')
       || lower.includes('no webhook found for configured log')

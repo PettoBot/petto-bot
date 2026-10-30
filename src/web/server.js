@@ -34,7 +34,6 @@ const { registerCardRoutes } = require('./cardRoutes');
 const { registerAppealImageRoutes } = require('./appealImageRoutes');
 const { registerCodeRoutes } = require('./codeRoutes');
 const { registerIdentityRoutes } = require('./identityRoutes');
-const { registerHistoryImageRoutes } = require('./historyImageRoutes');
 const { registerMemberRoutes } = require('./memberRoutes');
 const { registerFormRoutes } = require('./formRoutes');
 const { registerCounterRoutes } = require('./counterRoutes');
@@ -800,8 +799,6 @@ function startServer(client) {
     registerAppealImageRoutes(app, { authorize: dashboardCardAccess, isAuthorized: dashboardAuthorized });
     registerCodeRoutes(app, { authorize: dashboardCardAccess });
     registerIdentityRoutes(app, { authorize: dashboardCardAccess });
-    // The kept copies of the avatars of the profile history, for the history page of the dashboard.
-    registerHistoryImageRoutes(app, { isAuthorized: dashboardAuthorized, images: require('../db/profileHistoryImages'), history: require('../db/identityHistory'), copies: () => require('../utils/avatarCopies').avatarCopies() });
     // Names and avatars of members for the dashboard pages, from the gateway instead of one REST call per person.
     registerMemberRoutes(app, { isAuthorized: dashboardAuthorized, authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
     // Forms: accept or deny a submission and post a panel, from the dashboard.

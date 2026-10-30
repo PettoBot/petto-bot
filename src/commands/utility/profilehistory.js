@@ -1,8 +1,6 @@
-const { SlashCommandBuilder, MessageFlags, AttachmentBuilder, ContainerBuilder, TextDisplayBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, SeparatorBuilder, SeparatorSpacingSize } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags, ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, SeparatorSpacingSize } = require('discord.js');
 const history = require('../../db/identityHistory');
 const { noteUser, noteMember, recordingOn, setRecording, clearHistory } = require('../../utils/identityHistory');
-const images = require('../../db/profileHistoryImages');
-const { renderAvatarSheet, MAX_TILES } = require('../../utils/avatarSheet');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { COLORS } = require('../../utils/colors');
@@ -18,15 +16,14 @@ module.exports = {
   aliases: ['phist'],
   data: new SlashCommandBuilder()
     .setName('profilehistory')
-    .setDescription('The avatars, names and nicknames a member has had.')
+    .setDescription('The names and nicknames a member has had.')
     .setDMPermission(false)
-    .addSubcommand((s) => s.setName('avatars').setDescription('Every avatar saved of a member, in one picture.').addUserOption(userOption))
     .addSubcommand((s) => s.setName('names').setDescription('The names (display names) saved of a member.').addUserOption(userOption))
     .addSubcommand((s) => s.setName('nicknames').setDescription('The nicknames saved of a member in this server.').addUserOption(userOption))
     .addSubcommand((s) => s
       .setName('clear')
-      .setDescription('Delete your saved avatars, names or nicknames.')
-      .addStringOption((o) => o.setName('what').setDescription('What to delete').setRequired(true).addChoices({ name: 'avatars', value: 'avatars' }, { name: 'names', value: 'names' }, { name: 'nicknames', value: 'nicknames' }, { name: 'all', value: 'all' })))
+      .setDescription('Delete your saved names or nicknames.')
+      .addStringOption((o) => o.setName('what').setDescription('What to delete').setRequired(true).addChoices({ name: 'names', value: 'names' }, { name: 'nicknames', value: 'nicknames' }, { name: 'all', value: 'all' })))
     .addSubcommand((s) => s
       .setName('record')
       .setDescription('Turn the saving of your history on or off.')
@@ -45,7 +42,7 @@ const say = (interaction, text, color = 0x4b4f59, ephemeral = false) => interact
 async function clearCmd(interaction) {
   const lang = await languageOf(interaction);
   const what = interaction.options.getString('what', true);
-  const kind = { avatars: 'avatar', names: 'name', nicknames: 'nickname', all: null }[what];
+  const kind = { names: 'name', nicknames: 'nickname', all: null }[what];
   const removed = await clearHistory(interaction.user.id, kind);
   const status = t(lang, await recordingOn(interaction.user.id) ? 'utility.history.stillSaving' : 'utility.history.savingOff');
   return say(interaction, tn(lang, `utility.history.cleared.${what}`, removed, { emoji: EMOJI.APPROVE, count: removed, status }), COLORS.GREEN, true);
@@ -73,7 +70,6 @@ async function showCmd(interaction, kindName) {
   await noteUser(user);
   if (member) await noteMember(member);
 
-  if (kindName === 'avatars') return showAvatars(interaction, user, lang);
   const kind = kindName === 'names' ? 'name' : 'nickname';
   const rows = await history.list(user.id, kind, { guildId: kind === 'nickname' ? interaction.guild.id : null });
   const total = rows.length;
@@ -88,17 +84,4 @@ async function showCmd(interaction, kindName) {
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n').slice(0, 3500)));
   return interaction.editReply({ components: [container], flags: V2, allowedMentions: { parse: [] } });
-}
-
-async function showAvatars(interaction, user, lang) {
-  const rows = await history.list(user.id, 'avatar');
-  if (!rows.length) return interaction.editReply({ components: [textCard(t(lang, 'utility.history.empty.avatars'))], flags: V2 });
-  // The kept copies first (Discord no longer serves most old avatars), the Discord link for the rest.
-  const stored = await images.getMany(user.id, rows.slice(0, MAX_TILES).map((row) => row.value)).catch(() => new Map());
-  const sheet = await renderAvatarSheet(user.id, rows, { stored });
-  const saved = rows.length > MAX_TILES ? t(lang, 'utility.history.avatarsSavedMore', { count: rows.length, shown: MAX_TILES }) : tn(lang, 'utility.history.avatarsSaved', rows.length, { count: rows.length });
-  const container = new ContainerBuilder()
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### ${t(lang, 'utility.history.avatarsTitle', { name: user.username })}\n${saved}`))
-    .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://avatars.png')));
-  return interaction.editReply({ components: [container], files: [new AttachmentBuilder(sheet.buffer, { name: 'avatars.png' })], flags: V2, allowedMentions: { parse: [] } });
 }

@@ -1,5 +1,4 @@
-// Checks the ways the database is kept small: the avatar copies rewritten at a lower quality and the entries of the public threat feeds that are
-// not listed any more. Runs when PETTO_TEST_DATABASE_URL points to a test database, and is skipped otherwise.
+// Checks the ways the database is kept small: the entries of the public threat feeds that are not listed any more. Runs when PETTO_TEST_DATABASE_URL points to a test database, and is skipped otherwise.
 const assert = require('node:assert/strict');
 
 const url = process.env.PETTO_TEST_DATABASE_URL;
@@ -10,36 +9,11 @@ if (!url) {
 process.env.DISCORD_TOKEN ||= 'test';
 process.env.DISCORD_CLIENT_ID ||= 'test';
 process.env.DISCLOUD_DATABASE_URL = url;
-const { createCanvas } = require('@napi-rs/canvas');
 const { getPrimaryPool, closePools } = require('../src/db/postgres');
-const images = require('../src/db/profileHistoryImages');
 const links = require('../src/db/maliciousLinks');
-const { packStep } = require('../src/jobs/avatarPackJob');
-const { toWebp, WEBP_QUALITY } = require('../src/utils/avatarCopies');
 
 (async () => {
   const pool = getPrimaryPool();
-  assert.equal(WEBP_QUALITY, 72);
-
-  // --- avatar copies ----------------------------------------------------------------------------------------------------------------------
-  await pool.query("delete from profile_history_images where user_id like '92000000000000%'");
-  const canvas = createCanvas(256, 256);
-  const ctx = canvas.getContext('2d');
-  for (let i = 0; i < 400; i += 1) { ctx.fillStyle = `hsl(${(i * 37) % 360} 70% 50%)`; ctx.beginPath(); ctx.arc((i * 53) % 256, (i * 97) % 256, 6 + (i % 20), 0, 7); ctx.fill(); }
-  const heavy = canvas.toBuffer('image/webp', 95);
-  const user = (n) => `92000000000000${String(n).padStart(2, '0')}`;
-  for (const n of [1, 2]) await pool.query("insert into profile_history_images (user_id, hash, content_type, size, bytes, packed) values ($1, $2, 'image/webp', $3, $4, false)", [user(n), 'a'.repeat(32), heavy.length, heavy]);
-  await pool.query("insert into profile_history_images (user_id, hash, content_type, size, bytes, packed) values ($1, $2, 'image/webp', 5, $3, false)", [user(3), 'b'.repeat(32), Buffer.from('nope!')]); // not a picture
-  const rows = await images.unpacked(10);
-  assert.equal(rows.filter((row) => row.user_id.startsWith('92000000000000')).length, 3);
-  let result;
-  do { result = await packStep({ db: { ...images, unpacked: async () => (await images.unpacked(50)).filter((row) => row.user_id.startsWith('92000000000000')) }, batch: 50 }); } while (result.looked);
-  const after = await pool.query("select user_id, size, packed, length(bytes) as len from profile_history_images where user_id like '92000000000000%' order by user_id");
-  assert.ok(after.rows.every((row) => row.packed), 'every copy was looked at once');
-  assert.ok(after.rows[0].len < heavy.length * 0.85 && Number(after.rows[0].size) === Number(after.rows[0].len), 'a heavy copy is rewritten smaller, with its size');
-  assert.equal(Number(after.rows[2].len), 5, 'what cannot be read is left as it is');
-  await pool.query("delete from profile_history_images where user_id like '92000000000000%'");
-
   // --- threat feeds ----------------------------------------------------------------------------------------------------------------------
   const old = "now() - interval '30 days'";
   await pool.query("delete from malicious_links where normalized_url like 'trim-check.example/%'");

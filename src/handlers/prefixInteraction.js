@@ -262,6 +262,9 @@ function buildPseudoInteraction(message, { commandName, subcommand, subcommandGr
     // equivalent (nothing they're "in reply to"), but a few prefix-only commands genuinely
     // need it (e.g. /steal reading message.reference/message.stickers for a replied-to sticker).
     rawMessage: message,
+    // True for a command typed with the prefix (a real slash command has none): what is shown to the member can differ, for
+    // example a mention is not repeated when the message that was typed already shows it.
+    fromPrefix: true,
     options: {
       getSubcommand: (required = true) => {
         if (!subcommand && required) throw missingArgError('subcommand');

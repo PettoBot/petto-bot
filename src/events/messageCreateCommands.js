@@ -6,7 +6,6 @@ const { buildInteractionFromMessage, tokenize } = require('../handlers/prefixInt
 const { unknownSubcommandCard, missingOptionCard } = require('../utils/usageCard');
 const commandAliasesDb = require('../db/commandAliases');
 const { getRemainingCooldownShared } = require('../utils/sharedCooldown');
-const disabledDb = require('../db/disabledCommands');
 const permissionsDb = require('../db/permissions');
 const customCommandsDb = require('../db/customCommands');
 const { getTemplate } = require('../db/embedTemplates');
@@ -17,13 +16,15 @@ const { textCard } = require('../utils/caseCard');
 const { EMOJI } = require('../utils/emojis');
 const moderationPermissions = require('../utils/moderationPermissions');
 const { controlAction } = require('../utils/autoModControl');
-const { restrictedFor, applyWordRoute } = require('../utils/commandRestrictions');
+const { applyWordRoute } = require('../utils/commandRestrictions');
+const commandRules = require('../utils/commandRules');
 const logger = require('../utils/logger');
 const { logCommandUse } = require('../logging/extraLog');
 const { runCodeCommand } = require('../utils/codeCommands');
 const { findTrigger } = require('../utils/codeTriggers');
 const { peekGuildLanguage, t, formatDecimal } = require('../i18n');
 const guildPrefixes = require('../utils/guildPrefixes');
+const { isCommonWord } = require('../utils/commonWords');
 // Loaded when a message comes in: it reaches for the configuration and the database, which the checks do without.
 const activeUserPrefix = async (...args) => require('../utils/userPrefixAccess').activeUserPrefix(...args);
 
@@ -115,11 +116,21 @@ function setCachedPrefix(guildId, prefixes) {
  */
 function knownNameChecker(client, guildId) {
   return async (name) => {
-    if (client.commands?.has(name) || client.commandAliases?.has(name) || client.commandRoutes?.has(name)) return true;
+    if (client.commands?.has(name)) return true;
+    // An everyday word (`is`, `si`, `um`) that is also a short alias is a command with a symbol prefix (`!is`) but chat after a word
+    // prefix: `petto is the best` is not `!image sepia`. A server alias or a custom command was chosen by the server, so it stays.
+    if (client.commandAliases?.has(name) || client.commandRoutes?.has(name)) return !isCommonWord(name);
     if (await commandAliasesDb.get(guildId, name).catch(() => null)) return true;
     const row = await customCommandsDb.getCommand(guildId, name).catch(() => null);
     return Boolean(row && (!row.trigger_type || row.trigger_type === 'command'));
   };
+}
+
+/** Whether the server has an alias or a custom command with this word (they win over the short aliases, which are Petto's own). */
+async function serverUsesWord(guildId, name) {
+  if (await commandAliasesDb.get(guildId, name).catch(() => null)) return true;
+  const row = await customCommandsDb.getCommand(guildId, name).catch(() => null);
+  return Boolean(row && (!row.trigger_type || row.trigger_type === 'command'));
 }
 
 /**
@@ -234,6 +245,7 @@ async function isCommandMessage(message) {
 module.exports = {
   name: Events.MessageCreate,
   isCommandMessage,
+  knownNameChecker,
   setCachedPrefix,
   getPrefixes,
   normalizePrefix,
@@ -260,7 +272,10 @@ module.exports = {
 
     // Server-defined aliases are prefix-only, matching the rest of Petto's configurable
     // command surface. `{0}`, `{1}`, ... refer to arguments supplied after the alias.
-    if (!message.client.commands.has(commandName) && !message.client.commandAliases.has(commandName) && !message.client.commandRoutes?.has(commandName)) {
+    // A short alias (`!is`) never takes a word from the server: an alias or a custom command the server wrote with that word wins.
+    const shortRoute = message.client.commandRoutes?.get(commandName)?.short ? message.client.commandRoutes.get(commandName) : null;
+    const serverOwnsIt = shortRoute ? await serverUsesWord(message.guild.id, commandName) : false;
+    if (serverOwnsIt || (!message.client.commands.has(commandName) && !message.client.commandAliases.has(commandName) && !message.client.commandRoutes?.has(commandName))) {
       const configuredAlias = await commandAliasesDb.get(message.guild.id, commandName).catch(() => null);
       if (configuredAlias) {
         const targetTokens = tokenize(configuredAlias.command);
@@ -275,14 +290,14 @@ module.exports = {
       }
     }
 
-    // `!clear avatars|names|nicknames|all` deletes your saved history; `!clear 100` and the rest stay the channel's clear.
-    if (commandName === 'clear' && /^(avatars?|names?|nicknames?|nicks?|all|history)(\s|$)/i.test(argText.trim())) {
+    // `!clear names|nicknames|all` deletes your saved history; `!clear 100` and the rest stay the channel's clear.
+    if (commandName === 'clear' && /^(names?|nicknames?|nicks?|all|history)(\s|$)/i.test(argText.trim())) {
       const what = argText.trim().split(/\s+/)[0].toLowerCase();
       commandName = 'profilehistory';
-      argText = `clear ${/^avatar/.test(what) ? 'avatars' : /^name/.test(what) ? 'names' : /^nick/.test(what) ? 'nicknames' : 'all'}`;
+      argText = `clear ${/^name/.test(what) ? 'names' : /^nick/.test(what) ? 'nicknames' : 'all'}`;
     }
 
-    const prefixRoute = message.client.commandRoutes?.get(commandName);
+    const prefixRoute = serverOwnsIt ? undefined : message.client.commandRoutes?.get(commandName);
     if (prefixRoute) {
       // A route can send some first words elsewhere: `!forcenick list` is `!nickname forced`, `!forcenick @a b` is `!nickname force @a b`.
       const word = applyWordRoute(prefixRoute.words, prefixRoute.command, argText);
@@ -326,13 +341,19 @@ module.exports = {
       return;
     }
 
-    const disabled = hiddenAutomodControl ? null : await disabledDb.findCached(message.guild.id, canonicalName, message.channel.id).catch(() => null);
+    // A route can stand for one action of a command (`!hug` is `/act` hug): `!disablecommand hug` turns off that action only, and
+    // turning off the whole command (`!disablecommand act`, or its category) turns off every action too. The slash command asks
+    // the same function (utils/commandRules.js).
+    const ruleNames = commandRules.ruleNames(command, { route: prefixRoute, subcommand: commandRules.subcommandOfText(command, argText) });
+    const found = hiddenAutomodControl ? null : await commandRules.disabledFor(message.guild.id, ruleNames, message.channel.id);
+    const disabled = found?.row ?? null;
+    const disableName = found?.name ?? canonicalName;
     if (disabled) {
       // The usual warning card (the warning icon and who asked) with no colored side bar, that clears itself out like the
       // "unknown command" one. The icon comes from warningPayload, so the text goes without its own.
       const text = disabled.channel_id
-        ? t(lang, 'core.disabled.channel', { emoji: '', command: `${prefix}${canonicalName}`, channel: `<#${disabled.channel_id}>` })
-        : t(lang, 'core.disabled.server', { emoji: '', command: `${prefix}${canonicalName}` });
+        ? t(lang, 'core.disabled.channel', { emoji: '', command: `${prefix}${disableName}`, channel: `<#${disabled.channel_id}>` })
+        : t(lang, 'core.disabled.server', { emoji: '', command: `${prefix}${disableName}` });
       const notice = await message.reply(warningPayload(message, text.trim(), null)).catch(() => null);
       if (notice) setTimeout(() => notice.delete().catch(() => {}), UNKNOWN_COMMAND_DELETE_MS);
       return;
@@ -376,12 +397,12 @@ module.exports = {
     }
 
     // !restrictcommand: only the roles chosen for this command (administrators always can).
-    const restricted = hiddenAutomodControl ? null : await restrictedFor(message.guild.id, canonicalName, message.member).catch((err) => {
+    const restricted = hiddenAutomodControl ? null : await commandRules.restrictedForNames(message.guild.id, ruleNames, message.member).catch((err) => {
       logger.error('Error checking restricted command:', err);
       return null;
     });
     if (restricted) {
-      await message.reply(warningPayload(message, t(lang, 'core.restricted', { command: canonicalName, roles: restricted.map((id) => `<@&${id}>`).join(', ') }))).catch(() => {});
+      await message.reply(warningPayload(message, t(lang, 'core.restricted', { command: restricted.name, roles: restricted.roles.map((id) => `<@&${id}>`).join(', ') }))).catch(() => {});
       return;
     }
 

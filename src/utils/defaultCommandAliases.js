@@ -3,8 +3,11 @@
  * Explicit aliases on a command file still win; commandHandler skips collisions.
  * This never creates or deploys slash commands.
  */
+const { actionRoutes } = require('./actions');
+const { shortAliasRoutes } = require('./shortAliases');
+
 const DEFAULT_COMMAND_ALIASES = {
-  activity: ['act'], avatar: ['av', 'pfp'], banner: ['bnr'], botinfo: ['bi'], calc: ['c', 'calculate'], channelinfo: ['ci'],
+  avatar: ['av', 'pfp'], banner: ['bnr'], botinfo: ['bi'], calc: ['c', 'calculate'], channelinfo: ['ci'],
   color: ['hexcolor'], emojiinfo: ['ei'], firstmessage: ['fm'], inviteinfo: ['ii'], invites: ['invs'],
   roleinfo: ['ri'], roles: ['rolelist'], serverinfo: ['si'], snipe: ['sniped'], snowflake: ['sf'], spotify: ['sp'], time: ['tz', 'clock'], uptime: ['up'], userinfo: ['ui'], usercosmetics: ['uc'], wiki: ['wk'],
   autothread: ['at'], reaction: ['react'], reactionrole: ['rr'], stickymessage: ['sticky'], stickyroles: ['sr'], timer: ['tmr'], voicemaster: ['vm'],
@@ -15,12 +18,11 @@ const DEFAULT_COMMAND_ALIASES = {
 // Prefix-only shortcuts for high-frequency channel actions. These expand to the
 // existing `channel` command, so the old `!channel ...` and `!ch ...` forms stay
 // valid while common moderation actions can be typed directly.
-const DEFAULT_PREFIX_ROUTES = [
+const BASE_PREFIX_ROUTES = [
   { alias: 'lock', command: 'channel', args: ['lock'], subcommand: 'lock' },
   { alias: 'unlock', command: 'channel', args: ['unlock'], subcommand: 'unlock' },
   { alias: 'slowmode', command: 'channel', args: ['slowmode'], subcommand: 'slowmode' },
   { alias: 'clear', command: 'channel', args: ['clear'], subcommand: 'clear' },
-  { alias: 'avatars', command: 'profilehistory', args: ['avatars'], subcommand: 'avatars' },
   { alias: 'names', command: 'profilehistory', args: ['names'], subcommand: 'names' },
   { alias: 'nicknames', command: 'profilehistory', args: ['nicknames'], subcommand: 'nicknames' },
   { alias: 'nicks', command: 'profilehistory', args: ['nicknames'], subcommand: 'nicknames' },
@@ -172,10 +174,23 @@ const DEFAULT_PREFIX_ROUTES = [
   { alias: 'lic', command: 'chess', args: ['lichess'], subcommand: 'lichess' },
   { alias: 'dominant', command: 'image', args: ['hex'], subcommand: 'hex' },
   { alias: 'dominantcolor', command: 'image', args: ['hex'], subcommand: 'hex' },
+  // Every action of /act is its own word with the prefix: `!hug @member` is `!act love hug @member`.
+  ...actionRoutes(),
+  // The snipe family: `!editsnipe` is `!snipe edited`, `!reactionsnipe` is `!snipe reactions`, `!clearsnipe` is `!snipe clear`.
+  { alias: 'editsnipe', command: 'snipe', args: ['edited'], subcommand: 'edited' },
+  { alias: 'esnipe', command: 'snipe', args: ['edited'], subcommand: 'edited' },
+  { alias: 'reactionsnipe', command: 'snipe', args: ['reactions'], subcommand: 'reactions' },
+  { alias: 'rsnipe', command: 'snipe', args: ['reactions'], subcommand: 'reactions' },
+  { alias: 'clearsnipe', command: 'snipe', args: ['clear'], subcommand: 'clear' },
+  { alias: 'csnipe', command: 'snipe', args: ['clear'], subcommand: 'clear' },
 ];
+
+// The routes written by hand above, then the short aliases of the subcommands (src/utils/short-aliases.json, made by
+// scripts/gen-short-aliases.js and read once here): `!is` is `!image sepia`, `!tko` is `!ticket open`.
+const DEFAULT_PREFIX_ROUTES = [...BASE_PREFIX_ROUTES, ...shortAliasRoutes()];
 
 function aliasesFor(commandName) {
   return DEFAULT_COMMAND_ALIASES[commandName] ?? [];
 }
 
-module.exports = { DEFAULT_COMMAND_ALIASES, DEFAULT_PREFIX_ROUTES, aliasesFor };
+module.exports = { DEFAULT_COMMAND_ALIASES, BASE_PREFIX_ROUTES, DEFAULT_PREFIX_ROUTES, aliasesFor };

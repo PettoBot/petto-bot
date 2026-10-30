@@ -441,4 +441,12 @@ module.exports = {
   'cmd.config.warnconfig.desc': 'Show the warn escalation settings and how to change them.',
   'cmd.config.webhookconfig.desc': 'Show the webhooks settings and how to change them.',
   'cmd.config.welcomeconfig.desc': 'Show the welcome settings and how to change them.',
+  'cmd.config.messagelinks.desc': 'Show a message in an embed when someone posts its link (off by default).',
+  'cmd.config.messagelinks.on.desc': 'Turn message link embeds on.',
+  'cmd.config.messagelinks.off.desc': 'Turn message link embeds off.',
+  'cmd.config.messagelinks.status.desc': 'See if it is on and which channels are ignored.',
+  'cmd.config.messagelinks.ignore.desc': 'Do not open links posted in a channel, or pointing to it.',
+  'cmd.config.messagelinks.ignore.opt.channel.desc': 'The channel to ignore',
+  'cmd.config.messagelinks.unignore.desc': 'Open links in a channel again.',
+  'cmd.config.messagelinks.unignore.opt.channel.desc': 'The channel to stop ignoring',
 };

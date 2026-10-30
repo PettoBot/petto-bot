@@ -159,19 +159,103 @@ const guild = (id, overrides = {}) => ({
     assert.deepEqual(infoLines, ['[snapshots] Server 2005 (2005): Petto cannot post in 2 channel(s), missing permission: #rules (SendMessages), #staff (ViewChannel).']);
     await saveGuildSnapshot(closedGuild);
     assert.equal(fetched.length, 1, 'a closed channel is checked against Discord once an hour, not at every pass');
-    assert.equal(infoLines.length, 1, 'and the log says it only when it changes');
+    assert.equal(infoLines.length, 1, 'and the log does not say it again when nothing changed');
+    // A small change (here one channel of two) is not said again: the line is for big changes, not for every channel that opens or closes.
     closedGuild.channels.cache.get('1').permissionsFor = () => bits(F.ViewChannel, F.SendMessages);
     await saveGuildSnapshot(closedGuild);
-    assert.match(infoLines.at(-1), /#staff \(ViewChannel\)\.$/);
-    assert.equal(infoLines.length, 2);
+    assert.equal(infoLines.length, 1, 'a change of one channel is not a new line');
     // A change of the bot's roles or permissions (an event, or the dashboard's resync) reads its member again at once.
     fetched = [];
     await saveGuildSnapshot(closedGuild, { refreshMe: true });
     assert.deepEqual(fetched, [{ force: true }]);
     closedGuild.channels.cache.get('2').permissionsFor = () => bits(F.ViewChannel, F.SendMessages);
     await saveGuildSnapshot(closedGuild);
-    assert.match(infoLines.at(-1), /Petto can post in every channel again\.$/);
+    assert.equal(infoLines.length, 1, 'neither is a small server that has no closed channel left');
     for (const id of ['2002', '2003', '2004', '2005']) table.delete(id); // not servers of the client below
+  }
+
+  // --- The line about the channels the bot cannot post in: short, and not said again for small changes -------------------------------------------
+  {
+    const { PermissionsBitField } = require('discord.js');
+    const F = PermissionFlagsBits;
+    const bits = (...flags) => new PermissionsBitField(flags);
+    const realNow = Date.now;
+    let clock = Date.parse('2026-01-01T00:00:00Z');
+    Date.now = () => clock;
+    const HOUR = 3_600_000;
+    const me = { nickname: null, avatar: null, permissions: bits(F.SendMessages) };
+    // A server with `hidden` channels the bot cannot see (named h1, h2...), `readOnly` it can see but not write in (r1...), and `open` ones.
+    const make = (id, { hidden = 0, readOnly = 0, open = 1 } = {}) => {
+      const cache = new Map();
+      const add = (name, perms) => cache.set(name, channel(name, name, 0, { permissionsFor: () => perms }));
+      for (let n = 1; n <= hidden; n += 1) add(`h${n}`, bits());
+      for (let n = 1; n <= readOnly; n += 1) add(`r${n}`, bits(F.ViewChannel));
+      for (let n = 1; n <= open; n += 1) add(`o${n}`, bits(F.ViewChannel, F.SendMessages));
+      return guild(id, { name: `Big ${id}`, members: { me, fetchMe: async () => me }, channels: { cache } });
+    };
+    // The caller of the log sees the channels change: close or open the first `n` hidden channels of the server.
+    const setHidden = (server, count) => {
+      server.channels.cache.clear();
+      for (let n = 1; n <= count; n += 1) server.channels.cache.set(`h${n}`, channel(`h${n}`, `h${n}`, 0, { permissionsFor: () => bits() }));
+      server.channels.cache.set('o1', channel('o1', 'o1', 0, { permissionsFor: () => bits(F.ViewChannel, F.SendMessages) }));
+    };
+    const lines = () => infoLines.filter((line) => line.includes('Petto'));
+    infoLines.length = 0;
+
+    // 187 hidden channels: one short line, the first 3 channels, "and 184 more", and the note that this is normal.
+    const big = make('4000');
+    setHidden(big, 187);
+    await saveGuildSnapshot(big);
+    assert.deepEqual(lines(), ['[snapshots] Big 4000 (4000): Petto cannot post in 187 channel(s), missing permission: #h1 (ViewChannel), #h2 (ViewChannel), #h3 (ViewChannel) and 184 more (normal when private channels hide from Petto).']);
+    assert.ok(lines()[0].length < 260, 'the line is short');
+    // The same server again, and again with 186 channels (the one that was in the screenshot): nothing is said, not for 1, not for 9 channels.
+    await saveGuildSnapshot(big); setHidden(big, 186); clock += 11 * 60_000; await saveGuildSnapshot(big); setHidden(big, 178); clock += 11 * 60_000; await saveGuildSnapshot(big);
+    assert.equal(lines().length, 1, 'a change of 9 channels out of 187 is not said');
+    // 10 percent of 187 is 19: a change of 12 is not enough, even after the hour, and it is kept until enough of them add up.
+    setHidden(big, 175); clock += 2 * HOUR; await saveGuildSnapshot(big);
+    assert.equal(lines().length, 1, 'ten channels is not ten percent of 187, even after an hour');
+    // Enough of them (20 of 187 since the line said, after the hour): said once, with the new count.
+    setHidden(big, 167); clock += 11 * 60_000; await saveGuildSnapshot(big);
+    assert.equal(lines().length, 2, 'said again when the change is big enough and an hour has passed');
+    assert.match(lines()[1], /cannot post in 167 channel\(s\).* and 164 more \(normal when private channels hide from Petto\)\.$/);
+    // A big change right after: not within the hour, and it is said once the hour has passed.
+    setHidden(big, 100); clock += 11 * 60_000; await saveGuildSnapshot(big);
+    assert.equal(lines().length, 2, 'never more than once an hour for a server');
+    clock += HOUR; await saveGuildSnapshot(big);
+    assert.equal(lines().length, 3, 'said once the hour has passed');
+    assert.match(lines()[2], /cannot post in 100 channel\(s\)/);
+    await saveGuildSnapshot(big); clock += 2 * HOUR; await saveGuildSnapshot(big);
+    assert.equal(lines().length, 3, 'the same set is not said again, ever');
+
+    // A small server: ten channels is the least that counts, so a few more closed channels are not said either.
+    const small = make('4001', { hidden: 4 });
+    await saveGuildSnapshot(small);
+    assert.equal(lines().length, 4, 'a first look is always said');
+    assert.match(lines()[3], /cannot post in 4 channel\(s\), missing permission: #h1 \(ViewChannel\), #h2 \(ViewChannel\), #h3 \(ViewChannel\) and 1 more \(normal when private channels hide from Petto\)\.$/);
+    setHidden(small, 12); clock += 2 * HOUR; await saveGuildSnapshot(small);
+    assert.equal(lines().length, 4, 'eight more channels is under ten');
+    setHidden(small, 14); clock += 2 * HOUR; await saveGuildSnapshot(small);
+    assert.equal(lines().length, 5, 'ten more channels since the line was said is enough');
+
+    // The note is only for ViewChannel everywhere; at most three are named, and with three or fewer there is no "and N more".
+    const mixed = make('4002', { hidden: 2, readOnly: 1 });
+    await saveGuildSnapshot(mixed);
+    assert.equal(lines().at(-1), '[snapshots] Big 4002 (4002): Petto cannot post in 3 channel(s), missing permission: #h1 (ViewChannel), #h2 (ViewChannel), #r1 (SendMessages).', 'no note when one channel lacks another permission');
+    const onlyRead = make('4003', { readOnly: 5 });
+    await saveGuildSnapshot(onlyRead);
+    assert.ok(!lines().at(-1).includes('normal when'), 'no note for SendMessages');
+    assert.match(lines().at(-1), /#r1 \(SendMessages\), #r2 \(SendMessages\), #r3 \(SendMessages\) and 2 more\.$/);
+    // Nothing closed at the first look: nothing said. A server that is all open again after a big line is said once, as before.
+    const before2 = lines().length;
+    await saveGuildSnapshot(make('4004'));
+    assert.equal(lines().length, before2, 'nothing is said about a server with no closed channel');
+    setHidden(big, 0); clock += 2 * HOUR; await saveGuildSnapshot(big);
+    assert.match(lines().at(-1), /Big 4000 \(4000\): Petto can post in every channel again\.$/);
+    // The data the dashboard reads is the same as before: every hidden channel is false for both.
+    const row4 = table.get('4001');
+    assert.ok(row4.channels.filter((c) => c.id.startsWith('h')).every((c) => c.bot_can_send === false && c.bot_can_view === false), 'bot_can_send and bot_can_view are kept');
+    Date.now = realNow;
+    for (const id of ['4000', '4001', '4002', '4003', '4004']) table.delete(id);
   }
 
   // Full sync: saves new servers, forgets the ones the bot left.

@@ -15,7 +15,9 @@ function commandName(client, raw) {
   const name = String(raw ?? '').trim().replace(/^[!/]/, '').toLowerCase();
   if (!name) return null;
   if (client.commands.has(name)) return name;
-  return client.commandAliases?.get(name) ?? client.commandRoutes?.get(name)?.command ?? null;
+  // A shortcut of one action of a command (`hug` of /act) is restricted on its own, under its own name.
+  const route = client.commandRoutes?.get(name);
+  return client.commandAliases?.get(name) ?? route?.disableName ?? route?.command ?? null;
 }
 
 module.exports = {

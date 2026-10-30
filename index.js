@@ -43,15 +43,12 @@ const { startAfkMentionsJob } = require('./src/jobs/afkMentionsJob');
 const { startFeedsJob } = require('./src/jobs/feedsJob');
 const music = require('./src/music/node');
 const { startGuildPurgeJob } = require('./src/jobs/guildPurgeJob');
-const { startAvatarPackJob } = require('./src/jobs/avatarPackJob');
 const { startDataMoveJob } = require('./src/jobs/dataMoveJob');
-const { startProfileHistoryBackfillJob } = require('./src/jobs/profileHistoryBackfillJob');
 const { startServer } = require('./src/web/server');
 const { startCloudflareTunnel } = require('./src/web/cloudflareTunnel');
 const { attachRestRateLimitTelemetry } = require('./src/utils/restTelemetry');
 const { createDiscordErrorLogSink } = require('./src/utils/discordErrorLog');
 const { createGuildDiagnosticSink } = require('./src/utils/guildOpsAlerts');
-const { attachGuildComplianceMonitor } = require('./src/utils/guildComplianceDetector');
 const { flushActivity } = require('./src/db/activityStats');
 const logger = require('./src/utils/logger');
 
@@ -107,7 +104,6 @@ require('./src/utils/cacheInvalidation').startCacheInvalidation();
 require('./src/utils/sharedRestLimit').attachSharedRestLimit(client.rest, config.restRequestsPerSecond);
 logger.setDiscordSink(createDiscordErrorLogSink(client, config.errorLogChannelId));
 logger.addDiscordSink(createGuildDiagnosticSink(client));
-attachGuildComplianceMonitor(client);
 
 process.on('unhandledRejection', (err) => (require('./src/utils/permissionErrors').isPermissionError(err)
   ? logger.warn(`Missing permission (unhandled): ${err.message} (code ${err.code})`)
@@ -180,9 +176,7 @@ async function main() {
   startAfkMentionsJob();
   startFeedsJob(client);
   startGuildPurgeJob(client);
-  startAvatarPackJob();
   startDataMoveJob();
-  startProfileHistoryBackfillJob();
   startServer(client);
   startCloudflareTunnel(config.cloudflareTunnelToken);
 }
