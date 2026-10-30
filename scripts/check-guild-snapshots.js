@@ -35,7 +35,7 @@ stub('src/db/database.js', {
 
 const { buildSnapshot, saveGuildSnapshot, removeGuildSnapshot, syncAllGuildSnapshots, scheduleGuildSnapshot } = require('../src/utils/guildSnapshots');
 
-const channel = (id, name, type, extra = {}) => ({ id, name, type, rawPosition: Number(id) % 10, parentId: null, topic: null, nsfw: false, isThread: () => false, ...extra });
+const channel = (id, name, type, extra = {}) => ({ id, name, type, rawPosition: Number(id) % 10, parentId: null, topic: null, nsfw: false, isThread: () => false, isTextBased: () => type === 0, isDMBased: () => false, permissionsFor: () => ({ has: () => true }), ...extra });
 const guild = (id, overrides = {}) => ({
   id, name: `Server ${id}`, icon: 'abc123', ownerId: '99', memberCount: 42, banner: 'ban1', premiumTier: 2, premiumSubscriptionCount: 9,
   emojis: { cache: new Map([['e1', { id: 'e1', name: 'wave', animated: false }], ['e2', { id: 'e2', name: 'party', animated: true, extra: 'x' }]]) }, members: { me: { nickname: 'Petto Pet', avatar: 'av1' } },
@@ -49,7 +49,10 @@ const guild = (id, overrides = {}) => ({
   assert.equal(row.guild_id, '1000'); assert.equal(row.name, 'Server 1000'); assert.equal(row.icon, 'abc123'); assert.equal(row.member_count, 42); assert.equal(row.owner_id, '99');
   assert.equal(row.channels.length, 2, 'threads are not saved');
   assert.deepEqual([row.banner, row.emoji_count, row.premium_tier, row.boost_count, row.bot_nick, row.bot_avatar], ['ban1', 2, 2, 9, 'Petto Pet', 'av1'], 'banner, emojis, boosts and how the bot looks in the server');
-  assert.deepEqual(row.channels[0], { id: '1', name: 'general', type: 0, position: 1, parent_id: '5', topic: 'hello', nsfw: false }, 'channels have the shape of Discord answers');
+  assert.deepEqual(row.channels[0], { id: '1', name: 'general', type: 0, position: 1, parent_id: '5', topic: 'hello', nsfw: false, bot_can_send: true }, 'channels have the shape of Discord answers, and say whether the bot can write in them');
+  assert.equal(row.channels[1].bot_can_send, null, 'a voice channel is not one to post in');
+  const closed = buildSnapshot(guild('1001', { channels: { cache: new Map([['1', channel('1', 'staff', 0, { permissionsFor: () => ({ has: () => false }) })]]) } }));
+  assert.equal(closed.channels[0].bot_can_send, false, 'a channel where the bot cannot see or write says so');
   assert.equal(row.roles.length, 2);
   assert.equal(row.roles[1].permissions, '8', 'permissions are a string like Discord sends them');
   assert.equal(row.roles[1].color, 255);
