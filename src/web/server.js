@@ -27,6 +27,8 @@ const { createChallenge, checkAnswer } = require('../utils/verifyCaptcha');
 const { methodOf, usesTurnstile, usesLetters } = require('../utils/verifyMethod');
 const { renderHomePage } = require('./homePage');
 const { setCachedPrefix } = require('../events/messageCreateCommands');
+const guildPrefixes = require('../utils/guildPrefixes');
+const { ensureGuild, updateGuild } = require('../db/guilds');
 const { registerDashboardRestRoutes } = require('./dashboardDatabase');
 const { registerCardRoutes } = require('./cardRoutes');
 const { registerAppealImageRoutes } = require('./appealImageRoutes');
@@ -838,17 +840,29 @@ function startServer(client) {
       }
 
       const guildId = String(req.params.guildId || '');
-      const rawPrefix = req.body?.prefix;
-      if (!/^\d{15,25}$/.test(guildId) || typeof rawPrefix !== 'string') {
+      // The whole list (`prefixes`, from the Manage prefixes window) or, from an older dashboard, one prefix that becomes the only one.
+      const rawList = Array.isArray(req.body?.prefixes) ? req.body.prefixes : typeof req.body?.prefix === 'string' ? [req.body.prefix] : null;
+      if (!/^\d{15,25}$/.test(guildId) || !rawList) {
         res.status(400).json({ ok: false, error: 'invalid_prefix_request' });
         return;
       }
 
-      const prefix = rawPrefix.trim().slice(0, 5) || '!';
+      let checked = guildPrefixes.validateList(rawList.map((p) => String(p).trim()), 'en');
+      // An older dashboard sends the single prefix of its field on every save: when it is still the main one, the list is left as it is.
+      if (!checked.error && !Array.isArray(req.body?.prefixes)) {
+        const current = guildPrefixes.prefixesOf(await ensureGuild(guildId).catch(() => null));
+        if (current[0].toLocaleLowerCase() === checked.prefixes[0].toLocaleLowerCase()) checked = { prefixes: current };
+      }
+      if (checked.error) {
+        res.status(400).json({ ok: false, error: 'invalid_prefix', message: checked.error });
+        return;
+      }
       try {
         await client.guilds.fetch(guildId);
-        setCachedPrefix(guildId, prefix);
-        res.json({ ok: true, prefix });
+        // The list is saved here too (the dashboard already wrote it), so what the bot uses is always what passed these rules.
+        await updateGuild(guildId, guildPrefixes.columnsFor(checked.prefixes)).catch((err) => logger.warn(`Dashboard prefix save for guild ${guildId}: ${err.message}`));
+        setCachedPrefix(guildId, checked.prefixes);
+        res.json({ ok: true, prefix: checked.prefixes[0], prefixes: checked.prefixes });
       } catch (err) {
         logger.error(`Dashboard could not sync prefix for guild ${guildId}:`, err);
         res.status(404).json({ ok: false, error: 'guild_unavailable' });

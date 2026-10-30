@@ -1,4 +1,5 @@
 const { Events, AuditLogEvent, ContainerBuilder, TextDisplayBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
+const guildPrefixes = require('../utils/guildPrefixes');
 const { EMOJI } = require('../utils/emojis');
 const logger = require('../utils/logger');
 const { sendGuildLifecycleLog } = require('../utils/discordOps');
@@ -99,7 +100,7 @@ async function welcomeGuild(guild, guildConfig) {
       botId: guild.client.user.id,
       setupMention,
       reportConfigMention,
-      prefix: guildConfig.prefix || '!',
+      prefix: guildPrefixes.primaryPrefix(guildConfig),
       ...options,
     });
     // The private channel is the first choice. When it could not be made (or written to), the setup is never put in a public channel and is not
@@ -126,11 +127,11 @@ async function welcomeGuild(guild, guildConfig) {
     if (ownerUser) await ownerUser.send({ content }).catch(() => {});
 
     if (owner?.user && setupTarget) {
-      await owner.user.send(buildOwnerGuide({ guild, setupChannel: setupTarget, setupMention, prefix: guildConfig.prefix || '!' })).catch(() => {});
+      await owner.user.send(buildOwnerGuide({ guild, setupChannel: setupTarget, setupMention, prefix: guildPrefixes.primaryPrefix(guildConfig) })).catch(() => {});
     }
 
     if (inviter && inviter.id !== owner?.id) {
-      await inviter.send(buildThanksMessage(guild.name, setupMention, guildConfig.prefix || '!')).catch(() => {});
+      await inviter.send(buildThanksMessage(guild.name, setupMention, guildPrefixes.primaryPrefix(guildConfig))).catch(() => {});
     }
   } catch (err) {
     logger.error(`guildCreate join notification failed for guild ${guild.id}:`, err);

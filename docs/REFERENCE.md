@@ -17,7 +17,7 @@ The code is licensed under [AGPL-3.0-only](../LICENSE). Contributions are attrib
 ## Stack
 
 - Node.js 18+, discord.js v14, PostgreSQL on Discloud via `pg`
-- Prefix commands (default `!`, configurable per guild) — see "Command system" below for why, and how the same command files serve both without being rewritten. A short list of everyday commands (`/help`, `/ban`, `/purge`, `/rank`...) and the roleplay commands are also registered as slash commands.
+- Prefix commands (a list of up to 10 prefixes per guild, default `!` and `petto`) — see "Command system" below for why, and how the same command files serve both without being rewritten. A short list of everyday commands (`/help`, `/ban`, `/purge`, `/rank`...) and the roleplay commands are also registered as slash commands.
 - Dynamically loaded from `src/commands/**`
 - All per-guild config lives in the database — nothing is hardcoded
 - Brand palette (`src/utils/colors.js`): green `#a5ea7a` (success), yellow `#fed53c` (warning/pending), red `#fe6465` (error/destructive), blue `#8399ff` (neutral/informational, the default accent). Every status-colored card/embed across the bot draws from this set — previously a handful of one-off hex values (Discord's default blurple, a semi-random pink/orange here and there).
@@ -120,8 +120,8 @@ src/
     ready.js
     interactionCreate.js       dispatches slash commands (the registered ones, see "Command
                               system" below), button/select/modal component interactions, applies cooldowns, catches errors
-    messageCreateCommands.js   the prefix command dispatcher: resolves the guild's prefix (or the bot's own mention,
-                              always accepted as a fallback), tokenizes, looks up the command, enforces cooldowns +
+    messageCreateCommands.js   the prefix command dispatcher: resolves the guild's prefixes (the list in `guilds.prefixes`, the longest first, see
+                              utils/guildPrefixes.js; or the bot's own mention, always accepted as a fallback), tokenizes, looks up the command, enforces cooldowns +
                               default_member_permissions, builds the pseudo-interaction, calls execute()
     guildMemberAddVerification.js  gates new members behind the "Unverified" role and DMs them their magic link
     guildMemberAddAntiRaid.js      tracks join bursts, alerts/kicks per !automod raid config
@@ -331,7 +331,7 @@ Commands and events are **dynamically loaded** — drop a new file in `src/comma
 
 ## Command system: prefix first, slash for the essentials
 
-Every command below is invoked with a **prefix** (default `!`, changeable per guild with `!prefix <new_prefix>` — and the bot always additionally answers to `@Petto <command>` as a fallback so a server can never lock itself out by forgetting a custom prefix). Not everyone uses a prefix, so the everyday commands are **also** registered as slash commands, with the same file and the same texts; the prefix keeps working for all of them.
+Every command below is invoked with a **prefix** (a server has a list of up to 10, default `!` and `petto`: `!prefix` shows it, `!prefix add|remove|reset` change it and `!prefix <new_prefix>` makes one the only prefix. A symbol prefix is typed attached (`,help`), a word prefix needs a space (`petto help`); the first prefix of the list is the main one, the only one that answers "unknown command". The old `guilds.prefix` column keeps the main prefix — and the bot always additionally answers to `@Petto <command>` as a fallback so a server can never lock itself out by forgetting a custom prefix). Not everyone uses a prefix, so the everyday commands are **also** registered as slash commands, with the same file and the same texts; the prefix keeps working for all of them.
 
 What Discord gets (`collectCommandData()`, checked by `scripts/check-slash-commands.js`, which pins the list and validates every command's JSON):
 

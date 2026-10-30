@@ -1,4 +1,4 @@
-// `!prefix ?` and `!prefix set ?` both set the prefix `?`; a prefix with a space is still refused.
+// `!prefix ?` and `!prefix set ?` both set the prefix `?`; a prefix with a space, an @ or a backtick is refused, and so is one over 12 characters.
 const assert = require('node:assert/strict');
 const { readPrefixInput, isValidPrefix } = require('../src/utils/prefixInput');
 
@@ -10,7 +10,10 @@ assert.equal(readPrefixInput('settle'), 'settle', 'a prefix that starts with the
 assert.equal(readPrefixInput('set'), 'set', 'only the word set is the prefix set');
 assert.equal(isValidPrefix('?'), true);
 assert.equal(isValidPrefix('set ?'), false);
-assert.equal(isValidPrefix('abcdef'), false);
+assert.equal(isValidPrefix('abcdef'), true, 'a prefix can have up to 12 characters');
+assert.equal(isValidPrefix('abcdefghijklm'), false, '13 characters are too many');
+assert.equal(isValidPrefix('a@'), false);
+assert.equal(isValidPrefix('a`'), false);
 assert.equal(isValidPrefix(readPrefixInput('set a b')), false, 'a space inside is refused');
 assert.equal(isValidPrefix(''), false);
 console.log('prefix input ok');

@@ -1,5 +1,26 @@
 // The release notes of `!version` in English: label, summary and sections of each release (src/utils/releases.js holds the rest).
 module.exports = {
+  'v0.7.10': {
+    label: 'v0.7.10 · Churro: several prefixes for each server',
+    summary: 'A server can have several command prefixes (`!` and `petto` to start), managed with `!prefix` or from the dashboard, and a message that only looks like a command stays silent.',
+    sections: [
+      {
+        title: 'Prefixes',
+        items: [
+          'Up to 10 prefixes for each server, the first one is the main one. Servers on the default `!` now also answer to the word `petto` (`petto help`); a server with a prefix of its own keeps only that one. A symbol is typed attached (`,help`), a word needs a space (`petto help`), and the longest prefix goes first.',
+          '`!prefix` shows the list, `!prefix add <prefix>`, `!prefix remove <prefix>` and `!prefix reset` change it, and `!prefix <prefix>` still makes it the only one. The dashboard has a **Manage prefixes** window on the General page.',
+          'Your own prefix (`!myprefix`) and the custom commands work with every prefix of the server.',
+        ],
+      },
+      {
+        title: 'Quieter',
+        items: [
+          '`, es el mejor`, `! hola` and `petto es el mejor` are chat: a symbol prefix needs the command right after it, and a word prefix only counts before a real command.',
+          'Only the main prefix answers "I don\'t know that command"; the other prefixes stay silent.',
+        ],
+      },
+    ],
+  },
   'v0.7.9-1': {
     label: 'v0.7.9~1 · Donut: pictures that match, !send and RSS fixed',
     summary: 'A patch of Donut: feeds of pictures that match every word and ask what a word means, `!send` that finds its channel, and RSS feeds that say when a link is not a feed.',

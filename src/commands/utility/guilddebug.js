@@ -1,6 +1,7 @@
 // i18n-ignore-file: Petto team diagnostic command (private operations server only).
 const { MessageFlags, PermissionFlagsBits, SlashCommandBuilder } = require('discord.js');
 const config = require('../../config');
+const guildPrefixes = require('../../utils/guildPrefixes');
 const database = require('../../db/database');
 const { getLogConfig } = require('../../db/logConfig');
 const { getConfig: getMemberEventsConfig } = require('../../db/memberEvents');
@@ -161,7 +162,7 @@ async function buildGuildInfo(client, guildId) {
     `**Members:** ${guild.memberCount ?? 'unknown'} · **Channels:** ${allChannels.length} (${textChannels.length} text, ${voiceChannels.length} voice)`,
     `**Bot permissions:** ${permissionLine(permissions)}`,
     '',
-    `**Database row:** ${dbStatus} · **Prefix:** \`${clean(dbGuild?.prefix, '!')}\` · **Language:** ${clean(dbGuild?.language, 'en')}`,
+    `**Database row:** ${dbStatus} · **Prefixes:** \`${clean(guildPrefixes.prefixesOf(dbGuild).join(' '), '!')}\` · **Language:** ${clean(dbGuild?.language, 'en')}`,
     `**Welcome:** ${formatWelcome(database.welcome, channels)}`,
     welcomeChannelObject ? `**Welcome permissions:** ${permissionLine(welcomePermissions)}` : '**Welcome permissions:** not available',
     `**Stored setup channel:** ${dbGuild?.setup_channel_id ? channelName(channels.get(dbGuild.setup_channel_id), dbGuild.setup_channel_id) : 'not set'}`,

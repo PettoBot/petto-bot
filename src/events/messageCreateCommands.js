@@ -23,17 +23,28 @@ const { logCommandUse } = require('../logging/extraLog');
 const { runCodeCommand } = require('../utils/codeCommands');
 const { findTrigger } = require('../utils/codeTriggers');
 const { peekGuildLanguage, t, formatDecimal } = require('../i18n');
+const guildPrefixes = require('../utils/guildPrefixes');
 // Loaded when a message comes in: it reaches for the configuration and the database, which the checks do without.
 const activeUserPrefix = async (...args) => require('../utils/userPrefixAccess').activeUserPrefix(...args);
 
 const DEFAULT_COOLDOWN_MS = 3000;
 const UNKNOWN_COMMAND_DELETE_MS = 10_000;
 const CACHE_TTL_MS = 5 * 60 * 1000;
-const prefixCache = new Map(); // guildId -> { prefix, expiresAt }
+const prefixCache = new Map(); // guildId -> { prefixes, expiresAt }
 
 function normalizePrefix(prefix) {
   const value = typeof prefix === 'string' ? prefix.trim() : '';
   return value || '!';
+}
+
+/** A prefix, a list of them or a server row as a clean list (never empty: `!` is the last resort). */
+function normalizePrefixes(value) {
+  if (Array.isArray(value)) {
+    const list = guildPrefixes.prefixesOf({ prefixes: value });
+    return list;
+  }
+  if (value && typeof value === 'object') return guildPrefixes.prefixesOf(value);
+  return [normalizePrefix(value)];
 }
 
 function prefixMatches(content, prefix) {
@@ -78,18 +89,54 @@ function warningPayload(message, text, color = 0xfed53c) {
   };
 }
 
-async function getPrefix(guildId) {
+/** The prefixes of a server, the main one first. */
+async function getPrefixes(guildId) {
   const cached = prefixCache.get(guildId);
-  if (cached && cached.expiresAt > Date.now()) return cached.prefix;
+  if (cached && cached.expiresAt > Date.now()) return cached.prefixes;
   const guild = await ensureGuild(guildId);
-  const prefix = normalizePrefix(guild.prefix);
-  prefixCache.set(guildId, { prefix, expiresAt: Date.now() + CACHE_TTL_MS });
-  return prefix;
+  const prefixes = normalizePrefixes(guild);
+  prefixCache.set(guildId, { prefixes, expiresAt: Date.now() + CACHE_TTL_MS });
+  return prefixes;
 }
 
-/** Called by /prefix right after a successful change, so the new prefix takes effect immediately instead of waiting out the cache TTL. */
-function setCachedPrefix(guildId, prefix) {
-  prefixCache.set(guildId, { prefix: normalizePrefix(prefix), expiresAt: Date.now() + CACHE_TTL_MS });
+/** The main prefix of a server (the first of its list). */
+async function getPrefix(guildId) {
+  return (await getPrefixes(guildId))[0];
+}
+
+/** Called by !prefix and the dashboard right after a successful change (one prefix or the whole list), so it takes effect immediately instead of waiting out the cache TTL. */
+function setCachedPrefix(guildId, prefixes) {
+  prefixCache.set(guildId, { prefixes: normalizePrefixes(prefixes), expiresAt: Date.now() + CACHE_TTL_MS });
+}
+
+/**
+ * Whether a word is something Petto answers in this server: a command, an alias, a route, a server alias or a custom command
+ * that starts with the prefix. A word prefix (`petto help`) only starts a command when this is true.
+ */
+function knownNameChecker(client, guildId) {
+  return async (name) => {
+    if (client.commands?.has(name) || client.commandAliases?.has(name) || client.commandRoutes?.has(name)) return true;
+    if (await commandAliasesDb.get(guildId, name).catch(() => null)) return true;
+    const row = await customCommandsDb.getCommand(guildId, name).catch(() => null);
+    return Boolean(row && (!row.trigger_type || row.trigger_type === 'command'));
+  };
+}
+
+/**
+ * How a message starts a command, or null: an @mention of the bot (always works), or a prefix of the server (any of its list) or the
+ * personal prefix of the author. See guildPrefixes.matchPrefix for the rules; `main` and `word` tell if an unknown word may be answered.
+ */
+async function findPrefixWay(message) {
+  const botId = message.client.user?.id;
+  const mention = botId ? [`<@${botId}>`, `<@!${botId}>`].find((p) => message.content.startsWith(p)) : null;
+  if (mention) {
+    const parsed = parsePrefixCommand(message.content, mention);
+    return parsed ? { ...parsed, source: 'mention', main: true, word: false, mention: true } : null;
+  }
+  const prefixes = await getPrefixes(message.guild.id).catch(() => ['!']);
+  const personal = await activeUserPrefix(message.client, message.author.id).catch(() => null);
+  const way = await guildPrefixes.matchPrefix(message.content, { prefixes, personal, isKnown: knownNameChecker(message.client, message.guild.id) });
+  return way ? { ...way, mention: false } : null;
 }
 
 function checkDefaultPermission(json, member) {
@@ -176,14 +223,7 @@ async function runCustomCommandRow(message, row, commandName, argText = '', pref
  */
 async function isCommandMessage(message) {
   if (!message.guild || typeof message.content !== 'string') return false;
-  const botId = message.client.user?.id;
-  const mention = botId ? [`<@${botId}>`, `<@!${botId}>`].find((p) => message.content.startsWith(p)) : null;
-  const prefix = mention || await getPrefix(message.guild.id).catch(() => '!');
-  let parsed = parsePrefixCommand(message.content, prefix);
-  if (!parsed && !mention) {
-    const own = await activeUserPrefix(message.client, message.author.id).catch(() => null);
-    if (own) parsed = parsePrefixCommand(message.content, own);
-  }
+  const parsed = await findPrefixWay(message);
   if (!parsed) return false;
   const name = parsed.commandName;
   if (message.client.commands?.has(name) || message.client.commandAliases?.has(name) || message.client.commandRoutes?.has(name)) return true;
@@ -195,28 +235,21 @@ module.exports = {
   name: Events.MessageCreate,
   isCommandMessage,
   setCachedPrefix,
+  getPrefixes,
   normalizePrefix,
   prefixMatches,
   parsePrefixCommand,
   async execute(message) {
     if (message.author.bot || !message.guild) return;
 
-    // Always respond to an @mention prefix (no DB lookup needed) so a server can never
-    // get locked out even if the configured custom prefix is forgotten or misconfigured.
-    const mentionPrefixes = [`<@${message.client.user.id}>`, `<@!${message.client.user.id}>`];
-    const mentionMatch = mentionPrefixes.find((p) => message.content.startsWith(p));
-
-    const configuredPrefix = mentionMatch || await getPrefix(message.guild.id).catch(() => '!');
-    let parsed = parsePrefixCommand(message.content, configuredPrefix);
-    // A person with a prefix of their own (boosters, Premium, partners, the team) can use it anywhere, next to the server's.
-    if (!parsed && !mentionMatch) {
-      const own = await activeUserPrefix(message.client, message.author.id).catch(() => null);
-      if (own) parsed = parsePrefixCommand(message.content, own);
-    }
+    // An @mention of the bot always works, so a server can never get locked out if it forgets its prefixes. Then the prefixes of the
+    // server (any of the list, the longest first) and the personal one of the author (boosters, Premium, partners, the team).
+    const parsed = await findPrefixWay(message);
+    const mainPrefix = await getPrefix(message.guild.id).catch(() => '!');
     if (!parsed) {
       // Not a command of Petto: it may still set off a custom command that has its own prefix or words.
       const trigger = await findTrigger(message.guild.id, message.content).catch(() => null);
-      if (trigger) await runCustomCommandRow(message, trigger.row, trigger.row.name, trigger.args, trigger.prefix, mentionMatch ? '!' : configuredPrefix);
+      if (trigger) await runCustomCommandRow(message, trigger.row, trigger.row.name, trigger.args, trigger.prefix, mainPrefix);
       return;
     }
 
@@ -279,9 +312,11 @@ module.exports = {
       if (!handled) {
         // A prefix of its own that starts like the prefix of Petto, such as !! next to !
         const trigger = await findTrigger(message.guild.id, message.content).catch(() => null);
-        if (trigger) { await runCustomCommandRow(message, trigger.row, trigger.row.name, trigger.args, trigger.prefix, mentionMatch ? '!' : configuredPrefix); handled = true; }
+        if (trigger) { await runCustomCommandRow(message, trigger.row, trigger.row.name, trigger.args, trigger.prefix, mainPrefix); handled = true; }
       }
-      if (!handled) {
+      // Only the main prefix of the server answers "I don't know that command", and only to something written like a command
+      // (`!es el mejor`). The other prefixes, the word ones (`petto es el mejor`), the personal one and a lone symbol are chat.
+      if (!handled && (parsed.mention || guildPrefixes.answersUnknown(parsed))) {
         const warning = await message
           .reply({ components: [textCard(t(lang, 'core.unknownCommand', { emoji: EMOJI.WARNING, command: canonicalName, prefix }))], flags: MessageFlags.IsComponentsV2, allowedMentions: { repliedUser: false } })
           .catch(() => null);

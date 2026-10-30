@@ -1,5 +1,6 @@
 const { PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { ensureGuild, updateGuild } = require('../db/guilds');
+const guildPrefixes = require('../utils/guildPrefixes');
 const { setCachedPrefix } = require('../events/messageCreateCommands');
 const { getConfig: getMemberConfig, upsertConfig: upsertMemberConfig } = require('../db/memberEvents');
 const { upsertConfig: upsertAutomodConfig } = require('../db/automod');
@@ -90,7 +91,7 @@ async function handleSetupModal(interaction) {
   const features = new Set(fields.getStringSelectValues('setup_features'));
   const prefix = fields.getTextInputValue('setup_prefix').trim();
 
-  if (!prefix || prefix.length > 5 || /\s/.test(prefix)) {
+  if (guildPrefixes.validatePrefix(prefix, lang).error) {
     await interaction.reply({
       ...noticePayload(t(lang, 'setup.result.badPrefix'), COLORS.RED),
       flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
@@ -102,7 +103,7 @@ async function handleSetupModal(interaction) {
 
   try {
     // Every other table points at the guild row, so it has to exist before the steps below start.
-    await ensureGuild(guild.id);
+    const guildRow = await ensureGuild(guild.id);
 
     const strict = mode === 'strict';
     const disabled = mode === 'disabled';
@@ -111,9 +112,13 @@ async function handleSetupModal(interaction) {
     // The steps do not depend on each other, so they run together instead of one after another.
     const steps = await Promise.all([
       runStep('Prefix', async () => {
-        await updateGuild(guild.id, { prefix });
-        // Without this the old prefix would keep working until the cache expires.
-        setCachedPrefix(guild.id, prefix);
+        // The form shows the main prefix: left as it is, the server keeps its whole list; changed, it becomes the only prefix.
+        const current = guildPrefixes.prefixesOf(guildRow);
+        if (current[0].toLocaleLowerCase() !== prefix.toLocaleLowerCase()) {
+          await updateGuild(guild.id, guildPrefixes.columnsFor([prefix]));
+          // Without this the old prefix would keep working until the cache expires.
+          setCachedPrefix(guild.id, [prefix]);
+        }
         return { status: 'ok', text: t(lang, 'setup.result.prefix', { prefix }) };
       }, lang),
 

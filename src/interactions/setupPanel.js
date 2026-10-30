@@ -14,6 +14,7 @@ const {
   TextInputStyle,
 } = require('discord.js');
 const { ensureGuild } = require('../db/guilds');
+const guildPrefixes = require('../utils/guildPrefixes');
 const { getConfig: getAutomodConfig } = require('../db/automod');
 const { getConfig: getMemberConfig } = require('../db/memberEvents');
 const { getConfig: getReportConfig } = require('../db/report');
@@ -100,7 +101,7 @@ function checklist(state, guild, lang) {
     channels: `${logChannels.slice(0, 2).map((id) => `<#${id}>`).join(', ')}${logChannels.length > 2 ? ` +${logChannels.length - 2}` : ''}`,
   });
   return [
-    { label: t(lang, 'setup.check.prefix'), done: Boolean(state.guild), detail: state.guild ? `\`${state.guild.prefix || '!'}\`` : t(lang, 'setup.check.couldNotLoad') },
+    { label: t(lang, 'setup.check.prefix'), done: Boolean(state.guild), detail: state.guild ? `\`${guildPrefixes.prefixesOf(state.guild).join('` `')}\`` : t(lang, 'setup.check.couldNotLoad') },
     { label: t(lang, 'setup.check.logs'), done: logChannels.length > 0, detail: logChannels.length ? routes() : t(lang, 'setup.check.notSetUp') },
     { label: t(lang, 'setup.check.welcome'), done: Boolean(welcomeChannel), detail: welcomeChannel ? `<#${welcomeChannel}>` : t(lang, 'setup.check.notSetUp') },
     { label: t(lang, 'setup.check.moderation'), done: protections.length > 0, detail: protections.length ? `${t(lang, `setup.check.mode.${moderationMode(automod)}`)} · ${protections.join(', ')}` : t(lang, 'setup.check.protectionsOff') },
@@ -155,7 +156,7 @@ function buildSetupPanel(guild, state, { notice = null, lang = currentLanguage()
         lines: items.map((item) => `${item.done ? EMOJI.APPROVE : EMOJI.RELEASE_MINUS} **${item.label}** · ${item.detail}`),
       },
       { title: t(lang, 'setup.panel.permissions'), lines: permissionLines },
-      { title: t(lang, 'setup.panel.language.title'), lines: [t(lang, 'setup.panel.language.text', { language: LANGUAGE_NAMES[lang], list: LANGUAGES.map((code) => LANGUAGE_NAMES[code]).join(', '), prefix: state.guild?.prefix || '!' })] },
+      { title: t(lang, 'setup.panel.language.title'), lines: [t(lang, 'setup.panel.language.text', { language: LANGUAGE_NAMES[lang], list: LANGUAGES.map((code) => LANGUAGE_NAMES[code]).join(', '), prefix: guildPrefixes.primaryPrefix(state.guild) })] },
     ],
     footer: t(lang, 'setup.panel.footer'),
     rows,
@@ -172,7 +173,7 @@ function usableChannel(guild, id) {
 
 /** The quick setup form, pre-filled from what the server already has so running it again never resets anything. */
 function buildSetupModal(guild, state, lang = currentLanguage()) {
-  const prefix = state.guild?.prefix || '!';
+  const prefix = guildPrefixes.primaryPrefix(state.guild);
   const logChannelId = usableChannel(guild, state.logs?.entries?.[0]?.channel_id);
   const welcomeChannelId = usableChannel(guild, state.welcome?.welcome_channel_id);
   const mode = moderationMode(state.automod);
@@ -253,8 +254,8 @@ function buildSetupModal(guild, state, lang = currentLanguage()) {
             .setCustomId('setup_prefix')
             .setStyle(TextInputStyle.Short)
             .setMinLength(1)
-            .setMaxLength(5)
-            .setValue(clip(prefix, 5))
+            .setMaxLength(guildPrefixes.MAX_LENGTH)
+            .setValue(clip(prefix, guildPrefixes.MAX_LENGTH))
             .setRequired(true),
         ),
     );

@@ -171,7 +171,8 @@ const es = getRelease('v0.7.6', 'es');
 assert.equal(es.name, 'Macaron');
 assert.equal(es.date, '2026-10-15');
 assert.equal(es.status, `${EMOJI.RELEASE_APPROVED} Publicada`);
-assert.equal(getRelease('v0.7.9-1', 'es').status, `${EMOJI.RELEASE_APPROVED} Última versión`, 'the latest release is the first one');
+assert.equal(getRelease('v0.7.10', 'es').status, `${EMOJI.RELEASE_APPROVED} Última versión`, 'the latest release is the first one');
+assert.equal(getRelease('v0.7.9-1', 'es').status, `${EMOJI.RELEASE_APPROVED} Publicada`);
 assert.equal(getRelease('v0.7.9', 'es').status, `${EMOJI.RELEASE_APPROVED} Publicada`);
 assert.equal(getRelease('v0.7.8', 'es').status, `${EMOJI.RELEASE_APPROVED} Publicada`);
 assert.equal(getRelease('v0.7.7', 'es').status, `${EMOJI.RELEASE_APPROVED} Publicada`);
@@ -183,9 +184,9 @@ assert.equal(pt.sections[0].title, `${EMOJI.RELEASE_ROCKET} Novidades`);
 assert.match(pt.summary, /^Aniversários/);
 assert.equal(getRelease('v0.7.6', 'pt').label, getRelease('v0.7.6', 'pt-BR').label, '"pt" is read as pt-BR');
 assert.equal(getRelease('v0.7.6', 'fr').label, getRelease('v0.7.6', 'en').label, 'an unknown language is English');
-assert.equal(runWithLanguage('es', () => getLatestRelease().summary), getRelease('v0.7.9-1', 'es').summary, 'the language of the running command by default');
+assert.equal(runWithLanguage('es', () => getLatestRelease().summary), getRelease('v0.7.10', 'es').summary, 'the language of the running command by default');
 assert.equal(getRelease('v0.0.0', 'es'), null);
-assert.equal(getReleaseIndex('v0.7.5'), 5);
+assert.equal(getReleaseIndex('v0.7.5'), 6);
 
 // A language that lacks a release shows it in English instead of breaking.
 {
@@ -239,14 +240,14 @@ const card = (version, lang) => JSON.stringify(buildVersionPayload(version, lang
 assert.match(card('v0.7.6', 'es'), /Petto v0\.7\.6 “Macaron”/, 'the codename is never translated');
 assert.match(card('v0.7.9', 'es'), /Petto v0\.7\.9 “Donut”/);
 assert.match(card('v0.7.9-1', 'es'), /Petto v0\.7\.9~1 “Donut”/, 'a patch is shown with ~');
-assert.match(card('v0.7.9-1', 'es'), /Última versión  ·  /);
-assert.match(card('v0.7.9-1', 'es'), /Versión 1 de \d+/);
+assert.match(card('v0.7.10', 'es'), /Última versión  ·  /);
+assert.match(card('v0.7.10', 'es'), /Versión 1 de \d+/);
 assert.match(card('v0.7.9', 'es'), /Publicada  ·  /);
 assert.match(card('v0.7.8', 'es'), /Petto v0\.7\.8 “Mochi”/);
 assert.match(card('v0.7.7', 'es'), /Petto v0\.7\.7 “Tiramisu”/);
 assert.match(card('v0.7.7', 'es'), /Publicada  ·  /);
 assert.match(card('v0.7.6', 'es'), /Publicada  ·  /);
-assert.match(card('v0.7.6', 'es'), /Versión 5 de \d+/);
+assert.match(card('v0.7.6', 'es'), /Versión 6 de \d+/);
 assert.match(card('v0.7.6', 'es'), /"label":"v0\.7\.5 · Waffle: cumpleaños/, 'the menu lists the releases in Spanish');
 assert.match(card('v0.7.0', 'pt-BR'), /https:\/\/code\.petto\.sbs/, 'links are kept');
 assert.match(card('v0.7.0', 'pt-BR'), /### <:\w+:\d+> Alertas de missões/);

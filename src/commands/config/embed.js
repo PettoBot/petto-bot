@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType } = require('discord.js');
+const guildPrefixes = require('../../utils/guildPrefixes');
 const { getTemplate, upsertTemplate, deleteTemplate, listTemplates, normalizeName } = require('../../db/embedTemplates');
 const { ensureGuild } = require('../../db/guilds');
 const { parseColor, build, hasSendablePayload, formatEmbedError } = require('../../utils/embedBuilder');
@@ -446,7 +447,7 @@ module.exports = {
     // embed_templates.guild_id has a foreign key to guilds(guild_id), so the guild row must
     // exist before any create/edit/field write — this also gives us the real prefix for ctx.
     const guildConfig = await ensureGuild(guildId);
-    ctx.prefix = guildConfig.prefix;
+    ctx.prefix = guildPrefixes.primaryPrefix(guildConfig);
 
     try {
       if (group === 'field') {

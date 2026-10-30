@@ -10,6 +10,7 @@ const {
   ButtonStyle,
   MessageFlags,
 } = require('discord.js');
+const guildPrefixes = require('../../utils/guildPrefixes');
 const { ensureGuild } = require('../../db/guilds');
 const { t, currentLanguage, languageOf } = require('../../i18n');
 
@@ -50,7 +51,7 @@ module.exports = {
   async execute(interaction) {
     const lang = await languageOf(interaction);
     const guildConfig = await ensureGuild(interaction.guild.id).catch(() => null);
-    const prefix = guildConfig?.prefix || '!';
+    const prefix = guildPrefixes.primaryPrefix(guildConfig);
     const container = new ContainerBuilder()
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(buildConfigText(prefix, lang)))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))

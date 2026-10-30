@@ -10,8 +10,9 @@ function commandRef(interaction, text, fallbackPrefix = '!') {
     if (!command || require('../handlers/commandHandler').isSlashCommand(command)) return `/${text}`;
     return `${fallbackPrefix || '!'}${text}`;
   }
-  const typed = String(interaction.typedPrefix ?? '').trim();
-  const prefix = typed && !typed.startsWith('<@') ? typed : (fallbackPrefix || '!');
+  // A word prefix (`petto `) keeps its space so the command stays a separate word; only the edges of a symbol one are cleaned.
+  const typed = String(interaction.typedPrefix ?? '').trimStart();
+  const prefix = typed.trim() && !typed.startsWith('<@') ? typed : (fallbackPrefix || '!');
   return `${prefix}${text}`;
 }
 

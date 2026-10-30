@@ -13,6 +13,7 @@ const {
   TextDisplayBuilder,
   MessageFlags,
 } = require('discord.js');
+const guildPrefixes = require('../../utils/guildPrefixes');
 const { ensureGuild } = require('../../db/guilds');
 const { COLORS } = require('../../utils/colors');
 const { textCard } = require('../../utils/caseCard');
@@ -391,7 +392,7 @@ module.exports = {
     const lang = await languageOf(interaction);
     const client = interaction.client;
     const guildConfig = await ensureGuild(interaction.guild.id);
-    const prefix = guildConfig.prefix;
+    const prefix = guildPrefixes.primaryPrefix(guildConfig);
     // Private/operator commands stay hidden for normal users, but developers
     // configured through PETTO_DEVELOPER_IDS need to discover every tool.
     const includeHidden = isPettoOperator(interaction.user?.id);
