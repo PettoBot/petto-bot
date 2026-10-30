@@ -49,6 +49,8 @@ const { PREFIX: SUGGESTION_PREFIX, handleButton: handleSuggestionButton, handleM
 const { PREFIX: VERIFY_LETTERS_PREFIX, handleButton: handleVerifyLettersButton, handleModal: handleVerifyLettersModal } = require('../interactions/verifyLetters');
 const { handleSetupModal } = require('../interactions/setup');
 const { SETUP_BUTTON_PREFIX, handleSetupButton } = require('../interactions/setupPanel');
+const { maybeHintLanguage } = require('../utils/languageHint');
+const { PREFIX: LANGUAGE_CHOICE_PREFIX, handleButton: handleLanguageChoice } = require('../interactions/languageChoice');
 const { BUTTON_PREFIX, handleButton: handleReactionRoleButton } = require('../interactions/reactionRoleButton');
 const permissionsDb = require('../db/permissions');
 const { restrictedFor } = require('../utils/commandRestrictions');
@@ -175,6 +177,12 @@ module.exports = {
 
     if (interaction.isButton() && interaction.customId.startsWith(SETUP_BUTTON_PREFIX)) {
       try { await handleSetupButton(interaction); } catch (err) { logger.error('Error handling Petto setup button:', err); }
+      return;
+    }
+
+    // The language buttons of the setup message of a new server.
+    if (interaction.isButton() && interaction.customId.startsWith(LANGUAGE_CHOICE_PREFIX)) {
+      try { await handleLanguageChoice(interaction); } catch (err) { logger.error('Error handling the language button of the setup message:', err); }
       return;
     }
 
@@ -586,6 +594,8 @@ module.exports = {
     }
     try {
       await command.execute(interaction, client);
+      // Once, for a server whose language Petto only detected: the first administrator whose Discord is in another language hears about `!language`.
+      if (interaction.isChatInputCommand()) maybeHintLanguage(interaction);
     } catch (err) {
       if (err?.code === 40060) {
         logger.warn(`Ignored duplicate acknowledgement for /${interaction.commandName}. Another handler or bot instance already responded.`);

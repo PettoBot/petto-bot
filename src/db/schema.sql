@@ -96,6 +96,9 @@ alter table guilds add column if not exists compliance_ignored_at timestamptz;
 alter table guilds add column if not exists compliance_ignore_reason text;
 -- The language Petto answers in on this server: 'en', 'es' or 'pt-BR' (other values are read as 'en').
 alter table guilds add column if not exists language text not null default 'en';
+-- Who chose that language: 'auto' (Petto found it when it joined: the locale or the words of the server), 'manual' (`!language`, the dashboard or
+-- the buttons of the setup message) or null (a server that was here before this column; its language is never offered for change).
+alter table guilds add column if not exists language_source text;
 
 -- The command prefixes of a server; the first one is the main one. The old `prefix` column keeps that first one for older code.
 alter table guilds add column if not exists prefixes text[];

@@ -830,7 +830,11 @@ function startServer(client) {
       isAuthorized: dashboardAuthorized,
       limiter: dashboardPrefixRateLimiter,
       // The panels Petto posted there (VoiceMaster, tickets, verification…) are redrawn in the new language, after the answer.
-      onChange: (guildId, language) => refreshGuildPanels(client.guilds.cache.get(guildId), language),
+      // The dashboard is a person choosing: the language is marked as chosen, so Petto never offers to change the one it detected.
+      onChange: async (guildId, language) => {
+        await require('../db/guilds').updateGuild(guildId, { language_source: 'manual' }).catch((err) => logger.warn(`Could not mark the language of ${guildId} as chosen: ${err.message}`));
+        await refreshGuildPanels(client.guilds.cache.get(guildId), language);
+      },
     });
 
     app.post('/api/dashboard/guild/:guildId/prefix', dashboardPrefixRateLimiter, async (req, res) => {
