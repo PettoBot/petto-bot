@@ -5,16 +5,26 @@ const { IntegrationError, USER_AGENT, whyNoAnswer, withOneRetry } = require('../
 const TIMEOUT_MS = 10_000;
 const MAX_BYTES = 2_000_000;
 
-async function request(url, { headers = {}, method = 'GET', body } = {}) {
+const MAX_RETRY_AFTER_MS = 60_000;
+/** The wait a `Retry-After` header asks for (seconds, or a date), in ms and at most a minute; 0 when there is none. */
+function retryAfterOf(value) {
+  if (!value) return 0;
+  const ms = /^\d+$/.test(String(value).trim()) ? Number(value) * 1000 : Date.parse(value) - Date.now();
+  return Number.isFinite(ms) && ms > 0 ? Math.min(ms, MAX_RETRY_AFTER_MS) : 0;
+}
+
+/** `timeoutMs` is the time of one attempt; `retry: false` leaves the second attempt to the caller (it has other addresses to try). A `User-Agent` in `headers` replaces the default. */
+async function request(url, { headers = {}, method = 'GET', body, timeoutMs = TIMEOUT_MS, retry = true } = {}) {
   let response;
+  const send = () => globalThis.fetch(url, { method, body, headers: { 'User-Agent': USER_AGENT, ...headers }, signal: AbortSignal.timeout(timeoutMs), redirect: 'follow' });
   try {
-    response = await withOneRetry(() => globalThis.fetch(url, { method, body, headers: { 'User-Agent': USER_AGENT, ...headers }, signal: AbortSignal.timeout(TIMEOUT_MS), redirect: 'follow' }));
+    response = await (retry ? withOneRetry(send) : send());
   } catch (error) {
     throw new IntegrationError('unavailable', whyNoAnswer(error)); // the log says why: "timeout", ENOTFOUND, ECONNRESET...
   }
   if (response.status === 404 || response.status === 410) throw new IntegrationError('notFound');
-  if (response.status === 429) throw new IntegrationError('rateLimited');
-  if (!response.ok) throw new IntegrationError('unavailable', String(response.status));
+  if (response.status === 429) throw Object.assign(new IntegrationError('rateLimited'), { retryAfterMs: retryAfterOf(response.headers?.get?.('retry-after')) });
+  if (!response.ok) throw Object.assign(new IntegrationError('unavailable', String(response.status)), { status: response.status }); // `status`: a caller can tell a refusal (403) from a failure (5xx)
   return response;
 }
 

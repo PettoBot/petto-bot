@@ -1056,12 +1056,253 @@ const allText = (message) => JSON.stringify(json(message.components));
       if (new URL(url).hostname === 'www.reddit.com') return new Response('<feed><title>r/minecraft</title><entry><id>t3_9</id><title>A &amp; B</title><link href="https://www.reddit.com/r/minecraft/comments/9"/><updated>2026-10-26T14:00:00+00:00</updated></entry></feed>', { status: 200 });
       return new Response('<rss><channel><title>user on Pinterest</title><item><title>Pin</title><link>https://www.pinterest.com/pin/1/</link><guid>p1</guid><description><![CDATA[<a><img src="https://i.pinimg.com/236x/a/b.jpg"></a>]]></description></item></channel></rss>', { status: 200 });
     };
+    rssProviders.redditPace.gapMs = 0; // the queue of Reddit's requests is checked below
     const reddit = await PROVIDERS.reddit.resolve('r/minecraft');
     assert.deepEqual([reddit.id, reddit.name], ['minecraft', 'r/minecraft']);
     await assert.rejects(PROVIDERS.reddit.resolve('zzz'), (error) => error.kind === 'notFound');
     let polled = await PROVIDERS.reddit.poll([reddit], new Map(), { now });
     assert.equal(polled.get('minecraft').items[0].title, 'A & B');
     assert.equal(polled.get('minecraft').items[0].type, 'post');
+
+    // Reddit: the main address, then the fallbacks, the real reason when all fail, one request to follow an account, the queue and the wait Reddit asks for.
+    {
+      const log = require('../src/utils/logger');
+      const lines = [];
+      const realLogInfo = log.info;
+      const fetchBefore = globalThis.fetch; // the Pinterest checks after this block use the stand-in set above
+      log.info = (...args) => { lines.push(args.join(' ')); };
+      const ATOM = '<feed><title>r/bonded</title><entry><id>t3_9</id><title>A</title><link href="https://www.reddit.com/r/bonded/comments/9"/><updated>2026-10-26T14:00:00+00:00</updated></entry></feed>';
+      const LISTING = { data: { children: [
+        { kind: 't3', data: { name: 't3_j1', id: 'j1', title: 'Json & post', selftext: 'Body\n text https://x.y/z', permalink: '/r/bonded/comments/j1/x/', author: 'bob', created_utc: 1792000000, thumbnail: 'self', preview: { images: [{ source: { url: 'https://preview.redd.it/a.jpg?x=1&y=2' } }] } } },
+        { kind: 't3', data: { name: 't3_j2', title: 'Two', selftext: '', permalink: '/r/bonded/comments/j2/', author: 'al', created_utc: 1792000100, thumbnail: 'https://b.thumbs.redditmedia.com/t.jpg' } },
+        { kind: 't3', data: { name: 't3_j3', title: 'Three', permalink: '/r/bonded/comments/j3/', created_utc: 1792000200, thumbnail: 'nsfw', url: 'https://i.redd.it/z.png' } },
+        { kind: 't3', data: { name: 't3_j4', title: 'Four', permalink: '/r/bonded/comments/j4/', thumbnail: 'default', url: 'https://www.reddit.com/r/bonded/comments/j4/' } },
+      ] } };
+      const calls = [];
+      const answer = (plan) => async (url, options) => {
+        calls.push({ url: String(url), host: new URL(url).hostname, agent: options.headers['User-Agent'], at: Date.now(), signal: options.signal });
+        const step = plan[Math.min(calls.length - 1, plan.length - 1)];
+        if (step instanceof Error) throw step;
+        return step();
+      };
+      const status = (code, headers = {}) => () => new Response('', { status: code, headers });
+      const atom = () => new Response(ATOM, { status: 200 });
+      const listing = () => new Response(JSON.stringify(LISTING), { status: 200 });
+      const start = () => { calls.length = 0; lines.length = 0; rssProviders.forgetReddit(); };
+      rssProviders.redditPace.gapMs = 0;
+
+      // A descriptive User-Agent, for Reddit only.
+      assert.match(rssProviders.REDDIT_USER_AGENT, /^nodejs:petto-discord-bot:v\d[\w.-]* \(\+https:\/\/petto\.sbs\)$/);
+
+      // The main address answers: one request, no fallback.
+      start();
+      globalThis.fetch = answer([atom]);
+      let feed = await rssProviders.readReddit('bonded');
+      assert.deepEqual(calls.map((call) => call.url), ['https://www.reddit.com/r/bonded/new/.rss']);
+      assert.equal(calls[0].agent, rssProviders.REDDIT_USER_AGENT);
+      assert.equal(feed.entries[0].id, 't3_9');
+
+      // 403 on the main address, then old.reddit.com answers; the log says what failed and where it goes next.
+      start();
+      globalThis.fetch = answer([status(403), atom]);
+      feed = await rssProviders.readReddit('bonded');
+      assert.deepEqual(calls.map((call) => call.host), ['www.reddit.com', 'old.reddit.com']);
+      assert.equal(feed.entries[0].id, 't3_9');
+      assert.deepEqual(lines, ['feed reddit r/bonded: www.reddit.com 403, trying old.reddit.com']);
+
+      // A 5xx and a network error, then the JSON answers: the same entries as the RSS gives.
+      start();
+      globalThis.fetch = answer([status(503), Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNRESET' } }), listing]);
+      feed = await rssProviders.readReddit('bonded');
+      assert.deepEqual(calls.map((call) => call.host), ['www.reddit.com', 'old.reddit.com', 'www.reddit.com']);
+      assert.equal(calls[2].url, 'https://www.reddit.com/r/bonded/new.json?limit=15&raw_json=1');
+      assert.deepEqual(lines, ['feed reddit r/bonded: www.reddit.com 503, trying old.reddit.com', 'feed reddit r/bonded: old.reddit.com ECONNRESET, trying www.reddit.com (json)']);
+      assert.deepEqual(feed.entries.map((entry) => entry.id), ['t3_j1', 't3_j2', 't3_j3', 't3_j4']);
+
+      // A page that is not a feed (a block page that answers 200) is a refusal too, not a subreddit that does not exist.
+      start();
+      globalThis.fetch = answer([() => new Response('<html><title>Blocked</title></html>', { status: 200 }), atom]);
+      feed = await rssProviders.readReddit('bonded');
+      assert.equal(feed.entries.length, 1);
+
+      // Everything refuses: the reason people can act on, and the log tells each attempt.
+      start();
+      globalThis.fetch = answer([status(403)]);
+      await assert.rejects(rssProviders.readReddit('bonded'), (error) => error.kind === 'blocked');
+      assert.equal(calls.length, 3);
+      assert.equal(lines.length, 3);
+      assert.match(lines[2], /^feed reddit r\/bonded: www\.reddit\.com \(json\) 403, giving up$/);
+      // Everything fails without a refusal: it stays unavailable.
+      start();
+      globalThis.fetch = answer([status(500)]);
+      await assert.rejects(rssProviders.readReddit('bonded'), (error) => error.kind === 'unavailable');
+      // A status that is not a refusal or a failure of Reddit (a 400) does not try the others.
+      start();
+      globalThis.fetch = answer([status(400)]);
+      await assert.rejects(rssProviders.readReddit('bonded'), (error) => error.kind === 'unavailable');
+      assert.equal(calls.length, 1);
+
+      // A 404 keeps its meaning and is not looked for elsewhere.
+      start();
+      globalThis.fetch = answer([status(404)]);
+      await assert.rejects(rssProviders.readReddit('gone'), (error) => error.kind === 'notFound');
+      assert.equal(calls.length, 1);
+      // A name that does not exist answers the JSON with a list of subreddits (t5): not found too.
+      start();
+      globalThis.fetch = answer([status(403), status(403), () => new Response(JSON.stringify({ data: { children: [{ kind: 't5', data: { display_name: 'other' } }] } }), { status: 200 })]);
+      await assert.rejects(rssProviders.readReddit('gone'), (error) => error.kind === 'notFound');
+
+      // A 429 is tried on the other addresses (after the gap of the queue); when all say it, it is `rateLimited` with what Reddit asked for (at most a minute).
+      start();
+      globalThis.fetch = answer([status(429, { 'retry-after': '30' })]);
+      await assert.rejects(rssProviders.readReddit('bonded'), (error) => error.kind === 'rateLimited' && error.retryAfterMs === 30_000);
+      assert.equal(calls.length, 3);
+      assert.match(lines[0], /^feed reddit r\/bonded: www\.reddit\.com 429 \(retry-after 30s\), trying old\.reddit\.com$/);
+      // Until then nothing is sent to Reddit (not even by the polling job), and the wait is told.
+      const before = calls.length;
+      await assert.rejects(rssProviders.readReddit('bonded', { fresh: true }), (error) => error.kind === 'rateLimited' && error.retryAfterMs > 25_000);
+      assert.equal(calls.length, before, 'no request while Reddit asked to wait');
+      const waited = await PROVIDERS.reddit.poll([{ id: 'bonded', name: 'r/bonded', avatar: null, url: 'u' }], new Map(), { now });
+      assert.equal(waited.get('bonded').error, 'rateLimited');
+      assert.ok(waited.get('bonded').retryAfter > 25_000, 'the engine is told how long to wait');
+      assert.equal(calls.length, before);
+      // A Retry-After above a minute is cut to a minute; a date is read.
+      start();
+      globalThis.fetch = answer([status(429, { 'retry-after': '600' })]);
+      await assert.rejects(rssProviders.readReddit('bonded'), (error) => error.retryAfterMs === 60_000);
+      start();
+      globalThis.fetch = answer([status(429, { 'retry-after': new Date(Date.now() + 20_000).toUTCString() })]);
+      await assert.rejects(rssProviders.readReddit('bonded'), (error) => error.retryAfterMs > 15_000 && error.retryAfterMs <= 20_000);
+      // A 429 on the main address and an answer from the next one is an answer.
+      start();
+      globalThis.fetch = answer([status(429), atom]);
+      assert.equal((await rssProviders.readReddit('bonded')).entries.length, 1);
+      // Without Retry-After there is no wait of its own: the next read goes out.
+      start();
+      globalThis.fetch = answer([status(429)]);
+      await assert.rejects(rssProviders.readReddit('bonded'), (error) => error.kind === 'rateLimited' && error.retryAfterMs === 0);
+      globalThis.fetch = answer([atom]);
+      assert.equal((await rssProviders.readReddit('bonded')).entries.length, 1);
+
+      // The polling job goes through the same fallbacks, and reads anew each time.
+      start();
+      globalThis.fetch = answer([status(403), atom]);
+      polled = await PROVIDERS.reddit.poll([{ id: 'bonded', name: 'r/bonded', avatar: null, url: 'https://www.reddit.com/r/bonded' }], new Map(), { now });
+      assert.equal(polled.get('bonded').items[0].id, 't3_9', 'an existing feed does not go quiet when the main address is refused');
+      globalThis.fetch = answer([atom]);
+      calls.length = 0;
+      await PROVIDERS.reddit.poll([{ id: 'bonded', name: 'r/bonded', avatar: null, url: 'u' }], new Map(), { now });
+      await PROVIDERS.reddit.poll([{ id: 'bonded', name: 'r/bonded', avatar: null, url: 'u' }], new Map(), { now });
+      assert.equal(calls.length, 2, 'two looks of the job are two readings');
+
+      // The JSON as entries: id, title, url, author, date, a real picture and the self text.
+      const mapped = rssProviders.parseRedditJson(LISTING, 'bonded');
+      assert.deepEqual(mapped.entries[0], { id: 't3_j1', title: 'Json & post', url: 'https://www.reddit.com/r/bonded/comments/j1/x/', summary: 'Body text', image: 'https://preview.redd.it/a.jpg?x=1&y=2', published: 1792000000000, author: '/u/bob' });
+      assert.equal(mapped.entries[1].image, 'https://b.thumbs.redditmedia.com/t.jpg', 'a thumbnail that is a real address');
+      assert.equal(mapped.entries[2].image, 'https://i.redd.it/z.png', '`nsfw` is not a picture, the picture of the post is');
+      assert.equal(mapped.entries[3].image, '', '`default` is not a picture and a link to a page is not one either');
+      assert.equal(mapped.entries[3].author, '');
+      assert.throws(() => rssProviders.parseRedditJson({ nope: 1 }, 'bonded'), (error) => error.kind === 'unavailable');
+
+      // Looking an account up and then following it asks Reddit once (the lookup is kept for two minutes).
+      start();
+      globalThis.fetch = answer([atom]);
+      await PROVIDERS.reddit.resolve('r/bonded');
+      assert.equal(calls.length, 1);
+      assert.equal((await PROVIDERS.reddit.baselineItems({ id: 'bonded' })).length, 1);
+      await PROVIDERS.reddit.resolve('https://www.reddit.com/r/Bonded/');
+      assert.equal(calls.length, 1, 'resolve, resolve again and the first look of the feed: one request in all');
+      // At the same time: a reading in progress is shared.
+      start();
+      globalThis.fetch = answer([atom]);
+      await Promise.all([PROVIDERS.reddit.resolve('r/bonded'), PROVIDERS.reddit.resolve('r/bonded'), rssProviders.readReddit('bonded')]);
+      assert.equal(calls.length, 1);
+
+      // Following it (`createFeed`) after the lookup: still one request, and when Reddit limits the first look the feed is saved without posting the past.
+      {
+        const feedsDb = require('../src/db/feeds');
+        const premium = require('../src/db/premium');
+        const realLimit = premium.guildLimit;
+        const realDb = { countForGuild: feedsDb.countForGuild, create: feedsDb.create, update: feedsDb.update, markSeen: feedsDb.markSeen };
+        const servicePath = require.resolve('../src/feeds/service');
+        premium.guildLimit = async () => ({ limit: 5, premium: false, premiumLimit: 25 });
+        delete require.cache[servicePath];
+        const stubbed = require('../src/feeds/service');
+        premium.guildLimit = realLimit;
+        delete require.cache[servicePath]; // the real one is loaded again where it is needed
+        const rows = [];
+        const marked = [];
+        feedsDb.countForGuild = async () => 0;
+        feedsDb.create = async (row) => { const made = { id: 77, ...row }; rows.push(made); return made; };
+        feedsDb.update = async (_guild, id, patch) => Object.assign(rows.find((row) => row.id === id), patch);
+        feedsDb.markSeen = async (pairs) => { marked.push(...pairs); };
+        const sentTo = [];
+        const channel = { id: '2', isTextBased: () => true, isDMBased: () => false, send: async (payload) => { sentTo.push(payload); return { id: 'm' }; } };
+        const guild = { id: '1', channels: { cache: new Map([['2', channel]]) }, members: {} };
+        try {
+          start();
+          globalThis.fetch = answer([atom]);
+          await PROVIDERS.reddit.resolve('r/bonded'); // what the dashboard did when the account was typed
+          const made = await stubbed.createFeed(guild, { platform: 'reddit', account: 'r/bonded', channelId: '2', lang: 'en' });
+          assert.equal(made.ok, true);
+          assert.equal(calls.length, 1, 'the lookup and the follow ask Reddit once');
+          assert.equal(made.waiting, null);
+          assert.deepEqual(marked, [[77, 't3_9']], 'what the account has is marked as seen');
+          assert.equal(rows[0].ready, true);
+
+          // Reddit limits the first look: the feed is saved, not ready, says so, and the posts that exist are not announced when it is read.
+          rows.length = 0; marked.length = 0;
+          start();
+          globalThis.fetch = answer([atom]);
+          const realBaseline = PROVIDERS.reddit.baselineItems;
+          PROVIDERS.reddit.baselineItems = async () => { throw new IntegrationError('rateLimited'); };
+          const limitedMade = await stubbed.createFeed(guild, { platform: 'reddit', account: 'r/bonded', channelId: '2', lang: 'en' });
+          PROVIDERS.reddit.baselineItems = realBaseline;
+          assert.equal(limitedMade.ok, true, 'the feed is created anyway');
+          assert.equal(limitedMade.waiting, 'rateLimited');
+          assert.equal(rows[0].ready, false);
+          assert.deepEqual(marked, []);
+          const limitedCard = require('../src/commands/config/feed').resultCard('en', 'reddit', limitedMade);
+          assert.match(allText({ components: [limitedCard] }), /Reddit is limiting Petto's requests right now\. The feed is saved and will start posting when Reddit allows it\./);
+          const posts = new Map([[guild.id, guild]]);
+          const looked = [{ id: 't3_9', type: 'post', title: 'A', url: 'https://www.reddit.com/r/bonded/comments/9', publishedAt: now, platform: 'reddit', author: 'r/bonded' }];
+          await require('../src/feeds/engine').processFeed({ guilds: { cache: posts } }, rows[0], { items: looked }, new Map(), new Set(), now);
+          assert.deepEqual(marked, [[77, 't3_9']], 'its first successful look only marks what the account has');
+          assert.equal(rows[0].ready, true);
+          assert.equal(sentTo.length, 0, 'and posts none of it');
+
+          // The lookup itself limited (nothing was saved): the plain limited text, in the three languages, and the refusal says so too.
+          start();
+          globalThis.fetch = answer([status(429)]);
+          const refused = await stubbed.createFeed(guild, { platform: 'reddit', account: 'r/another', channelId: '2', lang: 'en' });
+          assert.equal(refused.error, 'rateLimited');
+          start();
+          globalThis.fetch = answer([status(403)]);
+          assert.equal((await stubbed.createFeed(guild, { platform: 'reddit', account: 'r/another2', channelId: '2', lang: 'en' })).error, 'blocked');
+          assert.equal(rows.length, 1, 'nothing is saved when the account could not be looked up');
+        } finally {
+          Object.assign(feedsDb, realDb);
+        }
+      }
+      assert.match(t('en', 'feeds.add.error.blocked', { emoji: '', platform: 'Reddit' }), /^\s*Reddit is refusing Petto's requests right now\. Try again later\.$/);
+      for (const lang of ['en', 'es', 'pt-BR']) {
+        for (const key of ['feeds.add.error.blocked', 'feeds.add.error.rateLimited', 'feeds.add.savedRateLimited', 'feeds.error.blocked']) assert.ok(!t(lang, key, { emoji: '', platform: 'Reddit' }).includes('feeds.'), `${key} in ${lang}`);
+      }
+
+      // The queue: Reddit's requests are sent at most one for each gap, one after the other.
+      start();
+      rssProviders.redditPace.gapMs = 80;
+      globalThis.fetch = answer([atom]);
+      await Promise.all(['one', 'two', 'three'].map((name) => rssProviders.readReddit(name)));
+      assert.equal(calls.length, 3);
+      assert.ok(calls[1].at - calls[0].at >= 70 && calls[2].at - calls[1].at >= 70, 'a gap between the requests');
+      // Each attempt has a time limit.
+      assert.ok(calls.every((call) => call.signal), 'every attempt carries its time limit');
+      rssProviders.redditPace.gapMs = 0;
+      log.info = realLogInfo;
+      globalThis.fetch = fetchBefore;
+      rssProviders.forgetReddit();
+    }
     polled = await PROVIDERS.pinterest.poll([{ id: 'user', name: 'user', avatar: null, url: 'https://www.pinterest.com/user/' }], new Map(), { now: Date.parse('2026-10-26T15:00:00Z') });
     assert.equal(polled.get('user').items[0].type, 'pin');
     assert.equal(polled.get('user').items[0].image, 'https://i.pinimg.com/736x/a/b.jpg');

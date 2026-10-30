@@ -1,8 +1,11 @@
 // Feeds that are read as RSS or Atom: any blog or news site (`rss`), a subreddit (`reddit`) and a Pinterest profile or board (`pinterest`).
 // A feed of a site a person typed is fetched only from public addresses (see `fetchPublicText`).
-const { fetchText, fetchPublicText, publicUrl } = require('../http');
+const { fetchText, fetchJsonBody, fetchPublicText, publicUrl } = require('../http');
 const { parseFeed, discoverFeed } = require('../feedparse');
-const { IntegrationError } = require('../../utils/integrations');
+const { clip } = require('../text');
+const { IntegrationError, USER_AGENT } = require('../../utils/integrations');
+const logger = require('../../utils/logger');
+const { version: PETTO_VERSION } = require('../../../package.json');
 
 const REDDIT = /^[A-Za-z0-9_]{2,21}$/;
 const PINTEREST = /^[\w.\-]{3,30}$/;
@@ -82,9 +85,136 @@ function parseSubreddit(input) {
   return REDDIT.test(text) ? text : null;
 }
 
-async function readReddit(name) {
-  return parseFeed(await fetchText(`https://www.reddit.com/r/${encodeURIComponent(name)}/new/.rss`), { max: 15 });
+// Reddit asks for a descriptive User-Agent (`platform:app-id:version (by /u/username)`) and refuses the generic ones of shared hosts more often.
+// There is no Reddit account to name, so the contact of the project's own User-Agent goes where the username would.
+const REDDIT_USER_AGENT = `nodejs:petto-discord-bot:v${PETTO_VERSION} ${/\(.*\)\s*$/.exec(USER_AGENT)?.[0] ?? '(+https://petto.sbs)'}`; // i18n-ignore: sent to Reddit, never shown
+const REDDIT_ATTEMPT_MS = 5_000; // one address
+const REDDIT_TOTAL_MS = 12_000; // the whole read, every address together
+const REDDIT_KEEP_MS = 2 * 60_000; // a read is reused this long (the dashboard looks the account up, then creates the feed)
+const REDDIT_CACHE_LIMIT = 300;
+
+/** A real picture address from the list of a subreddit (`thumbnail` is also `self`, `default`, `nsfw`, `spoiler`...). */
+const pictureUrl = (value) => (/^https:\/\//i.test(value ?? '') ? String(value) : '');
+const oneLine = (value, max) => clip(String(value ?? '').replace(/https?:\/\/\S+/g, '').replace(/\s+/g, ' ').trim(), max);
+
+/**
+ * The listing of `/r/<name>/new.json` as the same feed `parseFeed` gives for the RSS: `{ isFeed, title, link, image, entries }`, with the same ids (`t3_...`)
+ * so what a feed marked as seen from one address is still seen from the other. A listing of subreddits (what Reddit answers for a name that does not
+ * exist) is `notFound`.
+ */
+function parseRedditJson(body, name, max = 15) {
+  const children = body?.data?.children;
+  if (!Array.isArray(children)) throw new IntegrationError('unavailable', 'not a listing'); // i18n-ignore: internal detail of an error, never shown
+  if (children[0]?.kind === 't5') throw new IntegrationError('notFound');
+  const entries = children.filter((child) => child?.kind === 't3' && child.data).slice(0, max).map(({ data }) => {
+    const preview = pictureUrl(data.preview?.images?.[0]?.source?.url);
+    const direct = pictureUrl(data.url_overridden_by_dest ?? data.url);
+    return {
+      id: String(data.name || (data.id ? `t3_${data.id}` : '')).slice(0, 300), title: oneLine(data.title, 250),
+      url: data.permalink ? `https://www.reddit.com${data.permalink}` : '', summary: oneLine(data.selftext, 400),
+      image: preview || pictureUrl(data.thumbnail) || (/\.(?:jpe?g|png|gif|webp)(?:\?|$)/i.test(direct) ? direct : ''),
+      published: Number(data.created_utc) ? Math.round(Number(data.created_utc) * 1000) : null, author: data.author ? `/u/${String(data.author).slice(0, 40)}` : '',
+    };
+  }).filter((entry) => entry.id && (entry.title || entry.url));
+  return { isFeed: true, title: `r/${name}`, link: `https://www.reddit.com/r/${name}`, image: '', entries };
 }
+
+/** The addresses to read a subreddit from, in the order they are tried. */
+function redditSources(name) {
+  const path = encodeURIComponent(name);
+  const headers = { 'User-Agent': REDDIT_USER_AGENT };
+  const rssSource = (host) => ({
+    host,
+    async read(timeoutMs) {
+      const feed = parseFeed(await fetchText(`https://${host}/r/${path}/new/.rss`, { headers, timeoutMs, retry: false }), { max: 15 });
+      if (!feed.isFeed) throw new IntegrationError('unavailable', 'not a feed'); // a block page that answers 200 // i18n-ignore: internal detail of an error, never shown
+      return feed;
+    },
+  });
+  return [
+    rssSource('www.reddit.com'),
+    rssSource('old.reddit.com'),
+    { host: 'www.reddit.com (json)', async read(timeoutMs) { return parseRedditJson(await fetchJsonBody(`https://www.reddit.com/r/${path}/new.json?limit=15&raw_json=1`, { headers, timeoutMs, retry: false }), name); } }, // i18n-ignore: a name for the log
+  ];
+}
+
+/** Why an attempt failed, for the log: the status (with the wait Reddit asked for) or the word the network gave. */
+function whyFailed(error) {
+  if (error.kind === 'rateLimited') return error.retryAfterMs ? `429 (retry-after ${Math.round(error.retryAfterMs / 1000)}s)` : '429'; // i18n-ignore: a word for the log
+  return String(error.status ?? (error.message.replace(/^unavailable: ?/, '') || 'no answer')); // i18n-ignore: a word for the log
+}
+
+// Every Reddit feed of the bot shares one small queue: a request is sent at most once for each `gapMs` (the limit can be for each address, so the
+// next address is tried after the same gap). When Reddit says how long to wait (`Retry-After`, at most a minute), nothing is sent until then.
+const redditPace = { gapMs: 2000, lastAt: 0, queue: Promise.resolve(), coolUntil: 0 }; // exported for the checks
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+function takeRedditTurn() {
+  const turn = redditPace.queue.then(async () => {
+    const wait = redditPace.lastAt + redditPace.gapMs - Date.now();
+    if (wait > 0) await sleep(wait);
+    redditPace.lastAt = Date.now();
+  });
+  redditPace.queue = turn;
+  return turn;
+}
+
+/**
+ * Reads a subreddit now: the main address first and, when it is refused (403), limited (429), fails (5xx) or does not answer, the next ones (after the
+ * gap of the queue). A 404 keeps its meaning and stops the reading. Answers `{ isFeed, title, image, entries }`; otherwise fails with `rateLimited` (some
+ * address said 429; `retryAfterMs` is what Reddit asked for), `blocked` (403, or a page that is not a feed) or `unavailable`. Each attempt has its own
+ * time, and the reading gives up in about 12 seconds from its first request.
+ */
+async function readRedditNow(name) {
+  if (redditPace.coolUntil > Date.now()) throw Object.assign(new IntegrationError('rateLimited', 'waiting'), { retryAfterMs: redditPace.coolUntil - Date.now() }); // i18n-ignore: internal detail of an error, never shown
+  const sources = redditSources(name);
+  let deadline = null;
+  let refused = false;
+  let limited = false;
+  let retryAfterMs = 0;
+  let last = 'no time'; // i18n-ignore: a word for the log
+  for (let i = 0; i < sources.length; i += 1) {
+    await takeRedditTurn();
+    deadline ??= Date.now() + REDDIT_TOTAL_MS;
+    const left = deadline - Date.now();
+    if (left < 1000) break;
+    try {
+      return await sources[i].read(Math.min(REDDIT_ATTEMPT_MS, left));
+    } catch (error) {
+      if (!(error instanceof IntegrationError) || error.kind === 'notFound') throw error;
+      const retryable = error.kind === 'rateLimited' || (error.kind === 'unavailable' && (error.status === undefined || error.status === 403 || error.status >= 500));
+      if (!retryable) throw error;
+      if (error.kind === 'rateLimited') { limited = true; retryAfterMs = Math.max(retryAfterMs, error.retryAfterMs ?? 0); }
+      else if (error.status === 403 || /not a feed/.test(error.message)) refused = true; // i18n-ignore: internal detail of an error
+      last = whyFailed(error);
+      const next = sources[i + 1];
+      logger.info(`feed reddit r/${name}: ${sources[i].host} ${last}, ${next && deadline - Date.now() >= 1000 ? `trying ${next.host}` : 'giving up'}`); // i18n-ignore: a line of the log
+    }
+  }
+  if (limited && retryAfterMs) {
+    redditPace.coolUntil = Date.now() + retryAfterMs;
+    logger.info(`feed reddit: Reddit asked to wait ${Math.round(retryAfterMs / 1000)}s, no request is sent until then`); // i18n-ignore: a line of the log
+  }
+  throw Object.assign(new IntegrationError(limited ? 'rateLimited' : refused ? 'blocked' : 'unavailable', last), { retryAfterMs });
+}
+
+const redditReads = new Map(); // name (lower case) -> { until, promise }
+
+/**
+ * A subreddit's latest posts. What was read is kept two minutes (and a reading in progress is shared), so looking an account up and then
+ * following it asks Reddit once. The polling job passes `fresh` to always read anew; what it reads is kept too.
+ */
+function readReddit(name, { fresh = false } = {}) {
+  const key = String(name).toLowerCase();
+  const kept = redditReads.get(key);
+  if (!fresh && kept && kept.until > Date.now()) return kept.promise;
+  if (redditReads.size >= REDDIT_CACHE_LIMIT) redditReads.delete(redditReads.keys().next().value);
+  const entry = { until: Infinity, promise: null };
+  entry.promise = readRedditNow(name).then((feed) => { entry.until = Date.now() + REDDIT_KEEP_MS; return feed; }, (error) => { if (redditReads.get(key) === entry) redditReads.delete(key); throw error; });
+  redditReads.set(key, entry);
+  return entry.promise;
+}
+
+const forgetReddit = () => { redditReads.clear(); redditPace.coolUntil = 0; redditPace.lastAt = 0; }; // for the checks
 
 /** `user` or `user/board` from a name or a Pinterest link. */
 function parsePinterest(input) {
@@ -102,4 +232,4 @@ async function readPinterest(id) {
   return { ...feed, entries: feed.entries.map((entry) => ({ ...entry, image: bigPin(entry.image) })) };
 }
 
-module.exports = { normalizeUrl, usualFeedUrls, readRss, resolveRss, toItem, parseSubreddit, readReddit, parsePinterest, readPinterest, bigPin };
+module.exports = { normalizeUrl, usualFeedUrls, readRss, resolveRss, toItem, parseSubreddit, readReddit, parseRedditJson, forgetReddit, redditPace, REDDIT_USER_AGENT, parsePinterest, readPinterest, bigPin };

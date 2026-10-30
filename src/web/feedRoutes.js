@@ -78,8 +78,8 @@ function registerFeedRoutes(app, { authorize, limiter }) {
       if (!(error instanceof IntegrationError)) throw error;
       // A word with several meanings: the dashboard shows the choices and sends the one picked as the account (`choices[].account`).
       if (error.kind === 'ambiguous') { res.status(409).json({ ok: false, error: 'ambiguous', word: error.word, choices: service.labelChoices(lang, error.word, error.choices), message: t(lang, 'feeds.add.error.ambiguous', { emoji: '', word: error.word }).trim() }); return; }
-      const kind = ['notFound', 'badInput', 'notConfigured', 'unsupported', 'badTags', 'noPictures', 'noFeed'].includes(error.kind) ? error.kind : 'unavailable';
-      res.status(kind === 'unavailable' ? 502 : 404).json({ ok: false, error: kind, message: t(lang, `feeds.add.error.${kind}`, { emoji: '', platform: PLATFORMS[platform].name }).trim() });
+      const kind = ['notFound', 'badInput', 'notConfigured', 'unsupported', 'badTags', 'noPictures', 'noFeed', 'blocked', 'rateLimited'].includes(error.kind) ? error.kind : 'unavailable';
+      res.status(kind === 'unavailable' || kind === 'blocked' ? 502 : kind === 'rateLimited' ? 429 : 404).json({ ok: false, error: kind, message: t(lang, `feeds.add.error.${kind}`, { emoji: '', platform: PLATFORMS[platform].name }).trim() });
     }
   });
 
@@ -104,7 +104,7 @@ function registerFeedRoutes(app, { authorize, limiter }) {
       pingEveryone: body.ping_everyone, options: body.options, filters: body.filters, createdBy: userId, lang,
     });
     if (!result.ok) { res.status(result.error === 'ambiguous' ? 409 : 400).json({ ok: false, error: result.error, message: errorText(lang, result, String(body.platform ?? '')), ...(result.error === 'ambiguous' ? { word: result.word, choices: service.labelChoices(lang, result.word, result.choices) } : {}) }); return; }
-    res.json({ ok: true, feed: result.feed, message: t(lang, 'feeds.add.ok', { emoji: '', account: result.feed.account_name, platform: PLATFORMS[result.feed.platform].name, channel: `#${guild.channels.cache.get(result.feed.channel_id)?.name ?? ''}`, id: result.feed.id, prefix: '!' }).trim() });
+    res.json({ ok: true, feed: result.feed, message: t(lang, result.waiting === 'rateLimited' ? 'feeds.add.savedRateLimited' : 'feeds.add.ok', { emoji: '', account: result.feed.account_name, platform: PLATFORMS[result.feed.platform].name, channel: `#${guild.channels.cache.get(result.feed.channel_id)?.name ?? ''}`, id: result.feed.id, prefix: '!' }).trim() });
   });
 
   route('update', async (req, res, { guild }, lang) => {

@@ -21,7 +21,7 @@ function resultCard(lang, platform, result) {
   if (!result.ok) {
     return textCard(t(lang, `feeds.add.error.${result.error}`, { emoji: EMOJI.DENY, platform: result.platform ?? PLATFORMS[platform]?.name, count: result.count, premium: result.premium, account: result.account, word: result.word ?? '', prefix: '!' }), 0xfe6465);
   }
-  return textCard(t(lang, 'feeds.add.ok', { emoji: EMOJI.APPROVE, account: result.feed.account_name, platform: PLATFORMS[platform].name, channel: `<#${result.feed.channel_id}>`, id: result.feed.number ?? result.feed.id, prefix: '!' }), 0xa5ea7a);
+  return textCard(t(lang, result.waiting === 'rateLimited' ? 'feeds.add.savedRateLimited' : 'feeds.add.ok', { emoji: EMOJI.APPROVE, account: result.feed.account_name, platform: PLATFORMS[platform].name, channel: `<#${result.feed.channel_id}>`, id: result.feed.number ?? result.feed.id, prefix: '!' }), 0xa5ea7a);
 }
 const idOption = (o) => o.setName('id').setDescription('The number of the feed (see the list)').setMinValue(1).setRequired(true);
 

@@ -374,7 +374,7 @@ const PROVIDERS = {
   },
 
   reddit: {
-    interval: 10 * 60_000, perTick: 60, concurrency: 2,
+    interval: 10 * 60_000, perTick: 30, concurrency: 2, // Reddit's requests go through one queue of one every 2 seconds: 30 a minute
     async resolve(text) {
       const name = rss.parseSubreddit(text);
       if (!name) throw new IntegrationError('badInput');
@@ -385,7 +385,7 @@ const PROVIDERS = {
     async poll(accounts, _tracked, { now = Date.now() } = {}) {
       const results = new Map();
       await forEachWithConcurrency(accounts, async (account) => {
-        try { results.set(account.id, { items: (await rss.readReddit(account.id)).entries.map((entry) => rss.toItem('reddit', 'post', entry, account)).filter((item) => fresh(item, now)) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
+        try { results.set(account.id, { items: (await rss.readReddit(account.id, { fresh: true })).entries.map((entry) => rss.toItem('reddit', 'post', entry, account)).filter((item) => fresh(item, now)) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable', retryAfter: error.retryAfterMs }); }
       }, this.concurrency);
       return results;
     },
