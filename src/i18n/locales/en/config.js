@@ -307,6 +307,7 @@ module.exports = {
   'config.column.jail_role_id': 'Jail role',
   'config.column.jail_channel_id': 'Jail channel',
   'config.column.prefix': 'Prefix',
+  'config.column.prefixes': 'Prefixes',
   'config.column.mute_role_id': 'Mute role',
   'config.column.language': 'Language',
   'config.column.setup_channel_id': 'Setup channel',

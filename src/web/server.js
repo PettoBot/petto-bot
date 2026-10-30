@@ -27,6 +27,8 @@ const { createChallenge, checkAnswer } = require('../utils/verifyCaptcha');
 const { methodOf, usesTurnstile, usesLetters } = require('../utils/verifyMethod');
 const { renderHomePage } = require('./homePage');
 const { setCachedPrefix } = require('../events/messageCreateCommands');
+const guildPrefixes = require('../utils/guildPrefixes');
+const { ensureGuild, updateGuild } = require('../db/guilds');
 const { registerDashboardRestRoutes } = require('./dashboardDatabase');
 const { registerCardRoutes } = require('./cardRoutes');
 const { registerAppealImageRoutes } = require('./appealImageRoutes');
@@ -46,6 +48,7 @@ const { registerBoosterRoleRoutes } = require('./boosterRoleRoutes');
 const { registerTicketLiveRoutes } = require('./ticketLiveRoutes');
 const { fetchDashboardMember } = require('./dashboardMember');
 const { roleGrantAllows } = require('./dashboardRoleAccess');
+const { supportOwnerAllows } = require('./supportOwner');
 const { registerGuildLanguageRoute } = require('./languageRoutes');
 const { refreshGuildPanels } = require('../utils/panelRefresh');
 const { registerPublicLeaderboardRoute } = require('./publicLeaderboard');
@@ -242,6 +245,8 @@ function startServer(client) {
       const member = await fetchDashboardMember(guild, userId);
       const canManage = Boolean(member) && (member.permissions.has(PermissionFlagsBits.ManageGuild) || member.permissions.has(PermissionFlagsBits.Administrator));
       if (!canManage) {
+        // The Petto owner's support mode: only the routes of supportOwner.js, never a general bypass.
+        if (supportOwnerAllows(req, userId, guild.id)) return { guild, member, userId, viaSupport: true };
         const byRole = page && member ? await roleGrantAllows({ guildId: guild.id, member, page, grant: req.get('x-petto-dashboard-grant'), needEdit: edit }) : false;
         if (!byRole) {
           res.status(403).json({ ok: false, error: 'no_access' });
@@ -828,7 +833,11 @@ function startServer(client) {
       isAuthorized: dashboardAuthorized,
       limiter: dashboardPrefixRateLimiter,
       // The panels Petto posted there (VoiceMaster, tickets, verification…) are redrawn in the new language, after the answer.
-      onChange: (guildId, language) => refreshGuildPanels(client.guilds.cache.get(guildId), language),
+      // The dashboard is a person choosing: the language is marked as chosen, so Petto never offers to change the one it detected.
+      onChange: async (guildId, language) => {
+        await require('../db/guilds').updateGuild(guildId, { language_source: 'manual' }).catch((err) => logger.warn(`Could not mark the language of ${guildId} as chosen: ${err.message}`));
+        await refreshGuildPanels(client.guilds.cache.get(guildId), language);
+      },
     });
 
     app.post('/api/dashboard/guild/:guildId/prefix', dashboardPrefixRateLimiter, async (req, res) => {
@@ -838,17 +847,29 @@ function startServer(client) {
       }
 
       const guildId = String(req.params.guildId || '');
-      const rawPrefix = req.body?.prefix;
-      if (!/^\d{15,25}$/.test(guildId) || typeof rawPrefix !== 'string') {
+      // The whole list (`prefixes`, from the Manage prefixes window) or, from an older dashboard, one prefix that becomes the only one.
+      const rawList = Array.isArray(req.body?.prefixes) ? req.body.prefixes : typeof req.body?.prefix === 'string' ? [req.body.prefix] : null;
+      if (!/^\d{15,25}$/.test(guildId) || !rawList) {
         res.status(400).json({ ok: false, error: 'invalid_prefix_request' });
         return;
       }
 
-      const prefix = rawPrefix.trim().slice(0, 5) || '!';
+      let checked = guildPrefixes.validateList(rawList.map((p) => String(p).trim()), 'en');
+      // An older dashboard sends the single prefix of its field on every save: when it is still the main one, the list is left as it is.
+      if (!checked.error && !Array.isArray(req.body?.prefixes)) {
+        const current = guildPrefixes.prefixesOf(await ensureGuild(guildId).catch(() => null));
+        if (current[0].toLocaleLowerCase() === checked.prefixes[0].toLocaleLowerCase()) checked = { prefixes: current };
+      }
+      if (checked.error) {
+        res.status(400).json({ ok: false, error: 'invalid_prefix', message: checked.error });
+        return;
+      }
       try {
         await client.guilds.fetch(guildId);
-        setCachedPrefix(guildId, prefix);
-        res.json({ ok: true, prefix });
+        // The list is saved here too (the dashboard already wrote it), so what the bot uses is always what passed these rules.
+        await updateGuild(guildId, guildPrefixes.columnsFor(checked.prefixes)).catch((err) => logger.warn(`Dashboard prefix save for guild ${guildId}: ${err.message}`));
+        setCachedPrefix(guildId, checked.prefixes);
+        res.json({ ok: true, prefix: checked.prefixes[0], prefixes: checked.prefixes });
       } catch (err) {
         logger.error(`Dashboard could not sync prefix for guild ${guildId}:`, err);
         res.status(404).json({ ok: false, error: 'guild_unavailable' });

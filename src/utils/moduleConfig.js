@@ -12,6 +12,7 @@ const {
   ButtonStyle,
   MessageFlags,
 } = require('discord.js');
+const guildPrefixes = require('./guildPrefixes');
 const database = require('../db/database');
 const { ensureGuild } = require('../db/guilds');
 const { formatDuration } = require('./duration');
@@ -88,7 +89,7 @@ const MODULES = {
   sanctionmessageconfig: { aliases: [], title: t('en', 'config.module.sanctionmessageconfig.title'), command: 'sanctionmessage', sources: [{ table: 'sanction_templates', list: true, only: ['type'] }] },
   giveawaypresetconfig: { aliases: [], title: t('en', 'config.module.giveawaypresetconfig.title'), command: 'giveawaypreset', sources: [{ table: 'giveaway_presets', list: true, only: ['name'] }] },
   giveawaytemplateconfig: { aliases: [], title: t('en', 'config.module.giveawaytemplateconfig.title'), command: 'giveawaytemplate', sources: [{ table: 'giveaway_templates', list: true, only: ['name'] }] },
-  prefixconfig: { aliases: [], title: t('en', 'config.module.prefixconfig.title'), command: 'prefix', sources: [{ table: 'guilds', only: ['prefix', 'language', 'mute_role_id', 'setup_channel_id'] }] },
+  prefixconfig: { aliases: [], title: t('en', 'config.module.prefixconfig.title'), command: 'prefix', sources: [{ table: 'guilds', only: ['prefixes', 'language', 'mute_role_id', 'setup_channel_id'] }] },
   reportconfig: { aliases: [], title: t('en', 'config.module.reportconfig.title'), command: 'report', sources: [{ table: 'report_config' }] },
   permissionconfig: {
     aliases: [],
@@ -322,7 +323,7 @@ function createConfigCommand(name, module = MODULES[name]) {
     async execute(interaction) {
       const lang = await languageOf(interaction);
       const guildConfig = await ensureGuild(interaction.guild.id).catch(() => null);
-      const text = await buildCardText(module, { guildId: interaction.guild.id, prefix: guildConfig?.prefix || '!', commands: interaction.client.commands, lang });
+      const text = await buildCardText(module, { guildId: interaction.guild.id, prefix: guildPrefixes.primaryPrefix(guildConfig), commands: interaction.client.commands, lang });
       const container = new ContainerBuilder()
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(text))
         .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))

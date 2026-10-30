@@ -96,6 +96,8 @@ const client = new Client({
 // join logging, invite tracking, welcome messages, join roles, level join-bonus, etc.) — that's
 // normal fan-out, not a leak, so raise the default cap instead of Node warning on every restart.
 client.setMaxListeners(30);
+// The first row of every server is made with the language Petto detects for it, whichever part of Petto needs the row first.
+require('./src/db/guilds').setGuildLookup((guildId) => client.guilds.cache.get(guildId));
 attachRestRateLimitTelemetry(client);
 require('./src/utils/redis').start();
 // The dashboard says on Redis when it changes a setting, so the caches forget it at once instead of when they expire.

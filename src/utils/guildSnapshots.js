@@ -30,6 +30,8 @@ function buildSnapshot(guild) {
       nsfw: Boolean(channel.nsfw),
       // Whether the bot can see the channel and write in it: the dashboard says so where a channel is picked for something the bot posts (the feeds).
       bot_can_send: channel.isTextBased?.() && !channel.isDMBased?.() ? Boolean(guild.members?.me && channel.permissionsFor?.(guild.members.me)?.has(POST_PERMISSIONS)) : null,
+      // Whether it can see the channel at all, so the dashboard can say "cannot see" apart from "cannot write".
+      bot_can_view: channel.isTextBased?.() && !channel.isDMBased?.() ? Boolean(guild.members?.me && channel.permissionsFor?.(guild.members.me)?.has(PermissionFlagsBits.ViewChannel)) : null,
     }));
   const roles = [...guild.roles.cache.values()].map((role) => ({
     id: String(role.id),

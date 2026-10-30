@@ -305,12 +305,13 @@ function requestLanguage(req, guildId = null) {
   return guildId ? peekGuildLanguage(String(guildId)) : DEFAULT_LANGUAGE;
 }
 
-/** Saves the language of a server and uses it at once. */
+/** Saves the language a person chose for a server and uses it at once. */
 async function setGuildLanguage(guildId, lang) {
   const value = normalizeLanguage(lang);
   if (!value) throw new Error(`Unknown language: ${lang}`);
   const { updateGuild } = require('../db/guilds');
-  await updateGuild(guildId, { language: value });
+  // Whoever calls this (`!language`, the buttons of the setup message) is choosing: Petto never offers to change it again.
+  await updateGuild(guildId, { language: value, language_source: 'manual' });
   setCachedGuildLanguage(guildId, value);
   return value;
 }

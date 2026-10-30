@@ -105,9 +105,11 @@ function call(port, body, headers = { 'x-petto-dashboard-key': KEY }) {
 
   // The bot's web server mounts it behind the same dashboard key check as the other dashboard routes.
   const source = fs.readFileSync(path.join(__dirname, '../src/web/server.js'), 'utf8');
-  const registration = source.slice(source.indexOf('registerGuildLanguageRoute(app'), source.indexOf('registerGuildLanguageRoute(app') + 400);
+  const registration = source.slice(source.indexOf('registerGuildLanguageRoute(app'), source.indexOf('registerGuildLanguageRoute(app') + 900);
   assert.match(registration, /isAuthorized: dashboardAuthorized,/);
-  assert.match(registration, /onChange: \(guildId, language\) => refreshGuildPanels\(client\.guilds\.cache\.get\(guildId\), language\)/);
+  assert.match(registration, /onChange: async \(guildId, language\) =>/);
+  assert.match(registration, /language_source: 'manual'/, 'a language saved by the dashboard is marked as chosen');
+  assert.match(registration, /refreshGuildPanels\(client\.guilds\.cache\.get\(guildId\), language\)/);
   assert.ok(source.indexOf('registerGuildLanguageRoute(app') > source.indexOf('if (dashboardEnabled) {'), 'only when the dashboard API is on');
   console.log('Checked the dashboard language route.');
 })().catch((err) => {

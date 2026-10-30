@@ -1,5 +1,6 @@
 // Ticket panel setup, access rules, and ticket lifecycle actions.
 const { summarizeStats, durationText } = require('../../utils/ticketReminders');
+const guildPrefixes = require('../../utils/guildPrefixes');
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = require('discord.js');
 const { ensureGuild } = require('../../db/guilds');
 const { getTemplate } = require('../../db/embedTemplates');
@@ -416,7 +417,7 @@ async function renderPanelMessage(guild, panel, categories, channel, lang) {
     const doc = await getTemplate(guild.id, panel.embed_template);
     if (doc) {
       const guildConfig = await ensureGuild(guild.id);
-      const payload = await build(doc.data, { guild, channel, prefix: guildConfig.prefix });
+      const payload = await build(doc.data, { guild, channel, prefix: guildPrefixes.primaryPrefix(guildConfig) });
       return { content: payload.content, embeds: payload.embeds, files: payload.files, components: [...(payload.components ?? []), ...rows] };
     }
   }

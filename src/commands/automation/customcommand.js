@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
+const guildPrefixes = require('../../utils/guildPrefixes');
 const { ensureGuild } = require('../../db/guilds');
 const ccDb = require('../../db/customCommands');
 const { getTemplate } = require('../../db/embedTemplates');
@@ -32,7 +33,7 @@ function startsWith(row, serverPrefix) {
 register('customcommands', {
   async load(guild, { lang }) {
     const rows = [...await ccDb.listCommands(guild.id)].sort((a, b) => a.name.localeCompare(b.name));
-    const serverPrefix = (await ensureGuild(guild.id).catch(() => null))?.prefix || '!';
+    const serverPrefix = guildPrefixes.primaryPrefix(await ensureGuild(guild.id).catch(() => null));
     const { limit } = await commandLimit(guild.id);
     return {
       title: t(lang, 'customcommands.list.title', { count: rows.length, limit }),
@@ -165,7 +166,7 @@ async function addCmd(interaction, isEdit) {
   }
 
   await ccDb.upsertCommand(interaction.guild.id, name, { response, embedTemplate });
-  const prefix = (await ensureGuild(interaction.guild.id).catch(() => null))?.prefix || '!';
+  const prefix = guildPrefixes.primaryPrefix(await ensureGuild(interaction.guild.id).catch(() => null));
   const done = t(lang, isEdit ? 'customcommands.add.updated' : 'customcommands.add.created', { emoji: EMOJI.APPROVE, name, prefix });
   await interaction.editReply({ components: [textCard(done, COLORS.GREEN)], flags: MessageFlags.IsComponentsV2 });
 }
@@ -179,7 +180,9 @@ async function triggerCmd(interaction) {
   const name = ccDb.normalizeName(interaction.options.getString('name', true));
   const row = await ccDb.getCommand(interaction.guild.id, name);
   if (!row) return reply(interaction, t(lang, 'customcommands.notExist', { name }), COLORS.RED);
-  const serverPrefix = (await ensureGuild(interaction.guild.id).catch(() => null))?.prefix || '!';
+  const guildRow = await ensureGuild(interaction.guild.id).catch(() => null);
+  const serverPrefix = guildPrefixes.primaryPrefix(guildRow);
+  const serverPrefixes = guildPrefixes.prefixesOf(guildRow);
   const current = describeTrigger(row, name, serverPrefix, lang);
   const type = (interaction.options.getString('type') ?? '').trim().toLowerCase();
   if (!type) {
@@ -189,8 +192,9 @@ async function triggerCmd(interaction) {
   if (type === 'prefix' && !String(text ?? '').trim()) {
     return reply(interaction, t(lang, 'customcommands.trigger.writePrefix', { name, prefix: serverPrefix }), COLORS.RED);
   }
-  if (type === 'prefix' && String(text).trim() === serverPrefix) {
-    return reply(interaction, t(lang, 'customcommands.trigger.serverPrefix', { name, prefix: serverPrefix }), COLORS.RED);
+  const sameAsServer = type === 'prefix' ? serverPrefixes.find((p) => p.toLocaleLowerCase() === String(text).trim().toLocaleLowerCase()) : null;
+  if (sameAsServer) {
+    return reply(interaction, t(lang, 'customcommands.trigger.serverPrefix', { name, prefix: sameAsServer }), COLORS.RED);
   }
   if (type !== 'command' && type === row.trigger_type && String(text ?? '').trim() === String(row.trigger_text ?? '')) {
     return reply(interaction, t(lang, 'customcommands.trigger.already', { name, current }));
@@ -237,7 +241,7 @@ async function renameCmd(interaction) {
     throw err;
   }
   invalidateTriggers(interaction.guild.id);
-  const prefix = (await ensureGuild(interaction.guild.id).catch(() => null))?.prefix || '!';
+  const prefix = guildPrefixes.primaryPrefix(await ensureGuild(interaction.guild.id).catch(() => null));
   const own = row.trigger_type === 'prefix' && row.trigger_text ? ` ${t(lang, 'customcommands.rename.ownPrefix', { own: row.trigger_text, name: newName })}` : '';
   return reply(interaction, `${t(lang, 'customcommands.rename.done', { emoji: EMOJI.APPROVE, old: oldName, name: newName, prefix })}${own}\n${t(lang, 'customcommands.rename.note')}`, COLORS.GREEN);
 }
@@ -263,7 +267,7 @@ async function infoCmd(interaction) {
   const name = ccDb.normalizeName(interaction.options.getString('name', true));
   const row = await ccDb.getCommand(interaction.guild.id, name);
   if (!row) return reply(interaction, `${t(lang, 'customcommands.notExist', { name })}${await didYouMean(interaction.guild.id, name, lang)}`, COLORS.RED);
-  const serverPrefix = (await ensureGuild(interaction.guild.id).catch(() => null))?.prefix || '!';
+  const serverPrefix = guildPrefixes.primaryPrefix(await ensureGuild(interaction.guild.id).catch(() => null));
   const lines = [`### \`${row.name}\``, t(lang, row.code ? 'customcommands.info.kindCode' : 'customcommands.info.kindText'), t(lang, 'customcommands.info.startsWith', { trigger: describeTrigger(row, row.name, serverPrefix, lang) })];
   if (!row.code) {
     if (row.response) lines.push(tn(lang, 'customcommands.info.size', row.response.length, { count: row.response.length }));
@@ -370,7 +374,7 @@ async function saveCode(interaction, name, code, how, lang) {
   const saved = await saveCodeCommand({ guild: interaction.guild, client: interaction.client, userId: interaction.user.id, name, code, lang });
   if (!saved.ok) return reply(interaction, saved.message, COLORS.RED);
   // The commands are typed with the prefix of the server (`p!req1`), so the message says that one and not always `!`.
-  const prefix = (await ensureGuild(interaction.guild.id).catch(() => null))?.prefix || '!';
+  const prefix = guildPrefixes.primaryPrefix(await ensureGuild(interaction.guild.id).catch(() => null));
   const warning = await missingPrefixWarning(interaction, name, code, prefix, lang);
   return reply(interaction, `${t(lang, `customcommands.saved.${saved.created ? how : 'updated'}`, { emoji: EMOJI.APPROVE, name, prefix })}${warning}`, warning ? COLORS.YELLOW : COLORS.GREEN);
 }

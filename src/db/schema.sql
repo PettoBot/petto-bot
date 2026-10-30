@@ -96,6 +96,39 @@ alter table guilds add column if not exists compliance_ignored_at timestamptz;
 alter table guilds add column if not exists compliance_ignore_reason text;
 -- The language Petto answers in on this server: 'en', 'es' or 'pt-BR' (other values are read as 'en').
 alter table guilds add column if not exists language text not null default 'en';
+-- Who chose that language: 'auto' (Petto found it when it joined: the locale or the words of the server), 'manual' (`!language`, the dashboard or
+-- the buttons of the setup message) or null (a server that was here before this column; its language is never offered for change).
+alter table guilds add column if not exists language_source text;
+
+-- The command prefixes of a server; the first one is the main one. The old `prefix` column keeps that first one for older code.
+alter table guilds add column if not exists prefixes text[];
+-- A server that still uses the default `!` gets `!` and `petto`; a server with a custom prefix keeps exactly that one. Only a missing or
+-- empty list is filled, so a list somebody already edited is never touched, and running this again changes nothing.
+update guilds
+  set prefixes = case when prefix = '!' then array['!', 'petto'] else array[prefix] end
+  where prefixes is null or cardinality(prefixes) = 0;
+-- Servers created from now on start with the defaults (this does not change the rows that exist).
+alter table guilds alter column prefixes set default array['!', 'petto'];
+
+-- Keeps the two columns telling the same: something that still writes only `prefix` (an older dashboard or bot) sets the list to that
+-- single prefix, and a row with no list, or whose `prefix` is not the first of its list, is made to agree.
+create or replace function guilds_sync_prefixes() returns trigger language plpgsql as $$
+begin
+  if new.prefixes is null or cardinality(new.prefixes) = 0 then
+    new.prefixes := case when new.prefix = '!' then array['!', 'petto'] else array[new.prefix] end;
+  elsif tg_op = 'UPDATE' then
+    if new.prefix is distinct from old.prefix and new.prefixes is not distinct from old.prefixes then
+      new.prefixes := array[new.prefix];
+    end if;
+  elsif new.prefix is distinct from new.prefixes[1] then
+    new.prefixes := array[new.prefix];
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists guilds_sync_prefixes on guilds;
+create trigger guilds_sync_prefixes before insert or update of prefix, prefixes on guilds
+  for each row execute function guilds_sync_prefixes();
 
 -- Persistent compliance signal summary. This stores only the latest actionable
 -- server-level signal; raw message evidence remains transient and is never stored.

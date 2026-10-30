@@ -49,10 +49,14 @@ const guild = (id, overrides = {}) => ({
   assert.equal(row.guild_id, '1000'); assert.equal(row.name, 'Server 1000'); assert.equal(row.icon, 'abc123'); assert.equal(row.member_count, 42); assert.equal(row.owner_id, '99');
   assert.equal(row.channels.length, 2, 'threads are not saved');
   assert.deepEqual([row.banner, row.emoji_count, row.premium_tier, row.boost_count, row.bot_nick, row.bot_avatar], ['ban1', 2, 2, 9, 'Petto Pet', 'av1'], 'banner, emojis, boosts and how the bot looks in the server');
-  assert.deepEqual(row.channels[0], { id: '1', name: 'general', type: 0, position: 1, parent_id: '5', topic: 'hello', nsfw: false, bot_can_send: true }, 'channels have the shape of Discord answers, and say whether the bot can write in them');
-  assert.equal(row.channels[1].bot_can_send, null, 'a voice channel is not one to post in');
+  assert.deepEqual(row.channels[0], { id: '1', name: 'general', type: 0, position: 1, parent_id: '5', topic: 'hello', nsfw: false, bot_can_send: true, bot_can_view: true }, 'channels have the shape of Discord answers, and say whether the bot can see and write in them');
+  assert.deepEqual([row.channels[1].bot_can_send, row.channels[1].bot_can_view], [null, null], 'a voice channel is not one to post in');
   const closed = buildSnapshot(guild('1001', { channels: { cache: new Map([['1', channel('1', 'staff', 0, { permissionsFor: () => ({ has: () => false }) })]]) } }));
   assert.equal(closed.channels[0].bot_can_send, false, 'a channel where the bot cannot see or write says so');
+  assert.equal(closed.channels[0].bot_can_view, false, 'a channel the bot cannot see says so');
+  const { PermissionFlagsBits } = require('discord.js');
+  const readOnly = buildSnapshot(guild('1002', { channels: { cache: new Map([['1', channel('1', 'news', 0, { permissionsFor: () => ({ has: (flags) => flags === PermissionFlagsBits.ViewChannel }) })]]) } }));
+  assert.deepEqual([readOnly.channels[0].bot_can_view, readOnly.channels[0].bot_can_send], [true, false], 'a channel the bot sees but cannot write in says which');
   assert.equal(row.roles.length, 2);
   assert.equal(row.roles[1].permissions, '8', 'permissions are a string like Discord sends them');
   assert.equal(row.roles[1].color, 255);

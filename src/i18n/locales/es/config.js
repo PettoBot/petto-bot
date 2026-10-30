@@ -307,6 +307,7 @@ module.exports = {
   'config.column.jail_role_id': 'Rol de cárcel',
   'config.column.jail_channel_id': 'Canal de cárcel',
   'config.column.prefix': 'Prefijo',
+  'config.column.prefixes': 'Prefijos',
   'config.column.mute_role_id': 'Rol de silencio',
   'config.column.language': 'Idioma',
   'config.column.setup_channel_id': 'Canal de configuración',
