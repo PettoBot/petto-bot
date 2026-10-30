@@ -10,17 +10,12 @@ const config = require('../config');
 const { resolveOpsGuildId } = require('../utils/opsGuild');
 const { isPettoOperator } = require('../utils/autoModControl');
 const { sendGuildNotice, TEMPLATES } = require('../utils/guildOpsAlerts');
-const { clearGuildComplianceRuntimeState } = require('../utils/guildComplianceDetector');
-const { setGuildComplianceIgnored } = require('../db/guildComplianceSettings');
 const logger = require('../utils/logger');
 
 const NOTICE_PREFIX = 'gops_notice:';
 const LEAVE_PREPARE_PREFIX = 'gops_leave_prepare:';
 const LEAVE_CONFIRM_PREFIX = 'gops_leave_confirm:';
 const LEAVE_CANCEL_PREFIX = 'gops_leave_cancel:';
-const IGNORE_PREPARE_PREFIX = 'gops_ignore_prepare:';
-const IGNORE_CONFIRM_PREFIX = 'gops_ignore_confirm:';
-const IGNORE_CANCEL_PREFIX = 'gops_ignore_cancel:';
 const SNOWFLAKE_RE = /^\d{15,25}$/;
 
 const BUTTON_LOCK_TTL_MS = 24 * 60 * 60 * 1000;
@@ -88,9 +83,6 @@ module.exports = {
       LEAVE_PREPARE_PREFIX,
       LEAVE_CONFIRM_PREFIX,
       LEAVE_CANCEL_PREFIX,
-      IGNORE_PREPARE_PREFIX,
-      IGNORE_CONFIRM_PREFIX,
-      IGNORE_CANCEL_PREFIX,
     ].some((prefix) => customId.startsWith(prefix));
 
     if (!isGuildOpsButton) return;
@@ -114,15 +106,6 @@ module.exports = {
 
     if (customId.startsWith(NOTICE_PREFIX)) {
       await handleReviewNotice(interaction, supportGuildId);
-      return;
-    }
-
-    if (
-      customId.startsWith(IGNORE_PREPARE_PREFIX)
-      || customId.startsWith(IGNORE_CONFIRM_PREFIX)
-      || customId.startsWith(IGNORE_CANCEL_PREFIX)
-    ) {
-      await handleIgnoreControl(interaction, supportGuildId);
       return;
     }
 
@@ -179,101 +162,6 @@ async function handleReviewNotice(interaction, supportGuildId) {
     `Review notice delivered ${destination}.`,
   );
   await interaction.editReply({ content: `Review notice delivered to **${result.guild.name}** ${destination}.` }).catch(() => {});
-}
-
-async function handleIgnoreControl(interaction, supportGuildId) {
-  const prefix = interaction.customId.startsWith(IGNORE_PREPARE_PREFIX)
-    ? IGNORE_PREPARE_PREFIX
-    : interaction.customId.startsWith(IGNORE_CONFIRM_PREFIX)
-      ? IGNORE_CONFIRM_PREFIX
-      : IGNORE_CANCEL_PREFIX;
-
-  const guildId = interaction.customId.slice(prefix.length);
-  if (!SNOWFLAKE_RE.test(guildId) || guildId === supportGuildId || guildId === config.supportGuildId) {
-    await interaction.reply({ content: 'Invalid or protected server target.', flags: MessageFlags.Ephemeral }).catch(() => {});
-    return;
-  }
-
-  if (prefix === IGNORE_CANCEL_PREFIX) {
-    if (!claimButton(interaction, `ignore-confirmation:${guildId}`)) {
-      await rejectAlreadyUsed(interaction);
-      return;
-    }
-    await interaction.update({
-      content: 'Ignore action cancelled. This confirmation is now locked.',
-      components: [],
-    }).catch(() => {});
-    return;
-  }
-
-  const target = interaction.client.guilds.cache.get(guildId)
-    ?? await interaction.client.guilds.fetch(guildId).catch(() => null);
-
-  if (!target) {
-    await interaction.reply({ content: 'Petto is no longer in that server.', flags: MessageFlags.Ephemeral }).catch(() => {});
-    return;
-  }
-
-  if (prefix === IGNORE_PREPARE_PREFIX) {
-    if (!claimButton(interaction, `alert-action:${guildId}`)) {
-      await rejectAlreadyUsed(interaction);
-      return;
-    }
-
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => {});
-    await disableSourceButtons(interaction, 'Ignore action opened');
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`${IGNORE_CONFIRM_PREFIX}${guildId}`)
-        .setLabel('Confirm ignore')
-        .setStyle(ButtonStyle.Danger),
-      new ButtonBuilder()
-        .setCustomId(`${IGNORE_CANCEL_PREFIX}${guildId}`)
-        .setLabel('Cancel')
-        .setStyle(ButtonStyle.Secondary),
-    );
-
-    await interaction.editReply({
-      content: `Ignore automatic compliance alerts for **${target.name}** (\`${guildId}\`)? Manual \`!guildsend ... scan\` will still work.`,
-      components: [row],
-    }).catch(() => {});
-    return;
-  }
-
-  if (!claimButton(interaction, `ignore-confirmation:${guildId}`)) {
-    await rejectAlreadyUsed(interaction);
-    return;
-  }
-
-  await interaction.update({
-    content: `Ignoring automatic compliance alerts for **${target.name}** (\`${guildId}\`)…`,
-    components: [],
-  }).catch(() => {});
-
-  try {
-    await setGuildComplianceIgnored(guildId, true, {
-      userId: interaction.user.id,
-      reason: 'Ignored from Petto team alert control',
-    });
-    clearGuildComplianceRuntimeState(guildId);
-
-    logger.info(
-      { guildId, action: 'guildops-ignore', userId: interaction.user.id },
-      `Automatic compliance alerts ignored for ${target.name}.`,
-    );
-
-    await interaction.editReply({
-      content: `Automatic compliance alerts are now ignored for **${target.name}** (\`${guildId}\`). Use \`!guildsend ${guildId} unignore\` to re-enable them.`,
-      components: [],
-    }).catch(() => {});
-  } catch (error) {
-    logger.error({ guildId, action: 'guildops-ignore', userId: interaction.user.id }, 'Failed to ignore guild compliance alerts:', error);
-    await interaction.editReply({
-      content: `Could not save the ignore state for **${target.name}**. The confirmation remains locked for safety.`,
-      components: [],
-    }).catch(() => {});
-  }
 }
 
 async function handleLeaveControl(interaction, supportGuildId) {

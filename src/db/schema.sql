@@ -90,6 +90,7 @@ alter table guilds add column if not exists bot_description text;
 alter table guilds add column if not exists bot_name_style jsonb;
 alter table guilds add column if not exists setup_channel_id text;
 alter table guilds add column if not exists invites_paused_until timestamptz;
+-- The four compliance_* columns are no longer used (see guild_compliance_scores); scripts/purge-compliance-data.js resets them.
 alter table guilds add column if not exists compliance_ignored boolean not null default false;
 alter table guilds add column if not exists compliance_ignored_by text;
 alter table guilds add column if not exists compliance_ignored_at timestamptz;
@@ -130,8 +131,9 @@ drop trigger if exists guilds_sync_prefixes on guilds;
 create trigger guilds_sync_prefixes before insert or update of prefix, prefixes on guilds
   for each row execute function guilds_sync_prefixes();
 
--- Persistent compliance signal summary. This stores only the latest actionable
--- server-level signal; raw message evidence remains transient and is never stored.
+-- NO LONGER USED. Petto used to score servers for shop words (guild_compliance_scores, and the compliance_* columns of `guilds`) and alert the team.
+-- That was removed: nothing reads or writes this table any more. It is left here so a boot never drops stored data; the owner can empty it with
+-- scripts/purge-compliance-data.js (a dry run unless it gets --yes).
 create table if not exists guild_compliance_scores (
   guild_id            text primary key references guilds(guild_id) on delete cascade,
   score               integer not null default 0 check (score between 0 and 16),

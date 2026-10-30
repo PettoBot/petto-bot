@@ -26,6 +26,7 @@ module.exports = {
           'Formularios de tickets con menús, casillas, selectores, imágenes y archivos, y un `!` antes de una mención la muestra sin avisar.',
           'Modo de soporte para el dueño de Petto, y feeds numerados por servidor.',
           'El historial de avatares se quitó porque usaba demasiado almacenamiento; el historial de nombres y apodos se queda.',
+          'La puntuación de tiendas se quitó: Petto ya no busca palabras de tiendas en los servidores, no los puntúa, no avisa al equipo ni sale de un servidor por eso.',
         ],
       },
       {

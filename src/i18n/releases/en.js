@@ -26,6 +26,7 @@ module.exports = {
           'Ticket forms with dropdowns, checkboxes, pickers, pictures and files, and a `!` before a mention shows it without notifying.',
           'Support mode for the owner of Petto, and feeds numbered per server.',
           'The avatar history is gone because it used too much storage; the history of names and nicknames stays.',
+          'The shop score is gone: Petto no longer scans servers for shop words, scores them, alerts the team, or leaves a server because of it.',
         ],
       },
       {
