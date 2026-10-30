@@ -1,6 +1,6 @@
 // Checks the support mode of the Petto owner (src/web/supportOwner.js) through real HTTP requests to the dashboard routes: on a server the owner
 // does not manage, he passes only the listed routes (feeds update/test/resolve/search/preview, counters refresh/reorder/announce, timer run,
-// confession panel, resync), with the dashboard key, and each one leaves a line in the log; everything else, any other person who does not
+// confession panel, resync) and the two reads of the image cards (the list and the picture of an asset, GET only), with the dashboard key, and each one leaves a line in the log; everything else, any other person who does not
 // manage the server, and a member who does manage it, answer as they always did. The database and Discord are replaced.
 process.env.DISCORD_TOKEN ||= 'check-only';
 process.env.DISCORD_CLIENT_ID ||= '1';
@@ -23,6 +23,10 @@ Object.assign(require('../src/db/counters'), { list: async () => [], setOrder: a
 Object.assign(require('../src/jobs/counterJob'), { refreshGuildCounters: async () => [], reloadAnnounce: async () => {} });
 require('../src/db/autoMessages').get = async () => null;
 require('../src/db/confessions').getConfig = async () => ({ channel_id: null, panel_channel_id: null });
+// The cards: two reads. `cardRoutes.js` takes `getGuildPremium` when it loads, so it is replaced before the server is required.
+require('../src/db/premium').getGuildPremium = async () => ({ active: false });
+Object.assign(require('../src/db/imageCards'), { listCards: async () => [], countCards: async () => 0, getCard: async () => null, saveCard: async () => { throw new Error('a card was saved'); }, deleteCard: async () => { throw new Error('a card was deleted'); } });
+Object.assign(require('../src/db/cardAssets'), { listAssets: async () => [], totalBytes: async () => 0, getAsset: async (_guildId, id) => (id === '5' ? { bytes: Buffer.from('png') } : null), deleteAsset: async () => { throw new Error('an asset was deleted'); }, addAsset: async () => { throw new Error('an asset was added'); } });
 
 require('../src/db/backups').vault.isConfigured = () => true; // the backups would answer: it is the gate that refuses
 const config = require('../src/config');
@@ -33,7 +37,7 @@ const GUILD = '111111111111111111';
 const OTHER_GUILD = '222222222222222222';
 Object.assign(config, { ownerId: OWNER, developerIds: [], feedTesterIds: [MANAGER], verifyBaseUrl: '', verifyTokenSecret: '', dashboardApiSecret: 'dash-key', topggWebhookSecret: '', webPort: 0 });
 const { startServer } = require('../src/web/server');
-const { supportRouteOf, SUPPORT_ROUTES } = require('../src/web/supportOwner');
+const { supportRouteOf, supportOwnerAllows, SUPPORT_ROUTES } = require('../src/web/supportOwner');
 
 const member = (id, flags) => ({ id, displayName: id, user: { id, username: id }, permissions: { has: (flag) => flags.includes(flag) }, roles: { cache: new Map() } });
 const members = new Map([[MANAGER, member(MANAGER, [PermissionFlagsBits.ManageGuild])], [STRANGER, member(STRANGER, [])]]);
@@ -46,23 +50,25 @@ const MANAGED_GUILD = '333333333333333333'; // where the owner is a member with 
 const guilds = new Map([[GUILD, makeGuild(GUILD)], [OTHER_GUILD, makeGuild(OTHER_GUILD)], [MANAGED_GUILD, makeGuild(MANAGED_GUILD, new Map([[OWNER, member(OWNER, [PermissionFlagsBits.ManageGuild])]]))]]);
 const client = { guilds: { cache: guilds, fetch: async (id) => guilds.get(id) ?? Promise.reject(new Error('Unknown Guild')) }, users: { fetch: async () => null } };
 
-function call(port, method, url, { userId, key = 'dash-key', body = {} } = {}) {
+function call(port, method, url, { userId, key = 'dash-key', body = {}, query = false } = {}) {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify({ ...body, user_id: userId });
+    if (query) url += `${url.includes('?') ? '&' : '?'}user_id=${userId}`; // the website sends the id in the query
     const req = http.request({ host: '127.0.0.1', port, method, path: url, headers: { 'content-type': 'application/json', ...(key ? { 'x-petto-dashboard-key': key } : {}) } }, (res) => {
       let text = '';
-      res.setEncoding('utf8');
+      res.setEncoding('utf8'); // the picture of an asset is not JSON: its status is what counts
       res.on('data', (chunk) => { text += chunk; });
       res.on('end', () => { let json = null; try { json = JSON.parse(text); } catch { /* not json */ } resolve({ status: res.statusCode, ...json }); });
     });
     req.on('error', reject);
-    if (method !== 'GET') req.write(data);
+    if (method !== 'GET' && !query) req.write(data);
     req.end();
   });
 }
 
 // The listed routes, with a body that makes the route end quickly, and the status that means "it ran" (not a refusal).
 const D = (rest) => `/api/dashboard/guild/${GUILD}/${rest}`;
+const CARDS = (rest = '') => `/api/dashboard/cards/${GUILD}${rest}`;
 const ALLOWED = [
   ['feeds/update', {}, 400], ['feeds/test', {}, 404], ['feeds/resolve', {}, 400], ['feeds/search', { platform: 'nope' }, 400], ['feeds/preview', { platform: 'nope' }, 400],
   ['counters/refresh', {}, 200], ['counters/reorder', {}, 200], ['counters/announce', { enabled: false }, 200], ['counters/announce', { test: true }, 400],
@@ -79,7 +85,7 @@ const DENIED = [
   // The list itself: POST only, the exact route, any case and a final slash (as Express reads it), nothing around it.
   assert.deepEqual(supportRouteOf('POST', D('feeds/update')), { name: 'feeds/update', guildId: GUILD });
   assert.deepEqual(supportRouteOf('post', D('Feeds/Update/')), { name: 'feeds/update', guildId: GUILD });
-  assert.equal(supportRouteOf('GET', D('feeds/update')), null, 'only POST');
+  assert.equal(supportRouteOf('GET', D('feeds/update')), null, 'the old entries are POST only');
   assert.equal(supportRouteOf('DELETE', D('resync')), null);
   for (const rest of ['feeds/create', 'feeds/delete', 'feeds/update/x', 'feeds/updatex', 'feeds', 'counters/preview', 'counters/create', 'timers/x/run', 'timers/5/run/x', 'resync/x', 'x/resync', 'tickets/live/list']) {
     assert.equal(supportRouteOf('POST', D(rest)), null, `${rest} is not on the list`);
@@ -87,7 +93,26 @@ const DENIED = [
   assert.equal(supportRouteOf('POST', `/x${D('resync')}`), null);
   assert.equal(supportRouteOf('POST', `${D('resync')}?x=1`), null, 'the path is given without its query');
   assert.equal(supportRouteOf('POST', '/api/dashboard/vault/111111111111111111'), null);
-  assert.equal(SUPPORT_ROUTES.length, 11, 'the list is short: feeds (5), counters (3), timer run, confession panel, resync');
+  // The cards: the two reads, with their method. A GET does not open a POST and a POST does not open a GET.
+  assert.deepEqual(supportRouteOf('GET', CARDS()), { name: 'cards/list', guildId: GUILD });
+  assert.deepEqual(supportRouteOf('get', `${CARDS('/assets/5')}/`), { name: 'cards/asset', guildId: GUILD });
+  for (const method of ['POST', 'PUT', 'PATCH', 'DELETE', 'HEAD']) assert.equal(supportRouteOf(method, CARDS()), null, `${method} on the cards list`);
+  for (const method of ['POST', 'PUT', 'DELETE']) assert.equal(supportRouteOf(method, CARDS('/assets/5')), null, `${method} on an asset`);
+  assert.equal(supportRouteOf('POST', CARDS('/preview')), null); assert.equal(supportRouteOf('GET', CARDS('/preview')), null);
+  assert.equal(supportRouteOf('POST', CARDS('/normalize')), null);
+  for (const rest of ['/assets', '/assets/x', '/assets/5/x', '/assets/1234567890123456789', '/preview/x', '/x']) assert.equal(supportRouteOf('GET', CARDS(rest)), null, `GET cards${rest} is not on the list`);
+  assert.equal(supportRouteOf('GET', D('resync')), null, 'a GET does not open a POST route');
+  assert.equal(supportRouteOf('GET', `${CARDS()}?user_id=1`), null, 'the path is given without its query');
+  assert.equal(SUPPORT_ROUTES.length, 13, 'the list is short: feeds (5), counters (3), timer run, confession panel, resync, and the 2 reads of the cards');
+  assert.deepEqual(SUPPORT_ROUTES.filter((route) => route.method === 'GET').map((route) => route.name), ['cards/list', 'cards/asset'], 'the only GET routes');
+  // The server in the path must be the one being authorized.
+  const cardsGet = { method: 'GET', path: CARDS(), params: { guildId: GUILD } };
+  assert.equal(supportOwnerAllows(cardsGet, OWNER, GUILD), true);
+  assert.equal(supportOwnerAllows(cardsGet, OWNER, OTHER_GUILD), false, 'another guild id');
+  assert.equal(supportOwnerAllows({ ...cardsGet, params: { guildId: OTHER_GUILD } }, OWNER, GUILD), false, 'another guild id in the params');
+  assert.equal(supportOwnerAllows(cardsGet, STRANGER, GUILD), false, 'not the owner');
+  assert.equal(supportOwnerAllows({ ...cardsGet, method: 'POST' }, OWNER, GUILD), false);
+  infos.length = 0;
   assert.ok(SUPPORT_ROUTES.every((route) => !/create|delete|setup|premium|backup|verif|form|ticket|permission|access/i.test(route.name)), 'nothing that makes or removes, or gives access');
 
   const app = startServer(client);
@@ -129,6 +154,62 @@ const DENIED = [
     assert.equal(r.status, 200);
     config.ownerId = OWNER;
 
+    // 2b. The cards: the owner reads the list and the picture of an asset on a server he does not manage, and nothing else of the cards.
+    infos.length = 0;
+    r = await call(port, 'GET', CARDS(), { userId: OWNER, query: true });
+    assert.deepEqual([r.status, r.ok], [200, true], `the owner on the cards list: ${JSON.stringify(r)}`);
+    assert.deepEqual(infos, [`support: owner ${OWNER} cards/list on guild ${GUILD}`], 'logged once, without a body');
+    infos.length = 0;
+    r = await call(port, 'GET', CARDS('/assets/5'), { userId: OWNER, query: true });
+    assert.equal(r.status, 200, 'the owner on an asset picture');
+    assert.deepEqual(infos, [`support: owner ${OWNER} cards/asset on guild ${GUILD}`]);
+    r = await call(port, 'GET', CARDS('/assets/6'), { userId: OWNER, query: true });
+    assert.deepEqual([r.status, r.error], [404, 'not_found'], 'an asset that does not exist is a plain 404 (he got in)');
+    infos.length = 0;
+    for (const [method, rest, body] of [
+      ['POST', '', { action: 'save', name: 'x', data: {} }], ['POST', '', { action: 'delete', name: 'x' }], ['POST', '/preview', { data: {} }], ['POST', '/normalize', { data: {} }],
+      ['POST', '/assets', {}], ['DELETE', '/assets/5', {}],
+    ]) {
+      r = await call(port, method, CARDS(rest), { userId: OWNER, body, query: method === 'DELETE' });
+      assert.deepEqual([r.status, r.error], [403, 'no_access'], `the owner on ${method} cards${rest}: ${JSON.stringify(r)}`);
+    }
+    // A method with no route of its own (the cards have no DELETE, PUT or POST on an asset id) never reaches the owner's list: the router has none.
+    for (const [method, rest] of [['DELETE', ''], ['PUT', ''], ['PUT', '/assets/5'], ['POST', '/assets/5']]) {
+      r = await call(port, method, CARDS(rest), { userId: OWNER, query: method !== 'POST' });
+      assert.ok(r.status === 403 || r.status === 404, `the owner on ${method} cards${rest}: ${r.status}`);
+      assert.notEqual(r.ok, true);
+    }
+    assert.deepEqual(infos, [], 'the refused ones leave no support line');
+    // A wrong key or none is a 401 before anything else; a person who does not manage the server, or is not in it, is a 403; the owner's
+    // id of someone else (the id of the query is the one checked) gets nothing.
+    for (const key of ['wrong', null]) {
+      for (const rest of ['', '/assets/5']) {
+        r = await call(port, 'GET', CARDS(rest), { userId: OWNER, key, query: true });
+        assert.deepEqual([r.status, r.error], [401, 'unauthorized'], `cards${rest} with ${key ?? 'no'} key`);
+      }
+    }
+    for (const userId of [STRANGER, '300000000000000009']) {
+      for (const rest of ['', '/assets/5']) {
+        r = await call(port, 'GET', CARDS(rest), { userId, query: true });
+        assert.deepEqual([r.status, r.error], [403, 'no_access'], `${userId} on GET cards${rest}`);
+      }
+    }
+    r = await call(port, 'GET', CARDS(), { userId: STRANGER, query: true });
+    assert.equal(r.status, 403);
+    config.ownerId = '293504726505357399';
+    r = await call(port, 'GET', CARDS(), { userId: OWNER, query: true });
+    assert.deepEqual([r.status, r.error], [403, 'no_access'], 'the owner is whoever the configuration says');
+    config.ownerId = OWNER;
+    // The manager of the server reads and writes the cards as before, with no support line.
+    r = await call(port, 'GET', CARDS(), { userId: MANAGER, query: true });
+    assert.equal(r.status, 200);
+    r = await call(port, 'POST', CARDS(), { userId: MANAGER, body: { action: 'nope', name: 'x' } });
+    assert.deepEqual([r.status, r.error], [400, 'unknown_action'], 'the manager still reaches the POST');
+    assert.deepEqual(infos, [], 'a manager is not a support request');
+    // The owner on a server he manages: a normal manager, nothing logged.
+    r = await call(port, 'POST', `/api/dashboard/cards/${MANAGED_GUILD}`, { userId: OWNER, body: { action: 'nope', name: 'x' } });
+    assert.deepEqual([r.status, r.error], [400, 'unknown_action']); assert.deepEqual(infos, []);
+
     // 3. The key is still required: a wrong one or none is refused before anything else.
     for (const key of ['wrong', null]) {
       for (const [route] of ALLOWED) {
@@ -169,6 +250,6 @@ const DENIED = [
   } finally {
     server.close();
   }
-  console.log('Checked the support mode of the Petto owner: only the listed routes, the key still required, and everybody else as before.');
+  console.log('Checked the support mode of the Petto owner: only the listed routes (and the two reads of the cards), the key still required, and everybody else as before.');
   process.exit(0);
 })().catch((err) => { console.error(err); process.exit(1); });

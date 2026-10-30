@@ -4,11 +4,13 @@
 //
 // DEFAULT IS DENY. Never add: create or delete of feeds or counters, Premium, Customize, moderation, backups, verification, forms, tickets,
 // access, permissions or anything that gives roles, removes data or changes who can do what. The request still needs the dashboard key.
+// Each entry has its method: a GET listed here does not open the POST of the same path, and the other way round.
 const config = require('../config');
 const logger = require('../utils/logger');
 
 const BASE = '/api/dashboard/guild/:guildId';
-// `name` is what the log says; `path` is the whole route (`:guildId` and `:timerId` are ids).
+const CARDS = '/api/dashboard/cards/:guildId';
+// `name` is what the log says; `path` is the whole route (`:guildId`, `:timerId` and `:assetId` are ids); `method` is the one that is allowed.
 const SUPPORT_ROUTES = [
   // Feeds: change one, send a test notice, and the reads of the form (resolve an account, search, preview). Not create or delete.
   ...['update', 'test', 'resolve', 'search', 'preview'].map((action) => ({ name: `feeds/${action}`, path: `${BASE}/feeds/${action}` })),
@@ -17,10 +19,15 @@ const SUPPORT_ROUTES = [
   { name: 'timers/run', path: `${BASE}/timers/:timerId/run` },
   { name: 'confessions/panel', path: `${BASE}/confessions/panel` },
   { name: 'resync', path: `${BASE}/resync` },
-].map((route) => ({
+].map((route) => ({ method: 'POST', ...route })).concat([
+  // Image cards and Embeds pages: only the two reads (the list, and the picture of an uploaded asset). Not save, delete, upload, preview or normalize.
+  { method: 'GET', name: 'cards/list', path: CARDS },
+  { method: 'GET', name: 'cards/asset', path: `${CARDS}/assets/:assetId` },
+]).map((route) => ({
+  method: route.method,
   name: route.name,
   // Express matches routes without case and with a final slash, so this does too.
-  regexp: new RegExp(`^${route.path.replace(':guildId', '(\\d{15,25})').replace(':timerId', '\\d{1,18}')}/?$`, 'i'),
+  regexp: new RegExp(`^${route.path.replace(':guildId', '(\\d{15,25})').replace(':timerId', '\\d{1,18}').replace(':assetId', '\\d{1,18}')}/?$`, 'i'),
 }));
 
 /**
@@ -29,8 +36,9 @@ const SUPPORT_ROUTES = [
  * @param {string} pathname
  */
 function supportRouteOf(method, pathname) {
-  if (String(method).toUpperCase() !== 'POST') return null;
+  const verb = String(method).toUpperCase();
   for (const route of SUPPORT_ROUTES) {
+    if (route.method !== verb) continue;
     const match = route.regexp.exec(String(pathname));
     if (match) return { name: route.name, guildId: match[1] };
   }
