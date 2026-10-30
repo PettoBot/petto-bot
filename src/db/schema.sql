@@ -1695,6 +1695,18 @@ create table if not exists sticky_role_snapshots (
 
 alter table sticky_role_snapshots enable row level security;
 
+-- Message link embeds: a server that turns it on gets an embed of a message when a member posts its link. Off by default: a server
+-- with no row (or enabled = false) sees no change. `ignored_channels`: channels where links are not opened (and whose messages
+-- are never opened).
+create table if not exists message_link_settings (
+  guild_id         text primary key references guilds(guild_id) on delete cascade,
+  enabled          boolean not null default false,
+  ignored_channels text[] not null default '{}',
+  updated_at       timestamptz not null default now()
+);
+
+alter table message_link_settings enable row level security;
+
 create table if not exists poj_config (
   guild_id text primary key references guilds(guild_id) on delete cascade,
   enabled  boolean not null default true

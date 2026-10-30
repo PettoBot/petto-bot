@@ -19,7 +19,7 @@ const ESSENTIAL = [
   'afk', 'avatar', 'ban', 'botinfo', 'channel', 'embed', 'giveaway', 'help', 'kick', 'ping', 'poll', 'purge', 'rank', 'remind',
   'serverinfo', 'suggest', 'ticket', 'timeout', 'top', 'unban', 'userinfo', 'warn',
   // Registered before for their own reasons.
-  'guildtag', 'report', 'setup', 'vanity',
+  'guildtag', 'messagelinks', 'report', 'setup', 'vanity',
 ];
 const CONTEXT_MENUS = ['Report Message', 'Report User', 'Report User'];
 const EXPECTED_TOTAL = ROLEPLAY + ESSENTIAL.length + CONTEXT_MENUS.length;

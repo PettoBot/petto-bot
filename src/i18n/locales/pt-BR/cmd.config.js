@@ -441,4 +441,12 @@ module.exports = {
   'cmd.config.feed.ping.opt.id.desc': 'O número do feed (veja a lista)',
   'cmd.config.feed.ping.opt.role.desc': 'O cargo a mencionar (deixe vazio para parar de mencionar)',
   'cmd.config.feed.ping.opt.everyone.desc': 'Menciona @everyone no lugar',
+  'cmd.config.messagelinks.desc': 'Mostra uma mensagem em um embed quando alguém posta o link dela (desligado por padrão).',
+  'cmd.config.messagelinks.on.desc': 'Ativa os embeds de links de mensagens.',
+  'cmd.config.messagelinks.off.desc': 'Desativa os embeds de links de mensagens.',
+  'cmd.config.messagelinks.status.desc': 'Veja se está ativado e quais canais são ignorados.',
+  'cmd.config.messagelinks.ignore.desc': 'Não abre links postados em um canal, nem que apontem para ele.',
+  'cmd.config.messagelinks.ignore.opt.channel.desc': 'O canal a ignorar',
+  'cmd.config.messagelinks.unignore.desc': 'Volta a abrir os links de um canal.',
+  'cmd.config.messagelinks.unignore.opt.channel.desc': 'O canal que deixar de ignorar',
 };
