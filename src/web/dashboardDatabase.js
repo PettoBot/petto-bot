@@ -3,7 +3,7 @@ const { createPostgresClient, getPrimaryPool } = require('../db/postgres');
 const secondary = require('../db/secondary');
 
 // The tables kept in the second database when there is one (the dashboard reads and deletes them through this route too).
-const SECONDARY_TABLES = new Set(['profile_history_images', 'malicious_links']);
+const SECONDARY_TABLES = new Set(['malicious_links']);
 const logger = require('../utils/logger');
 const rateLimit = require('express-rate-limit');
 const { normalizeScheduleFields } = require('../utils/timerSchedule');
@@ -325,11 +325,6 @@ async function handleDashboardRest(req, res) {
     }
 
     const rows = Array.isArray(result.data) ? result.data : result.data ? [result.data] : [];
-    // Someone who turns the history off from the dashboard: the copies of their avatars go at once (they may be in the second database, where no trigger reaches).
-    if (table === 'identity_history_optout' && method === 'POST') {
-      const images = require('../db/profileHistoryImages');
-      for (const row of rows) if (row?.user_id) await images.clearUser(row.user_id).catch((error) => logger.warn(`Could not delete the avatar copies of ${row.user_id}: ${error.message}`));
-    }
     if (!mutation && selection.embeds.length) await attachTicketCategoryEmbed(primaryPool, rows, selection);
 
     const total = result.count == null ? '*' : String(result.count);

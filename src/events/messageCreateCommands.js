@@ -275,11 +275,11 @@ module.exports = {
       }
     }
 
-    // `!clear avatars|names|nicknames|all` deletes your saved history; `!clear 100` and the rest stay the channel's clear.
-    if (commandName === 'clear' && /^(avatars?|names?|nicknames?|nicks?|all|history)(\s|$)/i.test(argText.trim())) {
+    // `!clear names|nicknames|all` deletes your saved history; `!clear 100` and the rest stay the channel's clear.
+    if (commandName === 'clear' && /^(names?|nicknames?|nicks?|all|history)(\s|$)/i.test(argText.trim())) {
       const what = argText.trim().split(/\s+/)[0].toLowerCase();
       commandName = 'profilehistory';
-      argText = `clear ${/^avatar/.test(what) ? 'avatars' : /^name/.test(what) ? 'names' : /^nick/.test(what) ? 'nicknames' : 'all'}`;
+      argText = `clear ${/^name/.test(what) ? 'names' : /^nick/.test(what) ? 'nicknames' : 'all'}`;
     }
 
     const prefixRoute = message.client.commandRoutes?.get(commandName);

@@ -43,9 +43,7 @@ const { startAfkMentionsJob } = require('./src/jobs/afkMentionsJob');
 const { startFeedsJob } = require('./src/jobs/feedsJob');
 const music = require('./src/music/node');
 const { startGuildPurgeJob } = require('./src/jobs/guildPurgeJob');
-const { startAvatarPackJob } = require('./src/jobs/avatarPackJob');
 const { startDataMoveJob } = require('./src/jobs/dataMoveJob');
-const { startProfileHistoryBackfillJob } = require('./src/jobs/profileHistoryBackfillJob');
 const { startServer } = require('./src/web/server');
 const { startCloudflareTunnel } = require('./src/web/cloudflareTunnel');
 const { attachRestRateLimitTelemetry } = require('./src/utils/restTelemetry');
@@ -180,9 +178,7 @@ async function main() {
   startAfkMentionsJob();
   startFeedsJob(client);
   startGuildPurgeJob(client);
-  startAvatarPackJob();
   startDataMoveJob();
-  startProfileHistoryBackfillJob();
   startServer(client);
   startCloudflareTunnel(config.cloudflareTunnelToken);
 }

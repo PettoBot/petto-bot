@@ -25,6 +25,7 @@ module.exports = {
           'Varios prefijos por servidor con `!prefix add` y `!prefix remove`, y un servidor nuevo empieza en su propio idioma.',
           'Formularios de tickets con menús, casillas, selectores, imágenes y archivos, y un `!` antes de una mención la muestra sin avisar.',
           'Modo de soporte para el dueño de Petto, y feeds numerados por servidor.',
+          'El historial de avatares se quitó porque usaba demasiado almacenamiento; el historial de nombres y apodos se queda.',
         ],
       },
       {

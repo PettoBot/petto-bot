@@ -3564,7 +3564,9 @@ alter table monkeyboards enable row level security;
 alter table monkeyboard_entries enable row level security;
 
 -- ---------------------------------------------------------------------------
--- History of avatars, names and nicknames: what a person has shown, newest first. Each person can turn it off and clear it.
+-- History of names and nicknames: what a person has shown, newest first. Each person can turn it off and clear it.
+-- (It used to hold avatars too, with a copy of each picture in profile_history_images; Petto no longer keeps them. Existing rows are removed only by
+-- scripts/purge-avatar-history.js, which the owner runs by hand, so the `avatar` kind stays allowed here and the old table is left alone.)
 -- ---------------------------------------------------------------------------
 create table if not exists identity_history (
   id        bigserial primary key,
@@ -4186,48 +4188,6 @@ create index if not exists idx_pagination_messages_guild on pagination_messages(
 create index if not exists idx_pagination_messages_channel on pagination_messages(channel_id);
 alter table pagination_messages enable row level security;
 
--- Profile history: a copy of each avatar, taken when Petto records it (Discord stops serving an old avatar soon after it is changed, so
--- the hash alone is not enough to show it later). One 256 px still per person and hash (an animated avatar keeps its first frame), at
--- most 100 per person (the newest of the history) and 256 KB each. `bytes` is null and `size` 0 while there is no copy: `missing` = Discord
--- answered that it no longer has it (not asked again), otherwise `attempts` counts the failed tries (given up after 3).
-create table if not exists profile_history_images (
-  user_id       text not null,
-  hash          text not null,
-  content_type  text not null default 'image/webp',
-  size          integer not null default 0,
-  bytes         bytea,
-  missing       boolean not null default false,
-  attempts      integer not null default 0,
-  created_at    timestamptz not null default now(),
-  updated_at    timestamptz not null default now(),
-  primary key (user_id, hash)
-);
-alter table profile_history_images enable row level security;
--- The copies follow the history whoever changes it (the bot, the dashboard's REST client or its direct connection): a deleted avatar
--- entry takes its copy with it (unless the same hash is still saved), and turning the history off deletes every copy of that person.
-create or replace function profile_history_images_forget_entry() returns trigger
-language plpgsql
-as $$
-begin
-  if old.kind = 'avatar' and not exists (select 1 from identity_history where user_id = old.user_id and kind = 'avatar' and value = old.value) then
-    delete from profile_history_images where user_id = old.user_id and hash = old.value;
-  end if;
-  return null;
-end;
-$$;
-drop trigger if exists identity_history_forget_image on identity_history;
-create trigger identity_history_forget_image after delete on identity_history for each row execute function profile_history_images_forget_entry();
-create or replace function profile_history_images_forget_user() returns trigger
-language plpgsql
-as $$
-begin
-  delete from profile_history_images where user_id = new.user_id;
-  return null;
-end;
-$$;
-drop trigger if exists identity_history_optout_forget_images on identity_history_optout;
-create trigger identity_history_optout_forget_images after insert or update on identity_history_optout for each row execute function profile_history_images_forget_user();
-
 -- AI assistant of the tickets (beta). Read and written by the dashboard (Tickets → AI assistant) through the bot's REST API with the
 -- service key; the bot reads ticket_ai_settings to answer in tickets and adds 1 to ticket_ai_usage for every AI reply it sends.
 -- Until these tables exist the dashboard page works with defaults, says the database update is pending, and Save is off.
@@ -4556,5 +4516,3 @@ create table if not exists guild_departures (
 
 alter table guild_departures enable row level security;
 
--- Copies of avatars made at the old quality are rewritten smaller in the background (jobs/avatarPackJob.js).
-alter table profile_history_images add column if not exists packed boolean not null default false;

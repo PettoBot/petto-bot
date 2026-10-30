@@ -22,7 +22,6 @@ const DEFAULT_PREFIX_ROUTES = [
   { alias: 'unlock', command: 'channel', args: ['unlock'], subcommand: 'unlock' },
   { alias: 'slowmode', command: 'channel', args: ['slowmode'], subcommand: 'slowmode' },
   { alias: 'clear', command: 'channel', args: ['clear'], subcommand: 'clear' },
-  { alias: 'avatars', command: 'profilehistory', args: ['avatars'], subcommand: 'avatars' },
   { alias: 'names', command: 'profilehistory', args: ['names'], subcommand: 'names' },
   { alias: 'nicknames', command: 'profilehistory', args: ['nicknames'], subcommand: 'nicknames' },
   { alias: 'nicks', command: 'profilehistory', args: ['nicknames'], subcommand: 'nicknames' },

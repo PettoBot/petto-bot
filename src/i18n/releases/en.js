@@ -25,6 +25,7 @@ module.exports = {
           'Several prefixes per server with `!prefix add` and `!prefix remove`, and a new server starts in its own language.',
           'Ticket forms with dropdowns, checkboxes, pickers, pictures and files, and a `!` before a mention shows it without notifying.',
           'Support mode for the owner of Petto, and feeds numbered per server.',
+          'The avatar history is gone because it used too much storage; the history of names and nicknames stays.',
         ],
       },
       {

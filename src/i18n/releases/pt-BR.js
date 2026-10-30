@@ -25,6 +25,7 @@ module.exports = {
           'Vários prefixos por servidor com `!prefix add` e `!prefix remove`, e um servidor novo começa no seu próprio idioma.',
           'Formulários de tickets com menus, caixas de seleção, seletores, imagens e arquivos, e um `!` antes de uma menção a mostra sem notificar.',
           'Modo de suporte para o dono do Petto, e feeds numerados por servidor.',
+          'O histórico de avatares foi removido porque usava armazenamento demais; o histórico de nomes e apelidos continua.',
         ],
       },
       {
