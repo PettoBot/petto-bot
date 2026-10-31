@@ -5,6 +5,8 @@ const { t, currentLanguage } = require('../i18n');
 
 /** What a server has when it never chose anything: Petto's usual `!` and the word `petto` (`petto help`). `,` is an option, not a default. */
 const DEFAULT_PREFIXES = Object.freeze(['!', 'petto']);
+/** The word that always starts a command (`petto help`), whatever prefixes the server chose: it is never saved, removed or replaced. */
+const ALWAYS_PREFIX = 'petto';
 const MAX_PREFIXES = 10;
 const MAX_LENGTH = 12;
 
@@ -79,6 +81,7 @@ function addToList(list, input, lang = currentLanguage()) {
 function removeFromList(list, input, lang = currentLanguage()) {
   const value = String(input ?? '').trim();
   if (!value) return { error: t(lang, 'core.prefix.invalid.empty') };
+  if (sameKey(value) === ALWAYS_PREFIX) return { error: t(lang, 'core.prefix.alwaysOn', { prefix: ALWAYS_PREFIX }) };
   const found = list.find((p) => sameKey(p) === sameKey(value));
   if (!found) return { error: t(lang, 'core.prefix.notFound', { prefix: value }) };
   if (list.length <= 1) return { error: t(lang, 'core.prefix.lastOne', { prefix: found }) };
@@ -123,6 +126,8 @@ function candidatesFor(content, entries) {
  */
 async function matchPrefix(content, { prefixes, personal = null, isKnown = async () => true }) {
   const entries = prefixes.map((prefix, index) => ({ prefix, source: 'server', main: index === 0 }));
+  // `petto` works in every server, even one with a prefix of its own such as `!n` (it never stops working): it comes last, so a longer prefix of the server wins.
+  if (!entries.some((entry) => sameKey(entry.prefix) === ALWAYS_PREFIX)) entries.push({ prefix: ALWAYS_PREFIX, source: 'server', main: false });
   if (personal && !entries.some((entry) => sameKey(entry.prefix) === sameKey(personal))) entries.push({ prefix: personal, source: 'personal', main: false });
   for (const way of candidatesFor(content, entries)) {
     if (way.word && !(await isKnown(way.commandName))) continue;
@@ -141,6 +146,7 @@ function answersUnknown(way) {
 }
 
 module.exports = {
+  ALWAYS_PREFIX,
   DEFAULT_PREFIXES, MAX_PREFIXES, MAX_LENGTH,
   isWordPrefix, validatePrefix, validateList, addToList, removeFromList,
   prefixesOf, primaryPrefix, columnsFor, candidatesFor, matchPrefix, answersUnknown,
