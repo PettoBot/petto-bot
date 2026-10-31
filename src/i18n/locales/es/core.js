@@ -85,6 +85,7 @@ module.exports = {
   'core.prefix.invalid.limit': 'Un servidor puede tener hasta {max} prefijos. Quita uno primero.',
   'core.prefix.notFound': '`{prefix}` no es uno de los prefijos de este servidor.',
   'core.prefix.lastOne': '`{prefix}` es el único prefijo, así que no se puede quitar. Añade otro primero, o usa `prefix <prefijo>` para cambiarlo.',
+  'core.prefix.badChoice': '`{value}` no es una de las opciones de `{option}`. Usa una de: {choices}.',
   'core.prefix.alwaysOn': '`{prefix}` siempre funciona como prefijo (`{prefix} help`) y no se puede quitar.',
   'core.prefix.added': '{emoji}  Añadido `{prefix}`. Prefijos: {list}',
   'core.prefix.removed': '{emoji}  Quitado `{prefix}`. Prefijos: {list}',

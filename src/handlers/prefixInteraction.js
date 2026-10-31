@@ -325,6 +325,32 @@ function buildPseudoInteraction(message, { commandName, subcommand, subcommandGr
 }
 
 /**
+ * An option with fixed choices only takes one of them, as in slash commands: a word that is not one (`!xpn tets` for `off`, `reply`, `channel`, `dm`)
+ * is told with the valid ones instead of going to the command as it is (which could end in a database refusal and a generic error). The case does not
+ * count, and the name of a choice is accepted as well as its value; the value is what the command gets.
+ */
+function applyChoices(optionDefs, values) {
+  for (const def of optionDefs) {
+    if (def.type !== ApplicationCommandOptionType.String || !Array.isArray(def.choices) || !def.choices.length) continue;
+    const typed = values[def.name];
+    if (typeof typed !== 'string') continue;
+    const key = typed.trim().toLowerCase();
+    const found = def.choices.find((choice) => String(choice.value).toLowerCase() === key || String(choice.name).toLowerCase() === key);
+    if (!found) {
+      const err = new Error(t(currentLanguage(), 'core.prefix.badChoice', {
+        option: def.name,
+        value: typed.length > 40 ? `${typed.slice(0, 39)}…` : typed,
+        choices: def.choices.map((choice) => `\`${choice.value}\``).join(', '),
+      }));
+      err.userFacing = true;
+      throw err;
+    }
+    values[def.name] = found.value;
+  }
+  return values;
+}
+
+/**
  * End-to-end: given a loaded command (with its original SlashCommandBuilder `.data`
  * still attached, used purely for introspection here — nothing about it gets deployed
  * to Discord anymore) and the raw text typed after the prefix, returns a ready-to-call
@@ -387,7 +413,8 @@ async function buildInteractionFromMessage(message, command, argText) {
       greedyStringOption: command.prefixGreedyStringOptions?.[resolved.subcommand ?? '_'] ?? null,
     },
   );
+  applyChoices(resolved.optionDefs, values);
   return buildPseudoInteraction(message, { commandName: json.name, subcommand: resolved.subcommand, subcommandGroup: resolved.subcommandGroup, values });
 }
 
-module.exports = { tokenize, resolveSubcommandOptions, parseOptions, buildPseudoInteraction, buildInteractionFromMessage };
+module.exports = { applyChoices, tokenize, resolveSubcommandOptions, parseOptions, buildPseudoInteraction, buildInteractionFromMessage };

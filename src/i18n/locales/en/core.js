@@ -86,6 +86,7 @@ module.exports = {
   'core.prefix.invalid.limit': 'A server can have up to {max} prefixes. Remove one first.',
   'core.prefix.notFound': '`{prefix}` is not one of the prefixes of this server.',
   'core.prefix.lastOne': '`{prefix}` is the only prefix, so it cannot be removed. Add another one first, or use `prefix <prefix>` to change it.',
+  'core.prefix.badChoice': '`{value}` is not one of the choices of `{option}`. Use one of: {choices}.',
   'core.prefix.alwaysOn': '`{prefix}` always works as a prefix (`{prefix} help`) and cannot be removed.',
   'core.prefix.added': '{emoji}  Added `{prefix}`. Prefixes: {list}',
   'core.prefix.removed': '{emoji}  Removed `{prefix}`. Prefixes: {list}',
