@@ -405,4 +405,5 @@ module.exports = {
   'config.restrict.removedRole': '{emoji}  {role} foi retirado de `{command}`; os outros cargos do comando ainda podem usá-lo.',
   'config.restrict.open': '{emoji}  `{command}` está aberto de novo: todos com as permissões de sempre podem usá-lo.',
   'config.column.retention_days': 'Respostas guardadas (dias)',
+  'config.module.forumconfig.title': 'Suporte com fóruns',
 };

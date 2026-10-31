@@ -45,6 +45,7 @@ const { PREFIX: ANTINUKE_PREFIX, handleButton: handleAntiNukeButton } = require(
 const { PREFIX: APPEAL_PREFIX, handleButton: handleAppealButton, handleModal: handleAppealModal } = require('../interactions/appeals');
 const { PREFIX: CONFESSION_PREFIX, handleButton: handleConfessionButton, handleModal: handleConfessionModal } = require('../interactions/confessions');
 const { PREFIX: FORM_PREFIX, handleFormInteraction } = require('../interactions/forms');
+const { isForumId, handleInteraction: handleForumInteraction } = require('../interactions/forum');
 const { PREFIX: SUGGESTION_PREFIX, handleButton: handleSuggestionButton, handleModal: handleSuggestionModal } = require('../interactions/suggestions');
 const { PREFIX: VERIFY_LETTERS_PREFIX, handleButton: handleVerifyLettersButton, handleModal: handleVerifyLettersModal } = require('../interactions/verifyLetters');
 const { handleSetupModal } = require('../interactions/setup');
@@ -105,6 +106,12 @@ module.exports = {
     // Forms (applications): the panel that opens a form, its pages, and the buttons of the review card.
     if ((interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) && interaction.customId.startsWith(FORM_PREFIX)) {
       await handleFormInteraction(interaction);
+      return;
+    }
+
+    // Forum support: the button of the panel, its form, the menu of the tags and the two buttons under it.
+    if ((interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) && isForumId(interaction.customId)) {
+      try { await handleForumInteraction(interaction); } catch (err) { logger.error('Error handling a forum support component:', err); }
       return;
     }
 

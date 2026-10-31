@@ -4563,3 +4563,97 @@ create index if not exists idx_join_waiting_joined_at on join_waiting(joined_at)
 create index if not exists idx_join_waiting_due_at on join_waiting(due_at) where due_at is not null;
 
 alter table join_waiting enable row level security;
+
+-- Forum support: a forum channel where members open posts for help (the panel and its button, a form, a tag, the post), and the tools
+-- the author and the staff use inside the posts (lock, close, solved, claim...). Off until a server makes a setup (`!forum setup`).
+-- One setup per forum channel; `forum_posts` is the small index the tools, the limits and the jobs read (no polling of Discord).
+-- ---------------------------------------------------------------------------
+
+create table if not exists forum_setups (
+  id                    bigserial primary key,
+  guild_id              text not null references guilds(guild_id) on delete cascade,
+  name                  text not null check (name ~ '^[a-z0-9][a-z0-9_-]{0,31}$'),
+  forum_channel_id      text not null,
+  enabled               boolean not null default true,
+  -- the panel (the message with the button): where it is, what it says and how the button looks
+  panel_channel_id      text,
+  panel_message_id      text,
+  panel_template        text check (panel_template is null or char_length(panel_template) <= 100),
+  panel_title           text check (panel_title is null or char_length(panel_title) <= 200),
+  panel_description     text check (panel_description is null or char_length(panel_description) <= 2000),
+  panel_color           integer check (panel_color is null or panel_color between 0 and 16777215),
+  panel_image           text check (panel_image is null or char_length(panel_image) <= 500),
+  panel_footer          text check (panel_footer is null or char_length(panel_footer) <= 300),
+  button_label          text check (button_label is null or char_length(button_label) <= 80),
+  button_emoji          text check (button_emoji is null or char_length(button_emoji) <= 100),
+  button_style          text not null default 'success' check (button_style in ('primary', 'secondary', 'success', 'danger')),
+  -- the form members fill in: the title and the description, up to three more questions (the kinds of utils/ticketFormFields.js), pictures
+  modal_title           text check (modal_title is null or char_length(modal_title) <= 45),
+  title_label           text check (title_label is null or char_length(title_label) <= 45),
+  description_label     text check (description_label is null or char_length(description_label) <= 45),
+  extra_fields          jsonb not null default '[]'::jsonb,
+  ask_images            boolean not null default false,
+  -- tags: the kind of question (the forum's own tags); which ones members may pick, how many, the one that means solved
+  require_tag           boolean not null default false,
+  tag_ids               text[] not null default '{}',
+  max_tags              integer not null default 1 check (max_tags between 1 and 5),
+  solved_tag_id         text,
+  -- the post: the first message, a card with the guidelines and who to ping, the slowmode of the post
+  first_message         text check (first_message is null or char_length(first_message) <= 1500),
+  first_message_style   text not null default 'plain' check (first_message_style in ('plain', 'card')),
+  guidelines            text check (guidelines is null or char_length(guidelines) <= 1500),
+  ping_role_ids         text[] not null default '{}',
+  slowmode_seconds      integer not null default 0 check (slowmode_seconds between 0 and 21600),
+  -- who and how many
+  staff_role_ids        text[] not null default '{}',
+  required_role_ids     text[] not null default '{}',
+  blocked_role_ids      text[] not null default '{}',
+  blocked_user_ids      text[] not null default '{}',
+  max_open_per_user     integer not null default 3 check (max_open_per_user between 0 and 50),
+  cooldown_seconds      integer not null default 30 check (cooldown_seconds between 0 and 86400),
+  author_can_close      boolean not null default true,
+  author_can_solve      boolean not null default true,
+  author_can_rename     boolean not null default true,
+  -- automation: all optional, all by a job that reads an index
+  inactive_days         integer not null default 0 check (inactive_days between 0 and 365),
+  inactive_action       text not null default 'close' check (inactive_action in ('lock', 'close')),
+  solved_action         text not null default 'none' check (solved_action in ('none', 'lock', 'close')),
+  solved_delay_hours    integer not null default 24 check (solved_delay_hours between 0 and 720),
+  adopt                 boolean not null default false,
+  tag_wait_minutes      integer not null default 10 check (tag_wait_minutes between 1 and 1440),
+  -- what the server log tells (the log category `forums` chooses where)
+  log_events            text[] not null default '{opened,locked,closed,solved}',
+  created_at            timestamptz not null default now(),
+  updated_at            timestamptz not null default now(),
+  unique (guild_id, name),
+  unique (guild_id, forum_channel_id)
+);
+
+create index if not exists idx_forum_setups_guild on forum_setups(guild_id, id);
+create index if not exists idx_forum_setups_forum on forum_setups(forum_channel_id);
+alter table forum_setups enable row level security;
+
+create table if not exists forum_posts (
+  thread_id         text primary key,
+  guild_id          text not null references guilds(guild_id) on delete cascade,
+  setup_id          bigint references forum_setups(id) on delete cascade,
+  author_id         text not null,
+  title             text not null default '',
+  status            text not null default 'open' check (status in ('open', 'solved', 'locked', 'closed')),
+  source            text not null default 'panel' check (source in ('panel', 'native', 'moved')),
+  claimed_by        text,
+  opened_at         timestamptz not null default now(),
+  last_activity_at  timestamptz not null default now(),
+  solved_at         timestamptz,
+  closed_at         timestamptz,
+  tag_deadline_at   timestamptz
+);
+
+-- What the tools and the limits ask: a server's posts by state, a member's open posts in a setup, and the three jobs (quiet posts, solved
+-- posts waiting to be closed, posts that still have no tag). The partial indexes only hold the posts that are still alive.
+create index if not exists idx_forum_posts_guild on forum_posts(guild_id, status, opened_at desc);
+create index if not exists idx_forum_posts_member on forum_posts(setup_id, author_id, opened_at desc);
+create index if not exists idx_forum_posts_quiet on forum_posts(last_activity_at) where status in ('open', 'solved');
+create index if not exists idx_forum_posts_solved on forum_posts(solved_at) where status = 'solved';
+create index if not exists idx_forum_posts_tag on forum_posts(tag_deadline_at) where tag_deadline_at is not null;
+alter table forum_posts enable row level security;
