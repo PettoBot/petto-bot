@@ -135,15 +135,7 @@ function buildLevelUpLayers(b, width, height) {
     layers.push({ id: 'avatar', type: 'avatar', source: 'user', x: avatarX, y: height / 2, size: avatar, shape: b.avatarShape, border: null, shadow: { color: '#000000', blur: 16, x: 0, y: 4 } });
     if (b.showDecoration) layers.push({ id: 'decoration', type: 'image', src: '{user.avatar_decoration}', x: avatarX, y: height / 2, w: avatar * 1.2, h: avatar * 1.2, fit: 'contain', radius: 0, opacity: 1, showIf: '{user.avatar_decoration}', ...(b.animateDecoration ? { animate: true } : {}) });
   }
-  const x = (b.showAvatar ? avatarX + avatar * 0.6 : margin + height * 0.1) + height * 0.16;
-  const nameSize = height * 0.2;
-  const chip = height * 0.11;
-  const pill = { color: '#ffffff', opacity: 0.22, padX: chip * 0.55, padY: chip * 0.22, radius: 999 };
-  text('name', b.showName, b.name, x, height * 0.37, nameSize, { align: 'left', weight: 800, w: width * 0.3, maxLines: 1 });
-  if (b.showName && b.showExtra) layers.push({ ...textLayer('rank', b.extra, x, height * 0.37, chip, { font: b.font, color: b.textColor, align: 'left', weight: 700, shadow: false }), follow: 'name', gap: chip * 0.9, pill });
-  text('subtitle', b.showSubtitle, b.subtitle, x, height * 0.64, height * 0.115, { align: 'left', weight: 400, opacity: 0.92, w: width * 0.4, maxLines: 1 });
-
-  // The levels: the one before (dim) and the one reached, in hexagons.
+  // The hexagons of the levels (drawn below) are where the texts on the left must stop.
   const newH = height * 0.56;
   const newW = newH * 0.98;
   const oldH = newH * 0.76;
@@ -151,6 +143,21 @@ function buildLevelUpLayers(b, width, height) {
   const newX = width - margin - height * 0.12 - newW / 2;
   const arrowX = newX - newW / 2 - height * 0.2;
   const oldX = arrowX - height * 0.2 - oldW / 2;
+  const x = (b.showAvatar ? avatarX + avatar * 0.6 : margin + height * 0.1) + height * 0.16;
+  const nameSize = height * 0.2;
+  const chip = height * 0.11;
+  const pill = { color: '#ffffff', opacity: 0.22, padX: chip * 0.55, padY: chip * 0.22, radius: 999 };
+  // The room the name, its chip and the line under it have: from the avatar to the first hexagon. A long name (and a long word for the position, as
+  // `Rango #10` in Spanish) used to run into the hexagon of the level before: the name now gets what is left after the chip.
+  const room = Math.max(oldX - oldW / 2 - x - height * 0.06, height * 0.5);
+  const chipText = String(b.extra ?? '').replace(/\{[^}]+\}/g, '000');
+  const chipSpace = b.showName && b.showExtra && chipText ? chipText.length * chip * 0.56 + pill.padX * 2 + chip * 0.9 : 0;
+  const nameRoom = Math.min(Math.max(room - chipSpace, room * 0.55), width * 0.4);
+  text('name', b.showName, b.name, x, height * 0.37, nameSize, { align: 'left', weight: 800, w: nameRoom, maxLines: 1 });
+  if (b.showName && b.showExtra) layers.push({ ...textLayer('rank', b.extra, x, height * 0.37, chip, { font: b.font, color: b.textColor, align: 'left', weight: 700, shadow: false }), follow: 'name', gap: chip * 0.9, pill });
+  text('subtitle', b.showSubtitle, b.subtitle, x, height * 0.64, height * 0.115, { align: 'left', weight: 400, opacity: 0.92, w: Math.min(width * 0.4, room), maxLines: 1 });
+
+  // The levels: the one before (dim) and the one reached, in hexagons.
   layers.push({ id: 'hex-old', type: 'shape', shape: 'hexagon', x: oldX, y: height / 2, w: oldW, h: oldH, fill: '#000000', radius: oldH * 0.1, opacity: 0.7, stroke: { color: '#9a9ca3', width: Math.max(5, height * 0.04) } });
   text('level-old', true, '{level_previous}', oldX, height / 2, oldH * 0.4, { color: '#9a9ca3', weight: 800, shadow: false, w: oldW });
   const shaft = height * 0.2;

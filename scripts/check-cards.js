@@ -298,6 +298,22 @@ const near = (actual, expected, tolerance = 6) => actual.every((value, index) =>
     const texts = normalizeCard({ kind: 'rank', mode: 'basic', basic: { preset: 'levelup', extra: 'RANK #{level_rank}', subtitle: '{level_xp_current} / {level_xp_needed} XP' } }).card.basic;
     assert.deepEqual([texts.extra, texts.subtitle], ['#{level_rank}', 'You are now in Top {level_top_percent}%'], 'a level-up card that still has the rank texts gets its own');
     assert.equal(normalizeCard({ kind: 'rank', mode: 'basic', basic: { preset: 'levelup', extra: 'Mine' } }).card.basic.extra, 'Mine', 'what the server wrote is kept');
+    // The texts on the left of the level-up card stop before the hexagon of the level before: a long name leaves room for its chip, and a long word for the
+    // position ("Rango #10" in Spanish) does not run into the hexagon (it did, hiding part of the chip).
+    for (const extra of ['#{level_rank}', 'Rango #{level_rank}', 'POSICIÓN DEL SERVIDOR #{level_rank}']) {
+      const card = normalizeCard({ kind: 'rank', mode: 'basic', width: 1024, height: 240, basic: { preset: 'levelup', extra } }).card;
+      const name = card.layers.find((layer) => layer.id === 'name');
+      const hex = card.layers.find((layer) => layer.id === 'hex-old');
+      const subtitle = card.layers.find((layer) => layer.id === 'subtitle');
+      const stop = hex.x - hex.w / 2;
+      const chipText = extra.replace(/\{[^}]+\}/g, '000');
+      const chipWidth = chipText.length * 240 * 0.11 * 0.56 + 240 * 0.11 * 0.55 * 2 + 240 * 0.11 * 0.9;
+      assert.ok(name.x + name.w + chipWidth <= stop + 1 || name.w <= (stop - name.x) * 0.56, `the name and the chip of "${extra}" end before the hexagon (or the name keeps the share it can have)`);
+      assert.ok(name.x + name.w <= stop, 'the name box ends before the hexagon');
+      assert.ok(subtitle.x + subtitle.w <= stop, 'and so does the line under it');
+    }
+    const noChip = normalizeCard({ kind: 'rank', mode: 'basic', width: 1024, height: 240, basic: { preset: 'levelup', showExtra: false } }).card;
+    assert.ok(noChip.layers.find((layer) => layer.id === 'name').w > normalizeCard({ kind: 'rank', mode: 'basic', width: 1024, height: 240, basic: { preset: 'levelup' } }).card.layers.find((layer) => layer.id === 'name').w, 'with no chip the name has more room');
 
     // A decoration that moves: the card goes out as an APNG, only for a server that can (the renderer is given `loadFrames` only then).
     const { encodeApng, decodeApng } = require('../src/imgutils/apng');
