@@ -15,6 +15,7 @@ const MAX_ANIMATED_BYTES = 7 * 1024 * 1024;
  *  - loadSource(src):   an image for an https link, an `asset:` id or a variable, or null when it cannot be loaded
  *  - loadFrames(src):   only when a picture may move: the frames of an animated picture as `[{ canvas, delayMs }]`, or null for a still one
  *  - avatar(kind):      the image of the member (`user`) or of the server (`server`), or null
+ *  - loadFallback():    the picture to draw when the background picture cannot be loaded and there is no gradient, or null
  *  - createCanvas:      only for tests
  */
 async function renderCard(card, deps = {}) {
@@ -37,7 +38,7 @@ async function renderCard(card, deps = {}) {
   const paint = async (frame = null) => {
     const canvas = createCanvas(card.width, card.height);
     const ctx = canvas.getContext('2d');
-    await drawBackground(ctx, card, resolveText, loadSource);
+    await drawBackground(ctx, card, resolveText, loadSource, deps.loadFallback);
     // The right edge of every layer that was drawn, by id, for the layers that follow one.
     const edges = new Map();
     let box = null;
@@ -171,7 +172,7 @@ function fitRect(iw, ih, bx, by, bw, bh, fit) {
   return { x: bx + (bw - w) / 2, y: by + (bh - h) / 2, w, h };
 }
 
-async function drawBackground(ctx, card, resolveText, loadSource) {
+async function drawBackground(ctx, card, resolveText, loadSource, loadFallback) {
   const { background, width, height } = card;
   ctx.fillStyle = background.color;
   ctx.fillRect(0, 0, width, height);
@@ -186,7 +187,10 @@ async function drawBackground(ctx, card, resolveText, loadSource) {
     ctx.fillRect(0, 0, width, height);
   }
   if (background.image) {
-    const image = await loadSource(await resolveText(background.image.src));
+    let image = null;
+    try { image = await loadSource(await resolveText(background.image.src)); } catch { image = null; }
+    // A picture that does not load leaves the gradient when there is one, or the default design, never a flat empty card.
+    if (!image && !background.gradient && loadFallback) { try { image = await loadFallback(); } catch { image = null; } }
     if (image) {
       const box = fitRect(image.width, image.height, 0, 0, width, height, background.image.fit);
       ctx.save();

@@ -10,6 +10,7 @@ const { decode } = require('../utils/safeImage');
 const { CARD_FONTS } = require('../imgutils/cardFonts');
 const { PRESETS, RANK_PRESETS } = require('../utils/cardPresets');
 const { decorationUrl, animatedDecorationUrl, nameplateUrl, serverTag } = require('../utils/profileLook');
+const { designCatalog, designFile, getDesign } = require('../utils/cardDesigns');
 const imageCards = require('../db/imageCards');
 const cardAssets = require('../db/cardAssets');
 const { getGuildPremium, getGuildLimits } = require('../db/premium');
@@ -124,6 +125,16 @@ function registerCardRoutes(app, { authorize }) {
     const premium = (await getGuildPremium(req.params.guildId)).active;
     const { card, problems } = normalizeCard(req.body?.data, { premium });
     res.json({ ok: true, card, problems });
+  }));
+
+  // The designs that come with Petto: the list for the gallery, and the small picture or the full one of each.
+  app.get('/api/dashboard/cards/:guildId/designs', cardLimiter, route(async (_req, res) => {
+    res.set('Cache-Control', 'private, max-age=3600').json({ ok: true, ...designCatalog() });
+  }));
+  app.get('/api/dashboard/cards/:guildId/designs/:id/:size', cardLimiter, route(async (req, res) => {
+    const file = getDesign(req.params.id) && ['thumb', 'full'].includes(req.params.size) ? designFile(req.params.id, req.params.size === 'thumb') : null;
+    if (!file) return res.status(404).json({ ok: false, error: 'not_found' });
+    res.set('Content-Type', file.type).set('Cache-Control', 'private, max-age=86400').send(file.bytes);
   }));
 
   app.get('/api/dashboard/cards/:guildId/assets/:id', cardLimiter, route(async (req, res) => {

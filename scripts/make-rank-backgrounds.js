@@ -92,8 +92,8 @@ function paint(name, palette, seed) {
   ctx.fillStyle = vignette;
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-  const out = path.join(__dirname, '../src/assets/backgrounds', `${name}.png`);
-  fs.writeFileSync(out, canvas.toBuffer('image/png'));
+  const out = path.join(__dirname, '../src/assets/backgrounds', `${name}.webp`);
+  fs.writeFileSync(out, canvas.toBuffer('image/webp', 90));
   console.log(`${name}: ${(fs.statSync(out).size / 1024).toFixed(0)} KB`);
 }
 
