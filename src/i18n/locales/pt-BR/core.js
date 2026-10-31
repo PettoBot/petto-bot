@@ -85,6 +85,7 @@ module.exports = {
   'core.prefix.invalid.limit': 'Um servidor pode ter até {max} prefixos. Remova um primeiro.',
   'core.prefix.notFound': '`{prefix}` não é um dos prefixos deste servidor.',
   'core.prefix.lastOne': '`{prefix}` é o único prefixo, então não pode ser removido. Adicione outro primeiro, ou use `prefix <prefixo>` para trocá-lo.',
+  'core.prefix.badChoice': '`{value}` não é uma das opções de `{option}`. Use uma de: {choices}.',
   'core.prefix.alwaysOn': '`{prefix}` sempre funciona como prefixo (`{prefix} help`) e não pode ser removido.',
   'core.prefix.added': '{emoji}  Adicionado `{prefix}`. Prefixos: {list}',
   'core.prefix.removed': '{emoji}  Removido `{prefix}`. Prefixos: {list}',

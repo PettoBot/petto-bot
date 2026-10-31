@@ -10,6 +10,14 @@ function stub(relative, exports) {
   require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports };
 }
 for (const file of ['src/db/guilds.js', 'src/db/levelConfig.js', 'src/db/levelUsers.js', 'src/db/levelRewards.js', 'src/db/levelMultipliers.js', 'src/utils/levelActions.js', 'src/utils/caseCard.js', 'src/utils/emojis.js', 'src/db/embedTemplates.js', 'src/db/imageCards.js', 'src/db/xpEvents.js', 'src/utils/roleResolve.js', 'src/utils/userResolve.js']) stub(file, {});
+const sentTests = [];
+let testConfig = { notify_mode: 'channel', notify_channel_id: '777', notify_every: 5, notify_delete_after: 60, max_level: 1000, voice_notify_mode: 'dm' };
+let testUser = { level: 4, voice_level: 9 };
+stub('src/db/guilds.js', { ensureGuild: async () => ({}) });
+stub('src/db/levelConfig.js', { ensureConfig: async () => testConfig });
+stub('src/db/levelUsers.js', { getUser: async () => testUser });
+stub('src/utils/levelActions.js', { notifyLevelUp: async (options) => { sentTests.push(options); } });
+stub('src/utils/caseCard.js', { textCard: (text) => ({ text }) });
 stub('src/utils/emojis.js', { EMOJI: {} });
 stub('src/utils/roleResolve.js', { resolveRole: (guild, token) => ({ id: String(token).replace(/\D/g, '') || '1' }) });
 const command = require('../src/commands/leveling/level.js');
@@ -71,5 +79,44 @@ const parse = async (text) => buildInteractionFromMessage(message, command, text
   assert.equal(readRuleValue(RULE_SETTINGS.anti_repeat, 'on'), true);
   assert.equal(readRuleValue(RULE_SETTINGS.anti_repeat, 'maybe'), null);
   assert.equal(readRuleValue(RULE_SETTINGS.daily_bonus, ''), null);
+  // A choice that does not exist is told with the valid ones (it used to reach the database as it was: `!xpn test` saved "test" as the mode and ended in a generic error).
+  for (const bad of ['notify tets', 'voice-notify maybe', 'rank-style fancy']) {
+    await assert.rejects(() => parse(bad), (error) => error.userFacing === true && /not one of the choices/.test(error.message) && /`/.test(error.message), `${bad} is refused with the valid choices`);
+  }
+  await assert.rejects(() => parse('notify tets'), (error) => /`off`, `reply`, `channel`, `dm`, `test`/.test(error.message), 'and says which ones');
+  i = await parse('notify OFF');
+  assert.equal(i.options.getString('mode'), 'off', 'the case does not count and the value is what the command gets');
+  i = await parse('rank-style Both');
+  assert.equal(i.options.getString('style'), 'both');
+  i = await parse('notify test');
+  assert.equal(i.options.getString('mode'), 'test', 'test is one of the modes of notify');
+  assert.equal(parse('voice-notify test') instanceof Promise, true);
+
+  // `notify test` sends the announcement of the next level to the member as the settings say, saves nothing and is not hidden by "every N levels".
+  const answers = [];
+  const fakeInteraction = (mode, sub = 'notify') => ({
+    guild: { id: '1' }, user: { id: '2' }, member: { id: '2', user: { id: '2' } }, channel: { id: '3' }, client: { c: 1 }, options: {
+      getSubcommand: () => sub, getSubcommandGroup: () => null, getString: (name) => (name === 'mode' ? mode : null), getChannel: () => null, getBoolean: () => null, getInteger: () => null,
+    },
+    deferReply: async () => {}, editReply: async (payload) => { answers.push(payload); }, reply: async (payload) => { answers.push(payload); },
+  });
+  await command.execute({ ...fakeInteraction('test'), pettoLang: 'en' });
+  assert.equal(sentTests.length, 1, 'one test announcement');
+  assert.equal(sentTests[0].level, 5, 'the next level of the member');
+  assert.equal(sentTests[0].config.notify_every, 1, 'every N levels does not hide it');
+  assert.equal(sentTests[0].config.notify_delete_after, 0, 'and it is not deleted');
+  assert.equal(sentTests[0].source, 'text');
+  assert.match(JSON.stringify(answers.at(-1)), /level \*\*5\*\*/);
+  assert.match(JSON.stringify(answers.at(-1)), /<#777>/, 'it says where it went');
+  await command.execute({ ...fakeInteraction('test', 'voice-notify'), pettoLang: 'en' });
+  assert.equal(sentTests.at(-1).level, 10, 'the voice level is the voice one');
+  assert.equal(sentTests.at(-1).source, 'voice');
+  assert.match(JSON.stringify(answers.at(-1)), /direct messages/, 'a DM setting says so');
+  testConfig = { ...testConfig, notify_mode: 'off' };
+  const before = sentTests.length;
+  await command.execute({ ...fakeInteraction('test'), pettoLang: 'en' });
+  assert.equal(sentTests.length, before, 'with the announcements off nothing is sent');
+  assert.match(JSON.stringify(answers.at(-1)), /off, so there is nothing to test/);
+
   console.log('Checked that /level rules, rank-style and event work with the prefix, and the order of the notify options.');
 })().catch((error) => { console.error(error); process.exit(1); });

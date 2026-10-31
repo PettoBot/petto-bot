@@ -5,7 +5,7 @@ const levelConfigDb = require('../../db/levelConfig');
 const levelUsersDb = require('../../db/levelUsers');
 const levelRewardsDb = require('../../db/levelRewards');
 const levelMultipliersDb = require('../../db/levelMultipliers');
-const { stripRewardRoles, syncRewardRoles } = require('../../utils/levelActions');
+const { stripRewardRoles, syncRewardRoles, notifyLevelUp } = require('../../utils/levelActions');
 const { totalXpForLevel, levelForXp } = require('../../utils/levelCurve');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
@@ -59,7 +59,7 @@ module.exports = {
       s
         .setName('notify')
         .setDescription('Configure the level-up announcement.')
-        .addStringOption((o) => o.setName('mode').setDescription('Where it posts').setRequired(true).addChoices({ name: 'off', value: 'off' }, { name: 'reply (in the channel they leveled up in)', value: 'reply' }, { name: 'fixed channel', value: 'channel' }, { name: 'DM', value: 'dm' }))
+        .addStringOption((o) => o.setName('mode').setDescription('Where it posts').setRequired(true).addChoices({ name: 'off', value: 'off' }, { name: 'reply (in the channel they leveled up in)', value: 'reply' }, { name: 'fixed channel', value: 'channel' }, { name: 'DM', value: 'dm' }, { name: 'test (send a test announcement with the current settings)', value: 'test' }))
         .addChannelOption((o) => o.setName('channel').setDescription('Channel to use with mode:channel').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement).setRequired(false))
         .addBooleanOption((o) => o.setName('embed').setDescription('Wrap the message in an embed instead of a plain Components V2 card').setRequired(false))
         .addStringOption((o) => o.setName('embed_template').setDescription('Saved /embed template to use for the announcement').setRequired(false))
@@ -71,7 +71,7 @@ module.exports = {
         .addBooleanOption((o) => o.setName('ping').setDescription('Ping the member (default on)').setRequired(false))
         .addIntegerOption((o) => o.setName('milestone').setDescription('A level with a message of its own: use it with message (message off removes it)').setRequired(false).setMinValue(1).setMaxValue(10000)),
     )
-    .addSubcommand((s) => s.setName('voice-notify').setDescription('Configure voice level-up announcements.').addStringOption((o) => o.setName('mode').setDescription('Where it posts').setRequired(true).addChoices({ name: 'off', value: 'off' }, { name: 'reply (in the voice channel chat)', value: 'reply' }, { name: 'fixed channel', value: 'channel' }, { name: 'DM', value: 'dm' })).addChannelOption((o) => o.setName('channel').setDescription('Channel to use with mode:channel').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement).setRequired(false)).addBooleanOption((o) => o.setName('embed').setDescription('Use an embed').setRequired(false)).addStringOption((o) => o.setName('embed_template').setDescription('Saved /embed template').setRequired(false)).addIntegerOption((o) => o.setName('every').setDescription('Only announce every N levels').setRequired(false).setMinValue(1)).addStringOption((o) => o.setName('message').setDescription('Voice level-up message').setRequired(false)).addStringOption((o) => o.setName('card').setDescription('Image card sent with the announcement, or "none"').setRequired(false)).addIntegerOption((o) => o.setName('delete_after').setDescription('Delete the announcement after this many seconds, 0 to keep it').setRequired(false).setMinValue(0).setMaxValue(86400)).addBooleanOption((o) => o.setName('ping').setDescription('Ping the member (default on)').setRequired(false)).addIntegerOption((o) => o.setName('milestone').setDescription('A level with a message of its own: use it with message (message off removes it)').setRequired(false).setMinValue(1).setMaxValue(10000)))
+    .addSubcommand((s) => s.setName('voice-notify').setDescription('Configure voice level-up announcements.').addStringOption((o) => o.setName('mode').setDescription('Where it posts').setRequired(true).addChoices({ name: 'off', value: 'off' }, { name: 'reply (in the voice channel chat)', value: 'reply' }, { name: 'fixed channel', value: 'channel' }, { name: 'DM', value: 'dm' }, { name: 'test (send a test announcement with the current settings)', value: 'test' })).addChannelOption((o) => o.setName('channel').setDescription('Channel to use with mode:channel').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement).setRequired(false)).addBooleanOption((o) => o.setName('embed').setDescription('Use an embed').setRequired(false)).addStringOption((o) => o.setName('embed_template').setDescription('Saved /embed template').setRequired(false)).addIntegerOption((o) => o.setName('every').setDescription('Only announce every N levels').setRequired(false).setMinValue(1)).addStringOption((o) => o.setName('message').setDescription('Voice level-up message').setRequired(false)).addStringOption((o) => o.setName('card').setDescription('Image card sent with the announcement, or "none"').setRequired(false)).addIntegerOption((o) => o.setName('delete_after').setDescription('Delete the announcement after this many seconds, 0 to keep it').setRequired(false).setMinValue(0).setMaxValue(86400)).addBooleanOption((o) => o.setName('ping').setDescription('Ping the member (default on)').setRequired(false)).addIntegerOption((o) => o.setName('milestone').setDescription('A level with a message of its own: use it with message (message off removes it)').setRequired(false).setMinValue(1).setMaxValue(10000)))
     .addSubcommand((s) => s.setName('role-mode').setDescription('Whether members keep every earned reward role, or just the highest.').addStringOption((o) => o.setName('mode').setDescription('Mode').setRequired(true).addChoices({ name: 'highest only', value: 'highest' }, { name: 'all earned', value: 'all' })))
     .addSubcommand((s) => s.setName('voice-role-mode').setDescription('Voice reward role mode.').addStringOption((o) => o.setName('mode').setDescription('Mode').setRequired(true).addChoices({ name: 'highest only', value: 'highest' }, { name: 'all earned', value: 'all' })))
     .addSubcommand((s) => s.setName('ignore').setDescription('Toggle a channel, a category or a role out of/into earning XP.').addChannelOption((o) => o.setName('channel').setDescription('Channel or category').setRequired(false)).addRoleOption((o) => o.setName('role').setDescription('A role whose members earn no XP').setRequired(false)).addRoleOption((o) => o.setName('only_role').setDescription('A role that is the only one allowed to earn XP (toggle; none picked = everyone)').setRequired(false)))
@@ -383,8 +383,32 @@ function notifyDone(scope, mode, milestoneNote, lang) {
   return t(lang, milestoneNote.removed ? `leveling.${scope}.doneMilestoneGeneral` : `leveling.${scope}.doneMilestoneOwn`, vars);
 }
 
+/** `notify test` / `voice-notify test`: sends the announcement of the next level to you, exactly as the settings say (every N levels and delete after do not hide it). Nothing is saved. */
+async function sendNotifyTest(interaction, lang, voice) {
+  const guild = interaction.guild;
+  await defer(interaction);
+  const stored = await levelConfigDb.ensureConfig(guild.id);
+  const config = voice ? getVoiceConfig(stored) : stored;
+  if (config.notify_mode === 'off') {
+    await reply(interaction, t(lang, 'leveling.notify.testOff', { emoji: EMOJI.WARNING }));
+    return;
+  }
+  const row = await levelUsersDb.getUser(guild.id, interaction.user.id).catch(() => null);
+  const level = (voice ? row?.voice_level : row?.level) ?? 0;
+  const next = Math.min(level + 1, Number(config.max_level) || level + 1);
+  await notifyLevelUp({
+    client: interaction.client, guild, member: interaction.member, channel: interaction.channel, message: null, level: next,
+    config: { ...config, notify_every: 1, notify_delete_after: 0 }, source: voice ? 'voice' : 'text', lang,
+  });
+  const where = config.notify_mode === 'dm' ? t(lang, 'leveling.notify.testWhere.dm')
+    : config.notify_mode === 'channel' && config.notify_channel_id ? t(lang, 'leveling.notify.testWhere.channel', { channel: `<#${config.notify_channel_id}>` })
+      : t(lang, 'leveling.notify.testWhere.here');
+  await reply(interaction, t(lang, 'leveling.notify.testSent', { emoji: EMOJI.APPROVE, level: next, where }));
+}
+
 async function notifyCmd(interaction, lang) {
   const mode = interaction.options.getString('mode', true);
+  if (mode === 'test') return sendNotifyTest(interaction, lang, false);
   const channel = interaction.options.getChannel('channel');
   const embed = interaction.options.getBoolean('embed');
   const embedTemplate = interaction.options.getString('embed_template');
@@ -425,6 +449,7 @@ async function notifyCmd(interaction, lang) {
 
 async function voiceNotifyCmd(interaction, lang) {
   const mode = interaction.options.getString('mode', true);
+  if (mode === 'test') return sendNotifyTest(interaction, lang, true);
   const channel = interaction.options.getChannel('channel');
   const embed = interaction.options.getBoolean('embed');
   const embedTemplate = interaction.options.getString('embed_template');
