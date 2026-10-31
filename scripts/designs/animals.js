@@ -32,7 +32,7 @@ function reeds(ctx, rand, x, y, n, h, color) {
 }
 
 // ---------------------------------------------------------------- duck
-function duck(ctx, rand) {
+function duckScene(ctx, rand) {
   k.sky(ctx, [[0, '#062f3d'], [0.5, '#0d6270'], [1, '#27a3a0']], 105);
   k.glow(ctx, 850, 230, 340, '#e8fff6', 0.4, 'screen');
   k.discs(ctx, rand, 10, ['#bff4f0', '#8ee6e0'], { min: 24, max: 90, alpha: 0.1 });
@@ -49,8 +49,11 @@ function duck(ctx, rand) {
   }
   reeds(ctx, rand, 40, 500, 7, 190, '#176d52'); reeds(ctx, rand, 1000, 500, 5, 150, '#176d52');
   k.stars(ctx, rand, 16, { y1: 250, color: '#e6fffb', sparkle: 0.3, alpha: 0.5 });
+  for (const [x, y, r] of [[720, 120, 9], [985, 140, 6], [1000, 250, 5], [700, 300, 7]]) { ctx.strokeStyle = 'rgba(230,255,252,0.7)'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke(); }
+}
 
-  at(ctx, 852, 262, () => {
+function duckCharacter(ctx, rand, x = 852, y = 262) {
+  at(ctx, x, y, () => {
     k.groundShadow(ctx, 0, 138, 128, 18, 0.3, '#02212b');
     // Body, wing and tail.
     const body = k.ellipse(0, 62, 112, 78);
@@ -71,11 +74,15 @@ function duck(ctx, rand) {
     ctx.strokeStyle = 'rgba(150,60,0,0.35)'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(-28, 21); ctx.quadraticCurveTo(0, 30, 28, 21); ctx.stroke();
     k.face(ctx, 0, -14, 56, { eye: EYE, blush: '#ff8a65', mouth: null, gap: 0.72 });
   });
-  for (const [x, y, r] of [[720, 120, 9], [985, 140, 6], [1000, 250, 5], [700, 300, 7]]) { ctx.strokeStyle = 'rgba(230,255,252,0.7)'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke(); }
+}
+
+function duck(ctx, rand) {
+  duckScene(ctx, rand);
+  duckCharacter(ctx, rand);
 }
 
 // ---------------------------------------------------------------- cat
-function cat(ctx, rand) {
+function catScene(ctx, rand) {
   k.sky(ctx, [[0, '#120f33'], [0.55, '#1d2a5e'], [1, '#2c6a86']], 110);
   // A big warm moon behind the cat.
   k.glow(ctx, 868, 215, 300, '#ffd9a0', 0.5, 'screen');
@@ -87,8 +94,10 @@ function cat(ctx, rand) {
   ctx.fillStyle = '#0d1330';
   const roofs = new Path2D(); roofs.moveTo(0, 500); roofs.lineTo(0, 420); roofs.lineTo(60, 400); roofs.lineTo(60, 360); roofs.lineTo(130, 360); roofs.lineTo(130, 410); roofs.lineTo(210, 430); roofs.lineTo(210, 380); roofs.lineTo(300, 380); roofs.lineTo(300, 440); roofs.lineTo(380, 450); roofs.lineTo(380, 500); roofs.closePath(); ctx.fill(roofs);
   ctx.fillStyle = '#ffd36e'; for (const [x, y] of [[84, 376], [236, 398], [262, 398]]) ctx.fillRect(x, y, 12, 14);
+}
 
-  at(ctx, 868, 262, () => {
+function catCharacter(ctx, rand, x = 868, y = 262) {
+  at(ctx, x, y, () => {
     const orange = '#ff9a3d'; const cream = '#fff0d2';
     k.groundShadow(ctx, 0, 140, 120, 16, 0.4, '#000');
     // Tail curling at the side.
@@ -119,8 +128,13 @@ function cat(ctx, rand) {
   });
 }
 
+function cat(ctx, rand) {
+  catScene(ctx, rand);
+  catCharacter(ctx, rand);
+}
+
 // ---------------------------------------------------------------- fox
-function fox(ctx, rand) {
+function foxScene(ctx, rand) {
   k.sky(ctx, [[0, '#0b2a26'], [0.5, '#17504a'], [1, '#3f8c63']], 105);
   k.glow(ctx, 860, 250, 330, '#ffc27a', 0.4, 'screen');
   // Fir trees in the distance.
@@ -132,12 +146,15 @@ function fox(ctx, rand) {
   // Fireflies.
   for (let i = 0; i < 22; i += 1) { const x = rand.range(30, 1000); const y = rand.range(40, 440); k.glow(ctx, x, y, rand.range(7, 14), '#ffe9a0', 0.9, 'screen'); }
   ctx.fillStyle = k.lin(ctx, 0, 462, 0, 500, ['rgba(20,80,60,0)', 'rgba(8,40,34,0.8)']); ctx.fillRect(0, 462, 1024, 40);
+}
 
-  at(ctx, 858, 268, () => {
+/** `tailAt` moves the tail to the body: the card design leaves a gap there (it sits in front of the scene), the brand character is tucked in. */
+function foxCharacter(ctx, rand, x = 858, y = 268, tailAt = [96, 96]) {
+  at(ctx, x, y, () => {
     const orange = '#ff7a2a'; const white = '#fff6ea'; const dark = '#3a2418';
     k.groundShadow(ctx, 0, 134, 124, 16, 0.4, '#041412');
     // The bushy tail.
-    ctx.save(); ctx.translate(96, 96); ctx.rotate(-0.5);
+    ctx.save(); ctx.translate(tailAt[0], tailAt[1]); ctx.rotate(-0.5);
     const tail = k.smooth([[0, -22], [60, -34], [110, -10], [106, 30], [54, 40], [0, 22]]);
     fillPuff(ctx, tail, 50, 0, 70, orange); ctx.save(); ctx.clip(tail); ctx.fillStyle = white; ctx.fill(k.ellipse(118, 8, 38, 60)); ctx.restore(); ctx.restore();
     const body = k.ellipse(0, 108, 80, 64); fillPuff(ctx, body, 0, 108, 96, orange);
@@ -161,8 +178,13 @@ function fox(ctx, rand) {
   });
 }
 
+function fox(ctx, rand) {
+  foxScene(ctx, rand);
+  foxCharacter(ctx, rand);
+}
+
 // ---------------------------------------------------------------- bunny
-function bunny(ctx, rand) {
+function bunnyScene(ctx, rand) {
   k.sky(ctx, [[0, '#1c1550'], [0.5, '#4a2f86'], [1, '#a05bb0']], 108);
   k.glow(ctx, 860, 190, 340, '#ffd1ea', 0.38, 'screen');
   ctx.fillStyle = k.rad(ctx, 860, 190, 128, [[0, '#d9a8e8'], [1, '#b878c8']], 830, 160, 8); ctx.beginPath(); ctx.arc(860, 190, 128, 0, Math.PI * 2); ctx.fill();
@@ -170,8 +192,10 @@ function bunny(ctx, rand) {
   k.discs(ctx, rand, 8, ['#e7c6ff', '#ffc6e8'], { min: 20, max: 80, alpha: 0.08 });
   k.ridges(ctx, [{ y: 400, amp: 18, freq: 0.006, color: '#2a1d62', seed: 4, alpha: 0.9 }, { y: 440, amp: 14, freq: 0.008, color: '#1c1348', seed: 9 }]);
   k.calm(ctx, '#150f3d', { alpha: 0.46 });
+}
 
-  at(ctx, 856, 276, () => {
+function bunnyCharacter(ctx, rand, x = 856, y = 276) {
+  at(ctx, x, y, () => {
     const fur = '#fff7fd'; const shade = '#d8c7f3';
     k.groundShadow(ctx, 0, 124, 120, 16, 0.4, '#0b0626');
     // Ears.
@@ -193,10 +217,15 @@ function bunny(ctx, rand) {
     ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#d8c7f3'; ctx.lineWidth = 1.5; for (const dx of [-5, 5]) { const t = k.rrect(dx - 5, 42, 10, 12, 3); ctx.fill(t); ctx.stroke(t); }
   });
 }
+
+function bunny(ctx, rand) {
+  bunnyScene(ctx, rand);
+  bunnyCharacter(ctx, rand);
+}
 function ramp(ctx, path, x0, y0, x1, y1, stops) { k.ramp(ctx, path, x0, y0, x1, y1, stops); }
 
 // ---------------------------------------------------------------- panda
-function panda(ctx, rand) {
+function pandaScene(ctx, rand) {
   k.sky(ctx, [[0, '#0f3a2a'], [0.55, '#1f6b46'], [1, '#6fb06a']], 108);
   k.glow(ctx, 850, 230, 340, '#e8ffd0', 0.4, 'screen');
   // Bamboo stalks.
@@ -209,8 +238,11 @@ function panda(ctx, rand) {
   ctx.fillStyle = 'rgba(160,230,120,0.5)'; for (let i = 0; i < 18; i += 1) { const x = rand.pick([60, 120, 690, 980]) + rand.range(-30, 30); const y = rand.range(20, 450); ctx.save(); ctx.translate(x, y); ctx.rotate(rand.range(-1.2, 1.2)); ctx.fill(k.leafPath(0, 0, 44, 0, 8)); ctx.restore(); }
   k.discs(ctx, rand, 8, ['#d8ffc0', '#a8f0a0'], { min: 20, max: 90, alpha: 0.07 });
   k.calm(ctx, '#08241a', { alpha: 0.5 });
+}
 
-  at(ctx, 856, 266, () => {
+/** `noseRadius` rounds the corners of the nose: 6 is what the card design has, a smaller one draws a clean nose at the large size of the brand pictures. */
+function pandaCharacter(ctx, rand, x = 856, y = 266, noseRadius = 6) {
+  at(ctx, x, y, () => {
     const white = '#fbfbf7'; const black = '#272431';
     k.groundShadow(ctx, 0, 138, 126, 17, 0.38, '#031610');
     const body = k.ellipse(0, 106, 90, 66); fillPuff(ctx, body, 0, 106, 100, white, { dark: 0.22 });
@@ -223,13 +255,18 @@ function panda(ctx, rand) {
     k.gloss(ctx, -52, -46, 18, 9, -0.6, 0.4);
     k.face(ctx, 0, 6, 56, { eye: '#1a1722', blush: '#ff9fb0', mouth: null, gap: 0.72, eyeSize: 0.17 });
     // The eyes sit on the dark patches: lighter highlights are already drawn, add the nose and mouth.
-    ctx.fillStyle = black; ctx.fill(k.roundedPoly([[-12, 26], [12, 26], [0, 38]], 6));
+    ctx.fillStyle = black; ctx.fill(k.roundedPoly([[-12, 26], [12, 26], [0, 38]], noseRadius));
     ctx.strokeStyle = black; ctx.lineWidth = 2.6; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(0, 38); ctx.lineTo(0, 44); ctx.moveTo(-12, 50); ctx.quadraticCurveTo(-6, 55, 0, 44); ctx.quadraticCurveTo(6, 55, 12, 50); ctx.stroke();
   });
 }
 
+function panda(ctx, rand) {
+  pandaScene(ctx, rand);
+  pandaCharacter(ctx, rand);
+}
+
 // ---------------------------------------------------------------- frog
-function frog(ctx, rand) {
+function frogScene(ctx, rand) {
   k.sky(ctx, [[0, '#04251f'], [0.55, '#0c5a43'], [1, '#2e9a68']], 105);
   k.glow(ctx, 850, 260, 330, '#d6ffc2', 0.36, 'screen');
   k.discs(ctx, rand, 12, ['#aef0c6', '#7be0b0'], { min: 16, max: 80, alpha: 0.08 });
@@ -240,8 +277,10 @@ function frog(ctx, rand) {
   ctx.fillStyle = 'rgba(8,60,50,0.55)'; ctx.fillRect(0, 410, 1024, 100);
   ctx.strokeStyle = 'rgba(190,255,220,0.3)'; ctx.lineWidth = 2; for (let i = 0; i < 4; i += 1) { ctx.globalAlpha = 0.5 - i * 0.1; ctx.beginPath(); ctx.ellipse(858, 404, 130 + i * 40, 18 + i * 6, 0, 0, Math.PI * 2); ctx.stroke(); }
   ctx.globalAlpha = 1;
+}
 
-  at(ctx, 858, 262, () => {
+function frogCharacter(ctx, rand, x = 858, y = 262) {
+  at(ctx, x, y, () => {
     const green = '#6fd55a'; const belly = '#e8ffc8';
     // The lily pad under the frog.
     ctx.save(); ctx.translate(0, 134); ctx.scale(1, 0.26); ctx.fillStyle = k.lin(ctx, 0, -170, 0, 170, ['#47c47a', '#1d8556']); ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, 170, 0.2, Math.PI * 2 - 0.2); ctx.closePath(); ctx.fill(); ctx.restore();
@@ -267,8 +306,13 @@ function frog(ctx, rand) {
   });
 }
 
+function frog(ctx, rand) {
+  frogScene(ctx, rand);
+  frogCharacter(ctx, rand);
+}
+
 // ---------------------------------------------------------------- bear
-function bear(ctx, rand) {
+function bearScene(ctx, rand) {
   k.sky(ctx, [[0, '#3a1f10'], [0.5, '#7a4318'], [1, '#d68a2f']], 108);
   k.glow(ctx, 860, 240, 340, '#ffe09a', 0.45, 'screen');
   // A honeycomb that fades toward the text.
@@ -279,8 +323,10 @@ function bear(ctx, rand) {
   ctx.save(); ctx.fillStyle = 'rgba(255,196,80,0.2)'; for (const [cx, cy] of [[690, 70], [756, 108], [690, 146]]) { ctx.beginPath(); for (let i = 0; i < 6; i += 1) { const a = Math.PI / 3 * i + Math.PI / 6; ctx.lineTo(cx + Math.cos(a) * 34, cy + Math.sin(a) * 34); } ctx.closePath(); ctx.fill(); } ctx.restore();
   k.discs(ctx, rand, 8, ['#ffe0a0', '#ffc15a'], { min: 14, max: 60, alpha: 0.08 });
   k.calm(ctx, '#2b150a', { alpha: 0.5 });
+}
 
-  at(ctx, 856, 268, () => {
+function bearCharacter(ctx, rand, x = 856, y = 268) {
+  at(ctx, x, y, () => {
     const brown = '#a8693a'; const light = '#e8bd8a';
     k.groundShadow(ctx, 0, 138, 126, 17, 0.4, '#1f0e05');
     // The honey pot in front.
@@ -306,8 +352,13 @@ function bear(ctx, rand) {
   });
 }
 
+function bear(ctx, rand) {
+  bearScene(ctx, rand);
+  bearCharacter(ctx, rand);
+}
+
 // ---------------------------------------------------------------- penguin
-function penguin(ctx, rand) {
+function penguinScene(ctx, rand) {
   k.sky(ctx, [[0, '#08183a'], [0.5, '#12447a'], [1, '#3b93b8']], 108);
   // A soft aurora ribbon.
   ctx.save(); ctx.globalCompositeOperation = 'screen';
@@ -321,12 +372,17 @@ function penguin(ctx, rand) {
   const berg = (x, y, w, h, c) => { ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(x - w / 2, y); ctx.lineTo(x - w * 0.2, y - h); ctx.lineTo(x + w * 0.05, y - h * 0.6); ctx.lineTo(x + w * 0.25, y - h * 0.85); ctx.lineTo(x + w / 2, y); ctx.closePath(); ctx.fill(); };
   berg(560, 440, 190, 90, 'rgba(160,215,240,0.28)'); berg(986, 446, 150, 120, 'rgba(160,215,240,0.3)'); berg(80, 450, 200, 70, 'rgba(150,200,230,0.2)');
   ctx.fillStyle = 'rgba(10,50,90,0.7)'; ctx.fillRect(0, 446, 1024, 60);
-
+  // The floe the penguin stands on belongs to the scene: the character is drawn alone, without it.
   at(ctx, 858, 258, () => {
-    const navy = '#222a4f'; const belly = '#f6fbff';
     // The floe.
     const floe = k.smooth([[-150, 150], [-80, 134], [0, 130], [90, 136], [160, 150], [90, 176], [-70, 176]]);
     k.ramp(ctx, floe, 0, 130, 0, 180, ['#ffffff', '#bfe6f7']);
+  });
+}
+
+function penguinCharacter(ctx, rand, x = 858, y = 258) {
+  at(ctx, x, y, () => {
+    const navy = '#222a4f'; const belly = '#f6fbff';
     k.groundShadow(ctx, 0, 140, 110, 12, 0.3, '#041020');
     // Feet and flippers.
     ctx.fillStyle = '#ff9e3d'; for (const side of [-1, 1]) ctx.fill(k.ellipse(side * 36, 146, 28, 11, side * 0.1));
@@ -344,8 +400,13 @@ function penguin(ctx, rand) {
   });
 }
 
+function penguin(ctx, rand) {
+  penguinScene(ctx, rand);
+  penguinCharacter(ctx, rand);
+}
+
 // ---------------------------------------------------------------- hedgehog
-function hedgehog(ctx, rand) {
+function hedgehogScene(ctx, rand) {
   k.sky(ctx, [[0, '#2a2410'], [0.5, '#5c6a2e'], [1, '#a8a04a']], 108);
   k.glow(ctx, 860, 230, 340, '#fff0b0', 0.4, 'screen');
   // Leaves scattered on the ground and in the air.
@@ -357,8 +418,10 @@ function hedgehog(ctx, rand) {
   ctx.fillStyle = 'rgba(40,36,12,0.35)'; ctx.fillRect(0, 452, 1024, 60);
   // Mushrooms.
   for (const [x, y, s, c] of [[700, 450, 1, '#d94d3a'], [980, 458, 0.8, '#e8944a']]) { ctx.save(); ctx.translate(x, y); ctx.scale(s, s); ctx.fillStyle = '#f6ecd2'; ctx.fill(k.rrect(-8, -22, 16, 26, 6)); const cap = k.smooth([[-30, -20], [0, -50], [30, -20], [0, -12]]); k.puff(ctx, cap, 0, -28, 32, c); ctx.fillStyle = 'rgba(255,255,255,0.8)'; for (const [dx, dy] of [[-10, -28], [8, -34], [14, -24]]) { ctx.beginPath(); ctx.arc(dx, dy, 3.4, 0, Math.PI * 2); ctx.fill(); } ctx.restore(); }
+}
 
-  at(ctx, 856, 268, () => {
+function hedgehogCharacter(ctx, rand, x = 856, y = 268) {
+  at(ctx, x, y, () => {
     const spine = '#6b4426'; const skin = '#f2cfa0';
     k.groundShadow(ctx, 0, 130, 130, 16, 0.4, '#120f04');
     // The spines: many small pointed strokes around the back.
@@ -390,6 +453,24 @@ function hedgehog(ctx, rand) {
   });
 }
 
+function hedgehog(ctx, rand) {
+  hedgehogScene(ctx, rand);
+  hedgehogCharacter(ctx, rand);
+}
+
+/** The nine characters of the brand, each drawn alone (no scene) around the point (x, y) it is given. */
+const characters = [
+  { id: 'pipo', animal: 'duck', draw: duckCharacter },
+  { id: 'luna', animal: 'cat', draw: catCharacter },
+  { id: 'chispa', animal: 'fox', draw: (ctx, rand, x, y) => foxCharacter(ctx, rand, x, y, [60, 100]) },
+  { id: 'nube', animal: 'bunny', draw: bunnyCharacter },
+  { id: 'bambu', animal: 'panda', draw: (ctx, rand, x, y) => pandaCharacter(ctx, rand, x, y, 3.5) },
+  { id: 'lili', animal: 'frog', draw: frogCharacter },
+  { id: 'miel', animal: 'bear', draw: bearCharacter },
+  { id: 'copo', animal: 'penguin', draw: penguinCharacter },
+  { id: 'bellota', animal: 'hedgehog', draw: hedgehogCharacter },
+];
+
 module.exports = [
   { id: 'animal-duck', family: 'animals', color: '#0d6270', textColor: '#ffffff', accent: '#fff2a8', seed: 21, paint: duck },
   { id: 'animal-cat', family: 'animals', color: '#1d2a5e', textColor: '#ffffff', accent: '#ffd9a0', seed: 22, paint: cat },
@@ -401,3 +482,4 @@ module.exports = [
   { id: 'animal-penguin', family: 'animals', color: '#12447a', textColor: '#ffffff', accent: '#bfe9ff', seed: 28, paint: penguin },
   { id: 'animal-hedgehog', family: 'animals', color: '#5c6a2e', textColor: '#ffffff', accent: '#ffe6a0', seed: 29, paint: hedgehog },
 ];
+module.exports.characters = characters;

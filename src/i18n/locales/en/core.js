@@ -106,6 +106,7 @@ module.exports = {
   'core.perm.SendTTSMessages': 'Send TTS Messages',
   'core.perm.ManageMessages': 'Manage Messages',
   'core.perm.EmbedLinks': 'Embed Links',
+  'core.perm.CreatePublicThreads': 'Create Public Threads',
   'core.perm.AttachFiles': 'Attach Files',
   'core.perm.ReadMessageHistory': 'Read Message History',
   'core.perm.MentionEveryone': 'Mention Everyone',

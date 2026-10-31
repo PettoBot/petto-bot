@@ -152,7 +152,7 @@ const TOOLS = {
       if (!access.isForumPost(interaction.channel)) throw problem(lang, 'forums.error.notForumPost');
       const forum = interaction.channel.parent;
       const on = new Set(interaction.channel.appliedTags ?? []);
-      const lines = (forum.availableTags ?? []).map((tag) => `- ${on.has(tag.id) ? '**' : ''}${tag.name}${on.has(tag.id) ? '**' : ''}${tag.moderated ? ` -# ${t(lang, 'forums.tag.moderated')}` : ''}`);
+      const lines = (forum.availableTags ?? []).map((tag) => `- ${on.has(tag.id) ? '**' : ''}${tag.name}${on.has(tag.id) ? '**' : ''}${tag.moderated ? ` (${t(lang, 'forums.tag.moderated')})` : ''}`);
       await reply(interaction, cards.buildDescriptionCard(`${t(lang, 'forums.tag.list', { emoji: EMOJI.TICKET, post: `<#${interaction.channel.id}>` })}\n${lines.join('\n') || t(lang, 'forums.tag.none')}`));
       return;
     }

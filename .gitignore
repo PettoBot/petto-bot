@@ -1,6 +1,7 @@
 # Dependencies and generated output
 node_modules/
 coverage/
+out/
 dist/
 build/
 .ts-build/
