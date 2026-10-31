@@ -19,8 +19,7 @@ async function applyRewards(guild, inviterId) {
     const member = await guild.members.fetch(inviterId).catch(() => null);
     if (!member) return;
     const stats = await inviteTracking.getStats(guild.id, inviterId);
-    const net = stats.joins - stats.leaves + stats.bonus;
-    const plan = planRewards(rewards, net);
+    const plan = planRewards(rewards, stats.total);
     const me = guild.members.me;
     const usable = (roleId) => { const role = guild.roles.cache.get(roleId); return role && !role.managed && me && role.position < me.roles.highest.position; };
     const add = plan.give.filter((id) => usable(id) && !member.roles.cache.has(id));

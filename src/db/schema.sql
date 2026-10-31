@@ -2354,6 +2354,11 @@ create table if not exists invite_config (
   fake_days integer not null default 3 check (fake_days between 0 and 365)
 );
 alter table invite_config enable row level security;
+-- Three more settings, off or as before until a server changes them: a quick leave (a member who leaves within that many minutes of joining
+-- counts as a fake join, 0 is off), bots (not credited to an inviter), and whether the leaves are taken off the total of invites.
+alter table invite_config add column if not exists quick_leave_minutes integer not null default 0 check (quick_leave_minutes between 0 and 1440);
+alter table invite_config add column if not exists ignore_bots boolean not null default false;
+alter table invite_config add column if not exists subtract_leaves boolean not null default true;
 
 create table if not exists invite_rewards (
   guild_id text not null references guilds(guild_id) on delete cascade,

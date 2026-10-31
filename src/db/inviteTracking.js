@@ -1,5 +1,5 @@
 const database = require('./database');
-const { isFakeJoin } = require('./inviteTrackingRules');
+const { isFakeJoin, inviteTotal, inviteTotalSql, DEFAULT_SETTINGS } = require('./inviteTrackingRules');
 const { getPrimaryPool } = require('./postgres');
 const { OFFSET_MS } = require('../utils/botTime');
 
@@ -25,19 +25,30 @@ async function recordJoin(guildId, userId, inviterId, inviteCode, { accountCreat
   return { fake, source: where };
 }
 
+/**
+ * A member left. One statement closes the row (only if it was still open, so a leave told twice counts once) and moves the numbers of the inviter:
+ * a real join that ends within `quick_leave_minutes` of arriving goes from joins to fake, any other real join adds a leave, a fake join changes nothing.
+ * Returns the row as it was before (with `quick`), or null when there was nothing open.
+ */
 async function recordLeave(guildId, userId) {
-  const { data: row, error } = await database.from('member_invites').select('*').eq('guild_id', guildId).eq('user_id', userId).maybeSingle();
-  if (error) throw error;
-  if (!row) return null;
-
-  await database.from('member_invites').update({ left_at: new Date().toISOString() }).eq('guild_id', guildId).eq('user_id', userId);
-
-  // A fake join was never counted as an invite, so its leaving is not counted either.
-  if (row.inviter_id && !row.fake) {
-    const { error: rpcError } = await stat(guildId, row.inviter_id, { leaves: 1 });
-    if (rpcError) throw rpcError;
-  }
-  return row;
+  const { quickLeaveMinutes } = await getSettings(guildId);
+  const { rows } = await getPrimaryPool().query(
+    `with old as (
+       select inviter_id, invite_code, joined_at, fake, source from member_invites where guild_id = $1 and user_id = $2 and left_at is null for update
+     ), closed as (
+       update member_invites m set left_at = now(),
+              fake = m.fake or (old.inviter_id is not null and $3::int > 0 and now() - old.joined_at <= $3::int * interval '1 minute')
+         from old where m.guild_id = $1 and m.user_id = $2
+       returning old.inviter_id, old.invite_code, old.joined_at, old.fake as was_fake, old.source, m.fake as is_fake, m.left_at
+     ), moved as (
+       update invite_uses u set joins = greatest(u.joins - (closed.is_fake)::int, 0), fake = u.fake + (closed.is_fake)::int, leaves = u.leaves + (not closed.is_fake)::int
+         from closed where u.guild_id = $1 and u.inviter_id = closed.inviter_id and closed.inviter_id is not null and not closed.was_fake
+       returning u.inviter_id
+     )
+     select inviter_id, invite_code, joined_at, left_at, source, was_fake as fake, (is_fake and not was_fake) as quick from closed`,
+    [String(guildId), String(userId), quickLeaveMinutes],
+  );
+  return rows[0] ?? null;
 }
 
 const empty = { joins: 0, leaves: 0, fake: 0, bonus: 0 };
@@ -45,24 +56,47 @@ const empty = { joins: 0, leaves: 0, fake: 0, bonus: 0 };
 async function getStats(guildId, inviterId) {
   const { data, error } = await database.from('invite_uses').select('*').eq('guild_id', guildId).eq('inviter_id', inviterId).maybeSingle();
   if (error) throw error;
-  return { ...empty, ...(data ?? {}) };
+  const stats = { ...empty, ...(data ?? {}) };
+  return { ...stats, total: inviteTotal(stats, (await getSettings(guildId)).subtractLeaves) };
 }
 
-/** The invite settings of a server (the days under which an account is fake). */
+const LEFT_COUNT = 'count(*) filter (where left_at is not null)'; // i18n-ignore: SQL, not a text for people
+const SETTING_COLUMNS = { fakeDays: 'fake_days', quickLeaveMinutes: 'quick_leave_minutes', ignoreBots: 'ignore_bots', subtractLeaves: 'subtract_leaves' };
+
+/** The invite settings of a server: the days under which an account is fake, the minutes of a quick leave, bots, and whether leaves are taken off the total. */
 async function getSettings(guildId) {
   try {
-    const { rows } = await getPrimaryPool().query('select fake_days from invite_config where guild_id = $1', [String(guildId)]);
-    return { fakeDays: rows[0]?.fake_days ?? 3 };
+    const { rows } = await getPrimaryPool().query('select fake_days, quick_leave_minutes, ignore_bots, subtract_leaves from invite_config where guild_id = $1', [String(guildId)]);
+    const row = rows[0];
+    return row
+      ? { fakeDays: row.fake_days, quickLeaveMinutes: row.quick_leave_minutes, ignoreBots: row.ignore_bots, subtractLeaves: row.subtract_leaves }
+      : { ...DEFAULT_SETTINGS };
   } catch {
-    return { fakeDays: 3 };
+    try {
+      // A database that has not run the new schema yet only has the days.
+      const { rows } = await getPrimaryPool().query('select fake_days from invite_config where guild_id = $1', [String(guildId)]);
+      return { ...DEFAULT_SETTINGS, fakeDays: rows[0]?.fake_days ?? DEFAULT_SETTINGS.fakeDays };
+    } catch {
+      return { ...DEFAULT_SETTINGS };
+    }
   }
 }
 
-async function setFakeDays(guildId, days) {
+/** Saves the settings given (`{ fakeDays, quickLeaveMinutes, ignoreBots, subtractLeaves }`, already checked); the others stay as they are. */
+async function setSettings(guildId, patch) {
+  const keys = Object.keys(SETTING_COLUMNS).filter((key) => patch[key] !== undefined);
+  if (!keys.length) return getSettings(guildId);
+  const columns = keys.map((key) => SETTING_COLUMNS[key]);
   await getPrimaryPool().query(
-    'insert into invite_config (guild_id, fake_days) values ($1, $2) on conflict (guild_id) do update set fake_days = excluded.fake_days',
-    [String(guildId), days],
+    `insert into invite_config (guild_id, ${columns.join(', ')}) values ($1, ${keys.map((_, i) => `$${i + 2}`).join(', ')})
+     on conflict (guild_id) do update set ${columns.map((column) => `${column} = excluded.${column}`).join(', ')}`,
+    [String(guildId), ...keys.map((key) => patch[key])],
   );
+  return getSettings(guildId);
+}
+
+async function setFakeDays(guildId, days) {
+  await setSettings(guildId, { fakeDays: days });
 }
 
 /** The start of this week (Monday) or month in Colombia (GMT-5), as an instant. */
@@ -75,22 +109,24 @@ function periodStart(period, now = new Date()) {
 
 /** Top inviters of this week or month, from the members they brought in that period (fake joins are not counted). */
 async function getPeriodLeaderboard(guildId, period, limit = 10) {
+  const { subtractLeaves } = await getSettings(guildId);
   const { rows } = await getPrimaryPool().query(
     `select inviter_id, count(*)::int as joins, count(*) filter (where left_at is not null)::int as leaves,
-            (count(*) - count(*) filter (where left_at is not null))::int as net
+            (${inviteTotalSql({ joins: 'count(*)', leaves: LEFT_COUNT, bonus: '0' }, '$4')})::int as net
        from member_invites where guild_id = $1 and inviter_id is not null and not fake and joined_at >= $2
       group by inviter_id order by net desc, joins desc limit $3`,
-    [String(guildId), periodStart(period), Math.max(1, Math.min(50, limit))],
+    [String(guildId), periodStart(period), Math.max(1, Math.min(50, limit)), subtractLeaves],
   );
   return rows.map((row) => ({ ...row, bonus: 0, fake: 0 }));
 }
 
 /** Top inviters by net invites (joined - left + bonus). */
 async function getLeaderboard(guildId, limit = 10) {
+  const { subtractLeaves } = await getSettings(guildId);
   const { rows } = await getPrimaryPool().query(
-    `select inviter_id, joins, leaves, fake, bonus, (joins - leaves + bonus) as net from invite_uses
+    `select inviter_id, joins, leaves, fake, bonus, ${inviteTotalSql({}, '$3')} as net from invite_uses
      where guild_id = $1 and (joins <> 0 or leaves <> 0 or bonus <> 0) order by net desc, joins desc limit $2`,
-    [String(guildId), Math.max(1, Math.min(50, limit))],
+    [String(guildId), Math.max(1, Math.min(50, limit)), subtractLeaves],
   );
   return rows;
 }
@@ -144,4 +180,4 @@ async function listInviterIds(guildId, limit = 500) {
   return rows.map((row) => row.inviter_id);
 }
 
-module.exports = { getSettings, setFakeDays, periodStart, getPeriodLeaderboard, listRewards, addReward, removeReward, listInviterIds, recordJoin, recordLeave, getStats, getLeaderboard, getInviter, listInvited, addBonus, resetUser, isFakeJoin };
+module.exports = { getSettings, setSettings, setFakeDays, periodStart, getPeriodLeaderboard, listRewards, addReward, removeReward, listInviterIds, recordJoin, recordLeave, getStats, getLeaderboard, getInviter, listInvited, addBonus, resetUser, isFakeJoin };
