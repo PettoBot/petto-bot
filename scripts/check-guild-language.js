@@ -301,6 +301,45 @@ logger.info = (...args) => { logs.push(args.join(' ')); };
   assert.equal(click.calls[0][0], 'reply', 'somebody who is not in the server is refused');
   assert.equal(saved.length, 1);
 
+  // The other copies of the setup message follow: the one in the private channel and the one the owner got by direct message are
+  // rebuilt in the new language when the language is changed from another copy, so nobody presses it twice.
+  {
+    const { buildAdminSetupMessage: adminMessage, buildOwnerGuide: ownerGuide } = require('../src/utils/onboarding');
+    const choice2 = { language: 'es', source: 'locale' };
+    const botMessage = (id, payload) => { const m = { id, author: { id: '1' }, components: payload?.components ?? [], edits: [], edit: async (next) => { m.edits.push(next); } }; return m; };
+    const inChannel = botMessage('m-admin', adminMessage({ ...base, languageChoice: choice2, lang: 'es' }));
+    const ownerCopy = botMessage('m-owner', ownerGuide({ guild: { id: GUILD, name: 'S' }, setupChannel: null, setupMention: '</setup:1>', prefix: '!', languageChoice: choice2, lang: 'es' }));
+    const other = botMessage('m-other', adminMessage({ ...base, languageChoice: null, lang: 'es' })); // a message of Petto without the buttons
+    const chat = { ...botMessage('m-chat', adminMessage({ ...base, languageChoice: choice2, lang: 'es' })), author: { id: 'u9' } }; // somebody else's
+    const fromAnotherServer = botMessage('m-foreign', adminMessage({ ...base, guildId: '555555555555555555', languageChoice: choice2, lang: 'es' }));
+    const clickedCopy = botMessage('m-dm', adminMessage({ ...base, languageChoice: choice2, dm: true, guildName: 'S', lang: 'es' }));
+    const room = (list) => ({ messages: { fetch: async () => new Map(list.map((m) => [m.id, m])) } });
+    const synced = makeGuild(new Map([['u1', member(true)]]));
+    synced.ownerId = 'owner1';
+    synced.channels = { fetch: async (id) => (id === 'c' ? room([inChannel, other, chat, fromAnotherServer, clickedCopy]) : null) };
+    synced.client.users = { fetch: async (id) => (id === 'owner1' ? { createDM: async () => room([ownerCopy]) } : null) };
+    synced.fetchAuditLogs = async () => ({ entries: [] });
+    synced.client.guilds.cache.set(GUILD, synced);
+    const updated = await require('../src/interactions/languageChoice').syncOtherCopies({ guild: synced, language: 'pt-BR', prefix: '?', clicked: 'm-dm' });
+    assert.equal(updated, 2, 'the channel copy and the owner copy are rebuilt');
+    assert.match(text({ components: inChannel.edits[0].components }), /Pronto: o Petto agora fala/, 'the channel copy says it is done, in the new language');
+    assert.match(text({ components: ownerCopy.edits[0].components }), /Pronto: o Petto agora fala/, 'and so does the owner copy');
+    for (const untouched of [other, chat, fromAnotherServer, clickedCopy]) assert.equal(untouched.edits.length, 0, `${untouched.id} is left alone`);
+    // From a click: the copy that was clicked is edited by the answer of the click, the others by the sync.
+    inChannel.edits.length = 0; ownerCopy.edits.length = 0;
+    click = press(synced, { id: customId('dm', GUILD, 'en'), inGuild: false, canManage: true });
+    click.message = { id: 'm-dm' };
+    await handleButton(click);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(inChannel.edits.length, 1, 'a click on a copy updates the channel copy');
+    assert.equal(ownerCopy.edits.length, 1, 'and the owner copy');
+    assert.match(text({ components: ownerCopy.edits[0].components }), /Done: Petto now speaks/, 'in the language that was chosen');
+    saved.splice(1); // this click saved a language too: the checks below count what the earlier ones saved
+    // Nothing reachable: nothing breaks.
+    const lonely = makeGuild(new Map());
+    assert.equal(await require('../src/interactions/languageChoice').syncOtherCopies({ guild: lonely, language: 'es', prefix: '!', clicked: null }), 0);
+  }
+
   // Tied to one server: from another server, or after Petto left, they do nothing.
   click = press(guild, { id: customId('admin', GUILD, 'es'), canManage: true, guildId: '333333333333333333' });
   await handleButton(click);
