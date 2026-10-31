@@ -4,6 +4,16 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **Image cards: 34 new default designs.** A gallery of ready backgrounds, each with its own text colors and a tinted panel so any name stays readable: animals (duckling, cat, fox, bunny, panda, frog, bear, penguin, hedgehog), fruits (strawberry, peach, lemon, watermelon, cherries, orange, blueberries, pineapple), flowers (cherry blossom, rose, lavender, sunflower, daisy, tulips, lotus) and nature (starry night, aurora, ocean, misty forest, desert dusk, galaxy, autumn, snow, sunset, cloud rainbow). A card uses one with `petto:<id>` as its background picture (`petto:fruit-strawberry`); the ids, names in English, Spanish and Portuguese and the families are in the wiki. The pictures are original, drawn from code (`scripts/designs`), small WebP files (under 30 KB each, 604 KB in all) read from disk only when a card that uses one is drawn, with a cache of 6 decoded pictures; an unknown design, or a background picture that cannot be loaded, falls back to the default design. The basic layouts take an optional panel color and strength. The two default rank pictures are now WebP (10 KB instead of 190 KB).
+- **Variables: `{user.account_age}`, `{user.account_age_days}` and `{user.joined_age}`**, and a variable written with other dots, underscores or capitals (`{user.displayname}`, `{server_member_count}`) now works when it can only mean one variable.
+
+### Fixed
+
+- **Image cards: a long name no longer runs over the next line.** The texts of the basic layouts get smaller (down to 55%) before they are cut, and a word wider than the card is broken. Names with emoji, Arabic or Hebrew letters are drawn instead of empty boxes (two small fonts, 105 KB, are added for those letters).
+- **Embeds: a picture link over 2048 characters is left out** instead of making Discord refuse the whole message, and a Components V2 gallery no longer cuts such a link.
+
 ## [0.7.9-2] — 2026-10-30 · Donut
 
 A patch of 0.7.9, shown as **0.7.9~2**.
