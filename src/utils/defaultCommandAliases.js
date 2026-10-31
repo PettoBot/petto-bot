@@ -183,6 +183,9 @@ const BASE_PREFIX_ROUTES = [
   { alias: 'rsnipe', command: 'snipe', args: ['reactions'], subcommand: 'reactions' },
   { alias: 'clearsnipe', command: 'snipe', args: ['clear'], subcommand: 'clear' },
   { alias: 'csnipe', command: 'snipe', args: ['clear'], subcommand: 'clear' },
+  // Forum support: `!tl` (thread lock) is `!forum lock`, as in the bots that came before; `!tul` is `!forum unlock`.
+  { alias: 'tl', command: 'forum', args: ['lock'], subcommand: 'lock' },
+  { alias: 'tul', command: 'forum', args: ['unlock'], subcommand: 'unlock' },
 ];
 
 // The routes written by hand above, then the short aliases of the subcommands (src/utils/short-aliases.json, made by

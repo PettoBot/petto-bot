@@ -39,6 +39,7 @@ const { startGlobalStatsJob } = require('./src/jobs/globalStatsJob');
 const { startGuildSnapshotJob } = require('./src/jobs/guildSnapshotJob');
 const { startCommandDataJob } = require('./src/jobs/commandDataJob');
 const { startFormCleanupJob } = require('./src/jobs/formCleanupJob');
+const { startForumJob } = require('./src/jobs/forumJob');
 const { startAfkMentionsJob } = require('./src/jobs/afkMentionsJob');
 const { startFeedsJob } = require('./src/jobs/feedsJob');
 const music = require('./src/music/node');
@@ -173,6 +174,7 @@ async function main() {
   startGuildSnapshotJob(client);
   startCommandDataJob();
   startFormCleanupJob();
+  startForumJob(client);
   startAfkMentionsJob();
   startFeedsJob(client);
   startGuildPurgeJob(client);

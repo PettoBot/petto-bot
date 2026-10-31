@@ -24,6 +24,8 @@ const SETTINGS_TABLES = new Set([
   'appeal_forms', 'giveaway_presets', 'dash_access',
   // Forms: the forms, their panels, and the submissions the dashboard lists (a review from Discord shows there at once).
   'forms', 'form_panels', 'form_submissions',
+  // Forum support: the setups, and the posts the dashboard lists (a post closed in Discord shows there at once).
+  'forum_setups', 'forum_posts',
   // The anti-nuke page shows its incidents and the lockdown (a panic lockdown starts and ends by itself).
   'antinuke_events', 'lockdowns',
   // The Honeypot page: its bait channels, the message of each one and the number caught.

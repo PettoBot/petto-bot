@@ -378,6 +378,7 @@ module.exports = {
   'cmd.config.restrictcommand.list.desc': 'Mira cada comando restringido y sus roles.',
   'cmd.config.restrictcommand.reset.desc': 'Abre de nuevo todos los comandos restringidos.',
   'cmd.config.formconfig.desc': 'Muestra los ajustes de los formularios y cómo cambiarlos.',
+  'cmd.config.forumconfig.desc': 'Muestra los ajustes del soporte con foros y cómo cambiarlos.',
   'cmd.config.pagination.desc': 'Mensajes con varias páginas de embeds y botones para pasarlas.',
   'cmd.config.pagination.create.desc': 'Publica un mensaje con páginas nuevo con su primera página.',
   'cmd.config.pagination.create.opt.channel.desc': 'Dónde publicarlo (por defecto: aquí)',

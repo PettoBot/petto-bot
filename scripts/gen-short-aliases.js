@@ -29,7 +29,7 @@ const MAX_STEM = 3;
 // The commands people type most come first, so they get the shortest words.
 const PRIORITY = ['image', 'ticket', 'timer', 'feed', 'giveaway', 'welcome', 'backup', 'automod', 'counter', 'snipe', 'afk', 'remind', 'birthday', 'level', 'starboard', 'suggestion', 'verify'];
 // A stem that is not the first letter or a short alias already there: the usual way people shorten the name.
-const STEMS = { image: 'i', ticket: 'tk', feed: 'fd', backup: 'bk', counter: 'cn', snipe: 'sn', afk: 'af', remind: 'rm' };
+const STEMS = { image: 'i', ticket: 'tk', feed: 'fd', backup: 'bk', counter: 'cn', snipe: 'sn', afk: 'af', remind: 'rm', forum: 'fr' };
 // Left out: the actions of /act have their own words (`!hug`), and these are not for members to type.
 const SKIPPED_COMMANDS = new Set(['act']);
 

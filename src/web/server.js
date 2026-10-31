@@ -45,6 +45,7 @@ const { registerCaseRoutes } = require('./caseRoutes');
 const { registerTimerRoutes } = require('./timerRoutes');
 const { registerBoosterRoleRoutes } = require('./boosterRoleRoutes');
 const { registerTicketLiveRoutes } = require('./ticketLiveRoutes');
+const { registerForumRoutes } = require('./forumRoutes');
 const { fetchDashboardMember } = require('./dashboardMember');
 const { roleGrantAllows } = require('./dashboardRoleAccess');
 const { supportOwnerAllows } = require('./supportOwner');
@@ -822,6 +823,8 @@ function startServer(client) {
     // Live tickets: the open tickets of a server, the last messages of one, and reply, claim, add/remove a member and close from the
     // dashboard (Manage Server, or a role with the Tickets section of Dashboard access; the actions also need the ticket's staff).
     registerTicketLiveRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
+    // Forum support: the forums and their tags, the posts, the panel and lock, close and solved from the dashboard.
+    registerForumRoutes(app, { authorize: dashboardCardAccess, limiter: dashboardDatabaseRateLimiter });
     // The public leaderboard page of a server that turned it on, asked for by the website.
     registerPublicLeaderboardRoute(app, { isAuthorized: dashboardAuthorized, limiter: dashboardDatabaseRateLimiter, client });
 
