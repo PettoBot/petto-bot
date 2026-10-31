@@ -29,7 +29,8 @@ module.exports = {
     .setDMPermission(false)
     .setDescription('Shows information about this server.')
     .addStringOption((o) => o.setName('server').setDescription('ID of another server Petto is in').setRequired(false)),
-  aliases: ['si', 'server'],
+  // `server` is the umbrella command now (`!server` alone still shows this card: /server info).
+  aliases: ['si'],
 
   async execute(interaction) {
     const lang = await languageOf(interaction);

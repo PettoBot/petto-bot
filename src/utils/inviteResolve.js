@@ -8,6 +8,7 @@ const inviteCache = require('./inviteCache');
 // the other reuses that in-flight result.
 const pending = new Map(); // `${guildId}:${memberId}` -> Promise<Invite|null>
 const PENDING_TTL_MS = 10_000;
+const MAX_PENDING = 500;
 
 /** The invite a member's join used, or null if it can't be determined (no permission, vanity/OAuth join, etc). */
 async function resolveJoinInvite(member) {
@@ -17,53 +18,48 @@ async function resolveJoinInvite(member) {
   if (existing) return existing;
 
   const promise = (async () => {
-    if (!guild.members.me.permissions.has('ManageGuild')) return null;
     try {
-      const before = inviteCache.getGuildCache(guild.id) ?? new Map();
-      const afterInvites = await guild.invites.fetch().catch(() => null);
+      const before = inviteCache.getGuildCache(guild.id);
+      // One request per join (none when Petto cannot read the invites or the server is backing off after an error).
+      const afterInvites = await inviteCache.fetchInvites(guild);
       if (!afterInvites) return null;
+      inviteCache.replaceGuildCache(guild.id, afterInvites);
+      // Without a snapshot from before there is nothing to compare: the list just read is the start for the next join, and this one is
+      // told as unknown instead of pointing at whichever invite comes first.
+      if (!before) return null;
 
-      let usedInvite = null;
       for (const invite of afterInvites.values()) {
         const prev = before.get(invite.code);
-        if (!prev || (invite.uses ?? 0) > prev.uses) {
-          usedInvite = invite;
-          break;
-        }
+        if (!prev || (invite.uses ?? 0) > prev.uses) return invite;
       }
 
       // A single-use (or last-use) invite disappears when it is used, so it is not in the new list: it is the one that is gone.
-      if (!usedInvite) {
-        for (const [code, prev] of before) {
-          if (!afterInvites.has(code) && prev.maxUses > 0 && prev.uses + 1 >= prev.maxUses) {
-            usedInvite = { code, inviter: prev.inviterId ? { id: prev.inviterId } : null, uses: prev.maxUses };
-            break;
-          }
+      for (const [code, prev] of before) {
+        if (!afterInvites.has(code) && prev.maxUses > 0 && prev.uses + 1 >= prev.maxUses) {
+          return { code, inviter: prev.inviterId ? { id: prev.inviterId } : null, uses: prev.maxUses };
         }
       }
-
-      inviteCache.replaceGuildCache(guild.id, afterInvites);
-      return usedInvite;
+      return null;
     } catch {
       return null;
     }
   })();
 
-  pending.set(key, promise);
-  setTimeout(() => pending.delete(key), PENDING_TTL_MS);
+  inviteCache.remember(pending, key, promise, MAX_PENDING);
+  setTimeout(() => pending.delete(key), PENDING_TTL_MS).unref?.();
   return promise;
 }
 
-const vanityUses = new Map(); // guildId -> uses of the vanity URL the last time it was looked at
+const vanityUses = new Map(); // guildId -> uses of the vanity URL the last time it was looked at (capped, only servers that have a vanity URL)
 
 /** True when the join came through the server's vanity URL (its use count went up). Remembers the count for the next join. */
 async function wasVanityJoin(guild) {
-  if (!guild.vanityURLCode) return false;
-  const data = await guild.fetchVanityData().catch(() => null);
+  if (!guild.vanityURLCode || inviteCache.isBackedOff(guild.id)) return false;
+  const data = await guild.fetchVanityData().catch((error) => { inviteCache.noteFetchError(guild.id, error); return null; });
   if (!data) return false;
   const before = vanityUses.get(guild.id);
-  vanityUses.set(guild.id, data.uses);
+  inviteCache.remember(vanityUses, guild.id, data.uses);
   return before !== undefined && data.uses > before;
 }
 
-module.exports = { resolveJoinInvite, wasVanityJoin };
+module.exports = { resolveJoinInvite, wasVanityJoin, vanityUses, pending };

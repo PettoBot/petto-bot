@@ -1,11 +1,12 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const { applyRewards } = require('../../utils/inviteRewards');
 const inviteTrackingDb = require('../../db/inviteTracking');
+const { readSettingsPatch } = require('../../db/inviteTrackingRules');
 const { INFO_ACCENT, infoPayload, noticePayload, line } = require('../../utils/infoCard');
 const { COLORS } = require('../../utils/colors');
 const { t, tn, languageOf } = require('../../i18n');
 
-const SOURCES = ['invite', 'vanity', 'unknown'];
+const SOURCES = ['invite', 'vanity', 'unknown', 'bot'];
 
 module.exports = {
   aliases: ['invs'],
@@ -22,8 +23,11 @@ module.exports = {
     .addSubcommand((s) => s.setName('bonus').setDescription('Add or take away bonus invites (needs Manage Server).')
       .addUserOption((o) => o.setName('user').setDescription('User').setRequired(true))
       .addIntegerOption((o) => o.setName('amount').setDescription('How many (negative takes away)').setMinValue(-10000).setMaxValue(10000).setRequired(true)))
-    .addSubcommand((s) => s.setName('config').setDescription('Show the invite settings, or set when an account counts as fake (Manage Server).')
-      .addIntegerOption((o) => o.setName('fake_days').setDescription('Accounts younger than this many days are fake joins (0 turns it off; default 3)').setMinValue(0).setMaxValue(365).setRequired(false)))
+    .addSubcommand((s) => s.setName('config').setDescription('Show the invite settings, or change them (Manage Server).')
+      .addIntegerOption((o) => o.setName('fake_days').setDescription('Accounts younger than this many days are fake joins (0 turns it off; default 3)').setMinValue(0).setMaxValue(365).setRequired(false))
+      .addIntegerOption((o) => o.setName('quick_leave_minutes').setDescription('Leaving within this many minutes of joining counts as a fake join (0 is off; default 0)').setMinValue(0).setMaxValue(1440).setRequired(false))
+      .addBooleanOption((o) => o.setName('ignore_bots').setDescription('Do not credit bot accounts to anybody (default off)').setRequired(false))
+      .addBooleanOption((o) => o.setName('subtract_leaves').setDescription('Take the members who left off the total of invites (default on)').setRequired(false)))
     .addSubcommandGroup((g) => g.setName('reward').setDescription('Roles given for reaching a number of invites (needs Manage Server).')
       .addSubcommand((s) => s.setName('add').setDescription('Give a role to whoever reaches a number of invites.')
         .addIntegerOption((o) => o.setName('invites').setDescription('How many invites').setMinValue(1).setMaxValue(100000).setRequired(true))
@@ -48,7 +52,7 @@ module.exports = {
   },
 };
 
-const net = (stats) => stats.joins - stats.leaves + stats.bonus;
+const net = (stats) => stats.total;
 const unixOf = (date) => Math.floor(new Date(date).getTime() / 1000);
 
 async function userCmd(interaction, lang) {
@@ -197,21 +201,44 @@ function needManageGuild(interaction, lang) {
   return true;
 }
 
+const onOff = (lang, value) => t(lang, value ? 'info.invites.config.on' : 'info.invites.config.off');
+
 async function configCmd(interaction, lang) {
-  const days = interaction.options.getInteger('fake_days');
-  if (days !== null) {
+  const options = interaction.options;
+  const patch = {
+    fakeDays: options.getInteger('fake_days'),
+    quickLeaveMinutes: options.getInteger('quick_leave_minutes'),
+    ignoreBots: options.getBoolean('ignore_bots'),
+    subtractLeaves: options.getBoolean('subtract_leaves'),
+  };
+  const given = Object.entries(patch).filter(([, value]) => value !== null && value !== undefined);
+  const guildId = interaction.guild.id;
+  if (given.length) {
     if (needManageGuild(interaction, lang)) return;
-    await inviteTrackingDb.setFakeDays(interaction.guild.id, days);
-    await interaction.reply(noticePayload(days ? tn(lang, 'info.invites.config.fakeDaysSet', days, { count: days }) : t(lang, 'info.invites.config.fakeDaysOff')));
+    const { values, error } = readSettingsPatch(Object.fromEntries(given));
+    if (error) {
+      await interaction.reply(noticePayload(t(lang, 'info.invites.config.invalid'), COLORS.RED));
+      return;
+    }
+    await inviteTrackingDb.setSettings(guildId, values);
+    const lines = [];
+    if (values.fakeDays !== undefined) lines.push(values.fakeDays ? tn(lang, 'info.invites.config.fakeDaysSet', values.fakeDays, { count: values.fakeDays }) : t(lang, 'info.invites.config.fakeDaysOff'));
+    if (values.quickLeaveMinutes !== undefined) lines.push(values.quickLeaveMinutes ? tn(lang, 'info.invites.config.quickLeaveSet', values.quickLeaveMinutes, { count: values.quickLeaveMinutes }) : t(lang, 'info.invites.config.quickLeaveOff'));
+    if (values.ignoreBots !== undefined) lines.push(t(lang, values.ignoreBots ? 'info.invites.config.ignoreBotsOn' : 'info.invites.config.ignoreBotsOff'));
+    if (values.subtractLeaves !== undefined) lines.push(t(lang, values.subtractLeaves ? 'info.invites.config.subtractOn' : 'info.invites.config.subtractOff'));
+    await interaction.reply(noticePayload(lines.join('\n')));
     return;
   }
-  const settings = await inviteTrackingDb.getSettings(interaction.guild.id);
-  const rewards = await inviteTrackingDb.listRewards(interaction.guild.id);
+  const settings = await inviteTrackingDb.getSettings(guildId);
+  const rewards = await inviteTrackingDb.listRewards(guildId);
   await interaction.reply(infoPayload({
     title: t(lang, 'info.invites.config.title'),
     thumbnail: interaction.guild.iconURL({ size: 256 }),
     sections: [{ lines: [
       line(t(lang, 'info.invites.config.fakeJoins'), settings.fakeDays ? tn(lang, 'info.invites.config.fakeAccounts', settings.fakeDays, { count: settings.fakeDays }) : t(lang, 'info.invites.config.onlyReturning')),
+      line(t(lang, 'info.invites.config.quickLeave'), settings.quickLeaveMinutes ? tn(lang, 'info.invites.config.quickLeaveValue', settings.quickLeaveMinutes, { count: settings.quickLeaveMinutes }) : t(lang, 'info.invites.config.off')),
+      line(t(lang, 'info.invites.config.ignoreBots'), onOff(lang, settings.ignoreBots)),
+      line(t(lang, 'info.invites.config.subtractLeaves'), onOff(lang, settings.subtractLeaves)),
       line(t(lang, 'info.invites.config.rewards'), rewards.length ? String(rewards.length) : t(lang, 'info.invites.config.noRewards')),
     ] }],
     footer: t(lang, 'info.invites.config.footer'),

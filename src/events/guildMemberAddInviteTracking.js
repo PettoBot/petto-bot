@@ -7,11 +7,23 @@ const { ensureGuild } = require('../db/guilds');
 const { applyRewards } = require('../utils/inviteRewards');
 const logger = require('../utils/logger');
 
+/** A bot account never uses an invite, so it is only written down (source `bot`, nobody credited, no request to Discord) in a server that chose to ignore bots. */
+async function recordBot(member) {
+  const guild = member.guild;
+  try {
+    if (!(await inviteTrackingDb.getSettings(guild.id)).ignoreBots) return;
+    await ensureGuild(guild.id);
+    await inviteTrackingDb.recordJoin(guild.id, member.id, null, null, { accountCreatedAt: member.user.createdTimestamp, source: 'bot' });
+  } catch (err) {
+    logger.error(`Invite tracking failed for a bot join in guild ${guild.id}:`, err);
+  }
+}
+
 module.exports = {
   name: Events.GuildMemberAdd,
   async execute(member) {
     const guild = member.guild;
-    if (member.user.bot) return;
+    if (member.user.bot) return recordBot(member);
     const counted = Boolean(statsRules.allowed(guild.id, member.id));
     if (counted) queueFlow(guild.id, { joins: 1 });
     if (!guild.members.me.permissions.has('ManageGuild')) return; // can't fetch invite uses without it

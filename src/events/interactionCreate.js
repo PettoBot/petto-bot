@@ -556,12 +556,15 @@ module.exports = {
       return;
     }
 
+    const subcommand = interaction.options?.getSubcommand?.(false) ?? null;
     if (interaction.guildId && interaction.member) {
       try {
-        const allowed = await permissionsDb.hasCommandPermission(interaction.guildId, command.data.name, interaction.member);
-        if (!allowed) {
-          await interaction.reply({ content: t(lang, 'core.slash.missingLevel'), flags: MessageFlags.Ephemeral });
-          return;
+        // A subcommand of an umbrella (`/server info`) also asks for the level set for the command it wraps (`serverinfo`).
+        for (const name of commandRules.permissionNames(command, { subcommand })) {
+          if (!await permissionsDb.hasCommandPermission(interaction.guildId, name, interaction.member)) {
+            await interaction.reply({ content: t(lang, 'core.slash.missingLevel'), flags: MessageFlags.Ephemeral });
+            return;
+          }
         }
       } catch (err) {
         // Custom permission levels are opt-in on top of Discord's own permissions, if the check
@@ -572,7 +575,7 @@ module.exports = {
 
     // The rules of a server are the same ones the prefix checks (utils/commandRules.js): an action of /act (`hug`) or the whole command
     // (`act`) can be restricted or turned off.
-    const ruleNames = commandRules.ruleNames(command, { subcommand: interaction.options?.getSubcommand?.(false) ?? null });
+    const ruleNames = commandRules.ruleNames(command, { subcommand });
     // !restrictcommand: only the roles chosen for this command (administrators always can).
     if (interaction.guildId && interaction.member) {
       const restricted = await commandRules.restrictedForNames(interaction.guildId, ruleNames, interaction.member).catch(() => null);
@@ -598,7 +601,7 @@ module.exports = {
       }
     }
 
-    logCommandUse({ guild: interaction.guild, user: interaction.user, channel: interaction.channel, name: interaction.commandName, prefix: '/', subcommand: interaction.options?.getSubcommand?.(false) ?? null }, client);
+    logCommandUse({ guild: interaction.guild, user: interaction.user, channel: interaction.channel, name: interaction.commandName, prefix: '/', subcommand }, client);
 
     interaction.pettoLang = lang;
     // A member with a role chosen for this moderation command passes its permission check, the same as with the prefix (Discord only

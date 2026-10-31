@@ -18,7 +18,7 @@ async function inviteInfoFor(member, { recorded = false } = {}) {
     if (!inviterId) return { inviterId: null, inviterName: '', invites: '', code: invite?.code ?? '' };
     const stats = await inviteTracking.getStats(member.guild.id, inviterId);
     const user = invite.inviter?.username ? invite.inviter : await member.client.users.fetch(inviterId).catch(() => null);
-    return { inviterId, inviterName: user?.globalName ?? user?.username ?? '', invites: stats.joins - stats.leaves + stats.bonus, code: invite.code ?? '' };
+    return { inviterId, inviterName: user?.globalName ?? user?.username ?? '', invites: stats.total, code: invite.code ?? '' };
   } catch {
     return null;
   }

@@ -32,7 +32,8 @@ const SUBCOMMAND_WORDS = {
 };
 // "The whole server" written where a channel would go: `!dc suggest all`.
 const SERVER_WORDS = new Set(['all', 'server', 'everywhere', 'global', 'guild', '*', 'todo', 'todos', 'servidor', 'tudo']);
-// Alone, these mean "every command" (`!dc enable all`); `server` alone is still the alias of `serverinfo`.
+// Alone, these mean "every command" (`!dc enable all`); `server` alone is the command `server` (the umbrella of /server), which turns
+// off all of its subcommands (a rule saved for `serverinfo` also stops `/server info`).
 const ALL_WORDS = new Set(['all', '*', 'todo', 'todos', 'tudo']);
 const CHANNEL_TOKEN = /^(<#\d{15,25}>|\d{15,25}|#[^\s,#<>]+)$/;
 const CATEGORY_TOKEN = /^(?:category|cat|module|modulo|módulo|categoria|categoría):(.+)$/i;
