@@ -18,6 +18,9 @@ const ESSENTIAL = [
   // Everyday commands that also work with `/` (they keep working with the prefix).
   'afk', 'avatar', 'ban', 'botinfo', 'channel', 'embed', 'giveaway', 'help', 'kick', 'ping', 'poll', 'purge', 'rank', 'remind',
   'serverinfo', 'suggest', 'ticket', 'timeout', 'top', 'unban', 'userinfo', 'warn',
+  // The two umbrellas: everything about a server (`/server info`, `icon`...) and about a member (`/user info`, `avatar`...). The old
+  // commands they wrap stay (`serverinfo`, `userinfo`, `avatar` are also slash commands), the rest work with the prefix only.
+  'server', 'user',
   // Registered before for their own reasons.
   'guildtag', 'messagelinks', 'report', 'setup', 'vanity',
 ];

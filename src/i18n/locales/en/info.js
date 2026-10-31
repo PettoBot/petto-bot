@@ -571,4 +571,12 @@ module.exports = {
   'info.statsConfig.delete.done.other': '{emoji} Deleted {count} counters of this server.',
   'info.statsConfig.delete.notYours': 'Only the person who asked can press this button.',
   'info.stats.member.left': '(left the server)',
+  'info.server.icon.title': 'Icon of {name}',
+  'info.server.icon.none': '{name} has no icon set.',
+  'info.server.banner.title': 'Banner of {name}',
+  'info.server.banner.none': '{name} has no banner set.',
+  'info.server.splash.title': 'Invite splash of {name}',
+  'info.server.splash.none': '{name} has no invite splash set.',
+  'info.server.sizes': 'Sizes',
+  'info.server.animated': 'Animated.',
 };

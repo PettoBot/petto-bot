@@ -106,7 +106,7 @@ const text = (payload) => fakes.textOf(payload.components);
   const { isCommonWord } = require('../src/utils/commonWords'); assert.equal(isCommonWord('tl'), false);
   const { collectCommandData } = require('../src/handlers/commandHandler');
   const registered = collectCommandData();
-  assert.equal(registered.length, 31, 'the registered slash set is unchanged'); assert.ok(!registered.some((json) => /forum/.test(json.name)));
+  assert.equal(registered.length, 33, 'the registered set is the 31 of before and /server and /user: forum support adds no slash command'); assert.ok(!registered.some((json) => /forum/.test(json.name)));
   const forumCommand = require('../src/commands/tickets/forum'); assert.equal(forumCommand.prefixOnly, true);
   const shortTable = require('../src/utils/short-aliases.json');
   for (const target of ['forum close', 'forum solved', 'forum panel', 'forum setup']) assert.ok(Object.values(shortTable).includes(target), `${target} has a short alias`);

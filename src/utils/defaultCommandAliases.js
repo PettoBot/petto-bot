@@ -19,6 +19,10 @@ const DEFAULT_COMMAND_ALIASES = {
 // existing `channel` command, so the old `!channel ...` and `!ch ...` forms stay
 // valid while common moderation actions can be typed directly.
 const BASE_PREFIX_ROUTES = [
+  // The pictures of a server: `!servericon` is `!server icon`, and `!disablecommand servericon` turns off that one (the rest of /server stays).
+  { alias: 'servericon', command: 'server', args: ['icon'], subcommand: 'icon', disableName: 'servericon' },
+  { alias: 'serverbanner', command: 'server', args: ['banner'], subcommand: 'banner', disableName: 'serverbanner' },
+  { alias: 'serversplash', command: 'server', args: ['splash'], subcommand: 'splash', disableName: 'serversplash' },
   { alias: 'lock', command: 'channel', args: ['lock'], subcommand: 'lock' },
   { alias: 'unlock', command: 'channel', args: ['unlock'], subcommand: 'unlock' },
   { alias: 'slowmode', command: 'channel', args: ['slowmode'], subcommand: 'slowmode' },
