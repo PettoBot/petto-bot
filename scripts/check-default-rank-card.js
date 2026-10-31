@@ -23,7 +23,7 @@ const { normalizeCard, source } = require('../src/utils/cardSchema');
     assert.equal(card.basic.preset, 'rank', 'the layout with the avatar on the left');
     assert.equal(card.background.gradient, undefined, 'no gradient: a picture');
     const name = card.background.image.src.replace('petto:', '');
-    assert.ok(fs.existsSync(path.join(__dirname, '../src/assets/backgrounds', `${name}.png`)), `${name}.png exists`);
+    assert.ok(fs.existsSync(path.join(__dirname, '../src/assets/backgrounds', `${name}.webp`)), `${name}.webp exists`);
     const { card: normal } = normalizeCard(card, { premium: false });
     assert.equal(normal.background.image.src, card.background.image.src, 'the schema keeps it');
   }

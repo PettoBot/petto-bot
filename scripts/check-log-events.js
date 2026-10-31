@@ -58,7 +58,7 @@ process.on('exit', (code) => {
 (async () => {
   // The languages of the servers are loaded once, as the bot does when it is ready.
   await require('../src/i18n').loadGuildLanguages();
-  for (const category of ['webhooks', 'threads', 'integrations', 'commands']) assert.ok(EVENTS.includes(category), `${category} can be chosen with !logs`);
+  for (const category of ['webhooks', 'threads', 'integrations', 'commands', 'forums']) assert.ok(EVENTS.includes(category), `${category} can be chosen with !logs`);
 
   // ---- webhooks: created, updated and deleted, each told once, and Petto's own ones left out
   const now = Date.now();

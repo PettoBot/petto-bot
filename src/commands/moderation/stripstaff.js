@@ -9,6 +9,7 @@ const { EMOJI } = require('../../utils/emojis');
 const { handleStaffAction } = require('../../logging/moreLog');
 const logger = require('../../utils/logger');
 const { t, tn, languageOf } = require('../../i18n');
+const { mentionList, listWithMore } = require('../../utils/listCap');
 
 // Every permission that makes a role a staff role: the ones a nuke needs and the everyday moderation ones.
 const STAFF_FLAGS = [...DANGEROUS_ROLE_FLAGS, 'ManageMessages', 'ManageNicknames', 'ManageThreads', 'ManageGuildExpressions', 'ManageEvents', 'MuteMembers', 'DeafenMembers', 'MoveMembers', 'ViewAuditLog'];
@@ -64,9 +65,9 @@ module.exports = {
     }
 
     const lines = [assignable.length
-      ? tn(lang, 'moderation.stripstaff.done', assignable.length, { emoji: EMOJI.APPROVE, count: assignable.length, user: `${user}`, roles: assignable.map((role) => `${role}`).join(' ') })
+      ? tn(lang, 'moderation.stripstaff.done', assignable.length, { emoji: EMOJI.APPROVE, count: assignable.length, user: `${user}`, roles: mentionList(lang, assignable) })
       : t(lang, 'moderation.stripstaff.noneRemovable', { emoji: EMOJI.DENY, user: `${user}` })];
-    if (blocked.length) lines.push(t(lang, 'moderation.common.skipped', { list: blocked.join(', ') }));
+    if (blocked.length) lines.push(t(lang, 'moderation.common.skipped', { list: listWithMore(lang, blocked, { limit: 10 }) }));
     await interaction.editReply({ components: [textCard(lines.join('\n'), assignable.length ? 0xa5ea7a : 0xfe6465)], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
   },
   staffRolesOf,

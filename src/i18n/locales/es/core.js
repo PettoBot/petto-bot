@@ -8,6 +8,7 @@ module.exports = {
   'core.missingPermission': 'Te falta el permiso: `{permission}`.',
   'core.missingLevel': 'No tienes el nivel de permiso que pide `{prefix}{command}`.',
   'core.error': 'Algo salió mal al ejecutar ese comando.',
+  'core.replyTooLong': 'El comando se ejecutó, pero su respuesta era demasiado larga para que Discord la muestre. Prueba con menos elementos.',
   'core.slash.cooldown': 'Espera {seconds}s antes de volver a usar !{command}.',
   'core.slash.cooldownSlashOnly': 'Espera {seconds}s antes de volver a usar /{command}.',
   'core.slash.missingLevel': 'No tienes el nivel de permiso necesario para usar este comando.',

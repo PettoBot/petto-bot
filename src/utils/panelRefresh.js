@@ -39,6 +39,13 @@ const REFRESHERS = {
     return count;
   },
 
+  async forums(guild, lang) {
+    const { refreshPanel } = require('./forumActions');
+    let count = 0;
+    for (const setup of await require('../db/forums').listSetups(guild.id)) if (await refreshPanel(guild, setup, lang)) count += 1;
+    return count;
+  },
+
   async verification(guild, lang) {
     const settings = await require('../db/verificationConfig').getConfig(guild.id);
     const found = await fetchOwnMessage(guild, settings?.panel_posted_channel_id ?? settings?.panel_channel_id, settings?.panel_message_id);

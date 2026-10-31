@@ -1,4 +1,5 @@
 const { isPermissionError, permissionHelp } = require('../utils/permissionErrors');
+const { isPayloadError, sendWithPlainFallback } = require('../utils/payloadFallback');
 const { Events, MessageFlags } = require('discord.js');
 const { getRemainingCooldownShared } = require('../utils/sharedCooldown');
 const moderationPermissions = require('../utils/moderationPermissions');
@@ -45,6 +46,7 @@ const { PREFIX: ANTINUKE_PREFIX, handleButton: handleAntiNukeButton } = require(
 const { PREFIX: APPEAL_PREFIX, handleButton: handleAppealButton, handleModal: handleAppealModal } = require('../interactions/appeals');
 const { PREFIX: CONFESSION_PREFIX, handleButton: handleConfessionButton, handleModal: handleConfessionModal } = require('../interactions/confessions');
 const { PREFIX: FORM_PREFIX, handleFormInteraction } = require('../interactions/forms');
+const { isForumId, handleInteraction: handleForumInteraction } = require('../interactions/forum');
 const { PREFIX: SUGGESTION_PREFIX, handleButton: handleSuggestionButton, handleModal: handleSuggestionModal } = require('../interactions/suggestions');
 const { PREFIX: VERIFY_LETTERS_PREFIX, handleButton: handleVerifyLettersButton, handleModal: handleVerifyLettersModal } = require('../interactions/verifyLetters');
 const { handleSetupModal } = require('../interactions/setup');
@@ -105,6 +107,12 @@ module.exports = {
     // Forms (applications): the panel that opens a form, its pages, and the buttons of the review card.
     if ((interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) && interaction.customId.startsWith(FORM_PREFIX)) {
       await handleFormInteraction(interaction);
+      return;
+    }
+
+    // Forum support: the button of the panel, its form, the menu of the tags and the two buttons under it.
+    if ((interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) && isForumId(interaction.customId)) {
+      try { await handleForumInteraction(interaction); } catch (err) { logger.error('Error handling a forum support component:', err); }
       return;
     }
 
@@ -610,12 +618,10 @@ module.exports = {
       if (isPermissionError(err)) logger.warn(`Missing permission running /${interaction.commandName}: ${err.message} (code ${err.code})`);
       else logger.error(`Error executing /${interaction.commandName}:`, err);
 
-      const errorReply = { content: isPermissionError(err) ? permissionHelp(err, lang) : t(lang, 'core.error'), flags: MessageFlags.Ephemeral };
-      if (interaction.deferred || interaction.replied) {
-        await interaction.editReply(errorReply).catch(() => {});
-      } else {
-        await interaction.reply(errorReply).catch(() => {});
-      }
+      const errorReply = { content: isPermissionError(err) ? permissionHelp(err, lang) : isPayloadError(err) ? t(lang, 'core.replyTooLong') : t(lang, 'core.error'), flags: MessageFlags.Ephemeral };
+      // If Discord refuses the error card itself for what it is made of (a deferred answer in Components V2 does not take `content`), a short text is sent once.
+      const send = (payload) => (interaction.deferred || interaction.replied ? interaction.editReply(payload) : interaction.reply(payload));
+      await sendWithPlainFallback(send, errorReply, { lang, context: `/${interaction.commandName}` }).catch(() => {});
     }
   },
 };

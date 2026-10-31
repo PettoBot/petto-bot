@@ -99,6 +99,8 @@ function normalizeLayer(raw, index, problems, lang) {
       lineHeight: num(raw.lineHeight, 0.8, 2.5, 1.15),
       // More lines than this are cut and end in an ellipsis. 0 is no limit.
       maxLines: Math.round(num(raw.maxLines, 0, 12, 0)),
+      // The text gets smaller, down to 55%, before it is cut, so a long name stays inside its width (the texts of the basic layouts).
+      ...(raw.fit === true ? { fit: true } : {}),
       spacing: num(raw.spacing, -5, 40, 0),
       upper: bool(raw.upper),
       stroke: stroke(raw.stroke),

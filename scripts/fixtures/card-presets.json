@@ -20,7 +20,9 @@
         "blur": 8,
         "x": 0,
         "y": 2
-      }
+      },
+      "maxLines": 1,
+      "fit": true
     },
     {
       "id": "avatar",
@@ -61,7 +63,9 @@
         "blur": 8,
         "x": 0,
         "y": 2
-      }
+      },
+      "maxLines": 1,
+      "fit": true
     },
     {
       "id": "subtitle",
@@ -83,7 +87,9 @@
         "blur": 8,
         "x": 0,
         "y": 2
-      }
+      },
+      "maxLines": 2,
+      "fit": true
     }
   ],
   "side": [
@@ -126,7 +132,9 @@
         "blur": 8,
         "x": 0,
         "y": 2
-      }
+      },
+      "maxLines": 1,
+      "fit": true
     },
     {
       "id": "name",
@@ -148,7 +156,9 @@
         "blur": 8,
         "x": 0,
         "y": 2
-      }
+      },
+      "maxLines": 1,
+      "fit": true
     },
     {
       "id": "subtitle",
@@ -170,7 +180,9 @@
         "blur": 8,
         "x": 0,
         "y": 2
-      }
+      },
+      "maxLines": 2,
+      "fit": true
     }
   ],
   "bars": [
@@ -235,7 +247,9 @@
         "blur": 8,
         "x": 0,
         "y": 2
-      }
+      },
+      "maxLines": 1,
+      "fit": true
     },
     {
       "id": "name",
@@ -257,7 +271,9 @@
         "blur": 8,
         "x": 0,
         "y": 2
-      }
+      },
+      "maxLines": 1,
+      "fit": true
     },
     {
       "id": "subtitle",
@@ -279,7 +295,9 @@
         "blur": 8,
         "x": 0,
         "y": 2
-      }
+      },
+      "maxLines": 2,
+      "fit": true
     }
   ],
   "panel": [
@@ -334,7 +352,9 @@
         "blur": 8,
         "x": 0,
         "y": 2
-      }
+      },
+      "maxLines": 1,
+      "fit": true
     },
     {
       "id": "name",
@@ -356,7 +376,9 @@
         "blur": 8,
         "x": 0,
         "y": 2
-      }
+      },
+      "maxLines": 1,
+      "fit": true
     },
     {
       "id": "subtitle",
@@ -378,7 +400,9 @@
         "blur": 8,
         "x": 0,
         "y": 2
-      }
+      },
+      "maxLines": 2,
+      "fit": true
     }
   ],
   "rank": [
@@ -433,7 +457,9 @@
         "blur": 8,
         "x": 0,
         "y": 2
-      }
+      },
+      "maxLines": 1,
+      "fit": true
     },
     {
       "id": "extra",
@@ -455,7 +481,9 @@
         "blur": 8,
         "x": 0,
         "y": 2
-      }
+      },
+      "maxLines": 1,
+      "fit": true
     },
     {
       "id": "title",
@@ -477,7 +505,9 @@
         "blur": 8,
         "x": 0,
         "y": 2
-      }
+      },
+      "maxLines": 1,
+      "fit": true
     },
     {
       "id": "bar",
@@ -514,7 +544,9 @@
         "blur": 8,
         "x": 0,
         "y": 2
-      }
+      },
+      "maxLines": 2,
+      "fit": true
     }
   ],
   "rankBottom": [
@@ -569,7 +601,9 @@
         "blur": 8,
         "x": 0,
         "y": 2
-      }
+      },
+      "maxLines": 1,
+      "fit": true
     },
     {
       "id": "title",
@@ -591,7 +625,9 @@
         "blur": 8,
         "x": 0,
         "y": 2
-      }
+      },
+      "maxLines": 1,
+      "fit": true
     },
     {
       "id": "extra",
@@ -613,7 +649,9 @@
         "blur": 8,
         "x": 0,
         "y": 2
-      }
+      },
+      "maxLines": 1,
+      "fit": true
     },
     {
       "id": "bar",
@@ -650,7 +688,9 @@
         "blur": 8,
         "x": 0,
         "y": 2
-      }
+      },
+      "maxLines": 2,
+      "fit": true
     }
   ],
   "levelup": [
@@ -716,7 +756,8 @@
         "x": 0,
         "y": 2
       },
-      "maxLines": 1
+      "maxLines": 1,
+      "fit": true
     },
     {
       "id": "rank",
@@ -734,6 +775,8 @@
       "spacing": 0,
       "upper": false,
       "shadow": false,
+      "maxLines": 1,
+      "fit": true,
       "follow": "name",
       "gap": 31.680000000000003,
       "pill": {
@@ -765,7 +808,8 @@
         "x": 0,
         "y": 2
       },
-      "maxLines": 1
+      "maxLines": 1,
+      "fit": true
     },
     {
       "id": "hex-old",
@@ -798,7 +842,9 @@
       "opacity": 1,
       "spacing": 0,
       "upper": false,
-      "shadow": false
+      "shadow": false,
+      "maxLines": 1,
+      "fit": true
     },
     {
       "id": "arrow",
@@ -875,7 +921,9 @@
       "opacity": 1,
       "spacing": 0,
       "upper": false,
-      "shadow": false
+      "shadow": false,
+      "maxLines": 1,
+      "fit": true
     }
   ]
 }

@@ -12,21 +12,10 @@ const { getGuildPremium } = require('../db/premium');
 const logger = require('./logger');
 const { pullImgCards } = require('./imgCardTokens');
 const { t, currentLanguage } = require('../i18n');
-const fs = require('node:fs');
-const path = require('node:path');
+const { loadDesignImage } = require('./cardDesigns');
 
 const CARD_FILE_NAME = 'card.png';
 const PLACEMENTS = new Set(['default', 'embed', 'attachment']);
-
-// The pictures that come with Petto (src/assets/backgrounds), read once and kept.
-const bundled = new Map();
-async function loadBundled(name) {
-  if (bundled.has(name)) return bundled.get(name);
-  let image = null;
-  try { image = await decode(fs.readFileSync(path.join(__dirname, '../assets/backgrounds', `${name}.png`))); } catch { image = null; }
-  bundled.set(name, image);
-  return image;
-}
 
 function avatarUrl(kind, ctx) {
   if (kind === 'server') return ctx.guild?.iconURL?.({ extension: 'png', size: 512 }) ?? null;
@@ -48,9 +37,11 @@ async function loadDecorationFrames(src) {
 }
 
 /** The functions the renderer needs, wired to one guild and one message. A picture only moves for a Premium server. */
-function depsFor(ctx, guildId, { premium = false } = {}) {
+function depsFor(ctx, guildId, { premium = false, kind = 'welcome' } = {}) {
   return {
     loadFrames: premium ? loadDecorationFrames : undefined,
+    // A background picture that cannot be had (a dead link, a deleted upload) is replaced by the default design of the kind of card.
+    loadFallback: () => loadDesignImage(null, kind),
     resolveText: (text) => resolve(text, ctx),
     avatar: async (kind) => {
       const url = avatarUrl(kind, ctx);
@@ -58,7 +49,7 @@ function depsFor(ctx, guildId, { premium = false } = {}) {
     },
     loadSource: async (src) => {
       const own = /^petto:([a-z0-9-]{3,30})$/.exec(src);
-      if (own) return loadBundled(own[1]);
+      if (own) return loadDesignImage(own[1], kind);
       const asset = /^asset:(\d{1,18})$/.exec(src);
       if (asset) {
         const row = await cardAssets.getAsset(guildId, asset[1]).catch(() => null);
@@ -104,7 +95,7 @@ async function drawCard(rawCard, ctx, { guildId, premium, lang = ctx?.lang ?? cu
     const basic = localizedBasic(rawCard?.basic, 'welcome', lang);
     ({ card } = normalizeCard({ mode: 'basic', width: card.width, height: card.height, background: card.background, basic }, { premium: false, lang }));
   }
-  return renderCard(card, depsFor(ctx, guildId, { premium }));
+  return renderCard(card, depsFor(ctx, guildId, { premium, kind: card.kind }));
 }
 
 /**

@@ -45,6 +45,14 @@ const BASIC_DEFAULTS = {
 const HEX = /^#[0-9a-f]{6}$/i;
 const cap = (value, max, fallback) => (typeof value === 'string' ? value.slice(0, max) : fallback);
 const flag = (value, fallback) => (typeof value === 'boolean' ? value : fallback);
+/** The tint and strength of the dark panel behind the text (layouts with a panel or bars). Only kept when set, so cards made before it draw as they did. */
+function panelSettings(input) {
+  const out = {};
+  if (typeof input.panelColor === 'string' && HEX.test(input.panelColor.trim())) out.panelColor = input.panelColor.trim().toLowerCase();
+  const opacity = Number(input.panelOpacity);
+  if (input.panelOpacity !== undefined && input.panelOpacity !== null && input.panelOpacity !== '' && Number.isFinite(opacity)) out.panelOpacity = Math.min(0.9, Math.max(0, opacity));
+  return out;
+}
 
 /** The basic settings, checked. Anything missing or wrong becomes the default. `kind` is `welcome` or `rank`. */
 function normalizeBasic(raw, kind = 'welcome') {
@@ -76,6 +84,7 @@ function normalizeBasic(raw, kind = 'welcome') {
       showNameplate: flag(input.showNameplate, false),
       // The decoration moves (Premium) when it is an animated one; without it, or without Premium, it is the still picture.
       animateDecoration: flag(input.animateDecoration, false),
+      ...panelSettings(input),
     };
   }
   const hex = (value, fallback) => (typeof value === 'string' && HEX.test(value.trim()) ? value.trim().toLowerCase() : fallback);
@@ -92,14 +101,17 @@ function normalizeBasic(raw, kind = 'welcome') {
     showTitle: flag(input.showTitle, true),
     showName: flag(input.showName, true),
     showSubtitle: flag(input.showSubtitle, true),
+    ...panelSettings(input),
   };
 }
 
+const FIT_LINES = { title: 1, name: 1, subtitle: 2, extra: 1 };
 const textLayer = (id, value, x, y, size, o = {}) => ({
   id, type: 'text', text: value, x, y, size, font: o.font, weight: o.weight ?? 700, color: o.color, align: o.align ?? 'center',
   w: o.w ?? 0, opacity: o.opacity ?? 1, spacing: o.spacing ?? 0, upper: o.upper ?? false,
   shadow: o.shadow ?? { color: '#000000', blur: 8, x: 0, y: 2 },
-  ...(o.maxLines ? { maxLines: o.maxLines } : {}),
+  // A long name or text gets smaller before it is cut: the name and the title stay on one line, the line under them takes two.
+  maxLines: o.maxLines ?? FIT_LINES[id] ?? 1, fit: true,
 });
 
 /**
@@ -114,7 +126,7 @@ function buildLevelUpLayers(b, width, height) {
   const panelH = height - margin * 2;
   const radius = height * 0.2;
   // The dark panel is under the nameplate, like Discord's own: the nameplate fades out on the left, where the name is.
-  layers.push({ id: 'panel', type: 'shape', shape: 'rect', x: width / 2, y: height / 2, w: panelW, h: panelH, fill: '#000000', radius, opacity: 0.5 });
+  layers.push({ id: 'panel', type: 'shape', shape: 'rect', x: width / 2, y: height / 2, w: panelW, h: panelH, fill: b.panelColor ?? '#000000', radius, opacity: b.panelOpacity ?? 0.5 });
   if (b.showNameplate) layers.push({ id: 'nameplate', type: 'image', src: '{user.nameplate}', x: width / 2, y: height / 2, w: panelW, h: panelH, fit: 'cover', radius, opacity: 1, showIf: '{user.nameplate}' });
 
   const avatar = height * 0.5;
@@ -158,7 +170,7 @@ function buildRankLayers(b, width, height) {
   const bar = (x, y, w, h) => layers.push({
     id: 'bar', type: 'bar', x, y, w, h, radius: h / 2, fill: b.accent, fill2: '', track: '#000000', trackOpacity: 0.45, value: '{level_progress}', shadow: null,
   });
-  layers.push({ id: 'panel', type: 'shape', shape: 'rect', x: width / 2, y: height / 2, w: width - 50, h: height - 50, fill: '#000000', radius: 34, opacity: 0.45 });
+  layers.push({ id: 'panel', type: 'shape', shape: 'rect', x: width / 2, y: height / 2, w: width - 50, h: height - 50, fill: b.panelColor ?? '#000000', radius: 34, opacity: b.panelOpacity ?? 0.45 });
   if (b.preset === 'rankBottom') {
     const size = height * 0.5;
     if (b.showAvatar) layers.push({ id: 'avatar', type: 'avatar', source: 'user', x: 60 + size / 2 + 10, y: height * 0.38, size, shape: b.avatarShape, border: { color: b.accent, width: 7 }, shadow: { color: '#000000', blur: 18, x: 0, y: 5 } });
@@ -196,6 +208,8 @@ function buildBasicLayers(rawBasic, width = 1024, height = 500, kind = 'welcome'
   const line = (id, show, value, x, y, size, o) => { if (show && value) layers.push(textLayer(id, value, x, y, size, { font: b.font, color: b.textColor, ...o })); };
 
   if (b.preset === 'side') {
+    // A design carries a tinted panel so the text stays readable over its picture; without one the layout is as it always was.
+    if (b.panelColor) layers.push({ id: 'panel', type: 'shape', shape: 'rect', x: cx, y: height / 2, w: width - 50, h: height - 50, fill: b.panelColor, radius: 40, opacity: b.panelOpacity ?? 0.5 });
     avatar(height * 0.52, height / 2, height * 0.52);
     const x = height * 0.52 + height * 0.26 + 50;
     const w = width - x - 40;
@@ -203,14 +217,14 @@ function buildBasicLayers(rawBasic, width = 1024, height = 500, kind = 'welcome'
     line('name', b.showName, b.name, x, height * 0.5, 66, { align: 'left', weight: 800, w });
     line('subtitle', b.showSubtitle, b.subtitle, x, height * 0.68, 34, { align: 'left', weight: 400, opacity: 0.9, w });
   } else if (b.preset === 'bars') {
-    layers.push({ id: 'bar-top', type: 'shape', shape: 'rect', x: cx, y: height * 0.08, w: width, h: height * 0.16, fill: '#000000', opacity: 0.55 });
-    layers.push({ id: 'bar-bottom', type: 'shape', shape: 'rect', x: cx, y: height * 0.92, w: width, h: height * 0.16, fill: '#000000', opacity: 0.55 });
+    layers.push({ id: 'bar-top', type: 'shape', shape: 'rect', x: cx, y: height * 0.08, w: width, h: height * 0.16, fill: b.panelColor ?? '#000000', opacity: b.panelOpacity ?? 0.55 });
+    layers.push({ id: 'bar-bottom', type: 'shape', shape: 'rect', x: cx, y: height * 0.92, w: width, h: height * 0.16, fill: b.panelColor ?? '#000000', opacity: b.panelOpacity ?? 0.55 });
     avatar(cx, height * 0.33, height * 0.4);
     line('title', b.showTitle, b.title, cx, height * 0.64, 78, { weight: 800, upper: true, color: b.accent, w: width - 80 });
     line('name', b.showName, b.name, cx, height * 0.79, 38, { w: width - 80 });
     line('subtitle', b.showSubtitle, b.subtitle, cx, height * 0.92, 30, { weight: 700, upper: true, w: width - 80 });
   } else if (b.preset === 'panel') {
-    layers.push({ id: 'panel', type: 'shape', shape: 'rect', x: cx, y: height / 2, w: width - 100, h: height - 100, fill: '#000000', radius: 40, opacity: 0.5 });
+    layers.push({ id: 'panel', type: 'shape', shape: 'rect', x: cx, y: height / 2, w: width - 100, h: height - 100, fill: b.panelColor ?? '#000000', radius: 40, opacity: b.panelOpacity ?? 0.5 });
     avatar(width * 0.22, height / 2, height * 0.46);
     const x = width * 0.22 + height * 0.23 + 50;
     const w = width - x - 90;

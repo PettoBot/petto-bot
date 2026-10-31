@@ -17,9 +17,23 @@ function mobileClientName(value = process.env.PETTO_MOBILE_CLIENT) {
   return CLIENTS[name] ? name : 'android';
 }
 
+// What the library names by itself, saved before the first change so a later `applyNormalIdentify` can put it back.
+let libraryDefaults = null;
+function remember(properties) {
+  if (!libraryDefaults) libraryDefaults = { ...properties };
+}
+
 function applyMobileIdentify(name = mobileClientName()) {
   const properties = gatewayLibrary().DefaultWebSocketManagerOptions.identifyProperties;
+  remember(properties);
   Object.assign(properties, CLIENTS[name]);
+  return { ...properties };
+}
+
+/** The names the library sends by itself (no phone icon). Nothing to do when they were never changed. */
+function applyNormalIdentify() {
+  const properties = gatewayLibrary().DefaultWebSocketManagerOptions.identifyProperties;
+  if (libraryDefaults) Object.assign(properties, libraryDefaults);
   return { ...properties };
 }
 
@@ -28,4 +42,4 @@ function currentIdentify() {
   return { ...gatewayLibrary().DefaultWebSocketManagerOptions.identifyProperties };
 }
 
-module.exports = { CLIENTS, mobileClientName, applyMobileIdentify, currentIdentify };
+module.exports = { CLIENTS, mobileClientName, applyMobileIdentify, applyNormalIdentify, currentIdentify };

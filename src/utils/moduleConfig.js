@@ -68,6 +68,7 @@ const MODULES = {
   clownboardconfig: { aliases: [], title: t('en', 'config.module.clownboardconfig.title'), command: 'clownboard', sources: [{ table: 'clownboards' }] },
   giveawayconfig: { aliases: [], title: t('en', 'config.module.giveawayconfig.title'), command: 'giveaway', show: [/^embed/, /^reaction/, /^entry-mode/, /^template/, /^winner-message/, /^deny-message/, /^accept-message/, /^no-entries-message/, /^claim-time/, /^message-template/], sources: [{ table: 'giveaway_config', only: ['reaction', 'entry_mode', 'embed_template'] }] },
   ticketconfig: { aliases: [], title: t('en', 'config.module.ticketconfig.title'), command: 'ticket', show: [/^setup/, /^panel create/, /^category (add|edit)/, /^support-role add/, /^ping-role add/, /^required-role add/, /^form create/, /^blacklist add/, /^panel (resend|delete)/, /^category remove/], sources: [{ table: 'ticket_settings' }] },
+  forumconfig: { aliases: ['forumsconfig'], title: t('en', 'config.module.forumconfig.title'), command: 'forum', show: [/^setup/, /^panel/, /^set /, /^status/, /^enable/, /^disable/, /^delete/], sources: [{ table: 'forum_setups', list: true, only: ['name', 'forum_channel_id', 'enabled', 'inactive_days', 'adopt'] }] },
   verifyconfig: { aliases: [], title: t('en', 'config.module.verifyconfig.title'), command: 'verify', sources: [{ table: 'verification_config' }] },
   bumpconfig: { aliases: ['bumpreminderconfig'], title: t('en', 'config.module.bumpconfig.title'), command: 'bumpreminder', sources: [{ table: 'bump_reminders', skip: ['message', 'thankyou'] }] },
   vmconfig: { aliases: ['voicemasterconfig'], title: t('en', 'config.module.vmconfig.title'), command: 'voicemaster', show: [/^setup/, /^disable/, /^info/, /^panel/], sources: [{ table: 'voice_configs' }] },
@@ -171,7 +172,7 @@ function matches(column, only, skip) {
 
 
 // The stored default welcome text is the English one; the welcome module shows it in the language of the server.
-const DEFAULT_TEXT_COLUMNS = new Set(['welcome_message', 'dm_join_message']);
+const DEFAULT_TEXT_COLUMNS = new Set(['welcome_message', 'welcome_second_message', 'dm_join_message']);
 function shownValue(column, value, lang) {
   if (!DEFAULT_TEXT_COLUMNS.has(column) || typeof value !== 'string') return value;
   const { localizeDefaultText } = require('./memberEventMessage');

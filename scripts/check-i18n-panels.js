@@ -408,6 +408,7 @@ function draw(name, build) {
   stub('src/db/verificationConfig.js', { getConfig: async () => ({ panel_channel_id: 'c', panel_message_id: 'vf', method: 'letters' }) });
   stub('src/db/confessions.js', { getConfig: async () => ({ ...confessionConfig, panel_channel_id: 'c', panel_message_id: 'cf' }) });
   stub('src/db/honeypot.js', { listHoneypots: async () => [{ guild_id: guild.id, channel_id: 'c', panel_message_id: 'hp', punishment: 'kick', caught_count: 2, panel_mode: 'default' }] });
+  stub('src/db/forums.js', { listSetups: async () => [] }); // forum support: a server with no setup has no panel
   stub('src/db/giveaways.js', { listActiveForGuild: async () => { throw new Error('database down'); } });
   const result = await refreshGuildPanels(liveGuild, 'es');
   assert.deepEqual(result.failed, ['giveaways'], 'a failing module is reported and skipped');

@@ -1,4 +1,5 @@
 const { isPermissionError, permissionHelp } = require('../utils/permissionErrors');
+const { isPayloadError } = require('../utils/payloadFallback');
 const { Events, MessageFlags, PermissionsBitField } = require('discord.js');
 const { plainMessage } = require('../utils/cardService');
 const { ensureGuild } = require('../db/guilds');
@@ -444,7 +445,7 @@ module.exports = {
       else logger.error(`Error executing ${prefix}${canonicalName}:`, err);
       const errorReply = err.missingOption
         ? missingOptionCard({ command, prefix, name: canonicalName, argText, missing: err.missingOption, lang })
-        : warningPayload(message, err.userFacing ? err.message : isPermissionError(err) ? permissionHelp(err, lang) : t(lang, 'core.error'));
+        : warningPayload(message, err.userFacing ? err.message : isPermissionError(err) ? permissionHelp(err, lang) : isPayloadError(err) ? t(lang, 'core.replyTooLong') : t(lang, 'core.error'));
       if (interaction.deferred || interaction.replied) await interaction.editReply(errorReply).catch(() => {});
       else await interaction.reply(errorReply).catch(() => {});
     }

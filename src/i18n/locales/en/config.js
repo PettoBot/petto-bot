@@ -405,4 +405,5 @@ module.exports = {
   'config.restrict.removedRole': '{emoji}  {role} was taken off `{command}`; the other roles of the command still can use it.',
   'config.restrict.open': '{emoji}  `{command}` is open again: everyone with the usual permissions can use it.',
   'config.column.retention_days': 'Answers kept (days)',
+  'config.module.forumconfig.title': 'Forum support',
 };
