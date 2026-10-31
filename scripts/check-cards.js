@@ -10,8 +10,8 @@ const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const fixturePath = path.join(__dirname, 'fixtures', 'card-presets.json');
 const { normalizeCard, LIMITS } = require('../src/utils/cardSchema');
 const { PRESETS, RANK_PRESETS, BASIC_DEFAULTS, RANK_DEFAULTS, buildBasicLayers } = require('../src/utils/cardPresets');
-const { renderCard, fitRect, wrapLines } = require('../src/imgutils/cardRenderer');
-const { registerCardFonts, CARD_FONTS, nearestWeight, canvasFont } = require('../src/imgutils/cardFonts');
+const { renderCard, fitRect, wrapLines, layOut } = require('../src/imgutils/cardRenderer');
+const { registerCardFonts, CARD_FONTS, nearestWeight, canvasFont, printable } = require('../src/imgutils/cardFonts');
 const safeImage = require('../src/utils/safeImage');
 
 registerCardFonts();
@@ -20,6 +20,26 @@ for (const font of CARD_FONTS) for (const weight of font.weights) assert.ok(Glob
 assert.equal(nearestWeight('Bebas Neue', 800), 400, 'a font with one weight uses it');
 assert.equal(nearestWeight('Poppins', 600) === 700 || nearestWeight('Poppins', 600) === 400, true);
 assert.ok(canvasFont('Unknown font', 700, 40).includes('Poppins'), 'an unknown font falls back to the default');
+
+// A long name gets smaller, then is cut, and a word wider than the card is broken: nothing leaves its width. Emoji are left out when there is no emoji font.
+{
+  const ctx = createCanvas(10, 10).getContext('2d');
+  const layer = { font: 'Poppins', weight: 800, size: 58, spacing: 0, w: 600, maxLines: 1, fit: true };
+  const short = layOut(ctx, layer, 'Liam');
+  assert.equal(short.size, 58, 'a short name keeps its size');
+  const long = layOut(ctx, layer, 'Alexandrina Montgomery-Smith the Third of Westminster');
+  assert.ok(long.size < 58 && long.size >= 58 * 0.55 - 0.01, 'a long name gets smaller, not smaller than 55%');
+  assert.equal(long.lines.length, 1, 'and stays on its line');
+  ctx.font = canvasFont('Poppins', 800, long.size);
+  assert.ok(ctx.measureText(long.lines[0]).width <= 600 + 1, 'inside its width');
+  const word = layOut(ctx, layer, 'W'.repeat(60));
+  ctx.font = canvasFont('Poppins', 800, word.size);
+  assert.ok(word.lines.length === 1 && ctx.measureText(word.lines[0]).width <= 601 && word.lines[0].endsWith('…'), 'a word wider than the card is cut with an ellipsis');
+  const plain = layOut(ctx, { ...layer, fit: false, maxLines: 0 }, 'a '.repeat(80));
+  assert.equal(plain.size, 58, 'a layer without fit keeps its size and wraps as before');
+  assert.equal(printable('Ana 🌸 Pérez 👨‍👩‍👧', false), 'Ana Pérez', 'emoji are left out when the machine has no emoji font');
+  assert.equal(printable('Ana 🌸', true), 'Ana 🌸', 'and kept when it has one');
+}
 
 // The saved form and its limits.
 let r = normalizeCard({ mode: 'basic', basic: { preset: 'bars' }, layers: [{ type: 'text', text: 'smuggled', font: 'Pacifico' }] });

@@ -13,7 +13,7 @@ stub('src/config.js', {});
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {} });
 stub('src/db/embedTemplates.js', { getTemplate: async (guildId, name) => (templates[name] ? { name, data: templates[name] } : null) });
 stub('src/utils/cardService.js', { renderCardForMessage: async () => null, normalizeCardRef: () => null, CARD_FILE_NAME: 'card.png' });
-const { build, hasContent } = require('../src/utils/embedBuilder');
+const { build, hasContent, validUrl } = require('../src/utils/embedBuilder');
 const { buildV2, isV2, hasV2Content, LIMITS } = require('../src/utils/embedV2');
 const { templatePayload } = require('../src/utils/templatedMessage');
 const { questMessage } = require('../src/utils/questMessages');
@@ -110,5 +110,11 @@ const design = {
   assert.equal(alert.components[0].content, '-# <@&777>', 'the role ping comes first, as small text');
   assert.ok(alert.components.at(-1).content.includes('Data from'), 'the credit comes last');
   assert.deepEqual(alert.allowedMentions, { parse: [], roles: ['777'] });
+  // A picture link over what Discord accepts is left out (cutting it would make a picture that never loads), in an embed and in a V2 gallery.
+  const longLink = `https://example.com/${'a'.repeat(2100)}`;
+  assert.equal(validUrl(longLink), undefined);
+  assert.equal(validUrl('https://example.com/a.png'), 'https://example.com/a.png');
+  const gallery = await buildV2({ components: [{ type: 12, items: [{ media: { url: longLink } }, { media: { url: 'https://example.com/ok.png' } }] }] }, ctx);
+  assert.deepEqual(gallery.components[0].items.map((item) => item.media.url), ['https://example.com/ok.png'], 'a gallery drops the picture whose link is too long');
   console.log('Checked the Components V2 templates: variables, cleaning, limits, and who gets them.');
 })().catch((error) => { console.error(error); process.exit(1); });

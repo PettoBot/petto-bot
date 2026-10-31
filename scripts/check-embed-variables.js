@@ -84,3 +84,25 @@ if (problems.length) {
   assert.deepEqual(listVariables(), VARIABLE_GROUPS, 'outside of a command the list is the English one');
   console.log(`Checked ${listed.length} embed variables against the engine.`);
 })();
+
+// Close spellings and the account and member age (checked after the list above, with the same engine).
+(async () => {
+  const { resolve } = require('../src/utils/embedVariables');
+  const { Collection } = require('discord.js');
+  const day = 86_400_000;
+  const user = { id: '1', username: 'ana', createdTimestamp: Date.now() - 800 * day, displayAvatarURL: () => '' };
+  const member = { user, displayName: 'Ana B', joinedTimestamp: Date.now() - 3 * day, displayAvatarURL: () => '', roles: { cache: new Collection(), highest: { name: 'x' } } };
+  const guild = { id: '9', name: 'Petto', memberCount: 1204, premiumTier: 0, premiumSubscriptionCount: 0, iconURL: () => null, bannerURL: () => null, members: { cache: new Collection() }, roles: { cache: new Collection() }, channels: { cache: new Collection() }, emojis: { cache: new Collection() } };
+  const out = (text, lang) => resolve(text, { member, user, guild, lang });
+  assert.equal(await out('{user.account_age_days}'), '800');
+  assert.equal(await out('{user.account_age}'), '2 years');
+  assert.match(await out('{user.joined_age}'), /3 days/);
+  assert.match(await out('{user.account_age}', 'es'), /2 años/, 'the age is written in the language of the server');
+  assert.equal(await resolve('{user.account_age}|{user.joined_age}|{user.account_age_days}', {}), '||', 'without a member the age is empty, never undefined');
+  assert.equal(await out('{user.displayname}'), 'Ana B', 'a close spelling works');
+  assert.equal(await out('{User.Display_Name}'), 'Ana B');
+  assert.equal(await out('{server_member_count}'), '1204');
+  assert.equal(await out('{servermembercount}'), '1204');
+  assert.equal(await out('{nothing.here}'), '{nothing.here}', 'an unknown variable stays as written');
+  console.log('Checked close spellings and ages.');
+})().catch((error) => { console.error(error); process.exit(1); });
