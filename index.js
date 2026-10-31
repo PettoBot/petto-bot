@@ -60,7 +60,7 @@ require('./src/utils/safeReply').installSafeReply(require('discord.js').Message)
 // A text display never throws for its length: too long it is cut, empty it holds a zero width space (see utils/cardBlocks.js).
 require('./src/utils/cardBlocks').installTextDisplayGuard();
 
-// Before the client exists: the phone icon next to the status dot (PETTO_MOBILE_STATUS=false turns it off).
+// Before the client exists: the phone icon next to the status dot (PETTO_MOBILE_STATUS=false turns it off, and `!botstatus device` saves the choice).
 if (config.mobileStatus) require('./src/utils/mobilePresence').applyMobileIdentify();
 
 const client = new Client({
