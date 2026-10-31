@@ -43,6 +43,23 @@ function topPercent(levelData, locale) {
   return new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(percent);
 }
 
+// Names other people (and other bots) use for the same thing, so a variable written the way the server's admins know it still works.
+const ALIASES = {
+  mention: 'user', user_mention: 'user', member: 'user', 'member.mention': 'user', 'user.ping': 'user',
+  'user.tag': 'user_tag', 'user.username': 'user_name', username: 'user_name', 'user.nickname': 'user.display_name', 'user.nick': 'user_nick', nickname: 'user_nick',
+  'user.discriminator': 'user_discrim', 'user.avatar_url': 'user.avatar', 'user.display_avatar_url': 'user.display_avatar', 'member.name': 'user.display_name', 'member.id': 'user.id',
+  'level.level': 'level', 'level.current': 'level', 'level.xp': 'level_xp', 'level.total_xp': 'level_xp', 'level.xp_needed': 'level_xp_needed', 'level.rank': 'level_rank',
+  'level.next': 'level_next', 'level.progress': 'level_progress', 'level.xp_current': 'level_xp_current', 'level.xp_to_next': 'level_xp_to_next', 'level.rank_total': 'level_rank_total',
+  'level.total': 'level_rank_total', 'level.streak': 'level_streak', 'level.messages': 'level_messages', 'level.voice_minutes': 'level_voice_minutes', 'level.type': 'level_type',
+  'level.bar': 'level_bar', 'level.role': 'level_role', 'level.role_name': 'level_role_name', 'level.previous': 'level_previous',
+  server: 'server_name', 'server.name': 'server_name', 'server.id': 'server_id', 'server.members': 'server_membercount', 'server.icon': 'server_icon', guild: 'server_name',
+  'boost.count': 'server_boostcount', 'boost.level': 'server_boostlevel', 'boost.tier': 'server_boostlevel', 'boost.next_level': 'server_nextboostlevel',
+  'boost.required': 'server_nextboostlevel_required', 'boost.remaining': 'server_nextboostlevel_until_required', 'boost.until_next': 'server_nextboostlevel_until_required',
+  'level.new_rank': 'level', 'level.new_level': 'level', 'level.old_rank': 'level_previous', 'level.old_level': 'level_previous', 'level.user_xp': 'level_xp', 'level.user_rank': 'level_rank',
+  'guild.members': 'guild.count', 'guild.member_count': 'guild.count', 'server.member_count': 'server_membercount', 'user.joined': 'user.joined_at', 'user.created': 'user.created_at',
+  'message.link': 'message_link', 'message.id': 'message_id', 'message.content': 'message_content', 'channel.link': 'channel',
+};
+
 async function resolve(text, ctx = {}) {
   const { member, guild, channel, message } = ctx;
   const lang = DATE_LOCALES[ctx.lang] ? ctx.lang : currentLanguage();
@@ -472,28 +489,12 @@ async function resolve(text, ctx = {}) {
     '{separator}': '──────────────────────',
   };
 
-  // Names other people (and other bots) use for the same thing, so a variable written the way the server's admins know it still works.
-  const aliases = {
-    mention: 'user', user_mention: 'user', member: 'user', 'member.mention': 'user', 'user.ping': 'user',
-    'user.tag': 'user_tag', 'user.username': 'user_name', username: 'user_name', 'user.nickname': 'user.display_name', 'user.nick': 'user_nick', nickname: 'user_nick',
-    'user.discriminator': 'user_discrim', 'user.avatar_url': 'user.avatar', 'user.display_avatar_url': 'user.display_avatar', 'member.name': 'user.display_name', 'member.id': 'user.id',
-    'level.level': 'level', 'level.current': 'level', 'level.xp': 'level_xp', 'level.total_xp': 'level_xp', 'level.xp_needed': 'level_xp_needed', 'level.rank': 'level_rank',
-    'level.next': 'level_next', 'level.progress': 'level_progress', 'level.xp_current': 'level_xp_current', 'level.xp_to_next': 'level_xp_to_next', 'level.rank_total': 'level_rank_total',
-    'level.total': 'level_rank_total', 'level.streak': 'level_streak', 'level.messages': 'level_messages', 'level.voice_minutes': 'level_voice_minutes', 'level.type': 'level_type',
-    'level.bar': 'level_bar', 'level.role': 'level_role', 'level.role_name': 'level_role_name', 'level.previous': 'level_previous',
-    server: 'server_name', 'server.name': 'server_name', 'server.id': 'server_id', 'server.members': 'server_membercount', 'server.icon': 'server_icon', guild: 'server_name',
-    'boost.count': 'server_boostcount', 'boost.level': 'server_boostlevel', 'boost.tier': 'server_boostlevel', 'boost.next_level': 'server_nextboostlevel',
-    'boost.required': 'server_nextboostlevel_required', 'boost.remaining': 'server_nextboostlevel_until_required', 'boost.until_next': 'server_nextboostlevel_until_required',
-    'level.new_rank': 'level', 'level.new_level': 'level', 'level.old_rank': 'level_previous', 'level.old_level': 'level_previous', 'level.user_xp': 'level_xp', 'level.user_rank': 'level_rank',
-    'guild.members': 'guild.count', 'guild.member_count': 'guild.count', 'server.member_count': 'server_membercount', 'user.joined': 'user.joined_at', 'user.created': 'user.created_at',
-    'message.link': 'message_link', 'message.id': 'message_id', 'message.content': 'message_content', 'channel.link': 'channel',
-  };
   // A variable is found whatever its case and with spaces inside the braces (`{ User.Mention }`), in one pass, so what a variable gives is never read as a variable again.
   const lookup = new Map(Object.entries(map).map(([key, val]) => [key.slice(1, -1).toLowerCase(), val]));
   result = result.replace(/\{\s*([A-Za-z0-9_.]+)\s*\}/g, (whole, name) => {
     const key = name.toLowerCase();
-    let found = lookup.has(key) ? lookup.get(key) : lookup.get(aliases[key]);
-    if (found === undefined) found = closeSpelling(key, lookup, aliases);
+    let found = lookup.has(key) ? lookup.get(key) : lookup.get(ALIASES[key]);
+    if (found === undefined) found = closeSpelling(key, lookup, ALIASES);
     return found === undefined ? whole : String(found);
   });
   return result;
@@ -513,4 +514,4 @@ function closeSpelling(key, lookup, aliases) {
   return values.size === 1 ? [...values][0] : undefined;
 }
 
-module.exports = { resolve };
+module.exports = { resolve, ALIASES };
