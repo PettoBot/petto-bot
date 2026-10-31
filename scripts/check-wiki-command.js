@@ -169,6 +169,8 @@ function install() {
 }
 
 const inCard = (payload) => JSON.stringify(payload.components.map((component) => component.toJSON()));
+// The addresses a card mentions, as whole addresses (so a test compares one with another instead of looking inside a string).
+const linksIn = (payload) => new Set(textsOf(payload).match(/https?:\/\/[^\s)<>\]`]+/g) ?? []);
 function textsOf(payload) {
   const out = [];
   (function walk(node) {
@@ -438,7 +440,7 @@ const keepAlive = setInterval(() => {}, 1000);
   assert.equal(r.kind, 'termsNone');
   card = cardFor(r, { lang: 'en', prefix: '!' });
   assertValid('terms none', card);
-  assert.ok(textsOf(card).includes('Nothing in **Terms of Service** answers `terms pineapple pizza recipe`') && textsOf(card).includes('https://petto.sbs/support'));
+  assert.ok(textsOf(card).includes('Nothing in **Terms of Service** answers `terms pineapple pizza recipe`') && linksIn(card).has('https://petto.sbs/support'));
   assert.ok(textsOf(cardFor(await answer('terminos pizza hawaiana', 'es'), { lang: 'es', prefix: '!' })).includes('Nada en **Términos de servicio** responde'));
   assert.ok(textsOf(cardFor(await answer('termos pizza havaiana', 'pt-BR'), { lang: 'pt-BR', prefix: '!' })).includes('Nada em **Termos de serviço** responde'));
 
@@ -481,7 +483,7 @@ const keepAlive = setInterval(() => {}, 1000);
   assert.ok(r.close.length <= 5 && r.close.length > 0);
   card = cardFor(r, { lang: 'en', prefix: '!' });
   assertValid('none', card);
-  assert.ok(textsOf(card).includes('https://petto.sbs/support') && textsOf(card).includes('Nothing in the wiki matches **`xyzzy plugh`**'));
+  assert.ok(linksIn(card).has('https://petto.sbs/support') && textsOf(card).includes('Nothing in the wiki matches **`xyzzy plugh`**'));
   assert.equal((await answer('', 'en')).kind, 'home');
   card = cardFor(await answer('', 'en'), { lang: 'en', prefix: '?' });
   assertValid('home', card);
@@ -500,7 +502,7 @@ const keepAlive = setInterval(() => {}, 1000);
   assert.equal(r.kind, 'error');
   card = cardFor(r, { lang: 'en', prefix: '!' });
   assertValid('error', card);
-  assert.ok(textsOf(card).includes('https://wiki.petto.sbs') && textsOf(card).includes('https://petto.sbs/terms') && textsOf(card).includes('https://petto.sbs/support'), 'plain links when nothing can be read');
+  assert.ok(linksIn(card).has('https://wiki.petto.sbs') && linksIn(card).has('https://petto.sbs/terms') && linksIn(card).has('https://petto.sbs/support'), 'plain links when nothing can be read');
   assert.equal((await answer('', 'en')).kind, 'error');
   install();
   set(`${SITE}/terms`, { status: 404 });
@@ -508,7 +510,7 @@ const keepAlive = setInterval(() => {}, 1000);
   assert.equal(r.kind, 'termsError');
   card = cardFor(r, { lang: 'en', prefix: '!' });
   assertValid('terms error', card);
-  assert.ok(textsOf(card).includes('https://petto.sbs/terms') && textsOf(card).includes('https://petto.sbs/support'));
+  assert.ok(linksIn(card).has('https://petto.sbs/terms') && linksIn(card).has('https://petto.sbs/support'));
   install();
   W.limits.timeoutMs = 50;
   set(`${SITE}/privacy`, { hang: true });
@@ -597,7 +599,7 @@ const keepAlive = setInterval(() => {}, 1000);
   set(`${WIKI}/llms.txt`, { status: 500 });
   W.resetCaches();
   payload = await typed('pineapple');
-  assert.ok(textsOf(payload).includes('https://petto.sbs/support'), 'the command answers with the plain links when the wiki is down');
+  assert.ok(linksIn(payload).has('https://petto.sbs/support'), 'the command answers with the plain links when the wiki is down');
   // A slash command (not registered today, but the same code) says an answer is coming and then fills it in.
   install();
   const slash = [];
