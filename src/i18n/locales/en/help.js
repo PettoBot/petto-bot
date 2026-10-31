@@ -76,6 +76,7 @@ module.exports = {
   'help.example.role': '@role',
   'help.example.channel': '#channel',
   'help.line': '{user}: <{help}>, join the support server @ <{support}>',
+  'help.line.plain': '{user}: <{help}>',
   'help.line.tip': '-# `{prefix}help full` opens the command browser here, `{prefix}help <command>` explains one.',
   'help.notFound': '{emoji}  I could not find a command named `{command}`. Use `{prefix}help` to browse every command.',
   'help.notFoundSuggest': '{emoji}  I could not find a command named `{command}`. Did you mean {suggestions}? Use `{prefix}help` to browse every command.',

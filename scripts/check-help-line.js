@@ -49,6 +49,7 @@ const { CATALOGS, LANGUAGES } = require('../src/i18n');
     'pt-BR': ['<https://petto.sbs/pt-br/commands>', 'entre no servidor de suporte @ <https://petto.sbs/support>'],
   };
   for (const lang of LANGUAGES) {
+    help.resetSupportShown();
     const payload = await typed('', lang);
     assert.equal(sent.length, 1, 'one message');
     assert.equal(payload.components, undefined, 'a plain message, no card');
@@ -72,6 +73,22 @@ const { CATALOGS, LANGUAGES } = require('../src/i18n');
     for (const key of ['help.line', 'help.line.tip']) assert.ok(Object.hasOwn(CATALOGS[lang], key), `${lang} has ${key}`);
     assert.ok(CATALOGS[lang]['help.line'].includes('<{help}>') && CATALOGS[lang]['help.line'].includes('<{support}>'));
   }
+
+  // The support server is offered the first time, left out on the next ones, and offered again after the interval.
+  help.resetSupportShown();
+  const first = await typed('');
+  assert.ok(first.content.includes(`<${SUPPORT_URL}>`), 'the first !help invites to the support server');
+  const second = await typed('');
+  assert.ok(!second.content.includes(SUPPORT_URL), 'the next one does not');
+  assert.ok(second.content.startsWith(`!<@${user.id}>: <https://petto.sbs/commands>\n`), 'it is the short line with the commands link');
+  assert.ok(second.content.includes('`!help full`'), 'and keeps the tip');
+  assert.ok(!help.supportDue(user.id, Date.now() + help.SUPPORT_EVERY_MS - 60000), 'still quiet just before the interval');
+  assert.ok(help.supportDue(user.id, Date.now() + help.SUPPORT_EVERY_MS + 1000), 'offered again after the interval');
+  assert.ok(help.supportDue('999999999999999999'), 'another person gets it the first time');
+  for (const lang of LANGUAGES) assert.ok(Object.hasOwn(CATALOGS[lang], 'help.line.plain') && !CATALOGS[lang]['help.line.plain'].includes('{support}'), `${lang} has the short line`);
+  help.resetSupportShown();
+  for (let i = 0; i < 700; i += 1) help.supportDue(`u${i}`);
+  assert.ok(help.supportDue('u0'), 'the oldest ones leave the memory (capped at 500)');
 
   // The rest of !help.
   for (const word of ['full', 'FULL', 'menu', 'all']) {
