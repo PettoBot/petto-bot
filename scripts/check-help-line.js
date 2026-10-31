@@ -76,6 +76,12 @@ const { CATALOGS, LANGUAGES } = require('../src/i18n');
   payload = await typed('nosuchcommand');
   assert.ok(JSON.stringify(payload.components.map((c) => c.toJSON())).includes('nosuchcommand'), 'an unknown command is still told');
 
+  // A mistyped command gets the closest ones (also used by the "unknown command" answer: `!bna` says "Did you mean `!ban`?").
+  assert.ok(help.suggestCommands(client, 'bna').includes('ban'), 'bna suggests ban');
+  assert.ok(help.suggestCommands(client, 'serv').includes('server'), 'a start suggests the command');
+  assert.deepEqual(help.suggestCommands(client, 'zzzzqqqq'), [], 'nothing close, nothing suggested');
+  for (const lang of LANGUAGES) assert.ok(CATALOGS[lang]['core.unknownCommandSuggest'].includes('{suggestions}'), `${lang} has the suggestion text`);
+
   // The slash command opens the browser, private.
   const slash = [];
   const interaction = {

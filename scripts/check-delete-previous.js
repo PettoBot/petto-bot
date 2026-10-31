@@ -78,7 +78,7 @@ function fakeChannel(id = 'c1') {
   const gone2 = await timerPayload(channel, { guild_id: 'g', message: 'fallback', embed_template: 'deleted' });
   assert.equal(gone2.message.content, 'fallback', 'a saved embed that is gone falls back to the text');
   assert.equal(gone2.message.embeds, undefined);
-  assert.deepEqual((await timerPayload(channel, { guild_id: 'g', message: 'plain', embed_template: null })).message, { content: 'plain', allowedMentions: { parse: [] } });
+  assert.deepEqual((await timerPayload(channel, { guild_id: 'g', message: 'plain', embed_template: null })).message, { content: 'plain', allowedMentions: { parse: ['users', 'roles', 'everyone'] } });
   rows.splice(0, rows.length, { id: 11, guild_id: 'g', channel_id: 'c1', interval_ms: 600000, message: '', next_run_at: 'x', delete_previous: false, embed_template: 'ok' });
   await processDueAutoMessages(client);
   assert.deepEqual(channel.sent.at(-1).embeds, [{ title: 'T' }], 'the timer sends its embed');

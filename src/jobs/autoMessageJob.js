@@ -17,7 +17,9 @@ const POLL_INTERVAL_MS = 30_000;
  * (a lone "." or "," is left out).
  */
 async function timerPayload(channel, row) {
-  const allowedMentions = { parse: [] };
+  // A timer pings what its text mentions, as a message typed by the staff would (`@everyone` needs the Mention Everyone permission of the bot,
+  // otherwise Discord just shows it). A mention written with `!` in front is silent: the global silent mentions hook takes it off this list.
+  const allowedMentions = { parse: ['users', 'roles', 'everyone'] };
   if (row.embed_template) {
     const built = await templatePayload(channel.guild?.id ?? row.guild_id, row.embed_template, { guild: channel.guild, channel });
     if (built) {

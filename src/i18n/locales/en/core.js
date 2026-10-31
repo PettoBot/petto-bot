@@ -3,6 +3,7 @@
 module.exports = {
   'core.customCommand.needsText': 'This custom command needs text after it. Try `{prefix}{command} your request here`.',
   'core.unknownCommand': '{emoji}  Unknown command `{command}`. Use `{prefix}help` to see all commands.',
+  'core.unknownCommandSuggest': '{emoji}  Unknown command `{command}`. Did you mean {suggestions}? Use `{prefix}help` to see all commands.',
   'core.disabled.channel': '{emoji}  `{command}` is turned off in {channel}.\n-# Try it in another channel.',
   'core.disabled.server': '{emoji}  `{command}` is turned off on this server.',
   'core.cooldown': 'Please wait {seconds}s before using `{prefix}{command}` again.',
