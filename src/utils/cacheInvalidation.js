@@ -24,6 +24,7 @@ const INVALIDATION_TABLES = Object.freeze([
   'message_link_settings', // src/db/messageLinks.js, the message link embeds (on or off, ignored channels)
   'level_config', // src/db/levelConfig.js
   'level_multipliers', // src/db/levelMultipliers.js
+  'member_events_config', // src/db/memberEvents.js, the welcome, leave and boost messages and whether they wait for the member
   'partner_config', // src/db/partners.js
   'sanction_templates', // src/db/sanctionTemplates.js
   'sticky_messages', // src/db/stickyMessages.js (cached by server and channel)

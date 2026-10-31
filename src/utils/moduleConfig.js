@@ -171,7 +171,7 @@ function matches(column, only, skip) {
 
 
 // The stored default welcome text is the English one; the welcome module shows it in the language of the server.
-const DEFAULT_TEXT_COLUMNS = new Set(['welcome_message', 'dm_join_message']);
+const DEFAULT_TEXT_COLUMNS = new Set(['welcome_message', 'welcome_second_message', 'dm_join_message']);
 function shownValue(column, value, lang) {
   if (!DEFAULT_TEXT_COLUMNS.has(column) || typeof value !== 'string') return value;
   const { localizeDefaultText } = require('./memberEventMessage');

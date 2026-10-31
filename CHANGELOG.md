@@ -4,6 +4,10 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **The welcome can wait for the member, and a server can have a second welcome.** New setting `welcome_wait` (Onboarding > Messages in the dashboard): `off` (the default, nothing changes: the welcome goes out when the member joins), `rules` (it waits until the member accepts the server rules, Membership Screening) or `rules_onboarding` (it also waits until the member finishes Discord's onboarding, but is sent anyway 10 minutes after the rules were accepted, or 30 minutes after joining when there are no rules, because Discord lets members skip the onboarding and its flag may never be set). Only the welcome in a channel waits: the DM on join, the ping on join, the logs, the invites, the join roles and the level bonus stay immediate. A member who never accepts the rules is never welcomed, and one who leaves is dropped. The waiting members are kept in the new table `join_waiting` (a row per member, removed when the welcome is sent, when they leave or after 7 days), so a restart loses none; one timer for the whole bot sends the ones whose limit passed, and a server where nobody waits costs no query. The second welcome has its own channel, message or saved design and switch (`!welcome second-setup`, `!welcome second-disable`, the dashboard), is sent right after the first, follows the same setting, and one failing (a missing channel or permission, said once an hour in the log) does not stop the other; `!welcome test` and `!welcome status` cover both. New columns of `member_events_config`: `welcome_wait`, `welcome_second_enabled`, `welcome_second_channel_id`, `welcome_second_message` and `welcome_second_embed_template`.
+
 ## [0.7.9-2] — 2026-10-30 · Donut
 
 A patch of 0.7.9, shown as **0.7.9~2**.

@@ -4530,3 +4530,36 @@ create table if not exists guild_departures (
 
 alter table guild_departures enable row level security;
 
+
+-- ---------------------------------------------------------------------------
+-- The welcome message of a channel can wait for a new member to accept the rules (Membership Screening) and to finish Discord's
+-- onboarding (utils/joinGate.js). `welcome_wait` says how: 'off' (the default, sent at the join), 'rules' or 'rules_onboarding'. The
+-- dashboard has it in Onboarding > Messages. The DM on join and the ping on join never wait.
+--
+-- A server can also have a second welcome (another channel and message, for example the general chat), with its own switch: it is sent right
+-- after the first one, and follows the same `welcome_wait`.
+-- ---------------------------------------------------------------------------
+
+alter table member_events_config add column if not exists welcome_wait text not null default 'off';
+alter table member_events_config add column if not exists welcome_second_enabled boolean not null default false;
+alter table member_events_config add column if not exists welcome_second_channel_id text;
+alter table member_events_config add column if not exists welcome_second_message text;
+alter table member_events_config add column if not exists welcome_second_embed_template text;
+
+-- join_waiting holds the members whose welcome is waiting, so a restart between the join and the end of the steps loses nothing: a row is
+-- added when the welcome is held and removed when it is sent, when the member leaves, or after 7 days. `due_at` is the safety limit of the
+-- onboarding (Discord lets members skip it, and then the flag that says it is done may never come): the welcome goes out when it passes
+-- (10 minutes after the rules were accepted, or 30 minutes after joining when there are no rules to accept). It is null while the rules are
+-- not accepted.
+create table if not exists join_waiting (
+  guild_id  text not null references guilds(guild_id) on delete cascade,
+  user_id   text not null,
+  joined_at timestamptz not null default now(),
+  due_at    timestamptz,
+  primary key (guild_id, user_id)
+);
+
+create index if not exists idx_join_waiting_joined_at on join_waiting(joined_at);
+create index if not exists idx_join_waiting_due_at on join_waiting(due_at) where due_at is not null;
+
+alter table join_waiting enable row level security;

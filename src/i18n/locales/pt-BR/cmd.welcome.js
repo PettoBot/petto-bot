@@ -52,4 +52,9 @@ module.exports = {
   'cmd.welcome.welcome.status.desc': 'Mostre a configuração atual de boas-vindas.',
   'cmd.welcome.welcome.test.desc': 'Envie uma mensagem de boas-vindas de teste usando sua própria conta.',
   'cmd.welcome.welcome.disable.desc': 'Desative as mensagens de boas-vindas.',
+  'cmd.welcome.welcome.second-setup.desc': 'Defina uma segunda boas-vindas: outro canal e outra mensagem, enviada depois da primeira.',
+  'cmd.welcome.welcome.second-setup.opt.channel.desc': 'Canal onde a segunda boas-vindas é publicada (por exemplo o chat geral)',
+  'cmd.welcome.welcome.second-setup.opt.embed.desc': 'Use um modelo salvo do !embed em vez de texto simples',
+  'cmd.welcome.welcome.second-setup.opt.message.desc': 'Texto simples (aceita variáveis do !embed, ex.: {user}, {server_name})',
+  'cmd.welcome.welcome.second-disable.desc': 'Desative a segunda boas-vindas.',
 };

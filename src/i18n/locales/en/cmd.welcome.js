@@ -52,4 +52,9 @@ module.exports = {
   'cmd.welcome.welcome.status.desc': 'Show the current welcome configuration.',
   'cmd.welcome.welcome.test.desc': 'Send a test welcome message using your own account.',
   'cmd.welcome.welcome.disable.desc': 'Turn off welcome messages.',
+  'cmd.welcome.welcome.second-setup.desc': 'Set a second welcome: another channel and message, sent after the first one.',
+  'cmd.welcome.welcome.second-setup.opt.channel.desc': 'Channel the second welcome is posted to (for example the general chat)',
+  'cmd.welcome.welcome.second-setup.opt.embed.desc': 'Use a saved /embed template instead of plain text',
+  'cmd.welcome.welcome.second-setup.opt.message.desc': 'Plain text (supports /embed variables, e.g. {user}, {server_name})',
+  'cmd.welcome.welcome.second-disable.desc': 'Turn off the second welcome.',
 };
