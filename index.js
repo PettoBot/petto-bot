@@ -96,7 +96,7 @@ const client = new Client({
 });
 
 // Several independent listeners legitimately hang off the same event (guildMemberAdd alone has
-// join logging, invite tracking, welcome messages, join roles, level join-bonus, etc.) — that's
+// join logging, invite tracking, welcome messages, join roles, level join-bonus, the join gate, etc.) — that's
 // normal fan-out, not a leak, so raise the default cap instead of Node warning on every restart.
 client.setMaxListeners(30);
 // The first row of every server is made with the language Petto detects for it, whichever part of Petto needs the row first.
