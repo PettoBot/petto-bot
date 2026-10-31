@@ -20,8 +20,9 @@ function mediaUrl(value, ctx) {
   return validUrl(value);
 }
 
+// Discord refuses a link longer than 2048 characters, and the whole message with it; a link that long is left out instead.
 function validUrl(url) {
-  if (!url) return undefined;
+  if (!url || String(url).length > 2048) return undefined;
   try {
     const u = new URL(url);
     return u.protocol === 'http:' || u.protocol === 'https:' ? url : undefined;

@@ -15,7 +15,9 @@ const BUTTON_LINK = 5;
 const isV2 = (data) => Boolean(data && typeof data === 'object' && !Array.isArray(data) && data.v2 && Array.isArray(data.v2.components));
 
 function safeUrl(value) {
-  const text = String(value ?? '').trim().slice(0, LIMITS.url);
+  // A link over the limit is left out: cutting it would make a picture that never loads.
+  const text = String(value ?? '').trim();
+  if (text.length > LIMITS.url) return '';
   try {
     const url = new URL(text);
     return url.protocol === 'https:' || url.protocol === 'http:' ? text : '';
