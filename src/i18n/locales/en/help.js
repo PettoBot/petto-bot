@@ -75,6 +75,8 @@ module.exports = {
   'help.example.member': '@member',
   'help.example.role': '@role',
   'help.example.channel': '#channel',
+  'help.line': '{user}: <{help}>, join the support server @ <{support}>',
+  'help.line.tip': '-# `{prefix}help full` opens the command browser here, `{prefix}help <command>` explains one.',
   'help.notFound': '{emoji}  I could not find a command named `{command}`. Use `{prefix}help` to browse every command.',
   'help.notFoundSuggest': '{emoji}  I could not find a command named `{command}`. Did you mean {suggestions}? Use `{prefix}help` to browse every command.',
   'help.closed': 'This help menu closed after two minutes without use. Run the help command again to open it.',

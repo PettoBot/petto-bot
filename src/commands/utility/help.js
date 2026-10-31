@@ -20,11 +20,24 @@ const { textCard } = require('../../utils/caseCard');
 const { describePermissions } = require('../../utils/permissionLabels');
 const { EMOJI } = require('../../utils/emojis');
 const { isPettoOperator } = require('../../utils/autoModControl');
-const { helpLinksLine, DASHBOARD_URL, SUPPORT_URL, WIKI_URL } = require('../../utils/links');
+const { helpLinksLine, commandsUrl, DASHBOARD_URL, SUPPORT_URL, WIKI_URL } = require('../../utils/links');
 const { isSlashCommand } = require('../../handlers/commandHandler');
 const { t, tn, commandDescription, languageOf, currentLanguage, LANGUAGES, LANGUAGE_NAMES } = require('../../i18n');
 
 const TIMEOUT_MS = 120_000;
+// `!help full` opens the browser that `!help` alone used to open.
+const BROWSER_WORDS = new Set(['full', 'menu', 'all']);
+
+/**
+ * The short answer of `!help` with nothing after it: a plain message that mentions the person without notifying them (the `!` before
+ * the mention is the silent mention syntax, see utils/silentMentions.js), the page with every command and the support server, and a
+ * quiet line that says where the browser and the details of one command are. Links are wrapped in <> so Discord shows no preview.
+ */
+function helpLine(userId, prefix, lang = currentLanguage()) {
+  const content = `${t(lang, 'help.line', { user: `!<@${userId}>`, help: commandsUrl(lang), support: SUPPORT_URL })}\n${t(lang, 'help.line.tip', { prefix })}`;
+  return { content, allowedMentions: { parse: [], repliedUser: false } };
+}
+
 
 // The name of each category is `help.category.<id>.menu` and what it is for, in a few words, `help.blurb.<id>.menu`: shown in
 // the menus so nobody has to open one to find out.
@@ -377,6 +390,7 @@ function detailView(client, guild, prefix, command, entry, categoryId, includeHi
 }
 
 module.exports = {
+  helpLine,
   // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
   registerSlash: true,
   data: new SlashCommandBuilder()
@@ -399,7 +413,13 @@ module.exports = {
 
     // As a slash command the menus are private (only the person who asked can use them anyway); the prefix drops the flag.
     const PRIVATE = MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral;
-    const input = interaction.options.getString('query')?.trim();
+    let input = interaction.options.getString('query')?.trim();
+    // `!help` alone is the short line; `!help full` is the browser. The slash command has no short form: it opens the browser, which is private.
+    if (!input && interaction.fromPrefix) {
+      await interaction.reply(helpLine(interaction.user.id, prefix, lang));
+      return;
+    }
+    if (input && BROWSER_WORDS.has(input.toLowerCase())) input = null;
     if (input) {
       const tokens = input.toLowerCase().split(/\s+/);
       const { command, entries } = findEntries(client, tokens, includeHidden);

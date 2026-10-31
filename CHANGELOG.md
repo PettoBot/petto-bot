@@ -14,6 +14,10 @@ All notable changes to Petto are documented here.
 
 - **Image cards: a long name no longer runs over the next line.** The texts of the basic layouts get smaller (down to 55%) before they are cut, and a word wider than the card is broken. Names with emoji, Arabic or Hebrew letters are drawn instead of empty boxes (two small fonts, 105 KB, are added for those letters).
 - **Embeds: a picture link over 2048 characters is left out** instead of making Discord refuse the whole message, and a Components V2 gallery no longer cuts such a link.
+### Changed
+
+- **`!wiki` answers questions about the terms and conditions, and shows pictures.** `!wiki terms` lists the sections of the Terms of Service with a link to each one, and a question (`!wiki terms can my server be banned`, `!wiki can I get a refund`, `!wiki privacy delete my data`) shows the best one to three points of the terms, privacy, refunds or cookies pages in the language of the server: the section heading, the exact words of the page and a link to the section, with buttons to the four pages. When nothing in them answers, it says so and points to the support server. Wiki pages come in the language of the server (when the page exists in it), as a card with the picture of the page, the pages next to it and the buttons "Open page" and "Wiki home"; `!wiki ban` finds the moderation page first. The pages are read live and only the extracted text is kept, for 30 minutes.
+- **`!help` alone is a short line.** It answers `@you: <https://petto.sbs/commands>, join the support server @ <https://petto.sbs/support>` (a plain message, the mention does not notify, in English, Spanish or Portuguese). `!help full` opens the browser that `!help` used to open, `!help <command>` still explains one command, and `/help` still opens the private browser.
 
 ## [0.7.9-2] — 2026-10-30 · Donut
 

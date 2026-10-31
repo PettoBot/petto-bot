@@ -284,6 +284,6 @@ module.exports = {
   'cmd.utility.urlonly.sites.desc': 'The sites a link channel can allow.',
   'cmd.utility.weather.desc': 'Show current weather for a city or country.',
   'cmd.utility.weather.opt.place.desc': 'City or country, for example San Salvador or Colombia',
-  'cmd.utility.wiki.desc': 'Find something in the Petto wiki.',
-  'cmd.utility.wiki.opt.query.desc': 'Feature, command, or topic to find',
+  'cmd.utility.wiki.desc': 'Find a page of the Petto wiki or ask about the terms and conditions.',
+  'cmd.utility.wiki.opt.query.desc': 'A feature, a command, or a question about the terms',
 };

@@ -75,6 +75,8 @@ module.exports = {
   'help.example.member': '@miembro',
   'help.example.role': '@rol',
   'help.example.channel': '#canal',
+  'help.line': '{user}: <{help}>, únete al servidor de soporte @ <{support}>',
+  'help.line.tip': '-# `{prefix}help full` abre aquí el explorador de comandos, `{prefix}help <comando>` explica uno.',
   'help.notFound': '{emoji}  No encontré ningún comando llamado `{command}`. Usa `{prefix}help` para ver todos los comandos.',
   'help.notFoundSuggest': '{emoji}  No encontré ningún comando llamado `{command}`. ¿Quisiste decir {suggestions}? Usa `{prefix}help` para ver todos los comandos.',
   'help.closed': 'Este menú de ayuda se cerró tras dos minutos sin uso. Vuelve a usar el comando de ayuda para abrirlo.',
