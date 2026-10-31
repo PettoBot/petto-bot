@@ -48,7 +48,9 @@ module.exports = {
     disabledCommandsDb.canonicalizeStored((name) => {
       const word = String(name ?? '').trim().replace(/^[^\p{L}\p{N}]+/u, '').toLowerCase();
       if (client.commands.has(word)) return word;
-      return client.commandAliases?.get(word) ?? client.commandRoutes?.get(word)?.command ?? null;
+      // A route that stands for one action or subcommand with a rule of its own (`hug`, `servericon`) is saved under that name.
+      const route = client.commandRoutes?.get(word);
+      return client.commandAliases?.get(word) ?? route?.disableName ?? route?.command ?? null;
     }).then((changed) => { if (changed) logger.info(`Disabled-command rules: ${changed} saved with an alias now use the real command name.`); })
       .catch((err) => logger.warn(`The disabled-command rules could not be tidied: ${err?.message ?? err}`));
     // The server count and status on Omniplex (only with OMNIPLEX_TOKEN).

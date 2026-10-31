@@ -4,7 +4,7 @@
 //   node scripts/gen-short-aliases.js --check    changes nothing; lists what would be added or is broken, exit 1 when there is a problem
 //   node scripts/gen-short-aliases.js --wiki <path to petto-wiki-docs>   also writes the tables of the wiki (setup/short-aliases.mdx, es, pt-br)
 //
-// The rule, always the same and always in this order of commands (PRIORITY first, then by name; the subcommands in the order they are
+// The rule, always the same and always in this order of commands (PRIORITY first, then by name, then LAST; the subcommands in the order they are
 // declared):
 //   1. the stem of the command is the first letter (`i` for image), or the word chosen for it in STEMS (`tk` for ticket), or its shortest
 //      alias of 2 or 3 letters (`gw` for giveaway);
@@ -28,6 +28,9 @@ const MAX_LENGTH = 5;
 const MAX_STEM = 3;
 // The commands people type most come first, so they get the shortest words.
 const PRIORITY = ['image', 'ticket', 'timer', 'feed', 'giveaway', 'welcome', 'backup', 'automod', 'counter', 'snipe', 'afk', 'remind', 'birthday', 'level', 'starboard', 'suggestion', 'verify'];
+// The umbrellas `/server` and `/user` come after every other command, so their words are the ones left free and no word that already
+// works changes (their subcommands are the old commands with their own words: `!si`, `!ui`, `!av`).
+const LAST = ['server', 'user'];
 // A stem that is not the first letter or a short alias already there: the usual way people shorten the name.
 const STEMS = { image: 'i', ticket: 'tk', feed: 'fd', backup: 'bk', counter: 'cn', snipe: 'sn', afk: 'af', remind: 'rm', forum: 'fr' };
 // Left out: the actions of /act have their own words (`!hug`), and these are not for members to type.
@@ -88,8 +91,8 @@ function generate({ commands, taken, table, covered = new Set() }) {
   const claim = (word, target) => { used.add(word); added[word] = target; };
   const ordered = [...commands].filter((command) => !command.hidden && !SKIPPED_COMMANDS.has(command.name))
     .sort((a, b) => {
-      const pa = PRIORITY.indexOf(a.name); const pb = PRIORITY.indexOf(b.name);
-      return (pa < 0 ? 1e9 : pa) - (pb < 0 ? 1e9 : pb) || a.name.localeCompare(b.name);
+      const rank = (name) => (PRIORITY.includes(name) ? PRIORITY.indexOf(name) : LAST.includes(name) ? 2e9 + LAST.indexOf(name) : 1e9);
+      return rank(a.name) - rank(b.name) || a.name.localeCompare(b.name);
     });
   for (const command of ordered) {
     for (const sub of command.subcommands) {

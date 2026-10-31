@@ -388,7 +388,13 @@ module.exports = {
     }
 
     try {
-      const allowed = hiddenAutomodControl || moderationRoleOverride || await permissionsDb.hasCommandPermission(message.guild.id, canonicalName, message.member);
+      // The level set for the command, and for the old command a subcommand of an umbrella wraps (`!server info` asks for `serverinfo` too).
+      let allowed = true;
+      if (!hiddenAutomodControl && !moderationRoleOverride) {
+        for (const name of commandRules.permissionNames(command, { subcommand: commandRules.subcommandOfText(command, argText) })) {
+          if (!await permissionsDb.hasCommandPermission(message.guild.id, name, message.member)) { allowed = false; break; }
+        }
+      }
       if (!allowed) {
         await message.reply(warningPayload(message, t(lang, 'core.missingLevel', { prefix, command: canonicalName }))).catch(() => {});
         return;

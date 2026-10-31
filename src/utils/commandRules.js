@@ -3,6 +3,9 @@
 //   - `!restrictcommand` (only some roles may use it).
 // A command whose actions are subcommands (`/act love hug`) can have a rule for one action (`hug`) or for the whole command (`act`),
 // and a use is refused by the first rule found, the action's first.
+// An umbrella command (`/server`, `/user`: utils/umbrella.js) names the rule of each subcommand with `ruleKeys`: the old command it wraps
+// (`/server info` is `serverinfo`, `/user avatar` is `avatar`) or the key of a new subcommand (`servericon`), so a rule that existed
+// before for `serverinfo` also reaches `/server info` and `!server`, and `server` turns off all of them.
 const disabledDb = require('../db/disabledCommands');
 const { restrictedFor } = require('./commandRestrictions');
 const { tokenize, resolveSubcommandOptions } = require('../handlers/prefixInteraction');
@@ -14,15 +17,29 @@ const { tokenize, resolveSubcommandOptions } = require('../handlers/prefixIntera
 function ruleNames(command, { route = null, subcommand = null } = {}) {
   const names = [];
   if (route?.disableName) names.push(route.disableName);
-  else if (command.rulesBySubcommand && subcommand) names.push(subcommand);
+  else if (command.rulesBySubcommand && subcommand) names.push(command.ruleKeys?.[subcommand] ?? subcommand);
   names.push(command.data.name);
   return [...new Set(names)];
 }
 
-/** The subcommand a prefix use will run (`!act love hug @Ana` is `hug`), found in the words typed, or null. */
+/** The names a custom permission level (`!permissions`) is looked up under: the command, and the old command a subcommand wraps. */
+function permissionNames(command, { subcommand = null } = {}) {
+  const wrapped = command.ruleKeys && subcommand ? command.ruleKeys[subcommand] : null;
+  return [...new Set([command.data.name, wrapped].filter(Boolean))];
+}
+
+/**
+ * The subcommand a prefix use will run (`!act love hug @Ana` is `hug`), found in the words typed, or null. Like the parser, it reads the
+ * words that stand for a subcommand (`!user pfp` is `avatar`) and the subcommand used when none is typed (`!server` is `info`).
+ */
 function subcommandOfText(command, argText) {
   if (!command.rulesBySubcommand) return null;
-  return resolveSubcommandOptions(command.data.toJSON(), tokenize(argText))?.subcommand ?? null;
+  const json = command.data.toJSON();
+  const tokens = tokenize(argText);
+  if (tokens[0]) tokens[0] = command.prefixSubcommandAliases?.[tokens[0].toLowerCase()] ?? tokens[0];
+  const fallback = typeof command.prefixDefaultSubcommand === 'function' ? command.prefixDefaultSubcommand(tokens) : command.prefixDefaultSubcommand;
+  const resolved = resolveSubcommandOptions(json, tokens) ?? (fallback ? resolveSubcommandOptions(json, [fallback, ...tokens]) : null);
+  return resolved?.subcommand ?? null;
 }
 
 /** The first rule that turns the command off here: `{ name, row }` (the name it was saved under, the rule), or null. */
@@ -43,4 +60,4 @@ async function restrictedForNames(guildId, names, member, check = restrictedFor)
   return null;
 }
 
-module.exports = { ruleNames, subcommandOfText, disabledFor, restrictedForNames };
+module.exports = { ruleNames, permissionNames, subcommandOfText, disabledFor, restrictedForNames };

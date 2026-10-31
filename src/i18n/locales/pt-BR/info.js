@@ -587,4 +587,12 @@ module.exports = {
   'info.statsConfig.delete.done.other': '{emoji} Foram apagados {count} contadores deste servidor.',
   'info.statsConfig.delete.notYours': 'Só a pessoa que pediu pode apertar este botão.',
   'info.stats.member.left': '(saiu do servidor)',
+  'info.server.icon.title': 'Ícone de {name}',
+  'info.server.icon.none': '{name} não tem um ícone definido.',
+  'info.server.banner.title': 'Banner de {name}',
+  'info.server.banner.none': '{name} não tem um banner definido.',
+  'info.server.splash.title': 'Plano de fundo do convite de {name}',
+  'info.server.splash.none': '{name} não tem um plano de fundo de convite definido.',
+  'info.server.sizes': 'Tamanhos',
+  'info.server.animated': 'Animado.',
 };
