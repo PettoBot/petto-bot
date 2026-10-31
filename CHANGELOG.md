@@ -14,6 +14,7 @@ All notable changes to Petto are documented here.
 
 ### Fixed
 
+- **Forum tools: two wording fixes.** `!forum tag list` shows "(staff only)" next to a tag only staff can use instead of a stray `-#`, and `!forum status` names Create Public Threads in Spanish and Portuguese.
 - **A long result no longer ends a command with an error.** A mass unban of thousands of users listed every case number, passed the 4000 characters Discord accepts in a text display, and failed with "Something went wrong" after the unbans were done and before they were logged. It now lists the first 20 cases and "and N more" (the same cap is on the lists of the bulk ban, kick, mute, unmute and warn, and a few others), the log is sent before the result, every card keeps its text inside 1 to 4000 characters per text display and 4000 in all (cut at a line or word, never inside a code fence, mention, emoji or link), and if Discord still refuses an answer for its size the member gets one short text that says what happened.
 - **Image cards: a long name no longer runs over the next line.** The texts of the basic layouts get smaller (down to 55%) before they are cut, and a word wider than the card is broken. Names with emoji, Arabic or Hebrew letters are drawn instead of empty boxes (two small fonts, 105 KB, are added for those letters).
 - **Embeds: a picture link over 2048 characters is left out** instead of making Discord refuse the whole message, and a Components V2 gallery no longer cuts such a link.
