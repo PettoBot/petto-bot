@@ -1,4 +1,5 @@
 // Node 18 has Web Crypto only under require; Petto Code takes its random numbers from globalThis.crypto (it is read once, at startup, before any module runs).
+// The line below is the whole fix: without it a bot on Node 18 starts, but every random function of Petto Code fails.
 if (!globalThis.crypto) globalThis.crypto = require('node:crypto').webcrypto;
 
 const { Client, GatewayIntentBits, Partials } = require('discord.js');
