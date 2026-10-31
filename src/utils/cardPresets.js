@@ -105,11 +105,13 @@ function normalizeBasic(raw, kind = 'welcome') {
   };
 }
 
+const FIT_LINES = { title: 1, name: 1, subtitle: 2, extra: 1 };
 const textLayer = (id, value, x, y, size, o = {}) => ({
   id, type: 'text', text: value, x, y, size, font: o.font, weight: o.weight ?? 700, color: o.color, align: o.align ?? 'center',
   w: o.w ?? 0, opacity: o.opacity ?? 1, spacing: o.spacing ?? 0, upper: o.upper ?? false,
   shadow: o.shadow ?? { color: '#000000', blur: 8, x: 0, y: 2 },
-  ...(o.maxLines ? { maxLines: o.maxLines } : {}),
+  // A long name or text gets smaller before it is cut: the name and the title stay on one line, the line under them takes two.
+  maxLines: o.maxLines ?? FIT_LINES[id] ?? 1, fit: true,
 });
 
 /**

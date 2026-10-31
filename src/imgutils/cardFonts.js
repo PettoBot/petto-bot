@@ -51,15 +51,28 @@ const CARD_FONTS = [
   { family: 'Staatliches', slug: 'staatliches', weights: [400], tier: 'premium' },
 ];
 
+// Fonts that are not offered in the editor: they only draw the letters the chosen font does not have (Arabic and Hebrew names).
+const FALLBACK_FONTS = [
+  { family: 'Noto Sans Arabic', slug: 'noto-sans-arabic', weights: [400, 700] },
+  { family: 'Noto Sans Hebrew', slug: 'noto-sans-hebrew', weights: [400, 700] },
+];
 const DEFAULT_FONT = 'Poppins';
 const byFamily = new Map(CARD_FONTS.map((font) => [font.family, font]));
 let registered = false;
+const EMOJI_FONT = 'Noto Color Emoji';
+let emojiFont = null;
 
 /** Registers every font file once. A missing file is skipped, the card then falls back to the default font. */
 function registerCardFonts() {
   if (registered) return;
   registered = true;
   for (const font of CARD_FONTS) {
+    for (const weight of font.weights) {
+      const file = path.join(FONT_DIR, `${font.slug}-${weight}.woff2`);
+      if (fs.existsSync(file)) GlobalFonts.registerFromPath(file, `${font.family} ${weight}`);
+    }
+  }
+  for (const font of FALLBACK_FONTS) {
     for (const weight of font.weights) {
       const file = path.join(FONT_DIR, `${font.slug}-${weight}.woff2`);
       if (fs.existsSync(file)) GlobalFonts.registerFromPath(file, `${font.family} ${weight}`);
@@ -80,7 +93,22 @@ function nearestWeight(family, weight) {
 function canvasFont(family, weight, size) {
   const font = byFamily.get(family) ?? byFamily.get(DEFAULT_FONT);
   const real = nearestWeight(font.family, weight);
-  return `${size}px "${font.family} ${real}"`;
+  // The letters of Arabic and Hebrew and the emoji come after the family, so a name in them is drawn and not shown as empty boxes.
+  const bold = real >= 600 ? 700 : 400;
+  return `${size}px "${font.family} ${real}", "Noto Sans Arabic ${bold}", "Noto Sans Hebrew ${bold}", "${EMOJI_FONT}", sans-serif`;
 }
 
-module.exports = { CARD_FONTS, DEFAULT_FONT, registerCardFonts, fontExists, isPremiumFont, nearestWeight, canvasFont };
+/** True when the server has a color emoji font to draw emoji with. */
+function emojiAvailable() {
+  if (emojiFont === null) emojiFont = GlobalFonts.families.some((font) => font.family === EMOJI_FONT);
+  return emojiFont;
+}
+
+const EMOJI = /[\p{Extended_Pictographic}\p{Regional_Indicator}\u{1F3FB}-\u{1F3FF}\u200d\ufe0f\u20e3]/gu;
+/** The text as the card can draw it: emoji are taken out when the machine has no emoji font, instead of showing empty boxes. */
+function printable(text, hasEmojiFont = emojiAvailable()) {
+  if (hasEmojiFont) return text;
+  return text.replace(EMOJI, '').replace(/ {2,}/g, ' ').trim();
+}
+
+module.exports = { printable, emojiAvailable, CARD_FONTS, DEFAULT_FONT, registerCardFonts, fontExists, isPremiumFont, nearestWeight, canvasFont };

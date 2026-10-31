@@ -1,7 +1,7 @@
 // Draws an image card (see src/utils/cardSchema.js) to a PNG. It knows nothing about Discord or the database: the
 // caller passes the functions that turn text variables into values and pictures into images.
 const { createCanvas: napiCreateCanvas } = require('@napi-rs/canvas');
-const { registerCardFonts, canvasFont } = require('./cardFonts');
+const { registerCardFonts, canvasFont, printable } = require('./cardFonts');
 const { encodeApng } = require('./apng');
 
 const MAX_TEXT_LINES = 12;
@@ -358,6 +358,14 @@ function wrapLines(ctx, value, maxWidth) {
     for (const word of paragraph.split(/\s+/).filter(Boolean)) {
       const attempt = line ? `${line} ${word}` : word;
       if (line && ctx.measureText(attempt).width > maxWidth) { lines.push(line); line = word; } else { line = attempt; }
+      // A word wider than the card is cut where it no longer fits, so it never runs out of the picture.
+      while (ctx.measureText(line).width > maxWidth && [...line].length > 1) {
+        const letters = [...line];
+        let cut = letters.length - 1;
+        while (cut > 1 && ctx.measureText(letters.slice(0, cut).join('')).width > maxWidth) cut -= 1;
+        lines.push(letters.slice(0, cut).join(''));
+        line = letters.slice(cut).join('');
+      }
     }
     lines.push(line);
   }
@@ -373,24 +381,42 @@ function ellipsize(ctx, lines, max, maxWidth) {
   return kept;
 }
 
+const FIT_MIN = 0.55;
+/**
+ * The size and lines a text takes. A layer with `fit` (the texts of the basic layouts) gets smaller, down to 55% of its size, until it
+ * fits its width in the lines it may use; one that still does not fit is cut with an ellipsis. Other layers keep their size.
+ */
+function layOut(ctx, layer, value) {
+  const wrapped = (size) => {
+    ctx.font = canvasFont(layer.font, layer.weight, size);
+    if ('letterSpacing' in ctx) ctx.letterSpacing = `${layer.spacing * size / layer.size}px`;
+    return wrapLines(ctx, value, layer.w);
+  };
+  let size = layer.size;
+  let lines = wrapped(size);
+  if (layer.fit && layer.w > 0) {
+    const allowed = layer.maxLines > 0 ? layer.maxLines : MAX_TEXT_LINES;
+    while (lines.length > allowed && size > layer.size * FIT_MIN) { size = Math.max(layer.size * FIT_MIN, size * 0.93); lines = wrapped(size); }
+  }
+  if (layer.maxLines > 0 && lines.length > layer.maxLines) lines = ellipsize(ctx, lines, layer.maxLines, layer.w);
+  return { size, lines };
+}
+
 /** Draws a text and gives back the width of its widest line, or null when there was nothing to draw. */
 async function drawText(ctx, layer, resolveText) {
-  let value = await resolveText(layer.text);
+  let value = printable(await resolveText(layer.text));
   if (layer.upper) value = value.toUpperCase();
   if (!value) return null;
-  ctx.font = canvasFont(layer.font, layer.weight, layer.size);
   ctx.textAlign = layer.align;
   ctx.textBaseline = 'middle';
-  if ('letterSpacing' in ctx) ctx.letterSpacing = `${layer.spacing}px`;
-  let lines = wrapLines(ctx, value.replace(/\r/g, ''), layer.w);
-  if (layer.maxLines > 0 && lines.length > layer.maxLines) lines = ellipsize(ctx, lines, layer.maxLines, layer.w);
-  const lineHeight = layer.size * layer.lineHeight;
+  const { size, lines } = layOut(ctx, layer, value.replace(/\r/g, ''));
+  const lineHeight = size * layer.lineHeight;
   const top = -((lines.length - 1) * lineHeight) / 2;
   const width = Math.max(...lines.map((line) => ctx.measureText(line).width));
   if (layer.pill) {
     const { padX, padY } = layer.pill;
     const boxW = width + padX * 2;
-    const boxH = lines.length * lineHeight + padY * 2 - (lineHeight - layer.size);
+    const boxH = lines.length * lineHeight + padY * 2 - (lineHeight - size);
     const left = layer.align === 'center' ? -boxW / 2 : layer.align === 'right' ? -width - padX : -padX;
     ctx.save();
     ctx.globalAlpha *= layer.pill.opacity;
@@ -415,4 +441,4 @@ async function drawText(ctx, layer, resolveText) {
   return width;
 }
 
-module.exports = { renderCard, fitRect, wrapLines };
+module.exports = { renderCard, fitRect, wrapLines, layOut };
