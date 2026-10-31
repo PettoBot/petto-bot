@@ -13,6 +13,7 @@ const { EMOJI } = require('../../utils/emojis');
 const logger = require('../../utils/logger');
 const { confirmBulkAction, requireAdministrator, bulkTargetBlocked, protectedLine } = require('../../utils/moderationCommand');
 const { t, tn, languageOf } = require('../../i18n');
+const { caseNumberList, mentionList, listWithMore } = require('../../utils/listCap');
 
 // Discord has no native "warn" permission; Moderate Members (used for timeouts)
 // is the closest built-in stand-in for "this person is server staff".
@@ -148,11 +149,11 @@ async function warnUsers(interaction) {
     await checkAndApplyEscalation(interaction.client, interaction.guild, member, warnCount).catch((err) => logger.error('Escalation check failed:', err));
   }
 
-  const lines = [tn(lang, 'moderation.warn.bulkDone', succeeded.length, { emoji: EMOJI.WARNING, count: succeeded.length, cases: caseNumbers.length ? t(lang, 'moderation.common.cases', { list: caseNumbers.join(', #') }) : '' })];
-  if (succeeded.length) lines.push(succeeded.map((u) => `${u}`).join(' '));
-  if (skipped.length) lines.push(t(lang, 'moderation.common.notInServer', { list: skipped.map((u) => `${u}`).join(' ') }));
+  const lines = [tn(lang, 'moderation.warn.bulkDone', succeeded.length, { emoji: EMOJI.WARNING, count: succeeded.length, cases: caseNumbers.length ? t(lang, 'moderation.common.cases', { list: caseNumberList(lang, caseNumbers) }) : '' })];
+  if (succeeded.length) lines.push(mentionList(lang, succeeded));
+  if (skipped.length) lines.push(t(lang, 'moderation.common.notInServer', { list: mentionList(lang, skipped) }));
   if (blocked.length) lines.push(protectedLine(blocked, lang));
-  if (notFound.length) lines.push(t(lang, 'moderation.common.notFound', { list: notFound.map((id) => `\`${id}\``).join(', ') }));
+  if (notFound.length) lines.push(t(lang, 'moderation.common.notFound', { list: listWithMore(lang, notFound, { format: (id) => `\`${id}\`` }) }));
   lines.push(t(lang, 'moderation.common.reason', { reason }));
 
   const card = textCard(lines.join('\n'), 0xfed53c, { keep: true });

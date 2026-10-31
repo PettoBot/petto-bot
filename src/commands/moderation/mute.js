@@ -13,6 +13,7 @@ const logger = require('../../utils/logger');
 const { confirmBulkAction, requireAdministrator, failureDetail, bulkTargetBlocked, protectedLine } = require('../../utils/moderationCommand');
 const { reasonText } = require('../../utils/caseFormat');
 const { t, tn, languageOf } = require('../../i18n');
+const { caseNumberList, mentionList, listWithMore } = require('../../utils/listCap');
 
 const MAX_TIMEOUT_MS = 28 * 24 * 60 * 60 * 1000; // Discord's native timeout hard limit
 
@@ -189,12 +190,12 @@ async function muteUsers(interaction) {
     }
   }
 
-  const lines = [tn(lang, 'moderation.mute.bulkDone', succeeded.length, { emoji: EMOJI.ALERT, count: succeeded.length, cases: caseNumbers.length ? t(lang, 'moderation.common.cases', { list: caseNumbers.join(', #') }) : '' })];
-  if (succeeded.length) lines.push(succeeded.map((u) => `${u}`).join(' '));
-  if (failed.length) lines.push(t(lang, 'moderation.common.failedList', { emoji: EMOJI.DENY, list: failed.map((u) => `${u}`).join(' ') }));
-  if (skipped.length) lines.push(t(lang, 'moderation.common.notInServer', { list: skipped.map((u) => `${u}`).join(' ') }));
+  const lines = [tn(lang, 'moderation.mute.bulkDone', succeeded.length, { emoji: EMOJI.ALERT, count: succeeded.length, cases: caseNumbers.length ? t(lang, 'moderation.common.cases', { list: caseNumberList(lang, caseNumbers) }) : '' })];
+  if (succeeded.length) lines.push(mentionList(lang, succeeded));
+  if (failed.length) lines.push(t(lang, 'moderation.common.failedList', { emoji: EMOJI.DENY, list: mentionList(lang, failed) }));
+  if (skipped.length) lines.push(t(lang, 'moderation.common.notInServer', { list: mentionList(lang, skipped) }));
   if (blocked.length) lines.push(protectedLine(blocked, lang));
-  if (notFound.length) lines.push(t(lang, 'moderation.common.notFound', { list: notFound.map((id) => `\`${id}\``).join(', ') }));
+  if (notFound.length) lines.push(t(lang, 'moderation.common.notFound', { list: listWithMore(lang, notFound, { format: (id) => `\`${id}\`` }) }));
   lines.push(t(lang, 'moderation.common.reason', { reason: reasonText(reason, lang) }));
 
   const card = textCard(lines.join('\n'), 0xfed53c, { keep: true });
@@ -366,11 +367,11 @@ async function unmuteUsers(interaction) {
       .catch(() => logger.warn(`Could not DM unmute notice to ${user.id} in guild ${interaction.guild.id}.`));
   }
 
-  const lines = [tn(lang, 'moderation.unmute.bulkDone', succeeded.length, { emoji: EMOJI.APPROVE, count: succeeded.length, cases: caseNumbers.length ? t(lang, 'moderation.common.cases', { list: caseNumbers.join(', #') }) : '' })];
-  if (succeeded.length) lines.push(succeeded.map((u) => `${u}`).join(' '));
-  if (skipped.length) lines.push(t(lang, 'moderation.unmute.skipped', { list: skipped.map((u) => `${u}`).join(' ') }));
+  const lines = [tn(lang, 'moderation.unmute.bulkDone', succeeded.length, { emoji: EMOJI.APPROVE, count: succeeded.length, cases: caseNumbers.length ? t(lang, 'moderation.common.cases', { list: caseNumberList(lang, caseNumbers) }) : '' })];
+  if (succeeded.length) lines.push(mentionList(lang, succeeded));
+  if (skipped.length) lines.push(t(lang, 'moderation.unmute.skipped', { list: mentionList(lang, skipped) }));
   if (blocked.length) lines.push(protectedLine(blocked, lang));
-  if (notFound.length) lines.push(t(lang, 'moderation.common.notFound', { list: notFound.map((id) => `\`${id}\``).join(', ') }));
+  if (notFound.length) lines.push(t(lang, 'moderation.common.notFound', { list: listWithMore(lang, notFound, { format: (id) => `\`${id}\`` }) }));
 
   const card = textCard(lines.join('\n'), 0xa5ea7a);
   await interaction.editReply({ components: [card], flags: MessageFlags.IsComponentsV2 });

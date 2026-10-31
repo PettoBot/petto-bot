@@ -196,6 +196,8 @@ module.exports = {
   'moderation.common.reason': '**Razón:** {reason}',
   'moderation.common.moderator': '**Moderador:** {moderator}',
   'moderation.common.cases': ' (casos #{list})',
+  'moderation.common.andMore.one': 'y {count} más',
+  'moderation.common.andMore.other': 'y {count} más',
   'moderation.common.failedList': '{emoji}  Fallaron: {list}',
   'moderation.common.notFound': 'No encontrado: {list}',
   'moderation.common.notInServer': 'No están en este servidor: {list}',

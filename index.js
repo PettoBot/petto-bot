@@ -56,6 +56,8 @@ const logger = require('./src/utils/logger');
 
 // Answers fall back to a normal message when quoting is not possible (no Read Message History, or the message is gone).
 require('./src/utils/safeReply').installSafeReply(require('discord.js').Message);
+// A text display never throws for its length: too long it is cut, empty it holds a zero width space (see utils/cardBlocks.js).
+require('./src/utils/cardBlocks').installTextDisplayGuard();
 
 // Before the client exists: the phone icon next to the status dot (PETTO_MOBILE_STATUS=false turns it off).
 if (config.mobileStatus) require('./src/utils/mobilePresence').applyMobileIdentify();
@@ -129,6 +131,11 @@ async function shutdown(signal) {
     new Promise((resolve) => setTimeout(resolve, 3_000)),
   ]);
   client.destroy();
+  // The connections to the database are closed before the process stops (a restart for a new device comes through here too).
+  await Promise.race([
+    Promise.resolve(require('./src/db/postgres').closePools()).catch(() => {}),
+    new Promise((resolve) => setTimeout(resolve, 2_000)),
+  ]);
   process.exit(0);
 }
 
@@ -141,6 +148,9 @@ async function main() {
   music.init(client); // before the login: the connection to the node waits for the client to be ready by itself
 
   await runMigrations();
+  // The device saved with `!botstatus device` wins over PETTO_MOBILE_STATUS. The gateway reads the names when it connects (the login
+  // below), so the database being ready here is early enough; if it cannot be read the environment keeps deciding and the boot goes on.
+  await require('./src/utils/botDevice').applySavedDevice().catch((err) => logger.warn('Could not apply the saved device of the bot:', err.message));
   await deployCommands();
   await client.login(config.token);
   startExpiryJob(client);
