@@ -6,6 +6,8 @@ const { createCanvas, Path2D } = require('@napi-rs/canvas');
 const W = 1024;
 const H = 500;
 const SCALE = 1.25;
+// The pixels per logical unit of the canvas being drawn: a shadow blur is measured in pixels, so it follows this (the brand characters are drawn larger).
+const view = { scale: SCALE };
 
 // ---------- chance ----------
 function rng(seed) {
@@ -191,7 +193,7 @@ function groundShadow(ctx, x, y, rx, ry, alpha = 0.28, color = '#000000') {
 /** A drop shadow behind whatever `draw` paints. */
 function withShadow(ctx, draw, { color = 'rgba(0,0,0,0.3)', blur = 18, x = 0, y = 8 } = {}) {
   ctx.save();
-  ctx.shadowColor = color; ctx.shadowBlur = blur * SCALE; ctx.shadowOffsetX = x * SCALE; ctx.shadowOffsetY = y * SCALE;
+  ctx.shadowColor = color; ctx.shadowBlur = blur * view.scale; ctx.shadowOffsetX = x * view.scale; ctx.shadowOffsetY = y * view.scale;
   draw();
   ctx.restore();
 }
@@ -379,6 +381,6 @@ function grain(canvas, amount = 7, seed = 7) {
 }
 
 module.exports = {
-  W, H, SCALE, rng, parse, toHex, mix, lighten, darken, rgba, hsl, luminance, contrast, lin, rad, start, sky, glow, smooth, rrect, ellipse, leafPath,
+  W, H, SCALE, view, rng, parse, toHex, mix, lighten, darken, rgba, hsl, luminance, contrast, lin, rad, start, sky, glow, smooth, rrect, ellipse, leafPath,
   crescent, star4, roundedPoly, heartPath, discs, bands, puff, ramp, gloss, groundShadow, withShadow, face, stars, ridges, cloud, dotGrid, bokeh, calm, edges, vignette, grain, Path2D,
 };
