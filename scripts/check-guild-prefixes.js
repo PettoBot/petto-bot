@@ -41,7 +41,9 @@ assert.match(gp.addToList(list, 'j1').error, /up to 10 prefixes/);
 assert.match(gp.addToList(['!', 'petto'], 'PETTO').error, /already/, 'a repeat in another case is a repeat');
 assert.match(gp.addToList(['!'], '!').error, /already/);
 assert.deepEqual(gp.addToList(['!'], ',').prefixes, ['!', ',']);
-assert.deepEqual(gp.removeFromList(['!', 'petto'], 'PETTO').prefixes, ['!']);
+assert.match(gp.removeFromList(['!', 'petto'], 'PETTO').error, /always works/, '`petto` cannot be removed');
+assert.match(gp.removeFromList(['petto'], 'petto').error, /always works/, 'not even when it is the only one saved');
+assert.deepEqual(gp.removeFromList(['!', ',', 'petto'], ',').prefixes, ['!', 'petto'], 'the others still go');
 assert.match(gp.removeFromList(['!', 'petto'], '?').error, /not one of/);
 assert.match(gp.removeFromList(['!'], '!').error, /only prefix/);
 assert.deepEqual(gp.validateList(['!', 'petto', ',']).prefixes, ['!', 'petto', ',']);
@@ -68,8 +70,19 @@ const isKnown = async (name) => known.has(name);
 const match = (content, prefixes = ['!', 'petto'], personal = null) => gp.matchPrefix(content, { prefixes, personal, isKnown });
 
 (async () => {
+  // `petto` never stops working: a server with a prefix of its own (`!n`) and no `petto` in its list (a saved list, or `!prefix !n`) is still reached by it.
+  let way = await match('petto help', ['!n']);
+  assert.ok(way && way.commandName === 'help' && way.word && way.main === false, 'petto help works with only !n saved');
+  way = await match('PETTO ban @a', ['!n', ',']);
+  assert.equal(way?.commandName, 'ban', 'and in any case');
+  way = await match('!n ban @a', ['!n']);
+  assert.ok(way && way.commandName === 'ban' && way.main === true, 'the prefix of the server is still the main one');
+  assert.equal(await match('petto es el mejor', ['!n']), null, 'chat after petto is still chat');
+  assert.equal(await match('petto', ['!n']), null, 'a lone petto is not a command');
+  assert.equal(gp.ALWAYS_PREFIX, 'petto');
+
   // A symbol prefix is attached to the command.
-  let way = await match(',help', ['!', 'petto', ',']);
+  way = await match(',help', ['!', 'petto', ',']);
   assert.equal(way.commandName, 'help'); assert.equal(way.typedPrefix, ','); assert.equal(way.main, false);
   way = await match('!ban @a being rude');
   assert.equal(way.commandName, 'ban'); assert.equal(way.argText, '@a being rude'); assert.equal(way.main, true);
@@ -216,11 +229,11 @@ async function handler() {
   assert.deepEqual(await send('p! es el mejor'), { sent: [], ran: [] }, 'a space after it is chat');
   assert.deepEqual((await send('!help')).ran, ['!'], 'the prefixes of the server still work');
   personal = null;
-  // A server with one custom prefix keeps exactly that one.
+  // A server with one custom prefix keeps that one as its main prefix (and `petto` keeps working next to it).
   guild.prefix = '?'; guild.prefixes = ['?'];
   assert.deepEqual((await send('?help')).ran, ['?']);
   assert.deepEqual(await send('!help'), { sent: [], ran: [] }, 'the old default does not work when the server chose another prefix');
-  assert.deepEqual(await send('petto help'), { sent: [], ran: [] });
+  assert.deepEqual((await send('petto help')).ran, ['petto '], '`petto` never stops working, even when the server chose one prefix of its own');
   assert.equal((await send('?nothing')).sent.length, 1, 'its only prefix is the main one');
   // The suggestion channel, the autoresponders and the rest ask the same question.
   guild.prefix = '!'; guild.prefixes = ['!', 'petto', ','];
