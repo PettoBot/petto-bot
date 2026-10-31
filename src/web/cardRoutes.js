@@ -129,12 +129,12 @@ function registerCardRoutes(app, { authorize }) {
 
   // The designs that come with Petto: the list for the gallery, and the small picture or the full one of each.
   app.get('/api/dashboard/cards/:guildId/designs', cardLimiter, route(async (_req, res) => {
-    res.set('Cache-Control', 'private, max-age=3600').json({ ok: true, ...designCatalog() });
+    res.set('Cache-Control', 'private, max-age=3600').json({ ok: true, ...designCatalog() }); // i18n-ignore: HTTP header
   }));
   app.get('/api/dashboard/cards/:guildId/designs/:id/:size', cardLimiter, route(async (req, res) => {
     const file = getDesign(req.params.id) && ['thumb', 'full'].includes(req.params.size) ? designFile(req.params.id, req.params.size === 'thumb') : null;
     if (!file) return res.status(404).json({ ok: false, error: 'not_found' });
-    res.set('Content-Type', file.type).set('Cache-Control', 'private, max-age=86400').send(file.bytes);
+    res.set('Content-Type', file.type).set('Cache-Control', 'private, max-age=86400').send(file.bytes); // i18n-ignore: HTTP header
   }));
 
   app.get('/api/dashboard/cards/:guildId/assets/:id', cardLimiter, route(async (req, res) => {
