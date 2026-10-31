@@ -2,6 +2,7 @@
 module.exports = {
   'core.customCommand.needsText': 'Este comando personalizado necesita texto después. Prueba con `{prefix}{command} tu texto aquí`.',
   'core.unknownCommand': '{emoji}  No conozco el comando `{command}`. Usa `{prefix}help` para ver todos los comandos.',
+  'core.unknownCommandSuggest': '{emoji}  Comando desconocido `{command}`. ¿Quisiste decir {suggestions}? Usa `{prefix}help` para ver todos los comandos.',
   'core.disabled.channel': '{emoji}  `{command}` está desactivado en {channel}.\n-# Pruébalo en otro canal.',
   'core.disabled.server': '{emoji}  `{command}` está desactivado en este servidor.',
   'core.cooldown': 'Espera {seconds}s antes de volver a usar `{prefix}{command}`.',

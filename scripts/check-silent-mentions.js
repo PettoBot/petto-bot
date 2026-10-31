@@ -91,6 +91,11 @@ const on = (content, allowedMentions) => text(content, allowedMentions);
   assert.deepEqual(both.allowedMentions, { parse: [], roles: [STAFF], users: [USER2] });
   const everyoneNormal = on(`@everyone !<@&${MOD}>`);
   assert.deepEqual(everyoneNormal.allowedMentions, { parse: ['everyone'], roles: [], users: [] });
+  // A timer sends with every kind allowed: a plain @everyone pings, the one written with `!` is silent, and the other kinds stay allowed.
+  const timerAll = ['users', 'roles', 'everyone'];
+  assert.deepEqual(on('@everyone hello', { parse: timerAll }).allowedMentions, { parse: timerAll }, 'a normal @everyone keeps the permission to ping');
+  assert.ok(!on('!@everyone hello', { parse: timerAll }).allowedMentions.parse.includes('everyone'), 'a silent @everyone takes it off');
+  assert.ok(on('!@everyone hello', { parse: timerAll }).allowedMentions.parse.includes('roles'), 'and leaves the other kinds');
   assert.deepEqual(on('@here !@everyone').allowedMentions, { parse: ['everyone'], roles: [], users: [] }, 'a silent and a normal @everyone in one message notify: Discord decides for the whole message');
   assert.deepEqual(on('!@everyone', { parse: ['everyone'], repliedUser: true }).allowedMentions, { parse: [], repliedUser: true }, 'repliedUser is kept');
   assert.deepEqual(applySilentMentions({ content: `!<@&${MOD}>` }, guild).allowedMentions, { parse: [], roles: [], users: [] });

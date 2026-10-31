@@ -515,4 +515,5 @@ module.exports = {
 
 // The main menu and a category page, drawn by scripts/check-i18n-panels.js in every language.
 module.exports.mainView = mainView;
+module.exports.suggestCommands = suggestCommands;
 module.exports.categoryView = categoryView;

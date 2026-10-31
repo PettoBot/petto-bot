@@ -333,8 +333,12 @@ module.exports = {
       // Only the main prefix of the server answers "I don't know that command", and only to something written like a command
       // (`!es el mejor`). The other prefixes, the word ones (`petto es el mejor`), the personal one and a lone symbol are chat.
       if (!handled && (parsed.mention || guildPrefixes.answersUnknown(parsed))) {
+        // A typo gets the closest commands (the same suggestions `!help <word>` gives): `!bna` answers "Did you mean `!ban`?".
+        // (A nicety: if it ever fails, the plain answer still goes out.)
+        let close = '';
+        try { close = require('../commands/utility/help').suggestCommands(message.client, canonicalName).map((name) => `\`${prefix}${name}\``).join(', '); } catch { /* the plain answer */ }
         const warning = await message
-          .reply({ components: [textCard(t(lang, 'core.unknownCommand', { emoji: EMOJI.WARNING, command: canonicalName, prefix }))], flags: MessageFlags.IsComponentsV2, allowedMentions: { repliedUser: false } })
+          .reply({ components: [textCard(t(lang, close ? 'core.unknownCommandSuggest' : 'core.unknownCommand', { emoji: EMOJI.WARNING, command: canonicalName, prefix, suggestions: close }))], flags: MessageFlags.IsComponentsV2, allowedMentions: { repliedUser: false } })
           .catch(() => null);
         // Matches bli: the "unknown command" nudge clears itself out instead of cluttering chat.
         if (warning) setTimeout(() => warning.delete().catch(() => {}), UNKNOWN_COMMAND_DELETE_MS);
