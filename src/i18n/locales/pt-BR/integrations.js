@@ -254,7 +254,6 @@ module.exports = {
   'integrations.animal.cat': 'Um gato',
   'integrations.animal.dog': 'Um cachorro',
   'integrations.animal.fox': 'Uma raposa',
-  'integrations.animal.open': 'Abrir a imagem',
   'integrations.chess.draws': 'empates',
   'integrations.chess.wins': 'vitórias',
   'integrations.chess.losses': 'derrotas',

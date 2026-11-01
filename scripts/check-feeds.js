@@ -743,7 +743,9 @@ const allText = (message) => JSON.stringify(json(message.components));
     assert.equal((await PROVIDERS.pictures.poll([two], new Map(), { now: when })).get(two.id).items.length, 0, 'a picture with only some of the tags is not what was asked');
     // The notice says what was searched, in the language of the server, and where it was found; never the title of the picture.
     const shown = JSON.stringify(card.buildFeedMessage({ message: '', options: {}, ping_roles: [] }, first, { lang: 'es' }).components);
-    assert.ok(shown.includes('Buscando: pink · sunset · Flickr') && !shown.includes('IMG_'), shown);
+    // ...and says nothing else: no source, no search words, no icon, no button, no time.
+    assert.ok(!/Flickr|Buscando|IMG_|pink|"type":2|"type":9|<t:|pe_f_/.test(shown), shown);
+    assert.equal((shown.match(/"type":12/g) ?? []).length, 1, 'one picture');
     globalThis.fetch = realFetch;
   }
 
@@ -1545,6 +1547,177 @@ const allText = (message) => JSON.stringify(json(message.components));
     polled = await PROVIDERS.pinterest.poll([{ id: 'user', name: 'user', avatar: null, url: 'https://www.pinterest.com/user/' }], new Map(), { now: Date.parse('2026-10-26T15:00:00Z') });
     assert.equal(polled.get('user').items[0].type, 'pin');
     assert.equal(polled.get('user').items[0].image, 'https://i.pinimg.com/736x/a/b.jpg');
+
+    const plain = (value) => JSON.parse(JSON.stringify(value)); // `json` is the answer of a service in this block
+    // --- The default words: only the feeds of a creator or a channel have them; Reddit, Pinterest, the automatic feeds and RSS are only their card -----------------------
+    {
+      const KEEPS = ['youtube', 'twitch', 'kick', 'bluesky', 'modrinth', 'mastodon', 'tumblr', 'letterboxd', 'spotify', 'deezer', 'applemusic', 'github', 'npm', 'pypi', 'steam'];
+      const NONE = ['reddit', 'pinterest', 'rss', 'anilist', 'pokemon', 'wikipedia', 'chess', 'epic', 'cat', 'dog', 'fox', 'bird', 'duck', 'capybara', 'bunny', 'animals', 'pictures', 'randommusic'];
+      assert.deepEqual([...KEEPS, ...NONE].sort(), [...PLATFORM_IDS].sort(), 'every platform is classified on purpose: it keeps the default words or it has none');
+      assert.deepEqual(Object.keys(card.ANNOUNCES).sort(), [...PLATFORM_IDS].sort(), 'the table of the card lists every platform');
+      const sample = { id: 'x', title: 'T', url: 'https://example.com/x', description: 'D', image: null, author: 'Someone', publishedAt: Date.now() };
+      for (const platform of PLATFORM_IDS) {
+        const type = PLATFORMS[platform].defaultTypes[0];
+        const words = card.defaultMessage({ message: '' }, { ...sample, platform, type }, 'en');
+        assert.equal(Boolean(words), KEEPS.includes(platform) && type !== 'photo' && type !== 'daily' && type !== 'game' && type !== 'track', `${platform}: default words ${words ? 'sent' : 'not sent'}`);
+        assert.equal(card.announces(platform), KEEPS.includes(platform), `${platform}: announces`);
+        const parts = plain(card.buildFeedMessage({ message: '', ping_roles: [], options: {} }, { ...sample, platform, type }, { lang: 'en' }).components ?? [{ type: 10 }]);
+        assert.equal(parts[0].type === 10, Boolean(words), `${platform}: the first part of the message is the words only when there are default words`);
+      }
+      for (const platform of ['reddit', 'pinterest']) for (const lang of ['en', 'es', 'pt-BR']) {
+        assert.equal(plain(card.buildFeedMessage({ message: '', ping_roles: [], options: {} }, { ...sample, platform, type: platform === 'pinterest' ? 'pin' : 'post' }, { lang }).components)[0].type, 17, `${platform} ${lang}: just the card`);
+      }
+      const custom = plain(card.buildFeedMessage({ message: 'Look at this: {feed.url}', ping_roles: [], options: {} }, { ...sample, platform: 'reddit', type: 'post' }, { lang: 'en' }).components);
+      assert.deepEqual([custom[0].type, custom[0].content, custom[1].type], [10, 'Look at this: https://example.com/x', 17], 'the words a server wrote still go out, above the card');
+      for (const type of ['video', 'short', 'live', 'clip']) assert.ok(card.defaultMessage({}, { ...sample, platform: type === 'clip' ? 'twitch' : 'youtube', type }, 'en').startsWith('Hey everyone!'), `${type} keeps its words`);
+    }
+
+    // --- The feeds that post by themselves: only the picture ---------------------------------------------------------------------------------------------------------------
+    {
+      const feedRow = { message: '', ping_roles: [], ping_everyone: false, options: {} };
+      for (const platform of ['cat', 'dog', 'fox', 'bird', 'duck', 'capybara', 'bunny', 'animals', 'pictures']) {
+        const shown = plain(card.buildFeedMessage(feedRow, { platform, type: 'photo', id: 'k', title: 'A cat', url: 'https://cdn.example/c.jpg', description: '', image: 'https://cdn.example/c.jpg', source: 'Flickr', extra: 'Flickr', publishedAt: Date.now() }, { lang: 'en' }).components);
+        assert.deepEqual(shown.map((part) => part.type), [17], `${platform}: only the card`);
+        assert.deepEqual(shown[0].components.map((part) => part.type), [12], `${platform}: the card is only the picture (no icon, title, source, time or button)`);
+        assert.equal(shown[0].accent_color, PLATFORMS[platform].color);
+      }
+      // The ones with a real title keep it (and its first words), and still no button, icon or source.
+      const wiki = plain(card.buildFeedMessage(feedRow, { platform: 'wikipedia', type: 'daily', id: 'w', title: 'Cat', url: 'https://en.wikipedia.org/wiki/Cat', description: 'A small animal.', image: 'https://upload.example/cat.jpg', author: 'Wikipedia', publishedAt: Date.now() }, { lang: 'en' }).components)[0];
+      assert.deepEqual(wiki.components.map((part) => part.type), [10, 12]);
+      assert.equal(wiki.components[0].content, '**[Cat](https://en.wikipedia.org/wiki/Cat)**\n> A small animal.');
+      assert.ok(!JSON.stringify(wiki).includes('Wikipedia"') && !JSON.stringify(wiki).includes('pe_f_'), 'no source line and no icon');
+      assert.ok(plain(card.buildFeedMessage({ ...feedRow, options: { image: false } }, { platform: 'cat', type: 'photo', id: 'k', title: 'A cat', image: 'https://cdn.example/c.jpg' }, { lang: 'en' }).components)[0].components.length >= 1, 'a card is never empty');
+    }
+
+    // --- Reddit: the image-first card from a real shape of entry --------------------------------------------------------------------------------------------------------
+    {
+      const html = (inner) => inner.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      const author = '<author><name>/u/not-jesus-maybe</name><uri>https://www.reddit.com/user/not-jesus-maybe</uri></author>';
+      const imageBody = html('<table> <tr><td> <a href="https://www.reddit.com/r/bondedpairs/comments/1abc/two_cats/"> <img src="https://preview.redd.it/abc.jpg?width=640&amp;crop=smart&amp;auto=webp&amp;s=sig" alt="Two cats" title="Two cats" /> </a> </td><td> &#32; submitted by &#32; <a href="https://www.reddit.com/user/not-jesus-maybe"> /u/not-jesus-maybe </a> <br/> <span><a href="https://i.redd.it/abc.jpg">[link]</a></span> &#32; <span><a href="https://www.reddit.com/r/bondedpairs/comments/1abc/two_cats/">[comments]</a></span> </td></tr></table>');
+      const textBody = html(`<!-- SC_OFF --><div class="md"><p>${'We adopted them last week and they already share a bed. '.repeat(8)}</p><p>Second paragraph.</p></div><!-- SC_ON --> &#32; submitted by &#32; <a href="https://www.reddit.com/user/not-jesus-maybe"> /u/not-jesus-maybe </a> <span><a href="https://www.reddit.com/r/bondedpairs/comments/2def/our_story/">[link]</a></span> &#32; <span><a href="https://www.reddit.com/r/bondedpairs/comments/2def/our_story/">[comments]</a></span>`);
+      const atomFeed = `<?xml version="1.0" encoding="UTF-8"?><feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/"><title>r/bondedpairs</title>
+        <entry>${author}<category term="bondedpairs" label="r/bondedpairs"/><content type="html">${imageBody}</content><id>t3_1abc</id><link href="https://www.reddit.com/r/bondedpairs/comments/1abc/two_cats/"/><updated>2026-10-31T18:33:00+00:00</updated><media:thumbnail url="https://b.thumbs.redditmedia.com/t.jpg"/><title>Two cats</title></entry>
+        <entry>${author}<content type="html">${textBody}</content><id>t3_2def</id><link href="https://www.reddit.com/r/bondedpairs/comments/2def/our_story/"/><updated>2026-10-31T19:00:00+00:00</updated><title>Our story</title></entry></feed>`;
+      const account = { id: 'bondedpairs', name: 'r/bondedpairs', avatar: null, url: 'https://www.reddit.com/r/bondedpairs' };
+      const entries = parseFeed(atomFeed).entries;
+      const [pictureItem, textItem] = entries.map((entry) => rssProviders.toItem('reddit', 'post', entry, account));
+      assert.deepEqual([pictureItem.author, pictureItem.authorUrl, pictureItem.source, pictureItem.sourceUrl], ['u/not-jesus-maybe', 'https://www.reddit.com/user/not-jesus-maybe', 'r/bondedpairs', 'https://www.reddit.com/r/bondedpairs']);
+      assert.equal(pictureItem.image, 'https://i.redd.it/abc.jpg', 'the file the post links to, not the 140 pixel thumbnail');
+      assert.equal(pictureItem.description, '', 'a picture post has no words: the noise (`submitted by`, `[link]`, `[comments]`) is gone');
+      assert.ok(!/submitted by|\[link\]|\[comments\]|\/u\//.test(`${textItem.description}${pictureItem.description}`), 'the boilerplate of Reddit is cut');
+      assert.match(textItem.description, /^We adopted them last week/);
+      assert.ok(textItem.description.length <= 400 && !textItem.description.includes('<'));
+      assert.equal(textItem.image, null, 'a text post has no picture (and never the thumbnail)');
+      // A picture that is only the preview in the text (a gallery, a link) is used when the post links to no picture file.
+      const gallery = rssProviders.toItem('reddit', 'post', { ...entries[0], html: entries[0].html.replace('https://i.redd.it/abc.jpg', 'https://www.reddit.com/gallery/1abc') }, account);
+      assert.equal(gallery.image, 'https://preview.redd.it/abc.jpg?width=640&crop=smart&auto=webp&s=sig');
+      assert.equal(rssProviders.toItem('reddit', 'post', { ...entries[0], html: '<a href="https://x.test">[link]</a>', image: 'https://b.thumbs.redditmedia.com/t.jpg' }, account).image, null, 'a thumbnail alone is not shown');
+      // The same post from the JSON listing (no html).
+      const fromJson = rssProviders.toItem('reddit', 'post', { id: 't3_j', title: 'J', url: 'https://www.reddit.com/r/b/comments/j/', summary: 'Body text', image: 'https://preview.redd.it/p.jpg', author: '/u/bob', published: 1 }, account);
+      assert.deepEqual([fromJson.description, fromJson.author, fromJson.image], ['Body text', 'u/bob', 'https://preview.redd.it/p.jpg']);
+
+      const when = Date.parse('2026-10-31T18:33:00Z');
+      const feedRow = { message: '', ping_roles: [], ping_everyone: false, options: {} };
+      const shown = plain(card.buildFeedMessage(feedRow, { ...pictureItem, publishedAt: when }, { lang: 'en' }).components);
+      assert.equal(shown.length, 1, 'no line of words above the card');
+      const reddit = shown[0];
+      assert.equal(reddit.type, 17);
+      assert.equal(reddit.accent_color, PLATFORMS.reddit.color);
+      assert.match(reddit.components[0].content, /^### <:pe_f_Reddit:\d+> \[r\/bondedpairs\]\(https:\/\/www\.reddit\.com\/r\/bondedpairs\)\n\*\*\[Two cats\]\(https:\/\/www\.reddit\.com\/r\/bondedpairs\/comments\/1abc\/two_cats\/\)\*\*$/);
+      assert.equal(reddit.components.filter((part) => part.type === 12).length, 1, 'one media gallery');
+      assert.deepEqual(reddit.components.find((part) => part.type === 12).items.map((item) => item.media.url), ['https://i.redd.it/abc.jpg'], 'with one picture, and no small one beside it');
+      assert.ok(!reddit.components.some((part) => part.type === 9), 'no section with a thumbnail');
+      assert.equal(reddit.components.find((part) => part.content?.startsWith('-#')).content, `-# u/not\\-jesus\\-maybe • <t:${Math.floor(when / 1000)}:f>`.replace(/\\-/g, '-'));
+      const button = reddit.components.at(-1).components[0];
+      assert.deepEqual([button.type, button.style, button.label, button.url], [2, 5, 'Read on Reddit', 'https://www.reddit.com/r/bondedpairs/comments/1abc/two_cats/']);
+      assert.ok(!JSON.stringify(shown).includes('Publicación') && !JSON.stringify(shown).includes('New post'), 'no footer line with the kind of notice');
+      assert.equal(plain(card.buildFeedMessage(feedRow, { ...pictureItem }, { lang: 'es' }).components)[0].components.at(-1).components[0].label, 'Leer en Reddit');
+      assert.equal(plain(card.buildFeedMessage(feedRow, { ...pictureItem }, { lang: 'pt-BR' }).components)[0].components.at(-1).components[0].label.includes('Reddit'), true);
+      // A text post: the first words as a quote (300 characters at most), and the picture only when there is one.
+      const textShown = plain(card.buildFeedMessage(feedRow, { ...textItem, publishedAt: when }, { lang: 'en' }).components)[0];
+      const quoteLine = textShown.components[0].content.split('\n').find((line) => line.startsWith('> '));
+      assert.ok(quoteLine && quoteLine.length <= 302 && quoteLine.startsWith('> We adopted'), 'a quote of the text');
+      assert.ok(!textShown.components.some((part) => part.type === 12), 'no gallery without a picture');
+      // The options still apply.
+      assert.ok(!plain(card.buildFeedMessage({ ...feedRow, options: { image: false } }, pictureItem, { lang: 'en' }).components)[0].components.some((part) => part.type === 12), 'the server can turn the picture off');
+      assert.notEqual(plain(card.buildFeedMessage({ ...feedRow, options: { button: false } }, pictureItem, { lang: 'en' }).components)[0].components.at(-1).type, 1, 'and the button');
+      assert.equal(plain(card.buildFeedMessage({ ...feedRow, options: { color: 0x123456 } }, pictureItem, { lang: 'en' }).components)[0].accent_color, 0x123456);
+      // Hostile and huge texts: nothing pings, links are http(s), the whole message stays under 4000 characters of text.
+      const huge = card.buildFeedMessage({ message: 'x'.repeat(1500), ping_roles: ['123456789012345678'], ping_everyone: false, options: {} }, { ...pictureItem, title: '@everyone <@123456789012345678> '.repeat(40), description: 'y '.repeat(900), url: `https://www.reddit.com/r/b/comments/1/${'a'.repeat(3000)}`, source: 'z'.repeat(400), sourceUrl: 'javascript:alert(1)', image: 'javascript:1' }, { lang: 'en' });
+      const hugeText = (list) => plain(list).flatMap((part) => [part.content, ...(part.components ?? []).map((child) => child.content)]).filter(Boolean).join('');
+      assert.ok(hugeText(huge.components).length <= 4000, `the text of the message is ${hugeText(huge.components).length} characters`);
+      assert.ok(!/@everyone/.test(JSON.stringify(huge.components)) && !JSON.stringify(huge.components).includes('javascript:'), 'no mention and no link that is not http(s)');
+      assert.ok(!huge.allowedMentions.parse.includes('everyone'));
+      assert.ok(!JSON.stringify(plain(huge.components)).includes('"url":"https://www.reddit.com/r/b/comments/1/aaaa'), 'an address too long for Discord is not sent as a button');
+    }
+
+    // --- Pinterest: the picture of the pin, in an image-first card ---------------------------------------------------------------------------------------------------------
+    {
+      assert.equal(rssProviders.bigPin('https://i.pinimg.com/474x/aa/bb.jpg'), 'https://i.pinimg.com/736x/aa/bb.jpg');
+      assert.equal(rssProviders.bigPin('https://example.com/236x/aa/bb.jpg'), 'https://example.com/236x/aa/bb.jpg', 'only the picture host of Pinterest is changed');
+      const pinXml = (description, extra = '') => `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/"><channel><title>miau</title><link>https://www.pinterest.com/baby/miau/</link>
+        <item><title>Grey kitten</title><link>https://www.pinterest.com/pin/111/</link><guid isPermaLink="false">https://www.pinterest.com/pin/111/</guid><pubDate>Sat, 31 Oct 2026 18:00:00 +0000</pubDate>${description}${extra}</item></channel></rss>`;
+      const board = { id: 'baby/miau', name: 'miau', avatar: null, url: 'https://www.pinterest.com/baby/miau/' };
+      const variants = {
+        cdata: pinXml('<description><![CDATA[<a href="https://www.pinterest.com/pin/111/"><img src="https://i.pinimg.com/236x/aa/bb/cc.jpg"></a>A grey kitten]]></description>'),
+        escaped: pinXml('<description>&lt;a href="https://www.pinterest.com/pin/111/"&gt;&lt;img src="https://i.pinimg.com/236x/aa/bb/cc.jpg"&gt;&lt;/a&gt;A grey kitten</description>'),
+        unquoted: pinXml('<description><![CDATA[<a href=https://www.pinterest.com/pin/111/><img src=https://i.pinimg.com/236x/aa/bb/cc.jpg></a>]]></description>'),
+        twiceEscaped: pinXml('<description>&amp;lt;img src=&amp;quot;https://i.pinimg.com/236x/aa/bb/cc.jpg&amp;quot;&amp;gt;</description>'),
+        media: pinXml('<description>A grey kitten</description>', '<media:content url="https://i.pinimg.com/474x/aa/bb/cc.jpg" medium="image"/>'),
+      };
+      const realFetch = globalThis.fetch;
+      try {
+        for (const [name, xml] of Object.entries(variants)) {
+          globalThis.fetch = async () => new Response(xml, { status: 200 });
+          const read = await rssProviders.readPinterest('baby/miau');
+          assert.equal(read.entries[0].image, 'https://i.pinimg.com/736x/aa/bb/cc.jpg', `${name}: the picture of the pin is found and made larger`);
+          const item = rssProviders.toItem('pinterest', 'pin', read.entries[0], board);
+          assert.deepEqual([item.image, item.imageFallback.startsWith('https://i.pinimg.com/'), item.source, item.author], ['https://i.pinimg.com/736x/aa/bb/cc.jpg', true, 'miau', 'baby'], name);
+        }
+      } finally { globalThis.fetch = realFetch; }
+      globalThis.fetch = async () => new Response(variants.cdata, { status: 200 });
+      const pin = rssProviders.toItem('pinterest', 'pin', (await rssProviders.readPinterest('baby/miau')).entries[0], board);
+      globalThis.fetch = realFetch;
+      const feedRow = { message: '', ping_roles: [], ping_everyone: false, options: {} };
+      const shown = plain(card.buildFeedMessage(feedRow, pin, { lang: 'en' }).components);
+      assert.equal(shown.length, 1, 'no words above the card');
+      const pinCard = shown[0];
+      assert.equal(pinCard.accent_color, PLATFORMS.pinterest.color);
+      assert.match(pinCard.components[0].content, /^### <:pe_f_pinterest:\d+> \[miau\]\(https:\/\/www\.pinterest\.com\/baby\/miau\/\)\n-# Pinterest ∙ baby\n\*\*\[Grey kitten\]\(https:\/\/www\.pinterest\.com\/pin\/111\/\)\*\*$/);
+      assert.deepEqual(pinCard.components.filter((part) => part.type === 12).map((part) => part.items.map((item) => item.media.url)), [['https://i.pinimg.com/736x/aa/bb/cc.jpg']], 'the picture of the pin, in one media gallery');
+      assert.ok(!pinCard.components.some((part) => part.type === 10 && /^-# /.test(part.content) && /ago|<t:/.test(part.content)), 'a pin has no time line');
+      assert.deepEqual([pinCard.components.at(-1).components[0].label, pinCard.components.at(-1).components[0].url], ['See on Pinterest', 'https://www.pinterest.com/pin/111/']);
+      // A pin without words of its own: only the board, the byline, the picture and the button.
+      const bare = plain(card.buildFeedMessage(feedRow, { ...pin, title: 'miau' }, { lang: 'en' }).components)[0];
+      assert.equal(bare.components[0].content.split('\n').length, 2, 'the name of the board is not repeated as a title');
+      // The larger picture is checked when the message is built, and the feed's own is the fallback.
+      const checked = [];
+      const good = await card.buildFeedPayload(feedRow, pin, { lang: 'en', hero: null, imageCheck: async (url) => { checked.push(url); return true; } });
+      assert.deepEqual([checked, plain(good.components)[0].components.find((part) => part.type === 12).items[0].media.url], [['https://i.pinimg.com/736x/aa/bb/cc.jpg'], 'https://i.pinimg.com/736x/aa/bb/cc.jpg']);
+      const fallback = await card.buildFeedPayload(feedRow, pin, { lang: 'en', hero: null, imageCheck: async () => false });
+      assert.equal(plain(fallback.components)[0].components.find((part) => part.type === 12).items[0].media.url, 'https://i.pinimg.com/236x/aa/bb/cc.jpg', 'the smaller picture when the larger does not load');
+      assert.deepEqual(fallback.allowedMentions, { parse: ['users', 'roles'], repliedUser: false });
+      // A test of a board whose pins are old still shows its newest pin, with its picture (the example without one is only for an empty board).
+      const service = require('../src/feeds/service');
+      globalThis.fetch = async () => new Response(variants.cdata, { status: 200 });
+      try {
+        const sample = await service.sampleItem({ platform: 'pinterest', account_id: 'baby/miau', account_name: 'miau', account_avatar: null, account_url: board.url, types: ['pin'] }, 'en');
+        assert.equal(sample.image, 'https://i.pinimg.com/736x/aa/bb/cc.jpg', 'a pin older than three days is still the test notice');
+      } finally { globalThis.fetch = realFetch; }
+    }
+
+    // The other sites share the layout: the account on top, the picture, a byline with the author and the time.
+    {
+      const feedRow = { message: '', ping_roles: [], ping_everyone: false, options: {} };
+      const blog = plain(card.buildFeedMessage(feedRow, { platform: 'rss', type: 'post', title: 'A post', url: 'https://blog.test/a', description: 'A post', image: 'https://blog.test/a.jpg', author: 'The Blog', authorUrl: 'https://blog.test', source: 'The Blog', sourceUrl: 'https://blog.test', publishedAt: Date.parse('2026-10-31T18:33:00Z') }, { lang: 'en' }).components);
+      assert.equal(blog[0].type, 17, 'RSS: only the card');
+      assert.ok(!blog[0].components[0].content.includes('\n> '), 'a description that is the title again is not repeated');
+      assert.ok(!blog[0].components.some((part) => part.type === 9), 'no thumbnail beside the picture');
+      const skeet = plain(card.buildFeedMessage(feedRow, { platform: 'bluesky', type: 'post', title: 'Jay', url: 'https://bsky.app/profile/j/post/1', description: 'hello world', image: null, author: '@j.bsky.social', source: 'Jay', sourceUrl: 'https://bsky.app/profile/j', publishedAt: 1_792_000_000_000 }, { lang: 'en' }).components);
+      assert.equal(skeet[0].type, 10, 'Bluesky follows a person: it keeps its words above the card');
+      assert.match(skeet[0].content, /^Hey everyone! \*\*@j\.bsky\.social\*\* just posted\.$/);
+      assert.match(skeet[1].components[0].content, /^### <:pe_f_BlueSky:\d+> \[Jay\]\(https:\/\/bsky\.app\/profile\/j\)\n> hello world$/);
+    }
 
     // GitHub: the tag of the last answer is sent, and a 304 gives the same releases without a new reading.
     assert.equal(github.parseRepo('https://github.com/PettoBot/petto-bot/releases/tag/v1'), 'PettoBot/petto-bot');

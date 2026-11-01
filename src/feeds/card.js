@@ -1,4 +1,17 @@
-// The message a feed sends: an optional line of text on top (a ping and the words the server chose), and a Components V2 card:
+// The message a feed sends: an optional line of text on top (a ping, and the words the server chose; the feeds of a creator or a channel,
+// such as YouTube, Twitch, Kick or Bluesky, say who posted when the server wrote nothing, the automatic ones are only their card), and a Components V2 card. Two layouts:
+//
+// The image-first card of the feeds of a site (Reddit, Pinterest, Bluesky, Mastodon, Tumblr, Letterboxd, RSS): the account, the post, the picture.
+//   ### emoji [the account](its link)
+//   **[Title of the post](link)**            (not when it is the name of the account)
+//   > the first words of the post             (not for a pin)
+//   [ the picture of the post, as large as it comes ]
+//   -# u/author • <t:time:f>                  (a pin: `-# Pinterest ∙ owner` under the account, and nothing at the end)
+//   [ the button to the post ]
+//
+// The feeds that post by themselves (animals, pictures by words, the article of the day...): only the picture, with no icon, source, time or button.
+//
+// The card of a video, a stream or a release:
 //   [ emoji **[Title](link)**            [picture] ]
 //   [ -# the description, when there is one       ]
 //   ──────────
@@ -17,6 +30,7 @@ const { t } = require('../i18n');
 const { heroFor } = require('./hero');
 const { queryLabel } = require('./providers/pictures');
 const { fetchImageBuffer } = require('../utils/safeImage');
+const { imageReady } = require('./picture');
 
 /**
  * What a feed knows about one notice. `item`:
@@ -43,14 +57,22 @@ const toMs = (value) => {
   return Number.isFinite(ms) ? ms : null;
 };
 
-// The platforms where a person or a project posts (a channel, a streamer, a project...): without words of its own a feed says who posted and what, so the card is not alone.
-// The ones that post on their own (pictures, animals, the Pokémon of the day, free games, music for you, RSS) keep only the card.
-const ANNOUNCED = new Set(['youtube', 'twitch', 'kick', 'bluesky', 'pinterest', 'modrinth', 'reddit', 'github', 'npm', 'pypi', 'steam', 'anilist', 'spotify', 'deezer', 'applemusic', 'mastodon', 'tumblr', 'letterboxd']);
-const ANNOUNCED_TYPES = new Set(['video', 'short', 'live', 'clip', 'post', 'pin', 'update', 'project', 'episode', 'release']);
+// A feed that follows a creator, a channel or a project by name says who posted when its server wrote no words ("Hey everyone! X is live now"); a feed whose content
+// comes from anywhere and posts by itself (a subreddit, a board, the daily animals, a puzzle, any RSS) is only its card, which already says what it is.
+// Every platform is listed here on purpose (the checks fail for one that is not), so a new platform has to be classified.
+const ANNOUNCES = {
+  youtube: true, twitch: true, kick: true, bluesky: true, modrinth: true, mastodon: true, tumblr: true, letterboxd: true, spotify: true, deezer: true, applemusic: true, github: true, npm: true, pypi: true, steam: true,
+  reddit: false, pinterest: false, rss: false, anilist: false, pokemon: false, wikipedia: false, chess: false, epic: false,
+  cat: false, dog: false, fox: false, bird: false, duck: false, capybara: false, bunny: false, animals: false, pictures: false, randommusic: false,
+};
+const ANNOUNCED_TYPES = new Set(['video', 'short', 'live', 'clip', 'post', 'update', 'project', 'episode', 'release']);
 
-/** "Hey everyone, **name** has published a new video": what a feed of an account says when its server wrote no words for it. Empty when it does not apply. */
+/** Does a platform announce its notices with words of its own when the server wrote none? (the dashboard shows an empty default for the ones that do not) */
+const announces = (platform) => ANNOUNCES[platform] === true;
+
+/** "Hey everyone, **name** has published a new video": what a feed of a creator says when its server wrote no words for it. Empty when it does not apply. */
 function defaultMessage(feed, item, lang) {
-  if (!ANNOUNCED.has(item.platform) || !ANNOUNCED_TYPES.has(item.type)) return '';
+  if (!announces(item.platform) || !ANNOUNCED_TYPES.has(item.type)) return '';
   const name = plainText(item.author || feed.account_name || PLATFORMS[item.platform]?.name || '', 100);
   return name ? t(lang, `feeds.default.${item.type}`, { name: `**${name}**` }) : '';
 }
@@ -67,6 +89,84 @@ function allowedMentionsOf(feed) {
   // The words of the feed are written by the server, so the users and roles in them are real mentions; what the platforms send has its mentions broken
   // (see `plainText`), so a title or a post cannot ping anyone. `@everyone` only when the feed asks for it.
   return { parse: ['users', 'roles', ...(feed.ping_everyone ? ['everyone'] : [])], repliedUser: false };
+}
+
+// The sites whose posts are drawn image-first (see the top of this file).
+const IMAGE_FIRST = new Set(['reddit', 'pinterest', 'bluesky', 'mastodon', 'tumblr', 'letterboxd', 'rss']);
+const MAX_QUOTE = 300;
+const MAX_LINK = 512; // what Discord takes as the address of a button
+const MAX_IMAGE_URL = 2000;
+const MAX_CARD_TEXT = 3800; // a Components V2 message holds 4000 characters of text in all (the words above the card count)
+
+/** An address that fits what Discord takes, or null. */
+const shortUrl = (value, max = MAX_LINK) => { const url = safeUrl(value); return url && url.length <= max ? url : null; };
+
+/** The picture, the heading, the words and the button of a post of a site, drawn the same for every site. `top` is the text above the card (for the size). */
+function imageFirstCard(item, { platform, options, lang, top }) {
+  const emoji = emojis.PLATFORM[item.platform] ?? emojis.PLATFORM.rss;
+  const sourceText = plainText(item.source || item.author, 200);
+  const sourceName = linkText(item.source || item.author) || platform.name;
+  const sourceUrl = shortUrl(item.sourceUrl ?? item.authorUrl);
+  const url = shortUrl(item.url);
+  const pin = item.platform === 'pinterest';
+
+  const head = [`### ${emoji} ${sourceUrl ? `[${sourceName}](${sourceUrl})` : sourceName}`];
+  if (pin) head.push(`-# ${platform.name} ∙ ${plainText(item.author, 80) || sourceText}`);
+
+  // The post's own title; when it is the name of the account again (a pin without words, a post without a title) it is not repeated.
+  const titleText = plainText(item.title, 200);
+  const showTitle = titleText && titleText !== sourceText;
+  const titleLine = showTitle ? `**${url ? `[${linkText(item.title)}](${url})` : linkText(item.title)}**` : '';
+
+  // The first words of the post as a quote, unless they are the title again (or a clipped copy of it); a pin shows its picture, not its caption.
+  const wanted = pin ? '' : plainText(item.description, MAX_QUOTE);
+  const quote = wanted && wanted !== titleText && !titleText.includes(wanted.replace(/…$/, '')) ? `> ${wanted}` : '';
+
+  const when = toMs(item.publishedAt);
+  const by = plainText(item.author, 80);
+  const byline = pin ? '' : [by && by !== sourceText ? by : '', when ? `<t:${Math.floor(when / 1000)}:f>` : ''].filter(Boolean).join(' • ');
+
+  const image = options.image === false ? null : (ATTACHMENT.test(String(item.image ?? '')) ? item.image : shortUrl(item.image, MAX_IMAGE_URL));
+  const button = options.button !== false && url
+    ? new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(url).setEmoji(emojis.forButton(emoji)).setLabel(clip(t(lang, `feeds.button.${item.type}`, { platform: platform.name }), 80))
+    : null;
+
+  // A text that would not fit loses its quote first, then the link of its title: the picture and the button are what stays.
+  const text = (withQuote, withTitleLink) => [...head, withTitleLink || !url ? titleLine : (showTitle ? `**${linkText(item.title)}**` : ''), withQuote ? quote : ''].filter(Boolean).join('\n');
+  let body = text(true, true);
+  if (top.length + body.length + byline.length > MAX_CARD_TEXT) body = text(false, true);
+  if (top.length + body.length + byline.length > MAX_CARD_TEXT) body = text(false, false);
+
+  const card = new ContainerBuilder().setAccentColor(Number.isInteger(options.color) ? options.color : platform.color);
+  card.addTextDisplayComponents(new TextDisplayBuilder().setContent(clip(body, MAX_CARD_TEXT - top.length - byline.length)));
+  if (image) card.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(image)));
+  if (byline) card.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${byline}`));
+  if (button) card.addActionRowComponents(new ActionRowBuilder().addComponents(button));
+  return card;
+}
+
+// The feeds that post by themselves (a picture of an animal, pictures by words, the article of the day, a puzzle, a Pokémon): only the picture in a clean card.
+// No icon, no source, no button, no time. The title (as a link) and the first words only for the ones whose source gives real ones; a picture has none.
+const AUTO_CARD = new Set(['cat', 'dog', 'fox', 'bird', 'duck', 'capybara', 'bunny', 'animals', 'pictures', 'wikipedia', 'chess', 'pokemon']);
+const WITHOUT_WORDS = new Set(['cat', 'dog', 'fox', 'bird', 'duck', 'capybara', 'bunny', 'animals', 'pictures']); // their title is made up, not given by the source
+
+function autoCard(item, { platform, options }) {
+  const lines = [];
+  if (!WITHOUT_WORDS.has(item.platform)) {
+    const title = linkText(item.title);
+    const url = shortUrl(item.url);
+    if (title) lines.push(`**${url ? `[${title}](${url})` : title}**`);
+    const words = plainText(item.description, MAX_QUOTE);
+    if (words && words !== plainText(item.title, 200)) lines.push(`> ${words}`);
+    if (item.extra) lines.push(`-# ${plainText(item.extra, 160)}`);
+  }
+  const image = options.image === false ? null : (ATTACHMENT.test(String(item.image ?? '')) ? item.image : shortUrl(item.image, MAX_IMAGE_URL));
+  const card = new ContainerBuilder().setAccentColor(Number.isInteger(options.color) ? options.color : platform.color);
+  if (lines.length) card.addTextDisplayComponents(new TextDisplayBuilder().setContent(clip(lines.join('\n'), MAX_CARD_TEXT)));
+  if (image) card.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(image)));
+  // A card needs something inside: with no picture and no words (the server turned the picture off) it says what kind of feed it is.
+  if (!lines.length && !image) card.addTextDisplayComponents(new TextDisplayBuilder().setContent(platform.name));
+  return card;
 }
 
 /**
@@ -104,6 +204,18 @@ function buildFeedMessage(feed, item, { lang, test = false, hero = null } = {}) 
       ));
     }
     components.push(card);
+    return { flags: MessageFlags.IsComponentsV2, components, allowedMentions: allowedMentionsOf(feed) };
+  }
+
+  // The feeds that post by themselves: only the picture.
+  if (AUTO_CARD.has(item.platform) && item.type !== 'ended') {
+    components.push(autoCard(item, { platform, options }));
+    return { flags: MessageFlags.IsComponentsV2, components, allowedMentions: allowedMentionsOf(feed) };
+  }
+
+  // The feeds of a site (a subreddit, a board, a blog...): the image-first card.
+  if (IMAGE_FIRST.has(item.platform) && item.type !== 'ended') {
+    components.push(imageFirstCard(item, { platform, options, lang, top }));
     return { flags: MessageFlags.IsComponentsV2, components, allowedMentions: allowedMentionsOf(feed) };
   }
 
@@ -185,7 +297,14 @@ async function buildFeedPayload(feed, item, options = {}) {
   const hero = options.hero === undefined ? await heroFor(item) : options.hero;
   const file = hero ? null : await rehosted(item, options.download ?? fetchImageBuffer);
   const files = [...(hero?.files ?? []), ...(file?.files ?? [])];
-  return { ...buildFeedMessage(feed, file?.item ?? item, { ...options, hero }), ...(files.length ? { files } : {}) };
+  const shown = await withWorkingImage(file?.item ?? item, options.imageCheck ?? imageReady);
+  return { ...buildFeedMessage(feed, shown, { ...options, hero }), ...(files.length ? { files } : {}) };
 }
 
-module.exports = { defaultMessage, buildFeedMessage, buildFeedPayload, renderMessage, pingLine, allowedMentionsOf, VARIABLES };
+/** A pin comes with the larger file of its picture (`imageFallback` is the small one the feed gave): the larger one is used when it loads, else the small one. */
+async function withWorkingImage(item, check) {
+  if (!item?.imageFallback || !item.image) return item;
+  return (await check(item.image)) ? item : { ...item, image: item.imageFallback };
+}
+
+module.exports = { defaultMessage, announces, ANNOUNCES, buildFeedMessage, buildFeedPayload, renderMessage, pingLine, allowedMentionsOf, VARIABLES };

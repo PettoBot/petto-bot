@@ -23,6 +23,25 @@ async function getForm(guildId, formId) {
   return data;
 }
 
+/** A form of the server by its number inside the server (the one in the address of the public form). */
+async function getFormByNumber(guildId, number) {
+  const n = Number(number);
+  if (!Number.isInteger(n) || n < 1 || n > 2_000_000_000) return null;
+  const { data, error } = await database.from('appeal_forms').select('*').eq('guild_id', guildId).eq('number', n).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * The form a request of the public site means: `number` (its number in the server) when it comes, else the internal `id` the site sent
+ * before the numbers existed. Only forms of this server are found.
+ */
+async function findForm(guildId, { number = null, id = null } = {}) {
+  if (number !== null && number !== undefined && number !== '') return getFormByNumber(guildId, number);
+  const n = Number(id);
+  return id !== null && id !== undefined && id !== '' && Number.isInteger(n) ? getForm(guildId, n) : null;
+}
+
 async function getSubmission(guildId, id) {
   const { data, error } = await database.from('appeal_submissions').select('*').eq('guild_id', guildId).eq('id', id).maybeSingle();
   if (error) throw error;
@@ -123,4 +142,4 @@ async function deleteExpiredReservations(beforeIso) {
   return data?.length ?? 0;
 }
 
-module.exports = { deleteExpiredReservations, listNamed, clearSlug, lastSubmissionAt, CONFIG_DEFAULTS, getConfig, getForm, getSubmission, createSubmission, updateSubmission, resolveSubmission, countPending, countPendingAll, updateConfig, addMessage, getBlock, setBlock, deleteResolvedBefore, listEnabledConfigs };
+module.exports = { deleteExpiredReservations, listNamed, clearSlug, lastSubmissionAt, CONFIG_DEFAULTS, getConfig, getForm, getFormByNumber, findForm, getSubmission, createSubmission, updateSubmission, resolveSubmission, countPending, countPendingAll, updateConfig, addMessage, getBlock, setBlock, deleteResolvedBefore, listEnabledConfigs };

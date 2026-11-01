@@ -512,6 +512,13 @@ const typed = async (command, text) => {
   ];
   out = await ask(animal, { sub: 'cat' });
   assert.match(out.text, /A cat/); assert.match(out.text, /thecatapi\.com\/images\/x\.jpg/);
+  {
+    // The answer is only the picture: no source name, no link line, no button.
+    const parts = JSON.stringify(out.payload?.components?.map((component) => component.toJSON()) ?? []);
+    assert.ok(out.payload, 'the answer is kept for this check');
+    assert.ok(!/TheCatAPI|Open the picture|"type":2|"type":1,/.test(parts), 'no source, no button');
+    assert.equal((parts.match(/"type":12/g) ?? []).length, 1, 'one picture');
+  }
   out = await ask(animal, { sub: 'dog' });
   assert.match(out.text, /A dog/); assert.match(out.text, /tofu\.jpg/);
   out = await ask(animal, { sub: 'fox' });

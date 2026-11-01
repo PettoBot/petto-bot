@@ -40,7 +40,7 @@ async function fetchPosts(did, limit = 20) {
 function toItem(post) {
   return {
     platform: 'bluesky', type: 'post', id: post.id, title: post.name, url: `https://bsky.app/profile/${post.handle}/post/${post.rkey}`, description: post.text,
-    image: post.image, avatar: post.avatar, author: `@${post.handle}`, authorUrl: `https://bsky.app/profile/${post.handle}`, publishedAt: post.published,
+    image: post.image, avatar: post.avatar, author: `@${post.handle}`, authorUrl: `https://bsky.app/profile/${post.handle}`, source: post.name, sourceUrl: `https://bsky.app/profile/${post.handle}`, publishedAt: post.published,
   };
 }
 

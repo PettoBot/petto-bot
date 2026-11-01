@@ -8,20 +8,44 @@ const gid = (guildId) => String(guildId);
 const NAME = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 
 async function listForms(guildId) {
-  const { data, error } = await database.from('forms').select('*').eq('guild_id', gid(guildId)).order('id', { ascending: true });
+  const { data, error } = await database.from('forms').select('*').eq('guild_id', gid(guildId)).order('number', { ascending: true });
   if (error) throw error;
   return data ?? [];
 }
 
-/** A form by its number (`12`) or its name (`staff`); null when the server has none like it. */
+/**
+ * A form as a person names it: its number inside the server (`2`, the one `!form list` shows) or its name (`staff`); null when the
+ * server has none like it. A name made only of digits is still found by name when the server has no form with that number. This never
+ * looks at the internal `id`: use `getFormById` for the id that buttons and menus carry.
+ */
 async function getForm(guildId, ref) {
-  const text = String(ref ?? '').trim().toLowerCase();
+  const text = String(ref ?? '').trim().toLowerCase().replace(/^#/, '');
   if (!text) return null;
-  let query = database.from('forms').select('*').eq('guild_id', gid(guildId));
-  if (/^\d{1,15}$/.test(text)) query = query.eq('id', Number(text));
-  else if (NAME.test(text)) query = query.eq('name', text);
-  else return null;
-  const { data, error } = await query.maybeSingle();
+  if (/^\d{1,9}$/.test(text)) {
+    const { data, error } = await database.from('forms').select('*').eq('guild_id', gid(guildId)).eq('number', Number(text)).maybeSingle();
+    if (error) throw error;
+    if (data) return data;
+  }
+  return NAME.test(text) ? getFormByName(guildId, text) : null;
+}
+
+/** A form of the server by its name. */
+async function getFormByName(guildId, name) {
+  const text = String(name ?? '').trim().toLowerCase();
+  if (!NAME.test(text)) return null;
+  const { data, error } = await database.from('forms').select('*').eq('guild_id', gid(guildId)).eq('name', text).maybeSingle();
+  if (error) throw error;
+  return data ?? null;
+}
+
+/**
+ * A form by its internal id, the one that button, menu and modal ids carry and that submissions keep as `form_id`. Never shown to a
+ * person and never typed by one. It only finds forms of this server: an id of another server's form is simply not found.
+ */
+async function getFormById(guildId, id) {
+  const text = String(id ?? '').trim();
+  if (!/^\d{1,15}$/.test(text)) return null;
+  const { data, error } = await database.from('forms').select('*').eq('guild_id', gid(guildId)).eq('id', Number(text)).maybeSingle();
   if (error) throw error;
   return data ?? null;
 }
@@ -43,14 +67,23 @@ async function countForms(guildId) {
   return count ?? 0;
 }
 
+/**
+ * Makes a form. The database gives it the next number of the server (see forms_assign_number in schema.sql): a `number` in `row` is
+ * ignored. A second try covers the rare clash of two forms made at the same moment; a name that is taken still fails at once.
+ */
 async function createForm(guildId, row) {
-  const { data, error } = await database.from('forms').insert({ ...row, public_id: row.public_id ?? newPublicId(), guild_id: gid(guildId) }).select('*').single();
-  if (error) throw error;
-  return data;
+  const { number: _ignored, ...fields } = row;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const { data, error } = await database.from('forms').insert({ ...fields, public_id: fields.public_id ?? newPublicId(), guild_id: gid(guildId) }).select('*').single();
+    if (!error) return data;
+    if (error.code !== '23505' || !String(error.constraint ?? error.message ?? '').includes('number')) throw error;
+  }
+  throw new Error('Could not number the form.'); // i18n-ignore: internal error
 }
 
 async function updateForm(guildId, id, changes) {
-  const { data, error } = await database.from('forms').update({ ...changes, updated_at: new Date().toISOString() }).eq('guild_id', gid(guildId)).eq('id', Number(id)).select('*').maybeSingle();
+  const { number: _kept, ...allowed } = changes; // the number of a form never changes
+  const { data, error } = await database.from('forms').update({ ...allowed, updated_at: new Date().toISOString() }).eq('guild_id', gid(guildId)).eq('id', Number(id)).select('*').maybeSingle();
   if (error) throw error;
   return data ?? null;
 }
@@ -220,7 +253,7 @@ async function deletePanel(guildId, id) {
 
 module.exports = {
   getFormByPublicId, renewPublicId,
-  NAME, RETENTION_DEFAULT, countStored, trimOldest, compactBefore, getFormConfig, setFormConfig, listRetentionConfigs, listForms, getForm, countForms, createForm, updateForm, deleteForm,
+  NAME, RETENTION_DEFAULT, countStored, trimOldest, compactBefore, getFormConfig, setFormConfig, listRetentionConfigs, listForms, getForm, getFormByName, getFormById, countForms, createForm, updateForm, deleteForm,
   createSubmission, getSubmission, updateSubmission, resolveSubmission, listSubmissions, memberStats, countFormSubmissions,
   createPanel, updatePanel, getPanel, listPanels, deletePanel,
 };

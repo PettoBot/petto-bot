@@ -35,7 +35,6 @@ module.exports = {
   'feeds.default.live': 'Hey everyone! {name} is live now.',
   'feeds.default.clip': 'Hey everyone! {name} has a new clip.',
   'feeds.default.post': 'Hey everyone! {name} just posted.',
-  'feeds.default.pin': 'Hey everyone! {name} just pinned something new.',
   'feeds.default.update': 'Hey everyone! {name} has a new version.',
   'feeds.default.project': 'Hey everyone! {name} has published a new project.',
   'feeds.default.episode': 'Hey everyone! {name} has a new episode.',
