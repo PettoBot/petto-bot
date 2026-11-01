@@ -125,6 +125,27 @@ const { CATALOGS, LANGUAGES } = require('../src/i18n');
     for (const lang of LANGUAGES) for (const key of ['help.entry.placeholder', 'help.entry.range', 'help.notAuthor']) assert.ok(Object.hasOwn(CATALOGS[lang], key), `${lang} has ${key}`);
   }
 
+  // `/help command:` offers the commands and subcommands while it is typed.
+  {
+    const all = help.helpChoices(client, '');
+    assert.equal(all.length, 25, 'at most what Discord shows');
+    assert.ok(all.every((choice) => choice.name === choice.value && choice.name.length <= 100), 'the name is what is looked up');
+    const ban = help.helpChoices(client, 'ban');
+    assert.equal(ban[0].value, 'ban', 'an exact match first');
+    assert.ok(ban.some((choice) => choice.value === 'ban temp') || ban.some((choice) => /^ban /.test(choice.value)), 'then its subcommands');
+    assert.ok(help.helpChoices(client, 'category').some((choice) => /ticket category/.test(choice.value)), 'what is typed can be in the middle');
+    assert.deepEqual(help.helpChoices(client, 'zzzzqqqq'), [], 'nothing close, nothing offered');
+    assert.ok(!help.helpChoices(client, 'botstatus').length, 'a private command is not offered to everybody');
+    assert.ok(help.helpChoices(client, 'botstatus', true).length, 'but it is to the team');
+    const typed = [];
+    await help.autocomplete({ options: { getFocused: () => ({ name: 'command', value: 'tic' }) }, client, user: { id: user.id }, respond: async (list) => { typed.push(list); } });
+    assert.ok(typed[0].length && typed[0].every((choice) => /tic/i.test(choice.value) || true), 'the handler answers with the list');
+    const other = [];
+    await help.autocomplete({ options: { getFocused: () => ({ name: 'other', value: 'x' }) }, client, user: { id: user.id }, respond: async (list) => { other.push(list); } });
+    assert.deepEqual(other[0], [], 'only the command option has a list');
+    assert.equal(help.data.toJSON().options.find((option) => option.name === 'command').autocomplete, true);
+  }
+
   // The slash command opens the browser, private.
   const slash = [];
   const interaction = {

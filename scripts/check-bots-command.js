@@ -34,12 +34,12 @@ const chat = (name, subs = 0, description = 'A command.') => ({ type: 1, name, d
     ['2', { id: '2', user: { bot: true, tag: 'Other#0002', username: 'Other' }, joinedTimestamp: 1000 }],
     ['3', { id: '3', user: { bot: false, tag: 'ana#0', username: 'ana' }, joinedTimestamp: 500 }],
   ]);
-  const loaded = [{ type: 1, name: 'c0' }].map((json) => ({ data: { toJSON: () => json } }));
+  const loaded = [{ type: 1, name: 'c0' }].map((json) => ({ registerSlash: true, data: { toJSON: () => json } }));
   const make = (userId, { registeredList = registered, fail = false } = {}) => {
     const answers = [];
     const client = {
       user: { id: '1' },
-      commands: new Collection([['c0', loaded[0]], ['prefixed', { prefixOnly: true, data: { toJSON: () => ({ type: 1, name: 'prefixed' }) } }]]),
+      commands: new Collection([['c0', loaded[0]], ['prefixed', { prefixOnly: true, data: { toJSON: () => ({ type: 1, name: 'prefixed' }) } }], ['huge', { data: { toJSON: () => chat('huge', 27) } }], ['small', { data: { toJSON: () => chat('small', 2) } }], ['secret', { hiddenFromHelp: true, data: { toJSON: () => chat('secret', 3) } }]]),
       application: { commands: { fetch: async () => { if (fail) throw new Error('down'); return new Collection(registeredList.map((json, i) => [String(i), { toJSON: () => json }])); } } },
     };
     const interaction = {
@@ -62,6 +62,11 @@ const chat = (name, subs = 0, description = 'A command.') => ({ type: 1, name, d
   assert.match(out, /`\/forum` 23 \/ 25/, 'and the one that is close');
   assert.match(out, /At Discord but not loaded any more/, 'what is registered and no longer loaded');
   assert.match(out, /deploy-commands/, 'and how to fix it');
+  assert.match(out, /Only with the prefix \(not slash yet\): 3\*\*/, 'the commands that could still move (the private one is not counted)');
+  assert.match(out, /Room to move them all: yes/);
+  assert.match(out, /Too big to move as they are: `huge` \(27 subcommands/, 'and the one that cannot go as it is');
+  const tooBigLine = out.match(/Too big to move as they are:[^\\]*/)?.[0] ?? '';
+  assert.ok(!tooBigLine.includes('small') && !tooBigLine.includes('secret'), 'a small one and a private one are not flagged');
   assert.match(out, /Bots in this server: 2\*\*/, 'two bots');
   assert.ok(out.indexOf('Other#0002') < out.indexOf('Petto#0001'), 'the oldest first');
   assert.match(out, /\(Petto\)/, 'Petto is marked');

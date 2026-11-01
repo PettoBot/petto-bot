@@ -121,7 +121,7 @@ module.exports = {
   'cmd.utility.guildsend.opt.type.desc': 'Tipo: diagnostic, permissions, logs, policy, maintenance',
   'cmd.utility.guildsend.opt.details.desc': 'Contexto do aviso (opcional).',
   'cmd.utility.help.desc': 'Navegue pelos comandos, ou procure um diretamente.',
-  'cmd.utility.help.opt.query.desc': 'Um comando (e opcionalmente um subcomando) a procurar, ex.: "ticket category add"',
+  'cmd.utility.help.opt.command.desc': 'Um comando (e opcionalmente um subcomando) a procurar, ex.: "ticket category add"',
   'cmd.utility.leaveguild.desc': 'Controle privado de suporte: faça o Petto sair de um dos seus servidores.',
   'cmd.utility.leaveguild.opt.guild_id.desc': 'O ID do servidor do Discord de onde o Petto deve sair.',
   'cmd.utility.myprefix.desc': 'Seu próprio prefixo. Vem com boost no servidor de suporte, Premium, sendo parceiro ou da equipe.',

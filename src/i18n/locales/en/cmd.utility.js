@@ -121,7 +121,7 @@ module.exports = {
   'cmd.utility.guildsend.opt.type.desc': 'Type: diagnostic, permissions, logs, policy, maintenance',
   'cmd.utility.guildsend.opt.details.desc': 'Optional notice context.',
   'cmd.utility.help.desc': 'Browse commands, or look one up directly.',
-  'cmd.utility.help.opt.query.desc': 'A command (and optionally subcommand) to look up, e.g. "ticket category add"',
+  'cmd.utility.help.opt.command.desc': 'A command (and optionally subcommand) to look up, e.g. "ticket category add"',
   'cmd.utility.imgonly.desc': 'Channels where only pictures and videos can be posted.',
   'cmd.utility.imgonly.add.desc': 'Make a channel pictures-and-videos only.',
   'cmd.utility.imgonly.add.opt.channel.desc': 'The channel',

@@ -159,7 +159,7 @@ for (const sub of embedLeaves) {
 }
 assert.ok(embedJson.description_localizations?.['es-ES'] && embedJson.description_localizations?.['es-419'] && embedJson.description_localizations?.['pt-BR'], '/embed is described in Spanish and Portuguese');
 assert.equal(typeof require(findCommandFiles(COMMANDS_DIR).find((file) => file.endsWith('/config/embed.js'))).autocomplete, 'function', '/embed answers the autocomplete');
-assert.ok(byName.get('help').options.some((option) => option.name === 'query'), '/help can look a command up');
+assert.ok(byName.get('help').options.some((option) => option.name === 'command' && option.autocomplete === true), '/help can look a command up');
 assert.ok(byName.get('help').description_localizations?.['es-ES'] && byName.get('help').description_localizations?.['pt-BR'], '/help is described in Spanish and Portuguese');
 
 console.log(`Checked the ${registered.length} commands registered with Discord (${chat.length} slash commands, ${registered.length - chat.length} context menus).`);

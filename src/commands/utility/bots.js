@@ -1,5 +1,6 @@
 // i18n-ignore-file: Petto team operator command.
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
+const { isSlashCommand } = require('../../handlers/commandHandler');
 const { isPettoOperator } = require('../../utils/autoModControl');
 const { slotUsage, nearLimit, difference, LIMITS } = require('../../utils/slashBudget');
 const { textCard } = require('../../utils/caseCard');
@@ -18,9 +19,11 @@ async function registeredCommands(client) {
   }
 }
 
-/** The commands Petto loads that are sent to Discord (a command that is prefix only is not). */
+/** The commands Petto loads that are sent to Discord: the slash commands (see `isSlashCommand`) and the context menus; a command that works only with the prefix is not. */
 function loadedCommands(client) {
-  return [...client.commands.values()].filter((command) => !command.prefixOnly).map((command) => command.data.toJSON());
+  return [...client.commands.values()]
+    .filter((command) => command?.data && !command.prefixOnly && !command.privateGuildId && (isSlashCommand(command) || (command.data.toJSON().type ?? 1) !== 1))
+    .map((command) => command.data.toJSON());
 }
 
 function slotLines(usage) {
@@ -73,6 +76,14 @@ module.exports = {
       const usage = slotUsage(loaded);
       lines.push('**Slash command slots (global)**', ...slotLines(usage), `${EMOJI.WARNING} Discord could not be asked, so this is what Petto loads, not what is registered.`);
     }
+
+    // The commands that work only with the prefix (the ones people see in the help): how many could still be moved to slash commands, and which of them
+    // are too big to go as they are (more than 25 subcommands, or 8000 characters).
+    const prefixCommands = [...client.commands.values()].filter((command) => !command.hiddenFromHelp && !isSlashCommand(command) && (command.data.toJSON().type ?? 1) === 1);
+    const tooBig = nearLimit(prefixCommands.map((command) => command.data.toJSON()), { subcommands: 26, size: LIMITS.size + 1 });
+    lines.push('', `**Only with the prefix (not slash yet): ${prefixCommands.length}**`);
+    if (registered) lines.push(`Room to move them all: ${slotUsage(registered).chat.free >= prefixCommands.length ? 'yes' : `no, ${slotUsage(registered).chat.free} slots for ${prefixCommands.length} commands`}.`);
+    if (tooBig.length) lines.push(`Too big to move as they are: ${tooBig.slice(0, 10).map((entry) => `\`${entry.name}\` (${entry.subcommands} subcommands, ${entry.size} characters)`).join(', ')}.`);
 
     const { bots, complete } = await botsOf(interaction.guild);
     lines.push('', `**Bots in this server: ${bots.length}${complete ? '' : '+'}**`);

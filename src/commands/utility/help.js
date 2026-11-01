@@ -163,7 +163,7 @@ function buildParams(entry, lang) {
 }
 
 const EXAMPLE_BY_NAME = {
-  duration: '1h', time: '10m', hex: '#ff91c2', color: '#ff91c2', emoji: '🌸', code: 'ABC123', query: 'ticket', days: '7', amount: '10', prize: '"Nitro"',
+  duration: '1h', time: '10m', hex: '#ff91c2', color: '#ff91c2', emoji: '🌸', code: 'ABC123', query: 'ticket', command: 'ticket', days: '7', amount: '10', prize: '"Nitro"',
 };
 // Examples written in words, so they are in the language of the server: option name -> `help.example.<key>`.
 const WORDED_EXAMPLE = { reason: 'reason', message: 'text', text: 'text', name: 'name', template: 'template', title: 'title', description: 'description' }; // i18n-ignore: option names -> catalog key parts
@@ -409,6 +409,36 @@ function detailView(client, guild, prefix, command, entry, categoryId, includeHi
   return { components: [card], flags: MessageFlags.IsComponentsV2 };
 }
 
+/**
+ * What `/help command:` offers while it is typed: every command and every subcommand ("ban", "ban temp", "ticket category add"), the ones that
+ * start with what was typed first, then the ones that contain it or have an alias that does; at most 25 (what Discord shows). The names of the
+ * commands that the person should not see (private ones) are left out like in the help itself.
+ */
+function helpChoices(client, typed, includeHidden = false) {
+  const word = String(typed ?? '').toLowerCase().trim();
+  const found = [];
+  for (const command of getChatInputCommands(client, includeHidden)) {
+    const name = command.data.name;
+    const aliases = (command.aliases ?? []).map((alias) => String(alias).toLowerCase());
+    const entries = visibleEntries(command, includeHidden);
+    const paths = entries.length === 1 && !entries[0].path.length ? [name] : [name, ...entries.map((entry) => [name, ...entry.path].join(' '))];
+    for (const path of paths) {
+      const lower = path.toLowerCase();
+      let score = null;
+      if (!word) score = path === name ? 0 : 3;
+      else if (lower === word) score = 0;
+      else if (lower.startsWith(word)) score = 1;
+      else if (lower.includes(word)) score = 2;
+      else if (aliases.some((alias) => alias === word || alias.startsWith(word))) score = 2.5;
+      if (score !== null) found.push({ path, score });
+    }
+  }
+  return found
+    .sort((a, b) => a.score - b.score || a.path.length - b.path.length || a.path.localeCompare(b.path))
+    .slice(0, 25)
+    .map(({ path }) => ({ name: path.slice(0, 100), value: path.slice(0, 100) }));
+}
+
 module.exports = {
   // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
   registerSlash: true,
@@ -416,9 +446,15 @@ module.exports = {
     .setName('help')
     .setDMPermission(false)
     .setDescription('Browse commands, or look one up directly.')
-    .addStringOption((o) => o.setName('query').setDescription('A command (and optionally subcommand) to look up, e.g. "ticket category add"').setRequired(false)),
+    .addStringOption((o) => o.setName('command').setDescription('A command (and optionally subcommand) to look up, e.g. "ticket category add"').setRequired(false).setAutocomplete(true)),
   aliases: ['h', 'hlp'],
   interactive: true,
+
+  async autocomplete(interaction) {
+    const focused = interaction.options.getFocused(true);
+    if (focused.name !== 'command') return interaction.respond([]);
+    return interaction.respond(helpChoices(interaction.client, focused.value, isPettoOperator(interaction.user?.id)));
+  },
 
   async execute(interaction) {
     // Computed once: the collectors below answer outside of the command's language context.
@@ -432,7 +468,7 @@ module.exports = {
 
     // As a slash command the menus are private (only the person who asked can use them anyway); the prefix drops the flag.
     const PRIVATE = MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral;
-    const input = interaction.options.getString('query')?.trim();
+    const input = interaction.options.getString('command')?.trim();
     if (input) {
       const tokens = input.toLowerCase().split(/\s+/);
       const { command, entries } = findEntries(client, tokens, includeHidden);
@@ -558,5 +594,6 @@ module.exports = {
 // The main menu and a category page, drawn by scripts/check-i18n-panels.js in every language.
 module.exports.mainView = mainView;
 module.exports.suggestCommands = suggestCommands;
+module.exports.helpChoices = helpChoices;
 module.exports.entryPickers = entryPickers;
 module.exports.categoryView = categoryView;
