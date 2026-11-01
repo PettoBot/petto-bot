@@ -244,11 +244,25 @@ function liveChannel(message) {
   return message.channel ?? message.client?.channels?.cache?.get(message.channelId) ?? null;
 }
 
+/** Discord refuses a reply to a message that no longer exists: 10008 (unknown message) or 50035 about the message reference. */
+function isUnknownReference(error) {
+  if (!error) return false;
+  if (error.code === 10008) return true;
+  return error.code === 50035 && /message_reference|message reference|MESSAGE_REFERENCE_UNKNOWN_MESSAGE|Unknown message/i.test(`${error.message ?? ''} ${JSON.stringify(error.rawError ?? '')}`);
+}
+
 function buildPseudoInteraction(message, { commandName, subcommand, subcommandGroup, values }) {
   let repliedMessage = null;
   let deferredFlag = false;
   // An answer that Discord refuses for its size is told once as a short text (the language is set by the dispatcher after this is built).
   const fallback = (send, payload) => sendWithPlainFallback(send, sanitizePayload(payload), { lang: () => pseudo.pettoLang, context: `!${commandName}` });
+  // Every answer of a prefix command is a reply to the message that typed it (so it is clear who ran it); when that message is already gone
+  // (Discord says the reference is unknown) the answer goes to the channel instead of being lost.
+  const answer = (payload) => fallback((options) => message.reply(options).catch((error) => {
+    const channel = liveChannel(message);
+    if (channel && isUnknownReference(error)) return channel.send(options);
+    throw error;
+  }), payload);
 
   const pseudo = {
     isChatInputCommand: () => true,
@@ -302,20 +316,18 @@ function buildPseudoInteraction(message, { commandName, subcommand, subcommandGr
       deferredFlag = true;
     },
     async reply(payload) {
-      repliedMessage = await fallback((options) => message.reply(options), payload);
+      repliedMessage = await answer(payload);
       return repliedMessage;
     },
     async editReply(payload) {
       if (repliedMessage) return fallback((options) => repliedMessage.edit(options), payload);
       // A command that deletes its own channel (nuke) leaves no channel to answer in: there is nobody to tell, so it is not an error.
-      const channel = liveChannel(message);
-      if (!channel) return null;
-      repliedMessage = await fallback((options) => channel.send(options), payload);
+      if (!liveChannel(message)) return null;
+      repliedMessage = await answer(payload);
       return repliedMessage;
     },
     async followUp(payload) {
-      const channel = liveChannel(message);
-      return channel ? fallback((options) => channel.send(options), payload) : null;
+      return liveChannel(message) ? answer(payload) : null;
     },
     async fetchReply() {
       return repliedMessage;

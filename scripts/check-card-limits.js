@@ -337,7 +337,7 @@ async function checkFallback() {
   failNext = 1;
   log.length = 0;
   await pseudo.followUp(card);
-  assert.deepEqual(log.map((entry) => entry[0]), ['send', 'send'], 'and a follow up too');
+  assert.deepEqual(log.map((entry) => entry[0]), ['reply', 'reply'], 'and a follow up too (it is an answer to the message too, retried once as a short text)');
   // A refusal that is not about the answer still reaches the command.
   message.reply = async () => { throw refused(50013); };
   await assert.rejects(() => pseudo.reply(card), (error) => error.code === 50013);
