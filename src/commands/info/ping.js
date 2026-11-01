@@ -14,14 +14,14 @@ function colorFor(guildMs, apiMs) {
   return worst < 300 ? GREEN : worst < 700 ? YELLOW : RED;
 }
 
-/** The card of the ping: both latencies, the links and the size of Petto. Pure, so it can be checked without Discord. */
-function buildPingCard({ guildMs, apiMs, shard, shardCount, guilds, members, lang = 'en' }) {
+/** The card of the ping: both latencies, the links and the number of servers (never the number of members, that is private). Pure, so it can be checked without Discord. */
+function buildPingCard({ guildMs, apiMs, shard, shardCount, guilds, lang = 'en' }) {
   const api = Number.isFinite(apiMs) ? `${Math.round(apiMs)}ms` : t(lang, 'info.ping.unknown');
   return textCard([
     t(lang, 'info.ping.guild', { ms: `${Math.max(0, Math.round(guildMs))}ms` }),
     t(lang, 'info.ping.api', { ms: api }),
     t(lang, 'info.ping.links', { statusUrl: STATUS_URL, supportUrl: SUPPORT_URL }),
-    t(lang, 'info.ping.footer', { shard, shardCount, guilds: formatNumber(lang, guilds), members: formatNumber(lang, members) }),
+    t(lang, 'info.ping.footer', { shard, shardCount, guilds: formatNumber(lang, guilds) }),
   ].join('\n'), colorFor(guildMs, apiMs));
 }
 
@@ -44,9 +44,8 @@ module.exports = {
     const { client } = interaction;
     const shardCount = client.shard?.count ?? 1;
     const shard = (client.shard?.ids?.[0] ?? 0) + 1;
-    const members = client.guilds.cache.reduce((sum, guild) => sum + (guild.memberCount ?? 0), 0);
     await interaction.editReply({
-      components: [buildPingCard({ guildMs, apiMs: client.ws.ping, shard, shardCount, guilds: client.guilds.cache.size, members, lang })],
+      components: [buildPingCard({ guildMs, apiMs: client.ws.ping, shard, shardCount, guilds: client.guilds.cache.size, lang })],
       flags: MessageFlags.IsComponentsV2,
     });
   },
