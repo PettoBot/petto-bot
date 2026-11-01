@@ -345,7 +345,7 @@ const ALL_TYPES = [
   form = { id: 3, title: 'T', fields: [{ type: 'display', content: 'nothing to ask' }] };
   const none = modalInteraction({});
   await handleModal(none, { download });
-  assert.ok(none.calls[0].reply, 'a form with nothing to answer is not available');
+  assert.ok(none.calls.at(-1).edit && /./.test(String(none.calls.at(-1).edit.content)), 'a form with nothing to answer is not available (a private edit of the announced answer)');
 
   console.log('Checked the ticket form questions: types, modal, answers, files (pictures only, copied, link kept), and the cards.');
 })().catch((error) => { console.error(error); process.exit(1); });

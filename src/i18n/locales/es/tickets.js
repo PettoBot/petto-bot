@@ -445,4 +445,11 @@ module.exports = {
   'tickets.ai.humanAlready': 'Este ticket ya se pasó al equipo.',
   'tickets.ai.onlyOpener': 'Solo la persona que abrió este ticket puede usar este botón.',
   'tickets.ai.buttonGone': 'Este ticket ya no está abierto.',
+  // La red de seguridad de cada botón, menú y formulario de los tickets (utils/safeTicketAction.js).
+  'tickets.safe.failed': 'Eso no funcionó. Se avisó al equipo de Petto y lo revisará. Inténtalo de nuevo en un momento.',
+  'tickets.safe.transcriptFailed': 'No se pudo guardar la transcripción, así que este ticket no se eliminó. Se avisó al equipo de Petto. Inténtalo de nuevo en un momento.',
+  'tickets.safe.alreadyGone': 'Ese ticket ya está cerrado o ya no existe, así que no queda nada por hacer.',
+  'tickets.safe.busy': 'Petto ya está con eso. Dale un momento.',
+  'tickets.safe.lateDone': '{emoji} Listo. Tardó más de lo que Discord permite para responder, pero se hizo.',
+  'tickets.safe.tryAgain': 'Petto tardó en responder. Vuelve a pulsar el botón.',
 };

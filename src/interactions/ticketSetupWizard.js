@@ -1,5 +1,6 @@
 // Guided ticket setup: pick the channel, support roles and log channel with menus, name the ticket types with buttons,
 // choose how the panel looks, and publish it all in one go.
+const { wrapTicketHandler } = require('../utils/safeTicketAction');
 const {
   ModalBuilder,
   TextInputBuilder,
@@ -345,4 +346,13 @@ async function handleModal(interaction) {
   await interaction.editReply(renderWizard(uid, draft, lang));
 }
 
-module.exports = { renderWizard, startDraft, handleButton, handleSelect, handleModal, isValidEmoji, uniqueKey };
+// Wrapped in the safety net of the tickets (utils/safeTicketAction.js): an expired press is not an error and a failure is told kindly.
+module.exports = {
+  renderWizard,
+  startDraft,
+  handleButton: wrapTicketHandler('tk_setup', handleButton),
+  handleSelect: wrapTicketHandler('tk_setup_select', handleSelect),
+  handleModal: wrapTicketHandler('tk_setup_modal', handleModal),
+  isValidEmoji,
+  uniqueKey,
+};

@@ -445,4 +445,11 @@ module.exports = {
   'tickets.ai.humanAlready': 'This ticket was already passed to the team.',
   'tickets.ai.onlyOpener': 'Only the person who opened this ticket can use this button.',
   'tickets.ai.buttonGone': 'This ticket is not open any more.',
+  // The safety net around every ticket button, menu and form (utils/safeTicketAction.js).
+  'tickets.safe.failed': 'That did not work. The Petto team was told and will look at it. Please try again in a moment.',
+  'tickets.safe.transcriptFailed': 'The transcript could not be saved, so this ticket was not deleted. The Petto team was told. Please try again in a moment.',
+  'tickets.safe.alreadyGone': 'That ticket is already closed or gone, so there is nothing left to do.',
+  'tickets.safe.busy': 'Petto is already working on that. Give it a moment.',
+  'tickets.safe.lateDone': '{emoji} Done. It took longer than Discord allows for a reply, but it went through.',
+  'tickets.safe.tryAgain': 'Petto was slow to answer. Please press the button again.',
 };

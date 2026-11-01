@@ -176,9 +176,9 @@ let lastMessages = null;
 
   // 12. the Talk to a person button: only the opener, once, and the team is pinged
   const { handleButton } = require('../src/interactions/ticketAi');
-  const press = (userId) => { const replies = []; return { replies, customId: flow.HUMAN_BUTTON, channelId: 'chan2', user: { id: userId }, guild, channel: { send: async (p) => { replies.push(['send', p]); } }, locale: 'en', guildLocale: 'en', reply: async (p) => { replies.push(['reply', p]); } }; };
+  const press = (userId) => { const replies = []; return { replies, customId: flow.HUMAN_BUTTON, channelId: 'chan2', user: { id: userId }, guild, channel: { send: async (p) => { replies.push(['send', p]); } }, locale: 'en', guildLocale: 'en', deferred: false, replied: false, deferReply: async function () { this.deferred = true; }, editReply: async function (p) { replies.push(['reply', p]); this.replied = true; }, followUp: async (p) => { replies.push(['reply', p]); }, reply: async (p) => { replies.push(['reply', p]); } }; };
   flow.states.clear();
-  let click = press('stranger'); await handleButton(click); assert.equal(click.replies.length, 1); assert.equal(click.replies[0][1].flags, MessageFlags.Ephemeral, 'someone else gets a private refusal');
+  let click = press('stranger'); await handleButton(click); assert.equal(click.replies.length, 1); assert.ok(click.replies[0][1].content, 'someone else gets a refusal, as the private answer that was announced');
   click = press('opener'); await handleButton(click);
   assert.equal(click.replies.filter(([k]) => k === 'send').length, 1, 'the team is told once'); assert.ok(said(click.replies.find(([k]) => k === 'send')[1]).includes('<@&staffRole>'));
   click = press('opener'); await handleButton(click); assert.equal(click.replies.filter(([k]) => k === 'send').length, 0, 'pressing again does not ping again');

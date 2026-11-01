@@ -186,7 +186,7 @@ function isHardcoded(literal) {
   const call = lastPart(literal.call);
   // Arguments that are never text: the key of `t(lang, 'key')`, logs, ids, comparisons, parsing.
   if ((call === 't' || call === 'tn') && literal.arg === 1) return false;
-  if (/^(logger|console)\./.test(literal.call ?? '') || /^(logger|console)\./.test(literal.outerCall ?? '')) return false;
+  if (/^(logger|console)\./.test(literal.call ?? '') || /^(logger|console)\./.test(literal.outerCall ?? '') || literal.call === 'reportInteractionError' || literal.outerCall === 'reportInteractionError') return false;
   if (literal.call && NOT_TEXT_CALLS.has(call) && !literal.key) return false;
   if (literal.key && NOT_TEXT_KEYS.has(literal.key)) return false;
   if (/\bcase\s+$/.test(literal.before) || /(?:===?|!==?)\s*$/.test(literal.before)) return false;
@@ -225,7 +225,7 @@ function hardcodedText(source) {
     const lineText = lines[literal.line - 1] ?? '';
     const previous = lines[literal.line - 2] ?? '';
     if (/i18n-ignore/.test(lineText) || /i18n-ignore/.test(previous)) continue;
-    if (/\blogger\.\w+\(|\bconsole\.\w+\(|\brequire\(/.test(lineText) && !/\bt\(/.test(lineText)) continue;
+    if (/\blogger\.\w+\(|\bconsole\.\w+\(|\breportInteractionError\(|\brequire\(/.test(lineText) && !/\bt\(/.test(lineText)) continue;
     if (!isHardcoded(literal)) continue;
     hits.push({ line: literal.line, text: literal.text.length > 120 ? `${literal.text.slice(0, 117)}...` : literal.text });
   }

@@ -150,8 +150,22 @@ module.exports = {
     general: process.env.PETTO_GENERAL_LOG_CHANNEL_ID || '1535351181990166620',
     // Where the reports of direct messages from people go (the Petto team only). Without it the reports are kept in the database and a warning is logged.
     dmReports: /^\d{15,25}$/.test(process.env.PETTO_DM_REPORTS_CHANNEL_ID || '') ? process.env.PETTO_DM_REPORTS_CHANNEL_ID : null,
+    // The errors the team has to investigate. Without it they are posted in the general error log, marked as priority.
+    priorityErrors: /^\d{15,25}$/.test(process.env.PETTO_PRIORITY_ERRORS_CHANNEL_ID || '') ? process.env.PETTO_PRIORITY_ERRORS_CHANNEL_ID : null,
   },
+  // The general error log: warnings, rate limits, Redis and the errors that Petto expects (see src/utils/errorTriage.js).
   errorLogChannelId: /^\d{15,25}$/.test(process.env.PETTO_ERROR_LOG_CHANNEL_ID || '') ? process.env.PETTO_ERROR_LOG_CHANNEL_ID : null,
+  // Who a priority error pings: PETTO_PRIORITY_PING_USER_IDS (user ids, separated by commas), else the first developer, else the owner; and
+  // optionally one role. At most one ping per problem every 30 minutes and 5 an hour.
+  priorityPing: {
+    userIds: (() => {
+      const explicit = envList('PETTO_PRIORITY_PING_USER_IDS');
+      if (explicit.length) return explicit;
+      const developers = envList('PETTO_DEVELOPER_IDS');
+      return [developers[0] || process.env.PETTO_OWNER_ID || '293504726505357312'];
+    })(),
+    roleId: /^\d{15,25}$/.test(process.env.PETTO_PRIORITY_PING_ROLE_ID || '') ? process.env.PETTO_PRIORITY_PING_ROLE_ID : null,
+  },
   premiumRoleIds: {
     1: process.env.PETTO_PREMIUM_ROLE_1_ID || '1535057178094735371',
     3: process.env.PETTO_PREMIUM_ROLE_3_ID || '1535057189570478214',
