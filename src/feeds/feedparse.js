@@ -29,8 +29,10 @@ const httpsOnly = (value) => (/^https?:\/\//i.test(value) ? value.replace(/^http
 function imageOf(entry, html) {
   const media = attr(entry, 'media:content', 'url') || attr(entry, 'media:thumbnail', 'url');
   const enclosure = /<enclosure\b[^>]*\btype\s*=\s*"image\//i.test(entry) ? attr(entry, 'enclosure', 'url') : '';
-  const img = /<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/i.exec(html)?.[1];
-  return httpsOnly(media || enclosure || (img ? decode(img) : ''));
+  const img = /<img\b[^>]*\b(?:src|data-src)\s*=\s*["']?([^"'\s>]+)/i.exec(html)?.[1];
+  // A feed that writes its text twice-escaped (`&amp;lt;img ...`) or without quotes still holds the address of its picture: the image host of Pinterest is looked for in the raw entry as the last resort.
+  const pin = /https?:\/\/i\.pinimg\.com\/[\w/.\-]+\.(?:jpe?g|png|gif|webp)/i.exec(entry)?.[0];
+  return httpsOnly(media || enclosure || (img ? decode(img) : '') || pin || '');
 }
 
 /**
@@ -47,7 +49,7 @@ function feedKind(text) {
 }
 
 /**
- * `{ isFeed, title, link, image, entries: [{ id, title, url, summary, image, published, author }] }`, newest first as the feed gives them.
+ * `{ isFeed, title, link, image, entries: [{ id, title, url, summary, html, image, thumbnail, published, author, authorUrl }] }`, newest first as the feed gives them.
  * A text that is not a feed gives no entries and no title.
  */
 function parseFeed(xml, { max = 20 } = {}) {
@@ -65,8 +67,8 @@ function parseFeed(xml, { max = 20 } = {}) {
     const id = tag(entry, 'guid') || tag(entry, 'id') || url;
     const authorBlock = /<author[^>]*>([\s\S]*?)<\/author>/i.exec(entry)?.[1] ?? '';
     return {
-      id: String(id).slice(0, 300), title: clean(tag(entry, 'title'), 250), url: httpsOnly(url), summary: clean(body, 400),
-      image: imageOf(entry, body), published: Date.parse(tag(entry, atom ? 'published' : 'pubDate') || tag(entry, 'updated') || tag(entry, 'dc:date')) || null,
+      id: String(id).slice(0, 300), title: clean(tag(entry, 'title'), 250), url: httpsOnly(url), summary: clean(body, 400), html: body.slice(0, 8000), thumbnail: httpsOnly(attr(entry, 'media:thumbnail', 'url')),
+      authorUrl: httpsOnly(tag(authorBlock, 'uri') || tag(authorBlock, 'url')), image: imageOf(entry, body), published: Date.parse(tag(entry, atom ? 'published' : 'pubDate') || tag(entry, 'updated') || tag(entry, 'dc:date')) || null,
       author: clean(tag(authorBlock, 'name') || authorBlock.trim() || tag(entry, 'dc:creator'), 80),
     };
   }).filter((entry) => entry.id && (entry.title || entry.url));
@@ -90,4 +92,4 @@ function discoverFeed(html, base) {
   return null;
 }
 
-module.exports = { parseFeed, discoverFeed, feedKind, tag, attr, decode };
+module.exports = { parseFeed, discoverFeed, feedKind, tag, attr, decode, clean };
