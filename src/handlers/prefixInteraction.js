@@ -407,7 +407,7 @@ async function buildInteractionFromMessage(message, command, argText) {
     resolved.optionDefs,
     resolved.remainingTokens,
     {
-      includeBans: json.name === 'unban' || (json.name === 'ban' && resolved.subcommand === 'remove'),
+      includeBans: json.name === 'unban' || (json.name === 'ban' && resolved.subcommand === 'remove') || Boolean(command.prefixIncludeBans?.includes(resolved.subcommand)),
     },
     {
       greedyStringOption: command.prefixGreedyStringOptions?.[resolved.subcommand ?? '_'] ?? null,

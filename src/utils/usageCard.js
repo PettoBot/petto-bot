@@ -131,4 +131,15 @@ function missingOptionCard({ command, prefix, name, argText, missing = null, lan
   return card(lines);
 }
 
-module.exports = { unknownSubcommandCard, missingOptionCard, suggest, listPaths, syntaxOf, resolveTyped };
+/** What a command with many subcommands answers when it is typed alone (`!mod`): each way to run it with what it does. Not a warning. */
+function subcommandListCard({ command, prefix, name, lang = currentLanguage() }) {
+  const lines = [t(lang, 'core.usage.listTitle', { prefix, command: name })];
+  for (const entry of listPaths(command)) {
+    const description = commandDescription(lang, command, entry.path.split(' '), null, entry.description);
+    lines.push(`\`${prefix}${name} ${entry.path}\`${description ? ` · ${clip(description, 70)}` : ''}`);
+  }
+  lines.push(t(lang, 'core.usage.helpHint', { prefix, command: name }));
+  return card(lines, COLORS.DEFAULT);
+}
+
+module.exports = { unknownSubcommandCard, subcommandListCard, missingOptionCard, suggest, listPaths, syntaxOf, resolveTyped };

@@ -21,6 +21,9 @@ const ESSENTIAL = [
   // The two umbrellas: everything about a server (`/server info`, `icon`...) and about a member (`/user info`, `avatar`...). The old
   // commands they wrap stay (`serverinfo`, `userinfo`, `avatar` are also slash commands), the rest work with the prefix only.
   'server', 'user',
+  // The umbrella of moderation (`/mod ban`, `kick`, `purge`...): one slash command for the everyday moderation commands; each subcommand
+  // asks for the permission of the command it wraps when it runs (src/commands/moderation/mod.js).
+  'mod',
   // Registered before for their own reasons.
   'guildtag', 'messagelinks', 'report', 'setup', 'vanity',
 ];

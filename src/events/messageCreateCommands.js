@@ -4,7 +4,7 @@ const { Events, MessageFlags, PermissionsBitField } = require('discord.js');
 const { plainMessage } = require('../utils/cardService');
 const { ensureGuild } = require('../db/guilds');
 const { buildInteractionFromMessage, tokenize } = require('../handlers/prefixInteraction');
-const { unknownSubcommandCard, missingOptionCard } = require('../utils/usageCard');
+const { unknownSubcommandCard, subcommandListCard, missingOptionCard } = require('../utils/usageCard');
 const commandAliasesDb = require('../db/commandAliases');
 const { getRemainingCooldownShared } = require('../utils/sharedCooldown');
 const permissionsDb = require('../db/permissions');
@@ -432,6 +432,11 @@ module.exports = {
     }
 
     if (!interaction) {
+      // `!mod` alone is not a mistake: it lists what the command does.
+      if (command.listSubcommandsWhenEmpty && !tokenize(argText).length) {
+        await message.reply(subcommandListCard({ command, prefix, name: canonicalName, lang })).catch(() => {});
+        return;
+      }
       await message.reply(unknownSubcommandCard({ command, prefix, name: canonicalName, typed: tokenize(argText)[0] ?? '', lang })).catch(() => {});
       return;
     }
