@@ -13,6 +13,7 @@ const { MessageFlags } = require('discord.js');
 const logger = require('./logger');
 const { t, currentLanguage, guildLanguage, languageOf } = require('../i18n');
 const { displayReason } = require('./caseFormat');
+const { withOrigin } = require('./dmOrigin');
 
 // What `{case.action}` says for each sanction and `{case.source}` for who applied it, in the server's language.
 const ACTION_TYPES = ['ban', 'hardban', 'tempban', 'softban', 'unban', 'kick', 'mute', 'tempmute', 'unmute', 'warn', 'jail', 'unjail'];
@@ -75,7 +76,7 @@ function sanctionContext({ type, guild, user, member = null, moderator, reason, 
  * What the sanctioned member is sent: the server's DM template when it has one, the usual text otherwise. Meant to go
  * straight into `.send(...)`, which takes either. Petto's own text is in the server's language.
  */
-async function sanctionDM({ type, guild, client, reason, duration, user = null, member = null, moderator = null, source = 'moderator' }) {
+async function composeSanctionDM({ type, guild, client, reason, duration, user = null, member = null, moderator = null, source = 'moderator' }) {
   const lang = await guildLanguage(guild.id);
   let appealUrl = null;
   let appealNote = null;
@@ -92,6 +93,11 @@ async function sanctionDM({ type, guild, client, reason, duration, user = null, 
     logger.warn({ guildId: guild?.id, action: 'sanction-dm' }, `The sanction DM template failed: ${error.message}`);
     return fallback();
   }
+}
+
+/** The message of a sanction, told where it comes from (the server and "a moderation action"): `sendDm` adds the line and the buttons with it. */
+async function sanctionDM(options) {
+  return withOrigin(await composeSanctionDM(options), { guild: options.guild, kind: 'sanction' });
 }
 
 /**

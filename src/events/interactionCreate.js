@@ -67,6 +67,9 @@ const { isPettoOperator } = require('../utils/autoModControl');
 const { DISPLAY_BUTTON_PREFIX } = require('../utils/embedV2');
 const { PREFIX: EMBED_BUTTON_PREFIX } = require('../utils/embedActions');
 const { handleButton: handleEmbedButton } = require('../interactions/embedButtons');
+const { PREFIX: DM_ORIGIN_PREFIX, MODAL_PREFIX: DM_REPORT_MODAL_PREFIX, TEAM_PREFIX: DM_TEAM_PREFIX } = require('../utils/dmOrigin');
+const { handleButton: handleDmOriginButton, handleModal: handleDmReportModal } = require('../interactions/dmOrigin');
+const { handleTeamButton: handleDmTeamButton } = require('../interactions/dmTeam');
 const { PREFIX: FEED_SENSE_PREFIX, handleButton: handleFeedSense } = require('../interactions/feedSense');
 const { t, formatDecimal, languageOf } = require('../i18n');
 
@@ -75,6 +78,21 @@ const DEFAULT_COOLDOWN_MS = 3000;
 module.exports = {
   name: Events.InteractionCreate,
   async execute(interaction, client) {
+    // The three small buttons under every direct message of Petto (about it, delete it, report it) and the form of the report: they live in the
+    // direct messages, where the interaction has no server. The card of the report in the team channel has its own button.
+    if (interaction.isButton() && Object.values(DM_ORIGIN_PREFIX).some((prefix) => interaction.customId.startsWith(`${prefix}:`))) {
+      try { await handleDmOriginButton(interaction); } catch (err) { logger.error('Error handling a button under a direct message:', err); }
+      return;
+    }
+    if (interaction.isModalSubmit() && interaction.customId.startsWith(`${DM_REPORT_MODAL_PREFIX}:`)) {
+      try { await handleDmReportModal(interaction); } catch (err) { logger.error('Error handling the form that reports a direct message:', err); }
+      return;
+    }
+    if (interaction.isButton() && interaction.customId.startsWith(`${DM_TEAM_PREFIX}:`)) {
+      try { await handleDmTeamButton(interaction); } catch (err) { logger.error('Error handling the button of a direct message report:', err); }
+      return;
+    }
+
     if ((interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) && interaction.customId.startsWith(CODE_COMMAND_PREFIX)) {
       try { await handleCodeCommandComponent(interaction); } catch (err) { logger.error('Error handling a custom command button or menu:', err); }
       return;

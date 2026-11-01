@@ -6,6 +6,7 @@ const { manageable } = require('./responders');
 const { describe } = require('../utils/responderEngine');
 const { templatePayload } = require('../utils/templatedMessage');
 const { t, languageOf } = require('../i18n');
+const { sendDm } = require('../utils/dmOrigin');
 
 // A button that posts in the channel can be clicked by anyone, so the same member waits a few seconds between posts.
 const PUBLIC_COOLDOWN_MS = 5_000;
@@ -73,7 +74,7 @@ async function answerWithEmbed(interaction, embed, summary, lang) {
   }
   if (embed.mode === 'dm') {
     try {
-      await interaction.user.send(send);
+      await sendDm(interaction.user, send, { guild: interaction.guild, kind: 'embed' });
     } catch {
       return say(interaction, [summary, t(lang, 'embeds.action.dmFailed')].filter(Boolean).join(' '));
     }

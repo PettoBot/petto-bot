@@ -18,6 +18,7 @@ module.exports = {
         guild: member.guild,
         channel: dm,
         kind: 'welcome',
+        dmOrigin: { guild: member.guild, kind: 'welcome' },
         messageText: config.dm_join_message,
         embedTemplateName: config.dm_join_embed_template,
         ctx: { member, guild: member.guild, channel: dm, invite: await inviteInfoFor(member) },

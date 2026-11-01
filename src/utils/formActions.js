@@ -10,6 +10,7 @@ const { t, guildLanguage, currentLanguage } = require('../i18n');
 
 // Loaded when used: they read the database and the message engine, which the checks of this module replace.
 const lazy = (path) => new Proxy({}, { get: (_target, name) => require(path)[name] });
+const { sendDm } = require('./dmOrigin');
 const templates = lazy('./templatedMessage');
 const variables = lazy('./embedVariables');
 const logEngine = lazy('../logging/engine');
@@ -163,13 +164,13 @@ async function sendResult(client, guild, form, submission, lang) {
     const payload = await templates.templatePayload(guild.id, own.template, ctx);
     if (payload) {
       const { reactions: _reactions, ...message } = payload;
-      return user.send({ ...message, allowedMentions: { parse: [] } }).then(() => true, () => false);
+      return sendDm(user, { ...message, allowedMentions: { parse: [] } }, { guild, kind: 'form' }).then(() => true, () => false);
     }
   }
   const base = own.text ? forms.fillShortcuts(own.text, vars) : t(lang, `forms.result.${key}`, { form: vars.form, server: guild.name, number: submission.number });
   const reasonLine = !own.text && submission.reason ? `\n> ${clip(submission.reason, 800).replace(/\n/g, '\n> ')}` : '';
   const text = clip(await variables.resolve(`${base}${reasonLine}`, ctx), 3800);
-  return user.send({ components: [textCard(text, COLORS[submission.status])], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } }).then(() => true, () => false);
+  return sendDm(user, { components: [textCard(text, COLORS[submission.status])], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } }, { guild, kind: 'form' }).then(() => true, () => false);
 }
 
 /** Redraws the review card of a submission (after a review, or when its thread was opened). */

@@ -104,6 +104,8 @@ require('./src/db/guilds').setGuildLookup((guildId) => client.guilds.cache.get(g
 attachRestRateLimitTelemetry(client);
 // A `!` right before a mention (`!@everyone`, `!<@&id>`, `!@Role`) makes it show without notifying: done once, where every send meets.
 require('./src/utils/silentMentionsHook').installSilentMentions(client);
+// Every direct message that Petto starts says who it is from and carries the three small buttons (about it, delete it, report it): see utils/dmOrigin.js.
+require('./src/utils/dmOrigin').installDmOrigin();
 require('./src/utils/redis').start();
 // The dashboard says on Redis when it changes a setting, so the caches forget it at once instead of when they expire.
 require('./src/utils/cacheInvalidation').startCacheInvalidation();

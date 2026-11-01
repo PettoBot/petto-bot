@@ -12,6 +12,7 @@ const { EMOJI } = require('../../utils/emojis');
 const { COLORS } = require('../../utils/colors');
 const logger = require('../../utils/logger');
 const { t, tn, languageOf } = require('../../i18n');
+const { sendDm } = require('../../utils/dmOrigin');
 
 const MAX_JAIL_MS = 365 * 24 * 60 * 60 * 1000;
 const V2 = MessageFlags.IsComponentsV2;
@@ -83,8 +84,7 @@ async function jailUser(interaction) {
   await sanctionReply(interaction, { modCase: result.modCase, type: 'jail', target: targetUser, moderator: interaction.user, reason, duration });
   await logSanction(interaction.client, interaction.guild, { modCase: result.modCase, target: targetUser, moderator: interaction.user, reason, duration });
 
-  await targetMember
-    .send(await sanctionDM({ type: 'jail', guild: interaction.guild, client: interaction.client, reason, duration, member: targetMember, moderator: interaction.user, caseNumber: result.modCase.case_number }))
+  await sendDm(targetMember, await sanctionDM({ type: 'jail', guild: interaction.guild, client: interaction.client, reason, duration, member: targetMember, moderator: interaction.user, caseNumber: result.modCase.case_number }))
     .catch(() => logger.warn(`Could not DM jail notice to ${targetUser.id} in guild ${interaction.guild.id}.`));
 }
 
@@ -116,8 +116,7 @@ async function releaseUser(interaction) {
   await sanctionReply(interaction, { modCase: result.modCase, type: 'unjail', target: targetUser, moderator: interaction.user, reason });
   await logSanction(interaction.client, interaction.guild, { modCase: result.modCase, target: targetUser, moderator: interaction.user, reason });
 
-  await result.member
-    ?.send(await sanctionDM({ type: 'unjail', guild: interaction.guild, client: interaction.client, reason, member: result.member, moderator: interaction.user, caseNumber: result.modCase.case_number }))
+  await sendDm(result.member, await sanctionDM({ type: 'unjail', guild: interaction.guild, client: interaction.client, reason, member: result.member, moderator: interaction.user, caseNumber: result.modCase.case_number }))
     .catch(() => logger.warn(`Could not DM unjail notice to ${targetUser.id} in guild ${interaction.guild.id}.`));
 }
 

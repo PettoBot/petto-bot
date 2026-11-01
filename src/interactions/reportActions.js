@@ -8,6 +8,7 @@ const { parseListButton, buildReportListPayload } = require('../utils/reportView
 const { COLORS } = require('../utils/colors');
 const logger = require('../utils/logger');
 const { t, languageOf, currentLanguage } = require('../i18n');
+const { sendDm } = require('../utils/dmOrigin');
 
 const REASON_MODAL_PREFIX = 'rptr:';
 const REASON_MIN_LENGTH = 3;
@@ -69,7 +70,7 @@ function buildReasonModal(action, reportNumber, lang = currentLanguage()) {
 async function dmReporter(interaction, report, text) {
   const user = await interaction.client.users.fetch(report.reporter_id).catch(() => null);
   if (!user) return;
-  await user.send(text).catch(() => logger.warn(`Could not DM report #${report.report_number} update to ${report.reporter_id}.`));
+  await sendDm(user, text, { guild: interaction.guild, kind: 'report' }).catch(() => logger.warn(`Could not DM report #${report.report_number} update to ${report.reporter_id}.`));
 }
 
 /** The work that follows a status change, once the staff member already has their answer. */

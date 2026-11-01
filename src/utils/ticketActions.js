@@ -22,6 +22,7 @@ const { EMOJI } = require('./emojis');
 const config = require('../config');
 const logger = require('./logger');
 const { t, tn, guildLanguage, languageOf, defaultText } = require('../i18n');
+const { sendDm } = require('./dmOrigin');
 
 const STAFF_OVERWRITE_PERMS = [
   PermissionFlagsBits.ViewChannel,
@@ -394,7 +395,7 @@ async function closeTicket({ guild, client, channel, ticket, actor, reason }) {
     // which looks noisy); the file goes when the server chose it or when there is no link.
     const dmPayload = { components: rows, flags: MessageFlags.IsComponentsV2, ...(delivery.fileBuffer ? { files: [new AttachmentBuilder(delivery.fileBuffer, { name: delivery.fileName })] } : {}) };
 
-    await opener.send(dmPayload).catch(() => logger.warn(`Ticket #${ticket.ticket_number}: could not DM transcript to opener.`));
+    await sendDm(opener, dmPayload, { guild, kind: 'ticket' }).catch(() => logger.warn(`Ticket #${ticket.ticket_number}: could not DM transcript to opener.`));
   }
 
   const closeCard = buildTicketClosedNotice({ ticketNumber: ticket.ticket_number, closedByLine, reason: finalReason, lang });

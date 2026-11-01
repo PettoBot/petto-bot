@@ -2,6 +2,7 @@ const { Events } = require('discord.js');
 const giveawaysDb = require('../db/giveaways');
 const { refreshGiveawayMessage, loadPreset, entryProblem } = require('../utils/giveawayEngine');
 const { peekGuildLanguage } = require('../i18n');
+const { sendDm } = require('../utils/dmOrigin');
 
 module.exports = {
   name: Events.MessageReactionAdd,
@@ -19,7 +20,7 @@ module.exports = {
         const problem = await entryProblem(giveaway.guild_id, await loadPreset(giveaway.preset_id), user.id, peekGuildLanguage(giveaway.guild_id));
         if (problem) {
           await reaction.users.remove(user.id).catch(() => {});
-          await user.send(problem).catch(() => {});
+          await sendDm(user, problem, { guild: reaction.message.guild, kind: 'giveaway' }).catch(() => {});
           return;
         }
       }

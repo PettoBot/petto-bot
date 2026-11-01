@@ -12,6 +12,7 @@ const { tokenize } = require('../handlers/prefixInteraction');
 const commandData = require('../db/commandData');
 const ccDb = require('../db/customCommands');
 const { t, currentLanguage, languageOf } = require('../i18n');
+const { sendDm } = require('./dmOrigin');
 
 const COOLDOWN_MS = 2000;
 const MAX_MESSAGE = 2000;
@@ -320,7 +321,7 @@ async function applyEffects(message, effects, commandName = null, { code = '', l
           : await channel.send(payload);
         if (effect.reactions?.length && commandName && sent) await watchReactions(sent, effect.reactions, commandName, guild, author.id);
       } else if (effect.type === 'dm') {
-        await author.send({ ...toPayload(effect, guild, author.id), allowedMentions: { parse: [] } }).catch(() => skipped.push(t(lang, 'customcommands.run.skip.dmClosed')));
+        await sendDm(author, { ...toPayload(effect, guild, author.id), allowedMentions: { parse: [] } }, { guild, kind: 'custom' }).catch(() => skipped.push(t(lang, 'customcommands.run.skip.dmClosed')));
       } else if (effect.type === 'addRole' || effect.type === 'removeRole') {
         const role = guild.roles.cache.get(effect.roleId);
         const problem = canGiveRole(guild, role, lang);

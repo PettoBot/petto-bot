@@ -46,20 +46,20 @@ const moderator = { id: '222', username: 'mod', displayAvatarURL: () => 'https:/
 
   // The DM.
   let dm = await sanctionDM({ type: 'ban', guild, client, reason: 'rules', user: target });
-  assert.equal(typeof dm, 'string', 'with no template the usual text is sent');
-  assert.ok(dm.includes('banned from'));
+  assert.equal(typeof dm.content, 'string', 'with no template the usual text is sent (as a message that knows its server and why)');
+  assert.ok(dm.content.includes('banned from'));
   templates.dmcard = { content: '', embeds: [{ title: 'You were {case.action}', description: 'Reason: {case.reason}\nBy {case.moderator_name} in {server_name}', color: 0xff0000 }], buttons: [] };
   slots['default:dm'] = 'dmcard';
   dm = await sanctionDM({ type: 'warn', guild, client, reason: 'be nice', user: target, moderator, caseNumber: 3 });
   assert.equal(typeof dm, 'object');
   assert.equal(dm.embeds[0].toJSON().title, 'You were warned'); assert.ok(dm.embeds[0].toJSON().description.includes('Reason: be nice\nBy mod in Test Server'));
   slots['ban:dm'] = 'missing';
-  assert.equal(typeof (await sanctionDM({ type: 'ban', guild, client, reason: 'x', user: target })), 'string', 'a template that does not exist falls back to the usual text');
+  assert.equal(typeof (await sanctionDM({ type: 'ban', guild, client, reason: 'x', user: target })).content, 'string', 'a template that does not exist falls back to the usual text');
   brokenName = 'dmcard'; slots['kick:dm'] = 'dmcard';
-  assert.equal(typeof (await sanctionDM({ type: 'kick', guild, client, reason: 'x', user: target })), 'string', 'a template that fails falls back too');
+  assert.equal(typeof (await sanctionDM({ type: 'kick', guild, client, reason: 'x', user: target })).content, 'string', 'a template that fails falls back too');
   brokenName = null;
   const viaMember = await sanctionDM({ type: 'warn', guild, client, reason: 'x', member: { user: target, id: '111' } });
-  assert.ok(['string', 'object'].includes(typeof viaMember), 'a member that is not complete never stops the DM, the usual text is sent');
+  assert.ok(['string', 'object'].includes(typeof viaMember),  'a member that is not complete never stops the DM, the usual text is sent');
 
   // The reply where the command was used.
   const modCase = { case_number: 12, type: 'ban', expires_at: null };

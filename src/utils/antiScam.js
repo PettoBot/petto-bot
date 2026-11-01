@@ -10,6 +10,7 @@ const { sendLog } = require('../logging/engine');
 const { EMOJI } = require('./emojis');
 const logger = require('./logger');
 const { t, currentLanguage, languageOf } = require('../i18n');
+const { sendDm } = require('./dmOrigin');
 
 const PREFIX = 'scam';
 const handled = new Map(); // `${guildId}:${userId}` -> until
@@ -112,7 +113,7 @@ async function applyAction(message, config, detection, lang = currentLanguage())
 
   if (config.action !== 'alert' && member) {
     if (config.dm_user) {
-      await author.send({ components: [dmCard(guild, config.action, lang, await appealLine(guild, config.action, lang))], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+      await sendDm(author, { components: [dmCard(guild, config.action, lang, await appealLine(guild, config.action, lang))], flags: MessageFlags.IsComponentsV2 }, { guild, kind: 'security' }).catch(() => {});
     }
     try {
       await ensureGuild(guild.id);

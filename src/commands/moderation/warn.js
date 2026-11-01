@@ -14,6 +14,7 @@ const logger = require('../../utils/logger');
 const { confirmBulkAction, requireAdministrator, bulkTargetBlocked, protectedLine } = require('../../utils/moderationCommand');
 const { t, tn, languageOf } = require('../../i18n');
 const { caseNumberList, mentionList, listWithMore } = require('../../utils/listCap');
+const { sendDm } = require('../../utils/dmOrigin');
 
 // Discord has no native "warn" permission; Moderate Members (used for timeouts)
 // is the closest built-in stand-in for "this person is server staff".
@@ -101,8 +102,7 @@ async function warnUser(interaction) {
   await sanctionReply(interaction, { modCase, type: 'warn', target: targetUser, moderator: interaction.user, reason });
   await logSanction(interaction.client, interaction.guild, { modCase, target: targetUser, moderator: interaction.user, reason });
 
-  await targetMember
-    .send(await sanctionDM({ type: 'warn', guild: interaction.guild, client: interaction.client, reason, member: targetMember, moderator: interaction.user, caseNumber: modCase.case_number }))
+  await sendDm(targetMember, await sanctionDM({ type: 'warn', guild: interaction.guild, client: interaction.client, reason, member: targetMember, moderator: interaction.user, caseNumber: modCase.case_number }))
     .catch(() => logger.warn(`Could not DM warn notice to ${targetUser.id} in guild ${interaction.guild.id}.`));
 
   await checkAndApplyEscalation(interaction.client, interaction.guild, targetMember, warnCount).catch((err) => logger.error('Escalation check failed:', err));
@@ -142,8 +142,7 @@ async function warnUsers(interaction) {
     succeeded.push(user);
     await logSanction(interaction.client, interaction.guild, { modCase, target: user, moderator: interaction.user, reason });
 
-    await member
-      .send(await sanctionDM({ type: 'warn', guild: interaction.guild, client: interaction.client, reason, member: member, moderator: interaction.user, caseNumber: modCase.case_number }))
+    await sendDm(member, await sanctionDM({ type: 'warn', guild: interaction.guild, client: interaction.client, reason, member: member, moderator: interaction.user, caseNumber: modCase.case_number }))
       .catch(() => logger.warn(`Could not DM warn notice to ${user.id} in guild ${interaction.guild.id}.`));
 
     await checkAndApplyEscalation(interaction.client, interaction.guild, member, warnCount).catch((err) => logger.error('Escalation check failed:', err));

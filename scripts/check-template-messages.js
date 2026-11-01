@@ -67,7 +67,7 @@ const author = { id: '111', username: 'starry', displayAvatarURL: () => 'https:/
   settings.verified_embed_template = 'done';
   templates.done = { content: 'You are in, {user}!', embeds: [] };
   await sendVerifiedDM(member, { guild });
-  assert.equal(sent.pop().content, 'You are in, <@111>!');
+  assert.equal(sent.pop().content, '-# From Test Server\nYou are in, <@111>!', 'a saved message is the same, under the line that says which server it is from');
 
   // Bump messages.
   templates.bump = { content: 'Thanks {user.mention}! Next bump {nextBump}', embeds: [] };

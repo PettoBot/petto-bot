@@ -8,6 +8,7 @@ const logger = require('../utils/logger');
 const config = require('../config');
 const { forEachWithConcurrency, exclusiveTask } = require('../utils/concurrency');
 const { t, guildLanguage, runWithLanguage } = require('../i18n');
+const { sendDm } = require('../utils/dmOrigin');
 
 const POLL_INTERVAL_MS = 60_000;
 // i18n-ignore: saved as the reason of the case in English, like before; caseFormat.displayReason translates it when shown
@@ -84,8 +85,7 @@ async function processExpiredJails(client) {
       if (!result.ok) return;
 
       await logSanction(client, guild, { modCase: result.modCase, target: userMention(jail.user_id), moderator: client.user, reason: EXPIRY_REASON, source: 'expiry' });
-      await result.member
-        ?.send(await sanctionDM({ type: 'unjail', guild, client, reason: EXPIRY_REASON, member: result.member, caseNumber: result.modCase.case_number, source: 'expiry' }))
+      await sendDm(result.member, await sanctionDM({ type: 'unjail', guild, client, reason: EXPIRY_REASON, member: result.member, caseNumber: result.modCase.case_number, source: 'expiry' }))
         .catch(() => {});
     } catch (err) {
       // A release that cannot restore roles stays recorded and is retried on the next poll.

@@ -22,6 +22,7 @@ const { confirmBulkAction, requireAdministrator, failureDetail, bulkTargetBlocke
 const { reasonText } = require('../../utils/caseFormat');
 const { t, tn, languageOf } = require('../../i18n');
 const { caseNumberList, mentionList, listWithMore } = require('../../utils/listCap');
+const { sendDm } = require('../../utils/dmOrigin');
 
 // The mass unban running in each server, so `ban cancel` (`!unbanall cancel`) can stop it. In memory: it lasts minutes at most.
 const activeUnbans = new Map(); // guildId -> { abort: boolean }
@@ -105,8 +106,7 @@ async function banUser(interaction, { hard = false } = {}) {
 
   // Best-effort: DM before the ban, since the bot can't message someone it no longer shares a server with.
   if (targetMember) {
-    await targetMember
-      .send(await sanctionDM({ type, guild: interaction.guild, client: interaction.client, reason, member: targetMember, moderator: interaction.user }))
+    await sendDm(targetMember, await sanctionDM({ type, guild: interaction.guild, client: interaction.client, reason, member: targetMember, moderator: interaction.user }))
       .catch(() => logger.warn(`Could not DM ban notice to ${targetUser.id} in guild ${interaction.guild.id}.`));
   }
 
@@ -160,8 +160,7 @@ async function banUsers(interaction) {
         continue;
       }
       if (member) {
-        await member
-          .send(await sanctionDM({ type: 'ban', guild: interaction.guild, client: interaction.client, reason, member: member, moderator: interaction.user }))
+        await sendDm(member, await sanctionDM({ type: 'ban', guild: interaction.guild, client: interaction.client, reason, member: member, moderator: interaction.user }))
           .catch(() => logger.warn(`Could not DM ban notice to ${user.id} in guild ${interaction.guild.id}.`));
       }
       await interaction.guild.members.ban(user.id, { reason: reason ?? undefined });
@@ -211,8 +210,7 @@ async function tempBan(interaction) {
   const duration = formatDuration(durationMs, lang);
 
   if (targetMember) {
-    await targetMember
-      .send(await sanctionDM({ type: 'tempban', guild: interaction.guild, client: interaction.client, reason, duration, member: targetMember, moderator: interaction.user }))
+    await sendDm(targetMember, await sanctionDM({ type: 'tempban', guild: interaction.guild, client: interaction.client, reason, duration, member: targetMember, moderator: interaction.user }))
       .catch(() => logger.warn(`Could not DM tempban notice to ${targetUser.id} in guild ${interaction.guild.id}.`));
   }
 

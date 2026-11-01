@@ -37,4 +37,20 @@ function categoryOptions(lang = currentLanguage()) {
   }));
 }
 
-module.exports = { CATEGORY_EMOJI, REPORT_CATEGORIES, DEFAULT_CATEGORY, categoryLabel, categoryOptions, isReportCategory };
+// The form that reports a direct message to the Petto team (utils/dmReports.js) offers the same choices plus one of its own: a direct message
+// that a server had Petto deliver and that should not have come. It is not a choice of `/report send` (that one reports a member to a server).
+const DM_ABUSE = 'dm_abuse';
+const DM_CATEGORY_VALUES = [DM_ABUSE, ...CATEGORY_VALUES];
+
+function isDmReportCategory(value) {
+  return DM_CATEGORY_VALUES.includes(value);
+}
+
+/** The categories of the form that reports a direct message, as options of a select menu, in `lang`. */
+function dmCategoryOptions(lang = currentLanguage()) {
+  return DM_CATEGORY_VALUES.map((value) => (value === DM_ABUSE
+    ? { value, label: t(lang, 'dm.category.dm_abuse.label.menu'), description: t(lang, 'dm.category.dm_abuse.description.menu'), emoji: EMOJI.ALERT }
+    : categoryOptions(lang).find((option) => option.value === value)));
+}
+
+module.exports = { DM_ABUSE, DM_CATEGORY_VALUES, isDmReportCategory, dmCategoryOptions, CATEGORY_EMOJI, REPORT_CATEGORIES, DEFAULT_CATEGORY, categoryLabel, categoryOptions, isReportCategory };

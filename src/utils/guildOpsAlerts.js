@@ -11,6 +11,7 @@ const {
 const config = require('../config');
 const { getLogConfig } = require('../db/logConfig');
 const { t, defaultText, peekGuildLanguage } = require('../i18n');
+const { sendDm } = require('./dmOrigin');
 
 const SUPPORT_URL = 'https://petto.sbs/support';
 const DEFAULT_ALERT_CHANNEL_ID = process.env.PETTO_GUILD_ALERT_CHANNEL_ID || config.opsChannels?.general || config.errorLogChannelId || null;
@@ -280,10 +281,10 @@ async function sendTeamAlert(client, {
 async function sendOwnerDm(guild, content) {
   const owner = await resolveOwner(guild);
   if (!owner) return null;
-  const message = await owner.send({
+  const message = await sendDm(owner, {
     content,
     allowedMentions: { parse: [] },
-  }).catch(() => null);
+  }, { guild: null, kind: 'team' }).catch(() => null);
   if (!message) return null;
   return { message, ownerId: owner.id };
 }

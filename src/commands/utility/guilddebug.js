@@ -7,6 +7,7 @@ const { getLogConfig } = require('../../db/logConfig');
 const { getConfig: getMemberEventsConfig } = require('../../db/memberEvents');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
+const { sendDm } = require('../../utils/dmOrigin');
 
 const DIAGNOSTIC_GUILD_ID = '1502171756113432607';
 const V2_EPHEMERAL = MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral;
@@ -220,7 +221,7 @@ async function dmGuildOwner(interaction) {
   const owner = await guild.fetchOwner().catch(() => null);
   if (!owner?.user) return replyCard(interaction, `${EMOJI.DENY} I could not fetch the owner of **${shorten(guild.name)}**.`, RED);
 
-  const sent = await owner.user.send({ content: message, allowedMentions: { parse: [] } });
+  const sent = await sendDm(owner.user, { content: message, allowedMentions: { parse: [] } }, { guild: null, kind: 'team' });
   return replyCard(interaction, `${EMOJI.APPROVE} Sent a DM to the owner of **${shorten(guild.name)}** (\`${owner.id}\`).\nMessage ID: \`${sent.id}\``, GREEN);
 }
 

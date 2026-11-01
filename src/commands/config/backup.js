@@ -26,6 +26,7 @@ const { COLORS } = require('../../utils/colors');
 const logger = require('../../utils/logger');
 const { backupsUnderMaintenance } = require('../../utils/maintenance');
 const { t, currentLanguage, languageOf, defaultText } = require('../../i18n');
+const { sendDm } = require('../../utils/dmOrigin');
 
 const LOADING_EMOJI = EMOJI.LOADING;
 const BACKUP_MENU_PREFIX = 'backup_menu';
@@ -363,7 +364,7 @@ async function startRestoreFromInteraction(interaction, { number, mode }) {
         await recordBackupAudit(guild.id, interaction.user.id, 'backup_restored', number, { mode, safetyBackupNumber: ended.safetyNumber, status: ended.status, result: ended.result });
         const view = jobs.describeJob(ended);
         await edit(view);
-        if (expired) await interaction.user.send({ components: [buildProgressCard(view, lang)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+        if (expired) await sendDm(interaction.user, { components: [buildProgressCard(view, lang)], flags: MessageFlags.IsComponentsV2 }, { guild, kind: 'backup' }).catch(() => {});
       },
     });
   } catch (error) {

@@ -12,6 +12,7 @@ const { applyReactReplies } = require('./messageFlags');
 const { EMOJI } = require('./emojis');
 const logger = require('./logger');
 const { t, currentLanguage, guildLanguage } = require('../i18n');
+const { sendDm } = require('./dmOrigin');
 
 const CONFIG_CACHE_MS = 15_000;
 const PANEL_UPDATE_DELAY_MS = 750;
@@ -198,7 +199,7 @@ async function messageCaughtMember({ guild, client, author, member, config, puni
   const { invite, problem } = wantsInvite ? await createReinvite(guild, t(lang, 'security.honeypot.reinvite.audit')) : { invite: null, problem: null };
   if (problem === 'noPermission') logger.info(`Honeypot: no channel where I can create invites in ${guild.id}; the softbanned member gets no re-invite.`);
   try {
-    await author.send(payload);
+    await sendDm(author, payload, { guild, kind: 'security' });
   } catch (err) {
     logger.info(`Honeypot: could not DM ${author.id} in ${guild.id} (${err.message}).`);
     if (invite) await invite.delete().catch(() => {});
@@ -208,7 +209,7 @@ async function messageCaughtMember({ guild, client, author, member, config, puni
   if (!invite) return 'noInvite';
   const dmLang = await guildLanguage(guild.id).catch(() => lang);
   try {
-    await author.send({ content: t(dmLang, 'security.honeypot.reinvite.dm', { server: guild.name, url: invite.url ?? `https://discord.gg/${invite.code}` }), allowedMentions: { parse: [] } });
+    await sendDm(author, { content: t(dmLang, 'security.honeypot.reinvite.dm', { server: guild.name, url: invite.url ?? `https://discord.gg/${invite.code}` }), allowedMentions: { parse: [] } }, { guild, kind: 'security' });
     return 'sentInvite';
   } catch (err) {
     logger.info(`Honeypot: the re-invite could not be sent to ${author.id} in ${guild.id} (${err.message}).`);

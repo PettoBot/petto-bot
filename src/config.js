@@ -148,6 +148,8 @@ module.exports = {
     statusHistory: process.env.PETTO_STATUS_HISTORY_CHANNEL_ID || '1535354406986580129',
     leaves: process.env.PETTO_LEAVE_LOG_CHANNEL_ID || '1535350937059729498',
     general: process.env.PETTO_GENERAL_LOG_CHANNEL_ID || '1535351181990166620',
+    // Where the reports of direct messages from people go (the Petto team only). Without it the reports are kept in the database and a warning is logged.
+    dmReports: /^\d{15,25}$/.test(process.env.PETTO_DM_REPORTS_CHANNEL_ID || '') ? process.env.PETTO_DM_REPORTS_CHANNEL_ID : null,
   },
   errorLogChannelId: /^\d{15,25}$/.test(process.env.PETTO_ERROR_LOG_CHANNEL_ID || '') ? process.env.PETTO_ERROR_LOG_CHANNEL_ID : null,
   premiumRoleIds: {
