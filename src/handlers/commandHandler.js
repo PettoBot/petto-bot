@@ -134,7 +134,8 @@ function loadCommands(client) {
  * prefix-only or private one. Context menus are registered too, but they are not chat commands.
  */
 function isSlashCommand(command, category = command?.category) {
-  if (!command?.data || command.prefixOnly || command.privateGuildId) return false;
+  // A command hidden everywhere (`/music`) is never registered, whatever else it says (src/utils/hiddenCommands.js).
+  if (!command?.data || command.prefixOnly || command.privateGuildId || command.hiddenEverywhere) return false;
   if ((command.data.toJSON().type ?? 1) !== 1) return false;
   return Boolean(command.slashOnly || command.registerSlash || category === 'roleplay');
 }
@@ -155,6 +156,8 @@ function collectCommandData() {
     // Prefix-only commands keep a SlashCommandBuilder for the shared parser,
     // but must never be registered as Discord slash commands.
     .filter(({ command }) => !command.prefixOnly)
+    // Hidden everywhere (`/music`): not registered with Discord, so nobody can see it in the list of commands.
+    .filter(({ command }) => !command.hiddenEverywhere)
     .filter(({ filePath, command }) => (command.data.toJSON().type ?? 1) !== 1 || isSlashCommand(command, categoryFromPath(filePath)))
     // The descriptions go to Discord in Spanish and Portuguese too (names are never translated).
     .map(({ filePath, command }) => localizeCommandJson(categoryFromPath(filePath), command.data.toJSON()));

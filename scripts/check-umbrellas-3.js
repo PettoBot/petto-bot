@@ -62,7 +62,7 @@ const event = require('../src/events/messageCreateCommands');
 const interactionCreate = require('../src/events/interactionCreate');
 const commandRules = require('../src/utils/commandRules');
 const { CATALOGS } = require('../src/i18n');
-const { SHORT_ALIAS_TABLE } = require('../src/utils/shortAliases');
+const { SHORT_ALIAS_TABLE, TEAM_ALIAS_TABLE } = require('../src/utils/shortAliases');
 const { defineUmbrella, copyOptions } = require('../src/utils/umbrella');
 const { slotUsage, commandSize, LIMITS } = require('../src/utils/slashBudget');
 
@@ -716,7 +716,7 @@ function tailOf(node) {
   }
   // No word that already worked changed meaning: the table only grew.
   const before = require('node:child_process').execSync('git show HEAD:src/utils/short-aliases.json', { cwd: root, encoding: 'utf8' });
-  for (const [alias, target] of Object.entries(JSON.parse(before))) assert.equal(SHORT_ALIAS_TABLE[alias], target, `${alias} is still ${target}`);
+  for (const [alias, target] of Object.entries(JSON.parse(before))) assert.equal({ ...SHORT_ALIAS_TABLE, ...TEAM_ALIAS_TABLE }[alias], target, `${alias} is still ${target} (the words of a hidden command moved to the team table)`);
   spyOn(wrappedNames);
   const shortOf = (target) => Object.entries(SHORT_ALIAS_TABLE).find(([, value]) => value === target)[0];
   call = await ran(`!${shortOf('protect honeypot list')}`);

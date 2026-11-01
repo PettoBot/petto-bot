@@ -16,6 +16,7 @@ require.cache[resolvedDb] = { id: resolvedDb, filename: resolvedDb, loaded: true
 
 const config = require('../src/config');
 config.musicEnabled = true; // the music is off by default: the checks turn it on (and one of them turns it off again)
+config.musicListed = false; // the default: hidden everywhere (check-music-hidden.js); the registration block below turns the opt-in on
 const match = require('../src/music/match');
 const resolver = require('../src/music/resolver');
 const { GuildMusic, MAX_FAILURES } = require('../src/music/queue');
@@ -1048,6 +1049,8 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
     config.musicEnabled = false;
     assert.equal(collectCommandData().some((command) => command.name === 'music'), false, 'with the music off, /music is not registered with Discord (it is taken out of the list of commands)');
     config.musicEnabled = true;
+    assert.equal(collectCommandData().some((command) => command.name === 'music'), false, 'enabled but not listed (MUSIC_LISTED), /music is still not registered: the music is hidden everywhere');
+    config.musicListed = true;
     const registered = collectCommandData().find((command) => command.name === 'music');
     assert.ok(registered, '/music is in the commands that are registered');
     assert.ok(registered.options.length <= 25 && registered.options.every((sub) => sub.type === 1), 'subcommands, at most 25');
@@ -1064,6 +1067,7 @@ const textOf = (payload) => flat(json(payload.components)).filter((part) => type
     assert.deepEqual(tooLong, [], 'every description (and its translations) fits the 100 characters of Discord');
     const play = registered.options.find((sub) => sub.name === 'play').options[0];
     assert.equal(play.autocomplete, true, 'the song is suggested while it is typed');
+    config.musicListed = false;
   }
 
   console.log('check-music: ok');

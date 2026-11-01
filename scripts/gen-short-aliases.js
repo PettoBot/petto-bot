@@ -8,6 +8,7 @@
 // declared):
 //   1. the stem of the command is the first letter (`i` for image), or the word chosen for it in STEMS (`tk` for ticket), or its shortest
 //      alias of 2 or 3 letters (`gw` for giveaway);
+//   (a command hidden everywhere, `/music`, has no words here: they are in short-aliases-team.json, for the team only, and never published.)
 //   2. the alias is the stem plus the initial of the subcommand (the initials of each word: `reward add` is `ra`): `is` is image sepia;
 //   3. if that word is taken by anything (a command, an alias, a route, a word already in the table), more letters of the subcommand are
 //      used (`iro` for image rotate, because `ir` is `!inrole`), up to 5 letters in all;
@@ -49,7 +50,7 @@ function loadCommandInfo() {
     const category = path.basename(path.dirname(file));
     const subcommands = (json.options ?? []).flatMap((option) => (option.type === 1 ? [option.name] : option.type === 2 ? (option.options ?? []).map((sub) => `${option.name} ${sub.name}`) : []));
     const aliases = [...new Set([...(command.aliases ?? []), ...(DEFAULT_COMMAND_ALIASES[json.name] ?? [])].map((word) => word.toLowerCase()))];
-    commands.push({ name: json.name, category, aliases, subcommands, hidden: Boolean(command.hiddenFromHelp || command.slashOnly || command.privateGuildId || category === 'roleplay' || (json.name.endsWith('config') && json.name !== 'config')) });
+    commands.push({ name: json.name, category, aliases, subcommands, hiddenEverywhere: Boolean(command.hiddenEverywhere), hidden: Boolean(command.hiddenEverywhere || command.hiddenFromHelp || command.slashOnly || command.privateGuildId || category === 'roleplay' || (json.name.endsWith('config') && json.name !== 'config')) });
   }
   // Every word that already means something (the ones written by hand; the table itself is not in here).
   const taken = new Set();
@@ -58,6 +59,8 @@ function loadCommandInfo() {
     for (const alias of command.aliases) taken.add(alias);
   }
   for (const route of BASE_PREFIX_ROUTES) taken.add(route.alias.toLowerCase());
+  // The words of a command hidden everywhere (`/music`, team only) are taken, so no other command gets one and the table never publishes them.
+  for (const word of Object.keys(require('../src/utils/shortAliases').TEAM_ALIAS_TABLE)) taken.add(word);
   // What already has a short way to be typed (a route of 3 letters or less written by hand).
   const covered = new Set(BASE_PREFIX_ROUTES.filter((route) => route.alias.length <= 3).map((route) => (route.subcommand ? `${route.command} ${route.subcommand}` : route.command)));
   return { commands, taken, covered };

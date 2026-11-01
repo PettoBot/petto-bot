@@ -26,6 +26,8 @@ const { findTrigger } = require('../utils/codeTriggers');
 const { peekGuildLanguage, t, formatDecimal } = require('../i18n');
 const guildPrefixes = require('../utils/guildPrefixes');
 const { isCommonWord } = require('../utils/commonWords');
+const { isHiddenEverywhere, isHiddenWordFor } = require('../utils/hiddenCommands');
+const { isPettoOperator } = require('../utils/autoModControl');
 // Loaded when a message comes in: it reaches for the configuration and the database, which the checks do without.
 const activeUserPrefix = async (...args) => require('../utils/userPrefixAccess').activeUserPrefix(...args);
 
@@ -115,8 +117,10 @@ function setCachedPrefix(guildId, prefixes) {
  * Whether a word is something Petto answers in this server: a command, an alias, a route, a server alias or a custom command
  * that starts with the prefix. A word prefix (`petto help`) only starts a command when this is true.
  */
-function knownNameChecker(client, guildId) {
+function knownNameChecker(client, guildId, userId = null) {
   return async (name) => {
+    // A word of a command that is hidden everywhere (`/music`) is not a command for anybody outside the Petto team: `petto play` is chat.
+    if (isHiddenWordFor(client, name, userId)) return false;
     // `/me` is a command, but also Spanish for "me": `petto me ayudas` is chat. With a symbol prefix (`!me`) it is the command.
     if (client.commands?.has(name)) return !isCommonWord(name);
     // An everyday word (`is`, `si`, `um`) that is also a short alias is a command with a symbol prefix (`!is`) but chat after a word
@@ -148,7 +152,7 @@ async function findPrefixWay(message) {
   }
   const prefixes = await getPrefixes(message.guild.id).catch(() => ['!']);
   const personal = await activeUserPrefix(message.client, message.author.id).catch(() => null);
-  const way = await guildPrefixes.matchPrefix(message.content, { prefixes, personal, isKnown: knownNameChecker(message.client, message.guild.id) });
+  const way = await guildPrefixes.matchPrefix(message.content, { prefixes, personal, isKnown: knownNameChecker(message.client, message.guild.id, message.author.id) });
   return way ? { ...way, mention: false } : null;
 }
 
@@ -239,6 +243,8 @@ async function isCommandMessage(message) {
   const parsed = await findPrefixWay(message);
   if (!parsed) return false;
   const name = parsed.commandName;
+  // The words of a command hidden everywhere are not commands for everybody outside the team (another bot's `!play` is just a message).
+  if (isHiddenWordFor(message.client, name, message.author.id)) return false;
   if (message.client.commands?.has(name) || message.client.commandAliases?.has(name) || message.client.commandRoutes?.has(name)) return true;
   const alias = await commandAliasesDb.get(message.guild.id, name).catch(() => null);
   return Boolean(alias);
@@ -275,8 +281,16 @@ module.exports = {
     // Server-defined aliases are prefix-only, matching the rest of Petto's configurable
     // command surface. `{0}`, `{1}`, ... refer to arguments supplied after the alias.
     // A short alias (`!is`) never takes a word from the server: an alias or a custom command the server wrote with that word wins.
+    // A word of a command hidden everywhere (`/music`: `!music`, `!play`, `!skip`...) is not a command for anybody outside the Petto team: like a short alias it
+    // gives way to a word the server chose, and otherwise the message is not a command at all (no answer, not even "unknown command").
+    let hiddenWord = isHiddenWordFor(message.client, commandName, message.author.id);
     const shortRoute = message.client.commandRoutes?.get(commandName)?.short ? message.client.commandRoutes.get(commandName) : null;
-    const serverOwnsIt = shortRoute ? await serverUsesWord(message.guild.id, commandName) : false;
+    const serverOwnsIt = (shortRoute || hiddenWord) ? await serverUsesWord(message.guild.id, commandName) : false;
+    if (hiddenWord && !serverOwnsIt) {
+      const trigger = await findTrigger(message.guild.id, message.content).catch(() => null);
+      if (trigger) await runCustomCommandRow(message, trigger.row, trigger.row.name, trigger.args, trigger.prefix, mainPrefix);
+      return;
+    }
     if (serverOwnsIt || (!message.client.commands.has(commandName) && !message.client.commandAliases.has(commandName) && !message.client.commandRoutes?.has(commandName))) {
       const configuredAlias = await commandAliasesDb.get(message.guild.id, commandName).catch(() => null);
       if (configuredAlias) {
@@ -323,6 +337,8 @@ module.exports = {
     const automodControlAction = canonicalName === 'automod' ? controlAction(argText) : null;
     const hiddenAutomodControl = Boolean(automodControlAction && automodControlAction !== 'invalid');
     if (hiddenAutomodControl) argText = `control ${automodControlAction}`;
+    // The same for a way in that was not the typed word (a server alias, a first word sent on): a hidden command does not exist for the people outside the team.
+    if (isHiddenEverywhere(command) && !isPettoOperator(message.author.id)) { command = null; hiddenWord = true; }
     // Slash-only commands can open native Discord modals and must not be
     // executed through the pseudo-interaction used by prefix commands.
     if (command?.slashOnly) return;
@@ -335,7 +351,7 @@ module.exports = {
       }
       // Only the main prefix of the server answers "I don't know that command", and only to something written like a command
       // (`!es el mejor`). The other prefixes, the word ones (`petto es el mejor`), the personal one and a lone symbol are chat.
-      if (!handled && (parsed.mention || guildPrefixes.answersUnknown(parsed))) {
+      if (!handled && !hiddenWord && (parsed.mention || guildPrefixes.answersUnknown(parsed))) {
         // A typo gets the closest commands (the same suggestions `!help <word>` gives): `!bna` answers "Did you mean `!ban`?".
         // (A nicety: if it ever fails, the plain answer still goes out.)
         let close = '';

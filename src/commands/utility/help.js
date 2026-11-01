@@ -20,6 +20,7 @@ const { textCard } = require('../../utils/caseCard');
 const { describePermissions } = require('../../utils/permissionLabels');
 const { EMOJI } = require('../../utils/emojis');
 const { isPettoOperator } = require('../../utils/autoModControl');
+const { isHiddenEverywhere } = require('../../utils/hiddenCommands');
 const { helpLinksLine, commandsUrl, DASHBOARD_URL, SUPPORT_URL, WIKI_URL } = require('../../utils/links');
 const { isSlashCommand } = require('../../handlers/commandHandler');
 const { t, tn, commandDescription, languageOf, currentLanguage, LANGUAGES, LANGUAGE_NAMES } = require('../../i18n');
@@ -91,6 +92,8 @@ function suggestCommands(client, typed, includeHidden = false) {
 function getChatInputCommands(client, includeHidden = false) {
   return [...client.commands.values()].filter((c) => (
     (c.data.toJSON().type ?? 1) === 1
+    // A command hidden everywhere (`/music`) is not shown to anybody, the team included (`includeHidden` is for the private tools only).
+    && !isHiddenEverywhere(c)
     && (includeHidden || (!c.slashOnly && !c.hiddenFromHelp))
   ));
 }
@@ -217,7 +220,7 @@ function findEntries(client, tokens, includeHidden = false) {
   const route = client.commandRoutes?.get(tokens[0]);
   const canonicalName = client.commandAliases.get(tokens[0]) ?? route?.command ?? tokens[0];
   const command = client.commands.get(canonicalName);
-  if (!command || (!includeHidden && (command.slashOnly || command.hiddenFromHelp)) || (command.data.toJSON().type ?? 1) !== 1) return { command: null, entries: [] };
+  if (!command || isHiddenEverywhere(command) || (!includeHidden && (command.slashOnly || command.hiddenFromHelp)) || (command.data.toJSON().type ?? 1) !== 1) return { command: null, entries: [] };
 
   const json = command.data.toJSON();
   const all = visibleEntries(command, includeHidden);

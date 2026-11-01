@@ -7,22 +7,27 @@
  *
  * It is read once, when this file is loaded, into a plain list of routes (the shape of DEFAULT_PREFIX_ROUTES); the command loader then
  * puts them in the same Map as every other route, so typing a word is one `Map.get`: nothing here runs per message.
+ * (`short-aliases-team.json` is the same for the words of a command that is hidden everywhere: team only, never published.)
  * Each is the normal prefix route of the real command, so its permissions and the `!disablecommand` and `!restrictcommand` rules apply.
  */
 const TABLE = require('./short-aliases.json');
+// The words of a command that is hidden everywhere (`/music`): they work with the prefix for the Petto team only, so they are not in the published table
+// (the website and the wiki read TABLE) and the generator never gives them to another command.
+const TEAM_TABLE = require('./short-aliases-team.json');
 
 let routes = null;
 
 /** The routes of the table, in the shape of DEFAULT_PREFIX_ROUTES (`short: true` marks them for the checks, the docs and the loader). */
 function shortAliasRoutes() {
   if (routes) return routes;
-  routes = Object.entries(TABLE).map(([alias, target]) => {
+  const toRoute = (team) => ([alias, target]) => {
     const [command, ...rest] = target.split(' ');
-    const route = { alias, command, args: rest, short: true };
+    const route = { alias, command, args: rest, short: true, ...(team ? { team: true } : {}) };
     if (rest.length) route.subcommand = rest.join(' ');
     return route;
-  });
+  };
+  routes = [...Object.entries(TABLE).map(toRoute(false)), ...Object.entries(TEAM_TABLE).map(toRoute(true))];
   return routes;
 }
 
-module.exports = { SHORT_ALIAS_TABLE: TABLE, shortAliasRoutes };
+module.exports = { SHORT_ALIAS_TABLE: TABLE, TEAM_ALIAS_TABLE: TEAM_TABLE, shortAliasRoutes };

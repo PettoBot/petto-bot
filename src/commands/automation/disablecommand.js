@@ -10,6 +10,7 @@ const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('disc
 const { ensureGuild } = require('../../db/guilds');
 const disabledDb = require('../../db/disabledCommands');
 const commandAliasesDb = require('../../db/commandAliases');
+const { isHiddenWordFor } = require('../../utils/hiddenCommands');
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 const { register, sendPager } = require('../../utils/pager');
@@ -74,9 +75,10 @@ function rawOptions(text) {
 }
 
 /** The real name of a command written as a name, an alias, a shortcut or one of this server's aliases, or null. */
-async function realName(client, guildId, raw) {
+async function realName(client, guildId, raw, userId = null) {
   const name = String(raw ?? '').trim().replace(/^[^\p{L}\p{N}]+/u, '').toLowerCase();
-  if (!name) return null;
+  // A command hidden everywhere (`/music`) does not exist for the people outside the team.
+  if (!name || isHiddenWordFor(client, name, userId)) return null;
   if (client.commands.has(name)) return name;
   // A shortcut of one action of a command (`hug` of /act) is disabled on its own, under its own name.
   const route = client.commandRoutes?.get(name);
@@ -84,7 +86,7 @@ async function realName(client, guildId, raw) {
   if (known) return known;
   const custom = guildId ? await commandAliasesDb.get(guildId, name).catch(() => null) : null;
   const target = custom?.command?.trim().split(/\s+/)[0]?.toLowerCase();
-  if (target && target !== name) return client.commands.has(target) ? target : client.commandAliases?.get(target) ?? null;
+  if (target && target !== name && !isHiddenWordFor(client, target, userId)) return client.commands.has(target) ? target : client.commandAliases?.get(target) ?? null;
   return null;
 }
 
@@ -100,8 +102,8 @@ function categories(client) {
 }
 
 /** Closest command names to a word that is not one (at most two letters apart), for "did you mean". */
-function closest(client, word) {
-  const candidates = [...client.commands.keys(), ...(client.commandAliases?.keys?.() ?? [])];
+function closest(client, word, userId = null) {
+  const candidates = [...client.commands.keys(), ...(client.commandAliases?.keys?.() ?? [])].filter((candidate) => !isHiddenWordFor(client, candidate, userId));
   let best = null;
   for (const candidate of candidates) {
     if (Math.abs(candidate.length - word.length) > 2) continue;
@@ -145,10 +147,10 @@ async function resolveNames(interaction, words, { forEnable = false } = {}) {
       for (const name of categoryCommands(client, category)) (PROTECTED.has(name) && !forEnable ? refused : names).add(name);
       continue;
     }
-    const name = await realName(client, interaction.guild?.id, word);
+    const name = await realName(client, interaction.guild?.id, word, interaction.user?.id);
     if (!name) {
       unknown.push(word);
-      const guess = closest(client, word.replace(/^[^\p{L}\p{N}]+/u, ''));
+      const guess = closest(client, word.replace(/^[^\p{L}\p{N}]+/u, ''), interaction.user?.id);
       if (guess) hints.push(guess);
       continue;
     }

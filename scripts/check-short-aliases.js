@@ -70,7 +70,7 @@ for (const route of DEFAULT_PREFIX_ROUTES) claim(route.alias, `a route to ${rout
 // scripts/gen-short-aliases.js. Here: every word is unique across everything, points to something real, and the table is stable.
 const generator = require('./gen-short-aliases');
 const info = generator.loadCommandInfo();
-const shortRoutes = DEFAULT_PREFIX_ROUTES.filter((route) => route.short);
+const shortRoutes = DEFAULT_PREFIX_ROUTES.filter((route) => route.short && !route.team); // the words of /music are team only, in another table (check-music-hidden.js)
 assert.equal(shortRoutes.length, Object.keys(SHORT_ALIAS_TABLE).length, 'every entry of the table is a route');
 assert.ok(shortRoutes.length >= 500, `a large table: ${shortRoutes.length} short aliases`);
 assert.equal(new Set(shortRoutes.map((route) => route.alias)).size, shortRoutes.length, 'no short alias is written twice');

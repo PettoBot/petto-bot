@@ -116,7 +116,7 @@ async function addCmd(interaction, isEdit) {
   const embedInput = interaction.options.getString('embed_template');
   const requestedEmbedTemplate = embedInput?.trim().toLowerCase() === 'clear' ? null : embedInput;
 
-  if (interaction.client.commands.has(name) || interaction.client.commandAliases.has(name) || (interaction.client.commandRoutes?.has(name) && !interaction.client.commandRoutes.get(name).short)) {
+  if (isRealCommand(interaction.client, name, interaction.user?.id)) {
     await interaction.reply({ content: t(lang, 'customcommands.add.realCommand', { name }), flags: MessageFlags.Ephemeral });
     return;
   }
@@ -234,7 +234,7 @@ async function renameCmd(interaction) {
   if (oldName === newName) return fail(t(lang, 'customcommands.rename.same'));
   const row = await ccDb.getCommand(interaction.guild.id, oldName);
   if (!row) return fail(t(lang, 'customcommands.notExist', { name: oldName }));
-  if (isRealCommand(interaction.client, newName)) return fail(t(lang, 'customcommands.realCommand', { name: newName }));
+  if (isRealCommand(interaction.client, newName, interaction.user?.id)) return fail(t(lang, 'customcommands.realCommand', { name: newName }));
   if (await ccDb.getCommand(interaction.guild.id, newName)) return fail(t(lang, 'customcommands.rename.exists', { name: newName }));
   try {
     await ccDb.renameCommand(interaction.guild.id, oldName, newName);
