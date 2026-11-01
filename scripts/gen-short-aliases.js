@@ -28,9 +28,9 @@ const MAX_LENGTH = 5;
 const MAX_STEM = 3;
 // The commands people type most come first, so they get the shortest words.
 const PRIORITY = ['image', 'ticket', 'timer', 'feed', 'giveaway', 'welcome', 'backup', 'automod', 'counter', 'snipe', 'afk', 'remind', 'birthday', 'level', 'starboard', 'suggestion', 'verify'];
-// The umbrellas `/server`, `/user` and `/mod` come after every other command, so their words are the ones left free and no word that already
+// The umbrellas `/server`, `/user`, `/mod`, `/game`, `/me`, `/search` and `/staff` come after every other command, so their words are the ones left free and no word that already
 // works changes (their subcommands are the old commands with their own words: `!si`, `!ui`, `!av`).
-const LAST = ['server', 'user', 'mod'];
+const LAST = ['server', 'user', 'mod', 'game', 'me', 'search', 'staff'];
 // A stem that is not the first letter or a short alias already there: the usual way people shorten the name.
 const STEMS = { image: 'i', ticket: 'tk', feed: 'fd', backup: 'bk', counter: 'cn', snipe: 'sn', afk: 'af', remind: 'rm', forum: 'fr' };
 // Left out: the actions of /act have their own words (`!hug`), and these are not for members to type.
@@ -66,7 +66,7 @@ function loadCommandInfo() {
 const vowels = /[aeiou]/;
 /** The initials of the words of a subcommand and the letters that follow, as the endings to try: `sepia` is s, se, sep, sepi; `reward add` is ra, rad, radd. */
 function tails(sub) {
-  const words = sub.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  const words = sub.toLowerCase().split(/[^a-z]+/).filter(Boolean); // letters only: a short alias is 2 to 5 letters (`8ball` is `b`, `ba`...)
   const initials = words.map((word) => word[0]).join('');
   const last = words[words.length - 1];
   const list = [initials];

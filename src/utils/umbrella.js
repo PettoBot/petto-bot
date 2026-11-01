@@ -7,7 +7,10 @@
 // `{ name, description, rule, options?, run }`. The rules of a server
 // (`!disablecommand`, `!restrictcommand`) use the name of the wrapped command (`serverinfo` for `/server info`) or the `rule` key of a new
 // subcommand (`servericon`), and the name of the umbrella turns off all of it (see utils/commandRules.js).
-const { ApplicationCommandOptionType } = require('discord.js');
+const { ApplicationCommandOptionType, MessageFlags } = require('discord.js');
+const moderationPermissions = require('./moderationPermissions');
+const { permissionLabels } = require('./permissions');
+const { t, languageOf } = require('../i18n');
 
 const ADD_OPTION = {
   [ApplicationCommandOptionType.String]: 'addStringOption',
@@ -128,4 +131,66 @@ function prefixOptionsOf(subcommands, load) {
   return { greedy, argsReaders };
 }
 
-module.exports = { addSubcommands, runSubcommand, ruleKeysOf, copyOptions, wrapInteraction, prefixOptionsOf };
+/**
+ * What a subcommand that wraps a command asks of the member: the bit field the wrapped command is registered with (what `/ban` has),
+ * or the one of its own action when it has one (`!voice mute` asks for Mute Members, not for the three voice permissions at once), or
+ * null for anyone. The wrapped commands that only work with the prefix are never checked by Discord (their `default_member_permissions`
+ * is read by the prefix handler, which sees the umbrella as open), so the umbrella has to ask for it.
+ */
+function permissionBitsOf(load, entry) {
+  const wrapped = load(entry.wraps);
+  const override = wrapped.prefixPermissionOverrides?.[entry.sub ?? entry.name];
+  const raw = override !== undefined ? override : wrapped.data.toJSON().default_member_permissions;
+  return raw == null ? null : BigInt(raw);
+}
+
+/**
+ * Whether the member may use what the subcommand wraps, for the slash command and the prefix alike: the permission the wrapped command
+ * asks for, or the role chosen for it with `!moderation` (administrators and the owner always). Answers `{ ok, roleAllowed }`; when it is
+ * not allowed the person has been told, in private. What the wrapped command checks by itself (the permission of the bot, the role
+ * hierarchy, who may be a target) is still its own and runs after.
+ */
+async function checkPermission(load, interaction, entry) {
+  const wrapped = load(entry.wraps);
+  const needed = permissionBitsOf(load, entry);
+  if (needed === null) return { ok: true, roleAllowed: false };
+  const member = interaction.member;
+  const guildId = interaction.guildId ?? interaction.guild?.id;
+  // The role a server chose for this command (`!moderation allow ban @Mods`) only stands in for the Discord permission.
+  const roleAllowed = member && guildId ? await moderationPermissions.hasConfiguredRole(guildId, wrapped.data.name, member).catch(() => false) : false;
+  if (roleAllowed || (member?.permissions?.has?.(needed) ?? false)) return { ok: true, roleAllowed };
+  const lang = await languageOf(interaction);
+  await interaction.reply({ content: t(lang, 'core.moderate.youNeed', { permission: permissionLabels(needed, lang) }), flags: MessageFlags.Ephemeral });
+  return { ok: false, roleAllowed };
+}
+
+/**
+ * The `execute` and `!help` hook of an umbrella that wraps commands with `{ name, wraps, sub? }` entries: it asks for the permission of the
+ * wrapped command, then runs its own code with its own subcommand (`/mod ban` is `ban user`, `/game minecraft` is `minecraft user`).
+ * Every umbrella that wraps commands uses it, so the gate does not depend on remembering it: a command with no permission is open.
+ */
+function wrappedExecutor(load, subcommands) {
+  const entryOf = (name) => subcommands.find((entry) => entry.name === name);
+  return {
+    /** What `!help <umbrella> <sub>` says is needed (a bit field, or null). */
+    permissionForSubcommand(name) {
+      const entry = entryOf(name);
+      return entry ? permissionBitsOf(load, entry) : null;
+    },
+    async execute(interaction, client) {
+      const name = interaction.options.getSubcommand();
+      const entry = entryOf(name);
+      if (!entry) throw new Error(`Unknown subcommand ${name}`); // i18n-ignore: internal error
+      const wrapped = load(entry.wraps);
+      const { ok, roleAllowed } = await checkPermission(load, interaction, entry);
+      if (!ok) return undefined;
+      // The wrapped command reads its own subcommand (`ban user`) and its own configured role, as if it had been typed as the old command.
+      return wrapped.execute(wrapInteraction(interaction, {
+        subcommand: entry.sub ?? null,
+        overrides: { commandName: wrapped.data.name, pettoModerationRoleAllowed: roleAllowed },
+      }), client);
+    },
+  };
+}
+
+module.exports = { addSubcommands, runSubcommand, ruleKeysOf, copyOptions, wrapInteraction, prefixOptionsOf, permissionBitsOf, checkPermission, wrappedExecutor };

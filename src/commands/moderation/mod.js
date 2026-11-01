@@ -11,11 +11,8 @@
 // still its own and runs after, untouched. A member without the permission gets the private refusal the old commands give.
 //
 // `!mod ban @x spam` works with the prefix, `!mod` alone lists the subcommands, and the old words are accepted (`!mod k @x`).
-const { SlashCommandBuilder, MessageFlags } = require('discord.js');
-const { addSubcommands, ruleKeysOf, wrapInteraction, prefixOptionsOf } = require('../../utils/umbrella');
-const moderationPermissions = require('../../utils/moderationPermissions');
-const { permissionLabels } = require('../../utils/permissions');
-const { t, languageOf } = require('../../i18n');
+const { SlashCommandBuilder } = require('discord.js');
+const { addSubcommands, ruleKeysOf, prefixOptionsOf, wrappedExecutor } = require('../../utils/umbrella');
 
 const load = (file) => require(`./${file}`);
 
@@ -49,8 +46,8 @@ const SUBCOMMANDS = [
   { name: 'slowmode', wraps: 'channel', sub: 'slowmode' },
 ];
 
-const entryOf = (name) => SUBCOMMANDS.find((entry) => entry.name === name);
 const { greedy, argsReaders } = prefixOptionsOf(SUBCOMMANDS, load);
+const executor = wrappedExecutor(load, SUBCOMMANDS);
 
 // The words of the old commands, read as the subcommand they stand for (`!mod k @x`, `!mod to @x 10m`). Only the ones that mean the
 // same thing: `!notes` lists and `!ch` is the whole channel command, so they are not here.
@@ -61,33 +58,6 @@ const WORDS = {
   unlockdown: ['endlockdown'], clearinvites: ['deleteinvites', 'purgeinvites'], pauseinvites: ['pi', 'pause'], slowmode: ['slow'],
 };
 const SUBCOMMAND_WORDS = Object.fromEntries(Object.entries(WORDS).flatMap(([name, words]) => words.map((word) => [word, name])));
-
-/** The bit field the permission of a subcommand is asked for with (what the wrapped command is registered with), or null for anyone. */
-function permissionBitsOf(entry, { fromPrefix = false } = {}) {
-  const wrapped = load(entry.wraps);
-  const override = fromPrefix ? wrapped.prefixPermissionOverrides?.[entry.sub ?? entry.name] : undefined;
-  const raw = override !== undefined ? override : wrapped.data.toJSON().default_member_permissions;
-  return raw == null ? null : BigInt(raw);
-}
-
-/**
- * Whether the member may use what the subcommand wraps: the permission the wrapped command asks for, or the role chosen for it with
- * `!moderation` (administrators and the owner always). Answers `{ ok, roleAllowed }`; when it is not allowed the person has been told.
- */
-async function checkPermission(interaction, entry) {
-  const wrapped = load(entry.wraps);
-  const needed = permissionBitsOf(entry, { fromPrefix: Boolean(interaction.fromPrefix) });
-  const member = interaction.member;
-  const guildId = interaction.guildId ?? interaction.guild?.id;
-  // The role a server chose for this command (`!moderation allow ban @Mods`) only stands in for the Discord permission; the commands go on
-  // to check the bot and the hierarchy by themselves.
-  const roleAllowed = member && guildId ? await moderationPermissions.hasConfiguredRole(guildId, wrapped.data.name, member).catch(() => false) : false;
-  if (needed === null) return { ok: true, roleAllowed };
-  if (roleAllowed || (member?.permissions?.has?.(needed) ?? false)) return { ok: true, roleAllowed };
-  const lang = await languageOf(interaction);
-  await interaction.reply({ content: t(lang, 'core.moderate.youNeed', { permission: permissionLabels(needed, lang) }), flags: MessageFlags.Ephemeral });
-  return { ok: false, roleAllowed };
-}
 
 module.exports = {
   // Also registered as a slash command; the prefix works too.
@@ -110,27 +80,13 @@ module.exports = {
   rulesBySubcommand: true,
   ruleKeys: ruleKeysOf(SUBCOMMANDS),
   // What `!help mod ban` says is needed.
-  permissionForSubcommand: (name) => {
-    const entry = entryOf(name);
-    return entry ? permissionBitsOf(entry) : null;
-  },
+  permissionForSubcommand: executor.permissionForSubcommand,
   data: addSubcommands(
     new SlashCommandBuilder().setName('mod').setDMPermission(false).setDescription('Moderation: ban, kick, mute, warn, purge, lock and more, in one command.'),
     SUBCOMMANDS,
     load,
   ),
 
-  async execute(interaction) {
-    const name = interaction.options.getSubcommand();
-    const entry = entryOf(name);
-    if (!entry) throw new Error(`Unknown subcommand ${name}`); // i18n-ignore: internal error
-    const wrapped = load(entry.wraps);
-    const { ok, roleAllowed } = await checkPermission(interaction, entry);
-    if (!ok) return undefined;
-    // The wrapped command reads its own subcommand (`ban user`) and its own configured role, as if it had been typed as the old command.
-    return wrapped.execute(wrapInteraction(interaction, {
-      subcommand: entry.sub ?? null,
-      overrides: { commandName: wrapped.data.name, pettoModerationRoleAllowed: roleAllowed },
-    }), interaction.client);
-  },
+  // Asks for the permission of the wrapped command first (utils/umbrella.js), then runs it.
+  execute: executor.execute,
 };

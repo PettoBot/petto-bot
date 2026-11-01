@@ -117,7 +117,8 @@ function setCachedPrefix(guildId, prefixes) {
  */
 function knownNameChecker(client, guildId) {
   return async (name) => {
-    if (client.commands?.has(name)) return true;
+    // `/me` is a command, but also Spanish for "me": `petto me ayudas` is chat. With a symbol prefix (`!me`) it is the command.
+    if (client.commands?.has(name)) return !isCommonWord(name);
     // An everyday word (`is`, `si`, `um`) that is also a short alias is a command with a symbol prefix (`!is`) but chat after a word
     // prefix: `petto is the best` is not `!image sepia`. A server alias or a custom command was chosen by the server, so it stays.
     if (client.commandAliases?.has(name) || client.commandRoutes?.has(name)) return !isCommonWord(name);
