@@ -4270,6 +4270,21 @@ $$;
 -- security invoker: it runs with the caller's rights, so RLS (no policy) still keeps every key but the service key out.
 
 -- ---------------------------------------------------------------------------
+-- `ask` (the AI that answers questions): how many questions a member has asked each UTC day. Only a number, never the question or the answer.
+-- The bot counts with one statement that adds 1 only while `used` is under the limit, so two questions at once cannot pass it; a question that
+-- could not be answered gives its use back. Rows older than a week are deleted by the bot.
+-- ---------------------------------------------------------------------------
+create table if not exists ask_usage (
+  user_id text    not null,
+  day     date    not null,
+  used    integer not null default 0 check (used >= 0),
+  primary key (user_id, day)
+);
+create index if not exists idx_ask_usage_day on ask_usage(day);
+alter table ask_usage enable row level security;
+-- No policy on purpose: only the bot's own connection reads or writes it.
+
+-- ---------------------------------------------------------------------------
 -- Media channels: a channel where only pictures, videos or links of some sites can be posted (!imgonly, !urlonly and the dashboard)
 -- ---------------------------------------------------------------------------
 create table if not exists media_only_channels (

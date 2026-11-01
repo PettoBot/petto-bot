@@ -124,6 +124,8 @@ const EVERYDAY = new Set([
   'partner', 'request', 'review', 'uploads', 'stats',
   // /server and /user: lookups (their subcommands are the old info commands); `/server steal` asks for Manage Guild Expressions inside.
   'server', 'user',
+  // /ai (`!ask`, `/ai ask`, `/ai usage`): open to every member on purpose. `ask` has a daily limit for free members inside (scripts/check-ask.js); `usage` only reads.
+  'ai',
 ]);
 // Open at Discord but each subcommand asks for what it needs inside: `MEMBER` is what a plain member may start (everyone, or the author of the ticket, the post or
 // the voice channel; the rest asks for Manage Server or a staff role and refuses a plain member).
@@ -422,6 +424,61 @@ async function slashOf(command, leaf, { perms = 0n } = {}) {
     if (entry.replies.length && !entry.replies.some(isEphemeral) && !entry.error) publicRefusals.push(key);
   }
   assert.deepEqual(publicRefusals, [], 'a refusal is told in private on the slash command');
+
+  // ---------------------------------------------------------- 2b. `ask` and `ai usage` are open to a plain member on purpose, in every way they are typed (a fake model and a fake count)
+  {
+    const askAi = require('../src/utils/askAi');
+    const ticketAi = require('../src/utils/ticketAi');
+    const askUsage = require('../src/db/askUsage');
+    const originalChat = ticketAi.chat;
+    const originalUsage = { consume: askUsage.consume, refund: askUsage.refund, usedOn: askUsage.usedOn };
+    const counts = new Map();
+    const modelSaw = [];
+    process.env.GROQ_API_KEY = 'check-only-key';
+    process.env.ASK_COOLDOWN_FREE_SECONDS = '0';
+    ticketAi.chat = async (messages) => { modelSaw.push(messages.at(-1).content); return { ok: true, content: 'Cats are small mammals.' }; };
+    Object.assign(askUsage, {
+      consume: async (user, day, limit) => { const used = counts.get(user) ?? 0; if (used >= limit) return { ok: false, used }; counts.set(user, used + 1); return { ok: true, used: used + 1 }; },
+      refund: async (user) => { counts.set(user, Math.max(0, (counts.get(user) ?? 0) - 1)); },
+      usedOn: async (user) => counts.get(user) ?? 0,
+    });
+    try {
+      const ai = byName.get('ai');
+      assert.ok(ai && EVERYDAY.has('ai'), '/ai is a command, listed as open to everybody');
+      assert.equal(json(ai).default_member_permissions ?? null, null, '/ai declares no permission');
+      assert.deepEqual([ai.permissionForSubcommand('ask'), ai.permissionForSubcommand('usage')], [null, null], 'and asks for none inside');
+      for (const text of ['!ask what is a cat?', 'petto ask what is a cat?', '<@123> ask what is a cat?', '!ai ask what is a cat?']) {
+        askAi.resetState();
+        modelSaw.length = 0;
+        const result = await typed(text);
+        assert.equal(result.denied, false, `a plain member typing \`${text}\` is not refused for a permission`);
+        assert.equal(modelSaw.length, 1, `\`${text}\` reaches the model for a plain member`);
+        assert.ok(result.sent.length === 1 && result.sent[0].includes('Cats are small mammals.') && result.sent[0].includes('Answered by AI'), `and is answered (${result.sent[0]})`);
+      }
+      for (const text of ['!ai usage', '!askusage', 'petto askusage']) {
+        askAi.resetState();
+        const result = await typed(text);
+        assert.equal(result.denied, false); assert.ok(result.sent.length === 1 && /questions? left today/.test(result.sent[0]), `\`${text}\` tells a plain member how many are left (${result.sent[0]})`);
+      }
+      assert.ok((await typed('!ai')).sent.length === 1, '`!ai` alone lists what it holds');
+      assert.equal((await typed('petto ai is cool')).sent.length, 0, '`petto ai` is chat');
+      for (const leaf of leavesOf(ai)) {
+        askAi.resetState();
+        counts.clear();
+        const result = await slashOf(ai, leaf);
+        assert.ok(result.replies.length >= 1, `/ai ${leaf.path.join(' ')} answers a plain member`);
+        const text = result.replies.map(flatText).join(' / ');
+        assert.ok(leaf.path[0] === 'ask' ? text.includes('Cats are small mammals.') : /questions? left today/.test(text), `/ai ${leaf.path.join(' ')} for a plain member: ${text.slice(0, 120)}`);
+      }
+      // A plain member only writes their own count, and Premium and the team are not counted.
+      assert.deepEqual([...counts.keys()].filter((id) => id !== ANA), [], 'only the count of the member who asked is written');
+    } finally {
+      ticketAi.chat = originalChat;
+      Object.assign(askUsage, originalUsage);
+      askAi.resetState();
+      delete process.env.GROQ_API_KEY; delete process.env.ASK_COOLDOWN_FREE_SECONDS;
+    }
+  }
 
   // ---------------------------------------------------------- 3. the real pipelines, as a plain member
   spyOn(all.filter((command) => !command.permissionForSubcommand));

@@ -23,6 +23,10 @@ const BASE_PREFIX_ROUTES = [
   { alias: 'servericon', command: 'server', args: ['icon'], subcommand: 'icon', disableName: 'servericon' },
   { alias: 'serverbanner', command: 'server', args: ['banner'], subcommand: 'banner', disableName: 'serverbanner' },
   { alias: 'serversplash', command: 'server', args: ['splash'], subcommand: 'splash', disableName: 'serversplash' },
+  // The AI that answers questions: `!ask who won...` is `!ai ask who won...` (also `petto ask ...` and `@Petto ask ...`), `!askusage` is `!ai usage`.
+  // `ask` is a word a server may already use for an alias or a custom command: it keeps it (`yieldsToServer`), as a short alias does.
+  { alias: 'ask', command: 'ai', args: ['ask'], subcommand: 'ask', disableName: 'ask', yieldsToServer: true },
+  { alias: 'askusage', command: 'ai', args: ['usage'], subcommand: 'usage', disableName: 'askusage', yieldsToServer: true },
   { alias: 'lock', command: 'channel', args: ['lock'], subcommand: 'lock' },
   { alias: 'unlock', command: 'channel', args: ['unlock'], subcommand: 'unlock' },
   { alias: 'slowmode', command: 'channel', args: ['slowmode'], subcommand: 'slowmode' },

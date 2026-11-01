@@ -17,7 +17,8 @@ const COMMON_WORDS = new Set([
   'quien', 'se', 'ser', 'si', 'sin', 'son', 'soy', 'su', 'sus', 'te', 'ti', 'tu', 'tus', 'un', 'una', 'uno', 'unos', 'va', 'vez', 'y', 'ya',
   'yo',
   // Umbrella commands that are also everyday words (`petto bot is down`, `petto auto sale`): after a word prefix they are chat, `!bot` and `/bot` work.
-  'auto', 'bot', 'community', 'config', 'greet', 'message', 'protect', 'special',
+  // (`ai` is one too: `petto ai is cool`; `petto ask ...` is not chat, `ask` is its own command word.)
+  'ai', 'auto', 'bot', 'community', 'config', 'greet', 'message', 'protect', 'special',
   // Portuguese
   'ao', 'aos', 'ate', 'da', 'das', 'dos', 'ela', 'ele', 'eles', 'eu', 'foi', 'ja', 'mais', 'mas', 'na', 'nas', 'nao', 'nos',
   'num', 'os', 'ou', 'pra', 'pro', 'quem', 'sao', 'sem', 'sim', 'tem', 'um', 'uma', 'vou', 'voce',

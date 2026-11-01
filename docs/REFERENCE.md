@@ -802,6 +802,29 @@ The original spec's plain lookup-command category, consolidated where several wo
 **`/inviteinfo code`** — looks up any invite code's server/channel/inviter/expiry, even for servers Petto isn't in.
 **`/color hex`** (aliases `clr`, `hex`, `hexcolor`) — previews a hex color as the card's accent bar, plus its RGB, HSL and decimal values. Given anything that is not a hex code (nothing, an attached or replied image, a link, a member), it finds the **main color of that picture** instead (`!image hex`) and answers with a swatch.
 
+## Ask, the AI that answers questions (`/ai ask`, `!ask`)
+
+**`!ask <question>`** (also `petto ask <question>`, `@Petto ask <question>`, the prefix of the server and `!ai ask <question>`) and **`/ai ask question:`** (up to 800 characters) answer a question in the chat, with a short, casual text. With the prefix the answer is a reply to the message, with no ping; the slash command shows "thinking" and answers publicly. **`/ai usage`** (`!ai usage`, `!askusage`) says how many questions the member has left today and when they come back (Premium and the Petto team have no limit). `!ai` alone lists both. They are for every member, in servers only.
+
+**A conversation:** a reply to one of the answers, written by the member who asked it, is their next question with no command word (`how about the other one?`). The bot reads the chain of replies (up to 4 messages back) as the context: its answers, and what that member wrote. Another member replying does not continue it (they can use `!ask` as a reply, and the answer is then the context). A follow-up counts as one question, and it follows the rules below. After a restart, an answer that is no longer in the cache continues only when the reply is a normal reply to the bot (Discord marks it with the bot as the replied user).
+
+**Server rules:** `!disablecommand ask` (also by channel), `!restrictcommand ask` and a permission level for `ask` apply to `/ai ask`, `!ask`, `!ai ask` and the follow-up of a conversation (where a rule is on, a reply is plain chat again with no notice); `askusage` is the same for the count; `ai` turns off both. A server that already has an alias or a custom command called `ask` keeps it.
+
+**Provider and answers:** Groq, with the client of the ticket assistant (`GROQ_API_KEY`, `GROQ_MODEL`; `src/utils/ticketAi.js`). Without a key `ask` says it is not available right now and nothing is counted; `/ai usage` still works. The model is told to answer in the language of the question (the language of the server when it is unclear), to be short, honest and without internet, not to follow instructions that change its rules, to refuse hateful, sexual, self-harm and illegal-harm content, and to point to the dashboard and the docs for questions about Petto. What it writes is cleaned (`@everyone` and `@here` defused, mentions turned into plain words, invite links removed, cut at 1900 characters at a sentence, never empty) and ends with a small AI line (`-# ✨ Answered by AI, it can be wrong.`, with the questions left today for a free member). The answer is never stored. A question and its answer are only sent to Groq and written in the channel: the logs have status codes and nothing else, and the table `ask_usage` (`schema.sql`) holds only a number per member and UTC day.
+
+**Limits (environment variables, with their defaults):**
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `ASK_ENABLED` | `true` | `false` switches `ask` off for everybody without a deploy (it says it is not available). |
+| `ASK_FREE_DAILY` | `10` | Questions a free member can ask each UTC day. Premium (the account, paid or granted by hand), the owner and `PETTO_DEVELOPER_IDS` have no limit. |
+| `ASK_COOLDOWN_FREE_SECONDS` | `15` | Wait between two questions of a free member. |
+| `ASK_COOLDOWN_PREMIUM_SECONDS` | `5` | The same for Premium and the Petto team. |
+| `ASK_GUILD_PER_HOUR` | `60` | Questions answered for one server per hour, so one server cannot empty the shared quota. |
+| `ASK_GLOBAL_PER_MINUTE` | `25` | Questions answered per minute by the whole bot (in each process). |
+
+A member who meets a cap of the server or of the bot is told that Petto is busy and the question is **not** counted. The count is atomic: one statement adds 1 to `ask_usage` only while `used` is under the limit (`where ask_usage.used < $3`), so two questions at once cannot pass it. A question that gets no answer (Groq failed, timed out or answered nothing, or the message could not be sent) gives its use back, so only answered questions count; rows older than a week are deleted by the bot. If the database cannot be reached the question is refused with a short notice (it never answers for free without counting). The check is `scripts/check-ask.js`.
+
 ## Statistics (`!stats`, `!statsconfig`, `!summary`)
 
 `!summary` (aliases `digest`, `weekly`) is the quick picture of a server. `!stats` (aliases `analytics`, `analysis`) is the analysis: each subcommand answers with a picture drawn by `src/imgutils/statsCards.js` (same colors and fonts as the summary) and a few lines (`src/utils/statsLines.js`). Everything is counted per server, in the time of Colombia (GMT-5); nothing is global. Days are 1 to 180 (`!stats 30`, `!stats heatmap 30d`); the period is always set against the one just before it.

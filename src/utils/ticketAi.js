@@ -26,10 +26,13 @@ const MARK = `-# ${EMOJI.RELEASE_MAGIC} `;
 /** The line of the first replies, before the bot's own emoji: still recognized in tickets that already have them. */
 const LEGACY_MARK = '-# 🤖 ';
 
+/** The tag of the log lines of the client; the other features that use it (`ask`) pass their own to `chat`. */
+const TAG = 'ticket-ai';
+
 const isConfigured = () => Boolean(String(process.env.GROQ_API_KEY ?? '').trim());
 
 let modelCache = null;
-async function resolveModel(key) {
+async function resolveModel(key, tag = TAG) {
   const forced = String(process.env.GROQ_MODEL ?? '').trim();
   if (forced) return forced;
   if (modelCache && modelCache.until > Date.now()) return modelCache.model;
@@ -43,7 +46,7 @@ async function resolveModel(key) {
     modelCache = { model, until: Date.now() + CFG.modelsCacheMs };
     return model;
   } catch (error) {
-    logger.warn(`[ticket-ai] Groq models list unavailable: ${error?.name === 'TimeoutError' ? 'timeout' : String(error?.message ?? '').slice(0, 12)}`);
+    logger.warn(`[${tag}] Groq models list unavailable: ${error?.name === 'TimeoutError' ? 'timeout' : String(error?.message ?? '').slice(0, 12)}`);
     modelCache = { model: fallback, until: Date.now() + CFG.modelsRetryMs };
     return fallback;
   }
@@ -51,12 +54,12 @@ async function resolveModel(key) {
 
 /**
  * One chat request. Returns `{ ok: true, content }` or `{ ok: false, code }` (timeout, busy, model, upstream, empty). Only the status of an
- * error is logged, never its body.
+ * error is logged, never its body. `tag` names the feature in the log lines (the tickets by default).
  */
-async function chat(messages, maxTokens = CFG.maxTokens) {
+async function chat(messages, maxTokens = CFG.maxTokens, tag = TAG) {
   const key = String(process.env.GROQ_API_KEY ?? '').trim();
   if (!key) return { ok: false, code: 'not_configured' };
-  const model = await resolveModel(key);
+  const model = await resolveModel(key, tag);
   // The GPT-OSS models think before answering: a little thinking, kept out of the answer.
   const reasoning = model.startsWith('openai/gpt-oss') ? { reasoning_effort: 'low', include_reasoning: false } : {};
   try {
@@ -67,7 +70,7 @@ async function chat(messages, maxTokens = CFG.maxTokens) {
       body: JSON.stringify({ model, messages, temperature: CFG.temperature, max_completion_tokens: maxTokens, stream: false, ...reasoning }),
     });
     if (!res.ok) {
-      logger.warn(`[ticket-ai] Groq answered ${res.status} (model ${model})`);
+      logger.warn(`[${tag}] Groq answered ${res.status} (model ${model})`);
       if (res.status === 429 || res.status === 503) return { ok: false, code: 'busy' };
       if ((res.status === 404 || res.status === 400) && !process.env.GROQ_MODEL) modelCache = null;
       return { ok: false, code: res.status === 404 ? 'model' : 'upstream' };
@@ -77,7 +80,7 @@ async function chat(messages, maxTokens = CFG.maxTokens) {
     return typeof content === 'string' && content.trim() ? { ok: true, content } : { ok: false, code: 'empty' };
   } catch (error) {
     const timeout = error?.name === 'TimeoutError' || error?.name === 'AbortError';
-    logger.warn(`[ticket-ai] Groq ${timeout ? 'timed out' : 'could not be reached'} (model ${model})`);
+    logger.warn(`[${tag}] Groq ${timeout ? 'timed out' : 'could not be reached'} (model ${model})`);
     return { ok: false, code: timeout ? 'timeout' : 'upstream' };
   }
 }
