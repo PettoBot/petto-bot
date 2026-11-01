@@ -1,5 +1,5 @@
 // Checks the icons of Petto's select menus: every emoji of the registry (src/utils/emojis.js) is written the way Discord wants
-// (`<:name:id>` or `<a:name:id>`), the 17 icons made for the menus are there with their exact ids, and the options of the menus
+// (`<:name:id>` or `<a:name:id>`), the 18 icons made for the menus are there with their exact ids, and the options of the menus
 // (the report form, the quick setup, the backup menu, the /help categories, the quest list, the forms panel and the filter and
 // sort menus of the lists) each carry a custom Petto icon, never a unicode one, with no repeated value and at most 25 options.
 // The only options without an icon are the two of /emojis (still and animated), which have no icon yet.
@@ -50,6 +50,7 @@ const NEW_ICONS = {
   NSFW: '<:pe_nsfw:1566296380513976410>',
   MASK: '<:pe_mask:1566294984016138340>',
   INTEGRATIONS: '<:pe_integrations:1566294377796739125>',
+  LINK: '<:pe_Link:1566302127381282829>',
   GEM: '<:pe_gem:1566295308261007450>',
   SPEECH: '<:pe_speech:1566294375053660160>',
 };
@@ -77,10 +78,10 @@ function assertMenu(menu, label, allowNone = []) {
 }
 
 (async () => {
-  // The registry: every icon is a well-formed custom emoji, and the 17 new ones are there with their exact ids.
+  // The registry: every icon is a well-formed custom emoji, and the 18 new ones are there with their exact ids.
   for (const [key, value] of Object.entries(EMOJI)) assert.match(value, CUSTOM, `EMOJI.${key} is <:name:id> or <a:name:id>`);
   for (const [key, value] of Object.entries(NEW_ICONS)) assert.equal(EMOJI[key], value, `EMOJI.${key} is ${value}`);
-  assert.equal(Object.keys(NEW_ICONS).length, 17);
+  assert.equal(Object.keys(NEW_ICONS).length, 18);
 
   // The report form (inside a modal): the eight categories.
   const report = categoryOptions('en');
@@ -106,7 +107,7 @@ function assertMenu(menu, label, allowNone = []) {
   for (const id of ['moderation', 'info', 'welcome', 'automation', 'leveling', 'giveaways', 'tickets', 'config', 'utility', 'misc', 'roleplay', 'fun', 'integrations', 'other']) {
     assert.match(categoryMeta(id, 'en').icon, CUSTOM, `the help icon of ${id} is a custom emoji`);
   }
-  assert.equal(categoryMeta('integrations', 'en').icon, EMOJI.INTEGRATIONS);
+  assert.equal(categoryMeta('integrations', 'en').icon, EMOJI.LINK);
 
   // The quest list: every kind of reward.
   const kinds = ['orbs', 'decoration', 'code', 'ingame', 'nitro', 'other'];
