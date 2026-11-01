@@ -5,7 +5,7 @@ const { t, languageOf } = require('../../i18n');
 
 const COOLDOWN = { name: 'animal', ms: 3000 };
 
-// Where the picture of each animal comes from, and how to read the link in the answer.
+// Where the picture of each animal comes from, and how to read the link in the answer (the answer itself never names it: it is only the picture).
 const SOURCES = {
   cat: { url: 'https://api.thecatapi.com/v1/images/search', pick: (body) => body?.[0]?.url, provider: 'TheCatAPI' },
   dog: { url: 'https://dog.ceo/api/breeds/image/random', pick: (body) => (body?.status === 'success' ? body.message : null), provider: 'Dog CEO' },
@@ -28,13 +28,8 @@ module.exports = {
     await lookup(interaction, lang, SOURCES[kind].provider, async () => {
       const link = SOURCES[kind].pick(await fetchJson(SOURCES[kind].url));
       if (!/^https:\/\//i.test(String(link ?? ''))) throw new IntegrationError('unavailable');
-      return infoPayload({
-        accent: null,
-        title: t(lang, `integrations.animal.${kind}`),
-        banner: link,
-        footer: SOURCES[kind].provider, // i18n-ignore: a brand name
-        buttons: [{ label: t(lang, 'integrations.animal.open'), url: link }],
-      });
+      // Only the picture (its title is the text for who cannot see it): no source, no link, no button.
+      return infoPayload({ accent: null, title: t(lang, `integrations.animal.${kind}`), hero: link });
     }, COOLDOWN);
   },
 };

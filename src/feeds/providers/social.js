@@ -11,7 +11,7 @@ const LETTERBOXD = /^[A-Za-z0-9_]{2,15}$/;
 
 const toItem = (platform, type, entry, account, { keepTitle = true } = {}) => ({
   platform, type, id: entry.id, title: keepTitle ? entry.title || account.name : '', url: entry.url || account.url, description: entry.summary, image: entry.image || null, avatar: account.avatar ?? null,
-  author: account.name, authorUrl: account.url, publishedAt: entry.published, extra: '',
+  author: account.name, authorUrl: account.url, source: account.name, sourceUrl: account.url, publishedAt: entry.published, extra: '',
 });
 
 // --- Mastodon: `@user@server`, `user@server` or the link of a profile on any server ----------------------------------------------------------------------

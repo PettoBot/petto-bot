@@ -1,7 +1,7 @@
 // Feeds that are read as RSS or Atom: any blog or news site (`rss`), a subreddit (`reddit`) and a Pinterest profile or board (`pinterest`).
 // A feed of a site a person typed is fetched only from public addresses (see `fetchPublicText`).
 const { fetchText, fetchJsonBody, fetchPublicText, publicUrl } = require('../http');
-const { parseFeed, discoverFeed } = require('../feedparse');
+const { parseFeed, discoverFeed, decode, clean } = require('../feedparse');
 const { clip } = require('../text');
 const { IntegrationError, USER_AGENT } = require('../../utils/integrations');
 const logger = require('../../utils/logger');
@@ -74,10 +74,49 @@ async function resolveRss(input) {
   return { id: normalizeUrl(answer.url), name: feed.title || site?.hostname || 'RSS', avatar: feed.image || favicon, url: site?.toString() ?? answer.url };
 }
 
-const toItem = (platform, type, entry, account) => ({
+// The words of the card header are the account (`source`: a subreddit, a board, a blog), what is below it is the post; the card never repeats the account in the byline.
+const baseItem = (platform, type, entry, account) => ({
   platform, type, id: entry.id, title: entry.title || account.name, url: entry.url || account.url, description: entry.summary, image: entry.image || null, avatar: account.avatar ?? null,
-  author: account.name, authorUrl: account.url, publishedAt: entry.published, extra: '',
+  author: account.name, authorUrl: account.url, source: account.name, sourceUrl: account.url, publishedAt: entry.published, extra: '',
 });
+
+// --- Reddit: what the feed of a subreddit says about a post, without the boilerplate Reddit adds to every entry --------------------------------------------------
+const REDDIT_BOILERPLATE = /(?:\s|&#32;)*submitted(?:\s|&#32;)+by(?:\s|&#32;)+(?=<a\b|\/?u\/)/gi; // `submitted by /u/name [link] [comments]`, at the end of the text of every entry
+const REDDIT_PICTURE_HOSTS = /^https:\/\/(?:i\.redd\.it|preview\.redd\.it|external-preview\.redd\.it|i\.imgur\.com)\//i;
+const REDDIT_THUMBNAIL = /^https:\/\/(?:[a-z]\.)?thumbs\.redditmedia\.com\//i; // 140 pixels: never shown beside (or instead of) the real picture
+const PICTURE_FILE = /\.(?:jpe?g|png|gif|webp)(?:\?|$)/i;
+
+/** The text of a post (a text post), with what Reddit appends (`submitted by`, `[link]`, `[comments]`) cut off. */
+function redditText(entry) {
+  const html = entry.html ?? '';
+  if (!html) return String(entry.summary ?? '').replace(/\s*submitted by\s*\/?u\/\S+.*$/i, '').replace(/\[(?:link|comments?)\]/gi, '').trim();
+  let cut = html.length;
+  for (const match of html.matchAll(REDDIT_BOILERPLATE)) cut = match.index; // the last one: the post may say "submitted by" itself
+  return clean(html.slice(0, cut), 400).replace(/\[(?:link|comments?)\]/gi, '').trim();
+}
+
+/** The best picture of a post: the file it links to when that is a picture, else the preview in its text; never the small thumbnail. */
+function redditPicture(entry) {
+  const html = entry.html ?? '';
+  const direct = [...html.matchAll(/<a\b[^>]*\bhref\s*=\s*"([^"]+)"[^>]*>\s*\[link\]/gi)].map((m) => decode(m[1])).find((href) => REDDIT_PICTURE_HOSTS.test(href) && PICTURE_FILE.test(href));
+  if (direct) return direct;
+  const inText = /<img\b[^>]*\bsrc\s*=\s*"([^"]+)"/i.exec(html)?.[1];
+  const candidates = [inText ? decode(inText) : '', entry.image];
+  return candidates.find((url) => /^https:\/\//i.test(url ?? '') && !REDDIT_THUMBNAIL.test(url)) ?? '';
+}
+
+/** `u/name` and the link of the profile from what the feed gives (`/u/name`), or empty. */
+function redditAuthor(entry) {
+  const name = /^\/?(?:u\/)?([\w-]{3,20})$/.exec(String(entry.author ?? '').trim())?.[1];
+  return name ? { author: `u/${name}`, authorUrl: `https://www.reddit.com/user/${name}` } : { author: '', authorUrl: null };
+}
+
+function toItem(platform, type, entry, account) {
+  const item = baseItem(platform, type, entry, account);
+  if (platform === 'reddit') return { ...item, description: redditText(entry), image: redditPicture(entry) || null, ...redditAuthor(entry) };
+  if (platform === 'pinterest') return pinterestItem(item, entry, account);
+  return item;
+}
 
 /** The reddit name from `r/name`, `/r/name`, a link to the subreddit or a post, or just the name. */
 function parseSubreddit(input) {
@@ -225,11 +264,20 @@ function parsePinterest(input) {
 
 const pinterestFeedUrl = (id) => (id.includes('/') ? `https://www.pinterest.com/${id}.rss` : `https://www.pinterest.com/${id}/feed.rss`);
 /** The pictures of the feed are small (236 pixels); the same file exists larger. */
-const bigPin = (image) => String(image ?? '').replace(/\/(236x|474x)\//, '/736x/');
+const bigPin = (image) => String(image ?? '').replace(/^(https?:\/\/i\.pinimg\.com)\/(?:236x|474x)\//i, '$1/736x/');
 
 async function readPinterest(id) {
   const feed = parseFeed(await fetchText(pinterestFeedUrl(id)), { max: 20 });
-  return { ...feed, entries: feed.entries.map((entry) => ({ ...entry, image: bigPin(entry.image) })) };
+  // `smallImage` is what the feed gave: the card falls back to it when the larger file does not load (see `buildFeedPayload`).
+  return { ...feed, entries: feed.entries.map((entry) => ({ ...entry, smallImage: entry.image, image: bigPin(entry.image) })) };
+}
+
+/** A pin: the picture (the larger one, with the feed's own as a fallback), the pin's own words as the title when it has them, and the owner of the board as the byline. */
+function pinterestItem(item, entry, account) {
+  let owner = '';
+  try { owner = new URL(account.url).pathname.split('/').filter(Boolean)[0] ?? ''; } catch { /* an account without a link */ }
+  const source = String(account.name ?? '').replace(/\s+on Pinterest$/i, '');
+  return { ...item, title: entry.title || source, source, author: entry.author || owner || source, authorUrl: account.url, imageFallback: entry.smallImage && entry.smallImage !== entry.image ? entry.smallImage : null };
 }
 
 module.exports = { normalizeUrl, usualFeedUrls, readRss, resolveRss, toItem, parseSubreddit, readReddit, parseRedditJson, forgetReddit, redditPace, REDDIT_USER_AGENT, parsePinterest, readPinterest, bigPin };

@@ -150,16 +150,22 @@ async function updateFeed(guild, id, patch) {
   }
 }
 
+const STALE_OK = new Set(['reddit', 'pinterest', 'rss', 'tumblr', 'mastodon', 'letterboxd']);
+
 /** A notice to show how a feed looks: the newest thing of the account, or an example when it has nothing. */
 async function sampleItem(feed, lang) {
   const provider = PROVIDERS[feed.platform];
   const account = { id: feed.account_id, name: feed.account_name, avatar: feed.account_avatar, url: feed.account_url };
-  try {
-    const result = (await provider.poll([account], new Map(), { lang, withLive: false, now: Date.now() })).get(account.id);
-    const wanted = feed.types ?? [];
-    const item = (result?.items ?? []).find((candidate) => wanted.includes(candidate.type)) ?? result?.items?.[0];
-    if (item) return item;
-  } catch { /* the example below */ }
+  const wanted = feed.types ?? [];
+  // A test shows the newest thing the account has, however old: a board or a blog that has not posted in days would otherwise be tested with an example that has no picture.
+  // (`now: 0` makes every item "fresh" for the readers that drop the old ones, only for the sites that are read as a feed.)
+  for (const now of STALE_OK.has(feed.platform) ? [Date.now(), 0] : [Date.now()]) {
+    try {
+      const result = (await provider.poll([account], new Map(), { lang, withLive: false, now })).get(account.id);
+      const item = (result?.items ?? []).find((candidate) => wanted.includes(candidate.type)) ?? result?.items?.[0];
+      if (item) return item;
+    } catch { /* the next try, or the example below */ }
+  }
   const type = (feed.types ?? [])[0] ?? PLATFORMS[feed.platform].defaultTypes[0];
   return { platform: feed.platform, type, title: feed.account_name, url: feed.account_url ?? PLATFORMS[feed.platform].site, avatar: feed.account_avatar, author: feed.account_name, publishedAt: Date.now() };
 }
