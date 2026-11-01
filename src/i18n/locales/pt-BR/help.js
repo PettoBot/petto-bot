@@ -79,4 +79,7 @@ module.exports = {
   'help.notFoundSuggest': '{emoji}  Não encontrei nenhum comando chamado `{command}`. Você quis dizer {suggestions}? Use `{prefix}help` para ver todos os comandos.',
   'help.closed': 'Este menu de ajuda foi fechado depois de dois minutos sem uso. Use o comando de ajuda de novo para abri-lo.',
   'help.commands.button': 'Todos os comandos',
+  'help.entry.placeholder': 'Ir para outra entrada',
+  'help.notAuthor': '{emoji}  Você não é o **autor** deste menu de ajuda! Use você mesmo o comando de ajuda.',
+  'help.entry.range': 'Entradas {from}-{to}',
 };

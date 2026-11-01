@@ -82,6 +82,49 @@ const { CATALOGS, LANGUAGES } = require('../src/i18n');
   assert.deepEqual(help.suggestCommands(client, 'zzzzqqqq'), [], 'nothing close, nothing suggested');
   for (const lang of LANGUAGES) assert.ok(CATALOGS[lang]['core.unknownCommandSuggest'].includes('{suggestions}'), `${lang} has the suggestion text`);
 
+  // `!help ban` has an entry for each subcommand: a menu jumps to any of them, the arrows still work, and somebody else who presses is told it is not theirs.
+  {
+    const handlers = [];
+    const message = {
+      id: '1', content: '!help ban', guild, author: user, member: { user }, client,
+      channel: { id: '333333333333333333', send: async () => ({}) },
+      reply: async () => ({ id: 'r', edit: async () => {}, createMessageComponentCollector: () => ({ on: (event, handler) => { if (event === 'collect') handlers.push(handler); }, stop() {} }) }),
+    };
+    const interaction = await buildInteractionFromMessage(message, help, 'ban');
+    interaction.pettoLang = 'en';
+    const replies = [];
+    interaction.reply = async (payload) => { replies.push(payload); return { createMessageComponentCollector: () => ({ on: (event, handler) => { if (event === 'collect') handlers.push(handler); }, stop() {} }) }; };
+    await help.execute(interaction);
+    const json = replies[0].components.map((component) => component.toJSON());
+    const dump = JSON.stringify(json);
+    assert.ok(dump.includes('"custom_id":"help_entry:0"'), 'a menu to jump to an entry');
+    assert.ok(dump.includes('"custom_id":"help_next"'), 'and the arrows are still there');
+    assert.ok(json[0].components.some((component) => component.type === 14), 'a line separates the name and what it does from the fields');
+    assert.ok(/"label":"ban /.test(dump), 'each option is an entry of the command');
+    assert.ok(handlers.length === 1, 'one collector');
+    // Somebody else presses: a private notice, nothing changes.
+    const answers = [];
+    await handlers[0]({ user: { id: '999999999999999999' }, customId: 'help_next', values: [], reply: async (payload) => { answers.push(['reply', payload]); }, update: async (payload) => { answers.push(['update', payload]); } });
+    assert.equal(answers.length, 1); assert.equal(answers[0][0], 'reply');
+    assert.equal(answers[0][1].flags & MessageFlags.Ephemeral, MessageFlags.Ephemeral, 'private');
+    assert.match(answers[0][1].content, /not the \*\*author\*\*/);
+    // The author picks the third entry.
+    answers.length = 0;
+    await handlers[0]({ user: { id: user.id }, customId: 'help_entry:0', values: ['2'], reply: async () => {}, update: async (payload) => { answers.push(payload); } });
+    assert.match(JSON.stringify(answers[0].components.map((component) => component.toJSON())), /Entry 3 of \d+/, 'the page of the entry that was chosen');
+    // More than 25 entries: one menu for each 25, as "Entries 26-29", every entry reachable.
+    const fake = { data: { toJSON: () => ({ name: 'voicemaster' }) } };
+    const many = Array.from({ length: 29 }, (_, i) => ({ path: [`sub${i}`], description: 'x' }));
+    const rows29 = help.entryPickers(fake, many, 0, 'en').map((row) => row.toJSON().components[0]);
+    assert.equal(rows29.length, 2, 'two menus for 29 entries');
+    assert.deepEqual(rows29.map((menu) => menu.placeholder), ['Entries 1-25', 'Entries 26-29']);
+    assert.deepEqual(rows29.map((menu) => menu.options.length), [25, 4]);
+    assert.equal(rows29[1].options[0].value, '25', 'the value is the number of the entry');
+    assert.equal(help.entryPickers(fake, many.slice(0, 1), 0, 'en').length, 0, 'one entry needs no menu');
+    assert.equal(help.entryPickers(fake, Array.from({ length: 200 }, (_, i) => ({ path: [`s${i}`] })), 0, 'en').length, 4, 'at most four menus; the arrows reach the rest');
+    for (const lang of LANGUAGES) for (const key of ['help.entry.placeholder', 'help.entry.range', 'help.notAuthor']) assert.ok(Object.hasOwn(CATALOGS[lang], key), `${lang} has ${key}`);
+  }
+
   // The slash command opens the browser, private.
   const slash = [];
   const interaction = {

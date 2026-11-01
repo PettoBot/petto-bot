@@ -253,10 +253,9 @@ function entryDetailCard(client, guild, prefix, command, entry, page = 0, total 
     || commandDescription(lang, command, [], null, json.description)
     || t(lang, 'help.noDescription');
 
-  const text = [
-    t(lang, 'help.detail.title', { title }),
-    `> ${description}`,
-    '',
+  // The name and what it does with the picture of the bot, a line, and then the fields, the usage and where it is (in the style of the help of Bleed).
+  const head = [t(lang, 'help.detail.title', { title }), `> ${description}`].join('\n');
+  const body = [
     buildMetadata(aliases, params, information, lang),
     '',
     `**${t(lang, 'help.detail.usage')}**`,
@@ -265,11 +264,44 @@ function entryDetailCard(client, guild, prefix, command, entry, page = 0, total 
   ].join('\n');
 
   const section = new SectionBuilder()
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(text))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(head))
     .setThumbnailAccessory(new ThumbnailBuilder().setURL(botAvatarURL(client, guild)));
 
-  return new ContainerBuilder().addSectionComponents(section);
+  return new ContainerBuilder()
+    .addSectionComponents(section)
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(body));
 }
+
+const ENTRY_PICKER_MAX = 25;
+const ENTRY_PICKERS_MAX = 4;
+
+/**
+ * The menus to jump to any entry of the command: `!help ban` has an entry for each of its subcommands. A menu holds 25, so a command with more
+ * gets one menu for each 25 ("Entries 26-29", like the help of Bleed), up to 4 menus; the arrows reach all of them. Empty when there is one entry.
+ */
+function entryPickers(command, entries, page, lang, disabled = false) {
+  if (entries.length < 2) return [];
+  const json = command.data.toJSON();
+  const rows = [];
+  for (let from = 0; from < entries.length && rows.length < ENTRY_PICKERS_MAX; from += ENTRY_PICKER_MAX) {
+    const chunk = entries.slice(from, from + ENTRY_PICKER_MAX);
+    const options = chunk.map((entry, offset) => {
+      const index = from + offset;
+      const label = [json.name, ...entry.path].join(' ').slice(0, 100);
+      const description = commandDescription(lang, command, entry.path, null, entry.description) || '';
+      const option = new StringSelectMenuOptionBuilder().setLabel(label).setValue(String(index)).setDefault(index === page);
+      if (description) option.setDescription(description.slice(0, 100));
+      return option;
+    });
+    const placeholder = entries.length <= ENTRY_PICKER_MAX ? t(lang, 'help.entry.placeholder') : t(lang, 'help.entry.range', { from: from + 1, to: from + chunk.length });
+    rows.push(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`help_entry:${rows.length}`).setPlaceholder(placeholder).setDisabled(disabled).addOptions(options)));
+  }
+  return rows;
+}
+
+/** What someone else gets when they press a button or menu of a help message that is not theirs. */
+const notAuthor = (lang) => ({ content: t(lang, 'help.notAuthor', { emoji: EMOJI.WARNING }), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
 
 function navRow(page, total, disabled = false) {
   return new ActionRowBuilder().addComponents(
@@ -418,22 +450,28 @@ module.exports = {
       }
 
       let page = 0;
-      const msg = await interaction.reply({ components: [entryDetailCard(client, interaction.guild, prefix, command, entries[0], 0, entries.length, lang), navRow(0, entries.length)], flags: PRIVATE });
-      const collector = msg.createMessageComponentCollector({ filter: (i) => i.user.id === interaction.user.id, time: TIMEOUT_MS });
+      const rows = (current, disabled = false) => [entryDetailCard(client, interaction.guild, prefix, command, entries[current], current, entries.length, lang), ...entryPickers(command, entries, current, lang, disabled), navRow(current, entries.length, disabled)];
+      const msg = await interaction.reply({ components: rows(0), flags: PRIVATE });
+      const collector = msg.createMessageComponentCollector({ time: TIMEOUT_MS });
 
       collector.on('collect', async (i) => {
+        if (i.user.id !== interaction.user.id) {
+          await i.reply(notAuthor(lang)).catch(() => {});
+          return;
+        }
         if (i.customId === 'help_close') {
           collector.stop('closed');
-          await i.update({ components: [entryDetailCard(client, interaction.guild, prefix, command, entries[page], page, entries.length, lang), navRow(page, entries.length, true)], flags: MessageFlags.IsComponentsV2 });
+          await i.update({ components: rows(page, true), flags: MessageFlags.IsComponentsV2 });
           return;
         }
         if (i.customId === 'help_prev') page = Math.max(0, page - 1);
         if (i.customId === 'help_next') page = Math.min(entries.length - 1, page + 1);
-        await i.update({ components: [entryDetailCard(client, interaction.guild, prefix, command, entries[page], page, entries.length, lang), navRow(page, entries.length)], flags: MessageFlags.IsComponentsV2 });
+        if (i.customId.startsWith('help_entry')) page = Math.min(entries.length - 1, Math.max(0, Number(i.values?.[0]) || 0));
+        await i.update({ components: rows(page), flags: MessageFlags.IsComponentsV2 });
       });
       collector.on('end', (_c, reason) => {
         if (reason === 'closed' || reason === 'messageDelete') return;
-        msg.edit({ components: [entryDetailCard(client, interaction.guild, prefix, command, entries[page], page, entries.length, lang), navRow(page, entries.length, true)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+        msg.edit({ components: rows(page, true), flags: MessageFlags.IsComponentsV2 }).catch(() => {});
       });
       return;
     }
@@ -441,9 +479,13 @@ module.exports = {
     let currentCategory = null;
     let currentCommand = null;
 
-    const collector = msg.createMessageComponentCollector({ filter: (i) => i.user.id === interaction.user.id, time: TIMEOUT_MS });
+    const collector = msg.createMessageComponentCollector({ time: TIMEOUT_MS });
 
     collector.on('collect', async (i) => {
+      if (i.user.id !== interaction.user.id) {
+        await i.reply(notAuthor(lang)).catch(() => {});
+        return;
+      }
       if (i.customId === 'help_cat') {
         currentCategory = i.values[0];
         await i.update(categoryView(client, interaction.guild, currentCategory, includeHidden, lang));
@@ -516,4 +558,5 @@ module.exports = {
 // The main menu and a category page, drawn by scripts/check-i18n-panels.js in every language.
 module.exports.mainView = mainView;
 module.exports.suggestCommands = suggestCommands;
+module.exports.entryPickers = entryPickers;
 module.exports.categoryView = categoryView;
