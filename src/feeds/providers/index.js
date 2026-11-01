@@ -48,7 +48,28 @@ const rememberLive = (id) => { if (wasLive.size >= WAS_LIVE_LIMIT) wasLive.delet
 
 const HOUR = 3_600_000;
 const MAX_AGE_MS = 3 * 24 * HOUR; // an old item that shows up again (a feed that is cleaned up, a long downtime) is not news
-const fresh = (item, now) => !item.publishedAt || now - Number(item.publishedAt) <= MAX_AGE_MS;
+// An item with no date of its own is as old as the first time it was seen (`firstSeenAt`, set by `stamped` for the readers of sites): it is never "fresh" for ever.
+const fresh = (item, now) => { const at = item.publishedAt || item.firstSeenAt; return !at || now - Number(at) <= MAX_AGE_MS; };
+
+const FIRST_SEEN_LIMIT = 20_000;
+const firstSeen = new Map(); // `${platform}:${account}:${item}` -> the time it was first seen by this process
+/**
+ * The items of a site (reddit, pinterest, rss, tumblr, mastodon, letterboxd) with the time each one was first seen, for those with no date: a missing date is "unknown",
+ * not "now" and not "always new". An item that was seen once is never news again (the database remembers it; this is for the age rule and the order of the posts).
+ * `now: 0` (the test of a feed shows the newest thing however old it is) changes nothing.
+ */
+function stamped(platform, account, items, now) {
+  if (!now) return items;
+  return items.map((item) => {
+    if (item.publishedAt) return item;
+    const key = `${platform}:${account.id}:${item.id}`;
+    if (!firstSeen.has(key)) {
+      if (firstSeen.size >= FIRST_SEEN_LIMIT) firstSeen.delete(firstSeen.keys().next().value);
+      firstSeen.set(key, now);
+    }
+    return { ...item, firstSeenAt: firstSeen.get(key) };
+  });
+}
 
 /** The video ids that are known not to be live (and never will be): asking about them again would only spend quota. */
 const notLive = new Set();
@@ -368,7 +389,7 @@ const PROVIDERS = {
     async poll(accounts, _tracked, { now = Date.now() } = {}) {
       const results = new Map();
       await forEachWithConcurrency(accounts, async (account) => {
-        try { results.set(account.id, { items: (await rss.readRss(account.id, 15)).entries.map((entry) => rss.toItem('rss', 'post', entry, account)).filter((item) => fresh(item, now)) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
+        try { results.set(account.id, { items: stamped('rss', account, (await rss.readRss(account.id, 15)).entries.map((entry) => rss.toItem('rss', 'post', entry, account)), now).filter((item) => fresh(item, now)) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
       }, this.concurrency);
       return results;
     },
@@ -387,7 +408,7 @@ const PROVIDERS = {
     async poll(accounts, _tracked, { now = Date.now() } = {}) {
       const results = new Map();
       await forEachWithConcurrency(accounts, async (account) => {
-        try { results.set(account.id, { items: (await rss.readReddit(account.id, { fresh: true })).entries.map((entry) => rss.toItem('reddit', 'post', entry, account)).filter((item) => fresh(item, now)) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable', retryAfter: error.retryAfterMs }); }
+        try { results.set(account.id, { items: stamped('reddit', account, (await rss.readReddit(account.id, { fresh: true })).entries.map((entry) => rss.toItem('reddit', 'post', entry, account)), now).filter((item) => fresh(item, now)) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable', retryAfter: error.retryAfterMs }); }
       }, this.concurrency);
       return results;
     },
@@ -406,7 +427,7 @@ const PROVIDERS = {
     async poll(accounts, _tracked, { now = Date.now() } = {}) {
       const results = new Map();
       await forEachWithConcurrency(accounts, async (account) => {
-        try { results.set(account.id, { items: (await rss.readPinterest(account.id)).entries.map((entry) => rss.toItem('pinterest', 'pin', entry, account)).filter((item) => fresh(item, now)) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
+        try { results.set(account.id, { items: stamped('pinterest', account, (await rss.readPinterest(account.id)).entries.map((entry) => rss.toItem('pinterest', 'pin', entry, account)), now).filter((item) => fresh(item, now)) }); } catch (error) { results.set(account.id, { items: [], error: error.kind ?? 'unavailable' }); }
       }, this.concurrency);
       return results;
     },
@@ -513,21 +534,21 @@ const PROVIDERS = {
   mastodon: {
     interval: 10 * 60_000, perTick: 100, concurrency: 4,
     resolve: (text) => social.resolveMastodon(text),
-    poll: listPoll(async (account) => (await social.readMastodon(account.id)).entries.map((entry) => social.toItem('mastodon', 'post', entry, account, { keepTitle: false })), 4),
+    poll: listPoll(async (account, now) => stamped('mastodon', account, (await social.readMastodon(account.id)).entries.map((entry) => social.toItem('mastodon', 'post', entry, account, { keepTitle: false })), now), 4),
     async baselineItems(account) { return (await social.readMastodon(account.id)).entries.map((entry) => ({ id: entry.id })); },
   },
 
   tumblr: {
     interval: 15 * 60_000, perTick: 100, concurrency: 4,
     resolve: (text) => social.resolveTumblr(text),
-    poll: listPoll(async (account) => (await social.readTumblr(account.id)).entries.map((entry) => social.toItem('tumblr', 'post', entry, account)), 4),
+    poll: listPoll(async (account, now) => stamped('tumblr', account, (await social.readTumblr(account.id)).entries.map((entry) => social.toItem('tumblr', 'post', entry, account)), now), 4),
     async baselineItems(account) { return (await social.readTumblr(account.id)).entries.map((entry) => ({ id: entry.id })); },
   },
 
   letterboxd: {
     interval: 30 * 60_000, perTick: 100, concurrency: 3,
     resolve: (text) => social.resolveLetterboxd(text),
-    poll: listPoll(async (account) => (await social.readLetterboxd(account.id)).entries.map((entry) => social.toItem('letterboxd', 'post', entry, account)), 3),
+    poll: listPoll(async (account, now) => stamped('letterboxd', account, (await social.readLetterboxd(account.id)).entries.map((entry) => social.toItem('letterboxd', 'post', entry, account)), now), 3),
     async baselineItems(account) { return (await social.readLetterboxd(account.id)).entries.map((entry) => ({ id: entry.id })); },
   },
 
@@ -649,4 +670,4 @@ const PROVIDERS = {
 
 const isProvider = (platform) => Object.hasOwn(PROVIDERS, platform);
 
-module.exports = { noteLate, PROVIDERS, isProvider, MAX_AGE_MS, fresh, notLive, wasLive, saveYoutubeState, restoreYoutubeState, rememberNotLive };
+module.exports = { noteLate, PROVIDERS, isProvider, MAX_AGE_MS, fresh, stamped, firstSeen, notLive, wasLive, saveYoutubeState, restoreYoutubeState, rememberNotLive };

@@ -266,10 +266,66 @@ const pinterestFeedUrl = (id) => (id.includes('/') ? `https://www.pinterest.com/
 /** The pictures of the feed are small (236 pixels); the same file exists larger. */
 const bigPin = (image) => String(image ?? '').replace(/^(https?:\/\/i\.pinimg\.com)\/(?:236x|474x)\//i, '$1/736x/');
 
+// Pinterest answers about a pin by its number with the pictures it has (the public widget of the site). The feed leaves the picture empty for some pins; for those with a
+// numeric id the picture is asked here, once for each pin (the answer, found or not, is kept), with a time limit and a gap between requests.
+const PIN_INFO = 'https://widgets.pinterest.com/v3/pidgets/pins/info/?pin_ids=';
+const PIN_INFO_TIMEOUT_MS = 6_000;
+const PIN_INFO_KEEP_MS = 6 * 3_600_000;
+const PIN_INFO_LIMIT = 500;
+const PIN_INFO_PER_READ = 5; // pins asked about in one reading of a board
+const PIN_SIZES = ['orig', '736x', '564x', '474x', '236x']; // the best picture first
+const pinInfo = new Map(); // pin id -> { until, images: { image, small } | null }
+const pinPace = { gapMs: 400, lastAt: 0, queue: Promise.resolve() }; // exported for the checks
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+function takePinTurn() {
+  const turn = pinPace.queue.then(async () => {
+    const left = pinPace.lastAt + pinPace.gapMs - Date.now();
+    if (left > 0) await wait(left);
+    pinPace.lastAt = Date.now();
+  });
+  pinPace.queue = turn.catch(() => {});
+  return turn;
+}
+
+/** The number of a pin from its link (`/pin/123456/`), or null: the short ids of the feed (`/pin/fM8CzuSV/`) are not numbers and the widget does not know them. */
+const numericPin = (link) => /\/pin\/(\d{1,24})\/?(?:[?#]|$)/.exec(String(link ?? ''))?.[1] ?? null;
+
+/** `{ image, small }` (the best picture and the 236 pixel one) from the answer of the widget, or null when it has no picture of the host of Pinterest. */
+function pinPictures(body) {
+  const images = body?.data?.[0]?.images;
+  if (!images || typeof images !== 'object') return null;
+  const urls = PIN_SIZES.map((size) => String(images[size]?.url ?? '')).filter((url) => /^https:\/\/i\.pinimg\.com\//i.test(url));
+  return urls.length ? { image: urls[0], small: /^https:\/\/i\.pinimg\.com\//i.test(String(images['236x']?.url ?? '')) ? String(images['236x'].url) : urls[0] } : null;
+}
+
+/** The pictures of a pin by its number, asked once (a pin with no picture, or an answer that is an error, is remembered too). */
+async function pinPicturesOf(pinId) {
+  const kept = pinInfo.get(pinId);
+  if (kept && kept.until > Date.now()) return kept.images;
+  if (pinInfo.size >= PIN_INFO_LIMIT) pinInfo.delete(pinInfo.keys().next().value);
+  let images = null;
+  try {
+    await takePinTurn();
+    images = pinPictures(await fetchJsonBody(`${PIN_INFO}${encodeURIComponent(pinId)}`, { timeoutMs: PIN_INFO_TIMEOUT_MS, retry: false }));
+  } catch { /* "Invalid parameters", a limit, no answer: the pin has no picture for now */ }
+  pinInfo.set(pinId, { until: Date.now() + PIN_INFO_KEEP_MS, images });
+  return images;
+}
+
+const forgetPins = () => { pinInfo.clear(); pinPace.lastAt = 0; }; // for the checks
+
 async function readPinterest(id) {
   const feed = parseFeed(await fetchText(pinterestFeedUrl(id)), { max: 20 });
-  // `smallImage` is what the feed gave: the card falls back to it when the larger file does not load (see `buildFeedPayload`).
-  return { ...feed, entries: feed.entries.map((entry) => ({ ...entry, smallImage: entry.image, image: bigPin(entry.image) })) };
+  let asked = 0;
+  const entries = [];
+  for (const entry of feed.entries) {
+    // A pin whose picture the feed left empty: the widget may have it.
+    const pinId = !entry.image && asked < PIN_INFO_PER_READ ? numericPin(entry.url || entry.id) : null;
+    const found = pinId ? (asked += 1, await pinPicturesOf(pinId)) : null;
+    // `smallImage` is what the feed gave: the card falls back to it when the larger file does not load (see `buildFeedPayload`).
+    entries.push(found ? { ...entry, smallImage: found.small, image: found.image } : { ...entry, smallImage: entry.image, image: bigPin(entry.image) });
+  }
+  return { ...feed, entries };
 }
 
 /** A pin: the picture (the larger one, with the feed's own as a fallback), the pin's own words as the title when it has them, and the owner of the board as the byline. */
@@ -277,7 +333,9 @@ function pinterestItem(item, entry, account) {
   let owner = '';
   try { owner = new URL(account.url).pathname.split('/').filter(Boolean)[0] ?? ''; } catch { /* an account without a link */ }
   const source = String(account.name ?? '').replace(/\s+on Pinterest$/i, '');
-  return { ...item, title: entry.title || source, source, author: entry.author || owner || source, authorUrl: account.url, imageFallback: entry.smallImage && entry.smallImage !== entry.image ? entry.smallImage : null };
+  return { ...item, title: entry.title || source, source, author: entry.author || owner || source, authorUrl: account.url, imageFallback: entry.smallImage && entry.smallImage !== entry.image ? entry.smallImage : null,
+    // A pin with no picture (the feed sometimes lists a pin that is gone, with a new address each time it is read) would be an empty card: the engine does not post it.
+    skip: entry.image ? undefined : 'noPicture' };
 }
 
-module.exports = { normalizeUrl, usualFeedUrls, readRss, resolveRss, toItem, parseSubreddit, readReddit, parseRedditJson, forgetReddit, redditPace, REDDIT_USER_AGENT, parsePinterest, readPinterest, bigPin };
+module.exports = { normalizeUrl, usualFeedUrls, readRss, resolveRss, toItem, parseSubreddit, readReddit, parseRedditJson, forgetReddit, redditPace, REDDIT_USER_AGENT, parsePinterest, readPinterest, bigPin, numericPin, pinPictures, pinPace, forgetPins };
