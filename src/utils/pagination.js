@@ -15,6 +15,7 @@ const { build, hasSendablePayload, formatEmbedError } = require('./embedBuilder'
 const { isV2, readV2Code } = require('./embedV2');
 const { extractReactRepliesFromTemplate } = require('./messageFlags');
 const { t } = require('../i18n');
+const { EMOJI } = require('./emojis');
 
 const PREFIX = 'pgm';
 const MAX_PAGES = 25;
@@ -72,13 +73,13 @@ function navRows(id, page, total, lang, pages = []) {
   const current = clampPage(page, total);
   const many = total >= JUMP_FROM;
   const buttons = [];
-  if (many) buttons.push(new ButtonBuilder().setCustomId(buttonId(id, 0, 'f')).setEmoji('⏮️').setStyle(ButtonStyle.Secondary).setDisabled(current === 0));
+  if (many) buttons.push(new ButtonBuilder().setCustomId(buttonId(id, 0, 'f')).setEmoji(EMOJI.FIRST).setStyle(ButtonStyle.Secondary).setDisabled(current === 0));
   buttons.push(
-    new ButtonBuilder().setCustomId(buttonId(id, current - 1 < 0 ? 0 : current - 1, 'p')).setEmoji('◀️').setStyle(ButtonStyle.Primary).setDisabled(current === 0),
+    new ButtonBuilder().setCustomId(buttonId(id, current - 1 < 0 ? 0 : current - 1, 'p')).setEmoji(EMOJI.PREV).setStyle(ButtonStyle.Primary).setDisabled(current === 0),
     new ButtonBuilder().setCustomId(`${PREFIX}::${id}::label`).setLabel(t(lang, 'pagination.button.page', { page: current + 1, total })).setStyle(ButtonStyle.Secondary).setDisabled(true),
-    new ButtonBuilder().setCustomId(buttonId(id, Math.min(current + 1, total - 1), 'n')).setEmoji('▶️').setStyle(ButtonStyle.Primary).setDisabled(current >= total - 1),
+    new ButtonBuilder().setCustomId(buttonId(id, Math.min(current + 1, total - 1), 'n')).setEmoji(EMOJI.NEXT).setStyle(ButtonStyle.Primary).setDisabled(current >= total - 1),
   );
-  if (many) buttons.push(new ButtonBuilder().setCustomId(buttonId(id, total - 1, 'l')).setEmoji('⏭️').setStyle(ButtonStyle.Secondary).setDisabled(current >= total - 1));
+  if (many) buttons.push(new ButtonBuilder().setCustomId(buttonId(id, total - 1, 'l')).setEmoji(EMOJI.LAST).setStyle(ButtonStyle.Secondary).setDisabled(current >= total - 1));
   const rows = [new ActionRowBuilder().addComponents(buttons)];
   if (many) {
     const options = Array.from({ length: Math.min(total, MAX_PAGES) }, (_, index) => {

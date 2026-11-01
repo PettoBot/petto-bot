@@ -1,5 +1,6 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
 const { infoPayload, noticePayload } = require('./infoCard');
+const { EMOJI } = require('./emojis');
 const { t, tn, formatNumber, currentLanguage, languageOf } = require('../i18n');
 
 // Long lists (roles, emojis, channels...) shown a page at a time with buttons. Nothing is stored: the buttons carry what
@@ -74,11 +75,11 @@ async function buildPage(kind, { guild, userId, page = 0, option = '', arg = '',
   if (pages > 1) {
     const go = (target, which) => buttonId(kind, userId, target, option, arg, which);
     rows.push(new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(go(0, 'first')).setEmoji('⏮️').setStyle(ButtonStyle.Secondary).setDisabled(current === 0),
-      new ButtonBuilder().setCustomId(go(current - 1, 'back')).setEmoji('◀️').setStyle(ButtonStyle.Primary).setDisabled(current === 0),
+      new ButtonBuilder().setCustomId(go(0, 'first')).setEmoji(EMOJI.FIRST).setStyle(ButtonStyle.Secondary).setDisabled(current === 0),
+      new ButtonBuilder().setCustomId(go(current - 1, 'back')).setEmoji(EMOJI.PREV).setStyle(ButtonStyle.Primary).setDisabled(current === 0),
       new ButtonBuilder().setCustomId('pg_label').setLabel(`${current + 1} / ${pages}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
-      new ButtonBuilder().setCustomId(go(current + 1, 'next')).setEmoji('▶️').setStyle(ButtonStyle.Primary).setDisabled(current >= pages - 1),
-      new ButtonBuilder().setCustomId(go(pages - 1, 'last')).setEmoji('⏭️').setStyle(ButtonStyle.Secondary).setDisabled(current >= pages - 1),
+      new ButtonBuilder().setCustomId(go(current + 1, 'next')).setEmoji(EMOJI.NEXT).setStyle(ButtonStyle.Primary).setDisabled(current >= pages - 1),
+      new ButtonBuilder().setCustomId(go(pages - 1, 'last')).setEmoji(EMOJI.LAST).setStyle(ButtonStyle.Secondary).setDisabled(current >= pages - 1),
     ));
   }
 

@@ -9,6 +9,7 @@ const { parseEmbedScript, toTemplateData } = require('../../utils/embedScript');
 const { readV2Code } = require('../../utils/embedV2');
 const { commandRef } = require('../../utils/commandRef');
 const logger = require('../../utils/logger');
+const { EMOJI } = require('../../utils/emojis');
 const { t, languageOf, currentLanguage } = require('../../i18n');
 
 // The pages of `!embed vars`: each row is a variable (written as it is typed) and the key of its description, in the embeds
@@ -210,9 +211,9 @@ function buildVarsEmbed(page, interaction, prefix, lang = currentLanguage()) {
 
 function varsNavRow(page) {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('evars_prev').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
+    new ButtonBuilder().setCustomId('evars_prev').setEmoji(EMOJI.PREV).setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
     new ButtonBuilder().setCustomId('evars_num').setLabel(`${page + 1} / ${VAR_PAGES.length}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
-    new ButtonBuilder().setCustomId('evars_next').setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(page === VAR_PAGES.length - 1),
+    new ButtonBuilder().setCustomId('evars_next').setEmoji(EMOJI.NEXT).setStyle(ButtonStyle.Secondary).setDisabled(page === VAR_PAGES.length - 1),
   );
 }
 

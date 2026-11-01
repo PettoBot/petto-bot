@@ -146,5 +146,13 @@ function assertMenu(menu, label, allowNone = []) {
   assert.equal(seen.inrole.options[0].emoji.name, 'pe_all'); assert.equal(seen.inrole.options[2].emoji.name, 'pe_bot');
   assert.equal(seen.emojis.options[0].emoji.name, 'pe_all');
 
+  // The buttons of every pager: first, back, next and last are Petto's own icons, never the unicode arrows.
+  assert.equal(EMOJI.FIRST, '<:pe_first:1566311046376071278>'); assert.equal(EMOJI.LAST, '<:pe_last:1566311101816115251>');
+  const many = { ...guild, roles: { cache: collection(Array.from({ length: 120 }, (_, n) => ({ id: String(n + 1), name: `Role ${n}`, position: n, color: 0, createdTimestamp: n, members: { size: 1 } }))) } };
+  const rows = (await buildPage('roles', { guild: many, userId: '1', lang: 'en' })).components.map((row) => (typeof row.toJSON === 'function' ? row.toJSON() : row));
+  const walk = (list) => list.flatMap((c) => [c, ...walk(c.components ?? [])]);
+  const buttons = walk(rows).filter((c) => c.type === 2 && c.emoji);
+  assert.deepEqual(buttons.map((b) => b.emoji.name), ['pe_first', '42', '41', 'pe_last'], 'the pager buttons use Petto icons');
+
   console.log('check-menu-emojis: ok');
 })().catch((error) => { console.error(error); process.exit(1); });

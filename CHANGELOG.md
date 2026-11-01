@@ -46,6 +46,7 @@ All notable changes to Petto are documented here.
 
 ### Changed
 
+- **The page buttons of every list use Petto's own icons** (first, back, next and last), the same ones `!help` and `/top` already had, instead of the unicode arrows.
 - **The category of the integrations in the `!help` menu has its own link icon** (`pe_Link`) instead of the unicode one.
 - **`!ping` and `/ping` no longer show the number of members.** The card keeps the two pings, the links, the shard and the number of servers; how many members Petto has is private.
 - **The music commands are hidden from everybody.** `/music` is never registered with Discord (not even with `MUSIC_ENABLED`; `MUSIC_LISTED=true` is the opt-in for the day it comes back), and `/music`, `!play`, `!skip`, `!queue` and the rest stay out of `!help`, the `/help command:` list, the suggestions of a mistyped command, the lists and counts of commands and the published tables of short aliases. For everybody outside the Petto team those words are not commands at all (no answer, another bot's `!play` is left alone); the code is untouched.
