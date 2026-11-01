@@ -32,6 +32,7 @@ const SUBCOMMANDS = [
   { name: 'emoji', wraps: 'emojiinfo' },
   { name: 'invite', wraps: 'inviteinfo' },
   { name: 'inrole', wraps: 'inrole' },
+  { name: 'bots', wraps: 'bots' },
   { name: 'summary', wraps: 'summary' },
   { name: 'steal', wraps: 'steal' },
 ];

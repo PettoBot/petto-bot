@@ -1,9 +1,9 @@
 // Checks that the music commands are hidden from absolutely everybody while the code stays (src/utils/hiddenCommands.js, `hiddenEverywhere` on /music):
 //   - nothing was deleted: the files of the music, its command, buttons, voice listener and locale files are still there;
-//   - /music is never registered with Discord (not in the commands that are sent, not a slash command, not counted by `!bots` or the slot budget), even with
+//   - /music is never registered with Discord (not in the commands that are sent, not a slash command, not counted by `!slots` or the slot budget), even with
 //     MUSIC_ENABLED; only the explicit opt-in MUSIC_LISTED brings it back;
 //   - it is in no place where a person sees a command: !help (the browser, the categories, `!help music`, `!help play`), the `/help command:` list, the "did
-//     you mean" of a mistyped word, the umbrellas, the `!bots` numbers, the generated `!<name>config` cards, the tables of short aliases that are published
+//     you mean" of a mistyped word, the umbrellas, the `!slots` numbers, the generated `!<name>config` cards, the tables of short aliases that are published
 //     (the JSON, the wiki tables) and what the website reads (the flag `hiddenEverywhere`, and every route to it marked `team`);
 //   - for a normal member the music words (`!music`, `!play`, `!skip`, `!queue`, a short alias, `petto play`) are not commands: no answer at all, not even
 //     "unknown command", and a word the server chose (a custom command `play`) still works; for the team (owner and PETTO_DEVELOPER_IDS) they work as before;
@@ -47,7 +47,7 @@ const { loadCommands, collectCommandData, isSlashCommand } = require('../src/han
 const event = require('../src/events/messageCreateCommands');
 const interactionCreate = require('../src/events/interactionCreate');
 const help = require('../src/commands/utility/help');
-const bots = require('../src/commands/utility/bots');
+const slots = require('../src/commands/utility/slots');
 const { isHiddenEverywhere, isHiddenWordFor } = require('../src/utils/hiddenCommands');
 const { DEFAULT_PREFIX_ROUTES, BASE_PREFIX_ROUTES } = require('../src/utils/defaultCommandAliases');
 const { SHORT_ALIAS_TABLE, TEAM_ALIAS_TABLE } = require('../src/utils/shortAliases');
@@ -135,26 +135,26 @@ const MUSIC_WORDS = ['music', 'play', 'playnext', 'skip', 'previous', 'stop', 'r
     assert.ok(!JSON.stringify(command.data.toJSON().options).includes('"music"'), `/${command.data.name} has no music subcommand`);
   }
   assert.ok(!client.commands.has('musicconfig') && !client.commandAliases.has('musicconfig'), 'there is no generated !musicconfig card');
-  // `!bots`: the numbers of the team do not count it (a listed and enabled /music would be one more of each)
-  const botsNumbers = async () => {
+  // `!slots`: the numbers of the team do not count it (a listed and enabled /music would be one more of each)
+  const slotsNumbers = async () => {
     const answers = [];
     const members = new Collection();
     const interaction = {
       client: { ...client, user: { id: '1' }, commands: client.commands, application: { commands: { fetch: async () => { throw new Error('down'); } } } }, user: { id: DEV },
       guild: { memberCount: 0, members: { cache: members, fetch: async () => members } }, deferReply: async () => {}, reply: async (payload) => { answers.push(payload); }, editReply: async (payload) => { answers.push(payload); },
     };
-    await bots.execute(interaction);
+    await slots.execute(interaction);
     const out = JSON.stringify(answers.at(-1).components.map((component) => component.toJSON()));
     return { slash: Number(/Slash commands: \*\*(\d+) \//.exec(out)[1]), prefix: Number(/Only with the prefix \(not slash yet\): (\d+)/.exec(out)[1]), out };
   };
-  const hidden = await botsNumbers();
-  assert.equal(hidden.slash, slotsHidden - 0, '`!bots` counts the registered commands, music not among them');
-  assert.ok(!/music/i.test(hidden.out), '`!bots` does not name it');
+  const hidden = await slotsNumbers();
+  assert.equal(hidden.slash, slotsHidden - 0, '`!slots` counts the registered commands, music not among them');
+  assert.ok(!/music/i.test(hidden.out), '`!slots` does not name it');
   config.musicListed = true;
-  const listedOff = await botsNumbers();
+  const listedOff = await slotsNumbers();
   assert.equal(listedOff.prefix, hidden.prefix + 1, 'listed but off, /music would be one more of the prefix commands: hidden, it is not counted');
   config.musicEnabled = true;
-  const listedOn = await botsNumbers();
+  const listedOn = await slotsNumbers();
   assert.equal(listedOn.slash, hidden.slash + 1, 'listed and on, /music would take a slot: hidden, it takes none');
   config.musicListed = false;
   config.musicEnabled = false;

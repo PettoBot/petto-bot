@@ -117,7 +117,7 @@ const permissionName = (raw) => (raw == null ? null : new PermissionsBitField(Bi
 // Open at Discord and in the code, for everybody (read something, or work on the member's own data).
 const EVERYDAY = new Set([
   'ping', 'help', 'avatar', 'banner', 'userinfo', 'serverinfo', 'roleinfo', 'channelinfo', 'emojiinfo', 'inviteinfo', 'botinfo', 'uptime', 'version', 'snowflake', 'spotify', 'usercosmetics',
-  'channels', 'roles', 'emojis', 'boosters', 'inrole', 'firstmessage', 'color', 'permissions', 'activity', 'summary', 'votes', 'premium', 'globalranking', 'cmdconfig',
+  'channels', 'roles', 'emojis', 'boosters', 'inrole', 'bots', 'firstmessage', 'color', 'permissions', 'activity', 'summary', 'votes', 'premium', 'globalranking', 'cmdconfig',
   'afk', 'remind', 'poll', 'rank', 'top', 'birthday', 'suggest', 'time', 'calc', 'choose', 'roll', 'weather', 'wiki', 'jumbo', 'confess', 'profile', 'myprefix', 'profilehistory',
   '8ball', 'coinflip', 'neverhaveiever', 'quote', 'rps', 'ship', 'truthordare', 'uwu', 'wouldyourather', 'act', 'image',
   'anilist', 'animal', 'chess', 'crypto', 'currency', 'deezer', 'github', 'itunes', 'lastfm', 'minecraft', 'modrinth', 'package', 'pokemon', 'roblox', 'steam', 'tmdb', 'twitch', 'wikipedia', 'youtube',
@@ -147,7 +147,7 @@ const SELF_GATED = {
   invites: { MEMBER: ['user', 'top', 'who', 'list', 'codes'], why: 'members look at the invites; bonus, config, reward and reset are for Manage Server' },
 };
 // The private tools of the Petto team: open in the pipeline, they answer only to the owner and PETTO_DEVELOPER_IDS inside.
-const TEAM = new Set(['bots', 'botstatus', 'guildsend', 'leaveguild', 'quests', 'guilddebug', 'music']);
+const TEAM = new Set(['slots', 'botstatus', 'guildsend', 'leaveguild', 'quests', 'guilddebug', 'music']);
 
 
 // ---------------------------------------------------------------- a fake Discord for the probes: it records what changes the server
