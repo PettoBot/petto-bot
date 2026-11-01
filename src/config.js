@@ -81,6 +81,9 @@ module.exports = {
   // The music is turned off: the code stays, nothing connects to the node and every command, button and menu answers that it is off. MUSIC_ENABLED=true turns it on again.
   musicEnabled: process.env.MUSIC_ENABLED === 'true',
   musicTesterIds: envList('MUSIC_TESTER_IDS'),
+  // The music was discarded: `/music` is hidden everywhere (not registered with Discord, not in the help, the lists or the suggestions) and its words (`!play`...) are
+  // commands only for the Petto team. MUSIC_LISTED=true (with MUSIC_ENABLED=true) is the opt-in for the day it comes back: then it is a normal command again.
+  musicListed: ['1', 'true'].includes(String(process.env.MUSIC_LISTED ?? '').toLowerCase()),
   // MUSIC_DEEZER=true: songs are also searched on Deezer (and its links played). Pettolava needs its Deezer variables for it (its README says what that involves).
   musicDeezer: process.env.MUSIC_DEEZER === 'true',
   lavalinkHost: String(process.env.LAVALINK_HOST || '').trim().replace(/^https?:\/\//, '').replace(/\/+$/, '') || null,

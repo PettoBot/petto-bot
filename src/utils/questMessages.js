@@ -164,7 +164,7 @@ const PAGE_ID = 'quests:page';
 // One icon for each kind of reward, for the options of the list.
 const customEmoji = (text) => { const match = /^<(a?):(\w+):(\d+)>$/.exec(text); return match ? { id: match[3], name: match[2], animated: Boolean(match[1]) } : text; };
 const REWARD_EMOJI = { decoration: '🎭', code: '🎟️', ingame: '🎮', nitro: '💎', other: '🎁' };
-const REWARD_ICON = { orbs: customEmoji(EMOJI.QUEST_NITRO), decoration: '🎭', code: '🎟️', ingame: '🎮', nitro: '💎', other: '🎁' };
+const REWARD_ICON = Object.fromEntries(Object.entries({ orbs: EMOJI.QUEST_NITRO, decoration: EMOJI.MASK, code: EMOJI.TICKET, ingame: EMOJI.GAME, nitro: EMOJI.GEM, other: EMOJI.GIVEAWAY }).map(([kind, emoji]) => [kind, customEmoji(emoji)]));
 const TASK_WORDS = ['video', 'play', 'stream', 'activity'];
 const taskWord = (quest, lang) => t(lang, TASK_WORDS.includes(quest.tasks[0]?.kind) ? `quests.taskWord.${quest.tasks[0].kind}` : 'quests.taskWord.unknown');
 const DATE_LOCALES = { en: 'en-US', es: 'es-419', 'pt-BR': 'pt-BR' };

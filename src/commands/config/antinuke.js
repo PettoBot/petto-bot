@@ -24,6 +24,8 @@ function actionWord(value, lang) {
 const reply = (interaction, text, color = GREEN) => interaction.editReply({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2 });
 
 module.exports = {
+  // Also registered as a slash command (it already has subcommands, so it needs no umbrella); the prefix keeps working.
+  registerSlash: true,
   aliases: ['an'],
   prefixDefaultSubcommand: 'status',
   prefixSubcommandAliases: { list: 'status', config: 'status', configuration: 'status' },

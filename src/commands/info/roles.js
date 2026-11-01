@@ -2,8 +2,10 @@ const { SlashCommandBuilder } = require('discord.js');
 const { noticePayload } = require('../../utils/infoCard');
 const { register, sendPager } = require('../../utils/pager');
 const { t, tn, languageOf } = require('../../i18n');
+const { EMOJI } = require('../../utils/emojis');
 
 const SORTS = ['position', 'members', 'name', 'newest', 'oldest', 'colored', 'empty'];
+const SORT_EMOJI = { position: EMOJI.SAFETY, members: EMOJI.MEMBERS, name: EMOJI.AZ, newest: EMOJI.ROLLOUT_NEW, oldest: EMOJI.FIELD_CALENDAR, colored: EMOJI.PALETTE, empty: EMOJI.ROLLOUT_NOTHING };
 
 const compare = {
   position: (a, b) => b.position - a.position,
@@ -25,7 +27,7 @@ register('roles', {
       subtitle: [guild.name],
       thumbnail: guild.iconURL({ size: 256 }),
       items: roles.map((role) => tn(lang, 'info.roles.item', role.members.size, { role: `<@&${role.id}>`, count: role.members.size })),
-      options: SORTS.map((value) => ({ label: t(lang, `info.roles.sort.${value}.menu`), value })),
+      options: SORTS.map((value) => ({ label: t(lang, `info.roles.sort.${value}.menu`), value, emoji: SORT_EMOJI[value] })),
       placeholder: t(lang, 'info.roles.placeholder.menu'),
       empty: t(lang, 'info.roles.empty'),
     };

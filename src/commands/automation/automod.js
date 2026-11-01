@@ -33,6 +33,8 @@ function actionWord(value, lang) {
 }
 
 module.exports = {
+  // Also registered as a slash command (it already has subcommands, so it needs no umbrella); the prefix keeps working.
+  registerSlash: true,
   aliases: ['am', 'antiraid'],
   // The words of other bots for the same settings (`!antiraid newaccounts`, `!antiraid avatar`...).
   prefixSubcommandAliases: { massjoin: 'raid', newaccounts: 'anti-alt', newaccount: 'anti-alt', age: 'anti-alt', avatar: 'no-avatar', defaultpfp: 'no-avatar', whitelist: 'join-pass' },

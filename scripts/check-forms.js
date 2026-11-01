@@ -249,6 +249,7 @@ const fieldsOf = (values) => ({
   assert.match(forms.answersAsText(long), /Staff · submission #3 · liam \(u1\)[\s\S]*Question 24/);
 
   // ---- A form made with `!form`: limits, settings, questions.
+  const refusedInPrivate = [];
   const talk = async (sub, values = {}, who = admin, group = null) => {
     const out = [];
     const pick = (name) => (name in values ? values[name] : null);
@@ -256,11 +257,14 @@ const fieldsOf = (values) => ({
       guild, user: who.user, member: who, client, channel: { id: 'here' },
       options: { getSubcommand: () => sub, getSubcommandGroup: () => group, getString: pick, getBoolean: pick, getRole: pick, getChannel: pick, getInteger: pick, getNumber: pick },
       deferReply: async () => {}, editReply: async (payload) => { out.push(textOf(payload)); },
+      // A refusal is told in private, before the public "thinking".
+      reply: async (payload) => { out.push(textOf(payload)); refusedInPrivate.push(payload.flags & 64); },
     };
     await formCommand.execute(interaction);
     return out.join('\n');
   };
   assert.match(await talk('create', { name: 'staff' }, plain), /Manage Server/, 'only managers make forms');
+  assert.deepEqual(refusedInPrivate, [64], 'and the refusal is told in private (the channel does not see it)');
   assert.match(await talk('create', { name: 'Staff', title: 'Staff application' }), /Form `staff` made/);
   assert.match(await talk('create', { name: 'staff' }), /already a form called `staff`/);
   // One limit for every server, never a Premium one (made small here so the check stays short).
@@ -330,7 +334,7 @@ const fieldsOf = (values) => ({
   assert.match(await talk('open', { form: 'staff' }), /is open/); assert.equal(staffForm().status, 'open');
   assert.match(await talk('info', { form: 'staff' }), /Staff application[\s\S]*<#review>[\s\S]*<@&reviewer>[\s\S]*gives <@&staff> <@&trial>[\s\S]*9 questions in 2 pages/);
   assert.match(await talk('list', {}), /Forms \(6\/25\)[\s\S]*`staff` · \*\*Staff application\*\* · open · 9 questions/);
-  assert.equal(formCommand.prefixOnly, true, '!form is a prefix command, never a slash command');
+  assert.ok(!formCommand.prefixOnly && formCommand.registerSlash === true, '!form is a prefix command and a slash command since the third batch of umbrellas (it has subcommands, so it needs no umbrella)');
 
   // ---- A member fills the form in from the panel: two pages with "Next" between them.
   const id = staffForm().id;

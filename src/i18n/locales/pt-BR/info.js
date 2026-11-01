@@ -5,7 +5,7 @@ module.exports = {
   'info.ping.api': '**Ping da API:** `{ms}`',
   'info.ping.unknown': 'N/D',
   'info.ping.links': '[Página de status]({statusUrl}) · [Servidor de suporte]({supportUrl})',
-  'info.ping.footer': '-# Shard {shard}/{shardCount} • Servidores: {guilds} • Membros: {members}',
+  'info.ping.footer': '-# Shard {shard}/{shardCount} • Servidores: {guilds}',
   'info.card.yes': 'Sim',
   'info.card.no': 'Não',
   'info.card.id': 'ID {id}',

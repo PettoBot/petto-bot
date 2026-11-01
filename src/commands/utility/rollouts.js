@@ -53,7 +53,8 @@ function readList(text, allowed) {
 }
 
 module.exports = {
-  prefixOnly: true,
+  // Also registered as a slash command (it already has subcommands, so it needs no umbrella); the prefix keeps working.
+  registerSlash: true,
   aliases: ['rollout', 'experiments'],
   data: new SlashCommandBuilder()
     .setName('rollouts')
@@ -93,12 +94,12 @@ module.exports = {
     const lang = await languageOf(interaction);
     const reply = (text) => interaction.editReply({ components: [textCard(text, null)], flags: MessageFlags.IsComponentsV2 });
     const done = (key, vars) => reply(`${EMOJI.APPROVE}  ${t(lang, key, vars)}`);
-    await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
-    if (!canUseRollouts(interaction.user.id)) return reply(`${EMOJI.DENY}  ${t(lang, 'rollouts.testing')}`);
+    // A refusal is told in private, before the public "thinking".
+    const refuse = (key) => interaction.reply({ components: [textCard(`${EMOJI.DENY}  ${t(lang, key)}`, null)], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
+    if (!canUseRollouts(interaction.user.id)) return refuse('rollouts.testing');
     const sub = interaction.options.getSubcommand();
-    if (!['list', 'help'].includes(sub) && !interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-      return reply(`${EMOJI.DENY}  ${t(lang, 'rollouts.command.needsManageServer')}`);
-    }
+    if (!['list', 'help'].includes(sub) && !interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) return refuse('rollouts.command.needsManageServer');
+    await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
     await ensureGuild(interaction.guild.id);
     const guildId = interaction.guild.id;
     const current = (await rolloutsDb.getConfig(guildId)) ?? rolloutsDb.DEFAULTS;

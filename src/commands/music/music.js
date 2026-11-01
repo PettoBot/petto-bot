@@ -8,8 +8,12 @@ const config = require('../../config');
 const queryOption = (o, { suggest = false } = {}) => o.setName('query').setDescription('A song and artist, or a link of Spotify (song, album, playlist), YouTube or SoundCloud').setMaxLength(300).setAutocomplete(suggest).setRequired(true);
 
 module.exports = {
-  // `/music` is registered with Discord only while the music is on (MUSIC_ENABLED); off, it is not in the list of commands (the prefix forms still answer that it is off).
-  get registerSlash() { return config.musicEnabled; },
+  // The music was discarded: `/music` is hidden everywhere (see src/utils/hiddenCommands.js). It is never registered with Discord, listed, suggested or counted unless
+  // MUSIC_LISTED=true (the opt-in for the day it comes back) and MUSIC_ENABLED=true are both set. The team (owner and PETTO_DEVELOPER_IDS) still reaches it with the
+  // prefix words; for everybody else those words are not commands.
+  get hiddenEverywhere() { return !config.musicListed; },
+  get hiddenFromHelp() { return !config.musicListed; },
+  get registerSlash() { return config.musicListed && config.musicEnabled; },
   // `!music creep radiohead` is a song; `!music` alone is the queue.
   prefixDefaultSubcommand: (tokens) => (tokens.length ? 'play' : 'queue'),
   prefixSubcommandAliases: { p: 'play', add: 'play', next: 'playnext', find: 'search', pick: 'search', s: 'skip', back: 'previous', prev: 'previous', q: 'queue', list: 'queue', np: 'nowplaying', now: 'nowplaying', vol: 'volume', repeat: 'loop', mix: 'shuffle', auto: 'autoplay', jump: 'seek', rm: 'remove', delete: 'remove', disconnect: 'leave', dc: 'leave', unpause: 'resume' },

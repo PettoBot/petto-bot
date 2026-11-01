@@ -29,6 +29,8 @@ const daysOption = (option) => option.setName('days').setDescription('How many d
 const MEMBER_SUBCOMMANDS = ['members', 'member'];
 
 module.exports = {
+  // Also registered as a slash command (it already has subcommands, so it needs no umbrella); the prefix keeps working.
+  registerSlash: true,
   cooldownMs: 6000, // each answer reads and adds up many rows
   aliases: ['analytics', 'analysis'],
   // `!stats` is the server overview; `!stats 30` its days; `!stats @liam` what one member did.

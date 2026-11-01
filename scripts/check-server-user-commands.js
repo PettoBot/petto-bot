@@ -56,10 +56,11 @@ const client = { user: { id: '123' }, users: { fetch: async (id) => ({ id, usern
 loadCommands(client);
 const server = client.commands.get('server');
 const user = client.commands.get('user');
-const infoFile = (name) => path.join(root, 'src', 'commands', 'info', `${name}.js`);
+// The wrapped commands are in the folder of the info commands, except `steal` (utility).
+const infoFile = (name) => path.join(root, 'src', 'commands', name === 'steal' ? 'utility' : 'info', `${name}.js`);
 
 // What each subcommand of each umbrella wraps (`file` of the old command), and the new ones that have a function of their own.
-const SERVER = { info: 'serverinfo', roles: 'roles', channels: 'channels', emojis: 'emojis', boosters: 'boosters', channel: 'channelinfo', role: 'roleinfo', emoji: 'emojiinfo', invite: 'inviteinfo' };
+const SERVER = { info: 'serverinfo', roles: 'roles', channels: 'channels', emojis: 'emojis', boosters: 'boosters', channel: 'channelinfo', role: 'roleinfo', emoji: 'emojiinfo', invite: 'inviteinfo', inrole: 'inrole', summary: 'summary', steal: 'steal' };
 const SERVER_NEW = { icon: 'servericon', banner: 'serverbanner', splash: 'serversplash' };
 const USER = { info: 'userinfo', avatar: 'avatar', banner: 'banner', cosmetics: 'usercosmetics', permissions: 'permissions', id: 'snowflake', 'first-message': 'firstmessage', activity: 'activity' };
 const subcommandsOf = (command) => command.data.toJSON().options;
@@ -72,7 +73,7 @@ const BEA = '222222222222222222';
 
 /** Replaces `execute` of the wrapped commands with a spy that records what it was asked, the way the real one reads it. */
 const calls = [];
-const REQUIRED = { roleinfo: ['role'], inviteinfo: ['code'], emojiinfo: ['emoji'], snowflake: ['id'] };
+const REQUIRED = { inrole: ['role'], roleinfo: ['role'], inviteinfo: ['code'], emojiinfo: ['emoji'], snowflake: ['id'] };
 const originals = new Map();
 function spyOnWrapped() {
   for (const file of new Set([...Object.values(SERVER), ...Object.values(USER)])) {
@@ -93,7 +94,7 @@ const restoreWrapped = () => { for (const [file, execute] of originals) require(
 // ---------------------------------------------------------------- the slash command, through the real handler
 let seq = 0;
 /** `/server <sub>` or `/user <sub>` through interactionCreate: `{ replies, ran }` (`ran`: the file of the wrapped command that was called). */
-async function slash(commandName, sub, { values = {}, channelId = ROOM, roles = [], admin = false, guild = {} } = {}) {
+async function slash(commandName, sub, { values = {}, channelId = ROOM, roles = [], admin = false, guild = {}, perms = 0n } = {}) {
   seq += 1;
   const replies = [];
   const before = calls.length;
@@ -101,7 +102,7 @@ async function slash(commandName, sub, { values = {}, channelId = ROOM, roles = 
   const base = {
     id: `7777777777777777${String(10 + seq)}`, commandName, commandType: 1, user: { id: String(BigInt(ANA) + BigInt(seq)), username: 'Ana' },
     guild: { id: GUILD, ownerId: '1', name: 'Petto Test', icon: null, banner: null, splash: null, ...guild }, guildId: GUILD, channelId, channel: { id: channelId },
-    member: { id: ANA, guild: { ownerId: '1' }, permissions: new PermissionsBitField(admin ? PermissionsBitField.Flags.Administrator : 0n), roles: { cache: { has: (id) => roles.includes(id) } } },
+    member: { id: ANA, guild: { ownerId: '1' }, permissions: new PermissionsBitField(admin ? PermissionsBitField.Flags.Administrator : perms), roles: { cache: { has: (id) => roles.includes(id) } } },
     locale: 'en-US', pettoLang: 'en', client,
     options: {
       getSubcommand: () => sub, getSubcommandGroup: () => null,
@@ -125,12 +126,12 @@ const ephemeral = (reply) => reply?.how === 'reply' && (reply.payload.flags & Me
 // ---------------------------------------------------------------- the prefix, through the real message handler
 let n = 0;
 /** A message such as `!server info`: `{ ran, sent, call }` (the wrapped commands called, what was answered, the first call with its options). */
-async function send(content, { channelId = '5', admin = false, mentions = [], guild = {} } = {}) {
+async function send(content, { channelId = '5', admin = false, mentions = [], guild = {}, without = null } = {}) {
   const sent = [];
   const before = calls.length;
   const message = {
     content, author: { id: ANA, bot: false }, guild: { id: `7${n++}`, name: 'Petto Test', members: { cache: new Map(), fetch: async () => new Map() }, channels: { cache: new Map() }, ...guild }, client,
-    member: { permissions: { has: (flag) => (admin ? true : flag !== PermissionFlagsBits.Administrator) }, roles: { cache: new Map() }, id: ANA },
+    member: { permissions: { has: (flag) => (admin ? true : flag !== PermissionFlagsBits.Administrator && flag !== without) }, roles: { cache: new Map() }, id: ANA },
     mentions: { users: new Map(mentions.map((id) => [id, { id }])), roles: new Map(), channels: new Map(), members: new Map() }, attachments: new Map(), reference: null,
     channel: { id: channelId, sendTyping: async () => {}, send: async (payload) => { sent.push(text(payload)); return {}; } },
     reply: async (payload) => { sent.push(text(payload)); return { delete: async () => {}, edit: async () => {} }; },
@@ -148,12 +149,13 @@ async function send(content, { channelId = '5', admin = false, mentions = [], gu
     assert.equal(command.category, 'info', `${command.data.name} is listed with the info commands in !help`);
     assert.ok(!command.hiddenFromHelp && !command.slashOnly && !command.prefixOnly, `${command.data.name} is a prefix and a slash command, shown in !help`);
     assert.equal(command.registerSlash, true);
+    for (const old of ['serverinfo', 'userinfo', 'avatar']) assert.ok(client.commands.get(old) && client.commands.get(old).registerSlash === false, `${old} stays loaded for the prefix and is no longer registered as a slash command`);
     assert.equal(command.rulesBySubcommand, true);
     assert.equal(command.prefixDefaultSubcommand, 'info', `${command.data.name} alone is its info`);
     assert.equal(command.data.toJSON().dm_permission, false);
     assert.equal(command.data.toJSON().default_member_permissions ?? null, null, `${command.data.name} is for everyone, like the commands it wraps`);
   }
-  assert.deepEqual(subcommandsOf(server).map((sub) => sub.name), ['info', 'icon', 'banner', 'splash', 'roles', 'channels', 'emojis', 'boosters', 'channel', 'role', 'emoji', 'invite']);
+  assert.deepEqual(subcommandsOf(server).map((sub) => sub.name), ['info', 'icon', 'banner', 'splash', 'roles', 'channels', 'emojis', 'boosters', 'channel', 'role', 'emoji', 'invite', 'inrole', 'summary', 'steal']);
   assert.deepEqual(subcommandsOf(user).map((sub) => sub.name), ['info', 'avatar', 'banner', 'cosmetics', 'permissions', 'id', 'first-message', 'activity']);
   assert.ok(subcommandsOf(server).every((sub) => sub.type === ApplicationCommandOptionType.Subcommand) && subcommandsOf(user).every((sub) => sub.type === ApplicationCommandOptionType.Subcommand));
   assert.equal(client.commands.has('server') && client.commandAliases.has('server'), false, '`server` is the command now, no longer a word of serverinfo');
@@ -188,14 +190,15 @@ async function send(content, { channelId = '5', admin = false, mentions = [], gu
   // The keys of the rules: the wrapped command, or the key of a new subcommand.
   assert.deepEqual(server.ruleKeys, { ...SERVER, ...SERVER_NEW });
   assert.deepEqual(user.ruleKeys, USER);
-  assert.equal(Object.keys(server.ruleKeys).length, 12);
+  assert.equal(Object.keys(server.ruleKeys).length, 15);
 
   // ------------------------------------------------------------ the slash command runs the code of the old command, with its options
   spyOnWrapped();
   for (const [name, file] of Object.entries(SERVER)) {
-    const result = await slash('server', name, { values: { server: '555555555555555555', channel: ROOM, role: '900000000000000001', code: 'abc', emoji: '<:a:123>' } });
+    // `steal` asks for Manage Guild Expressions inside the umbrella (below): an administrator has it.
+    const result = await slash('server', name, { admin: name === 'steal', values: { server: '555555555555555555', channel: ROOM, role: '900000000000000001', code: 'abc', emoji: '<:a:123>' } });
     assert.equal(result.ran, file, `/server ${name} runs ${file}`);
-    assert.equal(result.called[0].interaction, result.interaction, `/server ${name} is given the interaction as it came, with its options`);
+    assert.equal(result.called[0].interaction.id, result.interaction.id, `/server ${name} is given the interaction as it came (the same one, seen as the old command), with its options`);
   }
   const options = (await slash('server', 'info', { values: { server: '555555555555555555' } })).called[0];
   assert.equal(options.server, '555555555555555555', '/server info passes its server option');
@@ -304,7 +307,7 @@ async function send(content, { channelId = '5', admin = false, mentions = [], gu
     assert.ok(route && route.short && route.command === command && route.subcommand === sub, `${alias} is the short alias of ${target}`);
   }
   const shortTargets = Object.values(SHORT_ALIAS_TABLE).filter((target) => /^(server|user) /.test(target));
-  assert.equal(shortTargets.length, 20, 'every subcommand of /server (12) and /user (8) has a short alias');
+  assert.equal(shortTargets.length, 23, 'every subcommand of /server (15) and /user (8) has a short alias');
   const shortServer = Object.keys(SHORT_ALIAS_TABLE).find((word) => SHORT_ALIAS_TABLE[word] === 'server roles');
   assert.deepEqual(await ran(`!${shortServer}`), ['roles'], 'a short alias runs the subcommand');
   assert.deepEqual(await ran('petto se'), [], 'a common word after a word prefix is chat, even when it is a short alias');
@@ -323,6 +326,8 @@ async function send(content, { channelId = '5', admin = false, mentions = [], gu
   assert.deepEqual(commandRules.ruleNames(server, { subcommand: 'channel' }), ['channelinfo', 'server']);
   assert.deepEqual(commandRules.ruleNames(server, { subcommand: 'icon' }), ['servericon', 'server']);
   assert.deepEqual(commandRules.ruleNames(server, { route: client.commandRoutes.get('servericon') }), ['servericon', 'server']);
+  assert.deepEqual(commandRules.ruleNames(server, { subcommand: 'steal' }), ['steal', 'server']);
+  assert.deepEqual(commandRules.ruleNames(server, { subcommand: 'inrole' }), ['inrole', 'server']);
   assert.deepEqual(commandRules.ruleNames(user, { subcommand: 'cosmetics' }), ['usercosmetics', 'user']);
   assert.deepEqual(commandRules.ruleNames(user, { subcommand: 'first-message' }), ['firstmessage', 'user']);
   assert.deepEqual(commandRules.ruleNames(user, { subcommand: 'activity' }), ['activity', 'user']);
@@ -421,6 +426,33 @@ async function send(content, { channelId = '5', admin = false, mentions = [], gu
   levelDenied = new Set(['user']);
   assert.ok(!(await slash('user', 'avatar')).ran && refusedPrefix(await send('!user avatar'), NEEDS_LEVEL), 'the level of the umbrella is asked for all of it');
   levelDenied = new Set();
+
+  // `/server steal` asks for what `steal` asks for (Manage Guild Expressions) when it runs, in the slash command and with the prefix; the rest of /server is open.
+  {
+    const EXPRESSIONS = PermissionFlagsBits.ManageGuildExpressions;
+    assert.equal(server.permissionForSubcommand('steal'), EXPRESSIONS, '!help says /server steal needs Manage Guild Expressions');
+    for (const sub of ['info', 'inrole', 'summary', 'roles']) assert.equal(server.permissionForSubcommand(sub) ?? null, null, `/server ${sub} is open`);
+    result = await slash('server', 'steal', { values: { emoji: '<:a:123>' } });
+    assert.ok(!result.ran && ephemeral(result.replies[0]), 'a plain member is refused /server steal, in private, and nothing ran');
+    assert.ok(!(await slash('server', 'steal', { perms: PermissionFlagsBits.ManageGuild, values: { emoji: '<:a:123>' } })).ran, 'Manage Server is not Manage Guild Expressions');
+    assert.equal((await slash('server', 'steal', { perms: EXPRESSIONS, values: { emoji: '<:a:123>' } })).ran, 'steal', 'with Manage Guild Expressions it runs steal');
+    assert.equal((await slash('server', 'steal', { admin: true, values: { emoji: '<:a:123>' } })).ran, 'steal', 'an administrator can');
+    result = await send('!server steal <:a:123>', { without: EXPRESSIONS });
+    assert.ok(result.ran.length === 0 && /Expressions|EmojisAndStickers/i.test(result.sent.join('')) && !/EmojisAndStickers, /.test(result.sent.join('')), '!server steal tells a member without the permission what is missing');
+    assert.deepEqual(await ran('!server steal <:a:123>'), ['steal'], 'with the permission the prefix runs it');
+    assert.deepEqual(await ran('!stl <:a:123>'), ['steal'], '!stl is still steal');
+    assert.deepEqual(await ran('!server stl <:a:123>'), ['steal'], '!server stl is the subcommand');
+    assert.equal(commandRules.subcommandOfText(server, 'ir 900000000000000001'), 'inrole', '!server ir is inrole');
+    assert.equal(commandRules.subcommandOfText(server, 'members x'), 'inrole', '!server members is inrole');
+    assert.deepEqual(await ran('!server digest'), ['summary'], '!server digest is summary');
+    assert.deepEqual(await ran('!inrole'), [], '!inrole alone still asks for its role (it is the old command)');
+    for (const sub of ['steal', 'inrole', 'summary']) {
+      const name = SERVER[sub];
+      rules = [{ command: name, channel_id: null }];
+      assert.ok(refusedSlash(await slash('server', sub, { admin: true })), `/server ${sub} is refused when ${name} is turned off`);
+      rules = [];
+    }
+  }
   restoreWrapped();
 
   // The rules the commands save with: `!disablecommand servericon` finds the route, and the stored name is kept at start.
@@ -431,8 +463,8 @@ async function send(content, { channelId = '5', admin = false, mentions = [], gu
   // ------------------------------------------------------------ Discord: the descriptions in Spanish and Portuguese, the numbers and the sizes
   const registered = collectCommandData();
   const chat = registered.filter((json) => (json.type ?? 1) === 1);
-  assert.equal(registered.length, 33, '33 commands registered with Discord (the 31 there were, /server and /user)');
-  assert.equal(chat.length, 30, '30 of them slash commands (3 are menus)');
+  assert.equal(registered.length, 65, '65 commands registered with Discord (71 before /serverinfo, /userinfo, /avatar, /unban, /purge and /timeout were replaced by their umbrella subcommand)');
+  assert.equal(chat.length, 62, '62 of them slash commands (3 are menus)');
   assert.ok(chat.length <= 100, 'far from the 100 slash commands Discord allows');
   const size = (value) => [...String(value ?? '')].length;
   const LOCALES = ['es-ES', 'es-419', 'pt-BR'];
@@ -466,8 +498,8 @@ async function send(content, { channelId = '5', admin = false, mentions = [], gu
       assert.ok(total < 2500, `/${name}${locale ? ` [${locale}]` : ''} is ${total} characters (Discord allows 8000)`);
     }
   }
-  // The old everyday slash commands are still registered as they were.
-  for (const name of ['serverinfo', 'userinfo', 'avatar']) assert.ok(chat.some((json) => json.name === name), `/${name} is still registered`);
+  // The three old everyday slash commands that /server and /user replaced are loaded for the prefix only.
+  for (const name of ['serverinfo', 'userinfo', 'avatar']) assert.ok(!chat.some((json) => json.name === name), `/${name} is not registered: /server info, /user info and /user avatar replace it`);
   // Nothing else of the wrapped commands became a slash command.
   for (const name of ['roles', 'channels', 'emojis', 'boosters', 'banner', 'usercosmetics', 'permissions', 'snowflake', 'firstmessage', 'activity']) assert.ok(!chat.some((json) => json.name === name), `/${name} is not a slash command`);
   // Every key of the English catalog of the info commands has its Spanish and Portuguese text.

@@ -308,13 +308,16 @@ async function findForm(interaction, lang, done) {
 }
 
 async function execute(interaction) {
-  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const lang = await languageOf(interaction);
+  const sub = interaction.options.getSubcommand();
+  // A refusal is told in private, before the public "thinking": the channel does not see who tried to change the forms.
+  if (MANAGE.has(sub) && !canManage(interaction.member)) {
+    return interaction.reply({ components: [bad(t(lang, 'forms.needManage'))], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+  }
+  await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
   const done = (component, extra = {}) => interaction.editReply({ components: [component], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] }, ...extra });
   const guild = interaction.guild;
-  const sub = interaction.options.getSubcommand();
   const group = interaction.options.getSubcommandGroup(false);
-  if (MANAGE.has(sub) && !canManage(interaction.member)) return done(bad(t(lang, 'forms.needManage')));
   await ensureGuild(guild.id);
 
   if (sub === 'create') {
@@ -533,7 +536,8 @@ async function execute(interaction) {
 }
 
 module.exports = {
-  prefixOnly: true,
+  // Also registered as a slash command (it already has subcommands, so it needs no umbrella); the prefix keeps working.
+  registerSlash: true,
   aliases: ['forms', 'application', 'applications'],
   // `!form edit staff title Apply` is `!form set`; `!form q add ...` is `!form question add ...`.
   prefixSubcommandAliases: { newlink: 'relink', new: 'create', edit: 'set', q: 'question', subs: 'submissions', approve: 'accept', reject: 'deny', show: 'view' },

@@ -1,8 +1,15 @@
 // What a member can pick when reporting. The value is stored with the report and shown on its card. The English labels are
 // the choices of `/report send` (choice names stay in English); the cards and the form show them in the server's language.
 const { t, currentLanguage } = require('../i18n');
+const { EMOJI } = require('./emojis');
 
 const CATEGORY_VALUES = ['spam', 'harassment', 'hate', 'nsfw', 'scam', 'threats', 'impersonation', 'other'];
+
+// The icon of each category in the menu of the report form.
+const CATEGORY_EMOJI = {
+  spam: EMOJI.SPAM, harassment: EMOJI.SPEECH, hate: EMOJI.SPEECH, nsfw: EMOJI.NSFW, scam: EMOJI.SCAM,
+  threats: EMOJI.REPORT_IMPORTANT, impersonation: EMOJI.MASK, other: EMOJI.QUESTION,
+};
 
 const REPORT_CATEGORIES = CATEGORY_VALUES.map((value) => ({
   value,
@@ -26,7 +33,8 @@ function categoryOptions(lang = currentLanguage()) {
     value,
     label: t(lang, `reports.category.${value}.label.menu`),
     description: t(lang, `reports.category.${value}.description.menu`),
+    emoji: CATEGORY_EMOJI[value],
   }));
 }
 
-module.exports = { REPORT_CATEGORIES, DEFAULT_CATEGORY, categoryLabel, categoryOptions, isReportCategory };
+module.exports = { CATEGORY_EMOJI, REPORT_CATEGORIES, DEFAULT_CATEGORY, categoryLabel, categoryOptions, isReportCategory };

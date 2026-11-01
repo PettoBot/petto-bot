@@ -108,7 +108,7 @@ module.exports = {
           'O XP de voz não precisa mais de uma segunda pessoa por padrão, e há dois novos limites de XP em `/level rules`.',
           'O que o Petto guardou de um servidor que saiu é apagado 3 dias depois, e os dados pesados podem viver em um segundo banco de dados.',
           'As cópias de avatares do histórico de perfil pesam a metade, as listas públicas de ameaças esquecem o que deixaram de listar, e os contadores não são mais desligados por um canal que ainda existe.',
-          'A configuração de um servidor novo nunca é colocada em um canal público. A música continua desligada por enquanto.',
+          'A configuração de um servidor novo nunca é colocada em um canal público.',
         ],
       },
       {

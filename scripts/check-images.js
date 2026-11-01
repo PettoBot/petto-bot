@@ -175,7 +175,8 @@ const isJpeg = (buffer) => buffer[0] === 0xff && buffer[1] === 0xd8;
   const routes = DEFAULT_PREFIX_ROUTES.filter((route) => route.command === 'image');
   assert.ok(routes.length >= 12);
   for (const route of routes) assert.ok(subs.has(route.subcommand) && route.args[0] === route.subcommand, `!${route.alias} goes to an effect`);
-  for (const command of [image, quote]) assert.ok(!command.registerSlash && !command.slashOnly, `${command.data.name} is not a slash command`);
+  assert.ok(image.registerSlash === true && !image.slashOnly, '/image is registered as a slash command since the third batch of umbrellas (it has subcommands)');
+  assert.ok(!quote.registerSlash && !quote.slashOnly, 'quote is not a slash command (it is /game quote)');
   assert.ok(image.cooldownMs >= 3000 && quote.cooldownMs >= 3000, 'image commands have a cooldown');
 
   // Attach Files: the bot first, then the member.

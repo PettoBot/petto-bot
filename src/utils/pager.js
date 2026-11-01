@@ -1,5 +1,6 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
 const { infoPayload, noticePayload } = require('./infoCard');
+const { EMOJI } = require('./emojis');
 const { t, tn, formatNumber, currentLanguage, languageOf } = require('../i18n');
 
 // Long lists (roles, emojis, channels...) shown a page at a time with buttons. Nothing is stored: the buttons carry what
@@ -19,7 +20,7 @@ const kinds = new Map();
  * `accent` is the color of the card's side bar (the info purple when left out); null draws the list with no color at all.
  * @param {{ perPage?: number, accent?: number|null, load: (guild: import('discord.js').Guild, state: { option: string, arg: string, lang: string }) => Promise<{
  *   items: string[], title: string, subtitle?: string[], thumbnail?: string|null, footer?: string, empty?: string,
- *   options?: { label: string, value: string }[], placeholder?: string }> }} definition
+ *   options?: { label: string, value: string, emoji?: string }[], placeholder?: string }> }} definition
  */
 function register(kind, definition) {
   if (kind.includes('::')) throw new Error(`Pager kind "${kind}" cannot contain "::".`); // i18n-ignore: internal error
@@ -66,7 +67,7 @@ async function buildPage(kind, { guild, userId, page = 0, option = '', arg = '',
       new StringSelectMenuBuilder()
         .setCustomId(`pgo::${kind}::${userId}::${safePart(arg)}`)
         .setPlaceholder(data.placeholder ?? t(lang, 'core.pager.show.menu'))
-        .addOptions(data.options.slice(0, 25).map((entry) => new StringSelectMenuOptionBuilder().setLabel(entry.label).setValue(entry.value).setDefault(entry.value === selected))),
+        .addOptions(data.options.slice(0, 25).map((entry) => { const built = new StringSelectMenuOptionBuilder().setLabel(entry.label).setValue(entry.value).setDefault(entry.value === selected); return entry.emoji ? built.setEmoji(entry.emoji) : built; })),
     ));
     option = selected;
   }
@@ -74,11 +75,11 @@ async function buildPage(kind, { guild, userId, page = 0, option = '', arg = '',
   if (pages > 1) {
     const go = (target, which) => buttonId(kind, userId, target, option, arg, which);
     rows.push(new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(go(0, 'first')).setEmoji('⏮️').setStyle(ButtonStyle.Secondary).setDisabled(current === 0),
-      new ButtonBuilder().setCustomId(go(current - 1, 'back')).setEmoji('◀️').setStyle(ButtonStyle.Primary).setDisabled(current === 0),
+      new ButtonBuilder().setCustomId(go(0, 'first')).setEmoji(EMOJI.FIRST).setStyle(ButtonStyle.Secondary).setDisabled(current === 0),
+      new ButtonBuilder().setCustomId(go(current - 1, 'back')).setEmoji(EMOJI.PREV).setStyle(ButtonStyle.Primary).setDisabled(current === 0),
       new ButtonBuilder().setCustomId('pg_label').setLabel(`${current + 1} / ${pages}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
-      new ButtonBuilder().setCustomId(go(current + 1, 'next')).setEmoji('▶️').setStyle(ButtonStyle.Primary).setDisabled(current >= pages - 1),
-      new ButtonBuilder().setCustomId(go(pages - 1, 'last')).setEmoji('⏭️').setStyle(ButtonStyle.Secondary).setDisabled(current >= pages - 1),
+      new ButtonBuilder().setCustomId(go(current + 1, 'next')).setEmoji(EMOJI.NEXT).setStyle(ButtonStyle.Primary).setDisabled(current >= pages - 1),
+      new ButtonBuilder().setCustomId(go(pages - 1, 'last')).setEmoji(EMOJI.LAST).setStyle(ButtonStyle.Secondary).setDisabled(current >= pages - 1),
     ));
   }
 

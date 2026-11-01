@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
+const { isHiddenWordFor } = require('../../utils/hiddenCommands');
 const aliasesDb = require('../../db/commandAliases');
 const { textCard } = require('../../utils/caseCard');
 const { t, languageOf } = require('../../i18n');
@@ -32,7 +33,7 @@ async function addAlias(interaction, lang) {
   const command = interaction.options.getString('command', true).trim();
   if (!/^[a-z0-9_-]{1,32}$/.test(name)) return interaction.reply({ content: t(lang, 'config.alias.invalidName'), flags: MessageFlags.Ephemeral });
   if (!command || command.startsWith('alias ')) return interaction.reply({ content: t(lang, 'config.alias.invalidTarget'), flags: MessageFlags.Ephemeral });
-  if (interaction.client.commands.has(name) || interaction.client.commandAliases.has(name) || (interaction.client.commandRoutes?.has(name) && !interaction.client.commandRoutes.get(name).short)) return interaction.reply({ content: t(lang, 'config.alias.taken'), flags: MessageFlags.Ephemeral });
+  if (!isHiddenWordFor(interaction.client, name, interaction.user?.id) && (interaction.client.commands.has(name) || interaction.client.commandAliases.has(name) || (interaction.client.commandRoutes?.has(name) && !interaction.client.commandRoutes.get(name).short))) return interaction.reply({ content: t(lang, 'config.alias.taken'), flags: MessageFlags.Ephemeral });
   const row = await aliasesDb.add(interaction.guild.id, name, command);
   return interaction.reply({ components: [textCard(t(lang, 'config.alias.added', { name: row.name, command: row.command }), 0xa5ea7a)], flags: MessageFlags.IsComponentsV2 });
 }

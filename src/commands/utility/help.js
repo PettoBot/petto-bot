@@ -20,6 +20,7 @@ const { textCard } = require('../../utils/caseCard');
 const { describePermissions } = require('../../utils/permissionLabels');
 const { EMOJI } = require('../../utils/emojis');
 const { isPettoOperator } = require('../../utils/autoModControl');
+const { isHiddenEverywhere } = require('../../utils/hiddenCommands');
 const { helpLinksLine, commandsUrl, DASHBOARD_URL, SUPPORT_URL, WIKI_URL } = require('../../utils/links');
 const { isSlashCommand } = require('../../handlers/commandHandler');
 const { t, tn, commandDescription, languageOf, currentLanguage, LANGUAGES, LANGUAGE_NAMES } = require('../../i18n');
@@ -43,9 +44,9 @@ const CATEGORY_ICONS = {
   misc: '<:pe_misc:1533209781345587374>',
   roleplay: '<:011Heart:1556773944336580720>',
   fun: '<:Icon_Dice:1556773972442349568>',
-  integrations: '🔗',
+  integrations: EMOJI.LINK,
   music: '🎵',
-  other: '📄',
+  other: EMOJI.FIELD_NOTES,
 };
 
 const knownCategory = (id) => Object.hasOwn(CATEGORY_ICONS, id);
@@ -91,6 +92,8 @@ function suggestCommands(client, typed, includeHidden = false) {
 function getChatInputCommands(client, includeHidden = false) {
   return [...client.commands.values()].filter((c) => (
     (c.data.toJSON().type ?? 1) === 1
+    // A command hidden everywhere (`/music`) is not shown to anybody, the team included (`includeHidden` is for the private tools only).
+    && !isHiddenEverywhere(c)
     && (includeHidden || (!c.slashOnly && !c.hiddenFromHelp))
   ));
 }
@@ -163,7 +166,7 @@ function buildParams(entry, lang) {
 }
 
 const EXAMPLE_BY_NAME = {
-  duration: '1h', time: '10m', hex: '#ff91c2', color: '#ff91c2', emoji: '🌸', code: 'ABC123', query: 'ticket', days: '7', amount: '10', prize: '"Nitro"',
+  duration: '1h', time: '10m', hex: '#ff91c2', color: '#ff91c2', emoji: '🌸', code: 'ABC123', query: 'ticket', command: 'ticket', days: '7', amount: '10', prize: '"Nitro"',
 };
 // Examples written in words, so they are in the language of the server: option name -> `help.example.<key>`.
 const WORDED_EXAMPLE = { reason: 'reason', message: 'text', text: 'text', name: 'name', template: 'template', title: 'title', description: 'description' }; // i18n-ignore: option names -> catalog key parts
@@ -217,7 +220,7 @@ function findEntries(client, tokens, includeHidden = false) {
   const route = client.commandRoutes?.get(tokens[0]);
   const canonicalName = client.commandAliases.get(tokens[0]) ?? route?.command ?? tokens[0];
   const command = client.commands.get(canonicalName);
-  if (!command || (!includeHidden && (command.slashOnly || command.hiddenFromHelp)) || (command.data.toJSON().type ?? 1) !== 1) return { command: null, entries: [] };
+  if (!command || isHiddenEverywhere(command) || (!includeHidden && (command.slashOnly || command.hiddenFromHelp)) || (command.data.toJSON().type ?? 1) !== 1) return { command: null, entries: [] };
 
   const json = command.data.toJSON();
   const all = visibleEntries(command, includeHidden);
@@ -246,17 +249,18 @@ function entryDetailCard(client, guild, prefix, command, entry, page = 0, total 
   // A command that works both ways shows its slash form too.
   const slash = !command.slashOnly && isSlashCommand(command) ? buildSyntax('/', json.name, entry) : null;
   const params = buildParams(entry, lang);
-  const information = json.default_member_permissions == null ? t(lang, 'help.detail.anyone') : `${EMOJI.WARNING} ${describePermissions(json.default_member_permissions, lang)}`;
+  // An umbrella (`/mod`) is open to everybody: what each subcommand needs is what the command it wraps needs.
+  const needed = command.permissionForSubcommand?.(entry.path[0], entry.path[1]) ?? json.default_member_permissions;
+  const information = needed == null ? t(lang, 'help.detail.anyone') : `${EMOJI.WARNING} ${describePermissions(String(needed), lang)}`;
   const title = [json.name, ...entry.path].join(' ');
   const moduleLabel = categoryMeta(command.category, lang).label;
   const description = commandDescription(lang, command, entry.path, null, entry.description)
     || commandDescription(lang, command, [], null, json.description)
     || t(lang, 'help.noDescription');
 
-  const text = [
-    t(lang, 'help.detail.title', { title }),
-    `> ${description}`,
-    '',
+  // The name and what it does with the picture of the bot, a line, and then the fields, the usage and where it is (in the style of the help of Bleed).
+  const head = [t(lang, 'help.detail.title', { title }), `> ${description}`].join('\n');
+  const body = [
     buildMetadata(aliases, params, information, lang),
     '',
     `**${t(lang, 'help.detail.usage')}**`,
@@ -265,11 +269,44 @@ function entryDetailCard(client, guild, prefix, command, entry, page = 0, total 
   ].join('\n');
 
   const section = new SectionBuilder()
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(text))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(head))
     .setThumbnailAccessory(new ThumbnailBuilder().setURL(botAvatarURL(client, guild)));
 
-  return new ContainerBuilder().addSectionComponents(section);
+  return new ContainerBuilder()
+    .addSectionComponents(section)
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(body));
 }
+
+const ENTRY_PICKER_MAX = 25;
+const ENTRY_PICKERS_MAX = 4;
+
+/**
+ * The menus to jump to any entry of the command: `!help ban` has an entry for each of its subcommands. A menu holds 25, so a command with more
+ * gets one menu for each 25 ("Entries 26-29", like the help of Bleed), up to 4 menus; the arrows reach all of them. Empty when there is one entry.
+ */
+function entryPickers(command, entries, page, lang, disabled = false) {
+  if (entries.length < 2) return [];
+  const json = command.data.toJSON();
+  const rows = [];
+  for (let from = 0; from < entries.length && rows.length < ENTRY_PICKERS_MAX; from += ENTRY_PICKER_MAX) {
+    const chunk = entries.slice(from, from + ENTRY_PICKER_MAX);
+    const options = chunk.map((entry, offset) => {
+      const index = from + offset;
+      const label = [json.name, ...entry.path].join(' ').slice(0, 100);
+      const description = commandDescription(lang, command, entry.path, null, entry.description) || '';
+      const option = new StringSelectMenuOptionBuilder().setLabel(label).setValue(String(index)).setDefault(index === page);
+      if (description) option.setDescription(description.slice(0, 100));
+      return option;
+    });
+    const placeholder = entries.length <= ENTRY_PICKER_MAX ? t(lang, 'help.entry.placeholder') : t(lang, 'help.entry.range', { from: from + 1, to: from + chunk.length });
+    rows.push(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`help_entry:${rows.length}`).setPlaceholder(placeholder).setDisabled(disabled).addOptions(options)));
+  }
+  return rows;
+}
+
+/** What someone else gets when they press a button or menu of a help message that is not theirs. */
+const notAuthor = (lang) => ({ content: t(lang, 'help.notAuthor', { emoji: EMOJI.WARNING }), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
 
 function navRow(page, total, disabled = false) {
   return new ActionRowBuilder().addComponents(
@@ -377,6 +414,36 @@ function detailView(client, guild, prefix, command, entry, categoryId, includeHi
   return { components: [card], flags: MessageFlags.IsComponentsV2 };
 }
 
+/**
+ * What `/help command:` offers while it is typed: every command and every subcommand ("ban", "ban temp", "ticket category add"), the ones that
+ * start with what was typed first, then the ones that contain it or have an alias that does; at most 25 (what Discord shows). The names of the
+ * commands that the person should not see (private ones) are left out like in the help itself.
+ */
+function helpChoices(client, typed, includeHidden = false) {
+  const word = String(typed ?? '').toLowerCase().trim();
+  const found = [];
+  for (const command of getChatInputCommands(client, includeHidden)) {
+    const name = command.data.name;
+    const aliases = (command.aliases ?? []).map((alias) => String(alias).toLowerCase());
+    const entries = visibleEntries(command, includeHidden);
+    const paths = entries.length === 1 && !entries[0].path.length ? [name] : [name, ...entries.map((entry) => [name, ...entry.path].join(' '))];
+    for (const path of paths) {
+      const lower = path.toLowerCase();
+      let score = null;
+      if (!word) score = path === name ? 0 : 3;
+      else if (lower === word) score = 0;
+      else if (lower.startsWith(word)) score = 1;
+      else if (lower.includes(word)) score = 2;
+      else if (aliases.some((alias) => alias === word || alias.startsWith(word))) score = 2.5;
+      if (score !== null) found.push({ path, score });
+    }
+  }
+  return found
+    .sort((a, b) => a.score - b.score || a.path.length - b.path.length || a.path.localeCompare(b.path))
+    .slice(0, 25)
+    .map(({ path }) => ({ name: path.slice(0, 100), value: path.slice(0, 100) }));
+}
+
 module.exports = {
   // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
   registerSlash: true,
@@ -384,9 +451,15 @@ module.exports = {
     .setName('help')
     .setDMPermission(false)
     .setDescription('Browse commands, or look one up directly.')
-    .addStringOption((o) => o.setName('query').setDescription('A command (and optionally subcommand) to look up, e.g. "ticket category add"').setRequired(false)),
+    .addStringOption((o) => o.setName('command').setDescription('A command (and optionally subcommand) to look up, e.g. "ticket category add"').setRequired(false).setAutocomplete(true)),
   aliases: ['h', 'hlp'],
   interactive: true,
+
+  async autocomplete(interaction) {
+    const focused = interaction.options.getFocused(true);
+    if (focused.name !== 'command') return interaction.respond([]);
+    return interaction.respond(helpChoices(interaction.client, focused.value, isPettoOperator(interaction.user?.id)));
+  },
 
   async execute(interaction) {
     // Computed once: the collectors below answer outside of the command's language context.
@@ -400,7 +473,7 @@ module.exports = {
 
     // As a slash command the menus are private (only the person who asked can use them anyway); the prefix drops the flag.
     const PRIVATE = MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral;
-    const input = interaction.options.getString('query')?.trim();
+    const input = interaction.options.getString('command')?.trim();
     if (input) {
       const tokens = input.toLowerCase().split(/\s+/);
       const { command, entries } = findEntries(client, tokens, includeHidden);
@@ -418,22 +491,28 @@ module.exports = {
       }
 
       let page = 0;
-      const msg = await interaction.reply({ components: [entryDetailCard(client, interaction.guild, prefix, command, entries[0], 0, entries.length, lang), navRow(0, entries.length)], flags: PRIVATE });
-      const collector = msg.createMessageComponentCollector({ filter: (i) => i.user.id === interaction.user.id, time: TIMEOUT_MS });
+      const rows = (current, disabled = false) => [entryDetailCard(client, interaction.guild, prefix, command, entries[current], current, entries.length, lang), ...entryPickers(command, entries, current, lang, disabled), navRow(current, entries.length, disabled)];
+      const msg = await interaction.reply({ components: rows(0), flags: PRIVATE });
+      const collector = msg.createMessageComponentCollector({ time: TIMEOUT_MS });
 
       collector.on('collect', async (i) => {
+        if (i.user.id !== interaction.user.id) {
+          await i.reply(notAuthor(lang)).catch(() => {});
+          return;
+        }
         if (i.customId === 'help_close') {
           collector.stop('closed');
-          await i.update({ components: [entryDetailCard(client, interaction.guild, prefix, command, entries[page], page, entries.length, lang), navRow(page, entries.length, true)], flags: MessageFlags.IsComponentsV2 });
+          await i.update({ components: rows(page, true), flags: MessageFlags.IsComponentsV2 });
           return;
         }
         if (i.customId === 'help_prev') page = Math.max(0, page - 1);
         if (i.customId === 'help_next') page = Math.min(entries.length - 1, page + 1);
-        await i.update({ components: [entryDetailCard(client, interaction.guild, prefix, command, entries[page], page, entries.length, lang), navRow(page, entries.length)], flags: MessageFlags.IsComponentsV2 });
+        if (i.customId.startsWith('help_entry')) page = Math.min(entries.length - 1, Math.max(0, Number(i.values?.[0]) || 0));
+        await i.update({ components: rows(page), flags: MessageFlags.IsComponentsV2 });
       });
       collector.on('end', (_c, reason) => {
         if (reason === 'closed' || reason === 'messageDelete') return;
-        msg.edit({ components: [entryDetailCard(client, interaction.guild, prefix, command, entries[page], page, entries.length, lang), navRow(page, entries.length, true)], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+        msg.edit({ components: rows(page, true), flags: MessageFlags.IsComponentsV2 }).catch(() => {});
       });
       return;
     }
@@ -441,9 +520,13 @@ module.exports = {
     let currentCategory = null;
     let currentCommand = null;
 
-    const collector = msg.createMessageComponentCollector({ filter: (i) => i.user.id === interaction.user.id, time: TIMEOUT_MS });
+    const collector = msg.createMessageComponentCollector({ time: TIMEOUT_MS });
 
     collector.on('collect', async (i) => {
+      if (i.user.id !== interaction.user.id) {
+        await i.reply(notAuthor(lang)).catch(() => {});
+        return;
+      }
       if (i.customId === 'help_cat') {
         currentCategory = i.values[0];
         await i.update(categoryView(client, interaction.guild, currentCategory, includeHidden, lang));
@@ -516,4 +599,7 @@ module.exports = {
 // The main menu and a category page, drawn by scripts/check-i18n-panels.js in every language.
 module.exports.mainView = mainView;
 module.exports.suggestCommands = suggestCommands;
+module.exports.helpChoices = helpChoices;
+module.exports.entryPickers = entryPickers;
 module.exports.categoryView = categoryView;
+module.exports.categoryMeta = categoryMeta;

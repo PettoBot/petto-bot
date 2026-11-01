@@ -10,6 +10,8 @@ const { EMOJI } = require('../../utils/emojis');
 const { t, tn, languageOf } = require('../../i18n');
 
 module.exports = {
+  // Also registered as a slash command (it already has subcommands, so it needs no umbrella); the prefix keeps working.
+  registerSlash: true,
   data: new SlashCommandBuilder()
     .setName('giveawaytemplate')
     .setDescription('Save full giveaway configurations to relaunch later.')

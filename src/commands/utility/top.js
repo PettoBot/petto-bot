@@ -116,9 +116,14 @@ module.exports = {
     }
 
     const msg = await interaction.editReply({ embeds: [embed], components: [navRow(page, totalPages)] });
-    const collector = msg.createMessageComponentCollector({ filter: (i) => i.user.id === interaction.user.id, time: TIMEOUT_MS });
+    const collector = msg.createMessageComponentCollector({ time: TIMEOUT_MS });
 
     collector.on('collect', async (i) => {
+      // Somebody else pressing a button is told whose they are (a button that does nothing looks broken).
+      if (i.user.id !== interaction.user.id) {
+        await i.reply({ content: t(lang, 'leveling.top.notYours', { prefix: interaction.typedPrefix ?? '/' }), flags: MessageFlags.Ephemeral }).catch(() => {});
+        return;
+      }
       if (i.customId === 'top_close') {
         collector.stop('closed');
         await i.update({ components: [navRow(page, totalPages, true)] });

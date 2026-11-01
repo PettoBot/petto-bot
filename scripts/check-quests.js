@@ -233,7 +233,7 @@ const regionRows = { quests: [{ id: ids.orbs, show_age_gate: true, is_global: fa
   const menu = listNodes.find((n) => n.type === 3);
   assert.equal(menu.custom_id, 'quests:view'); assert.equal(menu.options.length, 10, 'a page holds 10 quests');
   assert.equal(menu.options[0].label, 'Quest number 1'); assert.equal(menu.options[0].value, many[0].id);
-  assert.deepEqual(menu.options.slice(0, 5).map((o) => (o.emoji.id ? 'custom' : o.emoji.name)), ['custom', '🎭', '🎟️', '🎮', '💎'], 'each kind of reward has its own icon, Orbs the Orbs one');
+  assert.deepEqual(menu.options.slice(0, 5).map((o) => o.emoji.name), ['pe_Nitro1', 'pe_mask', 'pe_ticket', 'pe_f_game', 'pe_gem'], 'each kind of reward has its own Petto icon, Orbs the Orbs one');
   assert.ok(menu.options[0].description.startsWith('200 Orbs · Video · ends ') && menu.options.every((o) => o.description.length <= 100));
   const listText = texts(listOne);
   assert.ok(listText.includes(`# ${EMOJI.QUEST_BADGE} Active quests`) && listText.includes('30 quests · page 1 of 3 · pick one below to see its full card'));

@@ -25,6 +25,11 @@ const { EMOJI } = require('../utils/emojis');
 const { COLORS } = require('../utils/colors');
 const { t, tn, currentLanguage, languageOf, LANGUAGES, LANGUAGE_NAMES } = require('../i18n');
 
+// The icon of each module of the quick setup menu.
+const FEATURE_EMOJI = {
+  logs: EMOJI.FIELD_NOTES, welcome: EMOJI.MEMBERS, 'anti-spam': EMOJI.SPAM, 'anti-raid': EMOJI.SAFETY, 'anti-alt': EMOJI.MASK, 'official-automod': EMOJI.AUTOMOD,
+};
+
 const SETUP_QUICK_ID = 'setup:quick';
 const SETUP_REFRESH_ID = 'setup:refresh';
 const SETUP_BUTTON_PREFIX = 'setup:';
@@ -203,7 +208,7 @@ function buildSetupModal(guild, state, lang = currentLanguage()) {
     .setRequired(false);
   if (welcomeChannelId) welcomeSelect.setDefaultChannels(welcomeChannelId);
 
-  const feature = (key, value) => ({ label: t(lang, `setup.modal.feature.${key}.menu`), value, description: t(lang, `setup.modal.feature.${key}.description.menu`), default: selected.has(value) });
+  const feature = (key, value) => ({ label: t(lang, `setup.modal.feature.${key}.menu`), value, description: t(lang, `setup.modal.feature.${key}.description.menu`), emoji: FEATURE_EMOJI[value], default: selected.has(value) });
   const modeOption = (value) => ({ label: t(lang, `setup.mode.${value}`), value, description: t(lang, `setup.modal.mode.${value}.menu`), default: mode === value });
 
   return new ModalBuilder()

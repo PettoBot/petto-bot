@@ -1,6 +1,7 @@
 // Saving and checking custom commands written in code, for the command `!customcommand` and for the dashboard, so both follow
 // the same rules and say the same things.
 const { ensureGuild } = require('../db/guilds');
+const { isHiddenWordFor } = require('./hiddenCommands');
 const ccDb = require('../db/customCommands');
 const { check, parse, closestName, functionNames, MAX_SOURCE_LENGTH } = require('../scripting');
 const { dataFields } = require('./codeCommands');
@@ -222,14 +223,14 @@ function prefixHint(name, code) {
   return null;
 }
 
-const isRealCommand = (client, name) => client.commands.has(name) || client.commandAliases.has(name) || Boolean(client.commandRoutes?.has(name) && !client.commandRoutes.get(name).short); // a short alias (`!is`) gives way to a word the server chose
+const isRealCommand = (client, name, userId = null) => !isHiddenWordFor(client, name, userId) && (client.commands.has(name) || client.commandAliases.has(name) || Boolean(client.commandRoutes?.has(name) && !client.commandRoutes.get(name).short)); // a short alias (`!is`) gives way to a word the server chose
 
 /**
  * Saves the code of a command after checking everything. Returns { ok: true, created } or { ok: false, message, field? }.
  * The person who asked must already have been allowed to write code.
  */
 async function saveCodeCommand({ guild, client, userId, name, code, lang = currentLanguage() }) {
-  if (isRealCommand(client, name)) return { ok: false, field: 'name', message: t(lang, 'customcommands.realCommand', { name }) };
+  if (isRealCommand(client, name, userId)) return { ok: false, field: 'name', message: t(lang, 'customcommands.realCommand', { name }) };
   if (!NAME_SHAPE.test(name)) return { ok: false, field: 'name', message: t(lang, 'customcommands.nameShape') };
   const problem = codeProblem(code, lang);
   if (problem) return { ok: false, field: 'code', message: problem };

@@ -8,6 +8,7 @@
 // declared):
 //   1. the stem of the command is the first letter (`i` for image), or the word chosen for it in STEMS (`tk` for ticket), or its shortest
 //      alias of 2 or 3 letters (`gw` for giveaway);
+//   (a command hidden everywhere, `/music`, has no words here: they are in short-aliases-team.json, for the team only, and never published.)
 //   2. the alias is the stem plus the initial of the subcommand (the initials of each word: `reward add` is `ra`): `is` is image sepia;
 //   3. if that word is taken by anything (a command, an alias, a route, a word already in the table), more letters of the subcommand are
 //      used (`iro` for image rotate, because `ir` is `!inrole`), up to 5 letters in all;
@@ -28,9 +29,9 @@ const MAX_LENGTH = 5;
 const MAX_STEM = 3;
 // The commands people type most come first, so they get the shortest words.
 const PRIORITY = ['image', 'ticket', 'timer', 'feed', 'giveaway', 'welcome', 'backup', 'automod', 'counter', 'snipe', 'afk', 'remind', 'birthday', 'level', 'starboard', 'suggestion', 'verify'];
-// The umbrellas `/server` and `/user` come after every other command, so their words are the ones left free and no word that already
+// The umbrellas `/server`, `/user`, `/mod`, `/game`, `/me`, `/search`, `/staff`, `/config`, `/protect`, `/greet`, `/auto`, `/message`, `/community`, `/contrib`, `/special` and `/bot` come after every other command, so their words are the ones left free and no word that already
 // works changes (their subcommands are the old commands with their own words: `!si`, `!ui`, `!av`).
-const LAST = ['server', 'user'];
+const LAST = ['server', 'user', 'mod', 'game', 'me', 'search', 'staff', 'config', 'protect', 'greet', 'auto', 'message', 'community', 'contrib', 'special', 'bot'];
 // A stem that is not the first letter or a short alias already there: the usual way people shorten the name.
 const STEMS = { image: 'i', ticket: 'tk', feed: 'fd', backup: 'bk', counter: 'cn', snipe: 'sn', afk: 'af', remind: 'rm', forum: 'fr' };
 // Left out: the actions of /act have their own words (`!hug`), and these are not for members to type.
@@ -49,7 +50,7 @@ function loadCommandInfo() {
     const category = path.basename(path.dirname(file));
     const subcommands = (json.options ?? []).flatMap((option) => (option.type === 1 ? [option.name] : option.type === 2 ? (option.options ?? []).map((sub) => `${option.name} ${sub.name}`) : []));
     const aliases = [...new Set([...(command.aliases ?? []), ...(DEFAULT_COMMAND_ALIASES[json.name] ?? [])].map((word) => word.toLowerCase()))];
-    commands.push({ name: json.name, category, aliases, subcommands, hidden: Boolean(command.hiddenFromHelp || command.slashOnly || command.privateGuildId || category === 'roleplay' || json.name.endsWith('config')) });
+    commands.push({ name: json.name, category, aliases, subcommands, hiddenEverywhere: Boolean(command.hiddenEverywhere), hidden: Boolean(command.hiddenEverywhere || command.hiddenFromHelp || command.slashOnly || command.privateGuildId || category === 'roleplay' || (json.name.endsWith('config') && json.name !== 'config')) });
   }
   // Every word that already means something (the ones written by hand; the table itself is not in here).
   const taken = new Set();
@@ -58,6 +59,8 @@ function loadCommandInfo() {
     for (const alias of command.aliases) taken.add(alias);
   }
   for (const route of BASE_PREFIX_ROUTES) taken.add(route.alias.toLowerCase());
+  // The words of a command hidden everywhere (`/music`, team only) are taken, so no other command gets one and the table never publishes them.
+  for (const word of Object.keys(require('../src/utils/shortAliases').TEAM_ALIAS_TABLE)) taken.add(word);
   // What already has a short way to be typed (a route of 3 letters or less written by hand).
   const covered = new Set(BASE_PREFIX_ROUTES.filter((route) => route.alias.length <= 3).map((route) => (route.subcommand ? `${route.command} ${route.subcommand}` : route.command)));
   return { commands, taken, covered };
@@ -66,7 +69,7 @@ function loadCommandInfo() {
 const vowels = /[aeiou]/;
 /** The initials of the words of a subcommand and the letters that follow, as the endings to try: `sepia` is s, se, sep, sepi; `reward add` is ra, rad, radd. */
 function tails(sub) {
-  const words = sub.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  const words = sub.toLowerCase().split(/[^a-z]+/).filter(Boolean); // letters only: a short alias is 2 to 5 letters (`8ball` is `b`, `ba`...)
   const initials = words.map((word) => word[0]).join('');
   const last = words[words.length - 1];
   const list = [initials];

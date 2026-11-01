@@ -17,9 +17,9 @@ const reply = (interaction, text, color = COLORS.DEFAULT) => interaction.editRep
 const ok = (interaction, text) => reply(interaction, `${EMOJI.APPROVE}  ${text}`, COLORS.GREEN);
 
 module.exports = {
+  // Also registered as a slash command (it already has subcommands, so it needs no umbrella); the prefix keeps working.
+  registerSlash: true,
   aliases: ['idlog'],
-  // Only with the prefix: no slash command is registered for it.
-  prefixOnly: true,
   data: new SlashCommandBuilder()
     .setName('identity')
     .setDescription('Vanity and Server Tag roles: apply everything, and the log of role changes.')

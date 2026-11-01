@@ -1,5 +1,6 @@
 // !restrictcommand: a command that only some roles can use. Administrators and the owner always can.
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
+const { isHiddenWordFor } = require('../../utils/hiddenCommands');
 const { ensureGuild } = require('../../db/guilds');
 const db = require('../../db/commandRestrictions');
 const { textCard } = require('../../utils/caseCard');
@@ -11,9 +12,9 @@ const GREY = 0x4b4f59;
 const RED = 0xfe6465;
 
 /** The real name of a command written as a name, an alias or a shortcut, or null when Petto has no such command. */
-function commandName(client, raw) {
+function commandName(client, raw, userId = null) {
   const name = String(raw ?? '').trim().replace(/^[!/]/, '').toLowerCase();
-  if (!name) return null;
+  if (!name || isHiddenWordFor(client, name, userId)) return null; // a command hidden everywhere (`/music`) does not exist for the people outside the team
   if (client.commands.has(name)) return name;
   // A shortcut of one action of a command (`hug` of /act) is restricted on its own, under its own name.
   const route = client.commandRoutes?.get(name);
@@ -55,7 +56,7 @@ module.exports = {
     }
 
     const raw = interaction.options.getString('command', true);
-    const name = commandName(interaction.client, raw);
+    const name = commandName(interaction.client, raw, interaction.user?.id);
     if (!name) return reply(t(lang, 'config.restrict.unknown', { emoji: EMOJI.DENY, command: raw.slice(0, 40) }), RED);
     const role = interaction.options.getRole('role', sub === 'add');
 

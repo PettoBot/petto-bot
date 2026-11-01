@@ -499,8 +499,13 @@ function buildPanel(guild, userId, rows, scheduleRow, lang = currentLanguage()) 
     .addActionRowComponents(buildBackupMenuRow(guild.id, userId, lang));
 }
 
+const BACKUP_MENU_EMOJI = {
+  create: EMOJI.BACKUP, list: EMOJI.FIELD_NOTES, export_latest: EMOJI.DOWNLOAD, restore: EMOJI.RELEASE_RELOAD,
+  delete: EMOJI.TICKET_DELETE, schedule: EMOJI.FIELD_CALENDAR, audit: EMOJI.RELEASE_EYES,
+};
+
 function buildBackupMenuRow(guildId, userId, lang = currentLanguage()) {
-  const option = (key, value) => ({ label: t(lang, `backup.menu.${key}.menu`), value, description: t(lang, `backup.menu.${key}.description.menu`) });
+  const option = (key, value) => ({ label: t(lang, `backup.menu.${key}.menu`), value, description: t(lang, `backup.menu.${key}.description.menu`), emoji: BACKUP_MENU_EMOJI[value] });
   return new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId(`${BACKUP_MENU_PREFIX}:${guildId}:${userId}`)

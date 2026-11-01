@@ -29,6 +29,7 @@ module.exports = {
   'leveling.top.footer.one': '{count} member(s) · Page {page}/{pages}',
   'leveling.top.footer.other': '{count} member(s) · Page {page}/{pages}',
   'leveling.top.nobody': 'Nobody has ranked yet.',
+  'leveling.top.notYours': 'These buttons belong to the person who asked for this ranking. Write `{prefix}top` to get your own.',
   'leveling.top.nobodyWeek': 'Nobody has earned XP this week yet.',
   'leveling.top.nobodyMonth': 'Nobody has earned XP this month yet.',
   'leveling.globalRanking.on': "{emoji}  You can now appear in the user ranking of Petto's public stats page, with your name, avatar and the messages and voice time you have in every server. `globalranking off` takes you out.",

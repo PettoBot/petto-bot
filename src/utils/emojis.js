@@ -92,6 +92,8 @@ const EMOJI = {
   PAGES: '<:43:1529270169002836038>',
   PREV: '<:42:1529270178985148579>',
   NEXT: '<:41:1529270176070107187>',
+  FIRST: '<:pe_first:1566311046376071278>',
+  LAST: '<:pe_last:1566311101816115251>',
   CLOSE: '<:40:1529270174086336747>',
   SEARCH: '<:39:1529270171573682266>',
   CHECK: '<:38:1529270147464954097>',
@@ -107,6 +109,29 @@ const EMOJI = {
   TICKET_DELETE: '<:pe_ticket_delete:1562517646539497512>',
   STAR_EMPTY_RATE: '<:pe_star_empty:1562518954965073920>',
   STAR_FULL: '<:pe_star_full_rate:1562518892272820275>',
+  // Menu icons: the options of the select menus (reports, quick setup, backups, help, quests, lists) show these. Existing icons they
+  // share with other places (GIVEAWAY, GAME, AUTOMOD) are listed here too so the menus read from one registry.
+  ALL: '<:pe_all:1566294382284513321>',
+  AZ: '<:pe_az:1566294388689207337>',
+  BACKUP: '<:pe_backup:1566294376483786882>',
+  BOT: '<:pe_bot:1566294387959271594>',
+  CHANNEL_TEXT: '<:pe_channel_Text:1566294391696531597>',
+  CHANNEL_CATEGORY: '<:pe_channel_category:1566294397274955817>',
+  CHANNEL_FORUM: '<:pe_channel_forum:1566294394313638079>',
+  CHANNEL_VOICE: '<:pe_channel_voice:1566294393152077834>',
+  DOWNLOAD: '<:pe_download:1566294379298168913>',
+  SPAM: '<:pe_spam:1566294373505957929>',
+  SCAM: '<:pe_scam:1566294920942190643>',
+  PALETTE: '<:pe_pallete:1566294389997969520>',
+  NSFW: '<:pe_nsfw:1566296380513976410>',
+  MASK: '<:pe_mask:1566294984016138340>',
+  INTEGRATIONS: '<:pe_integrations:1566294377796739125>',
+  LINK: '<:pe_Link:1566302127381282829>',
+  GEM: '<:pe_gem:1566295308261007450>',
+  SPEECH: '<:pe_speech:1566294375053660160>',
+  GIVEAWAY: '<:pe_give:1533211659911303358>',
+  GAME: '<:pe_f_game:1564469175487959050>',
+  AUTOMOD: '<:pe_auto:1533211330734194810>',
 };
 
 // Which emoji represents each mod_actions.type, for DMs and case embeds.

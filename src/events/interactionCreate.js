@@ -62,6 +62,8 @@ const { EMOJI } = require('../utils/emojis');
 const logger = require('../utils/logger');
 const { logCommandUse } = require('../logging/extraLog');
 const { commandKey } = require('../handlers/commandHandler');
+const { isHiddenEverywhere } = require('../utils/hiddenCommands');
+const { isPettoOperator } = require('../utils/autoModControl');
 const { DISPLAY_BUTTON_PREFIX } = require('../utils/embedV2');
 const { PREFIX: EMBED_BUTTON_PREFIX } = require('../utils/embedActions');
 const { handleButton: handleEmbedButton } = require('../interactions/embedButtons');
@@ -527,7 +529,7 @@ module.exports = {
     // The list that Discord shows under an option while it is typed: the command that has one fills it, and the rest do nothing.
     if (interaction.isAutocomplete()) {
       const target = client.commands.get(commandKey(interaction.commandName, interaction.commandType ?? 1));
-      if (typeof target?.autocomplete !== 'function') return;
+      if (typeof target?.autocomplete !== 'function' || (isHiddenEverywhere(target) && !isPettoOperator(interaction.user?.id))) return;
       try { await target.autocomplete(interaction); } catch (err) {
         logger.warn(`The list of an option of ${interaction.commandName} could not be made: ${err.message}`);
         await interaction.respond([]).catch(() => {});
@@ -540,6 +542,11 @@ module.exports = {
     const command = client.commands.get(commandKey(interaction.commandName, interaction.commandType));
     if (!command) {
       logger.warn(`Received unknown command: /${interaction.commandName}`);
+      return;
+    }
+    // A command hidden everywhere (`/music`) is not registered, so this is a copy Discord still had in a cache: it does not exist for anybody outside the team.
+    if (isHiddenEverywhere(command) && !isPettoOperator(interaction.user?.id)) {
+      await interaction.reply({ content: t(await languageOf(interaction), 'core.unknownCommand', { emoji: EMOJI.WARNING, command: interaction.commandName, prefix: '/' }), flags: MessageFlags.Ephemeral }).catch(() => {});
       return;
     }
 
@@ -557,10 +564,12 @@ module.exports = {
     }
 
     const subcommand = interaction.options?.getSubcommand?.(false) ?? null;
+    // The group of an umbrella that wraps a whole command (`/protect antiscam set`): its rules are the ones of that command.
+    const group = interaction.options?.getSubcommandGroup?.(false) ?? null;
     if (interaction.guildId && interaction.member) {
       try {
         // A subcommand of an umbrella (`/server info`) also asks for the level set for the command it wraps (`serverinfo`).
-        for (const name of commandRules.permissionNames(command, { subcommand })) {
+        for (const name of commandRules.permissionNames(command, { subcommand, group })) {
           if (!await permissionsDb.hasCommandPermission(interaction.guildId, name, interaction.member)) {
             await interaction.reply({ content: t(lang, 'core.slash.missingLevel'), flags: MessageFlags.Ephemeral });
             return;
@@ -575,7 +584,7 @@ module.exports = {
 
     // The rules of a server are the same ones the prefix checks (utils/commandRules.js): an action of /act (`hug`) or the whole command
     // (`act`) can be restricted or turned off.
-    const ruleNames = commandRules.ruleNames(command, { subcommand });
+    const ruleNames = commandRules.ruleNames(command, { subcommand, group });
     // !restrictcommand: only the roles chosen for this command (administrators always can).
     if (interaction.guildId && interaction.member) {
       const restricted = await commandRules.restrictedForNames(interaction.guildId, ruleNames, interaction.member).catch(() => null);

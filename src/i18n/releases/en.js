@@ -108,7 +108,7 @@ module.exports = {
           'Voice XP no longer needs a second person by default, and there are two new XP limits in `/level rules`.',
           'What Petto stored for a server it left is deleted 3 days later, and the heavy data can live in a second database.',
           'The copies of avatars of the profile history weigh half, the public threat lists forget what they stopped listing, and counters are no longer turned off for a channel that still exists.',
-          'The setup of a new server is never put in a public channel. The music stays turned off for now.',
+          'The setup of a new server is never put in a public channel.',
         ],
       },
       {

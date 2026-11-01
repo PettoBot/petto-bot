@@ -1,0 +1,20 @@
+{
+ "mau": "music autoplay",
+ "mcl": "music clear",
+ "mle": "music leave",
+ "mlo": "music loop",
+ "mn": "music nowplaying",
+ "mp": "music play",
+ "mpa": "music pause",
+ "mpl": "music playnext",
+ "mpr": "music previous",
+ "mq": "music queue",
+ "mrem": "music remove",
+ "mres": "music resume",
+ "mse": "music search",
+ "msee": "music seek",
+ "msh": "music shuffle",
+ "mski": "music skip",
+ "msto": "music stop",
+ "mv": "music volume"
+}

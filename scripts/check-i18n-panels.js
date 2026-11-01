@@ -30,7 +30,7 @@ setup create created edit edited remove removed add added send sent message mess
 first last cancel confirm save saved category categories support help details report reports role voice temporary
 manage owner owners status rating rate rated transcript level xp`.split(/\s+/).filter(Boolean));
 // Names people read in every language.
-const NAMES = /\b(Petto|Discord|VoiceMaster|Nitro|Premium|Components|Server Tag|Vanity|AutoMod|Cloudflare|Turnstile|top\.gg|Watch Together|Petto Code|XP)\b/g;
+const NAMES = /\b(Petto|Discord|VoiceMaster|Nitro|Premium|Components|Server Tag|Vanity|AutoMod|Cloudflare|Turnstile|top\.gg|Watch Together|Petto Code|XP|Last\.fm)\b/g;
 // Words of the list that are also words of that language: Portuguese "remove" (Remove o cargo), "role" (Role os dados, from rolar)
 // and "status" (um status AFK).
 const ALSO_NATIVE = { 'pt-BR': new Set(['remove', 'role', 'status']) };

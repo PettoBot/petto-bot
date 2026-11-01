@@ -21,6 +21,8 @@ const PANEL_COLUMNS = new Set(['panel_title', 'panel_description', 'panel_footer
 
 const settingOption = (o) => o.setName('setup').setDescription('The name of the forum setup (needed when the server has more than one)').setRequired(false);
 
+const STATUS_EMOJI = { open: EMOJI.TICKET_REOPEN, solved: EMOJI.APPROVE, locked: EMOJI.TICKET_CLOSE, closed: EMOJI.DENY, all: EMOJI.ALL };
+
 // ── the list of posts (`!forum list`) ───────────────────────────────────────────────────────────────────────────────────
 
 register('forumposts', {
@@ -33,7 +35,7 @@ register('forumposts', {
       subtitle: [t(lang, 'forums.list.subtitle', { status: t(lang, status === 'all' ? 'forums.list.all' : `forums.status.${status}`) })],
       items: posts.map((post) => cards.postLine(post, lang)),
       empty: t(lang, 'forums.list.empty'),
-      options: ['open', 'solved', 'locked', 'closed', 'all'].map((value) => ({ value, label: t(lang, value === 'all' ? 'forums.list.all' : `forums.status.${value}`) })),
+      options: ['open', 'solved', 'locked', 'closed', 'all'].map((value) => ({ value, label: t(lang, value === 'all' ? 'forums.list.all' : `forums.status.${value}`), emoji: STATUS_EMOJI[value] })),
       placeholder: t(lang, 'forums.list.show.menu'),
     };
   },
@@ -340,7 +342,8 @@ const data = new SlashCommandBuilder()
   .addSubcommand((s) => s.setName('delete').setDescription('Remove a setup (the posts stay in the forum).').addStringOption(settingOption));
 
 module.exports = {
-  prefixOnly: true,
+  // Also registered as a slash command (it already has subcommands, so it needs no umbrella); the prefix keeps working.
+  registerSlash: true,
   aliases: ['forums'],
   data,
   // Anyone can type it: the checks of each tool are in forumAccess.js. The setup commands need Manage Server.

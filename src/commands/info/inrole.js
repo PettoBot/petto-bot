@@ -2,8 +2,10 @@ const { SlashCommandBuilder } = require('discord.js');
 const { noticePayload } = require('../../utils/infoCard');
 const { register, sendPager } = require('../../utils/pager');
 const { t, languageOf } = require('../../i18n');
+const { EMOJI } = require('../../utils/emojis');
 
 const FILTERS = ['all', 'humans', 'bots', 'newest'];
+const FILTER_EMOJI = { all: EMOJI.ALL, humans: EMOJI.MEMBERS, bots: EMOJI.BOT, newest: EMOJI.ROLLOUT_NEW };
 
 register('inrole', {
   perPage: 20,
@@ -19,7 +21,7 @@ register('inrole', {
       subtitle: [`<@&${role.id}>`],
       thumbnail: guild.iconURL({ size: 256 }),
       items: members.map((member) => `<@${member.id}> · ${member.user.username}`),
-      options: FILTERS.map((value) => ({ label: t(lang, `info.inrole.filter.${value}.menu`), value })),
+      options: FILTERS.map((value) => ({ label: t(lang, `info.inrole.filter.${value}.menu`), value, emoji: FILTER_EMOJI[value] })),
       placeholder: t(lang, 'core.pager.show.menu'),
       empty: t(lang, 'info.inrole.empty'),
     };

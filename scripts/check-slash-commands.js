@@ -16,11 +16,25 @@ const { collectCommandData, findCommandFiles, COMMANDS_DIR, isSlashCommand } = r
 const ROLEPLAY = 1;
 const ESSENTIAL = [
   // Everyday commands that also work with `/` (they keep working with the prefix).
-  'afk', 'avatar', 'ban', 'botinfo', 'channel', 'embed', 'giveaway', 'help', 'kick', 'ping', 'poll', 'purge', 'rank', 'remind',
-  'serverinfo', 'suggest', 'ticket', 'timeout', 'top', 'unban', 'userinfo', 'warn',
-  // The two umbrellas: everything about a server (`/server info`, `icon`...) and about a member (`/user info`, `avatar`...). The old
-  // commands they wrap stay (`serverinfo`, `userinfo`, `avatar` are also slash commands), the rest work with the prefix only.
+  'afk', 'ban', 'botinfo', 'channel', 'embed', 'giveaway', 'help', 'kick', 'ping', 'poll', 'rank', 'remind',
+  'suggest', 'ticket', 'top', 'warn',
+  // The two umbrellas: everything about a server (`/server info`, `icon`...) and about a member (`/user info`, `avatar`...). `/serverinfo`,
+  // `/userinfo`, `/avatar`, `/unban`, `/purge` and `/timeout` are NOT registered any more: `/server info`, `/user info`, `/user avatar`,
+  // `/mod unban`, `/mod purge` and `/mod tempmute` have every option and action of them (the prefix words work as before).
   'server', 'user',
+  // The umbrella of moderation (`/mod ban`, `kick`, `purge`...): one slash command for the everyday moderation commands; each subcommand
+  // asks for the permission of the command it wraps when it runs (src/commands/moderation/mod.js).
+  'mod',
+  // The second batch of umbrellas, wrapping prefix-only commands: the fun and games (`/game 8ball`, `minecraft`...), what is yours (`/me birthday`,
+  // `rep`...), lookups (`/search weather`, `youtube`...) and the staff tools that do not fit `/mod` (`/staff massban`, `voice-mute`...). Each one only
+  // has subcommands, and `/staff` asks for the permission of the command each one wraps when it runs. The rest of the prefix commands move little by little.
+  'game', 'me', 'search', 'staff',
+  // The third batch: the rest of the prefix commands. Umbrellas whose groups are old commands with all their subcommands (`/config prefix set`,
+  // `/protect honeypot add`, `/auto timer add`...), and the commands that already are a command with subcommands, registered as they are. Each one
+  // only has subcommands (scripts/check-umbrellas-3.js).
+  'auto', 'bot', 'community', 'config', 'contrib', 'greet', 'message', 'protect', 'special',
+  'antinuke', 'antiscam', 'automod', 'autoresponder', 'clownboard', 'customcommand', 'feed', 'form', 'forum', 'giveawaypreset', 'giveawaytemplate',
+  'identity', 'image', 'invites', 'level', 'logs', 'monkeyboard', 'permission', 'quickreply', 'role', 'rollouts', 'starboard', 'stats', 'voicemaster',
   // Registered before for their own reasons.
   'guildtag', 'messagelinks', 'report', 'setup', 'vanity',
 ];
@@ -138,6 +152,12 @@ for (const file of findCommandFiles(COMMANDS_DIR)) {
   assert.doesNotThrow(() => command.data.toJSON(), `${command.data.name} builds`);
 }
 
+// The slash commands the umbrellas replaced are not registered, but the old commands are loaded for the prefix.
+for (const name of ['serverinfo', 'userinfo', 'avatar', 'unban', 'purge', 'timeout']) {
+  assert.ok(!chat.some((json) => json.name === name), `/${name} is not registered (an umbrella subcommand replaces it)`);
+  const file = findCommandFiles(COMMANDS_DIR).find((path) => require(path).data?.name === name);
+  assert.ok(file && !isSlashCommand(require(file)) && !require(file).prefixOnly, `!${name} is still loaded for the prefix`);
+}
 // The everyday commands keep their prefix form, and the moderation ones are hidden from members who cannot use them.
 for (const name of ESSENTIAL.filter((name) => !['setup'].includes(name))) {
   const file = findCommandFiles(COMMANDS_DIR).find((path) => require(path).data?.name === name && (require(path).data.toJSON().type ?? 1) === 1);
@@ -146,7 +166,7 @@ for (const name of ESSENTIAL.filter((name) => !['setup'].includes(name))) {
   assert.equal(command.data.toJSON().dm_permission, false, `/${name} is not offered in DMs`);
 }
 const byName = new Map(chat.map((json) => [json.name, json]));
-for (const name of ['ban', 'unban', 'kick', 'warn', 'timeout', 'purge', 'channel', 'giveaway', 'embed']) {
+for (const name of ['ban', 'kick', 'warn', 'channel', 'giveaway', 'embed']) {
   assert.ok(byName.get(name).default_member_permissions != null, `/${name} asks for a permission`);
 }
 // /embed: the saved embed is picked from a list, and its descriptions are translated like the rest.
@@ -159,7 +179,7 @@ for (const sub of embedLeaves) {
 }
 assert.ok(embedJson.description_localizations?.['es-ES'] && embedJson.description_localizations?.['es-419'] && embedJson.description_localizations?.['pt-BR'], '/embed is described in Spanish and Portuguese');
 assert.equal(typeof require(findCommandFiles(COMMANDS_DIR).find((file) => file.endsWith('/config/embed.js'))).autocomplete, 'function', '/embed answers the autocomplete');
-assert.ok(byName.get('help').options.some((option) => option.name === 'query'), '/help can look a command up');
+assert.ok(byName.get('help').options.some((option) => option.name === 'command' && option.autocomplete === true), '/help can look a command up');
 assert.ok(byName.get('help').description_localizations?.['es-ES'] && byName.get('help').description_localizations?.['pt-BR'], '/help is described in Spanish and Portuguese');
 
 console.log(`Checked the ${registered.length} commands registered with Discord (${chat.length} slash commands, ${registered.length - chat.length} context menus).`);

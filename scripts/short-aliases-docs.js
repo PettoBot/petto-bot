@@ -31,7 +31,10 @@ function tableFor(table, lang) {
   return [`| ${head1} | ${head2} |`, '| --- | --- |', ...rows].join('\n');
 }
 
-function writeWiki(wikiPath, table) {
+function writeWiki(wikiPath, tableWithAll, info) {
+  // A command that is hidden everywhere (`/music`) is never published, whatever is in the table.
+  const hidden = new Set((info?.commands ?? []).filter((command) => command.hiddenEverywhere).map((command) => command.name));
+  const table = Object.fromEntries(Object.entries(tableWithAll).filter(([, target]) => !hidden.has(target.split(' ')[0])));
   if (!wikiPath || !fs.existsSync(wikiPath)) throw new Error(`Wiki folder not found: ${wikiPath}`);
   for (const lang of ['', 'es', 'pt-br']) {
     const file = path.join(wikiPath, lang, 'setup', 'short-aliases.mdx');

@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 const config = require('../../config');
 const {
   getUserPremium,
@@ -183,5 +183,5 @@ async function replySuccess(interaction, content) {
 }
 
 async function replyError(interaction, content) {
-  return interaction.reply({ embeds: [new EmbedBuilder().setColor(COLORS.RED).setDescription(`⚠️ ${content}`)], allowedMentions: { parse: [] } });
+  return interaction.reply({ embeds: [new EmbedBuilder().setColor(COLORS.RED).setDescription(`⚠️ ${content}`)], flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
 }

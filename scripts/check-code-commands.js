@@ -28,7 +28,7 @@ const memoryData = new Map();
 const watching = new Map();
 const reactionLog = [];
 stub('src/db/commandData.js', { forGuild: () => ({ async get(key, user) { return memoryData.get(`${user}|${key}`) ?? null; }, async set(key, value, user) { memoryData.set(`${user}|${key}`, value); }, async del() {}, async incr(key, amount, user) { const next = (memoryData.get(`${user}|${key}`) ?? 0) + amount; memoryData.set(`${user}|${key}`, next); return next; }, async top() { return []; }, async keys() { return []; }, async watch(id, record) { watching.set(id, record); }, async watched(id) { return watching.get(id) ?? null; } }) });
-stub('src/utils/emojis.js', { EMOJI: { APPROVE: 'OK', DENY: 'NO' } });
+stub('src/utils/emojis.js', { EMOJI: { APPROVE: 'OK', DENY: 'NO', FIRST: '⏮️', PREV: '◀️', NEXT: '▶️', LAST: '⏭️' } });
 stub('src/utils/colors.js', { COLORS: { DEFAULT: 1, RED: 2, GREEN: 3 }, semanticColor: () => null, colorFromText: () => null });
 const codeCommands = require('../src/utils/codeCommands');
 const { TEMPLATES } = require('../src/scripting/templates');

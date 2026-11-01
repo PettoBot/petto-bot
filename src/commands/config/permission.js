@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
+const { isHiddenWordFor } = require('../../utils/hiddenCommands');
 const { ensureGuild } = require('../../db/guilds');
 const permissionsDb = require('../../db/permissions');
 const { textCard } = require('../../utils/caseCard');
@@ -6,6 +7,8 @@ const { COLORS } = require('../../utils/colors');
 const { t, tn, languageOf } = require('../../i18n');
 
 module.exports = {
+  // Also registered as a slash command (it already has subcommands, so it needs no umbrella); the prefix keeps working.
+  registerSlash: true,
   aliases: ['auth', 'pgroup'],
   data: new SlashCommandBuilder()
     .setName('permission')
@@ -125,7 +128,7 @@ async function commandCommand(interaction, sub, lang) {
 
   const rawName = interaction.options.getString('name', true).toLowerCase();
   const canonical = interaction.client.commandAliases.get(rawName) ?? rawName;
-  if (!interaction.client.commands.has(canonical)) return respond(interaction, t(lang, 'config.permission.unknownCommand', { name: rawName }), COLORS.RED);
+  if (!interaction.client.commands.has(canonical) || isHiddenWordFor(interaction.client, canonical, interaction.user?.id)) return respond(interaction, t(lang, 'config.permission.unknownCommand', { name: rawName }), COLORS.RED);
   const level = interaction.options.getInteger('level', true);
   await permissionsDb.setCommandLevel(interaction.guild.id, canonical, level);
   await audit(interaction, 'set_command_level', `Set ${canonical} to required level ${level}`); // i18n-ignore: stored audit record
