@@ -659,7 +659,7 @@ function tailOf(node) {
   assert.deepEqual([usage.chat.used, usage.chat.limit, usage.chat.free], [64, 100, 36], '36 slots are free, more than the 20 that are kept');
   assert.ok(usage.chat.free >= 20);
   assert.ok(chat.every((each) => each.options.length <= LIMITS.subcommands));
-  for (const name of ['botstatus', 'bots', 'guilddebug', 'guildsend', 'leaveguild', 'quests', 'welcomeconfig', 'prefixconfig', 'timerconfig', 'language']) assert.ok(!chat.some((each) => each.name === name), `/${name} stays prefix-only (private, or a generated card)`);
+  for (const name of ['botstatus', 'slots', 'bots', 'guilddebug', 'guildsend', 'leaveguild', 'quests', 'welcomeconfig', 'prefixconfig', 'timerconfig', 'language']) assert.ok(!chat.some((each) => each.name === name), `/${name} stays prefix-only (private, or a generated card)`);
   const deployed = [];
   await require('../src/handlers/deployCommands').deployCommands({ rest: { put: async (_route, { body }) => { deployed.push(...body); return body; }, get: async () => [] }, settings: { getSetting: async () => null, setSetting: async () => {} }, force: true });
   const size = (value) => [...String(value ?? '')].length;

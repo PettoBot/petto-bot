@@ -6,8 +6,6 @@ const { slotUsage, nearLimit, difference, LIMITS } = require('../../utils/slashB
 const { textCard } = require('../../utils/caseCard');
 const { EMOJI } = require('../../utils/emojis');
 
-const MAX_BOTS_LISTED = 20;
-const MEMBER_FETCH_UP_TO = 2000;
 
 /** The slash commands Discord has registered for Petto (global), as plain JSON; null when Discord cannot be asked. */
 async function registeredCommands(client) {
@@ -34,28 +32,18 @@ function slotLines(usage) {
   ];
 }
 
-/** Who the bots of this server are: the ones Discord says (a big server is only read from the cache). */
-async function botsOf(guild) {
-  let complete = true;
-  if (guild.memberCount <= MEMBER_FETCH_UP_TO) await guild.members.fetch().catch(() => { complete = false; });
-  else complete = false;
-  const bots = [...guild.members.cache.values()].filter((member) => member.user?.bot).sort((a, b) => (a.joinedTimestamp ?? 0) - (b.joinedTimestamp ?? 0));
-  return { bots, complete };
-}
-
-/** Private control for Petto's team: the bots of this server and how many slash command slots are left. Prefix-only and hidden from !help. */
+/** Private control for Petto's team: how many slash command slots are left, what is close to a limit and what Discord has compared with what Petto loads. Prefix-only and hidden from !help. */
 module.exports = {
   prefixOnly: true,
   hiddenFromHelp: true,
   data: new SlashCommandBuilder()
-    .setName('bots')
-    .setDescription('Private control: the bots of this server and the slash command slots Petto has left.')
+    .setName('slots')
+    .setDescription('Private control: the slash command slots Petto has left.')
     .setDMPermission(false),
 
   async execute(interaction) {
-    if (!isPettoOperator(interaction.user?.id)) {
-      return reply(interaction, `${EMOJI.DENY} This private control is not available to this account.`, 0xfe6465);
-    }
+    // Nobody else gets an answer: for a plain member this is as if the word were not a command.
+    if (!isPettoOperator(interaction.user?.id)) return undefined;
     await interaction.deferReply?.({ flags: MessageFlags.IsComponentsV2 });
     const client = interaction.client;
 
@@ -85,21 +73,10 @@ module.exports = {
     if (registered) lines.push(`Room to move them all: ${slotUsage(registered).chat.free >= prefixCommands.length ? 'yes' : `no, ${slotUsage(registered).chat.free} slots for ${prefixCommands.length} commands`}.`);
     if (tooBig.length) lines.push(`Too big to move as they are: ${tooBig.slice(0, 10).map((entry) => `\`${entry.name}\` (${entry.subcommands} subcommands, ${entry.size} characters)`).join(', ')}.`);
 
-    const { bots, complete } = await botsOf(interaction.guild);
-    lines.push('', `**Bots in this server: ${bots.length}${complete ? '' : '+'}**`);
-    if (!bots.length) lines.push('None found.');
-    for (const member of bots.slice(0, MAX_BOTS_LISTED)) {
-      const mine = member.id === client.user.id ? ' (Petto)' : '';
-      const joined = member.joinedTimestamp ? ` · joined <t:${Math.floor(member.joinedTimestamp / 1000)}:R>` : '';
-      lines.push(`- ${member.user.tag ?? member.user.username} · \`${member.id}\`${mine}${joined}`);
-    }
-    if (bots.length > MAX_BOTS_LISTED) lines.push(`... and ${bots.length - MAX_BOTS_LISTED} more.`);
-    if (!complete) lines.push('-# This server is big or its members could not be read: only the bots Petto already knows are listed.');
-    return reply(interaction, lines.join('\n'), 0xa5ea7a, true);
+    return reply(interaction, lines.join('\n'), 0xa5ea7a);
   },
 };
 
-async function reply(interaction, content, color, deferred = false) {
-  const payload = { components: [textCard(content, color)], flags: MessageFlags.IsComponentsV2 | (deferred ? 0 : MessageFlags.Ephemeral) };
-  return deferred ? interaction.editReply(payload) : interaction.reply(payload);
+async function reply(interaction, content, color) {
+  return interaction.editReply({ components: [textCard(content, color)], flags: MessageFlags.IsComponentsV2 });
 }

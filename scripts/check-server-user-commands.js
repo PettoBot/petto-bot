@@ -60,7 +60,7 @@ const user = client.commands.get('user');
 const infoFile = (name) => path.join(root, 'src', 'commands', name === 'steal' ? 'utility' : 'info', `${name}.js`);
 
 // What each subcommand of each umbrella wraps (`file` of the old command), and the new ones that have a function of their own.
-const SERVER = { info: 'serverinfo', roles: 'roles', channels: 'channels', emojis: 'emojis', boosters: 'boosters', channel: 'channelinfo', role: 'roleinfo', emoji: 'emojiinfo', invite: 'inviteinfo', inrole: 'inrole', summary: 'summary', steal: 'steal' };
+const SERVER = { info: 'serverinfo', roles: 'roles', channels: 'channels', emojis: 'emojis', boosters: 'boosters', channel: 'channelinfo', role: 'roleinfo', emoji: 'emojiinfo', invite: 'inviteinfo', inrole: 'inrole', bots: 'bots', summary: 'summary', steal: 'steal' };
 const SERVER_NEW = { icon: 'servericon', banner: 'serverbanner', splash: 'serversplash' };
 const USER = { info: 'userinfo', avatar: 'avatar', banner: 'banner', cosmetics: 'usercosmetics', permissions: 'permissions', id: 'snowflake', 'first-message': 'firstmessage', activity: 'activity' };
 const subcommandsOf = (command) => command.data.toJSON().options;
@@ -155,7 +155,7 @@ async function send(content, { channelId = '5', admin = false, mentions = [], gu
     assert.equal(command.data.toJSON().dm_permission, false);
     assert.equal(command.data.toJSON().default_member_permissions ?? null, null, `${command.data.name} is for everyone, like the commands it wraps`);
   }
-  assert.deepEqual(subcommandsOf(server).map((sub) => sub.name), ['info', 'icon', 'banner', 'splash', 'roles', 'channels', 'emojis', 'boosters', 'channel', 'role', 'emoji', 'invite', 'inrole', 'summary', 'steal']);
+  assert.deepEqual(subcommandsOf(server).map((sub) => sub.name), ['info', 'icon', 'banner', 'splash', 'roles', 'channels', 'emojis', 'boosters', 'channel', 'role', 'emoji', 'invite', 'inrole', 'bots', 'summary', 'steal']);
   assert.deepEqual(subcommandsOf(user).map((sub) => sub.name), ['info', 'avatar', 'banner', 'cosmetics', 'permissions', 'id', 'first-message', 'activity']);
   assert.ok(subcommandsOf(server).every((sub) => sub.type === ApplicationCommandOptionType.Subcommand) && subcommandsOf(user).every((sub) => sub.type === ApplicationCommandOptionType.Subcommand));
   assert.equal(client.commands.has('server') && client.commandAliases.has('server'), false, '`server` is the command now, no longer a word of serverinfo');
@@ -190,7 +190,7 @@ async function send(content, { channelId = '5', admin = false, mentions = [], gu
   // The keys of the rules: the wrapped command, or the key of a new subcommand.
   assert.deepEqual(server.ruleKeys, { ...SERVER, ...SERVER_NEW });
   assert.deepEqual(user.ruleKeys, USER);
-  assert.equal(Object.keys(server.ruleKeys).length, 15);
+  assert.equal(Object.keys(server.ruleKeys).length, 16);
 
   // ------------------------------------------------------------ the slash command runs the code of the old command, with its options
   spyOnWrapped();
@@ -307,7 +307,7 @@ async function send(content, { channelId = '5', admin = false, mentions = [], gu
     assert.ok(route && route.short && route.command === command && route.subcommand === sub, `${alias} is the short alias of ${target}`);
   }
   const shortTargets = Object.values(SHORT_ALIAS_TABLE).filter((target) => /^(server|user) /.test(target));
-  assert.equal(shortTargets.length, 23, 'every subcommand of /server (15) and /user (8) has a short alias');
+  assert.equal(shortTargets.length, 24, 'every subcommand of /server (16) and /user (8) has a short alias');
   const shortServer = Object.keys(SHORT_ALIAS_TABLE).find((word) => SHORT_ALIAS_TABLE[word] === 'server roles');
   assert.deepEqual(await ran(`!${shortServer}`), ['roles'], 'a short alias runs the subcommand');
   assert.deepEqual(await ran('petto se'), [], 'a common word after a word prefix is chat, even when it is a short alias');

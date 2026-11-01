@@ -79,7 +79,7 @@ module.exports = {
   'cmd.utility.boosterrole.filter.remove.desc': 'Vuelve a permitir una palabra en los nombres de los roles de booster.',
   'cmd.utility.boosterrole.filter.remove.opt.word.desc': 'Palabra o frase',
   'cmd.utility.boosterrole.filter.list.desc': 'Lista las palabras filtradas.',
-  'cmd.utility.bots.desc': 'Control privado: los bots de este servidor y los espacios de comandos slash que le quedan a Petto.',
+  'cmd.utility.slots.desc': 'Control privado: los espacios de comandos slash que le quedan a Petto.',
   'cmd.utility.botstatus.desc': 'Control privado: cambia el estado y el dispositivo de Petto, o muéstralos si no das ninguno.',
   'cmd.utility.botstatus.opt.status.desc': 'online, idle, dnd o invisible',
   'cmd.utility.botstatus.opt.device.desc': 'normal, phone, android o ios',
