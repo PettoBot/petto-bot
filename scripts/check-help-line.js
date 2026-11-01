@@ -146,15 +146,117 @@ const { CATALOGS, LANGUAGES } = require('../src/i18n');
     assert.equal(help.data.toJSON().options.find((option) => option.name === 'command').autocomplete, true);
   }
 
-  // The slash command opens the browser, private.
-  const slash = [];
-  const interaction = {
-    guild, guildId: guild.id, user, client, pettoLang: 'en', options: { getString: () => null },
-    reply: async (p) => { slash.push(p); return { createMessageComponentCollector: () => ({ on() {}, stop() {} }) }; },
+  // The slash command answers in the channel, like `!help` (not private): the browser, one command, a command with entries and its menus; only
+  // "not found" and the notice for somebody else's menu are private.
+  const isPrivate = (payload) => Boolean((payload?.flags ?? 0) & MessageFlags.Ephemeral);
+  const handlersOfSlash = [];
+  const slashAnswer = async (commandInput, lang = 'en') => {
+    const slash = [];
+    handlersOfSlash.length = 0;
+    const collector = { on: (event, handler) => { if (event === 'collect') handlersOfSlash.push(handler); }, stop() {} };
+    const interaction = {
+      guild, guildId: guild.id, user, client, pettoLang: lang, options: { getString: () => commandInput },
+      reply: async (p) => { slash.push(p); return { edit: async () => {}, createMessageComponentCollector: () => collector }; },
+    };
+    await help.execute(interaction);
+    return slash;
   };
-  await help.execute(interaction);
-  assert.ok(slash[0].components && (slash[0].flags & MessageFlags.Ephemeral), '/help opens the private browser');
-  assert.equal(slash[0].content, undefined);
+  {
+    const slash = await slashAnswer(null);
+    assert.ok(slash[0].components && (slash[0].flags & MessageFlags.IsComponentsV2), '/help opens the browser as Components V2');
+    assert.ok(!isPrivate(slash[0]), '/help is public');
+    assert.equal(slash[0].content, undefined);
+    // The author walks the browser: every update stays public (it is the same message) and keeps Components V2; somebody else is told in private.
+    const updates = [];
+    const press = (who, customId, values = []) => handlersOfSlash[0]({ user: { id: who }, customId, values, reply: async (p) => { updates.push(['reply', p]); }, update: async (p) => { updates.push(['update', p]); }, deferUpdate: async () => { updates.push(['defer']); } });
+    await press(user.id, 'help_cat', ['moderation']);
+    await press(user.id, 'help_cmd', ['ticket']);
+    await press(user.id, 'help_sub', ['category add']);
+    await press(user.id, 'help_subback:tickets');
+    await press(user.id, 'help_cmdback:tickets');
+    await press(user.id, 'help_back');
+    assert.equal(updates.length, 6);
+    assert.ok(updates.every(([kind, p]) => kind === 'update' && p.components && (p.flags & MessageFlags.IsComponentsV2) && !isPrivate(p)), 'every page of the browser is a public edit of the message');
+    updates.length = 0;
+    await press('999999999999999999', 'help_cat', ['moderation']);
+    assert.equal(updates.length, 1); assert.equal(updates[0][0], 'reply');
+    assert.ok(isPrivate(updates[0][1]), 'somebody else is told in private');
+    assert.match(updates[0][1].content, /not the \*\*author\*\*/);
+
+    const one = await slashAnswer('ping');
+    assert.ok(!isPrivate(one[0]) && (one[0].flags & MessageFlags.IsComponentsV2), '/help command:ping is public');
+    const many = await slashAnswer('ticket');
+    assert.ok(!isPrivate(many[0]) && (many[0].flags & MessageFlags.IsComponentsV2), '/help command:ticket is public');
+    const edits = [];
+    const press2 = (who, customId, values) => handlersOfSlash[0]({ user: { id: who }, customId, values, reply: async (p) => { edits.push(['reply', p]); }, update: async (p) => { edits.push(['update', p]); } });
+    await press2(user.id, 'help_entry:0', ['2']);
+    await press2(user.id, 'help_next', []);
+    await press2(user.id, 'help_close', []);
+    assert.ok(edits.every(([kind, p]) => kind === 'update' && (p.flags & MessageFlags.IsComponentsV2) && !isPrivate(p)), 'the entries, the arrows and close edit the public message');
+    await press2('999999999999999999', 'help_next', []);
+    assert.ok(isPrivate(edits.at(-1)[1]) && edits.at(-1)[0] === 'reply', 'somebody else is told in private');
+    const missing = await slashAnswer('nosuchcommand');
+    assert.ok(isPrivate(missing[0]), 'a command that is not found is told in private');
+  }
+
+  // Every option of every menu of the help says what it is: a non-empty description of at most 100 characters in every language, a label
+  // with the whole path (not just `add`), at most 25 options in a menu, and different values.
+  {
+    const allow = new Set(['ticket', 'mod', 'config', 'level', 'boosterrole', 'me', 'staff']);
+    const menusOf = (payloadOrRows) => {
+      const found = [];
+      (function walk(node) {
+        if (Array.isArray(node)) return node.forEach(walk);
+        if (!node || typeof node !== 'object') return undefined;
+        if (node.type === 3) found.push(node);
+        Object.values(node).forEach(walk);
+        return undefined;
+      }(payloadOrRows));
+      return found;
+    };
+    const rowsJson = (components) => components.map((component) => component.toJSON());
+    let checked = 0;
+    for (const lang of LANGUAGES) {
+      const menus = [...menusOf(rowsJson(help.mainView(client, guild, '!', false, lang).components))];
+      for (const id of menus[0].options.map((option) => option.value)) menus.push(...menusOf(rowsJson(help.categoryView(client, guild, id, false, lang).components)));
+      for (const name of allow) {
+        const command = client.commands.get(name);
+        assert.ok(command, `${name} exists`);
+        menus.push(...menusOf(rowsJson(help.subcommandView(client, guild, command, command.category, false, lang).components)));
+        const json = command.data.toJSON();
+        const entries = [];
+        for (const option of json.options ?? []) {
+          if (option.type === 1) entries.push({ path: [option.name], description: option.description, options: option.options ?? [] });
+          if (option.type === 2) for (const sub of option.options) entries.push({ path: [option.name, sub.name], description: sub.description, options: sub.options ?? [] });
+        }
+        menus.push(...rowsJson(help.entryPickers(command, entries, 0, lang)).flatMap((row) => row.components));
+      }
+      for (const menu of menus) {
+        assert.ok(menu.options.length >= 1 && menu.options.length <= 25, `${lang}: ${menu.custom_id} has 1-25 options`);
+        assert.equal(new Set(menu.options.map((option) => option.value)).size, menu.options.length, `${lang}: ${menu.custom_id} has different values`);
+        for (const option of menu.options) {
+          assert.ok(option.label && option.label.length <= 100, `${lang}: ${menu.custom_id} ${option.value}: the label`);
+          assert.ok(option.description && option.description.trim() && [...option.description].length <= 100, `${lang}: ${menu.custom_id} ${option.label} has a description of 1-100 characters`);
+          checked += 1;
+        }
+      }
+    }
+    assert.ok(checked > 1000, `${checked} options checked`);
+    // The label is the whole path, so `add` never stands alone; the description is what that entry does, in the language of the server.
+    const ticket = client.commands.get('ticket');
+    const subMenu = menusOf(rowsJson(help.subcommandView(client, guild, ticket, 'tickets', false, 'en').components))[0];
+    assert.ok(subMenu.options.every((option) => /^ticket( |$)/.test(option.label)), 'the sub menu labels start with the command');
+    assert.ok(subMenu.options.some((option) => option.label === 'ticket category add' || /^ticket category /.test(option.label)), 'the label of a deep entry is its whole path');
+    const spanish = menusOf(rowsJson(help.subcommandView(client, guild, ticket, 'tickets', false, 'es').components))[0];
+    assert.notDeepEqual(spanish.options.map((option) => option.description), subMenu.options.map((option) => option.description), 'the descriptions are translated');
+    // The first sentence, cut at 100 with an ellipsis; "e.g. 30s" is not the end of a sentence.
+    assert.equal(help.optionDescription('Create your booster role. Requires boosting.'), 'Create your booster role.');
+    assert.equal(help.optionDescription('Set how long, e.g. 30s or 5m, it lasts.'), 'Set how long, e.g. 30s or 5m, it lasts.');
+    const clipped = help.optionDescription('x'.repeat(150));
+    assert.equal([...clipped].length, 100); assert.ok(clipped.endsWith('…'));
+    assert.equal(help.optionDescription('', 'fallback'), 'fallback');
+    assert.equal(help.optionDescription(undefined, 'fallback'), 'fallback');
+  }
 
   console.log('help line checks passed');
 })().catch((error) => { console.error(error); process.exit(1); });

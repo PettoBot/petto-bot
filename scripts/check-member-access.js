@@ -413,7 +413,7 @@ async function slashOf(command, leaf, { perms = 0n } = {}) {
   // The staff subcommands of a command open at Discord refuse a plain member (ephemeral on the slash command, so the channel does not see it).
   const MUST_REFUSE = ['form create', 'form delete', 'form set', 'form panel', 'rollouts enable', 'rollouts role', 'invites bonus', 'invites config', 'invites reward add', 'invites reset', 'counting setup', 'counting disable', 'counting reset', 'quickreply add', 'quickreply remove',
     'imgonly add', 'imgonly remove', 'urlonly add', 'urlonly remove', 'rep reset', 'report config', 'report disable', 'forum setup', 'forum panel', 'forum delete', 'ticket panel create', 'ticket category add', 'ticket setup', 'confession setup', 'suggestion setup',
-    'voicemaster setup', 'voicemaster disable', 'boosterrole admin set', 'premium grant', 'premium revoke', 'server steal', 'mod ban', 'mod purge', 'staff massban', 'config prefix set', 'protect honeypot add', 'greet welcome setup', 'auto timer'];
+    'voicemaster setup', 'voicemaster disable', 'boosterrole admin set', 'boosterrole admin remove', 'boosterrole admin base', 'boosterrole admin cooldown', 'boosterrole filter add', 'premium grant', 'premium revoke', 'server steal', 'mod ban', 'mod purge', 'staff massban', 'config prefix set', 'protect honeypot add', 'greet welcome setup', 'auto timer'];
   const publicRefusals = [];
   for (const key of MUST_REFUSE) {
     const entry = found.find((each) => `${each.name} ${each.leaf}`.trim().startsWith(key) || `${each.name} ${each.leaf}`.trim() === key);

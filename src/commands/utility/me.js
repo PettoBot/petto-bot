@@ -1,10 +1,12 @@
 // /me: what is yours, as subcommands of one command (a tidier `/` list: they are found by typing `/me`). Each one runs the code of the
 // command it wraps with its options (utils/umbrella.js): `/me birthday` is `!birthday set`, `/me prefix-set` is `!myprefix set`. What a
-// subcommand leaves out (`!birthday upcoming`, `!boosterrole share`...) stays in the old command, which keeps working as it was with the
+// subcommand leaves out (`!birthday upcoming`...) stays in the old command, which keeps working as it was with the
 // prefix. `!me` alone lists the subcommands.
 //
 // PERMISSIONS: everything here is for the member who types it, so `/me` is open; the umbrella asks for the permission of the wrapped command
 // anyway before running it (utils/umbrella.js), so a command that gets one later is protected here too.
+//
+// The booster role is not here: it is its own command, `/boosterrole`.
 //
 // `me` is also an everyday word (Spanish `me`), so a word prefix such as `petto` never starts it (`petto me ayudas`): `!me` and `/me` do.
 const { SlashCommandBuilder } = require('discord.js');
@@ -32,16 +34,12 @@ const SUBCOMMANDS = [
   { name: 'lastfm-link', wraps: 'lastfm', sub: 'link' },
   { name: 'lastfm-unlink', wraps: 'lastfm', sub: 'unlink' },
   { name: 'spotify', wraps: 'spotify', sub: 'view' },
-  { name: 'boosterrole', wraps: 'boosterrole', sub: 'create' },
-  { name: 'boosterrole-color', wraps: 'boosterrole', sub: 'color' },
-  { name: 'boosterrole-rename', wraps: 'boosterrole', sub: 'rename' },
-  { name: 'boosterrole-remove', wraps: 'boosterrole', sub: 'remove' },
 ];
 
 // The words of the old commands, read as the subcommand they stand for (`!me bday 25 12`, `!me phist`).
 const WORDS = {
   birthday: ['bday', 'bd'], rep: ['reputation'], prefix: ['myprefix', 'userprefix', 'selfprefix', 'upfx'], names: ['phist'], ranking: ['globalranking', 'globalrank', 'publicranking'],
-  spotify: ['sp'], boosterrole: ['br'],
+  spotify: ['sp'],
 };
 const SUBCOMMAND_WORDS = Object.fromEntries(Object.entries(WORDS).flatMap(([name, words]) => words.map((word) => [word, name])));
 const { greedy } = prefixOptionsOf(SUBCOMMANDS, load);
@@ -60,7 +58,7 @@ module.exports = {
   ruleKeys: ruleKeysOf(SUBCOMMANDS),
   permissionForSubcommand: executor.permissionForSubcommand,
   data: addSubcommands(
-    new SlashCommandBuilder().setName('me').setDMPermission(false).setDescription('Your own things: birthday, reputation, prefix, name history, ranking, Last.fm and booster role.'),
+    new SlashCommandBuilder().setName('me').setDMPermission(false).setDescription('Your own things: birthday, reputation, prefix, name history, ranking, Last.fm and Spotify.'),
     SUBCOMMANDS,
     load,
   ),

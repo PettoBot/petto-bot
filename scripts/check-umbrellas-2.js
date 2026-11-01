@@ -121,10 +121,6 @@ const TABLES = {
     ['lastfm-link', 'lastfm', 'link', null, 'someuser'],
     ['lastfm-unlink', 'lastfm', 'unlink', null, ''],
     ['spotify', 'spotify', 'view', null, `<@${BEA}>`],
-    ['boosterrole', 'boosterrole', 'create', null, 'Cool'],
-    ['boosterrole-color', 'boosterrole', 'color', null, '#ff0000'],
-    ['boosterrole-rename', 'boosterrole', 'rename', null, 'Cooler'],
-    ['boosterrole-remove', 'boosterrole', 'remove', null, ''],
   ],
   search: [
     ['anilist', 'anilist', 'anime', null, 'Frieren'],
@@ -301,7 +297,7 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
     assert.ok(subcommandsOf(command).every((sub) => sub.type === ApplicationCommandOptionType.Subcommand), `/${umbrella} has subcommands and nothing else: no slash command without subcommands`);
     assert.deepEqual(command.subcommands.map((entry) => [entry.name, entry.wraps, entry.sub ?? null]), TABLES[umbrella].map((row) => [row[0], row[1], row[2]]), `/${umbrella} wraps what was decided`);
   }
-  assert.deepEqual(UMBRELLAS.map((umbrella) => TABLES[umbrella].length), [23, 22, 17, 24]);
+  assert.deepEqual(UMBRELLAS.map((umbrella) => TABLES[umbrella].length), [23, 18, 17, 24]);
 
   // What it wraps is something the umbrella can run: it exists, is private to nobody, takes no list that is filled while typing, and reads no
   // shorter way of writing that an umbrella would not pass on.
@@ -442,7 +438,7 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   // The old words of the wrapped commands, read as the subcommand they stand for.
   for (const [umbrella, words] of Object.entries({
     game: { cf: 'coinflip', flipcoin: 'coinflip', eightball: '8ball', tod: 'truthordare', wyr: 'wouldyourather', nhie: 'neverhaveiever', mc: 'minecraft', rbx: 'roblox', mr: 'modrinth', pkmn: 'pokemon', pokedex: 'pokemon', pick: 'choose', dice: 'roll', q: 'quote', bigemoji: 'jumbo', uwuify: 'uwu' },
-    me: { bday: 'birthday', reputation: 'rep', myprefix: 'prefix', phist: 'names', globalrank: 'ranking', sp: 'spotify', br: 'boosterrole' },
+    me: { bday: 'birthday', reputation: 'rep', myprefix: 'prefix', phist: 'names', globalrank: 'ranking', sp: 'spotify' },
     search: { ani: 'anilist', apple: 'itunes', dz: 'deezer', lfm: 'lastfm', yt: 'youtube', wp: 'wikipedia', wk: 'wiki', clima: 'weather', tz: 'time', cur: 'currency', coin: 'crypto', c: 'compute', calc: 'compute', calculate: 'compute', math: 'compute', clr: 'color', hex: 'color', gh: 'github', pkg: 'package' },
     staff: { imagemute: 'imute', reactionmute: 'rmute', recentban: 'raid', mban: 'massban', mkick: 'masskick', mmute: 'massmute', munban: 'massunban', unbanall: 'massunban', munmute: 'massunmute', mwarn: 'masswarn', nuk: 'nuke' },
   })) {
@@ -491,7 +487,7 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
     ['!animal cat', 'animal', 'cat'], ['!minecraft user Notch', 'minecraft', 'user'], ['!mc Notch', 'minecraft', 'user'], ['!roblox user builderman', 'roblox', 'user'], ['!steam profile gaben', 'steam', 'profile'], ['!chess lichess DrNykterstein', 'chess', 'lichess'],
     ['!pokemon pikachu', 'pokemon', null], ['!modrinth sodium', 'modrinth', null],
     ['!birthday set 1 1', 'birthday', 'set'], ['!bday remove', 'birthday', 'remove'], ['!rep view', 'rep', 'view'], ['!rep give <@2>', 'rep', 'give'], ['!myprefix show', 'myprefix', 'show'], ['!myprefix', 'myprefix', 'show'], ['!profilehistory names', 'profilehistory', 'names'],
-    ['!globalranking on', 'globalranking', 'on'], ['!globalranking', 'globalranking', 'status'], ['!lastfm link someone', 'lastfm', 'link'], ['!lastfm', 'lastfm', 'now'], ['!spotify view', 'spotify', 'view'], ['!boosterrole create Cool', 'boosterrole', 'create'],
+    ['!globalranking on', 'globalranking', 'on'], ['!globalranking', 'globalranking', 'status'], ['!lastfm link someone', 'lastfm', 'link'], ['!lastfm', 'lastfm', 'now'], ['!spotify view', 'spotify', 'view'],
     ['!anilist anime Frieren', 'anilist', 'anime'], ['!anilist Frieren', 'anilist', 'anime'], ['!tmdb Interstellar', 'tmdb', 'movie'], ['!itunes creep', 'itunes', 'song'], ['!deezer creep', 'deezer', 'track'], ['!youtube lofi beats', 'youtube', 'video'], ['!yt lofi beats', 'youtube', 'video'],
     ['!twitch shroud', 'twitch', 'channel'], ['!wikipedia Minecraft', 'wikipedia', null], ['!wp Minecraft', 'wikipedia', null], ['!wiki ban', 'wiki', null], ['!weather Bogota', 'weather', null], ['!time Colombia', 'time', null], ['!currency 100 usd cop', 'currency', null],
     ['!crypto bitcoin', 'crypto', null], ['!github user octocat', 'github', 'user'], ['!github issues octocat/hello-world', 'github', 'issues'], ['!package discord.js', 'package', 'npm'], ['!pkg py requests', 'package', 'pypi'],
@@ -511,7 +507,12 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
     assert.equal(client.commandAliases.get(word), command, `${word} is still ${command}`);
   }
   assert.equal(client.commandRoutes.get('ytsearch').command, 'youtube', 'a route of an old command is still there');
-  for (const name of ['8ball', 'minecraft', 'birthday', 'boosterrole', 'anilist', 'github', 'voice', 'thread', 'massban', 'snipe']) assert.ok(!isSlashCommand(commandFile(name)), `/${name} is still not a slash command: it works with the prefix`);
+  for (const name of ['8ball', 'minecraft', 'birthday', 'anilist', 'github', 'voice', 'thread', 'massban', 'snipe']) assert.ok(!isSlashCommand(commandFile(name)), `/${name} is still not a slash command: it works with the prefix`);
+  // The booster role is its own slash command, with every subcommand, and not a subcommand of /me any more (`!boosterrole` and `!br` work as before).
+  assert.ok(isSlashCommand(commandFile('boosterrole')), '/boosterrole is a slash command');
+  assert.equal(commandFile('boosterrole').data.toJSON().options.length, 11, '/boosterrole has its 9 subcommands and the groups admin and filter');
+  assert.ok(!commandFile('me').subcommands.some((sub) => sub.wraps === 'boosterrole' || /^boosterrole/.test(sub.name)), '/me has no booster role subcommand');
+  assert.ok(!Object.hasOwn(commandFile('me').prefixSubcommandAliases ?? {}, 'br'), '`!me br` is not a thing any more');
   // The commands that were already slash commands are still registered as they were.
   for (const name of ['afk', 'remind', 'rank', 'suggest', 'top', 'ban', 'kick']) assert.ok(isSlashCommand(commandFile(name)), `/${name} is still a slash command`);
   // `/avatar`, `/userinfo`, `/purge` (and `/serverinfo`, `/unban`, `/timeout`) were replaced by `/user avatar`, `/user info`, `/mod purge`...: the prefix is unchanged.
@@ -699,8 +700,8 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   // ------------------------------------------------------------ Discord: registered, translated, inside the limits
   const registered = collectCommandData();
   const chat = registered.filter((each) => (each.type ?? 1) === 1);
-  assert.equal(registered.length, 65, '65 commands registered with Discord (71 before six old slash commands were replaced by their umbrella subcommand)');
-  assert.equal(chat.length, 62, '62 of them slash commands (3 are menus)');
+  assert.equal(registered.length, 66, '66 commands registered with Discord (71 before six old slash commands were replaced by their umbrella subcommand)');
+  assert.equal(chat.length, 63, '63 of them slash commands (3 are menus)');
   assert.ok(chat.length <= 100, 'far from the 100 slash commands Discord allows');
   const deployed = [];
   await require('../src/handlers/deployCommands').deployCommands({ rest: { put: async (_route, { body }) => { deployed.push(...body); return body; }, get: async () => [] }, settings: { getSetting: async () => null, setSetting: async () => {} }, force: true });

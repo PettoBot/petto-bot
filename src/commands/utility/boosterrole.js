@@ -12,6 +12,9 @@ const { t, tn, languageOf } = require('../../i18n');
 const COOLDOWN_CONFIG_FIELD = { color: 'color_cooldown_ms', icon: 'icon_cooldown_ms', rename: 'rename_cooldown_ms' };
 
 module.exports = {
+  // Also a slash command, with every subcommand (`/boosterrole color`, `/boosterrole admin base`...): the prefix keeps working. The staff ones
+  // (`admin`, `filter`) check Manage Server when they run; the member ones are open.
+  registerSlash: true,
   data: new SlashCommandBuilder()
     .setName('boosterrole')
     .setDescription('Custom colored role for server boosters — create your own, or share it with friends.')

@@ -35,6 +35,8 @@ const ESSENTIAL = [
   'auto', 'bot', 'community', 'config', 'contrib', 'greet', 'message', 'protect', 'special',
   'antinuke', 'antiscam', 'automod', 'autoresponder', 'clownboard', 'customcommand', 'feed', 'form', 'forum', 'giveawaypreset', 'giveawaytemplate',
   'identity', 'image', 'invites', 'level', 'logs', 'monkeyboard', 'permission', 'quickreply', 'role', 'rollouts', 'starboard', 'stats', 'voicemaster',
+  // The booster role, apart from /me: the old command with all its subcommands (member ones open, `admin` and `filter` check Manage Server inside).
+  'boosterrole',
   // Registered before for their own reasons.
   'guildtag', 'messagelinks', 'report', 'setup', 'vanity',
 ];
