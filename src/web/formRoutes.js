@@ -1,9 +1,12 @@
 // Forms (applications) from the dashboard. The forms themselves are saved by the dashboard straight in the database; these two
 // need the bot: accept or deny a submission (roles, the DM, the card in Discord) and post a panel.
 //   POST /api/dashboard/guild/:guildId/forms/review  { number, status: accepted|denied, reason }
-//   POST /api/dashboard/guild/:guildId/forms/submissions { status: pending|accepted|denied|cancelled|all, form_id, q, limit }
-//        -> { ok, submissions, pending: { <form id>: n }, stored, cap, retention_days }
-//   POST /api/dashboard/guild/:guildId/forms/panel   { form_ids: [..], channel_id, style: buttons|select, template, title, description, web }
+//   POST /api/dashboard/guild/:guildId/forms/submissions { status: pending|accepted|denied|cancelled|all, form_id | form_number, q, limit }
+//        -> { ok, submissions (each with form_number), pending: { <form id>: n }, pending_by_number: { <form number>: n }, stored, cap, retention_days }
+//   POST /api/dashboard/guild/:guildId/forms/panel   { form_ids: [..] | form_numbers: [..], channel_id, style: buttons|select, template, title, description, web }
+// A form has two numbers. `number` is its number inside the server (#1, #2...): what people see and type, and what the dashboard should
+// show. `id` is the internal id shared by every server (keys, buttons): it still works where the dashboard sends it today (`form_id`,
+// `form_ids`), but it is never shown. Both are only looked up inside the server of the route, so one server cannot reach the forms of another.
 // Filling a form on the website (petto.sbs/form/<public id>), for any member of the server who logged in with Discord. `:formId` is
 // the random public id of the form (never its number, so the forms cannot be walked through):
 //   POST /api/dashboard/form/:formId/public  { user_id } -> { ok, form, server, can, reason }
@@ -42,7 +45,7 @@ function publicServer(guild) {
 async function formLook(form) {
   // The Premium looks (an animated background, the Petto line hidden) only show while the server has Premium.
   const premium = (await getGuildPremium(form.guild_id).catch(() => ({ active: false }))).active;
-  return { id: String(form.public_id), title: form.title, description: form.description ?? null, color: form.color ?? null, page: forms.pageLook(form, { premium }), embed: forms.linkEmbed(form) };
+  return { id: String(form.public_id), number: form.number ?? null, title: form.title, description: form.description ?? null, color: form.color ?? null, page: forms.pageLook(form, { premium }), embed: forms.linkEmbed(form) };
 }
 
 /** The form as the page shows it: no review settings, no roles, only what a member reads. */
@@ -136,7 +139,12 @@ function registerFormRoutes(app, { authorize, limiter, isAuthorized = null, clie
       const guildId = access.guild.id;
       const asked = String(req.body?.status ?? 'pending');
       const status = ['pending', 'accepted', 'denied', 'cancelled'].includes(asked) ? asked : null;
-      const formId = /^\d{1,15}$/.test(String(req.body?.form_id ?? '')) ? String(req.body.form_id) : null;
+      // The form can be asked for by its number in the server (`form_number`) or by its internal id (`form_id`, as the dashboard sends it today).
+      const formList = await formsDb.listForms(guildId);
+      const wantedNumber = /^\d{1,9}$/.test(String(req.body?.form_number ?? '')) ? Number(req.body.form_number) : null;
+      const wantedId = /^\d{1,15}$/.test(String(req.body?.form_id ?? '')) ? String(req.body.form_id) : null;
+      // A number this server has no form for matches nothing (id 0 never exists), instead of showing every form.
+      const formId = wantedNumber !== null ? String(formList.find((f) => f.number === wantedNumber)?.id ?? 0) : wantedId;
       const q = String(req.body?.q ?? '').trim().slice(0, 60);
       const byId = SNOWFLAKE.test(q) ? q : null;
       const limit = Math.min(100, Math.max(1, Number(req.body?.limit) || 50));
@@ -151,10 +159,16 @@ function registerFormRoutes(app, { authorize, limiter, isAuthorized = null, clie
         const needle = q.toLowerCase().replace(/^#/, '');
         rows = rows.filter((row) => String(row.username ?? '').toLowerCase().includes(needle) || String(row.number) === needle).slice(0, limit);
       }
+      const numberOf = new Map(formList.map((f) => [String(f.id), f.number]));
       const pending = {};
-      for (const row of waiting) pending[String(row.form_id)] = (pending[String(row.form_id)] ?? 0) + 1;
+      const pendingByNumber = {};
+      for (const row of waiting) {
+        pending[String(row.form_id)] = (pending[String(row.form_id)] ?? 0) + 1;
+        const number = numberOf.get(String(row.form_id));
+        if (number !== undefined) pendingByNumber[String(number)] = (pendingByNumber[String(number)] ?? 0) + 1;
+      }
       res.set('Cache-Control', 'no-store'); // i18n-ignore: HTTP header
-      res.json({ ok: true, submissions: rows, pending, stored: stored.total, cap, retention_days: setting.retention_days });
+      res.json({ ok: true, submissions: rows.map((row) => ({ ...row, form_number: numberOf.get(String(row.form_id)) ?? null })), pending, pending_by_number: pendingByNumber, stored: stored.total, cap, retention_days: setting.retention_days });
     } catch (err) {
       logger.error(`Dashboard form submissions failed for guild ${req.params.guildId}:`, err);
       res.status(500).json({ ok: false, message: t(lang, 'web.api.forms.failed') });
@@ -191,9 +205,11 @@ function registerFormRoutes(app, { authorize, limiter, isAuthorized = null, clie
       const channelId = String(req.body?.channel_id ?? '');
       const channel = SNOWFLAKE.test(channelId) ? access.guild.channels.cache.get(channelId) ?? await access.guild.channels.fetch(channelId).catch(() => null) : null;
       if (!channel) { res.status(400).json({ ok: false, message: t(lang, 'web.api.forms.pickChannel') }); return; }
-      const wanted = [...new Set((Array.isArray(req.body?.form_ids) ? req.body.form_ids : []).map(String))].slice(0, 25);
       const all = await formsDb.listForms(access.guild.id);
-      const formList = wanted.map((id) => all.find((form) => String(form.id) === id)).filter(Boolean);
+      // By number in the server (`form_numbers`) or by internal id (`form_ids`, as the dashboard sends it today); only forms of this server count.
+      const byNumber = Array.isArray(req.body?.form_numbers);
+      const wanted = [...new Set((byNumber ? req.body.form_numbers : Array.isArray(req.body?.form_ids) ? req.body.form_ids : []).map(String))].slice(0, 25);
+      const formList = wanted.map((ref) => all.find((form) => String(byNumber ? form.number : form.id) === ref)).filter(Boolean);
       if (!formList.length) { res.status(400).json({ ok: false, message: t(lang, 'web.api.forms.pickForms') }); return; }
       const color = /^#?[0-9a-f]{6}$/i.test(String(req.body?.color ?? '')) ? parseInt(String(req.body.color).replace('#', ''), 16) : null;
       const result = await postPanel({

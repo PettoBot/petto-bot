@@ -443,7 +443,8 @@ function startServer(client) {
       try {
         const appealsDb = require('../db/appeals');
         const { submitAppeal } = require('../utils/appeals');
-        const form = await appealsDb.getForm(access.guild.id, Number(req.body?.form_id));
+        // `form_number` is the number of the form in the server (the one in the public address); `form_id` (internal) still works.
+        const form = await appealsDb.findForm(access.guild.id, { number: req.body?.form_number, id: req.body?.form_id });
         const result = await submitAppeal({ client, guild: access.guild, config: access.config, form, user: access.user, rawAnswers: req.body?.answers ?? {} });
         if (!result.ok) { res.status(result.error === 'invalid' ? 422 : 400).json({ ok: false, error: result.error, fields: result.fields }); return; }
         res.json({ ok: true, id: result.submission.id });
@@ -507,9 +508,9 @@ function startServer(client) {
         const appealsDb = require('../db/appeals');
         const filesDb = require('../db/appealFiles');
         const { prepareFile, MAX_LOOSE } = require('../utils/appealFile');
-        const formId = Number(req.query.form_id);
         const questionId = String(req.query.question_id || '');
-        const form = Number.isInteger(formId) ? await appealsDb.getForm(access.guild.id, formId) : null;
+        const form = await appealsDb.findForm(access.guild.id, { number: req.query.form_number, id: req.query.form_id });
+        const formId = form?.id;
         if (!access.config.enabled || !form || form.status !== 'live') { res.status(404).json({ ok: false, error: 'form_unavailable' }); return; }
         const question = (form.sections ?? []).flatMap((section) => section.questions ?? []).find((q) => q.id === questionId && q.type === 'file');
         if (!question) { res.status(400).json({ ok: false, error: 'unknown_question' }); return; }

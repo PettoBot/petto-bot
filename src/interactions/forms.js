@@ -1,5 +1,7 @@
 // Forms (applications) in Discord: the buttons and the menu of a panel open a form, its pages are Discord forms of five questions
 // with "Next" between them, and the buttons of a review card accept, deny or open a thread.
+// The <form> in these ids is the INTERNAL id of the form (never its number, which is per server and is what people see); it is only
+// looked up with getFormById, inside the server of the interaction.
 //   fm:o:<form>          open a form (panel button)        fm:s:<panel>        open a form (panel menu)
 //   fm:n:<form>:<page>   show a page (next / fix answers)  fm:x:<form>         stop filling it in
 //   fm:p:<form>:<page>   a page was sent (modal)
@@ -25,7 +27,7 @@ const say = (interaction, text, color = 0x4b4f59, rows = []) => (interaction.def
 
 /** The member presses the button (or picks the form in the menu) of a panel: the rules are checked, then the first page opens. */
 async function openForm(interaction, formId, lang) {
-  const form = /^\d{1,15}$/.test(String(formId)) ? await formsDb.getForm(interaction.guild.id, formId) : null;
+  const form = await formsDb.getFormById(interaction.guild.id, formId);
   if (!form) return say(interaction, t(lang, 'forms.gone'), RED);
   const member = interaction.member;
   const [stats, total] = await Promise.all([formsDb.memberStats(interaction.guild.id, form.id, member.id), form.max_total > 0 ? formsDb.countFormSubmissions(interaction.guild.id, form.id) : 0]);
@@ -38,7 +40,7 @@ async function openForm(interaction, formId, lang) {
 
 /** "Next" (or "Fix my answers"): the page opens again with what was already written. */
 async function showPage(interaction, formId, page, lang) {
-  const form = await formsDb.getForm(interaction.guild.id, formId);
+  const form = await formsDb.getFormById(interaction.guild.id, formId);
   if (!form || form.status !== 'open') return say(interaction, t(lang, form ? 'forms.refuse.closed' : 'forms.gone'), RED);
   const draft = forms.getDraft(interaction.guild.id, interaction.user.id, form.id);
   if (!draft && page > 0) return interaction.update(card(t(lang, 'forms.expired'), RED));
@@ -56,7 +58,7 @@ async function pageSent(interaction, formId, page, lang) {
   // A page opened from "Next" updates that step message; the first page was opened from the panel, which must stay as it is.
   const fromStep = Boolean(interaction.isFromMessage?.() && interaction.message?.flags?.has?.(MessageFlags.Ephemeral));
   const answer = (payload) => (fromStep ? interaction.update(payload) : interaction.reply(fresh(payload)));
-  const form = await formsDb.getForm(interaction.guild.id, formId);
+  const form = await formsDb.getFormById(interaction.guild.id, formId);
   if (!form) return answer(card(t(lang, 'forms.gone'), RED));
   const pages = forms.pagesOf(form);
   if (page >= pages.length) return answer(card(t(lang, 'forms.changed'), RED));
@@ -82,7 +84,7 @@ async function pageSent(interaction, formId, page, lang) {
 async function reviewerFor(interaction, number, lang) {
   const submission = await formsDb.getSubmission(interaction.guild.id, number);
   if (!submission) { await say(interaction, t(lang, 'forms.review.gone'), RED); return null; }
-  const form = submission.form_id ? await formsDb.getForm(interaction.guild.id, submission.form_id).catch(() => null) : null;
+  const form = submission.form_id ? await formsDb.getFormById(interaction.guild.id, submission.form_id).catch(() => null) : null;
   if (!forms.isReviewer(interaction.member, form)) { await say(interaction, t(lang, 'forms.review.notReviewer'), RED); return null; }
   return { submission, form };
 }
