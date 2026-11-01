@@ -16,6 +16,8 @@ const reply = (interaction, text, color = 0x4b4f59, ephemeral = false) => intera
 const nameOption = (o) => o.setName('name').setDescription('The name of the quick reply (letters, numbers, - and _)').setMaxLength(30).setRequired(true);
 
 module.exports = {
+  // Also registered as a slash command (it already has subcommands, so it needs no umbrella); the prefix keeps working.
+  registerSlash: true,
   aliases: ['qr', 'macro'],
   data: new SlashCommandBuilder()
     .setName('quickreply')

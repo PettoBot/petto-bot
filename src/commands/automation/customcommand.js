@@ -53,6 +53,8 @@ async function didYouMean(guildId, name, lang) {
 
 
 module.exports = {
+  // Also registered as a slash command (it already has subcommands, so it needs no umbrella); the prefix keeps working.
+  registerSlash: true,
   data: new SlashCommandBuilder()
     .setName('customcommand')
     .setDescription('Create your own commands that reply with a saved message.')

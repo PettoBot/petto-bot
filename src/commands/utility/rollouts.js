@@ -53,7 +53,8 @@ function readList(text, allowed) {
 }
 
 module.exports = {
-  prefixOnly: true,
+  // Also registered as a slash command (it already has subcommands, so it needs no umbrella); the prefix keeps working.
+  registerSlash: true,
   aliases: ['rollout', 'experiments'],
   data: new SlashCommandBuilder()
     .setName('rollouts')

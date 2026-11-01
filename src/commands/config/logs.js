@@ -46,6 +46,8 @@ async function deleteWebhookForChannel(client, guildId, channelId) {
 }
 
 module.exports = {
+  // Also registered as a slash command (it already has subcommands, so it needs no umbrella); the prefix keeps working.
+  registerSlash: true,
   aliases: ['log'],
   data: new SlashCommandBuilder()
     .setName('logs')

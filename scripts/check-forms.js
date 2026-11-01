@@ -330,7 +330,7 @@ const fieldsOf = (values) => ({
   assert.match(await talk('open', { form: 'staff' }), /is open/); assert.equal(staffForm().status, 'open');
   assert.match(await talk('info', { form: 'staff' }), /Staff application[\s\S]*<#review>[\s\S]*<@&reviewer>[\s\S]*gives <@&staff> <@&trial>[\s\S]*9 questions in 2 pages/);
   assert.match(await talk('list', {}), /Forms \(6\/25\)[\s\S]*`staff` · \*\*Staff application\*\* · open · 9 questions/);
-  assert.equal(formCommand.prefixOnly, true, '!form is a prefix command, never a slash command');
+  assert.ok(!formCommand.prefixOnly && formCommand.registerSlash === true, '!form is a prefix command and a slash command since the third batch of umbrellas (it has subcommands, so it needs no umbrella)');
 
   // ---- A member fills the form in from the panel: two pages with "Next" between them.
   const id = staffForm().id;

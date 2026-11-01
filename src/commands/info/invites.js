@@ -9,11 +9,14 @@ const { t, tn, languageOf } = require('../../i18n');
 const SOURCES = ['invite', 'vanity', 'unknown', 'bot'];
 
 module.exports = {
+  // Also registered as a slash command (it already has subcommands, so it needs no umbrella); the prefix keeps working.
+  registerSlash: true,
   aliases: ['invs'],
   prefixDefaultSubcommand: 'user',
   data: new SlashCommandBuilder()
     .setName('invites')
     .setDescription('Invite tracker: who invited whom, with fake and bonus invites.')
+    .setDMPermission(false)
     .addSubcommand((s) => s.setName('user').setDescription('Invites of a member (default: you).').addUserOption((o) => o.setName('user').setDescription('User').setRequired(false)))
     .addSubcommand((s) => s.setName('top').setDescription('Invite leaderboard for this server.')
       .addStringOption((o) => o.setName('period').setDescription('All time (default), this week or this month').setRequired(false).addChoices({ name: 'All time', value: 'all' }, { name: 'This week', value: 'week' }, { name: 'This month', value: 'month' })))

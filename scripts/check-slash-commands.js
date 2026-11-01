@@ -28,6 +28,12 @@ const ESSENTIAL = [
   // `rep`...), lookups (`/search weather`, `youtube`...) and the staff tools that do not fit `/mod` (`/staff massban`, `voice-mute`...). Each one only
   // has subcommands, and `/staff` asks for the permission of the command each one wraps when it runs. The rest of the prefix commands move little by little.
   'game', 'me', 'search', 'staff',
+  // The third batch: the rest of the prefix commands. Umbrellas whose groups are old commands with all their subcommands (`/config prefix set`,
+  // `/protect honeypot add`, `/auto timer add`...), and the commands that already are a command with subcommands, registered as they are. Each one
+  // only has subcommands (scripts/check-umbrellas-3.js).
+  'auto', 'bot', 'community', 'config', 'contrib', 'greet', 'message', 'protect', 'special',
+  'antinuke', 'antiscam', 'automod', 'autoresponder', 'clownboard', 'customcommand', 'feed', 'form', 'forum', 'giveawaypreset', 'giveawaytemplate',
+  'identity', 'image', 'invites', 'level', 'logs', 'monkeyboard', 'permission', 'quickreply', 'role', 'rollouts', 'starboard', 'stats', 'voicemaster',
   // Registered before for their own reasons.
   'guildtag', 'messagelinks', 'report', 'setup', 'vanity',
 ];

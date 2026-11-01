@@ -24,6 +24,7 @@ const chat = (name, subs = 0, description = 'A command.') => ({ type: 1, name, d
   const near = budget.nearLimit(registered);
   assert.deepEqual(near.map((entry) => [entry.name, entry.full]), [['level', true], ['forum', false]], 'the fullest first, and which one is full');
   assert.ok(budget.commandSize({ name: 'ab', description: 'cde', options: [{ name: 'f', description: 'gh', choices: [{ name: 'ij', value: 'k' }] }] }) === 2 + 3 + 1 + 2 + 2 + 1, 'names, descriptions and choices add up');
+  assert.equal(budget.commandSize({ name: 'ab', description: 'cde', description_localizations: { 'es-ES': 'cdefg', 'pt-BR': 'cdef' }, options: [{ name: 'f', description: 'gh', description_localizations: { 'es-ES': 'ghi' } }] }), 2 + 5 + 1 + 3, 'the languages are not added together: the size is the one of the longest');
   assert.deepEqual(budget.difference([{ type: 1, name: 'a' }, { type: 1, name: 'old' }], [{ type: 1, name: 'a' }, { type: 1, name: 'new' }]), { onlyRegistered: ['chat:old'], notRegistered: ['chat:new'] });
 
   // The command.

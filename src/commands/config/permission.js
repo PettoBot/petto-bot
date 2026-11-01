@@ -6,6 +6,8 @@ const { COLORS } = require('../../utils/colors');
 const { t, tn, languageOf } = require('../../i18n');
 
 module.exports = {
+  // Also registered as a slash command (it already has subcommands, so it needs no umbrella); the prefix keeps working.
+  registerSlash: true,
   aliases: ['auth', 'pgroup'],
   data: new SlashCommandBuilder()
     .setName('permission')

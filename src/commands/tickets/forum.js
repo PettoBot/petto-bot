@@ -340,7 +340,8 @@ const data = new SlashCommandBuilder()
   .addSubcommand((s) => s.setName('delete').setDescription('Remove a setup (the posts stay in the forum).').addStringOption(settingOption));
 
 module.exports = {
-  prefixOnly: true,
+  // Also registered as a slash command (it already has subcommands, so it needs no umbrella); the prefix keeps working.
+  registerSlash: true,
   aliases: ['forums'],
   data,
   // Anyone can type it: the checks of each tool are in forumAccess.js. The setup commands need Manage Server.

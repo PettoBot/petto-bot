@@ -247,7 +247,7 @@ function entryDetailCard(client, guild, prefix, command, entry, page = 0, total 
   const slash = !command.slashOnly && isSlashCommand(command) ? buildSyntax('/', json.name, entry) : null;
   const params = buildParams(entry, lang);
   // An umbrella (`/mod`) is open to everybody: what each subcommand needs is what the command it wraps needs.
-  const needed = command.permissionForSubcommand?.(entry.path[0]) ?? json.default_member_permissions;
+  const needed = command.permissionForSubcommand?.(entry.path[0], entry.path[1]) ?? json.default_member_permissions;
   const information = needed == null ? t(lang, 'help.detail.anyone') : `${EMOJI.WARNING} ${describePermissions(String(needed), lang)}`;
   const title = [json.name, ...entry.path].join(' ');
   const moduleLabel = categoryMeta(command.category, lang).label;

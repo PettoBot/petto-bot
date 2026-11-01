@@ -8,7 +8,7 @@
 //   - the old commands keep their words, routes and slash commands; a rule of a server (turned off, restricted, a permission level) on the
 //     wrapped command, or on `mod`, stops the subcommand;
 //   - the descriptions are translated for Discord, the short aliases are in the table, and the number and size of the slash commands stay
-//     inside what Discord allows (38 registered now, 35 of them slash commands: the second batch of umbrellas, scripts/check-umbrellas-2.js, adds four).
+//     inside what Discord allows (71 registered now, 68 of them slash commands: the third batch of umbrellas, scripts/check-umbrellas-3.js, adds the rest; before it were 38 and 35: the second batch of umbrellas, scripts/check-umbrellas-2.js, adds four).
 process.env.DISCORD_TOKEN ||= 'check-only';
 process.env.DISCORD_CLIENT_ID ||= '1';
 process.env.DISCLOUD_DATABASE_URL ||= 'postgres://check:check@127.0.0.1:1/check'; // never connected to
@@ -548,8 +548,8 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   // ------------------------------------------------------------ Discord: registered, translated, inside the limits
   const registered = collectCommandData();
   const chat = registered.filter((each) => (each.type ?? 1) === 1);
-  assert.equal(registered.length, 38, '38 commands registered with Discord (the 33 there were, /mod, /game, /me, /search and /staff)');
-  assert.equal(chat.length, 35, '35 of them slash commands (3 are menus)');
+  assert.equal(registered.length, 71, '71 commands registered with Discord (the 33 there were, /mod, /game, /me, /search, /staff and the third batch of umbrellas)');
+  assert.equal(chat.length, 68, '68 of them slash commands (3 are menus)');
   assert.ok(chat.length <= 100, 'far from the 100 slash commands Discord allows');
   const registeredMod = registered.find((each) => each.name === 'mod');
   assert.ok(registeredMod, '/mod is registered with Discord, so deploy-commands.js sends it');

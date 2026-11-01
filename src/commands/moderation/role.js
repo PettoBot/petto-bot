@@ -22,6 +22,8 @@ const MAX_TEMP_ROLE_MS = 365 * 24 * 60 * 60 * 1000;
 const activeMassOps = new Map(); // guildId -> { abort: boolean }
 
 module.exports = {
+  // Also registered as a slash command (it already has subcommands, so it needs no umbrella); the prefix keeps working.
+  registerSlash: true,
   aliases: ['r'],
   // `!role @user Role` gives it; the words other bots use for each subcommand work too.
   prefixDefaultSubcommand: 'add',

@@ -131,12 +131,28 @@ function missingOptionCard({ command, prefix, name, argText, missing = null, lan
   return card(lines);
 }
 
-/** What a command with many subcommands answers when it is typed alone (`!mod`): each way to run it with what it does. Not a warning. */
+/**
+ * What a command with many subcommands answers when it is typed alone (`!mod`): each way to run it with what it does. Not a warning.
+ * An umbrella made of groups (`!protect`) lists the groups, each with its subcommands in a few words: with every way to run it the list
+ * would not fit in a message, and `!protect antiscam` (or `!help protect antiscam`) goes on from there.
+ */
 function subcommandListCard({ command, prefix, name, lang = currentLanguage() }) {
   const lines = [t(lang, 'core.usage.listTitle', { prefix, command: name })];
-  for (const entry of listPaths(command)) {
-    const description = commandDescription(lang, command, entry.path.split(' '), null, entry.description);
-    lines.push(`\`${prefix}${name} ${entry.path}\`${description ? ` · ${clip(description, 70)}` : ''}`);
+  const top = command.data.toJSON().options ?? [];
+  if (top.some((option) => option.type === GROUP)) {
+    const build = (withSubs) => top.map((option) => {
+      const description = commandDescription(lang, command, [option.name], null, option.description);
+      const subs = withSubs && option.type === GROUP ? ` — ${clip(option.options.map((sub) => sub.name).join(', '), 90)}` : '';
+      return `\`${prefix}${name} ${option.name}\`${description ? ` · ${clip(description, 60)}` : ''}${subs}`;
+    });
+    let body = build(true);
+    if (body.join('\n').length > 3600) body = build(false);
+    lines.push(...body);
+  } else {
+    for (const entry of listPaths(command)) {
+      const description = commandDescription(lang, command, entry.path.split(' '), null, entry.description);
+      lines.push(`\`${prefix}${name} ${entry.path}\`${description ? ` · ${clip(description, 70)}` : ''}`);
+    }
   }
   lines.push(t(lang, 'core.usage.helpHint', { prefix, command: name }));
   return card(lines, COLORS.DEFAULT);

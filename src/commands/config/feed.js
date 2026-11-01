@@ -26,6 +26,8 @@ function resultCard(lang, platform, result) {
 const idOption = (o) => o.setName('id').setDescription('The number of the feed (see the list)').setMinValue(1).setRequired(true);
 
 module.exports = {
+  // Also registered as a slash command (it already has subcommands, so it needs no umbrella); the prefix keeps working.
+  registerSlash: true,
   resultCard,
   aliases: ['feeds', 'notify', 'notifications'],
   prefixDefaultSubcommand: 'list',

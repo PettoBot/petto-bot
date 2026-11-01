@@ -533,7 +533,8 @@ async function execute(interaction) {
 }
 
 module.exports = {
-  prefixOnly: true,
+  // Also registered as a slash command (it already has subcommands, so it needs no umbrella); the prefix keeps working.
+  registerSlash: true,
   aliases: ['forms', 'application', 'applications'],
   // `!form edit staff title Apply` is `!form set`; `!form q add ...` is `!form question add ...`.
   prefixSubcommandAliases: { newlink: 'relink', new: 'create', edit: 'set', q: 'question', subs: 'submissions', approve: 'accept', reject: 'deny', show: 'view' },

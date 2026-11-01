@@ -11,6 +11,8 @@ const RED = 0xff6b6b;
 const reply = (interaction, text, color = GREEN) => interaction.editReply({ components: [textCard(text, color)], flags: MessageFlags.IsComponentsV2 });
 
 module.exports = {
+  // Also registered as a slash command (it already has subcommands, so it needs no umbrella); the prefix keeps working.
+  registerSlash: true,
   aliases: ['scam', 'mrbeast'],
   prefixDefaultSubcommand: 'status',
   data: new SlashCommandBuilder()

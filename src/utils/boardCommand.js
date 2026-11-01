@@ -83,6 +83,8 @@ function createBoardCommand({ name, label, aliases = [], db, description, selfNa
 
   const ignoreChoices = [{ name: 'channel', value: 'channel' }, { name: 'role', value: 'role' }, { name: 'member', value: 'member' }];
   return {
+    // Also registered as a slash command (it has subcommands); the prefix keeps working.
+    registerSlash: true,
     aliases,
     data: new SlashCommandBuilder()
       .setName(name)

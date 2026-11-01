@@ -24,7 +24,15 @@ const ACTION_CHOICES = [
 ];
 
 module.exports = {
+  // Also registered as a slash command (it already has subcommands, so it needs no umbrella); the prefix keeps working.
+  registerSlash: true,
   aliases: ['xp'],
+  // `reward add` and `reward remove` take the kind of level last (Discord wants the optional options after the required ones), and the prefix
+  // still reads it first as it always did: `!xp reward add voice 5 @Role` is read as `!xp reward add 5 @Role voice`.
+  prefixArgs(argText) {
+    const match = /^\s*(reward\s+(?:add|remove))\s+(text|messages|voice)(?:\s+([\s\S]*))?$/i.exec(argText ?? '');
+    return match ? `${match[1]} ${match[3] ?? ''} ${match[2]}`.replace(/\s+/g, ' ').trim() : argText;
+  },
   data: new SlashCommandBuilder()
     .setName('level')
     .setDescription('Configure the XP/leveling system.')
@@ -114,8 +122,8 @@ module.exports = {
       g
         .setName('reward')
         .setDescription('Roles granted at specific levels.')
-        .addSubcommand((s) => s.setName('add').setDescription('Grant a role at a level.').addStringOption((o) => o.setName('type').setDescription('Message levels (default) or voice levels').setRequired(false).addChoices({ name: 'messages', value: 'text' }, { name: 'voice', value: 'voice' })).addIntegerOption((o) => o.setName('level').setDescription('Level').setRequired(true).setMinValue(1)).addRoleOption((o) => o.setName('role').setDescription('Role').setRequired(true)))
-        .addSubcommand((s) => s.setName('remove').setDescription('Remove a level reward.').addStringOption((o) => o.setName('type').setDescription('Message levels (default) or voice levels').setRequired(false).addChoices({ name: 'messages', value: 'text' }, { name: 'voice', value: 'voice' })).addIntegerOption((o) => o.setName('level').setDescription('Level').setRequired(true).setMinValue(1)))
+        .addSubcommand((s) => s.setName('add').setDescription('Grant a role at a level.').addIntegerOption((o) => o.setName('level').setDescription('Level').setRequired(true).setMinValue(1)).addRoleOption((o) => o.setName('role').setDescription('Role').setRequired(true)).addStringOption((o) => o.setName('type').setDescription('Message levels (default) or voice levels').setRequired(false).addChoices({ name: 'messages', value: 'text' }, { name: 'voice', value: 'voice' })))
+        .addSubcommand((s) => s.setName('remove').setDescription('Remove a level reward.').addIntegerOption((o) => o.setName('level').setDescription('Level').setRequired(true).setMinValue(1)).addStringOption((o) => o.setName('type').setDescription('Message levels (default) or voice levels').setRequired(false).addChoices({ name: 'messages', value: 'text' }, { name: 'voice', value: 'voice' })))
         .addSubcommand((s) => s.setName('list').setDescription('List all level rewards.')),
     )
     .addSubcommandGroup((g) =>

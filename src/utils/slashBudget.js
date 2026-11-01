@@ -16,17 +16,30 @@ function slotUsage(commands) {
 /** The subcommands and groups at the first level of a command. */
 const subcommandCount = (command) => (command?.options ?? []).filter((option) => option.type === 1 || option.type === 2).length;
 
-/** Discord counts the characters of the names, descriptions and choices of a command and all its options (and the localizations); this adds them up. */
+/**
+ * The characters Discord counts in a command: its names, descriptions and choices and those of all its options, in one language. The
+ * limit is for each language apart (the descriptions in Spanish and Portuguese are not added to the English ones: the same checks of
+ * the repository, scripts/check-slash-commands.js, count them this way), so this is the size in the language where it is the longest.
+ */
 function commandSize(command) {
   const text = (value) => (typeof value === 'string' ? value.length : 0);
-  const localized = (map) => Object.values(map ?? {}).reduce((sum, value) => sum + text(value), 0);
-  const visit = (node) => {
-    let size = text(node.name) + text(node.description) + localized(node.name_localizations) + localized(node.description_localizations);
-    for (const choice of node.choices ?? []) size += text(choice.name) + (typeof choice.value === 'string' ? choice.value.length : 0) + localized(choice.name_localizations);
-    for (const option of node.options ?? []) size += visit(option);
-    return size;
+  const locales = new Set();
+  const collect = (node) => {
+    for (const key of Object.keys(node.description_localizations ?? {})) locales.add(key);
+    for (const choice of node.choices ?? []) for (const key of Object.keys(choice.name_localizations ?? {})) locales.add(key);
+    for (const option of node.options ?? []) collect(option);
   };
-  return visit(command);
+  collect(command);
+  const inLanguage = (locale) => {
+    const visit = (node) => {
+      let size = text(node.name) + text((locale && node.description_localizations?.[locale]) || node.description);
+      for (const choice of node.choices ?? []) size += text((locale && choice.name_localizations?.[locale]) || choice.name) + (typeof choice.value === 'string' ? choice.value.length : 0);
+      for (const option of node.options ?? []) size += visit(option);
+      return size;
+    };
+    return visit(command);
+  };
+  return Math.max(inLanguage(null), ...[...locales].map(inLanguage));
 }
 
 /** The commands close to a limit (or at it): `{ name, subcommands, size, full }`, the fullest first. */

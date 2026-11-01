@@ -28,9 +28,9 @@ const MAX_LENGTH = 5;
 const MAX_STEM = 3;
 // The commands people type most come first, so they get the shortest words.
 const PRIORITY = ['image', 'ticket', 'timer', 'feed', 'giveaway', 'welcome', 'backup', 'automod', 'counter', 'snipe', 'afk', 'remind', 'birthday', 'level', 'starboard', 'suggestion', 'verify'];
-// The umbrellas `/server`, `/user`, `/mod`, `/game`, `/me`, `/search` and `/staff` come after every other command, so their words are the ones left free and no word that already
+// The umbrellas `/server`, `/user`, `/mod`, `/game`, `/me`, `/search`, `/staff`, `/config`, `/protect`, `/greet`, `/auto`, `/message`, `/community`, `/contrib`, `/special` and `/bot` come after every other command, so their words are the ones left free and no word that already
 // works changes (their subcommands are the old commands with their own words: `!si`, `!ui`, `!av`).
-const LAST = ['server', 'user', 'mod', 'game', 'me', 'search', 'staff'];
+const LAST = ['server', 'user', 'mod', 'game', 'me', 'search', 'staff', 'config', 'protect', 'greet', 'auto', 'message', 'community', 'contrib', 'special', 'bot'];
 // A stem that is not the first letter or a short alias already there: the usual way people shorten the name.
 const STEMS = { image: 'i', ticket: 'tk', feed: 'fd', backup: 'bk', counter: 'cn', snipe: 'sn', afk: 'af', remind: 'rm', forum: 'fr' };
 // Left out: the actions of /act have their own words (`!hug`), and these are not for members to type.
@@ -49,7 +49,7 @@ function loadCommandInfo() {
     const category = path.basename(path.dirname(file));
     const subcommands = (json.options ?? []).flatMap((option) => (option.type === 1 ? [option.name] : option.type === 2 ? (option.options ?? []).map((sub) => `${option.name} ${sub.name}`) : []));
     const aliases = [...new Set([...(command.aliases ?? []), ...(DEFAULT_COMMAND_ALIASES[json.name] ?? [])].map((word) => word.toLowerCase()))];
-    commands.push({ name: json.name, category, aliases, subcommands, hidden: Boolean(command.hiddenFromHelp || command.slashOnly || command.privateGuildId || category === 'roleplay' || json.name.endsWith('config')) });
+    commands.push({ name: json.name, category, aliases, subcommands, hidden: Boolean(command.hiddenFromHelp || command.slashOnly || command.privateGuildId || category === 'roleplay' || (json.name.endsWith('config') && json.name !== 'config')) });
   }
   // Every word that already means something (the ones written by hand; the table itself is not in here).
   const taken = new Set();

@@ -12,7 +12,7 @@
 //   - the old commands, their words, routes and slash commands are untouched; a rule of a server (turned off, restricted, a permission level)
 //     on a wrapped command stops that subcommand only, and on the umbrella stops all of it;
 //   - the descriptions are translated for Discord (Spanish and Portuguese), the short aliases are in the table, and the number and size of the
-//     slash commands stay inside what Discord allows (38 registered, 35 of them slash commands).
+//     slash commands stay inside what Discord allows (38 registered, 35 of them slash commands; the third batch, check-umbrellas-3.js, brings it to 71 and 68).
 process.env.DISCORD_TOKEN ||= 'check-only';
 process.env.DISCORD_CLIENT_ID ||= '1';
 process.env.DISCLOUD_DATABASE_URL ||= 'postgres://check:check@127.0.0.1:1/check'; // never connected to
@@ -695,8 +695,8 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   // ------------------------------------------------------------ Discord: registered, translated, inside the limits
   const registered = collectCommandData();
   const chat = registered.filter((each) => (each.type ?? 1) === 1);
-  assert.equal(registered.length, 38, '38 commands registered with Discord (the 34 there were and /game, /me, /search and /staff)');
-  assert.equal(chat.length, 35, '35 of them slash commands (3 are menus)');
+  assert.equal(registered.length, 71, '71 commands registered with Discord (the 34 there were, /game, /me, /search, /staff and the third batch of umbrellas)');
+  assert.equal(chat.length, 68, '68 of them slash commands (3 are menus)');
   assert.ok(chat.length <= 100, 'far from the 100 slash commands Discord allows');
   const deployed = [];
   await require('../src/handlers/deployCommands').deployCommands({ rest: { put: async (_route, { body }) => { deployed.push(...body); return body; }, get: async () => [] }, settings: { getSetting: async () => null, setSetting: async () => {} }, force: true });

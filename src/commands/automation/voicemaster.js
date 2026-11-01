@@ -7,6 +7,8 @@ const { answer } = require('../../utils/interactionAck');
 const USER_ACTIONS = ['lock', 'unlock', 'ghost', 'reveal', 'claim', 'delete', 'rename', 'transfer', 'limit', 'permit', 'reject', 'disconnect', 'activity'];
 
 module.exports = {
+  // Also registered as a slash command (it already has subcommands, so it needs no umbrella); the prefix keeps working.
+  registerSlash: true,
   aliases: ['vc'],
   data: new SlashCommandBuilder()
     .setName('voicemaster')

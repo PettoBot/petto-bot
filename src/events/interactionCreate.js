@@ -557,10 +557,12 @@ module.exports = {
     }
 
     const subcommand = interaction.options?.getSubcommand?.(false) ?? null;
+    // The group of an umbrella that wraps a whole command (`/protect antiscam set`): its rules are the ones of that command.
+    const group = interaction.options?.getSubcommandGroup?.(false) ?? null;
     if (interaction.guildId && interaction.member) {
       try {
         // A subcommand of an umbrella (`/server info`) also asks for the level set for the command it wraps (`serverinfo`).
-        for (const name of commandRules.permissionNames(command, { subcommand })) {
+        for (const name of commandRules.permissionNames(command, { subcommand, group })) {
           if (!await permissionsDb.hasCommandPermission(interaction.guildId, name, interaction.member)) {
             await interaction.reply({ content: t(lang, 'core.slash.missingLevel'), flags: MessageFlags.Ephemeral });
             return;
@@ -575,7 +577,7 @@ module.exports = {
 
     // The rules of a server are the same ones the prefix checks (utils/commandRules.js): an action of /act (`hug`) or the whole command
     // (`act`) can be restricted or turned off.
-    const ruleNames = commandRules.ruleNames(command, { subcommand });
+    const ruleNames = commandRules.ruleNames(command, { subcommand, group });
     // !restrictcommand: only the roles chosen for this command (administrators always can).
     if (interaction.guildId && interaction.member) {
       const restricted = await commandRules.restrictedForNames(interaction.guildId, ruleNames, interaction.member).catch(() => null);

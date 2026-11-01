@@ -311,6 +311,8 @@ module.exports = {
     let command = message.client.commands.get(canonicalName);
     // A command can send a first word to another command (`!timeout list` is `!mute list`, `!hardban list` is `!ban list hard`).
     const wordRoute = command ? applyWordRoute(command.prefixWords, canonicalName, argText) : null;
+    // An umbrella that sends its first word to the command it wraps (`!config prefix set` is `!prefix set`): the rules of the umbrella still apply.
+    const viaUmbrella = wordRoute && command.umbrella ? command.data.name : null;
     if (wordRoute) {
       canonicalName = message.client.commandAliases.get(wordRoute.commandName) ?? wordRoute.commandName;
       command = message.client.commands.get(canonicalName);
@@ -350,7 +352,7 @@ module.exports = {
     // A route can stand for one action of a command (`!hug` is `/act` hug): `!disablecommand hug` turns off that action only, and
     // turning off the whole command (`!disablecommand act`, or its category) turns off every action too. The slash command asks
     // the same function (utils/commandRules.js).
-    const ruleNames = commandRules.ruleNames(command, { route: prefixRoute, subcommand: commandRules.subcommandOfText(command, argText) });
+    const ruleNames = commandRules.ruleNames(command, { route: prefixRoute, subcommand: commandRules.subcommandOfText(command, argText), via: viaUmbrella });
     const found = hiddenAutomodControl ? null : await commandRules.disabledFor(message.guild.id, ruleNames, message.channel.id);
     const disabled = found?.row ?? null;
     const disableName = found?.name ?? canonicalName;
@@ -396,7 +398,7 @@ module.exports = {
       // The level set for the command, and for the old command a subcommand of an umbrella wraps (`!server info` asks for `serverinfo` too).
       let allowed = true;
       if (!hiddenAutomodControl && !moderationRoleOverride) {
-        for (const name of commandRules.permissionNames(command, { subcommand: commandRules.subcommandOfText(command, argText) })) {
+        for (const name of commandRules.permissionNames(command, { subcommand: commandRules.subcommandOfText(command, argText), via: viaUmbrella })) {
           if (!await permissionsDb.hasCommandPermission(message.guild.id, name, message.member)) { allowed = false; break; }
         }
       }
