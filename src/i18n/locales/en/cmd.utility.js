@@ -75,6 +75,7 @@ module.exports = {
   'cmd.utility.boosterrole.filter.remove.desc': 'Allow a word again in booster role names.',
   'cmd.utility.boosterrole.filter.remove.opt.word.desc': 'Word or phrase',
   'cmd.utility.boosterrole.filter.list.desc': 'List filtered words.',
+  'cmd.utility.bots.desc': 'Private control: the bots of this server and the slash command slots Petto has left.',
   'cmd.utility.botstatus.desc': 'Private control: change Petto\'s status dot and device, or show them if you give none.',
   'cmd.utility.botstatus.opt.status.desc': 'online, idle, dnd or invisible',
   'cmd.utility.botstatus.opt.device.desc': 'normal, phone, android or ios',
