@@ -28,9 +28,9 @@ const MAX_LENGTH = 5;
 const MAX_STEM = 3;
 // The commands people type most come first, so they get the shortest words.
 const PRIORITY = ['image', 'ticket', 'timer', 'feed', 'giveaway', 'welcome', 'backup', 'automod', 'counter', 'snipe', 'afk', 'remind', 'birthday', 'level', 'starboard', 'suggestion', 'verify'];
-// The umbrellas `/server` and `/user` come after every other command, so their words are the ones left free and no word that already
+// The umbrellas `/server`, `/user` and `/mod` come after every other command, so their words are the ones left free and no word that already
 // works changes (their subcommands are the old commands with their own words: `!si`, `!ui`, `!av`).
-const LAST = ['server', 'user'];
+const LAST = ['server', 'user', 'mod'];
 // A stem that is not the first letter or a short alias already there: the usual way people shorten the name.
 const STEMS = { image: 'i', ticket: 'tk', feed: 'fd', backup: 'bk', counter: 'cn', snipe: 'sn', afk: 'af', remind: 'rm', forum: 'fr' };
 // Left out: the actions of /act have their own words (`!hug`), and these are not for members to type.

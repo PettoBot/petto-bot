@@ -31,6 +31,7 @@ module.exports = {
   'core.usage.didYouMean': '¿Quisiste decir {options}?',
   'core.usage.try': 'Prueba {words}',
   'core.usage.tryMore': 'Prueba {words} y {count} más',
+  'core.usage.listTitle': "`{prefix}{command}` se usa de estas maneras:",
   'core.usage.helpHint': '-# `{prefix}help {command}` muestra todo lo que puede hacer',
   'core.usage.missing': '{emoji} Falta `{option}`',
   'core.usage.checkWriting': '{emoji} Revisa cómo escribiste `{command}`',

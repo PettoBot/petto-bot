@@ -32,6 +32,7 @@ module.exports = {
   'core.usage.didYouMean': 'Did you mean {options}?',
   'core.usage.try': 'Try {words}',
   'core.usage.tryMore': 'Try {words} and {count} more',
+  'core.usage.listTitle': "`{prefix}{command}` has these ways to use it:",
   'core.usage.helpHint': '-# `{prefix}help {command}` shows everything it can do',
   'core.usage.missing': '{emoji} `{option}` is missing',
   'core.usage.checkWriting': '{emoji} Check how you wrote `{command}`',
