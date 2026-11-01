@@ -1,10 +1,13 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { applyRewards } = require('../../utils/inviteRewards');
 const inviteTrackingDb = require('../../db/inviteTracking');
 const { readSettingsPatch } = require('../../db/inviteTrackingRules');
 const { INFO_ACCENT, infoPayload, noticePayload, line } = require('../../utils/infoCard');
 const { COLORS } = require('../../utils/colors');
 const { t, tn, languageOf } = require('../../i18n');
+
+/** A refusal or a mistake of the member: red, and told in private (the channel does not need to see it). */
+const refusal = (text) => ({ ...noticePayload(text, COLORS.RED), flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
 
 const SOURCES = ['invite', 'vanity', 'unknown', 'bot'];
 
@@ -147,12 +150,12 @@ async function listCmd(interaction, lang) {
 async function codesCmd(interaction, lang) {
   const user = interaction.options.getUser('user') ?? interaction.user;
   if (!interaction.guild.members.me.permissions.has(PermissionFlagsBits.ManageGuild)) {
-    await interaction.reply(noticePayload(t(lang, 'info.invites.codes.needPermission'), COLORS.RED));
+    await interaction.reply(refusal(t(lang, 'info.invites.codes.needPermission')));
     return;
   }
   const invites = await interaction.guild.invites.fetch().catch(() => null);
   if (!invites) {
-    await interaction.reply(noticePayload(t(lang, 'info.invites.codes.unreadable'), COLORS.RED));
+    await interaction.reply(refusal(t(lang, 'info.invites.codes.unreadable')));
     return;
   }
   const own = [...invites.values()].filter((i) => i.inviter?.id === user.id).sort((a, b) => (b.uses ?? 0) - (a.uses ?? 0)).slice(0, 15);
@@ -173,7 +176,7 @@ async function codesCmd(interaction, lang) {
 
 async function bonusCmd(interaction, lang) {
   if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-    await interaction.reply(noticePayload(t(lang, 'info.invites.needManageGuild'), COLORS.RED));
+    await interaction.reply(refusal(t(lang, 'info.invites.needManageGuild')));
     return;
   }
   const user = interaction.options.getUser('user', true);
@@ -189,7 +192,7 @@ async function bonusCmd(interaction, lang) {
 
 async function resetCmd(interaction, lang) {
   if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-    await interaction.reply(noticePayload(t(lang, 'info.invites.needAdministrator'), COLORS.RED));
+    await interaction.reply(refusal(t(lang, 'info.invites.needAdministrator')));
     return;
   }
   const user = interaction.options.getUser('user', true);
@@ -200,7 +203,7 @@ async function resetCmd(interaction, lang) {
 
 function needManageGuild(interaction, lang) {
   if (interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) return false;
-  interaction.reply(noticePayload(t(lang, 'info.invites.needManageGuild'), COLORS.RED));
+  interaction.reply(refusal(t(lang, 'info.invites.needManageGuild')));
   return true;
 }
 
@@ -220,7 +223,7 @@ async function configCmd(interaction, lang) {
     if (needManageGuild(interaction, lang)) return;
     const { values, error } = readSettingsPatch(Object.fromEntries(given));
     if (error) {
-      await interaction.reply(noticePayload(t(lang, 'info.invites.config.invalid'), COLORS.RED));
+      await interaction.reply(refusal(t(lang, 'info.invites.config.invalid')));
       return;
     }
     await inviteTrackingDb.setSettings(guildId, values);
@@ -268,11 +271,11 @@ async function rewardCmd(interaction, lang) {
   const invites = interaction.options.getInteger('invites', true);
   const me = guild.members.me;
   if (role.managed || role.id === guild.id || role.position >= me.roles.highest.position) {
-    await interaction.reply(noticePayload(t(lang, 'info.invites.reward.cannotGive', { everyone: '@everyone' }), COLORS.RED));
+    await interaction.reply(refusal(t(lang, 'info.invites.reward.cannotGive', { everyone: '@everyone' })));
     return;
   }
   if (interaction.member.id !== guild.ownerId && role.position >= interaction.member.roles.highest.position) {
-    await interaction.reply(noticePayload(t(lang, 'info.invites.reward.aboveYours'), COLORS.RED));
+    await interaction.reply(refusal(t(lang, 'info.invites.reward.aboveYours')));
     return;
   }
   await inviteTrackingDb.addReward(guild.id, invites, role.id);

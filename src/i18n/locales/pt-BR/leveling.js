@@ -29,6 +29,7 @@ module.exports = {
   'leveling.top.footer.one': '{count} membro · Página {page}/{pages}',
   'leveling.top.footer.other': '{count} membros · Página {page}/{pages}',
   'leveling.top.nobody': 'Ninguém entrou no ranking ainda.',
+  'leveling.top.notYours': 'Estes botões são de quem pediu este ranking. Escreva `{prefix}top` para ter o seu.',
   'leveling.top.nobodyWeek': 'Ninguém ganhou XP esta semana ainda.',
   'leveling.top.nobodyMonth': 'Ninguém ganhou XP este mês ainda.',
   'leveling.globalRanking.on': '{emoji}  Agora você pode aparecer no ranking de usuários da página pública de estatísticas do Petto, com seu nome, seu avatar e as mensagens e o tempo em voz que você tem em todos os servidores. `globalranking off` tira você de lá.',

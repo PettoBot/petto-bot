@@ -9,7 +9,7 @@ module.exports = {
   'core.cooldown': 'Please wait {seconds}s before using `{prefix}{command}` again.',
   'core.missingPermission': "You're missing permission: `{permission}`.",
   'core.missingLevel': "You're missing the permission level required for `{prefix}{command}`.",
-  'core.error': 'Something went wrong while running that command.',
+  'core.error': 'Something went wrong while running that command. Try again in a moment; if it keeps happening, tell the team in the support server (the link is in `/help`).',
   'core.replyTooLong': 'The command ran, but its answer was too long for Discord to show. Try again with fewer items.',
   'core.slash.cooldown': 'Please wait {seconds}s before using /{command} again.',
   'core.slash.cooldownSlashOnly': 'Please wait {seconds}s before using /{command} again.',
