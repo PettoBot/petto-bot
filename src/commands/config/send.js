@@ -10,9 +10,11 @@ const { hasSendablePayload } = require('../../utils/embedBuilder');
 const { resolveRole, roleRefsOf } = require('../../utils/embedActions');
 const { getTemplate } = require('../../db/embedTemplates');
 const { sendMessage } = require('../../utils/codeArgs');
+const { permissionLabels } = require('../../utils/permissions');
 const { t, languageOf } = require('../../i18n');
 
 const REPLY_FLAGS = MessageFlags.IsComponentsV2;
+const PRIVATE_FLAGS = MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral;
 const RED = 0xfe6465;
 const MAX_FILES = 10;
 
@@ -53,6 +55,23 @@ async function channelOf(guild, picked) {
   return guild.channels.cache.get(id) ?? await guild.channels.fetch(id).catch(() => null);
 }
 
+/** Whether a member has a permission in the server. Anything that is not a real answer (no member, permissions that are not a bit field) is a no. */
+function memberHas(member, permission) {
+  const permissions = member?.permissions;
+  return typeof permissions?.has === 'function' && permissions.has(permission) === true;
+}
+
+/**
+ * The member of the server who ran the command, as a real member (the permissions of its roles in the server, never the ones a channel gives):
+ * the one of the message or the interaction when it has them, or the one the server finds for the person. Null when there is none.
+ */
+async function guildMemberOf(interaction, guild) {
+  const member = interaction.member;
+  if (typeof member?.permissions?.has === 'function') return member;
+  const id = interaction.user?.id ?? member?.id ?? member?.user?.id;
+  return id && typeof guild.members?.fetch === 'function' ? await guild.members.fetch(id).catch(() => null) : null;
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('send')
@@ -68,9 +87,21 @@ module.exports = {
 
   async execute(interaction) {
     const lang = await languageOf(interaction);
-    await interaction.deferReply({ flags: REPLY_FLAGS });
-    const fail = (key, vars) => interaction.editReply({ components: [textCard(t(lang, key, vars), RED)], flags: REPLY_FLAGS });
+    // A refusal is private (ephemeral for the slash command): before the answer is deferred it is a private reply, after it the deferred one is already private.
+    const fail = (key, vars) => {
+      const payload = { components: [textCard(t(lang, key, vars), RED)], flags: PRIVATE_FLAGS };
+      return interaction.deferred || interaction.replied ? interaction.editReply(payload) : interaction.reply(payload);
+    };
     const guild = interaction.guild;
+    if (!guild) return fail('embeds.send.noChannel');
+
+    // WHO MAY SEND comes first, before anything is read or sent, and the same for the prefix, `/send` and `/message send`: the member needs Manage Messages
+    // in the SERVER (what Discord's own default permission of the command means; a permission that only one channel grants does not count), found on a real
+    // member of the server. A member that cannot be found, or whose permissions cannot be read, is a member who may not: nothing here ever allows by default.
+    const member = await guildMemberOf(interaction, guild);
+    if (!memberHas(member, PermissionFlagsBits.ManageMessages)) {
+      return fail('core.moderate.youNeed', { permission: permissionLabels(PermissionFlagsBits.ManageMessages, lang) });
+    }
 
     // A channel that was written but cannot be found is said, never replaced by the channel of the command.
     const missing = interaction.options.getString('channel_missing');
@@ -82,27 +113,32 @@ module.exports = {
     if (!channel.isTextBased?.()) return fail('embeds.send.notText', { channel: `<#${channel.id}>` });
     const thread = channel.isThread?.() ?? false;
     const write = thread ? PermissionFlagsBits.SendMessagesInThreads : PermissionFlagsBits.SendMessages;
+
+    // In that channel the member must also see it, write in it and have Manage Messages there (an overwrite can take it away).
+    const mine = channel.permissionsFor?.(member) ?? null;
+    if (!mine?.has?.(PermissionFlagsBits.ViewChannel) || !mine.has(write) || !mine.has(PermissionFlagsBits.ManageMessages)) {
+      return fail('embeds.send.noPermission', { channel: `<#${channel.id}>`, permission: t(lang, 'core.perm.ManageMessages') });
+    }
+
     const text = (interaction.options.getString('message') ?? '').trim();
     const attachments = interaction.rawMessage?.attachments ? [...interaction.rawMessage.attachments.values()] : [interaction.options.getAttachment('file')].filter(Boolean);
     if (!text && !attachments.length) return fail('embeds.send.nothing');
     if (attachments.length > MAX_FILES) return fail('embeds.send.tooManyFiles', { max: MAX_FILES });
 
-    const mine = channel.permissionsFor(interaction.member);
-    if (!mine?.has(PermissionFlagsBits.ViewChannel) || !mine.has(write) || !mine.has(PermissionFlagsBits.ManageMessages)) {
-      return fail('embeds.send.noPermission', { channel: `<#${channel.id}>`, permission: t(lang, 'core.perm.ManageMessages') });
-    }
     const bots = channel.permissionsFor(guild.members.me);
     if (!bots?.has(PermissionFlagsBits.ViewChannel) || !bots.has(write)) return fail('embeds.send.botCannot', { channel: `<#${channel.id}>` });
     // A thread that is locked and archived, or a private one Petto is not in, does not take messages even with the permissions.
     if (thread && channel.sendable === false) return fail('embeds.send.botCannot', { channel: `<#${channel.id}>` });
     if (attachments.length && !bots.has(PermissionFlagsBits.AttachFiles)) return fail('embeds.send.botNoFiles', { channel: `<#${channel.id}>` });
 
-    const ctx = { member: interaction.member, user: interaction.user, guild, channel, message: interaction.rawMessage, args: '', argTokens: [], commandName: 'send', lang };
+    // Everything that can be refused has been: the rest (building the message) can take a while.
+    await interaction.deferReply({ flags: PRIVATE_FLAGS });
+    const ctx = { member, user: interaction.user, guild, channel, message: interaction.rawMessage, args: '', argTokens: [], commandName: 'send', lang };
     let payload;
     let warnings = [];
     if (looksLikeScript(text)) {
-      const problem = await buttonProblem(interaction.member, guild, parseEmbedScript(text, lang).buttons, lang);
-      if (problem) return interaction.editReply({ components: [textCard(problem, RED)], flags: REPLY_FLAGS });
+      const problem = await buttonProblem(member, guild, parseEmbedScript(text, lang).buttons, lang);
+      if (problem) return interaction.editReply({ components: [textCard(problem, RED)], flags: PRIVATE_FLAGS });
       const built = await payloadFromCode(text, ctx, lang);
       if (built.error) return fail('embeds.code.refused', { error: built.error });
       payload = built.payload;

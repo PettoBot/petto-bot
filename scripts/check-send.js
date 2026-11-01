@@ -51,7 +51,7 @@ function world({ permissions = [PermissionFlagsBits.ViewChannel, PermissionFlags
   const message = {
     guild, channel, channelId: CHANNEL, client: {},
     author: { id: '2' }, content: '',
-    member: { id: '2', permissions: new PermissionsBitField(manageRoles ? [PermissionFlagsBits.ManageRoles] : []), roles: { highest: { position: 5 } } },
+    member: { id: '2', permissions: new PermissionsBitField(manageRoles ? [PermissionFlagsBits.ManageMessages, PermissionFlagsBits.ManageRoles] : [PermissionFlagsBits.ManageMessages]), roles: { highest: { position: 5 } } },
     attachments: new Collection(attachments.map((file, index) => [String(index), file])),
     reply: async (payload) => { replies.push(payload); return { edit: async (next) => { replies.push(next); } }; },
   };
@@ -164,7 +164,7 @@ const textOf = (replies) => JSON.stringify(replies[replies.length - 1]);
   const slash = (picked) => ({
     guild: w.message.guild, channel: w.channel, channelId: CHANNEL, member: w.message.member, user: { id: '2' },
     options: { getChannel: () => picked, getString: (name) => (name === 'message' ? 'hola' : null), getAttachment: () => null },
-    deferReply: async () => {}, editReply: async (payload) => { w.replies.push(payload); },
+    deferReply: async () => {}, reply: async (payload) => { w.replies.push(payload); }, editReply: async (payload) => { w.replies.push(payload); },
   });
   await send.execute(slash({ id: OTHER, type: 0, name: 'anuncios' }));
   assert.equal(w.there[0]?.id, OTHER, 'a channel given only as data is found');

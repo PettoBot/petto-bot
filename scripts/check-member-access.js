@@ -189,7 +189,7 @@ function makeServer() {
   client.guilds.cache.set(GUILD, guild);
   const channel = {
     id: ROOM, name: 'room', type: 0, guild, guildId: GUILD, parentId: null, topic: null, nsfw: false, rateLimitPerUser: 0, position: 1, createdTimestamp: 1_600_000_000_000, toString: () => `<#${ROOM}>`,
-    isTextBased: () => true, isVoiceBased: () => false, isThread: () => false, isDMBased: () => false, permissionsFor: (who) => who?.permissions ?? new PermissionsBitField(PermissionsBitField.All),
+    isTextBased: () => true, isVoiceBased: () => false, isThread: () => false, isDMBased: () => false, permissionsFor: (who) => (who?.permissions instanceof PermissionsBitField ? who.permissions : new PermissionsBitField(0n)), // honest: whoever cannot be read has nothing
     permissionOverwrites: { cache: new Collection(), edit: mut('channel.permissionOverwrites.edit'), set: mut('channel.permissionOverwrites.set'), create: mut('channel.permissionOverwrites.create'), delete: mut('channel.permissionOverwrites.delete') },
     messages: { cache: new Collection(), fetch: async () => new Collection(), delete: mut('channel.messages.delete') },
     send: mut('channel.send'), edit: mut('channel.edit'), delete: mut('channel.delete'), setName: mut('channel.setName'), setTopic: mut('channel.setTopic'), setParent: mut('channel.setParent'), bulkDelete: mut('channel.bulkDelete'),
@@ -415,7 +415,10 @@ async function slashOf(command, leaf, { perms = 0n } = {}) {
   // The staff subcommands of a command open at Discord refuse a plain member (ephemeral on the slash command, so the channel does not see it).
   const MUST_REFUSE = ['form create', 'form delete', 'form set', 'form panel', 'rollouts enable', 'rollouts role', 'invites bonus', 'invites config', 'invites reward add', 'invites reset', 'counting setup', 'counting disable', 'counting reset', 'quickreply add', 'quickreply remove',
     'imgonly add', 'imgonly remove', 'urlonly add', 'urlonly remove', 'rep reset', 'report config', 'report disable', 'forum setup', 'forum panel', 'forum delete', 'ticket panel create', 'ticket category add', 'ticket setup', 'confession setup', 'suggestion setup',
-    'voicemaster setup', 'voicemaster disable', 'boosterrole admin set', 'boosterrole admin remove', 'boosterrole admin base', 'boosterrole admin cooldown', 'boosterrole filter add', 'premium grant', 'premium revoke', 'server steal', 'mod ban', 'mod purge', 'staff massban', 'config prefix set', 'protect honeypot add', 'greet welcome setup', 'auto timer'];
+    'voicemaster setup', 'voicemaster disable', 'boosterrole admin set', 'boosterrole admin remove', 'boosterrole admin base', 'boosterrole admin cooldown', 'boosterrole filter add', 'premium grant', 'premium revoke', 'server steal', 'mod ban', 'mod purge', 'staff massban', 'config prefix set', 'protect honeypot add', 'greet welcome setup', 'auto timer',
+    // everything that makes Petto post for a person (scripts/check-send-permissions.js runs every way to start them, with real permissions)
+    'message send', 'message editembed', 'message sender set', 'message webhook send', 'message panel send', 'message responder add', 'message pagination create'];
+  assert.equal(String(byName.get('message').permissionForSubcommand('send')), String(F.ManageMessages), '/message send asks for Manage Messages');
   const publicRefusals = [];
   for (const key of MUST_REFUSE) {
     const entry = found.find((each) => `${each.name} ${each.leaf}`.trim().startsWith(key) || `${each.name} ${each.leaf}`.trim() === key);

@@ -231,7 +231,8 @@ async function checkPermission(load, interaction, entry) {
   const guildId = interaction.guildId ?? interaction.guild?.id;
   // The role a server chose for this command (`!moderation allow ban @Mods`) only stands in for the Discord permission.
   const roleAllowed = member && guildId ? await moderationPermissions.hasConfiguredRole(guildId, wrapped.data.name, member).catch(() => false) : false;
-  if (roleAllowed || (member?.permissions?.has?.(needed) ?? false)) return { ok: true, roleAllowed };
+  // Anything that is not a clear yes (no member, permissions that are not a bit field) is a no.
+  if (roleAllowed || (typeof member?.permissions?.has === 'function' && member.permissions.has(needed) === true)) return { ok: true, roleAllowed };
   const lang = await languageOf(interaction);
   await interaction.reply({ content: t(lang, 'core.moderate.youNeed', { permission: permissionLabels(needed, lang) }), flags: MessageFlags.Ephemeral });
   return { ok: false, roleAllowed };
@@ -286,7 +287,7 @@ function wrappedExecutor(load, subcommands) {
       if (needed !== null) {
         const guildId = interaction.guildId ?? interaction.guild?.id;
         const roleAllowed = interaction.member && guildId ? await moderationPermissions.hasConfiguredRole(guildId, wrapped.data.name, interaction.member).catch(() => false) : false;
-        if (!roleAllowed && !(interaction.member?.permissions?.has?.(needed) ?? false)) return interaction.respond([]);
+        if (!roleAllowed && !(typeof interaction.member?.permissions?.has === 'function' && interaction.member.permissions.has(needed) === true)) return interaction.respond([]);
       }
       return wrapped.autocomplete(wrappedInteraction(interaction, entry, wrapped));
     },
