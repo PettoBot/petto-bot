@@ -1591,7 +1591,7 @@ const allText = (message) => JSON.stringify(json(message.components));
 
     // --- Reddit: the image-first card from a real shape of entry --------------------------------------------------------------------------------------------------------
     {
-      const html = (inner) => inner.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/&amp;amp;/g, '&amp;amp;');
+      const html = (inner) => inner.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
       const author = '<author><name>/u/not-jesus-maybe</name><uri>https://www.reddit.com/user/not-jesus-maybe</uri></author>';
       const imageBody = html('<table> <tr><td> <a href="https://www.reddit.com/r/bondedpairs/comments/1abc/two_cats/"> <img src="https://preview.redd.it/abc.jpg?width=640&amp;crop=smart&amp;auto=webp&amp;s=sig" alt="Two cats" title="Two cats" /> </a> </td><td> &#32; submitted by &#32; <a href="https://www.reddit.com/user/not-jesus-maybe"> /u/not-jesus-maybe </a> <br/> <span><a href="https://i.redd.it/abc.jpg">[link]</a></span> &#32; <span><a href="https://www.reddit.com/r/bondedpairs/comments/1abc/two_cats/">[comments]</a></span> </td></tr></table>');
       const textBody = html(`<!-- SC_OFF --><div class="md"><p>${'We adopted them last week and they already share a bed. '.repeat(8)}</p><p>Second paragraph.</p></div><!-- SC_ON --> &#32; submitted by &#32; <a href="https://www.reddit.com/user/not-jesus-maybe"> /u/not-jesus-maybe </a> <span><a href="https://www.reddit.com/r/bondedpairs/comments/2def/our_story/">[link]</a></span> &#32; <span><a href="https://www.reddit.com/r/bondedpairs/comments/2def/our_story/">[comments]</a></span>`);
