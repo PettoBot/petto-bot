@@ -1,8 +1,10 @@
 const { ChannelType, SlashCommandBuilder } = require('discord.js');
 const { register, sendPager } = require('../../utils/pager');
 const { t } = require('../../i18n');
+const { EMOJI } = require('../../utils/emojis');
 
 const KINDS = ['all', 'text', 'voice', 'forum', 'category'];
+const KIND_EMOJI = { all: EMOJI.ALL, text: EMOJI.CHANNEL_TEXT, voice: EMOJI.CHANNEL_VOICE, forum: EMOJI.CHANNEL_FORUM, category: EMOJI.CHANNEL_CATEGORY };
 const MATCH = {
   text: [ChannelType.GuildText, ChannelType.GuildAnnouncement],
   voice: [ChannelType.GuildVoice, ChannelType.GuildStageVoice],
@@ -24,7 +26,7 @@ register('channels', {
       subtitle: [guild.name],
       thumbnail: guild.iconURL({ size: 256 }),
       items: channels.map((channel) => `${ICON[channel.type] ?? '•'} <#${channel.id}>${channel.parent ? ` · ${channel.parent.name}` : ''}`),
-      options: KINDS.map((value) => ({ label: t(lang, `info.channels.kind.${value}.menu`), value })),
+      options: KINDS.map((value) => ({ label: t(lang, `info.channels.kind.${value}.menu`), value, emoji: KIND_EMOJI[value] })),
       placeholder: t(lang, 'core.pager.show.menu'),
       empty: t(lang, 'info.channels.empty'),
     };

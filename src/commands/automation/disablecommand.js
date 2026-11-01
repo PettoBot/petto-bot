@@ -227,7 +227,7 @@ register('blocked', {
       thumbnail: guild.iconURL?.({ size: 256 }) ?? null,
       items,
       footer: t(lang, 'automation.disable.list.footer'),
-      options: arg ? undefined : [{ label: t(lang, 'automation.disable.list.all.menu'), value: 'all' }, { label: t(lang, 'automation.disable.list.server.menu'), value: 'server' }, { label: t(lang, 'automation.disable.list.channel.menu'), value: 'channel' }],
+      options: arg ? undefined : [{ label: t(lang, 'automation.disable.list.all.menu'), value: 'all', emoji: EMOJI.ALL }, { label: t(lang, 'automation.disable.list.server.menu'), value: 'server', emoji: EMOJI.ROLLOUT_GUILD }, { label: t(lang, 'automation.disable.list.channel.menu'), value: 'channel', emoji: EMOJI.CHANNEL_TEXT }],
       placeholder: t(lang, 'automation.disable.list.show.menu'),
       empty: arg ? t(lang, 'automation.disable.noneIn', { emoji: EMOJI.APPROVE, channel: `<#${arg}>` }) : t(lang, 'automation.disable.none', { emoji: EMOJI.APPROVE }),
     };

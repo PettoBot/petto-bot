@@ -1,7 +1,7 @@
 // Forms (applications): the card the staff reads for each submission, and the panel with the buttons (or the menu) that open forms.
 const {
   ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, FileBuilder, MessageFlags, SectionBuilder, SeparatorBuilder,
-  SeparatorSpacingSize, StringSelectMenuBuilder, TextDisplayBuilder, ThumbnailBuilder,
+  SeparatorSpacingSize, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TextDisplayBuilder, ThumbnailBuilder,
 } = require('discord.js');
 const { PREFIX, COLORS, clip, answerText, webUrl } = require('./forms');
 const { semanticColor } = require('./colors');
@@ -103,6 +103,8 @@ function reviewCard({ submission, form = null, lang = currentLanguage(), pings =
   return { container, file: cut ? { name, text: null } : null };
 }
 
+const isEmoji = (text) => { const value = String(text).trim(); return /^<a?:\w{2,32}:\d{15,25}>$/.test(value) || (value.length <= 16 && /^(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|[0-9#*]\uFE0F?\u20E3)/u.test(value)); };
+
 /** The buttons (or the menu) that open the forms of a panel. At most 25 forms. */
 function panelRows(forms, { style = 'buttons', panelId = 0, lang = currentLanguage(), web = false } = {}) {
   const list = forms.slice(0, 25);
@@ -115,6 +117,8 @@ function panelRows(forms, { style = 'buttons', panelId = 0, lang = currentLangua
       .addOptions(list.map((form) => {
         const option = { label: clip(form.button_label || form.title, 100), value: String(form.id) };
         if (form.description) option.description = clip(form.description.replace(/\s+/g, ' '), 100);
+        // The emoji of the form's button, when it is a real emoji (a custom one or a unicode one); anything else is left out.
+        if (form.button_emoji) { try { if (isEmoji(form.button_emoji)) option.emoji = new StringSelectMenuOptionBuilder().setLabel(option.label).setValue(option.value).setEmoji(String(form.button_emoji).trim()).toJSON().emoji; } catch { /* an emoji Discord does not take is left out */ } }
         return option;
       }));
     return [new ActionRowBuilder().addComponents(menu), ...webRow];

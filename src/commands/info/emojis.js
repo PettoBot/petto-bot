@@ -2,7 +2,11 @@ const { SlashCommandBuilder } = require('discord.js');
 const { register, sendPager } = require('../../utils/pager');
 const { t } = require('../../i18n');
 
+const { EMOJI } = require('../../utils/emojis');
+
 const FILTERS = ['all', 'static', 'animated'];
+// There is no Petto icon for still or animated emojis yet, so those two options have none.
+const FILTER_EMOJI = { all: EMOJI.ALL };
 
 register('emojis', {
   perPage: 20,
@@ -16,7 +20,7 @@ register('emojis', {
       subtitle: [guild.name],
       thumbnail: guild.iconURL({ size: 256 }),
       items: emojis.map((emoji) => `${emoji} \`:${emoji.name}:\``),
-      options: FILTERS.map((value) => ({ label: t(lang, `info.emojis.filter.${value}.menu`), value })),
+      options: FILTERS.map((value) => ({ label: t(lang, `info.emojis.filter.${value}.menu`), value, emoji: FILTER_EMOJI[value] })),
       placeholder: t(lang, 'core.pager.show.menu'),
       empty: t(lang, 'info.emojis.empty'),
     };

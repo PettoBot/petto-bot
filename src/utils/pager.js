@@ -19,7 +19,7 @@ const kinds = new Map();
  * `accent` is the color of the card's side bar (the info purple when left out); null draws the list with no color at all.
  * @param {{ perPage?: number, accent?: number|null, load: (guild: import('discord.js').Guild, state: { option: string, arg: string, lang: string }) => Promise<{
  *   items: string[], title: string, subtitle?: string[], thumbnail?: string|null, footer?: string, empty?: string,
- *   options?: { label: string, value: string }[], placeholder?: string }> }} definition
+ *   options?: { label: string, value: string, emoji?: string }[], placeholder?: string }> }} definition
  */
 function register(kind, definition) {
   if (kind.includes('::')) throw new Error(`Pager kind "${kind}" cannot contain "::".`); // i18n-ignore: internal error
@@ -66,7 +66,7 @@ async function buildPage(kind, { guild, userId, page = 0, option = '', arg = '',
       new StringSelectMenuBuilder()
         .setCustomId(`pgo::${kind}::${userId}::${safePart(arg)}`)
         .setPlaceholder(data.placeholder ?? t(lang, 'core.pager.show.menu'))
-        .addOptions(data.options.slice(0, 25).map((entry) => new StringSelectMenuOptionBuilder().setLabel(entry.label).setValue(entry.value).setDefault(entry.value === selected))),
+        .addOptions(data.options.slice(0, 25).map((entry) => { const built = new StringSelectMenuOptionBuilder().setLabel(entry.label).setValue(entry.value).setDefault(entry.value === selected); return entry.emoji ? built.setEmoji(entry.emoji) : built; })),
     ));
     option = selected;
   }

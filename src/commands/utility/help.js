@@ -44,9 +44,9 @@ const CATEGORY_ICONS = {
   misc: '<:pe_misc:1533209781345587374>',
   roleplay: '<:011Heart:1556773944336580720>',
   fun: '<:Icon_Dice:1556773972442349568>',
-  integrations: '🔗',
+  integrations: EMOJI.INTEGRATIONS,
   music: '🎵',
-  other: '📄',
+  other: EMOJI.FIELD_NOTES,
 };
 
 const knownCategory = (id) => Object.hasOwn(CATEGORY_ICONS, id);
@@ -602,3 +602,4 @@ module.exports.suggestCommands = suggestCommands;
 module.exports.helpChoices = helpChoices;
 module.exports.entryPickers = entryPickers;
 module.exports.categoryView = categoryView;
+module.exports.categoryMeta = categoryMeta;
