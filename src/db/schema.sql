@@ -3862,6 +3862,28 @@ create table if not exists appeal_forms (
   updated_at         timestamptz not null default now()
 );
 create index if not exists idx_appeal_forms_guild on appeal_forms(guild_id, position);
+-- The number of an appeal form inside its server (#1, #2...), the one the public appeal site puts in the address of a form
+-- (petto.sbs/appeal/<server>/form/<number>). `id` is shared by every server and stays internal. Filled in once for the forms that
+-- exist, in creation order per server, and given by the database to every new form (also when the dashboard inserts the row).
+alter table appeal_forms add column if not exists number integer;
+update appeal_forms f
+   set number = n.position + coalesce((select max(x.number) from appeal_forms x where x.guild_id = f.guild_id and x.number is not null), 0)
+  from (select id, row_number() over (partition by guild_id order by id)::integer as position from appeal_forms where number is null) n
+ where f.id = n.id and f.number is null;
+create or replace function appeal_forms_assign_number() returns trigger
+language plpgsql as $$
+begin
+  perform pg_advisory_xact_lock(hashtext('appeal_forms.number:' || new.guild_id));
+  select coalesce(max(number), 0) + 1 into new.number from appeal_forms where guild_id = new.guild_id;
+  return new;
+end;
+$$;
+drop trigger if exists appeal_forms_assign_number on appeal_forms;
+create trigger appeal_forms_assign_number before insert on appeal_forms for each row execute function appeal_forms_assign_number();
+alter table appeal_forms alter column number set not null;
+alter table appeal_forms drop constraint if exists appeal_forms_number_check;
+alter table appeal_forms add constraint appeal_forms_number_check check (number >= 1);
+create unique index if not exists idx_appeal_forms_guild_number on appeal_forms(guild_id, number);
 
 create table if not exists appeal_submissions (
   id                uuid primary key default gen_random_uuid(),
@@ -4058,6 +4080,31 @@ update forms set public_id = form_public_id() where public_id is null;
 alter table forms alter column public_id set default form_public_id();
 alter table forms alter column public_id set not null;
 create unique index if not exists idx_forms_public_id on forms(public_id);
+-- The number of a form inside its server (#1, #2, #3...): what members and staff see and type (`!form info 2`). `id` above is shared by
+-- every server and stays internal (foreign keys, button ids); it is never shown. Numbers start at 1 in each server.
+-- Existing forms are numbered once, in creation order per server (only rows still without a number are touched, so applying this
+-- again changes nothing). The database gives a new form the next number of its server (highest + 1, under a lock per server so two
+-- forms made at the same moment do not collide), also when the dashboard inserts the row straight in the table: any number sent in an
+-- insert is ignored. A number freed by deleting the form with the highest number is the next one to be used; the others are never reused.
+alter table forms add column if not exists number integer;
+update forms f
+   set number = n.position + coalesce((select max(x.number) from forms x where x.guild_id = f.guild_id and x.number is not null), 0)
+  from (select id, row_number() over (partition by guild_id order by id)::integer as position from forms where number is null) n
+ where f.id = n.id and f.number is null;
+create or replace function forms_assign_number() returns trigger
+language plpgsql as $$
+begin
+  perform pg_advisory_xact_lock(hashtext('forms.number:' || new.guild_id));
+  select coalesce(max(number), 0) + 1 into new.number from forms where guild_id = new.guild_id;
+  return new;
+end;
+$$;
+drop trigger if exists forms_assign_number on forms;
+create trigger forms_assign_number before insert on forms for each row execute function forms_assign_number();
+alter table forms alter column number set not null;
+alter table forms drop constraint if exists forms_number_check;
+alter table forms add constraint forms_number_check check (number >= 1);
+create unique index if not exists idx_forms_guild_number on forms(guild_id, number);
 -- The look of the web page of a form (petto.sbs/form#<public id>): a banner on top (an https link to a picture), the background
 -- behind the page (Petto's own, a solid tint or a gradient, both from the color of the form) and whether its header shows the icon
 -- and the name of the server. The color of the form is the accent of the page.

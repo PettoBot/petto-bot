@@ -31,13 +31,16 @@ stub('src/db/forms.js', {
   listForms: async (g) => db.forms.filter((f) => f.guild_id === g).map(copy),
   getFormByPublicId: async (id) => (/^[0-9A-Za-z]{12}$/.test(String(id ?? '')) ? copy(db.forms.find((f) => f.public_id === String(id))) : null),
   renewPublicId: async (g, id) => { const f = db.forms.find((x) => x.guild_id === g && x.id === Number(id)); if (!f) return null; f.public_id = require('../src/utils/forms').newPublicId(); return copy(f); },
+  // A person's reference is the number inside the server or the name; the internal id is only found by getFormById, inside the server.
   getForm: async (g, ref) => {
-    const text = String(ref ?? '').toLowerCase();
-    const row = /^\d+$/.test(text) ? db.forms.find((f) => f.guild_id === g && f.id === Number(text)) : db.forms.find((f) => f.guild_id === g && f.name === text);
-    return copy(row);
+    const text = String(ref ?? '').trim().toLowerCase().replace(/^#/, '');
+    const byNumber = /^\d+$/.test(text) ? db.forms.find((f) => f.guild_id === g && f.number === Number(text)) : null;
+    return copy(byNumber ?? db.forms.find((f) => f.guild_id === g && f.name === text));
   },
+  getFormByName: async (g, name) => copy(db.forms.find((f) => f.guild_id === g && f.name === String(name).toLowerCase())),
+  getFormById: async (g, id) => copy(db.forms.find((f) => f.guild_id === g && f.id === Number(id))),
   countForms: async (g) => db.forms.filter((f) => f.guild_id === g).length,
-  createForm: async (g, row) => { if (db.forms.some((f) => f.guild_id === g && f.name === row.name)) throw Object.assign(new Error('dup'), { code: '23505' }); const f = { ...copy(row), id: db.nextForm++, guild_id: g }; db.forms.push(f); return copy(f); },
+  createForm: async (g, row) => { if (db.forms.some((f) => f.guild_id === g && f.name === row.name)) throw Object.assign(new Error('dup'), { code: '23505' }); const { number: _ignored, ...fields } = copy(row); const number = Math.max(0, ...db.forms.filter((f) => f.guild_id === g).map((f) => f.number)) + 1; const f = { ...fields, id: db.nextForm++, number, guild_id: g }; db.forms.push(f); return copy(f); },
   updateForm: async (g, id, changes) => { const f = db.forms.find((x) => x.guild_id === g && x.id === Number(id)); if (!f) return null; Object.assign(f, copy(changes)); return copy(f); },
   deleteForm: async (g, id) => { db.forms = db.forms.filter((f) => !(f.guild_id === g && f.id === Number(id))); for (const s of db.subs) if (s.form_id === Number(id)) s.form_id = null; },
   createSubmission: async (row) => { const number = db.subs.filter((s) => s.guild_id === row.guild_id).length + 1; const s = { ...copy(row), number, status: 'pending', created_at: new Date().toISOString(), role_changes: {}, reviewed_at: null, reason: null, thread_id: null }; db.subs.push(s); return copy(s); },
@@ -250,11 +253,12 @@ const fieldsOf = (values) => ({
 
   // ---- A form made with `!form`: limits, settings, questions.
   const refusedInPrivate = [];
+  let talkGuild = guild; // the server the command runs in (the numbering checks use two)
   const talk = async (sub, values = {}, who = admin, group = null) => {
     const out = [];
     const pick = (name) => (name in values ? values[name] : null);
     const interaction = {
-      guild, user: who.user, member: who, client, channel: { id: 'here' },
+      guild: talkGuild, user: who.user, member: who, client, channel: { id: 'here' },
       options: { getSubcommand: () => sub, getSubcommandGroup: () => group, getString: pick, getBoolean: pick, getRole: pick, getChannel: pick, getInteger: pick, getNumber: pick },
       deferReply: async () => {}, editReply: async (payload) => { out.push(textOf(payload)); },
       // A refusal is told in private, before the public "thinking".
@@ -265,7 +269,7 @@ const fieldsOf = (values) => ({
   };
   assert.match(await talk('create', { name: 'staff' }, plain), /Manage Server/, 'only managers make forms');
   assert.deepEqual(refusedInPrivate, [64], 'and the refusal is told in private (the channel does not see it)');
-  assert.match(await talk('create', { name: 'Staff', title: 'Staff application' }), /Form `staff` made/);
+  assert.match(await talk('create', { name: 'Staff', title: 'Staff application' }), /Form `staff` \(number 1\) made/);
   assert.match(await talk('create', { name: 'staff' }), /already a form called `staff`/);
   // One limit for every server, never a Premium one (made small here so the check stays short).
   assert.deepEqual(require('../src/utils/forms').FORM_LIMITS, { forms: 25, questions: 25, submissions: 2000 });
@@ -333,14 +337,14 @@ const fieldsOf = (values) => ({
   assert.match(await talk('message', { form: 'staff', kind: 'denied', template: 'nope' }), /no saved embed called `nope`/);
   assert.match(await talk('open', { form: 'staff' }), /is open/); assert.equal(staffForm().status, 'open');
   assert.match(await talk('info', { form: 'staff' }), /Staff application[\s\S]*<#review>[\s\S]*<@&reviewer>[\s\S]*gives <@&staff> <@&trial>[\s\S]*9 questions in 2 pages/);
-  assert.match(await talk('list', {}), /Forms \(6\/25\)[\s\S]*`staff` · \*\*Staff application\*\* · open · 9 questions/);
+  assert.match(await talk('list', {}), /Forms \(6\/25\)[\s\S]*`#1` `staff` · \*\*Staff application\*\* · open · 9 questions[\s\S]*`#6` `e`/);
   assert.ok(!formCommand.prefixOnly && formCommand.registerSlash === true, '!form is a prefix command and a slash command since the third batch of umbrellas (it has subcommands, so it needs no umbrella)');
 
   // ---- A member fills the form in from the panel: two pages with "Next" between them.
   const id = staffForm().id;
   const shownModals = []; const replies = [];
   const interaction = (customId, kind, extra = {}) => ({
-    customId, guild, guildId: 'g1', client, member: extra.member ?? plain, user: (extra.member ?? plain).user,
+    customId, guild: extra.guild ?? guild, guildId: (extra.guild ?? guild).id, client, member: extra.member ?? plain, user: (extra.member ?? plain).user,
     isButton: () => kind === 'button', isStringSelectMenu: () => kind === 'select', isModalSubmit: () => kind === 'modal',
     isFromMessage: () => Boolean(extra.ephemeralMessage), message: extra.ephemeralMessage ? { flags: { has: (f) => f === MessageFlags.Ephemeral } } : { flags: { has: () => false } },
     values: extra.values, fields: extra.fields,
@@ -514,7 +518,7 @@ const fieldsOf = (values) => ({
     };
     const webForm = { ...forms.normalizeForm({ name: 'event', title: 'Event sign-up', status: 'open', review_channel_id: 'review', required_role_ids: ['member'],
       questions: [{ id: 'name', type: 'short', label: 'Name', min_length: 2 }, { id: 'age', type: 'number', label: 'Age', min_value: 13, max_value: 99 }, { id: 'team', type: 'choice', label: 'Team', options: ['Red', 'Blue'] },
-        { id: 'days', type: 'multi', label: 'Days', options: ['Fri', 'Sat', 'Sun'], max_choices: 2, required: false }, { id: 'rules', type: 'yesno', label: 'Rules?' }] }), id: 900, public_id: 'x7Kp9QzA2mVt', guild_id: 'g1' };
+        { id: 'days', type: 'multi', label: 'Days', options: ['Fri', 'Sat', 'Sun'], max_choices: 2, required: false }, { id: 'rules', type: 'yesno', label: 'Rules?' }] }), id: 900, number: 7, public_id: 'x7Kp9QzA2mVt', guild_id: 'g1' };
     const PID = webForm.public_id;
     webForm.required_role_ids = ['member']; webForm.review_channel_id = 'review';
     db.forms.push(webForm);
@@ -539,7 +543,7 @@ const fieldsOf = (values) => ({
     assert.equal((await call('look', PID, {}, 'bad')).status, 401, 'the look needs the dashboard key too');
     assert.equal((await call('look', 900, {})).status, 404, 'not by number'); assert.equal((await call('look', 'x7Kp9QzA2mVu', {})).status, 404);
     const look = await call('look', PID, {});
-    assert.equal(look.ok, true); assert.equal(look.form.title, 'Event sign-up'); assert.equal(look.server.name, guild.name);
+    assert.equal(look.ok, true); assert.equal(look.form.title, 'Event sign-up'); assert.equal(look.form.number, 7, 'the look carries the number of the form in its server'); assert.equal(look.form.id, PID, 'and the public id, never the internal id'); assert.equal(look.server.name, guild.name);
     assert.deepEqual(look.form.page, { banner: 'https://x.example/top.webp', background: 'gradient', show_icon: true, show_name: true, hide_branding: false });
     assert.deepEqual(look.form.embed, { title: null, description: null, image: null, color: null, thumbnail: false }, 'the look carries the link preview');
     assert.equal(look.form.questions, undefined, 'no questions without a member'); assert.equal(look.form.required_role_ids, undefined);
@@ -562,6 +566,85 @@ const fieldsOf = (values) => ({
     assert.equal(rows.at(-1).components[0].url, 'https://petto.sbs/form/x7Kp9QzA2mVt'); assert.equal(rows.at(-1).components[0].label, 'Fill on the web');
     assert.equal(cards.panelRows([{ ...webForm, web_enabled: true }], { web: true, lang: 'es' }).map((r) => r.toJSON()).at(-1).components[0].url, 'https://petto.sbs/es/form/x7Kp9QzA2mVt', 'the link opens the page in the server language');
     assert.equal(cards.panelRows([webForm], { web: true }).length, 1, 'no link for a form kept in Discord');
+  }
+
+  // ---- The number of a form belongs to its server: #1, #2, #3 in each server, whatever the internal id is.
+  {
+    const channelId = '123456789012345678';
+    const serverOf = (id, name) => ({ ...guild, id, name, channels: { cache: new Collection([[channelId, panelChannel], ['review', reviewChannel]]), fetch: async () => null } });
+    const A = serverOf('1111111111111111', 'Server A'); const B = serverOf('2222222222222222', 'Server B');
+    const as = async (server, ...args) => { talkGuild = server; try { return await talk(...args); } finally { talkGuild = guild; } };
+    const rowOf = (server, ref) => db.forms.find((f) => f.guild_id === server.id && (String(f.number) === String(ref) || f.name === ref));
+    db.nextForm = 1387; // the internal id is shared by every server: the first form of a new server is not number 1387
+    for (const name of ['apply', 'staff', 'events']) { await as(A, 'create', { name }); await as(B, 'create', { name }); }
+    const listA = db.forms.filter((f) => f.guild_id === A.id); const listB = db.forms.filter((f) => f.guild_id === B.id);
+    assert.deepEqual(listA.map((f) => f.number), [1, 2, 3], 'server A numbers its forms 1, 2, 3'); assert.deepEqual(listB.map((f) => f.number), [1, 2, 3], 'server B numbers its forms 1, 2, 3 on its own');
+    assert.ok(listA.every((f) => f.id >= 1387) && listB.every((f) => f.id >= 1387) && new Set([...listA, ...listB].map((f) => f.id)).size === 6, 'the internal ids are different and large');
+    assert.match(await as(B, 'create', { name: 'extra' }), /\(number 4\)/); assert.deepEqual(db.forms.filter((f) => f.guild_id === A.id).map((f) => f.number), [1, 2, 3], 'a form made in B does not change the numbers of A');
+    const dbForms = require('../src/db/forms');
+    for (const [server, mine] of [[A, listA], [B, listB]]) {
+      for (const f of mine) assert.equal((await dbForms.getForm(server.id, String(f.number))).id, f.id, 'a number is the number of the server');
+      assert.equal((await dbForms.getForm(server.id, '#2')).name, 'staff', 'a # in front is read');
+    }
+    assert.equal((await dbForms.getForm(A.id, '1')).guild_id, A.id); assert.equal((await dbForms.getForm(B.id, '1')).guild_id, B.id);
+    assert.notEqual((await dbForms.getForm(A.id, '1')).id, (await dbForms.getForm(B.id, '1')).id, 'number 1 is a different form in each server');
+    assert.equal(await dbForms.getForm(A.id, String(listB[0].id)), null, 'the internal id of another server\'s form is not a number, and never finds it');
+    assert.equal(await dbForms.getForm(A.id, String(listA[0].id)), null, 'the internal id is never accepted from a person as the number either');
+    assert.equal(await dbForms.getForm(A.id, '4'), null, 'A has no form 4 (B has)');
+    assert.equal(await dbForms.getFormById(A.id, listB[0].id), null, 'an internal id of another server finds nothing (customIds are resolved inside the server)');
+    assert.equal((await dbForms.getFormById(B.id, listB[0].id)).number, 1);
+    // What people read: the list, `info`, the creation message, and the commands that take a number.
+    const shown = await as(A, 'list', {});
+    assert.match(shown, /`#1` `apply`[\s\S]*`#2` `staff`[\s\S]*`#3` `events`/, '!form list shows the numbers of the server'); assert.ok(!shown.includes(String(listA[0].id)), 'the list never shows the internal id');
+    const info = await as(B, 'info', { form: '2' });
+    assert.match(info, /`staff` · number 2 ·/, '!form info head shows the number'); assert.ok(!info.includes(String(listB[1].id)) && !info.includes(String(listA[1].id)), 'and never the internal id');
+    assert.match(await as(A, 'set', { form: '2', setting: 'title', value: 'Second of A' }), /saved/);
+    assert.equal(rowOf(A, 2).title, 'Second of A'); assert.notEqual(rowOf(B, 2).title, 'Second of A', 'a number only reaches the form of its server'); assert.equal(rowOf(A, 2).number, 2, 'a form keeps its number after edits');
+    assert.match(await as(B, 'set', { form: String(listA[1].id), setting: 'title', value: 'Hacked' }), /no form called/, 'the internal id of another server\'s form is not a reference'); assert.notEqual(rowOf(A, 2).title, 'Hacked');
+    await as(A, 'add', { form: '3', type: 'short', label: 'Why?' }, admin, 'question'); await as(A, 'set', { form: '3', setting: 'channel', value: '#review' });
+    assert.match(await as(A, 'open', { form: '3' }), /is open/); assert.equal(rowOf(A, 3).status, 'open'); assert.equal(rowOf(B, 3).status, 'closed', 'opening A\'s form 3 leaves B\'s form 3 alone');
+    assert.match(await as(A, 'delete', { form: '2' }), /deleted/); assert.deepEqual(db.forms.filter((f) => f.guild_id === A.id).map((f) => f.number), [1, 3], 'the others keep their numbers');
+    assert.match(await as(A, 'create', { name: 'later' }), /\(number 4\)/, 'a number is not reused while a higher one exists');
+    assert.equal(db.forms.filter((f) => f.guild_id === B.id).length, 4, 'B is untouched by what happened in A');
+    // The ids in buttons and menus are internal and are resolved inside the server of the interaction.
+    const target = rowOf(A, 3);
+    shownModals.length = 0; replies.length = 0;
+    await handleFormInteraction(interaction(`fm:o:${target.id}`, 'button', { guild: A, member: makeMember('n1', { roleIds: ['member'] }) }));
+    assert.equal(shownModals.at(-1)?.custom_id, `fm:p:${target.id}:0`, 'the id of A\'s form opens it in A');
+    shownModals.length = 0;
+    await handleFormInteraction(interaction(`fm:o:${target.id}`, 'button', { guild: B, member: makeMember('n2', { roleIds: ['member'] }) }));
+    assert.equal(shownModals.length, 0, 'the same id in another server opens nothing'); assert.match(textOf(replies.at(-1)), /no longer exists|not exist|gone|removed/i);
+    // Panels: buttons carry the internal id (never shown), and the names of the cards are what the member reads.
+    await as(A, 'panel', { channel: panelChannel, forms: '1, 3' });
+    assert.deepEqual(panels.at(-1).components[0].toJSON().components.at(-1).components.map((b) => b.custom_id), [`fm:o:${rowOf(A, 1).id}`, `fm:o:${rowOf(A, 3).id}`], 'a panel is made with numbers and carries internal ids');
+    // The routes of the website: the number is returned, a number reaches only the forms of its server, the old id keeps working.
+    {
+      const { registerFormRoutes } = require('../src/web/formRoutes');
+      const handlers = {};
+      registerFormRoutes({ post: (path, ...fns) => { handlers[path] = fns.at(-1); } }, { authorize: async (req) => ({ guild: req.params.guildId === A.id ? A : B, userId: 'admin', member: admin }), isAuthorized: () => true, client: { guilds: { cache: new Map([[A.id, A], [B.id, B]]) } } });
+      const call = async (name, guildId, body) => { let payload = null; let status = 200; await handlers[`/api/dashboard/guild/:guildId/forms/${name}`]({ params: { guildId }, body, query: {}, get: () => null }, { status(c) { status = c; return this; }, json(p) { payload = p; return this; }, set() { return this; } }); return { status, ...payload }; };
+      const look = async (publicId) => { let payload = null; await handlers['/api/dashboard/form/:formId/look']({ params: { formId: publicId }, body: {}, get: () => null }, { status() { return this; }, json(p) { payload = p; return this; }, set() { return this; } }); return payload; };
+      assert.equal((await look(rowOf(B, 1).public_id)).form.number, 1, 'the look of a form carries its number in the server'); assert.equal((await look(rowOf(A, 3).public_id)).form.id, rowOf(A, 3).public_id, 'and its id is still the public id');
+      db.subs.length = 0;
+      const mk = (server2, formRow, user) => db.subs.push({ guild_id: server2.id, number: db.subs.filter((x) => x.guild_id === server2.id).length + 1, form_id: formRow.id, form_name: formRow.name, form_title: formRow.title, user_id: user, username: user, status: 'pending', answers: [], created_at: new Date().toISOString() });
+      mk(A, rowOf(A, 1), 'x1'); mk(A, rowOf(A, 3), 'x2'); mk(A, rowOf(A, 3), 'x3'); mk(B, rowOf(B, 3), 'y1');
+      const all = await call('submissions', A.id, { status: 'pending' });
+      assert.deepEqual(all.submissions.map((x) => [x.number, x.form_number]).sort(), [[1, 1], [2, 3], [3, 3]], 'each submission says the number of its form'); assert.deepEqual(all.pending_by_number, { 1: 1, 3: 2 }); assert.deepEqual(all.pending, { [rowOf(A, 1).id]: 1, [rowOf(A, 3).id]: 2 }, 'the pending counts by id still come');
+      assert.deepEqual((await call('submissions', A.id, { status: 'pending', form_number: 3 })).submissions.map((x) => x.number), [3, 2], 'by number in the server');
+      assert.deepEqual((await call('submissions', A.id, { status: 'pending', form_id: rowOf(A, 1).id })).submissions.map((x) => x.number), [1], 'and by the id the dashboard sends today');
+      assert.deepEqual((await call('submissions', A.id, { status: 'pending', form_number: 9 })).submissions, [], 'a number with no form shows nothing, not every form');
+      assert.deepEqual((await call('submissions', A.id, { status: 'pending', form_id: rowOf(B, 3).id })).submissions, [], 'the id of another server\'s form shows nothing');
+      assert.deepEqual((await call('submissions', B.id, { status: 'pending', form_number: 3 })).submissions.map((x) => x.user_id), ['y1'], 'number 3 of B is B\'s own');
+      const panelsBefore = panels.length;
+      const byNumber = await call('panel', A.id, { form_numbers: [1, 3], channel_id: channelId, style: 'buttons' });
+      assert.equal(byNumber.ok, true, JSON.stringify(byNumber)); assert.deepEqual(panels.at(-1).components[0].toJSON().components.at(-1).components.map((b) => b.custom_id), [`fm:o:${rowOf(A, 1).id}`, `fm:o:${rowOf(A, 3).id}`]);
+      assert.equal((await call('panel', A.id, { form_ids: [rowOf(A, 1).id], channel_id: channelId })).ok, true, 'the dashboard\'s ids still work'); assert.equal(panels.length, panelsBefore + 2);
+      assert.equal((await call('panel', A.id, { form_ids: [rowOf(B, 1).id], channel_id: channelId })).status, 400, 'an id of another server\'s form is not found'); assert.equal((await call('panel', A.id, { form_numbers: [9], channel_id: channelId })).status, 400);
+    }
+    // The migration: schema.sql numbers existing forms once and gives new ones the next number of their server (the real SQL runs in check-forms-db.js).
+    const schema = require('node:fs').readFileSync(path.join(__dirname, '..', 'src', 'db', 'schema.sql'), 'utf8');
+    for (const part of ['alter table forms add column if not exists number integer', 'row_number() over (partition by guild_id order by id)', 'where number is null', 'create or replace function forms_assign_number()', 'drop trigger if exists forms_assign_number on forms', 'alter table forms alter column number set not null', 'create unique index if not exists idx_forms_guild_number on forms(guild_id, number)', 'alter table appeal_forms add column if not exists number integer', 'create unique index if not exists idx_appeal_forms_guild_number on appeal_forms(guild_id, number)', 'create trigger appeal_forms_assign_number before insert on appeal_forms']) assert.ok(schema.includes(part), `schema.sql has: ${part}`);
+    assert.ok(require('node:fs').existsSync(path.join(__dirname, '..', 'src', 'db', 'migrations', '2026-11-01-per-server-form-numbers.sql')), 'a one-time migration file for the database in use');
   }
   console.log('Checked forms: questions, rules, pages with Next, review card, accept and deny with roles and DM, reviewers, panels, !form and filling on the web.');
 })().catch((error) => { console.error(error); process.exit(1); });

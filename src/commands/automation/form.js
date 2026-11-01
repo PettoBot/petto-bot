@@ -275,7 +275,7 @@ async function infoText(guild, form, lang) {
   };
   return [
     `### ${form.title}`,
-    t(lang, 'forms.info.head', { name: form.name, id: form.id, state: t(lang, form.status === 'open' ? 'forms.info.open' : 'forms.info.closed') }),
+    t(lang, 'forms.info.head', { name: form.name, number: form.number, state: t(lang, form.status === 'open' ? 'forms.info.open' : 'forms.info.closed') }),
     form.description ? `> ${forms.clip(form.description, 300).replace(/\n/g, '\n> ')}` : null,
     t(lang, form.web_enabled === false ? 'forms.info.webOff' : 'forms.info.web', { url: forms.webUrl(form, lang), name: form.name }),
     form.web_enabled === false ? null : pageLine(form, lang),
@@ -326,10 +326,10 @@ async function execute(interaction) {
     const limits = await limitsOf(guild.id);
     const count = await formsDb.countForms(guild.id);
     if (count >= limits.forms) return done(bad(t(lang, 'forms.create.limit', { count: limits.forms })));
-    if (await formsDb.getForm(guild.id, name)) return done(bad(t(lang, 'forms.create.taken', { name })));
+    if (await formsDb.getFormByName(guild.id, name)) return done(bad(t(lang, 'forms.create.taken', { name })));
     const title = interaction.options.getString('title') || name;
     const form = await formsDb.createForm(guild.id, { ...forms.normalizeForm({ name, title, status: 'closed' }), public_id: forms.newPublicId() });
-    return done(ok(t(lang, 'forms.create.done', { name: form.name, title: form.title })));
+    return done(ok(t(lang, 'forms.create.done', { number: form.number, name: form.name, title: form.title })));
   }
 
   if (sub === 'list') {
@@ -338,7 +338,7 @@ async function execute(interaction) {
     const pending = await formsDb.listSubmissions(guild.id, { status: 'pending', limit: 200 });
     const limits = await limitsOf(guild.id);
     const lines = list.map((form) => t(lang, 'forms.list.line', {
-      name: form.name, title: form.title, state: t(lang, form.status === 'open' ? 'forms.info.open' : 'forms.info.closed'),
+      number: form.number, name: form.name, title: form.title, state: t(lang, form.status === 'open' ? 'forms.info.open' : 'forms.info.closed'),
       questions: forms.normalizeQuestions(form.questions).length, pending: pending.filter((row) => String(row.form_id) === String(form.id)).length,
     }));
     return done(note([`### ${t(lang, 'forms.list.title', { count: list.length, max: limits.forms })}`, ...lines].join('\n')));
@@ -384,7 +384,7 @@ async function execute(interaction) {
     const number = interaction.options.getInteger('number', true);
     const submission = await formsDb.getSubmission(guild.id, number);
     if (!submission) return done(bad(t(lang, 'forms.review.gone')));
-    const form = submission.form_id ? await formsDb.getForm(guild.id, submission.form_id).catch(() => null) : null;
+    const form = submission.form_id ? await formsDb.getFormById(guild.id, submission.form_id).catch(() => null) : null;
     if (!forms.isReviewer(interaction.member, form)) return done(bad(t(lang, 'forms.review.notReviewer')));
     if (sub === 'view') {
       const member = guild.members.cache.get(submission.user_id) ?? null;
