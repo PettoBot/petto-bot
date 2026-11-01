@@ -8,7 +8,7 @@
 //   - the old commands keep their words, routes and slash commands; a rule of a server (turned off, restricted, a permission level) on the
 //     wrapped command, or on `mod`, stops the subcommand;
 //   - the descriptions are translated for Discord, the short aliases are in the table, and the number and size of the slash commands stay
-//     inside what Discord allows (65 registered now, 62 of them slash commands: the third batch of umbrellas, scripts/check-umbrellas-3.js, adds the rest; before it were 38 and 35: the second batch of umbrellas, scripts/check-umbrellas-2.js, adds four).
+//     inside what Discord allows (67 registered now, 64 of them slash commands: the third batch of umbrellas, scripts/check-umbrellas-3.js, adds the rest; before it were 38 and 35: the second batch of umbrellas, scripts/check-umbrellas-2.js, adds four).
 process.env.DISCORD_TOKEN ||= 'check-only';
 process.env.DISCORD_CLIENT_ID ||= '1';
 process.env.DISCLOUD_DATABASE_URL ||= 'postgres://check:check@127.0.0.1:1/check'; // never connected to
@@ -552,8 +552,8 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   // ------------------------------------------------------------ Discord: registered, translated, inside the limits
   const registered = collectCommandData();
   const chat = registered.filter((each) => (each.type ?? 1) === 1);
-  assert.equal(registered.length, 65, '65 commands registered with Discord (71 before six old slash commands were replaced by their umbrella subcommand)');
-  assert.equal(chat.length, 62, '62 of them slash commands (3 are menus)');
+  assert.equal(registered.length, 67, '67 commands registered with Discord (71 before six old slash commands were replaced by their umbrella subcommand, then /ai was added)');
+  assert.equal(chat.length, 64, '64 of them slash commands (3 are menus)');
   assert.ok(chat.length <= 100, 'far from the 100 slash commands Discord allows');
   const registeredMod = registered.find((each) => each.name === 'mod');
   assert.ok(registeredMod, '/mod is registered with Discord, so deploy-commands.js sends it');

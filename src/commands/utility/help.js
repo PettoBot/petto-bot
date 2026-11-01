@@ -278,6 +278,22 @@ function entryDetailCard(client, guild, prefix, command, entry, page = 0, total 
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(body));
 }
 
+const OPTION_DESCRIPTION_MAX = 100;
+
+/**
+ * What a menu option says about itself: the first sentence of the description (in the language of the server), at most 100 characters (what
+ * Discord accepts) and cut with an ellipsis, never empty. A sentence ends at a stop followed by a capital letter, so "e.g. 30s" is not a cut.
+ */
+function optionDescription(text, fallback = '') {
+  const clean = String(text ?? '').replace(/\s+/g, ' ').trim();
+  const first = clean.split(/(?<=[.!?])\s+(?=[\p{Lu}¡¿])/u)[0] || clean || String(fallback ?? '').trim();
+  const chars = [...first];
+  return chars.length <= OPTION_DESCRIPTION_MAX ? first : `${chars.slice(0, OPTION_DESCRIPTION_MAX - 1).join('').trimEnd()}…`;
+}
+
+/** The label of an entry in a menu: the whole path with the name of the command ("ticket category add"), so `add` alone is never all there is. */
+const entryLabel = (json, path) => [json.name, ...path].join(' ').slice(0, 100);
+
 const ENTRY_PICKER_MAX = 25;
 const ENTRY_PICKERS_MAX = 4;
 
@@ -293,11 +309,8 @@ function entryPickers(command, entries, page, lang, disabled = false) {
     const chunk = entries.slice(from, from + ENTRY_PICKER_MAX);
     const options = chunk.map((entry, offset) => {
       const index = from + offset;
-      const label = [json.name, ...entry.path].join(' ').slice(0, 100);
-      const description = commandDescription(lang, command, entry.path, null, entry.description) || '';
-      const option = new StringSelectMenuOptionBuilder().setLabel(label).setValue(String(index)).setDefault(index === page);
-      if (description) option.setDescription(description.slice(0, 100));
-      return option;
+      const description = optionDescription(commandDescription(lang, command, entry.path, null, entry.description), t(lang, 'help.noDescription'));
+      return new StringSelectMenuOptionBuilder().setLabel(entryLabel(json, entry.path)).setValue(String(index)).setDescription(description).setDefault(index === page);
     });
     const placeholder = entries.length <= ENTRY_PICKER_MAX ? t(lang, 'help.entry.placeholder') : t(lang, 'help.entry.range', { from: from + 1, to: from + chunk.length });
     rows.push(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`help_entry:${rows.length}`).setPlaceholder(placeholder).setDisabled(disabled).addOptions(options)));
@@ -330,7 +343,7 @@ function mainView(client, guild, prefix, includeHidden = false, lang = currentLa
     const blurb = categoryBlurb(id, lang);
     const count = tn(lang, 'help.main.commands', cmds.length);
     const description = blurb ? t(lang, 'help.main.option.menu', { blurb, commands: count }) : count;
-    return new StringSelectMenuOptionBuilder().setLabel(meta.label).setValue(id).setDescription(description.slice(0, 100)).setEmoji(meta.icon);
+    return new StringSelectMenuOptionBuilder().setLabel(meta.label).setValue(id).setDescription(optionDescription(description, count)).setEmoji(meta.icon);
   });
 
   const container = new ContainerBuilder()
@@ -362,7 +375,7 @@ function categoryView(client, guild, categoryId, includeHidden = false, lang = c
     )
     .setThumbnailAccessory(new ThumbnailBuilder().setURL(botAvatarURL(client, guild)));
 
-  const options = commands.slice(0, 25).map((cmd) => new StringSelectMenuOptionBuilder().setLabel(cmd.data.name).setValue(cmd.data.name).setDescription(commandDescription(lang, cmd, [], null, cmd.data.description ?? t(lang, 'help.noDescription')).slice(0, 100)));
+  const options = commands.slice(0, 25).map((cmd) => new StringSelectMenuOptionBuilder().setLabel(cmd.data.name).setValue(cmd.data.name).setDescription(optionDescription(commandDescription(lang, cmd, [], null, cmd.data.description), t(lang, 'help.noDescription'))));
 
   const container = new ContainerBuilder()
     .addSectionComponents(section)
@@ -386,10 +399,10 @@ function subcommandView(client, guild, command, categoryId, includeHidden = fals
     )
     .setThumbnailAccessory(new ThumbnailBuilder().setURL(botAvatarURL(client, guild)));
 
-  const options = entries.slice(0, 25).map((e) => {
-    const label = e.path.join(' ') || json.name;
-    return new StringSelectMenuOptionBuilder().setLabel(label).setValue(e.path.join(' ')).setDescription(commandDescription(lang, command, e.path, null, e.description ?? t(lang, 'help.noDescription')).slice(0, 100));
-  });
+  // The label is the whole path with the name of the command ("ticket category add"), and the description says what it does.
+  const options = entries.slice(0, 25).map((e) => (
+    new StringSelectMenuOptionBuilder().setLabel(entryLabel(json, e.path)).setValue(e.path.join(' ')).setDescription(optionDescription(commandDescription(lang, command, e.path, null, e.description), t(lang, 'help.noDescription')))
+  ));
 
   const container = new ContainerBuilder()
     .addSectionComponents(section)
@@ -471,7 +484,9 @@ module.exports = {
     // configured through PETTO_DEVELOPER_IDS need to discover every tool.
     const includeHidden = isPettoOperator(interaction.user?.id);
 
-    // As a slash command the menus are private (only the person who asked can use them anyway); the prefix drops the flag.
+    // The help answers in the channel, like `!help` (the buttons and menus are for who asked; somebody else is told so in private). Only the
+    // line that says a command was not found is private.
+    const PUBLIC = MessageFlags.IsComponentsV2;
     const PRIVATE = MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral;
     const input = interaction.options.getString('command')?.trim();
     if (input) {
@@ -486,13 +501,13 @@ module.exports = {
       }
 
       if (entries.length === 1) {
-        await interaction.reply({ components: [entryDetailCard(client, interaction.guild, prefix, command, entries[0], 0, 1, lang)], flags: PRIVATE });
+        await interaction.reply({ components: [entryDetailCard(client, interaction.guild, prefix, command, entries[0], 0, 1, lang)], flags: PUBLIC });
         return;
       }
 
       let page = 0;
       const rows = (current, disabled = false) => [entryDetailCard(client, interaction.guild, prefix, command, entries[current], current, entries.length, lang), ...entryPickers(command, entries, current, lang, disabled), navRow(current, entries.length, disabled)];
-      const msg = await interaction.reply({ components: rows(0), flags: PRIVATE });
+      const msg = await interaction.reply({ components: rows(0), flags: PUBLIC });
       const collector = msg.createMessageComponentCollector({ time: TIMEOUT_MS });
 
       collector.on('collect', async (i) => {
@@ -516,7 +531,7 @@ module.exports = {
       });
       return;
     }
-    const msg = await interaction.reply({ ...mainView(client, interaction.guild, prefix, includeHidden, lang), flags: PRIVATE });
+    const msg = await interaction.reply(mainView(client, interaction.guild, prefix, includeHidden, lang));
     let currentCategory = null;
     let currentCommand = null;
 
@@ -601,5 +616,7 @@ module.exports.mainView = mainView;
 module.exports.suggestCommands = suggestCommands;
 module.exports.helpChoices = helpChoices;
 module.exports.entryPickers = entryPickers;
+module.exports.subcommandView = subcommandView;
+module.exports.optionDescription = optionDescription;
 module.exports.categoryView = categoryView;
 module.exports.categoryMeta = categoryMeta;

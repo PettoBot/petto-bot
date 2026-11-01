@@ -13,7 +13,7 @@
 //     wrapped command stop that group only, and on the umbrella stop all of it, with the prefix too;
 //   - the list that Discord fills while an option is typed (autocomplete) is the wrapped command's own, and empty for who may not use it;
 //   - the descriptions are translated for Discord (es and pt-BR), every command is under 8000 characters in each language, and the number of slash
-//     commands (62 of the 100 Discord allows: 38 free) is the one expected;
+//     commands (64 of the 100 Discord allows: 36 free) is the one expected;
 //   - the private tools of the team and the generated `!<name>config` cards stay prefix-only.
 process.env.DISCORD_TOKEN ||= 'check-only';
 process.env.DISCORD_CLIENT_ID ||= '1';
@@ -652,11 +652,11 @@ function tailOf(node) {
   assert.ok([...types].every((type) => [3, 4, 5, 6, 7, 8, 9, 10, 11].includes(type)), `option types in use: ${[...types]}`);
 
   // ------------------------------------------------------------ Discord: registered, translated, inside the limits
-  assert.equal(registered.length, 65, '65 commands registered with Discord (71 before six old slash commands were replaced by their umbrella subcommand)');
-  assert.equal(chat.length, 62, '62 of them slash commands (3 are menus)');
+  assert.equal(registered.length, 67, '67 commands registered with Discord (71 before six old slash commands were replaced by their umbrella subcommand, then /ai was added)');
+  assert.equal(chat.length, 64, '64 of them slash commands (3 are menus)');
   assert.equal(new Set(chat.map((each) => each.name)).size, chat.length, 'no two slash commands share a name');
   const usage = slotUsage(registered);
-  assert.deepEqual([usage.chat.used, usage.chat.limit, usage.chat.free], [62, 100, 38], '38 slots are free, more than the 20 that are kept');
+  assert.deepEqual([usage.chat.used, usage.chat.limit, usage.chat.free], [64, 100, 36], '36 slots are free, more than the 20 that are kept');
   assert.ok(usage.chat.free >= 20);
   assert.ok(chat.every((each) => each.options.length <= LIMITS.subcommands));
   for (const name of ['botstatus', 'bots', 'guilddebug', 'guildsend', 'leaveguild', 'quests', 'welcomeconfig', 'prefixconfig', 'timerconfig', 'language']) assert.ok(!chat.some((each) => each.name === name), `/${name} stays prefix-only (private, or a generated card)`);
@@ -718,7 +718,10 @@ function tailOf(node) {
   }
   // No word that already worked changed meaning: the table only grew.
   const before = require('node:child_process').execSync('git show HEAD:src/utils/short-aliases.json', { cwd: root, encoding: 'utf8' });
-  for (const [alias, target] of Object.entries(JSON.parse(before))) assert.equal({ ...SHORT_ALIAS_TABLE, ...TEAM_ALIAS_TABLE }[alias], target, `${alias} is still ${target} (the words of a hidden command moved to the team table)`);
+  // The one exception: the four words of the booster role subcommands that /me had for a few days (/boosterrole is its own command now, with its own words `brc`, `brco`, `brr`, `brre`).
+  const MOVED_OUT_OF_ME = new Set(['mbc', 'mbo', 'mbre', 'mbrem']);
+  for (const alias of MOVED_OUT_OF_ME) assert.ok(!Object.hasOwn({ ...SHORT_ALIAS_TABLE, ...TEAM_ALIAS_TABLE }, alias), `${alias} went away with the /me booster role subcommand`);
+  for (const [alias, target] of Object.entries(JSON.parse(before)).filter(([alias]) => !MOVED_OUT_OF_ME.has(alias))) assert.equal({ ...SHORT_ALIAS_TABLE, ...TEAM_ALIAS_TABLE }[alias], target, `${alias} is still ${target} (the words of a hidden command moved to the team table)`);
   spyOn(wrappedNames);
   const shortOf = (target) => Object.entries(SHORT_ALIAS_TABLE).find(([, value]) => value === target)[0];
   call = await ran(`!${shortOf('protect honeypot list')}`);

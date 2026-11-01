@@ -234,6 +234,28 @@ async function runCustomCommandRow(message, row, commandName, argText = '', pref
 }
 
 /**
+ * The next question of a conversation with `ask`, as the command it stands for, or null. It is only that for a reply to one of the AI answers of this bot
+ * written by the member who asked it (utils/askAi.js `isFollowUp`), and only where `ask` may be used by that member: a rule of the server (turned off here,
+ * restricted to roles, a permission level) makes it plain chat again, with no notice. A server that uses the word `ask` for its own alias or custom command
+ * keeps it. Any other message costs nothing: a message that is not a reply returns at once.
+ */
+async function askFollowUp(message, mainPrefix) {
+  if (!message.reference?.messageId || typeof message.content !== 'string') return null;
+  const askAi = require('../utils/askAi');
+  if (!await askAi.isFollowUp(message)) return null;
+  const route = message.client.commandRoutes?.get('ask');
+  const command = route ? message.client.commands?.get(route.command) : null;
+  if (!command || await serverUsesWord(message.guild.id, 'ask')) return null;
+  const names = commandRules.ruleNames(command, { route, subcommand: 'ask' });
+  if (await commandRules.disabledFor(message.guild.id, names, message.channel.id)) return null;
+  if (await commandRules.restrictedForNames(message.guild.id, names, message.member).catch(() => ({}))) return null;
+  for (const name of commandRules.permissionNames(command, { subcommand: 'ask' })) {
+    if (!await permissionsDb.hasCommandPermission(message.guild.id, name, message.member).catch(() => false)) return null;
+  }
+  return { typedPrefix: mainPrefix, commandName: 'ask', argText: message.content, source: 'ask-follow-up', main: true, word: false, mention: false };
+}
+
+/**
  * True when the message is a command for the bot: it starts with the server prefix (or an @mention of the bot) and the
  * first word is a command, an alias or a server alias. Other features use it to leave command messages alone, so a
  * word inside the command text does not set off an autoresponder.
@@ -264,13 +286,15 @@ module.exports = {
 
     // An @mention of the bot always works, so a server can never get locked out if it forgets its prefixes. Then the prefixes of the
     // server (any of the list, the longest first) and the personal one of the author (boosters, Premium, partners, the team).
-    const parsed = await findPrefixWay(message);
+    let parsed = await findPrefixWay(message);
     const mainPrefix = await getPrefix(message.guild.id).catch(() => '!');
     if (!parsed) {
       // Not a command of Petto: it may still set off a custom command that has its own prefix or words.
       const trigger = await findTrigger(message.guild.id, message.content).catch(() => null);
-      if (trigger) await runCustomCommandRow(message, trigger.row, trigger.row.name, trigger.args, trigger.prefix, mainPrefix);
-      return;
+      if (trigger) { await runCustomCommandRow(message, trigger.row, trigger.row.name, trigger.args, trigger.prefix, mainPrefix); return; }
+      // A reply to one of the answers of `ask` written by the member who asked it is their next question (no command word): it goes on as `!ask <text>`.
+      parsed = await askFollowUp(message, mainPrefix);
+      if (!parsed) return;
     }
 
     const prefix = parsed.typedPrefix;
@@ -284,7 +308,7 @@ module.exports = {
     // A word of a command hidden everywhere (`/music`: `!music`, `!play`, `!skip`...) is not a command for anybody outside the Petto team: like a short alias it
     // gives way to a word the server chose, and otherwise the message is not a command at all (no answer, not even "unknown command").
     let hiddenWord = isHiddenWordFor(message.client, commandName, message.author.id);
-    const shortRoute = message.client.commandRoutes?.get(commandName)?.short ? message.client.commandRoutes.get(commandName) : null;
+    const shortRoute = message.client.commandRoutes?.get(commandName)?.short || message.client.commandRoutes?.get(commandName)?.yieldsToServer ? message.client.commandRoutes.get(commandName) : null;
     const serverOwnsIt = (shortRoute || hiddenWord) ? await serverUsesWord(message.guild.id, commandName) : false;
     if (hiddenWord && !serverOwnsIt) {
       const trigger = await findTrigger(message.guild.id, message.content).catch(() => null);
