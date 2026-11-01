@@ -1,7 +1,7 @@
 // /mod: the everyday moderation commands as subcommands of one command (a tidier `/` list: they are found by typing `/mod`). Each one runs
 // the code of the command it wraps with its options (utils/umbrella.js): `/mod ban` is `/ban user`, `/mod tempmute` is `/tempmute`,
 // `/mod lock` is `/channel lock`. What a subcommand leaves out (`/ban users`, `/mute remove`, `/case edit`...) stays in the old command,
-// which keeps working as it was, with the prefix and, for `/ban`, `/kick`, `/warn`, `/unban`, `/timeout` and `/purge`, as a slash command.
+// which keeps working as it was, with the prefix and, for `/ban`, `/kick`, `/warn` and `/channel`, as a slash command (`/unban`, `/purge` and `/timeout` are only here and with the prefix).
 //
 // PERMISSIONS: Discord checks `default_member_permissions` for a whole command, never for one subcommand, so `/mod` itself is open
 // (null: everybody sees it, and a server can limit it in Settings > Integrations) and each subcommand asks, when it runs, for what the
@@ -79,6 +79,8 @@ module.exports = {
   // The rules of a server name the command that is wrapped (`!disablecommand ban` also turns off `/mod ban`, `!restrictcommand channel` `/mod lock`).
   rulesBySubcommand: true,
   ruleKeys: ruleKeysOf(SUBCOMMANDS),
+  // `/timeout` is not a slash command any more (`/mod tempmute` is the same thing): a rule saved for `timeout` also reaches `/mod tempmute`.
+  alsoRuleKeys: { tempmute: ['timeout'] },
   // What `!help mod ban` says is needed.
   permissionForSubcommand: executor.permissionForSubcommand,
   data: addSubcommands(

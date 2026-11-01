@@ -140,6 +140,8 @@ const TABLES = {
     ['time', 'time', null, null, 'Colombia'],
     ['currency', 'currency', null, null, '100 usd cop'],
     ['crypto', 'crypto', null, null, 'bitcoin'],
+    ['compute', 'calc', null, null, '(12 + 4) * 3'],
+    ['color', 'color', null, null, '#ff91c2'],
     ['github', 'github', 'repo', null, 'octocat/hello-world'],
     ['package', 'package', 'npm', null, 'discord.js'],
   ],
@@ -299,7 +301,7 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
     assert.ok(subcommandsOf(command).every((sub) => sub.type === ApplicationCommandOptionType.Subcommand), `/${umbrella} has subcommands and nothing else: no slash command without subcommands`);
     assert.deepEqual(command.subcommands.map((entry) => [entry.name, entry.wraps, entry.sub ?? null]), TABLES[umbrella].map((row) => [row[0], row[1], row[2]]), `/${umbrella} wraps what was decided`);
   }
-  assert.deepEqual(UMBRELLAS.map((umbrella) => TABLES[umbrella].length), [23, 22, 15, 24]);
+  assert.deepEqual(UMBRELLAS.map((umbrella) => TABLES[umbrella].length), [23, 22, 17, 24]);
 
   // What it wraps is something the umbrella can run: it exists, is private to nobody, takes no list that is filled while typing, and reads no
   // shorter way of writing that an umbrella would not pass on.
@@ -441,7 +443,7 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   for (const [umbrella, words] of Object.entries({
     game: { cf: 'coinflip', flipcoin: 'coinflip', eightball: '8ball', tod: 'truthordare', wyr: 'wouldyourather', nhie: 'neverhaveiever', mc: 'minecraft', rbx: 'roblox', mr: 'modrinth', pkmn: 'pokemon', pokedex: 'pokemon', pick: 'choose', dice: 'roll', q: 'quote', bigemoji: 'jumbo', uwuify: 'uwu' },
     me: { bday: 'birthday', reputation: 'rep', myprefix: 'prefix', phist: 'names', globalrank: 'ranking', sp: 'spotify', br: 'boosterrole' },
-    search: { ani: 'anilist', apple: 'itunes', dz: 'deezer', lfm: 'lastfm', yt: 'youtube', wp: 'wikipedia', wk: 'wiki', clima: 'weather', tz: 'time', cur: 'currency', coin: 'crypto', gh: 'github', pkg: 'package' },
+    search: { ani: 'anilist', apple: 'itunes', dz: 'deezer', lfm: 'lastfm', yt: 'youtube', wp: 'wikipedia', wk: 'wiki', clima: 'weather', tz: 'time', cur: 'currency', coin: 'crypto', c: 'compute', calc: 'compute', calculate: 'compute', math: 'compute', clr: 'color', hex: 'color', gh: 'github', pkg: 'package' },
     staff: { imagemute: 'imute', reactionmute: 'rmute', recentban: 'raid', mban: 'massban', mkick: 'masskick', mmute: 'massmute', munban: 'massunban', unbanall: 'massunban', munmute: 'massunmute', mwarn: 'masswarn', nuk: 'nuke' },
   })) {
     const command = commandFile(umbrella);
@@ -511,7 +513,9 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   assert.equal(client.commandRoutes.get('ytsearch').command, 'youtube', 'a route of an old command is still there');
   for (const name of ['8ball', 'minecraft', 'birthday', 'boosterrole', 'anilist', 'github', 'voice', 'thread', 'massban', 'snipe']) assert.ok(!isSlashCommand(commandFile(name)), `/${name} is still not a slash command: it works with the prefix`);
   // The commands that were already slash commands are still registered as they were.
-  for (const name of ['afk', 'remind', 'rank', 'suggest', 'top', 'avatar', 'userinfo', 'ban', 'kick', 'purge']) assert.ok(isSlashCommand(commandFile(name)), `/${name} is still a slash command`);
+  for (const name of ['afk', 'remind', 'rank', 'suggest', 'top', 'ban', 'kick']) assert.ok(isSlashCommand(commandFile(name)), `/${name} is still a slash command`);
+  // `/avatar`, `/userinfo`, `/purge` (and `/serverinfo`, `/unban`, `/timeout`) were replaced by `/user avatar`, `/user info`, `/mod purge`...: the prefix is unchanged.
+  for (const name of ['avatar', 'userinfo', 'purge', 'serverinfo', 'unban', 'timeout']) assert.ok(!isSlashCommand(commandFile(name)) && !commandFile(name).prefixOnly, `/${name} is not a slash command any more (an umbrella subcommand replaces it) and !${name} still works`);
 
   // ------------------------------------------------------------ SECURITY: the permission of each wrapped command, slash and prefix
   const wrongFor = (flag) => (flag === 'ManageGuild' ? F.ManageMessages : F.ManageGuild);
@@ -695,8 +699,8 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   // ------------------------------------------------------------ Discord: registered, translated, inside the limits
   const registered = collectCommandData();
   const chat = registered.filter((each) => (each.type ?? 1) === 1);
-  assert.equal(registered.length, 71, '71 commands registered with Discord (the 34 there were, /game, /me, /search, /staff and the third batch of umbrellas)');
-  assert.equal(chat.length, 68, '68 of them slash commands (3 are menus)');
+  assert.equal(registered.length, 65, '65 commands registered with Discord (71 before six old slash commands were replaced by their umbrella subcommand)');
+  assert.equal(chat.length, 62, '62 of them slash commands (3 are menus)');
   assert.ok(chat.length <= 100, 'far from the 100 slash commands Discord allows');
   const deployed = [];
   await require('../src/handlers/deployCommands').deployCommands({ rest: { put: async (_route, { body }) => { deployed.push(...body); return body; }, get: async () => [] }, settings: { getSetting: async () => null, setSetting: async () => {} }, force: true });

@@ -17,7 +17,7 @@ const { tokenize, resolveSubcommandOptions } = require('../handlers/prefixIntera
 function ruleNames(command, { route = null, subcommand = null, group = null, via = null } = {}) {
   const names = [];
   if (route?.disableName) names.push(route.disableName);
-  else if (command.rulesBySubcommand && subcommand) names.push(ruleKeyOf(command, subcommand, group));
+  else if (command.rulesBySubcommand && subcommand) names.push(ruleKeyOf(command, subcommand, group), ...otherRuleKeys(command, subcommand, group));
   names.push(command.data.name);
   // The umbrella a prefix use came through (`!config prefix set` runs `!prefix set`): its own rules apply too.
   if (via) names.push(via);
@@ -30,10 +30,16 @@ function ruleKeyOf(command, subcommand, group = null) {
   return command.ruleKeys?.[subcommand] ?? subcommand;
 }
 
+/** The other old commands a subcommand of an umbrella also stands for (`/mod tempmute` is `/tempmute` and also the removed `/timeout`): `alsoRuleKeys` of the umbrella. */
+function otherRuleKeys(command, subcommand, group = null) {
+  return command.alsoRuleKeys?.[ruleKeyOf(command, subcommand, group)] ?? [];
+}
+
 /** The names a custom permission level (`!permissions`) is looked up under: the command, and the old command a subcommand wraps. */
 function permissionNames(command, { subcommand = null, group = null, via = null } = {}) {
   const wrapped = command.ruleKeys && subcommand ? (group && command.ruleKeys[group]) || command.ruleKeys[subcommand] : null;
-  return [...new Set([command.data.name, wrapped, via].filter(Boolean))];
+  const others = wrapped ? otherRuleKeys(command, subcommand, group) : [];
+  return [...new Set([command.data.name, wrapped, ...others, via].filter(Boolean))];
 }
 
 /**

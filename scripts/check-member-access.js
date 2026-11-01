@@ -109,6 +109,8 @@ const leavesOf = (command) => {
   if (!top.some((option) => option.type === 1 || option.type === 2)) return [{ path: [], node: json(command) }];
   return top.flatMap((option) => (option.type === 1 ? [{ path: [option.name], node: option }] : option.type === 2 ? (option.options ?? []).map((sub) => ({ path: [option.name, sub.name], node: sub })) : []));
 };
+/** The names a rule can be saved under for a subcommand of an umbrella (`!disablecommand`, `!restrictcommand`): the old command it wraps, and any other it also stands for. */
+const commandRulesOf = (command, sub) => require('../src/utils/commandRules').ruleNames(command, { subcommand: sub });
 const permissionName = (raw) => (raw == null ? null : new PermissionsBitField(BigInt(raw)).toArray().join(' + ') || null);
 
 // ---------------------------------------------------------------- what was decided (written here, apart from the commands)
@@ -120,7 +122,7 @@ const EVERYDAY = new Set([
   '8ball', 'coinflip', 'neverhaveiever', 'quote', 'rps', 'ship', 'truthordare', 'uwu', 'wouldyourather', 'act', 'image',
   'anilist', 'animal', 'chess', 'crypto', 'currency', 'deezer', 'github', 'itunes', 'lastfm', 'minecraft', 'modrinth', 'package', 'pokemon', 'roblox', 'steam', 'tmdb', 'twitch', 'wikipedia', 'youtube',
   'partner', 'request', 'review', 'uploads', 'stats',
-  // /server and /user: only lookups (their subcommands are the old info commands).
+  // /server and /user: lookups (their subcommands are the old info commands); `/server steal` asks for Manage Guild Expressions inside.
   'server', 'user',
 ]);
 // Open at Discord but each subcommand asks for what it needs inside: `MEMBER` is what a plain member may start (everyone, or the author of the ticket, the post or
@@ -278,12 +280,23 @@ const DECLARED = {
   language: 'ManageGuild', alias: 'ManageGuild', backup: 'ManageGuild', moderation: 'ManageGuild', feed: 'ManageGuild', starboard: 'ManageGuild', identity: 'ManageGuild', timer: 'ManageGuild', antiscam: 'ManageGuild', vanity: 'ManageGuild',
   reactionrole: 'ManageRoles', stickyroles: 'ManageRoles', joinrole: 'ManageRoles', welcome: 'ManageGuild', leave: 'ManageGuild', boost: 'ManageGuild', webhook: 'ManageWebhooks', counter: 'ManageChannels', autothread: 'ManageChannels', send: 'ManageMessages',
 };
-const UMBRELLA_TWINS = ['server info = /serverinfo', 'user info = /userinfo', 'user avatar = /avatar', 'mod ban = /ban', 'mod kick = /kick', 'mod warn = /warn', 'mod unban = /unban', 'mod purge = /purge', 'mod lock = /channel', 'mod unlock = /channel', 'mod slowmode = /channel'];
+// `/serverinfo`, `/userinfo`, `/avatar`, `/unban`, `/purge` and `/timeout` are not slash commands any more (their umbrella subcommand has every option and action of
+// them): what is left are the ones whose old command has more than the umbrella wraps (`/ban` has 7 subcommands, `/kick` 2, `/warn` 3, `/channel` 13).
+const UMBRELLA_TWINS = ['mod ban = /ban', 'mod kick = /kick', 'mod warn = /warn', 'mod lock = /channel', 'mod unlock = /channel', 'mod slowmode = /channel'];
+const REMOVED_TWINS = { serverinfo: 'server info', userinfo: 'user info', avatar: 'user avatar', unban: 'mod unban', purge: 'mod purge', timeout: 'mod tempmute' };
 
 // ---------------------------------------------------------------- the fake message of the prefix, and what the pipelines did
 const executed = [];
 const spied = [];
 function spyOn(commands) {
+  // The subcommands an umbrella answers by itself (`/server icon`) are recorded like the ones that run a wrapped command.
+  for (const command of commands.concat(all.filter((each) => each.permissionForSubcommand))) {
+    for (const entry of command.subcommands ?? []) {
+      if (!entry.run || entry.spied) continue;
+      entry.spied = true;
+      entry.run = async function ownRun(interaction) { executed.push({ name: command.data.name, sub: entry.name, group: null, user: interaction.user.id }); };
+    }
+  }
   for (const command of commands) {
     spied.push([command, command.execute]);
     command.execute = async function spy(interaction) {
@@ -400,7 +413,7 @@ async function slashOf(command, leaf, { perms = 0n } = {}) {
   // The staff subcommands of a command open at Discord refuse a plain member (ephemeral on the slash command, so the channel does not see it).
   const MUST_REFUSE = ['form create', 'form delete', 'form set', 'form panel', 'rollouts enable', 'rollouts role', 'invites bonus', 'invites config', 'invites reward add', 'invites reset', 'counting setup', 'counting disable', 'counting reset', 'quickreply add', 'quickreply remove',
     'imgonly add', 'imgonly remove', 'urlonly add', 'urlonly remove', 'rep reset', 'report config', 'report disable', 'forum setup', 'forum panel', 'forum delete', 'ticket panel create', 'ticket category add', 'ticket setup', 'confession setup', 'suggestion setup',
-    'voicemaster setup', 'voicemaster disable', 'boosterrole admin set', 'premium grant', 'premium revoke', 'mod ban', 'mod purge', 'staff massban', 'config prefix set', 'protect honeypot add', 'greet welcome setup', 'auto timer'];
+    'voicemaster setup', 'voicemaster disable', 'boosterrole admin set', 'premium grant', 'premium revoke', 'server steal', 'mod ban', 'mod purge', 'staff massban', 'config prefix set', 'protect honeypot add', 'greet welcome setup', 'auto timer'];
   const publicRefusals = [];
   for (const key of MUST_REFUSE) {
     const entry = found.find((each) => `${each.name} ${each.leaf}`.trim().startsWith(key) || `${each.name} ${each.leaf}`.trim() === key);
@@ -424,7 +437,8 @@ async function slashOf(command, leaf, { perms = 0n } = {}) {
     if (raw != null) assert.equal(result.denied, true, `a plain member typing !${name} is told what permission is missing (${permissionName(raw)})`);
     else assert.equal(result.denied, false, `a plain member typing !${name} is not refused for a permission`);
     if (raw == null && !isUmbrella && !command.privateGuildId) assert.ok(result.ran.length === 1 || result.sent.length > 0, `!${name} answers a plain member (it runs, or it says how to write it)`);
-    if (isUmbrella) assert.ok(result.sent.length === 1, `!${name} alone lists what it holds`);
+    if (isUmbrella && command.prefixDefaultSubcommand) assert.ok(result.ran.length === 1, `!${name} alone runs its default subcommand`);
+    else if (isUmbrella) assert.ok(result.sent.length === 1, `!${name} alone lists what it holds`);
   }
   // Slash: a plain member starts every leaf of the commands the pipeline lets through; the umbrellas refuse the staff ones, in private, and run nothing.
   let slashRun = 0;
@@ -519,6 +533,68 @@ async function slashOf(command, leaf, { perms = 0n } = {}) {
       disabledDb.findCached = originals.find; restrictionsDb.restrictionMap = originals.restricted; permissionsDb.hasCommandPermission = originals.level;
     }
     unspy();
+  }
+
+  // ---------------------------------------------------------- 4b. the everyday commands are open for everybody, in the slash command and with the prefix; /ping is global
+  {
+    const { Routes } = require('discord.js');
+    const config = require('../src/config');
+    const { deployCommands } = require('../src/handlers/deployCommands');
+    const { collectPrivateGuildCommandData } = require('../src/handlers/commandHandler');
+    // `ping`, `help`, `uptime`, `version` and the three that moved into /server and /user: no permission at Discord, no team gate, no private server.
+    const OPEN = ['ping', 'help', 'avatar', 'userinfo', 'serverinfo', 'uptime', 'version'];
+    for (const name of OPEN) {
+      const command = byName.get(name);
+      assert.ok(command, `${name} is a command`);
+      assert.equal(json(command).default_member_permissions ?? null, null, `${name} declares no permission`);
+      assert.ok(!command.privateGuildId && !command.hiddenEverywhere && !command.hiddenFromHelp && !command.slashOnly, `${name} is not private, hidden or slash only`);
+      assert.ok(!TEAM.has(name), `${name} is not a tool of the team`);
+      spyOn([command]);
+      for (const text of [`!${name}`, `petto ${name}`, `<@123> ${name}`]) {
+        const result = await typed(text);
+        assert.equal(result.denied, false, `a plain member typing \`${text}\` is not refused`);
+        assert.equal(result.ran.length, 1, `\`${text}\` runs ${name} for a plain member (${JSON.stringify(result.sent)})`);
+      }
+      for (const alias of command.aliases ?? []) assert.equal((await typed(`!${alias}`)).ran.length, 1, `!${alias} (alias of ${name}) runs it for a plain member`);
+      unspy();
+    }
+    // Slash: `/ping` and `/help` themselves, and the umbrella subcommand that replaced the other three (open, no permission asked inside).
+    spyOn([byName.get('ping'), byName.get('help'), byName.get('serverinfo'), byName.get('userinfo'), byName.get('avatar')]);
+    for (const name of ['ping', 'help']) {
+      assert.ok(isSlashCommand(byName.get(name)), `/${name} is a slash command`);
+      assert.equal((await slashOf(byName.get(name), { path: [], node: json(byName.get(name)) })).ran.length, 1, `/${name} runs for a plain member`);
+    }
+    for (const [umbrella, sub, ran] of [['server', 'info', 'serverinfo'], ['user', 'info', 'userinfo'], ['user', 'avatar', 'avatar']]) {
+      const command = byName.get(umbrella);
+      const leaf = leavesOf(command).find((each) => each.path[0] === sub);
+      assert.equal(command.permissionForSubcommand?.(sub) ?? null, null, `/${umbrella} ${sub} asks for no permission`);
+      const result = await slashOf(command, leaf);
+      assert.deepEqual(result.ran.map((entry) => entry.name), [ran], `/${umbrella} ${sub} runs ${ran} for a plain member`);
+    }
+    unspy();
+    // The slash commands the umbrellas replaced are not registered, and the old command keeps its prefix, its aliases and the rules by name.
+    const inDiscord = new Set(collectCommandData().map((entry) => entry.name));
+    for (const [old, replacement] of Object.entries(REMOVED_TWINS)) {
+      assert.ok(byName.has(old) && !inDiscord.has(old) && !isSlashCommand(byName.get(old)), `/${old} is not a slash command any more (${replacement} replaces it) and !${old} is still loaded`);
+      const [umbrella, sub] = replacement.split(' ');
+      const rules = commandRulesOf(byName.get(umbrella), sub);
+      assert.ok(rules.includes(old), `a rule saved for ${old} also reaches /${replacement} (${rules.join(', ')})`);
+    }
+    // /ping in the registration: no default_member_permissions, no dm-only or team contexts, in the global commands and in no private server.
+    const pingJson = collectCommandData().find((entry) => entry.name === 'ping');
+    assert.ok(pingJson, '/ping is registered');
+    assert.ok(!('default_member_permissions' in pingJson) || pingJson.default_member_permissions == null, '/ping has no default_member_permissions');
+    assert.ok(!pingJson.contexts && !pingJson.integration_types, '/ping does not narrow where it can be used');
+    assert.ok(!collectPrivateGuildCommandData().some((entry) => entry.data.name === 'ping'), '/ping is not a command of one private server');
+    const puts = [];
+    const fakeRest = { get: async () => [], put: async (route, { body }) => { puts.push({ route, names: body.map((entry) => entry.name) }); return body; } };
+    const fakeSettings = { getSetting: async () => null, setSetting: async () => {} };
+    const saved = config.devGuildIds; const savedOne = config.devGuildId;
+    config.devGuildIds = []; config.devGuildId = null;
+    try { await deployCommands({ force: true, strict: true, rest: fakeRest, settings: fakeSettings }); } finally { config.devGuildIds = saved; config.devGuildId = savedOne; }
+    const global = puts.find((entry) => entry.route === Routes.applicationCommands(config.clientId));
+    assert.ok(global && global.names.includes('ping') && global.names.includes('help'), 'with no test server set, /ping is in the GLOBAL registration, so every server has it');
+    assert.ok(!puts.some((entry) => entry.route !== Routes.applicationCommands(config.clientId) && entry.names.includes('ping')), '/ping is not registered in one server only');
   }
 
   // ---------------------------------------------------------- 5. the design of every command as Discord and the people see it

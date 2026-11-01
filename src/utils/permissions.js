@@ -83,7 +83,8 @@ function permissionLabel(flag, lang = 'en') {
 /** The names of the permissions in a bit field (`BanMembers`, or one Discord name per language), joined for a message. */
 function permissionLabels(bits, lang = 'en') {
   const wanted = BigInt(bits);
-  return Object.values(PermissionFlagsBits).filter((flag) => (wanted & flag) === flag && flag !== 0n).map((flag) => permissionLabel(flag, lang)).join(', ');
+  // Two names of discord.js can be the same bit (Manage Guild Expressions is also Manage Emojis And Stickers): each label once.
+  return [...new Set(Object.values(PermissionFlagsBits).filter((flag) => (wanted & flag) === flag && flag !== 0n).map((flag) => permissionLabel(flag, lang)))].join(', ');
 }
 
 module.exports = { canModerate, botCanAct, permissionLabels };

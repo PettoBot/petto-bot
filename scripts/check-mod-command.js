@@ -8,7 +8,7 @@
 //   - the old commands keep their words, routes and slash commands; a rule of a server (turned off, restricted, a permission level) on the
 //     wrapped command, or on `mod`, stops the subcommand;
 //   - the descriptions are translated for Discord, the short aliases are in the table, and the number and size of the slash commands stay
-//     inside what Discord allows (71 registered now, 68 of them slash commands: the third batch of umbrellas, scripts/check-umbrellas-3.js, adds the rest; before it were 38 and 35: the second batch of umbrellas, scripts/check-umbrellas-2.js, adds four).
+//     inside what Discord allows (65 registered now, 62 of them slash commands: the third batch of umbrellas, scripts/check-umbrellas-3.js, adds the rest; before it were 38 and 35: the second batch of umbrellas, scripts/check-umbrellas-2.js, adds four).
 process.env.DISCORD_TOKEN ||= 'check-only';
 process.env.DISCORD_CLIENT_ID ||= '1';
 process.env.DISCLOUD_DATABASE_URL ||= 'postgres://check:check@127.0.0.1:1/check'; // never connected to
@@ -483,7 +483,9 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
 
   // ------------------------------------------------------------ the rules of a server
   assert.deepEqual(commandRules.ruleNames(mod, { subcommand: 'ban' }), ['ban', 'mod']);
-  assert.deepEqual(commandRules.ruleNames(mod, { subcommand: 'tempmute' }), ['tempmute', 'mod']);
+  // `/timeout` is not a slash command any more: a rule saved for `timeout` also reaches `/mod tempmute` (and the level asked for it).
+  assert.deepEqual(commandRules.ruleNames(mod, { subcommand: 'tempmute' }), ['tempmute', 'timeout', 'mod']);
+  assert.deepEqual(commandRules.permissionNames(mod, { subcommand: 'tempmute' }), ['mod', 'tempmute', 'timeout']);
   assert.deepEqual(commandRules.ruleNames(mod, { subcommand: 'lock' }), ['channel', 'mod']);
   assert.deepEqual(commandRules.ruleNames(mod, { subcommand: 'unlockdown' }), ['lockdown', 'mod']);
   assert.deepEqual(commandRules.ruleNames(mod, {}), ['mod']);
@@ -504,6 +506,8 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   assert.ok(!(await ran('!ban')), '!ban itself is refused too (as before)');
   rules = [{ command: 'tempmute', channel_id: null }];
   assert.ok(refusedSlash(await slash('tempmute')) && (await slash('mute')).ran && refusedPrefix(await send('!mod to')) && (await send('!mod mute')).ran);
+  rules = [{ command: 'timeout', channel_id: null }];
+  assert.ok(refusedSlash(await slash('tempmute')) && (await slash('mute')).ran && refusedPrefix(await send('!mod to')) && refusedPrefix(await send('!mod tempmute')) && (await send('!mod mute')).ran, 'a rule on timeout (the removed /timeout) also stops /mod tempmute');
   rules = [{ command: 'channel', channel_id: null }];
   for (const sub of ['lock', 'unlock', 'slowmode']) assert.ok(refusedSlash(await slash(sub)) && refusedPrefix(await send(`!mod ${sub}`)), `/mod ${sub} is refused when channel is turned off`);
   assert.ok(!(await ran('!lock')), 'and !lock (as before)');
@@ -548,8 +552,8 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   // ------------------------------------------------------------ Discord: registered, translated, inside the limits
   const registered = collectCommandData();
   const chat = registered.filter((each) => (each.type ?? 1) === 1);
-  assert.equal(registered.length, 71, '71 commands registered with Discord (the 33 there were, /mod, /game, /me, /search, /staff and the third batch of umbrellas)');
-  assert.equal(chat.length, 68, '68 of them slash commands (3 are menus)');
+  assert.equal(registered.length, 65, '65 commands registered with Discord (71 before six old slash commands were replaced by their umbrella subcommand)');
+  assert.equal(chat.length, 62, '62 of them slash commands (3 are menus)');
   assert.ok(chat.length <= 100, 'far from the 100 slash commands Discord allows');
   const registeredMod = registered.find((each) => each.name === 'mod');
   assert.ok(registeredMod, '/mod is registered with Discord, so deploy-commands.js sends it');
@@ -557,8 +561,16 @@ const refusedPrefix = (result, why = /turned off|disabled/i) => !result.ran && r
   const deployed = [];
   await require('../src/handlers/deployCommands').deployCommands({ rest: { put: async (_route, { body }) => { deployed.push(...body); return body; }, get: async () => [] }, settings: { getSetting: async () => null, setSetting: async () => {} }, force: true });
   assert.ok(deployed.some((each) => each.name === 'mod' && each.options.length === 25), 'deploy-commands.js sends /mod to Discord');
-  // The old everyday slash commands are still registered as they were, with their own permissions.
-  for (const name of ['ban', 'kick', 'warn', 'unban', 'timeout', 'purge']) assert.ok(chat.some((each) => each.name === name), `/${name} is still registered`);
+  // `/ban`, `/kick` and `/warn` are still registered with their own permissions (each has subcommands that /mod does not wrap, and /mod is at 25).
+  for (const name of ['ban', 'kick', 'warn', 'channel']) assert.ok(chat.some((each) => each.name === name), `/${name} is still registered`);
+  // `/unban`, `/purge` and `/timeout` are replaced by `/mod unban`, `/mod purge` and `/mod tempmute` (same options, same permission): not registered, the prefix is unchanged.
+  for (const name of ['unban', 'purge', 'timeout']) assert.ok(!chat.some((each) => each.name === name), `/${name} is not registered any more`);
+  for (const [name, sub] of [['unban', 'unban'], ['purge', 'purge'], ['timeout', 'tempmute']]) {
+    const old = client.commands.get(name).data.toJSON();
+    const replacement = mod.data.toJSON().options.find((each) => each.name === sub);
+    assert.deepEqual((replacement.options ?? []).map((o) => [o.name, o.type, Boolean(o.required), o.min_value ?? null, o.max_value ?? null, o.max_length ?? null, (o.choices ?? []).length]), (old.options ?? []).map((o) => [o.name, o.type, Boolean(o.required), o.min_value ?? null, o.max_value ?? null, o.max_length ?? null, (o.choices ?? []).length]), `/mod ${sub} has every option of /${name}`);
+    assert.equal(mod.permissionForSubcommand(sub), BigInt(old.default_member_permissions), `/mod ${sub} asks for what /${name} asked for`);
+  }
   assert.ok(chat.find((each) => each.name === 'ban').default_member_permissions === String(F.BanMembers));
   for (const name of ['tempban', 'softban', 'hardban', 'jail', 'note', 'case', 'history', 'lockdown']) assert.ok(!chat.some((each) => each.name === name), `/${name} is not a slash command`);
 
