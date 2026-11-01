@@ -1,4 +1,5 @@
 // Button-driven builder for reusable ticket forms, so no one has to type the field syntax.
+const { wrapTicketHandler } = require('../utils/safeTicketAction');
 const {
   ModalBuilder,
   LabelBuilder,
@@ -330,4 +331,11 @@ async function handleModal(interaction) {
   await interaction.editReply(renderPanel(uid, draft, lang));
 }
 
-module.exports = { renderPanel, startDraft, handleButton, handleModal, MAX_FIELDS };
+// Wrapped in the safety net of the tickets (utils/safeTicketAction.js): an expired press is not an error and a failure is told kindly.
+module.exports = {
+  renderPanel,
+  startDraft,
+  handleButton: wrapTicketHandler('tk_formpanel', handleButton),
+  handleModal: wrapTicketHandler('tk_formpanel_modal', handleModal),
+  MAX_FIELDS,
+};
