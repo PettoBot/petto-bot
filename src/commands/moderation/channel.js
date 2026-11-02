@@ -26,10 +26,13 @@ function canCreateChannels(userId) {
 
 module.exports = {
   teamParts: [
-    { usage: '!channel create ...', who: 'owner and developers', summary: 'Creating channels with this command is open only to the team for now; everybody else is told so.' }, // i18n-ignore: team list
+    { usage: '!channel create ...', who: 'owner and developers', area: 'moderation', summary: 'Creating channels with this command is open only to the team for now; everybody else is told so.' }, // i18n-ignore: team list
   ],
   // Also registered as a slash command (one of the everyday ones people look for with `/`); the prefix keeps working.
   registerSlash: true,
+  // `create` is for the team only: it is NOT part of the slash command (it never shows in the `/` menu) and `!channel create` is not listed in `!help`.
+  prefixOnlySubcommands: ['create'],
+  hiddenPrefixSubcommands: ['create'],
   aliases: ['ch'],
   // Written after the prefix, the topic takes every word left (`!topic Rules are in #rules`).
   prefixGreedyStringOptions: { topic: 'text' },

@@ -24,6 +24,10 @@ module.exports = {
     summary: `Sends a notice (${TYPES.join(', ')}) to a server in its own language: to a private staff channel, else to its owner by DM, never to a public channel and never with pings.`,
     usage: ['!guildsend <server id or name> <type> [details]', '!guildsend here <type> [details]'],
     who: 'owner and developers',
+    area: 'servers',
+    examples: ['!guildsend 123456789012345678 notice', '!guildsend here notice'],
+    answers: 'where the notice went (private staff channel or the owner by DM) and a note in the operations channel',
+    dangers: 'It sends a real message to a server or its owner, in the language of the server, with no pings.',
   },
   data: new SlashCommandBuilder()
     .setName('guildsend')

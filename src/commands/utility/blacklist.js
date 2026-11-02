@@ -113,6 +113,10 @@ module.exports = {
     summary: 'Blacklists servers that break the terms: Petto leaves them, tells the owner why, and leaves again if they add it back.',
     usage: ['!blacklist <server id or name> <reason>', '!blacklist remove <server>', '!blacklist list [page]', '!blacklist info <server>'],
     who: 'owner and developers',
+    area: 'servers',
+    examples: ['!blacklist 123456789012345678 spam and scams', '!blacklist list', '!blacklist remove 123456789012345678'],
+    answers: 'one card: the server (name, ID, members, owner) and what was done; the list is paged',
+    dangers: 'Petto leaves the server at once and tells its owner why; it also leaves again if the server adds it back.',
   },
   // The text keeps its quotes and spaces: the reason is free text and the name of a server may have spaces.
   prefixRawOptions: { _: (text) => ({ text: String(text ?? '') }) },

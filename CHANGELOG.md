@@ -4,6 +4,12 @@ All notable changes to Petto are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The actions that only the owner or the Petto team can use are no longer slash commands: nobody sees them in the `/` menu.** `/bot premium grant`, `assign`, `unassign` and `revoke` (the owner-only Premium actions, which refused at runtime but were listed for everybody), `/channel create` ("team only for now"), `/automod control` and `/guilddebug` (`info`, `send`, `dm-owner`; it was registered in one private server) are removed from the registered commands; the registered chat commands stay 67 and the private-server registration is gone. They are hidden, prefix-only team tools with the same behavior and the same silent rule as the other team tools (for anybody outside the team they are not commands: no reply, no typing, no "unknown command", not in `!help`, the autocomplete, the suggestions or the catalogs): **`!premiumadmin grant|assign|unassign|revoke`** (owner only, a developer gets no answer; the old `!premium grant ...` words keep working), **`!channel create`** (still answers non-team with its team-only message), **`!guilddebug info|send|dm-owner`** (same data as before, still only in the diagnostics server; the channel of `send` is now `--channel <id>` at the end) and the hidden `!am <token>`. `/premium` and `/bot premium` keep only what members need: `status`. Run `node deploy-commands.js` after deploying so Discord forgets the removed commands. A new check, `scripts/check-team-not-slash.js`, fails if any slash command, group or subcommand is a team-only action (explicit list), if a registered command carries a team flag, or if the source of a registered command (and of the ones an umbrella wraps) has a team gate that is not allowed with a written reason; it also proves it reports the old state.
+
+- **`!team` is easier to use.** The tools are grouped by area (servers, bot status, Premium, moderation tools), paged with the usual buttons (only you can press them) when they do not fit one card, and each one says whether `petto <word>` works too. `!team <command>` shows one tool in detail (usage, examples, what it answers, what to be careful with, who can use it, its old words) and the card says that none of them is a slash command. It is still generated from the metadata of the commands, so a new tool appears by itself, and it still answers only the owner and the developers.
+
 ## [0.7.9-3] — 2026-11-02 · Donut
 
 A patch of 0.7.9, shown as **0.7.9~3**.

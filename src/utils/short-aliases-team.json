@@ -1,4 +1,8 @@
 {
+ "bpa": "premiumadmin assign",
+ "bpg": "premiumadmin grant",
+ "bpr": "premiumadmin revoke",
+ "bpu": "premiumadmin unassign",
  "mau": "music autoplay",
  "mcl": "music clear",
  "mle": "music leave",
@@ -16,5 +20,9 @@
  "msh": "music shuffle",
  "mski": "music skip",
  "msto": "music stop",
- "mv": "music volume"
+ "mv": "music volume",
+ "pas": "premiumadmin assign",
+ "pg": "premiumadmin grant",
+ "prev": "premiumadmin revoke",
+ "pu": "premiumadmin unassign"
 }
