@@ -33,7 +33,7 @@ const schedule = require('../schedule');
 const { t } = require('../../i18n');
 const { IntegrationError } = require('../../utils/integrations');
 const { fallbackPicture } = require('../platforms');
-const { withStandIn } = require('../picture');
+const { withStandIn, imageReady } = require('../picture');
 
 /** The videos that were seen live or about to be: when they end they are a recording of a stream, and are not posted as a new video. */
 const wasLive = new Set();
@@ -219,6 +219,22 @@ function noteLate(channelId, item, now = Date.now()) {
   logger.info(`YouTube: "${String(item.title ?? item.id).slice(0, 60)}" of ${item.author ?? channelId} reached the notice ${Math.round((now - published) / 60_000)} min after it was published (${push}).`); // i18n-ignore: log line for the operator
 }
 
+const THUMBNAIL_MIN_BYTES = 4_000; // the gray stand-in YouTube gives for a picture it has not made yet weighs less than any real one
+const THUMBNAIL_WAIT_MS = 20 * 60_000; // a video younger than this waits for its picture (the next look tries again); an older one goes out with what there is
+
+/**
+ * The notice of a new video, with the best picture that loads now. When none does and the video is still young the notice is held (`null`): it is not marked as
+ * seen, so the next look (or the next push) posts it with the picture YouTube has made by then.
+ */
+async function videoItem(entry, kind, account, now) {
+  const item = youtube.toItem(entry, kind, account);
+  if (kind !== 'video') return item; // a Short is shown without a picture
+  for (const url of youtube.thumbnailCandidates(entry)) {
+    if (await imageReady(url, { minBytes: THUMBNAIL_MIN_BYTES })) return { ...item, image: url };
+  }
+  return Number.isFinite(entry.published) && now - entry.published < THUMBNAIL_WAIT_MS ? null : item;
+}
+
 const PROVIDERS = {
   youtube: {
     interval: 5 * 60_000, perTick: 600, concurrency: 12, // 600 channels a minute: ten thousand pushed channels (a look every 30 minutes) need about 330
@@ -274,7 +290,10 @@ const PROVIDERS = {
           if (state === 'upcoming') { rememberLive(entry.videoId); continue; } // announced, not started: it is posted when it starts
           if (state === 'none' && wasLive.has(entry.videoId)) { rememberNotLive(entry.videoId); continue; } // a stream that already ended: its recording is not a new video, and it is not asked about again
           if (state === 'none') rememberNotLive(entry.videoId);
-          if (fresh({ publishedAt: entry.published }, now)) items.push(youtube.toItem(entry, entry.short ? 'short' : 'video', account));
+          if (fresh({ publishedAt: entry.published }, now)) {
+            const item = await videoItem(entry, entry.short ? 'short' : 'video', account, now);
+            if (item) items.push(item);
+          }
         }
         for (const id of tracked.get(account.id) ?? []) if (states?.[id]?.state === 'live') stillLive.add(id);
         // A channel with a stream announced or on (or one that cannot be told about) is kept on the fast pace.

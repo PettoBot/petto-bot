@@ -207,4 +207,13 @@ function toItem(entry, kind, channel = {}) {
   };
 }
 
-module.exports = { spend, canSpend, quotaUsed, restoreQuota, exportLengths, importLengths, parseChannel, parseFeed, fetchChannel, fetchChannelFromApi, resolveChannel, liveStates, toItem, CHANNEL_ID };
+/**
+ * The pictures a video can have, the best first. YouTube makes the large ones a little after the video is public, and what it answers meanwhile is a gray stand-in or
+ * nothing: Discord asks once, and a card that went out with it shows a gray box for good. The notice picks the first one that already loads (see `videoItem`).
+ */
+function thumbnailCandidates(entry) {
+  const base = `https://i.ytimg.com/vi/${encodeURIComponent(entry.videoId)}`;
+  return [...new Set([`${base}/maxresdefault.jpg`, `${base}/sddefault.jpg`, entry.image, `${base}/hqdefault.jpg`, `${base}/mqdefault.jpg`].filter(Boolean))];
+}
+
+module.exports = { thumbnailCandidates, spend, canSpend, quotaUsed, restoreQuota, exportLengths, importLengths, parseChannel, parseFeed, fetchChannel, fetchChannelFromApi, resolveChannel, liveStates, toItem, CHANNEL_ID };
