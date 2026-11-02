@@ -17,4 +17,9 @@ module.exports = {
   'reviews.show.summary.one': '{stars} **{average}** de {count} avaliação',
   'reviews.show.summary.other': '{stars} **{average}** de {count} avaliações',
   'reviews.off': 'As avaliações estão desativadas neste servidor.',
+  'reviews.problem.commentShort': 'O comentário precisa de pelo menos {min} caracteres.',
+  'reviews.problem.account': 'Sua conta precisa ter pelo menos {days} dias para avaliar.',
+  'reviews.problem.member': 'Você precisa estar neste servidor há pelo menos {days} dias para avaliar.',
+  'reviews.problem.cooldown': 'Você poderá avaliar de novo {time}.',
+  'reviews.remove.staffOnly': 'Só a equipe (Gerenciar mensagens ou Gerenciar servidor) pode remover uma avaliação que outra pessoa escreveu.',
 };

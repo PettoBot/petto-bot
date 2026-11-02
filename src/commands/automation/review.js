@@ -1,6 +1,6 @@
 // Reviews: rate a member from 1 to 5 stars and see the ratings of a member. A member can review another once, and sending
 // it again changes it. The settings are in `!profileconfig`.
-const { SlashCommandBuilder, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags, PermissionFlagsBits } = require('discord.js');
 const reviewsDb = require('../../db/reviews');
 const { summarize, starsText, parseStars, problem, MAX_COMMENT } = require('../../utils/reviewEngine');
 const { textCard } = require('../../utils/caseCard');
@@ -14,7 +14,10 @@ async function give(interaction, config, lang) {
   const target = interaction.options.getUser('user', true);
   const stars = parseStars(interaction.options.getString('stars', true));
   const comment = (interaction.options.getString('comment') ?? '').trim().replace(/\s+/g, ' ');
-  const refused = problem({ reviewer: interaction.user, target, stars, comment, lang });
+  const needsMember = config.min_member_days > 0;
+  const reviewerMember = needsMember ? (interaction.member?.joinedTimestamp ? interaction.member : await interaction.guild.members.fetch(interaction.user.id).catch(() => null)) : null;
+  const lastAt = config.cooldown_minutes > 0 ? await reviewsDb.lastBy(interaction.guild.id, interaction.user.id) : null;
+  const refused = problem({ reviewer: interaction.user, target, stars, comment, lang, config, reviewerMember, lastAt });
   if (refused) return reply(interaction, textCard(refused));
   const existing = await reviewsDb.getReview(interaction.guild.id, target.id, interaction.user.id);
   await reviewsDb.saveReview({ guildId: interaction.guild.id, targetId: target.id, reviewerId: interaction.user.id, stars, comment });
@@ -31,7 +34,15 @@ async function give(interaction, config, lang) {
 
 async function remove(interaction, lang) {
   const target = interaction.options.getUser('user', true);
-  const removed = await reviewsDb.removeReview(interaction.guild.id, target.id, interaction.user.id);
+  // The staff (Manage Messages or Manage Server) can remove the review somebody else wrote: `reviewer` says whose.
+  const author = interaction.options.getUser('reviewer');
+  let reviewerId = interaction.user.id;
+  if (author && author.id !== interaction.user.id) {
+    const perms = interaction.memberPermissions ?? interaction.member?.permissions;
+    if (!perms?.has(PermissionFlagsBits.ManageMessages) && !perms?.has(PermissionFlagsBits.ManageGuild)) return reply(interaction, textCard(t(lang, 'reviews.remove.staffOnly')));
+    reviewerId = author.id;
+  }
+  const removed = await reviewsDb.removeReview(interaction.guild.id, target.id, reviewerId);
   return reply(interaction, textCard(removed ? t(lang, 'reviews.remove.done', { emoji: EMOJI.APPROVE, user: target.username }) : t(lang, 'reviews.remove.none', { user: target.username })));
 }
 
@@ -55,7 +66,9 @@ module.exports = {
       .addUserOption((o) => o.setName('user').setDescription('Who').setRequired(true))
       .addStringOption((o) => o.setName('stars').setDescription('1 to 5').setRequired(true))
       .addStringOption((o) => o.setName('comment').setDescription('What you want to say').setMaxLength(MAX_COMMENT).setRequired(false)))
-    .addSubcommand((s) => s.setName('remove').setDescription('Remove your review of a member.').addUserOption((o) => o.setName('user').setDescription('Who').setRequired(true)))
+    .addSubcommand((s) => s.setName('remove').setDescription('Remove your review of a member. The staff can remove the one somebody else wrote.')
+      .addUserOption((o) => o.setName('user').setDescription('Who was reviewed').setRequired(true))
+      .addUserOption((o) => o.setName('reviewer').setDescription('Staff only: who wrote the review').setRequired(false)))
     .addSubcommand((s) => s.setName('show').setDescription('The reviews of a member.').addUserOption((o) => o.setName('user').setDescription('Who (you by default)').setRequired(false))),
 
   async execute(interaction) {

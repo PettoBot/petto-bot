@@ -22,12 +22,27 @@ function parseStars(value) {
   return match ? Number(match[1]) : null;
 }
 
-/** Why a review is refused, or null when it is fine. */
-function problem({ reviewer, target, stars, comment, lang = currentLanguage() }) {
+const DAY_MS = 86_400_000;
+const MINUTE_MS = 60_000;
+
+/**
+ * Why a review is refused, or null when it is fine. `config` has the rules of the server (all of them off by default): the minimum age of the account
+ * and time in the server, the cooldown and the length of the comment. `reviewerMember` is the member (for the time in the server) and `lastAt` when the
+ * reviewer last saved a review. A rule whose fact is not known (a member that is not in memory) does not refuse.
+ */
+function problem({ reviewer, target, stars, comment, lang = currentLanguage(), config = {}, reviewerMember = null, lastAt = null, now = Date.now() }) {
   if (target.bot) return t(lang, 'reviews.problem.bot');
   if (reviewer.id === target.id) return t(lang, 'reviews.problem.self');
   if (stars === null) return t(lang, 'reviews.problem.stars');
-  if (comment.length > MAX_COMMENT) return t(lang, 'reviews.problem.comment', { max: MAX_COMMENT });
+  const max = Math.min(MAX_COMMENT, config.max_comment > 0 ? config.max_comment : MAX_COMMENT);
+  if (comment.length > max) return t(lang, 'reviews.problem.comment', { max });
+  if (config.min_comment > 0 && comment.length < config.min_comment) return t(lang, 'reviews.problem.commentShort', { min: config.min_comment });
+  if (config.min_account_days > 0 && reviewer.createdTimestamp && now - reviewer.createdTimestamp < config.min_account_days * DAY_MS) return t(lang, 'reviews.problem.account', { days: config.min_account_days });
+  if (config.min_member_days > 0 && reviewerMember?.joinedTimestamp && now - reviewerMember.joinedTimestamp < config.min_member_days * DAY_MS) return t(lang, 'reviews.problem.member', { days: config.min_member_days });
+  if (config.cooldown_minutes > 0 && lastAt) {
+    const next = new Date(lastAt).getTime() + config.cooldown_minutes * MINUTE_MS;
+    if (next > now) return t(lang, 'reviews.problem.cooldown', { time: `<t:${Math.ceil(next / 1000)}:R>` });
+  }
   return null;
 }
 
