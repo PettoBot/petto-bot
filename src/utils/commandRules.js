@@ -18,6 +18,8 @@ function ruleNames(command, { route = null, subcommand = null, group = null, via
   const names = [];
   if (route?.disableName) names.push(route.disableName);
   else if (command.rulesBySubcommand && subcommand) names.push(ruleKeyOf(command, subcommand, group), ...otherRuleKeys(command, subcommand, group));
+  // A group of a command that is the old command of another name (`/role join` is `joinrole`): the rules of that command reach it too.
+  if (group && command.groupRuleKeys?.[group]) names.push(command.groupRuleKeys[group]);
   names.push(command.data.name);
   // The umbrella a prefix use came through (`!config prefix set` runs `!prefix set`): its own rules apply too.
   if (via) names.push(via);
@@ -39,7 +41,8 @@ function otherRuleKeys(command, subcommand, group = null) {
 function permissionNames(command, { subcommand = null, group = null, via = null } = {}) {
   const wrapped = command.ruleKeys && subcommand ? (group && command.ruleKeys[group]) || command.ruleKeys[subcommand] : null;
   const others = wrapped ? otherRuleKeys(command, subcommand, group) : [];
-  return [...new Set([command.data.name, wrapped, ...others, via].filter(Boolean))];
+  const grouped = group ? command.groupRuleKeys?.[group] : null;
+  return [...new Set([command.data.name, wrapped, ...others, grouped, via].filter(Boolean))];
 }
 
 /**
