@@ -42,10 +42,43 @@ async function updateJob(id, patch) {
   if (error) throw error;
 }
 
+/** The pending or running job of a guild, or null. */
+async function getActiveJob(guildId) {
+  const { data, error } = await database.from('bulk_role_jobs').select('*').eq('guild_id', guildId).in('status', ['pending', 'running']).order('created_at', { ascending: false }).limit(1).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+/** The latest jobs of a guild, newest first (previews included). */
+async function listRecent(guildId, limit = 5) {
+  const { data, error } = await database.from('bulk_role_jobs').select('*').eq('guild_id', guildId).order('created_at', { ascending: false }).limit(limit);
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** At start-up a job that was `running` was cut by a restart: it goes back to the queue and goes on from its cursor. Returns how many. */
+async function requeueRunning() {
+  const { data, error } = await database.from('bulk_role_jobs').update({ status: 'pending' }).eq('status', 'running').select('id');
+  if (error) throw error;
+  return data?.length ?? 0;
+}
+
+/** Ends a job that is still running (a job cancelled meanwhile stays cancelled). */
+async function finishJob(id, patch) {
+  const { error } = await database.from('bulk_role_jobs').update({ ...patch, finished_at: new Date().toISOString() }).eq('id', id).eq('status', 'running');
+  if (error) throw error;
+}
+
+async function setPaused(id, guildId, paused) {
+  const { data, error } = await database.from('bulk_role_jobs').update({ paused }).eq('id', id).eq('guild_id', guildId).in('status', ['pending', 'running']).select('id');
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
+}
+
 async function cancelJob(id, guildId) {
   const { error } = await database.from('bulk_role_jobs').update({ status: 'cancelled', finished_at: new Date().toISOString() })
     .eq('id', id).eq('guild_id', guildId).in('status', ['pending', 'running']);
   if (error) throw error;
 }
 
-module.exports = { createJob, getLatestJob, getJob, hasActiveJob, listPending, updateJob, cancelJob };
+module.exports = { createJob, getLatestJob, getJob, getActiveJob, listRecent, hasActiveJob, listPending, requeueRunning, finishJob, setPaused, updateJob, cancelJob };

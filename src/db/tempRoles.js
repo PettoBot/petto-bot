@@ -19,10 +19,21 @@ async function removeTempRole(guildId, userId, roleId) {
   return rowCount > 0;
 }
 
+/**
+ * Forgets the temporary rows of a member for some roles: the role was given for good, or taken away by hand, so the expiry job must not
+ * touch it later. Returns how many rows were removed.
+ */
+async function clearTempRoles(guildId, userId, roleIds) {
+  const ids = [...new Set((roleIds ?? []).map(String))];
+  if (!ids.length) return 0;
+  const { rowCount } = await getPrimaryPool().query('delete from temp_roles where guild_id = $1 and user_id = $2 and role_id = any($3::text[])', [String(guildId), String(userId), ids]);
+  return rowCount ?? 0;
+}
+
 /** The temporary roles whose time is up, oldest first, a few at a time. */
 async function getExpiredTempRoles(limit = 100) {
   const { rows } = await getPrimaryPool().query('select * from temp_roles where expires_at <= now() order by expires_at asc limit $1', [limit]);
   return rows;
 }
 
-module.exports = { addTempRole, listTempRoles, removeTempRole, getExpiredTempRoles };
+module.exports = { addTempRole, listTempRoles, removeTempRole, clearTempRoles, getExpiredTempRoles };
